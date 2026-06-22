@@ -183,11 +183,6 @@ function App() {
   const [toast, setToast] = useState(null);
   const [confirmModal, setConfirmModal] = useState(null);
 
-  const triggerToast = (message, type = 'info') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000); // 3초 뒤에 토스트 알림을 자동으로 사라지게 합니다.
-  };
-
   useEffect(() => {
     signInAnonymously(auth).catch(console.error);
     return onAuthStateChanged(auth, setUser);
@@ -216,8 +211,6 @@ function App() {
 
   const blockedLaptopIds = useMemo(() => new Set(requests.filter(r => ['신청중', '승인됨', '보류'].includes(r.status)).map(r => r.laptopId)), [requests]);
 
-  const [selectedLaptopId, setSelectedLaptopId] = useState(null);
-
   const stats = useMemo(() => ({
     total: laptops.length,
     available: laptops.filter(l => !blockedLaptopIds.has(l.id) && l.status !== STATUS.UNAVAILABLE).length,
@@ -225,10 +218,6 @@ function App() {
     approved: requests.filter(r => r.status === STATUS.APPROVED).length,
     overdue: requests.filter(r => r.status === STATUS.APPROVED && r.dueDate < today()).length,
   }), [laptops, requests, blockedLaptopIds]);
-
-  const selectedLaptop = useMemo(() => {
-  return laptops.find(l => l.id === selectedLaptopId) || null;
-}, [laptops, selectedLaptopId]);
 
   const submitRequest = async () => {
     if (!selectedLaptop || blockedLaptopIds.has(selectedLaptop.id)) return;
@@ -360,8 +349,7 @@ function App() {
 
             {adminTab === 'laptops' && (
               <div className="space-y-4">
-                <div className="flex justify-between"><Button onClick={()=>setShowUploadPanel(!showUploadPanel)} variant="outline" className="text-xs">엑셀 올리기</Button>
-                <Button onClick={()=>setNewLaptop({ assetNo: '', model: '', serialNo: '', status: STATUS.AVAILABLE })} className="text-xs">기기 추가</Button></div>
+                <div className="flex justify-between"><Button onClick={()=>setShowUploadPanel(!showUploadPanel)} variant="outline" className="text-xs">엑셀 올리기</Button><Button onClick={handleAddLaptopClick} className="text-xs">기기 추가</Button></div>
                 {showUploadPanel && <div className="p-4 border-2 border-dashed rounded-xl text-center"><input type="file" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} /></div>}
                 {newLaptop && <div className="p-3 border rounded-xl"><Input label="관리번호" value={newLaptop.assetNo} onChange={(v)=>setNewLaptop({...newLaptop, assetNo:v})}/><Button onClick={createLaptop} className="text-xs mt-2">등록</Button></div>}
                 <div className="grid gap-2 sm:grid-cols-2 text-xs">
