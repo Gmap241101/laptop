@@ -38,12 +38,12 @@ import {
 const firebaseConfig = typeof __firebase_config !== 'undefined' 
   ? JSON.parse(__firebase_config) 
   : {
-      apiKey: "YOUR_API_KEY",
-      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-      projectId: "YOUR_PROJECT_ID",
-      storageBucket: "YOUR_PROJECT_ID.appspot.com",
-      messagingSenderId: "YOUR_SENDER_ID",
-      appId: "YOUR_APP_ID"
+      apiKey: "AIzaSyA-hQv4mZwrTWUn10aiS3QSLgwSWzBNds0",
+      authDomain: "laptop-system-mk.firebaseapp.com",
+      projectId: "laptop-system-mk",
+      storageBucket: "laptop-system-mk.firebasestorage.app",
+      messagingSenderId: "978421108190",
+      appId: "1:978421108190:web:6bc9af49a57471ae2a614f"
     };
 
 const app = initializeApp(firebaseConfig);
