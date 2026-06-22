@@ -216,8 +216,6 @@ function App() {
 
   const blockedLaptopIds = useMemo(() => new Set(requests.filter(r => ['신청중', '승인됨', '보류'].includes(r.status)).map(r => r.laptopId)), [requests]);
 
-  const [selectedLaptopId, setSelectedLaptopId] = useState(null);
-
   const stats = useMemo(() => ({
     total: laptops.length,
     available: laptops.filter(l => !blockedLaptopIds.has(l.id) && l.status !== STATUS.UNAVAILABLE).length,
