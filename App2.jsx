@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { 
   getFirestore, 
   doc, 
@@ -144,6 +144,24 @@ function Button({ children, className = '', onClick, variant = 'primary', ...pro
   return <button onClick={onClick} className={`${baseStyle} ${variants[variant]} ${className}`} {...props}>{children}</button>;
 }
 
+function Input({ label, value, onChange, type = 'text', placeholder = '', ...props }) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-xs font-semibold text-slate-600 tracking-wide">{label}</span>
+      <input type={type} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100" {...props} />
+    </label>
+  );
+}
+
+function Select({ label, value, onChange, children }) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-xs font-semibold text-slate-600 tracking-wide">{label}</span>
+      <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2364748B%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:0.7em_auto] bg-[right_1rem_center] bg-no-repeat">{children}</select>
+    </label>
+  );
+}
+
 function App() {
   const [user, setUser] = useState(null);
   const [laptops, setLaptops] = useState([]);
@@ -155,14 +173,15 @@ function App() {
   const [selectedLaptopId, setSelectedLaptopId] = useState(null);
   const [form, setForm] = useState({ team: '', borrower: '', startDate: today(), dueDate: addDaysFrom(today(), 7), purpose: '' });
   const [adminTab, setAdminTab] = useState('dashboard');
+  const [editLaptop, setEditLaptop] = useState(null);
   const [newLaptop, setNewLaptop] = useState(null);
+  const [newTeam, setNewTeam] = useState('');
+  const [newBorrower, setNewBorrower] = useState('');
+  const [newBorrowerTeam, setNewBorrowerTeam] = useState('');
+  const [tempSettings, setTempSettings] = useState({ maxRentalDays: 14 });
   const [showUploadPanel, setShowUploadPanel] = useState(false);
   const [toast, setToast] = useState(null);
-
-  // 💡 범인 검거 구역: ID를 바탕으로 선택된 노트북 오브젝트를 찾아주는 메모이제이션 변수 완벽 추가!
-  const selectedLaptop = useMemo(() => {
-    return laptops.find(l => l.id === selectedLaptopId) || null;
-  }, [laptops, selectedLaptopId]);
+  const [confirmModal, setConfirmModal] = useState(null);
 
   useEffect(() => {
     signInAnonymously(auth).catch(console.error);
@@ -200,11 +219,6 @@ function App() {
     overdue: requests.filter(r => r.status === STATUS.APPROVED && r.dueDate < today()).length,
   }), [laptops, requests, blockedLaptopIds]);
 
-  const triggerToast = (msg) => {
-    setToast({ message: msg });
-    setTimeout(() => setToast(null), 3000);
-  };
-
   const submitRequest = async () => {
     if (!selectedLaptop || blockedLaptopIds.has(selectedLaptop.id)) return;
     try {
@@ -223,7 +237,7 @@ function App() {
       });
       setSelectedLaptopId(null);
       triggerToast('신청 완료');
-    } catch(e) { triggerToast('실패'); }
+    } catch(e) { triggerToast('실패', 'error'); }
   };
 
   const updateRequest = async (id, status) => {
@@ -232,13 +246,7 @@ function App() {
   };
 
   const createLaptop = async () => {
-    if (!newLaptop || !newLaptop.assetNo) return;
-    await setDoc(doc(db, `artifacts/${appId}/public/data/laptops`, `NB-${Date.now()}`), {
-      ...newLaptop,
-      status: STATUS.AVAILABLE,
-      photo: 'https://images.unsplash.com/photo-1593642632823-8f785ba67e45?auto=format&fit=crop&w=500&q=80',
-      manufactureDate: today()
-    });
+    await setDoc(doc(db, `artifacts/${appId}/public/data/laptops`, `NB-${Date.now()}`), newLaptop);
     setNewLaptop(null);
     triggerToast('등록 성료');
   };
@@ -301,14 +309,10 @@ function App() {
       {view === 'user' ? (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:items-start">
           <div className="lg:col-span-2 grid gap-4 sm:grid-cols-2">
-            <div className="col-span-full relative">
-              <Search className="absolute left-3 top-3.5 text-slate-400" size={16} />
-              <input type="text" placeholder="자산번호 또는 모델명 검색..." value={query} onChange={(e)=>setQuery(e.target.value)} className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
-            </div>
             {laptops.filter(l => `${l.assetNo} ${l.model}`.toLowerCase().includes(query.toLowerCase())).map(l => {
               const blocked = blockedLaptopIds.has(l.id) || l.status === STATUS.UNAVAILABLE;
               return (
-                <div key={l.id} onClick={()=>!blocked && setSelectedLaptopId(l.id)} className={`p-4 border rounded-2xl bg-white cursor-pointer transition-all duration-150 ${selectedLaptopId===l.id?'border-blue-500 ring-2 ring-blue-100 bg-blue-50/20':''} ${blocked?'opacity-50 bg-slate-50 cursor-not-allowed':''}`}>
+                <div key={l.id} onClick={()=>!blocked && setSelectedLaptopId(l.id)} className={`p-4 border rounded-2xl bg-white cursor-pointer ${selectedLaptopId===l.id?'border-blue-500 ring-2 ring-blue-100':''} ${blocked?'opacity-50':''}`}>
                   <div className="flex justify-between font-bold text-sm"><span>{l.assetNo}</span><Badge>{blocked?'잠금':STATUS.AVAILABLE}</Badge></div>
                   <div className="text-xs text-slate-600 mt-1">{l.model}</div>
                   <div className="text-[11px] text-slate-400 mt-2 bg-slate-50 p-2 rounded">💡 {l.note || '특이사항 없음'}</div>
@@ -320,20 +324,11 @@ function App() {
           <Card className="lg:sticky lg:top-6">
             <CardContent className="space-y-3">
               <h3 className="text-sm font-bold">임대 신청 폼</h3>
-              <div className="text-xs p-2.5 bg-slate-100 rounded-xl font-medium text-slate-700">선택 장비: {selectedLaptop?.assetNo || '❌ 아래 목록에서 기기를 선택해 주세요'}</div>
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-semibold text-slate-600 tracking-wide">소속 팀</span>
-                <input type="text" value={form.team} onChange={(e)=>setForm({...form, team:e.target.value})} placeholder="예: 교무기획팀" className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
-              </label>
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-semibold text-slate-600 tracking-wide">신청 사원명</span>
-                <input type="text" value={form.borrower} onChange={(e)=>setForm({...form, borrower:e.target.value})} placeholder="홍길동" className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
-              </label>
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-semibold text-slate-600 tracking-wide">반납 목표일</span>
-                <input type="date" value={form.dueDate} onChange={(e)=>setForm({...form, dueDate:e.target.value})} className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
-              </label>
-              <Button onClick={submitRequest} disabled={!selectedLaptop} className="w-full text-xs mt-2">서버 신청서 전송</Button>
+              <div className="text-xs p-2 bg-slate-50 rounded">선택 장비: {selectedLaptop?.assetNo || '미선택'}</div>
+              <Input label="소속 팀" value={form.team} onChange={(v)=>setForm({...form, team:v})}/>
+              <Input label="신청 사원명" value={form.borrower} onChange={(v)=>setForm({...form, borrower:v})}/>
+              <Input label="반납일" type="date" value={form.dueDate} onChange={(v)=>setForm({...form, dueDate:v})}/>
+              <Button onClick={submitRequest} disabled={!selectedLaptop} className="w-full text-xs">서버 신청서 전송</Button>
             </CardContent>
           </Card>
         </div>
@@ -345,12 +340,6 @@ function App() {
           </div>
 
           <Card><CardContent>
-            {adminTab === 'dashboard' && (
-              <div className="text-sm p-4 bg-slate-50 rounded-xl text-slate-600">
-                📊 대시보드가 정상 작동 중입니다. 상단 통계 수치 및 메뉴를 이용하세요.
-              </div>
-            )}
-
             {adminTab === 'requests' && requests.map(r => (
               <div key={r.id} className="p-3 border-b flex justify-between items-center text-xs">
                 <div><b>{r.assetNo}</b> ({r.team} {r.borrower}) <div className="text-[10px] text-slate-400">기한: {r.dueDate}</div></div>
@@ -360,17 +349,11 @@ function App() {
 
             {adminTab === 'laptops' && (
               <div className="space-y-4">
-                <div className="flex justify-between"><Button onClick={()=>setShowUploadPanel(!showUploadPanel)} variant="outline" className="text-xs">엑셀 올리기</Button><Button onClick={()=>setNewLaptop({assetNo:'', model:'', serialNo:'', note:''})} className="text-xs">기기 추가</Button></div>
+                <div className="flex justify-between"><Button onClick={()=>setShowUploadPanel(!showUploadPanel)} variant="outline" className="text-xs">엑셀 올리기</Button><Button onClick={handleAddLaptopClick} className="text-xs">기기 추가</Button></div>
                 {showUploadPanel && <div className="p-4 border-2 border-dashed rounded-xl text-center"><input type="file" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} /></div>}
-                {newLaptop && (
-                  <div className="p-4 border rounded-xl space-y-3 bg-slate-50/50">
-                    <label className="block"><span className="text-xs font-bold text-slate-600">자산관리번호</span><input type="text" value={newLaptop.assetNo} onChange={(e)=>setNewLaptop({...newLaptop, assetNo:e.target.value})} className="w-full p-2 border rounded-lg mt-1 text-xs bg-white" placeholder="LAPTOP-2026-XX" /></label>
-                    <label className="block"><span className="text-xs font-bold text-slate-600">모델명</span><input type="text" value={newLaptop.model} onChange={(e)=>setNewLaptop({...newLaptop, model:e.target.value})} className="w-full p-2 border rounded-lg mt-1 text-xs bg-white" placeholder="삼성 갤럭시북" /></label>
-                    <Button onClick={createLaptop} className="text-xs w-full">서버에 자산 등록</Button>
-                  </div>
-                )}
+                {newLaptop && <div className="p-3 border rounded-xl"><Input label="관리번호" value={newLaptop.assetNo} onChange={(v)=>setNewLaptop({...newLaptop, assetNo:v})}/><Button onClick={createLaptop} className="text-xs mt-2">등록</Button></div>}
                 <div className="grid gap-2 sm:grid-cols-2 text-xs">
-                  {laptops.map(l => <div key={l.id} className="p-3 border rounded-xl flex justify-between items-center bg-white shadow-sm"><span><b>{l.assetNo}</b> - {l.model}</span><Button onClick={async()=>await deleteDoc(doc(db, `artifacts/${appId}/public/data/laptops`, l.id))} variant="dangerOutline" className="px-2 py-1 text-[10px]">삭제</Button></div>)}
+                  {laptops.map(l => <div key={l.id} className="p-3 border rounded-xl flex justify-between"><span><b>{l.assetNo}</b> - {l.model}</span><Button onClick={async()=>await deleteDoc(doc(db, `artifacts/${appId}/public/data/laptops`, l.id))} variant="dangerOutline" className="px-2 py-1 text-[10px]">삭제</Button></div>)}
                 </div>
               </div>
             )}
