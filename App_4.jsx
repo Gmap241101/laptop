@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
+import { getFirestore, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import {
   Laptop,
   LayoutDashboard,
@@ -234,8 +234,6 @@ function Select({ label, value, onChange, children }) {
 function App() {
   const [data, setData] = useState(loadData);
   const [firebaseReady, setFirebaseReady] = useState(false);
-  const applyingRemoteRef = useRef(false);
-  const lastSyncedDataRef = useRef('');
   const [view, setView] = useState('user'); // 'user' | 'admin'
   const [query, setQuery] = useState('');
   const [selectedLaptopId, setSelectedLaptopId] = useState(null);
@@ -269,38 +267,20 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const localSeedData = loadData();
-
     const unsubscribe = onSnapshot(
       DATA_DOC_REF,
       async (snapshot) => {
-        try {
-          if (snapshot.exists()) {
-            const remotePayload = snapshot.data();
-            const remoteData = mergePersistedData(remotePayload.data || remotePayload);
-            const remoteJson = JSON.stringify(remoteData);
-
-            lastSyncedDataRef.current = remoteJson;
-            applyingRemoteRef.current = true;
-            localStorage.setItem('laptopRentalDashboard.v2', remoteJson);
-            setData(remoteData);
-          } else {
-            const seedJson = JSON.stringify(localSeedData);
-            lastSyncedDataRef.current = seedJson;
-            await setDoc(DATA_DOC_REF, { data: localSeedData, updatedAt: serverTimestamp() });
-          }
-
-          setFirebaseReady(true);
-        } catch (error) {
-          console.error('Firebase snapshot handling error:', error);
-          setFirebaseReady(true);
-          setToast({ message: 'Firebase 데이터 동기화 처리 중 오류가 발생했습니다. 콘솔과 Firestore 규칙을 확인해 주세요.', type: 'error' });
+        if (snapshot.exists()) {
+          const remoteData = snapshot.data();
+          setData(mergePersistedData(remoteData.data || remoteData));
+        } else {
+          await setDoc(DATA_DOC_REF, { data, updatedAt: new Date().toISOString() }, { merge: true });
         }
+        setFirebaseReady(true);
       },
       (error) => {
         console.error('Firebase sync error:', error);
         setFirebaseReady(true);
-        setToast({ message: 'Firebase 연결 또는 권한 오류가 발생했습니다. Firestore Database 생성 여부와 보안 규칙을 확인해 주세요.', type: 'error' });
       }
     );
 
@@ -308,23 +288,12 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const dataJson = JSON.stringify(data);
-    localStorage.setItem('laptopRentalDashboard.v2', dataJson);
+    localStorage.setItem('laptopRentalDashboard.v2', JSON.stringify(data));
 
     if (!firebaseReady) return;
 
-    if (applyingRemoteRef.current) {
-      applyingRemoteRef.current = false;
-      return;
-    }
-
-    if (dataJson === lastSyncedDataRef.current) return;
-
-    lastSyncedDataRef.current = dataJson;
-    setDoc(DATA_DOC_REF, { data, updatedAt: serverTimestamp() }).catch((error) => {
-      lastSyncedDataRef.current = '';
+    setDoc(DATA_DOC_REF, { data, updatedAt: new Date().toISOString() }, { merge: true }).catch((error) => {
       console.error('Firebase save error:', error);
-      setToast({ message: 'Firebase 저장에 실패했습니다. Firestore 보안 규칙과 네트워크 상태를 확인해 주세요.', type: 'error' });
     });
   }, [data, firebaseReady]);
 
