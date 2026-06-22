@@ -1,4 +1,3 @@
-import './index.css'; // 테일윈드 스타일 연결을 위한 줄 추가
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { initializeApp } from 'firebase/app';
