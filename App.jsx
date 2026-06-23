@@ -541,32 +541,58 @@ function App() {
     const file = e.target.files[0];
     if (!file) return;
 
+    const fileName = file.name.toLowerCase();
+    const isExcelFile = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
+    const isCsvFile = fileName.endsWith('.csv');
+
+    if (!isExcelFile && !isCsvFile) {
+      triggerToast('엑셀(.xlsx, .xls) 또는 CSV(.csv) 파일만 업로드할 수 있습니다.', 'error');
+      e.target.value = '';
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
         const dataBytes = new Uint8Array(evt.target.result);
         let jsonResult = [];
 
-        if (window.XLSX) {
+        if (isExcelFile) {
+          if (!window.XLSX) {
+            triggerToast('엑셀 처리 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도해 주세요.', 'error');
+            e.target.value = '';
+            return;
+          }
+
           const workbook = window.XLSX.read(dataBytes, { type: 'array' });
           const sheetName = workbook.SheetNames[0];
           const sheet = workbook.Sheets[sheetName];
           jsonResult = window.XLSX.utils.sheet_to_json(sheet);
-        } else {
-          // SheetJS 미로딩시 기본 UTF-8 CSV 파싱 예외 폴백 처리
+        }
+
+        if (isCsvFile) {
           const decoder = new TextDecoder('utf-8');
           const csvText = decoder.decode(dataBytes);
-          const lines = csvText.split(/\r?\n/).filter(line => line.trim());
-          if (lines.length > 0) {
-            const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-            jsonResult = lines.slice(1).map(line => {
-              const values = line.split(',').map(v => v.trim().replace(/"/g, ''));
-              const obj = {};
-              headers.forEach((header, index) => {
-                obj[header] = values[index] || '';
+
+          if (window.XLSX) {
+            const workbook = window.XLSX.read(csvText, { type: 'string' });
+            const sheetName = workbook.SheetNames[0];
+            const sheet = workbook.Sheets[sheetName];
+            jsonResult = window.XLSX.utils.sheet_to_json(sheet);
+          } else {
+            const lines = csvText.split(/\r?\n/).filter(line => line.trim());
+
+            if (lines.length > 0) {
+              const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+              jsonResult = lines.slice(1).map(line => {
+                const values = line.split(',').map(v => v.trim().replace(/"/g, ''));
+                const obj = {};
+                headers.forEach((header, index) => {
+                  obj[header] = values[index] || '';
+                });
+                return obj;
               });
-              return obj;
-            });
+            }
           }
         }
 
@@ -575,6 +601,7 @@ function App() {
         e.target.value = '';
       } catch (err) {
         triggerToast('파일 파싱 중 에러가 발생했습니다. 규격을 확인해 주세요.', 'error');
+        e.target.value = '';
       }
     };
     reader.readAsArrayBuffer(file);
@@ -1137,20 +1164,31 @@ function App() {
                       {/* 자동 일괄 업로드 가이드 및 파일 셀렉터 드롭존 UI */}
                       {showUploadPanel && (
                         <div className="rounded-2xl border-2 border-dashed border-slate-300 hover:border-blue-400 bg-slate-50/50 p-6 text-center transition-colors duration-150 animate-fadeIn">
-                          <div className="mx-auto flex max-w-lg flex-col items-center justify-center">
+                          <div className="mx-auto flex max-w-xl flex-col items-center justify-center">
                             <div className="rounded-2xl bg-blue-50 p-3 text-blue-600 mb-3 border border-blue-100">
                               <ClipboardList size={26} />
                             </div>
                             <h4 className="text-sm font-bold text-slate-800">엑셀 / CSV 파일 자동 업로드 일괄 추가</h4>
-                            <p className="text-[11px] text-slate-500 mt-1 max-w-md leading-relaxed">
-                              업로드할 파일의 첫 행(헤더)에 아래 가이드 명칭 중 하나를 입력하시면 일괄 인식하여 신속히 자산 테이블에 적용됩니다.
+                            <p className="text-[11px] text-slate-500 mt-1 max-w-lg leading-relaxed">
+                              샘플 양식을 기준으로 첫 번째 시트 또는 CSV 첫 줄의 헤더를 유지하고, 다음 행부터 자산 정보를 입력해 업로드해 주세요.
                             </p>
-                            <div className="mt-3.5 rounded-lg bg-white px-4 py-2 border border-slate-200 text-left w-full text-[11px] space-y-1 text-slate-600 shadow-sm">
-                              <div>📌 <b>자산관리번호 (필수):</b> 자산관리번호, 관리번호, 자산번호, assetNo</div>
-                              <div>📌 <b>기타 정보:</b> 모델명(model), 시리얼번호(serialNo), 제조일자(manufactureDate), 비고(note), 사진URL(photo), 대여가능여부(status)</div>
+                            <div className="mt-3.5 rounded-lg bg-white px-4 py-3 border border-slate-200 text-left w-full text-[11px] space-y-1.5 text-slate-600 shadow-sm">
+                              <div>📌 <b>엑셀은 첫 번째 시트만 읽습니다.</b> 작성가이드 시트는 그대로 두어도 되지만, 첫 번째 시트로 이동시키면 안 됩니다.</div>
+                              <div>📌 <b>헤더는 엑셀 1행 또는 CSV 첫 줄에 있어야 합니다.</b> 제목, 안내문, 빈 줄을 헤더 위에 두면 업로드가 정상 인식되지 않을 수 있습니다.</div>
+                              <div>📌 <b>자산관리번호는 필수입니다.</b> 자산관리번호가 비어 있는 행은 등록되지 않습니다.</div>
+                              <div>📌 <b>일부 칸은 비워도 등록됩니다.</b> 모델명은 미지정 기종, 시리얼번호는 자동 번호, 제조일자는 오늘 날짜, 사진URL은 기본 이미지, 대여가능여부는 대여가능으로 처리됩니다.</div>
+                              <div>📌 <b>권장 헤더:</b> 자산관리번호, 대여가능여부, 모델명, 시리얼번호, 제조일자, 사진URL, 비고</div>
+                              <div>📌 <b>대여불가 처리:</b> 대여가능여부 칸에 대여불가, 불가, unavailable 중 하나가 포함되면 대여불가로 등록됩니다.</div>
                             </div>
-                            <div className="mt-5">
-                              <label htmlFor="excel-csv-file-selector" className="inline-flex items-center justify-center gap-2 font-semibold rounded-xl text-xs transition-all duration-150 active:scale-[0.98] bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-4.5 py-3 cursor-pointer shadow-sm">
+                            <div className="mt-5 flex flex-col items-center justify-center gap-2 sm:flex-row">
+                              <a
+                                href="files/sample.xlsx"
+                                download
+                                className="inline-flex items-center justify-center gap-2 font-semibold rounded-xl text-xs transition-all duration-150 active:scale-[0.98] bg-blue-600 text-white hover:bg-blue-700 px-4 py-3 cursor-pointer shadow-sm shadow-blue-100"
+                              >
+                                <Save size={14} /> 샘플 엑셀 양식 다운로드
+                              </a>
+                              <label htmlFor="excel-csv-file-selector" className="inline-flex items-center justify-center gap-2 font-semibold rounded-xl text-xs transition-all duration-150 active:scale-[0.98] bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-4 py-3 cursor-pointer shadow-sm">
                                 <Plus size={14} /> 엑셀 또는 CSV 파일 선택
                               </label>
                               <input
