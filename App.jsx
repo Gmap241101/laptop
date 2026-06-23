@@ -373,7 +373,7 @@ function App() {
   const blockedLaptopIds = useMemo(() => {
     return new Set(
       data.requests
-        .filter((r) => ['신청중', '승인됨', '보류'].includes(r.status))
+        .filter((r) => ['신청중', '대여중', '보류'].includes(r.status))
         .map((r) => r.laptopId)
     );
   }, [data.requests]);
