@@ -759,10 +759,10 @@ function App() {
                             <div className="text-xs font-semibold text-slate-700">{l.model}</div>
                             <div className="space-y-0.5 text-[11px] text-slate-500">
                               <div>S/N: {l.serialNo}</div>
-                              <div>출고일: {l.manufactureDate}</div>
+                              <div>출고 일시: {l.manufactureDate}</div>
                             </div>
                             <div className="mt-1 rounded-lg bg-slate-100 p-2 text-[11px] text-slate-600 border border-slate-200/50">
-                              💡 {l.note || '-'}
+                              💡 {l.note || '특이사항 없음'}
                             </div>
                           </div>
                         </motion.button>
@@ -870,12 +870,12 @@ function App() {
                   </div>
 
                   <label className="block">
-                    <span className="mb-1.5 block text-xs font-semibold text-slate-600">대여 목적</span>
+                    <span className="mb-1.5 block text-xs font-semibold text-slate-600">반납 및 대여 목적 서술</span>
                     <textarea
                       value={form.purpose}
                       onChange={(e) => setForm({ ...form, purpose: e.target.value })}
                       className="h-20 w-full rounded-xl border border-slate-200 p-3 text-xs outline-none focus:ring-4 focus:ring-blue-100"
-                      placeholder="출장용, 회의용, 교육 연수 등 목적을 상세하게 기술."
+                      placeholder="출장용, 회의용, 교육 연수 등 목적을 상세하게 기술해 주십시오."
                     />
                   </label>
 
@@ -884,7 +884,7 @@ function App() {
                     disabled={!selectedLaptop}
                     className="w-full justify-center rounded-xl py-6"
                   >
-                    노트북 대여 신청 제출
+                    대여 보안 신청서 제출
                   </Button>
                 </CardContent>
               </Card>
@@ -1160,7 +1160,7 @@ function App() {
                               placeholder="예: SN-2026-10500"
                             />
                             <Input
-                              label="출고일"
+                              label="구입/출고 일시"
                               type="date"
                               value={newLaptop.manufactureDate}
                               onChange={(v) => setNewLaptop({ ...newLaptop, manufactureDate: v })}
@@ -1218,7 +1218,7 @@ function App() {
                               onChange={(v) => setEditLaptop({ ...editLaptop, serialNo: v })}
                             />
                             <Input
-                              label="출고일"
+                              label="구입/출고 일시"
                               type="date"
                               value={editLaptop.manufactureDate}
                               onChange={(v) => setEditLaptop({ ...editLaptop, manufactureDate: v })}
