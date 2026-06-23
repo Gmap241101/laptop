@@ -1300,6 +1300,11 @@ function App() {
                               <div className="flex gap-2 mt-4">
                                 <Button
                                   onClick={() => {
+                                    if (editLaptop?.id === l.id) {
+                                      setEditLaptop(null);
+                                      return;
+                                    }
+
                                     setNewLaptop(null);
                                     setShowUploadPanel(false);
                                     setEditLaptop(l);
