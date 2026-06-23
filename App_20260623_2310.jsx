@@ -237,7 +237,6 @@ function App() {
   const applyingRemoteRef = useRef(false);
   const lastSyncedDataRef = useRef('');
   const saveTimerRef = useRef(null);
-  const allowFirebaseWriteRef = useRef(false);
   const [view, setView] = useState('user'); // 'user' | 'admin'
   const [query, setQuery] = useState('');
   const [selectedLaptopId, setSelectedLaptopId] = useState(null);
@@ -291,54 +290,43 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const localSeedData = loadData();
+
     const unsubscribe = onSnapshot(
       DATA_DOC_REF,
       async (snapshot) => {
         try {
-          if (!snapshot.exists()) {
-            allowFirebaseWriteRef.current = false;
-            setFirebaseReady(true);
-            setToast({
-              message: 'Firebase 원격 데이터 문서가 없습니다. 새 브라우저의 기본 데이터로 자동 초기화하지 않도록 저장을 차단했습니다. Firestore의 laptopRentalDashboard/main 문서를 확인해 주세요.',
-              type: 'error'
-            });
-            return;
+          if (snapshot.exists()) {
+            const remotePayload = snapshot.data();
+            const remoteData = mergePersistedData(remotePayload.data || remotePayload);
+            const remoteJson = JSON.stringify(remoteData);
+
+            if (remoteJson === lastSyncedDataRef.current) {
+              setFirebaseReady(true);
+              return;
+            }
+
+            lastSyncedDataRef.current = remoteJson;
+            applyingRemoteRef.current = true;
+            localStorage.setItem('laptopRentalDashboard.v2', remoteJson);
+            setData(remoteData);
+          } else {
+            const seedJson = JSON.stringify(localSeedData);
+            lastSyncedDataRef.current = seedJson;
+            await setDoc(DATA_DOC_REF, { data: localSeedData, updatedAt: serverTimestamp() });
           }
 
-          const remotePayload = snapshot.data();
-          const remoteData = mergePersistedData(remotePayload.data || remotePayload);
-          const remoteJson = JSON.stringify(remoteData);
-
-          allowFirebaseWriteRef.current = true;
-
-          if (remoteJson === lastSyncedDataRef.current) {
-            setFirebaseReady(true);
-            return;
-          }
-
-          lastSyncedDataRef.current = remoteJson;
-          applyingRemoteRef.current = true;
-          localStorage.setItem('laptopRentalDashboard.v2', remoteJson);
-          setData(remoteData);
           setFirebaseReady(true);
         } catch (error) {
           console.error('Firebase snapshot handling error:', error);
-          allowFirebaseWriteRef.current = false;
           setFirebaseReady(true);
-          setToast({
-            message: 'Firebase 데이터 동기화 처리 중 오류가 발생했습니다. 원격 DB 보호를 위해 저장을 차단했습니다. 콘솔과 Firestore 규칙을 확인해 주세요.',
-            type: 'error'
-          });
+          setToast({ message: 'Firebase 데이터 동기화 처리 중 오류가 발생했습니다. 콘솔과 Firestore 규칙을 확인해 주세요.', type: 'error' });
         }
       },
       (error) => {
         console.error('Firebase sync error:', error);
-        allowFirebaseWriteRef.current = false;
         setFirebaseReady(true);
-        setToast({
-          message: 'Firebase 연결 또는 권한 오류가 발생했습니다. 원격 DB 보호를 위해 저장을 차단했습니다. Firestore Database 생성 여부와 보안 규칙을 확인해 주세요.',
-          type: 'error'
-        });
+        setToast({ message: 'Firebase 연결 또는 권한 오류가 발생했습니다. Firestore Database 생성 여부와 보안 규칙을 확인해 주세요.', type: 'error' });
       }
     );
 
@@ -349,7 +337,7 @@ function App() {
     const dataJson = JSON.stringify(data);
     localStorage.setItem('laptopRentalDashboard.v2', dataJson);
 
-    if (!firebaseReady || !allowFirebaseWriteRef.current) return;
+    if (!firebaseReady) return;
 
     if (applyingRemoteRef.current) {
       applyingRemoteRef.current = false;
@@ -709,14 +697,12 @@ function App() {
 
   const resetDemo = () => {
     triggerConfirm(
-      '로컬 캐시 초기화',
-      '현재 브라우저의 로컬 캐시만 삭제합니다. Firebase 원격 DB는 초기화하지 않습니다. 새로고침 후 원격 데이터를 다시 불러옵니다. 계속하시겠습니까?',
+      '데이터 초기화',
+      '기존에 저장된 모든 대여 신청 이력과 세팅값이 초기 기본값으로 리셋됩니다. 정말 초기화하시겠습니까?',
       () => {
         localStorage.removeItem('laptopRentalDashboard.v2');
-        triggerToast('로컬 캐시가 초기화되었습니다. 원격 데이터를 다시 불러오기 위해 새로고침합니다.', 'success');
-        setTimeout(() => {
-          window.location.reload();
-        }, 500);
+        setData(initialData);
+        triggerToast('데모 데이터가 초기 세팅으로 리셋되었습니다.', 'success');
       }
     );
   };
