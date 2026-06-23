@@ -186,7 +186,7 @@ function StatCard({ icon: Icon, label, value, tone = 'slate' }) {
 function Button({ children, className = '', onClick, variant = 'primary', ...props }) {
   const baseStyle = "inline-flex items-center justify-center gap-2 font-medium rounded-xl text-sm transition-all duration-150 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none px-4 py-2.5";
   const variants = {
-    primary: "bg-[#FF6B00] text-white hover:bg-[#e65300] shadow-sm shadow-[#FF6B00]/20",
+    primary: "bg-blue-600 text-white hover:bg-blue-700 shadow-sm shadow-blue-100",
     secondary: "bg-slate-100 text-slate-700 hover:bg-slate-200",
     outline: "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
     ghost: "bg-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-950",
@@ -209,7 +209,7 @@ function Input({ label, value, onChange, type = 'text', placeholder = '', ...pro
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-[#FF6B00] focus:ring-4 focus:ring-[#FF6B00]/15"
+        className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
         {...props}
       />
     </label>
@@ -223,7 +223,7 @@ function Select({ label, value, onChange, children }) {
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-[#FF6B00] focus:ring-4 focus:ring-[#FF6B00]/15 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2364748B%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:0.7em_auto] bg-[right_1rem_center] bg-no-repeat"
+        className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2364748B%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:0.7em_auto] bg-[right_1rem_center] bg-no-repeat"
       >
         {children}
       </select>
@@ -713,7 +713,7 @@ function App() {
       <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="rounded-2xl bg-gradient-to-tr from-[#FF6B00] to-[#e65300] p-2 text-white shadow-md shadow-[#FF6B00]/25">
+            <div className="rounded-2xl bg-gradient-to-tr from-blue-600 to-blue-500 p-2 text-white shadow-md shadow-blue-200">
               <Laptop size={22} />
             </div>
             <div>
@@ -726,7 +726,7 @@ function App() {
               onClick={() => setView('user')}
               className={`rounded-lg px-4 py-1.5 text-xs font-semibold transition ${
                 view === 'user'
-                  ? 'bg-white text-[#FF6B00] shadow-sm'
+                  ? 'bg-white text-blue-600 shadow-sm'
                   : 'text-slate-500 hover:text-slate-900'
               }`}
             >
@@ -736,7 +736,7 @@ function App() {
               onClick={() => setView('admin')}
               className={`rounded-lg px-4 py-1.5 text-xs font-semibold transition ${
                 view === 'admin'
-                  ? 'bg-white text-[#FF6B00] shadow-sm'
+                  ? 'bg-white text-blue-600 shadow-sm'
                   : 'text-slate-500 hover:text-slate-900'
               }`}
             >
@@ -780,7 +780,7 @@ function App() {
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
                         placeholder="자산관리번호, 기종, 키워드 검색"
-                        className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-xs outline-none transition focus:border-[#FF6B00] focus:ring-4 focus:ring-[#FF6B00]/15"
+                        className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-xs outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                       />
                     </div>
                   </div>
@@ -839,10 +839,10 @@ function App() {
             {/* 우측 대여 신청 패널 (1컬럼 폭 차지)
                 sticky & top-24 속성을 명시하여 스크롤할 때 우측 가이드 폼이 화면에 우아하게 안착 고정됩니다. */}
             <div className="lg:col-span-1 lg:sticky lg:top-24 h-fit">
-              <Card className="border-[#FF6B00]/25 shadow-md shadow-slate-100">
-                <div className="bg-gradient-to-r from-[#FF6B00] to-[#e65300] px-6 py-4 text-white">
+              <Card className="border-blue-100/80 shadow-md shadow-slate-100">
+                <div className="bg-gradient-to-r from-blue-600 to-blue-500 px-6 py-4 text-white">
                   <h2 className="text-sm font-bold tracking-wide uppercase">노트북 대여 원클릭 신청</h2>
-                  <p className="text-[11px] text-orange-100 mt-0.5">상단 기기를 선택하면 폼 작성이 열립니다.</p>
+                  <p className="text-[11px] text-blue-100 mt-0.5">상단 기기를 선택하면 폼 작성이 열립니다.</p>
                 </div>
                 <CardContent className="space-y-4 p-6">
                   <div className={`rounded-xl px-4 py-3 border text-xs transition-colors duration-150 ${
@@ -937,7 +937,7 @@ function App() {
                     <textarea
                       value={form.purpose}
                       onChange={(e) => setForm({ ...form, purpose: e.target.value })}
-                      className="h-20 w-full rounded-xl border border-slate-200 p-3 text-xs outline-none focus:ring-4 focus:ring-[#FF6B00]/15"
+                      className="h-20 w-full rounded-xl border border-slate-200 p-3 text-xs outline-none focus:ring-4 focus:ring-blue-100"
                       placeholder="출장용, 회의용, 교육 연수 등"
                     />
                   </label>
@@ -1118,7 +1118,7 @@ function App() {
                                       value={r.adminMemo}
                                       onChange={(e) => updateRequestMemo(r.id, e.target.value)}
                                       placeholder="전달 혹은 상태 변경 사유 등을 남겨 공유하세요."
-                                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none focus:border-[#FF6B00]"
+                                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none focus:border-blue-500"
                                     />
                                   </label>
                                 </div>
@@ -1398,7 +1398,7 @@ function App() {
                             value={newTeam}
                             onChange={(e) => setNewTeam(e.target.value)}
                             placeholder="새로운 등록 부서 명칭"
-                            className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-[#FF6B00]"
+                            className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-blue-500"
                           />
                           <Button
                             onClick={() => {
@@ -1457,7 +1457,7 @@ function App() {
                               value={newBorrower}
                               onChange={(e) => setNewBorrower(e.target.value)}
                               placeholder="새로운 배정 사원명"
-                              className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-[#FF6B00]"
+                              className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-blue-500"
                             />
                             <Button
                               onClick={() => {
