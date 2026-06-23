@@ -43,7 +43,7 @@ const DATA_DOC_REF = doc(db, 'laptopRentalDashboard', 'main');
 const STATUS = {
   AVAILABLE: '대여가능',
   REQUESTED: '신청중',
-  APPROVED: '승인됨',
+  APPROVED: '대여중',
   ON_HOLD: '보류',
   DENIED: '불허',
   RETURNED: '반납완료',
@@ -53,7 +53,7 @@ const STATUS = {
 const statusStyle = {
   '대여가능': 'bg-emerald-50 text-emerald-700 border-emerald-200',
   '신청중': 'bg-amber-50 text-amber-700 border-amber-200',
-  '승인됨': 'bg-blue-50 text-blue-700 border-blue-200',
+  '대여중': 'bg-blue-50 text-blue-700 border-blue-200',
   '보류': 'bg-purple-50 text-purple-700 border-purple-200',
   '불허': 'bg-rose-50 text-rose-700 border-rose-200',
   '반납완료': 'bg-slate-100 text-slate-700 border-slate-200',
@@ -651,11 +651,11 @@ function App() {
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
             <div className="rounded-2xl bg-gradient-to-tr from-blue-600 to-blue-500 p-2 text-white shadow-md shadow-blue-200">
-              <Laptop size={22} />
+              <!--Laptop size={22} /--><img src="https://static.mk.co.kr/2026/css/images/l_mlogoky.jpg" height="90"></img>
             </div>
             <div>
-              <h1 className="text-lg font-bold tracking-tight text-slate-900">부서 노트북 대여 관리 서비스</h1>
-              <p className="text-xs font-medium text-slate-500">실시간 대여 잠금 · 간편 반납 추적 · 최적화 레이아웃</p>
+              <h1 className="text-lg font-bold tracking-tight text-slate-900">매일경제아카데미 노트북 대여 시스템</h1>
+              <p className="text-xs font-medium text-slate-500">https://notebook.recruit.kro.kr</p>
             </div>
           </div>
           <div className="flex gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200/60">
@@ -905,7 +905,7 @@ function App() {
                     ['dashboard', LayoutDashboard, '실시간 대시보드'],
                     ['requests', ClipboardList, '신청·대여 목록'],
                     ['laptops', Laptop, '대여 자산 목록'],
-                    ['people', Users, '사용자·부서 등록'],
+                    ['people', Users, '부서·사용자 등록'],
                     ['settings', Settings, '시스템 설정'],
                   ].map(([key, Icon, label]) => (
                     <Button
@@ -1287,7 +1287,7 @@ function App() {
                       {/* 부서/팀 관리 컬럼 */}
                       <div className="space-y-4">
                         <div className="border-b border-slate-100 pb-3">
-                          <h2 className="text-base font-bold text-slate-900">사용자·부서 등록</h2>
+                          <h2 className="text-base font-bold text-slate-900">부서 등록</h2>
                           <p className="text-[11px] text-slate-500 mt-0.5">신청자가 소속된 주요 부서를 추가 및 제어합니다.</p>
                         </div>
                         <div className="flex gap-2">
@@ -1336,7 +1336,7 @@ function App() {
                       {/* 사원 관리 컬럼 */}
                       <div className="space-y-4">
                         <div className="border-b border-slate-100 pb-3">
-                          <h2 className="text-base font-bold text-slate-900">사용 대상 원장 추가</h2>
+                          <h2 className="text-base font-bold text-slate-900">사용자 등록</h2>
                           <p className="text-[11px] text-slate-500 mt-0.5">드롭다운 목록에 자동 입력 노출될 소속 부서별 사원을 배정합니다.</p>
                         </div>
                         <div className="space-y-2">
@@ -1414,8 +1414,8 @@ function App() {
                             setTempSettings({ ...tempSettings, teamInputMode: v })
                           }
                         >
-                          <option value="dropdown">관리자 지정 부서 리스트(안정성)</option>
-                          <option value="text">신청자 완전 직접 입력(자유도)</option>
+                          <option value="dropdown">관리자 등록 부서 리스트</option>
+                          <option value="text">신청인 자율 입력</option>
                         </Select>
 
                         <Select
@@ -1425,8 +1425,8 @@ function App() {
                             setTempSettings({ ...tempSettings, borrowerInputMode: v })
                           }
                         >
-                          <option value="dropdown">관리자 등록 사원 리스트(보안)</option>
-                          <option value="text">신청인 자유 완전 직접 입력(자율)</option>
+                          <option value="dropdown">관리자 등록 사원 리스트</option>
+                          <option value="text">신청인 자율 입력</option>
                         </Select>
 
                         <Input
