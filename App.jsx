@@ -651,7 +651,7 @@ function App() {
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
             <div className="rounded-2xl bg-gradient-to-tr from-blue-600 to-blue-500 p-2 text-white shadow-md shadow-blue-200">
-              <!--Laptop size={22} /--><img src="https://static.mk.co.kr/2026/css/images/l_mlogoky.jpg" height="90"></img>
+              <img src="https://static.mk.co.kr/2026/css/images/l_mlogoky.jpg" height="90"></img>
             </div>
             <div>
               <h1 className="text-lg font-bold tracking-tight text-slate-900">매일경제아카데미 노트북 대여 시스템</h1>
