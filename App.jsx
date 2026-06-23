@@ -875,7 +875,7 @@ function App() {
                       value={form.purpose}
                       onChange={(e) => setForm({ ...form, purpose: e.target.value })}
                       className="h-20 w-full rounded-xl border border-slate-200 p-3 text-xs outline-none focus:ring-4 focus:ring-blue-100"
-                      placeholder="출장용, 회의용, 교육 연수 등 목적을 상세하게 기술."
+                      placeholder="출장용, 회의용, 교육 연수 등"
                     />
                   </label>
 
@@ -884,7 +884,7 @@ function App() {
                     disabled={!selectedLaptop}
                     className="w-full justify-center rounded-xl py-6"
                   >
-                    노트북 대여 신청 제출
+                    노트북 대여 신청
                   </Button>
                 </CardContent>
               </Card>
@@ -898,15 +898,15 @@ function App() {
             <div className="lg:sticky lg:top-24 h-fit">
               <Card>
                 <div className="bg-slate-900 px-5 py-4 text-white">
-                  <h3 className="text-xs font-bold tracking-wider uppercase text-slate-400">콘솔 관리 도구</h3>
+                  <h3 className="text-xs font-bold tracking-wider uppercase text-slate-400">관리 메뉴</h3>
                 </div>
                 <CardContent className="space-y-1.5 p-3">
                   {[
                     ['dashboard', LayoutDashboard, '실시간 대시보드'],
-                    ['requests', ClipboardList, '대여/신청 원장 심사'],
-                    ['laptops', Laptop, '장비 상세 정보 변경'],
-                    ['people', Users, '부서 및 사용자 원장'],
-                    ['settings', Settings, '시스템 세부 설정'],
+                    ['requests', ClipboardList, '신청·대여 목록'],
+                    ['laptops', Laptop, '대여 자산 목록'],
+                    ['people', Users, '사용자·부서 등록'],
+                    ['settings', Settings, '시스템 설정'],
                   ].map(([key, Icon, label]) => (
                     <Button
                       key={key}
@@ -969,7 +969,7 @@ function App() {
                   {adminTab === 'requests' && (
                     <div className="space-y-4">
                       <div className="border-b border-slate-100 pb-4">
-                        <h2 className="text-lg font-bold text-slate-900">사용자 대여 신청 내역 원장</h2>
+                        <h2 className="text-lg font-bold text-slate-900">신청·대여 목록</h2>
                         <p className="text-xs text-slate-500 mt-1">부서원들이 제출한 실시간 신청서에 대한 승인/대기/반납 전환 관리 창구입니다.</p>
                       </div>
                       <div className="space-y-4">
@@ -1072,7 +1072,7 @@ function App() {
                     <div className="space-y-6">
                       <div className="border-b border-slate-100 pb-4 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
                         <div>
-                          <h2 className="text-lg font-bold text-slate-900">노트북 기기 및 자산 정보 상세 제어</h2>
+                          <h2 className="text-lg font-bold text-slate-900">대여 자산 목록</h2>
                           <p className="text-xs text-slate-500 mt-1">자산 고유 시리얼 넘버, 기기 사진 연동, 특이 사항 메모 및 장비를 관리합니다.</p>
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -1129,7 +1129,7 @@ function App() {
                       {newLaptop && (
                         <div className="rounded-2xl border-2 border-emerald-400/80 bg-emerald-50/20 p-5 space-y-4 shadow-sm animate-fadeIn">
                           <div className="flex items-center justify-between border-b border-slate-200/60 pb-3">
-                            <span className="text-sm font-bold text-slate-900">신규 노트북 자산 등록</span>
+                            <span className="text-sm font-bold text-slate-900">신규 대여 자산 등록</span>
                             <Button onClick={() => setNewLaptop(null)} variant="outline" className="px-2 py-1 text-xs">닫기</Button>
                           </div>
                           <div className="grid gap-4 sm:grid-cols-2">
@@ -1287,7 +1287,7 @@ function App() {
                       {/* 부서/팀 관리 컬럼 */}
                       <div className="space-y-4">
                         <div className="border-b border-slate-100 pb-3">
-                          <h2 className="text-base font-bold text-slate-900">사내 등록 부서 및 팀 관리</h2>
+                          <h2 className="text-base font-bold text-slate-900">사용자·부서 등록</h2>
                           <p className="text-[11px] text-slate-500 mt-0.5">신청자가 소속된 주요 부서를 추가 및 제어합니다.</p>
                         </div>
                         <div className="flex gap-2">
@@ -1403,7 +1403,7 @@ function App() {
                   {adminTab === 'settings' && (
                     <div className="space-y-6">
                       <div className="border-b border-slate-100 pb-4">
-                        <h2 className="text-lg font-bold text-slate-900">사용자 환경 및 정책 배정</h2>
+                        <h2 className="text-lg font-bold text-slate-900">시스템 설정</h2>
                         <p className="text-xs text-slate-500 mt-1">사용자 페이지의 소속 입력 모드 전환 및 최대 기한 제어가 즉각 가동됩니다.</p>
                       </div>
                       <div className="grid gap-5 sm:grid-cols-2">
