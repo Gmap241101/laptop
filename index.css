@@ -2,6 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* MK 브랜드 컬러 시스템 */
+:root {
+  --mk-orange: #FF6B00;
+  --mk-orange-dark: #e65300;
+  --mk-orange-soft: rgba(255, 107, 0, 0.1);
+  --mk-orange-border: rgba(255, 107, 0, 0.25);
+  --mk-orange-ring: rgba(255, 107, 0, 0.15);
+  --mk-orange-shadow: rgba(255, 107, 0, 0.2);
+}
+
 /* 기본 브라우저 스타일 보정 */
 html,
 body,
@@ -40,5 +50,50 @@ body {
   /* 현재 코드에 있는 duration-350 보정 */
   .duration-350 {
     transition-duration: 350ms;
+  }
+}
+
+@layer components {
+  .mk-btn-primary {
+    background-color: var(--mk-orange);
+    color: #ffffff;
+    box-shadow: 0 1px 2px 0 var(--mk-orange-shadow);
+  }
+
+  .mk-btn-primary:hover {
+    background-color: var(--mk-orange-dark);
+  }
+
+  .mk-brand-gradient-tr {
+    background-image: linear-gradient(to top right, var(--mk-orange), var(--mk-orange-dark));
+  }
+
+  .mk-brand-gradient-r {
+    background-image: linear-gradient(to right, var(--mk-orange), var(--mk-orange-dark));
+  }
+
+  .mk-brand-text {
+    color: var(--mk-orange);
+  }
+
+  .mk-brand-border-soft {
+    border-color: var(--mk-orange-border);
+  }
+
+  .mk-brand-shadow-md {
+    box-shadow: 0 4px 6px -1px var(--mk-orange-shadow), 0 2px 4px -2px var(--mk-orange-shadow);
+  }
+
+  .mk-form-focus:focus {
+    border-color: var(--mk-orange);
+    box-shadow: 0 0 0 4px var(--mk-orange-ring);
+  }
+
+  .mk-form-border-focus:focus {
+    border-color: var(--mk-orange);
+  }
+
+  .mk-form-ring-focus:focus {
+    box-shadow: 0 0 0 4px var(--mk-orange-ring);
   }
 }

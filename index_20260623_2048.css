@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 기본 브라우저 스타일 보정 */
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #f8fafc;
+}
+
+/* App.firebase.jsx 안에서 사용 중인 커스텀 애니메이션 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@layer utilities {
+  .animate-fadeIn {
+    animation: fadeIn 0.18s ease-out both;
+  }
+
+  /* 현재 코드에 있는 px-4.5 보정 */
+  .px-4\.5 {
+    padding-left: 1.125rem;
+    padding-right: 1.125rem;
+  }
+
+  /* 현재 코드에 있는 duration-350 보정 */
+  .duration-350 {
+    transition-duration: 350ms;
+  }
+}
