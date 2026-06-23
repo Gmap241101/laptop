@@ -1237,6 +1237,14 @@ function App() {
                                   : 'border border-slate-200 bg-white'
                               }`}
                             >
+                              <div className="relative mb-3 h-32 w-full overflow-hidden rounded-xl bg-slate-100">
+                                <img
+                                  src={l.photo}
+                                  alt={l.assetNo}
+                                  className="h-full w-full object-cover transition duration-350"
+                                />
+                              </div>
+
                               <div className="space-y-2">
                                 <div className="flex items-center justify-between">
                                   <span className="font-bold text-slate-900 text-sm">{l.assetNo}</span>
