@@ -1,3 +1,5 @@
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -10,6 +12,8 @@
   --mk-orange-border: rgba(255, 107, 0, 0.25);
   --mk-orange-ring: rgba(255, 107, 0, 0.15);
   --mk-orange-shadow: rgba(255, 107, 0, 0.2);
+
+  --mk-font-sans: "Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", sans-serif;
 }
 
 /* 기본 브라우저 스타일 보정 */
@@ -22,6 +26,7 @@ body,
 
 body {
   background: #f8fafc;
+  font-family: var(--mk-font-sans);
 }
 
 /* App.firebase.jsx 안에서 사용 중인 커스텀 애니메이션 */
@@ -50,6 +55,11 @@ body {
   /* 현재 코드에 있는 duration-350 보정 */
   .duration-350 {
     transition-duration: 350ms;
+  }
+
+  /* Tailwind font-sans를 MK 지정 고딕 폰트로 재정의 */
+  .font-sans {
+    font-family: var(--mk-font-sans) !important;
   }
 }
 
