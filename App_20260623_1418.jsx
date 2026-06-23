@@ -236,7 +236,6 @@ function App() {
   const [firebaseReady, setFirebaseReady] = useState(false);
   const applyingRemoteRef = useRef(false);
   const lastSyncedDataRef = useRef('');
-  const saveTimerRef = useRef(null);
   const [view, setView] = useState('user'); // 'user' | 'admin'
   const [query, setQuery] = useState('');
   const [selectedLaptopId, setSelectedLaptopId] = useState(null);
@@ -281,11 +280,6 @@ function App() {
             const remoteData = mergePersistedData(remotePayload.data || remotePayload);
             const remoteJson = JSON.stringify(remoteData);
 
-            if (remoteJson === lastSyncedDataRef.current) {
-              setFirebaseReady(true);
-              return;
-            }
-
             lastSyncedDataRef.current = remoteJson;
             applyingRemoteRef.current = true;
             localStorage.setItem('laptopRentalDashboard.v2', remoteJson);
@@ -326,25 +320,12 @@ function App() {
 
     if (dataJson === lastSyncedDataRef.current) return;
 
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-    }
-
-    saveTimerRef.current = setTimeout(() => {
-      lastSyncedDataRef.current = dataJson;
-
-      setDoc(DATA_DOC_REF, { data, updatedAt: serverTimestamp() }).catch((error) => {
-        lastSyncedDataRef.current = '';
-        console.error('Firebase save error:', error);
-        setToast({ message: 'Firebase 저장에 실패했습니다. Firestore 보안 규칙과 네트워크 상태를 확인해 주세요.', type: 'error' });
-      });
-    }, 800);
-
-    return () => {
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current);
-      }
-    };
+    lastSyncedDataRef.current = dataJson;
+    setDoc(DATA_DOC_REF, { data, updatedAt: serverTimestamp() }).catch((error) => {
+      lastSyncedDataRef.current = '';
+      console.error('Firebase save error:', error);
+      setToast({ message: 'Firebase 저장에 실패했습니다. Firestore 보안 규칙과 네트워크 상태를 확인해 주세요.', type: 'error' });
+    });
   }, [data, firebaseReady]);
 
   // 첫 마운트 시 새 대여자 추가용 팀 초기화
