@@ -1,3 +1,8 @@
+﻿chcp 65001 | Out-Null
+[Console]::InputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $commitMessage = "파일 수정_$timestamp"
 
