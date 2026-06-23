@@ -503,6 +503,7 @@ function App() {
   // 신규 노트북 자산 생성 제어 로직
   const handleAddLaptopClick = () => {
     setShowUploadPanel(false);
+    setEditLaptop(null);
 
     if (newLaptop) {
       setNewLaptop(null);
@@ -520,7 +521,7 @@ function App() {
       currentRequestId: null,
     });
   };
-
+  
   const createLaptop = () => {
     if (!newLaptop.assetNo.trim()) {
       triggerToast('자산 관리 번호를 정확히 입력해 주세요.', 'error');
@@ -1116,6 +1117,7 @@ function App() {
                             onClick={() => {
                               setShowUploadPanel((prev) => !prev);
                               setNewLaptop(null);
+                              setEditLaptop(null);
                             }}
                             variant="outline"
                             className="py-2.5 px-4 rounded-xl text-xs sm:text-sm shadow-sm"
@@ -1228,7 +1230,13 @@ function App() {
                       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                         {data.laptops.map((l, index) => (
                           <React.Fragment key={l.id}>
-                            <div className="rounded-xl border border-slate-200 bg-white p-4 flex flex-col justify-between hover:shadow-sm transition">
+                            <div
+                              className={`rounded-xl p-4 flex flex-col justify-between hover:shadow-sm transition ${
+                                editLaptop?.id === l.id
+                                  ? 'border-2 border-blue-400/80 bg-blue-50/20'
+                                  : 'border border-slate-200 bg-white'
+                              }`}
+                            >
                               <div className="space-y-2">
                                 <div className="flex items-center justify-between">
                                   <span className="font-bold text-slate-900 text-sm">{l.assetNo}</span>
@@ -1245,7 +1253,11 @@ function App() {
                               </div>
                               <div className="flex gap-2 mt-4">
                                 <Button
-                                  onClick={() => setEditLaptop(l)}
+                                  onClick={() => {
+                                    setNewLaptop(null);
+                                    setShowUploadPanel(false);
+                                    setEditLaptop(l);
+                                  }}
                                   variant="outline"
                                   className="flex-1 py-1.5 text-xs rounded-lg"
                                 >
