@@ -77,7 +77,7 @@ body {
   }
 
   .mk-brand-border-soft {
-    border-color: var(--mk-orange-border);
+    border-color: var(--mk-orange-border) !important;
   }
 
   .mk-brand-shadow-md {
