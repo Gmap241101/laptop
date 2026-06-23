@@ -250,7 +250,6 @@ function App() {
 
   // 엑셀/CSV 업로드 패널 토글 상태 값 추가
   const [showUploadPanel, setShowUploadPanel] = useState(false);
-  const [assetGridColumns, setAssetGridColumns] = useState(1);
 
   // 설정 임시 저장을 위한 임시 상태 정의
   const [tempSettings, setTempSettings] = useState(data.settings);
@@ -268,25 +267,6 @@ function App() {
       script.async = true;
       document.body.appendChild(script);
     }
-  }, []);
-
-  useEffect(() => {
-    const updateAssetGridColumns = () => {
-      if (window.matchMedia('(min-width: 1280px)').matches) {
-        setAssetGridColumns(3);
-      } else if (window.matchMedia('(min-width: 640px)').matches) {
-        setAssetGridColumns(2);
-      } else {
-        setAssetGridColumns(1);
-      }
-    };
-
-    updateAssetGridColumns();
-    window.addEventListener('resize', updateAssetGridColumns);
-
-    return () => {
-      window.removeEventListener('resize', updateAssetGridColumns);
-    };
   }, []);
 
   useEffect(() => {
@@ -413,15 +393,6 @@ function App() {
   const selectedLaptop = data.laptops.find((l) => l.id === selectedLaptopId);
   const filteredBorrowers = data.borrowers.filter((b) => b.team === form.team);
 
-  const editLaptopIndex = editLaptop ? data.laptops.findIndex((l) => l.id === editLaptop.id) : -1;
-  const editLaptopInsertIndex =
-    editLaptopIndex >= 0
-      ? Math.min(
-          Math.ceil((editLaptopIndex + 1) / assetGridColumns) * assetGridColumns - 1,
-          data.laptops.length - 1
-        )
-      : -1;
-
   const submitRequest = () => {
     if (!selectedLaptop || blockedLaptopIds.has(selectedLaptop.id)) {
       triggerToast('이미 예약 중이거나 이용 불가한 노트북입니다.', 'error');
@@ -502,17 +473,11 @@ function App() {
 
   // 신규 노트북 자산 생성 제어 로직
   const handleAddLaptopClick = () => {
-    setShowUploadPanel(false);
-
-    if (newLaptop) {
-      setNewLaptop(null);
-      return;
-    }
-
+    const nextNum = String(data.laptops.length + 1).padStart(2, '0');
     setNewLaptop({
-      assetNo: '',
-      serialNo: '',
-      model: '',
+      assetNo: `LAPTOP-${new Date().getFullYear()}-${nextNum}`,
+      serialNo: `SN-${new Date().getFullYear()}-${10000 + data.laptops.length * 37}`,
+      model: 'LG Gram 16 Pro',
       manufactureDate: today(),
       photo: `https://images.unsplash.com/photo-1593642632823-8f785ba67e45?auto=format&fit=crop&w=500&q=80`,
       note: '',
@@ -1113,10 +1078,7 @@ function App() {
                         <div className="flex flex-wrap gap-2">
                           {/* 엑셀/CSV 업로드 패널 토글 액션 버튼 추가 */}
                           <Button
-                            onClick={() => {
-                              setShowUploadPanel((prev) => !prev);
-                              setNewLaptop(null);
-                            }}
+                            onClick={() => setShowUploadPanel(!showUploadPanel)}
                             variant="outline"
                             className="py-2.5 px-4 rounded-xl text-xs sm:text-sm shadow-sm"
                           >
@@ -1225,97 +1187,95 @@ function App() {
                         </div>
                       )}
 
+                      {editLaptop && (
+                        <div className="rounded-2xl border-2 border-blue-400/80 bg-blue-50/20 p-5 space-y-4 shadow-sm animate-fadeIn">
+                          <div className="flex items-center justify-between border-b border-slate-200/60 pb-3">
+                            <span className="text-sm font-bold text-slate-900">노트북 수정 패널: <b className="text-blue-600">{editLaptop.assetNo}</b></span>
+                            <Button onClick={() => setEditLaptop(null)} variant="outline" className="px-2 py-1 text-xs">닫기</Button>
+                          </div>
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <Input
+                              label="자산 관리 번호"
+                              value={editLaptop.assetNo}
+                              onChange={(v) => setEditLaptop({ ...editLaptop, assetNo: v })}
+                            />
+                            <Select
+                              label="대여 가능 여부"
+                              value={editLaptop.status === STATUS.UNAVAILABLE ? STATUS.UNAVAILABLE : STATUS.AVAILABLE}
+                              onChange={(v) => setEditLaptop({ ...editLaptop, status: v })}
+                            >
+                              <option value={STATUS.AVAILABLE}>대여가능 (기본)</option>
+                              <option value={STATUS.UNAVAILABLE}>대여불가 (고장/수리 등)</option>
+                            </Select>
+                            <Input
+                              label="제작/출고 모델명"
+                              value={editLaptop.model}
+                              onChange={(v) => setEditLaptop({ ...editLaptop, model: v })}
+                            />
+                            <Input
+                              label="고유 시리얼 번호 (S/N)"
+                              value={editLaptop.serialNo}
+                              onChange={(v) => setEditLaptop({ ...editLaptop, serialNo: v })}
+                            />
+                            <Input
+                              label="출고일"
+                              type="date"
+                              value={editLaptop.manufactureDate}
+                              onChange={(v) => setEditLaptop({ ...editLaptop, manufactureDate: v })}
+                            />
+                            <Input
+                              label="자산 기종 사진 연결 URL"
+                              value={editLaptop.photo}
+                              onChange={(v) => setEditLaptop({ ...editLaptop, photo: v })}
+                            />
+                            <Input
+                              label="비고 / 기재 사항"
+                              value={editLaptop.note}
+                              onChange={(v) => setEditLaptop({ ...editLaptop, note: v })}
+                            />
+                          </div>
+                          <div className="flex justify-end gap-2 pt-2 border-t border-slate-200/40">
+                            <Button onClick={() => setEditLaptop(null)} variant="outline">취소</Button>
+                            <Button onClick={saveLaptop} variant="primary">자산 정보 최종 저장</Button>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                        {data.laptops.map((l, index) => (
-                          <React.Fragment key={l.id}>
-                            <div className="rounded-xl border border-slate-200 bg-white p-4 flex flex-col justify-between hover:shadow-sm transition">
-                              <div className="space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <span className="font-bold text-slate-900 text-sm">{l.assetNo}</span>
-                                  <Badge>{l.status === STATUS.UNAVAILABLE ? STATUS.UNAVAILABLE : blockedLaptopIds.has(l.id) ? l.status : STATUS.AVAILABLE}</Badge>
-                                </div>
-                                <div className="text-xs font-semibold text-slate-700">{l.model}</div>
-                                <div className="space-y-0.5 text-[10px] text-slate-500">
-                                  <div>S/N: {l.serialNo}</div>
-                                  <div>출고: {l.manufactureDate}</div>
-                                </div>
-                                <div className="mt-2 rounded-lg bg-slate-50 p-2 text-[11px] text-slate-600 border border-slate-100">
-                                  비고: {l.note || '특이 메모 없음'}
-                                </div>
+                        {data.laptops.map((l) => (
+                          <div key={l.id} className="rounded-xl border border-slate-200 bg-white p-4 flex flex-col justify-between hover:shadow-sm transition">
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-slate-900 text-sm">{l.assetNo}</span>
+                                <Badge>{l.status === STATUS.UNAVAILABLE ? STATUS.UNAVAILABLE : blockedLaptopIds.has(l.id) ? l.status : STATUS.AVAILABLE}</Badge>
                               </div>
-                              <div className="flex gap-2 mt-4">
-                                <Button
-                                  onClick={() => setEditLaptop(l)}
-                                  variant="outline"
-                                  className="flex-1 py-1.5 text-xs rounded-lg"
-                                >
-                                  <Edit3 size={12} /> 정보 변경 수정
-                                </Button>
-                                <Button
-                                  onClick={() => deleteLaptop(l.id, l.assetNo)}
-                                  variant="dangerOutline"
-                                  className="py-1.5 text-xs rounded-lg px-3"
-                                  title="자산 삭제"
-                                >
-                                  <Trash2 size={12} /> 삭제
-                                </Button>
+                              <div className="text-xs font-semibold text-slate-700">{l.model}</div>
+                              <div className="space-y-0.5 text-[10px] text-slate-500">
+                                <div>S/N: {l.serialNo}</div>
+                                <div>출고: {l.manufactureDate}</div>
+                              </div>
+                              <div className="mt-2 rounded-lg bg-slate-50 p-2 text-[11px] text-slate-600 border border-slate-100">
+                                비고: {l.note || '특이 메모 없음'}
                               </div>
                             </div>
-
-                            {editLaptopInsertIndex === index && editLaptop && (
-                              <div className="col-span-full rounded-2xl border-2 border-blue-400/80 bg-blue-50/20 p-5 space-y-4 shadow-sm animate-fadeIn">
-                                <div className="flex items-center justify-between border-b border-slate-200/60 pb-3">
-                                  <span className="text-sm font-bold text-slate-900">노트북 수정 패널: <b className="text-blue-600">{editLaptop.assetNo}</b></span>
-                                  <Button onClick={() => setEditLaptop(null)} variant="outline" className="px-2 py-1 text-xs">닫기</Button>
-                                </div>
-                                <div className="grid gap-4 sm:grid-cols-2">
-                                  <Input
-                                    label="자산 관리 번호"
-                                    value={editLaptop.assetNo}
-                                    onChange={(v) => setEditLaptop({ ...editLaptop, assetNo: v })}
-                                  />
-                                  <Select
-                                    label="대여 가능 여부"
-                                    value={editLaptop.status === STATUS.UNAVAILABLE ? STATUS.UNAVAILABLE : STATUS.AVAILABLE}
-                                    onChange={(v) => setEditLaptop({ ...editLaptop, status: v })}
-                                  >
-                                    <option value={STATUS.AVAILABLE}>대여가능 (기본)</option>
-                                    <option value={STATUS.UNAVAILABLE}>대여불가 (고장/수리 등)</option>
-                                  </Select>
-                                  <Input
-                                    label="제작/출고 모델명"
-                                    value={editLaptop.model}
-                                    onChange={(v) => setEditLaptop({ ...editLaptop, model: v })}
-                                  />
-                                  <Input
-                                    label="고유 시리얼 번호 (S/N)"
-                                    value={editLaptop.serialNo}
-                                    onChange={(v) => setEditLaptop({ ...editLaptop, serialNo: v })}
-                                  />
-                                  <Input
-                                    label="출고일"
-                                    type="date"
-                                    value={editLaptop.manufactureDate}
-                                    onChange={(v) => setEditLaptop({ ...editLaptop, manufactureDate: v })}
-                                  />
-                                  <Input
-                                    label="자산 기종 사진 연결 URL"
-                                    value={editLaptop.photo}
-                                    onChange={(v) => setEditLaptop({ ...editLaptop, photo: v })}
-                                  />
-                                  <Input
-                                    label="비고 / 기재 사항"
-                                    value={editLaptop.note}
-                                    onChange={(v) => setEditLaptop({ ...editLaptop, note: v })}
-                                  />
-                                </div>
-                                <div className="flex justify-end gap-2 pt-2 border-t border-slate-200/40">
-                                  <Button onClick={() => setEditLaptop(null)} variant="outline">취소</Button>
-                                  <Button onClick={saveLaptop} variant="primary">자산 정보 최종 저장</Button>
-                                </div>
-                              </div>
-                            )}
-                          </React.Fragment>
+                            <div className="flex gap-2 mt-4">
+                              <Button
+                                onClick={() => setEditLaptop(l)}
+                                variant="outline"
+                                className="flex-1 py-1.5 text-xs rounded-lg"
+                              >
+                                <Edit3 size={12} /> 정보 변경 수정
+                              </Button>
+                              <Button
+                                onClick={() => deleteLaptop(l.id, l.assetNo)}
+                                variant="dangerOutline"
+                                className="py-1.5 text-xs rounded-lg px-3"
+                                title="자산 삭제"
+                              >
+                                <Trash2 size={12} /> 삭제
+                              </Button>
+                            </div>
+                          </div>
                         ))}
                       </div>
                     </div>
