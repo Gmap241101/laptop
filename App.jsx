@@ -13,15 +13,12 @@ import {
   CheckCircle2,
   Clock,
   XCircle,
-  PauseCircle,
   RotateCcw,
   Save,
   Trash2,
   Edit3,
-  Image as ImageIcon,
   ShieldCheck,
   AlertCircle,
-  Check,
   X,
   Info
 } from 'lucide-react';
@@ -646,6 +643,9 @@ function App() {
 
     const uploadedLaptops = [];
     let addCount = 0;
+    let missingAssetNoCount = 0;
+    let invalidCategoryCount = 0;
+    const invalidCategoryNames = new Set();
 
     jsonList.forEach((row, index) => {
       // 실무자 유연한 대소문자 및 유사어 추적 필터
@@ -666,28 +666,43 @@ function App() {
       const statusVal = matchVal(['대여가능여부', '대여가능', '대여상태', '상태', 'status']);
 
       // 필수 충족요건인 '자산관리번호' 존재 체크
-      if (assetNo) {
-        const fallbackPhoto = `https://images.unsplash.com/photo-1593642632823-8f785ba67e45?auto=format&fit=crop&w=500&q=80`;
-        let finalStatus = STATUS.AVAILABLE;
-        
-        if (statusVal.includes('대여불가') || statusVal.toLowerCase().includes('unavailable') || statusVal.includes('불가')) {
-          finalStatus = STATUS.UNAVAILABLE;
-        }
-
-        uploadedLaptops.push({
-          id: `NB-UP-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 5)}`,
-          category: category || data.assetCategories?.[0] || '노트북',
-          assetNo: assetNo,
-          serialNo: serialNo || `SN-AUTO-${Math.floor(Math.random() * 90000 + 10000)}`,
-          model: model || '미지정 기종',
-          manufactureDate: manufactureDate || today(),
-          photo: photo || fallbackPhoto,
-          note: note || '',
-          status: finalStatus,
-          currentRequestId: null
-        });
-        addCount++;
+      if (!assetNo) {
+        missingAssetNoCount++;
+        return;
       }
+
+      // 등록된 자산 카테고리와 일치하는 행만 업로드
+      const matchedCategory = (data.assetCategories || []).find(
+        (registeredCategory) =>
+          String(registeredCategory || '').trim().toLowerCase() === category.trim().toLowerCase()
+      );
+
+      if (!category || !matchedCategory) {
+        invalidCategoryCount++;
+        invalidCategoryNames.add(category || '미입력');
+        return;
+      }
+
+      const fallbackPhoto = `https://images.unsplash.com/photo-1593642632823-8f785ba67e45?auto=format&fit=crop&w=500&q=80`;
+      let finalStatus = STATUS.AVAILABLE;
+      
+      if (statusVal.includes('대여불가') || statusVal.toLowerCase().includes('unavailable') || statusVal.includes('불가')) {
+        finalStatus = STATUS.UNAVAILABLE;
+      }
+
+      uploadedLaptops.push({
+        id: `NB-UP-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 5)}`,
+        category: matchedCategory,
+        assetNo: assetNo,
+        serialNo: serialNo || `SN-AUTO-${Math.floor(Math.random() * 90000 + 10000)}`,
+        model: model || '미지정 기종',
+        manufactureDate: manufactureDate || today(),
+        photo: photo || fallbackPhoto,
+        note: note || '',
+        status: finalStatus,
+        currentRequestId: null
+      });
+      addCount++;
     });
 
     if (uploadedLaptops.length > 0) {
@@ -696,9 +711,36 @@ function App() {
         laptops: [...prev.laptops, ...uploadedLaptops],
       }));
       setShowUploadPanel(false);
-      triggerToast(`총 ${addCount}대의 기기를 엑셀/CSV 데이터베이스로 일괄 추가 등록했습니다.`, 'success');
+
+      const skippedMessages = [];
+      if (invalidCategoryCount > 0) {
+        skippedMessages.push(`카테고리 불일치 ${invalidCategoryCount}건 제외`);
+      }
+      if (missingAssetNoCount > 0) {
+        skippedMessages.push(`자산관리번호 누락 ${missingAssetNoCount}건 제외`);
+      }
+
+      triggerToast(
+        `총 ${addCount}대의 기기를 엑셀/CSV 데이터베이스로 일괄 추가 등록했습니다.${skippedMessages.length ? ` (${skippedMessages.join(', ')})` : ''}`,
+        'success'
+      );
     } else {
-      triggerToast('헤더(자산관리번호, 모델명, 시리얼번호 등) 규격 정보가 일치하지 않아 가져오지 못했습니다.', 'error');
+      const invalidCategoryList = Array.from(invalidCategoryNames).slice(0, 5).join(', ');
+
+      if (invalidCategoryCount > 0) {
+        triggerToast(
+          `등록된 자산 카테고리와 일치하는 행이 없어 업로드하지 않았습니다. 불일치 카테고리: ${invalidCategoryList}`,
+          'error'
+        );
+        return;
+      }
+
+      if (missingAssetNoCount > 0) {
+        triggerToast('자산관리번호가 입력된 행이 없어 업로드하지 않았습니다.', 'error');
+        return;
+      }
+
+      triggerToast('헤더(자산카테고리, 자산관리번호, 모델명, 시리얼번호 등) 규격 정보가 일치하지 않아 가져오지 못했습니다.', 'error');
     }
   };
 
@@ -1216,9 +1258,10 @@ function App() {
                             <div className="mt-3.5 rounded-lg bg-white px-4 py-3 border border-slate-200 text-left w-full text-[11px] space-y-1.5 text-slate-600 shadow-sm">
                               <div>📌 <b>엑셀은 첫 번째 시트만 읽습니다.</b> 작성가이드 시트는 그대로 두어도 되지만, 첫 번째 시트로 이동시키면 안 됩니다.</div>
                               <div>📌 <b>헤더는 엑셀 1행 또는 CSV 첫 줄에 있어야 합니다.</b> 제목, 안내문, 빈 줄을 헤더 위에 두면 업로드가 정상 인식되지 않을 수 있습니다.</div>
-                              <div>📌 <b>자산관리번호는 필수입니다.</b> 자산관리번호가 비어 있는 행은 등록되지 않습니다.</div>
+                              <div>📌 <b>자산카테고리와 자산관리번호는 필수입니다.</b> 둘 중 하나라도 비어 있는 행은 등록되지 않습니다.</div>
+                              <div>📌 <b>자산카테고리 검증:</b> 관리자 메뉴의 자산 카테고리 등록 목록과 정확히 일치하는 카테고리만 업로드됩니다.</div>
                               <div>📌 <b>일부 칸은 비워도 등록됩니다.</b> 모델명은 미지정 기종, 시리얼번호는 자동 번호, 제조일자는 오늘 날짜, 사진URL은 기본 이미지, 대여가능여부는 대여가능으로 처리됩니다.</div>
-                              <div>📌 <b>권장 헤더:</b> 자산관리번호, 대여가능여부, 모델명, 시리얼번호, 제조일자, 사진URL, 비고</div>
+                              <div>📌 <b>권장 헤더:</b> 자산카테고리, 자산관리번호, 대여가능여부, 모델명, 시리얼번호, 제조일자, 사진URL, 비고</div>
                               <div>📌 <b>대여불가 처리:</b> 대여가능여부 칸에 대여불가, 불가, unavailable 중 하나가 포함되면 대여불가로 등록됩니다.</div>
                             </div>
                             <div className="mt-5 flex flex-col items-center justify-center gap-2 sm:flex-row">
