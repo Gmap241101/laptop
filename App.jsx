@@ -245,6 +245,8 @@ function App() {
   const allowFirebaseWriteRef = useRef(false);
   const [view, setView] = useState('user'); // 'user' | 'admin'
   const [query, setQuery] = useState('');
+  const [selectedAssetCategory, setSelectedAssetCategory] = useState('전체');
+  const [availabilityFilter, setAvailabilityFilter] = useState(STATUS.AVAILABLE);
   const [selectedLaptopId, setSelectedLaptopId] = useState(null);
   const [form, setForm] = useState({ team: '', borrower: '', startDate: today(), dueDate: addDays(7), purpose: '' });
   const [adminTab, setAdminTab] = useState('dashboard'); // 'dashboard' | 'requests' | 'laptops' | 'categories' | 'people' | 'settings'
@@ -424,9 +426,23 @@ function App() {
     overdue: data.requests.filter((r) => r.status === STATUS.APPROVED && r.dueDate < today()).length,
   }), [data, blockedLaptopIds]);
 
-  const filteredLaptops = data.laptops.filter((l) =>
-    `${l.category || ''} ${l.assetNo} ${l.serialNo} ${l.model} ${l.note}`.toLowerCase().includes(query.toLowerCase())
-  );
+  const filteredLaptops = data.laptops.filter((l) => {
+    const keywordMatched = `${l.category || ''} ${l.assetNo} ${l.serialNo} ${l.model} ${l.note}`
+      .toLowerCase()
+      .includes(query.toLowerCase());
+
+    const categoryMatched =
+      selectedAssetCategory === '전체' || l.category === selectedAssetCategory;
+
+    const availabilityMatched =
+      availabilityFilter === '전체'
+        ? true
+        : availabilityFilter === STATUS.AVAILABLE
+          ? !blockedLaptopIds.has(l.id) && l.status !== STATUS.UNAVAILABLE
+          : blockedLaptopIds.has(l.id) || l.status === STATUS.UNAVAILABLE;
+
+    return keywordMatched && categoryMatched && availabilityMatched;
+  });
 
   const selectedLaptop = data.laptops.find((l) => l.id === selectedLaptopId);
   const filteredBorrowers = data.borrowers.filter((b) => b.team === form.team);
@@ -850,14 +866,45 @@ function App() {
                         [대여가능] 상태의 기기만 신청할 수 있습니다.
                       </p>
                     </div>
-                    <div className="relative w-full sm:w-72">
-                      <Search className="absolute left-3 top-3 text-slate-400" size={16} />
-                      <input
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        placeholder="자산관리번호, 기종, 키워드 검색"
-                        className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-xs outline-none transition mk-form-focus"
-                      />
+                    <div className="grid w-full gap-2 sm:w-auto sm:grid-cols-[140px_140px_18rem]">
+                      <select
+                        aria-label="자산 카테고리 필터"
+                        value={selectedAssetCategory}
+                        onChange={(e) => {
+                          setSelectedAssetCategory(e.target.value);
+                          setSelectedLaptopId(null);
+                        }}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none transition mk-form-focus"
+                      >
+                        <option value="전체">전체</option>
+                        {(data.assetCategories || []).map((category) => (
+                          <option key={category} value={category}>{category}</option>
+                        ))}
+                      </select>
+
+                      <select
+                        aria-label="대여 가능여부 필터"
+                        value={availabilityFilter}
+                        onChange={(e) => {
+                          setAvailabilityFilter(e.target.value);
+                          setSelectedLaptopId(null);
+                        }}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none transition mk-form-focus"
+                      >
+                        <option value="전체">전체</option>
+                        <option value={STATUS.AVAILABLE}>대여가능</option>
+                        <option value={STATUS.UNAVAILABLE}>대여불가</option>
+                      </select>
+
+                      <div className="relative w-full">
+                        <Search className="absolute left-3 top-3 text-slate-400" size={16} />
+                        <input
+                          value={query}
+                          onChange={(e) => setQuery(e.target.value)}
+                          placeholder="자산관리번호, 기종, 키워드 검색"
+                          className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-xs outline-none transition mk-form-focus"
+                        />
+                      </div>
                     </div>
                   </div>
 
