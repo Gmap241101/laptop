@@ -1881,8 +1881,8 @@ function App() {
                           }
                         />
                       <div>
-                        <div className="mb-3 text-xs font-semibold text-slate-600 tracking-wide">
-                          업무 종료 이후 신청자 대여시작일 익일로 조정
+                        <div className="mb-1.5 text-xs font-semibold text-slate-600 tracking-wide">
+                          업무 종료 이후 신청자 대여 시작일 다음 날로 조정
                         </div>
                         <div className="rounded-xl border border-slate-200 bg-white p-3.5">
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1890,7 +1890,7 @@ function App() {
                               <span className="text-xs font-medium text-slate-500">사용여부</span>
                               <button
                                 type="button"
-                                aria-label="업무 종료 이후 신청자 대여시작일 익일 조정 사용여부"
+                                aria-label="업무 종료 이후 신청자 대여 시작일 다음 날로 조정 사용 여부"
                                 aria-pressed={tempSettings.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END}
                                 onClick={() =>
                                   setTempSettings({
