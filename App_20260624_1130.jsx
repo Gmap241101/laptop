@@ -99,10 +99,13 @@ function seedLaptops() {
 const initialData = {
   laptops: seedLaptops(),
   requests: [],
-  assetCategories: ['노트북'],
-  teams: ['매일경제아카데미', '채용대행팀', '문항개발팀', '경제교육팀'],
+  teams: ['교무기획팀', '교육정보팀', '연구부', '행정실'],
   borrowers: [
-    { name: '', team: '' },
+    { name: '김민준', team: '교무기획팀' },
+    { name: '이서연', team: '교육정보팀' },
+    { name: '박지훈', team: '연구부' },
+    { name: '최유진', team: '행정실' },
+    { name: '한지민', team: '교육정보팀' },
   ],
   settings: {
     teamInputMode: 'dropdown',
@@ -123,11 +126,7 @@ function normalizeBorrowers(borrowers, teams) {
 
 function mergePersistedData(rawData) {
   const parsed = { ...initialData, ...(rawData || {}) };
-  return {
-    ...parsed,
-    assetCategories: Array.isArray(parsed.assetCategories) ? parsed.assetCategories : initialData.assetCategories,
-    borrowers: normalizeBorrowers(parsed.borrowers || [], parsed.teams || []),
-  };
+  return { ...parsed, borrowers: normalizeBorrowers(parsed.borrowers || [], parsed.teams || []) };
 }
 
 function loadData() {
@@ -246,7 +245,6 @@ function App() {
   const [adminTab, setAdminTab] = useState('dashboard'); // 'dashboard' | 'requests' | 'laptops' | 'people' | 'settings'
   const [editLaptop, setEditLaptop] = useState(null);
   const [newLaptop, setNewLaptop] = useState(null); // 신규 노트북 생성을 위한 상태 값 추가
-  const [newAssetCategory, setNewAssetCategory] = useState('');
   const [newTeam, setNewTeam] = useState('');
   const [newBorrower, setNewBorrower] = useState('');
   const [newBorrowerTeam, setNewBorrowerTeam] = useState('');
@@ -984,7 +982,6 @@ function App() {
                     ['dashboard', LayoutDashboard, '실시간 대시보드'],
                     ['requests', ClipboardList, '신청·대여 목록'],
                     ['laptops', Laptop, '대여 자산 목록'],
-                    ['categories', ClipboardList, '자산 카테고리 등록'],
                     ['people', Users, '부서·사용자 등록'],
                     ['settings', Settings, '시스템 설정'],
                   ].map(([key, Icon, label]) => (
@@ -1397,89 +1394,6 @@ function App() {
                             )}
                           </React.Fragment>
                         ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 자산 카테고리 등록 탭 */}
-                  {adminTab === 'categories' && (
-                    <div className="grid gap-8 md:grid-cols-2">
-                      {/* 자산 카테고리 등록 컬럼 */}
-                      <div className="space-y-4">
-                        <div className="border-b border-slate-100 pb-3">
-                          <h2 className="text-base font-bold text-slate-900">자산 카테고리 등록</h2>
-                          <p className="text-[11px] text-slate-500 mt-0.5">노트북 외 추가 대여 자산 분류를 추가 및 제어합니다.</p>
-                        </div>
-                        <div className="flex gap-2">
-                          <input
-                            value={newAssetCategory}
-                            onChange={(e) => setNewAssetCategory(e.target.value)}
-                            placeholder="새로운 자산 카테고리 명칭"
-                            className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none mk-form-border-focus"
-                          />
-                          <Button
-                            onClick={() => {
-                              const categoryName = newAssetCategory.trim();
-
-                              if (!categoryName) {
-                                triggerToast('자산 카테고리 명칭을 입력해 주세요.', 'error');
-                                return;
-                              }
-
-                              if ((data.assetCategories || []).includes(categoryName)) {
-                                triggerToast('이미 등록된 자산 카테고리입니다.', 'error');
-                                return;
-                              }
-
-                              setData((prev) => ({
-                                ...prev,
-                                assetCategories: [...(prev.assetCategories || []), categoryName],
-                              }));
-                              setNewAssetCategory('');
-                              triggerToast(`[${categoryName}] 자산 카테고리가 새로 생성되었습니다.`, 'success');
-                            }}
-                            className="px-3 py-2"
-                          >
-                            <Plus size={16} />
-                          </Button>
-                        </div>
-                        <div className="rounded-xl bg-slate-100 p-4 border border-slate-200/50 text-xs text-slate-600">
-                          💡 <b>운영 안내:</b> 현재 단계에서는 자산 카테고리 목록만 등록합니다. 다음 단계에서 각 자산에 카테고리를 연결하면 노트북, 빔프로젝터, 태블릿, 마이크 등으로 대여 자산을 확장할 수 있습니다.
-                        </div>
-                      </div>
-
-                      {/* 등록된 자산 카테고리 목록 컬럼 */}
-                      <div className="space-y-4">
-                        <div className="border-b border-slate-100 pb-3">
-                          <h2 className="text-base font-bold text-slate-900">등록된 자산 카테고리</h2>
-                          <p className="text-[11px] text-slate-500 mt-0.5">대여 자산 등록 시 사용할 분류 목록입니다.</p>
-                        </div>
-                        <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
-                          {(data.assetCategories || []).length === 0 ? (
-                            <div className="rounded-2xl bg-slate-50 border border-dashed border-slate-200 py-10 text-center text-slate-400 text-xs">
-                              현재 등록된 자산 카테고리가 없습니다.
-                            </div>
-                          ) : (
-                            (data.assetCategories || []).map((category) => (
-                              <div key={category} className="flex items-center justify-between rounded-xl bg-slate-50 px-3.5 py-2 border border-slate-100 text-xs text-slate-700">
-                                <span>{category}</span>
-                                <Button
-                                  onClick={() => {
-                                    setData((prev) => ({
-                                      ...prev,
-                                      assetCategories: (prev.assetCategories || []).filter((x) => x !== category),
-                                    }));
-                                    triggerToast(`[${category}] 자산 카테고리가 삭제되었습니다.`, 'success');
-                                  }}
-                                  variant="ghost"
-                                  className="px-1 py-1 hover:text-rose-600 rounded-lg hover:bg-rose-50"
-                                >
-                                  <Trash2 size={14} />
-                                </Button>
-                              </div>
-                            ))
-                          )}
-                        </div>
                       </div>
                     </div>
                   )}
