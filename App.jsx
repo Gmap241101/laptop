@@ -859,14 +859,14 @@ function App() {
             <div className="lg:col-span-2 space-y-4">
               <Card>
                 <CardContent className="p-6">
-                  <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-                    <div>
+                  <div className="mb-6 flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+                    <div className="shrink-0">
                       <h2 className="text-lg font-bold text-slate-900">대여 기기 선택</h2>
                       <p className="text-xs text-slate-500 mt-0.5">
                         [대여가능] 상태의 기기만 신청할 수 있습니다.
                       </p>
                     </div>
-                    <div className="grid w-full gap-2 sm:w-auto sm:grid-cols-[140px_140px_18rem]">
+                    <div className="grid w-full gap-2 sm:grid-cols-[120px_120px_minmax(0,1fr)] lg:w-auto lg:grid-cols-[118px_118px_15rem]">
                       <select
                         aria-label="자산 카테고리 필터"
                         value={selectedAssetCategory}
