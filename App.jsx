@@ -1882,54 +1882,58 @@ function App() {
                         />
 
                         <div className="rounded-xl border border-slate-200 bg-white p-3.5">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <div className="text-xs font-semibold text-slate-600 tracking-wide">
-                                업무 종료 이후 신청자 대여시작일 익일로 조정
-                              </div>
-                              <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-                                사용 시 설정한 업무 종료 시간 이후에는 신규 신청 폼의 기본 대여 시작일이 다음날로 표시됩니다.
-                              </p>
-                            </div>
-
-                            <button
-                              type="button"
-                              aria-pressed={tempSettings.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END}
-                              onClick={() =>
-                                setTempSettings({
-                                  ...tempSettings,
-                                  adjustStartDateAfterWorkEnd: !(tempSettings.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END),
-                                })
-                              }
-                              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition ${
-                                (tempSettings.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END)
-                                  ? 'mk-brand-gradient-r border-transparent'
-                                  : 'border-slate-300 bg-slate-200'
-                              }`}
-                            >
-                              <span
-                                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition ${
-                                  (tempSettings.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END)
-                                    ? 'translate-x-5'
-                                    : 'translate-x-0.5'
-                                }`}
-                              />
-                            </button>
+                          <div className="mb-3 text-xs font-semibold text-slate-600 tracking-wide">
+                            업무 종료 이후 신청자 대여시작일 익일로 조정
                           </div>
 
-                          <div className="mt-3">
-                            <Input
-                              label="업무 종료 시간"
-                              type="time"
-                              value={tempSettings.workEndTime || DEFAULT_WORK_END_TIME}
-                              disabled={!(tempSettings.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END)}
-                              onChange={(v) =>
-                                setTempSettings({
-                                  ...tempSettings,
-                                  workEndTime: v || DEFAULT_WORK_END_TIME,
-                                })
-                              }
-                            />
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex items-center gap-2.5">
+                              <span className="text-xs font-medium text-slate-500">사용여부</span>
+                              <button
+                                type="button"
+                                aria-label="업무 종료 이후 신청자 대여시작일 익일 조정 사용여부"
+                                aria-pressed={tempSettings.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END}
+                                onClick={() =>
+                                  setTempSettings({
+                                    ...tempSettings,
+                                    adjustStartDateAfterWorkEnd: !(tempSettings.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END),
+                                  })
+                                }
+                                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition ${
+                                  (tempSettings.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END)
+                                    ? 'mk-brand-gradient-r border-transparent'
+                                    : 'border-slate-300 bg-slate-200'
+                                }`}
+                              >
+                                <span
+                                  className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition ${
+                                    (tempSettings.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END)
+                                      ? 'translate-x-5'
+                                      : 'translate-x-0.5'
+                                  }`}
+                                />
+                              </button>
+                            </div>
+
+                            <div className="flex items-center gap-2.5">
+                              <span className="shrink-0 text-xs font-medium text-slate-500">업무 종료 시간</span>
+                              <input
+                                type="time"
+                                value={tempSettings.workEndTime || DEFAULT_WORK_END_TIME}
+                                disabled={!(tempSettings.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END)}
+                                onChange={(e) =>
+                                  setTempSettings({
+                                    ...tempSettings,
+                                    workEndTime: e.target.value || DEFAULT_WORK_END_TIME,
+                                  })
+                                }
+                                className={`h-10 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition mk-form-focus sm:w-36 ${
+                                  (tempSettings.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END)
+                                    ? 'bg-white text-slate-900'
+                                    : 'cursor-not-allowed bg-slate-100 text-slate-400'
+                                }`}
+                              />
+                            </div>
                           </div>
                         </div>
                       </div>
