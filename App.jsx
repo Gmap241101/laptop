@@ -543,6 +543,7 @@ function App() {
       status: STATUS.AVAILABLE,
       currentRequestId: null,
     });
+  };
   
   const createLaptop = () => {
     if (!newLaptop.assetNo.trim()) {
