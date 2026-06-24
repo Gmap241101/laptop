@@ -803,20 +803,25 @@ function App() {
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased">
       {/* --- 상단 글로벌 네비게이션 --- */}
       <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="rounded-2xl mk-brand-gradient-tr p-2 text-white mk-brand-shadow-md">
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="shrink-0 rounded-2xl mk-brand-gradient-tr p-2 text-white mk-brand-shadow-md">
               <Laptop size={22} />
             </div>
-            <div>
-              <h1 className="text-lg font-bold tracking-tight text-slate-900">매일경제아카데미 기기 대여 시스템</h1>
-              <p className="text-xs font-medium text-slate-500">https://notebook.recruit.kro.kr</p>
+            <div className="min-w-0">
+              <h1 className="break-keep text-base font-bold leading-snug tracking-tight text-slate-900 sm:text-lg">
+                매일경제아카데미 기기 대여 시스템
+              </h1>
+              <p className="mt-0.5 truncate text-xs font-medium text-slate-500">
+                https://notebook.recruit.kro.kr
+              </p>
             </div>
           </div>
-          <div className="flex gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200/60">
+
+          <div className="grid w-full grid-cols-2 gap-1.5 rounded-xl border border-slate-200/60 bg-slate-100 p-1 sm:w-auto sm:min-w-[176px]">
             <button
               onClick={() => setView('user')}
-              className={`rounded-lg px-4 py-1.5 text-xs font-semibold transition ${
+              className={`whitespace-nowrap rounded-lg px-3 py-2 text-xs font-semibold transition sm:py-1.5 ${
                 view === 'user'
                   ? 'bg-white mk-brand-text shadow-sm'
                   : 'text-slate-500 hover:text-slate-900'
@@ -826,7 +831,7 @@ function App() {
             </button>
             <button
               onClick={() => setView('admin')}
-              className={`rounded-lg px-4 py-1.5 text-xs font-semibold transition ${
+              className={`whitespace-nowrap rounded-lg px-3 py-2 text-xs font-semibold transition sm:py-1.5 ${
                 view === 'admin'
                   ? 'bg-white mk-brand-text shadow-sm'
                   : 'text-slate-500 hover:text-slate-900'
