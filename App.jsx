@@ -1291,7 +1291,7 @@ function App() {
                       <div className="space-y-4">
                         {data.requests.length === 0 ? (
                           <div className="rounded-2xl bg-slate-50 border border-dashed border-slate-200 py-12 text-center text-slate-400 text-xs">
-                            현재 접수되거나 처리된 대여 원장 이력이 전무합니다.
+                            현재 접수되거나 처리된 대여 신청 목록이 없습니다.
                           </div>
                         ) : (
                           data.requests.map((r) => {
@@ -1301,10 +1301,10 @@ function App() {
                                 <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
                                   <div className="space-y-1.5">
                                     <div className="flex flex-wrap items-center gap-2">
-                                      <span className="font-bold text-slate-950 text-sm">{r.assetNo}</span>
                                       <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
-                                        {r.assetCategory || '노트북'}
+                                        {r.assetCategory}
                                       </span>
+                                      <span className="font-bold text-slate-950 text-sm">{r.assetNo}</span>
                                       <Badge>{r.status}</Badge>
                                       {isOverdue && (
                                         <span className="inline-flex items-center rounded-md bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700 ring-1 ring-inset ring-rose-600/10 animate-pulse">
