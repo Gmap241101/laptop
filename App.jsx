@@ -520,6 +520,11 @@ function App() {
   const selectedLaptop = data.laptops.find((l) => l.id === selectedLaptopId);
   const filteredBorrowers = data.borrowers.filter((b) => b.team === form.team);
 
+  const currentWorkEndTime = data.settings?.workEndTime || DEFAULT_WORK_END_TIME;
+  const isRentalStartAdjustedAfterWorkEnd =
+    (data.settings?.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END) &&
+    isKoreaNowAfterTime(currentWorkEndTime);
+
   const editLaptopIndex = editLaptop ? data.laptops.findIndex((l) => l.id === editLaptop.id) : -1;
   const editLaptopInsertIndex =
     editLaptopIndex >= 0
@@ -1050,27 +1055,50 @@ function App() {
                 sticky & top-24 속성을 명시하여 스크롤할 때 우측 가이드 폼이 화면에 우아하게 안착 고정됩니다. */}
             <div className="lg:col-span-1 lg:sticky lg:top-24 h-fit">
               <Card className="mk-brand-border-soft shadow-md shadow-slate-100">
-                <div className="mk-brand-gradient-r px-6 py-4 text-white">
-                  <h2 className="text-sm font-bold tracking-wide uppercase">기기 대여 신청</h2>
-                  <p className="text-[11px] text-orange-100 mt-0.5">대여가능일은 최대 {data.settings.maxRentalDays ?? '0'}일 입니다.</p>
+                <div
+                  className="px-6 py-4 text-white"
+                  style={{ background: 'linear-gradient(90deg, var(--mk-orange-dark), var(--mk-orange))' }}
+                >
+                  <h2 className="text-lg font-bold text-white">기기 대여 신청</h2>
+                  <p className="mt-0.5 text-xs text-orange-100">
+                    대여가능일은 최대 {data.settings.maxRentalDays ?? '0'}일입니다.
+                  </p>
+                  {isRentalStartAdjustedAfterWorkEnd && (
+                    <p className="mt-0.5 text-xs text-orange-100">
+                      업무시간({currentWorkEndTime}) 종료로 대여 시작일은 다음 날로 조정되었습니다.
+                    </p>
+                  )}
                 </div>
                 <CardContent className="space-y-4 p-6">
-                  <div className={`rounded-xl px-4 py-3 border text-xs transition-colors duration-150 ${
-                    selectedLaptop 
-                      ? 'bg-blue-50 border-blue-200 text-blue-800' 
-                      : 'bg-slate-50 border-slate-200 text-slate-500'
-                  }`}>
-                    {selectedLaptop ? (
-                      <div className="flex items-center justify-between">
-                        <div>선택된 자산: <b className="text-sm ml-1">{selectedLaptop.assetNo}</b></div>
-                        <button onClick={() => setSelectedLaptopId(null)} className="text-blue-500 hover:text-blue-800 font-bold">변경</button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1.5">
-                        <Info size={14} className="text-slate-400" />
-                        <span>기기 선택 섹션에서 대여할 기기를 먼저 선택해 주세요.</span>
-                      </div>
-                    )}
+                  <div>
+                    <div className="mb-1.5 text-xs font-semibold text-slate-600 tracking-wide">
+                      대여 기기
+                    </div>
+
+                    <div className={`rounded-xl px-4 py-3 border text-xs transition-colors duration-150 ${
+                      selectedLaptop 
+                        ? 'bg-blue-50 border-blue-200 text-blue-800' 
+                        : 'bg-slate-50 border-slate-200 text-slate-500'
+                    }`}>
+                      {selectedLaptop ? (
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="inline-flex w-fit rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                              {selectedLaptop.category || '노트북'}
+                            </span>
+                            <b className="text-sm ml-1">{selectedLaptop.assetNo}</b>
+                          </div>
+                          <button onClick={() => setSelectedLaptopId(null)} className="shrink-0 text-blue-500 hover:text-blue-800 font-bold">
+                            변경
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <Info size={14} className="text-slate-400" />
+                          <span>기기 선택 섹션에서 대여할 기기를 먼저 선택해 주세요.</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {data.settings.teamInputMode === 'dropdown' ? (
