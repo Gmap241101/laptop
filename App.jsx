@@ -819,6 +819,10 @@ function App() {
                     </div>
                   </div>
 
+                            <div className="inline-flex w-fit rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                              {l.category || '노트북'}
+                            </div>
+                            
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                     {filteredLaptops.map((l) => {
                       const blocked = blockedLaptopIds.has(l.id) || l.status === STATUS.UNAVAILABLE;
@@ -854,9 +858,6 @@ function App() {
                               <Badge>{blocked ? (l.status === STATUS.UNAVAILABLE ? STATUS.UNAVAILABLE : l.status) : STATUS.AVAILABLE}</Badge>
                             </div>
                             <div className="text-xs font-semibold text-slate-700">{l.model}</div>
-                            <div className="inline-flex w-fit rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
-                              {l.category || '노트북'}
-                            </div>
                             <div className="space-y-0.5 text-[11px] text-slate-500">
                               <div>S/N: {l.serialNo}</div>
                               <div>출고일: {l.manufactureDate}</div>
