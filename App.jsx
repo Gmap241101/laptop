@@ -1117,7 +1117,7 @@ function App() {
                       label="부서 / 팀 직접 입력"
                       value={form.team}
                       onChange={(v) => setForm({ ...form, team: v })}
-                      placeholder="팀명을 직접 입력하세요"
+                      placeholder="부서(팀)명을 입력하세요"
                     />
                   )}
 
