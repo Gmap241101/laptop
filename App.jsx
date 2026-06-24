@@ -1881,11 +1881,10 @@ function App() {
                           }
                         />
 
+                        <div className="mb-3 text-xs font-semibold text-slate-600 tracking-wide">
+                          업무 종료 이후 신청자 대여시작일 익일로 조정
+                        </div>
                         <div className="rounded-xl border border-slate-200 bg-white p-3.5">
-                          <div className="mb-3 text-xs font-semibold text-slate-600 tracking-wide">
-                            업무 종료 이후 신청자 대여시작일 익일로 조정
-                          </div>
-
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div className="flex items-center gap-2.5">
                               <span className="text-xs font-medium text-slate-500">사용여부</span>
