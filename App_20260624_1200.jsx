@@ -84,7 +84,6 @@ function seedLaptops() {
     const maker = makers[i % makers.length];
     return {
       id: `NB-${n}`,
-      category: '노트북',
       assetNo: `LAPTOP-${new Date().getFullYear()}-${n}`,
       serialNo: `SN-${new Date().getFullYear()}-${10000 + i * 37}`,
       model: maker,
@@ -102,7 +101,9 @@ const initialData = {
   requests: [],
   assetCategories: ['노트북'],
   teams: ['매일경제아카데미', '채용대행팀', '문항개발팀', '경제교육팀'],
-  borrowers: [],
+  borrowers: [
+    { name: '', team: '' },
+  ],
   settings: {
     teamInputMode: 'dropdown',
     borrowerInputMode: 'dropdown',
@@ -122,17 +123,9 @@ function normalizeBorrowers(borrowers, teams) {
 
 function mergePersistedData(rawData) {
   const parsed = { ...initialData, ...(rawData || {}) };
-  const assetCategories = Array.isArray(parsed.assetCategories) && parsed.assetCategories.length > 0
-    ? parsed.assetCategories
-    : initialData.assetCategories;
-
   return {
     ...parsed,
-    assetCategories,
-    laptops: (parsed.laptops || []).map((asset) => ({
-      ...asset,
-      category: asset.category || assetCategories[0] || '노트북',
-    })),
+    assetCategories: Array.isArray(parsed.assetCategories) ? parsed.assetCategories : initialData.assetCategories,
     borrowers: normalizeBorrowers(parsed.borrowers || [], parsed.teams || []),
   };
 }
@@ -250,7 +243,7 @@ function App() {
   const [query, setQuery] = useState('');
   const [selectedLaptopId, setSelectedLaptopId] = useState(null);
   const [form, setForm] = useState({ team: '', borrower: '', startDate: today(), dueDate: addDays(7), purpose: '' });
-  const [adminTab, setAdminTab] = useState('dashboard'); // 'dashboard' | 'requests' | 'laptops' | 'categories' | 'people' | 'settings'
+  const [adminTab, setAdminTab] = useState('dashboard'); // 'dashboard' | 'requests' | 'laptops' | 'people' | 'settings'
   const [editLaptop, setEditLaptop] = useState(null);
   const [newLaptop, setNewLaptop] = useState(null); // 신규 노트북 생성을 위한 상태 값 추가
   const [newAssetCategory, setNewAssetCategory] = useState('');
@@ -428,7 +421,7 @@ function App() {
   }), [data, blockedLaptopIds]);
 
   const filteredLaptops = data.laptops.filter((l) =>
-    `${l.category || ''} ${l.assetNo} ${l.serialNo} ${l.model} ${l.note}`.toLowerCase().includes(query.toLowerCase())
+    `${l.assetNo} ${l.serialNo} ${l.model} ${l.note}`.toLowerCase().includes(query.toLowerCase())
   );
 
   const selectedLaptop = data.laptops.find((l) => l.id === selectedLaptopId);
@@ -474,7 +467,6 @@ function App() {
         {
           id: requestId,
           laptopId: selectedLaptop.id,
-          assetCategory: selectedLaptop.category || '노트북',
           assetNo: selectedLaptop.assetNo,
           team: form.team,
           borrower: form.borrower,
@@ -533,7 +525,6 @@ function App() {
     }
 
     setNewLaptop({
-      category: data.assetCategories?.[0] || '노트북',
       assetNo: '',
       serialNo: '',
       model: '',
@@ -543,6 +534,7 @@ function App() {
       status: STATUS.AVAILABLE,
       currentRequestId: null,
     });
+  };
   
   const createLaptop = () => {
     if (!newLaptop.assetNo.trim()) {
@@ -552,14 +544,7 @@ function App() {
     const newId = `NB-${Date.now()}`;
     setData((prev) => ({
       ...prev,
-      laptops: [
-        ...prev.laptops,
-        {
-          ...newLaptop,
-          id: newId,
-          category: newLaptop.category || prev.assetCategories?.[0] || '노트북',
-        },
-      ],
+      laptops: [...prev.laptops, { ...newLaptop, id: newId }],
     }));
     setNewLaptop(null);
     triggerToast(`자산 ${newLaptop.assetNo}이(가) 신규 등록되었습니다.`, 'success');
@@ -655,7 +640,6 @@ function App() {
         return matchedKey ? String(row[matchedKey]).trim() : '';
       };
 
-      const category = matchVal(['자산카테고리', '카테고리', '분류', 'category', 'assetcategory', 'asset_category']);
       const assetNo = matchVal(['자산관리번호', '관리번호', '자산번호', 'assetno', 'asset_no']);
       const model = matchVal(['모델명', '모델', '기종', 'model']);
       const serialNo = matchVal(['시리얼번호', '시리얼', 'serialno', 'serial_no', 'sn', 's/n']);
@@ -675,7 +659,6 @@ function App() {
 
         uploadedLaptops.push({
           id: `NB-UP-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 5)}`,
-          category: category || data.assetCategories?.[0] || '노트북',
           assetNo: assetNo,
           serialNo: serialNo || `SN-AUTO-${Math.floor(Math.random() * 90000 + 10000)}`,
           model: model || '미지정 기종',
@@ -853,9 +836,6 @@ function App() {
                               <Badge>{blocked ? (l.status === STATUS.UNAVAILABLE ? STATUS.UNAVAILABLE : l.status) : STATUS.AVAILABLE}</Badge>
                             </div>
                             <div className="text-xs font-semibold text-slate-700">{l.model}</div>
-                            <div className="inline-flex w-fit rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
-                              {l.category || '노트북'}
-                            </div>
                             <div className="space-y-0.5 text-[11px] text-slate-500">
                               <div>S/N: {l.serialNo}</div>
                               <div>출고일: {l.manufactureDate}</div>
@@ -1086,9 +1066,6 @@ function App() {
                                   <div className="space-y-1.5">
                                     <div className="flex flex-wrap items-center gap-2">
                                       <span className="font-bold text-slate-950 text-sm">{r.assetNo}</span>
-                                      <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
-                                        {r.assetCategory || '노트북'}
-                                      </span>
                                       <Badge>{r.status}</Badge>
                                       {isOverdue && (
                                         <span className="inline-flex items-center rounded-md bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700 ring-1 ring-inset ring-rose-600/10 animate-pulse">
@@ -1251,15 +1228,6 @@ function App() {
                             <Button onClick={() => setNewLaptop(null)} variant="outline" className="px-2 py-1 text-xs">닫기</Button>
                           </div>
                           <div className="grid gap-4 sm:grid-cols-2">
-                            <Select
-                              label="자산 카테고리"
-                              value={newLaptop.category || data.assetCategories?.[0] || '노트북'}
-                              onChange={(v) => setNewLaptop({ ...newLaptop, category: v })}
-                            >
-                              {(data.assetCategories || ['노트북']).map((category) => (
-                                <option key={category} value={category}>{category}</option>
-                              ))}
-                            </Select>
                             <Input
                               label="자산 관리 번호"
                               value={newLaptop.assetNo}
@@ -1381,15 +1349,6 @@ function App() {
                                   <Button onClick={() => setEditLaptop(null)} variant="outline" className="px-2 py-1 text-xs">닫기</Button>
                                 </div>
                                 <div className="grid gap-4 sm:grid-cols-2">
-                                  <Select
-                                    label="자산 카테고리"
-                                    value={editLaptop.category || data.assetCategories?.[0] || '노트북'}
-                                    onChange={(v) => setEditLaptop({ ...editLaptop, category: v })}
-                                  >
-                                    {(data.assetCategories || ['노트북']).map((category) => (
-                                      <option key={category} value={category}>{category}</option>
-                                    ))}
-                                  </Select>
                                   <Input
                                     label="자산 관리 번호"
                                     value={editLaptop.assetNo}
@@ -1506,13 +1465,6 @@ function App() {
                                 <span>{category}</span>
                                 <Button
                                   onClick={() => {
-                                    const isCategoryInUse = data.laptops.some((asset) => (asset.category || '노트북') === category);
-
-                                    if (isCategoryInUse) {
-                                      triggerToast('해당 카테고리를 사용하는 자산이 있어 삭제할 수 없습니다.', 'error');
-                                      return;
-                                    }
-
                                     setData((prev) => ({
                                       ...prev,
                                       assetCategories: (prev.assetCategories || []).filter((x) => x !== category),
