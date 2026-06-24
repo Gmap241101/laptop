@@ -1040,7 +1040,7 @@ function App() {
                               <div>출고일: {l.manufactureDate}</div>
                             </div>
                             <div className="mt-1 rounded-lg bg-slate-100 p-2 text-[11px] text-slate-600 border border-slate-200/50">
-                              💡 {l.note || '-'}
+                              💡 {l.note || '특이사항 없음'}
                             </div>
                           </div>
                         </motion.button>
@@ -1563,7 +1563,7 @@ function App() {
                                   <div>출고: {l.manufactureDate}</div>
                                 </div>
                                 <div className="mt-2 rounded-lg bg-slate-50 p-2 text-[11px] text-slate-600 border border-slate-100">
-                                  비고: {l.note || '특이 메모 없음'}
+                                  💡 {l.note || '특이사항 없음'}
                                 </div>
                               </div>
                               <div className="flex gap-2 mt-4">
