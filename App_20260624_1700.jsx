@@ -57,48 +57,20 @@ const statusStyle = {
   '대여불가': 'bg-rose-100 text-rose-800 border-rose-300',
 };
 
-const KOREA_TIME_OFFSET_MS = 9 * 60 * 60 * 1000;
-
-const formatDate = (date) => date.toISOString().slice(0, 10);
-
-const getKoreaNow = () => new Date(Date.now() + KOREA_TIME_OFFSET_MS);
-
-const today = () => formatDate(getKoreaNow());
-
-const addDays = (days) => addDaysFrom(today(), days);
+const today = () => new Date().toISOString().slice(0, 10);
+const addDays = (days) => {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+};
 
 // 특정 날짜 문자열 기준으로 일수를 더하는 헬퍼 함수
 const addDaysFrom = (dateStr, days) => {
   if (!dateStr) return '';
-  const d = new Date(`${dateStr}T00:00:00Z`);
-  if (Number.isNaN(d.getTime())) return '';
-  d.setUTCDate(d.getUTCDate() + Number(days || 0));
-  return formatDate(d);
-};
-
-// 한국시간 기준 오후 6시를 넘으면 다음날을 기본 대여 시작일로 사용
-const defaultRentalStartDate = () => {
-  const koreaNow = getKoreaNow();
-  const isAfterSixPM =
-    koreaNow.getUTCHours() > 18 ||
-    (koreaNow.getUTCHours() === 18 &&
-      (koreaNow.getUTCMinutes() > 0 ||
-        koreaNow.getUTCSeconds() > 0 ||
-        koreaNow.getUTCMilliseconds() > 0));
-
-  return isAfterSixPM ? addDaysFrom(today(), 1) : today();
-};
-
-const createDefaultRequestForm = (maxRentalDays = 14) => {
-  const startDate = defaultRentalStartDate();
-
-  return {
-    team: '',
-    borrower: '',
-    startDate,
-    dueDate: addDaysFrom(startDate, maxRentalDays),
-    purpose: '',
-  };
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '';
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
 };
 
 // --- 초기 자산 데이터 생성 ---
@@ -276,7 +248,7 @@ function App() {
   const [selectedAssetCategory, setSelectedAssetCategory] = useState('전체');
   const [availabilityFilter, setAvailabilityFilter] = useState(STATUS.AVAILABLE);
   const [selectedLaptopId, setSelectedLaptopId] = useState(null);
-  const [form, setForm] = useState(() => createDefaultRequestForm(data.settings?.maxRentalDays ?? 14));
+  const [form, setForm] = useState({ team: '', borrower: '', startDate: today(), dueDate: addDays(7), purpose: '' });
   const [adminTab, setAdminTab] = useState('dashboard'); // 'dashboard' | 'requests' | 'laptops' | 'categories' | 'people' | 'settings'
   const [editLaptop, setEditLaptop] = useState(null);
   const [newLaptop, setNewLaptop] = useState(null); // 신규 자산 생성을 위한 상태 값 추가
@@ -493,12 +465,6 @@ function App() {
       triggerToast('팀명, 대여자명, 대여 예정일을 모두 작성해 주세요.', 'error');
       return;
     }
-
-    if (form.startDate < today()) {
-      triggerToast('대여 시작일은 오늘 날짜 이전으로 선택할 수 없습니다.', 'error');
-      return;
-    }
-
     if (form.dueDate < form.startDate) {
       triggerToast('반납 예정일은 대여 시작일 이후여야 합니다.', 'error');
       return;
@@ -537,7 +503,7 @@ function App() {
     }));
 
     setSelectedLaptopId(null);
-    setForm(createDefaultRequestForm(data.settings?.maxRentalDays ?? 14));
+    setForm({ team: '', borrower: '', startDate: today(), dueDate: addDays(7), purpose: '' });
     triggerToast('대여 신청이 성공적으로 접수되었습니다. 관리자 승인을 대기합니다.', 'success');
   };
 
@@ -1076,15 +1042,15 @@ function App() {
                       label="대여 시작일"
                       type="date"
                       value={form.startDate}
-                      min={today()}
                       onChange={(v) => {
-                        const nextStartDate = v < today() ? today() : v;
-
-                        setForm({
-                          ...form,
-                          startDate: nextStartDate,
-                          dueDate: addDaysFrom(nextStartDate, data.settings.maxRentalDays),
-                        });
+                        const maxLimit = addDaysFrom(v, data.settings.maxRentalDays);
+                        let nextDueDate = form.dueDate;
+                        if (form.dueDate < v) {
+                          nextDueDate = v;
+                        } else if (form.dueDate > maxLimit) {
+                          nextDueDate = maxLimit;
+                        }
+                        setForm({ ...form, startDate: v, dueDate: nextDueDate });
                       }}
                     />
                     <Input
@@ -1093,21 +1059,7 @@ function App() {
                       value={form.dueDate}
                       min={form.startDate}
                       max={addDaysFrom(form.startDate, data.settings.maxRentalDays)}
-                      onChange={(v) => {
-                        const minDueDate = form.startDate;
-                        const maxDueDate = addDaysFrom(form.startDate, data.settings.maxRentalDays);
-                        let nextDueDate = v;
-
-                        if (nextDueDate < minDueDate) {
-                          nextDueDate = minDueDate;
-                        }
-
-                        if (nextDueDate > maxDueDate) {
-                          nextDueDate = maxDueDate;
-                        }
-
-                        setForm({ ...form, dueDate: nextDueDate });
-                      }}
+                      onChange={(v) => setForm({ ...form, dueDate: v })}
                     />
                   </div>
 
