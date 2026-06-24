@@ -1880,7 +1880,7 @@ function App() {
                             setTempSettings({ ...tempSettings, maxRentalDays: Number(v) })
                           }
                         />
-
+                      <div>
                         <div className="mb-3 text-xs font-semibold text-slate-600 tracking-wide">
                           업무 종료 이후 신청자 대여시작일 익일로 조정
                         </div>
@@ -1935,6 +1935,7 @@ function App() {
                             </div>
                           </div>
                         </div>
+                      </div>
                       </div>
                       <div className="rounded-xl bg-slate-100 p-4 border border-slate-200/50 text-xs text-slate-600">
                         💡 <b>운영 권장사항 안내:</b> 실제 사내 보안망 연동 개발 단계에서는 AD 연동 인증, 부서별 허용 기한 할당제, Slack/Alimtalk 실시간 전송, 지연 지연자 메일 자동 발송 모듈을 접목하여 완벽한 자동화를 꾀할 수 있습니다.
