@@ -76,7 +76,7 @@ const addDaysFrom = (dateStr, days) => {
   return d.toISOString().slice(0, 10);
 };
 
-// --- 초기 자산 데이터 생성 ---
+// --- 초기 노트북 데이터 생성 ---
 function seedLaptops() {
   return Array.from({ length: 15 }, (_, i) => {
     const n = String(i + 1).padStart(2, '0');
@@ -252,7 +252,7 @@ function App() {
   const [form, setForm] = useState({ team: '', borrower: '', startDate: today(), dueDate: addDays(7), purpose: '' });
   const [adminTab, setAdminTab] = useState('dashboard'); // 'dashboard' | 'requests' | 'laptops' | 'categories' | 'people' | 'settings'
   const [editLaptop, setEditLaptop] = useState(null);
-  const [newLaptop, setNewLaptop] = useState(null); // 신규 자산 생성을 위한 상태 값 추가
+  const [newLaptop, setNewLaptop] = useState(null); // 신규 노트북 생성을 위한 상태 값 추가
   const [newAssetCategory, setNewAssetCategory] = useState('');
   const [newTeam, setNewTeam] = useState('');
   const [newBorrower, setNewBorrower] = useState('');
@@ -445,7 +445,7 @@ function App() {
 
   const submitRequest = () => {
     if (!selectedLaptop || blockedLaptopIds.has(selectedLaptop.id)) {
-      triggerToast('이미 예약 중이거나 이용 불가한 기기입니다.', 'error');
+      triggerToast('이미 예약 중이거나 이용 불가한 노트북입니다.', 'error');
       return;
     }
     if (!form.team || !form.borrower || !form.startDate || !form.dueDate) {
@@ -696,16 +696,16 @@ function App() {
         laptops: [...prev.laptops, ...uploadedLaptops],
       }));
       setShowUploadPanel(false);
-      triggerToast(`총 ${addCount}대의 기기를 엑셀/CSV 데이터베이스로 일괄 추가 등록했습니다.`, 'success');
+      triggerToast(`총 ${addCount}대의 노트북을 엑셀/CSV 데이터베이스로 자동 일괄 추가 등록했습니다.`, 'success');
     } else {
       triggerToast('헤더(자산관리번호, 모델명, 시리얼번호 등) 규격 정보가 일치하지 않아 가져오지 못했습니다.', 'error');
     }
   };
 
-  // 자산 영구 삭제 제어 로직
+  // 노트북 자산 영구 삭제 제어 로직
   const deleteLaptop = (id, assetNo) => {
     triggerConfirm(
-      '자산 삭제',
+      '노트북 자산 삭제',
       `정말로 자산 [${assetNo}] 기기를 시스템 목록에서 영구적으로 삭제하시겠습니까? 신청 원장은 보존되나 기기 목록에서는 삭제됩니다.`,
       () => {
         setData((prev) => ({
@@ -724,7 +724,7 @@ function App() {
       laptops: prev.laptops.map((l) => (l.id === editLaptop.id ? editLaptop : l)),
     }));
     setEditLaptop(null);
-    triggerToast('자산 상세 정보가 성공적으로 반영되었습니다.', 'success');
+    triggerToast('노트북 상세 정보가 성공적으로 반영되었습니다.', 'success');
   };
 
   const resetDemo = () => {
@@ -751,7 +751,7 @@ function App() {
               <Laptop size={22} />
             </div>
             <div>
-              <h1 className="text-lg font-bold tracking-tight text-slate-900">매일경제아카데미 기기 대여 시스템</h1>
+              <h1 className="text-lg font-bold tracking-tight text-slate-900">매일경제아카데미 노트북 대여 시스템</h1>
               <p className="text-xs font-medium text-slate-500">https://notebook.recruit.kro.kr</p>
             </div>
           </div>
@@ -797,15 +797,15 @@ function App() {
           /* lg:items-start를 적용하여 내부 카드들의 높이가 세로로 길게 늘어지지 않게 만듭니다. */
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-3 lg:items-start">
             
-            {/* 좌측 자산 카드 셀렉터 (2컬럼 폭 차지) */}
+            {/* 좌측 노트북 카드 셀렉터 (2컬럼 폭 차지) */}
             <div className="lg:col-span-2 space-y-4">
               <Card>
                 <CardContent className="p-6">
                   <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                     <div>
-                      <h2 className="text-lg font-bold text-slate-900">대여 기기 선택</h2>
+                      <h2 className="text-lg font-bold text-slate-900">노트북 기기 선택</h2>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        [대여가능] 상태의 기기만 신청할 수 있습니다.
+                        [신청중/승인됨/보류/대여불가] 상태의 기종은 실시간 신청이 제한됩니다.
                       </p>
                     </div>
                     <div className="relative w-full sm:w-72">
@@ -878,8 +878,8 @@ function App() {
             <div className="lg:col-span-1 lg:sticky lg:top-24 h-fit">
               <Card className="mk-brand-border-soft shadow-md shadow-slate-100">
                 <div className="mk-brand-gradient-r px-6 py-4 text-white">
-                  <h2 className="text-sm font-bold tracking-wide uppercase">기기 대여 신청</h2>
-                  <p className="text-[11px] text-orange-100 mt-0.5">대여가능일은 최대 {data.settings.maxRentalDays ?? '0'}일 입니다.</p>
+                  <h2 className="text-sm font-bold tracking-wide uppercase">노트북 대여 원클릭 신청</h2>
+                  <p className="text-[11px] text-orange-100 mt-0.5">상단 기기를 선택하면 폼 작성이 열립니다.</p>
                 </div>
                 <CardContent className="space-y-4 p-6">
                   <div className={`rounded-xl px-4 py-3 border text-xs transition-colors duration-150 ${
@@ -895,7 +895,7 @@ function App() {
                     ) : (
                       <div className="flex items-center gap-1.5">
                         <Info size={14} className="text-slate-400" />
-                        <span>기기 선택 섹션에서 대여할 기기를 먼저 선택해 주세요.</span>
+                        <span>신청할 노트북 카드를 먼저 클릭해 주세요.</span>
                       </div>
                     )}
                   </div>
@@ -922,7 +922,7 @@ function App() {
 
                   {data.settings.borrowerInputMode === 'dropdown' ? (
                     <Select
-                      label="대여자명"
+                      label="신청 대여자명"
                       value={form.borrower}
                       onChange={(v) => setForm({ ...form, borrower: v })}
                     >
@@ -938,7 +938,7 @@ function App() {
                       label="신청 대여자 직접 입력"
                       value={form.borrower}
                       onChange={(v) => setForm({ ...form, borrower: v })}
-                      placeholder="성명을 입력하세요"
+                      placeholder="성함을 입력하세요"
                     />
                   )}
 
@@ -984,7 +984,7 @@ function App() {
                     disabled={!selectedLaptop}
                     className="w-full justify-center rounded-xl py-6"
                   >
-                    기기 대여 신청
+                    노트북 대여 신청
                   </Button>
                 </CardContent>
               </Card>
@@ -1026,7 +1026,7 @@ function App() {
                       className="w-full justify-start"
                     >
                       <RotateCcw size={16} />
-                      <span>로컬 캐시 초기화</span>
+                      <span>로컬 스토리지 초기화</span>
                     </Button>
                   </div>
                 </CardContent>
@@ -1171,7 +1171,7 @@ function App() {
                     </div>
                   )}
 
-                  {/* 자산 목록 관리 탭 */}
+                  {/* 노트북 목록 관리 탭 */}
                   {adminTab === 'laptops' && (
                     <div className="space-y-6">
                       <div className="border-b border-slate-100 pb-4 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
@@ -1197,7 +1197,7 @@ function App() {
                             variant="primary"
                             className="py-2.5 px-4 rounded-xl text-xs sm:text-sm shadow-md"
                           >
-                            <Plus size={16} /> 신규 자산 추가
+                            <Plus size={16} /> 신규 노트북 추가
                           </Button>
                         </div>
                       </div>
@@ -1244,7 +1244,7 @@ function App() {
                         </div>
                       )}
 
-                      {/* 신규 자산 추가 폼 */}
+                      {/* 신규 노트북 추가 폼 */}
                       {newLaptop && (
                         <div className="rounded-2xl border-2 border-emerald-400/80 bg-emerald-50/20 p-5 space-y-4 shadow-sm animate-fadeIn">
                           <div className="flex items-center justify-between border-b border-slate-200/60 pb-3">
@@ -1334,9 +1334,6 @@ function App() {
                               </div>
 
                               <div className="space-y-2">
-                                <div className="inline-flex w-fit rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
-                                  {l.category}
-                                </div>
                                 <div className="flex items-center justify-between">
                                   <span className="font-bold text-slate-900 text-sm">{l.assetNo}</span>
                                   <Badge>{l.status === STATUS.UNAVAILABLE ? STATUS.UNAVAILABLE : blockedLaptopIds.has(l.id) ? l.status : STATUS.AVAILABLE}</Badge>
@@ -1381,7 +1378,7 @@ function App() {
                             {editLaptopInsertIndex === index && editLaptop && (
                               <div className="col-span-full rounded-2xl border-2 border-blue-400/80 bg-blue-50/20 p-5 space-y-4 shadow-sm animate-fadeIn">
                                 <div className="flex items-center justify-between border-b border-slate-200/60 pb-3">
-                                  <span className="text-sm font-bold text-slate-900">자산 수정 패널: <b className="text-blue-600">{editLaptop.assetNo}</b></span>
+                                  <span className="text-sm font-bold text-slate-900">노트북 수정 패널: <b className="text-blue-600">{editLaptop.assetNo}</b></span>
                                   <Button onClick={() => setEditLaptop(null)} variant="outline" className="px-2 py-1 text-xs">닫기</Button>
                                 </div>
                                 <div className="grid gap-4 sm:grid-cols-2">
@@ -1453,7 +1450,7 @@ function App() {
                       <div className="space-y-4">
                         <div className="border-b border-slate-100 pb-3">
                           <h2 className="text-base font-bold text-slate-900">자산 카테고리 등록</h2>
-                          <p className="text-[11px] text-slate-500 mt-0.5">대여 자산 분류를 관리합니다.</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5">노트북 외 추가 대여 자산 분류를 추가 및 제어합니다.</p>
                         </div>
                         <div className="flex gap-2">
                           <input
