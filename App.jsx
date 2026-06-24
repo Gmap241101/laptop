@@ -58,6 +58,9 @@ const statusStyle = {
 };
 
 const KOREA_TIME_OFFSET_MS = 9 * 60 * 60 * 1000;
+const DEFAULT_MAX_RENTAL_DAYS = 14;
+const DEFAULT_ADJUST_START_DATE_AFTER_WORK_END = true;
+const DEFAULT_WORK_END_TIME = '18:00';
 
 const formatDate = (date) => date.toISOString().slice(0, 10);
 
@@ -76,21 +79,55 @@ const addDaysFrom = (dateStr, days) => {
   return formatDate(d);
 };
 
-// 한국시간 기준 오후 6시를 넘으면 다음날을 기본 대여 시작일로 사용
-const defaultRentalStartDate = () => {
-  const koreaNow = getKoreaNow();
-  const isAfterSixPM =
-    koreaNow.getUTCHours() > 18 ||
-    (koreaNow.getUTCHours() === 18 &&
-      (koreaNow.getUTCMinutes() > 0 ||
-        koreaNow.getUTCSeconds() > 0 ||
-        koreaNow.getUTCMilliseconds() > 0));
+const parseTimeToMinutes = (timeString) => {
+  const [hours, minutes] = String(timeString || DEFAULT_WORK_END_TIME)
+    .split(':')
+    .map(Number);
 
-  return isAfterSixPM ? addDaysFrom(today(), 1) : today();
+  if (
+    Number.isNaN(hours) ||
+    Number.isNaN(minutes) ||
+    hours < 0 ||
+    hours > 23 ||
+    minutes < 0 ||
+    minutes > 59
+  ) {
+    return 18 * 60;
+  }
+
+  return hours * 60 + minutes;
 };
 
-const createDefaultRequestForm = (maxRentalDays = 14) => {
-  const startDate = defaultRentalStartDate();
+// 한국시간 기준 설정된 업무 종료 시간을 넘으면 다음날을 기본 대여 시작일로 사용
+const isKoreaNowAfterTime = (timeString) => {
+  const koreaNow = getKoreaNow();
+  const nowMinutes = koreaNow.getUTCHours() * 60 + koreaNow.getUTCMinutes();
+  const workEndMinutes = parseTimeToMinutes(timeString);
+
+  return (
+    nowMinutes > workEndMinutes ||
+    (nowMinutes === workEndMinutes &&
+      (koreaNow.getUTCSeconds() > 0 ||
+        koreaNow.getUTCMilliseconds() > 0))
+  );
+};
+
+const defaultRentalStartDate = (settings = {}) => {
+  const shouldAdjustAfterWorkEnd =
+    settings.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END;
+
+  if (!shouldAdjustAfterWorkEnd) {
+    return today();
+  }
+
+  return isKoreaNowAfterTime(settings.workEndTime || DEFAULT_WORK_END_TIME)
+    ? addDaysFrom(today(), 1)
+    : today();
+};
+
+const createDefaultRequestForm = (settings = {}) => {
+  const maxRentalDays = settings.maxRentalDays ?? DEFAULT_MAX_RENTAL_DAYS;
+  const startDate = defaultRentalStartDate(settings);
 
   return {
     team: '',
@@ -131,7 +168,9 @@ const initialData = {
   settings: {
     teamInputMode: 'dropdown',
     borrowerInputMode: 'dropdown',
-    maxRentalDays: 14,
+    maxRentalDays: DEFAULT_MAX_RENTAL_DAYS,
+    adjustStartDateAfterWorkEnd: DEFAULT_ADJUST_START_DATE_AFTER_WORK_END,
+    workEndTime: DEFAULT_WORK_END_TIME,
     requireAdminApproval: true,
   },
 };
@@ -151,9 +190,15 @@ function mergePersistedData(rawData) {
     ? parsed.assetCategories
     : initialData.assetCategories;
 
+  const settings = {
+    ...initialData.settings,
+    ...(parsed.settings || {}),
+  };
+
   return {
     ...parsed,
     assetCategories,
+    settings,
     laptops: (parsed.laptops || []).map((asset) => ({
       ...asset,
       category: asset.category || assetCategories[0] || '노트북',
@@ -276,7 +321,7 @@ function App() {
   const [selectedAssetCategory, setSelectedAssetCategory] = useState('전체');
   const [availabilityFilter, setAvailabilityFilter] = useState(STATUS.AVAILABLE);
   const [selectedLaptopId, setSelectedLaptopId] = useState(null);
-  const [form, setForm] = useState(() => createDefaultRequestForm(data.settings?.maxRentalDays ?? 14));
+  const [form, setForm] = useState(() => createDefaultRequestForm(data.settings));
   const [adminTab, setAdminTab] = useState('dashboard'); // 'dashboard' | 'requests' | 'laptops' | 'categories' | 'people' | 'settings'
   const [editLaptop, setEditLaptop] = useState(null);
   const [newLaptop, setNewLaptop] = useState(null); // 신규 자산 생성을 위한 상태 값 추가
@@ -537,7 +582,7 @@ function App() {
     }));
 
     setSelectedLaptopId(null);
-    setForm(createDefaultRequestForm(data.settings?.maxRentalDays ?? 14));
+    setForm(createDefaultRequestForm(data.settings));
     triggerToast('대여 신청이 성공적으로 접수되었습니다. 관리자 승인을 대기합니다.', 'success');
   };
 
@@ -1835,6 +1880,58 @@ function App() {
                             setTempSettings({ ...tempSettings, maxRentalDays: Number(v) })
                           }
                         />
+
+                        <div className="rounded-xl border border-slate-200 bg-white p-3.5">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="text-xs font-semibold text-slate-600 tracking-wide">
+                                업무 종료 이후 신청자 대여시작일 익일로 조정
+                              </div>
+                              <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                                사용 시 설정한 업무 종료 시간 이후에는 신규 신청 폼의 기본 대여 시작일이 다음날로 표시됩니다.
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              aria-pressed={tempSettings.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END}
+                              onClick={() =>
+                                setTempSettings({
+                                  ...tempSettings,
+                                  adjustStartDateAfterWorkEnd: !(tempSettings.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END),
+                                })
+                              }
+                              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition ${
+                                (tempSettings.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END)
+                                  ? 'mk-brand-gradient-r border-transparent'
+                                  : 'border-slate-300 bg-slate-200'
+                              }`}
+                            >
+                              <span
+                                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition ${
+                                  (tempSettings.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END)
+                                    ? 'translate-x-5'
+                                    : 'translate-x-0.5'
+                                }`}
+                              />
+                            </button>
+                          </div>
+
+                          <div className="mt-3">
+                            <Input
+                              label="업무 종료 시간"
+                              type="time"
+                              value={tempSettings.workEndTime || DEFAULT_WORK_END_TIME}
+                              disabled={!(tempSettings.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END)}
+                              onChange={(v) =>
+                                setTempSettings({
+                                  ...tempSettings,
+                                  workEndTime: v || DEFAULT_WORK_END_TIME,
+                                })
+                              }
+                            />
+                          </div>
+                        </div>
                       </div>
                       <div className="rounded-xl bg-slate-100 p-4 border border-slate-200/50 text-xs text-slate-600">
                         💡 <b>운영 권장사항 안내:</b> 실제 사내 보안망 연동 개발 단계에서는 AD 연동 인증, 부서별 허용 기한 할당제, Slack/Alimtalk 실시간 전송, 지연 지연자 메일 자동 발송 모듈을 접목하여 완벽한 자동화를 꾀할 수 있습니다.
