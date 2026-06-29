@@ -1,0 +1,54 @@
+name: Update Korean Public Holidays
+
+on:
+  workflow_dispatch:
+    inputs:
+      years:
+        description: "생성할 연도 목록 예: 2026 2027"
+        required: false
+        default: ""
+  schedule:
+    - cron: "0 18 1 11 *"
+
+permissions:
+  contents: write
+
+jobs:
+  update-holidays:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate holiday JSON
+        env:
+          DATA_GO_KR_SERVICE_KEY: ${{ secrets.DATA_GO_KR_SERVICE_KEY }}
+        run: |
+          if [ -n "${{ github.event.inputs.years }}" ]; then
+            npm run generate:holidays -- ${{ github.event.inputs.years }}
+          else
+            CURRENT_YEAR=$(date +%Y)
+            NEXT_YEAR=$((CURRENT_YEAR + 1))
+            npm run generate:holidays -- $CURRENT_YEAR $NEXT_YEAR
+          fi
+
+      - name: Commit holiday JSON
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add public/holidays/*.json
+          if git diff --cached --quiet; then
+            echo "No holiday changes."
+          else
+            git commit -m "Update Korean public holiday JSON"
+            git push
+          fi
