@@ -1941,7 +1941,6 @@ function App() {
                     </div>
                   )}
 
-// 수정 후 코드
                   {/* 자산 카테고리 등록 탭 */}
                   {adminTab === 'categories' && (
                     <div className="space-y-6">
