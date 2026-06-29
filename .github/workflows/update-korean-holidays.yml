@@ -8,7 +8,7 @@ on:
         required: false
         default: ""
   schedule:
-    - cron: "0 18 1 11 *"
+    - cron: "0 18 1 * *"
 
 permissions:
   contents: write
@@ -41,7 +41,7 @@ jobs:
           if [ -n "${{ github.event.inputs.years }}" ]; then
             npm run generate:holidays -- ${{ github.event.inputs.years }}
           else
-            CURRENT_YEAR=$(date +%Y)
+            CURRENT_YEAR=$(TZ=Asia/Seoul date +%Y)
             NEXT_YEAR=$((CURRENT_YEAR + 1))
             npm run generate:holidays -- $CURRENT_YEAR $NEXT_YEAR
           fi
