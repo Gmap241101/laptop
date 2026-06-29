@@ -741,7 +741,6 @@ function App() {
     triggerToast('자산 카테고리 변경사항이 원장에 성공적으로 저장 및 반영되었습니다.', 'success');
   };
 
-// 추가할 코드
   const addTempTeam = () => {
     const teamName = newTeam.trim();
 
@@ -846,8 +845,14 @@ function App() {
       return;
     }
 
-    if (tempBorrowers.some((borrower) => String(borrower.name || '').trim() === borrowerName)) {
-      triggerToast('이미 등록된 사용자명입니다.', 'error');
+    if (
+      tempBorrowers.some(
+        (borrower) =>
+          borrower.team === newBorrowerTeam &&
+          String(borrower.name || '').trim() === borrowerName
+      )
+    ) {
+      triggerToast('해당 부서에 이미 등록된 사용자명입니다.', 'error');
       return;
     }
 
@@ -871,10 +876,13 @@ function App() {
 
     if (
       tempBorrowers.some(
-        (item, itemIndex) => itemIndex !== originalIndex && String(item.name || '').trim() === nextBorrowerName
+        (item, itemIndex) =>
+          itemIndex !== originalIndex &&
+          item.team === borrower.team &&
+          String(item.name || '').trim() === nextBorrowerName
       )
     ) {
-      triggerToast('이미 등록된 사용자명입니다.', 'error');
+      triggerToast('해당 부서에 이미 등록된 사용자명입니다.', 'error');
       return;
     }
 
@@ -948,11 +956,13 @@ function App() {
 
     const duplicatedBorrower = nextBorrowers.find(
       (borrower, index) =>
-        nextBorrowers.findIndex((item) => item.name === borrower.name) !== index
+        nextBorrowers.findIndex(
+          (item) => item.team === borrower.team && item.name === borrower.name
+        ) !== index
     );
 
     if (duplicatedBorrower) {
-      triggerToast(`[${duplicatedBorrower.name}] 사용자명이 중복되어 저장할 수 없습니다.`, 'error');
+      triggerToast(`[${duplicatedBorrower.team}] ${duplicatedBorrower.name} 사용자명이 중복되어 저장할 수 없습니다.`, 'error');
       return;
     }
 
@@ -1384,23 +1394,7 @@ function App() {
     triggerToast('자산 상세 정보가 성공적으로 반영되었습니다.', 'success');
   };
 
-  if (!firebaseReady) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6 font-sans text-slate-900">
-        <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl mk-brand-gradient-tr text-white mk-brand-shadow-md">
-            <Laptop size={24} />
-          </div>
-          <h1 className="text-base font-bold text-slate-900">
-            데이터를 불러오는 중입니다.
-          </h1>
-          <p className="mt-2 text-xs leading-relaxed text-slate-500">
-            잠시만 기다려 주십시오.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  const showFirebaseLoadingOverlay = !firebaseReady;
 
   if (firebaseLoadErrorMessage) {
     return (
@@ -1438,7 +1432,10 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased">
+    <>
+      <div className={`min-h-screen bg-slate-50 text-slate-900 font-sans antialiased transition duration-200 ${
+        showFirebaseLoadingOverlay ? 'pointer-events-none select-none blur-sm' : ''
+      }`}>
       {/* --- 상단 글로벌 네비게이션 --- */}
       <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
@@ -1804,7 +1801,7 @@ function App() {
                       <div className="border-b border-slate-100 pb-4">
                         <h2 className="text-lg font-bold text-slate-900">관리자 대시보드 및 지침</h2>
                         <p className="text-xs text-slate-500 mt-1">
-                          본 서비스는 브라우저의 가상 DB(Local Storage)를 기본 제공하여 브라우저 리로드 이후에도 내역이 휘발되지 않도록 구축되어 있습니다.
+                          본 서비스는 Firebase Firestore 원격 DB를 기준으로 데이터를 동기화합니다.
                         </p>
                       </div>
                       <div className="grid gap-4 sm:grid-cols-2">
@@ -2875,7 +2872,24 @@ function App() {
           </motion.div>
         </div>
       )}
-    </div>
+      </div>
+
+      {showFirebaseLoadingOverlay && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/10 px-6 font-sans text-slate-900 backdrop-blur-[2px]">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white/95 p-6 text-center shadow-xl">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl mk-brand-gradient-tr text-white mk-brand-shadow-md">
+              <Laptop size={24} />
+            </div>
+            <h1 className="text-base font-bold text-slate-900">
+              데이터를 불러오는 중입니다.
+            </h1>
+            <p className="mt-2 text-xs leading-relaxed text-slate-500">
+              Firebase 원격 DB 기준으로 데이터를 불러오고 있습니다. 잠시만 기다려 주십시오.
+            </p>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
