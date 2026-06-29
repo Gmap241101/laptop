@@ -376,6 +376,9 @@ function App() {
   const [query, setQuery] = useState('');
   const [selectedAssetCategory, setSelectedAssetCategory] = useState('전체');
   const [availabilityFilter, setAvailabilityFilter] = useState(STATUS.AVAILABLE);
+  const [adminLaptopQuery, setAdminLaptopQuery] = useState('');
+  const [adminSelectedAssetCategory, setAdminSelectedAssetCategory] = useState('전체');
+  const [adminAvailabilityFilter, setAdminAvailabilityFilter] = useState('전체');
   const [selectedLaptopId, setSelectedLaptopId] = useState(null);
   const [form, setForm] = useState(() => createDefaultRequestForm(data.settings));
   const [adminTab, setAdminTab] = useState('dashboard'); // 'dashboard' | 'requests' | 'laptops' | 'categories' | 'people' | 'settings'
@@ -573,6 +576,24 @@ function App() {
     return keywordMatched && categoryMatched && availabilityMatched;
   });
 
+  const adminFilteredLaptops = data.laptops.filter((l) => {
+    const keywordMatched = `${l.category || ''} ${l.assetNo} ${l.serialNo} ${l.model} ${l.note}`
+      .toLowerCase()
+      .includes(adminLaptopQuery.toLowerCase());
+
+    const categoryMatched =
+      adminSelectedAssetCategory === '전체' || l.category === adminSelectedAssetCategory;
+
+    const availabilityMatched =
+      adminAvailabilityFilter === '전체'
+        ? true
+        : adminAvailabilityFilter === STATUS.AVAILABLE
+          ? !blockedLaptopIds.has(l.id) && l.status !== STATUS.UNAVAILABLE
+          : blockedLaptopIds.has(l.id) || l.status === STATUS.UNAVAILABLE;
+
+    return keywordMatched && categoryMatched && availabilityMatched;
+  });
+
   const selectedLaptop = data.laptops.find((l) => l.id === selectedLaptopId);
   const filteredBorrowers = data.borrowers.filter((b) => b.team === form.team);
 
@@ -581,12 +602,12 @@ function App() {
     (data.settings?.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END) &&
     isKoreaNowAfterTime(currentWorkEndTime);
 
-  const editLaptopIndex = editLaptop ? data.laptops.findIndex((l) => l.id === editLaptop.id) : -1;
+  const editLaptopIndex = editLaptop ? adminFilteredLaptops.findIndex((l) => l.id === editLaptop.id) : -1;
   const editLaptopInsertIndex =
     editLaptopIndex >= 0
       ? Math.min(
           Math.ceil((editLaptopIndex + 1) / assetGridColumns) * assetGridColumns - 1,
-          data.laptops.length - 1
+          adminFilteredLaptops.length - 1
         )
       : -1;
 
@@ -1473,6 +1494,50 @@ function App() {
                           </Button>
                         </div>
                       </div>
+                      
+                      <div className="grid w-full gap-2 sm:grid-cols-[120px_120px_minmax(0,1fr)] lg:w-auto lg:grid-cols-[118px_118px_15rem]">
+                        <select
+                          aria-label="관리자 자산 카테고리 필터"
+                          value={adminSelectedAssetCategory}
+                          onChange={(e) => {
+                            setAdminSelectedAssetCategory(e.target.value);
+                            setEditLaptop(null);
+                          }}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none transition mk-form-focus"
+                        >
+                          <option value="전체">전체</option>
+                          {(data.assetCategories || []).map((category) => (
+                            <option key={category} value={category}>{category}</option>
+                          ))}
+                        </select>
+
+                        <select
+                          aria-label="관리자 대여 가능여부 필터"
+                          value={adminAvailabilityFilter}
+                          onChange={(e) => {
+                            setAdminAvailabilityFilter(e.target.value);
+                            setEditLaptop(null);
+                          }}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none transition mk-form-focus"
+                        >
+                          <option value="전체">전체</option>
+                          <option value={STATUS.AVAILABLE}>대여가능</option>
+                          <option value={STATUS.UNAVAILABLE}>대여불가</option>
+                        </select>
+
+                        <div className="relative w-full">
+                          <Search className="absolute left-3 top-3 text-slate-400" size={16} />
+                          <input
+                            value={adminLaptopQuery}
+                            onChange={(e) => {
+                              setAdminLaptopQuery(e.target.value);
+                              setEditLaptop(null);
+                            }}
+                            placeholder="자산관리번호, 기종, 키워드 검색"
+                            className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-xs outline-none transition mk-form-focus"
+                          />
+                        </div>
+                      </div>
 
                       {/* 자동 일괄 업로드 가이드 및 파일 셀렉터 드롭존 UI */}
                       {showUploadPanel && (
@@ -1589,7 +1654,7 @@ function App() {
                       )}
 
                       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                        {data.laptops.map((l, index) => (
+                        {adminFilteredLaptops.map((l, index) => (
                           <React.Fragment key={l.id}>
                             <div
                               className={`rounded-xl p-4 flex flex-col justify-between hover:shadow-sm transition ${
@@ -1615,11 +1680,11 @@ function App() {
                                   <Badge>{l.status === STATUS.UNAVAILABLE ? STATUS.UNAVAILABLE : blockedLaptopIds.has(l.id) ? l.status : STATUS.AVAILABLE}</Badge>
                                 </div>
                                 <div className="text-xs font-semibold text-slate-700">{l.model}</div>
-                                <div className="space-y-0.5 text-[10px] text-slate-500">
+                                <div className="space-y-0.5 text-[11px] text-slate-500">
                                   <div>S/N: {l.serialNo}</div>
-                                  <div>출고: {l.manufactureDate}</div>
+                                  <div>출고일: {l.manufactureDate}</div>
                                 </div>
-                                <div className="mt-2 rounded-lg bg-slate-50 p-2 text-[11px] text-slate-600 border border-slate-100">
+                                <div className="mt-1 rounded-lg bg-slate-100 p-2 text-[11px] text-slate-600 border border-slate-200/50">
                                   💡 {l.note || '특이사항 없음'}
                                 </div>
                               </div>
