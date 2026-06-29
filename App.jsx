@@ -13,7 +13,6 @@ import {
   CheckCircle2,
   Clock,
   XCircle,
-  RotateCcw,
   Save,
   Trash2,
   Edit3,
@@ -222,16 +221,6 @@ function mergePersistedData(rawData) {
   };
 }
 
-function loadData() {
-  try {
-    const raw = localStorage.getItem('laptopRentalDashboard.v2');
-    if (!raw) return initialData;
-    return mergePersistedData(JSON.parse(raw));
-  } catch {
-    return initialData;
-  }
-}
-
 // --- 공통 고품질 UI 컴포넌트 내장 정의 (카드, 버튼 등) ---
 function Card({ children, className = '' }) {
   return (
@@ -366,9 +355,11 @@ function Select({ label, value, onChange, children }) {
 }
 
 function App() {
-  const [data, setData] = useState(loadData);
+  const [data, setData] = useState(initialData);
   const [firebaseReady, setFirebaseReady] = useState(false);
+  const [firebaseLoadErrorMessage, setFirebaseLoadErrorMessage] = useState('');
   const applyingRemoteRef = useRef(false);
+  const initializedRemoteFormRef = useRef(false);
   const lastSyncedDataRef = useRef('');
   const saveTimerRef = useRef(null);
   const allowFirebaseWriteRef = useRef(false);
@@ -449,10 +440,13 @@ function App() {
       async (snapshot) => {
         try {
           if (!snapshot.exists()) {
+            const message = 'Firebase 원격 데이터 문서가 없습니다. 기본 데이터로 자동 초기화하지 않도록 저장을 차단했습니다. Firestore의 laptopRentalDashboard/main 문서를 확인해 주세요.';
+
             allowFirebaseWriteRef.current = false;
+            setFirebaseLoadErrorMessage(message);
             setFirebaseReady(true);
             setToast({
-              message: 'Firebase 원격 데이터 문서가 없습니다. 새 브라우저의 기본 데이터로 자동 초기화하지 않도록 저장을 차단했습니다. Firestore의 laptopRentalDashboard/main 문서를 확인해 주세요.',
+              message,
               type: 'error'
             });
             return;
@@ -463,6 +457,7 @@ function App() {
           const remoteJson = JSON.stringify(remoteData);
 
           allowFirebaseWriteRef.current = true;
+          setFirebaseLoadErrorMessage('');
 
           if (remoteJson === lastSyncedDataRef.current) {
             setFirebaseReady(true);
@@ -471,25 +466,37 @@ function App() {
 
           lastSyncedDataRef.current = remoteJson;
           applyingRemoteRef.current = true;
-          localStorage.setItem('laptopRentalDashboard.v2', remoteJson);
           setData(remoteData);
+
+          if (!initializedRemoteFormRef.current) {
+            setForm(createDefaultRequestForm(remoteData.settings));
+            setTempSettings(remoteData.settings);
+            initializedRemoteFormRef.current = true;
+          }
+
           setFirebaseReady(true);
         } catch (error) {
+          const message = 'Firebase 데이터 동기화 처리 중 오류가 발생했습니다. 원격 DB 보호를 위해 저장을 차단했습니다. 콘솔과 Firestore 규칙을 확인해 주세요.';
+
           console.error('Firebase snapshot handling error:', error);
           allowFirebaseWriteRef.current = false;
+          setFirebaseLoadErrorMessage(message);
           setFirebaseReady(true);
           setToast({
-            message: 'Firebase 데이터 동기화 처리 중 오류가 발생했습니다. 원격 DB 보호를 위해 저장을 차단했습니다. 콘솔과 Firestore 규칙을 확인해 주세요.',
+            message,
             type: 'error'
           });
         }
       },
       (error) => {
+        const message = 'Firebase 연결 또는 권한 오류가 발생했습니다. 원격 DB 보호를 위해 저장을 차단했습니다. Firestore Database 생성 여부와 보안 규칙을 확인해 주세요.';
+
         console.error('Firebase sync error:', error);
         allowFirebaseWriteRef.current = false;
+        setFirebaseLoadErrorMessage(message);
         setFirebaseReady(true);
         setToast({
-          message: 'Firebase 연결 또는 권한 오류가 발생했습니다. 원격 DB 보호를 위해 저장을 차단했습니다. Firestore Database 생성 여부와 보안 규칙을 확인해 주세요.',
+          message,
           type: 'error'
         });
       }
@@ -500,7 +507,6 @@ function App() {
 
   useEffect(() => {
     const dataJson = JSON.stringify(data);
-    localStorage.setItem('laptopRentalDashboard.v2', dataJson);
 
     if (!firebaseReady || !allowFirebaseWriteRef.current) return;
 
@@ -538,6 +544,13 @@ function App() {
       setNewBorrowerTeam(data.teams[0]);
     }
   }, [data.teams]);
+
+  // 설정 탭으로 변경되거나 시스템 원본 설정 값이 변경될 때 임시 설정 버퍼를 동기화
+  useEffect(() => {
+    if (adminTab === 'settings') {
+      setTempSettings(data.settings);
+    }
+  }, [adminTab, data.settings]);
 
   // 자산 카테고리 탭으로 변경되거나 시스템 원본 카테고리 값이 변경될 때 임시 카테고리 버퍼를 동기화
   useEffect(() => {
@@ -1371,19 +1384,58 @@ function App() {
     triggerToast('자산 상세 정보가 성공적으로 반영되었습니다.', 'success');
   };
 
-  const resetDemo = () => {
-    triggerConfirm(
-      '로컬 캐시 초기화',
-      '현재 브라우저의 로컬 캐시만 삭제합니다. Firebase 원격 DB는 초기화하지 않습니다. 새로고침 후 원격 데이터를 다시 불러옵니다. 계속하시겠습니까?',
-      () => {
-        localStorage.removeItem('laptopRentalDashboard.v2');
-        triggerToast('로컬 캐시가 초기화되었습니다. 원격 데이터를 다시 불러오기 위해 새로고침합니다.', 'success');
-        setTimeout(() => {
-          window.location.reload();
-        }, 500);
-      }
+  if (!firebaseReady) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6 font-sans text-slate-900">
+        <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl mk-brand-gradient-tr text-white mk-brand-shadow-md">
+            <Laptop size={24} />
+          </div>
+          <h1 className="text-base font-bold text-slate-900">
+            Firebase 원격 데이터를 불러오는 중입니다.
+          </h1>
+          <p className="mt-2 text-xs leading-relaxed text-slate-500">
+            브라우저 로컬 캐시를 사용하지 않고, Firestore 원격 DB 기준으로 시스템 데이터를 불러오고 있습니다.
+          </p>
+        </div>
+      </div>
     );
-  };
+  }
+
+  if (firebaseLoadErrorMessage) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6 font-sans text-slate-900">
+        <div className="w-full max-w-lg rounded-2xl border border-rose-200 bg-white p-6 shadow-sm">
+          <div className="mb-4 flex items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
+              <AlertCircle size={22} />
+            </div>
+            <div>
+              <h1 className="text-base font-bold text-slate-900">
+                Firebase 데이터를 불러오지 못했습니다.
+              </h1>
+              <p className="mt-0.5 text-xs text-slate-500">
+                원격 DB 보호를 위해 화면 데이터 저장을 차단했습니다.
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-rose-100 bg-rose-50 p-4 text-xs leading-relaxed text-rose-700">
+            {firebaseLoadErrorMessage}
+          </div>
+
+          <div className="mt-5 flex justify-end">
+            <Button
+              variant="outline"
+              onClick={() => window.location.reload()}
+            >
+              다시 불러오기
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased">
@@ -1737,16 +1789,6 @@ function App() {
                       <span>{label}</span>
                     </Button>
                   ))}
-                  <div className="pt-4 mt-2 border-t border-slate-100">
-                    <Button
-                      variant="dangerOutline"
-                      onClick={resetDemo}
-                      className="w-full justify-start"
-                    >
-                      <RotateCcw size={16} />
-                      <span>로컬 캐시 초기화</span>
-                    </Button>
-                  </div>
                 </CardContent>
               </Card>
             </div>
