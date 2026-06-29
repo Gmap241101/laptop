@@ -59,18 +59,7 @@ const statusStyle = {
 const KOREA_TIME_OFFSET_MS = 9 * 60 * 60 * 1000;
 const DEFAULT_MAX_RENTAL_DAYS = 14;
 const DEFAULT_ADJUST_START_DATE_AFTER_WORK_END = true;
-const DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY = true;
-const DEFAULT_EXCLUDE_WEEKENDS_FOR_START_DATE = true;
-const DEFAULT_EXCLUDE_HOLIDAYS_FOR_START_DATE = true;
 const DEFAULT_WORK_END_TIME = '18:00';
-const DEFAULT_HOLIDAY_TYPE = 'company';
-
-const HOLIDAY_TYPE_LABEL = {
-  public: '법정공휴일',
-  temporary: '임시공휴일',
-  company: '회사휴일',
-  manual: '수동등록',
-};
 
 const formatDate = (date) => date.toISOString().slice(0, 10);
 
@@ -123,7 +112,7 @@ const parseTimeToMinutes = (timeString) => {
   return hours * 60 + minutes;
 };
 
-// 한국시간 기준 설정된 업무 종료 시간을 넘으면 다음날을 기본 후보일로 사용
+// 한국시간 기준 설정된 업무 종료 시간을 넘으면 다음날을 기본 대여 시작일로 사용
 const isKoreaNowAfterTime = (timeString) => {
   const koreaNow = getKoreaNow();
   const nowMinutes = koreaNow.getUTCHours() * 60 + koreaNow.getUTCMinutes();
@@ -137,153 +126,17 @@ const isKoreaNowAfterTime = (timeString) => {
   );
 };
 
-const getBusinessDayAdjustmentEnabled = (settings = {}) =>
-  settings.adjustStartDateToNextBusinessDay ??
-  settings.adjustStartDateAfterWorkEnd ??
-  DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY;
-
-const getHolidayList = (settings = {}) =>
-  Array.isArray(settings.holidays) ? settings.holidays : [];
-
-const getEnabledHoliday = (dateStr, settings = {}) =>
-  getHolidayList(settings).find(
-    (holiday) => holiday?.enabled !== false && holiday.date === dateStr
-  );
-
-const isWeekendDate = (dateStr) => {
-  if (!dateStr) return false;
-
-  const d = new Date(`${dateStr}T00:00:00Z`);
-
-  if (Number.isNaN(d.getTime())) {
-    return false;
-  }
-
-  const day = d.getUTCDay();
-  return day === 0 || day === 6;
-};
-
-const isHolidayDate = (dateStr, settings = {}) => {
-  const shouldExcludeHolidays =
-    settings.excludeHolidaysForStartDate ?? DEFAULT_EXCLUDE_HOLIDAYS_FOR_START_DATE;
-
-  if (!shouldExcludeHolidays) {
-    return false;
-  }
-
-  return Boolean(getEnabledHoliday(dateStr, settings));
-};
-
-const getNonBusinessDayReason = (dateStr, settings = {}) => {
-  const shouldExcludeWeekends =
-    settings.excludeWeekendsForStartDate ?? DEFAULT_EXCLUDE_WEEKENDS_FOR_START_DATE;
-
-  if (shouldExcludeWeekends && isWeekendDate(dateStr)) {
-    return '주말';
-  }
-
-  const holiday = getEnabledHoliday(dateStr, settings);
-
-  if (
-    (settings.excludeHolidaysForStartDate ?? DEFAULT_EXCLUDE_HOLIDAYS_FOR_START_DATE) &&
-    holiday
-  ) {
-    return holiday.name || HOLIDAY_TYPE_LABEL[holiday.type] || '등록 휴일';
-  }
-
-  return '';
-};
-
-const isBusinessDay = (dateStr, settings = {}) => {
-  if (!dateStr) return false;
-
-  const shouldExcludeWeekends =
-    settings.excludeWeekendsForStartDate ?? DEFAULT_EXCLUDE_WEEKENDS_FOR_START_DATE;
-
-  if (shouldExcludeWeekends && isWeekendDate(dateStr)) {
-    return false;
-  }
-
-  if (isHolidayDate(dateStr, settings)) {
-    return false;
-  }
-
-  return true;
-};
-
-const getNextBusinessDay = (dateStr, settings = {}) => {
-  let candidateDate = dateStr || today();
-
-  for (let i = 0; i < 370; i += 1) {
-    if (isBusinessDay(candidateDate, settings)) {
-      return candidateDate;
-    }
-
-    candidateDate = addDaysFrom(candidateDate, 1);
-  }
-
-  return candidateDate;
-};
-
-const getAdjustedRentalStartDate = (dateStr, settings = {}) => {
-  const minDate = today();
-  const candidateDate = !dateStr || dateStr < minDate ? minDate : dateStr;
-
-  if (!getBusinessDayAdjustmentEnabled(settings)) {
-    return candidateDate;
-  }
-
-  return getNextBusinessDay(candidateDate, settings);
-};
-
 const defaultRentalStartDate = (settings = {}) => {
-  const shouldAdjustToNextBusinessDay = getBusinessDayAdjustmentEnabled(settings);
-  const shouldMoveAfterWorkEnd =
-    shouldAdjustToNextBusinessDay &&
-    isKoreaNowAfterTime(settings.workEndTime || DEFAULT_WORK_END_TIME);
+  const shouldAdjustAfterWorkEnd =
+    settings.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END;
 
-  const candidateDate = shouldMoveAfterWorkEnd
+  if (!shouldAdjustAfterWorkEnd) {
+    return today();
+  }
+
+  return isKoreaNowAfterTime(settings.workEndTime || DEFAULT_WORK_END_TIME)
     ? addDaysFrom(today(), 1)
     : today();
-
-  if (!shouldAdjustToNextBusinessDay) {
-    return candidateDate;
-  }
-
-  return getNextBusinessDay(candidateDate, settings);
-};
-
-const getRentalStartAdjustmentInfo = (settings = {}) => {
-  if (!getBusinessDayAdjustmentEnabled(settings)) {
-    return { adjusted: false, adjustedDate: today(), reasons: [] };
-  }
-
-  const isAfterWorkEnd = isKoreaNowAfterTime(settings.workEndTime || DEFAULT_WORK_END_TIME);
-  const candidateDate = isAfterWorkEnd ? addDaysFrom(today(), 1) : today();
-  const adjustedDate = getNextBusinessDay(candidateDate, settings);
-
-  const reasons = [];
-
-  if (isAfterWorkEnd) {
-    reasons.push(`업무 종료 시간(${settings.workEndTime || DEFAULT_WORK_END_TIME}) 이후`);
-  }
-
-  let checkingDate = candidateDate;
-  for (let i = 0; i < 370 && checkingDate < adjustedDate; i += 1) {
-    const reason = getNonBusinessDayReason(checkingDate, settings);
-
-    if (reason && !reasons.includes(reason)) {
-      reasons.push(reason);
-    }
-
-    checkingDate = addDaysFrom(checkingDate, 1);
-  }
-
-  return {
-    adjusted: adjustedDate !== today() || reasons.length > 0,
-    adjustedDate,
-    reasons,
-  };
 };
 
 const createDefaultRequestForm = (settings = {}) => {
@@ -331,11 +184,7 @@ const initialData = {
     borrowerInputMode: 'dropdown',
     maxRentalDays: DEFAULT_MAX_RENTAL_DAYS,
     adjustStartDateAfterWorkEnd: DEFAULT_ADJUST_START_DATE_AFTER_WORK_END,
-    adjustStartDateToNextBusinessDay: DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY,
-    excludeWeekendsForStartDate: DEFAULT_EXCLUDE_WEEKENDS_FOR_START_DATE,
-    excludeHolidaysForStartDate: DEFAULT_EXCLUDE_HOLIDAYS_FOR_START_DATE,
     workEndTime: DEFAULT_WORK_END_TIME,
-    holidays: [],
     requireAdminApproval: true,
   },
 };
@@ -355,34 +204,10 @@ function mergePersistedData(rawData) {
     ? parsed.assetCategories
     : initialData.assetCategories;
 
-  const rawSettings = parsed.settings || {};
   const settings = {
     ...initialData.settings,
-    ...rawSettings,
+    ...(parsed.settings || {}),
   };
-
-  settings.adjustStartDateToNextBusinessDay =
-    rawSettings.adjustStartDateToNextBusinessDay ??
-    rawSettings.adjustStartDateAfterWorkEnd ??
-    initialData.settings.adjustStartDateToNextBusinessDay;
-
-  settings.adjustStartDateAfterWorkEnd = settings.adjustStartDateToNextBusinessDay;
-  settings.excludeWeekendsForStartDate =
-    rawSettings.excludeWeekendsForStartDate ??
-    initialData.settings.excludeWeekendsForStartDate;
-  settings.excludeHolidaysForStartDate =
-    rawSettings.excludeHolidaysForStartDate ??
-    initialData.settings.excludeHolidaysForStartDate;
-  settings.holidays = Array.isArray(settings.holidays)
-    ? settings.holidays
-        .filter((holiday) => holiday && holiday.date)
-        .map((holiday) => ({
-          date: holiday.date,
-          name: holiday.name || '',
-          type: holiday.type || DEFAULT_HOLIDAY_TYPE,
-          enabled: holiday.enabled !== false,
-        }))
-    : [];
 
   return {
     ...parsed,
@@ -574,9 +399,6 @@ function App() {
 
   // 설정 임시 저장을 위한 임시 상태 정의
   const [tempSettings, setTempSettings] = useState(data.settings);
-  const [newHolidayDate, setNewHolidayDate] = useState(today());
-  const [newHolidayName, setNewHolidayName] = useState('');
-  const [newHolidayType, setNewHolidayType] = useState(DEFAULT_HOLIDAY_TYPE);
 
   // Toast 메시지 상태
   const [toast, setToast] = useState(null);
@@ -727,9 +549,6 @@ function App() {
   useEffect(() => {
     if (adminTab === 'settings') {
       setTempSettings(data.settings);
-      setNewHolidayDate(today());
-      setNewHolidayName('');
-      setNewHolidayType(DEFAULT_HOLIDAY_TYPE);
     }
   }, [adminTab, data.settings]);
 
@@ -769,49 +588,6 @@ function App() {
 
   const triggerConfirm = (title, message, onConfirm) => {
     setConfirmModal({ title, message, onConfirm });
-  };
-
-  const addTempHoliday = () => {
-    const holidayDate = newHolidayDate;
-    const holidayName = newHolidayName.trim();
-
-    if (!holidayDate) {
-      triggerToast('휴일 날짜를 선택해 주세요.', 'error');
-      return;
-    }
-
-    if ((tempSettings.holidays || []).some((holiday) => holiday.date === holidayDate)) {
-      triggerToast('이미 등록된 휴일 날짜입니다.', 'error');
-      return;
-    }
-
-    const nextHoliday = {
-      date: holidayDate,
-      name: holidayName || HOLIDAY_TYPE_LABEL[newHolidayType] || '휴일',
-      type: newHolidayType || DEFAULT_HOLIDAY_TYPE,
-      enabled: true,
-    };
-
-    setTempSettings((prev) => ({
-      ...prev,
-      holidays: [...(prev.holidays || []), nextHoliday].sort((a, b) =>
-        String(a.date).localeCompare(String(b.date))
-      ),
-    }));
-
-    setNewHolidayName('');
-    triggerToast(`[${formatDateWithKoreanWeekday(holidayDate)}] 휴일이 임시 추가되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`, 'success');
-  };
-
-  const deleteTempHoliday = (targetIndex) => {
-    const targetHoliday = (tempSettings.holidays || [])[targetIndex];
-
-    setTempSettings((prev) => ({
-      ...prev,
-      holidays: (prev.holidays || []).filter((_, index) => index !== targetIndex),
-    }));
-
-    triggerToast(`[${targetHoliday?.name || '휴일'}] 휴일이 임시 삭제되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`, 'success');
   };
 
   const getOriginalAssetCategoryName = (category) => {
@@ -1269,12 +1045,10 @@ function App() {
     .map((borrower, originalIndex) => ({ ...borrower, originalIndex }))
     .filter((borrower) => newBorrowerTeam === '전체' || borrower.team === newBorrowerTeam);
 
-  const rentalStartAdjustmentInfo = getRentalStartAdjustmentInfo(data.settings);
-  const tempBusinessDayAdjustmentEnabled =
-    tempSettings.adjustStartDateToNextBusinessDay ??
-    tempSettings.adjustStartDateAfterWorkEnd ??
-    DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY;
-  const tempHolidayList = Array.isArray(tempSettings.holidays) ? tempSettings.holidays : [];
+  const currentWorkEndTime = data.settings?.workEndTime || DEFAULT_WORK_END_TIME;
+  const isRentalStartAdjustedAfterWorkEnd =
+    (data.settings?.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END) &&
+    isKoreaNowAfterTime(currentWorkEndTime);
 
   const editLaptopIndex = editLaptop ? adminFilteredLaptops.findIndex((l) => l.id === editLaptop.id) : -1;
   const editLaptopInsertIndex =
@@ -1297,13 +1071,6 @@ function App() {
 
     if (form.startDate < today()) {
       triggerToast('대여 시작일은 오늘 날짜 이전으로 선택할 수 없습니다.', 'error');
-      return;
-    }
-
-    const adjustedStartDate = getAdjustedRentalStartDate(form.startDate, data.settings);
-
-    if (adjustedStartDate !== form.startDate) {
-      triggerToast(`대여 시작일은 영업일 기준 ${formatDateWithKoreanWeekday(adjustedStartDate)} 이후로 선택해 주세요.`, 'error');
       return;
     }
 
@@ -1850,11 +1617,9 @@ function App() {
                   <p className="mt-0.5 text-xs text-orange-100">
                     대여가능일은 최대 {data.settings.maxRentalDays ?? '0'}일입니다.
                   </p>
-                  {rentalStartAdjustmentInfo.adjusted && (
+                  {isRentalStartAdjustedAfterWorkEnd && (
                     <p className="mt-0.5 text-xs text-orange-100">
-                      {rentalStartAdjustmentInfo.reasons.length > 0
-                        ? `${rentalStartAdjustmentInfo.reasons.join(', ')} 기준으로 대여 시작일이 다음 영업일(${formatDateWithKoreanWeekday(rentalStartAdjustmentInfo.adjustedDate)})로 조정되었습니다.`
-                        : `대여 시작일이 다음 영업일(${formatDateWithKoreanWeekday(rentalStartAdjustmentInfo.adjustedDate)})로 조정되었습니다.`}
+                      업무시간({currentWorkEndTime}) 종료로 대여 시작일은 다음 날로 조정되었습니다.
                     </p>
                   )}
                 </div>
@@ -1933,48 +1698,43 @@ function App() {
                   )}
 
                   {/* 최장 허용 대여 기한에 맞추어 캘린더 min, max 속성을 실시간 바인딩 처리합니다 */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <DateInputWithWeekday
-                      label="대여 시작일"
-                      value={form.startDate}
-                      min={defaultRentalStartDate(data.settings)}
-                      onChange={(v) => {
-                        const nextStartDate = getAdjustedRentalStartDate(v, data.settings);
+<div className="grid grid-cols-2 gap-3">
+  <DateInputWithWeekday
+    label="대여 시작일"
+    value={form.startDate}
+    min={today()}
+    onChange={(v) => {
+      const nextStartDate = v < today() ? today() : v;
 
-                        if (v && nextStartDate !== v) {
-                          triggerToast(`선택한 날짜는 영업일이 아니어서 ${formatDateWithKoreanWeekday(nextStartDate)}로 조정되었습니다.`, 'success');
-                        }
+      setForm({
+        ...form,
+        startDate: nextStartDate,
+        dueDate: addDaysFrom(nextStartDate, data.settings.maxRentalDays),
+      });
+    }}
+  />
+  <DateInputWithWeekday
+    label="반납 예정일"
+    value={form.dueDate}
+    min={form.startDate}
+    max={addDaysFrom(form.startDate, data.settings.maxRentalDays)}
+    onChange={(v) => {
+      const minDueDate = form.startDate;
+      const maxDueDate = addDaysFrom(form.startDate, data.settings.maxRentalDays);
+      let nextDueDate = v;
 
-                        setForm({
-                          ...form,
-                          startDate: nextStartDate,
-                          dueDate: addDaysFrom(nextStartDate, data.settings.maxRentalDays),
-                        });
-                      }}
-                    />
+      if (nextDueDate < minDueDate) {
+        nextDueDate = minDueDate;
+      }
 
-                    <DateInputWithWeekday
-                      label="반납 예정일"
-                      value={form.dueDate}
-                      min={form.startDate}
-                      max={addDaysFrom(form.startDate, data.settings.maxRentalDays)}
-                      onChange={(v) => {
-                        const minDueDate = form.startDate;
-                        const maxDueDate = addDaysFrom(form.startDate, data.settings.maxRentalDays);
-                        let nextDueDate = v;
+      if (nextDueDate > maxDueDate) {
+        nextDueDate = maxDueDate;
+      }
 
-                        if (nextDueDate < minDueDate) {
-                          nextDueDate = minDueDate;
-                        }
-
-                        if (nextDueDate > maxDueDate) {
-                          nextDueDate = maxDueDate;
-                        }
-
-                        setForm({ ...form, dueDate: nextDueDate });
-                      }}
-                    />
-                  </div>
+      setForm({ ...form, dueDate: nextDueDate });
+    }}
+  />
+</div>
 
                   <label className="block">
                     <span className="mb-1.5 block text-xs font-semibold text-slate-600">대여 목적</span>
@@ -2933,7 +2693,6 @@ function App() {
                         <h2 className="text-lg font-bold text-slate-900">시스템 설정</h2>
                         <p className="text-xs text-slate-500 mt-1">사용자 페이지의 소속 입력 모드 전환 및 최대 기한 제어가 즉각 가동됩니다.</p>
                       </div>
-
                       <div className="grid gap-5 sm:grid-cols-2">
                         <Select
                           label="부서/팀명 입력 유형 선택"
@@ -2965,184 +2724,62 @@ function App() {
                             setTempSettings({ ...tempSettings, maxRentalDays: Number(v) })
                           }
                         />
-
-                        <div className="sm:col-span-2">
-                          <div className="mb-1.5 text-xs font-semibold text-slate-600 tracking-wide">
-                            업무 종료/휴무일 기준 대여 시작일 다음 영업일로 조정
-                          </div>
-                          <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-3.5">
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                              <div className="flex items-center gap-2.5">
-                                <span className="text-xs font-medium text-slate-500">사용여부</span>
-                                <button
-                                  type="button"
-                                  aria-label="업무 종료/휴무일 기준 대여 시작일 다음 영업일로 조정 사용 여부"
-                                  aria-pressed={tempBusinessDayAdjustmentEnabled}
-                                  onClick={() => {
-                                    const nextValue = !tempBusinessDayAdjustmentEnabled;
-
-                                    setTempSettings({
-                                      ...tempSettings,
-                                      adjustStartDateAfterWorkEnd: nextValue,
-                                      adjustStartDateToNextBusinessDay: nextValue,
-                                    });
-                                  }}
-                                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition ${
-                                    tempBusinessDayAdjustmentEnabled
-                                      ? 'mk-brand-gradient-r border-transparent'
-                                      : 'border-slate-300 bg-slate-200'
-                                  }`}
-                                >
-                                  <span
-                                    className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition ${
-                                      tempBusinessDayAdjustmentEnabled
-                                        ? 'translate-x-5'
-                                        : 'translate-x-0.5'
-                                    }`}
-                                  />
-                                </button>
-                              </div>
-
-                              <div className="flex items-center gap-2.5">
-                                <span className="shrink-0 text-xs font-medium text-slate-500">업무 종료 시간</span>
-                                <input
-                                  type="time"
-                                  value={tempSettings.workEndTime || DEFAULT_WORK_END_TIME}
-                                  disabled={!tempBusinessDayAdjustmentEnabled}
-                                  onChange={(e) =>
-                                    setTempSettings({
-                                      ...tempSettings,
-                                      workEndTime: e.target.value || DEFAULT_WORK_END_TIME,
-                                    })
-                                  }
-                                  className={`h-10 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition mk-form-focus sm:w-36 ${
-                                    tempBusinessDayAdjustmentEnabled
-                                      ? 'bg-white text-slate-900'
-                                      : 'cursor-not-allowed bg-slate-100 text-slate-400'
-                                  }`}
-                                />
-                              </div>
-                            </div>
-
-                            <div className="grid gap-3 sm:grid-cols-2">
-                              <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
-                                <span className="text-xs font-medium text-slate-600">토요일/일요일 제외</span>
-                                <input
-                                  type="checkbox"
-                                  checked={tempSettings.excludeWeekendsForStartDate ?? DEFAULT_EXCLUDE_WEEKENDS_FOR_START_DATE}
-                                  disabled={!tempBusinessDayAdjustmentEnabled}
-                                  onChange={(e) =>
-                                    setTempSettings({
-                                      ...tempSettings,
-                                      excludeWeekendsForStartDate: e.target.checked,
-                                    })
-                                  }
-                                  className="h-4 w-4"
-                                />
-                              </label>
-
-                              <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
-                                <span className="text-xs font-medium text-slate-600">등록 휴일 제외</span>
-                                <input
-                                  type="checkbox"
-                                  checked={tempSettings.excludeHolidaysForStartDate ?? DEFAULT_EXCLUDE_HOLIDAYS_FOR_START_DATE}
-                                  disabled={!tempBusinessDayAdjustmentEnabled}
-                                  onChange={(e) =>
-                                    setTempSettings({
-                                      ...tempSettings,
-                                      excludeHolidaysForStartDate: e.target.checked,
-                                    })
-                                  }
-                                  className="h-4 w-4"
-                                />
-                              </label>
-                            </div>
-
-                            <p className="text-[11px] leading-relaxed text-slate-500">
-                              사용 시 업무 종료 시간 이후, 주말, 등록된 공휴일/임시공휴일/회사휴일에는 대여 시작일이 다음 영업일로 자동 조정됩니다.
-                            </p>
-                          </div>
+                      <div>
+                        <div className="mb-1.5 text-xs font-semibold text-slate-600 tracking-wide">
+                          업무 종료 이후 신청자 대여 시작일 다음 날로 조정
                         </div>
-
-                        <div className="sm:col-span-2 space-y-3">
-                          <div className="border-b border-slate-100 pb-3">
-                            <h3 className="text-sm font-bold text-slate-900">휴일 관리</h3>
-                            <p className="text-[11px] text-slate-500 mt-0.5">
-                              법정공휴일, 임시공휴일, 매일경제 자체 휴일을 등록하면 대여 시작일 계산에서 제외됩니다. 공공데이터 API나 CSV로 가져온 휴일도 이 목록에 저장하면 동일하게 적용할 수 있습니다.
-                            </p>
-                          </div>
-
-                          <div className="grid gap-2 sm:grid-cols-[150px_130px_minmax(0,1fr)_auto]">
-                            <input
-                              type="date"
-                              value={newHolidayDate}
-                              onChange={(e) => setNewHolidayDate(e.target.value)}
-                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none transition mk-form-focus"
-                            />
-
-                            <select
-                              value={newHolidayType}
-                              onChange={(e) => setNewHolidayType(e.target.value)}
-                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none transition mk-form-focus"
-                            >
-                              <option value="public">법정공휴일</option>
-                              <option value="temporary">임시공휴일</option>
-                              <option value="company">회사휴일</option>
-                              <option value="manual">수동등록</option>
-                            </select>
-
-                            <input
-                              value={newHolidayName}
-                              onChange={(e) => setNewHolidayName(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  addTempHoliday();
+                        <div className="rounded-xl border border-slate-200 bg-white p-3.5">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex items-center gap-2.5">
+                              <span className="text-xs font-medium text-slate-500">사용여부</span>
+                              <button
+                                type="button"
+                                aria-label="업무 종료 이후 신청자 대여 시작일 다음 날로 조정 사용 여부"
+                                aria-pressed={tempSettings.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END}
+                                onClick={() =>
+                                  setTempSettings({
+                                    ...tempSettings,
+                                    adjustStartDateAfterWorkEnd: !(tempSettings.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END),
+                                  })
                                 }
-                              }}
-                              placeholder="휴일명 입력 예: 신정, 창립기념 휴무"
-                              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs outline-none mk-form-border-focus"
-                            />
+                                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition ${
+                                  (tempSettings.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END)
+                                    ? 'mk-brand-gradient-r border-transparent'
+                                    : 'border-slate-300 bg-slate-200'
+                                }`}
+                              >
+                                <span
+                                  className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition ${
+                                    (tempSettings.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END)
+                                      ? 'translate-x-5'
+                                      : 'translate-x-0.5'
+                                  }`}
+                                />
+                              </button>
+                            </div>
 
-                            <Button
-                              onClick={addTempHoliday}
-                              className="px-3 py-2.5 text-xs"
-                            >
-                              <Plus size={14} /> 추가
-                            </Button>
-                          </div>
-
-                          <div className="space-y-1 max-h-56 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50 p-2">
-                            {tempHolidayList.length === 0 ? (
-                              <div className="rounded-xl border border-dashed border-slate-200 bg-white py-8 text-center text-xs text-slate-400">
-                                현재 등록된 휴일이 없습니다.
-                              </div>
-                            ) : (
-                              tempHolidayList.map((holiday, index) => (
-                                <div
-                                  key={`${holiday.date}-${holiday.name}-${index}`}
-                                  className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-white px-3.5 py-2 text-xs text-slate-700"
-                                >
-                                  <div className="min-w-0">
-                                    <div className="font-semibold text-slate-900">
-                                      {formatDateWithKoreanWeekday(holiday.date)}
-                                    </div>
-                                    <div className="mt-0.5 text-[11px] text-slate-500">
-                                      {holiday.name || '휴일'} · {HOLIDAY_TYPE_LABEL[holiday.type] || '휴일'}
-                                    </div>
-                                  </div>
-
-                                  <Button
-                                    onClick={() => deleteTempHoliday(index)}
-                                    variant="ghost"
-                                    className="shrink-0 px-1 py-1 hover:text-rose-600 rounded-lg hover:bg-rose-50"
-                                  >
-                                    <Trash2 size={14} />
-                                  </Button>
-                                </div>
-                              ))
-                            )}
+                            <div className="flex items-center gap-2.5">
+                              <span className="shrink-0 text-xs font-medium text-slate-500">업무 종료 시간</span>
+                              <input
+                                type="time"
+                                value={tempSettings.workEndTime || DEFAULT_WORK_END_TIME}
+                                disabled={!(tempSettings.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END)}
+                                onChange={(e) =>
+                                  setTempSettings({
+                                    ...tempSettings,
+                                    workEndTime: e.target.value || DEFAULT_WORK_END_TIME,
+                                  })
+                                }
+                                className={`h-10 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition mk-form-focus sm:w-36 ${
+                                  (tempSettings.adjustStartDateAfterWorkEnd ?? DEFAULT_ADJUST_START_DATE_AFTER_WORK_END)
+                                    ? 'bg-white text-slate-900'
+                                    : 'cursor-not-allowed bg-slate-100 text-slate-400'
+                                }`}
+                              />
+                            </div>
                           </div>
                         </div>
+                      </div>
                       </div>
                       <div className="rounded-xl bg-slate-100 p-4 border border-slate-200/50 text-xs text-slate-600">
                         💡 <b>운영 권장사항 안내:</b> 실제 사내 보안망 연동 개발 단계에서는 AD 연동 인증, 부서별 허용 기한 할당제, Slack/Alimtalk 실시간 전송, 지연 지연자 메일 자동 발송 모듈을 접목하여 완벽한 자동화를 꾀할 수 있습니다.
@@ -3154,9 +2791,6 @@ function App() {
                           variant="outline"
                           onClick={() => {
                             setTempSettings(data.settings);
-                            setNewHolidayDate(today());
-                            setNewHolidayName('');
-                            setNewHolidayType(DEFAULT_HOLIDAY_TYPE);
                             triggerToast('설정 변경사항이 취소되고 이전 상태로 복원되었습니다.', 'success');
                           }}
                         >
@@ -3165,36 +2799,10 @@ function App() {
                         <Button
                           variant="primary"
                           onClick={() => {
-                            const nextSettings = {
-                              ...tempSettings,
-                              adjustStartDateAfterWorkEnd:
-                                tempSettings.adjustStartDateToNextBusinessDay ??
-                                tempSettings.adjustStartDateAfterWorkEnd ??
-                                DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY,
-                              adjustStartDateToNextBusinessDay:
-                                tempSettings.adjustStartDateToNextBusinessDay ??
-                                tempSettings.adjustStartDateAfterWorkEnd ??
-                                DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY,
-                              holidays: Array.isArray(tempSettings.holidays)
-                                ? tempSettings.holidays
-                                    .filter((holiday) => holiday && holiday.date)
-                                    .map((holiday) => ({
-                                      date: holiday.date,
-                                      name: holiday.name || '',
-                                      type: holiday.type || DEFAULT_HOLIDAY_TYPE,
-                                      enabled: holiday.enabled !== false,
-                                    }))
-                                : [],
-                            };
-
                             setData((prev) => ({
                               ...prev,
-                              settings: nextSettings,
+                              settings: tempSettings,
                             }));
-                            setTempSettings(nextSettings);
-                            setNewHolidayDate(today());
-                            setNewHolidayName('');
-                            setNewHolidayType(DEFAULT_HOLIDAY_TYPE);
                             triggerToast('설정 변경사항이 원장에 성공적으로 저장 및 반영되었습니다.', 'success');
                           }}
                         >
