@@ -2359,7 +2359,6 @@ function App() {
                     </div>
                   )}
 
-// 수정 후 코드
                   {/* 팀명 및 대여자 관리 탭 */}
                   {adminTab === 'people' && (
                     <div className="space-y-6">
