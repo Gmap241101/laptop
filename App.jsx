@@ -1392,10 +1392,10 @@ function App() {
             <Laptop size={24} />
           </div>
           <h1 className="text-base font-bold text-slate-900">
-            Firebase 원격 데이터를 불러오는 중입니다.
+            데이터를 불러오는 중입니다.
           </h1>
           <p className="mt-2 text-xs leading-relaxed text-slate-500">
-            브라우저 로컬 캐시를 사용하지 않고, Firestore 원격 DB 기준으로 시스템 데이터를 불러오고 있습니다.
+            잠시만 기다려 주십시오.
           </p>
         </div>
       </div>
