@@ -18,8 +18,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout source branch
         uses: actions/checkout@v4
+        with:
+          ref: main
+          path: source
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -27,9 +30,11 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
+        working-directory: source
         run: npm ci
 
       - name: Generate holiday JSON
+        working-directory: source
         env:
           DATA_GO_KR_SERVICE_KEY: ${{ secrets.DATA_GO_KR_SERVICE_KEY }}
         run: |
@@ -41,14 +46,26 @@ jobs:
             npm run generate:holidays -- $CURRENT_YEAR $NEXT_YEAR
           fi
 
-      - name: Commit holiday JSON
+      - name: Checkout GitHub Pages branch
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: pages
+
+      - name: Copy holiday JSON to gh-pages
+        run: |
+          mkdir -p pages/holidays
+          cp -f source/public/holidays/*.json pages/holidays/
+
+      - name: Commit holiday JSON to gh-pages
+        working-directory: pages
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git add public/holidays/*.json
+          git add holidays/*.json
           if git diff --cached --quiet; then
             echo "No holiday changes."
           else
             git commit -m "Update Korean public holiday JSON"
-            git push
+            git push origin gh-pages
           fi
