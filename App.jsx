@@ -385,6 +385,11 @@ function App() {
   const [editLaptop, setEditLaptop] = useState(null);
   const [newLaptop, setNewLaptop] = useState(null); // 신규 자산 생성을 위한 상태 값 추가
   const [newAssetCategory, setNewAssetCategory] = useState('');
+  const [tempAssetCategories, setTempAssetCategories] = useState(data.assetCategories || []);
+  const [tempAssetCategoryRenameMap, setTempAssetCategoryRenameMap] = useState({});
+  const [editingAssetCategoryIndex, setEditingAssetCategoryIndex] = useState(null);
+  const [editingAssetCategoryName, setEditingAssetCategoryName] = useState('');
+  const [draggingAssetCategoryIndex, setDraggingAssetCategoryIndex] = useState(null);
   const [newTeam, setNewTeam] = useState('');
   const [newBorrower, setNewBorrower] = useState('');
   const [newBorrowerTeam, setNewBorrowerTeam] = useState('');
@@ -526,20 +531,172 @@ function App() {
     }
   }, [data.teams]);
 
-  // 설정 탭으로 변경되거나 시스템 원본 설정 값이 변경될 때 임시 설정 버퍼를 동기화
+  // 자산 카테고리 탭으로 변경되거나 시스템 원본 카테고리 값이 변경될 때 임시 카테고리 버퍼를 동기화
   useEffect(() => {
-    if (adminTab === 'settings') {
-      setTempSettings(data.settings);
+    if (adminTab === 'categories') {
+      setTempAssetCategories(data.assetCategories || []);
+      setTempAssetCategoryRenameMap({});
+      setEditingAssetCategoryIndex(null);
+      setEditingAssetCategoryName('');
+      setDraggingAssetCategoryIndex(null);
+      setNewAssetCategory('');
     }
-  }, [adminTab, data.settings]);
+  }, [adminTab, data.assetCategories]);
 
   const triggerToast = (message, type = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
 
-  const triggerConfirm = (title, message, onConfirm) => {
-    setConfirmModal({ title, message, onConfirm });
+  const getOriginalAssetCategoryName = (category) => {
+    const matchedEntry = Object.entries(tempAssetCategoryRenameMap).find(
+      ([, renamedName]) => renamedName === category
+    );
+
+    return matchedEntry ? matchedEntry[0] : category;
+  };
+
+  const addTempAssetCategory = () => {
+    const categoryName = newAssetCategory.trim();
+
+    if (!categoryName) {
+      triggerToast('자산 카테고리 명칭을 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (tempAssetCategories.some((category) => String(category || '').trim() === categoryName)) {
+      triggerToast('이미 등록된 자산 카테고리입니다.', 'error');
+      return;
+    }
+
+    setTempAssetCategories((prev) => [...prev, categoryName]);
+    setNewAssetCategory('');
+    triggerToast(`[${categoryName}] 자산 카테고리가 임시 추가되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`, 'success');
+  };
+
+  const startEditTempAssetCategory = (category, index) => {
+    setEditingAssetCategoryIndex(index);
+    setEditingAssetCategoryName(category);
+  };
+
+  const applyEditTempAssetCategory = (category, index) => {
+    const nextCategoryName = editingAssetCategoryName.trim();
+
+    if (!nextCategoryName) {
+      triggerToast('자산 카테고리 명칭을 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (
+      tempAssetCategories.some(
+        (item, itemIndex) => itemIndex !== index && String(item || '').trim() === nextCategoryName
+      )
+    ) {
+      triggerToast('이미 등록된 자산 카테고리입니다.', 'error');
+      return;
+    }
+
+    const originalCategoryName = getOriginalAssetCategoryName(category);
+
+    setTempAssetCategories((prev) =>
+      prev.map((item, itemIndex) => (itemIndex === index ? nextCategoryName : item))
+    );
+
+    setTempAssetCategoryRenameMap((prev) => {
+      const nextMap = { ...prev };
+
+      if ((data.assetCategories || []).includes(originalCategoryName) && originalCategoryName !== nextCategoryName) {
+        nextMap[originalCategoryName] = nextCategoryName;
+      } else {
+        delete nextMap[originalCategoryName];
+      }
+
+      return nextMap;
+    });
+
+    setEditingAssetCategoryIndex(null);
+    setEditingAssetCategoryName('');
+    triggerToast(`[${category}] 카테고리명이 임시 수정되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`, 'success');
+  };
+
+  const deleteTempAssetCategory = (category, index) => {
+    const originalCategoryName = getOriginalAssetCategoryName(category);
+    const isCategoryInUse = data.laptops.some((asset) => {
+      const assetCategory = asset.category || '노트북';
+      return assetCategory === originalCategoryName || assetCategory === category;
+    });
+
+    if (isCategoryInUse) {
+      triggerToast('해당 카테고리를 사용하는 자산이 있어 삭제할 수 없습니다.', 'error');
+      return;
+    }
+
+    setTempAssetCategories((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
+    setTempAssetCategoryRenameMap((prev) => {
+      const nextMap = { ...prev };
+      delete nextMap[originalCategoryName];
+      return nextMap;
+    });
+    setEditingAssetCategoryIndex(null);
+    setEditingAssetCategoryName('');
+    triggerToast(`[${category}] 자산 카테고리가 임시 삭제되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`, 'success');
+  };
+
+  const moveTempAssetCategory = (fromIndex, toIndex) => {
+    if (fromIndex === null || fromIndex === toIndex) return;
+
+    setTempAssetCategories((prev) => {
+      const next = [...prev];
+      const [movedCategory] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, movedCategory);
+      return next;
+    });
+
+    setEditingAssetCategoryIndex(null);
+    setEditingAssetCategoryName('');
+  };
+
+  const cancelTempAssetCategoryChanges = () => {
+    setTempAssetCategories(data.assetCategories || []);
+    setTempAssetCategoryRenameMap({});
+    setEditingAssetCategoryIndex(null);
+    setEditingAssetCategoryName('');
+    setDraggingAssetCategoryIndex(null);
+    setNewAssetCategory('');
+    triggerToast('자산 카테고리 변경사항이 취소되고 이전 상태로 복원되었습니다.', 'success');
+  };
+
+  const saveTempAssetCategoryChanges = () => {
+    const nextAssetCategories = tempAssetCategories
+      .map((category) => String(category || '').trim())
+      .filter(Boolean);
+
+    const duplicatedCategory = nextAssetCategories.find(
+      (category, index) => nextAssetCategories.indexOf(category) !== index
+    );
+
+    if (duplicatedCategory) {
+      triggerToast(`[${duplicatedCategory}] 카테고리명이 중복되어 저장할 수 없습니다.`, 'error');
+      return;
+    }
+
+    setData((prev) => ({
+      ...prev,
+      assetCategories: nextAssetCategories,
+      laptops: prev.laptops.map((asset) => ({
+        ...asset,
+        category: tempAssetCategoryRenameMap[asset.category] || asset.category,
+      })),
+    }));
+
+    setSelectedAssetCategory('전체');
+    setAdminSelectedAssetCategory('전체');
+    setTempAssetCategories(nextAssetCategories);
+    setTempAssetCategoryRenameMap({});
+    setEditingAssetCategoryIndex(null);
+    setEditingAssetCategoryName('');
+    setDraggingAssetCategoryIndex(null);
+    triggerToast('자산 카테고리 변경사항이 원장에 성공적으로 저장 및 반영되었습니다.', 'success');
   };
 
   const blockedLaptopIds = useMemo(() => {
@@ -1784,92 +1941,157 @@ function App() {
                     </div>
                   )}
 
+// 수정 후 코드
                   {/* 자산 카테고리 등록 탭 */}
                   {adminTab === 'categories' && (
-                    <div className="grid gap-8 md:grid-cols-2">
-                      {/* 자산 카테고리 등록 컬럼 */}
-                      <div className="space-y-4">
-                        <div className="border-b border-slate-100 pb-3">
-                          <h2 className="text-base font-bold text-slate-900">자산 카테고리 등록</h2>
-                          <p className="text-[11px] text-slate-500 mt-0.5">대여 자산 분류를 관리합니다.</p>
+                    <div className="space-y-6">
+                      <div className="grid gap-8 md:grid-cols-2">
+                        {/* 자산 카테고리 등록 컬럼 */}
+                        <div className="space-y-4">
+                          <div className="border-b border-slate-100 pb-3">
+                            <h2 className="text-base font-bold text-slate-900">자산 카테고리 등록</h2>
+                            <p className="text-[11px] text-slate-500 mt-0.5">대여 자산 분류를 관리합니다.</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <input
+                              value={newAssetCategory}
+                              onChange={(e) => setNewAssetCategory(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  addTempAssetCategory();
+                                }
+                              }}
+                              placeholder="새로운 자산 카테고리 명칭"
+                              className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none mk-form-border-focus"
+                            />
+                            <Button
+                              onClick={addTempAssetCategory}
+                              className="px-3 py-2"
+                            >
+                              <Plus size={16} />
+                            </Button>
+                          </div>
+                          <div className="rounded-xl bg-slate-100 p-4 border border-slate-200/50 text-xs text-slate-600">
+                            💡 <b>운영 안내:</b> 카테고리 추가, 수정, 삭제, 순서 변경은 임시 편집 상태로 먼저 반영됩니다. 하단의 변경사항 저장을 눌러야 최종 DB에 저장됩니다.
+                          </div>
                         </div>
-                        <div className="flex gap-2">
-                          <input
-                            value={newAssetCategory}
-                            onChange={(e) => setNewAssetCategory(e.target.value)}
-                            placeholder="새로운 자산 카테고리 명칭"
-                            className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none mk-form-border-focus"
-                          />
-                          <Button
-                            onClick={() => {
-                              const categoryName = newAssetCategory.trim();
 
-                              if (!categoryName) {
-                                triggerToast('자산 카테고리 명칭을 입력해 주세요.', 'error');
-                                return;
-                              }
+                        {/* 등록된 자산 카테고리 목록 컬럼 */}
+                        <div className="space-y-4">
+                          <div className="border-b border-slate-100 pb-3">
+                            <h2 className="text-base font-bold text-slate-900">등록된 자산 카테고리</h2>
+                            <p className="text-[11px] text-slate-500 mt-0.5">카드를 드래그해서 대여 자산 등록 시 사용할 분류 순서를 변경할 수 있습니다.</p>
+                          </div>
+                          <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
+                            {(tempAssetCategories || []).length === 0 ? (
+                              <div className="rounded-2xl bg-slate-50 border border-dashed border-slate-200 py-10 text-center text-slate-400 text-xs">
+                                현재 등록된 자산 카테고리가 없습니다.
+                              </div>
+                            ) : (
+                              (tempAssetCategories || []).map((category, index) => (
+                                <div
+                                  key={`${category}-${index}`}
+                                  draggable={editingAssetCategoryIndex !== index}
+                                  onDragStart={() => setDraggingAssetCategoryIndex(index)}
+                                  onDragOver={(e) => e.preventDefault()}
+                                  onDrop={(e) => {
+                                    e.preventDefault();
+                                    moveTempAssetCategory(draggingAssetCategoryIndex, index);
+                                    setDraggingAssetCategoryIndex(null);
+                                  }}
+                                  onDragEnd={() => setDraggingAssetCategoryIndex(null)}
+                                  className={`flex items-center justify-between rounded-xl bg-slate-50 px-3.5 py-2 border border-slate-100 text-xs text-slate-700 transition ${
+                                    draggingAssetCategoryIndex === index
+                                      ? 'opacity-50'
+                                      : editingAssetCategoryIndex === index
+                                        ? ''
+                                        : 'cursor-move hover:bg-slate-100'
+                                  }`}
+                                >
+                                  {editingAssetCategoryIndex === index ? (
+                                    <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center">
+                                      <input
+                                        value={editingAssetCategoryName}
+                                        onChange={(e) => setEditingAssetCategoryName(e.target.value)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            applyEditTempAssetCategory(category, index);
+                                          }
 
-                              if ((data.assetCategories || []).includes(categoryName)) {
-                                triggerToast('이미 등록된 자산 카테고리입니다.', 'error');
-                                return;
-                              }
-
-                              setData((prev) => ({
-                                ...prev,
-                                assetCategories: [...(prev.assetCategories || []), categoryName],
-                              }));
-                              setNewAssetCategory('');
-                              triggerToast(`[${categoryName}] 자산 카테고리가 새로 생성되었습니다.`, 'success');
-                            }}
-                            className="px-3 py-2"
-                          >
-                            <Plus size={16} />
-                          </Button>
-                        </div>
-                        <div className="rounded-xl bg-slate-100 p-4 border border-slate-200/50 text-xs text-slate-600">
-                          💡 <b>운영 안내:</b> 현재 단계에서는 자산 카테고리 목록만 등록합니다. 다음 단계에서 각 자산에 카테고리를 연결하면 노트북, 빔프로젝터, 태블릿, 마이크 등으로 대여 자산을 확장할 수 있습니다.
+                                          if (e.key === 'Escape') {
+                                            setEditingAssetCategoryIndex(null);
+                                            setEditingAssetCategoryName('');
+                                          }
+                                        }}
+                                        className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none mk-form-border-focus"
+                                      />
+                                      <div className="flex shrink-0 gap-1">
+                                        <Button
+                                          onClick={() => applyEditTempAssetCategory(category, index)}
+                                          variant="outline"
+                                          className="px-2 py-1 text-xs rounded-lg"
+                                        >
+                                          <Save size={13} /> 적용
+                                        </Button>
+                                        <Button
+                                          onClick={() => {
+                                            setEditingAssetCategoryIndex(null);
+                                            setEditingAssetCategoryName('');
+                                          }}
+                                          variant="ghost"
+                                          className="px-2 py-1 text-xs rounded-lg"
+                                        >
+                                          <X size={13} />
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <span>{category}</span>
+                                      <div className="flex items-center gap-1">
+                                        <Button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            startEditTempAssetCategory(category, index);
+                                          }}
+                                          variant="ghost"
+                                          className="px-1 py-1 hover:text-blue-600 rounded-lg hover:bg-blue-50"
+                                        >
+                                          <Edit3 size={14} />
+                                        </Button>
+                                        <Button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            deleteTempAssetCategory(category, index);
+                                          }}
+                                          variant="ghost"
+                                          className="px-1 py-1 hover:text-rose-600 rounded-lg hover:bg-rose-50"
+                                        >
+                                          <Trash2 size={14} />
+                                        </Button>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              ))
+                            )}
+                          </div>
                         </div>
                       </div>
 
-                      {/* 등록된 자산 카테고리 목록 컬럼 */}
-                      <div className="space-y-4">
-                        <div className="border-b border-slate-100 pb-3">
-                          <h2 className="text-base font-bold text-slate-900">등록된 자산 카테고리</h2>
-                          <p className="text-[11px] text-slate-500 mt-0.5">대여 자산 등록 시 사용할 분류 목록입니다.</p>
-                        </div>
-                        <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
-                          {(data.assetCategories || []).length === 0 ? (
-                            <div className="rounded-2xl bg-slate-50 border border-dashed border-slate-200 py-10 text-center text-slate-400 text-xs">
-                              현재 등록된 자산 카테고리가 없습니다.
-                            </div>
-                          ) : (
-                            (data.assetCategories || []).map((category) => (
-                              <div key={category} className="flex items-center justify-between rounded-xl bg-slate-50 px-3.5 py-2 border border-slate-100 text-xs text-slate-700">
-                                <span>{category}</span>
-                                <Button
-                                  onClick={() => {
-                                    const isCategoryInUse = data.laptops.some((asset) => (asset.category || '노트북') === category);
-
-                                    if (isCategoryInUse) {
-                                      triggerToast('해당 카테고리를 사용하는 자산이 있어 삭제할 수 없습니다.', 'error');
-                                      return;
-                                    }
-
-                                    setData((prev) => ({
-                                      ...prev,
-                                      assetCategories: (prev.assetCategories || []).filter((x) => x !== category),
-                                    }));
-                                    triggerToast(`[${category}] 자산 카테고리가 삭제되었습니다.`, 'success');
-                                  }}
-                                  variant="ghost"
-                                  className="px-1 py-1 hover:text-rose-600 rounded-lg hover:bg-rose-50"
-                                >
-                                  <Trash2 size={14} />
-                                </Button>
-                              </div>
-                            ))
-                          )}
-                        </div>
+                      <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-200/60">
+                        <Button
+                          variant="outline"
+                          onClick={cancelTempAssetCategoryChanges}
+                        >
+                          취소
+                        </Button>
+                        <Button
+                          variant="primary"
+                          onClick={saveTempAssetCategoryChanges}
+                        >
+                          변경사항 저장
+                        </Button>
                       </div>
                     </div>
                   )}
