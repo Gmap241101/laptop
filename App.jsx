@@ -573,6 +573,10 @@ function App() {
     setTimeout(() => setToast(null), 3000);
   };
 
+  const triggerConfirm = (title, message, onConfirm) => {
+    setConfirmModal({ title, message, onConfirm });
+  };
+
   const getOriginalAssetCategoryName = (category) => {
     const matchedEntry = Object.entries(tempAssetCategoryRenameMap).find(
       ([, renamedName]) => renamedName === category
