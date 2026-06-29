@@ -577,6 +577,8 @@ function App() {
   const [newHolidayDate, setNewHolidayDate] = useState(today());
   const [newHolidayName, setNewHolidayName] = useState('');
   const [newHolidayType, setNewHolidayType] = useState(DEFAULT_HOLIDAY_TYPE);
+  const [holidayImportYear, setHolidayImportYear] = useState(String(getKoreaNow().getUTCFullYear()));
+  const [holidayImportLoading, setHolidayImportLoading] = useState(false);
 
   // Toast 메시지 상태
   const [toast, setToast] = useState(null);
@@ -730,6 +732,8 @@ function App() {
       setNewHolidayDate(today());
       setNewHolidayName('');
       setNewHolidayType(DEFAULT_HOLIDAY_TYPE);
+      setHolidayImportYear(String(getKoreaNow().getUTCFullYear()));
+      setHolidayImportLoading(false);
     }
   }, [adminTab, data.settings]);
 
@@ -812,6 +816,87 @@ function App() {
     }));
 
     triggerToast(`[${targetHoliday?.name || '휴일'}] 휴일이 임시 삭제되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`, 'success');
+  };
+
+  const mergeImportedHolidays = (currentHolidays = [], importedHolidays = []) => {
+    const holidayMap = new Map();
+
+    currentHolidays.forEach((holiday) => {
+      if (!holiday?.date) return;
+
+      holidayMap.set(holiday.date, {
+        date: holiday.date,
+        name: holiday.name || '',
+        type: holiday.type || DEFAULT_HOLIDAY_TYPE,
+        enabled: holiday.enabled !== false,
+      });
+    });
+
+    importedHolidays.forEach((holiday) => {
+      if (!holiday?.date) return;
+
+      const existingHoliday = holidayMap.get(holiday.date);
+
+      if (existingHoliday && ['company', 'manual'].includes(existingHoliday.type)) {
+        return;
+      }
+
+      holidayMap.set(holiday.date, {
+        date: holiday.date,
+        name: holiday.name || '',
+        type: holiday.type || 'public',
+        enabled: holiday.enabled !== false,
+      });
+    });
+
+    return Array.from(holidayMap.values()).sort((a, b) =>
+      String(a.date).localeCompare(String(b.date))
+    );
+  };
+
+  const importKoreanPublicHolidaysFromJson = async () => {
+    const year = Number(holidayImportYear);
+
+    if (!year || year < 2000 || year > 2100) {
+      triggerToast('불러올 연도를 2000년부터 2100년 사이로 입력해 주세요.', 'error');
+      return;
+    }
+
+    setHolidayImportLoading(true);
+
+    try {
+      const jsonUrl = `${import.meta.env.BASE_URL}holidays/kr-holidays-${year}.json?ts=${Date.now()}`;
+      const response = await fetch(jsonUrl);
+
+      if (!response.ok) {
+        triggerToast(`${year}년 공휴일 JSON 파일을 찾지 못했습니다. 먼저 로컬 스크립트 또는 GitHub Actions로 public/holidays/kr-holidays-${year}.json 파일을 생성해 주세요.`, 'error');
+        return;
+      }
+
+      const payload = await response.json();
+      const importedHolidays = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload.holidays)
+          ? payload.holidays
+          : [];
+
+      if (importedHolidays.length === 0) {
+        triggerToast(`${year}년 공휴일 JSON에 불러올 휴일 데이터가 없습니다.`, 'error');
+        return;
+      }
+
+      setTempSettings((prev) => ({
+        ...prev,
+        holidays: mergeImportedHolidays(prev.holidays || [], importedHolidays),
+      }));
+
+      triggerToast(`${year}년 법정/임시공휴일 ${importedHolidays.length}건을 임시 목록에 불러왔습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`, 'success');
+    } catch (error) {
+      console.error('Static holiday JSON import error:', error);
+      triggerToast('공휴일 JSON 파일을 불러오는 중 오류가 발생했습니다. public/holidays 파일 생성 및 배포 상태를 확인해 주세요.', 'error');
+    } finally {
+      setHolidayImportLoading(false);
+    }
   };
 
   const getOriginalAssetCategoryName = (category) => {
@@ -3068,8 +3153,40 @@ function App() {
                           <div className="border-b border-slate-100 pb-3">
                             <h3 className="text-sm font-bold text-slate-900">휴일 관리</h3>
                             <p className="text-[11px] text-slate-500 mt-0.5">
-                              법정공휴일, 임시공휴일, 매일경제 자체 휴일을 등록하면 대여 시작일 계산에서 제외됩니다. 공공데이터 API나 CSV로 가져온 휴일도 이 목록에 저장하면 동일하게 적용할 수 있습니다.
+                              법정공휴일/임시공휴일은 정적 JSON 파일에서 자동 불러오고, 매일경제 자체 휴일은 직접 등록해 주세요. 불러온 휴일도 변경사항 저장을 눌러야 최종 반영됩니다.
                             </p>
+                          </div>
+
+                          <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3.5">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                              <div>
+                                <h4 className="text-xs font-bold text-blue-900">법정/임시공휴일 자동 불러오기</h4>
+                                <p className="mt-1 text-[11px] leading-relaxed text-blue-700">
+                                  public/holidays 폴더에 생성된 연도별 JSON 파일을 불러와 임시 휴일 목록에 병합합니다. 회사휴일/수동등록 휴일은 덮어쓰지 않습니다.
+                                </p>
+                              </div>
+
+                              <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
+                                <input
+                                  type="number"
+                                  min="2000"
+                                  max="2100"
+                                  value={holidayImportYear}
+                                  onChange={(e) => setHolidayImportYear(e.target.value)}
+                                  className="w-full rounded-xl border border-blue-100 bg-white px-3 py-2.5 text-xs outline-none transition mk-form-focus sm:w-28"
+                                />
+
+                                <Button
+                                  onClick={importKoreanPublicHolidaysFromJson}
+                                  disabled={holidayImportLoading}
+                                  variant="outline"
+                                  className="px-3 py-2.5 text-xs bg-white"
+                                >
+                                  <ClipboardList size={14} />
+                                  {holidayImportLoading ? '불러오는 중' : '자동 불러오기'}
+                                </Button>
+                              </div>
+                            </div>
                           </div>
 
                           <div className="grid gap-2 sm:grid-cols-[150px_130px_minmax(0,1fr)_auto]">
@@ -3157,6 +3274,8 @@ function App() {
                             setNewHolidayDate(today());
                             setNewHolidayName('');
                             setNewHolidayType(DEFAULT_HOLIDAY_TYPE);
+                            setHolidayImportYear(String(getKoreaNow().getUTCFullYear()));
+                            setHolidayImportLoading(false);
                             triggerToast('설정 변경사항이 취소되고 이전 상태로 복원되었습니다.', 'success');
                           }}
                         >
@@ -3195,6 +3314,8 @@ function App() {
                             setNewHolidayDate(today());
                             setNewHolidayName('');
                             setNewHolidayType(DEFAULT_HOLIDAY_TYPE);
+                            setHolidayImportYear(String(getKoreaNow().getUTCFullYear()));
+                            setHolidayImportLoading(false);
                             triggerToast('설정 변경사항이 원장에 성공적으로 저장 및 반영되었습니다.', 'success');
                           }}
                         >
