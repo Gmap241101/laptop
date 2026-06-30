@@ -1,0 +1,140 @@
+{
+  "year": 2024,
+  "updatedAt": "2026-06-30T00:36:07.480Z",
+  "source": "data.go.kr KASI SpcdeInfoService getRestDeInfo",
+  "holidays": [
+    {
+      "date": "2024-01-01",
+      "name": "1월1일",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2024-02-09",
+      "name": "설날",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2024-02-10",
+      "name": "설날",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2024-02-11",
+      "name": "설날",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2024-02-12",
+      "name": "대체공휴일(설날)",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2024-03-01",
+      "name": "삼일절",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2024-04-10",
+      "name": "국회의원선거",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2024-05-05",
+      "name": "어린이날",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2024-05-06",
+      "name": "대체공휴일(어린이날)",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2024-05-15",
+      "name": "부처님오신날",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2024-06-06",
+      "name": "현충일",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2024-08-15",
+      "name": "광복절",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2024-09-16",
+      "name": "추석",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2024-09-17",
+      "name": "추석",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2024-09-18",
+      "name": "추석",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2024-10-01",
+      "name": "임시공휴일",
+      "type": "temporary",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2024-10-03",
+      "name": "개천절",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2024-10-09",
+      "name": "한글날",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2024-12-25",
+      "name": "기독탄신일",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    }
+  ]
+}

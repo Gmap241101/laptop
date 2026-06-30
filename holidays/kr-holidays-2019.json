@@ -1,0 +1,119 @@
+{
+  "year": 2019,
+  "updatedAt": "2026-06-30T00:34:20.113Z",
+  "source": "data.go.kr KASI SpcdeInfoService getRestDeInfo",
+  "holidays": [
+    {
+      "date": "2019-01-01",
+      "name": "1월1일",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2019-02-04",
+      "name": "설날",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2019-02-05",
+      "name": "설날",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2019-02-06",
+      "name": "설날",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2019-03-01",
+      "name": "삼일절",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2019-05-05",
+      "name": "어린이날",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2019-05-06",
+      "name": "대체공휴일",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2019-05-12",
+      "name": "부처님오신날",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2019-06-06",
+      "name": "현충일",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2019-08-15",
+      "name": "광복절",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2019-09-12",
+      "name": "추석",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2019-09-13",
+      "name": "추석",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2019-09-14",
+      "name": "추석",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2019-10-03",
+      "name": "개천절",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2019-10-09",
+      "name": "한글날",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2019-12-25",
+      "name": "기독탄신일",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    }
+  ]
+}
