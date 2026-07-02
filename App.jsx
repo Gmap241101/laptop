@@ -2058,6 +2058,24 @@ function App() {
                       value={form.startDate}
                       min={defaultRentalStartDate(data.settings)}
                       onChange={(v) => {
+                        const minStartDate = today();
+
+                        if (v && v < minStartDate) {
+                          const nextStartDate = getAdjustedRentalStartDate(minStartDate, data.settings);
+
+                          triggerToast(
+                            `대여 시작일은 오늘보다 이전일 수 없습니다. 선택 가능한 가장 빠른 대여 시작일은 ${formatDateWithKoreanWeekday(nextStartDate)}입니다.`,
+                            'error'
+                          );
+
+                          setForm({
+                            ...form,
+                            startDate: nextStartDate,
+                            dueDate: addDaysFrom(nextStartDate, data.settings.maxRentalDays),
+                          });
+                          return;
+                        }
+
                         const nextStartDate = getAdjustedRentalStartDate(v, data.settings);
 
                         if (v && nextStartDate !== v) {
@@ -2087,6 +2105,11 @@ function App() {
                         }
 
                         if (nextDueDate > maxDueDate) {
+                          triggerToast(
+                            `대여 가능일은 최대 ${data.settings.maxRentalDays}일입니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxDueDate)}까지 선택할 수 있습니다.`,
+                            'error'
+                          );
+
                           nextDueDate = maxDueDate;
                         }
 
