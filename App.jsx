@@ -473,42 +473,76 @@ function Input({ label, value, onChange, type = 'text', placeholder = '', ...pro
   );
 }
 
+// 수정 후 코드
 function DateInputWithWeekday({ label, value, onChange, min, max, ...props }) {
+  const inputRef = useRef(null);
+  const [isFocused, setIsFocused] = useState(false);
+
+  const openDatePicker = () => {
+    const input = inputRef.current;
+    if (!input) return;
+
+    input.focus();
+
+    if (typeof input.showPicker === 'function') {
+      try {
+        input.showPicker();
+      } catch {
+        // 일부 브라우저에서는 showPicker가 제한될 수 있으므로 focus 처리만 유지합니다.
+      }
+    }
+  };
+
   return (
     <label className="block">
       <span className="mb-1.5 block text-xs font-semibold text-slate-600 tracking-wide">{label}</span>
       <div className="relative">
-        <div className="flex h-[42px] w-full items-center rounded-xl border border-slate-200 bg-white px-3.5 pr-10 text-sm text-slate-900">
-          {formatDateWithKoreanWeekday(value) || (
-            <span className="text-slate-400">날짜 선택</span>
-          )}
-        </div>
-
         <input
+          ref={inputRef}
           type="date"
           value={value}
           min={min}
           max={max}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
           onChange={(e) => onChange(e.target.value)}
-          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          className={`h-[42px] w-full rounded-xl border border-slate-200 bg-white px-3.5 pr-10 text-sm outline-none transition mk-form-focus [&::-webkit-calendar-picker-indicator]:opacity-0 ${
+            isFocused ? 'text-slate-900' : 'text-transparent'
+          }`}
           {...props}
         />
 
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+        {!isFocused && (
+          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center px-3.5 pr-10 text-sm text-slate-900">
+            {formatDateWithKoreanWeekday(value) || (
+              <span className="text-slate-400">날짜 선택</span>
+            )}
+          </div>
+        )}
+
+        <button
+          type="button"
+          aria-label={`${label} 달력 열기`}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={openDatePicker}
+          className="absolute right-3 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center text-slate-500"
         >
-          <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-          <line x1="16" y1="2" x2="16" y2="6" />
-          <line x1="8" y1="2" x2="8" y2="6" />
-          <line x1="3" y1="10" x2="21" y2="10" />
-        </svg>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="h-4 w-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+            <line x1="16" y1="2" x2="16" y2="6" />
+            <line x1="8" y1="2" x2="8" y2="6" />
+            <line x1="3" y1="10" x2="21" y2="10" />
+          </svg>
+        </button>
       </div>
     </label>
   );
