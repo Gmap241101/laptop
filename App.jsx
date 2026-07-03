@@ -502,6 +502,13 @@ function Input({ label, value, onChange, type = 'text', placeholder = '', ...pro
 function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ...props }) {
   const inputRef = useRef(null);
   const [isFocused, setIsFocused] = useState(false);
+  const [draftValue, setDraftValue] = useState(value || '');
+
+  useEffect(() => {
+    if (!isFocused) {
+      setDraftValue(value || '');
+    }
+  }, [value, isFocused]);
 
   const openDatePicker = () => {
     const input = inputRef.current;
@@ -518,6 +525,15 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
     }
   };
 
+  const commitDateValue = (nextValue) => {
+    if (onDateBlur) {
+      onDateBlur(nextValue);
+      return;
+    }
+
+    onChange(nextValue);
+  };
+
   return (
     <label className="block">
       <span className="mb-1.5 block text-xs font-semibold text-slate-600 tracking-wide">{label}</span>
@@ -525,18 +541,23 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
         <input
           ref={inputRef}
           type="date"
-          value={value}
+          value={isFocused ? draftValue : value}
           min={min}
           max={max}
-          onFocus={() => setIsFocused(true)}
-          onBlur={(e) => {
-            setIsFocused(false);
-
-            if (onDateBlur) {
-              onDateBlur(e.target.value);
-            }
+          onFocus={() => {
+            setDraftValue(value || '');
+            setIsFocused(true);
           }}
-          onChange={(e) => onChange(e.target.value)}
+          onBlur={(e) => {
+            const nextValue = e.target.value;
+
+            setIsFocused(false);
+            setDraftValue(nextValue);
+            commitDateValue(nextValue);
+          }}
+          onChange={(e) => {
+            setDraftValue(e.target.value);
+          }}
           className={`h-[42px] w-full rounded-xl border border-slate-200 bg-white px-3.5 pr-10 text-sm outline-none transition mk-form-focus [&::-webkit-calendar-picker-indicator]:opacity-0 ${
             isFocused ? 'text-slate-900' : 'text-transparent'
           }`}
