@@ -499,8 +499,11 @@ function Input({ label, value, onChange, type = 'text', placeholder = '', ...pro
   );
 }
 
+// 수정 후 코드
 function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ...props }) {
   const inputRef = useRef(null);
+  const calendarInputRef = useRef(null);
+  const lastCommittedValueRef = useRef('');
   const [isFocused, setIsFocused] = useState(false);
   const [draftValue, setDraftValue] = useState(value || '');
 
@@ -510,8 +513,55 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
     }
   }, [value, isFocused]);
 
+  const formatTypedDateValue = (rawValue) => {
+    const digits = String(rawValue || '').replace(/\D/g, '').slice(0, 8);
+
+    if (digits.length <= 4) {
+      return digits;
+    }
+
+    if (digits.length <= 6) {
+      return `${digits.slice(0, 4)}-${digits.slice(4)}`;
+    }
+
+    return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6)}`;
+  };
+
+  const isCompleteDateText = (dateText) => {
+    return /^\d{4}-\d{2}-\d{2}$/.test(String(dateText || ''));
+  };
+
+  const isValidDateText = (dateText) => {
+    if (!isCompleteDateText(dateText)) {
+      return false;
+    }
+
+    const parsedDate = new Date(`${dateText}T00:00:00Z`);
+
+    if (Number.isNaN(parsedDate.getTime())) {
+      return false;
+    }
+
+    return formatDate(parsedDate) === dateText;
+  };
+
+  const commitDateValue = (nextValue) => {
+    if (!nextValue || lastCommittedValueRef.current === nextValue) {
+      return;
+    }
+
+    lastCommittedValueRef.current = nextValue;
+
+    if (onDateBlur) {
+      onDateBlur(nextValue);
+      return;
+    }
+
+    onChange(nextValue);
+  };
+
   const openDatePicker = () => {
-    const input = inputRef.current;
+    const input = calendarInputRef.current;
     if (!input) return;
 
     input.focus();
@@ -525,26 +575,18 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
     }
   };
 
-  const commitDateValue = (nextValue) => {
-    if (onDateBlur) {
-      onDateBlur(nextValue);
-      return;
-    }
-
-    onChange(nextValue);
-  };
-
   return (
     <label className="block">
       <span className="mb-1.5 block text-xs font-semibold text-slate-600 tracking-wide">{label}</span>
       <div className="relative">
         <input
           ref={inputRef}
-          type="date"
+          type="text"
           value={isFocused ? draftValue : value}
-          min={min}
-          max={max}
+          inputMode="numeric"
+          placeholder="YYYY-MM-DD"
           onFocus={() => {
+            lastCommittedValueRef.current = '';
             setDraftValue(value || '');
             setIsFocused(true);
           }}
@@ -552,16 +594,47 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
             const nextValue = e.target.value;
 
             setIsFocused(false);
-            setDraftValue(nextValue);
-            commitDateValue(nextValue);
+
+            if (isValidDateText(nextValue)) {
+              commitDateValue(nextValue);
+            } else {
+              setDraftValue(value || '');
+            }
           }}
           onChange={(e) => {
-            setDraftValue(e.target.value);
+            const nextValue = formatTypedDateValue(e.target.value);
+            const cursorPosition = nextValue.length;
+
+            setDraftValue(nextValue);
+
+            if (
+              cursorPosition >= 10 &&
+              isValidDateText(nextValue) &&
+              !isTemporaryDateInputValue(nextValue)
+            ) {
+              commitDateValue(nextValue);
+            }
           }}
-          className={`h-[42px] w-full rounded-xl border border-slate-200 bg-white px-3.5 pr-10 text-sm outline-none transition mk-form-focus [&::-webkit-calendar-picker-indicator]:opacity-0 ${
+          className={`h-[42px] w-full rounded-xl border border-slate-200 bg-white px-3.5 pr-10 text-sm outline-none transition mk-form-focus ${
             isFocused ? 'text-slate-900' : 'text-transparent'
           }`}
           {...props}
+        />
+
+        <input
+          ref={calendarInputRef}
+          type="date"
+          value={value || ''}
+          min={min}
+          max={max}
+          tabIndex={-1}
+          onChange={(e) => {
+            const nextValue = e.target.value;
+
+            setDraftValue(nextValue);
+            commitDateValue(nextValue);
+          }}
+          className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 opacity-0"
         />
 
         {!isFocused && (
