@@ -236,23 +236,6 @@ const getAdjustedRentalStartDate = (dateStr, settings = {}) => {
   return getNextBusinessDay(candidateDate, settings);
 };
 
-const getSafeMaxRentalDays = (settings = {}) => {
-  const parsedMaxRentalDays = Number(settings.maxRentalDays ?? DEFAULT_MAX_RENTAL_DAYS);
-
-  if (
-    Number.isNaN(parsedMaxRentalDays) ||
-    parsedMaxRentalDays < 1
-  ) {
-    return DEFAULT_MAX_RENTAL_DAYS;
-  }
-
-  return parsedMaxRentalDays;
-};
-
-const getMaxRentalDueDate = (startDate, settings = {}) => {
-  return addDaysFrom(startDate, getSafeMaxRentalDays(settings));
-};
-
 const defaultRentalStartDate = (settings = {}) => {
   const shouldAdjustToNextBusinessDay = getBusinessDayAdjustmentEnabled(settings);
   const shouldMoveAfterWorkEnd =
@@ -304,13 +287,14 @@ const getRentalStartAdjustmentInfo = (settings = {}) => {
 };
 
 const createDefaultRequestForm = (settings = {}) => {
+  const maxRentalDays = settings.maxRentalDays ?? DEFAULT_MAX_RENTAL_DAYS;
   const startDate = defaultRentalStartDate(settings);
 
   return {
     team: '',
     borrower: '',
     startDate,
-    dueDate: getMaxRentalDueDate(startDate, settings),
+    dueDate: addDaysFrom(startDate, maxRentalDays),
     purpose: '',
   };
 };
@@ -489,6 +473,7 @@ function Input({ label, value, onChange, type = 'text', placeholder = '', ...pro
   );
 }
 
+// 수정 후 코드
 function DateInputWithWeekday({ label, value, onChange, min, max, ...props }) {
   const inputRef = useRef(null);
   const [isFocused, setIsFocused] = useState(false);
@@ -1429,46 +1414,27 @@ function App() {
       return;
     }
 
-    const minStartDate = today();
-
-    if (form.startDate < minStartDate) {
-      const nextStartDate = getAdjustedRentalStartDate(minStartDate, data.settings);
-
-      triggerToast(
-        `대여 시작일은 오늘보다 이전일 수 없습니다. 선택 가능한 가장 빠른 대여 시작일은 ${formatDateWithKoreanWeekday(nextStartDate)}입니다.`,
-        'error'
-      );
+    if (form.startDate < today()) {
+      triggerToast('대여 시작일은 오늘 날짜 이전으로 선택할 수 없습니다.', 'error');
       return;
     }
 
     const adjustedStartDate = getAdjustedRentalStartDate(form.startDate, data.settings);
 
     if (adjustedStartDate !== form.startDate) {
-      const reason = getNonBusinessDayReason(form.startDate, data.settings);
-
-      triggerToast(
-        `대여 시작일은 ${reason ? `${reason}이라` : '영업일이 아니라'} 선택할 수 없습니다. 선택 가능한 가장 빠른 대여 시작일은 ${formatDateWithKoreanWeekday(adjustedStartDate)}입니다.`,
-        'error'
-      );
+      triggerToast(`대여 시작일은 영업일 기준 ${formatDateWithKoreanWeekday(adjustedStartDate)} 이후로 선택해 주세요.`, 'error');
       return;
     }
 
     if (form.dueDate < form.startDate) {
-      triggerToast(
-        `반납 예정일은 대여 시작일보다 빠를 수 없습니다. 최소 반납 예정일은 ${formatDateWithKoreanWeekday(form.startDate)}입니다.`,
-        'error'
-      );
+      triggerToast('반납 예정일은 대여 시작일 이후여야 합니다.', 'error');
       return;
     }
 
-    const maxAllowedDate = getMaxRentalDueDate(form.startDate, data.settings);
-    const maxRentalDays = getSafeMaxRentalDays(data.settings);
-
+    // 시스템 최장 허용 대여 기한 검증 로직 가동
+    const maxAllowedDate = addDaysFrom(form.startDate, data.settings.maxRentalDays);
     if (form.dueDate > maxAllowedDate) {
-      triggerToast(
-        `대여 가능일은 최대 ${maxRentalDays}일입니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxAllowedDate)}까지 선택할 수 있습니다.`,
-        'error'
-      );
+      triggerToast(`기본 최장 허용 대여 기한(${data.settings.maxRentalDays}일)을 초과할 수 없습니다. 최대 허용 반납일: ${maxAllowedDate}`, 'error');
       return;
     }
 
@@ -2001,7 +1967,7 @@ function App() {
                 >
                   <h2 className="text-lg font-bold text-white">기기 대여 신청</h2>
                   <p className="mt-0.5 text-xs text-orange-100">
-                    대여가능일은 최대 {getSafeMaxRentalDays(data.settings)}일입니다.
+                    대여가능일은 최대 {data.settings.maxRentalDays ?? '0'}일입니다.
                   </p>
                   {rentalStartAdjustmentInfo.adjusted && (
                     <p className="mt-0.5 text-xs text-orange-100">
@@ -2090,22 +2056,11 @@ function App() {
                     <DateInputWithWeekday
                       label="대여 시작일"
                       value={form.startDate}
-                      min={today()}
+                      min={defaultRentalStartDate(data.settings)}
                       onChange={(v) => {
                         const minStartDate = today();
 
-                        if (!v) {
-                          const nextStartDate = getAdjustedRentalStartDate(minStartDate, data.settings);
-
-                          setForm({
-                            ...form,
-                            startDate: nextStartDate,
-                            dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
-                          });
-                          return;
-                        }
-
-                        if (v < minStartDate) {
+                        if (v && v < minStartDate) {
                           const nextStartDate = getAdjustedRentalStartDate(minStartDate, data.settings);
 
                           triggerToast(
@@ -2116,26 +2071,21 @@ function App() {
                           setForm({
                             ...form,
                             startDate: nextStartDate,
-                            dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
+                            dueDate: addDaysFrom(nextStartDate, data.settings.maxRentalDays),
                           });
                           return;
                         }
 
                         const nextStartDate = getAdjustedRentalStartDate(v, data.settings);
 
-                        if (nextStartDate !== v) {
-                          const reason = getNonBusinessDayReason(v, data.settings);
-
-                          triggerToast(
-                            `대여 시작일은 ${reason ? `${reason}이라` : '영업일이 아니라'} 선택할 수 없습니다. ${formatDateWithKoreanWeekday(nextStartDate)}로 조정되었습니다.`,
-                            'error'
-                          );
+                        if (v && nextStartDate !== v) {
+                          triggerToast(`선택한 날짜는 영업일이 아니어서 ${formatDateWithKoreanWeekday(nextStartDate)}로 조정되었습니다.`, 'success');
                         }
 
                         setForm({
                           ...form,
                           startDate: nextStartDate,
-                          dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
+                          dueDate: addDaysFrom(nextStartDate, data.settings.maxRentalDays),
                         });
                       }}
                     />
@@ -2144,30 +2094,19 @@ function App() {
                       label="반납 예정일"
                       value={form.dueDate}
                       min={form.startDate}
-                      max={getMaxRentalDueDate(form.startDate, data.settings)}
+                      max={addDaysFrom(form.startDate, data.settings.maxRentalDays)}
                       onChange={(v) => {
                         const minDueDate = form.startDate;
-                        const maxDueDate = getMaxRentalDueDate(form.startDate, data.settings);
-                        const maxRentalDays = getSafeMaxRentalDays(data.settings);
+                        const maxDueDate = addDaysFrom(form.startDate, data.settings.maxRentalDays);
                         let nextDueDate = v;
 
-                        if (!nextDueDate) {
-                          setForm({ ...form, dueDate: minDueDate });
-                          return;
-                        }
-
                         if (nextDueDate < minDueDate) {
-                          triggerToast(
-                            `반납 예정일은 대여 시작일보다 빠를 수 없습니다. 최소 반납 예정일은 ${formatDateWithKoreanWeekday(minDueDate)}입니다.`,
-                            'error'
-                          );
-
                           nextDueDate = minDueDate;
                         }
 
                         if (nextDueDate > maxDueDate) {
                           triggerToast(
-                            `대여 가능일은 최대 ${maxRentalDays}일입니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxDueDate)}까지 선택할 수 있습니다.`,
+                            `대여 가능일은 최대 ${data.settings.maxRentalDays}일입니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxDueDate)}까지 선택할 수 있습니다.`,
                             'error'
                           );
 
