@@ -499,13 +499,13 @@ function Input({ label, value, onChange, type = 'text', placeholder = '', ...pro
   );
 }
 
-// 수정 후 코드
 function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ...props }) {
   const yearRef = useRef(null);
   const monthRef = useRef(null);
   const dayRef = useRef(null);
   const calendarInputRef = useRef(null);
   const skipNextEditorBlurRef = useRef(false);
+  const pendingSegmentFocusRef = useRef(null);
   const [isFocused, setIsFocused] = useState(false);
 
   const splitDateToParts = (dateStr) => {
@@ -520,11 +520,32 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
 
   const [dateParts, setDateParts] = useState(() => splitDateToParts(value));
 
-  useEffect(() => {
-    if (!isFocused) {
-      setDateParts(splitDateToParts(value));
+    useEffect(() => {
+      if (!isFocused) {
+        setDateParts(splitDateToParts(value));
+      }
+    }, [value, isFocused]);
+
+    useEffect(() => {
+    if (!isFocused || !pendingSegmentFocusRef.current) {
+      return;
     }
-  }, [value, isFocused]);
+
+    const targetSegment = pendingSegmentFocusRef.current;
+    pendingSegmentFocusRef.current = null;
+
+    if (targetSegment === 'year') {
+      focusInput(yearRef);
+    }
+
+    if (targetSegment === 'month') {
+      focusInput(monthRef);
+    }
+
+    if (targetSegment === 'day') {
+      focusInput(dayRef);
+    }
+  }, [isFocused]);
 
   const getDateFromParts = (parts) => {
     if (
@@ -764,9 +785,9 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
   };
 
   const openSegmentEditor = () => {
+    pendingSegmentFocusRef.current = 'year';
     setDateParts(splitDateToParts(value));
     setIsFocused(true);
-    focusInput(yearRef);
   };
 
   return (
