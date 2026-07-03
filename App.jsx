@@ -763,6 +763,12 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
     }
   };
 
+  const openSegmentEditor = () => {
+    setDateParts(splitDateToParts(value));
+    setIsFocused(true);
+    focusInput(yearRef);
+  };
+
   return (
     <label className="block">
       <span className="mb-1.5 block text-xs font-semibold text-slate-600 tracking-wide">{label}</span>
@@ -814,11 +820,8 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
         ) : (
           <button
             type="button"
-            onClick={() => {
-              setDateParts(splitDateToParts(value));
-              setIsFocused(true);
-              focusInput(yearRef);
-            }}
+            onFocus={openSegmentEditor}
+            onClick={openSegmentEditor}
             className="flex h-[42px] w-full items-center rounded-xl border border-slate-200 bg-white px-3.5 pr-10 text-left text-sm text-slate-900 outline-none transition mk-form-focus"
             {...props}
           >
