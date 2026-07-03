@@ -499,60 +499,46 @@ function Input({ label, value, onChange, type = 'text', placeholder = '', ...pro
   );
 }
 
-// 수정 후 코드
 function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ...props }) {
   const inputRef = useRef(null);
-  const calendarInputRef = useRef(null);
-  const lastCommittedValueRef = useRef('');
+  const commitTimerRef = useRef(null);
+  const lastSentValueRef = useRef('');
   const [isFocused, setIsFocused] = useState(false);
   const [draftValue, setDraftValue] = useState(value || '');
 
   useEffect(() => {
     if (!isFocused) {
       setDraftValue(value || '');
-    }
-  }, [value, isFocused]);
-
-  const formatTypedDateValue = (rawValue) => {
-    const digits = String(rawValue || '').replace(/\D/g, '').slice(0, 8);
-
-    if (digits.length <= 4) {
-      return digits;
-    }
-
-    if (digits.length <= 6) {
-      return `${digits.slice(0, 4)}-${digits.slice(4)}`;
-    }
-
-    return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6)}`;
-  };
-
-  const isCompleteDateText = (dateText) => {
-    return /^\d{4}-\d{2}-\d{2}$/.test(String(dateText || ''));
-  };
-
-  const isValidDateText = (dateText) => {
-    if (!isCompleteDateText(dateText)) {
-      return false;
-    }
-
-    const parsedDate = new Date(`${dateText}T00:00:00Z`);
-
-    if (Number.isNaN(parsedDate.getTime())) {
-      return false;
-    }
-
-    return formatDate(parsedDate) === dateText;
-  };
-
-  const commitDateValue = (nextValue) => {
-    if (!nextValue || lastCommittedValueRef.current === nextValue) {
       return;
     }
 
-    lastCommittedValueRef.current = nextValue;
+    if (lastSentValueRef.current && value && value !== lastSentValueRef.current) {
+      setDraftValue(value || '');
+      lastSentValueRef.current = '';
+    }
+  }, [value, isFocused]);
 
-    if (onDateBlur) {
+  useEffect(() => {
+    return () => {
+      if (commitTimerRef.current) {
+        clearTimeout(commitTimerRef.current);
+      }
+    };
+  }, []);
+
+  const clearCommitTimer = () => {
+    if (commitTimerRef.current) {
+      clearTimeout(commitTimerRef.current);
+      commitTimerRef.current = null;
+    }
+  };
+
+  const commitDateValue = (nextValue, shouldUseBlurHandler = false) => {
+    clearCommitTimer();
+
+    lastSentValueRef.current = nextValue || '';
+
+    if (shouldUseBlurHandler && onDateBlur) {
       onDateBlur(nextValue);
       return;
     }
@@ -560,8 +546,20 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
     onChange(nextValue);
   };
 
+  const scheduleCommitDateValue = (nextValue) => {
+    clearCommitTimer();
+
+    if (!nextValue || isTemporaryDateInputValue(nextValue)) {
+      return;
+    }
+
+    commitTimerRef.current = setTimeout(() => {
+      commitDateValue(nextValue);
+    }, 350);
+  };
+
   const openDatePicker = () => {
-    const input = calendarInputRef.current;
+    const input = inputRef.current;
     if (!input) return;
 
     input.focus();
@@ -581,60 +579,34 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
       <div className="relative">
         <input
           ref={inputRef}
-          type="text"
-          value={isFocused ? draftValue : value}
-          inputMode="numeric"
-          placeholder="YYYY-MM-DD"
+          type="date"
+          value={isFocused ? draftValue : value || ''}
+          min={min}
+          max={max}
           onFocus={() => {
-            lastCommittedValueRef.current = '';
+            clearCommitTimer();
+            lastSentValueRef.current = '';
             setDraftValue(value || '');
             setIsFocused(true);
           }}
           onBlur={(e) => {
             const nextValue = e.target.value;
 
+            clearCommitTimer();
             setIsFocused(false);
-
-            if (isValidDateText(nextValue)) {
-              commitDateValue(nextValue);
-            } else {
-              setDraftValue(value || '');
-            }
-          }}
-          onChange={(e) => {
-            const nextValue = formatTypedDateValue(e.target.value);
-            const cursorPosition = nextValue.length;
-
             setDraftValue(nextValue);
-
-            if (
-              cursorPosition >= 10 &&
-              isValidDateText(nextValue) &&
-              !isTemporaryDateInputValue(nextValue)
-            ) {
-              commitDateValue(nextValue);
-            }
+            commitDateValue(nextValue, true);
           }}
-          className={`h-[42px] w-full rounded-xl border border-slate-200 bg-white px-3.5 pr-10 text-sm outline-none transition mk-form-focus ${
-            isFocused ? 'text-slate-900' : 'text-transparent'
-          }`}
-          {...props}
-        />
-
-        <input
-          ref={calendarInputRef}
-          type="date"
-          value={value || ''}
-          min={min}
-          max={max}
-          tabIndex={-1}
           onChange={(e) => {
             const nextValue = e.target.value;
 
             setDraftValue(nextValue);
-            commitDateValue(nextValue);
+            scheduleCommitDateValue(nextValue);
           }}
-          className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 opacity-0"
+          className={`h-[42px] w-full rounded-xl border border-slate-200 bg-white px-3.5 pr-10 text-sm outline-none transition mk-form-focus [&::-webkit-calendar-picker-indicator]:opacity-0 ${
+            isFocused ? 'text-slate-900' : 'text-transparent'
+          }`}
+          {...props}
         />
 
         {!isFocused && (
