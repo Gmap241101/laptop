@@ -56,107 +56,6 @@ const statusStyle = {
   '대여불가': 'bg-rose-100 text-rose-800 border-rose-300',
 };
 
-const RENTAL_BLOCKING_REQUEST_STATUSES = [
-  STATUS.REQUESTED,
-  STATUS.APPROVED,
-  STATUS.ON_HOLD,
-];
-
-const hasRentalPeriodOverlap = (
-  existingStartDate,
-  existingDueDate,
-  nextStartDate,
-  nextDueDate
-) => {
-  if (!existingStartDate || !existingDueDate || !nextStartDate || !nextDueDate) {
-    return false;
-  }
-
-  return existingStartDate <= nextDueDate && nextStartDate <= existingDueDate;
-};
-
-const findSameAssetBlockingRequest = (requests = [], laptopId) => {
-  return requests.find(
-    (request) =>
-      request?.laptopId === laptopId &&
-      RENTAL_BLOCKING_REQUEST_STATUSES.includes(request.status)
-  );
-};
-
-const findSameAssetPeriodOverlappingRequest = (
-  requests = [],
-  laptopId,
-  startDate,
-  dueDate
-) => {
-  return requests.find(
-    (request) =>
-      request?.laptopId === laptopId &&
-      RENTAL_BLOCKING_REQUEST_STATUSES.includes(request.status) &&
-      hasRentalPeriodOverlap(
-        request.startDate,
-        request.dueDate,
-        startDate,
-        dueDate
-      )
-  );
-};
-
-const getLaptopRentalAvailability = (
-  laptop,
-  requests = [],
-  settings = {},
-  startDate = '',
-  dueDate = ''
-) => {
-  if (!laptop) {
-    return {
-      blocked: true,
-      status: STATUS.UNAVAILABLE,
-      reason: 'notFound',
-      blockingRequest: null,
-    };
-  }
-
-  if (laptop.status === STATUS.UNAVAILABLE) {
-    return {
-      blocked: true,
-      status: STATUS.UNAVAILABLE,
-      reason: 'assetUnavailable',
-      blockingRequest: null,
-    };
-  }
-
-  const shouldAllowNonOverlappingSameAssetRequests =
-    settings.allowNonOverlappingSameAssetRequests ??
-    DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS;
-
-  if (shouldAllowNonOverlappingSameAssetRequests && startDate && dueDate) {
-    const periodBlockingRequest = findSameAssetPeriodOverlappingRequest(
-      requests,
-      laptop.id,
-      startDate,
-      dueDate
-    );
-
-    return {
-      blocked: Boolean(periodBlockingRequest),
-      status: periodBlockingRequest?.status || STATUS.AVAILABLE,
-      reason: periodBlockingRequest ? 'periodOverlap' : '',
-      blockingRequest: periodBlockingRequest || null,
-    };
-  }
-
-  const blockingRequest = findSameAssetBlockingRequest(requests, laptop.id);
-
-  return {
-    blocked: Boolean(blockingRequest),
-    status: blockingRequest?.status || STATUS.AVAILABLE,
-    reason: blockingRequest ? 'currentStatus' : '',
-    blockingRequest: blockingRequest || null,
-  };
-};
-
 const KOREA_TIME_OFFSET_MS = 9 * 60 * 60 * 1000;
 const DEFAULT_MAX_RENTAL_DAYS = 14;
 const DEFAULT_ADJUST_START_DATE_AFTER_WORK_END = true;
@@ -165,7 +64,6 @@ const DEFAULT_EXCLUDE_WEEKENDS_FOR_START_DATE = true;
 const DEFAULT_EXCLUDE_HOLIDAYS_FOR_START_DATE = true;
 const DEFAULT_WORK_END_TIME = '18:00';
 const DEFAULT_HOLIDAY_TYPE = 'company';
-const DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS = false;
 
 const HOLIDAY_TYPE_LABEL = {
   public: '법정공휴일',
@@ -465,7 +363,6 @@ const initialData = {
     workEndTime: DEFAULT_WORK_END_TIME,
     holidays: [],
     requireAdminApproval: true,
-    allowNonOverlappingSameAssetRequests: DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS,
   },
 };
 
@@ -502,9 +399,6 @@ function mergePersistedData(rawData) {
   settings.excludeHolidaysForStartDate =
     rawSettings.excludeHolidaysForStartDate ??
     initialData.settings.excludeHolidaysForStartDate;
-  settings.allowNonOverlappingSameAssetRequests =
-    rawSettings.allowNonOverlappingSameAssetRequests ??
-    initialData.settings.allowNonOverlappingSameAssetRequests;
   settings.holidays = Array.isArray(settings.holidays)
     ? settings.holidays
         .filter((holiday) => holiday && holiday.date)
@@ -1809,14 +1703,6 @@ function App() {
   }), [data, blockedLaptopIds]);
 
   const filteredLaptops = data.laptops.filter((l) => {
-    const laptopAvailability = getLaptopRentalAvailability(
-      l,
-      data.requests,
-      data.settings,
-      form.startDate,
-      form.dueDate
-    );
-
     const keywordMatched = `${l.category || ''} ${l.assetNo} ${l.serialNo} ${l.model} ${l.note}`
       .toLowerCase()
       .includes(query.toLowerCase());
@@ -1828,8 +1714,8 @@ function App() {
       availabilityFilter === '전체'
         ? true
         : availabilityFilter === STATUS.AVAILABLE
-          ? !laptopAvailability.blocked
-          : laptopAvailability.blocked;
+          ? !blockedLaptopIds.has(l.id) && l.status !== STATUS.UNAVAILABLE
+          : blockedLaptopIds.has(l.id) || l.status === STATUS.UNAVAILABLE;
 
     return keywordMatched && categoryMatched && availabilityMatched;
   });
@@ -1866,10 +1752,6 @@ function App() {
     DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY;
   const tempHolidayList = Array.isArray(tempSettings.holidays) ? tempSettings.holidays : [];
 
-  const tempAllowNonOverlappingSameAssetRequests =
-    tempSettings.allowNonOverlappingSameAssetRequests ??
-    DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS;
-
   const editLaptopIndex = editLaptop ? adminFilteredLaptops.findIndex((l) => l.id === editLaptop.id) : -1;
   const editLaptopInsertIndex =
     editLaptopIndex >= 0
@@ -1880,35 +1762,7 @@ function App() {
       : -1;
 
   const submitRequest = () => {
-    if (!selectedLaptop) {
-      triggerToast('신청할 기기를 선택해 주세요.', 'error');
-      return;
-    }
-
-    const selectedLaptopAvailability = getLaptopRentalAvailability(
-      selectedLaptop,
-      data.requests,
-      data.settings,
-      form.startDate,
-      form.dueDate
-    );
-
-    if (selectedLaptopAvailability.blocked) {
-      const blockingRequest = selectedLaptopAvailability.blockingRequest;
-
-      if (selectedLaptopAvailability.reason === 'periodOverlap' && blockingRequest) {
-        triggerToast(
-          `${selectedLaptop.assetNo}은(는) ${formatDateWithKoreanWeekday(blockingRequest.startDate)} ~ ${formatDateWithKoreanWeekday(blockingRequest.dueDate)} 기간에 이미 ${blockingRequest.status} 상태의 신청이 있어 선택한 기간에는 신청할 수 없습니다.`,
-          'error'
-        );
-        return;
-      }
-
-      if (selectedLaptopAvailability.reason === 'assetUnavailable') {
-        triggerToast('대여불가로 설정된 기기입니다.', 'error');
-        return;
-      }
-
+    if (!selectedLaptop || blockedLaptopIds.has(selectedLaptop.id)) {
       triggerToast('이미 예약 중이거나 이용 불가한 기기입니다.', 'error');
       return;
     }
@@ -2424,15 +2278,7 @@ function App() {
 
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                     {filteredLaptops.map((l) => {
-                      const laptopAvailability = getLaptopRentalAvailability(
-                        l,
-                        data.requests,
-                        data.settings,
-                        form.startDate,
-                        form.dueDate
-                      );
-                      const blocked = laptopAvailability.blocked;
-                      const statusLabel = blocked ? laptopAvailability.status : STATUS.AVAILABLE;
+                      const blocked = blockedLaptopIds.has(l.id) || l.status === STATUS.UNAVAILABLE;
                       const isSelected = selectedLaptopId === l.id;
                       return (
                         <motion.button
@@ -2457,7 +2303,7 @@ function App() {
                               />
                               {blocked && (
                                 <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-[1px] flex items-center justify-center text-white text-xs font-bold gap-1">
-                                  <LockIcon size={14} /> {laptopAvailability.reason === 'periodOverlap' ? '선택 기간 이용 불가' : '이용 불가'}
+                                  <LockIcon size={14} /> 이용 불가
                                 </div>
                               )}
                             </div>
@@ -2468,7 +2314,7 @@ function App() {
                             </div>
                             <div className="flex items-center justify-between gap-1">
                               <span className="text-sm font-bold text-slate-900 tracking-tight">{l.assetNo}</span>
-                              <Badge>{statusLabel}</Badge>
+                              <Badge>{blocked ? (l.status === STATUS.UNAVAILABLE ? STATUS.UNAVAILABLE : l.status) : STATUS.AVAILABLE}</Badge>
                             </div>
                             <div className="text-xs font-semibold text-slate-700">{l.model}</div>
                             <div className="space-y-0.5 text-[11px] text-slate-500">
@@ -3768,45 +3614,6 @@ function App() {
                           }
                         />
 
-                        <div className="sm:col-span-2 rounded-xl border border-slate-200 bg-white p-3.5">
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                              <div className="text-xs font-semibold text-slate-700">
-                                기간이 겹치지 않으면 동일 기기 신청 허용
-                              </div>
-                              <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-                                켜면 같은 기기라도 기존 신청 기간과 겹치지 않는 경우 추가 신청을 허용합니다. 끄면 기존처럼 기기가 신청중, 대여중, 보류 상태일 때 다른 신청을 막습니다.
-                              </p>
-                            </div>
-
-                            <button
-                              type="button"
-                              aria-label="기간이 겹치지 않으면 동일 기기 신청 허용"
-                              aria-pressed={tempAllowNonOverlappingSameAssetRequests}
-                              onClick={() =>
-                                setTempSettings({
-                                  ...tempSettings,
-                                  allowNonOverlappingSameAssetRequests:
-                                    !tempAllowNonOverlappingSameAssetRequests,
-                                })
-                              }
-                              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition ${
-                                tempAllowNonOverlappingSameAssetRequests
-                                  ? 'mk-brand-gradient-r border-transparent'
-                                  : 'border-slate-300 bg-slate-200'
-                              }`}
-                            >
-                              <span
-                                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition ${
-                                  tempAllowNonOverlappingSameAssetRequests
-                                    ? 'translate-x-5'
-                                    : 'translate-x-0.5'
-                                }`}
-                              />
-                            </button>
-                          </div>
-                        </div>
-
                         <div className="sm:col-span-2">
                           <div className="mb-1.5 text-xs font-semibold text-slate-600 tracking-wide">
                             업무 종료/휴무일 기준 대여 시작일 다음 영업일로 조정
@@ -4042,9 +3849,6 @@ function App() {
                           onClick={() => {
                             const nextSettings = {
                               ...tempSettings,
-                              allowNonOverlappingSameAssetRequests:
-                                tempSettings.allowNonOverlappingSameAssetRequests ??
-                                DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS,
                               adjustStartDateAfterWorkEnd:
                                 tempSettings.adjustStartDateToNextBusinessDay ??
                                 tempSettings.adjustStartDateAfterWorkEnd ??
