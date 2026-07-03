@@ -558,6 +558,14 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
     });
   };
 
+  const selectSegmentInput = (e) => {
+    const target = e.currentTarget;
+
+    requestAnimationFrame(() => {
+      target.select();
+    });
+  };
+
   const blurSegmentInputs = () => {
     yearRef.current?.blur();
     monthRef.current?.blur();
@@ -759,6 +767,8 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
               type="text"
               inputMode="numeric"
               value={dateParts.year}
+              onFocus={selectSegmentInput}
+              onClick={selectSegmentInput}
               onChange={(e) => handleYearChange(e.target.value)}
               placeholder="YYYY"
               maxLength={4}
@@ -770,6 +780,8 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
               type="text"
               inputMode="numeric"
               value={dateParts.month}
+              onFocus={selectSegmentInput}
+              onClick={selectSegmentInput}
               onChange={(e) => handleMonthChange(e.target.value)}
               placeholder="MM"
               maxLength={2}
@@ -781,6 +793,8 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
               type="text"
               inputMode="numeric"
               value={dateParts.day}
+              onFocus={selectSegmentInput}
+              onClick={selectSegmentInput}
               onChange={(e) => handleDayChange(e.target.value)}
               placeholder="DD"
               maxLength={2}
