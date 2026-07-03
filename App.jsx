@@ -762,7 +762,7 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
               onChange={(e) => handleYearChange(e.target.value)}
               placeholder="YYYY"
               maxLength={4}
-              className="w-[4.25ch] bg-transparent text-center text-sm outline-none"
+              className="w-[4ch] bg-transparent text-center text-sm outline-none"
             />
             <span className="shrink-0 px-0.5 text-slate-400">-</span>
             <input
@@ -773,7 +773,7 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
               onChange={(e) => handleMonthChange(e.target.value)}
               placeholder="MM"
               maxLength={2}
-              className="w-[2.25ch] bg-transparent text-center text-sm outline-none"
+              className="w-[2ch] bg-transparent text-center text-sm outline-none"
             />
             <span className="shrink-0 px-0.5 text-slate-400">-</span>
             <input
@@ -784,7 +784,7 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
               onChange={(e) => handleDayChange(e.target.value)}
               placeholder="DD"
               maxLength={2}
-              className="w-[2.25ch] bg-transparent text-center text-sm outline-none"
+              className="w-[2ch] bg-transparent text-center text-sm outline-none"
             />
           </div>
         ) : (
