@@ -649,7 +649,20 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
             handleDateInputValue(e.currentTarget.value);
           }}
           onChange={(e) => {
-            handleDateInputValue(e.currentTarget.value);
+            const nextValue = e.currentTarget.value;
+
+            if (isExpandedYearDateValue(nextValue)) {
+              resetDraftToCurrentValue();
+              return;
+            }
+
+            setDraftValue(nextValue);
+
+            if (!nextValue || isTemporaryDateInputValue(nextValue)) {
+              return;
+            }
+
+            commitDateValue(nextValue);
           }}
           className={`h-[42px] w-full rounded-xl border border-slate-200 bg-white px-3.5 pr-10 text-sm outline-none transition mk-form-focus [&::-webkit-calendar-picker-indicator]:opacity-0 ${
             isFocused ? 'text-slate-900' : 'text-transparent'
