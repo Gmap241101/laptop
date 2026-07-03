@@ -253,6 +253,16 @@ const getMaxRentalDueDate = (startDate, settings = {}) => {
   return addDaysFrom(startDate, getSafeMaxRentalDays(settings));
 };
 
+const isTemporaryDateInputValue = (dateStr) => {
+  const match = String(dateStr || '').match(/^(\d{4})-\d{2}-\d{2}$/);
+
+  if (!match) {
+    return false;
+  }
+
+  return Number(match[1]) < 1000;
+};
+
 const defaultRentalStartDate = (settings = {}) => {
   const shouldAdjustToNextBusinessDay = getBusinessDayAdjustmentEnabled(settings);
   const shouldMoveAfterWorkEnd =
@@ -489,7 +499,7 @@ function Input({ label, value, onChange, type = 'text', placeholder = '', ...pro
   );
 }
 
-function DateInputWithWeekday({ label, value, onChange, min, max, ...props }) {
+function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ...props }) {
   const inputRef = useRef(null);
   const [isFocused, setIsFocused] = useState(false);
 
@@ -519,7 +529,13 @@ function DateInputWithWeekday({ label, value, onChange, min, max, ...props }) {
           min={min}
           max={max}
           onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
+          onBlur={(e) => {
+            setIsFocused(false);
+
+            if (onDateBlur) {
+              onDateBlur(e.target.value);
+            }
+          }}
           onChange={(e) => onChange(e.target.value)}
           className={`h-[42px] w-full rounded-xl border border-slate-200 bg-white px-3.5 pr-10 text-sm outline-none transition mk-form-focus [&::-webkit-calendar-picker-indicator]:opacity-0 ${
             isFocused ? 'text-slate-900' : 'text-transparent'
@@ -2105,6 +2121,14 @@ function App() {
                           return;
                         }
 
+                        if (isTemporaryDateInputValue(v)) {
+                          setForm({
+                            ...form,
+                            startDate: v,
+                          });
+                          return;
+                        }
+
                         if (v < minStartDate) {
                           const nextStartDate = getAdjustedRentalStartDate(minStartDate, data.settings);
 
@@ -2138,6 +2162,42 @@ function App() {
                           dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
                         });
                       }}
+                      onDateBlur={(v) => {
+                        const minStartDate = today();
+
+                        if (!v || isTemporaryDateInputValue(v) || v < minStartDate) {
+                          const nextStartDate = getAdjustedRentalStartDate(minStartDate, data.settings);
+
+                          triggerToast(
+                            `대여 시작일은 오늘보다 이전일 수 없습니다. 선택 가능한 가장 빠른 대여 시작일은 ${formatDateWithKoreanWeekday(nextStartDate)}입니다.`,
+                            'error'
+                          );
+
+                          setForm({
+                            ...form,
+                            startDate: nextStartDate,
+                            dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
+                          });
+                          return;
+                        }
+
+                      const nextStartDate = getAdjustedRentalStartDate(v, data.settings);
+
+                      if (nextStartDate !== v) {
+                        const reason = getNonBusinessDayReason(v, data.settings);
+
+                        triggerToast(
+                          `대여 시작일은 ${reason ? `${reason}이라` : '영업일이 아니라'} 선택할 수 없습니다. ${formatDateWithKoreanWeekday(nextStartDate)}로 조정되었습니다.`,
+                          'error'
+                        );
+
+                        setForm({
+                          ...form,
+                          startDate: nextStartDate,
+                          dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
+                        });
+                      }
+                    }}
                     />
 
                     <DateInputWithWeekday
@@ -2153,6 +2213,11 @@ function App() {
 
                         if (!nextDueDate) {
                           setForm({ ...form, dueDate: minDueDate });
+                          return;
+                        }
+
+                        if (isTemporaryDateInputValue(nextDueDate)) {
+                          setForm({ ...form, dueDate: nextDueDate });
                           return;
                         }
 
@@ -2175,6 +2240,32 @@ function App() {
                         }
 
                         setForm({ ...form, dueDate: nextDueDate });
+                      }}
+
+                      onDateBlur={(v) => {
+                        const minDueDate = form.startDate;
+                        const maxDueDate = getMaxRentalDueDate(form.startDate, data.settings);
+                        const maxRentalDays = getSafeMaxRentalDays(data.settings);
+                        let nextDueDate = v;
+
+                        if (!nextDueDate || isTemporaryDateInputValue(nextDueDate) || nextDueDate < minDueDate) {
+                          triggerToast(
+                            `반납 예정일은 대여 시작일보다 빠를 수 없습니다. 최소 반납 예정일은 ${formatDateWithKoreanWeekday(minDueDate)}입니다.`,
+                            'error'
+                          );
+
+                          setForm({ ...form, dueDate: minDueDate });
+                          return;
+                        }
+
+                        if (nextDueDate > maxDueDate) {
+                          triggerToast(
+                            `대여 가능일은 최대 ${maxRentalDays}일입니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxDueDate)}까지 선택할 수 있습니다.`,
+                            'error'
+                          );
+
+                          setForm({ ...form, dueDate: maxDueDate });
+                        }
                       }}
                     />
                   </div>
