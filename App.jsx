@@ -505,6 +505,7 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
   const monthRef = useRef(null);
   const dayRef = useRef(null);
   const calendarInputRef = useRef(null);
+  const skipNextEditorBlurRef = useRef(false);
   const [isFocused, setIsFocused] = useState(false);
 
   const splitDateToParts = (dateStr) => {
@@ -567,9 +568,15 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
   };
 
   const blurSegmentInputs = () => {
+    skipNextEditorBlurRef.current = true;
+
     yearRef.current?.blur();
     monthRef.current?.blur();
     dayRef.current?.blur();
+
+    requestAnimationFrame(() => {
+      skipNextEditorBlurRef.current = false;
+    });
   };
 
   const commitDateValue = (nextValue, shouldUseBlurHandler = false) => {
@@ -714,15 +721,18 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
       return;
     }
 
-    const finalValue = commitDateValue(nextDate);
+  const finalValue = commitDateValue(nextDate);
 
-    if (finalValue !== nextDate) {
-      setIsFocused(false);
-      blurSegmentInputs();
-    }
+    setDateParts(splitDateToParts(finalValue));
+    setIsFocused(false);
+    blurSegmentInputs();
   };
 
   const handleEditorBlur = (e) => {
+    if (skipNextEditorBlurRef.current) {
+      return;
+    }
+
     if (e.currentTarget.contains(e.relatedTarget)) {
       return;
     }
@@ -841,6 +851,7 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
 
           <button
             type="button"
+            tabIndex={-1}
             aria-label={`${label} 달력 열기`}
             onMouseDown={(e) => e.preventDefault()}
             onClick={openDatePicker}
