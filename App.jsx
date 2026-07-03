@@ -555,7 +555,7 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
 
     commitTimerRef.current = setTimeout(() => {
       commitDateValue(nextValue);
-    }, 350);
+    }, 120);
   };
 
   const openDatePicker = () => {
@@ -596,6 +596,12 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
             setIsFocused(false);
             setDraftValue(nextValue);
             commitDateValue(nextValue, true);
+          }}
+          onInput={(e) => {
+            const nextValue = e.target.value;
+
+            setDraftValue(nextValue);
+            scheduleCommitDateValue(nextValue);
           }}
           onChange={(e) => {
             const nextValue = e.target.value;
