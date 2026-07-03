@@ -538,12 +538,19 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
 
     lastSentValueRef.current = nextValue || '';
 
-    if (shouldUseBlurHandler && onDateBlur) {
-      onDateBlur(nextValue);
-      return;
-    }
+    const committedValue =
+      shouldUseBlurHandler && onDateBlur
+        ? onDateBlur(nextValue)
+        : onChange(nextValue);
 
-    onChange(nextValue);
+    if (typeof committedValue === 'string') {
+      setDraftValue(committedValue);
+      lastSentValueRef.current = '';
+
+      if (inputRef.current) {
+        inputRef.current.value = committedValue;
+      }
+    }
   };
 
   const scheduleCommitDateValue = (nextValue) => {
@@ -2190,7 +2197,8 @@ function App() {
                             startDate: nextStartDate,
                             dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
                           });
-                          return;
+
+                          return nextStartDate;
                         }
 
                         if (isTemporaryDateInputValue(v)) {
@@ -2198,7 +2206,8 @@ function App() {
                             ...form,
                             startDate: v,
                           });
-                          return;
+
+                          return v;
                         }
 
                         if (v < minStartDate) {
@@ -2214,7 +2223,8 @@ function App() {
                             startDate: nextStartDate,
                             dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
                           });
-                          return;
+
+                          return nextStartDate;
                         }
 
                         const nextStartDate = getAdjustedRentalStartDate(v, data.settings);
@@ -2233,6 +2243,8 @@ function App() {
                           startDate: nextStartDate,
                           dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
                         });
+
+                        return nextStartDate;
                       }}
                       onDateBlur={(v) => {
                         const minStartDate = today();
@@ -2250,26 +2262,31 @@ function App() {
                             startDate: nextStartDate,
                             dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
                           });
-                          return;
+
+                          return nextStartDate;
                         }
 
-                      const nextStartDate = getAdjustedRentalStartDate(v, data.settings);
+                        const nextStartDate = getAdjustedRentalStartDate(v, data.settings);
 
-                      if (nextStartDate !== v) {
-                        const reason = getNonBusinessDayReason(v, data.settings);
+                        if (nextStartDate !== v) {
+                          const reason = getNonBusinessDayReason(v, data.settings);
 
-                        triggerToast(
-                          `대여 시작일은 ${reason ? `${reason}이라` : '영업일이 아니라'} 선택할 수 없습니다. ${formatDateWithKoreanWeekday(nextStartDate)}로 조정되었습니다.`,
-                          'error'
-                        );
+                          triggerToast(
+                            `대여 시작일은 ${reason ? `${reason}이라` : '영업일이 아니라'} 선택할 수 없습니다. ${formatDateWithKoreanWeekday(nextStartDate)}로 조정되었습니다.`,
+                            'error'
+                          );
 
-                        setForm({
-                          ...form,
-                          startDate: nextStartDate,
-                          dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
-                        });
-                      }
-                    }}
+                          setForm({
+                            ...form,
+                            startDate: nextStartDate,
+                            dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
+                          });
+
+                          return nextStartDate;
+                        }
+
+                        return v;
+                      }}
                     />
 
                     <DateInputWithWeekday
@@ -2285,12 +2302,12 @@ function App() {
 
                         if (!nextDueDate) {
                           setForm({ ...form, dueDate: minDueDate });
-                          return;
+                          return minDueDate;
                         }
 
                         if (isTemporaryDateInputValue(nextDueDate)) {
                           setForm({ ...form, dueDate: nextDueDate });
-                          return;
+                          return nextDueDate;
                         }
 
                         if (nextDueDate < minDueDate) {
@@ -2312,6 +2329,8 @@ function App() {
                         }
 
                         setForm({ ...form, dueDate: nextDueDate });
+
+                        return nextDueDate;
                       }}
 
                       onDateBlur={(v) => {
@@ -2327,7 +2346,8 @@ function App() {
                           );
 
                           setForm({ ...form, dueDate: minDueDate });
-                          return;
+
+                          return minDueDate;
                         }
 
                         if (nextDueDate > maxDueDate) {
@@ -2337,7 +2357,11 @@ function App() {
                           );
 
                           setForm({ ...form, dueDate: maxDueDate });
+
+                          return maxDueDate;
                         }
+
+                        return nextDueDate;
                       }}
                     />
                   </div>
