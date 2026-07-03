@@ -2246,6 +2246,7 @@ function App() {
 
                         return nextStartDate;
                       }}
+
                       onDateBlur={(v) => {
                         const minStartDate = today();
 
@@ -2285,7 +2286,13 @@ function App() {
                           return nextStartDate;
                         }
 
-                        return v;
+                        setForm({
+                          ...form,
+                          startDate: nextStartDate,
+                          dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
+                        });
+
+                        return nextStartDate;
                       }}
                     />
 
@@ -2361,6 +2368,8 @@ function App() {
                           return maxDueDate;
                         }
 
+                        setForm({ ...form, dueDate: nextDueDate });
+
                         return nextDueDate;
                       }}
                     />
@@ -2400,10 +2409,10 @@ function App() {
                 <CardContent className="space-y-1.5 p-3">
                   {[
                     ['dashboard', LayoutDashboard, '실시간 대시보드'],
-                    ['requests', ClipboardList, '신청·대여 목록'],
-                    ['laptops', Laptop, '대여 자산 목록'],
-                    ['categories', ClipboardList, '자산 카테고리 등록'],
-                    ['people', Users, '부서·사용자 등록'],
+                    ['requests', ClipboardList, '기기 대여 신청 관리'],
+                    ['laptops', Laptop, '대여 자산 관리'],
+                    ['categories', ClipboardList, '자산 카테고리 관리'],
+                    ['people', Users, '부서·사용자 관리'],
                     ['settings', Settings, '시스템 설정'],
                   ].map(([key, Icon, label]) => (
                     <Button
@@ -2457,7 +2466,7 @@ function App() {
                   {adminTab === 'requests' && (
                     <div className="space-y-4">
                       <div className="border-b border-slate-100 pb-4">
-                        <h2 className="text-lg font-bold text-slate-900">신청·대여 목록</h2>
+                        <h2 className="text-lg font-bold text-slate-900">기기 대여 신청 관리</h2>
                         <p className="text-xs text-slate-500 mt-1">부서원들이 제출한 실시간 신청서에 대한 승인/대기/반납 전환 관리 창구입니다.</p>
                       </div>
                       <div className="space-y-4">
@@ -2563,7 +2572,7 @@ function App() {
                     <div className="space-y-6">
                       <div className="border-b border-slate-100 pb-4 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
                         <div>
-                          <h2 className="text-lg font-bold text-slate-900">대여 자산 목록</h2>
+                          <h2 className="text-lg font-bold text-slate-900">대여 자산 관리</h2>
                           <p className="text-xs text-slate-500 mt-1">자산 고유 시리얼 넘버, 기기 사진 연동, 특이 사항 메모 및 장비를 관리합니다.</p>
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -2878,14 +2887,14 @@ function App() {
                     </div>
                   )}
 
-                  {/* 자산 카테고리 등록 탭 */}
+                  {/* 자산 카테고리 관리 탭 */}
                   {adminTab === 'categories' && (
                     <div className="space-y-6">
                       <div className="grid gap-8 md:grid-cols-2">
-                        {/* 자산 카테고리 등록 컬럼 */}
+                        {/* 자산 카테고리 관리 컬럼 */}
                         <div className="space-y-4">
                           <div className="border-b border-slate-100 pb-3">
-                            <h2 className="text-base font-bold text-slate-900">자산 카테고리 등록</h2>
+                            <h2 className="text-base font-bold text-slate-900">자산 카테고리 관리</h2>
                             <p className="text-[11px] text-slate-500 mt-0.5">대여 자산 분류를 관리합니다.</p>
                           </div>
                           <div className="flex gap-2">
