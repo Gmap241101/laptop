@@ -752,7 +752,7 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
         {isFocused ? (
           <div
             onBlur={handleEditorBlur}
-            className="flex h-[42px] w-full items-center rounded-xl border border-slate-200 bg-white px-3.5 pr-10 text-sm outline-none transition focus-within:border-[var(--mk-orange)] focus-within:shadow-[0_0_0_4px_var(--mk-orange-ring)]"
+            className="flex h-[42px] w-full items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 pr-11 text-sm outline-none transition focus-within:border-[var(--mk-orange)] focus-within:shadow-[0_0_0_4px_var(--mk-orange-ring)]"
           >
             <input
               ref={yearRef}
@@ -762,7 +762,7 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
               onChange={(e) => handleYearChange(e.target.value)}
               placeholder="YYYY"
               maxLength={4}
-              className="w-[4.5rem] bg-transparent text-center text-sm outline-none"
+              className="w-[4.5ch] bg-transparent text-center text-sm outline-none"
             />
             <span className="text-slate-400">-</span>
             <input
@@ -773,7 +773,7 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
               onChange={(e) => handleMonthChange(e.target.value)}
               placeholder="MM"
               maxLength={2}
-              className="w-9 bg-transparent text-center text-sm outline-none"
+              className="w-[2.5ch] bg-transparent text-center text-sm outline-none"
             />
             <span className="text-slate-400">-</span>
             <input
@@ -784,7 +784,7 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
               onChange={(e) => handleDayChange(e.target.value)}
               placeholder="DD"
               maxLength={2}
-              className="w-9 bg-transparent text-center text-sm outline-none"
+              className="w-[2.5ch] bg-transparent text-center text-sm outline-none"
             />
           </div>
         ) : (
@@ -830,7 +830,7 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
           aria-label={`${label} 달력 열기`}
           onMouseDown={(e) => e.preventDefault()}
           onClick={openDatePicker}
-          className="absolute right-3 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center text-slate-500"
+          className="absolute right-0 top-0 z-10 flex h-full w-11 items-center justify-center rounded-r-xl text-slate-500 hover:bg-slate-50"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
