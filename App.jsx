@@ -499,7 +499,7 @@ function Input({ label, value, onChange, type = 'text', placeholder = '', ...pro
   );
 }
 
-function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ...props }) {
+function DateInputWithWeekday({ label, value, onChange, onDateBlur, onInvalidDate, min, max, ...props }) {
   const yearRef = useRef(null);
   const monthRef = useRef(null);
   const dayRef = useRef(null);
@@ -650,6 +650,7 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
       const monthNumber = Number(nextParts.month);
 
       if (monthNumber < 1 || monthNumber > 12) {
+        onInvalidDate?.();
         setDateParts(splitDateToParts(value));
         setIsFocused(false);
         blurSegmentInputs();
@@ -736,6 +737,7 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
     }
 
     if (!isValidDateValue(nextDate)) {
+      onInvalidDate?.();
       setDateParts(splitDateToParts(value));
       setIsFocused(false);
       blurSegmentInputs();
@@ -763,6 +765,7 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
     if (isValidDateValue(nextDate)) {
       commitDateValue(nextDate, true);
     } else {
+      onInvalidDate?.();
       setDateParts(splitDateToParts(value));
     }
 
@@ -2430,6 +2433,7 @@ function App() {
                       label="대여 시작일"
                       value={form.startDate}
                       min={today()}
+                      onInvalidDate={() => triggerToast('올바른 날짜를 입력해 주세요.', 'error')}
                       onChange={(v) => {
                         const minStartDate = today();
 
@@ -2545,6 +2549,7 @@ function App() {
                       value={form.dueDate}
                       min={form.startDate}
                       max={getMaxRentalDueDate(form.startDate, data.settings)}
+                      onInvalidDate={() => triggerToast('올바른 날짜를 입력해 주세요.', 'error')}
                       onChange={(v) => {
                         const minDueDate = form.startDate;
                         const maxDueDate = getMaxRentalDueDate(form.startDate, data.settings);
@@ -3292,7 +3297,7 @@ function App() {
                         {/* 부서/팀 관리 컬럼 */}
                         <div className="space-y-4">
                           <div className="border-b border-slate-100 pb-3">
-                            <h2 className="text-base font-bold text-slate-900">부서 등록</h2>
+                            <h2 className="text-base font-bold text-slate-900">부서 관리</h2>
                             <p className="text-[11px] text-slate-500 mt-0.5">부서 카드를 드래그해서 사용자 화면에 표시될 부서 순서를 변경할 수 있습니다.</p>
                           </div>
                           <div className="flex gap-2">
@@ -3413,7 +3418,7 @@ function App() {
                         {/* 사원 관리 컬럼 */}
                         <div className="space-y-4">
                           <div className="border-b border-slate-100 pb-3">
-                            <h2 className="text-base font-bold text-slate-900">사용자 등록</h2>
+                            <h2 className="text-base font-bold text-slate-900">사용자 관리</h2>
                             <p className="text-[11px] text-slate-500 mt-0.5">부서를 선택하면 해당 부서 사용자만 표시됩니다. 전체를 선택하면 모든 사용자가 표시됩니다.</p>
                           </div>
                           <div className="space-y-2">
