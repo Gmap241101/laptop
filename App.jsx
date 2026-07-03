@@ -533,8 +533,34 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
     }
   };
 
+  const isExpandedYearDateValue = (dateValue) => {
+    const yearPart = String(dateValue || '').split('-')[0];
+
+    return /^\d{5,}$/.test(yearPart);
+  };
+
+  const resetDraftToCurrentValue = () => {
+    const fallbackValue = value || min || '';
+    const resetValue = isExpandedYearDateValue(fallbackValue) ? (min || '') : fallbackValue;
+
+    clearCommitTimer();
+    setDraftValue(resetValue);
+    lastSentValueRef.current = '';
+
+    if (inputRef.current) {
+      inputRef.current.value = resetValue;
+    }
+
+    return resetValue;
+  };
+
   const commitDateValue = (nextValue, shouldUseBlurHandler = false) => {
     clearCommitTimer();
+
+    if (isExpandedYearDateValue(nextValue)) {
+      resetDraftToCurrentValue();
+      return;
+    }
 
     lastSentValueRef.current = nextValue || '';
 
@@ -560,9 +586,24 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
       return;
     }
 
+    if (isExpandedYearDateValue(nextValue)) {
+      resetDraftToCurrentValue();
+      return;
+    }
+
     commitTimerRef.current = setTimeout(() => {
       commitDateValue(nextValue);
     }, 120);
+  };
+
+  const handleDateInputValue = (nextValue) => {
+    if (isExpandedYearDateValue(nextValue)) {
+      resetDraftToCurrentValue();
+      return;
+    }
+
+    setDraftValue(nextValue);
+    scheduleCommitDateValue(nextValue);
   };
 
   const openDatePicker = () => {
@@ -605,16 +646,10 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
             commitDateValue(nextValue, true);
           }}
           onInput={(e) => {
-            const nextValue = e.target.value;
-
-            setDraftValue(nextValue);
-            scheduleCommitDateValue(nextValue);
+            handleDateInputValue(e.currentTarget.value);
           }}
           onChange={(e) => {
-            const nextValue = e.target.value;
-
-            setDraftValue(nextValue);
-            scheduleCommitDateValue(nextValue);
+            handleDateInputValue(e.currentTarget.value);
           }}
           className={`h-[42px] w-full rounded-xl border border-slate-200 bg-white px-3.5 pr-10 text-sm outline-none transition mk-form-focus [&::-webkit-calendar-picker-indicator]:opacity-0 ${
             isFocused ? 'text-slate-900' : 'text-transparent'
