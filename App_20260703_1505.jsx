@@ -499,239 +499,115 @@ function Input({ label, value, onChange, type = 'text', placeholder = '', ...pro
   );
 }
 
-// 수정 후 코드
 function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ...props }) {
-  const yearRef = useRef(null);
-  const monthRef = useRef(null);
-  const dayRef = useRef(null);
-  const calendarInputRef = useRef(null);
+  const inputRef = useRef(null);
+  const commitTimerRef = useRef(null);
+  const lastSentValueRef = useRef('');
   const [isFocused, setIsFocused] = useState(false);
-
-  const splitDateToParts = (dateStr) => {
-    const [year = '', month = '', day = ''] = String(dateStr || '').split('-');
-
-    return {
-      year: year.slice(0, 4),
-      month: month.slice(0, 2),
-      day: day.slice(0, 2),
-    };
-  };
-
-  const [dateParts, setDateParts] = useState(() => splitDateToParts(value));
+  const [draftValue, setDraftValue] = useState(value || '');
 
   useEffect(() => {
     if (!isFocused) {
-      setDateParts(splitDateToParts(value));
+      setDraftValue(value || '');
+      return;
+    }
+
+    if (lastSentValueRef.current && value && value !== lastSentValueRef.current) {
+      setDraftValue(value || '');
+      lastSentValueRef.current = '';
     }
   }, [value, isFocused]);
 
-  const getDateFromParts = (parts) => {
-    if (
-      parts.year.length !== 4 ||
-      parts.month.length !== 2 ||
-      parts.day.length !== 2
-    ) {
-      return '';
-    }
+  useEffect(() => {
+    return () => {
+      if (commitTimerRef.current) {
+        clearTimeout(commitTimerRef.current);
+      }
+    };
+  }, []);
 
-    return `${parts.year}-${parts.month}-${parts.day}`;
+  const clearCommitTimer = () => {
+    if (commitTimerRef.current) {
+      clearTimeout(commitTimerRef.current);
+      commitTimerRef.current = null;
+    }
   };
 
-  const isValidDateValue = (dateStr) => {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr || ''))) {
-      return false;
-    }
+  const isExpandedYearDateValue = (dateValue) => {
+    const yearPart = String(dateValue || '').split('-')[0];
 
-    const parsedDate = new Date(`${dateStr}T00:00:00Z`);
-
-    if (Number.isNaN(parsedDate.getTime())) {
-      return false;
-    }
-
-    return formatDate(parsedDate) === dateStr;
+    return /^\d{5,}$/.test(yearPart);
   };
 
-  const focusInput = (ref) => {
-    requestAnimationFrame(() => {
-      ref.current?.focus();
-      ref.current?.select();
-    });
-  };
+  const resetDraftToCurrentValue = () => {
+    const fallbackValue = value || min || '';
+    const resetValue = isExpandedYearDateValue(fallbackValue) ? (min || '') : fallbackValue;
 
-  const blurSegmentInputs = () => {
-    yearRef.current?.blur();
-    monthRef.current?.blur();
-    dayRef.current?.blur();
+    clearCommitTimer();
+    setDraftValue(resetValue);
+    lastSentValueRef.current = '';
+
+    if (inputRef.current) {
+      inputRef.current.value = resetValue;
+    }
+
+    return resetValue;
   };
 
   const commitDateValue = (nextValue, shouldUseBlurHandler = false) => {
-    if (!nextValue) {
-      return '';
+    clearCommitTimer();
+
+    if (isExpandedYearDateValue(nextValue)) {
+      resetDraftToCurrentValue();
+      return;
     }
+
+    lastSentValueRef.current = nextValue || '';
 
     const committedValue =
       shouldUseBlurHandler && onDateBlur
         ? onDateBlur(nextValue)
         : onChange(nextValue);
 
-    const finalValue = typeof committedValue === 'string' ? committedValue : nextValue;
+    if (typeof committedValue === 'string') {
+      setDraftValue(committedValue);
+      lastSentValueRef.current = '';
 
-    setDateParts(splitDateToParts(finalValue));
-
-    return finalValue;
-  };
-
-  const finishWithCandidateDate = (candidateDate) => {
-    const finalValue = commitDateValue(candidateDate);
-    setDateParts(splitDateToParts(finalValue));
-    setIsFocused(false);
-    blurSegmentInputs();
-
-    return finalValue;
-  };
-
-  const checkPartialRangeAndResetIfNeeded = (nextParts, level) => {
-    const minParts = splitDateToParts(min);
-    const maxParts = splitDateToParts(max);
-
-    if (level === 'year' && nextParts.year.length === 4) {
-      if (minParts.year && nextParts.year < minParts.year) {
-        finishWithCandidateDate(`${nextParts.year}-01-01`);
-        return true;
+      if (inputRef.current) {
+        inputRef.current.value = committedValue;
       }
-
-      if (maxParts.year && nextParts.year > maxParts.year) {
-        finishWithCandidateDate(`${nextParts.year}-12-31`);
-        return true;
-      }
-    }
-
-    if (
-      level === 'month' &&
-      nextParts.year.length === 4 &&
-      nextParts.month.length === 2
-    ) {
-      const monthNumber = Number(nextParts.month);
-
-      if (monthNumber < 1 || monthNumber > 12) {
-        setDateParts(splitDateToParts(value));
-        setIsFocused(false);
-        blurSegmentInputs();
-        return true;
-      }
-
-      const typedYearMonth = `${nextParts.year}-${nextParts.month}`;
-      const minYearMonth = minParts.year && minParts.month ? `${minParts.year}-${minParts.month}` : '';
-      const maxYearMonth = maxParts.year && maxParts.month ? `${maxParts.year}-${maxParts.month}` : '';
-
-      if (minYearMonth && typedYearMonth < minYearMonth) {
-        finishWithCandidateDate(`${nextParts.year}-${nextParts.month}-01`);
-        return true;
-      }
-
-      if (maxYearMonth && typedYearMonth > maxYearMonth) {
-        finishWithCandidateDate(`${nextParts.year}-${nextParts.month}-01`);
-        return true;
-      }
-    }
-
-    return false;
-  };
-
-  const handleYearChange = (rawValue) => {
-    const nextYear = String(rawValue || '').replace(/\D/g, '').slice(0, 4);
-    const nextParts = {
-      ...dateParts,
-      year: nextYear,
-    };
-
-    setDateParts(nextParts);
-
-    if (nextYear.length === 4) {
-      if (checkPartialRangeAndResetIfNeeded(nextParts, 'year')) {
-        return;
-      }
-
-      focusInput(monthRef);
     }
   };
 
-  const handleMonthChange = (rawValue) => {
-    let nextMonth = String(rawValue || '').replace(/\D/g, '').slice(0, 2);
+  const scheduleCommitDateValue = (nextValue) => {
+    clearCommitTimer();
 
-    if (nextMonth.length === 1 && Number(nextMonth) > 1) {
-      nextMonth = `0${nextMonth}`;
-    }
-
-    const nextParts = {
-      ...dateParts,
-      month: nextMonth,
-    };
-
-    setDateParts(nextParts);
-
-    if (nextMonth.length === 2) {
-      if (checkPartialRangeAndResetIfNeeded(nextParts, 'month')) {
-        return;
-      }
-
-      focusInput(dayRef);
-    }
-  };
-
-  const handleDayChange = (rawValue) => {
-    let nextDay = String(rawValue || '').replace(/\D/g, '').slice(0, 2);
-
-    if (nextDay.length === 1 && Number(nextDay) > 3) {
-      nextDay = `0${nextDay}`;
-    }
-
-    const nextParts = {
-      ...dateParts,
-      day: nextDay,
-    };
-
-    setDateParts(nextParts);
-
-    const nextDate = getDateFromParts(nextParts);
-
-    if (!nextDate) {
+    if (!nextValue || isTemporaryDateInputValue(nextValue)) {
       return;
     }
 
-    if (!isValidDateValue(nextDate)) {
-      setDateParts(splitDateToParts(value));
-      setIsFocused(false);
-      blurSegmentInputs();
+    if (isExpandedYearDateValue(nextValue)) {
+      resetDraftToCurrentValue();
       return;
     }
 
-    const finalValue = commitDateValue(nextDate);
-
-    if (finalValue !== nextDate) {
-      setIsFocused(false);
-      blurSegmentInputs();
-    }
+    commitTimerRef.current = setTimeout(() => {
+      commitDateValue(nextValue);
+    }, 120);
   };
 
-  const handleEditorBlur = (e) => {
-    if (e.currentTarget.contains(e.relatedTarget)) {
+  const handleDateInputValue = (nextValue) => {
+    if (isExpandedYearDateValue(nextValue)) {
+      resetDraftToCurrentValue();
       return;
     }
 
-    const nextDate = getDateFromParts(dateParts);
-
-    if (isValidDateValue(nextDate)) {
-      commitDateValue(nextDate, true);
-    } else {
-      setDateParts(splitDateToParts(value));
-    }
-
-    setIsFocused(false);
+    setDraftValue(nextValue);
+    scheduleCommitDateValue(nextValue);
   };
 
   const openDatePicker = () => {
-    const input = calendarInputRef.current;
+    const input = inputRef.current;
     if (!input) return;
 
     input.focus();
@@ -749,81 +625,58 @@ function DateInputWithWeekday({ label, value, onChange, onDateBlur, min, max, ..
     <label className="block">
       <span className="mb-1.5 block text-xs font-semibold text-slate-600 tracking-wide">{label}</span>
       <div className="relative">
-        {isFocused ? (
-          <div
-            onBlur={handleEditorBlur}
-            className="flex h-[42px] w-full items-center rounded-xl border border-slate-200 bg-white px-3.5 pr-10 text-sm outline-none transition focus-within:border-[var(--mk-orange)] focus-within:shadow-[0_0_0_4px_var(--mk-orange-ring)]"
-          >
-            <input
-              ref={yearRef}
-              type="text"
-              inputMode="numeric"
-              value={dateParts.year}
-              onChange={(e) => handleYearChange(e.target.value)}
-              placeholder="YYYY"
-              maxLength={4}
-              className="w-[4.5rem] bg-transparent text-center text-sm outline-none"
-            />
-            <span className="text-slate-400">-</span>
-            <input
-              ref={monthRef}
-              type="text"
-              inputMode="numeric"
-              value={dateParts.month}
-              onChange={(e) => handleMonthChange(e.target.value)}
-              placeholder="MM"
-              maxLength={2}
-              className="w-9 bg-transparent text-center text-sm outline-none"
-            />
-            <span className="text-slate-400">-</span>
-            <input
-              ref={dayRef}
-              type="text"
-              inputMode="numeric"
-              value={dateParts.day}
-              onChange={(e) => handleDayChange(e.target.value)}
-              placeholder="DD"
-              maxLength={2}
-              className="w-9 bg-transparent text-center text-sm outline-none"
-            />
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => {
-              setDateParts(splitDateToParts(value));
-              setIsFocused(true);
-              focusInput(yearRef);
-            }}
-            className="flex h-[42px] w-full items-center rounded-xl border border-slate-200 bg-white px-3.5 pr-10 text-left text-sm text-slate-900 outline-none transition mk-form-focus"
-            {...props}
-          >
+        <input
+          ref={inputRef}
+          type="date"
+          value={isFocused ? draftValue : value || ''}
+          min={min}
+          max={max}
+          onFocus={() => {
+            clearCommitTimer();
+            lastSentValueRef.current = '';
+            setDraftValue(value || '');
+            setIsFocused(true);
+          }}
+          onBlur={(e) => {
+            const nextValue = e.target.value;
+
+            clearCommitTimer();
+            setIsFocused(false);
+            setDraftValue(nextValue);
+            commitDateValue(nextValue, true);
+          }}
+          onInput={(e) => {
+            handleDateInputValue(e.currentTarget.value);
+          }}
+          onChange={(e) => {
+            const nextValue = e.currentTarget.value;
+
+            if (isExpandedYearDateValue(nextValue)) {
+              resetDraftToCurrentValue();
+              return;
+            }
+
+            setDraftValue(nextValue);
+
+            if (!nextValue || isTemporaryDateInputValue(nextValue)) {
+              return;
+            }
+
+            commitDateValue(nextValue);
+          }}
+          className={`h-[42px] w-full rounded-xl border border-slate-200 bg-white px-3.5 pr-10 text-sm outline-none transition mk-form-focus [&::-webkit-calendar-picker-indicator]:opacity-0 ${
+            isFocused ? 'text-slate-900' : 'text-transparent'
+          }`}
+          {...props}
+        />
+
+        {!isFocused && (
+          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center px-3.5 pr-10 text-sm text-slate-900">
             {formatDateWithKoreanWeekday(value) || (
               <span className="text-slate-400">날짜 선택</span>
             )}
-          </button>
+          </div>
         )}
-
-        <input
-          ref={calendarInputRef}
-          type="date"
-          value={value || ''}
-          min={min}
-          max={max}
-          tabIndex={-1}
-          onChange={(e) => {
-            const nextValue = e.target.value;
-
-            if (!nextValue) return;
-
-            const finalValue = commitDateValue(nextValue);
-
-            setDateParts(splitDateToParts(finalValue));
-            setIsFocused(false);
-            blurSegmentInputs();
-          }}
-          className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 opacity-0"
-        />
 
         <button
           type="button"
