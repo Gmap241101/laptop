@@ -46,9 +46,14 @@ const STATUS = {
   UNAVAILABLE: '대여불가',
 };
 
+const DISPLAY_STATUS = {
+  RESERVED: '예약중',
+};
+
 const statusStyle = {
   '대여가능': 'bg-emerald-50 text-emerald-700 border-emerald-200',
   '신청중': 'bg-amber-50 text-amber-700 border-amber-200',
+  [DISPLAY_STATUS.RESERVED]: 'bg-sky-50 text-sky-700 border-sky-200',
   '대여중': 'bg-blue-50 text-blue-700 border-blue-200',
   '보류': 'bg-purple-50 text-purple-700 border-purple-200',
   '불허': 'bg-rose-50 text-rose-700 border-rose-200',
@@ -179,6 +184,34 @@ const formatDate = (date) => date.toISOString().slice(0, 10);
 const getKoreaNow = () => new Date(Date.now() + KOREA_TIME_OFFSET_MS);
 
 const today = () => formatDate(getKoreaNow());
+
+const getDisplayRentalStatus = (status, startDate) => {
+  if (status === STATUS.APPROVED && startDate && startDate > today()) {
+    return DISPLAY_STATUS.RESERVED;
+  }
+
+  return status || STATUS.AVAILABLE;
+};
+
+const getLaptopAdminDisplayStatus = (laptop, requests = []) => {
+  if (!laptop) {
+    return STATUS.UNAVAILABLE;
+  }
+
+  if (laptop.status === STATUS.UNAVAILABLE) {
+    return STATUS.UNAVAILABLE;
+  }
+
+  const currentRequest =
+    requests.find((request) => request.id === laptop.currentRequestId) ||
+    findSameAssetBlockingRequest(requests, laptop.id);
+
+  if (!currentRequest) {
+    return STATUS.AVAILABLE;
+  }
+
+  return getDisplayRentalStatus(currentRequest.status, currentRequest.startDate);
+};
 
 const addDays = (days) => addDaysFrom(today(), days);
 
@@ -1869,9 +1902,20 @@ function App() {
   const availableFilterLabel = STATUS.AVAILABLE;
   const unavailableFilterLabel = STATUS.UNAVAILABLE;
 
-  const getUserLaptopStatusLabel = (laptopAvailability) => {
-    return laptopAvailability?.status || STATUS.AVAILABLE;
-  };
+const getUserLaptopStatusLabel = (laptopAvailability) => {
+  if (!laptopAvailability) {
+    return STATUS.AVAILABLE;
+  }
+
+  if (laptopAvailability.reason === 'assetUnavailable') {
+    return STATUS.UNAVAILABLE;
+  }
+
+  return getDisplayRentalStatus(
+    laptopAvailability.status,
+    laptopAvailability.blockingRequest?.startDate
+  );
+};
 
   const selectedLaptopAvailability = selectedLaptop
     ? getLaptopRentalAvailability(
