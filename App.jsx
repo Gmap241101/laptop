@@ -1859,12 +1859,12 @@ function App() {
     DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS;
 
   const rentalDeviceSectionTitle = isPeriodBasedRentalMode
-    ? '선택 기간 기준 대여 기기 선택'
-    : '기기 상태 기준 대여 기기 선택';
+    ? '대여 기기 선택'
+    : '대여 기기 선택';
 
   const rentalDeviceSectionDescription = isPeriodBasedRentalMode
-    ? '대여 시작일과 반납 예정일 기준으로 신청 가능한 기기를 표시합니다.'
-    : '현재 신청중, 대여중, 보류 상태인 기기는 기간과 관계없이 신청할 수 없습니다.';
+    ? '선택 기간 중 [대여가능] 기기만 신청할 수 있습니다.'
+    : '[대여가능] 기기만 신청할 수 있습니다.';
 
   const availableFilterLabel = STATUS.AVAILABLE;
   const unavailableFilterLabel = STATUS.UNAVAILABLE;
