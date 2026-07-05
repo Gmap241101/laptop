@@ -2664,9 +2664,9 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         {/* --- 실시간 주요 대여 현황 보드 --- */}
         <section className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-5">
           <StatCard icon={Laptop} label="보유 자산" value={stats.total} />
-          <StatCard icon={CheckCircle2} label="대여 즉시 가능" value={stats.available} tone="green" />
+          <StatCard icon={CheckCircle2} label="대여 가능" value={stats.available} tone="green" />
           <StatCard icon={Clock} label="승인 대기중" value={stats.requested} tone="amber" />
-          <StatCard icon={ShieldCheck} label="대여 사용중" value={stats.approved} tone="blue" />
+          <StatCard icon={ShieldCheck} label="대여(예약)중" value={stats.approved} tone="blue" />
           <StatCard icon={XCircle} label="반납 지연중" value={stats.overdue} tone="rose" />
         </section>
 
@@ -3052,7 +3052,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                                         {r.assetCategory}
                                       </span>
                                       <span className="font-bold text-slate-950 text-sm">{r.assetNo}</span>
-                                      <Badge>{r.status}</Badge>
+                                      <Badge>{getDisplayRentalStatus(r.status, r.startDate)}</Badge>
                                       {isOverdue && (
                                         <span className="inline-flex items-center rounded-md bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700 ring-1 ring-inset ring-rose-600/10 animate-pulse">
                                           반납 기한 지연중
@@ -3346,7 +3346,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                                 </div>
                                 <div className="flex items-center justify-between">
                                   <span className="font-bold text-slate-900 text-sm">{l.assetNo}</span>
-                                  <Badge>{l.status === STATUS.UNAVAILABLE ? STATUS.UNAVAILABLE : blockedLaptopIds.has(l.id) ? l.status : STATUS.AVAILABLE}</Badge>
+                                  <Badge>{getLaptopAdminDisplayStatus(l, data.requests)}</Badge>
                                 </div>
                                 <div className="text-xs font-semibold text-slate-700">{l.model}</div>
                                 <div className="space-y-0.5 text-[11px] text-slate-500">
