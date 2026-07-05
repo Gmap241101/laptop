@@ -1853,279 +1853,7 @@ function App() {
   });
 
   const selectedLaptop = data.laptops.find((l) => l.id === selectedLaptopId);
-
-  const isPeriodBasedRentalMode =
-    data.settings.allowNonOverlappingSameAssetRequests ??
-    DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS;
-
-  const rentalDeviceSectionTitle = isPeriodBasedRentalMode
-    ? '선택 기간 기준 대여 기기 선택'
-    : '기기 상태 기준 대여 기기 선택';
-
-  const rentalDeviceSectionDescription = isPeriodBasedRentalMode
-    ? '대여 시작일과 반납 예정일 기준으로 신청 가능한 기기를 표시합니다.'
-    : '현재 신청중, 대여중, 보류 상태인 기기는 기간과 관계없이 신청할 수 없습니다.';
-
-  const availableFilterLabel = isPeriodBasedRentalMode ? '선택 기간 가능' : STATUS.AVAILABLE;
-  const unavailableFilterLabel = isPeriodBasedRentalMode ? '선택 기간 불가' : STATUS.UNAVAILABLE;
-
-  const getUserLaptopStatusLabel = (laptopAvailability) => {
-    if (!isPeriodBasedRentalMode) {
-      return laptopAvailability.blocked ? laptopAvailability.status : STATUS.AVAILABLE;
-    }
-
-    if (!laptopAvailability.blocked) {
-      return '선택 기간 가능';
-    }
-
-    return laptopAvailability.reason === 'assetUnavailable'
-      ? STATUS.UNAVAILABLE
-      : '선택 기간 불가';
-  };
-
-  const selectedLaptopAvailability = selectedLaptop
-    ? getLaptopRentalAvailability(
-        selectedLaptop,
-        data.requests,
-        data.settings,
-        form.startDate,
-        form.dueDate
-      )
-    : null;
-
-  useEffect(() => {
-    if (!selectedLaptop || !selectedLaptopAvailability?.blocked) {
-      return;
-    }
-
-    setSelectedLaptopId(null);
-
-    if (selectedLaptopAvailability.reason === 'periodOverlap') {
-      triggerToast(
-        '선택한 대여 기간에는 기존 선택 기기를 사용할 수 없어 선택이 해제되었습니다.',
-        'error'
-      );
-      return;
-    }
-
-    if (selectedLaptopAvailability.reason === 'assetUnavailable') {
-      triggerToast(
-        '선택한 기기가 대여불가 상태여서 선택이 해제되었습니다.',
-        'error'
-      );
-      return;
-    }
-
-    triggerToast(
-      '선택한 기기가 현재 신청할 수 없는 상태여서 선택이 해제되었습니다.',
-      'error'
-    );
-  }, [
-    selectedLaptopId,
-    selectedLaptop?.id,
-    selectedLaptopAvailability?.blocked,
-    selectedLaptopAvailability?.reason,
-    selectedLaptopAvailability?.blockingRequest?.startDate,
-    selectedLaptopAvailability?.blockingRequest?.dueDate,
-  ]);
-
   const filteredBorrowers = data.borrowers.filter((b) => b.team === form.team);
-
-    const rentalPeriodFields = (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-      <DateInputWithWeekday
-        label="대여 시작일"
-        value={form.startDate}
-        min={today()}
-        onInvalidDate={() => triggerToast('올바른 날짜를 입력해 주세요.', 'error')}
-        onChange={(v) => {
-          const minStartDate = today();
-
-          if (!v) {
-            const nextStartDate = getAdjustedRentalStartDate(minStartDate, data.settings);
-
-            setForm({
-              ...form,
-              startDate: nextStartDate,
-              dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
-            });
-
-            return nextStartDate;
-          }
-
-          if (isTemporaryDateInputValue(v)) {
-            setForm({
-              ...form,
-              startDate: v,
-            });
-
-            return v;
-          }
-
-          if (v < minStartDate) {
-            const nextStartDate = getAdjustedRentalStartDate(minStartDate, data.settings);
-
-            triggerToast(
-              `대여 시작일은 오늘보다 이전일 수 없습니다. 선택 가능한 가장 빠른 대여 시작일은 ${formatDateWithKoreanWeekday(nextStartDate)}입니다.`,
-              'error'
-            );
-
-            setForm({
-              ...form,
-              startDate: nextStartDate,
-              dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
-            });
-
-            return nextStartDate;
-          }
-
-          const nextStartDate = getAdjustedRentalStartDate(v, data.settings);
-
-          if (nextStartDate !== v) {
-            const reason = getNonBusinessDayReason(v, data.settings);
-
-            triggerToast(
-              `대여 시작일은 ${reason ? `${reason}이라` : '영업일이 아니라'} 선택할 수 없습니다. ${formatDateWithKoreanWeekday(nextStartDate)}로 조정되었습니다.`,
-              'error'
-            );
-          }
-
-          setForm({
-            ...form,
-            startDate: nextStartDate,
-            dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
-          });
-
-          return nextStartDate;
-        }}
-        onDateBlur={(v) => {
-          const minStartDate = today();
-
-          if (!v || isTemporaryDateInputValue(v) || v < minStartDate) {
-            const nextStartDate = getAdjustedRentalStartDate(minStartDate, data.settings);
-
-            triggerToast(
-              `대여 시작일은 오늘보다 이전일 수 없습니다. 선택 가능한 가장 빠른 대여 시작일은 ${formatDateWithKoreanWeekday(nextStartDate)}입니다.`,
-              'error'
-            );
-
-            setForm({
-              ...form,
-              startDate: nextStartDate,
-              dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
-            });
-
-            return nextStartDate;
-          }
-
-          const nextStartDate = getAdjustedRentalStartDate(v, data.settings);
-
-          if (nextStartDate !== v) {
-            const reason = getNonBusinessDayReason(v, data.settings);
-
-            triggerToast(
-              `대여 시작일은 ${reason ? `${reason}이라` : '영업일이 아니라'} 선택할 수 없습니다. ${formatDateWithKoreanWeekday(nextStartDate)}로 조정되었습니다.`,
-              'error'
-            );
-
-            setForm({
-              ...form,
-              startDate: nextStartDate,
-              dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
-            });
-
-            return nextStartDate;
-          }
-
-          setForm({
-            ...form,
-            startDate: nextStartDate,
-            dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
-          });
-
-          return nextStartDate;
-        }}
-      />
-
-      <DateInputWithWeekday
-        label="반납 예정일"
-        value={form.dueDate}
-        min={form.startDate}
-        max={getMaxRentalDueDate(form.startDate, data.settings)}
-        onInvalidDate={() => triggerToast('올바른 날짜를 입력해 주세요.', 'error')}
-        onChange={(v) => {
-          const minDueDate = form.startDate;
-          const maxDueDate = getMaxRentalDueDate(form.startDate, data.settings);
-          const maxRentalDays = getSafeMaxRentalDays(data.settings);
-          let nextDueDate = v;
-
-          if (!nextDueDate) {
-            setForm({ ...form, dueDate: minDueDate });
-            return minDueDate;
-          }
-
-          if (isTemporaryDateInputValue(nextDueDate)) {
-            setForm({ ...form, dueDate: nextDueDate });
-            return nextDueDate;
-          }
-
-          if (nextDueDate < minDueDate) {
-            triggerToast(
-              `반납 예정일은 대여 시작일보다 빠를 수 없습니다. 최소 반납 예정일은 ${formatDateWithKoreanWeekday(minDueDate)}입니다.`,
-              'error'
-            );
-
-            nextDueDate = minDueDate;
-          }
-
-          if (nextDueDate > maxDueDate) {
-            triggerToast(
-              `대여 가능일은 최대 ${maxRentalDays}일입니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxDueDate)}까지 선택할 수 있습니다.`,
-              'error'
-            );
-
-            nextDueDate = maxDueDate;
-          }
-
-          setForm({ ...form, dueDate: nextDueDate });
-
-          return nextDueDate;
-        }}
-        onDateBlur={(v) => {
-          const minDueDate = form.startDate;
-          const maxDueDate = getMaxRentalDueDate(form.startDate, data.settings);
-          const maxRentalDays = getSafeMaxRentalDays(data.settings);
-          let nextDueDate = v;
-
-          if (!nextDueDate || isTemporaryDateInputValue(nextDueDate) || nextDueDate < minDueDate) {
-            triggerToast(
-              `반납 예정일은 대여 시작일보다 빠를 수 없습니다. 최소 반납 예정일은 ${formatDateWithKoreanWeekday(minDueDate)}입니다.`,
-              'error'
-            );
-
-            setForm({ ...form, dueDate: minDueDate });
-
-            return minDueDate;
-          }
-
-          if (nextDueDate > maxDueDate) {
-            triggerToast(
-              `대여 가능일은 최대 ${maxRentalDays}일입니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxDueDate)}까지 선택할 수 있습니다.`,
-              'error'
-            );
-
-            setForm({ ...form, dueDate: maxDueDate });
-
-            return maxDueDate;
-          }
-
-          setForm({ ...form, dueDate: nextDueDate });
-
-          return nextDueDate;
-        }}
-      />
-    </div>
-  );
 
   const displayedTempBorrowers = tempBorrowers
     .map((borrower, originalIndex) => ({ ...borrower, originalIndex }))
@@ -2638,53 +2366,8 @@ function App() {
 
         {view === 'user' ? (
           /* ==================== [사용자 대여 화면] ==================== */
-          <div className="space-y-6">
-            <Card className="mk-brand-border-soft shadow-sm shadow-slate-100">
-              <CardContent className="p-6">
-                <div className="mb-5 flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
-                  <div>
-                    <h2 className="text-lg font-bold text-slate-900">1. 대여 기간 선택</h2>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      먼저 대여 기간을 선택하면 아래 기기 목록이 현재 운영 방식에 맞게 표시됩니다.
-                    </p>
-                  </div>
-
-                  <div className="rounded-full border border-orange-100 bg-orange-50 px-3 py-1 text-[11px] font-semibold mk-brand-text">
-                    {isPeriodBasedRentalMode ? '기간 기반 예약 사용 중' : '기기 상태 기준 운영 중'}
-                  </div>
-                </div>
-
-                {rentalPeriodFields}
-
-                <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                    <div className="text-[11px] font-semibold text-slate-500">선택한 대여 기간</div>
-                    <div className="mt-1 text-sm font-bold text-slate-900">
-                      {formatDateWithKoreanWeekday(form.startDate)} ~ {formatDateWithKoreanWeekday(form.dueDate)}
-                    </div>
-                    <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-                      대여가능일은 최대 {getSafeMaxRentalDays(data.settings)}일입니다.
-                    </p>
-                  </div>
-
-                  <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-[11px] leading-relaxed text-slate-500 lg:max-w-[23rem]">
-                    {isPeriodBasedRentalMode
-                      ? '같은 기기라도 기존 신청 기간과 겹치지 않으면 신청할 수 있습니다.'
-                      : '신청중, 대여중, 보류 상태인 기기는 선택 기간과 관계없이 신청할 수 없습니다.'}
-                  </div>
-                </div>
-
-                {rentalStartAdjustmentInfo.adjusted && (
-                  <div className="mt-4 rounded-xl border border-orange-100 bg-orange-50 px-4 py-3 text-xs leading-relaxed text-orange-700">
-                    {rentalStartAdjustmentInfo.reasons.length > 0
-                      ? `${rentalStartAdjustmentInfo.reasons.join(', ')} 기준으로 대여 시작일이 다음 영업일(${formatDateWithKoreanWeekday(rentalStartAdjustmentInfo.adjustedDate)})로 조정되었습니다.`
-                      : `대여 시작일이 다음 영업일(${formatDateWithKoreanWeekday(rentalStartAdjustmentInfo.adjustedDate)})로 조정되었습니다.`}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <div className="grid grid-cols-1 gap-8 lg:grid-cols-3 lg:items-start">
+          /* lg:items-start를 적용하여 내부 카드들의 높이가 세로로 길게 늘어지지 않게 만듭니다. */
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-3 lg:items-start">
             
             {/* 좌측 자산 카드 셀렉터 (2컬럼 폭 차지) */}
             <div className="lg:col-span-2 space-y-4">
@@ -2692,9 +2375,9 @@ function App() {
                 <CardContent className="p-6">
                   <div className="mb-6 flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
                     <div className="shrink-0">
-                      <h2 className="text-lg font-bold text-slate-900">2. {rentalDeviceSectionTitle}</h2>
+                      <h2 className="text-lg font-bold text-slate-900">대여 기기 선택</h2>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        {rentalDeviceSectionDescription}
+                        [대여가능] 상태의 기기만 신청할 수 있습니다.
                       </p>
                     </div>
                     <div className="grid w-full gap-2 sm:grid-cols-[120px_120px_minmax(0,1fr)] lg:w-auto lg:grid-cols-[118px_118px_15rem]">
@@ -2723,8 +2406,8 @@ function App() {
                         className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none transition mk-form-focus"
                       >
                         <option value="전체">전체</option>
-                        <option value={STATUS.AVAILABLE}>{availableFilterLabel}</option>
-                        <option value={STATUS.UNAVAILABLE}>{unavailableFilterLabel}</option>
+                        <option value={STATUS.AVAILABLE}>대여가능</option>
+                        <option value={STATUS.UNAVAILABLE}>대여불가</option>
                       </select>
 
                       <div className="relative w-full">
@@ -2749,7 +2432,7 @@ function App() {
                         form.dueDate
                       );
                       const blocked = laptopAvailability.blocked;
-                      const statusLabel = getUserLaptopStatusLabel(laptopAvailability);
+                      const statusLabel = blocked ? laptopAvailability.status : STATUS.AVAILABLE;
                       const isSelected = selectedLaptopId === l.id;
                       return (
                         <motion.button
@@ -2812,10 +2495,17 @@ function App() {
                   className="px-6 py-4 text-white"
                   style={{ background: 'linear-gradient(90deg, var(--mk-orange-dark), var(--mk-orange))' }}
                 >
-                  <h2 className="text-lg font-bold text-white">3. 신청 정보 입력</h2>
+                  <h2 className="text-lg font-bold text-white">기기 대여 신청</h2>
                   <p className="mt-0.5 text-xs text-orange-100">
-                    선택한 기기와 신청자 정보를 확인한 뒤 신청을 접수해 주세요.
+                    대여가능일은 최대 {getSafeMaxRentalDays(data.settings)}일입니다.
                   </p>
+                  {rentalStartAdjustmentInfo.adjusted && (
+                    <p className="mt-0.5 text-xs text-orange-100">
+                      {rentalStartAdjustmentInfo.reasons.length > 0
+                        ? `${rentalStartAdjustmentInfo.reasons.join(', ')} 기준으로 대여 시작일이 다음 영업일(${formatDateWithKoreanWeekday(rentalStartAdjustmentInfo.adjustedDate)})로 조정되었습니다.`
+                        : `대여 시작일이 다음 영업일(${formatDateWithKoreanWeekday(rentalStartAdjustmentInfo.adjustedDate)})로 조정되었습니다.`}
+                    </p>
+                  )}
                 </div>
                 <CardContent className="space-y-4 p-6">
                   <div>
@@ -2843,7 +2533,7 @@ function App() {
                       ) : (
                         <div className="flex items-center gap-1.5">
                           <Info size={14} className="text-slate-400" />
-                          <span>대여 기간을 확인한 뒤, 기기 선택 섹션에서 대여할 기기를 선택해 주세요.</span>
+                          <span>기기 선택 섹션에서 대여할 기기를 먼저 선택해 주세요.</span>
                         </div>
                       )}
                     </div>
@@ -2892,19 +2582,200 @@ function App() {
                   )}
 
                   {/* 최장 허용 대여 기한에 맞추어 캘린더 min, max 속성을 실시간 바인딩 처리합니다 */}
-// 수정 후 코드
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                    <div className="mb-1.5 text-xs font-semibold text-slate-600 tracking-wide">
-                      대여 기간
-                    </div>
-                    <div className="text-sm font-bold leading-relaxed text-slate-900">
-                      {formatDateWithKoreanWeekday(form.startDate)}
-                      <span className="mx-1 text-slate-400">~</span>
-                      {formatDateWithKoreanWeekday(form.dueDate)}
-                    </div>
-                    <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-                      대여 기간은 상단의 1. 대여 기간 선택 영역에서 변경할 수 있습니다.
-                    </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <DateInputWithWeekday
+                      label="대여 시작일"
+                      value={form.startDate}
+                      min={today()}
+                      onInvalidDate={() => triggerToast('올바른 날짜를 입력해 주세요.', 'error')}
+                      onChange={(v) => {
+                        const minStartDate = today();
+
+                        if (!v) {
+                          const nextStartDate = getAdjustedRentalStartDate(minStartDate, data.settings);
+
+                          setForm({
+                            ...form,
+                            startDate: nextStartDate,
+                            dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
+                          });
+
+                          return nextStartDate;
+                        }
+
+                        if (isTemporaryDateInputValue(v)) {
+                          setForm({
+                            ...form,
+                            startDate: v,
+                          });
+
+                          return v;
+                        }
+
+                        if (v < minStartDate) {
+                          const nextStartDate = getAdjustedRentalStartDate(minStartDate, data.settings);
+
+                          triggerToast(
+                            `대여 시작일은 오늘보다 이전일 수 없습니다. 선택 가능한 가장 빠른 대여 시작일은 ${formatDateWithKoreanWeekday(nextStartDate)}입니다.`,
+                            'error'
+                          );
+
+                          setForm({
+                            ...form,
+                            startDate: nextStartDate,
+                            dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
+                          });
+
+                          return nextStartDate;
+                        }
+
+                        const nextStartDate = getAdjustedRentalStartDate(v, data.settings);
+
+                        if (nextStartDate !== v) {
+                          const reason = getNonBusinessDayReason(v, data.settings);
+
+                          triggerToast(
+                            `대여 시작일은 ${reason ? `${reason}이라` : '영업일이 아니라'} 선택할 수 없습니다. ${formatDateWithKoreanWeekday(nextStartDate)}로 조정되었습니다.`,
+                            'error'
+                          );
+                        }
+
+                        setForm({
+                          ...form,
+                          startDate: nextStartDate,
+                          dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
+                        });
+
+                        return nextStartDate;
+                      }}
+
+                      onDateBlur={(v) => {
+                        const minStartDate = today();
+
+                        if (!v || isTemporaryDateInputValue(v) || v < minStartDate) {
+                          const nextStartDate = getAdjustedRentalStartDate(minStartDate, data.settings);
+
+                          triggerToast(
+                            `대여 시작일은 오늘보다 이전일 수 없습니다. 선택 가능한 가장 빠른 대여 시작일은 ${formatDateWithKoreanWeekday(nextStartDate)}입니다.`,
+                            'error'
+                          );
+
+                          setForm({
+                            ...form,
+                            startDate: nextStartDate,
+                            dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
+                          });
+
+                          return nextStartDate;
+                        }
+
+                        const nextStartDate = getAdjustedRentalStartDate(v, data.settings);
+
+                        if (nextStartDate !== v) {
+                          const reason = getNonBusinessDayReason(v, data.settings);
+
+                          triggerToast(
+                            `대여 시작일은 ${reason ? `${reason}이라` : '영업일이 아니라'} 선택할 수 없습니다. ${formatDateWithKoreanWeekday(nextStartDate)}로 조정되었습니다.`,
+                            'error'
+                          );
+
+                          setForm({
+                            ...form,
+                            startDate: nextStartDate,
+                            dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
+                          });
+
+                          return nextStartDate;
+                        }
+
+                        setForm({
+                          ...form,
+                          startDate: nextStartDate,
+                          dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
+                        });
+
+                        return nextStartDate;
+                      }}
+                    />
+
+                    <DateInputWithWeekday
+                      label="반납 예정일"
+                      value={form.dueDate}
+                      min={form.startDate}
+                      max={getMaxRentalDueDate(form.startDate, data.settings)}
+                      onInvalidDate={() => triggerToast('올바른 날짜를 입력해 주세요.', 'error')}
+                      onChange={(v) => {
+                        const minDueDate = form.startDate;
+                        const maxDueDate = getMaxRentalDueDate(form.startDate, data.settings);
+                        const maxRentalDays = getSafeMaxRentalDays(data.settings);
+                        let nextDueDate = v;
+
+                        if (!nextDueDate) {
+                          setForm({ ...form, dueDate: minDueDate });
+                          return minDueDate;
+                        }
+
+                        if (isTemporaryDateInputValue(nextDueDate)) {
+                          setForm({ ...form, dueDate: nextDueDate });
+                          return nextDueDate;
+                        }
+
+                        if (nextDueDate < minDueDate) {
+                          triggerToast(
+                            `반납 예정일은 대여 시작일보다 빠를 수 없습니다. 최소 반납 예정일은 ${formatDateWithKoreanWeekday(minDueDate)}입니다.`,
+                            'error'
+                          );
+
+                          nextDueDate = minDueDate;
+                        }
+
+                        if (nextDueDate > maxDueDate) {
+                          triggerToast(
+                            `대여 가능일은 최대 ${maxRentalDays}일입니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxDueDate)}까지 선택할 수 있습니다.`,
+                            'error'
+                          );
+
+                          nextDueDate = maxDueDate;
+                        }
+
+                        setForm({ ...form, dueDate: nextDueDate });
+
+                        return nextDueDate;
+                      }}
+
+                      onDateBlur={(v) => {
+                        const minDueDate = form.startDate;
+                        const maxDueDate = getMaxRentalDueDate(form.startDate, data.settings);
+                        const maxRentalDays = getSafeMaxRentalDays(data.settings);
+                        let nextDueDate = v;
+
+                        if (!nextDueDate || isTemporaryDateInputValue(nextDueDate) || nextDueDate < minDueDate) {
+                          triggerToast(
+                            `반납 예정일은 대여 시작일보다 빠를 수 없습니다. 최소 반납 예정일은 ${formatDateWithKoreanWeekday(minDueDate)}입니다.`,
+                            'error'
+                          );
+
+                          setForm({ ...form, dueDate: minDueDate });
+
+                          return minDueDate;
+                        }
+
+                        if (nextDueDate > maxDueDate) {
+                          triggerToast(
+                            `대여 가능일은 최대 ${maxRentalDays}일입니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxDueDate)}까지 선택할 수 있습니다.`,
+                            'error'
+                          );
+
+                          setForm({ ...form, dueDate: maxDueDate });
+
+                          return maxDueDate;
+                        }
+
+                        setForm({ ...form, dueDate: nextDueDate });
+
+                        return nextDueDate;
+                      }}
+                    />
                   </div>
 
                   <label className="block">
@@ -2919,14 +2790,13 @@ function App() {
 
                   <Button
                     onClick={submitRequest}
-                    disabled={!selectedLaptop || selectedLaptopAvailability?.blocked}
+                    disabled={!selectedLaptop}
                     className="w-full justify-center rounded-xl py-6"
                   >
                     기기 대여 신청
                   </Button>
                 </CardContent>
               </Card>
-            </div>
             </div>
           </div>
         ) : (
