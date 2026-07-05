@@ -1866,21 +1866,11 @@ function App() {
     ? '대여 시작일과 반납 예정일 기준으로 신청 가능한 기기를 표시합니다.'
     : '현재 신청중, 대여중, 보류 상태인 기기는 기간과 관계없이 신청할 수 없습니다.';
 
-  const availableFilterLabel = isPeriodBasedRentalMode ? '선택 기간 가능' : STATUS.AVAILABLE;
-  const unavailableFilterLabel = isPeriodBasedRentalMode ? '선택 기간 불가' : STATUS.UNAVAILABLE;
+  const availableFilterLabel = STATUS.AVAILABLE;
+  const unavailableFilterLabel = STATUS.UNAVAILABLE;
 
   const getUserLaptopStatusLabel = (laptopAvailability) => {
-    if (!isPeriodBasedRentalMode) {
-      return laptopAvailability.blocked ? laptopAvailability.status : STATUS.AVAILABLE;
-    }
-
-    if (!laptopAvailability.blocked) {
-      return '선택 기간 가능';
-    }
-
-    return laptopAvailability.reason === 'assetUnavailable'
-      ? STATUS.UNAVAILABLE
-      : '선택 기간 불가';
+    return laptopAvailability?.status || STATUS.AVAILABLE;
   };
 
   const selectedLaptopAvailability = selectedLaptop
@@ -1931,7 +1921,7 @@ function App() {
 
   const filteredBorrowers = data.borrowers.filter((b) => b.team === form.team);
 
-    const rentalPeriodFields = (
+  const rentalPeriodFields = (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       <DateInputWithWeekday
         label="대여 시작일"
@@ -2774,7 +2764,7 @@ function App() {
                               />
                               {blocked && (
                                 <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-[1px] flex items-center justify-center text-white text-xs font-bold gap-1">
-                                  <LockIcon size={14} /> {laptopAvailability.reason === 'periodOverlap' ? '선택 기간 이용 불가' : '이용 불가'}
+                                  <LockIcon size={14} /> {statusLabel}
                                 </div>
                               )}
                             </div>
@@ -2891,8 +2881,7 @@ function App() {
                     />
                   )}
 
-                  {/* 최장 허용 대여 기한에 맞추어 캘린더 min, max 속성을 실시간 바인딩 처리합니다 */}
-// 수정 후 코드
+                  {/* 선택한 대여 기간 요약 표시 */}
                   <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                     <div className="mb-1.5 text-xs font-semibold text-slate-600 tracking-wide">
                       대여 기간
