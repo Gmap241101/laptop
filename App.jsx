@@ -193,6 +193,50 @@ const getDisplayRentalStatus = (status, startDate) => {
   return status || STATUS.AVAILABLE;
 };
 
+const getLaptopRepresentativeRequest = (requests = [], laptopId) => {
+  const blockingRequests = requests.filter(
+    (request) =>
+      request?.laptopId === laptopId &&
+      RENTAL_BLOCKING_REQUEST_STATUSES.includes(request.status)
+  );
+
+  if (blockingRequests.length === 0) {
+    return null;
+  }
+
+  const todayDate = today();
+
+  const sortByStartDate = (a, b) =>
+    String(a.startDate || '').localeCompare(String(b.startDate || ''));
+
+  const activeRentalRequest = blockingRequests
+    .filter(
+      (request) =>
+        request.status === STATUS.APPROVED &&
+        (!request.startDate || request.startDate <= todayDate)
+    )
+    .sort(sortByStartDate)[0];
+
+  const reservedRequest = blockingRequests
+    .filter(
+      (request) =>
+        request.status === STATUS.APPROVED &&
+        request.startDate &&
+        request.startDate > todayDate
+    )
+    .sort(sortByStartDate)[0];
+
+  const requestedRequest = blockingRequests
+    .filter((request) => request.status === STATUS.REQUESTED)
+    .sort(sortByStartDate)[0];
+
+  const onHoldRequest = blockingRequests
+    .filter((request) => request.status === STATUS.ON_HOLD)
+    .sort(sortByStartDate)[0];
+
+  return activeRentalRequest || reservedRequest || requestedRequest || onHoldRequest || null;
+};
+
 const getLaptopAdminDisplayStatus = (laptop, requests = []) => {
   if (!laptop) {
     return STATUS.UNAVAILABLE;
@@ -202,15 +246,16 @@ const getLaptopAdminDisplayStatus = (laptop, requests = []) => {
     return STATUS.UNAVAILABLE;
   }
 
-  const currentRequest =
-    requests.find((request) => request.id === laptop.currentRequestId) ||
-    findSameAssetBlockingRequest(requests, laptop.id);
+  const representativeRequest = getLaptopRepresentativeRequest(requests, laptop.id);
 
-  if (!currentRequest) {
+  if (!representativeRequest) {
     return STATUS.AVAILABLE;
   }
 
-  return getDisplayRentalStatus(currentRequest.status, currentRequest.startDate);
+  return getDisplayRentalStatus(
+    representativeRequest.status,
+    representativeRequest.startDate
+  );
 };
 
 const addDays = (days) => addDaysFrom(today(), days);
@@ -587,6 +632,7 @@ function StatCard({ icon: Icon, label, value, tone = 'slate' }) {
     slate: 'bg-slate-50 text-slate-700 border-slate-200',
     green: 'bg-emerald-50 text-emerald-700 border-emerald-100',
     amber: 'bg-amber-50 text-amber-700 border-amber-100',
+    sky: 'bg-sky-50 text-sky-700 border-sky-100',
     blue: 'bg-blue-50 text-blue-700 border-blue-100',
     rose: 'bg-rose-50 text-rose-700 border-rose-100',
   };
@@ -1833,13 +1879,27 @@ function App() {
     );
   }, [data.requests]);
 
-  const stats = useMemo(() => ({
-    total: data.laptops.length,
-    available: data.laptops.filter((l) => !blockedLaptopIds.has(l.id) && l.status !== STATUS.UNAVAILABLE).length,
-    requested: data.requests.filter((r) => r.status === STATUS.REQUESTED).length,
-    approved: data.requests.filter((r) => r.status === STATUS.APPROVED).length,
-    overdue: data.requests.filter((r) => r.status === STATUS.APPROVED && r.dueDate < today()).length,
-  }), [data, blockedLaptopIds]);
+  const stats = useMemo(() => {
+    const todayDate = today();
+    const approvedRequests = data.requests.filter((r) => r.status === STATUS.APPROVED);
+    const reservedRequests = approvedRequests.filter(
+      (r) => r.startDate && r.startDate > todayDate
+    );
+    const activeRentalRequests = approvedRequests.filter(
+      (r) => !r.startDate || r.startDate <= todayDate
+    );
+
+    return {
+      total: data.laptops.length,
+      available: data.laptops.filter(
+        (l) => !blockedLaptopIds.has(l.id) && l.status !== STATUS.UNAVAILABLE
+      ).length,
+      requested: data.requests.filter((r) => r.status === STATUS.REQUESTED).length,
+      reserved: reservedRequests.length,
+      approved: activeRentalRequests.length,
+      overdue: activeRentalRequests.filter((r) => r.dueDate < todayDate).length,
+    };
+  }, [data, blockedLaptopIds]);
 
   const filteredLaptops = data.laptops.filter((l) => {
     const laptopAvailability = getLaptopRentalAvailability(
@@ -2297,24 +2357,55 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
   };
 
   const updateRequest = (id, status) => {
+    const currentRequest = data.requests.find((r) => r.id === id);
+
+    if (!currentRequest) {
+      triggerToast('신청 정보를 찾을 수 없습니다.', 'error');
+      return;
+    }
+
+    const nextDisplayStatus = getDisplayRentalStatus(status, currentRequest.startDate);
+
     setData((prev) => {
       const req = prev.requests.find((r) => r.id === id);
       if (!req) return prev;
+
+      const updatedRequests = prev.requests.map((r) =>
+        r.id === id ? { ...r, status } : r
+      );
+
       return {
         ...prev,
-        requests: prev.requests.map((r) => (r.id === id ? { ...r, status } : r)),
-        laptops: prev.laptops.map((l) =>
-          l.id === req.laptopId
-            ? {
-                ...l,
-                status: status === STATUS.DENIED || status === STATUS.RETURNED ? STATUS.AVAILABLE : status,
-                currentRequestId: status === STATUS.DENIED || status === STATUS.RETURNED ? null : id,
-              }
-            : l
-        ),
+        requests: updatedRequests,
+        laptops: prev.laptops.map((l) => {
+          if (l.id !== req.laptopId) {
+            return l;
+          }
+
+          const representativeRequest = getLaptopRepresentativeRequest(
+            updatedRequests,
+            l.id
+          );
+
+          if (l.status === STATUS.UNAVAILABLE) {
+            return {
+              ...l,
+              currentRequestId: representativeRequest?.id || null,
+            };
+          }
+
+          return {
+            ...l,
+            status: representativeRequest
+              ? representativeRequest.status
+              : STATUS.AVAILABLE,
+            currentRequestId: representativeRequest?.id || null,
+          };
+        }),
       };
     });
-    triggerToast(`상태가 [${status}]로 업데이트 되었습니다.`, 'success');
+
+    triggerToast(`상태가 [${nextDisplayStatus}]로 업데이트 되었습니다.`, 'success');
   };
 
   const updateRequestMemo = (id, memo) => {
@@ -2324,7 +2415,116 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     }));
   };
 
-  // 신규 노트북 자산 생성 제어 로직
+  const renderRequestActionButtons = (request) => {
+    const displayStatus = getDisplayRentalStatus(request.status, request.startDate);
+    const actionButtonClassName = 'px-2.5 py-1.5 text-xs rounded-lg';
+
+    if (request.status === STATUS.REQUESTED) {
+      return (
+        <div className="flex flex-wrap gap-1">
+          <Button
+            onClick={() => updateRequest(request.id, STATUS.APPROVED)}
+            variant="primary"
+            className={actionButtonClassName}
+          >
+            승인
+          </Button>
+          <Button
+            onClick={() => updateRequest(request.id, STATUS.ON_HOLD)}
+            variant="secondary"
+            className={`${actionButtonClassName} text-purple-700 bg-purple-50 hover:bg-purple-100`}
+          >
+            보류
+          </Button>
+          <Button
+            onClick={() => updateRequest(request.id, STATUS.DENIED)}
+            variant="dangerOutline"
+            className={actionButtonClassName}
+          >
+            불허
+          </Button>
+        </div>
+      );
+    }
+
+    if (displayStatus === DISPLAY_STATUS.RESERVED) {
+      return (
+        <div className="flex flex-wrap gap-1">
+          <Button
+            onClick={() => updateRequest(request.id, STATUS.REQUESTED)}
+            variant="outline"
+            className={actionButtonClassName}
+          >
+            대기
+          </Button>
+          <Button
+            onClick={() => updateRequest(request.id, STATUS.ON_HOLD)}
+            variant="secondary"
+            className={`${actionButtonClassName} text-purple-700 bg-purple-50 hover:bg-purple-100`}
+          >
+            보류
+          </Button>
+          <Button
+            onClick={() => updateRequest(request.id, STATUS.DENIED)}
+            variant="dangerOutline"
+            className={actionButtonClassName}
+          >
+            불허
+          </Button>
+        </div>
+      );
+    }
+
+    if (request.status === STATUS.APPROVED) {
+      return (
+        <div className="flex flex-wrap gap-1">
+          <Button
+            onClick={() => updateRequest(request.id, STATUS.RETURNED)}
+            variant="outline"
+            className={`${actionButtonClassName} text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-emerald-200`}
+          >
+            반납확정
+          </Button>
+        </div>
+      );
+    }
+
+    if (request.status === STATUS.ON_HOLD) {
+      return (
+        <div className="flex flex-wrap gap-1">
+          <Button
+            onClick={() => updateRequest(request.id, STATUS.APPROVED)}
+            variant="primary"
+            className={actionButtonClassName}
+          >
+            승인
+          </Button>
+          <Button
+            onClick={() => updateRequest(request.id, STATUS.REQUESTED)}
+            variant="outline"
+            className={actionButtonClassName}
+          >
+            대기
+          </Button>
+          <Button
+            onClick={() => updateRequest(request.id, STATUS.DENIED)}
+            variant="dangerOutline"
+            className={actionButtonClassName}
+          >
+            불허
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-500">
+        {displayStatus} 상태는 추가 처리 버튼이 없습니다.
+      </div>
+    );
+  };
+
+  // 신규 자산 생성 제어 로직
   const handleAddLaptopClick = () => {
     setShowUploadPanel(false);
     setEditLaptop(null);
@@ -2662,11 +2862,12 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       <main className="mx-auto max-w-7xl px-6 py-8">
         
         {/* --- 실시간 주요 대여 현황 보드 --- */}
-        <section className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-5">
+        <section className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
           <StatCard icon={Laptop} label="보유 자산" value={stats.total} />
           <StatCard icon={CheckCircle2} label="대여 가능" value={stats.available} tone="green" />
           <StatCard icon={Clock} label="승인 대기중" value={stats.requested} tone="amber" />
-          <StatCard icon={ShieldCheck} label="대여(예약)중" value={stats.approved} tone="blue" />
+          <StatCard icon={ShieldCheck} label="예약중" value={stats.reserved} tone="sky" />
+          <StatCard icon={Laptop} label="대여중" value={stats.approved} tone="blue" />
           <StatCard icon={XCircle} label="반납 지연중" value={stats.overdue} tone="rose" />
         </section>
 
