@@ -3214,9 +3214,9 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                         <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
                           <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">주요 프로세스 매칭 규정</h4>
                           <ul className="mt-3 space-y-2 text-xs text-slate-600 list-disc pl-4">
-                            <li>사용자의 원클릭 신청이 완료되는 즉시, 타 사원의 추가 신청 접수가 제한됩니다.</li>
-                            <li>승인, 대기, 보류, 불허, 반납완료 등 총 5단계의 승인 상태 전환 로직이 유기적으로 가동됩니다.</li>
-                            <li>불허 혹은 최종 반납완료 처리가 가해지는 순간, 자산은 즉각 &apos;대여가능&apos; 상태로 마킹 복귀됩니다.</li>
+                            <li>시스템 설정에 따라 기기 상태 기준 또는 선택 기간 기준으로 신청 가능 여부를 판단합니다.</li>
+                            <li>승인된 미래 신청은 &apos;예약중&apos;, 대여 시작일이 도래한 승인 신청은 &apos;대여중&apos;으로 표시됩니다.</li>
+                            <li>신청중, 예약중, 대여중, 보류 상태는 신청 가능 여부 판단에 반영되며, 불허와 반납완료는 충돌 판단에서 제외됩니다.</li>
                           </ul>
                         </div>
                         <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-5 text-blue-800">
@@ -3234,7 +3234,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                     <div className="space-y-4">
                       <div className="border-b border-slate-100 pb-4">
                         <h2 className="text-lg font-bold text-slate-900">기기 대여 신청 관리</h2>
-                        <p className="text-xs text-slate-500 mt-1">부서원들이 제출한 실시간 신청서에 대한 승인/대기/반납 전환 관리 창구입니다.</p>
+                        <p className="text-xs text-slate-500 mt-1">부서원들이 제출한 신청서의 신청중, 예약중, 대여중, 보류, 불허, 반납완료 상태를 관리합니다.</p>
                       </div>
                       <div className="space-y-4">
                         {data.requests.length === 0 ? (
@@ -3274,44 +3274,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                                     </div>
                                   </div>
 
-                                  {/* 상태 전환 버튼 피드 */}
-                                  <div className="flex flex-wrap gap-1">
-                                    <Button
-                                      onClick={() => updateRequest(r.id, STATUS.APPROVED)}
-                                      variant="primary"
-                                      className="px-2.5 py-1.5 text-xs rounded-lg"
-                                    >
-                                      승인
-                                    </Button>
-                                    <Button
-                                      onClick={() => updateRequest(r.id, STATUS.REQUESTED)}
-                                      variant="outline"
-                                      className="px-2.5 py-1.5 text-xs rounded-lg"
-                                    >
-                                      대기
-                                    </Button>
-                                    <Button
-                                      onClick={() => updateRequest(r.id, STATUS.ON_HOLD)}
-                                      variant="secondary"
-                                      className="px-2.5 py-1.5 text-xs rounded-lg text-purple-700 bg-purple-50 hover:bg-purple-100"
-                                    >
-                                      보류
-                                    </Button>
-                                    <Button
-                                      onClick={() => updateRequest(r.id, STATUS.DENIED)}
-                                      variant="dangerOutline"
-                                      className="px-2.5 py-1.5 text-xs rounded-lg"
-                                    >
-                                      불허
-                                    </Button>
-                                    <Button
-                                      onClick={() => updateRequest(r.id, STATUS.RETURNED)}
-                                      variant="outline"
-                                      className="px-2.5 py-1.5 text-xs rounded-lg text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-emerald-200"
-                                    >
-                                      반납확정
-                                    </Button>
-                                  </div>
+                                  {/* 상태별 전환 버튼 */}
+                                  {renderRequestActionButtons(r)}
                                 </div>
                                 
                                 <div className="pt-2 border-t border-slate-100">
