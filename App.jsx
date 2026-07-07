@@ -566,7 +566,13 @@ function normalizeAdminAccounts(adminAccounts) {
       id: account.id || `ADMIN-LEGACY-${index}`,
       adminLoginId: account.adminLoginId || '',
       passwordHash: account.passwordHash || '',
+      passwordSalt: account.passwordSalt || '',
       passwordHashAlgorithm: account.passwordHashAlgorithm || 'SHA-256',
+      passwordHashIterations: Number(account.passwordHashIterations) || 0,
+      failedLoginCount: Number(account.failedLoginCount) || 0,
+      lockUntil: Number(account.lockUntil) || 0,
+      lastLoginAt: account.lastLoginAt || '',
+      passwordChangedAt: account.passwordChangedAt || '',
       organizationName: account.organizationName || '',
       userName: account.userName || '',
       email: account.email || '',
@@ -1215,7 +1221,12 @@ const pushAppPath = (nextView, nextUserTab = 'home') => {
 
 const ADMIN_CUSTOM_OPTION_VALUE = '__ADMIN_CUSTOM_INPUT__';
 const ADMIN_ACCOUNT_PAGE_SIZE = 10;
-const ADMIN_AUTH_SESSION_KEY = 'mk_laptop_admin_auth_id';
+const ADMIN_AUTH_SESSION_KEY = 'mk_laptop_admin_auth_session';
+const ADMIN_AUTH_SESSION_DURATION_MS = 60 * 60 * 1000;
+const ADMIN_AUTH_MAX_FAILED_ATTEMPTS = 5;
+const ADMIN_AUTH_LOCK_DURATION_MS = 5 * 60 * 1000;
+const ADMIN_PASSWORD_HASH_ALGORITHM = 'PBKDF2-SHA-256';
+const ADMIN_PASSWORD_HASH_ITERATIONS = 120000;
 
 const createDefaultAdminAccountForm = () => ({
   adminLoginId: '',
@@ -1233,14 +1244,156 @@ const createDefaultAdminAuthForm = () => ({
   password: '',
 });
 
-const hashAdminPassword = async (password) => {
+const bufferToHex = (buffer) =>
+  Array.from(new Uint8Array(buffer))
+    .map((value) => value.toString(16).padStart(2, '0'))
+    .join('');
+
+const hexToBuffer = (hex) => {
+  const bytes = new Uint8Array(hex.length / 2);
+
+  for (let index = 0; index < bytes.length; index += 1) {
+    bytes[index] = parseInt(hex.slice(index * 2, index * 2 + 2), 16);
+  }
+
+  return bytes;
+};
+
+const createAdminPasswordSalt = () => {
+  const saltValues = new Uint8Array(16);
+  window.crypto.getRandomValues(saltValues);
+
+  return bufferToHex(saltValues);
+};
+
+const hashAdminPasswordLegacy = async (password) => {
   const encoder = new TextEncoder();
   const passwordBuffer = encoder.encode(password);
   const hashBuffer = await window.crypto.subtle.digest('SHA-256', passwordBuffer);
 
-  return Array.from(new Uint8Array(hashBuffer))
-    .map((value) => value.toString(16).padStart(2, '0'))
-    .join('');
+  return bufferToHex(hashBuffer);
+};
+
+const hashAdminPassword = async (
+  password,
+  salt,
+  iterations = ADMIN_PASSWORD_HASH_ITERATIONS
+) => {
+  const encoder = new TextEncoder();
+
+  const keyMaterial = await window.crypto.subtle.importKey(
+    'raw',
+    encoder.encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  );
+
+  const derivedBits = await window.crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt: hexToBuffer(salt),
+      iterations,
+      hash: 'SHA-256',
+    },
+    keyMaterial,
+    256
+  );
+
+  return bufferToHex(derivedBits);
+};
+
+const createAdminPasswordSecurity = async (password) => {
+  const passwordSalt = createAdminPasswordSalt();
+  const passwordHash = await hashAdminPassword(password, passwordSalt);
+
+  return {
+    passwordHash,
+    passwordSalt,
+    passwordHashAlgorithm: ADMIN_PASSWORD_HASH_ALGORITHM,
+    passwordHashIterations: ADMIN_PASSWORD_HASH_ITERATIONS,
+  };
+};
+
+const verifyAdminPassword = async (password, adminAccount) => {
+  if (
+    adminAccount.passwordHashAlgorithm === ADMIN_PASSWORD_HASH_ALGORITHM &&
+    adminAccount.passwordSalt
+  ) {
+    const passwordHash = await hashAdminPassword(
+      password,
+      adminAccount.passwordSalt,
+      Number(adminAccount.passwordHashIterations) || ADMIN_PASSWORD_HASH_ITERATIONS
+    );
+
+    return {
+      matched: passwordHash === adminAccount.passwordHash,
+      shouldMigratePassword: false,
+    };
+  }
+
+  const legacyPasswordHash = await hashAdminPasswordLegacy(password);
+
+  return {
+    matched: legacyPasswordHash === adminAccount.passwordHash,
+    shouldMigratePassword: legacyPasswordHash === adminAccount.passwordHash,
+  };
+};
+
+const readAdminAuthSession = () => {
+  if (typeof window === 'undefined') {
+    return {
+      adminId: '',
+      expiresAt: 0,
+    };
+  }
+
+  const rawSession = window.sessionStorage.getItem(ADMIN_AUTH_SESSION_KEY);
+
+  if (!rawSession) {
+    return {
+      adminId: '',
+      expiresAt: 0,
+    };
+  }
+
+  try {
+    const parsedSession = JSON.parse(rawSession);
+
+    if (
+      parsedSession?.adminId &&
+      parsedSession?.expiresAt &&
+      parsedSession.expiresAt > Date.now()
+    ) {
+      return parsedSession;
+    }
+
+    window.sessionStorage.removeItem(ADMIN_AUTH_SESSION_KEY);
+  } catch {
+    window.sessionStorage.removeItem(ADMIN_AUTH_SESSION_KEY);
+  }
+
+  return {
+    adminId: '',
+    expiresAt: 0,
+  };
+};
+
+const saveAdminAuthSession = (adminId) => {
+  const nextSession = {
+    adminId,
+    expiresAt: Date.now() + ADMIN_AUTH_SESSION_DURATION_MS,
+  };
+
+  window.sessionStorage.setItem(ADMIN_AUTH_SESSION_KEY, JSON.stringify(nextSession));
+
+  return nextSession;
+};
+
+const clearAdminAuthSession = () => {
+  if (typeof window === 'undefined') return;
+
+  window.sessionStorage.removeItem(ADMIN_AUTH_SESSION_KEY);
 };
 
 function App() {
@@ -1289,11 +1442,12 @@ function App() {
   const [adminAccountPage, setAdminAccountPage] = useState(1);
   const [adminAuthForm, setAdminAuthForm] = useState(createDefaultAdminAuthForm);
   const [adminAuthLoading, setAdminAuthLoading] = useState(false);
-  const [authenticatedAdminId, setAuthenticatedAdminId] = useState(() => {
-    if (typeof window === 'undefined') return '';
-
-    return window.sessionStorage.getItem(ADMIN_AUTH_SESSION_KEY) || '';
-  });
+  const [authenticatedAdminId, setAuthenticatedAdminId] = useState(
+    () => readAdminAuthSession().adminId
+  );
+  const [adminAuthExpiresAt, setAdminAuthExpiresAt] = useState(
+    () => readAdminAuthSession().expiresAt
+  );
 
   // 엑셀/CSV 업로드 패널 토글 상태 값 추가
   const [showUploadPanel, setShowUploadPanel] = useState(false);
@@ -1569,6 +1723,29 @@ function App() {
 
   useEffect(() => {
     if (!authenticatedAdminId) return;
+
+    if (!adminAuthExpiresAt || adminAuthExpiresAt <= Date.now()) {
+      clearAdminAuthSession();
+      setAuthenticatedAdminId('');
+      setAdminAuthExpiresAt(0);
+      return;
+    }
+
+    const remainingTime = adminAuthExpiresAt - Date.now();
+
+    const sessionTimer = window.setTimeout(() => {
+      clearAdminAuthSession();
+      setAuthenticatedAdminId('');
+      setAdminAuthExpiresAt(0);
+    }, remainingTime);
+
+    return () => {
+      window.clearTimeout(sessionTimer);
+    };
+  }, [authenticatedAdminId, adminAuthExpiresAt]);
+
+  useEffect(() => {
+    if (!authenticatedAdminId) return;
     if (!firebaseReady) return;
 
     const authenticatedAccountExists = (data.adminAccounts || []).some(
@@ -1576,8 +1753,9 @@ function App() {
     );
 
     if (!authenticatedAccountExists) {
-      window.sessionStorage.removeItem(ADMIN_AUTH_SESSION_KEY);
+      clearAdminAuthSession();
       setAuthenticatedAdminId('');
+      setAdminAuthExpiresAt(0);
     }
   }, [authenticatedAdminId, firebaseReady, data.adminAccounts]);
 
@@ -1608,6 +1786,19 @@ function App() {
     hasRegisteredAdminAccounts &&
     !isAdminAuthenticated;
 
+  const setAdminAuthenticatedSession = (adminId) => {
+    const nextSession = saveAdminAuthSession(adminId);
+
+    setAuthenticatedAdminId(nextSession.adminId);
+    setAdminAuthExpiresAt(nextSession.expiresAt);
+  };
+
+  const clearAdminAuthenticatedSession = () => {
+    clearAdminAuthSession();
+    setAuthenticatedAdminId('');
+    setAdminAuthExpiresAt(0);
+  };
+
   const authenticateAdmin = async () => {
     const adminLoginId = adminAuthForm.adminLoginId.trim();
     const password = adminAuthForm.password;
@@ -1629,22 +1820,88 @@ function App() {
     );
 
     if (!matchedAdminAccount) {
-      triggerToast('등록되지 않은 관리자 ID입니다.', 'error');
+      triggerToast('관리자 ID 또는 비밀번호가 일치하지 않습니다.', 'error');
+      return;
+    }
+
+    if (matchedAdminAccount.lockUntil && matchedAdminAccount.lockUntil > Date.now()) {
+      const remainingMinutes = Math.ceil(
+        (matchedAdminAccount.lockUntil - Date.now()) / 60000
+      );
+
+      triggerToast(
+        `로그인 실패가 반복되어 잠금 상태입니다. 약 ${remainingMinutes}분 후 다시 시도해 주세요.`,
+        'error'
+      );
       return;
     }
 
     try {
       setAdminAuthLoading(true);
 
-      const passwordHash = await hashAdminPassword(password);
+      const passwordResult = await verifyAdminPassword(password, matchedAdminAccount);
 
-      if (passwordHash !== matchedAdminAccount.passwordHash) {
-        triggerToast('관리자 ID 또는 비밀번호가 일치하지 않습니다.', 'error');
+      if (!passwordResult.matched) {
+        const nextFailedLoginCount =
+          Number(matchedAdminAccount.failedLoginCount || 0) + 1;
+
+        const shouldLockAccount =
+          nextFailedLoginCount >= ADMIN_AUTH_MAX_FAILED_ATTEMPTS;
+
+        const nextLockUntil = shouldLockAccount
+          ? Date.now() + ADMIN_AUTH_LOCK_DURATION_MS
+          : 0;
+
+        setData((prev) => ({
+          ...prev,
+          adminAccounts: (prev.adminAccounts || []).map((account) =>
+            account.id === matchedAdminAccount.id
+              ? {
+                  ...account,
+                  failedLoginCount: nextFailedLoginCount,
+                  lockUntil: nextLockUntil,
+                  updatedAt: new Date().toLocaleString('ko-KR'),
+                }
+              : account
+          ),
+        }));
+
+        triggerToast(
+          shouldLockAccount
+            ? '로그인 실패가 반복되어 5분간 관리자 인증이 잠깁니다.'
+            : '관리자 ID 또는 비밀번호가 일치하지 않습니다.',
+          'error'
+        );
         return;
       }
 
-      window.sessionStorage.setItem(ADMIN_AUTH_SESSION_KEY, matchedAdminAccount.id);
-      setAuthenticatedAdminId(matchedAdminAccount.id);
+      const nowText = new Date().toLocaleString('ko-KR');
+
+      const migratedPasswordSecurity = passwordResult.shouldMigratePassword
+        ? await createAdminPasswordSecurity(password)
+        : {};
+
+      setData((prev) => ({
+        ...prev,
+        adminAccounts: (prev.adminAccounts || []).map((account) =>
+          account.id === matchedAdminAccount.id
+            ? {
+                ...account,
+                ...migratedPasswordSecurity,
+                failedLoginCount: 0,
+                lockUntil: 0,
+                lastLoginAt: nowText,
+                passwordChangedAt:
+                  passwordResult.shouldMigratePassword
+                    ? nowText
+                    : account.passwordChangedAt || '',
+                updatedAt: nowText,
+              }
+            : account
+        ),
+      }));
+
+      setAdminAuthenticatedSession(matchedAdminAccount.id);
       setAdminAuthForm(createDefaultAdminAuthForm());
       triggerToast(`[${matchedAdminAccount.adminLoginId}] 관리자 인증이 완료되었습니다.`, 'success');
     } catch (error) {
@@ -1656,8 +1913,7 @@ function App() {
   };
 
   const logoutAdmin = () => {
-    window.sessionStorage.removeItem(ADMIN_AUTH_SESSION_KEY);
-    setAuthenticatedAdminId('');
+    clearAdminAuthenticatedSession();
     setAdminAuthForm(createDefaultAdminAuthForm());
     triggerToast('관리자 인증이 해제되었습니다.', 'success');
   };
@@ -1729,14 +1985,17 @@ function App() {
     }
 
     try {
-      const passwordHash = await hashAdminPassword(password);
+      const passwordSecurity = await createAdminPasswordSecurity(password);
       const nowText = new Date().toLocaleString('ko-KR');
 
       const nextAdminAccount = {
         id: `ADMIN-${Date.now()}`,
         adminLoginId,
-        passwordHash,
-        passwordHashAlgorithm: 'SHA-256',
+        ...passwordSecurity,
+        failedLoginCount: 0,
+        lockUntil: 0,
+        lastLoginAt: '',
+        passwordChangedAt: nowText,
         organizationName,
         userName,
         email,
@@ -1753,8 +2012,7 @@ function App() {
       }));
 
       if (isFirstAdminAccount) {
-        window.sessionStorage.setItem(ADMIN_AUTH_SESSION_KEY, nextAdminAccount.id);
-        setAuthenticatedAdminId(nextAdminAccount.id);
+        setAdminAuthenticatedSession(nextAdminAccount.id);
       }
 
       setAdminAccountForm(createDefaultAdminAccountForm());
