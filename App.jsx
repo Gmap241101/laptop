@@ -1115,6 +1115,7 @@ function App() {
   const saveTimerRef = useRef(null);
   const allowFirebaseWriteRef = useRef(false);
   const [view, setView] = useState('user'); // 'user' | 'admin'
+  const [userTab, setUserTab] = useState('home'); // 'home' | 'rental' | 'history' | 'community'
   const [query, setQuery] = useState('');
   const [selectedAssetCategory, setSelectedAssetCategory] = useState('전체');
   const [availabilityFilter, setAvailabilityFilter] = useState(STATUS.AVAILABLE);
@@ -2871,7 +2872,60 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           <StatCard icon={XCircle} label="반납 지연중" value={stats.overdue} tone="rose" />
         </section>
 
+        {view === 'user' && (
+          <section className="mb-8">
+            <Card className="bg-white/80">
+              <CardContent className="p-3">
+                <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                  {[
+                    ['home', LayoutDashboard, '초기화면', '서비스 안내'],
+                    ['rental', Laptop, '대여신청', '기기 선택 및 신청'],
+                    ['history', ClipboardList, '신청내역', '신청 현황 조회'],
+                    ['community', Users, '커뮤니티', '공지사항 · FAQ'],
+                  ].map(([key, Icon, label, description]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setUserTab(key)}
+                      className={`group rounded-2xl border px-4 py-4 text-left transition-all duration-150 ${
+                        userTab === key
+                          ? 'mk-brand-border-soft bg-orange-50/70 shadow-sm'
+                          : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`rounded-xl p-2 transition ${
+                            userTab === key
+                              ? 'mk-brand-gradient-tr text-white shadow-sm'
+                              : 'bg-slate-100 text-slate-500 group-hover:text-slate-700'
+                          }`}
+                        >
+                          <Icon size={18} />
+                        </div>
+                        <div className="min-w-0">
+                          <div
+                            className={`text-sm font-bold ${
+                              userTab === key ? 'mk-brand-text' : 'text-slate-800'
+                            }`}
+                          >
+                            {label}
+                          </div>
+                          <div className="mt-0.5 truncate text-[11px] text-slate-500">
+                            {description}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </section>
+        )}
+
         {view === 'user' ? (
+          userTab === 'rental' ? (
           /* ==================== [사용자 대여 화면] ==================== */
           <div className="space-y-6">
             <Card className="mk-brand-border-soft shadow-sm shadow-slate-100">
@@ -3162,7 +3216,75 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
               </Card>
             </div>
             </div>
-          </div>
+            </div>
+          ) : (
+            <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
+              <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-10 text-white">
+                <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+                <div className="absolute -bottom-16 left-10 h-44 w-44 rounded-full bg-orange-400/20 blur-3xl" />
+                <div className="relative mx-auto max-w-3xl text-center">
+                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/15 backdrop-blur">
+                    {userTab === 'home' && <LayoutDashboard size={26} />}
+                    {userTab === 'history' && <ClipboardList size={26} />}
+                    {userTab === 'community' && <Users size={26} />}
+                  </div>
+
+                  <h2 className="text-2xl font-black tracking-tight">
+                    {userTab === 'home' && '초기화면 준비중입니다'}
+                    {userTab === 'history' && '신청내역 화면 준비중입니다'}
+                    {userTab === 'community' && '커뮤니티 화면 준비중입니다'}
+                  </h2>
+
+                  <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-300">
+                    {userTab === 'home' && '기기 대여 시스템의 주요 안내와 빠른 이동 기능을 담은 첫 화면을 준비하고 있습니다.'}
+                    {userTab === 'history' && '사용자의 대여 신청 현황과 처리 상태를 확인할 수 있는 화면을 준비하고 있습니다.'}
+                    {userTab === 'community' && '공지사항 게시판과 FAQ 게시판을 확인할 수 있는 커뮤니티 공간을 준비하고 있습니다.'}
+                  </p>
+                </div>
+              </div>
+
+              <CardContent className="p-6">
+                {userTab === 'community' ? (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                      <div className="mb-3 inline-flex rounded-xl bg-white p-2 text-slate-600 shadow-sm">
+                        <ClipboardList size={20} />
+                      </div>
+                      <h3 className="text-sm font-bold text-slate-900">공지사항 게시판</h3>
+                      <p className="mt-2 text-xs leading-5 text-slate-500">
+                        운영 공지, 대여 정책, 점검 안내 등을 게시하는 공간으로 준비 예정입니다.
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                      <div className="mb-3 inline-flex rounded-xl bg-white p-2 text-slate-600 shadow-sm">
+                        <Info size={20} />
+                      </div>
+                      <h3 className="text-sm font-bold text-slate-900">FAQ 게시판</h3>
+                      <p className="mt-2 text-xs leading-5 text-slate-500">
+                        자주 묻는 질문과 사용 방법을 정리하는 공간으로 준비 예정입니다.
+                      </p>
+                    </div>
+
+                    <div className="md:col-span-2 rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 text-xs leading-5 text-orange-800">
+                      게시글 작성 기능은 향후 관리자 모드에서만 제공되도록 개발 예정입니다.
+                      현재 단계에서는 게시판 기능과 Firebase 저장 구조를 추가하지 않습니다.
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center">
+                    <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-slate-500 shadow-sm">
+                      <Clock size={22} />
+                    </div>
+                    <h3 className="text-base font-bold text-slate-900">준비중입니다</h3>
+                    <p className="mt-2 text-xs leading-5 text-slate-500">
+                      현재는 화면 구조만 먼저 분리했습니다. 세부 기능은 이후 단계에서 하나씩 추가할 예정입니다.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )
         ) : (
           /* ==================== [관리자 설정 화면] ==================== */
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-[260px_1fr]">
