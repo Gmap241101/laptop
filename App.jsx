@@ -638,7 +638,7 @@ function StatCard({ icon: Icon, label, value, tone = 'slate' }) {
   };
   return (
     <Card>
-      <CardContent className="px-2 py-1.5 sm:hidden">
+      <CardContent className="px-2 py-1.7 sm:hidden">
         <div className="flex min-h-[30px] items-center justify-center gap-1">
           <div className={`shrink-0 rounded-xl border p-1.5 ${toneMap[tone].split(' ')[0]} ${toneMap[tone].split(' ')[2]}`}>
             <Icon className={`${toneMap[tone].split(' ')[1]} h-3.5 w-3.5`} />
