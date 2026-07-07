@@ -1105,38 +1105,87 @@ function Select({ label, value, onChange, children }) {
   );
 }
 
-const getInitialViewFromPath = () => {
-  if (typeof window === 'undefined') return 'user';
-
-  const pathname = window.location.pathname.replace(/\/+$/, '');
-
-  return pathname.endsWith('/admin') ? 'admin' : 'user';
+const USER_ROUTE_PATHS = {
+  home: '',
+  rental: '/rental',
+  history: '/history',
+  notice: '/board/notice',
+  faq: '/board/faq',
 };
 
-const getAppBasePath = () => {
+const ROUTE_SUFFIXES = [
+  '/board/notice',
+  '/board/faq',
+  '/rental',
+  '/history',
+  '/admin',
+];
+
+const getNormalizedPathname = () => {
   if (typeof window === 'undefined') return '/';
 
   const pathname = window.location.pathname.replace(/\/+$/, '');
 
-  if (!pathname) return '/';
+  return pathname || '/';
+};
+
+const getRouteStateFromPath = () => {
+  const pathname = getNormalizedPathname();
 
   if (pathname.endsWith('/admin')) {
-    return pathname.slice(0, -6) || '/';
+    return { view: 'admin', userTab: 'home' };
+  }
+
+  if (pathname.endsWith('/rental')) {
+    return { view: 'user', userTab: 'rental' };
+  }
+
+  if (pathname.endsWith('/history')) {
+    return { view: 'user', userTab: 'history' };
+  }
+
+  if (pathname.endsWith('/board/notice')) {
+    return { view: 'user', userTab: 'notice' };
+  }
+
+  if (pathname.endsWith('/board/faq')) {
+    return { view: 'user', userTab: 'faq' };
+  }
+
+  return { view: 'user', userTab: 'home' };
+};
+
+const getInitialViewFromPath = () => getRouteStateFromPath().view;
+
+const getInitialUserTabFromPath = () => getRouteStateFromPath().userTab;
+
+const getAppBasePath = () => {
+  const pathname = getNormalizedPathname();
+
+  for (const suffix of ROUTE_SUFFIXES) {
+    if (pathname.endsWith(suffix)) {
+      return pathname.slice(0, -suffix.length) || '/';
+    }
   }
 
   return pathname;
 };
 
-const pushAppPath = (nextView) => {
+const pushAppPath = (nextView, nextUserTab = 'home') => {
   if (typeof window === 'undefined') return;
 
   const basePath = getAppBasePath();
-  const nextPath =
+  const normalizedBasePath = basePath === '/' ? '' : basePath;
+  const routeSuffix =
     nextView === 'admin'
-      ? `${basePath === '/' ? '' : basePath}/admin`
-      : basePath;
+      ? '/admin'
+      : USER_ROUTE_PATHS[nextUserTab] || '';
 
-  window.history.pushState(null, '', nextPath || '/');
+  const nextPath = `${normalizedBasePath}${routeSuffix}` || '/';
+
+  if (window.location.pathname !== nextPath) {
+    window.history.pushState(null, '', nextPath);
+  }
 };
 
 function App() {
@@ -1149,7 +1198,7 @@ function App() {
   const saveTimerRef = useRef(null);
   const allowFirebaseWriteRef = useRef(false);
   const [view, setView] = useState(getInitialViewFromPath); // 'user' | 'admin'
-  const [userTab, setUserTab] = useState('home'); // 'home' | 'rental' | 'history' | 'notice' | 'faq'
+  const [userTab, setUserTab] = useState(getInitialUserTabFromPath); // 'home' | 'rental' | 'history' | 'notice' | 'faq'
   const [isCommunityMenuOpen, setIsCommunityMenuOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [selectedAssetCategory, setSelectedAssetCategory] = useState('전체');
@@ -1198,7 +1247,7 @@ function App() {
   const [confirmModal, setConfirmModal] = useState(null);
 
   const goToUserHome = () => {
-    pushAppPath('user');
+    pushAppPath('user', 'home');
     setView('user');
     setUserTab('home');
     setIsCommunityMenuOpen(false);
@@ -1206,13 +1255,11 @@ function App() {
 
   useEffect(() => {
     const syncViewWithPath = () => {
-      const nextView = getInitialViewFromPath();
+      const nextRouteState = getRouteStateFromPath();
 
-      setView(nextView);
-
-      if (nextView === 'admin') {
-        setIsCommunityMenuOpen(false);
-      }
+      setView(nextRouteState.view);
+      setUserTab(nextRouteState.userTab);
+      setIsCommunityMenuOpen(false);
     };
 
     window.addEventListener('popstate', syncViewWithPath);
@@ -2904,6 +2951,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                 <button
                   type="button"
                   onClick={() => {
+                    pushAppPath('user', 'rental');
+                    setView('user');
                     setUserTab('rental');
                     setIsCommunityMenuOpen(false);
                   }}
@@ -2919,6 +2968,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                 <button
                   type="button"
                   onClick={() => {
+                    pushAppPath('user', 'history');
+                    setView('user');
                     setUserTab('history');
                     setIsCommunityMenuOpen(false);
                   }}
@@ -2955,6 +3006,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                         <button
                           type="button"
                           onClick={() => {
+                            pushAppPath('user', 'notice');
+                            setView('user');
                             setUserTab('notice');
                             setIsCommunityMenuOpen(false);
                           }}
@@ -2970,6 +3023,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                         <button
                           type="button"
                           onClick={() => {
+                            pushAppPath('user', 'faq');
+                            setView('user');
                             setUserTab('faq');
                             setIsCommunityMenuOpen(false);
                           }}
