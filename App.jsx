@@ -1602,7 +1602,7 @@ function App() {
   const hasAdminAccess =
     view === 'admin' && (!hasRegisteredAdminAccounts || isAdminAuthenticated);
 
-  const shouldShowAdminLoginModal =
+  const shouldShowAdminLoginPage =
     view === 'admin' &&
     firebaseReady &&
     hasRegisteredAdminAccounts &&
@@ -3891,37 +3891,102 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             </Card>
           )
         ) : (
-          hasRegisteredAdminAccounts && !isAdminAuthenticated ? (
-            <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
-              <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-10 text-white">
+          shouldShowAdminLoginPage ? (
+            <Card className="mx-auto max-w-xl overflow-hidden border-slate-200 bg-white shadow-sm">
+              <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-8 text-white">
                 <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
                 <div className="absolute -bottom-16 left-10 h-44 w-44 rounded-full bg-orange-400/20 blur-3xl" />
 
-                <div className="relative mx-auto max-w-3xl text-center">
-                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/15 backdrop-blur">
+                <div className="relative flex items-center gap-4">
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/15">
                     <ShieldCheck size={26} />
                   </div>
 
-                  <h2 className="text-2xl font-black tracking-tight">
-                    관리자 인증이 필요합니다
-                  </h2>
+                  <div>
+                    <h2 className="text-xl font-black tracking-tight">
+                      관리자 인증
+                    </h2>
 
-                  <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-300">
-                    관리자 모드는 등록된 관리자 ID로 인증한 뒤 이용할 수 있습니다.
-                    인증 창에서 관리자 ID와 비밀번호를 입력해 주세요.
-                  </p>
+                    <p className="mt-2 text-xs leading-5 text-slate-300">
+                      등록된 관리자 ID로 인증해야 관리자 모드에 접근할 수 있습니다.
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              <CardContent className="p-6">
-                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center">
-                  <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-slate-500 shadow-sm">
-                    <LockIcon size={22} />
+              <CardContent className="space-y-4 p-6">
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-slate-500 shadow-sm">
+                      <LockIcon size={20} />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900">
+                        관리자 화면 잠금 상태
+                      </h3>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">
+                        관리자 ID와 비밀번호를 입력하면 인증 후 관리자 메뉴와 세부 기능이 표시됩니다.
+                      </p>
+                    </div>
                   </div>
-                  <h3 className="text-base font-bold text-slate-900">관리자 화면 잠금 상태</h3>
-                  <p className="mx-auto mt-2 max-w-xl text-xs leading-5 text-slate-500">
-                    인증에 성공하면 관리자 메뉴와 세부 기능이 표시됩니다.
-                  </p>
+                </div>
+
+                <Input
+                  label="관리자 ID"
+                  value={adminAuthForm.adminLoginId}
+                  onChange={(v) =>
+                    setAdminAuthForm({
+                      ...adminAuthForm,
+                      adminLoginId: v,
+                    })
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      authenticateAdmin();
+                    }
+                  }}
+                  placeholder="관리자 ID 입력"
+                  autoFocus
+                />
+
+                <Input
+                  label="비밀번호"
+                  type="password"
+                  value={adminAuthForm.password}
+                  onChange={(v) =>
+                    setAdminAuthForm({
+                      ...adminAuthForm,
+                      password: v,
+                    })
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      authenticateAdmin();
+                    }
+                  }}
+                  placeholder="비밀번호 입력"
+                />
+
+                <div className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-xs leading-5 text-orange-800">
+                  비밀번호는 입력 즉시 SHA-256 해시값으로 변환한 뒤 등록된 해시값과 비교합니다.
+                </div>
+
+                <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={goToUserHome}
+                  >
+                    사용자 화면으로 이동
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    onClick={authenticateAdmin}
+                    disabled={adminAuthLoading}
+                  >
+                    {adminAuthLoading ? '인증 중...' : '관리자 인증'}
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -5448,97 +5513,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           )
         )}
       </main>
-
-      {/* --- 관리자 인증 모달 --- */}
-      <AnimatePresence>
-        {shouldShowAdminLoginModal && (
-          <div className="fixed inset-0 z-[55] flex items-center justify-center bg-slate-950/50 px-4 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, y: 12, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 12, scale: 0.96 }}
-              className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl"
-            >
-              <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-7 text-white">
-                <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
-                <div className="absolute -bottom-12 left-8 h-36 w-36 rounded-full bg-orange-400/20 blur-3xl" />
-
-                <div className="relative flex items-center gap-3">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/15">
-                    <ShieldCheck size={24} />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-black tracking-tight">관리자 인증</h2>
-                    <p className="mt-1 text-xs leading-5 text-slate-300">
-                      등록된 관리자 ID로 인증해야 관리자 모드에 접근할 수 있습니다.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-4 p-6">
-                <Input
-                  label="관리자 ID"
-                  value={adminAuthForm.adminLoginId}
-                  onChange={(v) =>
-                    setAdminAuthForm({
-                      ...adminAuthForm,
-                      adminLoginId: v,
-                    })
-                  }
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      authenticateAdmin();
-                    }
-                  }}
-                  placeholder="관리자 ID 입력"
-                  autoFocus
-                />
-
-                <Input
-                  label="비밀번호"
-                  type="password"
-                  value={adminAuthForm.password}
-                  onChange={(v) =>
-                    setAdminAuthForm({
-                      ...adminAuthForm,
-                      password: v,
-                    })
-                  }
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      authenticateAdmin();
-                    }
-                  }}
-                  placeholder="비밀번호 입력"
-                />
-
-                <div className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-xs leading-5 text-orange-800">
-                  비밀번호는 입력 즉시 SHA-256 해시값으로 변환한 뒤 등록된 해시값과 비교합니다.
-                </div>
-
-                <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={goToUserHome}
-                  >
-                    사용자 화면으로 이동
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    onClick={authenticateAdmin}
-                    disabled={adminAuthLoading}
-                  >
-                    {adminAuthLoading ? '인증 중...' : '관리자 인증'}
-                  </Button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
       {/* --- 모던 Custom Toast (iframe 환경 완벽 최적화) --- */}
       <AnimatePresence>
