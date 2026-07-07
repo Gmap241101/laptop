@@ -1113,15 +1113,6 @@ const USER_ROUTE_PATHS = {
   faq: '/board/faq',
 };
 
-const ROUTE_SUFFIXES = [
-  '/board/notice',
-  '/board/faq',
-  '/rental',
-  '/history',
-  '/admin',
-  '/board',
-];
-
 const getNormalizedPathname = () => {
   if (typeof window === 'undefined') return '/';
 
@@ -1137,32 +1128,32 @@ const getRouteStateFromPath = () => {
     return { view: 'user', userTab: 'home' };
   }
 
-  if (pathname.endsWith('/admin')) {
+  if (pathname === '/admin') {
     return { view: 'admin', userTab: 'home' };
   }
 
-  if (pathname.endsWith('/rental')) {
+  if (pathname === '/rental') {
     return { view: 'user', userTab: 'rental' };
   }
 
-  if (pathname.endsWith('/history')) {
+  if (pathname === '/history') {
     return { view: 'user', userTab: 'history' };
   }
 
-  if (pathname.endsWith('/board/notice')) {
-    return { view: 'user', userTab: 'notice' };
-  }
-
-  if (pathname.endsWith('/board/faq')) {
-    return { view: 'user', userTab: 'faq' };
-  }
-
-  if (pathname.endsWith('/board')) {
+  if (pathname === '/board') {
     return {
       view: 'user',
       userTab: 'notice',
-      redirectTo: `${pathname}/notice`,
+      redirectTo: '/board/notice',
     };
+  }
+
+  if (pathname === '/board/notice') {
+    return { view: 'user', userTab: 'notice' };
+  }
+
+  if (pathname === '/board/faq') {
+    return { view: 'user', userTab: 'faq' };
   }
 
   return { view: 'user', userTab: 'notFound' };
@@ -1172,29 +1163,15 @@ const getInitialViewFromPath = () => getRouteStateFromPath().view;
 
 const getInitialUserTabFromPath = () => getRouteStateFromPath().userTab;
 
-const getAppBasePath = () => {
-  const pathname = getNormalizedPathname();
-
-  for (const suffix of ROUTE_SUFFIXES) {
-    if (pathname.endsWith(suffix)) {
-      return pathname.slice(0, -suffix.length) || '/';
-    }
-  }
-
-  return '/';
-};
-
 const pushAppPath = (nextView, nextUserTab = 'home') => {
   if (typeof window === 'undefined') return;
 
-  const basePath = getAppBasePath();
-  const normalizedBasePath = basePath === '/' ? '' : basePath;
   const routeSuffix =
     nextView === 'admin'
       ? '/admin'
       : USER_ROUTE_PATHS[nextUserTab] || '';
 
-  const nextPath = `${normalizedBasePath}${routeSuffix}` || '/';
+  const nextPath = routeSuffix || '/';
 
   if (window.location.pathname !== nextPath) {
     window.history.pushState(null, '', nextPath);
