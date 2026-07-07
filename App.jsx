@@ -532,6 +532,7 @@ const initialData = {
   assetCategories: ['노트북'],
   teams: ['매일경제아카데미', '채용대행팀', '문항개발팀', '경제교육팀'],
   borrowers: [],
+  adminAccounts: [],
   settings: {
     teamInputMode: 'dropdown',
     borrowerInputMode: 'dropdown',
@@ -554,6 +555,25 @@ function normalizeBorrowers(borrowers, teams) {
     }
     return { name: borrower.name || '', team: borrower.team || teams[0] || '' };
   });
+}
+
+function normalizeAdminAccounts(adminAccounts) {
+  if (!Array.isArray(adminAccounts)) return [];
+
+  return adminAccounts
+    .filter((account) => account && (account.adminLoginId || account.id))
+    .map((account, index) => ({
+      id: account.id || `ADMIN-LEGACY-${index}`,
+      adminLoginId: account.adminLoginId || '',
+      passwordHash: account.passwordHash || '',
+      passwordHashAlgorithm: account.passwordHashAlgorithm || 'SHA-256',
+      organizationName: account.organizationName || '',
+      userName: account.userName || '',
+      email: account.email || '',
+      phone: account.phone || '',
+      createdAt: account.createdAt || '',
+      updatedAt: account.updatedAt || '',
+    }));
 }
 
 function mergePersistedData(rawData) {
@@ -603,6 +623,7 @@ function mergePersistedData(rawData) {
       category: asset.category || assetCategories[0] || '노트북',
     })),
     borrowers: normalizeBorrowers(parsed.borrowers || [], parsed.teams || []),
+    adminAccounts: normalizeAdminAccounts(parsed.adminAccounts || []),
   };
 }
 
@@ -1192,6 +1213,30 @@ const pushAppPath = (nextView, nextUserTab = 'home') => {
   }
 };
 
+const ADMIN_CUSTOM_OPTION_VALUE = '__ADMIN_CUSTOM_INPUT__';
+const ADMIN_ACCOUNT_PAGE_SIZE = 10;
+
+const createDefaultAdminAccountForm = () => ({
+  adminLoginId: '',
+  password: '',
+  organizationName: '',
+  customOrganizationName: '',
+  userName: '',
+  customUserName: '',
+  email: '',
+  phone: '',
+});
+
+const hashAdminPassword = async (password) => {
+  const encoder = new TextEncoder();
+  const passwordBuffer = encoder.encode(password);
+  const hashBuffer = await window.crypto.subtle.digest('SHA-256', passwordBuffer);
+
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((value) => value.toString(16).padStart(2, '0'))
+    .join('');
+};
+
 function App() {
   const [data, setData] = useState(initialData);
   const [firebaseReady, setFirebaseReady] = useState(false);
@@ -1233,6 +1278,9 @@ function App() {
   const [editingBorrowerIndex, setEditingBorrowerIndex] = useState(null);
   const [editingBorrowerName, setEditingBorrowerName] = useState('');
   const [draggingBorrowerIndex, setDraggingBorrowerIndex] = useState(null);
+
+  const [adminAccountForm, setAdminAccountForm] = useState(createDefaultAdminAccountForm);
+  const [adminAccountPage, setAdminAccountPage] = useState(1);
 
   // 엑셀/CSV 업로드 패널 토글 상태 값 추가
   const [showUploadPanel, setShowUploadPanel] = useState(false);
@@ -1493,6 +1541,13 @@ function App() {
     }
   }, [adminTab, data.teams, data.borrowers]);
 
+  useEffect(() => {
+    if (adminTab === 'adminAccounts') {
+      setAdminAccountForm(createDefaultAdminAccountForm());
+      setAdminAccountPage(1);
+    }
+  }, [adminTab]);
+
   const triggerToast = (message, type = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
@@ -1500,6 +1555,103 @@ function App() {
 
   const triggerConfirm = (title, message, onConfirm) => {
     setConfirmModal({ title, message, onConfirm });
+  };
+
+    const selectedAdminOrganizationName =
+    adminAccountForm.organizationName === ADMIN_CUSTOM_OPTION_VALUE
+      ? adminAccountForm.customOrganizationName.trim()
+      : adminAccountForm.organizationName;
+
+  const adminAccountUserOptions = data.borrowers.filter(
+    (borrower) => borrower.team === selectedAdminOrganizationName
+  );
+
+  const selectedAdminUserName =
+    adminAccountForm.userName === ADMIN_CUSTOM_OPTION_VALUE ||
+    adminAccountForm.organizationName === ADMIN_CUSTOM_OPTION_VALUE
+      ? adminAccountForm.customUserName.trim()
+      : adminAccountForm.userName;
+
+  const adminAccountTotalPages = Math.max(
+    1,
+    Math.ceil((data.adminAccounts || []).length / ADMIN_ACCOUNT_PAGE_SIZE)
+  );
+
+  const safeAdminAccountPage = Math.min(adminAccountPage, adminAccountTotalPages);
+
+  const paginatedAdminAccounts = (data.adminAccounts || []).slice(
+    (safeAdminAccountPage - 1) * ADMIN_ACCOUNT_PAGE_SIZE,
+    safeAdminAccountPage * ADMIN_ACCOUNT_PAGE_SIZE
+  );
+
+  const registerAdminAccount = async () => {
+    const adminLoginId = adminAccountForm.adminLoginId.trim();
+    const password = adminAccountForm.password;
+    const organizationName = selectedAdminOrganizationName;
+    const userName = selectedAdminUserName;
+    const email = adminAccountForm.email.trim();
+    const phone = adminAccountForm.phone.trim();
+
+    if (!adminLoginId) {
+      triggerToast('관리자 ID를 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (!password) {
+      triggerToast('비밀번호를 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (!organizationName) {
+      triggerToast('조직명을 선택하거나 직접 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (!userName) {
+      triggerToast('사용자명을 선택하거나 직접 입력해 주세요.', 'error');
+      return;
+    }
+
+    const duplicatedAdminId = (data.adminAccounts || []).some(
+      (account) =>
+        String(account.adminLoginId || '').trim().toLowerCase() ===
+        adminLoginId.toLowerCase()
+    );
+
+    if (duplicatedAdminId) {
+      triggerToast('이미 등록된 관리자 ID입니다.', 'error');
+      return;
+    }
+
+    try {
+      const passwordHash = await hashAdminPassword(password);
+      const nowText = new Date().toLocaleString('ko-KR');
+
+      const nextAdminAccount = {
+        id: `ADMIN-${Date.now()}`,
+        adminLoginId,
+        passwordHash,
+        passwordHashAlgorithm: 'SHA-256',
+        organizationName,
+        userName,
+        email,
+        phone,
+        createdAt: nowText,
+        updatedAt: nowText,
+      };
+
+      setData((prev) => ({
+        ...prev,
+        adminAccounts: [nextAdminAccount, ...(prev.adminAccounts || [])],
+      }));
+
+      setAdminAccountForm(createDefaultAdminAccountForm());
+      setAdminAccountPage(1);
+      triggerToast(`[${adminLoginId}] 관리자 ID가 등록되었습니다.`, 'success');
+    } catch (error) {
+      console.error('Admin password hash error:', error);
+      triggerToast('비밀번호 보안 처리 중 오류가 발생했습니다. 브라우저 보안 환경을 확인해 주세요.', 'error');
+    }
   };
 
   const addTempHoliday = () => {
@@ -3607,6 +3759,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                     ['laptops', Laptop, '대여 자산 관리'],
                     ['categories', ClipboardList, '자산 카테고리 관리'],
                     ['people', Users, '부서·사용자 관리'],
+                    ['adminAccounts', ShieldCheck, '관리자 ID 관리'],
                     ['settings', Settings, '시스템 설정'],
                   ].map(([key, Icon, label]) => (
                     <Button
@@ -4483,6 +4636,273 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                     </div>
                   )}
 
+                  {/* 관리자 ID 관리 탭 */}
+                  {adminTab === 'adminAccounts' && (
+                    <div className="space-y-6">
+                      <div className="border-b border-slate-100 pb-4">
+                        <h2 className="text-lg font-bold text-slate-900">관리자 ID 관리</h2>
+                        <p className="text-xs text-slate-500 mt-1">
+                          공지사항, FAQ 작성 권한과 관리자 모드 보안 강화를 위한 관리자 ID 등록 대장입니다.
+                        </p>
+                      </div>
+
+                      <div className="rounded-2xl border border-orange-200 bg-orange-50/50 p-4 text-xs leading-5 text-orange-800">
+                        비밀번호는 평문으로 저장하지 않고 SHA-256 해시값으로 저장합니다.
+                        단, 실제 관리자 모드 접근 차단은 다음 단계에서 별도로 연결해야 합니다.
+                      </div>
+
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
+                        <div className="mb-4">
+                          <h3 className="text-base font-bold text-slate-900">관리자 ID 등록</h3>
+                          <p className="mt-1 text-xs text-slate-500">
+                            조직명과 사용자명은 기존 부서·사용자 목록에서 선택하거나, 기타 직접 입력으로 공용 계정을 등록할 수 있습니다.
+                          </p>
+                        </div>
+
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <Input
+                            label="관리자 ID"
+                            value={adminAccountForm.adminLoginId}
+                            onChange={(v) =>
+                              setAdminAccountForm({
+                                ...adminAccountForm,
+                                adminLoginId: v,
+                              })
+                            }
+                            placeholder="예: admin01"
+                          />
+
+                          <Input
+                            label="비밀번호"
+                            type="password"
+                            value={adminAccountForm.password}
+                            onChange={(v) =>
+                              setAdminAccountForm({
+                                ...adminAccountForm,
+                                password: v,
+                              })
+                            }
+                            placeholder="관리자 비밀번호 입력"
+                          />
+
+                          <Select
+                            label="조직명"
+                            value={adminAccountForm.organizationName}
+                            onChange={(v) =>
+                              setAdminAccountForm({
+                                ...adminAccountForm,
+                                organizationName: v,
+                                customOrganizationName:
+                                  v === ADMIN_CUSTOM_OPTION_VALUE
+                                    ? adminAccountForm.customOrganizationName
+                                    : '',
+                                userName: '',
+                                customUserName: '',
+                              })
+                            }
+                          >
+                            <option value="">조직 선택</option>
+                            {(data.teams || []).map((team) => (
+                              <option key={team} value={team}>
+                                {team}
+                              </option>
+                            ))}
+                            <option value={ADMIN_CUSTOM_OPTION_VALUE}>기타 직접 입력</option>
+                          </Select>
+
+                          {adminAccountForm.organizationName === ADMIN_CUSTOM_OPTION_VALUE ? (
+                            <Input
+                              label="조직명 직접 입력"
+                              value={adminAccountForm.customOrganizationName}
+                              onChange={(v) =>
+                                setAdminAccountForm({
+                                  ...adminAccountForm,
+                                  customOrganizationName: v,
+                                  userName: ADMIN_CUSTOM_OPTION_VALUE,
+                                })
+                              }
+                              placeholder="예: 관리자, 기획1팀, 공용계정"
+                            />
+                          ) : (
+                            <Select
+                              label="사용자명"
+                              value={adminAccountForm.userName}
+                              onChange={(v) =>
+                                setAdminAccountForm({
+                                  ...adminAccountForm,
+                                  userName: v,
+                                  customUserName:
+                                    v === ADMIN_CUSTOM_OPTION_VALUE
+                                      ? adminAccountForm.customUserName
+                                      : '',
+                                })
+                              }
+                            >
+                              <option value="">
+                                {adminAccountForm.organizationName
+                                  ? '사용자 선택'
+                                  : '조직명을 먼저 선택해 주세요'}
+                              </option>
+                              {adminAccountUserOptions.map((borrower, index) => (
+                                <option
+                                  key={`${borrower.team}-${borrower.name}-${index}`}
+                                  value={borrower.name}
+                                >
+                                  {borrower.name}
+                                </option>
+                              ))}
+                              <option value={ADMIN_CUSTOM_OPTION_VALUE}>기타 직접 입력</option>
+                            </Select>
+                          )}
+
+                          {(adminAccountForm.organizationName === ADMIN_CUSTOM_OPTION_VALUE ||
+                            adminAccountForm.userName === ADMIN_CUSTOM_OPTION_VALUE) && (
+                            <Input
+                              label="사용자명 직접 입력"
+                              value={adminAccountForm.customUserName}
+                              onChange={(v) =>
+                                setAdminAccountForm({
+                                  ...adminAccountForm,
+                                  customUserName: v,
+                                  userName: ADMIN_CUSTOM_OPTION_VALUE,
+                                })
+                              }
+                              placeholder="예: 관리자, 기획1팀 공용"
+                            />
+                          )}
+
+                          <Input
+                            label="이메일주소"
+                            type="email"
+                            value={adminAccountForm.email}
+                            onChange={(v) =>
+                              setAdminAccountForm({
+                                ...adminAccountForm,
+                                email: v,
+                              })
+                            }
+                            placeholder="예: admin@example.com"
+                          />
+
+                          <Input
+                            label="전화번호"
+                            value={adminAccountForm.phone}
+                            onChange={(v) =>
+                              setAdminAccountForm({
+                                ...adminAccountForm,
+                                phone: v,
+                              })
+                            }
+                            placeholder="예: 010-0000-0000"
+                          />
+                        </div>
+
+                        <div className="mt-5 flex justify-end gap-2 border-t border-slate-200/70 pt-4">
+                          <Button
+                            variant="outline"
+                            onClick={() => setAdminAccountForm(createDefaultAdminAccountForm())}
+                          >
+                            입력 초기화
+                          </Button>
+                          <Button variant="primary" onClick={registerAdminAccount}>
+                            관리자 ID 등록
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="flex flex-col justify-between gap-2 border-b border-slate-100 pb-3 sm:flex-row sm:items-end">
+                          <div>
+                            <h3 className="text-base font-bold text-slate-900">관리자 ID 현황</h3>
+                            <p className="mt-1 text-xs text-slate-500">
+                              한 페이지에 최대 {ADMIN_ACCOUNT_PAGE_SIZE}개까지 표시됩니다.
+                            </p>
+                          </div>
+                          <div className="text-xs font-semibold text-slate-500">
+                            총 {(data.adminAccounts || []).length}개
+                          </div>
+                        </div>
+
+                        {(data.adminAccounts || []).length === 0 ? (
+                          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
+                            등록된 관리자 ID가 없습니다.
+                          </div>
+                        ) : (
+                          <>
+                            <div className="space-y-2">
+                              {paginatedAdminAccounts.map((account, index) => (
+                                <div
+                                  key={account.id}
+                                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                                >
+                                  <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
+                                    <div className="min-w-0 space-y-1">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                                          #{(safeAdminAccountPage - 1) * ADMIN_ACCOUNT_PAGE_SIZE + index + 1}
+                                        </span>
+                                        <span className="text-sm font-bold text-slate-900">
+                                          {account.adminLoginId}
+                                        </span>
+                                        <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                          비밀번호 저장됨
+                                        </span>
+                                      </div>
+
+                                      <div className="text-xs text-slate-600">
+                                        조직명: <span className="font-semibold text-slate-800">{account.organizationName}</span>
+                                        <span className="mx-1 text-slate-300">|</span>
+                                        사용자명: <span className="font-semibold text-slate-800">{account.userName}</span>
+                                      </div>
+
+                                      <div className="text-[11px] text-slate-500">
+                                        이메일: {account.email || '미입력'}
+                                        <span className="mx-1 text-slate-300">|</span>
+                                        전화번호: {account.phone || '미입력'}
+                                      </div>
+                                    </div>
+
+                                    <div className="shrink-0 text-[10px] text-slate-400">
+                                      등록일: {account.createdAt || '기록 없음'}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+
+                            <div className="flex items-center justify-end gap-2 pt-2">
+                              <Button
+                                variant="outline"
+                                disabled={safeAdminAccountPage <= 1}
+                                onClick={() =>
+                                  setAdminAccountPage((prev) => Math.max(1, prev - 1))
+                                }
+                                className="px-3 py-2 text-xs"
+                              >
+                                이전
+                              </Button>
+                              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
+                                {safeAdminAccountPage} / {adminAccountTotalPages}
+                              </div>
+                              <Button
+                                variant="outline"
+                                disabled={safeAdminAccountPage >= adminAccountTotalPages}
+                                onClick={() =>
+                                  setAdminAccountPage((prev) =>
+                                    Math.min(adminAccountTotalPages, prev + 1)
+                                  )
+                                }
+                                className="px-3 py-2 text-xs"
+                              >
+                                다음
+                              </Button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
                   {/* 기본 환경 설정 탭 */}
                   {adminTab === 'settings' && (
                     <div className="space-y-6">
