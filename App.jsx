@@ -1777,12 +1777,19 @@ function App() {
   const hasRegisteredAdminAccounts = registeredAdminAccounts.length > 0;
   const isAdminAuthenticated = Boolean(authenticatedAdminAccount);
 
+  const shouldShowAdminLoadingPage =
+    view === 'admin' && !firebaseReady;
+
   const hasAdminAccess =
-    view === 'admin' && (!hasRegisteredAdminAccounts || isAdminAuthenticated);
+    view === 'admin' &&
+    firebaseReady &&
+    !firebaseLoadErrorMessage &&
+    (!hasRegisteredAdminAccounts || isAdminAuthenticated);
 
   const shouldShowAdminLoginPage =
     view === 'admin' &&
     firebaseReady &&
+    !firebaseLoadErrorMessage &&
     hasRegisteredAdminAccounts &&
     !isAdminAuthenticated;
 
@@ -4149,7 +4156,21 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             </Card>
           )
         ) : (
-          shouldShowAdminLoginPage ? (
+          shouldShowAdminLoadingPage ? (
+            <Card className="mx-auto max-w-xl overflow-hidden border-slate-200 bg-white shadow-sm">
+              <CardContent className="p-8 text-center">
+                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl mk-brand-gradient-tr text-white mk-brand-shadow-md">
+                  <ShieldCheck size={26} />
+                </div>
+                <h2 className="text-lg font-black tracking-tight text-slate-900">
+                  관리자 데이터를 확인하는 중입니다.
+                </h2>
+                <p className="mx-auto mt-2 max-w-sm text-xs leading-5 text-slate-500">
+                  Firebase 원격 DB 기준으로 관리자 ID 등록 상태를 확인한 뒤 관리자 인증 화면을 표시합니다.
+                </p>
+              </CardContent>
+            </Card>
+          ) : shouldShowAdminLoginPage ? (
             <Card className="mx-auto max-w-xl overflow-hidden border-slate-200 bg-white shadow-sm">
               <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-8 text-white">
                 <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
@@ -4226,7 +4247,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                 />
 
                 <div className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-xs leading-5 text-orange-800">
-                  비밀번호는 입력 즉시 SHA-256 해시값으로 변환한 뒤 등록된 해시값과 비교합니다.
+                  신규 관리자 비밀번호는 계정별 salt가 적용된 PBKDF2-SHA-256 방식으로 보호됩니다.
+                  기존 SHA-256 계정은 로그인 성공 시 새 보안 방식으로 자동 전환됩니다.
                 </div>
 
                 <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
@@ -5153,8 +5175,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                       </div>
 
                       <div className="rounded-2xl border border-orange-200 bg-orange-50/50 p-4 text-xs leading-5 text-orange-800">
-                        비밀번호는 평문으로 저장하지 않고 SHA-256 해시값으로 저장합니다.
-                        단, 실제 관리자 모드 접근 차단은 다음 단계에서 별도로 연결해야 합니다.
+                        비밀번호는 평문으로 저장하지 않고 계정별 salt가 적용된 PBKDF2-SHA-256 방식으로 저장합니다.
+                        기존 SHA-256 방식으로 등록된 관리자 ID는 로그인 성공 시 새 보안 방식으로 자동 전환됩니다.
                       </div>
 
                       <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
@@ -5351,7 +5373,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                                           {account.adminLoginId}
                                         </span>
                                         <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-                                          비밀번호 저장됨
+                                          보안 해시 적용
                                         </span>
                                       </div>
 
