@@ -638,13 +638,13 @@ function StatCard({ icon: Icon, label, value, tone = 'slate' }) {
   };
   return (
     <Card>
-      <CardContent className="flex items-center gap-4 p-5">
-        <div className={`rounded-2xl p-3 border ${toneMap[tone].split(' ')[0]} ${toneMap[tone].split(' ')[2]}`}>
-          <Icon className={toneMap[tone].split(' ')[1]} size={22} />
+      <CardContent className="flex flex-col items-center justify-center gap-1.5 p-2.5 text-center sm:flex-row sm:justify-start sm:gap-4 sm:p-5 sm:text-left">
+        <div className={`rounded-xl p-2 border sm:rounded-2xl sm:p-3 ${toneMap[tone].split(' ')[0]} ${toneMap[tone].split(' ')[2]}`}>
+          <Icon className={`${toneMap[tone].split(' ')[1]} h-4 w-4 sm:h-[22px] sm:w-[22px]`} />
         </div>
         <div>
-          <div className="text-xs font-medium text-slate-500 uppercase tracking-wider">{label}</div>
-          <div className="text-2xl font-bold text-slate-900 mt-0.5">{value}</div>
+          <div className="text-[10px] font-medium text-slate-500 uppercase tracking-wider sm:text-xs">{label}</div>
+          <div className="mt-0.5 text-xl font-bold text-slate-900 sm:text-2xl">{value}</div>
         </div>
       </CardContent>
     </Card>
@@ -2959,16 +2959,16 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           <button
             type="button"
             onClick={goToUserHome}
-            className="flex min-w-0 shrink-0 items-center gap-3 text-left"
+            className="flex min-w-0 shrink-0 items-center gap-3.5 text-left sm:gap-4"
           >
-            <div className="shrink-0 rounded-2xl mk-brand-gradient-tr p-2 text-white mk-brand-shadow-md">
-              <Laptop size={22} />
+            <div className="shrink-0 rounded-2xl mk-brand-gradient-tr p-2.5 text-white mk-brand-shadow-md sm:p-3">
+              <Laptop size={26} />
             </div>
             <div className="min-w-0">
-              <h1 className="break-keep text-base font-bold leading-snug tracking-tight text-slate-900 sm:text-lg">
+              <h1 className="break-keep text-[16px] font-bold leading-snug tracking-tight text-slate-900 sm:text-lg lg:text-[21px]">
                 매일경제아카데미 기기 대여 시스템
               </h1>
-              <p className="mt-0.5 truncate text-xs font-medium text-slate-500">
+              <p className="mt-0.5 truncate text-xs font-medium text-slate-500 sm:text-sm">
                 https://notebook.recruit.kro.kr
               </p>
             </div>
@@ -2977,7 +2977,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           {view === 'user' && (
             <nav
               ref={communityMenuRef}
-              className="relative flex w-full flex-wrap items-center justify-end gap-4 sm:gap-7 lg:w-auto lg:gap-10 xl:gap-12"
+              className="relative flex w-full flex-wrap items-center justify-end gap-5 sm:gap-8 lg:w-auto lg:gap-12 xl:gap-14"
             >
               <button
                 type="button"
@@ -2987,7 +2987,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                   setUserTab('rental');
                   setIsCommunityMenuOpen(false);
                 }}
-                className={`rounded-lg px-2.5 py-2 text-base font-medium transition sm:px-3 sm:text-lg lg:px-4 lg:text-[21px] ${
+                className={`rounded-lg px-2.5 py-2 text-[15px] font-medium transition sm:px-3 sm:text-base lg:px-4 lg:text-lg ${
                   userTab === 'rental'
                     ? 'bg-orange-50 mk-brand-text'
                     : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'
@@ -3004,7 +3004,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                   setUserTab('history');
                   setIsCommunityMenuOpen(false);
                 }}
-                className={`rounded-lg px-2.5 py-2 text-base font-medium transition sm:px-3 sm:text-lg lg:px-4 lg:text-[21px] ${
+                className={`rounded-lg px-2.5 py-2 text-[15px] font-medium transition sm:px-3 sm:text-base lg:px-4 lg:text-lg ${
                   userTab === 'history'
                     ? 'bg-orange-50 mk-brand-text'
                     : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'
@@ -3017,7 +3017,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                 <button
                   type="button"
                   onClick={() => setIsCommunityMenuOpen((prev) => !prev)}
-                className={`rounded-lg px-2.5 py-2 text-base font-medium transition sm:px-3 sm:text-lg lg:px-4 lg:text-[21px] ${
+                className={`rounded-lg px-2.5 py-2 text-[15px] font-medium transition sm:px-3 sm:text-base lg:px-4 lg:text-lg ${
                     ['notice', 'faq'].includes(userTab) || isCommunityMenuOpen
                       ? 'bg-orange-50 mk-brand-text'
                       : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'
@@ -3086,14 +3086,16 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       <main className="mx-auto max-w-7xl px-6 py-8">
         
         {/* --- 실시간 주요 대여 현황 보드 --- */}
-        <section className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
-          <StatCard icon={Laptop} label="보유 자산" value={stats.total} />
-          <StatCard icon={CheckCircle2} label="대여 가능" value={stats.available} tone="green" />
-          <StatCard icon={Clock} label="승인 대기중" value={stats.requested} tone="amber" />
-          <StatCard icon={ShieldCheck} label="예약중" value={stats.reserved} tone="sky" />
-          <StatCard icon={Laptop} label="대여중" value={stats.approved} tone="blue" />
-          <StatCard icon={XCircle} label="반납 지연중" value={stats.overdue} tone="rose" />
-        </section>
+        {(view === 'admin' || (view === 'user' && userTab === 'rental')) && (
+          <section className="mb-6 grid grid-cols-3 gap-2 sm:mb-8 sm:gap-4 md:grid-cols-3 xl:grid-cols-6">
+            <StatCard icon={Laptop} label="보유 자산" value={stats.total} />
+            <StatCard icon={CheckCircle2} label="대여 가능" value={stats.available} tone="green" />
+            <StatCard icon={Clock} label="승인 대기중" value={stats.requested} tone="amber" />
+            <StatCard icon={ShieldCheck} label="예약중" value={stats.reserved} tone="sky" />
+            <StatCard icon={Laptop} label="대여중" value={stats.approved} tone="blue" />
+            <StatCard icon={XCircle} label="반납 지연중" value={stats.overdue} tone="rose" />
+          </section>
+        )}
 
         {view === 'user' ? (
           userTab === 'rental' ? (
