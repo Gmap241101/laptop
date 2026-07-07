@@ -638,13 +638,27 @@ function StatCard({ icon: Icon, label, value, tone = 'slate' }) {
   };
   return (
     <Card>
-      <CardContent className="flex flex-col items-center justify-center gap-1.5 p-2.5 text-center sm:flex-row sm:justify-start sm:gap-4 sm:p-5 sm:text-left">
-        <div className={`rounded-xl p-2 border sm:rounded-2xl sm:p-3 ${toneMap[tone].split(' ')[0]} ${toneMap[tone].split(' ')[2]}`}>
-          <Icon className={`${toneMap[tone].split(' ')[1]} h-4 w-4 sm:h-[22px] sm:w-[22px]`} />
+      <CardContent className="p-2 sm:hidden">
+        <div className="flex min-h-[30px] items-center justify-center gap-1.5">
+          <div className={`shrink-0 rounded-xl border p-1.5 ${toneMap[tone].split(' ')[0]} ${toneMap[tone].split(' ')[2]}`}>
+            <Icon className={`${toneMap[tone].split(' ')[1]} h-3.5 w-3.5`} />
+          </div>
+          <div className="max-w-[4.75rem] whitespace-normal break-keep text-left text-[10px] font-medium leading-tight text-slate-500">
+            {label}
+          </div>
+        </div>
+        <div className="mt-1 text-center text-lg font-bold leading-none text-slate-900">
+          {value}
+        </div>
+      </CardContent>
+
+      <CardContent className="hidden items-center gap-4 p-5 text-left sm:flex">
+        <div className={`rounded-2xl border p-3 ${toneMap[tone].split(' ')[0]} ${toneMap[tone].split(' ')[2]}`}>
+          <Icon className={`${toneMap[tone].split(' ')[1]} h-[22px] w-[22px]`} />
         </div>
         <div>
-          <div className="text-[10px] font-medium text-slate-500 uppercase tracking-wider sm:text-xs">{label}</div>
-          <div className="mt-0.5 text-xl font-bold text-slate-900 sm:text-2xl">{value}</div>
+          <div className="text-xs font-medium uppercase tracking-wider text-slate-500">{label}</div>
+          <div className="mt-0.5 text-2xl font-bold text-slate-900">{value}</div>
         </div>
       </CardContent>
     </Card>
@@ -3084,10 +3098,10 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                   setUserTab('rental');
                   setIsCommunityMenuOpen(false);
                 }}
-                className={`rounded-lg px-2.5 py-2 text-[15px] font-medium transition sm:px-3 sm:text-base lg:px-4 lg:text-lg ${
+                className={`rounded-lg px-2.5 py-2 text-[15px] transition sm:px-3 sm:text-base lg:px-4 lg:text-lg ${
                   userTab === 'rental'
-                    ? 'bg-orange-50 mk-brand-text'
-                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'
+                    ? 'bg-orange-50 font-semibold mk-brand-text'
+                    : 'font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-950'
                 }`}
               >
                 대여신청
@@ -3101,10 +3115,10 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                   setUserTab('history');
                   setIsCommunityMenuOpen(false);
                 }}
-                className={`rounded-lg px-2.5 py-2 text-[15px] font-medium transition sm:px-3 sm:text-base lg:px-4 lg:text-lg ${
+                className={`rounded-lg px-2.5 py-2 text-[15px] transition sm:px-3 sm:text-base lg:px-4 lg:text-lg ${
                   userTab === 'history'
-                    ? 'bg-orange-50 mk-brand-text'
-                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'
+                    ? 'bg-orange-50 font-semibold mk-brand-text'
+                    : 'font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-950'
                 }`}
               >
                 신청내역
@@ -3114,10 +3128,10 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                 <button
                   type="button"
                   onClick={() => setIsCommunityMenuOpen((prev) => !prev)}
-                className={`rounded-lg px-2.5 py-2 text-[15px] font-medium transition sm:px-3 sm:text-base lg:px-4 lg:text-lg ${
+                  className={`rounded-lg px-2.5 py-2 text-[15px] transition sm:px-3 sm:text-base lg:px-4 lg:text-lg ${
                     ['notice', 'faq'].includes(userTab) || isCommunityMenuOpen
-                      ? 'bg-orange-50 mk-brand-text'
-                      : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'
+                      ? 'bg-orange-50 font-semibold mk-brand-text'
+                      : 'font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-950'
                   }`}
                 >
                   커뮤니티
