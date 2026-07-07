@@ -1200,6 +1200,7 @@ function App() {
   const [view, setView] = useState(getInitialViewFromPath); // 'user' | 'admin'
   const [userTab, setUserTab] = useState(getInitialUserTabFromPath); // 'home' | 'rental' | 'history' | 'notice' | 'faq'
   const [isCommunityMenuOpen, setIsCommunityMenuOpen] = useState(false);
+  const communityMenuRef = useRef(null);
   const [query, setQuery] = useState('');
   const [selectedAssetCategory, setSelectedAssetCategory] = useState('전체');
   const [availabilityFilter, setAvailabilityFilter] = useState(STATUS.AVAILABLE);
@@ -1268,6 +1269,35 @@ function App() {
       window.removeEventListener('popstate', syncViewWithPath);
     };
   }, []);
+
+    useEffect(() => {
+    if (!isCommunityMenuOpen) return;
+
+    const handleCommunityMenuOutsideClick = (event) => {
+      if (
+        communityMenuRef.current &&
+        !communityMenuRef.current.contains(event.target)
+      ) {
+        setIsCommunityMenuOpen(false);
+      }
+    };
+
+    const handleCommunityMenuEscape = (event) => {
+      if (event.key === 'Escape') {
+        setIsCommunityMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleCommunityMenuOutsideClick, true);
+    document.addEventListener('touchstart', handleCommunityMenuOutsideClick, true);
+    document.addEventListener('keydown', handleCommunityMenuEscape, true);
+
+    return () => {
+      document.removeEventListener('mousedown', handleCommunityMenuOutsideClick, true);
+      document.removeEventListener('touchstart', handleCommunityMenuOutsideClick, true);
+      document.removeEventListener('keydown', handleCommunityMenuEscape, true);
+    };
+  }, [isCommunityMenuOpen]);
 
   // 엑셀/CSV 파싱에 사용되는 라이브러리(SheetJS) 동적 주입 처리
   useEffect(() => {
@@ -2927,122 +2957,123 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       {/* --- 상단 글로벌 네비게이션 --- */}
       <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:px-6 sm:py-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:gap-8">
-            <button
-              type="button"
-              onClick={goToUserHome}
-              className="flex min-w-0 shrink-0 items-center gap-3 text-left"
+          <button
+            type="button"
+            onClick={goToUserHome}
+            className="flex min-w-0 shrink-0 items-center gap-3 text-left"
+          >
+            <div className="shrink-0 rounded-2xl mk-brand-gradient-tr p-2 text-white mk-brand-shadow-md">
+              <Laptop size={22} />
+            </div>
+            <div className="min-w-0">
+              <h1 className="break-keep text-base font-bold leading-snug tracking-tight text-slate-900 sm:text-lg">
+                매일경제아카데미 기기 대여 시스템
+              </h1>
+              <p className="mt-0.5 truncate text-xs font-medium text-slate-500">
+                https://notebook.recruit.kro.kr
+              </p>
+            </div>
+          </button>
+
+          {view === 'user' && (
+            <nav
+              ref={communityMenuRef}
+              className="relative flex w-full flex-wrap items-center justify-end gap-3 sm:gap-5 lg:w-auto lg:gap-6"
             >
-              <div className="shrink-0 rounded-2xl mk-brand-gradient-tr p-2 text-white mk-brand-shadow-md">
-                <Laptop size={22} />
-              </div>
-              <div className="min-w-0">
-                <h1 className="break-keep text-base font-bold leading-snug tracking-tight text-slate-900 sm:text-lg">
-                  매일경제아카데미 기기 대여 시스템
-                </h1>
-                <p className="mt-0.5 truncate text-xs font-medium text-slate-500">
-                  https://notebook.recruit.kro.kr
-                </p>
-              </div>
-            </button>
+              <button
+                type="button"
+                onClick={() => {
+                  pushAppPath('user', 'rental');
+                  setView('user');
+                  setUserTab('rental');
+                  setIsCommunityMenuOpen(false);
+                }}
+                className={`rounded-lg px-3 py-2 text-sm font-black transition ${
+                  userTab === 'rental'
+                    ? 'bg-orange-50 mk-brand-text'
+                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'
+                }`}
+              >
+                대여신청
+              </button>
 
-            {view === 'user' && (
-              <nav className="relative flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  pushAppPath('user', 'history');
+                  setView('user');
+                  setUserTab('history');
+                  setIsCommunityMenuOpen(false);
+                }}
+                className={`rounded-lg px-3 py-2 text-sm font-black transition ${
+                  userTab === 'history'
+                    ? 'bg-orange-50 mk-brand-text'
+                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'
+                }`}
+              >
+                신청내역
+              </button>
+
+              <div className="relative">
                 <button
                   type="button"
-                  onClick={() => {
-                    pushAppPath('user', 'rental');
-                    setView('user');
-                    setUserTab('rental');
-                    setIsCommunityMenuOpen(false);
-                  }}
+                  onClick={() => setIsCommunityMenuOpen((prev) => !prev)}
                   className={`rounded-lg px-3 py-2 text-sm font-black transition ${
-                    userTab === 'rental'
+                    ['notice', 'faq'].includes(userTab) || isCommunityMenuOpen
                       ? 'bg-orange-50 mk-brand-text'
                       : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'
                   }`}
                 >
-                  대여신청
+                  커뮤니티
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    pushAppPath('user', 'history');
-                    setView('user');
-                    setUserTab('history');
-                    setIsCommunityMenuOpen(false);
-                  }}
-                  className={`rounded-lg px-3 py-2 text-sm font-black transition ${
-                    userTab === 'history'
-                      ? 'bg-orange-50 mk-brand-text'
-                      : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'
-                  }`}
-                >
-                  신청내역
-                </button>
-
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setIsCommunityMenuOpen((prev) => !prev)}
-                    className={`rounded-lg px-3 py-2 text-sm font-black transition ${
-                      ['notice', 'faq'].includes(userTab) || isCommunityMenuOpen
-                        ? 'bg-orange-50 mk-brand-text'
-                        : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'
-                    }`}
-                  >
-                    커뮤니티
-                  </button>
-
-                  <AnimatePresence>
-                    {isCommunityMenuOpen && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -6, scale: 0.98 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: -6, scale: 0.98 }}
-                        className="absolute left-0 top-full z-40 mt-2 w-36 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
+                <AnimatePresence>
+                  {isCommunityMenuOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                      className="absolute right-0 top-full z-40 mt-2 w-36 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          pushAppPath('user', 'notice');
+                          setView('user');
+                          setUserTab('notice');
+                          setIsCommunityMenuOpen(false);
+                        }}
+                        className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-bold transition ${
+                          userTab === 'notice'
+                            ? 'bg-orange-50 mk-brand-text'
+                            : 'text-slate-700 hover:bg-slate-50'
+                        }`}
                       >
-                        <button
-                          type="button"
-                          onClick={() => {
-                            pushAppPath('user', 'notice');
-                            setView('user');
-                            setUserTab('notice');
-                            setIsCommunityMenuOpen(false);
-                          }}
-                          className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-bold transition ${
-                            userTab === 'notice'
-                              ? 'bg-orange-50 mk-brand-text'
-                              : 'text-slate-700 hover:bg-slate-50'
-                          }`}
-                        >
-                          공지사항
-                        </button>
+                        공지사항
+                      </button>
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            pushAppPath('user', 'faq');
-                            setView('user');
-                            setUserTab('faq');
-                            setIsCommunityMenuOpen(false);
-                          }}
-                          className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-bold transition ${
-                            userTab === 'faq'
-                              ? 'bg-orange-50 mk-brand-text'
-                              : 'text-slate-700 hover:bg-slate-50'
-                          }`}
-                        >
-                          FAQ
-                        </button>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </nav>
-            )}
-          </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          pushAppPath('user', 'faq');
+                          setView('user');
+                          setUserTab('faq');
+                          setIsCommunityMenuOpen(false);
+                        }}
+                        className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-bold transition ${
+                          userTab === 'faq'
+                            ? 'bg-orange-50 mk-brand-text'
+                            : 'text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        FAQ
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </nav>
+          )}
 
           {view === 'admin' && (
             <div className="w-fit rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600">
