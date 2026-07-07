@@ -1105,6 +1105,40 @@ function Select({ label, value, onChange, children }) {
   );
 }
 
+const getInitialViewFromPath = () => {
+  if (typeof window === 'undefined') return 'user';
+
+  const pathname = window.location.pathname.replace(/\/+$/, '');
+
+  return pathname.endsWith('/admin') ? 'admin' : 'user';
+};
+
+const getAppBasePath = () => {
+  if (typeof window === 'undefined') return '/';
+
+  const pathname = window.location.pathname.replace(/\/+$/, '');
+
+  if (!pathname) return '/';
+
+  if (pathname.endsWith('/admin')) {
+    return pathname.slice(0, -6) || '/';
+  }
+
+  return pathname;
+};
+
+const pushAppPath = (nextView) => {
+  if (typeof window === 'undefined') return;
+
+  const basePath = getAppBasePath();
+  const nextPath =
+    nextView === 'admin'
+      ? `${basePath === '/' ? '' : basePath}/admin`
+      : basePath;
+
+  window.history.pushState(null, '', nextPath || '/');
+};
+
 function App() {
   const [data, setData] = useState(initialData);
   const [firebaseReady, setFirebaseReady] = useState(false);
@@ -1114,8 +1148,9 @@ function App() {
   const lastSyncedDataRef = useRef('');
   const saveTimerRef = useRef(null);
   const allowFirebaseWriteRef = useRef(false);
-  const [view, setView] = useState('user'); // 'user' | 'admin'
-  const [userTab, setUserTab] = useState('home'); // 'home' | 'rental' | 'history' | 'community'
+  const [view, setView] = useState(getInitialViewFromPath); // 'user' | 'admin'
+  const [userTab, setUserTab] = useState('home'); // 'home' | 'rental' | 'history' | 'notice' | 'faq'
+  const [isCommunityMenuOpen, setIsCommunityMenuOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [selectedAssetCategory, setSelectedAssetCategory] = useState('전체');
   const [availabilityFilter, setAvailabilityFilter] = useState(STATUS.AVAILABLE);
@@ -1161,6 +1196,31 @@ function App() {
   const [toast, setToast] = useState(null);
   // 커스텀 모달 확인창 상태
   const [confirmModal, setConfirmModal] = useState(null);
+
+  const goToUserHome = () => {
+    pushAppPath('user');
+    setView('user');
+    setUserTab('home');
+    setIsCommunityMenuOpen(false);
+  };
+
+  useEffect(() => {
+    const syncViewWithPath = () => {
+      const nextView = getInitialViewFromPath();
+
+      setView(nextView);
+
+      if (nextView === 'admin') {
+        setIsCommunityMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('popstate', syncViewWithPath);
+
+    return () => {
+      window.removeEventListener('popstate', syncViewWithPath);
+    };
+  }, []);
 
   // 엑셀/CSV 파싱에 사용되는 라이브러리(SheetJS) 동적 주입 처리
   useEffect(() => {
@@ -2819,8 +2879,12 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       }`}>
       {/* --- 상단 글로벌 네비게이션 --- */}
       <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
-          <div className="flex min-w-0 items-center gap-3">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4">
+          <button
+            type="button"
+            onClick={goToUserHome}
+            className="flex min-w-0 items-center gap-3 text-left"
+          >
             <div className="shrink-0 rounded-2xl mk-brand-gradient-tr p-2 text-white mk-brand-shadow-md">
               <Laptop size={22} />
             </div>
@@ -2832,30 +2896,13 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                 https://notebook.recruit.kro.kr
               </p>
             </div>
-          </div>
+          </button>
 
-          <div className="grid w-full grid-cols-2 gap-1.5 rounded-xl border border-slate-200/60 bg-slate-100 p-1 sm:w-auto sm:min-w-[176px]">
-            <button
-              onClick={() => setView('user')}
-              className={`whitespace-nowrap rounded-lg px-3 py-2 text-xs font-semibold transition sm:py-1.5 ${
-                view === 'user'
-                  ? 'bg-white mk-brand-text shadow-sm'
-                  : 'text-slate-500 hover:text-slate-900'
-              }`}
-            >
-              사용자 화면
-            </button>
-            <button
-              onClick={() => setView('admin')}
-              className={`whitespace-nowrap rounded-lg px-3 py-2 text-xs font-semibold transition sm:py-1.5 ${
-                view === 'admin'
-                  ? 'bg-white mk-brand-text shadow-sm'
-                  : 'text-slate-500 hover:text-slate-900'
-              }`}
-            >
+          {view === 'admin' && (
+            <div className="rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600">
               관리자 모드
-            </button>
-          </div>
+            </div>
+          )}
         </div>
       </header>
 
@@ -2874,50 +2921,92 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
         {view === 'user' && (
           <section className="mb-8">
-            <Card className="bg-white/80">
-              <CardContent className="p-3">
-                <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-                  {[
-                    ['home', LayoutDashboard, '초기화면', '서비스 안내'],
-                    ['rental', Laptop, '대여신청', '기기 선택 및 신청'],
-                    ['history', ClipboardList, '신청내역', '신청 현황 조회'],
-                    ['community', Users, '커뮤니티', '공지사항 · FAQ'],
-                  ].map(([key, Icon, label, description]) => (
+            <Card className="bg-white/90">
+              <CardContent className="p-4">
+                <div className="relative flex flex-col gap-2 md:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUserTab('rental');
+                      setIsCommunityMenuOpen(false);
+                    }}
+                    className={`flex-1 rounded-2xl border px-5 py-5 text-center text-base font-black transition sm:text-xl ${
+                      userTab === 'rental'
+                        ? 'mk-brand-border-soft bg-orange-50 mk-brand-text shadow-sm'
+                        : 'border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    대여신청
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUserTab('history');
+                      setIsCommunityMenuOpen(false);
+                    }}
+                    className={`flex-1 rounded-2xl border px-5 py-5 text-center text-base font-black transition sm:text-xl ${
+                      userTab === 'history'
+                        ? 'mk-brand-border-soft bg-orange-50 mk-brand-text shadow-sm'
+                        : 'border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    신청내역
+                  </button>
+
+                  <div className="relative flex-1">
                     <button
-                      key={key}
                       type="button"
-                      onClick={() => setUserTab(key)}
-                      className={`group rounded-2xl border px-4 py-4 text-left transition-all duration-150 ${
-                        userTab === key
-                          ? 'mk-brand-border-soft bg-orange-50/70 shadow-sm'
-                          : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                      onClick={() => setIsCommunityMenuOpen((prev) => !prev)}
+                      className={`w-full rounded-2xl border px-5 py-5 text-center text-base font-black transition sm:text-xl ${
+                        ['notice', 'faq'].includes(userTab) || isCommunityMenuOpen
+                          ? 'mk-brand-border-soft bg-orange-50 mk-brand-text shadow-sm'
+                          : 'border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50'
                       }`}
                     >
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={`rounded-xl p-2 transition ${
-                            userTab === key
-                              ? 'mk-brand-gradient-tr text-white shadow-sm'
-                              : 'bg-slate-100 text-slate-500 group-hover:text-slate-700'
-                          }`}
+                      커뮤니티
+                    </button>
+
+                    <AnimatePresence>
+                      {isCommunityMenuOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                          className="absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
                         >
-                          <Icon size={18} />
-                        </div>
-                        <div className="min-w-0">
-                          <div
-                            className={`text-sm font-bold ${
-                              userTab === key ? 'mk-brand-text' : 'text-slate-800'
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setUserTab('notice');
+                              setIsCommunityMenuOpen(false);
+                            }}
+                            className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-bold transition ${
+                              userTab === 'notice'
+                                ? 'bg-orange-50 mk-brand-text'
+                                : 'text-slate-700 hover:bg-slate-50'
                             }`}
                           >
-                            {label}
-                          </div>
-                          <div className="mt-0.5 truncate text-[11px] text-slate-500">
-                            {description}
-                          </div>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
+                            공지사항
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setUserTab('faq');
+                              setIsCommunityMenuOpen(false);
+                            }}
+                            className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-bold transition ${
+                              userTab === 'faq'
+                                ? 'bg-orange-50 mk-brand-text'
+                                : 'text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            FAQ
+                          </button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -3222,66 +3311,43 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
               <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-10 text-white">
                 <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
                 <div className="absolute -bottom-16 left-10 h-44 w-44 rounded-full bg-orange-400/20 blur-3xl" />
-                <div className="relative mx-auto max-w-3xl text-center">
-                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/15 backdrop-blur">
-                    {userTab === 'home' && <LayoutDashboard size={26} />}
-                    {userTab === 'history' && <ClipboardList size={26} />}
-                    {userTab === 'community' && <Users size={26} />}
-                  </div>
 
+                <div className="relative mx-auto max-w-3xl text-center">
                   <h2 className="text-2xl font-black tracking-tight">
                     {userTab === 'home' && '초기화면 준비중입니다'}
                     {userTab === 'history' && '신청내역 화면 준비중입니다'}
-                    {userTab === 'community' && '커뮤니티 화면 준비중입니다'}
+                    {userTab === 'notice' && '공지사항 게시판 준비중입니다'}
+                    {userTab === 'faq' && 'FAQ 게시판 준비중입니다'}
                   </h2>
 
                   <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-300">
-                    {userTab === 'home' && '기기 대여 시스템의 주요 안내와 빠른 이동 기능을 담은 첫 화면을 준비하고 있습니다.'}
+                    {userTab === 'home' && '상단의 서비스 제목과 아이콘을 클릭하면 언제든 이 초기화면으로 돌아옵니다.'}
                     {userTab === 'history' && '사용자의 대여 신청 현황과 처리 상태를 확인할 수 있는 화면을 준비하고 있습니다.'}
-                    {userTab === 'community' && '공지사항 게시판과 FAQ 게시판을 확인할 수 있는 커뮤니티 공간을 준비하고 있습니다.'}
+                    {userTab === 'notice' && '운영 공지, 대여 정책, 점검 안내 등을 확인할 수 있는 게시판으로 준비 예정입니다.'}
+                    {userTab === 'faq' && '자주 묻는 질문과 사용 방법을 정리하는 게시판으로 준비 예정입니다.'}
                   </p>
                 </div>
               </div>
 
               <CardContent className="p-6">
-                {userTab === 'community' ? (
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-                      <div className="mb-3 inline-flex rounded-xl bg-white p-2 text-slate-600 shadow-sm">
-                        <ClipboardList size={20} />
-                      </div>
-                      <h3 className="text-sm font-bold text-slate-900">공지사항 게시판</h3>
-                      <p className="mt-2 text-xs leading-5 text-slate-500">
-                        운영 공지, 대여 정책, 점검 안내 등을 게시하는 공간으로 준비 예정입니다.
-                      </p>
-                    </div>
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center">
+                  <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-slate-500 shadow-sm">
+                    <Clock size={22} />
+                  </div>
 
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-                      <div className="mb-3 inline-flex rounded-xl bg-white p-2 text-slate-600 shadow-sm">
-                        <Info size={20} />
-                      </div>
-                      <h3 className="text-sm font-bold text-slate-900">FAQ 게시판</h3>
-                      <p className="mt-2 text-xs leading-5 text-slate-500">
-                        자주 묻는 질문과 사용 방법을 정리하는 공간으로 준비 예정입니다.
-                      </p>
-                    </div>
+                  <h3 className="text-base font-bold text-slate-900">준비중입니다</h3>
 
-                    <div className="md:col-span-2 rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 text-xs leading-5 text-orange-800">
+                  <p className="mx-auto mt-2 max-w-xl text-xs leading-5 text-slate-500">
+                    현재는 화면 구조만 먼저 분리했습니다. 세부 기능은 이후 단계에서 하나씩 추가할 예정입니다.
+                  </p>
+
+                  {['notice', 'faq'].includes(userTab) && (
+                    <div className="mx-auto mt-5 max-w-xl rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 text-xs leading-5 text-orange-800">
                       게시글 작성 기능은 향후 관리자 모드에서만 제공되도록 개발 예정입니다.
                       현재 단계에서는 게시판 기능과 Firebase 저장 구조를 추가하지 않습니다.
                     </div>
-                  </div>
-                ) : (
-                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center">
-                    <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-slate-500 shadow-sm">
-                      <Clock size={22} />
-                    </div>
-                    <h3 className="text-base font-bold text-slate-900">준비중입니다</h3>
-                    <p className="mt-2 text-xs leading-5 text-slate-500">
-                      현재는 화면 구조만 먼저 분리했습니다. 세부 기능은 이후 단계에서 하나씩 추가할 예정입니다.
-                    </p>
-                  </div>
-                )}
+                  )}
+                </div>
               </CardContent>
             </Card>
           )
