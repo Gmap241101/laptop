@@ -2008,79 +2008,176 @@ function App() {
     triggerToast('부서·사용자 변경사항이 원장에 성공적으로 저장 및 반영되었습니다.', 'success');
   };
 
-  const blockedLaptopIds = useMemo(() => {
-    return new Set(
-      data.requests
-        .filter((r) => ['신청중', '대여중', '보류'].includes(r.status))
-        .map((r) => r.laptopId)
-    );
-  }, [data.requests]);
+  const shouldShowStats =
+    view === 'admin' || (view === 'user' && userTab === 'rental');
 
-  const stats = useMemo(() => {
+  const shouldPrepareUserRentalList =
+    view === 'user' && userTab === 'rental';
+
+  const shouldPrepareAdminAssetList =
+    view === 'admin' && adminTab === 'laptops';
+
+  const shouldPrepareRentalStatus =
+    shouldShowStats || shouldPrepareAdminAssetList;
+
+  const rentalStatusSummary = useMemo(() => {
+    const emptyStats = {
+      total: 0,
+      available: 0,
+      requested: 0,
+      reserved: 0,
+      approved: 0,
+      overdue: 0,
+    };
+
+    if (!shouldPrepareRentalStatus) {
+      return {
+        blockedLaptopIds: new Set(),
+        stats: emptyStats,
+      };
+    }
+
     const todayDate = today();
-    const approvedRequests = data.requests.filter((r) => r.status === STATUS.APPROVED);
-    const reservedRequests = approvedRequests.filter(
-      (r) => r.startDate && r.startDate > todayDate
-    );
-    const activeRentalRequests = approvedRequests.filter(
-      (r) => !r.startDate || r.startDate <= todayDate
-    );
+    const nextBlockedLaptopIds = new Set();
+
+    let requested = 0;
+    let reserved = 0;
+    let approved = 0;
+    let overdue = 0;
+
+    data.requests.forEach((request) => {
+      if (
+        request.status === STATUS.REQUESTED ||
+        request.status === STATUS.APPROVED ||
+        request.status === STATUS.ON_HOLD
+      ) {
+        nextBlockedLaptopIds.add(request.laptopId);
+      }
+
+      if (request.status === STATUS.REQUESTED) {
+        requested += 1;
+        return;
+      }
+
+      if (request.status !== STATUS.APPROVED) {
+        return;
+      }
+
+      if (request.startDate && request.startDate > todayDate) {
+        reserved += 1;
+        return;
+      }
+
+      approved += 1;
+
+      if (request.dueDate && request.dueDate < todayDate) {
+        overdue += 1;
+      }
+    });
+
+    let available = 0;
+
+    data.laptops.forEach((laptop) => {
+      if (
+        !nextBlockedLaptopIds.has(laptop.id) &&
+        laptop.status !== STATUS.UNAVAILABLE
+      ) {
+        available += 1;
+      }
+    });
 
     return {
-      total: data.laptops.length,
-      available: data.laptops.filter(
-        (l) => !blockedLaptopIds.has(l.id) && l.status !== STATUS.UNAVAILABLE
-      ).length,
-      requested: data.requests.filter((r) => r.status === STATUS.REQUESTED).length,
-      reserved: reservedRequests.length,
-      approved: activeRentalRequests.length,
-      overdue: activeRentalRequests.filter((r) => r.dueDate < todayDate).length,
+      blockedLaptopIds: nextBlockedLaptopIds,
+      stats: {
+        total: data.laptops.length,
+        available,
+        requested,
+        reserved,
+        approved,
+        overdue,
+      },
     };
-  }, [data, blockedLaptopIds]);
+  }, [shouldPrepareRentalStatus, data.requests, data.laptops]);
 
-  const filteredLaptops = data.laptops.filter((l) => {
-    const laptopAvailability = getLaptopRentalAvailability(
-      l,
-      data.requests,
-      data.settings,
-      form.startDate,
-      form.dueDate
-    );
+  const blockedLaptopIds = rentalStatusSummary.blockedLaptopIds;
+  const stats = rentalStatusSummary.stats;
 
-    const keywordMatched = `${l.category || ''} ${l.assetNo} ${l.serialNo} ${l.model} ${l.note}`
-      .toLowerCase()
-      .includes(query.toLowerCase());
+  const filteredLaptops = useMemo(() => {
+    if (!shouldPrepareUserRentalList) {
+      return [];
+    }
 
-    const categoryMatched =
-      selectedAssetCategory === '전체' || l.category === selectedAssetCategory;
+    const normalizedQuery = query.trim().toLowerCase();
 
-    const availabilityMatched =
-      availabilityFilter === '전체'
-        ? true
-        : availabilityFilter === STATUS.AVAILABLE
-          ? !laptopAvailability.blocked
-          : laptopAvailability.blocked;
+    return data.laptops.filter((l) => {
+      const laptopAvailability = getLaptopRentalAvailability(
+        l,
+        data.requests,
+        data.settings,
+        form.startDate,
+        form.dueDate
+      );
 
-    return keywordMatched && categoryMatched && availabilityMatched;
-  });
+      const keywordMatched = `${l.category || ''} ${l.assetNo} ${l.serialNo} ${l.model} ${l.note}`
+        .toLowerCase()
+        .includes(normalizedQuery);
 
-  const adminFilteredLaptops = data.laptops.filter((l) => {
-    const keywordMatched = `${l.category || ''} ${l.assetNo} ${l.serialNo} ${l.model} ${l.note}`
-      .toLowerCase()
-      .includes(adminLaptopQuery.toLowerCase());
+      const categoryMatched =
+        selectedAssetCategory === '전체' || l.category === selectedAssetCategory;
 
-    const categoryMatched =
-      adminSelectedAssetCategory === '전체' || l.category === adminSelectedAssetCategory;
+      const availabilityMatched =
+        availabilityFilter === '전체'
+          ? true
+          : availabilityFilter === STATUS.AVAILABLE
+            ? !laptopAvailability.blocked
+            : laptopAvailability.blocked;
 
-    const availabilityMatched =
-      adminAvailabilityFilter === '전체'
-        ? true
-        : adminAvailabilityFilter === STATUS.AVAILABLE
-          ? !blockedLaptopIds.has(l.id) && l.status !== STATUS.UNAVAILABLE
-          : blockedLaptopIds.has(l.id) || l.status === STATUS.UNAVAILABLE;
+      return keywordMatched && categoryMatched && availabilityMatched;
+    });
+  }, [
+    shouldPrepareUserRentalList,
+    data.laptops,
+    data.requests,
+    data.settings,
+    form.startDate,
+    form.dueDate,
+    query,
+    selectedAssetCategory,
+    availabilityFilter,
+  ]);
 
-    return keywordMatched && categoryMatched && availabilityMatched;
-  });
+  const adminFilteredLaptops = useMemo(() => {
+    if (!shouldPrepareAdminAssetList) {
+      return [];
+    }
+
+    const normalizedAdminLaptopQuery = adminLaptopQuery.trim().toLowerCase();
+
+    return data.laptops.filter((l) => {
+      const keywordMatched = `${l.category || ''} ${l.assetNo} ${l.serialNo} ${l.model} ${l.note}`
+        .toLowerCase()
+        .includes(normalizedAdminLaptopQuery);
+
+      const categoryMatched =
+        adminSelectedAssetCategory === '전체' || l.category === adminSelectedAssetCategory;
+
+      const availabilityMatched =
+        adminAvailabilityFilter === '전체'
+          ? true
+          : adminAvailabilityFilter === STATUS.AVAILABLE
+            ? !blockedLaptopIds.has(l.id) && l.status !== STATUS.UNAVAILABLE
+            : blockedLaptopIds.has(l.id) || l.status === STATUS.UNAVAILABLE;
+
+      return keywordMatched && categoryMatched && availabilityMatched;
+    });
+  }, [
+    shouldPrepareAdminAssetList,
+    data.laptops,
+    adminLaptopQuery,
+    adminSelectedAssetCategory,
+    adminAvailabilityFilter,
+    blockedLaptopIds,
+  ]);
 
   const selectedLaptop = data.laptops.find((l) => l.id === selectedLaptopId);
 
@@ -3086,7 +3183,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       <main className="mx-auto max-w-7xl px-6 py-8">
         
         {/* --- 실시간 주요 대여 현황 보드 --- */}
-        {(view === 'admin' || (view === 'user' && userTab === 'rental')) && (
+        {shouldShowStats && (
           <section className="mb-6 grid grid-cols-3 gap-2 sm:mb-8 sm:gap-4 md:grid-cols-3 xl:grid-cols-6">
             <StatCard icon={Laptop} label="보유 자산" value={stats.total} />
             <StatCard icon={CheckCircle2} label="대여 가능" value={stats.available} tone="green" />
