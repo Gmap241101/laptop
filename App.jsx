@@ -1215,6 +1215,7 @@ const pushAppPath = (nextView, nextUserTab = 'home') => {
 
 const ADMIN_CUSTOM_OPTION_VALUE = '__ADMIN_CUSTOM_INPUT__';
 const ADMIN_ACCOUNT_PAGE_SIZE = 10;
+const ADMIN_AUTH_SESSION_KEY = 'mk_laptop_admin_auth_id';
 
 const createDefaultAdminAccountForm = () => ({
   adminLoginId: '',
@@ -1225,6 +1226,11 @@ const createDefaultAdminAccountForm = () => ({
   customUserName: '',
   email: '',
   phone: '',
+});
+
+const createDefaultAdminAuthForm = () => ({
+  adminLoginId: '',
+  password: '',
 });
 
 const hashAdminPassword = async (password) => {
@@ -1281,6 +1287,13 @@ function App() {
 
   const [adminAccountForm, setAdminAccountForm] = useState(createDefaultAdminAccountForm);
   const [adminAccountPage, setAdminAccountPage] = useState(1);
+  const [adminAuthForm, setAdminAuthForm] = useState(createDefaultAdminAuthForm);
+  const [adminAuthLoading, setAdminAuthLoading] = useState(false);
+  const [authenticatedAdminId, setAuthenticatedAdminId] = useState(() => {
+    if (typeof window === 'undefined') return '';
+
+    return window.sessionStorage.getItem(ADMIN_AUTH_SESSION_KEY) || '';
+  });
 
   // 엑셀/CSV 업로드 패널 토글 상태 값 추가
   const [showUploadPanel, setShowUploadPanel] = useState(false);
@@ -1548,6 +1561,26 @@ function App() {
     }
   }, [adminTab]);
 
+  useEffect(() => {
+    if (view === 'admin' && firebaseReady && (data.adminAccounts || []).length === 0) {
+      setAdminTab('adminAccounts');
+    }
+  }, [view, firebaseReady, data.adminAccounts]);
+
+  useEffect(() => {
+    if (!authenticatedAdminId) return;
+    if (!firebaseReady) return;
+
+    const authenticatedAccountExists = (data.adminAccounts || []).some(
+      (account) => account.id === authenticatedAdminId
+    );
+
+    if (!authenticatedAccountExists) {
+      window.sessionStorage.removeItem(ADMIN_AUTH_SESSION_KEY);
+      setAuthenticatedAdminId('');
+    }
+  }, [authenticatedAdminId, firebaseReady, data.adminAccounts]);
+
   const triggerToast = (message, type = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
@@ -1557,7 +1590,79 @@ function App() {
     setConfirmModal({ title, message, onConfirm });
   };
 
-    const selectedAdminOrganizationName =
+  const registeredAdminAccounts = data.adminAccounts || [];
+
+  const authenticatedAdminAccount = registeredAdminAccounts.find(
+    (account) => account.id === authenticatedAdminId
+  );
+
+  const hasRegisteredAdminAccounts = registeredAdminAccounts.length > 0;
+  const isAdminAuthenticated = Boolean(authenticatedAdminAccount);
+
+  const hasAdminAccess =
+    view === 'admin' && (!hasRegisteredAdminAccounts || isAdminAuthenticated);
+
+  const shouldShowAdminLoginModal =
+    view === 'admin' &&
+    firebaseReady &&
+    hasRegisteredAdminAccounts &&
+    !isAdminAuthenticated;
+
+  const authenticateAdmin = async () => {
+    const adminLoginId = adminAuthForm.adminLoginId.trim();
+    const password = adminAuthForm.password;
+
+    if (!adminLoginId) {
+      triggerToast('관리자 ID를 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (!password) {
+      triggerToast('비밀번호를 입력해 주세요.', 'error');
+      return;
+    }
+
+    const matchedAdminAccount = registeredAdminAccounts.find(
+      (account) =>
+        String(account.adminLoginId || '').trim().toLowerCase() ===
+        adminLoginId.toLowerCase()
+    );
+
+    if (!matchedAdminAccount) {
+      triggerToast('등록되지 않은 관리자 ID입니다.', 'error');
+      return;
+    }
+
+    try {
+      setAdminAuthLoading(true);
+
+      const passwordHash = await hashAdminPassword(password);
+
+      if (passwordHash !== matchedAdminAccount.passwordHash) {
+        triggerToast('관리자 ID 또는 비밀번호가 일치하지 않습니다.', 'error');
+        return;
+      }
+
+      window.sessionStorage.setItem(ADMIN_AUTH_SESSION_KEY, matchedAdminAccount.id);
+      setAuthenticatedAdminId(matchedAdminAccount.id);
+      setAdminAuthForm(createDefaultAdminAuthForm());
+      triggerToast(`[${matchedAdminAccount.adminLoginId}] 관리자 인증이 완료되었습니다.`, 'success');
+    } catch (error) {
+      console.error('Admin authentication error:', error);
+      triggerToast('관리자 인증 처리 중 오류가 발생했습니다.', 'error');
+    } finally {
+      setAdminAuthLoading(false);
+    }
+  };
+
+  const logoutAdmin = () => {
+    window.sessionStorage.removeItem(ADMIN_AUTH_SESSION_KEY);
+    setAuthenticatedAdminId('');
+    setAdminAuthForm(createDefaultAdminAuthForm());
+    triggerToast('관리자 인증이 해제되었습니다.', 'success');
+  };
+
+  const selectedAdminOrganizationName =
     adminAccountForm.organizationName === ADMIN_CUSTOM_OPTION_VALUE
       ? adminAccountForm.customOrganizationName.trim()
       : adminAccountForm.organizationName;
@@ -1640,10 +1745,17 @@ function App() {
         updatedAt: nowText,
       };
 
+      const isFirstAdminAccount = (data.adminAccounts || []).length === 0;
+
       setData((prev) => ({
         ...prev,
         adminAccounts: [nextAdminAccount, ...(prev.adminAccounts || [])],
       }));
+
+      if (isFirstAdminAccount) {
+        window.sessionStorage.setItem(ADMIN_AUTH_SESSION_KEY, nextAdminAccount.id);
+        setAuthenticatedAdminId(nextAdminAccount.id);
+      }
 
       setAdminAccountForm(createDefaultAdminAccountForm());
       setAdminAccountPage(1);
@@ -2175,13 +2287,13 @@ function App() {
   };
 
   const shouldShowStats =
-    view === 'admin' || (view === 'user' && userTab === 'rental');
+    hasAdminAccess || (view === 'user' && userTab === 'rental');
 
   const shouldPrepareUserRentalList =
     view === 'user' && userTab === 'rental';
 
   const shouldPrepareAdminAssetList =
-    view === 'admin' && adminTab === 'laptops';
+    hasAdminAccess && adminTab === 'laptops';
 
   const shouldPrepareRentalStatus =
     shouldShowStats || shouldPrepareAdminAssetList;
@@ -3338,8 +3450,27 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           )}
 
           {view === 'admin' && (
-            <div className="w-fit rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600">
-              관리자 모드
+            <div className="flex w-fit items-center gap-2">
+              {isAdminAuthenticated && (
+                <div className="hidden rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 sm:block">
+                  {authenticatedAdminAccount.adminLoginId} 인증됨
+                </div>
+              )}
+
+              <div className="rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600">
+                관리자 모드
+              </div>
+
+              {isAdminAuthenticated && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={logoutAdmin}
+                  className="px-3 py-2 text-xs"
+                >
+                  로그아웃
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -3730,11 +3861,28 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                     <p className="mx-auto mt-2 max-w-xl text-xs leading-5 text-slate-500">
                       현재는 화면 구조만 먼저 분리했습니다. 세부 기능은 이후 단계에서 하나씩 추가할 예정입니다.
                     </p>
-
                     {['notice', 'faq'].includes(userTab) && (
                       <div className="mx-auto mt-5 max-w-xl rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 text-xs leading-5 text-orange-800">
-                        게시글 작성 기능은 향후 관리자 모드에서만 제공되도록 개발 예정입니다.
+                        게시글 작성 기능은 관리자 인증 상태에서만 제공되도록 개발 예정입니다.
                         현재 단계에서는 게시판 기능과 Firebase 저장 구조를 추가하지 않습니다.
+
+                        {isAdminAuthenticated && (
+                          <div className="mt-4 flex justify-center">
+                            <Button
+                              type="button"
+                              variant="primary"
+                              className="px-4 py-2 text-xs"
+                              onClick={() =>
+                                triggerToast(
+                                  `${userTab === 'notice' ? '공지사항' : 'FAQ'} 등록 기능은 다음 단계에서 게시판 저장 구조와 함께 연결합니다.`,
+                                  'success'
+                                )
+                              }
+                            >
+                              {userTab === 'notice' ? '공지사항 작성' : 'FAQ 작성'}
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -3743,6 +3891,41 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             </Card>
           )
         ) : (
+          hasRegisteredAdminAccounts && !isAdminAuthenticated ? (
+            <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
+              <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-10 text-white">
+                <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+                <div className="absolute -bottom-16 left-10 h-44 w-44 rounded-full bg-orange-400/20 blur-3xl" />
+
+                <div className="relative mx-auto max-w-3xl text-center">
+                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/15 backdrop-blur">
+                    <ShieldCheck size={26} />
+                  </div>
+
+                  <h2 className="text-2xl font-black tracking-tight">
+                    관리자 인증이 필요합니다
+                  </h2>
+
+                  <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-300">
+                    관리자 모드는 등록된 관리자 ID로 인증한 뒤 이용할 수 있습니다.
+                    인증 창에서 관리자 ID와 비밀번호를 입력해 주세요.
+                  </p>
+                </div>
+              </div>
+
+              <CardContent className="p-6">
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center">
+                  <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-slate-500 shadow-sm">
+                    <LockIcon size={22} />
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900">관리자 화면 잠금 상태</h3>
+                  <p className="mx-auto mt-2 max-w-xl text-xs leading-5 text-slate-500">
+                    인증에 성공하면 관리자 메뉴와 세부 기능이 표시됩니다.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
           /* ==================== [관리자 설정 화면] ==================== */
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-[260px_1fr]">
             
@@ -5262,8 +5445,100 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
               </Card>
             </div>
           </div>
+          )
         )}
       </main>
+
+      {/* --- 관리자 인증 모달 --- */}
+      <AnimatePresence>
+        {shouldShowAdminLoginModal && (
+          <div className="fixed inset-0 z-[55] flex items-center justify-center bg-slate-950/50 px-4 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, y: 12, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.96 }}
+              className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl"
+            >
+              <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-7 text-white">
+                <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
+                <div className="absolute -bottom-12 left-8 h-36 w-36 rounded-full bg-orange-400/20 blur-3xl" />
+
+                <div className="relative flex items-center gap-3">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/15">
+                    <ShieldCheck size={24} />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-black tracking-tight">관리자 인증</h2>
+                    <p className="mt-1 text-xs leading-5 text-slate-300">
+                      등록된 관리자 ID로 인증해야 관리자 모드에 접근할 수 있습니다.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4 p-6">
+                <Input
+                  label="관리자 ID"
+                  value={adminAuthForm.adminLoginId}
+                  onChange={(v) =>
+                    setAdminAuthForm({
+                      ...adminAuthForm,
+                      adminLoginId: v,
+                    })
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      authenticateAdmin();
+                    }
+                  }}
+                  placeholder="관리자 ID 입력"
+                  autoFocus
+                />
+
+                <Input
+                  label="비밀번호"
+                  type="password"
+                  value={adminAuthForm.password}
+                  onChange={(v) =>
+                    setAdminAuthForm({
+                      ...adminAuthForm,
+                      password: v,
+                    })
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      authenticateAdmin();
+                    }
+                  }}
+                  placeholder="비밀번호 입력"
+                />
+
+                <div className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-xs leading-5 text-orange-800">
+                  비밀번호는 입력 즉시 SHA-256 해시값으로 변환한 뒤 등록된 해시값과 비교합니다.
+                </div>
+
+                <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={goToUserHome}
+                  >
+                    사용자 화면으로 이동
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    onClick={authenticateAdmin}
+                    disabled={adminAuthLoading}
+                  >
+                    {adminAuthLoading ? '인증 중...' : '관리자 인증'}
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* --- 모던 Custom Toast (iframe 환경 완벽 최적화) --- */}
       <AnimatePresence>
