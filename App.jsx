@@ -2879,27 +2879,118 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       }`}>
       {/* --- 상단 글로벌 네비게이션 --- */}
       <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4">
-          <button
-            type="button"
-            onClick={goToUserHome}
-            className="flex min-w-0 items-center gap-3 text-left"
-          >
-            <div className="shrink-0 rounded-2xl mk-brand-gradient-tr p-2 text-white mk-brand-shadow-md">
-              <Laptop size={22} />
-            </div>
-            <div className="min-w-0">
-              <h1 className="break-keep text-base font-bold leading-snug tracking-tight text-slate-900 sm:text-lg">
-                매일경제아카데미 기기 대여 시스템
-              </h1>
-              <p className="mt-0.5 truncate text-xs font-medium text-slate-500">
-                https://notebook.recruit.kro.kr
-              </p>
-            </div>
-          </button>
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:px-6 sm:py-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:gap-8">
+            <button
+              type="button"
+              onClick={goToUserHome}
+              className="flex min-w-0 shrink-0 items-center gap-3 text-left"
+            >
+              <div className="shrink-0 rounded-2xl mk-brand-gradient-tr p-2 text-white mk-brand-shadow-md">
+                <Laptop size={22} />
+              </div>
+              <div className="min-w-0">
+                <h1 className="break-keep text-base font-bold leading-snug tracking-tight text-slate-900 sm:text-lg">
+                  매일경제아카데미 기기 대여 시스템
+                </h1>
+                <p className="mt-0.5 truncate text-xs font-medium text-slate-500">
+                  https://notebook.recruit.kro.kr
+                </p>
+              </div>
+            </button>
+
+            {view === 'user' && (
+              <nav className="relative flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserTab('rental');
+                    setIsCommunityMenuOpen(false);
+                  }}
+                  className={`rounded-lg px-3 py-2 text-sm font-black transition ${
+                    userTab === 'rental'
+                      ? 'bg-orange-50 mk-brand-text'
+                      : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'
+                  }`}
+                >
+                  대여신청
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserTab('history');
+                    setIsCommunityMenuOpen(false);
+                  }}
+                  className={`rounded-lg px-3 py-2 text-sm font-black transition ${
+                    userTab === 'history'
+                      ? 'bg-orange-50 mk-brand-text'
+                      : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'
+                  }`}
+                >
+                  신청내역
+                </button>
+
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setIsCommunityMenuOpen((prev) => !prev)}
+                    className={`rounded-lg px-3 py-2 text-sm font-black transition ${
+                      ['notice', 'faq'].includes(userTab) || isCommunityMenuOpen
+                        ? 'bg-orange-50 mk-brand-text'
+                        : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'
+                    }`}
+                  >
+                    커뮤니티
+                  </button>
+
+                  <AnimatePresence>
+                    {isCommunityMenuOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                        className="absolute left-0 top-full z-40 mt-2 w-36 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setUserTab('notice');
+                            setIsCommunityMenuOpen(false);
+                          }}
+                          className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-bold transition ${
+                            userTab === 'notice'
+                              ? 'bg-orange-50 mk-brand-text'
+                              : 'text-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          공지사항
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setUserTab('faq');
+                            setIsCommunityMenuOpen(false);
+                          }}
+                          className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-bold transition ${
+                            userTab === 'faq'
+                              ? 'bg-orange-50 mk-brand-text'
+                              : 'text-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          FAQ
+                        </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </nav>
+            )}
+          </div>
 
           {view === 'admin' && (
-            <div className="rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600">
+            <div className="w-fit rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600">
               관리자 모드
             </div>
           )}
@@ -2918,100 +3009,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           <StatCard icon={Laptop} label="대여중" value={stats.approved} tone="blue" />
           <StatCard icon={XCircle} label="반납 지연중" value={stats.overdue} tone="rose" />
         </section>
-
-        {view === 'user' && (
-          <section className="mb-8">
-            <Card className="bg-white/90">
-              <CardContent className="p-4">
-                <div className="relative flex flex-col gap-2 md:flex-row">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setUserTab('rental');
-                      setIsCommunityMenuOpen(false);
-                    }}
-                    className={`flex-1 rounded-2xl border px-5 py-5 text-center text-base font-black transition sm:text-xl ${
-                      userTab === 'rental'
-                        ? 'mk-brand-border-soft bg-orange-50 mk-brand-text shadow-sm'
-                        : 'border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50'
-                    }`}
-                  >
-                    대여신청
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setUserTab('history');
-                      setIsCommunityMenuOpen(false);
-                    }}
-                    className={`flex-1 rounded-2xl border px-5 py-5 text-center text-base font-black transition sm:text-xl ${
-                      userTab === 'history'
-                        ? 'mk-brand-border-soft bg-orange-50 mk-brand-text shadow-sm'
-                        : 'border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50'
-                    }`}
-                  >
-                    신청내역
-                  </button>
-
-                  <div className="relative flex-1">
-                    <button
-                      type="button"
-                      onClick={() => setIsCommunityMenuOpen((prev) => !prev)}
-                      className={`w-full rounded-2xl border px-5 py-5 text-center text-base font-black transition sm:text-xl ${
-                        ['notice', 'faq'].includes(userTab) || isCommunityMenuOpen
-                          ? 'mk-brand-border-soft bg-orange-50 mk-brand-text shadow-sm'
-                          : 'border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50'
-                      }`}
-                    >
-                      커뮤니티
-                    </button>
-
-                    <AnimatePresence>
-                      {isCommunityMenuOpen && (
-                        <motion.div
-                          initial={{ opacity: 0, y: -6, scale: 0.98 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: -6, scale: 0.98 }}
-                          className="absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
-                        >
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setUserTab('notice');
-                              setIsCommunityMenuOpen(false);
-                            }}
-                            className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-bold transition ${
-                              userTab === 'notice'
-                                ? 'bg-orange-50 mk-brand-text'
-                                : 'text-slate-700 hover:bg-slate-50'
-                            }`}
-                          >
-                            공지사항
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setUserTab('faq');
-                              setIsCommunityMenuOpen(false);
-                            }}
-                            className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-bold transition ${
-                              userTab === 'faq'
-                                ? 'bg-orange-50 mk-brand-text'
-                                : 'text-slate-700 hover:bg-slate-50'
-                            }`}
-                          >
-                            FAQ
-                          </button>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </section>
-        )}
 
         {view === 'user' ? (
           userTab === 'rental' ? (
