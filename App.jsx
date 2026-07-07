@@ -1119,6 +1119,7 @@ const ROUTE_SUFFIXES = [
   '/rental',
   '/history',
   '/admin',
+  '/board',
 ];
 
 const getNormalizedPathname = () => {
@@ -1131,6 +1132,10 @@ const getNormalizedPathname = () => {
 
 const getRouteStateFromPath = () => {
   const pathname = getNormalizedPathname();
+
+  if (pathname === '/') {
+    return { view: 'user', userTab: 'home' };
+  }
 
   if (pathname.endsWith('/admin')) {
     return { view: 'admin', userTab: 'home' };
@@ -1152,7 +1157,15 @@ const getRouteStateFromPath = () => {
     return { view: 'user', userTab: 'faq' };
   }
 
-  return { view: 'user', userTab: 'home' };
+  if (pathname.endsWith('/board')) {
+    return {
+      view: 'user',
+      userTab: 'notice',
+      redirectTo: `${pathname}/notice`,
+    };
+  }
+
+  return { view: 'user', userTab: 'notFound' };
 };
 
 const getInitialViewFromPath = () => getRouteStateFromPath().view;
@@ -1168,7 +1181,7 @@ const getAppBasePath = () => {
     }
   }
 
-  return pathname;
+  return '/';
 };
 
 const pushAppPath = (nextView, nextUserTab = 'home') => {
@@ -1198,7 +1211,7 @@ function App() {
   const saveTimerRef = useRef(null);
   const allowFirebaseWriteRef = useRef(false);
   const [view, setView] = useState(getInitialViewFromPath); // 'user' | 'admin'
-  const [userTab, setUserTab] = useState(getInitialUserTabFromPath); // 'home' | 'rental' | 'history' | 'notice' | 'faq'
+  const [userTab, setUserTab] = useState(getInitialUserTabFromPath); // 'home' | 'rental' | 'history' | 'notice' | 'faq' | 'notFound'
   const [isCommunityMenuOpen, setIsCommunityMenuOpen] = useState(false);
   const communityMenuRef = useRef(null);
   const [query, setQuery] = useState('');
@@ -1258,10 +1271,19 @@ function App() {
     const syncViewWithPath = () => {
       const nextRouteState = getRouteStateFromPath();
 
+      if (
+        nextRouteState.redirectTo &&
+        window.location.pathname !== nextRouteState.redirectTo
+      ) {
+        window.history.replaceState(null, '', nextRouteState.redirectTo);
+      }
+
       setView(nextRouteState.view);
       setUserTab(nextRouteState.userTab);
       setIsCommunityMenuOpen(false);
     };
+
+    syncViewWithPath();
 
     window.addEventListener('popstate', syncViewWithPath);
 
@@ -2978,7 +3000,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           {view === 'user' && (
             <nav
               ref={communityMenuRef}
-              className="relative flex w-full flex-wrap items-center justify-end gap-3 sm:gap-5 lg:w-auto lg:gap-6"
+              className="relative flex w-full flex-wrap items-center justify-end gap-4 sm:gap-7 lg:w-auto lg:gap-10 xl:gap-12"
             >
               <button
                 type="button"
@@ -2988,7 +3010,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                   setUserTab('rental');
                   setIsCommunityMenuOpen(false);
                 }}
-                className={`rounded-lg px-3 py-2 text-sm font-black transition ${
+                className={`rounded-lg px-2.5 py-2 text-base font-medium transition sm:px-3 sm:text-lg lg:px-4 lg:text-[21px] ${
                   userTab === 'rental'
                     ? 'bg-orange-50 mk-brand-text'
                     : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'
@@ -3005,7 +3027,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                   setUserTab('history');
                   setIsCommunityMenuOpen(false);
                 }}
-                className={`rounded-lg px-3 py-2 text-sm font-black transition ${
+                className={`rounded-lg px-2.5 py-2 text-base font-medium transition sm:px-3 sm:text-lg lg:px-4 lg:text-[21px] ${
                   userTab === 'history'
                     ? 'bg-orange-50 mk-brand-text'
                     : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'
@@ -3018,7 +3040,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                 <button
                   type="button"
                   onClick={() => setIsCommunityMenuOpen((prev) => !prev)}
-                  className={`rounded-lg px-3 py-2 text-sm font-black transition ${
+                className={`rounded-lg px-2.5 py-2 text-base font-medium transition sm:px-3 sm:text-lg lg:px-4 lg:text-[21px] ${
                     ['notice', 'faq'].includes(userTab) || isCommunityMenuOpen
                       ? 'bg-orange-50 mk-brand-text'
                       : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'
@@ -3401,6 +3423,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                     {userTab === 'history' && '신청내역 화면 준비중입니다'}
                     {userTab === 'notice' && '공지사항 게시판 준비중입니다'}
                     {userTab === 'faq' && 'FAQ 게시판 준비중입니다'}
+                    {userTab === 'notFound' && '404 - 페이지를 찾을 수 없습니다'}
                   </h2>
 
                   <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-300">
@@ -3408,29 +3431,72 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                     {userTab === 'history' && '사용자의 대여 신청 현황과 처리 상태를 확인할 수 있는 화면을 준비하고 있습니다.'}
                     {userTab === 'notice' && '운영 공지, 대여 정책, 점검 안내 등을 확인할 수 있는 게시판으로 준비 예정입니다.'}
                     {userTab === 'faq' && '자주 묻는 질문과 사용 방법을 정리하는 게시판으로 준비 예정입니다.'}
+                    {userTab === 'notFound' && '입력하신 주소와 일치하는 메뉴를 찾을 수 없습니다.'}
                   </p>
                 </div>
               </div>
 
               <CardContent className="p-6">
-                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center">
-                  <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-slate-500 shadow-sm">
-                    <Clock size={22} />
-                  </div>
-
-                  <h3 className="text-base font-bold text-slate-900">준비중입니다</h3>
-
-                  <p className="mx-auto mt-2 max-w-xl text-xs leading-5 text-slate-500">
-                    현재는 화면 구조만 먼저 분리했습니다. 세부 기능은 이후 단계에서 하나씩 추가할 예정입니다.
-                  </p>
-
-                  {['notice', 'faq'].includes(userTab) && (
-                    <div className="mx-auto mt-5 max-w-xl rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 text-xs leading-5 text-orange-800">
-                      게시글 작성 기능은 향후 관리자 모드에서만 제공되도록 개발 예정입니다.
-                      현재 단계에서는 게시판 기능과 Firebase 저장 구조를 추가하지 않습니다.
+                {userTab === 'notFound' ? (
+                  <div className="rounded-2xl border border-dashed border-orange-200 bg-orange-50/40 px-6 py-12 text-center">
+                    <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-orange-600 shadow-sm">
+                      <AlertCircle size={26} />
                     </div>
-                  )}
-                </div>
+
+                    <h3 className="text-lg font-bold text-slate-900">
+                      요청하신 페이지가 없습니다
+                    </h3>
+
+                    <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">
+                      주소가 잘못 입력되었거나, 아직 제공되지 않는 메뉴입니다.
+                      아래 버튼을 통해 기기 대여 시스템의 주요 화면으로 이동할 수 있습니다.
+                    </p>
+
+                    <div className="mt-6 flex flex-col justify-center gap-2 sm:flex-row">
+                      <Button
+                        type="button"
+                        onClick={goToUserHome}
+                        variant="primary"
+                        className="w-full sm:w-auto"
+                      >
+                        초기화면으로 이동
+                      </Button>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          pushAppPath('user', 'rental');
+                          setView('user');
+                          setUserTab('rental');
+                          setIsCommunityMenuOpen(false);
+                        }}
+                        className="w-full sm:w-auto"
+                      >
+                        대여신청으로 이동
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center">
+                    <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-slate-500 shadow-sm">
+                      <Clock size={22} />
+                    </div>
+
+                    <h3 className="text-base font-bold text-slate-900">준비중입니다</h3>
+
+                    <p className="mx-auto mt-2 max-w-xl text-xs leading-5 text-slate-500">
+                      현재는 화면 구조만 먼저 분리했습니다. 세부 기능은 이후 단계에서 하나씩 추가할 예정입니다.
+                    </p>
+
+                    {['notice', 'faq'].includes(userTab) && (
+                      <div className="mx-auto mt-5 max-w-xl rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 text-xs leading-5 text-orange-800">
+                        게시글 작성 기능은 향후 관리자 모드에서만 제공되도록 개발 예정입니다.
+                        현재 단계에서는 게시판 기능과 Firebase 저장 구조를 추가하지 않습니다.
+                      </div>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           )
