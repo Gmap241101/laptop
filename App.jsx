@@ -1285,6 +1285,7 @@ const createDefaultUserAuthForm = () => ({
 
 const getUserAuthErrorMessage = (error) => {
   const errorCode = error?.code || '';
+  const errorMessage = error?.message || '';
 
   if (errorCode === 'auth/email-already-in-use') {
     return '이미 가입된 이메일입니다. 로그인 화면에서 로그인해 주세요.';
@@ -1298,6 +1299,10 @@ const getUserAuthErrorMessage = (error) => {
     return '비밀번호는 6자 이상으로 입력해 주세요.';
   }
 
+  if (errorCode === 'auth/password-does-not-meet-requirements') {
+    return '비밀번호가 Firebase Authentication의 비밀번호 정책을 충족하지 않습니다. 대문자, 숫자, 특수문자 등 설정된 정책을 확인해 주세요.';
+  }
+
   if (errorCode === 'auth/user-not-found' || errorCode === 'auth/wrong-password') {
     return '이메일 또는 비밀번호가 올바르지 않습니다.';
   }
@@ -1306,11 +1311,31 @@ const getUserAuthErrorMessage = (error) => {
     return '이메일 또는 비밀번호가 올바르지 않습니다.';
   }
 
-  if (errorCode === 'auth/too-many-requests') {
-    return '로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.';
+  if (errorCode === 'auth/operation-not-allowed') {
+    return 'Firebase Authentication에서 Email/Password 로그인 제공자가 아직 사용 설정되어 있지 않습니다. Firebase Console의 Authentication > Sign-in method에서 Email/Password를 사용 설정해 주세요.';
   }
 
-  return '사용자 인증 처리 중 오류가 발생했습니다. 입력값과 네트워크 상태를 확인해 주세요.';
+  if (errorCode === 'auth/network-request-failed') {
+    return 'Firebase Authentication 서버에 연결하지 못했습니다. 네트워크 상태를 확인해 주세요.';
+  }
+
+  if (errorCode === 'auth/unauthorized-domain') {
+    return '현재 접속한 도메인이 Firebase Authentication 승인 도메인에 등록되어 있지 않습니다. Firebase Console의 Authentication 설정에서 Authorized domains를 확인해 주세요.';
+  }
+
+  if (errorCode === 'auth/too-many-requests') {
+    return '로그인 또는 가입 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.';
+  }
+
+  if (errorCode === 'permission-denied') {
+    return '회원 프로필 저장 권한이 거부되었습니다. Firestore Rules의 userProfiles/{uid} 규칙과 게시 여부를 확인해 주세요.';
+  }
+
+  if (errorCode === 'unavailable') {
+    return 'Firestore 서버에 일시적으로 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.';
+  }
+
+  return `사용자 인증 처리 중 오류가 발생했습니다. 오류 코드: ${errorCode || 'unknown'} ${errorMessage ? ` / ${errorMessage}` : ''}`;
 };
 
 const bufferToHex = (buffer) =>
