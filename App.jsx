@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { initializeApp } from 'firebase/app';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
 import {
   Laptop,
@@ -33,6 +34,7 @@ const firebaseConfig = {
 
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
+const firebaseAuth = getAuth(firebaseApp);
 const DATA_DOC_REF = doc(db, 'laptopRentalDashboard', 'main');
 const ADMIN_ACCOUNTS_DOC_REF = doc(db, 'laptopRentalDashboard', 'adminAccounts');
 
@@ -1468,6 +1470,9 @@ function App() {
     () => readAdminAuthSession().expiresAt
   );
 
+  const [firebaseAuthUser, setFirebaseAuthUser] = useState(null);
+  const [firebaseAuthReady, setFirebaseAuthReady] = useState(false);  
+
   // 엑셀/CSV 업로드 패널 토글 상태 값 추가
   const [showUploadPanel, setShowUploadPanel] = useState(false);
   const [assetGridColumns, setAssetGridColumns] = useState(1);
@@ -1485,6 +1490,23 @@ function App() {
   // 커스텀 모달 확인창 상태
   const [confirmModal, setConfirmModal] = useState(null);
 
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(
+      firebaseAuth,
+      (user) => {
+        setFirebaseAuthUser(user);
+        setFirebaseAuthReady(true);
+      },
+      (error) => {
+        console.error('Firebase Auth state error:', error);
+        setFirebaseAuthUser(null);
+        setFirebaseAuthReady(true);
+      }
+    );
+
+    return unsubscribe;
+  }, []);
+    
   const goToUserHome = () => {
     pushAppPath('user', 'home');
     setView('user');
