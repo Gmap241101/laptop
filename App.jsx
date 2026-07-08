@@ -1,7 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { initializeApp } from 'firebase/app';
-import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import {
+  createUserWithEmailAndPassword,
+  getAuth,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut,
+  updateProfile,
+} from 'firebase/auth';
 import { getFirestore, doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
 import {
   Laptop,
@@ -1160,6 +1167,8 @@ const USER_ROUTE_PATHS = {
   history: '/history',
   notice: '/board/notice',
   faq: '/board/faq',
+  login: '/login',
+  signup: '/signup',
 };
 
 const getNormalizedPathname = () => {
@@ -1187,6 +1196,14 @@ const getRouteStateFromPath = () => {
 
   if (pathname === '/history') {
     return { view: 'user', userTab: 'history' };
+  }
+
+  if (pathname === '/login') {
+    return { view: 'user', userTab: 'login' };
+  }
+
+  if (pathname === '/signup') {
+    return { view: 'user', userTab: 'signup' };
   }
 
   if (pathname === '/board') {
@@ -1251,6 +1268,50 @@ const createDefaultAdminAuthForm = () => ({
   adminLoginId: '',
   password: '',
 });
+
+const USER_PROFILE_STATUS = {
+  ACTIVE: 'active',
+  BLOCKED: 'blocked',
+};
+
+const createDefaultUserAuthForm = () => ({
+  email: '',
+  password: '',
+  passwordConfirm: '',
+  name: '',
+  team: '',
+  phone: '',
+});
+
+const getUserAuthErrorMessage = (error) => {
+  const errorCode = error?.code || '';
+
+  if (errorCode === 'auth/email-already-in-use') {
+    return '이미 가입된 이메일입니다. 로그인 화면에서 로그인해 주세요.';
+  }
+
+  if (errorCode === 'auth/invalid-email') {
+    return '이메일 형식이 올바르지 않습니다.';
+  }
+
+  if (errorCode === 'auth/weak-password') {
+    return '비밀번호는 6자 이상으로 입력해 주세요.';
+  }
+
+  if (errorCode === 'auth/user-not-found' || errorCode === 'auth/wrong-password') {
+    return '이메일 또는 비밀번호가 올바르지 않습니다.';
+  }
+
+  if (errorCode === 'auth/invalid-credential') {
+    return '이메일 또는 비밀번호가 올바르지 않습니다.';
+  }
+
+  if (errorCode === 'auth/too-many-requests') {
+    return '로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.';
+  }
+
+  return '사용자 인증 처리 중 오류가 발생했습니다. 입력값과 네트워크 상태를 확인해 주세요.';
+};
 
 const bufferToHex = (buffer) =>
   Array.from(new Uint8Array(buffer))
@@ -1471,7 +1532,9 @@ function App() {
   );
 
   const [firebaseAuthUser, setFirebaseAuthUser] = useState(null);
-  const [firebaseAuthReady, setFirebaseAuthReady] = useState(false);  
+  const [firebaseAuthReady, setFirebaseAuthReady] = useState(false);
+  const [userAuthForm, setUserAuthForm] = useState(createDefaultUserAuthForm);
+  const [userAuthLoading, setUserAuthLoading] = useState(false);
 
   // 엑셀/CSV 업로드 패널 토글 상태 값 추가
   const [showUploadPanel, setShowUploadPanel] = useState(false);
@@ -1506,7 +1569,7 @@ function App() {
 
     return unsubscribe;
   }, []);
-    
+
   const goToUserHome = () => {
     pushAppPath('user', 'home');
     setView('user');
@@ -2045,6 +2108,124 @@ function App() {
     clearAdminAuthSession();
     setAuthenticatedAdminId('');
     setAdminAuthExpiresAt(0);
+  };
+
+    const goToUserLogin = () => {
+    pushAppPath('user', 'login');
+    setView('user');
+    setUserTab('login');
+    setIsCommunityMenuOpen(false);
+  };
+
+  const goToUserSignup = () => {
+    pushAppPath('user', 'signup');
+    setView('user');
+    setUserTab('signup');
+    setIsCommunityMenuOpen(false);
+  };
+
+  const logoutUser = async () => {
+    setUserAuthLoading(true);
+
+    try {
+      await signOut(firebaseAuth);
+      setUserAuthForm(createDefaultUserAuthForm());
+      triggerToast('로그아웃되었습니다.', 'success');
+    } catch (error) {
+      console.error('User logout error:', error);
+      triggerToast('로그아웃 처리 중 오류가 발생했습니다.', 'error');
+    } finally {
+      setUserAuthLoading(false);
+    }
+  };
+
+  const submitUserAuthForm = async (event) => {
+    event.preventDefault();
+
+    const isSignupMode = userTab === 'signup';
+    const email = userAuthForm.email.trim();
+    const password = userAuthForm.password;
+    const passwordConfirm = userAuthForm.passwordConfirm;
+    const name = userAuthForm.name.trim();
+    const team = userAuthForm.team.trim();
+    const phone = userAuthForm.phone.trim();
+
+    if (!email) {
+      triggerToast('이메일을 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (!password) {
+      triggerToast('비밀번호를 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (password.length < 6) {
+      triggerToast('비밀번호는 6자 이상으로 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (isSignupMode) {
+      if (!name) {
+        triggerToast('이름을 입력해 주세요.', 'error');
+        return;
+      }
+
+      if (!team) {
+        triggerToast('부서 / 팀을 입력해 주세요.', 'error');
+        return;
+      }
+
+      if (password !== passwordConfirm) {
+        triggerToast('비밀번호 확인이 일치하지 않습니다.', 'error');
+        return;
+      }
+    }
+
+    setUserAuthLoading(true);
+
+    try {
+      if (isSignupMode) {
+        const credential = await createUserWithEmailAndPassword(
+          firebaseAuth,
+          email,
+          password
+        );
+
+        await updateProfile(credential.user, {
+          displayName: name,
+        });
+
+        await setDoc(doc(db, 'userProfiles', credential.user.uid), {
+          uid: credential.user.uid,
+          email,
+          name,
+          team,
+          phone,
+          status: USER_PROFILE_STATUS.ACTIVE,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+
+        setUserAuthForm(createDefaultUserAuthForm());
+        triggerToast('회원가입이 완료되었습니다. 로그인 상태로 전환되었습니다.', 'success');
+      } else {
+        await signInWithEmailAndPassword(firebaseAuth, email, password);
+
+        setUserAuthForm(createDefaultUserAuthForm());
+        triggerToast('로그인되었습니다.', 'success');
+      }
+
+      pushAppPath('user', 'rental');
+      setView('user');
+      setUserTab('rental');
+      setIsCommunityMenuOpen(false);
+    } catch (error) {
+      console.error('User auth error:', error);
+      triggerToast(getUserAuthErrorMessage(error), 'error');
+    } finally {
+      setUserAuthLoading(false);
+    }
   };
 
   const authenticateAdmin = async () => {
@@ -3958,6 +4139,27 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                   )}
                 </AnimatePresence>
               </div>
+
+              <div className="flex items-center gap-2">
+                {firebaseAuthUser && (
+                  <div className="hidden max-w-[10rem] truncate rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 xl:block">
+                    {firebaseAuthUser.email || '로그인됨'}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={firebaseAuthUser ? logoutUser : goToUserLogin}
+                  disabled={userAuthLoading || !firebaseAuthReady}
+                  className={`rounded-lg px-2.5 py-2 text-[15px] transition disabled:opacity-50 sm:px-3 sm:text-base lg:px-4 lg:text-lg ${
+                    ['login', 'signup'].includes(userTab)
+                      ? 'bg-orange-50 font-semibold mk-brand-text'
+                      : 'font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-950'
+                  }`}
+                >
+                  {firebaseAuthUser ? '로그아웃' : '로그인'}
+                </button>
+              </div>
             </nav>
           )}
 
@@ -4296,6 +4498,159 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             </div>
             </div>
             </div>
+          ) : ['login', 'signup'].includes(userTab) ? (
+            <Card className="mx-auto max-w-xl overflow-hidden border-slate-200 bg-white shadow-sm">
+              <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-8 text-white">
+                <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+                <div className="absolute -bottom-16 left-10 h-44 w-44 rounded-full bg-orange-400/20 blur-3xl" />
+
+                <div className="relative">
+                  <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/15">
+                    <Users size={26} />
+                  </div>
+
+                  <h2 className="text-xl font-black tracking-tight">
+                    {userTab === 'signup' ? '일반 사용자 회원가입' : '일반 사용자 로그인'}
+                  </h2>
+
+                  <p className="mt-2 text-xs leading-5 text-slate-300">
+                    {userTab === 'signup'
+                      ? '대여 신청을 위한 일반 사용자 계정을 생성합니다.'
+                      : '가입한 이메일과 비밀번호로 로그인합니다.'}
+                  </p>
+                </div>
+              </div>
+
+              <CardContent className="p-6">
+                {firebaseAuthUser ? (
+                  <div className="space-y-4">
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm leading-6 text-emerald-800">
+                      현재 <span className="font-bold">{firebaseAuthUser.email}</span> 계정으로 로그인되어 있습니다.
+                    </div>
+
+                    <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={logoutUser}
+                        disabled={userAuthLoading}
+                      >
+                        로그아웃
+                      </Button>
+
+                      <Button
+                        type="button"
+                        variant="primary"
+                        onClick={() => {
+                          pushAppPath('user', 'rental');
+                          setView('user');
+                          setUserTab('rental');
+                          setIsCommunityMenuOpen(false);
+                        }}
+                      >
+                        대여신청으로 이동
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <form className="space-y-4" onSubmit={submitUserAuthForm}>
+                    <Input
+                      label="이메일"
+                      value={userAuthForm.email}
+                      onChange={(v) => setUserAuthForm({ ...userAuthForm, email: v })}
+                      placeholder="example@company.com"
+                      type="email"
+                      autoComplete="email"
+                    />
+
+                    {userTab === 'signup' && (
+                      <>
+                        <Input
+                          label="이름"
+                          value={userAuthForm.name}
+                          onChange={(v) => setUserAuthForm({ ...userAuthForm, name: v })}
+                          placeholder="성명을 입력하세요"
+                          autoComplete="name"
+                        />
+
+                        <Input
+                          label="부서 / 팀"
+                          value={userAuthForm.team}
+                          onChange={(v) => setUserAuthForm({ ...userAuthForm, team: v })}
+                          placeholder="소속 부서 또는 팀명을 입력하세요"
+                        />
+
+                        <Input
+                          label="연락처"
+                          value={userAuthForm.phone}
+                          onChange={(v) => setUserAuthForm({ ...userAuthForm, phone: v })}
+                          placeholder="연락처를 입력하세요"
+                          autoComplete="tel"
+                        />
+                      </>
+                    )}
+
+                    <Input
+                      label="비밀번호"
+                      value={userAuthForm.password}
+                      onChange={(v) => setUserAuthForm({ ...userAuthForm, password: v })}
+                      placeholder="6자 이상 입력"
+                      type="password"
+                      autoComplete={userTab === 'signup' ? 'new-password' : 'current-password'}
+                    />
+
+                    {userTab === 'signup' && (
+                      <Input
+                        label="비밀번호 확인"
+                        value={userAuthForm.passwordConfirm}
+                        onChange={(v) => setUserAuthForm({ ...userAuthForm, passwordConfirm: v })}
+                        placeholder="비밀번호를 한 번 더 입력"
+                        type="password"
+                        autoComplete="new-password"
+                      />
+                    )}
+
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-xs leading-5 text-slate-600">
+                      일반 사용자 계정은 Firebase Authentication 이메일/비밀번호 방식으로 생성됩니다.
+                      기존 관리자 모드 로그인 방식은 이번 단계에서 변경하지 않습니다.
+                    </div>
+
+                    <Button
+                      type="submit"
+                      variant="primary"
+                      disabled={userAuthLoading || !firebaseAuthReady}
+                      className="w-full justify-center py-3"
+                    >
+                      {userAuthLoading
+                        ? '처리 중...'
+                        : userTab === 'signup'
+                          ? '회원가입'
+                          : '로그인'}
+                    </Button>
+
+                    <div className="flex justify-center border-t border-slate-100 pt-4 text-xs text-slate-500">
+                      {userTab === 'signup' ? (
+                        <button
+                          type="button"
+                          onClick={goToUserLogin}
+                          className="font-bold mk-brand-text hover:underline"
+                        >
+                          이미 계정이 있으면 로그인하기
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={goToUserSignup}
+                          className="font-bold mk-brand-text hover:underline"
+                        >
+                          계정이 없으면 회원가입하기
+                        </button>
+                      )}
+                    </div>
+                  </form>
+                )}
+              </CardContent>
+            </Card>
           ) : (
             <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
               <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-10 text-white">
