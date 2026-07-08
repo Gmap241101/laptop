@@ -34,6 +34,7 @@ const firebaseConfig = {
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
 const DATA_DOC_REF = doc(db, 'laptopRentalDashboard', 'main');
+const ADMIN_ACCOUNTS_DOC_REF = doc(db, 'laptopRentalDashboard', 'adminAccounts');
 
 // --- 상태 및 스타일 정의 ---
 const STATUS = {
@@ -530,9 +531,8 @@ const initialData = {
   laptops: seedLaptops(),
   requests: [],
   assetCategories: ['노트북'],
-  teams: ['매일경제아카데미', '채용대행팀', '문항개발팀', '경제교육팀'],
+  teams: ['매일경제아카데미', '채용대행팀', '경제교육팀'],
   borrowers: [],
-  adminAccounts: [],
   settings: {
     teamInputMode: 'dropdown',
     borrowerInputMode: 'dropdown',
@@ -582,6 +582,11 @@ function normalizeAdminAccounts(adminAccounts) {
     }));
 }
 
+function stripAdminAccountsFromData(sourceData) {
+  const { adminAccounts: _adminAccounts, ...dataWithoutAdminAccounts } = sourceData || {};
+
+  return dataWithoutAdminAccounts;
+}
 function mergePersistedData(rawData) {
   const parsed = { ...initialData, ...(rawData || {}) };
   const assetCategories = Array.isArray(parsed.assetCategories) && parsed.assetCategories.length > 0
@@ -620,8 +625,10 @@ function mergePersistedData(rawData) {
         }))
     : [];
 
+  const parsedWithoutAdminAccounts = stripAdminAccountsFromData(parsed);
+
   return {
-    ...parsed,
+    ...parsedWithoutAdminAccounts,
     assetCategories,
     settings,
     laptops: (parsed.laptops || []).map((asset) => ({
@@ -629,7 +636,6 @@ function mergePersistedData(rawData) {
       category: asset.category || assetCategories[0] || '노트북',
     })),
     borrowers: normalizeBorrowers(parsed.borrowers || [], parsed.teams || []),
-    adminAccounts: normalizeAdminAccounts(parsed.adminAccounts || []),
   };
 }
 
@@ -1400,11 +1406,23 @@ function App() {
   const [data, setData] = useState(initialData);
   const [firebaseReady, setFirebaseReady] = useState(false);
   const [firebaseLoadErrorMessage, setFirebaseLoadErrorMessage] = useState('');
+
+  const [adminAccounts, setAdminAccounts] = useState([]);
+  const [adminAccountsReady, setAdminAccountsReady] = useState(false);
+  const [adminAccountsLoadErrorMessage, setAdminAccountsLoadErrorMessage] = useState('');
+  const [legacyAdminAccounts, setLegacyAdminAccounts] = useState([]);
+  const [legacyAdminAccountsMigrated, setLegacyAdminAccountsMigrated] = useState(false);
+
   const applyingRemoteRef = useRef(false);
   const initializedRemoteFormRef = useRef(false);
   const lastSyncedDataRef = useRef('');
   const saveTimerRef = useRef(null);
   const allowFirebaseWriteRef = useRef(false);
+
+  const adminAccountsApplyingRemoteRef = useRef(false);
+  const adminAccountsLastSyncedRef = useRef('');
+  const adminAccountsSaveTimerRef = useRef(null);
+  const allowAdminAccountsWriteRef = useRef(false);
   const [view, setView] = useState(getInitialViewFromPath); // 'user' | 'admin'
   const [userTab, setUserTab] = useState(getInitialUserTabFromPath); // 'home' | 'rental' | 'history' | 'notice' | 'faq' | 'notFound'
   const [isCommunityMenuOpen, setIsCommunityMenuOpen] = useState(false);
@@ -1575,8 +1593,14 @@ function App() {
           }
 
           const remotePayload = snapshot.data();
-          const remoteData = mergePersistedData(remotePayload.data || remotePayload);
+          const remoteSource = remotePayload.data || remotePayload;
+          const remoteData = mergePersistedData(remoteSource);
+          const remoteLegacyAdminAccounts = normalizeAdminAccounts(
+            remoteSource.adminAccounts || []
+          );
           const remoteJson = JSON.stringify(remoteData);
+
+          setLegacyAdminAccounts(remoteLegacyAdminAccounts);
 
           allowFirebaseWriteRef.current = true;
           setFirebaseLoadErrorMessage('');
@@ -1628,7 +1652,8 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const dataJson = JSON.stringify(data);
+    const dataForSave = stripAdminAccountsFromData(data);
+    const dataJson = JSON.stringify(dataForSave);
 
     if (!firebaseReady || !allowFirebaseWriteRef.current) return;
 
@@ -1646,7 +1671,7 @@ function App() {
     saveTimerRef.current = setTimeout(() => {
       lastSyncedDataRef.current = dataJson;
 
-      setDoc(DATA_DOC_REF, { data, updatedAt: serverTimestamp() }).catch((error) => {
+      setDoc(DATA_DOC_REF, { data: dataForSave, updatedAt: serverTimestamp() }).catch((error) => {
         lastSyncedDataRef.current = '';
         console.error('Firebase save error:', error);
         setToast({ message: 'Firebase 저장에 실패했습니다. Firestore 보안 규칙과 네트워크 상태를 확인해 주세요.', type: 'error' });
@@ -1659,6 +1684,137 @@ function App() {
       }
     };
   }, [data, firebaseReady]);
+
+  useEffect(() => {
+    const shouldLoadAdminAccounts =
+      view === 'admin' || Boolean(authenticatedAdminId);
+
+    if (!shouldLoadAdminAccounts) {
+      setAdminAccountsReady(false);
+      setAdminAccountsLoadErrorMessage('');
+      return;
+    }
+
+    setAdminAccountsReady(false);
+
+    const unsubscribe = onSnapshot(
+      ADMIN_ACCOUNTS_DOC_REF,
+      (snapshot) => {
+        try {
+          allowAdminAccountsWriteRef.current = true;
+          setAdminAccountsLoadErrorMessage('');
+
+          if (!snapshot.exists()) {
+            const emptyAdminAccounts = [];
+            const emptyJson = JSON.stringify(emptyAdminAccounts);
+
+            adminAccountsLastSyncedRef.current = emptyJson;
+            adminAccountsApplyingRemoteRef.current = true;
+            setAdminAccounts(emptyAdminAccounts);
+            setAdminAccountsReady(true);
+            return;
+          }
+
+          const remotePayload = snapshot.data() || {};
+          const remoteAdminAccounts = normalizeAdminAccounts(
+            remotePayload.adminAccounts || []
+          );
+          const remoteJson = JSON.stringify(remoteAdminAccounts);
+
+          if (remoteJson === adminAccountsLastSyncedRef.current) {
+            setAdminAccountsReady(true);
+            return;
+          }
+
+          adminAccountsLastSyncedRef.current = remoteJson;
+          adminAccountsApplyingRemoteRef.current = true;
+          setAdminAccounts(remoteAdminAccounts);
+          setAdminAccountsReady(true);
+        } catch (error) {
+          const message = '관리자 ID 데이터 동기화 처리 중 오류가 발생했습니다.';
+
+          console.error('Admin accounts snapshot handling error:', error);
+          allowAdminAccountsWriteRef.current = false;
+          setAdminAccountsLoadErrorMessage(message);
+          setAdminAccountsReady(true);
+          setToast({
+            message,
+            type: 'error',
+          });
+        }
+      },
+      (error) => {
+        const message = '관리자 ID 데이터 연결 또는 권한 오류가 발생했습니다.';
+
+        console.error('Admin accounts sync error:', error);
+        allowAdminAccountsWriteRef.current = false;
+        setAdminAccountsLoadErrorMessage(message);
+        setAdminAccountsReady(true);
+        setToast({
+          message,
+          type: 'error',
+        });
+      }
+    );
+
+    return unsubscribe;
+  }, [view, authenticatedAdminId]);
+
+  useEffect(() => {
+    const adminAccountsJson = JSON.stringify(adminAccounts);
+
+    if (!adminAccountsReady || !allowAdminAccountsWriteRef.current) return;
+
+    if (adminAccountsApplyingRemoteRef.current) {
+      adminAccountsApplyingRemoteRef.current = false;
+      return;
+    }
+
+    if (adminAccountsJson === adminAccountsLastSyncedRef.current) return;
+
+    if (adminAccountsSaveTimerRef.current) {
+      clearTimeout(adminAccountsSaveTimerRef.current);
+    }
+
+    adminAccountsSaveTimerRef.current = setTimeout(() => {
+      adminAccountsLastSyncedRef.current = adminAccountsJson;
+
+      setDoc(ADMIN_ACCOUNTS_DOC_REF, {
+        adminAccounts,
+        updatedAt: serverTimestamp(),
+      }).catch((error) => {
+        adminAccountsLastSyncedRef.current = '';
+        console.error('Admin accounts save error:', error);
+        setToast({
+          message: '관리자 ID 데이터 저장에 실패했습니다. Firestore 보안 규칙과 네트워크 상태를 확인해 주세요.',
+          type: 'error',
+        });
+      });
+    }, 800);
+
+    return () => {
+      if (adminAccountsSaveTimerRef.current) {
+        clearTimeout(adminAccountsSaveTimerRef.current);
+      }
+    };
+  }, [adminAccounts, adminAccountsReady]);
+
+  useEffect(() => {
+    if (!adminAccountsReady) return;
+    if (adminAccountsLoadErrorMessage) return;
+    if (legacyAdminAccountsMigrated) return;
+    if ((adminAccounts || []).length > 0) return;
+    if ((legacyAdminAccounts || []).length === 0) return;
+
+    setAdminAccounts(legacyAdminAccounts);
+    setLegacyAdminAccountsMigrated(true);
+  }, [
+    adminAccountsReady,
+    adminAccountsLoadErrorMessage,
+    adminAccounts,
+    legacyAdminAccounts,
+    legacyAdminAccountsMigrated,
+  ]);
 
   // 첫 마운트 시 새 대여자 추가용 팀 초기화
   useEffect(() => {
@@ -1716,10 +1872,24 @@ function App() {
   }, [adminTab]);
 
   useEffect(() => {
-    if (view === 'admin' && firebaseReady && (data.adminAccounts || []).length === 0) {
+    if (
+      view === 'admin' &&
+      firebaseReady &&
+      adminAccountsReady &&
+      !adminAccountsLoadErrorMessage &&
+      (adminAccounts || []).length === 0 &&
+      (legacyAdminAccounts || []).length === 0
+    ) {
       setAdminTab('adminAccounts');
     }
-  }, [view, firebaseReady, data.adminAccounts]);
+  }, [
+    view,
+    firebaseReady,
+    adminAccountsReady,
+    adminAccountsLoadErrorMessage,
+    adminAccounts,
+    legacyAdminAccounts,
+  ]);
 
   useEffect(() => {
     if (!authenticatedAdminId) return;
@@ -1747,8 +1917,12 @@ function App() {
   useEffect(() => {
     if (!authenticatedAdminId) return;
     if (!firebaseReady) return;
+    if (!adminAccountsReady) return;
 
-    const authenticatedAccountExists = (data.adminAccounts || []).some(
+    const sourceAdminAccounts =
+      (adminAccounts || []).length > 0 ? adminAccounts : legacyAdminAccounts;
+
+    const authenticatedAccountExists = (sourceAdminAccounts || []).some(
       (account) => account.id === authenticatedAdminId
     );
 
@@ -1757,7 +1931,13 @@ function App() {
       setAuthenticatedAdminId('');
       setAdminAuthExpiresAt(0);
     }
-  }, [authenticatedAdminId, firebaseReady, data.adminAccounts]);
+  }, [
+    authenticatedAdminId,
+    firebaseReady,
+    adminAccountsReady,
+    adminAccounts,
+    legacyAdminAccounts,
+  ]);
 
   const triggerToast = (message, type = 'success') => {
     setToast({ message, type });
@@ -1768,7 +1948,8 @@ function App() {
     setConfirmModal({ title, message, onConfirm });
   };
 
-  const registeredAdminAccounts = data.adminAccounts || [];
+  const registeredAdminAccounts =
+    (adminAccounts || []).length > 0 ? adminAccounts : legacyAdminAccounts;
 
   const authenticatedAdminAccount = registeredAdminAccounts.find(
     (account) => account.id === authenticatedAdminId
@@ -1778,18 +1959,22 @@ function App() {
   const isAdminAuthenticated = Boolean(authenticatedAdminAccount);
 
   const shouldShowAdminLoadingPage =
-    view === 'admin' && !firebaseReady;
+    view === 'admin' && (!firebaseReady || !adminAccountsReady);
 
   const hasAdminAccess =
     view === 'admin' &&
     firebaseReady &&
+    adminAccountsReady &&
     !firebaseLoadErrorMessage &&
+    !adminAccountsLoadErrorMessage &&
     (!hasRegisteredAdminAccounts || isAdminAuthenticated);
 
   const shouldShowAdminLoginPage =
     view === 'admin' &&
     firebaseReady &&
+    adminAccountsReady &&
     !firebaseLoadErrorMessage &&
+    !adminAccountsLoadErrorMessage &&
     hasRegisteredAdminAccounts &&
     !isAdminAuthenticated;
 
@@ -1859,9 +2044,11 @@ function App() {
           ? Date.now() + ADMIN_AUTH_LOCK_DURATION_MS
           : 0;
 
-        setData((prev) => ({
-          ...prev,
-          adminAccounts: (prev.adminAccounts || []).map((account) =>
+        setAdminAccounts((prev) => {
+          const sourceAccounts =
+            (prev || []).length > 0 ? prev : registeredAdminAccounts;
+
+          return sourceAccounts.map((account) =>
             account.id === matchedAdminAccount.id
               ? {
                   ...account,
@@ -1870,8 +2057,8 @@ function App() {
                   updatedAt: new Date().toLocaleString('ko-KR'),
                 }
               : account
-          ),
-        }));
+          );
+        });
 
         triggerToast(
           shouldLockAccount
@@ -1888,9 +2075,11 @@ function App() {
         ? await createAdminPasswordSecurity(password)
         : {};
 
-      setData((prev) => ({
-        ...prev,
-        adminAccounts: (prev.adminAccounts || []).map((account) =>
+      setAdminAccounts((prev) => {
+        const sourceAccounts =
+          (prev || []).length > 0 ? prev : registeredAdminAccounts;
+
+        return sourceAccounts.map((account) =>
           account.id === matchedAdminAccount.id
             ? {
                 ...account,
@@ -1905,8 +2094,8 @@ function App() {
                 updatedAt: nowText,
               }
             : account
-        ),
-      }));
+        );
+      });
 
       setAdminAuthenticatedSession(matchedAdminAccount.id);
       setAdminAuthForm(createDefaultAdminAuthForm());
@@ -1942,12 +2131,12 @@ function App() {
 
   const adminAccountTotalPages = Math.max(
     1,
-    Math.ceil((data.adminAccounts || []).length / ADMIN_ACCOUNT_PAGE_SIZE)
+    Math.ceil((registeredAdminAccounts || []).length / ADMIN_ACCOUNT_PAGE_SIZE)
   );
 
   const safeAdminAccountPage = Math.min(adminAccountPage, adminAccountTotalPages);
 
-  const paginatedAdminAccounts = (data.adminAccounts || []).slice(
+  const paginatedAdminAccounts = (registeredAdminAccounts || []).slice(
     (safeAdminAccountPage - 1) * ADMIN_ACCOUNT_PAGE_SIZE,
     safeAdminAccountPage * ADMIN_ACCOUNT_PAGE_SIZE
   );
@@ -1980,7 +2169,7 @@ function App() {
       return;
     }
 
-    const duplicatedAdminId = (data.adminAccounts || []).some(
+    const duplicatedAdminId = (registeredAdminAccounts || []).some(
       (account) =>
         String(account.adminLoginId || '').trim().toLowerCase() ===
         adminLoginId.toLowerCase()
@@ -2011,12 +2200,14 @@ function App() {
         updatedAt: nowText,
       };
 
-      const isFirstAdminAccount = (data.adminAccounts || []).length === 0;
+      const isFirstAdminAccount = (registeredAdminAccounts || []).length === 0;
 
-      setData((prev) => ({
-        ...prev,
-        adminAccounts: [nextAdminAccount, ...(prev.adminAccounts || [])],
-      }));
+      setAdminAccounts((prev) => {
+        const sourceAccounts =
+          (prev || []).length > 0 ? prev : registeredAdminAccounts;
+
+        return [nextAdminAccount, ...(sourceAccounts || [])];
+      });
 
       if (isFirstAdminAccount) {
         setAdminAuthenticatedSession(nextAdminAccount.id);
@@ -5347,11 +5538,11 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                             </p>
                           </div>
                           <div className="text-xs font-semibold text-slate-500">
-                            총 {(data.adminAccounts || []).length}개
+                            총 {(registeredAdminAccounts || []).length}개
                           </div>
                         </div>
 
-                        {(data.adminAccounts || []).length === 0 ? (
+                        {(registeredAdminAccounts || []).length === 0 ? (
                           <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
                             등록된 관리자 ID가 없습니다.
                           </div>
