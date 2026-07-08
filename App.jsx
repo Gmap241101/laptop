@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { initializeApp } from 'firebase/app';
+import { getApp, getApps, initializeApp } from 'firebase/app';
 import {
   createUserWithEmailAndPassword,
   getAuth,
@@ -39,9 +39,19 @@ const firebaseConfig = {
   appId: "1:978421108190:web:6bc9af49a57471ae2a614f"
 };
 
-const firebaseApp = initializeApp(firebaseConfig);
+const firebaseApp = getApps().some((app) => app.name === '[DEFAULT]')
+  ? getApp()
+  : initializeApp(firebaseConfig);
+
+const adminAccountCreationApp = getApps().some(
+  (app) => app.name === 'adminAccountCreation'
+)
+  ? getApp('adminAccountCreation')
+  : initializeApp(firebaseConfig, 'adminAccountCreation');
+
 const db = getFirestore(firebaseApp);
 const firebaseAuth = getAuth(firebaseApp);
+const adminAccountCreationAuth = getAuth(adminAccountCreationApp);
 const DATA_DOC_REF = doc(db, 'laptopRentalDashboard', 'main');
 const ADMIN_ACCOUNTS_DOC_REF = doc(db, 'laptopRentalDashboard', 'adminAccounts');
 
@@ -572,8 +582,12 @@ function normalizeAdminAccounts(adminAccounts) {
   return adminAccounts
     .filter((account) => account && (account.adminLoginId || account.id))
     .map((account, index) => ({
-      id: account.id || `ADMIN-LEGACY-${index}`,
+      id: account.id || account.authUid || `ADMIN-LEGACY-${index}`,
       adminLoginId: account.adminLoginId || '',
+      authUid: account.authUid || '',
+      authEmail: account.authEmail || account.email || '',
+      authProvider: account.authProvider || '',
+      authLinkedAt: account.authLinkedAt || '',
       passwordHash: account.passwordHash || '',
       passwordSalt: account.passwordSalt || '',
       passwordHashAlgorithm: account.passwordHashAlgorithm || 'SHA-256',
@@ -1336,6 +1350,56 @@ const getUserAuthErrorMessage = (error) => {
   }
 
   return `사용자 인증 처리 중 오류가 발생했습니다. 오류 코드: ${errorCode || 'unknown'} ${errorMessage ? ` / ${errorMessage}` : ''}`;
+};
+
+const getAdminFirebaseAuthErrorMessage = (error) => {
+  const errorCode = error?.code || '';
+
+  if (error?.message === 'admin-auth-uid-mismatch') {
+    return 'Firebase Auth 계정 UID와 관리자 등록 정보가 일치하지 않습니다. 관리자 ID 관리 정보를 확인해 주세요.';
+  }
+
+  if (errorCode === 'auth/email-already-in-use') {
+    return '이미 Firebase Authentication에 등록된 이메일입니다. 다른 이메일을 사용하거나 기존 Auth 계정 연결 상태를 확인해 주세요.';
+  }
+
+  if (errorCode === 'auth/operation-not-allowed') {
+    return 'Firebase Authentication에서 Email/Password 제공자가 사용 설정되어 있지 않습니다. Authentication > Sign-in method에서 Email/Password를 사용 설정해 주세요.';
+  }
+
+  if (errorCode === 'auth/invalid-email') {
+    return '관리자 로그인 이메일 형식이 올바르지 않습니다.';
+  }
+
+  if (errorCode === 'auth/weak-password') {
+    return '관리자 초기 비밀번호는 6자 이상으로 입력해 주세요.';
+  }
+
+  if (errorCode === 'auth/password-does-not-meet-requirements') {
+    return '관리자 비밀번호가 Firebase Authentication의 비밀번호 정책을 충족하지 않습니다.';
+  }
+
+  if (
+    errorCode === 'auth/user-not-found' ||
+    errorCode === 'auth/wrong-password' ||
+    errorCode === 'auth/invalid-credential'
+  ) {
+    return '관리자 ID 또는 비밀번호가 일치하지 않습니다.';
+  }
+
+  if (errorCode === 'auth/network-request-failed') {
+    return 'Firebase Authentication 서버에 연결하지 못했습니다. 네트워크 상태를 확인해 주세요.';
+  }
+
+  if (errorCode === 'auth/unauthorized-domain') {
+    return '현재 접속한 도메인이 Firebase Authentication 승인 도메인에 등록되어 있지 않습니다.';
+  }
+
+  if (errorCode === 'auth/too-many-requests') {
+    return '로그인 또는 가입 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.';
+  }
+
+  return getUserAuthErrorMessage(error).replace('사용자 인증', '관리자 인증');
 };
 
 const bufferToHex = (buffer) =>
@@ -2135,6 +2199,30 @@ function App() {
     setAdminAuthExpiresAt(0);
   };
 
+    useEffect(() => {
+    if (!firebaseAuthReady) return;
+    if (!firebaseAuthUser) return;
+    if (!adminAccountsReady) return;
+    if (authenticatedAdminId) return;
+
+    const matchedFirebaseAuthAdmin = registeredAdminAccounts.find(
+      (account) => account.authUid && account.authUid === firebaseAuthUser.uid
+    );
+
+    if (!matchedFirebaseAuthAdmin) return;
+
+    const nextSession = saveAdminAuthSession(matchedFirebaseAuthAdmin.id);
+
+    setAuthenticatedAdminId(nextSession.adminId);
+    setAdminAuthExpiresAt(nextSession.expiresAt);
+  }, [
+    firebaseAuthReady,
+    firebaseAuthUser,
+    adminAccountsReady,
+    authenticatedAdminId,
+    registeredAdminAccounts,
+  ]);
+
     const goToUserLogin = () => {
     pushAppPath('user', 'login');
     setView('user');
@@ -2258,7 +2346,7 @@ function App() {
     const password = adminAuthForm.password;
 
     if (!adminLoginId) {
-      triggerToast('관리자 ID를 입력해 주세요.', 'error');
+      triggerToast('관리자 ID 또는 이메일을 입력해 주세요.', 'error');
       return;
     }
 
@@ -2267,11 +2355,19 @@ function App() {
       return;
     }
 
-    const matchedAdminAccount = registeredAdminAccounts.find(
-      (account) =>
-        String(account.adminLoginId || '').trim().toLowerCase() ===
-        adminLoginId.toLowerCase()
-    );
+    const normalizedAdminAuthKey = adminLoginId.toLowerCase();
+
+    const matchedAdminAccount = registeredAdminAccounts.find((account) => {
+      const accountAdminLoginId = String(account.adminLoginId || '').trim().toLowerCase();
+      const accountEmail = String(account.email || '').trim().toLowerCase();
+      const accountAuthEmail = String(account.authEmail || '').trim().toLowerCase();
+
+      return (
+        accountAdminLoginId === normalizedAdminAuthKey ||
+        accountEmail === normalizedAdminAuthKey ||
+        accountAuthEmail === normalizedAdminAuthKey
+      );
+    });
 
     if (!matchedAdminAccount) {
       triggerToast('관리자 ID 또는 비밀번호가 일치하지 않습니다.', 'error');
@@ -2290,52 +2386,16 @@ function App() {
       return;
     }
 
-    try {
-      setAdminAuthLoading(true);
+    const increaseAdminLoginFailure = () => {
+      const nextFailedLoginCount =
+        Number(matchedAdminAccount.failedLoginCount || 0) + 1;
 
-      const passwordResult = await verifyAdminPassword(password, matchedAdminAccount);
+      const shouldLockAccount =
+        nextFailedLoginCount >= ADMIN_AUTH_MAX_FAILED_ATTEMPTS;
 
-      if (!passwordResult.matched) {
-        const nextFailedLoginCount =
-          Number(matchedAdminAccount.failedLoginCount || 0) + 1;
-
-        const shouldLockAccount =
-          nextFailedLoginCount >= ADMIN_AUTH_MAX_FAILED_ATTEMPTS;
-
-        const nextLockUntil = shouldLockAccount
-          ? Date.now() + ADMIN_AUTH_LOCK_DURATION_MS
-          : 0;
-
-        setAdminAccounts((prev) => {
-          const sourceAccounts =
-            (prev || []).length > 0 ? prev : registeredAdminAccounts;
-
-          return sourceAccounts.map((account) =>
-            account.id === matchedAdminAccount.id
-              ? {
-                  ...account,
-                  failedLoginCount: nextFailedLoginCount,
-                  lockUntil: nextLockUntil,
-                  updatedAt: new Date().toLocaleString('ko-KR'),
-                }
-              : account
-          );
-        });
-
-        triggerToast(
-          shouldLockAccount
-            ? '로그인 실패가 반복되어 5분간 관리자 인증이 잠깁니다.'
-            : '관리자 ID 또는 비밀번호가 일치하지 않습니다.',
-          'error'
-        );
-        return;
-      }
-
-      const nowText = new Date().toLocaleString('ko-KR');
-
-      const migratedPasswordSecurity = passwordResult.shouldMigratePassword
-        ? await createAdminPasswordSecurity(password)
-        : {};
+      const nextLockUntil = shouldLockAccount
+        ? Date.now() + ADMIN_AUTH_LOCK_DURATION_MS
+        : 0;
 
       setAdminAccounts((prev) => {
         const sourceAccounts =
@@ -2345,14 +2405,137 @@ function App() {
           account.id === matchedAdminAccount.id
             ? {
                 ...account,
-                ...migratedPasswordSecurity,
+                failedLoginCount: nextFailedLoginCount,
+                lockUntil: nextLockUntil,
+                updatedAt: new Date().toLocaleString('ko-KR'),
+              }
+            : account
+        );
+      });
+
+      triggerToast(
+        shouldLockAccount
+          ? '로그인 실패가 반복되어 5분간 관리자 인증이 잠깁니다.'
+          : '관리자 ID 또는 비밀번호가 일치하지 않습니다.',
+        'error'
+      );
+    };
+
+    try {
+      setAdminAuthLoading(true);
+
+      const nowText = new Date().toLocaleString('ko-KR');
+      const adminEmail = String(
+        matchedAdminAccount.authEmail || matchedAdminAccount.email || ''
+      ).trim();
+
+      let nextAuthUid = matchedAdminAccount.authUid || '';
+      let nextAuthFields = {};
+
+      if (matchedAdminAccount.authUid && adminEmail) {
+        const credential = await signInWithEmailAndPassword(
+          firebaseAuth,
+          adminEmail,
+          password
+        );
+
+        if (credential.user.uid !== matchedAdminAccount.authUid) {
+          await signOut(firebaseAuth).catch(() => {});
+          throw new Error('admin-auth-uid-mismatch');
+        }
+
+        nextAuthUid = credential.user.uid;
+      } else if (adminEmail) {
+        const passwordResult = await verifyAdminPassword(password, matchedAdminAccount);
+
+        if (!passwordResult.matched) {
+          increaseAdminLoginFailure();
+          return;
+        }
+
+        try {
+          const createdCredential = await createUserWithEmailAndPassword(
+            adminAccountCreationAuth,
+            adminEmail,
+            password
+          );
+
+          await updateProfile(createdCredential.user, {
+            displayName:
+              matchedAdminAccount.userName ||
+              matchedAdminAccount.adminLoginId ||
+              adminEmail,
+          });
+
+          await signOut(adminAccountCreationAuth).catch(() => {});
+
+          const signedInCredential = await signInWithEmailAndPassword(
+            firebaseAuth,
+            adminEmail,
+            password
+          );
+
+          nextAuthUid = signedInCredential.user.uid;
+        } catch (authCreationError) {
+          await signOut(adminAccountCreationAuth).catch(() => {});
+
+          if (authCreationError?.code !== 'auth/email-already-in-use') {
+            throw authCreationError;
+          }
+
+          const signedInCredential = await signInWithEmailAndPassword(
+            firebaseAuth,
+            adminEmail,
+            password
+          );
+
+          nextAuthUid = signedInCredential.user.uid;
+        }
+
+        nextAuthFields = {
+          authUid: nextAuthUid,
+          authEmail: adminEmail,
+          authProvider: 'firebase-auth',
+          authLinkedAt: nowText,
+          passwordHash: '',
+          passwordSalt: '',
+          passwordHashAlgorithm: 'Firebase Auth',
+          passwordHashIterations: 0,
+          passwordChangedAt: nowText,
+        };
+      } else {
+        const passwordResult = await verifyAdminPassword(password, matchedAdminAccount);
+
+        if (!passwordResult.matched) {
+          increaseAdminLoginFailure();
+          return;
+        }
+
+        const migratedPasswordSecurity = passwordResult.shouldMigratePassword
+          ? await createAdminPasswordSecurity(password)
+          : {};
+
+        nextAuthFields = {
+          ...migratedPasswordSecurity,
+          passwordChangedAt:
+            passwordResult.shouldMigratePassword
+              ? nowText
+              : matchedAdminAccount.passwordChangedAt || '',
+        };
+      }
+
+      setAdminAccounts((prev) => {
+        const sourceAccounts =
+          (prev || []).length > 0 ? prev : registeredAdminAccounts;
+
+        return sourceAccounts.map((account) =>
+          account.id === matchedAdminAccount.id
+            ? {
+                ...account,
+                ...nextAuthFields,
                 failedLoginCount: 0,
                 lockUntil: 0,
                 lastLoginAt: nowText,
-                passwordChangedAt:
-                  passwordResult.shouldMigratePassword
-                    ? nowText
-                    : account.passwordChangedAt || '',
                 updatedAt: nowText,
               }
             : account
@@ -2361,18 +2544,47 @@ function App() {
 
       setAdminAuthenticatedSession(matchedAdminAccount.id);
       setAdminAuthForm(createDefaultAdminAuthForm());
-      triggerToast(`[${matchedAdminAccount.adminLoginId}] 관리자 인증이 완료되었습니다.`, 'success');
+
+      triggerToast(
+        nextAuthUid
+          ? `[${matchedAdminAccount.adminLoginId}] Firebase Auth 관리자 인증이 완료되었습니다.`
+          : `[${matchedAdminAccount.adminLoginId}] 관리자 인증이 완료되었습니다. Firebase Auth 전환을 위해 관리자 이메일을 등록해 주세요.`,
+        'success'
+      );
     } catch (error) {
       console.error('Admin authentication error:', error);
-      triggerToast('관리자 인증 처리 중 오류가 발생했습니다.', 'error');
+
+      if (
+        error?.code === 'auth/user-not-found' ||
+        error?.code === 'auth/wrong-password' ||
+        error?.code === 'auth/invalid-credential'
+      ) {
+        increaseAdminLoginFailure();
+        return;
+      }
+
+      triggerToast(getAdminFirebaseAuthErrorMessage(error), 'error');
     } finally {
       setAdminAuthLoading(false);
     }
   };
 
-  const logoutAdmin = () => {
+  const logoutAdmin = async () => {
+    const shouldSignOutFirebaseAdmin =
+      authenticatedAdminAccount?.authUid &&
+      firebaseAuthUser?.uid === authenticatedAdminAccount.authUid;
+
     clearAdminAuthenticatedSession();
     setAdminAuthForm(createDefaultAdminAuthForm());
+
+    if (shouldSignOutFirebaseAdmin) {
+      try {
+        await signOut(firebaseAuth);
+      } catch (error) {
+        console.error('Admin Firebase Auth logout error:', error);
+      }
+    }
+
     triggerToast('관리자 인증이 해제되었습니다.', 'success');
   };
 
@@ -2416,8 +2628,18 @@ function App() {
       return;
     }
 
+    if (!email) {
+      triggerToast('관리자 로그인 이메일을 입력해 주세요.', 'error');
+      return;
+    }
+
     if (!password) {
-      triggerToast('비밀번호를 입력해 주세요.', 'error');
+      triggerToast('초기 비밀번호를 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (password.length < 6) {
+      triggerToast('초기 비밀번호는 6자 이상으로 입력해 주세요.', 'error');
       return;
     }
 
@@ -2442,14 +2664,44 @@ function App() {
       return;
     }
 
+    const duplicatedAdminEmail = (registeredAdminAccounts || []).some((account) => {
+      const accountEmail = String(account.email || '').trim().toLowerCase();
+      const accountAuthEmail = String(account.authEmail || '').trim().toLowerCase();
+
+      return accountEmail === email.toLowerCase() || accountAuthEmail === email.toLowerCase();
+    });
+
+    if (duplicatedAdminEmail) {
+      triggerToast('이미 등록된 관리자 로그인 이메일입니다.', 'error');
+      return;
+    }
+
     try {
-      const passwordSecurity = await createAdminPasswordSecurity(password);
       const nowText = new Date().toLocaleString('ko-KR');
 
+      const credential = await createUserWithEmailAndPassword(
+        adminAccountCreationAuth,
+        email,
+        password
+      );
+
+      await updateProfile(credential.user, {
+        displayName: userName || adminLoginId,
+      });
+
+      await signOut(adminAccountCreationAuth).catch(() => {});
+
       const nextAdminAccount = {
-        id: `ADMIN-${Date.now()}`,
+        id: credential.user.uid,
         adminLoginId,
-        ...passwordSecurity,
+        authUid: credential.user.uid,
+        authEmail: email,
+        authProvider: 'firebase-auth',
+        authLinkedAt: nowText,
+        passwordHash: '',
+        passwordSalt: '',
+        passwordHashAlgorithm: 'Firebase Auth',
+        passwordHashIterations: 0,
         failedLoginCount: 0,
         lockUntil: 0,
         lastLoginAt: '',
@@ -2472,15 +2724,17 @@ function App() {
       });
 
       if (isFirstAdminAccount) {
+        await signInWithEmailAndPassword(firebaseAuth, email, password);
         setAdminAuthenticatedSession(nextAdminAccount.id);
       }
 
       setAdminAccountForm(createDefaultAdminAccountForm());
       setAdminAccountPage(1);
-      triggerToast(`[${adminLoginId}] 관리자 ID가 등록되었습니다.`, 'success');
+      triggerToast(`[${adminLoginId}] Firebase Auth 관리자 계정이 등록되었습니다.`, 'success');
     } catch (error) {
-      console.error('Admin password hash error:', error);
-      triggerToast('비밀번호 보안 처리 중 오류가 발생했습니다. 브라우저 보안 환경을 확인해 주세요.', 'error');
+      await signOut(adminAccountCreationAuth).catch(() => {});
+      console.error('Admin Firebase Auth account creation error:', error);
+      triggerToast(getAdminFirebaseAuthErrorMessage(error), 'error');
     }
   };
 
@@ -4882,14 +5136,14 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                         관리자 화면 잠금 상태
                       </h3>
                       <p className="mt-1 text-xs leading-5 text-slate-500">
-                        관리자 ID와 비밀번호를 입력하면 인증 후 관리자 메뉴와 세부 기능이 표시됩니다.
+                        관리자 ID 또는 로그인 이메일과 비밀번호를 입력하면 인증 후 관리자 메뉴와 세부 기능이 표시됩니다.
                       </p>
                     </div>
                   </div>
                 </div>
 
                 <Input
-                  label="관리자 ID"
+                  label="관리자 ID 또는 이메일"
                   value={adminAuthForm.adminLoginId}
                   onChange={(v) =>
                     setAdminAuthForm({
@@ -4902,7 +5156,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                       authenticateAdmin();
                     }
                   }}
-                  placeholder="관리자 ID 입력"
+                  placeholder="관리자 ID 또는 이메일 입력"
                   autoFocus
                 />
 
@@ -4925,8 +5179,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                 />
 
                 <div className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-xs leading-5 text-orange-800">
-                  신규 관리자 비밀번호는 계정별 salt가 적용된 PBKDF2-SHA-256 방식으로 보호됩니다.
-                  기존 SHA-256 계정은 로그인 성공 시 새 보안 방식으로 자동 전환됩니다.
+                  신규 관리자 계정은 Firebase Authentication 이메일/비밀번호 방식으로 인증합니다.
+                  기존 PBKDF2 관리자 계정은 이메일이 등록되어 있으면 로그인 성공 시 Firebase Auth 계정으로 자동 연결됩니다.
                 </div>
 
                 <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
@@ -5853,8 +6107,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                       </div>
 
                       <div className="rounded-2xl border border-orange-200 bg-orange-50/50 p-4 text-xs leading-5 text-orange-800">
-                        비밀번호는 평문으로 저장하지 않고 계정별 salt가 적용된 PBKDF2-SHA-256 방식으로 저장합니다.
-                        기존 SHA-256 방식으로 등록된 관리자 ID는 로그인 성공 시 새 보안 방식으로 자동 전환됩니다.
+                        신규 관리자 계정은 관리자모드에서 생성하되, 비밀번호 검증은 Firebase Authentication 이메일/비밀번호 방식으로 처리합니다.
+                        기존 PBKDF2 관리자 계정은 이메일이 등록되어 있으면 로그인 성공 시 Firebase Auth 계정으로 자동 연결됩니다.
                       </div>
 
                       <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
@@ -5879,7 +6133,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                           />
 
                           <Input
-                            label="비밀번호"
+                            label="초기 비밀번호"
                             type="password"
                             value={adminAccountForm.password}
                             onChange={(v) =>
@@ -5888,7 +6142,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                                 password: v,
                               })
                             }
-                            placeholder="관리자 비밀번호 입력"
+                            placeholder="Firebase Auth 초기 비밀번호 입력"
                           />
 
                           <Select
@@ -5978,7 +6232,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                           )}
 
                           <Input
-                            label="이메일주소"
+                            label="로그인 이메일"
                             type="email"
                             value={adminAccountForm.email}
                             onChange={(v) =>
