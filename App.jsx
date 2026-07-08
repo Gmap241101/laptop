@@ -5,8 +5,10 @@ import {
   createUserWithEmailAndPassword,
   getAuth,
   onAuthStateChanged,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
+  updatePassword,
   updateProfile,
 } from 'firebase/auth';
 import { getFirestore, doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
@@ -1306,6 +1308,8 @@ const createDefaultUserProfileForm = () => ({
   name: '',
   team: '',
   phone: '',
+  newPassword: '',
+  newPasswordConfirm: '',
 });
 
 const createDefaultAdminAccountEditForm = () => ({
@@ -1314,6 +1318,8 @@ const createDefaultAdminAccountEditForm = () => ({
   userName: '',
   email: '',
   phone: '',
+  newPassword: '',
+  newPasswordConfirm: '',
 });
 
 const getUserAuthErrorMessage = (error) => {
@@ -1358,6 +1364,10 @@ const getUserAuthErrorMessage = (error) => {
 
   if (errorCode === 'auth/too-many-requests') {
     return '로그인 또는 가입 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.';
+  }
+
+  if (errorCode === 'auth/requires-recent-login') {
+    return '보안상 최근 로그인한 사용자만 비밀번호를 변경할 수 있습니다. 로그아웃 후 다시 로그인한 다음 비밀번호 변경을 시도해 주세요.';
   }
 
   if (errorCode === 'permission-denied') {
@@ -1416,6 +1426,10 @@ const getAdminFirebaseAuthErrorMessage = (error) => {
 
   if (errorCode === 'auth/too-many-requests') {
     return '로그인 또는 가입 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.';
+  }
+
+  if (errorCode === 'auth/requires-recent-login') {
+    return '보안상 최근 로그인한 관리자만 비밀번호를 변경할 수 있습니다. 로그아웃 후 다시 로그인한 다음 비밀번호 변경을 시도해 주세요.';
   }
 
   return getUserAuthErrorMessage(error).replace('사용자 인증', '관리자 인증');
@@ -1718,6 +1732,8 @@ function App() {
           name: profileData.name || '',
           team: profileData.team || '',
           phone: profileData.phone || '',
+          newPassword: '',
+          newPasswordConfirm: '',
         });
         setUserProfileReady(true);
       },
@@ -2295,7 +2311,7 @@ function App() {
     authenticatedAdminId,
     registeredAdminAccounts,
   ]);
-  
+
   useEffect(() => {
     if (!authenticatedAdminAccount) {
       setAdminMyProfileForm(createDefaultAdminAccountEditForm());
@@ -2308,6 +2324,8 @@ function App() {
       userName: authenticatedAdminAccount.userName || '',
       email: authenticatedAdminAccount.authEmail || authenticatedAdminAccount.email || '',
       phone: authenticatedAdminAccount.phone || '',
+      newPassword: '',
+      newPasswordConfirm: '',
     });
   }, [
     authenticatedAdminAccount?.id,
@@ -2849,6 +2867,8 @@ function App() {
       userName: account.userName || '',
       email: account.authEmail || account.email || '',
       phone: account.phone || '',
+      newPassword: '',
+      newPasswordConfirm: '',
     });
   };
 
@@ -2857,7 +2877,29 @@ function App() {
     setAdminAccountEditForm(createDefaultAdminAccountEditForm());
   };
 
-  const saveAdminAccountEdit = (account) => {
+  const sendAdminAccountPasswordResetEmail = async (account) => {
+    const email = String(account.authEmail || account.email || '').trim();
+
+    if (!account.authUid) {
+      triggerToast('기존 해시 계정은 수정 화면의 새 비밀번호 입력으로 직접 변경할 수 있습니다.', 'error');
+      return;
+    }
+
+    if (!email) {
+      triggerToast('비밀번호 재설정 메일을 보낼 관리자 이메일이 없습니다.', 'error');
+      return;
+    }
+
+    try {
+      await sendPasswordResetEmail(firebaseAuth, email);
+      triggerToast(`[${account.adminLoginId}] 관리자에게 비밀번호 재설정 메일을 발송했습니다.`, 'success');
+    } catch (error) {
+      console.error('Admin password reset email error:', error);
+      triggerToast(getAdminFirebaseAuthErrorMessage(error), 'error');
+    }
+  };
+
+  const saveAdminAccountEdit = async (account) => {
     const adminLoginId = adminAccountEditForm.adminLoginId.trim();
     const organizationName = adminAccountEditForm.organizationName.trim();
     const userName = adminAccountEditForm.userName.trim();
@@ -2865,6 +2907,10 @@ function App() {
     const email = account.authUid
       ? String(account.authEmail || account.email || '').trim()
       : adminAccountEditForm.email.trim();
+
+    const newPassword = adminAccountEditForm.newPassword || '';
+    const newPasswordConfirm = adminAccountEditForm.newPasswordConfirm || '';
+    const shouldChangePassword = Boolean(newPassword || newPasswordConfirm);
 
     if (!adminLoginId) {
       triggerToast('관리자 ID를 입력해 주세요.', 'error');
@@ -2884,6 +2930,32 @@ function App() {
     if (!email) {
       triggerToast('관리자 로그인 이메일을 입력해 주세요.', 'error');
       return;
+    }
+
+    if (shouldChangePassword) {
+      if (newPassword.length < 6) {
+        triggerToast('새 비밀번호는 6자 이상으로 입력해 주세요.', 'error');
+        return;
+      }
+
+      if (newPassword !== newPasswordConfirm) {
+        triggerToast('새 비밀번호 확인이 일치하지 않습니다.', 'error');
+        return;
+      }
+
+      if (account.authUid && account.id !== authenticatedAdminId) {
+        triggerToast('Firebase Auth 연결된 다른 관리자 계정의 비밀번호는 직접 지정할 수 없습니다. 비밀번호 재설정 메일 발송 기능을 사용해 주세요.', 'error');
+        return;
+      }
+
+      if (
+        account.authUid &&
+        account.id === authenticatedAdminId &&
+        firebaseAuthUser?.uid !== account.authUid
+      ) {
+        triggerToast('현재 Firebase Auth 관리자 세션을 확인할 수 없습니다. 로그아웃 후 다시 로그인한 다음 비밀번호를 변경해 주세요.', 'error');
+        return;
+      }
     }
 
     const duplicatedAdminId = (registeredAdminAccounts || []).some(
@@ -2920,29 +2992,57 @@ function App() {
       return;
     }
 
-    const nowText = new Date().toLocaleString('ko-KR');
+    try {
+      const nowText = new Date().toLocaleString('ko-KR');
+      let passwordUpdateFields = {};
 
-    setAdminAccounts((prev) => {
-      const sourceAccounts =
-        (prev || []).length > 0 ? prev : registeredAdminAccounts;
+      if (shouldChangePassword && account.authUid) {
+        await updatePassword(firebaseAuthUser, newPassword);
 
-      return sourceAccounts.map((item) =>
-        item.id === account.id
-          ? {
-              ...item,
-              adminLoginId,
-              organizationName,
-              userName,
-              email,
-              phone,
-              updatedAt: nowText,
-            }
-          : item
+        passwordUpdateFields = {
+          passwordChangedAt: nowText,
+        };
+      }
+
+      if (shouldChangePassword && !account.authUid) {
+        passwordUpdateFields = {
+          ...(await createAdminPasswordSecurity(newPassword)),
+          passwordChangedAt: nowText,
+        };
+      }
+
+      setAdminAccounts((prev) => {
+        const sourceAccounts =
+          (prev || []).length > 0 ? prev : registeredAdminAccounts;
+
+        return sourceAccounts.map((item) =>
+          item.id === account.id
+            ? {
+                ...item,
+                ...passwordUpdateFields,
+                adminLoginId,
+                organizationName,
+                userName,
+                email,
+                phone,
+                updatedAt: nowText,
+              }
+            : item
+        );
+      });
+
+      cancelEditAdminAccount();
+
+      triggerToast(
+        shouldChangePassword
+          ? `[${adminLoginId}] 관리자 정보와 비밀번호가 수정되었습니다.`
+          : `[${adminLoginId}] 관리자 정보가 수정되었습니다.`,
+        'success'
       );
-    });
-
-    cancelEditAdminAccount();
-    triggerToast(`[${adminLoginId}] 관리자 정보가 수정되었습니다.`, 'success');
+    } catch (error) {
+      console.error('Admin account edit error:', error);
+      triggerToast(getAdminFirebaseAuthErrorMessage(error), 'error');
+    }
   };
 
   const deleteAdminAccount = (account) => {
@@ -2985,6 +3085,9 @@ function App() {
     const name = userProfileForm.name.trim();
     const team = userProfileForm.team.trim();
     const phone = userProfileForm.phone.trim();
+    const newPassword = userProfileForm.newPassword || '';
+    const newPasswordConfirm = userProfileForm.newPasswordConfirm || '';
+    const shouldChangePassword = Boolean(newPassword || newPasswordConfirm);
 
     if (!name) {
       triggerToast('이름을 입력해 주세요.', 'error');
@@ -2996,9 +3099,25 @@ function App() {
       return;
     }
 
+    if (shouldChangePassword) {
+      if (newPassword.length < 6) {
+        triggerToast('새 비밀번호는 6자 이상으로 입력해 주세요.', 'error');
+        return;
+      }
+
+      if (newPassword !== newPasswordConfirm) {
+        triggerToast('새 비밀번호 확인이 일치하지 않습니다.', 'error');
+        return;
+      }
+    }
+
     setUserProfileSaving(true);
 
     try {
+      if (shouldChangePassword) {
+        await updatePassword(firebaseAuthUser, newPassword);
+      }
+
       await updateProfile(firebaseAuthUser, {
         displayName: name,
       });
@@ -3019,7 +3138,18 @@ function App() {
         { merge: true }
       );
 
-      triggerToast('마이페이지 정보가 수정되었습니다.', 'success');
+      setUserProfileForm((prev) => ({
+        ...prev,
+        newPassword: '',
+        newPasswordConfirm: '',
+      }));
+
+      triggerToast(
+        shouldChangePassword
+          ? '마이페이지 정보와 비밀번호가 수정되었습니다.'
+          : '마이페이지 정보가 수정되었습니다.',
+        'success'
+      );
     } catch (error) {
       console.error('User profile save error:', error);
       triggerToast(getUserAuthErrorMessage(error), 'error');
@@ -3028,7 +3158,7 @@ function App() {
     }
   };
 
-  const saveMyAdminProfile = () => {
+  const saveMyAdminProfile = async () => {
     if (!authenticatedAdminAccount) {
       triggerToast('관리자 인증 후 내 정보를 수정할 수 있습니다.', 'error');
       return;
@@ -3044,6 +3174,9 @@ function App() {
       ''
     ).trim();
     const phone = adminMyProfileForm.phone.trim();
+    const newPassword = adminMyProfileForm.newPassword || '';
+    const newPasswordConfirm = adminMyProfileForm.newPasswordConfirm || '';
+    const shouldChangePassword = Boolean(newPassword || newPasswordConfirm);
 
     if (!adminLoginId) {
       triggerToast('관리자 ID를 입력해 주세요.', 'error');
@@ -3058,6 +3191,26 @@ function App() {
     if (!userName) {
       triggerToast('사용자명을 입력해 주세요.', 'error');
       return;
+    }
+
+    if (shouldChangePassword) {
+      if (newPassword.length < 6) {
+        triggerToast('새 비밀번호는 6자 이상으로 입력해 주세요.', 'error');
+        return;
+      }
+
+      if (newPassword !== newPasswordConfirm) {
+        triggerToast('새 비밀번호 확인이 일치하지 않습니다.', 'error');
+        return;
+      }
+
+      if (
+        authenticatedAdminAccount.authUid &&
+        firebaseAuthUser?.uid !== authenticatedAdminAccount.authUid
+      ) {
+        triggerToast('현재 Firebase Auth 관리자 세션을 확인할 수 없습니다. 로그아웃 후 다시 로그인한 다음 비밀번호를 변경해 주세요.', 'error');
+        return;
+      }
     }
 
     const duplicatedAdminId = (registeredAdminAccounts || []).some(
@@ -3075,6 +3228,22 @@ function App() {
 
     try {
       const nowText = new Date().toLocaleString('ko-KR');
+      let passwordUpdateFields = {};
+
+      if (shouldChangePassword && authenticatedAdminAccount.authUid) {
+        await updatePassword(firebaseAuthUser, newPassword);
+
+        passwordUpdateFields = {
+          passwordChangedAt: nowText,
+        };
+      }
+
+      if (shouldChangePassword && !authenticatedAdminAccount.authUid) {
+        passwordUpdateFields = {
+          ...(await createAdminPasswordSecurity(newPassword)),
+          passwordChangedAt: nowText,
+        };
+      }
 
       setAdminAccounts((prev) => {
         const sourceAccounts =
@@ -3084,6 +3253,7 @@ function App() {
           account.id === authenticatedAdminAccount.id
             ? {
                 ...account,
+                ...passwordUpdateFields,
                 adminLoginId,
                 organizationName,
                 userName,
@@ -3095,7 +3265,21 @@ function App() {
         );
       });
 
-      triggerToast('관리자 내 정보가 수정되었습니다.', 'success');
+      setAdminMyProfileForm((prev) => ({
+        ...prev,
+        newPassword: '',
+        newPasswordConfirm: '',
+      }));
+
+      triggerToast(
+        shouldChangePassword
+          ? '관리자 내 정보와 비밀번호가 수정되었습니다.'
+          : '관리자 내 정보가 수정되었습니다.',
+        'success'
+      );
+    } catch (error) {
+      console.error('Admin my profile save error:', error);
+      triggerToast(getAdminFirebaseAuthErrorMessage(error), 'error');
     } finally {
       setAdminMyProfileSaving(false);
     }
@@ -5274,11 +5458,38 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                               }
                               placeholder="전화번호 입력"
                             />
+
+                            <Input
+                              label="새 비밀번호"
+                              type="password"
+                              value={adminMyProfileForm.newPassword || ''}
+                              onChange={(v) =>
+                                setAdminMyProfileForm({
+                                  ...adminMyProfileForm,
+                                  newPassword: v,
+                                })
+                              }
+                              placeholder="변경할 때만 입력"
+                            />
+
+                            <Input
+                              label="새 비밀번호 확인"
+                              type="password"
+                              value={adminMyProfileForm.newPasswordConfirm || ''}
+                              onChange={(v) =>
+                                setAdminMyProfileForm({
+                                  ...adminMyProfileForm,
+                                  newPasswordConfirm: v,
+                                })
+                              }
+                              placeholder="새 비밀번호 재입력"
+                            />
                           </div>
 
                           <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[11px] leading-5 text-slate-500">
                             Firebase Auth 로그인 이메일은 이 화면에서 변경하지 않습니다.
-                            관리자 계정 자체 삭제는 관리자 ID 현황에서 다른 관리자 계정으로 처리하세요.
+                            비밀번호는 새 비밀번호를 입력한 경우에만 변경됩니다.
+                            Firebase Auth 계정은 보안상 최근 로그인 상태가 필요할 수 있습니다.
                           </div>
 
                           <div className="mt-5 flex justify-end">
@@ -5354,6 +5565,37 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                                   }
                                   placeholder="연락처 입력"
                                 />
+
+                                <Input
+                                  label="새 비밀번호"
+                                  type="password"
+                                  value={userProfileForm.newPassword || ''}
+                                  onChange={(v) =>
+                                    setUserProfileForm({
+                                      ...userProfileForm,
+                                      newPassword: v,
+                                    })
+                                  }
+                                  placeholder="변경할 때만 입력"
+                                />
+
+                                <Input
+                                  label="새 비밀번호 확인"
+                                  type="password"
+                                  value={userProfileForm.newPasswordConfirm || ''}
+                                  onChange={(v) =>
+                                    setUserProfileForm({
+                                      ...userProfileForm,
+                                      newPasswordConfirm: v,
+                                    })
+                                  }
+                                  placeholder="새 비밀번호 재입력"
+                                />
+                              </div>
+
+                              <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[11px] leading-5 text-slate-500">
+                                비밀번호는 새 비밀번호를 입력한 경우에만 변경됩니다.
+                                Firebase Auth 계정은 보안상 최근 로그인 상태가 필요할 수 있습니다.
                               </div>
 
                               <div className="mt-5 flex justify-end">
@@ -6965,12 +7207,71 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                                             }
                                             placeholder="전화번호 입력"
                                           />
+
+                                          <Input
+                                            label="새 비밀번호"
+                                            type="password"
+                                            value={adminAccountEditForm.newPassword || ''}
+                                            onChange={(v) =>
+                                              setAdminAccountEditForm({
+                                                ...adminAccountEditForm,
+                                                newPassword: v,
+                                              })
+                                            }
+                                            disabled={Boolean(account.authUid) && !isCurrentAdminAccount}
+                                            placeholder={
+                                              account.authUid && !isCurrentAdminAccount
+                                                ? '다른 Firebase Auth 계정은 직접 지정 불가'
+                                                : '변경할 때만 입력'
+                                            }
+                                          />
+
+                                          <Input
+                                            label="새 비밀번호 확인"
+                                            type="password"
+                                            value={adminAccountEditForm.newPasswordConfirm || ''}
+                                            onChange={(v) =>
+                                              setAdminAccountEditForm({
+                                                ...adminAccountEditForm,
+                                                newPasswordConfirm: v,
+                                              })
+                                            }
+                                            disabled={Boolean(account.authUid) && !isCurrentAdminAccount}
+                                            placeholder={
+                                              account.authUid && !isCurrentAdminAccount
+                                                ? '비밀번호 재설정 메일 사용'
+                                                : '새 비밀번호 재입력'
+                                            }
+                                          />
                                         </div>
 
                                         {account.authUid && (
+                                          <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] leading-5 text-slate-500">
+                                            <p>
+                                              Firebase Auth 연결 계정의 로그인 이메일은 클라이언트 관리자 화면에서 직접 변경하지 않습니다.
+                                              {isCurrentAdminAccount
+                                                ? ' 현재 로그인 중인 본인 계정은 새 비밀번호를 직접 변경할 수 있습니다.'
+                                                : ' 다른 관리자 계정의 비밀번호는 직접 지정할 수 없으며, 재설정 메일 발송으로 변경합니다.'}
+                                            </p>
+
+                                            {!isCurrentAdminAccount && (
+                                              <div className="flex justify-end">
+                                                <Button
+                                                  type="button"
+                                                  variant="outline"
+                                                  className="px-3 py-2 text-xs"
+                                                  onClick={() => sendAdminAccountPasswordResetEmail(account)}
+                                                >
+                                                  비밀번호 재설정 메일 발송
+                                                </Button>
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+
+                                        {!account.authUid && (
                                           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] leading-5 text-slate-500">
-                                            Firebase Auth 연결 계정의 로그인 이메일은 클라이언트 관리자 화면에서 직접 변경하지 않습니다.
-                                            이 화면에서는 관리자 ID, 조직명, 사용자명, 전화번호만 수정합니다.
+                                            기존 해시 계정은 새 비밀번호 입력 시 PBKDF2-SHA-256 방식으로 다시 저장됩니다.
                                           </div>
                                         )}
 
