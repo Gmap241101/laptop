@@ -531,7 +531,7 @@ const initialData = {
   laptops: seedLaptops(),
   requests: [],
   assetCategories: ['노트북'],
-  teams: ['매일경제아카데미', '채용대행팀', '경제교육팀'],
+  teams: ['매일경제아카데미', '채용대행팀', '문항개발팀', '경제교육팀'],
   borrowers: [],
   settings: {
     teamInputMode: 'dropdown',
@@ -1410,6 +1410,7 @@ function App() {
   const [adminAccounts, setAdminAccounts] = useState([]);
   const [adminAccountsReady, setAdminAccountsReady] = useState(false);
   const [adminAccountsLoadErrorMessage, setAdminAccountsLoadErrorMessage] = useState('');
+  const [adminAccountsRemoteHasData, setAdminAccountsRemoteHasData] = useState(false);
   const [legacyAdminAccounts, setLegacyAdminAccounts] = useState([]);
   const [legacyAdminAccountsMigrated, setLegacyAdminAccountsMigrated] = useState(false);
 
@@ -1652,7 +1653,18 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const dataForSave = stripAdminAccountsFromData(data);
+    const dataWithoutAdminAccounts = stripAdminAccountsFromData(data);
+
+    const shouldPreserveLegacyAdminAccountsInMain =
+      (legacyAdminAccounts || []).length > 0 && !adminAccountsRemoteHasData;
+
+    const dataForSave = shouldPreserveLegacyAdminAccountsInMain
+      ? {
+          ...dataWithoutAdminAccounts,
+          adminAccounts: legacyAdminAccounts,
+        }
+      : dataWithoutAdminAccounts;
+
     const dataJson = JSON.stringify(dataForSave);
 
     if (!firebaseReady || !allowFirebaseWriteRef.current) return;
@@ -1683,7 +1695,12 @@ function App() {
         clearTimeout(saveTimerRef.current);
       }
     };
-  }, [data, firebaseReady]);
+  }, [
+    data,
+    firebaseReady,
+    legacyAdminAccounts,
+    adminAccountsRemoteHasData,
+  ]);
 
   useEffect(() => {
     const shouldLoadAdminAccounts =
@@ -1708,6 +1725,7 @@ function App() {
             const emptyAdminAccounts = [];
             const emptyJson = JSON.stringify(emptyAdminAccounts);
 
+            setAdminAccountsRemoteHasData(false);
             adminAccountsLastSyncedRef.current = emptyJson;
             adminAccountsApplyingRemoteRef.current = true;
             setAdminAccounts(emptyAdminAccounts);
@@ -1720,6 +1738,8 @@ function App() {
             remotePayload.adminAccounts || []
           );
           const remoteJson = JSON.stringify(remoteAdminAccounts);
+
+          setAdminAccountsRemoteHasData(remoteAdminAccounts.length > 0);
 
           if (remoteJson === adminAccountsLastSyncedRef.current) {
             setAdminAccountsReady(true);
@@ -1735,6 +1755,10 @@ function App() {
 
           console.error('Admin accounts snapshot handling error:', error);
           allowAdminAccountsWriteRef.current = false;
+          setAdminAccountsRemoteHasData(false);
+          clearAdminAuthSession();
+          setAuthenticatedAdminId('');
+          setAdminAuthExpiresAt(0);
           setAdminAccountsLoadErrorMessage(message);
           setAdminAccountsReady(true);
           setToast({
@@ -1748,6 +1772,10 @@ function App() {
 
         console.error('Admin accounts sync error:', error);
         allowAdminAccountsWriteRef.current = false;
+        setAdminAccountsRemoteHasData(false);
+        clearAdminAuthSession();
+        setAuthenticatedAdminId('');
+        setAdminAuthExpiresAt(0);
         setAdminAccountsLoadErrorMessage(message);
         setAdminAccountsReady(true);
         setToast({
@@ -1960,6 +1988,12 @@ function App() {
 
   const shouldShowAdminLoadingPage =
     view === 'admin' && (!firebaseReady || !adminAccountsReady);
+
+  const shouldShowAdminAccountsErrorPage =
+    view === 'admin' &&
+    firebaseReady &&
+    adminAccountsReady &&
+    Boolean(adminAccountsLoadErrorMessage);
 
   const hasAdminAccess =
     view === 'admin' &&
@@ -4359,6 +4393,57 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                 <p className="mx-auto mt-2 max-w-sm text-xs leading-5 text-slate-500">
                   Firebase 원격 DB 기준으로 관리자 ID 등록 상태를 확인한 뒤 관리자 인증 화면을 표시합니다.
                 </p>
+              </CardContent>
+            </Card>
+          ) : shouldShowAdminAccountsErrorPage ? (
+            <Card className="mx-auto max-w-xl overflow-hidden border-rose-200 bg-white shadow-sm">
+              <div className="relative overflow-hidden bg-gradient-to-br from-rose-700 via-rose-600 to-orange-600 px-6 py-8 text-white">
+                <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+                <div className="absolute -bottom-16 left-10 h-44 w-44 rounded-full bg-white/10 blur-3xl" />
+
+                <div className="relative flex items-center gap-4">
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/15">
+                    <AlertCircle size={26} />
+                  </div>
+
+                  <div>
+                    <h2 className="text-xl font-black tracking-tight">
+                      관리자 ID 데이터 연결 오류
+                    </h2>
+
+                    <p className="mt-2 text-xs leading-5 text-rose-100">
+                      관리자 ID 전용 데이터에 접근하지 못해 관리자 화면 진입을 차단했습니다.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <CardContent className="space-y-4 p-6">
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-xs leading-5 text-rose-800">
+                  {adminAccountsLoadErrorMessage}
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-xs leading-5 text-slate-600">
+                  Firestore 보안 규칙에서 <span className="font-semibold text-slate-900">laptopRentalDashboard/adminAccounts</span> 문서의 읽기/쓰기 권한이 허용되어 있는지 확인해 주세요.
+                  기존 관리자 ID 데이터 보호를 위해, 전용 관리자 ID 문서가 정상 연결되기 전에는 관리자 화면을 열지 않습니다.
+                </div>
+
+                <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={goToUserHome}
+                  >
+                    사용자 화면으로 이동
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    onClick={() => window.location.reload()}
+                  >
+                    다시 시도
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ) : shouldShowAdminLoginPage ? (
