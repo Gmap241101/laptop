@@ -1673,6 +1673,23 @@ function App() {
   const [confirmModal, setConfirmModal] = useState(null);
 
   useEffect(() => {
+    const unsubscribe = onAuthStateChanged(
+      firebaseAuth,
+      (user) => {
+        setFirebaseAuthUser(user);
+        setFirebaseAuthReady(true);
+      },
+      (error) => {
+        console.error('Firebase Auth state error:', error);
+        setFirebaseAuthUser(null);
+        setFirebaseAuthReady(true);
+      }
+    );
+
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
     if (!firebaseAuthUser) {
       setUserProfile(null);
       setUserProfileReady(true);
@@ -2255,6 +2272,30 @@ function App() {
     setAdminAuthExpiresAt(0);
   };
 
+  useEffect(() => {
+    if (!firebaseAuthReady) return;
+    if (!firebaseAuthUser) return;
+    if (!adminAccountsReady) return;
+    if (authenticatedAdminId) return;
+
+    const matchedFirebaseAuthAdmin = registeredAdminAccounts.find(
+      (account) => account.authUid && account.authUid === firebaseAuthUser.uid
+    );
+
+    if (!matchedFirebaseAuthAdmin) return;
+
+    const nextSession = saveAdminAuthSession(matchedFirebaseAuthAdmin.id);
+
+    setAuthenticatedAdminId(nextSession.adminId);
+    setAdminAuthExpiresAt(nextSession.expiresAt);
+  }, [
+    firebaseAuthReady,
+    firebaseAuthUser,
+    adminAccountsReady,
+    authenticatedAdminId,
+    registeredAdminAccounts,
+  ]);
+  
   useEffect(() => {
     if (!authenticatedAdminAccount) {
       setAdminMyProfileForm(createDefaultAdminAccountEditForm());
