@@ -1183,6 +1183,7 @@ const USER_ROUTE_PATHS = {
   faq: '/board/faq',
   login: '/login',
   signup: '/signup',
+  mypage: '/mypage',
 };
 
 const getNormalizedPathname = () => {
@@ -1218,6 +1219,10 @@ const getRouteStateFromPath = () => {
 
   if (pathname === '/signup') {
     return { view: 'user', userTab: 'signup' };
+  }
+
+  if (pathname === '/mypage') {
+    return { view: 'user', userTab: 'mypage' };
   }
 
   if (pathname === '/board') {
@@ -1294,6 +1299,20 @@ const createDefaultUserAuthForm = () => ({
   passwordConfirm: '',
   name: '',
   team: '',
+  phone: '',
+});
+
+const createDefaultUserProfileForm = () => ({
+  name: '',
+  team: '',
+  phone: '',
+});
+
+const createDefaultAdminAccountEditForm = () => ({
+  adminLoginId: '',
+  organizationName: '',
+  userName: '',
+  email: '',
   phone: '',
 });
 
@@ -1625,6 +1644,17 @@ function App() {
   const [userAuthForm, setUserAuthForm] = useState(createDefaultUserAuthForm);
   const [userAuthLoading, setUserAuthLoading] = useState(false);
 
+  const [userProfile, setUserProfile] = useState(null);
+  const [userProfileReady, setUserProfileReady] = useState(false);
+  const [userProfileForm, setUserProfileForm] = useState(createDefaultUserProfileForm);
+  const [userProfileSaving, setUserProfileSaving] = useState(false);
+
+  const [editingAdminAccountId, setEditingAdminAccountId] = useState('');
+  const [adminAccountEditForm, setAdminAccountEditForm] = useState(createDefaultAdminAccountEditForm);
+
+  const [adminMyProfileForm, setAdminMyProfileForm] = useState(createDefaultAdminAccountEditForm);
+  const [adminMyProfileSaving, setAdminMyProfileSaving] = useState(false);
+
   // 엑셀/CSV 업로드 패널 토글 상태 값 추가
   const [showUploadPanel, setShowUploadPanel] = useState(false);
   const [assetGridColumns, setAssetGridColumns] = useState(1);
@@ -1643,21 +1673,47 @@ function App() {
   const [confirmModal, setConfirmModal] = useState(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(
-      firebaseAuth,
-      (user) => {
-        setFirebaseAuthUser(user);
-        setFirebaseAuthReady(true);
+    if (!firebaseAuthUser) {
+      setUserProfile(null);
+      setUserProfileReady(true);
+      setUserProfileForm(createDefaultUserProfileForm());
+      return;
+    }
+
+    setUserProfileReady(false);
+
+    const unsubscribe = onSnapshot(
+      doc(db, 'userProfiles', firebaseAuthUser.uid),
+      (snapshot) => {
+        const profileData = snapshot.exists()
+          ? snapshot.data()
+          : {
+              uid: firebaseAuthUser.uid,
+              email: firebaseAuthUser.email || '',
+              name: firebaseAuthUser.displayName || '',
+              team: '',
+              phone: '',
+              status: USER_PROFILE_STATUS.ACTIVE,
+            };
+
+        setUserProfile(profileData);
+        setUserProfileForm({
+          name: profileData.name || '',
+          team: profileData.team || '',
+          phone: profileData.phone || '',
+        });
+        setUserProfileReady(true);
       },
       (error) => {
-        console.error('Firebase Auth state error:', error);
-        setFirebaseAuthUser(null);
-        setFirebaseAuthReady(true);
+        console.error('User profile sync error:', error);
+        setUserProfile(null);
+        setUserProfileReady(true);
+        triggerToast('마이페이지 정보를 불러오지 못했습니다. Firestore 권한을 확인해 주세요.', 'error');
       }
     );
 
     return unsubscribe;
-  }, []);
+  }, [firebaseAuthUser]);
 
   const goToUserHome = () => {
     pushAppPath('user', 'home');
@@ -2199,28 +2255,27 @@ function App() {
     setAdminAuthExpiresAt(0);
   };
 
-    useEffect(() => {
-    if (!firebaseAuthReady) return;
-    if (!firebaseAuthUser) return;
-    if (!adminAccountsReady) return;
-    if (authenticatedAdminId) return;
+  useEffect(() => {
+    if (!authenticatedAdminAccount) {
+      setAdminMyProfileForm(createDefaultAdminAccountEditForm());
+      return;
+    }
 
-    const matchedFirebaseAuthAdmin = registeredAdminAccounts.find(
-      (account) => account.authUid && account.authUid === firebaseAuthUser.uid
-    );
-
-    if (!matchedFirebaseAuthAdmin) return;
-
-    const nextSession = saveAdminAuthSession(matchedFirebaseAuthAdmin.id);
-
-    setAuthenticatedAdminId(nextSession.adminId);
-    setAdminAuthExpiresAt(nextSession.expiresAt);
+    setAdminMyProfileForm({
+      adminLoginId: authenticatedAdminAccount.adminLoginId || '',
+      organizationName: authenticatedAdminAccount.organizationName || '',
+      userName: authenticatedAdminAccount.userName || '',
+      email: authenticatedAdminAccount.authEmail || authenticatedAdminAccount.email || '',
+      phone: authenticatedAdminAccount.phone || '',
+    });
   }, [
-    firebaseAuthReady,
-    firebaseAuthUser,
-    adminAccountsReady,
-    authenticatedAdminId,
-    registeredAdminAccounts,
+    authenticatedAdminAccount?.id,
+    authenticatedAdminAccount?.adminLoginId,
+    authenticatedAdminAccount?.organizationName,
+    authenticatedAdminAccount?.userName,
+    authenticatedAdminAccount?.authEmail,
+    authenticatedAdminAccount?.email,
+    authenticatedAdminAccount?.phone,
   ]);
 
     const goToUserLogin = () => {
@@ -2234,6 +2289,13 @@ function App() {
     pushAppPath('user', 'signup');
     setView('user');
     setUserTab('signup');
+    setIsCommunityMenuOpen(false);
+  };
+
+  const goToUserMypage = () => {
+    pushAppPath('user', 'mypage');
+    setView('user');
+    setUserTab('mypage');
     setIsCommunityMenuOpen(false);
   };
 
@@ -2735,6 +2797,266 @@ function App() {
       await signOut(adminAccountCreationAuth).catch(() => {});
       console.error('Admin Firebase Auth account creation error:', error);
       triggerToast(getAdminFirebaseAuthErrorMessage(error), 'error');
+    }
+  };
+
+  const startEditAdminAccount = (account) => {
+    setEditingAdminAccountId(account.id);
+    setAdminAccountEditForm({
+      adminLoginId: account.adminLoginId || '',
+      organizationName: account.organizationName || '',
+      userName: account.userName || '',
+      email: account.authEmail || account.email || '',
+      phone: account.phone || '',
+    });
+  };
+
+  const cancelEditAdminAccount = () => {
+    setEditingAdminAccountId('');
+    setAdminAccountEditForm(createDefaultAdminAccountEditForm());
+  };
+
+  const saveAdminAccountEdit = (account) => {
+    const adminLoginId = adminAccountEditForm.adminLoginId.trim();
+    const organizationName = adminAccountEditForm.organizationName.trim();
+    const userName = adminAccountEditForm.userName.trim();
+    const phone = adminAccountEditForm.phone.trim();
+    const email = account.authUid
+      ? String(account.authEmail || account.email || '').trim()
+      : adminAccountEditForm.email.trim();
+
+    if (!adminLoginId) {
+      triggerToast('관리자 ID를 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (!organizationName) {
+      triggerToast('조직명을 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (!userName) {
+      triggerToast('사용자명을 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (!email) {
+      triggerToast('관리자 로그인 이메일을 입력해 주세요.', 'error');
+      return;
+    }
+
+    const duplicatedAdminId = (registeredAdminAccounts || []).some(
+      (item) =>
+        item.id !== account.id &&
+        String(item.adminLoginId || '').trim().toLowerCase() === adminLoginId.toLowerCase()
+    );
+
+    if (duplicatedAdminId) {
+      triggerToast('이미 등록된 관리자 ID입니다.', 'error');
+      return;
+    }
+
+    const duplicatedAdminEmail = (registeredAdminAccounts || []).some((item) => {
+      if (item.id === account.id) return false;
+
+      const itemEmail = String(item.email || '').trim().toLowerCase();
+      const itemAuthEmail = String(item.authEmail || '').trim().toLowerCase();
+
+      return itemEmail === email.toLowerCase() || itemAuthEmail === email.toLowerCase();
+    });
+
+    if (duplicatedAdminEmail) {
+      triggerToast('이미 등록된 관리자 로그인 이메일입니다.', 'error');
+      return;
+    }
+
+    if (
+      account.authUid &&
+      adminAccountEditForm.email.trim() &&
+      adminAccountEditForm.email.trim().toLowerCase() !== email.toLowerCase()
+    ) {
+      triggerToast('Firebase Auth 연결 계정의 로그인 이메일은 이 화면에서 변경하지 않습니다.', 'error');
+      return;
+    }
+
+    const nowText = new Date().toLocaleString('ko-KR');
+
+    setAdminAccounts((prev) => {
+      const sourceAccounts =
+        (prev || []).length > 0 ? prev : registeredAdminAccounts;
+
+      return sourceAccounts.map((item) =>
+        item.id === account.id
+          ? {
+              ...item,
+              adminLoginId,
+              organizationName,
+              userName,
+              email,
+              phone,
+              updatedAt: nowText,
+            }
+          : item
+      );
+    });
+
+    cancelEditAdminAccount();
+    triggerToast(`[${adminLoginId}] 관리자 정보가 수정되었습니다.`, 'success');
+  };
+
+  const deleteAdminAccount = (account) => {
+    if ((registeredAdminAccounts || []).length <= 1) {
+      triggerToast('마지막 관리자 ID는 삭제할 수 없습니다.', 'error');
+      return;
+    }
+
+    if (account.id === authenticatedAdminId) {
+      triggerToast('현재 로그인 중인 본인 관리자 ID는 관리자 ID 현황에서 삭제할 수 없습니다. 로그아웃 후 다른 관리자로 삭제해 주세요.', 'error');
+      return;
+    }
+
+    triggerConfirm(
+      '관리자 ID 삭제',
+      `[${account.adminLoginId}] 관리자 권한을 삭제합니다. Firebase Auth 계정 자체는 Spark 무료/클라이언트 환경에서는 삭제하지 않고, 이 시스템의 관리자 권한만 제거됩니다.`,
+      () => {
+        setAdminAccounts((prev) => {
+          const sourceAccounts =
+            (prev || []).length > 0 ? prev : registeredAdminAccounts;
+
+          return sourceAccounts.filter((item) => item.id !== account.id);
+        });
+
+        if (editingAdminAccountId === account.id) {
+          cancelEditAdminAccount();
+        }
+
+        triggerToast(`[${account.adminLoginId}] 관리자 ID가 삭제되었습니다.`, 'success');
+      }
+    );
+  };
+
+  const saveMyUserProfile = async () => {
+    if (!firebaseAuthUser) {
+      triggerToast('로그인 후 마이페이지를 수정할 수 있습니다.', 'error');
+      return;
+    }
+
+    const name = userProfileForm.name.trim();
+    const team = userProfileForm.team.trim();
+    const phone = userProfileForm.phone.trim();
+
+    if (!name) {
+      triggerToast('이름을 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (!team) {
+      triggerToast('부서 / 팀을 입력해 주세요.', 'error');
+      return;
+    }
+
+    setUserProfileSaving(true);
+
+    try {
+      await updateProfile(firebaseAuthUser, {
+        displayName: name,
+      });
+
+      await setDoc(
+        doc(db, 'userProfiles', firebaseAuthUser.uid),
+        {
+          ...(userProfile || {}),
+          uid: firebaseAuthUser.uid,
+          email: firebaseAuthUser.email || userProfile?.email || '',
+          name,
+          team,
+          phone,
+          status: userProfile?.status || USER_PROFILE_STATUS.ACTIVE,
+          createdAt: userProfile?.createdAt || serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      triggerToast('마이페이지 정보가 수정되었습니다.', 'success');
+    } catch (error) {
+      console.error('User profile save error:', error);
+      triggerToast(getUserAuthErrorMessage(error), 'error');
+    } finally {
+      setUserProfileSaving(false);
+    }
+  };
+
+  const saveMyAdminProfile = () => {
+    if (!authenticatedAdminAccount) {
+      triggerToast('관리자 인증 후 내 정보를 수정할 수 있습니다.', 'error');
+      return;
+    }
+
+    const adminLoginId = adminMyProfileForm.adminLoginId.trim();
+    const organizationName = adminMyProfileForm.organizationName.trim();
+    const userName = adminMyProfileForm.userName.trim();
+    const email = String(
+      authenticatedAdminAccount.authEmail ||
+      authenticatedAdminAccount.email ||
+      adminMyProfileForm.email ||
+      ''
+    ).trim();
+    const phone = adminMyProfileForm.phone.trim();
+
+    if (!adminLoginId) {
+      triggerToast('관리자 ID를 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (!organizationName) {
+      triggerToast('조직명을 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (!userName) {
+      triggerToast('사용자명을 입력해 주세요.', 'error');
+      return;
+    }
+
+    const duplicatedAdminId = (registeredAdminAccounts || []).some(
+      (account) =>
+        account.id !== authenticatedAdminAccount.id &&
+        String(account.adminLoginId || '').trim().toLowerCase() === adminLoginId.toLowerCase()
+    );
+
+    if (duplicatedAdminId) {
+      triggerToast('이미 등록된 관리자 ID입니다.', 'error');
+      return;
+    }
+
+    setAdminMyProfileSaving(true);
+
+    try {
+      const nowText = new Date().toLocaleString('ko-KR');
+
+      setAdminAccounts((prev) => {
+        const sourceAccounts =
+          (prev || []).length > 0 ? prev : registeredAdminAccounts;
+
+        return sourceAccounts.map((account) =>
+          account.id === authenticatedAdminAccount.id
+            ? {
+                ...account,
+                adminLoginId,
+                organizationName,
+                userName,
+                email,
+                phone,
+                updatedAt: nowText,
+              }
+            : account
+        );
+      });
+
+      triggerToast('관리자 내 정보가 수정되었습니다.', 'success');
+    } finally {
+      setAdminMyProfileSaving(false);
     }
   };
 
@@ -4426,6 +4748,20 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                   </div>
                 )}
 
+                {(firebaseAuthUser || isAdminAuthenticated) && (
+                  <button
+                    type="button"
+                    onClick={goToUserMypage}
+                    className={`rounded-lg px-2.5 py-2 text-[15px] transition sm:px-3 sm:text-base lg:px-4 lg:text-lg ${
+                      userTab === 'mypage'
+                        ? 'bg-orange-50 font-semibold mk-brand-text'
+                        : 'font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-950'
+                    }`}
+                  >
+                    마이페이지
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={firebaseAuthUser ? logoutUser : goToUserLogin}
@@ -4455,14 +4791,25 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
               </div>
 
               {isAdminAuthenticated && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={logoutAdmin}
-                  className="px-3 py-2 text-xs"
-                >
-                  로그아웃
-                </Button>
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={goToUserMypage}
+                    className="px-3 py-2 text-xs"
+                  >
+                    마이페이지
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={logoutAdmin}
+                    className="px-3 py-2 text-xs"
+                  >
+                    로그아웃
+                  </Button>
+                </>
               )}
             </div>
           )}
@@ -4776,6 +5123,216 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
               </Card>
             </div>
             </div>
+            </div>
+          ) : userTab === 'mypage' ? (
+            <div className="mx-auto max-w-3xl space-y-6">
+              <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
+                <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-8 text-white">
+                  <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+                  <div className="absolute -bottom-16 left-10 h-44 w-44 rounded-full bg-orange-400/20 blur-3xl" />
+
+                  <div className="relative">
+                    <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/15">
+                      <Users size={26} />
+                    </div>
+
+                    <h2 className="text-xl font-black tracking-tight">마이페이지</h2>
+
+                    <p className="mt-2 text-xs leading-5 text-slate-300">
+                      로그인한 본인의 기본 정보를 수정합니다.
+                    </p>
+                  </div>
+                </div>
+
+                <CardContent className="p-6">
+                  {!firebaseAuthUser && !isAdminAuthenticated ? (
+                    <div className="space-y-4">
+                      <div className="rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 text-xs leading-5 text-orange-800">
+                        마이페이지는 로그인 후 사용할 수 있습니다.
+                      </div>
+
+                      <div className="flex justify-end gap-2">
+                        <Button type="button" variant="outline" onClick={goToUserSignup}>
+                          회원가입
+                        </Button>
+                        <Button type="button" variant="primary" onClick={goToUserLogin}>
+                          로그인
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {isAdminAuthenticated && (
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
+                          <div className="mb-4">
+                            <h3 className="text-base font-bold text-slate-900">관리자 내 정보</h3>
+                            <p className="mt-1 text-xs text-slate-500">
+                              관리자 본인의 표시 정보와 연락처를 수정합니다.
+                            </p>
+                          </div>
+
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <Input
+                              label="관리자 ID"
+                              value={adminMyProfileForm.adminLoginId}
+                              onChange={(v) =>
+                                setAdminMyProfileForm({
+                                  ...adminMyProfileForm,
+                                  adminLoginId: v,
+                                })
+                              }
+                              placeholder="관리자 ID 입력"
+                            />
+
+                            <Input
+                              label="로그인 이메일"
+                              type="email"
+                              value={adminMyProfileForm.email}
+                              onChange={(v) =>
+                                setAdminMyProfileForm({
+                                  ...adminMyProfileForm,
+                                  email: v,
+                                })
+                              }
+                              disabled
+                              placeholder="Firebase Auth 로그인 이메일"
+                            />
+
+                            <Input
+                              label="조직명"
+                              value={adminMyProfileForm.organizationName}
+                              onChange={(v) =>
+                                setAdminMyProfileForm({
+                                  ...adminMyProfileForm,
+                                  organizationName: v,
+                                })
+                              }
+                              placeholder="조직명 입력"
+                            />
+
+                            <Input
+                              label="사용자명"
+                              value={adminMyProfileForm.userName}
+                              onChange={(v) =>
+                                setAdminMyProfileForm({
+                                  ...adminMyProfileForm,
+                                  userName: v,
+                                })
+                              }
+                              placeholder="사용자명 입력"
+                            />
+
+                            <Input
+                              label="전화번호"
+                              value={adminMyProfileForm.phone}
+                              onChange={(v) =>
+                                setAdminMyProfileForm({
+                                  ...adminMyProfileForm,
+                                  phone: v,
+                                })
+                              }
+                              placeholder="전화번호 입력"
+                            />
+                          </div>
+
+                          <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[11px] leading-5 text-slate-500">
+                            Firebase Auth 로그인 이메일은 이 화면에서 변경하지 않습니다.
+                            관리자 계정 자체 삭제는 관리자 ID 현황에서 다른 관리자 계정으로 처리하세요.
+                          </div>
+
+                          <div className="mt-5 flex justify-end">
+                            <Button
+                              type="button"
+                              variant="primary"
+                              onClick={saveMyAdminProfile}
+                              disabled={adminMyProfileSaving}
+                            >
+                              {adminMyProfileSaving ? '저장 중...' : '관리자 내 정보 저장'}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {firebaseAuthUser && !isAdminAuthenticated && (
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
+                          <div className="mb-4">
+                            <h3 className="text-base font-bold text-slate-900">일반 회원 내 정보</h3>
+                            <p className="mt-1 text-xs text-slate-500">
+                              대여 신청에 사용할 본인 정보를 수정합니다.
+                            </p>
+                          </div>
+
+                          {!userProfileReady ? (
+                            <div className="rounded-2xl border border-slate-200 bg-white py-10 text-center text-xs text-slate-400">
+                              회원 정보를 불러오는 중입니다.
+                            </div>
+                          ) : (
+                            <>
+                              <div className="grid gap-4 md:grid-cols-2">
+                                <Input
+                                  label="이메일"
+                                  type="email"
+                                  value={firebaseAuthUser.email || userProfile?.email || ''}
+                                  onChange={() => {}}
+                                  disabled
+                                  placeholder="로그인 이메일"
+                                />
+
+                                <Input
+                                  label="이름"
+                                  value={userProfileForm.name}
+                                  onChange={(v) =>
+                                    setUserProfileForm({
+                                      ...userProfileForm,
+                                      name: v,
+                                    })
+                                  }
+                                  placeholder="이름 입력"
+                                />
+
+                                <Input
+                                  label="부서 / 팀"
+                                  value={userProfileForm.team}
+                                  onChange={(v) =>
+                                    setUserProfileForm({
+                                      ...userProfileForm,
+                                      team: v,
+                                    })
+                                  }
+                                  placeholder="소속 부서 또는 팀명 입력"
+                                />
+
+                                <Input
+                                  label="연락처"
+                                  value={userProfileForm.phone}
+                                  onChange={(v) =>
+                                    setUserProfileForm({
+                                      ...userProfileForm,
+                                      phone: v,
+                                    })
+                                  }
+                                  placeholder="연락처 입력"
+                                />
+                              </div>
+
+                              <div className="mt-5 flex justify-end">
+                                <Button
+                                  type="button"
+                                  variant="primary"
+                                  onClick={saveMyUserProfile}
+                                  disabled={userProfileSaving}
+                                >
+                                  {userProfileSaving ? '저장 중...' : '일반 회원 내 정보 저장'}
+                                </Button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           ) : ['login', 'signup'].includes(userTab) ? (
             <Card className="mx-auto max-w-xl overflow-hidden border-slate-200 bg-white shadow-sm">
@@ -6290,44 +6847,173 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                         ) : (
                           <>
                             <div className="space-y-2">
-                              {paginatedAdminAccounts.map((account, index) => (
-                                <div
-                                  key={account.id}
-                                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
-                                >
-                                  <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
-                                    <div className="min-w-0 space-y-1">
-                                      <div className="flex flex-wrap items-center gap-2">
-                                        <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
-                                          #{(safeAdminAccountPage - 1) * ADMIN_ACCOUNT_PAGE_SIZE + index + 1}
-                                        </span>
-                                        <span className="text-sm font-bold text-slate-900">
-                                          {account.adminLoginId}
-                                        </span>
-                                        <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-                                          보안 해시 적용
-                                        </span>
-                                      </div>
+                              {paginatedAdminAccounts.map((account, index) => {
+                                const isEditingAdminAccount = editingAdminAccountId === account.id;
+                                const isCurrentAdminAccount = account.id === authenticatedAdminId;
 
-                                      <div className="text-xs text-slate-600">
-                                        조직명: <span className="font-semibold text-slate-800">{account.organizationName}</span>
-                                        <span className="mx-1 text-slate-300">|</span>
-                                        사용자명: <span className="font-semibold text-slate-800">{account.userName}</span>
-                                      </div>
+                                return (
+                                  <div
+                                    key={account.id}
+                                    className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                                  >
+                                    {isEditingAdminAccount ? (
+                                      <div className="space-y-4">
+                                        <div className="grid gap-4 md:grid-cols-2">
+                                          <Input
+                                            label="관리자 ID"
+                                            value={adminAccountEditForm.adminLoginId}
+                                            onChange={(v) =>
+                                              setAdminAccountEditForm({
+                                                ...adminAccountEditForm,
+                                                adminLoginId: v,
+                                              })
+                                            }
+                                            placeholder="관리자 ID 입력"
+                                          />
 
-                                      <div className="text-[11px] text-slate-500">
-                                        이메일: {account.email || '미입력'}
-                                        <span className="mx-1 text-slate-300">|</span>
-                                        전화번호: {account.phone || '미입력'}
-                                      </div>
-                                    </div>
+                                          <Input
+                                            label="로그인 이메일"
+                                            type="email"
+                                            value={adminAccountEditForm.email}
+                                            onChange={(v) =>
+                                              setAdminAccountEditForm({
+                                                ...adminAccountEditForm,
+                                                email: v,
+                                              })
+                                            }
+                                            disabled={Boolean(account.authUid)}
+                                            placeholder={
+                                              account.authUid
+                                                ? 'Firebase Auth 연결 계정은 이메일 변경 불가'
+                                                : '관리자 로그인 이메일 입력'
+                                            }
+                                          />
 
-                                    <div className="shrink-0 text-[10px] text-slate-400">
-                                      등록일: {account.createdAt || '기록 없음'}
-                                    </div>
+                                          <Input
+                                            label="조직명"
+                                            value={adminAccountEditForm.organizationName}
+                                            onChange={(v) =>
+                                              setAdminAccountEditForm({
+                                                ...adminAccountEditForm,
+                                                organizationName: v,
+                                              })
+                                            }
+                                            placeholder="조직명 입력"
+                                          />
+
+                                          <Input
+                                            label="사용자명"
+                                            value={adminAccountEditForm.userName}
+                                            onChange={(v) =>
+                                              setAdminAccountEditForm({
+                                                ...adminAccountEditForm,
+                                                userName: v,
+                                              })
+                                            }
+                                            placeholder="사용자명 입력"
+                                          />
+
+                                          <Input
+                                            label="전화번호"
+                                            value={adminAccountEditForm.phone}
+                                            onChange={(v) =>
+                                              setAdminAccountEditForm({
+                                                ...adminAccountEditForm,
+                                                phone: v,
+                                              })
+                                            }
+                                            placeholder="전화번호 입력"
+                                          />
+                                        </div>
+
+                                        {account.authUid && (
+                                          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] leading-5 text-slate-500">
+                                            Firebase Auth 연결 계정의 로그인 이메일은 클라이언트 관리자 화면에서 직접 변경하지 않습니다.
+                                            이 화면에서는 관리자 ID, 조직명, 사용자명, 전화번호만 수정합니다.
+                                          </div>
+                                        )}
+
+                                        <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            className="px-3 py-2 text-xs"
+                                            onClick={cancelEditAdminAccount}
+                                          >
+                                            취소
+                                          </Button>
+                                          <Button
+                                            type="button"
+                                            variant="primary"
+                                            className="px-3 py-2 text-xs"
+                                            onClick={() => saveAdminAccountEdit(account)}
+                                          >
+                                            저장
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
+                                        <div className="min-w-0 space-y-1">
+                                          <div className="flex flex-wrap items-center gap-2">
+                                            <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                                              #{(safeAdminAccountPage - 1) * ADMIN_ACCOUNT_PAGE_SIZE + index + 1}
+                                            </span>
+                                            <span className="text-sm font-bold text-slate-900">
+                                              {account.adminLoginId}
+                                            </span>
+                                            <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                              {account.authUid ? 'Firebase Auth 연결' : '기존 해시 계정'}
+                                            </span>
+                                            {isCurrentAdminAccount && (
+                                              <span className="inline-flex rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] font-semibold mk-brand-text">
+                                                현재 로그인
+                                              </span>
+                                            )}
+                                          </div>
+
+                                          <div className="text-xs text-slate-600">
+                                            조직명: <span className="font-semibold text-slate-800">{account.organizationName}</span>
+                                            <span className="mx-1 text-slate-300">|</span>
+                                            사용자명: <span className="font-semibold text-slate-800">{account.userName}</span>
+                                          </div>
+
+                                          <div className="text-[11px] text-slate-500">
+                                            이메일: {account.authEmail || account.email || '미입력'}
+                                            <span className="mx-1 text-slate-300">|</span>
+                                            전화번호: {account.phone || '미입력'}
+                                          </div>
+
+                                          <div className="text-[10px] text-slate-400">
+                                            등록일: {account.createdAt || '기록 없음'}
+                                          </div>
+                                        </div>
+
+                                        <div className="flex shrink-0 gap-2">
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            className="px-3 py-2 text-xs"
+                                            onClick={() => startEditAdminAccount(account)}
+                                          >
+                                            수정
+                                          </Button>
+
+                                          <Button
+                                            type="button"
+                                            variant="danger"
+                                            className="px-3 py-2 text-xs"
+                                            disabled={isCurrentAdminAccount || (registeredAdminAccounts || []).length <= 1}
+                                            onClick={() => deleteAdminAccount(account)}
+                                          >
+                                            삭제
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
 
                             <div className="flex items-center justify-end gap-2 pt-2">
