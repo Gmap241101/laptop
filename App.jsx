@@ -29,7 +29,11 @@ import {
   ShieldCheck,
   AlertCircle,
   X,
-  Info
+  Info,
+  UserPlus,
+  LogIn,
+  UserCircle,
+  LogOut,
 } from 'lucide-react';
 
 const firebaseConfig = {
@@ -4967,38 +4971,54 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
               </div>
 
               <div className="flex items-center gap-2">
-                {firebaseAuthUser && (
-                  <div className="hidden max-w-[10rem] truncate rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 xl:block">
-                    {firebaseAuthUser.email || '로그인됨'}
-                  </div>
-                )}
+                {firebaseAuthUser || isAdminAuthenticated ? (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={goToUserMypage}
+                      className="px-3 py-2 text-xs"
+                    >
+                      <UserCircle size={14} />
+                      마이페이지
+                    </Button>
 
-                {(firebaseAuthUser || isAdminAuthenticated) && (
-                  <button
-                    type="button"
-                    onClick={goToUserMypage}
-                    className={`rounded-lg px-2.5 py-2 text-[15px] transition sm:px-3 sm:text-base lg:px-4 lg:text-lg ${
-                      userTab === 'mypage'
-                        ? 'bg-orange-50 font-semibold mk-brand-text'
-                        : 'font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-950'
-                    }`}
-                  >
-                    마이페이지
-                  </button>
-                )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={isAdminAuthenticated ? logoutAdmin : logoutUser}
+                      disabled={userAuthLoading || !firebaseAuthReady}
+                      className="px-3 py-2 text-xs"
+                    >
+                      <LogOut size={14} />
+                      로그아웃
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={goToUserSignup}
+                      disabled={userAuthLoading || !firebaseAuthReady}
+                      className="px-3 py-2 text-xs"
+                    >
+                      <UserPlus size={14} />
+                      회원가입
+                    </Button>
 
-                <button
-                  type="button"
-                  onClick={firebaseAuthUser ? logoutUser : goToUserLogin}
-                  disabled={userAuthLoading || !firebaseAuthReady}
-                  className={`rounded-lg px-2.5 py-2 text-[15px] transition disabled:opacity-50 sm:px-3 sm:text-base lg:px-4 lg:text-lg ${
-                    ['login', 'signup'].includes(userTab)
-                      ? 'bg-orange-50 font-semibold mk-brand-text'
-                      : 'font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-950'
-                  }`}
-                >
-                  {firebaseAuthUser ? '로그아웃' : '로그인'}
-                </button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={goToUserLogin}
+                      disabled={userAuthLoading || !firebaseAuthReady}
+                      className="px-3 py-2 text-xs"
+                    >
+                      <LogIn size={14} />
+                      로그인
+                    </Button>
+                  </>
+                )}
               </div>
             </nav>
           )}
