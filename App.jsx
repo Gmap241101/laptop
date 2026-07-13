@@ -1625,7 +1625,6 @@ function App() {
 
   const adminAccountsApplyingRemoteRef = useRef(false);
   const adminAccountsLastSyncedRef = useRef({});
-  const adminAccountsSaveTimerRef = useRef(null);
   const allowAdminAccountsWriteRef = useRef(false);
   const adminLogoutInProgressRef = useRef(false);
 
@@ -1714,11 +1713,20 @@ function App() {
     const unsubscribe = onAuthStateChanged(
       firebaseAuth,
       (user) => {
+        setCurrentAuthAdminAccount(null);
+        setCurrentAuthRoleErrorMessage('');
+        setCurrentAuthRoleReady(!user);
+
         setFirebaseAuthUser(user);
         setFirebaseAuthReady(true);
       },
       (error) => {
         console.error('Firebase Auth state error:', error);
+
+        setCurrentAuthAdminAccount(null);
+        setCurrentAuthRoleErrorMessage('');
+        setCurrentAuthRoleReady(true);
+
         setFirebaseAuthUser(null);
         setFirebaseAuthReady(true);
       }
@@ -1737,20 +1745,51 @@ function App() {
       return;
     }
 
+    const currentAuthUid = firebaseAuthUser.uid;
+
+    setCurrentAuthAdminAccount(null);
     setCurrentAuthRoleErrorMessage('');
     setCurrentAuthRoleReady(false);
 
     const unsubscribe = onSnapshot(
-      doc(db, 'adminAccounts', firebaseAuthUser.uid),
+      doc(db, 'adminAccounts', currentAuthUid),
       (snapshot) => {
-        const normalizedAdminAccount = snapshot.exists()
-          ? normalizeAdminAccounts([
-              {
-                ...snapshot.data(),
-                id: snapshot.id,
-              },
-            ])[0] || null
-          : null;
+        if (!snapshot.exists()) {
+          setCurrentAuthAdminAccount(null);
+          setCurrentAuthRoleErrorMessage('');
+          setCurrentAuthRoleReady(true);
+          return;
+        }
+
+        const normalizedAdminAccount =
+          normalizeAdminAccounts([
+            {
+              ...snapshot.data(),
+              id: snapshot.id,
+            },
+          ])[0] || null;
+
+        const hasValidAdminUidStructure =
+          Boolean(normalizedAdminAccount) &&
+          snapshot.id === currentAuthUid &&
+          normalizedAdminAccount.id === currentAuthUid &&
+          normalizedAdminAccount.authUid === currentAuthUid;
+
+        if (!hasValidAdminUidStructure) {
+          const message =
+            '관리자 계정 문서의 UID 정보가 올바르지 않습니다. adminAccounts 문서 ID, id, authUid가 모두 같은지 확인해 주세요.';
+
+          clearAdminAuthSession();
+          setAuthenticatedAdminId('');
+          setAdminAuthExpiresAt(0);
+
+          setCurrentAuthAdminAccount(null);
+          setCurrentAuthRoleErrorMessage(message);
+          setCurrentAuthRoleReady(true);
+
+          triggerToast(message, 'error');
+          return;
+        }
 
         setCurrentAuthAdminAccount(normalizedAdminAccount);
         setCurrentAuthRoleErrorMessage('');
@@ -1761,9 +1800,11 @@ function App() {
           '현재 로그인 계정의 관리자 권한을 확인하지 못했습니다. Firestore Rules를 확인해 주세요.';
 
         console.error('Current auth role sync error:', error);
+
         setCurrentAuthAdminAccount(null);
         setCurrentAuthRoleErrorMessage(message);
         setCurrentAuthRoleReady(true);
+
         triggerToast(message, 'error');
       }
     );
@@ -2012,18 +2053,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const dataWithoutAdminAccounts = stripAdminAccountsFromData(data);
-
-    const shouldPreserveLegacyAdminAccountsInMain =
-      (legacyAdminAccounts || []).length > 0 && !adminAccountsRemoteHasData;
-
-    const dataForSave = shouldPreserveLegacyAdminAccountsInMain
-      ? {
-          ...dataWithoutAdminAccounts,
-          adminAccounts: legacyAdminAccounts,
-        }
-      : dataWithoutAdminAccounts;
-
+    const dataForSave = stripAdminAccountsFromData(data);
     const dataJson = JSON.stringify(dataForSave);
 
     if (!firebaseReady || !allowFirebaseWriteRef.current) return;
@@ -2057,8 +2087,6 @@ function App() {
   }, [
     data,
     firebaseReady,
-    legacyAdminAccounts,
-    adminAccountsRemoteHasData,
   ]);
 
   useEffect(() => {
@@ -2576,6 +2604,9 @@ function App() {
       }
     }
 
+    let createdSignupUser = null;
+    let signedInUserForRoleCheck = null;
+
     setUserAuthLoading(true);
 
     try {
@@ -2586,6 +2617,8 @@ function App() {
           password
         );
 
+        createdSignupUser = credential.user;
+
         await updateProfile(credential.user, {
           displayName: name,
         });
@@ -2593,19 +2626,24 @@ function App() {
         await setDoc(
           doc(db, USER_ACCOUNTS_COLLECTION_NAME, credential.user.uid),
           {
-          uid: credential.user.uid,
-          email,
-          name,
-          team,
-          phone,
-          status: USER_PROFILE_STATUS.ACTIVE,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
+            uid: credential.user.uid,
+            email,
+            name,
+            team,
+            phone,
+            status: USER_PROFILE_STATUS.ACTIVE,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
           }
         );
 
+        createdSignupUser = null;
+
         setUserAuthForm(createDefaultUserAuthForm());
-        triggerToast('회원가입이 완료되었습니다. 로그인 상태로 전환되었습니다.', 'success');
+        triggerToast(
+          '회원가입이 완료되었습니다. 로그인 상태로 전환되었습니다.',
+          'success'
+        );
       } else {
         const credential = await signInWithEmailAndPassword(
           firebaseAuth,
@@ -2613,12 +2651,18 @@ function App() {
           password
         );
 
+        signedInUserForRoleCheck = credential.user;
+
         const adminAccountSnapshot = await getDoc(
           doc(db, 'adminAccounts', credential.user.uid)
         );
 
         if (adminAccountSnapshot.exists()) {
-          await signOut(firebaseAuth).catch(() => {});
+          await signOut(firebaseAuth).catch((logoutError) => {
+            console.error('Admin account user-login cleanup error:', logoutError);
+          });
+
+          signedInUserForRoleCheck = null;
 
           triggerToast(
             '관리자 계정은 사용자 로그인 화면이 아니라 관리자 모드에서 로그인해 주세요.',
@@ -2627,6 +2671,8 @@ function App() {
 
           return;
         }
+
+        signedInUserForRoleCheck = null;
 
         clearAdminAuthenticatedSession();
         setUserAuthForm(createDefaultUserAuthForm());
@@ -2638,8 +2684,41 @@ function App() {
       setUserTab('rental');
       setIsCommunityMenuOpen(false);
     } catch (error) {
+      let signupRollbackFailed = false;
+
+      if (
+        createdSignupUser &&
+        firebaseAuth.currentUser?.uid === createdSignupUser.uid
+      ) {
+        try {
+          await deleteUser(createdSignupUser);
+        } catch (rollbackError) {
+          signupRollbackFailed = true;
+          console.error('User signup rollback error:', rollbackError);
+
+          await signOut(firebaseAuth).catch(() => {});
+        }
+      }
+
+      if (
+        signedInUserForRoleCheck &&
+        firebaseAuth.currentUser?.uid === signedInUserForRoleCheck.uid
+      ) {
+        await signOut(firebaseAuth).catch((logoutError) => {
+          console.error('User role-check logout error:', logoutError);
+        });
+      }
+
+      clearAdminAuthenticatedSession();
+
       console.error('User auth error:', error);
-      triggerToast(getUserAuthErrorMessage(error), 'error');
+
+      triggerToast(
+        signupRollbackFailed
+          ? '회원 프로필 저장과 생성된 인증 계정 정리에 실패했습니다. Firebase Authentication과 userAccounts 컬렉션을 확인해 주세요.'
+          : getUserAuthErrorMessage(error),
+        'error'
+      );
     } finally {
       setUserAuthLoading(false);
     }
@@ -2659,6 +2738,8 @@ function App() {
       return;
     }
 
+    let signedInAdminUser = null;
+
     setAdminAuthLoading(true);
 
     try {
@@ -2667,6 +2748,8 @@ function App() {
         adminEmail,
         password
       );
+
+      signedInAdminUser = credential.user;
 
       const adminAccountDocRef = doc(
         db,
@@ -2678,6 +2761,7 @@ function App() {
 
       if (!adminAccountSnapshot.exists()) {
         await signOut(firebaseAuth).catch(() => {});
+        signedInAdminUser = null;
 
         triggerToast(
           'Firebase Auth 로그인은 성공했지만 등록된 관리자 권한이 없습니다.',
@@ -2694,16 +2778,13 @@ function App() {
         },
       ])[0];
 
-      if (!matchedAdminAccount) {
-        await signOut(firebaseAuth).catch(() => {});
-        triggerToast('관리자 계정 정보를 확인할 수 없습니다.', 'error');
-        return;
-      }
+      const hasValidAdminUidStructure =
+        Boolean(matchedAdminAccount) &&
+        adminAccountSnapshot.id === credential.user.uid &&
+        matchedAdminAccount.id === credential.user.uid &&
+        matchedAdminAccount.authUid === credential.user.uid;
 
-      if (
-        matchedAdminAccount.authUid &&
-        matchedAdminAccount.authUid !== credential.user.uid
-      ) {
+      if (!hasValidAdminUidStructure) {
         throw new Error('admin-auth-uid-mismatch');
       }
 
@@ -2716,6 +2797,7 @@ function App() {
         );
 
         await signOut(firebaseAuth).catch(() => {});
+        signedInAdminUser = null;
 
         triggerToast(
           `관리자 계정이 잠금 상태입니다. 약 ${remainingMinutes}분 후 다시 시도해 주세요.`,
@@ -2751,6 +2833,10 @@ function App() {
         { merge: true }
       );
 
+      setCurrentAuthAdminAccount(nextAdminAccount);
+      setCurrentAuthRoleErrorMessage('');
+      setCurrentAuthRoleReady(true);
+
       setAdminAccounts((prev) => [
         nextAdminAccount,
         ...(prev || []).filter(
@@ -2761,11 +2847,25 @@ function App() {
       setAdminAuthenticatedSession(nextAdminAccount.id);
       setAdminAuthForm(createDefaultAdminAuthForm());
 
+      signedInAdminUser = null;
+
       triggerToast(
         `[${nextAdminAccount.adminLoginId}] 관리자 인증이 완료되었습니다.`,
         'success'
       );
     } catch (error) {
+      if (
+        signedInAdminUser &&
+        firebaseAuth.currentUser?.uid === signedInAdminUser.uid
+      ) {
+        await signOut(firebaseAuth).catch((logoutError) => {
+          console.error('Failed admin login cleanup error:', logoutError);
+        });
+      }
+
+      clearAdminAuthenticatedSession();
+      setCurrentAuthAdminAccount(null);
+
       console.error('Admin authentication error:', error);
       triggerToast(getAdminFirebaseAuthErrorMessage(error), 'error');
     } finally {
