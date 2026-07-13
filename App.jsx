@@ -1613,6 +1613,8 @@ function App() {
   const adminAccountsLastSyncedRef = useRef('');
   const adminAccountsSaveTimerRef = useRef(null);
   const allowAdminAccountsWriteRef = useRef(false);
+  const adminLogoutInProgressRef = useRef(false);
+
   const [view, setView] = useState(getInitialViewFromPath); // 'user' | 'admin'
   const [userTab, setUserTab] = useState(getInitialUserTabFromPath); // 'home' | 'rental' | 'history' | 'notice' | 'faq' | 'notFound'
   const [isCommunityMenuOpen, setIsCommunityMenuOpen] = useState(false);
@@ -2212,16 +2214,22 @@ function App() {
   useEffect(() => {
     if (!authenticatedAdminId) return;
     if (!firebaseReady) return;
+    if (!firebaseAuthReady) return;
     if (!adminAccountsReady) return;
+    if (adminLogoutInProgressRef.current) return;
 
     const sourceAdminAccounts =
       (adminAccounts || []).length > 0 ? adminAccounts : legacyAdminAccounts;
 
-    const authenticatedAccountExists = (sourceAdminAccounts || []).some(
+    const authenticatedAccount = (sourceAdminAccounts || []).find(
       (account) => account.id === authenticatedAdminId
     );
 
-    if (!authenticatedAccountExists) {
+    const hasFirebaseAuthMismatch =
+      Boolean(authenticatedAccount?.authUid) &&
+      firebaseAuthUser?.uid !== authenticatedAccount.authUid;
+
+    if (!authenticatedAccount || hasFirebaseAuthMismatch) {
       clearAdminAuthSession();
       setAuthenticatedAdminId('');
       setAdminAuthExpiresAt(0);
@@ -2229,6 +2237,8 @@ function App() {
   }, [
     authenticatedAdminId,
     firebaseReady,
+    firebaseAuthReady,
+    firebaseAuthUser,
     adminAccountsReady,
     adminAccounts,
     legacyAdminAccounts,
@@ -2293,13 +2303,20 @@ function App() {
   };
 
   useEffect(() => {
+    if (adminLogoutInProgressRef.current) return;
     if (!firebaseAuthReady) return;
     if (!firebaseAuthUser) return;
+    if (!firebaseAuth.currentUser) return;
     if (!adminAccountsReady) return;
     if (authenticatedAdminId) return;
 
+    const currentFirebaseAuthUid = firebaseAuth.currentUser.uid;
+
     const matchedFirebaseAuthAdmin = registeredAdminAccounts.find(
-      (account) => account.authUid && account.authUid === firebaseAuthUser.uid
+      (account) =>
+        account.authUid &&
+        account.authUid === firebaseAuthUser.uid &&
+        account.authUid === currentFirebaseAuthUid
     );
 
     if (!matchedFirebaseAuthAdmin) return;
@@ -2695,22 +2712,31 @@ function App() {
   };
 
   const logoutAdmin = async () => {
+    if (adminLogoutInProgressRef.current) return;
+
+    adminLogoutInProgressRef.current = true;
+
     const shouldSignOutFirebaseAdmin =
-      authenticatedAdminAccount?.authUid &&
-      firebaseAuthUser?.uid === authenticatedAdminAccount.authUid;
+      Boolean(authenticatedAdminAccount?.authUid) &&
+      (
+        firebaseAuthUser?.uid === authenticatedAdminAccount.authUid ||
+        firebaseAuth.currentUser?.uid === authenticatedAdminAccount.authUid
+      );
 
-    clearAdminAuthenticatedSession();
-    setAdminAuthForm(createDefaultAdminAuthForm());
-
-    if (shouldSignOutFirebaseAdmin) {
-      try {
+    try {
+      if (shouldSignOutFirebaseAdmin) {
         await signOut(firebaseAuth);
-      } catch (error) {
-        console.error('Admin Firebase Auth logout error:', error);
       }
-    }
+    } catch (error) {
+      console.error('Admin Firebase Auth logout error:', error);
+    } finally {
+      clearAdminAuthenticatedSession();
+      setAdminAuthForm(createDefaultAdminAuthForm());
 
-    triggerToast('관리자 인증이 해제되었습니다.', 'success');
+      adminLogoutInProgressRef.current = false;
+
+      triggerToast('관리자 인증이 해제되었습니다.', 'success');
+    }
   };
 
   const selectedAdminOrganizationName =
