@@ -1652,6 +1652,7 @@ function App() {
   const [adminAccountPage, setAdminAccountPage] = useState(1);
   const [adminAuthForm, setAdminAuthForm] = useState(createDefaultAdminAuthForm);
   const [adminAuthLoading, setAdminAuthLoading] = useState(false);
+  const [adminLogoutInProgress, setAdminLogoutInProgress] = useState(false);
   const [authenticatedAdminId, setAuthenticatedAdminId] = useState(
     () => readAdminAuthSession().adminId
   );
@@ -2190,26 +2191,77 @@ function App() {
 
   useEffect(() => {
     if (!authenticatedAdminId) return;
+    if (!firebaseAuthReady) return;
+    if (!adminAccountsReady) return;
+
+    const expireAdminSession = async () => {
+      if (adminLogoutInProgressRef.current) return;
+
+      adminLogoutInProgressRef.current = true;
+      setAdminLogoutInProgress(true);
+
+      const sourceAdminAccounts =
+        (adminAccounts || []).length > 0 ? adminAccounts : legacyAdminAccounts;
+
+      const expiringAdminAccount = (sourceAdminAccounts || []).find(
+        (account) => account.id === authenticatedAdminId
+      );
+
+      const shouldSignOutFirebaseAdmin =
+        Boolean(expiringAdminAccount?.authUid) &&
+        firebaseAuth.currentUser?.uid === expiringAdminAccount.authUid;
+
+      let firebaseSignOutFailed = false;
+
+      try {
+        if (shouldSignOutFirebaseAdmin) {
+          await signOut(firebaseAuth);
+        }
+      } catch (error) {
+        firebaseSignOutFailed = true;
+        console.error('Expired admin Firebase Auth logout error:', error);
+      } finally {
+        clearAdminAuthSession();
+        setAuthenticatedAdminId('');
+        setAdminAuthExpiresAt(0);
+        setAdminAuthForm(createDefaultAdminAuthForm());
+
+        adminLogoutInProgressRef.current = false;
+        setAdminLogoutInProgress(false);
+
+        setToast({
+          message: firebaseSignOutFailed
+            ? '관리자 세션은 만료되었지만 Firebase Auth 로그아웃에 실패했습니다. 페이지를 새로고침한 뒤 로그인 상태를 확인해 주세요.'
+            : '관리자 세션이 만료되어 로그아웃되었습니다.',
+          type: firebaseSignOutFailed ? 'error' : 'success',
+        });
+
+        window.setTimeout(() => setToast(null), 3000);
+      }
+    };
 
     if (!adminAuthExpiresAt || adminAuthExpiresAt <= Date.now()) {
-      clearAdminAuthSession();
-      setAuthenticatedAdminId('');
-      setAdminAuthExpiresAt(0);
+      void expireAdminSession();
       return;
     }
 
     const remainingTime = adminAuthExpiresAt - Date.now();
 
     const sessionTimer = window.setTimeout(() => {
-      clearAdminAuthSession();
-      setAuthenticatedAdminId('');
-      setAdminAuthExpiresAt(0);
+      void expireAdminSession();
     }, remainingTime);
 
     return () => {
       window.clearTimeout(sessionTimer);
     };
-  }, [authenticatedAdminId, adminAuthExpiresAt]);
+  }, [
+    authenticatedAdminId,
+    adminAuthExpiresAt,
+    firebaseAuthReady,
+    adminAccountsReady,
+    adminAccounts,
+    legacyAdminAccounts,
+  ]);
 
   useEffect(() => {
     if (!authenticatedAdminId) return;
@@ -2227,7 +2279,7 @@ function App() {
 
     const hasFirebaseAuthMismatch =
       Boolean(authenticatedAccount?.authUid) &&
-      firebaseAuthUser?.uid !== authenticatedAccount.authUid;
+      firebaseAuth.currentUser?.uid !== authenticatedAccount.authUid;
 
     if (!authenticatedAccount || hasFirebaseAuthMismatch) {
       clearAdminAuthSession();
@@ -2261,20 +2313,42 @@ function App() {
   );
 
   const hasRegisteredAdminAccounts = registeredAdminAccounts.length > 0;
-  const isAdminAuthenticated = Boolean(authenticatedAdminAccount);
+
+  const isFirebaseAuthLinkedAdmin =
+    Boolean(authenticatedAdminAccount?.authUid);
+
+  const hasMatchingAdminFirebaseAuth =
+    !isFirebaseAuthLinkedAdmin ||
+    (
+      firebaseAuthReady &&
+      firebaseAuth.currentUser?.uid === authenticatedAdminAccount.authUid
+    );
+
+  const isAdminAuthenticated =
+    Boolean(authenticatedAdminAccount) &&
+    !adminLogoutInProgress &&
+    hasMatchingAdminFirebaseAuth;
 
   const shouldShowAdminLoadingPage =
-    view === 'admin' && (!firebaseReady || !adminAccountsReady);
+    view === 'admin' &&
+    (
+      !firebaseReady ||
+      !firebaseAuthReady ||
+      !adminAccountsReady ||
+      adminLogoutInProgress
+    );
 
   const shouldShowAdminAccountsErrorPage =
     view === 'admin' &&
     firebaseReady &&
+    firebaseAuthReady &&
     adminAccountsReady &&
     Boolean(adminAccountsLoadErrorMessage);
 
   const hasAdminAccess =
     view === 'admin' &&
     firebaseReady &&
+    firebaseAuthReady &&
     adminAccountsReady &&
     !firebaseLoadErrorMessage &&
     !adminAccountsLoadErrorMessage &&
@@ -2283,6 +2357,7 @@ function App() {
   const shouldShowAdminLoginPage =
     view === 'admin' &&
     firebaseReady &&
+    firebaseAuthReady &&
     adminAccountsReady &&
     !firebaseLoadErrorMessage &&
     !adminAccountsLoadErrorMessage &&
@@ -2301,37 +2376,6 @@ function App() {
     setAuthenticatedAdminId('');
     setAdminAuthExpiresAt(0);
   };
-
-  useEffect(() => {
-    if (adminLogoutInProgressRef.current) return;
-    if (!firebaseAuthReady) return;
-    if (!firebaseAuthUser) return;
-    if (!firebaseAuth.currentUser) return;
-    if (!adminAccountsReady) return;
-    if (authenticatedAdminId) return;
-
-    const currentFirebaseAuthUid = firebaseAuth.currentUser.uid;
-
-    const matchedFirebaseAuthAdmin = registeredAdminAccounts.find(
-      (account) =>
-        account.authUid &&
-        account.authUid === firebaseAuthUser.uid &&
-        account.authUid === currentFirebaseAuthUid
-    );
-
-    if (!matchedFirebaseAuthAdmin) return;
-
-    const nextSession = saveAdminAuthSession(matchedFirebaseAuthAdmin.id);
-
-    setAuthenticatedAdminId(nextSession.adminId);
-    setAdminAuthExpiresAt(nextSession.expiresAt);
-  }, [
-    firebaseAuthReady,
-    firebaseAuthUser,
-    adminAccountsReady,
-    authenticatedAdminId,
-    registeredAdminAccounts,
-  ]);
 
   useEffect(() => {
     if (!authenticatedAdminAccount) {
@@ -2712,30 +2756,37 @@ function App() {
   };
 
   const logoutAdmin = async () => {
-    if (adminLogoutInProgressRef.current) return;
+    if (adminLogoutInProgressRef.current || adminLogoutInProgress) return;
 
     adminLogoutInProgressRef.current = true;
+    setAdminLogoutInProgress(true);
 
     const shouldSignOutFirebaseAdmin =
       Boolean(authenticatedAdminAccount?.authUid) &&
-      (
-        firebaseAuthUser?.uid === authenticatedAdminAccount.authUid ||
-        firebaseAuth.currentUser?.uid === authenticatedAdminAccount.authUid
-      );
+      firebaseAuth.currentUser?.uid === authenticatedAdminAccount.authUid;
+
+    let firebaseSignOutFailed = false;
 
     try {
       if (shouldSignOutFirebaseAdmin) {
         await signOut(firebaseAuth);
       }
     } catch (error) {
+      firebaseSignOutFailed = true;
       console.error('Admin Firebase Auth logout error:', error);
     } finally {
       clearAdminAuthenticatedSession();
       setAdminAuthForm(createDefaultAdminAuthForm());
 
       adminLogoutInProgressRef.current = false;
+      setAdminLogoutInProgress(false);
 
-      triggerToast('관리자 인증이 해제되었습니다.', 'success');
+      triggerToast(
+        firebaseSignOutFailed
+          ? '관리자 화면 인증은 해제되었지만 Firebase Auth 로그아웃에 실패했습니다. 페이지를 새로고침한 뒤 로그인 상태를 확인해 주세요.'
+          : '관리자 인증이 해제되었습니다.',
+        firebaseSignOutFailed ? 'error' : 'success'
+      );
     }
   };
 
@@ -5013,11 +5064,15 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                       type="button"
                       variant="outline"
                       onClick={isAdminAuthenticated ? logoutAdmin : logoutUser}
-                      disabled={userAuthLoading || !firebaseAuthReady}
+                      disabled={
+                        userAuthLoading ||
+                        adminLogoutInProgress ||
+                        !firebaseAuthReady
+                      }
                       className="px-3 py-2 text-xs"
                     >
                       <LogOut size={14} />
-                      로그아웃
+                      {adminLogoutInProgress ? '로그아웃 중...' : '로그아웃'}
                     </Button>
                   </>
                 ) : (
@@ -5076,9 +5131,10 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                     type="button"
                     variant="outline"
                     onClick={logoutAdmin}
+                    disabled={adminLogoutInProgress || !firebaseAuthReady}
                     className="px-3 py-2 text-xs"
                   >
-                    로그아웃
+                    {adminLogoutInProgress ? '로그아웃 중...' : '로그아웃'}
                   </Button>
                 </>
               )}
