@@ -607,7 +607,10 @@ function normalizeAdminAccounts(adminAccounts) {
       authLinkedAt: account.authLinkedAt || '',
       passwordHash: account.passwordHash || '',
       passwordSalt: account.passwordSalt || '',
-      passwordHashAlgorithm: account.passwordHashAlgorithm || 'SHA-256',
+      passwordHashAlgorithm:
+        account.passwordHashAlgorithm ||
+        account.passwordHashAlgorith ||
+        (account.authUid ? 'Firebase Auth' : 'SHA-256'),
       passwordHashIterations: Number(account.passwordHashIterations) || 0,
       failedLoginCount: Number(account.failedLoginCount) || 0,
       lockUntil: Number(account.lockUntil) || 0,
@@ -3565,6 +3568,11 @@ function App() {
         ...passwordUpdateFields,
         id: authenticatedAdminAccount.id,
         authUid: authenticatedAdminAccount.id,
+        authProvider: 'firebase-auth',
+        passwordHash: '',
+        passwordSalt: '',
+        passwordHashAlgorithm: 'Firebase Auth',
+        passwordHashIterations: 0,
         adminLoginId,
         organizationName,
         userName,
