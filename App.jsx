@@ -2658,9 +2658,7 @@ function App() {
         );
 
         if (adminAccountSnapshot.exists()) {
-          await signOut(firebaseAuth).catch((logoutError) => {
-            console.error('Admin account user-login cleanup error:', logoutError);
-          });
+          await signOut(firebaseAuth);
 
           signedInUserForRoleCheck = null;
 
@@ -2685,6 +2683,7 @@ function App() {
       setIsCommunityMenuOpen(false);
     } catch (error) {
       let signupRollbackFailed = false;
+      let firebaseAuthCleanupFailed = false;
 
       if (
         createdSignupUser &&
@@ -2696,7 +2695,15 @@ function App() {
           signupRollbackFailed = true;
           console.error('User signup rollback error:', rollbackError);
 
-          await signOut(firebaseAuth).catch(() => {});
+          try {
+            await signOut(firebaseAuth);
+          } catch (cleanupError) {
+            firebaseAuthCleanupFailed = true;
+            console.error(
+              'Failed signup Firebase Auth cleanup error:',
+              cleanupError
+            );
+          }
         }
       }
 
@@ -2704,19 +2711,26 @@ function App() {
         signedInUserForRoleCheck &&
         firebaseAuth.currentUser?.uid === signedInUserForRoleCheck.uid
       ) {
-        await signOut(firebaseAuth).catch((logoutError) => {
+        try {
+          await signOut(firebaseAuth);
+        } catch (logoutError) {
+          firebaseAuthCleanupFailed = true;
           console.error('User role-check logout error:', logoutError);
-        });
+        }
       }
 
       clearAdminAuthenticatedSession();
 
       console.error('User auth error:', error);
 
+      const baseErrorMessage = signupRollbackFailed
+        ? '회원 프로필 저장과 생성된 인증 계정 정리에 실패했습니다. Firebase Authentication과 userAccounts 컬렉션을 확인해 주세요.'
+        : getUserAuthErrorMessage(error);
+
       triggerToast(
-        signupRollbackFailed
-          ? '회원 프로필 저장과 생성된 인증 계정 정리에 실패했습니다. Firebase Authentication과 userAccounts 컬렉션을 확인해 주세요.'
-          : getUserAuthErrorMessage(error),
+        firebaseAuthCleanupFailed
+          ? `${baseErrorMessage} Firebase Auth 로그아웃에도 실패했습니다. 페이지를 새로고침한 뒤 로그인 상태를 확인해 주세요.`
+          : baseErrorMessage,
         'error'
       );
     } finally {
@@ -2760,7 +2774,7 @@ function App() {
       const adminAccountSnapshot = await getDoc(adminAccountDocRef);
 
       if (!adminAccountSnapshot.exists()) {
-        await signOut(firebaseAuth).catch(() => {});
+        await signOut(firebaseAuth);
         signedInAdminUser = null;
 
         triggerToast(
@@ -2796,7 +2810,7 @@ function App() {
           (matchedAdminAccount.lockUntil - Date.now()) / 60000
         );
 
-        await signOut(firebaseAuth).catch(() => {});
+        await signOut(firebaseAuth);
         signedInAdminUser = null;
 
         triggerToast(
@@ -2854,20 +2868,33 @@ function App() {
         'success'
       );
     } catch (error) {
+      let firebaseAuthCleanupFailed = false;
+
       if (
         signedInAdminUser &&
         firebaseAuth.currentUser?.uid === signedInAdminUser.uid
       ) {
-        await signOut(firebaseAuth).catch((logoutError) => {
+        try {
+          await signOut(firebaseAuth);
+        } catch (logoutError) {
+          firebaseAuthCleanupFailed = true;
           console.error('Failed admin login cleanup error:', logoutError);
-        });
+        }
       }
 
       clearAdminAuthenticatedSession();
       setCurrentAuthAdminAccount(null);
 
       console.error('Admin authentication error:', error);
-      triggerToast(getAdminFirebaseAuthErrorMessage(error), 'error');
+
+      const baseErrorMessage = getAdminFirebaseAuthErrorMessage(error);
+
+      triggerToast(
+        firebaseAuthCleanupFailed
+          ? `${baseErrorMessage} Firebase Auth 로그아웃에도 실패했습니다. 페이지를 새로고침한 뒤 로그인 상태를 확인해 주세요.`
+          : baseErrorMessage,
+        'error'
+      );
     } finally {
       setAdminAuthLoading(false);
     }
@@ -6288,7 +6315,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
               <CardContent className="space-y-4 p-6">
                 <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-xs leading-5 text-rose-800">
-                  {adminAccountsLoadErrorMessage}
+                  {adminAccountsLoadErrorMessage || currentAuthRoleErrorMessage}
                 </div>
 
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-xs leading-5 text-slate-600">
