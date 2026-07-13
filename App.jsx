@@ -1847,16 +1847,20 @@ function App() {
     const unsubscribe = onSnapshot(
       doc(db, USER_ACCOUNTS_COLLECTION_NAME, firebaseAuthUser.uid),
       (snapshot) => {
-        const profileData = snapshot.exists()
-          ? snapshot.data()
-          : {
-              uid: firebaseAuthUser.uid,
-              email: firebaseAuthUser.email || '',
-              name: firebaseAuthUser.displayName || '',
-              team: '',
-              phone: '',
-              status: USER_PROFILE_STATUS.ACTIVE,
-            };
+        if (!snapshot.exists()) {
+          setUserProfile(null);
+          setUserProfileForm({
+            name: firebaseAuthUser.displayName || '',
+            team: '',
+            phone: '',
+            newPassword: '',
+            newPasswordConfirm: '',
+          });
+          setUserProfileReady(true);
+          return;
+        }
+
+        const profileData = snapshot.data();
 
         setUserProfile(profileData);
         setUserProfileForm({
@@ -2421,6 +2425,14 @@ function App() {
     currentAuthRoleReady &&
     !currentAuthRoleErrorMessage &&
     !currentAuthAdminAccount;
+
+  const currentUserRequests = useMemo(() => {
+    if (!firebaseAuthUser?.uid) return [];
+
+    return (data.requests || []).filter(
+      (request) => request.requesterUid === firebaseAuthUser.uid
+    );
+  }, [data.requests, firebaseAuthUser?.uid]);
 
   const hasMatchingAdminFirebaseAuth =
     Boolean(authenticatedAdminAccount?.authUid) &&
@@ -4620,6 +4632,61 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       : -1;
 
   const submitRequest = () => {
+    if (!firebaseAuthReady || !currentAuthRoleReady || !userProfileReady) {
+      triggerToast(
+        '로그인 계정과 회원 정보를 확인하는 중입니다. 잠시 후 다시 시도해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    if (!firebaseAuthUser) {
+      triggerToast('기기 대여신청은 일반회원 로그인 후 이용할 수 있습니다.', 'error');
+      goToUserLogin();
+      return;
+    }
+
+    if (currentAuthRoleErrorMessage) {
+      triggerToast(currentAuthRoleErrorMessage, 'error');
+      return;
+    }
+
+    if (currentAuthAdminAccount || isAdminAuthenticated) {
+      triggerToast(
+        '관리자 계정은 일반 사용자 대여신청을 제출할 수 없습니다.',
+        'error'
+      );
+      return;
+    }
+
+    if (!userProfile) {
+      triggerToast(
+        '회원 정보가 등록되어 있지 않습니다. 마이페이지에서 이름과 부서 정보를 저장해 주세요.',
+        'error'
+      );
+      goToUserMypage();
+      return;
+    }
+
+    const currentUserStatus =
+      userProfile.status || USER_PROFILE_STATUS.ACTIVE;
+
+    if (currentUserStatus === USER_PROFILE_STATUS.BLOCKED) {
+      triggerToast(
+        '이용이 중지된 회원 계정은 기기 대여신청을 제출할 수 없습니다.',
+        'error'
+      );
+      return;
+    }
+
+    if (currentUserStatus !== USER_PROFILE_STATUS.ACTIVE) {
+      triggerToast(
+        '현재 회원 상태에서는 기기 대여신청을 제출할 수 없습니다.',
+        'error'
+      );
+      return;
+    }
+
     if (!selectedLaptop) {
       triggerToast('신청할 기기를 선택해 주세요.', 'error');
       return;
@@ -4709,6 +4776,17 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       requests: [
         {
           id: requestId,
+          requesterUid: firebaseAuthUser.uid,
+          requesterEmail:
+            firebaseAuthUser.email ||
+            userProfile.email ||
+            '',
+          requesterName:
+            userProfile.name ||
+            form.borrower,
+          requesterTeam:
+            userProfile.team ||
+            form.team,
           laptopId: selectedLaptop.id,
           assetCategory: selectedLaptop.category || '노트북',
           assetNo: selectedLaptop.assetNo,
@@ -6176,6 +6254,155 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                 )}
               </CardContent>
             </Card>
+          ) : userTab === 'history' ? (
+            <div className="mx-auto max-w-5xl space-y-6">
+              <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
+                <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-8 text-white">
+                  <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+                  <div className="absolute -bottom-16 left-10 h-44 w-44 rounded-full bg-orange-400/20 blur-3xl" />
+
+                  <div className="relative">
+                    <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/15">
+                      <ClipboardList size={26} />
+                    </div>
+
+                    <h2 className="text-xl font-black tracking-tight">
+                      나의 대여 신청내역
+                    </h2>
+
+                    <p className="mt-2 text-xs leading-5 text-slate-300">
+                      로그인한 계정으로 제출한 기기 대여신청과 처리 상태를 확인합니다.
+                    </p>
+                  </div>
+                </div>
+
+                <CardContent className="p-6">
+                  {!firebaseAuthReady || !currentAuthRoleReady ? (
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
+                      로그인 계정 정보를 확인하는 중입니다.
+                    </div>
+                  ) : !firebaseAuthUser ? (
+                    <div className="space-y-4">
+                      <div className="rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 text-xs leading-5 text-orange-800">
+                        신청내역은 일반회원 로그인 후 확인할 수 있습니다.
+                      </div>
+
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          variant="primary"
+                          onClick={goToUserLogin}
+                        >
+                          로그인
+                        </Button>
+                      </div>
+                    </div>
+                  ) : currentAuthAdminAccount || isAdminAuthenticated ? (
+                    <div className="rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 text-xs leading-5 text-orange-800">
+                      관리자 계정의 전체 대여신청은 관리자 모드의 대여 신청 관리에서 확인해 주세요.
+                    </div>
+                  ) : currentUserRequests.length === 0 ? (
+                    <div className="space-y-4">
+                      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center">
+                        <ClipboardList
+                          size={28}
+                          className="mx-auto mb-3 text-slate-300"
+                        />
+
+                        <h3 className="text-sm font-bold text-slate-700">
+                          등록된 신청내역이 없습니다
+                        </h3>
+
+                        <p className="mt-2 text-xs leading-5 text-slate-500">
+                          로그인한 계정으로 기기 대여신청을 제출하면 이 화면에서 처리 상태를 확인할 수 있습니다.
+                        </p>
+                      </div>
+
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          variant="primary"
+                          onClick={() => {
+                            pushAppPath('user', 'rental');
+                            setView('user');
+                            setUserTab('rental');
+                            setIsCommunityMenuOpen(false);
+                          }}
+                        >
+                          대여신청으로 이동
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {currentUserRequests.map((request) => (
+                        <div
+                          key={request.id}
+                          className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+                        >
+                          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                            <div className="min-w-0 space-y-2">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                                  {request.assetCategory || '기기'}
+                                </span>
+
+                                <span className="text-sm font-bold text-slate-950">
+                                  {request.assetNo}
+                                </span>
+
+                                <Badge>
+                                  {getDisplayRentalStatus(
+                                    request.status,
+                                    request.startDate
+                                  )}
+                                </Badge>
+                              </div>
+
+                              <div className="text-xs text-slate-600">
+                                대여 기간:{' '}
+                                <span className="font-semibold text-slate-900">
+                                  {request.startDate} ~ {request.dueDate}
+                                </span>
+                              </div>
+
+                              <div className="text-xs text-slate-600">
+                                소속:{' '}
+                                <span className="font-semibold text-slate-900">
+                                  {request.team}
+                                </span>
+                                {' · '}
+                                대여자명:{' '}
+                                <span className="font-semibold text-slate-900">
+                                  {request.borrower}
+                                </span>
+                              </div>
+
+                              <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
+                                목적:{' '}
+                                <span className="font-medium text-slate-700">
+                                  {request.purpose || '서술 목적 없음'}
+                                </span>
+                              </div>
+
+                              {request.adminMemo && (
+                                <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-700">
+                                  관리자 안내: {request.adminMemo}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="shrink-0 text-[10px] text-slate-400">
+                              접수 일시: {request.requestedAt}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           ) : (
             <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
               <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-10 text-white">
