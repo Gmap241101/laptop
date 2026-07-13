@@ -19,8 +19,10 @@ import {
   getDoc,
   getFirestore,
   onSnapshot,
+  query as firestoreQuery,
   setDoc,
   serverTimestamp,
+  where,
 } from 'firebase/firestore';
 import {
   Laptop,
@@ -70,6 +72,7 @@ const firebaseAuth = getAuth(firebaseApp);
 const adminAccountCreationAuth = getAuth(adminAccountCreationApp);
 const DATA_DOC_REF = doc(db, 'laptopRentalDashboard', 'main');
 const ADMIN_ACCOUNTS_COLLECTION_REF = collection(db, 'adminAccounts');
+const RENTAL_REQUESTS_COLLECTION_REF = collection(db, 'rentalRequests');
 const USER_ACCOUNTS_COLLECTION_NAME = 'userAccounts';
 
 // --- 상태 및 스타일 정의 ---
@@ -630,6 +633,19 @@ function stripAdminAccountsFromData(sourceData) {
 
   return dataWithoutAdminAccounts;
 }
+
+function toRentalAvailabilityRequest(request = {}) {
+  return {
+    id: request.id || '',
+    laptopId: request.laptopId || '',
+    assetCategory: request.assetCategory || '기기',
+    assetNo: request.assetNo || '',
+    startDate: request.startDate || '',
+    dueDate: request.dueDate || '',
+    status: request.status || STATUS.REQUESTED,
+  };
+}
+
 function mergePersistedData(rawData) {
   const parsed = { ...initialData, ...(rawData || {}) };
   const assetCategories = Array.isArray(parsed.assetCategories) && parsed.assetCategories.length > 0
@@ -1614,6 +1630,14 @@ function App() {
   const [firebaseReady, setFirebaseReady] = useState(false);
   const [firebaseLoadErrorMessage, setFirebaseLoadErrorMessage] = useState('');
 
+  const [rentalRequests, setRentalRequests] = useState([]);
+  const [rentalRequestsReady, setRentalRequestsReady] = useState(false);
+  const [
+    rentalRequestsLoadErrorMessage,
+    setRentalRequestsLoadErrorMessage,
+  ] = useState('');
+  const [requestSubmitLoading, setRequestSubmitLoading] = useState(false);
+
   const [adminAccounts, setAdminAccounts] = useState([]);
   const [adminAccountsReady, setAdminAccountsReady] = useState(false);
   const [adminAccountsLoadErrorMessage, setAdminAccountsLoadErrorMessage] = useState('');
@@ -2426,13 +2450,34 @@ function App() {
     !currentAuthRoleErrorMessage &&
     !currentAuthAdminAccount;
 
+  const mergedRentalRequests = useMemo(() => {
+    const requestMap = new Map();
+
+    (data.requests || []).forEach((request) => {
+      if (!request?.id) return;
+
+      requestMap.set(request.id, request);
+    });
+
+    (rentalRequests || []).forEach((request) => {
+      if (!request?.id) return;
+
+      requestMap.set(request.id, {
+        ...(requestMap.get(request.id) || {}),
+        ...request,
+      });
+    });
+
+    return Array.from(requestMap.values());
+  }, [data.requests, rentalRequests]);
+
   const currentUserRequests = useMemo(() => {
     if (!firebaseAuthUser?.uid) return [];
 
-    return (data.requests || []).filter(
+    return mergedRentalRequests.filter(
       (request) => request.requesterUid === firebaseAuthUser.uid
     );
-  }, [data.requests, firebaseAuthUser?.uid]);
+  }, [mergedRentalRequests, firebaseAuthUser?.uid]);
 
   const hasMatchingAdminFirebaseAuth =
     Boolean(authenticatedAdminAccount?.authUid) &&
@@ -2487,6 +2532,65 @@ function App() {
     !adminAccountsLoadErrorMessage &&
     !currentAuthRoleErrorMessage &&
     !isAdminAuthenticated;
+
+    useEffect(() => {
+    if (!firebaseAuthReady || !currentAuthRoleReady) {
+      setRentalRequestsReady(false);
+      return;
+    }
+
+    if (!firebaseAuthUser || currentAuthRoleErrorMessage) {
+      setRentalRequests([]);
+      setRentalRequestsLoadErrorMessage('');
+      setRentalRequestsReady(true);
+      return;
+    }
+
+    setRentalRequestsReady(false);
+    setRentalRequestsLoadErrorMessage('');
+
+    const requestSource = isAdminAuthenticated
+      ? RENTAL_REQUESTS_COLLECTION_REF
+      : firestoreQuery(
+          RENTAL_REQUESTS_COLLECTION_REF,
+          where('requesterUid', '==', firebaseAuthUser.uid)
+        );
+
+    const unsubscribe = onSnapshot(
+      requestSource,
+      (snapshot) => {
+        const remoteRequests = snapshot.docs.map((requestDoc) => ({
+          ...requestDoc.data(),
+          id: requestDoc.id,
+        }));
+
+        setRentalRequests(remoteRequests);
+        setRentalRequestsLoadErrorMessage('');
+        setRentalRequestsReady(true);
+      },
+      (error) => {
+        const message = isAdminAuthenticated
+          ? '전체 대여신청 컬렉션을 불러오지 못했습니다. Firestore Rules의 rentalRequests 관리자 조회 권한을 확인해 주세요.'
+          : '나의 대여신청 내역을 불러오지 못했습니다. Firestore Rules의 rentalRequests 본인 조회 권한을 확인해 주세요.';
+
+        console.error('Rental requests sync error:', error);
+
+        setRentalRequests([]);
+        setRentalRequestsLoadErrorMessage(message);
+        setRentalRequestsReady(true);
+
+        triggerToast(message, 'error');
+      }
+    );
+
+    return unsubscribe;
+  }, [
+    firebaseAuthReady,
+    currentAuthRoleReady,
+    currentAuthRoleErrorMessage,
+    firebaseAuthUser?.uid,
+    isAdminAuthenticated,
+  ]);
 
   const setAdminAuthenticatedSession = (adminId) => {
     const nextSession = saveAdminAuthSession(adminId);
@@ -4631,7 +4735,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         )
       : -1;
 
-  const submitRequest = () => {
+  const submitRequest = async () => {
     if (!firebaseAuthReady || !currentAuthRoleReady || !userProfileReady) {
       triggerToast(
         '로그인 계정과 회원 정보를 확인하는 중입니다. 잠시 후 다시 시도해 주세요.',
@@ -4768,103 +4872,281 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     }
 
     const requestId = `REQ-${Date.now()}`;
-    setData((prev) => ({
-      ...prev,
-      laptops: prev.laptops.map((l) =>
-        l.id === selectedLaptop.id ? { ...l, status: STATUS.REQUESTED, currentRequestId: requestId } : l
-      ),
-      requests: [
-        {
-          id: requestId,
-          requesterUid: firebaseAuthUser.uid,
-          requesterEmail:
-            firebaseAuthUser.email ||
-            userProfile.email ||
-            '',
-          requesterName:
-            userProfile.name ||
-            form.borrower,
-          requesterTeam:
-            userProfile.team ||
-            form.team,
-          laptopId: selectedLaptop.id,
-          assetCategory: selectedLaptop.category || '노트북',
-          assetNo: selectedLaptop.assetNo,
-          team: form.team,
-          borrower: form.borrower,
-          startDate: form.startDate,
-          dueDate: form.dueDate,
-          purpose: form.purpose,
-          status: STATUS.REQUESTED,
-          adminMemo: '',
-          requestedAt: new Date().toLocaleString('ko-KR'),
-        },
-        ...prev.requests,
-      ],
-    }));
+    const requestedAt = new Date().toLocaleString('ko-KR');
 
-    setSelectedLaptopId(null);
-    setForm(createDefaultRequestForm(data.settings));
-    triggerToast('대여 신청이 성공적으로 접수되었습니다. 관리자 승인을 대기합니다.', 'success');
+    const nextRequest = {
+      id: requestId,
+      requesterUid: firebaseAuthUser.uid,
+      requesterEmail:
+        firebaseAuthUser.email ||
+        userProfile.email ||
+        '',
+      requesterName:
+        userProfile.name ||
+        form.borrower,
+      requesterTeam:
+        userProfile.team ||
+        form.team,
+      laptopId: selectedLaptop.id,
+      assetCategory: selectedLaptop.category || '노트북',
+      assetNo: selectedLaptop.assetNo,
+      team: form.team,
+      borrower: form.borrower,
+      startDate: form.startDate,
+      dueDate: form.dueDate,
+      purpose: form.purpose,
+      status: STATUS.REQUESTED,
+      adminMemo: '',
+      requestedAt,
+    };
+
+    const availabilityRequest =
+      toRentalAvailabilityRequest(nextRequest);
+
+    setRequestSubmitLoading(true);
+
+    try {
+      await setDoc(
+        doc(db, 'rentalRequests', requestId),
+        {
+          ...nextRequest,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }
+      );
+
+      setRentalRequests((prev) => [
+        nextRequest,
+        ...(prev || []).filter(
+          (request) => request.id !== requestId
+        ),
+      ]);
+
+      setData((prev) => ({
+        ...prev,
+        laptops: prev.laptops.map((laptop) =>
+          laptop.id === selectedLaptop.id
+            ? {
+                ...laptop,
+                status: STATUS.REQUESTED,
+                currentRequestId: requestId,
+              }
+            : laptop
+        ),
+        requests: [
+          availabilityRequest,
+          ...(prev.requests || []).filter(
+            (request) => request.id !== requestId
+          ),
+        ],
+      }));
+
+      setSelectedLaptopId(null);
+      setForm(createDefaultRequestForm(data.settings));
+
+      triggerToast(
+        '대여 신청이 성공적으로 접수되었습니다. 관리자 승인을 대기합니다.',
+        'success'
+      );
+    } catch (error) {
+      console.error('Rental request create error:', error);
+
+      triggerToast(
+        '대여 신청 저장에 실패했습니다. Firestore Rules의 rentalRequests 생성 권한과 네트워크 상태를 확인해 주세요.',
+        'error'
+      );
+    } finally {
+      setRequestSubmitLoading(false);
+    }
   };
 
-  const updateRequest = (id, status) => {
-    const currentRequest = data.requests.find((r) => r.id === id);
+  const updateRequest = async (id, status) => {
+    const currentRequest = mergedRentalRequests.find(
+      (request) => request.id === id
+    );
 
     if (!currentRequest) {
       triggerToast('신청 정보를 찾을 수 없습니다.', 'error');
       return;
     }
 
-    const nextDisplayStatus = getDisplayRentalStatus(status, currentRequest.startDate);
+    const nextRequest = {
+      ...currentRequest,
+      status,
+      updatedAt: new Date().toLocaleString('ko-KR'),
+    };
 
-    setData((prev) => {
-      const req = prev.requests.find((r) => r.id === id);
-      if (!req) return prev;
+    const nextDisplayStatus = getDisplayRentalStatus(
+      status,
+      currentRequest.startDate
+    );
 
-      const updatedRequests = prev.requests.map((r) =>
-        r.id === id ? { ...r, status } : r
+    try {
+      await setDoc(
+        doc(db, 'rentalRequests', id),
+        {
+          ...nextRequest,
+          syncedAt: serverTimestamp(),
+        },
+        { merge: true }
       );
 
-      return {
-        ...prev,
-        requests: updatedRequests,
-        laptops: prev.laptops.map((l) => {
-          if (l.id !== req.laptopId) {
-            return l;
-          }
+      setRentalRequests((prev) => {
+        const requestExists = (prev || []).some(
+          (request) => request.id === id
+        );
 
-          const representativeRequest = getLaptopRepresentativeRequest(
-            updatedRequests,
-            l.id
-          );
+        if (!requestExists) {
+          return [nextRequest, ...(prev || [])];
+        }
 
-          if (l.status === STATUS.UNAVAILABLE) {
+        return (prev || []).map((request) =>
+          request.id === id ? nextRequest : request
+        );
+      });
+
+      setData((prev) => {
+        const availabilityRequest =
+          toRentalAvailabilityRequest(nextRequest);
+
+        const requestExists = (prev.requests || []).some(
+          (request) => request.id === id
+        );
+
+        const updatedRequests = requestExists
+          ? (prev.requests || []).map((request) =>
+              request.id === id
+                ? availabilityRequest
+                : request
+            )
+          : [
+              availabilityRequest,
+              ...(prev.requests || []),
+            ];
+
+        return {
+          ...prev,
+          requests: updatedRequests,
+          laptops: prev.laptops.map((laptop) => {
+            if (laptop.id !== currentRequest.laptopId) {
+              return laptop;
+            }
+
+            const representativeRequest =
+              getLaptopRepresentativeRequest(
+                updatedRequests,
+                laptop.id
+              );
+
+            if (laptop.status === STATUS.UNAVAILABLE) {
+              return {
+                ...laptop,
+                currentRequestId:
+                  representativeRequest?.id || null,
+              };
+            }
+
             return {
-              ...l,
-              currentRequestId: representativeRequest?.id || null,
+              ...laptop,
+              status: representativeRequest
+                ? representativeRequest.status
+                : STATUS.AVAILABLE,
+              currentRequestId:
+                representativeRequest?.id || null,
             };
-          }
+          }),
+        };
+      });
 
-          return {
-            ...l,
-            status: representativeRequest
-              ? representativeRequest.status
-              : STATUS.AVAILABLE,
-            currentRequestId: representativeRequest?.id || null,
-          };
-        }),
-      };
-    });
+      triggerToast(
+        `상태가 [${nextDisplayStatus}]로 업데이트 되었습니다.`,
+        'success'
+      );
+    } catch (error) {
+      console.error('Rental request status update error:', error);
 
-    triggerToast(`상태가 [${nextDisplayStatus}]로 업데이트 되었습니다.`, 'success');
+      triggerToast(
+        '신청 상태 저장에 실패했습니다. Firestore Rules의 rentalRequests 관리자 수정 권한을 확인해 주세요.',
+        'error'
+      );
+    }
   };
 
   const updateRequestMemo = (id, memo) => {
-    setData((prev) => ({
-      ...prev,
-      requests: prev.requests.map((r) => (r.id === id ? { ...r, adminMemo: memo } : r)),
-    }));
+    const currentRequest = mergedRentalRequests.find(
+      (request) => request.id === id
+    );
+
+    if (!currentRequest) return;
+
+    const nextRequest = {
+      ...currentRequest,
+      adminMemo: memo,
+    };
+
+    setRentalRequests((prev) => {
+      const requestExists = (prev || []).some(
+        (request) => request.id === id
+      );
+
+      if (!requestExists) {
+        return [nextRequest, ...(prev || [])];
+      }
+
+      return (prev || []).map((request) =>
+        request.id === id ? nextRequest : request
+      );
+    });
+  };
+
+  const saveRequestMemo = async (id, memo) => {
+    const currentRequest = mergedRentalRequests.find(
+      (request) => request.id === id
+    );
+
+    if (!currentRequest) {
+      triggerToast('신청 정보를 찾을 수 없습니다.', 'error');
+      return;
+    }
+
+    const nextRequest = {
+      ...currentRequest,
+      adminMemo: memo,
+      updatedAt: new Date().toLocaleString('ko-KR'),
+    };
+
+    try {
+      await setDoc(
+        doc(db, 'rentalRequests', id),
+        {
+          ...nextRequest,
+          syncedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      setRentalRequests((prev) =>
+        (prev || []).map((request) =>
+          request.id === id ? nextRequest : request
+        )
+      );
+
+      setData((prev) => ({
+        ...prev,
+        requests: (prev.requests || []).map((request) =>
+          request.id === id
+            ? toRentalAvailabilityRequest(nextRequest)
+            : request
+        ),
+      }));
+    } catch (error) {
+      console.error('Rental request memo save error:', error);
+
+      triggerToast(
+        '관리자 메모 저장에 실패했습니다. Firestore Rules의 rentalRequests 관리자 수정 권한을 확인해 주세요.',
+        'error'
+      );
+    }
   };
 
   const renderRequestActionButtons = (request) => {
@@ -5787,10 +6069,16 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
                   <Button
                     onClick={submitRequest}
-                    disabled={!selectedLaptop || selectedLaptopAvailability?.blocked}
+                    disabled={
+                      requestSubmitLoading ||
+                      !selectedLaptop ||
+                      selectedLaptopAvailability?.blocked
+                    }
                     className="w-full justify-center rounded-xl py-6"
                   >
-                    기기 대여 신청
+                    {requestSubmitLoading
+                      ? '대여 신청 저장 중...'
+                      : '기기 대여 신청'}
                   </Button>
                 </CardContent>
               </Card>
@@ -6277,9 +6565,15 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                 </div>
 
                 <CardContent className="p-6">
-                  {!firebaseAuthReady || !currentAuthRoleReady ? (
+                  {!firebaseAuthReady ||
+                  !currentAuthRoleReady ||
+                  !rentalRequestsReady ? (
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
-                      로그인 계정 정보를 확인하는 중입니다.
+                      로그인 계정과 신청내역을 확인하는 중입니다.
+                    </div>
+                  ) : rentalRequestsLoadErrorMessage ? (
+                    <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-xs leading-5 text-rose-800">
+                      {rentalRequestsLoadErrorMessage}
                     </div>
                   ) : !firebaseAuthUser ? (
                     <div className="space-y-4">
@@ -6750,13 +7044,18 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                         <h2 className="text-lg font-bold text-slate-900">기기 대여 신청 관리</h2>
                         <p className="text-xs text-slate-500 mt-1">부서원들이 제출한 신청서의 신청중, 예약중, 대여중, 보류, 불허, 반납완료 상태를 관리합니다.</p>
                       </div>
+                      {rentalRequestsLoadErrorMessage && (
+                        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-xs leading-5 text-rose-800">
+                          {rentalRequestsLoadErrorMessage}
+                        </div>
+                      )}
                       <div className="space-y-4">
-                        {data.requests.length === 0 ? (
+                        {mergedRentalRequests.length === 0 ? (
                           <div className="rounded-2xl bg-slate-50 border border-dashed border-slate-200 py-12 text-center text-slate-400 text-xs">
                             현재 접수되거나 처리된 대여 신청 목록이 없습니다.
                           </div>
                         ) : (
-                          data.requests.map((r) => {
+                          mergedRentalRequests.map((r) => {
                             const isOverdue = r.status === STATUS.APPROVED && r.dueDate < today();
                             return (
                               <div key={r.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
@@ -6797,8 +7096,19 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                                     <span className="block text-[10px] font-semibold text-slate-500 uppercase">승인 관리자 심사 및 인수인계 코멘트</span>
                                     <input
                                       type="text"
-                                      value={r.adminMemo}
-                                      onChange={(e) => updateRequestMemo(r.id, e.target.value)}
+                                      value={r.adminMemo || ''}
+                                      onChange={(e) =>
+                                        updateRequestMemo(
+                                          r.id,
+                                          e.target.value
+                                        )
+                                      }
+                                      onBlur={(e) =>
+                                        saveRequestMemo(
+                                          r.id,
+                                          e.target.value
+                                        )
+                                      }
                                       placeholder="전달 혹은 상태 변경 사유 등을 남겨 공유하세요."
                                       className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none mk-form-border-focus"
                                     />
