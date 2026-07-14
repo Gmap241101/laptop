@@ -17,6 +17,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   getFirestore,
   onSnapshot,
   query as firestoreQuery,
@@ -24,6 +25,7 @@ import {
   setDoc,
   serverTimestamp,
   where,
+  writeBatch,
 } from 'firebase/firestore';
 import {
   Laptop,
@@ -75,6 +77,32 @@ const DATA_DOC_REF = doc(db, 'laptopRentalDashboard', 'main');
 const ADMIN_ACCOUNTS_COLLECTION_REF = collection(db, 'adminAccounts');
 const RENTAL_REQUESTS_COLLECTION_REF = collection(db, 'rentalRequests');
 const USER_ACCOUNTS_COLLECTION_NAME = 'userAccounts';
+
+const PUBLIC_CONFIG_DOC_REF = doc(
+  db,
+  'rentalSystem',
+  'publicConfig'
+);
+
+const RENTAL_ASSETS_COLLECTION_REF = collection(
+  db,
+  'rentalAssets'
+);
+
+const RENTAL_AVAILABILITY_COLLECTION_REF = collection(
+  db,
+  'rentalAvailability'
+);
+
+const RENTAL_BORROWERS_COLLECTION_REF = collection(
+  db,
+  'rentalBorrowers'
+);
+
+const SPLIT_DATA_MIGRATION_VERSION = 1;
+
+// Firestore 배치 최대 500건보다 여유 있게 400건씩 처리
+const MIGRATION_BATCH_WRITE_LIMIT = 400;
 
 // --- 상태 및 스타일 정의 ---
 const STATUS = {
@@ -1733,6 +1761,11 @@ function App() {
   const [holidayImportYear, setHolidayImportYear] = useState(String(getKoreaNow().getUTCFullYear()));
   const [holidayImportLoading, setHolidayImportLoading] = useState(false);
 
+  const [
+    splitDataMigrationLoading,
+    setSplitDataMigrationLoading,
+  ] = useState(false);
+
   // Toast 메시지 상태
   const [toast, setToast] = useState(null);
   // 커스텀 모달 확인창 상태
@@ -2534,6 +2567,542 @@ function App() {
     !adminAccountsLoadErrorMessage &&
     !currentAuthRoleErrorMessage &&
     !isAdminAuthenticated;
+  
+  const migrateMainDataToSplitCollections = async () => {
+  if (splitDataMigrationLoading) {
+    return;
+  }
+
+  if (!isAdminAuthenticated) {
+    triggerToast(
+      '신규 컬렉션 데이터 복사는 인증된 관리자만 실행할 수 있습니다.',
+      'error'
+    );
+    return;
+  }
+
+  setSplitDataMigrationLoading(true);
+
+  const commitMigrationOperations = async (
+    operations
+  ) => {
+    for (
+      let startIndex = 0;
+      startIndex < operations.length;
+      startIndex += MIGRATION_BATCH_WRITE_LIMIT
+    ) {
+      const operationChunk = operations.slice(
+        startIndex,
+        startIndex + MIGRATION_BATCH_WRITE_LIMIT
+      );
+
+      const batch = writeBatch(db);
+
+      operationChunk.forEach((operation) => {
+        if (operation.type === 'delete') {
+          batch.delete(operation.ref);
+          return;
+        }
+
+        batch.set(
+          operation.ref,
+          operation.data,
+          { merge: true }
+        );
+      });
+
+      await batch.commit();
+    }
+  };
+
+  const createMigrationBorrowerId = (
+    borrower,
+    index
+  ) => {
+    const sourceText =
+      `${borrower?.team || ''}|` +
+      `${borrower?.name || ''}|` +
+      `${index}`;
+
+    let hash = 2166136261;
+
+    for (
+      let characterIndex = 0;
+      characterIndex < sourceText.length;
+      characterIndex++
+    ) {
+      hash ^= sourceText.charCodeAt(
+        characterIndex
+      );
+
+      hash = Math.imul(
+        hash,
+        16777619
+      );
+    }
+
+    return (
+      `BORROWER-` +
+      `${String(index + 1).padStart(4, '0')}-` +
+      `${(hash >>> 0).toString(36)}`
+    );
+  };
+
+  try {
+    const [
+      mainSnapshot,
+      publicConfigSnapshot,
+    ] = await Promise.all([
+      getDoc(DATA_DOC_REF),
+      getDoc(PUBLIC_CONFIG_DOC_REF),
+    ]);
+
+    if (!mainSnapshot.exists()) {
+      throw new Error(
+        'main-document-not-found'
+      );
+    }
+
+    const existingPublicConfig =
+      publicConfigSnapshot.exists()
+        ? publicConfigSnapshot.data()
+        : null;
+
+    const existingMigrationVersion =
+      Number(
+        existingPublicConfig?.migrationVersion ||
+        0
+      );
+
+    if (
+      existingMigrationVersion >=
+      SPLIT_DATA_MIGRATION_VERSION
+    ) {
+      throw new Error(
+        'split-migration-already-completed'
+      );
+    }
+
+    const initialMainPayload =
+      mainSnapshot.data();
+
+    const initialMainPayloadJson =
+      JSON.stringify(initialMainPayload);
+
+    const sourceData = mergePersistedData(
+      initialMainPayload.data ||
+      initialMainPayload
+    );
+
+    const sourceLaptops = Array.isArray(
+      sourceData.laptops
+    )
+      ? sourceData.laptops
+      : [];
+
+    const sourceRequests = Array.isArray(
+      sourceData.requests
+    )
+      ? sourceData.requests
+      : [];
+
+    const sourceBorrowers = Array.isArray(
+      sourceData.borrowers
+    )
+      ? sourceData.borrowers
+      : [];
+
+    const sourceAssetCategories =
+      Array.isArray(
+        sourceData.assetCategories
+      )
+        ? sourceData.assetCategories
+        : [];
+
+    const sourceTeams = Array.isArray(
+      sourceData.teams
+    )
+      ? sourceData.teams
+      : [];
+
+    const sourceSettings =
+      sourceData.settings &&
+      typeof sourceData.settings === 'object'
+        ? sourceData.settings
+        : {};
+
+    /*
+     * 이전 마이그레이션이 중간 실패했을 수 있으므로,
+     * 완료 표시가 없는 상태에서는 신규 컬렉션을
+     * 먼저 비운 후 다시 복사합니다.
+     */
+    const [
+      existingAssetsSnapshot,
+      existingAvailabilitySnapshot,
+      existingBorrowersSnapshot,
+    ] = await Promise.all([
+      getDocs(
+        RENTAL_ASSETS_COLLECTION_REF
+      ),
+      getDocs(
+        RENTAL_AVAILABILITY_COLLECTION_REF
+      ),
+      getDocs(
+        RENTAL_BORROWERS_COLLECTION_REF
+      ),
+    ]);
+
+    const cleanupOperations = [
+      ...existingAssetsSnapshot.docs.map(
+        (assetDocument) => ({
+          type: 'delete',
+          ref: assetDocument.ref,
+        })
+      ),
+
+      ...existingAvailabilitySnapshot.docs.map(
+        (availabilityDocument) => ({
+          type: 'delete',
+          ref: availabilityDocument.ref,
+        })
+      ),
+
+      ...existingBorrowersSnapshot.docs.map(
+        (borrowerDocument) => ({
+          type: 'delete',
+          ref: borrowerDocument.ref,
+        })
+      ),
+    ];
+
+    await commitMigrationOperations(
+      cleanupOperations
+    );
+
+    /*
+     * 자산 데이터 변환
+     */
+    const assetIdSet = new Set();
+
+    const assetOperations =
+      sourceLaptops.map((asset) => {
+        const assetId = String(
+          asset?.id || ''
+        ).trim();
+
+        if (!assetId) {
+          throw new Error(
+            'migration-asset-id-missing'
+          );
+        }
+
+        if (assetIdSet.has(assetId)) {
+          throw new Error(
+            'migration-duplicate-asset-id'
+          );
+        }
+
+        assetIdSet.add(assetId);
+
+        const normalizedAsset = {
+          id: assetId,
+          category: String(
+            asset.category ||
+            sourceAssetCategories[0] ||
+            '노트북'
+          ),
+          assetNo: String(
+            asset.assetNo || ''
+          ),
+          serialNo: String(
+            asset.serialNo || ''
+          ),
+          model: String(
+            asset.model || ''
+          ),
+          manufactureDate: String(
+            asset.manufactureDate || ''
+          ),
+          photo: String(
+            asset.photo || ''
+          ),
+          note: String(
+            asset.note || ''
+          ),
+          status: String(
+            asset.status ||
+            STATUS.AVAILABLE
+          ),
+          currentRequestId:
+            asset.currentRequestId ||
+            null,
+          updatedAt: serverTimestamp(),
+        };
+
+        return {
+          type: 'set',
+          ref: doc(
+            RENTAL_ASSETS_COLLECTION_REF,
+            assetId
+          ),
+          data: normalizedAsset,
+        };
+      });
+
+    /*
+     * 공개 예약 가능 여부 데이터 변환
+     * 신청중, 대여중, 보류만 복사합니다.
+     */
+    const availabilityIdSet = new Set();
+
+    const blockingRequests =
+      sourceRequests.filter(
+        (request) =>
+          request?.id &&
+          RENTAL_BLOCKING_REQUEST_STATUSES.includes(
+            request.status
+          )
+      );
+
+    const availabilityOperations =
+      blockingRequests.map((request) => {
+        const availabilityRequest =
+          toRentalAvailabilityRequest(
+            request
+          );
+
+        const requestId = String(
+          availabilityRequest.id || ''
+        ).trim();
+
+        if (
+          !requestId ||
+          !availabilityRequest.laptopId
+        ) {
+          throw new Error(
+            'migration-availability-data-invalid'
+          );
+        }
+
+        if (
+          availabilityIdSet.has(requestId)
+        ) {
+          throw new Error(
+            'migration-duplicate-request-id'
+          );
+        }
+
+        availabilityIdSet.add(requestId);
+
+        return {
+          type: 'set',
+          ref: doc(
+            RENTAL_AVAILABILITY_COLLECTION_REF,
+            requestId
+          ),
+          data: {
+            ...availabilityRequest,
+            updatedAt: serverTimestamp(),
+          },
+        };
+      });
+
+    /*
+     * 대여자 드롭다운 데이터 변환
+     */
+    const borrowerOperations =
+      sourceBorrowers.map(
+        (borrower, index) => {
+          const borrowerId =
+            createMigrationBorrowerId(
+              borrower,
+              index
+            );
+
+          return {
+            type: 'set',
+            ref: doc(
+              RENTAL_BORROWERS_COLLECTION_REF,
+              borrowerId
+            ),
+            data: {
+              id: borrowerId,
+              name: String(
+                borrower?.name || ''
+              ),
+              team: String(
+                borrower?.team || ''
+              ),
+              updatedAt:
+                serverTimestamp(),
+            },
+          };
+        }
+      );
+
+    const migrationWriteOperations = [
+      ...assetOperations,
+      ...availabilityOperations,
+      ...borrowerOperations,
+    ];
+
+    await commitMigrationOperations(
+      migrationWriteOperations
+    );
+
+    /*
+     * 복사 도중 main이 변경됐는지 재확인합니다.
+     * 변경된 경우 완료 표시를 남기지 않고 재실행합니다.
+     */
+    const verificationMainSnapshot =
+      await getDoc(DATA_DOC_REF);
+
+    if (!verificationMainSnapshot.exists()) {
+      throw new Error(
+        'main-document-not-found-after-migration'
+      );
+    }
+
+    const verificationMainPayloadJson =
+      JSON.stringify(
+        verificationMainSnapshot.data()
+      );
+
+    if (
+      verificationMainPayloadJson !==
+      initialMainPayloadJson
+    ) {
+      throw new Error(
+        'main-changed-during-migration'
+      );
+    }
+
+    /*
+     * 모든 복사가 끝난 뒤 마지막으로
+     * publicConfig에 완료 표시를 기록합니다.
+     */
+    const completionBatch =
+      writeBatch(db);
+
+    completionBatch.set(
+      PUBLIC_CONFIG_DOC_REF,
+      {
+        assetCategories:
+          sourceAssetCategories,
+        teams: sourceTeams,
+        settings: sourceSettings,
+
+        migrationVersion:
+          SPLIT_DATA_MIGRATION_VERSION,
+
+        migrationSource:
+          'laptopRentalDashboard/main',
+
+        migrationCounts: {
+          assets:
+            assetOperations.length,
+          availabilityRequests:
+            availabilityOperations.length,
+          borrowers:
+            borrowerOperations.length,
+        },
+
+        migratedBy:
+          firebaseAuth.currentUser?.uid ||
+          authenticatedAdminId ||
+          '',
+
+        migratedAt:
+          serverTimestamp(),
+
+        updatedAt:
+          serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    await completionBatch.commit();
+
+    triggerToast(
+      `신규 컬렉션 1차 복사가 완료되었습니다. ` +
+      `자산 ${assetOperations.length}건, ` +
+      `진행 중 예약 ${availabilityOperations.length}건, ` +
+      `대여자 ${borrowerOperations.length}건을 복사했습니다.`,
+      'success'
+    );
+  } catch (error) {
+    console.error(
+      'Split data migration error:',
+      error
+    );
+
+    if (
+      error?.message ===
+      'split-migration-already-completed'
+    ) {
+      triggerToast(
+        '신규 컬렉션 1차 복사가 이미 완료되어 중복 실행을 차단했습니다.',
+        'error'
+      );
+      return;
+    }
+
+    if (
+      error?.message ===
+      'main-changed-during-migration'
+    ) {
+      triggerToast(
+        '복사 도중 기존 main 데이터가 변경되어 완료 처리를 중단했습니다. 신규 신청이나 관리자 작업이 없는 시점에 다시 실행해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    if (
+      error?.message ===
+        'migration-asset-id-missing' ||
+      error?.message ===
+        'migration-duplicate-asset-id'
+    ) {
+      triggerToast(
+        '기존 자산 목록에 ID가 없거나 중복된 자산이 있어 복사를 중단했습니다. main 문서의 laptops 데이터를 확인해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    if (
+      error?.message ===
+        'migration-availability-data-invalid' ||
+      error?.message ===
+        'migration-duplicate-request-id'
+    ) {
+      triggerToast(
+        '기존 진행 중 신청 목록에 신청 ID 또는 기기 ID가 없거나 중복된 항목이 있어 복사를 중단했습니다.',
+        'error'
+      );
+      return;
+    }
+
+    if (
+      error?.code ===
+      'permission-denied'
+    ) {
+      triggerToast(
+        '신규 컬렉션 복사 권한이 없습니다. 이전 단계에서 추가한 Firestore Rules가 게시되었는지 확인해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    triggerToast(
+      '신규 컬렉션 1차 복사에 실패했습니다. 기존 main 데이터는 변경되지 않았습니다. Firestore Rules, 관리자 인증 및 네트워크 상태를 확인해 주세요.',
+      'error'
+    );
+  } finally {
+    setSplitDataMigrationLoading(false);
+  }
+};
 
     useEffect(() => {
     if (!firebaseAuthReady || !currentAuthRoleReady) {
@@ -9682,6 +10251,56 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                       </div>
                       <div className="rounded-xl bg-slate-100 p-4 border border-slate-200/50 text-xs text-slate-600">
                         💡 <b>운영 권장사항 안내:</b> 실제 사내 보안망 연동 개발 단계에서는 AD 연동 인증, 부서별 허용 기한 할당제, Slack/Alimtalk 실시간 전송, 지연 지연자 메일 자동 발송 모듈을 접목하여 완벽한 자동화를 꾀할 수 있습니다.
+                      </div>
+
+                      <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <h3 className="text-sm font-bold text-amber-900">
+                              Firestore 데이터 분리 1단계
+                            </h3>
+
+                            <p className="mt-1 text-[11px] leading-relaxed text-amber-800">
+                              기존 laptopRentalDashboard/main 데이터를
+                              rentalAssets, rentalAvailability,
+                              rentalBorrowers, rentalSystem/publicConfig로
+                              1회 복사합니다. 이 단계에서는 기존 main 문서를
+                              삭제하거나 읽기·쓰기 대상을 변경하지 않습니다.
+                            </p>
+
+                            <div className="mt-2 text-[11px] text-amber-700">
+                              복사 대상: 자산 {data.laptops.length}건 ·
+                              진행 중 예약{' '}
+                              {
+                                (data.requests || []).filter(
+                                  (request) =>
+                                    RENTAL_BLOCKING_REQUEST_STATUSES.includes(
+                                      request.status
+                                    )
+                                ).length
+                              }
+                              건 · 대여자 {data.borrowers.length}건
+                            </div>
+                          </div>
+
+                          <Button
+                            variant="outline"
+                            disabled={splitDataMigrationLoading}
+                            onClick={() => {
+                              triggerConfirm(
+                                'Firestore 신규 컬렉션 1차 복사',
+                                '현재 main 데이터를 신규 컬렉션으로 복사합니다. 기존 main 문서는 삭제하지 않으며 현재 서비스의 읽기·쓰기 방식도 변경하지 않습니다. 복사 중에는 신규 신청과 관리자 데이터 변경 작업을 하지 않는 것이 안전합니다. 계속하시겠습니까?',
+                                migrateMainDataToSplitCollections
+                              );
+                            }}
+                            className="shrink-0 border-amber-300 bg-white text-amber-800 hover:bg-amber-100"
+                          >
+                            <Save size={14} />
+                            {splitDataMigrationLoading
+                              ? '데이터 복사 중'
+                              : '신규 컬렉션으로 1차 복사'}
+                          </Button>
+                        </div>
                       </div>
 
                       {/* 하단 저장 및 취소 액션 버튼 컨테이너 추가 */}
