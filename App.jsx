@@ -5837,13 +5837,267 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     );
   };
 
-  const saveLaptop = () => {
-    setData((prev) => ({
-      ...prev,
-      laptops: prev.laptops.map((l) => (l.id === editLaptop.id ? editLaptop : l)),
-    }));
-    setEditLaptop(null);
-    triggerToast('자산 상세 정보가 성공적으로 반영되었습니다.', 'success');
+  const saveLaptop = async () => {
+    if (!editLaptop?.id) {
+      triggerToast(
+        '수정할 자산 정보를 찾을 수 없습니다.',
+        'error'
+      );
+      return;
+    }
+
+    const editingLaptopId = editLaptop.id;
+    const editedAssetNo = String(
+      editLaptop.assetNo || ''
+    ).trim();
+    const editedCategory = String(
+      editLaptop.category || ''
+    ).trim();
+
+    if (!editedAssetNo) {
+      triggerToast(
+        '자산 관리 번호를 정확히 입력해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    if (!editedCategory) {
+      triggerToast(
+        '자산 카테고리를 선택해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    const editedLaptopDraft = {
+      ...editLaptop,
+      assetNo: editedAssetNo,
+      category: editedCategory,
+    };
+
+    let committedMainData = null;
+
+    try {
+      await runTransaction(db, async (transaction) => {
+        const mainSnapshot =
+          await transaction.get(DATA_DOC_REF);
+
+        if (!mainSnapshot.exists()) {
+          throw new Error('main-document-not-found');
+        }
+
+        const remotePayload = mainSnapshot.data();
+        const remoteSource =
+          remotePayload.data || remotePayload;
+        const latestData =
+          mergePersistedData(remoteSource);
+
+        const latestLaptop =
+          (latestData.laptops || []).find(
+            (laptop) =>
+              laptop.id === editingLaptopId
+          );
+
+        if (!latestLaptop) {
+          throw new Error('laptop-not-found');
+        }
+
+        const categoryExists =
+          (latestData.assetCategories || []).some(
+            (category) =>
+              String(category || '').trim() ===
+              editedCategory
+          );
+
+        if (!categoryExists) {
+          throw new Error(
+            'asset-category-not-found'
+          );
+        }
+
+        const duplicatedLaptop =
+          (latestData.laptops || []).find(
+            (laptop) =>
+              laptop.id !== editingLaptopId &&
+              String(laptop.assetNo || '')
+                .trim()
+                .toLowerCase() ===
+                editedAssetNo.toLowerCase()
+          );
+
+        if (duplicatedLaptop) {
+          const duplicateError =
+            new Error('duplicate-asset-number');
+
+          duplicateError.duplicatedLaptop =
+            duplicatedLaptop;
+
+          throw duplicateError;
+        }
+
+        const blockingRequest =
+          findSameAssetBlockingRequest(
+            latestData.requests,
+            editingLaptopId
+          );
+
+        const assetIdentityChanged =
+          String(latestLaptop.assetNo || '').trim() !==
+            editedAssetNo ||
+          String(latestLaptop.category || '').trim() !==
+            editedCategory;
+
+        if (
+          blockingRequest &&
+          assetIdentityChanged
+        ) {
+          const identityChangeError =
+            new Error(
+              'active-rental-identity-change'
+            );
+
+          identityChangeError.blockingRequest =
+            blockingRequest;
+
+          throw identityChangeError;
+        }
+
+        const representativeRequest =
+          getLaptopRepresentativeRequest(
+            latestData.requests,
+            editingLaptopId
+          );
+
+        const nextLaptopStatus =
+          editedLaptopDraft.status ===
+          STATUS.UNAVAILABLE
+            ? STATUS.UNAVAILABLE
+            : representativeRequest
+              ? representativeRequest.status
+              : STATUS.AVAILABLE;
+
+        const nextLaptop = {
+          ...latestLaptop,
+          ...editedLaptopDraft,
+          id: latestLaptop.id,
+          category: editedCategory,
+          assetNo: editedAssetNo,
+          status: nextLaptopStatus,
+          currentRequestId:
+            representativeRequest?.id || null,
+        };
+
+        const nextCommittedMainData = {
+          ...latestData,
+          laptops:
+            (latestData.laptops || []).map(
+              (laptop) =>
+                laptop.id === editingLaptopId
+                  ? nextLaptop
+                  : laptop
+            ),
+        };
+
+        transaction.update(DATA_DOC_REF, {
+          'data.laptops':
+            nextCommittedMainData.laptops,
+          updatedAt: serverTimestamp(),
+        });
+
+        committedMainData =
+          nextCommittedMainData;
+      });
+
+      if (!committedMainData) {
+        throw new Error(
+          'laptop-save-transaction-result-missing'
+        );
+      }
+
+      lastSyncedDataRef.current =
+        JSON.stringify(
+          stripAdminAccountsFromData(
+            committedMainData
+          )
+        );
+
+      setData(committedMainData);
+      setEditLaptop(null);
+
+      triggerToast(
+        '자산 상세 정보가 성공적으로 반영되었습니다.',
+        'success'
+      );
+    } catch (error) {
+      console.error(
+        'Laptop save transaction error:',
+        error
+      );
+
+      if (
+        error?.message ===
+        'duplicate-asset-number'
+      ) {
+        const duplicatedAssetNo =
+          error.duplicatedLaptop?.assetNo ||
+          editedAssetNo;
+
+        triggerToast(
+          `자산관리번호 [${duplicatedAssetNo}]은(는) 이미 다른 자산에 등록되어 있어 저장할 수 없습니다.`,
+          'error'
+        );
+        return;
+      }
+
+      if (
+        error?.message ===
+        'active-rental-identity-change'
+      ) {
+        const blockingRequest =
+          error.blockingRequest;
+
+        const blockingStatus =
+          getDisplayRentalStatus(
+            blockingRequest?.status,
+            blockingRequest?.startDate
+          );
+
+        triggerToast(
+          `현재 [${blockingStatus}] 상태의 신청이 있어 자산 카테고리 또는 자산관리번호를 변경할 수 없습니다. 신청을 불허 또는 반납완료 처리한 후 다시 변경해 주세요.`,
+          'error'
+        );
+        return;
+      }
+
+      if (
+        error?.message ===
+        'asset-category-not-found'
+      ) {
+        triggerToast(
+          '선택한 자산 카테고리가 최신 카테고리 목록에 없습니다. 자산 수정 패널을 닫고 다시 열어 주세요.',
+          'error'
+        );
+        return;
+      }
+
+      if (
+        error?.message ===
+        'laptop-not-found'
+      ) {
+        triggerToast(
+          '수정하려는 자산이 이미 삭제되었거나 최신 자산 목록에서 찾을 수 없습니다.',
+          'error'
+        );
+        setEditLaptop(null);
+        return;
+      }
+
+      triggerToast(
+        '자산 정보 저장에 실패했습니다. 기존 자산 정보는 변경되지 않았습니다. Firestore 권한과 네트워크 상태를 확인해 주세요.',
+        'error'
+      );
+    }
   };
 
   const showFirebaseLoadingOverlay = !firebaseReady;
