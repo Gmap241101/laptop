@@ -5691,16 +5691,148 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
   // 자산 영구 삭제 제어 로직
   const deleteLaptop = (id, assetNo) => {
+    const currentBlockingRequest =
+      findSameAssetBlockingRequest(data.requests, id);
+
+    if (currentBlockingRequest) {
+      const currentBlockingStatus = getDisplayRentalStatus(
+        currentBlockingRequest.status,
+        currentBlockingRequest.startDate
+      );
+
+      triggerToast(
+        `자산 ${assetNo}에는 현재 [${currentBlockingStatus}] 상태의 신청이 있어 삭제할 수 없습니다. 해당 신청을 불허 또는 반납완료 처리한 후 다시 삭제해 주세요.`,
+        'error'
+      );
+      return;
+    }
+
     triggerConfirm(
       '자산 삭제',
-      `정말로 자산 [${assetNo}] 기기를 시스템 목록에서 영구적으로 삭제하시겠습니까? 신청 원장은 보존되나 기기 목록에서는 삭제됩니다.`,
-      () => {
-        setData((prev) => ({
-          ...prev,
-          laptops: prev.laptops.filter((l) => l.id !== id),
-        }));
-        if (selectedLaptopId === id) setSelectedLaptopId(null);
-        triggerToast(`자산 ${assetNo}이(가) 성공적으로 삭제되었습니다.`, 'success');
+      `정말로 자산 [${assetNo}] 기기를 시스템 목록에서 영구적으로 삭제하시겠습니까? 완료된 신청 원장은 보존되나 기기 목록에서는 삭제됩니다.`,
+      async () => {
+        let committedMainData = null;
+
+        try {
+          await runTransaction(db, async (transaction) => {
+            const mainSnapshot =
+              await transaction.get(DATA_DOC_REF);
+
+            if (!mainSnapshot.exists()) {
+              throw new Error('main-document-not-found');
+            }
+
+            const remotePayload = mainSnapshot.data();
+            const remoteSource =
+              remotePayload.data || remotePayload;
+            const latestData =
+              mergePersistedData(remoteSource);
+
+            const latestBlockingRequest =
+              findSameAssetBlockingRequest(
+                latestData.requests,
+                id
+              );
+
+            if (latestBlockingRequest) {
+              const conflictError =
+                new Error('active-rental-exists');
+
+              conflictError.blockingRequest =
+                latestBlockingRequest;
+
+              throw conflictError;
+            }
+
+            const laptopExists =
+              (latestData.laptops || []).some(
+                (laptop) => laptop.id === id
+              );
+
+            if (!laptopExists) {
+              throw new Error('laptop-not-found');
+            }
+
+            const nextCommittedMainData = {
+              ...latestData,
+              laptops: (latestData.laptops || []).filter(
+                (laptop) => laptop.id !== id
+              ),
+            };
+
+            transaction.update(DATA_DOC_REF, {
+              'data.laptops':
+                nextCommittedMainData.laptops,
+              updatedAt: serverTimestamp(),
+            });
+
+            committedMainData =
+              nextCommittedMainData;
+          });
+
+          if (!committedMainData) {
+            throw new Error(
+              'laptop-delete-transaction-result-missing'
+            );
+          }
+
+          lastSyncedDataRef.current =
+            JSON.stringify(
+              stripAdminAccountsFromData(
+                committedMainData
+              )
+            );
+
+          setData(committedMainData);
+
+          if (selectedLaptopId === id) {
+            setSelectedLaptopId(null);
+          }
+
+          if (editLaptop?.id === id) {
+            setEditLaptop(null);
+          }
+
+          triggerToast(
+            `자산 ${assetNo}이(가) 성공적으로 삭제되었습니다.`,
+            'success'
+          );
+        } catch (error) {
+          console.error(
+            'Laptop delete transaction error:',
+            error
+          );
+
+          if (error?.message === 'active-rental-exists') {
+            const blockingRequest =
+              error.blockingRequest;
+
+            const blockingStatus =
+              getDisplayRentalStatus(
+                blockingRequest?.status,
+                blockingRequest?.startDate
+              );
+
+            triggerToast(
+              `삭제 확인 중 자산 ${assetNo}에 새로운 [${blockingStatus}] 신청이 확인되어 삭제를 중단했습니다. 해당 신청을 먼저 처리해 주세요.`,
+              'error'
+            );
+            return;
+          }
+
+          if (error?.message === 'laptop-not-found') {
+            triggerToast(
+              `자산 ${assetNo}은(는) 이미 삭제되었거나 최신 자산 목록에서 찾을 수 없습니다.`,
+              'error'
+            );
+            return;
+          }
+
+          triggerToast(
+            `자산 ${assetNo} 삭제에 실패했습니다. 자산 목록과 Firestore 권한 및 네트워크 상태를 확인해 주세요.`,
+            'error'
+          );
+        }
       }
     );
   };
