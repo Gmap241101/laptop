@@ -5871,17 +5871,21 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
     const requesterEmail = String(
       firebaseAuthUser.email || ''
-    ).trim();
+    );
 
     const requesterName = String(
       userProfile.name || ''
-    ).trim();
+    );
 
     const requesterTeam = String(
       userProfile.team || ''
-    ).trim();
+    );
 
-    if (!requesterEmail || !requesterName || !requesterTeam) {
+    if (
+      !requesterEmail.trim() ||
+      !requesterName.trim() ||
+      !requesterTeam.trim()
+    ) {
       triggerToast(
         '회원 이메일, 이름 또는 부서 정보가 완성되지 않았습니다. 마이페이지에서 회원 정보를 확인해 주세요.',
         'error'
@@ -6032,9 +6036,16 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           id: assetSnapshot.id,
         };
 
+        const storedReservations =
+          Array.isArray(
+            latestAsset.reservations
+          )
+            ? latestAsset.reservations
+            : [];
+
         const latestReservations =
           normalizeAssetReservations(
-            latestAsset.reservations || []
+            storedReservations
           );
 
         const latestAvailability =
@@ -6070,7 +6081,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           );
 
         const nextReservations = [
-          ...latestReservations,
+          ...storedReservations,
           availabilityRequest,
         ];
 
