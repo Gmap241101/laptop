@@ -4992,9 +4992,11 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           ],
         };
 
-        const nextCommittedMainDataForSave =
-          stripAdminAccountsFromData(nextCommittedMainData);
-
+        const nextCommittedMainDataForSave = {
+          ...remoteSource,
+          requests: nextCommittedMainData.requests,
+        };
+        
         transaction.set(
           requestDocRef,
           {
@@ -5004,13 +5006,10 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           }
         );
 
-        transaction.set(
-          DATA_DOC_REF,
-          {
-            data: nextCommittedMainDataForSave,
-            updatedAt: serverTimestamp(),
-          }
-        );
+        transaction.update(DATA_DOC_REF, {
+          'data.requests': nextCommittedMainData.requests,
+          updatedAt: serverTimestamp(),
+        });
 
         committedRequest = nextCommittedRequest;
         committedMainData = nextCommittedMainData;
@@ -5026,7 +5025,9 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       }
 
       lastSyncedDataRef.current =
-        JSON.stringify(committedMainDataForSave);
+        JSON.stringify(
+          stripAdminAccountsFromData(committedMainData)
+        );
 
       setRentalRequests((prev) => [
         committedRequest,
@@ -5125,20 +5126,29 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         const availabilityRequest =
           toRentalAvailabilityRequest(nextCommittedRequest);
 
-        const requestExists = (latestData.requests || []).some(
-          (request) => request.id === id
-        );
-
-        const updatedRequests = requestExists
-          ? (latestData.requests || []).map((request) =>
-              request.id === id
-                ? availabilityRequest
-                : request
+        const retainedAvailabilityRequests =
+          (latestData.requests || [])
+            .filter(
+              (request) =>
+                request.id !== id &&
+                RENTAL_BLOCKING_REQUEST_STATUSES.includes(
+                  request.status
+                )
             )
-          : [
-              availabilityRequest,
-              ...(latestData.requests || []),
-            ];
+            .map((request) =>
+              toRentalAvailabilityRequest(request)
+            );
+
+        const shouldKeepInAvailabilityRequests =
+          RENTAL_BLOCKING_REQUEST_STATUSES.includes(status);
+
+        const updatedRequests =
+          shouldKeepInAvailabilityRequests
+            ? [
+                availabilityRequest,
+                ...retainedAvailabilityRequests,
+              ]
+            : retainedAvailabilityRequests;
 
         const nextCommittedMainData = {
           ...latestData,
@@ -5186,13 +5196,11 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           { merge: true }
         );
 
-        transaction.set(
-          DATA_DOC_REF,
-          {
-            data: nextCommittedMainDataForSave,
-            updatedAt: serverTimestamp(),
-          }
-        );
+        transaction.update(DATA_DOC_REF, {
+          'data.requests': nextCommittedMainData.requests,
+          'data.laptops': nextCommittedMainData.laptops,
+          updatedAt: serverTimestamp(),
+        });
 
         committedRequest = nextCommittedRequest;
         committedMainData = nextCommittedMainData;
