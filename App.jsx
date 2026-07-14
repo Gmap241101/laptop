@@ -5487,25 +5487,203 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     });
   };
   
-  const createLaptop = () => {
-    if (!newLaptop.assetNo.trim()) {
-      triggerToast('자산 관리 번호를 정확히 입력해 주세요.', 'error');
+  // 수정 후 코드
+  const createLaptop = async () => {
+    if (!newLaptop) {
+      triggerToast(
+        '신규 등록할 자산 정보를 찾을 수 없습니다.',
+        'error'
+      );
       return;
     }
-    const newId = `NB-${Date.now()}`;
-    setData((prev) => ({
-      ...prev,
-      laptops: [
-        ...prev.laptops,
-        {
-          ...newLaptop,
-          id: newId,
-          category: newLaptop.category || prev.assetCategories?.[0] || '노트북',
-        },
-      ],
-    }));
-    setNewLaptop(null);
-    triggerToast(`자산 ${newLaptop.assetNo}이(가) 신규 등록되었습니다.`, 'success');
+
+    const newAssetNo = String(
+      newLaptop.assetNo || ''
+    ).trim();
+
+    const newCategory = String(
+      newLaptop.category || ''
+    ).trim();
+
+    if (!newAssetNo) {
+      triggerToast(
+        '자산 관리 번호를 정확히 입력해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    if (!newCategory) {
+      triggerToast(
+        '자산 카테고리를 선택해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    const newId =
+      `NB-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}`;
+
+    const newLaptopDraft = {
+      ...newLaptop,
+      id: newId,
+      assetNo: newAssetNo,
+      category: newCategory,
+      status:
+        newLaptop.status === STATUS.UNAVAILABLE
+          ? STATUS.UNAVAILABLE
+          : STATUS.AVAILABLE,
+      currentRequestId: null,
+    };
+
+    let committedMainData = null;
+
+    try {
+      await runTransaction(db, async (transaction) => {
+        const mainSnapshot =
+          await transaction.get(DATA_DOC_REF);
+
+        if (!mainSnapshot.exists()) {
+          throw new Error('main-document-not-found');
+        }
+
+        const remotePayload = mainSnapshot.data();
+        const remoteSource =
+          remotePayload.data || remotePayload;
+        const latestData =
+          mergePersistedData(remoteSource);
+
+        const categoryExists =
+          (latestData.assetCategories || []).some(
+            (category) =>
+              String(category || '').trim() ===
+              newCategory
+          );
+
+        if (!categoryExists) {
+          throw new Error(
+            'asset-category-not-found'
+          );
+        }
+
+        const duplicatedLaptop =
+          (latestData.laptops || []).find(
+            (laptop) =>
+              String(laptop.assetNo || '')
+                .trim()
+                .toLowerCase() ===
+              newAssetNo.toLowerCase()
+          );
+
+        if (duplicatedLaptop) {
+          const duplicateError =
+            new Error('duplicate-asset-number');
+
+          duplicateError.duplicatedLaptop =
+            duplicatedLaptop;
+
+          throw duplicateError;
+        }
+
+        const duplicatedId =
+          (latestData.laptops || []).some(
+            (laptop) => laptop.id === newId
+          );
+
+        if (duplicatedId) {
+          throw new Error(
+            'duplicate-laptop-id'
+          );
+        }
+
+        const nextCommittedMainData = {
+          ...latestData,
+          laptops: [
+            ...(latestData.laptops || []),
+            newLaptopDraft,
+          ],
+        };
+
+        transaction.update(DATA_DOC_REF, {
+          'data.laptops':
+            nextCommittedMainData.laptops,
+          updatedAt: serverTimestamp(),
+        });
+
+        committedMainData =
+          nextCommittedMainData;
+      });
+
+      if (!committedMainData) {
+        throw new Error(
+          'laptop-create-transaction-result-missing'
+        );
+      }
+
+      lastSyncedDataRef.current =
+        JSON.stringify(
+          stripAdminAccountsFromData(
+            committedMainData
+          )
+        );
+
+      setData(committedMainData);
+      setNewLaptop(null);
+
+      triggerToast(
+        `자산 ${newAssetNo}이(가) 신규 등록되었습니다.`,
+        'success'
+      );
+    } catch (error) {
+      console.error(
+        'Laptop create transaction error:',
+        error
+      );
+
+      if (
+        error?.message ===
+        'duplicate-asset-number'
+      ) {
+        const duplicatedAssetNo =
+          error.duplicatedLaptop?.assetNo ||
+          newAssetNo;
+
+        triggerToast(
+          `자산관리번호 [${duplicatedAssetNo}]은(는) 이미 등록되어 있어 신규 자산으로 추가할 수 없습니다.`,
+          'error'
+        );
+        return;
+      }
+
+      if (
+        error?.message ===
+        'asset-category-not-found'
+      ) {
+        triggerToast(
+          '선택한 자산 카테고리가 최신 카테고리 목록에 없습니다. 신규 등록 패널을 닫고 다시 열어 주세요.',
+          'error'
+        );
+        return;
+      }
+
+      if (
+        error?.message ===
+        'duplicate-laptop-id'
+      ) {
+        triggerToast(
+          '신규 자산 식별번호가 중복되어 등록을 중단했습니다. 다시 등록 버튼을 눌러 주세요.',
+          'error'
+        );
+        return;
+      }
+
+      triggerToast(
+        '신규 자산 등록에 실패했습니다. 입력 내용은 유지됩니다. Firestore 권한과 네트워크 상태를 확인해 주세요.',
+        'error'
+      );
+    }
   };
 
   // 엑셀/CSV 파일 일괄 자동 업로드 분석 처리 로직
