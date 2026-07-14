@@ -6188,8 +6188,29 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           'error'
         );
       } else {
+        const firebaseErrorCode =
+          error?.code || 'unknown-error';
+
+        const firebaseErrorMessage =
+          error?.message || '오류 메시지 없음';
+
+        console.error(
+          'Rental request create error details:',
+          {
+            code: firebaseErrorCode,
+            message: firebaseErrorMessage,
+            requesterUid:
+              firebaseAuthUser?.uid || '',
+            requestId,
+            assetId:
+              selectedLaptop?.id || '',
+            assetNo:
+              selectedLaptop?.assetNo || '',
+          }
+        );
+
         triggerToast(
-          '대여 신청 저장에 실패했습니다. 신청정보와 기기 상태는 변경되지 않았습니다. Firestore Rules와 네트워크 상태를 확인해 주세요.',
+          `대여 신청 저장에 실패했습니다. 오류 코드: ${firebaseErrorCode}`,
           'error'
         );
       }
