@@ -20,6 +20,7 @@ import {
   getFirestore,
   onSnapshot,
   query as firestoreQuery,
+  runTransaction,
   setDoc,
   serverTimestamp,
   where,
@@ -1637,6 +1638,7 @@ function App() {
     setRentalRequestsLoadErrorMessage,
   ] = useState('');
   const [requestSubmitLoading, setRequestSubmitLoading] = useState(false);
+  const requestSubmitInProgressRef = useRef(false);
 
   const [adminAccounts, setAdminAccounts] = useState([]);
   const [adminAccountsReady, setAdminAccountsReady] = useState(false);
@@ -2746,7 +2748,7 @@ function App() {
           doc(db, USER_ACCOUNTS_COLLECTION_NAME, credential.user.uid),
           {
             uid: credential.user.uid,
-            email,
+            email: credential.user.email || email,
             name,
             team,
             phone,
@@ -4736,6 +4738,13 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       : -1;
 
   const submitRequest = async () => {
+    if (
+      requestSubmitInProgressRef.current ||
+      requestSubmitLoading
+    ) {
+      return;
+    }
+
     if (!firebaseAuthReady || !currentAuthRoleReady || !userProfileReady) {
       triggerToast(
         '로그인 계정과 회원 정보를 확인하는 중입니다. 잠시 후 다시 시도해 주세요.',
@@ -4772,8 +4781,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       return;
     }
 
-    const currentUserStatus =
-      userProfile.status || USER_PROFILE_STATUS.ACTIVE;
+    const currentUserStatus = userProfile.status || '';
 
     if (currentUserStatus === USER_PROFILE_STATUS.BLOCKED) {
       triggerToast(
@@ -4788,6 +4796,27 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         '현재 회원 상태에서는 기기 대여신청을 제출할 수 없습니다.',
         'error'
       );
+      return;
+    }
+
+    const requesterEmail = String(
+      firebaseAuthUser.email || ''
+    ).trim();
+
+    const requesterName = String(
+      userProfile.name || ''
+    ).trim();
+
+    const requesterTeam = String(
+      userProfile.team || ''
+    ).trim();
+
+    if (!requesterEmail || !requesterName || !requesterTeam) {
+      triggerToast(
+        '회원 이메일, 이름 또는 부서 정보가 완성되지 않았습니다. 마이페이지에서 회원 정보를 확인해 주세요.',
+        'error'
+      );
+      goToUserMypage();
       return;
     }
 
@@ -4871,22 +4900,24 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       return;
     }
 
-    const requestId = `REQ-${Date.now()}`;
+    const requestId = `REQ-${doc(
+      RENTAL_REQUESTS_COLLECTION_REF
+    ).id}`;
+
+    const requestDocRef = doc(
+      db,
+      'rentalRequests',
+      requestId
+    );
+
     const requestedAt = new Date().toLocaleString('ko-KR');
 
     const nextRequest = {
       id: requestId,
       requesterUid: firebaseAuthUser.uid,
-      requesterEmail:
-        firebaseAuthUser.email ||
-        userProfile.email ||
-        '',
-      requesterName:
-        userProfile.name ||
-        form.borrower,
-      requesterTeam:
-        userProfile.team ||
-        form.team,
+      requesterEmail,
+      requesterName,
+      requesterTeam,
       laptopId: selectedLaptop.id,
       assetCategory: selectedLaptop.category || '노트북',
       assetNo: selectedLaptop.assetNo,
@@ -4900,49 +4931,113 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       requestedAt,
     };
 
-    const availabilityRequest =
-      toRentalAvailabilityRequest(nextRequest);
+    let committedRequest = null;
+    let committedMainData = null;
+    let committedMainDataForSave = null;
 
+    requestSubmitInProgressRef.current = true;
     setRequestSubmitLoading(true);
 
     try {
-      await setDoc(
-        doc(db, 'rentalRequests', requestId),
-        {
-          ...nextRequest,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
+      await runTransaction(db, async (transaction) => {
+        const mainSnapshot = await transaction.get(DATA_DOC_REF);
+
+        if (!mainSnapshot.exists()) {
+          throw new Error('main-document-not-found');
         }
-      );
+
+        const remotePayload = mainSnapshot.data();
+        const remoteSource = remotePayload.data || remotePayload;
+        const latestData = mergePersistedData(remoteSource);
+
+        const latestLaptop = (latestData.laptops || []).find(
+          (laptop) => laptop.id === selectedLaptop.id
+        );
+
+        if (!latestLaptop) {
+          throw new Error('selected-laptop-not-found');
+        }
+
+        const latestAvailability = getLaptopRentalAvailability(
+          latestLaptop,
+          latestData.requests,
+          latestData.settings,
+          form.startDate,
+          form.dueDate
+        );
+
+        if (latestAvailability.blocked) {
+          const conflictError = new Error('rental-conflict');
+          conflictError.availability = latestAvailability;
+          throw conflictError;
+        }
+
+        const nextCommittedRequest = {
+          ...nextRequest,
+          laptopId: latestLaptop.id,
+          assetCategory: latestLaptop.category || '노트북',
+          assetNo: latestLaptop.assetNo,
+        };
+
+        const availabilityRequest =
+          toRentalAvailabilityRequest(nextCommittedRequest);
+
+        const nextCommittedMainData = {
+          ...latestData,
+          requests: [
+            availabilityRequest,
+            ...(latestData.requests || []).filter(
+              (request) => request.id !== requestId
+            ),
+          ],
+        };
+
+        const nextCommittedMainDataForSave =
+          stripAdminAccountsFromData(nextCommittedMainData);
+
+        transaction.set(
+          requestDocRef,
+          {
+            ...nextCommittedRequest,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          }
+        );
+
+        transaction.set(
+          DATA_DOC_REF,
+          {
+            data: nextCommittedMainDataForSave,
+            updatedAt: serverTimestamp(),
+          }
+        );
+
+        committedRequest = nextCommittedRequest;
+        committedMainData = nextCommittedMainData;
+        committedMainDataForSave = nextCommittedMainDataForSave;
+      });
+
+      if (
+        !committedRequest ||
+        !committedMainData ||
+        !committedMainDataForSave
+      ) {
+        throw new Error('rental-transaction-result-missing');
+      }
+
+      lastSyncedDataRef.current =
+        JSON.stringify(committedMainDataForSave);
 
       setRentalRequests((prev) => [
-        nextRequest,
+        committedRequest,
         ...(prev || []).filter(
           (request) => request.id !== requestId
         ),
       ]);
 
-      setData((prev) => ({
-        ...prev,
-        laptops: prev.laptops.map((laptop) =>
-          laptop.id === selectedLaptop.id
-            ? {
-                ...laptop,
-                status: STATUS.REQUESTED,
-                currentRequestId: requestId,
-              }
-            : laptop
-        ),
-        requests: [
-          availabilityRequest,
-          ...(prev.requests || []).filter(
-            (request) => request.id !== requestId
-          ),
-        ],
-      }));
-
+      setData(committedMainData);
       setSelectedLaptopId(null);
-      setForm(createDefaultRequestForm(data.settings));
+      setForm(createDefaultRequestForm(committedMainData.settings));
 
       triggerToast(
         '대여 신청이 성공적으로 접수되었습니다. 관리자 승인을 대기합니다.',
@@ -4951,11 +5046,28 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     } catch (error) {
       console.error('Rental request create error:', error);
 
-      triggerToast(
-        '대여 신청 저장에 실패했습니다. Firestore Rules의 rentalRequests 생성 권한과 네트워크 상태를 확인해 주세요.',
-        'error'
-      );
+      if (error?.message === 'rental-conflict') {
+        const blockingRequest = error.availability?.blockingRequest;
+
+        triggerToast(
+          blockingRequest
+            ? `${selectedLaptop.assetNo}은(는) ${formatDateWithKoreanWeekday(blockingRequest.startDate)} ~ ${formatDateWithKoreanWeekday(blockingRequest.dueDate)} 기간에 이미 ${blockingRequest.status} 상태의 신청이 있어 신청할 수 없습니다.`
+            : '다른 사용자의 신청이 먼저 접수되어 현재 선택한 기기를 신청할 수 없습니다.',
+          'error'
+        );
+      } else if (error?.message === 'selected-laptop-not-found') {
+        triggerToast(
+          '선택한 기기 정보를 찾을 수 없습니다. 목록을 새로고침한 뒤 다시 시도해 주세요.',
+          'error'
+        );
+      } else {
+        triggerToast(
+          '대여 신청 저장에 실패했습니다. 신청정보와 기기 상태는 변경되지 않았습니다. Firestore Rules와 네트워크 상태를 확인해 주세요.',
+          'error'
+        );
+      }
     } finally {
+      requestSubmitInProgressRef.current = false;
       setRequestSubmitLoading(false);
     }
   };
@@ -4970,11 +5082,9 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       return;
     }
 
-    const nextRequest = {
-      ...currentRequest,
-      status,
-      updatedAt: new Date().toLocaleString('ko-KR'),
-    };
+    let committedRequest = null;
+    let committedMainData = null;
+    let committedMainDataForSave = null;
 
     const nextDisplayStatus = getDisplayRentalStatus(
       status,
@@ -4982,53 +5092,59 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     );
 
     try {
-      await setDoc(
-        doc(db, 'rentalRequests', id),
-        {
-          ...nextRequest,
-          syncedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      await runTransaction(db, async (transaction) => {
+        const requestDocRef = doc(db, 'rentalRequests', id);
 
-      setRentalRequests((prev) => {
-        const requestExists = (prev || []).some(
-          (request) => request.id === id
-        );
+        const mainSnapshot = await transaction.get(DATA_DOC_REF);
+        const requestSnapshot = await transaction.get(requestDocRef);
 
-        if (!requestExists) {
-          return [nextRequest, ...(prev || [])];
+        if (!mainSnapshot.exists()) {
+          throw new Error('main-document-not-found');
         }
 
-        return (prev || []).map((request) =>
-          request.id === id ? nextRequest : request
-        );
-      });
+        const remotePayload = mainSnapshot.data();
+        const remoteSource = remotePayload.data || remotePayload;
+        const latestData = mergePersistedData(remoteSource);
 
-      setData((prev) => {
+        const latestRequest = requestSnapshot.exists()
+          ? {
+              ...requestSnapshot.data(),
+              id: requestSnapshot.id,
+            }
+          : currentRequest;
+
+        if (!latestRequest?.id) {
+          throw new Error('rental-request-not-found');
+        }
+
+        const nextCommittedRequest = {
+          ...latestRequest,
+          status,
+        };
+
         const availabilityRequest =
-          toRentalAvailabilityRequest(nextRequest);
+          toRentalAvailabilityRequest(nextCommittedRequest);
 
-        const requestExists = (prev.requests || []).some(
+        const requestExists = (latestData.requests || []).some(
           (request) => request.id === id
         );
 
         const updatedRequests = requestExists
-          ? (prev.requests || []).map((request) =>
+          ? (latestData.requests || []).map((request) =>
               request.id === id
                 ? availabilityRequest
                 : request
             )
           : [
               availabilityRequest,
-              ...(prev.requests || []),
+              ...(latestData.requests || []),
             ];
 
-        return {
-          ...prev,
+        const nextCommittedMainData = {
+          ...latestData,
           requests: updatedRequests,
-          laptops: prev.laptops.map((laptop) => {
-            if (laptop.id !== currentRequest.laptopId) {
+          laptops: (latestData.laptops || []).map((laptop) => {
+            if (laptop.id !== nextCommittedRequest.laptopId) {
               return laptop;
             }
 
@@ -5056,17 +5172,76 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             };
           }),
         };
+
+        const nextCommittedMainDataForSave =
+          stripAdminAccountsFromData(nextCommittedMainData);
+
+        transaction.set(
+          requestDocRef,
+          {
+            ...nextCommittedRequest,
+            updatedAt: serverTimestamp(),
+            syncedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        transaction.set(
+          DATA_DOC_REF,
+          {
+            data: nextCommittedMainDataForSave,
+            updatedAt: serverTimestamp(),
+          }
+        );
+
+        committedRequest = nextCommittedRequest;
+        committedMainData = nextCommittedMainData;
+        committedMainDataForSave = nextCommittedMainDataForSave;
       });
+
+      if (
+        !committedRequest ||
+        !committedMainData ||
+        !committedMainDataForSave
+      ) {
+        throw new Error(
+          'rental-status-transaction-result-missing'
+        );
+      }
+
+      lastSyncedDataRef.current =
+        JSON.stringify(committedMainDataForSave);
+
+      setRentalRequests((prev) => {
+        const requestExists = (prev || []).some(
+          (request) => request.id === id
+        );
+
+        if (!requestExists) {
+          return [committedRequest, ...(prev || [])];
+        }
+
+        return (prev || []).map((request) =>
+          request.id === id
+            ? committedRequest
+            : request
+        );
+      });
+
+      setData(committedMainData);
 
       triggerToast(
         `상태가 [${nextDisplayStatus}]로 업데이트 되었습니다.`,
         'success'
       );
     } catch (error) {
-      console.error('Rental request status update error:', error);
+      console.error(
+        'Rental request status update error:',
+        error
+      );
 
       triggerToast(
-        '신청 상태 저장에 실패했습니다. Firestore Rules의 rentalRequests 관리자 수정 권한을 확인해 주세요.',
+        '신청 상태와 기기 상태 저장에 실패했습니다. 변경사항은 적용되지 않았습니다. Firestore Rules와 네트워크 상태를 확인해 주세요.',
         'error'
       );
     }
@@ -5109,41 +5284,64 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       return;
     }
 
-    const nextRequest = {
-      ...currentRequest,
-      adminMemo: memo,
-      updatedAt: new Date().toLocaleString('ko-KR'),
-    };
+    const requestDocRef = doc(db, 'rentalRequests', id);
 
     try {
-      await setDoc(
-        doc(db, 'rentalRequests', id),
-        {
-          ...nextRequest,
+      await runTransaction(db, async (transaction) => {
+        const requestSnapshot = await transaction.get(requestDocRef);
+
+        if (requestSnapshot.exists()) {
+          transaction.set(
+            requestDocRef,
+            {
+              adminMemo: memo,
+              updatedAt: serverTimestamp(),
+              syncedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+
+          return;
+        }
+
+        transaction.set(requestDocRef, {
+          ...currentRequest,
+          adminMemo: memo,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
           syncedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+        });
+      });
 
-      setRentalRequests((prev) =>
-        (prev || []).map((request) =>
-          request.id === id ? nextRequest : request
-        )
-      );
+      setRentalRequests((prev) => {
+        const requestExists = (prev || []).some(
+          (request) => request.id === id
+        );
 
-      setData((prev) => ({
-        ...prev,
-        requests: (prev.requests || []).map((request) =>
+        if (!requestExists) {
+          return [
+            {
+              ...currentRequest,
+              adminMemo: memo,
+            },
+            ...(prev || []),
+          ];
+        }
+
+        return (prev || []).map((request) =>
           request.id === id
-            ? toRentalAvailabilityRequest(nextRequest)
+            ? {
+                ...request,
+                adminMemo: memo,
+              }
             : request
-        ),
-      }));
+        );
+      });
     } catch (error) {
       console.error('Rental request memo save error:', error);
 
       triggerToast(
-        '관리자 메모 저장에 실패했습니다. Firestore Rules의 rentalRequests 관리자 수정 권한을 확인해 주세요.',
+        '관리자 메모 저장에 실패했습니다. 저장되지 않은 메모가 화면에 남아 있을 수 있으므로 신청내역을 다시 확인해 주세요.',
         'error'
       );
     }
@@ -7050,7 +7248,11 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                         </div>
                       )}
                       <div className="space-y-4">
-                        {mergedRentalRequests.length === 0 ? (
+                        {!rentalRequestsReady ? (
+                          <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
+                            전체 대여신청 정보를 불러오는 중입니다.
+                          </div>
+                        ) : rentalRequestsLoadErrorMessage ? null : mergedRentalRequests.length === 0 ? (
                           <div className="rounded-2xl bg-slate-50 border border-dashed border-slate-200 py-12 text-center text-slate-400 text-xs">
                             현재 접수되거나 처리된 대여 신청 목록이 없습니다.
                           </div>
