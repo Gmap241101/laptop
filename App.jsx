@@ -5702,7 +5702,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     }
 
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       try {
         const dataBytes = new Uint8Array(evt.target.result);
         let jsonResult = [];
@@ -5746,7 +5746,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           }
         }
 
-        processParsedData(jsonResult);
+        await processParsedData(jsonResult);
         // 파일 인풋 버퍼 초기화로 동일 파일 재업로드 대응
         e.target.value = '';
       } catch (err) {
@@ -5758,99 +5758,360 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
   };
 
   // 분석 완료된 자산 데이터 병합 가동
-  const processParsedData = (jsonList) => {
+  const processParsedData = async (jsonList) => {
     if (!jsonList || jsonList.length === 0) {
-      triggerToast('업로드된 파일에서 읽어올 수 있는 자산이 감지되지 않았습니다.', 'error');
+      triggerToast(
+        '업로드된 파일에서 읽어올 수 있는 자산이 감지되지 않았습니다.',
+        'error'
+      );
       return;
     }
 
-    const uploadedLaptops = [];
-    let addCount = 0;
+    const parsedCandidates = [];
     let missingAssetNoCount = 0;
-    let invalidCategoryCount = 0;
-    const invalidCategoryNames = new Set();
 
     jsonList.forEach((row, index) => {
-      // 실무자 유연한 대소문자 및 유사어 추적 필터
       const matchVal = (keys) => {
-        const matchedKey = Object.keys(row).find(k =>
-          keys.some(key => k.toLowerCase().replace(/\s+/g, '').includes(key.toLowerCase()))
+        const matchedKey = Object.keys(row).find((keyName) =>
+          keys.some((key) =>
+            keyName
+              .toLowerCase()
+              .replace(/\s+/g, '')
+              .includes(key.toLowerCase())
+          )
         );
-        return matchedKey ? String(row[matchedKey]).trim() : '';
+
+        return matchedKey
+          ? String(row[matchedKey]).trim()
+          : '';
       };
 
-      const category = matchVal(['자산카테고리', '카테고리', '분류', 'category', 'assetcategory', 'asset_category']);
-      const assetNo = matchVal(['자산관리번호', '관리번호', '자산번호', 'assetno', 'asset_no']);
-      const model = matchVal(['모델명', '모델', '기종', 'model']);
-      const serialNo = matchVal(['시리얼번호', '시리얼', 'serialno', 'serial_no', 'sn', 's/n']);
-      const manufactureDate = matchVal(['제조일자', '제조일', '구입일자', '구입일', 'manufacturedate', 'manufacture_date']);
-      const note = matchVal(['비고', '메모', '특이사항', 'note']);
-      const photo = matchVal(['사진url', '사진링크', '사진', 'photo', 'image']);
-      const statusVal = matchVal(['대여가능여부', '대여가능', '대여상태', '상태', 'status']);
+      const category = matchVal([
+        '자산카테고리',
+        '카테고리',
+        '분류',
+        'category',
+        'assetcategory',
+        'asset_category',
+      ]);
 
-      // 필수 충족요건인 '자산관리번호' 존재 체크
+      const assetNo = matchVal([
+        '자산관리번호',
+        '관리번호',
+        '자산번호',
+        'assetno',
+        'asset_no',
+      ]);
+
+      const model = matchVal([
+        '모델명',
+        '모델',
+        '기종',
+        'model',
+      ]);
+
+      const serialNo = matchVal([
+        '시리얼번호',
+        '시리얼',
+        'serialno',
+        'serial_no',
+        'sn',
+        's/n',
+      ]);
+
+      const manufactureDate = matchVal([
+        '제조일자',
+        '제조일',
+        '구입일자',
+        '구입일',
+        'manufacturedate',
+        'manufacture_date',
+      ]);
+
+      const note = matchVal([
+        '비고',
+        '메모',
+        '특이사항',
+        'note',
+      ]);
+
+      const photo = matchVal([
+        '사진url',
+        '사진링크',
+        '사진',
+        'photo',
+        'image',
+      ]);
+
+      const statusVal = matchVal([
+        '대여가능여부',
+        '대여가능',
+        '대여상태',
+        '상태',
+        'status',
+      ]);
+
       if (!assetNo) {
         missingAssetNoCount++;
         return;
       }
 
-      // 등록된 자산 카테고리와 일치하는 행만 업로드
-      const matchedCategory = (data.assetCategories || []).find(
-        (registeredCategory) =>
-          String(registeredCategory || '').trim().toLowerCase() === category.trim().toLowerCase()
-      );
+      const fallbackPhoto =
+        'https://images.unsplash.com/photo-1593642632823-8f785ba67e45?auto=format&fit=crop&w=500&q=80';
 
-      if (!category || !matchedCategory) {
-        invalidCategoryCount++;
-        invalidCategoryNames.add(category || '미입력');
-        return;
-      }
+      const finalStatus =
+        statusVal.includes('대여불가') ||
+        statusVal.toLowerCase().includes('unavailable') ||
+        statusVal.includes('불가')
+          ? STATUS.UNAVAILABLE
+          : STATUS.AVAILABLE;
 
-      const fallbackPhoto = `https://images.unsplash.com/photo-1593642632823-8f785ba67e45?auto=format&fit=crop&w=500&q=80`;
-      let finalStatus = STATUS.AVAILABLE;
-      
-      if (statusVal.includes('대여불가') || statusVal.toLowerCase().includes('unavailable') || statusVal.includes('불가')) {
-        finalStatus = STATUS.UNAVAILABLE;
-      }
-
-      uploadedLaptops.push({
-        id: `NB-UP-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 5)}`,
-        category: matchedCategory,
-        assetNo: assetNo,
-        serialNo: serialNo || `SN-AUTO-${Math.floor(Math.random() * 90000 + 10000)}`,
+      parsedCandidates.push({
+        sourceIndex: index,
+        category,
+        assetNo: assetNo.trim(),
+        serialNo:
+          serialNo ||
+          `SN-AUTO-${Math.floor(
+            Math.random() * 90000 + 10000
+          )}`,
         model: model || '미지정 기종',
-        manufactureDate: manufactureDate || today(),
+        manufactureDate:
+          manufactureDate || today(),
         photo: photo || fallbackPhoto,
         note: note || '',
         status: finalStatus,
-        currentRequestId: null
+        currentRequestId: null,
       });
-      addCount++;
     });
 
-    if (uploadedLaptops.length > 0) {
-      setData((prev) => ({
-        ...prev,
-        laptops: [...prev.laptops, ...uploadedLaptops],
-      }));
-      setShowUploadPanel(false);
-
-      const skippedMessages = [];
-      if (invalidCategoryCount > 0) {
-        skippedMessages.push(`카테고리 불일치 ${invalidCategoryCount}건 제외`);
-      }
+    if (parsedCandidates.length === 0) {
       if (missingAssetNoCount > 0) {
-        skippedMessages.push(`자산관리번호 누락 ${missingAssetNoCount}건 제외`);
+        triggerToast(
+          '자산관리번호가 입력된 행이 없어 업로드하지 않았습니다.',
+          'error'
+        );
+        return;
       }
 
       triggerToast(
-        `총 ${addCount}대의 기기를 엑셀/CSV 데이터베이스로 일괄 추가 등록했습니다.${skippedMessages.length ? ` (${skippedMessages.join(', ')})` : ''}`,
-        'success'
+        '헤더(자산카테고리, 자산관리번호, 모델명, 시리얼번호 등) 규격 정보가 일치하지 않아 가져오지 못했습니다.',
+        'error'
       );
-    } else {
-      const invalidCategoryList = Array.from(invalidCategoryNames).slice(0, 5).join(', ');
+      return;
+    }
+
+    let committedMainData = null;
+    let committedUploadResult = null;
+
+    try {
+      await runTransaction(db, async (transaction) => {
+        const mainSnapshot =
+          await transaction.get(DATA_DOC_REF);
+
+        if (!mainSnapshot.exists()) {
+          throw new Error('main-document-not-found');
+        }
+
+        const remotePayload = mainSnapshot.data();
+        const remoteSource =
+          remotePayload.data || remotePayload;
+        const latestData =
+          mergePersistedData(remoteSource);
+
+        const registeredCategoryMap = new Map(
+          (latestData.assetCategories || []).map(
+            (category) => [
+              String(category || '')
+                .trim()
+                .toLowerCase(),
+              category,
+            ]
+          )
+        );
+
+        const existingAssetNoSet = new Set(
+          (latestData.laptops || []).map(
+            (laptop) =>
+              String(laptop.assetNo || '')
+                .trim()
+                .toLowerCase()
+          )
+        );
+
+        const acceptedAssetNoSet = new Set();
+        const invalidCategoryNames = new Set();
+        const duplicateAssetNumbers = new Set();
+        const acceptedLaptops = [];
+
+        let invalidCategoryCount = 0;
+        let duplicateAssetNoCount = 0;
+
+        parsedCandidates.forEach(
+          (candidate, candidateIndex) => {
+            const normalizedCategory =
+              String(candidate.category || '')
+                .trim()
+                .toLowerCase();
+
+            const matchedCategory =
+              registeredCategoryMap.get(
+                normalizedCategory
+              );
+
+            if (
+              !normalizedCategory ||
+              !matchedCategory
+            ) {
+              invalidCategoryCount++;
+              invalidCategoryNames.add(
+                candidate.category || '미입력'
+              );
+              return;
+            }
+
+            const normalizedAssetNo =
+              String(candidate.assetNo || '')
+                .trim()
+                .toLowerCase();
+
+            if (
+              existingAssetNoSet.has(
+                normalizedAssetNo
+              ) ||
+              acceptedAssetNoSet.has(
+                normalizedAssetNo
+              )
+            ) {
+              duplicateAssetNoCount++;
+              duplicateAssetNumbers.add(
+                candidate.assetNo
+              );
+              return;
+            }
+
+            acceptedAssetNoSet.add(
+              normalizedAssetNo
+            );
+
+            acceptedLaptops.push({
+              id:
+                `NB-UP-${Date.now()}-` +
+                `${candidate.sourceIndex}-` +
+                `${candidateIndex}-` +
+                Math.random()
+                  .toString(36)
+                  .slice(2, 8),
+              category: matchedCategory,
+              assetNo: candidate.assetNo,
+              serialNo: candidate.serialNo,
+              model: candidate.model,
+              manufactureDate:
+                candidate.manufactureDate,
+              photo: candidate.photo,
+              note: candidate.note,
+              status: candidate.status,
+              currentRequestId: null,
+            });
+          }
+        );
+
+        const nextCommittedMainData = {
+          ...latestData,
+          laptops: [
+            ...(latestData.laptops || []),
+            ...acceptedLaptops,
+          ],
+        };
+
+        if (acceptedLaptops.length > 0) {
+          transaction.update(DATA_DOC_REF, {
+            'data.laptops':
+              nextCommittedMainData.laptops,
+            updatedAt: serverTimestamp(),
+          });
+        }
+
+        committedMainData =
+          nextCommittedMainData;
+
+        committedUploadResult = {
+          addCount: acceptedLaptops.length,
+          invalidCategoryCount,
+          invalidCategoryNames:
+            Array.from(invalidCategoryNames),
+          duplicateAssetNoCount,
+          duplicateAssetNumbers:
+            Array.from(duplicateAssetNumbers),
+        };
+      });
+
+      if (
+        !committedMainData ||
+        !committedUploadResult
+      ) {
+        throw new Error(
+          'bulk-upload-transaction-result-missing'
+        );
+      }
+
+      const {
+        addCount,
+        invalidCategoryCount,
+        invalidCategoryNames,
+        duplicateAssetNoCount,
+        duplicateAssetNumbers,
+      } = committedUploadResult;
+
+      if (addCount > 0) {
+        lastSyncedDataRef.current =
+          JSON.stringify(
+            stripAdminAccountsFromData(
+              committedMainData
+            )
+          );
+
+        setData(committedMainData);
+        setShowUploadPanel(false);
+
+        const skippedMessages = [];
+
+        if (invalidCategoryCount > 0) {
+          skippedMessages.push(
+            `카테고리 불일치 ${invalidCategoryCount}건 제외`
+          );
+        }
+
+        if (missingAssetNoCount > 0) {
+          skippedMessages.push(
+            `자산관리번호 누락 ${missingAssetNoCount}건 제외`
+          );
+        }
+
+        if (duplicateAssetNoCount > 0) {
+          skippedMessages.push(
+            `중복 자산관리번호 ${duplicateAssetNoCount}건 제외`
+          );
+        }
+
+        triggerToast(
+          `총 ${addCount}대의 기기를 엑셀/CSV 데이터베이스로 일괄 추가 등록했습니다.` +
+            `${
+              skippedMessages.length
+                ? ` (${skippedMessages.join(', ')})`
+                : ''
+            }`,
+          'success'
+        );
+        return;
+      }
 
       if (invalidCategoryCount > 0) {
+        const invalidCategoryList =
+          invalidCategoryNames
+            .slice(0, 5)
+            .join(', ');
+
         triggerToast(
           `등록된 자산 카테고리와 일치하는 행이 없어 업로드하지 않았습니다. 불일치 카테고리: ${invalidCategoryList}`,
           'error'
@@ -5858,12 +6119,33 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         return;
       }
 
-      if (missingAssetNoCount > 0) {
-        triggerToast('자산관리번호가 입력된 행이 없어 업로드하지 않았습니다.', 'error');
+      if (duplicateAssetNoCount > 0) {
+        const duplicateAssetNoList =
+          duplicateAssetNumbers
+            .slice(0, 5)
+            .join(', ');
+
+        triggerToast(
+          `기존 자산 또는 업로드 파일 내부에 동일한 자산관리번호가 있어 업로드하지 않았습니다. 중복 번호: ${duplicateAssetNoList}`,
+          'error'
+        );
         return;
       }
 
-      triggerToast('헤더(자산카테고리, 자산관리번호, 모델명, 시리얼번호 등) 규격 정보가 일치하지 않아 가져오지 못했습니다.', 'error');
+      triggerToast(
+        '업로드할 수 있는 유효한 자산이 없습니다.',
+        'error'
+      );
+    } catch (error) {
+      console.error(
+        'Bulk asset upload transaction error:',
+        error
+      );
+
+      triggerToast(
+        '엑셀/CSV 자산 등록에 실패했습니다. 기존 자산 목록은 변경되지 않았습니다. Firestore 권한과 네트워크 상태를 확인해 주세요.',
+        'error'
+      );
     }
   };
 
