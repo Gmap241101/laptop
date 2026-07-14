@@ -73,6 +73,7 @@ const adminAccountCreationApp = getApps().some(
 const db = getFirestore(firebaseApp);
 const firebaseAuth = getAuth(firebaseApp);
 const adminAccountCreationAuth = getAuth(adminAccountCreationApp);
+const DATA_DOC_REF = doc(db, 'laptopRentalDashboard', 'main');
 const ADMIN_ACCOUNTS_COLLECTION_REF = collection(db, 'adminAccounts');
 const RENTAL_REQUESTS_COLLECTION_REF = collection(db, 'rentalRequests');
 const USER_ACCOUNTS_COLLECTION_NAME = 'userAccounts';
@@ -98,15 +99,10 @@ const RENTAL_BORROWERS_COLLECTION_REF = collection(
   'rentalBorrowers'
 );
 
-const RENTAL_ASSET_NUMBERS_COLLECTION_REF = collection(
-  db,
-  'rentalAssetNumbers'
-);
-
-const SPLIT_STORAGE_VERSION = 2;
+const SPLIT_DATA_MIGRATION_VERSION = 1;
 
 // Firestore 배치 최대 500건보다 여유 있게 400건씩 처리
-const FIRESTORE_BATCH_WRITE_LIMIT = 400;
+const MIGRATION_BATCH_WRITE_LIMIT = 400;
 
 // --- 상태 및 스타일 정의 ---
 const STATUS = {
@@ -621,28 +617,12 @@ const initialData = {
 };
 
 function normalizeBorrowers(borrowers, teams) {
-  return borrowers
-    .map((borrower, index) => {
-      if (typeof borrower === 'string') {
-        return {
-          id: '',
-          name: borrower,
-          team: teams[index % teams.length] || '',
-          sortOrder: index,
-        };
-      }
-
-      return {
-        id: borrower.id || '',
-        name: borrower.name || '',
-        team: borrower.team || teams[0] || '',
-        sortOrder:
-          Number.isFinite(Number(borrower.sortOrder))
-            ? Number(borrower.sortOrder)
-            : index,
-      };
-    })
-    .sort((a, b) => a.sortOrder - b.sortOrder);
+  return borrowers.map((borrower, index) => {
+    if (typeof borrower === 'string') {
+      return { name: borrower, team: teams[index % teams.length] || '' };
+    }
+    return { name: borrower.name || '', team: borrower.team || teams[0] || '' };
+  });
 }
 
 function normalizeAdminAccounts(adminAccounts) {
@@ -695,71 +675,6 @@ function toRentalAvailabilityRequest(request = {}) {
   };
 }
 
-const normalizeAssetReservations = (reservations = []) =>
-  (Array.isArray(reservations) ? reservations : [])
-    .filter(
-      (request) =>
-        request?.id &&
-        request?.laptopId &&
-        RENTAL_BLOCKING_REQUEST_STATUSES.includes(request.status)
-    )
-    .map((request) => toRentalAvailabilityRequest(request));
-
-const normalizeAssetNumber = (assetNo) =>
-  String(assetNo || '').trim().toLowerCase();
-
-const getAssetNumberRegistryId = (assetNo) =>
-  encodeURIComponent(normalizeAssetNumber(assetNo));
-
-const createBorrowerDocumentId = () =>
-  `BORROWER-${doc(RENTAL_BORROWERS_COLLECTION_REF).id}`;
-
-const commitFirestoreOperations = async (
-  operations,
-  batchLimit = FIRESTORE_BATCH_WRITE_LIMIT
-) => {
-  for (
-    let startIndex = 0;
-    startIndex < operations.length;
-    startIndex += batchLimit
-  ) {
-    const operationChunk = operations.slice(
-      startIndex,
-      startIndex + batchLimit
-    );
-
-    const batch = writeBatch(db);
-
-    operationChunk.forEach((operation) => {
-      if (operation.type === 'delete') {
-        batch.delete(operation.ref);
-        return;
-      }
-
-      if (operation.type === 'update') {
-        batch.update(operation.ref, operation.data);
-        return;
-      }
-
-      if (operation.options) {
-        batch.set(
-          operation.ref,
-          operation.data,
-          operation.options
-        );
-        return;
-      }
-
-      batch.set(
-        operation.ref,
-        operation.data
-      );
-    });
-
-    await batch.commit();
-  }
-};
-
 function mergePersistedData(rawData) {
   const parsed = { ...initialData, ...(rawData || {}) };
   const assetCategories = Array.isArray(parsed.assetCategories) && parsed.assetCategories.length > 0
@@ -807,7 +722,6 @@ function mergePersistedData(rawData) {
     laptops: (parsed.laptops || []).map((asset) => ({
       ...asset,
       category: asset.category || assetCategories[0] || '노트북',
-      reservations: normalizeAssetReservations(asset.reservations || []),
     })),
     borrowers: normalizeBorrowers(parsed.borrowers || [], parsed.teams || []),
   };
@@ -1758,28 +1672,13 @@ function App() {
   const [adminAccountsReady, setAdminAccountsReady] = useState(false);
   const [adminAccountsLoadErrorMessage, setAdminAccountsLoadErrorMessage] = useState('');
   const [adminAccountsRemoteHasData, setAdminAccountsRemoteHasData] = useState(false);
-  const [legacyAdminAccounts] = useState([]);
+  const [legacyAdminAccounts, setLegacyAdminAccounts] = useState([]);
 
+  const applyingRemoteRef = useRef(false);
   const initializedRemoteFormRef = useRef(false);
-
-  const [splitPublicConfig, setSplitPublicConfig] = useState(null);
-  const [splitRentalAssets, setSplitRentalAssets] = useState([]);
-  const [splitRentalAvailability, setSplitRentalAvailability] = useState([]);
-  const [splitRentalBorrowers, setSplitRentalBorrowers] = useState([]);
-  const [splitStorageVersion, setSplitStorageVersion] = useState(0);
-  const [splitSourceReady, setSplitSourceReady] = useState({
-    config: false,
-    assets: false,
-    availability: false,
-    borrowers: false,
-  });
-
-  const [splitSourceErrors, setSplitSourceErrors] = useState({
-    config: '',
-    assets: '',
-    availability: '',
-    borrowers: '',
-  });
+  const lastSyncedDataRef = useRef('');
+  const saveTimerRef = useRef(null);
+  const allowFirebaseWriteRef = useRef(false);
 
   const adminAccountsApplyingRemoteRef = useRef(false);
   const adminAccountsLastSyncedRef = useRef({});
@@ -1863,8 +1762,8 @@ function App() {
   const [holidayImportLoading, setHolidayImportLoading] = useState(false);
 
   const [
-    splitStorageFinalizeLoading,
-    setSplitStorageFinalizeLoading,
+    splitDataMigrationLoading,
+    setSplitDataMigrationLoading,
   ] = useState(false);
 
   // Toast 메시지 상태
@@ -2143,70 +2042,75 @@ function App() {
   }, []);
 
   useEffect(() => {
-    setSplitSourceReady((prev) => ({
-      ...prev,
-      config: false,
-    }));
-
     const unsubscribe = onSnapshot(
-      PUBLIC_CONFIG_DOC_REF,
-      (snapshot) => {
-        if (!snapshot.exists()) {
-          const message =
-            'Firestore 공개 설정 문서가 없습니다. rentalSystem/publicConfig 마이그레이션 상태를 확인해 주세요.';
+      DATA_DOC_REF,
+      async (snapshot) => {
+        try {
+          if (!snapshot.exists()) {
+            const message = 'Firebase 원격 데이터 문서가 없습니다. 기본 데이터로 자동 초기화하지 않도록 저장을 차단했습니다. Firestore의 laptopRentalDashboard/main 문서를 확인해 주세요.';
 
-          setSplitPublicConfig(null);
-          setSplitStorageVersion(0);
-          setSplitSourceErrors((prev) => ({
-            ...prev,
-            config: message,
-          }));
-          setSplitSourceReady((prev) => ({
-            ...prev,
-            config: true,
-          }));
+            allowFirebaseWriteRef.current = false;
+            setFirebaseLoadErrorMessage(message);
+            setFirebaseReady(true);
+            setToast({
+              message,
+              type: 'error'
+            });
+            return;
+          }
+
+          const remotePayload = snapshot.data();
+          const remoteSource = remotePayload.data || remotePayload;
+          const remoteData = mergePersistedData(remoteSource);
+          const remoteLegacyAdminAccounts = normalizeAdminAccounts(
+            remoteSource.adminAccounts || []
+          );
+          const remoteJson = JSON.stringify(remoteData);
+
+          setLegacyAdminAccounts(remoteLegacyAdminAccounts);
+
+          allowFirebaseWriteRef.current = true;
+          setFirebaseLoadErrorMessage('');
+
+          if (remoteJson === lastSyncedDataRef.current) {
+            setFirebaseReady(true);
+            return;
+          }
+
+          lastSyncedDataRef.current = remoteJson;
+          applyingRemoteRef.current = true;
+          setData(remoteData);
+
+          if (!initializedRemoteFormRef.current) {
+            setForm(createDefaultRequestForm(remoteData.settings));
+            setTempSettings(remoteData.settings);
+            initializedRemoteFormRef.current = true;
+          }
+
+          setFirebaseReady(true);
+        } catch (error) {
+          const message = 'Firebase 데이터 동기화 처리 중 오류가 발생했습니다. 원격 DB 보호를 위해 저장을 차단했습니다. 콘솔과 Firestore 규칙을 확인해 주세요.';
+
+          console.error('Firebase snapshot handling error:', error);
+          allowFirebaseWriteRef.current = false;
+          setFirebaseLoadErrorMessage(message);
           setFirebaseReady(true);
           setToast({
             message,
-            type: 'error',
+            type: 'error'
           });
-          return;
         }
-
-        const configData = snapshot.data();
-
-        setSplitPublicConfig(configData);
-        setSplitStorageVersion(
-          Number(configData.storageVersion || 0)
-        );
-        setSplitSourceErrors((prev) => ({
-          ...prev,
-          config: '',
-        }));
-        setSplitSourceReady((prev) => ({
-          ...prev,
-          config: true,
-        }));
       },
       (error) => {
-        const message =
-          'Firestore 공개 설정을 불러오지 못했습니다. rentalSystem/publicConfig 읽기 권한을 확인해 주세요.';
+        const message = 'Firebase 연결 또는 권한 오류가 발생했습니다. 원격 DB 보호를 위해 저장을 차단했습니다. Firestore Database 생성 여부와 보안 규칙을 확인해 주세요.';
 
-        console.error('Public config sync error:', error);
-        setSplitPublicConfig(null);
-        setSplitStorageVersion(0);
-        setSplitSourceErrors((prev) => ({
-          ...prev,
-          config: message,
-        }));
-        setSplitSourceReady((prev) => ({
-          ...prev,
-          config: true,
-        }));
+        console.error('Firebase sync error:', error);
+        allowFirebaseWriteRef.current = false;
+        setFirebaseLoadErrorMessage(message);
         setFirebaseReady(true);
         setToast({
           message,
-          type: 'error',
+          type: 'error'
         });
       }
     );
@@ -2215,246 +2119,40 @@ function App() {
   }, []);
 
   useEffect(() => {
-    setSplitSourceReady((prev) => ({
-      ...prev,
-      assets: false,
-    }));
+    const dataForSave = stripAdminAccountsFromData(data);
+    const dataJson = JSON.stringify(dataForSave);
 
-    const unsubscribe = onSnapshot(
-      RENTAL_ASSETS_COLLECTION_REF,
-      (snapshot) => {
-        const assets = snapshot.docs.map((assetDocument) => ({
-          ...assetDocument.data(),
-          id: assetDocument.id,
-          reservations: normalizeAssetReservations(
-            assetDocument.data().reservations || []
-          ),
-        }));
+    if (!firebaseReady || !allowFirebaseWriteRef.current) return;
 
-        setSplitRentalAssets(assets);
-        setSplitSourceErrors((prev) => ({
-          ...prev,
-          assets: '',
-        }));
-        setSplitSourceReady((prev) => ({
-          ...prev,
-          assets: true,
-        }));
-      },
-      (error) => {
-        const message =
-          '대여 자산 컬렉션을 불러오지 못했습니다. rentalAssets 읽기 권한을 확인해 주세요.';
-
-        console.error('Rental assets sync error:', error);
-        setSplitRentalAssets([]);
-        setSplitSourceErrors((prev) => ({
-          ...prev,
-          assets: message,
-        }));
-        setSplitSourceReady((prev) => ({
-          ...prev,
-          assets: true,
-        }));
-        setFirebaseReady(true);
-        setToast({
-          message,
-          type: 'error',
-        });
-      }
-    );
-
-    return unsubscribe;
-  }, []);
-
-  useEffect(() => {
-    setSplitSourceReady((prev) => ({
-      ...prev,
-      availability: false,
-    }));
-
-    const unsubscribe = onSnapshot(
-      RENTAL_AVAILABILITY_COLLECTION_REF,
-      (snapshot) => {
-        const availabilityRequests = snapshot.docs.map(
-          (availabilityDocument) => ({
-            ...availabilityDocument.data(),
-            id: availabilityDocument.id,
-          })
-        );
-
-        setSplitRentalAvailability(availabilityRequests);
-        setSplitSourceErrors((prev) => ({
-          ...prev,
-          availability: '',
-        }));
-        setSplitSourceReady((prev) => ({
-          ...prev,
-          availability: true,
-        }));
-      },
-      (error) => {
-        const message =
-          '공개 예약 현황을 불러오지 못했습니다. rentalAvailability 읽기 권한을 확인해 주세요.';
-
-        console.error('Rental availability sync error:', error);
-        setSplitRentalAvailability([]);
-        setSplitSourceErrors((prev) => ({
-          ...prev,
-          availability: message,
-        }));
-        setSplitSourceReady((prev) => ({
-          ...prev,
-          availability: true,
-        }));
-        setFirebaseReady(true);
-        setToast({
-          message,
-          type: 'error',
-        });
-      }
-    );
-
-    return unsubscribe;
-  }, []);
-
-  useEffect(() => {
-    if (!firebaseAuthReady || !currentAuthRoleReady) {
-      setSplitSourceReady((prev) => ({
-        ...prev,
-        borrowers: false,
-      }));
+    if (applyingRemoteRef.current) {
+      applyingRemoteRef.current = false;
       return;
     }
 
-    if (!firebaseAuthUser || currentAuthRoleErrorMessage) {
-      setSplitRentalBorrowers([]);
-      setSplitSourceErrors((prev) => ({
-        ...prev,
-        borrowers: '',
-      }));
-      setSplitSourceReady((prev) => ({
-        ...prev,
-        borrowers: true,
-      }));
-      return;
+    if (dataJson === lastSyncedDataRef.current) return;
+
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
     }
 
-    setSplitSourceReady((prev) => ({
-      ...prev,
-      borrowers: false,
-    }));
+    saveTimerRef.current = setTimeout(() => {
+      lastSyncedDataRef.current = dataJson;
 
-    const unsubscribe = onSnapshot(
-      RENTAL_BORROWERS_COLLECTION_REF,
-      (snapshot) => {
-        const borrowers = snapshot.docs
-          .map((borrowerDocument, index) => ({
-            ...borrowerDocument.data(),
-            id: borrowerDocument.id,
-            sortOrder:
-              Number.isFinite(
-                Number(borrowerDocument.data().sortOrder)
-              )
-                ? Number(borrowerDocument.data().sortOrder)
-                : index,
-          }))
-          .sort((a, b) => a.sortOrder - b.sortOrder);
+      setDoc(DATA_DOC_REF, { data: dataForSave, updatedAt: serverTimestamp() }).catch((error) => {
+        lastSyncedDataRef.current = '';
+        console.error('Firebase save error:', error);
+        setToast({ message: 'Firebase 저장에 실패했습니다. Firestore 보안 규칙과 네트워크 상태를 확인해 주세요.', type: 'error' });
+      });
+    }, 800);
 
-        setSplitRentalBorrowers(borrowers);
-        setSplitSourceErrors((prev) => ({
-          ...prev,
-          borrowers: '',
-        }));
-        setSplitSourceReady((prev) => ({
-          ...prev,
-          borrowers: true,
-        }));
-      },
-      (error) => {
-        const message =
-          '대여자 목록을 불러오지 못했습니다. rentalBorrowers 조회 권한을 확인해 주세요.';
-
-        console.error('Rental borrowers sync error:', error);
-        setSplitRentalBorrowers([]);
-        setSplitSourceErrors((prev) => ({
-          ...prev,
-          borrowers: message,
-        }));
-        setSplitSourceReady((prev) => ({
-          ...prev,
-          borrowers: true,
-        }));
-        setFirebaseReady(true);
-        setToast({
-          message,
-          type: 'error',
-        });
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
       }
-    );
-
-    return unsubscribe;
+    };
   }, [
-    firebaseAuthReady,
-    currentAuthRoleReady,
-    currentAuthRoleErrorMessage,
-    firebaseAuthUser?.uid,
-  ]);
-
-  useEffect(() => {
-    const allSplitSourcesReady =
-      splitSourceReady.config &&
-      splitSourceReady.assets &&
-      splitSourceReady.availability &&
-      splitSourceReady.borrowers;
-
-    if (!allSplitSourcesReady) {
-      return;
-    }
-
-    const splitLoadError = Object.values(
-      splitSourceErrors
-    ).find(Boolean);
-
-    if (splitLoadError) {
-      setFirebaseLoadErrorMessage(
-        splitLoadError
-      );
-      setFirebaseReady(true);
-      return;
-    }
-
-    if (!splitPublicConfig) {
-      return;
-    }
-
-    const remoteData = mergePersistedData({
-      laptops: splitRentalAssets,
-      requests: splitRentalAvailability,
-      assetCategories:
-        splitPublicConfig.assetCategories || [],
-      teams: splitPublicConfig.teams || [],
-      borrowers: splitRentalBorrowers,
-      settings: splitPublicConfig.settings || {},
-    });
-
-    setData(remoteData);
-    setFirebaseLoadErrorMessage('');
-    setFirebaseReady(true);
-
-    if (!initializedRemoteFormRef.current) {
-      setForm(
-        createDefaultRequestForm(remoteData.settings)
-      );
-      setTempSettings(remoteData.settings);
-      initializedRemoteFormRef.current = true;
-    }
-  }, [
-    splitSourceReady,
-    splitSourceErrors,
-    splitPublicConfig,
-    splitRentalAssets,
-    splitRentalAvailability,
-    splitRentalBorrowers,
+    data,
+    firebaseReady,
   ]);
 
   useEffect(() => {
@@ -2828,9 +2526,6 @@ function App() {
     !adminLogoutInProgress &&
     hasMatchingAdminFirebaseAuth;
 
-  const isSplitStorageReady =
-    splitStorageVersion >= SPLIT_STORAGE_VERSION;
-
   const shouldShowAdminLoadingPage =
     view === 'admin' &&
     (
@@ -2873,335 +2568,541 @@ function App() {
     !currentAuthRoleErrorMessage &&
     !isAdminAuthenticated;
   
-  const finalizeSplitStorageMigration = async () => {
-    if (splitStorageFinalizeLoading) {
-      return;
-    }
+  const migrateMainDataToSplitCollections = async () => {
+  if (splitDataMigrationLoading) {
+    return;
+  }
 
-    if (!isAdminAuthenticated) {
-      triggerToast(
-        '분리 저장소 최종 전환은 인증된 관리자만 실행할 수 있습니다.',
-        'error'
-      );
-      return;
-    }
+  if (!isAdminAuthenticated) {
+    triggerToast(
+      '신규 컬렉션 데이터 복사는 인증된 관리자만 실행할 수 있습니다.',
+      'error'
+    );
+    return;
+  }
 
-    setSplitStorageFinalizeLoading(true);
+  setSplitDataMigrationLoading(true);
 
-    try {
-      const [
-        configSnapshot,
-        assetsSnapshot,
-        availabilitySnapshot,
-        borrowersSnapshot,
-        existingRegistrySnapshot,
-      ] = await Promise.all([
-        getDoc(PUBLIC_CONFIG_DOC_REF),
-        getDocs(RENTAL_ASSETS_COLLECTION_REF),
-        getDocs(RENTAL_AVAILABILITY_COLLECTION_REF),
-        getDocs(RENTAL_BORROWERS_COLLECTION_REF),
-        getDocs(RENTAL_ASSET_NUMBERS_COLLECTION_REF),
-      ]);
-
-      if (!configSnapshot.exists()) {
-        throw new Error('public-config-not-found');
-      }
-
-      const currentConfig = configSnapshot.data();
-      const currentStorageVersion = Number(
-        currentConfig.storageVersion || 0
+  const commitMigrationOperations = async (
+    operations
+  ) => {
+    for (
+      let startIndex = 0;
+      startIndex < operations.length;
+      startIndex += MIGRATION_BATCH_WRITE_LIMIT
+    ) {
+      const operationChunk = operations.slice(
+        startIndex,
+        startIndex + MIGRATION_BATCH_WRITE_LIMIT
       );
 
-      if (currentStorageVersion >= SPLIT_STORAGE_VERSION) {
-        triggerToast(
-          'Firestore 분리 저장소 최종 전환이 이미 완료되어 있습니다.',
-          'success'
-        );
-        return;
-      }
+      const batch = writeBatch(db);
 
-      const availabilityByAssetId = new Map();
-
-      availabilitySnapshot.docs.forEach(
-        (availabilityDocument) => {
-          const availabilityRequest =
-            toRentalAvailabilityRequest({
-              ...availabilityDocument.data(),
-              id: availabilityDocument.id,
-            });
-
-          if (
-            !availabilityRequest.id ||
-            !availabilityRequest.laptopId ||
-            !RENTAL_BLOCKING_REQUEST_STATUSES.includes(
-              availabilityRequest.status
-            )
-          ) {
-            throw new Error(
-              'invalid-availability-document'
-            );
-          }
-
-          const currentAssetReservations =
-            availabilityByAssetId.get(
-              availabilityRequest.laptopId
-            ) || [];
-
-          currentAssetReservations.push(
-            availabilityRequest
-          );
-
-          availabilityByAssetId.set(
-            availabilityRequest.laptopId,
-            currentAssetReservations
-          );
+      operationChunk.forEach((operation) => {
+        if (operation.type === 'delete') {
+          batch.delete(operation.ref);
+          return;
         }
-      );
 
-      const assetIdSet = new Set(
-        assetsSnapshot.docs.map(
-          (assetDocument) => assetDocument.id
-        )
-      );
-
-      for (const availabilityAssetId of availabilityByAssetId.keys()) {
-        if (!assetIdSet.has(availabilityAssetId)) {
-          throw new Error(
-            'availability-asset-not-found'
-          );
-        }
-      }
-
-      const assetNumberRegistryIdSet = new Set();
-      const assetOperations = [];
-      const registryOperations = [];
-
-      assetsSnapshot.docs.forEach(
-        (assetDocument) => {
-          const assetData = assetDocument.data();
-          const assetNo = String(
-            assetData.assetNo || ''
-          ).trim();
-
-          if (!assetNo) {
-            throw new Error(
-              'asset-number-missing'
-            );
-          }
-
-          const assetNoNormalized =
-            normalizeAssetNumber(assetNo);
-
-          const registryId =
-            getAssetNumberRegistryId(assetNo);
-
-          if (
-            assetNumberRegistryIdSet.has(
-              registryId
-            )
-          ) {
-            throw new Error(
-              'duplicate-asset-number'
-            );
-          }
-
-          assetNumberRegistryIdSet.add(
-            registryId
-          );
-
-          const reservations =
-            normalizeAssetReservations(
-              availabilityByAssetId.get(
-                assetDocument.id
-              ) || []
-            );
-
-          const representativeRequest =
-            getLaptopRepresentativeRequest(
-              reservations,
-              assetDocument.id
-            );
-
-          const nextStatus =
-            assetData.status ===
-            STATUS.UNAVAILABLE
-              ? STATUS.UNAVAILABLE
-              : representativeRequest
-                ? representativeRequest.status
-                : STATUS.AVAILABLE;
-
-          assetOperations.push({
-            type: 'set',
-            ref: assetDocument.ref,
-            data: {
-              reservations,
-              assetNoNormalized,
-              status: nextStatus,
-              currentRequestId:
-                representativeRequest?.id || null,
-              updatedAt: serverTimestamp(),
-            },
-            options: {
-              merge: true,
-            },
-          });
-
-          registryOperations.push({
-            type: 'set',
-            ref: doc(
-              RENTAL_ASSET_NUMBERS_COLLECTION_REF,
-              registryId
-            ),
-            data: {
-              id: registryId,
-              assetId: assetDocument.id,
-              assetNo,
-              assetNoNormalized,
-              updatedAt: serverTimestamp(),
-            },
-          });
-        }
-      );
-
-      const borrowerOperations =
-        borrowersSnapshot.docs.map(
-          (borrowerDocument, index) => ({
-            type: 'set',
-            ref: borrowerDocument.ref,
-            data: {
-              id: borrowerDocument.id,
-              name: String(
-                borrowerDocument.data().name || ''
-              ),
-              team: String(
-                borrowerDocument.data().team || ''
-              ),
-              sortOrder:
-                Number.isFinite(
-                  Number(
-                    borrowerDocument.data().sortOrder
-                  )
-                )
-                  ? Number(
-                      borrowerDocument.data().sortOrder
-                    )
-                  : index,
-              updatedAt: serverTimestamp(),
-            },
-            options: {
-              merge: true,
-            },
-          })
+        batch.set(
+          operation.ref,
+          operation.data,
+          { merge: true }
         );
+      });
 
-      const registryCleanupOperations =
-        existingRegistrySnapshot.docs.map(
-          (registryDocument) => ({
-            type: 'delete',
-            ref: registryDocument.ref,
-          })
-        );
-
-      await commitFirestoreOperations(
-        registryCleanupOperations
-      );
-
-      await commitFirestoreOperations([
-        ...assetOperations,
-        ...registryOperations,
-        ...borrowerOperations,
-      ]);
-
-      await setDoc(
-        PUBLIC_CONFIG_DOC_REF,
-        {
-          storageVersion:
-            SPLIT_STORAGE_VERSION,
-          storageMode:
-            'split-collections',
-          storageReady: true,
-          storageFinalizedBy:
-            firebaseAuth.currentUser?.uid ||
-            authenticatedAdminId ||
-            '',
-          storageFinalizedAt:
-            serverTimestamp(),
-          storageFinalizedCounts: {
-            assets: assetsSnapshot.size,
-            availabilityRequests:
-              availabilitySnapshot.size,
-            borrowers:
-              borrowersSnapshot.size,
-          },
-          updatedAt: serverTimestamp(),
-        },
-        {
-          merge: true,
-        }
-      );
-
-      triggerToast(
-        `Firestore 분리 저장소 최종 전환이 완료되었습니다. 자산 ${assetsSnapshot.size}건, 진행 중 예약 ${availabilitySnapshot.size}건, 대여자 ${borrowersSnapshot.size}건을 검증했습니다.`,
-        'success'
-      );
-    } catch (error) {
-      console.error(
-        'Split storage finalization error:',
-        error
-      );
-
-      if (
-        error?.message ===
-        'availability-asset-not-found'
-      ) {
-        triggerToast(
-          'rentalAvailability에 연결된 자산 문서가 없어 최종 전환을 중단했습니다. rentalAssets와 rentalAvailability의 laptopId를 확인해 주세요.',
-          'error'
-        );
-        return;
-      }
-
-      if (
-        error?.message ===
-        'duplicate-asset-number'
-      ) {
-        triggerToast(
-          '중복된 자산관리번호가 있어 최종 전환을 중단했습니다. rentalAssets의 assetNo 중복을 먼저 정리해 주세요.',
-          'error'
-        );
-        return;
-      }
-
-      if (
-        error?.message ===
-        'asset-number-missing'
-      ) {
-        triggerToast(
-          '자산관리번호가 없는 자산 문서가 있어 최종 전환을 중단했습니다.',
-          'error'
-        );
-        return;
-      }
-
-      if (
-        error?.code ===
-        'permission-denied'
-      ) {
-        triggerToast(
-          '분리 저장소 최종 전환 권한이 없습니다. 변경된 Firestore Rules가 게시되었는지 확인해 주세요.',
-          'error'
-        );
-        return;
-      }
-
-      triggerToast(
-        'Firestore 분리 저장소 최종 전환에 실패했습니다. 기존 분리 컬렉션은 삭제되지 않았으며, 원인을 수정한 뒤 다시 실행할 수 있습니다.',
-        'error'
-      );
-    } finally {
-      setSplitStorageFinalizeLoading(false);
+      await batch.commit();
     }
   };
+
+  const createMigrationBorrowerId = (
+    borrower,
+    index
+  ) => {
+    const sourceText =
+      `${borrower?.team || ''}|` +
+      `${borrower?.name || ''}|` +
+      `${index}`;
+
+    let hash = 2166136261;
+
+    for (
+      let characterIndex = 0;
+      characterIndex < sourceText.length;
+      characterIndex++
+    ) {
+      hash ^= sourceText.charCodeAt(
+        characterIndex
+      );
+
+      hash = Math.imul(
+        hash,
+        16777619
+      );
+    }
+
+    return (
+      `BORROWER-` +
+      `${String(index + 1).padStart(4, '0')}-` +
+      `${(hash >>> 0).toString(36)}`
+    );
+  };
+
+  try {
+    const [
+      mainSnapshot,
+      publicConfigSnapshot,
+    ] = await Promise.all([
+      getDoc(DATA_DOC_REF),
+      getDoc(PUBLIC_CONFIG_DOC_REF),
+    ]);
+
+    if (!mainSnapshot.exists()) {
+      throw new Error(
+        'main-document-not-found'
+      );
+    }
+
+    const existingPublicConfig =
+      publicConfigSnapshot.exists()
+        ? publicConfigSnapshot.data()
+        : null;
+
+    const existingMigrationVersion =
+      Number(
+        existingPublicConfig?.migrationVersion ||
+        0
+      );
+
+    if (
+      existingMigrationVersion >=
+      SPLIT_DATA_MIGRATION_VERSION
+    ) {
+      throw new Error(
+        'split-migration-already-completed'
+      );
+    }
+
+    const initialMainPayload =
+      mainSnapshot.data();
+
+    const initialMainPayloadJson =
+      JSON.stringify(initialMainPayload);
+
+    const sourceData = mergePersistedData(
+      initialMainPayload.data ||
+      initialMainPayload
+    );
+
+    const sourceLaptops = Array.isArray(
+      sourceData.laptops
+    )
+      ? sourceData.laptops
+      : [];
+
+    const sourceRequests = Array.isArray(
+      sourceData.requests
+    )
+      ? sourceData.requests
+      : [];
+
+    const sourceBorrowers = Array.isArray(
+      sourceData.borrowers
+    )
+      ? sourceData.borrowers
+      : [];
+
+    const sourceAssetCategories =
+      Array.isArray(
+        sourceData.assetCategories
+      )
+        ? sourceData.assetCategories
+        : [];
+
+    const sourceTeams = Array.isArray(
+      sourceData.teams
+    )
+      ? sourceData.teams
+      : [];
+
+    const sourceSettings =
+      sourceData.settings &&
+      typeof sourceData.settings === 'object'
+        ? sourceData.settings
+        : {};
+
+    /*
+     * 이전 마이그레이션이 중간 실패했을 수 있으므로,
+     * 완료 표시가 없는 상태에서는 신규 컬렉션을
+     * 먼저 비운 후 다시 복사합니다.
+     */
+    const [
+      existingAssetsSnapshot,
+      existingAvailabilitySnapshot,
+      existingBorrowersSnapshot,
+    ] = await Promise.all([
+      getDocs(
+        RENTAL_ASSETS_COLLECTION_REF
+      ),
+      getDocs(
+        RENTAL_AVAILABILITY_COLLECTION_REF
+      ),
+      getDocs(
+        RENTAL_BORROWERS_COLLECTION_REF
+      ),
+    ]);
+
+    const cleanupOperations = [
+      ...existingAssetsSnapshot.docs.map(
+        (assetDocument) => ({
+          type: 'delete',
+          ref: assetDocument.ref,
+        })
+      ),
+
+      ...existingAvailabilitySnapshot.docs.map(
+        (availabilityDocument) => ({
+          type: 'delete',
+          ref: availabilityDocument.ref,
+        })
+      ),
+
+      ...existingBorrowersSnapshot.docs.map(
+        (borrowerDocument) => ({
+          type: 'delete',
+          ref: borrowerDocument.ref,
+        })
+      ),
+    ];
+
+    await commitMigrationOperations(
+      cleanupOperations
+    );
+
+    /*
+     * 자산 데이터 변환
+     */
+    const assetIdSet = new Set();
+
+    const assetOperations =
+      sourceLaptops.map((asset) => {
+        const assetId = String(
+          asset?.id || ''
+        ).trim();
+
+        if (!assetId) {
+          throw new Error(
+            'migration-asset-id-missing'
+          );
+        }
+
+        if (assetIdSet.has(assetId)) {
+          throw new Error(
+            'migration-duplicate-asset-id'
+          );
+        }
+
+        assetIdSet.add(assetId);
+
+        const normalizedAsset = {
+          id: assetId,
+          category: String(
+            asset.category ||
+            sourceAssetCategories[0] ||
+            '노트북'
+          ),
+          assetNo: String(
+            asset.assetNo || ''
+          ),
+          serialNo: String(
+            asset.serialNo || ''
+          ),
+          model: String(
+            asset.model || ''
+          ),
+          manufactureDate: String(
+            asset.manufactureDate || ''
+          ),
+          photo: String(
+            asset.photo || ''
+          ),
+          note: String(
+            asset.note || ''
+          ),
+          status: String(
+            asset.status ||
+            STATUS.AVAILABLE
+          ),
+          currentRequestId:
+            asset.currentRequestId ||
+            null,
+          updatedAt: serverTimestamp(),
+        };
+
+        return {
+          type: 'set',
+          ref: doc(
+            RENTAL_ASSETS_COLLECTION_REF,
+            assetId
+          ),
+          data: normalizedAsset,
+        };
+      });
+
+    /*
+     * 공개 예약 가능 여부 데이터 변환
+     * 신청중, 대여중, 보류만 복사합니다.
+     */
+    const availabilityIdSet = new Set();
+
+    const blockingRequests =
+      sourceRequests.filter(
+        (request) =>
+          request?.id &&
+          RENTAL_BLOCKING_REQUEST_STATUSES.includes(
+            request.status
+          )
+      );
+
+    const availabilityOperations =
+      blockingRequests.map((request) => {
+        const availabilityRequest =
+          toRentalAvailabilityRequest(
+            request
+          );
+
+        const requestId = String(
+          availabilityRequest.id || ''
+        ).trim();
+
+        if (
+          !requestId ||
+          !availabilityRequest.laptopId
+        ) {
+          throw new Error(
+            'migration-availability-data-invalid'
+          );
+        }
+
+        if (
+          availabilityIdSet.has(requestId)
+        ) {
+          throw new Error(
+            'migration-duplicate-request-id'
+          );
+        }
+
+        availabilityIdSet.add(requestId);
+
+        return {
+          type: 'set',
+          ref: doc(
+            RENTAL_AVAILABILITY_COLLECTION_REF,
+            requestId
+          ),
+          data: {
+            ...availabilityRequest,
+            updatedAt: serverTimestamp(),
+          },
+        };
+      });
+
+    /*
+     * 대여자 드롭다운 데이터 변환
+     */
+    const borrowerOperations =
+      sourceBorrowers.map(
+        (borrower, index) => {
+          const borrowerId =
+            createMigrationBorrowerId(
+              borrower,
+              index
+            );
+
+          return {
+            type: 'set',
+            ref: doc(
+              RENTAL_BORROWERS_COLLECTION_REF,
+              borrowerId
+            ),
+            data: {
+              id: borrowerId,
+              name: String(
+                borrower?.name || ''
+              ),
+              team: String(
+                borrower?.team || ''
+              ),
+              updatedAt:
+                serverTimestamp(),
+            },
+          };
+        }
+      );
+
+    const migrationWriteOperations = [
+      ...assetOperations,
+      ...availabilityOperations,
+      ...borrowerOperations,
+    ];
+
+    await commitMigrationOperations(
+      migrationWriteOperations
+    );
+
+    /*
+     * 복사 도중 main이 변경됐는지 재확인합니다.
+     * 변경된 경우 완료 표시를 남기지 않고 재실행합니다.
+     */
+    const verificationMainSnapshot =
+      await getDoc(DATA_DOC_REF);
+
+    if (!verificationMainSnapshot.exists()) {
+      throw new Error(
+        'main-document-not-found-after-migration'
+      );
+    }
+
+    const verificationMainPayloadJson =
+      JSON.stringify(
+        verificationMainSnapshot.data()
+      );
+
+    if (
+      verificationMainPayloadJson !==
+      initialMainPayloadJson
+    ) {
+      throw new Error(
+        'main-changed-during-migration'
+      );
+    }
+
+    /*
+     * 모든 복사가 끝난 뒤 마지막으로
+     * publicConfig에 완료 표시를 기록합니다.
+     */
+    const completionBatch =
+      writeBatch(db);
+
+    completionBatch.set(
+      PUBLIC_CONFIG_DOC_REF,
+      {
+        assetCategories:
+          sourceAssetCategories,
+        teams: sourceTeams,
+        settings: sourceSettings,
+
+        migrationVersion:
+          SPLIT_DATA_MIGRATION_VERSION,
+
+        migrationSource:
+          'laptopRentalDashboard/main',
+
+        migrationCounts: {
+          assets:
+            assetOperations.length,
+          availabilityRequests:
+            availabilityOperations.length,
+          borrowers:
+            borrowerOperations.length,
+        },
+
+        migratedBy:
+          firebaseAuth.currentUser?.uid ||
+          authenticatedAdminId ||
+          '',
+
+        migratedAt:
+          serverTimestamp(),
+
+        updatedAt:
+          serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    await completionBatch.commit();
+
+    triggerToast(
+      `신규 컬렉션 1차 복사가 완료되었습니다. ` +
+      `자산 ${assetOperations.length}건, ` +
+      `진행 중 예약 ${availabilityOperations.length}건, ` +
+      `대여자 ${borrowerOperations.length}건을 복사했습니다.`,
+      'success'
+    );
+  } catch (error) {
+    console.error(
+      'Split data migration error:',
+      error
+    );
+
+    if (
+      error?.message ===
+      'split-migration-already-completed'
+    ) {
+      triggerToast(
+        '신규 컬렉션 1차 복사가 이미 완료되어 중복 실행을 차단했습니다.',
+        'error'
+      );
+      return;
+    }
+
+    if (
+      error?.message ===
+      'main-changed-during-migration'
+    ) {
+      triggerToast(
+        '복사 도중 기존 main 데이터가 변경되어 완료 처리를 중단했습니다. 신규 신청이나 관리자 작업이 없는 시점에 다시 실행해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    if (
+      error?.message ===
+        'migration-asset-id-missing' ||
+      error?.message ===
+        'migration-duplicate-asset-id'
+    ) {
+      triggerToast(
+        '기존 자산 목록에 ID가 없거나 중복된 자산이 있어 복사를 중단했습니다. main 문서의 laptops 데이터를 확인해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    if (
+      error?.message ===
+        'migration-availability-data-invalid' ||
+      error?.message ===
+        'migration-duplicate-request-id'
+    ) {
+      triggerToast(
+        '기존 진행 중 신청 목록에 신청 ID 또는 기기 ID가 없거나 중복된 항목이 있어 복사를 중단했습니다.',
+        'error'
+      );
+      return;
+    }
+
+    if (
+      error?.code ===
+      'permission-denied'
+    ) {
+      triggerToast(
+        '신규 컬렉션 복사 권한이 없습니다. 이전 단계에서 추가한 Firestore Rules가 게시되었는지 확인해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    triggerToast(
+      '신규 컬렉션 1차 복사에 실패했습니다. 기존 main 데이터는 변경되지 않았습니다. Firestore Rules, 관리자 인증 및 네트워크 상태를 확인해 주세요.',
+      'error'
+    );
+  } finally {
+    setSplitDataMigrationLoading(false);
+  }
+};
 
     useEffect(() => {
     if (!firebaseAuthReady || !currentAuthRoleReady) {
@@ -4656,213 +4557,37 @@ function App() {
     triggerToast('자산 카테고리 변경사항이 취소되고 이전 상태로 복원되었습니다.', 'success');
   };
 
-  const saveTempAssetCategoryChanges = async () => {
-    if (!isSplitStorageReady) {
-      triggerToast(
-        'Firestore 분리 저장소 최종 전환이 완료되지 않아 자산 카테고리를 저장할 수 없습니다.',
-        'error'
-      );
-      return;
-    }
+  const saveTempAssetCategoryChanges = () => {
+    const nextAssetCategories = tempAssetCategories
+      .map((category) => String(category || '').trim())
+      .filter(Boolean);
 
-    const nextAssetCategories =
-      tempAssetCategories
-        .map((category) =>
-          String(category || '').trim()
-        )
-        .filter(Boolean);
-
-    const duplicatedCategory =
-      nextAssetCategories.find(
-        (category, index) =>
-          nextAssetCategories.indexOf(
-            category
-          ) !== index
-      );
+    const duplicatedCategory = nextAssetCategories.find(
+      (category, index) => nextAssetCategories.indexOf(category) !== index
+    );
 
     if (duplicatedCategory) {
-      triggerToast(
-        `[${duplicatedCategory}] 카테고리명이 중복되어 저장할 수 없습니다.`,
-        'error'
-      );
+      triggerToast(`[${duplicatedCategory}] 카테고리명이 중복되어 저장할 수 없습니다.`, 'error');
       return;
     }
 
-    try {
-      const assetsSnapshot =
-        await getDocs(
-          RENTAL_ASSETS_COLLECTION_REF
-        );
+    setData((prev) => ({
+      ...prev,
+      assetCategories: nextAssetCategories,
+      laptops: prev.laptops.map((asset) => ({
+        ...asset,
+        category: tempAssetCategoryRenameMap[asset.category] || asset.category,
+      })),
+    }));
 
-      const assetOperations = [];
-
-      assetsSnapshot.docs.forEach(
-        (assetDocument) => {
-          const assetData = {
-            ...assetDocument.data(),
-            id: assetDocument.id,
-          };
-
-          const nextCategory =
-            tempAssetCategoryRenameMap[
-              assetData.category
-            ] ||
-            assetData.category;
-
-          if (
-            nextCategory !==
-              assetData.category &&
-            normalizeAssetReservations(
-              assetData.reservations || []
-            ).length > 0
-          ) {
-            const activeRentalError =
-              new Error(
-                'active-rental-category-rename'
-              );
-
-            activeRentalError.assetNo =
-              assetData.assetNo;
-
-            throw activeRentalError;
-          }
-
-          if (
-            !nextAssetCategories.includes(
-              nextCategory
-            )
-          ) {
-            const categoryInUseError =
-              new Error(
-                'asset-category-still-in-use'
-              );
-
-            categoryInUseError.category =
-              assetData.category;
-
-            throw categoryInUseError;
-          }
-
-          const nextAsset = {
-            ...assetData,
-            category:
-              nextCategory,
-          };
-
-          if (
-            nextCategory !==
-            assetData.category
-          ) {
-            assetOperations.push({
-              type: 'set',
-              ref: assetDocument.ref,
-              data: {
-                category:
-                  nextCategory,
-                updatedAt:
-                  serverTimestamp(),
-              },
-              options: {
-                merge: true,
-              },
-            });
-          }
-        }
-      );
-
-      await commitFirestoreOperations(
-        assetOperations
-      );
-
-      await setDoc(
-        PUBLIC_CONFIG_DOC_REF,
-        {
-          assetCategories:
-            nextAssetCategories,
-          updatedAt:
-            serverTimestamp(),
-        },
-        {
-          merge: true,
-        }
-      );
-
-      setData((prev) => ({
-        ...prev,
-        assetCategories:
-          nextAssetCategories,
-        laptops:
-          (prev.laptops || []).map(
-            (asset) => ({
-              ...asset,
-              category:
-                tempAssetCategoryRenameMap[
-                  asset.category
-                ] ||
-                asset.category,
-            })
-          ),
-      }));
-
-      setSelectedAssetCategory(
-        '전체'
-      );
-      setAdminSelectedAssetCategory(
-        '전체'
-      );
-      setTempAssetCategories(
-        nextAssetCategories
-      );
-      setTempAssetCategoryRenameMap(
-        {}
-      );
-      setEditingAssetCategoryIndex(
-        null
-      );
-      setEditingAssetCategoryName(
-        ''
-      );
-      setDraggingAssetCategoryIndex(
-        null
-      );
-
-      triggerToast(
-        '자산 카테고리 변경사항이 분리 저장소에 성공적으로 저장 및 반영되었습니다.',
-        'success'
-      );
-    } catch (error) {
-      console.error(
-        'Asset category save error:',
-        error
-      );
-
-      if (
-        error?.message ===
-        'active-rental-category-rename'
-      ) {
-        triggerToast(
-          `진행 중 예약이 있는 자산 [${error.assetNo}]이(가) 포함되어 카테고리명을 변경할 수 없습니다. 해당 신청을 먼저 완료해 주세요.`,
-          'error'
-        );
-        return;
-      }
-
-      if (
-        error?.message ===
-        'asset-category-still-in-use'
-      ) {
-        triggerToast(
-          `카테고리 [${error.category}]를 사용하는 최신 자산이 있어 삭제할 수 없습니다.`,
-          'error'
-        );
-        return;
-      }
-
-      triggerToast(
-        '자산 카테고리 저장에 실패했습니다. 기존 카테고리와 자산 정보는 유지됩니다.',
-        'error'
-      );
-    }
+    setSelectedAssetCategory('전체');
+    setAdminSelectedAssetCategory('전체');
+    setTempAssetCategories(nextAssetCategories);
+    setTempAssetCategoryRenameMap({});
+    setEditingAssetCategoryIndex(null);
+    setEditingAssetCategoryName('');
+    setDraggingAssetCategoryIndex(null);
+    triggerToast('자산 카테고리 변경사항이 원장에 성공적으로 저장 및 반영되었습니다.', 'success');
   };
 
   const addTempTeam = () => {
@@ -5057,275 +4782,57 @@ function App() {
     triggerToast('부서·사용자 변경사항이 취소되고 이전 상태로 복원되었습니다.', 'success');
   };
 
-  const saveTempPeopleChanges = async () => {
-    if (!isSplitStorageReady) {
-      triggerToast(
-        'Firestore 분리 저장소 최종 전환이 완료되지 않아 부서·사용자 정보를 저장할 수 없습니다.',
-        'error'
-      );
-      return;
-    }
-
+  const saveTempPeopleChanges = () => {
     const nextTeams = tempTeams
-      .map((team) =>
-        String(team || '').trim()
-      )
+      .map((team) => String(team || '').trim())
       .filter(Boolean);
 
-    const duplicatedTeam =
-      nextTeams.find(
-        (team, index) =>
-          nextTeams.indexOf(team) !==
-          index
-      );
+    const duplicatedTeam = nextTeams.find(
+      (team, index) => nextTeams.indexOf(team) !== index
+    );
 
     if (duplicatedTeam) {
-      triggerToast(
-        `[${duplicatedTeam}] 부서명이 중복되어 저장할 수 없습니다.`,
-        'error'
-      );
+      triggerToast(`[${duplicatedTeam}] 부서명이 중복되어 저장할 수 없습니다.`, 'error');
       return;
     }
 
-    const nextBorrowers =
-      tempBorrowers
-        .map((borrower, index) => ({
-          id:
-            borrower.id ||
-            createBorrowerDocumentId(),
-          name: String(
-            borrower.name || ''
-          ).trim(),
-          team: String(
-            borrower.team || ''
-          ).trim(),
-          sortOrder: index,
-        }))
-        .filter(
-          (borrower) =>
-            borrower.name &&
-            borrower.team &&
-            nextTeams.includes(
-              borrower.team
-            )
-        );
+    const nextBorrowers = tempBorrowers
+      .map((borrower) => ({
+        name: String(borrower.name || '').trim(),
+        team: String(borrower.team || '').trim(),
+      }))
+      .filter((borrower) => borrower.name && borrower.team && nextTeams.includes(borrower.team));
 
-    const duplicatedBorrower =
-      nextBorrowers.find(
-        (borrower, index) =>
-          nextBorrowers.findIndex(
-            (item) =>
-              item.team ===
-                borrower.team &&
-              item.name ===
-                borrower.name
-          ) !== index
-      );
+    const duplicatedBorrower = nextBorrowers.find(
+      (borrower, index) =>
+        nextBorrowers.findIndex(
+          (item) => item.team === borrower.team && item.name === borrower.name
+        ) !== index
+    );
 
     if (duplicatedBorrower) {
-      triggerToast(
-        `[${duplicatedBorrower.team}] ${duplicatedBorrower.name} 사용자명이 중복되어 저장할 수 없습니다.`,
-        'error'
-      );
+      triggerToast(`[${duplicatedBorrower.team}] ${duplicatedBorrower.name} 사용자명이 중복되어 저장할 수 없습니다.`, 'error');
       return;
     }
 
-    try {
-      const currentBorrowersSnapshot =
-        await getDocs(
-          RENTAL_BORROWERS_COLLECTION_REF
-        );
+    setData((prev) => ({
+      ...prev,
+      teams: nextTeams,
+      borrowers: nextBorrowers,
+    }));
 
-      const nextBorrowerIdSet =
-        new Set(
-          nextBorrowers.map(
-            (borrower) =>
-              borrower.id
-          )
-        );
-
-      const borrowerOperations = [
-        ...nextBorrowers.map(
-          (borrower) => ({
-            type: 'set',
-            ref: doc(
-              RENTAL_BORROWERS_COLLECTION_REF,
-              borrower.id
-            ),
-            data: {
-              ...borrower,
-              updatedAt:
-                serverTimestamp(),
-            },
-          })
-        ),
-
-        ...currentBorrowersSnapshot.docs
-          .filter(
-            (borrowerDocument) =>
-              !nextBorrowerIdSet.has(
-                borrowerDocument.id
-              )
-          )
-          .map(
-            (borrowerDocument) => ({
-              type: 'delete',
-              ref:
-                borrowerDocument.ref,
-            })
-          ),
-      ];
-
-      await commitFirestoreOperations(
-        borrowerOperations
-      );
-
-      await setDoc(
-        PUBLIC_CONFIG_DOC_REF,
-        {
-          teams: nextTeams,
-          updatedAt:
-            serverTimestamp(),
-        },
-        {
-          merge: true,
-        }
-      );
-
-      setData((prev) => ({
-        ...prev,
-        teams: nextTeams,
-        borrowers:
-          nextBorrowers,
-      }));
-
-      setTempTeams(nextTeams);
-      setTempBorrowers(
-        nextBorrowers
-      );
-      setEditingTeamIndex(null);
-      setEditingTeamName('');
-      setDraggingTeamIndex(null);
-      setEditingBorrowerIndex(null);
-      setEditingBorrowerName('');
-      setDraggingBorrowerIndex(
-        null
-      );
-      setNewTeam('');
-      setNewBorrower('');
-      setNewBorrowerTeam('전체');
-
-      triggerToast(
-        '부서·사용자 변경사항이 분리 저장소에 성공적으로 저장 및 반영되었습니다.',
-        'success'
-      );
-    } catch (error) {
-      console.error(
-        'People data save error:',
-        error
-      );
-
-      triggerToast(
-        '부서·사용자 저장에 실패했습니다. 기존 데이터는 유지됩니다.',
-        'error'
-      );
-    }
-  };
-
-  const saveSystemSettings = async () => {
-    if (!isSplitStorageReady) {
-      triggerToast(
-        'Firestore 분리 저장소 최종 전환이 완료되지 않아 시스템 설정을 저장할 수 없습니다.',
-        'error'
-      );
-      return;
-    }
-
-    const nextSettings = {
-      ...tempSettings,
-      allowNonOverlappingSameAssetRequests:
-        tempSettings.allowNonOverlappingSameAssetRequests ??
-        DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS,
-      adjustStartDateAfterWorkEnd:
-        tempSettings.adjustStartDateToNextBusinessDay ??
-        tempSettings.adjustStartDateAfterWorkEnd ??
-        DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY,
-      adjustStartDateToNextBusinessDay:
-        tempSettings.adjustStartDateToNextBusinessDay ??
-        tempSettings.adjustStartDateAfterWorkEnd ??
-        DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY,
-      holidays: Array.isArray(
-        tempSettings.holidays
-      )
-        ? tempSettings.holidays
-            .filter(
-              (holiday) =>
-                holiday &&
-                holiday.date
-            )
-            .map((holiday) => ({
-              date: holiday.date,
-              name:
-                holiday.name || '',
-              type:
-                holiday.type ||
-                DEFAULT_HOLIDAY_TYPE,
-              enabled:
-                holiday.enabled !== false,
-            }))
-        : [],
-    };
-
-    try {
-      await setDoc(
-        PUBLIC_CONFIG_DOC_REF,
-        {
-          settings: nextSettings,
-          updatedAt:
-            serverTimestamp(),
-        },
-        {
-          merge: true,
-        }
-      );
-
-      setData((prev) => ({
-        ...prev,
-        settings: nextSettings,
-      }));
-
-      setTempSettings(
-        nextSettings
-      );
-      setNewHolidayDate(today());
-      setNewHolidayName('');
-      setNewHolidayType(
-        DEFAULT_HOLIDAY_TYPE
-      );
-      setHolidayImportYear(
-        String(
-          getKoreaNow().getUTCFullYear()
-        )
-      );
-      setHolidayImportLoading(
-        false
-      );
-
-      triggerToast(
-        '설정 변경사항이 분리 저장소에 성공적으로 저장 및 반영되었습니다.',
-        'success'
-      );
-    } catch (error) {
-      console.error(
-        'System settings save error:',
-        error
-      );
-
-      triggerToast(
-        '시스템 설정 저장에 실패했습니다. 기존 설정은 유지됩니다.',
-        'error'
-      );
-    }
+    setTempTeams(nextTeams);
+    setTempBorrowers(nextBorrowers);
+    setEditingTeamIndex(null);
+    setEditingTeamName('');
+    setDraggingTeamIndex(null);
+    setEditingBorrowerIndex(null);
+    setEditingBorrowerName('');
+    setDraggingBorrowerIndex(null);
+    setNewTeam('');
+    setNewBorrower('');
+    setNewBorrowerTeam('전체');
+    triggerToast('부서·사용자 변경사항이 원장에 성공적으로 저장 및 반영되었습니다.', 'success');
   };
 
   const shouldShowStats =
@@ -5807,14 +5314,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       return;
     }
 
-    if (!isSplitStorageReady) {
-      triggerToast(
-        'Firestore 분리 저장소 최종 전환이 완료되지 않아 대여신청을 제출할 수 없습니다. 관리자에게 문의해 주세요.',
-        'error'
-      );
-      return;
-    }
-
     if (!firebaseAuthReady || !currentAuthRoleReady || !userProfileReady) {
       triggerToast(
         '로그인 계정과 회원 정보를 확인하는 중입니다. 잠시 후 다시 시도해 주세요.',
@@ -5980,16 +5479,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       requestId
     );
 
-    const availabilityDocRef = doc(
-      RENTAL_AVAILABILITY_COLLECTION_REF,
-      requestId
-    );
-
-    const assetDocRef = doc(
-      RENTAL_ASSETS_COLLECTION_REF,
-      selectedLaptop.id
-    );
-
     const requestedAt = new Date().toLocaleString('ko-KR');
 
     const nextRequest = {
@@ -6012,68 +5501,71 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     };
 
     let committedRequest = null;
-    let committedAsset = null;
-    let committedAvailabilityRequest = null;
+    let committedMainData = null;
+    let committedMainDataForSave = null;
 
     requestSubmitInProgressRef.current = true;
     setRequestSubmitLoading(true);
 
     try {
       await runTransaction(db, async (transaction) => {
-        const assetSnapshot =
-          await transaction.get(assetDocRef);
+        const mainSnapshot = await transaction.get(DATA_DOC_REF);
 
-        if (!assetSnapshot.exists()) {
+        if (!mainSnapshot.exists()) {
+          throw new Error('main-document-not-found');
+        }
+
+        const remotePayload = mainSnapshot.data();
+        const remoteSource = remotePayload.data || remotePayload;
+        const latestData = mergePersistedData(remoteSource);
+
+        const latestLaptop = (latestData.laptops || []).find(
+          (laptop) => laptop.id === selectedLaptop.id
+        );
+
+        if (!latestLaptop) {
           throw new Error('selected-laptop-not-found');
         }
 
-        const latestAsset = {
-          ...assetSnapshot.data(),
-          id: assetSnapshot.id,
-        };
-
-        const latestReservations =
-          normalizeAssetReservations(
-            latestAsset.reservations || []
-          );
-
-        const latestAvailability =
-          getLaptopRentalAvailability(
-            latestAsset,
-            latestReservations,
-            data.settings,
-            form.startDate,
-            form.dueDate
-          );
+        const latestAvailability = getLaptopRentalAvailability(
+          latestLaptop,
+          latestData.requests,
+          latestData.settings,
+          form.startDate,
+          form.dueDate
+        );
 
         if (latestAvailability.blocked) {
-          const conflictError =
-            new Error('rental-conflict');
-
-          conflictError.availability =
-            latestAvailability;
-
+          const conflictError = new Error('rental-conflict');
+          conflictError.availability = latestAvailability;
           throw conflictError;
         }
 
         const nextCommittedRequest = {
           ...nextRequest,
-          laptopId: latestAsset.id,
-          assetCategory:
-            latestAsset.category || '노트북',
-          assetNo: latestAsset.assetNo,
+          laptopId: latestLaptop.id,
+          assetCategory: latestLaptop.category || '노트북',
+          assetNo: latestLaptop.assetNo,
         };
 
         const availabilityRequest =
-          toRentalAvailabilityRequest(
-            nextCommittedRequest
-          );
+          toRentalAvailabilityRequest(nextCommittedRequest);
 
-        const nextReservations = [
-          ...latestReservations,
-          availabilityRequest,
-        ];
+        const nextCommittedMainData = {
+          ...latestData,
+          requests: [
+            availabilityRequest,
+            ...(latestData.requests || []).filter(
+              (request) => request.id !== requestId
+            ),
+          ],
+        };
 
+        const nextCommittedMainDataForSave = {
+          ...remoteSource,
+          requests: nextCommittedMainData.requests,
+        };
+        
         transaction.set(
           requestDocRef,
           {
@@ -6083,95 +5575,49 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           }
         );
 
-        transaction.set(
-          availabilityDocRef,
-          {
-            ...availabilityRequest,
-            updatedAt: serverTimestamp(),
-          }
-        );
+        transaction.update(DATA_DOC_REF, {
+          'data.requests': nextCommittedMainData.requests,
+          updatedAt: serverTimestamp(),
+        });
 
-        transaction.update(
-          assetDocRef,
-          {
-            reservations:
-              nextReservations,
-            updatedAt:
-              serverTimestamp(),
-          }
-        );
-
-        committedRequest =
-          nextCommittedRequest;
-
-        committedAvailabilityRequest =
-          availabilityRequest;
-
-        committedAsset = {
-          ...latestAsset,
-          reservations:
-            nextReservations,
-        };
+        committedRequest = nextCommittedRequest;
+        committedMainData = nextCommittedMainData;
+        committedMainDataForSave = nextCommittedMainDataForSave;
       });
 
       if (
         !committedRequest ||
-        !committedAsset ||
-        !committedAvailabilityRequest
+        !committedMainData ||
+        !committedMainDataForSave
       ) {
-        throw new Error(
-          'rental-transaction-result-missing'
-        );
+        throw new Error('rental-transaction-result-missing');
       }
+
+      lastSyncedDataRef.current =
+        JSON.stringify(
+          stripAdminAccountsFromData(committedMainData)
+        );
 
       setRentalRequests((prev) => [
         committedRequest,
         ...(prev || []).filter(
-          (request) =>
-            request.id !== requestId
+          (request) => request.id !== requestId
         ),
       ]);
 
-      setData((prev) => ({
-        ...prev,
-        requests: [
-          committedAvailabilityRequest,
-          ...(prev.requests || []).filter(
-            (request) =>
-              request.id !== requestId
-          ),
-        ],
-        laptops: (prev.laptops || []).map(
-          (asset) =>
-            asset.id === committedAsset.id
-              ? committedAsset
-              : asset
-        ),
-      }));
-
+      setData(committedMainData);
       setSelectedLaptopId(null);
-      setForm(
-        createDefaultRequestForm(
-          data.settings
-        )
-      );
+      setForm(createDefaultRequestForm(committedMainData.settings));
 
       triggerToast(
         '대여 신청이 성공적으로 접수되었습니다. 관리자 승인을 대기합니다.',
         'success'
       );
     } catch (error) {
-      console.error(
-        'Rental request create error:',
-        error
-      );
+      console.error('Rental request create error:', error);
 
-      if (
-        error?.message ===
-        'rental-conflict'
-      ) {
-        const blockingRequest =
-          error.availability?.blockingRequest;
+      if (error?.message === 'rental-conflict') {
+        const blockingRequest = error.availability?.blockingRequest;
 
         triggerToast(
           blockingRequest
@@ -6179,10 +5625,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             : '다른 사용자의 신청이 먼저 접수되어 현재 선택한 기기를 신청할 수 없습니다.',
           'error'
         );
-      } else if (
-        error?.message ===
-        'selected-laptop-not-found'
-      ) {
+      } else if (error?.message === 'selected-laptop-not-found') {
         triggerToast(
           '선택한 기기 정보를 찾을 수 없습니다. 목록을 새로고침한 뒤 다시 시도해 주세요.',
           'error'
@@ -6200,255 +5643,169 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
   };
 
   const updateRequest = async (id, status) => {
-    if (!isSplitStorageReady) {
-      triggerToast(
-        'Firestore 분리 저장소 최종 전환이 완료되지 않아 신청 상태를 변경할 수 없습니다.',
-        'error'
-      );
-      return;
-    }
-
-    const currentRequest =
-      mergedRentalRequests.find(
-        (request) => request.id === id
-      );
+    const currentRequest = mergedRentalRequests.find(
+      (request) => request.id === id
+    );
 
     if (!currentRequest) {
-      triggerToast(
-        '신청 정보를 찾을 수 없습니다.',
-        'error'
-      );
+      triggerToast('신청 정보를 찾을 수 없습니다.', 'error');
       return;
     }
 
     let committedRequest = null;
-    let committedAsset = null;
-    let committedAvailabilityRequest = null;
-    let shouldKeepAvailability = false;
+    let committedMainData = null;
+    let committedMainDataForSave = null;
 
-    const nextDisplayStatus =
-      getDisplayRentalStatus(
-        status,
-        currentRequest.startDate
-      );
+    const nextDisplayStatus = getDisplayRentalStatus(
+      status,
+      currentRequest.startDate
+    );
 
     try {
-      await runTransaction(
-        db,
-        async (transaction) => {
-          const requestDocRef = doc(
-            RENTAL_REQUESTS_COLLECTION_REF,
-            id
-          );
+      await runTransaction(db, async (transaction) => {
+        const requestDocRef = doc(db, 'rentalRequests', id);
 
-          const availabilityDocRef = doc(
-            RENTAL_AVAILABILITY_COLLECTION_REF,
-            id
-          );
+        const mainSnapshot = await transaction.get(DATA_DOC_REF);
+        const requestSnapshot = await transaction.get(requestDocRef);
 
-          const assetDocRef = doc(
-            RENTAL_ASSETS_COLLECTION_REF,
-            currentRequest.laptopId
-          );
-
-          const [
-            requestSnapshot,
-            assetSnapshot,
-          ] = await Promise.all([
-            transaction.get(
-              requestDocRef
-            ),
-            transaction.get(
-              assetDocRef
-            ),
-          ]);
-
-          if (!requestSnapshot.exists()) {
-            throw new Error(
-              'rental-request-not-found'
-            );
-          }
-
-          if (!assetSnapshot.exists()) {
-            throw new Error(
-              'rental-asset-not-found'
-            );
-          }
-
-          const latestRequest = {
-            ...requestSnapshot.data(),
-            id: requestSnapshot.id,
-          };
-
-          const latestAsset = {
-            ...assetSnapshot.data(),
-            id: assetSnapshot.id,
-          };
-
-          const nextCommittedRequest = {
-            ...latestRequest,
-            status,
-          };
-
-          const availabilityRequest =
-            toRentalAvailabilityRequest(
-              nextCommittedRequest
-            );
-
-          const latestReservations =
-            normalizeAssetReservations(
-              latestAsset.reservations || []
-            ).filter(
-              (request) =>
-                request.id !== id
-            );
-
-          shouldKeepAvailability =
-            RENTAL_BLOCKING_REQUEST_STATUSES.includes(
-              status
-            );
-
-          const updatedReservations =
-            shouldKeepAvailability
-              ? [
-                  ...latestReservations,
-                  availabilityRequest,
-                ]
-              : latestReservations;
-
-          const representativeRequest =
-            getLaptopRepresentativeRequest(
-              updatedReservations,
-              latestAsset.id
-            );
-
-          const nextAsset = {
-            ...latestAsset,
-            reservations:
-              updatedReservations,
-            status:
-              latestAsset.status ===
-              STATUS.UNAVAILABLE
-                ? STATUS.UNAVAILABLE
-                : representativeRequest
-                  ? representativeRequest.status
-                  : STATUS.AVAILABLE,
-            currentRequestId:
-              representativeRequest?.id ||
-              null,
-          };
-
-          transaction.set(
-            requestDocRef,
-            {
-              ...nextCommittedRequest,
-              updatedAt:
-                serverTimestamp(),
-              syncedAt:
-                serverTimestamp(),
-            },
-            {
-              merge: true,
-            }
-          );
-
-          if (shouldKeepAvailability) {
-            transaction.set(
-              availabilityDocRef,
-              {
-                ...availabilityRequest,
-                updatedAt:
-                  serverTimestamp(),
-              }
-            );
-          } else {
-            transaction.delete(
-              availabilityDocRef
-            );
-          }
-
-          transaction.update(
-            assetDocRef,
-            {
-              reservations:
-                nextAsset.reservations,
-              status:
-                nextAsset.status,
-              currentRequestId:
-                nextAsset.currentRequestId,
-              updatedAt:
-                serverTimestamp(),
-            }
-          );
-
-          committedRequest =
-            nextCommittedRequest;
-
-          committedAsset =
-            nextAsset;
-
-          committedAvailabilityRequest =
-            shouldKeepAvailability
-              ? availabilityRequest
-              : null;
+        if (!mainSnapshot.exists()) {
+          throw new Error('main-document-not-found');
         }
-      );
+
+        const remotePayload = mainSnapshot.data();
+        const remoteSource = remotePayload.data || remotePayload;
+        const latestData = mergePersistedData(remoteSource);
+
+        const latestRequest = requestSnapshot.exists()
+          ? {
+              ...requestSnapshot.data(),
+              id: requestSnapshot.id,
+            }
+          : currentRequest;
+
+        if (!latestRequest?.id) {
+          throw new Error('rental-request-not-found');
+        }
+
+        const nextCommittedRequest = {
+          ...latestRequest,
+          status,
+        };
+
+        const availabilityRequest =
+          toRentalAvailabilityRequest(nextCommittedRequest);
+
+        const retainedAvailabilityRequests =
+          (latestData.requests || [])
+            .filter(
+              (request) =>
+                request.id !== id &&
+                RENTAL_BLOCKING_REQUEST_STATUSES.includes(
+                  request.status
+                )
+            )
+            .map((request) =>
+              toRentalAvailabilityRequest(request)
+            );
+
+        const shouldKeepInAvailabilityRequests =
+          RENTAL_BLOCKING_REQUEST_STATUSES.includes(status);
+
+        const updatedRequests =
+          shouldKeepInAvailabilityRequests
+            ? [
+                availabilityRequest,
+                ...retainedAvailabilityRequests,
+              ]
+            : retainedAvailabilityRequests;
+
+        const nextCommittedMainData = {
+          ...latestData,
+          requests: updatedRequests,
+          laptops: (latestData.laptops || []).map((laptop) => {
+            if (laptop.id !== nextCommittedRequest.laptopId) {
+              return laptop;
+            }
+
+            const representativeRequest =
+              getLaptopRepresentativeRequest(
+                updatedRequests,
+                laptop.id
+              );
+
+            if (laptop.status === STATUS.UNAVAILABLE) {
+              return {
+                ...laptop,
+                currentRequestId:
+                  representativeRequest?.id || null,
+              };
+            }
+
+            return {
+              ...laptop,
+              status: representativeRequest
+                ? representativeRequest.status
+                : STATUS.AVAILABLE,
+              currentRequestId:
+                representativeRequest?.id || null,
+            };
+          }),
+        };
+
+        const nextCommittedMainDataForSave =
+          stripAdminAccountsFromData(nextCommittedMainData);
+
+        transaction.set(
+          requestDocRef,
+          {
+            ...nextCommittedRequest,
+            updatedAt: serverTimestamp(),
+            syncedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        transaction.update(DATA_DOC_REF, {
+          'data.requests': nextCommittedMainData.requests,
+          'data.laptops': nextCommittedMainData.laptops,
+          updatedAt: serverTimestamp(),
+        });
+
+        committedRequest = nextCommittedRequest;
+        committedMainData = nextCommittedMainData;
+        committedMainDataForSave = nextCommittedMainDataForSave;
+      });
 
       if (
         !committedRequest ||
-        !committedAsset
+        !committedMainData ||
+        !committedMainDataForSave
       ) {
         throw new Error(
           'rental-status-transaction-result-missing'
         );
       }
 
+      lastSyncedDataRef.current =
+        JSON.stringify(committedMainDataForSave);
+
       setRentalRequests((prev) => {
-        const requestExists =
-          (prev || []).some(
-            (request) =>
-              request.id === id
-          );
+        const requestExists = (prev || []).some(
+          (request) => request.id === id
+        );
 
         if (!requestExists) {
-          return [
-            committedRequest,
-            ...(prev || []),
-          ];
+          return [committedRequest, ...(prev || [])];
         }
 
-        return (prev || []).map(
-          (request) =>
-            request.id === id
-              ? committedRequest
-              : request
+        return (prev || []).map((request) =>
+          request.id === id
+            ? committedRequest
+            : request
         );
       });
 
-      setData((prev) => ({
-        ...prev,
-        requests:
-          shouldKeepAvailability
-            ? [
-                committedAvailabilityRequest,
-                ...(prev.requests || []).filter(
-                  (request) =>
-                    request.id !== id
-                ),
-              ]
-            : (prev.requests || []).filter(
-                (request) =>
-                  request.id !== id
-              ),
-        laptops:
-          (prev.laptops || []).map(
-            (asset) =>
-              asset.id ===
-              committedAsset.id
-                ? committedAsset
-                : asset
-          ),
-      }));
+      setData(committedMainData);
 
       triggerToast(
         `상태가 [${nextDisplayStatus}]로 업데이트 되었습니다.`,
@@ -6459,17 +5816,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         'Rental request status update error:',
         error
       );
-
-      if (
-        error?.message ===
-        'rental-asset-not-found'
-      ) {
-        triggerToast(
-          '신청과 연결된 자산 문서를 찾을 수 없어 상태 변경을 중단했습니다.',
-          'error'
-        );
-        return;
-      }
 
       triggerToast(
         '신청 상태와 기기 상태 저장에 실패했습니다. 변경사항은 적용되지 않았습니다. Firestore Rules와 네트워크 상태를 확인해 주세요.',
@@ -6712,14 +6058,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
   
   // 수정 후 코드
   const createLaptop = async () => {
-    if (!isSplitStorageReady) {
-      triggerToast(
-        'Firestore 분리 저장소 최종 전환이 완료되지 않아 신규 자산을 등록할 수 없습니다.',
-        'error'
-      );
-      return;
-    }
-
     if (!newLaptop) {
       triggerToast(
         '신규 등록할 자산 정보를 찾을 수 없습니다.',
@@ -6752,145 +6090,115 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       return;
     }
 
-    const generatedAssetRef = doc(
-      RENTAL_ASSETS_COLLECTION_REF
-    );
-
     const newId =
-      `NB-${generatedAssetRef.id}`;
-
-    const assetDocRef = doc(
-      RENTAL_ASSETS_COLLECTION_REF,
-      newId
-    );
-
-    const registryId =
-      getAssetNumberRegistryId(
-        newAssetNo
-      );
-
-    const registryDocRef = doc(
-      RENTAL_ASSET_NUMBERS_COLLECTION_REF,
-      registryId
-    );
+      `NB-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}`;
 
     const newLaptopDraft = {
       ...newLaptop,
       id: newId,
       assetNo: newAssetNo,
-      assetNoNormalized:
-        normalizeAssetNumber(
-          newAssetNo
-        ),
       category: newCategory,
       status:
-        newLaptop.status ===
-        STATUS.UNAVAILABLE
+        newLaptop.status === STATUS.UNAVAILABLE
           ? STATUS.UNAVAILABLE
           : STATUS.AVAILABLE,
       currentRequestId: null,
-      reservations: [],
     };
 
-    let committedAsset = null;
+    let committedMainData = null;
 
     try {
-      await runTransaction(
-        db,
-        async (transaction) => {
-          const [
-            configSnapshot,
-            registrySnapshot,
-          ] = await Promise.all([
-            transaction.get(
-              PUBLIC_CONFIG_DOC_REF
-            ),
-            transaction.get(
-              registryDocRef
-            ),
-          ]);
+      await runTransaction(db, async (transaction) => {
+        const mainSnapshot =
+          await transaction.get(DATA_DOC_REF);
 
-          if (!configSnapshot.exists()) {
-            throw new Error(
-              'public-config-not-found'
-            );
-          }
-
-          const categoryExists =
-            (
-              configSnapshot.data()
-                .assetCategories || []
-            ).some(
-              (category) =>
-                String(
-                  category || ''
-                ).trim() ===
-                newCategory
-            );
-
-          if (!categoryExists) {
-            throw new Error(
-              'asset-category-not-found'
-            );
-          }
-
-          if (registrySnapshot.exists()) {
-            const duplicateError =
-              new Error(
-                'duplicate-asset-number'
-              );
-
-            duplicateError.duplicatedLaptop =
-              registrySnapshot.data();
-
-            throw duplicateError;
-          }
-
-          transaction.set(
-            assetDocRef,
-            {
-              ...newLaptopDraft,
-              createdAt:
-                serverTimestamp(),
-              updatedAt:
-                serverTimestamp(),
-            }
-          );
-
-          transaction.set(
-            registryDocRef,
-            {
-              id: registryId,
-              assetId: newId,
-              assetNo: newAssetNo,
-              assetNoNormalized:
-                normalizeAssetNumber(
-                  newAssetNo
-                ),
-              updatedAt:
-                serverTimestamp(),
-            }
-          );
-
-          committedAsset =
-            newLaptopDraft;
+        if (!mainSnapshot.exists()) {
+          throw new Error('main-document-not-found');
         }
-      );
 
-      if (!committedAsset) {
+        const remotePayload = mainSnapshot.data();
+        const remoteSource =
+          remotePayload.data || remotePayload;
+        const latestData =
+          mergePersistedData(remoteSource);
+
+        const categoryExists =
+          (latestData.assetCategories || []).some(
+            (category) =>
+              String(category || '').trim() ===
+              newCategory
+          );
+
+        if (!categoryExists) {
+          throw new Error(
+            'asset-category-not-found'
+          );
+        }
+
+        const duplicatedLaptop =
+          (latestData.laptops || []).find(
+            (laptop) =>
+              String(laptop.assetNo || '')
+                .trim()
+                .toLowerCase() ===
+              newAssetNo.toLowerCase()
+          );
+
+        if (duplicatedLaptop) {
+          const duplicateError =
+            new Error('duplicate-asset-number');
+
+          duplicateError.duplicatedLaptop =
+            duplicatedLaptop;
+
+          throw duplicateError;
+        }
+
+        const duplicatedId =
+          (latestData.laptops || []).some(
+            (laptop) => laptop.id === newId
+          );
+
+        if (duplicatedId) {
+          throw new Error(
+            'duplicate-laptop-id'
+          );
+        }
+
+        const nextCommittedMainData = {
+          ...latestData,
+          laptops: [
+            ...(latestData.laptops || []),
+            newLaptopDraft,
+          ],
+        };
+
+        transaction.update(DATA_DOC_REF, {
+          'data.laptops':
+            nextCommittedMainData.laptops,
+          updatedAt: serverTimestamp(),
+        });
+
+        committedMainData =
+          nextCommittedMainData;
+      });
+
+      if (!committedMainData) {
         throw new Error(
           'laptop-create-transaction-result-missing'
         );
       }
 
-      setData((prev) => ({
-        ...prev,
-        laptops: [
-          ...(prev.laptops || []),
-          committedAsset,
-        ],
-      }));
+      lastSyncedDataRef.current =
+        JSON.stringify(
+          stripAdminAccountsFromData(
+            committedMainData
+          )
+        );
 
+      setData(committedMainData);
       setNewLaptop(null);
 
       triggerToast(
@@ -6924,6 +6232,17 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       ) {
         triggerToast(
           '선택한 자산 카테고리가 최신 카테고리 목록에 없습니다. 신규 등록 패널을 닫고 다시 열어 주세요.',
+          'error'
+        );
+        return;
+      }
+
+      if (
+        error?.message ===
+        'duplicate-laptop-id'
+      ) {
+        triggerToast(
+          '신규 자산 식별번호가 중복되어 등록을 중단했습니다. 다시 등록 버튼을 눌러 주세요.',
           'error'
         );
         return;
@@ -7151,284 +6470,177 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       return;
     }
 
-    const acceptedAssets = [];
-    const duplicateAssetNumbers = new Set();
-    const invalidCategoryNames = new Set();
-
-    let invalidCategoryCount = 0;
-    let duplicateAssetNoCount = 0;
+    let committedMainData = null;
+    let committedUploadResult = null;
 
     try {
-      const configSnapshot =
-        await getDoc(PUBLIC_CONFIG_DOC_REF);
+      await runTransaction(db, async (transaction) => {
+        const mainSnapshot =
+          await transaction.get(DATA_DOC_REF);
 
-      if (!configSnapshot.exists()) {
-        throw new Error(
-          'public-config-not-found'
+        if (!mainSnapshot.exists()) {
+          throw new Error('main-document-not-found');
+        }
+
+        const remotePayload = mainSnapshot.data();
+        const remoteSource =
+          remotePayload.data || remotePayload;
+        const latestData =
+          mergePersistedData(remoteSource);
+
+        const registeredCategoryMap = new Map(
+          (latestData.assetCategories || []).map(
+            (category) => [
+              String(category || '')
+                .trim()
+                .toLowerCase(),
+              category,
+            ]
+          )
         );
-      }
 
-      const registeredCategoryMap =
-        new Map(
-          (
-            configSnapshot.data()
-              .assetCategories || []
-          ).map((category) => [
-            String(category || '')
-              .trim()
-              .toLowerCase(),
-            category,
-          ])
+        const existingAssetNoSet = new Set(
+          (latestData.laptops || []).map(
+            (laptop) =>
+              String(laptop.assetNo || '')
+                .trim()
+                .toLowerCase()
+          )
         );
 
-      const fileAssetNoSet =
-        new Set();
+        const acceptedAssetNoSet = new Set();
+        const invalidCategoryNames = new Set();
+        const duplicateAssetNumbers = new Set();
+        const acceptedLaptops = [];
 
-      const validatedCandidates = [];
+        let invalidCategoryCount = 0;
+        let duplicateAssetNoCount = 0;
 
-      parsedCandidates.forEach(
-        (candidate) => {
-          const normalizedCategory =
-            String(
-              candidate.category || ''
-            )
-              .trim()
-              .toLowerCase();
+        parsedCandidates.forEach(
+          (candidate, candidateIndex) => {
+            const normalizedCategory =
+              String(candidate.category || '')
+                .trim()
+                .toLowerCase();
 
-          const matchedCategory =
-            registeredCategoryMap.get(
-              normalizedCategory
-            );
+            const matchedCategory =
+              registeredCategoryMap.get(
+                normalizedCategory
+              );
 
-          if (
-            !normalizedCategory ||
-            !matchedCategory
-          ) {
-            invalidCategoryCount++;
-            invalidCategoryNames.add(
-              candidate.category ||
-              '미입력'
-            );
-            return;
-          }
+            if (
+              !normalizedCategory ||
+              !matchedCategory
+            ) {
+              invalidCategoryCount++;
+              invalidCategoryNames.add(
+                candidate.category || '미입력'
+              );
+              return;
+            }
 
-          const normalizedAssetNo =
-            normalizeAssetNumber(
-              candidate.assetNo
-            );
+            const normalizedAssetNo =
+              String(candidate.assetNo || '')
+                .trim()
+                .toLowerCase();
 
-          if (
-            fileAssetNoSet.has(
+            if (
+              existingAssetNoSet.has(
+                normalizedAssetNo
+              ) ||
+              acceptedAssetNoSet.has(
+                normalizedAssetNo
+              )
+            ) {
+              duplicateAssetNoCount++;
+              duplicateAssetNumbers.add(
+                candidate.assetNo
+              );
+              return;
+            }
+
+            acceptedAssetNoSet.add(
               normalizedAssetNo
-            )
-          ) {
-            duplicateAssetNoCount++;
-            duplicateAssetNumbers.add(
-              candidate.assetNo
             );
-            return;
+
+            acceptedLaptops.push({
+              id:
+                `NB-UP-${Date.now()}-` +
+                `${candidate.sourceIndex}-` +
+                `${candidateIndex}-` +
+                Math.random()
+                  .toString(36)
+                  .slice(2, 8),
+              category: matchedCategory,
+              assetNo: candidate.assetNo,
+              serialNo: candidate.serialNo,
+              model: candidate.model,
+              manufactureDate:
+                candidate.manufactureDate,
+              photo: candidate.photo,
+              note: candidate.note,
+              status: candidate.status,
+              currentRequestId: null,
+            });
           }
+        );
 
-          fileAssetNoSet.add(
-            normalizedAssetNo
-          );
+        const nextCommittedMainData = {
+          ...latestData,
+          laptops: [
+            ...(latestData.laptops || []),
+            ...acceptedLaptops,
+          ],
+        };
 
-          const generatedAssetRef =
-            doc(
-              RENTAL_ASSETS_COLLECTION_REF
-            );
-
-          const assetId =
-            `NB-UP-${generatedAssetRef.id}`;
-
-          validatedCandidates.push({
-            ...candidate,
-            id: assetId,
-            category:
-              matchedCategory,
-            assetNoNormalized:
-              normalizedAssetNo,
-            reservations: [],
+        if (acceptedLaptops.length > 0) {
+          transaction.update(DATA_DOC_REF, {
+            'data.laptops':
+              nextCommittedMainData.laptops,
+            updatedAt: serverTimestamp(),
           });
         }
-      );
 
-      const transactionChunkSize = 100;
+        committedMainData =
+          nextCommittedMainData;
 
-      for (
-        let startIndex = 0;
-        startIndex <
-        validatedCandidates.length;
-        startIndex +=
-        transactionChunkSize
+        committedUploadResult = {
+          addCount: acceptedLaptops.length,
+          invalidCategoryCount,
+          invalidCategoryNames:
+            Array.from(invalidCategoryNames),
+          duplicateAssetNoCount,
+          duplicateAssetNumbers:
+            Array.from(duplicateAssetNumbers),
+        };
+      });
+
+      if (
+        !committedMainData ||
+        !committedUploadResult
       ) {
-        const candidateChunk =
-          validatedCandidates.slice(
-            startIndex,
-            startIndex +
-              transactionChunkSize
-          );
-
-        let chunkResult = null;
-
-        await runTransaction(
-          db,
-          async (transaction) => {
-            const registryEntries =
-              candidateChunk.map(
-                (candidate) => {
-                  const registryId =
-                    getAssetNumberRegistryId(
-                      candidate.assetNo
-                    );
-
-                  return {
-                    candidate,
-                    registryId,
-                    registryRef: doc(
-                      RENTAL_ASSET_NUMBERS_COLLECTION_REF,
-                      registryId
-                    ),
-                    assetRef: doc(
-                      RENTAL_ASSETS_COLLECTION_REF,
-                      candidate.id
-                    ),
-                  };
-                }
-              );
-
-            const registrySnapshots =
-              await Promise.all(
-                registryEntries.map(
-                  (entry) =>
-                    transaction.get(
-                      entry.registryRef
-                    )
-                )
-              );
-
-            const createdAssets = [];
-            const duplicatedAssetNumbers =
-              [];
-
-            registryEntries.forEach(
-              (entry, index) => {
-                if (
-                  registrySnapshots[
-                    index
-                  ].exists()
-                ) {
-                  duplicatedAssetNumbers.push(
-                    entry.candidate.assetNo
-                  );
-                  return;
-                }
-
-                const assetForSave = {
-                  id:
-                    entry.candidate.id,
-                  category:
-                    entry.candidate
-                      .category,
-                  assetNo:
-                    entry.candidate
-                      .assetNo,
-                  assetNoNormalized:
-                    entry.candidate
-                      .assetNoNormalized,
-                  serialNo:
-                    entry.candidate
-                      .serialNo,
-                  model:
-                    entry.candidate
-                      .model,
-                  manufactureDate:
-                    entry.candidate
-                      .manufactureDate,
-                  photo:
-                    entry.candidate
-                      .photo,
-                  note:
-                    entry.candidate.note,
-                  status:
-                    entry.candidate
-                      .status,
-                  currentRequestId:
-                    null,
-                  reservations: [],
-                };
-
-                transaction.set(
-                  entry.assetRef,
-                  {
-                    ...assetForSave,
-                    createdAt:
-                      serverTimestamp(),
-                    updatedAt:
-                      serverTimestamp(),
-                  }
-                );
-
-                transaction.set(
-                  entry.registryRef,
-                  {
-                    id:
-                      entry.registryId,
-                    assetId:
-                      assetForSave.id,
-                    assetNo:
-                      assetForSave
-                        .assetNo,
-                    assetNoNormalized:
-                      assetForSave
-                        .assetNoNormalized,
-                    updatedAt:
-                      serverTimestamp(),
-                  }
-                );
-
-                createdAssets.push(
-                  assetForSave
-                );
-              }
-            );
-
-            chunkResult = {
-              createdAssets,
-              duplicatedAssetNumbers,
-            };
-          }
+        throw new Error(
+          'bulk-upload-transaction-result-missing'
         );
-
-        if (!chunkResult) {
-          throw new Error(
-            'bulk-upload-transaction-result-missing'
-          );
-        }
-
-        acceptedAssets.push(
-          ...chunkResult.createdAssets
-        );
-
-        chunkResult
-          .duplicatedAssetNumbers
-          .forEach((assetNo) => {
-            duplicateAssetNoCount++;
-            duplicateAssetNumbers.add(
-              assetNo
-            );
-          });
       }
 
-      if (acceptedAssets.length > 0) {
-        setData((prev) => ({
-          ...prev,
-          laptops: [
-            ...(prev.laptops || []),
-            ...acceptedAssets,
-          ],
-        }));
+      const {
+        addCount,
+        invalidCategoryCount,
+        invalidCategoryNames,
+        duplicateAssetNoCount,
+        duplicateAssetNumbers,
+      } = committedUploadResult;
 
+      if (addCount > 0) {
+        lastSyncedDataRef.current =
+          JSON.stringify(
+            stripAdminAccountsFromData(
+              committedMainData
+            )
+          );
+
+        setData(committedMainData);
         setShowUploadPanel(false);
 
         const skippedMessages = [];
@@ -7452,7 +6664,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         }
 
         triggerToast(
-          `총 ${acceptedAssets.length}대의 기기를 엑셀/CSV 데이터베이스로 일괄 추가 등록했습니다.` +
+          `총 ${addCount}대의 기기를 엑셀/CSV 데이터베이스로 일괄 추가 등록했습니다.` +
             `${
               skippedMessages.length
                 ? ` (${skippedMessages.join(', ')})`
@@ -7465,9 +6677,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
       if (invalidCategoryCount > 0) {
         const invalidCategoryList =
-          Array.from(
-            invalidCategoryNames
-          )
+          invalidCategoryNames
             .slice(0, 5)
             .join(', ');
 
@@ -7480,9 +6690,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
       if (duplicateAssetNoCount > 0) {
         const duplicateAssetNoList =
-          Array.from(
-            duplicateAssetNumbers
-          )
+          duplicateAssetNumbers
             .slice(0, 5)
             .join(', ');
 
@@ -7504,9 +6712,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       );
 
       triggerToast(
-        acceptedAssets.length > 0
-          ? `엑셀/CSV 등록 중 일부 작업이 중단되었습니다. 현재까지 ${acceptedAssets.length}건은 저장되었으며 나머지는 등록되지 않았습니다.`
-          : '엑셀/CSV 자산 등록에 실패했습니다. 기존 자산 목록은 변경되지 않았습니다. Firestore 권한과 네트워크 상태를 확인해 주세요.',
+        '엑셀/CSV 자산 등록에 실패했습니다. 기존 자산 목록은 변경되지 않았습니다. Firestore 권한과 네트워크 상태를 확인해 주세요.',
         'error'
       );
     }
@@ -7514,26 +6720,14 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
   // 자산 영구 삭제 제어 로직
   const deleteLaptop = (id, assetNo) => {
-    if (!isSplitStorageReady) {
-      triggerToast(
-        'Firestore 분리 저장소 최종 전환이 완료되지 않아 자산을 삭제할 수 없습니다.',
-        'error'
-      );
-      return;
-    }
-
     const currentBlockingRequest =
-      findSameAssetBlockingRequest(
-        data.requests,
-        id
-      );
+      findSameAssetBlockingRequest(data.requests, id);
 
     if (currentBlockingRequest) {
-      const currentBlockingStatus =
-        getDisplayRentalStatus(
-          currentBlockingRequest.status,
-          currentBlockingRequest.startDate
-        );
+      const currentBlockingStatus = getDisplayRentalStatus(
+        currentBlockingRequest.status,
+        currentBlockingRequest.startDate
+      );
 
       triggerToast(
         `자산 ${assetNo}에는 현재 [${currentBlockingStatus}] 상태의 신청이 있어 삭제할 수 없습니다. 해당 신청을 불허 또는 반납완료 처리한 후 다시 삭제해 주세요.`,
@@ -7546,107 +6740,85 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       '자산 삭제',
       `정말로 자산 [${assetNo}] 기기를 시스템 목록에서 영구적으로 삭제하시겠습니까? 완료된 신청 원장은 보존되나 기기 목록에서는 삭제됩니다.`,
       async () => {
-        let deletedAsset = null;
+        let committedMainData = null;
 
         try {
-          await runTransaction(
-            db,
-            async (transaction) => {
-              const assetDocRef = doc(
-                RENTAL_ASSETS_COLLECTION_REF,
+          await runTransaction(db, async (transaction) => {
+            const mainSnapshot =
+              await transaction.get(DATA_DOC_REF);
+
+            if (!mainSnapshot.exists()) {
+              throw new Error('main-document-not-found');
+            }
+
+            const remotePayload = mainSnapshot.data();
+            const remoteSource =
+              remotePayload.data || remotePayload;
+            const latestData =
+              mergePersistedData(remoteSource);
+
+            const latestBlockingRequest =
+              findSameAssetBlockingRequest(
+                latestData.requests,
                 id
               );
 
-              const assetSnapshot =
-                await transaction.get(
-                  assetDocRef
-                );
+            if (latestBlockingRequest) {
+              const conflictError =
+                new Error('active-rental-exists');
 
-              if (!assetSnapshot.exists()) {
-                throw new Error(
-                  'laptop-not-found'
-                );
-              }
+              conflictError.blockingRequest =
+                latestBlockingRequest;
 
-              const latestAsset = {
-                ...assetSnapshot.data(),
-                id: assetSnapshot.id,
-              };
-
-              const latestReservations =
-                normalizeAssetReservations(
-                  latestAsset.reservations ||
-                  []
-                );
-
-              const latestBlockingRequest =
-                findSameAssetBlockingRequest(
-                  latestReservations,
-                  id
-                );
-
-              if (
-                latestBlockingRequest
-              ) {
-                const conflictError =
-                  new Error(
-                    'active-rental-exists'
-                  );
-
-                conflictError.blockingRequest =
-                  latestBlockingRequest;
-
-                throw conflictError;
-              }
-
-              const registryDocRef = doc(
-                RENTAL_ASSET_NUMBERS_COLLECTION_REF,
-                getAssetNumberRegistryId(
-                  latestAsset.assetNo
-                )
-              );
-
-              await transaction.get(
-                registryDocRef
-              );
-
-              transaction.delete(
-                assetDocRef
-              );
-
-              transaction.delete(
-                registryDocRef
-              );
-
-              deletedAsset =
-                latestAsset;
+              throw conflictError;
             }
-          );
 
-          if (!deletedAsset) {
+            const laptopExists =
+              (latestData.laptops || []).some(
+                (laptop) => laptop.id === id
+              );
+
+            if (!laptopExists) {
+              throw new Error('laptop-not-found');
+            }
+
+            const nextCommittedMainData = {
+              ...latestData,
+              laptops: (latestData.laptops || []).filter(
+                (laptop) => laptop.id !== id
+              ),
+            };
+
+            transaction.update(DATA_DOC_REF, {
+              'data.laptops':
+                nextCommittedMainData.laptops,
+              updatedAt: serverTimestamp(),
+            });
+
+            committedMainData =
+              nextCommittedMainData;
+          });
+
+          if (!committedMainData) {
             throw new Error(
               'laptop-delete-transaction-result-missing'
             );
           }
 
-          setData((prev) => ({
-            ...prev,
-            laptops:
-              (prev.laptops || []).filter(
-                (asset) =>
-                  asset.id !== id
-              ),
-          }));
+          lastSyncedDataRef.current =
+            JSON.stringify(
+              stripAdminAccountsFromData(
+                committedMainData
+              )
+            );
 
-          if (
-            selectedLaptopId === id
-          ) {
+          setData(committedMainData);
+
+          if (selectedLaptopId === id) {
             setSelectedLaptopId(null);
           }
 
-          if (
-            editLaptop?.id === id
-          ) {
+          if (editLaptop?.id === id) {
             setEditLaptop(null);
           }
 
@@ -7660,10 +6832,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             error
           );
 
-          if (
-            error?.message ===
-            'active-rental-exists'
-          ) {
+          if (error?.message === 'active-rental-exists') {
             const blockingRequest =
               error.blockingRequest;
 
@@ -7680,10 +6849,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             return;
           }
 
-          if (
-            error?.message ===
-            'laptop-not-found'
-          ) {
+          if (error?.message === 'laptop-not-found') {
             triggerToast(
               `자산 ${assetNo}은(는) 이미 삭제되었거나 최신 자산 목록에서 찾을 수 없습니다.`,
               'error'
@@ -7701,14 +6867,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
   };
 
   const saveLaptop = async () => {
-    if (!isSplitStorageReady) {
-      triggerToast(
-        'Firestore 분리 저장소 최종 전환이 완료되지 않아 자산 정보를 저장할 수 없습니다.',
-        'error'
-      );
-      return;
-    }
-
     if (!editLaptop?.id) {
       triggerToast(
         '수정할 자산 정보를 찾을 수 없습니다.',
@@ -7717,13 +6875,10 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       return;
     }
 
-    const editingLaptopId =
-      editLaptop.id;
-
+    const editingLaptopId = editLaptop.id;
     const editedAssetNo = String(
       editLaptop.assetNo || ''
     ).trim();
-
     const editedCategory = String(
       editLaptop.category || ''
     ).trim();
@@ -7747,260 +6902,156 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     const editedLaptopDraft = {
       ...editLaptop,
       assetNo: editedAssetNo,
-      assetNoNormalized:
-        normalizeAssetNumber(
-          editedAssetNo
-        ),
       category: editedCategory,
     };
 
-    let committedAsset = null;
+    let committedMainData = null;
 
     try {
-      await runTransaction(
-        db,
-        async (transaction) => {
-          const assetDocRef = doc(
-            RENTAL_ASSETS_COLLECTION_REF,
+      await runTransaction(db, async (transaction) => {
+        const mainSnapshot =
+          await transaction.get(DATA_DOC_REF);
+
+        if (!mainSnapshot.exists()) {
+          throw new Error('main-document-not-found');
+        }
+
+        const remotePayload = mainSnapshot.data();
+        const remoteSource =
+          remotePayload.data || remotePayload;
+        const latestData =
+          mergePersistedData(remoteSource);
+
+        const latestLaptop =
+          (latestData.laptops || []).find(
+            (laptop) =>
+              laptop.id === editingLaptopId
+          );
+
+        if (!latestLaptop) {
+          throw new Error('laptop-not-found');
+        }
+
+        const categoryExists =
+          (latestData.assetCategories || []).some(
+            (category) =>
+              String(category || '').trim() ===
+              editedCategory
+          );
+
+        if (!categoryExists) {
+          throw new Error(
+            'asset-category-not-found'
+          );
+        }
+
+        const duplicatedLaptop =
+          (latestData.laptops || []).find(
+            (laptop) =>
+              laptop.id !== editingLaptopId &&
+              String(laptop.assetNo || '')
+                .trim()
+                .toLowerCase() ===
+                editedAssetNo.toLowerCase()
+          );
+
+        if (duplicatedLaptop) {
+          const duplicateError =
+            new Error('duplicate-asset-number');
+
+          duplicateError.duplicatedLaptop =
+            duplicatedLaptop;
+
+          throw duplicateError;
+        }
+
+        const blockingRequest =
+          findSameAssetBlockingRequest(
+            latestData.requests,
             editingLaptopId
           );
 
-          const [
-            assetSnapshot,
-            configSnapshot,
-          ] = await Promise.all([
-            transaction.get(
-              assetDocRef
-            ),
-            transaction.get(
-              PUBLIC_CONFIG_DOC_REF
-            ),
-          ]);
+        const assetIdentityChanged =
+          String(latestLaptop.assetNo || '').trim() !==
+            editedAssetNo ||
+          String(latestLaptop.category || '').trim() !==
+            editedCategory;
 
-          if (!assetSnapshot.exists()) {
-            throw new Error(
-              'laptop-not-found'
-            );
-          }
-
-          if (!configSnapshot.exists()) {
-            throw new Error(
-              'public-config-not-found'
-            );
-          }
-
-          const latestAsset = {
-            ...assetSnapshot.data(),
-            id: assetSnapshot.id,
-          };
-
-          const categoryExists =
-            (
-              configSnapshot.data()
-                .assetCategories || []
-            ).some(
-              (category) =>
-                String(
-                  category || ''
-                ).trim() ===
-                editedCategory
+        if (
+          blockingRequest &&
+          assetIdentityChanged
+        ) {
+          const identityChangeError =
+            new Error(
+              'active-rental-identity-change'
             );
 
-          if (!categoryExists) {
-            throw new Error(
-              'asset-category-not-found'
-            );
-          }
+          identityChangeError.blockingRequest =
+            blockingRequest;
 
-          const oldRegistryId =
-            getAssetNumberRegistryId(
-              latestAsset.assetNo
-            );
-
-          const newRegistryId =
-            getAssetNumberRegistryId(
-              editedAssetNo
-            );
-
-          const oldRegistryDocRef = doc(
-            RENTAL_ASSET_NUMBERS_COLLECTION_REF,
-            oldRegistryId
-          );
-
-          const newRegistryDocRef = doc(
-            RENTAL_ASSET_NUMBERS_COLLECTION_REF,
-            newRegistryId
-          );
-
-          const registrySnapshots =
-            oldRegistryId ===
-            newRegistryId
-              ? [
-                  await transaction.get(
-                    oldRegistryDocRef
-                  ),
-                ]
-              : await Promise.all([
-                  transaction.get(
-                    oldRegistryDocRef
-                  ),
-                  transaction.get(
-                    newRegistryDocRef
-                  ),
-                ]);
-
-          const newRegistrySnapshot =
-            oldRegistryId ===
-            newRegistryId
-              ? registrySnapshots[0]
-              : registrySnapshots[1];
-
-          if (
-            newRegistrySnapshot.exists() &&
-            newRegistrySnapshot.data()
-              .assetId !==
-              editingLaptopId
-          ) {
-            const duplicateError =
-              new Error(
-                'duplicate-asset-number'
-              );
-
-            duplicateError.duplicatedLaptop =
-              newRegistrySnapshot.data();
-
-            throw duplicateError;
-          }
-
-          const reservations =
-            normalizeAssetReservations(
-              latestAsset.reservations ||
-              []
-            );
-
-          const blockingRequest =
-            findSameAssetBlockingRequest(
-              reservations,
-              editingLaptopId
-            );
-
-          const assetIdentityChanged =
-            String(
-              latestAsset.assetNo || ''
-            ).trim() !==
-              editedAssetNo ||
-            String(
-              latestAsset.category || ''
-            ).trim() !==
-              editedCategory;
-
-          if (
-            blockingRequest &&
-            assetIdentityChanged
-          ) {
-            const identityChangeError =
-              new Error(
-                'active-rental-identity-change'
-              );
-
-            identityChangeError.blockingRequest =
-              blockingRequest;
-
-            throw identityChangeError;
-          }
-
-          const representativeRequest =
-            getLaptopRepresentativeRequest(
-              reservations,
-              editingLaptopId
-            );
-
-          const nextStatus =
-            editedLaptopDraft.status ===
-            STATUS.UNAVAILABLE
-              ? STATUS.UNAVAILABLE
-              : representativeRequest
-                ? representativeRequest.status
-                : STATUS.AVAILABLE;
-
-          const nextAsset = {
-            ...latestAsset,
-            ...editedLaptopDraft,
-            id: latestAsset.id,
-            category: editedCategory,
-            assetNo: editedAssetNo,
-            assetNoNormalized:
-              normalizeAssetNumber(
-                editedAssetNo
-              ),
-            reservations,
-            status: nextStatus,
-            currentRequestId:
-              representativeRequest?.id ||
-              null,
-          };
-
-          transaction.set(
-            assetDocRef,
-            {
-              ...nextAsset,
-              updatedAt:
-                serverTimestamp(),
-            },
-            {
-              merge: true,
-            }
-          );
-
-          if (
-            oldRegistryId !==
-            newRegistryId
-          ) {
-            transaction.delete(
-              oldRegistryDocRef
-            );
-          }
-
-          transaction.set(
-            newRegistryDocRef,
-            {
-              id: newRegistryId,
-              assetId:
-                editingLaptopId,
-              assetNo:
-                editedAssetNo,
-              assetNoNormalized:
-                normalizeAssetNumber(
-                  editedAssetNo
-                ),
-              updatedAt:
-                serverTimestamp(),
-            }
-          );
-
-          committedAsset =
-            nextAsset;
+          throw identityChangeError;
         }
-      );
 
-      if (!committedAsset) {
+        const representativeRequest =
+          getLaptopRepresentativeRequest(
+            latestData.requests,
+            editingLaptopId
+          );
+
+        const nextLaptopStatus =
+          editedLaptopDraft.status ===
+          STATUS.UNAVAILABLE
+            ? STATUS.UNAVAILABLE
+            : representativeRequest
+              ? representativeRequest.status
+              : STATUS.AVAILABLE;
+
+        const nextLaptop = {
+          ...latestLaptop,
+          ...editedLaptopDraft,
+          id: latestLaptop.id,
+          category: editedCategory,
+          assetNo: editedAssetNo,
+          status: nextLaptopStatus,
+          currentRequestId:
+            representativeRequest?.id || null,
+        };
+
+        const nextCommittedMainData = {
+          ...latestData,
+          laptops:
+            (latestData.laptops || []).map(
+              (laptop) =>
+                laptop.id === editingLaptopId
+                  ? nextLaptop
+                  : laptop
+            ),
+        };
+
+        transaction.update(DATA_DOC_REF, {
+          'data.laptops':
+            nextCommittedMainData.laptops,
+          updatedAt: serverTimestamp(),
+        });
+
+        committedMainData =
+          nextCommittedMainData;
+      });
+
+      if (!committedMainData) {
         throw new Error(
           'laptop-save-transaction-result-missing'
         );
       }
 
-      setData((prev) => ({
-        ...prev,
-        laptops:
-          (prev.laptops || []).map(
-            (asset) =>
-              asset.id ===
-              editingLaptopId
-                ? committedAsset
-                : asset
-          ),
-      }));
+      lastSyncedDataRef.current =
+        JSON.stringify(
+          stripAdminAccountsFromData(
+            committedMainData
+          )
+        );
 
+      setData(committedMainData);
       setEditLaptop(null);
 
       triggerToast(
@@ -11202,69 +10253,55 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                         💡 <b>운영 권장사항 안내:</b> 실제 사내 보안망 연동 개발 단계에서는 AD 연동 인증, 부서별 허용 기한 할당제, Slack/Alimtalk 실시간 전송, 지연 지연자 메일 자동 발송 모듈을 접목하여 완벽한 자동화를 꾀할 수 있습니다.
                       </div>
 
-                      {isSplitStorageReady ? (
-                        <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
-                          <div className="flex items-start gap-3">
-                            <CheckCircle2
-                              size={18}
-                              className="mt-0.5 shrink-0 text-emerald-600"
-                            />
-                            <div>
-                              <h3 className="text-sm font-bold text-emerald-900">
-                                Firestore 분리 저장소 전환 완료
-                              </h3>
-                              <p className="mt-1 text-[11px] leading-relaxed text-emerald-800">
-                                현재 서비스는 rentalSystem/publicConfig,
-                                rentalAssets, rentalAvailability,
-                                rentalBorrowers, rentalRequests 컬렉션을
-                                직접 사용합니다. laptopRentalDashboard/main은
-                                더 이상 읽거나 저장하지 않습니다.
-                              </p>
+                      <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <h3 className="text-sm font-bold text-amber-900">
+                              Firestore 데이터 분리 1단계
+                            </h3>
+
+                            <p className="mt-1 text-[11px] leading-relaxed text-amber-800">
+                              기존 laptopRentalDashboard/main 데이터를
+                              rentalAssets, rentalAvailability,
+                              rentalBorrowers, rentalSystem/publicConfig로
+                              1회 복사합니다. 이 단계에서는 기존 main 문서를
+                              삭제하거나 읽기·쓰기 대상을 변경하지 않습니다.
+                            </p>
+
+                            <div className="mt-2 text-[11px] text-amber-700">
+                              복사 대상: 자산 {data.laptops.length}건 ·
+                              진행 중 예약{' '}
+                              {
+                                (data.requests || []).filter(
+                                  (request) =>
+                                    RENTAL_BLOCKING_REQUEST_STATUSES.includes(
+                                      request.status
+                                    )
+                                ).length
+                              }
+                              건 · 대여자 {data.borrowers.length}건
                             </div>
                           </div>
+
+                          <Button
+                            variant="outline"
+                            disabled={splitDataMigrationLoading}
+                            onClick={() => {
+                              triggerConfirm(
+                                'Firestore 신규 컬렉션 1차 복사',
+                                '현재 main 데이터를 신규 컬렉션으로 복사합니다. 기존 main 문서는 삭제하지 않으며 현재 서비스의 읽기·쓰기 방식도 변경하지 않습니다. 복사 중에는 신규 신청과 관리자 데이터 변경 작업을 하지 않는 것이 안전합니다. 계속하시겠습니까?',
+                                migrateMainDataToSplitCollections
+                              );
+                            }}
+                            className="shrink-0 border-amber-300 bg-white text-amber-800 hover:bg-amber-100"
+                          >
+                            <Save size={14} />
+                            {splitDataMigrationLoading
+                              ? '데이터 복사 중'
+                              : '신규 컬렉션으로 1차 복사'}
+                          </Button>
                         </div>
-                      ) : (
-                        <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
-                          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                              <h3 className="text-sm font-bold text-amber-900">
-                                Firestore 분리 저장소 최종 전환
-                              </h3>
-
-                              <p className="mt-1 text-[11px] leading-relaxed text-amber-800">
-                                1차 복사된 자산과 진행 중 예약을 검증하고,
-                                자산별 예약 잠금 데이터와 자산관리번호
-                                중복 방지 레지스트리를 생성합니다. 완료 전에는
-                                신청 및 관리자 데이터 변경이 차단됩니다.
-                              </p>
-
-                              <div className="mt-2 text-[11px] text-amber-700">
-                                검증 대상: 자산 {data.laptops.length}건 ·
-                                진행 중 예약 {data.requests.length}건 ·
-                                대여자 {data.borrowers.length}건
-                              </div>
-                            </div>
-
-                            <Button
-                              variant="outline"
-                              disabled={splitStorageFinalizeLoading}
-                              onClick={() => {
-                                triggerConfirm(
-                                  'Firestore 분리 저장소 최종 전환',
-                                  '신규 컬렉션 데이터를 최종 검증하고 자산별 예약 잠금 및 자산관리번호 레지스트리를 생성합니다. 현재 시스템 운영이 중지된 상태에서 한 번만 실행하세요. 계속하시겠습니까?',
-                                  finalizeSplitStorageMigration
-                                );
-                              }}
-                              className="shrink-0 border-amber-300 bg-white text-amber-800 hover:bg-amber-100"
-                            >
-                              <Save size={14} />
-                              {splitStorageFinalizeLoading
-                                ? '최종 전환 중'
-                                : '분리 저장소 최종 전환'}
-                            </Button>
-                          </div>
-                        </div>
-                      )}
+                      </div>
 
                       {/* 하단 저장 및 취소 액션 버튼 컨테이너 추가 */}
                       <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-200/60">
@@ -11284,7 +10321,44 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                         </Button>
                         <Button
                           variant="primary"
-                          onClick={saveSystemSettings}
+                          onClick={() => {
+                            const nextSettings = {
+                              ...tempSettings,
+                              allowNonOverlappingSameAssetRequests:
+                                tempSettings.allowNonOverlappingSameAssetRequests ??
+                                DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS,
+                              adjustStartDateAfterWorkEnd:
+                                tempSettings.adjustStartDateToNextBusinessDay ??
+                                tempSettings.adjustStartDateAfterWorkEnd ??
+                                DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY,
+                              adjustStartDateToNextBusinessDay:
+                                tempSettings.adjustStartDateToNextBusinessDay ??
+                                tempSettings.adjustStartDateAfterWorkEnd ??
+                                DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY,
+                              holidays: Array.isArray(tempSettings.holidays)
+                                ? tempSettings.holidays
+                                    .filter((holiday) => holiday && holiday.date)
+                                    .map((holiday) => ({
+                                      date: holiday.date,
+                                      name: holiday.name || '',
+                                      type: holiday.type || DEFAULT_HOLIDAY_TYPE,
+                                      enabled: holiday.enabled !== false,
+                                    }))
+                                : [],
+                            };
+
+                            setData((prev) => ({
+                              ...prev,
+                              settings: nextSettings,
+                            }));
+                            setTempSettings(nextSettings);
+                            setNewHolidayDate(today());
+                            setNewHolidayName('');
+                            setNewHolidayType(DEFAULT_HOLIDAY_TYPE);
+                            setHolidayImportYear(String(getKoreaNow().getUTCFullYear()));
+                            setHolidayImportLoading(false);
+                            triggerToast('설정 변경사항이 원장에 성공적으로 저장 및 반영되었습니다.', 'success');
+                          }}
                         >
                           변경사항 저장
                         </Button>

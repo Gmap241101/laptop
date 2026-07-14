@@ -1,0 +1,546 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && exists(
+          /databases/$(database)/documents/adminAccounts/$(request.auth.uid)
+        )
+        && get(
+          /databases/$(database)/documents/adminAccounts/$(request.auth.uid)
+        ).data.id == request.auth.uid
+        && get(
+          /databases/$(database)/documents/adminAccounts/$(request.auth.uid)
+        ).data.authUid == request.auth.uid;
+    }
+
+    function isActiveUser() {
+      return signedIn()
+        && exists(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        )
+        && get(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        ).data.status == 'active';
+    }
+
+    function dashboardRequestEntryMatchesRental(
+      dashboardRequest,
+      rentalRequest
+    ) {
+      return dashboardRequest is map
+        && rentalRequest is map
+        && dashboardRequest.keys().hasAll([
+          'id',
+          'laptopId',
+          'assetCategory',
+          'assetNo',
+          'startDate',
+          'dueDate',
+          'status'
+        ])
+        && dashboardRequest.keys().hasOnly([
+          'id',
+          'laptopId',
+          'assetCategory',
+          'assetNo',
+          'startDate',
+          'dueDate',
+          'status'
+        ])
+        && dashboardRequest.id is string
+        && dashboardRequest.laptopId is string
+        && dashboardRequest.assetCategory is string
+        && dashboardRequest.assetNo is string
+        && dashboardRequest.startDate is string
+        && dashboardRequest.dueDate is string
+        && dashboardRequest.status is string
+        && dashboardRequest.status == '신청중'
+        && dashboardRequest.id == rentalRequest.id
+        && dashboardRequest.laptopId == rentalRequest.laptopId
+        && dashboardRequest.assetCategory
+          == rentalRequest.assetCategory
+        && dashboardRequest.assetNo == rentalRequest.assetNo
+        && dashboardRequest.startDate == rentalRequest.startDate
+        && dashboardRequest.dueDate == rentalRequest.dueDate
+        && dashboardRequest.status == rentalRequest.status;
+    }
+
+    function isValidUserDashboardRequestAppend() {
+      let beforeRequests = resource.data.data.requests;
+      let afterRequests = request.resource.data.data.requests;
+      let newDashboardRequest = afterRequests[0];
+      let newRequestId = newDashboardRequest.id;
+      let requestPath =
+        /databases/$(database)/documents/rentalRequests/$(newRequestId);
+
+      return beforeRequests is list
+        && afterRequests is list
+
+        // 기존 목록보다 정확히 한 건만 증가해야 함
+        && afterRequests.size() == beforeRequests.size() + 1
+
+        // 신규 신청은 App.jsx와 동일하게 배열 맨 앞에 추가되어야 함
+        // 첫 번째 항목을 제외한 나머지는 기존 목록과 완전히 같아야 함
+        && afterRequests[1:afterRequests.size()] == beforeRequests
+
+        && newRequestId is string
+
+        // 기존 문서 ID를 재사용하지 못하도록 차단
+        && !exists(requestPath)
+
+        // 같은 트랜잭션에서 rentalRequests 문서가 생성되어야 함
+        && existsAfter(requestPath)
+
+        // 대시보드용 예약 데이터와 원본 신청 문서가 일치해야 함
+        && dashboardRequestEntryMatchesRental(
+          newDashboardRequest,
+          getAfter(requestPath).data
+        );
+    }
+
+    function dashboardWasUpdatedForCreatedRequest(requestId) {
+      let dashboardPath =
+        /databases/$(database)/documents/laptopRentalDashboard/main;
+      let dashboardAfter = getAfter(dashboardPath);
+      let dashboardRequestsAfter =
+        dashboardAfter.data.data.requests;
+
+      return existsAfter(dashboardPath)
+        && dashboardAfter.data.updatedAt == request.time
+        && dashboardRequestsAfter is list
+        && dashboardRequestsAfter.size() > 0
+        && dashboardRequestsAfter[0].id == requestId
+        && dashboardRequestEntryMatchesRental(
+          dashboardRequestsAfter[0],
+          request.resource.data
+        );
+    }
+
+    match /laptopRentalDashboard/main {
+      allow read: if true;
+
+      allow create: if isAdmin();
+
+      allow update:
+        if isAdmin()
+        || (
+          isActiveUser()
+
+          // main 문서의 최상위에서는 data와 updatedAt만 변경 가능
+          && request.resource.data
+            .diff(resource.data)
+            .affectedKeys()
+            .hasOnly([
+              'data',
+              'updatedAt'
+            ])
+
+          && request.resource.data.data is map
+          && resource.data.data is map
+
+          // data 내부에서는 requests만 변경 가능
+          && request.resource.data.data
+            .diff(resource.data.data)
+            .affectedKeys()
+            .hasOnly([
+              'requests'
+            ])
+
+          && resource.data.data.requests is list
+          && request.resource.data.data.requests is list
+          && request.resource.data.updatedAt == request.time
+
+          // 기존 배열은 보존하고 신규 신청 한 건만 추가했는지 검증
+          && isValidUserDashboardRequestAppend()
+        );
+
+      allow delete: if false;
+    }
+
+    match /adminAccounts/{adminId} {
+      // 로그인한 사용자가 자기 UID의 관리자 문서 존재 여부 확인
+      allow get:
+        if signedIn()
+        && (
+          request.auth.uid == adminId
+          || isAdmin()
+        );
+
+      // 전체 관리자 목록은 관리자만 조회
+      allow list: if isAdmin();
+
+      // 기존 관리자만 신규 관리자 문서 생성
+      allow create:
+        if isAdmin()
+        && request.resource.data.id == adminId
+        && request.resource.data.authUid == adminId;
+
+      allow update:
+        if isAdmin()
+        && request.resource.data.id == adminId
+        && request.resource.data.authUid == adminId;
+
+      // 현재 로그인한 관리자 자신의 권한 문서 삭제 방지
+      allow delete:
+        if isAdmin()
+        && request.auth.uid != adminId;
+    }
+
+    match /userAccounts/{userId} {
+      allow get:
+        if signedIn()
+        && (
+          request.auth.uid == userId
+          || isAdmin()
+        );
+
+      allow list: if isAdmin();
+
+      allow create:
+        if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.uid == userId
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.status == 'active'
+        && request.resource.data.uid is string
+        && request.resource.data.email is string
+        && request.resource.data.name is string
+        && request.resource.data.team is string
+        && request.resource.data.phone is string
+        && request.resource.data.status is string
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.keys().hasAll([
+          'uid',
+          'email',
+          'name',
+          'team',
+          'phone',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'uid',
+          'email',
+          'name',
+          'team',
+          'phone',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ]);
+
+      allow update:
+        if isAdmin()
+        || (
+          signedIn()
+          && request.auth.uid == userId
+          && request.resource.data.name is string
+          && request.resource.data.team is string
+          && request.resource.data.phone is string
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data
+            .diff(resource.data)
+            .affectedKeys()
+            .hasOnly([
+              'name',
+              'team',
+              'phone',
+              'updatedAt'
+            ])
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    match /rentalRequests/{requestId} {
+      allow create:
+        if isAdmin()
+        || (
+          isActiveUser()
+          && request.resource.data.id == requestId
+          && request.resource.data.requesterUid == request.auth.uid
+          && request.resource.data.requesterEmail
+            == request.auth.token.email
+          && request.resource.data.requesterName
+            == get(
+              /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+            ).data.name
+          && request.resource.data.requesterTeam
+            == get(
+              /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+            ).data.team
+          && request.resource.data.status == '신청중'
+          && request.resource.data.adminMemo == ''
+          && request.resource.data.id is string
+          && request.resource.data.requesterUid is string
+          && request.resource.data.requesterEmail is string
+          && request.resource.data.requesterName is string
+          && request.resource.data.requesterTeam is string
+          && request.resource.data.laptopId is string
+          && request.resource.data.assetCategory is string
+          && request.resource.data.assetNo is string
+          && request.resource.data.team is string
+          && request.resource.data.borrower is string
+          && request.resource.data.startDate is string
+          && request.resource.data.dueDate is string
+          && request.resource.data.purpose is string
+          && request.resource.data.status is string
+          && request.resource.data.adminMemo is string
+          && request.resource.data.requestedAt is string
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.keys().hasAll([
+            'id',
+            'requesterUid',
+            'requesterEmail',
+            'requesterName',
+            'requesterTeam',
+            'laptopId',
+            'assetCategory',
+            'assetNo',
+            'team',
+            'borrower',
+            'startDate',
+            'dueDate',
+            'purpose',
+            'status',
+            'adminMemo',
+            'requestedAt',
+            'createdAt',
+            'updatedAt'
+          ])
+          && request.resource.data.keys().hasOnly([
+            'id',
+            'requesterUid',
+            'requesterEmail',
+            'requesterName',
+            'requesterTeam',
+            'laptopId',
+            'assetCategory',
+            'assetNo',
+            'team',
+            'borrower',
+            'startDate',
+            'dueDate',
+            'purpose',
+            'status',
+            'adminMemo',
+            'requestedAt',
+            'createdAt',
+            'updatedAt'
+          ])
+          && dashboardWasUpdatedForCreatedRequest(requestId)
+        );
+
+      allow get, list:
+        if signedIn()
+        && (
+          isAdmin()
+          || resource.data.requesterUid == request.auth.uid
+        );
+
+      allow update:
+        if isAdmin()
+        && resource.data.id == requestId
+        && request.resource.data.id == requestId
+        && (
+          (
+            resource.data.keys().hasAll([
+              'requesterUid'
+            ])
+            && request.resource.data.keys().hasAll([
+              'requesterUid'
+            ])
+            && request.resource.data.requesterUid
+              == resource.data.requesterUid
+          )
+          ||
+          (
+            !resource.data.keys().hasAny([
+              'requesterUid'
+            ])
+            && !request.resource.data.keys().hasAny([
+              'requesterUid'
+            ])
+          )
+        )
+        && request.resource.data.status is string
+        && request.resource.data.adminMemo is string
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.syncedAt == request.time
+        && request.resource.data
+          .diff(resource.data)
+          .affectedKeys()
+          .hasOnly([
+            'status',
+            'adminMemo',
+            'updatedAt',
+            'syncedAt'
+          ]);
+
+      allow delete: if isAdmin();
+    }
+    
+    // 공개 설정:
+    // 자산 카테고리, 부서 목록, 대여 환경설정 저장
+    match /rentalSystem/publicConfig {
+      allow read: if true;
+
+      allow create, update:
+        if isAdmin()
+        && request.resource.data.assetCategories is list
+        && request.resource.data.teams is list
+        && request.resource.data.settings is map
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete: if false;
+    }
+
+    // 대여 자산:
+    // 자산 한 대당 문서 하나
+    match /rentalAssets/{assetId} {
+      allow read: if true;
+
+      allow create:
+        if isAdmin()
+        && request.resource.data.id == assetId
+        && request.resource.data.id is string
+        && request.resource.data.category is string
+        && request.resource.data.assetNo is string
+        && request.resource.data.serialNo is string
+        && request.resource.data.model is string
+        && request.resource.data.manufactureDate is string
+        && request.resource.data.photo is string
+        && request.resource.data.note is string
+        && request.resource.data.status is string
+        && request.resource.data.updatedAt == request.time;
+
+      allow update:
+        if isAdmin()
+        && resource.data.id == assetId
+        && request.resource.data.id == assetId
+        && request.resource.data.id is string
+        && request.resource.data.category is string
+        && request.resource.data.assetNo is string
+        && request.resource.data.serialNo is string
+        && request.resource.data.model is string
+        && request.resource.data.manufactureDate is string
+        && request.resource.data.photo is string
+        && request.resource.data.note is string
+        && request.resource.data.status is string
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete: if isAdmin();
+    }
+
+    // 공개 예약 가능 여부:
+    // 개인정보가 없는 진행 중 신청 요약만 저장
+    match /rentalAvailability/{requestId} {
+      allow read: if true;
+
+      allow create:
+        if isAdmin()
+        || (
+          isActiveUser()
+          && request.resource.data.id == requestId
+          && request.resource.data.id is string
+          && request.resource.data.laptopId is string
+          && request.resource.data.assetCategory is string
+          && request.resource.data.assetNo is string
+          && request.resource.data.startDate is string
+          && request.resource.data.dueDate is string
+          && request.resource.data.status == '신청중'
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.keys().hasAll([
+            'id',
+            'laptopId',
+            'assetCategory',
+            'assetNo',
+            'startDate',
+            'dueDate',
+            'status',
+            'updatedAt'
+          ])
+          && request.resource.data.keys().hasOnly([
+            'id',
+            'laptopId',
+            'assetCategory',
+            'assetNo',
+            'startDate',
+            'dueDate',
+            'status',
+            'updatedAt'
+          ])
+          && existsAfter(
+            /databases/$(database)/documents/rentalRequests/$(requestId)
+          )
+          && getAfter(
+            /databases/$(database)/documents/rentalRequests/$(requestId)
+          ).data.requesterUid == request.auth.uid
+          && getAfter(
+            /databases/$(database)/documents/rentalRequests/$(requestId)
+          ).data.id == requestId
+          && getAfter(
+            /databases/$(database)/documents/rentalRequests/$(requestId)
+          ).data.laptopId == request.resource.data.laptopId
+          && getAfter(
+            /databases/$(database)/documents/rentalRequests/$(requestId)
+          ).data.assetCategory
+            == request.resource.data.assetCategory
+          && getAfter(
+            /databases/$(database)/documents/rentalRequests/$(requestId)
+          ).data.assetNo == request.resource.data.assetNo
+          && getAfter(
+            /databases/$(database)/documents/rentalRequests/$(requestId)
+          ).data.startDate == request.resource.data.startDate
+          && getAfter(
+            /databases/$(database)/documents/rentalRequests/$(requestId)
+          ).data.dueDate == request.resource.data.dueDate
+          && getAfter(
+            /databases/$(database)/documents/rentalRequests/$(requestId)
+          ).data.status == request.resource.data.status
+        );
+
+      allow update, delete: if isAdmin();
+    }
+
+    // 대여자 드롭다운:
+    // 로그인한 활성회원과 관리자만 조회
+    match /rentalBorrowers/{borrowerId} {
+      allow get, list:
+        if isAdmin() || isActiveUser();
+
+      allow create:
+        if isAdmin()
+        && request.resource.data.id == borrowerId
+        && request.resource.data.id is string
+        && request.resource.data.name is string
+        && request.resource.data.team is string
+        && request.resource.data.updatedAt == request.time;
+
+      allow update:
+        if isAdmin()
+        && resource.data.id == borrowerId
+        && request.resource.data.id == borrowerId
+        && request.resource.data.id is string
+        && request.resource.data.name is string
+        && request.resource.data.team is string
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
