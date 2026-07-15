@@ -387,6 +387,202 @@ service cloud.firestore {
         if isAdmin();
     }
 
+        match /faqBoard/config {
+      allow read:
+        if true;
+
+      allow create, update:
+        if isAdmin()
+        && request.resource.data.postsPerPage is int
+        && request.resource.data.postsPerPage >= 5
+        && request.resource.data.postsPerPage <= 50
+        && request.resource.data.updatedAt
+          == request.time
+        && request.resource.data.keys().hasAll([
+          'postsPerPage',
+          'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'postsPerPage',
+          'updatedAt'
+        ]);
+
+      allow delete:
+        if false;
+    }
+
+    match /faqCategories/{categoryId} {
+      allow read:
+        if true;
+
+      allow create:
+        if isAdmin()
+        && request.resource.data.id == categoryId
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.order is int
+        && request.resource.data.order >= 0
+        && request.resource.data.createdAt
+          == request.time
+        && request.resource.data.updatedAt
+          == request.time
+        && request.resource.data.keys().hasAll([
+          'id',
+          'name',
+          'order',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'id',
+          'name',
+          'order',
+          'createdAt',
+          'updatedAt'
+        ]);
+
+      allow update:
+        if isAdmin()
+        && request.resource.data.id == categoryId
+        && request.resource.data.id
+          == resource.data.id
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.order is int
+        && request.resource.data.order >= 0
+        && request.resource.data.createdAt
+          == resource.data.createdAt
+        && request.resource.data.updatedAt
+          == request.time
+        && request.resource.data
+          .diff(resource.data)
+          .affectedKeys()
+          .hasOnly([
+            'name',
+            'order',
+            'updatedAt'
+          ])
+        && request.resource.data.keys().hasAll([
+          'id',
+          'name',
+          'order',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'id',
+          'name',
+          'order',
+          'createdAt',
+          'updatedAt'
+        ]);
+
+      allow delete:
+        if isAdmin();
+    }
+
+    match /faqPosts/{postId} {
+      allow read:
+        if true;
+
+      allow create:
+        if isAdmin()
+        && request.resource.data.id == postId
+        && request.resource.data.categoryId is string
+        && request.resource.data.categoryId.size() > 0
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.content is string
+        && request.resource.data.content.size() > 0
+        && request.resource.data.isPinned is bool
+        && request.resource.data.authorUid
+          == request.auth.uid
+        && request.resource.data.authorName is string
+        && request.resource.data.authorName.size() > 0
+        && request.resource.data.createdAt
+          == request.time
+        && request.resource.data.updatedAt
+          == request.time
+        && request.resource.data.keys().hasAll([
+          'id',
+          'categoryId',
+          'title',
+          'content',
+          'isPinned',
+          'authorUid',
+          'authorName',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'id',
+          'categoryId',
+          'title',
+          'content',
+          'isPinned',
+          'authorUid',
+          'authorName',
+          'createdAt',
+          'updatedAt'
+        ]);
+
+      allow update:
+        if isAdmin()
+        && request.resource.data.id == postId
+        && request.resource.data.id
+          == resource.data.id
+        && request.resource.data.categoryId is string
+        && request.resource.data.categoryId.size() > 0
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.content is string
+        && request.resource.data.content.size() > 0
+        && request.resource.data.isPinned is bool
+        && request.resource.data.authorUid
+          == resource.data.authorUid
+        && request.resource.data.authorName
+          == resource.data.authorName
+        && request.resource.data.createdAt
+          == resource.data.createdAt
+        && request.resource.data.updatedAt
+          == request.time
+        && request.resource.data
+          .diff(resource.data)
+          .affectedKeys()
+          .hasOnly([
+            'categoryId',
+            'title',
+            'content',
+            'isPinned',
+            'updatedAt'
+          ])
+        && request.resource.data.keys().hasAll([
+          'id',
+          'categoryId',
+          'title',
+          'content',
+          'isPinned',
+          'authorUid',
+          'authorName',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'id',
+          'categoryId',
+          'title',
+          'content',
+          'isPinned',
+          'authorUid',
+          'authorName',
+          'createdAt',
+          'updatedAt'
+        ]);
+
+      allow delete:
+        if isAdmin();
+    }
+
         match /noticeBoard/config {
       allow read:
         if true;

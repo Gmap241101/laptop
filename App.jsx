@@ -92,6 +92,22 @@ const NOTICE_BOARD_CONFIG_DOC_REF = doc(
   'config'
 );
 
+const FAQ_POSTS_COLLECTION_REF = collection(
+  db,
+  'faqPosts'
+);
+
+const FAQ_CATEGORIES_COLLECTION_REF = collection(
+  db,
+  'faqCategories'
+);
+
+const FAQ_BOARD_CONFIG_DOC_REF = doc(
+  db,
+  'faqBoard',
+  'config'
+);
+
 const USER_ACCOUNTS_COLLECTION_NAME = 'userAccounts';
 const USER_ACCOUNTS_COLLECTION_REF = collection(
   db,
@@ -230,6 +246,33 @@ const getSafeNoticePostsPerPage = (value) => {
 };
 
 const createDefaultNoticePostForm = () => ({
+  title: '',
+  content: '',
+  isPinned: false,
+});
+
+const DEFAULT_FAQ_POSTS_PER_PAGE = 10;
+
+const FAQ_POSTS_PER_PAGE_OPTIONS = [
+  5,
+  10,
+  15,
+  20,
+  30,
+  50,
+];
+
+const getSafeFaqPostsPerPage = (value) => {
+  const parsedValue = Math.trunc(Number(value));
+
+  return parsedValue >= 5 &&
+    parsedValue <= 50
+    ? parsedValue
+    : DEFAULT_FAQ_POSTS_PER_PAGE;
+};
+
+const createDefaultFaqPostForm = () => ({
+  categoryId: '',
   title: '',
   content: '',
   isPinned: false,
@@ -1972,6 +2015,53 @@ function App() {
     DEFAULT_NOTICE_POSTS_PER_PAGE
   );
 
+  const [faqCategories, setFaqCategories] = useState([]);
+  const [faqCategoriesReady, setFaqCategoriesReady] = useState(false);
+  const [
+    faqCategoriesLoadErrorMessage,
+    setFaqCategoriesLoadErrorMessage,
+  ] = useState('');
+
+  const [faqPosts, setFaqPosts] = useState([]);
+  const [faqPostsReady, setFaqPostsReady] = useState(false);
+  const [
+    faqPostsLoadErrorMessage,
+    setFaqPostsLoadErrorMessage,
+  ] = useState('');
+
+  const [faqBoardConfig, setFaqBoardConfig] = useState({
+    postsPerPage: DEFAULT_FAQ_POSTS_PER_PAGE,
+  });
+  const [faqBoardConfigReady, setFaqBoardConfigReady] = useState(false);
+  const [
+    faqBoardConfigLoadErrorMessage,
+    setFaqBoardConfigLoadErrorMessage,
+  ] = useState('');
+
+  const [activeFaqCategoryId, setActiveFaqCategoryId] = useState('all');
+  const [expandedFaqPostId, setExpandedFaqPostId] = useState('');
+  const [adminExpandedFaqPostId, setAdminExpandedFaqPostId] = useState('');
+  const [faqPage, setFaqPage] = useState(1);
+  const [adminFaqPage, setAdminFaqPage] = useState(1);
+
+  const [faqPostDialog, setFaqPostDialog] = useState(null);
+  const [faqPostForm, setFaqPostForm] = useState(
+    createDefaultFaqPostForm
+  );
+  const [faqPostSaving, setFaqPostSaving] = useState(false);
+  const [faqPostDeletingId, setFaqPostDeletingId] = useState('');
+
+  const [faqBoardConfigSaving, setFaqBoardConfigSaving] = useState(false);
+  const [faqPostsPerPageInput, setFaqPostsPerPageInput] = useState(
+    DEFAULT_FAQ_POSTS_PER_PAGE
+  );
+
+  const [newFaqCategoryName, setNewFaqCategoryName] = useState('');
+  const [editingFaqCategoryId, setEditingFaqCategoryId] = useState('');
+  const [editingFaqCategoryName, setEditingFaqCategoryName] = useState('');
+  const [faqCategorySavingId, setFaqCategorySavingId] = useState('');
+  const [faqCategoryDeletingId, setFaqCategoryDeletingId] = useState('');
+
   const [adminAccounts, setAdminAccounts] = useState([]);
   const [adminAccountsReady, setAdminAccountsReady] = useState(false);
   const [adminAccountsLoadErrorMessage, setAdminAccountsLoadErrorMessage] = useState('');
@@ -3345,6 +3435,124 @@ function App() {
     ]
   );
 
+  const faqCategoryNameById = useMemo(
+    () =>
+      new Map(
+        (faqCategories || []).map(
+          (category) => [
+            category.id,
+            category.name,
+          ]
+        )
+      ),
+    [faqCategories]
+  );
+
+  const faqPostsPerPage = getSafeFaqPostsPerPage(
+    faqBoardConfig.postsPerPage
+  );
+
+  const categoryFilteredFaqPosts = useMemo(
+    () =>
+      (faqPosts || []).filter(
+        (post) =>
+          activeFaqCategoryId === 'all' ||
+          post.categoryId === activeFaqCategoryId
+      ),
+    [
+      faqPosts,
+      activeFaqCategoryId,
+    ]
+  );
+
+  const pinnedFaqPosts = useMemo(
+    () =>
+      categoryFilteredFaqPosts.filter(
+        (post) => post.isPinned
+      ),
+    [categoryFilteredFaqPosts]
+  );
+
+  const regularFaqPosts = useMemo(
+    () =>
+      categoryFilteredFaqPosts.filter(
+        (post) => !post.isPinned
+      ),
+    [categoryFilteredFaqPosts]
+  );
+
+  const faqTotalPages = Math.max(
+    1,
+    Math.ceil(
+      regularFaqPosts.length /
+      faqPostsPerPage
+    )
+  );
+
+  const safeFaqPage = Math.min(
+    faqPage,
+    faqTotalPages
+  );
+
+  const paginatedFaqPosts = useMemo(
+    () =>
+      regularFaqPosts.slice(
+        (safeFaqPage - 1) *
+          faqPostsPerPage,
+        safeFaqPage *
+          faqPostsPerPage
+      ),
+    [
+      regularFaqPosts,
+      safeFaqPage,
+      faqPostsPerPage,
+    ]
+  );
+
+  const adminPinnedFaqPosts = useMemo(
+    () =>
+      (faqPosts || []).filter(
+        (post) => post.isPinned
+      ),
+    [faqPosts]
+  );
+
+  const adminRegularFaqPosts = useMemo(
+    () =>
+      (faqPosts || []).filter(
+        (post) => !post.isPinned
+      ),
+    [faqPosts]
+  );
+
+  const adminFaqTotalPages = Math.max(
+    1,
+    Math.ceil(
+      adminRegularFaqPosts.length /
+      faqPostsPerPage
+    )
+  );
+
+  const safeAdminFaqPage = Math.min(
+    adminFaqPage,
+    adminFaqTotalPages
+  );
+
+  const paginatedAdminFaqPosts = useMemo(
+    () =>
+      adminRegularFaqPosts.slice(
+        (safeAdminFaqPage - 1) *
+          faqPostsPerPage,
+        safeAdminFaqPage *
+          faqPostsPerPage
+      ),
+    [
+      adminRegularFaqPosts,
+      safeAdminFaqPage,
+      faqPostsPerPage,
+    ]
+  );
+
   const currentUserRequests = useMemo(() => {
     if (!firebaseAuthUser?.uid) return [];
 
@@ -3990,6 +4198,177 @@ function App() {
 
     return unsubscribe;
   }, []);
+
+    useEffect(() => {
+    setFaqCategoriesReady(false);
+    setFaqCategoriesLoadErrorMessage('');
+
+    const unsubscribe = onSnapshot(
+      FAQ_CATEGORIES_COLLECTION_REF,
+      (snapshot) => {
+        const remoteCategories = snapshot.docs
+          .map((categoryDoc) => ({
+            ...categoryDoc.data(),
+            id: categoryDoc.id,
+          }))
+          .sort((first, second) => {
+            const orderDifference =
+              (Number(first.order) || 0) -
+              (Number(second.order) || 0);
+
+            if (orderDifference !== 0) {
+              return orderDifference;
+            }
+
+            return String(
+              first.name || ''
+            ).localeCompare(
+              String(
+                second.name || ''
+              ),
+              'ko'
+            );
+          });
+
+        setFaqCategories(remoteCategories);
+        setFaqCategoriesLoadErrorMessage('');
+        setFaqCategoriesReady(true);
+      },
+      (error) => {
+        const message =
+          'FAQ 카테고리를 불러오지 못했습니다. Firestore Rules의 faqCategories 읽기 권한을 확인해 주세요.';
+
+        console.error(
+          'FAQ categories sync error:',
+          error
+        );
+
+        setFaqCategories([]);
+        setFaqCategoriesLoadErrorMessage(
+          message
+        );
+        setFaqCategoriesReady(true);
+
+        triggerToast(message, 'error');
+      }
+    );
+
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    setFaqPostsReady(false);
+    setFaqPostsLoadErrorMessage('');
+
+    const unsubscribe = onSnapshot(
+      FAQ_POSTS_COLLECTION_REF,
+      (snapshot) => {
+        const remotePosts = snapshot.docs
+          .map((postDoc) => ({
+            ...postDoc.data(),
+            id: postDoc.id,
+          }))
+          .sort(
+            (first, second) =>
+              getFirestoreTimestampMillis(
+                second.createdAt
+              ) -
+              getFirestoreTimestampMillis(
+                first.createdAt
+              )
+          );
+
+        setFaqPosts(remotePosts);
+        setFaqPostsLoadErrorMessage('');
+        setFaqPostsReady(true);
+      },
+      (error) => {
+        const message =
+          'FAQ를 불러오지 못했습니다. Firestore Rules의 faqPosts 읽기 권한을 확인해 주세요.';
+
+        console.error(
+          'FAQ posts sync error:',
+          error
+        );
+
+        setFaqPosts([]);
+        setFaqPostsLoadErrorMessage(
+          message
+        );
+        setFaqPostsReady(true);
+
+        triggerToast(message, 'error');
+      }
+    );
+
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    setFaqBoardConfigReady(false);
+    setFaqBoardConfigLoadErrorMessage('');
+
+    const unsubscribe = onSnapshot(
+      FAQ_BOARD_CONFIG_DOC_REF,
+      (snapshot) => {
+        const postsPerPage =
+          getSafeFaqPostsPerPage(
+            snapshot.exists()
+              ? snapshot.data().postsPerPage
+              : DEFAULT_FAQ_POSTS_PER_PAGE
+          );
+
+        setFaqBoardConfig({
+          postsPerPage,
+        });
+        setFaqPostsPerPageInput(
+          postsPerPage
+        );
+        setFaqBoardConfigLoadErrorMessage('');
+        setFaqBoardConfigReady(true);
+      },
+      (error) => {
+        const message =
+          'FAQ 목록 설정을 불러오지 못해 기본값 10개를 사용합니다.';
+
+        console.error(
+          'FAQ board config sync error:',
+          error
+        );
+
+        setFaqBoardConfig({
+          postsPerPage:
+            DEFAULT_FAQ_POSTS_PER_PAGE,
+        });
+        setFaqPostsPerPageInput(
+          DEFAULT_FAQ_POSTS_PER_PAGE
+        );
+        setFaqBoardConfigLoadErrorMessage(
+          message
+        );
+        setFaqBoardConfigReady(true);
+      }
+    );
+
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    if (
+      activeFaqCategoryId !== 'all' &&
+      !faqCategories.some(
+        (category) =>
+          category.id === activeFaqCategoryId
+      )
+    ) {
+      setActiveFaqCategoryId('all');
+      setExpandedFaqPostId('');
+      setFaqPage(1);
+    }
+  }, [
+    faqCategories,
+    activeFaqCategoryId,
+  ]);
 
   const setAdminAuthenticatedSession = (adminId) => {
     const nextSession = saveAdminAuthSession(adminId);
@@ -8685,6 +9064,663 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       setNoticeBoardConfigSaving(false);
     }
   };
+
+    const toggleFaqPost = (postId) => {
+    setExpandedFaqPostId(
+      (currentPostId) =>
+        currentPostId === postId
+          ? ''
+          : postId
+    );
+  };
+
+  const toggleAdminFaqPost = (postId) => {
+    setAdminExpandedFaqPostId(
+      (currentPostId) =>
+        currentPostId === postId
+          ? ''
+          : postId
+    );
+  };
+
+  const openFaqPostDialog = (
+    post = null
+  ) => {
+    if (!isAdminAuthenticated) {
+      triggerToast(
+        '관리자 인증 후 FAQ를 작성하거나 수정할 수 있습니다.',
+        'error'
+      );
+      return;
+    }
+
+    if (
+      !post &&
+      faqCategories.length === 0
+    ) {
+      triggerToast(
+        'FAQ를 등록하기 전에 카테고리를 먼저 등록해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    setFaqPostDialog({
+      mode: post ? 'edit' : 'create',
+      postId: post?.id || '',
+    });
+
+    setFaqPostForm({
+      categoryId:
+        post?.categoryId ||
+        faqCategories[0]?.id ||
+        '',
+      title: post?.title || '',
+      content: post?.content || '',
+      isPinned: Boolean(
+        post?.isPinned
+      ),
+    });
+  };
+
+  const closeFaqPostDialog = () => {
+    if (faqPostSaving) return;
+
+    setFaqPostDialog(null);
+    setFaqPostForm(
+      createDefaultFaqPostForm()
+    );
+  };
+
+  const saveFaqPost = async () => {
+    if (!isAdminAuthenticated) {
+      triggerToast(
+        '관리자 인증 후 FAQ를 저장할 수 있습니다.',
+        'error'
+      );
+      return;
+    }
+
+    const auditActor =
+      getCurrentAdminAuditActor();
+
+    if (!auditActor.uid) {
+      triggerToast(
+        '관리자 인증 정보를 확인할 수 없어 FAQ 저장을 중단했습니다.',
+        'error'
+      );
+      return;
+    }
+
+    const categoryId =
+      String(
+        faqPostForm.categoryId || ''
+      ).trim();
+
+    const title =
+      String(
+        faqPostForm.title || ''
+      ).trim();
+
+    const content =
+      String(
+        faqPostForm.content || ''
+      ).trim();
+
+    if (
+      !categoryId ||
+      !faqCategoryNameById.has(
+        categoryId
+      )
+    ) {
+      triggerToast(
+        'FAQ 카테고리를 선택해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    if (!title) {
+      triggerToast(
+        'FAQ 제목을 입력해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    if (!content) {
+      triggerToast(
+        'FAQ 본문을 입력해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    const isEditing =
+      faqPostDialog?.mode === 'edit';
+
+    const editingPost =
+      isEditing
+        ? faqPosts.find(
+            (post) =>
+              post.id ===
+              faqPostDialog?.postId
+          ) || null
+        : null;
+
+    if (isEditing && !editingPost) {
+      triggerToast(
+        '수정할 FAQ를 찾을 수 없습니다.',
+        'error'
+      );
+      return;
+    }
+
+    if (
+      isEditing &&
+      !editingPost.createdAt
+    ) {
+      triggerToast(
+        'FAQ 등록 시각을 확인할 수 없어 수정을 중단했습니다.',
+        'error'
+      );
+      return;
+    }
+
+    const postDocRef =
+      isEditing
+        ? doc(
+            FAQ_POSTS_COLLECTION_REF,
+            editingPost.id
+          )
+        : doc(
+            FAQ_POSTS_COLLECTION_REF
+          );
+
+    setFaqPostSaving(true);
+
+    try {
+      await setDoc(
+        postDocRef,
+        {
+          id: postDocRef.id,
+          categoryId,
+          title,
+          content,
+          isPinned: Boolean(
+            faqPostForm.isPinned
+          ),
+          authorUid:
+            editingPost?.authorUid ||
+            auditActor.uid,
+          authorName:
+            editingPost?.authorName ||
+            auditActor.name,
+          createdAt:
+            editingPost?.createdAt ||
+            serverTimestamp(),
+          updatedAt:
+            serverTimestamp(),
+        }
+      );
+
+      triggerToast(
+        `FAQ를 ${
+          isEditing
+            ? '수정'
+            : '등록'
+        }했습니다.`,
+        'success'
+      );
+
+      setFaqPostDialog(null);
+      setFaqPostForm(
+        createDefaultFaqPostForm()
+      );
+    } catch (error) {
+      console.error(
+        'FAQ post save error:',
+        error
+      );
+
+      triggerToast(
+        `FAQ 저장에 실패했습니다. 오류 코드: ${
+          error?.code ||
+          error?.message ||
+          'unknown-error'
+        }`,
+        'error'
+      );
+    } finally {
+      setFaqPostSaving(false);
+    }
+  };
+
+  const confirmDeleteFaqPost = (
+    post
+  ) => {
+    if (
+      !isAdminAuthenticated ||
+      !post?.id
+    ) {
+      triggerToast(
+        '관리자 인증과 FAQ 정보를 확인해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    triggerConfirm(
+      'FAQ 삭제',
+      `[${post.title || '제목 없음'}] FAQ를 삭제하시겠습니까? 삭제한 FAQ는 복구할 수 없습니다.`,
+      async () => {
+        setFaqPostDeletingId(
+          post.id
+        );
+
+        try {
+          await deleteDoc(
+            doc(
+              FAQ_POSTS_COLLECTION_REF,
+              post.id
+            )
+          );
+
+          if (
+            expandedFaqPostId ===
+            post.id
+          ) {
+            setExpandedFaqPostId('');
+          }
+
+          if (
+            adminExpandedFaqPostId ===
+            post.id
+          ) {
+            setAdminExpandedFaqPostId('');
+          }
+
+          if (
+            faqPostDialog?.postId ===
+            post.id
+          ) {
+            setFaqPostDialog(null);
+            setFaqPostForm(
+              createDefaultFaqPostForm()
+            );
+          }
+
+          triggerToast(
+            'FAQ를 삭제했습니다.',
+            'success'
+          );
+        } catch (error) {
+          console.error(
+            'FAQ post delete error:',
+            error
+          );
+
+          triggerToast(
+            `FAQ 삭제에 실패했습니다. 오류 코드: ${
+              error?.code ||
+              error?.message ||
+              'unknown-error'
+            }`,
+            'error'
+          );
+        } finally {
+          setFaqPostDeletingId('');
+        }
+      }
+    );
+  };
+
+  const saveFaqBoardConfig = async () => {
+    if (!isAdminAuthenticated) {
+      triggerToast(
+        '관리자 인증 후 FAQ 목록 설정을 저장할 수 있습니다.',
+        'error'
+      );
+      return;
+    }
+
+    const postsPerPage =
+      getSafeFaqPostsPerPage(
+        faqPostsPerPageInput
+      );
+
+    setFaqBoardConfigSaving(true);
+
+    try {
+      await setDoc(
+        FAQ_BOARD_CONFIG_DOC_REF,
+        {
+          postsPerPage,
+          updatedAt:
+            serverTimestamp(),
+        }
+      );
+
+      setFaqPage(1);
+      setAdminFaqPage(1);
+      setExpandedFaqPostId('');
+      setAdminExpandedFaqPostId('');
+
+      triggerToast(
+        `FAQ 일반 게시글을 페이지당 ${postsPerPage}개씩 표시하도록 저장했습니다.`,
+        'success'
+      );
+    } catch (error) {
+      console.error(
+        'FAQ board config save error:',
+        error
+      );
+
+      triggerToast(
+        `FAQ 목록 설정 저장에 실패했습니다. 오류 코드: ${
+          error?.code ||
+          error?.message ||
+          'unknown-error'
+        }`,
+        'error'
+      );
+    } finally {
+      setFaqBoardConfigSaving(false);
+    }
+  };
+
+  const addFaqCategory = async () => {
+    if (!isAdminAuthenticated) {
+      triggerToast(
+        '관리자 인증 후 FAQ 카테고리를 등록할 수 있습니다.',
+        'error'
+      );
+      return;
+    }
+
+    const categoryName =
+      String(
+        newFaqCategoryName || ''
+      ).trim();
+
+    if (!categoryName) {
+      triggerToast(
+        'FAQ 카테고리명을 입력해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    if (
+      faqCategories.some(
+        (category) =>
+          String(
+            category.name || ''
+          ).trim().toLowerCase() ===
+          categoryName.toLowerCase()
+      )
+    ) {
+      triggerToast(
+        '이미 등록된 FAQ 카테고리명입니다.',
+        'error'
+      );
+      return;
+    }
+
+    const categoryDocRef = doc(
+      FAQ_CATEGORIES_COLLECTION_REF
+    );
+
+    const nextOrder =
+      faqCategories.reduce(
+        (maximumOrder, category) =>
+          Math.max(
+            maximumOrder,
+            Number(category.order) || 0
+          ),
+        0
+      ) + 1;
+
+    setFaqCategorySavingId('new');
+
+    try {
+      await setDoc(
+        categoryDocRef,
+        {
+          id: categoryDocRef.id,
+          name: categoryName,
+          order: nextOrder,
+          createdAt:
+            serverTimestamp(),
+          updatedAt:
+            serverTimestamp(),
+        }
+      );
+
+      setNewFaqCategoryName('');
+
+      triggerToast(
+        `[${categoryName}] FAQ 카테고리를 등록했습니다.`,
+        'success'
+      );
+    } catch (error) {
+      console.error(
+        'FAQ category create error:',
+        error
+      );
+
+      triggerToast(
+        `FAQ 카테고리 등록에 실패했습니다. 오류 코드: ${
+          error?.code ||
+          error?.message ||
+          'unknown-error'
+        }`,
+        'error'
+      );
+    } finally {
+      setFaqCategorySavingId('');
+    }
+  };
+
+  const startEditFaqCategory = (
+    category
+  ) => {
+    setEditingFaqCategoryId(
+      category.id
+    );
+    setEditingFaqCategoryName(
+      category.name || ''
+    );
+  };
+
+  const saveFaqCategoryName = async (
+    category
+  ) => {
+    if (
+      !isAdminAuthenticated ||
+      !category?.id
+    ) {
+      triggerToast(
+        '관리자 인증과 FAQ 카테고리 정보를 확인해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    const nextCategoryName =
+      String(
+        editingFaqCategoryName || ''
+      ).trim();
+
+    if (!nextCategoryName) {
+      triggerToast(
+        'FAQ 카테고리명을 입력해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    if (
+      faqCategories.some(
+        (item) =>
+          item.id !== category.id &&
+          String(
+            item.name || ''
+          ).trim().toLowerCase() ===
+          nextCategoryName.toLowerCase()
+      )
+    ) {
+      triggerToast(
+        '이미 등록된 FAQ 카테고리명입니다.',
+        'error'
+      );
+      return;
+    }
+
+    setFaqCategorySavingId(
+      category.id
+    );
+
+    try {
+      await setDoc(
+        doc(
+          FAQ_CATEGORIES_COLLECTION_REF,
+          category.id
+        ),
+        {
+          name: nextCategoryName,
+          updatedAt:
+            serverTimestamp(),
+        },
+        {
+          merge: true,
+        }
+      );
+
+      setEditingFaqCategoryId('');
+      setEditingFaqCategoryName('');
+
+      triggerToast(
+        'FAQ 카테고리명을 수정했습니다.',
+        'success'
+      );
+    } catch (error) {
+      console.error(
+        'FAQ category update error:',
+        error
+      );
+
+      triggerToast(
+        `FAQ 카테고리 수정에 실패했습니다. 오류 코드: ${
+          error?.code ||
+          error?.message ||
+          'unknown-error'
+        }`,
+        'error'
+      );
+    } finally {
+      setFaqCategorySavingId('');
+    }
+  };
+
+  const confirmDeleteFaqCategory = (
+    category
+  ) => {
+    if (
+      !isAdminAuthenticated ||
+      !category?.id
+    ) {
+      triggerToast(
+        '관리자 인증과 FAQ 카테고리 정보를 확인해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    const categoryPostCount =
+      faqPosts.filter(
+        (post) =>
+          post.categoryId ===
+          category.id
+      ).length;
+
+    if (categoryPostCount > 0) {
+      triggerToast(
+        `[${category.name}] 카테고리를 사용하는 FAQ가 ${categoryPostCount}건 있어 삭제할 수 없습니다.`,
+        'error'
+      );
+      return;
+    }
+
+    triggerConfirm(
+      'FAQ 카테고리 삭제',
+      `[${category.name || '이름 없음'}] 카테고리를 삭제하시겠습니까?`,
+      async () => {
+        setFaqCategoryDeletingId(
+          category.id
+        );
+
+        try {
+          await deleteDoc(
+            doc(
+              FAQ_CATEGORIES_COLLECTION_REF,
+              category.id
+            )
+          );
+
+          if (
+            activeFaqCategoryId ===
+            category.id
+          ) {
+            setActiveFaqCategoryId('all');
+            setExpandedFaqPostId('');
+            setFaqPage(1);
+          }
+
+          if (
+            faqPostForm.categoryId ===
+            category.id
+          ) {
+            setFaqPostForm(
+              (currentForm) => ({
+                ...currentForm,
+                categoryId: '',
+              })
+            );
+          }
+
+          if (
+            editingFaqCategoryId ===
+            category.id
+          ) {
+            setEditingFaqCategoryId('');
+            setEditingFaqCategoryName('');
+          }
+
+          triggerToast(
+            'FAQ 카테고리를 삭제했습니다.',
+            'success'
+          );
+        } catch (error) {
+          console.error(
+            'FAQ category delete error:',
+            error
+          );
+
+          triggerToast(
+            `FAQ 카테고리 삭제에 실패했습니다. 오류 코드: ${
+              error?.code ||
+              error?.message ||
+              'unknown-error'
+            }`,
+            'error'
+          );
+        } finally {
+          setFaqCategoryDeletingId('');
+        }
+      }
+    );
+  };
   
   const updateRequest = async (id, status) => {
     if (!isSplitStorageReady) {
@@ -12070,7 +13106,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                     {userTab === 'home' && '상단의 서비스 제목과 아이콘을 클릭하면 언제든 이 초기화면으로 돌아옵니다.'}
                     {userTab === 'history' && '사용자의 대여 신청 현황과 처리 상태를 확인할 수 있는 화면을 준비하고 있습니다.'}
                     {userTab === 'notice' && '운영 공지, 대여 정책, 점검 안내를 확인할 수 있습니다.'}
-                    {userTab === 'faq' && 'FAQ는 공지사항과 분리된 별도 시스템으로 준비하고 있습니다.'}
+                    {userTab === 'faq' && '질문 유형별 FAQ를 선택하고 제목을 눌러 답변을 확인할 수 있습니다.'}
                     {userTab === 'notFound' && '입력하신 주소와 일치하는 메뉴를 찾을 수 없습니다.'}
                   </p>
                 </div>
@@ -12339,18 +13375,219 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                     </div>
                   )
                 ) : userTab === 'faq' ? (
-                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center">
-                    <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-slate-500 shadow-sm">
-                      <Clock size={22} />
+                  <div className="space-y-5">
+                    <div className="border-b border-slate-100 pb-4">
+                      <h3 className="text-base font-bold text-slate-900">
+                        자주 묻는 질문
+                      </h3>
+
+                      <p className="mt-1 text-xs leading-5 text-slate-500">
+                        카테고리를 선택한 뒤 제목을 클릭하면 같은 화면에서 답변이 열립니다.
+                      </p>
                     </div>
 
-                    <h3 className="text-base font-bold text-slate-900">
-                      FAQ는 별도 시스템으로 준비중입니다
-                    </h3>
+                    {!faqCategoriesReady ? (
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 py-8 text-center text-xs text-slate-400">
+                        FAQ 카테고리를 불러오는 중입니다.
+                      </div>
+                    ) : faqCategoriesLoadErrorMessage ? (
+                      <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-xs leading-5 text-rose-800">
+                        {faqCategoriesLoadErrorMessage}
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          {
+                            id: 'all',
+                            name: '전체',
+                          },
+                          ...faqCategories,
+                        ].map((category) => {
+                          const isActive =
+                            activeFaqCategoryId ===
+                            category.id;
 
-                    <p className="mx-auto mt-2 max-w-xl text-xs leading-5 text-slate-500">
-                      FAQ는 공지사항 데이터베이스와 분리된 별도 저장 구조와 관리 화면으로 이후 단계에서 개발합니다.
-                    </p>
+                          return (
+                            <button
+                              key={category.id}
+                              type="button"
+                              onClick={() => {
+                                setActiveFaqCategoryId(
+                                  category.id
+                                );
+                                setExpandedFaqPostId('');
+                                setFaqPage(1);
+                              }}
+                              className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
+                                isActive
+                                  ? 'border-orange-500 bg-orange-500 text-white shadow-sm'
+                                  : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600'
+                              }`}
+                            >
+                              {category.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {!faqPostsReady ? (
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
+                        FAQ를 불러오는 중입니다.
+                      </div>
+                    ) : faqPostsLoadErrorMessage ? (
+                      <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-xs leading-5 text-rose-800">
+                        {faqPostsLoadErrorMessage}
+                      </div>
+                    ) : categoryFilteredFaqPosts.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
+                        선택한 카테고리에 등록된 FAQ가 없습니다.
+                      </div>
+                    ) : (
+                      <>
+                        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                          {[
+                            ...pinnedFaqPosts,
+                            ...paginatedFaqPosts,
+                          ].map((post, index, displayedPosts) => {
+                            const isExpanded =
+                              expandedFaqPostId ===
+                              post.id;
+
+                            return (
+                              <div
+                                key={post.id}
+                                className={
+                                  index <
+                                  displayedPosts.length - 1
+                                    ? 'border-b border-slate-100'
+                                    : ''
+                                }
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    toggleFaqPost(
+                                      post.id
+                                    )
+                                  }
+                                  className="grid w-full grid-cols-[minmax(0,1fr)_28px] items-center gap-3 px-4 py-4 text-left transition hover:bg-slate-50 sm:grid-cols-[150px_minmax(0,1fr)_28px] sm:px-5"
+                                >
+                                  <div className="hidden sm:block">
+                                    <span className="inline-flex max-w-full truncate rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-600">
+                                      {faqCategoryNameById.get(
+                                        post.categoryId
+                                      ) || '미분류'}
+                                    </span>
+                                  </div>
+
+                                  <div className="min-w-0">
+                                    <div className="mb-1 flex flex-wrap items-center gap-2 sm:hidden">
+                                      <span className="inline-flex max-w-full truncate rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-600">
+                                        {faqCategoryNameById.get(
+                                          post.categoryId
+                                        ) || '미분류'}
+                                      </span>
+                                    </div>
+
+                                    <div className="flex min-w-0 items-center gap-2">
+                                      {post.isPinned && (
+                                        <span className="shrink-0 rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-700">
+                                          고정
+                                        </span>
+                                      )}
+
+                                      <span className="min-w-0 flex-1 break-words text-sm font-bold text-slate-800">
+                                        {post.title}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <span className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-base font-semibold text-slate-500">
+                                    {isExpanded
+                                      ? '−'
+                                      : '+'}
+                                  </span>
+                                </button>
+
+                                <AnimatePresence initial={false}>
+                                  {isExpanded && (
+                                    <motion.div
+                                      initial={{
+                                        height: 0,
+                                        opacity: 0,
+                                      }}
+                                      animate={{
+                                        height: 'auto',
+                                        opacity: 1,
+                                      }}
+                                      exit={{
+                                        height: 0,
+                                        opacity: 0,
+                                      }}
+                                      transition={{
+                                        duration: 0.2,
+                                      }}
+                                      className="overflow-hidden"
+                                    >
+                                      <div className="border-t border-slate-100 bg-slate-50/70 px-5 py-5 sm:pl-[175px]">
+                                        <div className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-700">
+                                          {post.content}
+                                        </div>
+                                      </div>
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {regularFaqPosts.length > 0 && (
+                          <div className="flex items-center justify-center gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="px-3 py-2 text-xs"
+                              disabled={safeFaqPage <= 1}
+                              onClick={() => {
+                                setFaqPage((prev) =>
+                                  Math.max(1, prev - 1)
+                                );
+                                setExpandedFaqPostId('');
+                              }}
+                            >
+                              이전
+                            </Button>
+
+                            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
+                              {safeFaqPage} / {faqTotalPages}
+                            </div>
+
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="px-3 py-2 text-xs"
+                              disabled={
+                                safeFaqPage >=
+                                faqTotalPages
+                              }
+                              onClick={() => {
+                                setFaqPage((prev) =>
+                                  Math.min(
+                                    faqTotalPages,
+                                    prev + 1
+                                  )
+                                );
+                                setExpandedFaqPostId('');
+                              }}
+                            >
+                              다음
+                            </Button>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 ) : (
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center">
@@ -12552,6 +13789,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                     ['categories', ClipboardList, '자산 카테고리 관리'],
                     ['people', Users, '부서·사용자 관리'],
                     ['noticePosts', ClipboardList, '공지사항 관리'],
+                    ['faqPosts', ClipboardList, 'FAQ 관리'],
                     ['memberAccounts', UserCircle, '회원 계정 관리'],
                     ['adminAccounts', ShieldCheck, '관리자 ID 관리'],
                     ['settings', Settings, '시스템 설정'],
@@ -13929,6 +15167,501 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                                     )
                                   )
                                 }
+                              >
+                                다음
+                              </Button>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                                    {/* FAQ 관리 탭 */}
+                  {adminTab === 'faqPosts' && (
+                    <div className="space-y-6">
+                      <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <h2 className="text-lg font-bold text-slate-900">
+                            FAQ 관리
+                          </h2>
+
+                          <p className="mt-1 text-xs text-slate-500">
+                            FAQ 카테고리와 질문·답변을 등록, 수정, 삭제하고 목록 표시 개수를 설정합니다.
+                          </p>
+                        </div>
+
+                        <Button
+                          type="button"
+                          variant="primary"
+                          className="shrink-0 px-4 py-2 text-xs"
+                          onClick={() =>
+                            openFaqPostDialog()
+                          }
+                        >
+                          <Plus size={14} />
+                          FAQ 등록
+                        </Button>
+                      </div>
+
+                      <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                          <div className="border-b border-slate-200 pb-3">
+                            <h3 className="text-sm font-bold text-slate-900">
+                              FAQ 카테고리 관리
+                            </h3>
+
+                            <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                              부서 관리와 같은 방식으로 카테고리를 등록, 수정, 삭제합니다.
+                            </p>
+                          </div>
+
+                          <div className="mt-4 flex gap-2">
+                            <input
+                              value={newFaqCategoryName}
+                              onChange={(event) =>
+                                setNewFaqCategoryName(
+                                  event.target.value
+                                )
+                              }
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter') {
+                                  addFaqCategory();
+                                }
+                              }}
+                              placeholder="새 FAQ 카테고리명"
+                              className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none mk-form-border-focus"
+                            />
+
+                            <Button
+                              type="button"
+                              className="shrink-0 px-3 py-2"
+                              disabled={
+                                faqCategorySavingId ===
+                                'new'
+                              }
+                              onClick={addFaqCategory}
+                            >
+                              <Plus size={16} />
+                            </Button>
+                          </div>
+
+                          {!faqCategoriesReady ? (
+                            <div className="mt-4 rounded-xl border border-slate-200 bg-white py-8 text-center text-xs text-slate-400">
+                              카테고리를 불러오는 중입니다.
+                            </div>
+                          ) : faqCategoriesLoadErrorMessage ? (
+                            <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-xs leading-5 text-rose-700">
+                              {faqCategoriesLoadErrorMessage}
+                            </div>
+                          ) : faqCategories.length === 0 ? (
+                            <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-white py-8 text-center text-xs text-slate-400">
+                              등록된 FAQ 카테고리가 없습니다.
+                            </div>
+                          ) : (
+                            <div className="mt-4 max-h-80 space-y-1 overflow-y-auto pr-1">
+                              {faqCategories.map(
+                                (category) => {
+                                  const categoryPostCount =
+                                    faqPosts.filter(
+                                      (post) =>
+                                        post.categoryId ===
+                                        category.id
+                                    ).length;
+
+                                  const isEditing =
+                                    editingFaqCategoryId ===
+                                    category.id;
+
+                                  return (
+                                    <div
+                                      key={category.id}
+                                      className="rounded-xl border border-slate-100 bg-white px-3.5 py-2 text-xs text-slate-700"
+                                    >
+                                      {isEditing ? (
+                                        <div className="flex flex-col gap-2">
+                                          <input
+                                            value={
+                                              editingFaqCategoryName
+                                            }
+                                            onChange={(event) =>
+                                              setEditingFaqCategoryName(
+                                                event.target.value
+                                              )
+                                            }
+                                            onKeyDown={(event) => {
+                                              if (
+                                                event.key ===
+                                                'Enter'
+                                              ) {
+                                                saveFaqCategoryName(
+                                                  category
+                                                );
+                                              }
+
+                                              if (
+                                                event.key ===
+                                                'Escape'
+                                              ) {
+                                                setEditingFaqCategoryId(
+                                                  ''
+                                                );
+                                                setEditingFaqCategoryName(
+                                                  ''
+                                                );
+                                              }
+                                            }}
+                                            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none mk-form-border-focus"
+                                          />
+
+                                          <div className="flex justify-end gap-1">
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              className="rounded-lg px-2 py-1 text-xs"
+                                              disabled={
+                                                faqCategorySavingId ===
+                                                category.id
+                                              }
+                                              onClick={() =>
+                                                saveFaqCategoryName(
+                                                  category
+                                                )
+                                              }
+                                            >
+                                              <Save size={13} />
+                                              적용
+                                            </Button>
+
+                                            <Button
+                                              type="button"
+                                              variant="ghost"
+                                              className="rounded-lg px-2 py-1 text-xs"
+                                              disabled={
+                                                faqCategorySavingId ===
+                                                category.id
+                                              }
+                                              onClick={() => {
+                                                setEditingFaqCategoryId(
+                                                  ''
+                                                );
+                                                setEditingFaqCategoryName(
+                                                  ''
+                                                );
+                                              }}
+                                            >
+                                              <X size={13} />
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="min-w-0">
+                                            <div className="truncate font-semibold text-slate-800">
+                                              {category.name}
+                                            </div>
+
+                                            <div className="mt-0.5 text-[10px] text-slate-400">
+                                              FAQ {categoryPostCount}건
+                                            </div>
+                                          </div>
+
+                                          <div className="flex shrink-0 items-center gap-1">
+                                            <Button
+                                              type="button"
+                                              variant="ghost"
+                                              className="rounded-lg px-1 py-1 hover:bg-blue-50 hover:text-blue-600"
+                                              onClick={() =>
+                                                startEditFaqCategory(
+                                                  category
+                                                )
+                                              }
+                                            >
+                                              <Edit3 size={14} />
+                                            </Button>
+
+                                            <Button
+                                              type="button"
+                                              variant="ghost"
+                                              className="rounded-lg px-1 py-1 hover:bg-rose-50 hover:text-rose-600"
+                                              disabled={
+                                                faqCategoryDeletingId ===
+                                                category.id
+                                              }
+                                              onClick={() =>
+                                                confirmDeleteFaqCategory(
+                                                  category
+                                                )
+                                              }
+                                            >
+                                              <Trash2 size={14} />
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                }
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4">
+                          <div className="grid h-full gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-center">
+                            <div className="min-w-0">
+                              <h3 className="text-sm font-bold text-slate-900">
+                                목록 표시 설정
+                              </h3>
+
+                              <p className="mt-1 max-w-2xl text-[11px] leading-5 text-slate-500">
+                                상단 고정 FAQ는 제외하고 일반 FAQ만 설정한 개수만큼 한 페이지에 표시합니다.
+                              </p>
+                            </div>
+
+                            <div className="grid gap-2 sm:grid-cols-[160px_1fr] sm:items-end">
+                              <div className="w-full">
+                                <Select
+                                  label="페이지당 일반 FAQ 수"
+                                  value={String(
+                                    faqPostsPerPageInput
+                                  )}
+                                  onChange={(value) =>
+                                    setFaqPostsPerPageInput(
+                                      Number(value)
+                                    )
+                                  }
+                                >
+                                  {FAQ_POSTS_PER_PAGE_OPTIONS.map(
+                                    (option) => (
+                                      <option
+                                        key={option}
+                                        value={option}
+                                      >
+                                        {option}개
+                                      </option>
+                                    )
+                                  )}
+                                </Select>
+                              </div>
+
+                              <Button
+                                type="button"
+                                variant="primary"
+                                className="h-10 w-full whitespace-nowrap px-4 text-xs"
+                                disabled={
+                                  !faqBoardConfigReady ||
+                                  faqBoardConfigSaving
+                                }
+                                onClick={saveFaqBoardConfig}
+                              >
+                                <Save size={14} />
+                                {faqBoardConfigSaving
+                                  ? '저장 중'
+                                  : '설정 저장'}
+                              </Button>
+                            </div>
+                          </div>
+
+                          {faqBoardConfigLoadErrorMessage && (
+                            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                              {faqBoardConfigLoadErrorMessage}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {!faqPostsReady ? (
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
+                          FAQ를 불러오는 중입니다.
+                        </div>
+                      ) : faqPostsLoadErrorMessage ? (
+                        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-xs leading-5 text-rose-800">
+                          {faqPostsLoadErrorMessage}
+                        </div>
+                      ) : faqPosts.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
+                          등록된 FAQ가 없습니다.
+                        </div>
+                      ) : (
+                        <>
+                          <div className="overflow-hidden rounded-xl border border-slate-200">
+                            <div className="grid grid-cols-[140px_minmax(0,1fr)_170px] border-b border-slate-200 bg-slate-50 text-[11px] font-semibold text-slate-600">
+                              <div className="px-4 py-3">
+                                카테고리
+                              </div>
+                              <div className="px-4 py-3">
+                                제목
+                              </div>
+                              <div className="px-4 py-3 text-center">
+                                관리
+                              </div>
+                            </div>
+
+                            {[
+                              ...adminPinnedFaqPosts,
+                              ...paginatedAdminFaqPosts,
+                            ].map((post, index, displayedPosts) => {
+                              const isExpanded =
+                                adminExpandedFaqPostId ===
+                                post.id;
+
+                              return (
+                                <div
+                                  key={post.id}
+                                  className={
+                                    index <
+                                    displayedPosts.length - 1
+                                      ? 'border-b border-slate-100'
+                                      : ''
+                                  }
+                                >
+                                  <div className="grid grid-cols-[140px_minmax(0,1fr)_170px] items-center">
+                                    <div className="px-4 py-3">
+                                      <span className="inline-flex max-w-full truncate rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-600">
+                                        {faqCategoryNameById.get(
+                                          post.categoryId
+                                        ) || '미분류'}
+                                      </span>
+                                    </div>
+
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        toggleAdminFaqPost(
+                                          post.id
+                                        )
+                                      }
+                                      className="flex min-w-0 items-center gap-2 px-4 py-3 text-left hover:bg-slate-50"
+                                    >
+                                      {post.isPinned && (
+                                        <span className="shrink-0 rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-700">
+                                          고정
+                                        </span>
+                                      )}
+
+                                      <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800">
+                                        {post.title}
+                                      </span>
+
+                                      <span className="shrink-0 text-base font-semibold text-slate-400">
+                                        {isExpanded
+                                          ? '−'
+                                          : '+'}
+                                      </span>
+                                    </button>
+
+                                    <div className="flex items-center justify-center gap-1.5 px-3 py-3">
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        className="whitespace-nowrap px-2.5 py-2 text-xs"
+                                        onClick={() =>
+                                          openFaqPostDialog(
+                                            post
+                                          )
+                                        }
+                                      >
+                                        <Edit3 size={13} />
+                                        수정
+                                      </Button>
+
+                                      <Button
+                                        type="button"
+                                        variant="dangerOutline"
+                                        className="whitespace-nowrap px-2.5 py-2 text-xs"
+                                        disabled={
+                                          faqPostDeletingId ===
+                                          post.id
+                                        }
+                                        onClick={() =>
+                                          confirmDeleteFaqPost(
+                                            post
+                                          )
+                                        }
+                                      >
+                                        <Trash2 size={13} />
+                                        {faqPostDeletingId ===
+                                        post.id
+                                          ? '삭제 중'
+                                          : '삭제'}
+                                      </Button>
+                                    </div>
+                                  </div>
+
+                                  <AnimatePresence initial={false}>
+                                    {isExpanded && (
+                                      <motion.div
+                                        initial={{
+                                          height: 0,
+                                          opacity: 0,
+                                        }}
+                                        animate={{
+                                          height: 'auto',
+                                          opacity: 1,
+                                        }}
+                                        exit={{
+                                          height: 0,
+                                          opacity: 0,
+                                        }}
+                                        transition={{
+                                          duration: 0.2,
+                                        }}
+                                        className="overflow-hidden"
+                                      >
+                                        <div className="border-t border-slate-100 bg-slate-50/70 px-5 py-5 text-sm leading-7 text-slate-700">
+                                          <div className="whitespace-pre-wrap break-words">
+                                            {post.content}
+                                          </div>
+                                        </div>
+                                      </motion.div>
+                                    )}
+                                  </AnimatePresence>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {adminRegularFaqPosts.length > 0 && (
+                            <div className="flex items-center justify-center gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="px-3 py-2 text-xs"
+                                disabled={
+                                  safeAdminFaqPage <= 1
+                                }
+                                onClick={() => {
+                                  setAdminFaqPage((prev) =>
+                                    Math.max(1, prev - 1)
+                                  );
+                                  setAdminExpandedFaqPostId('');
+                                }}
+                              >
+                                이전
+                              </Button>
+
+                              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
+                                {safeAdminFaqPage} / {adminFaqTotalPages}
+                              </div>
+
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="px-3 py-2 text-xs"
+                                disabled={
+                                  safeAdminFaqPage >=
+                                  adminFaqTotalPages
+                                }
+                                onClick={() => {
+                                  setAdminFaqPage((prev) =>
+                                    Math.min(
+                                      adminFaqTotalPages,
+                                      prev + 1
+                                    )
+                                  );
+                                  setAdminExpandedFaqPostId('');
+                                }}
                               >
                                 다음
                               </Button>
@@ -15322,6 +17055,159 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                 {userActionSaving
                   ? '저장 중...'
                   : '요청 제출'}
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+            {faqPostDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  FAQ{' '}
+                  {faqPostDialog.mode === 'edit'
+                    ? '수정'
+                    : '등록'}
+                </h3>
+
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  FAQ 작성과 수정은 관리자 모드에서만 가능합니다.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeFaqPostDialog}
+                disabled={faqPostSaving}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              <Select
+                label="카테고리"
+                value={faqPostForm.categoryId}
+                onChange={(value) =>
+                  setFaqPostForm(
+                    (prev) => ({
+                      ...prev,
+                      categoryId: value,
+                    })
+                  )
+                }
+              >
+                <option value="">
+                  카테고리 선택
+                </option>
+
+                {faqCategories.map(
+                  (category) => (
+                    <option
+                      key={category.id}
+                      value={category.id}
+                    >
+                      {category.name}
+                    </option>
+                  )
+                )}
+              </Select>
+
+              <Input
+                label="제목"
+                value={faqPostForm.title}
+                onChange={(value) =>
+                  setFaqPostForm(
+                    (prev) => ({
+                      ...prev,
+                      title: value,
+                    })
+                  )
+                }
+                placeholder="FAQ 질문 제목을 입력해 주세요."
+              />
+
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                  본문
+                </span>
+
+                <textarea
+                  value={faqPostForm.content}
+                  onChange={(event) =>
+                    setFaqPostForm(
+                      (prev) => ({
+                        ...prev,
+                        content:
+                          event.target.value,
+                      })
+                    )
+                  }
+                  placeholder="FAQ 답변 내용을 입력해 주세요."
+                  className="h-56 w-full rounded-xl border border-slate-200 p-3 text-xs leading-6 outline-none mk-form-ring-focus"
+                />
+              </label>
+
+              <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={
+                    faqPostForm.isPinned
+                  }
+                  onChange={(event) =>
+                    setFaqPostForm(
+                      (prev) => ({
+                        ...prev,
+                        isPinned:
+                          event.target.checked,
+                      })
+                    )
+                  }
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+
+                <div>
+                  <div className="text-xs font-bold text-slate-800">
+                    목록 상단에 고정
+                  </div>
+
+                  <div className="mt-0.5 text-[10px] text-slate-500">
+                    상단 고정 FAQ는 페이지당 일반 FAQ 수에 포함되지 않습니다.
+                  </div>
+                </div>
+              </label>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={faqPostSaving}
+                onClick={closeFaqPostDialog}
+              >
+                취소
+              </Button>
+
+              <Button
+                type="button"
+                variant="primary"
+                disabled={faqPostSaving}
+                onClick={saveFaqPost}
+              >
+                {faqPostSaving
+                  ? '저장 중...'
+                  : faqPostDialog.mode ===
+                      'edit'
+                    ? '수정 저장'
+                    : 'FAQ 등록'}
               </Button>
             </div>
           </motion.div>
