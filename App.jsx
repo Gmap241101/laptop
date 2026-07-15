@@ -280,19 +280,31 @@ const getFirestoreTimestampMillis = (value) => {
     : parsedTime;
 };
 
-  const [communityPosts, setCommunityPosts] = useState([]);
-  const [communityPostsReady, setCommunityPostsReady] = useState(false);
-  const [
-    communityPostsLoadErrorMessage,
-    setCommunityPostsLoadErrorMessage,
-  ] = useState('');
+const formatFirestoreTimestamp = (value) => {
+  const timestampMillis =
+    getFirestoreTimestampMillis(value);
 
-  const [communityPostDialog, setCommunityPostDialog] = useState(null);
-  const [communityPostForm, setCommunityPostForm] = useState(
-    createDefaultCommunityPostForm
-  );
-  const [communityPostSaving, setCommunityPostSaving] = useState(false);
-  const [communityPostDeletingId, setCommunityPostDeletingId] = useState('');
+  if (!timestampMillis) {
+    return '-';
+  }
+
+  return new Date(
+    timestampMillis
+  ).toLocaleString('ko-KR');
+};
+
+const formatFirestoreDate = (value) => {
+  const timestampMillis =
+    getFirestoreTimestampMillis(value);
+
+  if (!timestampMillis) {
+    return '-';
+  }
+
+  return new Date(
+    timestampMillis
+  ).toLocaleDateString('ko-KR');
+};
 
 const hasRentalPeriodOverlap = (
   existingStartDate,
@@ -1930,19 +1942,35 @@ function App() {
     setAdminUserActionSavingRequestId,
   ] = useState('');
 
-  const [communityPosts, setCommunityPosts] = useState([]);
-  const [communityPostsReady, setCommunityPostsReady] = useState(false);
+  const [noticePosts, setNoticePosts] = useState([]);
+  const [noticePostsReady, setNoticePostsReady] = useState(false);
   const [
-    communityPostsLoadErrorMessage,
-    setCommunityPostsLoadErrorMessage,
+    noticePostsLoadErrorMessage,
+    setNoticePostsLoadErrorMessage,
   ] = useState('');
 
-  const [communityPostDialog, setCommunityPostDialog] = useState(null);
-  const [communityPostForm, setCommunityPostForm] = useState(
-    createDefaultCommunityPostForm
+  const [noticeBoardConfig, setNoticeBoardConfig] = useState({
+    postsPerPage: DEFAULT_NOTICE_POSTS_PER_PAGE,
+  });
+  const [noticeBoardConfigReady, setNoticeBoardConfigReady] = useState(false);
+  const [
+    noticeBoardConfigLoadErrorMessage,
+    setNoticeBoardConfigLoadErrorMessage,
+  ] = useState('');
+
+  const [selectedNoticePostId, setSelectedNoticePostId] = useState('');
+  const [noticePage, setNoticePage] = useState(1);
+  const [adminNoticePage, setAdminNoticePage] = useState(1);
+  const [noticePostDialog, setNoticePostDialog] = useState(null);
+  const [noticePostForm, setNoticePostForm] = useState(
+    createDefaultNoticePostForm
   );
-  const [communityPostSaving, setCommunityPostSaving] = useState(false);
-  const [communityPostDeletingId, setCommunityPostDeletingId] = useState('');
+  const [noticePostSaving, setNoticePostSaving] = useState(false);
+  const [noticePostDeletingId, setNoticePostDeletingId] = useState('');
+  const [noticeBoardConfigSaving, setNoticeBoardConfigSaving] = useState(false);
+  const [noticePostsPerPageInput, setNoticePostsPerPageInput] = useState(
+    DEFAULT_NOTICE_POSTS_PER_PAGE
+  );
 
   const [adminAccounts, setAdminAccounts] = useState([]);
   const [adminAccountsReady, setAdminAccountsReady] = useState(false);
