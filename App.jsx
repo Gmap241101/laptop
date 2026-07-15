@@ -126,6 +126,7 @@ const STATUS = {
   ON_HOLD: '보류',
   DENIED: '불허',
   RETURNED: '반납완료',
+  USER_CANCELLED: '사용자취소',
   UNAVAILABLE: '대여불가',
 };
 
@@ -141,6 +142,7 @@ const statusStyle = {
   '보류': 'bg-purple-50 text-purple-700 border-purple-200',
   '불허': 'bg-rose-50 text-rose-700 border-rose-200',
   '반납완료': 'bg-slate-100 text-slate-700 border-slate-200',
+  '사용자취소': 'bg-slate-100 text-slate-600 border-slate-300',
   '대여불가': 'bg-rose-100 text-rose-800 border-rose-300',
 };
 
@@ -153,7 +155,88 @@ const RENTAL_BLOCKING_REQUEST_STATUSES = [
 const RENTAL_REQUEST_AUDIT_ACTION = {
   STATUS_CHANGED: 'status-changed',
   MEMO_CHANGED: 'memo-changed',
+  USER_ACTION_REVIEWED: 'user-action-reviewed',
 };
+
+const USER_REQUEST_ACTION = {
+  CHANGE: 'change',
+  CANCEL: 'cancel',
+  EXTEND: 'extend',
+  RETURN: 'return',
+};
+
+const USER_REQUEST_REVIEW_STATUS = {
+  PENDING: 'pending',
+  APPROVED: 'approved',
+  DENIED: 'denied',
+};
+
+const getUserRequestActionLabel = (type) => {
+  if (type === USER_REQUEST_ACTION.CHANGE) return '신청 변경 요청';
+  if (type === USER_REQUEST_ACTION.CANCEL) return '신청 취소 요청';
+  if (type === USER_REQUEST_ACTION.EXTEND) return '대여 연장 요청';
+  if (type === USER_REQUEST_ACTION.RETURN) return '조기 반납 요청';
+
+  return '사용자 요청';
+};
+
+const getUserRequestReviewStatusLabel = (status) => {
+  if (status === USER_REQUEST_REVIEW_STATUS.PENDING) return '검토 대기';
+  if (status === USER_REQUEST_REVIEW_STATUS.APPROVED) return '승인';
+  if (status === USER_REQUEST_REVIEW_STATUS.DENIED) return '불허';
+
+  return '상태 미지정';
+};
+
+const createDefaultUserActionForm = () => ({
+  type: '',
+  reason: '',
+  team: '',
+  borrower: '',
+  startDate: '',
+  dueDate: '',
+  purpose: '',
+});
+
+const USER_REQUEST_ACTION = {
+  CHANGE: 'change',
+  CANCEL: 'cancel',
+  EXTEND: 'extend',
+  RETURN: 'return',
+};
+
+const USER_REQUEST_REVIEW_STATUS = {
+  PENDING: 'pending',
+  APPROVED: 'approved',
+  DENIED: 'denied',
+};
+
+const getUserRequestActionLabel = (type) => {
+  if (type === USER_REQUEST_ACTION.CHANGE) return '신청 변경 요청';
+  if (type === USER_REQUEST_ACTION.CANCEL) return '신청 취소 요청';
+  if (type === USER_REQUEST_ACTION.EXTEND) return '대여 연장 요청';
+  if (type === USER_REQUEST_ACTION.RETURN) return '조기 반납 요청';
+
+  return '사용자 요청';
+};
+
+const getUserRequestReviewStatusLabel = (status) => {
+  if (status === USER_REQUEST_REVIEW_STATUS.PENDING) return '검토 대기';
+  if (status === USER_REQUEST_REVIEW_STATUS.APPROVED) return '승인';
+  if (status === USER_REQUEST_REVIEW_STATUS.DENIED) return '불허';
+
+  return '상태 미지정';
+};
+
+const createDefaultUserActionForm = () => ({
+  type: '',
+  reason: '',
+  team: '',
+  borrower: '',
+  startDate: '',
+  dueDate: '',
+  purpose: '',
+});
 
 const RENTAL_REQUEST_STATUS_TRANSITIONS = {
   [STATUS.REQUESTED]: [
@@ -177,6 +260,7 @@ const RENTAL_REQUEST_STATUS_TRANSITIONS = {
 
   [STATUS.DENIED]: [],
   [STATUS.RETURNED]: [],
+  [STATUS.USER_CANCELLED]: [],
 };
 
 const getFirestoreTimestampMillis = (value) => {
@@ -1838,6 +1922,16 @@ function App() {
   const [requestSubmitLoading, setRequestSubmitLoading] = useState(false);
   const requestSubmitInProgressRef = useRef(false);
 
+  const [userActionDialog, setUserActionDialog] = useState(null);
+  const [userActionForm, setUserActionForm] = useState(
+    createDefaultUserActionForm
+  );
+  const [userActionSaving, setUserActionSaving] = useState(false);
+  const [
+    adminUserActionSavingRequestId,
+    setAdminUserActionSavingRequestId,
+  ] = useState('');
+
   const [adminAccounts, setAdminAccounts] = useState([]);
   const [adminAccountsReady, setAdminAccountsReady] = useState(false);
   const [adminAccountsLoadErrorMessage, setAdminAccountsLoadErrorMessage] = useState('');
@@ -3133,6 +3227,34 @@ function App() {
       (request) => request.requesterUid === firebaseAuthUser.uid
     );
   }, [mergedRentalRequests, firebaseAuthUser?.uid]);
+
+  const activeUserActionRentalRequest = useMemo(
+    () =>
+      userActionDialog?.requestId
+        ? currentUserRequests.find(
+            (request) =>
+              request.id ===
+              userActionDialog.requestId
+          ) || null
+        : null,
+    [
+      currentUserRequests,
+      userActionDialog?.requestId,
+    ]
+  );
+
+  const userActionBorrowers = useMemo(
+    () =>
+      (data.borrowers || []).filter(
+        (borrower) =>
+          borrower.team ===
+          userActionForm.team
+      ),
+    [
+      data.borrowers,
+      userActionForm.team,
+    ]
+  );
 
   const hasMatchingAdminFirebaseAuth =
     Boolean(authenticatedAdminAccount?.authUid) &&
@@ -6950,6 +7072,423 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     }
   };
 
+    const openUserActionDialog = (request, type) => {
+    if (
+      request.userActionRequest?.status ===
+      USER_REQUEST_REVIEW_STATUS.PENDING
+    ) {
+      triggerToast(
+        '이미 검토 중인 사용자 요청이 있습니다.',
+        'error'
+      );
+      return;
+    }
+
+    const canRequestChange =
+      [STATUS.REQUESTED, STATUS.ON_HOLD].includes(
+        request.status
+      );
+
+    const canRequestRentalAction =
+      request.status === STATUS.APPROVED;
+
+    if (
+      [USER_REQUEST_ACTION.CHANGE, USER_REQUEST_ACTION.CANCEL].includes(type) &&
+      !canRequestChange
+    ) {
+      triggerToast(
+        '신청 변경과 취소 요청은 신청중 또는 보류 상태에서만 가능합니다.',
+        'error'
+      );
+      return;
+    }
+
+    if (
+      [USER_REQUEST_ACTION.EXTEND, USER_REQUEST_ACTION.RETURN].includes(type) &&
+      !canRequestRentalAction
+    ) {
+      triggerToast(
+        '연장과 반납 요청은 대여중 상태에서만 가능합니다.',
+        'error'
+      );
+      return;
+    }
+
+    const maxDueDate = addDaysFrom(
+      request.startDate,
+      data.settings.maxRentalDays
+    );
+
+    const suggestedExtensionDueDate = addDaysFrom(
+      request.dueDate,
+      1
+    );
+
+    setUserActionDialog({
+      requestId: request.id,
+      type,
+    });
+
+    setUserActionForm({
+      type,
+      reason: '',
+      team: request.team || '',
+      borrower: request.borrower || '',
+      startDate: request.startDate || '',
+      dueDate:
+        type === USER_REQUEST_ACTION.EXTEND &&
+        suggestedExtensionDueDate <= maxDueDate
+          ? suggestedExtensionDueDate
+          : request.dueDate || '',
+      purpose: request.purpose || '',
+    });
+  };
+
+  const closeUserActionDialog = () => {
+    if (userActionSaving) return;
+
+    setUserActionDialog(null);
+    setUserActionForm(
+      createDefaultUserActionForm()
+    );
+  };
+
+  const submitUserActionRequest = async () => {
+    const requestId =
+      userActionDialog?.requestId || '';
+
+    const actionType =
+      userActionDialog?.type || '';
+
+    const currentRequest =
+      currentUserRequests.find(
+        (request) =>
+          request.id === requestId
+      );
+
+    if (
+      !firebaseAuthUser?.uid ||
+      !currentRequest ||
+      currentRequest.requesterUid !==
+        firebaseAuthUser.uid
+    ) {
+      triggerToast(
+        '본인 신청 정보를 확인할 수 없습니다.',
+        'error'
+      );
+      return;
+    }
+
+    if (
+      currentRequest.userActionRequest?.status ===
+      USER_REQUEST_REVIEW_STATUS.PENDING
+    ) {
+      triggerToast(
+        '이미 검토 중인 사용자 요청이 있습니다.',
+        'error'
+      );
+      return;
+    }
+
+    const allowedStatuses =
+      [USER_REQUEST_ACTION.CHANGE, USER_REQUEST_ACTION.CANCEL].includes(
+        actionType
+      )
+        ? [STATUS.REQUESTED, STATUS.ON_HOLD]
+        : [STATUS.APPROVED];
+
+    if (
+      !allowedStatuses.includes(
+        currentRequest.status
+      )
+    ) {
+      triggerToast(
+        '현재 신청 상태에서는 해당 요청을 제출할 수 없습니다.',
+        'error'
+      );
+      return;
+    }
+
+    const nextReason =
+      String(
+        userActionForm.reason || ''
+      ).trim();
+
+    const nextTeam =
+      String(
+        userActionForm.team || ''
+      ).trim();
+
+    const nextBorrower =
+      String(
+        userActionForm.borrower || ''
+      ).trim();
+
+    const nextStartDate =
+      String(
+        userActionForm.startDate || ''
+      );
+
+    const nextDueDate =
+      String(
+        userActionForm.dueDate || ''
+      );
+
+    const nextPurpose =
+      String(
+        userActionForm.purpose || ''
+      ).trim();
+
+    if (!nextReason) {
+      triggerToast(
+        '요청 사유를 입력해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    if (
+      actionType ===
+      USER_REQUEST_ACTION.CHANGE
+    ) {
+      if (
+        !nextTeam ||
+        !nextBorrower ||
+        !nextStartDate ||
+        !nextDueDate
+      ) {
+        triggerToast(
+          '변경할 소속, 대여자명과 대여 기간을 모두 입력해 주세요.',
+          'error'
+        );
+        return;
+      }
+
+      if (nextStartDate < today()) {
+        triggerToast(
+          '변경할 대여 시작일은 오늘 이전으로 선택할 수 없습니다.',
+          'error'
+        );
+        return;
+      }
+
+      if (
+        nextDueDate <
+        nextStartDate
+      ) {
+        triggerToast(
+          '변경할 반납 예정일은 대여 시작일 이후여야 합니다.',
+          'error'
+        );
+        return;
+      }
+
+      const maxAllowedDate =
+        addDaysFrom(
+          nextStartDate,
+          data.settings.maxRentalDays
+        );
+
+      if (
+        nextDueDate >
+        maxAllowedDate
+      ) {
+        triggerToast(
+          `최장 허용 대여 기한(${data.settings.maxRentalDays}일)을 초과할 수 없습니다.`,
+          'error'
+        );
+        return;
+      }
+    }
+
+    if (
+      actionType ===
+      USER_REQUEST_ACTION.EXTEND
+    ) {
+      if (
+        !nextDueDate ||
+        nextDueDate <=
+          currentRequest.dueDate
+      ) {
+        triggerToast(
+          '현재 반납 예정일보다 뒤의 날짜를 선택해 주세요.',
+          'error'
+        );
+        return;
+      }
+
+      const maxAllowedDate =
+        addDaysFrom(
+          currentRequest.startDate,
+          data.settings.maxRentalDays
+        );
+
+      if (
+        nextDueDate >
+        maxAllowedDate
+      ) {
+        triggerToast(
+          `최장 허용 대여 기한(${data.settings.maxRentalDays}일)을 초과할 수 없습니다.`,
+          'error'
+        );
+        return;
+      }
+    }
+
+    const requestDocRef = doc(
+      RENTAL_REQUESTS_COLLECTION_REF,
+      requestId
+    );
+
+    let committedActionRequest = null;
+
+    setUserActionSaving(true);
+
+    try {
+      await runTransaction(
+        db,
+        async (transaction) => {
+          const requestSnapshot =
+            await transaction.get(
+              requestDocRef
+            );
+
+          if (!requestSnapshot.exists()) {
+            throw new Error(
+              'rental-request-not-found'
+            );
+          }
+
+          const latestRequest = {
+            ...requestSnapshot.data(),
+            id: requestSnapshot.id,
+          };
+
+          if (
+            latestRequest.requesterUid !==
+            firebaseAuthUser.uid
+          ) {
+            throw new Error(
+              'rental-request-owner-mismatch'
+            );
+          }
+
+          if (
+            latestRequest.userActionRequest?.status ===
+            USER_REQUEST_REVIEW_STATUS.PENDING
+          ) {
+            throw new Error(
+              'user-action-request-already-pending'
+            );
+          }
+
+          const latestAllowedStatuses =
+            [USER_REQUEST_ACTION.CHANGE, USER_REQUEST_ACTION.CANCEL].includes(
+              actionType
+            )
+              ? [STATUS.REQUESTED, STATUS.ON_HOLD]
+              : [STATUS.APPROVED];
+
+          if (
+            !latestAllowedStatuses.includes(
+              latestRequest.status
+            )
+          ) {
+            throw new Error(
+              'invalid-user-action-request-status'
+            );
+          }
+
+          committedActionRequest = {
+            type: actionType,
+            status:
+              USER_REQUEST_REVIEW_STATUS.PENDING,
+            reason: nextReason,
+            team: nextTeam,
+            borrower: nextBorrower,
+            startDate: nextStartDate,
+            dueDate: nextDueDate,
+            purpose: nextPurpose,
+            requestedAt:
+              serverTimestamp(),
+            reviewedAt: null,
+            reviewedByUid: '',
+            reviewedByName: '',
+            reviewMemo: '',
+          };
+
+          transaction.update(
+            requestDocRef,
+            {
+              userActionRequest:
+                committedActionRequest,
+              updatedAt:
+                serverTimestamp(),
+            }
+          );
+        }
+      );
+
+      setRentalRequests((prev) =>
+        (prev || []).map((request) =>
+          request.id === requestId
+            ? {
+                ...request,
+                userActionRequest: {
+                  ...committedActionRequest,
+                  requestedAt:
+                    new Date(),
+                },
+              }
+            : request
+        )
+      );
+
+      triggerToast(
+        `${getUserRequestActionLabel(
+          actionType
+        )}이 접수되었습니다.`,
+        'success'
+      );
+
+      setUserActionDialog(null);
+      setUserActionForm(
+        createDefaultUserActionForm()
+      );
+    } catch (error) {
+      console.error(
+        'User rental action request error:',
+        error
+      );
+
+      const errorMessage =
+        error?.message ===
+        'user-action-request-already-pending'
+          ? '이미 검토 중인 사용자 요청이 있습니다.'
+          : error?.message ===
+              'invalid-user-action-request-status'
+            ? '현재 신청 상태에서는 해당 요청을 제출할 수 없습니다.'
+            : error?.message ===
+                'rental-request-owner-mismatch'
+              ? '본인 신청이 아닌 항목은 변경할 수 없습니다.'
+              : error?.message ===
+                  'rental-request-not-found'
+                ? '정식 대여 신청 문서를 찾을 수 없습니다.'
+                : `사용자 요청 저장에 실패했습니다. 오류 코드: ${
+                    error?.code ||
+                    error?.message ||
+                    'unknown-error'
+                  }`;
+
+      triggerToast(
+        errorMessage,
+        'error'
+      );
+    } finally {
+      setUserActionSaving(false);
+    }
+  };
+
   const getCurrentAdminAuditActor = () => ({
     uid:
       firebaseAuth.currentUser?.uid ||
@@ -6966,6 +7505,604 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       authenticatedAdminAccount?.authEmail ||
       '관리자',
   });
+
+    const reviewUserActionRequest = async (
+    id,
+    approved
+  ) => {
+    if (!isSplitStorageReady) {
+      triggerToast(
+        'Firestore 분리 저장소 최종 전환이 완료되지 않아 사용자 요청을 처리할 수 없습니다.',
+        'error'
+      );
+      return;
+    }
+
+    const currentRequest =
+      mergedRentalRequests.find(
+        (request) => request.id === id
+      );
+
+    if (!currentRequest) {
+      triggerToast(
+        '신청 정보를 찾을 수 없습니다.',
+        'error'
+      );
+      return;
+    }
+
+    const auditActor =
+      getCurrentAdminAuditActor();
+
+    if (!auditActor.uid) {
+      triggerToast(
+        '관리자 인증 정보를 확인할 수 없어 사용자 요청 처리를 중단했습니다.',
+        'error'
+      );
+      return;
+    }
+
+    const requestDocRef = doc(
+      RENTAL_REQUESTS_COLLECTION_REF,
+      id
+    );
+
+    const availabilityDocRef = doc(
+      RENTAL_AVAILABILITY_COLLECTION_REF,
+      id
+    );
+
+    const assetDocRef = doc(
+      RENTAL_ASSETS_COLLECTION_REF,
+      currentRequest.laptopId
+    );
+
+    const requestLogDocRef = doc(
+      RENTAL_REQUEST_LOGS_COLLECTION_REF
+    );
+
+    let committedRequest = null;
+    let committedAsset = null;
+    let committedAvailabilityRequest = null;
+    let shouldKeepAvailability = false;
+    let processedActionType = '';
+
+    setAdminUserActionSavingRequestId(id);
+
+    try {
+      await runTransaction(
+        db,
+        async (transaction) => {
+          const [
+            requestSnapshot,
+            assetSnapshot,
+          ] = await Promise.all([
+            transaction.get(
+              requestDocRef
+            ),
+            transaction.get(
+              assetDocRef
+            ),
+          ]);
+
+          if (!requestSnapshot.exists()) {
+            throw new Error(
+              'rental-request-not-found'
+            );
+          }
+
+          if (!assetSnapshot.exists()) {
+            throw new Error(
+              'rental-asset-not-found'
+            );
+          }
+
+          const latestRequest = {
+            ...requestSnapshot.data(),
+            id: requestSnapshot.id,
+          };
+
+          const userActionRequest =
+            latestRequest.userActionRequest;
+
+          if (
+            !userActionRequest ||
+            userActionRequest.status !==
+              USER_REQUEST_REVIEW_STATUS.PENDING
+          ) {
+            throw new Error(
+              'user-action-request-not-pending'
+            );
+          }
+
+          processedActionType =
+            userActionRequest.type || '';
+
+          if (
+            !Object.values(
+              USER_REQUEST_ACTION
+            ).includes(
+              processedActionType
+            )
+          ) {
+            throw new Error(
+              'invalid-user-action-request-type'
+            );
+          }
+
+          const latestAsset = {
+            ...assetSnapshot.data(),
+            id: assetSnapshot.id,
+          };
+
+          const latestReservations =
+            normalizeAssetReservations(
+              latestAsset.reservations || []
+            ).filter(
+              (request) =>
+                request.id !== id
+            );
+
+          const nextReviewStatus =
+            approved
+              ? USER_REQUEST_REVIEW_STATUS.APPROVED
+              : USER_REQUEST_REVIEW_STATUS.DENIED;
+
+          const nextUserActionRequest = {
+            ...userActionRequest,
+            status: nextReviewStatus,
+            reviewedAt:
+              serverTimestamp(),
+            reviewedByUid:
+              auditActor.uid,
+            reviewedByName:
+              auditActor.name,
+            reviewMemo:
+              latestRequest.adminMemo || '',
+          };
+
+          const previousStatus =
+            latestRequest.status || '';
+
+          let nextStatus =
+            previousStatus;
+
+          let nextRequestFields = {
+            userActionRequest:
+              nextUserActionRequest,
+            updatedAt:
+              serverTimestamp(),
+            syncedAt:
+              serverTimestamp(),
+          };
+
+          let nextCommittedRequest = {
+            ...latestRequest,
+            userActionRequest:
+              nextUserActionRequest,
+          };
+
+          if (approved) {
+            if (
+              processedActionType ===
+              USER_REQUEST_ACTION.CHANGE
+            ) {
+              if (
+                ![
+                  STATUS.REQUESTED,
+                  STATUS.ON_HOLD,
+                ].includes(
+                  previousStatus
+                )
+              ) {
+                throw new Error(
+                  'invalid-user-action-request-status'
+                );
+              }
+
+              const nextStartDate =
+                userActionRequest.startDate || '';
+
+              const nextDueDate =
+                userActionRequest.dueDate || '';
+
+              const latestAvailability =
+                getLaptopRentalAvailability(
+                  latestAsset,
+                  latestReservations,
+                  data.settings,
+                  nextStartDate,
+                  nextDueDate
+                );
+
+              if (
+                latestAvailability.blocked
+              ) {
+                throw new Error(
+                  'user-action-period-conflict'
+                );
+              }
+
+              nextRequestFields = {
+                ...nextRequestFields,
+                team:
+                  userActionRequest.team || '',
+                borrower:
+                  userActionRequest.borrower || '',
+                startDate:
+                  nextStartDate,
+                dueDate:
+                  nextDueDate,
+                purpose:
+                  userActionRequest.purpose || '',
+              };
+
+              nextCommittedRequest = {
+                ...nextCommittedRequest,
+                team:
+                  userActionRequest.team || '',
+                borrower:
+                  userActionRequest.borrower || '',
+                startDate:
+                  nextStartDate,
+                dueDate:
+                  nextDueDate,
+                purpose:
+                  userActionRequest.purpose || '',
+              };
+            }
+
+            if (
+              processedActionType ===
+              USER_REQUEST_ACTION.EXTEND
+            ) {
+              if (
+                previousStatus !==
+                STATUS.APPROVED
+              ) {
+                throw new Error(
+                  'invalid-user-action-request-status'
+                );
+              }
+
+              const nextDueDate =
+                userActionRequest.dueDate || '';
+
+              if (
+                !nextDueDate ||
+                nextDueDate <=
+                  latestRequest.dueDate
+              ) {
+                throw new Error(
+                  'invalid-extension-due-date'
+                );
+              }
+
+              const latestAvailability =
+                getLaptopRentalAvailability(
+                  latestAsset,
+                  latestReservations,
+                  data.settings,
+                  latestRequest.startDate,
+                  nextDueDate
+                );
+
+              if (
+                latestAvailability.blocked
+              ) {
+                throw new Error(
+                  'user-action-period-conflict'
+                );
+              }
+
+              nextRequestFields = {
+                ...nextRequestFields,
+                dueDate:
+                  nextDueDate,
+              };
+
+              nextCommittedRequest = {
+                ...nextCommittedRequest,
+                dueDate:
+                  nextDueDate,
+              };
+            }
+
+            if (
+              processedActionType ===
+              USER_REQUEST_ACTION.CANCEL
+            ) {
+              if (
+                ![
+                  STATUS.REQUESTED,
+                  STATUS.ON_HOLD,
+                ].includes(
+                  previousStatus
+                )
+              ) {
+                throw new Error(
+                  'invalid-user-action-request-status'
+                );
+              }
+
+              nextStatus =
+                STATUS.USER_CANCELLED;
+
+              nextRequestFields = {
+                ...nextRequestFields,
+                status:
+                  nextStatus,
+              };
+
+              nextCommittedRequest = {
+                ...nextCommittedRequest,
+                status:
+                  nextStatus,
+              };
+            }
+
+            if (
+              processedActionType ===
+              USER_REQUEST_ACTION.RETURN
+            ) {
+              if (
+                previousStatus !==
+                STATUS.APPROVED
+              ) {
+                throw new Error(
+                  'invalid-user-action-request-status'
+                );
+              }
+
+              nextStatus =
+                STATUS.RETURNED;
+
+              nextRequestFields = {
+                ...nextRequestFields,
+                status:
+                  nextStatus,
+              };
+
+              nextCommittedRequest = {
+                ...nextCommittedRequest,
+                status:
+                  nextStatus,
+              };
+            }
+          }
+
+          const nextAvailabilityRequest =
+            toRentalAvailabilityRequest(
+              nextCommittedRequest
+            );
+
+          shouldKeepAvailability =
+            approved
+              ? RENTAL_BLOCKING_REQUEST_STATUSES.includes(
+                  nextStatus
+                )
+              : RENTAL_BLOCKING_REQUEST_STATUSES.includes(
+                  previousStatus
+                );
+
+          const updatedReservations =
+            approved
+              ? shouldKeepAvailability
+                ? [
+                    ...latestReservations,
+                    nextAvailabilityRequest,
+                  ]
+                : latestReservations
+              : normalizeAssetReservations(
+                  latestAsset.reservations || []
+                );
+
+          const representativeRequest =
+            getLaptopRepresentativeRequest(
+              updatedReservations,
+              latestAsset.id
+            );
+
+          const nextAsset = {
+            ...latestAsset,
+            reservations:
+              updatedReservations,
+            status:
+              latestAsset.status ===
+              STATUS.UNAVAILABLE
+                ? STATUS.UNAVAILABLE
+                : representativeRequest
+                  ? representativeRequest.status
+                  : STATUS.AVAILABLE,
+            currentRequestId:
+              representativeRequest?.id ||
+              null,
+          };
+
+          transaction.update(
+            requestDocRef,
+            nextRequestFields
+          );
+
+          if (approved) {
+            if (shouldKeepAvailability) {
+              transaction.set(
+                availabilityDocRef,
+                {
+                  ...nextAvailabilityRequest,
+                  updatedAt:
+                    serverTimestamp(),
+                }
+              );
+            } else {
+              transaction.delete(
+                availabilityDocRef
+              );
+            }
+
+            transaction.update(
+              assetDocRef,
+              {
+                reservations:
+                  nextAsset.reservations,
+                status:
+                  nextAsset.status,
+                currentRequestId:
+                  nextAsset.currentRequestId,
+                updatedAt:
+                  serverTimestamp(),
+              }
+            );
+
+            committedAsset =
+              nextAsset;
+
+            committedAvailabilityRequest =
+              shouldKeepAvailability
+                ? nextAvailabilityRequest
+                : null;
+          }
+
+          transaction.set(
+            requestLogDocRef,
+            {
+              id: requestLogDocRef.id,
+              requestId: id,
+              action:
+                RENTAL_REQUEST_AUDIT_ACTION.USER_ACTION_REVIEWED,
+              previousStatus,
+              nextStatus,
+              previousMemo:
+                latestRequest.adminMemo || '',
+              nextMemo:
+                latestRequest.adminMemo || '',
+              actorUid:
+                auditActor.uid,
+              actorAdminId:
+                auditActor.adminId,
+              actorName:
+                auditActor.name,
+              detail:
+                `${getUserRequestActionLabel(
+                  processedActionType
+                )} ${
+                  approved
+                    ? '승인'
+                    : '불허'
+                } · 요청 사유: ${
+                  userActionRequest.reason ||
+                  '-'
+                }`,
+              createdAt:
+                serverTimestamp(),
+            }
+          );
+
+          committedRequest =
+            nextCommittedRequest;
+        }
+      );
+
+      if (!committedRequest) {
+        throw new Error(
+          'user-action-review-result-missing'
+        );
+      }
+
+      setRentalRequests((prev) =>
+        (prev || []).map((request) =>
+          request.id === id
+            ? {
+                ...committedRequest,
+                userActionRequest: {
+                  ...committedRequest.userActionRequest,
+                  reviewedAt:
+                    new Date(),
+                },
+              }
+            : request
+        )
+      );
+
+      if (
+        approved &&
+        committedAsset
+      ) {
+        setData((prev) => ({
+          ...prev,
+          requests:
+            shouldKeepAvailability
+              ? [
+                  committedAvailabilityRequest,
+                  ...(prev.requests || []).filter(
+                    (request) =>
+                      request.id !== id
+                  ),
+                ]
+              : (prev.requests || []).filter(
+                  (request) =>
+                    request.id !== id
+                ),
+          laptops:
+            (prev.laptops || []).map(
+              (asset) =>
+                asset.id ===
+                committedAsset.id
+                  ? committedAsset
+                  : asset
+            ),
+        }));
+      }
+
+      triggerToast(
+        `${getUserRequestActionLabel(
+          processedActionType
+        )}을 ${
+          approved
+            ? '승인'
+            : '불허'
+        }했습니다.`,
+        'success'
+      );
+    } catch (error) {
+      console.error(
+        'User rental action review error:',
+        error
+      );
+
+      const errorMessage =
+        error?.message ===
+        'user-action-request-not-pending'
+          ? '검토 대기 중인 사용자 요청이 없습니다.'
+          : error?.message ===
+              'invalid-user-action-request-status'
+            ? '현재 신청 상태에서는 해당 사용자 요청을 승인할 수 없습니다.'
+            : error?.message ===
+                'user-action-period-conflict'
+              ? '변경 또는 연장 요청 기간이 다른 예약과 겹쳐 승인할 수 없습니다.'
+              : error?.message ===
+                  'invalid-extension-due-date'
+                ? '연장 요청 반납일이 현재 반납일보다 늦지 않습니다.'
+                : error?.message ===
+                    'rental-request-not-found'
+                  ? '정식 대여 신청 문서를 찾을 수 없습니다.'
+                  : error?.message ===
+                      'rental-asset-not-found'
+                    ? '신청과 연결된 자산 문서를 찾을 수 없습니다.'
+                    : `사용자 요청 처리에 실패했습니다. 오류 코드: ${
+                        error?.code ||
+                        error?.message ||
+                        'unknown-error'
+                      }`;
+
+      triggerToast(
+        errorMessage,
+        'error'
+      );
+    } finally {
+      setAdminUserActionSavingRequestId('');
+    }
+  };
 
   const updateRequest = async (id, status) => {
     if (!isSplitStorageReady) {
@@ -10193,10 +11330,136 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                                   관리자 안내: {request.adminMemo}
                                 </div>
                               )}
+
+                              {request.userActionRequest && (
+                                <div
+                                  className={`rounded-xl border px-3 py-2 text-xs leading-5 ${
+                                    request.userActionRequest.status ===
+                                    USER_REQUEST_REVIEW_STATUS.PENDING
+                                      ? 'border-amber-200 bg-amber-50 text-amber-800'
+                                      : request.userActionRequest.status ===
+                                          USER_REQUEST_REVIEW_STATUS.APPROVED
+                                        ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                                        : 'border-rose-200 bg-rose-50 text-rose-800'
+                                  }`}
+                                >
+                                  <div className="font-bold">
+                                    {getUserRequestActionLabel(
+                                      request.userActionRequest.type
+                                    )}{' '}
+                                    ·{' '}
+                                    {getUserRequestReviewStatusLabel(
+                                      request.userActionRequest.status
+                                    )}
+                                  </div>
+
+                                  <div className="mt-1">
+                                    요청 사유:{' '}
+                                    {request.userActionRequest.reason || '-'}
+                                  </div>
+
+                                  {request.userActionRequest.type ===
+                                    USER_REQUEST_ACTION.CHANGE && (
+                                    <div className="mt-1">
+                                      변경 요청:{' '}
+                                      {request.userActionRequest.team || '-'} ·{' '}
+                                      {request.userActionRequest.borrower || '-'} ·{' '}
+                                      {request.userActionRequest.startDate || '-'} ~{' '}
+                                      {request.userActionRequest.dueDate || '-'}
+                                    </div>
+                                  )}
+
+                                  {request.userActionRequest.type ===
+                                    USER_REQUEST_ACTION.EXTEND && (
+                                    <div className="mt-1">
+                                      연장 요청일:{' '}
+                                      {request.userActionRequest.dueDate || '-'}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
 
-                            <div className="shrink-0 text-[10px] text-slate-400">
-                              접수 일시: {request.requestedAt}
+                            <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
+                              <div className="text-[10px] text-slate-400">
+                                접수 일시: {request.requestedAt}
+                              </div>
+
+                              {request.userActionRequest?.status ===
+                              USER_REQUEST_REVIEW_STATUS.PENDING ? (
+                                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700">
+                                  사용자 요청 검토 대기중
+                                </div>
+                              ) : (
+                                <div className="flex flex-wrap gap-2 sm:justify-end">
+                                  {[STATUS.REQUESTED, STATUS.ON_HOLD].includes(
+                                    request.status
+                                  ) && (
+                                    <>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() =>
+                                          openUserActionDialog(
+                                            request,
+                                            USER_REQUEST_ACTION.CHANGE
+                                          )
+                                        }
+                                        className="px-3 py-2 text-xs"
+                                      >
+                                        신청 변경 요청
+                                      </Button>
+
+                                      <Button
+                                        type="button"
+                                        variant="dangerOutline"
+                                        onClick={() =>
+                                          openUserActionDialog(
+                                            request,
+                                            USER_REQUEST_ACTION.CANCEL
+                                          )
+                                        }
+                                        className="px-3 py-2 text-xs"
+                                      >
+                                        신청 취소 요청
+                                      </Button>
+                                    </>
+                                  )}
+
+                                  {request.status ===
+                                    STATUS.APPROVED && (
+                                    <>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() =>
+                                          openUserActionDialog(
+                                            request,
+                                            USER_REQUEST_ACTION.EXTEND
+                                          )
+                                        }
+                                        className="px-3 py-2 text-xs"
+                                      >
+                                        대여 연장 요청
+                                      </Button>
+
+                                      <Button
+                                        type="button"
+                                        variant="dangerOutline"
+                                        onClick={() =>
+                                          openUserActionDialog(
+                                            request,
+                                            USER_REQUEST_ACTION.RETURN
+                                          )
+                                        }
+                                        className="px-3 py-2 text-xs"
+                                      >
+                                        조기 반납 요청
+                                      </Button>
+                                    </>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -10589,6 +11852,17 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                             const requestAuditLogs =
                               rentalRequestLogsByRequestId.get(r.id) || [];
 
+                            const userActionRequest =
+                              r.userActionRequest || null;
+
+                            const hasPendingUserAction =
+                              userActionRequest?.status ===
+                              USER_REQUEST_REVIEW_STATUS.PENDING;
+
+                            const isUserActionSaving =
+                              adminUserActionSavingRequestId ===
+                              r.id;
+
                             return (
                               <div key={r.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
                                 <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
@@ -10621,7 +11895,13 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
                                   {/* 상태별 전환 버튼 */}
                                   {hasRentalRequestDocument ? (
-                                    renderRequestActionButtons(r)
+                                    hasPendingUserAction ? (
+                                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700">
+                                        사용자 요청 검토를 먼저 완료해 주세요.
+                                      </div>
+                                    ) : (
+                                      renderRequestActionButtons(r)
+                                    )
                                   ) : (
                                     <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700">
                                       정식 신청 문서가 없어 상태 변경을 차단했습니다.
@@ -10629,6 +11909,91 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                                   )}
                                 </div>
                                 
+                                                                {userActionRequest && (
+                                  <div
+                                    className={`rounded-xl border px-4 py-3 text-xs ${
+                                      hasPendingUserAction
+                                        ? 'border-amber-200 bg-amber-50 text-amber-800'
+                                        : userActionRequest.status ===
+                                            USER_REQUEST_REVIEW_STATUS.APPROVED
+                                          ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                                          : 'border-rose-200 bg-rose-50 text-rose-800'
+                                    }`}
+                                  >
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                      <div className="min-w-0 space-y-1">
+                                        <div className="font-bold">
+                                          {getUserRequestActionLabel(
+                                            userActionRequest.type
+                                          )}{' '}
+                                          ·{' '}
+                                          {getUserRequestReviewStatusLabel(
+                                            userActionRequest.status
+                                          )}
+                                        </div>
+
+                                        <div className="leading-5">
+                                          요청 사유:{' '}
+                                          {userActionRequest.reason || '-'}
+                                        </div>
+
+                                        {userActionRequest.type ===
+                                          USER_REQUEST_ACTION.CHANGE && (
+                                          <div className="leading-5">
+                                            변경 요청:{' '}
+                                            {userActionRequest.team || '-'} ·{' '}
+                                            {userActionRequest.borrower || '-'} ·{' '}
+                                            {userActionRequest.startDate || '-'} ~{' '}
+                                            {userActionRequest.dueDate || '-'}
+                                          </div>
+                                        )}
+
+                                        {userActionRequest.type ===
+                                          USER_REQUEST_ACTION.EXTEND && (
+                                          <div className="leading-5">
+                                            연장 요청일:{' '}
+                                            {userActionRequest.dueDate || '-'}
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      {hasPendingUserAction && (
+                                        <div className="flex shrink-0 flex-wrap gap-2">
+                                          <Button
+                                            type="button"
+                                            variant="primary"
+                                            disabled={isUserActionSaving}
+                                            onClick={() =>
+                                              reviewUserActionRequest(
+                                                r.id,
+                                                true
+                                              )
+                                            }
+                                            className="px-3 py-2 text-xs"
+                                          >
+                                            승인
+                                          </Button>
+
+                                          <Button
+                                            type="button"
+                                            variant="dangerOutline"
+                                            disabled={isUserActionSaving}
+                                            onClick={() =>
+                                              reviewUserActionRequest(
+                                                r.id,
+                                                false
+                                              )
+                                            }
+                                            className="px-3 py-2 text-xs"
+                                          >
+                                            불허
+                                          </Button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+
                                 <div className="pt-2 border-t border-slate-100">
                                   <label className="block">
                                     <span className="block text-[10px] font-semibold text-slate-500 uppercase">
@@ -10692,7 +12057,10 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                                                 {log.action ===
                                                 RENTAL_REQUEST_AUDIT_ACTION.STATUS_CHANGED
                                                   ? `${log.previousStatus || '-'} → ${log.nextStatus || '-'}`
-                                                  : '관리자 메모 변경'}
+                                                  : log.action ===
+                                                      RENTAL_REQUEST_AUDIT_ACTION.MEMO_CHANGED
+                                                    ? '관리자 메모 변경'
+                                                    : '사용자 요청 검토'}
                                               </span>
 
                                               <span className="text-[10px] text-slate-400">
@@ -10716,6 +12084,12 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                                                 변경 메모:{' '}
                                                 {log.nextMemo ||
                                                   '(빈 메모)'}
+                                              </div>
+                                            )}
+
+                                            {log.detail && (
+                                              <div className="mt-1 break-words text-[10px] text-slate-500">
+                                                {log.detail}
                                               </div>
                                             )}
                                           </div>
@@ -12651,6 +14025,232 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           )
         )}
       </main>
+
+            {userActionDialog && activeUserActionRentalRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  {getUserRequestActionLabel(
+                    userActionDialog.type
+                  )}
+                </h3>
+
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  {activeUserActionRentalRequest.assetNo} ·{' '}
+                  {activeUserActionRentalRequest.startDate} ~{' '}
+                  {activeUserActionRentalRequest.dueDate}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeUserActionDialog}
+                disabled={userActionSaving}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              {userActionDialog.type ===
+                USER_REQUEST_ACTION.CHANGE && (
+                <>
+                  {data.settings.teamInputMode === 'dropdown' ? (
+                    <Select
+                      label="변경할 부서 / 팀"
+                      value={userActionForm.team}
+                      onChange={(value) =>
+                        setUserActionForm((prev) => ({
+                          ...prev,
+                          team: value,
+                          borrower: '',
+                        }))
+                      }
+                    >
+                      <option value="">팀 선택</option>
+                      {(data.teams || []).map((team) => (
+                        <option key={team} value={team}>
+                          {team}
+                        </option>
+                      ))}
+                    </Select>
+                  ) : (
+                    <Input
+                      label="변경할 부서 / 팀"
+                      value={userActionForm.team}
+                      onChange={(value) =>
+                        setUserActionForm((prev) => ({
+                          ...prev,
+                          team: value,
+                        }))
+                      }
+                    />
+                  )}
+
+                  {data.settings.borrowerInputMode === 'dropdown' ? (
+                    <Select
+                      label="변경할 대여자명"
+                      value={userActionForm.borrower}
+                      onChange={(value) =>
+                        setUserActionForm((prev) => ({
+                          ...prev,
+                          borrower: value,
+                        }))
+                      }
+                    >
+                      <option value="">
+                        {userActionForm.team
+                          ? '대여자 선택'
+                          : '소속 부서를 먼저 선택해 주세요'}
+                      </option>
+
+                      {userActionBorrowers.map((borrower) => (
+                        <option
+                          key={`${borrower.id}-${borrower.name}`}
+                          value={borrower.name}
+                        >
+                          {borrower.name}
+                        </option>
+                      ))}
+                    </Select>
+                  ) : (
+                    <Input
+                      label="변경할 대여자명"
+                      value={userActionForm.borrower}
+                      onChange={(value) =>
+                        setUserActionForm((prev) => ({
+                          ...prev,
+                          borrower: value,
+                        }))
+                      }
+                    />
+                  )}
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <DateInputWithWeekday
+                      label="변경할 대여 시작일"
+                      value={userActionForm.startDate}
+                      min={today()}
+                      onChange={(value) =>
+                        setUserActionForm((prev) => ({
+                          ...prev,
+                          startDate: value,
+                          dueDate:
+                            prev.dueDate < value
+                              ? value
+                              : prev.dueDate,
+                        }))
+                      }
+                    />
+
+                    <DateInputWithWeekday
+                      label="변경할 반납 예정일"
+                      value={userActionForm.dueDate}
+                      min={userActionForm.startDate}
+                      max={addDaysFrom(
+                        userActionForm.startDate,
+                        data.settings.maxRentalDays
+                      )}
+                      onChange={(value) =>
+                        setUserActionForm((prev) => ({
+                          ...prev,
+                          dueDate: value,
+                        }))
+                      }
+                    />
+                  </div>
+
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                      변경할 대여 목적
+                    </span>
+
+                    <textarea
+                      value={userActionForm.purpose}
+                      onChange={(event) =>
+                        setUserActionForm((prev) => ({
+                          ...prev,
+                          purpose: event.target.value,
+                        }))
+                      }
+                      className="h-24 w-full rounded-xl border border-slate-200 p-3 text-xs outline-none mk-form-ring-focus"
+                    />
+                  </label>
+                </>
+              )}
+
+              {userActionDialog.type ===
+                USER_REQUEST_ACTION.EXTEND && (
+                <DateInputWithWeekday
+                  label="연장 요청 반납일"
+                  value={userActionForm.dueDate}
+                  min={addDaysFrom(
+                    activeUserActionRentalRequest.dueDate,
+                    1
+                  )}
+                  max={addDaysFrom(
+                    activeUserActionRentalRequest.startDate,
+                    data.settings.maxRentalDays
+                  )}
+                  onChange={(value) =>
+                    setUserActionForm((prev) => ({
+                      ...prev,
+                      dueDate: value,
+                    }))
+                  }
+                />
+              )}
+
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                  요청 사유
+                </span>
+
+                <textarea
+                  value={userActionForm.reason}
+                  onChange={(event) =>
+                    setUserActionForm((prev) => ({
+                      ...prev,
+                      reason: event.target.value,
+                    }))
+                  }
+                  placeholder="관리자가 검토할 수 있도록 요청 사유를 입력해 주세요."
+                  className="h-24 w-full rounded-xl border border-slate-200 p-3 text-xs outline-none mk-form-ring-focus"
+                />
+              </label>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={userActionSaving}
+                onClick={closeUserActionDialog}
+              >
+                닫기
+              </Button>
+
+              <Button
+                type="button"
+                variant="primary"
+                disabled={userActionSaving}
+                onClick={submitUserActionRequest}
+              >
+                {userActionSaving
+                  ? '저장 중...'
+                  : '요청 제출'}
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {/* --- 모던 Custom Toast (iframe 환경 완벽 최적화) --- */}
       <AnimatePresence>
