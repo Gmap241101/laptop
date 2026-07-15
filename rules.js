@@ -189,6 +189,111 @@ service cloud.firestore {
 
     // --- [컬렉션 매칭 규칙 세부 선언] ---
 
+    function validUserActionRequestUpdate(requestId) {
+      let action =
+        request.resource.data.userActionRequest;
+
+      return isActiveUser()
+        && resource.data.id == requestId
+        && resource.data.requesterUid
+          == request.auth.uid
+        && request.resource.data.id
+          == requestId
+        && request.resource.data.requesterUid
+          == resource.data.requesterUid
+        && request.resource.data
+          .diff(resource.data)
+          .affectedKeys()
+          .hasOnly([
+            'userActionRequest',
+            'updatedAt'
+          ])
+        && request.resource.data.updatedAt
+          == request.time
+        && (
+          !resource.data.keys().hasAny([
+            'userActionRequest'
+          ])
+          || resource.data.userActionRequest.status
+            != 'pending'
+        )
+        && action is map
+        && action.keys().hasAll([
+          'type',
+          'status',
+          'reason',
+          'team',
+          'borrower',
+          'startDate',
+          'dueDate',
+          'purpose',
+          'requestedAt',
+          'reviewedAt',
+          'reviewedByUid',
+          'reviewedByName',
+          'reviewMemo'
+        ])
+        && action.keys().hasOnly([
+          'type',
+          'status',
+          'reason',
+          'team',
+          'borrower',
+          'startDate',
+          'dueDate',
+          'purpose',
+          'requestedAt',
+          'reviewedAt',
+          'reviewedByUid',
+          'reviewedByName',
+          'reviewMemo'
+        ])
+        && (
+          action.type == 'change'
+          || action.type == 'cancel'
+          || action.type == 'extend'
+          || action.type == 'return'
+        )
+        && action.status == 'pending'
+        && action.reason is string
+        && action.team is string
+        && action.borrower is string
+        && action.startDate is string
+        && action.dueDate is string
+        && action.purpose is string
+        && action.requestedAt
+          == request.time
+        && action.reviewedAt == null
+        && action.reviewedByUid == ''
+        && action.reviewedByName == ''
+        && action.reviewMemo == ''
+        && (
+          (
+            (
+              action.type == 'change'
+              || action.type == 'cancel'
+            )
+            && (
+              resource.data.status == '신청중'
+              || resource.data.status == '보류'
+            )
+          )
+          ||
+          (
+            (
+              action.type == 'extend'
+              || action.type == 'return'
+            )
+            && resource.data.status == '대여중'
+          )
+        )
+        && (
+          action.type != 'extend'
+          || action.dueDate
+            > resource.data.dueDate
+        );
+    }
+
     // 공개 시스템 설정 (자산 카테고리, 부서 목록, 대여 환경설정 등)
     match /rentalSystem/publicConfig {
       allow read: if true;
@@ -260,9 +365,132 @@ service cloud.firestore {
 
     // 원본 대여 신청서 관리 대장
     match /rentalRequests/{requestId} {
-      allow create: if isAdmin() || validUserRentalRequestCreate(requestId);
-      allow get, list: if signedIn() && (isAdmin() || resource.data.requesterUid == request.auth.uid);
-      allow update, delete: if isAdmin();
+      allow create:
+        if isAdmin()
+        || validUserRentalRequestCreate(requestId);
+
+      allow get, list:
+        if signedIn()
+        && (
+          isAdmin()
+          || resource.data.requesterUid
+            == request.auth.uid
+        );
+
+      allow update:
+        if isAdmin()
+        || validUserActionRequestUpdate(
+          requestId
+        );
+
+      allow delete:
+        if isAdmin();
+    }
+
+        match /communityPosts/{postId} {
+      allow read:
+        if true;
+
+      allow create:
+        if isAdmin()
+        && request.resource.data.id == postId
+        && (
+          request.resource.data.type == 'notice'
+          || request.resource.data.type == 'faq'
+        )
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.content is string
+        && request.resource.data.content.size() > 0
+        && request.resource.data.isPinned is bool
+        && request.resource.data.authorUid
+          == request.auth.uid
+        && request.resource.data.authorName is string
+        && request.resource.data.authorName.size() > 0
+        && request.resource.data.createdAt
+          == request.time
+        && request.resource.data.updatedAt
+          == request.time
+        && request.resource.data.keys().hasAll([
+          'id',
+          'type',
+          'title',
+          'content',
+          'isPinned',
+          'authorUid',
+          'authorName',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'id',
+          'type',
+          'title',
+          'content',
+          'isPinned',
+          'authorUid',
+          'authorName',
+          'createdAt',
+          'updatedAt'
+        ]);
+
+      allow update:
+        if isAdmin()
+        && request.resource.data.id == postId
+        && request.resource.data.id
+          == resource.data.id
+        && (
+          request.resource.data.type == 'notice'
+          || request.resource.data.type == 'faq'
+        )
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.content is string
+        && request.resource.data.content.size() > 0
+        && request.resource.data.isPinned is bool
+        && request.resource.data.authorUid
+          == resource.data.authorUid
+        && request.resource.data.authorName
+          == resource.data.authorName
+        && request.resource.data.createdAt
+          == resource.data.createdAt
+        && request.resource.data.updatedAt
+          == request.time
+        && request.resource.data
+          .diff(resource.data)
+          .affectedKeys()
+          .hasOnly([
+            'type',
+            'title',
+            'content',
+            'isPinned',
+            'updatedAt'
+          ])
+        && request.resource.data.keys().hasAll([
+          'id',
+          'type',
+          'title',
+          'content',
+          'isPinned',
+          'authorUid',
+          'authorName',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'id',
+          'type',
+          'title',
+          'content',
+          'isPinned',
+          'authorUid',
+          'authorName',
+          'createdAt',
+          'updatedAt'
+        ]);
+
+      allow delete:
+        if isAdmin();
     }
 
     match /rentalRequestLogs/{logId} {
@@ -276,6 +504,7 @@ service cloud.firestore {
             && (
             request.resource.data.action == 'status-changed'
             || request.resource.data.action == 'memo-changed'
+            || request.resource.data.action == 'user-action-reviewed'
             )
             && request.resource.data.previousStatus is string
             && request.resource.data.nextStatus is string
@@ -284,6 +513,10 @@ service cloud.firestore {
             && request.resource.data.actorUid == request.auth.uid
             && request.resource.data.actorAdminId is string
             && request.resource.data.actorName is string
+            && request.resource.data.get(
+              'detail',
+              ''
+            ) is string
             && request.resource.data.createdAt == request.time
             && request.resource.data.keys().hasAll([
             'id',
@@ -309,6 +542,7 @@ service cloud.firestore {
             'actorUid',
             'actorAdminId',
             'actorName',
+            'detail',
             'createdAt'
             ]);
 

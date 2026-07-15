@@ -81,6 +81,11 @@ const RENTAL_REQUEST_LOGS_COLLECTION_REF = collection(
   'rentalRequestLogs'
 );
 
+const COMMUNITY_POSTS_COLLECTION_REF = collection(
+  db,
+  'communityPosts'
+);
+
 const USER_ACCOUNTS_COLLECTION_NAME = 'userAccounts';
 const USER_ACCOUNTS_COLLECTION_REF = collection(
   db,
@@ -196,6 +201,25 @@ const createDefaultUserActionForm = () => ({
   startDate: '',
   dueDate: '',
   purpose: '',
+});
+
+const COMMUNITY_POST_TYPE = {
+  NOTICE: 'notice',
+  FAQ: 'faq',
+};
+
+const getCommunityPostTypeLabel = (type) =>
+  type === COMMUNITY_POST_TYPE.FAQ
+    ? 'FAQ'
+    : '공지사항';
+
+const createDefaultCommunityPostForm = (
+  type = COMMUNITY_POST_TYPE.NOTICE
+) => ({
+  type,
+  title: '',
+  content: '',
+  isPinned: false,
 });
 
 const RENTAL_REQUEST_STATUS_TRANSITIONS = {
@@ -1892,6 +1916,20 @@ function App() {
     setAdminUserActionSavingRequestId,
   ] = useState('');
 
+  const [communityPosts, setCommunityPosts] = useState([]);
+  const [communityPostsReady, setCommunityPostsReady] = useState(false);
+  const [
+    communityPostsLoadErrorMessage,
+    setCommunityPostsLoadErrorMessage,
+  ] = useState('');
+
+  const [communityPostDialog, setCommunityPostDialog] = useState(null);
+  const [communityPostForm, setCommunityPostForm] = useState(
+    createDefaultCommunityPostForm
+  );
+  const [communityPostSaving, setCommunityPostSaving] = useState(false);
+  const [communityPostDeletingId, setCommunityPostDeletingId] = useState('');
+
   const [adminAccounts, setAdminAccounts] = useState([]);
   const [adminAccountsReady, setAdminAccountsReady] = useState(false);
   const [adminAccountsLoadErrorMessage, setAdminAccountsLoadErrorMessage] = useState('');
@@ -3180,6 +3218,24 @@ function App() {
       return logMap;
     }, [rentalRequestLogs]);
 
+  const currentCommunityPostType =
+    userTab === 'faq'
+      ? COMMUNITY_POST_TYPE.FAQ
+      : COMMUNITY_POST_TYPE.NOTICE;
+
+  const visibleCommunityPosts = useMemo(
+    () =>
+      (communityPosts || []).filter(
+        (post) =>
+          post.type ===
+          currentCommunityPostType
+      ),
+    [
+      communityPosts,
+      currentCommunityPostType,
+    ]
+  );
+
   const currentUserRequests = useMemo(() => {
     if (!firebaseAuthUser?.uid) return [];
 
@@ -3728,6 +3784,64 @@ function App() {
     currentAuthRoleReady,
     isAdminAuthenticated,
   ]);
+
+  useEffect(() => {
+    setCommunityPostsReady(false);
+    setCommunityPostsLoadErrorMessage('');
+
+    const unsubscribe = onSnapshot(
+      COMMUNITY_POSTS_COLLECTION_REF,
+      (snapshot) => {
+        const remotePosts = snapshot.docs
+          .map((postDoc) => ({
+            ...postDoc.data(),
+            id: postDoc.id,
+          }))
+          .sort((first, second) => {
+            if (
+              Boolean(first.isPinned) !==
+              Boolean(second.isPinned)
+            ) {
+              return first.isPinned ? -1 : 1;
+            }
+
+            return (
+              getFirestoreTimestampMillis(
+                second.updatedAt ||
+                second.createdAt
+              ) -
+              getFirestoreTimestampMillis(
+                first.updatedAt ||
+                first.createdAt
+              )
+            );
+          });
+
+        setCommunityPosts(remotePosts);
+        setCommunityPostsLoadErrorMessage('');
+        setCommunityPostsReady(true);
+      },
+      (error) => {
+        const message =
+          '공지사항과 FAQ를 불러오지 못했습니다. Firestore Rules의 communityPosts 읽기 권한을 확인해 주세요.';
+
+        console.error(
+          'Community posts sync error:',
+          error
+        );
+
+        setCommunityPosts([]);
+        setCommunityPostsLoadErrorMessage(
+          message
+        );
+        setCommunityPostsReady(true);
+
+        triggerToast(message, 'error');
+      }
+    );
+
+    return unsubscribe;
+  }, []);
 
   const setAdminAuthenticatedSession = (adminId) => {
     const nextSession = saveAdminAuthSession(adminId);
@@ -8064,6 +8178,286 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     }
   };
 
+  const openCommunityPostDialog = (
+    type,
+    post = null
+  ) => {
+    if (!isAdminAuthenticated) {
+      triggerToast(
+        '관리자 인증 후 게시글을 작성하거나 수정할 수 있습니다.',
+        'error'
+      );
+      return;
+    }
+
+    if (
+      ![
+        COMMUNITY_POST_TYPE.NOTICE,
+        COMMUNITY_POST_TYPE.FAQ,
+      ].includes(type)
+    ) {
+      triggerToast(
+        '지원하지 않는 게시판 종류입니다.',
+        'error'
+      );
+      return;
+    }
+
+    setCommunityPostDialog({
+      mode: post ? 'edit' : 'create',
+      postId: post?.id || '',
+    });
+
+    setCommunityPostForm({
+      type,
+      title: post?.title || '',
+      content: post?.content || '',
+      isPinned: Boolean(post?.isPinned),
+    });
+  };
+
+  const closeCommunityPostDialog = () => {
+    if (communityPostSaving) return;
+
+    setCommunityPostDialog(null);
+    setCommunityPostForm(
+      createDefaultCommunityPostForm()
+    );
+  };
+
+  const saveCommunityPost = async () => {
+    if (!isAdminAuthenticated) {
+      triggerToast(
+        '관리자 인증 후 게시글을 저장할 수 있습니다.',
+        'error'
+      );
+      return;
+    }
+
+    const auditActor =
+      getCurrentAdminAuditActor();
+
+    if (!auditActor.uid) {
+      triggerToast(
+        '관리자 인증 정보를 확인할 수 없어 게시글 저장을 중단했습니다.',
+        'error'
+      );
+      return;
+    }
+
+    const postType =
+      communityPostForm.type;
+
+    if (
+      ![
+        COMMUNITY_POST_TYPE.NOTICE,
+        COMMUNITY_POST_TYPE.FAQ,
+      ].includes(postType)
+    ) {
+      triggerToast(
+        '게시판 종류를 확인해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    const title =
+      String(
+        communityPostForm.title || ''
+      ).trim();
+
+    const content =
+      String(
+        communityPostForm.content || ''
+      ).trim();
+
+    if (!title) {
+      triggerToast(
+        '게시글 제목을 입력해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    if (!content) {
+      triggerToast(
+        '게시글 내용을 입력해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    const isEditing =
+      communityPostDialog?.mode === 'edit';
+
+    const editingPost =
+      isEditing
+        ? communityPosts.find(
+            (post) =>
+              post.id ===
+              communityPostDialog?.postId
+          ) || null
+        : null;
+
+    if (isEditing && !editingPost) {
+      triggerToast(
+        '수정할 게시글을 찾을 수 없습니다.',
+        'error'
+      );
+      return;
+    }
+
+    if (
+      isEditing &&
+      !editingPost.createdAt
+    ) {
+      triggerToast(
+        '게시글 생성 시각을 확인할 수 없어 수정을 중단했습니다.',
+        'error'
+      );
+      return;
+    }
+
+    const postDocRef =
+      isEditing
+        ? doc(
+            COMMUNITY_POSTS_COLLECTION_REF,
+            editingPost.id
+          )
+        : doc(
+            COMMUNITY_POSTS_COLLECTION_REF
+          );
+
+    setCommunityPostSaving(true);
+
+    try {
+      await setDoc(
+        postDocRef,
+        {
+          id: postDocRef.id,
+          type: postType,
+          title,
+          content,
+          isPinned: Boolean(
+            communityPostForm.isPinned
+          ),
+          authorUid:
+            editingPost?.authorUid ||
+            auditActor.uid,
+          authorName:
+            editingPost?.authorName ||
+            auditActor.name,
+          createdAt:
+            editingPost?.createdAt ||
+            serverTimestamp(),
+          updatedAt:
+            serverTimestamp(),
+        }
+      );
+
+      triggerToast(
+        `${getCommunityPostTypeLabel(
+          postType
+        )} 게시글을 ${
+          isEditing
+            ? '수정'
+            : '등록'
+        }했습니다.`,
+        'success'
+      );
+
+      setCommunityPostDialog(null);
+      setCommunityPostForm(
+        createDefaultCommunityPostForm(
+          postType
+        )
+      );
+    } catch (error) {
+      console.error(
+        'Community post save error:',
+        error
+      );
+
+      triggerToast(
+        `게시글 저장에 실패했습니다. 오류 코드: ${
+          error?.code ||
+          error?.message ||
+          'unknown-error'
+        }`,
+        'error'
+      );
+    } finally {
+      setCommunityPostSaving(false);
+    }
+  };
+
+  const confirmDeleteCommunityPost = (
+    post
+  ) => {
+    if (
+      !isAdminAuthenticated ||
+      !post?.id
+    ) {
+      triggerToast(
+        '관리자 인증과 게시글 정보를 확인해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    triggerConfirm(
+      '게시글 삭제',
+      `[${post.title || '제목 없음'}] 게시글을 삭제하시겠습니까? 삭제한 게시글은 복구할 수 없습니다.`,
+      async () => {
+        setCommunityPostDeletingId(
+          post.id
+        );
+
+        try {
+          await deleteDoc(
+            doc(
+              COMMUNITY_POSTS_COLLECTION_REF,
+              post.id
+            )
+          );
+
+          if (
+            communityPostDialog?.postId ===
+            post.id
+          ) {
+            setCommunityPostDialog(null);
+            setCommunityPostForm(
+              createDefaultCommunityPostForm(
+                post.type
+              )
+            );
+          }
+
+          triggerToast(
+            '게시글을 삭제했습니다.',
+            'success'
+          );
+        } catch (error) {
+          console.error(
+            'Community post delete error:',
+            error
+          );
+
+          triggerToast(
+            `게시글 삭제에 실패했습니다. 오류 코드: ${
+              error?.code ||
+              error?.message ||
+              'unknown-error'
+            }`,
+            'error'
+          );
+        } finally {
+          setCommunityPostDeletingId('');
+        }
+      }
+    );
+  };
+  
   const updateRequest = async (id, status) => {
     if (!isSplitStorageReady) {
       triggerToast(
@@ -11439,16 +11833,16 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                   <h2 className="text-2xl font-black tracking-tight">
                     {userTab === 'home' && '초기화면 준비중입니다'}
                     {userTab === 'history' && '신청내역 화면 준비중입니다'}
-                    {userTab === 'notice' && '공지사항 게시판 준비중입니다'}
-                    {userTab === 'faq' && 'FAQ 게시판 준비중입니다'}
+                    {userTab === 'notice' && '공지사항'}
+                    {userTab === 'faq' && '자주 묻는 질문'}
                     {userTab === 'notFound' && '404 - 페이지를 찾을 수 없습니다'}
                   </h2>
 
                   <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-300">
                     {userTab === 'home' && '상단의 서비스 제목과 아이콘을 클릭하면 언제든 이 초기화면으로 돌아옵니다.'}
                     {userTab === 'history' && '사용자의 대여 신청 현황과 처리 상태를 확인할 수 있는 화면을 준비하고 있습니다.'}
-                    {userTab === 'notice' && '운영 공지, 대여 정책, 점검 안내 등을 확인할 수 있는 게시판으로 준비 예정입니다.'}
-                    {userTab === 'faq' && '자주 묻는 질문과 사용 방법을 정리하는 게시판으로 준비 예정입니다.'}
+                    {userTab === 'notice' && '운영 공지, 대여 정책, 점검 안내를 확인할 수 있습니다.'}
+                    {userTab === 'faq' && '기기 대여 과정에서 자주 묻는 질문과 답변을 확인할 수 있습니다.'}
                     {userTab === 'notFound' && '입력하신 주소와 일치하는 메뉴를 찾을 수 없습니다.'}
                   </p>
                 </div>
@@ -11495,6 +11889,139 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                       </Button>
                     </div>
                   </div>
+                ) : ['notice', 'faq'].includes(userTab) ? (
+                  <div className="space-y-5">
+                    <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <h3 className="text-base font-bold text-slate-900">
+                          {getCommunityPostTypeLabel(
+                            currentCommunityPostType
+                          )}
+                        </h3>
+
+                        <p className="mt-1 text-xs leading-5 text-slate-500">
+                          {userTab === 'notice'
+                            ? '운영 공지와 대여 정책, 점검 안내를 최신순으로 확인합니다.'
+                            : '기기 대여 과정에서 자주 묻는 질문과 답변을 확인합니다.'}
+                        </p>
+                      </div>
+
+                      {isAdminAuthenticated && (
+                        <Button
+                          type="button"
+                          variant="primary"
+                          className="shrink-0 px-4 py-2 text-xs"
+                          onClick={() =>
+                            openCommunityPostDialog(
+                              currentCommunityPostType
+                            )
+                          }
+                        >
+                          <Plus size={14} />
+                          {userTab === 'notice'
+                            ? '공지사항 작성'
+                            : 'FAQ 작성'}
+                        </Button>
+                      )}
+                    </div>
+
+                    {!communityPostsReady ? (
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
+                        게시글을 불러오는 중입니다.
+                      </div>
+                    ) : communityPostsLoadErrorMessage ? (
+                      <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-xs leading-5 text-rose-800">
+                        {communityPostsLoadErrorMessage}
+                      </div>
+                    ) : visibleCommunityPosts.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
+                        등록된 {userTab === 'notice' ? '공지사항' : 'FAQ'}이 없습니다.
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {visibleCommunityPosts.map((post) => (
+                          <article
+                            key={post.id}
+                            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+                          >
+                            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  {post.isPinned && (
+                                    <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[10px] font-bold text-orange-700">
+                                      상단 고정
+                                    </span>
+                                  )}
+
+                                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-600">
+                                    {getCommunityPostTypeLabel(
+                                      post.type
+                                    )}
+                                  </span>
+                                </div>
+
+                                <h4 className="mt-3 break-words text-base font-bold text-slate-900">
+                                  {post.title}
+                                </h4>
+
+                                <div className="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-slate-700">
+                                  {post.content}
+                                </div>
+
+                                <div className="mt-4 text-[10px] text-slate-400">
+                                  작성자: {post.authorName || '관리자'} · 최근 수정:{' '}
+                                  {formatFirestoreTimestamp(
+                                    post.updatedAt ||
+                                    post.createdAt
+                                  )}
+                                </div>
+                              </div>
+
+                              {isAdminAuthenticated && (
+                                <div className="flex shrink-0 gap-2">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="px-3 py-2 text-xs"
+                                    onClick={() =>
+                                      openCommunityPostDialog(
+                                        post.type,
+                                        post
+                                      )
+                                    }
+                                  >
+                                    <Edit3 size={14} />
+                                    수정
+                                  </Button>
+
+                                  <Button
+                                    type="button"
+                                    variant="dangerOutline"
+                                    className="px-3 py-2 text-xs"
+                                    disabled={
+                                      communityPostDeletingId ===
+                                      post.id
+                                    }
+                                    onClick={() =>
+                                      confirmDeleteCommunityPost(
+                                        post
+                                      )
+                                    }
+                                  >
+                                    <Trash2 size={14} />
+                                    {communityPostDeletingId ===
+                                    post.id
+                                      ? '삭제 중'
+                                      : '삭제'}
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center">
                     <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-slate-500 shadow-sm">
@@ -11506,31 +12033,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                     <p className="mx-auto mt-2 max-w-xl text-xs leading-5 text-slate-500">
                       현재는 화면 구조만 먼저 분리했습니다. 세부 기능은 이후 단계에서 하나씩 추가할 예정입니다.
                     </p>
-
-                    {['notice', 'faq'].includes(userTab) && (
-                      <div className="mx-auto mt-5 max-w-xl rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 text-xs leading-5 text-orange-800">
-                        게시글 작성 기능은 관리자 인증 상태에서만 제공되도록 개발 예정입니다.
-                        현재 단계에서는 게시판 기능과 Firebase 저장 구조를 추가하지 않습니다.
-
-                        {isAdminAuthenticated && (
-                          <div className="mt-4 flex justify-center">
-                            <Button
-                              type="button"
-                              variant="primary"
-                              className="px-4 py-2 text-xs"
-                              onClick={() =>
-                                triggerToast(
-                                  `${userTab === 'notice' ? '공지사항' : 'FAQ'} 등록 기능은 다음 단계에서 게시판 저장 구조와 함께 연결합니다.`,
-                                  'success'
-                                )
-                              }
-                            >
-                              {userTab === 'notice' ? '공지사항 작성' : 'FAQ 작성'}
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
                 )}
               </CardContent>
@@ -14206,6 +14708,151 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                 {userActionSaving
                   ? '저장 중...'
                   : '요청 제출'}
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+            {communityPostDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  {getCommunityPostTypeLabel(
+                    communityPostForm.type
+                  )}{' '}
+                  {communityPostDialog.mode === 'edit'
+                    ? '수정'
+                    : '작성'}
+                </h3>
+
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  게시글 작성과 수정은 관리자 인증 상태에서만 가능합니다.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeCommunityPostDialog}
+                disabled={communityPostSaving}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              <Input
+                label={
+                  communityPostForm.type ===
+                  COMMUNITY_POST_TYPE.FAQ
+                    ? '질문'
+                    : '제목'
+                }
+                value={communityPostForm.title}
+                onChange={(value) =>
+                  setCommunityPostForm(
+                    (prev) => ({
+                      ...prev,
+                      title: value,
+                    })
+                  )
+                }
+                placeholder={
+                  communityPostForm.type ===
+                  COMMUNITY_POST_TYPE.FAQ
+                    ? '자주 묻는 질문을 입력해 주세요.'
+                    : '공지사항 제목을 입력해 주세요.'
+                }
+              />
+
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                  {communityPostForm.type ===
+                  COMMUNITY_POST_TYPE.FAQ
+                    ? '답변'
+                    : '내용'}
+                </span>
+
+                <textarea
+                  value={communityPostForm.content}
+                  onChange={(event) =>
+                    setCommunityPostForm(
+                      (prev) => ({
+                        ...prev,
+                        content:
+                          event.target.value,
+                      })
+                    )
+                  }
+                  placeholder={
+                    communityPostForm.type ===
+                    COMMUNITY_POST_TYPE.FAQ
+                      ? '질문에 대한 답변을 입력해 주세요.'
+                      : '공지사항 내용을 입력해 주세요.'
+                  }
+                  className="h-56 w-full rounded-xl border border-slate-200 p-3 text-xs leading-6 outline-none mk-form-ring-focus"
+                />
+              </label>
+
+              <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={
+                    communityPostForm.isPinned
+                  }
+                  onChange={(event) =>
+                    setCommunityPostForm(
+                      (prev) => ({
+                        ...prev,
+                        isPinned:
+                          event.target.checked,
+                      })
+                    )
+                  }
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+
+                <div>
+                  <div className="text-xs font-bold text-slate-800">
+                    목록 상단에 고정
+                  </div>
+
+                  <div className="mt-0.5 text-[10px] text-slate-500">
+                    체크하면 같은 게시판의 일반 게시글보다 먼저 표시됩니다.
+                  </div>
+                </div>
+              </label>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={communityPostSaving}
+                onClick={closeCommunityPostDialog}
+              >
+                취소
+              </Button>
+
+              <Button
+                type="button"
+                variant="primary"
+                disabled={communityPostSaving}
+                onClick={saveCommunityPost}
+              >
+                {communityPostSaving
+                  ? '저장 중...'
+                  : communityPostDialog.mode ===
+                      'edit'
+                    ? '수정 저장'
+                    : '게시글 등록'}
               </Button>
             </div>
           </motion.div>
