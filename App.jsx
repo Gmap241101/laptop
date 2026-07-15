@@ -12727,6 +12727,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       )}
     </>
   );
+}
 
 // 간단한 자물쇠/잠금용 인라인 SVG 아이콘
 function LockIcon({ size }) {
