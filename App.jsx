@@ -75,6 +75,12 @@ const firebaseAuth = getAuth(firebaseApp);
 const adminAccountCreationAuth = getAuth(adminAccountCreationApp);
 const ADMIN_ACCOUNTS_COLLECTION_REF = collection(db, 'adminAccounts');
 const RENTAL_REQUESTS_COLLECTION_REF = collection(db, 'rentalRequests');
+
+const RENTAL_REQUEST_LOGS_COLLECTION_REF = collection(
+  db,
+  'rentalRequestLogs'
+);
+
 const USER_ACCOUNTS_COLLECTION_NAME = 'userAccounts';
 const USER_ACCOUNTS_COLLECTION_REF = collection(
   db,
@@ -143,6 +149,68 @@ const RENTAL_BLOCKING_REQUEST_STATUSES = [
   STATUS.APPROVED,
   STATUS.ON_HOLD,
 ];
+
+const RENTAL_REQUEST_AUDIT_ACTION = {
+  STATUS_CHANGED: 'status-changed',
+  MEMO_CHANGED: 'memo-changed',
+};
+
+const RENTAL_REQUEST_STATUS_TRANSITIONS = {
+  [STATUS.REQUESTED]: [
+    STATUS.APPROVED,
+    STATUS.ON_HOLD,
+    STATUS.DENIED,
+  ],
+
+  [STATUS.APPROVED]: [
+    STATUS.REQUESTED,
+    STATUS.ON_HOLD,
+    STATUS.DENIED,
+    STATUS.RETURNED,
+  ],
+
+  [STATUS.ON_HOLD]: [
+    STATUS.REQUESTED,
+    STATUS.APPROVED,
+    STATUS.DENIED,
+  ],
+
+  [STATUS.DENIED]: [],
+  [STATUS.RETURNED]: [],
+};
+
+const getFirestoreTimestampMillis = (value) => {
+  if (typeof value?.toMillis === 'function') {
+    return value.toMillis();
+  }
+
+  if (typeof value?.toDate === 'function') {
+    return value.toDate().getTime();
+  }
+
+  if (typeof value === 'number') {
+    return value;
+  }
+
+  const parsedTime = Date.parse(value || '');
+
+  return Number.isNaN(parsedTime)
+    ? 0
+    : parsedTime;
+};
+
+const formatFirestoreTimestamp = (value) => {
+  const timestampMillis =
+    getFirestoreTimestampMillis(value);
+
+  if (!timestampMillis) {
+    return '-';
+  }
+
+  return new Date(
+    timestampMillis
+  ).toLocaleString('ko-KR');
+};
 
 const hasRentalPeriodOverlap = (
   existingStartDate,
@@ -1753,10 +1821,20 @@ function App() {
 
   const [rentalRequests, setRentalRequests] = useState([]);
   const [rentalRequestsReady, setRentalRequestsReady] = useState(false);
+
   const [
     rentalRequestsLoadErrorMessage,
     setRentalRequestsLoadErrorMessage,
   ] = useState('');
+
+  const [rentalRequestLogs, setRentalRequestLogs] = useState([]);
+  const [rentalRequestLogsReady, setRentalRequestLogsReady] = useState(false);
+
+  const [
+    rentalRequestLogsLoadErrorMessage,
+    setRentalRequestLogsLoadErrorMessage,
+  ] = useState('');
+
   const [requestSubmitLoading, setRequestSubmitLoading] = useState(false);
   const requestSubmitInProgressRef = useRef(false);
 
@@ -3001,6 +3079,53 @@ function App() {
     return Array.from(requestMap.values());
   }, [data.requests, rentalRequests]);
 
+  const rentalRequestIdSet = useMemo(
+    () =>
+      new Set(
+        (rentalRequests || [])
+          .map((request) => request?.id)
+          .filter(Boolean)
+      ),
+    [rentalRequests]
+  );
+
+  const orphanedRentalAvailabilityRequests =
+    useMemo(
+      () =>
+        (data.requests || []).filter(
+          (request) =>
+            request?.id &&
+            !rentalRequestIdSet.has(
+              request.id
+            )
+        ),
+      [
+        data.requests,
+        rentalRequestIdSet,
+      ]
+    );
+
+  const rentalRequestLogsByRequestId =
+    useMemo(() => {
+      const logMap = new Map();
+
+      (rentalRequestLogs || []).forEach(
+        (log) => {
+          if (!log?.requestId) return;
+
+          const currentLogs =
+            logMap.get(log.requestId) || [];
+
+          logMap.set(log.requestId, [
+            ...currentLogs,
+            log,
+          ]);
+        }
+      );
+
+      return logMap;
+    }, [rentalRequestLogs]);
+
   const currentUserRequests = useMemo(() => {
     if (!firebaseAuthUser?.uid) return [];
 
@@ -3452,6 +3577,73 @@ function App() {
     currentAuthRoleReady,
     currentAuthRoleErrorMessage,
     firebaseAuthUser?.uid,
+    isAdminAuthenticated,
+  ]);
+
+  useEffect(() => {
+    if (
+      !firebaseAuthReady ||
+      !currentAuthRoleReady
+    ) {
+      setRentalRequestLogsReady(false);
+      return;
+    }
+
+    if (!isAdminAuthenticated) {
+      setRentalRequestLogs([]);
+      setRentalRequestLogsLoadErrorMessage('');
+      setRentalRequestLogsReady(true);
+      return;
+    }
+
+    setRentalRequestLogsReady(false);
+    setRentalRequestLogsLoadErrorMessage('');
+
+    const unsubscribe = onSnapshot(
+      RENTAL_REQUEST_LOGS_COLLECTION_REF,
+      (snapshot) => {
+        const remoteLogs = snapshot.docs
+          .map((logDoc) => ({
+            ...logDoc.data(),
+            id: logDoc.id,
+          }))
+          .sort(
+            (first, second) =>
+              getFirestoreTimestampMillis(
+                second.createdAt
+              ) -
+              getFirestoreTimestampMillis(
+                first.createdAt
+              )
+          );
+
+        setRentalRequestLogs(remoteLogs);
+        setRentalRequestLogsLoadErrorMessage('');
+        setRentalRequestLogsReady(true);
+      },
+      (error) => {
+        const message =
+          '대여 신청 처리 이력을 불러오지 못했습니다. Firestore Rules의 rentalRequestLogs 관리자 조회 권한을 확인해 주세요.';
+
+        console.error(
+          'Rental request logs sync error:',
+          error
+        );
+
+        setRentalRequestLogs([]);
+        setRentalRequestLogsLoadErrorMessage(
+          message
+        );
+        setRentalRequestLogsReady(true);
+
+        triggerToast(message, 'error');
+      }
+    );
+
+    return unsubscribe;
+  }, [
+    firebaseAuthReady,
+    currentAuthRoleReady,
     isAdminAuthenticated,
   ]);
 
@@ -6758,6 +6950,25 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     }
   };
 
+  };
+
+  const getCurrentAdminAuditActor = () => ({
+    uid:
+      firebaseAuth.currentUser?.uid ||
+      authenticatedAdminAccount?.authUid ||
+      '',
+
+    adminId:
+      authenticatedAdminAccount?.id ||
+      '',
+
+    name:
+      authenticatedAdminAccount?.userName ||
+      authenticatedAdminAccount?.adminLoginId ||
+      authenticatedAdminAccount?.authEmail ||
+      '관리자',
+  });
+
   const updateRequest = async (id, status) => {
     if (!isSplitStorageReady) {
       triggerToast(
@@ -6779,6 +6990,21 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       );
       return;
     }
+
+    const auditActor =
+      getCurrentAdminAuditActor();
+
+    if (!auditActor.uid) {
+      triggerToast(
+        '관리자 인증 정보를 확인할 수 없어 상태 변경을 중단했습니다.',
+        'error'
+      );
+      return;
+    }
+
+    const requestLogDocRef = doc(
+      RENTAL_REQUEST_LOGS_COLLECTION_REF
+    );
 
     let committedRequest = null;
     let committedAsset = null;
@@ -6838,6 +7064,33 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             ...requestSnapshot.data(),
             id: requestSnapshot.id,
           };
+
+          const previousStatus =
+            latestRequest.status || '';
+
+          const allowedNextStatuses =
+            RENTAL_REQUEST_STATUS_TRANSITIONS[
+              previousStatus
+            ] || [];
+
+          if (
+            !allowedNextStatuses.includes(
+              status
+            )
+          ) {
+            const transitionError =
+              new Error(
+                'invalid-rental-status-transition'
+              );
+
+            transitionError.previousStatus =
+              previousStatus;
+
+            transitionError.nextStatus =
+              status;
+
+            throw transitionError;
+          }
 
           const latestAsset = {
             ...assetSnapshot.data(),
@@ -6906,6 +7159,30 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
               updatedAt:
                 serverTimestamp(),
               syncedAt:
+                serverTimestamp(),
+            }
+          );
+
+          transaction.set(
+            requestLogDocRef,
+            {
+              id: requestLogDocRef.id,
+              requestId: id,
+              action:
+                RENTAL_REQUEST_AUDIT_ACTION.STATUS_CHANGED,
+              previousStatus,
+              nextStatus: status,
+              previousMemo:
+                latestRequest.adminMemo || '',
+              nextMemo:
+                latestRequest.adminMemo || '',
+              actorUid:
+                auditActor.uid,
+              actorAdminId:
+                auditActor.adminId,
+              actorName:
+                auditActor.name,
+              createdAt:
                 serverTimestamp(),
             }
           );
@@ -7020,6 +7297,17 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
       if (
         error?.message ===
+        'rental-request-not-found'
+      ) {
+        triggerToast(
+          '정식 대여 신청 문서를 찾을 수 없어 상태 변경을 중단했습니다.',
+          'error'
+        );
+        return;
+      }
+
+      if (
+        error?.message ===
         'rental-asset-not-found'
       ) {
         triggerToast(
@@ -7029,8 +7317,25 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         return;
       }
 
+      if (
+        error?.message ===
+        'invalid-rental-status-transition'
+      ) {
+        triggerToast(
+          `허용되지 않은 상태 변경입니다. 현재 상태: ${
+            error.previousStatus || '-'
+          }, 변경 요청: ${
+            error.nextStatus || '-'
+          }`,
+          'error'
+        );
+        return;
+      }
+
       const firebaseErrorCode =
-        error?.code || 'unknown-error';
+        error?.code ||
+        error?.message ||
+        'unknown-error';
 
       triggerToast(
         `신청 상태와 기기 상태 저장에 실패했습니다. 오류 코드: ${firebaseErrorCode}`,
@@ -7072,68 +7377,143 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     );
 
     if (!currentRequest) {
-      triggerToast('신청 정보를 찾을 수 없습니다.', 'error');
+      triggerToast(
+        '신청 정보를 찾을 수 없습니다.',
+        'error'
+      );
       return;
     }
 
-    const requestDocRef = doc(db, 'rentalRequests', id);
+    const auditActor =
+      getCurrentAdminAuditActor();
+
+    if (!auditActor.uid) {
+      triggerToast(
+        '관리자 인증 정보를 확인할 수 없어 메모 저장을 중단했습니다.',
+        'error'
+      );
+      return;
+    }
+
+    const requestDocRef = doc(
+      RENTAL_REQUESTS_COLLECTION_REF,
+      id
+    );
+
+    const requestLogDocRef = doc(
+      RENTAL_REQUEST_LOGS_COLLECTION_REF
+    );
+
+    let memoWasChanged = false;
 
     try {
-      await runTransaction(db, async (transaction) => {
-        const requestSnapshot = await transaction.get(requestDocRef);
+      await runTransaction(
+        db,
+        async (transaction) => {
+          const requestSnapshot =
+            await transaction.get(
+              requestDocRef
+            );
 
-        if (requestSnapshot.exists()) {
-          transaction.set(
-            requestDocRef,
-            {
-              adminMemo: memo,
-              updatedAt: serverTimestamp(),
-              syncedAt: serverTimestamp(),
-            },
-            { merge: true }
+          if (!requestSnapshot.exists()) {
+            throw new Error(
+              'rental-request-not-found'
+            );
+          }
+
+          const latestRequest =
+            requestSnapshot.data();
+
+          const previousMemo = String(
+            latestRequest.adminMemo || ''
           );
 
-          return;
-        }
+          const nextMemo = String(
+            memo || ''
+          );
 
-        transaction.set(requestDocRef, {
-          ...currentRequest,
-          adminMemo: memo,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          syncedAt: serverTimestamp(),
-        });
-      });
+          if (
+            previousMemo === nextMemo
+          ) {
+            return;
+          }
 
-      setRentalRequests((prev) => {
-        const requestExists = (prev || []).some(
-          (request) => request.id === id
-        );
-
-        if (!requestExists) {
-          return [
+          transaction.update(
+            requestDocRef,
             {
-              ...currentRequest,
-              adminMemo: memo,
-            },
-            ...(prev || []),
-          ];
-        }
+              adminMemo: nextMemo,
+              updatedAt:
+                serverTimestamp(),
+              syncedAt:
+                serverTimestamp(),
+            }
+          );
 
-        return (prev || []).map((request) =>
+          transaction.set(
+            requestLogDocRef,
+            {
+              id: requestLogDocRef.id,
+              requestId: id,
+              action:
+                RENTAL_REQUEST_AUDIT_ACTION.MEMO_CHANGED,
+              previousStatus:
+                latestRequest.status || '',
+              nextStatus:
+                latestRequest.status || '',
+              previousMemo,
+              nextMemo,
+              actorUid:
+                auditActor.uid,
+              actorAdminId:
+                auditActor.adminId,
+              actorName:
+                auditActor.name,
+              createdAt:
+                serverTimestamp(),
+            }
+          );
+
+          memoWasChanged = true;
+        }
+      );
+
+      if (!memoWasChanged) {
+        return;
+      }
+
+      setRentalRequests((prev) =>
+        (prev || []).map((request) =>
           request.id === id
             ? {
                 ...request,
                 adminMemo: memo,
               }
             : request
-        );
-      });
+        )
+      );
     } catch (error) {
-      console.error('Rental request memo save error:', error);
+      console.error(
+        'Rental request memo save error:',
+        error
+      );
+
+      if (
+        error?.message ===
+        'rental-request-not-found'
+      ) {
+        triggerToast(
+          '정식 대여 신청 문서가 없어 관리자 메모를 저장하지 않았습니다.',
+          'error'
+        );
+        return;
+      }
 
       triggerToast(
-        '관리자 메모 저장에 실패했습니다. 저장되지 않은 메모가 화면에 남아 있을 수 있으므로 신청내역을 다시 확인해 주세요.',
+        `관리자 메모 저장에 실패했습니다. 오류 코드: ${
+          error?.code ||
+          error?.message ||
+          'unknown-error'
+        }`,
         'error'
       );
     }
@@ -10181,6 +10561,15 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                           {rentalRequestsLoadErrorMessage}
                         </div>
                       )}
+
+                      {orphanedRentalAvailabilityRequests.length > 0 && (
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-xs leading-5 text-amber-800">
+                          정식 rentalRequests 문서 없이 예약 요약만 남은 항목이{' '}
+                          {orphanedRentalAvailabilityRequests.length}건 있습니다.
+                          해당 항목은 상태 변경과 메모 저장을 차단합니다.
+                        </div>
+                      )}
+
                       <div className="space-y-4">
                         {!rentalRequestsReady ? (
                           <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
@@ -10192,7 +10581,16 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                           </div>
                         ) : (
                           mergedRentalRequests.map((r) => {
-                            const isOverdue = r.status === STATUS.APPROVED && r.dueDate < today();
+                            const isOverdue =
+                              r.status === STATUS.APPROVED &&
+                              r.dueDate < today();
+
+                            const hasRentalRequestDocument =
+                              rentalRequestIdSet.has(r.id);
+
+                            const requestAuditLogs =
+                              rentalRequestLogsByRequestId.get(r.id) || [];
+
                             return (
                               <div key={r.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
                                 <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
@@ -10224,12 +10622,21 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                                   </div>
 
                                   {/* 상태별 전환 버튼 */}
-                                  {renderRequestActionButtons(r)}
+                                  {hasRentalRequestDocument ? (
+                                    renderRequestActionButtons(r)
+                                  ) : (
+                                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700">
+                                      정식 신청 문서가 없어 상태 변경을 차단했습니다.
+                                    </div>
+                                  )}
                                 </div>
                                 
                                 <div className="pt-2 border-t border-slate-100">
                                   <label className="block">
-                                    <span className="block text-[10px] font-semibold text-slate-500 uppercase">승인 관리자 심사 및 인수인계 코멘트</span>
+                                    <span className="block text-[10px] font-semibold text-slate-500 uppercase">
+                                      승인 관리자 심사 및 인수인계 코멘트
+                                    </span>
+
                                     <input
                                       type="text"
                                       value={r.adminMemo || ''}
@@ -10239,16 +10646,84 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                                           e.target.value
                                         )
                                       }
-                                      onBlur={(e) =>
-                                        saveRequestMemo(
-                                          r.id,
-                                          e.target.value
-                                        )
-                                      }
+                                      onBlur={(e) => {
+                                        if (
+                                          hasRentalRequestDocument
+                                        ) {
+                                          saveRequestMemo(
+                                            r.id,
+                                            e.target.value
+                                          );
+                                        }
+                                      }}
+                                      disabled={!hasRentalRequestDocument}
                                       placeholder="전달 혹은 상태 변경 사유 등을 남겨 공유하세요."
-                                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none mk-form-border-focus"
+                                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none mk-form-border-focus disabled:cursor-not-allowed disabled:bg-slate-100"
                                     />
                                   </label>
+                                </div>
+
+                                <div className="border-t border-slate-100 pt-3">
+                                  <div className="text-[10px] font-semibold uppercase text-slate-500">
+                                    관리자 처리 이력
+                                  </div>
+
+                                  {!rentalRequestLogsReady ? (
+                                    <div className="mt-2 text-[11px] text-slate-400">
+                                      처리 이력을 불러오는 중입니다.
+                                    </div>
+                                  ) : rentalRequestLogsLoadErrorMessage ? (
+                                    <div className="mt-2 text-[11px] text-rose-600">
+                                      {rentalRequestLogsLoadErrorMessage}
+                                    </div>
+                                  ) : requestAuditLogs.length === 0 ? (
+                                    <div className="mt-2 text-[11px] text-slate-400">
+                                      기록된 관리자 처리 이력이 없습니다.
+                                    </div>
+                                  ) : (
+                                    <div className="mt-2 space-y-2">
+                                      {requestAuditLogs
+                                        .slice(0, 5)
+                                        .map((log) => (
+                                          <div
+                                            key={log.id}
+                                            className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-[11px] text-slate-600"
+                                          >
+                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                              <span className="font-semibold text-slate-800">
+                                                {log.action ===
+                                                RENTAL_REQUEST_AUDIT_ACTION.STATUS_CHANGED
+                                                  ? `${log.previousStatus || '-'} → ${log.nextStatus || '-'}`
+                                                  : '관리자 메모 변경'}
+                                              </span>
+
+                                              <span className="text-[10px] text-slate-400">
+                                                {formatFirestoreTimestamp(
+                                                  log.createdAt
+                                                )}
+                                              </span>
+                                            </div>
+
+                                            <div className="mt-1 text-[10px] text-slate-500">
+                                              처리 관리자:{' '}
+                                              {log.actorName ||
+                                                log.actorAdminId ||
+                                                log.actorUid ||
+                                                '-'}
+                                            </div>
+
+                                            {log.action ===
+                                              RENTAL_REQUEST_AUDIT_ACTION.MEMO_CHANGED && (
+                                              <div className="mt-1 break-words text-[10px] text-slate-500">
+                                                변경 메모:{' '}
+                                                {log.nextMemo ||
+                                                  '(빈 메모)'}
+                                              </div>
+                                            )}
+                                          </div>
+                                        ))}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             );
@@ -12252,7 +12727,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       )}
     </>
   );
-}
 
 // 간단한 자물쇠/잠금용 인라인 SVG 아이콘
 function LockIcon({ size }) {
