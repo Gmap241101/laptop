@@ -13683,46 +13683,48 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                         </Button>
                       </div>
 
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-                          <div>
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4">
+                        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-center">
+                          <div className="min-w-0">
                             <h3 className="text-sm font-bold text-slate-900">
                               목록 표시 설정
                             </h3>
 
-                            <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                            <p className="mt-1 max-w-2xl text-[11px] leading-5 text-slate-500">
                               상단 고정 게시글은 제외하고 일반 게시글만 설정한 개수만큼 한 페이지에 표시합니다.
                             </p>
                           </div>
 
-                          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-                            <Select
-                              label="페이지당 일반 게시글 수"
-                              value={String(
-                                noticePostsPerPageInput
-                              )}
-                              onChange={(value) =>
-                                setNoticePostsPerPageInput(
-                                  Number(value)
-                                )
-                              }
-                            >
-                              {NOTICE_POSTS_PER_PAGE_OPTIONS.map(
-                                (option) => (
-                                  <option
-                                    key={option}
-                                    value={option}
-                                  >
-                                    {option}개
-                                  </option>
-                                )
-                              )}
-                            </Select>
+                          <div className="grid gap-2 sm:grid-cols-[160px_1fr] sm:items-end">
+                            <div className="w-full">
+                              <Select
+                                label="페이지당 일반 게시글 수"
+                                value={String(
+                                  noticePostsPerPageInput
+                                )}
+                                onChange={(value) =>
+                                  setNoticePostsPerPageInput(
+                                    Number(value)
+                                  )
+                                }
+                              >
+                                {NOTICE_POSTS_PER_PAGE_OPTIONS.map(
+                                  (option) => (
+                                    <option
+                                      key={option}
+                                      value={option}
+                                    >
+                                      {option}개
+                                    </option>
+                                  )
+                                )}
+                              </Select>
+                            </div>
 
                             <Button
                               type="button"
                               variant="primary"
-                              className="h-10 shrink-0 px-4 text-xs"
+                              className="h-10 w-full whitespace-nowrap px-4 text-xs"
                               disabled={
                                 !noticeBoardConfigReady ||
                                 noticeBoardConfigSaving
@@ -13758,26 +13760,26 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                         </div>
                       ) : (
                         <>
-                          <div className="overflow-x-auto rounded-2xl border border-slate-200">
-                            <table className="min-w-[860px] w-full border-collapse text-left">
+                          <div className="overflow-x-auto rounded-xl border border-slate-200">
+                            <table className="w-full min-w-[820px] table-fixed border-collapse text-left">
                               <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600">
                                 <tr>
-                                  <th className="w-20 border-b border-slate-200 px-4 py-3 text-center">
+                                  <th className="w-16 border-b border-slate-200 px-3 py-3 text-center">
                                     번호
                                   </th>
-                                  <th className="border-b border-slate-200 px-4 py-3">
+                                  <th className="border-b border-slate-200 px-3 py-3">
                                     제목
                                   </th>
-                                  <th className="w-32 border-b border-slate-200 px-4 py-3 text-center">
+                                  <th className="w-24 border-b border-slate-200 px-3 py-3 text-center">
                                     등록자
                                   </th>
-                                  <th className="w-32 border-b border-slate-200 px-4 py-3 text-center">
+                                  <th className="w-28 border-b border-slate-200 px-3 py-3 text-center">
                                     등록일
                                   </th>
-                                  <th className="w-24 border-b border-slate-200 px-4 py-3 text-center">
+                                  <th className="w-20 border-b border-slate-200 px-3 py-3 text-center">
                                     조회수
                                   </th>
-                                  <th className="w-36 border-b border-slate-200 px-4 py-3 text-center">
+                                  <th className="w-48 border-b border-slate-200 px-3 py-3 text-center">
                                     관리
                                   </th>
                                 </tr>
@@ -13806,62 +13808,65 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                                 ].map((item) => (
                                   <tr
                                     key={item.post.id}
-                                    className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
+                                    className="border-b border-slate-100 align-middle last:border-b-0 hover:bg-slate-50"
                                   >
-                                    <td className="px-4 py-3 text-center text-xs text-slate-500">
+                                    <td className="px-3 py-3 text-center text-xs text-slate-500">
                                       {item.number}
                                     </td>
 
-                                    <td className="px-4 py-3">
-                                      <div className="flex flex-wrap items-center gap-2">
+                                    <td className="min-w-0 px-3 py-3">
+                                      <div className="flex min-w-0 items-center gap-2">
                                         {item.post.isPinned && (
-                                          <span className="inline-flex rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-700">
+                                          <span className="shrink-0 rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-700">
                                             고정
                                           </span>
                                         )}
 
-                                        <span className="break-words text-sm font-semibold text-slate-800">
+                                        <span
+                                          title={item.post.title}
+                                          className="block min-w-0 flex-1 truncate text-sm font-semibold text-slate-800"
+                                        >
                                           {item.post.title}
                                         </span>
                                       </div>
                                     </td>
 
-                                    <td className="px-4 py-3 text-center text-xs text-slate-600">
+                                    <td className="px-3 py-3 text-center text-xs text-slate-600">
                                       {item.post.authorName || '관리자'}
                                     </td>
 
-                                    <td className="px-4 py-3 text-center text-xs text-slate-500">
+                                    <td className="px-3 py-3 text-center text-xs text-slate-500">
                                       {formatFirestoreDate(
                                         item.post.createdAt
                                       )}
                                     </td>
 
-                                    <td className="px-4 py-3 text-center text-xs text-slate-500">
+                                    <td className="px-3 py-3 text-center text-xs text-slate-500">
                                       {Number(
                                         item.post.viewCount
                                       ) || 0}
                                     </td>
 
-                                    <td className="px-4 py-3">
-                                      <div className="flex justify-center gap-2">
+                                    <td className="px-3 py-3">
+                                      <div className="flex items-center justify-center gap-1.5">
                                         <Button
                                           type="button"
                                           variant="outline"
-                                          className="px-3 py-2 text-xs"
+                                          className="whitespace-nowrap px-2.5 py-2 text-xs"
                                           onClick={() =>
                                             openNoticePostDialog(
                                               item.post
                                             )
                                           }
                                         >
-                                          <Edit3 size={14} />
+                                          <Edit3 size={13} />
                                           수정
                                         </Button>
 
                                         <Button
                                           type="button"
                                           variant="dangerOutline"
-                                          className="px-3 py-2 text-xs"
+                                          className="whitespace-nowrap px-2.5 py-2 text-xs"
                                           disabled={
                                             noticePostDeletingId ===
                                             item.post.id
@@ -13872,7 +13877,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                                             )
                                           }
                                         >
-                                          <Trash2 size={14} />
+                                          <Trash2 size={13} />
                                           {noticePostDeletingId ===
                                           item.post.id
                                             ? '삭제 중'
