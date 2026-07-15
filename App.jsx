@@ -6370,17 +6370,16 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
               null,
           };
 
-          transaction.set(
+          transaction.update(
             requestDocRef,
             {
-              ...nextCommittedRequest,
+              status,
+              adminMemo:
+                latestRequest.adminMemo || '',
               updatedAt:
                 serverTimestamp(),
               syncedAt:
                 serverTimestamp(),
-            },
-            {
-              merge: true,
             }
           );
 
@@ -6503,8 +6502,11 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         return;
       }
 
+      const firebaseErrorCode =
+        error?.code || 'unknown-error';
+
       triggerToast(
-        '신청 상태와 기기 상태 저장에 실패했습니다. 변경사항은 적용되지 않았습니다. Firestore Rules와 네트워크 상태를 확인해 주세요.',
+        `신청 상태와 기기 상태 저장에 실패했습니다. 오류 코드: ${firebaseErrorCode}`,
         'error'
       );
     }
