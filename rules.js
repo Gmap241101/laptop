@@ -387,17 +387,37 @@ service cloud.firestore {
         if isAdmin();
     }
 
-        match /communityPosts/{postId} {
+        match /noticeBoard/config {
+      allow read:
+        if true;
+
+      allow create, update:
+        if isAdmin()
+        && request.resource.data.postsPerPage is int
+        && request.resource.data.postsPerPage >= 5
+        && request.resource.data.postsPerPage <= 50
+        && request.resource.data.updatedAt
+          == request.time
+        && request.resource.data.keys().hasAll([
+          'postsPerPage',
+          'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'postsPerPage',
+          'updatedAt'
+        ]);
+
+      allow delete:
+        if false;
+    }
+
+    match /noticePosts/{postId} {
       allow read:
         if true;
 
       allow create:
         if isAdmin()
         && request.resource.data.id == postId
-        && (
-          request.resource.data.type == 'notice'
-          || request.resource.data.type == 'faq'
-        )
         && request.resource.data.title is string
         && request.resource.data.title.size() > 0
         && request.resource.data.content is string
@@ -407,87 +427,100 @@ service cloud.firestore {
           == request.auth.uid
         && request.resource.data.authorName is string
         && request.resource.data.authorName.size() > 0
+        && request.resource.data.viewCount == 0
         && request.resource.data.createdAt
           == request.time
         && request.resource.data.updatedAt
           == request.time
         && request.resource.data.keys().hasAll([
           'id',
-          'type',
           'title',
           'content',
           'isPinned',
           'authorUid',
           'authorName',
+          'viewCount',
           'createdAt',
           'updatedAt'
         ])
         && request.resource.data.keys().hasOnly([
           'id',
-          'type',
           'title',
           'content',
           'isPinned',
           'authorUid',
           'authorName',
+          'viewCount',
           'createdAt',
           'updatedAt'
         ]);
 
       allow update:
-        if isAdmin()
-        && request.resource.data.id == postId
-        && request.resource.data.id
-          == resource.data.id
-        && (
-          request.resource.data.type == 'notice'
-          || request.resource.data.type == 'faq'
-        )
-        && request.resource.data.title is string
-        && request.resource.data.title.size() > 0
-        && request.resource.data.content is string
-        && request.resource.data.content.size() > 0
-        && request.resource.data.isPinned is bool
-        && request.resource.data.authorUid
-          == resource.data.authorUid
-        && request.resource.data.authorName
-          == resource.data.authorName
-        && request.resource.data.createdAt
-          == resource.data.createdAt
-        && request.resource.data.updatedAt
-          == request.time
-        && request.resource.data
-          .diff(resource.data)
-          .affectedKeys()
-          .hasOnly([
-            'type',
+        if (
+          isAdmin()
+          && request.resource.data.id == postId
+          && request.resource.data.id
+            == resource.data.id
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.content is string
+          && request.resource.data.content.size() > 0
+          && request.resource.data.isPinned is bool
+          && request.resource.data.authorUid
+            == resource.data.authorUid
+          && request.resource.data.authorName
+            == resource.data.authorName
+          && request.resource.data.viewCount
+            == resource.data.viewCount
+          && request.resource.data.createdAt
+            == resource.data.createdAt
+          && request.resource.data.updatedAt
+            == request.time
+          && request.resource.data
+            .diff(resource.data)
+            .affectedKeys()
+            .hasOnly([
+              'title',
+              'content',
+              'isPinned',
+              'updatedAt'
+            ])
+          && request.resource.data.keys().hasAll([
+            'id',
             'title',
             'content',
             'isPinned',
+            'authorUid',
+            'authorName',
+            'viewCount',
+            'createdAt',
             'updatedAt'
           ])
-        && request.resource.data.keys().hasAll([
-          'id',
-          'type',
-          'title',
-          'content',
-          'isPinned',
-          'authorUid',
-          'authorName',
-          'createdAt',
-          'updatedAt'
-        ])
-        && request.resource.data.keys().hasOnly([
-          'id',
-          'type',
-          'title',
-          'content',
-          'isPinned',
-          'authorUid',
-          'authorName',
-          'createdAt',
-          'updatedAt'
-        ]);
+          && request.resource.data.keys().hasOnly([
+            'id',
+            'title',
+            'content',
+            'isPinned',
+            'authorUid',
+            'authorName',
+            'viewCount',
+            'createdAt',
+            'updatedAt'
+          ])
+        )
+        ||
+        (
+          resource.data.viewCount is int
+          && request.resource.data.viewCount is int
+          && request.resource.data.viewCount
+            == resource.data.viewCount + 1
+          && request.resource.data
+            .diff(resource.data)
+            .affectedKeys()
+            .hasOnly([
+              'viewCount'
+            ])
+        );
 
       allow delete:
         if isAdmin();

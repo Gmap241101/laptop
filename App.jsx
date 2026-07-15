@@ -81,9 +81,15 @@ const RENTAL_REQUEST_LOGS_COLLECTION_REF = collection(
   'rentalRequestLogs'
 );
 
-const COMMUNITY_POSTS_COLLECTION_REF = collection(
+const NOTICE_POSTS_COLLECTION_REF = collection(
   db,
-  'communityPosts'
+  'noticePosts'
+);
+
+const NOTICE_BOARD_CONFIG_DOC_REF = doc(
+  db,
+  'noticeBoard',
+  'config'
 );
 
 const USER_ACCOUNTS_COLLECTION_NAME = 'userAccounts';
@@ -203,20 +209,27 @@ const createDefaultUserActionForm = () => ({
   purpose: '',
 });
 
-const COMMUNITY_POST_TYPE = {
-  NOTICE: 'notice',
-  FAQ: 'faq',
+const DEFAULT_NOTICE_POSTS_PER_PAGE = 10;
+
+const NOTICE_POSTS_PER_PAGE_OPTIONS = [
+  5,
+  10,
+  15,
+  20,
+  30,
+  50,
+];
+
+const getSafeNoticePostsPerPage = (value) => {
+  const parsedValue = Math.trunc(Number(value));
+
+  return parsedValue >= 5 &&
+    parsedValue <= 50
+    ? parsedValue
+    : DEFAULT_NOTICE_POSTS_PER_PAGE;
 };
 
-const getCommunityPostTypeLabel = (type) =>
-  type === COMMUNITY_POST_TYPE.FAQ
-    ? 'FAQ'
-    : '공지사항';
-
-const createDefaultCommunityPostForm = (
-  type = COMMUNITY_POST_TYPE.NOTICE
-) => ({
-  type,
+const createDefaultNoticePostForm = () => ({
   title: '',
   content: '',
   isPinned: false,
@@ -267,18 +280,19 @@ const getFirestoreTimestampMillis = (value) => {
     : parsedTime;
 };
 
-const formatFirestoreTimestamp = (value) => {
-  const timestampMillis =
-    getFirestoreTimestampMillis(value);
+  const [communityPosts, setCommunityPosts] = useState([]);
+  const [communityPostsReady, setCommunityPostsReady] = useState(false);
+  const [
+    communityPostsLoadErrorMessage,
+    setCommunityPostsLoadErrorMessage,
+  ] = useState('');
 
-  if (!timestampMillis) {
-    return '-';
-  }
-
-  return new Date(
-    timestampMillis
-  ).toLocaleString('ko-KR');
-};
+  const [communityPostDialog, setCommunityPostDialog] = useState(null);
+  const [communityPostForm, setCommunityPostForm] = useState(
+    createDefaultCommunityPostForm
+  );
+  const [communityPostSaving, setCommunityPostSaving] = useState(false);
+  const [communityPostDeletingId, setCommunityPostDeletingId] = useState('');
 
 const hasRentalPeriodOverlap = (
   existingStartDate,
@@ -3218,21 +3232,88 @@ function App() {
       return logMap;
     }, [rentalRequestLogs]);
 
-  const currentCommunityPostType =
-    userTab === 'faq'
-      ? COMMUNITY_POST_TYPE.FAQ
-      : COMMUNITY_POST_TYPE.NOTICE;
+  const noticePostsPerPage = getSafeNoticePostsPerPage(
+    noticeBoardConfig.postsPerPage
+  );
 
-  const visibleCommunityPosts = useMemo(
+  const pinnedNoticePosts = useMemo(
     () =>
-      (communityPosts || []).filter(
-        (post) =>
-          post.type ===
-          currentCommunityPostType
+      (noticePosts || []).filter(
+        (post) => post.isPinned
+      ),
+    [noticePosts]
+  );
+
+  const regularNoticePosts = useMemo(
+    () =>
+      (noticePosts || []).filter(
+        (post) => !post.isPinned
+      ),
+    [noticePosts]
+  );
+
+  const noticeTotalPages = Math.max(
+    1,
+    Math.ceil(
+      regularNoticePosts.length /
+      noticePostsPerPage
+    )
+  );
+
+  const safeNoticePage = Math.min(
+    noticePage,
+    noticeTotalPages
+  );
+
+  const paginatedNoticePosts = useMemo(
+    () =>
+      regularNoticePosts.slice(
+        (safeNoticePage - 1) *
+          noticePostsPerPage,
+        safeNoticePage *
+          noticePostsPerPage
       ),
     [
-      communityPosts,
-      currentCommunityPostType,
+      regularNoticePosts,
+      safeNoticePage,
+      noticePostsPerPage,
+    ]
+  );
+
+  const adminNoticeTotalPages = noticeTotalPages;
+
+  const safeAdminNoticePage = Math.min(
+    adminNoticePage,
+    adminNoticeTotalPages
+  );
+
+  const paginatedAdminNoticePosts = useMemo(
+    () =>
+      regularNoticePosts.slice(
+        (safeAdminNoticePage - 1) *
+          noticePostsPerPage,
+        safeAdminNoticePage *
+          noticePostsPerPage
+      ),
+    [
+      regularNoticePosts,
+      safeAdminNoticePage,
+      noticePostsPerPage,
+    ]
+  );
+
+  const selectedNoticePost = useMemo(
+    () =>
+      selectedNoticePostId
+        ? noticePosts.find(
+            (post) =>
+              post.id ===
+              selectedNoticePostId
+          ) || null
+        : null,
+    [
+      noticePosts,
+      selectedNoticePostId,
     ]
   );
 
@@ -3786,57 +3867,96 @@ function App() {
   ]);
 
   useEffect(() => {
-    setCommunityPostsReady(false);
-    setCommunityPostsLoadErrorMessage('');
+    setNoticePostsReady(false);
+    setNoticePostsLoadErrorMessage('');
 
     const unsubscribe = onSnapshot(
-      COMMUNITY_POSTS_COLLECTION_REF,
+      NOTICE_POSTS_COLLECTION_REF,
       (snapshot) => {
         const remotePosts = snapshot.docs
           .map((postDoc) => ({
             ...postDoc.data(),
             id: postDoc.id,
           }))
-          .sort((first, second) => {
-            if (
-              Boolean(first.isPinned) !==
-              Boolean(second.isPinned)
-            ) {
-              return first.isPinned ? -1 : 1;
-            }
-
-            return (
+          .sort(
+            (first, second) =>
               getFirestoreTimestampMillis(
-                second.updatedAt ||
                 second.createdAt
               ) -
               getFirestoreTimestampMillis(
-                first.updatedAt ||
                 first.createdAt
               )
-            );
-          });
+          );
 
-        setCommunityPosts(remotePosts);
-        setCommunityPostsLoadErrorMessage('');
-        setCommunityPostsReady(true);
+        setNoticePosts(remotePosts);
+        setNoticePostsLoadErrorMessage('');
+        setNoticePostsReady(true);
       },
       (error) => {
         const message =
-          '공지사항과 FAQ를 불러오지 못했습니다. Firestore Rules의 communityPosts 읽기 권한을 확인해 주세요.';
+          '공지사항을 불러오지 못했습니다. Firestore Rules의 noticePosts 읽기 권한을 확인해 주세요.';
 
         console.error(
-          'Community posts sync error:',
+          'Notice posts sync error:',
           error
         );
 
-        setCommunityPosts([]);
-        setCommunityPostsLoadErrorMessage(
+        setNoticePosts([]);
+        setNoticePostsLoadErrorMessage(
           message
         );
-        setCommunityPostsReady(true);
+        setNoticePostsReady(true);
 
         triggerToast(message, 'error');
+      }
+    );
+
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    setNoticeBoardConfigReady(false);
+    setNoticeBoardConfigLoadErrorMessage('');
+
+    const unsubscribe = onSnapshot(
+      NOTICE_BOARD_CONFIG_DOC_REF,
+      (snapshot) => {
+        const postsPerPage =
+          getSafeNoticePostsPerPage(
+            snapshot.exists()
+              ? snapshot.data().postsPerPage
+              : DEFAULT_NOTICE_POSTS_PER_PAGE
+          );
+
+        setNoticeBoardConfig({
+          postsPerPage,
+        });
+        setNoticePostsPerPageInput(
+          postsPerPage
+        );
+        setNoticeBoardConfigLoadErrorMessage('');
+        setNoticeBoardConfigReady(true);
+      },
+      (error) => {
+        const message =
+          '공지사항 목록 설정을 불러오지 못해 기본값 10개를 사용합니다.';
+
+        console.error(
+          'Notice board config sync error:',
+          error
+        );
+
+        setNoticeBoardConfig({
+          postsPerPage:
+            DEFAULT_NOTICE_POSTS_PER_PAGE,
+        });
+        setNoticePostsPerPageInput(
+          DEFAULT_NOTICE_POSTS_PER_PAGE
+        );
+        setNoticeBoardConfigLoadErrorMessage(
+          message
+        );
+        setNoticeBoardConfigReady(true);
       }
     );
 
@@ -8178,57 +8298,97 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     }
   };
 
-  const openCommunityPostDialog = (
-    type,
+  const openNoticePost = async (post) => {
+    if (!post?.id) {
+      return;
+    }
+
+    setSelectedNoticePostId(
+      post.id
+    );
+
+    try {
+      await runTransaction(
+        db,
+        async (transaction) => {
+          const postDocRef = doc(
+            NOTICE_POSTS_COLLECTION_REF,
+            post.id
+          );
+
+          const postSnapshot =
+            await transaction.get(
+              postDocRef
+            );
+
+          if (!postSnapshot.exists()) {
+            return;
+          }
+
+          const currentViewCount =
+            Number(
+              postSnapshot.data().viewCount
+            ) || 0;
+
+          transaction.update(
+            postDocRef,
+            {
+              viewCount:
+                currentViewCount + 1,
+            }
+          );
+        }
+      );
+    } catch (error) {
+      console.error(
+        'Notice post view count update error:',
+        error
+      );
+    }
+  };
+
+  const closeNoticePost = () => {
+    setSelectedNoticePostId('');
+  };
+
+  const openNoticePostDialog = (
     post = null
   ) => {
     if (!isAdminAuthenticated) {
       triggerToast(
-        '관리자 인증 후 게시글을 작성하거나 수정할 수 있습니다.',
+        '관리자 인증 후 공지사항을 작성하거나 수정할 수 있습니다.',
         'error'
       );
       return;
     }
 
-    if (
-      ![
-        COMMUNITY_POST_TYPE.NOTICE,
-        COMMUNITY_POST_TYPE.FAQ,
-      ].includes(type)
-    ) {
-      triggerToast(
-        '지원하지 않는 게시판 종류입니다.',
-        'error'
-      );
-      return;
-    }
-
-    setCommunityPostDialog({
+    setNoticePostDialog({
       mode: post ? 'edit' : 'create',
       postId: post?.id || '',
     });
 
-    setCommunityPostForm({
-      type,
+    setNoticePostForm({
       title: post?.title || '',
       content: post?.content || '',
-      isPinned: Boolean(post?.isPinned),
+      isPinned: Boolean(
+        post?.isPinned
+      ),
     });
   };
 
-  const closeCommunityPostDialog = () => {
-    if (communityPostSaving) return;
+  const closeNoticePostDialog = () => {
+    if (noticePostSaving) return;
 
-    setCommunityPostDialog(null);
-    setCommunityPostForm(
-      createDefaultCommunityPostForm()
+    setNoticePostDialog(null);
+    setNoticePostForm(
+      createDefaultNoticePostForm()
     );
   };
 
-  const saveCommunityPost = async () => {
+  const saveNoticePost = async () => {
     if (!isAdminAuthenticated) {
       triggerToast(
-        '관리자 인증 후 게시글을 저장할 수 있습니다.',
+        '관리자 인증 후 공지사항을 저장할 수 있습니다.',
         'error'
       );
       return;
@@ -8239,23 +8399,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
     if (!auditActor.uid) {
       triggerToast(
-        '관리자 인증 정보를 확인할 수 없어 게시글 저장을 중단했습니다.',
-        'error'
-      );
-      return;
-    }
-
-    const postType =
-      communityPostForm.type;
-
-    if (
-      ![
-        COMMUNITY_POST_TYPE.NOTICE,
-        COMMUNITY_POST_TYPE.FAQ,
-      ].includes(postType)
-    ) {
-      triggerToast(
-        '게시판 종류를 확인해 주세요.',
+        '관리자 인증 정보를 확인할 수 없어 공지사항 저장을 중단했습니다.',
         'error'
       );
       return;
@@ -8263,17 +8407,17 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
     const title =
       String(
-        communityPostForm.title || ''
+        noticePostForm.title || ''
       ).trim();
 
     const content =
       String(
-        communityPostForm.content || ''
+        noticePostForm.content || ''
       ).trim();
 
     if (!title) {
       triggerToast(
-        '게시글 제목을 입력해 주세요.',
+        '공지사항 제목을 입력해 주세요.',
         'error'
       );
       return;
@@ -8281,27 +8425,27 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
     if (!content) {
       triggerToast(
-        '게시글 내용을 입력해 주세요.',
+        '공지사항 내용을 입력해 주세요.',
         'error'
       );
       return;
     }
 
     const isEditing =
-      communityPostDialog?.mode === 'edit';
+      noticePostDialog?.mode === 'edit';
 
     const editingPost =
       isEditing
-        ? communityPosts.find(
+        ? noticePosts.find(
             (post) =>
               post.id ===
-              communityPostDialog?.postId
+              noticePostDialog?.postId
           ) || null
         : null;
 
     if (isEditing && !editingPost) {
       triggerToast(
-        '수정할 게시글을 찾을 수 없습니다.',
+        '수정할 공지사항을 찾을 수 없습니다.',
         'error'
       );
       return;
@@ -8312,7 +8456,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       !editingPost.createdAt
     ) {
       triggerToast(
-        '게시글 생성 시각을 확인할 수 없어 수정을 중단했습니다.',
+        '공지사항 등록 시각을 확인할 수 없어 수정을 중단했습니다.',
         'error'
       );
       return;
@@ -8321,25 +8465,24 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     const postDocRef =
       isEditing
         ? doc(
-            COMMUNITY_POSTS_COLLECTION_REF,
+            NOTICE_POSTS_COLLECTION_REF,
             editingPost.id
           )
         : doc(
-            COMMUNITY_POSTS_COLLECTION_REF
+            NOTICE_POSTS_COLLECTION_REF
           );
 
-    setCommunityPostSaving(true);
+    setNoticePostSaving(true);
 
     try {
       await setDoc(
         postDocRef,
         {
           id: postDocRef.id,
-          type: postType,
           title,
           content,
           isPinned: Boolean(
-            communityPostForm.isPinned
+            noticePostForm.isPinned
           ),
           authorUid:
             editingPost?.authorUid ||
@@ -8347,6 +8490,10 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           authorName:
             editingPost?.authorName ||
             auditActor.name,
+          viewCount:
+            Number(
+              editingPost?.viewCount
+            ) || 0,
           createdAt:
             editingPost?.createdAt ||
             serverTimestamp(),
@@ -8356,9 +8503,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       );
 
       triggerToast(
-        `${getCommunityPostTypeLabel(
-          postType
-        )} 게시글을 ${
+        `공지사항을 ${
           isEditing
             ? '수정'
             : '등록'
@@ -8366,20 +8511,18 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         'success'
       );
 
-      setCommunityPostDialog(null);
-      setCommunityPostForm(
-        createDefaultCommunityPostForm(
-          postType
-        )
+      setNoticePostDialog(null);
+      setNoticePostForm(
+        createDefaultNoticePostForm()
       );
     } catch (error) {
       console.error(
-        'Community post save error:',
+        'Notice post save error:',
         error
       );
 
       triggerToast(
-        `게시글 저장에 실패했습니다. 오류 코드: ${
+        `공지사항 저장에 실패했습니다. 오류 코드: ${
           error?.code ||
           error?.message ||
           'unknown-error'
@@ -8387,11 +8530,11 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         'error'
       );
     } finally {
-      setCommunityPostSaving(false);
+      setNoticePostSaving(false);
     }
   };
 
-  const confirmDeleteCommunityPost = (
+  const confirmDeleteNoticePost = (
     post
   ) => {
     if (
@@ -8399,52 +8542,57 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       !post?.id
     ) {
       triggerToast(
-        '관리자 인증과 게시글 정보를 확인해 주세요.',
+        '관리자 인증과 공지사항 정보를 확인해 주세요.',
         'error'
       );
       return;
     }
 
     triggerConfirm(
-      '게시글 삭제',
-      `[${post.title || '제목 없음'}] 게시글을 삭제하시겠습니까? 삭제한 게시글은 복구할 수 없습니다.`,
+      '공지사항 삭제',
+      `[${post.title || '제목 없음'}] 공지사항을 삭제하시겠습니까? 삭제한 게시글은 복구할 수 없습니다.`,
       async () => {
-        setCommunityPostDeletingId(
+        setNoticePostDeletingId(
           post.id
         );
 
         try {
           await deleteDoc(
             doc(
-              COMMUNITY_POSTS_COLLECTION_REF,
+              NOTICE_POSTS_COLLECTION_REF,
               post.id
             )
           );
 
           if (
-            communityPostDialog?.postId ===
+            selectedNoticePostId ===
             post.id
           ) {
-            setCommunityPostDialog(null);
-            setCommunityPostForm(
-              createDefaultCommunityPostForm(
-                post.type
-              )
+            setSelectedNoticePostId('');
+          }
+
+          if (
+            noticePostDialog?.postId ===
+            post.id
+          ) {
+            setNoticePostDialog(null);
+            setNoticePostForm(
+              createDefaultNoticePostForm()
             );
           }
 
           triggerToast(
-            '게시글을 삭제했습니다.',
+            '공지사항을 삭제했습니다.',
             'success'
           );
         } catch (error) {
           console.error(
-            'Community post delete error:',
+            'Notice post delete error:',
             error
           );
 
           triggerToast(
-            `게시글 삭제에 실패했습니다. 오류 코드: ${
+            `공지사항 삭제에 실패했습니다. 오류 코드: ${
               error?.code ||
               error?.message ||
               'unknown-error'
@@ -8452,10 +8600,62 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             'error'
           );
         } finally {
-          setCommunityPostDeletingId('');
+          setNoticePostDeletingId('');
         }
       }
     );
+  };
+
+  const saveNoticeBoardConfig = async () => {
+    if (!isAdminAuthenticated) {
+      triggerToast(
+        '관리자 인증 후 공지사항 목록 설정을 저장할 수 있습니다.',
+        'error'
+      );
+      return;
+    }
+
+    const postsPerPage =
+      getSafeNoticePostsPerPage(
+        noticePostsPerPageInput
+      );
+
+    setNoticeBoardConfigSaving(true);
+
+    try {
+      await setDoc(
+        NOTICE_BOARD_CONFIG_DOC_REF,
+        {
+          postsPerPage,
+          updatedAt:
+            serverTimestamp(),
+        }
+      );
+
+      setNoticePage(1);
+      setAdminNoticePage(1);
+
+      triggerToast(
+        `공지사항 일반 게시글을 페이지당 ${postsPerPage}개씩 표시하도록 저장했습니다.`,
+        'success'
+      );
+    } catch (error) {
+      console.error(
+        'Notice board config save error:',
+        error
+      );
+
+      triggerToast(
+        `공지사항 목록 설정 저장에 실패했습니다. 오류 코드: ${
+          error?.code ||
+          error?.message ||
+          'unknown-error'
+        }`,
+        'error'
+      );
+    } finally {
+      setNoticeBoardConfigSaving(false);
+    }
   };
   
   const updateRequest = async (id, status) => {
@@ -11842,7 +12042,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                     {userTab === 'home' && '상단의 서비스 제목과 아이콘을 클릭하면 언제든 이 초기화면으로 돌아옵니다.'}
                     {userTab === 'history' && '사용자의 대여 신청 현황과 처리 상태를 확인할 수 있는 화면을 준비하고 있습니다.'}
                     {userTab === 'notice' && '운영 공지, 대여 정책, 점검 안내를 확인할 수 있습니다.'}
-                    {userTab === 'faq' && '기기 대여 과정에서 자주 묻는 질문과 답변을 확인할 수 있습니다.'}
+                    {userTab === 'faq' && 'FAQ는 공지사항과 분리된 별도 시스템으로 준비하고 있습니다.'}
                     {userTab === 'notFound' && '입력하신 주소와 일치하는 메뉴를 찾을 수 없습니다.'}
                   </p>
                 </div>
@@ -11889,138 +12089,240 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                       </Button>
                     </div>
                   </div>
-                ) : ['notice', 'faq'].includes(userTab) ? (
-                  <div className="space-y-5">
-                    <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
+                ) : userTab === 'notice' ? (
+                  selectedNoticePost ? (
+                    <div className="space-y-5">
+                      <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                        <div>
+                          <h3 className="text-base font-bold text-slate-900">
+                            공지사항
+                          </h3>
+                          <p className="mt-1 text-xs text-slate-500">
+                            선택한 공지사항의 상세 내용을 확인합니다.
+                          </p>
+                        </div>
+
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="shrink-0 px-4 py-2 text-xs"
+                          onClick={closeNoticePost}
+                        >
+                          목록으로
+                        </Button>
+                      </div>
+
+                      <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                        <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {selectedNoticePost.isPinned && (
+                              <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[10px] font-bold text-orange-700">
+                                상단 고정
+                              </span>
+                            )}
+
+                            <h3 className="break-words text-base font-bold text-slate-900">
+                              {selectedNoticePost.title}
+                            </h3>
+                          </div>
+
+                          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-slate-500">
+                            <span>
+                              등록자: {selectedNoticePost.authorName || '관리자'}
+                            </span>
+                            <span>
+                              등록일: {formatFirestoreDate(
+                                selectedNoticePost.createdAt
+                              )}
+                            </span>
+                            <span>
+                              조회수: {Number(
+                                selectedNoticePost.viewCount
+                              ) || 0}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="min-h-[260px] whitespace-pre-wrap break-words px-5 py-6 text-sm leading-7 text-slate-700">
+                          {selectedNoticePost.content}
+                        </div>
+                      </article>
+                    </div>
+                  ) : (
+                    <div className="space-y-5">
+                      <div className="border-b border-slate-100 pb-4">
                         <h3 className="text-base font-bold text-slate-900">
-                          {getCommunityPostTypeLabel(
-                            currentCommunityPostType
-                          )}
+                          공지사항
                         </h3>
 
                         <p className="mt-1 text-xs leading-5 text-slate-500">
-                          {userTab === 'notice'
-                            ? '운영 공지와 대여 정책, 점검 안내를 최신순으로 확인합니다.'
-                            : '기기 대여 과정에서 자주 묻는 질문과 답변을 확인합니다.'}
+                          제목을 클릭하면 공지사항 상세 내용을 확인할 수 있습니다.
                         </p>
                       </div>
 
-                      {isAdminAuthenticated && (
-                        <Button
-                          type="button"
-                          variant="primary"
-                          className="shrink-0 px-4 py-2 text-xs"
-                          onClick={() =>
-                            openCommunityPostDialog(
-                              currentCommunityPostType
-                            )
-                          }
-                        >
-                          <Plus size={14} />
-                          {userTab === 'notice'
-                            ? '공지사항 작성'
-                            : 'FAQ 작성'}
-                        </Button>
-                      )}
-                    </div>
+                      {!noticePostsReady ? (
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
+                          공지사항을 불러오는 중입니다.
+                        </div>
+                      ) : noticePostsLoadErrorMessage ? (
+                        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-xs leading-5 text-rose-800">
+                          {noticePostsLoadErrorMessage}
+                        </div>
+                      ) : noticePosts.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
+                          등록된 공지사항이 없습니다.
+                        </div>
+                      ) : (
+                        <>
+                          <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                            <table className="min-w-[720px] w-full border-collapse text-left">
+                              <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600">
+                                <tr>
+                                  <th className="w-20 border-b border-slate-200 px-4 py-3 text-center">
+                                    번호
+                                  </th>
+                                  <th className="border-b border-slate-200 px-4 py-3">
+                                    제목
+                                  </th>
+                                  <th className="w-32 border-b border-slate-200 px-4 py-3 text-center">
+                                    등록자
+                                  </th>
+                                  <th className="w-32 border-b border-slate-200 px-4 py-3 text-center">
+                                    등록일
+                                  </th>
+                                  <th className="w-24 border-b border-slate-200 px-4 py-3 text-center">
+                                    조회수
+                                  </th>
+                                </tr>
+                              </thead>
 
-                    {!communityPostsReady ? (
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
-                        게시글을 불러오는 중입니다.
-                      </div>
-                    ) : communityPostsLoadErrorMessage ? (
-                      <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-xs leading-5 text-rose-800">
-                        {communityPostsLoadErrorMessage}
-                      </div>
-                    ) : visibleCommunityPosts.length === 0 ? (
-                      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
-                        등록된 {userTab === 'notice' ? '공지사항' : 'FAQ'}이 없습니다.
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {visibleCommunityPosts.map((post) => (
-                          <article
-                            key={post.id}
-                            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-                          >
-                            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                              <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  {post.isPinned && (
-                                    <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[10px] font-bold text-orange-700">
-                                      상단 고정
-                                    </span>
-                                  )}
+                              <tbody>
+                                {[
+                                  ...pinnedNoticePosts.map(
+                                    (post) => ({
+                                      post,
+                                      number: '공지',
+                                    })
+                                  ),
+                                  ...paginatedNoticePosts.map(
+                                    (post, index) => ({
+                                      post,
+                                      number:
+                                        regularNoticePosts.length -
+                                        (
+                                          (safeNoticePage - 1) *
+                                          noticePostsPerPage
+                                        ) -
+                                        index,
+                                    })
+                                  ),
+                                ].map((item) => (
+                                  <tr
+                                    key={item.post.id}
+                                    className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
+                                  >
+                                    <td className="px-4 py-3 text-center text-xs text-slate-500">
+                                      {item.number}
+                                    </td>
 
-                                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-600">
-                                    {getCommunityPostTypeLabel(
-                                      post.type
-                                    )}
-                                  </span>
-                                </div>
+                                    <td className="px-4 py-3">
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          openNoticePost(
+                                            item.post
+                                          )
+                                        }
+                                        className="break-words text-left text-sm font-semibold text-slate-800 hover:text-orange-600 hover:underline"
+                                      >
+                                        {item.post.isPinned && (
+                                          <span className="mr-2 inline-flex rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-700">
+                                            고정
+                                          </span>
+                                        )}
+                                        {item.post.title}
+                                      </button>
+                                    </td>
 
-                                <h4 className="mt-3 break-words text-base font-bold text-slate-900">
-                                  {post.title}
-                                </h4>
+                                    <td className="px-4 py-3 text-center text-xs text-slate-600">
+                                      {item.post.authorName || '관리자'}
+                                    </td>
 
-                                <div className="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-slate-700">
-                                  {post.content}
-                                </div>
+                                    <td className="px-4 py-3 text-center text-xs text-slate-500">
+                                      {formatFirestoreDate(
+                                        item.post.createdAt
+                                      )}
+                                    </td>
 
-                                <div className="mt-4 text-[10px] text-slate-400">
-                                  작성자: {post.authorName || '관리자'} · 최근 수정:{' '}
-                                  {formatFirestoreTimestamp(
-                                    post.updatedAt ||
-                                    post.createdAt
-                                  )}
-                                </div>
+                                    <td className="px-4 py-3 text-center text-xs text-slate-500">
+                                      {Number(
+                                        item.post.viewCount
+                                      ) || 0}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          {regularNoticePosts.length > 0 && (
+                            <div className="flex items-center justify-center gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="px-3 py-2 text-xs"
+                                disabled={safeNoticePage <= 1}
+                                onClick={() =>
+                                  setNoticePage((prev) =>
+                                    Math.max(1, prev - 1)
+                                  )
+                                }
+                              >
+                                이전
+                              </Button>
+
+                              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
+                                {safeNoticePage} / {noticeTotalPages}
                               </div>
 
-                              {isAdminAuthenticated && (
-                                <div className="flex shrink-0 gap-2">
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="px-3 py-2 text-xs"
-                                    onClick={() =>
-                                      openCommunityPostDialog(
-                                        post.type,
-                                        post
-                                      )
-                                    }
-                                  >
-                                    <Edit3 size={14} />
-                                    수정
-                                  </Button>
-
-                                  <Button
-                                    type="button"
-                                    variant="dangerOutline"
-                                    className="px-3 py-2 text-xs"
-                                    disabled={
-                                      communityPostDeletingId ===
-                                      post.id
-                                    }
-                                    onClick={() =>
-                                      confirmDeleteCommunityPost(
-                                        post
-                                      )
-                                    }
-                                  >
-                                    <Trash2 size={14} />
-                                    {communityPostDeletingId ===
-                                    post.id
-                                      ? '삭제 중'
-                                      : '삭제'}
-                                  </Button>
-                                </div>
-                              )}
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="px-3 py-2 text-xs"
+                                disabled={
+                                  safeNoticePage >=
+                                  noticeTotalPages
+                                }
+                                onClick={() =>
+                                  setNoticePage((prev) =>
+                                    Math.min(
+                                      noticeTotalPages,
+                                      prev + 1
+                                    )
+                                  )
+                                }
+                              >
+                                다음
+                              </Button>
                             </div>
-                          </article>
-                        ))}
-                      </div>
-                    )}
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )
+                ) : userTab === 'faq' ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center">
+                    <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-slate-500 shadow-sm">
+                      <Clock size={22} />
+                    </div>
+
+                    <h3 className="text-base font-bold text-slate-900">
+                      FAQ는 별도 시스템으로 준비중입니다
+                    </h3>
+
+                    <p className="mx-auto mt-2 max-w-xl text-xs leading-5 text-slate-500">
+                      FAQ는 공지사항 데이터베이스와 분리된 별도 저장 구조와 관리 화면으로 이후 단계에서 개발합니다.
+                    </p>
                   </div>
                 ) : (
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center">
@@ -12221,6 +12523,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                     ['laptops', Laptop, '대여 자산 관리'],
                     ['categories', ClipboardList, '자산 카테고리 관리'],
                     ['people', Users, '부서·사용자 관리'],
+                    ['noticePosts', ClipboardList, '공지사항 관리'],
                     ['memberAccounts', UserCircle, '회원 계정 관리'],
                     ['adminAccounts', ShieldCheck, '관리자 ID 관리'],
                     ['settings', Settings, '시스템 설정'],
@@ -13325,6 +13628,284 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                     </div>
                   )}
 
+                                    {/* 공지사항 관리 탭 */}
+                  {adminTab === 'noticePosts' && (
+                    <div className="space-y-6">
+                      <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <h2 className="text-lg font-bold text-slate-900">
+                            공지사항 관리
+                          </h2>
+
+                          <p className="mt-1 text-xs text-slate-500">
+                            사용자 화면에 표시되는 공지사항을 등록, 수정, 삭제하고 목록 표시 개수를 설정합니다.
+                          </p>
+                        </div>
+
+                        <Button
+                          type="button"
+                          variant="primary"
+                          className="shrink-0 px-4 py-2 text-xs"
+                          onClick={() =>
+                            openNoticePostDialog()
+                          }
+                        >
+                          <Plus size={14} />
+                          공지사항 등록
+                        </Button>
+                      </div>
+
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                          <div>
+                            <h3 className="text-sm font-bold text-slate-900">
+                              목록 표시 설정
+                            </h3>
+
+                            <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                              상단 고정 게시글은 제외하고 일반 게시글만 설정한 개수만큼 한 페이지에 표시합니다.
+                            </p>
+                          </div>
+
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                            <Select
+                              label="페이지당 일반 게시글 수"
+                              value={String(
+                                noticePostsPerPageInput
+                              )}
+                              onChange={(value) =>
+                                setNoticePostsPerPageInput(
+                                  Number(value)
+                                )
+                              }
+                            >
+                              {NOTICE_POSTS_PER_PAGE_OPTIONS.map(
+                                (option) => (
+                                  <option
+                                    key={option}
+                                    value={option}
+                                  >
+                                    {option}개
+                                  </option>
+                                )
+                              )}
+                            </Select>
+
+                            <Button
+                              type="button"
+                              variant="primary"
+                              className="h-10 shrink-0 px-4 text-xs"
+                              disabled={
+                                !noticeBoardConfigReady ||
+                                noticeBoardConfigSaving
+                              }
+                              onClick={saveNoticeBoardConfig}
+                            >
+                              <Save size={14} />
+                              {noticeBoardConfigSaving
+                                ? '저장 중'
+                                : '설정 저장'}
+                            </Button>
+                          </div>
+                        </div>
+
+                        {noticeBoardConfigLoadErrorMessage && (
+                          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                            {noticeBoardConfigLoadErrorMessage}
+                          </div>
+                        )}
+                      </div>
+
+                      {!noticePostsReady ? (
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
+                          공지사항을 불러오는 중입니다.
+                        </div>
+                      ) : noticePostsLoadErrorMessage ? (
+                        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-xs leading-5 text-rose-800">
+                          {noticePostsLoadErrorMessage}
+                        </div>
+                      ) : noticePosts.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
+                          등록된 공지사항이 없습니다.
+                        </div>
+                      ) : (
+                        <>
+                          <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                            <table className="min-w-[860px] w-full border-collapse text-left">
+                              <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600">
+                                <tr>
+                                  <th className="w-20 border-b border-slate-200 px-4 py-3 text-center">
+                                    번호
+                                  </th>
+                                  <th className="border-b border-slate-200 px-4 py-3">
+                                    제목
+                                  </th>
+                                  <th className="w-32 border-b border-slate-200 px-4 py-3 text-center">
+                                    등록자
+                                  </th>
+                                  <th className="w-32 border-b border-slate-200 px-4 py-3 text-center">
+                                    등록일
+                                  </th>
+                                  <th className="w-24 border-b border-slate-200 px-4 py-3 text-center">
+                                    조회수
+                                  </th>
+                                  <th className="w-36 border-b border-slate-200 px-4 py-3 text-center">
+                                    관리
+                                  </th>
+                                </tr>
+                              </thead>
+
+                              <tbody>
+                                {[
+                                  ...pinnedNoticePosts.map(
+                                    (post) => ({
+                                      post,
+                                      number: '공지',
+                                    })
+                                  ),
+                                  ...paginatedAdminNoticePosts.map(
+                                    (post, index) => ({
+                                      post,
+                                      number:
+                                        regularNoticePosts.length -
+                                        (
+                                          (safeAdminNoticePage - 1) *
+                                          noticePostsPerPage
+                                        ) -
+                                        index,
+                                    })
+                                  ),
+                                ].map((item) => (
+                                  <tr
+                                    key={item.post.id}
+                                    className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
+                                  >
+                                    <td className="px-4 py-3 text-center text-xs text-slate-500">
+                                      {item.number}
+                                    </td>
+
+                                    <td className="px-4 py-3">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        {item.post.isPinned && (
+                                          <span className="inline-flex rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-700">
+                                            고정
+                                          </span>
+                                        )}
+
+                                        <span className="break-words text-sm font-semibold text-slate-800">
+                                          {item.post.title}
+                                        </span>
+                                      </div>
+                                    </td>
+
+                                    <td className="px-4 py-3 text-center text-xs text-slate-600">
+                                      {item.post.authorName || '관리자'}
+                                    </td>
+
+                                    <td className="px-4 py-3 text-center text-xs text-slate-500">
+                                      {formatFirestoreDate(
+                                        item.post.createdAt
+                                      )}
+                                    </td>
+
+                                    <td className="px-4 py-3 text-center text-xs text-slate-500">
+                                      {Number(
+                                        item.post.viewCount
+                                      ) || 0}
+                                    </td>
+
+                                    <td className="px-4 py-3">
+                                      <div className="flex justify-center gap-2">
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          className="px-3 py-2 text-xs"
+                                          onClick={() =>
+                                            openNoticePostDialog(
+                                              item.post
+                                            )
+                                          }
+                                        >
+                                          <Edit3 size={14} />
+                                          수정
+                                        </Button>
+
+                                        <Button
+                                          type="button"
+                                          variant="dangerOutline"
+                                          className="px-3 py-2 text-xs"
+                                          disabled={
+                                            noticePostDeletingId ===
+                                            item.post.id
+                                          }
+                                          onClick={() =>
+                                            confirmDeleteNoticePost(
+                                              item.post
+                                            )
+                                          }
+                                        >
+                                          <Trash2 size={14} />
+                                          {noticePostDeletingId ===
+                                          item.post.id
+                                            ? '삭제 중'
+                                            : '삭제'}
+                                        </Button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          {regularNoticePosts.length > 0 && (
+                            <div className="flex items-center justify-center gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="px-3 py-2 text-xs"
+                                disabled={
+                                  safeAdminNoticePage <= 1
+                                }
+                                onClick={() =>
+                                  setAdminNoticePage((prev) =>
+                                    Math.max(1, prev - 1)
+                                  )
+                                }
+                              >
+                                이전
+                              </Button>
+
+                              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
+                                {safeAdminNoticePage} / {adminNoticeTotalPages}
+                              </div>
+
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="px-3 py-2 text-xs"
+                                disabled={
+                                  safeAdminNoticePage >=
+                                  adminNoticeTotalPages
+                                }
+                                onClick={() =>
+                                  setAdminNoticePage((prev) =>
+                                    Math.min(
+                                      adminNoticeTotalPages,
+                                      prev + 1
+                                    )
+                                  )
+                                }
+                              >
+                                다음
+                              </Button>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+
                   {/* 회원 계정 승인·차단 관리 탭 */}
                   {adminTab === 'memberAccounts' && (
                     <div className="space-y-6">
@@ -13649,7 +14230,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                       <div className="border-b border-slate-100 pb-4">
                         <h2 className="text-lg font-bold text-slate-900">관리자 ID 관리</h2>
                         <p className="text-xs text-slate-500 mt-1">
-                          공지사항, FAQ 작성 권한과 관리자 모드 보안 강화를 위한 관리자 ID 등록 대장입니다.
+                          공지사항 작성 권한과 관리자 모드 보안 강화를 위한 관리자 ID 등록 대장입니다.
                         </p>
                       </div>
 
@@ -14714,7 +15295,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         </div>
       )}
 
-            {communityPostDialog && (
+      {noticePostDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
@@ -14724,23 +15305,21 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 className="text-base font-bold text-slate-900">
-                  {getCommunityPostTypeLabel(
-                    communityPostForm.type
-                  )}{' '}
-                  {communityPostDialog.mode === 'edit'
+                  공지사항{' '}
+                  {noticePostDialog.mode === 'edit'
                     ? '수정'
-                    : '작성'}
+                    : '등록'}
                 </h3>
 
                 <p className="mt-1 text-xs leading-5 text-slate-500">
-                  게시글 작성과 수정은 관리자 인증 상태에서만 가능합니다.
+                  공지사항 작성과 수정은 관리자 모드에서만 가능합니다.
                 </p>
               </div>
 
               <button
                 type="button"
-                onClick={closeCommunityPostDialog}
-                disabled={communityPostSaving}
+                onClick={closeNoticePostDialog}
+                disabled={noticePostSaving}
                 className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed"
               >
                 <X size={18} />
@@ -14749,41 +15328,28 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
             <div className="mt-5 space-y-4">
               <Input
-                label={
-                  communityPostForm.type ===
-                  COMMUNITY_POST_TYPE.FAQ
-                    ? '질문'
-                    : '제목'
-                }
-                value={communityPostForm.title}
+                label="제목"
+                value={noticePostForm.title}
                 onChange={(value) =>
-                  setCommunityPostForm(
+                  setNoticePostForm(
                     (prev) => ({
                       ...prev,
                       title: value,
                     })
                   )
                 }
-                placeholder={
-                  communityPostForm.type ===
-                  COMMUNITY_POST_TYPE.FAQ
-                    ? '자주 묻는 질문을 입력해 주세요.'
-                    : '공지사항 제목을 입력해 주세요.'
-                }
+                placeholder="공지사항 제목을 입력해 주세요."
               />
 
               <label className="block">
                 <span className="mb-1.5 block text-xs font-semibold text-slate-600">
-                  {communityPostForm.type ===
-                  COMMUNITY_POST_TYPE.FAQ
-                    ? '답변'
-                    : '내용'}
+                  내용
                 </span>
 
                 <textarea
-                  value={communityPostForm.content}
+                  value={noticePostForm.content}
                   onChange={(event) =>
-                    setCommunityPostForm(
+                    setNoticePostForm(
                       (prev) => ({
                         ...prev,
                         content:
@@ -14791,12 +15357,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                       })
                     )
                   }
-                  placeholder={
-                    communityPostForm.type ===
-                    COMMUNITY_POST_TYPE.FAQ
-                      ? '질문에 대한 답변을 입력해 주세요.'
-                      : '공지사항 내용을 입력해 주세요.'
-                  }
+                  placeholder="공지사항 내용을 입력해 주세요."
                   className="h-56 w-full rounded-xl border border-slate-200 p-3 text-xs leading-6 outline-none mk-form-ring-focus"
                 />
               </label>
@@ -14805,10 +15366,10 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                 <input
                   type="checkbox"
                   checked={
-                    communityPostForm.isPinned
+                    noticePostForm.isPinned
                   }
                   onChange={(event) =>
-                    setCommunityPostForm(
+                    setNoticePostForm(
                       (prev) => ({
                         ...prev,
                         isPinned:
@@ -14825,7 +15386,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                   </div>
 
                   <div className="mt-0.5 text-[10px] text-slate-500">
-                    체크하면 같은 게시판의 일반 게시글보다 먼저 표시됩니다.
+                    상단 고정 게시글은 페이지당 일반 게시글 수에 포함되지 않습니다.
                   </div>
                 </div>
               </label>
@@ -14835,8 +15396,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
               <Button
                 type="button"
                 variant="outline"
-                disabled={communityPostSaving}
-                onClick={closeCommunityPostDialog}
+                disabled={noticePostSaving}
+                onClick={closeNoticePostDialog}
               >
                 취소
               </Button>
@@ -14844,15 +15405,15 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
               <Button
                 type="button"
                 variant="primary"
-                disabled={communityPostSaving}
-                onClick={saveCommunityPost}
+                disabled={noticePostSaving}
+                onClick={saveNoticePost}
               >
-                {communityPostSaving
+                {noticePostSaving
                   ? '저장 중...'
-                  : communityPostDialog.mode ===
+                  : noticePostDialog.mode ===
                       'edit'
                     ? '수정 저장'
-                    : '게시글 등록'}
+                    : '공지사항 등록'}
               </Button>
             </div>
           </motion.div>
