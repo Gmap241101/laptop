@@ -198,46 +198,6 @@ const createDefaultUserActionForm = () => ({
   purpose: '',
 });
 
-const USER_REQUEST_ACTION = {
-  CHANGE: 'change',
-  CANCEL: 'cancel',
-  EXTEND: 'extend',
-  RETURN: 'return',
-};
-
-const USER_REQUEST_REVIEW_STATUS = {
-  PENDING: 'pending',
-  APPROVED: 'approved',
-  DENIED: 'denied',
-};
-
-const getUserRequestActionLabel = (type) => {
-  if (type === USER_REQUEST_ACTION.CHANGE) return '신청 변경 요청';
-  if (type === USER_REQUEST_ACTION.CANCEL) return '신청 취소 요청';
-  if (type === USER_REQUEST_ACTION.EXTEND) return '대여 연장 요청';
-  if (type === USER_REQUEST_ACTION.RETURN) return '조기 반납 요청';
-
-  return '사용자 요청';
-};
-
-const getUserRequestReviewStatusLabel = (status) => {
-  if (status === USER_REQUEST_REVIEW_STATUS.PENDING) return '검토 대기';
-  if (status === USER_REQUEST_REVIEW_STATUS.APPROVED) return '승인';
-  if (status === USER_REQUEST_REVIEW_STATUS.DENIED) return '불허';
-
-  return '상태 미지정';
-};
-
-const createDefaultUserActionForm = () => ({
-  type: '',
-  reason: '',
-  team: '',
-  borrower: '',
-  startDate: '',
-  dueDate: '',
-  purpose: '',
-});
-
 const RENTAL_REQUEST_STATUS_TRANSITIONS = {
   [STATUS.REQUESTED]: [
     STATUS.APPROVED,
