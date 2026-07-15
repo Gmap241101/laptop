@@ -76,6 +76,10 @@ const adminAccountCreationAuth = getAuth(adminAccountCreationApp);
 const ADMIN_ACCOUNTS_COLLECTION_REF = collection(db, 'adminAccounts');
 const RENTAL_REQUESTS_COLLECTION_REF = collection(db, 'rentalRequests');
 const USER_ACCOUNTS_COLLECTION_NAME = 'userAccounts';
+const USER_ACCOUNTS_COLLECTION_REF = collection(
+  db,
+  USER_ACCOUNTS_COLLECTION_NAME
+);
 
 const PUBLIC_CONFIG_DOC_REF = doc(
   db,
@@ -1440,8 +1444,10 @@ const createDefaultAdminAuthForm = () => ({
 });
 
 const USER_PROFILE_STATUS = {
+  PENDING: 'pending',
   ACTIVE: 'active',
   BLOCKED: 'blocked',
+  RETIRED: 'retired',
 };
 
 const createDefaultUserAuthForm = () => ({
@@ -1844,6 +1850,27 @@ function App() {
   const [userProfileForm, setUserProfileForm] = useState(createDefaultUserProfileForm);
   const [userProfileSaving, setUserProfileSaving] = useState(false);
 
+  const [adminUserAccounts, setAdminUserAccounts] = useState([]);
+  const [adminUserAccountsReady, setAdminUserAccountsReady] = useState(false);
+  const [
+    adminUserAccountsLoadErrorMessage,
+    setAdminUserAccountsLoadErrorMessage,
+  ] = useState('');
+
+  const [adminUserAccountQuery, setAdminUserAccountQuery] = useState('');
+
+  const [
+    adminUserAccountStatusFilter,
+    setAdminUserAccountStatusFilter,
+  ] = useState('all');
+
+  const [
+    adminUserAccountSavingUid,
+    setAdminUserAccountSavingUid,
+  ] = useState('');
+
+  const userStatusLogoutInProgressRef = useRef(false);
+
   const [editingAdminAccountId, setEditingAdminAccountId] = useState('');
   const [adminAccountEditForm, setAdminAccountEditForm] = useState(createDefaultAdminAccountEditForm);
 
@@ -2050,6 +2077,96 @@ function App() {
     currentAuthRoleErrorMessage,
     currentAuthAdminAccount,
     authenticatedAdminId,
+  ]);
+
+  useEffect(() => {
+    if (
+      !firebaseAuthUser ||
+      !currentAuthRoleReady ||
+      currentAuthAdminAccount ||
+      authenticatedAdminId ||
+      !userProfileReady ||
+      !userProfile ||
+      userProfile.uid !== firebaseAuthUser.uid ||
+      userAuthLoading
+    ) {
+      return;
+    }
+
+    const currentStatus =
+      userProfile.status || '';
+
+    if (
+      currentStatus ===
+      USER_PROFILE_STATUS.ACTIVE
+    ) {
+      return;
+    }
+
+    if (
+      userStatusLogoutInProgressRef.current
+    ) {
+      return;
+    }
+
+    userStatusLogoutInProgressRef.current = true;
+
+    const logoutMessage =
+      currentStatus ===
+      USER_PROFILE_STATUS.PENDING
+        ? '관리자 승인 대기 상태로 변경되어 로그아웃되었습니다.'
+        : currentStatus ===
+            USER_PROFILE_STATUS.BLOCKED
+          ? '관리자에 의해 이용이 차단되어 로그아웃되었습니다.'
+          : currentStatus ===
+              USER_PROFILE_STATUS.RETIRED
+            ? '이용 종료 상태로 변경되어 로그아웃되었습니다.'
+            : '현재 회원 상태에서는 서비스를 이용할 수 없어 로그아웃되었습니다.';
+
+    const logoutInactiveUser = async () => {
+      try {
+        await signOut(firebaseAuth);
+
+        clearAdminAuthSession();
+        setAuthenticatedAdminId('');
+        setAdminAuthExpiresAt(0);
+        setUserAuthForm(
+          createDefaultUserAuthForm()
+        );
+
+        pushAppPath('user', 'login');
+        setView('user');
+        setUserTab('login');
+        setIsCommunityMenuOpen(false);
+
+        triggerToast(
+          logoutMessage,
+          'error'
+        );
+      } catch (error) {
+        console.error(
+          'Inactive user automatic logout error:',
+          error
+        );
+
+        triggerToast(
+          '회원 상태 변경은 확인했지만 자동 로그아웃에 실패했습니다. 페이지를 새로고침해 주세요.',
+          'error'
+        );
+      } finally {
+        userStatusLogoutInProgressRef.current = false;
+      }
+    };
+
+    void logoutInactiveUser();
+  }, [
+    firebaseAuthUser,
+    currentAuthRoleReady,
+    currentAuthAdminAccount,
+    authenticatedAdminId,
+    userProfileReady,
+    userProfile,
+    userAuthLoading,
   ]);
 
   const goToUserHome = () => {
@@ -2556,6 +2673,82 @@ function App() {
           message,
           type: 'error',
         });
+      }
+    );
+
+    return unsubscribe;
+  }, [
+    firebaseAuthReady,
+    currentAuthRoleReady,
+    authenticatedAdminId,
+    currentAuthAdminAccount,
+  ]);
+
+  useEffect(() => {
+    if (!firebaseAuthReady || !currentAuthRoleReady) {
+      setAdminUserAccountsReady(false);
+      return;
+    }
+
+    const shouldLoadUserAccounts =
+      Boolean(authenticatedAdminId) &&
+      Boolean(currentAuthAdminAccount);
+
+    if (!shouldLoadUserAccounts) {
+      setAdminUserAccounts([]);
+      setAdminUserAccountsReady(true);
+      setAdminUserAccountsLoadErrorMessage('');
+      return;
+    }
+
+    setAdminUserAccountsReady(false);
+    setAdminUserAccountsLoadErrorMessage('');
+
+    const unsubscribe = onSnapshot(
+      USER_ACCOUNTS_COLLECTION_REF,
+      (snapshot) => {
+        const nextUserAccounts = snapshot.docs
+          .map((userDoc) => ({
+            ...userDoc.data(),
+            uid:
+              userDoc.data().uid ||
+              userDoc.id,
+          }))
+          .sort((first, second) =>
+            String(
+              first.name ||
+              first.email ||
+              first.uid ||
+              ''
+            ).localeCompare(
+              String(
+                second.name ||
+                second.email ||
+                second.uid ||
+                ''
+              ),
+              'ko'
+            )
+          );
+
+        setAdminUserAccounts(nextUserAccounts);
+        setAdminUserAccountsReady(true);
+        setAdminUserAccountsLoadErrorMessage('');
+      },
+      (error) => {
+        const message =
+          '회원 계정 목록을 불러오지 못했습니다. Firestore Rules의 userAccounts 목록 조회 권한을 확인해 주세요.';
+
+        console.error(
+          'User accounts collection sync error:',
+          error
+        );
+
+        setAdminUserAccounts([]);
+        setAdminUserAccountsReady(true);
+        setAdminUserAccountsLoadErrorMessage(message);
+
+        triggerToast(message, 'error');
       }
     );
 
@@ -3420,7 +3613,7 @@ function App() {
             name,
             team,
             phone,
-            status: USER_PROFILE_STATUS.ACTIVE,
+            status: USER_PROFILE_STATUS.PENDING,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           }
@@ -3428,11 +3621,21 @@ function App() {
 
         createdSignupUser = null;
 
+        await signOut(firebaseAuth);
+
         setUserAuthForm(createDefaultUserAuthForm());
+
+        pushAppPath('user', 'login');
+        setView('user');
+        setUserTab('login');
+        setIsCommunityMenuOpen(false);
+
         triggerToast(
-          '회원가입이 완료되었습니다. 로그인 상태로 전환되었습니다.',
+          '가입 신청이 접수되었습니다. 관리자 승인 후 로그인할 수 있습니다.',
           'success'
         );
+
+        return;
       } else {
         const credential = await signInWithEmailAndPassword(
           firebaseAuth,
@@ -3453,6 +3656,58 @@ function App() {
 
           triggerToast(
             '관리자 계정은 사용자 로그인 화면이 아니라 관리자 모드에서 로그인해 주세요.',
+            'error'
+          );
+
+          return;
+        }
+
+        const userAccountSnapshot = await getDoc(
+          doc(
+            db,
+            USER_ACCOUNTS_COLLECTION_NAME,
+            credential.user.uid
+          )
+        );
+
+        if (!userAccountSnapshot.exists()) {
+          await signOut(firebaseAuth);
+
+          signedInUserForRoleCheck = null;
+
+          triggerToast(
+            '등록된 회원 정보가 없습니다. 관리자에게 문의해 주세요.',
+            'error'
+          );
+
+          return;
+        }
+
+        const signedInUserStatus =
+          userAccountSnapshot.data().status || '';
+
+        if (
+          signedInUserStatus !==
+          USER_PROFILE_STATUS.ACTIVE
+        ) {
+          await signOut(firebaseAuth);
+
+          signedInUserForRoleCheck = null;
+
+          const blockedMessage =
+            signedInUserStatus ===
+            USER_PROFILE_STATUS.PENDING
+              ? '관리자 승인 대기 중인 계정입니다.'
+              : signedInUserStatus ===
+                  USER_PROFILE_STATUS.BLOCKED
+                ? '이용이 차단된 계정입니다. 관리자에게 문의해 주세요.'
+                : signedInUserStatus ===
+                    USER_PROFILE_STATUS.RETIRED
+                  ? '이용이 종료된 계정입니다. 관리자에게 문의해 주세요.'
+                  : '현재 회원 상태에서는 로그인할 수 없습니다.';
+
+          triggerToast(
+            blockedMessage,
             'error'
           );
 
@@ -3753,6 +4008,278 @@ function App() {
     (safeAdminAccountPage - 1) * ADMIN_ACCOUNT_PAGE_SIZE,
     safeAdminAccountPage * ADMIN_ACCOUNT_PAGE_SIZE
   );
+
+  const managedUserAccounts = useMemo(() => {
+    const adminUidSet = new Set(
+      (registeredAdminAccounts || [])
+        .flatMap((account) => [
+          account.id,
+          account.authUid,
+        ])
+        .filter(Boolean)
+    );
+
+    return (adminUserAccounts || []).filter(
+      (account) =>
+        !adminUidSet.has(account.uid)
+    );
+  }, [
+    adminUserAccounts,
+    registeredAdminAccounts,
+  ]);
+
+  const filteredManagedUserAccounts =
+    useMemo(() => {
+      const normalizedQuery =
+        adminUserAccountQuery
+          .trim()
+          .toLowerCase();
+
+      return managedUserAccounts.filter(
+        (account) => {
+          const accountStatus =
+            account.status || '';
+
+          const matchesStatus =
+            adminUserAccountStatusFilter ===
+              'all' ||
+            accountStatus ===
+              adminUserAccountStatusFilter;
+
+          if (!matchesStatus) {
+            return false;
+          }
+
+          if (!normalizedQuery) {
+            return true;
+          }
+
+          return [
+            account.name,
+            account.email,
+            account.team,
+            account.phone,
+            account.uid,
+          ].some((value) =>
+            String(value || '')
+              .toLowerCase()
+              .includes(normalizedQuery)
+          );
+        }
+      );
+    }, [
+      managedUserAccounts,
+      adminUserAccountQuery,
+      adminUserAccountStatusFilter,
+    ]);
+
+  const adminUserAccountStatusCounts =
+    useMemo(
+      () => ({
+        pending:
+          managedUserAccounts.filter(
+            (account) =>
+              account.status ===
+              USER_PROFILE_STATUS.PENDING
+          ).length,
+
+        active:
+          managedUserAccounts.filter(
+            (account) =>
+              account.status ===
+              USER_PROFILE_STATUS.ACTIVE
+          ).length,
+
+        blocked:
+          managedUserAccounts.filter(
+            (account) =>
+              account.status ===
+              USER_PROFILE_STATUS.BLOCKED
+          ).length,
+
+        retired:
+          managedUserAccounts.filter(
+            (account) =>
+              account.status ===
+              USER_PROFILE_STATUS.RETIRED
+          ).length,
+      }),
+      [managedUserAccounts]
+    );
+
+  const getUserAccountStatusLabel = (
+    status
+  ) => {
+    if (
+      status ===
+      USER_PROFILE_STATUS.PENDING
+    ) {
+      return '승인 대기';
+    }
+
+    if (
+      status ===
+      USER_PROFILE_STATUS.ACTIVE
+    ) {
+      return '활성';
+    }
+
+    if (
+      status ===
+      USER_PROFILE_STATUS.BLOCKED
+    ) {
+      return '차단';
+    }
+
+    if (
+      status ===
+      USER_PROFILE_STATUS.RETIRED
+    ) {
+      return '이용 종료';
+    }
+
+    return '상태 미지정';
+  };
+
+  const getUserAccountStatusClassName = (
+    status
+  ) => {
+    if (
+      status ===
+      USER_PROFILE_STATUS.PENDING
+    ) {
+      return 'border-amber-200 bg-amber-50 text-amber-700';
+    }
+
+    if (
+      status ===
+      USER_PROFILE_STATUS.ACTIVE
+    ) {
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    }
+
+    if (
+      status ===
+      USER_PROFILE_STATUS.BLOCKED
+    ) {
+      return 'border-rose-200 bg-rose-50 text-rose-700';
+    }
+
+    if (
+      status ===
+      USER_PROFILE_STATUS.RETIRED
+    ) {
+      return 'border-slate-300 bg-slate-100 text-slate-700';
+    }
+
+    return 'border-slate-200 bg-white text-slate-600';
+  };
+
+  const updateUserAccountStatus = async (
+    account,
+    nextStatus
+  ) => {
+    const userUid =
+      account?.uid || '';
+
+    if (
+      !isAdminAuthenticated ||
+      !userUid
+    ) {
+      triggerToast(
+        '관리자 인증과 회원 UID를 확인해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    if (
+      ![
+        USER_PROFILE_STATUS.PENDING,
+        USER_PROFILE_STATUS.ACTIVE,
+        USER_PROFILE_STATUS.BLOCKED,
+        USER_PROFILE_STATUS.RETIRED,
+      ].includes(nextStatus)
+    ) {
+      triggerToast(
+        '지원하지 않는 회원 상태입니다.',
+        'error'
+      );
+      return;
+    }
+
+    setAdminUserAccountSavingUid(
+      userUid
+    );
+
+    try {
+      await setDoc(
+        doc(
+          db,
+          USER_ACCOUNTS_COLLECTION_NAME,
+          userUid
+        ),
+        {
+          status: nextStatus,
+          updatedAt:
+            serverTimestamp(),
+        },
+        {
+          merge: true,
+        }
+      );
+
+      triggerToast(
+        `${
+          account.name ||
+          account.email ||
+          userUid
+        } 회원을 ${getUserAccountStatusLabel(
+          nextStatus
+        )} 상태로 변경했습니다.`,
+        'success'
+      );
+    } catch (error) {
+      console.error(
+        'User account status update error:',
+        error
+      );
+
+      triggerToast(
+        `회원 상태 변경에 실패했습니다. 오류 코드: ${
+          error?.code ||
+          error?.message ||
+          'unknown-error'
+        }`,
+        'error'
+      );
+    } finally {
+      setAdminUserAccountSavingUid('');
+    }
+  };
+
+  const confirmUserAccountStatusChange = (
+    account,
+    nextStatus
+  ) => {
+    const accountLabel =
+      account?.name ||
+      account?.email ||
+      account?.uid ||
+      '선택한 회원';
+
+    triggerConfirm(
+      '회원 상태 변경',
+      `${accountLabel} 회원을 ${getUserAccountStatusLabel(
+        nextStatus
+      )} 상태로 변경하시겠습니까?`,
+      () =>
+        updateUserAccountStatus(
+          account,
+          nextStatus
+        )
+    );
+  };
 
   const registerAdminAccount = async () => {
     const adminLoginId = adminAccountForm.adminLoginId.trim();
@@ -4234,7 +4761,7 @@ function App() {
           name,
           team,
           phone,
-          status: userProfile?.status || USER_PROFILE_STATUS.ACTIVE,
+          status: userProfile?.status || USER_PROFILE_STATUS.PENDING,
           createdAt: userProfile?.createdAt || serverTimestamp(),
           updatedAt: serverTimestamp(),
         },
@@ -9591,6 +10118,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                     ['laptops', Laptop, '대여 자산 관리'],
                     ['categories', ClipboardList, '자산 카테고리 관리'],
                     ['people', Users, '부서·사용자 관리'],
+                    ['memberAccounts', UserCircle, '회원 계정 관리'],
                     ['adminAccounts', ShieldCheck, '관리자 ID 관리'],
                     ['settings', Settings, '시스템 설정'],
                   ].map(([key, Icon, label]) => (
@@ -10485,6 +11013,324 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                           변경사항 저장
                         </Button>
                       </div>
+                    </div>
+                  )}
+
+                  {/* 회원 계정 승인·차단 관리 탭 */}
+                  {adminTab === 'memberAccounts' && (
+                    <div className="space-y-6">
+                      <div className="border-b border-slate-100 pb-4">
+                        <h2 className="text-lg font-bold text-slate-900">
+                          회원 계정 관리
+                        </h2>
+
+                        <p className="mt-1 text-xs text-slate-500">
+                          신규 가입 승인, 이용 차단, 차단 해제와 이용 종료 상태를 관리합니다.
+                        </p>
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        {[
+                          [
+                            '승인 대기',
+                            adminUserAccountStatusCounts.pending,
+                            'border-amber-200 bg-amber-50 text-amber-700',
+                          ],
+                          [
+                            '활성',
+                            adminUserAccountStatusCounts.active,
+                            'border-emerald-200 bg-emerald-50 text-emerald-700',
+                          ],
+                          [
+                            '차단',
+                            adminUserAccountStatusCounts.blocked,
+                            'border-rose-200 bg-rose-50 text-rose-700',
+                          ],
+                          [
+                            '이용 종료',
+                            adminUserAccountStatusCounts.retired,
+                            'border-slate-200 bg-slate-100 text-slate-700',
+                          ],
+                        ].map(
+                          ([
+                            label,
+                            count,
+                            className,
+                          ]) => (
+                            <div
+                              key={label}
+                              className={`rounded-2xl border p-4 ${className}`}
+                            >
+                              <div className="text-xs font-semibold">
+                                {label}
+                              </div>
+
+                              <div className="mt-1 text-2xl font-bold">
+                                {count}
+                              </div>
+                            </div>
+                          )
+                        )}
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-[1fr_180px]">
+                        <label className="block">
+                          <span className="mb-1.5 block text-xs font-semibold tracking-wide text-slate-600">
+                            회원 검색
+                          </span>
+
+                          <div className="relative">
+                            <Search
+                              size={15}
+                              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                            />
+
+                            <input
+                              value={
+                                adminUserAccountQuery
+                              }
+                              onChange={(event) =>
+                                setAdminUserAccountQuery(
+                                  event.target.value
+                                )
+                              }
+                              placeholder="이름, 이메일, 부서, 전화번호, UID"
+                              className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-xs outline-none mk-form-border-focus"
+                            />
+                          </div>
+                        </label>
+
+                        <label className="block">
+                          <span className="mb-1.5 block text-xs font-semibold tracking-wide text-slate-600">
+                            상태
+                          </span>
+
+                          <select
+                            value={
+                              adminUserAccountStatusFilter
+                            }
+                            onChange={(event) =>
+                              setAdminUserAccountStatusFilter(
+                                event.target.value
+                              )
+                            }
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none mk-form-border-focus"
+                          >
+                            <option value="all">
+                              전체
+                            </option>
+
+                            <option
+                              value={
+                                USER_PROFILE_STATUS.PENDING
+                              }
+                            >
+                              승인 대기
+                            </option>
+
+                            <option
+                              value={
+                                USER_PROFILE_STATUS.ACTIVE
+                              }
+                            >
+                              활성
+                            </option>
+
+                            <option
+                              value={
+                                USER_PROFILE_STATUS.BLOCKED
+                              }
+                            >
+                              차단
+                            </option>
+
+                            <option
+                              value={
+                                USER_PROFILE_STATUS.RETIRED
+                              }
+                            >
+                              이용 종료
+                            </option>
+                          </select>
+                        </label>
+                      </div>
+
+                      {!adminUserAccountsReady ? (
+                        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
+                          회원 계정 목록을 불러오는 중입니다.
+                        </div>
+                      ) : adminUserAccountsLoadErrorMessage ? (
+                        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-xs leading-5 text-rose-700">
+                          {
+                            adminUserAccountsLoadErrorMessage
+                          }
+                        </div>
+                      ) : filteredManagedUserAccounts.length ===
+                        0 ? (
+                        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
+                          검색 조건에 맞는 회원 계정이 없습니다.
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {filteredManagedUserAccounts.map(
+                            (account) => {
+                              const accountStatus =
+                                account.status || '';
+
+                              const isSaving =
+                                adminUserAccountSavingUid ===
+                                account.uid;
+
+                              const createdAtText =
+                                typeof account.createdAt
+                                  ?.toDate === 'function'
+                                  ? account.createdAt
+                                      .toDate()
+                                      .toLocaleString(
+                                        'ko-KR'
+                                      )
+                                  : '-';
+
+                              return (
+                                <div
+                                  key={account.uid}
+                                  className="rounded-2xl border border-slate-200 bg-white p-4"
+                                >
+                                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                    <div className="min-w-0 space-y-2">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <div className="font-bold text-slate-900">
+                                          {account.name ||
+                                            '이름 미등록'}
+                                        </div>
+
+                                        <span
+                                          className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getUserAccountStatusClassName(
+                                            accountStatus
+                                          )}`}
+                                        >
+                                          {getUserAccountStatusLabel(
+                                            accountStatus
+                                          )}
+                                        </span>
+                                      </div>
+
+                                      <div className="grid gap-x-6 gap-y-1 text-xs text-slate-600 sm:grid-cols-2">
+                                        <div>
+                                          이메일:{' '}
+                                          <span className="text-slate-800">
+                                            {account.email ||
+                                              '-'}
+                                          </span>
+                                        </div>
+
+                                        <div>
+                                          부서:{' '}
+                                          <span className="text-slate-800">
+                                            {account.team ||
+                                              '-'}
+                                          </span>
+                                        </div>
+
+                                        <div>
+                                          전화번호:{' '}
+                                          <span className="text-slate-800">
+                                            {account.phone ||
+                                              '-'}
+                                          </span>
+                                        </div>
+
+                                        <div>
+                                          가입일:{' '}
+                                          <span className="text-slate-800">
+                                            {createdAtText}
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      <div className="break-all text-[10px] text-slate-400">
+                                        UID: {account.uid}
+                                      </div>
+                                    </div>
+
+                                    <div className="flex shrink-0 flex-wrap gap-2 lg:max-w-[330px] lg:justify-end">
+                                      {accountStatus !==
+                                        USER_PROFILE_STATUS.ACTIVE && (
+                                        <Button
+                                          variant="primary"
+                                          className="px-3 py-2 text-xs"
+                                          disabled={
+                                            isSaving
+                                          }
+                                          onClick={() =>
+                                            confirmUserAccountStatusChange(
+                                              account,
+                                              USER_PROFILE_STATUS.ACTIVE
+                                            )
+                                          }
+                                        >
+                                          <CheckCircle2
+                                            size={14}
+                                          />
+
+                                          {accountStatus ===
+                                          USER_PROFILE_STATUS.PENDING
+                                            ? '가입 승인'
+                                            : '이용 재개'}
+                                        </Button>
+                                      )}
+
+                                      {accountStatus !==
+                                        USER_PROFILE_STATUS.BLOCKED && (
+                                        <Button
+                                          variant="dangerOutline"
+                                          className="px-3 py-2 text-xs"
+                                          disabled={
+                                            isSaving
+                                          }
+                                          onClick={() =>
+                                            confirmUserAccountStatusChange(
+                                              account,
+                                              USER_PROFILE_STATUS.BLOCKED
+                                            )
+                                          }
+                                        >
+                                          <XCircle
+                                            size={14}
+                                          />
+                                          이용 차단
+                                        </Button>
+                                      )}
+
+                                      {accountStatus !==
+                                        USER_PROFILE_STATUS.RETIRED && (
+                                        <Button
+                                          variant="outline"
+                                          className="px-3 py-2 text-xs"
+                                          disabled={
+                                            isSaving
+                                          }
+                                          onClick={() =>
+                                            confirmUserAccountStatusChange(
+                                              account,
+                                              USER_PROFILE_STATUS.RETIRED
+                                            )
+                                          }
+                                        >
+                                          <LogOut
+                                            size={14}
+                                          />
+                                          이용 종료
+                                        </Button>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            }
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
 
