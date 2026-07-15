@@ -6950,8 +6950,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     }
   };
 
-  };
-
   const getCurrentAdminAuditActor = () => ({
     uid:
       firebaseAuth.currentUser?.uid ||
