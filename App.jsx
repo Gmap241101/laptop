@@ -166,6 +166,7 @@ const statusStyle = {
   '신청중': 'bg-amber-50 text-amber-700 border-amber-200',
   [DISPLAY_STATUS.RESERVED]: 'bg-sky-50 text-sky-700 border-sky-200',
   '대여중': 'bg-blue-50 text-blue-700 border-blue-200',
+  '연체': 'bg-rose-50 text-rose-700 border-rose-200',
   '보류': 'bg-purple-50 text-purple-700 border-purple-200',
   '불허': 'bg-rose-50 text-rose-700 border-rose-200',
   '반납완료': 'bg-slate-100 text-slate-700 border-slate-200',
@@ -181,6 +182,8 @@ const RENTAL_BLOCKING_REQUEST_STATUSES = [
 
 const RENTAL_REQUEST_AUDIT_ACTION = {
   STATUS_CHANGED: 'status-changed',
+  STATUS_RESTORED: 'status-restored',
+  REQUEST_EDITED: 'request-edited',
   MEMO_CHANGED: 'memo-changed',
   USER_ACTION_REVIEWED: 'user-action-reviewed',
 };
@@ -278,11 +281,62 @@ const createDefaultFaqPostForm = () => ({
   isPinned: false,
 });
 
+const ADMIN_REQUEST_TAB = {
+  PENDING: 'pending',
+  RENTAL: 'rental',
+  CLOSED: 'closed',
+  RETURNED: 'returned',
+};
+
+const ADMIN_REQUEST_PAGE_SIZE_OPTIONS = [
+  5,
+  10,
+  15,
+  20,
+  30,
+  50,
+];
+
+const createDefaultAdminRequestEditForm = (
+  request = {}
+) => ({
+  team: request.team || '',
+  borrower: request.borrower || '',
+  startDate: request.startDate || '',
+  dueDate: request.dueDate || '',
+  purpose: request.purpose || '',
+  adminMemo: request.adminMemo || '',
+});
+
+const RENTAL_REQUEST_RESTORE_TARGETS = {
+  [STATUS.REQUESTED]: [],
+  [STATUS.APPROVED]: [
+    STATUS.REQUESTED,
+    STATUS.ON_HOLD,
+  ],
+  [STATUS.ON_HOLD]: [
+    STATUS.REQUESTED,
+  ],
+  [STATUS.DENIED]: [
+    STATUS.REQUESTED,
+    STATUS.ON_HOLD,
+    STATUS.APPROVED,
+  ],
+  [STATUS.RETURNED]: [
+    STATUS.APPROVED,
+  ],
+  [STATUS.USER_CANCELLED]: [
+    STATUS.REQUESTED,
+    STATUS.ON_HOLD,
+  ],
+};
+
 const RENTAL_REQUEST_STATUS_TRANSITIONS = {
   [STATUS.REQUESTED]: [
     STATUS.APPROVED,
     STATUS.ON_HOLD,
     STATUS.DENIED,
+    STATUS.USER_CANCELLED,
   ],
 
   [STATUS.APPROVED]: [
@@ -296,11 +350,23 @@ const RENTAL_REQUEST_STATUS_TRANSITIONS = {
     STATUS.REQUESTED,
     STATUS.APPROVED,
     STATUS.DENIED,
+    STATUS.USER_CANCELLED,
   ],
 
-  [STATUS.DENIED]: [],
-  [STATUS.RETURNED]: [],
-  [STATUS.USER_CANCELLED]: [],
+  [STATUS.DENIED]: [
+    STATUS.REQUESTED,
+    STATUS.ON_HOLD,
+    STATUS.APPROVED,
+  ],
+
+  [STATUS.RETURNED]: [
+    STATUS.APPROVED,
+  ],
+
+  [STATUS.USER_CANCELLED]: [
+    STATUS.REQUESTED,
+    STATUS.ON_HOLD,
+  ],
 };
 
 const getFirestoreTimestampMillis = (value) => {
@@ -467,8 +533,24 @@ const getKoreaNow = () => new Date(Date.now() + KOREA_TIME_OFFSET_MS);
 
 const today = () => formatDate(getKoreaNow());
 
-const getDisplayRentalStatus = (status, startDate) => {
-  if (status === STATUS.APPROVED && startDate && startDate > today()) {
+const getDisplayRentalStatus = (
+  status,
+  startDate,
+  dueDate = ''
+) => {
+  if (
+    status === STATUS.APPROVED &&
+    dueDate &&
+    dueDate < today()
+  ) {
+    return '연체';
+  }
+
+  if (
+    status === STATUS.APPROVED &&
+    startDate &&
+    startDate > today()
+  ) {
     return DISPLAY_STATUS.RESERVED;
   }
 
@@ -1985,6 +2067,25 @@ function App() {
     setAdminUserActionSavingRequestId,
   ] = useState('');
 
+  const [adminRequestTab, setAdminRequestTab] = useState(
+    ADMIN_REQUEST_TAB.PENDING
+  );
+  const [adminRequestQuery, setAdminRequestQuery] = useState('');
+  const [adminRequestPageSize, setAdminRequestPageSize] = useState(10);
+  const [adminRequestPage, setAdminRequestPage] = useState(1);
+  const [selectedAdminRequestId, setSelectedAdminRequestId] = useState('');
+
+  const [adminRequestEditDialog, setAdminRequestEditDialog] = useState(null);
+  const [adminRequestEditForm, setAdminRequestEditForm] = useState(
+    createDefaultAdminRequestEditForm
+  );
+  const [adminRequestEditSaving, setAdminRequestEditSaving] = useState(false);
+
+  const [adminRequestRestoreDialog, setAdminRequestRestoreDialog] = useState(null);
+  const [adminRequestRestoreTarget, setAdminRequestRestoreTarget] = useState('');
+  const [adminRequestRestoreReason, setAdminRequestRestoreReason] = useState('');
+  const [adminRequestRestoreSaving, setAdminRequestRestoreSaving] = useState(false);
+  
   const [noticePosts, setNoticePosts] = useState([]);
   const [noticePostsReady, setNoticePostsReady] = useState(false);
   const [
@@ -3349,6 +3450,280 @@ function App() {
 
       return logMap;
     }, [rentalRequestLogs]);
+  
+  const adminRequestTabCounts = useMemo(
+    () => {
+      const counts = {
+        [ADMIN_REQUEST_TAB.PENDING]: 0,
+        [ADMIN_REQUEST_TAB.RENTAL]: 0,
+        [ADMIN_REQUEST_TAB.CLOSED]: 0,
+        [ADMIN_REQUEST_TAB.RETURNED]: 0,
+      };
+
+      (mergedRentalRequests || []).forEach(
+        (request) => {
+          if (
+            [
+              STATUS.REQUESTED,
+              STATUS.ON_HOLD,
+            ].includes(request.status)
+          ) {
+            counts[ADMIN_REQUEST_TAB.PENDING] += 1;
+            return;
+          }
+
+          if (
+            request.status ===
+            STATUS.APPROVED
+          ) {
+            counts[ADMIN_REQUEST_TAB.RENTAL] += 1;
+            return;
+          }
+
+          if (
+            [
+              STATUS.DENIED,
+              STATUS.USER_CANCELLED,
+            ].includes(request.status)
+          ) {
+            counts[ADMIN_REQUEST_TAB.CLOSED] += 1;
+            return;
+          }
+
+          if (
+            request.status ===
+            STATUS.RETURNED
+          ) {
+            counts[ADMIN_REQUEST_TAB.RETURNED] += 1;
+          }
+        }
+      );
+
+      return counts;
+    },
+    [mergedRentalRequests]
+  );
+
+  const filteredAdminRequests = useMemo(
+    () => {
+      const normalizedQuery =
+        String(
+          adminRequestQuery || ''
+        ).trim().toLowerCase();
+
+      const getStatusLogTime = (
+        request
+      ) => {
+        const statusLog =
+          (
+            rentalRequestLogsByRequestId.get(
+              request.id
+            ) || []
+          ).find(
+            (log) =>
+              [
+                RENTAL_REQUEST_AUDIT_ACTION.STATUS_CHANGED,
+                RENTAL_REQUEST_AUDIT_ACTION.STATUS_RESTORED,
+              ].includes(log.action) &&
+              log.nextStatus ===
+                request.status
+          );
+
+        return (
+          getFirestoreTimestampMillis(
+            statusLog?.createdAt
+          ) ||
+          getFirestoreTimestampMillis(
+            request.updatedAt
+          ) ||
+          getFirestoreTimestampMillis(
+            request.createdAt
+          ) ||
+          Date.parse(
+            request.requestedAt || ''
+          ) ||
+          0
+        );
+      };
+
+      const tabFilteredRequests =
+        (mergedRentalRequests || []).filter(
+          (request) => {
+            if (
+              adminRequestTab ===
+              ADMIN_REQUEST_TAB.PENDING
+            ) {
+              return [
+                STATUS.REQUESTED,
+                STATUS.ON_HOLD,
+              ].includes(request.status);
+            }
+
+            if (
+              adminRequestTab ===
+              ADMIN_REQUEST_TAB.RENTAL
+            ) {
+              return (
+                request.status ===
+                STATUS.APPROVED
+              );
+            }
+
+            if (
+              adminRequestTab ===
+              ADMIN_REQUEST_TAB.CLOSED
+            ) {
+              return [
+                STATUS.DENIED,
+                STATUS.USER_CANCELLED,
+              ].includes(request.status);
+            }
+
+            return (
+              request.status ===
+              STATUS.RETURNED
+            );
+          }
+        );
+
+      const queryFilteredRequests =
+        normalizedQuery
+          ? tabFilteredRequests.filter(
+              (request) =>
+                [
+                  request.assetNo,
+                  request.assetCategory,
+                  request.requesterName,
+                  request.requesterEmail,
+                  request.borrower,
+                  request.team,
+                  request.purpose,
+                ]
+                  .map((value) =>
+                    String(
+                      value || ''
+                    ).toLowerCase()
+                  )
+                  .some((value) =>
+                    value.includes(
+                      normalizedQuery
+                    )
+                  )
+            )
+          : tabFilteredRequests;
+
+      return [
+        ...queryFilteredRequests,
+      ].sort((first, second) => {
+        if (
+          adminRequestTab ===
+          ADMIN_REQUEST_TAB.PENDING
+        ) {
+          return (
+            getStatusLogTime(first) -
+            getStatusLogTime(second)
+          );
+        }
+
+        if (
+          adminRequestTab ===
+          ADMIN_REQUEST_TAB.RENTAL
+        ) {
+          const firstOverdue =
+            first.dueDate &&
+            first.dueDate < today();
+
+          const secondOverdue =
+            second.dueDate &&
+            second.dueDate < today();
+
+          if (
+            firstOverdue !==
+            secondOverdue
+          ) {
+            return firstOverdue
+              ? -1
+              : 1;
+          }
+
+          return String(
+            first.dueDate || ''
+          ).localeCompare(
+            String(
+              second.dueDate || ''
+            )
+          );
+        }
+
+        return (
+          getStatusLogTime(second) -
+          getStatusLogTime(first)
+        );
+      });
+    },
+    [
+      adminRequestQuery,
+      adminRequestTab,
+      mergedRentalRequests,
+      rentalRequestLogsByRequestId,
+    ]
+  );
+
+  const adminRequestTotalPages = Math.max(
+    1,
+    Math.ceil(
+      filteredAdminRequests.length /
+      adminRequestPageSize
+    )
+  );
+
+  const safeAdminRequestPage = Math.min(
+    adminRequestPage,
+    adminRequestTotalPages
+  );
+
+  const paginatedAdminRequests = useMemo(
+    () =>
+      filteredAdminRequests.slice(
+        (safeAdminRequestPage - 1) *
+          adminRequestPageSize,
+        safeAdminRequestPage *
+          adminRequestPageSize
+      ),
+    [
+      filteredAdminRequests,
+      safeAdminRequestPage,
+      adminRequestPageSize,
+    ]
+  );
+
+  const selectedAdminRequest = useMemo(
+    () =>
+      selectedAdminRequestId
+        ? mergedRentalRequests.find(
+            (request) =>
+              request.id ===
+              selectedAdminRequestId
+          ) || null
+        : null,
+    [
+      mergedRentalRequests,
+      selectedAdminRequestId,
+    ]
+  );
+
+  const adminRequestEditBorrowers = useMemo(
+    () =>
+      (data.borrowers || []).filter(
+        (borrower) =>
+          borrower.team ===
+          adminRequestEditForm.team
+      ),
+    [
+      data.borrowers,
+      adminRequestEditForm.team,
+    ]
+  );
 
   const noticePostsPerPage = getSafeNoticePostsPerPage(
     noticeBoardConfig.postsPerPage
@@ -7966,6 +8341,15 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           };
 
           if (
+            actionType ===
+            USER_REQUEST_ACTION.RETURN
+          ) {
+            throw new Error(
+              'return-request-disabled'
+            );
+          }
+
+          if (
             latestRequest.requesterUid !==
             firebaseAuthUser.uid
           ) {
@@ -9721,6 +10105,1076 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       }
     );
   };
+
+  const getAdminRequestRestoreTargets = (
+    request
+  ) => {
+    if (!request?.id) {
+      return [];
+    }
+
+    const requestLogs =
+      rentalRequestLogsByRequestId.get(
+        request.id
+      ) || [];
+
+    const latestStatusLog =
+      requestLogs.find(
+        (log) =>
+          [
+            RENTAL_REQUEST_AUDIT_ACTION.STATUS_CHANGED,
+            RENTAL_REQUEST_AUDIT_ACTION.STATUS_RESTORED,
+          ].includes(log.action) &&
+          log.nextStatus ===
+            request.status &&
+          log.previousStatus &&
+          log.previousStatus !==
+            request.status
+      );
+
+    const fallbackTargets =
+      RENTAL_REQUEST_RESTORE_TARGETS[
+        request.status
+      ] || [];
+
+    return [
+      ...new Set([
+        latestStatusLog?.previousStatus,
+        ...fallbackTargets,
+      ].filter(Boolean)),
+    ].filter(
+      (targetStatus) =>
+        (
+          RENTAL_REQUEST_STATUS_TRANSITIONS[
+            request.status
+          ] || []
+        ).includes(targetStatus)
+    );
+  };
+
+  const openAdminRequestEditDialog = (
+    request
+  ) => {
+    if (
+      !isAdminAuthenticated ||
+      !request?.id ||
+      !rentalRequestIdSet.has(request.id)
+    ) {
+      triggerToast(
+        '관리자 인증과 정식 신청 문서를 확인해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    setAdminRequestEditDialog({
+      requestId: request.id,
+    });
+    setAdminRequestEditForm(
+      createDefaultAdminRequestEditForm(
+        request
+      )
+    );
+  };
+
+  const closeAdminRequestEditDialog = () => {
+    if (adminRequestEditSaving) return;
+
+    setAdminRequestEditDialog(null);
+    setAdminRequestEditForm(
+      createDefaultAdminRequestEditForm()
+    );
+  };
+
+  const saveAdminRequestEdit = async () => {
+    if (!isSplitStorageReady) {
+      triggerToast(
+        'Firestore 분리 저장소 최종 전환이 완료되지 않아 신청 정보를 수정할 수 없습니다.',
+        'error'
+      );
+      return;
+    }
+
+    const requestId =
+      adminRequestEditDialog?.requestId ||
+      '';
+
+    const currentRequest =
+      mergedRentalRequests.find(
+        (request) =>
+          request.id === requestId
+      );
+
+    if (
+      !currentRequest ||
+      !rentalRequestIdSet.has(requestId)
+    ) {
+      triggerToast(
+        '수정할 정식 대여 신청 문서를 찾을 수 없습니다.',
+        'error'
+      );
+      return;
+    }
+
+    const nextTeam =
+      String(
+        adminRequestEditForm.team || ''
+      ).trim();
+
+    const nextBorrower =
+      String(
+        adminRequestEditForm.borrower || ''
+      ).trim();
+
+    const nextStartDate =
+      String(
+        adminRequestEditForm.startDate ||
+        ''
+      );
+
+    const nextDueDate =
+      String(
+        adminRequestEditForm.dueDate || ''
+      );
+
+    const nextPurpose =
+      String(
+        adminRequestEditForm.purpose || ''
+      ).trim();
+
+    const nextAdminMemo =
+      String(
+        adminRequestEditForm.adminMemo ||
+        ''
+      ).trim();
+
+    if (
+      !nextTeam ||
+      !nextBorrower ||
+      !nextStartDate ||
+      !nextDueDate
+    ) {
+      triggerToast(
+        '부서, 대여자명, 대여 시작일과 반납 예정일을 모두 입력해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    if (
+      nextDueDate <
+      nextStartDate
+    ) {
+      triggerToast(
+        '반납 예정일은 대여 시작일보다 빠를 수 없습니다.',
+        'error'
+      );
+      return;
+    }
+
+    const auditActor =
+      getCurrentAdminAuditActor();
+
+    if (!auditActor.uid) {
+      triggerToast(
+        '관리자 인증 정보를 확인할 수 없어 신청 정보 수정을 중단했습니다.',
+        'error'
+      );
+      return;
+    }
+
+    const requestLogDocRef = doc(
+      RENTAL_REQUEST_LOGS_COLLECTION_REF
+    );
+
+    let committedRequest = null;
+    let committedAsset = null;
+    let committedAvailabilityRequest = null;
+    let shouldKeepAvailability = false;
+
+    setAdminRequestEditSaving(true);
+
+    try {
+      await runTransaction(
+        db,
+        async (transaction) => {
+          const requestDocRef = doc(
+            RENTAL_REQUESTS_COLLECTION_REF,
+            requestId
+          );
+
+          const availabilityDocRef = doc(
+            RENTAL_AVAILABILITY_COLLECTION_REF,
+            requestId
+          );
+
+          const requestSnapshot =
+            await transaction.get(
+              requestDocRef
+            );
+
+          if (!requestSnapshot.exists()) {
+            throw new Error(
+              'rental-request-not-found'
+            );
+          }
+
+          const latestRequest = {
+            ...requestSnapshot.data(),
+            id: requestSnapshot.id,
+          };
+
+          shouldKeepAvailability =
+            RENTAL_BLOCKING_REQUEST_STATUSES.includes(
+              latestRequest.status
+            );
+
+          const nextRequest = {
+            ...latestRequest,
+            team: nextTeam,
+            borrower: nextBorrower,
+            startDate: nextStartDate,
+            dueDate: nextDueDate,
+            purpose: nextPurpose,
+            adminMemo: nextAdminMemo,
+          };
+
+          if (shouldKeepAvailability) {
+            const assetDocRef = doc(
+              RENTAL_ASSETS_COLLECTION_REF,
+              latestRequest.laptopId
+            );
+
+            const assetSnapshot =
+              await transaction.get(
+                assetDocRef
+              );
+
+            if (!assetSnapshot.exists()) {
+              throw new Error(
+                'rental-asset-not-found'
+              );
+            }
+
+            const latestAsset = {
+              ...assetSnapshot.data(),
+              id: assetSnapshot.id,
+            };
+
+            const latestReservations =
+              normalizeAssetReservations(
+                latestAsset.reservations ||
+                []
+              ).filter(
+                (request) =>
+                  request.id !==
+                  requestId
+              );
+
+            const nextAvailability =
+              getLaptopRentalAvailability(
+                latestAsset,
+                latestReservations,
+                data.settings,
+                nextStartDate,
+                nextDueDate
+              );
+
+            if (nextAvailability.blocked) {
+              const conflictError =
+                new Error(
+                  'rental-period-conflict'
+                );
+
+              conflictError.blockingRequest =
+                nextAvailability.blockingRequest ||
+                null;
+
+              throw conflictError;
+            }
+
+            const availabilityRequest =
+              toRentalAvailabilityRequest(
+                nextRequest
+              );
+
+            const updatedReservations = [
+              ...latestReservations,
+              availabilityRequest,
+            ];
+
+            const representativeRequest =
+              getLaptopRepresentativeRequest(
+                updatedReservations,
+                latestAsset.id
+              );
+
+            const nextAsset = {
+              ...latestAsset,
+              reservations:
+                updatedReservations,
+              status:
+                latestAsset.status ===
+                STATUS.UNAVAILABLE
+                  ? STATUS.UNAVAILABLE
+                  : representativeRequest
+                    ? representativeRequest.status
+                    : STATUS.AVAILABLE,
+              currentRequestId:
+                representativeRequest?.id ||
+                null,
+            };
+
+            transaction.set(
+              availabilityDocRef,
+              {
+                ...availabilityRequest,
+                updatedAt:
+                  serverTimestamp(),
+              }
+            );
+
+            transaction.update(
+              assetDocRef,
+              {
+                reservations:
+                  nextAsset.reservations,
+                status:
+                  nextAsset.status,
+                currentRequestId:
+                  nextAsset.currentRequestId,
+                updatedAt:
+                  serverTimestamp(),
+              }
+            );
+
+            committedAsset =
+              nextAsset;
+            committedAvailabilityRequest =
+              availabilityRequest;
+          }
+
+          const detailParts = [];
+
+          if (
+            latestRequest.team !==
+            nextTeam
+          ) {
+            detailParts.push(
+              `부서: ${latestRequest.team || '-'} → ${nextTeam}`
+            );
+          }
+
+          if (
+            latestRequest.borrower !==
+            nextBorrower
+          ) {
+            detailParts.push(
+              `대여자: ${latestRequest.borrower || '-'} → ${nextBorrower}`
+            );
+          }
+
+          if (
+            latestRequest.startDate !==
+            nextStartDate
+          ) {
+            detailParts.push(
+              `대여 시작일: ${latestRequest.startDate || '-'} → ${nextStartDate}`
+            );
+          }
+
+          if (
+            latestRequest.dueDate !==
+            nextDueDate
+          ) {
+            detailParts.push(
+              `반납 예정일: ${latestRequest.dueDate || '-'} → ${nextDueDate}`
+            );
+          }
+
+          if (
+            String(
+              latestRequest.purpose || ''
+            ) !== nextPurpose
+          ) {
+            detailParts.push(
+              '대여 목적 변경'
+            );
+          }
+
+          if (
+            String(
+              latestRequest.adminMemo ||
+              ''
+            ) !== nextAdminMemo
+          ) {
+            detailParts.push(
+              '관리자 메모 변경'
+            );
+          }
+
+          transaction.update(
+            requestDocRef,
+            {
+              team: nextTeam,
+              borrower: nextBorrower,
+              startDate: nextStartDate,
+              dueDate: nextDueDate,
+              purpose: nextPurpose,
+              adminMemo: nextAdminMemo,
+              updatedAt:
+                serverTimestamp(),
+              syncedAt:
+                serverTimestamp(),
+            }
+          );
+
+          transaction.set(
+            requestLogDocRef,
+            {
+              id: requestLogDocRef.id,
+              requestId,
+              action:
+                RENTAL_REQUEST_AUDIT_ACTION.REQUEST_EDITED,
+              previousStatus:
+                latestRequest.status || '',
+              nextStatus:
+                latestRequest.status || '',
+              previousMemo:
+                latestRequest.adminMemo || '',
+              nextMemo:
+                nextAdminMemo,
+              actorUid:
+                auditActor.uid,
+              actorAdminId:
+                auditActor.adminId,
+              actorName:
+                auditActor.name,
+              detail:
+                detailParts.length > 0
+                  ? detailParts.join(' / ')
+                  : '신청 정보를 다시 저장했습니다.',
+              createdAt:
+                serverTimestamp(),
+            }
+          );
+
+          committedRequest =
+            nextRequest;
+        }
+      );
+
+      if (!committedRequest) {
+        throw new Error(
+          'rental-request-edit-result-missing'
+        );
+      }
+
+      setRentalRequests((prev) =>
+        (prev || []).map(
+          (request) =>
+            request.id === requestId
+              ? committedRequest
+              : request
+        )
+      );
+
+      setData((prev) => ({
+        ...prev,
+        requests:
+          shouldKeepAvailability
+            ? [
+                committedAvailabilityRequest,
+                ...(prev.requests || []).filter(
+                  (request) =>
+                    request.id !==
+                    requestId
+                ),
+              ]
+            : (prev.requests || []).filter(
+                (request) =>
+                  request.id !==
+                  requestId
+              ),
+        laptops:
+          committedAsset
+            ? (prev.laptops || []).map(
+                (asset) =>
+                  asset.id ===
+                  committedAsset.id
+                    ? committedAsset
+                    : asset
+              )
+            : prev.laptops,
+      }));
+
+      setAdminRequestEditDialog(null);
+      setAdminRequestEditForm(
+        createDefaultAdminRequestEditForm()
+      );
+
+      triggerToast(
+        '대여 신청 정보를 수정했습니다. 관리자 수정에는 최대 14일 제한을 적용하지 않았습니다.',
+        'success'
+      );
+    } catch (error) {
+      console.error(
+        'Admin rental request edit error:',
+        error
+      );
+
+      if (
+        error?.message ===
+        'rental-period-conflict'
+      ) {
+        const blockingRequest =
+          error.blockingRequest;
+
+        triggerToast(
+          blockingRequest
+            ? `동일 기기의 다른 예약과 기간이 겹칩니다. 충돌 기간: ${blockingRequest.startDate || '-'} ~ ${blockingRequest.dueDate || '-'}`
+            : '동일 기기의 다른 활성 예약과 충돌하여 신청 정보를 수정할 수 없습니다.',
+          'error'
+        );
+        return;
+      }
+
+      if (
+        error?.message ===
+        'rental-request-not-found'
+      ) {
+        triggerToast(
+          '정식 대여 신청 문서를 찾을 수 없습니다.',
+          'error'
+        );
+        return;
+      }
+
+      if (
+        error?.message ===
+        'rental-asset-not-found'
+      ) {
+        triggerToast(
+          '신청과 연결된 자산 문서를 찾을 수 없습니다.',
+          'error'
+        );
+        return;
+      }
+
+      triggerToast(
+        `대여 신청 정보 수정에 실패했습니다. 오류 코드: ${
+          error?.code ||
+          error?.message ||
+          'unknown-error'
+        }`,
+        'error'
+      );
+    } finally {
+      setAdminRequestEditSaving(false);
+    }
+  };
+
+  const openAdminRequestRestoreDialog = (
+    request
+  ) => {
+    if (
+      !isAdminAuthenticated ||
+      !request?.id ||
+      !rentalRequestIdSet.has(request.id)
+    ) {
+      triggerToast(
+        '관리자 인증과 정식 신청 문서를 확인해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    const targetOptions =
+      getAdminRequestRestoreTargets(
+        request
+      );
+
+    if (targetOptions.length === 0) {
+      triggerToast(
+        '현재 신청은 되돌릴 수 있는 이전 상태가 없습니다.',
+        'error'
+      );
+      return;
+    }
+
+    setAdminRequestRestoreDialog({
+      requestId: request.id,
+      targetOptions,
+    });
+    setAdminRequestRestoreTarget(
+      targetOptions[0]
+    );
+    setAdminRequestRestoreReason('');
+  };
+
+  const closeAdminRequestRestoreDialog = () => {
+    if (adminRequestRestoreSaving) return;
+
+    setAdminRequestRestoreDialog(null);
+    setAdminRequestRestoreTarget('');
+    setAdminRequestRestoreReason('');
+  };
+
+  const restoreAdminRequestStatus = async () => {
+    if (!isSplitStorageReady) {
+      triggerToast(
+        'Firestore 분리 저장소 최종 전환이 완료되지 않아 상태를 복구할 수 없습니다.',
+        'error'
+      );
+      return;
+    }
+
+    const requestId =
+      adminRequestRestoreDialog?.requestId ||
+      '';
+
+    const currentRequest =
+      mergedRentalRequests.find(
+        (request) =>
+          request.id === requestId
+      );
+
+    const nextStatus =
+      adminRequestRestoreTarget;
+
+    const restoreReason =
+      String(
+        adminRequestRestoreReason || ''
+      ).trim();
+
+    if (
+      !currentRequest ||
+      !rentalRequestIdSet.has(requestId)
+    ) {
+      triggerToast(
+        '복구할 정식 대여 신청 문서를 찾을 수 없습니다.',
+        'error'
+      );
+      return;
+    }
+
+    if (!restoreReason) {
+      triggerToast(
+        '상태 복구 사유를 입력해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    if (
+      !(
+        RENTAL_REQUEST_STATUS_TRANSITIONS[
+          currentRequest.status
+        ] || []
+      ).includes(nextStatus)
+    ) {
+      triggerToast(
+        '현재 상태에서 선택한 상태로 복구할 수 없습니다.',
+        'error'
+      );
+      return;
+    }
+
+    const auditActor =
+      getCurrentAdminAuditActor();
+
+    if (!auditActor.uid) {
+      triggerToast(
+        '관리자 인증 정보를 확인할 수 없어 상태 복구를 중단했습니다.',
+        'error'
+      );
+      return;
+    }
+
+    const requestLogDocRef = doc(
+      RENTAL_REQUEST_LOGS_COLLECTION_REF
+    );
+
+    let committedRequest = null;
+    let committedAsset = null;
+    let committedAvailabilityRequest = null;
+    let shouldKeepAvailability = false;
+
+    setAdminRequestRestoreSaving(true);
+
+    try {
+      await runTransaction(
+        db,
+        async (transaction) => {
+          const requestDocRef = doc(
+            RENTAL_REQUESTS_COLLECTION_REF,
+            requestId
+          );
+
+          const availabilityDocRef = doc(
+            RENTAL_AVAILABILITY_COLLECTION_REF,
+            requestId
+          );
+
+          const requestSnapshot =
+            await transaction.get(
+              requestDocRef
+            );
+
+          if (!requestSnapshot.exists()) {
+            throw new Error(
+              'rental-request-not-found'
+            );
+          }
+
+          const latestRequest = {
+            ...requestSnapshot.data(),
+            id: requestSnapshot.id,
+          };
+
+          if (
+            !(
+              RENTAL_REQUEST_STATUS_TRANSITIONS[
+                latestRequest.status
+              ] || []
+            ).includes(nextStatus)
+          ) {
+            const transitionError =
+              new Error(
+                'invalid-rental-status-transition'
+              );
+
+            transitionError.previousStatus =
+              latestRequest.status || '';
+            transitionError.nextStatus =
+              nextStatus;
+
+            throw transitionError;
+          }
+
+          if (
+            !latestRequest.startDate ||
+            !latestRequest.dueDate ||
+            latestRequest.dueDate <
+              latestRequest.startDate
+          ) {
+            throw new Error(
+              'invalid-rental-period'
+            );
+          }
+
+          const assetDocRef = doc(
+            RENTAL_ASSETS_COLLECTION_REF,
+            latestRequest.laptopId
+          );
+
+          const assetSnapshot =
+            await transaction.get(
+              assetDocRef
+            );
+
+          if (!assetSnapshot.exists()) {
+            throw new Error(
+              'rental-asset-not-found'
+            );
+          }
+
+          const latestAsset = {
+            ...assetSnapshot.data(),
+            id: assetSnapshot.id,
+          };
+
+          const latestReservations =
+            normalizeAssetReservations(
+              latestAsset.reservations || []
+            ).filter(
+              (request) =>
+                request.id !==
+                requestId
+            );
+
+          const nextRequest = {
+            ...latestRequest,
+            status: nextStatus,
+            userActionRequest: null,
+          };
+
+          const availabilityRequest =
+            toRentalAvailabilityRequest(
+              nextRequest
+            );
+
+          shouldKeepAvailability =
+            RENTAL_BLOCKING_REQUEST_STATUSES.includes(
+              nextStatus
+            );
+
+          if (shouldKeepAvailability) {
+            const nextAvailability =
+              getLaptopRentalAvailability(
+                latestAsset,
+                latestReservations,
+                data.settings,
+                latestRequest.startDate,
+                latestRequest.dueDate
+              );
+
+            if (nextAvailability.blocked) {
+              const conflictError =
+                new Error(
+                  'rental-period-conflict'
+                );
+
+              conflictError.blockingRequest =
+                nextAvailability.blockingRequest ||
+                null;
+
+              throw conflictError;
+            }
+          }
+
+          const updatedReservations =
+            shouldKeepAvailability
+              ? [
+                  ...latestReservations,
+                  availabilityRequest,
+                ]
+              : latestReservations;
+
+          const representativeRequest =
+            getLaptopRepresentativeRequest(
+              updatedReservations,
+              latestAsset.id
+            );
+
+          const nextAsset = {
+            ...latestAsset,
+            reservations:
+              updatedReservations,
+            status:
+              latestAsset.status ===
+              STATUS.UNAVAILABLE
+                ? STATUS.UNAVAILABLE
+                : representativeRequest
+                  ? representativeRequest.status
+                  : STATUS.AVAILABLE,
+            currentRequestId:
+              representativeRequest?.id ||
+              null,
+          };
+
+          transaction.update(
+            requestDocRef,
+            {
+              status: nextStatus,
+              userActionRequest: null,
+              updatedAt:
+                serverTimestamp(),
+              syncedAt:
+                serverTimestamp(),
+            }
+          );
+
+          if (shouldKeepAvailability) {
+            transaction.set(
+              availabilityDocRef,
+              {
+                ...availabilityRequest,
+                updatedAt:
+                  serverTimestamp(),
+              }
+            );
+          } else {
+            transaction.delete(
+              availabilityDocRef
+            );
+          }
+
+          transaction.update(
+            assetDocRef,
+            {
+              reservations:
+                nextAsset.reservations,
+              status:
+                nextAsset.status,
+              currentRequestId:
+                nextAsset.currentRequestId,
+              updatedAt:
+                serverTimestamp(),
+            }
+          );
+
+          transaction.set(
+            requestLogDocRef,
+            {
+              id: requestLogDocRef.id,
+              requestId,
+              action:
+                RENTAL_REQUEST_AUDIT_ACTION.STATUS_RESTORED,
+              previousStatus:
+                latestRequest.status || '',
+              nextStatus,
+              previousMemo:
+                latestRequest.adminMemo || '',
+              nextMemo:
+                latestRequest.adminMemo || '',
+              actorUid:
+                auditActor.uid,
+              actorAdminId:
+                auditActor.adminId,
+              actorName:
+                auditActor.name,
+              detail:
+                `상태 복구 사유: ${restoreReason}`,
+              createdAt:
+                serverTimestamp(),
+            }
+          );
+
+          committedRequest =
+            nextRequest;
+          committedAsset =
+            nextAsset;
+          committedAvailabilityRequest =
+            shouldKeepAvailability
+              ? availabilityRequest
+              : null;
+        }
+      );
+
+      if (
+        !committedRequest ||
+        !committedAsset
+      ) {
+        throw new Error(
+          'rental-status-restore-result-missing'
+        );
+      }
+
+      setRentalRequests((prev) =>
+        (prev || []).map(
+          (request) =>
+            request.id === requestId
+              ? committedRequest
+              : request
+        )
+      );
+
+      setData((prev) => ({
+        ...prev,
+        requests:
+          shouldKeepAvailability
+            ? [
+                committedAvailabilityRequest,
+                ...(prev.requests || []).filter(
+                  (request) =>
+                    request.id !==
+                    requestId
+                ),
+              ]
+            : (prev.requests || []).filter(
+                (request) =>
+                  request.id !==
+                  requestId
+              ),
+        laptops:
+          (prev.laptops || []).map(
+            (asset) =>
+              asset.id ===
+              committedAsset.id
+                ? committedAsset
+                : asset
+          ),
+      }));
+
+      setAdminRequestRestoreDialog(null);
+      setAdminRequestRestoreTarget('');
+      setAdminRequestRestoreReason('');
+      setSelectedAdminRequestId('');
+      setAdminRequestPage(1);
+
+      triggerToast(
+        `상태를 [${nextStatus}]로 복구했습니다.`,
+        'success'
+      );
+    } catch (error) {
+      console.error(
+        'Admin rental request restore error:',
+        error
+      );
+
+      if (
+        error?.message ===
+        'rental-period-conflict'
+      ) {
+        const blockingRequest =
+          error.blockingRequest;
+
+        triggerToast(
+          blockingRequest
+            ? `동일 기기의 다른 예약과 기간이 겹칩니다. 충돌 기간: ${blockingRequest.startDate || '-'} ~ ${blockingRequest.dueDate || '-'}`
+            : '동일 기기의 다른 활성 예약과 충돌하여 상태를 복구할 수 없습니다.',
+          'error'
+        );
+        return;
+      }
+
+      if (
+        error?.message ===
+        'invalid-rental-period'
+      ) {
+        triggerToast(
+          '대여 시작일과 반납 예정일을 먼저 올바르게 수정해 주세요.',
+          'error'
+        );
+        return;
+      }
+
+      if (
+        error?.message ===
+        'invalid-rental-status-transition'
+      ) {
+        triggerToast(
+          `허용되지 않은 상태 복구입니다. 현재 상태: ${error.previousStatus || '-'}, 복구 대상: ${error.nextStatus || '-'}`,
+          'error'
+        );
+        return;
+      }
+
+      if (
+        error?.message ===
+        'rental-request-not-found'
+      ) {
+        triggerToast(
+          '정식 대여 신청 문서를 찾을 수 없습니다.',
+          'error'
+        );
+        return;
+      }
+
+      if (
+        error?.message ===
+        'rental-asset-not-found'
+      ) {
+        triggerToast(
+          '신청과 연결된 자산 문서를 찾을 수 없습니다.',
+          'error'
+        );
+        return;
+      }
+
+      triggerToast(
+        `상태 복구에 실패했습니다. 오류 코드: ${
+          error?.code ||
+          error?.message ||
+          'unknown-error'
+        }`,
+        'error'
+      );
+    } finally {
+      setAdminRequestRestoreSaving(false);
+    }
+  };
   
   const updateRequest = async (id, status) => {
     if (!isSplitStorageReady) {
@@ -9767,7 +11221,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     const nextDisplayStatus =
       getDisplayRentalStatus(
         status,
-        currentRequest.startDate
+        currentRequest.startDate,
+        currentRequest.dueDate
       );
 
     try {
@@ -9872,6 +11327,30 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             RENTAL_BLOCKING_REQUEST_STATUSES.includes(
               status
             );
+          
+          if (shouldKeepAvailability) {
+            const nextAvailability =
+              getLaptopRentalAvailability(
+                latestAsset,
+                latestReservations,
+                data.settings,
+                latestRequest.startDate,
+                latestRequest.dueDate
+              );
+
+            if (nextAvailability.blocked) {
+              const conflictError =
+                new Error(
+                  'rental-period-conflict'
+                );
+
+              conflictError.blockingRequest =
+                nextAvailability.blockingRequest ||
+                null;
+
+              throw conflictError;
+            }
+          }
 
           const updatedReservations =
             shouldKeepAvailability
@@ -10038,6 +11517,9 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           ),
       }));
 
+      setSelectedAdminRequestId('');
+      setAdminRequestPage(1);
+
       triggerToast(
         `상태가 [${nextDisplayStatus}]로 업데이트 되었습니다.`,
         'success'
@@ -10080,6 +11562,22 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           }, 변경 요청: ${
             error.nextStatus || '-'
           }`,
+          'error'
+        );
+        return;
+      }
+
+      if (
+        error?.message ===
+        'rental-period-conflict'
+      ) {
+        const blockingRequest =
+          error.blockingRequest;
+
+        triggerToast(
+          blockingRequest
+            ? `동일 기기의 다른 예약과 기간이 겹칩니다. 충돌 기간: ${blockingRequest.startDate || '-'} ~ ${blockingRequest.dueDate || '-'}`
+            : '동일 기기의 다른 활성 예약과 충돌하여 상태를 변경할 수 없습니다.',
           'error'
         );
         return;
@@ -10273,7 +11771,11 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
   };
 
   const renderRequestActionButtons = (request) => {
-    const displayStatus = getDisplayRentalStatus(request.status, request.startDate);
+    const displayStatus = getDisplayRentalStatus(
+      request.status,
+      request.startDate,
+      request.dueDate
+    );
     const actionButtonClassName = 'px-2.5 py-1.5 text-xs rounded-lg';
 
     if (request.status === STATUS.REQUESTED) {
@@ -10285,34 +11787,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             className={actionButtonClassName}
           >
             승인
-          </Button>
-          <Button
-            onClick={() => updateRequest(request.id, STATUS.ON_HOLD)}
-            variant="secondary"
-            className={`${actionButtonClassName} text-purple-700 bg-purple-50 hover:bg-purple-100`}
-          >
-            보류
-          </Button>
-          <Button
-            onClick={() => updateRequest(request.id, STATUS.DENIED)}
-            variant="dangerOutline"
-            className={actionButtonClassName}
-          >
-            불허
-          </Button>
-        </div>
-      );
-    }
-
-    if (displayStatus === DISPLAY_STATUS.RESERVED) {
-      return (
-        <div className="flex flex-wrap gap-1">
-          <Button
-            onClick={() => updateRequest(request.id, STATUS.REQUESTED)}
-            variant="outline"
-            className={actionButtonClassName}
-          >
-            대기
           </Button>
           <Button
             onClick={() => updateRequest(request.id, STATUS.ON_HOLD)}
@@ -10357,13 +11831,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             승인
           </Button>
           <Button
-            onClick={() => updateRequest(request.id, STATUS.REQUESTED)}
-            variant="outline"
-            className={actionButtonClassName}
-          >
-            대기
-          </Button>
-          <Button
             onClick={() => updateRequest(request.id, STATUS.DENIED)}
             variant="dangerOutline"
             className={actionButtonClassName}
@@ -10380,6 +11847,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       </div>
     );
   };
+
 
   // 신규 자산 생성 제어 로직
   const handleAddLaptopClick = () => {
@@ -13060,20 +14528,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                                       >
                                         대여 연장 요청
                                       </Button>
-
-                                      <Button
-                                        type="button"
-                                        variant="dangerOutline"
-                                        onClick={() =>
-                                          openUserActionDialog(
-                                            request,
-                                            USER_REQUEST_ACTION.RETURN
-                                          )
-                                        }
-                                        className="px-3 py-2 text-xs"
-                                      >
-                                        조기 반납 요청
-                                      </Button>
                                     </>
                                   )}
                                 </div>
@@ -13843,11 +15297,16 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
                   {/* 신청 관리 원장 탭 */}
                   {adminTab === 'requests' && (
-                    <div className="space-y-4">
+                    <div className="space-y-5">
                       <div className="border-b border-slate-100 pb-4">
-                        <h2 className="text-lg font-bold text-slate-900">기기 대여 신청 관리</h2>
-                        <p className="text-xs text-slate-500 mt-1">부서원들이 제출한 신청서의 신청중, 예약중, 대여중, 보류, 불허, 반납완료 상태를 관리합니다.</p>
+                        <h2 className="text-lg font-bold text-slate-900">
+                          기기 대여 신청 관리
+                        </h2>
+                        <p className="mt-1 text-xs text-slate-500">
+                          신청·보류, 대여관리, 불허·취소, 반납완료 기록을 목록과 상세 화면으로 관리합니다.
+                        </p>
                       </div>
+
                       {rentalRequestsLoadErrorMessage && (
                         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-xs leading-5 text-rose-800">
                           {rentalRequestsLoadErrorMessage}
@@ -13858,80 +15317,302 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-xs leading-5 text-amber-800">
                           정식 rentalRequests 문서 없이 예약 요약만 남은 항목이{' '}
                           {orphanedRentalAvailabilityRequests.length}건 있습니다.
-                          해당 항목은 상태 변경과 메모 저장을 차단합니다.
+                          해당 항목은 상태 변경, 정보 수정과 메모 저장을 차단합니다.
                         </div>
                       )}
 
-                      <div className="space-y-4">
-                        {!rentalRequestsReady ? (
-                          <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
-                            전체 대여신청 정보를 불러오는 중입니다.
-                          </div>
-                        ) : rentalRequestsLoadErrorMessage ? null : mergedRentalRequests.length === 0 ? (
-                          <div className="rounded-2xl bg-slate-50 border border-dashed border-slate-200 py-12 text-center text-slate-400 text-xs">
-                            현재 접수되거나 처리된 대여 신청 목록이 없습니다.
-                          </div>
-                        ) : (
-                          mergedRentalRequests.map((r) => {
-                            const isOverdue =
-                              r.status === STATUS.APPROVED &&
-                              r.dueDate < today();
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          {
+                            id: ADMIN_REQUEST_TAB.PENDING,
+                            label: '신청·보류',
+                          },
+                          {
+                            id: ADMIN_REQUEST_TAB.RENTAL,
+                            label: '대여관리',
+                          },
+                          {
+                            id: ADMIN_REQUEST_TAB.CLOSED,
+                            label: '불허·취소',
+                          },
+                          {
+                            id: ADMIN_REQUEST_TAB.RETURNED,
+                            label: '반납완료',
+                          },
+                        ].map((tab) => {
+                          const isActive =
+                            adminRequestTab ===
+                            tab.id;
 
-                            const hasRentalRequestDocument =
-                              rentalRequestIdSet.has(r.id);
+                          return (
+                            <button
+                              key={tab.id}
+                              type="button"
+                              onClick={() => {
+                                setAdminRequestTab(
+                                  tab.id
+                                );
+                                setAdminRequestQuery('');
+                                setAdminRequestPage(1);
+                                setSelectedAdminRequestId('');
+                              }}
+                              className={`rounded-xl border px-4 py-2.5 text-xs font-semibold transition ${
+                                isActive
+                                  ? 'border-orange-500 bg-orange-500 text-white shadow-sm'
+                                  : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600'
+                              }`}
+                            >
+                              {tab.label}{' '}
+                              <span
+                                className={`ml-1 rounded-full px-2 py-0.5 text-[10px] ${
+                                  isActive
+                                    ? 'bg-white/20 text-white'
+                                    : 'bg-slate-100 text-slate-500'
+                                }`}
+                              >
+                                {adminRequestTabCounts[
+                                  tab.id
+                                ] || 0}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
 
-                            const requestAuditLogs =
-                              rentalRequestLogsByRequestId.get(r.id) || [];
+                      {!selectedAdminRequest && (
+                        <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-[minmax(0,1fr)_160px] sm:items-end">
+                          <label className="block">
+                            <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                              신청 검색
+                            </span>
+                            <div className="relative">
+                              <Search
+                                size={15}
+                                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                              />
+                              <input
+                                type="text"
+                                value={adminRequestQuery}
+                                onChange={(event) => {
+                                  setAdminRequestQuery(
+                                    event.target.value
+                                  );
+                                  setAdminRequestPage(1);
+                                }}
+                                placeholder="자산번호, 신청자, 대여자, 부서, 이메일, 목적"
+                                className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-xs outline-none mk-form-border-focus"
+                              />
+                            </div>
+                          </label>
 
-                            const userActionRequest =
-                              r.userActionRequest || null;
+                          <label className="block">
+                            <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                              페이지당 표시
+                            </span>
+                            <select
+                              value={adminRequestPageSize}
+                              onChange={(event) => {
+                                setAdminRequestPageSize(
+                                  Number(
+                                    event.target.value
+                                  )
+                                );
+                                setAdminRequestPage(1);
+                              }}
+                              className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none mk-form-border-focus"
+                            >
+                              {ADMIN_REQUEST_PAGE_SIZE_OPTIONS.map(
+                                (option) => (
+                                  <option
+                                    key={option}
+                                    value={option}
+                                  >
+                                    {option}개
+                                  </option>
+                                )
+                              )}
+                            </select>
+                          </label>
+                        </div>
+                      )}
 
-                            const hasPendingUserAction =
-                              userActionRequest?.status ===
-                              USER_REQUEST_REVIEW_STATUS.PENDING;
+                      {!rentalRequestsReady ? (
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
+                          전체 대여신청 정보를 불러오는 중입니다.
+                        </div>
+                      ) : rentalRequestsLoadErrorMessage ? null : mergedRentalRequests.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
+                          현재 접수되거나 처리된 대여 신청 목록이 없습니다.
+                        </div>
+                      ) : selectedAdminRequest ? (
+                        (() => {
+                          const r =
+                            selectedAdminRequest;
 
-                            const isUserActionSaving =
-                              adminUserActionSavingRequestId ===
-                              r.id;
+                          const isOverdue =
+                            r.status ===
+                              STATUS.APPROVED &&
+                            r.dueDate &&
+                            r.dueDate < today();
 
-                            return (
-                              <div key={r.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+                          const hasRentalRequestDocument =
+                            rentalRequestIdSet.has(
+                              r.id
+                            );
+
+                          const requestAuditLogs =
+                            rentalRequestLogsByRequestId.get(
+                              r.id
+                            ) || [];
+
+                          const userActionRequest =
+                            r.userActionRequest ||
+                            null;
+
+                          const hasPendingUserAction =
+                            userActionRequest?.status ===
+                            USER_REQUEST_REVIEW_STATUS.PENDING;
+
+                          const isUserActionSaving =
+                            adminUserActionSavingRequestId ===
+                            r.id;
+
+                          const restoreTargets =
+                            getAdminRequestRestoreTargets(
+                              r
+                            );
+
+                          return (
+                            <div className="space-y-4">
+                              <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="shrink-0 px-4 py-2 text-xs"
+                                  onClick={() =>
+                                    setSelectedAdminRequestId(
+                                      ''
+                                    )
+                                  }
+                                >
+                                  목록으로
+                                </Button>
+
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="px-3 py-2 text-xs"
+                                    disabled={
+                                      !hasRentalRequestDocument
+                                    }
+                                    onClick={() =>
+                                      openAdminRequestEditDialog(
+                                        r
+                                      )
+                                    }
+                                  >
+                                    <Edit3 size={14} />
+                                    신청정보 수정
+                                  </Button>
+
+                                  <Button
+                                    type="button"
+                                    variant="secondary"
+                                    className="px-3 py-2 text-xs"
+                                    disabled={
+                                      !hasRentalRequestDocument ||
+                                      restoreTargets.length ===
+                                        0
+                                    }
+                                    onClick={() =>
+                                      openAdminRequestRestoreDialog(
+                                        r
+                                      )
+                                    }
+                                  >
+                                    상태 되돌리기
+                                  </Button>
+                                </div>
+                              </div>
+
+                              <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                                 <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
                                   <div className="space-y-1.5">
                                     <div className="flex flex-wrap items-center gap-2">
                                       <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
                                         {r.assetCategory}
                                       </span>
-                                      <span className="font-bold text-slate-950 text-sm">{r.assetNo}</span>
-                                      <Badge>{getDisplayRentalStatus(r.status, r.startDate)}</Badge>
+
+                                      <span className="text-sm font-bold text-slate-950">
+                                        {r.assetNo}
+                                      </span>
+
+                                      <Badge>
+                                        {getDisplayRentalStatus(
+                                          r.status,
+                                          r.startDate,
+                                          r.dueDate
+                                        )}
+                                      </Badge>
+
                                       {isOverdue && (
-                                        <span className="inline-flex items-center rounded-md bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700 ring-1 ring-inset ring-rose-600/10 animate-pulse">
+                                        <span className="inline-flex animate-pulse items-center rounded-md bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700 ring-1 ring-inset ring-rose-600/10">
                                           반납 기한 지연중
                                         </span>
                                       )}
                                     </div>
-                                    <div className="text-xs text-slate-600 font-medium">
-                                      소속: <span className="text-slate-900">{r.team}</span> &middot; 대여자명: <span className="text-slate-900">{r.borrower}</span>
+
+                                    <div className="text-xs font-medium text-slate-600">
+                                      신청자:{' '}
+                                      <span className="text-slate-900">
+                                        {r.requesterName ||
+                                          r.requesterEmail ||
+                                          '-'}
+                                      </span>
+                                      {' · '}
+                                      소속:{' '}
+                                      <span className="text-slate-900">
+                                        {r.team || '-'}
+                                      </span>
+                                      {' · '}
+                                      대여자명:{' '}
+                                      <span className="text-slate-900">
+                                        {r.borrower || '-'}
+                                      </span>
                                     </div>
+
                                     <div className="text-[11px] text-slate-500">
-                                      대여 일정: {r.startDate} ~ {r.dueDate}
+                                      대여 일정: {r.startDate || '-'} ~{' '}
+                                      {r.dueDate || '-'}
                                     </div>
-                                    <div className="text-xs text-slate-600 bg-slate-50 rounded-lg p-2.5 border border-slate-100">
-                                      목적: <span className="text-slate-700 font-medium">{r.purpose || '서술 목적 없음'}</span>
+
+                                    <div className="rounded-lg border border-slate-100 bg-slate-50 p-2.5 text-xs text-slate-600">
+                                      목적:{' '}
+                                      <span className="font-medium text-slate-700">
+                                        {r.purpose ||
+                                          '서술 목적 없음'}
+                                      </span>
                                     </div>
+
                                     <div className="text-[10px] text-slate-400">
-                                      등록 접수 일시: {r.requestedAt}
+                                      등록 접수 일시:{' '}
+                                      {r.requestedAt ||
+                                        formatFirestoreTimestamp(
+                                          r.createdAt
+                                        )}
                                     </div>
                                   </div>
 
-                                  {/* 상태별 전환 버튼 */}
                                   {hasRentalRequestDocument ? (
                                     hasPendingUserAction ? (
                                       <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700">
                                         사용자 요청 검토를 먼저 완료해 주세요.
                                       </div>
                                     ) : (
-                                      renderRequestActionButtons(r)
+                                      renderRequestActionButtons(
+                                        r
+                                      )
                                     )
                                   ) : (
                                     <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700">
@@ -13939,8 +15620,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                                     </div>
                                   )}
                                 </div>
-                                
-                                                                {userActionRequest && (
+
+                                {userActionRequest && (
                                   <div
                                     className={`rounded-xl border px-4 py-3 text-xs ${
                                       hasPendingUserAction
@@ -13965,17 +15646,25 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
                                         <div className="leading-5">
                                           요청 사유:{' '}
-                                          {userActionRequest.reason || '-'}
+                                          {userActionRequest.reason ||
+                                            '-'}
                                         </div>
 
                                         {userActionRequest.type ===
                                           USER_REQUEST_ACTION.CHANGE && (
                                           <div className="leading-5">
                                             변경 요청:{' '}
-                                            {userActionRequest.team || '-'} ·{' '}
-                                            {userActionRequest.borrower || '-'} ·{' '}
-                                            {userActionRequest.startDate || '-'} ~{' '}
-                                            {userActionRequest.dueDate || '-'}
+                                            {userActionRequest.team ||
+                                              '-'}
+                                            {' · '}
+                                            {userActionRequest.borrower ||
+                                              '-'}
+                                            {' · '}
+                                            {userActionRequest.startDate ||
+                                              '-'}
+                                            {' ~ '}
+                                            {userActionRequest.dueDate ||
+                                              '-'}
                                           </div>
                                         )}
 
@@ -13983,7 +15672,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                                           USER_REQUEST_ACTION.EXTEND && (
                                           <div className="leading-5">
                                             연장 요청일:{' '}
-                                            {userActionRequest.dueDate || '-'}
+                                            {userActionRequest.dueDate ||
+                                              '-'}
                                           </div>
                                         )}
                                       </div>
@@ -13993,7 +15683,9 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                                           <Button
                                             type="button"
                                             variant="primary"
-                                            disabled={isUserActionSaving}
+                                            disabled={
+                                              isUserActionSaving
+                                            }
                                             onClick={() =>
                                               reviewUserActionRequest(
                                                 r.id,
@@ -14008,7 +15700,9 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                                           <Button
                                             type="button"
                                             variant="dangerOutline"
-                                            disabled={isUserActionSaving}
+                                            disabled={
+                                              isUserActionSaving
+                                            }
                                             onClick={() =>
                                               reviewUserActionRequest(
                                                 r.id,
@@ -14025,32 +15719,34 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                                   </div>
                                 )}
 
-                                <div className="pt-2 border-t border-slate-100">
+                                <div className="border-t border-slate-100 pt-2">
                                   <label className="block">
-                                    <span className="block text-[10px] font-semibold text-slate-500 uppercase">
+                                    <span className="block text-[10px] font-semibold uppercase text-slate-500">
                                       승인 관리자 심사 및 인수인계 코멘트
                                     </span>
 
                                     <input
                                       type="text"
                                       value={r.adminMemo || ''}
-                                      onChange={(e) =>
+                                      onChange={(event) =>
                                         updateRequestMemo(
                                           r.id,
-                                          e.target.value
+                                          event.target.value
                                         )
                                       }
-                                      onBlur={(e) => {
+                                      onBlur={(event) => {
                                         if (
                                           hasRentalRequestDocument
                                         ) {
                                           saveRequestMemo(
                                             r.id,
-                                            e.target.value
+                                            event.target.value
                                           );
                                         }
                                       }}
-                                      disabled={!hasRentalRequestDocument}
+                                      disabled={
+                                        !hasRentalRequestDocument
+                                      }
                                       placeholder="전달 혹은 상태 변경 사유 등을 남겨 공유하세요."
                                       className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none mk-form-border-focus disabled:cursor-not-allowed disabled:bg-slate-100"
                                     />
@@ -14077,7 +15773,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                                   ) : (
                                     <div className="mt-2 space-y-2">
                                       {requestAuditLogs
-                                        .slice(0, 5)
+                                        .slice(0, 10)
                                         .map((log) => (
                                           <div
                                             key={log.id}
@@ -14089,9 +15785,15 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                                                 RENTAL_REQUEST_AUDIT_ACTION.STATUS_CHANGED
                                                   ? `${log.previousStatus || '-'} → ${log.nextStatus || '-'}`
                                                   : log.action ===
-                                                      RENTAL_REQUEST_AUDIT_ACTION.MEMO_CHANGED
-                                                    ? '관리자 메모 변경'
-                                                    : '사용자 요청 검토'}
+                                                      RENTAL_REQUEST_AUDIT_ACTION.STATUS_RESTORED
+                                                    ? `상태 복구: ${log.previousStatus || '-'} → ${log.nextStatus || '-'}`
+                                                    : log.action ===
+                                                        RENTAL_REQUEST_AUDIT_ACTION.REQUEST_EDITED
+                                                      ? '신청정보 수정'
+                                                      : log.action ===
+                                                          RENTAL_REQUEST_AUDIT_ACTION.MEMO_CHANGED
+                                                        ? '관리자 메모 변경'
+                                                        : '사용자 요청 검토'}
                                               </span>
 
                                               <span className="text-[10px] text-slate-400">
@@ -14129,10 +15831,221 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                                   )}
                                 </div>
                               </div>
-                            );
-                          })
-                        )}
-                      </div>
+                            </div>
+                          );
+                        })()
+                      ) : filteredAdminRequests.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
+                          선택한 탭과 검색 조건에 해당하는 신청이 없습니다.
+                        </div>
+                      ) : (
+                        <>
+                          <div className="overflow-x-auto rounded-xl border border-slate-200">
+                            <table className="w-full min-w-[1120px] table-fixed border-collapse text-left">
+                              <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600">
+                                <tr>
+                                  <th className="w-36 border-b border-slate-200 px-3 py-3">
+                                    처리·접수일
+                                  </th>
+                                  <th className="w-32 border-b border-slate-200 px-3 py-3">
+                                    자산번호
+                                  </th>
+                                  <th className="w-28 border-b border-slate-200 px-3 py-3">
+                                    기기 분류
+                                  </th>
+                                  <th className="w-36 border-b border-slate-200 px-3 py-3">
+                                    신청자·대여자
+                                  </th>
+                                  <th className="w-28 border-b border-slate-200 px-3 py-3">
+                                    부서
+                                  </th>
+                                  <th className="border-b border-slate-200 px-3 py-3">
+                                    대여 기간
+                                  </th>
+                                  <th className="w-24 border-b border-slate-200 px-3 py-3 text-center">
+                                    상태
+                                  </th>
+                                  <th className="w-28 border-b border-slate-200 px-3 py-3 text-center">
+                                    사용자 요청
+                                  </th>
+                                </tr>
+                              </thead>
+
+                              <tbody>
+                                {paginatedAdminRequests.map(
+                                  (request) => {
+                                    const requestLogs =
+                                      rentalRequestLogsByRequestId.get(
+                                        request.id
+                                      ) || [];
+
+                                    const latestStatusLog =
+                                      requestLogs.find(
+                                        (log) =>
+                                          [
+                                            RENTAL_REQUEST_AUDIT_ACTION.STATUS_CHANGED,
+                                            RENTAL_REQUEST_AUDIT_ACTION.STATUS_RESTORED,
+                                          ].includes(
+                                            log.action
+                                          ) &&
+                                          log.nextStatus ===
+                                            request.status
+                                      );
+
+                                    const referenceDate =
+                                      latestStatusLog?.createdAt
+                                        ? formatFirestoreTimestamp(
+                                            latestStatusLog.createdAt
+                                          )
+                                        : request.requestedAt ||
+                                          formatFirestoreTimestamp(
+                                            request.createdAt
+                                          );
+
+                                    const userAction =
+                                      request.userActionRequest;
+
+                                    return (
+                                      <tr
+                                        key={request.id}
+                                        className="cursor-pointer border-b border-slate-100 align-middle last:border-b-0 hover:bg-slate-50"
+                                        onClick={() =>
+                                          setSelectedAdminRequestId(
+                                            request.id
+                                          )
+                                        }
+                                      >
+                                        <td className="px-3 py-3 text-[11px] text-slate-500">
+                                          {referenceDate || '-'}
+                                        </td>
+
+                                        <td className="px-3 py-3">
+                                          <button
+                                            type="button"
+                                            className="max-w-full truncate text-left text-xs font-bold text-slate-900 hover:text-orange-600 hover:underline"
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              setSelectedAdminRequestId(
+                                                request.id
+                                              );
+                                            }}
+                                          >
+                                            {request.assetNo ||
+                                              '-'}
+                                          </button>
+                                        </td>
+
+                                        <td className="truncate px-3 py-3 text-xs text-slate-600">
+                                          {request.assetCategory ||
+                                            '-'}
+                                        </td>
+
+                                        <td className="px-3 py-3 text-xs text-slate-600">
+                                          <div className="truncate font-semibold text-slate-800">
+                                            {request.requesterName ||
+                                              request.requesterEmail ||
+                                              '-'}
+                                          </div>
+                                          <div className="mt-0.5 truncate text-[10px] text-slate-400">
+                                            대여자:{' '}
+                                            {request.borrower ||
+                                              '-'}
+                                          </div>
+                                        </td>
+
+                                        <td className="truncate px-3 py-3 text-xs text-slate-600">
+                                          {request.team ||
+                                            '-'}
+                                        </td>
+
+                                        <td className="px-3 py-3 text-xs text-slate-600">
+                                          {request.startDate ||
+                                            '-'}
+                                          {' ~ '}
+                                          {request.dueDate ||
+                                            '-'}
+                                        </td>
+
+                                        <td className="px-3 py-3 text-center">
+                                          <Badge>
+                                            {getDisplayRentalStatus(
+                                              request.status,
+                                              request.startDate,
+                                              request.dueDate
+                                            )}
+                                          </Badge>
+                                        </td>
+
+                                        <td className="px-3 py-3 text-center text-[11px] text-slate-500">
+                                          {userAction
+                                            ? `${getUserRequestActionLabel(
+                                                userAction.type
+                                              )} · ${getUserRequestReviewStatusLabel(
+                                                userAction.status
+                                              )}`
+                                            : '-'}
+                                        </td>
+                                      </tr>
+                                    );
+                                  }
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="text-[11px] text-slate-500">
+                              검색 결과{' '}
+                              {filteredAdminRequests.length}건 ·{' '}
+                              {safeAdminRequestPage} /{' '}
+                              {adminRequestTotalPages}페이지
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="px-3 py-2 text-xs"
+                                disabled={
+                                  safeAdminRequestPage <= 1
+                                }
+                                onClick={() =>
+                                  setAdminRequestPage(
+                                    (prev) =>
+                                      Math.max(
+                                        1,
+                                        prev - 1
+                                      )
+                                  )
+                                }
+                              >
+                                이전
+                              </Button>
+
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="px-3 py-2 text-xs"
+                                disabled={
+                                  safeAdminRequestPage >=
+                                  adminRequestTotalPages
+                                }
+                                onClick={() =>
+                                  setAdminRequestPage(
+                                    (prev) =>
+                                      Math.min(
+                                        adminRequestTotalPages,
+                                        prev + 1
+                                      )
+                                  )
+                                }
+                              >
+                                다음
+                              </Button>
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </div>
                   )}
 
@@ -16835,6 +18748,319 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         )}
       </main>
 
+      {adminRequestEditDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  대여 신청정보 수정
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  관리자 수정에는 최대 대여 가능일 14일 제한을 적용하지 않습니다.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeAdminRequestEditDialog}
+                disabled={adminRequestEditSaving}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              {data.settings.teamInputMode === 'dropdown' ? (
+                <Select
+                  label="부서 / 팀"
+                  value={adminRequestEditForm.team}
+                  onChange={(value) =>
+                    setAdminRequestEditForm(
+                      (prev) => ({
+                        ...prev,
+                        team: value,
+                        borrower: '',
+                      })
+                    )
+                  }
+                >
+                  <option value="">
+                    팀 선택
+                  </option>
+                  {(data.teams || []).map(
+                    (team) => (
+                      <option
+                        key={team}
+                        value={team}
+                      >
+                        {team}
+                      </option>
+                    )
+                  )}
+                </Select>
+              ) : (
+                <Input
+                  label="부서 / 팀"
+                  value={adminRequestEditForm.team}
+                  onChange={(value) =>
+                    setAdminRequestEditForm(
+                      (prev) => ({
+                        ...prev,
+                        team: value,
+                      })
+                    )
+                  }
+                />
+              )}
+
+              {data.settings.borrowerInputMode === 'dropdown' ? (
+                <Select
+                  label="대여자명"
+                  value={adminRequestEditForm.borrower}
+                  onChange={(value) =>
+                    setAdminRequestEditForm(
+                      (prev) => ({
+                        ...prev,
+                        borrower: value,
+                      })
+                    )
+                  }
+                >
+                  <option value="">
+                    {adminRequestEditForm.team
+                      ? '대여자 선택'
+                      : '소속 부서를 먼저 선택해 주세요'}
+                  </option>
+
+                  {adminRequestEditBorrowers.map(
+                    (borrower) => (
+                      <option
+                        key={`${borrower.id}-${borrower.name}`}
+                        value={borrower.name}
+                      >
+                        {borrower.name}
+                      </option>
+                    )
+                  )}
+                </Select>
+              ) : (
+                <Input
+                  label="대여자명"
+                  value={adminRequestEditForm.borrower}
+                  onChange={(value) =>
+                    setAdminRequestEditForm(
+                      (prev) => ({
+                        ...prev,
+                        borrower: value,
+                      })
+                    )
+                  }
+                />
+              )}
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <DateInputWithWeekday
+                  label="대여 시작일"
+                  value={adminRequestEditForm.startDate}
+                  onChange={(value) =>
+                    setAdminRequestEditForm(
+                      (prev) => ({
+                        ...prev,
+                        startDate: value,
+                        dueDate:
+                          prev.dueDate < value
+                            ? value
+                            : prev.dueDate,
+                      })
+                    )
+                  }
+                />
+
+                <DateInputWithWeekday
+                  label="반납 예정일"
+                  value={adminRequestEditForm.dueDate}
+                  min={adminRequestEditForm.startDate}
+                  onChange={(value) =>
+                    setAdminRequestEditForm(
+                      (prev) => ({
+                        ...prev,
+                        dueDate: value,
+                      })
+                    )
+                  }
+                />
+              </div>
+
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                  대여 목적
+                </span>
+                <textarea
+                  value={adminRequestEditForm.purpose}
+                  onChange={(event) =>
+                    setAdminRequestEditForm(
+                      (prev) => ({
+                        ...prev,
+                        purpose:
+                          event.target.value,
+                      })
+                    )
+                  }
+                  className="h-28 w-full rounded-xl border border-slate-200 p-3 text-xs leading-6 outline-none mk-form-ring-focus"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                  관리자 메모
+                </span>
+                <textarea
+                  value={adminRequestEditForm.adminMemo}
+                  onChange={(event) =>
+                    setAdminRequestEditForm(
+                      (prev) => ({
+                        ...prev,
+                        adminMemo:
+                          event.target.value,
+                      })
+                    )
+                  }
+                  className="h-24 w-full rounded-xl border border-slate-200 p-3 text-xs leading-6 outline-none mk-form-ring-focus"
+                />
+              </label>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={adminRequestEditSaving}
+                onClick={closeAdminRequestEditDialog}
+              >
+                취소
+              </Button>
+
+              <Button
+                type="button"
+                variant="primary"
+                disabled={adminRequestEditSaving}
+                onClick={saveAdminRequestEdit}
+              >
+                {adminRequestEditSaving
+                  ? '저장 중...'
+                  : '수정 저장'}
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {adminRequestRestoreDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  신청 상태 되돌리기
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  활성 상태로 복구할 때 자산 예약 정보를 다시 생성하고 다른 예약과의 충돌을 검사합니다.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeAdminRequestRestoreDialog}
+                disabled={adminRequestRestoreSaving}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                  복구할 상태
+                </span>
+                <select
+                  value={adminRequestRestoreTarget}
+                  onChange={(event) =>
+                    setAdminRequestRestoreTarget(
+                      event.target.value
+                    )
+                  }
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none mk-form-border-focus"
+                >
+                  {(adminRequestRestoreDialog.targetOptions || []).map(
+                    (status) => (
+                      <option
+                        key={status}
+                        value={status}
+                      >
+                        {status}
+                      </option>
+                    )
+                  )}
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                  복구 사유
+                </span>
+                <textarea
+                  value={adminRequestRestoreReason}
+                  onChange={(event) =>
+                    setAdminRequestRestoreReason(
+                      event.target.value
+                    )
+                  }
+                  placeholder="잘못 처리한 이유와 복구가 필요한 사유를 입력해 주세요."
+                  className="h-28 w-full rounded-xl border border-slate-200 p-3 text-xs leading-6 outline-none mk-form-ring-focus"
+                />
+              </label>
+
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
+                관리자 복구에는 최대 14일 제한을 적용하지 않습니다. 다만 날짜 순서 오류와 동일 기기의 다른 활성 예약 충돌은 차단됩니다.
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={adminRequestRestoreSaving}
+                onClick={closeAdminRequestRestoreDialog}
+              >
+                취소
+              </Button>
+
+              <Button
+                type="button"
+                variant="primary"
+                disabled={adminRequestRestoreSaving}
+                onClick={restoreAdminRequestStatus}
+              >
+                {adminRequestRestoreSaving
+                  ? '복구 중...'
+                  : '상태 복구'}
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+      
             {userActionDialog && activeUserActionRentalRequest && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
           <motion.div
