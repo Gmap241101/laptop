@@ -13342,7 +13342,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                 신청내역
               </button>
 
-              <div className="relative inline-block">
+              <div className="relative">
                 <button
                   type="button"
                   onClick={() => setIsCommunityMenuOpen((prev) => !prev)}
@@ -13361,7 +13361,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                       initial={{ opacity: 0, y: -6, scale: 0.98 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: -6, scale: 0.98 }}
-                      className="absolute left-1/2 top-full z-40 mt-2 w-36 -translate-x-1/2 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
+                      className="absolute left-1 top-full z-40 mt-2 w-36  overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
                     >
                       <button
                         type="button"
