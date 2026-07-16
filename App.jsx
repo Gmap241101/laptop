@@ -2140,6 +2140,8 @@ function App() {
   ] = useState('');
 
   const [activeFaqCategoryId, setActiveFaqCategoryId] = useState('all');
+  const [faqQuery, setFaqQuery] = useState('');
+  const [faqSearchWithinCategory, setFaqSearchWithinCategory] = useState(false);
   const [expandedFaqPostId, setExpandedFaqPostId] = useState('');
   const [adminExpandedFaqPostId, setAdminExpandedFaqPostId] = useState('');
   const [faqPage, setFaqPage] = useState(1);
@@ -3827,18 +3829,90 @@ function App() {
     faqBoardConfig.postsPerPage
   );
 
-  const categoryFilteredFaqPosts = useMemo(
+  const activeFaqCategoryName =
+    activeFaqCategoryId === 'all'
+      ? '전체'
+      : faqCategoryNameById.get(
+          activeFaqCategoryId
+        ) || '선택 카테고리';
+
+  const faqCategoryOrderById = useMemo(
     () =>
-      (faqPosts || []).filter(
-        (post) =>
-          activeFaqCategoryId === 'all' ||
-          post.categoryId === activeFaqCategoryId
+      new Map(
+        (faqCategories || []).map(
+          (category, index) => [
+            category.id,
+            index,
+          ]
+        )
       ),
-    [
-      faqPosts,
-      activeFaqCategoryId,
-    ]
+    [faqCategories]
   );
+
+  const categoryFilteredFaqPosts = useMemo(() => {
+    const normalizedQuery = faqQuery
+      .trim()
+      .toLowerCase();
+
+    const shouldLimitToActiveCategory =
+      activeFaqCategoryId !== 'all' &&
+      (
+        !normalizedQuery ||
+        faqSearchWithinCategory
+      );
+
+    return (faqPosts || [])
+      .filter((post) => {
+        const categoryMatched =
+          !shouldLimitToActiveCategory ||
+          post.categoryId ===
+            activeFaqCategoryId;
+
+        const titleMatched =
+          !normalizedQuery ||
+          String(post.title || '')
+            .toLowerCase()
+            .includes(normalizedQuery);
+
+        return categoryMatched && titleMatched;
+      })
+      .sort((first, second) => {
+        const firstCategoryOrder =
+          faqCategoryOrderById.get(
+            first.categoryId
+          ) ?? Number.MAX_SAFE_INTEGER;
+
+        const secondCategoryOrder =
+          faqCategoryOrderById.get(
+            second.categoryId
+          ) ?? Number.MAX_SAFE_INTEGER;
+
+        if (
+          firstCategoryOrder !==
+          secondCategoryOrder
+        ) {
+          return (
+            firstCategoryOrder -
+            secondCategoryOrder
+          );
+        }
+
+        return (
+          getFirestoreTimestampMillis(
+            second.createdAt
+          ) -
+          getFirestoreTimestampMillis(
+            first.createdAt
+          )
+        );
+      });
+  }, [
+    faqPosts,
+    faqQuery,
+    faqSearchWithinCategory,
+    activeFaqCategoryId,
+    faqCategoryOrderById,
+  ]);
 
   const pinnedFaqPosts = useMemo(
     () =>
@@ -3869,18 +3943,45 @@ function App() {
     faqTotalPages
   );
 
-  const paginatedFaqPosts = useMemo(
+  const displayedFaqPosts = useMemo(
     () =>
-      regularFaqPosts.slice(
-        (safeFaqPage - 1) *
-          faqPostsPerPage,
-        safeFaqPage *
-          faqPostsPerPage
-      ),
+      [
+        ...pinnedFaqPosts,
+        ...paginatedFaqPosts,
+      ].sort((first, second) => {
+        const firstCategoryOrder =
+          faqCategoryOrderById.get(
+            first.categoryId
+          ) ?? Number.MAX_SAFE_INTEGER;
+
+        const secondCategoryOrder =
+          faqCategoryOrderById.get(
+            second.categoryId
+          ) ?? Number.MAX_SAFE_INTEGER;
+
+        if (
+          firstCategoryOrder !==
+          secondCategoryOrder
+        ) {
+          return (
+            firstCategoryOrder -
+            secondCategoryOrder
+          );
+        }
+
+        return (
+          getFirestoreTimestampMillis(
+            second.createdAt
+          ) -
+          getFirestoreTimestampMillis(
+            first.createdAt
+          )
+        );
+      }),
     [
-      regularFaqPosts,
-      safeFaqPage,
-      faqPostsPerPage,
+      pinnedFaqPosts,
+      paginatedFaqPosts,
+      faqCategoryOrderById,
     ]
   );
 
@@ -13361,7 +13462,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                       initial={{ opacity: 0, y: -6, scale: 0.98 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: -6, scale: 0.98 }}
-                      className="absolute left-1 top-full z-40 mt-2 w-36  overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
+                      className="absolute left-1/2 top-full z-40 mt-2 w-36 -translate-x-1/2 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
                     >
                       <button
                         type="button"
@@ -14885,6 +14986,50 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                       </div>
                     )}
 
+                    <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center">
+                      <div className="relative min-w-0 flex-1">
+                        <Search
+                          className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                          size={16}
+                        />
+
+                        <input
+                          type="search"
+                          value={faqQuery}
+                          onChange={(event) => {
+                            setFaqQuery(
+                              event.target.value
+                            );
+                            setExpandedFaqPostId('');
+                            setFaqPage(1);
+                          }}
+                          placeholder="FAQ 제목 검색"
+                          className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-xs outline-none transition mk-form-focus"
+                        />
+                      </div>
+
+                      <label className="flex shrink-0 cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={
+                            faqSearchWithinCategory
+                          }
+                          onChange={(event) => {
+                            setFaqSearchWithinCategory(
+                              event.target.checked
+                            );
+                            setExpandedFaqPostId('');
+                            setFaqPage(1);
+                          }}
+                          className="h-4 w-4 rounded border-slate-300 accent-orange-500"
+                        />
+
+                        <span>
+                          {activeFaqCategoryName} 내 검색
+                        </span>
+                      </label>
+                    </div>
+
                     {!faqPostsReady ? (
                       <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
                         FAQ를 불러오는 중입니다.
@@ -14895,15 +15040,15 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                       </div>
                     ) : categoryFilteredFaqPosts.length === 0 ? (
                       <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
-                        선택한 카테고리에 등록된 FAQ가 없습니다.
+                        {faqQuery.trim()
+                          ? '검색 조건에 맞는 FAQ가 없습니다.'
+                          : '선택한 카테고리에 등록된 FAQ가 없습니다.'}
                       </div>
                     ) : (
                       <>
                         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                          {[
-                            ...pinnedFaqPosts,
-                            ...paginatedFaqPosts,
-                          ].map((post, index, displayedPosts) => {
+                          {displayedFaqPosts.map(
+                            (post, index, displayedPosts) => {
                             const isExpanded =
                               expandedFaqPostId ===
                               post.id;
