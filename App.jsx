@@ -3868,13 +3868,16 @@ function App() {
           post.categoryId ===
             activeFaqCategoryId;
 
-        const titleMatched =
+        const keywordMatched =
           !normalizedQuery ||
           String(post.title || '')
             .toLowerCase()
+            .includes(normalizedQuery) ||
+          String(post.content || '')
+            .toLowerCase()
             .includes(normalizedQuery);
 
-        return categoryMatched && titleMatched;
+        return categoryMatched && keywordMatched;
       })
       .sort((first, second) => {
         const firstCategoryOrder =
@@ -15018,7 +15021,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                             setExpandedFaqPostId('');
                             setFaqPage(1);
                           }}
-                          placeholder="FAQ 제목 검색"
+                          placeholder="FAQ 제목 또는 본문 검색"
                           className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-xs outline-none transition mk-form-focus"
                         />
                       </div>
