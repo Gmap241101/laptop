@@ -1,0 +1,109 @@
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* MK 브랜드 컬러 시스템 */
+:root {
+  --mk-orange: #FF6B00;
+  --mk-orange-dark: #e65300;
+  --mk-orange-soft: rgba(255, 107, 0, 0.1);
+  --mk-orange-border: rgba(255, 107, 0, 0.25);
+  --mk-orange-ring: rgba(255, 107, 0, 0.15);
+  --mk-orange-shadow: rgba(255, 107, 0, 0.2);
+
+  --mk-font-sans: "Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", sans-serif;
+}
+
+/* 기본 브라우저 스타일 보정 */
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #f8fafc;
+  font-family: var(--mk-font-sans);
+}
+
+/* App.firebase.jsx 안에서 사용 중인 커스텀 애니메이션 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@layer utilities {
+  .animate-fadeIn {
+    animation: fadeIn 0.18s ease-out both;
+  }
+
+  /* 현재 코드에 있는 px-4.5 보정 */
+  .px-4\.5 {
+    padding-left: 1.125rem;
+    padding-right: 1.125rem;
+  }
+
+  /* 현재 코드에 있는 duration-350 보정 */
+  .duration-350 {
+    transition-duration: 350ms;
+  }
+
+  /* Tailwind font-sans를 MK 지정 고딕 폰트로 재정의 */
+  .font-sans {
+    font-family: var(--mk-font-sans) !important;
+  }
+}
+
+@layer components {
+  .mk-btn-primary {
+    background-color: var(--mk-orange);
+    color: #ffffff;
+    box-shadow: 0 1px 2px 0 var(--mk-orange-shadow);
+  }
+
+  .mk-btn-primary:hover {
+    background-color: var(--mk-orange-dark);
+  }
+
+  .mk-brand-gradient-tr {
+    background-image: linear-gradient(to top right, var(--mk-orange), var(--mk-orange-dark));
+  }
+
+  .mk-brand-gradient-r {
+    background-image: linear-gradient(to right, var(--mk-orange), var(--mk-orange-dark));
+  }
+
+  .mk-brand-text {
+    color: var(--mk-orange);
+  }
+
+  .mk-brand-border-soft {
+    border-color: var(--mk-orange-border) !important;
+  }
+
+  .mk-brand-shadow-md {
+    box-shadow: 0 4px 6px -1px var(--mk-orange-shadow), 0 2px 4px -2px var(--mk-orange-shadow);
+  }
+
+  .mk-form-focus:focus {
+    border-color: var(--mk-orange);
+    box-shadow: 0 0 0 4px var(--mk-orange-ring);
+  }
+
+  .mk-form-border-focus:focus {
+    border-color: var(--mk-orange);
+  }
+
+  .mk-form-ring-focus:focus {
+    box-shadow: 0 0 0 4px var(--mk-orange-ring);
+  }
+}

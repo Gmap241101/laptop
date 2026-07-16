@@ -1,2 +1,5 @@
 node_modules/
-.vercel
+dist/
+.firebase/
+firebase-debug.log
+*.local
