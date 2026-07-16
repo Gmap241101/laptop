@@ -3943,6 +3943,21 @@ function App() {
     faqTotalPages
   );
 
+  const paginatedFaqPosts = useMemo(
+    () =>
+      regularFaqPosts.slice(
+        (safeFaqPage - 1) *
+          faqPostsPerPage,
+        safeFaqPage *
+          faqPostsPerPage
+      ),
+    [
+      regularFaqPosts,
+      safeFaqPage,
+      faqPostsPerPage,
+    ]
+  );
+
   const displayedFaqPosts = useMemo(
     () =>
       [
