@@ -13361,7 +13361,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                       initial={{ opacity: 0, y: -6, scale: 0.98 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: -6, scale: 0.98 }}
-                      className="absolute left-0 mt-2 w-48 rounded-2xl border border-slate-100 bg-white p-2 shadow-xl ring-1 ring-black/5"
+                      className="absolute left-1/2 top-full z-40 mt-2 w-36 -translate-x-1/2 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
                     >
                       <button
                         type="button"
