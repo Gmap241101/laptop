@@ -1,6 +1,6 @@
 {
   "year": 2027,
-  "updatedAt": "2026-06-29T12:39:11.979Z",
+  "updatedAt": "2026-07-19T04:33:19.105Z",
   "source": "data.go.kr KASI SpcdeInfoService getRestDeInfo",
   "holidays": [
     {
@@ -53,6 +53,13 @@
       "source": "kasi"
     },
     {
+      "date": "2027-05-03",
+      "name": "대체공휴일(노동절)",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
       "date": "2027-05-05",
       "name": "어린이날",
       "type": "public",
@@ -76,6 +83,13 @@
     {
       "date": "2027-07-17",
       "name": "제헌절",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2027-07-19",
+      "name": "대체공휴일(제헌절)",
       "type": "public",
       "enabled": true,
       "source": "kasi"
