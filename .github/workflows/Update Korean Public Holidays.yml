@@ -24,19 +24,19 @@
             git push origin gh-pages
           fi
 
-      - name: Update gh-pages-2
+      - name: Update gh-page2
         uses: actions/checkout@v4
         with:
-          ref: gh-pages-2
-          path: gh-pages-2
+          ref: gh-page2
+          path: gh-page2
 
-      - name: Copy to gh-pages-2
+      - name: Copy to gh-page2
         run: |
-          mkdir -p gh-pages-2/holidays
-          cp -f source/public/holidays/*.json gh-pages-2/holidays/
+          mkdir -p gh-page2/holidays
+          cp -f source/public/holidays/*.json gh-page2/holidays/
 
-      - name: Commit gh-pages-2
-        working-directory: gh-pages-2
+      - name: Commit gh-page2
+        working-directory: gh-page2
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
@@ -47,7 +47,7 @@
             echo "No changes."
           else
             git commit -m "Update Korean public holiday JSON"
-            git push origin gh-pages-2
+            git push origin gh-page2
           fi
 
       - name: Update gh-pages-3
