@@ -1,129 +1,108 @@
 {
-  "year": 2028,
-  "updatedAt": "2026-07-19T06:23:24.672Z",
+  "year": 2013,
+  "updatedAt": "2026-07-19T06:20:38.650Z",
   "source": "data.go.kr KASI SpcdeInfoService getRestDeInfo",
   "holidays": [
     {
-      "date": "2028-01-01",
-      "name": "1월1일",
+      "date": "2013-01-01",
+      "name": "신정",
       "type": "public",
       "enabled": true,
       "source": "kasi"
     },
     {
-      "date": "2028-01-26",
+      "date": "2013-02-09",
       "name": "설날",
       "type": "public",
       "enabled": true,
       "source": "kasi"
     },
     {
-      "date": "2028-01-27",
+      "date": "2013-02-10",
       "name": "설날",
       "type": "public",
       "enabled": true,
       "source": "kasi"
     },
     {
-      "date": "2028-01-28",
+      "date": "2013-02-11",
       "name": "설날",
       "type": "public",
       "enabled": true,
       "source": "kasi"
     },
     {
-      "date": "2028-03-01",
+      "date": "2013-03-01",
       "name": "삼일절",
       "type": "public",
       "enabled": true,
       "source": "kasi"
     },
     {
-      "date": "2028-04-12",
-      "name": "국회의원선거일",
+      "date": "2013-05-05",
+      "name": "어린이 날",
       "type": "public",
       "enabled": true,
       "source": "kasi"
     },
     {
-      "date": "2028-05-01",
-      "name": "노동절",
+      "date": "2013-05-17",
+      "name": "석가탄신일",
       "type": "public",
       "enabled": true,
       "source": "kasi"
     },
     {
-      "date": "2028-05-02",
-      "name": "부처님오신날",
-      "type": "public",
-      "enabled": true,
-      "source": "kasi"
-    },
-    {
-      "date": "2028-05-05",
-      "name": "어린이날",
-      "type": "public",
-      "enabled": true,
-      "source": "kasi"
-    },
-    {
-      "date": "2028-06-06",
+      "date": "2013-06-06",
       "name": "현충일",
       "type": "public",
       "enabled": true,
       "source": "kasi"
     },
     {
-      "date": "2028-07-17",
-      "name": "제헌절",
-      "type": "public",
-      "enabled": true,
-      "source": "kasi"
-    },
-    {
-      "date": "2028-08-15",
+      "date": "2013-08-15",
       "name": "광복절",
       "type": "public",
       "enabled": true,
       "source": "kasi"
     },
     {
-      "date": "2028-10-02",
+      "date": "2013-09-18",
       "name": "추석",
       "type": "public",
       "enabled": true,
       "source": "kasi"
     },
     {
-      "date": "2028-10-03",
+      "date": "2013-09-19",
       "name": "추석",
       "type": "public",
       "enabled": true,
       "source": "kasi"
     },
     {
-      "date": "2028-10-04",
+      "date": "2013-09-20",
       "name": "추석",
       "type": "public",
       "enabled": true,
       "source": "kasi"
     },
     {
-      "date": "2028-10-05",
-      "name": "대체공휴일(추석)",
+      "date": "2013-10-03",
+      "name": "개천절",
       "type": "public",
       "enabled": true,
       "source": "kasi"
     },
     {
-      "date": "2028-10-09",
+      "date": "2013-10-09",
       "name": "한글날",
       "type": "public",
       "enabled": true,
       "source": "kasi"
     },
     {
-      "date": "2028-12-25",
+      "date": "2013-12-25",
       "name": "기독탄신일",
       "type": "public",
       "enabled": true,
