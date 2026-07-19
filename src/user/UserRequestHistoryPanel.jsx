@@ -178,30 +178,29 @@ export default function UserRequestHistoryPanel({ ctx }) {
                                 </div>
                               )}
 
-                              {request.status === STATUS.APPROVED && (
-                                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] leading-5 text-slate-600">
-                                  <div className="font-semibold text-slate-800">
-                                    연장 사용 {getRequestExtensionCount(request)} /{' '}
-                                    {getSafeRentalExtensionMaxCount(data.settings)}회
-                                    {' · '}1회{' '}
-                                    {getSafeRentalExtensionBusinessDays(data.settings)}영업일
-                                  </div>
+                              {data.settings.rentalExtensionEnabled &&
+                                request.status === STATUS.APPROVED && (
+                                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] leading-5 text-slate-600">
+                                    <div className="font-semibold text-slate-800">
+                                      연장 사용 {getRequestExtensionCount(request)} /{' '}
+                                      {getSafeRentalExtensionMaxCount(data.settings)}회
+                                      {' · '}1회{' '}
+                                      {getSafeRentalExtensionBusinessDays(data.settings)}영업일
+                                    </div>
 
-                                  <div className="mt-0.5">
-                                    {data.settings.rentalExtensionEnabled
-                                      ? getRequestExtensionCount(request) >=
-                                        getSafeRentalExtensionMaxCount(data.settings)
+                                    <div className="mt-0.5">
+                                      {getRequestExtensionCount(request) >=
+                                      getSafeRentalExtensionMaxCount(data.settings)
                                         ? '허용된 연장 횟수를 모두 사용했습니다.'
                                         : `다음 연장 신청 가능일: ${formatDateWithKoreanWeekday(
                                             getExtensionRequestAvailableDate(
                                               request,
                                               data.settings
                                             )
-                                          )}`
-                                      : '현재 대여 연장 신청이 허용되지 않습니다.'}
+                                          )}`}
+                                    </div>
                                   </div>
-                                </div>
-                              )}
+                                )}
 
                               {request.userActionRequest && (
                                 <div
