@@ -1,0 +1,77 @@
+      - name: Update gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: gh-pages
+
+      - name: Copy to gh-pages
+        run: |
+          mkdir -p gh-pages/holidays
+          cp -f source/public/holidays/*.json gh-pages/holidays/
+
+      - *ame: Commit gh-pages
+        worki*g-directory: gh-pages
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          git add holidays/*.json
+
+          if git diff --cached --quiet; then
+            echo "No changes."
+          else
+            git commit -m "Update Korean public holiday JSON"
+            git push origin gh-pages
+          fi
+
+      - name: Update gh-pages-2
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages-2
+          path: gh-pages-2
+
+      - name: Copy to gh-pages-2
+        run: |
+          mkdir -p gh-pages-2/holidays
+          cp -f source/public/holidays/*.json gh-pages-2/holidays/
+
+      - name: Commit gh-pages-2
+        working-directory: gh-pages-2
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          git add holidays/*.json
+
+          if git diff --cached --quiet; then
+            echo "No changes."
+          else
+            git commit -m "Update Korean public holiday JSON"
+            git push origin gh-pages-2
+          fi
+
+      - name: Update gh-pages-3
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages-3
+          path: gh-pages-3
+
+      - name: Copy to gh-pages-3
+        run: |
+          mkdir -p gh-pages-3/holidays
+          cp -f source/public/holidays/*.json gh-pages-3/holidays/
+
+      - name: Commit gh-pages-3
+        working-directory: gh-pages-3
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          git add holidays/*.json
+
+          if git diff --cached --quiet; then
+            echo "No changes."
+          else
+            git commit -m "Update Korean public holiday JSON"
+            git push origin gh-pages-3
+          fi
