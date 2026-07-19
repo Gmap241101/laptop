@@ -1,111 +1,109 @@
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* MK 브랜드 컬러 시스템 */
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  --mk-orange: #FF6B00;
+  --mk-orange-dark: #e65300;
+  --mk-orange-soft: rgba(255, 107, 0, 0.1);
+  --mk-orange-border: rgba(255, 107, 0, 0.25);
+  --mk-orange-ring: rgba(255, 107, 0, 0.15);
+  --mk-orange-shadow: rgba(255, 107, 0, 0.2);
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
-
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
+  --mk-font-sans: "Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
+/* 기본 브라우저 스타일 보정 */
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
 }
 
 body {
-  margin: 0;
+  background: #f8fafc;
+  font-family: var(--mk-font-sans);
 }
 
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-}
-
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
-}
-
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
+/* App.firebase.jsx 안에서 사용 중인 커스텀 애니메이션 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
+
+@layer utilities {
+  .animate-fadeIn {
+    animation: fadeIn 0.18s ease-out both;
+  }
+
+  /* 현재 코드에 있는 px-4.5 보정 */
+  .px-4\.5 {
+    padding-left: 1.125rem;
+    padding-right: 1.125rem;
+  }
+
+  /* 현재 코드에 있는 duration-350 보정 */
+  .duration-350 {
+    transition-duration: 350ms;
+  }
+
+  /* Tailwind font-sans를 MK 지정 고딕 폰트로 재정의 */
+  .font-sans {
+    font-family: var(--mk-font-sans) !important;
   }
 }
-p {
-  margin: 0;
-}
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
-}
+@layer components {
+  .mk-btn-primary {
+    background-color: var(--mk-orange);
+    color: #ffffff;
+    box-shadow: 0 1px 2px 0 var(--mk-orange-shadow);
+  }
 
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+  .mk-btn-primary:hover {
+    background-color: var(--mk-orange-dark);
+  }
+
+  .mk-brand-gradient-tr {
+    background-image: linear-gradient(to top right, var(--mk-orange), var(--mk-orange-dark));
+  }
+
+  .mk-brand-gradient-r {
+    background-image: linear-gradient(to right, var(--mk-orange), var(--mk-orange-dark));
+  }
+
+  .mk-brand-text {
+    color: var(--mk-orange);
+  }
+
+  .mk-brand-border-soft {
+    border-color: var(--mk-orange-border) !important;
+  }
+
+  .mk-brand-shadow-md {
+    box-shadow: 0 4px 6px -1px var(--mk-orange-shadow), 0 2px 4px -2px var(--mk-orange-shadow);
+  }
+
+  .mk-form-focus:focus {
+    border-color: var(--mk-orange);
+    box-shadow: 0 0 0 4px var(--mk-orange-ring);
+  }
+
+  .mk-form-border-focus:focus {
+    border-color: var(--mk-orange);
+  }
+
+  .mk-form-ring-focus:focus {
+    box-shadow: 0 0 0 4px var(--mk-orange-ring);
+  }
 }

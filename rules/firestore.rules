@@ -1,0 +1,777 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && exists(
+          /databases/$(database)/documents/adminAccounts/$(request.auth.uid)
+        )
+        && get(
+          /databases/$(database)/documents/adminAccounts/$(request.auth.uid)
+        ).data.id == request.auth.uid
+        && get(
+          /databases/$(database)/documents/adminAccounts/$(request.auth.uid)
+        ).data.authUid == request.auth.uid;
+    }
+
+    function isActiveUser() {
+      return signedIn()
+        && exists(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        )
+        && get(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        ).data.status == 'active';
+    }
+
+    function isBlockingRentalStatus(status) {
+      return status == '신청중'
+        || status == '대여중'
+        || status == '보류';
+    }
+
+    function validReservationSummary(summary) {
+      return summary is map
+        && summary.keys().hasAll([
+          'id',
+          'laptopId',
+          'assetCategory',
+          'assetNo',
+          'startDate',
+          'dueDate',
+          'status'
+        ])
+        && summary.keys().hasOnly([
+          'id',
+          'laptopId',
+          'assetCategory',
+          'assetNo',
+          'startDate',
+          'dueDate',
+          'status',
+          'updatedAt'
+        ])
+        && summary.id is string
+        && summary.laptopId is string
+        && summary.assetCategory is string
+        && summary.assetNo is string
+        && summary.startDate is string
+        && summary.dueDate is string
+        && summary.status is string
+        && isBlockingRentalStatus(summary.status);
+    }
+
+    function reservationSummaryMatchesRequest(summary, requestData) {
+      return validReservationSummary(summary)
+        && requestData is map
+        && summary.id == requestData.id
+        && summary.laptopId == requestData.laptopId
+        && summary.assetCategory == requestData.assetCategory
+        && summary.assetNo == requestData.assetNo
+        && summary.startDate == requestData.startDate
+        && summary.dueDate == requestData.dueDate
+        && summary.status == requestData.status;
+    }
+
+    function validUserRentalRequestCreate(requestId) {
+      let availabilityPath =
+        /databases/$(database)/documents/rentalAvailability/$(requestId);
+      let assetPath =
+        /databases/$(database)/documents/rentalAssets/$(request.resource.data.laptopId);
+      let assetAfter = getAfter(assetPath).data;
+      let reservationsAfter = assetAfter.reservations;
+      let appendedReservation =
+        reservationsAfter[reservationsAfter.size() - 1];
+
+      return isActiveUser()
+        && request.resource.data.id == requestId
+        && request.resource.data.requesterUid == request.auth.uid
+        && request.resource.data.requesterEmail == request.auth.token.email
+        && request.resource.data.requesterName
+          == get(
+            /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+          ).data.name
+        && request.resource.data.requesterTeam
+          == get(
+            /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+          ).data.team
+        && request.resource.data.status == '신청중'
+        && request.resource.data.adminMemo == ''
+        && request.resource.data.id is string
+        && request.resource.data.requesterUid is string
+        && request.resource.data.requesterEmail is string
+        && request.resource.data.requesterName is string
+        && request.resource.data.requesterTeam is string
+        && request.resource.data.laptopId is string
+        && request.resource.data.assetCategory is string
+        && request.resource.data.assetNo is string
+        && request.resource.data.team is string
+        && request.resource.data.borrower is string
+        && request.resource.data.startDate is string
+        && request.resource.data.dueDate is string
+        && request.resource.data.purpose is string
+        && request.resource.data.status is string
+        && request.resource.data.adminMemo is string
+        && request.resource.data.requestedAt is string
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.keys().hasAll([
+          'id',
+          'requesterUid',
+          'requesterEmail',
+          'requesterName',
+          'requesterTeam',
+          'laptopId',
+          'assetCategory',
+          'assetNo',
+          'team',
+          'borrower',
+          'startDate',
+          'dueDate',
+          'purpose',
+          'status',
+          'adminMemo',
+          'requestedAt',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'id',
+          'requesterUid',
+          'requesterEmail',
+          'requesterName',
+          'requesterTeam',
+          'laptopId',
+          'assetCategory',
+          'assetNo',
+          'team',
+          'borrower',
+          'startDate',
+          'dueDate',
+          'purpose',
+          'status',
+          'adminMemo',
+          'requestedAt',
+          'createdAt',
+          'updatedAt'
+        ])
+        && existsAfter(availabilityPath)
+        && reservationSummaryMatchesRequest(
+          getAfter(availabilityPath).data,
+          request.resource.data
+        )
+        && getAfter(availabilityPath).data.updatedAt == request.time
+        && existsAfter(assetPath)
+        && reservationsAfter is list
+        && reservationsAfter.size() > 0
+        && reservationSummaryMatchesRequest(
+          appendedReservation,
+          request.resource.data
+        );
+    }
+
+    function validAvailabilityCreate(requestId) {
+      let requestPath =
+        /databases/$(database)/documents/rentalRequests/$(requestId);
+      let assetPath =
+        /databases/$(database)/documents/rentalAssets/$(request.resource.data.laptopId);
+      let assetAfter = getAfter(assetPath).data;
+      let reservationsAfter = assetAfter.reservations;
+      let appendedReservation =
+        reservationsAfter[reservationsAfter.size() - 1];
+
+      return isActiveUser()
+        && request.resource.data.id == requestId
+        && request.resource.data.status == '신청중'
+        && request.resource.data.updatedAt == request.time
+        && validReservationSummary(request.resource.data)
+        && existsAfter(requestPath)
+        && getAfter(requestPath).data.requesterUid == request.auth.uid
+        && reservationSummaryMatchesRequest(
+          request.resource.data,
+          getAfter(requestPath).data
+        )
+        && existsAfter(assetPath)
+        && reservationsAfter is list
+        && reservationsAfter.size() > 0
+        && reservationSummaryMatchesRequest(
+          appendedReservation,
+          request.resource.data
+        )
+        && assetAfter.id == request.resource.data.laptopId
+        && assetAfter.category == request.resource.data.assetCategory
+        && assetAfter.assetNo == request.resource.data.assetNo;
+    }
+
+    function validUserAssetReservationAppend(assetId) {
+      let reservationsBefore = resource.data.reservations;
+      let reservationsAfter = request.resource.data.reservations;
+      let appendedReservation =
+        reservationsAfter[reservationsAfter.size() - 1];
+      let requestPath =
+        /databases/$(database)/documents/rentalRequests/$(appendedReservation.id);
+      let availabilityPath =
+        /databases/$(database)/documents/rentalAvailability/$(appendedReservation.id);
+
+      return isActiveUser()
+        && resource.data.id == assetId
+        && request.resource.data.id == assetId
+        && resource.data.status != '대여불가'
+        && request.resource.data
+          .diff(resource.data)
+          .affectedKeys()
+          .hasOnly([
+            'reservations',
+            'updatedAt'
+          ])
+        && request.resource.data.updatedAt == request.time
+        && reservationsBefore is list
+        && reservationsAfter is list
+        && reservationsAfter.size() == reservationsBefore.size() + 1
+        && reservationsAfter[0:reservationsBefore.size()] == reservationsBefore
+        && validReservationSummary(appendedReservation)
+        && appendedReservation.status == '신청중'
+        && appendedReservation.laptopId == assetId
+        && appendedReservation.assetCategory == resource.data.category
+        && appendedReservation.assetNo == resource.data.assetNo
+        && existsAfter(requestPath)
+        && getAfter(requestPath).data.requesterUid == request.auth.uid
+        && reservationSummaryMatchesRequest(
+          appendedReservation,
+          getAfter(requestPath).data
+        )
+        && existsAfter(availabilityPath)
+        && reservationSummaryMatchesRequest(
+          appendedReservation,
+          getAfter(availabilityPath).data
+        )
+        && getAfter(availabilityPath).data.updatedAt == request.time;
+    }
+
+    function validUserActionRequest(action) {
+      return action is map
+        && (
+          action.type == 'change'
+          || action.type == 'cancel'
+          || action.type == 'extend'
+        )
+        && action.status == 'pending'
+        && action.reason is string
+        && action.team is string
+        && action.borrower is string
+        && action.startDate is string
+        && action.dueDate is string
+        && action.purpose is string
+        && action.requestedAt == request.time
+        && action.reviewedAt == null
+        && action.reviewedByUid == ''
+        && action.reviewedByName == ''
+        && action.reviewMemo == ''
+        && action.keys().hasAll([
+          'type',
+          'status',
+          'reason',
+          'team',
+          'borrower',
+          'startDate',
+          'dueDate',
+          'purpose',
+          'requestedAt',
+          'reviewedAt',
+          'reviewedByUid',
+          'reviewedByName',
+          'reviewMemo'
+        ])
+        && action.keys().hasOnly([
+          'type',
+          'status',
+          'reason',
+          'team',
+          'borrower',
+          'startDate',
+          'dueDate',
+          'purpose',
+          'requestedAt',
+          'reviewedAt',
+          'reviewedByUid',
+          'reviewedByName',
+          'reviewMemo'
+        ]);
+    }
+
+    match /rentalSystem/publicConfig {
+      allow read: if true;
+
+      allow create, update:
+        if isAdmin()
+        && request.resource.data.assetCategories is list
+        && request.resource.data.teams is list
+        && request.resource.data.settings is map
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete: if false;
+    }
+
+    match /rentalAssets/{assetId} {
+      allow read: if true;
+
+      allow create, delete: if isAdmin();
+
+      allow update:
+        if isAdmin()
+        || validUserAssetReservationAppend(assetId);
+    }
+
+    match /rentalAssetNumbers/{registryId} {
+      allow read, create, update, delete:
+        if isAdmin();
+    }
+
+    match /rentalAvailability/{requestId} {
+      allow read: if true;
+
+      allow create:
+        if isAdmin()
+        || validAvailabilityCreate(requestId);
+
+      allow update, delete:
+        if isAdmin();
+    }
+
+    match /rentalBorrowers/{borrowerId} {
+      allow get, list:
+        if isAdmin() || isActiveUser();
+
+      allow create, update:
+        if isAdmin()
+        && request.resource.data.id == borrowerId
+        && request.resource.data.name is string
+        && request.resource.data.team is string
+        && request.resource.data.sortOrder is int
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete:
+        if isAdmin();
+    }
+
+    match /adminAccounts/{adminId} {
+      allow get:
+        if signedIn()
+        && (
+          request.auth.uid == adminId
+          || isAdmin()
+        );
+
+      allow list:
+        if isAdmin();
+
+      allow create:
+        if isAdmin()
+        && request.resource.data.id == adminId
+        && request.resource.data.authUid == adminId;
+
+      allow update:
+        if isAdmin()
+        && request.resource.data.id == adminId
+        && request.resource.data.authUid == adminId;
+
+      allow delete:
+        if isAdmin()
+        && request.auth.uid != adminId;
+    }
+
+    match /userAccounts/{userId} {
+      allow get:
+        if signedIn()
+        && (
+          request.auth.uid == userId
+          || isAdmin()
+        );
+
+      allow list:
+        if isAdmin();
+
+      allow create:
+        if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.uid == userId
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.status == 'pending'
+        && request.resource.data.uid is string
+        && request.resource.data.email is string
+        && request.resource.data.name is string
+        && request.resource.data.team is string
+        && request.resource.data.phone is string
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.keys().hasAll([
+          'uid',
+          'email',
+          'name',
+          'team',
+          'phone',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'uid',
+          'email',
+          'name',
+          'team',
+          'phone',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ]);
+
+      allow update:
+        if isAdmin()
+        || (
+          isActiveUser()
+          && request.auth.uid == userId
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.email == resource.data.email
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data
+            .diff(resource.data)
+            .affectedKeys()
+            .hasOnly([
+              'name',
+              'team',
+              'phone',
+              'updatedAt'
+            ])
+        );
+
+      allow delete:
+        if isAdmin();
+    }
+
+    match /rentalRequests/{requestId} {
+      allow create:
+        if isAdmin()
+        || validUserRentalRequestCreate(requestId);
+
+      allow get, list:
+        if signedIn()
+        && (
+          isAdmin()
+          || resource.data.requesterUid == request.auth.uid
+        );
+
+      allow update:
+        if (
+          isAdmin()
+          && resource.data.id == requestId
+          && request.resource.data.id == requestId
+          && request.resource.data.laptopId == resource.data.laptopId
+          && (
+            (
+              resource.data.keys().hasAll(['requesterUid'])
+              && request.resource.data.keys().hasAll(['requesterUid'])
+              && request.resource.data.requesterUid == resource.data.requesterUid
+            )
+            ||
+            (
+              !resource.data.keys().hasAny(['requesterUid'])
+              && !request.resource.data.keys().hasAny(['requesterUid'])
+            )
+          )
+          && request.resource.data.updatedAt == request.time
+        )
+        ||
+        (
+          isActiveUser()
+          && resource.data.requesterUid == request.auth.uid
+          && request.resource.data.requesterUid == resource.data.requesterUid
+          && request.resource.data.id == resource.data.id
+          && request.resource.data.laptopId == resource.data.laptopId
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.adminMemo == resource.data.adminMemo
+          && request.resource.data
+            .diff(resource.data)
+            .affectedKeys()
+            .hasOnly([
+              'userActionRequest',
+              'updatedAt'
+            ])
+          && request.resource.data.updatedAt == request.time
+          && validUserActionRequest(request.resource.data.userActionRequest)
+        );
+
+      allow delete:
+        if isAdmin();
+    }
+
+    match /rentalRequestLogs/{logId} {
+      allow get, list:
+        if isAdmin();
+
+      allow create:
+        if isAdmin()
+        && request.resource.data.id == logId
+        && request.resource.data.requestId is string
+        && (
+          request.resource.data.action == 'status-changed'
+          || request.resource.data.action == 'status-restored'
+          || request.resource.data.action == 'request-edited'
+          || request.resource.data.action == 'memo-changed'
+          || request.resource.data.action == 'user-action-reviewed'
+        )
+        && request.resource.data.previousStatus is string
+        && request.resource.data.nextStatus is string
+        && request.resource.data.previousMemo is string
+        && request.resource.data.nextMemo is string
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.actorAdminId is string
+        && request.resource.data.actorName is string
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.keys().hasAll([
+          'id',
+          'requestId',
+          'action',
+          'previousStatus',
+          'nextStatus',
+          'previousMemo',
+          'nextMemo',
+          'actorUid',
+          'actorAdminId',
+          'actorName',
+          'createdAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'id',
+          'requestId',
+          'action',
+          'previousStatus',
+          'nextStatus',
+          'previousMemo',
+          'nextMemo',
+          'actorUid',
+          'actorAdminId',
+          'actorName',
+          'detail',
+          'createdAt'
+        ]);
+
+      allow update, delete:
+        if false;
+    }
+
+    match /noticeBoard/config {
+      allow read: if true;
+
+      allow create, update:
+        if isAdmin()
+        && request.resource.data.postsPerPage is int
+        && request.resource.data.postsPerPage >= 5
+        && request.resource.data.postsPerPage <= 50
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.keys().hasAll([
+          'postsPerPage',
+          'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'postsPerPage',
+          'updatedAt'
+        ]);
+
+      allow delete: if false;
+    }
+
+    match /noticePosts/{postId} {
+      allow read: if true;
+
+      allow create:
+        if isAdmin()
+        && request.resource.data.id == postId
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.content is string
+        && request.resource.data.content.size() > 0
+        && request.resource.data.isPinned is bool
+        && request.resource.data.authorUid == request.auth.uid
+        && request.resource.data.authorName is string
+        && request.resource.data.authorName.size() > 0
+        && request.resource.data.viewCount == 0
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.keys().hasAll([
+          'id',
+          'title',
+          'content',
+          'isPinned',
+          'authorUid',
+          'authorName',
+          'viewCount',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'id',
+          'title',
+          'content',
+          'isPinned',
+          'authorUid',
+          'authorName',
+          'viewCount',
+          'createdAt',
+          'updatedAt'
+        ]);
+
+      allow update:
+        if (
+          isAdmin()
+          && request.resource.data.id == postId
+          && request.resource.data.id == resource.data.id
+          && request.resource.data.authorUid == resource.data.authorUid
+          && request.resource.data.authorName == resource.data.authorName
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.viewCount == resource.data.viewCount
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data
+            .diff(resource.data)
+            .affectedKeys()
+            .hasOnly([
+              'title',
+              'content',
+              'isPinned',
+              'updatedAt'
+            ])
+        )
+        ||
+        (
+          resource.data.viewCount is int
+          && request.resource.data.viewCount is int
+          && request.resource.data.viewCount == resource.data.viewCount + 1
+          && request.resource.data
+            .diff(resource.data)
+            .affectedKeys()
+            .hasOnly([
+              'viewCount'
+            ])
+        );
+
+      allow delete:
+        if isAdmin();
+    }
+
+    match /faqBoard/config {
+      allow read: if true;
+
+      allow create, update:
+        if isAdmin()
+        && request.resource.data.postsPerPage is int
+        && request.resource.data.postsPerPage >= 5
+        && request.resource.data.postsPerPage <= 50
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.keys().hasAll([
+          'postsPerPage',
+          'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'postsPerPage',
+          'updatedAt'
+        ]);
+
+      allow delete: if false;
+    }
+
+    match /faqCategories/{categoryId} {
+      allow read: if true;
+
+      allow create:
+        if isAdmin()
+        && request.resource.data.id == categoryId
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.order is int
+        && request.resource.data.order >= 0
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow update:
+        if isAdmin()
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.id == categoryId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data
+          .diff(resource.data)
+          .affectedKeys()
+          .hasOnly([
+            'name',
+            'order',
+            'updatedAt'
+          ]);
+
+      allow delete:
+        if isAdmin();
+    }
+
+    match /faqPosts/{postId} {
+      allow read: if true;
+
+      allow create:
+        if isAdmin()
+        && request.resource.data.id == postId
+        && request.resource.data.categoryId is string
+        && request.resource.data.categoryId.size() > 0
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.content is string
+        && request.resource.data.content.size() > 0
+        && request.resource.data.isPinned is bool
+        && request.resource.data.authorUid == request.auth.uid
+        && request.resource.data.authorName is string
+        && request.resource.data.authorName.size() > 0
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow update:
+        if isAdmin()
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.id == postId
+        && request.resource.data.authorUid == resource.data.authorUid
+        && request.resource.data.authorName == resource.data.authorName
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data
+          .diff(resource.data)
+          .affectedKeys()
+          .hasOnly([
+            'categoryId',
+            'title',
+            'content',
+            'isPinned',
+            'updatedAt'
+          ]);
+
+      allow delete:
+        if isAdmin();
+    }
+
+    // 이전 통합 문서는 백업 확인용으로 관리자만 읽을 수 있습니다.
+    match /laptopRentalDashboard/main {
+      allow read:
+        if isAdmin();
+
+      allow write:
+        if false;
+    }
+
+    match /{document=**} {
+      allow read, write:
+        if false;
+    }
+  }
+}

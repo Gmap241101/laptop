@@ -1,0 +1,24 @@
+6단계 빌드 검증 보고서
+========================
+
+검증일: 2026-07-16
+명령: npm run build
+결과: 성공
+
+Vite: 5.4.21
+변환 모듈: 1,787
+출력:
+- dist/index.html: 0.41 kB
+- CSS: 1.73 kB (gzip 0.70 kB)
+- JS: 1,005.72 kB (gzip 267.84 kB)
+
+경고:
+- 단일 JS 청크가 500 kB를 초과합니다.
+- 이는 Vite 경고이며 빌드 실패가 아닙니다.
+- 6단계에서는 동작 보존을 우선하여 동적 import 기반 지연 로딩은 적용하지 않았습니다.
+
+Rules 검증:
+- Firebase 인증 정보 없음
+- Firestore Emulator 다운로드 차단
+- 공식 Rules 컴파일 검증 미완료
+- 배포 전 Firebase Console 또는 로그인된 CLI에서 검증 필요
