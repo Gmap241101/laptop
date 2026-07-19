@@ -53,6 +53,11 @@ export const USER_REQUEST_REVIEW_STATUS = {
   DENIED: 'denied',
 };
 
+export const RENTAL_EXTENSION_APPROVAL_MODE = {
+  MANUAL: 'manual',
+  AUTO: 'auto',
+};
+
 export const DEFAULT_NOTICE_POSTS_PER_PAGE = 10;
 
 export const NOTICE_POSTS_PER_PAGE_OPTIONS = [

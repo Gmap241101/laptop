@@ -68,7 +68,7 @@ export default function UserRentalPanel({ ctx }) {
                       {formatDateWithKoreanWeekday(form.startDate)} ~ {formatDateWithKoreanWeekday(form.dueDate)}
                     </div>
                     <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-                      대여가능일은 최대 {getSafeMaxRentalDays(data.settings)}일입니다.
+                      대여가능일은 최대 {getSafeMaxRentalDays(data.settings)}영업일입니다.
                     </p>
                   </div>
 

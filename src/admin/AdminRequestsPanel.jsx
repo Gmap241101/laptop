@@ -5,6 +5,7 @@ export default function AdminRequestsPanel({ ctx }) {
     Badge,
     Button,
     Edit3,
+    RENTAL_EXTENSION_APPROVAL_MODE,
     RENTAL_REQUEST_AUDIT_ACTION,
     STATUS,
     Search,
@@ -20,9 +21,13 @@ export default function AdminRequestsPanel({ ctx }) {
     formatFirestoreTimestamp,
     getAdminRequestRestoreTargets,
     getDisplayRentalStatus,
+    getExtensionRequestAvailableDate,
+    getRequestExtensionCount,
+    getSafeRentalExtensionMaxCount,
     getUserRequestActionLabel,
     getUserRequestReviewStatusLabel,
     mergedRentalRequests,
+    data,
     openAdminRequestEditDialog,
     openAdminRequestRestoreDialog,
     orphanedRentalAvailabilityRequests,
@@ -338,6 +343,18 @@ export default function AdminRequestsPanel({ ctx }) {
                                       {r.dueDate || '-'}
                                     </div>
 
+                                    {r.status === STATUS.APPROVED && (
+                                      <div className="text-[11px] text-slate-500">
+                                        연장 사용: {getRequestExtensionCount(r)} /{' '}
+                                        {getSafeRentalExtensionMaxCount(data.settings)}회
+                                        {' · '}다음 신청 가능일:{' '}
+                                        {getExtensionRequestAvailableDate(
+                                          r,
+                                          data.settings
+                                        ) || '-'}
+                                      </div>
+                                    )}
+
                                     <div className="rounded-lg border border-slate-100 bg-slate-50 p-2.5 text-xs text-slate-600">
                                       목적:{' '}
                                       <span className="font-medium text-slate-700">
@@ -395,11 +412,14 @@ export default function AdminRequestsPanel({ ctx }) {
                                           )}
                                         </div>
 
-                                        <div className="leading-5">
-                                          요청 사유:{' '}
-                                          {userActionRequest.reason ||
-                                            '-'}
-                                        </div>
+                                        {userActionRequest.type !==
+                                          USER_REQUEST_ACTION.EXTEND && (
+                                          <div className="leading-5">
+                                            요청 사유:{' '}
+                                            {userActionRequest.reason ||
+                                              '-'}
+                                          </div>
+                                        )}
 
                                         {userActionRequest.type ===
                                           USER_REQUEST_ACTION.CHANGE && (
@@ -421,10 +441,22 @@ export default function AdminRequestsPanel({ ctx }) {
 
                                         {userActionRequest.type ===
                                           USER_REQUEST_ACTION.EXTEND && (
-                                          <div className="leading-5">
-                                            연장 요청일:{' '}
-                                            {userActionRequest.dueDate ||
-                                              '-'}
+                                          <div className="space-y-0.5 leading-5">
+                                            <div>
+                                              연장 기간:{' '}
+                                              {userActionRequest.extensionStartDate || '-'}
+                                              {' ~ '}
+                                              {userActionRequest.dueDate || '-'}
+                                            </div>
+                                            <div>
+                                              연장 차수:{' '}
+                                              {userActionRequest.extensionNumber || '-'}회차
+                                              {' · '}처리 방식:{' '}
+                                              {userActionRequest.approvalMode ===
+                                              RENTAL_EXTENSION_APPROVAL_MODE.AUTO
+                                                ? '자동 승인'
+                                                : '관리자 승인'}
+                                            </div>
                                           </div>
                                         )}
                                       </div>

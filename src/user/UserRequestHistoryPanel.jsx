@@ -6,14 +6,21 @@ export default function UserRequestHistoryPanel({ ctx }) {
     CardContent,
     ClipboardList,
     STATUS,
+    RENTAL_EXTENSION_APPROVAL_MODE,
     USER_REQUEST_ACTION,
     USER_REQUEST_REVIEW_STATUS,
     currentAuthAdminAccount,
     currentAuthRoleReady,
     currentUserRequests,
+    data,
     firebaseAuthReady,
     firebaseAuthUser,
+    formatDateWithKoreanWeekday,
     getDisplayRentalStatus,
+    getExtensionRequestAvailableDate,
+    getRequestExtensionCount,
+    getSafeRentalExtensionBusinessDays,
+    getSafeRentalExtensionMaxCount,
     getUserRequestActionLabel,
     getUserRequestReviewStatusLabel,
     goToUserLogin,
@@ -25,6 +32,7 @@ export default function UserRequestHistoryPanel({ ctx }) {
     setIsCommunityMenuOpen,
     setUserTab,
     setView,
+    userActionSaving,
   } = ctx;
 
   return (
@@ -170,6 +178,31 @@ export default function UserRequestHistoryPanel({ ctx }) {
                                 </div>
                               )}
 
+                              {request.status === STATUS.APPROVED && (
+                                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] leading-5 text-slate-600">
+                                  <div className="font-semibold text-slate-800">
+                                    연장 사용 {getRequestExtensionCount(request)} /{' '}
+                                    {getSafeRentalExtensionMaxCount(data.settings)}회
+                                    {' · '}1회{' '}
+                                    {getSafeRentalExtensionBusinessDays(data.settings)}영업일
+                                  </div>
+
+                                  <div className="mt-0.5">
+                                    {data.settings.rentalExtensionEnabled
+                                      ? getRequestExtensionCount(request) >=
+                                        getSafeRentalExtensionMaxCount(data.settings)
+                                        ? '허용된 연장 횟수를 모두 사용했습니다.'
+                                        : `다음 연장 신청 가능일: ${formatDateWithKoreanWeekday(
+                                            getExtensionRequestAvailableDate(
+                                              request,
+                                              data.settings
+                                            )
+                                          )}`
+                                      : '현재 대여 연장 신청이 허용되지 않습니다.'}
+                                  </div>
+                                </div>
+                              )}
+
                               {request.userActionRequest && (
                                 <div
                                   className={`rounded-xl border px-3 py-2 text-xs leading-5 ${
@@ -192,10 +225,13 @@ export default function UserRequestHistoryPanel({ ctx }) {
                                     )}
                                   </div>
 
-                                  <div className="mt-1">
-                                    요청 사유:{' '}
-                                    {request.userActionRequest.reason || '-'}
-                                  </div>
+                                  {request.userActionRequest.type !==
+                                    USER_REQUEST_ACTION.EXTEND && (
+                                    <div className="mt-1">
+                                      요청 사유:{' '}
+                                      {request.userActionRequest.reason || '-'}
+                                    </div>
+                                  )}
 
                                   {request.userActionRequest.type ===
                                     USER_REQUEST_ACTION.CHANGE && (
@@ -210,9 +246,22 @@ export default function UserRequestHistoryPanel({ ctx }) {
 
                                   {request.userActionRequest.type ===
                                     USER_REQUEST_ACTION.EXTEND && (
-                                    <div className="mt-1">
-                                      연장 요청일:{' '}
-                                      {request.userActionRequest.dueDate || '-'}
+                                    <div className="mt-1 space-y-0.5">
+                                      <div>
+                                        연장 기간:{' '}
+                                        {request.userActionRequest.extensionStartDate || '-'}
+                                        {' ~ '}
+                                        {request.userActionRequest.dueDate || '-'}
+                                      </div>
+                                      <div>
+                                        연장 차수:{' '}
+                                        {request.userActionRequest.extensionNumber || '-'}회차
+                                        {' · '}처리 방식:{' '}
+                                        {request.userActionRequest.approvalMode ===
+                                        RENTAL_EXTENSION_APPROVAL_MODE.AUTO
+                                          ? '자동 승인'
+                                          : '관리자 승인'}
+                                      </div>
                                     </div>
                                   )}
                                 </div>
@@ -271,6 +320,7 @@ export default function UserRequestHistoryPanel({ ctx }) {
                                       <Button
                                         type="button"
                                         variant="outline"
+                                        disabled={userActionSaving}
                                         onClick={() =>
                                           openUserActionDialog(
                                             request,

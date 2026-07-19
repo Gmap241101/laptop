@@ -74,7 +74,7 @@ export default function AdminSettingsPanel({ ctx }) {
                         </Select>
 
                         <Input
-                          label="기본 최장 허용 대여 기한 (일수)"
+                          label="기본 최장 허용 대여 기한 (영업일)"
                           type="number"
                           value={tempSettings.maxRentalDays}
                           onChange={(v) =>

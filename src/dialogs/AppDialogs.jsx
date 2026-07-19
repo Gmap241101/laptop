@@ -30,6 +30,7 @@ export default function AppDialogs({ ctx }) {
     faqPostDialog,
     faqPostForm,
     faqPostSaving,
+    getMaxRentalDueDate,
     getUserRequestActionLabel,
     motion,
     noticePostDialog,
@@ -499,9 +500,9 @@ export default function AppDialogs({ ctx }) {
                       label="변경할 반납 예정일"
                       value={userActionForm.dueDate}
                       min={userActionForm.startDate}
-                      max={addDaysFrom(
+                      max={getMaxRentalDueDate(
                         userActionForm.startDate,
-                        data.settings.maxRentalDays
+                        data.settings
                       )}
                       onChange={(value) =>
                         setUserActionForm((prev) => ({
@@ -531,27 +532,6 @@ export default function AppDialogs({ ctx }) {
                 </>
               )}
 
-              {userActionDialog.type ===
-                USER_REQUEST_ACTION.EXTEND && (
-                <DateInputWithWeekday
-                  label="연장 요청 반납일"
-                  value={userActionForm.dueDate}
-                  min={addDaysFrom(
-                    activeUserActionRentalRequest.dueDate,
-                    1
-                  )}
-                  max={addDaysFrom(
-                    activeUserActionRentalRequest.startDate,
-                    data.settings.maxRentalDays
-                  )}
-                  onChange={(value) =>
-                    setUserActionForm((prev) => ({
-                      ...prev,
-                      dueDate: value,
-                    }))
-                  }
-                />
-              )}
 
               <label className="block">
                 <span className="mb-1.5 block text-xs font-semibold text-slate-600">

@@ -98,6 +98,7 @@ import {
   RENTAL_REQUEST_AUDIT_ACTION,
   RENTAL_REQUEST_RESTORE_TARGETS,
   RENTAL_REQUEST_STATUS_TRANSITIONS,
+  RENTAL_EXTENSION_APPROVAL_MODE,
   STATUS,
   USER_REQUEST_ACTION,
   USER_REQUEST_REVIEW_STATUS,
@@ -282,6 +283,12 @@ const DEFAULT_EXCLUDE_HOLIDAYS_FOR_START_DATE = true;
 const DEFAULT_WORK_END_TIME = '18:00';
 const DEFAULT_HOLIDAY_TYPE = 'company';
 const DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS = false;
+const DEFAULT_RENTAL_EXTENSION_ENABLED = false;
+const DEFAULT_RENTAL_EXTENSION_APPROVAL_MODE =
+  RENTAL_EXTENSION_APPROVAL_MODE.MANUAL;
+const DEFAULT_RENTAL_EXTENSION_MAX_COUNT = 1;
+const DEFAULT_RENTAL_EXTENSION_BUSINESS_DAYS = 5;
+const DEFAULT_RENTAL_EXTENSION_REQUEST_WAIT_DAYS = 7;
 
 const HOLIDAY_TYPE_LABEL = {
   public: '법정공휴일',
@@ -490,7 +497,9 @@ const getAdjustedRentalStartDate = (dateStr, settings = {}) => {
 };
 
 const getSafeMaxRentalDays = (settings = {}) => {
-  const parsedMaxRentalDays = Number(settings.maxRentalDays ?? DEFAULT_MAX_RENTAL_DAYS);
+  const parsedMaxRentalDays = Math.trunc(
+    Number(settings.maxRentalDays ?? DEFAULT_MAX_RENTAL_DAYS)
+  );
 
   if (
     Number.isNaN(parsedMaxRentalDays) ||
@@ -502,8 +511,290 @@ const getSafeMaxRentalDays = (settings = {}) => {
   return parsedMaxRentalDays;
 };
 
-const getMaxRentalDueDate = (startDate, settings = {}) => {
-  return addDaysFrom(startDate, getSafeMaxRentalDays(settings));
+const getSafeRentalExtensionMaxCount = (settings = {}) => {
+  const parsedValue = Math.trunc(
+    Number(
+      settings.rentalExtensionMaxCount ??
+        DEFAULT_RENTAL_EXTENSION_MAX_COUNT
+    )
+  );
+
+  return Number.isFinite(parsedValue) && parsedValue >= 1
+    ? parsedValue
+    : DEFAULT_RENTAL_EXTENSION_MAX_COUNT;
+};
+
+const getSafeRentalExtensionBusinessDays = (settings = {}) => {
+  const parsedValue = Math.trunc(
+    Number(
+      settings.rentalExtensionBusinessDays ??
+        DEFAULT_RENTAL_EXTENSION_BUSINESS_DAYS
+    )
+  );
+
+  return Number.isFinite(parsedValue) && parsedValue >= 1
+    ? parsedValue
+    : DEFAULT_RENTAL_EXTENSION_BUSINESS_DAYS;
+};
+
+const getSafeRentalExtensionRequestWaitDays = (settings = {}) => {
+  const parsedValue = Math.trunc(
+    Number(
+      settings.rentalExtensionRequestWaitDays ??
+        DEFAULT_RENTAL_EXTENSION_REQUEST_WAIT_DAYS
+    )
+  );
+
+  return Number.isFinite(parsedValue) && parsedValue >= 0
+    ? parsedValue
+    : DEFAULT_RENTAL_EXTENSION_REQUEST_WAIT_DAYS;
+};
+
+const getRentalExtensionApprovalMode = (settings = {}) =>
+  settings.rentalExtensionApprovalMode ===
+  RENTAL_EXTENSION_APPROVAL_MODE.AUTO
+    ? RENTAL_EXTENSION_APPROVAL_MODE.AUTO
+    : RENTAL_EXTENSION_APPROVAL_MODE.MANUAL;
+
+const normalizeRentalExtensionSettings = (settings = {}) => ({
+  ...settings,
+  rentalExtensionEnabled:
+    settings.rentalExtensionEnabled ?? DEFAULT_RENTAL_EXTENSION_ENABLED,
+  rentalExtensionApprovalMode:
+    getRentalExtensionApprovalMode(settings),
+  rentalExtensionMaxCount:
+    getSafeRentalExtensionMaxCount(settings),
+  rentalExtensionBusinessDays:
+    getSafeRentalExtensionBusinessDays(settings),
+  rentalExtensionRequestWaitDays:
+    getSafeRentalExtensionRequestWaitDays(settings),
+});
+
+const addBusinessDaysInclusive = (
+  startDate,
+  businessDayCount,
+  settings = {}
+) => {
+  if (!startDate) return '';
+
+  const safeBusinessDayCount = Math.max(
+    1,
+    Math.trunc(Number(businessDayCount) || 1)
+  );
+
+  let candidateDate = getNextBusinessDay(startDate, settings);
+  let countedBusinessDays = 0;
+
+  for (let i = 0; i < 3700; i += 1) {
+    if (isBusinessDay(candidateDate, settings)) {
+      countedBusinessDays += 1;
+
+      if (countedBusinessDays >= safeBusinessDayCount) {
+        return candidateDate;
+      }
+    }
+
+    candidateDate = addDaysFrom(candidateDate, 1);
+  }
+
+  return candidateDate;
+};
+
+const getMaxRentalDueDate = (startDate, settings = {}) =>
+  addBusinessDaysInclusive(
+    startDate,
+    getSafeMaxRentalDays(settings),
+    settings
+  );
+
+const getRentalExtensionPeriod = (
+  request = {},
+  settings = {},
+  businessDaysOverride
+) => {
+  const extensionBusinessDays =
+    businessDaysOverride === undefined
+      ? getSafeRentalExtensionBusinessDays(settings)
+      : Math.max(1, Math.trunc(Number(businessDaysOverride) || 1));
+
+  const extensionStartDate = getNextBusinessDay(
+    addDaysFrom(request.dueDate, 1),
+    settings
+  );
+
+  return {
+    extensionBusinessDays,
+    extensionStartDate,
+    extensionDueDate: addBusinessDaysInclusive(
+      extensionStartDate,
+      extensionBusinessDays,
+      settings
+    ),
+  };
+};
+
+const getRequestExtensionCount = (request = {}) => {
+  const parsedCount = Math.trunc(Number(request.extensionCount || 0));
+  return Number.isFinite(parsedCount) && parsedCount > 0
+    ? parsedCount
+    : 0;
+};
+
+const getLastApprovedExtensionDate = (request = {}) => {
+  if (request.lastExtensionApprovedDate) {
+    return request.lastExtensionApprovedDate;
+  }
+
+  const extensionHistory = Array.isArray(request.extensionHistory)
+    ? request.extensionHistory
+    : [];
+
+  const lastApprovedHistory = [...extensionHistory]
+    .reverse()
+    .find(
+      (history) =>
+        history?.status === USER_REQUEST_REVIEW_STATUS.APPROVED &&
+        history?.approvedDate
+    );
+
+  return lastApprovedHistory?.approvedDate || '';
+};
+
+const getExtensionRequestAvailableDate = (request = {}, settings = {}) => {
+  if (request.nextExtensionRequestDate) {
+    return request.nextExtensionRequestDate;
+  }
+
+  const baseDate =
+    getRequestExtensionCount(request) > 0
+      ? getLastApprovedExtensionDate(request)
+      : request.startDate || '';
+
+  if (!baseDate) return '';
+
+  return addDaysFrom(
+    baseDate,
+    getSafeRentalExtensionRequestWaitDays(settings)
+  );
+};
+
+const findExtensionPeriodConflict = (
+  requests = [],
+  laptopId,
+  currentRequestId,
+  extensionStartDate,
+  extensionDueDate
+) =>
+  requests.find(
+    (request) =>
+      request?.id !== currentRequestId &&
+      request?.laptopId === laptopId &&
+      RENTAL_BLOCKING_REQUEST_STATUSES.includes(request.status) &&
+      hasRentalPeriodOverlap(
+        request.startDate,
+        request.dueDate,
+        extensionStartDate,
+        extensionDueDate
+      )
+  );
+
+
+const getRentalExtensionEligibility = (
+  request = {},
+  settings = {},
+  referenceDate = today()
+) => {
+  if (!settings.rentalExtensionEnabled) {
+    return {
+      allowed: false,
+      code: 'rental-extension-disabled',
+      availableDate: '',
+    };
+  }
+
+  if (request.status !== STATUS.APPROVED) {
+    return {
+      allowed: false,
+      code: 'invalid-rental-extension-status',
+      availableDate: '',
+    };
+  }
+
+  if (
+    request.userActionRequest?.status ===
+    USER_REQUEST_REVIEW_STATUS.PENDING
+  ) {
+    return {
+      allowed: false,
+      code: 'user-action-request-already-pending',
+      availableDate: '',
+    };
+  }
+
+  const extensionCount = getRequestExtensionCount(request);
+  const maxExtensionCount = getSafeRentalExtensionMaxCount(settings);
+
+  if (extensionCount >= maxExtensionCount) {
+    return {
+      allowed: false,
+      code: 'rental-extension-count-exceeded',
+      availableDate: '',
+    };
+  }
+
+  const availableDate = getExtensionRequestAvailableDate(
+    request,
+    settings
+  );
+
+  if (availableDate && referenceDate < availableDate) {
+    return {
+      allowed: false,
+      code: 'rental-extension-too-early',
+      availableDate,
+    };
+  }
+
+  return {
+    allowed: true,
+    code: '',
+    availableDate,
+    extensionCount,
+    maxExtensionCount,
+  };
+};
+
+const getRentalExtensionErrorMessage = (
+  code,
+  availableDate = ''
+) => {
+  if (code === 'rental-extension-disabled') {
+    return '대여 관리 규정 상 연장 신청은 불가합니다';
+  }
+
+  if (code === 'invalid-rental-extension-status') {
+    return '대여 연장 요청은 대여중 상태에서만 가능합니다.';
+  }
+
+  if (code === 'user-action-request-already-pending') {
+    return '이미 처리 중인 대여 연장 신청이 있습니다.';
+  }
+
+  if (code === 'rental-extension-count-exceeded') {
+    return '허용된 대여 연장 횟수를 모두 사용했습니다.';
+  }
+
+  if (code === 'rental-extension-too-early') {
+    return `대여 연장 신청은 ${formatDateWithKoreanWeekday(
+      availableDate
+    )}부터 가능합니다.`;
+  }
+
+  if (code === 'rental-extension-period-conflict') {
+    return '해당 연장 기간에 다른 대여 신청 또는 예약이 있어 연장할 수 없습니다.';
+  }
+
+  return '대여 연장 요청을 처리할 수 없습니다.';
 };
 
 const isTemporaryDateInputValue = (dateStr) => {
@@ -617,6 +908,11 @@ const initialData = {
     holidays: [],
     requireAdminApproval: true,
     allowNonOverlappingSameAssetRequests: DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS,
+    rentalExtensionEnabled: DEFAULT_RENTAL_EXTENSION_ENABLED,
+    rentalExtensionApprovalMode: DEFAULT_RENTAL_EXTENSION_APPROVAL_MODE,
+    rentalExtensionMaxCount: DEFAULT_RENTAL_EXTENSION_MAX_COUNT,
+    rentalExtensionBusinessDays: DEFAULT_RENTAL_EXTENSION_BUSINESS_DAYS,
+    rentalExtensionRequestWaitDays: DEFAULT_RENTAL_EXTENSION_REQUEST_WAIT_DAYS,
   },
 };
 
@@ -767,10 +1063,10 @@ function mergePersistedData(rawData) {
     : initialData.assetCategories;
 
   const rawSettings = parsed.settings || {};
-  const settings = {
+  const settings = normalizeRentalExtensionSettings({
     ...initialData.settings,
     ...rawSettings,
-  };
+  });
 
   settings.adjustStartDateToNextBusinessDay =
     rawSettings.adjustStartDateToNextBusinessDay ??
@@ -2370,7 +2666,7 @@ function App() {
 
   // 설정 탭으로 변경되거나 시스템 원본 설정 값이 변경될 때 임시 설정 버퍼를 동기화
   useEffect(() => {
-    if (adminTab === 'settings') {
+    if (['settings', 'extensionSettings'].includes(adminTab)) {
       setTempSettings(data.settings);
       setNewHolidayDate(today());
       setNewHolidayName('');
@@ -6373,7 +6669,22 @@ function App() {
       return;
     }
 
-    const nextSettings = {
+    if (
+      tempSettings.rentalExtensionEnabled &&
+      (
+        Number(tempSettings.rentalExtensionMaxCount) < 1 ||
+        Number(tempSettings.rentalExtensionBusinessDays) < 1 ||
+        Number(tempSettings.rentalExtensionRequestWaitDays) < 0
+      )
+    ) {
+      triggerToast(
+        '대여 연장 횟수와 회당 연장 영업일은 1 이상, 연장 신청 대기일은 0 이상으로 입력해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    const nextSettings = normalizeRentalExtensionSettings({
       ...tempSettings,
       allowNonOverlappingSameAssetRequests:
         tempSettings.allowNonOverlappingSameAssetRequests ??
@@ -6386,6 +6697,7 @@ function App() {
         tempSettings.adjustStartDateToNextBusinessDay ??
         tempSettings.adjustStartDateAfterWorkEnd ??
         DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY,
+      maxRentalDays: getSafeMaxRentalDays(tempSettings),
       holidays: Array.isArray(
         tempSettings.holidays
       )
@@ -6406,7 +6718,7 @@ function App() {
                 holiday.enabled !== false,
             }))
         : [],
-    };
+    });
 
     try {
       await setDoc(
@@ -6860,11 +7172,32 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
           if (nextDueDate > maxDueDate) {
             triggerToast(
-              `대여 가능일은 최대 ${maxRentalDays}일입니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxDueDate)}까지 선택할 수 있습니다.`,
+              `대여 가능일은 최대 ${maxRentalDays}영업일입니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxDueDate)}까지 선택할 수 있습니다.`,
               'error'
             );
 
             nextDueDate = maxDueDate;
+          }
+
+          if (!isBusinessDay(nextDueDate, data.settings)) {
+            const adjustedDueDate = getNextBusinessDay(
+              nextDueDate,
+              data.settings
+            );
+
+            triggerToast(
+              `반납 예정일은 영업일만 선택할 수 있습니다. ${formatDateWithKoreanWeekday(
+                adjustedDueDate > maxDueDate
+                  ? maxDueDate
+                  : adjustedDueDate
+              )}로 조정되었습니다.`,
+              'error'
+            );
+
+            nextDueDate =
+              adjustedDueDate > maxDueDate
+                ? maxDueDate
+                : adjustedDueDate;
           }
 
           setForm({ ...form, dueDate: nextDueDate });
@@ -6890,13 +7223,33 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
           if (nextDueDate > maxDueDate) {
             triggerToast(
-              `대여 가능일은 최대 ${maxRentalDays}일입니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxDueDate)}까지 선택할 수 있습니다.`,
+              `대여 가능일은 최대 ${maxRentalDays}영업일입니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxDueDate)}까지 선택할 수 있습니다.`,
               'error'
             );
 
             setForm({ ...form, dueDate: maxDueDate });
 
             return maxDueDate;
+          }
+
+          if (!isBusinessDay(nextDueDate, data.settings)) {
+            const adjustedDueDate = getNextBusinessDay(
+              nextDueDate,
+              data.settings
+            );
+            const finalDueDate =
+              adjustedDueDate > maxDueDate
+                ? maxDueDate
+                : adjustedDueDate;
+
+            triggerToast(
+              `반납 예정일은 영업일만 선택할 수 있습니다. ${formatDateWithKoreanWeekday(finalDueDate)}로 조정되었습니다.`,
+              'error'
+            );
+
+            setForm({ ...form, dueDate: finalDueDate });
+
+            return finalDueDate;
           }
 
           setForm({ ...form, dueDate: nextDueDate });
@@ -7095,12 +7448,20 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       return;
     }
 
+    if (!isBusinessDay(form.dueDate, data.settings)) {
+      triggerToast(
+        '반납 예정일은 주말과 등록 휴일을 제외한 영업일만 선택할 수 있습니다.',
+        'error'
+      );
+      return;
+    }
+
     const maxAllowedDate = getMaxRentalDueDate(form.startDate, data.settings);
     const maxRentalDays = getSafeMaxRentalDays(data.settings);
 
     if (form.dueDate > maxAllowedDate) {
       triggerToast(
-        `대여 가능일은 최대 ${maxRentalDays}일입니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxAllowedDate)}까지 선택할 수 있습니다.`,
+        `대여 가능일은 최대 ${maxRentalDays}영업일입니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxAllowedDate)}까지 선택할 수 있습니다.`,
         'error'
       );
       return;
@@ -7144,6 +7505,10 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       purpose: form.purpose,
       status: STATUS.REQUESTED,
       adminMemo: '',
+      extensionCount: 0,
+      lastExtensionApprovedDate: '',
+      nextExtensionRequestDate: '',
+      extensionHistory: [],
       requestedAt,
     };
 
@@ -7363,7 +7728,446 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     }
   };
 
-    const openUserActionDialog = (request, type) => {
+  const submitRentalExtensionRequest = async (request) => {
+    if (userActionSaving) return;
+
+    if (
+      !firebaseAuthUser?.uid ||
+      !request?.id ||
+      request.requesterUid !== firebaseAuthUser.uid
+    ) {
+      triggerToast(
+        '본인 신청 정보를 확인할 수 없습니다.',
+        'error'
+      );
+      return;
+    }
+
+    const initialEligibility = getRentalExtensionEligibility(
+      request,
+      data.settings
+    );
+
+    if (!initialEligibility.allowed) {
+      triggerToast(
+        getRentalExtensionErrorMessage(
+          initialEligibility.code,
+          initialEligibility.availableDate
+        ),
+        'error'
+      );
+      return;
+    }
+
+    const requestDocRef = doc(
+      RENTAL_REQUESTS_COLLECTION_REF,
+      request.id
+    );
+
+    const availabilityDocRef = doc(
+      RENTAL_AVAILABILITY_COLLECTION_REF,
+      request.id
+    );
+
+    const assetDocRef = doc(
+      RENTAL_ASSETS_COLLECTION_REF,
+      request.laptopId
+    );
+
+    let committedRequest = null;
+    let committedAsset = null;
+    let committedAvailabilityRequest = null;
+    let committedApprovalMode = '';
+
+    setUserActionSaving(true);
+
+    try {
+      await runTransaction(
+        db,
+        async (transaction) => {
+          const [
+            requestSnapshot,
+            assetSnapshot,
+            publicConfigSnapshot,
+          ] = await Promise.all([
+            transaction.get(requestDocRef),
+            transaction.get(assetDocRef),
+            transaction.get(PUBLIC_CONFIG_DOC_REF),
+          ]);
+
+          if (!requestSnapshot.exists()) {
+            throw new Error('rental-request-not-found');
+          }
+
+          if (!assetSnapshot.exists()) {
+            throw new Error('rental-asset-not-found');
+          }
+
+          const latestRequest = {
+            ...requestSnapshot.data(),
+            id: requestSnapshot.id,
+          };
+
+          if (
+            latestRequest.requesterUid !==
+            firebaseAuthUser.uid
+          ) {
+            throw new Error('rental-request-owner-mismatch');
+          }
+
+          const latestSettings = normalizeRentalExtensionSettings({
+            ...data.settings,
+            ...(publicConfigSnapshot.exists()
+              ? publicConfigSnapshot.data()?.settings || {}
+              : {}),
+          });
+
+          const eligibility = getRentalExtensionEligibility(
+            latestRequest,
+            latestSettings
+          );
+
+          if (!eligibility.allowed) {
+            const eligibilityError = new Error(eligibility.code);
+            eligibilityError.availableDate = eligibility.availableDate;
+            throw eligibilityError;
+          }
+
+          const latestAsset = {
+            ...assetSnapshot.data(),
+            id: assetSnapshot.id,
+          };
+
+          const latestReservations = normalizeAssetReservations(
+            latestAsset.reservations || []
+          );
+
+          const extensionPeriod = getRentalExtensionPeriod(
+            latestRequest,
+            latestSettings
+          );
+
+          const blockingRequest = findExtensionPeriodConflict(
+            latestReservations,
+            latestRequest.laptopId,
+            latestRequest.id,
+            extensionPeriod.extensionStartDate,
+            extensionPeriod.extensionDueDate
+          );
+
+          if (blockingRequest) {
+            throw new Error('rental-extension-period-conflict');
+          }
+
+          const approvalMode = getRentalExtensionApprovalMode(
+            latestSettings
+          );
+
+          const extensionNumber =
+            getRequestExtensionCount(latestRequest) + 1;
+
+          const requestActionBase = {
+            type: USER_REQUEST_ACTION.EXTEND,
+            reason: '',
+            team: latestRequest.team || '',
+            borrower: latestRequest.borrower || '',
+            startDate: latestRequest.startDate || '',
+            previousDueDate: latestRequest.dueDate || '',
+            extensionStartDate:
+              extensionPeriod.extensionStartDate,
+            dueDate: extensionPeriod.extensionDueDate,
+            purpose: latestRequest.purpose || '',
+            approvalMode,
+            extensionNumber,
+            extensionBusinessDays:
+              extensionPeriod.extensionBusinessDays,
+            requestedAt: serverTimestamp(),
+            reviewedAt: null,
+            reviewedByUid: '',
+            reviewedByName: '',
+            reviewMemo: '',
+          };
+
+          if (
+            approvalMode ===
+            RENTAL_EXTENSION_APPROVAL_MODE.MANUAL
+          ) {
+            const pendingActionRequest = {
+              ...requestActionBase,
+              status:
+                USER_REQUEST_REVIEW_STATUS.PENDING,
+            };
+
+            transaction.update(
+              requestDocRef,
+              {
+                userActionRequest:
+                  pendingActionRequest,
+                updatedAt:
+                  serverTimestamp(),
+              }
+            );
+
+            committedRequest = {
+              ...latestRequest,
+              userActionRequest: {
+                ...pendingActionRequest,
+                requestedAt: new Date(),
+              },
+            };
+
+            committedApprovalMode = approvalMode;
+            return;
+          }
+
+          const approvalDate = today();
+          const approvedAt = new Date();
+          const nextExtensionRequestDate = addDaysFrom(
+            approvalDate,
+            getSafeRentalExtensionRequestWaitDays(
+              latestSettings
+            )
+          );
+
+          const approvedActionRequest = {
+            ...requestActionBase,
+            status:
+              USER_REQUEST_REVIEW_STATUS.APPROVED,
+            reviewedAt:
+              serverTimestamp(),
+            reviewedByUid: 'system',
+            reviewedByName:
+              '시스템 자동 승인',
+            approvalDate,
+            nextExtensionRequestDate,
+          };
+
+          const extensionHistory = [
+            ...(Array.isArray(latestRequest.extensionHistory)
+              ? latestRequest.extensionHistory
+              : []),
+            {
+              extensionNumber,
+              approvalMode,
+              previousDueDate:
+                latestRequest.dueDate || '',
+              extensionStartDate:
+                extensionPeriod.extensionStartDate,
+              newDueDate:
+                extensionPeriod.extensionDueDate,
+              extensionBusinessDays:
+                extensionPeriod.extensionBusinessDays,
+              requestedAt: approvedAt,
+              approvedAt,
+              approvedDate: approvalDate,
+              approvedByUid: 'system',
+              approvedByName:
+                '시스템 자동 승인',
+              status:
+                USER_REQUEST_REVIEW_STATUS.APPROVED,
+            },
+          ];
+
+          const nextRequest = {
+            ...latestRequest,
+            dueDate:
+              extensionPeriod.extensionDueDate,
+            extensionCount:
+              extensionNumber,
+            lastExtensionApprovedDate:
+              approvalDate,
+            nextExtensionRequestDate,
+            extensionHistory,
+            userActionRequest:
+              approvedActionRequest,
+          };
+
+          const nextAvailabilityRequest =
+            toRentalAvailabilityRequest(nextRequest);
+
+          const nextReservations = [
+            ...latestReservations.filter(
+              (reservation) =>
+                reservation.id !== latestRequest.id
+            ),
+            nextAvailabilityRequest,
+          ];
+
+          const representativeRequest =
+            getLaptopRepresentativeRequest(
+              nextReservations,
+              latestAsset.id
+            );
+
+          const nextAsset = {
+            ...latestAsset,
+            reservations: nextReservations,
+            status:
+              latestAsset.status === STATUS.UNAVAILABLE
+                ? STATUS.UNAVAILABLE
+                : representativeRequest
+                  ? representativeRequest.status
+                  : STATUS.AVAILABLE,
+            currentRequestId:
+              representativeRequest?.id || null,
+          };
+
+          transaction.update(
+            requestDocRef,
+            {
+              dueDate:
+                nextRequest.dueDate,
+              extensionCount:
+                nextRequest.extensionCount,
+              lastExtensionApprovedDate:
+                nextRequest.lastExtensionApprovedDate,
+              nextExtensionRequestDate:
+                nextRequest.nextExtensionRequestDate,
+              extensionHistory:
+                nextRequest.extensionHistory,
+              userActionRequest:
+                approvedActionRequest,
+              updatedAt:
+                serverTimestamp(),
+              syncedAt:
+                serverTimestamp(),
+            }
+          );
+
+          transaction.set(
+            availabilityDocRef,
+            {
+              ...nextAvailabilityRequest,
+              updatedAt:
+                serverTimestamp(),
+            }
+          );
+
+          transaction.update(
+            assetDocRef,
+            {
+              reservations:
+                nextAsset.reservations,
+              status:
+                nextAsset.status,
+              currentRequestId:
+                nextAsset.currentRequestId,
+              updatedAt:
+                serverTimestamp(),
+            }
+          );
+
+          committedRequest = {
+            ...nextRequest,
+            userActionRequest: {
+              ...approvedActionRequest,
+              requestedAt: approvedAt,
+              reviewedAt: approvedAt,
+            },
+          };
+          committedAsset = nextAsset;
+          committedAvailabilityRequest =
+            nextAvailabilityRequest;
+          committedApprovalMode = approvalMode;
+        }
+      );
+
+      if (!committedRequest) {
+        throw new Error(
+          'rental-extension-result-missing'
+        );
+      }
+
+      setRentalRequests((prev) =>
+        (prev || []).map((current) =>
+          current.id === request.id
+            ? committedRequest
+            : current
+        )
+      );
+
+      if (
+        committedApprovalMode ===
+          RENTAL_EXTENSION_APPROVAL_MODE.AUTO &&
+        committedAsset &&
+        committedAvailabilityRequest
+      ) {
+        setData((prev) => ({
+          ...prev,
+          requests: [
+            committedAvailabilityRequest,
+            ...(prev.requests || []).filter(
+              (current) =>
+                current.id !== request.id
+            ),
+          ],
+          laptops: (prev.laptops || []).map(
+            (asset) =>
+              asset.id === committedAsset.id
+                ? committedAsset
+                : asset
+          ),
+        }));
+      }
+
+      triggerToast(
+        committedApprovalMode ===
+        RENTAL_EXTENSION_APPROVAL_MODE.AUTO
+          ? '대여 기간이 연장되었습니다.'
+          : '대여 연장 요청이 접수되었습니다.',
+        'success'
+      );
+    } catch (error) {
+      console.error(
+        'Rental extension request error:',
+        error
+      );
+
+      const availableDate =
+        error?.availableDate || '';
+
+      const knownErrorCodes = [
+        'rental-extension-disabled',
+        'invalid-rental-extension-status',
+        'user-action-request-already-pending',
+        'rental-extension-count-exceeded',
+        'rental-extension-too-early',
+        'rental-extension-period-conflict',
+      ];
+
+      const errorMessage =
+        knownErrorCodes.includes(error?.message)
+          ? getRentalExtensionErrorMessage(
+              error.message,
+              availableDate
+            )
+          : error?.message ===
+              'rental-request-owner-mismatch'
+            ? '본인 신청이 아닌 항목은 연장할 수 없습니다.'
+            : error?.message ===
+                'rental-request-not-found'
+              ? '대여 신청 문서를 찾을 수 없습니다.'
+              : error?.message ===
+                  'rental-asset-not-found'
+                ? '대여 기기 정보를 찾을 수 없습니다.'
+                : `대여 연장 요청 처리에 실패했습니다. 오류 코드: ${
+                    error?.code ||
+                    error?.message ||
+                    'unknown-error'
+                  }`;
+
+      triggerToast(errorMessage, 'error');
+    } finally {
+      setUserActionSaving(false);
+    }
+  };
+
+  const openUserActionDialog = (request, type) => {
+    if (type === USER_REQUEST_ACTION.EXTEND) {
+      void submitRentalExtensionRequest(request);
+      return;
+    }
+
     if (
       request.userActionRequest?.status ===
       USER_REQUEST_REVIEW_STATUS.PENDING
@@ -7395,25 +8199,15 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     }
 
     if (
-      [USER_REQUEST_ACTION.EXTEND, USER_REQUEST_ACTION.RETURN].includes(type) &&
+      type === USER_REQUEST_ACTION.RETURN &&
       !canRequestRentalAction
     ) {
       triggerToast(
-        '연장과 반납 요청은 대여중 상태에서만 가능합니다.',
+        '반납 요청은 대여중 상태에서만 가능합니다.',
         'error'
       );
       return;
     }
-
-    const maxDueDate = addDaysFrom(
-      request.startDate,
-      data.settings.maxRentalDays
-    );
-
-    const suggestedExtensionDueDate = addDaysFrom(
-      request.dueDate,
-      1
-    );
 
     setUserActionDialog({
       requestId: request.id,
@@ -7426,11 +8220,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       team: request.team || '',
       borrower: request.borrower || '',
       startDate: request.startDate || '',
-      dueDate:
-        type === USER_REQUEST_ACTION.EXTEND &&
-        suggestedExtensionDueDate <= maxDueDate
-          ? suggestedExtensionDueDate
-          : request.dueDate || '',
+      dueDate: request.dueDate || '',
       purpose: request.purpose || '',
     });
   };
@@ -7574,10 +8364,23 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         return;
       }
 
+      if (
+        !isBusinessDay(
+          nextDueDate,
+          data.settings
+        )
+      ) {
+        triggerToast(
+          '변경할 반납 예정일은 영업일만 선택할 수 있습니다.',
+          'error'
+        );
+        return;
+      }
+
       const maxAllowedDate =
-        addDaysFrom(
+        getMaxRentalDueDate(
           nextStartDate,
-          data.settings.maxRentalDays
+          data.settings
         );
 
       if (
@@ -7585,46 +8388,13 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         maxAllowedDate
       ) {
         triggerToast(
-          `최장 허용 대여 기한(${data.settings.maxRentalDays}일)을 초과할 수 없습니다.`,
+          `최장 허용 대여 기한(${getSafeMaxRentalDays(data.settings)}영업일)을 초과할 수 없습니다.`,
           'error'
         );
         return;
       }
     }
 
-    if (
-      actionType ===
-      USER_REQUEST_ACTION.EXTEND
-    ) {
-      if (
-        !nextDueDate ||
-        nextDueDate <=
-          currentRequest.dueDate
-      ) {
-        triggerToast(
-          '현재 반납 예정일보다 뒤의 날짜를 선택해 주세요.',
-          'error'
-        );
-        return;
-      }
-
-      const maxAllowedDate =
-        addDaysFrom(
-          currentRequest.startDate,
-          data.settings.maxRentalDays
-        );
-
-      if (
-        nextDueDate >
-        maxAllowedDate
-      ) {
-        triggerToast(
-          `최장 허용 대여 기한(${data.settings.maxRentalDays}일)을 초과할 수 없습니다.`,
-          'error'
-        );
-        return;
-      }
-    }
 
     const requestDocRef = doc(
       RENTAL_REQUESTS_COLLECTION_REF,
@@ -7876,12 +8646,16 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           const [
             requestSnapshot,
             assetSnapshot,
+            publicConfigSnapshot,
           ] = await Promise.all([
             transaction.get(
               requestDocRef
             ),
             transaction.get(
               assetDocRef
+            ),
+            transaction.get(
+              PUBLIC_CONFIG_DOC_REF
             ),
           ]);
 
@@ -7901,6 +8675,13 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             ...requestSnapshot.data(),
             id: requestSnapshot.id,
           };
+
+          const latestSettings = normalizeRentalExtensionSettings({
+            ...data.settings,
+            ...(publicConfigSnapshot.exists()
+              ? publicConfigSnapshot.data()?.settings || {}
+              : {}),
+          });
 
           const userActionRequest =
             latestRequest.userActionRequest;
@@ -7948,7 +8729,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
               ? USER_REQUEST_REVIEW_STATUS.APPROVED
               : USER_REQUEST_REVIEW_STATUS.DENIED;
 
-          const nextUserActionRequest = {
+          let nextUserActionRequest = {
             ...userActionRequest,
             status: nextReviewStatus,
             reviewedAt:
@@ -8065,46 +8846,158 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                 );
               }
 
-              const nextDueDate =
-                userActionRequest.dueDate || '';
-
-              if (
-                !nextDueDate ||
-                nextDueDate <=
-                  latestRequest.dueDate
-              ) {
+              if (!latestSettings.rentalExtensionEnabled) {
                 throw new Error(
-                  'invalid-extension-due-date'
+                  'rental-extension-disabled'
                 );
               }
 
-              const latestAvailability =
-                getLaptopRentalAvailability(
-                  latestAsset,
+              const currentExtensionCount =
+                getRequestExtensionCount(latestRequest);
+
+              const maxExtensionCount =
+                getSafeRentalExtensionMaxCount(
+                  latestSettings
+                );
+
+              if (
+                currentExtensionCount >=
+                maxExtensionCount
+              ) {
+                throw new Error(
+                  'rental-extension-count-exceeded'
+                );
+              }
+
+              const availableDate =
+                getExtensionRequestAvailableDate(
+                  latestRequest,
+                  latestSettings
+                );
+
+              if (
+                availableDate &&
+                today() < availableDate
+              ) {
+                const earlyError = new Error(
+                  'rental-extension-too-early'
+                );
+                earlyError.availableDate =
+                  availableDate;
+                throw earlyError;
+              }
+
+              const extensionPeriod =
+                getRentalExtensionPeriod(
+                  latestRequest,
+                  latestSettings,
+                  userActionRequest.extensionBusinessDays
+                );
+
+              const blockingRequest =
+                findExtensionPeriodConflict(
                   latestReservations,
-                  data.settings,
-                  latestRequest.startDate,
-                  nextDueDate
+                  latestRequest.laptopId,
+                  latestRequest.id,
+                  extensionPeriod.extensionStartDate,
+                  extensionPeriod.extensionDueDate
                 );
 
-              if (
-                latestAvailability.blocked
-              ) {
+              if (blockingRequest) {
                 throw new Error(
-                  'user-action-period-conflict'
+                  'rental-extension-period-conflict'
                 );
               }
+
+              const approvalDate = today();
+              const approvedAt = new Date();
+              const extensionNumber =
+                currentExtensionCount + 1;
+              const nextExtensionRequestDate =
+                addDaysFrom(
+                  approvalDate,
+                  getSafeRentalExtensionRequestWaitDays(
+                    latestSettings
+                  )
+                );
+
+              nextUserActionRequest = {
+                ...nextUserActionRequest,
+                approvalMode:
+                  userActionRequest.approvalMode ||
+                  RENTAL_EXTENSION_APPROVAL_MODE.MANUAL,
+                extensionNumber,
+                previousDueDate:
+                  latestRequest.dueDate || '',
+                extensionStartDate:
+                  extensionPeriod.extensionStartDate,
+                dueDate:
+                  extensionPeriod.extensionDueDate,
+                extensionBusinessDays:
+                  extensionPeriod.extensionBusinessDays,
+                approvalDate,
+                nextExtensionRequestDate,
+              };
+
+              const nextExtensionHistory = [
+                ...(Array.isArray(latestRequest.extensionHistory)
+                  ? latestRequest.extensionHistory
+                  : []),
+                {
+                  extensionNumber,
+                  approvalMode:
+                    nextUserActionRequest.approvalMode,
+                  previousDueDate:
+                    latestRequest.dueDate || '',
+                  extensionStartDate:
+                    extensionPeriod.extensionStartDate,
+                  newDueDate:
+                    extensionPeriod.extensionDueDate,
+                  extensionBusinessDays:
+                    extensionPeriod.extensionBusinessDays,
+                  requestedAt:
+                    userActionRequest.requestedAt ||
+                    approvedAt,
+                  approvedAt,
+                  approvedDate:
+                    approvalDate,
+                  approvedByUid:
+                    auditActor.uid,
+                  approvedByName:
+                    auditActor.name,
+                  status:
+                    USER_REQUEST_REVIEW_STATUS.APPROVED,
+                },
+              ];
 
               nextRequestFields = {
                 ...nextRequestFields,
+                userActionRequest:
+                  nextUserActionRequest,
                 dueDate:
-                  nextDueDate,
+                  extensionPeriod.extensionDueDate,
+                extensionCount:
+                  extensionNumber,
+                lastExtensionApprovedDate:
+                  approvalDate,
+                nextExtensionRequestDate,
+                extensionHistory:
+                  nextExtensionHistory,
               };
 
               nextCommittedRequest = {
                 ...nextCommittedRequest,
+                userActionRequest:
+                  nextUserActionRequest,
                 dueDate:
-                  nextDueDate,
+                  extensionPeriod.extensionDueDate,
+                extensionCount:
+                  extensionNumber,
+                lastExtensionApprovedDate:
+                  approvalDate,
+                nextExtensionRequestDate,
+                extensionHistory:
+                  nextExtensionHistory,
               };
             }
 
@@ -8283,16 +9176,31 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
               actorName:
                 auditActor.name,
               detail:
-                `${getUserRequestActionLabel(
-                  processedActionType
-                )} ${
-                  approved
-                    ? '승인'
-                    : '불허'
-                } · 요청 사유: ${
-                  userActionRequest.reason ||
-                  '-'
-                }`,
+                processedActionType ===
+                USER_REQUEST_ACTION.EXTEND
+                  ? `${getUserRequestActionLabel(
+                      processedActionType
+                    )} ${
+                      approved
+                        ? '승인'
+                        : '불허'
+                    } · ${
+                      userActionRequest.extensionStartDate ||
+                      '-'
+                    } ~ ${
+                      userActionRequest.dueDate ||
+                      '-'
+                    }`
+                  : `${getUserRequestActionLabel(
+                      processedActionType
+                    )} ${
+                      approved
+                        ? '승인'
+                        : '불허'
+                    } · 요청 사유: ${
+                      userActionRequest.reason ||
+                      '-'
+                    }`,
               createdAt:
                 serverTimestamp(),
             }
@@ -8370,6 +9278,13 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         error
       );
 
+      const extensionErrorCodes = [
+        'rental-extension-disabled',
+        'rental-extension-count-exceeded',
+        'rental-extension-too-early',
+        'rental-extension-period-conflict',
+      ];
+
       const errorMessage =
         error?.message ===
         'user-action-request-not-pending'
@@ -8377,12 +9292,16 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           : error?.message ===
               'invalid-user-action-request-status'
             ? '현재 신청 상태에서는 해당 사용자 요청을 승인할 수 없습니다.'
-            : error?.message ===
-                'user-action-period-conflict'
-              ? '변경 또는 연장 요청 기간이 다른 예약과 겹쳐 승인할 수 없습니다.'
+            : extensionErrorCodes.includes(
+                error?.message
+              )
+              ? getRentalExtensionErrorMessage(
+                  error.message,
+                  error?.availableDate || ''
+                )
               : error?.message ===
-                  'invalid-extension-due-date'
-                ? '연장 요청 반납일이 현재 반납일보다 늦지 않습니다.'
+                  'user-action-period-conflict'
+                ? '변경 요청 기간이 다른 예약과 겹쳐 승인할 수 없습니다.'
                 : error?.message ===
                     'rental-request-not-found'
                   ? '정식 대여 신청 문서를 찾을 수 없습니다.'
@@ -12586,6 +13505,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     LogOut,
     NOTICE_POSTS_PER_PAGE_OPTIONS,
     Plus,
+    RENTAL_EXTENSION_APPROVAL_MODE,
     RENTAL_REQUEST_AUDIT_ACTION,
     React,
     STATUS,
@@ -12738,6 +13658,12 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     getKoreaNow,
     getLaptopAdminDisplayStatus,
     getLaptopRentalAvailability,
+    getMaxRentalDueDate,
+    getExtensionRequestAvailableDate,
+    getRequestExtensionCount,
+    getRentalExtensionApprovalMode,
+    getSafeRentalExtensionBusinessDays,
+    getSafeRentalExtensionMaxCount,
     getSafeMaxRentalDays,
     getUserAccountStatusClassName,
     getUserAccountStatusLabel,

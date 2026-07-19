@@ -8,6 +8,7 @@ import AdminFaqPanel from './AdminFaqPanel.jsx';
 import AdminMemberAccountsPanel from './AdminMemberAccountsPanel.jsx';
 import AdminAccountsPanel from './AdminAccountsPanel.jsx';
 import AdminSettingsPanel from './AdminSettingsPanel.jsx';
+import AdminExtensionSettingsPanel from './AdminExtensionSettingsPanel.jsx';
 
 export default function AdminWorkspace({ ctx }) {
   const {
@@ -23,6 +24,7 @@ export default function AdminWorkspace({ ctx }) {
     CardContent,
     CheckCircle2,
     ClipboardList,
+    Clock,
     DEFAULT_EXCLUDE_HOLIDAYS_FOR_START_DATE,
     DEFAULT_EXCLUDE_WEEKENDS_FOR_START_DATE,
     DEFAULT_HOLIDAY_TYPE,
@@ -474,15 +476,24 @@ export default function AdminWorkspace({ ctx }) {
                     ['memberAccounts', UserCircle, '회원 계정 관리'],
                     ['adminAccounts', ShieldCheck, '관리자 ID 관리'],
                     ['settings', Settings, '시스템 설정'],
-                  ].map(([key, Icon, label]) => (
+                    ['extensionSettings', Clock, '대여 연장 관리', true],
+                  ].map(([key, Icon, label, isSubmenu]) => (
                     <Button
                       key={key}
                       variant={adminTab === key ? 'primary' : 'ghost'}
                       onClick={() => setAdminTab(key)}
-                      className={`w-full justify-start ${adminTab === key ? '' : 'hover:bg-slate-100 text-slate-700'}`}
+                      className={`${
+                        isSubmenu
+                          ? 'ml-4 w-[calc(100%-1rem)]'
+                          : 'w-full'
+                      } justify-start ${
+                        adminTab === key
+                          ? ''
+                          : 'hover:bg-slate-100 text-slate-700'
+                      }`}
                     >
                       <Icon size={16} />
-                      <span>{label}</span>
+                      <span>{isSubmenu ? `└ ${label}` : label}</span>
                     </Button>
                   ))}
                 </CardContent>
@@ -542,6 +553,11 @@ export default function AdminWorkspace({ ctx }) {
                   {/* 기본 환경 설정 탭 */}
                   {adminTab === 'settings' && (
                     <AdminSettingsPanel ctx={ctx} />
+                  )}
+
+                  {/* 대여 연장 설정 하위 메뉴 */}
+                  {adminTab === 'extensionSettings' && (
+                    <AdminExtensionSettingsPanel ctx={ctx} />
                   )}
                 </CardContent>
               </Card>
