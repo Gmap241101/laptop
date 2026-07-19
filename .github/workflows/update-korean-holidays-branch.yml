@@ -70,7 +70,7 @@ jobs:
       - name: Copy to gh-pages
         run: |
           mkdir -p gh-pages/holidays
-          cp -f source/public/holidays/*.json gh-pages/holidays/
+          cp -f source/public/holidays/*.json gh-pages/public/holidays/
 
       - name: Commit gh-pages
         working-directory: gh-pages
@@ -95,8 +95,8 @@ jobs:
 
       - name: Copy to gh-pages2
         run: |
-          mkdir -p gh-page-2/holidays
-          cp -f source/public/holidays/*.json gh-page-2/holidays/
+          mkdir -p gh-page-2/public/holidays
+          cp -f source/public/holidays/*.json gh-page-2/public/holidays/
 
       - name: Commit gh-page-2
         working-directory: gh-page-2
@@ -121,8 +121,8 @@ jobs:
 
       - name: Copy to gh-pages-3
         run: |
-          mkdir -p gh-pages-3/holidays
-          cp -f source/public/holidays/*.json gh-pages-3/holidays/
+          mkdir -p gh-pages-3/public/holidays
+          cp -f source/public/holidays/*.json gh-pages-3/public/holidays/
 
       - name: Commit gh-pages-3
         working-directory: gh-pages-3
