@@ -1,0 +1,105 @@
+{
+  "year": 2006,
+  "updatedAt": "2026-07-19T03:25:54.543Z",
+  "source": "data.go.kr KASI SpcdeInfoService getRestDeInfo",
+  "holidays": [
+    {
+      "date": "2006-01-01",
+      "name": "신정",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2006-01-28",
+      "name": "설날",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2006-01-29",
+      "name": "설날",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2006-01-30",
+      "name": "설날",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2006-03-01",
+      "name": "삼일절",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2006-05-05",
+      "name": "석가탄신일",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2006-06-06",
+      "name": "현충일",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2006-07-17",
+      "name": "제헌절",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2006-08-15",
+      "name": "광복절",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2006-10-03",
+      "name": "개천절",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2006-10-05",
+      "name": "추석",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2006-10-06",
+      "name": "추석",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2006-10-07",
+      "name": "추석",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2006-12-25",
+      "name": "기독탄신일",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    }
+  ]
+}

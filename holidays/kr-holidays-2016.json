@@ -1,0 +1,133 @@
+{
+  "year": 2016,
+  "updatedAt": "2026-07-19T03:28:11.215Z",
+  "source": "data.go.kr KASI SpcdeInfoService getRestDeInfo",
+  "holidays": [
+    {
+      "date": "2016-01-01",
+      "name": "신정",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2016-02-07",
+      "name": "설날",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2016-02-08",
+      "name": "설날",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2016-02-09",
+      "name": "설날",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2016-02-10",
+      "name": "대체공휴일",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2016-03-01",
+      "name": "삼일절",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2016-04-13",
+      "name": "국회의원선거일",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2016-05-05",
+      "name": "어린이날",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2016-05-06",
+      "name": "임시공휴일",
+      "type": "temporary",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2016-05-14",
+      "name": "석가탄신일",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2016-06-06",
+      "name": "현충일",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2016-08-15",
+      "name": "광복절",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2016-09-14",
+      "name": "추석",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2016-09-15",
+      "name": "추석",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2016-09-16",
+      "name": "추석",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2016-10-03",
+      "name": "개천절",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2016-10-09",
+      "name": "한글날",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    },
+    {
+      "date": "2016-12-25",
+      "name": "기독탄신일",
+      "type": "public",
+      "enabled": true,
+      "source": "kasi"
+    }
+  ]
+}
