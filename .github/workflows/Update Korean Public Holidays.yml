@@ -24,19 +24,19 @@
             git push origin gh-pages
           fi
 
-      - name: Update gh-page2
+      - name: Update gh-page-2
         uses: actions/checkout@v4
         with:
-          ref: gh-page2
-          path: gh-page2
+          ref: gh-page-2
+          path: gh-page-2
 
-      - name: Copy to gh-page2
+      - name: Copy to gh-page-2
         run: |
-          mkdir -p gh-page2/holidays
-          cp -f source/public/holidays/*.json gh-page2/holidays/
+          mkdir -p gh-page-2/holidays
+          cp -f source/public/holidays/*.json gh-page-2/holidays/
 
-      - name: Commit gh-page2
-        working-directory: gh-page2
+      - name: Commit gh-page-2
+        working-directory: gh-page-2
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
