@@ -45,6 +45,21 @@ jobs:
             NEXT_YEAR=$((CURRENT_YEAR + 1))
             npm run generate:holidays -- $CURRENT_YEAR $NEXT_YEAR
           fi
+          
+      - name: Commit generated holidays to main
+        working-directory: source
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          git add public/holidays/*.json
+
+          if git diff --cached --quiet; then
+            echo "No changes in main holiday JSON."
+          else
+            git commit -m "Update Korean public holiday JSON"
+            git push origin HEAD:main
+          fi
 
       - name: Update gh-pages
         uses: actions/checkout@v4
