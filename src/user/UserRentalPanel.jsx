@@ -5,21 +5,27 @@ export default function UserRentalPanel({ ctx }) {
     Card,
     CardContent,
     Info,
-    Input,
     LockIcon,
     STATUS,
     Search,
-    Select,
     availabilityFilter,
     availableFilterLabel,
+    currentAuthRoleErrorMessage,
+    currentAuthRoleReady,
+    currentUserRentalRestrictionStatus,
+    currentUserRestrictionReady,
     data,
-    filteredBorrowers,
     filteredLaptops,
+    firebaseAuthReady,
+    firebaseAuthUser,
     form,
     formatDateWithKoreanWeekday,
     getLaptopRentalAvailability,
     getSafeMaxRentalDays,
     getUserLaptopStatusLabel,
+    goToUserLogin,
+    goToUserMypage,
+    isCurrentFirebaseAuthGeneralUser,
     isPeriodBasedRentalMode,
     motion,
     query,
@@ -39,11 +45,89 @@ export default function UserRentalPanel({ ctx }) {
     setSelectedLaptopId,
     submitRequest,
     unavailableFilterLabel,
+    userProfile,
+    userProfileReady,
   } = ctx;
+
+  if (
+    !firebaseAuthReady ||
+    !currentAuthRoleReady ||
+    !userProfileReady ||
+    !currentUserRestrictionReady
+  ) {
+    return (
+      <Card>
+        <CardContent className="p-8 text-center">
+          <div className="text-sm font-bold text-slate-900">
+            로그인 계정과 대여 가능 상태를 확인하는 중입니다.
+          </div>
+          <p className="mt-2 text-xs text-slate-500">
+            확인이 완료되면 대여 신청 화면이 표시됩니다.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (
+    !firebaseAuthUser ||
+    !isCurrentFirebaseAuthGeneralUser ||
+    currentAuthRoleErrorMessage
+  ) {
+    return (
+      <Card className="mk-brand-border-soft shadow-sm shadow-slate-100">
+        <CardContent className="p-8 text-center">
+          <h2 className="text-lg font-bold text-slate-900">
+            대여 신청은 로그인 후 이용할 수 있습니다.
+          </h2>
+          <p className="mt-2 text-xs leading-6 text-slate-500">
+            승인된 일반회원 계정으로 로그인하면 본인의 이름과 부서가 자동으로 신청자 정보에 적용됩니다.
+          </p>
+          <Button
+            type="button"
+            variant="primary"
+            onClick={goToUserLogin}
+            className="mt-5 justify-center"
+          >
+            로그인
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!userProfile || userProfile.status !== 'active') {
+    return (
+      <Card className="mk-brand-border-soft shadow-sm shadow-slate-100">
+        <CardContent className="p-8 text-center">
+          <h2 className="text-lg font-bold text-slate-900">
+            대여 신청에 사용할 회원 정보를 확인할 수 없습니다.
+          </h2>
+          <p className="mt-2 text-xs leading-6 text-slate-500">
+            이름과 부서가 등록된 승인 상태의 일반회원만 대여를 신청할 수 있습니다.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={goToUserMypage}
+            className="mt-5 justify-center"
+          >
+            마이페이지 확인
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
           /* ==================== [사용자 대여 화면] ==================== */
           <div className="space-y-6">
+            {currentUserRentalRestrictionStatus?.blocked && (
+              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm font-semibold leading-6 text-rose-800">
+                {currentUserRentalRestrictionStatus.message}
+              </div>
+            )}
+
             <Card className="mk-brand-border-soft shadow-sm shadow-slate-100">
               <CardContent className="p-6">
                 <div className="mb-5 flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
@@ -254,47 +338,17 @@ export default function UserRentalPanel({ ctx }) {
                     </div>
                   </div>
 
-                  {data.settings.teamInputMode === 'dropdown' ? (
-                    <Select
-                      label="부서 / 팀 선택"
-                      value={form.team}
-                      onChange={(v) => setForm({ ...form, team: v, borrower: '' })}
-                    >
-                      <option value="">팀 선택</option>
-                      {data.teams.map((t) => (
-                        <option key={t} value={t}>{t}</option>
-                      ))}
-                    </Select>
-                  ) : (
-                    <Input
-                      label="부서 / 팀 직접 입력"
-                      value={form.team}
-                      onChange={(v) => setForm({ ...form, team: v })}
-                      placeholder="부서(팀)명을 입력하세요"
-                    />
-                  )}
-
-                  {data.settings.borrowerInputMode === 'dropdown' ? (
-                    <Select
-                      label="대여자명"
-                      value={form.borrower}
-                      onChange={(v) => setForm({ ...form, borrower: v })}
-                    >
-                      <option value="">{form.team ? '대여자 선택' : '소속 부서를 먼저 선택해 주세요'}</option>
-                      {filteredBorrowers.map((b, index) => (
-                        <option key={`${b.team}-${b.name}-${index}`} value={b.name}>
-                          {b.name}
-                        </option>
-                      ))}
-                    </Select>
-                  ) : (
-                    <Input
-                      label="신청 대여자 직접 입력"
-                      value={form.borrower}
-                      onChange={(v) => setForm({ ...form, borrower: v })}
-                      placeholder="성명을 입력하세요"
-                    />
-                  )}
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="mb-1.5 text-xs font-semibold text-slate-600 tracking-wide">
+                      신청자
+                    </div>
+                    <div className="text-sm font-bold text-slate-900">
+                      {userProfile.team || '-'} · {userProfile.name || '-'}
+                    </div>
+                    <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                      신청자 정보는 현재 로그인 계정의 회원정보를 자동으로 사용하며 직접 변경할 수 없습니다.
+                    </p>
+                  </div>
 
                   {/* 선택한 대여 기간 요약 표시 */}
                   <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
@@ -325,6 +379,7 @@ export default function UserRentalPanel({ ctx }) {
                     onClick={submitRequest}
                     disabled={
                       requestSubmitLoading ||
+                      currentUserRentalRestrictionStatus?.blocked ||
                       !selectedLaptop ||
                       selectedLaptopAvailability?.blocked
                     }

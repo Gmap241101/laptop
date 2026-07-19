@@ -99,3 +99,8 @@ export const RENTAL_ASSET_NUMBERS_COLLECTION_REF = collection(
   db,
   'rentalAssetNumbers'
 );
+
+export const RENTAL_RESTRICTIONS_COLLECTION_REF = collection(
+  db,
+  'rentalRestrictions'
+);

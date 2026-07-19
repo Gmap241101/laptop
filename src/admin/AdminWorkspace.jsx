@@ -476,7 +476,7 @@ export default function AdminWorkspace({ ctx }) {
                     ['memberAccounts', UserCircle, '회원 계정 관리'],
                     ['adminAccounts', ShieldCheck, '관리자 ID 관리'],
                     ['settings', Settings, '시스템 설정'],
-                    ['extensionSettings', Clock, '대여 연장 관리', true],
+                    ['extensionSettings', Clock, '대여 정책 관리', true],
                   ].map(([key, Icon, label, isSubmenu]) => (
                     <Button
                       key={key}
@@ -555,7 +555,7 @@ export default function AdminWorkspace({ ctx }) {
                     <AdminSettingsPanel ctx={ctx} />
                   )}
 
-                  {/* 대여 연장 설정 하위 메뉴 */}
+                  {/* 대여 정책 설정 하위 메뉴 */}
                   {adminTab === 'extensionSettings' && (
                     <AdminExtensionSettingsPanel ctx={ctx} />
                   )}

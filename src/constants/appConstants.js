@@ -58,6 +58,11 @@ export const RENTAL_EXTENSION_APPROVAL_MODE = {
   AUTO: 'auto',
 };
 
+export const OVERDUE_PENALTY_MODE = {
+  FIXED_PER_ASSET: 'fixedPerAsset',
+  OVERDUE_DAY_MULTIPLIER: 'overdueDayMultiplier',
+};
+
 export const DEFAULT_NOTICE_POSTS_PER_PAGE = 10;
 
 export const NOTICE_POSTS_PER_PAGE_OPTIONS = [

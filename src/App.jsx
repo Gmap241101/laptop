@@ -77,6 +77,7 @@ import {
   RENTAL_BORROWERS_COLLECTION_REF,
   RENTAL_REQUEST_LOGS_COLLECTION_REF,
   RENTAL_REQUESTS_COLLECTION_REF,
+  RENTAL_RESTRICTIONS_COLLECTION_REF,
   USER_ACCOUNTS_COLLECTION_NAME,
   USER_ACCOUNTS_COLLECTION_REF,
   adminAccountCreationAuth,
@@ -99,6 +100,7 @@ import {
   RENTAL_REQUEST_RESTORE_TARGETS,
   RENTAL_REQUEST_STATUS_TRANSITIONS,
   RENTAL_EXTENSION_APPROVAL_MODE,
+  OVERDUE_PENALTY_MODE,
   STATUS,
   USER_REQUEST_ACTION,
   USER_REQUEST_REVIEW_STATUS,
@@ -117,6 +119,18 @@ import {
   hasRentalPeriodOverlap,
   today,
 } from './utils/appUtils.js';
+
+import {
+  DEFAULT_OVERDUE_DAY_MULTIPLIER,
+  DEFAULT_OVERDUE_FIXED_DAYS_PER_ASSET,
+  DEFAULT_OVERDUE_PENALTY_MODE,
+  DEFAULT_OVERDUE_RENTAL_BLOCK_ENABLED,
+  DEFAULT_POST_OVERDUE_PENALTY_ENABLED,
+  buildOverdueReturnResult,
+  getCurrentOverdueRequests,
+  getRentalRestrictionStatus,
+  normalizeOverduePolicySettings,
+} from './utils/overduePolicy.js';
 
 const SPLIT_STORAGE_VERSION = 2;
 
@@ -570,6 +584,11 @@ const normalizeRentalExtensionSettings = (settings = {}) => ({
     getSafeRentalExtensionRequestWaitDays(settings),
 });
 
+const normalizeRentalPolicySettings = (settings = {}) =>
+  normalizeOverduePolicySettings(
+    normalizeRentalExtensionSettings(settings)
+  );
+
 const addBusinessDaysInclusive = (
   startDate,
   businessDayCount,
@@ -913,6 +932,11 @@ const initialData = {
     rentalExtensionMaxCount: DEFAULT_RENTAL_EXTENSION_MAX_COUNT,
     rentalExtensionBusinessDays: DEFAULT_RENTAL_EXTENSION_BUSINESS_DAYS,
     rentalExtensionRequestWaitDays: DEFAULT_RENTAL_EXTENSION_REQUEST_WAIT_DAYS,
+    overdueRentalBlockEnabled: DEFAULT_OVERDUE_RENTAL_BLOCK_ENABLED,
+    postOverduePenaltyEnabled: DEFAULT_POST_OVERDUE_PENALTY_ENABLED,
+    overduePenaltyMode: DEFAULT_OVERDUE_PENALTY_MODE,
+    overdueFixedDaysPerAsset: DEFAULT_OVERDUE_FIXED_DAYS_PER_ASSET,
+    overdueDayMultiplier: DEFAULT_OVERDUE_DAY_MULTIPLIER,
   },
 };
 
@@ -1063,7 +1087,7 @@ function mergePersistedData(rawData) {
     : initialData.assetCategories;
 
   const rawSettings = parsed.settings || {};
-  const settings = normalizeRentalExtensionSettings({
+  const settings = normalizeRentalPolicySettings({
     ...initialData.settings,
     ...rawSettings,
   });
@@ -1747,6 +1771,9 @@ function App() {
   const [userProfileForm, setUserProfileForm] = useState(createDefaultUserProfileForm);
   const [userProfileSaving, setUserProfileSaving] = useState(false);
 
+  const [currentUserRestriction, setCurrentUserRestriction] = useState(null);
+  const [currentUserRestrictionReady, setCurrentUserRestrictionReady] = useState(false);
+
   const [adminUserAccounts, setAdminUserAccounts] = useState([]);
   const [adminUserAccountsReady, setAdminUserAccountsReady] = useState(false);
   const [
@@ -1970,6 +1997,57 @@ function App() {
     return unsubscribe;
   }, [
     firebaseAuthUser,
+    currentAuthRoleReady,
+    currentAuthRoleErrorMessage,
+    currentAuthAdminAccount,
+    authenticatedAdminId,
+  ]);
+
+  useEffect(() => {
+    if (
+      !firebaseAuthUser ||
+      !currentAuthRoleReady ||
+      currentAuthRoleErrorMessage ||
+      currentAuthAdminAccount ||
+      authenticatedAdminId
+    ) {
+      setCurrentUserRestriction(null);
+      setCurrentUserRestrictionReady(true);
+      return;
+    }
+
+    setCurrentUserRestrictionReady(false);
+
+    const unsubscribe = onSnapshot(
+      doc(
+        RENTAL_RESTRICTIONS_COLLECTION_REF,
+        firebaseAuthUser.uid
+      ),
+      (snapshot) => {
+        setCurrentUserRestriction(
+          snapshot.exists()
+            ? {
+                ...snapshot.data(),
+                uid: snapshot.id,
+              }
+            : null
+        );
+        setCurrentUserRestrictionReady(true);
+      },
+      (error) => {
+        console.error('Rental restriction sync error:', error);
+        setCurrentUserRestriction(null);
+        setCurrentUserRestrictionReady(true);
+        triggerToast(
+          '대여 제한 상태를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
+          'error'
+        );
+      }
+    );
+
+    return unsubscribe;
+  }, [
+    firebaseAuthUser?.uid,
     currentAuthRoleReady,
     currentAuthRoleErrorMessage,
     currentAuthAdminAccount,
@@ -3546,6 +3624,23 @@ function App() {
       (request) => request.requesterUid === firebaseAuthUser.uid
     );
   }, [mergedRentalRequests, firebaseAuthUser?.uid]);
+
+  const currentUserRentalRestrictionStatus = useMemo(
+    () =>
+      getRentalRestrictionStatus({
+        requests: currentUserRequests,
+        requesterUid: firebaseAuthUser?.uid || '',
+        settings: data.settings,
+        restriction: currentUserRestriction,
+        referenceDate: today(),
+      }),
+    [
+      currentUserRequests,
+      firebaseAuthUser?.uid,
+      data.settings,
+      currentUserRestriction,
+    ]
+  );
 
   const activeUserActionRentalRequest = useMemo(
     () =>
@@ -6684,7 +6779,29 @@ function App() {
       return;
     }
 
-    const nextSettings = normalizeRentalExtensionSettings({
+    if (
+      tempSettings.postOverduePenaltyEnabled &&
+      (
+        (
+          tempSettings.overduePenaltyMode ===
+            OVERDUE_PENALTY_MODE.FIXED_PER_ASSET &&
+          Number(tempSettings.overdueFixedDaysPerAsset) < 1
+        ) ||
+        (
+          tempSettings.overduePenaltyMode ===
+            OVERDUE_PENALTY_MODE.OVERDUE_DAY_MULTIPLIER &&
+          Number(tempSettings.overdueDayMultiplier) < 1
+        )
+      )
+    ) {
+      triggerToast(
+        '연체 페널티의 기기당 고정 일수와 연체일 배수는 1 이상의 정수로 입력해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    const nextSettings = normalizeRentalPolicySettings({
       ...tempSettings,
       allowNonOverlappingSameAssetRequests:
         tempSettings.allowNonOverlappingSameAssetRequests ??
@@ -7284,6 +7401,126 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         )
       : -1;
 
+  const loadFreshRentalRestrictionStatus = async (requesterUid) => {
+    const restrictionDocRef = doc(
+      RENTAL_RESTRICTIONS_COLLECTION_REF,
+      requesterUid
+    );
+
+    const [
+      publicConfigSnapshot,
+      userRequestsSnapshot,
+      restrictionSnapshot,
+    ] = await Promise.all([
+      getDoc(PUBLIC_CONFIG_DOC_REF),
+      getDocs(
+        firestoreQuery(
+          RENTAL_REQUESTS_COLLECTION_REF,
+          where('requesterUid', '==', requesterUid)
+        )
+      ),
+      getDoc(restrictionDocRef),
+    ]);
+
+    const latestSettings = normalizeRentalPolicySettings({
+      ...data.settings,
+      ...(publicConfigSnapshot.exists()
+        ? publicConfigSnapshot.data()?.settings || {}
+        : {}),
+    });
+
+    const latestRequests = userRequestsSnapshot.docs.map(
+      (requestDocument) => ({
+        ...requestDocument.data(),
+        id: requestDocument.id,
+      })
+    );
+
+    const latestRestriction = restrictionSnapshot.exists()
+      ? {
+          ...restrictionSnapshot.data(),
+          uid: restrictionSnapshot.id,
+        }
+      : null;
+
+    return getRentalRestrictionStatus({
+      requests: latestRequests,
+      requesterUid,
+      settings: latestSettings,
+      restriction: latestRestriction,
+      referenceDate: today(),
+    });
+  };
+
+  const getOverdueReturnResult = ({
+    latestRequest,
+    latestSettings,
+    restrictionData,
+    actualReturnDate,
+    batchId,
+  }) => {
+    const otherCurrentOverdueRequests = getCurrentOverdueRequests(
+      mergedRentalRequests,
+      latestRequest.requesterUid,
+      actualReturnDate,
+      latestRequest.id
+    );
+
+    return buildOverdueReturnResult({
+      request: latestRequest,
+      actualReturnDate,
+      settings: latestSettings,
+      restriction: restrictionData,
+      hasOtherCurrentOverdueRequests:
+        otherCurrentOverdueRequests.length > 0,
+      batchId,
+    });
+  };
+
+  const writeOverdueReturnSideEffects = ({
+    transaction,
+    requestId,
+    requesterUid,
+    returnResult,
+  }) => {
+    if (!returnResult?.restrictionData || !requesterUid) {
+      return;
+    }
+
+    const restrictionDocRef = doc(
+      RENTAL_RESTRICTIONS_COLLECTION_REF,
+      requesterUid
+    );
+
+    transaction.set(
+      restrictionDocRef,
+      {
+        ...returnResult.restrictionData,
+        calculatedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    (returnResult.finalizedRequestIds || [])
+      .filter((pendingRequestId) => pendingRequestId !== requestId)
+      .forEach((pendingRequestId) => {
+        transaction.update(
+          doc(
+            RENTAL_REQUESTS_COLLECTION_REF,
+            pendingRequestId
+          ),
+          {
+            overduePenaltyPending: false,
+            overduePenaltyBatchId:
+              returnResult.requestFields.overduePenaltyBatchId || '',
+            updatedAt: serverTimestamp(),
+            syncedAt: serverTimestamp(),
+          }
+        );
+      });
+  };
+
   const submitRequest = async () => {
     if (
       requestSubmitInProgressRef.current ||
@@ -7379,6 +7616,33 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       return;
     }
 
+    try {
+      const latestRestrictionStatus =
+        await loadFreshRentalRestrictionStatus(
+          firebaseAuthUser.uid
+        );
+
+      if (latestRestrictionStatus.blocked) {
+        triggerToast(
+          latestRestrictionStatus.message ||
+            '현재 대여 제한 상태이므로 신규 대여를 신청할 수 없습니다.',
+          'error'
+        );
+        return;
+      }
+    } catch (error) {
+      console.error(
+        'Rental restriction preflight error:',
+        error
+      );
+
+      triggerToast(
+        '최신 연체 및 대여 제한 상태를 확인하지 못해 신청을 중단했습니다. 잠시 후 다시 시도해 주세요.',
+        'error'
+      );
+      return;
+    }
+
     if (!selectedLaptop) {
       triggerToast('신청할 기기를 선택해 주세요.', 'error');
       return;
@@ -7411,8 +7675,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       triggerToast('이미 예약 중이거나 이용 불가한 기기입니다.', 'error');
       return;
     }
-    if (!form.team || !form.borrower || !form.startDate || !form.dueDate) {
-      triggerToast('팀명, 대여자명, 대여 예정일을 모두 작성해 주세요.', 'error');
+    if (!form.startDate || !form.dueDate) {
+      triggerToast('대여 시작일과 반납 예정일을 모두 작성해 주세요.', 'error');
       return;
     }
 
@@ -7498,8 +7762,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       laptopId: selectedLaptop.id,
       assetCategory: selectedLaptop.category || '노트북',
       assetNo: selectedLaptop.assetNo,
-      team: form.team,
-      borrower: form.borrower,
+      team: requesterTeam,
+      borrower: requesterName,
       startDate: form.startDate,
       dueDate: form.dueDate,
       purpose: form.purpose,
@@ -7815,7 +8079,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             throw new Error('rental-request-owner-mismatch');
           }
 
-          const latestSettings = normalizeRentalExtensionSettings({
+          const latestSettings = normalizeRentalPolicySettings({
             ...data.settings,
             ...(publicConfigSnapshot.exists()
               ? publicConfigSnapshot.data()?.settings || {}
@@ -8297,12 +8561,16 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
     const nextTeam =
       String(
-        userActionForm.team || ''
+        currentRequest.requesterTeam ||
+        currentRequest.team ||
+        ''
       ).trim();
 
     const nextBorrower =
       String(
-        userActionForm.borrower || ''
+        currentRequest.requesterName ||
+        currentRequest.borrower ||
+        ''
       ).trim();
 
     const nextStartDate =
@@ -8339,7 +8607,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         !nextDueDate
       ) {
         triggerToast(
-          '변경할 소속, 대여자명과 대여 기간을 모두 입력해 주세요.',
+          '로그인 사용자 정보와 변경할 대여 기간을 확인할 수 없습니다.',
           'error'
         );
         return;
@@ -8424,15 +8692,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             ...requestSnapshot.data(),
             id: requestSnapshot.id,
           };
-
-          if (
-            actionType ===
-            USER_REQUEST_ACTION.RETURN
-          ) {
-            throw new Error(
-              'return-request-disabled'
-            );
-          }
 
           if (
             latestRequest.requesterUid !==
@@ -8631,6 +8890,16 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       RENTAL_REQUEST_LOGS_COLLECTION_REF
     );
 
+    const restrictionDocRef = currentRequest.requesterUid
+      ? doc(
+          RENTAL_RESTRICTIONS_COLLECTION_REF,
+          currentRequest.requesterUid
+        )
+      : null;
+
+    const overdueBatchId =
+      `OVERDUE-${doc(RENTAL_RESTRICTIONS_COLLECTION_REF).id}`;
+
     let committedRequest = null;
     let committedAsset = null;
     let committedAvailabilityRequest = null;
@@ -8647,6 +8916,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             requestSnapshot,
             assetSnapshot,
             publicConfigSnapshot,
+            restrictionSnapshot,
           ] = await Promise.all([
             transaction.get(
               requestDocRef
@@ -8657,6 +8927,9 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             transaction.get(
               PUBLIC_CONFIG_DOC_REF
             ),
+            restrictionDocRef
+              ? transaction.get(restrictionDocRef)
+              : Promise.resolve(null),
           ]);
 
           if (!requestSnapshot.exists()) {
@@ -8676,12 +8949,20 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             id: requestSnapshot.id,
           };
 
-          const latestSettings = normalizeRentalExtensionSettings({
+          const latestSettings = normalizeRentalPolicySettings({
             ...data.settings,
             ...(publicConfigSnapshot.exists()
               ? publicConfigSnapshot.data()?.settings || {}
               : {}),
           });
+
+          const latestRestriction =
+            restrictionSnapshot?.exists()
+              ? {
+                  ...restrictionSnapshot.data(),
+                  uid: restrictionSnapshot.id,
+                }
+              : null;
 
           const userActionRequest =
             latestRequest.userActionRequest;
@@ -8762,6 +9043,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             userActionRequest:
               nextUserActionRequest,
           };
+
+          let overdueReturnResult = null;
 
           if (approved) {
             if (
@@ -9050,16 +9333,31 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
               nextStatus =
                 STATUS.RETURNED;
 
+              overdueReturnResult =
+                getOverdueReturnResult({
+                  latestRequest,
+                  latestSettings,
+                  restrictionData: latestRestriction,
+                  actualReturnDate: today(),
+                  batchId: overdueBatchId,
+                });
+
               nextRequestFields = {
                 ...nextRequestFields,
                 status:
                   nextStatus,
+                ...overdueReturnResult.requestFields,
+                returnedAt:
+                  serverTimestamp(),
               };
 
               nextCommittedRequest = {
                 ...nextCommittedRequest,
                 status:
                   nextStatus,
+                ...overdueReturnResult.requestFields,
+                returnedAt:
+                  new Date(),
               };
             }
           }
@@ -9116,6 +9414,15 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             requestDocRef,
             nextRequestFields
           );
+
+          if (overdueReturnResult) {
+            writeOverdueReturnSideEffects({
+              transaction,
+              requestId: id,
+              requesterUid: latestRequest.requesterUid,
+              returnResult: overdueReturnResult,
+            });
+          }
 
           if (approved) {
             if (shouldKeepAvailability) {
@@ -11452,6 +11759,21 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     let committedAvailabilityRequest = null;
     let shouldKeepAvailability = false;
 
+    const actualReturnDate =
+      status === STATUS.RETURNED ? today() : '';
+
+    const overdueBatchId =
+      status === STATUS.RETURNED
+        ? `OVERDUE-${doc(RENTAL_RESTRICTIONS_COLLECTION_REF).id}`
+        : '';
+
+    const restrictionDocRef = currentRequest.requesterUid
+      ? doc(
+          RENTAL_RESTRICTIONS_COLLECTION_REF,
+          currentRequest.requesterUid
+        )
+      : null;
+
     const nextDisplayStatus =
       getDisplayRentalStatus(
         status,
@@ -11481,6 +11803,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           const [
             requestSnapshot,
             assetSnapshot,
+            publicConfigSnapshot,
+            restrictionSnapshot,
           ] = await Promise.all([
             transaction.get(
               requestDocRef
@@ -11488,6 +11812,12 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             transaction.get(
               assetDocRef
             ),
+            status === STATUS.RETURNED
+              ? transaction.get(PUBLIC_CONFIG_DOC_REF)
+              : Promise.resolve(null),
+            status === STATUS.RETURNED && restrictionDocRef
+              ? transaction.get(restrictionDocRef)
+              : Promise.resolve(null),
           ]);
 
           if (!requestSnapshot.exists()) {
@@ -11539,9 +11869,44 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             id: assetSnapshot.id,
           };
 
+          const latestSettings =
+            status === STATUS.RETURNED
+              ? normalizeRentalPolicySettings({
+                  ...data.settings,
+                  ...(publicConfigSnapshot?.exists()
+                    ? publicConfigSnapshot.data()?.settings || {}
+                    : {}),
+                })
+              : data.settings;
+
+          const latestRestriction =
+            restrictionSnapshot?.exists()
+              ? {
+                  ...restrictionSnapshot.data(),
+                  uid: restrictionSnapshot.id,
+                }
+              : null;
+
+          const overdueReturnResult =
+            status === STATUS.RETURNED
+              ? getOverdueReturnResult({
+                  latestRequest,
+                  latestSettings,
+                  restrictionData: latestRestriction,
+                  actualReturnDate,
+                  batchId: overdueBatchId,
+                })
+              : null;
+
           const nextCommittedRequest = {
             ...latestRequest,
             status,
+            ...(overdueReturnResult
+              ? {
+                  ...overdueReturnResult.requestFields,
+                  returnedAt: new Date(),
+                }
+              : {}),
           };
 
           const availabilityRequest =
@@ -11622,12 +11987,27 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
               status,
               adminMemo:
                 latestRequest.adminMemo || '',
+              ...(overdueReturnResult
+                ? {
+                    ...overdueReturnResult.requestFields,
+                    returnedAt: serverTimestamp(),
+                  }
+                : {}),
               updatedAt:
                 serverTimestamp(),
               syncedAt:
                 serverTimestamp(),
             }
           );
+
+          if (overdueReturnResult) {
+            writeOverdueReturnSideEffects({
+              transaction,
+              requestId: id,
+              requesterUid: latestRequest.requesterUid,
+              returnResult: overdueReturnResult,
+            });
+          }
 
           transaction.set(
             requestLogDocRef,
@@ -13504,6 +13884,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     LockIcon,
     LogOut,
     NOTICE_POSTS_PER_PAGE_OPTIONS,
+    OVERDUE_PENALTY_MODE,
     Plus,
     RENTAL_EXTENSION_APPROVAL_MODE,
     RENTAL_REQUEST_AUDIT_ACTION,
@@ -13597,6 +13978,9 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     currentAuthAdminAccount,
     currentAuthRoleErrorMessage,
     currentAuthRoleReady,
+    currentUserRentalRestrictionStatus,
+    currentUserRestriction,
+    currentUserRestrictionReady,
     currentUserRequests,
     data,
     deleteAdminAccount,
@@ -13672,6 +14056,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     getUserRequestReviewStatusLabel,
     goToUserHome,
     goToUserLogin,
+    goToUserMypage,
     goToUserSignup,
     handleAddLaptopClick,
     handleFileUpload,

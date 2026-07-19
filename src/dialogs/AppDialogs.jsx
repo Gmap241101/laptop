@@ -408,76 +408,22 @@ export default function AppDialogs({ ctx }) {
               {userActionDialog.type ===
                 USER_REQUEST_ACTION.CHANGE && (
                 <>
-                  {data.settings.teamInputMode === 'dropdown' ? (
-                    <Select
-                      label="변경할 부서 / 팀"
-                      value={userActionForm.team}
-                      onChange={(value) =>
-                        setUserActionForm((prev) => ({
-                          ...prev,
-                          team: value,
-                          borrower: '',
-                        }))
-                      }
-                    >
-                      <option value="">팀 선택</option>
-                      {(data.teams || []).map((team) => (
-                        <option key={team} value={team}>
-                          {team}
-                        </option>
-                      ))}
-                    </Select>
-                  ) : (
-                    <Input
-                      label="변경할 부서 / 팀"
-                      value={userActionForm.team}
-                      onChange={(value) =>
-                        setUserActionForm((prev) => ({
-                          ...prev,
-                          team: value,
-                        }))
-                      }
-                    />
-                  )}
-
-                  {data.settings.borrowerInputMode === 'dropdown' ? (
-                    <Select
-                      label="변경할 대여자명"
-                      value={userActionForm.borrower}
-                      onChange={(value) =>
-                        setUserActionForm((prev) => ({
-                          ...prev,
-                          borrower: value,
-                        }))
-                      }
-                    >
-                      <option value="">
-                        {userActionForm.team
-                          ? '대여자 선택'
-                          : '소속 부서를 먼저 선택해 주세요'}
-                      </option>
-
-                      {userActionBorrowers.map((borrower) => (
-                        <option
-                          key={`${borrower.id}-${borrower.name}`}
-                          value={borrower.name}
-                        >
-                          {borrower.name}
-                        </option>
-                      ))}
-                    </Select>
-                  ) : (
-                    <Input
-                      label="변경할 대여자명"
-                      value={userActionForm.borrower}
-                      onChange={(value) =>
-                        setUserActionForm((prev) => ({
-                          ...prev,
-                          borrower: value,
-                        }))
-                      }
-                    />
-                  )}
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="text-[11px] font-semibold text-slate-500">
+                      신청자
+                    </div>
+                    <div className="mt-1 text-sm font-bold text-slate-900">
+                      {activeUserActionRentalRequest.requesterTeam ||
+                        activeUserActionRentalRequest.team ||
+                        '-'}{' · '}
+                      {activeUserActionRentalRequest.requesterName ||
+                        activeUserActionRentalRequest.borrower ||
+                        '-'}
+                    </div>
+                    <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                      신청자 정보는 로그인 계정 기준으로 고정되며 변경할 수 없습니다.
+                    </p>
+                  </div>
 
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <DateInputWithWeekday

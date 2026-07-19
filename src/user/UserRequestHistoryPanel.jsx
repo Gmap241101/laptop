@@ -178,29 +178,30 @@ export default function UserRequestHistoryPanel({ ctx }) {
                                 </div>
                               )}
 
-                              {data.settings.rentalExtensionEnabled &&
-                                request.status === STATUS.APPROVED && (
-                                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] leading-5 text-slate-600">
-                                    <div className="font-semibold text-slate-800">
-                                      연장 사용 {getRequestExtensionCount(request)} /{' '}
-                                      {getSafeRentalExtensionMaxCount(data.settings)}회
-                                      {' · '}1회{' '}
-                                      {getSafeRentalExtensionBusinessDays(data.settings)}영업일
-                                    </div>
+                              {request.status === STATUS.APPROVED && (
+                                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] leading-5 text-slate-600">
+                                  <div className="font-semibold text-slate-800">
+                                    연장 사용 {getRequestExtensionCount(request)} /{' '}
+                                    {getSafeRentalExtensionMaxCount(data.settings)}회
+                                    {' · '}1회{' '}
+                                    {getSafeRentalExtensionBusinessDays(data.settings)}영업일
+                                  </div>
 
-                                    <div className="mt-0.5">
-                                      {getRequestExtensionCount(request) >=
-                                      getSafeRentalExtensionMaxCount(data.settings)
+                                  <div className="mt-0.5">
+                                    {data.settings.rentalExtensionEnabled
+                                      ? getRequestExtensionCount(request) >=
+                                        getSafeRentalExtensionMaxCount(data.settings)
                                         ? '허용된 연장 횟수를 모두 사용했습니다.'
                                         : `다음 연장 신청 가능일: ${formatDateWithKoreanWeekday(
                                             getExtensionRequestAvailableDate(
                                               request,
                                               data.settings
                                             )
-                                          )}`}
-                                    </div>
+                                          )}`
+                                      : '현재 대여 연장 신청이 허용되지 않습니다.'}
                                   </div>
-                                )}
+                                </div>
+                              )}
 
                               {request.userActionRequest && (
                                 <div
@@ -329,6 +330,22 @@ export default function UserRequestHistoryPanel({ ctx }) {
                                         className="px-3 py-2 text-xs"
                                       >
                                         대여 연장 요청
+                                      </Button>
+
+
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        disabled={userActionSaving}
+                                        onClick={() =>
+                                          openUserActionDialog(
+                                            request,
+                                            USER_REQUEST_ACTION.RETURN
+                                          )
+                                        }
+                                        className="px-3 py-2 text-xs text-emerald-700 border-emerald-200 bg-emerald-50 hover:bg-emerald-100"
+                                      >
+                                        조기 반납 요청
                                       </Button>
                                     </>
                                   )}
