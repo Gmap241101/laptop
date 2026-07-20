@@ -152,7 +152,7 @@ export default function UserRentalPanel({ ctx }) {
                       {formatDateWithKoreanWeekday(form.startDate)} ~ {formatDateWithKoreanWeekday(form.dueDate)}
                     </div>
                     <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-                      대여가능일은 최대 {getSafeMaxRentalDays(data.settings)}영업일입니다.
+                      대여 가능 기간은 최대 {getSafeMaxRentalDays(data.settings)}일이며 달력 기준으로 계산됩니다. 반납 예정일이 주말 또는 등록 휴일이면 다음 영업일로 자동 조정됩니다.
                     </p>
                   </div>
 

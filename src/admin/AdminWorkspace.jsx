@@ -469,14 +469,14 @@ export default function AdminWorkspace({ ctx }) {
                     ['dashboard', LayoutDashboard, '실시간 대시보드'],
                     ['requests', ClipboardList, '기기 대여 신청 관리'],
                     ['laptops', Laptop, '대여 자산 관리'],
+                    ['extensionSettings', Clock, '대여 정책 관리'],
                     ['categories', ClipboardList, '자산 카테고리 관리'],
                     ['people', Users, '부서·사용자 관리'],
                     ['noticePosts', ClipboardList, '공지사항 관리'],
                     ['faqPosts', ClipboardList, 'FAQ 관리'],
                     ['memberAccounts', UserCircle, '회원 계정 관리'],
                     ['adminAccounts', ShieldCheck, '관리자 ID 관리'],
-                    ['settings', Settings, '시스템 설정'],
-                    ['extensionSettings', Clock, '대여 정책 관리', true],
+                    ['settings', Settings, '시스템 관리'],
                   ].map(([key, Icon, label, isSubmenu]) => (
                     <Button
                       key={key}
@@ -550,12 +550,12 @@ export default function AdminWorkspace({ ctx }) {
                     <AdminAccountsPanel ctx={ctx} />
                   )}
                   
-                  {/* 기본 환경 설정 탭 */}
+                  {/* 시스템 관리 탭 */}
                   {adminTab === 'settings' && (
                     <AdminSettingsPanel ctx={ctx} />
                   )}
 
-                  {/* 대여 정책 설정 하위 메뉴 */}
+                  {/* 대여 정책 관리 탭 */}
                   {adminTab === 'extensionSettings' && (
                     <AdminExtensionSettingsPanel ctx={ctx} />
                   )}

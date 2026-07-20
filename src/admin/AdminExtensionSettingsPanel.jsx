@@ -1,13 +1,40 @@
 export default function AdminExtensionSettingsPanel({ ctx }) {
   const {
     Button,
+    ClipboardList,
+    DEFAULT_EXCLUDE_HOLIDAYS_FOR_START_DATE,
+    DEFAULT_EXCLUDE_WEEKENDS_FOR_START_DATE,
+    DEFAULT_HOLIDAY_TYPE,
+    DEFAULT_WORK_END_TIME,
+    HOLIDAY_TYPE_LABEL,
     OVERDUE_PENALTY_MODE,
+    Plus,
     RENTAL_EXTENSION_APPROVAL_MODE,
     Save,
+    Trash2,
+    addTempHoliday,
     data,
+    deleteTempHoliday,
+    formatDateWithKoreanWeekday,
+    getKoreaNow,
+    holidayImportLoading,
+    holidayImportYear,
+    importKoreanPublicHolidaysFromJson,
+    newHolidayDate,
+    newHolidayName,
+    newHolidayType,
     saveSystemSettings,
+    setHolidayImportLoading,
+    setHolidayImportYear,
+    setNewHolidayDate,
+    setNewHolidayName,
+    setNewHolidayType,
     setTempSettings,
+    tempAllowNonOverlappingSameAssetRequests,
+    tempBusinessDayAdjustmentEnabled,
+    tempHolidayList,
     tempSettings,
+    today,
     triggerToast,
   } = ctx;
 
@@ -85,11 +112,285 @@ export default function AdminExtensionSettingsPanel({ ctx }) {
           대여 정책 관리
         </h2>
         <p className="mt-1 text-xs leading-5 text-slate-500">
-          대여 연장과 연체자의 신규 대여 제한 및 반납 후 페널티 정책을 통합 관리합니다.
+          기본 대여 기간, 예약 충돌, 시작·반납일, 휴일, 연장 및 연체자 정책을 한 화면에서 통합 관리합니다.
         </p>
       </div>
 
       <section className="space-y-5">
+        <div>
+          <h3 className="text-base font-bold text-slate-900">
+            기본 대여 정책
+          </h3>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            최초 대여의 최대 기간과 동일 기기 추가 신청 허용 기준을 설정합니다.
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+          <label className="block max-w-md">
+            <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+              기본 최장 허용 대여 기간
+            </span>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={tempSettings.maxRentalDays ?? 14}
+                onChange={(event) =>
+                  updateSetting('maxRentalDays', Number(event.target.value))
+                }
+                className="h-10 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none mk-form-border-focus"
+              />
+              <span className="shrink-0 text-xs font-semibold text-slate-500">
+                일(달력 기준)
+              </span>
+            </div>
+            <p className="mt-2 text-[11px] leading-5 text-slate-500">
+              대여 시작일을 1일차로 포함합니다. 계산된 마지막 날이 주말 또는 등록 휴일이면 다음 영업일로 자동 조정됩니다.
+            </p>
+          </label>
+        </div>
+
+        <Toggle
+          label="기간이 겹치지 않으면 동일 기기 신청 허용"
+          description="켜면 같은 기기라도 기존 신청·예약·대여 기간과 겹치지 않는 경우 추가 신청을 허용합니다."
+          checked={tempAllowNonOverlappingSameAssetRequests}
+          ariaLabel="기간이 겹치지 않으면 동일 기기 신청 허용"
+          onChange={() =>
+            updateSetting(
+              'allowNonOverlappingSameAssetRequests',
+              !tempAllowNonOverlappingSameAssetRequests
+            )
+          }
+        />
+      </section>
+
+      <section className="space-y-5 border-t border-slate-200 pt-7">
+        <div>
+          <h3 className="text-base font-bold text-slate-900">
+            대여 일정 정책
+          </h3>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            업무 종료 이후와 휴무일의 대여 시작일 처리 기준을 설정합니다.
+          </p>
+        </div>
+
+        <Toggle
+          label="업무 종료·휴무일 기준 대여 시작일 다음 영업일 조정"
+          description="켜면 설정한 업무 종료 시간 이후 또는 허용하지 않는 휴무일에 신청할 때 대여 시작일을 다음 가능한 영업일로 이동합니다."
+          checked={tempBusinessDayAdjustmentEnabled}
+          ariaLabel="대여 시작일 다음 영업일 자동 조정 여부"
+          onChange={() => {
+            const nextValue = !tempBusinessDayAdjustmentEnabled;
+
+            setTempSettings((prev) => ({
+              ...prev,
+              adjustStartDateAfterWorkEnd: nextValue,
+              adjustStartDateToNextBusinessDay: nextValue,
+            }));
+          }}
+        />
+
+        <div
+          className={`space-y-5 rounded-2xl border p-5 transition ${
+            tempBusinessDayAdjustmentEnabled
+              ? 'border-slate-200 bg-white'
+              : 'border-slate-200 bg-slate-50 opacity-60'
+          }`}
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                업무 종료 시간
+              </span>
+              <input
+                type="time"
+                value={tempSettings.workEndTime || DEFAULT_WORK_END_TIME}
+                disabled={!tempBusinessDayAdjustmentEnabled}
+                onChange={(event) =>
+                  updateSetting(
+                    'workEndTime',
+                    event.target.value || DEFAULT_WORK_END_TIME
+                  )
+                }
+                className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none mk-form-border-focus disabled:cursor-not-allowed disabled:bg-slate-100"
+              />
+            </label>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
+                <span className="text-xs font-medium text-slate-600">
+                  토요일·일요일 제외
+                </span>
+                <input
+                  type="checkbox"
+                  checked={
+                    tempSettings.excludeWeekendsForStartDate ??
+                    DEFAULT_EXCLUDE_WEEKENDS_FOR_START_DATE
+                  }
+                  disabled={!tempBusinessDayAdjustmentEnabled}
+                  onChange={(event) =>
+                    updateSetting(
+                      'excludeWeekendsForStartDate',
+                      event.target.checked
+                    )
+                  }
+                  className="h-4 w-4"
+                />
+              </label>
+
+              <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
+                <span className="text-xs font-medium text-slate-600">
+                  등록 휴일 제외
+                </span>
+                <input
+                  type="checkbox"
+                  checked={
+                    tempSettings.excludeHolidaysForStartDate ??
+                    DEFAULT_EXCLUDE_HOLIDAYS_FOR_START_DATE
+                  }
+                  disabled={!tempBusinessDayAdjustmentEnabled}
+                  onChange={(event) =>
+                    updateSetting(
+                      'excludeHolidaysForStartDate',
+                      event.target.checked
+                    )
+                  }
+                  className="h-4 w-4"
+                />
+              </label>
+            </div>
+          </div>
+
+          <p className="text-[11px] leading-5 text-slate-500">
+            시작일 자동 조정 설정과 관계없이 반납 예정일은 토요일·일요일과 활성화된 법정공휴일, 임시공휴일, 회사휴일, 수동등록 휴일을 피하도록 다음 영업일로 자동 조정됩니다.
+          </p>
+        </div>
+      </section>
+
+      <section className="space-y-5 border-t border-slate-200 pt-7">
+        <div>
+          <h3 className="text-base font-bold text-slate-900">
+            휴일·영업일 관리
+          </h3>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            법정·임시공휴일은 정적 JSON에서 불러오고 회사휴일과 수동 휴일은 직접 등록합니다. 변경사항 저장 후 대여 일정 계산에 반영됩니다.
+          </p>
+        </div>
+
+        <div className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5">
+          <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h4 className="text-xs font-bold text-blue-900">
+                  법정·임시공휴일 자동 불러오기
+                </h4>
+                <p className="mt-1 text-[11px] leading-5 text-blue-700">
+                  public/holidays 폴더의 연도별 JSON을 병합합니다. 기존 회사휴일과 수동등록 휴일은 덮어쓰지 않습니다.
+                </p>
+              </div>
+
+              <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
+                <input
+                  type="number"
+                  min="2000"
+                  max="2100"
+                  value={holidayImportYear}
+                  onChange={(event) =>
+                    setHolidayImportYear(event.target.value)
+                  }
+                  className="w-full rounded-xl border border-blue-100 bg-white px-3 py-2.5 text-xs outline-none transition mk-form-focus sm:w-28"
+                />
+
+                <Button
+                  onClick={importKoreanPublicHolidaysFromJson}
+                  disabled={holidayImportLoading}
+                  variant="outline"
+                  className="bg-white px-3 py-2.5 text-xs"
+                >
+                  <ClipboardList size={14} />
+                  {holidayImportLoading ? '불러오는 중' : '자동 불러오기'}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-[150px_130px_minmax(0,1fr)_auto]">
+            <input
+              type="date"
+              value={newHolidayDate}
+              onChange={(event) => setNewHolidayDate(event.target.value)}
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none transition mk-form-focus"
+            />
+
+            <select
+              value={newHolidayType}
+              onChange={(event) => setNewHolidayType(event.target.value)}
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none transition mk-form-focus"
+            >
+              <option value="public">법정공휴일</option>
+              <option value="temporary">임시공휴일</option>
+              <option value="company">회사휴일</option>
+              <option value="manual">수동등록</option>
+            </select>
+
+            <input
+              value={newHolidayName}
+              onChange={(event) => setNewHolidayName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  addTempHoliday();
+                }
+              }}
+              placeholder="휴일명 입력 예: 신정, 창립기념 휴무"
+              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs outline-none mk-form-border-focus"
+            />
+
+            <Button
+              onClick={addTempHoliday}
+              className="px-3 py-2.5 text-xs"
+            >
+              <Plus size={14} /> 추가
+            </Button>
+          </div>
+
+          <div className="max-h-64 space-y-1 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50 p-2">
+            {tempHolidayList.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-200 bg-white py-8 text-center text-xs text-slate-400">
+                현재 등록된 휴일이 없습니다.
+              </div>
+            ) : (
+              tempHolidayList.map((holiday, index) => (
+                <div
+                  key={`${holiday.date}-${holiday.name}-${index}`}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-white px-3.5 py-2 text-xs text-slate-700"
+                >
+                  <div className="min-w-0">
+                    <div className="font-semibold text-slate-900">
+                      {formatDateWithKoreanWeekday(holiday.date)}
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-slate-500">
+                      {holiday.name || '휴일'} ·{' '}
+                      {HOLIDAY_TYPE_LABEL[holiday.type] || '휴일'}
+                    </div>
+                  </div>
+
+                  <Button
+                    onClick={() => deleteTempHoliday(index)}
+                    variant="ghost"
+                    className="shrink-0 rounded-lg px-1 py-1 hover:bg-rose-50 hover:text-rose-600"
+                  >
+                    <Trash2 size={14} />
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-5 border-t border-slate-200 pt-7">
         <div>
           <h3 className="text-base font-bold text-slate-900">
             대여 연장 관리
@@ -210,7 +511,9 @@ export default function AdminExtensionSettingsPanel({ ctx }) {
                   }
                   className="h-10 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none mk-form-border-focus disabled:cursor-not-allowed disabled:bg-slate-100"
                 />
-                <span className="text-xs font-semibold text-slate-500">영업일</span>
+                <span className="text-xs font-semibold text-slate-500">
+                  영업일
+                </span>
               </div>
             </label>
 
@@ -415,16 +718,22 @@ export default function AdminExtensionSettingsPanel({ ctx }) {
         </div>
       </section>
 
-      <div className="flex justify-end gap-2.5 border-t border-slate-200/60 pt-4">
+      <div className="flex flex-col-reverse gap-2.5 border-t border-slate-200/60 pt-4 sm:flex-row sm:justify-end">
         <Button
           variant="outline"
           onClick={() => {
             setTempSettings(data.settings);
+            setNewHolidayDate(today());
+            setNewHolidayName('');
+            setNewHolidayType(DEFAULT_HOLIDAY_TYPE);
+            setHolidayImportYear(String(getKoreaNow().getUTCFullYear()));
+            setHolidayImportLoading(false);
             triggerToast(
               '대여 정책 변경사항이 취소되고 이전 상태로 복원되었습니다.',
               'success'
             );
           }}
+          className="w-full sm:w-auto"
         >
           취소
         </Button>
@@ -432,6 +741,7 @@ export default function AdminExtensionSettingsPanel({ ctx }) {
         <Button
           variant="primary"
           onClick={saveSystemSettings}
+          className="w-full sm:w-auto"
         >
           <Save size={14} />
           변경사항 저장

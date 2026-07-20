@@ -12,7 +12,7 @@ export default function AdminDashboardPanel({ ctx }) {
                         <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
                           <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">주요 프로세스 매칭 규정</h4>
                           <ul className="mt-3 space-y-2 text-xs text-slate-600 list-disc pl-4">
-                            <li>시스템 설정에 따라 기기 상태 기준 또는 선택 기간 기준으로 신청 가능 여부를 판단합니다.</li>
+                            <li>대여 정책 설정에 따라 기기 상태 기준 또는 선택 기간 기준으로 신청 가능 여부를 판단합니다.</li>
                             <li>승인된 미래 신청은 &apos;예약중&apos;, 대여 시작일이 도래한 승인 신청은 &apos;대여중&apos;으로 표시됩니다.</li>
                             <li>신청중, 예약중, 대여중, 보류 상태는 신청 가능 여부 판단에 반영되며, 불허와 반납완료는 충돌 판단에서 제외됩니다.</li>
                           </ul>

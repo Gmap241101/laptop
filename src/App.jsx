@@ -602,11 +602,15 @@ const addBusinessDaysInclusive = (
     Math.trunc(Number(businessDayCount) || 1)
   );
 
-  let candidateDate = getNextBusinessDay(startDate, settings);
+  let candidateDate = startDate;
   let countedBusinessDays = 0;
 
   for (let i = 0; i < 3700; i += 1) {
-    if (isBusinessDay(candidateDate, settings)) {
+    const isActualBusinessDay =
+      !isWeekendDate(candidateDate) &&
+      !getEnabledHoliday(candidateDate, settings);
+
+    if (isActualBusinessDay) {
       countedBusinessDays += 1;
 
       if (countedBusinessDays >= safeBusinessDayCount) {
@@ -620,12 +624,52 @@ const addBusinessDaysInclusive = (
   return candidateDate;
 };
 
-const getMaxRentalDueDate = (startDate, settings = {}) =>
-  addBusinessDaysInclusive(
+const isRentalDueBusinessDay = (dateStr, settings = {}) => {
+  if (!dateStr) return false;
+
+  if (isWeekendDate(dateStr)) {
+    return false;
+  }
+
+  return !Boolean(getEnabledHoliday(dateStr, settings));
+};
+
+const getAdjustedRentalDueDate = (dateStr, settings = {}) => {
+  let candidateDate = dateStr || today();
+
+  for (let i = 0; i < 370; i += 1) {
+    if (isRentalDueBusinessDay(candidateDate, settings)) {
+      return candidateDate;
+    }
+
+    candidateDate = addDaysFrom(candidateDate, 1);
+  }
+
+  return candidateDate;
+};
+
+const getRentalDueDateAdjustmentReason = (dateStr, settings = {}) => {
+  if (isWeekendDate(dateStr)) {
+    return '주말';
+  }
+
+  const holiday = getEnabledHoliday(dateStr, settings);
+
+  return holiday
+    ? holiday.name || HOLIDAY_TYPE_LABEL[holiday.type] || '등록 휴일'
+    : '';
+};
+
+const getMaxRentalDueDate = (startDate, settings = {}) => {
+  if (!startDate) return '';
+
+  const calendarDueDate = addDaysFrom(
     startDate,
-    getSafeMaxRentalDays(settings),
-    settings
+    getSafeMaxRentalDays(settings) - 1
   );
+
+  return getAdjustedRentalDueDate(calendarDueDate, settings);
+};
 
 const getRentalExtensionPeriod = (
   request = {},
@@ -637,7 +681,7 @@ const getRentalExtensionPeriod = (
       ? getSafeRentalExtensionBusinessDays(settings)
       : Math.max(1, Math.trunc(Number(businessDaysOverride) || 1));
 
-  const extensionStartDate = getNextBusinessDay(
+  const extensionStartDate = getAdjustedRentalDueDate(
     addDaysFrom(request.dueDate, 1),
     settings
   );
@@ -6774,7 +6818,18 @@ function App() {
   const saveSystemSettings = async () => {
     if (!isSplitStorageReady) {
       triggerToast(
-        'Firestore 분리 저장소 최종 전환이 완료되지 않아 시스템 설정을 저장할 수 없습니다.',
+        'Firestore 분리 저장소 최종 전환이 완료되지 않아 대여 정책을 저장할 수 없습니다.',
+        'error'
+      );
+      return;
+    }
+
+    if (
+      !Number.isInteger(Number(tempSettings.maxRentalDays)) ||
+      Number(tempSettings.maxRentalDays) < 1
+    ) {
+      triggerToast(
+        '기본 최장 허용 대여 기간은 1 이상의 정수로 입력해 주세요.',
         'error'
       );
       return;
@@ -6889,17 +6944,17 @@ function App() {
       );
 
       triggerToast(
-        '설정 변경사항이 분리 저장소에 성공적으로 저장 및 반영되었습니다.',
+        '대여 정책 변경사항이 성공적으로 저장 및 반영되었습니다.',
         'success'
       );
     } catch (error) {
       console.error(
-        'System settings save error:',
+        'Rental policy settings save error:',
         error
       );
 
       triggerToast(
-        '시스템 설정 저장에 실패했습니다. 기존 설정은 유지됩니다.',
+        '대여 정책 저장에 실패했습니다. 기존 설정은 유지됩니다.',
         'error'
       );
     }
@@ -7285,8 +7340,13 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           let nextDueDate = v;
 
           if (!nextDueDate) {
-            setForm({ ...form, dueDate: minDueDate });
-            return minDueDate;
+            const adjustedMinDueDate = getAdjustedRentalDueDate(
+              minDueDate,
+              data.settings
+            );
+
+            setForm({ ...form, dueDate: adjustedMinDueDate });
+            return adjustedMinDueDate;
           }
 
           if (isTemporaryDateInputValue(nextDueDate)) {
@@ -7305,32 +7365,34 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
           if (nextDueDate > maxDueDate) {
             triggerToast(
-              `대여 가능일은 최대 ${maxRentalDays}영업일입니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxDueDate)}까지 선택할 수 있습니다.`,
+              `대여 가능 기간은 최대 ${maxRentalDays}일이며 달력 기준으로 계산됩니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxDueDate)}까지 선택할 수 있습니다.`,
               'error'
             );
 
             nextDueDate = maxDueDate;
           }
 
-          if (!isBusinessDay(nextDueDate, data.settings)) {
-            const adjustedDueDate = getNextBusinessDay(
+          const adjustedDueDate = getAdjustedRentalDueDate(
+            nextDueDate,
+            data.settings
+          );
+
+          if (adjustedDueDate !== nextDueDate) {
+            const adjustmentReason = getRentalDueDateAdjustmentReason(
               nextDueDate,
               data.settings
             );
-
-            triggerToast(
-              `반납 예정일은 영업일만 선택할 수 있습니다. ${formatDateWithKoreanWeekday(
-                adjustedDueDate > maxDueDate
-                  ? maxDueDate
-                  : adjustedDueDate
-              )}로 조정되었습니다.`,
-              'error'
-            );
-
-            nextDueDate =
+            const finalDueDate =
               adjustedDueDate > maxDueDate
                 ? maxDueDate
                 : adjustedDueDate;
+
+            triggerToast(
+              `선택한 반납 예정일이 ${adjustmentReason || '휴무일'}이므로 다음 영업일인 ${formatDateWithKoreanWeekday(finalDueDate)}로 자동 조정되었습니다.`,
+              'success'
+            );
+
+            nextDueDate = finalDueDate;
           }
 
           setForm({ ...form, dueDate: nextDueDate });
@@ -7344,19 +7406,24 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           let nextDueDate = v;
 
           if (!nextDueDate || isTemporaryDateInputValue(nextDueDate) || nextDueDate < minDueDate) {
+            const adjustedMinDueDate = getAdjustedRentalDueDate(
+              minDueDate,
+              data.settings
+            );
+
             triggerToast(
-              `반납 예정일은 대여 시작일보다 빠를 수 없습니다. 최소 반납 예정일은 ${formatDateWithKoreanWeekday(minDueDate)}입니다.`,
+              `반납 예정일은 대여 시작일보다 빠를 수 없습니다. 최소 반납 예정일은 ${formatDateWithKoreanWeekday(adjustedMinDueDate)}입니다.`,
               'error'
             );
 
-            setForm({ ...form, dueDate: minDueDate });
+            setForm({ ...form, dueDate: adjustedMinDueDate });
 
-            return minDueDate;
+            return adjustedMinDueDate;
           }
 
           if (nextDueDate > maxDueDate) {
             triggerToast(
-              `대여 가능일은 최대 ${maxRentalDays}영업일입니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxDueDate)}까지 선택할 수 있습니다.`,
+              `대여 가능 기간은 최대 ${maxRentalDays}일이며 달력 기준으로 계산됩니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxDueDate)}까지 선택할 수 있습니다.`,
               'error'
             );
 
@@ -7365,8 +7432,13 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             return maxDueDate;
           }
 
-          if (!isBusinessDay(nextDueDate, data.settings)) {
-            const adjustedDueDate = getNextBusinessDay(
+          const adjustedDueDate = getAdjustedRentalDueDate(
+            nextDueDate,
+            data.settings
+          );
+
+          if (adjustedDueDate !== nextDueDate) {
+            const adjustmentReason = getRentalDueDateAdjustmentReason(
               nextDueDate,
               data.settings
             );
@@ -7376,8 +7448,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                 : adjustedDueDate;
 
             triggerToast(
-              `반납 예정일은 영업일만 선택할 수 있습니다. ${formatDateWithKoreanWeekday(finalDueDate)}로 조정되었습니다.`,
-              'error'
+              `선택한 반납 예정일이 ${adjustmentReason || '휴무일'}이므로 다음 영업일인 ${formatDateWithKoreanWeekday(finalDueDate)}로 자동 조정되었습니다.`,
+              'success'
             );
 
             setForm({ ...form, dueDate: finalDueDate });
@@ -7728,11 +7800,17 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       return;
     }
 
-    if (!isBusinessDay(form.dueDate, data.settings)) {
+    if (!isRentalDueBusinessDay(form.dueDate, data.settings)) {
+      const adjustedDueDate = getAdjustedRentalDueDate(
+        form.dueDate,
+        data.settings
+      );
+
       triggerToast(
-        '반납 예정일은 주말과 등록 휴일을 제외한 영업일만 선택할 수 있습니다.',
+        `선택한 반납 예정일이 휴무일이므로 다음 영업일인 ${formatDateWithKoreanWeekday(adjustedDueDate)}로 자동 조정한 뒤 다시 신청해 주세요.`,
         'error'
       );
+      setForm((prev) => ({ ...prev, dueDate: adjustedDueDate }));
       return;
     }
 
@@ -7741,7 +7819,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
     if (form.dueDate > maxAllowedDate) {
       triggerToast(
-        `대여 가능일은 최대 ${maxRentalDays}영업일입니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxAllowedDate)}까지 선택할 수 있습니다.`,
+        `대여 가능 기간은 최대 ${maxRentalDays}일이며 달력 기준으로 계산됩니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxAllowedDate)}까지 선택할 수 있습니다.`,
         'error'
       );
       return;
@@ -8686,11 +8764,20 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         return;
       }
 
-      if (!isBusinessDay(nextDueDate, data.settings)) {
-        triggerToast(
-          '변경할 반납 예정일은 영업일만 선택할 수 있습니다.',
-          'error'
+      if (!isRentalDueBusinessDay(nextDueDate, data.settings)) {
+        const adjustedDueDate = getAdjustedRentalDueDate(
+          nextDueDate,
+          data.settings
         );
+
+        triggerToast(
+          `선택한 반납 예정일이 휴무일이므로 다음 영업일인 ${formatDateWithKoreanWeekday(adjustedDueDate)}로 자동 조정되었습니다.`,
+          'success'
+        );
+        setUserActionForm((prev) => ({
+          ...prev,
+          dueDate: adjustedDueDate,
+        }));
         return;
       }
 
@@ -8701,7 +8788,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
       if (nextDueDate > maxAllowedDate) {
         triggerToast(
-          `최장 허용 대여 기한(${getSafeMaxRentalDays(data.settings)}영업일)을 초과할 수 없습니다.`,
+          `최장 허용 대여 기간(${getSafeMaxRentalDays(data.settings)}일, 달력 기준)을 초과할 수 없습니다.`,
           'error'
         );
         return;
@@ -8830,7 +8917,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           throw new Error('invalid-direct-edit-date-order');
         }
 
-        if (!isBusinessDay(nextDueDate, latestSettings)) {
+        if (!isRentalDueBusinessDay(nextDueDate, latestSettings)) {
           throw new Error('invalid-direct-edit-due-business-day');
         }
 
@@ -8957,9 +9044,9 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         'invalid-direct-edit-date-order':
           '변경할 반납 예정일은 대여 시작일 이후여야 합니다.',
         'invalid-direct-edit-due-business-day':
-          '변경할 반납 예정일은 영업일만 선택할 수 있습니다.',
+          '변경할 반납 예정일은 주말과 등록 휴일을 제외한 영업일이어야 합니다.',
         'invalid-direct-edit-max-days':
-          '변경한 대여 기간이 최대 허용 기간을 초과했습니다.',
+          '변경한 대여 기간이 달력 기준 최대 허용 기간을 초과했습니다.',
         'direct-edit-period-conflict':
           '같은 기기의 기존 신청·예약·대여 일정과 겹쳐 수정할 수 없습니다.',
         'rental-request-owner-mismatch':
@@ -10925,12 +11012,16 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
     const nextTeam =
       String(
-        adminRequestEditForm.team || ''
+        currentRequest.requesterTeam ||
+        currentRequest.team ||
+        ''
       ).trim();
 
     const nextBorrower =
       String(
-        adminRequestEditForm.borrower || ''
+        currentRequest.requesterName ||
+        currentRequest.borrower ||
+        ''
       ).trim();
 
     const nextStartDate =
@@ -10939,10 +11030,17 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         ''
       );
 
-    const nextDueDate =
+    const requestedDueDate =
       String(
         adminRequestEditForm.dueDate || ''
       );
+
+    const nextDueDate = getAdjustedRentalDueDate(
+      requestedDueDate,
+      data.settings
+    );
+    const adminDueDateAdjusted =
+      Boolean(requestedDueDate) && nextDueDate !== requestedDueDate;
 
     const nextPurpose =
       String(
@@ -10959,7 +11057,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       !nextTeam ||
       !nextBorrower ||
       !nextStartDate ||
-      !nextDueDate
+      !requestedDueDate
     ) {
       triggerToast(
         '부서, 대여자명, 대여 시작일과 반납 예정일을 모두 입력해 주세요.',
@@ -10969,7 +11067,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     }
 
     if (
-      nextDueDate <
+      requestedDueDate <
       nextStartDate
     ) {
       triggerToast(
@@ -11321,7 +11419,9 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       );
 
       triggerToast(
-        '대여 신청 정보를 수정했습니다. 관리자 수정에는 최대 14일 제한을 적용하지 않았습니다.',
+        adminDueDateAdjusted
+          ? `반납 예정일이 휴무일이어서 ${formatDateWithKoreanWeekday(nextDueDate)}로 자동 조정된 후 신청 정보가 수정되었습니다.`
+          : '대여 신청 정보를 수정했습니다. 관리자 수정에는 기본 최대 대여 기간 제한을 적용하지 않았습니다.',
         'success'
       );
     } catch (error) {
@@ -14204,12 +14304,14 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     formatFirestoreDate,
     formatFirestoreTimestamp,
     getAdminRequestRestoreTargets,
+    getAdjustedRentalDueDate,
     getDisplayRentalStatus,
     getRequestDisplayStatus,
     getKoreaNow,
     getLaptopAdminDisplayStatus,
     getLaptopRentalAvailability,
     getMaxRentalDueDate,
+    getRentalDueDateAdjustmentReason,
     getExtensionRequestAvailableDate,
     getRequestExtensionCount,
     getRentalExtensionApprovalMode,

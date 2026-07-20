@@ -30,7 +30,10 @@ export default function AppDialogs({ ctx }) {
     faqPostDialog,
     faqPostForm,
     faqPostSaving,
+    formatDateWithKoreanWeekday,
+    getAdjustedRentalDueDate,
     getMaxRentalDueDate,
+    getRentalDueDateAdjustmentReason,
     getRentalExtensionApprovalMode,
     getRentalExtensionPeriod,
     getUserRequestActionLabel,
@@ -53,6 +56,7 @@ export default function AppDialogs({ ctx }) {
     submitUserActionRequest,
     toast,
     today,
+    triggerToast,
     userActionBorrowers,
     userActionDialog,
     userActionForm,
@@ -87,7 +91,7 @@ export default function AppDialogs({ ctx }) {
                   대여 신청정보 수정
                 </h3>
                 <p className="mt-1 text-xs leading-5 text-slate-500">
-                  관리자 수정에는 최대 대여 가능일 14일 제한을 적용하지 않습니다.
+                  관리자 수정에는 기본 최대 대여 기간 제한을 적용하지 않습니다. 반납 예정일이 휴무일이면 다음 영업일로 자동 조정됩니다.
                 </p>
               </div>
 
@@ -102,124 +106,81 @@ export default function AppDialogs({ ctx }) {
             </div>
 
             <div className="mt-5 space-y-4">
-              {data.settings.teamInputMode === 'dropdown' ? (
-                <Select
-                  label="부서 / 팀"
-                  value={adminRequestEditForm.team}
-                  onChange={(value) =>
-                    setAdminRequestEditForm(
-                      (prev) => ({
-                        ...prev,
-                        team: value,
-                        borrower: '',
-                      })
-                    )
-                  }
-                >
-                  <option value="">
-                    팀 선택
-                  </option>
-                  {(data.teams || []).map(
-                    (team) => (
-                      <option
-                        key={team}
-                        value={team}
-                      >
-                        {team}
-                      </option>
-                    )
-                  )}
-                </Select>
-              ) : (
-                <Input
-                  label="부서 / 팀"
-                  value={adminRequestEditForm.team}
-                  onChange={(value) =>
-                    setAdminRequestEditForm(
-                      (prev) => ({
-                        ...prev,
-                        team: value,
-                      })
-                    )
-                  }
-                />
-              )}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div className="text-[11px] font-semibold text-slate-500">
+                    부서 / 팀
+                  </div>
+                  <div className="mt-1 text-sm font-bold text-slate-900">
+                    {adminRequestEditForm.team || '-'}
+                  </div>
+                </div>
 
-              {data.settings.borrowerInputMode === 'dropdown' ? (
-                <Select
-                  label="대여자명"
-                  value={adminRequestEditForm.borrower}
-                  onChange={(value) =>
-                    setAdminRequestEditForm(
-                      (prev) => ({
-                        ...prev,
-                        borrower: value,
-                      })
-                    )
-                  }
-                >
-                  <option value="">
-                    {adminRequestEditForm.team
-                      ? '대여자 선택'
-                      : '소속 부서를 먼저 선택해 주세요'}
-                  </option>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div className="text-[11px] font-semibold text-slate-500">
+                    신청자
+                  </div>
+                  <div className="mt-1 text-sm font-bold text-slate-900">
+                    {adminRequestEditForm.borrower || '-'}
+                  </div>
+                </div>
+              </div>
 
-                  {adminRequestEditBorrowers.map(
-                    (borrower) => (
-                      <option
-                        key={`${borrower.id}-${borrower.name}`}
-                        value={borrower.name}
-                      >
-                        {borrower.name}
-                      </option>
-                    )
-                  )}
-                </Select>
-              ) : (
-                <Input
-                  label="대여자명"
-                  value={adminRequestEditForm.borrower}
-                  onChange={(value) =>
-                    setAdminRequestEditForm(
-                      (prev) => ({
-                        ...prev,
-                        borrower: value,
-                      })
-                    )
-                  }
-                />
-              )}
+              <p className="text-[11px] leading-5 text-slate-500">
+                신청자와 부서는 로그인 계정 정보이므로 이 화면에서 변경할 수 없습니다. 회원 정보 변경은 회원 계정 관리에서 처리해 주세요.
+              </p>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <DateInputWithWeekday
                   label="대여 시작일"
                   value={adminRequestEditForm.startDate}
-                  onChange={(value) =>
-                    setAdminRequestEditForm(
-                      (prev) => ({
+                  onChange={(value) => {
+                    setAdminRequestEditForm((prev) => {
+                      const candidateDueDate =
+                        prev.dueDate < value
+                          ? value
+                          : prev.dueDate;
+                      const adjustedDueDate = getAdjustedRentalDueDate(
+                        candidateDueDate,
+                        data.settings
+                      );
+
+                      return {
                         ...prev,
                         startDate: value,
-                        dueDate:
-                          prev.dueDate < value
-                            ? value
-                            : prev.dueDate,
-                      })
-                    )
-                  }
+                        dueDate: adjustedDueDate,
+                      };
+                    });
+                  }}
                 />
 
                 <DateInputWithWeekday
                   label="반납 예정일"
                   value={adminRequestEditForm.dueDate}
                   min={adminRequestEditForm.startDate}
-                  onChange={(value) =>
-                    setAdminRequestEditForm(
-                      (prev) => ({
-                        ...prev,
-                        dueDate: value,
-                      })
-                    )
-                  }
+                  onChange={(value) => {
+                    const adjustedDueDate = getAdjustedRentalDueDate(
+                      value,
+                      data.settings
+                    );
+
+                    if (adjustedDueDate !== value) {
+                      const reason = getRentalDueDateAdjustmentReason(
+                        value,
+                        data.settings
+                      );
+
+                      triggerToast(
+                        `선택한 반납 예정일이 ${reason || '휴무일'}이므로 다음 영업일인 ${formatDateWithKoreanWeekday(adjustedDueDate)}로 자동 조정되었습니다.`,
+                        'success'
+                      );
+                    }
+
+                    setAdminRequestEditForm((prev) => ({
+                      ...prev,
+                      dueDate: adjustedDueDate,
+                    }));
+                  }}
                 />
               </div>
 
@@ -358,7 +319,7 @@ export default function AppDialogs({ ctx }) {
               </label>
 
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
-                관리자 복구에는 최대 14일 제한을 적용하지 않습니다. 다만 날짜 순서 오류와 동일 기기의 다른 활성 예약 충돌은 차단됩니다.
+                관리자 복구에는 기본 최대 대여 기간 제한을 적용하지 않습니다. 다만 날짜 순서 오류와 동일 기기의 다른 활성 예약 충돌은 차단됩니다.
               </div>
             </div>
 
@@ -440,13 +401,31 @@ export default function AppDialogs({ ctx }) {
                       label="변경할 대여 시작일"
                       value={userActionForm.startDate}
                       min={today()}
-                      onChange={(value) =>
-                        setUserActionForm((prev) => ({
-                          ...prev,
-                          startDate: value,
-                          dueDate: prev.dueDate < value ? value : prev.dueDate,
-                        }))
-                      }
+                      onChange={(value) => {
+                        setUserActionForm((prev) => {
+                          const maxDueDate = getMaxRentalDueDate(
+                            value,
+                            data.settings
+                          );
+                          const candidateDueDate =
+                            prev.dueDate < value
+                              ? value
+                              : prev.dueDate;
+                          const adjustedDueDate = getAdjustedRentalDueDate(
+                            candidateDueDate,
+                            data.settings
+                          );
+
+                          return {
+                            ...prev,
+                            startDate: value,
+                            dueDate:
+                              adjustedDueDate > maxDueDate
+                                ? maxDueDate
+                                : adjustedDueDate,
+                          };
+                        });
+                      }}
                     />
 
                     <DateInputWithWeekday
@@ -457,12 +436,39 @@ export default function AppDialogs({ ctx }) {
                         userActionForm.startDate,
                         data.settings
                       )}
-                      onChange={(value) =>
+                      onChange={(value) => {
+                        const maxDueDate = getMaxRentalDueDate(
+                          userActionForm.startDate,
+                          data.settings
+                        );
+                        const adjustedDueDate = getAdjustedRentalDueDate(
+                          value,
+                          data.settings
+                        );
+                        const finalDueDate =
+                          adjustedDueDate > maxDueDate
+                            ? maxDueDate
+                            : adjustedDueDate;
+
+                        if (finalDueDate !== value) {
+                          const reason = getRentalDueDateAdjustmentReason(
+                            value,
+                            data.settings
+                          );
+
+                          triggerToast(
+                            adjustedDueDate > maxDueDate
+                              ? `최대 허용 반납 예정일인 ${formatDateWithKoreanWeekday(maxDueDate)}로 조정되었습니다.`
+                              : `선택한 반납 예정일이 ${reason || '휴무일'}이므로 다음 영업일인 ${formatDateWithKoreanWeekday(finalDueDate)}로 자동 조정되었습니다.`,
+                            'success'
+                          );
+                        }
+
                         setUserActionForm((prev) => ({
                           ...prev,
-                          dueDate: value,
-                        }))
-                      }
+                          dueDate: finalDueDate,
+                        }));
+                      }}
                     />
                   </div>
 
