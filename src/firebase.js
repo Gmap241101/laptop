@@ -45,6 +45,11 @@ export const NOTICE_POSTS_COLLECTION_REF = collection(
   'noticePosts'
 );
 
+export const POPUP_POSTS_COLLECTION_REF = collection(
+  db,
+  'popupPosts'
+);
+
 export const NOTICE_BOARD_CONFIG_DOC_REF = doc(
   db,
   'noticeBoard',

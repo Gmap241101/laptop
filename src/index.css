@@ -293,3 +293,20 @@ body {
     overflow-x: auto;
   }
 }
+
+.rich-text-editor-area [data-video-provider='youtube'],
+.rich-text-content [data-video-provider='youtube'] {
+  width: 100%;
+  margin: 1rem 0;
+}
+
+.rich-text-editor-area iframe,
+.rich-text-content iframe {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 0;
+  border-radius: 0.75rem;
+  background: #0f172a;
+}

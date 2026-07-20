@@ -62,6 +62,7 @@ import {
 } from './components/CommonUI.jsx';
 
 import UserWorkspace from './user/UserWorkspace.jsx';
+import UserPopupLayer from './user/UserPopupLayer.jsx';
 import AdminWorkspace from './admin/AdminWorkspace.jsx';
 import AppDialogs from './dialogs/AppDialogs.jsx';
 import {
@@ -78,6 +79,7 @@ import {
   FAQ_POSTS_COLLECTION_REF,
   NOTICE_BOARD_CONFIG_DOC_REF,
   NOTICE_POSTS_COLLECTION_REF,
+  POPUP_POSTS_COLLECTION_REF,
   PUBLIC_CONFIG_DOC_REF,
   RENTAL_ASSET_NUMBERS_COLLECTION_REF,
   RENTAL_ASSETS_COLLECTION_REF,
@@ -228,6 +230,74 @@ const createDefaultFaqPostForm = () => ({
   contentHtml: '',
   isPinned: false,
 });
+
+
+const POPUP_DISMISSED_SESSION_KEY = 'rentalSystemDismissedPopupIds';
+
+const createDefaultPopupPostForm = () => ({
+  enabled: true,
+  title: '',
+  subtitle: '',
+  contentHtml: '',
+  startAt: '',
+  endAt: '',
+  isIndefinite: false,
+  targetPages: ['home'],
+});
+
+const getPopupDateMillis = (value) => {
+  if (!value) return 0;
+  if (typeof value?.toMillis === 'function') return value.toMillis();
+  if (typeof value?.toDate === 'function') return value.toDate().getTime();
+  if (value instanceof Date) return value.getTime();
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+};
+
+const toDateTimeLocalValue = (value) => {
+  const millis = getPopupDateMillis(value);
+  if (!millis) return '';
+
+  const date = new Date(millis);
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return localDate.toISOString().slice(0, 16);
+};
+
+const formatPopupDateTime = (value, dateOnly = false) => {
+  const millis = getPopupDateMillis(value);
+  if (!millis) return '-';
+
+  return new Intl.DateTimeFormat('ko-KR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    ...(dateOnly
+      ? {}
+      : {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        }),
+  }).format(new Date(millis));
+};
+
+const getPopupDisplayStatus = (post = {}, nowMillis = Date.now()) => {
+  if (!post.enabled) return { key: 'disabled', label: '사용안함' };
+
+  const startMillis = getPopupDateMillis(post.startAt);
+  const endMillis = post.isIndefinite ? 0 : getPopupDateMillis(post.endAt);
+
+  if (!startMillis || nowMillis < startMillis) {
+    return { key: 'scheduled', label: '노출예정' };
+  }
+
+  if (!post.isIndefinite && (!endMillis || nowMillis > endMillis)) {
+    return { key: 'ended', label: '노출종료' };
+  }
+
+  return { key: 'active', label: '노출중' };
+};
 
 const createDefaultAdminRequestEditForm = (
   request = {}
@@ -1822,6 +1892,28 @@ function App() {
   const [noticePostsPerPageInput, setNoticePostsPerPageInput] = useState(
     DEFAULT_NOTICE_POSTS_PER_PAGE
   );
+
+  const [popupPosts, setPopupPosts] = useState([]);
+  const [popupPostsReady, setPopupPostsReady] = useState(true);
+  const [popupPostsLoadErrorMessage, setPopupPostsLoadErrorMessage] = useState('');
+  const [popupPostDialog, setPopupPostDialog] = useState(null);
+  const [popupPostForm, setPopupPostForm] = useState(createDefaultPopupPostForm);
+  const [popupPostSaving, setPopupPostSaving] = useState(false);
+  const [popupPostDeletingId, setPopupPostDeletingId] = useState('');
+  const [popupPostToggleSavingId, setPopupPostToggleSavingId] = useState('');
+  const [popupNowMs, setPopupNowMs] = useState(Date.now());
+  const [dismissedPopupIds, setDismissedPopupIds] = useState(() => {
+    if (typeof window === 'undefined') return [];
+
+    try {
+      const parsed = JSON.parse(
+        window.sessionStorage.getItem(POPUP_DISMISSED_SESSION_KEY) || '[]'
+      );
+      return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+    } catch {
+      return [];
+    }
+  });
 
   const [faqCategories, setFaqCategories] = useState([]);
   const [faqCategoriesReady, setFaqCategoriesReady] = useState(false);
@@ -4663,6 +4755,84 @@ function App() {
 
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    const shouldSubscribe =
+      isAdminAuthenticated ||
+      (view === 'user' && ['home', 'rental'].includes(userTab));
+
+    if (!shouldSubscribe) {
+      setPopupPosts([]);
+      setPopupPostsLoadErrorMessage('');
+      setPopupPostsReady(true);
+      return undefined;
+    }
+
+    setPopupPostsReady(false);
+    setPopupPostsLoadErrorMessage('');
+
+    const popupSource = isAdminAuthenticated
+      ? POPUP_POSTS_COLLECTION_REF
+      : firestoreQuery(
+          POPUP_POSTS_COLLECTION_REF,
+          where('enabled', '==', true)
+        );
+
+    const unsubscribe = onSnapshot(
+      popupSource,
+      (snapshot) => {
+        const remotePosts = snapshot.docs
+          .map((popupDoc) => ({
+            ...popupDoc.data(),
+            id: popupDoc.id,
+          }))
+          .sort(
+            (first, second) =>
+              getPopupDateMillis(second.createdAt) -
+              getPopupDateMillis(first.createdAt)
+          );
+
+        setPopupPosts(remotePosts);
+        setPopupPostsLoadErrorMessage('');
+        setPopupPostsReady(true);
+      },
+      (error) => {
+        const message =
+          '팝업을 불러오지 못했습니다. Firestore Rules의 popupPosts 읽기 권한을 확인해 주세요.';
+
+        console.error('Popup posts sync error:', error);
+        setPopupPosts([]);
+        setPopupPostsLoadErrorMessage(message);
+        setPopupPostsReady(true);
+
+        if (isAdminAuthenticated) triggerToast(message, 'error');
+      }
+    );
+
+    return unsubscribe;
+  }, [isAdminAuthenticated, userTab, view]);
+
+  useEffect(() => {
+    const updateNow = () => setPopupNowMs(Date.now());
+    const intervalId = window.setInterval(updateNow, 60_000);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') updateNow();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.sessionStorage.setItem(
+      POPUP_DISMISSED_SESSION_KEY,
+      JSON.stringify(dismissedPopupIds)
+    );
+  }, [dismissedPopupIds]);
 
   useEffect(() => {
     setNoticeBoardConfigReady(false);
@@ -10977,6 +11147,202 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     );
   };
 
+  const openPopupPostDialog = (post = null) => {
+    if (!isAdminAuthenticated) {
+      triggerToast('관리자 인증 후 팝업을 작성하거나 수정할 수 있습니다.', 'error');
+      return;
+    }
+
+    setPopupPostDialog({
+      mode: post ? 'edit' : 'create',
+      postId: post?.id || '',
+    });
+
+    setPopupPostForm({
+      enabled: post ? Boolean(post.enabled) : true,
+      title: post?.title || '',
+      subtitle: post?.subtitle || '',
+      contentHtml: sanitizeRichTextHtml(
+        post?.contentHtml ||
+          legacyTextToRichHtml(post?.contentText || post?.content || '')
+      ),
+      startAt: toDateTimeLocalValue(post?.startAt) || toDateTimeLocalValue(new Date()),
+      endAt: toDateTimeLocalValue(post?.endAt),
+      isIndefinite: Boolean(post?.isIndefinite),
+      targetPages:
+        Array.isArray(post?.targetPages) && post.targetPages.length
+          ? post.targetPages.filter((page) => ['home', 'rental'].includes(page))
+          : ['home'],
+    });
+  };
+
+  const closePopupPostDialog = () => {
+    if (popupPostSaving) return;
+    setPopupPostDialog(null);
+    setPopupPostForm(createDefaultPopupPostForm());
+  };
+
+  const savePopupPost = async () => {
+    if (!isAdminAuthenticated) {
+      triggerToast('관리자 인증 후 팝업을 저장할 수 있습니다.', 'error');
+      return;
+    }
+
+    const auditActor = getCurrentAdminAuditActor();
+    if (!auditActor.uid) {
+      triggerToast('관리자 인증 정보를 확인할 수 없어 팝업 저장을 중단했습니다.', 'error');
+      return;
+    }
+
+    const title = String(popupPostForm.title || '').trim();
+    const subtitle = String(popupPostForm.subtitle || '').trim();
+    const contentHtml = sanitizeRichTextHtml(popupPostForm.contentHtml || '');
+    const contentText = richTextHtmlToText(contentHtml);
+    const targetPages = [...new Set(
+      (Array.isArray(popupPostForm.targetPages) ? popupPostForm.targetPages : [])
+        .filter((page) => ['home', 'rental'].includes(page))
+    )];
+    const startAt = popupPostForm.startAt
+      ? new Date(popupPostForm.startAt)
+      : null;
+    const isIndefinite = Boolean(popupPostForm.isIndefinite);
+    const endAt = !isIndefinite && popupPostForm.endAt
+      ? new Date(popupPostForm.endAt)
+      : null;
+
+    if (!title && !subtitle && isRichTextEmpty(contentHtml)) {
+      triggerToast('표시할 제목, 부제목 또는 내용을 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (!startAt || Number.isNaN(startAt.getTime())) {
+      triggerToast('노출 시작일시를 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (!isIndefinite && (!endAt || Number.isNaN(endAt.getTime()))) {
+      triggerToast('무기한이 아닌 팝업은 노출 종료일시를 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (!isIndefinite && endAt.getTime() < startAt.getTime()) {
+      triggerToast('노출 종료일시는 노출 시작일시보다 빠를 수 없습니다.', 'error');
+      return;
+    }
+
+    if (targetPages.length === 0) {
+      triggerToast('팝업을 노출할 페이지를 하나 이상 선택해 주세요.', 'error');
+      return;
+    }
+
+    const isEditing = popupPostDialog?.mode === 'edit';
+    const editingPost = isEditing
+      ? popupPosts.find((post) => post.id === popupPostDialog?.postId) || null
+      : null;
+
+    if (isEditing && !editingPost) {
+      triggerToast('수정할 팝업을 찾을 수 없습니다.', 'error');
+      return;
+    }
+
+    const popupDocRef = isEditing
+      ? doc(POPUP_POSTS_COLLECTION_REF, editingPost.id)
+      : doc(POPUP_POSTS_COLLECTION_REF);
+
+    setPopupPostSaving(true);
+
+    try {
+      await setDoc(popupDocRef, {
+        id: popupDocRef.id,
+        enabled: Boolean(popupPostForm.enabled),
+        title,
+        subtitle,
+        content: contentText,
+        contentText,
+        contentHtml,
+        contentFormat: 'rich-html-v1',
+        targetPages,
+        startAt,
+        endAt: isIndefinite ? null : endAt,
+        isIndefinite,
+        authorUid: editingPost?.authorUid || auditActor.uid,
+        authorName: editingPost?.authorName || auditActor.name,
+        createdAt: editingPost?.createdAt || serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      triggerToast(`팝업을 ${isEditing ? '수정' : '등록'}했습니다.`, 'success');
+      setPopupPostDialog(null);
+      setPopupPostForm(createDefaultPopupPostForm());
+    } catch (error) {
+      console.error('Popup post save error:', error);
+      triggerToast(
+        `팝업 저장에 실패했습니다. 오류 코드: ${error?.code || error?.message || 'unknown-error'}`,
+        'error'
+      );
+    } finally {
+      setPopupPostSaving(false);
+    }
+  };
+
+  const togglePopupPostEnabled = async (post) => {
+    if (!isAdminAuthenticated || !post?.id) {
+      triggerToast('관리자 인증과 팝업 정보를 확인해 주세요.', 'error');
+      return;
+    }
+
+    setPopupPostToggleSavingId(post.id);
+    try {
+      await updateDoc(doc(POPUP_POSTS_COLLECTION_REF, post.id), {
+        enabled: !Boolean(post.enabled),
+        updatedAt: serverTimestamp(),
+      });
+      triggerToast(
+        `팝업을 ${post.enabled ? '사용안함' : '사용함'}으로 변경했습니다.`,
+        'success'
+      );
+    } catch (error) {
+      console.error('Popup enabled toggle error:', error);
+      triggerToast(
+        `팝업 사용 여부 변경에 실패했습니다. 오류 코드: ${error?.code || error?.message || 'unknown-error'}`,
+        'error'
+      );
+    } finally {
+      setPopupPostToggleSavingId('');
+    }
+  };
+
+  const confirmDeletePopupPost = (post) => {
+    if (!isAdminAuthenticated || !post?.id) {
+      triggerToast('관리자 인증과 팝업 정보를 확인해 주세요.', 'error');
+      return;
+    }
+
+    triggerConfirm(
+      '팝업 삭제',
+      `[${post.title || post.subtitle || '제목 없음'}] 팝업을 삭제하시겠습니까? 삭제한 팝업은 복구할 수 없습니다.`,
+      async () => {
+        setPopupPostDeletingId(post.id);
+        try {
+          await deleteDoc(doc(POPUP_POSTS_COLLECTION_REF, post.id));
+          if (popupPostDialog?.postId === post.id) {
+            setPopupPostDialog(null);
+            setPopupPostForm(createDefaultPopupPostForm());
+          }
+          triggerToast('팝업을 삭제했습니다.', 'success');
+        } catch (error) {
+          console.error('Popup post delete error:', error);
+          triggerToast(
+            `팝업 삭제에 실패했습니다. 오류 코드: ${error?.code || error?.message || 'unknown-error'}`,
+            'error'
+          );
+        } finally {
+          setPopupPostDeletingId('');
+        }
+      }
+    );
+  };
+
   const saveNoticeBoardConfig = async () => {
     if (!isAdminAuthenticated) {
       triggerToast(
@@ -14930,6 +15296,40 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
   };
 
 
+  const visibleUserPopups = useMemo(() => {
+    if (view !== 'user' || !['home', 'rental'].includes(userTab)) return [];
+
+    const dismissedSet = new Set(dismissedPopupIds);
+
+    return (popupPosts || [])
+      .filter((post) => {
+        const targetPages = Array.isArray(post.targetPages) ? post.targetPages : [];
+        return (
+          getPopupDisplayStatus(post, popupNowMs).key === 'active' &&
+          targetPages.includes(userTab) &&
+          !dismissedSet.has(post.id)
+        );
+      })
+      .sort((first, second) => {
+        const startDifference =
+          getPopupDateMillis(second.startAt) - getPopupDateMillis(first.startAt);
+        if (startDifference !== 0) return startDifference;
+
+        const updateDifference =
+          getPopupDateMillis(second.updatedAt) - getPopupDateMillis(first.updatedAt);
+        if (updateDifference !== 0) return updateDifference;
+
+        return getPopupDateMillis(second.createdAt) - getPopupDateMillis(first.createdAt);
+      });
+  }, [dismissedPopupIds, popupNowMs, popupPosts, userTab, view]);
+
+  const dismissUserPopup = (popupId) => {
+    if (!popupId) return;
+    setDismissedPopupIds((currentIds) =>
+      currentIds.includes(popupId) ? currentIds : [...currentIds, popupId]
+    );
+  };
+
   const uiContext = {
     ADMIN_ACCOUNT_PAGE_SIZE,
     ADMIN_CUSTOM_OPTION_VALUE,
@@ -15366,6 +15766,25 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     userProfileReady,
     userProfileSaving,
     userNoticeQuery,
+    visibleUserPopups,
+    dismissUserPopup,
+    popupPosts,
+    popupPostsReady,
+    popupPostsLoadErrorMessage,
+    popupPostDialog,
+    popupPostForm,
+    popupPostSaving,
+    popupPostDeletingId,
+    popupPostToggleSavingId,
+    popupNowMs,
+    openPopupPostDialog,
+    closePopupPostDialog,
+    savePopupPost,
+    togglePopupPostEnabled,
+    confirmDeletePopupPost,
+    setPopupPostForm,
+    getPopupDisplayStatus,
+    formatPopupDateTime,
     userTab,
   };
 
@@ -15655,6 +16074,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       </main>
 
       <AppDialogs ctx={uiContext} />
+      <UserPopupLayer ctx={uiContext} />
       </div>
 
       {showFirebaseLoadingOverlay && (

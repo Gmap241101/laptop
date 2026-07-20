@@ -4,6 +4,8 @@ import {
   AlignLeft,
   AlignRight,
   Bold,
+  Code2,
+  Eye,
   Eraser,
   Highlighter,
   ImagePlus,
@@ -52,12 +54,12 @@ const ALLOWED_TAGS = new Set([
   'TR',
   'TH',
   'TD',
+  'IFRAME',
 ]);
 
 const DROP_CONTENT_TAGS = new Set([
   'SCRIPT',
   'STYLE',
-  'IFRAME',
   'OBJECT',
   'EMBED',
   'FORM',
@@ -84,6 +86,8 @@ const SAFE_STYLE_PROPERTIES = new Set([
   'margin-right',
   'display',
   'border-collapse',
+  'aspect-ratio',
+  'border',
 ]);
 
 const isSafeHttpUrl = (value = '') => {
@@ -103,6 +107,53 @@ const isSafeLinkUrl = (value = '') => {
   }
 
   return isSafeHttpUrl(normalized);
+};
+
+
+const getYouTubeVideoId = (value = '') => {
+  const normalized = String(value || '').trim();
+  if (!normalized) return '';
+
+  try {
+    const parsed = new URL(normalized);
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
+    const pathParts = parsed.pathname.split('/').filter(Boolean);
+    let videoId = '';
+
+    if (host === 'youtu.be') {
+      videoId = pathParts[0] || '';
+    } else if (host === 'youtube.com' || host === 'm.youtube.com') {
+      if (parsed.pathname === '/watch') {
+        videoId = parsed.searchParams.get('v') || '';
+      } else if (['embed', 'shorts', 'live'].includes(pathParts[0])) {
+        videoId = pathParts[1] || '';
+      }
+    } else if (host === 'youtube-nocookie.com' && pathParts[0] === 'embed') {
+      videoId = pathParts[1] || '';
+    }
+
+    return /^[A-Za-z0-9_-]{6,20}$/.test(videoId) ? videoId : '';
+  } catch {
+    return '';
+  }
+};
+
+const normalizeYouTubeEmbedUrl = (value = '') => {
+  const videoId = getYouTubeVideoId(value);
+  return videoId ? `https://www.youtube-nocookie.com/embed/${videoId}` : '';
+};
+
+const buildYouTubeEmbedHtml = (value = '', title = 'YouTube 동영상') => {
+  const src = normalizeYouTubeEmbedUrl(value);
+  if (!src) return '';
+
+  const safeTitle = String(title || 'YouTube 동영상')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  return `<div data-video-provider="youtube"><iframe src="${src}" title="${safeTitle}" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen frameborder="0" style="display: block; width: 100%; max-width: 100%; aspect-ratio: 16 / 9; border: 0;"></iframe></div><p><br></p>`;
 };
 
 const sanitizeStyle = (styleText = '') =>
@@ -138,6 +189,14 @@ const sanitizeStyle = (styleText = '') =>
         return '';
       }
 
+      if (property === 'aspect-ratio' && !/^\d+(?:\.\d+)?\s*\/\s*\d+(?:\.\d+)?$/i.test(value)) {
+        return '';
+      }
+
+      if (property === 'border' && !/^(0|none)$/i.test(value)) {
+        return '';
+      }
+
       if (property === 'text-align' && !/^(left|center|right|justify)$/i.test(value)) {
         return '';
       }
@@ -148,6 +207,16 @@ const sanitizeStyle = (styleText = '') =>
     .join('; ');
 
 const sanitizeElementAttributes = (element) => {
+  if (element.tagName === 'IMG') {
+    const imageSrc = element.getAttribute('src') || '';
+    if (!isSafeHttpUrl(imageSrc)) return false;
+  }
+
+  if (element.tagName === 'IFRAME') {
+    const normalizedSrc = normalizeYouTubeEmbedUrl(element.getAttribute('src') || '');
+    if (!normalizedSrc) return false;
+  }
+
   [...element.attributes].forEach((attribute) => {
     const name = attribute.name.toLowerCase();
     const value = attribute.value;
@@ -160,11 +229,8 @@ const sanitizeElementAttributes = (element) => {
 
     if (name === 'style') {
       const safeStyle = sanitizeStyle(value);
-      if (safeStyle) {
-        element.setAttribute('style', safeStyle);
-      } else {
-        element.removeAttribute('style');
-      }
+      if (safeStyle) element.setAttribute('style', safeStyle);
+      else element.removeAttribute('style');
       return;
     }
 
@@ -174,15 +240,17 @@ const sanitizeElementAttributes = (element) => {
     } else if (element.tagName === 'IMG') {
       keep = ['src', 'alt', 'title', 'width', 'height', 'loading'].includes(name);
       if (name === 'src' && !isSafeHttpUrl(value)) keep = false;
+    } else if (element.tagName === 'IFRAME') {
+      keep = ['src', 'title', 'allow', 'allowfullscreen', 'loading', 'referrerpolicy', 'frameborder', 'width', 'height'].includes(name);
     } else if (element.tagName === 'TD' || element.tagName === 'TH') {
       keep = ['colspan', 'rowspan'].includes(name);
     } else if (element.tagName === 'FIGURE') {
       keep = ['data-align', 'data-width'].includes(name);
+    } else if (element.tagName === 'DIV') {
+      keep = ['data-video-provider'].includes(name);
     }
 
-    if (!keep) {
-      element.removeAttribute(attribute.name);
-    }
+    if (!keep) element.removeAttribute(attribute.name);
   });
 
   if (element.tagName === 'A') {
@@ -194,6 +262,19 @@ const sanitizeElementAttributes = (element) => {
     element.setAttribute('loading', 'lazy');
     element.setAttribute('style', `${sanitizeStyle(element.getAttribute('style'))}; max-width: 100%; height: auto;`.replace(/^;\s*/, ''));
   }
+
+  if (element.tagName === 'IFRAME') {
+    element.setAttribute('src', normalizeYouTubeEmbedUrl(element.getAttribute('src') || ''));
+    element.setAttribute('title', element.getAttribute('title') || 'YouTube 동영상');
+    element.setAttribute('loading', 'lazy');
+    element.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+    element.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
+    element.setAttribute('allowfullscreen', '');
+    element.setAttribute('frameborder', '0');
+    element.setAttribute('style', 'display: block; width: 100%; max-width: 100%; aspect-ratio: 16 / 9; border: 0;');
+  }
+
+  return true;
 };
 
 export const sanitizeRichTextHtml = (html = '') => {
@@ -227,7 +308,11 @@ export const sanitizeRichTextHtml = (html = '') => {
         return;
       }
 
-      sanitizeElementAttributes(child);
+      if (!sanitizeElementAttributes(child)) {
+        child.remove();
+        return;
+      }
+
       cleanNode(child);
     });
   };
@@ -267,6 +352,11 @@ export const richTextHtmlToText = (html = '') => {
     if (alt) image.insertAdjacentText('afterend', ` ${alt} `);
   });
 
+  container.querySelectorAll('iframe').forEach((frame) => {
+    const title = frame.getAttribute('title')?.trim();
+    if (title) frame.insertAdjacentText('afterend', ` ${title} `);
+  });
+
   container.querySelectorAll('br').forEach((lineBreak) => {
     lineBreak.replaceWith(document.createTextNode('\n'));
   });
@@ -293,7 +383,7 @@ export const isRichTextEmpty = (html = '') => {
 
   const container = document.createElement('div');
   container.innerHTML = sanitizeRichTextHtml(html);
-  const hasMedia = Boolean(container.querySelector('img, table, hr'));
+  const hasMedia = Boolean(container.querySelector('img, iframe, table, hr'));
   return !richTextHtmlToText(container.innerHTML) && !hasMedia;
 };
 
@@ -333,16 +423,24 @@ export function RichTextEditor({
     width: '100',
   });
   const [imageError, setImageError] = useState('');
+  const [sourceMode, setSourceMode] = useState(false);
+  const [sourceValue, setSourceValue] = useState(String(value || ''));
 
   useEffect(() => {
+    const nextHtml = String(value || '');
+
+    if (sourceMode) {
+      if (lastEmittedHtmlRef.current !== nextHtml) setSourceValue(nextHtml);
+      return;
+    }
+
     const editor = editorRef.current;
     if (!editor) return;
 
-    const nextHtml = String(value || '');
     if (editor.innerHTML !== nextHtml && lastEmittedHtmlRef.current !== nextHtml) {
       editor.innerHTML = nextHtml;
     }
-  }, [value]);
+  }, [sourceMode, value]);
 
   const emitChange = () => {
     const html = editorRef.current?.innerHTML || '';
@@ -485,19 +583,73 @@ export function RichTextEditor({
     runCommand('insertHTML', sanitizeRichTextHtml(html));
   };
 
-  const handlePaste = (event) => {
+  const toggleSourceMode = () => {
     if (disabled) return;
 
+    if (sourceMode) {
+      const sanitizedHtml = sanitizeRichTextHtml(sourceValue);
+      setSourceValue(sanitizedHtml);
+      lastEmittedHtmlRef.current = sanitizedHtml;
+      onChange?.(sanitizedHtml);
+      setSourceMode(false);
+
+      window.requestAnimationFrame(() => {
+        if (editorRef.current) {
+          editorRef.current.innerHTML = sanitizedHtml;
+          editorRef.current.focus();
+        }
+      });
+      return;
+    }
+
+    setSourceValue(editorRef.current?.innerHTML || String(value || ''));
+    setImagePanelOpen(false);
+    setSourceMode(true);
+  };
+
+  const handlePaste = (event) => {
+    if (disabled || sourceMode) return;
+
+    const clipboardItems = [...(event.clipboardData?.items || [])];
+    const hasImageFile = clipboardItems.some(
+      (item) => item.kind === 'file' && String(item.type || '').startsWith('image/')
+    );
+
+    if (hasImageFile) {
+      event.preventDefault();
+      window.alert('클립보드 이미지 파일은 직접 저장할 수 없습니다. 외부 이미지 URL 또는 이미지 HTML 태그를 사용해 주세요.');
+      return;
+    }
+
     const html = event.clipboardData?.getData('text/html');
-    const text = event.clipboardData?.getData('text/plain');
+    const text = event.clipboardData?.getData('text/plain') || '';
     event.preventDefault();
 
     if (html) {
       document.execCommand('insertHTML', false, sanitizeRichTextHtml(html));
-    } else {
-      document.execCommand('insertText', false, text || '');
+      emitChange();
+      return;
     }
 
+    const trimmedText = text.trim();
+    const youtubeHtml = buildYouTubeEmbedHtml(trimmedText);
+
+    if (youtubeHtml) {
+      document.execCommand('insertHTML', false, sanitizeRichTextHtml(youtubeHtml));
+      emitChange();
+      return;
+    }
+
+    if (/<\/?[a-z][\s\S]*>/i.test(trimmedText)) {
+      const sanitizedHtml = sanitizeRichTextHtml(trimmedText);
+      if (sanitizedHtml) {
+        document.execCommand('insertHTML', false, sanitizedHtml);
+        emitChange();
+        return;
+      }
+    }
+
+    document.execCommand('insertText', false, text);
     emitChange();
   };
 
@@ -510,7 +662,7 @@ export function RichTextEditor({
           <select
             title="문단 형식"
             aria-label="문단 형식"
-            disabled={disabled}
+            disabled={disabled || sourceMode}
             defaultValue="p"
             onChange={(event) => {
               runCommand('formatBlock', event.target.value);
@@ -525,42 +677,54 @@ export function RichTextEditor({
           </select>
 
           <span className="mx-1 h-5 w-px bg-slate-200" />
-          <ToolbarButton title="실행 취소" disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('undo')}><Undo2 size={15} /></ToolbarButton>
-          <ToolbarButton title="다시 실행" disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('redo')}><Redo2 size={15} /></ToolbarButton>
+          <ToolbarButton title="실행 취소" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('undo')}><Undo2 size={15} /></ToolbarButton>
+          <ToolbarButton title="다시 실행" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('redo')}><Redo2 size={15} /></ToolbarButton>
           <span className="mx-1 h-5 w-px bg-slate-200" />
-          <ToolbarButton title="굵게" disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('bold')}><Bold size={15} /></ToolbarButton>
-          <ToolbarButton title="기울임" disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('italic')}><Italic size={15} /></ToolbarButton>
-          <ToolbarButton title="밑줄" disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('underline')}><Underline size={15} /></ToolbarButton>
-          <ToolbarButton title="취소선" disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('strikeThrough')}><Strikethrough size={15} /></ToolbarButton>
+          <ToolbarButton title="굵게" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('bold')}><Bold size={15} /></ToolbarButton>
+          <ToolbarButton title="기울임" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('italic')}><Italic size={15} /></ToolbarButton>
+          <ToolbarButton title="밑줄" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('underline')}><Underline size={15} /></ToolbarButton>
+          <ToolbarButton title="취소선" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('strikeThrough')}><Strikethrough size={15} /></ToolbarButton>
           <label title="글자색" aria-label="글자색" className="relative inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600">
             <Palette size={15} />
-            <input type="color" disabled={disabled} className="absolute inset-0 cursor-pointer opacity-0" onChange={(event) => runCommand('foreColor', event.target.value)} />
+            <input type="color" disabled={disabled || sourceMode} className="absolute inset-0 cursor-pointer opacity-0" onChange={(event) => runCommand('foreColor', event.target.value)} />
           </label>
           <label title="배경색" aria-label="배경색" className="relative inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600">
             <Highlighter size={15} />
-            <input type="color" disabled={disabled} className="absolute inset-0 cursor-pointer opacity-0" onChange={(event) => {
+            <input type="color" disabled={disabled || sourceMode} className="absolute inset-0 cursor-pointer opacity-0" onChange={(event) => {
               focusEditor();
               document.execCommand('hiliteColor', false, event.target.value) || document.execCommand('backColor', false, event.target.value);
               emitChange();
             }} />
           </label>
           <span className="mx-1 h-5 w-px bg-slate-200" />
-          <ToolbarButton title="글머리표" disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('insertUnorderedList')}><List size={15} /></ToolbarButton>
-          <ToolbarButton title="번호 목록" disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('insertOrderedList')}><ListOrdered size={15} /></ToolbarButton>
-          <ToolbarButton title="인용문" disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('formatBlock', 'blockquote')}><Quote size={15} /></ToolbarButton>
+          <ToolbarButton title="글머리표" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('insertUnorderedList')}><List size={15} /></ToolbarButton>
+          <ToolbarButton title="번호 목록" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('insertOrderedList')}><ListOrdered size={15} /></ToolbarButton>
+          <ToolbarButton title="인용문" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('formatBlock', 'blockquote')}><Quote size={15} /></ToolbarButton>
           <span className="mx-1 h-5 w-px bg-slate-200" />
-          <ToolbarButton title="왼쪽 정렬" disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('justifyLeft')}><AlignLeft size={15} /></ToolbarButton>
-          <ToolbarButton title="가운데 정렬" disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('justifyCenter')}><AlignCenter size={15} /></ToolbarButton>
-          <ToolbarButton title="오른쪽 정렬" disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('justifyRight')}><AlignRight size={15} /></ToolbarButton>
+          <ToolbarButton title="왼쪽 정렬" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('justifyLeft')}><AlignLeft size={15} /></ToolbarButton>
+          <ToolbarButton title="가운데 정렬" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('justifyCenter')}><AlignCenter size={15} /></ToolbarButton>
+          <ToolbarButton title="오른쪽 정렬" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('justifyRight')}><AlignRight size={15} /></ToolbarButton>
           <span className="mx-1 h-5 w-px bg-slate-200" />
-          <ToolbarButton title="링크 삽입" disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={insertLink}><LinkIcon size={15} /></ToolbarButton>
-          <ToolbarButton title="이미지 URL 삽입" disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={openImagePanel}><ImagePlus size={15} /></ToolbarButton>
-          <ToolbarButton title="표 삽입" disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={insertTable}><Table2 size={15} /></ToolbarButton>
-          <ToolbarButton title="구분선 삽입" disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('insertHorizontalRule')}><Minus size={15} /></ToolbarButton>
-          <ToolbarButton title="서식 제거" disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('removeFormat')}><Eraser size={15} /></ToolbarButton>
+          <ToolbarButton title="링크 삽입" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={insertLink}><LinkIcon size={15} /></ToolbarButton>
+          <ToolbarButton title="이미지 URL 삽입" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={openImagePanel}><ImagePlus size={15} /></ToolbarButton>
+          <ToolbarButton title="표 삽입" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={insertTable}><Table2 size={15} /></ToolbarButton>
+          <ToolbarButton title="구분선 삽입" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('insertHorizontalRule')}><Minus size={15} /></ToolbarButton>
+          <ToolbarButton title="서식 제거" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('removeFormat')}><Eraser size={15} /></ToolbarButton>
+          <span className="mx-1 h-5 w-px bg-slate-200" />
+          <button
+            type="button"
+            title={sourceMode ? '편집기 보기' : '태그보기'}
+            aria-label={sourceMode ? '편집기 보기' : '태그보기'}
+            disabled={disabled}
+            onClick={toggleSourceMode}
+            className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-bold transition ${sourceMode ? 'border-orange-300 bg-orange-50 text-orange-700' : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600'} disabled:cursor-not-allowed disabled:opacity-50`}
+          >
+            {sourceMode ? <Eye size={14} /> : <Code2 size={14} />}
+            {sourceMode ? '편집기 보기' : '태그보기'}
+          </button>
         </div>
 
-        {imagePanelOpen && (
+        {imagePanelOpen && !sourceMode && (
           <div className="border-b border-slate-200 bg-orange-50/40 p-3">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -620,26 +784,46 @@ export function RichTextEditor({
         )}
 
         <div className="relative">
-          {isRichTextEmpty(value) && (
-            <div className="pointer-events-none absolute left-4 top-3 text-xs text-slate-400">{placeholder}</div>
+          {sourceMode ? (
+            <textarea
+              value={sourceValue}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                setSourceValue(nextValue);
+                lastEmittedHtmlRef.current = nextValue;
+                onChange?.(nextValue);
+              }}
+              disabled={disabled}
+              spellCheck={false}
+              aria-label={`${label} HTML 태그 편집`}
+              className="w-full resize-y bg-slate-950 px-4 py-3 font-mono text-xs leading-6 text-slate-100 outline-none disabled:cursor-not-allowed disabled:opacity-60"
+              style={{ minHeight }}
+              placeholder="HTML 태그를 입력해 주세요. 저장 시 허용되지 않은 태그와 속성은 자동으로 제거됩니다."
+            />
+          ) : (
+            <>
+              {isRichTextEmpty(value) && (
+                <div className="pointer-events-none absolute left-4 top-3 text-xs text-slate-400">{placeholder}</div>
+              )}
+              <div
+                ref={editorRef}
+                contentEditable={!disabled}
+                suppressContentEditableWarning
+                onInput={emitChange}
+                onBlur={emitChange}
+                onPaste={handlePaste}
+                onKeyUp={saveSelection}
+                onMouseUp={saveSelection}
+                style={{ minHeight }}
+                className="rich-text-editor-area w-full overflow-y-auto px-4 py-3 text-sm leading-7 text-slate-700 outline-none"
+              />
+            </>
           )}
-          <div
-            ref={editorRef}
-            contentEditable={!disabled}
-            suppressContentEditableWarning
-            onInput={emitChange}
-            onBlur={emitChange}
-            onPaste={handlePaste}
-            onKeyUp={saveSelection}
-            onMouseUp={saveSelection}
-            style={{ minHeight }}
-            className="rich-text-editor-area w-full overflow-y-auto px-4 py-3 text-sm leading-7 text-slate-700 outline-none"
-          />
         </div>
       </div>
 
       <p className="text-[10px] leading-4 text-slate-500">
-        외부 이미지 링크는 원본 서버가 주소를 변경하거나 접근을 차단하면 표시되지 않을 수 있습니다.
+        외부 이미지 링크는 원본 서버 상태에 따라 표시되지 않을 수 있습니다. 유튜브 URL·임베드 태그와 안전한 HTML 태그 붙여넣기를 지원합니다.
       </p>
     </div>
   );

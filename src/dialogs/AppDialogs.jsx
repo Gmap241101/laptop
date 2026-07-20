@@ -25,6 +25,7 @@ export default function AppDialogs({ ctx }) {
     closeAdminRequestRestoreDialog,
     closeFaqPostDialog,
     closeNoticePostDialog,
+    closePopupPostDialog,
     closeUserActionDialog,
     confirmModal,
     data,
@@ -43,16 +44,21 @@ export default function AppDialogs({ ctx }) {
     noticePostDialog,
     noticePostForm,
     noticePostSaving,
+    popupPostDialog,
+    popupPostForm,
+    popupPostSaving,
     restoreAdminRequestStatus,
     saveAdminRequestEdit,
     saveFaqPost,
     saveNoticePost,
+    savePopupPost,
     setAdminRequestEditForm,
     setAdminRequestRestoreReason,
     setAdminRequestRestoreTarget,
     setConfirmModal,
     setFaqPostForm,
     setNoticePostForm,
+    setPopupPostForm,
     setToast,
     setUserActionForm,
     submitUserActionRequest,
@@ -568,7 +574,158 @@ export default function AppDialogs({ ctx }) {
         </div>
       )}
 
-            {faqPostDialog && (
+            {popupPostDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="max-h-[94vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  팝업 {popupPostDialog.mode === 'edit' ? '수정' : '등록'}
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  사용자 초기화면 또는 대여 신청 페이지에 표시할 내용과 노출 일정을 설정합니다.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closePopupPostDialog}
+                disabled={popupPostSaving}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-5">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="text-xs font-bold text-slate-800">사용 여부</div>
+                    <div className="mt-0.5 text-[10px] leading-4 text-slate-500">
+                      사용안함이면 노출 기간과 관계없이 사용자 화면에 표시되지 않습니다.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={Boolean(popupPostForm.enabled)}
+                    disabled={popupPostSaving}
+                    onClick={() => setPopupPostForm((prev) => ({ ...prev, enabled: !prev.enabled }))}
+                    className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition ${popupPostForm.enabled ? 'bg-emerald-500' : 'bg-slate-300'} disabled:opacity-60`}
+                  >
+                    <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transition ${popupPostForm.enabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <Input
+                  label="제목 (선택)"
+                  value={popupPostForm.title}
+                  onChange={(value) => setPopupPostForm((prev) => ({ ...prev, title: value }))}
+                  placeholder="비워두면 제목 영역을 표시하지 않습니다."
+                />
+                <Input
+                  label="부제목 (선택)"
+                  value={popupPostForm.subtitle}
+                  onChange={(value) => setPopupPostForm((prev) => ({ ...prev, subtitle: value }))}
+                  placeholder="비워두면 부제목 영역을 표시하지 않습니다."
+                />
+              </div>
+
+              <RichTextEditor
+                label="내용 (선택)"
+                value={popupPostForm.contentHtml}
+                onChange={(contentHtml) => setPopupPostForm((prev) => ({ ...prev, contentHtml }))}
+                placeholder="팝업 내용을 입력하거나 이미지·유튜브 태그를 붙여넣어 주세요."
+                minHeight={300}
+                disabled={popupPostSaving}
+              />
+
+              <div className="grid gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-2">
+                <label className="block">
+                  <span className="text-xs font-semibold text-slate-600">노출 시작일시</span>
+                  <input
+                    type="datetime-local"
+                    value={popupPostForm.startAt}
+                    onChange={(event) => setPopupPostForm((prev) => ({ ...prev, startAt: event.target.value }))}
+                    disabled={popupPostSaving}
+                    className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none mk-form-focus"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-xs font-semibold text-slate-600">노출 종료일시</span>
+                  <input
+                    type="datetime-local"
+                    value={popupPostForm.endAt}
+                    onChange={(event) => setPopupPostForm((prev) => ({ ...prev, endAt: event.target.value }))}
+                    disabled={popupPostSaving || popupPostForm.isIndefinite}
+                    className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none disabled:cursor-not-allowed disabled:bg-slate-100 mk-form-focus"
+                  />
+                </label>
+
+                <label className="md:col-span-2 flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(popupPostForm.isIndefinite)}
+                    onChange={(event) => setPopupPostForm((prev) => ({ ...prev, isIndefinite: event.target.checked }))}
+                    disabled={popupPostSaving}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                  />
+                  <div>
+                    <div className="text-xs font-bold text-slate-800">종료일 없이 무기한 노출</div>
+                    <div className="mt-0.5 text-[10px] text-slate-500">시작일시 이후 사용함 상태인 동안 계속 노출합니다.</div>
+                  </div>
+                </label>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-xs font-bold text-slate-800">노출 페이지</div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {[
+                    ['home', '사용자 초기화면'],
+                    ['rental', '대여 신청 페이지'],
+                  ].map(([pageKey, label]) => {
+                    const checked = (popupPostForm.targetPages || []).includes(pageKey);
+                    return (
+                      <label key={pageKey} className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={popupPostSaving}
+                          onChange={(event) => setPopupPostForm((prev) => ({
+                            ...prev,
+                            targetPages: event.target.checked
+                              ? [...new Set([...(prev.targetPages || []), pageKey])]
+                              : (prev.targetPages || []).filter((item) => item !== pageKey),
+                          }))}
+                          className="h-4 w-4 rounded border-slate-300"
+                        />
+                        <span className="text-xs font-semibold text-slate-700">{label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <Button type="button" variant="outline" disabled={popupPostSaving} onClick={closePopupPostDialog}>취소</Button>
+              <Button type="button" variant="primary" disabled={popupPostSaving} onClick={savePopupPost}>
+                {popupPostSaving ? '저장 중...' : popupPostDialog.mode === 'edit' ? '수정 저장' : '팝업 등록'}
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {faqPostDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}

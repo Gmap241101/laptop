@@ -5,6 +5,7 @@ import AdminAssetsPanel from './AdminAssetsPanel.jsx';
 import AdminAssetCategoriesPanel from './AdminAssetCategoriesPanel.jsx';
 import AdminOrganizationPanel from './AdminOrganizationPanel.jsx';
 import AdminNoticePanel from './AdminNoticePanel.jsx';
+import AdminPopupPanel from './AdminPopupPanel.jsx';
 import AdminFaqPanel from './AdminFaqPanel.jsx';
 import AdminMemberAccountsPanel from './AdminMemberAccountsPanel.jsx';
 import AdminAccountsPanel from './AdminAccountsPanel.jsx';
@@ -477,6 +478,7 @@ export default function AdminWorkspace({ ctx }) {
                     ['categories', ClipboardList, '자산 카테고리 관리'],
                     ['people', Users, '부서·사용자 관리'],
                     ['noticePosts', ClipboardList, '공지사항 관리'],
+                    ['popupPosts', ClipboardList, '팝업 관리'],
                     ['faqPosts', ClipboardList, 'FAQ 관리'],
                     ['memberAccounts', UserCircle, '회원 계정 관리'],
                     ['adminAccounts', ShieldCheck, '관리자 ID 관리'],
@@ -542,6 +544,11 @@ export default function AdminWorkspace({ ctx }) {
                                     {/* 공지사항 관리 탭 */}
                   {adminTab === 'noticePosts' && (
                     <AdminNoticePanel ctx={ctx} />
+                  )}
+
+                  {/* 팝업 관리 탭 */}
+                  {adminTab === 'popupPosts' && (
+                    <AdminPopupPanel ctx={ctx} />
                   )}
 
                                     {/* FAQ 관리 탭 */}
