@@ -523,7 +523,12 @@ const createEmptyYouTubeForm = () => ({
 });
 
 const getYouTubeFormFromIframe = (iframe) => {
-  const config = parseYouTubeConfig(iframe?.getAttribute('src') || '');
+  const sourceUrl =
+    iframe?.getAttribute('data-stored-youtube-src') ||
+    iframe?.getAttribute('src') ||
+    '';
+
+  const config = parseYouTubeConfig(sourceUrl);
   if (!config) return createEmptyYouTubeForm();
 
   return {
