@@ -149,6 +149,52 @@ export default function UserRequestHistoryPanel({ ctx }) {
     }
   }, [requestPage, totalPages]);
 
+
+  const getRequestReferenceDate = (request) => {
+    if (request.status === STATUS.RETURNED) {
+      if (request.returnedAt) {
+        return formatFirestoreTimestamp(request.returnedAt);
+      }
+
+      if (request.actualReturnDate) {
+        return request.actualReturnDate;
+      }
+    }
+
+    if (request.status !== STATUS.REQUESTED && request.updatedAt) {
+      return formatFirestoreTimestamp(request.updatedAt);
+    }
+
+    return (
+      request.requestedAt ||
+      formatFirestoreTimestamp(request.createdAt || request.updatedAt) ||
+      '-'
+    );
+  };
+
+  const getRequestRemark = (request) => {
+    const extensionCount = getRequestExtensionCount(request);
+
+    if (requestTab === ADMIN_REQUEST_TAB.RETURNED) {
+      return extensionCount > 0 ? `연장 ${extensionCount}회` : '-';
+    }
+
+    const extensionAction = request.userActionRequest;
+    const hasPendingExtension =
+      extensionAction?.type === USER_REQUEST_ACTION.EXTEND &&
+      extensionAction?.status === USER_REQUEST_REVIEW_STATUS.PENDING;
+
+    if (hasPendingExtension) {
+      return '연장 신청중';
+    }
+
+    const hasApprovedExtension =
+      extensionAction?.type === USER_REQUEST_ACTION.EXTEND &&
+      extensionAction?.status === USER_REQUEST_REVIEW_STATUS.APPROVED;
+
+    return extensionCount > 0 || hasApprovedExtension ? '연장 승인' : '-';
+  };
+
   const renderUserAction = (request) => {
     const action = request.userActionRequest;
     if (!action) return null;
@@ -323,9 +369,9 @@ export default function UserRequestHistoryPanel({ ctx }) {
 
               <div className="flex flex-wrap gap-2">
                 {[
-                  { id: ADMIN_REQUEST_TAB.PENDING, label: '신청·보류' },
-                  { id: ADMIN_REQUEST_TAB.RENTAL, label: '대여관리' },
-                  { id: ADMIN_REQUEST_TAB.CLOSED, label: '불허' },
+                  { id: ADMIN_REQUEST_TAB.PENDING, label: '신청·보류중' },
+                  { id: ADMIN_REQUEST_TAB.RENTAL, label: '대여승인' },
+                  { id: ADMIN_REQUEST_TAB.CLOSED, label: '대여불허' },
                   { id: ADMIN_REQUEST_TAB.RETURNED, label: '반납완료' },
                 ].map((tab) => {
                   const active = requestTab === tab.id;
@@ -510,60 +556,78 @@ export default function UserRequestHistoryPanel({ ctx }) {
                 </div>
               ) : (
                 <>
-                  <div className="overflow-x-auto rounded-xl border border-slate-200">
-                    <table className="w-full min-w-[860px] table-fixed border-collapse text-left">
+                  <div className="hidden overflow-x-auto rounded-xl border border-slate-200 md:block">
+                    <table className="w-full min-w-[900px] table-fixed border-collapse text-left">
                       <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600">
                         <tr>
-                          <th className="w-36 border-b border-slate-200 px-3 py-3">처리·접수일</th>
-                          <th className="w-32 border-b border-slate-200 px-3 py-3">자산번호</th>
-                          <th className="w-28 border-b border-slate-200 px-3 py-3">기기 분류</th>
-                          <th className="border-b border-slate-200 px-3 py-3">대여 기간</th>
-                          <th className="w-24 border-b border-slate-200 px-3 py-3 text-center">상태</th>
-                          <th className="w-28 border-b border-slate-200 px-3 py-3 text-center">사용자 요청</th>
+                          <th className="w-14 border-b border-slate-200 px-2.5 py-2.5 text-center">
+                            순번
+                          </th>
+                          <th className="w-48 border-b border-slate-200 px-2.5 py-2.5">
+                            기기명
+                          </th>
+                          <th className="border-b border-slate-200 px-2.5 py-2.5">
+                            대여기간
+                          </th>
+                          <th className="w-24 border-b border-slate-200 px-2.5 py-2.5 text-center">
+                            상태
+                          </th>
+                          <th className="w-40 border-b border-slate-200 px-2.5 py-2.5">
+                            접수·처리일
+                          </th>
+                          <th className="w-28 border-b border-slate-200 px-2.5 py-2.5 text-center">
+                            비고
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
-                        {paginatedRequests.map((request) => {
-                          const userAction = request.userActionRequest;
+                        {paginatedRequests.map((request, index) => {
+                          const sequence =
+                            (safePage - 1) * requestPageSize + index + 1;
+                          const remark = getRequestRemark(request);
+
                           return (
                             <tr
                               key={request.id}
                               className="cursor-pointer border-b border-slate-100 align-middle last:border-b-0 hover:bg-slate-50"
                               onClick={() => setSelectedRequestId(request.id)}
                             >
-                              <td className="px-3 py-3 text-[11px] text-slate-500">
-                                {request.requestedAt ||
-                                  formatFirestoreTimestamp(request.updatedAt || request.createdAt)}
+                              <td className="px-2.5 py-2.5 text-center text-[11px] font-semibold text-slate-400">
+                                {sequence}
                               </td>
-                              <td className="px-3 py-3">
-                                <button
-                                  type="button"
-                                  className="max-w-full truncate text-left text-xs font-bold text-slate-900 hover:text-orange-600 hover:underline"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    setSelectedRequestId(request.id);
-                                  }}
-                                >
-                                  {request.assetNo || '-'}
-                                </button>
+                              <td className="px-2.5 py-2.5">
+                                <div className="flex min-w-0 items-center gap-2">
+                                  <span className="inline-flex shrink-0 items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                                    {request.assetCategory || '기기'}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="min-w-0 truncate text-left text-xs font-bold text-slate-900 hover:text-orange-600 hover:underline"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setSelectedRequestId(request.id);
+                                    }}
+                                  >
+                                    {request.assetNo || '-'}
+                                  </button>
+                                </div>
                               </td>
-                              <td className="truncate px-3 py-3 text-xs text-slate-600">
-                                {request.assetCategory || '-'}
-                              </td>
-                              <td className="px-3 py-3 text-xs text-slate-600">
+                              <td className="px-2.5 py-2.5 text-xs leading-5 text-slate-600">
                                 {request.startDate || '-'} ~ {request.dueDate || '-'}
                               </td>
-                              <td className="px-3 py-3 text-center">
+                              <td className="px-2.5 py-2.5 text-center">
                                 <Badge>{getRequestDisplayStatus(request)}</Badge>
                               </td>
-                              <td className="px-3 py-3 text-center text-[10px] text-slate-500">
-                                {userAction ? (
-                                  <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-1 font-semibold">
-                                    {getUserRequestActionLabel(userAction.type)} ·{' '}
-                                    {getUserRequestReviewStatusLabel(userAction.status)}
-                                  </span>
-                                ) : (
+                              <td className="px-2.5 py-2.5 text-[11px] leading-4 text-slate-500">
+                                {getRequestReferenceDate(request)}
+                              </td>
+                              <td className="px-2.5 py-2.5 text-center text-[10px] text-slate-500">
+                                {remark === '-' ? (
                                   '-'
+                                ) : (
+                                  <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-1 font-semibold text-slate-600">
+                                    {remark}
+                                  </span>
                                 )}
                               </td>
                             </tr>
@@ -571,6 +635,58 @@ export default function UserRequestHistoryPanel({ ctx }) {
                         })}
                       </tbody>
                     </table>
+                  </div>
+
+                  <div className="space-y-3 md:hidden">
+                    {paginatedRequests.map((request, index) => {
+                      const sequence =
+                        (safePage - 1) * requestPageSize + index + 1;
+                      const remark = getRequestRemark(request);
+
+                      return (
+                        <button
+                          key={request.id}
+                          type="button"
+                          className="w-full rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-orange-200 hover:bg-orange-50/30"
+                          onClick={() => setSelectedRequestId(request.id)}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-bold text-slate-500">
+                                {sequence}
+                              </span>
+                              <span className="inline-flex shrink-0 items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                                {request.assetCategory || '기기'}
+                              </span>
+                              <span className="min-w-0 truncate text-sm font-bold text-slate-900">
+                                {request.assetNo || '-'}
+                              </span>
+                            </div>
+                            <Badge>{getRequestDisplayStatus(request)}</Badge>
+                          </div>
+
+                          <div className="mt-3 grid grid-cols-1 gap-2 text-[11px] text-slate-500 min-[420px]:grid-cols-2">
+                            <div>
+                              <div className="font-semibold text-slate-400">대여기간</div>
+                              <div className="mt-0.5 text-xs text-slate-700">
+                                {request.startDate || '-'} ~ {request.dueDate || '-'}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="font-semibold text-slate-400">접수·처리일</div>
+                              <div className="mt-0.5 text-xs text-slate-700">
+                                {getRequestReferenceDate(request)}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3 text-[11px]">
+                            <span className="font-semibold text-slate-400">비고</span>
+                            <span className="font-semibold text-slate-600">{remark}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
 
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

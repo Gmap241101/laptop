@@ -53,6 +53,63 @@ export default function AdminRequestsPanel({ ctx }) {
     updateRequestMemo,
   } = ctx;
 
+  const getAdminRequestReferenceDate = (request, requestLogs) => {
+    if (request.status === STATUS.RETURNED) {
+      if (request.returnedAt) {
+        return formatFirestoreTimestamp(request.returnedAt);
+      }
+
+      if (request.actualReturnDate) {
+        return request.actualReturnDate;
+      }
+    }
+
+    const latestStatusLog = requestLogs.find(
+      (log) =>
+        [
+          RENTAL_REQUEST_AUDIT_ACTION.STATUS_CHANGED,
+          RENTAL_REQUEST_AUDIT_ACTION.STATUS_RESTORED,
+        ].includes(log.action) && log.nextStatus === request.status
+    );
+
+    if (latestStatusLog?.createdAt) {
+      return formatFirestoreTimestamp(latestStatusLog.createdAt);
+    }
+
+    if (request.status !== STATUS.REQUESTED && request.updatedAt) {
+      return formatFirestoreTimestamp(request.updatedAt);
+    }
+
+    return (
+      request.requestedAt ||
+      formatFirestoreTimestamp(request.createdAt || request.updatedAt) ||
+      '-'
+    );
+  };
+
+  const getAdminRequestRemark = (request) => {
+    const extensionCount = getRequestExtensionCount(request);
+
+    if (adminRequestTab === ADMIN_REQUEST_TAB.RETURNED) {
+      return extensionCount > 0 ? `연장 ${extensionCount}회` : '-';
+    }
+
+    const extensionAction = request.userActionRequest;
+    const hasPendingExtension =
+      extensionAction?.type === USER_REQUEST_ACTION.EXTEND &&
+      extensionAction?.status === USER_REQUEST_REVIEW_STATUS.PENDING;
+
+    if (hasPendingExtension) {
+      return '연장 신청중';
+    }
+
+    const hasApprovedExtension =
+      extensionAction?.type === USER_REQUEST_ACTION.EXTEND &&
+      extensionAction?.status === USER_REQUEST_REVIEW_STATUS.APPROVED;
+
+    return extensionCount > 0 || hasApprovedExtension ? '연장 승인' : '-';
+  };
+
   return (
                     <div className="space-y-5">
                       <div className="border-b border-slate-100 pb-4">
@@ -60,7 +117,7 @@ export default function AdminRequestsPanel({ ctx }) {
                           기기 대여 신청 관리
                         </h2>
                         <p className="mt-1 text-xs text-slate-500">
-                          신청·보류, 대여관리, 불허·취소, 반납완료 기록을 목록과 상세 화면으로 관리합니다.
+                          신청·보류중, 대여승인, 대여불허, 반납완료 기록을 목록과 상세 화면으로 관리합니다.
                         </p>
                       </div>
 
@@ -82,15 +139,15 @@ export default function AdminRequestsPanel({ ctx }) {
                         {[
                           {
                             id: ADMIN_REQUEST_TAB.PENDING,
-                            label: '신청·보류',
+                            label: '신청·보류중',
                           },
                           {
                             id: ADMIN_REQUEST_TAB.RENTAL,
-                            label: '대여관리',
+                            label: '대여승인',
                           },
                           {
                             id: ADMIN_REQUEST_TAB.CLOSED,
-                            label: '불허·취소',
+                            label: '대여불허',
                           },
                           {
                             id: ADMIN_REQUEST_TAB.RETURNED,
@@ -620,153 +677,196 @@ export default function AdminRequestsPanel({ ctx }) {
                         </div>
                       ) : (
                         <>
-                          <div className="overflow-x-auto rounded-xl border border-slate-200">
-                            <table className="w-full min-w-[1120px] table-fixed border-collapse text-left">
+                          <div className="hidden overflow-x-auto rounded-xl border border-slate-200 md:block">
+                            <table className="w-full min-w-[1080px] table-fixed border-collapse text-left">
                               <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600">
                                 <tr>
-                                  <th className="w-36 border-b border-slate-200 px-3 py-3">
-                                    처리·접수일
+                                  <th className="w-14 border-b border-slate-200 px-2.5 py-2.5 text-center">
+                                    순번
                                   </th>
-                                  <th className="w-32 border-b border-slate-200 px-3 py-3">
-                                    자산번호
+                                  <th className="w-44 border-b border-slate-200 px-2.5 py-2.5">
+                                    기기명
                                   </th>
-                                  <th className="w-28 border-b border-slate-200 px-3 py-3">
-                                    기기 분류
+                                  <th className="w-28 border-b border-slate-200 px-2.5 py-2.5">
+                                    신청자
                                   </th>
-                                  <th className="w-36 border-b border-slate-200 px-3 py-3">
-                                    신청자·대여자
+                                  <th className="w-32 border-b border-slate-200 px-2.5 py-2.5">
+                                    부서명
                                   </th>
-                                  <th className="w-28 border-b border-slate-200 px-3 py-3">
-                                    부서
+                                  <th className="w-48 border-b border-slate-200 px-2.5 py-2.5">
+                                    대여기간
                                   </th>
-                                  <th className="border-b border-slate-200 px-3 py-3">
-                                    대여 기간
-                                  </th>
-                                  <th className="w-24 border-b border-slate-200 px-3 py-3 text-center">
+                                  <th className="w-24 border-b border-slate-200 px-2.5 py-2.5 text-center">
                                     상태
                                   </th>
-                                  <th className="w-28 border-b border-slate-200 px-3 py-3 text-center">
-                                    사용자 요청
+                                  <th className="w-36 border-b border-slate-200 px-2.5 py-2.5">
+                                    접수·처리일
+                                  </th>
+                                  <th className="w-28 border-b border-slate-200 px-2.5 py-2.5 text-center">
+                                    비고
                                   </th>
                                 </tr>
                               </thead>
 
                               <tbody>
-                                {paginatedAdminRequests.map(
-                                  (request) => {
-                                    const requestLogs =
-                                      rentalRequestLogsByRequestId.get(
-                                        request.id
-                                      ) || [];
+                                {paginatedAdminRequests.map((request, index) => {
+                                  const requestLogs =
+                                    rentalRequestLogsByRequestId.get(request.id) || [];
+                                  const sequence =
+                                    (safeAdminRequestPage - 1) * adminRequestPageSize +
+                                    index +
+                                    1;
+                                  const referenceDate = getAdminRequestReferenceDate(
+                                    request,
+                                    requestLogs
+                                  );
+                                  const remark = getAdminRequestRemark(request);
 
-                                    const latestStatusLog =
-                                      requestLogs.find(
-                                        (log) =>
-                                          [
-                                            RENTAL_REQUEST_AUDIT_ACTION.STATUS_CHANGED,
-                                            RENTAL_REQUEST_AUDIT_ACTION.STATUS_RESTORED,
-                                          ].includes(
-                                            log.action
-                                          ) &&
-                                          log.nextStatus ===
-                                            request.status
-                                      );
+                                  return (
+                                    <tr
+                                      key={request.id}
+                                      className="cursor-pointer border-b border-slate-100 align-middle last:border-b-0 hover:bg-slate-50"
+                                      onClick={() =>
+                                        setSelectedAdminRequestId(request.id)
+                                      }
+                                    >
+                                      <td className="px-2.5 py-2.5 text-center text-[11px] font-semibold text-slate-400">
+                                        {sequence}
+                                      </td>
 
-                                    const referenceDate =
-                                      latestStatusLog?.createdAt
-                                        ? formatFirestoreTimestamp(
-                                            latestStatusLog.createdAt
-                                          )
-                                        : request.requestedAt ||
-                                          formatFirestoreTimestamp(
-                                            request.createdAt
-                                          );
-
-                                    const userAction =
-                                      request.userActionRequest;
-
-                                    return (
-                                      <tr
-                                        key={request.id}
-                                        className="cursor-pointer border-b border-slate-100 align-middle last:border-b-0 hover:bg-slate-50"
-                                        onClick={() =>
-                                          setSelectedAdminRequestId(
-                                            request.id
-                                          )
-                                        }
-                                      >
-                                        <td className="px-3 py-3 text-[11px] text-slate-500">
-                                          {referenceDate || '-'}
-                                        </td>
-
-                                        <td className="px-3 py-3">
+                                      <td className="px-2.5 py-2.5">
+                                        <div className="flex min-w-0 items-center gap-2">
+                                          <span className="inline-flex shrink-0 items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                                            {request.assetCategory || '기기'}
+                                          </span>
                                           <button
                                             type="button"
-                                            className="max-w-full truncate text-left text-xs font-bold text-slate-900 hover:text-orange-600 hover:underline"
+                                            className="min-w-0 truncate text-left text-xs font-bold text-slate-900 hover:text-orange-600 hover:underline"
                                             onClick={(event) => {
                                               event.stopPropagation();
-                                              setSelectedAdminRequestId(
-                                                request.id
-                                              );
+                                              setSelectedAdminRequestId(request.id);
                                             }}
                                           >
-                                            {request.assetNo ||
-                                              '-'}
+                                            {request.assetNo || '-'}
                                           </button>
-                                        </td>
+                                        </div>
+                                      </td>
 
-                                        <td className="truncate px-3 py-3 text-xs text-slate-600">
-                                          {request.assetCategory ||
-                                            '-'}
-                                        </td>
+                                      <td className="truncate px-2.5 py-2.5 text-xs font-semibold text-slate-800">
+                                        {request.requesterName ||
+                                          request.borrower ||
+                                          request.requesterEmail ||
+                                          '-'}
+                                      </td>
 
-                                        <td className="px-3 py-3 text-xs text-slate-600">
-                                          <div className="truncate font-semibold text-slate-800">
-                                            {request.requesterName ||
-                                              request.requesterEmail ||
-                                              '-'}
-                                          </div>
-                                          <div className="mt-0.5 truncate text-[10px] text-slate-400">
-                                            대여자:{' '}
-                                            {request.borrower ||
-                                              '-'}
-                                          </div>
-                                        </td>
+                                      <td className="truncate px-2.5 py-2.5 text-xs text-slate-600">
+                                        {request.requesterTeam || request.team || '-'}
+                                      </td>
 
-                                        <td className="truncate px-3 py-3 text-xs text-slate-600">
-                                          {request.team ||
-                                            '-'}
-                                        </td>
+                                      <td className="px-2.5 py-2.5 text-xs leading-5 text-slate-600">
+                                        {request.startDate || '-'} ~ {request.dueDate || '-'}
+                                      </td>
 
-                                        <td className="px-3 py-3 text-xs text-slate-600">
-                                          {request.startDate ||
-                                            '-'}
-                                          {' ~ '}
-                                          {request.dueDate ||
-                                            '-'}
-                                        </td>
+                                      <td className="px-2.5 py-2.5 text-center">
+                                        <Badge>{getRequestDisplayStatus(request)}</Badge>
+                                      </td>
 
-                                        <td className="px-3 py-3 text-center">
-                                          <Badge>
-                                            {getRequestDisplayStatus(request)}
-                                          </Badge>
-                                        </td>
+                                      <td className="px-2.5 py-2.5 text-[11px] leading-4 text-slate-500">
+                                        {referenceDate}
+                                      </td>
 
-                                        <td className="px-3 py-3 text-center text-[11px] text-slate-500">
-                                          {userAction
-                                            ? `${getUserRequestActionLabel(
-                                                userAction.type
-                                              )} · ${getUserRequestReviewStatusLabel(
-                                                userAction.status
-                                              )}`
-                                            : '-'}
-                                        </td>
-                                      </tr>
-                                    );
-                                  }
-                                )}
+                                      <td className="px-2.5 py-2.5 text-center text-[10px] text-slate-500">
+                                        {remark === '-' ? (
+                                          '-'
+                                        ) : (
+                                          <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-1 font-semibold text-slate-600">
+                                            {remark}
+                                          </span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
                               </tbody>
                             </table>
+                          </div>
+
+                          <div className="space-y-3 md:hidden">
+                            {paginatedAdminRequests.map((request, index) => {
+                              const requestLogs =
+                                rentalRequestLogsByRequestId.get(request.id) || [];
+                              const sequence =
+                                (safeAdminRequestPage - 1) * adminRequestPageSize +
+                                index +
+                                1;
+                              const referenceDate = getAdminRequestReferenceDate(
+                                request,
+                                requestLogs
+                              );
+                              const remark = getAdminRequestRemark(request);
+
+                              return (
+                                <button
+                                  key={request.id}
+                                  type="button"
+                                  className="w-full rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-orange-200 hover:bg-orange-50/30"
+                                  onClick={() =>
+                                    setSelectedAdminRequestId(request.id)
+                                  }
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="flex min-w-0 items-center gap-2">
+                                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-bold text-slate-500">
+                                        {sequence}
+                                      </span>
+                                      <span className="inline-flex shrink-0 items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                                        {request.assetCategory || '기기'}
+                                      </span>
+                                      <span className="min-w-0 truncate text-sm font-bold text-slate-900">
+                                        {request.assetNo || '-'}
+                                      </span>
+                                    </div>
+                                    <Badge>{getRequestDisplayStatus(request)}</Badge>
+                                  </div>
+
+                                  <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 text-[11px]">
+                                    <div>
+                                      <div className="font-semibold text-slate-400">신청자</div>
+                                      <div className="mt-0.5 truncate text-xs font-semibold text-slate-700">
+                                        {request.requesterName ||
+                                          request.borrower ||
+                                          request.requesterEmail ||
+                                          '-'}
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <div className="font-semibold text-slate-400">부서명</div>
+                                      <div className="mt-0.5 truncate text-xs text-slate-700">
+                                        {request.requesterTeam || request.team || '-'}
+                                      </div>
+                                    </div>
+                                    <div className="col-span-2">
+                                      <div className="font-semibold text-slate-400">대여기간</div>
+                                      <div className="mt-0.5 text-xs text-slate-700">
+                                        {request.startDate || '-'} ~ {request.dueDate || '-'}
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <div className="font-semibold text-slate-400">접수·처리일</div>
+                                      <div className="mt-0.5 text-xs text-slate-700">
+                                        {referenceDate}
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <div className="font-semibold text-slate-400">비고</div>
+                                      <div className="mt-0.5 text-xs font-semibold text-slate-700">
+                                        {remark}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </button>
+                              );
+                            })}
                           </div>
 
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
