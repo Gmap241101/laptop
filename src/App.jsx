@@ -4794,7 +4794,13 @@ function App() {
   useEffect(() => {
     const shouldSubscribe =
       isAdminAuthenticated ||
-      (view === 'user' && ['home', 'rental'].includes(userTab));
+      (
+        view === 'user' &&
+        (
+          userTab === 'home' ||
+          (userTab === 'rental' && Boolean(firebaseAuthUser))
+        )
+      );
 
     if (!shouldSubscribe) {
       setPopupPosts([]);
@@ -4845,7 +4851,7 @@ function App() {
     );
 
     return unsubscribe;
-  }, [isAdminAuthenticated, userTab, view]);
+  }, [firebaseAuthUser?.uid, isAdminAuthenticated, userTab, view]);
 
   useEffect(() => {
     const updateNow = () => setPopupNowMs(Date.now());
@@ -15359,6 +15365,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
   const visibleUserPopups = useMemo(() => {
     if (view !== 'user' || !['home', 'rental'].includes(userTab)) return [];
+    if (userTab === 'rental' && !firebaseAuthUser) return [];
 
     const temporarilyDismissedSet = new Set(temporarilyDismissedPopupVersions);
     const sessionDismissedSet = new Set(dismissedPopupSessionVersions);
@@ -15395,6 +15402,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
   }, [
     dismissedPopupLocalVersions,
     dismissedPopupSessionVersions,
+    firebaseAuthUser?.uid,
     popupNowMs,
     popupPosts,
     temporarilyDismissedPopupVersions,
@@ -15428,6 +15436,40 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         ? currentVersions
         : [...currentVersions, versionKey]
     );
+  };
+
+  const dismissAllUserPopups = (popups, dismissMode = 'temporary') => {
+    const versionKeys = [
+      ...new Set(
+        (Array.isArray(popups) ? popups : [])
+          .map((popup) => getPopupVersionKey(popup))
+          .filter(Boolean)
+      ),
+    ];
+
+    if (!versionKeys.length) return;
+
+    if (dismissMode === 'session') {
+      setDismissedPopupSessionVersions((currentVersions) => [
+        ...new Set([...currentVersions, ...versionKeys]),
+      ]);
+      return;
+    }
+
+    if (dismissMode === 'sevenDays') {
+      const expiresAt = Date.now() + POPUP_DISMISS_SEVEN_DAYS_MS;
+      setDismissedPopupLocalVersions((currentVersions) => ({
+        ...currentVersions,
+        ...Object.fromEntries(
+          versionKeys.map((versionKey) => [versionKey, expiresAt])
+        ),
+      }));
+      return;
+    }
+
+    setTemporarilyDismissedPopupVersions((currentVersions) => [
+      ...new Set([...currentVersions, ...versionKeys]),
+    ]);
   };
 
   const uiContext = {
@@ -15868,6 +15910,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     userNoticeQuery,
     visibleUserPopups,
     dismissUserPopup,
+    dismissAllUserPopups,
     popupPosts,
     popupPostsReady,
     popupPostsLoadErrorMessage,

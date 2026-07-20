@@ -4,6 +4,7 @@ import { isRichTextEmpty, legacyTextToRichHtml, RichTextContent } from '../compo
 
 export default function UserPopupLayer({ ctx }) {
   const {
+    dismissAllUserPopups,
     dismissUserPopup,
     visibleUserPopups,
   } = ctx;
@@ -40,6 +41,15 @@ export default function UserPopupLayer({ ctx }) {
 
     dismissUserPopup(
       activePopup,
+      doNotShowAgain ? dismissDuration : 'temporary'
+    );
+  };
+
+  const handleCloseAll = () => {
+    if (!visibleUserPopups.length) return;
+
+    dismissAllUserPopups(
+      visibleUserPopups,
       doNotShowAgain ? dismissDuration : 'temporary'
     );
   };
@@ -155,10 +165,22 @@ export default function UserPopupLayer({ ctx }) {
               <option value="sevenDays">7일간</option>
             </select>
 
+            {hasMultiple && (
+              <button
+                type="button"
+                onClick={handleCloseAll}
+                className="shrink-0 rounded-lg border border-slate-300 bg-white px-2 py-2 text-[10px] font-bold text-slate-700 transition hover:border-slate-400 hover:bg-slate-100 sm:px-3 sm:text-xs"
+                title="현재 노출 중인 팝업 모두 닫기"
+              >
+                <span className="sm:hidden">모두</span>
+                <span className="hidden sm:inline">모두 닫기</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={handleClose}
-              className="shrink-0 rounded-lg bg-orange-500 px-3 py-2 text-[11px] font-bold text-white shadow-sm transition hover:bg-orange-600 sm:px-4 sm:text-xs"
+              className="shrink-0 rounded-lg bg-orange-500 px-2.5 py-2 text-[10px] font-bold text-white shadow-sm transition hover:bg-orange-600 sm:px-4 sm:text-xs"
             >
               닫기
             </button>
