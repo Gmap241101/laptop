@@ -6,6 +6,7 @@ export default function UserBoardPanel({ ctx }) {
     Card,
     CardContent,
     Clock,
+    Pin,
     Search,
     activeFaqCategoryId,
     activeFaqCategoryName,
@@ -29,6 +30,7 @@ export default function UserBoardPanel({ ctx }) {
     noticePostsLoadErrorMessage,
     noticePostsPerPage,
     noticePostsReady,
+    noticeRegularPostNumberById,
     noticeTotalPages,
     openNoticePost,
     paginatedNoticePosts,
@@ -46,9 +48,11 @@ export default function UserBoardPanel({ ctx }) {
     setFaqSearchWithinCategory,
     setIsCommunityMenuOpen,
     setNoticePage,
+    setUserNoticeQuery,
     setUserTab,
     setView,
     toggleFaqPost,
+    userNoticeQuery,
     userTab,
   } = ctx;
 
@@ -146,7 +150,7 @@ export default function UserBoardPanel({ ctx }) {
                           <div className="flex flex-wrap items-center gap-2">
                             {selectedNoticePost.isPinned && (
                               <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[10px] font-bold text-orange-700">
-                                상단 고정
+                                공지
                               </span>
                             )}
 
@@ -189,6 +193,28 @@ export default function UserBoardPanel({ ctx }) {
                         </p>
                       </div>
 
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <label className="block text-[11px] font-semibold text-slate-600">
+                          공지사항 검색
+                        </label>
+                        <div className="relative mt-2">
+                          <Search
+                            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                            size={16}
+                          />
+                          <input
+                            type="search"
+                            value={userNoticeQuery}
+                            onChange={(event) => {
+                              setUserNoticeQuery(event.target.value);
+                              setNoticePage(1);
+                            }}
+                            placeholder="공지사항 제목 또는 본문 검색"
+                            className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-xs outline-none transition mk-form-focus"
+                          />
+                        </div>
+                      </div>
+
                       {!noticePostsReady ? (
                         <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
                           공지사항을 불러오는 중입니다.
@@ -200,6 +226,10 @@ export default function UserBoardPanel({ ctx }) {
                       ) : noticePosts.length === 0 ? (
                         <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
                           등록된 공지사항이 없습니다.
+                        </div>
+                      ) : pinnedNoticePosts.length + regularNoticePosts.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
+                          검색 조건에 맞는 공지사항이 없습니다.
                         </div>
                       ) : (
                         <>
@@ -227,31 +257,34 @@ export default function UserBoardPanel({ ctx }) {
 
                               <tbody>
                                 {[
-                                  ...pinnedNoticePosts.map(
-                                    (post) => ({
-                                      post,
-                                      number: '공지',
-                                    })
-                                  ),
-                                  ...paginatedNoticePosts.map(
-                                    (post, index) => ({
-                                      post,
-                                      number:
-                                        regularNoticePosts.length -
-                                        (
-                                          (safeNoticePage - 1) *
-                                          noticePostsPerPage
-                                        ) -
-                                        index,
-                                    })
-                                  ),
+                                  ...pinnedNoticePosts.map((post) => ({
+                                    post,
+                                    isPinned: true,
+                                    number: null,
+                                  })),
+                                  ...paginatedNoticePosts.map((post) => ({
+                                    post,
+                                    isPinned: false,
+                                    number:
+                                      noticeRegularPostNumberById.get(post.id) || '-',
+                                  })),
                                 ].map((item) => (
                                   <tr
                                     key={item.post.id}
                                     className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
                                   >
                                     <td className="px-4 py-3 text-center text-xs text-slate-500">
-                                      {item.number}
+                                      {item.isPinned ? (
+                                        <span
+                                          className="inline-flex items-center justify-center text-orange-600"
+                                          title="상단 고정 공지"
+                                          aria-label="상단 고정 공지"
+                                        >
+                                          <Pin size={15} aria-hidden="true" />
+                                        </span>
+                                      ) : (
+                                        item.number
+                                      )}
                                     </td>
 
                                     <td className="px-4 py-3">
@@ -266,7 +299,7 @@ export default function UserBoardPanel({ ctx }) {
                                       >
                                         {item.post.isPinned && (
                                           <span className="mr-2 inline-flex rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-700">
-                                            고정
+                                            공지
                                           </span>
                                         )}
                                         {item.post.title}

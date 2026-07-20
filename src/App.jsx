@@ -31,6 +31,7 @@ import {
   ClipboardList,
   Settings,
   Plus,
+  Pin,
   Search,
   CheckCircle2,
   Clock,
@@ -174,6 +175,26 @@ const getSafeNoticePostsPerPage = (value) => {
     parsedValue <= 50
     ? parsedValue
     : DEFAULT_NOTICE_POSTS_PER_PAGE;
+};
+
+const filterNoticePostsByQuery = (posts = [], queryText = '') => {
+  const normalizedQuery = String(queryText || '')
+    .trim()
+    .toLowerCase();
+
+  if (!normalizedQuery) {
+    return posts;
+  }
+
+  return posts.filter(
+    (post) =>
+      String(post.title || '')
+        .toLowerCase()
+        .includes(normalizedQuery) ||
+      String(post.content || '')
+        .toLowerCase()
+        .includes(normalizedQuery)
+  );
 };
 
 const createDefaultNoticePostForm = () => ({
@@ -708,6 +729,28 @@ const normalizeRentalPolicySettings = (settings = {}) =>
   normalizeOverduePolicySettings(
     normalizeRentalExtensionSettings(settings)
   );
+
+const RENTAL_POLICY_SETTING_KEYS = [
+  'maxRentalDays',
+  'allowNonOverlappingSameAssetRequests',
+  'adjustStartDateAfterWorkEnd',
+  'adjustStartDateToNextBusinessDay',
+  'excludeSaturdays',
+  'excludeSundays',
+  'excludeWeekendsForStartDate',
+  'excludeHolidaysForStartDate',
+  'workEndTime',
+  'rentalExtensionEnabled',
+  'rentalExtensionApprovalMode',
+  'rentalExtensionMaxCount',
+  'rentalExtensionBusinessDays',
+  'rentalExtensionRequestWaitDays',
+  'overdueRentalBlockEnabled',
+  'postOverduePenaltyEnabled',
+  'overduePenaltyMode',
+  'overdueFixedDaysPerAsset',
+  'overdueDayMultiplier',
+];
 
 const addBusinessDaysInclusive = (
   startDate,
@@ -1757,6 +1800,8 @@ function App() {
   const [selectedNoticePostId, setSelectedNoticePostId] = useState('');
   const [noticePage, setNoticePage] = useState(1);
   const [adminNoticePage, setAdminNoticePage] = useState(1);
+  const [userNoticeQuery, setUserNoticeQuery] = useState('');
+  const [adminNoticeQuery, setAdminNoticeQuery] = useState('');
   const [noticePostDialog, setNoticePostDialog] = useState(null);
   const [noticePostForm, setNoticePostForm] = useState(
     createDefaultNoticePostForm
@@ -1987,8 +2032,120 @@ function App() {
     [data.settings.holidays, tempSettings.holidays]
   );
 
+  const assetCategorySettingsDirty = useMemo(() => {
+    const normalizeCategories = (categories = []) =>
+      categories
+        .map((category) => String(category || '').trim())
+        .filter(Boolean);
+
+    return (
+      JSON.stringify(normalizeCategories(tempAssetCategories)) !==
+        JSON.stringify(normalizeCategories(data.assetCategories || [])) ||
+      Object.keys(tempAssetCategoryRenameMap || {}).length > 0
+    );
+  }, [data.assetCategories, tempAssetCategories, tempAssetCategoryRenameMap]);
+
+  const peopleSettingsDirty = useMemo(() => {
+    const normalizeTeams = (teams = []) =>
+      teams
+        .map((team) => String(team || '').trim())
+        .filter(Boolean);
+
+    const normalizeBorrowers = (borrowers = []) =>
+      borrowers.map((borrower) => ({
+        id: String(borrower.id || ''),
+        name: String(borrower.name || '').trim(),
+        team: String(borrower.team || '').trim(),
+      }));
+
+    return (
+      JSON.stringify(normalizeTeams(tempTeams)) !==
+        JSON.stringify(normalizeTeams(data.teams || [])) ||
+      JSON.stringify(normalizeBorrowers(tempBorrowers)) !==
+        JSON.stringify(normalizeBorrowers(data.borrowers || []))
+    );
+  }, [data.borrowers, data.teams, tempBorrowers, tempTeams]);
+
+  const getComparableRentalPolicySettings = (settings = {}) => {
+    const excludeSaturdays =
+      settings.excludeSaturdays ??
+      settings.excludeWeekendsForStartDate ??
+      DEFAULT_EXCLUDE_SATURDAYS;
+    const excludeSundays =
+      settings.excludeSundays ??
+      settings.excludeWeekendsForStartDate ??
+      DEFAULT_EXCLUDE_SUNDAYS;
+
+    const normalizedSettings = normalizeRentalPolicySettings({
+      ...data.settings,
+      ...settings,
+      holidays: data.settings.holidays,
+      allowNonOverlappingSameAssetRequests:
+        settings.allowNonOverlappingSameAssetRequests ??
+        DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS,
+      adjustStartDateAfterWorkEnd:
+        settings.adjustStartDateToNextBusinessDay ??
+        settings.adjustStartDateAfterWorkEnd ??
+        DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY,
+      adjustStartDateToNextBusinessDay:
+        settings.adjustStartDateToNextBusinessDay ??
+        settings.adjustStartDateAfterWorkEnd ??
+        DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY,
+      excludeSaturdays,
+      excludeSundays,
+      excludeWeekendsForStartDate: excludeSaturdays && excludeSundays,
+      maxRentalDays: getSafeMaxRentalDays(settings),
+    });
+
+    const comparableSettings = Object.fromEntries(
+      RENTAL_POLICY_SETTING_KEYS.map((key) => [key, normalizedSettings[key]])
+    );
+
+    [
+      'maxRentalDays',
+      'rentalExtensionMaxCount',
+      'rentalExtensionBusinessDays',
+      'rentalExtensionRequestWaitDays',
+      'overdueFixedDaysPerAsset',
+      'overdueDayMultiplier',
+      'workEndTime',
+    ].forEach((key) => {
+      comparableSettings[key] = String(
+        settings[key] ?? normalizedSettings[key] ?? ''
+      );
+    });
+
+    return comparableSettings;
+  };
+
+  const rentalPolicySettingsDirty = useMemo(
+    () =>
+      JSON.stringify(getComparableRentalPolicySettings(tempSettings)) !==
+      JSON.stringify(getComparableRentalPolicySettings(data.settings)),
+    [data.settings, tempSettings]
+  );
+
+  const noticeBoardSettingsDirty =
+    noticeBoardConfigReady &&
+    getSafeNoticePostsPerPage(noticePostsPerPageInput) !==
+      getSafeNoticePostsPerPage(noticeBoardConfig.postsPerPage);
+
+  const faqBoardSettingsDirty =
+    faqBoardConfigReady &&
+    getSafeFaqPostsPerPage(faqPostsPerPageInput) !==
+      getSafeFaqPostsPerPage(faqBoardConfig.postsPerPage);
+
+  const currentAdminDeferredSettingsDirty = Boolean(
+    (adminTab === 'extensionSettings' && rentalPolicySettingsDirty) ||
+      (adminTab === 'holidaySettings' && holidaySettingsDirty) ||
+      (adminTab === 'categories' && assetCategorySettingsDirty) ||
+      (adminTab === 'people' && peopleSettingsDirty) ||
+      (adminTab === 'noticePosts' && noticeBoardSettingsDirty) ||
+      (adminTab === 'faqPosts' && faqBoardSettingsDirty)
+  );
+
   useEffect(() => {
-    if (adminTab !== 'holidaySettings' || !holidaySettingsDirty) {
+    if (view !== 'admin' || !currentAdminDeferredSettingsDirty) {
       return undefined;
     }
 
@@ -2002,7 +2159,7 @@ function App() {
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [adminTab, holidaySettingsDirty]);
+  }, [view, currentAdminDeferredSettingsDirty]);
 
   const [
     splitStorageFinalizeLoading,
@@ -3510,7 +3667,7 @@ function App() {
     noticeBoardConfig.postsPerPage
   );
 
-  const pinnedNoticePosts = useMemo(
+  const allPinnedNoticePosts = useMemo(
     () =>
       (noticePosts || []).filter(
         (post) => post.isPinned
@@ -3518,12 +3675,59 @@ function App() {
     [noticePosts]
   );
 
-  const regularNoticePosts = useMemo(
+  const allRegularNoticePosts = useMemo(
     () =>
       (noticePosts || []).filter(
         (post) => !post.isPinned
       ),
     [noticePosts]
+  );
+
+  const noticeRegularPostNumberById = useMemo(
+    () =>
+      new Map(
+        allRegularNoticePosts.map((post, index) => [
+          post.id,
+          allRegularNoticePosts.length - index,
+        ])
+      ),
+    [allRegularNoticePosts]
+  );
+
+  const pinnedNoticePosts = useMemo(
+    () =>
+      filterNoticePostsByQuery(
+        allPinnedNoticePosts,
+        userNoticeQuery
+      ),
+    [allPinnedNoticePosts, userNoticeQuery]
+  );
+
+  const regularNoticePosts = useMemo(
+    () =>
+      filterNoticePostsByQuery(
+        allRegularNoticePosts,
+        userNoticeQuery
+      ),
+    [allRegularNoticePosts, userNoticeQuery]
+  );
+
+  const adminPinnedNoticePosts = useMemo(
+    () =>
+      filterNoticePostsByQuery(
+        allPinnedNoticePosts,
+        adminNoticeQuery
+      ),
+    [allPinnedNoticePosts, adminNoticeQuery]
+  );
+
+  const adminRegularNoticePosts = useMemo(
+    () =>
+      filterNoticePostsByQuery(
+        allRegularNoticePosts,
+        adminNoticeQuery
+      ),
+    [allRegularNoticePosts, adminNoticeQuery]
   );
 
   const noticeTotalPages = Math.max(
@@ -3554,7 +3758,13 @@ function App() {
     ]
   );
 
-  const adminNoticeTotalPages = noticeTotalPages;
+  const adminNoticeTotalPages = Math.max(
+    1,
+    Math.ceil(
+      adminRegularNoticePosts.length /
+      noticePostsPerPage
+    )
+  );
 
   const safeAdminNoticePage = Math.min(
     adminNoticePage,
@@ -3563,14 +3773,14 @@ function App() {
 
   const paginatedAdminNoticePosts = useMemo(
     () =>
-      regularNoticePosts.slice(
+      adminRegularNoticePosts.slice(
         (safeAdminNoticePage - 1) *
           noticePostsPerPage,
         safeAdminNoticePage *
           noticePostsPerPage
       ),
     [
-      regularNoticePosts,
+      adminRegularNoticePosts,
       safeAdminNoticePage,
       noticePostsPerPage,
     ]
@@ -6599,14 +6809,16 @@ function App() {
     setEditingAssetCategoryName('');
   };
 
-  const cancelTempAssetCategoryChanges = () => {
+  const cancelTempAssetCategoryChanges = ({ silent = false } = {}) => {
     setTempAssetCategories(data.assetCategories || []);
     setTempAssetCategoryRenameMap({});
     setEditingAssetCategoryIndex(null);
     setEditingAssetCategoryName('');
     setDraggingAssetCategoryIndex(null);
     setNewAssetCategory('');
-    triggerToast('자산 카테고리 변경사항이 취소되고 이전 상태로 복원되었습니다.', 'success');
+    if (!silent) {
+      triggerToast('자산 카테고리 변경사항이 취소되고 이전 상태로 복원되었습니다.', 'success');
+    }
   };
 
   const saveTempAssetCategoryChanges = async () => {
@@ -6615,7 +6827,7 @@ function App() {
         'Firestore 분리 저장소 최종 전환이 완료되지 않아 자산 카테고리를 저장할 수 없습니다.',
         'error'
       );
-      return;
+      return false;
     }
 
     const nextAssetCategories =
@@ -6638,7 +6850,7 @@ function App() {
         `[${duplicatedCategory}] 카테고리명이 중복되어 저장할 수 없습니다.`,
         'error'
       );
-      return;
+      return false;
     }
 
     try {
@@ -6783,6 +6995,8 @@ function App() {
         '자산 카테고리 변경사항이 분리 저장소에 성공적으로 저장 및 반영되었습니다.',
         'success'
       );
+
+      return true;
     } catch (error) {
       console.error(
         'Asset category save error:',
@@ -6797,7 +7011,7 @@ function App() {
           `진행 중 예약이 있는 자산 [${error.assetNo}]이(가) 포함되어 카테고리명을 변경할 수 없습니다. 해당 신청을 먼저 완료해 주세요.`,
           'error'
         );
-        return;
+        return false;
       }
 
       if (
@@ -6808,13 +7022,15 @@ function App() {
           `카테고리 [${error.category}]를 사용하는 최신 자산이 있어 삭제할 수 없습니다.`,
           'error'
         );
-        return;
+        return false;
       }
 
       triggerToast(
         '자산 카테고리 저장에 실패했습니다. 기존 카테고리와 자산 정보는 유지됩니다.',
         'error'
       );
+
+      return false;
     }
   };
 
@@ -6995,7 +7211,7 @@ function App() {
     setEditingBorrowerName('');
   };
 
-  const cancelTempPeopleChanges = () => {
+  const cancelTempPeopleChanges = ({ silent = false } = {}) => {
     setTempTeams(data.teams || []);
     setTempBorrowers(data.borrowers || []);
     setEditingTeamIndex(null);
@@ -7007,7 +7223,9 @@ function App() {
     setNewTeam('');
     setNewBorrower('');
     setNewBorrowerTeam('전체');
-    triggerToast('부서·사용자 변경사항이 취소되고 이전 상태로 복원되었습니다.', 'success');
+    if (!silent) {
+      triggerToast('부서·사용자 변경사항이 취소되고 이전 상태로 복원되었습니다.', 'success');
+    }
   };
 
   const saveTempPeopleChanges = async () => {
@@ -7016,7 +7234,7 @@ function App() {
         'Firestore 분리 저장소 최종 전환이 완료되지 않아 부서·사용자 정보를 저장할 수 없습니다.',
         'error'
       );
-      return;
+      return false;
     }
 
     const nextTeams = tempTeams
@@ -7037,7 +7255,7 @@ function App() {
         `[${duplicatedTeam}] 부서명이 중복되어 저장할 수 없습니다.`,
         'error'
       );
-      return;
+      return false;
     }
 
     const nextBorrowers =
@@ -7080,7 +7298,7 @@ function App() {
         `[${duplicatedBorrower.team}] ${duplicatedBorrower.name} 사용자명이 중복되어 저장할 수 없습니다.`,
         'error'
       );
-      return;
+      return false;
     }
 
     try {
@@ -7172,6 +7390,8 @@ function App() {
         '부서·사용자 변경사항이 분리 저장소에 성공적으로 저장 및 반영되었습니다.',
         'success'
       );
+
+      return true;
     } catch (error) {
       console.error(
         'People data save error:',
@@ -7182,6 +7402,8 @@ function App() {
         '부서·사용자 저장에 실패했습니다. 기존 데이터는 유지됩니다.',
         'error'
       );
+
+      return false;
     }
   };
 
@@ -7191,7 +7413,7 @@ function App() {
         'Firestore 분리 저장소 최종 전환이 완료되지 않아 대여 정책을 저장할 수 없습니다.',
         'error'
       );
-      return;
+      return false;
     }
 
     if (
@@ -7202,7 +7424,7 @@ function App() {
         '기본 최장 허용 대여 기간은 1 이상의 정수로 입력해 주세요.',
         'error'
       );
-      return;
+      return false;
     }
 
     if (
@@ -7217,7 +7439,7 @@ function App() {
         '대여 연장 횟수와 회당 연장 영업일은 1 이상, 연장 신청 대기일은 0 이상으로 입력해 주세요.',
         'error'
       );
-      return;
+      return false;
     }
 
     if (
@@ -7239,7 +7461,7 @@ function App() {
         '연체 페널티의 기기당 고정 일수와 연체일 배수는 1 이상의 정수로 입력해 주세요.',
         'error'
       );
-      return;
+      return false;
     }
 
     const excludeSaturdays =
@@ -7272,33 +7494,11 @@ function App() {
       maxRentalDays: getSafeMaxRentalDays(tempSettings),
     });
 
-    const policySettingKeys = [
-      'maxRentalDays',
-      'allowNonOverlappingSameAssetRequests',
-      'adjustStartDateAfterWorkEnd',
-      'adjustStartDateToNextBusinessDay',
-      'excludeSaturdays',
-      'excludeSundays',
-      'excludeWeekendsForStartDate',
-      'excludeHolidaysForStartDate',
-      'workEndTime',
-      'rentalExtensionEnabled',
-      'rentalExtensionApprovalMode',
-      'rentalExtensionMaxCount',
-      'rentalExtensionBusinessDays',
-      'rentalExtensionRequestWaitDays',
-      'overdueRentalBlockEnabled',
-      'postOverduePenaltyEnabled',
-      'overduePenaltyMode',
-      'overdueFixedDaysPerAsset',
-      'overdueDayMultiplier',
-    ];
-
     const policyValues = Object.fromEntries(
-      policySettingKeys.map((key) => [key, normalizedPolicySettings[key]])
+      RENTAL_POLICY_SETTING_KEYS.map((key) => [key, normalizedPolicySettings[key]])
     );
     const firestorePolicyUpdates = Object.fromEntries(
-      policySettingKeys.map((key) => [
+      RENTAL_POLICY_SETTING_KEYS.map((key) => [
         `settings.${key}`,
         normalizedPolicySettings[key],
       ])
@@ -7329,6 +7529,8 @@ function App() {
         '대여 정책 변경사항이 성공적으로 저장 및 반영되었습니다.',
         'success'
       );
+
+      return true;
     } catch (error) {
       console.error('Rental policy settings save error:', error);
 
@@ -7336,6 +7538,8 @@ function App() {
         '대여 정책 저장에 실패했습니다. 기존 설정은 유지됩니다.',
         'error'
       );
+
+      return false;
     }
   };
 
@@ -7345,7 +7549,7 @@ function App() {
         'Firestore 분리 저장소 최종 전환이 완료되지 않아 휴일을 저장할 수 없습니다.',
         'error'
       );
-      return;
+      return false;
     }
 
     const nextHolidays = serializeHolidayListForFirestore(
@@ -7378,6 +7582,8 @@ function App() {
         '휴일 변경사항이 성공적으로 저장 및 반영되었습니다.',
         'success'
       );
+
+      return true;
     } catch (error) {
       console.error('Holiday settings save error:', error);
 
@@ -7385,6 +7591,8 @@ function App() {
         '휴일 저장에 실패했습니다. 기존 설정은 유지됩니다.',
         'error'
       );
+
+      return false;
     }
   };
 
@@ -7400,24 +7608,117 @@ function App() {
     setHolidayImportLoading(false);
   };
 
+  const discardRentalPolicyChanges = () => {
+    const savedPolicyValues = getComparableRentalPolicySettings(data.settings);
+
+    setTempSettings((prev) => ({
+      ...prev,
+      ...savedPolicyValues,
+      holidays: prev.holidays,
+    }));
+  };
+
+  const discardNoticeBoardConfigChanges = () => {
+    setNoticePostsPerPageInput(
+      getSafeNoticePostsPerPage(noticeBoardConfig.postsPerPage)
+    );
+  };
+
+  const discardFaqBoardConfigChanges = () => {
+    setFaqPostsPerPageInput(
+      getSafeFaqPostsPerPage(faqBoardConfig.postsPerPage)
+    );
+  };
+
+  const getAdminDeferredChangesConfig = (tab) => {
+    if (tab === 'extensionSettings' && rentalPolicySettingsDirty) {
+      return {
+        label: '대여 정책',
+        discard: discardRentalPolicyChanges,
+        save: saveSystemSettings,
+      };
+    }
+
+    if (tab === 'holidaySettings' && holidaySettingsDirty) {
+      return {
+        label: '휴일',
+        discard: discardHolidayChanges,
+        save: saveHolidaySettings,
+      };
+    }
+
+    if (tab === 'categories' && assetCategorySettingsDirty) {
+      return {
+        label: '자산 카테고리',
+        discard: () => cancelTempAssetCategoryChanges({ silent: true }),
+        save: saveTempAssetCategoryChanges,
+      };
+    }
+
+    if (tab === 'people' && peopleSettingsDirty) {
+      return {
+        label: '부서·사용자',
+        discard: () => cancelTempPeopleChanges({ silent: true }),
+        save: saveTempPeopleChanges,
+      };
+    }
+
+    if (tab === 'noticePosts' && noticeBoardSettingsDirty) {
+      return {
+        label: '공지사항 목록 설정',
+        discard: discardNoticeBoardConfigChanges,
+        save: saveNoticeBoardConfig,
+      };
+    }
+
+    if (tab === 'faqPosts' && faqBoardSettingsDirty) {
+      return {
+        label: 'FAQ 목록 설정',
+        discard: discardFaqBoardConfigChanges,
+        save: saveFaqBoardConfig,
+      };
+    }
+
+    return null;
+  };
+
   const handleAdminTabChange = (nextTab) => {
     if (!nextTab || nextTab === adminTab) {
       return;
     }
 
-    if (adminTab === 'holidaySettings' && holidaySettingsDirty) {
-      triggerConfirm(
-        '저장되지 않은 휴일 변경사항',
-        '저장되지 않은 휴일 변경사항이 있습니다. 저장하지 않고 다른 메뉴로 이동하시겠습니까?',
-        () => {
-          discardHolidayChanges();
-          setAdminTab(nextTab);
-        }
-      );
+    const deferredChanges = getAdminDeferredChangesConfig(adminTab);
+
+    if (!deferredChanges) {
+      setAdminTab(nextTab);
       return;
     }
 
-    setAdminTab(nextTab);
+    setConfirmModal({
+      title: `저장되지 않은 ${deferredChanges.label} 변경사항`,
+      message: `저장되지 않은 ${deferredChanges.label} 변경사항이 있습니다. 변경사항을 저장한 후 이동하시겠습니까?`,
+      cancelLabel: '계속 편집',
+      secondaryLabel: '저장하지 않고 이동',
+      confirmLabel: '저장 후 이동',
+      confirmLoadingLabel: '저장 중...',
+      variant: 'primary',
+      secondaryVariant: 'outline',
+      onSecondary: () => {
+        deferredChanges.discard();
+        setAdminTab(nextTab);
+        return true;
+      },
+      onConfirm: async () => {
+        const saved = await deferredChanges.save();
+
+        if (!saved) {
+          return false;
+        }
+
+        setAdminTab(nextTab);
+        return true;
+      },
+    });
   };
 
   const shouldShowStats =
@@ -10657,7 +10958,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         '관리자 인증 후 공지사항 목록 설정을 저장할 수 있습니다.',
         'error'
       );
-      return;
+      return false;
     }
 
     const postsPerPage =
@@ -10677,6 +10978,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         }
       );
 
+      setNoticeBoardConfig((prev) => ({ ...prev, postsPerPage }));
+      setNoticePostsPerPageInput(postsPerPage);
       setNoticePage(1);
       setAdminNoticePage(1);
 
@@ -10684,6 +10987,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         `공지사항 일반 게시글을 페이지당 ${postsPerPage}개씩 표시하도록 저장했습니다.`,
         'success'
       );
+
+      return true;
     } catch (error) {
       console.error(
         'Notice board config save error:',
@@ -10698,6 +11003,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         }`,
         'error'
       );
+
+      return false;
     } finally {
       setNoticeBoardConfigSaving(false);
     }
@@ -11019,7 +11326,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         '관리자 인증 후 FAQ 목록 설정을 저장할 수 있습니다.',
         'error'
       );
-      return;
+      return false;
     }
 
     const postsPerPage =
@@ -11039,6 +11346,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         }
       );
 
+      setFaqBoardConfig((prev) => ({ ...prev, postsPerPage }));
+      setFaqPostsPerPageInput(postsPerPage);
       setFaqPage(1);
       setAdminFaqPage(1);
       setExpandedFaqPostId('');
@@ -11048,6 +11357,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         `FAQ 일반 게시글을 페이지당 ${postsPerPage}개씩 표시하도록 저장했습니다.`,
         'success'
       );
+
+      return true;
     } catch (error) {
       console.error(
         'FAQ board config save error:',
@@ -11062,6 +11373,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         }`,
         'error'
       );
+
+      return false;
     } finally {
       setFaqBoardConfigSaving(false);
     }
@@ -14613,6 +14926,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     LogOut,
     NOTICE_POSTS_PER_PAGE_OPTIONS,
     OVERDUE_PENALTY_MODE,
+    Pin,
     Plus,
     RENTAL_EXTENSION_APPROVAL_MODE,
     RENTAL_REQUEST_AUDIT_ACTION,
@@ -14654,9 +14968,12 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     adminLaptopQuery,
     adminMyProfileForm,
     adminMyProfileSaving,
+    adminNoticeQuery,
     adminNoticeTotalPages,
     adminPinnedFaqPosts,
+    adminPinnedNoticePosts,
     adminRegularFaqPosts,
+    adminRegularNoticePosts,
     adminRequestEditBorrowers,
     adminRequestEditDialog,
     adminRequestEditForm,
@@ -14834,6 +15151,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     noticePostsPerPage,
     noticePostsPerPageInput,
     noticePostsReady,
+    noticeRegularPostNumberById,
     noticeTotalPages,
     openAdminRequestEditDialog,
     openAdminRequestRestoreDialog,
@@ -14907,6 +15225,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     setAdminLaptopQuery,
     setAdminMyProfileForm,
     setAdminNoticePage,
+    setAdminNoticeQuery,
     setAdminRequestEditForm,
     setAdminRequestPage,
     setAdminRequestPageSize,
@@ -14957,6 +15276,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     setNewTeam,
     setNoticePage,
     setNoticePostForm,
+    setUserNoticeQuery,
     setNoticePostsPerPageInput,
     setQuery,
     setSelectedAdminRequestId,
@@ -15009,6 +15329,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     userProfileForm,
     userProfileReady,
     userProfileSaving,
+    userNoticeQuery,
     userTab,
   };
 

@@ -878,21 +878,116 @@ export default function AppDialogs({ ctx }) {
             animate={{ opacity: 1, scale: 1 }}
             className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
           >
-            <h3 className="text-base font-bold text-slate-900">{confirmModal.title}</h3>
-            <p className="mt-2 text-xs text-slate-600 leading-relaxed">{confirmModal.message}</p>
-            <div className="mt-6 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setConfirmModal(null)} className="rounded-xl px-4 py-2">
-                취소
-              </Button>
+            <h3 className="text-base font-bold text-slate-900">
+              {confirmModal.title}
+            </h3>
+            <p className="mt-2 whitespace-pre-line text-xs leading-relaxed text-slate-600">
+              {confirmModal.message}
+            </p>
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button
-                variant="danger"
-                onClick={() => {
-                  confirmModal.onConfirm();
-                  setConfirmModal(null);
+                variant="outline"
+                disabled={confirmModal.isProcessing}
+                onClick={() => setConfirmModal(null)}
+                className="rounded-xl px-4 py-2"
+              >
+                {confirmModal.cancelLabel || '취소'}
+              </Button>
+
+              {confirmModal.secondaryLabel && confirmModal.onSecondary && (
+                <Button
+                  variant={confirmModal.secondaryVariant || 'outline'}
+                  disabled={confirmModal.isProcessing}
+                  onClick={async () => {
+                    setConfirmModal((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            isProcessing: true,
+                          }
+                        : prev
+                    );
+
+                    try {
+                      const result = await confirmModal.onSecondary();
+
+                      if (result === false) {
+                        setConfirmModal((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                isProcessing: false,
+                              }
+                            : prev
+                        );
+                        return;
+                      }
+
+                      setConfirmModal(null);
+                    } catch (error) {
+                      console.error('Secondary confirm action error:', error);
+                      setConfirmModal((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              isProcessing: false,
+                            }
+                          : prev
+                      );
+                    }
+                  }}
+                  className="rounded-xl px-4 py-2"
+                >
+                  {confirmModal.secondaryLabel}
+                </Button>
+              )}
+
+              <Button
+                variant={confirmModal.variant || 'danger'}
+                disabled={confirmModal.isProcessing}
+                onClick={async () => {
+                  setConfirmModal((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          isProcessing: true,
+                        }
+                      : prev
+                  );
+
+                  try {
+                    const result = await confirmModal.onConfirm?.();
+
+                    if (result === false) {
+                      setConfirmModal((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              isProcessing: false,
+                            }
+                          : prev
+                      );
+                      return;
+                    }
+
+                    setConfirmModal(null);
+                  } catch (error) {
+                    console.error('Confirm action error:', error);
+                    setConfirmModal((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            isProcessing: false,
+                          }
+                        : prev
+                    );
+                  }
                 }}
                 className="rounded-xl px-4 py-2"
               >
-                확인 및 실행
+                {confirmModal.isProcessing
+                  ? confirmModal.confirmLoadingLabel || '처리 중...'
+                  : confirmModal.confirmLabel || '확인 및 실행'}
               </Button>
             </div>
           </motion.div>
