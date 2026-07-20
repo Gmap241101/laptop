@@ -669,32 +669,35 @@ export default function AdminHolidayManagementPanel({ ctx }) {
                               : 'bg-slate-50/70 text-slate-300 hover:bg-slate-100'
                         }`}
                       >
-                        <div className="flex items-center justify-between gap-1">
-                          <span
-                            className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full text-[11px] font-bold sm:text-xs ${
-                              isToday
-                                ? 'bg-slate-900 text-white'
-                                : cell.weekday === 0
+                        <span
+                          className={`absolute right-2 top-2 inline-flex h-6 min-w-6 items-center justify-center rounded-full text-[11px] font-bold sm:text-xs ${
+                            reasons.length > 0
+                              ? cell.isCurrentMonth
+                                ? 'text-rose-500'
+                                : 'text-rose-300'
+                              : cell.weekday === 0
+                                ? cell.isCurrentMonth
                                   ? 'text-rose-500'
-                                  : cell.weekday === 6
+                                  : 'text-rose-300'
+                                : cell.weekday === 6
+                                  ? cell.isCurrentMonth
                                     ? 'text-blue-500'
-                                    : cell.isCurrentMonth
-                                      ? 'text-slate-700'
-                                      : 'text-slate-300'
-                            }`}
-                          >
-                            {cell.day}
-                          </span>
-                          {reasons.length > 0 && (
-                            <span className="text-[9px] font-bold text-orange-600 sm:hidden">
-                              {reasons.length}
-                            </span>
-                          )}
-                        </div>
+                                    : 'text-blue-300'
+                                  : cell.isCurrentMonth
+                                    ? 'text-slate-700'
+                                    : 'text-slate-300'
+                          } ${
+                            isToday
+                              ? 'bg-white ring-2 ring-slate-900 ring-offset-1'
+                              : ''
+                          }`}
+                        >
+                          {cell.day}
+                        </span>
 
                         {reasons.length > 0 && (
                           <>
-                            <div className="mt-1 flex gap-0.5 sm:hidden">
+                            <div className="flex gap-0.5 pt-7 sm:hidden">
                               {reasons.slice(0, 3).map((reason, reasonIndex) => (
                                 <span
                                   key={`${reason.type}-${reasonIndex}`}
@@ -705,7 +708,7 @@ export default function AdminHolidayManagementPanel({ ctx }) {
                               ))}
                             </div>
 
-                            <div className="mt-1.5 hidden space-y-1 sm:block">
+                            <div className="hidden space-y-1 pt-7 sm:block">
                               {reasons.slice(0, 2).map((reason, reasonIndex) => (
                                 <div
                                   key={`${reason.type}-${reason.name}-${reasonIndex}`}
