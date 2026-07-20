@@ -50,6 +50,17 @@ export const POPUP_POSTS_COLLECTION_REF = collection(
   'popupPosts'
 );
 
+export const FOOTER_PAGES_COLLECTION_REF = collection(
+  db,
+  'footerPages'
+);
+
+export const SITE_FOOTER_CONFIG_DOC_REF = doc(
+  db,
+  'siteFooter',
+  'config'
+);
+
 export const NOTICE_BOARD_CONFIG_DOC_REF = doc(
   db,
   'noticeBoard',

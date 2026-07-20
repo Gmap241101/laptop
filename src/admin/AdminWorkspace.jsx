@@ -7,6 +7,7 @@ import AdminOrganizationPanel from './AdminOrganizationPanel.jsx';
 import AdminNoticePanel from './AdminNoticePanel.jsx';
 import AdminPopupPanel from './AdminPopupPanel.jsx';
 import AdminFaqPanel from './AdminFaqPanel.jsx';
+import AdminFooterPanel from './AdminFooterPanel.jsx';
 import AdminMemberAccountsPanel from './AdminMemberAccountsPanel.jsx';
 import AdminAccountsPanel from './AdminAccountsPanel.jsx';
 import AdminSettingsPanel from './AdminSettingsPanel.jsx';
@@ -480,6 +481,7 @@ export default function AdminWorkspace({ ctx }) {
                     ['noticePosts', ClipboardList, '공지사항 관리'],
                     ['popupPosts', ClipboardList, '팝업 관리'],
                     ['faqPosts', ClipboardList, 'FAQ 관리'],
+                    ['footerManagement', ClipboardList, '푸터 관리'],
                     ['memberAccounts', UserCircle, '회원 계정 관리'],
                     ['adminAccounts', ShieldCheck, '관리자 ID 관리'],
                     ['settings', Settings, '시스템 관리'],
@@ -554,6 +556,11 @@ export default function AdminWorkspace({ ctx }) {
                                     {/* FAQ 관리 탭 */}
                   {adminTab === 'faqPosts' && (
                     <AdminFaqPanel ctx={ctx} />
+                  )}
+
+                  {/* 푸터 관리 탭 */}
+                  {adminTab === 'footerManagement' && (
+                    <AdminFooterPanel ctx={ctx} />
                   )}
 
                   {/* 회원 계정 승인·차단 관리 탭 */}

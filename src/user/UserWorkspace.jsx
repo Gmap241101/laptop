@@ -3,6 +3,7 @@ import UserBoardPanel from './UserBoardPanel.jsx';
 import UserMyPagePanel from './UserMyPagePanel.jsx';
 import UserRentalPanel from './UserRentalPanel.jsx';
 import UserRequestHistoryPanel from './UserRequestHistoryPanel.jsx';
+import UserFooterPagePanel from './UserFooterPagePanel.jsx';
 
 export default function UserWorkspace({ ctx }) {
   const { userTab } = ctx;
@@ -21,6 +22,10 @@ export default function UserWorkspace({ ctx }) {
 
   if (userTab === 'history') {
     return <UserRequestHistoryPanel ctx={ctx} />;
+  }
+
+  if (userTab === 'footerPage') {
+    return <UserFooterPagePanel ctx={ctx} />;
   }
 
   return <UserBoardPanel ctx={ctx} />;

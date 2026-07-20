@@ -63,6 +63,7 @@ import {
 
 import UserWorkspace from './user/UserWorkspace.jsx';
 import UserPopupLayer from './user/UserPopupLayer.jsx';
+import UserFooter from './user/UserFooter.jsx';
 import AdminWorkspace from './admin/AdminWorkspace.jsx';
 import AppDialogs from './dialogs/AppDialogs.jsx';
 import {
@@ -77,6 +78,7 @@ import {
   FAQ_BOARD_CONFIG_DOC_REF,
   FAQ_CATEGORIES_COLLECTION_REF,
   FAQ_POSTS_COLLECTION_REF,
+  FOOTER_PAGES_COLLECTION_REF,
   NOTICE_BOARD_CONFIG_DOC_REF,
   NOTICE_POSTS_COLLECTION_REF,
   POPUP_POSTS_COLLECTION_REF,
@@ -88,6 +90,7 @@ import {
   RENTAL_REQUEST_LOGS_COLLECTION_REF,
   RENTAL_REQUESTS_COLLECTION_REF,
   RENTAL_RESTRICTIONS_COLLECTION_REF,
+  SITE_FOOTER_CONFIG_DOC_REF,
   USER_ACCOUNTS_COLLECTION_NAME,
   USER_ACCOUNTS_COLLECTION_REF,
   adminAccountCreationAuth,
@@ -246,6 +249,31 @@ const createDefaultPopupPostForm = () => ({
   isIndefinite: false,
   targetPages: ['home'],
 });
+
+const createDefaultFooterConfigDraft = () => ({
+  enabled: true,
+  contentHtml: '',
+});
+
+const createDefaultFooterPageForm = () => ({
+  enabled: true,
+  title: '',
+  isTitleBold: false,
+  contentHtml: '',
+});
+
+const sanitizeFooterCommonHtml = (html = '') => {
+  const sanitized = sanitizeRichTextHtml(html);
+  if (typeof document === 'undefined') return sanitized;
+
+  const container = document.createElement('div');
+  container.innerHTML = sanitized;
+  container.querySelectorAll('iframe, video, [data-video-provider]').forEach((node) => {
+    const wrapper = node.closest?.('[data-video-provider]');
+    (wrapper || node).remove();
+  });
+  return sanitizeRichTextHtml(container.innerHTML);
+};
 
 const getPopupDateMillis = (value) => {
   if (!value) return 0;
@@ -1473,20 +1501,30 @@ const getRouteStateFromPath = () => {
     return { view: 'user', userTab: 'faq' };
   }
 
-  return { view: 'user', userTab: 'notFound' };
+  if (pathname.startsWith('/info/')) {
+    const footerPageId = decodeURIComponent(pathname.slice('/info/'.length));
+    if (footerPageId) {
+      return { view: 'user', userTab: 'footerPage', footerPageId };
+    }
+  }
+
+  return { view: 'user', userTab: 'notFound', footerPageId: '' };
 };
 
 const getInitialViewFromPath = () => getRouteStateFromPath().view;
 
 const getInitialUserTabFromPath = () => getRouteStateFromPath().userTab;
+const getInitialFooterPageIdFromPath = () => getRouteStateFromPath().footerPageId || '';
 
-const pushAppPath = (nextView, nextUserTab = 'home') => {
+const pushAppPath = (nextView, nextUserTab = 'home', routeId = '') => {
   if (typeof window === 'undefined') return;
 
   const routeSuffix =
     nextView === 'admin'
       ? '/admin'
-      : USER_ROUTE_PATHS[nextUserTab] || '';
+      : nextUserTab === 'footerPage' && routeId
+        ? `/info/${encodeURIComponent(routeId)}`
+        : USER_ROUTE_PATHS[nextUserTab] || '';
 
   const nextPath = routeSuffix || '/';
 
@@ -1916,6 +1954,21 @@ function App() {
   const [popupPostSaving, setPopupPostSaving] = useState(false);
   const [popupPostDeletingId, setPopupPostDeletingId] = useState('');
   const [popupPostToggleSavingId, setPopupPostToggleSavingId] = useState('');
+
+  const [footerConfig, setFooterConfig] = useState(createDefaultFooterConfigDraft);
+  const [footerConfigDraft, setFooterConfigDraft] = useState(createDefaultFooterConfigDraft);
+  const [footerConfigReady, setFooterConfigReady] = useState(false);
+  const [footerConfigLoadErrorMessage, setFooterConfigLoadErrorMessage] = useState('');
+  const [footerConfigSaving, setFooterConfigSaving] = useState(false);
+  const [footerPages, setFooterPages] = useState([]);
+  const [footerPagesReady, setFooterPagesReady] = useState(false);
+  const [footerPagesLoadErrorMessage, setFooterPagesLoadErrorMessage] = useState('');
+  const [footerPageDialog, setFooterPageDialog] = useState(null);
+  const [footerPageForm, setFooterPageForm] = useState(createDefaultFooterPageForm);
+  const [footerPageSaving, setFooterPageSaving] = useState(false);
+  const [footerPageDeletingId, setFooterPageDeletingId] = useState('');
+  const [footerPageToggleSavingId, setFooterPageToggleSavingId] = useState('');
+
   const [popupNowMs, setPopupNowMs] = useState(Date.now());
   const [temporarilyDismissedPopupVersions, setTemporarilyDismissedPopupVersions] = useState([]);
   const [dismissedPopupSessionVersions, setDismissedPopupSessionVersions] = useState(() => {
@@ -2032,7 +2085,8 @@ function App() {
   const adminLogoutInProgressRef = useRef(false);
 
   const [view, setView] = useState(getInitialViewFromPath); // 'user' | 'admin'
-  const [userTab, setUserTab] = useState(getInitialUserTabFromPath); // 'home' | 'rental' | 'history' | 'notice' | 'faq' | 'notFound'
+  const [userTab, setUserTab] = useState(getInitialUserTabFromPath); // 'home' | 'rental' | 'history' | 'notice' | 'faq' | 'footerPage' | 'notFound'
+  const [selectedFooterPageId, setSelectedFooterPageId] = useState(getInitialFooterPageIdFromPath);
   const [isCommunityMenuOpen, setIsCommunityMenuOpen] = useState(false);
   const communityMenuRef = useRef(null);
   const [query, setQuery] = useState('');
@@ -2272,13 +2326,20 @@ function App() {
     getSafeFaqPostsPerPage(faqPostsPerPageInput) !==
       getSafeFaqPostsPerPage(faqBoardConfig.postsPerPage);
 
+  const footerConfigDirty =
+    footerConfigReady &&
+    (Boolean(footerConfigDraft.enabled) !== Boolean(footerConfig.enabled) ||
+      sanitizeFooterCommonHtml(footerConfigDraft.contentHtml || '') !==
+        sanitizeFooterCommonHtml(footerConfig.contentHtml || ''));
+
   const currentAdminDeferredSettingsDirty = Boolean(
     (adminTab === 'extensionSettings' && rentalPolicySettingsDirty) ||
       (adminTab === 'holidaySettings' && holidaySettingsDirty) ||
       (adminTab === 'categories' && assetCategorySettingsDirty) ||
       (adminTab === 'people' && peopleSettingsDirty) ||
       (adminTab === 'noticePosts' && noticeBoardSettingsDirty) ||
-      (adminTab === 'faqPosts' && faqBoardSettingsDirty)
+      (adminTab === 'faqPosts' && faqBoardSettingsDirty) ||
+      (adminTab === 'footerManagement' && footerConfigDirty)
   );
 
   useEffect(() => {
@@ -2633,6 +2694,7 @@ function App() {
     pushAppPath('user', 'home');
     setView('user');
     setUserTab('home');
+    setSelectedFooterPageId('');
     setIsCommunityMenuOpen(false);
   };
 
@@ -2661,6 +2723,7 @@ function App() {
 
       setView(nextRouteState.view);
       setUserTab(nextRouteState.userTab);
+      setSelectedFooterPageId(nextRouteState.footerPageId || '');
       setIsCommunityMenuOpen(false);
     };
 
@@ -4852,6 +4915,100 @@ function App() {
 
     return unsubscribe;
   }, [firebaseAuthUser?.uid, isAdminAuthenticated, userTab, view]);
+
+  useEffect(() => {
+    setFooterConfigReady(false);
+    setFooterConfigLoadErrorMessage('');
+
+    const unsubscribe = onSnapshot(
+      SITE_FOOTER_CONFIG_DOC_REF,
+      (snapshot) => {
+        const remoteData = snapshot.exists() ? snapshot.data() : {};
+        const nextConfig = {
+          enabled: snapshot.exists() ? remoteData.enabled !== false : true,
+          content: remoteData.content || '',
+          contentText: remoteData.contentText || remoteData.content || '',
+          contentHtml: sanitizeFooterCommonHtml(
+            remoteData.contentHtml ||
+              legacyTextToRichHtml(remoteData.contentText || remoteData.content || '')
+          ),
+          contentFormat: remoteData.contentFormat || 'rich-html-v1',
+          updatedAt: remoteData.updatedAt || null,
+        };
+
+        setFooterConfig(nextConfig);
+        setFooterConfigDraft({
+          enabled: nextConfig.enabled,
+          contentHtml: nextConfig.contentHtml,
+        });
+        setFooterConfigLoadErrorMessage('');
+        setFooterConfigReady(true);
+      },
+      (error) => {
+        const message =
+          '푸터 공통 정보를 불러오지 못했습니다. Firestore Rules의 siteFooter 읽기 권한을 확인해 주세요.';
+        console.error('Footer config sync error:', error);
+        setFooterConfig(createDefaultFooterConfigDraft());
+        setFooterConfigDraft(createDefaultFooterConfigDraft());
+        setFooterConfigLoadErrorMessage(message);
+        setFooterConfigReady(true);
+        if (isAdminAuthenticated) triggerToast(message, 'error');
+      }
+    );
+
+    return unsubscribe;
+  }, [isAdminAuthenticated]);
+
+  useEffect(() => {
+    setFooterPagesReady(false);
+    setFooterPagesLoadErrorMessage('');
+
+    const footerPagesSource = isAdminAuthenticated
+      ? FOOTER_PAGES_COLLECTION_REF
+      : firestoreQuery(
+          FOOTER_PAGES_COLLECTION_REF,
+          where('enabled', '==', true)
+        );
+
+    const unsubscribe = onSnapshot(
+      footerPagesSource,
+      (snapshot) => {
+        const remotePages = snapshot.docs
+          .map((pageDoc) => ({
+            ...pageDoc.data(),
+            id: pageDoc.id,
+          }))
+          .sort((first, second) => {
+            const orderDifference =
+              (Number(first.sortOrder) || 0) -
+              (Number(second.sortOrder) || 0);
+            if (orderDifference !== 0) return orderDifference;
+
+            const createdDifference =
+              getFirestoreTimestampMillis(first.createdAt) -
+              getFirestoreTimestampMillis(second.createdAt);
+            if (createdDifference !== 0) return createdDifference;
+
+            return String(first.id || '').localeCompare(String(second.id || ''));
+          });
+
+        setFooterPages(remotePages);
+        setFooterPagesLoadErrorMessage('');
+        setFooterPagesReady(true);
+      },
+      (error) => {
+        const message =
+          '푸터 메뉴 페이지를 불러오지 못했습니다. Firestore Rules의 footerPages 읽기 권한을 확인해 주세요.';
+        console.error('Footer pages sync error:', error);
+        setFooterPages([]);
+        setFooterPagesLoadErrorMessage(message);
+        setFooterPagesReady(true);
+        if (isAdminAuthenticated) triggerToast(message, 'error');
+      }
+    );
+
+    return unsubscribe;
+  }, [isAdminAuthenticated]);
 
   useEffect(() => {
     const updateNow = () => setPopupNowMs(Date.now());
@@ -7881,6 +8038,13 @@ function App() {
     );
   };
 
+  const discardFooterConfigChanges = () => {
+    setFooterConfigDraft({
+      enabled: Boolean(footerConfig.enabled),
+      contentHtml: footerConfig.contentHtml || '',
+    });
+  };
+
   const getAdminDeferredChangesConfig = (tab) => {
     if (tab === 'extensionSettings' && rentalPolicySettingsDirty) {
       return {
@@ -7927,6 +8091,14 @@ function App() {
         label: 'FAQ 목록 설정',
         discard: discardFaqBoardConfigChanges,
         save: saveFaqBoardConfig,
+      };
+    }
+
+    if (tab === 'footerManagement' && footerConfigDirty) {
+      return {
+        label: '푸터 공통 정보',
+        discard: discardFooterConfigChanges,
+        save: saveFooterConfig,
       };
     }
 
@@ -11408,6 +11580,281 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         }
       }
     );
+  };
+
+  const saveFooterConfig = async () => {
+    if (!isAdminAuthenticated) {
+      triggerToast('관리자 인증 후 푸터 공통 정보를 저장할 수 있습니다.', 'error');
+      return false;
+    }
+
+    const auditActor = getCurrentAdminAuditActor();
+    if (!auditActor.uid) {
+      triggerToast('관리자 인증 정보를 확인할 수 없어 푸터 저장을 중단했습니다.', 'error');
+      return false;
+    }
+
+    const contentHtml = sanitizeFooterCommonHtml(footerConfigDraft.contentHtml || '');
+    const contentText = richTextHtmlToText(contentHtml);
+
+    setFooterConfigSaving(true);
+    try {
+      await setDoc(
+        SITE_FOOTER_CONFIG_DOC_REF,
+        {
+          enabled: Boolean(footerConfigDraft.enabled),
+          content: contentText,
+          contentText,
+          contentHtml,
+          contentFormat: 'rich-html-v1',
+          updatedByUid: auditActor.uid,
+          updatedByName: auditActor.name,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      triggerToast('푸터 공통 정보를 저장했습니다.', 'success');
+      return true;
+    } catch (error) {
+      console.error('Footer config save error:', error);
+      triggerToast(
+        `푸터 공통 정보 저장에 실패했습니다. 오류 코드: ${
+          error?.code || error?.message || 'unknown-error'
+        }`,
+        'error'
+      );
+      return false;
+    } finally {
+      setFooterConfigSaving(false);
+    }
+  };
+
+  const openFooterPageDialog = (page = null) => {
+    if (!isAdminAuthenticated) {
+      triggerToast('관리자 인증 후 푸터 메뉴 페이지를 작성하거나 수정할 수 있습니다.', 'error');
+      return;
+    }
+
+    const nextForm = {
+      enabled: page ? page.enabled !== false : true,
+      title: page?.title || '',
+      isTitleBold: Boolean(page?.isTitleBold),
+      contentHtml: sanitizeRichTextHtml(
+        page?.contentHtml ||
+          legacyTextToRichHtml(page?.contentText || page?.content || '')
+      ),
+    };
+
+    setFooterPageDialog({
+      mode: page ? 'edit' : 'create',
+      pageId: page?.id || '',
+      initialForm: JSON.stringify(nextForm),
+    });
+    setFooterPageForm(nextForm);
+  };
+
+  const resetFooterPageDialog = () => {
+    setFooterPageDialog(null);
+    setFooterPageForm(createDefaultFooterPageForm());
+  };
+
+  const closeFooterPageDialog = () => {
+    if (footerPageSaving || !footerPageDialog) return;
+
+    const hasUnsavedChanges =
+      JSON.stringify(footerPageForm) !== footerPageDialog.initialForm;
+
+    if (!hasUnsavedChanges) {
+      resetFooterPageDialog();
+      return;
+    }
+
+    triggerConfirm(
+      '저장되지 않은 푸터 페이지',
+      '저장되지 않은 푸터 페이지 변경사항이 있습니다. 저장하지 않고 닫으시겠습니까?',
+      async () => {
+        resetFooterPageDialog();
+      }
+    );
+  };
+
+  const saveFooterPage = async () => {
+    if (!isAdminAuthenticated) {
+      triggerToast('관리자 인증 후 푸터 메뉴 페이지를 저장할 수 있습니다.', 'error');
+      return;
+    }
+
+    const auditActor = getCurrentAdminAuditActor();
+    if (!auditActor.uid) {
+      triggerToast('관리자 인증 정보를 확인할 수 없어 푸터 페이지 저장을 중단했습니다.', 'error');
+      return;
+    }
+
+    const title = String(footerPageForm.title || '').trim();
+    const contentHtml = sanitizeRichTextHtml(footerPageForm.contentHtml || '');
+    const contentText = richTextHtmlToText(contentHtml);
+
+    if (!title) {
+      triggerToast('푸터 메뉴 제목을 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (isRichTextEmpty(contentHtml)) {
+      triggerToast('푸터 메뉴 상세 본문을 입력해 주세요.', 'error');
+      return;
+    }
+
+    const isEditing = footerPageDialog?.mode === 'edit';
+    const editingPage = isEditing
+      ? footerPages.find((page) => page.id === footerPageDialog?.pageId) || null
+      : null;
+
+    if (isEditing && !editingPage) {
+      triggerToast('수정할 푸터 메뉴 페이지를 찾을 수 없습니다.', 'error');
+      return;
+    }
+
+    const pageDocRef = isEditing
+      ? doc(FOOTER_PAGES_COLLECTION_REF, editingPage.id)
+      : doc(FOOTER_PAGES_COLLECTION_REF);
+    const nextSortOrder = isEditing
+      ? Number(editingPage.sortOrder) || footerPages.length
+      : footerPages.reduce(
+          (maxOrder, page) => Math.max(maxOrder, Number(page.sortOrder) || 0),
+          0
+        ) + 1;
+
+    setFooterPageSaving(true);
+    try {
+      await setDoc(pageDocRef, {
+        id: pageDocRef.id,
+        enabled: Boolean(footerPageForm.enabled),
+        title,
+        isTitleBold: Boolean(footerPageForm.isTitleBold),
+        sortOrder: nextSortOrder,
+        content: contentText,
+        contentText,
+        contentHtml,
+        contentFormat: 'rich-html-v1',
+        authorUid: editingPage?.authorUid || auditActor.uid,
+        authorName: editingPage?.authorName || auditActor.name,
+        createdAt: editingPage?.createdAt || serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      triggerToast(
+        `푸터 메뉴 페이지를 ${isEditing ? '수정' : '등록'}했습니다.`,
+        'success'
+      );
+      resetFooterPageDialog();
+    } catch (error) {
+      console.error('Footer page save error:', error);
+      triggerToast(
+        `푸터 메뉴 페이지 저장에 실패했습니다. 오류 코드: ${
+          error?.code || error?.message || 'unknown-error'
+        }`,
+        'error'
+      );
+    } finally {
+      setFooterPageSaving(false);
+    }
+  };
+
+  const toggleFooterPageEnabled = async (page) => {
+    if (!isAdminAuthenticated || !page?.id) {
+      triggerToast('관리자 인증과 푸터 페이지 정보를 확인해 주세요.', 'error');
+      return;
+    }
+
+    setFooterPageToggleSavingId(page.id);
+    try {
+      await updateDoc(doc(FOOTER_PAGES_COLLECTION_REF, page.id), {
+        enabled: !Boolean(page.enabled),
+        updatedAt: serverTimestamp(),
+      });
+      triggerToast(
+        `푸터 메뉴 페이지를 ${page.enabled ? '사용안함' : '사용함'}으로 변경했습니다.`,
+        'success'
+      );
+    } catch (error) {
+      console.error('Footer page enabled toggle error:', error);
+      triggerToast('푸터 메뉴 페이지 사용 여부 변경에 실패했습니다.', 'error');
+    } finally {
+      setFooterPageToggleSavingId('');
+    }
+  };
+
+  const moveFooterPage = async (pageId, direction) => {
+    if (!isAdminAuthenticated) {
+      triggerToast('관리자 인증 후 푸터 메뉴 순서를 변경할 수 있습니다.', 'error');
+      return;
+    }
+
+    const currentIndex = footerPages.findIndex((page) => page.id === pageId);
+    const nextIndex = currentIndex + direction;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= footerPages.length) return;
+
+    const currentPage = footerPages[currentIndex];
+    const adjacentPage = footerPages[nextIndex];
+    const batch = writeBatch(db);
+    batch.update(doc(FOOTER_PAGES_COLLECTION_REF, currentPage.id), {
+      sortOrder: nextIndex + 1,
+      updatedAt: serverTimestamp(),
+    });
+    batch.update(doc(FOOTER_PAGES_COLLECTION_REF, adjacentPage.id), {
+      sortOrder: currentIndex + 1,
+      updatedAt: serverTimestamp(),
+    });
+
+    try {
+      await batch.commit();
+    } catch (error) {
+      console.error('Footer page move error:', error);
+      triggerToast('푸터 메뉴 순서 변경에 실패했습니다.', 'error');
+    }
+  };
+
+  const confirmDeleteFooterPage = (page) => {
+    if (!isAdminAuthenticated || !page?.id) {
+      triggerToast('관리자 인증과 푸터 페이지 정보를 확인해 주세요.', 'error');
+      return;
+    }
+
+    triggerConfirm(
+      '푸터 메뉴 페이지 삭제',
+      `[${page.title || '제목 없음'}] 페이지를 삭제하시겠습니까? 삭제한 페이지는 복구할 수 없습니다.`,
+      async () => {
+        setFooterPageDeletingId(page.id);
+        try {
+          await deleteDoc(doc(FOOTER_PAGES_COLLECTION_REF, page.id));
+          if (selectedFooterPageId === page.id) {
+            setSelectedFooterPageId('');
+          }
+          if (footerPageDialog?.pageId === page.id) {
+            resetFooterPageDialog();
+          }
+          triggerToast('푸터 메뉴 페이지를 삭제했습니다.', 'success');
+        } catch (error) {
+          console.error('Footer page delete error:', error);
+          triggerToast('푸터 메뉴 페이지 삭제에 실패했습니다.', 'error');
+        } finally {
+          setFooterPageDeletingId('');
+        }
+      }
+    );
+  };
+
+  const openFooterPage = (pageId) => {
+    const normalizedPageId = String(pageId || '').trim();
+    if (!normalizedPageId) return;
+
+    pushAppPath('user', 'footerPage', normalizedPageId);
+    setView('user');
+    setUserTab('footerPage');
+    setSelectedFooterPageId(normalizedPageId);
+    setIsCommunityMenuOpen(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const saveNoticeBoardConfig = async () => {
@@ -15410,6 +15857,14 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     view,
   ]);
 
+  const selectedFooterPage = useMemo(
+    () =>
+      selectedFooterPageId
+        ? footerPages.find((page) => page.id === selectedFooterPageId) || null
+        : null,
+    [footerPages, selectedFooterPageId]
+  );
+
   const dismissUserPopup = (popup, dismissMode = 'temporary') => {
     const versionKey = getPopupVersionKey(popup);
     if (!versionKey) return;
@@ -15928,6 +16383,31 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     setPopupPostForm,
     getPopupDisplayStatus,
     formatPopupDateTime,
+    footerConfig,
+    footerConfigDraft,
+    footerConfigReady,
+    footerConfigLoadErrorMessage,
+    footerConfigSaving,
+    footerPages,
+    footerPagesReady,
+    footerPagesLoadErrorMessage,
+    footerPageDialog,
+    footerPageForm,
+    footerPageSaving,
+    footerPageDeletingId,
+    footerPageToggleSavingId,
+    selectedFooterPageId,
+    selectedFooterPage,
+    setFooterConfigDraft,
+    setFooterPageForm,
+    saveFooterConfig,
+    openFooterPageDialog,
+    closeFooterPageDialog,
+    saveFooterPage,
+    toggleFooterPageEnabled,
+    moveFooterPage,
+    confirmDeleteFooterPage,
+    openFooterPage,
     userTab,
   };
 
@@ -15970,7 +16450,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
   return (
     <>
-      <div className={`min-h-screen bg-slate-50 text-slate-900 font-sans antialiased transition duration-200 ${
+      <div className={`flex min-h-screen flex-col bg-slate-50 text-slate-900 font-sans antialiased transition duration-200 ${
         showFirebaseLoadingOverlay ? 'pointer-events-none select-none blur-sm' : ''
       }`}>
       {/* --- 상단 글로벌 네비게이션 --- */}
@@ -16195,7 +16675,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       </header>
 
       {/* --- 메인 워크스페이스 --- */}
-      <main className="mx-auto max-w-7xl px-6 py-8">
+      <main className="mx-auto w-full max-w-7xl flex-1 px-6 py-8">
         
         {/* --- 실시간 주요 대여 현황 보드 --- */}
         {shouldShowStats && (
@@ -16215,6 +16695,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           <AdminWorkspace ctx={uiContext} />
         )}
       </main>
+
+      {view === 'user' && <UserFooter ctx={uiContext} />}
 
       <AppDialogs ctx={uiContext} />
       <UserPopupLayer ctx={uiContext} />

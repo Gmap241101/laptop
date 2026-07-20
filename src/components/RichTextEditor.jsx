@@ -704,6 +704,7 @@ export function RichTextEditor({
   placeholder = '내용을 입력해 주세요.',
   minHeight = 300,
   disabled = false,
+  allowVideos = true,
 }) {
   const editorRef = useRef(null);
   const savedRangeRef = useRef(null);
@@ -1269,8 +1270,12 @@ export function RichTextEditor({
           <span className="mx-1 h-5 w-px bg-slate-200" />
           <ToolbarButton title="링크 삽입" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={insertLink}><LinkIcon size={15} /></ToolbarButton>
           <ToolbarButton title="이미지 URL 삽입" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={openImagePanel}><ImagePlus size={15} /></ToolbarButton>
-          <ToolbarButton title="YouTube 동영상 삽입·수정" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => openYouTubePanel()}><Youtube size={16} /></ToolbarButton>
-          <ToolbarButton title="일반 동영상 삽입·수정" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => openHtml5VideoPanel()}><Video size={16} /></ToolbarButton>
+          {allowVideos && (
+            <>
+              <ToolbarButton title="YouTube 동영상 삽입·수정" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => openYouTubePanel()}><Youtube size={16} /></ToolbarButton>
+              <ToolbarButton title="일반 동영상 삽입·수정" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => openHtml5VideoPanel()}><Video size={16} /></ToolbarButton>
+            </>
+          )}
           <ToolbarButton title="표 삽입" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={insertTable}><Table2 size={15} /></ToolbarButton>
           <ToolbarButton title="구분선 삽입" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('insertHorizontalRule')}><Minus size={15} /></ToolbarButton>
           <ToolbarButton title="서식 제거" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('removeFormat')}><Eraser size={15} /></ToolbarButton>
@@ -1556,7 +1561,9 @@ export function RichTextEditor({
       </div>
 
       <p className="text-[10px] leading-4 text-slate-500">
-        외부 이미지·일반 동영상 링크는 원본 서버 설정에 따라 표시 또는 재생되지 않을 수 있습니다. YouTube URL·임베드 태그, 일반 동영상 태그와 안전한 HTML 태그 붙여넣기를 지원합니다.
+        {allowVideos
+          ? '외부 이미지·일반 동영상 링크는 원본 서버 설정에 따라 표시 또는 재생되지 않을 수 있습니다. YouTube URL·임베드 태그, 일반 동영상 태그와 안전한 HTML 태그 붙여넣기를 지원합니다.'
+          : '외부 이미지 URL, 링크, 표와 안전한 HTML 태그를 사용할 수 있습니다. 이 영역에는 동영상이 저장되지 않습니다.'}
       </p>
     </div>
   );

@@ -180,7 +180,7 @@ export default function AdminPopupPanel({ ctx }) {
                 <tr>
                   <th className="w-[52px] border-b border-slate-200 px-1.5 py-3 text-center">번호</th>
                   <th className="w-16 border-b border-slate-200 px-2 py-3 text-center">사용</th>
-                  <th className="border-b border-slate-200 px-3 py-3 text-center">제목·부제목</th>
+                  <th className="border-b border-slate-200 px-3 py-3">제목·부제목</th>
                   <th className="w-[90px] border-b border-slate-200 px-1 py-3 text-center">노출 페이지</th>
                   <th className="w-[120px] border-b border-slate-200 px-1 py-3 text-center">노출 기간</th>
                   <th className="w-20 border-b border-slate-200 px-2 py-3 text-center">현재 상태</th>
