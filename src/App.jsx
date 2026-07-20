@@ -232,7 +232,9 @@ const createDefaultFaqPostForm = () => ({
 });
 
 
-const POPUP_DISMISSED_SESSION_KEY = 'rentalSystemDismissedPopupIds';
+const POPUP_DISMISSED_SESSION_KEY = 'rentalSystemDismissedPopupVersions';
+const POPUP_DISMISSED_LOCAL_KEY = 'rentalSystemDismissedPopupVersionsUntil';
+const POPUP_DISMISS_SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 const createDefaultPopupPostForm = () => ({
   enabled: true,
@@ -253,6 +255,19 @@ const getPopupDateMillis = (value) => {
 
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+};
+
+const getPopupVersionKey = (post = {}) => {
+  const popupId = String(post.id || '').trim();
+  if (!popupId) return '';
+
+  const versionMillis =
+    getPopupDateMillis(post.updatedAt) ||
+    getPopupDateMillis(post.createdAt) ||
+    getPopupDateMillis(post.startAt) ||
+    0;
+
+  return `${popupId}:${versionMillis}`;
 };
 
 const toDateTimeLocalValue = (value) => {
@@ -1902,7 +1917,8 @@ function App() {
   const [popupPostDeletingId, setPopupPostDeletingId] = useState('');
   const [popupPostToggleSavingId, setPopupPostToggleSavingId] = useState('');
   const [popupNowMs, setPopupNowMs] = useState(Date.now());
-  const [dismissedPopupIds, setDismissedPopupIds] = useState(() => {
+  const [temporarilyDismissedPopupVersions, setTemporarilyDismissedPopupVersions] = useState([]);
+  const [dismissedPopupSessionVersions, setDismissedPopupSessionVersions] = useState(() => {
     if (typeof window === 'undefined') return [];
 
     try {
@@ -1912,6 +1928,25 @@ function App() {
       return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
     } catch {
       return [];
+    }
+  });
+  const [dismissedPopupLocalVersions, setDismissedPopupLocalVersions] = useState(() => {
+    if (typeof window === 'undefined') return {};
+
+    try {
+      const parsed = JSON.parse(
+        window.localStorage.getItem(POPUP_DISMISSED_LOCAL_KEY) || '{}'
+      );
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+
+      const nowMillis = Date.now();
+      return Object.fromEntries(
+        Object.entries(parsed).filter(
+          ([versionKey, expiresAt]) => versionKey && Number(expiresAt) > nowMillis
+        )
+      );
+    } catch {
+      return {};
     }
   });
 
@@ -4830,9 +4865,35 @@ function App() {
     if (typeof window === 'undefined') return;
     window.sessionStorage.setItem(
       POPUP_DISMISSED_SESSION_KEY,
-      JSON.stringify(dismissedPopupIds)
+      JSON.stringify(dismissedPopupSessionVersions)
     );
-  }, [dismissedPopupIds]);
+  }, [dismissedPopupSessionVersions]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(
+      POPUP_DISMISSED_LOCAL_KEY,
+      JSON.stringify(dismissedPopupLocalVersions)
+    );
+  }, [dismissedPopupLocalVersions]);
+
+  useEffect(() => {
+    setDismissedPopupLocalVersions((currentVersions) => {
+      const nextEntries = Object.entries(currentVersions).filter(
+        ([versionKey, expiresAt]) => versionKey && Number(expiresAt) > popupNowMs
+      );
+
+      if (nextEntries.length === Object.keys(currentVersions).length) {
+        return currentVersions;
+      }
+
+      return Object.fromEntries(nextEntries);
+    });
+  }, [popupNowMs]);
+
+  useEffect(() => {
+    setTemporarilyDismissedPopupVersions([]);
+  }, [userTab, view]);
 
   useEffect(() => {
     setNoticeBoardConfigReady(false);
@@ -15299,15 +15360,25 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
   const visibleUserPopups = useMemo(() => {
     if (view !== 'user' || !['home', 'rental'].includes(userTab)) return [];
 
-    const dismissedSet = new Set(dismissedPopupIds);
+    const temporarilyDismissedSet = new Set(temporarilyDismissedPopupVersions);
+    const sessionDismissedSet = new Set(dismissedPopupSessionVersions);
+    const localDismissedSet = new Set(
+      Object.entries(dismissedPopupLocalVersions)
+        .filter(([, expiresAt]) => Number(expiresAt) > popupNowMs)
+        .map(([versionKey]) => versionKey)
+    );
 
     return (popupPosts || [])
       .filter((post) => {
         const targetPages = Array.isArray(post.targetPages) ? post.targetPages : [];
+        const versionKey = getPopupVersionKey(post);
+
         return (
           getPopupDisplayStatus(post, popupNowMs).key === 'active' &&
           targetPages.includes(userTab) &&
-          !dismissedSet.has(post.id)
+          !temporarilyDismissedSet.has(versionKey) &&
+          !sessionDismissedSet.has(versionKey) &&
+          !localDismissedSet.has(versionKey)
         );
       })
       .sort((first, second) => {
@@ -15321,12 +15392,41 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
         return getPopupDateMillis(second.createdAt) - getPopupDateMillis(first.createdAt);
       });
-  }, [dismissedPopupIds, popupNowMs, popupPosts, userTab, view]);
+  }, [
+    dismissedPopupLocalVersions,
+    dismissedPopupSessionVersions,
+    popupNowMs,
+    popupPosts,
+    temporarilyDismissedPopupVersions,
+    userTab,
+    view,
+  ]);
 
-  const dismissUserPopup = (popupId) => {
-    if (!popupId) return;
-    setDismissedPopupIds((currentIds) =>
-      currentIds.includes(popupId) ? currentIds : [...currentIds, popupId]
+  const dismissUserPopup = (popup, dismissMode = 'temporary') => {
+    const versionKey = getPopupVersionKey(popup);
+    if (!versionKey) return;
+
+    if (dismissMode === 'session') {
+      setDismissedPopupSessionVersions((currentVersions) =>
+        currentVersions.includes(versionKey)
+          ? currentVersions
+          : [...currentVersions, versionKey]
+      );
+      return;
+    }
+
+    if (dismissMode === 'sevenDays') {
+      setDismissedPopupLocalVersions((currentVersions) => ({
+        ...currentVersions,
+        [versionKey]: Date.now() + POPUP_DISMISS_SEVEN_DAYS_MS,
+      }));
+      return;
+    }
+
+    setTemporarilyDismissedPopupVersions((currentVersions) =>
+      currentVersions.includes(versionKey)
+        ? currentVersions
+        : [...currentVersions, versionKey]
     );
   };
 
