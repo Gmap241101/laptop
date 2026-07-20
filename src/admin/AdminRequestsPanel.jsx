@@ -677,32 +677,43 @@ export default function AdminRequestsPanel({ ctx }) {
                         </div>
                       ) : (
                         <>
-                          <div className="hidden w-full max-w-full overflow-x-auto rounded-xl border border-slate-200 md:block">
-                            <table className="w-full min-w-[1080px] table-fixed border-collapse text-left">
+                          <div className="hidden w-full max-w-full overflow-hidden rounded-xl border border-slate-200 xl:block">
+                            <table className="w-full table-fixed border-collapse text-left">
+                              <colgroup>
+                                <col className="w-[5%]" />
+                                <col className="w-[17%]" />
+                                <col className="w-[11%]" />
+                                <col className="w-[14%]" />
+                                <col className="w-[19%]" />
+                                <col className="w-[9%]" />
+                                <col className="w-[15%]" />
+                                <col className="w-[10%]" />
+                              </colgroup>
+
                               <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600">
                                 <tr>
-                                  <th className="w-14 border-b border-slate-200 px-2.5 py-2.5 text-center">
+                                  <th className="border-b border-slate-200 px-2 py-2.5 text-center">
                                     순번
                                   </th>
-                                  <th className="w-44 border-b border-slate-200 px-2.5 py-2.5">
+                                  <th className="border-b border-slate-200 px-2 py-2.5">
                                     기기명
                                   </th>
-                                  <th className="w-28 border-b border-slate-200 px-2.5 py-2.5">
+                                  <th className="border-b border-slate-200 px-2 py-2.5">
                                     신청자
                                   </th>
-                                  <th className="w-32 border-b border-slate-200 px-2.5 py-2.5">
+                                  <th className="border-b border-slate-200 px-2 py-2.5">
                                     부서명
                                   </th>
-                                  <th className="w-48 border-b border-slate-200 px-2.5 py-2.5">
+                                  <th className="border-b border-slate-200 px-2 py-2.5">
                                     대여기간
                                   </th>
-                                  <th className="w-24 border-b border-slate-200 px-2.5 py-2.5 text-center">
+                                  <th className="border-b border-slate-200 px-2 py-2.5 text-center">
                                     상태
                                   </th>
-                                  <th className="w-36 border-b border-slate-200 px-2.5 py-2.5">
+                                  <th className="border-b border-slate-200 px-2 py-2.5">
                                     접수·처리일
                                   </th>
-                                  <th className="w-28 border-b border-slate-200 px-2.5 py-2.5 text-center">
+                                  <th className="border-b border-slate-200 px-2 py-2.5 text-center">
                                     비고
                                   </th>
                                 </tr>
@@ -730,11 +741,11 @@ export default function AdminRequestsPanel({ ctx }) {
                                         setSelectedAdminRequestId(request.id)
                                       }
                                     >
-                                      <td className="px-2.5 py-2.5 text-center text-[11px] font-semibold text-slate-400">
+                                      <td className="px-2 py-2.5 text-center text-[11px] font-semibold text-slate-400">
                                         {sequence}
                                       </td>
 
-                                      <td className="px-2.5 py-2.5">
+                                      <td className="px-2 py-2.5">
                                         <div className="flex min-w-0 items-center gap-2">
                                           <span className="inline-flex shrink-0 items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
                                             {request.assetCategory || '기기'}
@@ -752,30 +763,30 @@ export default function AdminRequestsPanel({ ctx }) {
                                         </div>
                                       </td>
 
-                                      <td className="truncate px-2.5 py-2.5 text-xs font-semibold text-slate-800">
+                                      <td className="truncate px-2 py-2.5 text-xs font-semibold text-slate-800">
                                         {request.requesterName ||
                                           request.borrower ||
                                           request.requesterEmail ||
                                           '-'}
                                       </td>
 
-                                      <td className="truncate px-2.5 py-2.5 text-xs text-slate-600">
+                                      <td className="truncate px-2 py-2.5 text-xs text-slate-600">
                                         {request.requesterTeam || request.team || '-'}
                                       </td>
 
-                                      <td className="px-2.5 py-2.5 text-xs leading-5 text-slate-600">
+                                      <td className="whitespace-nowrap px-2 py-2.5 text-[11px] leading-5 text-slate-600">
                                         {request.startDate || '-'} ~ {request.dueDate || '-'}
                                       </td>
 
-                                      <td className="px-2.5 py-2.5 text-center">
+                                      <td className="px-2 py-2.5 text-center">
                                         <Badge>{getRequestDisplayStatus(request)}</Badge>
                                       </td>
 
-                                      <td className="px-2.5 py-2.5 text-[11px] leading-4 text-slate-500">
+                                      <td className="break-words px-2 py-2.5 text-[10px] leading-4 text-slate-500">
                                         {referenceDate}
                                       </td>
 
-                                      <td className="px-2.5 py-2.5 text-center text-[10px] text-slate-500">
+                                      <td className="px-2 py-2.5 text-center text-[10px] text-slate-500">
                                         {remark === '-' ? (
                                           '-'
                                         ) : (
@@ -791,7 +802,7 @@ export default function AdminRequestsPanel({ ctx }) {
                             </table>
                           </div>
 
-                          <div className="space-y-3 md:hidden">
+                          <div className="space-y-3 xl:hidden">
                             {paginatedAdminRequests.map((request, index) => {
                               const requestLogs =
                                 rentalRequestLogsByRequestId.get(request.id) || [];
