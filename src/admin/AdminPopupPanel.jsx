@@ -175,14 +175,14 @@ export default function AdminPopupPanel({ ctx }) {
       ) : (
         <>
           <div className="overflow-x-auto rounded-xl border border-slate-200">
-            <table className="w-full min-w-[860px] table-fixed border-collapse text-left">
+            <table className="w-full min-w-[820px] table-fixed border-collapse text-left">
               <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600">
                 <tr>
-                  <th className="w-12 border-b border-slate-200 px-2 py-3 text-center">번호</th>
+                  <th className="w-[52px] border-b border-slate-200 px-1.5 py-3 text-center">번호</th>
                   <th className="w-16 border-b border-slate-200 px-2 py-3 text-center">사용</th>
                   <th className="border-b border-slate-200 px-3 py-3">제목·부제목</th>
-                  <th className="w-28 border-b border-slate-200 px-2 py-3 text-center">노출 페이지</th>
-                  <th className="w-40 border-b border-slate-200 px-2 py-3 text-center">노출 기간</th>
+                  <th className="w-[100px] border-b border-slate-200 px-1 py-3 text-center">노출 페이지</th>
+                  <th className="w-[130px] border-b border-slate-200 px-1 py-3 text-center">노출 기간</th>
                   <th className="w-20 border-b border-slate-200 px-2 py-3 text-center">현재 상태</th>
                   <th className="w-24 border-b border-slate-200 px-2 py-3 text-center">등록일</th>
                   <th className="w-20 border-b border-slate-200 px-2 py-3 text-center">관리</th>
@@ -199,7 +199,7 @@ export default function AdminPopupPanel({ ctx }) {
 
                   return (
                     <tr key={post.id} className="border-b border-slate-100 align-middle last:border-b-0 hover:bg-slate-50">
-                      <td className="px-2 py-3 text-center text-xs text-slate-500">{rowNumber}</td>
+                      <td className="px-1.5 py-3 text-center text-xs text-slate-500">{rowNumber}</td>
                       <td className="px-2 py-3 text-center">
                         <button
                           type="button"
@@ -223,7 +223,7 @@ export default function AdminPopupPanel({ ctx }) {
                           <div className="mt-1 truncate text-[11px] text-slate-500">{subtitle}</div>
                         )}
                       </td>
-                      <td className="px-2 py-3 text-center">
+                      <td className="px-1 py-3 text-center">
                         <div className="flex flex-col items-center justify-center gap-1">
                           {targetPages.includes('home') && (
                             <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-bold text-sky-700">
@@ -237,9 +237,9 @@ export default function AdminPopupPanel({ ctx }) {
                           )}
                         </div>
                       </td>
-                      <td className="px-2 py-3 text-center text-[10px] leading-tight text-slate-600">
-                        <div>{formatPopupDateTime(post.startAt)}</div>
-                        <div className="mt-1 text-slate-500">~ {post.isIndefinite ? '무기한' : formatPopupDateTime(post.endAt)}</div>
+                      <td className="px-1 py-3 text-center text-[10px] leading-[1.25] text-slate-600">
+                        <div className="whitespace-nowrap">{formatPopupDateTime(post.startAt)}</div>
+                        <div className="whitespace-nowrap text-slate-500">~ {post.isIndefinite ? '무기한' : formatPopupDateTime(post.endAt)}</div>
                       </td>
                       <td className="px-2 py-3 text-center">
                         <span className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${statusClassName[status.key] || statusClassName.ended}`}>
@@ -247,29 +247,27 @@ export default function AdminPopupPanel({ ctx }) {
                         </span>
                       </td>
                       <td className="px-2 py-3 text-center text-[11px] text-slate-500">{formatPopupDateTime(post.createdAt, true)}</td>
-                      <td className="px-2 py-3">
+                      <td className="px-1 py-3">
                         <div className="flex items-center justify-center gap-1">
-                          <Button
+                          <button
                             type="button"
-                            variant="outline"
-                            className="h-8 w-8 p-0"
+                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]"
                             title="수정"
                             aria-label="팝업 수정"
                             onClick={() => openPopupPostDialog(post)}
                           >
-                            <Edit3 size={12} />
-                          </Button>
-                          <Button
+                            <Edit3 size={14} aria-hidden="true" />
+                          </button>
+                          <button
                             type="button"
-                            variant="dangerOutline"
-                            className="h-8 w-8 p-0"
+                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-600 transition hover:bg-rose-50 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
                             title={popupPostDeletingId === post.id ? '삭제 중' : '삭제'}
                             aria-label={popupPostDeletingId === post.id ? '팝업 삭제 중' : '팝업 삭제'}
                             disabled={popupPostDeletingId === post.id}
                             onClick={() => confirmDeletePopupPost(post)}
                           >
-                            <Trash2 size={12} />
-                          </Button>
+                            <Trash2 size={14} aria-hidden="true" />
+                          </button>
                         </div>
                       </td>
                     </tr>
