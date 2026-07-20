@@ -91,7 +91,75 @@ const SAFE_STYLE_PROPERTIES = new Set([
   'border-collapse',
   'aspect-ratio',
   'border',
+  'font-size',
+  'line-height',
 ]);
+
+
+const FONT_SIZE_PRESETS = [11, 12, 13, 14, 16, 18, 20, 24, 28, 32];
+const LINE_HEIGHT_PRESETS = [1, 1.2, 1.4, 1.5, 1.6, 1.8, 2];
+const MIN_FONT_SIZE_PX = 8;
+const MAX_FONT_SIZE_PX = 72;
+const MIN_LINE_HEIGHT = 0.8;
+const MAX_LINE_HEIGHT = 3;
+const RICH_TEXT_BLOCK_SELECTOR = 'p,h1,h2,h3,li,blockquote,td,th,div';
+
+const normalizeFontSizeCssValue = (value = '') => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'inherit') return 'inherit';
+
+  const matched = normalized.match(/^(\d+(?:\.\d+)?)(px|pt)$/);
+  if (!matched) return '';
+
+  const numericValue = Number(matched[1]);
+  if (!Number.isFinite(numericValue)) return '';
+
+  const pxValue = matched[2] === 'pt' ? numericValue * (4 / 3) : numericValue;
+  if (pxValue < MIN_FONT_SIZE_PX || pxValue > MAX_FONT_SIZE_PX) return '';
+
+  return `${Number(pxValue.toFixed(2))}px`;
+};
+
+const normalizeLineHeightCssValue = (value = '') => {
+  const normalized = String(value || '').trim();
+  if (!/^\d+(?:\.\d+)?$/.test(normalized)) return '';
+
+  const numericValue = Number(normalized);
+  if (!Number.isFinite(numericValue) || numericValue < MIN_LINE_HEIGHT || numericValue > MAX_LINE_HEIGHT) {
+    return '';
+  }
+
+  return String(Number(numericValue.toFixed(2)));
+};
+
+const formatLineHeightForToolbar = (computedStyle) => {
+  if (!computedStyle) return '기본';
+  const rawValue = String(computedStyle.lineHeight || '').trim();
+  if (!rawValue || rawValue === 'normal') return '기본';
+
+  if (rawValue.endsWith('px')) {
+    const lineHeightPx = Number.parseFloat(rawValue);
+    const fontSizePx = Number.parseFloat(computedStyle.fontSize || '');
+    if (Number.isFinite(lineHeightPx) && Number.isFinite(fontSizePx) && fontSizePx > 0) {
+      return String(Number((lineHeightPx / fontSizePx).toFixed(2)));
+    }
+  }
+
+  const normalized = normalizeLineHeightCssValue(rawValue);
+  return normalized || '기본';
+};
+
+const ensureTableScrollWrappers = (root) => {
+  if (!root?.querySelectorAll) return;
+
+  [...root.querySelectorAll('table')].forEach((table) => {
+    if (table.parentElement?.getAttribute('data-table-scroll') === 'true') return;
+    const wrapper = root.ownerDocument.createElement('div');
+    wrapper.setAttribute('data-table-scroll', 'true');
+    table.replaceWith(wrapper);
+    wrapper.appendChild(table);
+  });
+};
 
 const isSafeHttpUrl = (value = '') => {
   try {
@@ -305,6 +373,16 @@ const sanitizeStyle = (styleText = '') =>
       if (!SAFE_STYLE_PROPERTIES.has(property)) return '';
       if (!value || /url\s*\(|expression\s*\(|javascript:/i.test(value)) return '';
 
+      if (property === 'font-size') {
+        const safeFontSize = normalizeFontSizeCssValue(value);
+        return safeFontSize ? `font-size: ${safeFontSize}` : '';
+      }
+
+      if (property === 'line-height') {
+        const safeLineHeight = normalizeLineHeightCssValue(value);
+        return safeLineHeight ? `line-height: ${safeLineHeight}` : '';
+      }
+
       if (
         (property === 'width' || property === 'max-width' || property === 'height') &&
         !/^(auto|\d+(?:\.\d+)?(?:px|%|rem|em))$/i.test(value)
@@ -390,7 +468,8 @@ const sanitizeElementAttributes = (element) => {
     } else if (element.tagName === 'FIGURE') {
       keep = ['data-align', 'data-width'].includes(name);
     } else if (element.tagName === 'DIV') {
-      keep = ['data-video-provider'].includes(name);
+      keep = ['data-video-provider', 'data-table-scroll'].includes(name);
+      if (name === 'data-table-scroll' && value !== 'true') keep = false;
     }
 
     if (!keep) element.removeAttribute(attribute.name);
@@ -418,6 +497,9 @@ const sanitizeElementAttributes = (element) => {
     const provider = element.getAttribute('data-video-provider');
     if (provider && !['youtube', 'html5'].includes(provider)) {
       element.removeAttribute('data-video-provider');
+    }
+    if (element.hasAttribute('data-table-scroll')) {
+      element.setAttribute('data-table-scroll', 'true');
     }
   }
 
@@ -478,6 +560,7 @@ export const sanitizeRichTextHtml = (html = '') => {
   };
 
   cleanNode(root);
+  ensureTableScrollWrappers(root);
   return root.innerHTML.trim();
 };
 
@@ -528,6 +611,7 @@ export const richTextHtmlToText = (html = '') => {
     });
 
   return String(container.textContent || '')
+    .replace(/\u200B/g, '')
     .replace(/\u00a0/g, ' ')
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n[ \t]+/g, '\n')
@@ -692,8 +776,20 @@ const getStoredHtmlFromEditor = (editor) => {
   clone.querySelectorAll('[data-html5-video-selected]').forEach((node) => {
     node.removeAttribute('data-html5-video-selected');
   });
+  clone.querySelectorAll('[data-table-cell-selected]').forEach((node) => {
+    node.removeAttribute('data-table-cell-selected');
+  });
   clone.querySelectorAll('[data-youtube-editor-control]').forEach((node) => node.remove());
   clone.querySelectorAll('[data-html5-video-editor-control]').forEach((node) => node.remove());
+  const textWalker = document.createTreeWalker(clone, NodeFilter.SHOW_TEXT);
+  let textNode = textWalker.nextNode();
+  while (textNode) {
+    textNode.textContent = String(textNode.textContent || '').replace(/\u200B/g, '');
+    textNode = textWalker.nextNode();
+  }
+  clone.querySelectorAll('span').forEach((span) => {
+    if (!span.textContent && span.children.length === 0) span.remove();
+  });
   return sanitizeRichTextHtml(clone.innerHTML);
 };
 
@@ -730,6 +826,21 @@ export function RichTextEditor({
   const [editingHtml5Video, setEditingHtml5Video] = useState(false);
   const [sourceMode, setSourceMode] = useState(false);
   const [sourceValue, setSourceValue] = useState(String(value || ''));
+  const selectedTableCellRef = useRef(null);
+  const [currentFontSize, setCurrentFontSize] = useState('기본');
+  const [currentLineHeight, setCurrentLineHeight] = useState('기본');
+  const [fontSizePanelOpen, setFontSizePanelOpen] = useState(false);
+  const [customFontSize, setCustomFontSize] = useState('14');
+  const [fontSizeError, setFontSizeError] = useState('');
+  const [lineHeightPanelOpen, setLineHeightPanelOpen] = useState(false);
+  const [customLineHeight, setCustomLineHeight] = useState('1.5');
+  const [lineHeightError, setLineHeightError] = useState('');
+  const [tablePanelOpen, setTablePanelOpen] = useState(false);
+  const [tableRows, setTableRows] = useState('3');
+  const [tableColumns, setTableColumns] = useState('2');
+  const [tableHasHeader, setTableHasHeader] = useState(true);
+  const [tableError, setTableError] = useState('');
+  const [editingTable, setEditingTable] = useState(false);
 
   useEffect(() => {
     const nextHtml = String(value || '');
@@ -762,6 +873,33 @@ export function RichTextEditor({
     emitChange();
   };
 
+  const getElementFromNode = (node) => {
+    if (!node) return null;
+    return node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+  };
+
+  const updateFormattingState = (range = savedRangeRef.current) => {
+    const editor = editorRef.current;
+    if (!editor || !range || typeof window === 'undefined') return;
+
+    const startElement = getElementFromNode(range.startContainer);
+    const endElement = getElementFromNode(range.endContainer);
+    if (!startElement || !editor.contains(startElement)) return;
+
+    const startStyle = window.getComputedStyle(startElement);
+    const endStyle = endElement && editor.contains(endElement)
+      ? window.getComputedStyle(endElement)
+      : startStyle;
+
+    const startFontSize = normalizeFontSizeCssValue(startStyle.fontSize) || '기본';
+    const endFontSize = normalizeFontSizeCssValue(endStyle.fontSize) || startFontSize;
+    setCurrentFontSize(startFontSize === endFontSize ? startFontSize : '혼합');
+
+    const startLineHeight = formatLineHeightForToolbar(startStyle);
+    const endLineHeight = formatLineHeightForToolbar(endStyle);
+    setCurrentLineHeight(startLineHeight === endLineHeight ? startLineHeight : '혼합');
+  };
+
   const saveSelection = () => {
     const selection = window.getSelection?.();
     if (!selection || selection.rangeCount === 0) return;
@@ -769,7 +907,23 @@ export function RichTextEditor({
     const range = selection.getRangeAt(0);
     if (editorRef.current?.contains(range.commonAncestorContainer)) {
       savedRangeRef.current = range.cloneRange();
+      updateFormattingState(range);
     }
+  };
+
+  const clearFormattingPanels = () => {
+    setFontSizePanelOpen(false);
+    setLineHeightPanelOpen(false);
+    setTablePanelOpen(false);
+    setFontSizeError('');
+    setLineHeightError('');
+    setTableError('');
+  };
+
+  const clearSelectedTableCell = () => {
+    const selectedCell = selectedTableCellRef.current;
+    if (selectedCell) selectedCell.removeAttribute('data-table-cell-selected');
+    selectedTableCellRef.current = null;
   };
 
   const restoreSelection = () => {
@@ -778,6 +932,408 @@ export function RichTextEditor({
 
     selection.removeAllRanges();
     selection.addRange(savedRangeRef.current);
+  };
+
+  const getSelectedBlockElements = () => {
+    const editor = editorRef.current;
+    const range = savedRangeRef.current;
+    if (!editor || !range) return [];
+
+    const closestBlock = (node) => {
+      const element = getElementFromNode(node);
+      const block = element?.closest?.(RICH_TEXT_BLOCK_SELECTOR);
+      if (!block || block === editor || !editor.contains(block) || block.matches('[data-video-provider], [data-table-scroll]')) {
+        return null;
+      }
+      return block;
+    };
+
+    if (range.collapsed) {
+      const block = closestBlock(range.startContainer);
+      return block ? [block] : [];
+    }
+
+    const blocks = new Set();
+    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+    let textNode = walker.nextNode();
+    while (textNode) {
+      try {
+        if (range.intersectsNode(textNode) && String(textNode.textContent || '').length > 0) {
+          const block = closestBlock(textNode);
+          if (block) blocks.add(block);
+        }
+      } catch {
+        // 분리된 노드는 무시합니다.
+      }
+      textNode = walker.nextNode();
+    }
+
+    if (blocks.size === 0) {
+      const block = closestBlock(range.commonAncestorContainer);
+      if (block) blocks.add(block);
+    }
+
+    return [...blocks];
+  };
+
+  const convertTemporaryFontTags = (fontSizeValue = 'inherit') => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    editor.querySelectorAll('font[size="7"]').forEach((font) => {
+      const span = document.createElement('span');
+      span.style.fontSize = fontSizeValue;
+      while (font.firstChild) span.appendChild(font.firstChild);
+      font.replaceWith(span);
+    });
+  };
+
+  const applyFontSize = (fontSizeValue) => {
+    if (disabled || sourceMode) return;
+    const safeFontSize = fontSizeValue === 'inherit'
+      ? 'inherit'
+      : normalizeFontSizeCssValue(`${fontSizeValue}px`);
+    if (!safeFontSize) return;
+
+    focusEditor();
+    restoreSelection();
+    const selection = window.getSelection?.();
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+
+    if (range?.collapsed) {
+      const span = document.createElement('span');
+      span.style.fontSize = safeFontSize;
+      const placeholder = document.createTextNode('\u200B');
+      span.appendChild(placeholder);
+      range.insertNode(span);
+      range.setStart(placeholder, placeholder.textContent.length);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      savedRangeRef.current = range.cloneRange();
+    } else {
+      document.execCommand('styleWithCSS', false, false);
+      document.execCommand('fontSize', false, '7');
+      convertTemporaryFontTags(safeFontSize);
+    }
+
+    emitChange();
+    saveSelection();
+    setCurrentFontSize(safeFontSize === 'inherit' ? '기본' : safeFontSize);
+  };
+
+  const openFontSizePanel = () => {
+    saveSelection();
+    setImagePanelOpen(false);
+    setYouTubePanelOpen(false);
+    setHtml5VideoPanelOpen(false);
+    clearSelectedYouTube();
+    clearSelectedHtml5Video();
+    clearSelectedTableCell();
+    setLineHeightPanelOpen(false);
+    setTablePanelOpen(false);
+    setFontSizeError('');
+    const currentNumeric = Number.parseFloat(currentFontSize);
+    setCustomFontSize(
+      Number.isInteger(currentNumeric) && currentNumeric >= MIN_FONT_SIZE_PX && currentNumeric <= MAX_FONT_SIZE_PX
+        ? String(currentNumeric)
+        : '14'
+    );
+    setFontSizePanelOpen(true);
+  };
+
+  const applyCustomFontSize = () => {
+    const normalized = String(customFontSize || '').trim();
+    if (!/^\d+$/.test(normalized)) {
+      setFontSizeError('글자 크기는 정수로 입력해 주세요.');
+      return;
+    }
+
+    const numericValue = Number(normalized);
+    if (numericValue < MIN_FONT_SIZE_PX || numericValue > MAX_FONT_SIZE_PX) {
+      setFontSizeError(`글자 크기는 ${MIN_FONT_SIZE_PX}px부터 ${MAX_FONT_SIZE_PX}px까지 입력할 수 있습니다.`);
+      return;
+    }
+
+    applyFontSize(numericValue);
+    setFontSizePanelOpen(false);
+    setFontSizeError('');
+  };
+
+  const applyLineHeight = (lineHeightValue) => {
+    if (disabled || sourceMode) return;
+    const safeLineHeight = lineHeightValue === ''
+      ? ''
+      : normalizeLineHeightCssValue(lineHeightValue);
+    if (lineHeightValue !== '' && !safeLineHeight) return;
+
+    focusEditor();
+    restoreSelection();
+    let blocks = getSelectedBlockElements();
+    if (blocks.length === 0) {
+      document.execCommand('formatBlock', false, 'p');
+      saveSelection();
+      blocks = getSelectedBlockElements();
+    }
+    if (blocks.length === 0) {
+      window.alert('줄간격을 적용할 문단 안에 커서를 두거나 문단을 선택해 주세요.');
+      return;
+    }
+
+    blocks.forEach((block) => {
+      if (safeLineHeight) block.style.lineHeight = safeLineHeight;
+      else block.style.removeProperty('line-height');
+      if (!block.getAttribute('style')?.trim()) block.removeAttribute('style');
+    });
+
+    emitChange();
+    saveSelection();
+    setCurrentLineHeight(safeLineHeight || '기본');
+  };
+
+  const openLineHeightPanel = () => {
+    saveSelection();
+    setImagePanelOpen(false);
+    setYouTubePanelOpen(false);
+    setHtml5VideoPanelOpen(false);
+    clearSelectedYouTube();
+    clearSelectedHtml5Video();
+    clearSelectedTableCell();
+    setFontSizePanelOpen(false);
+    setTablePanelOpen(false);
+    setLineHeightError('');
+    const currentNumeric = Number.parseFloat(currentLineHeight);
+    setCustomLineHeight(
+      Number.isFinite(currentNumeric) && currentNumeric >= MIN_LINE_HEIGHT && currentNumeric <= MAX_LINE_HEIGHT
+        ? String(currentNumeric)
+        : '1.5'
+    );
+    setLineHeightPanelOpen(true);
+  };
+
+  const applyCustomLineHeight = () => {
+    const normalized = String(customLineHeight || '').trim();
+    if (!/^\d+(?:\.\d{1,2})?$/.test(normalized)) {
+      setLineHeightError('줄간격은 소수점 둘째 자리까지의 숫자로 입력해 주세요.');
+      return;
+    }
+
+    const numericValue = Number(normalized);
+    if (numericValue < MIN_LINE_HEIGHT || numericValue > MAX_LINE_HEIGHT) {
+      setLineHeightError(`줄간격은 ${MIN_LINE_HEIGHT}부터 ${MAX_LINE_HEIGHT}까지 입력할 수 있습니다.`);
+      return;
+    }
+
+    applyLineHeight(String(numericValue));
+    setLineHeightPanelOpen(false);
+    setLineHeightError('');
+  };
+
+  const resolveTableCellFromSavedRange = () => {
+    const editor = editorRef.current;
+    const range = savedRangeRef.current;
+    if (!editor || !range) return null;
+    const element = getElementFromNode(range.commonAncestorContainer);
+    const cell = element?.closest?.('td,th');
+    return cell && editor.contains(cell) ? cell : null;
+  };
+
+  const selectTableCell = (cell) => {
+    clearSelectedTableCell();
+    if (!cell || !editorRef.current?.contains(cell)) return;
+    cell.setAttribute('data-table-cell-selected', 'true');
+    selectedTableCellRef.current = cell;
+  };
+
+  const openTablePanel = () => {
+    saveSelection();
+    setImagePanelOpen(false);
+    setYouTubePanelOpen(false);
+    setHtml5VideoPanelOpen(false);
+    clearSelectedYouTube();
+    clearSelectedHtml5Video();
+    setFontSizePanelOpen(false);
+    setLineHeightPanelOpen(false);
+    setTableError('');
+    const cell = resolveTableCellFromSavedRange();
+    if (cell) {
+      selectTableCell(cell);
+      setEditingTable(true);
+    } else {
+      clearSelectedTableCell();
+      setEditingTable(false);
+      setTableRows('3');
+      setTableColumns('2');
+      setTableHasHeader(true);
+    }
+    setTablePanelOpen(true);
+  };
+
+  const closeTablePanel = () => {
+    setTablePanelOpen(false);
+    setTableError('');
+    setEditingTable(false);
+    clearSelectedTableCell();
+  };
+
+  const buildTableHtml = (rowCount, columnCount, hasHeader) => {
+    const rows = [];
+    for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
+      const cellTag = hasHeader && rowIndex === 0 ? 'th' : 'td';
+      const cells = [];
+      for (let columnIndex = 0; columnIndex < columnCount; columnIndex += 1) {
+        const label = hasHeader && rowIndex === 0
+          ? `제목 ${columnIndex + 1}`
+          : '내용';
+        cells.push(`<${cellTag}>${label}</${cellTag}>`);
+      }
+      rows.push(`<tr>${cells.join('')}</tr>`);
+    }
+    return `<div data-table-scroll="true"><table><tbody>${rows.join('')}</tbody></table></div><p><br></p>`;
+  };
+
+  const insertConfiguredTable = () => {
+    const rowCount = Number(tableRows);
+    const columnCount = Number(tableColumns);
+    if (!Number.isInteger(rowCount) || rowCount < 1 || rowCount > 20) {
+      setTableError('행 개수는 1개부터 20개까지 입력할 수 있습니다.');
+      return;
+    }
+    if (!Number.isInteger(columnCount) || columnCount < 1 || columnCount > 10) {
+      setTableError('열 개수는 1개부터 10개까지 입력할 수 있습니다.');
+      return;
+    }
+
+    focusEditor();
+    restoreSelection();
+    document.execCommand('insertHTML', false, sanitizeRichTextHtml(buildTableHtml(rowCount, columnCount, tableHasHeader)));
+    emitChange();
+    closeTablePanel();
+  };
+
+  const focusCellAfterTableEdit = (cell) => {
+    if (!cell) return;
+    const range = document.createRange();
+    range.selectNodeContents(cell);
+    range.collapse(true);
+    const selection = window.getSelection?.();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    savedRangeRef.current = range.cloneRange();
+    selectTableCell(cell);
+  };
+
+  const getEditingTableContext = () => {
+    const cell = selectedTableCellRef.current || resolveTableCellFromSavedRange();
+    const row = cell?.closest?.('tr');
+    const table = cell?.closest?.('table');
+    if (!cell || !row || !table || !editorRef.current?.contains(table)) return null;
+    return {
+      cell,
+      row,
+      table,
+      cellIndex: [...row.cells].indexOf(cell),
+      rowIndex: [...table.rows].indexOf(row),
+    };
+  };
+
+  const createCellForRow = (row, referenceCell = null, forcedTagName = '') => {
+    const tagName = forcedTagName || (referenceCell?.tagName === 'TH' || row.parentElement?.tagName === 'THEAD' ? 'th' : 'td');
+    const cell = document.createElement(tagName);
+    cell.innerHTML = '<br>';
+    return cell;
+  };
+
+  const addTableRow = (position) => {
+    const context = getEditingTableContext();
+    if (!context) return;
+    const { row, table, cellIndex } = context;
+    const newRow = document.createElement('tr');
+    const columnCount = Math.max(1, row.cells.length);
+    for (let index = 0; index < columnCount; index += 1) {
+      newRow.appendChild(createCellForRow(row, row.cells[index], 'td'));
+    }
+    row.parentElement.insertBefore(newRow, position === 'above' ? row : row.nextSibling);
+    emitChange();
+    focusCellAfterTableEdit(newRow.cells[Math.min(cellIndex, newRow.cells.length - 1)] || newRow.cells[0]);
+    setEditingTable(Boolean(table));
+  };
+
+  const deleteTableRow = () => {
+    const context = getEditingTableContext();
+    if (!context) return;
+    const { row, table, rowIndex, cellIndex } = context;
+    if (table.rows.length <= 1) {
+      if (!window.confirm('마지막 행입니다. 표 전체를 삭제할까요?')) return;
+      deleteCurrentTable();
+      return;
+    }
+    row.remove();
+    const nextRow = table.rows[Math.min(rowIndex, table.rows.length - 1)];
+    emitChange();
+    focusCellAfterTableEdit(nextRow?.cells[Math.min(cellIndex, nextRow.cells.length - 1)] || nextRow?.cells[0]);
+  };
+
+  const addTableColumn = (position) => {
+    const context = getEditingTableContext();
+    if (!context) return;
+    const { table, cellIndex, rowIndex } = context;
+    const insertIndex = position === 'left' ? cellIndex : cellIndex + 1;
+    [...table.rows].forEach((row) => {
+      const referenceCell = row.cells[Math.min(cellIndex, row.cells.length - 1)] || null;
+      const newCell = createCellForRow(row, referenceCell);
+      row.insertBefore(newCell, row.cells[insertIndex] || null);
+    });
+    emitChange();
+    const targetRow = table.rows[Math.min(rowIndex, table.rows.length - 1)];
+    focusCellAfterTableEdit(targetRow?.cells[insertIndex] || targetRow?.cells[targetRow.cells.length - 1]);
+  };
+
+  const deleteTableColumn = () => {
+    const context = getEditingTableContext();
+    if (!context) return;
+    const { table, cellIndex, rowIndex } = context;
+    const maxColumns = Math.max(...[...table.rows].map((row) => row.cells.length));
+    if (maxColumns <= 1) {
+      if (!window.confirm('마지막 열입니다. 표 전체를 삭제할까요?')) return;
+      deleteCurrentTable();
+      return;
+    }
+    [...table.rows].forEach((row) => row.cells[cellIndex]?.remove());
+    emitChange();
+    const targetRow = table.rows[Math.min(rowIndex, table.rows.length - 1)];
+    focusCellAfterTableEdit(targetRow?.cells[Math.min(cellIndex, targetRow.cells.length - 1)] || targetRow?.cells[0]);
+  };
+
+  const deleteCurrentTable = () => {
+    const context = getEditingTableContext();
+    if (!context) return;
+    const { table } = context;
+    const wrapper = table.parentElement?.getAttribute('data-table-scroll') === 'true'
+      ? table.parentElement
+      : table;
+    const paragraph = document.createElement('p');
+    paragraph.innerHTML = '<br>';
+    wrapper.replaceWith(paragraph);
+    emitChange();
+    clearSelectedTableCell();
+    setTablePanelOpen(false);
+    setEditingTable(false);
+    focusEditor();
+  };
+
+  const clearAllFormatting = () => {
+    if (disabled || sourceMode) return;
+    focusEditor();
+    restoreSelection();
+    document.execCommand('removeFormat', false, null);
+    saveSelection();
+    getSelectedBlockElements().forEach((block) => {
+      block.style.removeProperty('line-height');
+      if (!block.getAttribute('style')?.trim()) block.removeAttribute('style');
+    });
+    emitChange();
+    saveSelection();
   };
 
   const insertLink = () => {
@@ -818,6 +1374,8 @@ export function RichTextEditor({
 
   const openImagePanel = () => {
     saveSelection();
+    clearFormattingPanels();
+    clearSelectedTableCell();
     setYouTubePanelOpen(false);
     setYouTubeError('');
     setEditingYouTube(false);
@@ -850,6 +1408,8 @@ export function RichTextEditor({
 
   const openYouTubePanel = (wrapper = null) => {
     saveSelection();
+    clearFormattingPanels();
+    clearSelectedTableCell();
     closeImagePanel();
     setHtml5VideoPanelOpen(false);
     setHtml5VideoError('');
@@ -950,6 +1510,8 @@ export function RichTextEditor({
 
   const openHtml5VideoPanel = (wrapper = null) => {
     saveSelection();
+    clearFormattingPanels();
+    clearSelectedTableCell();
     closeImagePanel();
     setYouTubePanelOpen(false);
     setYouTubeError('');
@@ -1075,20 +1637,6 @@ export function RichTextEditor({
     closeImagePanel();
   };
 
-  const insertTable = () => {
-    const html = `
-      <table>
-        <tbody>
-          <tr><th>항목</th><th>내용</th></tr>
-          <tr><td>항목 1</td><td>내용을 입력하세요.</td></tr>
-          <tr><td>항목 2</td><td>내용을 입력하세요.</td></tr>
-        </tbody>
-      </table>
-      <p><br></p>
-    `;
-    runCommand('insertHTML', sanitizeRichTextHtml(html));
-  };
-
   const toggleSourceMode = () => {
     if (disabled) return;
 
@@ -1112,8 +1660,10 @@ export function RichTextEditor({
     setImagePanelOpen(false);
     setYouTubePanelOpen(false);
     setHtml5VideoPanelOpen(false);
+    clearFormattingPanels();
     clearSelectedYouTube();
     clearSelectedHtml5Video();
+    clearSelectedTableCell();
     setSourceMode(true);
   };
 
@@ -1164,8 +1714,22 @@ export function RichTextEditor({
   };
 
   const handleEditorClick = (event) => {
+    const tableCell = event.target?.closest?.('td,th');
     const youtubeWrapper = event.target?.closest?.('[data-video-provider="youtube"]');
     const html5Wrapper = event.target?.closest?.('[data-video-provider="html5"]');
+
+    if (tableCell && editorRef.current?.contains(tableCell)) {
+      clearSelectedYouTube();
+      clearSelectedHtml5Video();
+      selectTableCell(tableCell);
+      return;
+    }
+
+    clearSelectedTableCell();
+    if (editingTable) {
+      setTablePanelOpen(false);
+      setEditingTable(false);
+    }
 
     if (youtubeWrapper && editorRef.current?.contains(youtubeWrapper)) {
       clearSelectedHtml5Video();
@@ -1239,6 +1803,56 @@ export function RichTextEditor({
             <option value="h3">제목 3</option>
           </select>
 
+          <select
+            title="글자 크기"
+            aria-label="글자 크기"
+            disabled={disabled || sourceMode}
+            value=""
+            onMouseDown={saveSelection}
+            onChange={(event) => {
+              const selectedValue = event.target.value;
+              if (selectedValue === 'custom') openFontSizePanel();
+              else {
+                setFontSizePanelOpen(false);
+                setFontSizeError('');
+                applyFontSize(selectedValue === 'default' ? 'inherit' : Number(selectedValue));
+              }
+            }}
+            className="h-8 min-w-[92px] rounded-lg border border-slate-200 bg-white px-2 text-[11px] font-semibold text-slate-600 outline-none"
+          >
+            <option value="" disabled>{`크기 ${currentFontSize}`}</option>
+            <option value="default">기본</option>
+            {FONT_SIZE_PRESETS.map((size) => (
+              <option key={size} value={String(size)}>{size}px</option>
+            ))}
+            <option value="custom">직접 입력...</option>
+          </select>
+
+          <select
+            title="줄간격"
+            aria-label="줄간격"
+            disabled={disabled || sourceMode}
+            value=""
+            onMouseDown={saveSelection}
+            onChange={(event) => {
+              const selectedValue = event.target.value;
+              if (selectedValue === 'custom') openLineHeightPanel();
+              else {
+                setLineHeightPanelOpen(false);
+                setLineHeightError('');
+                applyLineHeight(selectedValue === 'default' ? '' : selectedValue);
+              }
+            }}
+            className="h-8 min-w-[92px] rounded-lg border border-slate-200 bg-white px-2 text-[11px] font-semibold text-slate-600 outline-none"
+          >
+            <option value="" disabled>{`줄간격 ${currentLineHeight}`}</option>
+            <option value="default">기본</option>
+            {LINE_HEIGHT_PRESETS.map((lineHeight) => (
+              <option key={lineHeight} value={String(lineHeight)}>{lineHeight}</option>
+            ))}
+            <option value="custom">직접 입력...</option>
+          </select>
+
           <span className="mx-1 h-5 w-px bg-slate-200" />
           <ToolbarButton title="실행 취소" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('undo')}><Undo2 size={15} /></ToolbarButton>
           <ToolbarButton title="다시 실행" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('redo')}><Redo2 size={15} /></ToolbarButton>
@@ -1276,9 +1890,23 @@ export function RichTextEditor({
               <ToolbarButton title="일반 동영상 삽입·수정" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => openHtml5VideoPanel()}><Video size={16} /></ToolbarButton>
             </>
           )}
-          <ToolbarButton title="표 삽입" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={insertTable}><Table2 size={15} /></ToolbarButton>
+          <button
+            type="button"
+            title="표 삽입·편집"
+            aria-label="표 삽입·편집"
+            disabled={disabled || sourceMode}
+            onMouseDown={(event) => {
+              event.preventDefault();
+              saveSelection();
+            }}
+            onClick={openTablePanel}
+            className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-bold transition ${tablePanelOpen ? 'border-orange-300 bg-orange-50 text-orange-700' : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600'} disabled:cursor-not-allowed disabled:opacity-50`}
+          >
+            <Table2 size={15} />
+            표
+          </button>
           <ToolbarButton title="구분선 삽입" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('insertHorizontalRule')}><Minus size={15} /></ToolbarButton>
-          <ToolbarButton title="서식 제거" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('removeFormat')}><Eraser size={15} /></ToolbarButton>
+          <ToolbarButton title="서식 제거" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={clearAllFormatting}><Eraser size={15} /></ToolbarButton>
           <span className="mx-1 h-5 w-px bg-slate-200" />
           <button
             type="button"
@@ -1292,6 +1920,133 @@ export function RichTextEditor({
             {sourceMode ? '편집기 보기' : '태그보기'}
           </button>
         </div>
+
+        {fontSizePanelOpen && !sourceMode && (
+          <div className="border-b border-slate-200 bg-violet-50/50 p-3">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <div className="text-xs font-bold text-slate-800">글자 크기 직접 입력</div>
+                <div className="mt-0.5 text-[10px] leading-4 text-slate-500">
+                  {MIN_FONT_SIZE_PX}px부터 {MAX_FONT_SIZE_PX}px까지 정수로 입력할 수 있습니다.
+                </div>
+              </div>
+              <button type="button" onClick={() => setFontSizePanelOpen(false)} className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-slate-700"><X size={16} /></button>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <input
+                type="number"
+                min={MIN_FONT_SIZE_PX}
+                max={MAX_FONT_SIZE_PX}
+                step="1"
+                value={customFontSize}
+                onChange={(event) => {
+                  setCustomFontSize(event.target.value);
+                  setFontSizeError('');
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') applyCustomFontSize();
+                }}
+                className="h-9 w-24 rounded-lg border border-slate-200 bg-white px-3 text-xs outline-none mk-form-focus"
+                aria-label="글자 크기 직접 입력"
+              />
+              <span className="text-xs font-semibold text-slate-600">px</span>
+              <button type="button" onClick={applyCustomFontSize} className="h-9 rounded-lg bg-violet-600 px-4 text-xs font-bold text-white hover:bg-violet-700">적용</button>
+              <button type="button" onClick={() => setFontSizePanelOpen(false)} className="h-9 rounded-lg border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600">취소</button>
+            </div>
+            {fontSizeError && <div className="mt-2 text-[11px] font-semibold text-rose-600">{fontSizeError}</div>}
+          </div>
+        )}
+
+        {lineHeightPanelOpen && !sourceMode && (
+          <div className="border-b border-slate-200 bg-emerald-50/50 p-3">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <div className="text-xs font-bold text-slate-800">줄간격 직접 입력</div>
+                <div className="mt-0.5 text-[10px] leading-4 text-slate-500">
+                  {MIN_LINE_HEIGHT}부터 {MAX_LINE_HEIGHT}까지 소수점 둘째 자리로 입력할 수 있습니다.
+                </div>
+              </div>
+              <button type="button" onClick={() => setLineHeightPanelOpen(false)} className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-slate-700"><X size={16} /></button>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <input
+                type="number"
+                min={MIN_LINE_HEIGHT}
+                max={MAX_LINE_HEIGHT}
+                step="0.01"
+                value={customLineHeight}
+                onChange={(event) => {
+                  setCustomLineHeight(event.target.value);
+                  setLineHeightError('');
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') applyCustomLineHeight();
+                }}
+                className="h-9 w-24 rounded-lg border border-slate-200 bg-white px-3 text-xs outline-none mk-form-focus"
+                aria-label="줄간격 직접 입력"
+              />
+              <button type="button" onClick={applyCustomLineHeight} className="h-9 rounded-lg bg-emerald-600 px-4 text-xs font-bold text-white hover:bg-emerald-700">적용</button>
+              <button type="button" onClick={() => setLineHeightPanelOpen(false)} className="h-9 rounded-lg border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600">취소</button>
+            </div>
+            {lineHeightError && <div className="mt-2 text-[11px] font-semibold text-rose-600">{lineHeightError}</div>}
+          </div>
+        )}
+
+        {tablePanelOpen && !sourceMode && (
+          <div className="border-b border-slate-200 bg-cyan-50/50 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-bold text-slate-800">{editingTable ? '표 행·열 편집' : '표 삽입'}</div>
+                <div className="mt-0.5 text-[10px] leading-4 text-slate-500">
+                  {editingTable ? '선택한 셀을 기준으로 행과 열을 추가하거나 삭제합니다.' : '행은 1~20개, 열은 1~10개까지 만들 수 있습니다.'}
+                </div>
+              </div>
+              <button type="button" onClick={closeTablePanel} className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-slate-700"><X size={16} /></button>
+            </div>
+
+            {editingTable ? (
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => addTableRow('above')} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-cyan-300">행 위에 추가</button>
+                <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => addTableRow('below')} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-cyan-300">행 아래에 추가</button>
+                <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={deleteTableRow} className="rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50">현재 행 삭제</button>
+                <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => addTableColumn('left')} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-cyan-300">열 왼쪽에 추가</button>
+                <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => addTableColumn('right')} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-cyan-300">열 오른쪽에 추가</button>
+                <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={deleteTableColumn} className="rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50">현재 열 삭제</button>
+                <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => {
+                  if (window.confirm('표 전체를 삭제할까요?')) deleteCurrentTable();
+                }} className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100">표 전체 삭제</button>
+              </div>
+            ) : (
+              <>
+                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  <label className="text-[11px] font-semibold text-slate-600">
+                    행 개수
+                    <input type="number" min="1" max="20" step="1" value={tableRows} onChange={(event) => {
+                      setTableRows(event.target.value);
+                      setTableError('');
+                    }} className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs outline-none mk-form-focus" />
+                  </label>
+                  <label className="text-[11px] font-semibold text-slate-600">
+                    열 개수
+                    <input type="number" min="1" max="10" step="1" value={tableColumns} onChange={(event) => {
+                      setTableColumns(event.target.value);
+                      setTableError('');
+                    }} className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs outline-none mk-form-focus" />
+                  </label>
+                  <label className="flex items-center gap-2 self-end rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700">
+                    <input type="checkbox" checked={tableHasHeader} onChange={(event) => setTableHasHeader(event.target.checked)} />
+                    첫 번째 행을 제목 행으로 사용
+                  </label>
+                </div>
+                {tableError && <div className="mt-2 text-[11px] font-semibold text-rose-600">{tableError}</div>}
+                <div className="mt-3 flex justify-end gap-2">
+                  <button type="button" onClick={closeTablePanel} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">취소</button>
+                  <button type="button" onClick={insertConfiguredTable} className="rounded-lg bg-cyan-600 px-3 py-2 text-xs font-bold text-white hover:bg-cyan-700">표 삽입</button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {imagePanelOpen && !sourceMode && (
           <div className="border-b border-slate-200 bg-orange-50/40 p-3">
@@ -1562,8 +2317,8 @@ export function RichTextEditor({
 
       <p className="text-[10px] leading-4 text-slate-500">
         {allowVideos
-          ? '외부 이미지·일반 동영상 링크는 원본 서버 설정에 따라 표시 또는 재생되지 않을 수 있습니다. YouTube URL·임베드 태그, 일반 동영상 태그와 안전한 HTML 태그 붙여넣기를 지원합니다.'
-          : '외부 이미지 URL, 링크, 표와 안전한 HTML 태그를 사용할 수 있습니다. 이 영역에는 동영상이 저장되지 않습니다.'}
+          ? '글자 크기·줄간격·표 편집과 외부 이미지·동영상 링크를 지원합니다. YouTube URL·임베드 태그, 일반 동영상 태그와 안전한 HTML 태그를 붙여넣을 수 있습니다.'
+          : '글자 크기·줄간격·표 편집, 외부 이미지 URL, 링크와 안전한 HTML 태그를 사용할 수 있습니다. 이 영역에는 동영상이 저장되지 않습니다.'}
       </p>
     </div>
   );

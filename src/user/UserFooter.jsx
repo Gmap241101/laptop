@@ -22,7 +22,7 @@ export default function UserFooter({ ctx }) {
         <div className="border-b border-slate-400 bg-white">
           <nav
             aria-label="하단 메뉴"
-            className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-x-7 gap-y-2 px-5 py-4 text-xs sm:gap-x-9 sm:text-sm"
+            className="mx-auto flex max-w-7xl flex-wrap items-center justify-start gap-x-7 gap-y-2 px-5 py-4 text-xs sm:gap-x-9 sm:text-sm"
           >
             {visiblePages.map((page) => {
               const selected = userTab === 'footerPage' && selectedFooterPageId === page.id;
