@@ -8007,6 +8007,14 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       return;
     }
 
+    if (currentUserRentalRestrictionStatus?.blocked) {
+      triggerToast(
+        '연체자 대여 제한 적용 중에는 현재 보유 중인 모든 기기의 대여 연장을 신청할 수 없습니다.',
+        'error'
+      );
+      return;
+    }
+
     const initialEligibility = getRentalExtensionEligibility(
       request,
       data.settings
@@ -8018,6 +8026,34 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           initialEligibility.code,
           initialEligibility.availableDate
         ),
+        'error'
+      );
+      return;
+    }
+
+    let latestRestrictionStatus = null;
+
+    try {
+      latestRestrictionStatus =
+        await loadFreshRentalRestrictionStatus(
+          firebaseAuthUser.uid
+        );
+    } catch (error) {
+      console.error(
+        'Rental extension restriction preflight error:',
+        error
+      );
+
+      triggerToast(
+        '대여 제한 상태를 확인하지 못해 연장 신청을 중단했습니다. 잠시 후 다시 시도해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    if (latestRestrictionStatus?.blocked) {
+      triggerToast(
+        '연체자 대여 제한 적용 중에는 현재 보유 중인 모든 기기의 대여 연장을 신청할 수 없습니다.',
         'error'
       );
       return;
@@ -8427,6 +8463,14 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
   };
 
   const openUserActionDialog = (request, type) => {
+    if (type === USER_REQUEST_ACTION.RETURN) {
+      triggerToast(
+        '조기 반납 요청 기능은 제공하지 않습니다.',
+        'error'
+      );
+      return;
+    }
+
     if (type === USER_REQUEST_ACTION.EXTEND) {
       void submitRentalExtensionRequest(request);
       return;
@@ -8448,26 +8492,12 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         request.status
       );
 
-    const canRequestRentalAction =
-      request.status === STATUS.APPROVED;
-
     if (
       [USER_REQUEST_ACTION.CHANGE, USER_REQUEST_ACTION.CANCEL].includes(type) &&
       !canRequestChange
     ) {
       triggerToast(
         '신청 변경과 취소 요청은 신청중 또는 보류 상태에서만 가능합니다.',
-        'error'
-      );
-      return;
-    }
-
-    if (
-      type === USER_REQUEST_ACTION.RETURN &&
-      !canRequestRentalAction
-    ) {
-      triggerToast(
-        '반납 요청은 대여중 상태에서만 가능합니다.',
         'error'
       );
       return;
@@ -8504,6 +8534,14 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
     const actionType =
       userActionDialog?.type || '';
+
+    if (actionType === USER_REQUEST_ACTION.RETURN) {
+      triggerToast(
+        '조기 반납 요청 기능은 제공하지 않습니다.',
+        'error'
+      );
+      return;
+    }
 
     const currentRequest =
       currentUserRequests.find(

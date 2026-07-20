@@ -12,6 +12,7 @@ export default function UserRequestHistoryPanel({ ctx }) {
     currentAuthAdminAccount,
     currentAuthRoleReady,
     currentUserRequests,
+    currentUserRentalRestrictionStatus,
     data,
     firebaseAuthReady,
     firebaseAuthUser,
@@ -122,6 +123,15 @@ export default function UserRequestHistoryPanel({ ctx }) {
                     </div>
                   ) : (
                     <div className="space-y-4">
+                      {currentUserRentalRestrictionStatus?.blocked && (
+                        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-xs font-semibold leading-5 text-rose-800">
+                          {currentUserRentalRestrictionStatus.message}
+                          <div className="mt-1 font-medium">
+                            제한 기간에는 현재 보유 중인 모든 기기의 대여 연장도 신청할 수 없습니다.
+                          </div>
+                        </div>
+                      )}
+
                       {currentUserRequests.map((request) => (
                         <div
                           key={request.id}
@@ -188,17 +198,19 @@ export default function UserRequestHistoryPanel({ ctx }) {
                                   </div>
 
                                   <div className="mt-0.5">
-                                    {data.settings.rentalExtensionEnabled
-                                      ? getRequestExtensionCount(request) >=
-                                        getSafeRentalExtensionMaxCount(data.settings)
-                                        ? '허용된 연장 횟수를 모두 사용했습니다.'
-                                        : `다음 연장 신청 가능일: ${formatDateWithKoreanWeekday(
-                                            getExtensionRequestAvailableDate(
-                                              request,
-                                              data.settings
-                                            )
-                                          )}`
-                                      : '현재 대여 연장 신청이 허용되지 않습니다.'}
+                                    {currentUserRentalRestrictionStatus?.blocked
+                                      ? '연체자 대여 제한 적용 중에는 보유 중인 모든 기기의 대여 연장을 신청할 수 없습니다.'
+                                      : data.settings.rentalExtensionEnabled
+                                        ? getRequestExtensionCount(request) >=
+                                          getSafeRentalExtensionMaxCount(data.settings)
+                                          ? '허용된 연장 횟수를 모두 사용했습니다.'
+                                          : `다음 연장 신청 가능일: ${formatDateWithKoreanWeekday(
+                                              getExtensionRequestAvailableDate(
+                                                request,
+                                                data.settings
+                                              )
+                                            )}`
+                                        : '현재 대여 연장 신청이 허용되지 않습니다.'}
                                   </div>
                                 </div>
                               )}
@@ -314,9 +326,8 @@ export default function UserRequestHistoryPanel({ ctx }) {
                                     </>
                                   )}
 
-                                  {request.status ===
-                                    STATUS.APPROVED && (
-                                    <>
+                                  {request.status === STATUS.APPROVED &&
+                                    !currentUserRentalRestrictionStatus?.blocked && (
                                       <Button
                                         type="button"
                                         variant="outline"
@@ -331,24 +342,7 @@ export default function UserRequestHistoryPanel({ ctx }) {
                                       >
                                         대여 연장 요청
                                       </Button>
-
-
-                                      <Button
-                                        type="button"
-                                        variant="outline"
-                                        disabled={userActionSaving}
-                                        onClick={() =>
-                                          openUserActionDialog(
-                                            request,
-                                            USER_REQUEST_ACTION.RETURN
-                                          )
-                                        }
-                                        className="px-3 py-2 text-xs text-emerald-700 border-emerald-200 bg-emerald-50 hover:bg-emerald-100"
-                                      >
-                                        조기 반납 요청
-                                      </Button>
-                                    </>
-                                  )}
+                                    )}
                                 </div>
                               )}
                             </div>
