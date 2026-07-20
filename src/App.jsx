@@ -312,6 +312,116 @@ const HOLIDAY_TYPE_LABEL = {
   manual: '수동등록',
 };
 
+const normalizeHolidayReason = (reason = {}) => {
+  const type = reason.type || DEFAULT_HOLIDAY_TYPE;
+  const name = String(
+    reason.name || HOLIDAY_TYPE_LABEL[type] || '휴일'
+  ).trim();
+
+  return {
+    type,
+    name: name || HOLIDAY_TYPE_LABEL[type] || '휴일',
+  };
+};
+
+const getHolidayReasons = (holiday = {}) => {
+  const sourceReasons = Array.isArray(holiday.reasons)
+    ? holiday.reasons
+    : holiday.reasons && typeof holiday.reasons === 'object'
+      ? Object.values(holiday.reasons)
+      : [
+          {
+            type: holiday.type || DEFAULT_HOLIDAY_TYPE,
+            name: holiday.name || '',
+          },
+        ];
+
+  const reasonMap = new Map();
+
+  sourceReasons.forEach((reason) => {
+    const normalizedReason = normalizeHolidayReason(reason);
+    const key = `${normalizedReason.type}::${normalizedReason.name}`;
+
+    if (!reasonMap.has(key)) {
+      reasonMap.set(key, normalizedReason);
+    }
+  });
+
+  return Array.from(reasonMap.values());
+};
+
+const normalizeHolidayList = (holidays = []) => {
+  const holidayMap = new Map();
+
+  (Array.isArray(holidays) ? holidays : []).forEach((holiday) => {
+    if (!holiday?.date) return;
+
+    const date = String(holiday.date);
+    const reasons = getHolidayReasons(holiday);
+    const existing = holidayMap.get(date);
+
+    if (!existing) {
+      const primaryReason = reasons[0] || normalizeHolidayReason();
+
+      holidayMap.set(date, {
+        date,
+        name: primaryReason.name,
+        type: primaryReason.type,
+        reasons,
+        enabled: holiday.enabled !== false,
+      });
+      return;
+    }
+
+    const mergedReasons = getHolidayReasons({
+      reasons: [...existing.reasons, ...reasons],
+    });
+    const primaryReason = mergedReasons[0] || normalizeHolidayReason();
+
+    holidayMap.set(date, {
+      ...existing,
+      name: primaryReason.name,
+      type: primaryReason.type,
+      reasons: mergedReasons,
+      enabled: existing.enabled !== false || holiday.enabled !== false,
+    });
+  });
+
+  return Array.from(holidayMap.values()).sort((a, b) =>
+    String(a.date).localeCompare(String(b.date))
+  );
+};
+
+const getHolidayDisplayName = (holiday = {}) => {
+  const names = getHolidayReasons(holiday)
+    .map((reason) => reason.name)
+    .filter(Boolean);
+
+  return names.length > 0 ? names.join(' · ') : '등록 휴일';
+};
+
+const serializeHolidayListForFirestore = (holidays = []) =>
+  normalizeHolidayList(holidays).map((holiday) => {
+    const reasons = getHolidayReasons(holiday);
+    const primaryReason = reasons[0] || normalizeHolidayReason();
+
+    return {
+      date: holiday.date,
+      name: primaryReason.name,
+      type: primaryReason.type,
+      reasons: Object.fromEntries(
+        reasons.map((reason, index) => [
+          `reason${index + 1}`,
+          {
+            type: reason.type,
+            name: reason.name,
+          },
+        ])
+      ),
+      enabled: holiday.enabled !== false,
+    };
+  });
+
 const getLaptopRepresentativeRequest = (requests = [], laptopId) => {
   const blockingRequests = requests.filter(
     (request) =>
@@ -418,7 +528,7 @@ const getBusinessDayAdjustmentEnabled = (settings = {}) =>
   DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY;
 
 const getHolidayList = (settings = {}) =>
-  Array.isArray(settings.holidays) ? settings.holidays : [];
+  normalizeHolidayList(settings.holidays);
 
 const getEnabledHoliday = (dateStr, settings = {}) =>
   getHolidayList(settings).find(
@@ -463,7 +573,7 @@ const getNonBusinessDayReason = (dateStr, settings = {}) => {
     (settings.excludeHolidaysForStartDate ?? DEFAULT_EXCLUDE_HOLIDAYS_FOR_START_DATE) &&
     holiday
   ) {
-    return holiday.name || HOLIDAY_TYPE_LABEL[holiday.type] || '등록 휴일';
+    return getHolidayDisplayName(holiday);
   }
 
   return '';
@@ -655,9 +765,7 @@ const getRentalDueDateAdjustmentReason = (dateStr, settings = {}) => {
 
   const holiday = getEnabledHoliday(dateStr, settings);
 
-  return holiday
-    ? holiday.name || HOLIDAY_TYPE_LABEL[holiday.type] || '등록 휴일'
-    : '';
+  return holiday ? getHolidayDisplayName(holiday) : '';
 };
 
 const getMaxRentalDueDate = (startDate, settings = {}) => {
@@ -1152,16 +1260,7 @@ function mergePersistedData(rawData) {
   settings.allowNonOverlappingSameAssetRequests =
     rawSettings.allowNonOverlappingSameAssetRequests ??
     initialData.settings.allowNonOverlappingSameAssetRequests;
-  settings.holidays = Array.isArray(settings.holidays)
-    ? settings.holidays
-        .filter((holiday) => holiday && holiday.date)
-        .map((holiday) => ({
-          date: holiday.date,
-          name: holiday.name || '',
-          type: holiday.type || DEFAULT_HOLIDAY_TYPE,
-          enabled: holiday.enabled !== false,
-        }))
-    : [];
+  settings.holidays = normalizeHolidayList(settings.holidays);
 
   const parsedWithoutAdminAccounts = stripAdminAccountsFromData(parsed);
 
@@ -1857,6 +1956,30 @@ function App() {
   const [newHolidayType, setNewHolidayType] = useState(DEFAULT_HOLIDAY_TYPE);
   const [holidayImportYear, setHolidayImportYear] = useState(String(getKoreaNow().getUTCFullYear()));
   const [holidayImportLoading, setHolidayImportLoading] = useState(false);
+  const [holidayImportConflictModal, setHolidayImportConflictModal] = useState(null);
+  const [holidayManagementYear, setHolidayManagementYear] = useState(
+    String(getKoreaNow().getUTCFullYear())
+  );
+  const [holidayManagementView, setHolidayManagementView] = useState(() => {
+    try {
+      return window.localStorage.getItem('holidayManagementView') === 'calendar'
+        ? 'calendar'
+        : 'list';
+    } catch (error) {
+      return 'list';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        'holidayManagementView',
+        holidayManagementView
+      );
+    } catch (error) {
+      // 브라우저 저장소를 사용할 수 없는 환경에서는 현재 세션 상태만 유지합니다.
+    }
+  }, [holidayManagementView]);
 
   const [
     splitStorageFinalizeLoading,
@@ -6000,79 +6123,257 @@ function App() {
   const addTempHoliday = () => {
     const holidayDate = newHolidayDate;
     const holidayName = newHolidayName.trim();
+    const nextReason = normalizeHolidayReason({
+      type: newHolidayType || DEFAULT_HOLIDAY_TYPE,
+      name: holidayName,
+    });
 
     if (!holidayDate) {
       triggerToast('휴일 날짜를 선택해 주세요.', 'error');
       return;
     }
 
-    if ((tempSettings.holidays || []).some((holiday) => holiday.date === holidayDate)) {
-      triggerToast('이미 등록된 휴일 날짜입니다.', 'error');
+    const normalizedHolidays = normalizeHolidayList(tempSettings.holidays);
+    const existingHoliday = normalizedHolidays.find(
+      (holiday) => holiday.date === holidayDate
+    );
+
+    if (
+      existingHoliday &&
+      getHolidayReasons(existingHoliday).some(
+        (reason) =>
+          reason.type === nextReason.type &&
+          reason.name === nextReason.name
+      )
+    ) {
+      triggerToast('같은 날짜에 동일한 휴일 사유가 이미 등록되어 있습니다.', 'error');
       return;
     }
 
-    const nextHoliday = {
-      date: holidayDate,
-      name: holidayName || HOLIDAY_TYPE_LABEL[newHolidayType] || '휴일',
-      type: newHolidayType || DEFAULT_HOLIDAY_TYPE,
-      enabled: true,
-    };
+    const nextHolidays = existingHoliday
+      ? normalizedHolidays.map((holiday) =>
+          holiday.date === holidayDate
+            ? normalizeHolidayList([
+                holiday,
+                {
+                  date: holidayDate,
+                  reasons: [nextReason],
+                  enabled: true,
+                },
+              ])[0]
+            : holiday
+        )
+      : normalizeHolidayList([
+          ...normalizedHolidays,
+          {
+            date: holidayDate,
+            reasons: [nextReason],
+            enabled: true,
+          },
+        ]);
 
     setTempSettings((prev) => ({
       ...prev,
-      holidays: [...(prev.holidays || []), nextHoliday].sort((a, b) =>
-        String(a.date).localeCompare(String(b.date))
-      ),
+      holidays: normalizeHolidayList(nextHolidays),
     }));
 
+    setHolidayManagementYear(String(holidayDate).slice(0, 4));
     setNewHolidayName('');
-    triggerToast(`[${formatDateWithKoreanWeekday(holidayDate)}] 휴일이 임시 추가되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`, 'success');
+    triggerToast(
+      `[${formatDateWithKoreanWeekday(holidayDate)}] ${nextReason.name} 사유가 임시 추가되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`,
+      'success'
+    );
   };
 
-  const deleteTempHoliday = (targetIndex) => {
-    const targetHoliday = (tempSettings.holidays || [])[targetIndex];
+  const updateTempHolidayReason = ({
+    sourceDate,
+    reasonIndex,
+    date,
+    type,
+    name,
+  }) => {
+    const nextDate = String(date || '').trim();
+    const nextReason = normalizeHolidayReason({ type, name });
+    const normalizedHolidays = normalizeHolidayList(tempSettings.holidays);
+    const sourceHoliday = normalizedHolidays.find(
+      (holiday) => holiday.date === sourceDate
+    );
 
-    setTempSettings((prev) => ({
-      ...prev,
-      holidays: (prev.holidays || []).filter((_, index) => index !== targetIndex),
-    }));
+    if (!nextDate) {
+      triggerToast('휴일 날짜를 선택해 주세요.', 'error');
+      return false;
+    }
 
-    triggerToast(`[${targetHoliday?.name || '휴일'}] 휴일이 임시 삭제되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`, 'success');
-  };
+    if (!sourceHoliday) {
+      triggerToast('수정할 휴일 정보를 찾지 못했습니다.', 'error');
+      return false;
+    }
 
-  const mergeImportedHolidays = (currentHolidays = [], importedHolidays = []) => {
-    const holidayMap = new Map();
+    if (
+      nextDate !== sourceDate &&
+      normalizedHolidays.some((holiday) => holiday.date === nextDate)
+    ) {
+      triggerToast(
+        '해당 날짜에는 이미 등록된 휴일이 있습니다. 기존 휴일에 사유를 추가하거나 다른 날짜를 선택해 주세요.',
+        'error'
+      );
+      return false;
+    }
 
-    currentHolidays.forEach((holiday) => {
-      if (!holiday?.date) return;
+    const sourceReasons = getHolidayReasons(sourceHoliday);
 
-      holidayMap.set(holiday.date, {
-        date: holiday.date,
-        name: holiday.name || '',
-        type: holiday.type || DEFAULT_HOLIDAY_TYPE,
-        enabled: holiday.enabled !== false,
+    if (
+      sourceReasons.some(
+        (reason, index) =>
+          index !== reasonIndex &&
+          reason.type === nextReason.type &&
+          reason.name === nextReason.name
+      )
+    ) {
+      triggerToast('같은 날짜에 동일한 휴일 사유가 이미 등록되어 있습니다.', 'error');
+      return false;
+    }
+
+    const nextSourceReasons = sourceReasons.filter(
+      (_, index) => index !== reasonIndex
+    );
+    const withoutSource = normalizedHolidays.filter(
+      (holiday) => holiday.date !== sourceDate
+    );
+    const rebuiltHolidays = [...withoutSource];
+
+    if (nextSourceReasons.length > 0) {
+      rebuiltHolidays.push({
+        ...sourceHoliday,
+        reasons: nextSourceReasons,
       });
+    }
+
+    rebuiltHolidays.push({
+      date: nextDate,
+      reasons: [nextReason],
+      enabled: sourceHoliday.enabled !== false,
     });
 
-    importedHolidays.forEach((holiday) => {
-      if (!holiday?.date) return;
+    setTempSettings((prev) => ({
+      ...prev,
+      holidays: normalizeHolidayList(rebuiltHolidays),
+    }));
+    setHolidayManagementYear(nextDate.slice(0, 4));
+    triggerToast(
+      `[${formatDateWithKoreanWeekday(nextDate)}] 휴일 정보가 임시 수정되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`,
+      'success'
+    );
 
-      const existingHoliday = holidayMap.get(holiday.date);
+    return true;
+  };
 
-      if (existingHoliday && ['company', 'manual'].includes(existingHoliday.type)) {
+  const deleteTempHoliday = (targetDate, reasonIndex) => {
+    const normalizedHolidays = normalizeHolidayList(tempSettings.holidays);
+    const targetHoliday = normalizedHolidays.find(
+      (holiday) => holiday.date === targetDate
+    );
+    const targetReason = getHolidayReasons(targetHoliday)[reasonIndex];
+
+    if (!targetHoliday || !targetReason) {
+      triggerToast('삭제할 휴일 정보를 찾지 못했습니다.', 'error');
+      return;
+    }
+
+    const nextReasons = getHolidayReasons(targetHoliday).filter(
+      (_, index) => index !== reasonIndex
+    );
+    const nextHolidays = normalizedHolidays
+      .filter((holiday) => holiday.date !== targetDate)
+      .concat(
+        nextReasons.length > 0
+          ? [
+              {
+                ...targetHoliday,
+                reasons: nextReasons,
+              },
+            ]
+          : []
+      );
+
+    setTempSettings((prev) => ({
+      ...prev,
+      holidays: normalizeHolidayList(nextHolidays),
+    }));
+
+    triggerToast(
+      `[${targetReason.name || '휴일'}] 휴일 사유가 임시 삭제되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`,
+      'success'
+    );
+  };
+
+  const mergeImportedHolidays = (
+    currentHolidays = [],
+    importedHolidays = [],
+    mode = 'merge'
+  ) => {
+    const currentList = normalizeHolidayList(currentHolidays);
+    const importedList = normalizeHolidayList(importedHolidays);
+    const holidayMap = new Map(
+      currentList.map((holiday) => [holiday.date, holiday])
+    );
+
+    importedList.forEach((importedHoliday) => {
+      const existingHoliday = holidayMap.get(importedHoliday.date);
+
+      if (!existingHoliday) {
+        holidayMap.set(importedHoliday.date, importedHoliday);
         return;
       }
 
-      holidayMap.set(holiday.date, {
-        date: holiday.date,
-        name: holiday.name || '',
-        type: holiday.type || 'public',
-        enabled: holiday.enabled !== false,
-      });
+      if (mode === 'exclude') {
+        return;
+      }
+
+      if (mode === 'replace') {
+        holidayMap.set(importedHoliday.date, importedHoliday);
+        return;
+      }
+
+      holidayMap.set(
+        importedHoliday.date,
+        normalizeHolidayList([existingHoliday, importedHoliday])[0]
+      );
     });
 
-    return Array.from(holidayMap.values()).sort((a, b) =>
-      String(a.date).localeCompare(String(b.date))
+    return normalizeHolidayList(Array.from(holidayMap.values()));
+  };
+
+  const applyHolidayImportConflictChoice = (mode) => {
+    const pendingImport = holidayImportConflictModal;
+
+    if (!pendingImport) return;
+
+    const nextMode = ['exclude', 'merge', 'replace'].includes(mode)
+      ? mode
+      : 'merge';
+
+    setTempSettings((prev) => ({
+      ...prev,
+      holidays: mergeImportedHolidays(
+        prev.holidays || [],
+        pendingImport.importedHolidays,
+        nextMode
+      ),
+    }));
+    setHolidayManagementYear(String(pendingImport.year));
+    setHolidayImportConflictModal(null);
+
+    const actionLabel =
+      nextMode === 'exclude'
+        ? '중복 날짜를 제외하고'
+        : nextMode === 'replace'
+          ? '중복 날짜를 불러온 데이터로 교체하고'
+          : '기존 휴일 사유와 병합하고';
+
+    triggerToast(
+      `${pendingImport.year}년 공휴일을 ${actionLabel} 임시 목록에 반영했습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`,
+      'success'
     );
   };
 
@@ -6096,20 +6397,50 @@ function App() {
       }
 
       const payload = await response.json();
-      const importedHolidays = Array.isArray(payload)
-        ? payload
-        : Array.isArray(payload.holidays)
-          ? payload.holidays
-          : [];
+      const importedHolidays = normalizeHolidayList(
+        Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload.holidays)
+            ? payload.holidays
+            : []
+      );
 
       if (importedHolidays.length === 0) {
         triggerToast(`${year}년 공휴일 JSON에 불러올 휴일 데이터가 없습니다.`, 'error');
         return;
       }
 
+      const currentHolidays = normalizeHolidayList(tempSettings.holidays);
+      const currentDateSet = new Set(
+        currentHolidays.map((holiday) => holiday.date)
+      );
+      const duplicateHolidays = importedHolidays.filter((holiday) =>
+        currentDateSet.has(holiday.date)
+      );
+      const newHolidays = importedHolidays.filter(
+        (holiday) => !currentDateSet.has(holiday.date)
+      );
+
+      setHolidayManagementYear(String(year));
+
+      if (duplicateHolidays.length > 0) {
+        setHolidayImportConflictModal({
+          year,
+          importedHolidays,
+          importedDateCount: importedHolidays.length,
+          newDateCount: newHolidays.length,
+          duplicateDateCount: duplicateHolidays.length,
+        });
+        return;
+      }
+
       setTempSettings((prev) => ({
         ...prev,
-        holidays: mergeImportedHolidays(prev.holidays || [], importedHolidays),
+        holidays: mergeImportedHolidays(
+          prev.holidays || [],
+          importedHolidays,
+          'merge'
+        ),
       }));
 
       triggerToast(`${year}년 법정/임시공휴일 ${importedHolidays.length}건을 임시 목록에 불러왔습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`, 'success');
@@ -6886,26 +7217,7 @@ function App() {
         tempSettings.adjustStartDateAfterWorkEnd ??
         DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY,
       maxRentalDays: getSafeMaxRentalDays(tempSettings),
-      holidays: Array.isArray(
-        tempSettings.holidays
-      )
-        ? tempSettings.holidays
-            .filter(
-              (holiday) =>
-                holiday &&
-                holiday.date
-            )
-            .map((holiday) => ({
-              date: holiday.date,
-              name:
-                holiday.name || '',
-              type:
-                holiday.type ||
-                DEFAULT_HOLIDAY_TYPE,
-              enabled:
-                holiday.enabled !== false,
-            }))
-        : [],
+      holidays: serializeHolidayListForFirestore(tempSettings.holidays),
     });
 
     try {
@@ -7474,7 +7786,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     tempSettings.adjustStartDateToNextBusinessDay ??
     tempSettings.adjustStartDateAfterWorkEnd ??
     DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY;
-  const tempHolidayList = Array.isArray(tempSettings.holidays) ? tempSettings.holidays : [];
+  const tempHolidayList = normalizeHolidayList(tempSettings.holidays);
 
   const tempAllowNonOverlappingSameAssetRequests =
     tempSettings.allowNonOverlappingSameAssetRequests ??
@@ -14330,9 +14642,13 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     goToUserSignup,
     handleAddLaptopClick,
     handleFileUpload,
+    holidayImportConflictModal,
     holidayImportLoading,
     holidayImportYear,
+    holidayManagementView,
+    holidayManagementYear,
     importKoreanPublicHolidaysFromJson,
+    applyHolidayImportConflictChoice,
     isAdminAuthenticated,
     isCurrentFirebaseAuthGeneralUser,
     isPeriodBasedRentalMode,
@@ -14469,8 +14785,11 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     setFaqQuery,
     setFaqSearchWithinCategory,
     setForm,
+    setHolidayImportConflictModal,
     setHolidayImportLoading,
     setHolidayImportYear,
+    setHolidayManagementView,
+    setHolidayManagementYear,
     setIsCommunityMenuOpen,
     setNewAssetCategory,
     setNewBorrower,
@@ -14523,6 +14842,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     triggerToast,
     unavailableFilterLabel,
     updateRequestMemo,
+    updateTempHolidayReason,
     userActionBorrowers,
     userActionDialog,
     userActionForm,

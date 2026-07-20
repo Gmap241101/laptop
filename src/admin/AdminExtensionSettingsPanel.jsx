@@ -1,3 +1,14 @@
+import { useMemo, useState } from 'react';
+import {
+  CalendarDays,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Edit3,
+  List,
+  X,
+} from 'lucide-react';
+
 export default function AdminExtensionSettingsPanel({ ctx }) {
   const {
     Button,
@@ -17,15 +28,22 @@ export default function AdminExtensionSettingsPanel({ ctx }) {
     deleteTempHoliday,
     formatDateWithKoreanWeekday,
     getKoreaNow,
+    holidayImportConflictModal,
     holidayImportLoading,
     holidayImportYear,
+    holidayManagementView,
+    holidayManagementYear,
     importKoreanPublicHolidaysFromJson,
+    applyHolidayImportConflictChoice,
     newHolidayDate,
     newHolidayName,
     newHolidayType,
     saveSystemSettings,
+    setHolidayImportConflictModal,
     setHolidayImportLoading,
     setHolidayImportYear,
+    setHolidayManagementView,
+    setHolidayManagementYear,
     setNewHolidayDate,
     setNewHolidayName,
     setNewHolidayType,
@@ -36,6 +54,7 @@ export default function AdminExtensionSettingsPanel({ ctx }) {
     tempSettings,
     today,
     triggerToast,
+    updateTempHolidayReason,
   } = ctx;
 
   const extensionEnabled =
@@ -65,6 +84,135 @@ export default function AdminExtensionSettingsPanel({ ctx }) {
       [key]: value,
     }));
   };
+
+  const [editingHoliday, setEditingHoliday] = useState(null);
+  const [holidayEditForm, setHolidayEditForm] = useState({
+    date: '',
+    type: DEFAULT_HOLIDAY_TYPE,
+    name: '',
+  });
+  const [calendarDetailDate, setCalendarDetailDate] = useState('');
+
+  const selectedHolidayYear = Math.min(
+    2100,
+    Math.max(2000, Number(holidayManagementYear) || getKoreaNow().getUTCFullYear())
+  );
+
+  const selectedYearHolidays = useMemo(
+    () =>
+      (tempHolidayList || [])
+        .filter(
+          (holiday) =>
+            String(holiday.date || '').slice(0, 4) ===
+            String(selectedHolidayYear)
+        )
+        .sort((a, b) => String(a.date).localeCompare(String(b.date))),
+    [selectedHolidayYear, tempHolidayList]
+  );
+
+  const selectableHolidayYears = useMemo(() => {
+    const years = new Set([
+      selectedHolidayYear,
+      getKoreaNow().getUTCFullYear(),
+      Number(holidayImportYear) || selectedHolidayYear,
+    ]);
+
+    (tempHolidayList || []).forEach((holiday) => {
+      const year = Number(String(holiday.date || '').slice(0, 4));
+      if (year >= 2000 && year <= 2100) years.add(year);
+    });
+
+    return Array.from(years).sort((a, b) => a - b);
+  }, [holidayImportYear, selectedHolidayYear, tempHolidayList]);
+
+  const holidaysByMonth = useMemo(() => {
+    const groups = new Map();
+
+    selectedYearHolidays.forEach((holiday) => {
+      const month = Number(String(holiday.date).slice(5, 7));
+      if (!groups.has(month)) groups.set(month, []);
+      groups.get(month).push(holiday);
+    });
+
+    return Array.from(groups.entries()).sort((a, b) => a[0] - b[0]);
+  }, [selectedYearHolidays]);
+
+  const getReasonBadgeClassName = (type) => {
+    if (type === 'public') return 'border-blue-200 bg-blue-50 text-blue-700';
+    if (type === 'temporary') return 'border-violet-200 bg-violet-50 text-violet-700';
+    if (type === 'company') return 'border-orange-200 bg-orange-50 text-orange-700';
+    return 'border-slate-200 bg-slate-100 text-slate-600';
+  };
+
+  const startHolidayEdit = (holiday, reasonIndex) => {
+    const reason = holiday.reasons?.[reasonIndex] || {
+      type: holiday.type || DEFAULT_HOLIDAY_TYPE,
+      name: holiday.name || '',
+    };
+
+    setEditingHoliday({
+      sourceDate: holiday.date,
+      reasonIndex,
+    });
+    setHolidayEditForm({
+      date: holiday.date,
+      type: reason.type || DEFAULT_HOLIDAY_TYPE,
+      name: reason.name || '',
+    });
+  };
+
+  const cancelHolidayEdit = () => {
+    setEditingHoliday(null);
+    setHolidayEditForm({
+      date: '',
+      type: DEFAULT_HOLIDAY_TYPE,
+      name: '',
+    });
+  };
+
+  const saveHolidayEdit = () => {
+    if (!editingHoliday) return;
+
+    const saved = updateTempHolidayReason({
+      ...editingHoliday,
+      ...holidayEditForm,
+    });
+
+    if (saved) cancelHolidayEdit();
+  };
+
+  const openCalendarHolidayEdit = (holiday, reasonIndex) => {
+    setCalendarDetailDate('');
+    setHolidayManagementView('list');
+    setHolidayManagementYear(String(holiday.date).slice(0, 4));
+    startHolidayEdit(holiday, reasonIndex);
+  };
+
+  const getMonthCalendarCells = (year, month) => {
+    const firstDay = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+    const lastDate = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const holidayMap = new Map(
+      selectedYearHolidays.map((holiday) => [holiday.date, holiday])
+    );
+    const cells = Array.from({ length: firstDay }, () => null);
+
+    for (let day = 1; day <= lastDate; day += 1) {
+      const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      cells.push({
+        day,
+        date,
+        holiday: holidayMap.get(date) || null,
+        weekday: new Date(`${date}T00:00:00Z`).getUTCDay(),
+      });
+    }
+
+    while (cells.length % 7 !== 0) cells.push(null);
+    return cells;
+  };
+
+  const calendarDetailHoliday = selectedYearHolidays.find(
+    (holiday) => holiday.date === calendarDetailDate
+  );
 
   const Toggle = ({
     label,
@@ -272,22 +420,22 @@ export default function AdminExtensionSettingsPanel({ ctx }) {
       <section className="space-y-5 border-t border-slate-200 pt-7">
         <div>
           <h3 className="text-base font-bold text-slate-900">
-            휴일·영업일 관리
+            휴일 관리
           </h3>
           <p className="mt-1 text-xs leading-5 text-slate-500">
-            법정·임시공휴일은 정적 JSON에서 불러오고 회사휴일과 수동 휴일은 직접 등록합니다. 변경사항 저장 후 대여 일정 계산에 반영됩니다.
+            법정공휴일과 임시공휴일을 자동으로 불러오거나 회사휴일과 수동 휴일을 직접 등록할 수 있습니다. 등록된 휴일은 대여 시작일과 반납 예정일 계산에 반영됩니다.
           </p>
         </div>
 
-        <div className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="space-y-5 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
           <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <h4 className="text-xs font-bold text-blue-900">
                   법정·임시공휴일 자동 불러오기
                 </h4>
                 <p className="mt-1 text-[11px] leading-5 text-blue-700">
-                  public/holidays 폴더의 연도별 JSON을 병합합니다. 기존 회사휴일과 수동등록 휴일은 덮어쓰지 않습니다.
+                  public/holidays 폴더의 연도별 JSON을 불러옵니다. 같은 날짜가 이미 있으면 기존 사유 유지, 병합 또는 교체 방식을 선택할 수 있습니다.
                 </p>
               </div>
 
@@ -339,54 +487,314 @@ export default function AdminExtensionSettingsPanel({ ctx }) {
               value={newHolidayName}
               onChange={(event) => setNewHolidayName(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  addTempHoliday();
-                }
+                if (event.key === 'Enter') addTempHoliday();
               }}
               placeholder="휴일명 입력 예: 신정, 창립기념 휴무"
               className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs outline-none mk-form-border-focus"
             />
 
-            <Button
-              onClick={addTempHoliday}
-              className="px-3 py-2.5 text-xs"
-            >
+            <Button onClick={addTempHoliday} className="px-3 py-2.5 text-xs">
               <Plus size={14} /> 추가
             </Button>
           </div>
 
-          <div className="max-h-64 space-y-1 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50 p-2">
-            {tempHolidayList.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-slate-200 bg-white py-8 text-center text-xs text-slate-400">
-                현재 등록된 휴일이 없습니다.
-              </div>
-            ) : (
-              tempHolidayList.map((holiday, index) => (
-                <div
-                  key={`${holiday.date}-${holiday.name}-${index}`}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-white px-3.5 py-2 text-xs text-slate-700"
-                >
-                  <div className="min-w-0">
-                    <div className="font-semibold text-slate-900">
-                      {formatDateWithKoreanWeekday(holiday.date)}
+          <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                aria-label="이전 연도"
+                onClick={() =>
+                  setHolidayManagementYear(
+                    String(Math.max(2000, selectedHolidayYear - 1))
+                  )
+                }
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-100"
+              >
+                <ChevronLeft size={16} />
+              </button>
+
+              <select
+                value={selectedHolidayYear}
+                onChange={(event) =>
+                  setHolidayManagementYear(event.target.value)
+                }
+                className="h-9 min-w-28 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 outline-none mk-form-focus"
+              >
+                {selectableHolidayYears.map((year) => (
+                  <option key={year} value={year}>
+                    {year}년
+                  </option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                aria-label="다음 연도"
+                onClick={() =>
+                  setHolidayManagementYear(
+                    String(Math.min(2100, selectedHolidayYear + 1))
+                  )
+                }
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-100"
+              >
+                <ChevronRight size={16} />
+              </button>
+
+              <span className="ml-1 text-xs text-slate-500">
+                등록 휴일 {selectedYearHolidays.length}일
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 rounded-xl border border-slate-200 bg-white p-1">
+              <button
+                type="button"
+                onClick={() => setHolidayManagementView('list')}
+                className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                  holidayManagementView === 'list'
+                    ? 'bg-slate-900 text-white'
+                    : 'text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                <List size={14} /> 목록
+              </button>
+              <button
+                type="button"
+                onClick={() => setHolidayManagementView('calendar')}
+                className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                  holidayManagementView === 'calendar'
+                    ? 'bg-slate-900 text-white'
+                    : 'text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                <CalendarDays size={14} /> 달력
+              </button>
+            </div>
+          </div>
+
+          {holidayManagementView === 'list' ? (
+            <div className="space-y-5">
+              {holidaysByMonth.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 py-10 text-center text-xs text-slate-400">
+                  {selectedHolidayYear}년에 등록된 휴일이 없습니다.
+                </div>
+              ) : (
+                holidaysByMonth.map(([month, monthHolidays]) => (
+                  <div key={month} className="space-y-2">
+                    <div className="flex items-center justify-between px-1">
+                      <h4 className="text-xs font-bold text-slate-800">
+                        {month}월
+                      </h4>
+                      <span className="text-[11px] text-slate-400">
+                        {monthHolidays.length}일
+                      </span>
                     </div>
-                    <div className="mt-0.5 text-[11px] text-slate-500">
-                      {holiday.name || '휴일'} ·{' '}
-                      {HOLIDAY_TYPE_LABEL[holiday.type] || '휴일'}
+
+                    <div className="space-y-2">
+                      {monthHolidays.map((holiday) => (
+                        <div
+                          key={holiday.date}
+                          className="rounded-xl border border-slate-200 bg-white p-3"
+                        >
+                          <div className="mb-2 text-xs font-bold text-slate-900">
+                            {formatDateWithKoreanWeekday(holiday.date)}
+                          </div>
+
+                          <div className="space-y-2">
+                            {(holiday.reasons || []).map((reason, reasonIndex) => {
+                              const isEditing =
+                                editingHoliday?.sourceDate === holiday.date &&
+                                editingHoliday?.reasonIndex === reasonIndex;
+
+                              return isEditing ? (
+                                <div
+                                  key={`${holiday.date}-${reasonIndex}-edit`}
+                                  className="grid gap-2 rounded-xl border border-orange-200 bg-orange-50/50 p-3 lg:grid-cols-[150px_130px_minmax(0,1fr)_auto]"
+                                >
+                                  <input
+                                    type="date"
+                                    value={holidayEditForm.date}
+                                    onChange={(event) =>
+                                      setHolidayEditForm((prev) => ({
+                                        ...prev,
+                                        date: event.target.value,
+                                      }))
+                                    }
+                                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none mk-form-focus"
+                                  />
+                                  <select
+                                    value={holidayEditForm.type}
+                                    onChange={(event) =>
+                                      setHolidayEditForm((prev) => ({
+                                        ...prev,
+                                        type: event.target.value,
+                                      }))
+                                    }
+                                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none mk-form-focus"
+                                  >
+                                    <option value="public">법정공휴일</option>
+                                    <option value="temporary">임시공휴일</option>
+                                    <option value="company">회사휴일</option>
+                                    <option value="manual">수동등록</option>
+                                  </select>
+                                  <input
+                                    value={holidayEditForm.name}
+                                    onChange={(event) =>
+                                      setHolidayEditForm((prev) => ({
+                                        ...prev,
+                                        name: event.target.value,
+                                      }))
+                                    }
+                                    onKeyDown={(event) => {
+                                      if (event.key === 'Enter') saveHolidayEdit();
+                                      if (event.key === 'Escape') cancelHolidayEdit();
+                                    }}
+                                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none mk-form-focus"
+                                  />
+                                  <div className="flex items-center justify-end gap-1">
+                                    <button
+                                      type="button"
+                                      aria-label="수정 적용"
+                                      onClick={saveHolidayEdit}
+                                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-slate-900 text-white transition hover:bg-slate-700"
+                                    >
+                                      <Check size={15} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      aria-label="수정 취소"
+                                      onClick={cancelHolidayEdit}
+                                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50"
+                                    >
+                                      <X size={15} />
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div
+                                  key={`${holiday.date}-${reason.type}-${reason.name}-${reasonIndex}`}
+                                  className="flex flex-col gap-2 rounded-xl bg-slate-50 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+                                >
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <span
+                                      className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-bold ${getReasonBadgeClassName(
+                                        reason.type
+                                      )}`}
+                                    >
+                                      {HOLIDAY_TYPE_LABEL[reason.type] || '휴일'}
+                                    </span>
+                                    <span className="truncate text-xs font-semibold text-slate-700">
+                                      {reason.name || '휴일'}
+                                    </span>
+                                  </div>
+
+                                  <div className="flex shrink-0 items-center justify-end gap-1">
+                                    <button
+                                      type="button"
+                                      aria-label="휴일 수정"
+                                      onClick={() =>
+                                        startHolidayEdit(holiday, reasonIndex)
+                                      }
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-blue-50 hover:text-blue-600"
+                                    >
+                                      <Edit3 size={14} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      aria-label="휴일 삭제"
+                                      onClick={() =>
+                                        deleteTempHoliday(
+                                          holiday.date,
+                                          reasonIndex
+                                        )
+                                      }
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-
-                  <Button
-                    onClick={() => deleteTempHoliday(index)}
-                    variant="ghost"
-                    className="shrink-0 rounded-lg px-1 py-1 hover:bg-rose-50 hover:text-rose-600"
+                ))
+              )}
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+              {Array.from({ length: 12 }, (_, monthIndex) => monthIndex + 1).map(
+                (month) => (
+                  <div
+                    key={month}
+                    className="rounded-2xl border border-slate-200 bg-white p-3"
                   >
-                    <Trash2 size={14} />
-                  </Button>
-                </div>
-              ))
-            )}
-          </div>
+                    <div className="mb-3 text-center text-xs font-bold text-slate-900">
+                      {selectedHolidayYear}년 {month}월
+                    </div>
+                    <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-semibold text-slate-400">
+                      {['일', '월', '화', '수', '목', '금', '토'].map((day, index) => (
+                        <div
+                          key={day}
+                          className={
+                            index === 0
+                              ? 'text-rose-500'
+                              : index === 6
+                                ? 'text-blue-500'
+                                : ''
+                          }
+                        >
+                          {day}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-1 grid grid-cols-7 gap-1">
+                      {getMonthCalendarCells(selectedHolidayYear, month).map(
+                        (cell, cellIndex) =>
+                          cell ? (
+                            <button
+                              type="button"
+                              key={cell.date}
+                              onClick={() =>
+                                cell.holiday && setCalendarDetailDate(cell.date)
+                              }
+                              className={`relative min-h-12 rounded-lg border px-1 py-1 text-left transition ${
+                                cell.holiday
+                                  ? 'cursor-pointer border-orange-200 bg-orange-50 hover:border-orange-300'
+                                  : 'cursor-default border-transparent hover:bg-slate-50'
+                              }`}
+                            >
+                              <span
+                                className={`text-[10px] font-semibold ${
+                                  cell.weekday === 0
+                                    ? 'text-rose-500'
+                                    : cell.weekday === 6
+                                      ? 'text-blue-500'
+                                      : 'text-slate-600'
+                                }`}
+                              >
+                                {cell.day}
+                              </span>
+                              {cell.holiday && (
+                                <div className="mt-0.5 max-h-6 overflow-hidden text-[8px] font-semibold leading-3 text-orange-700">
+                                  {(cell.holiday.reasons || [])
+                                    .map((reason) => reason.name)
+                                    .join(' · ')}
+                                </div>
+                              )}
+                            </button>
+                          ) : (
+                            <div key={`blank-${cellIndex}`} className="min-h-12" />
+                          )
+                      )}
+                    </div>
+                  </div>
+                )
+              )}
+            </div>
+          )}
         </div>
       </section>
 
@@ -718,6 +1126,135 @@ export default function AdminExtensionSettingsPanel({ ctx }) {
         </div>
       </section>
 
+      {calendarDetailHoliday && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-[1px]">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  {formatDateWithKoreanWeekday(calendarDetailHoliday.date)}
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  등록된 휴일 사유를 확인하거나 수정할 수 있습니다.
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="닫기"
+                onClick={() => setCalendarDetailDate('')}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              {(calendarDetailHoliday.reasons || []).map((reason, reasonIndex) => (
+                <div
+                  key={`${reason.type}-${reason.name}-${reasonIndex}`}
+                  className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-3"
+                >
+                  <div className="min-w-0">
+                    <span
+                      className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-bold ${getReasonBadgeClassName(
+                        reason.type
+                      )}`}
+                    >
+                      {HOLIDAY_TYPE_LABEL[reason.type] || '휴일'}
+                    </span>
+                    <div className="mt-1 truncate text-xs font-semibold text-slate-700">
+                      {reason.name || '휴일'}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      aria-label="휴일 수정"
+                      onClick={() =>
+                        openCalendarHolidayEdit(
+                          calendarDetailHoliday,
+                          reasonIndex
+                        )
+                      }
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600"
+                    >
+                      <Edit3 size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="휴일 삭제"
+                      onClick={() => {
+                        deleteTempHoliday(
+                          calendarDetailHoliday.date,
+                          reasonIndex
+                        );
+                        if (
+                          (calendarDetailHoliday.reasons || []).length <= 1
+                        ) {
+                          setCalendarDetailDate('');
+                        }
+                      }}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {holidayImportConflictModal && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[1px]">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
+            <h3 className="text-base font-bold text-slate-900">
+              중복 휴일 확인
+            </h3>
+            <p className="mt-2 text-xs leading-5 text-slate-600">
+              {holidayImportConflictModal.year}년 공휴일 {holidayImportConflictModal.importedDateCount}일 중 이미 등록된 날짜가 {holidayImportConflictModal.duplicateDateCount}일 있습니다. 신규 날짜는 {holidayImportConflictModal.newDateCount}일입니다.
+            </p>
+
+            <div className="mt-4 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-4 text-[11px] leading-5 text-slate-600">
+              <div><strong>중복 제외:</strong> 기존 날짜의 휴일 사유를 유지하고 신규 날짜만 추가합니다.</div>
+              <div><strong>병합:</strong> 기존 사유를 유지하면서 불러온 법정·임시공휴일 사유를 함께 등록합니다.</div>
+              <div><strong>교체:</strong> 중복 날짜의 모든 기존 사유를 불러온 데이터로 바꿉니다. 회사휴일과 수동등록 사유도 제거될 수 있습니다.</div>
+            </div>
+
+            <div className="mt-5 grid gap-2 sm:grid-cols-2">
+              <Button
+                variant="outline"
+                onClick={() => setHolidayImportConflictModal(null)}
+                className="w-full"
+              >
+                취소
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => applyHolidayImportConflictChoice('exclude')}
+                className="w-full"
+              >
+                중복 제외
+              </Button>
+              <Button
+                onClick={() => applyHolidayImportConflictChoice('merge')}
+                className="w-full"
+              >
+                기존 휴일과 병합
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => applyHolidayImportConflictChoice('replace')}
+                className="w-full border-rose-200 text-rose-600 hover:bg-rose-50"
+              >
+                불러온 데이터로 교체
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col-reverse gap-2.5 border-t border-slate-200/60 pt-4 sm:flex-row sm:justify-end">
         <Button
           variant="outline"
@@ -727,6 +1264,8 @@ export default function AdminExtensionSettingsPanel({ ctx }) {
             setNewHolidayName('');
             setNewHolidayType(DEFAULT_HOLIDAY_TYPE);
             setHolidayImportYear(String(getKoreaNow().getUTCFullYear()));
+            setHolidayManagementYear(String(getKoreaNow().getUTCFullYear()));
+            setHolidayImportConflictModal(null);
             setHolidayImportLoading(false);
             triggerToast(
               '대여 정책 변경사항이 취소되고 이전 상태로 복원되었습니다.',
