@@ -114,6 +114,7 @@ import {
   formatFirestoreDate,
   formatFirestoreTimestamp,
   getDisplayRentalStatus,
+  getRequestDisplayStatus,
   getFirestoreTimestampMillis,
   getKoreaNow,
   hasRentalPeriodOverlap,
@@ -139,9 +140,9 @@ const FIRESTORE_BATCH_WRITE_LIMIT = 400;
 
 // --- 상태 및 스타일 정의 ---
 const getUserRequestActionLabel = (type) => {
-  if (type === USER_REQUEST_ACTION.CHANGE) return '신청 변경 요청';
-  if (type === USER_REQUEST_ACTION.CANCEL) return '신청 취소 요청';
-  if (type === USER_REQUEST_ACTION.EXTEND) return '대여 연장 요청';
+  if (type === USER_REQUEST_ACTION.CHANGE) return '신청정보 수정';
+  if (type === USER_REQUEST_ACTION.CANCEL) return '대여 신청 취소';
+  if (type === USER_REQUEST_ACTION.EXTEND) return '대여 연장 신청';
   if (type === USER_REQUEST_ACTION.RETURN) return '조기 반납 요청';
 
   return '사용자 요청';
@@ -8471,33 +8472,78 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       return;
     }
 
-    if (type === USER_REQUEST_ACTION.EXTEND) {
-      void submitRentalExtensionRequest(request);
-      return;
-    }
-
     if (
-      request.userActionRequest?.status ===
-      USER_REQUEST_REVIEW_STATUS.PENDING
+      !request?.id ||
+      !firebaseAuthUser?.uid ||
+      request.requesterUid !== firebaseAuthUser.uid
     ) {
       triggerToast(
-        '이미 검토 중인 사용자 요청이 있습니다.',
+        '본인 신청 정보를 확인할 수 없습니다.',
         'error'
       );
       return;
     }
 
-    const canRequestChange =
-      [STATUS.REQUESTED, STATUS.ON_HOLD].includes(
-        request.status
-      );
+    const pendingActionType =
+      request.userActionRequest?.status ===
+      USER_REQUEST_REVIEW_STATUS.PENDING
+        ? request.userActionRequest.type
+        : '';
 
     if (
-      [USER_REQUEST_ACTION.CHANGE, USER_REQUEST_ACTION.CANCEL].includes(type) &&
-      !canRequestChange
+      pendingActionType === USER_REQUEST_ACTION.EXTEND &&
+      type !== USER_REQUEST_ACTION.CANCEL
     ) {
       triggerToast(
-        '신청 변경과 취소 요청은 신청중 또는 보류 상태에서만 가능합니다.',
+        '이미 검토 중인 대여 연장 신청이 있습니다.',
+        'error'
+      );
+      return;
+    }
+
+    if (type === USER_REQUEST_ACTION.EXTEND) {
+      if (currentUserRentalRestrictionStatus?.blocked) {
+        triggerToast(
+          '연체자 대여 제한 적용 중에는 현재 보유 중인 모든 기기의 대여 연장을 신청할 수 없습니다.',
+          'error'
+        );
+        return;
+      }
+
+      const eligibility = getRentalExtensionEligibility(
+        request,
+        data.settings
+      );
+
+      if (!eligibility.allowed) {
+        triggerToast(
+          getRentalExtensionErrorMessage(
+            eligibility.code,
+            eligibility.availableDate
+          ),
+          'error'
+        );
+        return;
+      }
+    }
+
+    if (
+      type === USER_REQUEST_ACTION.CHANGE &&
+      ![STATUS.REQUESTED, STATUS.ON_HOLD].includes(request.status)
+    ) {
+      triggerToast(
+        '신청정보 수정은 신청중 또는 보류 상태에서만 가능합니다.',
+        'error'
+      );
+      return;
+    }
+
+    if (
+      type === USER_REQUEST_ACTION.CANCEL &&
+      request.status !== STATUS.REQUESTED
+    ) {
+      triggerToast(
+        '대여 신청 취소는 관리자 처리 전 신청중 상태에서만 가능합니다.',
         'error'
       );
       return;
@@ -8529,11 +8575,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
   };
 
   const submitUserActionRequest = async () => {
-    const requestId =
-      userActionDialog?.requestId || '';
-
-    const actionType =
-      userActionDialog?.type || '';
+    const requestId = userActionDialog?.requestId || '';
+    const actionType = userActionDialog?.type || '';
 
     if (actionType === USER_REQUEST_ACTION.RETURN) {
       triggerToast(
@@ -8543,17 +8586,14 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       return;
     }
 
-    const currentRequest =
-      currentUserRequests.find(
-        (request) =>
-          request.id === requestId
-      );
+    const currentRequest = currentUserRequests.find(
+      (request) => request.id === requestId
+    );
 
     if (
       !firebaseAuthUser?.uid ||
       !currentRequest ||
-      currentRequest.requesterUid !==
-        firebaseAuthUser.uid
+      currentRequest.requesterUid !== firebaseAuthUser.uid
     ) {
       triggerToast(
         '본인 신청 정보를 확인할 수 없습니다.',
@@ -8562,90 +8602,43 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       return;
     }
 
-    if (
-      currentRequest.userActionRequest?.status ===
-      USER_REQUEST_REVIEW_STATUS.PENDING
-    ) {
-      triggerToast(
-        '이미 검토 중인 사용자 요청이 있습니다.',
-        'error'
-      );
+    if (actionType === USER_REQUEST_ACTION.EXTEND) {
+      setUserActionDialog(null);
+      setUserActionForm(createDefaultUserActionForm());
+      await submitRentalExtensionRequest(currentRequest);
       return;
     }
 
-    const allowedStatuses =
-      [USER_REQUEST_ACTION.CHANGE, USER_REQUEST_ACTION.CANCEL].includes(
-        actionType
-      )
-        ? [STATUS.REQUESTED, STATUS.ON_HOLD]
-        : [STATUS.APPROVED];
-
     if (
-      !allowedStatuses.includes(
-        currentRequest.status
-      )
+      actionType === USER_REQUEST_ACTION.CHANGE &&
+      ![STATUS.REQUESTED, STATUS.ON_HOLD].includes(currentRequest.status)
     ) {
       triggerToast(
-        '현재 신청 상태에서는 해당 요청을 제출할 수 없습니다.',
-        'error'
-      );
-      return;
-    }
-
-    const nextReason =
-      String(
-        userActionForm.reason || ''
-      ).trim();
-
-    const nextTeam =
-      String(
-        currentRequest.requesterTeam ||
-        currentRequest.team ||
-        ''
-      ).trim();
-
-    const nextBorrower =
-      String(
-        currentRequest.requesterName ||
-        currentRequest.borrower ||
-        ''
-      ).trim();
-
-    const nextStartDate =
-      String(
-        userActionForm.startDate || ''
-      );
-
-    const nextDueDate =
-      String(
-        userActionForm.dueDate || ''
-      );
-
-    const nextPurpose =
-      String(
-        userActionForm.purpose || ''
-      ).trim();
-
-    if (!nextReason) {
-      triggerToast(
-        '요청 사유를 입력해 주세요.',
+        '신청정보 수정은 신청중 또는 보류 상태에서만 가능합니다.',
         'error'
       );
       return;
     }
 
     if (
-      actionType ===
-      USER_REQUEST_ACTION.CHANGE
+      actionType === USER_REQUEST_ACTION.CANCEL &&
+      currentRequest.status !== STATUS.REQUESTED
     ) {
-      if (
-        !nextTeam ||
-        !nextBorrower ||
-        !nextStartDate ||
-        !nextDueDate
-      ) {
+      triggerToast(
+        '대여 신청 취소는 관리자 처리 전 신청중 상태에서만 가능합니다.',
+        'error'
+      );
+      return;
+    }
+
+    const nextStartDate = String(userActionForm.startDate || '');
+    const nextDueDate = String(userActionForm.dueDate || '');
+    const nextPurpose = String(userActionForm.purpose || '').trim();
+
+    if (actionType === USER_REQUEST_ACTION.CHANGE) {
+      if (!nextStartDate || !nextDueDate) {
         triggerToast(
-          '로그인 사용자 정보와 변경할 대여 기간을 확인할 수 없습니다.',
+          '변경할 대여 시작일과 반납 예정일을 입력해 주세요.',
           'error'
         );
         return;
@@ -8660,9 +8653,17 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       }
 
       if (
-        nextDueDate <
+        getAdjustedRentalStartDate(nextStartDate, data.settings) !==
         nextStartDate
       ) {
+        triggerToast(
+          '변경할 대여 시작일은 현재 설정에서 허용되는 영업일이어야 합니다.',
+          'error'
+        );
+        return;
+      }
+
+      if (nextDueDate < nextStartDate) {
         triggerToast(
           '변경할 반납 예정일은 대여 시작일 이후여야 합니다.',
           'error'
@@ -8670,12 +8671,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         return;
       }
 
-      if (
-        !isBusinessDay(
-          nextDueDate,
-          data.settings
-        )
-      ) {
+      if (!isBusinessDay(nextDueDate, data.settings)) {
         triggerToast(
           '변경할 반납 예정일은 영업일만 선택할 수 있습니다.',
           'error'
@@ -8683,16 +8679,12 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         return;
       }
 
-      const maxAllowedDate =
-        getMaxRentalDueDate(
-          nextStartDate,
-          data.settings
-        );
+      const maxAllowedDate = getMaxRentalDueDate(
+        nextStartDate,
+        data.settings
+      );
 
-      if (
-        nextDueDate >
-        maxAllowedDate
-      ) {
+      if (nextDueDate > maxAllowedDate) {
         triggerToast(
           `최장 허용 대여 기한(${getSafeMaxRentalDays(data.settings)}영업일)을 초과할 수 없습니다.`,
           'error'
@@ -8701,154 +8693,275 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       }
     }
 
-
     const requestDocRef = doc(
       RENTAL_REQUESTS_COLLECTION_REF,
       requestId
     );
+    const availabilityDocRef = doc(
+      RENTAL_AVAILABILITY_COLLECTION_REF,
+      requestId
+    );
+    const assetDocRef = doc(
+      RENTAL_ASSETS_COLLECTION_REF,
+      currentRequest.laptopId
+    );
 
-    let committedActionRequest = null;
+    let committedRequest = null;
+    let committedAsset = null;
+    let committedAvailability = null;
 
     setUserActionSaving(true);
 
     try {
-      await runTransaction(
-        db,
-        async (transaction) => {
-          const requestSnapshot =
-            await transaction.get(
-              requestDocRef
-            );
+      await runTransaction(db, async (transaction) => {
+        const [requestSnapshot, assetSnapshot, publicConfigSnapshot] =
+          await Promise.all([
+            transaction.get(requestDocRef),
+            transaction.get(assetDocRef),
+            transaction.get(PUBLIC_CONFIG_DOC_REF),
+          ]);
 
-          if (!requestSnapshot.exists()) {
-            throw new Error(
-              'rental-request-not-found'
-            );
-          }
-
-          const latestRequest = {
-            ...requestSnapshot.data(),
-            id: requestSnapshot.id,
-          };
-
-          if (
-            latestRequest.requesterUid !==
-            firebaseAuthUser.uid
-          ) {
-            throw new Error(
-              'rental-request-owner-mismatch'
-            );
-          }
-
-          if (
-            latestRequest.userActionRequest?.status ===
-            USER_REQUEST_REVIEW_STATUS.PENDING
-          ) {
-            throw new Error(
-              'user-action-request-already-pending'
-            );
-          }
-
-          const latestAllowedStatuses =
-            [USER_REQUEST_ACTION.CHANGE, USER_REQUEST_ACTION.CANCEL].includes(
-              actionType
-            )
-              ? [STATUS.REQUESTED, STATUS.ON_HOLD]
-              : [STATUS.APPROVED];
-
-          if (
-            !latestAllowedStatuses.includes(
-              latestRequest.status
-            )
-          ) {
-            throw new Error(
-              'invalid-user-action-request-status'
-            );
-          }
-
-          committedActionRequest = {
-            type: actionType,
-            status:
-              USER_REQUEST_REVIEW_STATUS.PENDING,
-            reason: nextReason,
-            team: nextTeam,
-            borrower: nextBorrower,
-            startDate: nextStartDate,
-            dueDate: nextDueDate,
-            purpose: nextPurpose,
-            requestedAt:
-              serverTimestamp(),
-            reviewedAt: null,
-            reviewedByUid: '',
-            reviewedByName: '',
-            reviewMemo: '',
-          };
-
-          transaction.update(
-            requestDocRef,
-            {
-              userActionRequest:
-                committedActionRequest,
-              updatedAt:
-                serverTimestamp(),
-            }
-          );
+        if (!requestSnapshot.exists()) {
+          throw new Error('rental-request-not-found');
         }
-      );
 
-      setRentalRequests((prev) =>
-        (prev || []).map((request) =>
-          request.id === requestId
-            ? {
-                ...request,
-                userActionRequest: {
-                  ...committedActionRequest,
-                  requestedAt:
-                    new Date(),
-                },
-              }
-            : request
-        )
-      );
+        if (!assetSnapshot.exists()) {
+          throw new Error('rental-asset-not-found');
+        }
 
-      triggerToast(
-        `${getUserRequestActionLabel(
-          actionType
-        )}이 접수되었습니다.`,
-        'success'
-      );
+        const latestRequest = {
+          ...requestSnapshot.data(),
+          id: requestSnapshot.id,
+        };
+
+        if (latestRequest.requesterUid !== firebaseAuthUser.uid) {
+          throw new Error('rental-request-owner-mismatch');
+        }
+
+        const latestAsset = {
+          ...assetSnapshot.data(),
+          id: assetSnapshot.id,
+        };
+        const storedReservations = Array.isArray(latestAsset.reservations)
+          ? latestAsset.reservations
+          : [];
+        const latestReservations = normalizeAssetReservations(
+          storedReservations
+        );
+        const reservationIndex = storedReservations.findIndex(
+          (reservation) => reservation?.id === requestId
+        );
+
+        if (reservationIndex < 0) {
+          throw new Error('asset-reservation-not-found');
+        }
+
+        if (actionType === USER_REQUEST_ACTION.CANCEL) {
+          if (latestRequest.status !== STATUS.REQUESTED) {
+            throw new Error('invalid-direct-cancel-status');
+          }
+
+          const nextReservations = storedReservations.filter(
+            (reservation) => reservation?.id !== requestId
+          );
+
+          transaction.delete(requestDocRef);
+          transaction.delete(availabilityDocRef);
+          transaction.update(assetDocRef, {
+            reservations: nextReservations,
+            reservationMutation: {
+              type: 'user-cancel',
+              requestId,
+              requesterUid: firebaseAuthUser.uid,
+              updatedAt: serverTimestamp(),
+            },
+            updatedAt: serverTimestamp(),
+          });
+
+          committedAsset = {
+            ...latestAsset,
+            reservations: nextReservations,
+          };
+          return;
+        }
+
+        if (
+          ![STATUS.REQUESTED, STATUS.ON_HOLD].includes(
+            latestRequest.status
+          )
+        ) {
+          throw new Error('invalid-direct-edit-status');
+        }
+
+        const latestSettings = normalizeRentalPolicySettings({
+          ...data.settings,
+          ...(publicConfigSnapshot.exists()
+            ? publicConfigSnapshot.data()?.settings || {}
+            : {}),
+        });
+
+        if (nextStartDate < today()) {
+          throw new Error('invalid-direct-edit-start-date');
+        }
+
+        if (
+          getAdjustedRentalStartDate(nextStartDate, latestSettings) !==
+          nextStartDate
+        ) {
+          throw new Error('invalid-direct-edit-start-business-day');
+        }
+
+        if (nextDueDate < nextStartDate) {
+          throw new Error('invalid-direct-edit-date-order');
+        }
+
+        if (!isBusinessDay(nextDueDate, latestSettings)) {
+          throw new Error('invalid-direct-edit-due-business-day');
+        }
+
+        if (
+          nextDueDate >
+          getMaxRentalDueDate(nextStartDate, latestSettings)
+        ) {
+          throw new Error('invalid-direct-edit-max-days');
+        }
+
+        const blockingRequest = findExtensionPeriodConflict(
+          latestReservations,
+          latestRequest.laptopId,
+          latestRequest.id,
+          nextStartDate,
+          nextDueDate
+        );
+
+        if (blockingRequest) {
+          throw new Error('direct-edit-period-conflict');
+        }
+
+        const nextRequest = {
+          ...latestRequest,
+          startDate: nextStartDate,
+          dueDate: nextDueDate,
+          purpose: nextPurpose,
+          userActionRequest: null,
+        };
+        const nextAvailability = toRentalAvailabilityRequest(nextRequest);
+        const nextReservations = storedReservations.map((reservation) =>
+          reservation?.id === requestId
+            ? nextAvailability
+            : reservation
+        );
+
+        transaction.update(requestDocRef, {
+          startDate: nextStartDate,
+          dueDate: nextDueDate,
+          purpose: nextPurpose,
+          userActionRequest: null,
+          updatedAt: serverTimestamp(),
+        });
+        transaction.set(availabilityDocRef, {
+          ...nextAvailability,
+          updatedAt: serverTimestamp(),
+        });
+        transaction.update(assetDocRef, {
+          reservations: nextReservations,
+          reservationMutation: {
+            type: 'user-edit',
+            requestId,
+            requesterUid: firebaseAuthUser.uid,
+            updatedAt: serverTimestamp(),
+          },
+          updatedAt: serverTimestamp(),
+        });
+
+        committedRequest = nextRequest;
+        committedAvailability = nextAvailability;
+        committedAsset = {
+          ...latestAsset,
+          reservations: nextReservations,
+        };
+      });
+
+      if (actionType === USER_REQUEST_ACTION.CANCEL) {
+        setRentalRequests((prev) =>
+          (prev || []).filter((request) => request.id !== requestId)
+        );
+        setData((prev) => ({
+          ...prev,
+          requests: (prev.requests || []).filter(
+            (request) => request.id !== requestId
+          ),
+          laptops: (prev.laptops || []).map((asset) =>
+            asset.id === committedAsset?.id ? committedAsset : asset
+          ),
+        }));
+
+        triggerToast(
+          '대여 신청이 취소되어 신청내역에서 삭제되었습니다.',
+          'success'
+        );
+      } else {
+        setRentalRequests((prev) =>
+          (prev || []).map((request) =>
+            request.id === requestId ? committedRequest : request
+          )
+        );
+        setData((prev) => ({
+          ...prev,
+          requests: [
+            committedAvailability,
+            ...(prev.requests || []).filter(
+              (request) => request.id !== requestId
+            ),
+          ],
+          laptops: (prev.laptops || []).map((asset) =>
+            asset.id === committedAsset?.id ? committedAsset : asset
+          ),
+        }));
+
+        triggerToast(
+          '대여 신청정보가 수정되었습니다.',
+          'success'
+        );
+      }
 
       setUserActionDialog(null);
-      setUserActionForm(
-        createDefaultUserActionForm()
-      );
+      setUserActionForm(createDefaultUserActionForm());
     } catch (error) {
-      console.error(
-        'User rental action request error:',
-        error
-      );
+      console.error('Direct user rental action error:', error);
 
-      const errorMessage =
-        error?.message ===
-        'user-action-request-already-pending'
-          ? '이미 검토 중인 사용자 요청이 있습니다.'
-          : error?.message ===
-              'invalid-user-action-request-status'
-            ? '현재 신청 상태에서는 해당 요청을 제출할 수 없습니다.'
-            : error?.message ===
-                'rental-request-owner-mismatch'
-              ? '본인 신청이 아닌 항목은 변경할 수 없습니다.'
-              : error?.message ===
-                  'rental-request-not-found'
-                ? '정식 대여 신청 문서를 찾을 수 없습니다.'
-                : `사용자 요청 저장에 실패했습니다. 오류 코드: ${
-                    error?.code ||
-                    error?.message ||
-                    'unknown-error'
-                  }`;
+      const errorMessages = {
+        'invalid-direct-cancel-status':
+          '대여 신청 취소는 관리자 처리 전 신청중 상태에서만 가능합니다.',
+        'invalid-direct-edit-status':
+          '신청정보 수정은 신청중 또는 보류 상태에서만 가능합니다.',
+        'invalid-direct-edit-start-date':
+          '변경할 대여 시작일은 오늘 이전으로 선택할 수 없습니다.',
+        'invalid-direct-edit-start-business-day':
+          '변경할 대여 시작일은 현재 설정에서 허용되는 영업일이어야 합니다.',
+        'invalid-direct-edit-date-order':
+          '변경할 반납 예정일은 대여 시작일 이후여야 합니다.',
+        'invalid-direct-edit-due-business-day':
+          '변경할 반납 예정일은 영업일만 선택할 수 있습니다.',
+        'invalid-direct-edit-max-days':
+          '변경한 대여 기간이 최대 허용 기간을 초과했습니다.',
+        'direct-edit-period-conflict':
+          '같은 기기의 기존 신청·예약·대여 일정과 겹쳐 수정할 수 없습니다.',
+        'rental-request-owner-mismatch':
+          '본인 신청이 아닌 항목은 변경할 수 없습니다.',
+        'rental-request-not-found':
+          '정식 대여 신청 문서를 찾을 수 없습니다.',
+        'rental-asset-not-found':
+          '대여 기기 정보를 찾을 수 없습니다.',
+        'asset-reservation-not-found':
+          '대여 기기의 예약 정보를 찾을 수 없어 처리할 수 없습니다.',
+      };
 
       triggerToast(
-        errorMessage,
+        errorMessages[error?.message] ||
+          `사용자 신청 처리에 실패했습니다. 오류 코드: ${
+            error?.code || error?.message || 'unknown-error'
+          }`,
         'error'
       );
     } finally {
@@ -14077,6 +14190,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     formatFirestoreTimestamp,
     getAdminRequestRestoreTargets,
     getDisplayRentalStatus,
+    getRequestDisplayStatus,
     getKoreaNow,
     getLaptopAdminDisplayStatus,
     getLaptopRentalAvailability,
@@ -14084,6 +14198,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     getExtensionRequestAvailableDate,
     getRequestExtensionCount,
     getRentalExtensionApprovalMode,
+    getRentalExtensionPeriod,
     getSafeRentalExtensionBusinessDays,
     getSafeRentalExtensionMaxCount,
     getSafeMaxRentalDays,

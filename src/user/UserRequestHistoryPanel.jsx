@@ -1,12 +1,17 @@
+import { useEffect, useMemo, useState } from 'react';
+
 export default function UserRequestHistoryPanel({ ctx }) {
   const {
+    ADMIN_REQUEST_PAGE_SIZE_OPTIONS,
+    ADMIN_REQUEST_TAB,
     Badge,
     Button,
     Card,
     CardContent,
     ClipboardList,
-    STATUS,
     RENTAL_EXTENSION_APPROVAL_MODE,
+    STATUS,
+    Search,
     USER_REQUEST_ACTION,
     USER_REQUEST_REVIEW_STATUS,
     currentAuthAdminAccount,
@@ -17,8 +22,9 @@ export default function UserRequestHistoryPanel({ ctx }) {
     firebaseAuthReady,
     firebaseAuthUser,
     formatDateWithKoreanWeekday,
-    getDisplayRentalStatus,
+    formatFirestoreTimestamp,
     getExtensionRequestAvailableDate,
+    getRequestDisplayStatus,
     getRequestExtensionCount,
     getSafeRentalExtensionBusinessDays,
     getSafeRentalExtensionMaxCount,
@@ -36,323 +42,568 @@ export default function UserRequestHistoryPanel({ ctx }) {
     userActionSaving,
   } = ctx;
 
+  const [requestTab, setRequestTab] = useState(ADMIN_REQUEST_TAB.PENDING);
+  const [requestQuery, setRequestQuery] = useState('');
+  const [requestPageSize, setRequestPageSize] = useState(10);
+  const [requestPage, setRequestPage] = useState(1);
+  const [selectedRequestId, setSelectedRequestId] = useState('');
+
+  const tabCounts = useMemo(() => {
+    const counts = {
+      [ADMIN_REQUEST_TAB.PENDING]: 0,
+      [ADMIN_REQUEST_TAB.RENTAL]: 0,
+      [ADMIN_REQUEST_TAB.CLOSED]: 0,
+      [ADMIN_REQUEST_TAB.RETURNED]: 0,
+    };
+
+    currentUserRequests.forEach((request) => {
+      if ([STATUS.REQUESTED, STATUS.ON_HOLD].includes(request.status)) {
+        counts[ADMIN_REQUEST_TAB.PENDING] += 1;
+      } else if (request.status === STATUS.APPROVED) {
+        counts[ADMIN_REQUEST_TAB.RENTAL] += 1;
+      } else if (request.status === STATUS.DENIED) {
+        counts[ADMIN_REQUEST_TAB.CLOSED] += 1;
+      } else if (request.status === STATUS.RETURNED) {
+        counts[ADMIN_REQUEST_TAB.RETURNED] += 1;
+      }
+    });
+
+    return counts;
+  }, [currentUserRequests]);
+
+  const filteredRequests = useMemo(() => {
+    const normalizedQuery = requestQuery.trim().toLowerCase();
+
+    const tabFiltered = currentUserRequests.filter((request) => {
+      if (requestTab === ADMIN_REQUEST_TAB.PENDING) {
+        return [STATUS.REQUESTED, STATUS.ON_HOLD].includes(request.status);
+      }
+
+      if (requestTab === ADMIN_REQUEST_TAB.RENTAL) {
+        return request.status === STATUS.APPROVED;
+      }
+
+      if (requestTab === ADMIN_REQUEST_TAB.CLOSED) {
+        return request.status === STATUS.DENIED;
+      }
+
+      return request.status === STATUS.RETURNED;
+    });
+
+    const queryFiltered = normalizedQuery
+      ? tabFiltered.filter((request) =>
+          [
+            request.assetNo,
+            request.assetCategory,
+            request.startDate,
+            request.dueDate,
+            request.purpose,
+            getRequestDisplayStatus(request),
+          ]
+            .map((value) => String(value || '').toLowerCase())
+            .some((value) => value.includes(normalizedQuery))
+        )
+      : tabFiltered;
+
+    return [...queryFiltered].sort((first, second) => {
+      if (requestTab === ADMIN_REQUEST_TAB.PENDING) {
+        return String(first.requestedAt || '').localeCompare(
+          String(second.requestedAt || '')
+        );
+      }
+
+      if (requestTab === ADMIN_REQUEST_TAB.RENTAL) {
+        return String(first.dueDate || '').localeCompare(
+          String(second.dueDate || '')
+        );
+      }
+
+      return String(second.updatedAt || second.requestedAt || '').localeCompare(
+        String(first.updatedAt || first.requestedAt || '')
+      );
+    });
+  }, [currentUserRequests, requestQuery, requestTab, getRequestDisplayStatus]);
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredRequests.length / requestPageSize)
+  );
+  const safePage = Math.min(requestPage, totalPages);
+  const paginatedRequests = filteredRequests.slice(
+    (safePage - 1) * requestPageSize,
+    safePage * requestPageSize
+  );
+  const selectedRequest = selectedRequestId
+    ? currentUserRequests.find((request) => request.id === selectedRequestId) || null
+    : null;
+
+  useEffect(() => {
+    if (selectedRequestId && !selectedRequest) {
+      setSelectedRequestId('');
+    }
+  }, [selectedRequest, selectedRequestId]);
+
+  useEffect(() => {
+    if (requestPage > totalPages) {
+      setRequestPage(totalPages);
+    }
+  }, [requestPage, totalPages]);
+
+  const renderUserAction = (request) => {
+    const action = request.userActionRequest;
+    if (!action) return null;
+
+    return (
+      <div
+        className={`rounded-xl border px-4 py-3 text-xs leading-5 ${
+          action.status === USER_REQUEST_REVIEW_STATUS.PENDING
+            ? 'border-amber-200 bg-amber-50 text-amber-800'
+            : action.status === USER_REQUEST_REVIEW_STATUS.APPROVED
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+              : 'border-rose-200 bg-rose-50 text-rose-800'
+        }`}
+      >
+        <div className="font-bold">
+          {getUserRequestActionLabel(action.type)} ·{' '}
+          {getUserRequestReviewStatusLabel(action.status)}
+        </div>
+
+        {action.type === USER_REQUEST_ACTION.EXTEND && (
+          <div className="mt-1 space-y-0.5">
+            <div>
+              연장 기간: {action.extensionStartDate || '-'} ~ {action.dueDate || '-'}
+            </div>
+            <div>
+              연장 차수: {action.extensionNumber || '-'}회차 · 처리 방식:{' '}
+              {action.approvalMode === RENTAL_EXTENSION_APPROVAL_MODE.AUTO
+                ? '자동 승인'
+                : '관리자 승인'}
+            </div>
+          </div>
+        )}
+
+        {action.type !== USER_REQUEST_ACTION.EXTEND && action.reason && (
+          <div className="mt-1">요청 사유: {action.reason}</div>
+        )}
+      </div>
+    );
+  };
+
+  const renderActionButtons = (request) => {
+    const pendingExtension =
+      request.userActionRequest?.status === USER_REQUEST_REVIEW_STATUS.PENDING &&
+      request.userActionRequest?.type === USER_REQUEST_ACTION.EXTEND;
+
+    return (
+      <div className="flex flex-wrap gap-2 sm:justify-end">
+        {[STATUS.REQUESTED, STATUS.ON_HOLD].includes(request.status) && (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={userActionSaving}
+            onClick={() =>
+              openUserActionDialog(request, USER_REQUEST_ACTION.CHANGE)
+            }
+            className="px-3 py-2 text-xs"
+          >
+            신청정보 수정
+          </Button>
+        )}
+
+        {request.status === STATUS.REQUESTED && (
+          <Button
+            type="button"
+            variant="dangerOutline"
+            disabled={userActionSaving}
+            onClick={() =>
+              openUserActionDialog(request, USER_REQUEST_ACTION.CANCEL)
+            }
+            className="px-3 py-2 text-xs"
+          >
+            신청 취소
+          </Button>
+        )}
+
+        {request.status === STATUS.APPROVED &&
+          !currentUserRentalRestrictionStatus?.blocked &&
+          !pendingExtension && (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={userActionSaving}
+              onClick={() =>
+                openUserActionDialog(request, USER_REQUEST_ACTION.EXTEND)
+              }
+              className="px-3 py-2 text-xs"
+            >
+              대여 연장 신청
+            </Button>
+          )}
+      </div>
+    );
+  };
+
   return (
-            <div className="mx-auto max-w-5xl space-y-6">
-              <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
-                <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-8 text-white">
-                  <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
-                  <div className="absolute -bottom-16 left-10 h-44 w-44 rounded-full bg-orange-400/20 blur-3xl" />
+    <div className="mx-auto max-w-6xl space-y-6">
+      <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
+        <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-8 text-white">
+          <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+          <div className="absolute -bottom-16 left-10 h-44 w-44 rounded-full bg-orange-400/20 blur-3xl" />
+          <div className="relative">
+            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/15">
+              <ClipboardList size={26} />
+            </div>
+            <h2 className="text-xl font-black tracking-tight">나의 대여 신청내역</h2>
+            <p className="mt-2 text-xs leading-5 text-slate-300">
+              관리자 신청관리와 동일한 목록·상세 구조로 본인의 신청과 처리 상태를 확인합니다.
+            </p>
+          </div>
+        </div>
 
-                  <div className="relative">
-                    <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/15">
-                      <ClipboardList size={26} />
-                    </div>
-
-                    <h2 className="text-xl font-black tracking-tight">
-                      나의 대여 신청내역
-                    </h2>
-
-                    <p className="mt-2 text-xs leading-5 text-slate-300">
-                      로그인한 계정으로 제출한 기기 대여신청과 처리 상태를 확인합니다.
-                    </p>
+        <CardContent className="space-y-5 p-6">
+          {!firebaseAuthReady || !currentAuthRoleReady || !rentalRequestsReady ? (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
+              로그인 계정과 신청내역을 확인하는 중입니다.
+            </div>
+          ) : rentalRequestsLoadErrorMessage ? (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-xs leading-5 text-rose-800">
+              {rentalRequestsLoadErrorMessage}
+            </div>
+          ) : !firebaseAuthUser ? (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 text-xs leading-5 text-orange-800">
+                신청내역은 일반회원 로그인 후 확인할 수 있습니다.
+              </div>
+              <div className="flex justify-end">
+                <Button type="button" variant="primary" onClick={goToUserLogin}>
+                  로그인
+                </Button>
+              </div>
+            </div>
+          ) : currentAuthAdminAccount || isAdminAuthenticated ? (
+            <div className="rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 text-xs leading-5 text-orange-800">
+              관리자 계정의 전체 대여신청은 관리자 모드의 대여 신청 관리에서 확인해 주세요.
+            </div>
+          ) : currentUserRequests.length === 0 ? (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center">
+                <ClipboardList size={28} className="mx-auto mb-3 text-slate-300" />
+                <h3 className="text-sm font-bold text-slate-700">
+                  등록된 신청내역이 없습니다
+                </h3>
+                <p className="mt-2 text-xs leading-5 text-slate-500">
+                  로그인한 계정으로 기기 대여신청을 제출하면 이 화면에서 처리 상태를 확인할 수 있습니다.
+                </p>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="primary"
+                  onClick={() => {
+                    pushAppPath('user', 'rental');
+                    setView('user');
+                    setUserTab('rental');
+                    setIsCommunityMenuOpen(false);
+                  }}
+                >
+                  대여신청으로 이동
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {currentUserRentalRestrictionStatus?.blocked && (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-xs font-semibold leading-5 text-rose-800">
+                  {currentUserRentalRestrictionStatus.message}
+                  <div className="mt-1 font-medium">
+                    제한 기간에는 현재 보유 중인 모든 기기의 대여 연장도 신청할 수 없습니다.
                   </div>
                 </div>
+              )}
 
-                <CardContent className="p-6">
-                  {!firebaseAuthReady ||
-                  !currentAuthRoleReady ||
-                  !rentalRequestsReady ? (
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
-                      로그인 계정과 신청내역을 확인하는 중입니다.
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { id: ADMIN_REQUEST_TAB.PENDING, label: '신청·보류' },
+                  { id: ADMIN_REQUEST_TAB.RENTAL, label: '대여관리' },
+                  { id: ADMIN_REQUEST_TAB.CLOSED, label: '불허' },
+                  { id: ADMIN_REQUEST_TAB.RETURNED, label: '반납완료' },
+                ].map((tab) => {
+                  const active = requestTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => {
+                        setRequestTab(tab.id);
+                        setRequestQuery('');
+                        setRequestPage(1);
+                        setSelectedRequestId('');
+                      }}
+                      className={`rounded-xl border px-4 py-2.5 text-xs font-semibold transition ${
+                        active
+                          ? 'border-orange-500 bg-orange-500 text-white shadow-sm'
+                          : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600'
+                      }`}
+                    >
+                      {tab.label}{' '}
+                      <span
+                        className={`ml-1 rounded-full px-2 py-0.5 text-[10px] ${
+                          active
+                            ? 'bg-white/20 text-white'
+                            : 'bg-slate-100 text-slate-500'
+                        }`}
+                      >
+                        {tabCounts[tab.id] || 0}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {!selectedRequest && (
+                <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-[minmax(0,1fr)_160px] sm:items-end">
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                      신청 검색
+                    </span>
+                    <div className="relative">
+                      <Search
+                        size={15}
+                        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                      />
+                      <input
+                        type="text"
+                        value={requestQuery}
+                        onChange={(event) => {
+                          setRequestQuery(event.target.value);
+                          setRequestPage(1);
+                        }}
+                        placeholder="자산번호, 기기 분류, 기간, 상태, 목적"
+                        className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-xs outline-none mk-form-border-focus"
+                      />
                     </div>
-                  ) : rentalRequestsLoadErrorMessage ? (
-                    <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-xs leading-5 text-rose-800">
-                      {rentalRequestsLoadErrorMessage}
-                    </div>
-                  ) : !firebaseAuthUser ? (
-                    <div className="space-y-4">
-                      <div className="rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 text-xs leading-5 text-orange-800">
-                        신청내역은 일반회원 로그인 후 확인할 수 있습니다.
-                      </div>
+                  </label>
 
-                      <div className="flex justify-end">
-                        <Button
-                          type="button"
-                          variant="primary"
-                          onClick={goToUserLogin}
-                        >
-                          로그인
-                        </Button>
-                      </div>
-                    </div>
-                  ) : currentAuthAdminAccount || isAdminAuthenticated ? (
-                    <div className="rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 text-xs leading-5 text-orange-800">
-                      관리자 계정의 전체 대여신청은 관리자 모드의 대여 신청 관리에서 확인해 주세요.
-                    </div>
-                  ) : currentUserRequests.length === 0 ? (
-                    <div className="space-y-4">
-                      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center">
-                        <ClipboardList
-                          size={28}
-                          className="mx-auto mb-3 text-slate-300"
-                        />
-
-                        <h3 className="text-sm font-bold text-slate-700">
-                          등록된 신청내역이 없습니다
-                        </h3>
-
-                        <p className="mt-2 text-xs leading-5 text-slate-500">
-                          로그인한 계정으로 기기 대여신청을 제출하면 이 화면에서 처리 상태를 확인할 수 있습니다.
-                        </p>
-                      </div>
-
-                      <div className="flex justify-end">
-                        <Button
-                          type="button"
-                          variant="primary"
-                          onClick={() => {
-                            pushAppPath('user', 'rental');
-                            setView('user');
-                            setUserTab('rental');
-                            setIsCommunityMenuOpen(false);
-                          }}
-                        >
-                          대여신청으로 이동
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {currentUserRentalRestrictionStatus?.blocked && (
-                        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-xs font-semibold leading-5 text-rose-800">
-                          {currentUserRentalRestrictionStatus.message}
-                          <div className="mt-1 font-medium">
-                            제한 기간에는 현재 보유 중인 모든 기기의 대여 연장도 신청할 수 없습니다.
-                          </div>
-                        </div>
-                      )}
-
-                      {currentUserRequests.map((request) => (
-                        <div
-                          key={request.id}
-                          className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-                        >
-                          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-                            <div className="min-w-0 space-y-2">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
-                                  {request.assetCategory || '기기'}
-                                </span>
-
-                                <span className="text-sm font-bold text-slate-950">
-                                  {request.assetNo}
-                                </span>
-
-                                <Badge>
-                                  {getDisplayRentalStatus(
-                                    request.status,
-                                    request.startDate
-                                  )}
-                                </Badge>
-                              </div>
-
-                              <div className="text-xs text-slate-600">
-                                대여 기간:{' '}
-                                <span className="font-semibold text-slate-900">
-                                  {request.startDate} ~ {request.dueDate}
-                                </span>
-                              </div>
-
-                              <div className="text-xs text-slate-600">
-                                소속:{' '}
-                                <span className="font-semibold text-slate-900">
-                                  {request.team}
-                                </span>
-                                {' · '}
-                                대여자명:{' '}
-                                <span className="font-semibold text-slate-900">
-                                  {request.borrower}
-                                </span>
-                              </div>
-
-                              <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
-                                목적:{' '}
-                                <span className="font-medium text-slate-700">
-                                  {request.purpose || '서술 목적 없음'}
-                                </span>
-                              </div>
-
-                              {request.adminMemo && (
-                                <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-700">
-                                  관리자 안내: {request.adminMemo}
-                                </div>
-                              )}
-
-                              {request.status === STATUS.APPROVED && (
-                                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] leading-5 text-slate-600">
-                                  <div className="font-semibold text-slate-800">
-                                    연장 사용 {getRequestExtensionCount(request)} /{' '}
-                                    {getSafeRentalExtensionMaxCount(data.settings)}회
-                                    {' · '}1회{' '}
-                                    {getSafeRentalExtensionBusinessDays(data.settings)}영업일
-                                  </div>
-
-                                  <div className="mt-0.5">
-                                    {currentUserRentalRestrictionStatus?.blocked
-                                      ? '연체자 대여 제한 적용 중에는 보유 중인 모든 기기의 대여 연장을 신청할 수 없습니다.'
-                                      : data.settings.rentalExtensionEnabled
-                                        ? getRequestExtensionCount(request) >=
-                                          getSafeRentalExtensionMaxCount(data.settings)
-                                          ? '허용된 연장 횟수를 모두 사용했습니다.'
-                                          : `다음 연장 신청 가능일: ${formatDateWithKoreanWeekday(
-                                              getExtensionRequestAvailableDate(
-                                                request,
-                                                data.settings
-                                              )
-                                            )}`
-                                        : '현재 대여 연장 신청이 허용되지 않습니다.'}
-                                  </div>
-                                </div>
-                              )}
-
-                              {request.userActionRequest && (
-                                <div
-                                  className={`rounded-xl border px-3 py-2 text-xs leading-5 ${
-                                    request.userActionRequest.status ===
-                                    USER_REQUEST_REVIEW_STATUS.PENDING
-                                      ? 'border-amber-200 bg-amber-50 text-amber-800'
-                                      : request.userActionRequest.status ===
-                                          USER_REQUEST_REVIEW_STATUS.APPROVED
-                                        ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                                        : 'border-rose-200 bg-rose-50 text-rose-800'
-                                  }`}
-                                >
-                                  <div className="font-bold">
-                                    {getUserRequestActionLabel(
-                                      request.userActionRequest.type
-                                    )}{' '}
-                                    ·{' '}
-                                    {getUserRequestReviewStatusLabel(
-                                      request.userActionRequest.status
-                                    )}
-                                  </div>
-
-                                  {request.userActionRequest.type !==
-                                    USER_REQUEST_ACTION.EXTEND && (
-                                    <div className="mt-1">
-                                      요청 사유:{' '}
-                                      {request.userActionRequest.reason || '-'}
-                                    </div>
-                                  )}
-
-                                  {request.userActionRequest.type ===
-                                    USER_REQUEST_ACTION.CHANGE && (
-                                    <div className="mt-1">
-                                      변경 요청:{' '}
-                                      {request.userActionRequest.team || '-'} ·{' '}
-                                      {request.userActionRequest.borrower || '-'} ·{' '}
-                                      {request.userActionRequest.startDate || '-'} ~{' '}
-                                      {request.userActionRequest.dueDate || '-'}
-                                    </div>
-                                  )}
-
-                                  {request.userActionRequest.type ===
-                                    USER_REQUEST_ACTION.EXTEND && (
-                                    <div className="mt-1 space-y-0.5">
-                                      <div>
-                                        연장 기간:{' '}
-                                        {request.userActionRequest.extensionStartDate || '-'}
-                                        {' ~ '}
-                                        {request.userActionRequest.dueDate || '-'}
-                                      </div>
-                                      <div>
-                                        연장 차수:{' '}
-                                        {request.userActionRequest.extensionNumber || '-'}회차
-                                        {' · '}처리 방식:{' '}
-                                        {request.userActionRequest.approvalMode ===
-                                        RENTAL_EXTENSION_APPROVAL_MODE.AUTO
-                                          ? '자동 승인'
-                                          : '관리자 승인'}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
-                              <div className="text-[10px] text-slate-400">
-                                접수 일시: {request.requestedAt}
-                              </div>
-
-                              {request.userActionRequest?.status ===
-                              USER_REQUEST_REVIEW_STATUS.PENDING ? (
-                                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700">
-                                  사용자 요청 검토 대기중
-                                </div>
-                              ) : (
-                                <div className="flex flex-wrap gap-2 sm:justify-end">
-                                  {[STATUS.REQUESTED, STATUS.ON_HOLD].includes(
-                                    request.status
-                                  ) && (
-                                    <>
-                                      <Button
-                                        type="button"
-                                        variant="outline"
-                                        onClick={() =>
-                                          openUserActionDialog(
-                                            request,
-                                            USER_REQUEST_ACTION.CHANGE
-                                          )
-                                        }
-                                        className="px-3 py-2 text-xs"
-                                      >
-                                        신청 변경 요청
-                                      </Button>
-
-                                      <Button
-                                        type="button"
-                                        variant="dangerOutline"
-                                        onClick={() =>
-                                          openUserActionDialog(
-                                            request,
-                                            USER_REQUEST_ACTION.CANCEL
-                                          )
-                                        }
-                                        className="px-3 py-2 text-xs"
-                                      >
-                                        신청 취소 요청
-                                      </Button>
-                                    </>
-                                  )}
-
-                                  {request.status === STATUS.APPROVED &&
-                                    !currentUserRentalRestrictionStatus?.blocked && (
-                                      <Button
-                                        type="button"
-                                        variant="outline"
-                                        disabled={userActionSaving}
-                                        onClick={() =>
-                                          openUserActionDialog(
-                                            request,
-                                            USER_REQUEST_ACTION.EXTEND
-                                          )
-                                        }
-                                        className="px-3 py-2 text-xs"
-                                      >
-                                        대여 연장 요청
-                                      </Button>
-                                    )}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                      페이지당 표시
+                    </span>
+                    <select
+                      value={requestPageSize}
+                      onChange={(event) => {
+                        setRequestPageSize(Number(event.target.value));
+                        setRequestPage(1);
+                      }}
+                      className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none mk-form-border-focus"
+                    >
+                      {ADMIN_REQUEST_PAGE_SIZE_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}개
+                        </option>
                       ))}
+                    </select>
+                  </label>
+                </div>
+              )}
+
+              {selectedRequest ? (
+                <div className="space-y-4">
+                  <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="shrink-0 px-4 py-2 text-xs"
+                      onClick={() => setSelectedRequestId('')}
+                    >
+                      목록으로
+                    </Button>
+                    {renderActionButtons(selectedRequest)}
+                  </div>
+
+                  <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                      <div className="space-y-1.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                            {selectedRequest.assetCategory || '기기'}
+                          </span>
+                          <span className="text-sm font-bold text-slate-950">
+                            {selectedRequest.assetNo || '-'}
+                          </span>
+                          <Badge>{getRequestDisplayStatus(selectedRequest)}</Badge>
+                        </div>
+
+                        <div className="text-xs font-medium text-slate-600">
+                          신청자:{' '}
+                          <span className="text-slate-900">
+                            {selectedRequest.requesterName || selectedRequest.borrower || '-'}
+                          </span>{' '}
+                          · 소속:{' '}
+                          <span className="text-slate-900">
+                            {selectedRequest.requesterTeam || selectedRequest.team || '-'}
+                          </span>
+                        </div>
+
+                        <div className="text-[11px] text-slate-500">
+                          대여 일정: {selectedRequest.startDate || '-'} ~{' '}
+                          {selectedRequest.dueDate || '-'}
+                        </div>
+
+                        {selectedRequest.actualReturnDate && (
+                          <div className="text-[11px] font-semibold text-slate-600">
+                            실제 반납일: {selectedRequest.actualReturnDate}
+                            {Number(selectedRequest.overdueDaysAtReturn || 0) > 0
+                              ? ` · 연체 ${selectedRequest.overdueDaysAtReturn}일`
+                              : ''}
+                          </div>
+                        )}
+
+                        <div className="text-xs text-slate-600">
+                          대여 목적:{' '}
+                          <span className="font-medium text-slate-700">
+                            {selectedRequest.purpose || '서술 목적 없음'}
+                          </span>
+                        </div>
+
+                        <div className="text-[10px] text-slate-400">
+                          등록 접수 일시:{' '}
+                          {selectedRequest.requestedAt ||
+                            formatFirestoreTimestamp(selectedRequest.createdAt)}
+                        </div>
+                      </div>
                     </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
+
+                    {selectedRequest.adminMemo && (
+                      <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-700">
+                        관리자 안내: {selectedRequest.adminMemo}
+                      </div>
+                    )}
+
+                    {selectedRequest.status === STATUS.APPROVED && (
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] leading-5 text-slate-600">
+                        <div className="font-semibold text-slate-800">
+                          연장 사용 {getRequestExtensionCount(selectedRequest)} /{' '}
+                          {getSafeRentalExtensionMaxCount(data.settings)}회 · 1회{' '}
+                          {getSafeRentalExtensionBusinessDays(data.settings)}영업일
+                        </div>
+                        <div className="mt-0.5">
+                          {currentUserRentalRestrictionStatus?.blocked
+                            ? '연체자 대여 제한 적용 중에는 보유 중인 모든 기기의 대여 연장을 신청할 수 없습니다.'
+                            : data.settings.rentalExtensionEnabled
+                              ? `다음 연장 신청 가능일: ${formatDateWithKoreanWeekday(
+                                  getExtensionRequestAvailableDate(
+                                    selectedRequest,
+                                    data.settings
+                                  )
+                                )}`
+                              : '현재 대여 연장 신청이 허용되지 않습니다.'}
+                        </div>
+                      </div>
+                    )}
+
+                    {renderUserAction(selectedRequest)}
+                  </div>
+                </div>
+              ) : filteredRequests.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
+                  선택한 탭과 검색 조건에 해당하는 신청이 없습니다.
+                </div>
+              ) : (
+                <>
+                  <div className="overflow-x-auto rounded-xl border border-slate-200">
+                    <table className="w-full min-w-[860px] table-fixed border-collapse text-left">
+                      <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600">
+                        <tr>
+                          <th className="w-36 border-b border-slate-200 px-3 py-3">처리·접수일</th>
+                          <th className="w-32 border-b border-slate-200 px-3 py-3">자산번호</th>
+                          <th className="w-28 border-b border-slate-200 px-3 py-3">기기 분류</th>
+                          <th className="border-b border-slate-200 px-3 py-3">대여 기간</th>
+                          <th className="w-24 border-b border-slate-200 px-3 py-3 text-center">상태</th>
+                          <th className="w-28 border-b border-slate-200 px-3 py-3 text-center">사용자 요청</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {paginatedRequests.map((request) => {
+                          const userAction = request.userActionRequest;
+                          return (
+                            <tr
+                              key={request.id}
+                              className="cursor-pointer border-b border-slate-100 align-middle last:border-b-0 hover:bg-slate-50"
+                              onClick={() => setSelectedRequestId(request.id)}
+                            >
+                              <td className="px-3 py-3 text-[11px] text-slate-500">
+                                {request.requestedAt ||
+                                  formatFirestoreTimestamp(request.updatedAt || request.createdAt)}
+                              </td>
+                              <td className="px-3 py-3">
+                                <button
+                                  type="button"
+                                  className="max-w-full truncate text-left text-xs font-bold text-slate-900 hover:text-orange-600 hover:underline"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setSelectedRequestId(request.id);
+                                  }}
+                                >
+                                  {request.assetNo || '-'}
+                                </button>
+                              </td>
+                              <td className="truncate px-3 py-3 text-xs text-slate-600">
+                                {request.assetCategory || '-'}
+                              </td>
+                              <td className="px-3 py-3 text-xs text-slate-600">
+                                {request.startDate || '-'} ~ {request.dueDate || '-'}
+                              </td>
+                              <td className="px-3 py-3 text-center">
+                                <Badge>{getRequestDisplayStatus(request)}</Badge>
+                              </td>
+                              <td className="px-3 py-3 text-center text-[10px] text-slate-500">
+                                {userAction ? (
+                                  <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-1 font-semibold">
+                                    {getUserRequestActionLabel(userAction.type)} ·{' '}
+                                    {getUserRequestReviewStatusLabel(userAction.status)}
+                                  </span>
+                                ) : (
+                                  '-'
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="text-xs text-slate-500">
+                      총 {filteredRequests.length}건 · {safePage}/{totalPages}페이지
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={safePage <= 1}
+                        onClick={() => setRequestPage((page) => Math.max(1, page - 1))}
+                      >
+                        이전
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={safePage >= totalPages}
+                        onClick={() =>
+                          setRequestPage((page) => Math.min(totalPages, page + 1))
+                        }
+                      >
+                        다음
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }

@@ -98,6 +98,30 @@ export const getDisplayRentalStatus = (
   return status || STATUS.AVAILABLE;
 };
 
+
+export const getRequestDisplayStatus = (request = {}) => {
+  const status = request?.status || '';
+  const actualReturnDate = String(request?.actualReturnDate || '');
+  const dueDate = String(request?.dueDate || '');
+  const overdueDaysAtReturn = Number(request?.overdueDaysAtReturn || 0);
+
+  if (
+    status === STATUS.RETURNED &&
+    (
+      overdueDaysAtReturn > 0 ||
+      (actualReturnDate && dueDate && actualReturnDate > dueDate)
+    )
+  ) {
+    return '연체반납';
+  }
+
+  return getDisplayRentalStatus(
+    status,
+    request?.startDate || '',
+    dueDate
+  );
+};
+
 export const addDaysFrom = (dateStr, days) => {
   if (!dateStr) return '';
 

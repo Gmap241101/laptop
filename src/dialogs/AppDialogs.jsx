@@ -31,6 +31,8 @@ export default function AppDialogs({ ctx }) {
     faqPostForm,
     faqPostSaving,
     getMaxRentalDueDate,
+    getRentalExtensionApprovalMode,
+    getRentalExtensionPeriod,
     getUserRequestActionLabel,
     motion,
     noticePostDialog,
@@ -56,6 +58,19 @@ export default function AppDialogs({ ctx }) {
     userActionForm,
     userActionSaving,
   } = ctx;
+
+  const extensionPreview =
+    userActionDialog?.type === USER_REQUEST_ACTION.EXTEND &&
+    activeUserActionRentalRequest
+      ? getRentalExtensionPeriod(
+          activeUserActionRentalRequest,
+          data.settings
+        )
+      : null;
+
+  const extensionApprovalMode = getRentalExtensionApprovalMode(
+    data.settings
+  );
 
   return (
     <>
@@ -372,7 +387,7 @@ export default function AppDialogs({ ctx }) {
         </div>
       )}
 
-            {userActionDialog && activeUserActionRentalRequest && (
+      {userActionDialog && activeUserActionRentalRequest && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
@@ -382,11 +397,8 @@ export default function AppDialogs({ ctx }) {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 className="text-base font-bold text-slate-900">
-                  {getUserRequestActionLabel(
-                    userActionDialog.type
-                  )}
+                  {getUserRequestActionLabel(userActionDialog.type)}
                 </h3>
-
                 <p className="mt-1 text-xs leading-5 text-slate-500">
                   {activeUserActionRentalRequest.assetNo} ·{' '}
                   {activeUserActionRentalRequest.startDate} ~{' '}
@@ -405,23 +417,21 @@ export default function AppDialogs({ ctx }) {
             </div>
 
             <div className="mt-5 space-y-4">
-              {userActionDialog.type ===
-                USER_REQUEST_ACTION.CHANGE && (
+              {userActionDialog.type === USER_REQUEST_ACTION.CHANGE && (
                 <>
                   <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                    <div className="text-[11px] font-semibold text-slate-500">
-                      신청자
-                    </div>
+                    <div className="text-[11px] font-semibold text-slate-500">신청자</div>
                     <div className="mt-1 text-sm font-bold text-slate-900">
                       {activeUserActionRentalRequest.requesterTeam ||
                         activeUserActionRentalRequest.team ||
-                        '-'}{' · '}
+                        '-'}
+                      {' · '}
                       {activeUserActionRentalRequest.requesterName ||
                         activeUserActionRentalRequest.borrower ||
                         '-'}
                     </div>
                     <p className="mt-1 text-[11px] leading-5 text-slate-500">
-                      신청자 정보는 로그인 계정 기준으로 고정되며 변경할 수 없습니다.
+                      신청자와 기기는 변경할 수 없습니다. 일정과 대여 목적만 즉시 수정됩니다.
                     </p>
                   </div>
 
@@ -434,10 +444,7 @@ export default function AppDialogs({ ctx }) {
                         setUserActionForm((prev) => ({
                           ...prev,
                           startDate: value,
-                          dueDate:
-                            prev.dueDate < value
-                              ? value
-                              : prev.dueDate,
+                          dueDate: prev.dueDate < value ? value : prev.dueDate,
                         }))
                       }
                     />
@@ -463,7 +470,6 @@ export default function AppDialogs({ ctx }) {
                     <span className="mb-1.5 block text-xs font-semibold text-slate-600">
                       변경할 대여 목적
                     </span>
-
                     <textarea
                       value={userActionForm.purpose}
                       onChange={(event) =>
@@ -475,27 +481,48 @@ export default function AppDialogs({ ctx }) {
                       className="h-24 w-full rounded-xl border border-slate-200 p-3 text-xs outline-none mk-form-ring-focus"
                     />
                   </label>
+
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-800">
+                    저장 시 같은 기기의 기존 신청·예약·대여 일정과 다시 비교합니다. 일정이 겹치면 수정되지 않습니다.
+                  </div>
                 </>
               )}
 
+              {userActionDialog.type === USER_REQUEST_ACTION.CANCEL && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm leading-6 text-rose-800">
+                  <div className="font-bold">대여 신청을 취소하시겠습니까?</div>
+                  <div className="mt-1 text-xs">
+                    취소한 신청은 복구할 수 없으며 사용자 신청내역과 관리자 신청관리에서 모두 삭제됩니다.
+                  </div>
+                </div>
+              )}
 
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-semibold text-slate-600">
-                  요청 사유
-                </span>
+              {userActionDialog.type === USER_REQUEST_ACTION.EXTEND &&
+                extensionPreview && (
+                  <div className="space-y-3">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-700">
+                      <div className="font-bold text-slate-900">
+                        대여 기간을 연장 신청하시겠습니까?
+                      </div>
+                      <div className="mt-2 text-xs">
+                        기존 반납 예정일: {activeUserActionRentalRequest.dueDate}
+                      </div>
+                      <div className="text-xs">
+                        연장 기간: {extensionPreview.extensionStartDate} ~{' '}
+                        {extensionPreview.extensionDueDate}
+                      </div>
+                      <div className="text-xs">
+                        연장 일수: {extensionPreview.extensionBusinessDays}영업일
+                      </div>
+                    </div>
 
-                <textarea
-                  value={userActionForm.reason}
-                  onChange={(event) =>
-                    setUserActionForm((prev) => ({
-                      ...prev,
-                      reason: event.target.value,
-                    }))
-                  }
-                  placeholder="관리자가 검토할 수 있도록 요청 사유를 입력해 주세요."
-                  className="h-24 w-full rounded-xl border border-slate-200 p-3 text-xs outline-none mk-form-ring-focus"
-                />
-              </label>
+                    <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-800">
+                      {extensionApprovalMode === 'auto'
+                        ? '현재 설정은 자동 승인 방식이므로 확인하면 즉시 연장됩니다.'
+                        : '신청 후 관리자 승인이 완료되어야 반납 예정일이 변경됩니다.'}
+                    </div>
+                  </div>
+                )}
             </div>
 
             <div className="mt-6 flex justify-end gap-2">
@@ -505,18 +532,28 @@ export default function AppDialogs({ ctx }) {
                 disabled={userActionSaving}
                 onClick={closeUserActionDialog}
               >
-                닫기
+                {userActionDialog.type === USER_REQUEST_ACTION.CANCEL
+                  ? '돌아가기'
+                  : '취소'}
               </Button>
 
               <Button
                 type="button"
-                variant="primary"
+                variant={
+                  userActionDialog.type === USER_REQUEST_ACTION.CANCEL
+                    ? 'danger'
+                    : 'primary'
+                }
                 disabled={userActionSaving}
                 onClick={submitUserActionRequest}
               >
                 {userActionSaving
-                  ? '저장 중...'
-                  : '요청 제출'}
+                  ? '처리 중...'
+                  : userActionDialog.type === USER_REQUEST_ACTION.CHANGE
+                    ? '수정 저장'
+                    : userActionDialog.type === USER_REQUEST_ACTION.CANCEL
+                      ? '신청 취소'
+                      : '연장 신청'}
               </Button>
             </div>
           </motion.div>

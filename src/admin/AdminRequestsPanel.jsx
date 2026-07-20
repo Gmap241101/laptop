@@ -21,6 +21,7 @@ export default function AdminRequestsPanel({ ctx }) {
     formatFirestoreTimestamp,
     getAdminRequestRestoreTargets,
     getDisplayRentalStatus,
+    getRequestDisplayStatus,
     getExtensionRequestAvailableDate,
     getRequestExtensionCount,
     getSafeRentalExtensionMaxCount,
@@ -305,11 +306,7 @@ export default function AdminRequestsPanel({ ctx }) {
                                       </span>
 
                                       <Badge>
-                                        {getDisplayRentalStatus(
-                                          r.status,
-                                          r.startDate,
-                                          r.dueDate
-                                        )}
+                                        {getRequestDisplayStatus(r)}
                                       </Badge>
 
                                       {isOverdue && (
@@ -751,11 +748,7 @@ export default function AdminRequestsPanel({ ctx }) {
 
                                         <td className="px-3 py-3 text-center">
                                           <Badge>
-                                            {getDisplayRentalStatus(
-                                              request.status,
-                                              request.startDate,
-                                              request.dueDate
-                                            )}
+                                            {getRequestDisplayStatus(request)}
                                           </Badge>
                                         </td>
 

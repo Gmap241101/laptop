@@ -22,6 +22,7 @@ export const statusStyle = {
   '보류': 'bg-purple-50 text-purple-700 border-purple-200',
   '불허': 'bg-rose-50 text-rose-700 border-rose-200',
   '반납완료': 'bg-slate-100 text-slate-700 border-slate-200',
+  '연체반납': 'bg-orange-100 text-orange-800 border-orange-300',
   '사용자취소': 'bg-slate-100 text-slate-600 border-slate-300',
   '대여불가': 'bg-rose-100 text-rose-800 border-rose-300',
 };
