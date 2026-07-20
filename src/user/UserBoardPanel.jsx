@@ -1,3 +1,5 @@
+import { RichTextContent } from '../components/RichTextEditor.jsx';
+
 export default function UserBoardPanel({ ctx }) {
   const {
     AlertCircle,
@@ -176,8 +178,12 @@ export default function UserBoardPanel({ ctx }) {
                           </div>
                         </div>
 
-                        <div className="min-h-[260px] whitespace-pre-wrap break-words px-5 py-6 text-sm leading-7 text-slate-700">
-                          {selectedNoticePost.content}
+                        <div className="min-h-[260px] px-5 py-6">
+                          <RichTextContent
+                            html={selectedNoticePost.contentHtml}
+                            text={selectedNoticePost.contentText || selectedNoticePost.content}
+                            className="text-sm leading-7 text-slate-700"
+                          />
                         </div>
                       </article>
                     </div>
@@ -573,9 +579,11 @@ export default function UserBoardPanel({ ctx }) {
                                       className="overflow-hidden"
                                     >
                                       <div className="border-t border-slate-100 bg-slate-50/70 px-5 py-5 sm:pl-[175px]">
-                                        <div className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-700">
-                                          {post.content}
-                                        </div>
+                                        <RichTextContent
+                                          html={post.contentHtml}
+                                          text={post.contentText || post.content}
+                                          className="text-sm leading-7 text-slate-700"
+                                        />
                                       </div>
                                     </motion.div>
                                   )}

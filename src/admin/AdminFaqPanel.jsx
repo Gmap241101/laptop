@@ -1,3 +1,5 @@
+import { RichTextContent } from '../components/RichTextEditor.jsx';
+
 export default function AdminFaqPanel({ ctx }) {
   const {
     AnimatePresence,
@@ -480,10 +482,12 @@ export default function AdminFaqPanel({ ctx }) {
                                         }}
                                         className="overflow-hidden"
                                       >
-                                        <div className="border-t border-slate-100 bg-slate-50/70 px-5 py-5 text-sm leading-7 text-slate-700">
-                                          <div className="whitespace-pre-wrap break-words">
-                                            {post.content}
-                                          </div>
+                                        <div className="border-t border-slate-100 bg-slate-50/70 px-5 py-5">
+                                          <RichTextContent
+                                            html={post.contentHtml}
+                                            text={post.contentText || post.content}
+                                            className="text-sm leading-7 text-slate-700"
+                                          />
                                         </div>
                                       </motion.div>
                                     )}

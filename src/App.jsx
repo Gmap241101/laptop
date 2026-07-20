@@ -64,6 +64,12 @@ import {
 import UserWorkspace from './user/UserWorkspace.jsx';
 import AdminWorkspace from './admin/AdminWorkspace.jsx';
 import AppDialogs from './dialogs/AppDialogs.jsx';
+import {
+  isRichTextEmpty,
+  legacyTextToRichHtml,
+  richTextHtmlToText,
+  sanitizeRichTextHtml,
+} from './components/RichTextEditor.jsx';
 
 import {
   ADMIN_ACCOUNTS_COLLECTION_REF,
@@ -191,7 +197,11 @@ const filterNoticePostsByQuery = (posts = [], queryText = '') => {
       String(post.title || '')
         .toLowerCase()
         .includes(normalizedQuery) ||
-      String(post.content || '')
+      String(
+        post.contentText ||
+          post.content ||
+          richTextHtmlToText(post.contentHtml || '')
+      )
         .toLowerCase()
         .includes(normalizedQuery)
   );
@@ -199,7 +209,7 @@ const filterNoticePostsByQuery = (posts = [], queryText = '') => {
 
 const createDefaultNoticePostForm = () => ({
   title: '',
-  content: '',
+  contentHtml: '',
   isPinned: false,
 });
 
@@ -215,7 +225,7 @@ const getSafeFaqPostsPerPage = (value) => {
 const createDefaultFaqPostForm = () => ({
   categoryId: '',
   title: '',
-  content: '',
+  contentHtml: '',
   isPinned: false,
 });
 
@@ -3862,7 +3872,11 @@ function App() {
           String(post.title || '')
             .toLowerCase()
             .includes(normalizedQuery) ||
-          String(post.content || '')
+          String(
+            post.contentText ||
+              post.content ||
+              richTextHtmlToText(post.contentHtml || '')
+          )
             .toLowerCase()
             .includes(normalizedQuery);
 
@@ -10715,7 +10729,12 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
     setNoticePostForm({
       title: post?.title || '',
-      content: post?.content || '',
+      contentHtml: sanitizeRichTextHtml(
+        post?.contentHtml ||
+          legacyTextToRichHtml(
+            post?.contentText || post?.content || ''
+          )
+      ),
       isPinned: Boolean(
         post?.isPinned
       ),
@@ -10756,10 +10775,13 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         noticePostForm.title || ''
       ).trim();
 
-    const content =
-      String(
-        noticePostForm.content || ''
-      ).trim();
+    const contentHtml = sanitizeRichTextHtml(
+      noticePostForm.contentHtml || ''
+    );
+
+    const contentText = richTextHtmlToText(
+      contentHtml
+    );
 
     if (!title) {
       triggerToast(
@@ -10769,7 +10791,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       return;
     }
 
-    if (!content) {
+    if (isRichTextEmpty(contentHtml)) {
       triggerToast(
         '공지사항 내용을 입력해 주세요.',
         'error'
@@ -10826,7 +10848,10 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         {
           id: postDocRef.id,
           title,
-          content,
+          content: contentText,
+          contentText,
+          contentHtml,
+          contentFormat: 'rich-html-v1',
           isPinned: Boolean(
             noticePostForm.isPinned
           ),
@@ -11061,7 +11086,12 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         faqCategories[0]?.id ||
         '',
       title: post?.title || '',
-      content: post?.content || '',
+      contentHtml: sanitizeRichTextHtml(
+        post?.contentHtml ||
+          legacyTextToRichHtml(
+            post?.contentText || post?.content || ''
+          )
+      ),
       isPinned: Boolean(
         post?.isPinned
       ),
@@ -11107,10 +11137,13 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         faqPostForm.title || ''
       ).trim();
 
-    const content =
-      String(
-        faqPostForm.content || ''
-      ).trim();
+    const contentHtml = sanitizeRichTextHtml(
+      faqPostForm.contentHtml || ''
+    );
+
+    const contentText = richTextHtmlToText(
+      contentHtml
+    );
 
     if (
       !categoryId ||
@@ -11133,7 +11166,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       return;
     }
 
-    if (!content) {
+    if (isRichTextEmpty(contentHtml)) {
       triggerToast(
         'FAQ 본문을 입력해 주세요.',
         'error'
@@ -11191,7 +11224,10 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           id: postDocRef.id,
           categoryId,
           title,
-          content,
+          content: contentText,
+          contentText,
+          contentHtml,
+          contentFormat: 'rich-html-v1',
           isPinned: Boolean(
             faqPostForm.isPinned
           ),

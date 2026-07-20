@@ -1,3 +1,5 @@
+import { RichTextEditor } from '../components/RichTextEditor.jsx';
+
 export default function AppDialogs({ ctx }) {
   const {
     AlertCircle,
@@ -571,7 +573,7 @@ export default function AppDialogs({ ctx }) {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+            className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
           >
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -640,26 +642,19 @@ export default function AppDialogs({ ctx }) {
                 placeholder="FAQ 질문 제목을 입력해 주세요."
               />
 
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-semibold text-slate-600">
-                  본문
-                </span>
-
-                <textarea
-                  value={faqPostForm.content}
-                  onChange={(event) =>
-                    setFaqPostForm(
-                      (prev) => ({
-                        ...prev,
-                        content:
-                          event.target.value,
-                      })
-                    )
-                  }
-                  placeholder="FAQ 답변 내용을 입력해 주세요."
-                  className="h-56 w-full rounded-xl border border-slate-200 p-3 text-xs leading-6 outline-none mk-form-ring-focus"
-                />
-              </label>
+              <RichTextEditor
+                label="본문"
+                value={faqPostForm.contentHtml}
+                onChange={(contentHtml) =>
+                  setFaqPostForm((prev) => ({
+                    ...prev,
+                    contentHtml,
+                  }))
+                }
+                placeholder="FAQ 답변 내용을 입력해 주세요."
+                minHeight={280}
+                disabled={faqPostSaving}
+              />
 
               <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                 <input
@@ -724,7 +719,7 @@ export default function AppDialogs({ ctx }) {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+            className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
           >
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -765,26 +760,19 @@ export default function AppDialogs({ ctx }) {
                 placeholder="공지사항 제목을 입력해 주세요."
               />
 
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-semibold text-slate-600">
-                  내용
-                </span>
-
-                <textarea
-                  value={noticePostForm.content}
-                  onChange={(event) =>
-                    setNoticePostForm(
-                      (prev) => ({
-                        ...prev,
-                        content:
-                          event.target.value,
-                      })
-                    )
-                  }
-                  placeholder="공지사항 내용을 입력해 주세요."
-                  className="h-56 w-full rounded-xl border border-slate-200 p-3 text-xs leading-6 outline-none mk-form-ring-focus"
-                />
-              </label>
+              <RichTextEditor
+                label="내용"
+                value={noticePostForm.contentHtml}
+                onChange={(contentHtml) =>
+                  setNoticePostForm((prev) => ({
+                    ...prev,
+                    contentHtml,
+                  }))
+                }
+                placeholder="공지사항 내용을 입력해 주세요."
+                minHeight={280}
+                disabled={noticePostSaving}
+              />
 
               <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                 <input
