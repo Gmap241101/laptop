@@ -19,6 +19,7 @@ import {
   query as firestoreQuery,
   runTransaction,
   setDoc,
+  updateDoc,
   serverTimestamp,
   where,
   writeBatch,
@@ -294,6 +295,8 @@ const DEFAULT_MAX_RENTAL_DAYS = 14;
 const DEFAULT_ADJUST_START_DATE_AFTER_WORK_END = true;
 const DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY = true;
 const DEFAULT_EXCLUDE_WEEKENDS_FOR_START_DATE = true;
+const DEFAULT_EXCLUDE_SATURDAYS = true;
+const DEFAULT_EXCLUDE_SUNDAYS = true;
 const DEFAULT_EXCLUDE_HOLIDAYS_FOR_START_DATE = true;
 const DEFAULT_WORK_END_TIME = '18:00';
 const DEFAULT_HOLIDAY_TYPE = 'company';
@@ -535,17 +538,41 @@ const getEnabledHoliday = (dateStr, settings = {}) =>
     (holiday) => holiday?.enabled !== false && holiday.date === dateStr
   );
 
+const getDateWeekday = (dateStr) => {
+  if (!dateStr) return -1;
+
+  const date = new Date(`${dateStr}T00:00:00Z`);
+
+  return Number.isNaN(date.getTime()) ? -1 : date.getUTCDay();
+};
+
 const isWeekendDate = (dateStr) => {
-  if (!dateStr) return false;
+  const weekday = getDateWeekday(dateStr);
+  return weekday === 0 || weekday === 6;
+};
 
-  const d = new Date(`${dateStr}T00:00:00Z`);
+const shouldExcludeSaturday = (settings = {}) =>
+  settings.excludeSaturdays ??
+  settings.excludeWeekendsForStartDate ??
+  DEFAULT_EXCLUDE_SATURDAYS;
 
-  if (Number.isNaN(d.getTime())) {
-    return false;
+const shouldExcludeSunday = (settings = {}) =>
+  settings.excludeSundays ??
+  settings.excludeWeekendsForStartDate ??
+  DEFAULT_EXCLUDE_SUNDAYS;
+
+const getConfiguredRestWeekdayReason = (dateStr, settings = {}) => {
+  const weekday = getDateWeekday(dateStr);
+
+  if (weekday === 6 && shouldExcludeSaturday(settings)) {
+    return '토요일';
   }
 
-  const day = d.getUTCDay();
-  return day === 0 || day === 6;
+  if (weekday === 0 && shouldExcludeSunday(settings)) {
+    return '일요일';
+  }
+
+  return '';
 };
 
 const isHolidayDate = (dateStr, settings = {}) => {
@@ -560,13 +587,6 @@ const isHolidayDate = (dateStr, settings = {}) => {
 };
 
 const getNonBusinessDayReason = (dateStr, settings = {}) => {
-  const shouldExcludeWeekends =
-    settings.excludeWeekendsForStartDate ?? DEFAULT_EXCLUDE_WEEKENDS_FOR_START_DATE;
-
-  if (shouldExcludeWeekends && isWeekendDate(dateStr)) {
-    return '주말';
-  }
-
   const holiday = getEnabledHoliday(dateStr, settings);
 
   if (
@@ -576,24 +596,17 @@ const getNonBusinessDayReason = (dateStr, settings = {}) => {
     return getHolidayDisplayName(holiday);
   }
 
-  return '';
+  return getConfiguredRestWeekdayReason(dateStr, settings);
 };
 
 const isBusinessDay = (dateStr, settings = {}) => {
   if (!dateStr) return false;
 
-  const shouldExcludeWeekends =
-    settings.excludeWeekendsForStartDate ?? DEFAULT_EXCLUDE_WEEKENDS_FOR_START_DATE;
-
-  if (shouldExcludeWeekends && isWeekendDate(dateStr)) {
-    return false;
-  }
-
   if (isHolidayDate(dateStr, settings)) {
     return false;
   }
 
-  return true;
+  return !getConfiguredRestWeekdayReason(dateStr, settings);
 };
 
 const getNextBusinessDay = (dateStr, settings = {}) => {
@@ -613,10 +626,6 @@ const getNextBusinessDay = (dateStr, settings = {}) => {
 const getAdjustedRentalStartDate = (dateStr, settings = {}) => {
   const minDate = today();
   const candidateDate = !dateStr || dateStr < minDate ? minDate : dateStr;
-
-  if (!getBusinessDayAdjustmentEnabled(settings)) {
-    return candidateDate;
-  }
 
   return getNextBusinessDay(candidateDate, settings);
 };
@@ -716,11 +725,7 @@ const addBusinessDaysInclusive = (
   let countedBusinessDays = 0;
 
   for (let i = 0; i < 3700; i += 1) {
-    const isActualBusinessDay =
-      !isWeekendDate(candidateDate) &&
-      !getEnabledHoliday(candidateDate, settings);
-
-    if (isActualBusinessDay) {
+    if (isBusinessDay(candidateDate, settings)) {
       countedBusinessDays += 1;
 
       if (countedBusinessDays >= safeBusinessDayCount) {
@@ -734,15 +739,8 @@ const addBusinessDaysInclusive = (
   return candidateDate;
 };
 
-const isRentalDueBusinessDay = (dateStr, settings = {}) => {
-  if (!dateStr) return false;
-
-  if (isWeekendDate(dateStr)) {
-    return false;
-  }
-
-  return !Boolean(getEnabledHoliday(dateStr, settings));
-};
+const isRentalDueBusinessDay = (dateStr, settings = {}) =>
+  isBusinessDay(dateStr, settings);
 
 const getAdjustedRentalDueDate = (dateStr, settings = {}) => {
   let candidateDate = dateStr || today();
@@ -758,15 +756,8 @@ const getAdjustedRentalDueDate = (dateStr, settings = {}) => {
   return candidateDate;
 };
 
-const getRentalDueDateAdjustmentReason = (dateStr, settings = {}) => {
-  if (isWeekendDate(dateStr)) {
-    return '주말';
-  }
-
-  const holiday = getEnabledHoliday(dateStr, settings);
-
-  return holiday ? getHolidayDisplayName(holiday) : '';
-};
+const getRentalDueDateAdjustmentReason = (dateStr, settings = {}) =>
+  getNonBusinessDayReason(dateStr, settings);
 
 const getMaxRentalDueDate = (startDate, settings = {}) => {
   if (!startDate) return '';
@@ -980,28 +971,21 @@ const isTemporaryDateInputValue = (dateStr) => {
 };
 
 const defaultRentalStartDate = (settings = {}) => {
-  const shouldAdjustToNextBusinessDay = getBusinessDayAdjustmentEnabled(settings);
   const shouldMoveAfterWorkEnd =
-    shouldAdjustToNextBusinessDay &&
+    getBusinessDayAdjustmentEnabled(settings) &&
     isKoreaNowAfterTime(settings.workEndTime || DEFAULT_WORK_END_TIME);
 
   const candidateDate = shouldMoveAfterWorkEnd
     ? addDaysFrom(today(), 1)
     : today();
 
-  if (!shouldAdjustToNextBusinessDay) {
-    return candidateDate;
-  }
-
   return getNextBusinessDay(candidateDate, settings);
 };
 
 const getRentalStartAdjustmentInfo = (settings = {}) => {
-  if (!getBusinessDayAdjustmentEnabled(settings)) {
-    return { adjusted: false, adjustedDate: today(), reasons: [] };
-  }
-
-  const isAfterWorkEnd = isKoreaNowAfterTime(settings.workEndTime || DEFAULT_WORK_END_TIME);
+  const isAfterWorkEnd =
+    getBusinessDayAdjustmentEnabled(settings) &&
+    isKoreaNowAfterTime(settings.workEndTime || DEFAULT_WORK_END_TIME);
   const candidateDate = isAfterWorkEnd ? addDaysFrom(today(), 1) : today();
   const adjustedDate = getNextBusinessDay(candidateDate, settings);
 
@@ -1075,6 +1059,8 @@ const initialData = {
     adjustStartDateAfterWorkEnd: DEFAULT_ADJUST_START_DATE_AFTER_WORK_END,
     adjustStartDateToNextBusinessDay: DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY,
     excludeWeekendsForStartDate: DEFAULT_EXCLUDE_WEEKENDS_FOR_START_DATE,
+    excludeSaturdays: DEFAULT_EXCLUDE_SATURDAYS,
+    excludeSundays: DEFAULT_EXCLUDE_SUNDAYS,
     excludeHolidaysForStartDate: DEFAULT_EXCLUDE_HOLIDAYS_FOR_START_DATE,
     workEndTime: DEFAULT_WORK_END_TIME,
     holidays: [],
@@ -1251,9 +1237,15 @@ function mergePersistedData(rawData) {
     initialData.settings.adjustStartDateToNextBusinessDay;
 
   settings.adjustStartDateAfterWorkEnd = settings.adjustStartDateToNextBusinessDay;
-  settings.excludeWeekendsForStartDate =
+  const legacyExcludeWeekends =
     rawSettings.excludeWeekendsForStartDate ??
     initialData.settings.excludeWeekendsForStartDate;
+  settings.excludeSaturdays =
+    rawSettings.excludeSaturdays ?? legacyExcludeWeekends;
+  settings.excludeSundays =
+    rawSettings.excludeSundays ?? legacyExcludeWeekends;
+  settings.excludeWeekendsForStartDate =
+    settings.excludeSaturdays && settings.excludeSundays;
   settings.excludeHolidaysForStartDate =
     rawSettings.excludeHolidaysForStartDate ??
     initialData.settings.excludeHolidaysForStartDate;
@@ -1960,6 +1952,9 @@ function App() {
   const [holidayManagementYear, setHolidayManagementYear] = useState(
     String(getKoreaNow().getUTCFullYear())
   );
+  const [holidayManagementMonth, setHolidayManagementMonth] = useState(
+    getKoreaNow().getUTCMonth() + 1
+  );
   const [holidayManagementView, setHolidayManagementView] = useState(() => {
     try {
       return window.localStorage.getItem('holidayManagementView') === 'calendar'
@@ -1980,6 +1975,34 @@ function App() {
       // 브라우저 저장소를 사용할 수 없는 환경에서는 현재 세션 상태만 유지합니다.
     }
   }, [holidayManagementView]);
+
+  const holidaySettingsDirty = useMemo(
+    () =>
+      JSON.stringify(
+        serializeHolidayListForFirestore(tempSettings.holidays || [])
+      ) !==
+      JSON.stringify(
+        serializeHolidayListForFirestore(data.settings.holidays || [])
+      ),
+    [data.settings.holidays, tempSettings.holidays]
+  );
+
+  useEffect(() => {
+    if (adminTab !== 'holidaySettings' || !holidaySettingsDirty) {
+      return undefined;
+    }
+
+    const handleBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [adminTab, holidaySettingsDirty]);
 
   const [
     splitStorageFinalizeLoading,
@@ -2323,7 +2346,7 @@ function App() {
     if (view === 'admin') {
       pushAppPath('admin');
       setView('admin');
-      setAdminTab('dashboard');
+      handleAdminTabChange('dashboard');
       setIsCommunityMenuOpen(false);
       return;
     }
@@ -2924,13 +2947,17 @@ function App() {
 
   // 설정 탭으로 변경되거나 시스템 원본 설정 값이 변경될 때 임시 설정 버퍼를 동기화
   useEffect(() => {
-    if (['settings', 'extensionSettings'].includes(adminTab)) {
+    if (['settings', 'extensionSettings', 'holidaySettings'].includes(adminTab)) {
       setTempSettings(data.settings);
       setNewHolidayDate(today());
       setNewHolidayName('');
       setNewHolidayType(DEFAULT_HOLIDAY_TYPE);
       setHolidayImportYear(String(getKoreaNow().getUTCFullYear()));
       setHolidayImportLoading(false);
+      if (adminTab === 'holidaySettings') {
+        setHolidayManagementYear(String(getKoreaNow().getUTCFullYear()));
+        setHolidayManagementMonth(getKoreaNow().getUTCMonth() + 1);
+      }
     }
   }, [adminTab, data.settings]);
 
@@ -6178,6 +6205,7 @@ function App() {
     }));
 
     setHolidayManagementYear(String(holidayDate).slice(0, 4));
+    setHolidayManagementMonth(Number(String(holidayDate).slice(5, 7)) || 1);
     setNewHolidayName('');
     triggerToast(
       `[${formatDateWithKoreanWeekday(holidayDate)}] ${nextReason.name} 사유가 임시 추가되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`,
@@ -6260,6 +6288,7 @@ function App() {
       holidays: normalizeHolidayList(rebuiltHolidays),
     }));
     setHolidayManagementYear(nextDate.slice(0, 4));
+    setHolidayManagementMonth(Number(nextDate.slice(5, 7)) || 1);
     triggerToast(
       `[${formatDateWithKoreanWeekday(nextDate)}] 휴일 정보가 임시 수정되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`,
       'success'
@@ -6362,6 +6391,11 @@ function App() {
       ),
     }));
     setHolidayManagementYear(String(pendingImport.year));
+    setHolidayManagementMonth(
+      pendingImport.year === getKoreaNow().getUTCFullYear()
+        ? getKoreaNow().getUTCMonth() + 1
+        : 1
+    );
     setHolidayImportConflictModal(null);
 
     const actionLabel =
@@ -6422,6 +6456,11 @@ function App() {
       );
 
       setHolidayManagementYear(String(year));
+      setHolidayManagementMonth(
+        year === getKoreaNow().getUTCFullYear()
+          ? getKoreaNow().getUTCMonth() + 1
+          : 1
+      );
 
       if (duplicateHolidays.length > 0) {
         setHolidayImportConflictModal({
@@ -7203,8 +7242,19 @@ function App() {
       return;
     }
 
-    const nextSettings = normalizeRentalPolicySettings({
+    const excludeSaturdays =
+      tempSettings.excludeSaturdays ??
+      tempSettings.excludeWeekendsForStartDate ??
+      DEFAULT_EXCLUDE_SATURDAYS;
+    const excludeSundays =
+      tempSettings.excludeSundays ??
+      tempSettings.excludeWeekendsForStartDate ??
+      DEFAULT_EXCLUDE_SUNDAYS;
+
+    const normalizedPolicySettings = normalizeRentalPolicySettings({
+      ...data.settings,
       ...tempSettings,
+      holidays: data.settings.holidays,
       allowNonOverlappingSameAssetRequests:
         tempSettings.allowNonOverlappingSameAssetRequests ??
         DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS,
@@ -7216,60 +7266,158 @@ function App() {
         tempSettings.adjustStartDateToNextBusinessDay ??
         tempSettings.adjustStartDateAfterWorkEnd ??
         DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY,
+      excludeSaturdays,
+      excludeSundays,
+      excludeWeekendsForStartDate: excludeSaturdays && excludeSundays,
       maxRentalDays: getSafeMaxRentalDays(tempSettings),
-      holidays: serializeHolidayListForFirestore(tempSettings.holidays),
     });
 
+    const policySettingKeys = [
+      'maxRentalDays',
+      'allowNonOverlappingSameAssetRequests',
+      'adjustStartDateAfterWorkEnd',
+      'adjustStartDateToNextBusinessDay',
+      'excludeSaturdays',
+      'excludeSundays',
+      'excludeWeekendsForStartDate',
+      'excludeHolidaysForStartDate',
+      'workEndTime',
+      'rentalExtensionEnabled',
+      'rentalExtensionApprovalMode',
+      'rentalExtensionMaxCount',
+      'rentalExtensionBusinessDays',
+      'rentalExtensionRequestWaitDays',
+      'overdueRentalBlockEnabled',
+      'postOverduePenaltyEnabled',
+      'overduePenaltyMode',
+      'overdueFixedDaysPerAsset',
+      'overdueDayMultiplier',
+    ];
+
+    const policyValues = Object.fromEntries(
+      policySettingKeys.map((key) => [key, normalizedPolicySettings[key]])
+    );
+    const firestorePolicyUpdates = Object.fromEntries(
+      policySettingKeys.map((key) => [
+        `settings.${key}`,
+        normalizedPolicySettings[key],
+      ])
+    );
+
     try {
-      await setDoc(
-        PUBLIC_CONFIG_DOC_REF,
-        {
-          settings: nextSettings,
-          updatedAt:
-            serverTimestamp(),
-        },
-        {
-          merge: true,
-        }
-      );
+      await updateDoc(PUBLIC_CONFIG_DOC_REF, {
+        ...firestorePolicyUpdates,
+        updatedAt: serverTimestamp(),
+      });
+
+      const nextSettings = {
+        ...data.settings,
+        ...policyValues,
+        holidays: normalizeHolidayList(data.settings.holidays),
+      };
 
       setData((prev) => ({
         ...prev,
-        settings: nextSettings,
+        settings: {
+          ...prev.settings,
+          ...policyValues,
+        },
       }));
-
-      setTempSettings(
-        nextSettings
-      );
-      setNewHolidayDate(today());
-      setNewHolidayName('');
-      setNewHolidayType(
-        DEFAULT_HOLIDAY_TYPE
-      );
-      setHolidayImportYear(
-        String(
-          getKoreaNow().getUTCFullYear()
-        )
-      );
-      setHolidayImportLoading(
-        false
-      );
+      setTempSettings(nextSettings);
 
       triggerToast(
         '대여 정책 변경사항이 성공적으로 저장 및 반영되었습니다.',
         'success'
       );
     } catch (error) {
-      console.error(
-        'Rental policy settings save error:',
-        error
-      );
+      console.error('Rental policy settings save error:', error);
 
       triggerToast(
         '대여 정책 저장에 실패했습니다. 기존 설정은 유지됩니다.',
         'error'
       );
     }
+  };
+
+  const saveHolidaySettings = async () => {
+    if (!isSplitStorageReady) {
+      triggerToast(
+        'Firestore 분리 저장소 최종 전환이 완료되지 않아 휴일을 저장할 수 없습니다.',
+        'error'
+      );
+      return;
+    }
+
+    const nextHolidays = serializeHolidayListForFirestore(
+      tempSettings.holidays || []
+    );
+
+    try {
+      await updateDoc(PUBLIC_CONFIG_DOC_REF, {
+        'settings.holidays': nextHolidays,
+        updatedAt: serverTimestamp(),
+      });
+
+      const normalizedHolidays = normalizeHolidayList(nextHolidays);
+
+      setData((prev) => ({
+        ...prev,
+        settings: {
+          ...prev.settings,
+          holidays: normalizedHolidays,
+        },
+      }));
+      setTempSettings((prev) => ({
+        ...prev,
+        holidays: normalizedHolidays,
+      }));
+      setHolidayImportConflictModal(null);
+      setHolidayImportLoading(false);
+
+      triggerToast(
+        '휴일 변경사항이 성공적으로 저장 및 반영되었습니다.',
+        'success'
+      );
+    } catch (error) {
+      console.error('Holiday settings save error:', error);
+
+      triggerToast(
+        '휴일 저장에 실패했습니다. 기존 설정은 유지됩니다.',
+        'error'
+      );
+    }
+  };
+
+  const discardHolidayChanges = () => {
+    setTempSettings((prev) => ({
+      ...prev,
+      holidays: normalizeHolidayList(data.settings.holidays || []),
+    }));
+    setNewHolidayDate(today());
+    setNewHolidayName('');
+    setNewHolidayType(DEFAULT_HOLIDAY_TYPE);
+    setHolidayImportConflictModal(null);
+    setHolidayImportLoading(false);
+  };
+
+  const handleAdminTabChange = (nextTab) => {
+    if (!nextTab || nextTab === adminTab) {
+      return;
+    }
+
+    if (adminTab === 'holidaySettings' && holidaySettingsDirty) {
+      triggerConfirm(
+        '저장되지 않은 휴일 변경사항',
+        '저장되지 않은 휴일 변경사항이 있습니다. 저장하지 않고 다른 메뉴로 이동하시겠습니까?',
+        () => {
+          discardHolidayChanges();
+          setAdminTab(nextTab);
+        }
+      );
+      return;
+    }
+
+    setAdminTab(nextTab);
   };
 
   const shouldShowStats =
@@ -9356,7 +9504,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         'invalid-direct-edit-date-order':
           '변경할 반납 예정일은 대여 시작일 이후여야 합니다.',
         'invalid-direct-edit-due-business-day':
-          '변경할 반납 예정일은 주말과 등록 휴일을 제외한 영업일이어야 합니다.',
+          '변경할 반납 예정일은 설정된 휴무 요일과 등록 휴일을 제외한 영업일이어야 합니다.',
         'invalid-direct-edit-max-days':
           '변경한 대여 기간이 달력 기준 최대 허용 기간을 초과했습니다.',
         'direct-edit-period-conflict':
@@ -14448,6 +14596,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     ClipboardList,
     Clock,
     DEFAULT_EXCLUDE_HOLIDAYS_FOR_START_DATE,
+    DEFAULT_EXCLUDE_SATURDAYS,
+    DEFAULT_EXCLUDE_SUNDAYS,
     DEFAULT_EXCLUDE_WEEKENDS_FOR_START_DATE,
     DEFAULT_HOLIDAY_TYPE,
     DEFAULT_WORK_END_TIME,
@@ -14642,11 +14792,14 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     goToUserSignup,
     handleAddLaptopClick,
     handleFileUpload,
+    handleAdminTabChange,
     holidayImportConflictModal,
     holidayImportLoading,
     holidayImportYear,
+    holidayManagementMonth,
     holidayManagementView,
     holidayManagementYear,
+    holidaySettingsDirty,
     importKoreanPublicHolidaysFromJson,
     applyHolidayImportConflictChoice,
     isAdminAuthenticated,
@@ -14732,6 +14885,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     saveNoticeBoardConfig,
     saveNoticePost,
     saveRequestMemo,
+    saveHolidaySettings,
     saveSystemSettings,
     saveTempAssetCategoryChanges,
     saveTempPeopleChanges,
@@ -14788,6 +14942,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     setHolidayImportConflictModal,
     setHolidayImportLoading,
     setHolidayImportYear,
+    setHolidayManagementMonth,
     setHolidayManagementView,
     setHolidayManagementYear,
     setIsCommunityMenuOpen,
@@ -14832,6 +14987,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     tempAssetCategories,
     tempBusinessDayAdjustmentEnabled,
     tempHolidayList,
+    discardHolidayChanges,
     tempSettings,
     tempTeams,
     toast,

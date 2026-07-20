@@ -1,3 +1,4 @@
+import { CalendarDays } from 'lucide-react';
 import AdminDashboardPanel from './AdminDashboardPanel.jsx';
 import AdminRequestsPanel from './AdminRequestsPanel.jsx';
 import AdminAssetsPanel from './AdminAssetsPanel.jsx';
@@ -9,6 +10,7 @@ import AdminMemberAccountsPanel from './AdminMemberAccountsPanel.jsx';
 import AdminAccountsPanel from './AdminAccountsPanel.jsx';
 import AdminSettingsPanel from './AdminSettingsPanel.jsx';
 import AdminExtensionSettingsPanel from './AdminExtensionSettingsPanel.jsx';
+import AdminHolidayManagementPanel from './AdminHolidayManagementPanel.jsx';
 
 export default function AdminWorkspace({ ctx }) {
   const {
@@ -157,6 +159,7 @@ export default function AdminWorkspace({ ctx }) {
     goToUserHome,
     handleAddLaptopClick,
     handleFileUpload,
+    handleAdminTabChange,
     holidayImportLoading,
     holidayImportYear,
     importKoreanPublicHolidaysFromJson,
@@ -470,6 +473,7 @@ export default function AdminWorkspace({ ctx }) {
                     ['requests', ClipboardList, '기기 대여 신청 관리'],
                     ['laptops', Laptop, '대여 자산 관리'],
                     ['extensionSettings', Clock, '대여 정책 관리'],
+                    ['holidaySettings', CalendarDays, '휴일 관리'],
                     ['categories', ClipboardList, '자산 카테고리 관리'],
                     ['people', Users, '부서·사용자 관리'],
                     ['noticePosts', ClipboardList, '공지사항 관리'],
@@ -481,7 +485,7 @@ export default function AdminWorkspace({ ctx }) {
                     <Button
                       key={key}
                       variant={adminTab === key ? 'primary' : 'ghost'}
-                      onClick={() => setAdminTab(key)}
+                      onClick={() => handleAdminTabChange(key)}
                       className={`${
                         isSubmenu
                           ? 'ml-4 w-[calc(100%-1rem)]'
@@ -518,6 +522,11 @@ export default function AdminWorkspace({ ctx }) {
                   {/* 자산 목록 관리 탭 */}
                   {adminTab === 'laptops' && (
                     <AdminAssetsPanel ctx={ctx} />
+                  )}
+
+                  {/* 휴일 관리 탭 */}
+                  {adminTab === 'holidaySettings' && (
+                    <AdminHolidayManagementPanel ctx={ctx} />
                   )}
 
                   {/* 자산 카테고리 관리 탭 */}
