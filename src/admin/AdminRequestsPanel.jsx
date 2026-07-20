@@ -677,7 +677,7 @@ export default function AdminRequestsPanel({ ctx }) {
                         </div>
                       ) : (
                         <>
-                          <div className="hidden overflow-x-auto rounded-xl border border-slate-200 md:block">
+                          <div className="hidden w-full max-w-full overflow-x-auto rounded-xl border border-slate-200 md:block">
                             <table className="w-full min-w-[1080px] table-fixed border-collapse text-left">
                               <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600">
                                 <tr>

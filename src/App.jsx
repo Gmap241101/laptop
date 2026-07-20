@@ -2152,6 +2152,18 @@ function App() {
     setIsCommunityMenuOpen(false);
   };
 
+  const goToAppHome = () => {
+    if (view === 'admin') {
+      pushAppPath('admin');
+      setView('admin');
+      setAdminTab('dashboard');
+      setIsCommunityMenuOpen(false);
+      return;
+    }
+
+    goToUserHome();
+  };
+
   useEffect(() => {
     const syncViewWithPath = () => {
       const nextRouteState = getRouteStateFromPath();
@@ -2794,6 +2806,7 @@ function App() {
   useEffect(() => {
     if (
       view === 'admin' &&
+      authenticatedAdminId &&
       firebaseReady &&
       adminAccountsReady &&
       !adminAccountsLoadErrorMessage &&
@@ -2804,6 +2817,7 @@ function App() {
     }
   }, [
     view,
+    authenticatedAdminId,
     firebaseReady,
     adminAccountsReady,
     adminAccountsLoadErrorMessage,
@@ -4901,6 +4915,7 @@ function App() {
 
       setAdminAuthenticatedSession(nextAdminAccount.id);
       setAdminAuthForm(createDefaultAdminAuthForm());
+      setAdminTab('dashboard');
 
       signedInAdminUser = null;
 
@@ -14466,7 +14481,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:px-6 sm:py-4 lg:flex-row lg:items-center lg:justify-between">
           <button
             type="button"
-            onClick={goToUserHome}
+            onClick={goToAppHome}
             className="flex min-w-0 shrink-0 items-center gap-3.5 text-left sm:gap-4"
           >
             <div className="shrink-0 rounded-2xl mk-brand-gradient-tr p-2.5 text-white mk-brand-shadow-md sm:p-3">

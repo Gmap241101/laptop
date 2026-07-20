@@ -456,7 +456,7 @@ export default function AdminWorkspace({ ctx }) {
             </Card>
           ) : (
           /* ==================== [관리자 설정 화면] ==================== */
-          <div className="grid grid-cols-1 gap-8 lg:grid-cols-[260px_1fr]">
+          <div className="grid min-w-0 grid-cols-1 gap-8 lg:grid-cols-[260px_minmax(0,1fr)]">
             
             {/* 좌측 사이드 네비게이션 메뉴 */}
             <div className="lg:sticky lg:top-24 h-fit">
@@ -501,9 +501,9 @@ export default function AdminWorkspace({ ctx }) {
             </div>
 
             {/* 우측 세부 탭 컨텐츠 영역 */}
-            <div className="space-y-6">
-              <Card>
-                <CardContent className="p-6">
+            <div className="min-w-0 space-y-6">
+              <Card className="min-w-0">
+                <CardContent className="min-w-0 p-6">
                   
                   {/* 대시보드 탭 */}
                   {adminTab === 'dashboard' && (
