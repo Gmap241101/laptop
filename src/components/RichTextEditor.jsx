@@ -21,6 +21,7 @@ import {
   Table2,
   Underline,
   Undo2,
+  Video,
   Youtube,
   X,
 } from 'lucide-react';
@@ -56,6 +57,7 @@ const ALLOWED_TAGS = new Set([
   'TH',
   'TD',
   'IFRAME',
+  'VIDEO',
 ]);
 
 const DROP_CONTENT_TAGS = new Set([
@@ -226,7 +228,7 @@ const buildYouTubeEmbedUrl = (config = {}) => {
   const start = Math.max(0, Number(config.start) || 0);
   if (start > 0) params.set('start', String(Math.floor(start)));
   if (config.autoplay) params.set('autoplay', '1');
-  if (config.autoplay || config.mute) params.set('mute', '1');
+  if (config.mute) params.set('mute', '1');
   if (config.hideControls) params.set('controls', '0');
   if (config.hideFullscreen) params.set('fs', '0');
   if (config.disableKeyboard) params.set('disablekb', '1');
@@ -260,6 +262,32 @@ const buildYouTubeEmbedHtml = (value = '', title = 'YouTube 동영상', options 
     .replace(/>/g, '&gt;');
 
   return `<div data-video-provider="youtube"><iframe src="${src}" title="${safeTitle}" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen frameborder="0" style="display: block; width: 100%; max-width: 100%; aspect-ratio: 16 / 9; border: 0;"></iframe></div><p><br></p>`;
+};
+
+const buildHtml5VideoHtml = (value = '', title = '일반 동영상', options = {}) => {
+  const src = String(value || '').trim();
+  if (!isSafeHttpUrl(src)) return '';
+
+  const escapeAttribute = (text) =>
+    String(text || '')
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+  const attributes = [
+    `src="${escapeAttribute(src)}"`,
+    `title="${escapeAttribute(String(title || '').trim() || '일반 동영상')}"`,
+    'controls',
+    'playsinline',
+    'preload="metadata"',
+  ];
+
+  if (options.autoplay) attributes.push('autoplay');
+  if (options.loop) attributes.push('loop');
+  if (options.muted) attributes.push('muted');
+
+  return `<div data-video-provider="html5"><video ${attributes.join(' ')} style="display: block; width: 100%; max-width: 100%; height: auto; border: 0;"></video></div><p><br></p>`;
 };
 
 const sanitizeStyle = (styleText = '') =>
@@ -323,6 +351,11 @@ const sanitizeElementAttributes = (element) => {
     if (!normalizedSrc) return false;
   }
 
+  if (element.tagName === 'VIDEO') {
+    const videoSrc = element.getAttribute('src') || '';
+    if (!isSafeHttpUrl(videoSrc)) return false;
+  }
+
   [...element.attributes].forEach((attribute) => {
     const name = attribute.name.toLowerCase();
     const value = attribute.value;
@@ -348,6 +381,10 @@ const sanitizeElementAttributes = (element) => {
       if (name === 'src' && !isSafeHttpUrl(value)) keep = false;
     } else if (element.tagName === 'IFRAME') {
       keep = ['src', 'title', 'allow', 'allowfullscreen', 'loading', 'referrerpolicy', 'frameborder', 'width', 'height'].includes(name);
+    } else if (element.tagName === 'VIDEO') {
+      keep = ['src', 'title', 'controls', 'autoplay', 'loop', 'muted', 'playsinline', 'preload', 'width', 'height'].includes(name);
+      if (name === 'src' && !isSafeHttpUrl(value)) keep = false;
+      if (name === 'preload' && !['none', 'metadata', 'auto'].includes(String(value || '').toLowerCase())) keep = false;
     } else if (element.tagName === 'TD' || element.tagName === 'TH') {
       keep = ['colspan', 'rowspan'].includes(name);
     } else if (element.tagName === 'FIGURE') {
@@ -367,6 +404,21 @@ const sanitizeElementAttributes = (element) => {
   if (element.tagName === 'IMG') {
     element.setAttribute('loading', 'lazy');
     element.setAttribute('style', `${sanitizeStyle(element.getAttribute('style'))}; max-width: 100%; height: auto;`.replace(/^;\s*/, ''));
+  }
+
+  if (element.tagName === 'VIDEO') {
+    element.setAttribute('title', element.getAttribute('title') || '일반 동영상');
+    element.setAttribute('controls', '');
+    element.setAttribute('playsinline', '');
+    element.setAttribute('preload', element.getAttribute('preload') || 'metadata');
+    element.setAttribute('style', 'display: block; width: 100%; max-width: 100%; height: auto; border: 0;');
+  }
+
+  if (element.tagName === 'DIV') {
+    const provider = element.getAttribute('data-video-provider');
+    if (provider && !['youtube', 'html5'].includes(provider)) {
+      element.removeAttribute('data-video-provider');
+    }
   }
 
   if (element.tagName === 'IFRAME') {
@@ -460,9 +512,9 @@ export const richTextHtmlToText = (html = '') => {
     if (alt) image.insertAdjacentText('afterend', ` ${alt} `);
   });
 
-  container.querySelectorAll('iframe').forEach((frame) => {
-    const title = frame.getAttribute('title')?.trim();
-    if (title) frame.insertAdjacentText('afterend', ` ${title} `);
+  container.querySelectorAll('iframe, video').forEach((media) => {
+    const title = media.getAttribute('title')?.trim();
+    if (title) media.insertAdjacentText('afterend', ` ${title} `);
   });
 
   container.querySelectorAll('br').forEach((lineBreak) => {
@@ -491,7 +543,7 @@ export const isRichTextEmpty = (html = '') => {
 
   const container = document.createElement('div');
   container.innerHTML = sanitizeRichTextHtml(html);
-  const hasMedia = Boolean(container.querySelector('img, iframe, table, hr'));
+  const hasMedia = Boolean(container.querySelector('img, iframe, video, table, hr'));
   return !richTextHtmlToText(container.innerHTML) && !hasMedia;
 };
 
@@ -536,12 +588,28 @@ const getYouTubeFormFromIframe = (iframe) => {
     title: iframe?.getAttribute('title') || 'YouTube 동영상',
     start: formatYouTubeStartTime(config.start),
     autoplay: config.autoplay,
-    mute: config.autoplay || config.mute,
+    mute: config.mute,
     hideControls: config.hideControls,
     hideFullscreen: config.hideFullscreen,
     disableKeyboard: config.disableKeyboard,
   };
 };
+
+const createEmptyHtml5VideoForm = () => ({
+  url: '',
+  title: '',
+  autoplay: false,
+  loop: false,
+  muted: false,
+});
+
+const getHtml5VideoFormFromElement = (video) => ({
+  url: video?.getAttribute('src') || '',
+  title: video?.getAttribute('title') || '일반 동영상',
+  autoplay: video?.hasAttribute('data-stored-html5-autoplay') || video?.hasAttribute('autoplay') || false,
+  loop: video?.hasAttribute('loop') || false,
+  muted: video?.hasAttribute('muted') || false,
+});
 
 const addYouTubeEditorControls = (container) => {
   const wrappers = [];
@@ -555,6 +623,23 @@ const addYouTubeEditorControls = (container) => {
     button.setAttribute('data-youtube-editor-control', 'true');
     button.setAttribute('contenteditable', 'false');
     button.setAttribute('aria-label', 'YouTube 동영상 설정 수정');
+    button.textContent = '영상 설정';
+    wrapper.appendChild(button);
+  });
+};
+
+const addHtml5VideoEditorControls = (container) => {
+  const wrappers = [];
+  if (container.matches?.('[data-video-provider="html5"]')) wrappers.push(container);
+  wrappers.push(...container.querySelectorAll('[data-video-provider="html5"]'));
+
+  wrappers.forEach((wrapper) => {
+    if (wrapper.querySelector('[data-html5-video-editor-control]')) return;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.setAttribute('data-html5-video-editor-control', 'true');
+    button.setAttribute('contenteditable', 'false');
+    button.setAttribute('aria-label', '일반 동영상 설정 수정');
     button.textContent = '영상 설정';
     wrapper.appendChild(button);
   });
@@ -579,7 +664,14 @@ const prepareEditorPreviewHtml = (html = '') => {
       })
     );
   });
+
+  container.querySelectorAll('video[autoplay]').forEach((video) => {
+    video.setAttribute('data-stored-html5-autoplay', 'true');
+    video.removeAttribute('autoplay');
+  });
+
   addYouTubeEditorControls(container);
+  addHtml5VideoEditorControls(container);
   return container.innerHTML;
 };
 
@@ -590,10 +682,18 @@ const getStoredHtmlFromEditor = (editor) => {
     iframe.setAttribute('src', iframe.getAttribute('data-stored-youtube-src') || '');
     iframe.removeAttribute('data-stored-youtube-src');
   });
+  clone.querySelectorAll('video[data-stored-html5-autoplay]').forEach((video) => {
+    video.setAttribute('autoplay', '');
+    video.removeAttribute('data-stored-html5-autoplay');
+  });
   clone.querySelectorAll('[data-youtube-selected]').forEach((node) => {
     node.removeAttribute('data-youtube-selected');
   });
+  clone.querySelectorAll('[data-html5-video-selected]').forEach((node) => {
+    node.removeAttribute('data-html5-video-selected');
+  });
   clone.querySelectorAll('[data-youtube-editor-control]').forEach((node) => node.remove());
+  clone.querySelectorAll('[data-html5-video-editor-control]').forEach((node) => node.remove());
   return sanitizeRichTextHtml(clone.innerHTML);
 };
 
@@ -609,6 +709,7 @@ export function RichTextEditor({
   const savedRangeRef = useRef(null);
   const lastEmittedHtmlRef = useRef('');
   const selectedYouTubeRef = useRef(null);
+  const selectedHtml5VideoRef = useRef(null);
   const [imagePanelOpen, setImagePanelOpen] = useState(false);
   const [imageForm, setImageForm] = useState({
     url: '',
@@ -622,6 +723,10 @@ export function RichTextEditor({
   const [youtubeForm, setYouTubeForm] = useState(createEmptyYouTubeForm);
   const [youtubeError, setYouTubeError] = useState('');
   const [editingYouTube, setEditingYouTube] = useState(false);
+  const [html5VideoPanelOpen, setHtml5VideoPanelOpen] = useState(false);
+  const [html5VideoForm, setHtml5VideoForm] = useState(createEmptyHtml5VideoForm);
+  const [html5VideoError, setHtml5VideoError] = useState('');
+  const [editingHtml5Video, setEditingHtml5Video] = useState(false);
   const [sourceMode, setSourceMode] = useState(false);
   const [sourceValue, setSourceValue] = useState(String(value || ''));
 
@@ -716,6 +821,10 @@ export function RichTextEditor({
     setYouTubeError('');
     setEditingYouTube(false);
     clearSelectedYouTube();
+    setHtml5VideoPanelOpen(false);
+    setHtml5VideoError('');
+    setEditingHtml5Video(false);
+    clearSelectedHtml5Video();
     setImageError('');
     setImagePanelOpen(true);
   };
@@ -732,9 +841,19 @@ export function RichTextEditor({
     selectedYouTubeRef.current = null;
   };
 
+  const clearSelectedHtml5Video = () => {
+    const selected = selectedHtml5VideoRef.current;
+    if (selected) selected.removeAttribute('data-html5-video-selected');
+    selectedHtml5VideoRef.current = null;
+  };
+
   const openYouTubePanel = (wrapper = null) => {
     saveSelection();
     closeImagePanel();
+    setHtml5VideoPanelOpen(false);
+    setHtml5VideoError('');
+    setEditingHtml5Video(false);
+    clearSelectedHtml5Video();
     setYouTubeError('');
 
     const selectedWrapper =
@@ -783,7 +902,7 @@ export function RichTextEditor({
     const html = buildYouTubeEmbedHtml(youtubeForm.url, title, {
       start,
       autoplay: youtubeForm.autoplay,
-      mute: youtubeForm.autoplay,
+      mute: youtubeForm.autoplay ? youtubeForm.mute : false,
       hideControls: youtubeForm.hideControls,
       hideFullscreen: youtubeForm.hideFullscreen,
       disableKeyboard: youtubeForm.disableKeyboard,
@@ -826,6 +945,87 @@ export function RichTextEditor({
 
     emitChange();
     closeYouTubePanel();
+  };
+
+  const openHtml5VideoPanel = (wrapper = null) => {
+    saveSelection();
+    closeImagePanel();
+    setYouTubePanelOpen(false);
+    setYouTubeError('');
+    setEditingYouTube(false);
+    clearSelectedYouTube();
+    setHtml5VideoError('');
+
+    const selectedWrapper =
+      wrapper ||
+      (selectedHtml5VideoRef.current && editorRef.current?.contains(selectedHtml5VideoRef.current)
+        ? selectedHtml5VideoRef.current
+        : null);
+
+    if (selectedWrapper) {
+      clearSelectedHtml5Video();
+      selectedWrapper.setAttribute('data-html5-video-selected', 'true');
+      selectedHtml5VideoRef.current = selectedWrapper;
+      setHtml5VideoForm(getHtml5VideoFormFromElement(selectedWrapper.querySelector('video')));
+      setEditingHtml5Video(true);
+    } else {
+      clearSelectedHtml5Video();
+      setHtml5VideoForm(createEmptyHtml5VideoForm());
+      setEditingHtml5Video(false);
+    }
+
+    setHtml5VideoPanelOpen(true);
+  };
+
+  const closeHtml5VideoPanel = () => {
+    setHtml5VideoPanelOpen(false);
+    setHtml5VideoError('');
+    setHtml5VideoForm(createEmptyHtml5VideoForm());
+    setEditingHtml5Video(false);
+    clearSelectedHtml5Video();
+  };
+
+  const insertOrUpdateHtml5Video = () => {
+    const url = String(html5VideoForm.url || '').trim();
+    if (!isSafeHttpUrl(url)) {
+      setHtml5VideoError('동영상 주소는 http:// 또는 https://로 시작해야 합니다.');
+      return;
+    }
+
+    const title = String(html5VideoForm.title || '').trim() || '일반 동영상';
+    const html = buildHtml5VideoHtml(url, title, {
+      autoplay: html5VideoForm.autoplay,
+      loop: html5VideoForm.loop,
+      muted: html5VideoForm.muted,
+    });
+
+    const sanitizedHtml = sanitizeRichTextHtml(html);
+    const selectedWrapper = selectedHtml5VideoRef.current;
+
+    if (editingHtml5Video && selectedWrapper && editorRef.current?.contains(selectedWrapper)) {
+      const holder = document.createElement('div');
+      holder.innerHTML = sanitizedHtml;
+      const replacement = holder.querySelector('[data-video-provider="html5"]');
+      if (!replacement) {
+        setHtml5VideoError('일반 동영상을 수정할 수 없습니다.');
+        return;
+      }
+
+      selectedWrapper.replaceWith(replacement);
+      const replacementVideo = replacement.querySelector('video');
+      if (replacementVideo?.hasAttribute('autoplay')) {
+        replacementVideo.setAttribute('data-stored-html5-autoplay', 'true');
+        replacementVideo.removeAttribute('autoplay');
+      }
+      addHtml5VideoEditorControls(replacement);
+    } else {
+      focusEditor();
+      restoreSelection();
+      document.execCommand('insertHTML', false, prepareEditorPreviewHtml(sanitizedHtml));
+    }
+
+    emitChange();
+    closeHtml5VideoPanel();
   };
 
   const insertImage = () => {
@@ -910,7 +1110,9 @@ export function RichTextEditor({
     setSourceValue(getStoredHtmlFromEditor(editorRef.current) || String(value || ''));
     setImagePanelOpen(false);
     setYouTubePanelOpen(false);
+    setHtml5VideoPanelOpen(false);
     clearSelectedYouTube();
+    clearSelectedHtml5Video();
     setSourceMode(true);
   };
 
@@ -961,29 +1163,56 @@ export function RichTextEditor({
   };
 
   const handleEditorClick = (event) => {
-    const wrapper = event.target?.closest?.('[data-video-provider="youtube"]');
-    if (!wrapper || !editorRef.current?.contains(wrapper)) {
-      clearSelectedYouTube();
+    const youtubeWrapper = event.target?.closest?.('[data-video-provider="youtube"]');
+    const html5Wrapper = event.target?.closest?.('[data-video-provider="html5"]');
+
+    if (youtubeWrapper && editorRef.current?.contains(youtubeWrapper)) {
+      clearSelectedHtml5Video();
+      if (selectedYouTubeRef.current !== youtubeWrapper) {
+        clearSelectedYouTube();
+        youtubeWrapper.setAttribute('data-youtube-selected', 'true');
+        selectedYouTubeRef.current = youtubeWrapper;
+      }
+
+      if (event.target?.closest?.('[data-youtube-editor-control]')) {
+        event.preventDefault();
+        openYouTubePanel(youtubeWrapper);
+      }
       return;
     }
 
-    if (selectedYouTubeRef.current !== wrapper) {
+    if (html5Wrapper && editorRef.current?.contains(html5Wrapper)) {
       clearSelectedYouTube();
-      wrapper.setAttribute('data-youtube-selected', 'true');
-      selectedYouTubeRef.current = wrapper;
+      if (selectedHtml5VideoRef.current !== html5Wrapper) {
+        clearSelectedHtml5Video();
+        html5Wrapper.setAttribute('data-html5-video-selected', 'true');
+        selectedHtml5VideoRef.current = html5Wrapper;
+      }
+
+      if (event.target?.closest?.('[data-html5-video-editor-control]')) {
+        event.preventDefault();
+        openHtml5VideoPanel(html5Wrapper);
+      }
+      return;
     }
 
-    if (event.target?.closest?.('[data-youtube-editor-control]')) {
-      event.preventDefault();
-      openYouTubePanel(wrapper);
-    }
+    clearSelectedYouTube();
+    clearSelectedHtml5Video();
   };
 
   const handleEditorDoubleClick = (event) => {
-    const wrapper = event.target?.closest?.('[data-video-provider="youtube"]');
-    if (!wrapper || !editorRef.current?.contains(wrapper)) return;
-    event.preventDefault();
-    openYouTubePanel(wrapper);
+    const youtubeWrapper = event.target?.closest?.('[data-video-provider="youtube"]');
+    if (youtubeWrapper && editorRef.current?.contains(youtubeWrapper)) {
+      event.preventDefault();
+      openYouTubePanel(youtubeWrapper);
+      return;
+    }
+
+    const html5Wrapper = event.target?.closest?.('[data-video-provider="html5"]');
+    if (html5Wrapper && editorRef.current?.contains(html5Wrapper)) {
+      event.preventDefault();
+      openHtml5VideoPanel(html5Wrapper);
+    }
   };
 
   return (
@@ -1041,6 +1270,7 @@ export function RichTextEditor({
           <ToolbarButton title="링크 삽입" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={insertLink}><LinkIcon size={15} /></ToolbarButton>
           <ToolbarButton title="이미지 URL 삽입" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={openImagePanel}><ImagePlus size={15} /></ToolbarButton>
           <ToolbarButton title="YouTube 동영상 삽입·수정" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => openYouTubePanel()}><Youtube size={16} /></ToolbarButton>
+          <ToolbarButton title="일반 동영상 삽입·수정" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => openHtml5VideoPanel()}><Video size={16} /></ToolbarButton>
           <ToolbarButton title="표 삽입" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={insertTable}><Table2 size={15} /></ToolbarButton>
           <ToolbarButton title="구분선 삽입" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('insertHorizontalRule')}><Minus size={15} /></ToolbarButton>
           <ToolbarButton title="서식 제거" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('removeFormat')}><Eraser size={15} /></ToolbarButton>
@@ -1160,7 +1390,7 @@ export function RichTextEditor({
                   onChange={(event) => setYouTubeForm((prev) => ({
                     ...prev,
                     autoplay: event.target.checked,
-                    mute: event.target.checked,
+                    mute: event.target.checked ? prev.mute : false,
                   }))}
                 />
                 자동 시작
@@ -1168,11 +1398,11 @@ export function RichTextEditor({
               <label className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-[11px] font-semibold ${youtubeForm.autoplay ? 'border-slate-200 bg-white text-slate-700' : 'border-slate-100 bg-slate-100 text-slate-400'}`}>
                 <input
                   type="checkbox"
-                  checked={youtubeForm.autoplay}
-                  disabled
-                  readOnly
+                  checked={youtubeForm.mute}
+                  disabled={!youtubeForm.autoplay}
+                  onChange={(event) => setYouTubeForm((prev) => ({ ...prev, mute: event.target.checked }))}
                 />
-                자동 시작 시 음소거 (필수)
+                자동 시작 시 음소거
               </label>
               <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700">
                 <input
@@ -1201,7 +1431,7 @@ export function RichTextEditor({
             </div>
 
             <div className="mt-2 text-[10px] leading-4 text-slate-500">
-              자동 시작을 사용하면 Chrome 등 브라우저 정책에 맞춰 음소거로 재생됩니다. 사용자 화면에는 영상 위에 ‘소리 켜기’ 버튼이 표시됩니다. 편집 화면에서는 자동재생하지 않습니다. YouTube 제목·채널 정보·브랜드 표시는 완전히 숨길 수 없습니다.
+              소리가 있는 자동재생은 브라우저 정책에 따라 차단될 수 있습니다. 편집 화면에서는 자동재생하지 않으며 실제 사용자 화면에서만 적용됩니다. YouTube 제목·채널 정보·브랜드 표시는 완전히 숨길 수 없습니다.
             </div>
 
             {youtubeError && <div className="mt-2 text-[11px] font-semibold text-rose-600">{youtubeError}</div>}
@@ -1210,6 +1440,75 @@ export function RichTextEditor({
               <button type="button" onClick={closeYouTubePanel} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">취소</button>
               <button type="button" onClick={insertOrUpdateYouTube} className="rounded-lg bg-red-600 px-3 py-2 text-xs font-bold text-white hover:bg-red-700">
                 {editingYouTube ? '변경사항 적용' : '동영상 삽입'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {html5VideoPanelOpen && !sourceMode && (
+          <div className="border-b border-slate-200 bg-sky-50/50 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-bold text-slate-800">
+                  {editingHtml5Video ? '일반 동영상 설정 수정' : '일반 동영상 삽입'}
+                </div>
+                <div className="mt-0.5 text-[10px] leading-4 text-slate-500">동영상 파일을 직접 가리키는 http:// 또는 https:// 주소를 입력해 주세요.</div>
+              </div>
+              <button type="button" onClick={closeHtml5VideoPanel} className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-slate-700"><X size={16} /></button>
+            </div>
+
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <input
+                value={html5VideoForm.url}
+                onChange={(event) => setHtml5VideoForm((prev) => ({ ...prev, url: event.target.value }))}
+                placeholder="동영상 파일 주소 (https://.../video.mp4)"
+                className="sm:col-span-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none mk-form-focus"
+              />
+              <input
+                value={html5VideoForm.title}
+                onChange={(event) => setHtml5VideoForm((prev) => ({ ...prev, title: event.target.value }))}
+                placeholder="영상 제목 또는 설명 (선택)"
+                className="sm:col-span-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none mk-form-focus"
+              />
+            </div>
+
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={html5VideoForm.autoplay}
+                  onChange={(event) => setHtml5VideoForm((prev) => ({ ...prev, autoplay: event.target.checked }))}
+                />
+                자동 시작
+              </label>
+              <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={html5VideoForm.loop}
+                  onChange={(event) => setHtml5VideoForm((prev) => ({ ...prev, loop: event.target.checked }))}
+                />
+                반복 재생
+              </label>
+              <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={html5VideoForm.muted}
+                  onChange={(event) => setHtml5VideoForm((prev) => ({ ...prev, muted: event.target.checked }))}
+                />
+                음소거
+              </label>
+            </div>
+
+            <div className="mt-2 text-[10px] leading-4 text-slate-500">
+              Chrome 등에서는 소리가 있는 자동재생이 차단될 수 있습니다. 안정적인 자동재생이 필요하면 자동 시작과 음소거를 함께 선택해 주세요.
+            </div>
+
+            {html5VideoError && <div className="mt-2 text-[11px] font-semibold text-rose-600">{html5VideoError}</div>}
+
+            <div className="mt-3 flex justify-end gap-2">
+              <button type="button" onClick={closeHtml5VideoPanel} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">취소</button>
+              <button type="button" onClick={insertOrUpdateHtml5Video} className="rounded-lg bg-sky-600 px-3 py-2 text-xs font-bold text-white hover:bg-sky-700">
+                {editingHtml5Video ? '변경사항 적용' : '동영상 삽입'}
               </button>
             </div>
           </div>
@@ -1257,7 +1556,7 @@ export function RichTextEditor({
       </div>
 
       <p className="text-[10px] leading-4 text-slate-500">
-        외부 이미지 링크는 원본 서버 상태에 따라 표시되지 않을 수 있습니다. 유튜브 URL·임베드 태그와 안전한 HTML 태그 붙여넣기를 지원합니다.
+        외부 이미지·일반 동영상 링크는 원본 서버 설정에 따라 표시 또는 재생되지 않을 수 있습니다. YouTube URL·임베드 태그, 일반 동영상 태그와 안전한 HTML 태그 붙여넣기를 지원합니다.
       </p>
     </div>
   );
@@ -1276,7 +1575,7 @@ export function RichTextContent({ html = '', text = '', className = '' }) {
     container.innerHTML = sanitized;
     let autoplayAssigned = false;
 
-    container.querySelectorAll('iframe').forEach((iframe) => {
+    container.querySelectorAll('[data-video-provider="youtube"] iframe').forEach((iframe) => {
       const config = parseYouTubeConfig(iframe.getAttribute('src') || '');
       if (!config) return;
 
@@ -1286,6 +1585,16 @@ export function RichTextContent({ html = '', text = '', className = '' }) {
       }
 
       if (config.autoplay) autoplayAssigned = true;
+
+      try {
+        const url = new URL(iframe.getAttribute('src') || '');
+        if (typeof window !== 'undefined' && /^https?:$/.test(window.location.protocol)) {
+          url.searchParams.set('origin', window.location.origin);
+          iframe.setAttribute('src', url.toString());
+        }
+      } catch {
+        // 이미 정제된 YouTube URL이므로 원본 주소를 유지합니다.
+      }
     });
 
     return container.innerHTML;
@@ -1295,7 +1604,7 @@ export function RichTextContent({ html = '', text = '', className = '' }) {
     const root = contentRef.current;
     if (!root || typeof window === 'undefined') return undefined;
 
-    const iframe = [...root.querySelectorAll('iframe')].find((frame) => {
+    const iframe = [...root.querySelectorAll('[data-video-provider="youtube"] iframe')].find((frame) => {
       const config = parseYouTubeConfig(frame.getAttribute('src') || '');
       return Boolean(config?.autoplay);
     });
@@ -1305,75 +1614,99 @@ export function RichTextContent({ html = '', text = '', className = '' }) {
     const config = parseYouTubeConfig(iframe.getAttribute('src') || '');
     if (!config) return undefined;
 
-    try {
-      const url = new URL(iframe.getAttribute('src') || '');
-      if (/^https?:$/.test(window.location.protocol)) {
-        url.searchParams.set('origin', window.location.origin);
-        iframe.setAttribute('src', url.toString());
+    const targetOrigin = 'https://www.youtube-nocookie.com';
+    const iframeId = iframe.id || `youtube-player-${Math.random().toString(36).slice(2)}`;
+    iframe.id = iframeId;
+    let disposed = false;
+    const retryTimers = [];
+
+    const postPlayerMessage = (payload) => {
+      if (disposed || !iframe.contentWindow) return;
+      iframe.contentWindow.postMessage(JSON.stringify(payload), targetOrigin);
+    };
+
+    const announceListener = () => {
+      postPlayerMessage({ event: 'listening', id: iframeId });
+    };
+
+    const sendPlayerCommands = () => {
+      announceListener();
+      if (config.mute) {
+        postPlayerMessage({ event: 'command', func: 'mute', args: [] });
       }
-    } catch {
-      // 정제된 YouTube URL이므로 URL 보정 실패 시 기존 주소를 그대로 사용합니다.
-    }
-
-    const postPlayerCommand = (func) => {
-      const playerWindow = iframe.contentWindow;
-      if (!playerWindow) return;
-
-      playerWindow.postMessage(
-        JSON.stringify({ event: 'command', func, args: [] }),
-        'https://www.youtube-nocookie.com'
-      );
+      postPlayerMessage({ event: 'command', func: 'playVideo', args: [] });
     };
 
-    const sendPlayerCommand = () => {
-      if (config.mute) postPlayerCommand('mute');
-      postPlayerCommand('playVideo');
+    const scheduleRetries = () => {
+      [0, 250, 600, 1200, 2200, 4000].forEach((delay) => {
+        retryTimers.push(window.setTimeout(sendPlayerCommands, delay));
+      });
     };
 
-    const wrapper = iframe.closest('[data-video-provider="youtube"]');
-    let soundButton = null;
-    let soundEnabled = false;
-    let handleSoundToggle = null;
+    const handleLoad = () => {
+      scheduleRetries();
+    };
 
-    if (config.mute && wrapper) {
-      soundButton = document.createElement('button');
-      soundButton.type = 'button';
-      soundButton.setAttribute('data-youtube-sound-toggle', 'true');
-      soundButton.setAttribute('aria-label', 'YouTube 동영상 소리 켜기');
-      soundButton.textContent = '소리 켜기';
+    const handleMessage = (event) => {
+      if (event.source !== iframe.contentWindow) return;
+      if (!/https:\/\/(?:www\.)?youtube(?:-nocookie)?\.com$/i.test(event.origin)) return;
 
-      handleSoundToggle = (event) => {
-        event.preventDefault();
-        event.stopPropagation();
+      let data = event.data;
+      if (typeof data === 'string') {
+        try {
+          data = JSON.parse(data);
+        } catch {
+          return;
+        }
+      }
 
-        soundEnabled = !soundEnabled;
-        postPlayerCommand(soundEnabled ? 'unMute' : 'mute');
-        if (soundEnabled) postPlayerCommand('playVideo');
+      if (data?.event === 'onReady') {
+        sendPlayerCommands();
+      }
+    };
 
-        soundButton.textContent = soundEnabled ? '소리 끄기' : '소리 켜기';
-        soundButton.setAttribute(
-          'aria-label',
-          soundEnabled ? 'YouTube 동영상 소리 끄기' : 'YouTube 동영상 소리 켜기'
-        );
-        soundButton.setAttribute('aria-pressed', soundEnabled ? 'true' : 'false');
-      };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') sendPlayerCommands();
+    };
 
-      soundButton.setAttribute('aria-pressed', 'false');
-      soundButton.addEventListener('click', handleSoundToggle);
-      wrapper.appendChild(soundButton);
-    }
-
-    iframe.addEventListener('load', sendPlayerCommand);
-    const timer = window.setTimeout(sendPlayerCommand, 900);
+    window.addEventListener('message', handleMessage);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    iframe.addEventListener('load', handleLoad);
+    scheduleRetries();
 
     return () => {
-      iframe.removeEventListener('load', sendPlayerCommand);
-      window.clearTimeout(timer);
-      if (soundButton && handleSoundToggle) {
-        soundButton.removeEventListener('click', handleSoundToggle);
-        soundButton.remove();
-      }
+      disposed = true;
+      window.removeEventListener('message', handleMessage);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      iframe.removeEventListener('load', handleLoad);
+      retryTimers.forEach((timer) => window.clearTimeout(timer));
     };
+  }, [safeHtml]);
+
+  useEffect(() => {
+    const root = contentRef.current;
+    if (!root || typeof window === 'undefined') return undefined;
+
+    const cleanups = [...root.querySelectorAll('[data-video-provider="html5"] video[autoplay]')].map((video) => {
+      video.muted = video.hasAttribute('muted');
+
+      const tryPlay = () => {
+        const playResult = video.play?.();
+        if (playResult?.catch) playResult.catch(() => {});
+      };
+
+      video.addEventListener('loadedmetadata', tryPlay);
+      video.addEventListener('canplay', tryPlay);
+      const timer = window.setTimeout(tryPlay, 150);
+
+      return () => {
+        video.removeEventListener('loadedmetadata', tryPlay);
+        video.removeEventListener('canplay', tryPlay);
+        window.clearTimeout(timer);
+      };
+    });
+
+    return () => cleanups.forEach((cleanup) => cleanup());
   }, [safeHtml]);
 
   return (

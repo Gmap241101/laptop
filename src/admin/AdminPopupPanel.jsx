@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import {
-  CalendarClock,
   Edit3,
   Monitor,
   Plus,
@@ -176,17 +175,17 @@ export default function AdminPopupPanel({ ctx }) {
       ) : (
         <>
           <div className="overflow-x-auto rounded-xl border border-slate-200">
-            <table className="w-full min-w-[1120px] table-fixed border-collapse text-left">
+            <table className="w-full min-w-[860px] table-fixed border-collapse text-left">
               <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600">
                 <tr>
-                  <th className="w-14 border-b border-slate-200 px-3 py-3 text-center">번호</th>
-                  <th className="w-20 border-b border-slate-200 px-3 py-3 text-center">사용</th>
+                  <th className="w-12 border-b border-slate-200 px-2 py-3 text-center">번호</th>
+                  <th className="w-16 border-b border-slate-200 px-2 py-3 text-center">사용</th>
                   <th className="border-b border-slate-200 px-3 py-3">제목·부제목</th>
-                  <th className="w-36 border-b border-slate-200 px-3 py-3 text-center">노출 페이지</th>
-                  <th className="w-56 border-b border-slate-200 px-3 py-3 text-center">노출 기간</th>
-                  <th className="w-24 border-b border-slate-200 px-3 py-3 text-center">현재 상태</th>
-                  <th className="w-28 border-b border-slate-200 px-3 py-3 text-center">등록일</th>
-                  <th className="w-44 border-b border-slate-200 px-3 py-3 text-center">관리</th>
+                  <th className="w-28 border-b border-slate-200 px-2 py-3 text-center">노출 페이지</th>
+                  <th className="w-40 border-b border-slate-200 px-2 py-3 text-center">노출 기간</th>
+                  <th className="w-20 border-b border-slate-200 px-2 py-3 text-center">현재 상태</th>
+                  <th className="w-24 border-b border-slate-200 px-2 py-3 text-center">등록일</th>
+                  <th className="w-20 border-b border-slate-200 px-2 py-3 text-center">관리</th>
                 </tr>
               </thead>
 
@@ -200,8 +199,8 @@ export default function AdminPopupPanel({ ctx }) {
 
                   return (
                     <tr key={post.id} className="border-b border-slate-100 align-middle last:border-b-0 hover:bg-slate-50">
-                      <td className="px-3 py-3 text-center text-xs text-slate-500">{rowNumber}</td>
-                      <td className="px-3 py-3 text-center">
+                      <td className="px-2 py-3 text-center text-xs text-slate-500">{rowNumber}</td>
+                      <td className="px-2 py-3 text-center">
                         <button
                           type="button"
                           role="switch"
@@ -224,45 +223,52 @@ export default function AdminPopupPanel({ ctx }) {
                           <div className="mt-1 truncate text-[11px] text-slate-500">{subtitle}</div>
                         )}
                       </td>
-                      <td className="px-3 py-3 text-center">
-                        <div className="flex flex-wrap justify-center gap-1">
+                      <td className="px-2 py-3 text-center">
+                        <div className="flex flex-col items-center justify-center gap-1">
                           {targetPages.includes('home') && (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-[10px] font-bold text-sky-700">
-                              <Monitor size={11} /> 초기화면
+                            <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-bold text-sky-700">
+                              <Monitor size={10} /> 초기화면
                             </span>
                           )}
                           {targetPages.includes('rental') && (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-orange-200 bg-orange-50 px-2 py-1 text-[10px] font-bold text-orange-700">
-                              <Smartphone size={11} /> 대여 신청
+                            <span className="inline-flex items-center gap-1 rounded-full border border-orange-200 bg-orange-50 px-1.5 py-0.5 text-[10px] font-bold text-orange-700">
+                              <Smartphone size={10} /> 대여 신청
                             </span>
                           )}
                         </div>
                       </td>
-                      <td className="px-3 py-3 text-center text-[11px] leading-5 text-slate-600">
-                        <div className="inline-flex items-center gap-1 font-semibold"><CalendarClock size={12} />{formatPopupDateTime(post.startAt)}</div>
-                        <div className="text-slate-400">~</div>
-                        <div>{post.isIndefinite ? '무기한' : formatPopupDateTime(post.endAt)}</div>
+                      <td className="px-2 py-3 text-center text-[10px] leading-tight text-slate-600">
+                        <div>{formatPopupDateTime(post.startAt)}</div>
+                        <div className="mt-1 text-slate-500">~ {post.isIndefinite ? '무기한' : formatPopupDateTime(post.endAt)}</div>
                       </td>
-                      <td className="px-3 py-3 text-center">
-                        <span className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-bold ${statusClassName[status.key] || statusClassName.ended}`}>
+                      <td className="px-2 py-3 text-center">
+                        <span className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${statusClassName[status.key] || statusClassName.ended}`}>
                           {status.label}
                         </span>
                       </td>
-                      <td className="px-3 py-3 text-center text-xs text-slate-500">{formatPopupDateTime(post.createdAt, true)}</td>
-                      <td className="px-3 py-3">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <Button type="button" variant="outline" className="whitespace-nowrap px-2.5 py-2 text-xs" onClick={() => openPopupPostDialog(post)}>
-                            <Edit3 size={13} /> 수정
+                      <td className="px-2 py-3 text-center text-[11px] text-slate-500">{formatPopupDateTime(post.createdAt, true)}</td>
+                      <td className="px-2 py-3">
+                        <div className="flex items-center justify-center gap-1">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-8 w-8 p-0"
+                            title="수정"
+                            aria-label="팝업 수정"
+                            onClick={() => openPopupPostDialog(post)}
+                          >
+                            <Edit3 size={12} />
                           </Button>
                           <Button
                             type="button"
                             variant="dangerOutline"
-                            className="whitespace-nowrap px-2.5 py-2 text-xs"
+                            className="h-8 w-8 p-0"
+                            title={popupPostDeletingId === post.id ? '삭제 중' : '삭제'}
+                            aria-label={popupPostDeletingId === post.id ? '팝업 삭제 중' : '팝업 삭제'}
                             disabled={popupPostDeletingId === post.id}
                             onClick={() => confirmDeletePopupPost(post)}
                           >
-                            <Trash2 size={13} />
-                            {popupPostDeletingId === post.id ? '삭제 중' : '삭제'}
+                            <Trash2 size={12} />
                           </Button>
                         </div>
                       </td>
