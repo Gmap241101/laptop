@@ -226,7 +226,7 @@ const buildYouTubeEmbedUrl = (config = {}) => {
   const start = Math.max(0, Number(config.start) || 0);
   if (start > 0) params.set('start', String(Math.floor(start)));
   if (config.autoplay) params.set('autoplay', '1');
-  if (config.mute) params.set('mute', '1');
+  if (config.autoplay || config.mute) params.set('mute', '1');
   if (config.hideControls) params.set('controls', '0');
   if (config.hideFullscreen) params.set('fs', '0');
   if (config.disableKeyboard) params.set('disablekb', '1');
@@ -536,7 +536,7 @@ const getYouTubeFormFromIframe = (iframe) => {
     title: iframe?.getAttribute('title') || 'YouTube 동영상',
     start: formatYouTubeStartTime(config.start),
     autoplay: config.autoplay,
-    mute: config.mute,
+    mute: config.autoplay || config.mute,
     hideControls: config.hideControls,
     hideFullscreen: config.hideFullscreen,
     disableKeyboard: config.disableKeyboard,
@@ -783,7 +783,7 @@ export function RichTextEditor({
     const html = buildYouTubeEmbedHtml(youtubeForm.url, title, {
       start,
       autoplay: youtubeForm.autoplay,
-      mute: youtubeForm.autoplay ? youtubeForm.mute : false,
+      mute: youtubeForm.autoplay,
       hideControls: youtubeForm.hideControls,
       hideFullscreen: youtubeForm.hideFullscreen,
       disableKeyboard: youtubeForm.disableKeyboard,
@@ -1160,7 +1160,7 @@ export function RichTextEditor({
                   onChange={(event) => setYouTubeForm((prev) => ({
                     ...prev,
                     autoplay: event.target.checked,
-                    mute: event.target.checked ? prev.mute : false,
+                    mute: event.target.checked,
                   }))}
                 />
                 자동 시작
@@ -1168,11 +1168,11 @@ export function RichTextEditor({
               <label className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-[11px] font-semibold ${youtubeForm.autoplay ? 'border-slate-200 bg-white text-slate-700' : 'border-slate-100 bg-slate-100 text-slate-400'}`}>
                 <input
                   type="checkbox"
-                  checked={youtubeForm.mute}
-                  disabled={!youtubeForm.autoplay}
-                  onChange={(event) => setYouTubeForm((prev) => ({ ...prev, mute: event.target.checked }))}
+                  checked={youtubeForm.autoplay}
+                  disabled
+                  readOnly
                 />
-                자동 시작 시 음소거
+                자동 시작 시 음소거 (필수)
               </label>
               <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700">
                 <input
@@ -1201,7 +1201,7 @@ export function RichTextEditor({
             </div>
 
             <div className="mt-2 text-[10px] leading-4 text-slate-500">
-              소리가 있는 자동재생은 브라우저 정책에 따라 차단될 수 있습니다. 편집 화면에서는 자동재생하지 않으며 실제 사용자 화면에서만 적용됩니다. YouTube 제목·채널 정보·브랜드 표시는 완전히 숨길 수 없습니다.
+              자동 시작을 사용하면 Chrome 등 브라우저 정책에 맞춰 음소거로 재생됩니다. 사용자 화면에는 영상 위에 ‘소리 켜기’ 버튼이 표시됩니다. 편집 화면에서는 자동재생하지 않습니다. YouTube 제목·채널 정보·브랜드 표시는 완전히 숨길 수 없습니다.
             </div>
 
             {youtubeError && <div className="mt-2 text-[11px] font-semibold text-rose-600">{youtubeError}</div>}
@@ -1315,22 +1315,53 @@ export function RichTextContent({ html = '', text = '', className = '' }) {
       // 정제된 YouTube URL이므로 URL 보정 실패 시 기존 주소를 그대로 사용합니다.
     }
 
-    const sendPlayerCommand = () => {
+    const postPlayerCommand = (func) => {
       const playerWindow = iframe.contentWindow;
       if (!playerWindow) return;
 
-      if (config.mute) {
-        playerWindow.postMessage(
-          JSON.stringify({ event: 'command', func: 'mute', args: [] }),
-          'https://www.youtube-nocookie.com'
-        );
-      }
-
       playerWindow.postMessage(
-        JSON.stringify({ event: 'command', func: 'playVideo', args: [] }),
+        JSON.stringify({ event: 'command', func, args: [] }),
         'https://www.youtube-nocookie.com'
       );
     };
+
+    const sendPlayerCommand = () => {
+      if (config.mute) postPlayerCommand('mute');
+      postPlayerCommand('playVideo');
+    };
+
+    const wrapper = iframe.closest('[data-video-provider="youtube"]');
+    let soundButton = null;
+    let soundEnabled = false;
+    let handleSoundToggle = null;
+
+    if (config.mute && wrapper) {
+      soundButton = document.createElement('button');
+      soundButton.type = 'button';
+      soundButton.setAttribute('data-youtube-sound-toggle', 'true');
+      soundButton.setAttribute('aria-label', 'YouTube 동영상 소리 켜기');
+      soundButton.textContent = '소리 켜기';
+
+      handleSoundToggle = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        soundEnabled = !soundEnabled;
+        postPlayerCommand(soundEnabled ? 'unMute' : 'mute');
+        if (soundEnabled) postPlayerCommand('playVideo');
+
+        soundButton.textContent = soundEnabled ? '소리 끄기' : '소리 켜기';
+        soundButton.setAttribute(
+          'aria-label',
+          soundEnabled ? 'YouTube 동영상 소리 끄기' : 'YouTube 동영상 소리 켜기'
+        );
+        soundButton.setAttribute('aria-pressed', soundEnabled ? 'true' : 'false');
+      };
+
+      soundButton.setAttribute('aria-pressed', 'false');
+      soundButton.addEventListener('click', handleSoundToggle);
+      wrapper.appendChild(soundButton);
+    }
 
     iframe.addEventListener('load', sendPlayerCommand);
     const timer = window.setTimeout(sendPlayerCommand, 900);
@@ -1338,6 +1369,10 @@ export function RichTextContent({ html = '', text = '', className = '' }) {
     return () => {
       iframe.removeEventListener('load', sendPlayerCommand);
       window.clearTimeout(timer);
+      if (soundButton && handleSoundToggle) {
+        soundButton.removeEventListener('click', handleSoundToggle);
+        soundButton.remove();
+      }
     };
   }, [safeHtml]);
 
