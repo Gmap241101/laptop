@@ -407,7 +407,7 @@ export default function AdminWorkspace({ ctx }) {
       key={key}
       variant={adminTab === key ? 'primary' : 'ghost'}
       onClick={() => handleAdminTabChange(key)}
-      className={`w-full justify-start px-3 text-left ${
+      className={`h-9 w-full justify-start px-3 !py-0 text-left ${
         adminTab === key ? '' : 'text-slate-700 hover:bg-slate-100'
       }`}
     >
@@ -597,7 +597,7 @@ export default function AdminWorkspace({ ctx }) {
                   </h3>
                 </div>
 
-                <CardContent className="space-y-3 p-3">
+                <CardContent className="space-y-1.5 p-3">
                   {renderAdminMenuButton([
                     'dashboard',
                     LayoutDashboard,
@@ -610,7 +610,7 @@ export default function AdminWorkspace({ ctx }) {
                     '기기 대여 신청 관리',
                   ])}
 
-                  <div className="space-y-2">
+                  <div className="space-y-1">
                     {adminMenuGroups.map((group) => {
                       const isExpanded = expandedAdminMenuGroups.includes(group.key);
                       const hasActiveItem = group.items.some(([key]) => key === adminTab);
@@ -621,7 +621,7 @@ export default function AdminWorkspace({ ctx }) {
                             type="button"
                             onClick={() => toggleAdminMenuGroup(group.key)}
                             aria-expanded={isExpanded}
-                            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-[11px] font-bold tracking-wide transition ${
+                            className={`flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left text-[11px] font-bold tracking-wide transition ${
                               hasActiveItem
                                 ? 'bg-slate-100 text-slate-900'
                                 : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
@@ -637,7 +637,7 @@ export default function AdminWorkspace({ ctx }) {
                           </button>
 
                           {isExpanded ? (
-                            <div className="mt-1 space-y-1">
+                            <div className="mt-0.5 space-y-0.5">
                               {group.items.map(renderAdminMenuButton)}
                             </div>
                           ) : null}
