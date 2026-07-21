@@ -1,5 +1,6 @@
 export default function AdminExtensionSettingsPanel({ ctx }) {
   const {
+    AdminPageHeader,
     Button,
     DEFAULT_EXCLUDE_HOLIDAYS_FOR_START_DATE,
     DEFAULT_EXCLUDE_SATURDAYS,
@@ -88,14 +89,10 @@ export default function AdminExtensionSettingsPanel({ ctx }) {
 
   return (
     <div className="space-y-8">
-      <div className="border-b border-slate-100 pb-4">
-        <h2 className="text-lg font-bold text-slate-900">
-          대여 정책 관리
-        </h2>
-        <p className="mt-1 text-xs leading-5 text-slate-500">
-          기본 대여 기간, 예약 충돌, 시작·반납일, 연장 및 연체자 정책을 관리합니다. 휴일 데이터는 독립된 휴일 관리 메뉴에서 관리합니다.
-        </p>
-      </div>
+      <AdminPageHeader
+        title="대여 정책 관리"
+        description="기본 대여 기간, 예약 충돌, 시작·반납일, 연장 및 연체자 정책을 관리합니다. 휴일 데이터는 독립된 휴일 관리 메뉴에서 관리합니다."
+      />
 
       <section className="space-y-5">
         <div>

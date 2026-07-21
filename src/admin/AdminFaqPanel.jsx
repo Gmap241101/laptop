@@ -2,6 +2,7 @@ import { RichTextContent } from '../components/RichTextEditor.jsx';
 
 export default function AdminFaqPanel({ ctx }) {
   const {
+    AdminPageHeader,
     AnimatePresence,
     Button,
     Edit3,
@@ -53,29 +54,21 @@ export default function AdminFaqPanel({ ctx }) {
 
   return (
                     <div className="space-y-6">
-                      <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <h2 className="text-lg font-bold text-slate-900">
-                            FAQ 관리
-                          </h2>
-
-                          <p className="mt-1 text-xs text-slate-500">
-                            FAQ 카테고리와 질문·답변을 등록, 수정, 삭제하고 목록 표시 개수를 설정합니다.
-                          </p>
-                        </div>
-
-                        <Button
-                          type="button"
-                          variant="primary"
-                          className="shrink-0 px-4 py-2 text-xs"
-                          onClick={() =>
-                            openFaqPostDialog()
-                          }
-                        >
-                          <Plus size={14} />
-                          FAQ 등록
-                        </Button>
-                      </div>
+                      <AdminPageHeader
+                        title="FAQ 관리"
+                        description="FAQ 카테고리와 질문·답변을 등록, 수정, 삭제하고 목록 표시 개수를 설정합니다."
+                        actions={
+                          <Button
+                            type="button"
+                            variant="primary"
+                            className="shrink-0 px-4 py-2 text-xs"
+                            onClick={() => openFaqPostDialog()}
+                          >
+                            <Plus size={14} />
+                            FAQ 등록
+                          </Button>
+                        }
+                      />
 
                       <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
                         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">

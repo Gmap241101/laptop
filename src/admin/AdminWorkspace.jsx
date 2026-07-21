@@ -1,4 +1,4 @@
-import { CalendarDays } from 'lucide-react';
+import { CalendarDays, ChevronDown } from 'lucide-react';
 import AdminDashboardPanel from './AdminDashboardPanel.jsx';
 import AdminRequestsPanel from './AdminRequestsPanel.jsx';
 import AdminAssetsPanel from './AdminAssetsPanel.jsx';
@@ -13,6 +13,24 @@ import AdminAccountsPanel from './AdminAccountsPanel.jsx';
 import AdminSettingsPanel from './AdminSettingsPanel.jsx';
 import AdminExtensionSettingsPanel from './AdminExtensionSettingsPanel.jsx';
 import AdminHolidayManagementPanel from './AdminHolidayManagementPanel.jsx';
+
+const ADMIN_MENU_GROUP_STATE_KEY = 'mk_laptop_admin_menu_groups';
+
+const ADMIN_TAB_GROUP = {
+  requests: 'rental',
+  laptops: 'rental',
+  extensionSettings: 'rental',
+  holidaySettings: 'rental',
+  categories: 'rental',
+  noticePosts: 'content',
+  popupPosts: 'content',
+  faqPosts: 'content',
+  footerManagement: 'content',
+  people: 'accounts',
+  memberAccounts: 'accounts',
+  adminAccounts: 'accounts',
+  settings: 'system',
+};
 
 export default function AdminWorkspace({ ctx }) {
   const {
@@ -293,6 +311,115 @@ export default function AdminWorkspace({ ctx }) {
     updateRequestMemo,
   } = ctx;
 
+  const [expandedAdminMenuGroups, setExpandedAdminMenuGroups] = React.useState(() => {
+    const activeGroup = ADMIN_TAB_GROUP[adminTab];
+
+    if (typeof window === 'undefined') {
+      return activeGroup ? [activeGroup] : ['rental'];
+    }
+
+    try {
+      const savedGroups = JSON.parse(
+        window.sessionStorage.getItem(ADMIN_MENU_GROUP_STATE_KEY) || '[]'
+      );
+      const validGroups = Array.isArray(savedGroups)
+        ? savedGroups.filter((groupKey) =>
+            ['rental', 'content', 'accounts', 'system'].includes(groupKey)
+          )
+        : [];
+
+      if (activeGroup && !validGroups.includes(activeGroup)) {
+        validGroups.push(activeGroup);
+      }
+
+      return validGroups.length ? validGroups : activeGroup ? [activeGroup] : ['rental'];
+    } catch {
+      return activeGroup ? [activeGroup] : ['rental'];
+    }
+  });
+
+  React.useEffect(() => {
+    const activeGroup = ADMIN_TAB_GROUP[adminTab];
+    if (!activeGroup) return;
+
+    setExpandedAdminMenuGroups((currentGroups) =>
+      currentGroups.includes(activeGroup)
+        ? currentGroups
+        : [...currentGroups, activeGroup]
+    );
+  }, [adminTab]);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    window.sessionStorage.setItem(
+      ADMIN_MENU_GROUP_STATE_KEY,
+      JSON.stringify(expandedAdminMenuGroups)
+    );
+  }, [expandedAdminMenuGroups]);
+
+  const adminMenuGroups = [
+    {
+      key: 'rental',
+      label: '대여 운영',
+      items: [
+        ['requests', ClipboardList, '기기 대여 신청 관리'],
+        ['laptops', Laptop, '대여 자산 관리'],
+        ['extensionSettings', Clock, '대여 정책 관리'],
+        ['holidaySettings', CalendarDays, '휴일 관리'],
+        ['categories', ClipboardList, '자산 카테고리 관리'],
+      ],
+    },
+    {
+      key: 'content',
+      label: '콘텐츠 관리',
+      items: [
+        ['noticePosts', ClipboardList, '공지사항 관리'],
+        ['popupPosts', ClipboardList, '팝업 관리'],
+        ['faqPosts', ClipboardList, 'FAQ 관리'],
+        ['footerManagement', ClipboardList, '푸터 관리'],
+      ],
+    },
+    {
+      key: 'accounts',
+      label: '사용자·권한',
+      items: [
+        ['people', Users, '부서·사용자 관리'],
+        ['memberAccounts', UserCircle, '회원 계정 관리'],
+        ['adminAccounts', ShieldCheck, '관리자 ID 관리'],
+      ],
+    },
+    {
+      key: 'system',
+      label: '시스템',
+      items: [['settings', Settings, '시스템 관리']],
+    },
+  ];
+
+  const toggleAdminMenuGroup = (groupKey) => {
+    setExpandedAdminMenuGroups((currentGroups) =>
+      currentGroups.includes(groupKey)
+        ? currentGroups.filter((key) => key !== groupKey)
+        : [...currentGroups, groupKey]
+    );
+  };
+
+  const renderAdminMenuButton = ([key, Icon, label]) => (
+    <Button
+      key={key}
+      variant={adminTab === key ? 'primary' : 'ghost'}
+      onClick={() => handleAdminTabChange(key)}
+      className={`w-full justify-start px-3 text-left ${
+        adminTab === key ? '' : 'text-slate-700 hover:bg-slate-100'
+      }`}
+    >
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+        <Icon size={16} />
+      </span>
+      <span className="min-w-0 flex-1 text-left">{label}</span>
+    </Button>
+  );
+
   return (
           shouldShowAdminLoadingPage ? (
             <Card className="mx-auto max-w-xl overflow-hidden border-slate-200 bg-white shadow-sm">
@@ -466,44 +593,54 @@ export default function AdminWorkspace({ ctx }) {
             {/* 좌측 사이드 네비게이션 메뉴 */}
             <div className="lg:sticky lg:top-24 h-fit">
               <Card>
-                <div className="bg-slate-900 px-5 py-4 text-white">
-                  <h3 className="text-xs font-bold tracking-wider uppercase text-slate-400">관리 메뉴</h3>
+                <div className="border-b-2 border-orange-500 bg-slate-700 px-5 py-4 text-white">
+                  <h3 className="text-left text-xs font-bold uppercase tracking-wider text-slate-100">
+                    관리 메뉴
+                  </h3>
                 </div>
-                <CardContent className="space-y-1.5 p-3">
-                  {[
-                    ['dashboard', LayoutDashboard, '실시간 대시보드'],
-                    ['requests', ClipboardList, '기기 대여 신청 관리'],
-                    ['laptops', Laptop, '대여 자산 관리'],
-                    ['extensionSettings', Clock, '대여 정책 관리'],
-                    ['holidaySettings', CalendarDays, '휴일 관리'],
-                    ['categories', ClipboardList, '자산 카테고리 관리'],
-                    ['people', Users, '부서·사용자 관리'],
-                    ['noticePosts', ClipboardList, '공지사항 관리'],
-                    ['popupPosts', ClipboardList, '팝업 관리'],
-                    ['faqPosts', ClipboardList, 'FAQ 관리'],
-                    ['footerManagement', ClipboardList, '푸터 관리'],
-                    ['memberAccounts', UserCircle, '회원 계정 관리'],
-                    ['adminAccounts', ShieldCheck, '관리자 ID 관리'],
-                    ['settings', Settings, '시스템 관리'],
-                  ].map(([key, Icon, label, isSubmenu]) => (
-                    <Button
-                      key={key}
-                      variant={adminTab === key ? 'primary' : 'ghost'}
-                      onClick={() => handleAdminTabChange(key)}
-                      className={`${
-                        isSubmenu
-                          ? 'ml-4 w-[calc(100%-1rem)]'
-                          : 'w-full'
-                      } justify-start ${
-                        adminTab === key
-                          ? ''
-                          : 'hover:bg-slate-100 text-slate-700'
-                      }`}
-                    >
-                      <Icon size={16} />
-                      <span>{isSubmenu ? `└ ${label}` : label}</span>
-                    </Button>
-                  ))}
+
+                <CardContent className="space-y-3 p-3">
+                  {renderAdminMenuButton([
+                    'dashboard',
+                    LayoutDashboard,
+                    '실시간 대시보드',
+                  ])}
+
+                  <div className="space-y-2">
+                    {adminMenuGroups.map((group) => {
+                      const isExpanded = expandedAdminMenuGroups.includes(group.key);
+                      const hasActiveItem = group.items.some(([key]) => key === adminTab);
+
+                      return (
+                        <div key={group.key}>
+                          <button
+                            type="button"
+                            onClick={() => toggleAdminMenuGroup(group.key)}
+                            aria-expanded={isExpanded}
+                            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-[11px] font-bold tracking-wide transition ${
+                              hasActiveItem
+                                ? 'bg-slate-100 text-slate-900'
+                                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                            }`}
+                          >
+                            <span>{group.label}</span>
+                            <ChevronDown
+                              size={14}
+                              className={`shrink-0 transition-transform ${
+                                isExpanded ? 'rotate-180' : ''
+                              }`}
+                            />
+                          </button>
+
+                          {isExpanded ? (
+                            <div className="mt-1 space-y-1">
+                              {group.items.map(renderAdminMenuButton)}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </CardContent>
               </Card>
             </div>

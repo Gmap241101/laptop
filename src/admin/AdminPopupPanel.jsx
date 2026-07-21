@@ -33,6 +33,7 @@ const statusClassName = {
 
 export default function AdminPopupPanel({ ctx }) {
   const {
+    AdminPageHeader,
     Button,
     confirmDeletePopupPost,
     formatPopupDateTime,
@@ -83,24 +84,21 @@ export default function AdminPopupPanel({ ctx }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-lg font-bold text-slate-900">팝업 관리</h2>
-          <p className="mt-1 text-xs leading-5 text-slate-500">
-            사용자 초기화면과 대여 신청 페이지에 표시할 팝업을 등록하고 노출 일정을 관리합니다.
-          </p>
-        </div>
-
-        <Button
-          type="button"
-          variant="primary"
-          className="shrink-0 px-4 py-2 text-xs"
-          onClick={() => openPopupPostDialog()}
-        >
-          <Plus size={14} />
-          팝업 등록
-        </Button>
-      </div>
+      <AdminPageHeader
+        title="팝업 관리"
+        description="사용자 초기화면과 대여 신청 페이지에 표시할 팝업을 등록하고 노출 일정을 관리합니다."
+        actions={
+          <Button
+            type="button"
+            variant="primary"
+            className="shrink-0 px-4 py-2 text-xs"
+            onClick={() => openPopupPostDialog()}
+          >
+            <Plus size={14} />
+            팝업 등록
+          </Button>
+        }
+      />
 
       <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 lg:grid-cols-[minmax(0,1fr)_180px_180px]">
         <div>

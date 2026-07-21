@@ -1,5 +1,6 @@
 export default function AdminOrganizationPanel({ ctx }) {
   const {
+    AdminPageHeader,
     Button,
     Edit3,
     Plus,
@@ -42,6 +43,11 @@ export default function AdminOrganizationPanel({ ctx }) {
 
   return (
                     <div className="space-y-6">
+                      <AdminPageHeader
+                        title="부서·사용자 관리"
+                        description="부서와 대여 사용자를 등록하고 사용자 화면에 표시할 순서를 관리합니다."
+                      />
+
                       <div className="grid gap-8 md:grid-cols-2">
                         {/* 부서/팀 관리 컬럼 */}
                         <div className="space-y-4">

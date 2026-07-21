@@ -1,5 +1,6 @@
 export default function AdminAccountsPanel({ ctx }) {
   const {
+    AdminPageHeader,
     ADMIN_ACCOUNT_PAGE_SIZE,
     ADMIN_CUSTOM_OPTION_VALUE,
     Button,
@@ -29,12 +30,10 @@ export default function AdminAccountsPanel({ ctx }) {
 
   return (
                     <div className="space-y-6">
-                      <div className="border-b border-slate-100 pb-4">
-                        <h2 className="text-lg font-bold text-slate-900">관리자 ID 관리</h2>
-                        <p className="text-xs text-slate-500 mt-1">
-                          공지사항 작성 권한과 관리자 모드 보안 강화를 위한 관리자 ID 등록 대장입니다.
-                        </p>
-                      </div>
+                      <AdminPageHeader
+                        title="관리자 ID 관리"
+                        description="공지사항 작성 권한과 관리자 모드 보안 강화를 위한 관리자 ID 등록 대장입니다."
+                      />
 
                       <div className="rounded-2xl border border-orange-200 bg-orange-50/50 p-4 text-xs leading-5 text-orange-800">
                         신규 관리자 계정은 관리자모드에서 생성하되, 비밀번호 검증은 Firebase Authentication 이메일/비밀번호 방식으로 처리합니다.

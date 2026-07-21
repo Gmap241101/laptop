@@ -10,6 +10,7 @@ import { RichTextEditor } from '../components/RichTextEditor.jsx';
 
 export default function AdminFooterPanel({ ctx }) {
   const {
+    AdminPageHeader,
     Button,
     footerConfigDraft,
     footerConfigLoadErrorMessage,
@@ -36,12 +37,10 @@ export default function AdminFooterPanel({ ctx }) {
 
   return (
     <div className="space-y-8">
-      <div className="border-b border-slate-100 pb-4">
-        <h2 className="text-lg font-bold text-slate-900">푸터 관리</h2>
-        <p className="mt-1 text-xs leading-5 text-slate-500">
-          사용자 화면 하단의 공통 정보와 푸터 메뉴 상세 페이지를 관리합니다. 관리자 화면에는 푸터가 표시되지 않습니다.
-        </p>
-      </div>
+      <AdminPageHeader
+        title="푸터 관리"
+        description="사용자 화면 하단의 공통 정보와 푸터 메뉴 상세 페이지를 관리합니다. 관리자 화면에는 푸터가 표시되지 않습니다."
+      />
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">

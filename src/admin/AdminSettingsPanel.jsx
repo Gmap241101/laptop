@@ -1,5 +1,6 @@
 export default function AdminSettingsPanel({ ctx }) {
   const {
+    AdminPageHeader,
     Button,
     CheckCircle2,
     Save,
@@ -12,12 +13,10 @@ export default function AdminSettingsPanel({ ctx }) {
 
   return (
     <div className="space-y-6">
-      <div className="border-b border-slate-100 pb-4">
-        <h2 className="text-lg font-bold text-slate-900">시스템 관리</h2>
-        <p className="mt-1 text-xs leading-5 text-slate-500">
-          Firestore 저장 구조와 시스템 전환 상태를 확인합니다. 대여 기간·연장·연체 정책은 대여 정책 관리에서, 휴일 데이터는 휴일 관리에서 설정합니다.
-        </p>
-      </div>
+      <AdminPageHeader
+        title="시스템 관리"
+        description="Firestore 저장 구조와 시스템 전환 상태를 확인합니다. 대여 기간·연장·연체 정책은 대여 정책 관리에서, 휴일 데이터는 휴일 관리에서 설정합니다."
+      />
 
       {isSplitStorageReady ? (
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5">

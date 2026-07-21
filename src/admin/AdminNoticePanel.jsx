@@ -1,5 +1,6 @@
 export default function AdminNoticePanel({ ctx }) {
   const {
+    AdminPageHeader,
     Button,
     Edit3,
     NOTICE_POSTS_PER_PAGE_OPTIONS,
@@ -38,24 +39,21 @@ export default function AdminNoticePanel({ ctx }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-lg font-bold text-slate-900">공지사항 관리</h2>
-          <p className="mt-1 text-xs text-slate-500">
-            사용자 화면에 표시되는 공지사항을 등록, 수정, 삭제하고 목록 표시 개수를 설정합니다.
-          </p>
-        </div>
-
-        <Button
-          type="button"
-          variant="primary"
-          className="shrink-0 px-4 py-2 text-xs"
-          onClick={() => openNoticePostDialog()}
-        >
-          <Plus size={14} />
-          공지사항 등록
-        </Button>
-      </div>
+      <AdminPageHeader
+        title="공지사항 관리"
+        description="사용자 화면에 표시되는 공지사항을 등록, 수정, 삭제하고 목록 표시 개수를 설정합니다."
+        actions={
+          <Button
+            type="button"
+            variant="primary"
+            className="shrink-0 px-4 py-2 text-xs"
+            onClick={() => openNoticePostDialog()}
+          >
+            <Plus size={14} />
+            공지사항 등록
+          </Button>
+        }
+      />
 
       <div className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4">
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-center">

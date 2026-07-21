@@ -2,6 +2,7 @@ export default function AdminRequestsPanel({ ctx }) {
   const {
     ADMIN_REQUEST_PAGE_SIZE_OPTIONS,
     ADMIN_REQUEST_TAB,
+    AdminPageHeader,
     Badge,
     Button,
     Edit3,
@@ -112,14 +113,10 @@ export default function AdminRequestsPanel({ ctx }) {
 
   return (
                     <div className="space-y-5">
-                      <div className="border-b border-slate-100 pb-4">
-                        <h2 className="text-lg font-bold text-slate-900">
-                          기기 대여 신청 관리
-                        </h2>
-                        <p className="mt-1 text-xs text-slate-500">
-                          신청·보류중, 대여승인, 대여불허, 반납완료 기록을 목록과 상세 화면으로 관리합니다.
-                        </p>
-                      </div>
+                      <AdminPageHeader
+                        title="기기 대여 신청 관리"
+                        description="신청·보류중, 대여승인, 대여불허, 반납완료 기록을 목록과 상세 화면으로 관리합니다."
+                      />
 
                       {rentalRequestsLoadErrorMessage && (
                         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-xs leading-5 text-rose-800">

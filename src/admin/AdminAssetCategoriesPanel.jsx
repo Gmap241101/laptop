@@ -1,5 +1,6 @@
 export default function AdminAssetCategoriesPanel({ ctx }) {
   const {
+    AdminPageHeader,
     Button,
     Edit3,
     Plus,
@@ -26,11 +27,16 @@ export default function AdminAssetCategoriesPanel({ ctx }) {
 
   return (
                     <div className="space-y-6">
+                      <AdminPageHeader
+                        title="자산 카테고리 관리"
+                        description="대여 자산 분류를 등록하고 표시 순서와 명칭을 관리합니다."
+                      />
+
                       <div className="grid gap-8 md:grid-cols-2">
                         {/* 자산 카테고리 관리 컬럼 */}
                         <div className="space-y-4">
                           <div className="border-b border-slate-100 pb-3">
-                            <h2 className="text-base font-bold text-slate-900">자산 카테고리 관리</h2>
+                            <h3 className="text-base font-bold text-slate-900">카테고리 등록·편집</h3>
                             <p className="text-[11px] text-slate-500 mt-0.5">대여 자산 분류를 관리합니다.</p>
                           </div>
                           <div className="flex gap-2">

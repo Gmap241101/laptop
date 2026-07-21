@@ -15,6 +15,7 @@ const WEEKDAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
 
 export default function AdminHolidayManagementPanel({ ctx }) {
   const {
+    AdminPageHeader,
     Button,
     ClipboardList,
     DEFAULT_HOLIDAY_TYPE,
@@ -369,21 +370,17 @@ export default function AdminHolidayManagementPanel({ ctx }) {
 
   return (
     <div className="space-y-8">
-      <div className="border-b border-slate-100 pb-4">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-slate-900">휴일 관리</h2>
-            <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500">
-              법정·임시공휴일을 자동으로 불러오거나 회사휴일과 수동 휴일을 등록합니다. 등록된 휴일은 대여 시작일, 반납 예정일 및 연장 영업일 계산에 반영됩니다.
-            </p>
-          </div>
-          {holidaySettingsDirty && (
-            <span className="w-fit rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-700">
+      <AdminPageHeader
+        title="휴일 관리"
+        description="법정·임시공휴일을 자동으로 불러오거나 회사휴일과 수동 휴일을 등록합니다. 등록된 휴일은 대여 시작일, 반납 예정일 및 연장 영업일 계산에 반영됩니다."
+        badge={
+          holidaySettingsDirty ? (
+            <span className="w-fit rounded-full border border-amber-200/70 bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-700">
               저장되지 않은 변경사항
             </span>
-          )}
-        </div>
-      </div>
+          ) : null
+        }
+      />
 
       <section className="space-y-5">
         <div>

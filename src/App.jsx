@@ -50,6 +50,7 @@ import {
 } from 'lucide-react';
 
 import {
+  AdminPageHeader,
   Badge,
   Button,
   Card,
@@ -16496,6 +16497,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     ADMIN_REQUEST_TAB,
     AlertCircle,
     AnimatePresence,
+    AdminPageHeader,
     Badge,
     Button,
     Card,

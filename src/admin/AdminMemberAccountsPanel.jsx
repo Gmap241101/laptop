@@ -1,5 +1,6 @@
 export default function AdminMemberAccountsPanel({ ctx }) {
   const {
+    AdminPageHeader,
     Button,
     CheckCircle2,
     LogOut,
@@ -22,15 +23,10 @@ export default function AdminMemberAccountsPanel({ ctx }) {
 
   return (
                     <div className="space-y-6">
-                      <div className="border-b border-slate-100 pb-4">
-                        <h2 className="text-lg font-bold text-slate-900">
-                          회원 계정 관리
-                        </h2>
-
-                        <p className="mt-1 text-xs text-slate-500">
-                          신규 가입 승인, 이용 차단, 차단 해제와 이용 종료 상태를 관리합니다.
-                        </p>
-                      </div>
+                      <AdminPageHeader
+                        title="회원 계정 관리"
+                        description="신규 가입 승인, 이용 차단, 차단 해제와 이용 종료 상태를 관리합니다."
+                      />
 
                       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                         {[

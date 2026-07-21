@@ -6,6 +6,34 @@ import {
   formatDateWithKoreanWeekday,
 } from '../utils/appUtils.js';
 
+
+export function AdminPageHeader({ title, description, actions = null, badge = null }) {
+  return (
+    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-5 py-5 text-white shadow-sm sm:px-6">
+      <div className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-white/10 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-20 left-16 h-44 w-44 rounded-full bg-orange-400/10 blur-3xl" />
+
+      <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="text-xl font-black tracking-tight text-white">{title}</h2>
+          {description ? (
+            <p className="mt-1.5 max-w-4xl text-xs leading-5 text-slate-300">
+              {description}
+            </p>
+          ) : null}
+        </div>
+
+        {actions || badge ? (
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {badge}
+            {actions}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export function Card({ children, className = '' }) {
   return (
     <div className={`rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden ${className}`}>

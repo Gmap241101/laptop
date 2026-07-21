@@ -1,5 +1,6 @@
 export default function AdminAssetsPanel({ ctx }) {
   const {
+    AdminPageHeader,
     Badge,
     Button,
     ClipboardList,
@@ -37,33 +38,32 @@ export default function AdminAssetsPanel({ ctx }) {
 
   return (
                     <div className="space-y-6">
-                      <div className="border-b border-slate-100 pb-4 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
-                        <div>
-                          <h2 className="text-lg font-bold text-slate-900">대여 자산 관리</h2>
-                          <p className="text-xs text-slate-500 mt-1">자산 고유 시리얼 넘버, 기기 사진 연동, 특이 사항 메모 및 장비를 관리합니다.</p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {/* 엑셀/CSV 업로드 패널 토글 액션 버튼 추가 */}
-                          <Button
-                            onClick={() => {
-                              setShowUploadPanel((prev) => !prev);
-                              setNewLaptop(null);
-                              setEditLaptop(null);
-                            }}
-                            variant="outline"
-                            className="py-2.5 px-4 rounded-xl text-xs sm:text-sm shadow-sm"
-                          >
-                            <ClipboardList size={16} /> 엑셀/CSV 업로드
-                          </Button>
-                          <Button
-                            onClick={handleAddLaptopClick}
-                            variant="primary"
-                            className="py-2.5 px-4 rounded-xl text-xs sm:text-sm shadow-md"
-                          >
-                            <Plus size={16} /> 신규 자산 추가
-                          </Button>
-                        </div>
-                      </div>
+                      <AdminPageHeader
+                        title="대여 자산 관리"
+                        description="자산 고유 시리얼 넘버, 기기 사진 연동, 특이 사항 메모 및 장비를 관리합니다."
+                        actions={
+                          <>
+                            <Button
+                              onClick={() => {
+                                setShowUploadPanel((prev) => !prev);
+                                setNewLaptop(null);
+                                setEditLaptop(null);
+                              }}
+                              variant="outline"
+                              className="border-white/20 bg-white/10 px-4 py-2.5 text-xs text-white shadow-sm hover:bg-white/20 sm:text-sm"
+                            >
+                              <ClipboardList size={16} /> 엑셀/CSV 업로드
+                            </Button>
+                            <Button
+                              onClick={handleAddLaptopClick}
+                              variant="primary"
+                              className="px-4 py-2.5 text-xs shadow-md sm:text-sm"
+                            >
+                              <Plus size={16} /> 신규 자산 추가
+                            </Button>
+                          </>
+                        }
+                      />
                       
                       <div className="grid w-full gap-2 sm:grid-cols-[120px_120px_minmax(0,1fr)] lg:w-auto lg:grid-cols-[118px_118px_15rem]">
                         <select
