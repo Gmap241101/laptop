@@ -416,13 +416,13 @@ export default function AdminWorkspace({ ctx }) {
         variant={isActive ? 'primary' : 'ghost'}
         onClick={() => handleAdminTabChange(key)}
         className={`relative h-9 w-full justify-start !py-0 text-left ${
-          isNested ? 'px-3 pl-4 text-[13px]' : 'px-3 text-sm'
+          isNested ? 'px-2 pl-2 text-[13px]' : 'px-3 text-sm'
         } ${isActive ? '' : 'text-slate-700 hover:bg-slate-100'}`}
       >
         {isNested ? (
           <span
             aria-hidden="true"
-            className={`mr-3 h-1.5 w-1.5 shrink-0 rounded-full ${
+            className={`mr-2 h-1.5 w-1.5 shrink-0 rounded-full ${
               isActive ? 'bg-white' : 'bg-slate-300'
             }`}
           />
@@ -609,7 +609,7 @@ export default function AdminWorkspace({ ctx }) {
             {/* 좌측 사이드 네비게이션 메뉴 */}
             <div className="lg:sticky lg:top-24 h-fit">
               <Card>
-                <div className="flex h-[52px] items-center gap-2.5 border-b-2 border-orange-500 bg-slate-700 px-5 text-white">
+                <div className="flex h-[52px] items-center gap-2.5 border-b-2 border-orange-500 bg-[#3b5b78] px-5 text-white">
                   <Menu size={17} className="shrink-0 text-slate-100" />
                   <h3 className="text-left text-base font-extrabold text-white">
                     관리 메뉴
@@ -645,10 +645,10 @@ export default function AdminWorkspace({ ctx }) {
                             type="button"
                             onClick={() => toggleAdminMenuGroup(group.key)}
                             aria-expanded={isExpanded}
-                            className={`flex h-10 w-full items-center rounded-lg border-l-2 px-3 text-left text-[13px] font-extrabold transition ${
+                            className={`flex h-10 w-full items-center rounded-lg px-3 text-left text-[13px] font-extrabold transition ${
                               hasActiveItem
-                                ? 'border-orange-500 bg-slate-100 text-slate-900'
-                                : 'border-transparent bg-slate-50 text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                                ? 'bg-slate-200 text-slate-950'
+                                : 'bg-slate-50 text-slate-700 hover:bg-slate-100 hover:text-slate-900'
                             }`}
                           >
                             <span className="mr-2.5 flex h-5 w-5 shrink-0 items-center justify-center">
@@ -664,7 +664,7 @@ export default function AdminWorkspace({ ctx }) {
                           </button>
 
                           {isExpanded ? (
-                            <div className="ml-5 mt-1 space-y-0.5 border-l border-slate-200 pl-2">
+                            <div className="ml-5 mt-1 space-y-0.5 border-l border-slate-200 pl-1">
                               {group.items.map((item) =>
                                 renderAdminMenuButton(item, { nested: true })
                               )}
