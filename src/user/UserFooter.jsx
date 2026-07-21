@@ -1,5 +1,18 @@
 import { RichTextContent } from '../components/RichTextEditor.jsx';
 
+const getSafeExternalFooterUrl = (value = '') => {
+  const normalizedValue = String(value || '').trim();
+  if (!normalizedValue) return '';
+
+  try {
+    const parsedUrl = new URL(normalizedValue);
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) return '';
+    return parsedUrl.toString();
+  } catch {
+    return '';
+  }
+};
+
 export default function UserFooter({ ctx }) {
   const {
     footerConfig,
@@ -9,7 +22,13 @@ export default function UserFooter({ ctx }) {
     userTab,
   } = ctx;
 
-  const visiblePages = (footerPages || []).filter((page) => page.enabled !== false);
+  const visiblePages = (footerPages || []).filter((page) => {
+    if (page.enabled === false) return false;
+    if (page.pageType === 'link') {
+      return Boolean(getSafeExternalFooterUrl(page.linkUrl));
+    }
+    return true;
+  });
   const hasCommonContent =
     footerConfig?.enabled !== false &&
     Boolean(String(footerConfig?.contentHtml || footerConfig?.contentText || '').trim());
@@ -25,17 +44,41 @@ export default function UserFooter({ ctx }) {
             className="mx-auto flex max-w-7xl flex-wrap items-center justify-start gap-x-7 gap-y-2 px-5 py-4 text-xs sm:gap-x-9 sm:text-sm"
           >
             {visiblePages.map((page) => {
-              const selected = userTab === 'footerPage' && selectedFooterPageId === page.id;
+              const isLinkPage = page.pageType === 'link';
+              const safeLinkUrl = isLinkPage
+                ? getSafeExternalFooterUrl(page.linkUrl)
+                : '';
+              const selected =
+                !isLinkPage &&
+                userTab === 'footerPage' &&
+                selectedFooterPageId === page.id;
+              const className = `break-keep transition hover:text-orange-600 ${
+                selected || page.isTitleBold
+                  ? 'font-bold text-slate-950'
+                  : 'font-medium text-slate-700'
+              }`;
+
+              if (isLinkPage && safeLinkUrl) {
+                return (
+                  <a
+                    key={page.id}
+                    href={safeLinkUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={className}
+                    title="새 탭에서 열기"
+                  >
+                    {page.title}
+                  </a>
+                );
+              }
+
               return (
                 <button
                   key={page.id}
                   type="button"
                   onClick={() => openFooterPage(page.id)}
-                  className={`break-keep transition hover:text-orange-600 ${
-                    selected || page.isTitleBold
-                      ? 'font-bold text-slate-950'
-                      : 'font-medium text-slate-700'
-                  }`}
+                  className={className}
                 >
                   {page.title}
                 </button>

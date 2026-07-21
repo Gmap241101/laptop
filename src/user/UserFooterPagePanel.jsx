@@ -1,5 +1,18 @@
 import { RichTextContent } from '../components/RichTextEditor.jsx';
 
+const getSafeExternalFooterUrl = (value = '') => {
+  const normalizedValue = String(value || '').trim();
+  if (!normalizedValue) return '';
+
+  try {
+    const parsedUrl = new URL(normalizedValue);
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) return '';
+    return parsedUrl.toString();
+  } catch {
+    return '';
+  }
+};
+
 export default function UserFooterPagePanel({ ctx }) {
   const {
     AlertCircle,
@@ -48,6 +61,50 @@ export default function UserFooterPagePanel({ ctx }) {
           <Button type="button" variant="primary" className="mt-6" onClick={goToUserHome}>
             초기화면으로 이동
           </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (selectedFooterPage.pageType === 'link') {
+    const safeLinkUrl = getSafeExternalFooterUrl(selectedFooterPage.linkUrl);
+
+    return (
+      <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 bg-slate-50 px-6 py-5">
+          <h2 className="break-words text-xl font-bold text-slate-950">
+            {selectedFooterPage.title}
+          </h2>
+        </div>
+        <CardContent className="px-6 py-14 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-50 text-orange-600">
+            <AlertCircle size={26} />
+          </div>
+          <h3 className="text-lg font-bold text-slate-900">
+            이 메뉴는 외부 링크로 연결됩니다.
+          </h3>
+          <p className="mt-2 text-sm text-slate-500">
+            아래 버튼을 누르면 새 탭에서 링크를 엽니다.
+          </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-2">
+            {safeLinkUrl ? (
+              <a
+                href={safeLinkUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600"
+              >
+                링크 열기
+              </a>
+            ) : (
+              <span className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700">
+                유효한 링크 주소가 없습니다.
+              </span>
+            )}
+            <Button type="button" variant="outline" onClick={goToUserHome}>
+              초기화면으로 이동
+            </Button>
+          </div>
         </CardContent>
       </Card>
     );

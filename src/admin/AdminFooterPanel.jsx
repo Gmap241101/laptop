@@ -121,7 +121,7 @@ export default function AdminFooterPanel({ ctx }) {
           <div>
             <h3 className="text-sm font-bold text-slate-900">푸터 메뉴 페이지</h3>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
-              푸터 상단의 메뉴 제목과 클릭했을 때 표시할 상세 본문을 관리합니다.
+              푸터 상단의 메뉴 제목과 클릭했을 때 표시할 상세 본문 또는 외부 링크를 관리합니다.
             </p>
           </div>
 
@@ -157,7 +157,7 @@ export default function AdminFooterPanel({ ctx }) {
                     <th className="w-24 border-b border-slate-200 px-3 py-3 text-center">순서</th>
                     <th className="w-20 border-b border-slate-200 px-3 py-3 text-center">사용</th>
                     <th className="border-b border-slate-200 px-4 py-3">제목</th>
-                    <th className="w-24 border-b border-slate-200 px-3 py-3 text-center">기본 굵게</th>
+                    <th className="w-28 border-b border-slate-200 px-3 py-3 text-center">항상 굵게</th>
                     <th className="w-32 border-b border-slate-200 px-3 py-3 text-center">수정일</th>
                     <th className="w-40 border-b border-slate-200 px-3 py-3 text-center">관리</th>
                   </tr>
@@ -208,7 +208,20 @@ export default function AdminFooterPanel({ ctx }) {
                         </button>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="text-sm font-semibold text-slate-800">{page.title}</div>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span
+                            className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                              page.pageType === 'link'
+                                ? 'border-orange-200 bg-orange-50 text-orange-700'
+                                : 'border-sky-200 bg-sky-50 text-sky-700'
+                            }`}
+                          >
+                            {page.pageType === 'link' ? '링크' : '본문'}
+                          </span>
+                          <div className="min-w-0 truncate text-sm font-semibold text-slate-800">
+                            {page.title}
+                          </div>
+                        </div>
                       </td>
                       <td className="px-3 py-3 text-center text-xs font-semibold text-slate-600">
                         {page.isTitleBold ? '사용' : '-'}
@@ -257,7 +270,7 @@ export default function AdminFooterPanel({ ctx }) {
                   {footerPageDialog.mode === 'edit' ? '푸터 메뉴 페이지 수정' : '푸터 메뉴 페이지 등록'}
                 </h3>
                 <p className="mt-1 text-xs leading-5 text-slate-500">
-                  제목은 푸터 메뉴와 상세 페이지 제목에 동일하게 표시됩니다.
+                  제목은 푸터 메뉴에 표시되며, 본문형은 상세 페이지 제목에도 동일하게 사용됩니다.
                 </p>
               </div>
               <button
@@ -272,17 +285,40 @@ export default function AdminFooterPanel({ ctx }) {
             </div>
 
             <div className="mt-5 space-y-4">
-              <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={Boolean(footerPageForm.enabled)}
-                  onChange={(event) =>
-                    setFooterPageForm((prev) => ({ ...prev, enabled: event.target.checked }))
-                  }
-                  className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
-                />
-                사용함
-              </label>
+              <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div>
+                  <div className="text-xs font-semibold text-slate-700">사용 여부</div>
+                  <div className="mt-0.5 text-[11px] text-slate-500">
+                    사용함으로 설정한 메뉴만 사용자 푸터에 표시됩니다.
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-600">
+                    {footerPageForm.enabled ? '사용함' : '사용안함'}
+                  </span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={Boolean(footerPageForm.enabled)}
+                    disabled={footerPageSaving}
+                    onClick={() =>
+                      setFooterPageForm((prev) => ({
+                        ...prev,
+                        enabled: !Boolean(prev.enabled),
+                      }))
+                    }
+                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition ${
+                      footerPageForm.enabled ? 'bg-emerald-500' : 'bg-slate-300'
+                    } disabled:cursor-not-allowed disabled:opacity-60`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${
+                        footerPageForm.enabled ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
 
               <label className="block">
                 <span className="mb-1.5 block text-xs font-semibold text-slate-600">제목</span>
@@ -297,6 +333,59 @@ export default function AdminFooterPanel({ ctx }) {
                 />
               </label>
 
+              <div>
+                <span className="mb-1.5 block text-xs font-semibold text-slate-600">연결 방식</span>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <label
+                    className={`cursor-pointer rounded-xl border px-4 py-3 transition ${
+                      footerPageForm.pageType !== 'link'
+                        ? 'border-orange-300 bg-orange-50 ring-1 ring-orange-200'
+                        : 'border-slate-200 bg-white hover:bg-slate-50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="footer-page-type"
+                      value="content"
+                      checked={footerPageForm.pageType !== 'link'}
+                      disabled={footerPageSaving}
+                      onChange={() =>
+                        setFooterPageForm((prev) => ({ ...prev, pageType: 'content' }))
+                      }
+                      className="sr-only"
+                    />
+                    <span className="block text-sm font-bold text-slate-800">본문 직접 입력</span>
+                    <span className="mt-1 block text-[11px] leading-5 text-slate-500">
+                      사이트 내부 상세 페이지에 웹에디터 본문을 표시합니다.
+                    </span>
+                  </label>
+
+                  <label
+                    className={`cursor-pointer rounded-xl border px-4 py-3 transition ${
+                      footerPageForm.pageType === 'link'
+                        ? 'border-orange-300 bg-orange-50 ring-1 ring-orange-200'
+                        : 'border-slate-200 bg-white hover:bg-slate-50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="footer-page-type"
+                      value="link"
+                      checked={footerPageForm.pageType === 'link'}
+                      disabled={footerPageSaving}
+                      onChange={() =>
+                        setFooterPageForm((prev) => ({ ...prev, pageType: 'link' }))
+                      }
+                      className="sr-only"
+                    />
+                    <span className="block text-sm font-bold text-slate-800">링크 주소 입력</span>
+                    <span className="mt-1 block text-[11px] leading-5 text-slate-500">
+                      푸터 제목을 클릭하면 입력한 주소를 새 탭에서 엽니다.
+                    </span>
+                  </label>
+                </div>
+              </div>
+
               <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
                 <input
                   type="checkbox"
@@ -306,19 +395,38 @@ export default function AdminFooterPanel({ ctx }) {
                   }
                   className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
                 />
-                푸터에서 평상시에도 제목을 굵게 표시
+                제목 항상 굵게
               </label>
 
-              <RichTextEditor
-                label="본문"
-                value={footerPageForm.contentHtml}
-                onChange={(contentHtml) =>
-                  setFooterPageForm((prev) => ({ ...prev, contentHtml }))
-                }
-                placeholder="상세 페이지에 표시할 내용을 입력해 주세요."
-                minHeight={320}
-                disabled={footerPageSaving}
-              />
+              {footerPageForm.pageType === 'link' ? (
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold text-slate-600">링크 주소</span>
+                  <input
+                    type="url"
+                    value={footerPageForm.linkUrl || ''}
+                    onChange={(event) =>
+                      setFooterPageForm((prev) => ({ ...prev, linkUrl: event.target.value }))
+                    }
+                    placeholder="https://www.example.com"
+                    disabled={footerPageSaving}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none mk-form-focus disabled:bg-slate-100"
+                  />
+                  <span className="mt-1.5 block text-[11px] leading-5 text-slate-500">
+                    http:// 또는 https://로 시작하는 전체 주소를 입력해 주세요. 링크는 항상 새 탭에서 열립니다.
+                  </span>
+                </label>
+              ) : (
+                <RichTextEditor
+                  label="본문"
+                  value={footerPageForm.contentHtml}
+                  onChange={(contentHtml) =>
+                    setFooterPageForm((prev) => ({ ...prev, contentHtml }))
+                  }
+                  placeholder="상세 페이지에 표시할 내용을 입력해 주세요."
+                  minHeight={320}
+                  disabled={footerPageSaving}
+                />
+              )}
             </div>
 
             <div className="mt-6 flex justify-end gap-2 border-t border-slate-100 pt-4">

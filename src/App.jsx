@@ -255,9 +255,32 @@ const createDefaultFooterConfigDraft = () => ({
   contentHtml: '',
 });
 
+const FOOTER_PAGE_TYPE_CONTENT = 'content';
+const FOOTER_PAGE_TYPE_LINK = 'link';
+
+const getNormalizedFooterPageType = (value) =>
+  value === FOOTER_PAGE_TYPE_LINK
+    ? FOOTER_PAGE_TYPE_LINK
+    : FOOTER_PAGE_TYPE_CONTENT;
+
+const getSafeFooterLinkUrl = (value = '') => {
+  const normalizedValue = String(value || '').trim();
+  if (!normalizedValue) return '';
+
+  try {
+    const parsedUrl = new URL(normalizedValue);
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) return '';
+    return parsedUrl.toString();
+  } catch {
+    return '';
+  }
+};
+
 const createDefaultFooterPageForm = () => ({
   enabled: true,
   title: '',
+  pageType: FOOTER_PAGE_TYPE_CONTENT,
+  linkUrl: '',
   isTitleBold: false,
   contentHtml: '',
 });
@@ -12146,6 +12169,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     const nextForm = {
       enabled: page ? page.enabled !== false : true,
       title: page?.title || '',
+      pageType: getNormalizedFooterPageType(page?.pageType),
+      linkUrl: String(page?.linkUrl || ''),
       isTitleBold: Boolean(page?.isTitleBold),
       contentHtml: sanitizeRichTextHtml(
         page?.contentHtml ||
@@ -12199,6 +12224,9 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     }
 
     const title = String(footerPageForm.title || '').trim();
+    const pageType = getNormalizedFooterPageType(footerPageForm.pageType);
+    const rawLinkUrl = String(footerPageForm.linkUrl || '').trim();
+    const safeLinkUrl = getSafeFooterLinkUrl(rawLinkUrl);
     const contentHtml = sanitizeRichTextHtml(footerPageForm.contentHtml || '');
     const contentText = richTextHtmlToText(contentHtml);
 
@@ -12207,8 +12235,24 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       return;
     }
 
-    if (isRichTextEmpty(contentHtml)) {
+    if (
+      pageType === FOOTER_PAGE_TYPE_CONTENT &&
+      isRichTextEmpty(contentHtml)
+    ) {
       triggerToast('푸터 메뉴 상세 본문을 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (pageType === FOOTER_PAGE_TYPE_LINK && !rawLinkUrl) {
+      triggerToast('이동할 링크 주소를 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (pageType === FOOTER_PAGE_TYPE_LINK && !safeLinkUrl) {
+      triggerToast(
+        'http:// 또는 https://로 시작하는 올바른 링크 주소를 입력해 주세요.',
+        'error'
+      );
       return;
     }
 
@@ -12238,6 +12282,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         id: pageDocRef.id,
         enabled: Boolean(footerPageForm.enabled),
         title,
+        pageType,
+        linkUrl: safeLinkUrl || rawLinkUrl,
         isTitleBold: Boolean(footerPageForm.isTitleBold),
         sortOrder: nextSortOrder,
         content: contentText,
