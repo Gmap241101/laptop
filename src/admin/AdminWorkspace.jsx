@@ -1,4 +1,4 @@
-import { CalendarDays, ChevronDown } from 'lucide-react';
+import { CalendarDays, ChevronDown, Menu } from 'lucide-react';
 import AdminDashboardPanel from './AdminDashboardPanel.jsx';
 import AdminRequestsPanel from './AdminRequestsPanel.jsx';
 import AdminAssetsPanel from './AdminAssetsPanel.jsx';
@@ -361,6 +361,7 @@ export default function AdminWorkspace({ ctx }) {
     {
       key: 'rental',
       label: '대여 운영',
+      Icon: Laptop,
       items: [
         ['laptops', Laptop, '대여 자산 관리'],
         ['extensionSettings', Clock, '대여 정책 관리'],
@@ -371,6 +372,7 @@ export default function AdminWorkspace({ ctx }) {
     {
       key: 'content',
       label: '콘텐츠 관리',
+      Icon: ClipboardList,
       items: [
         ['noticePosts', ClipboardList, '공지사항 관리'],
         ['popupPosts', ClipboardList, '팝업 관리'],
@@ -381,6 +383,7 @@ export default function AdminWorkspace({ ctx }) {
     {
       key: 'accounts',
       label: '사용자·권한',
+      Icon: ShieldCheck,
       items: [
         ['people', Users, '부서·사용자 관리'],
         ['memberAccounts', UserCircle, '회원 계정 관리'],
@@ -390,6 +393,7 @@ export default function AdminWorkspace({ ctx }) {
     {
       key: 'system',
       label: '시스템',
+      Icon: Settings,
       items: [['settings', Settings, '시스템 관리']],
     },
   ];
@@ -402,21 +406,35 @@ export default function AdminWorkspace({ ctx }) {
     );
   };
 
-  const renderAdminMenuButton = ([key, Icon, label]) => (
-    <Button
-      key={key}
-      variant={adminTab === key ? 'primary' : 'ghost'}
-      onClick={() => handleAdminTabChange(key)}
-      className={`h-9 w-full justify-start px-3 !py-0 text-left ${
-        adminTab === key ? '' : 'text-slate-700 hover:bg-slate-100'
-      }`}
-    >
-      <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-        <Icon size={16} />
-      </span>
-      <span className="min-w-0 flex-1 text-left">{label}</span>
-    </Button>
-  );
+  const renderAdminMenuButton = ([key, Icon, label], options = {}) => {
+    const isNested = options.nested === true;
+    const isActive = adminTab === key;
+
+    return (
+      <Button
+        key={key}
+        variant={isActive ? 'primary' : 'ghost'}
+        onClick={() => handleAdminTabChange(key)}
+        className={`relative h-9 w-full justify-start !py-0 text-left ${
+          isNested ? 'px-3 pl-4 text-[13px]' : 'px-3 text-sm'
+        } ${isActive ? '' : 'text-slate-700 hover:bg-slate-100'}`}
+      >
+        {isNested ? (
+          <span
+            aria-hidden="true"
+            className={`mr-3 h-1.5 w-1.5 shrink-0 rounded-full ${
+              isActive ? 'bg-white' : 'bg-slate-300'
+            }`}
+          />
+        ) : (
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+            <Icon size={16} />
+          </span>
+        )}
+        <span className="min-w-0 flex-1 text-left">{label}</span>
+      </Button>
+    );
+  };
 
   return (
           shouldShowAdminLoadingPage ? (
@@ -591,29 +609,35 @@ export default function AdminWorkspace({ ctx }) {
             {/* 좌측 사이드 네비게이션 메뉴 */}
             <div className="lg:sticky lg:top-24 h-fit">
               <Card>
-                <div className="border-b-2 border-orange-500 bg-slate-700 px-5 py-4 text-white">
-                  <h3 className="text-left text-xs font-bold uppercase tracking-wider text-slate-100">
+                <div className="flex h-[52px] items-center gap-2.5 border-b-2 border-orange-500 bg-slate-700 px-5 text-white">
+                  <Menu size={17} className="shrink-0 text-slate-100" />
+                  <h3 className="text-left text-base font-extrabold text-white">
                     관리 메뉴
                   </h3>
                 </div>
 
-                <CardContent className="space-y-1.5 p-3">
-                  {renderAdminMenuButton([
-                    'dashboard',
-                    LayoutDashboard,
-                    '실시간 대시보드',
-                  ])}
-
-                  {renderAdminMenuButton([
-                    'requests',
-                    ClipboardList,
-                    '기기 대여 신청 관리',
-                  ])}
-
+                <CardContent className="p-3">
                   <div className="space-y-1">
+                    {renderAdminMenuButton([
+                      'dashboard',
+                      LayoutDashboard,
+                      '실시간 대시보드',
+                    ])}
+
+                    {renderAdminMenuButton([
+                      'requests',
+                      ClipboardList,
+                      '기기 대여 신청 관리',
+                    ])}
+                  </div>
+
+                  <div className="my-2 border-t border-slate-200" />
+
+                  <div className="space-y-1.5">
                     {adminMenuGroups.map((group) => {
                       const isExpanded = expandedAdminMenuGroups.includes(group.key);
                       const hasActiveItem = group.items.some(([key]) => key === adminTab);
+                      const GroupIcon = group.Icon;
 
                       return (
                         <div key={group.key}>
@@ -621,24 +645,29 @@ export default function AdminWorkspace({ ctx }) {
                             type="button"
                             onClick={() => toggleAdminMenuGroup(group.key)}
                             aria-expanded={isExpanded}
-                            className={`flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left text-[11px] font-bold tracking-wide transition ${
+                            className={`flex h-10 w-full items-center rounded-lg border-l-2 px-3 text-left text-[13px] font-extrabold transition ${
                               hasActiveItem
-                                ? 'bg-slate-100 text-slate-900'
-                                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                                ? 'border-orange-500 bg-slate-100 text-slate-900'
+                                : 'border-transparent bg-slate-50 text-slate-700 hover:bg-slate-100 hover:text-slate-900'
                             }`}
                           >
-                            <span>{group.label}</span>
+                            <span className="mr-2.5 flex h-5 w-5 shrink-0 items-center justify-center">
+                              <GroupIcon size={16} />
+                            </span>
+                            <span className="min-w-0 flex-1">{group.label}</span>
                             <ChevronDown
-                              size={14}
-                              className={`shrink-0 transition-transform ${
+                              size={15}
+                              className={`ml-2 shrink-0 transition-transform ${
                                 isExpanded ? 'rotate-180' : ''
                               }`}
                             />
                           </button>
 
                           {isExpanded ? (
-                            <div className="mt-0.5 space-y-0.5">
-                              {group.items.map(renderAdminMenuButton)}
+                            <div className="ml-5 mt-1 space-y-0.5 border-l border-slate-200 pl-2">
+                              {group.items.map((item) =>
+                                renderAdminMenuButton(item, { nested: true })
+                              )}
                             </div>
                           ) : null}
                         </div>
