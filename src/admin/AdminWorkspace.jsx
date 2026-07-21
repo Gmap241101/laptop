@@ -17,7 +17,6 @@ import AdminHolidayManagementPanel from './AdminHolidayManagementPanel.jsx';
 const ADMIN_MENU_GROUP_STATE_KEY = 'mk_laptop_admin_menu_groups';
 
 const ADMIN_TAB_GROUP = {
-  requests: 'rental',
   laptops: 'rental',
   extensionSettings: 'rental',
   holidaySettings: 'rental',
@@ -363,7 +362,6 @@ export default function AdminWorkspace({ ctx }) {
       key: 'rental',
       label: '대여 운영',
       items: [
-        ['requests', ClipboardList, '기기 대여 신청 관리'],
         ['laptops', Laptop, '대여 자산 관리'],
         ['extensionSettings', Clock, '대여 정책 관리'],
         ['holidaySettings', CalendarDays, '휴일 관리'],
@@ -604,6 +602,12 @@ export default function AdminWorkspace({ ctx }) {
                     'dashboard',
                     LayoutDashboard,
                     '실시간 대시보드',
+                  ])}
+
+                  {renderAdminMenuButton([
+                    'requests',
+                    ClipboardList,
+                    '기기 대여 신청 관리',
                   ])}
 
                   <div className="space-y-2">
