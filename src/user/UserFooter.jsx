@@ -47,7 +47,7 @@ export default function UserFooter({ ctx }) {
 
       {hasCommonContent && (
         <div className="bg-slate-100">
-          <div className="mx-auto max-w-7xl px-6 py-8 sm:px-8">
+          <div className="mx-auto max-w-7xl px-5 py-8">
             <RichTextContent
               html={footerConfig.contentHtml}
               text={footerConfig.contentText || footerConfig.content}

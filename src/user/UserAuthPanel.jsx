@@ -8,14 +8,11 @@ export default function UserAuthPanel({ ctx }) {
     firebaseAuthReady,
     firebaseAuthUser,
     form,
+    goToProtectedUserTab,
     goToUserLogin,
     goToUserSignup,
     logoutUser,
-    pushAppPath,
-    setIsCommunityMenuOpen,
     setUserAuthForm,
-    setUserTab,
-    setView,
     submitUserAuthForm,
     userAuthForm,
     userAuthLoading,
@@ -65,12 +62,9 @@ export default function UserAuthPanel({ ctx }) {
                       <Button
                         type="button"
                         variant="primary"
-                        onClick={() => {
-                          pushAppPath('user', 'rental');
-                          setView('user');
-                          setUserTab('rental');
-                          setIsCommunityMenuOpen(false);
-                        }}
+                        onClick={() =>
+                          goToProtectedUserTab('rental')
+                        }
                       >
                         대여신청으로 이동
                       </Button>

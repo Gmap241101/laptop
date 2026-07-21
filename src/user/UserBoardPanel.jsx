@@ -27,6 +27,7 @@ export default function UserBoardPanel({ ctx }) {
     faqTotalPages,
     formatFirestoreDate,
     goToUserHome,
+    goToProtectedUserTab,
     motion,
     noticePosts,
     noticePostsLoadErrorMessage,
@@ -37,7 +38,6 @@ export default function UserBoardPanel({ ctx }) {
     openNoticePost,
     paginatedNoticePosts,
     pinnedNoticePosts,
-    pushAppPath,
     regularFaqPosts,
     regularNoticePosts,
     safeFaqPage,
@@ -48,11 +48,8 @@ export default function UserBoardPanel({ ctx }) {
     setFaqPage,
     setFaqQuery,
     setFaqSearchWithinCategory,
-    setIsCommunityMenuOpen,
     setNoticePage,
     setUserNoticeQuery,
-    setUserTab,
-    setView,
     toggleFaqPost,
     userNoticeQuery,
     userTab,
@@ -112,12 +109,9 @@ export default function UserBoardPanel({ ctx }) {
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={() => {
-                          pushAppPath('user', 'rental');
-                          setView('user');
-                          setUserTab('rental');
-                          setIsCommunityMenuOpen(false);
-                        }}
+                        onClick={() =>
+                          goToProtectedUserTab('rental')
+                        }
                         className="w-full sm:w-auto"
                       >
                         대여신청으로 이동
@@ -127,16 +121,7 @@ export default function UserBoardPanel({ ctx }) {
                 ) : userTab === 'notice' ? (
                   selectedNoticePost ? (
                     <div className="space-y-5">
-                      <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-4">
-                        <div>
-                          <h3 className="text-base font-bold text-slate-900">
-                            공지사항
-                          </h3>
-                          <p className="mt-1 text-xs text-slate-500">
-                            선택한 공지사항의 상세 내용을 확인합니다.
-                          </p>
-                        </div>
-
+                      <div className="flex justify-end">
                         <Button
                           type="button"
                           variant="outline"
@@ -189,16 +174,6 @@ export default function UserBoardPanel({ ctx }) {
                     </div>
                   ) : (
                     <div className="space-y-5">
-                      <div className="border-b border-slate-100 pb-4">
-                        <h3 className="text-base font-bold text-slate-900">
-                          공지사항
-                        </h3>
-
-                        <p className="mt-1 text-xs leading-5 text-slate-500">
-                          제목을 클릭하면 공지사항 상세 내용을 확인할 수 있습니다.
-                        </p>
-                      </div>
-
                       <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                         <label className="block text-[11px] font-semibold text-slate-600">
                           공지사항 검색
@@ -380,16 +355,6 @@ export default function UserBoardPanel({ ctx }) {
                   )
                 ) : userTab === 'faq' ? (
                   <div className="space-y-5">
-                    <div className="border-b border-slate-100 pb-4">
-                      <h3 className="text-base font-bold text-slate-900">
-                        자주 묻는 질문
-                      </h3>
-
-                      <p className="mt-1 text-xs leading-5 text-slate-500">
-                        카테고리를 선택한 뒤 제목을 클릭하면 같은 화면에서 답변이 열립니다.
-                      </p>
-                    </div>
-
                     {!faqCategoriesReady ? (
                       <div className="rounded-2xl border border-slate-200 bg-slate-50 py-8 text-center text-xs text-slate-400">
                         FAQ 카테고리를 불러오는 중입니다.

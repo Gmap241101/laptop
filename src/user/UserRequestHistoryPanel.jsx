@@ -30,16 +30,13 @@ export default function UserRequestHistoryPanel({ ctx }) {
     getSafeRentalExtensionMaxCount,
     getUserRequestActionLabel,
     getUserRequestReviewStatusLabel,
-    goToUserLogin,
+    goToProtectedUserTab,
     isAdminAuthenticated,
     openUserActionDialog,
-    pushAppPath,
     rentalRequestsLoadErrorMessage,
     rentalRequestsReady,
-    setIsCommunityMenuOpen,
-    setUserTab,
-    setView,
     userActionSaving,
+    userProfile,
   } = ctx;
 
   const [requestTab, setRequestTab] = useState(ADMIN_REQUEST_TAB.PENDING);
@@ -289,19 +286,29 @@ export default function UserRequestHistoryPanel({ ctx }) {
     );
   };
 
+  const requestOwnerName = String(
+    userProfile?.name ||
+      firebaseAuthUser?.displayName ||
+      ''
+  ).trim();
+
+  const requestHistoryDescription =
+    requestOwnerName
+      ? `${requestOwnerName} 님의 기기 대여 신청과 처리 상태를 확인할 수 있습니다.`
+      : '회원님의 기기 대여 신청과 처리 상태를 확인할 수 있습니다.';
+
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="w-full space-y-6">
       <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
-        <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-8 text-white">
+        <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-10 text-white">
           <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
           <div className="absolute -bottom-16 left-10 h-44 w-44 rounded-full bg-orange-400/20 blur-3xl" />
-          <div className="relative">
-            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/15">
-              <ClipboardList size={26} />
-            </div>
-            <h2 className="text-xl font-black tracking-tight">나의 대여 신청내역</h2>
-            <p className="mt-2 text-xs leading-5 text-slate-300">
-              관리자 신청관리와 동일한 목록·상세 구조로 본인의 신청과 처리 상태를 확인합니다.
+          <div className="relative mx-auto max-w-3xl text-center">
+            <h2 className="text-2xl font-black tracking-tight">
+              나의 대여 신청내역
+            </h2>
+            <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-300">
+              {requestHistoryDescription}
             </p>
           </div>
         </div>
@@ -314,17 +321,6 @@ export default function UserRequestHistoryPanel({ ctx }) {
           ) : rentalRequestsLoadErrorMessage ? (
             <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-xs leading-5 text-rose-800">
               {rentalRequestsLoadErrorMessage}
-            </div>
-          ) : !firebaseAuthUser ? (
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 text-xs leading-5 text-orange-800">
-                신청내역은 일반회원 로그인 후 확인할 수 있습니다.
-              </div>
-              <div className="flex justify-end">
-                <Button type="button" variant="primary" onClick={goToUserLogin}>
-                  로그인
-                </Button>
-              </div>
             </div>
           ) : currentAuthAdminAccount || isAdminAuthenticated ? (
             <div className="rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 text-xs leading-5 text-orange-800">
@@ -345,12 +341,9 @@ export default function UserRequestHistoryPanel({ ctx }) {
                 <Button
                   type="button"
                   variant="primary"
-                  onClick={() => {
-                    pushAppPath('user', 'rental');
-                    setView('user');
-                    setUserTab('rental');
-                    setIsCommunityMenuOpen(false);
-                  }}
+                  onClick={() =>
+                    goToProtectedUserTab('rental')
+                  }
                 >
                   대여신청으로 이동
                 </Button>

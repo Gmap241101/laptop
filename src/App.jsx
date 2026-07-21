@@ -1446,6 +1446,117 @@ const USER_ROUTE_PATHS = {
   mypage: '/mypage',
 };
 
+const USER_LOGIN_RETURN_TARGET_SESSION_KEY =
+  'mk_laptop_login_return_target';
+
+const PROTECTED_USER_TABS = new Set([
+  'rental',
+  'history',
+]);
+
+const LOGIN_RETURN_USER_TABS = new Set([
+  'home',
+  'rental',
+  'history',
+  'notice',
+  'faq',
+  'footerPage',
+  'mypage',
+]);
+
+const normalizeUserLoginReturnTarget = (
+  target
+) => {
+  if (!target || typeof target !== 'object') {
+    return null;
+  }
+
+  const userTab = String(
+    target.userTab || ''
+  ).trim();
+
+  if (!LOGIN_RETURN_USER_TABS.has(userTab)) {
+    return null;
+  }
+
+  const routeId =
+    userTab === 'footerPage'
+      ? String(target.routeId || '').trim()
+      : '';
+
+  if (userTab === 'footerPage' && !routeId) {
+    return null;
+  }
+
+  return {
+    userTab,
+    routeId,
+    noticePostId:
+      userTab === 'notice'
+        ? String(
+            target.noticePostId || ''
+          ).trim()
+        : '',
+  };
+};
+
+const readUserLoginReturnTarget = () => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    return normalizeUserLoginReturnTarget(
+      JSON.parse(
+        window.sessionStorage.getItem(
+          USER_LOGIN_RETURN_TARGET_SESSION_KEY
+        ) || 'null'
+      )
+    );
+  } catch (error) {
+    console.error(
+      'User login return target read error:',
+      error
+    );
+    return null;
+  }
+};
+
+const writeUserLoginReturnTarget = (
+  target
+) => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const normalizedTarget =
+    normalizeUserLoginReturnTarget(target);
+
+  if (!normalizedTarget) {
+    window.sessionStorage.removeItem(
+      USER_LOGIN_RETURN_TARGET_SESSION_KEY
+    );
+    return null;
+  }
+
+  window.sessionStorage.setItem(
+    USER_LOGIN_RETURN_TARGET_SESSION_KEY,
+    JSON.stringify(normalizedTarget)
+  );
+
+  return normalizedTarget;
+};
+
+const clearUserLoginReturnTarget = () => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.sessionStorage.removeItem(
+    USER_LOGIN_RETURN_TARGET_SESSION_KEY
+  );
+};
+
 const getNormalizedPathname = () => {
   if (typeof window === 'undefined') return '/';
 
@@ -1516,9 +1627,11 @@ const getInitialViewFromPath = () => getRouteStateFromPath().view;
 const getInitialUserTabFromPath = () => getRouteStateFromPath().userTab;
 const getInitialFooterPageIdFromPath = () => getRouteStateFromPath().footerPageId || '';
 
-const pushAppPath = (nextView, nextUserTab = 'home', routeId = '') => {
-  if (typeof window === 'undefined') return;
-
+const getAppPath = (
+  nextView,
+  nextUserTab = 'home',
+  routeId = ''
+) => {
   const routeSuffix =
     nextView === 'admin'
       ? '/admin'
@@ -1526,10 +1639,42 @@ const pushAppPath = (nextView, nextUserTab = 'home', routeId = '') => {
         ? `/info/${encodeURIComponent(routeId)}`
         : USER_ROUTE_PATHS[nextUserTab] || '';
 
-  const nextPath = routeSuffix || '/';
+  return routeSuffix || '/';
+};
+
+const pushAppPath = (nextView, nextUserTab = 'home', routeId = '') => {
+  if (typeof window === 'undefined') return;
+
+  const nextPath = getAppPath(
+    nextView,
+    nextUserTab,
+    routeId
+  );
 
   if (window.location.pathname !== nextPath) {
     window.history.pushState(null, '', nextPath);
+  }
+};
+
+const replaceAppPath = (
+  nextView,
+  nextUserTab = 'home',
+  routeId = ''
+) => {
+  if (typeof window === 'undefined') return;
+
+  const nextPath = getAppPath(
+    nextView,
+    nextUserTab,
+    routeId
+  );
+
+  if (window.location.pathname !== nextPath) {
+    window.history.replaceState(
+      null,
+      '',
+      nextPath
+    );
   }
 };
 
@@ -2083,6 +2228,7 @@ function App() {
   const adminAccountsLastSyncedRef = useRef({});
   const allowAdminAccountsWriteRef = useRef(false);
   const adminLogoutInProgressRef = useRef(false);
+  const pendingProtectedUserTabRef = useRef('');
 
   const [view, setView] = useState(getInitialViewFromPath); // 'user' | 'admin'
   const [userTab, setUserTab] = useState(getInitialUserTabFromPath); // 'home' | 'rental' | 'history' | 'notice' | 'faq' | 'footerPage' | 'notFound'
@@ -2137,6 +2283,11 @@ function App() {
   const [currentAuthRoleErrorMessage, setCurrentAuthRoleErrorMessage] = useState('');
   const [userAuthForm, setUserAuthForm] = useState(createDefaultUserAuthForm);
   const [userAuthLoading, setUserAuthLoading] = useState(false);
+
+  const hasFirebaseAuthSession = Boolean(
+    firebaseAuthUser ||
+      firebaseAuth.currentUser
+  );
 
   const [userProfile, setUserProfile] = useState(null);
   const [userProfileReady, setUserProfileReady] = useState(false);
@@ -2473,7 +2624,7 @@ function App() {
   }, [firebaseAuthReady, firebaseAuthUser]);
 
   useEffect(() => {
-    if (!firebaseAuthUser) {
+    if (!hasFirebaseAuthSession) {
       setUserProfile(null);
       setUserProfileReady(true);
       setUserProfileForm(createDefaultUserProfileForm());
@@ -2648,6 +2799,7 @@ function App() {
       try {
         await signOut(firebaseAuth);
 
+        clearUserLoginReturnTarget();
         clearAdminAuthSession();
         setAuthenticatedAdminId('');
         setAdminAuthExpiresAt(0);
@@ -2690,12 +2842,250 @@ function App() {
     userAuthLoading,
   ]);
 
-  const goToUserHome = () => {
-    pushAppPath('user', 'home');
+  const getCurrentUserLoginReturnTarget = () => {
+    if (view !== 'user') {
+      return null;
+    }
+
+    if (
+      userTab === 'login' ||
+      userTab === 'signup'
+    ) {
+      return readUserLoginReturnTarget();
+    }
+
+    if (userTab === 'notFound') {
+      return {
+        userTab: 'home',
+        routeId: '',
+        noticePostId: '',
+      };
+    }
+
+    return normalizeUserLoginReturnTarget({
+      userTab,
+      routeId:
+        userTab === 'footerPage'
+          ? selectedFooterPageId
+          : '',
+      noticePostId:
+        userTab === 'notice'
+          ? selectedNoticePostId
+          : '',
+    });
+  };
+
+  const saveCurrentUserLoginReturnTarget = () => {
+    const returnTarget =
+      getCurrentUserLoginReturnTarget();
+
+    if (!returnTarget) {
+      return readUserLoginReturnTarget();
+    }
+
+    return writeUserLoginReturnTarget(
+      returnTarget
+    );
+  };
+
+  const navigateToUserReturnTarget = (
+    rawTarget,
+    { replace = false } = {}
+  ) => {
+    let target =
+      normalizeUserLoginReturnTarget(
+        rawTarget
+      ) || {
+        userTab: 'rental',
+        routeId: '',
+        noticePostId: '',
+      };
+
+    if (target.userTab === 'notice') {
+      const hasRequestedNotice =
+        !target.noticePostId ||
+        !noticePostsReady ||
+        noticePosts.some(
+          (post) =>
+            post.id ===
+            target.noticePostId
+        );
+
+      if (!hasRequestedNotice) {
+        target = {
+          ...target,
+          noticePostId: '',
+        };
+      }
+    }
+
+    if (target.userTab === 'footerPage') {
+      const requestedFooterPage =
+        footerPages.find(
+          (page) =>
+            page.id === target.routeId &&
+            page.enabled !== false
+        );
+
+      if (
+        footerPagesReady &&
+        !requestedFooterPage
+      ) {
+        target = {
+          userTab: 'home',
+          routeId: '',
+          noticePostId: '',
+        };
+      }
+    }
+
+    const updatePath = replace
+      ? replaceAppPath
+      : pushAppPath;
+
+    updatePath(
+      'user',
+      target.userTab,
+      target.routeId
+    );
+
     setView('user');
-    setUserTab('home');
-    setSelectedFooterPageId('');
+    setUserTab(target.userTab);
+    setSelectedFooterPageId(
+      target.userTab === 'footerPage'
+        ? target.routeId
+        : ''
+    );
+    setSelectedNoticePostId(
+      target.userTab === 'notice'
+        ? target.noticePostId
+        : ''
+    );
     setIsCommunityMenuOpen(false);
+
+    if (typeof window !== 'undefined') {
+      window.scrollTo({
+        top: 0,
+        behavior: 'auto',
+      });
+    }
+  };
+
+  const goToProtectedUserTab = (
+    nextUserTab
+  ) => {
+    if (
+      !PROTECTED_USER_TABS.has(
+        nextUserTab
+      )
+    ) {
+      return;
+    }
+
+    if (
+      !firebaseAuthReady ||
+      !currentAuthRoleReady
+    ) {
+      pendingProtectedUserTabRef.current =
+        nextUserTab;
+      return;
+    }
+
+    pendingProtectedUserTabRef.current = '';
+
+    if (!hasFirebaseAuthSession) {
+      writeUserLoginReturnTarget({
+        userTab: nextUserTab,
+        routeId: '',
+        noticePostId: '',
+      });
+
+      replaceAppPath('user', 'login');
+      setView('user');
+      setUserTab('login');
+      setSelectedFooterPageId('');
+      setSelectedNoticePostId('');
+      setIsCommunityMenuOpen(false);
+      return;
+    }
+
+    navigateToUserReturnTarget({
+      userTab: nextUserTab,
+      routeId: '',
+      noticePostId: '',
+    });
+  };
+
+  useEffect(() => {
+    if (
+      !firebaseAuthReady ||
+      !currentAuthRoleReady ||
+      !pendingProtectedUserTabRef.current
+    ) {
+      return;
+    }
+
+    const pendingUserTab =
+      pendingProtectedUserTabRef.current;
+
+    pendingProtectedUserTabRef.current = '';
+    goToProtectedUserTab(pendingUserTab);
+  }, [
+    firebaseAuthReady,
+    currentAuthRoleReady,
+    firebaseAuthUser,
+    hasFirebaseAuthSession,
+  ]);
+
+  const goToUserHome = () => {
+    pendingProtectedUserTabRef.current = '';
+
+    if (
+      userTab === 'login' ||
+      userTab === 'signup'
+    ) {
+      clearUserLoginReturnTarget();
+    }
+
+    navigateToUserReturnTarget({
+      userTab: 'home',
+      routeId: '',
+      noticePostId: '',
+    });
+  };
+
+  const goToUserNotice = () => {
+    pendingProtectedUserTabRef.current = '';
+
+    if (
+      userTab === 'login' ||
+      userTab === 'signup'
+    ) {
+      clearUserLoginReturnTarget();
+    }
+
+    navigateToUserReturnTarget({
+      userTab: 'notice',
+      routeId: '',
+      noticePostId: '',
+    });
+  };
+
+  const goToUserFaq = () => {
+    pendingProtectedUserTabRef.current = '';
+
+    if (
+      userTab === 'login' ||
+      userTab === 'signup'
+    ) {
+      clearUserLoginReturnTarget();
+    }
+
+    navigateToUserReturnTarget({
+      userTab: 'faq',
+      routeId: '',
+      noticePostId: '',
+    });
   };
 
   const goToAppHome = () => {
@@ -2714,11 +3104,27 @@ function App() {
     const syncViewWithPath = () => {
       const nextRouteState = getRouteStateFromPath();
 
+      pendingProtectedUserTabRef.current = '';
+
       if (
         nextRouteState.redirectTo &&
         window.location.pathname !== nextRouteState.redirectTo
       ) {
         window.history.replaceState(null, '', nextRouteState.redirectTo);
+      }
+
+      if (
+        nextRouteState.view === 'user' &&
+        ![
+          'login',
+          'signup',
+          'rental',
+          'history',
+        ].includes(
+          nextRouteState.userTab
+        )
+      ) {
+        clearUserLoginReturnTarget();
       }
 
       setView(nextRouteState.view);
@@ -2735,6 +3141,50 @@ function App() {
       window.removeEventListener('popstate', syncViewWithPath);
     };
   }, []);
+
+  useEffect(() => {
+    if (
+      view !== 'user' ||
+      !PROTECTED_USER_TABS.has(userTab)
+    ) {
+      return;
+    }
+
+    if (
+      !firebaseAuthReady ||
+      !currentAuthRoleReady ||
+      userAuthLoading ||
+      adminLogoutInProgress ||
+      userStatusLogoutInProgressRef.current
+    ) {
+      return;
+    }
+
+    if (hasFirebaseAuthSession) {
+      return;
+    }
+
+    writeUserLoginReturnTarget({
+      userTab,
+      routeId: '',
+      noticePostId: '',
+    });
+
+    replaceAppPath('user', 'login');
+    setUserTab('login');
+    setSelectedFooterPageId('');
+    setSelectedNoticePostId('');
+    setIsCommunityMenuOpen(false);
+  }, [
+    view,
+    userTab,
+    firebaseAuthReady,
+    currentAuthRoleReady,
+    firebaseAuthUser,
+    hasFirebaseAuthSession,
+    userAuthLoading,
+    adminLogoutInProgress,
+  ]);
 
     useEffect(() => {
     if (!isCommunityMenuOpen) return;
@@ -5316,7 +5766,16 @@ function App() {
     authenticatedAdminAccount?.phone,
   ]);
 
-    const goToUserLogin = () => {
+  const goToUserLogin = () => {
+    pendingProtectedUserTabRef.current = '';
+
+    if (
+      userTab !== 'login' &&
+      userTab !== 'signup'
+    ) {
+      saveCurrentUserLoginReturnTarget();
+    }
+
     pushAppPath('user', 'login');
     setView('user');
     setUserTab('login');
@@ -5324,6 +5783,15 @@ function App() {
   };
 
   const goToUserSignup = () => {
+    pendingProtectedUserTabRef.current = '';
+
+    if (
+      userTab !== 'login' &&
+      userTab !== 'signup'
+    ) {
+      saveCurrentUserLoginReturnTarget();
+    }
+
     pushAppPath('user', 'signup');
     setView('user');
     setUserTab('signup');
@@ -5351,12 +5819,28 @@ function App() {
   };
 
   const logoutUser = async () => {
+    pendingProtectedUserTabRef.current = '';
+
+    const shouldLeaveProtectedPage =
+      PROTECTED_USER_TABS.has(userTab);
+
     setUserAuthLoading(true);
 
     try {
       await signOut(firebaseAuth);
+      clearUserLoginReturnTarget();
       clearAdminAuthenticatedSession();
       setUserAuthForm(createDefaultUserAuthForm());
+
+      if (shouldLeaveProtectedPage) {
+        replaceAppPath('user', 'home');
+        setView('user');
+        setUserTab('home');
+        setSelectedFooterPageId('');
+        setSelectedNoticePostId('');
+        setIsCommunityMenuOpen(false);
+      }
+
       triggerToast('로그아웃되었습니다.', 'success');
     } catch (error) {
       console.error('User logout error:', error);
@@ -5544,10 +6028,19 @@ function App() {
         triggerToast('로그인되었습니다.', 'success');
       }
 
-      pushAppPath('user', 'rental');
-      setView('user');
-      setUserTab('rental');
-      setIsCommunityMenuOpen(false);
+      const returnTarget =
+        readUserLoginReturnTarget();
+
+      clearUserLoginReturnTarget();
+
+      navigateToUserReturnTarget(
+        returnTarget || {
+          userTab: 'rental',
+          routeId: '',
+          noticePostId: '',
+        },
+        { replace: true }
+      );
     } catch (error) {
       let signupRollbackFailed = false;
       let firebaseAuthCleanupFailed = false;
@@ -5771,6 +6264,10 @@ function App() {
   const logoutAdmin = async () => {
     if (adminLogoutInProgressRef.current || adminLogoutInProgress) return;
 
+    const shouldLeaveProtectedUserPage =
+      view === 'user' &&
+      PROTECTED_USER_TABS.has(userTab);
+
     adminLogoutInProgressRef.current = true;
     setAdminLogoutInProgress(true);
 
@@ -5791,8 +6288,18 @@ function App() {
       firebaseSignOutFailed = true;
       console.error('Admin Firebase Auth logout error:', error);
     } finally {
+      clearUserLoginReturnTarget();
       clearAdminAuthenticatedSession();
       setAdminAuthForm(createDefaultAdminAuthForm());
+
+      if (shouldLeaveProtectedUserPage) {
+        replaceAppPath('user', 'home');
+        setView('user');
+        setUserTab('home');
+        setSelectedFooterPageId('');
+        setSelectedNoticePostId('');
+        setIsCommunityMenuOpen(false);
+      }
 
       adminLogoutInProgressRef.current = false;
       setAdminLogoutInProgress(false);
@@ -11849,6 +12356,15 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     const normalizedPageId = String(pageId || '').trim();
     if (!normalizedPageId) return;
 
+    pendingProtectedUserTabRef.current = '';
+
+    if (
+      userTab === 'login' ||
+      userTab === 'signup'
+    ) {
+      clearUserLoginReturnTarget();
+    }
+
     pushAppPath('user', 'footerPage', normalizedPageId);
     setView('user');
     setUserTab('footerPage');
@@ -16137,11 +16653,15 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     getUserRequestActionLabel,
     getUserRequestReviewStatusLabel,
     goToUserHome,
+    goToProtectedUserTab,
+    goToUserFaq,
     goToUserLogin,
     goToUserMypage,
+    goToUserNotice,
     goToUserSignup,
     handleAddLaptopClick,
     handleFileUpload,
+    hasFirebaseAuthSession,
     handleAdminTabChange,
     holidayImportConflictModal,
     holidayImportLoading,
@@ -16481,12 +17001,9 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             >
               <button
                 type="button"
-                onClick={() => {
-                  pushAppPath('user', 'rental');
-                  setView('user');
-                  setUserTab('rental');
-                  setIsCommunityMenuOpen(false);
-                }}
+                onClick={() =>
+                  goToProtectedUserTab('rental')
+                }
                 className={`rounded-lg px-2.5 py-2 text-[15px] transition sm:px-3 sm:text-base lg:px-4 lg:text-lg ${
                   userTab === 'rental'
                     ? 'bg-orange-50 font-semibold mk-brand-text'
@@ -16498,12 +17015,9 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
               <button
                 type="button"
-                onClick={() => {
-                  pushAppPath('user', 'history');
-                  setView('user');
-                  setUserTab('history');
-                  setIsCommunityMenuOpen(false);
-                }}
+                onClick={() =>
+                  goToProtectedUserTab('history')
+                }
                 className={`rounded-lg px-2.5 py-2 text-[15px] transition sm:px-3 sm:text-base lg:px-4 lg:text-lg ${
                   userTab === 'history'
                     ? 'bg-orange-50 font-semibold mk-brand-text'
@@ -16536,12 +17050,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                     >
                       <button
                         type="button"
-                        onClick={() => {
-                          pushAppPath('user', 'notice');
-                          setView('user');
-                          setUserTab('notice');
-                          setIsCommunityMenuOpen(false);
-                        }}
+                        onClick={goToUserNotice}
                         className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-bold transition ${
                           userTab === 'notice'
                             ? 'bg-orange-50 mk-brand-text'
@@ -16553,12 +17062,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
                       <button
                         type="button"
-                        onClick={() => {
-                          pushAppPath('user', 'faq');
-                          setView('user');
-                          setUserTab('faq');
-                          setIsCommunityMenuOpen(false);
-                        }}
+                        onClick={goToUserFaq}
                         className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-bold transition ${
                           userTab === 'faq'
                             ? 'bg-orange-50 mk-brand-text'
