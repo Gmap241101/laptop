@@ -21,10 +21,10 @@ const ADMIN_TAB_GROUP = {
   extensionSettings: 'rental',
   holidaySettings: 'rental',
   categories: 'rental',
-  noticePosts: 'content',
-  popupPosts: 'content',
-  faqPosts: 'content',
-  footerManagement: 'content',
+  noticePosts: 'community',
+  faqPosts: 'community',
+  popupPosts: 'site',
+  footerManagement: 'site',
   people: 'accounts',
   memberAccounts: 'accounts',
   adminAccounts: 'accounts',
@@ -323,7 +323,7 @@ export default function AdminWorkspace({ ctx }) {
       );
       const validGroups = Array.isArray(savedGroups)
         ? savedGroups.filter((groupKey) =>
-            ['rental', 'content', 'accounts', 'system'].includes(groupKey)
+            ['rental', 'community', 'site', 'accounts', 'system'].includes(groupKey)
           )
         : [];
 
@@ -370,13 +370,20 @@ export default function AdminWorkspace({ ctx }) {
       ],
     },
     {
-      key: 'content',
-      label: '콘텐츠 관리',
+      key: 'community',
+      label: '커뮤니티 관리',
       Icon: ClipboardList,
       items: [
         ['noticePosts', ClipboardList, '공지사항 관리'],
-        ['popupPosts', ClipboardList, '팝업 관리'],
         ['faqPosts', ClipboardList, 'FAQ 관리'],
+      ],
+    },
+    {
+      key: 'site',
+      label: '사이트 관리',
+      Icon: LayoutDashboard,
+      items: [
+        ['popupPosts', ClipboardList, '팝업 관리'],
         ['footerManagement', ClipboardList, '푸터 관리'],
       ],
     },
@@ -416,13 +423,13 @@ export default function AdminWorkspace({ ctx }) {
         variant={isActive ? 'primary' : 'ghost'}
         onClick={() => handleAdminTabChange(key)}
         className={`relative h-9 w-full justify-start !py-0 text-left ${
-          isNested ? 'px-2 pl-2 text-[13px]' : 'px-3 text-sm'
+          isNested ? 'px-1.5 pl-1.5 text-[13px]' : 'px-3 text-sm'
         } ${isActive ? '' : 'text-slate-700 hover:bg-slate-100'}`}
       >
         {isNested ? (
           <span
             aria-hidden="true"
-            className={`mr-2 h-1.5 w-1.5 shrink-0 rounded-full ${
+            className={`mr-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
               isActive ? 'bg-white' : 'bg-slate-300'
             }`}
           />
@@ -631,7 +638,7 @@ export default function AdminWorkspace({ ctx }) {
                     ])}
                   </div>
 
-                  <div className="my-2 border-t border-slate-200" />
+                  <div className="mb-2 mt-3 border-t border-slate-200" />
 
                   <div className="space-y-1.5">
                     {adminMenuGroups.map((group) => {
@@ -664,7 +671,7 @@ export default function AdminWorkspace({ ctx }) {
                           </button>
 
                           {isExpanded ? (
-                            <div className="ml-5 mt-1 space-y-0.5 border-l border-slate-200 pl-1">
+                            <div className="ml-4 mt-1 space-y-0.5 border-l border-slate-200 pl-1">
                               {group.items.map((item) =>
                                 renderAdminMenuButton(item, { nested: true })
                               )}
