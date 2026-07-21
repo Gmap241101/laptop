@@ -333,6 +333,18 @@ export default function AdminFooterPanel({ ctx }) {
                 />
               </label>
 
+              <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={Boolean(footerPageForm.isTitleBold)}
+                  onChange={(event) =>
+                    setFooterPageForm((prev) => ({ ...prev, isTitleBold: event.target.checked }))
+                  }
+                  className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
+                />
+                제목 항상 굵게
+              </label>
+
               <div>
                 <span className="mb-1.5 block text-xs font-semibold text-slate-600">연결 방식</span>
                 <div className="grid gap-2 sm:grid-cols-2">
@@ -385,18 +397,6 @@ export default function AdminFooterPanel({ ctx }) {
                   </label>
                 </div>
               </div>
-
-              <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={Boolean(footerPageForm.isTitleBold)}
-                  onChange={(event) =>
-                    setFooterPageForm((prev) => ({ ...prev, isTitleBold: event.target.checked }))
-                  }
-                  className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
-                />
-                제목 항상 굵게
-              </label>
 
               {footerPageForm.pageType === 'link' ? (
                 <label className="block">
