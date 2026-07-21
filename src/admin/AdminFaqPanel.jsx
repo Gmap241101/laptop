@@ -1,3 +1,5 @@
+import { ChevronDown, ChevronUp } from 'lucide-react';
+
 import { RichTextContent } from '../components/RichTextEditor.jsx';
 
 export default function AdminFaqPanel({ ctx }) {
@@ -400,6 +402,10 @@ export default function AdminFaqPanel({ ctx }) {
                                       }
                                       className="flex min-w-0 items-center gap-2 px-4 py-3 text-left hover:bg-slate-50"
                                     >
+                                      <span className="w-6 shrink-0 text-sm font-black text-orange-600">
+                                        Q.
+                                      </span>
+
                                       {post.isPinned && (
                                         <span className="shrink-0 rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-700">
                                           고정
@@ -410,10 +416,20 @@ export default function AdminFaqPanel({ ctx }) {
                                         {post.title}
                                       </span>
 
-                                      <span className="shrink-0 text-base font-semibold text-slate-400">
-                                        {isExpanded
-                                          ? '−'
-                                          : '+'}
+                                      <span className="flex h-6 w-6 shrink-0 items-center justify-center text-slate-400">
+                                        {isExpanded ? (
+                                          <ChevronUp
+                                            size={16}
+                                            strokeWidth={2}
+                                            aria-hidden="true"
+                                          />
+                                        ) : (
+                                          <ChevronDown
+                                            size={16}
+                                            strokeWidth={2}
+                                            aria-hidden="true"
+                                          />
+                                        )}
                                       </span>
                                     </button>
 
@@ -475,12 +491,22 @@ export default function AdminFaqPanel({ ctx }) {
                                         }}
                                         className="overflow-hidden"
                                       >
-                                        <div className="border-t border-slate-100 bg-slate-50/70 px-5 py-5">
-                                          <RichTextContent
-                                            html={post.contentHtml}
-                                            text={post.contentText || post.content}
-                                            className="text-sm leading-7 text-slate-700"
-                                          />
+                                        <div className="grid grid-cols-[140px_minmax(0,1fr)_170px] border-t border-slate-100 bg-slate-50/70">
+                                          <div aria-hidden="true" />
+
+                                          <div className="flex min-w-0 items-start gap-2 px-4 py-5">
+                                            <span className="w-6 shrink-0 pt-0.5 text-sm font-black text-orange-600">
+                                              A.
+                                            </span>
+
+                                            <RichTextContent
+                                              html={post.contentHtml}
+                                              text={post.contentText || post.content}
+                                              className="min-w-0 flex-1 text-sm leading-7 text-slate-700"
+                                            />
+                                          </div>
+
+                                          <div aria-hidden="true" />
                                         </div>
                                       </motion.div>
                                     )}
