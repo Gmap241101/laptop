@@ -23,6 +23,12 @@ $backupBranch = "backup-gh-pages-$timestamp"
 $productionBackupCreated = $false
 $projectRoot = $PSScriptRoot
 
+# 특정 브랜치만 가져와도 origin/gh-pages 원격 추적 참조가 반드시 생성되도록
+# 명시적인 fetch refspec을 사용합니다.
+$publishRemoteShortRef = "$RemoteName/$PublishBranch"
+$publishRemoteTrackingRef = "refs/remotes/$RemoteName/$PublishBranch"
+$publishFetchRefspec = "+refs/heads/$($PublishBranch):$publishRemoteTrackingRef"
+
 function Write-Step {
     param([Parameter(Mandatory = $true)][string]$Message)
     Write-Host ""
@@ -223,11 +229,14 @@ try {
 
         if ($lsRemoteExitCode -eq 0) {
             Invoke-NativeCommand "기존 '$PublishBranch' 브랜치 가져오기" {
-                git fetch $RemoteName $PublishBranch
+                git fetch --no-tags $RemoteName $publishFetchRefspec
             }
 
+            # 단순한 'git fetch origin gh-pages'는 저장소의 fetch 설정에 따라
+            # FETCH_HEAD만 갱신하고 origin/gh-pages를 만들지 않을 수 있습니다.
+            # 위에서 명시적으로 생성한 원격 추적 참조를 백업 기준으로 사용합니다.
             Invoke-NativeCommand "기존 운영본 로컬 백업 브랜치 생성" {
-                git branch --force $backupBranch "$RemoteName/$PublishBranch"
+                git branch --force $backupBranch $publishRemoteShortRef
             }
 
             Invoke-NativeCommand "기존 운영본 원격 백업" {
@@ -251,10 +260,10 @@ try {
 
     # 원격 배포 결과 재검증
     Invoke-NativeCommand "배포 결과 원격 확인" {
-        git fetch $RemoteName $PublishBranch
+        git fetch --no-tags $RemoteName $publishFetchRefspec
     }
 
-    $remoteFiles = @(& git ls-tree -r --name-only "$RemoteName/$PublishBranch")
+    $remoteFiles = @(& git ls-tree -r --name-only $publishRemoteShortRef)
     if ($LASTEXITCODE -ne 0) {
         Stop-Deployment "원격 '$PublishBranch' 파일 목록 확인에 실패했습니다."
     }
@@ -267,12 +276,12 @@ try {
         Stop-Deployment "원격 '$PublishBranch' 브랜치에 CNAME이 없습니다."
     }
 
-    $remoteCname = (& git show "$RemoteName/$PublishBranch`:CNAME" | Out-String).Trim()
+    $remoteCname = (& git show "$publishRemoteShortRef`:CNAME" | Out-String).Trim()
     if ($LASTEXITCODE -ne 0 -or $remoteCname -ne $ExpectedCname) {
         Stop-Deployment "원격 CNAME 검증에 실패했습니다. 현재: '$remoteCname', 예상: '$ExpectedCname'"
     }
 
-    $remoteCommit = (& git rev-parse "$RemoteName/$PublishBranch" | Out-String).Trim()
+    $remoteCommit = (& git rev-parse $publishRemoteShortRef | Out-String).Trim()
 
     Write-Host ""
     Write-Host "========================================" -ForegroundColor Green
