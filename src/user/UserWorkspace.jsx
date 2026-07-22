@@ -4,6 +4,7 @@ import UserMyPagePanel from './UserMyPagePanel.jsx';
 import UserRentalPanel from './UserRentalPanel.jsx';
 import UserRequestHistoryPanel from './UserRequestHistoryPanel.jsx';
 import UserFooterPagePanel from './UserFooterPagePanel.jsx';
+import UserHomePanel from './UserHomePanel.jsx';
 
 export default function UserWorkspace({ ctx }) {
   const {
@@ -62,6 +63,10 @@ export default function UserWorkspace({ ctx }) {
         </p>
       </div>
     );
+  }
+
+  if (userTab === 'home') {
+    return <UserHomePanel ctx={ctx} />;
   }
 
   if (userTab === 'rental') {

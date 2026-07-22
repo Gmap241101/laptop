@@ -61,6 +61,17 @@ export const SITE_FOOTER_CONFIG_DOC_REF = doc(
   'config'
 );
 
+export const HOME_BANNERS_COLLECTION_REF = collection(
+  db,
+  'homeBanners'
+);
+
+export const HOME_PAGE_CONFIG_DOC_REF = doc(
+  db,
+  'homePage',
+  'config'
+);
+
 export const NOTICE_BOARD_CONFIG_DOC_REF = doc(
   db,
   'noticeBoard',

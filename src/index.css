@@ -451,3 +451,42 @@ body {
     display: initial;
   }
 }
+
+/* 사용자 초기화면 바로가기 배너 롤링 */
+@keyframes homeQuickTickerScroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.home-quick-ticker {
+  position: relative;
+  mask-image: linear-gradient(to right, transparent, #000 2.5rem, #000 calc(100% - 2.5rem), transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 2.5rem, #000 calc(100% - 2.5rem), transparent);
+}
+
+.home-quick-ticker-animate {
+  animation: homeQuickTickerScroll 30s linear infinite;
+  will-change: transform;
+}
+
+.home-quick-ticker:hover .home-quick-ticker-animate,
+.home-quick-ticker:focus-within .home-quick-ticker-animate {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-quick-ticker {
+    overflow-x: auto;
+    mask-image: none;
+    -webkit-mask-image: none;
+  }
+
+  .home-quick-ticker-animate {
+    animation: none;
+    transform: none;
+  }
+}

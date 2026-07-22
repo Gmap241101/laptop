@@ -3124,6 +3124,19 @@ function App() {
   };
 
   const goToAppHome = () => {
+    if (
+      view === 'admin' &&
+      typeof window !== 'undefined' &&
+      window.__mkHomeBannerUnsaved &&
+      !window.confirm('저장하지 않은 초기화면 배너 또는 표시 설정 변경사항이 있습니다. 저장하지 않고 이동하시겠습니까?')
+    ) {
+      return;
+    }
+
+    if (typeof window !== 'undefined') {
+      window.__mkHomeBannerUnsaved = false;
+    }
+
     if (view === 'admin') {
       pushAppPath('admin');
       setView('admin');
@@ -8696,7 +8709,9 @@ function App() {
     hasAdminAccess && adminTab === 'laptops';
 
   const shouldPrepareRentalStatus =
-    shouldShowStats || shouldPrepareAdminAssetList;
+    shouldShowStats ||
+    shouldPrepareAdminAssetList ||
+    (view === 'user' && userTab === 'home');
 
   const rentalStatusSummary = useMemo(() => {
     const emptyStats = {
@@ -16631,6 +16646,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     applyEditTempBorrower,
     applyEditTempTeam,
     authenticateAdmin,
+    authenticatedAdminAccount,
     authenticatedAdminId,
     availabilityFilter,
     availableFilterLabel,
@@ -16946,6 +16962,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     tempSettings,
     tempTeams,
     toast,
+    stats,
     today,
     toggleAdminFaqPost,
     toggleFaqPost,

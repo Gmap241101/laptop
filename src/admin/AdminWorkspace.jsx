@@ -13,6 +13,7 @@ import AdminAccountsPanel from './AdminAccountsPanel.jsx';
 import AdminSettingsPanel from './AdminSettingsPanel.jsx';
 import AdminExtensionSettingsPanel from './AdminExtensionSettingsPanel.jsx';
 import AdminHolidayManagementPanel from './AdminHolidayManagementPanel.jsx';
+import AdminHomeBannerPanel from './AdminHomeBannerPanel.jsx';
 
 const ADMIN_MENU_GROUP_STATE_KEY = 'mk_laptop_admin_menu_groups';
 
@@ -23,6 +24,9 @@ const ADMIN_TAB_GROUP = {
   categories: 'rental',
   noticePosts: 'community',
   faqPosts: 'community',
+  heroBanners: 'site',
+  promotionBanners: 'site',
+  quickLinkBanners: 'site',
   popupPosts: 'site',
   footerManagement: 'site',
   people: 'accounts',
@@ -383,6 +387,9 @@ export default function AdminWorkspace({ ctx }) {
       label: '사이트 관리',
       Icon: LayoutDashboard,
       items: [
+        ['heroBanners', LayoutDashboard, '메인 비주얼 관리'],
+        ['promotionBanners', LayoutDashboard, '프로모션 배너 관리'],
+        ['quickLinkBanners', LayoutDashboard, '바로가기 배너 관리'],
         ['popupPosts', ClipboardList, '팝업 관리'],
         ['footerManagement', ClipboardList, '푸터 관리'],
       ],
@@ -421,7 +428,19 @@ export default function AdminWorkspace({ ctx }) {
       <Button
         key={key}
         variant={isActive ? 'primary' : 'ghost'}
-        onClick={() => handleAdminTabChange(key)}
+        onClick={() => {
+          if (
+            typeof window !== 'undefined' &&
+            window.__mkHomeBannerUnsaved &&
+            !window.confirm('저장하지 않은 초기화면 배너 또는 표시 설정 변경사항이 있습니다. 저장하지 않고 이동하시겠습니까?')
+          ) {
+            return;
+          }
+          if (typeof window !== 'undefined') {
+            window.__mkHomeBannerUnsaved = false;
+          }
+          handleAdminTabChange(key);
+        }}
         className={`relative h-9 w-full justify-start !py-0 text-left ${
           isNested ? 'px-1.5 pl-1.5 text-[13px]' : 'px-3 text-sm'
         } ${isActive ? '' : 'text-slate-700 hover:bg-slate-100'}`}
@@ -723,6 +742,21 @@ export default function AdminWorkspace({ ctx }) {
                                     {/* 공지사항 관리 탭 */}
                   {adminTab === 'noticePosts' && (
                     <AdminNoticePanel ctx={ctx} />
+                  )}
+
+                  {/* 메인 비주얼 관리 탭 */}
+                  {adminTab === 'heroBanners' && (
+                    <AdminHomeBannerPanel ctx={ctx} placement="hero" />
+                  )}
+
+                  {/* 프로모션 배너 관리 탭 */}
+                  {adminTab === 'promotionBanners' && (
+                    <AdminHomeBannerPanel ctx={ctx} placement="promotion" />
+                  )}
+
+                  {/* 바로가기 배너 관리 탭 */}
+                  {adminTab === 'quickLinkBanners' && (
+                    <AdminHomeBannerPanel ctx={ctx} placement="quickLink" />
                   )}
 
                   {/* 팝업 관리 탭 */}
