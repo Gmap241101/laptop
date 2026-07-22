@@ -847,15 +847,15 @@ export default function AdminHomeBannerPanel({ ctx, placement }) {
             <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">{panelConfig.emptyLabel}</div>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-slate-200">
-              <table className="min-w-[900px] w-full border-collapse text-left">
+              <table className="w-full min-w-[760px] table-fixed border-collapse text-left lg:min-w-0">
                 <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600">
                   <tr>
                     <th className="w-24 border-b border-slate-200 px-3 py-3 text-center">순서</th>
                     <th className="w-20 border-b border-slate-200 px-3 py-3 text-center">사용</th>
                     <th className="w-36 border-b border-slate-200 px-3 py-3">미리보기</th>
                     <th className="border-b border-slate-200 px-4 py-3">제목·연결</th>
-                    <th className="w-44 border-b border-slate-200 px-3 py-3 text-center">노출 기간</th>
-                    <th className="w-24 border-b border-slate-200 px-3 py-3 text-center">상태</th>
+                    <th className="w-[132px] border-b border-slate-200 px-2 py-3 text-center">노출 기간</th>
+                    <th className="w-[72px] border-b border-slate-200 px-2 py-3 text-center">상태</th>
                     <th className="w-24 border-b border-slate-200 px-3 py-3 text-center">관리</th>
                   </tr>
                 </thead>
@@ -888,15 +888,33 @@ export default function AdminHomeBannerPanel({ ctx, placement }) {
                         <td className="min-w-0 px-4 py-3">
                           <div className="truncate text-sm font-bold text-slate-800">{banner.title || banner.altText || '제목 없음'}</div>
                           {banner.subtitle && <div className="mt-1 truncate text-[11px] text-slate-500">{banner.subtitle}</div>}
-                          <div className="mt-1 flex items-center gap-1 truncate text-[10px] text-slate-400">
-                            {banner.linkType === 'none' ? <><Monitor size={11} /> 링크 없음</> : <><Link2 size={11} /> {banner.linkValue}</>}
+                          <div className="mt-1 flex min-w-0 items-start gap-1 text-[10px] leading-4 text-slate-400">
+                            {banner.linkType === 'none' ? (
+                              <><Monitor size={11} className="mt-0.5 shrink-0" /><span>링크 없음</span></>
+                            ) : (
+                              <>
+                                <Link2 size={11} className="mt-0.5 shrink-0" />
+                                <span
+                                  title={banner.linkValue || ''}
+                                  className={placement === 'quickLink' ? 'min-w-0 break-all' : 'min-w-0 truncate'}
+                                  style={placement === 'quickLink' ? {
+                                    display: '-webkit-box',
+                                    WebkitBoxOrient: 'vertical',
+                                    WebkitLineClamp: 2,
+                                    overflow: 'hidden',
+                                  } : undefined}
+                                >
+                                  {banner.linkValue}
+                                </span>
+                              </>
+                            )}
                           </div>
                         </td>
-                        <td className="px-3 py-3 text-center text-[10px] leading-5 text-slate-500">
-                          <div>{formatDateTime(banner.startAt)}</div>
-                          <div>~ {banner.isIndefinite ? '무기한' : formatDateTime(banner.endAt)}</div>
+                        <td className="px-2 py-3 text-center text-[10px] leading-5 text-slate-500">
+                          <div className="whitespace-nowrap">{formatDateTime(banner.startAt)}</div>
+                          <div className="whitespace-nowrap">~ {banner.isIndefinite ? '무기한' : formatDateTime(banner.endAt)}</div>
                         </td>
-                        <td className="px-3 py-3 text-center"><span className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-bold ${statusClassName[status.key]}`}>{status.label}</span></td>
+                        <td className="px-2 py-3 text-center"><span className={`inline-flex whitespace-nowrap rounded-full border px-2 py-1 text-[10px] font-bold ${statusClassName[status.key]}`}>{status.label}</span></td>
                         <td className="px-3 py-3">
                           <div className="flex justify-center gap-1">
                             <button type="button" onClick={() => openEdit(banner)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50" aria-label="수정"><Edit3 size={14} /></button>
