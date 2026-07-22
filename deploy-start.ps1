@@ -16,6 +16,7 @@ $ExpectedCname = "notebook.recruit.kro.kr"
 $ExpectedRemoteUrlFragment = "Gmap241101/laptop.git"
 $CreateProductionBackup = $true
 $RequireConfirmation = $true
+$ScriptVersion = "2026.07.22-v5"
 
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $commitMessage = "운영 배포_$timestamp"
@@ -59,6 +60,7 @@ try {
 
     Write-Host "========================================"
     Write-Host "GitHub Pages 운영 배포 시작"
+    Write-Host "스크립트 버전: $ScriptVersion"
     Write-Host "작업 폴더 : $projectRoot"
     Write-Host "소스 브랜치: $ExpectedSourceBranch"
     Write-Host "배포 브랜치: $PublishBranch"
@@ -255,7 +257,10 @@ try {
     }
 
     Invoke-NativeCommand "GitHub Pages 운영 브랜치 배포" {
-        & $ghPagesCommand -d "dist" -b $PublishBranch -r $RemoteName -m $commitMessage
+        # gh-pages의 --repo 옵션에는 Git 원격 별칭(origin)이 아니라
+        # 실제 저장소 URL을 전달해야 합니다.
+        Write-Host "gh-pages 대상 저장소: $remoteUrl" -ForegroundColor DarkGray
+        & $ghPagesCommand -d "dist" -b $PublishBranch --repo $remoteUrl -m $commitMessage
     }
 
     # 원격 배포 결과 재검증
