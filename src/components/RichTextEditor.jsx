@@ -29,6 +29,7 @@ import {
 const ALLOWED_TAGS = new Set([
   'P',
   'BR',
+  'WBR',
   'STRONG',
   'B',
   'EM',
@@ -45,6 +46,8 @@ const ALLOWED_TAGS = new Set([
   'BLOCKQUOTE',
   'A',
   'IMG',
+  'PICTURE',
+  'SOURCE',
   'FIGURE',
   'FIGCAPTION',
   'HR',
@@ -179,6 +182,43 @@ const isSafeLinkUrl = (value = '') => {
 
   return isSafeHttpUrl(normalized);
 };
+
+const isSafeImageSrcSet = (value = '') => {
+  const candidates = String(value || '')
+    .split(',')
+    .map((candidate) => candidate.trim())
+    .filter(Boolean);
+
+  if (candidates.length === 0 || candidates.length > 12) return false;
+
+  return candidates.every((candidate) => {
+    const parts = candidate.split(/\s+/).filter(Boolean);
+    if (parts.length < 1 || parts.length > 2 || !isSafeHttpUrl(parts[0])) return false;
+    if (parts.length === 1) return true;
+    return /^(?:\d+w|\d+(?:\.\d+)?x)$/i.test(parts[1]);
+  });
+};
+
+const isSafeResponsiveSizes = (value = '') => {
+  const normalized = String(value || '').trim();
+  return Boolean(
+    normalized &&
+    normalized.length <= 500 &&
+    !/[<>`{}]|url\s*\(|expression\s*\(|javascript:/i.test(normalized)
+  );
+};
+
+const isSafeResponsiveMedia = (value = '') => {
+  const normalized = String(value || '').trim();
+  return Boolean(
+    normalized &&
+    normalized.length <= 240 &&
+    /^[a-z0-9\s:().,/%+\-]+$/i.test(normalized)
+  );
+};
+
+const isSafeImageMimeType = (value = '') =>
+  /^image\/(?:avif|gif|jpeg|png|svg\+xml|webp)$/i.test(String(value || '').trim());
 
 
 const parseYouTubeTimeValue = (value = '') => {
@@ -434,12 +474,22 @@ const sanitizeElementAttributes = (element) => {
     if (!isSafeHttpUrl(videoSrc)) return false;
   }
 
+  if (element.tagName === 'SOURCE') {
+    const sourceSet = element.getAttribute('srcset') || '';
+    if (element.parentElement?.tagName !== 'PICTURE' || !isSafeImageSrcSet(sourceSet)) return false;
+  }
+
   [...element.attributes].forEach((attribute) => {
     const name = attribute.name.toLowerCase();
     const value = attribute.value;
     let keep = false;
 
     if (name.startsWith('on')) {
+      element.removeAttribute(attribute.name);
+      return;
+    }
+
+    if (['WBR', 'PICTURE', 'SOURCE', 'BR'].includes(element.tagName) && name === 'style') {
       element.removeAttribute(attribute.name);
       return;
     }
@@ -455,8 +505,20 @@ const sanitizeElementAttributes = (element) => {
       keep = ['href', 'target', 'rel', 'title'].includes(name);
       if (name === 'href' && !isSafeLinkUrl(value)) keep = false;
     } else if (element.tagName === 'IMG') {
-      keep = ['src', 'alt', 'title', 'width', 'height', 'loading'].includes(name);
+      keep = ['src', 'srcset', 'sizes', 'alt', 'title', 'width', 'height', 'loading'].includes(name);
       if (name === 'src' && !isSafeHttpUrl(value)) keep = false;
+      if (name === 'srcset' && !isSafeImageSrcSet(value)) keep = false;
+      if (name === 'sizes' && !isSafeResponsiveSizes(value)) keep = false;
+    } else if (element.tagName === 'SOURCE') {
+      keep = ['srcset', 'sizes', 'media', 'type', 'width', 'height'].includes(name);
+      if (name === 'srcset' && !isSafeImageSrcSet(value)) keep = false;
+      if (name === 'sizes' && !isSafeResponsiveSizes(value)) keep = false;
+      if (name === 'media' && !isSafeResponsiveMedia(value)) keep = false;
+      if (name === 'type' && !isSafeImageMimeType(value)) keep = false;
+    } else if (element.tagName === 'BR') {
+      keep = name === 'data-mobile-only';
+    } else if (element.tagName === 'SPAN') {
+      keep = name === 'data-nowrap';
     } else if (element.tagName === 'IFRAME') {
       keep = ['src', 'title', 'allow', 'allowfullscreen', 'loading', 'referrerpolicy', 'frameborder', 'width', 'height'].includes(name);
     } else if (element.tagName === 'VIDEO') {
@@ -474,6 +536,14 @@ const sanitizeElementAttributes = (element) => {
 
     if (!keep) element.removeAttribute(attribute.name);
   });
+
+  if (element.tagName === 'BR' && element.hasAttribute('data-mobile-only')) {
+    element.setAttribute('data-mobile-only', 'true');
+  }
+
+  if (element.tagName === 'SPAN' && element.hasAttribute('data-nowrap')) {
+    element.setAttribute('data-nowrap', 'true');
+  }
 
   if (element.tagName === 'A') {
     element.setAttribute('target', '_blank');
@@ -612,6 +682,7 @@ export const richTextHtmlToText = (html = '') => {
 
   return String(container.textContent || '')
     .replace(/\u200B/g, '')
+    .replace(/\u00AD/g, '')
     .replace(/\u00a0/g, ' ')
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n[ \t]+/g, '\n')
@@ -729,6 +800,69 @@ const addHtml5VideoEditorControls = (container) => {
   });
 };
 
+const addResponsiveEditorMarkers = (container) => {
+  if (!container?.querySelectorAll || typeof document === 'undefined') return;
+
+  container.querySelectorAll('wbr').forEach((wbr) => {
+    const marker = document.createElement('span');
+    marker.setAttribute('data-editor-wbr-marker', 'true');
+    marker.setAttribute('contenteditable', 'false');
+    marker.setAttribute('title', '조건부 줄바꿈 <wbr>');
+    marker.textContent = '¦';
+    wbr.replaceWith(marker);
+  });
+
+  container.querySelectorAll('br[data-mobile-only]').forEach((lineBreak) => {
+    const marker = document.createElement('span');
+    marker.setAttribute('data-editor-mobile-break-marker', 'true');
+    marker.setAttribute('contenteditable', 'false');
+    marker.setAttribute('title', '모바일 전용 줄바꿈 <br data-mobile-only>');
+    marker.textContent = 'M↵';
+    lineBreak.replaceWith(marker);
+  });
+
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const softHyphenNodes = [];
+  let textNode = walker.nextNode();
+  while (textNode) {
+    if (String(textNode.textContent || '').includes('\u00AD')) softHyphenNodes.push(textNode);
+    textNode = walker.nextNode();
+  }
+
+  softHyphenNodes.forEach((node) => {
+    const parts = String(node.textContent || '').split('\u00AD');
+    const fragment = document.createDocumentFragment();
+    parts.forEach((part, index) => {
+      if (part) fragment.appendChild(document.createTextNode(part));
+      if (index < parts.length - 1) {
+        const marker = document.createElement('span');
+        marker.setAttribute('data-editor-shy-marker', 'true');
+        marker.setAttribute('contenteditable', 'false');
+        marker.setAttribute('title', '소프트 하이픈 &shy;');
+        marker.textContent = '¬';
+        fragment.appendChild(marker);
+      }
+    });
+    node.replaceWith(fragment);
+  });
+};
+
+const restoreResponsiveEditorMarkers = (container) => {
+  if (!container?.querySelectorAll || typeof document === 'undefined') return;
+
+  container.querySelectorAll('[data-editor-wbr-marker]').forEach((marker) => {
+    marker.replaceWith(document.createElement('wbr'));
+  });
+  container.querySelectorAll('[data-editor-mobile-break-marker]').forEach((marker) => {
+    const lineBreak = document.createElement('br');
+    lineBreak.setAttribute('data-mobile-only', 'true');
+    marker.replaceWith(lineBreak);
+  });
+  container.querySelectorAll('[data-editor-shy-marker]').forEach((marker) => {
+    marker.replaceWith(document.createTextNode('\u00AD'));
+  });
+};
+
 const prepareEditorPreviewHtml = (html = '') => {
   if (typeof document === 'undefined') return sanitizeRichTextHtml(html);
 
@@ -756,12 +890,14 @@ const prepareEditorPreviewHtml = (html = '') => {
 
   addYouTubeEditorControls(container);
   addHtml5VideoEditorControls(container);
+  addResponsiveEditorMarkers(container);
   return container.innerHTML;
 };
 
 const getStoredHtmlFromEditor = (editor) => {
   if (!editor || typeof document === 'undefined') return '';
   const clone = editor.cloneNode(true);
+  restoreResponsiveEditorMarkers(clone);
   clone.querySelectorAll('iframe[data-stored-youtube-src]').forEach((iframe) => {
     iframe.setAttribute('src', iframe.getAttribute('data-stored-youtube-src') || '');
     iframe.removeAttribute('data-stored-youtube-src');
@@ -841,6 +977,7 @@ export function RichTextEditor({
   const [tableHasHeader, setTableHasHeader] = useState(true);
   const [tableError, setTableError] = useState('');
   const [editingTable, setEditingTable] = useState(false);
+  const [responsivePanelOpen, setResponsivePanelOpen] = useState(false);
 
   useEffect(() => {
     const nextHtml = String(value || '');
@@ -915,6 +1052,7 @@ export function RichTextEditor({
     setFontSizePanelOpen(false);
     setLineHeightPanelOpen(false);
     setTablePanelOpen(false);
+    setResponsivePanelOpen(false);
     setFontSizeError('');
     setLineHeightError('');
     setTableError('');
@@ -1637,8 +1775,71 @@ export function RichTextEditor({
     closeImagePanel();
   };
 
+  const insertResponsiveMarkup = (type) => {
+    if (disabled || sourceMode) return;
+    focusEditor();
+    restoreSelection();
+
+    const selection = window.getSelection?.();
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    if (!range || !editorRef.current?.contains(range.commonAncestorContainer)) return;
+
+    if (type === 'nowrap') {
+      if (!range.collapsed) {
+        const startBlock = getElementFromNode(range.startContainer)?.closest?.(RICH_TEXT_BLOCK_SELECTOR);
+        const endBlock = getElementFromNode(range.endContainer)?.closest?.(RICH_TEXT_BLOCK_SELECTOR);
+        if (startBlock !== endBlock) {
+          window.alert('줄바꿈 금지는 같은 문단 또는 같은 표 셀 안의 짧은 문자열에만 적용할 수 있습니다.');
+          return;
+        }
+      }
+
+      const wrapper = document.createElement('span');
+      wrapper.setAttribute('data-nowrap', 'true');
+
+      if (range.collapsed) {
+        const placeholder = document.createTextNode('\u200B');
+        wrapper.appendChild(placeholder);
+        range.insertNode(wrapper);
+        range.setStart(placeholder, placeholder.textContent.length);
+      } else {
+        wrapper.appendChild(range.extractContents());
+        range.insertNode(wrapper);
+        range.setStartAfter(wrapper);
+      }
+
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      savedRangeRef.current = range.cloneRange();
+    } else {
+      const markup = type === 'wbr'
+        ? '<wbr>'
+        : type === 'shy'
+          ? '&shy;'
+          : '<br data-mobile-only>';
+      document.execCommand('insertHTML', false, prepareEditorPreviewHtml(markup));
+    }
+
+    emitChange();
+    saveSelection();
+    setResponsivePanelOpen(false);
+  };
+
+  const toggleResponsivePanel = () => {
+    saveSelection();
+    setResponsivePanelOpen((prev) => !prev);
+    setFontSizePanelOpen(false);
+    setLineHeightPanelOpen(false);
+    setTablePanelOpen(false);
+    setImagePanelOpen(false);
+    setYouTubePanelOpen(false);
+    setHtml5VideoPanelOpen(false);
+  };
+
   const toggleSourceMode = () => {
     if (disabled) return;
+    setResponsivePanelOpen(false);
 
     if (sourceMode) {
       const sanitizedHtml = sanitizeRichTextHtml(sourceValue);
@@ -1892,6 +2093,21 @@ export function RichTextEditor({
           )}
           <button
             type="button"
+            title="모바일 반응형 조판"
+            aria-label="모바일 반응형 조판"
+            disabled={disabled || sourceMode}
+            onMouseDown={(event) => {
+              event.preventDefault();
+              saveSelection();
+            }}
+            onClick={toggleResponsivePanel}
+            className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-bold transition ${responsivePanelOpen ? 'border-orange-300 bg-orange-50 text-orange-700' : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600'} disabled:cursor-not-allowed disabled:opacity-50`}
+          >
+            <span aria-hidden="true" className="text-xs">↔</span>
+            반응형
+          </button>
+          <button
+            type="button"
             title="표 삽입·편집"
             aria-label="표 삽입·편집"
             disabled={disabled || sourceMode}
@@ -1920,6 +2136,38 @@ export function RichTextEditor({
             {sourceMode ? '편집기 보기' : '태그보기'}
           </button>
         </div>
+
+        {responsivePanelOpen && !sourceMode && (
+          <div className="border-b border-slate-200 bg-indigo-50/50 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-bold text-slate-800">모바일 반응형 조판</div>
+                <div className="mt-0.5 text-[10px] leading-4 text-slate-500">
+                  PC 편집 화면에는 조판부호가 보이지만 사용자 화면에는 표시되지 않습니다. &lt;picture&gt;·&lt;source&gt;·srcset·sizes는 태그보기에서 직접 입력할 수 있습니다.
+                </div>
+              </div>
+              <button type="button" onClick={() => setResponsivePanelOpen(false)} className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-slate-700"><X size={16} /></button>
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => insertResponsiveMarkup('wbr')} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-left hover:border-indigo-300">
+                <span className="block text-xs font-bold text-slate-800">¦ 조건부 줄바꿈</span>
+                <span className="mt-1 block text-[10px] leading-4 text-slate-500">폭이 부족할 때만 &lt;wbr&gt; 위치에서 줄바꿈합니다.</span>
+              </button>
+              <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => insertResponsiveMarkup('shy')} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-left hover:border-indigo-300">
+                <span className="block text-xs font-bold text-slate-800">¬ 소프트 하이픈</span>
+                <span className="mt-1 block text-[10px] leading-4 text-slate-500">영문 단어가 나뉠 때만 하이픈을 표시합니다.</span>
+              </button>
+              <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => insertResponsiveMarkup('mobile-break')} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-left hover:border-indigo-300">
+                <span className="block text-xs font-bold text-slate-800">M↵ 모바일 줄바꿈</span>
+                <span className="mt-1 block text-[10px] leading-4 text-slate-500">640px 이하 화면에서만 강제로 줄을 바꿉니다.</span>
+              </button>
+              <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => insertResponsiveMarkup('nowrap')} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-left hover:border-indigo-300">
+                <span className="block text-xs font-bold text-slate-800">↔ 줄바꿈 금지</span>
+                <span className="mt-1 block text-[10px] leading-4 text-slate-500">선택한 짧은 전화번호·날짜 등을 한 줄로 묶습니다.</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         {fontSizePanelOpen && !sourceMode && (
           <div className="border-b border-slate-200 bg-violet-50/50 p-3">
@@ -2317,8 +2565,8 @@ export function RichTextEditor({
 
       <p className="text-[10px] leading-4 text-slate-500">
         {allowVideos
-          ? '글자 크기·줄간격·표 편집과 외부 이미지·동영상 링크를 지원합니다. YouTube URL·임베드 태그, 일반 동영상 태그와 안전한 HTML 태그를 붙여넣을 수 있습니다.'
-          : '글자 크기·줄간격·표 편집, 외부 이미지 URL, 링크와 안전한 HTML 태그를 사용할 수 있습니다. 이 영역에는 동영상이 저장되지 않습니다.'}
+          ? '글자 크기·줄간격·표 편집, 모바일 반응형 조판과 외부 이미지·동영상 링크를 지원합니다. YouTube URL·임베드 태그, 일반 동영상 태그와 안전한 HTML 태그를 붙여넣을 수 있습니다.'
+          : '글자 크기·줄간격·표 편집, 모바일 반응형 조판, 외부 이미지 URL, 링크와 안전한 HTML 태그를 사용할 수 있습니다. 이 영역에는 동영상이 저장되지 않습니다.'}
       </p>
     </div>
   );

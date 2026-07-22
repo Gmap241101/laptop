@@ -258,11 +258,20 @@ const createDefaultFooterConfigDraft = () => ({
 
 const FOOTER_PAGE_TYPE_CONTENT = 'content';
 const FOOTER_PAGE_TYPE_LINK = 'link';
+const FOOTER_TITLE_DISPLAY_TEXT = 'text';
+const FOOTER_TITLE_DISPLAY_IMAGE = 'image';
 
 const getNormalizedFooterPageType = (value) =>
   value === FOOTER_PAGE_TYPE_LINK
     ? FOOTER_PAGE_TYPE_LINK
     : FOOTER_PAGE_TYPE_CONTENT;
+
+const getNormalizedFooterTitleDisplayType = (value) =>
+  value === FOOTER_TITLE_DISPLAY_IMAGE
+    ? FOOTER_TITLE_DISPLAY_IMAGE
+    : FOOTER_TITLE_DISPLAY_TEXT;
+
+const isFooterDisplayOnlyLink = (value = '') => String(value || '').trim() === '#';
 
 const getSafeFooterLinkUrl = (value = '') => {
   const normalizedValue = String(value || '').trim();
@@ -280,6 +289,8 @@ const getSafeFooterLinkUrl = (value = '') => {
 const createDefaultFooterPageForm = () => ({
   enabled: true,
   title: '',
+  titleDisplayType: FOOTER_TITLE_DISPLAY_TEXT,
+  titleImageUrl: '',
   pageType: FOOTER_PAGE_TYPE_CONTENT,
   linkUrl: '',
   isTitleBold: false,
@@ -12170,6 +12181,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     const nextForm = {
       enabled: page ? page.enabled !== false : true,
       title: page?.title || '',
+      titleDisplayType: getNormalizedFooterTitleDisplayType(page?.titleDisplayType),
+      titleImageUrl: String(page?.titleImageUrl || ''),
       pageType: getNormalizedFooterPageType(page?.pageType),
       linkUrl: String(page?.linkUrl || ''),
       isTitleBold: Boolean(page?.isTitleBold),
@@ -12225,14 +12238,33 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     }
 
     const title = String(footerPageForm.title || '').trim();
+    const titleDisplayType = getNormalizedFooterTitleDisplayType(footerPageForm.titleDisplayType);
+    const rawTitleImageUrl = String(footerPageForm.titleImageUrl || '').trim();
+    const safeTitleImageUrl = getSafeFooterLinkUrl(rawTitleImageUrl);
     const pageType = getNormalizedFooterPageType(footerPageForm.pageType);
     const rawLinkUrl = String(footerPageForm.linkUrl || '').trim();
-    const safeLinkUrl = getSafeFooterLinkUrl(rawLinkUrl);
+    const isDisplayOnlyLink = isFooterDisplayOnlyLink(rawLinkUrl);
+    const safeLinkUrl = isDisplayOnlyLink ? '#' : getSafeFooterLinkUrl(rawLinkUrl);
     const contentHtml = sanitizeRichTextHtml(footerPageForm.contentHtml || '');
     const contentText = richTextHtmlToText(contentHtml);
 
     if (!title) {
-      triggerToast('푸터 메뉴 제목을 입력해 주세요.', 'error');
+      triggerToast(
+        titleDisplayType === FOOTER_TITLE_DISPLAY_IMAGE
+          ? '이미지의 대체 텍스트와 상세 페이지 제목을 입력해 주세요.'
+          : '푸터 메뉴 제목을 입력해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    if (titleDisplayType === FOOTER_TITLE_DISPLAY_IMAGE && !rawTitleImageUrl) {
+      triggerToast('푸터 메뉴에 표시할 이미지 주소를 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (titleDisplayType === FOOTER_TITLE_DISPLAY_IMAGE && !safeTitleImageUrl) {
+      triggerToast('이미지 주소는 http:// 또는 https://로 시작하는 전체 주소여야 합니다.', 'error');
       return;
     }
 
@@ -12251,7 +12283,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
     if (pageType === FOOTER_PAGE_TYPE_LINK && !safeLinkUrl) {
       triggerToast(
-        'http:// 또는 https://로 시작하는 올바른 링크 주소를 입력해 주세요.',
+        'http:// 또는 https://로 시작하는 올바른 링크 주소를 입력하거나, 이동 없이 표시만 하려면 #을 입력해 주세요.',
         'error'
       );
       return;
@@ -12283,6 +12315,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         id: pageDocRef.id,
         enabled: Boolean(footerPageForm.enabled),
         title,
+        titleDisplayType,
+        titleImageUrl: safeTitleImageUrl,
         pageType,
         linkUrl: safeLinkUrl || rawLinkUrl,
         isTitleBold: Boolean(footerPageForm.isTitleBold),

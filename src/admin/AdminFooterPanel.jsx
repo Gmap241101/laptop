@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import {
   ArrowDown,
   ArrowUp,
@@ -7,6 +8,15 @@ import {
   X,
 } from 'lucide-react';
 import { RichTextEditor } from '../components/RichTextEditor.jsx';
+
+const isSafeHttpImageUrl = (value = '') => {
+  try {
+    const parsedUrl = new URL(String(value || '').trim());
+    return parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
 
 export default function AdminFooterPanel({ ctx }) {
   const {
@@ -34,6 +44,13 @@ export default function AdminFooterPanel({ ctx }) {
     setFooterPageForm,
     toggleFooterPageEnabled,
   } = ctx;
+
+  const [titleImagePreviewFailed, setTitleImagePreviewFailed] = useState(false);
+  const isImageTitle = footerPageForm.titleDisplayType === 'image';
+
+  useEffect(() => {
+    setTitleImagePreviewFailed(false);
+  }, [footerPageForm.titleImageUrl, footerPageForm.titleDisplayType]);
 
   return (
     <div className="space-y-8">
@@ -211,19 +228,32 @@ export default function AdminFooterPanel({ ctx }) {
                           <span
                             className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
                               page.pageType === 'link'
-                                ? 'border-orange-200 bg-orange-50 text-orange-700'
+                                ? String(page.linkUrl || '').trim() === '#'
+                                  ? 'border-slate-300 bg-slate-100 text-slate-700'
+                                  : 'border-orange-200 bg-orange-50 text-orange-700'
                                 : 'border-sky-200 bg-sky-50 text-sky-700'
                             }`}
                           >
-                            {page.pageType === 'link' ? '링크' : '본문'}
+                            {page.pageType === 'link'
+                              ? String(page.linkUrl || '').trim() === '#'
+                                ? '표시만'
+                                : '링크'
+                              : '본문'}
                           </span>
+                          {page.titleDisplayType === 'image' && isSafeHttpImageUrl(page.titleImageUrl) ? (
+                            <img
+                              src={page.titleImageUrl}
+                              alt=""
+                              className="h-5 max-w-24 shrink-0 object-contain"
+                            />
+                          ) : null}
                           <div className="min-w-0 truncate text-sm font-semibold text-slate-800">
                             {page.title}
                           </div>
                         </div>
                       </td>
                       <td className="px-3 py-3 text-center text-xs font-semibold text-slate-600">
-                        {page.isTitleBold ? '사용' : '-'}
+                        {page.titleDisplayType === 'image' ? '해당 없음' : page.isTitleBold ? '사용' : '-'}
                       </td>
                       <td className="px-3 py-3 text-center text-xs text-slate-500">
                         {ctx.formatFirestoreDate(page.updatedAt || page.createdAt)}
@@ -319,30 +349,127 @@ export default function AdminFooterPanel({ ctx }) {
                 </div>
               </div>
 
+              <div>
+                <span className="mb-1.5 block text-xs font-semibold text-slate-600">제목 표시 방식</span>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <label
+                    className={`cursor-pointer rounded-xl border px-4 py-3 transition ${
+                      !isImageTitle
+                        ? 'border-orange-300 bg-orange-50 ring-1 ring-orange-200'
+                        : 'border-slate-200 bg-white hover:bg-slate-50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="footer-title-display-type"
+                      value="text"
+                      checked={!isImageTitle}
+                      disabled={footerPageSaving}
+                      onChange={() =>
+                        setFooterPageForm((prev) => ({ ...prev, titleDisplayType: 'text' }))
+                      }
+                      className="sr-only"
+                    />
+                    <span className="block text-sm font-bold text-slate-800">텍스트 제목</span>
+                    <span className="mt-1 block text-[11px] leading-5 text-slate-500">
+                      입력한 제목을 푸터 메뉴에 텍스트로 표시합니다.
+                    </span>
+                  </label>
+
+                  <label
+                    className={`cursor-pointer rounded-xl border px-4 py-3 transition ${
+                      isImageTitle
+                        ? 'border-orange-300 bg-orange-50 ring-1 ring-orange-200'
+                        : 'border-slate-200 bg-white hover:bg-slate-50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="footer-title-display-type"
+                      value="image"
+                      checked={isImageTitle}
+                      disabled={footerPageSaving}
+                      onChange={() =>
+                        setFooterPageForm((prev) => ({ ...prev, titleDisplayType: 'image' }))
+                      }
+                      className="sr-only"
+                    />
+                    <span className="block text-sm font-bold text-slate-800">이미지 제목</span>
+                    <span className="mt-1 block text-[11px] leading-5 text-slate-500">
+                      외부 이미지 URL의 이미지를 텍스트 제목 대신 표시합니다.
+                    </span>
+                  </label>
+                </div>
+              </div>
+
               <label className="block">
-                <span className="mb-1.5 block text-xs font-semibold text-slate-600">제목</span>
+                <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                  {isImageTitle ? '대체 텍스트·상세 페이지 제목' : '제목'}
+                </span>
                 <input
                   type="text"
                   value={footerPageForm.title}
                   onChange={(event) =>
                     setFooterPageForm((prev) => ({ ...prev, title: event.target.value }))
                   }
-                  placeholder="예: 개인정보처리방침"
+                  placeholder={isImageTitle ? '예: 개인정보처리방침 로고' : '예: 개인정보처리방침'}
                   className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none mk-form-focus"
                 />
               </label>
 
-              <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+              <label className={`flex items-center gap-2 text-xs font-semibold ${isImageTitle ? 'text-slate-400' : 'text-slate-700'}`}>
                 <input
                   type="checkbox"
                   checked={Boolean(footerPageForm.isTitleBold)}
+                  disabled={isImageTitle || footerPageSaving}
                   onChange={(event) =>
                     setFooterPageForm((prev) => ({ ...prev, isTitleBold: event.target.checked }))
                   }
-                  className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
+                  className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500 disabled:cursor-not-allowed disabled:opacity-50"
                 />
                 제목 항상 굵게
+                {isImageTitle && (
+                  <span className="font-normal text-slate-400">(이미지 제목에는 적용되지 않음)</span>
+                )}
               </label>
+
+              {isImageTitle && (
+                <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-semibold text-slate-600">제목 이미지 URL</span>
+                    <input
+                      type="url"
+                      value={footerPageForm.titleImageUrl || ''}
+                      onChange={(event) =>
+                        setFooterPageForm((prev) => ({ ...prev, titleImageUrl: event.target.value }))
+                      }
+                      placeholder="https://www.example.com/footer-menu.png"
+                      disabled={footerPageSaving}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none mk-form-focus disabled:bg-slate-100"
+                    />
+                  </label>
+                  <div className="text-[11px] leading-5 text-slate-500">
+                    권장 원본 크기: 세로 40px 이상, 가로 60~240px, 투명 배경 PNG·WebP·SVG. 실제 푸터에서는 현재 글자 크기에 비례해 자동 축소되며, 권장 크기가 아닌 이미지도 사용할 수 있습니다.
+                  </div>
+                  {isSafeHttpImageUrl(footerPageForm.titleImageUrl) && (
+                    <div className="rounded-lg border border-dashed border-slate-300 bg-white p-3">
+                      <div className="mb-2 text-[10px] font-semibold text-slate-500">푸터 표시 예상 크기</div>
+                      {!titleImagePreviewFailed ? (
+                        <img
+                          src={footerPageForm.titleImageUrl}
+                          alt={footerPageForm.title || '푸터 메뉴 이미지 미리보기'}
+                          onError={() => setTitleImagePreviewFailed(true)}
+                          className="h-[1.4em] max-w-[180px] object-contain"
+                        />
+                      ) : (
+                        <div className="text-[11px] font-semibold text-rose-600">
+                          이미지를 불러올 수 없습니다. URL과 외부 접근 권한을 확인해 주세요.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div>
                 <span className="mb-1.5 block text-xs font-semibold text-slate-600">연결 방식</span>
@@ -401,7 +528,7 @@ export default function AdminFooterPanel({ ctx }) {
                 <label className="block">
                   <span className="mb-1.5 block text-xs font-semibold text-slate-600">링크 주소</span>
                   <input
-                    type="url"
+                    type="text"
                     value={footerPageForm.linkUrl || ''}
                     onChange={(event) =>
                       setFooterPageForm((prev) => ({ ...prev, linkUrl: event.target.value }))
@@ -411,7 +538,7 @@ export default function AdminFooterPanel({ ctx }) {
                     className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none mk-form-focus disabled:bg-slate-100"
                   />
                   <span className="mt-1.5 block text-[11px] leading-5 text-slate-500">
-                    http:// 또는 https://로 시작하는 전체 주소를 입력해 주세요. 링크는 항상 새 탭에서 열립니다.
+                    http:// 또는 https://로 시작하는 전체 주소를 입력해 주세요. 이동 없이 제목만 표시하려면 #을 입력하세요. 실제 링크는 항상 새 탭에서 열립니다.
                   </span>
                 </label>
               ) : (
