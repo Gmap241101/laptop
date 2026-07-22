@@ -465,8 +465,29 @@ body {
 .home-quick-ticker {
   position: relative;
   overflow: hidden;
-  mask-image: linear-gradient(to right, transparent, #000 2.5rem, #000 calc(100% - 2.5rem), transparent);
-  -webkit-mask-image: linear-gradient(to right, transparent, #000 2.5rem, #000 calc(100% - 2.5rem), transparent);
+}
+
+.home-quick-ticker::before,
+.home-quick-ticker::after {
+  content: "";
+  position: absolute;
+  z-index: 10;
+  top: 1px;
+  bottom: 1px;
+  width: 2.5rem;
+  pointer-events: none;
+}
+
+.home-quick-ticker::before {
+  left: 1px;
+  border-radius: calc(1rem - 1px) 0 0 calc(1rem - 1px);
+  background: linear-gradient(to right, #fff 10%, rgba(255, 255, 255, 0));
+}
+
+.home-quick-ticker::after {
+  right: 1px;
+  border-radius: 0 calc(1rem - 1px) calc(1rem - 1px) 0;
+  background: linear-gradient(to left, #fff 10%, rgba(255, 255, 255, 0));
 }
 
 .home-quick-ticker-track {

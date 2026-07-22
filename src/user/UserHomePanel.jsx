@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  CalendarDays,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock,
-  ExternalLink,
   Laptop,
   ShieldCheck,
   XCircle,
@@ -400,9 +400,14 @@ export default function UserHomePanel({ ctx }) {
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="grid md:grid-cols-[210px_minmax(0,1fr)]">
-          <div className="flex flex-col justify-center border-b border-slate-200 bg-gradient-to-br from-slate-900 to-slate-700 px-5 py-5 text-white md:border-b-0 md:border-r">
-            <h2 className="text-lg font-black leading-tight">오늘의 대여 현황</h2>
-            <p className="mt-1.5 text-xs font-semibold text-slate-300">({formatKoreaReferenceDate()})</p>
+          <div className="flex items-center border-b border-slate-200 bg-gradient-to-br from-slate-900 to-slate-700 px-5 py-5 text-white md:border-b-0 md:border-r">
+            <span className="mr-3 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-500 text-white shadow-sm ring-1 ring-white/20">
+              <CalendarDays size={20} strokeWidth={2.2} aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-lg font-black leading-tight">오늘의 대여 현황</h2>
+              <p className="mt-1.5 text-xs font-semibold text-slate-300">({formatKoreaReferenceDate()})</p>
+            </div>
           </div>
           <div className="grid grid-cols-3 gap-px bg-slate-200 lg:grid-cols-6">
             {summaryItems.map(([Icon, label, value, tone]) => (
@@ -435,7 +440,7 @@ export default function UserHomePanel({ ctx }) {
               <div className="divide-y divide-slate-100">
                 {homeNotices.map((post) => (
                   <button key={post.id} type="button" onClick={() => openHomeNotice(post)} className="flex w-full items-center gap-4 py-3 text-left transition hover:text-orange-600">
-                    <span className="min-w-0 flex-1 truncate text-sm font-semibold">{post.title}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{post.title}</span>
                     <span className="shrink-0 text-[11px] text-slate-400">{formatFirestoreDate(post.createdAt)}</span>
                   </button>
                 ))}
@@ -466,24 +471,23 @@ export default function UserHomePanel({ ctx }) {
       {quickLinkBanners.length > 0 && (
         <section className="home-quick-ticker rounded-2xl border border-slate-200 bg-white shadow-sm" aria-label="바로가기 배너">
           {quickLinkBanners.length === 1 ? (
-            <div className="flex h-[46px] w-full items-center justify-center">
+            <div className="flex h-[56px] w-full items-center justify-center">
               <a
                 href={quickLinkBanners[0].linkValue}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex h-[46px] items-center gap-2 px-5 py-2 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-orange-500"
+                className="inline-flex h-[56px] items-center px-5 py-2 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-orange-500"
                 title={`${quickLinkBanners[0].title || quickLinkBanners[0].altText || '바로가기'} 새 창에서 열기`}
               >
-                <img src={quickLinkBanners[0].imageUrl} alt={quickLinkBanners[0].altText || quickLinkBanners[0].title || ''} className="h-7 w-auto max-w-[180px] object-contain" />
-                <ExternalLink size={11} className="text-slate-300" aria-hidden="true" />
+                <img src={quickLinkBanners[0].imageUrl} alt={quickLinkBanners[0].altText || quickLinkBanners[0].title || ''} className="h-10 w-auto max-w-[240px] object-contain" />
               </a>
             </div>
           ) : (
-            <div className="home-quick-ticker-track home-quick-ticker-animate h-[46px]">
+            <div className="home-quick-ticker-track home-quick-ticker-animate h-[56px]">
               {[0, 1].map((groupIndex) => (
                 <div
                   key={`quick-group-${groupIndex}`}
-                  className="home-quick-ticker-group h-[46px]"
+                  className="home-quick-ticker-group h-[56px]"
                   aria-hidden={groupIndex === 1 ? 'true' : undefined}
                 >
                   {quickLinkBanners.map((banner) => (
@@ -493,11 +497,10 @@ export default function UserHomePanel({ ctx }) {
                       target="_blank"
                       rel="noopener noreferrer"
                       tabIndex={groupIndex === 1 ? -1 : undefined}
-                      className="inline-flex h-[46px] shrink-0 items-center gap-2 px-5 py-2 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-orange-500"
+                      className="inline-flex h-[56px] shrink-0 items-center px-5 py-2 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-orange-500"
                       title={`${banner.title || banner.altText || '바로가기'} 새 창에서 열기`}
                     >
-                      <img src={banner.imageUrl} alt={groupIndex === 1 ? '' : banner.altText || banner.title || ''} className="h-7 w-auto max-w-[180px] object-contain" />
-                      <ExternalLink size={11} className="text-slate-300" aria-hidden="true" />
+                      <img src={banner.imageUrl} alt={groupIndex === 1 ? '' : banner.altText || banner.title || ''} className="h-10 w-auto max-w-[240px] object-contain" />
                     </a>
                   ))}
                 </div>
