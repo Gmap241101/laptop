@@ -113,7 +113,6 @@ export default function UserHomePanel({ ctx }) {
   const [heroTransitionEnabled, setHeroTransitionEnabled] = useState(true);
   const [heroPaused, setHeroPaused] = useState(false);
   const [documentHidden, setDocumentHidden] = useState(false);
-  const [reduceMotion, setReduceMotion] = useState(false);
   const touchStartXRef = useRef(null);
 
   useEffect(() => {
@@ -168,14 +167,6 @@ export default function UserHomePanel({ ctx }) {
     return () => document.removeEventListener('visibilitychange', syncVisibility);
   }, []);
 
-  useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const sync = () => setReduceMotion(mediaQuery.matches);
-    sync();
-    mediaQuery.addEventListener?.('change', sync);
-    return () => mediaQuery.removeEventListener?.('change', sync);
-  }, []);
-
   const activeBanners = useMemo(
     () => sortBanners(banners.filter((banner) => isActiveBanner(banner, now))),
     [banners, now]
@@ -204,13 +195,13 @@ export default function UserHomePanel({ ctx }) {
   }, [heroBanners.length]);
 
   useEffect(() => {
-    if (heroBanners.length <= 1 || heroPaused || documentHidden || reduceMotion) return undefined;
+    if (heroBanners.length <= 1 || heroPaused || documentHidden) return undefined;
     const timer = window.setTimeout(
       () => setHeroIndex((current) => current + 1),
       Math.max(5, Number(homeConfig.heroIntervalSeconds) || 7) * 1000
     );
     return () => window.clearTimeout(timer);
-  }, [heroBanners.length, heroIndex, heroPaused, documentHidden, reduceMotion, homeConfig.heroIntervalSeconds]);
+  }, [heroBanners.length, heroIndex, heroPaused, documentHidden, homeConfig.heroIntervalSeconds]);
 
   const heroSlides = heroBanners.length > 1
     ? [...heroBanners, heroBanners[0]]
@@ -363,7 +354,7 @@ export default function UserHomePanel({ ctx }) {
               className="flex"
               style={{
                 transform: `translateX(-${heroIndex * 100}%)`,
-                transition: heroTransitionEnabled && !reduceMotion ? 'transform 600ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none',
+                transition: heroTransitionEnabled ? 'transform 600ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none',
               }}
               onTransitionEnd={onHeroTransitionEnd}
             >
@@ -473,22 +464,46 @@ export default function UserHomePanel({ ctx }) {
       </section>
 
       {quickLinkBanners.length > 0 && (
-        <section className="home-quick-ticker overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" aria-label="바로가기 배너">
-          <div className={`home-quick-ticker-track flex h-[46px] items-center ${quickLinkBanners.length === 1 ? 'w-full justify-center' : 'w-max'} ${quickLinkBanners.length > 1 && !reduceMotion ? 'home-quick-ticker-animate' : ''}`}>
-            {(quickLinkBanners.length > 1 ? [...quickLinkBanners, ...quickLinkBanners] : quickLinkBanners).map((banner, index) => (
+        <section className="home-quick-ticker rounded-2xl border border-slate-200 bg-white shadow-sm" aria-label="바로가기 배너">
+          {quickLinkBanners.length === 1 ? (
+            <div className="flex h-[46px] w-full items-center justify-center">
               <a
-                key={`${banner.id}-${index}`}
-                href={banner.linkValue}
+                href={quickLinkBanners[0].linkValue}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mx-5 inline-flex h-[46px] shrink-0 items-center gap-2 py-2 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-orange-500"
-                title={`${banner.title || banner.altText || '바로가기'} 새 창에서 열기`}
+                className="inline-flex h-[46px] items-center gap-2 px-5 py-2 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-orange-500"
+                title={`${quickLinkBanners[0].title || quickLinkBanners[0].altText || '바로가기'} 새 창에서 열기`}
               >
-                <img src={banner.imageUrl} alt={banner.altText || banner.title || ''} className="h-7 w-auto max-w-[180px] object-contain" />
+                <img src={quickLinkBanners[0].imageUrl} alt={quickLinkBanners[0].altText || quickLinkBanners[0].title || ''} className="h-7 w-auto max-w-[180px] object-contain" />
                 <ExternalLink size={11} className="text-slate-300" aria-hidden="true" />
               </a>
-            ))}
-          </div>
+            </div>
+          ) : (
+            <div className="home-quick-ticker-track home-quick-ticker-animate h-[46px]">
+              {[0, 1].map((groupIndex) => (
+                <div
+                  key={`quick-group-${groupIndex}`}
+                  className="home-quick-ticker-group h-[46px]"
+                  aria-hidden={groupIndex === 1 ? 'true' : undefined}
+                >
+                  {quickLinkBanners.map((banner) => (
+                    <a
+                      key={`${banner.id}-${groupIndex}`}
+                      href={banner.linkValue}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      tabIndex={groupIndex === 1 ? -1 : undefined}
+                      className="inline-flex h-[46px] shrink-0 items-center gap-2 px-5 py-2 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-orange-500"
+                      title={`${banner.title || banner.altText || '바로가기'} 새 창에서 열기`}
+                    >
+                      <img src={banner.imageUrl} alt={groupIndex === 1 ? '' : banner.altText || banner.title || ''} className="h-7 w-auto max-w-[180px] object-contain" />
+                      <ExternalLink size={11} className="text-slate-300" aria-hidden="true" />
+                    </a>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       )}
 

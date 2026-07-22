@@ -464,8 +464,26 @@ body {
 
 .home-quick-ticker {
   position: relative;
+  overflow: hidden;
   mask-image: linear-gradient(to right, transparent, #000 2.5rem, #000 calc(100% - 2.5rem), transparent);
   -webkit-mask-image: linear-gradient(to right, transparent, #000 2.5rem, #000 calc(100% - 2.5rem), transparent);
+}
+
+.home-quick-ticker-track {
+  display: flex;
+  width: 200%;
+  min-width: 200%;
+  align-items: center;
+}
+
+.home-quick-ticker-group {
+  display: flex;
+  width: 50%;
+  min-width: 50%;
+  flex: 0 0 50%;
+  align-items: center;
+  justify-content: space-around;
+  overflow: hidden;
 }
 
 .home-quick-ticker-animate {
@@ -476,17 +494,4 @@ body {
 .home-quick-ticker:hover .home-quick-ticker-animate,
 .home-quick-ticker:focus-within .home-quick-ticker-animate {
   animation-play-state: paused;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .home-quick-ticker {
-    overflow-x: auto;
-    mask-image: none;
-    -webkit-mask-image: none;
-  }
-
-  .home-quick-ticker-animate {
-    animation: none;
-    transform: none;
-  }
 }
