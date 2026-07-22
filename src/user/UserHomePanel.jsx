@@ -483,28 +483,30 @@ export default function UserHomePanel({ ctx }) {
               </a>
             </div>
           ) : (
-            <div className="home-quick-ticker-track home-quick-ticker-animate h-[56px]">
-              {[0, 1].map((groupIndex) => (
-                <div
-                  key={`quick-group-${groupIndex}`}
-                  className="home-quick-ticker-group h-[56px]"
-                  aria-hidden={groupIndex === 1 ? 'true' : undefined}
-                >
-                  {quickLinkBanners.map((banner) => (
-                    <a
-                      key={`${banner.id}-${groupIndex}`}
-                      href={banner.linkValue}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      tabIndex={groupIndex === 1 ? -1 : undefined}
-                      className="inline-flex h-[56px] shrink-0 items-center px-5 py-2 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-orange-500"
-                      title={`${banner.title || banner.altText || '바로가기'} 새 창에서 열기`}
-                    >
-                      <img src={banner.imageUrl} alt={groupIndex === 1 ? '' : banner.altText || banner.title || ''} className="h-10 w-auto max-w-[240px] object-contain" />
-                    </a>
-                  ))}
-                </div>
-              ))}
+            <div className="home-quick-ticker-viewport h-[56px]">
+              <div className="home-quick-ticker-track home-quick-ticker-animate h-[56px]">
+                {[0, 1].map((groupIndex) => (
+                  <div
+                    key={`quick-group-${groupIndex}`}
+                    className="home-quick-ticker-group h-[56px]"
+                    aria-hidden={groupIndex === 1 ? 'true' : undefined}
+                  >
+                    {quickLinkBanners.map((banner) => (
+                      <a
+                        key={`${banner.id}-${groupIndex}`}
+                        href={banner.linkValue}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        tabIndex={groupIndex === 1 ? -1 : undefined}
+                        className="inline-flex h-[56px] shrink-0 items-center px-5 py-2 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-orange-500"
+                        title={`${banner.title || banner.altText || '바로가기'} 새 창에서 열기`}
+                      >
+                        <img src={banner.imageUrl} alt={groupIndex === 1 ? '' : banner.altText || banner.title || ''} className="h-10 w-auto max-w-[240px] object-contain" />
+                      </a>
+                    ))}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </section>
