@@ -19,7 +19,7 @@ $PublishBranch = "gh-pages"
 $RemoteName = "origin"
 $ExpectedCname = "notebook.recruit.kro.kr"
 $ExpectedRemoteUrlFragment = "Gmap241101/laptop.git"
-$ScriptVersion = "2026.07.23-v10-unified-static-404"
+$ScriptVersion = "2026.07.23-v11-unified-static-404"
 
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 if ([string]::IsNullOrWhiteSpace($CommitMessage)) {
@@ -396,7 +396,7 @@ try {
 
     Write-Host ""
     Write-Host "기존 운영 브랜치 백업 여부를 선택하십시오." -ForegroundColor Yellow
-    Write-Host "  Y: 현재 $PublishBranch를 타임스탬프 백업 브랜치로 보존"
+    Write-Host "  Y: 현재 ${PublishBranch}를 타임스탬프 백업 브랜치로 보존"
     Write-Host "  N: 백업 브랜치를 만들지 않고 바로 운영 배포"
     $createProductionBackupForThisRun = Read-YesNo "기존 '$PublishBranch' 브랜치를 백업하시겠습니까?"
 
