@@ -14,14 +14,14 @@ $PublishBranch = "gh-pages"
 $RemoteName = "origin"
 $ExpectedCname = "notebook.recruit.kro.kr"
 $ExpectedRemoteUrlFragment = "Gmap241101/laptop.git"
-$CreateProductionBackup = $true
 $RequireConfirmation = $true
-$ScriptVersion = "2026.07.22-v5"
+$ScriptVersion = "2026.07.22-v6"
 
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $commitMessage = "운영 배포_$timestamp"
 $backupBranch = "backup-gh-pages-$timestamp"
 $productionBackupCreated = $false
+$createProductionBackupForThisRun = $false
 $projectRoot = $PSScriptRoot
 
 # 특정 브랜치만 가져와도 origin/gh-pages 원격 추적 참조가 반드시 생성되도록
@@ -39,6 +39,24 @@ function Write-Step {
 function Stop-Deployment {
     param([Parameter(Mandatory = $true)][string]$Message)
     throw $Message
+}
+
+function Read-YesNo {
+    param([Parameter(Mandatory = $true)][string]$Prompt)
+
+    while ($true) {
+        $answer = (Read-Host "$Prompt (Y/N)").Trim().ToUpperInvariant()
+
+        if ($answer -eq "Y") {
+            return $true
+        }
+
+        if ($answer -eq "N") {
+            return $false
+        }
+
+        Write-Host "Y 또는 N만 입력하십시오." -ForegroundColor Yellow
+    }
 }
 
 function Invoke-NativeCommand {
@@ -146,6 +164,19 @@ try {
         }
     }
 
+    Write-Host ""
+    Write-Host "기존 운영 브랜치 백업 여부를 선택하십시오." -ForegroundColor Yellow
+    Write-Host "  Y: 현재 gh-pages를 타임스탬프 백업 브랜치로 보존한 뒤 배포"
+    Write-Host "  N: 백업 브랜치를 만들지 않고 바로 배포"
+    $createProductionBackupForThisRun = Read-YesNo "기존 '$PublishBranch' 브랜치를 백업하시겠습니까?"
+
+    if ($createProductionBackupForThisRun) {
+        Write-Host "[선택] 기존 운영 브랜치를 백업한 뒤 배포합니다." -ForegroundColor Green
+    }
+    else {
+        Write-Host "[선택] 기존 운영 브랜치를 별도 백업하지 않고 배포합니다." -ForegroundColor DarkYellow
+    }
+
     # 소스 변경사항 커밋
     Invoke-NativeCommand "Git 변경사항 추가" { git add --all }
 
@@ -224,7 +255,7 @@ try {
     }
 
     # 기존 운영 gh-pages를 타임스탬프 백업 브랜치로 보존
-    if ($CreateProductionBackup) {
+    if ($createProductionBackupForThisRun) {
         Write-Step "기존 운영 브랜치 확인"
         & git ls-remote --exit-code --heads $RemoteName $PublishBranch | Out-Null
         $lsRemoteExitCode = $LASTEXITCODE
@@ -297,6 +328,9 @@ try {
     Write-Host "사용자 도메인: https://$ExpectedCname"
     if ($productionBackupCreated) {
         Write-Host "운영 백업   : $RemoteName/$backupBranch"
+    }
+    elseif (-not $createProductionBackupForThisRun) {
+        Write-Host "운영 백업   : 생성 안 함 (사용자 선택)"
     }
     Write-Host "========================================" -ForegroundColor Green
 }
