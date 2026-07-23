@@ -470,20 +470,48 @@ body {
 .home-quick-ticker-viewport {
   position: relative;
   overflow: hidden;
-  border-radius: calc(1rem - 1px);
-  -webkit-mask-image: linear-gradient(
+  margin-inline: 4rem;
+  border-radius: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .home-quick-ticker-viewport {
+    margin-inline: 1.5rem;
+  }
+}
+
+.home-quick-ticker-viewport::before,
+.home-quick-ticker-viewport::after {
+  content: "";
+  position: absolute;
+  z-index: 10;
+  top: 0;
+  bottom: 0;
+  width: 3.5rem;
+  pointer-events: none;
+}
+
+.home-quick-ticker-viewport::before {
+  left: 0;
+  border-radius: calc(1rem - 1px) 0 0 calc(1rem - 1px);
+  background: linear-gradient(
     to right,
-    rgba(0, 0, 0, 0.58) 0,
-    #000 3rem,
-    #000 calc(100% - 3rem),
-    rgba(0, 0, 0, 0.58) 100%
+    rgba(255, 255, 255, 1) 0%,
+    rgba(255, 255, 255, 0.94) 18%,
+    rgba(255, 255, 255, 0.62) 52%,
+    rgba(255, 255, 255, 0) 100%
   );
-  mask-image: linear-gradient(
-    to right,
-    rgba(0, 0, 0, 0.58) 0,
-    #000 3rem,
-    #000 calc(100% - 3rem),
-    rgba(0, 0, 0, 0.58) 100%
+}
+
+.home-quick-ticker-viewport::after {
+  right: 0;
+  border-radius: 0 calc(1rem - 1px) calc(1rem - 1px) 0;
+  background: linear-gradient(
+    to left,
+    rgba(255, 255, 255, 1) 0%,
+    rgba(255, 255, 255, 0.94) 18%,
+    rgba(255, 255, 255, 0.62) 52%,
+    rgba(255, 255, 255, 0) 100%
   );
 }
 
@@ -500,16 +528,8 @@ body {
   min-width: 50%;
   flex: 0 0 50%;
   align-items: center;
-  justify-content: space-between;
+  justify-content: space-around;
   overflow: hidden;
-}
-
-.home-quick-ticker-group > a:first-child {
-  padding-left: 0.5rem;
-}
-
-.home-quick-ticker-group > a:last-child {
-  padding-right: 0.5rem;
 }
 
 .home-quick-ticker-animate {
