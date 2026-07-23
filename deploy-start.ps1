@@ -15,7 +15,7 @@ $RemoteName = "origin"
 $ExpectedCname = "notebook.recruit.kro.kr"
 $ExpectedRemoteUrlFragment = "Gmap241101/laptop.git"
 $RequireConfirmation = $true
-$ScriptVersion = "2026.07.22-v6"
+$ScriptVersion = "2026.07.22-v7"
 
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $commitMessage = "운영 배포_$timestamp"
@@ -218,6 +218,22 @@ try {
         Stop-Deployment "dist\index.html이 비어 있습니다."
     }
 
+    # GitHub Pages는 Vercel의 rewrite 규칙을 처리하지 않습니다.
+    # 존재하지 않는 /admin 등의 SPA 경로 요청에 React 앱을 부팅할 수 있도록
+    # 빌드된 index.html을 GitHub Pages의 사용자 지정 404 페이지로 복제합니다.
+    Write-Step "GitHub Pages SPA fallback 생성"
+    Copy-Item ".\dist\index.html" ".\dist\404.html" -Force
+
+    if (-not (Test-Path ".\dist\404.html" -PathType Leaf)) {
+        Stop-Deployment "dist\404.html 생성에 실패했습니다."
+    }
+
+    $indexHash = (Get-FileHash ".\dist\index.html" -Algorithm SHA256).Hash
+    $notFoundHash = (Get-FileHash ".\dist\404.html" -Algorithm SHA256).Hash
+    if ($indexHash -ne $notFoundHash) {
+        Stop-Deployment "dist\404.html이 dist\index.html과 일치하지 않습니다."
+    }
+
     if (-not (Test-Path ".\dist\assets" -PathType Container)) {
         Stop-Deployment "dist\assets 폴더가 없습니다."
     }
@@ -308,6 +324,10 @@ try {
         Stop-Deployment "원격 '$PublishBranch' 브랜치에 index.html이 없습니다."
     }
 
+    if ($remoteFiles -notcontains "404.html") {
+        Stop-Deployment "원격 '$PublishBranch' 브랜치에 SPA fallback용 404.html이 없습니다."
+    }
+
     if ($remoteFiles -notcontains "CNAME") {
         Stop-Deployment "원격 '$PublishBranch' 브랜치에 CNAME이 없습니다."
     }
@@ -326,6 +346,7 @@ try {
     Write-Host "운영 브랜치 : $RemoteName/$PublishBranch"
     Write-Host "운영 커밋   : $remoteCommit"
     Write-Host "사용자 도메인: https://$ExpectedCname"
+    Write-Host "관리자 주소  : https://$ExpectedCname/admin"
     if ($productionBackupCreated) {
         Write-Host "운영 백업   : $RemoteName/$backupBranch"
     }
