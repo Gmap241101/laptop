@@ -4,7 +4,6 @@ import { RichTextContent } from '../components/RichTextEditor.jsx';
 
 export default function UserBoardPanel({ ctx }) {
   const {
-    AlertCircle,
     AnimatePresence,
     Button,
     Card,
@@ -29,7 +28,6 @@ export default function UserBoardPanel({ ctx }) {
     faqTotalPages,
     formatFirestoreDate,
     goToUserHome,
-    goToProtectedUserTab,
     motion,
     noticePosts,
     noticePostsLoadErrorMessage,
@@ -57,6 +55,95 @@ export default function UserBoardPanel({ ctx }) {
     userTab,
   } = ctx;
 
+
+  const handleNotFoundBack = () => {
+    if (typeof window === 'undefined') return;
+
+    if (window.history.length > 1 && document.referrer) {
+      window.history.back();
+      return;
+    }
+
+    goToUserHome();
+  };
+
+  if (userTab === 'notFound') {
+    return (
+      <section
+        className="relative grid min-h-[520px] place-items-center overflow-hidden rounded-[28px] border border-slate-200 bg-slate-50 px-4 py-14 shadow-sm sm:px-6 sm:py-16"
+        style={{
+          backgroundImage:
+            'radial-gradient(circle at 15% 10%, rgba(255, 107, 0, 0.08), transparent 32rem)',
+        }}
+        aria-labelledby="user-not-found-title"
+      >
+        <div className="relative w-full max-w-[760px] overflow-hidden rounded-[28px] border border-slate-200/90 bg-white/95 text-center shadow-[0_24px_70px_rgba(15,23,42,0.09),0_4px_18px_rgba(15,23,42,0.04)]">
+          <div className="absolute inset-x-0 top-0 h-[5px] bg-gradient-to-r from-[#e65300] via-[#ff6b00] to-[#ff9b52]" />
+
+          <div className="px-6 py-12 sm:px-14 sm:pb-[58px] sm:pt-16">
+            <div className="mx-auto mb-6 grid h-[92px] w-[92px] place-items-center rounded-[28px] bg-[#fff4ec] text-[#e65300] ring-1 ring-inset ring-orange-500/10">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-12 w-12"
+                aria-hidden="true"
+              >
+                <path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z" />
+                <path d="M14 2v5h5" />
+                <path d="m9.5 14.5 5-5" />
+                <path d="m14.5 14.5-5-5" />
+              </svg>
+            </div>
+
+            <p className="m-0 text-[clamp(56px,11vw,96px)] font-black leading-[0.95] tracking-[-0.065em] text-[#ff6b00]">
+              404
+            </p>
+
+            <h1
+              id="user-not-found-title"
+              className="mt-5 text-[clamp(26px,4vw,38px)] font-black leading-tight tracking-[-0.045em] text-slate-900"
+            >
+              페이지를 찾을 수 없습니다
+            </h1>
+
+            <p className="mx-auto mt-[18px] max-w-[560px] text-[15px] leading-7 tracking-[-0.02em] text-slate-500 sm:text-base sm:leading-[1.8]">
+              입력한 주소가 잘못되었거나 페이지가 이동·삭제되었을 수 있습니다.
+              <br className="hidden sm:block" />
+              주소를 다시 확인하거나 서비스 홈으로 이동해 주세요.
+            </p>
+
+            <div className="mt-[34px] flex flex-col justify-center gap-3 sm:flex-row sm:flex-wrap">
+              <button
+                type="button"
+                onClick={goToUserHome}
+                className="inline-flex min-h-12 w-full min-w-[154px] items-center justify-center gap-2 rounded-xl border border-transparent bg-gradient-to-br from-[#ff6b00] to-[#e65300] px-5 py-3 text-sm font-extrabold text-white shadow-[0_10px_24px_rgba(230,83,0,0.22)] transition hover:-translate-y-px hover:shadow-[0_12px_28px_rgba(230,83,0,0.30)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-500/25 sm:w-auto"
+              >
+                <span aria-hidden="true">⌂</span>
+                서비스 홈으로
+              </button>
+
+              <button
+                type="button"
+                onClick={handleNotFoundBack}
+                className="inline-flex min-h-12 w-full min-w-[154px] items-center justify-center rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-extrabold text-slate-700 transition hover:-translate-y-px hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-500/25 sm:w-auto"
+              >
+                이전 페이지로
+              </button>
+            </div>
+
+            <p className="mt-[30px] border-t border-slate-200 pt-6 text-[13px] leading-6 text-slate-400">
+              문제가 계속되면 사이트 관리자에게 접속 주소와 발생 시점을 알려 주세요.
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   return (
             <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
               <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-10 text-white">
@@ -69,7 +156,6 @@ export default function UserBoardPanel({ ctx }) {
                     {userTab === 'history' && '신청내역 화면 준비중입니다'}
                     {userTab === 'notice' && '공지사항'}
                     {userTab === 'faq' && '자주 묻는 질문'}
-                    {userTab === 'notFound' && '404 - 페이지를 찾을 수 없습니다'}
                   </h2>
 
                   <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-300">
@@ -77,50 +163,12 @@ export default function UserBoardPanel({ ctx }) {
                     {userTab === 'history' && '사용자의 대여 신청 현황과 처리 상태를 확인할 수 있는 화면을 준비하고 있습니다.'}
                     {userTab === 'notice' && '운영 공지, 대여 정책, 점검 안내를 확인할 수 있습니다.'}
                     {userTab === 'faq' && '질문 유형별 FAQ를 선택하고 제목을 눌러 답변을 확인할 수 있습니다.'}
-                    {userTab === 'notFound' && '입력하신 주소와 일치하는 메뉴를 찾을 수 없습니다.'}
                   </p>
                 </div>
               </div>
 
               <CardContent className="p-6">
-                {userTab === 'notFound' ? (
-                  <div className="rounded-2xl border border-dashed border-orange-200 bg-orange-50/40 px-6 py-12 text-center">
-                    <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-orange-600 shadow-sm">
-                      <AlertCircle size={26} />
-                    </div>
-
-                    <h3 className="text-lg font-bold text-slate-900">
-                      요청하신 페이지가 없습니다
-                    </h3>
-
-                    <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">
-                      주소가 잘못 입력되었거나, 아직 제공되지 않는 메뉴입니다.
-                      아래 버튼을 통해 기기 대여 시스템의 주요 화면으로 이동할 수 있습니다.
-                    </p>
-
-                    <div className="mt-6 flex flex-col justify-center gap-2 sm:flex-row">
-                      <Button
-                        type="button"
-                        onClick={goToUserHome}
-                        variant="primary"
-                        className="w-full sm:w-auto"
-                      >
-                        초기화면으로 이동
-                      </Button>
-
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() =>
-                          goToProtectedUserTab('rental')
-                        }
-                        className="w-full sm:w-auto"
-                      >
-                        대여신청으로 이동
-                      </Button>
-                    </div>
-                  </div>
-                ) : userTab === 'notice' ? (
+                {userTab === 'notice' ? (
                   selectedNoticePost ? (
                     <div className="space-y-5">
                       <div className="flex justify-end">

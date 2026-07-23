@@ -19,7 +19,7 @@ $PublishBranch = "gh-pages"
 $RemoteName = "origin"
 $ExpectedCname = "notebook.recruit.kro.kr"
 $ExpectedRemoteUrlFragment = "Gmap241101/laptop.git"
-$ScriptVersion = "2026.07.23-v11-unified-static-404"
+$ScriptVersion = "2026.07.23-v12-unified-react-404"
 
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 if ([string]::IsNullOrWhiteSpace($CommitMessage)) {
@@ -242,74 +242,33 @@ try {
         Stop-Deployment "dist\assets에 배포할 파일이 없습니다."
     }
 
-    # GitHub Pages의 /admin 직접 접속용 실제 정적 경로 생성
-    Write-Step "GitHub Pages 관리자 직접 경로 생성"
+    # GitHub Pages는 SPA 경로를 실제 파일로 해석하므로, 존재하지 않는 경로 요청에도
+    # React 앱을 부팅할 수 있도록 빌드된 index.html을 404.html로 복제합니다.
+    # App.jsx가 /admin 및 미등록 경로(notFound)를 직접 판별합니다.
+    Write-Step "GitHub Pages React 경로 fallback 생성"
 
-    $adminOutputDirectory = ".\dist\admin"
-    $adminOutputFile = Join-Path $adminOutputDirectory "index.html"
+    # 구형 방식에서 생성했던 정적 admin/index.html이 남으면 /admin 요청을 가로채므로 제거합니다.
+    Remove-Item ".\dist\admin" -Recurse -Force -ErrorAction SilentlyContinue
 
-    Remove-Item -Recurse -Force $adminOutputDirectory -ErrorAction SilentlyContinue
-    New-Item -ItemType Directory -Path $adminOutputDirectory -Force | Out-Null
-
-    $adminHtml = Get-Content ".\dist\index.html" -Raw
-    $headCloseIndex = $adminHtml.IndexOf("</head>", [System.StringComparison]::OrdinalIgnoreCase)
-
-    if ($headCloseIndex -lt 0) {
-        Stop-Deployment "dist\index.html에서 </head> 태그를 찾을 수 없어 관리자 직접 경로를 생성할 수 없습니다."
+    if (Test-Path ".\dist\admin" -PathType Container) {
+        Stop-Deployment "dist\admin 폴더를 제거하지 못했습니다."
     }
 
-    $adminPathNormalizer = @'
-<script data-static-admin-entry>
-(function () {
-  var path = window.location.pathname;
-  if (path === '/admin/' || path === '/admin/index.html') {
-    window.history.replaceState(
-      null,
-      '',
-      '/admin' + window.location.search + window.location.hash
-    );
-  }
-})();
-</script>
-'@
-
-    $adminHtml = $adminHtml.Insert($headCloseIndex, "$adminPathNormalizer`r`n")
-    Set-Content -Path $adminOutputFile -Value $adminHtml -Encoding UTF8
-
-    if (-not (Test-Path $adminOutputFile -PathType Leaf)) {
-        Stop-Deployment "dist\admin\index.html 생성에 실패했습니다."
-    }
-
-    $adminOutputContent = Get-Content $adminOutputFile -Raw
-    if ($adminOutputContent -notmatch 'data-static-admin-entry') {
-        Stop-Deployment "dist\admin\index.html에 관리자 경로 보정 코드가 없습니다."
-    }
-
-    # 독립적인 사용자 지정 404 페이지 검증
-    Write-Step "독립 커스텀 404 페이지 검증"
-
-    if (-not (Test-Path ".\public\404.html" -PathType Leaf)) {
-        Stop-Deployment "public\404.html이 없습니다. 독립 커스텀 404 페이지를 먼저 추가하십시오."
-    }
+    Copy-Item ".\dist\index.html" ".\dist\404.html" -Force
 
     if (-not (Test-Path ".\dist\404.html" -PathType Leaf)) {
-        Stop-Deployment "dist\404.html이 없습니다. Vite가 public\404.html을 빌드 결과로 복사하지 못했습니다."
-    }
-
-    $public404Hash = (Get-FileHash ".\public\404.html" -Algorithm SHA256).Hash
-    $dist404Hash = (Get-FileHash ".\dist\404.html" -Algorithm SHA256).Hash
-    if ($public404Hash -ne $dist404Hash) {
-        Stop-Deployment "dist\404.html이 public\404.html과 일치하지 않습니다."
-    }
-
-    $dist404Content = Get-Content ".\dist\404.html" -Raw
-    if ($dist404Content -notmatch 'data-page=["'']custom-404["'']') {
-        Stop-Deployment "dist\404.html에서 커스텀 404 식별자를 찾을 수 없습니다."
+        Stop-Deployment "dist\404.html 생성에 실패했습니다."
     }
 
     $indexHash = (Get-FileHash ".\dist\index.html" -Algorithm SHA256).Hash
-    if ($indexHash -eq $dist404Hash) {
-        Stop-Deployment "dist\404.html이 React index.html과 동일합니다. 독립 커스텀 404 페이지가 적용되지 않았습니다."
+    $dist404Hash = (Get-FileHash ".\dist\404.html" -Algorithm SHA256).Hash
+
+    if ($indexHash -ne $dist404Hash) {
+        Stop-Deployment "dist\404.html이 dist\index.html과 일치하지 않습니다."
+    }
+
+    if (Test-Path ".\public\404.html" -PathType Leaf) {
+        Write-Host "[안내] public\404.html은 이번 배포에서 사용하지 않습니다. App.jsx의 notFound 화면을 사용합니다." -ForegroundColor DarkYellow
     }
 
     $trackedStateAfterBuild = Get-TrackedFileState
@@ -446,10 +405,14 @@ try {
         Stop-Deployment "원격 '$PublishBranch' 파일 목록 확인에 실패했습니다."
     }
 
-    foreach ($requiredFile in @("index.html", "admin/index.html", "404.html", "CNAME")) {
+    foreach ($requiredFile in @("index.html", "404.html", "CNAME")) {
         if ($remoteFiles -notcontains $requiredFile) {
             Stop-Deployment "원격 '$PublishBranch' 브랜치에 '$requiredFile'이 없습니다."
         }
+    }
+
+    if ($remoteFiles -contains "admin/index.html") {
+        Stop-Deployment "원격 '$PublishBranch' 브랜치에 구형 admin/index.html이 남아 있습니다. 이 파일은 /admin의 React fallback을 방해합니다."
     }
 
     $remoteCname = (& git show "$publishRemoteShortRef`:CNAME" | Out-String).Trim()
@@ -457,14 +420,18 @@ try {
         Stop-Deployment "원격 CNAME 검증에 실패했습니다. 현재: '$remoteCname', 예상: '$ExpectedCname'"
     }
 
-    $remoteAdminEntry = (& git show "$publishRemoteShortRef`:admin/index.html" | Out-String)
-    if ($LASTEXITCODE -ne 0 -or $remoteAdminEntry -notmatch 'data-static-admin-entry') {
-        Stop-Deployment "원격 admin/index.html에서 관리자 경로 보정 코드를 확인할 수 없습니다."
+    $remoteIndexBlob = (& git rev-parse "$publishRemoteShortRef`:index.html" | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($remoteIndexBlob)) {
+        Stop-Deployment "원격 index.html의 Git 객체 해시를 확인할 수 없습니다."
     }
 
-    $remote404 = (& git show "$publishRemoteShortRef`:404.html" | Out-String)
-    if ($LASTEXITCODE -ne 0 -or $remote404 -notmatch 'data-page=["'']custom-404["'']') {
-        Stop-Deployment "원격 404.html에서 독립 커스텀 404 페이지 식별자를 확인할 수 없습니다."
+    $remote404Blob = (& git rev-parse "$publishRemoteShortRef`:404.html" | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($remote404Blob)) {
+        Stop-Deployment "원격 404.html의 Git 객체 해시를 확인할 수 없습니다."
+    }
+
+    if ($remoteIndexBlob -ne $remote404Blob) {
+        Stop-Deployment "원격 404.html이 원격 index.html과 일치하지 않습니다. React 경로 fallback이 적용되지 않았습니다."
     }
 
     $remoteCommit = (& git rev-parse $publishRemoteShortRef | Out-String).Trim()
