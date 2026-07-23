@@ -122,6 +122,16 @@ export const RENTAL_BORROWERS_COLLECTION_REF = collection(
   'rentalBorrowers'
 );
 
+export const MEMBER_DIRECTORY_KEYS_COLLECTION_REF = collection(
+  db,
+  'memberDirectoryKeys'
+);
+
+export const MEMBER_IDENTITY_CLAIMS_COLLECTION_REF = collection(
+  db,
+  'memberIdentityClaims'
+);
+
 export const RENTAL_ASSET_NUMBERS_COLLECTION_REF = collection(
   db,
   'rentalAssetNumbers'

@@ -1,3 +1,6 @@
+import DomesticPhoneInput from '../components/DomesticPhoneInput.jsx';
+import { normalizeMemberName } from '../utils/memberPolicy.js';
+
 export default function UserMyPagePanel({ ctx }) {
   const {
     Button,
@@ -9,6 +12,7 @@ export default function UserMyPagePanel({ ctx }) {
     adminMyProfileSaving,
     currentAuthAdminAccount,
     currentAuthRoleReady,
+    data,
     firebaseAuthUser,
     goToUserLogin,
     goToUserSignup,
@@ -25,6 +29,7 @@ export default function UserMyPagePanel({ ctx }) {
     userProfileForm,
     userProfileReady,
     userProfileSaving,
+    userDirectoryVerificationLoading,
   } = ctx;
 
   return (
@@ -234,6 +239,18 @@ export default function UserMyPagePanel({ ctx }) {
                             </div>
                           ) : (
                             <>
+                              {userProfile?.status === 'profileRequired' && (
+                                <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4">
+                                  <div className="text-sm font-bold text-rose-900">
+                                    등록 정보 확인이 필요합니다
+                                  </div>
+                                  <p className="mt-1 text-xs leading-5 text-rose-800">
+                                    현재 등록 정보가 관리자 명부와 일치하지 않아 서비스 이용이 제한되었습니다.
+                                    등록된 부서와 성명을 입력해 저장해 주세요.
+                                  </p>
+                                </div>
+                              )}
+
                               <div className="grid gap-4 md:grid-cols-2">
                                 <Input
                                   label="이메일"
@@ -245,62 +262,91 @@ export default function UserMyPagePanel({ ctx }) {
                                 />
 
                                 <Input
-                                  label="이름"
+                                  label="성명"
                                   value={userProfileForm.name}
-                                  onChange={(v) =>
+                                  onChange={(value) =>
                                     setUserProfileForm({
                                       ...userProfileForm,
-                                      name: v,
+                                      name: normalizeMemberName(value).slice(0, 30),
                                     })
                                   }
-                                  placeholder="이름 입력"
+                                  placeholder="공백 없이 성명을 입력하세요"
+                                  maxLength={30}
                                 />
 
-                                <Input
-                                  label="부서 / 팀"
-                                  value={userProfileForm.team}
-                                  onChange={(v) =>
-                                    setUserProfileForm({
-                                      ...userProfileForm,
-                                      team: v,
-                                    })
-                                  }
-                                  placeholder="소속 부서 또는 팀명 입력"
-                                />
+                                {data.settings.requireRegisteredMemberForSignup ? (
+                                  <label className="block">
+                                    <span className="mb-1.5 block text-xs font-semibold tracking-wide text-slate-600">
+                                      부서 / 팀
+                                    </span>
+                                    <select
+                                      value={userProfileForm.team}
+                                      onChange={(event) =>
+                                        setUserProfileForm({
+                                          ...userProfileForm,
+                                          team: event.target.value,
+                                        })
+                                      }
+                                      className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none transition mk-form-focus"
+                                    >
+                                      <option value="">부서 / 팀을 선택해 주세요</option>
+                                      {(data.teams || []).map((team) => (
+                                        <option key={team} value={team}>
+                                          {team}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                ) : (
+                                  <Input
+                                    label="부서 / 팀"
+                                    value={userProfileForm.team}
+                                    onChange={(value) =>
+                                      setUserProfileForm({
+                                        ...userProfileForm,
+                                        team: value,
+                                      })
+                                    }
+                                    placeholder="소속 부서 또는 팀명 입력"
+                                  />
+                                )}
 
-                                <Input
-                                  label="연락처"
-                                  value={userProfileForm.phone}
-                                  onChange={(v) =>
+                                <DomesticPhoneInput
+                                  prefix={userProfileForm.phonePrefix}
+                                  middle={userProfileForm.phoneMiddle}
+                                  last={userProfileForm.phoneLast}
+                                  disabled={userProfileSaving}
+                                  onChange={(phoneParts) =>
                                     setUserProfileForm({
                                       ...userProfileForm,
-                                      phone: v,
+                                      phonePrefix: phoneParts.prefix,
+                                      phoneMiddle: phoneParts.middle,
+                                      phoneLast: phoneParts.last,
                                     })
                                   }
-                                  placeholder="연락처 입력"
                                 />
 
                                 <Input
                                   label="새 비밀번호"
                                   type="password"
                                   value={userProfileForm.newPassword || ''}
-                                  onChange={(v) =>
+                                  onChange={(value) =>
                                     setUserProfileForm({
                                       ...userProfileForm,
-                                      newPassword: v,
+                                      newPassword: value,
                                     })
                                   }
-                                  placeholder="변경할 때만 입력"
+                                  placeholder="8자 이상, 영문+숫자 포함"
                                 />
 
                                 <Input
                                   label="새 비밀번호 확인"
                                   type="password"
                                   value={userProfileForm.newPasswordConfirm || ''}
-                                  onChange={(v) =>
+                                  onChange={(value) =>
                                     setUserProfileForm({
                                       ...userProfileForm,
-                                      newPasswordConfirm: v,
+                                      newPasswordConfirm: value,
                                     })
                                   }
                                   placeholder="새 비밀번호 재입력"
@@ -308,7 +354,7 @@ export default function UserMyPagePanel({ ctx }) {
                               </div>
 
                               <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[11px] leading-5 text-slate-500">
-                                비밀번호는 새 비밀번호를 입력한 경우에만 변경됩니다.
+                                새 비밀번호는 8자 이상이며 영문과 숫자를 포함해야 합니다.
                                 Firebase Auth 계정은 보안상 최근 로그인 상태가 필요할 수 있습니다.
                               </div>
 
@@ -317,9 +363,13 @@ export default function UserMyPagePanel({ ctx }) {
                                   type="button"
                                   variant="primary"
                                   onClick={saveMyUserProfile}
-                                  disabled={userProfileSaving}
+                                  disabled={userProfileSaving || userDirectoryVerificationLoading}
                                 >
-                                  {userProfileSaving ? '저장 중...' : '일반 회원 내 정보 저장'}
+                                  {userProfileSaving
+                                    ? '저장 중...'
+                                    : userDirectoryVerificationLoading
+                                      ? '명부 확인 중...'
+                                      : '일반 회원 내 정보 저장'}
                                 </Button>
                               </div>
                             </>

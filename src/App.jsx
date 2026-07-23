@@ -84,6 +84,8 @@ import {
   NOTICE_POSTS_COLLECTION_REF,
   POPUP_POSTS_COLLECTION_REF,
   PUBLIC_CONFIG_DOC_REF,
+  MEMBER_DIRECTORY_KEYS_COLLECTION_REF,
+  MEMBER_IDENTITY_CLAIMS_COLLECTION_REF,
   RENTAL_ASSET_NUMBERS_COLLECTION_REF,
   RENTAL_ASSETS_COLLECTION_REF,
   RENTAL_AVAILABILITY_COLLECTION_REF,
@@ -121,6 +123,19 @@ import {
   USER_REQUEST_REVIEW_STATUS,
   statusStyle,
 } from './constants/appConstants.js';
+
+import {
+  buildDomesticPhoneNumber,
+  createMemberIdentityKey,
+  isValidDomesticPhoneNumber,
+  isValidEmailAddress,
+  isValidMemberName,
+  isValidMemberPassword,
+  normalizeEmailAddress,
+  normalizeMemberName,
+  normalizeMemberTeam,
+  parseDomesticPhoneNumber,
+} from './utils/memberPolicy.js';
 
 import {
   addDaysFrom,
@@ -1267,6 +1282,9 @@ const initialData = {
     workEndTime: DEFAULT_WORK_END_TIME,
     holidays: [],
     requireAdminApproval: true,
+    requireRegisteredMemberForSignup: false,
+    memberDirectoryVersion: 0,
+    memberIdentityClaimsReady: false,
     allowNonOverlappingSameAssetRequests: DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS,
     rentalExtensionEnabled: DEFAULT_RENTAL_EXTENSION_ENABLED,
     rentalExtensionApprovalMode: DEFAULT_RENTAL_EXTENSION_APPROVAL_MODE,
@@ -1454,6 +1472,12 @@ function mergePersistedData(rawData) {
   settings.allowNonOverlappingSameAssetRequests =
     rawSettings.allowNonOverlappingSameAssetRequests ??
     initialData.settings.allowNonOverlappingSameAssetRequests;
+  settings.requireRegisteredMemberForSignup =
+    Boolean(rawSettings.requireRegisteredMemberForSignup);
+  settings.memberDirectoryVersion =
+    getSafeMemberDirectoryVersion(rawSettings);
+  settings.memberIdentityClaimsReady =
+    Boolean(rawSettings.memberIdentityClaimsReady);
   settings.holidays = normalizeHolidayList(settings.holidays);
 
   const parsedWithoutAdminAccounts = stripAdminAccountsFromData(parsed);
@@ -1742,8 +1766,14 @@ const createDefaultAdminAuthForm = () => ({
 const USER_PROFILE_STATUS = {
   PENDING: 'pending',
   ACTIVE: 'active',
+  PROFILE_REQUIRED: 'profileRequired',
   BLOCKED: 'blocked',
   RETIRED: 'retired',
+};
+
+const PROFILE_REQUIRED_REASON = {
+  DIRECTORY_MISMATCH: 'directoryMismatch',
+  DUPLICATE_IDENTITY: 'duplicateIdentity',
 };
 
 const createDefaultUserAuthForm = () => ({
@@ -1752,16 +1782,53 @@ const createDefaultUserAuthForm = () => ({
   passwordConfirm: '',
   name: '',
   team: '',
-  phone: '',
+  phonePrefix: '010',
+  phoneMiddle: '',
+  phoneLast: '',
 });
 
 const createDefaultUserProfileForm = () => ({
   name: '',
   team: '',
-  phone: '',
+  phonePrefix: '010',
+  phoneMiddle: '',
+  phoneLast: '',
   newPassword: '',
   newPasswordConfirm: '',
 });
+
+const getSafeMemberDirectoryVersion = (settings = {}) => {
+  const parsedVersion = Math.trunc(Number(settings.memberDirectoryVersion || 0));
+  return Number.isFinite(parsedVersion) && parsedVersion >= 0
+    ? parsedVersion
+    : 0;
+};
+
+const isRegisteredMemberSignupRequired = (settings = {}) =>
+  Boolean(settings.requireRegisteredMemberForSignup);
+
+const getRestorableUserProfileStatus = (status) =>
+  [USER_PROFILE_STATUS.ACTIVE, USER_PROFILE_STATUS.PENDING].includes(status)
+    ? status
+    : USER_PROFILE_STATUS.PENDING;
+
+const createMemberPolicyError = (code) => {
+  const error = new Error(code);
+  error.code = code;
+  return error;
+};
+
+const getProfileRequiredReasonLabel = (reason) => {
+  if (reason === PROFILE_REQUIRED_REASON.DUPLICATE_IDENTITY) {
+    return '부서·성명 중복 계정';
+  }
+
+  if (reason === PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH) {
+    return '등록 명부 불일치';
+  }
+
+  return '등록 정보 확인 필요';
+};
 
 const createDefaultAdminAccountEditForm = () => ({
   adminLoginId: '',
@@ -1777,6 +1844,22 @@ const getUserAuthErrorMessage = (error) => {
   const errorCode = error?.code || '';
   const errorMessage = error?.message || '';
 
+  if (errorCode === 'member/directory-mismatch') {
+    return '등록된 부서·성명과 일치하지 않습니다. 입력 정보를 확인해 주세요.';
+  }
+
+  if (errorCode === 'member/identity-already-claimed') {
+    return '이미 가입된 부서·성명입니다. 기존 계정으로 로그인하거나 관리자에게 문의해 주세요.';
+  }
+
+  if (errorCode === 'member/directory-not-ready') {
+    return '가입 가능한 부서·사용자 명부가 준비되지 않았습니다. 관리자에게 문의해 주세요.';
+  }
+
+  if (errorCode === 'member/identity-index-not-ready') {
+    return '회원 중복 확인 정보가 준비되지 않았습니다. 관리자에게 문의해 주세요.';
+  }
+
   if (errorCode === 'auth/email-already-in-use') {
     return '이미 가입된 이메일입니다. 로그인 화면에서 로그인해 주세요.';
   }
@@ -1786,7 +1869,7 @@ const getUserAuthErrorMessage = (error) => {
   }
 
   if (errorCode === 'auth/weak-password') {
-    return '비밀번호는 6자 이상으로 입력해 주세요.';
+    return '비밀번호는 8자 이상이며 영문과 숫자를 포함해야 합니다.';
   }
 
   if (errorCode === 'auth/password-does-not-meet-requirements') {
@@ -2299,6 +2382,11 @@ function App() {
   const [newBorrower, setNewBorrower] = useState('');
   const [newBorrowerTeam, setNewBorrowerTeam] = useState('전체');
   const [tempBorrowers, setTempBorrowers] = useState(data.borrowers || []);
+  const [tempRequireRegisteredMemberForSignup, setTempRequireRegisteredMemberForSignup] = useState(
+    Boolean(data.settings.requireRegisteredMemberForSignup)
+  );
+  const [memberDirectoryAuditLoading, setMemberDirectoryAuditLoading] = useState(false);
+  const [memberDirectoryAuditResult, setMemberDirectoryAuditResult] = useState(null);
   const [editingBorrowerIndex, setEditingBorrowerIndex] = useState(null);
   const [editingBorrowerName, setEditingBorrowerName] = useState('');
   const [draggingBorrowerIndex, setDraggingBorrowerIndex] = useState(null);
@@ -2322,6 +2410,9 @@ function App() {
   const [currentAuthRoleErrorMessage, setCurrentAuthRoleErrorMessage] = useState('');
   const [userAuthForm, setUserAuthForm] = useState(createDefaultUserAuthForm);
   const [userAuthLoading, setUserAuthLoading] = useState(false);
+  const [userDirectoryVerificationLoading, setUserDirectoryVerificationLoading] = useState(false);
+  const userDirectoryVerificationKeyRef = useRef('');
+  const profileRequiredRedirectRef = useRef('');
 
   const hasFirebaseAuthSession = Boolean(
     firebaseAuthUser ||
@@ -2443,9 +2534,18 @@ function App() {
       JSON.stringify(normalizeTeams(tempTeams)) !==
         JSON.stringify(normalizeTeams(data.teams || [])) ||
       JSON.stringify(normalizeBorrowers(tempBorrowers)) !==
-        JSON.stringify(normalizeBorrowers(data.borrowers || []))
+        JSON.stringify(normalizeBorrowers(data.borrowers || [])) ||
+      Boolean(tempRequireRegisteredMemberForSignup) !==
+        Boolean(data.settings.requireRegisteredMemberForSignup)
     );
-  }, [data.borrowers, data.teams, tempBorrowers, tempTeams]);
+  }, [
+    data.borrowers,
+    data.settings.requireRegisteredMemberForSignup,
+    data.teams,
+    tempBorrowers,
+    tempRequireRegisteredMemberForSignup,
+    tempTeams,
+  ]);
 
   const getComparableRentalPolicySettings = (settings = {}) => {
     const excludeSaturdays =
@@ -2699,7 +2799,9 @@ function App() {
           setUserProfileForm({
             name: firebaseAuthUser.displayName || '',
             team: '',
-            phone: '',
+            phonePrefix: '010',
+            phoneMiddle: '',
+            phoneLast: '',
             newPassword: '',
             newPasswordConfirm: '',
           });
@@ -2709,11 +2811,15 @@ function App() {
 
         const profileData = snapshot.data();
 
+        const parsedPhone = parseDomesticPhoneNumber(profileData.phone || '');
+
         setUserProfile(profileData);
         setUserProfileForm({
           name: profileData.name || '',
           team: profileData.team || '',
-          phone: profileData.phone || '',
+          phonePrefix: parsedPhone.prefix,
+          phoneMiddle: parsedPhone.middle,
+          phoneLast: parsedPhone.last,
           newPassword: '',
           newPasswordConfirm: '',
         });
@@ -2811,6 +2917,28 @@ function App() {
       currentStatus ===
       USER_PROFILE_STATUS.ACTIVE
     ) {
+      profileRequiredRedirectRef.current = '';
+      return;
+    }
+
+    if (
+      currentStatus ===
+      USER_PROFILE_STATUS.PROFILE_REQUIRED
+    ) {
+      const redirectKey = `${firebaseAuthUser.uid}:${userProfile.profileRequiredReason || ''}`;
+
+      if (profileRequiredRedirectRef.current !== redirectKey) {
+        profileRequiredRedirectRef.current = redirectKey;
+        replaceAppPath('user', 'mypage');
+        setView('user');
+        setUserTab('mypage');
+        setIsCommunityMenuOpen(false);
+        triggerToast(
+          '등록 정보 확인이 필요합니다. 부서와 성명을 수정해 주세요.',
+          'error'
+        );
+      }
+
       return;
     }
 
@@ -2879,6 +3007,86 @@ function App() {
     userProfileReady,
     userProfile,
     userAuthLoading,
+  ]);
+
+  useEffect(() => {
+    if (
+      !firebaseAuthUser ||
+      !currentAuthRoleReady ||
+      currentAuthRoleErrorMessage ||
+      currentAuthAdminAccount ||
+      authenticatedAdminId ||
+      !userProfileReady ||
+      !userProfile ||
+      userAuthLoading ||
+      userDirectoryVerificationLoading
+    ) {
+      return;
+    }
+
+    const policyEnabled = isRegisteredMemberSignupRequired(data.settings);
+    const directoryVersion = getSafeMemberDirectoryVersion(data.settings);
+    const currentStatus = userProfile.status || '';
+    const needsVerification =
+      (policyEnabled &&
+        [
+          USER_PROFILE_STATUS.ACTIVE,
+          USER_PROFILE_STATUS.PROFILE_REQUIRED,
+        ].includes(currentStatus) &&
+        Number(userProfile.directoryVerifiedVersion || 0) !==
+          directoryVersion) ||
+      (!policyEnabled &&
+        currentStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
+        userProfile.profileRequiredReason ===
+          PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH);
+
+    if (!needsVerification) {
+      return;
+    }
+
+    const verificationKey = [
+      firebaseAuthUser.uid,
+      policyEnabled ? 'on' : 'off',
+      directoryVersion,
+      currentStatus,
+      userProfile.name || '',
+      userProfile.team || '',
+      userProfile.profileRequiredReason || '',
+    ].join(':');
+
+    if (userDirectoryVerificationKeyRef.current === verificationKey) {
+      return;
+    }
+
+    userDirectoryVerificationKeyRef.current = verificationKey;
+    setUserDirectoryVerificationLoading(true);
+
+    void verifyUserDirectoryMembership({
+      authUser: firebaseAuthUser,
+      account: userProfile,
+    })
+      .catch((error) => {
+        console.error('User directory verification error:', error);
+        userDirectoryVerificationKeyRef.current = '';
+        triggerToast(
+          '회원 명부 확인 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+          'error'
+        );
+      })
+      .finally(() => {
+        setUserDirectoryVerificationLoading(false);
+      });
+  }, [
+    authenticatedAdminId,
+    currentAuthAdminAccount,
+    currentAuthRoleErrorMessage,
+    currentAuthRoleReady,
+    data.settings,
+    firebaseAuthUser,
+    userAuthLoading,
+    userDirectoryVerificationLoading,
+    userProfile,
+    userProfileReady,
   ]);
 
   const getCurrentUserLoginReturnTarget = () => {
@@ -3045,6 +3253,33 @@ function App() {
       setSelectedFooterPageId('');
       setSelectedNoticePostId('');
       setIsCommunityMenuOpen(false);
+      return;
+    }
+
+    const directoryPolicyEnabled = isRegisteredMemberSignupRequired(
+      data.settings
+    );
+    const directoryVersion = getSafeMemberDirectoryVersion(data.settings);
+    const directoryAccessRestricted = Boolean(
+      userProfile &&
+        (userProfile.status === USER_PROFILE_STATUS.PROFILE_REQUIRED ||
+          (directoryPolicyEnabled &&
+            userProfile.status === USER_PROFILE_STATUS.ACTIVE &&
+            Number(userProfile.directoryVerifiedVersion || 0) !==
+              directoryVersion))
+    );
+
+    if (directoryAccessRestricted) {
+      replaceAppPath('user', 'mypage');
+      setView('user');
+      setUserTab('mypage');
+      setSelectedFooterPageId('');
+      setSelectedNoticePostId('');
+      setIsCommunityMenuOpen(false);
+      triggerToast(
+        '등록 정보 확인 후 서비스를 이용해 주세요.',
+        'error'
+      );
       return;
     }
 
@@ -3837,6 +4072,9 @@ function App() {
     if (adminTab === 'people') {
       setTempTeams(data.teams || []);
       setTempBorrowers(data.borrowers || []);
+      setTempRequireRegisteredMemberForSignup(
+        Boolean(data.settings.requireRegisteredMemberForSignup)
+      );
       setEditingTeamIndex(null);
       setEditingTeamName('');
       setDraggingTeamIndex(null);
@@ -3847,7 +4085,12 @@ function App() {
       setNewBorrower('');
       setNewBorrowerTeam('전체');
     }
-  }, [adminTab, data.teams, data.borrowers]);
+  }, [
+    adminTab,
+    data.teams,
+    data.borrowers,
+    data.settings.requireRegisteredMemberForSignup,
+  ]);
 
   useEffect(() => {
     if (adminTab === 'adminAccounts') {
@@ -4000,6 +4243,211 @@ function App() {
     setConfirmModal({ title, message, onConfirm });
   };
 
+  const verifyUserDirectoryMembership = async ({
+    authUser,
+    account,
+    force = false,
+  }) => {
+    if (!authUser?.uid || !account) {
+      throw createMemberPolicyError('member/account-not-ready');
+    }
+
+    const normalizedName = normalizeMemberName(account.name || '');
+    const normalizedTeam = normalizeMemberTeam(account.team || '');
+    const identityKey = await createMemberIdentityKey(
+      normalizedTeam,
+      normalizedName
+    );
+
+    return runTransaction(db, async (transaction) => {
+      const configRef = PUBLIC_CONFIG_DOC_REF;
+      const userRef = doc(
+        db,
+        USER_ACCOUNTS_COLLECTION_NAME,
+        authUser.uid
+      );
+      const directoryRef = doc(
+        MEMBER_DIRECTORY_KEYS_COLLECTION_REF,
+        identityKey
+      );
+      const claimRef = doc(
+        MEMBER_IDENTITY_CLAIMS_COLLECTION_REF,
+        identityKey
+      );
+
+      const configSnapshot = await transaction.get(configRef);
+      const userSnapshot = await transaction.get(userRef);
+
+      if (!userSnapshot.exists()) {
+        throw createMemberPolicyError('member/account-not-ready');
+      }
+
+      const currentAccount = userSnapshot.data();
+      const latestName = normalizeMemberName(currentAccount.name || '');
+      const latestTeam = normalizeMemberTeam(currentAccount.team || '');
+
+      if (latestName !== normalizedName || latestTeam !== normalizedTeam) {
+        throw createMemberPolicyError('member/profile-changed');
+      }
+
+      const settings = normalizeRentalPolicySettings({
+        ...initialData.settings,
+        ...(configSnapshot.exists()
+          ? configSnapshot.data()?.settings || {}
+          : {}),
+      });
+      const policyEnabled = isRegisteredMemberSignupRequired(settings);
+      const directoryVersion = getSafeMemberDirectoryVersion(settings);
+      const currentStatus = currentAccount.status || '';
+
+      if (!policyEnabled) {
+        if (
+          currentStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
+          currentAccount.profileRequiredReason ===
+            PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH
+        ) {
+          const restoredStatus = getRestorableUserProfileStatus(
+            currentAccount.statusBeforeProfileRequired
+          );
+
+          transaction.update(userRef, {
+            status: restoredStatus,
+            profileRequiredReason: '',
+            profileRequiredAt: '',
+            statusBeforeProfileRequired: '',
+            updatedAt: serverTimestamp(),
+          });
+
+          return {
+            status: restoredStatus,
+            policyEnabled: false,
+            restored: true,
+          };
+        }
+
+        return {
+          status: currentStatus,
+          policyEnabled: false,
+          restored: false,
+        };
+      }
+
+      if (
+        !force &&
+        currentStatus === USER_PROFILE_STATUS.ACTIVE &&
+        Number(currentAccount.directoryVerifiedVersion || 0) ===
+          directoryVersion
+      ) {
+        return {
+          status: currentStatus,
+          policyEnabled: true,
+          verified: true,
+        };
+      }
+
+      const directorySnapshot = await transaction.get(directoryRef);
+      const claimSnapshot = await transaction.get(claimRef);
+      const directoryData = directorySnapshot.exists()
+        ? directorySnapshot.data()
+        : null;
+      const claimData = claimSnapshot.exists()
+        ? claimSnapshot.data()
+        : null;
+
+      const directoryMatches = Boolean(
+        directoryData &&
+          directoryData.enabled !== false &&
+          normalizeMemberName(directoryData.name || '') === normalizedName &&
+          normalizeMemberTeam(directoryData.team || '') === normalizedTeam
+      );
+      const claimConflict = Boolean(
+        claimData &&
+          (claimData.conflict === true || claimData.uid !== authUser.uid)
+      );
+
+      if (directoryMatches && !claimConflict) {
+        if (!claimSnapshot.exists()) {
+          transaction.set(claimRef, {
+            identityKey,
+            uid: authUser.uid,
+            name: normalizedName,
+            team: normalizedTeam,
+            conflict: false,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        }
+
+        const shouldRestore =
+          currentStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
+          currentAccount.profileRequiredReason ===
+            PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
+        const nextStatus = shouldRestore
+          ? getRestorableUserProfileStatus(
+              currentAccount.statusBeforeProfileRequired
+            )
+          : currentStatus;
+
+        transaction.update(userRef, {
+          status: nextStatus,
+          identityKey,
+          directoryMemberId: directoryData.directoryMemberId || '',
+          directoryVerifiedVersion: directoryVersion,
+          directoryVerifiedAt: serverTimestamp(),
+          profileRequiredReason: shouldRestore
+            ? ''
+            : currentAccount.profileRequiredReason || '',
+          profileRequiredAt: shouldRestore
+            ? ''
+            : currentAccount.profileRequiredAt || '',
+          statusBeforeProfileRequired: shouldRestore
+            ? ''
+            : currentAccount.statusBeforeProfileRequired || '',
+          updatedAt: serverTimestamp(),
+        });
+
+        return {
+          status: nextStatus,
+          policyEnabled: true,
+          verified: true,
+          restored: shouldRestore,
+        };
+      }
+
+      const nextReason = claimConflict
+        ? PROFILE_REQUIRED_REASON.DUPLICATE_IDENTITY
+        : PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
+      const statusBeforeProfileRequired =
+        [USER_PROFILE_STATUS.ACTIVE, USER_PROFILE_STATUS.PENDING].includes(
+          currentStatus
+        )
+          ? currentStatus
+          : currentAccount.statusBeforeProfileRequired ||
+            USER_PROFILE_STATUS.PENDING;
+
+      transaction.update(userRef, {
+        status: USER_PROFILE_STATUS.PROFILE_REQUIRED,
+        statusBeforeProfileRequired,
+        profileRequiredReason: nextReason,
+        profileRequiredAt: serverTimestamp(),
+        identityKey,
+        directoryMemberId: directoryMatches
+          ? directoryData.directoryMemberId || ''
+          : '',
+        directoryVerifiedVersion: 0,
+        directoryVerifiedAt: '',
+        updatedAt: serverTimestamp(),
+      });
+
+      return {
+        status: USER_PROFILE_STATUS.PROFILE_REQUIRED,
+        policyEnabled: true,
+        verified: false,
+        reason: nextReason,
+      };
+    });
+  };
+
   const registeredAdminAccounts = adminAccounts || [];
 
   const authenticatedAdminAccount =
@@ -4022,6 +4470,24 @@ function App() {
     currentAuthRoleReady &&
     !currentAuthRoleErrorMessage &&
     !currentAuthAdminAccount;
+
+  const memberDirectoryPolicyEnabled =
+    isRegisteredMemberSignupRequired(data.settings);
+  const memberIdentityClaimsReady = Boolean(
+    data.settings.memberIdentityClaimsReady
+  );
+  const currentMemberDirectoryVersion =
+    getSafeMemberDirectoryVersion(data.settings);
+  const isUserDirectoryAccessRestricted = Boolean(
+    userProfile &&
+      (userProfile.status === USER_PROFILE_STATUS.PROFILE_REQUIRED ||
+        (memberDirectoryPolicyEnabled &&
+          userProfile.status === USER_PROFILE_STATUS.ACTIVE &&
+          Number(userProfile.directoryVerifiedVersion || 0) !==
+            currentMemberDirectoryVersion))
+  );
+  const memberDirectoryAudit =
+    splitPublicConfig?.memberDirectoryAudit || null;
 
   const mergedRentalRequests = useMemo(() => {
     const requestMap = new Map();
@@ -5986,19 +6452,42 @@ function App() {
     }
   };
 
+  const cancelUserSignup = () => {
+    if (userAuthLoading) {
+      return;
+    }
+
+    setUserAuthForm(createDefaultUserAuthForm());
+    clearUserLoginReturnTarget();
+    replaceAppPath('user', 'login');
+    setView('user');
+    setUserTab('login');
+    setIsCommunityMenuOpen(false);
+  };
+
   const submitUserAuthForm = async (event) => {
     event.preventDefault();
 
     const isSignupMode = userTab === 'signup';
-    const email = userAuthForm.email.trim();
+    const email = normalizeEmailAddress(userAuthForm.email);
     const password = userAuthForm.password;
     const passwordConfirm = userAuthForm.passwordConfirm;
-    const name = userAuthForm.name.trim();
-    const team = userAuthForm.team.trim();
-    const phone = userAuthForm.phone.trim();
+    const name = normalizeMemberName(userAuthForm.name);
+    const team = normalizeMemberTeam(userAuthForm.team);
+    const phoneParts = {
+      prefix: userAuthForm.phonePrefix,
+      middle: userAuthForm.phoneMiddle,
+      last: userAuthForm.phoneLast,
+    };
+    const phone = buildDomesticPhoneNumber(phoneParts);
 
     if (!email) {
       triggerToast('이메일을 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (!isValidEmailAddress(email)) {
+      triggerToast('올바른 이메일 주소를 입력해 주세요.', 'error');
       return;
     }
 
@@ -6007,19 +6496,40 @@ function App() {
       return;
     }
 
-    if (password.length < 6) {
-      triggerToast('비밀번호는 6자 이상으로 입력해 주세요.', 'error');
-      return;
-    }
-
     if (isSignupMode) {
+      if (!isValidMemberPassword(password)) {
+        triggerToast(
+          '비밀번호는 8자 이상이며 영문과 숫자를 포함해야 합니다.',
+          'error'
+        );
+        return;
+      }
+
       if (!name) {
         triggerToast('이름을 입력해 주세요.', 'error');
         return;
       }
 
+      if (!isValidMemberName(name)) {
+        triggerToast(
+          '이름은 공백 없이 한글 또는 영문 2~30자로 입력해 주세요.',
+          'error'
+        );
+        return;
+      }
+
       if (!team) {
-        triggerToast('부서 / 팀을 입력해 주세요.', 'error');
+        triggerToast(
+          isRegisteredMemberSignupRequired(data.settings)
+            ? '부서 / 팀을 선택해 주세요.'
+            : '부서 / 팀을 입력해 주세요.',
+          'error'
+        );
+        return;
+      }
+
+      if (!isValidDomesticPhoneNumber(phoneParts)) {
+        triggerToast('올바른 국내 연락처를 입력해 주세요.', 'error');
         return;
       }
 
@@ -6036,6 +6546,37 @@ function App() {
 
     try {
       if (isSignupMode) {
+        if (!data.settings.memberIdentityClaimsReady) {
+          throw createMemberPolicyError('member/identity-index-not-ready');
+        }
+
+        const identityKey = await createMemberIdentityKey(team, name);
+        const initialPolicyEnabled = isRegisteredMemberSignupRequired(
+          data.settings
+        );
+
+        if (initialPolicyEnabled) {
+          if ((data.teams || []).length === 0) {
+            throw createMemberPolicyError('member/directory-not-ready');
+          }
+
+          const directorySnapshot = await getDoc(
+            doc(MEMBER_DIRECTORY_KEYS_COLLECTION_REF, identityKey)
+          );
+          const directoryData = directorySnapshot.exists()
+            ? directorySnapshot.data()
+            : null;
+
+          if (
+            !directoryData ||
+            directoryData.enabled === false ||
+            normalizeMemberName(directoryData.name || '') !== name ||
+            normalizeMemberTeam(directoryData.team || '') !== team
+          ) {
+            throw createMemberPolicyError('member/directory-mismatch');
+          }
+        }
+
         const credential = await createUserWithEmailAndPassword(
           firebaseAuth,
           email,
@@ -6048,26 +6589,105 @@ function App() {
           displayName: name,
         });
 
-        await setDoc(
-          doc(db, USER_ACCOUNTS_COLLECTION_NAME, credential.user.uid),
-          {
+        await runTransaction(db, async (transaction) => {
+          const configSnapshot = await transaction.get(PUBLIC_CONFIG_DOC_REF);
+          const claimRef = doc(
+            MEMBER_IDENTITY_CLAIMS_COLLECTION_REF,
+            identityKey
+          );
+          const claimSnapshot = await transaction.get(claimRef);
+          const latestSettings = normalizeRentalPolicySettings({
+            ...initialData.settings,
+            ...(configSnapshot.exists()
+              ? configSnapshot.data()?.settings || {}
+              : {}),
+          });
+          const latestPolicyEnabled = isRegisteredMemberSignupRequired(
+            latestSettings
+          );
+
+          if (!latestSettings.memberIdentityClaimsReady) {
+            throw createMemberPolicyError('member/identity-index-not-ready');
+          }
+
+          const directoryVersion = getSafeMemberDirectoryVersion(
+            latestSettings
+          );
+          let directoryData = null;
+
+          if (latestPolicyEnabled) {
+            const directoryRef = doc(
+              MEMBER_DIRECTORY_KEYS_COLLECTION_REF,
+              identityKey
+            );
+            const directorySnapshot = await transaction.get(directoryRef);
+            directoryData = directorySnapshot.exists()
+              ? directorySnapshot.data()
+              : null;
+
+            if (
+              !directoryData ||
+              directoryData.enabled === false ||
+              normalizeMemberName(directoryData.name || '') !== name ||
+              normalizeMemberTeam(directoryData.team || '') !== team
+            ) {
+              throw createMemberPolicyError('member/directory-mismatch');
+            }
+          }
+
+          if (
+            claimSnapshot.exists() &&
+            (claimSnapshot.data().conflict === true ||
+              claimSnapshot.data().uid !== credential.user.uid)
+          ) {
+            throw createMemberPolicyError('member/identity-already-claimed');
+          }
+
+          transaction.set(claimRef, {
+            identityKey,
             uid: credential.user.uid,
-            email: credential.user.email || email,
             name,
             team,
-            phone,
-            status: USER_PROFILE_STATUS.PENDING,
-            createdAt: serverTimestamp(),
+            conflict: false,
+            createdAt: claimSnapshot.exists()
+              ? claimSnapshot.data().createdAt || serverTimestamp()
+              : serverTimestamp(),
             updatedAt: serverTimestamp(),
-          }
-        );
+          });
+
+          transaction.set(
+            doc(db, USER_ACCOUNTS_COLLECTION_NAME, credential.user.uid),
+            {
+              uid: credential.user.uid,
+              email: credential.user.email || email,
+              name,
+              team,
+              phone,
+              status: USER_PROFILE_STATUS.PENDING,
+              identityKey,
+              directoryMemberId:
+                latestPolicyEnabled && directoryData
+                  ? directoryData.directoryMemberId || ''
+                  : '',
+              directoryVerifiedVersion: latestPolicyEnabled
+                ? directoryVersion
+                : 0,
+              directoryVerifiedAt: latestPolicyEnabled
+                ? serverTimestamp()
+                : '',
+              profileRequiredReason: '',
+              profileRequiredAt: '',
+              statusBeforeProfileRequired: '',
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            }
+          );
+        });
 
         createdSignupUser = null;
 
         await signOut(firebaseAuth);
-
         setUserAuthForm(createDefaultUserAuthForm());
-
         pushAppPath('user', 'login');
         setView('user');
         setUserTab('login');
@@ -6079,94 +6699,112 @@ function App() {
         );
 
         return;
-      } else {
-        const credential = await signInWithEmailAndPassword(
-          firebaseAuth,
-          email,
-          password
-        );
-
-        signedInUserForRoleCheck = credential.user;
-
-        const adminAccountSnapshot = await getDoc(
-          doc(db, 'adminAccounts', credential.user.uid)
-        );
-
-        if (adminAccountSnapshot.exists()) {
-          await signOut(firebaseAuth);
-
-          signedInUserForRoleCheck = null;
-
-          triggerToast(
-            '관리자 계정은 사용자 로그인 화면이 아니라 관리자 모드에서 로그인해 주세요.',
-            'error'
-          );
-
-          return;
-        }
-
-        const userAccountSnapshot = await getDoc(
-          doc(
-            db,
-            USER_ACCOUNTS_COLLECTION_NAME,
-            credential.user.uid
-          )
-        );
-
-        if (!userAccountSnapshot.exists()) {
-          await signOut(firebaseAuth);
-
-          signedInUserForRoleCheck = null;
-
-          triggerToast(
-            '등록된 회원 정보가 없습니다. 관리자에게 문의해 주세요.',
-            'error'
-          );
-
-          return;
-        }
-
-        const signedInUserStatus =
-          userAccountSnapshot.data().status || '';
-
-        if (
-          signedInUserStatus !==
-          USER_PROFILE_STATUS.ACTIVE
-        ) {
-          await signOut(firebaseAuth);
-
-          signedInUserForRoleCheck = null;
-
-          const blockedMessage =
-            signedInUserStatus ===
-            USER_PROFILE_STATUS.PENDING
-              ? '관리자 승인 대기 중인 계정입니다.'
-              : signedInUserStatus ===
-                  USER_PROFILE_STATUS.BLOCKED
-                ? '이용이 차단된 계정입니다. 관리자에게 문의해 주세요.'
-                : signedInUserStatus ===
-                    USER_PROFILE_STATUS.RETIRED
-                  ? '이용이 종료된 계정입니다. 관리자에게 문의해 주세요.'
-                  : '현재 회원 상태에서는 로그인할 수 없습니다.';
-
-          triggerToast(
-            blockedMessage,
-            'error'
-          );
-
-          return;
-        }
-
-        signedInUserForRoleCheck = null;
-
-        clearAdminAuthenticatedSession();
-        setUserAuthForm(createDefaultUserAuthForm());
-        triggerToast('로그인되었습니다.', 'success');
       }
 
-      const returnTarget =
-        readUserLoginReturnTarget();
+      const credential = await signInWithEmailAndPassword(
+        firebaseAuth,
+        email,
+        password
+      );
 
+      signedInUserForRoleCheck = credential.user;
+
+      const adminAccountSnapshot = await getDoc(
+        doc(db, 'adminAccounts', credential.user.uid)
+      );
+
+      if (adminAccountSnapshot.exists()) {
+        await signOut(firebaseAuth);
+        signedInUserForRoleCheck = null;
+        triggerToast(
+          '관리자 계정은 사용자 로그인 화면이 아니라 관리자 모드에서 로그인해 주세요.',
+          'error'
+        );
+        return;
+      }
+
+      const userAccountSnapshot = await getDoc(
+        doc(db, USER_ACCOUNTS_COLLECTION_NAME, credential.user.uid)
+      );
+
+      if (!userAccountSnapshot.exists()) {
+        await signOut(firebaseAuth);
+        signedInUserForRoleCheck = null;
+        triggerToast(
+          '등록된 회원 정보가 없습니다. 관리자에게 문의해 주세요.',
+          'error'
+        );
+        return;
+      }
+
+      let signedInAccount = userAccountSnapshot.data();
+      let signedInUserStatus = signedInAccount.status || '';
+
+      if (
+        [
+          USER_PROFILE_STATUS.ACTIVE,
+          USER_PROFILE_STATUS.PROFILE_REQUIRED,
+        ].includes(signedInUserStatus)
+      ) {
+        const policyEnabled = isRegisteredMemberSignupRequired(data.settings);
+        const directoryVersion = getSafeMemberDirectoryVersion(data.settings);
+        const needsDirectoryVerification =
+          (policyEnabled &&
+            Number(signedInAccount.directoryVerifiedVersion || 0) !==
+              directoryVersion) ||
+          (!policyEnabled &&
+            signedInUserStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
+            signedInAccount.profileRequiredReason ===
+              PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH);
+
+        if (needsDirectoryVerification) {
+          const verificationResult = await verifyUserDirectoryMembership({
+            authUser: credential.user,
+            account: signedInAccount,
+          });
+          signedInUserStatus = verificationResult.status;
+        }
+      }
+
+      if (signedInUserStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED) {
+        signedInUserForRoleCheck = null;
+        clearAdminAuthenticatedSession();
+        setUserAuthForm(createDefaultUserAuthForm());
+        clearUserLoginReturnTarget();
+        replaceAppPath('user', 'mypage');
+        setView('user');
+        setUserTab('mypage');
+        setIsCommunityMenuOpen(false);
+        triggerToast(
+          '등록 정보 확인이 필요합니다. 부서와 성명을 수정해 주세요.',
+          'error'
+        );
+        return;
+      }
+
+      if (signedInUserStatus !== USER_PROFILE_STATUS.ACTIVE) {
+        await signOut(firebaseAuth);
+        signedInUserForRoleCheck = null;
+
+        const blockedMessage =
+          signedInUserStatus === USER_PROFILE_STATUS.PENDING
+            ? '관리자 승인 대기 중인 계정입니다.'
+            : signedInUserStatus === USER_PROFILE_STATUS.BLOCKED
+              ? '이용이 차단된 계정입니다. 관리자에게 문의해 주세요.'
+              : signedInUserStatus === USER_PROFILE_STATUS.RETIRED
+                ? '이용이 종료된 계정입니다. 관리자에게 문의해 주세요.'
+                : '현재 회원 상태에서는 로그인할 수 없습니다.';
+
+        triggerToast(blockedMessage, 'error');
+        return;
+      }
+
+      signedInUserForRoleCheck = null;
+      clearAdminAuthenticatedSession();
+      setUserAuthForm(createDefaultUserAuthForm());
+      triggerToast('로그인되었습니다.', 'success');
+
+      const returnTarget = readUserLoginReturnTarget();
       clearUserLoginReturnTarget();
 
       navigateToUserReturnTarget(
@@ -6180,6 +6818,14 @@ function App() {
     } catch (error) {
       let signupRollbackFailed = false;
       let firebaseAuthCleanupFailed = false;
+
+      if (isSignupMode) {
+        setUserAuthForm((prev) => ({
+          ...prev,
+          password: '',
+          passwordConfirm: '',
+        }));
+      }
 
       if (
         createdSignupUser &&
@@ -6216,7 +6862,6 @@ function App() {
       }
 
       clearAdminAuthenticatedSession();
-
       console.error('User auth error:', error);
 
       const baseErrorMessage = signupRollbackFailed
@@ -6557,6 +7202,13 @@ function App() {
               USER_PROFILE_STATUS.ACTIVE
           ).length,
 
+        profileRequired:
+          managedUserAccounts.filter(
+            (account) =>
+              account.status ===
+              USER_PROFILE_STATUS.PROFILE_REQUIRED
+          ).length,
+
         blocked:
           managedUserAccounts.filter(
             (account) =>
@@ -6593,6 +7245,13 @@ function App() {
 
     if (
       status ===
+      USER_PROFILE_STATUS.PROFILE_REQUIRED
+    ) {
+      return '정보 수정 필요';
+    }
+
+    if (
+      status ===
       USER_PROFILE_STATUS.BLOCKED
     ) {
       return '차단';
@@ -6623,6 +7282,13 @@ function App() {
       USER_PROFILE_STATUS.ACTIVE
     ) {
       return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    }
+
+    if (
+      status ===
+      USER_PROFILE_STATUS.PROFILE_REQUIRED
+    ) {
+      return 'border-orange-200 bg-orange-50 text-orange-700';
     }
 
     if (
@@ -6664,6 +7330,7 @@ function App() {
       ![
         USER_PROFILE_STATUS.PENDING,
         USER_PROFILE_STATUS.ACTIVE,
+        USER_PROFILE_STATUS.PROFILE_REQUIRED,
         USER_PROFILE_STATUS.BLOCKED,
         USER_PROFILE_STATUS.RETIRED,
       ].includes(nextStatus)
@@ -7179,26 +7846,47 @@ function App() {
       return;
     }
 
-    const name = userProfileForm.name.trim();
-    const team = userProfileForm.team.trim();
-    const phone = userProfileForm.phone.trim();
+    const name = normalizeMemberName(userProfileForm.name);
+    const team = normalizeMemberTeam(userProfileForm.team);
+    const phoneParts = {
+      prefix: userProfileForm.phonePrefix,
+      middle: userProfileForm.phoneMiddle,
+      last: userProfileForm.phoneLast,
+    };
+    const phone = buildDomesticPhoneNumber(phoneParts);
     const newPassword = userProfileForm.newPassword || '';
     const newPasswordConfirm = userProfileForm.newPasswordConfirm || '';
     const shouldChangePassword = Boolean(newPassword || newPasswordConfirm);
 
-    if (!name) {
-      triggerToast('이름을 입력해 주세요.', 'error');
+    if (!isValidMemberName(name)) {
+      triggerToast(
+        '이름은 공백 없이 한글 또는 영문 2~30자로 입력해 주세요.',
+        'error'
+      );
       return;
     }
 
     if (!team) {
-      triggerToast('부서 / 팀을 입력해 주세요.', 'error');
+      triggerToast(
+        isRegisteredMemberSignupRequired(data.settings)
+          ? '부서 / 팀을 선택해 주세요.'
+          : '부서 / 팀을 입력해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    if (!isValidDomesticPhoneNumber(phoneParts)) {
+      triggerToast('올바른 국내 연락처를 입력해 주세요.', 'error');
       return;
     }
 
     if (shouldChangePassword) {
-      if (newPassword.length < 6) {
-        triggerToast('새 비밀번호는 6자 이상으로 입력해 주세요.', 'error');
+      if (!isValidMemberPassword(newPassword)) {
+        triggerToast(
+          '새 비밀번호는 8자 이상이며 영문과 숫자를 포함해야 합니다.',
+          'error'
+        );
         return;
       }
 
@@ -7211,32 +7899,156 @@ function App() {
     setUserProfileSaving(true);
 
     try {
+      const nextIdentityKey = await createMemberIdentityKey(team, name);
+      const previousIdentityKey =
+        userProfile?.identityKey ||
+        (userProfile?.name && userProfile?.team
+          ? await createMemberIdentityKey(userProfile.team, userProfile.name)
+          : '');
+
       if (shouldChangePassword) {
         await updatePassword(firebaseAuthUser, newPassword);
       }
+
+      await runTransaction(db, async (transaction) => {
+        const configSnapshot = await transaction.get(PUBLIC_CONFIG_DOC_REF);
+        const userRef = doc(
+          db,
+          USER_ACCOUNTS_COLLECTION_NAME,
+          firebaseAuthUser.uid
+        );
+        const userSnapshot = await transaction.get(userRef);
+        const nextClaimRef = doc(
+          MEMBER_IDENTITY_CLAIMS_COLLECTION_REF,
+          nextIdentityKey
+        );
+        const nextClaimSnapshot = await transaction.get(nextClaimRef);
+        const previousClaimRef =
+          previousIdentityKey && previousIdentityKey !== nextIdentityKey
+            ? doc(
+                MEMBER_IDENTITY_CLAIMS_COLLECTION_REF,
+                previousIdentityKey
+              )
+            : null;
+        const previousClaimSnapshot = previousClaimRef
+          ? await transaction.get(previousClaimRef)
+          : null;
+
+        if (!userSnapshot.exists()) {
+          throw createMemberPolicyError('member/account-not-ready');
+        }
+
+        const latestSettings = normalizeRentalPolicySettings({
+          ...initialData.settings,
+          ...(configSnapshot.exists()
+            ? configSnapshot.data()?.settings || {}
+            : {}),
+        });
+        const policyEnabled = isRegisteredMemberSignupRequired(
+          latestSettings
+        );
+        const directoryVersion = getSafeMemberDirectoryVersion(
+          latestSettings
+        );
+        let directoryData = null;
+
+        if (policyEnabled) {
+          const directoryRef = doc(
+            MEMBER_DIRECTORY_KEYS_COLLECTION_REF,
+            nextIdentityKey
+          );
+          const directorySnapshot = await transaction.get(directoryRef);
+          directoryData = directorySnapshot.exists()
+            ? directorySnapshot.data()
+            : null;
+
+          if (
+            !directoryData ||
+            directoryData.enabled === false ||
+            normalizeMemberName(directoryData.name || '') !== name ||
+            normalizeMemberTeam(directoryData.team || '') !== team
+          ) {
+            throw createMemberPolicyError('member/directory-mismatch');
+          }
+        }
+
+        if (
+          nextClaimSnapshot.exists() &&
+          (nextClaimSnapshot.data().conflict === true ||
+            nextClaimSnapshot.data().uid !== firebaseAuthUser.uid)
+        ) {
+          throw createMemberPolicyError('member/identity-already-claimed');
+        }
+
+        const currentAccount = userSnapshot.data();
+        const shouldRestoreDirectoryMismatch =
+          currentAccount.status === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
+          currentAccount.profileRequiredReason ===
+            PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
+        const nextStatus = shouldRestoreDirectoryMismatch
+          ? getRestorableUserProfileStatus(
+              currentAccount.statusBeforeProfileRequired
+            )
+          : currentAccount.status || USER_PROFILE_STATUS.PENDING;
+
+        transaction.set(nextClaimRef, {
+          identityKey: nextIdentityKey,
+          uid: firebaseAuthUser.uid,
+          name,
+          team,
+          conflict: false,
+          createdAt: nextClaimSnapshot.exists()
+            ? nextClaimSnapshot.data().createdAt || serverTimestamp()
+            : serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+
+        if (
+          previousClaimRef &&
+          previousClaimSnapshot?.exists() &&
+          previousClaimSnapshot.data().uid === firebaseAuthUser.uid
+        ) {
+          transaction.delete(previousClaimRef);
+        }
+
+        transaction.update(userRef, {
+          email: firebaseAuthUser.email || currentAccount.email || '',
+          name,
+          team,
+          phone,
+          status: nextStatus,
+          identityKey: nextIdentityKey,
+          directoryMemberId:
+            policyEnabled && directoryData
+              ? directoryData.directoryMemberId || ''
+              : '',
+          directoryVerifiedVersion: policyEnabled
+            ? directoryVersion
+            : 0,
+          directoryVerifiedAt: policyEnabled
+            ? serverTimestamp()
+            : '',
+          profileRequiredReason: shouldRestoreDirectoryMismatch
+            ? ''
+            : currentAccount.profileRequiredReason || '',
+          profileRequiredAt: shouldRestoreDirectoryMismatch
+            ? ''
+            : currentAccount.profileRequiredAt || '',
+          statusBeforeProfileRequired: shouldRestoreDirectoryMismatch
+            ? ''
+            : currentAccount.statusBeforeProfileRequired || '',
+          updatedAt: serverTimestamp(),
+        });
+      });
 
       await updateProfile(firebaseAuthUser, {
         displayName: name,
       });
 
-      await setDoc(
-        doc(db, USER_ACCOUNTS_COLLECTION_NAME, firebaseAuthUser.uid),
-        {
-          ...(userProfile || {}),
-          uid: firebaseAuthUser.uid,
-          email: firebaseAuthUser.email || userProfile?.email || '',
-          name,
-          team,
-          phone,
-          status: userProfile?.status || USER_PROFILE_STATUS.PENDING,
-          createdAt: userProfile?.createdAt || serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-
       setUserProfileForm((prev) => ({
         ...prev,
+        name,
+        team,
         newPassword: '',
         newPasswordConfirm: '',
       }));
@@ -8182,10 +8994,13 @@ function App() {
       return;
     }
 
-    const borrowerName = newBorrower.trim();
+    const borrowerName = normalizeMemberName(newBorrower);
 
-    if (!borrowerName) {
-      triggerToast('사용자명을 입력해 주세요.', 'error');
+    if (!isValidMemberName(borrowerName)) {
+      triggerToast(
+        '사용자명은 공백 없이 한글 또는 영문 2~30자로 입력해 주세요.',
+        'error'
+      );
       return;
     }
 
@@ -8211,10 +9026,13 @@ function App() {
   };
 
   const applyEditTempBorrower = (borrower, originalIndex) => {
-    const nextBorrowerName = editingBorrowerName.trim();
+    const nextBorrowerName = normalizeMemberName(editingBorrowerName);
 
-    if (!nextBorrowerName) {
-      triggerToast('사용자명을 입력해 주세요.', 'error');
+    if (!isValidMemberName(nextBorrowerName)) {
+      triggerToast(
+        '사용자명은 공백 없이 한글 또는 영문 2~30자로 입력해 주세요.',
+        'error'
+      );
       return;
     }
 
@@ -8265,6 +9083,9 @@ function App() {
   const cancelTempPeopleChanges = ({ silent = false } = {}) => {
     setTempTeams(data.teams || []);
     setTempBorrowers(data.borrowers || []);
+    setTempRequireRegisteredMemberForSignup(
+      Boolean(data.settings.requireRegisteredMemberForSignup)
+    );
     setEditingTeamIndex(null);
     setEditingTeamName('');
     setDraggingTeamIndex(null);
@@ -8289,17 +9110,15 @@ function App() {
     }
 
     const nextTeams = tempTeams
-      .map((team) =>
-        String(team || '').trim()
-      )
+      .map((team) => normalizeMemberTeam(team))
       .filter(Boolean);
 
-    const duplicatedTeam =
-      nextTeams.find(
-        (team, index) =>
-          nextTeams.indexOf(team) !==
-          index
-      );
+    const duplicatedTeam = nextTeams.find(
+      (team, index) =>
+        nextTeams.findIndex(
+          (item) => item.toLocaleLowerCase('ko-KR') === team.toLocaleLowerCase('ko-KR')
+        ) !== index
+    );
 
     if (duplicatedTeam) {
       triggerToast(
@@ -8309,40 +9128,42 @@ function App() {
       return false;
     }
 
-    const nextBorrowers =
-      tempBorrowers
-        .map((borrower, index) => ({
-          id:
-            borrower.id ||
-            createBorrowerDocumentId(),
-          name: String(
-            borrower.name || ''
-          ).trim(),
-          team: String(
-            borrower.team || ''
-          ).trim(),
-          sortOrder: index,
-        }))
-        .filter(
-          (borrower) =>
-            borrower.name &&
-            borrower.team &&
-            nextTeams.includes(
-              borrower.team
-            )
-        );
-
-    const duplicatedBorrower =
-      nextBorrowers.find(
-        (borrower, index) =>
-          nextBorrowers.findIndex(
-            (item) =>
-              item.team ===
-                borrower.team &&
-              item.name ===
-                borrower.name
-          ) !== index
+    const nextBorrowers = tempBorrowers
+      .map((borrower, index) => ({
+        id: borrower.id || createBorrowerDocumentId(),
+        name: normalizeMemberName(borrower.name || ''),
+        team: normalizeMemberTeam(borrower.team || ''),
+        sortOrder: index,
+      }))
+      .filter(
+        (borrower) =>
+          borrower.name &&
+          borrower.team &&
+          nextTeams.includes(borrower.team)
       );
+
+    const invalidBorrower = nextBorrowers.find(
+      (borrower) => !isValidMemberName(borrower.name)
+    );
+
+    if (invalidBorrower) {
+      triggerToast(
+        `[${invalidBorrower.team}] ${invalidBorrower.name} 사용자명은 공백 없이 한글 또는 영문 2~30자로 입력해 주세요.`,
+        'error'
+      );
+      return false;
+    }
+
+    const duplicatedBorrower = nextBorrowers.find(
+      (borrower, index) =>
+        nextBorrowers.findIndex(
+          (item) =>
+            normalizeMemberTeam(item.team).toLocaleLowerCase('ko-KR') ===
+              normalizeMemberTeam(borrower.team).toLocaleLowerCase('ko-KR') &&
+            normalizeMemberName(item.name).toLocaleLowerCase('ko-KR') ===
+              normalizeMemberName(borrower.name).toLocaleLowerCase('ko-KR')
+        ) !== index
+    );
 
     if (duplicatedBorrower) {
       triggerToast(
@@ -8353,109 +9174,507 @@ function App() {
     }
 
     try {
-      const currentBorrowersSnapshot =
-        await getDocs(
-          RENTAL_BORROWERS_COLLECTION_REF
-        );
+      const directoryEntries = await Promise.all(
+        nextBorrowers.map(async (borrower) => ({
+          ...borrower,
+          identityKey: await createMemberIdentityKey(
+            borrower.team,
+            borrower.name
+          ),
+        }))
+      );
 
-      const nextBorrowerIdSet =
-        new Set(
-          nextBorrowers.map(
-            (borrower) =>
-              borrower.id
-          )
-        );
+      const accountEntries = await Promise.all(
+        (managedUserAccounts || []).map(async (account) => {
+          const name = normalizeMemberName(account.name || '');
+          const team = normalizeMemberTeam(account.team || '');
+          const identityKey =
+            name && team ? await createMemberIdentityKey(team, name) : '';
+
+          return { account, name, team, identityKey };
+        })
+      );
+      const accountGroups = new Map();
+
+      accountEntries.forEach((entry) => {
+        if (!entry.identityKey) return;
+        const group = accountGroups.get(entry.identityKey) || [];
+        group.push(entry);
+        accountGroups.set(entry.identityKey, group);
+      });
+
+      const [
+        currentBorrowersSnapshot,
+        currentDirectorySnapshot,
+        currentClaimsSnapshot,
+      ] = await Promise.all([
+        getDocs(RENTAL_BORROWERS_COLLECTION_REF),
+        getDocs(MEMBER_DIRECTORY_KEYS_COLLECTION_REF),
+        getDocs(MEMBER_IDENTITY_CLAIMS_COLLECTION_REF),
+      ]);
+
+      const nextBorrowerIdSet = new Set(
+        nextBorrowers.map((borrower) => borrower.id)
+      );
+      const nextDirectoryKeySet = new Set(
+        directoryEntries.map((entry) => entry.identityKey)
+      );
 
       const borrowerOperations = [
-        ...nextBorrowers.map(
-          (borrower) => ({
-            type: 'set',
-            ref: doc(
-              RENTAL_BORROWERS_COLLECTION_REF,
-              borrower.id
-            ),
-            data: {
-              ...borrower,
-              updatedAt:
-                serverTimestamp(),
-            },
-          })
-        ),
-
+        ...nextBorrowers.map((borrower) => ({
+          type: 'set',
+          ref: doc(RENTAL_BORROWERS_COLLECTION_REF, borrower.id),
+          data: {
+            ...borrower,
+            updatedAt: serverTimestamp(),
+          },
+        })),
         ...currentBorrowersSnapshot.docs
           .filter(
             (borrowerDocument) =>
-              !nextBorrowerIdSet.has(
-                borrowerDocument.id
-              )
+              !nextBorrowerIdSet.has(borrowerDocument.id)
           )
-          .map(
-            (borrowerDocument) => ({
-              type: 'delete',
-              ref:
-                borrowerDocument.ref,
-            })
-          ),
+          .map((borrowerDocument) => ({
+            type: 'delete',
+            ref: borrowerDocument.ref,
+          })),
       ];
 
-      await commitFirestoreOperations(
-        borrowerOperations
+      const directoryOperations = [
+        ...directoryEntries.map((entry) => ({
+          type: 'set',
+          ref: doc(
+            MEMBER_DIRECTORY_KEYS_COLLECTION_REF,
+            entry.identityKey
+          ),
+          data: {
+            identityKey: entry.identityKey,
+            directoryMemberId: entry.id,
+            name: entry.name,
+            team: entry.team,
+            sortOrder: entry.sortOrder,
+            enabled: true,
+            updatedAt: serverTimestamp(),
+          },
+        })),
+        ...currentDirectorySnapshot.docs
+          .filter(
+            (directoryDocument) =>
+              !nextDirectoryKeySet.has(directoryDocument.id)
+          )
+          .map((directoryDocument) => ({
+            type: 'delete',
+            ref: directoryDocument.ref,
+          })),
+      ];
+
+      const currentClaimDataById = new Map(
+        currentClaimsSnapshot.docs.map((claimDocument) => [
+          claimDocument.id,
+          claimDocument.data(),
+        ])
       );
+      const desiredClaimKeySet = new Set(accountGroups.keys());
+      const claimOperations = [];
+
+      accountGroups.forEach((group, identityKey) => {
+        const first = group[0];
+        const currentClaim = currentClaimDataById.get(identityKey) || {};
+
+        claimOperations.push({
+          type: 'set',
+          ref: doc(MEMBER_IDENTITY_CLAIMS_COLLECTION_REF, identityKey),
+          data: {
+            identityKey,
+            uid: group.length === 1 ? first.account.uid : '',
+            name: first.name,
+            team: first.team,
+            conflict: group.length > 1,
+            conflictingUids:
+              group.length > 1
+                ? group.map((entry) => entry.account.uid)
+                : [],
+            createdAt: currentClaim.createdAt || serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+        });
+      });
+
+      currentClaimsSnapshot.docs
+        .filter((claimDocument) => !desiredClaimKeySet.has(claimDocument.id))
+        .forEach((claimDocument) => {
+          claimOperations.push({
+            type: 'delete',
+            ref: claimDocument.ref,
+          });
+        });
+
+      await commitFirestoreOperations([
+        ...borrowerOperations,
+        ...directoryOperations,
+        ...claimOperations,
+      ]);
+
+      const nextDirectoryVersion =
+        getSafeMemberDirectoryVersion(data.settings) + 1;
+      const nextSettings = {
+        ...data.settings,
+        requireRegisteredMemberForSignup: Boolean(
+          tempRequireRegisteredMemberForSignup
+        ),
+        memberDirectoryVersion: nextDirectoryVersion,
+        memberIdentityClaimsReady: true,
+      };
 
       await setDoc(
         PUBLIC_CONFIG_DOC_REF,
         {
           teams: nextTeams,
-          updatedAt:
-            serverTimestamp(),
+          settings: nextSettings,
+          updatedAt: serverTimestamp(),
         },
-        {
-          merge: true,
-        }
+        { merge: true }
       );
 
       setData((prev) => ({
         ...prev,
         teams: nextTeams,
-        borrowers:
-          nextBorrowers,
+        borrowers: nextBorrowers,
+        settings: nextSettings,
       }));
 
       setTempTeams(nextTeams);
-      setTempBorrowers(
-        nextBorrowers
+      setTempBorrowers(nextBorrowers);
+      setTempRequireRegisteredMemberForSignup(
+        Boolean(nextSettings.requireRegisteredMemberForSignup)
       );
+      setMemberDirectoryAuditResult(null);
       setEditingTeamIndex(null);
       setEditingTeamName('');
       setDraggingTeamIndex(null);
       setEditingBorrowerIndex(null);
       setEditingBorrowerName('');
-      setDraggingBorrowerIndex(
-        null
-      );
+      setDraggingBorrowerIndex(null);
       setNewTeam('');
       setNewBorrower('');
       setNewBorrowerTeam('전체');
 
       triggerToast(
-        '부서·사용자 변경사항이 분리 저장소에 성공적으로 저장 및 반영되었습니다.',
+        nextSettings.requireRegisteredMemberForSignup
+          ? '부서·사용자 명부와 회원가입 제한 정책이 저장되었습니다. 기존 회원은 로그인 시 순차적으로 검증되며, 필요하면 전체 회원 명부 검사를 실행할 수 있습니다.'
+          : '부서·사용자 명부와 회원가입 정책이 저장되었습니다.',
         'success'
       );
 
       return true;
     } catch (error) {
-      console.error(
-        'People data save error:',
-        error
-      );
-
+      console.error('People data save error:', error);
       triggerToast(
         '부서·사용자 저장에 실패했습니다. 기존 데이터는 유지됩니다.',
         'error'
       );
-
       return false;
     }
+  };
+
+  const executeFullMemberDirectoryAudit = async () => {
+    if (!isAdminAuthenticated) {
+      triggerToast('관리자 인증 후 전체 회원 검사를 실행할 수 있습니다.', 'error');
+      return;
+    }
+
+    if (!isRegisteredMemberSignupRequired(data.settings)) {
+      triggerToast(
+        '회원가입 제한 정책을 저장한 뒤 전체 회원 검사를 실행해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    if (!adminUserAccountsReady || adminUserAccountsLoadErrorMessage) {
+      triggerToast('회원 계정 목록이 준비되지 않았습니다.', 'error');
+      return;
+    }
+
+    setMemberDirectoryAuditLoading(true);
+    setMemberDirectoryAuditResult(null);
+
+    try {
+      const directoryVersion = getSafeMemberDirectoryVersion(data.settings);
+      const directoryEntries = await Promise.all(
+        (data.borrowers || []).map(async (borrower) => ({
+          ...borrower,
+          name: normalizeMemberName(borrower.name || ''),
+          team: normalizeMemberTeam(borrower.team || ''),
+          identityKey: await createMemberIdentityKey(
+            borrower.team,
+            borrower.name
+          ),
+        }))
+      );
+      const directoryByIdentityKey = new Map(
+        directoryEntries.map((entry) => [entry.identityKey, entry])
+      );
+      const accountEntries = await Promise.all(
+        (managedUserAccounts || []).map(async (account) => {
+          const name = normalizeMemberName(account.name || '');
+          const team = normalizeMemberTeam(account.team || '');
+          const identityKey =
+            name && team
+              ? await createMemberIdentityKey(team, name)
+              : '';
+
+          return {
+            account,
+            name,
+            team,
+            identityKey,
+          };
+        })
+      );
+      const accountGroups = new Map();
+
+      accountEntries.forEach((entry) => {
+        if (!entry.identityKey) return;
+        const group = accountGroups.get(entry.identityKey) || [];
+        group.push(entry);
+        accountGroups.set(entry.identityKey, group);
+      });
+
+      const currentClaimsSnapshot = await getDocs(
+        MEMBER_IDENTITY_CLAIMS_COLLECTION_REF
+      );
+      const desiredClaimKeySet = new Set();
+      const claimOperations = [];
+      let duplicateAccounts = 0;
+
+      for (const [identityKey, group] of accountGroups.entries()) {
+        desiredClaimKeySet.add(identityKey);
+        const first = group[0];
+
+        if (group.length > 1) {
+          duplicateAccounts += group.length;
+          claimOperations.push({
+            type: 'set',
+            ref: doc(MEMBER_IDENTITY_CLAIMS_COLLECTION_REF, identityKey),
+            data: {
+              identityKey,
+              uid: '',
+              name: first.name,
+              team: first.team,
+              conflict: true,
+              conflictingUids: group.map((entry) => entry.account.uid),
+              updatedAt: serverTimestamp(),
+            },
+          });
+          continue;
+        }
+
+        claimOperations.push({
+          type: 'set',
+          ref: doc(MEMBER_IDENTITY_CLAIMS_COLLECTION_REF, identityKey),
+          data: {
+            identityKey,
+            uid: first.account.uid,
+            name: first.name,
+            team: first.team,
+            conflict: false,
+            conflictingUids: [],
+            updatedAt: serverTimestamp(),
+          },
+        });
+      }
+
+      currentClaimsSnapshot.docs
+        .filter((claimDocument) => !desiredClaimKeySet.has(claimDocument.id))
+        .forEach((claimDocument) => {
+          claimOperations.push({
+            type: 'delete',
+            ref: claimDocument.ref,
+          });
+        });
+
+      const auditableStatuses = new Set([
+        USER_PROFILE_STATUS.PENDING,
+        USER_PROFILE_STATUS.ACTIVE,
+        USER_PROFILE_STATUS.PROFILE_REQUIRED,
+      ]);
+      const auditableTotal = accountEntries.filter((entry) =>
+        auditableStatuses.has(entry.account.status || '')
+      ).length;
+      const accountOperations = [];
+      let normal = 0;
+      let profileRequired = 0;
+      let missing = 0;
+
+      accountEntries.forEach((entry) => {
+        const { account, identityKey, name, team } = entry;
+        const accountStatus = account.status || '';
+        const isAuditable = auditableStatuses.has(accountStatus);
+        const group = identityKey ? accountGroups.get(identityKey) || [] : [];
+        const isDuplicate = group.length > 1;
+        const directoryEntry = identityKey
+          ? directoryByIdentityKey.get(identityKey)
+          : null;
+        const directoryMatches = Boolean(
+          directoryEntry &&
+            directoryEntry.name === name &&
+            directoryEntry.team === team
+        );
+
+        if (!isAuditable) {
+          return;
+        }
+
+        if (!identityKey || !directoryMatches || isDuplicate) {
+          if (!identityKey || !directoryMatches) {
+            missing += 1;
+          }
+          profileRequired += 1;
+          const nextReason = isDuplicate
+            ? PROFILE_REQUIRED_REASON.DUPLICATE_IDENTITY
+            : PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
+          const previousStatus = [
+            USER_PROFILE_STATUS.PENDING,
+            USER_PROFILE_STATUS.ACTIVE,
+          ].includes(accountStatus)
+            ? accountStatus
+            : account.statusBeforeProfileRequired ||
+              USER_PROFILE_STATUS.PENDING;
+
+          accountOperations.push({
+            type: 'set',
+            ref: doc(db, USER_ACCOUNTS_COLLECTION_NAME, account.uid),
+            data: {
+              status: USER_PROFILE_STATUS.PROFILE_REQUIRED,
+              statusBeforeProfileRequired: previousStatus,
+              profileRequiredReason: nextReason,
+              profileRequiredAt: serverTimestamp(),
+              identityKey,
+              directoryMemberId: directoryMatches
+                ? directoryEntry.id || ''
+                : '',
+              directoryVerifiedVersion: 0,
+              directoryVerifiedAt: '',
+              updatedAt: serverTimestamp(),
+            },
+            options: { merge: true },
+            auditOutcome: 'profileRequired',
+          });
+          return;
+        }
+
+        normal += 1;
+        const shouldRestore =
+          accountStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
+          account.profileRequiredReason ===
+            PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
+        const nextStatus = shouldRestore
+          ? getRestorableUserProfileStatus(account.statusBeforeProfileRequired)
+          : accountStatus;
+
+        accountOperations.push({
+          type: 'set',
+          ref: doc(db, USER_ACCOUNTS_COLLECTION_NAME, account.uid),
+          data: {
+            status: nextStatus,
+            identityKey,
+            directoryMemberId: directoryEntry.id || '',
+            directoryVerifiedVersion: directoryVersion,
+            directoryVerifiedAt: serverTimestamp(),
+            profileRequiredReason: shouldRestore
+              ? ''
+              : account.profileRequiredReason || '',
+            profileRequiredAt: shouldRestore
+              ? ''
+              : account.profileRequiredAt || '',
+            statusBeforeProfileRequired: shouldRestore
+              ? ''
+              : account.statusBeforeProfileRequired || '',
+            updatedAt: serverTimestamp(),
+          },
+          options: { merge: true },
+          auditOutcome: 'normal',
+        });
+      });
+
+      await commitFirestoreOperations(claimOperations);
+
+      let failed = 0;
+
+      for (const operation of accountOperations) {
+        try {
+          await setDoc(operation.ref, operation.data, operation.options);
+        } catch (accountError) {
+          failed += 1;
+
+          if (operation.auditOutcome === 'normal') {
+            normal = Math.max(0, normal - 1);
+          } else if (operation.auditOutcome === 'profileRequired') {
+            profileRequired = Math.max(0, profileRequired - 1);
+          }
+
+          console.error('Member directory audit account update error:', accountError);
+        }
+      }
+
+      const auditSummary = {
+        total: auditableTotal,
+        normal,
+        profileRequired,
+        duplicates: duplicateAccounts,
+        missing,
+        failed,
+        directoryVersion,
+        completedAtText: new Date().toLocaleString('ko-KR'),
+        completedBy:
+          authenticatedAdminAccount?.email ||
+          authenticatedAdminAccount?.adminLoginId ||
+          authenticatedAdminId,
+        completedAt: serverTimestamp(),
+      };
+
+      await setDoc(
+        PUBLIC_CONFIG_DOC_REF,
+        {
+          memberDirectoryAudit: auditSummary,
+          settings: {
+            ...data.settings,
+            memberIdentityClaimsReady: true,
+          },
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      setMemberDirectoryAuditResult(auditSummary);
+      triggerToast(
+        `전체 회원 명부 검사가 완료되었습니다. 정상 ${normal}명, 정보 수정 필요 ${profileRequired}명, 중복 ${duplicateAccounts}명, 실패 ${failed}명입니다.`,
+        profileRequired > 0 || failed > 0 ? 'error' : 'success'
+      );
+    } catch (error) {
+      console.error('Full member directory audit error:', error);
+      triggerToast(
+        '전체 회원 명부 검사에 실패했습니다. 기존 회원 상태는 가능한 범위에서 유지됩니다.',
+        'error'
+      );
+    } finally {
+      setMemberDirectoryAuditLoading(false);
+    }
+  };
+
+  const runFullMemberDirectoryAudit = () => {
+    triggerConfirm(
+      '전체 회원 명부 검사',
+      "현재 회원 계정과 부서·사용자 명부를 비교합니다. 불일치 회원은 '정보 수정 필요' 상태로 전환되며 등록 정보는 자동으로 변경되지 않습니다. 검사를 실행하시겠습니까?",
+      executeFullMemberDirectoryAudit
+    );
+  };
+
+  const openProfileRequiredMembers = () => {
+    setAdminUserAccountQuery('');
+    setAdminUserAccountStatusFilter(USER_PROFILE_STATUS.PROFILE_REQUIRED);
+    setAdminTab('memberAccounts');
   };
 
   const saveSystemSettings = async () => {
@@ -16743,6 +17962,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     cancelEditAdminAccount,
     cancelTempAssetCategoryChanges,
     cancelTempPeopleChanges,
+    cancelUserSignup,
     categoryFilteredFaqPosts,
     closeAdminRequestEditDialog,
     closeAdminRequestRestoreDialog,
@@ -16865,8 +18085,14 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     isCurrentFirebaseAuthGeneralUser,
     isPeriodBasedRentalMode,
     isSplitStorageReady,
+    isUserDirectoryAccessRestricted,
     logoutAdmin,
     logoutUser,
+    memberDirectoryAudit,
+    memberDirectoryAuditLoading,
+    memberDirectoryAuditResult,
+    memberDirectoryPolicyEnabled,
+    memberIdentityClaimsReady,
     mergedRentalRequests,
     managedUserAccounts,
     motion,
@@ -16901,6 +18127,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     openFaqPostDialog,
     openNoticePost,
     openNoticePostDialog,
+    openProfileRequiredMembers,
     openUserActionDialog,
     orphanedRentalAvailabilityRequests,
     paginatedAdminAccounts,
@@ -16929,6 +18156,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     requestSubmitLoading,
     restoreAdminRequestStatus,
     reviewUserActionRequest,
+    runFullMemberDirectoryAudit,
     safeAdminAccountPage,
     safeAdminFaqPage,
     safeAdminNoticePage,
@@ -17027,6 +18255,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     setSelectedAssetCategory,
     setSelectedLaptopId,
     setShowUploadPanel,
+    setTempRequireRegisteredMemberForSignup,
     setTempSettings,
     setToast,
     setUserActionForm,
@@ -17052,6 +18281,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     tempBusinessDayAdjustmentEnabled,
     tempHolidayList,
     discardHolidayChanges,
+    tempRequireRegisteredMemberForSignup,
     tempSettings,
     tempTeams,
     toast,
@@ -17070,6 +18300,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     userActionSaving,
     userAuthForm,
     userAuthLoading,
+    userDirectoryVerificationLoading,
     userProfile,
     userProfileForm,
     userProfileReady,

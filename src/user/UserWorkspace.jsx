@@ -12,6 +12,7 @@ export default function UserWorkspace({ ctx }) {
     firebaseAuthReady,
     firebaseAuthUser,
     hasFirebaseAuthSession,
+    isUserDirectoryAccessRestricted,
     userTab,
   } = ctx;
 
@@ -63,6 +64,14 @@ export default function UserWorkspace({ ctx }) {
         </p>
       </div>
     );
+  }
+
+  if (
+    isProtectedUserTab &&
+    hasFirebaseAuthSession &&
+    isUserDirectoryAccessRestricted
+  ) {
+    return <UserMyPagePanel ctx={ctx} />;
   }
 
   if (userTab === 'home') {

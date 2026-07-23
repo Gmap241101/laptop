@@ -25,10 +25,10 @@ export default function AdminMemberAccountsPanel({ ctx }) {
                     <div className="space-y-6">
                       <AdminPageHeader
                         title="회원 계정 관리"
-                        description="신규 가입 승인, 이용 차단, 차단 해제와 이용 종료 상태를 관리합니다."
+                        description="신규 가입 승인, 등록 정보 확인, 이용 차단과 이용 종료 상태를 관리합니다."
                       />
 
-                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                         {[
                           [
                             '승인 대기',
@@ -39,6 +39,11 @@ export default function AdminMemberAccountsPanel({ ctx }) {
                             '활성',
                             adminUserAccountStatusCounts.active,
                             'border-emerald-200 bg-emerald-50 text-emerald-700',
+                          ],
+                          [
+                            '정보 수정 필요',
+                            adminUserAccountStatusCounts.profileRequired,
+                            'border-orange-200 bg-orange-50 text-orange-700',
                           ],
                           [
                             '차단',
@@ -133,6 +138,14 @@ export default function AdminMemberAccountsPanel({ ctx }) {
                               }
                             >
                               활성
+                            </option>
+
+                            <option
+                              value={
+                                USER_PROFILE_STATUS.PROFILE_REQUIRED
+                              }
+                            >
+                              정보 수정 필요
                             </option>
 
                             <option
@@ -250,11 +263,26 @@ export default function AdminMemberAccountsPanel({ ctx }) {
                                       <div className="break-all text-[10px] text-slate-400">
                                         UID: {account.uid}
                                       </div>
+
+                                      {accountStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED ? (
+                                        <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-[11px] text-orange-700">
+                                          사유: {account.profileRequiredReason === 'duplicateIdentity'
+                                            ? '부서·성명 중복 계정'
+                                            : '등록 명부 불일치'}
+                                        </div>
+                                      ) : null}
                                     </div>
 
                                     <div className="flex shrink-0 flex-wrap gap-2 lg:max-w-[330px] lg:justify-end">
+                                      {accountStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED ? (
+                                        <div className="w-full text-right text-[11px] leading-4 text-orange-600">
+                                          사용자가 마이페이지에서 등록 정보를 확인해야 합니다.
+                                        </div>
+                                      ) : null}
                                       {accountStatus !==
-                                        USER_PROFILE_STATUS.ACTIVE && (
+                                        USER_PROFILE_STATUS.ACTIVE &&
+                                        accountStatus !==
+                                          USER_PROFILE_STATUS.PROFILE_REQUIRED && (
                                         <Button
                                           variant="primary"
                                           className="px-3 py-2 text-xs"
