@@ -551,6 +551,12 @@ body {
   will-change: transform;
 }
 
+@media (max-width: 640px) {
+  .home-quick-ticker-animate {
+    animation-duration: 20s;
+  }
+}
+
 .home-quick-ticker:hover .home-quick-ticker-animate,
 .home-quick-ticker:focus-within .home-quick-ticker-animate {
   animation-play-state: paused;

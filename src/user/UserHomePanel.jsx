@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  CalendarDays,
+  Boxes,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -197,7 +197,7 @@ export default function UserHomePanel({ ctx }) {
   useEffect(() => {
     if (heroBanners.length <= 1 || heroPaused || documentHidden) return undefined;
     const timer = window.setTimeout(
-      () => setHeroIndex((current) => current + 1),
+      () => setHeroIndex((current) => Math.min(current + 1, heroBanners.length)),
       Math.max(5, Number(homeConfig.heroIntervalSeconds) || 7) * 1000
     );
     return () => window.clearTimeout(timer);
@@ -211,7 +211,7 @@ export default function UserHomePanel({ ctx }) {
     if (heroBanners.length <= 1) return;
     setHeroTransitionEnabled(true);
     setHeroIndex((current) => {
-      if (direction > 0) return current + 1;
+      if (direction > 0) return Math.min(current + 1, heroBanners.length);
       if (current <= 0) {
         setHeroTransitionEnabled(false);
         window.requestAnimationFrame(() => {
@@ -366,7 +366,7 @@ export default function UserHomePanel({ ctx }) {
                       <div className="aspect-[4/3] sm:aspect-[16/7] lg:aspect-[3/1]">
                         <ResponsiveBannerImage banner={banner} />
                       </div>
-                      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent px-6 pb-7 pt-24 text-center text-white sm:pb-10 lg:pb-10">
+                      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent px-6 pb-12 pt-24 text-center text-white sm:pb-14 lg:pb-14">
                         {banner.title && <h2 className="text-2xl font-black leading-tight tracking-tight drop-shadow-[0_2px_5px_rgba(0,0,0,0.95)] sm:text-3xl lg:text-[40px]">{banner.title}</h2>}
                         {banner.subtitle && <p className="mx-auto mt-2 max-w-3xl text-sm font-semibold leading-6 text-white/95 drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)] sm:mt-3 sm:text-base lg:text-lg">{banner.subtitle}</p>}
                       </div>
@@ -399,13 +399,13 @@ export default function UserHomePanel({ ctx }) {
       </section>
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="grid md:grid-cols-[210px_minmax(0,1fr)]">
-          <div className="flex items-center border-b border-slate-200 bg-gradient-to-br from-slate-900 to-slate-700 px-5 py-5 text-white md:border-b-0 md:border-r">
-            <span className="mr-3 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-500 text-white shadow-sm ring-1 ring-white/20">
-              <CalendarDays size={20} strokeWidth={2.2} aria-hidden="true" />
+        <div className="grid md:grid-cols-[240px_minmax(0,1fr)]">
+          <div className="flex items-center border-b border-slate-200 bg-gradient-to-br from-slate-900 to-slate-700 px-4 py-4 text-white sm:px-5 sm:py-5 md:border-b-0 md:border-r">
+            <span className="mr-2.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-orange-500 text-white shadow-sm ring-1 ring-white/20 sm:mr-3 sm:h-10 sm:w-10">
+              <Boxes className="h-[18px] w-[18px] sm:h-5 sm:w-5" strokeWidth={2.2} aria-hidden="true" />
             </span>
             <div className="min-w-0">
-              <h2 className="text-lg font-black leading-tight">오늘의 대여 현황</h2>
+              <h2 className="whitespace-nowrap text-base font-black leading-tight sm:text-lg">오늘의 대여 현황</h2>
               <p className="mt-1.5 text-xs font-semibold text-slate-300">({formatKoreaReferenceDate()})</p>
             </div>
           </div>
