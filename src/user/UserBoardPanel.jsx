@@ -70,18 +70,12 @@ export default function UserBoardPanel({ ctx }) {
   if (userTab === 'notFound') {
     return (
       <section
-        className="relative grid min-h-[520px] place-items-center overflow-hidden rounded-[28px] border border-slate-200 bg-slate-50 px-4 py-14 shadow-sm sm:px-6 sm:py-16"
-        style={{
-          backgroundImage:
-            'radial-gradient(circle at 15% 10%, rgba(255, 107, 0, 0.08), transparent 32rem)',
-        }}
+        className="grid min-h-[416px] place-items-center px-4 py-10 sm:px-6 sm:py-12"
         aria-labelledby="user-not-found-title"
       >
-        <div className="relative w-full max-w-[760px] overflow-hidden rounded-[28px] border border-slate-200/90 bg-white/95 text-center shadow-[0_24px_70px_rgba(15,23,42,0.09),0_4px_18px_rgba(15,23,42,0.04)]">
-          <div className="absolute inset-x-0 top-0 h-[5px] bg-gradient-to-r from-[#e65300] via-[#ff6b00] to-[#ff9b52]" />
-
-          <div className="px-6 py-12 sm:px-14 sm:pb-[58px] sm:pt-16">
-            <div className="mx-auto mb-6 grid h-[92px] w-[92px] place-items-center rounded-[28px] bg-[#fff4ec] text-[#e65300] ring-1 ring-inset ring-orange-500/10">
+        <div className="relative w-full max-w-[608px] text-center">
+          <div className="px-4 py-8 sm:px-8 sm:py-10">
+            <div className="mx-auto mb-5 grid h-[74px] w-[74px] place-items-center rounded-[22px] bg-[#fff4ec] text-[#e65300] ring-1 ring-inset ring-orange-500/10">
               <svg
                 viewBox="0 0 24 24"
                 fill="none"
@@ -89,7 +83,7 @@ export default function UserBoardPanel({ ctx }) {
                 strokeWidth="1.8"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                className="h-12 w-12"
+                className="h-10 w-10"
                 aria-hidden="true"
               >
                 <path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z" />
@@ -99,28 +93,28 @@ export default function UserBoardPanel({ ctx }) {
               </svg>
             </div>
 
-            <p className="m-0 text-[clamp(56px,11vw,96px)] font-black leading-[0.95] tracking-[-0.065em] text-[#ff6b00]">
+            <p className="m-0 text-[clamp(48px,9vw,76px)] font-black leading-[0.95] tracking-[-0.065em] text-[#ff6b00]">
               404
             </p>
 
             <h1
               id="user-not-found-title"
-              className="mt-5 text-[clamp(26px,4vw,38px)] font-black leading-tight tracking-[-0.045em] text-slate-900"
+              className="mt-4 text-[clamp(23px,3.2vw,30px)] font-black leading-tight tracking-[-0.045em] text-slate-900"
             >
               페이지를 찾을 수 없습니다
             </h1>
 
-            <p className="mx-auto mt-[18px] max-w-[560px] text-[15px] leading-7 tracking-[-0.02em] text-slate-500 sm:text-base sm:leading-[1.8]">
+            <p className="mx-auto mt-4 max-w-[460px] text-sm leading-6 tracking-[-0.02em] text-slate-500 sm:leading-7">
               입력한 주소가 잘못되었거나 페이지가 이동·삭제되었을 수 있습니다.
               <br className="hidden sm:block" />
               주소를 다시 확인하거나 서비스 홈으로 이동해 주세요.
             </p>
 
-            <div className="mt-[34px] flex flex-col justify-center gap-3 sm:flex-row sm:flex-wrap">
+            <div className="mt-7 flex flex-col justify-center gap-2.5 sm:flex-row sm:flex-wrap">
               <button
                 type="button"
                 onClick={goToUserHome}
-                className="inline-flex min-h-12 w-full min-w-[154px] items-center justify-center gap-2 rounded-xl border border-transparent bg-gradient-to-br from-[#ff6b00] to-[#e65300] px-5 py-3 text-sm font-extrabold text-white shadow-[0_10px_24px_rgba(230,83,0,0.22)] transition hover:-translate-y-px hover:shadow-[0_12px_28px_rgba(230,83,0,0.30)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-500/25 sm:w-auto"
+                className="inline-flex min-h-11 w-full min-w-[136px] items-center justify-center gap-2 rounded-xl border border-transparent bg-gradient-to-br from-[#ff6b00] to-[#e65300] px-4 py-2.5 text-sm font-extrabold text-white shadow-[0_8px_20px_rgba(230,83,0,0.20)] transition hover:-translate-y-px hover:shadow-[0_10px_24px_rgba(230,83,0,0.28)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-500/25 sm:w-auto"
               >
                 <span aria-hidden="true">⌂</span>
                 서비스 홈으로
@@ -129,13 +123,13 @@ export default function UserBoardPanel({ ctx }) {
               <button
                 type="button"
                 onClick={handleNotFoundBack}
-                className="inline-flex min-h-12 w-full min-w-[154px] items-center justify-center rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-extrabold text-slate-700 transition hover:-translate-y-px hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-500/25 sm:w-auto"
+                className="inline-flex min-h-11 w-full min-w-[136px] items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-extrabold text-slate-700 transition hover:-translate-y-px hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-500/25 sm:w-auto"
               >
                 이전 페이지로
               </button>
             </div>
 
-            <p className="mt-[30px] border-t border-slate-200 pt-6 text-[13px] leading-6 text-slate-400">
+            <p className="mt-6 border-t border-slate-200 pt-5 text-xs leading-5 text-slate-400">
               문제가 계속되면 사이트 관리자에게 접속 주소와 발생 시점을 알려 주세요.
             </p>
           </div>
