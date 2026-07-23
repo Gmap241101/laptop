@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="theme-color" content="#ff6b00" />
+  <title>페이지를 찾을 수 없습니다 | 매일경제아카데미 자산대여</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --mk-orange: #ff6b00;
+      --mk-orange-dark: #e65300;
+      --ink: #172033;
+      --muted: #64748b;
+      --line: #e2e8f0;
+      --surface: #ffffff;
+      --background: #f8fafc;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      min-height: 100%;
+      margin: 0;
+    }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background:
+        radial-gradient(circle at 15% 10%, rgba(255, 107, 0, 0.08), transparent 32rem),
+        var(--background);
+      color: var(--ink);
+      font-family: Pretendard, "Noto Sans KR", "Malgun Gothic", Arial, sans-serif;
+      word-break: keep-all;
+    }
+
+    a,
+    button {
+      font: inherit;
+    }
+
+    .site-header {
+      min-height: 72px;
+      background: rgba(255, 255, 255, 0.96);
+      border-bottom: 1px solid var(--line);
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+    }
+
+    .header-inner {
+      width: min(1280px, calc(100% - 40px));
+      min-height: 72px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--ink);
+      text-decoration: none;
+      font-weight: 800;
+      letter-spacing: -0.035em;
+    }
+
+    .brand-mark {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 11px;
+      background: linear-gradient(145deg, var(--mk-orange), var(--mk-orange-dark));
+      color: #fff;
+      box-shadow: 0 8px 20px rgba(255, 107, 0, 0.24);
+      font-size: 15px;
+      letter-spacing: -0.03em;
+    }
+
+    .brand-text {
+      font-size: 20px;
+    }
+
+    .header-link {
+      color: #475569;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .header-link:hover,
+    .header-link:focus-visible {
+      color: var(--mk-orange-dark);
+    }
+
+    main {
+      flex: 1;
+      display: grid;
+      place-items: center;
+      padding: 56px 20px 72px;
+    }
+
+    .error-card {
+      position: relative;
+      width: min(760px, 100%);
+      overflow: hidden;
+      border: 1px solid rgba(226, 232, 240, 0.92);
+      border-radius: 28px;
+      background: rgba(255, 255, 255, 0.96);
+      box-shadow:
+        0 24px 70px rgba(15, 23, 42, 0.09),
+        0 4px 18px rgba(15, 23, 42, 0.04);
+      text-align: center;
+    }
+
+    .error-card::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto;
+      height: 5px;
+      background: linear-gradient(90deg, var(--mk-orange-dark), var(--mk-orange), #ff9b52);
+    }
+
+    .error-content {
+      padding: 64px 56px 58px;
+    }
+
+    .icon-wrap {
+      width: 92px;
+      height: 92px;
+      margin: 0 auto 24px;
+      display: grid;
+      place-items: center;
+      border-radius: 28px;
+      background: #fff4ec;
+      color: var(--mk-orange-dark);
+      box-shadow: inset 0 0 0 1px rgba(255, 107, 0, 0.12);
+    }
+
+    .icon-wrap svg {
+      width: 48px;
+      height: 48px;
+    }
+
+    .error-code {
+      margin: 0;
+      color: var(--mk-orange);
+      font-size: clamp(56px, 11vw, 96px);
+      line-height: 0.95;
+      font-weight: 900;
+      letter-spacing: -0.065em;
+    }
+
+    h1 {
+      margin: 20px 0 0;
+      font-size: clamp(26px, 4vw, 38px);
+      line-height: 1.25;
+      letter-spacing: -0.045em;
+    }
+
+    .description {
+      max-width: 560px;
+      margin: 18px auto 0;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.8;
+      letter-spacing: -0.02em;
+    }
+
+    .actions {
+      margin-top: 34px;
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .button {
+      min-width: 154px;
+      min-height: 48px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border: 1px solid transparent;
+      border-radius: 12px;
+      padding: 12px 20px;
+      cursor: pointer;
+      text-decoration: none;
+      font-weight: 800;
+      transition: transform 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+    }
+
+    .button:hover {
+      transform: translateY(-1px);
+    }
+
+    .button:focus-visible {
+      outline: 3px solid rgba(255, 107, 0, 0.25);
+      outline-offset: 3px;
+    }
+
+    .button-primary {
+      background: linear-gradient(135deg, var(--mk-orange), var(--mk-orange-dark));
+      color: #fff;
+      box-shadow: 0 10px 24px rgba(230, 83, 0, 0.22);
+    }
+
+    .button-primary:hover {
+      box-shadow: 0 12px 28px rgba(230, 83, 0, 0.3);
+    }
+
+    .button-secondary {
+      border-color: #cbd5e1;
+      background: #fff;
+      color: #334155;
+    }
+
+    .button-secondary:hover {
+      background: #f8fafc;
+    }
+
+    .help-note {
+      margin: 30px 0 0;
+      padding-top: 24px;
+      border-top: 1px solid var(--line);
+      color: #94a3b8;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .site-footer {
+      border-top: 1px solid var(--line);
+      background: #fff;
+      color: #94a3b8;
+    }
+
+    .footer-inner {
+      width: min(1280px, calc(100% - 40px));
+      min-height: 70px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      font-size: 12px;
+    }
+
+    @media (max-width: 640px) {
+      .header-inner,
+      .footer-inner {
+        width: min(100% - 28px, 1280px);
+      }
+
+      .brand-text {
+        font-size: 17px;
+      }
+
+      .header-link {
+        display: none;
+      }
+
+      main {
+        padding: 34px 14px 48px;
+      }
+
+      .error-card {
+        border-radius: 22px;
+      }
+
+      .error-content {
+        padding: 48px 22px 42px;
+      }
+
+      .description {
+        font-size: 15px;
+      }
+
+      .actions {
+        flex-direction: column;
+      }
+
+      .button {
+        width: 100%;
+      }
+
+      .footer-inner {
+        min-height: 64px;
+        justify-content: center;
+        text-align: center;
+      }
+
+      .footer-domain {
+        display: none;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .button {
+        transition: none;
+      }
+    }
+  </style>
+</head>
+<body data-page="custom-404">
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="/" aria-label="매일경제아카데미 자산대여 홈으로 이동">
+        <span class="brand-mark" aria-hidden="true">MK</span>
+        <span class="brand-text">매일경제아카데미 자산대여</span>
+      </a>
+      <a class="header-link" href="/">서비스 홈</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="error-card" aria-labelledby="error-title">
+      <div class="error-content">
+        <div class="icon-wrap" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z" />
+            <path d="M14 2v5h5" />
+            <path d="m9.5 14.5 5-5" />
+            <path d="m14.5 14.5-5-5" />
+          </svg>
+        </div>
+
+        <p class="error-code">404</p>
+        <h1 id="error-title">페이지를 찾을 수 없습니다</h1>
+        <p class="description">
+          입력한 주소가 잘못되었거나 페이지가 이동·삭제되었을 수 있습니다.<br />
+          주소를 다시 확인하거나 서비스 홈으로 이동해 주세요.
+        </p>
+
+        <div class="actions">
+          <a class="button button-primary" href="/">
+            <span aria-hidden="true">⌂</span>
+            서비스 홈으로
+          </a>
+          <button class="button button-secondary" type="button" onclick="goBackOrHome()">
+            이전 페이지로
+          </button>
+        </div>
+
+        <p class="help-note">
+          문제가 계속되면 사이트 관리자에게 접속 주소와 발생 시점을 알려 주세요.
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <span>© 매일경제아카데미. All rights reserved.</span>
+      <span class="footer-domain">notebook.recruit.kro.kr</span>
+    </div>
+  </footer>
+
+  <script>
+    function goBackOrHome() {
+      if (window.history.length > 1 && document.referrer) {
+        window.history.back();
+        return;
+      }
+      window.location.href = '/';
+    }
+  </script>
+</body>
+</html>
