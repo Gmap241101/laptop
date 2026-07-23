@@ -93,6 +93,17 @@ export const ADMIN_REQUEST_TAB = {
   RETURNED: 'returned',
 };
 
+export const ADMIN_REQUEST_QUICK_FILTER = {
+  ALL: 'all',
+  OVERDUE: 'overdue',
+  DUE_TODAY: 'dueToday',
+  START_TODAY: 'startToday',
+  PENDING_USER_ACTION: 'pendingUserAction',
+  REQUESTED: 'requested',
+  ON_HOLD: 'onHold',
+  RESERVED: 'reserved',
+};
+
 export const ADMIN_REQUEST_PAGE_SIZE_OPTIONS = [
   5,
   10,

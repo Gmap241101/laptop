@@ -1,6 +1,7 @@
 export default function AdminRequestsPanel({ ctx }) {
   const {
     ADMIN_REQUEST_PAGE_SIZE_OPTIONS,
+    ADMIN_REQUEST_QUICK_FILTER,
     ADMIN_REQUEST_TAB,
     AdminPageHeader,
     Badge,
@@ -14,6 +15,7 @@ export default function AdminRequestsPanel({ ctx }) {
     USER_REQUEST_REVIEW_STATUS,
     adminRequestPageSize,
     adminRequestQuery,
+    adminRequestQuickFilter,
     adminRequestTab,
     adminRequestTabCounts,
     adminRequestTotalPages,
@@ -47,6 +49,7 @@ export default function AdminRequestsPanel({ ctx }) {
     selectedAdminRequest,
     setAdminRequestPage,
     setAdminRequestPageSize,
+    setAdminRequestQuickFilter,
     setAdminRequestQuery,
     setAdminRequestTab,
     setSelectedAdminRequestId,
@@ -152,8 +155,10 @@ export default function AdminRequestsPanel({ ctx }) {
                           },
                         ].map((tab) => {
                           const isActive =
+                            adminRequestQuickFilter !==
+                              ADMIN_REQUEST_QUICK_FILTER.PENDING_USER_ACTION &&
                             adminRequestTab ===
-                            tab.id;
+                              tab.id;
 
                           return (
                             <button
@@ -162,6 +167,9 @@ export default function AdminRequestsPanel({ ctx }) {
                               onClick={() => {
                                 setAdminRequestTab(
                                   tab.id
+                                );
+                                setAdminRequestQuickFilter(
+                                  ADMIN_REQUEST_QUICK_FILTER.ALL
                                 );
                                 setAdminRequestQuery('');
                                 setAdminRequestPage(1);
@@ -189,6 +197,37 @@ export default function AdminRequestsPanel({ ctx }) {
                           );
                         })}
                       </div>
+
+                      {adminRequestQuickFilter !==
+                        ADMIN_REQUEST_QUICK_FILTER.ALL && (
+                        <div className="flex flex-col gap-3 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="text-xs text-orange-800">
+                            <span className="font-bold">대시보드 빠른 필터:</span>{' '}
+                            {{
+                              [ADMIN_REQUEST_QUICK_FILTER.OVERDUE]: '연체',
+                              [ADMIN_REQUEST_QUICK_FILTER.DUE_TODAY]: '오늘 반납',
+                              [ADMIN_REQUEST_QUICK_FILTER.START_TODAY]: '오늘 대여 시작',
+                              [ADMIN_REQUEST_QUICK_FILTER.PENDING_USER_ACTION]: '사용자 요청 검토 대기',
+                              [ADMIN_REQUEST_QUICK_FILTER.REQUESTED]: '신규 신청',
+                              [ADMIN_REQUEST_QUICK_FILTER.ON_HOLD]: '보류',
+                              [ADMIN_REQUEST_QUICK_FILTER.RESERVED]: '예약중',
+                            }[adminRequestQuickFilter] || '지정 조건'}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAdminRequestQuickFilter(
+                                ADMIN_REQUEST_QUICK_FILTER.ALL
+                              );
+                              setAdminRequestPage(1);
+                              setSelectedAdminRequestId('');
+                            }}
+                            className="shrink-0 rounded-lg border border-orange-200 bg-white px-3 py-1.5 text-[11px] font-bold text-orange-700 transition hover:bg-orange-100"
+                          >
+                            필터 해제
+                          </button>
+                        </div>
+                      )}
 
                       {!selectedAdminRequest && (
                         <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-[minmax(0,1fr)_160px] sm:items-end">

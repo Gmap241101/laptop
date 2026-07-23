@@ -103,6 +103,7 @@ import {
 
 import {
   ADMIN_REQUEST_PAGE_SIZE_OPTIONS,
+  ADMIN_REQUEST_QUICK_FILTER,
   ADMIN_REQUEST_TAB,
   DEFAULT_FAQ_POSTS_PER_PAGE,
   DEFAULT_NOTICE_POSTS_PER_PAGE,
@@ -2077,6 +2078,9 @@ function App() {
 
   const [adminRequestTab, setAdminRequestTab] = useState(
     ADMIN_REQUEST_TAB.PENDING
+  );
+  const [adminRequestQuickFilter, setAdminRequestQuickFilter] = useState(
+    ADMIN_REQUEST_QUICK_FILTER.ALL
   );
   const [adminRequestQuery, setAdminRequestQuery] = useState('');
   const [adminRequestPageSize, setAdminRequestPageSize] = useState(10);
@@ -4222,9 +4226,92 @@ function App() {
           }
         );
 
+      const todayDate = today();
+
+      const quickFilterSourceRequests =
+        adminRequestQuickFilter ===
+        ADMIN_REQUEST_QUICK_FILTER.PENDING_USER_ACTION
+          ? mergedRentalRequests || []
+          : tabFilteredRequests;
+
+      const quickFilteredRequests =
+        adminRequestQuickFilter === ADMIN_REQUEST_QUICK_FILTER.ALL
+          ? tabFilteredRequests
+          : quickFilterSourceRequests.filter((request) => {
+              if (
+                adminRequestQuickFilter ===
+                ADMIN_REQUEST_QUICK_FILTER.OVERDUE
+              ) {
+                return (
+                  request.status === STATUS.APPROVED &&
+                  (!request.startDate || request.startDate <= todayDate) &&
+                  Boolean(request.dueDate) &&
+                  request.dueDate < todayDate
+                );
+              }
+
+              if (
+                adminRequestQuickFilter ===
+                ADMIN_REQUEST_QUICK_FILTER.DUE_TODAY
+              ) {
+                return (
+                  request.status === STATUS.APPROVED &&
+                  (!request.startDate || request.startDate <= todayDate) &&
+                  request.dueDate === todayDate
+                );
+              }
+
+              if (
+                adminRequestQuickFilter ===
+                ADMIN_REQUEST_QUICK_FILTER.START_TODAY
+              ) {
+                return (
+                  request.status === STATUS.APPROVED &&
+                  request.startDate === todayDate
+                );
+              }
+
+              if (
+                adminRequestQuickFilter ===
+                ADMIN_REQUEST_QUICK_FILTER.PENDING_USER_ACTION
+              ) {
+                return (
+                  request.userActionRequest?.status ===
+                  USER_REQUEST_REVIEW_STATUS.PENDING
+                );
+              }
+
+              if (
+                adminRequestQuickFilter ===
+                ADMIN_REQUEST_QUICK_FILTER.REQUESTED
+              ) {
+                return request.status === STATUS.REQUESTED;
+              }
+
+              if (
+                adminRequestQuickFilter ===
+                ADMIN_REQUEST_QUICK_FILTER.ON_HOLD
+              ) {
+                return request.status === STATUS.ON_HOLD;
+              }
+
+              if (
+                adminRequestQuickFilter ===
+                ADMIN_REQUEST_QUICK_FILTER.RESERVED
+              ) {
+                return (
+                  request.status === STATUS.APPROVED &&
+                  Boolean(request.startDate) &&
+                  request.startDate > todayDate
+                );
+              }
+
+              return true;
+            });
+
       const queryFilteredRequests =
         normalizedQuery
-          ? tabFilteredRequests.filter(
+          ? quickFilteredRequests.filter(
               (request) =>
                 [
                   request.assetNo,
@@ -4246,7 +4333,7 @@ function App() {
                     )
                   )
             )
-          : tabFilteredRequests;
+          : quickFilteredRequests;
 
       return [
         ...queryFilteredRequests,
@@ -4299,6 +4386,7 @@ function App() {
     },
     [
       adminRequestQuery,
+      adminRequestQuickFilter,
       adminRequestTab,
       mergedRentalRequests,
       rentalRequestLogsByRequestId,
@@ -16543,6 +16631,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     ADMIN_ACCOUNT_PAGE_SIZE,
     ADMIN_CUSTOM_OPTION_VALUE,
     ADMIN_REQUEST_PAGE_SIZE_OPTIONS,
+    ADMIN_REQUEST_QUICK_FILTER,
     ADMIN_REQUEST_TAB,
     AlertCircle,
     AnimatePresence,
@@ -16626,6 +16715,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     adminRequestEditSaving,
     adminRequestPageSize,
     adminRequestQuery,
+    adminRequestQuickFilter,
     adminRequestRestoreDialog,
     adminRequestRestoreReason,
     adminRequestRestoreSaving,
@@ -16730,6 +16820,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     formatFirestoreDate,
     formatFirestoreTimestamp,
     getAdminRequestRestoreTargets,
+    defaultRentalStartDate,
     getAdjustedRentalDueDate,
     getDisplayRentalStatus,
     getRequestDisplayStatus,
@@ -16777,6 +16868,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     logoutAdmin,
     logoutUser,
     mergedRentalRequests,
+    managedUserAccounts,
     motion,
     moveTempAssetCategory,
     moveTempBorrower,
@@ -16880,6 +16972,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     setAdminRequestEditForm,
     setAdminRequestPage,
     setAdminRequestPageSize,
+    setAdminRequestQuickFilter,
     setAdminRequestQuery,
     setAdminRequestRestoreReason,
     setAdminRequestRestoreTarget,
