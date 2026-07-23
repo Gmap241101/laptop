@@ -30,6 +30,14 @@ export default function UserMyPagePanel({ ctx }) {
     userProfileReady,
     userProfileSaving,
     userDirectoryVerificationLoading,
+    withdrawalDialogOpen,
+    withdrawalLoading,
+    withdrawalPassword,
+    withdrawalBlockMessage,
+    openWithdrawalDialog,
+    cancelWithdrawal,
+    submitMembershipWithdrawal,
+    setWithdrawalPassword,
   } = ctx;
 
   return (
@@ -374,6 +382,51 @@ export default function UserMyPagePanel({ ctx }) {
                               </div>
                             </>
                           )}
+
+                          <div className="mt-8 border-t border-rose-100 pt-6">
+                            <div className="rounded-2xl border border-rose-200 bg-rose-50/70 p-5">
+                              <h3 className="text-sm font-bold text-rose-900">회원 탈퇴</h3>
+                              <p className="mt-2 text-xs leading-5 text-rose-800">
+                                탈퇴하면 현재 계정으로 로그인할 수 없습니다. 진행 중인 신청·대여, 연체 또는 유효한 대여 제한이 있으면 탈퇴할 수 없습니다.
+                              </p>
+
+                              {withdrawalBlockMessage ? (
+                                <div className="mt-3 rounded-xl border border-rose-200 bg-white px-4 py-3 text-[11px] leading-5 text-rose-700">
+                                  {withdrawalBlockMessage}
+                                </div>
+                              ) : null}
+
+                              {withdrawalDialogOpen ? (
+                                <form className="mt-4 space-y-3" onSubmit={submitMembershipWithdrawal}>
+                                  <Input
+                                    label="현재 비밀번호"
+                                    type="password"
+                                    value={withdrawalPassword}
+                                    onChange={setWithdrawalPassword}
+                                    placeholder="본인 확인을 위해 현재 비밀번호 입력"
+                                    autoComplete="current-password"
+                                  />
+                                  <div className="rounded-xl border border-rose-200 bg-white px-4 py-3 text-[11px] leading-5 text-rose-700">
+                                    탈퇴 시 이메일·연락처 등 개인정보는 비식별 처리되며, 대여·연체·제재 이력은 감사 및 재가입 확인을 위해 연결 정보가 보존됩니다.
+                                  </div>
+                                  <div className="flex justify-end gap-2">
+                                    <Button type="button" variant="outline" disabled={withdrawalLoading} onClick={cancelWithdrawal}>
+                                      취소
+                                    </Button>
+                                    <Button type="submit" variant="danger" disabled={withdrawalLoading || Boolean(withdrawalBlockMessage)}>
+                                      {withdrawalLoading ? '탈퇴 처리 중...' : '회원 탈퇴'}
+                                    </Button>
+                                  </div>
+                                </form>
+                              ) : (
+                                <div className="mt-4 flex justify-end">
+                                  <Button type="button" variant="danger" onClick={openWithdrawalDialog} disabled={Boolean(withdrawalBlockMessage)}>
+                                    회원 탈퇴
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>

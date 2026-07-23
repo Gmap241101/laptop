@@ -8,15 +8,26 @@ export default function UserAuthPanel({ ctx }) {
     CardContent,
     Input,
     Users,
+    accountRecoveryForm,
+    accountRecoveryLoading,
+    accountRecoveryResult,
     cancelUserSignup,
     data,
     firebaseAuthReady,
     firebaseAuthUser,
     goToProtectedUserTab,
+    goToUserEmailRecovery,
     goToUserLogin,
+    goToUserPasswordReset,
     goToUserSignup,
     logoutUser,
+    passwordResetEmail,
+    passwordResetLoading,
+    setAccountRecoveryForm,
+    setPasswordResetEmail,
     setUserAuthForm,
+    submitAccountRecovery,
+    submitPasswordReset,
     submitUserAuthForm,
     userAuthForm,
     userAuthLoading,
@@ -24,12 +35,31 @@ export default function UserAuthPanel({ ctx }) {
   } = ctx;
 
   const isSignupMode = userTab === 'signup';
+  const isEmailRecoveryMode = userTab === 'findEmail';
+  const isPasswordResetMode = userTab === 'resetPassword';
+  const isLoginMode = !isSignupMode && !isEmailRecoveryMode && !isPasswordResetMode;
   const directorySignupRequired = Boolean(
     data.settings.requireRegisteredMemberForSignup
   );
   const identityClaimsReady = Boolean(
     data.settings.memberIdentityClaimsReady
   );
+
+  const title = isSignupMode
+    ? '일반 사용자 회원가입'
+    : isEmailRecoveryMode
+      ? '이메일 찾기'
+      : isPasswordResetMode
+        ? '비밀번호 재설정'
+        : '일반 사용자 로그인';
+
+  const description = isSignupMode
+    ? '대여 신청을 위한 일반 사용자 계정을 생성합니다.'
+    : isEmailRecoveryMode
+      ? '가입할 때 등록한 부서·성명·연락처로 이메일을 확인합니다.'
+      : isPasswordResetMode
+        ? '가입 이메일로 비밀번호 재설정 링크를 전송합니다.'
+        : '가입한 이메일과 비밀번호로 로그인합니다.';
 
   return (
     <Card className="mx-auto max-w-xl overflow-hidden border-slate-200 bg-white shadow-sm">
@@ -42,52 +72,123 @@ export default function UserAuthPanel({ ctx }) {
             <Users size={26} />
           </div>
 
-          <h2 className="text-xl font-black tracking-tight">
-            {isSignupMode ? '일반 사용자 회원가입' : '일반 사용자 로그인'}
-          </h2>
-
-          <p className="mt-2 text-xs leading-5 text-slate-300">
-            {isSignupMode
-              ? '대여 신청을 위한 일반 사용자 계정을 생성합니다.'
-              : '가입한 이메일과 비밀번호로 로그인합니다.'}
-          </p>
+          <h2 className="text-xl font-black tracking-tight">{title}</h2>
+          <p className="mt-2 text-xs leading-5 text-slate-300">{description}</p>
         </div>
       </div>
 
       <CardContent className="p-6">
-        {firebaseAuthUser ? (
+        {firebaseAuthUser && (isLoginMode || isSignupMode) ? (
           <div className="space-y-4">
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm leading-6 text-emerald-800">
               현재 <span className="font-bold">{firebaseAuthUser.email}</span> 계정으로 로그인되어 있습니다.
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={logoutUser}
-                disabled={userAuthLoading}
-              >
+              <Button type="button" variant="outline" onClick={logoutUser} disabled={userAuthLoading}>
                 로그아웃
               </Button>
-
-              <Button
-                type="button"
-                variant="primary"
-                onClick={() => goToProtectedUserTab('rental')}
-              >
+              <Button type="button" variant="primary" onClick={() => goToProtectedUserTab('rental')}>
                 대여신청으로 이동
               </Button>
             </div>
           </div>
+        ) : isEmailRecoveryMode ? (
+          <form className="space-y-4" onSubmit={submitAccountRecovery}>
+            <Input
+              label="성명"
+              value={accountRecoveryForm.name}
+              onChange={(value) =>
+                setAccountRecoveryForm({
+                  ...accountRecoveryForm,
+                  name: normalizeMemberName(value).slice(0, 30),
+                })
+              }
+              placeholder="공백 없이 성명을 입력하세요"
+              maxLength={30}
+            />
+
+            <Input
+              label="부서 / 팀"
+              value={accountRecoveryForm.team}
+              onChange={(value) =>
+                setAccountRecoveryForm({
+                  ...accountRecoveryForm,
+                  team: value,
+                })
+              }
+              placeholder="가입할 때 입력한 부서 또는 팀명"
+              list="account-recovery-team-options"
+              maxLength={80}
+            />
+            <datalist id="account-recovery-team-options">
+              {(data.teams || []).map((team) => (
+                <option key={team} value={team} />
+              ))}
+            </datalist>
+
+            <DomesticPhoneInput
+              prefix={accountRecoveryForm.phonePrefix}
+              middle={accountRecoveryForm.phoneMiddle}
+              last={accountRecoveryForm.phoneLast}
+              disabled={accountRecoveryLoading}
+              onChange={(phoneParts) =>
+                setAccountRecoveryForm({
+                  ...accountRecoveryForm,
+                  phonePrefix: phoneParts.prefix,
+                  phoneMiddle: phoneParts.middle,
+                  phoneLast: phoneParts.last,
+                })
+              }
+            />
+
+            {accountRecoveryResult ? (
+              <div className={`rounded-2xl border px-5 py-4 text-sm leading-6 ${accountRecoveryResult.found ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                {accountRecoveryResult.found
+                  ? <>가입한 이메일은 <span className="font-black">{accountRecoveryResult.maskedEmail}</span>입니다.</>
+                  : '입력한 정보와 일치하는 계정을 찾지 못했습니다.'}
+              </div>
+            ) : null}
+
+            <div className="grid grid-cols-2 gap-2">
+              <Button type="button" variant="outline" disabled={accountRecoveryLoading} onClick={goToUserLogin} className="w-full justify-center py-3">
+                취소
+              </Button>
+              <Button type="submit" variant="primary" disabled={accountRecoveryLoading} className="w-full justify-center py-3">
+                {accountRecoveryLoading ? '확인 중...' : '이메일 찾기'}
+              </Button>
+            </div>
+          </form>
+        ) : isPasswordResetMode ? (
+          <form className="space-y-4" onSubmit={submitPasswordReset}>
+            <Input
+              label="가입 이메일"
+              value={passwordResetEmail}
+              onChange={setPasswordResetEmail}
+              placeholder="example@company.com"
+              type="email"
+              autoComplete="email"
+            />
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-xs leading-5 text-slate-600">
+              계정 존재 여부와 관계없이 같은 안내를 표시합니다. 받은편지함과 스팸함을 함께 확인해 주세요.
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <Button type="button" variant="outline" disabled={passwordResetLoading} onClick={goToUserLogin} className="w-full justify-center py-3">
+                취소
+              </Button>
+              <Button type="submit" variant="primary" disabled={passwordResetLoading || !firebaseAuthReady} className="w-full justify-center py-3">
+                {passwordResetLoading ? '전송 중...' : '재설정 메일 보내기'}
+              </Button>
+            </div>
+          </form>
         ) : (
           <form className="space-y-4" onSubmit={submitUserAuthForm}>
             <Input
               label="이메일"
               value={userAuthForm.email}
-              onChange={(value) =>
-                setUserAuthForm({ ...userAuthForm, email: value })
-              }
+              onChange={(value) => setUserAuthForm({ ...userAuthForm, email: value })}
               placeholder="example@company.com"
               type="email"
               autoComplete="email"
@@ -111,24 +212,15 @@ export default function UserAuthPanel({ ctx }) {
 
                 {directorySignupRequired ? (
                   <label className="block">
-                    <span className="mb-1.5 block text-xs font-semibold tracking-wide text-slate-600">
-                      부서 / 팀
-                    </span>
+                    <span className="mb-1.5 block text-xs font-semibold tracking-wide text-slate-600">부서 / 팀</span>
                     <select
                       value={userAuthForm.team}
-                      onChange={(event) =>
-                        setUserAuthForm({
-                          ...userAuthForm,
-                          team: event.target.value,
-                        })
-                      }
+                      onChange={(event) => setUserAuthForm({ ...userAuthForm, team: event.target.value })}
                       className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none transition mk-form-focus"
                     >
                       <option value="">부서 / 팀을 선택해 주세요</option>
                       {(data.teams || []).map((team) => (
-                        <option key={team} value={team}>
-                          {team}
-                        </option>
+                        <option key={team} value={team}>{team}</option>
                       ))}
                     </select>
                   </label>
@@ -136,9 +228,7 @@ export default function UserAuthPanel({ ctx }) {
                   <Input
                     label="부서 / 팀"
                     value={userAuthForm.team}
-                    onChange={(value) =>
-                      setUserAuthForm({ ...userAuthForm, team: value })
-                    }
+                    onChange={(value) => setUserAuthForm({ ...userAuthForm, team: value })}
                     placeholder="소속 부서 또는 팀명을 입력하세요"
                     maxLength={80}
                   />
@@ -164,9 +254,7 @@ export default function UserAuthPanel({ ctx }) {
             <Input
               label="비밀번호"
               value={userAuthForm.password}
-              onChange={(value) =>
-                setUserAuthForm({ ...userAuthForm, password: value })
-              }
+              onChange={(value) => setUserAuthForm({ ...userAuthForm, password: value })}
               placeholder={isSignupMode ? '8자 이상, 영문+숫자 포함' : '비밀번호 입력'}
               type="password"
               autoComplete={isSignupMode ? 'new-password' : 'current-password'}
@@ -176,12 +264,7 @@ export default function UserAuthPanel({ ctx }) {
               <Input
                 label="비밀번호 확인"
                 value={userAuthForm.passwordConfirm}
-                onChange={(value) =>
-                  setUserAuthForm({
-                    ...userAuthForm,
-                    passwordConfirm: value,
-                  })
-                }
+                onChange={(value) => setUserAuthForm({ ...userAuthForm, passwordConfirm: value })}
                 placeholder="비밀번호를 한 번 더 입력"
                 type="password"
                 autoComplete="new-password"
@@ -201,57 +284,40 @@ export default function UserAuthPanel({ ctx }) {
 
             {isSignupMode ? (
               <div className="grid grid-cols-2 gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={userAuthLoading}
-                  className="w-full justify-center py-3"
-                  onClick={cancelUserSignup}
-                >
+                <Button type="button" variant="outline" disabled={userAuthLoading} className="w-full justify-center py-3" onClick={cancelUserSignup}>
                   취소
                 </Button>
-
                 <Button
                   type="submit"
                   variant="primary"
-                  disabled={
-                    userAuthLoading ||
-                    !firebaseAuthReady ||
-                    !identityClaimsReady
-                  }
+                  disabled={userAuthLoading || !firebaseAuthReady || !identityClaimsReady}
                   className="w-full justify-center py-3"
                 >
                   {userAuthLoading ? '가입 정보 확인 중...' : '회원가입'}
                 </Button>
               </div>
             ) : (
-              <Button
-                type="submit"
-                variant="primary"
-                disabled={userAuthLoading || !firebaseAuthReady}
-                className="w-full justify-center py-3"
-              >
+              <Button type="submit" variant="primary" disabled={userAuthLoading || !firebaseAuthReady} className="w-full justify-center py-3">
                 {userAuthLoading ? '처리 중...' : '로그인'}
               </Button>
             )}
 
-            <div className="flex justify-center border-t border-slate-100 pt-4 text-xs text-slate-500">
+            <div className="space-y-3 border-t border-slate-100 pt-4 text-center text-xs text-slate-500">
               {isSignupMode ? (
-                <button
-                  type="button"
-                  onClick={goToUserLogin}
-                  className="font-bold mk-brand-text hover:underline"
-                >
+                <button type="button" onClick={goToUserLogin} className="font-bold mk-brand-text hover:underline">
                   이미 계정이 있으면 로그인하기
                 </button>
               ) : (
-                <button
-                  type="button"
-                  onClick={goToUserSignup}
-                  className="font-bold mk-brand-text hover:underline"
-                >
-                  계정이 없으면 회원가입하기
-                </button>
+                <>
+                  <div className="flex items-center justify-center gap-3">
+                    <button type="button" onClick={goToUserEmailRecovery} className="font-semibold text-slate-600 hover:underline">이메일 찾기</button>
+                    <span className="text-slate-300">|</span>
+                    <button type="button" onClick={goToUserPasswordReset} className="font-semibold text-slate-600 hover:underline">비밀번호 재설정</button>
+                  </div>
+                  <button type="button" onClick={goToUserSignup} className="font-bold mk-brand-text hover:underline">
+                    계정이 없으면 회원가입하기
+                  </button>
+                </>
               )}
             </div>
           </form>

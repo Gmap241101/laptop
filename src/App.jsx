@@ -3,7 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   createUserWithEmailAndPassword,
   deleteUser,
+  EmailAuthProvider,
   onAuthStateChanged,
+  reauthenticateWithCredential,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
@@ -75,6 +77,7 @@ import {
 } from './components/RichTextEditor.jsx';
 
 import {
+  ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
   ADMIN_ACCOUNTS_COLLECTION_REF,
   FAQ_BOARD_CONFIG_DOC_REF,
   FAQ_CATEGORIES_COLLECTION_REF,
@@ -126,11 +129,13 @@ import {
 
 import {
   buildDomesticPhoneNumber,
+  createAccountRecoveryKey,
   createMemberIdentityKey,
   isValidDomesticPhoneNumber,
   isValidEmailAddress,
   isValidMemberName,
   isValidMemberPassword,
+  maskEmailAddress,
   normalizeEmailAddress,
   normalizeMemberName,
   normalizeMemberTeam,
@@ -1283,6 +1288,7 @@ const initialData = {
     holidays: [],
     requireAdminApproval: true,
     requireRegisteredMemberForSignup: false,
+    autoApproveNewMembers: false,
     memberDirectoryVersion: 0,
     memberIdentityClaimsReady: false,
     allowNonOverlappingSameAssetRequests: DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS,
@@ -1439,6 +1445,186 @@ const commitFirestoreOperations = async (
   }
 };
 
+const buildMemberAccountIndexEntries = async (accounts = []) =>
+  Promise.all(
+    (accounts || []).map(async (account) => {
+      const name = normalizeMemberName(account.name || '');
+      const team = normalizeMemberTeam(account.team || '');
+      const phone = String(account.phone || '').trim();
+      const email = normalizeEmailAddress(account.email || '');
+      const identityKey =
+        name && team ? await createMemberIdentityKey(team, name) : '';
+      const recoveryKey =
+        name && team && phone
+          ? await createAccountRecoveryKey({ team, name, phone })
+          : '';
+
+      return {
+        account,
+        name,
+        team,
+        phone,
+        email,
+        identityKey,
+        recoveryKey,
+        maskedEmail: maskEmailAddress(email),
+      };
+    })
+  );
+
+const buildMemberAccountIndexOperations = ({
+  accountEntries = [],
+  currentClaimDocuments = [],
+  currentRecoveryDocuments = [],
+} = {}) => {
+  const groups = new Map();
+
+  accountEntries.forEach((entry) => {
+    if (!entry.identityKey) return;
+    const group = groups.get(entry.identityKey) || [];
+    group.push(entry);
+    groups.set(entry.identityKey, group);
+  });
+
+  const currentClaims = new Map(
+    currentClaimDocuments.map((documentSnapshot) => [
+      documentSnapshot.id,
+      documentSnapshot.data(),
+    ])
+  );
+  const desiredClaimKeys = new Set();
+  const desiredRecoveryKeys = new Set();
+  const claimOperations = [];
+  const recoveryOperations = [];
+  const accountMetadataOperations = [];
+
+  groups.forEach((group, identityKey) => {
+    desiredClaimKeys.add(identityKey);
+    const currentClaim = currentClaims.get(identityKey) || {};
+    const liveEntries = group.filter(
+      (entry) => entry.account.status !== USER_PROFILE_STATUS.RETIRED
+    );
+    const retiredEntries = group.filter(
+      (entry) => entry.account.status === USER_PROFILE_STATUS.RETIRED
+    );
+    const representative = liveEntries[0] || retiredEntries[0] || group[0];
+    const formerUids = Array.from(
+      new Set([
+        ...getClaimFormerUids(currentClaim),
+        ...retiredEntries.map((entry) => entry.account.uid),
+        ...group.flatMap((entry) =>
+          Array.isArray(entry.account.previousAccountUids)
+            ? entry.account.previousAccountUids
+            : []
+        ),
+      ].filter(Boolean))
+    );
+    const conflict = liveEntries.length > 1;
+    const currentEntry = liveEntries.length === 1 ? liveEntries[0] : null;
+    const currentUid = currentEntry?.account?.uid || '';
+
+    claimOperations.push({
+      type: 'set',
+      ref: doc(MEMBER_IDENTITY_CLAIMS_COLLECTION_REF, identityKey),
+      data: {
+        identityKey,
+        uid: currentUid,
+        currentUid,
+        status: conflict ? 'conflict' : currentUid ? 'active' : 'released',
+        name: representative?.name || currentClaim.name || '',
+        team: representative?.team || currentClaim.team || '',
+        conflict,
+        conflictingUids: conflict
+          ? liveEntries.map((entry) => entry.account.uid)
+          : [],
+        formerUids: formerUids.filter((uid) => uid !== currentUid),
+        directoryMemberId:
+          currentEntry?.account?.directoryMemberId ||
+          currentClaim.directoryMemberId ||
+          '',
+        restrictionSnapshot: currentClaim.restrictionSnapshot || {},
+        createdAt: currentClaim.createdAt || serverTimestamp(),
+        releasedAt: !currentUid && !conflict
+          ? currentClaim.releasedAt || serverTimestamp()
+          : '',
+        updatedAt: serverTimestamp(),
+      },
+    });
+
+    if (currentEntry && !conflict && currentEntry.recoveryKey && currentEntry.maskedEmail) {
+      desiredRecoveryKeys.add(currentEntry.recoveryKey);
+      recoveryOperations.push({
+        type: 'set',
+        ref: doc(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF, currentEntry.recoveryKey),
+        data: {
+          recoveryKey: currentEntry.recoveryKey,
+          maskedEmail: currentEntry.maskedEmail,
+          accountStatus: currentEntry.account.status || USER_PROFILE_STATUS.PENDING,
+          enabled: true,
+          updatedAt: serverTimestamp(),
+        },
+      });
+      accountMetadataOperations.push({
+        type: 'set',
+        ref: doc(db, USER_ACCOUNTS_COLLECTION_NAME, currentEntry.account.uid),
+        data: {
+          identityKey,
+          recoveryKey: currentEntry.recoveryKey,
+          maskedEmail: currentEntry.maskedEmail,
+          previousAccountUids: formerUids.filter(
+            (uid) => uid !== currentEntry.account.uid
+          ),
+          rejoinedAccount:
+            Boolean(currentEntry.account.rejoinedAccount) || formerUids.length > 0,
+          updatedAt: serverTimestamp(),
+        },
+        options: { merge: true },
+      });
+    }
+  });
+
+  currentClaimDocuments.forEach((claimDocument) => {
+    if (desiredClaimKeys.has(claimDocument.id)) return;
+
+    const claimData = claimDocument.data();
+    const currentUid = getClaimCurrentUid(claimData);
+
+    if (currentUid) {
+      claimOperations.push({
+        type: 'set',
+        ref: claimDocument.ref,
+        data: {
+          ...claimData,
+          uid: '',
+          currentUid: '',
+          status: 'released',
+          formerUids: Array.from(
+            new Set([...getClaimFormerUids(claimData), currentUid])
+          ),
+          releasedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+      });
+    }
+  });
+
+  currentRecoveryDocuments.forEach((recoveryDocument) => {
+    if (!desiredRecoveryKeys.has(recoveryDocument.id)) {
+      recoveryOperations.push({
+        type: 'delete',
+        ref: recoveryDocument.ref,
+      });
+    }
+  });
+
+  return {
+    accountMetadataOperations,
+    claimOperations,
+    recoveryOperations,
+    groups,
+  };
+};
+
 function mergePersistedData(rawData) {
   const parsed = { ...initialData, ...(rawData || {}) };
   const assetCategories = Array.isArray(parsed.assetCategories) && parsed.assetCategories.length > 0
@@ -1474,6 +1660,9 @@ function mergePersistedData(rawData) {
     initialData.settings.allowNonOverlappingSameAssetRequests;
   settings.requireRegisteredMemberForSignup =
     Boolean(rawSettings.requireRegisteredMemberForSignup);
+  settings.autoApproveNewMembers =
+    settings.requireRegisteredMemberForSignup &&
+    Boolean(rawSettings.autoApproveNewMembers);
   settings.memberDirectoryVersion =
     getSafeMemberDirectoryVersion(rawSettings);
   settings.memberIdentityClaimsReady =
@@ -1503,11 +1692,42 @@ const USER_ROUTE_PATHS = {
   faq: '/board/faq',
   login: '/login',
   signup: '/signup',
+  findEmail: '/find-email',
+  resetPassword: '/reset-password',
+  accountStatus: '/account-status',
   mypage: '/mypage',
 };
 
 const USER_LOGIN_RETURN_TARGET_SESSION_KEY =
   'mk_laptop_login_return_target';
+
+const USER_ACCOUNT_STATUS_SESSION_KEY =
+  'mk_laptop_user_account_status';
+
+const readUserAccountStatusView = () => {
+  if (typeof window === 'undefined') return { type: 'loginRetired' };
+
+  try {
+    const parsed = JSON.parse(
+      window.sessionStorage.getItem(USER_ACCOUNT_STATUS_SESSION_KEY) || 'null'
+    );
+
+    return parsed && typeof parsed.type === 'string'
+      ? parsed
+      : { type: 'loginRetired' };
+  } catch (error) {
+    return { type: 'loginRetired' };
+  }
+};
+
+const writeUserAccountStatusView = (nextView) => {
+  if (typeof window === 'undefined') return;
+
+  window.sessionStorage.setItem(
+    USER_ACCOUNT_STATUS_SESSION_KEY,
+    JSON.stringify(nextView || { type: 'loginRetired' })
+  );
+};
 
 const PROTECTED_USER_TABS = new Set([
   'rental',
@@ -1650,6 +1870,18 @@ const getRouteStateFromPath = () => {
 
   if (pathname === '/signup') {
     return { view: 'user', userTab: 'signup' };
+  }
+
+  if (pathname === '/find-email') {
+    return { view: 'user', userTab: 'findEmail' };
+  }
+
+  if (pathname === '/reset-password') {
+    return { view: 'user', userTab: 'resetPassword' };
+  }
+
+  if (pathname === '/account-status') {
+    return { view: 'user', userTab: 'accountStatus' };
   }
 
   if (pathname === '/mypage') {
@@ -1797,6 +2029,14 @@ const createDefaultUserProfileForm = () => ({
   newPasswordConfirm: '',
 });
 
+const createDefaultAccountRecoveryForm = () => ({
+  name: '',
+  team: '',
+  phonePrefix: '010',
+  phoneMiddle: '',
+  phoneLast: '',
+});
+
 const getSafeMemberDirectoryVersion = (settings = {}) => {
   const parsedVersion = Math.trunc(Number(settings.memberDirectoryVersion || 0));
   return Number.isFinite(parsedVersion) && parsedVersion >= 0
@@ -1806,6 +2046,28 @@ const getSafeMemberDirectoryVersion = (settings = {}) => {
 
 const isRegisteredMemberSignupRequired = (settings = {}) =>
   Boolean(settings.requireRegisteredMemberForSignup);
+
+
+const isAutoApproveNewMembersEnabled = (settings = {}) =>
+  isRegisteredMemberSignupRequired(settings) &&
+  Boolean(settings.autoApproveNewMembers);
+
+const getClaimCurrentUid = (claim = {}) =>
+  String(claim.currentUid || claim.uid || '').trim();
+
+const getClaimFormerUids = (claim = {}) =>
+  Array.from(
+    new Set(
+      [
+        ...(Array.isArray(claim.formerUids) ? claim.formerUids : []),
+      ]
+        .map((uid) => String(uid || '').trim())
+        .filter(Boolean)
+    )
+  );
+
+const getClaimStatus = (claim = {}) =>
+  claim.status || (getClaimCurrentUid(claim) ? 'active' : 'released');
 
 const getRestorableUserProfileStatus = (status) =>
   [USER_PROFILE_STATUS.ACTIVE, USER_PROFILE_STATUS.PENDING].includes(status)
@@ -2385,6 +2647,10 @@ function App() {
   const [tempRequireRegisteredMemberForSignup, setTempRequireRegisteredMemberForSignup] = useState(
     Boolean(data.settings.requireRegisteredMemberForSignup)
   );
+  const [tempAutoApproveNewMembers, setTempAutoApproveNewMembers] = useState(
+    Boolean(data.settings.autoApproveNewMembers)
+  );
+  const [signupPolicySaving, setSignupPolicySaving] = useState(false);
   const [memberDirectoryAuditLoading, setMemberDirectoryAuditLoading] = useState(false);
   const [memberDirectoryAuditResult, setMemberDirectoryAuditResult] = useState(null);
   const [editingBorrowerIndex, setEditingBorrowerIndex] = useState(null);
@@ -2410,6 +2676,12 @@ function App() {
   const [currentAuthRoleErrorMessage, setCurrentAuthRoleErrorMessage] = useState('');
   const [userAuthForm, setUserAuthForm] = useState(createDefaultUserAuthForm);
   const [userAuthLoading, setUserAuthLoading] = useState(false);
+  const [accountRecoveryForm, setAccountRecoveryForm] = useState(createDefaultAccountRecoveryForm);
+  const [accountRecoveryLoading, setAccountRecoveryLoading] = useState(false);
+  const [accountRecoveryResult, setAccountRecoveryResult] = useState(null);
+  const [passwordResetEmail, setPasswordResetEmail] = useState('');
+  const [passwordResetLoading, setPasswordResetLoading] = useState(false);
+  const [userAccountStatusView, setUserAccountStatusView] = useState(readUserAccountStatusView);
   const [userDirectoryVerificationLoading, setUserDirectoryVerificationLoading] = useState(false);
   const userDirectoryVerificationKeyRef = useRef('');
   const profileRequiredRedirectRef = useRef('');
@@ -2423,6 +2695,9 @@ function App() {
   const [userProfileReady, setUserProfileReady] = useState(false);
   const [userProfileForm, setUserProfileForm] = useState(createDefaultUserProfileForm);
   const [userProfileSaving, setUserProfileSaving] = useState(false);
+  const [withdrawalDialogOpen, setWithdrawalDialogOpen] = useState(false);
+  const [withdrawalPassword, setWithdrawalPassword] = useState('');
+  const [withdrawalLoading, setWithdrawalLoading] = useState(false);
 
   const [currentUserRestriction, setCurrentUserRestriction] = useState(null);
   const [currentUserRestrictionReady, setCurrentUserRestrictionReady] = useState(false);
@@ -2534,18 +2809,28 @@ function App() {
       JSON.stringify(normalizeTeams(tempTeams)) !==
         JSON.stringify(normalizeTeams(data.teams || [])) ||
       JSON.stringify(normalizeBorrowers(tempBorrowers)) !==
-        JSON.stringify(normalizeBorrowers(data.borrowers || [])) ||
-      Boolean(tempRequireRegisteredMemberForSignup) !==
-        Boolean(data.settings.requireRegisteredMemberForSignup)
+        JSON.stringify(normalizeBorrowers(data.borrowers || []))
     );
   }, [
     data.borrowers,
-    data.settings.requireRegisteredMemberForSignup,
     data.teams,
     tempBorrowers,
-    tempRequireRegisteredMemberForSignup,
     tempTeams,
   ]);
+
+  const signupPolicyDirty = useMemo(
+    () =>
+      Boolean(tempRequireRegisteredMemberForSignup) !==
+        Boolean(data.settings.requireRegisteredMemberForSignup) ||
+      Boolean(tempAutoApproveNewMembers) !==
+        Boolean(data.settings.autoApproveNewMembers),
+    [
+      data.settings.autoApproveNewMembers,
+      data.settings.requireRegisteredMemberForSignup,
+      tempAutoApproveNewMembers,
+      tempRequireRegisteredMemberForSignup,
+    ]
+  );
 
   const getComparableRentalPolicySettings = (settings = {}) => {
     const excludeSaturdays =
@@ -2905,7 +3190,8 @@ function App() {
       !userProfileReady ||
       !userProfile ||
       userProfile.uid !== firebaseAuthUser.uid ||
-      userAuthLoading
+      userAuthLoading ||
+      withdrawalLoading
     ) {
       return;
     }
@@ -2950,39 +3236,23 @@ function App() {
 
     userStatusLogoutInProgressRef.current = true;
 
-    const logoutMessage =
-      currentStatus ===
-      USER_PROFILE_STATUS.PENDING
-        ? '관리자 승인 대기 상태로 변경되어 로그아웃되었습니다.'
-        : currentStatus ===
-            USER_PROFILE_STATUS.BLOCKED
-          ? '관리자에 의해 이용이 차단되어 로그아웃되었습니다.'
-          : currentStatus ===
-              USER_PROFILE_STATUS.RETIRED
-            ? '이용 종료 상태로 변경되어 로그아웃되었습니다.'
-            : '현재 회원 상태에서는 서비스를 이용할 수 없어 로그아웃되었습니다.';
+    const statusPageType =
+      currentStatus === USER_PROFILE_STATUS.PENDING
+        ? 'loginPending'
+        : currentStatus === USER_PROFILE_STATUS.BLOCKED
+          ? 'loginBlocked'
+          : 'loginRetired';
 
     const logoutInactiveUser = async () => {
       try {
+        showUserAccountStatus(statusPageType);
         await signOut(firebaseAuth);
 
         clearUserLoginReturnTarget();
         clearAdminAuthSession();
         setAuthenticatedAdminId('');
         setAdminAuthExpiresAt(0);
-        setUserAuthForm(
-          createDefaultUserAuthForm()
-        );
-
-        pushAppPath('user', 'login');
-        setView('user');
-        setUserTab('login');
-        setIsCommunityMenuOpen(false);
-
-        triggerToast(
-          logoutMessage,
-          'error'
-        );
+        setUserAuthForm(createDefaultUserAuthForm());
       } catch (error) {
         console.error(
           'Inactive user automatic logout error:',
@@ -3007,6 +3277,7 @@ function App() {
     userProfileReady,
     userProfile,
     userAuthLoading,
+    withdrawalLoading,
   ]);
 
   useEffect(() => {
@@ -3715,7 +3986,24 @@ function App() {
       return;
     }
 
-    if (!firebaseAuthUser || currentAuthRoleErrorMessage) {
+    const canReadRentalBorrowers = Boolean(
+      firebaseAuthUser &&
+      !currentAuthRoleErrorMessage &&
+      (
+        currentAuthAdminAccount ||
+        authenticatedAdminId ||
+        (
+          userProfile?.status === USER_PROFILE_STATUS.ACTIVE &&
+          (
+            !Boolean(data.settings.requireRegisteredMemberForSignup) ||
+            Number(userProfile.directoryVerifiedVersion || 0) ===
+              getSafeMemberDirectoryVersion(data.settings)
+          )
+        )
+      )
+    );
+
+    if (!canReadRentalBorrowers) {
       setSplitRentalBorrowers([]);
       setSplitSourceErrors((prev) => ({
         ...prev,
@@ -3786,7 +4074,13 @@ function App() {
     firebaseAuthReady,
     currentAuthRoleReady,
     currentAuthRoleErrorMessage,
+    currentAuthAdminAccount,
+    authenticatedAdminId,
     firebaseAuthUser?.uid,
+    userProfile?.status,
+    userProfile?.directoryVerifiedVersion,
+    data.settings.requireRegisteredMemberForSignup,
+    data.settings.memberDirectoryVersion,
   ]);
 
   useEffect(() => {
@@ -4072,9 +4366,6 @@ function App() {
     if (adminTab === 'people') {
       setTempTeams(data.teams || []);
       setTempBorrowers(data.borrowers || []);
-      setTempRequireRegisteredMemberForSignup(
-        Boolean(data.settings.requireRegisteredMemberForSignup)
-      );
       setEditingTeamIndex(null);
       setEditingTeamName('');
       setDraggingTeamIndex(null);
@@ -4089,7 +4380,21 @@ function App() {
     adminTab,
     data.teams,
     data.borrowers,
+  ]);
+
+  useEffect(() => {
+    if (adminTab === 'signupPolicy') {
+      setTempRequireRegisteredMemberForSignup(
+        Boolean(data.settings.requireRegisteredMemberForSignup)
+      );
+      setTempAutoApproveNewMembers(
+        Boolean(data.settings.autoApproveNewMembers)
+      );
+    }
+  }, [
+    adminTab,
     data.settings.requireRegisteredMemberForSignup,
+    data.settings.autoApproveNewMembers,
   ]);
 
   useEffect(() => {
@@ -4362,21 +4667,31 @@ function App() {
       );
       const claimConflict = Boolean(
         claimData &&
-          (claimData.conflict === true || claimData.uid !== authUser.uid)
+          (claimData.conflict === true ||
+            getClaimCurrentUid(claimData) !== authUser.uid)
       );
 
       if (directoryMatches && !claimConflict) {
-        if (!claimSnapshot.exists()) {
-          transaction.set(claimRef, {
+        transaction.set(
+          claimRef,
+          {
             identityKey,
             uid: authUser.uid,
+            currentUid: authUser.uid,
+            status: 'active',
             name: normalizedName,
             team: normalizedTeam,
             conflict: false,
-            createdAt: serverTimestamp(),
+            conflictingUids: [],
+            formerUids: getClaimFormerUids(claimData || {}),
+            directoryMemberId: directoryData.directoryMemberId || '',
+            restrictionSnapshot: claimData?.restrictionSnapshot || {},
+            createdAt: claimData?.createdAt || serverTimestamp(),
+            releasedAt: '',
             updatedAt: serverTimestamp(),
-          });
-        }
+          },
+          { merge: true }
+        );
 
         const shouldRestore =
           currentStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
@@ -4405,6 +4720,17 @@ function App() {
             : currentAccount.statusBeforeProfileRequired || '',
           updatedAt: serverTimestamp(),
         });
+
+        if (currentAccount.recoveryKey) {
+          transaction.set(
+            doc(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF, currentAccount.recoveryKey),
+            {
+              accountStatus: nextStatus,
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+        }
 
         return {
           status: nextStatus,
@@ -4438,6 +4764,17 @@ function App() {
         directoryVerifiedAt: '',
         updatedAt: serverTimestamp(),
       });
+
+      if (currentAccount.recoveryKey) {
+        transaction.set(
+          doc(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF, currentAccount.recoveryKey),
+          {
+            accountStatus: USER_PROFILE_STATUS.PROFILE_REQUIRED,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
 
       return {
         status: USER_PROFILE_STATUS.PROFILE_REQUIRED,
@@ -4509,6 +4846,38 @@ function App() {
 
     return Array.from(requestMap.values());
   }, [data.requests, rentalRequests]);
+
+  const getMemberAccountHistorySummary = (account = {}) => {
+    const linkedUids = new Set([
+      String(account.uid || ''),
+      ...(Array.isArray(account.previousAccountUids)
+        ? account.previousAccountUids
+        : []),
+    ].filter(Boolean));
+    const linkedRequests = (mergedRentalRequests || []).filter((request) =>
+      linkedUids.has(String(request.requesterUid || ''))
+    );
+    const previousRequests = linkedRequests.filter(
+      (request) => String(request.requesterUid || '') !== String(account.uid || '')
+    );
+    const overdueRequests = linkedRequests.filter(
+      (request) =>
+        Number(request.overdueDaysAtReturn || 0) > 0 ||
+        (request.status === STATUS.APPROVED && request.dueDate && request.dueDate < today())
+    );
+    const activeRequests = linkedRequests.filter((request) =>
+      [STATUS.REQUESTED, STATUS.ON_HOLD, STATUS.APPROVED].includes(request.status)
+    );
+
+    return {
+      linkedUidCount: linkedUids.size,
+      totalRequests: linkedRequests.length,
+      previousRequests: previousRequests.length,
+      overdueRequests: overdueRequests.length,
+      activeRequests: activeRequests.length,
+      inheritedRestriction: account.inheritedRestriction || {},
+    };
+  };
 
   const rentalRequestIdSet = useMemo(
     () =>
@@ -5317,6 +5686,66 @@ function App() {
     ]
   );
 
+  const withdrawalBlockMessage = useMemo(() => {
+    if (!firebaseAuthUser?.uid) return '';
+
+    if (!rentalRequestsReady || !currentUserRestrictionReady) {
+      return '탈퇴 가능 여부를 확인하는 중입니다. 잠시 후 다시 시도해 주세요.';
+    }
+
+    const hasActiveRequest = currentUserRequests.some((request) =>
+      [STATUS.REQUESTED, STATUS.ON_HOLD, STATUS.APPROVED].includes(request.status)
+    );
+    const hasPendingUserAction = currentUserRequests.some(
+      (request) =>
+        request?.userActionRequest?.status === USER_REQUEST_REVIEW_STATUS.PENDING
+    );
+    const overdueRequests = getCurrentOverdueRequests(
+      currentUserRequests,
+      firebaseAuthUser.uid,
+      today()
+    );
+    const restriction = currentUserRestriction || {};
+    const hasManualOrIncidentRestriction = Boolean(
+      restriction.manualBlock === true ||
+      restriction.indefinite === true ||
+      restriction.restrictionStatus === 'active' ||
+      restriction.lossDamagePending === true ||
+      ['pending', 'open', 'unresolved'].includes(
+        String(restriction.incidentStatus || '').toLowerCase()
+      )
+    );
+
+    if (overdueRequests.length > 0) {
+      return '현재 연체 중인 대여 기기가 있어 탈퇴할 수 없습니다. 연체 기기를 반납한 후 다시 시도해 주세요.';
+    }
+
+    if (
+      currentUserRentalRestrictionStatus?.postPenaltyBlocked ||
+      (restriction.activePenalty === true &&
+        String(restriction.eligibleFromDate || '') > today())
+    ) {
+      return '연체로 인한 대여 제한 기간에는 탈퇴할 수 없습니다. 제한 종료 후 다시 시도해 주세요.';
+    }
+
+    if (hasManualOrIncidentRestriction) {
+      return '유효한 대여 제한 또는 미처리된 분실·파손 관련 조치가 있어 탈퇴할 수 없습니다. 관리자에게 문의해 주세요.';
+    }
+
+    if (hasActiveRequest || hasPendingUserAction) {
+      return '진행 중인 신청·대여 또는 검토 중인 사용자 요청이 있어 탈퇴할 수 없습니다. 관련 처리가 완료된 후 다시 시도해 주세요.';
+    }
+
+    return '';
+  }, [
+    currentUserRentalRestrictionStatus,
+    currentUserRequests,
+    currentUserRestriction,
+    currentUserRestrictionReady,
+    firebaseAuthUser?.uid,
+    rentalRequestsReady,
+  ]);
+
   const activeUserActionRentalRequest = useMemo(
     () =>
       userActionDialog?.requestId
@@ -5738,6 +6167,22 @@ function App() {
       return;
     }
 
+    const canReadOwnRentalRequests = Boolean(
+      firebaseAuthUser &&
+      !currentAuthRoleErrorMessage &&
+      [
+        USER_PROFILE_STATUS.ACTIVE,
+        USER_PROFILE_STATUS.PROFILE_REQUIRED,
+      ].includes(userProfile?.status)
+    );
+
+    if (!isAdminAuthenticated && !canReadOwnRentalRequests) {
+      setRentalRequests([]);
+      setRentalRequestsLoadErrorMessage('');
+      setRentalRequestsReady(true);
+      return;
+    }
+
     if (!firebaseAuthUser || currentAuthRoleErrorMessage) {
       setRentalRequests([]);
       setRentalRequestsLoadErrorMessage('');
@@ -5788,6 +6233,7 @@ function App() {
     currentAuthRoleReady,
     currentAuthRoleErrorMessage,
     firebaseAuthUser?.uid,
+    userProfile?.status,
     isAdminAuthenticated,
   ]);
 
@@ -6372,12 +6818,13 @@ function App() {
     pendingProtectedUserTabRef.current = '';
 
     if (
-      userTab !== 'login' &&
-      userTab !== 'signup'
+      !['login', 'signup', 'findEmail', 'resetPassword', 'accountStatus'].includes(userTab)
     ) {
       saveCurrentUserLoginReturnTarget();
     }
 
+    setAccountRecoveryResult(null);
+    setPasswordResetEmail('');
     pushAppPath('user', 'login');
     setView('user');
     setUserTab('login');
@@ -6388,15 +6835,43 @@ function App() {
     pendingProtectedUserTabRef.current = '';
 
     if (
-      userTab !== 'login' &&
-      userTab !== 'signup'
+      !['login', 'signup', 'findEmail', 'resetPassword', 'accountStatus'].includes(userTab)
     ) {
       saveCurrentUserLoginReturnTarget();
     }
 
+    setUserAuthForm(createDefaultUserAuthForm());
     pushAppPath('user', 'signup');
     setView('user');
     setUserTab('signup');
+    setIsCommunityMenuOpen(false);
+  };
+
+
+  const showUserAccountStatus = (type) => {
+    const nextView = { type };
+    writeUserAccountStatusView(nextView);
+    setUserAccountStatusView(nextView);
+    replaceAppPath('user', 'accountStatus');
+    setView('user');
+    setUserTab('accountStatus');
+    setIsCommunityMenuOpen(false);
+  };
+
+  const goToUserEmailRecovery = () => {
+    setAccountRecoveryForm(createDefaultAccountRecoveryForm());
+    setAccountRecoveryResult(null);
+    pushAppPath('user', 'findEmail');
+    setView('user');
+    setUserTab('findEmail');
+    setIsCommunityMenuOpen(false);
+  };
+
+  const goToUserPasswordReset = () => {
+    setPasswordResetEmail('');
+    pushAppPath('user', 'resetPassword');
+    setView('user');
+    setUserTab('resetPassword');
     setIsCommunityMenuOpen(false);
   };
 
@@ -6463,6 +6938,101 @@ function App() {
     setView('user');
     setUserTab('login');
     setIsCommunityMenuOpen(false);
+  };
+
+  const submitAccountRecovery = async (event) => {
+    event.preventDefault();
+
+    const lookupStartedAt = Date.now();
+    const name = normalizeMemberName(accountRecoveryForm.name);
+    const team = normalizeMemberTeam(accountRecoveryForm.team);
+    const phoneParts = {
+      prefix: accountRecoveryForm.phonePrefix,
+      middle: accountRecoveryForm.phoneMiddle,
+      last: accountRecoveryForm.phoneLast,
+    };
+    const phone = buildDomesticPhoneNumber(phoneParts);
+
+    if (!isValidMemberName(name)) {
+      triggerToast('이름은 공백 없이 한글 또는 영문 2~30자로 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (!team) {
+      triggerToast('부서 / 팀을 선택해 주세요.', 'error');
+      return;
+    }
+
+    if (!isValidDomesticPhoneNumber(phoneParts)) {
+      triggerToast('올바른 국내 연락처를 입력해 주세요.', 'error');
+      return;
+    }
+
+    setAccountRecoveryLoading(true);
+    setAccountRecoveryResult(null);
+
+    try {
+      const recoveryKey = await createAccountRecoveryKey({ team, name, phone });
+      const recoverySnapshot = await getDoc(
+        doc(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF, recoveryKey)
+      );
+      const recoveryData = recoverySnapshot.exists()
+        ? recoverySnapshot.data()
+        : null;
+      const maskedEmail = String(recoveryData?.maskedEmail || '');
+      const found = Boolean(
+        recoveryData &&
+        recoveryData.enabled !== false &&
+        maskedEmail
+      );
+
+      setAccountRecoveryResult({
+        found,
+        maskedEmail: found ? maskedEmail : '',
+      });
+    } catch (error) {
+      console.error('Account recovery lookup error:', error);
+      triggerToast('이메일 확인 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.', 'error');
+    } finally {
+      const minimumResponseDelayMs = 600;
+      const remainingDelay = minimumResponseDelayMs - (Date.now() - lookupStartedAt);
+
+      if (remainingDelay > 0) {
+        await new Promise((resolve) => window.setTimeout(resolve, remainingDelay));
+      }
+
+      setAccountRecoveryLoading(false);
+    }
+  };
+
+  const submitPasswordReset = async (event) => {
+    event.preventDefault();
+
+    const email = normalizeEmailAddress(passwordResetEmail);
+
+    if (!isValidEmailAddress(email)) {
+      triggerToast('올바른 이메일 주소를 입력해 주세요.', 'error');
+      return;
+    }
+
+    setPasswordResetLoading(true);
+
+    try {
+      await sendPasswordResetEmail(firebaseAuth, email);
+      setPasswordResetEmail('');
+      showUserAccountStatus('passwordResetSent');
+    } catch (error) {
+      if (['auth/user-not-found', 'auth/invalid-credential'].includes(error?.code)) {
+        setPasswordResetEmail('');
+        showUserAccountStatus('passwordResetSent');
+        return;
+      }
+
+      console.error('User password reset email error:', error);
+      triggerToast(getUserAuthErrorMessage(error), 'error');
+    } finally {
+      setPasswordResetLoading(false);
+    }
   };
 
   const submitUserAuthForm = async (event) => {
@@ -6551,6 +7121,8 @@ function App() {
         }
 
         const identityKey = await createMemberIdentityKey(team, name);
+        const recoveryKey = await createAccountRecoveryKey({ team, name, phone });
+        const maskedEmail = maskEmailAddress(email);
         const initialPolicyEnabled = isRegisteredMemberSignupRequired(
           data.settings
         );
@@ -6589,11 +7161,18 @@ function App() {
           displayName: name,
         });
 
+        let createdAccountStatus = USER_PROFILE_STATUS.PENDING;
+        let createdAccountRejoined = false;
+
         await runTransaction(db, async (transaction) => {
           const configSnapshot = await transaction.get(PUBLIC_CONFIG_DOC_REF);
           const claimRef = doc(
             MEMBER_IDENTITY_CLAIMS_COLLECTION_REF,
             identityKey
+          );
+          const recoveryRef = doc(
+            ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
+            recoveryKey
           );
           const claimSnapshot = await transaction.get(claimRef);
           const latestSettings = normalizeRentalPolicySettings({
@@ -6635,23 +7214,53 @@ function App() {
             }
           }
 
+          const claimData = claimSnapshot.exists()
+            ? claimSnapshot.data()
+            : {};
+          const claimCurrentUid = getClaimCurrentUid(claimData);
+          const claimFormerUids = getClaimFormerUids(claimData);
+          const claimStatus = getClaimStatus(claimData);
+          const isReleasedClaim =
+            claimSnapshot.exists() &&
+            claimStatus === 'released' &&
+            !claimCurrentUid;
+
           if (
             claimSnapshot.exists() &&
-            (claimSnapshot.data().conflict === true ||
-              claimSnapshot.data().uid !== credential.user.uid)
+            (claimData.conflict === true ||
+              (claimCurrentUid && claimCurrentUid !== credential.user.uid) ||
+              (!isReleasedClaim && !claimCurrentUid && claimStatus !== 'released'))
           ) {
             throw createMemberPolicyError('member/identity-already-claimed');
           }
 
+          createdAccountRejoined =
+            isReleasedClaim || claimFormerUids.length > 0;
+          createdAccountStatus =
+            isAutoApproveNewMembersEnabled(latestSettings) &&
+            !createdAccountRejoined
+              ? USER_PROFILE_STATUS.ACTIVE
+              : USER_PROFILE_STATUS.PENDING;
+
           transaction.set(claimRef, {
             identityKey,
             uid: credential.user.uid,
+            currentUid: credential.user.uid,
+            status: 'active',
             name,
             team,
             conflict: false,
+            conflictingUids: [],
+            formerUids: claimFormerUids,
+            directoryMemberId:
+              latestPolicyEnabled && directoryData
+                ? directoryData.directoryMemberId || ''
+                : claimData.directoryMemberId || '',
+            restrictionSnapshot: claimData.restrictionSnapshot || {},
             createdAt: claimSnapshot.exists()
-              ? claimSnapshot.data().createdAt || serverTimestamp()
+              ? claimData.createdAt || serverTimestamp()
               : serverTimestamp(),
+            releasedAt: '',
             updatedAt: serverTimestamp(),
           });
 
@@ -6660,11 +7269,13 @@ function App() {
             {
               uid: credential.user.uid,
               email: credential.user.email || email,
+              maskedEmail,
               name,
               team,
               phone,
-              status: USER_PROFILE_STATUS.PENDING,
+              status: createdAccountStatus,
               identityKey,
+              recoveryKey,
               directoryMemberId:
                 latestPolicyEnabled && directoryData
                   ? directoryData.directoryMemberId || ''
@@ -6678,25 +7289,35 @@ function App() {
               profileRequiredReason: '',
               profileRequiredAt: '',
               statusBeforeProfileRequired: '',
+              rejoinedAccount: createdAccountRejoined,
+              previousAccountUids: claimFormerUids,
+              inheritedRestriction: claimData.restrictionSnapshot || {},
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
             }
           );
+
+          transaction.set(recoveryRef, {
+            recoveryKey,
+            maskedEmail,
+            accountStatus: createdAccountStatus,
+            enabled: true,
+            updatedAt: serverTimestamp(),
+          });
         });
 
         createdSignupUser = null;
-
-        await signOut(firebaseAuth);
         setUserAuthForm(createDefaultUserAuthForm());
-        pushAppPath('user', 'login');
-        setView('user');
-        setUserTab('login');
-        setIsCommunityMenuOpen(false);
+        clearUserLoginReturnTarget();
 
-        triggerToast(
-          '가입 신청이 접수되었습니다. 관리자 승인 후 로그인할 수 있습니다.',
-          'success'
-        );
+        if (createdAccountStatus === USER_PROFILE_STATUS.ACTIVE) {
+          showUserAccountStatus('signupAutoApprovedComplete');
+        } else {
+          showUserAccountStatus('signupPendingComplete');
+          await signOut(firebaseAuth).catch((logoutError) => {
+            console.error('Pending signup sign-out error:', logoutError);
+          });
+        }
 
         return;
       }
@@ -6783,19 +7404,18 @@ function App() {
       }
 
       if (signedInUserStatus !== USER_PROFILE_STATUS.ACTIVE) {
-        await signOut(firebaseAuth);
-        signedInUserForRoleCheck = null;
-
-        const blockedMessage =
+        const statusPageType =
           signedInUserStatus === USER_PROFILE_STATUS.PENDING
-            ? '관리자 승인 대기 중인 계정입니다.'
+            ? 'loginPending'
             : signedInUserStatus === USER_PROFILE_STATUS.BLOCKED
-              ? '이용이 차단된 계정입니다. 관리자에게 문의해 주세요.'
-              : signedInUserStatus === USER_PROFILE_STATUS.RETIRED
-                ? '이용이 종료된 계정입니다. 관리자에게 문의해 주세요.'
-                : '현재 회원 상태에서는 로그인할 수 없습니다.';
+              ? 'loginBlocked'
+              : 'loginRetired';
 
-        triggerToast(blockedMessage, 'error');
+        showUserAccountStatus(statusPageType);
+        await signOut(firebaseAuth).catch((logoutError) => {
+          console.error('Inactive login sign-out error:', logoutError);
+        });
+        signedInUserForRoleCheck = null;
         return;
       }
 
@@ -7342,12 +7962,28 @@ function App() {
       return;
     }
 
+    if (
+      nextStatus === USER_PROFILE_STATUS.ACTIVE &&
+      account.rejoinedAccount
+    ) {
+      const historySummary = getMemberAccountHistorySummary(account);
+
+      if (historySummary.activeRequests > 0) {
+        triggerToast(
+          `이전 계정에 진행 중인 신청 또는 대여 ${historySummary.activeRequests}건이 남아 있어 가입을 승인할 수 없습니다. 기존 신청을 먼저 정리해 주세요.`,
+          'error'
+        );
+        return;
+      }
+    }
+
     setAdminUserAccountSavingUid(
       userUid
     );
 
     try {
-      await setDoc(
+      const batch = writeBatch(db);
+      batch.set(
         doc(
           db,
           USER_ACCOUNTS_COLLECTION_NAME,
@@ -7355,13 +7991,47 @@ function App() {
         ),
         {
           status: nextStatus,
-          updatedAt:
-            serverTimestamp(),
+          updatedAt: serverTimestamp(),
         },
-        {
-          merge: true,
-        }
+        { merge: true }
       );
+
+      if (account.recoveryKey) {
+        batch.set(
+          doc(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF, account.recoveryKey),
+          {
+            accountStatus: nextStatus,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+
+      const inheritedRestriction = account.inheritedRestriction || {};
+      const inheritedRestrictionStillActive = Boolean(
+        nextStatus === USER_PROFILE_STATUS.ACTIVE &&
+        account.rejoinedAccount &&
+        (inheritedRestriction.manualBlock === true ||
+          inheritedRestriction.indefinite === true ||
+          inheritedRestriction.restrictionStatus === 'active' ||
+          (inheritedRestriction.activePenalty === true &&
+            String(inheritedRestriction.eligibleFromDate || '') > today()))
+      );
+
+      if (inheritedRestrictionStillActive) {
+        batch.set(
+          doc(RENTAL_RESTRICTIONS_COLLECTION_REF, userUid),
+          {
+            ...inheritedRestriction,
+            uid: userUid,
+            inheritedFromPreviousAccount: true,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+
+      await batch.commit();
 
       triggerToast(
         `${
@@ -7900,11 +8570,16 @@ function App() {
 
     try {
       const nextIdentityKey = await createMemberIdentityKey(team, name);
+      const nextRecoveryKey = await createAccountRecoveryKey({ team, name, phone });
+      const nextMaskedEmail = maskEmailAddress(
+        firebaseAuthUser.email || userProfile?.email || ''
+      );
       const previousIdentityKey =
         userProfile?.identityKey ||
         (userProfile?.name && userProfile?.team
           ? await createMemberIdentityKey(userProfile.team, userProfile.name)
           : '');
+      const previousRecoveryKey = String(userProfile?.recoveryKey || '');
 
       if (shouldChangePassword) {
         await updatePassword(firebaseAuthUser, newPassword);
@@ -7922,6 +8597,10 @@ function App() {
           MEMBER_IDENTITY_CLAIMS_COLLECTION_REF,
           nextIdentityKey
         );
+        const nextRecoveryRef = doc(
+          ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
+          nextRecoveryKey
+        );
         const nextClaimSnapshot = await transaction.get(nextClaimRef);
         const previousClaimRef =
           previousIdentityKey && previousIdentityKey !== nextIdentityKey
@@ -7933,6 +8612,13 @@ function App() {
         const previousClaimSnapshot = previousClaimRef
           ? await transaction.get(previousClaimRef)
           : null;
+        const previousRecoveryRef =
+          previousRecoveryKey && previousRecoveryKey !== nextRecoveryKey
+            ? doc(
+                ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
+                previousRecoveryKey
+              )
+            : null;
 
         if (!userSnapshot.exists()) {
           throw createMemberPolicyError('member/account-not-ready');
@@ -7972,10 +8658,20 @@ function App() {
           }
         }
 
+        const nextClaimData = nextClaimSnapshot.exists()
+          ? nextClaimSnapshot.data()
+          : {};
+        const nextClaimCurrentUid = getClaimCurrentUid(nextClaimData);
+        const nextClaimFormerUids = getClaimFormerUids(nextClaimData);
+
         if (
           nextClaimSnapshot.exists() &&
-          (nextClaimSnapshot.data().conflict === true ||
-            nextClaimSnapshot.data().uid !== firebaseAuthUser.uid)
+          (nextClaimData.conflict === true ||
+            (nextClaimCurrentUid && nextClaimCurrentUid !== firebaseAuthUser.uid) ||
+            (!nextClaimCurrentUid &&
+              getClaimStatus(nextClaimData) === 'released' &&
+              nextClaimFormerUids.length > 0 &&
+              !nextClaimFormerUids.includes(firebaseAuthUser.uid)))
         ) {
           throw createMemberPolicyError('member/identity-already-claimed');
         }
@@ -7994,30 +8690,60 @@ function App() {
         transaction.set(nextClaimRef, {
           identityKey: nextIdentityKey,
           uid: firebaseAuthUser.uid,
+          currentUid: firebaseAuthUser.uid,
+          status: 'active',
           name,
           team,
           conflict: false,
+          conflictingUids: [],
+          formerUids: nextClaimFormerUids,
+          directoryMemberId:
+            policyEnabled && directoryData
+              ? directoryData.directoryMemberId || ''
+              : nextClaimData.directoryMemberId || '',
+          restrictionSnapshot: nextClaimData.restrictionSnapshot || {},
           createdAt: nextClaimSnapshot.exists()
-            ? nextClaimSnapshot.data().createdAt || serverTimestamp()
+            ? nextClaimData.createdAt || serverTimestamp()
             : serverTimestamp(),
+          releasedAt: '',
           updatedAt: serverTimestamp(),
         });
 
         if (
           previousClaimRef &&
           previousClaimSnapshot?.exists() &&
-          previousClaimSnapshot.data().uid === firebaseAuthUser.uid
+          getClaimCurrentUid(previousClaimSnapshot.data()) === firebaseAuthUser.uid
         ) {
-          transaction.delete(previousClaimRef);
+          const previousClaimData = previousClaimSnapshot.data();
+          transaction.set(
+            previousClaimRef,
+            {
+              ...previousClaimData,
+              uid: '',
+              currentUid: '',
+              status: 'released',
+              formerUids: Array.from(
+                new Set([
+                  ...getClaimFormerUids(previousClaimData),
+                  firebaseAuthUser.uid,
+                ])
+              ),
+              releasedAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
         }
 
         transaction.update(userRef, {
           email: firebaseAuthUser.email || currentAccount.email || '',
+          maskedEmail: nextMaskedEmail,
           name,
           team,
           phone,
           status: nextStatus,
           identityKey: nextIdentityKey,
+          recoveryKey: nextRecoveryKey,
           directoryMemberId:
             policyEnabled && directoryData
               ? directoryData.directoryMemberId || ''
@@ -8039,6 +8765,18 @@ function App() {
             : currentAccount.statusBeforeProfileRequired || '',
           updatedAt: serverTimestamp(),
         });
+
+        transaction.set(nextRecoveryRef, {
+          recoveryKey: nextRecoveryKey,
+          maskedEmail: nextMaskedEmail,
+          accountStatus: nextStatus,
+          enabled: true,
+          updatedAt: serverTimestamp(),
+        });
+
+        if (previousRecoveryRef) {
+          transaction.delete(previousRecoveryRef);
+        }
       });
 
       await updateProfile(firebaseAuthUser, {
@@ -8064,6 +8802,242 @@ function App() {
       triggerToast(getUserAuthErrorMessage(error), 'error');
     } finally {
       setUserProfileSaving(false);
+    }
+  };
+
+  const openWithdrawalDialog = () => {
+    if (withdrawalBlockMessage) {
+      triggerToast(withdrawalBlockMessage, 'error');
+      return;
+    }
+
+    setWithdrawalPassword('');
+    setWithdrawalDialogOpen(true);
+  };
+
+  const cancelWithdrawal = () => {
+    if (withdrawalLoading) return;
+    setWithdrawalPassword('');
+    setWithdrawalDialogOpen(false);
+  };
+
+  const submitMembershipWithdrawal = async (event) => {
+    event.preventDefault();
+
+    if (!firebaseAuthUser || !userProfile) {
+      triggerToast('로그인한 회원 정보를 확인할 수 없습니다.', 'error');
+      return;
+    }
+
+    if (withdrawalBlockMessage) {
+      triggerToast(withdrawalBlockMessage, 'error');
+      return;
+    }
+
+    if (!withdrawalPassword) {
+      triggerToast('현재 비밀번호를 입력해 주세요.', 'error');
+      return;
+    }
+
+    const authEmail = normalizeEmailAddress(firebaseAuthUser.email || '');
+
+    if (!authEmail) {
+      triggerToast('재인증할 로그인 이메일을 확인할 수 없습니다.', 'error');
+      return;
+    }
+
+    const credential = EmailAuthProvider.credential(
+      authEmail,
+      withdrawalPassword
+    );
+    let rollbackState = null;
+
+    setWithdrawalLoading(true);
+
+    try {
+      await reauthenticateWithCredential(firebaseAuthUser, credential);
+
+      const currentIdentityKey =
+        userProfile.identityKey ||
+        await createMemberIdentityKey(userProfile.team, userProfile.name);
+      const currentRecoveryKey =
+        userProfile.recoveryKey ||
+        await createAccountRecoveryKey({
+          team: userProfile.team,
+          name: userProfile.name,
+          phone: userProfile.phone,
+        });
+      const userRef = doc(
+        db,
+        USER_ACCOUNTS_COLLECTION_NAME,
+        firebaseAuthUser.uid
+      );
+      const claimRef = doc(
+        MEMBER_IDENTITY_CLAIMS_COLLECTION_REF,
+        currentIdentityKey
+      );
+      const recoveryRef = doc(
+        ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
+        currentRecoveryKey
+      );
+
+      await runTransaction(db, async (transaction) => {
+        const userSnapshot = await transaction.get(userRef);
+        const claimSnapshot = await transaction.get(claimRef);
+        const recoverySnapshot = await transaction.get(recoveryRef);
+
+        if (!userSnapshot.exists()) {
+          throw createMemberPolicyError('member/account-not-ready');
+        }
+
+        const currentAccount = userSnapshot.data();
+        const currentClaim = claimSnapshot.exists()
+          ? claimSnapshot.data()
+          : {};
+        const formerUids = Array.from(
+          new Set([
+            ...getClaimFormerUids(currentClaim),
+            ...(Array.isArray(currentAccount.previousAccountUids)
+              ? currentAccount.previousAccountUids
+              : []),
+            firebaseAuthUser.uid,
+          ])
+        );
+        const restrictionSnapshot = {
+          ...(currentUserRestriction || {}),
+          lastEvaluatedAt: new Date().toISOString(),
+          historicalOverdueCount: currentUserRequests.filter(
+            (request) => Number(request.overdueDaysAtReturn || 0) > 0
+          ).length,
+        };
+
+        rollbackState = {
+          userData: currentAccount,
+          claimExists: claimSnapshot.exists(),
+          claimData: currentClaim,
+          recoveryExists: recoverySnapshot.exists(),
+          recoveryData: recoverySnapshot.exists()
+            ? recoverySnapshot.data()
+            : null,
+          userRef,
+          claimRef,
+          recoveryRef,
+        };
+
+        transaction.set(
+          claimRef,
+          {
+            ...currentClaim,
+            identityKey: currentIdentityKey,
+            uid: '',
+            currentUid: '',
+            status: 'released',
+            name: normalizeMemberName(currentAccount.name || ''),
+            team: normalizeMemberTeam(currentAccount.team || ''),
+            conflict: false,
+            conflictingUids: [],
+            formerUids,
+            directoryMemberId: currentAccount.directoryMemberId || '',
+            restrictionSnapshot,
+            releasedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        transaction.set(
+          userRef,
+          {
+            ...currentAccount,
+            status: USER_PROFILE_STATUS.RETIRED,
+            name: '탈퇴회원',
+            team: '',
+            email: '',
+            maskedEmail: '',
+            phone: '',
+            identityKey: '',
+            recoveryKey: '',
+            directoryMemberId: '',
+            directoryVerifiedVersion: 0,
+            directoryVerifiedAt: '',
+            formerIdentityKey: currentIdentityKey,
+            formerDirectoryMemberId: currentAccount.directoryMemberId || '',
+            previousAccountUids: formerUids.filter(
+              (uid) => uid !== firebaseAuthUser.uid
+            ),
+            withdrawalPreviousStatus: currentAccount.status || USER_PROFILE_STATUS.ACTIVE,
+            withdrawalRollbackAllowed: true,
+            withdrawnAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: false }
+        );
+
+        if (recoverySnapshot.exists()) {
+          transaction.delete(recoveryRef);
+        }
+      });
+
+      await deleteUser(firebaseAuthUser);
+
+      setWithdrawalDialogOpen(false);
+      setWithdrawalPassword('');
+      clearUserLoginReturnTarget();
+      clearAdminAuthenticatedSession();
+      showUserAccountStatus('withdrawalComplete');
+    } catch (error) {
+      console.error('Membership withdrawal error:', error);
+
+      if (rollbackState && firebaseAuth.currentUser) {
+        try {
+          await runTransaction(db, async (transaction) => {
+            transaction.set(
+              rollbackState.userRef,
+              {
+                ...rollbackState.userData,
+                withdrawalRollbackAllowed: false,
+                updatedAt: serverTimestamp(),
+              },
+              { merge: false }
+            );
+
+            if (rollbackState.claimExists) {
+              transaction.set(
+                rollbackState.claimRef,
+                {
+                  ...rollbackState.claimData,
+                  updatedAt: serverTimestamp(),
+                },
+                { merge: false }
+              );
+            } else {
+              transaction.delete(rollbackState.claimRef);
+            }
+
+            if (rollbackState.recoveryExists) {
+              transaction.set(
+                rollbackState.recoveryRef,
+                {
+                  ...rollbackState.recoveryData,
+                  updatedAt: serverTimestamp(),
+                },
+                { merge: false }
+              );
+            }
+          });
+        } catch (rollbackError) {
+          console.error('Membership withdrawal rollback error:', rollbackError);
+        }
+      }
+
+      triggerToast(
+        error?.code === 'auth/wrong-password' || error?.code === 'auth/invalid-credential'
+          ? '현재 비밀번호가 올바르지 않습니다.'
+          : getUserAuthErrorMessage(error),
+        'error'
+      );
+    } finally {
+      setWithdrawalLoading(false);
     }
   };
 
@@ -9083,9 +10057,6 @@ function App() {
   const cancelTempPeopleChanges = ({ silent = false } = {}) => {
     setTempTeams(data.teams || []);
     setTempBorrowers(data.borrowers || []);
-    setTempRequireRegisteredMemberForSignup(
-      Boolean(data.settings.requireRegisteredMemberForSignup)
-    );
     setEditingTeamIndex(null);
     setEditingTeamName('');
     setDraggingTeamIndex(null);
@@ -9097,6 +10068,84 @@ function App() {
     setNewBorrowerTeam('전체');
     if (!silent) {
       triggerToast('부서·사용자 변경사항이 취소되고 이전 상태로 복원되었습니다.', 'success');
+    }
+  };
+
+  const cancelSignupPolicyChanges = () => {
+    setTempRequireRegisteredMemberForSignup(
+      Boolean(data.settings.requireRegisteredMemberForSignup)
+    );
+    setTempAutoApproveNewMembers(
+      Boolean(data.settings.autoApproveNewMembers)
+    );
+    triggerToast('회원가입 정책 변경사항을 취소했습니다.', 'success');
+  };
+
+  const saveSignupPolicyChanges = async () => {
+    if (!isAdminAuthenticated) {
+      triggerToast('관리자 인증 후 회원가입 정책을 저장할 수 있습니다.', 'error');
+      return false;
+    }
+
+    if (!isSplitStorageReady) {
+      triggerToast(
+        'Firestore 분리 저장소 최종 전환이 완료되지 않아 회원가입 정책을 저장할 수 없습니다.',
+        'error'
+      );
+      return false;
+    }
+
+    const nextRequireRegistered = Boolean(
+      tempRequireRegisteredMemberForSignup
+    );
+    const nextAutoApprove =
+      nextRequireRegistered && Boolean(tempAutoApproveNewMembers);
+    const policyEnabledChanged =
+      nextRequireRegistered !==
+      Boolean(data.settings.requireRegisteredMemberForSignup);
+    const nextDirectoryVersion = policyEnabledChanged
+      ? getSafeMemberDirectoryVersion(data.settings) + 1
+      : getSafeMemberDirectoryVersion(data.settings);
+    const nextSettings = {
+      ...data.settings,
+      requireRegisteredMemberForSignup: nextRequireRegistered,
+      autoApproveNewMembers: nextAutoApprove,
+      memberDirectoryVersion: nextDirectoryVersion,
+    };
+
+    setSignupPolicySaving(true);
+
+    try {
+      await setDoc(
+        PUBLIC_CONFIG_DOC_REF,
+        {
+          settings: nextSettings,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      setData((prev) => ({
+        ...prev,
+        settings: nextSettings,
+      }));
+      setTempRequireRegisteredMemberForSignup(nextRequireRegistered);
+      setTempAutoApproveNewMembers(nextAutoApprove);
+
+      triggerToast(
+        nextRequireRegistered
+          ? '회원가입 정책이 저장되었습니다. 기존 회원은 로그인 시 순차적으로 명부를 확인하며, 필요한 경우 전체 회원 명부 검사를 실행할 수 있습니다.'
+          : '회원가입 제한 정책이 해제되었습니다. 신규 회원 자동 승인도 함께 해제되었습니다.',
+        'success'
+      );
+
+      return true;
+    } catch (error) {
+      console.error('Signup policy save error:', error);
+      triggerToast('회원가입 정책 저장에 실패했습니다.', 'error');
+      return false;
+    } finally {
+      setSignupPolicySaving(false);
     }
   };
 
@@ -9184,33 +10233,20 @@ function App() {
         }))
       );
 
-      const accountEntries = await Promise.all(
-        (managedUserAccounts || []).map(async (account) => {
-          const name = normalizeMemberName(account.name || '');
-          const team = normalizeMemberTeam(account.team || '');
-          const identityKey =
-            name && team ? await createMemberIdentityKey(team, name) : '';
-
-          return { account, name, team, identityKey };
-        })
+      const accountEntries = await buildMemberAccountIndexEntries(
+        managedUserAccounts || []
       );
-      const accountGroups = new Map();
-
-      accountEntries.forEach((entry) => {
-        if (!entry.identityKey) return;
-        const group = accountGroups.get(entry.identityKey) || [];
-        group.push(entry);
-        accountGroups.set(entry.identityKey, group);
-      });
 
       const [
         currentBorrowersSnapshot,
         currentDirectorySnapshot,
         currentClaimsSnapshot,
+        currentRecoverySnapshot,
       ] = await Promise.all([
         getDocs(RENTAL_BORROWERS_COLLECTION_REF),
         getDocs(MEMBER_DIRECTORY_KEYS_COLLECTION_REF),
         getDocs(MEMBER_IDENTITY_CLAIMS_COLLECTION_REF),
+        getDocs(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF),
       ]);
 
       const nextBorrowerIdSet = new Set(
@@ -9268,60 +10304,28 @@ function App() {
           })),
       ];
 
-      const currentClaimDataById = new Map(
-        currentClaimsSnapshot.docs.map((claimDocument) => [
-          claimDocument.id,
-          claimDocument.data(),
-        ])
-      );
-      const desiredClaimKeySet = new Set(accountGroups.keys());
-      const claimOperations = [];
-
-      accountGroups.forEach((group, identityKey) => {
-        const first = group[0];
-        const currentClaim = currentClaimDataById.get(identityKey) || {};
-
-        claimOperations.push({
-          type: 'set',
-          ref: doc(MEMBER_IDENTITY_CLAIMS_COLLECTION_REF, identityKey),
-          data: {
-            identityKey,
-            uid: group.length === 1 ? first.account.uid : '',
-            name: first.name,
-            team: first.team,
-            conflict: group.length > 1,
-            conflictingUids:
-              group.length > 1
-                ? group.map((entry) => entry.account.uid)
-                : [],
-            createdAt: currentClaim.createdAt || serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          },
-        });
+      const {
+        accountMetadataOperations,
+        claimOperations,
+        recoveryOperations,
+      } = buildMemberAccountIndexOperations({
+        accountEntries,
+        currentClaimDocuments: currentClaimsSnapshot.docs,
+        currentRecoveryDocuments: currentRecoverySnapshot.docs,
       });
-
-      currentClaimsSnapshot.docs
-        .filter((claimDocument) => !desiredClaimKeySet.has(claimDocument.id))
-        .forEach((claimDocument) => {
-          claimOperations.push({
-            type: 'delete',
-            ref: claimDocument.ref,
-          });
-        });
 
       await commitFirestoreOperations([
         ...borrowerOperations,
         ...directoryOperations,
         ...claimOperations,
+        ...recoveryOperations,
+        ...accountMetadataOperations,
       ]);
 
       const nextDirectoryVersion =
         getSafeMemberDirectoryVersion(data.settings) + 1;
       const nextSettings = {
         ...data.settings,
-        requireRegisteredMemberForSignup: Boolean(
-          tempRequireRegisteredMemberForSignup
-        ),
         memberDirectoryVersion: nextDirectoryVersion,
         memberIdentityClaimsReady: true,
       };
@@ -9345,9 +10349,6 @@ function App() {
 
       setTempTeams(nextTeams);
       setTempBorrowers(nextBorrowers);
-      setTempRequireRegisteredMemberForSignup(
-        Boolean(nextSettings.requireRegisteredMemberForSignup)
-      );
       setMemberDirectoryAuditResult(null);
       setEditingTeamIndex(null);
       setEditingTeamName('');
@@ -9360,9 +10361,7 @@ function App() {
       setNewBorrowerTeam('전체');
 
       triggerToast(
-        nextSettings.requireRegisteredMemberForSignup
-          ? '부서·사용자 명부와 회원가입 제한 정책이 저장되었습니다. 기존 회원은 로그인 시 순차적으로 검증되며, 필요하면 전체 회원 명부 검사를 실행할 수 있습니다.'
-          : '부서·사용자 명부와 회원가입 정책이 저장되었습니다.',
+        '부서·사용자 명부가 저장되었습니다. 명부 버전이 변경되어 기존 회원은 다음 로그인 시 순차적으로 재검증됩니다.',
         'success'
       );
 
@@ -9415,84 +10414,33 @@ function App() {
       const directoryByIdentityKey = new Map(
         directoryEntries.map((entry) => [entry.identityKey, entry])
       );
-      const accountEntries = await Promise.all(
-        (managedUserAccounts || []).map(async (account) => {
-          const name = normalizeMemberName(account.name || '');
-          const team = normalizeMemberTeam(account.team || '');
-          const identityKey =
-            name && team
-              ? await createMemberIdentityKey(team, name)
-              : '';
-
-          return {
-            account,
-            name,
-            team,
-            identityKey,
-          };
-        })
+      const accountEntries = await buildMemberAccountIndexEntries(
+        managedUserAccounts || []
       );
-      const accountGroups = new Map();
-
-      accountEntries.forEach((entry) => {
-        if (!entry.identityKey) return;
-        const group = accountGroups.get(entry.identityKey) || [];
-        group.push(entry);
-        accountGroups.set(entry.identityKey, group);
+      const [currentClaimsSnapshot, currentRecoverySnapshot] = await Promise.all([
+        getDocs(MEMBER_IDENTITY_CLAIMS_COLLECTION_REF),
+        getDocs(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF),
+      ]);
+      const {
+        accountMetadataOperations,
+        claimOperations,
+        recoveryOperations,
+        groups: accountGroups,
+      } = buildMemberAccountIndexOperations({
+        accountEntries,
+        currentClaimDocuments: currentClaimsSnapshot.docs,
+        currentRecoveryDocuments: currentRecoverySnapshot.docs,
       });
-
-      const currentClaimsSnapshot = await getDocs(
-        MEMBER_IDENTITY_CLAIMS_COLLECTION_REF
-      );
-      const desiredClaimKeySet = new Set();
-      const claimOperations = [];
       let duplicateAccounts = 0;
 
-      for (const [identityKey, group] of accountGroups.entries()) {
-        desiredClaimKeySet.add(identityKey);
-        const first = group[0];
-
-        if (group.length > 1) {
-          duplicateAccounts += group.length;
-          claimOperations.push({
-            type: 'set',
-            ref: doc(MEMBER_IDENTITY_CLAIMS_COLLECTION_REF, identityKey),
-            data: {
-              identityKey,
-              uid: '',
-              name: first.name,
-              team: first.team,
-              conflict: true,
-              conflictingUids: group.map((entry) => entry.account.uid),
-              updatedAt: serverTimestamp(),
-            },
-          });
-          continue;
+      accountGroups.forEach((group) => {
+        const liveEntries = group.filter(
+          (entry) => entry.account.status !== USER_PROFILE_STATUS.RETIRED
+        );
+        if (liveEntries.length > 1) {
+          duplicateAccounts += liveEntries.length;
         }
-
-        claimOperations.push({
-          type: 'set',
-          ref: doc(MEMBER_IDENTITY_CLAIMS_COLLECTION_REF, identityKey),
-          data: {
-            identityKey,
-            uid: first.account.uid,
-            name: first.name,
-            team: first.team,
-            conflict: false,
-            conflictingUids: [],
-            updatedAt: serverTimestamp(),
-          },
-        });
-      }
-
-      currentClaimsSnapshot.docs
-        .filter((claimDocument) => !desiredClaimKeySet.has(claimDocument.id))
-        .forEach((claimDocument) => {
-          claimOperations.push({
-            type: 'delete',
-            ref: claimDocument.ref,
-          });
-        });
+      });
 
       const auditableStatuses = new Set([
         USER_PROFILE_STATUS.PENDING,
@@ -9512,7 +10460,9 @@ function App() {
         const accountStatus = account.status || '';
         const isAuditable = auditableStatuses.has(accountStatus);
         const group = identityKey ? accountGroups.get(identityKey) || [] : [];
-        const isDuplicate = group.length > 1;
+        const isDuplicate = group.filter(
+          (groupEntry) => groupEntry.account.status !== USER_PROFILE_STATUS.RETIRED
+        ).length > 1;
         const directoryEntry = identityKey
           ? directoryByIdentityKey.get(identityKey)
           : null;
@@ -9598,7 +10548,11 @@ function App() {
         });
       });
 
-      await commitFirestoreOperations(claimOperations);
+      await commitFirestoreOperations([
+        ...claimOperations,
+        ...recoveryOperations,
+        ...accountMetadataOperations,
+      ]);
 
       let failed = 0;
 
@@ -9937,6 +10891,14 @@ function App() {
         label: '부서·사용자',
         discard: () => cancelTempPeopleChanges({ silent: true }),
         save: saveTempPeopleChanges,
+      };
+    }
+
+    if (tab === 'signupPolicy' && signupPolicyDirty) {
+      return {
+        label: '회원가입 정책',
+        discard: cancelSignupPolicyChanges,
+        save: saveSignupPolicyChanges,
       };
     }
 
@@ -17902,6 +18864,9 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     activeFaqCategoryId,
     activeFaqCategoryName,
     activeUserActionRentalRequest,
+    accountRecoveryForm,
+    accountRecoveryLoading,
+    accountRecoveryResult,
     addDaysFrom,
     addFaqCategory,
     addTempAssetCategory,
@@ -17962,6 +18927,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     cancelEditAdminAccount,
     cancelTempAssetCategoryChanges,
     cancelTempPeopleChanges,
+    cancelSignupPolicyChanges,
+    cancelWithdrawal,
     cancelUserSignup,
     categoryFilteredFaqPosts,
     closeAdminRequestEditDialog,
@@ -18040,6 +19007,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     formatFirestoreDate,
     formatFirestoreTimestamp,
     getAdminRequestRestoreTargets,
+    getMemberAccountHistorySummary,
     defaultRentalStartDate,
     getAdjustedRentalDueDate,
     getDisplayRentalStatus,
@@ -18061,12 +19029,14 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     getUserLaptopStatusLabel,
     getUserRequestActionLabel,
     getUserRequestReviewStatusLabel,
+    goToUserEmailRecovery,
     goToUserHome,
     goToProtectedUserTab,
     goToUserFaq,
     goToUserLogin,
     goToUserMypage,
     goToUserNotice,
+    goToUserPasswordReset,
     goToUserSignup,
     handleAddLaptopClick,
     handleFileUpload,
@@ -18128,6 +19098,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     openNoticePost,
     openNoticePostDialog,
     openProfileRequiredMembers,
+    openWithdrawalDialog,
     openUserActionDialog,
     orphanedRentalAvailabilityRequests,
     paginatedAdminAccounts,
@@ -18135,6 +19106,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     paginatedAdminNoticePosts,
     paginatedAdminRequests,
     paginatedNoticePosts,
+    passwordResetEmail,
+    passwordResetLoading,
     pinnedNoticePosts,
     pushAppPath,
     query,
@@ -18176,6 +19149,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     saveRequestMemo,
     saveHolidaySettings,
     saveSystemSettings,
+    saveSignupPolicyChanges,
     saveTempAssetCategoryChanges,
     saveTempPeopleChanges,
     selectedAdminRequest,
@@ -18185,6 +19159,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     selectedLaptopId,
     selectedNoticePost,
     sendAdminAccountPasswordResetEmail,
+    setAccountRecoveryForm,
     setActiveFaqCategoryId,
     setAdminAccountEditForm,
     setAdminAccountForm,
@@ -18250,11 +19225,13 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     setNoticePostForm,
     setUserNoticeQuery,
     setNoticePostsPerPageInput,
+    setPasswordResetEmail,
     setQuery,
     setSelectedAdminRequestId,
     setSelectedAssetCategory,
     setSelectedLaptopId,
     setShowUploadPanel,
+    setTempAutoApproveNewMembers,
     setTempRequireRegisteredMemberForSignup,
     setTempSettings,
     setToast,
@@ -18263,20 +19240,27 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     setUserProfileForm,
     setUserTab,
     setView,
+    setWithdrawalPassword,
     shouldShowAdminAccountsErrorPage,
     shouldShowAdminLoadingPage,
     shouldShowAdminLoginPage,
     showUploadPanel,
+    signupPolicyDirty,
+    signupPolicySaving,
     splitStorageFinalizeLoading,
     startEditAdminAccount,
     startEditFaqCategory,
     startEditTempAssetCategory,
     startEditTempBorrower,
     startEditTempTeam,
+    submitAccountRecovery,
+    submitMembershipWithdrawal,
+    submitPasswordReset,
     submitRequest,
     submitUserActionRequest,
     submitUserAuthForm,
     tempAllowNonOverlappingSameAssetRequests,
+    tempAutoApproveNewMembers,
     tempAssetCategories,
     tempBusinessDayAdjustmentEnabled,
     tempHolidayList,
@@ -18294,6 +19278,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     unavailableFilterLabel,
     updateRequestMemo,
     updateTempHolidayReason,
+    userAccountStatusView,
     userActionBorrowers,
     userActionDialog,
     userActionForm,
@@ -18305,6 +19290,10 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     userProfileForm,
     userProfileReady,
     userProfileSaving,
+    withdrawalBlockMessage,
+    withdrawalDialogOpen,
+    withdrawalLoading,
+    withdrawalPassword,
     userNoticeQuery,
     visibleUserPopups,
     dismissUserPopup,

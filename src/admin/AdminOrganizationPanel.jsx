@@ -21,18 +21,11 @@ export default function AdminOrganizationPanel({ ctx }) {
     editingBorrowerName,
     editingTeamIndex,
     editingTeamName,
-    memberDirectoryAudit,
-    memberDirectoryAuditLoading,
-    memberDirectoryAuditResult,
-    memberDirectoryPolicyEnabled,
-    memberIdentityClaimsReady,
     moveTempBorrower,
     moveTempTeam,
     newBorrower,
     newBorrowerTeam,
     newTeam,
-    openProfileRequiredMembers,
-    runFullMemberDirectoryAudit,
     saveTempPeopleChanges,
     setDraggingBorrowerIndex,
     setDraggingTeamIndex,
@@ -43,10 +36,8 @@ export default function AdminOrganizationPanel({ ctx }) {
     setNewBorrower,
     setNewBorrowerTeam,
     setNewTeam,
-    setTempRequireRegisteredMemberForSignup,
     startEditTempBorrower,
     startEditTempTeam,
-    tempRequireRegisteredMemberForSignup,
     tempTeams,
   } = ctx;
 
@@ -54,90 +45,8 @@ export default function AdminOrganizationPanel({ ctx }) {
                     <div className="space-y-6">
                       <AdminPageHeader
                         title="부서·사용자 관리"
-                        description="부서와 대여 사용자를 등록하고 회원가입 명부 검증 정책을 관리합니다."
+                        description="회원가입 및 대여에 사용할 부서와 사용자 명부를 관리합니다."
                       />
-
-                      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                          <div className="min-w-0">
-                            <h2 className="text-base font-bold text-slate-900">
-                              회원가입 제한
-                            </h2>
-                            <p className="mt-1 text-xs leading-5 text-slate-500">
-                              부서·사용자 관리에 등록된 정보와 일치하는 경우에만 회원가입 및 서비스 이용을 허용합니다.
-                            </p>
-                          </div>
-
-                          <label className="inline-flex shrink-0 cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                            <input
-                              type="checkbox"
-                              checked={tempRequireRegisteredMemberForSignup}
-                              onChange={(event) =>
-                                setTempRequireRegisteredMemberForSignup(event.target.checked)
-                              }
-                              className="h-4 w-4 rounded border-slate-300 mk-brand-accent"
-                            />
-                            <span className="text-xs font-bold text-slate-800">
-                              등록된 부서·사용자만 가입 허용
-                            </span>
-                          </label>
-                        </div>
-
-                        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
-                          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] leading-5 text-slate-600">
-                            기본 검증은 명부 버전이 변경된 사용자가 로그인할 때 본인 정보만 확인합니다.
-                            필요한 경우 관리자가 전체 회원 검사를 수동으로 실행할 수 있습니다.
-                            {memberDirectoryAudit?.completedAtText ? (
-                              <div className="mt-1 text-slate-500">
-                                최근 전체 검사: {memberDirectoryAudit.completedAtText} · 정상 {memberDirectoryAudit.normal || 0}명 · 정보 수정 필요 {memberDirectoryAudit.profileRequired || 0}명 · 중복 {memberDirectoryAudit.duplicates || 0}명
-                              </div>
-                            ) : null}
-                          </div>
-
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={runFullMemberDirectoryAudit}
-                            disabled={
-                              !memberDirectoryPolicyEnabled ||
-                              memberDirectoryAuditLoading
-                            }
-                            className="self-stretch"
-                          >
-                            {memberDirectoryAuditLoading
-                              ? '전체 회원 검사 중...'
-                              : '전체 회원 명부 검사'}
-                          </Button>
-                        </div>
-
-                        {!memberDirectoryPolicyEnabled ? (
-                          <p className="mt-2 text-[11px] text-slate-400">
-                            전체 회원 검사는 회원가입 제한 정책을 켠 뒤 변경사항을 저장하면 실행할 수 있습니다.
-                          </p>
-                        ) : null}
-
-                        {!memberIdentityClaimsReady ? (
-                          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] leading-5 text-amber-800">
-                            기존 회원의 부서·성명 중복 확인 정보가 아직 준비되지 않았습니다.
-                            이 페이지에서 변경사항을 한 번 저장하거나 전체 회원 명부 검사를 실행하면 회원가입이 활성화됩니다.
-                          </div>
-                        ) : null}
-
-                        {memberDirectoryAuditResult ? (
-                          <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">
-                            검사 {memberDirectoryAuditResult.total || 0}명 · 정상 {memberDirectoryAuditResult.normal || 0}명 · 정보 수정 필요 {memberDirectoryAuditResult.profileRequired || 0}명 · 중복 {memberDirectoryAuditResult.duplicates || 0}명 · 실패 {memberDirectoryAuditResult.failed || 0}명
-                            {(memberDirectoryAuditResult.profileRequired || 0) > 0 ? (
-                              <button
-                                type="button"
-                                onClick={openProfileRequiredMembers}
-                                className="ml-3 font-bold underline underline-offset-2"
-                              >
-                                정보 수정 필요 회원 보기
-                              </button>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </div>
 
                       <div className="grid gap-8 md:grid-cols-2">
                         {/* 부서/팀 관리 컬럼 */}

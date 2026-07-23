@@ -78,7 +78,7 @@ export default function DomesticPhoneInput({
       </div>
 
       <span className="mt-1.5 block text-[11px] leading-4 text-slate-400">
-        국내 이동전화 또는 지역번호를 선택하고 숫자만 입력해 주세요.
+        국내 이동전화, 인터넷전화, 대표번호 또는 지역번호를 선택하고 숫자만 입력해 주세요.
       </span>
     </label>
   );

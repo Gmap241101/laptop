@@ -5,6 +5,8 @@ export const DOMESTIC_PHONE_PREFIXES = [
   '017',
   '018',
   '019',
+  '070',
+  '080',
   '02',
   '031',
   '032',
@@ -23,6 +25,17 @@ export const DOMESTIC_PHONE_PREFIXES = [
   '063',
   '064',
 ];
+
+const KOREAN_PUBLIC_SUFFIXES = new Set([
+  'ac.kr',
+  'co.kr',
+  'go.kr',
+  'mil.kr',
+  'ne.kr',
+  'or.kr',
+  'pe.kr',
+  're.kr',
+]);
 
 const normalizeUnicode = (value) =>
   String(value || '').normalize('NFKC');
@@ -101,17 +114,57 @@ export const isValidDomesticPhoneNumber = ({ prefix, middle, last }) =>
   /^[1-9]\d{2,3}$/.test(String(middle || '')) &&
   /^\d{4}$/.test(String(last || ''));
 
-export const getMemberIdentitySource = (team, name) =>
-  `${normalizeMemberTeam(team).toLocaleLowerCase('ko-KR')}\u001f${normalizeMemberName(
-    name
-  ).toLocaleLowerCase('ko-KR')}`;
+const maskSegment = (value) => {
+  const segment = String(value || '');
 
-export const createMemberIdentityKey = async (team, name) => {
-  const source = getMemberIdentitySource(team, name);
-  const bytes = new TextEncoder().encode(source);
+  if (segment.length <= 1) return '*';
+  if (segment.length === 2) return `${segment[0]}*`;
+
+  return `${segment[0]}${'*'.repeat(segment.length - 2)}${segment.at(-1)}`;
+};
+
+export const maskEmailAddress = (value) => {
+  const email = normalizeEmailAddress(value);
+
+  if (!isValidEmailAddress(email)) return '';
+
+  const [localPart, domainPart] = email.split('@');
+  const domainLabels = domainPart.split('.');
+  const lastTwoLabels = domainLabels.slice(-2).join('.');
+  const preservedSuffixCount = KOREAN_PUBLIC_SUFFIXES.has(lastTwoLabels)
+    ? 2
+    : 1;
+  const maskedDomainLabels = domainLabels.map((label, index) => {
+    const isPreservedSuffix = index >= domainLabels.length - preservedSuffixCount;
+    return isPreservedSuffix ? label : maskSegment(label);
+  });
+
+  return `${maskSegment(localPart)}@${maskedDomainLabels.join('.')}`;
+};
+
+const createSha256Key = async (source) => {
+  const bytes = new TextEncoder().encode(String(source || ''));
   const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
 
   return Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('');
 };
+
+export const getMemberIdentitySource = (team, name) =>
+  `${normalizeMemberTeam(team).toLocaleLowerCase('ko-KR')}\u001f${normalizeMemberName(
+    name
+  ).toLocaleLowerCase('ko-KR')}`;
+
+export const createMemberIdentityKey = async (team, name) =>
+  createSha256Key(getMemberIdentitySource(team, name));
+
+export const getAccountRecoverySource = ({ team, name, phone }) =>
+  [
+    normalizeMemberTeam(team).toLocaleLowerCase('ko-KR'),
+    normalizeMemberName(name).toLocaleLowerCase('ko-KR'),
+    String(phone || '').replace(/\D/g, ''),
+  ].join('\u001f');
+
+export const createAccountRecoveryKey = async ({ team, name, phone }) =>
+  createSha256Key(getAccountRecoverySource({ team, name, phone }));

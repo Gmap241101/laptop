@@ -1,4 +1,5 @@
 import UserAuthPanel from './UserAuthPanel.jsx';
+import UserAccountStatusPanel from './UserAccountStatusPanel.jsx';
 import UserBoardPanel from './UserBoardPanel.jsx';
 import UserMyPagePanel from './UserMyPagePanel.jsx';
 import UserRentalPanel from './UserRentalPanel.jsx';
@@ -86,8 +87,12 @@ export default function UserWorkspace({ ctx }) {
     return <UserMyPagePanel ctx={ctx} />;
   }
 
-  if (['login', 'signup'].includes(userTab)) {
+  if (['login', 'signup', 'findEmail', 'resetPassword'].includes(userTab)) {
     return <UserAuthPanel ctx={ctx} />;
+  }
+
+  if (userTab === 'accountStatus') {
+    return <UserAccountStatusPanel ctx={ctx} />;
   }
 
   if (userTab === 'history') {

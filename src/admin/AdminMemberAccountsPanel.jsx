@@ -17,6 +17,7 @@ export default function AdminMemberAccountsPanel({ ctx }) {
     filteredManagedUserAccounts,
     getUserAccountStatusClassName,
     getUserAccountStatusLabel,
+    getMemberAccountHistorySummary,
     setAdminUserAccountQuery,
     setAdminUserAccountStatusFilter,
   } = ctx;
@@ -192,6 +193,8 @@ export default function AdminMemberAccountsPanel({ ctx }) {
                               const isSaving =
                                 adminUserAccountSavingUid ===
                                 account.uid;
+                              const historySummary =
+                                getMemberAccountHistorySummary(account);
 
                               const createdAtText =
                                 typeof account.createdAt
@@ -269,6 +272,21 @@ export default function AdminMemberAccountsPanel({ ctx }) {
                                           사유: {account.profileRequiredReason === 'duplicateIdentity'
                                             ? '부서·성명 중복 계정'
                                             : '등록 명부 불일치'}
+                                        </div>
+                                      ) : null}
+
+
+                                      {account.rejoinedAccount ? (
+                                        <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-[11px] leading-5 text-violet-800">
+                                          <div className="font-bold">과거 탈퇴 후 재가입한 회원입니다.</div>
+                                          <div>
+                                            연결 계정 {historySummary.linkedUidCount}개 · 전체 대여 {historySummary.totalRequests}건 · 이전 계정 대여 {historySummary.previousRequests}건 · 진행 중 {historySummary.activeRequests}건 · 연체 이력 {historySummary.overdueRequests}건
+                                          </div>
+                                          {historySummary.inheritedRestriction?.eligibleFromDate ? (
+                                            <div>
+                                              이전 대여 제한 기준일: {historySummary.inheritedRestriction.eligibleFromDate}
+                                            </div>
+                                          ) : null}
                                         </div>
                                       ) : null}
                                     </div>

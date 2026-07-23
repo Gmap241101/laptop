@@ -4,6 +4,7 @@ import AdminRequestsPanel from './AdminRequestsPanel.jsx';
 import AdminAssetsPanel from './AdminAssetsPanel.jsx';
 import AdminAssetCategoriesPanel from './AdminAssetCategoriesPanel.jsx';
 import AdminOrganizationPanel from './AdminOrganizationPanel.jsx';
+import AdminSignupPolicyPanel from './AdminSignupPolicyPanel.jsx';
 import AdminNoticePanel from './AdminNoticePanel.jsx';
 import AdminPopupPanel from './AdminPopupPanel.jsx';
 import AdminFaqPanel from './AdminFaqPanel.jsx';
@@ -30,6 +31,7 @@ const ADMIN_TAB_GROUP = {
   popupPosts: 'site',
   footerManagement: 'site',
   people: 'accounts',
+  signupPolicy: 'accounts',
   memberAccounts: 'accounts',
   adminAccounts: 'accounts',
   settings: 'system',
@@ -400,6 +402,7 @@ export default function AdminWorkspace({ ctx }) {
       Icon: ShieldCheck,
       items: [
         ['people', Users, '부서·사용자 관리'],
+        ['signupPolicy', ShieldCheck, '회원가입 정책'],
         ['memberAccounts', UserCircle, '회원 계정 관리'],
         ['adminAccounts', ShieldCheck, '관리자 ID 관리'],
       ],
@@ -737,6 +740,11 @@ export default function AdminWorkspace({ ctx }) {
                   {/* 팀명 및 대여자 관리 탭 */}
                   {adminTab === 'people' && (
                     <AdminOrganizationPanel ctx={ctx} />
+                  )}
+
+                  {/* 회원가입 정책 관리 탭 */}
+                  {adminTab === 'signupPolicy' && (
+                    <AdminSignupPolicyPanel ctx={ctx} />
                   )}
 
                                     {/* 공지사항 관리 탭 */}

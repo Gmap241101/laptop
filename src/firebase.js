@@ -132,6 +132,11 @@ export const MEMBER_IDENTITY_CLAIMS_COLLECTION_REF = collection(
   'memberIdentityClaims'
 );
 
+export const ACCOUNT_RECOVERY_KEYS_COLLECTION_REF = collection(
+  db,
+  'accountRecoveryKeys'
+);
+
 export const RENTAL_ASSET_NUMBERS_COLLECTION_REF = collection(
   db,
   'rentalAssetNumbers'
