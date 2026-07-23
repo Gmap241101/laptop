@@ -529,6 +529,23 @@ body {
   overflow: hidden;
 }
 
+
+@media (max-width: 640px) {
+  .home-quick-ticker-track {
+    width: max-content;
+    min-width: max-content;
+  }
+
+  .home-quick-ticker-group {
+    width: max-content;
+    min-width: max-content;
+    flex: 0 0 auto;
+    justify-content: flex-start;
+    overflow: visible;
+    padding-right: 1.25rem;
+  }
+}
+
 .home-quick-ticker-animate {
   animation: homeQuickTickerScroll 30s linear infinite;
   will-change: transform;

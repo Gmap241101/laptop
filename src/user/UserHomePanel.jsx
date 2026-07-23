@@ -477,7 +477,7 @@ export default function UserHomePanel({ ctx }) {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex h-[56px] items-center px-5 py-2 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-orange-500"
-                title={`${quickLinkBanners[0].title || quickLinkBanners[0].altText || '바로가기'} 새 창에서 열기`}
+                title={quickLinkBanners[0].title || quickLinkBanners[0].altText || '바로가기'}
               >
                 <img src={quickLinkBanners[0].imageUrl} alt={quickLinkBanners[0].altText || quickLinkBanners[0].title || ''} className="h-10 w-auto max-w-[240px] object-contain" />
               </a>
@@ -499,7 +499,7 @@ export default function UserHomePanel({ ctx }) {
                         rel="noopener noreferrer"
                         tabIndex={groupIndex === 1 ? -1 : undefined}
                         className="inline-flex h-[56px] shrink-0 items-center px-5 py-2 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-orange-500"
-                        title={`${banner.title || banner.altText || '바로가기'} 새 창에서 열기`}
+                        title={banner.title || banner.altText || '바로가기'}
                       >
                         <img src={banner.imageUrl} alt={groupIndex === 1 ? '' : banner.altText || banner.title || ''} className="h-10 w-auto max-w-[240px] object-contain" />
                       </a>
