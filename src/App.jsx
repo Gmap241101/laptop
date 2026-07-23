@@ -97,6 +97,8 @@ import {
   RENTAL_REQUESTS_COLLECTION_REF,
   RENTAL_RESTRICTIONS_COLLECTION_REF,
   SITE_FOOTER_CONFIG_DOC_REF,
+  SITE_SETTINGS_DOC_REF,
+  SYSTEM_ADMIN_SETTINGS_DOC_REF,
   USER_ACCOUNTS_COLLECTION_NAME,
   USER_ACCOUNTS_COLLECTION_REF,
   adminAccountCreationAuth,
@@ -141,6 +143,16 @@ import {
   normalizeMemberTeam,
   parseDomesticPhoneNumber,
 } from './utils/memberPolicy.js';
+
+import {
+  DEFAULT_SITE_SETTINGS,
+  DEFAULT_SYSTEM_ADMIN_SETTINGS,
+  SERVICE_MODE,
+  getHeaderSubtitle,
+  getServiceBlockReason,
+  normalizeSiteSettings,
+  normalizeSystemAdminSettings,
+} from './utils/systemSettings.js';
 
 import {
   addDaysFrom,
@@ -1269,10 +1281,10 @@ function seedLaptops() {
 }
 
 const initialData = {
-  laptops: seedLaptops(),
+  laptops: [],
   requests: [],
   assetCategories: ['노트북'],
-  teams: ['매일경제아카데미', '채용대행팀', '문항개발팀', '경제교육팀'],
+  teams: [],
   borrowers: [],
   settings: {
     teamInputMode: 'dropdown',
@@ -1351,12 +1363,14 @@ function normalizeAdminAccounts(adminAccounts) {
       passwordHashIterations: Number(account.passwordHashIterations) || 0,
       failedLoginCount: Number(account.failedLoginCount) || 0,
       lockUntil: Number(account.lockUntil) || 0,
+      lockReason: account.lockReason || '',
       lastLoginAt: account.lastLoginAt || '',
       passwordChangedAt: account.passwordChangedAt || '',
       organizationName: account.organizationName || '',
       userName: account.userName || '',
       email: account.email || '',
       phone: account.phone || '',
+      adminRole: ['owner', 'admin'].includes(account.adminRole) ? account.adminRole : 'owner',
       createdAt: account.createdAt || '',
       updatedAt: account.updatedAt || '',
     }));
@@ -1974,8 +1988,7 @@ const ADMIN_CUSTOM_OPTION_VALUE = '__ADMIN_CUSTOM_INPUT__';
 const ADMIN_ACCOUNT_PAGE_SIZE = 10;
 const ADMIN_AUTH_SESSION_KEY = 'mk_laptop_admin_auth_session';
 const ADMIN_AUTH_SESSION_DURATION_MS = 60 * 60 * 1000;
-const ADMIN_AUTH_MAX_FAILED_ATTEMPTS = 5;
-const ADMIN_AUTH_LOCK_DURATION_MS = 5 * 60 * 1000;
+const ADMIN_AUTH_ABSOLUTE_DURATION_MS = 8 * 60 * 60 * 1000;
 const ADMIN_PASSWORD_HASH_ALGORITHM = 'PBKDF2-SHA-256';
 const ADMIN_PASSWORD_HASH_ITERATIONS = 120000;
 
@@ -1988,6 +2001,7 @@ const createDefaultAdminAccountForm = () => ({
   customUserName: '',
   email: '',
   phone: '',
+  adminRole: 'admin',
 });
 
 const createDefaultAdminAuthForm = () => ({
@@ -2098,6 +2112,7 @@ const createDefaultAdminAccountEditForm = () => ({
   userName: '',
   email: '',
   phone: '',
+  adminRole: 'admin',
   newPassword: '',
   newPasswordConfirm: '',
 });
@@ -2332,31 +2347,34 @@ const verifyAdminPassword = async (password, adminAccount) => {
 };
 
 const readAdminAuthSession = () => {
-  if (typeof window === 'undefined') {
-    return {
-      adminId: '',
-      expiresAt: 0,
-    };
-  }
+  const emptySession = {
+    adminId: '',
+    expiresAt: 0,
+    absoluteExpiresAt: 0,
+    policyVersion: 0,
+    lastActivityAt: 0,
+  };
+
+  if (typeof window === 'undefined') return emptySession;
 
   const rawSession = window.sessionStorage.getItem(ADMIN_AUTH_SESSION_KEY);
-
-  if (!rawSession) {
-    return {
-      adminId: '',
-      expiresAt: 0,
-    };
-  }
+  if (!rawSession) return emptySession;
 
   try {
     const parsedSession = JSON.parse(rawSession);
+    const now = Date.now();
+    const absoluteExpiresAt = Number(parsedSession?.absoluteExpiresAt || parsedSession?.expiresAt || 0);
 
     if (
       parsedSession?.adminId &&
-      parsedSession?.expiresAt &&
-      parsedSession.expiresAt > Date.now()
+      Number(parsedSession?.expiresAt || 0) > now &&
+      absoluteExpiresAt > now
     ) {
-      return parsedSession;
+      return {
+        ...emptySession,
+        ...parsedSession,
+        absoluteExpiresAt,
+      };
     }
 
     window.sessionStorage.removeItem(ADMIN_AUTH_SESSION_KEY);
@@ -2364,20 +2382,26 @@ const readAdminAuthSession = () => {
     window.sessionStorage.removeItem(ADMIN_AUTH_SESSION_KEY);
   }
 
-  return {
-    adminId: '',
-    expiresAt: 0,
-  };
+  return emptySession;
 };
 
-const saveAdminAuthSession = (adminId) => {
+const saveAdminAuthSession = (adminId, securitySettings = {}, previousSession = null) => {
+  const normalized = normalizeSystemAdminSettings(securitySettings);
+  const now = Date.now();
+  const idleDurationMs = normalized.adminIdleTimeoutMinutes * 60 * 1000;
+  const absoluteDurationMs = normalized.adminAbsoluteTimeoutHours * 60 * 60 * 1000;
+  const absoluteExpiresAt = Number(previousSession?.absoluteExpiresAt || 0) > now
+    ? Number(previousSession.absoluteExpiresAt)
+    : now + absoluteDurationMs;
   const nextSession = {
     adminId,
-    expiresAt: Date.now() + ADMIN_AUTH_SESSION_DURATION_MS,
+    lastActivityAt: now,
+    expiresAt: Math.min(now + idleDurationMs, absoluteExpiresAt),
+    absoluteExpiresAt,
+    policyVersion: normalized.adminSecurityPolicyVersion,
   };
 
   window.sessionStorage.setItem(ADMIN_AUTH_SESSION_KEY, JSON.stringify(nextSession));
-
   return nextSession;
 };
 
@@ -2389,6 +2413,13 @@ const clearAdminAuthSession = () => {
 
 function App() {
   const [data, setData] = useState(initialData);
+  const [siteSettings, setSiteSettings] = useState(DEFAULT_SITE_SETTINGS);
+  const [siteSettingsReady, setSiteSettingsReady] = useState(false);
+  const [siteSettingsLoadErrorMessage, setSiteSettingsLoadErrorMessage] = useState('');
+  const [systemAdminSettings, setSystemAdminSettings] = useState(DEFAULT_SYSTEM_ADMIN_SETTINGS);
+  const [systemAdminSettingsReady, setSystemAdminSettingsReady] = useState(false);
+  const [systemAdminSettingsLoadErrorMessage, setSystemAdminSettingsLoadErrorMessage] = useState('');
+  const [systemBannerDismissedKey, setSystemBannerDismissedKey] = useState('');
   const [firebaseReady, setFirebaseReady] = useState(false);
   const [firebaseLoadErrorMessage, setFirebaseLoadErrorMessage] = useState('');
 
@@ -2667,6 +2698,12 @@ function App() {
   );
   const [adminAuthExpiresAt, setAdminAuthExpiresAt] = useState(
     () => readAdminAuthSession().expiresAt
+  );
+  const [adminAuthAbsoluteExpiresAt, setAdminAuthAbsoluteExpiresAt] = useState(
+    () => readAdminAuthSession().absoluteExpiresAt
+  );
+  const [adminAuthPolicyVersion, setAdminAuthPolicyVersion] = useState(
+    () => readAdminAuthSession().policyVersion
   );
 
   const [firebaseAuthUser, setFirebaseAuthUser] = useState(null);
@@ -3017,6 +3054,8 @@ function App() {
           clearAdminAuthSession();
           setAuthenticatedAdminId('');
           setAdminAuthExpiresAt(0);
+    setAdminAuthAbsoluteExpiresAt(0);
+    setAdminAuthPolicyVersion(0);
 
           setCurrentAuthAdminAccount(null);
           setCurrentAuthRoleErrorMessage(message);
@@ -3252,6 +3291,8 @@ function App() {
         clearAdminAuthSession();
         setAuthenticatedAdminId('');
         setAdminAuthExpiresAt(0);
+          setAdminAuthAbsoluteExpiresAt(0);
+          setAdminAuthPolicyVersion(0);
         setUserAuthForm(createDefaultUserAuthForm());
       } catch (error) {
         console.error(
@@ -3803,6 +3844,104 @@ function App() {
   }, []);
 
   useEffect(() => {
+    setSiteSettingsReady(false);
+    const unsubscribe = onSnapshot(
+      SITE_SETTINGS_DOC_REF,
+      (snapshot) => {
+        const nextSettings = normalizeSiteSettings(
+          snapshot.exists() ? snapshot.data() : DEFAULT_SITE_SETTINGS
+        );
+        setSiteSettings(nextSettings);
+        setSiteSettingsLoadErrorMessage('');
+        setSiteSettingsReady(true);
+      },
+      (error) => {
+        console.error('Site settings sync error:', error);
+        setSiteSettings(DEFAULT_SITE_SETTINGS);
+        setSiteSettingsLoadErrorMessage(
+          '사이트 공통 설정을 불러오지 못했습니다. 기본 설정으로 표시합니다.'
+        );
+        setSiteSettingsReady(true);
+      }
+    );
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    const normalized = normalizeSiteSettings(siteSettings);
+    const root = document.documentElement;
+    root.style.setProperty('--mk-orange', normalized.primaryColor);
+    root.style.setProperty('--mk-orange-dark', normalized.primaryDarkColor);
+    root.style.setProperty('--mk-orange-soft', normalized.primaryColor + '1A');
+    root.style.setProperty('--mk-orange-border', normalized.primaryColor + '40');
+    root.style.setProperty('--mk-orange-ring', normalized.primaryColor + '26');
+    root.style.setProperty('--mk-orange-shadow', normalized.primaryColor + '33');
+
+    document.title = normalized.browserTitle || normalized.siteName;
+    let descriptionMeta = document.querySelector('meta[name="description"]');
+    if (!descriptionMeta) {
+      descriptionMeta = document.createElement('meta');
+      descriptionMeta.setAttribute('name', 'description');
+      document.head.appendChild(descriptionMeta);
+    }
+    descriptionMeta.setAttribute('content', normalized.metaDescription || '');
+
+    let favicon = document.querySelector('link[rel="icon"]');
+    if (normalized.faviconUrl) {
+      if (!favicon) {
+        favicon = document.createElement('link');
+        favicon.setAttribute('rel', 'icon');
+        document.head.appendChild(favicon);
+      }
+      favicon.setAttribute('href', normalized.faviconUrl);
+    }
+  }, [siteSettings]);
+
+  useEffect(() => {
+    const canReadSystemAdminSettings = Boolean(
+      firebaseAuthUser &&
+      currentAuthRoleReady &&
+      (currentAuthAdminAccount || authenticatedAdminId)
+    );
+
+    if (!canReadSystemAdminSettings) {
+      setSystemAdminSettings(DEFAULT_SYSTEM_ADMIN_SETTINGS);
+      setSystemAdminSettingsReady(true);
+      setSystemAdminSettingsLoadErrorMessage('');
+      return undefined;
+    }
+
+    setSystemAdminSettingsReady(false);
+    const unsubscribe = onSnapshot(
+      SYSTEM_ADMIN_SETTINGS_DOC_REF,
+      (snapshot) => {
+        setSystemAdminSettings(
+          normalizeSystemAdminSettings(
+            snapshot.exists() ? snapshot.data() : DEFAULT_SYSTEM_ADMIN_SETTINGS
+          )
+        );
+        setSystemAdminSettingsLoadErrorMessage('');
+        setSystemAdminSettingsReady(true);
+      },
+      (error) => {
+        console.error('System admin settings sync error:', error);
+        setSystemAdminSettings(DEFAULT_SYSTEM_ADMIN_SETTINGS);
+        setSystemAdminSettingsLoadErrorMessage(
+          '관리자 시스템 설정을 불러오지 못했습니다.'
+        );
+        setSystemAdminSettingsReady(true);
+      }
+    );
+
+    return unsubscribe;
+  }, [
+    firebaseAuthUser?.uid,
+    currentAuthRoleReady,
+    currentAuthAdminAccount?.id,
+    authenticatedAdminId,
+  ]);
+
+  useEffect(() => {
     setSplitSourceReady((prev) => ({
       ...prev,
       config: false,
@@ -4175,6 +4314,8 @@ function App() {
             clearAdminAuthSession();
             setAuthenticatedAdminId('');
             setAdminAuthExpiresAt(0);
+          setAdminAuthAbsoluteExpiresAt(0);
+          setAdminAuthPolicyVersion(0);
             setAdminAccountsLoadErrorMessage(message);
             setAdminAccountsReady(true);
             return;
@@ -4215,6 +4356,8 @@ function App() {
           clearAdminAuthSession();
           setAuthenticatedAdminId('');
           setAdminAuthExpiresAt(0);
+          setAdminAuthAbsoluteExpiresAt(0);
+          setAdminAuthPolicyVersion(0);
           setAdminAccountsLoadErrorMessage(message);
           setAdminAccountsReady(true);
           setToast({
@@ -4233,6 +4376,8 @@ function App() {
         clearAdminAuthSession();
         setAuthenticatedAdminId('');
         setAdminAuthExpiresAt(0);
+          setAdminAuthAbsoluteExpiresAt(0);
+          setAdminAuthPolicyVersion(0);
         setAdminAccountsLoadErrorMessage(message);
         setAdminAccountsReady(true);
         setToast({
@@ -4464,6 +4609,8 @@ function App() {
         clearAdminAuthSession();
         setAuthenticatedAdminId('');
         setAdminAuthExpiresAt(0);
+          setAdminAuthAbsoluteExpiresAt(0);
+          setAdminAuthPolicyVersion(0);
         setAdminAuthForm(createDefaultAdminAuthForm());
 
         adminLogoutInProgressRef.current = false;
@@ -4523,11 +4670,19 @@ function App() {
     const hasFirebaseAuthMismatch =
       Boolean(authenticatedAccount?.authUid) &&
       firebaseAuth.currentUser?.uid !== authenticatedAccount.authUid;
+    const hasActiveAdminLock = Number(authenticatedAccount?.lockUntil || 0) > Date.now();
 
-    if (!authenticatedAccount || hasFirebaseAuthMismatch) {
+    if (!authenticatedAccount || hasFirebaseAuthMismatch || hasActiveAdminLock) {
+      if (hasActiveAdminLock && firebaseAuth.currentUser) {
+        void signOut(firebaseAuth).catch((error) => {
+          console.error('Locked admin Firebase Auth logout error:', error);
+        });
+      }
       clearAdminAuthSession();
       setAuthenticatedAdminId('');
       setAdminAuthExpiresAt(0);
+          setAdminAuthAbsoluteExpiresAt(0);
+          setAdminAuthPolicyVersion(0);
     }
   }, [
     authenticatedAdminId,
@@ -6776,18 +6931,81 @@ function App() {
     activeFaqCategoryId,
   ]);
 
-  const setAdminAuthenticatedSession = (adminId) => {
-    const nextSession = saveAdminAuthSession(adminId);
+  const setAdminAuthenticatedSession = (adminId, securitySettingsOverride = null) => {
+    const nextSession = saveAdminAuthSession(
+      adminId,
+      securitySettingsOverride || systemAdminSettings
+    );
 
     setAuthenticatedAdminId(nextSession.adminId);
     setAdminAuthExpiresAt(nextSession.expiresAt);
+    setAdminAuthAbsoluteExpiresAt(nextSession.absoluteExpiresAt);
+    setAdminAuthPolicyVersion(nextSession.policyVersion);
   };
 
   const clearAdminAuthenticatedSession = () => {
     clearAdminAuthSession();
     setAuthenticatedAdminId('');
     setAdminAuthExpiresAt(0);
+    setAdminAuthAbsoluteExpiresAt(0);
+    setAdminAuthPolicyVersion(0);
   };
+
+  useEffect(() => {
+    if (!authenticatedAdminId || !isAdminAuthenticated) return undefined;
+
+    const normalizedSecurity = normalizeSystemAdminSettings(systemAdminSettings);
+    if (
+      systemAdminSettingsReady &&
+      adminAuthPolicyVersion &&
+      adminAuthPolicyVersion !== normalizedSecurity.adminSecurityPolicyVersion
+    ) {
+      clearAdminAuthenticatedSession();
+      setAdminAuthForm(createDefaultAdminAuthForm());
+      triggerToast(
+        '관리자 보안 설정이 변경되어 다시 로그인이 필요합니다.',
+        'error'
+      );
+      return undefined;
+    }
+
+    let lastRefreshAt = 0;
+    const refreshSession = () => {
+      const now = Date.now();
+      if (now - lastRefreshAt < 30000) return;
+      lastRefreshAt = now;
+
+      const currentSession = readAdminAuthSession();
+      if (!currentSession.adminId || currentSession.adminId !== authenticatedAdminId) return;
+      const nextSession = saveAdminAuthSession(
+        authenticatedAdminId,
+        normalizedSecurity,
+        { absoluteExpiresAt: adminAuthAbsoluteExpiresAt || currentSession.absoluteExpiresAt }
+      );
+      setAdminAuthExpiresAt(nextSession.expiresAt);
+      setAdminAuthAbsoluteExpiresAt(nextSession.absoluteExpiresAt);
+      setAdminAuthPolicyVersion(nextSession.policyVersion);
+    };
+
+    const events = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
+    events.forEach((eventName) => window.addEventListener(eventName, refreshSession, { passive: true }));
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') refreshSession();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      events.forEach((eventName) => window.removeEventListener(eventName, refreshSession));
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [
+    authenticatedAdminId,
+    isAdminAuthenticated,
+    systemAdminSettings,
+    systemAdminSettingsReady,
+    adminAuthPolicyVersion,
+    adminAuthAbsoluteExpiresAt,
+  ]);
 
   useEffect(() => {
     if (!authenticatedAdminAccount) {
@@ -7039,6 +7257,15 @@ function App() {
     event.preventDefault();
 
     const isSignupMode = userTab === 'signup';
+    const signupBlockReason = isSignupMode
+      ? getServiceBlockReason(siteSettings, 'signup')
+      : '';
+
+    if (signupBlockReason) {
+      triggerToast(signupBlockReason, 'error');
+      return;
+    }
+
     const email = normalizeEmailAddress(userAuthForm.email);
     const password = userAuthForm.password;
     const passwordConfirm = userAuthForm.passwordConfirm;
@@ -7593,8 +7820,6 @@ function App() {
           matchedAdminAccount.authEmail ||
           '',
         authProvider: 'firebase-auth',
-        failedLoginCount: 0,
-        lockUntil: 0,
         lastLoginAt: nowText,
         updatedAt: nowText,
       };
@@ -7619,7 +7844,19 @@ function App() {
         ),
       ]);
 
-      setAdminAuthenticatedSession(nextAdminAccount.id);
+      const securitySettingsSnapshot = await getDoc(
+        SYSTEM_ADMIN_SETTINGS_DOC_REF
+      ).catch(() => null);
+      const loginSecuritySettings = normalizeSystemAdminSettings(
+        securitySettingsSnapshot?.exists()
+          ? securitySettingsSnapshot.data()
+          : systemAdminSettings
+      );
+
+      setAdminAuthenticatedSession(
+        nextAdminAccount.id,
+        loginSecuritySettings
+      );
       setAdminAuthForm(createDefaultAdminAuthForm());
       setAdminTab('dashboard');
 
@@ -8092,6 +8329,7 @@ function App() {
     const userName = selectedAdminUserName;
     const email = adminAccountForm.email.trim();
     const phone = adminAccountForm.phone.trim();
+    const adminRole = adminAccountForm.adminRole === 'owner' ? 'owner' : 'admin';
 
     if (!adminLoginId) {
       triggerToast('관리자 ID를 입력해 주세요.', 'error');
@@ -8120,6 +8358,14 @@ function App() {
 
     if (!userName) {
       triggerToast('사용자명을 선택하거나 직접 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (
+      adminRole === 'owner' &&
+      (authenticatedAdminAccount?.adminRole || 'owner') !== 'owner'
+    ) {
+      triggerToast('최고 관리자만 다른 최고 관리자 계정을 등록할 수 있습니다.', 'error');
       return;
     }
 
@@ -8185,6 +8431,7 @@ function App() {
         userName,
         email,
         phone,
+        adminRole,
         createdAt: nowText,
         updatedAt: nowText,
       };
@@ -8234,6 +8481,7 @@ function App() {
       userName: account.userName || '',
       email: account.authEmail || account.email || '',
       phone: account.phone || '',
+      adminRole: ['owner', 'admin'].includes(account.adminRole) ? account.adminRole : 'owner',
       newPassword: '',
       newPasswordConfirm: '',
     });
@@ -8271,6 +8519,7 @@ function App() {
     const organizationName = adminAccountEditForm.organizationName.trim();
     const userName = adminAccountEditForm.userName.trim();
     const phone = adminAccountEditForm.phone.trim();
+    const adminRole = adminAccountEditForm.adminRole === 'owner' ? 'owner' : 'admin';
     const email = String(account.authEmail || account.email || '').trim();
 
     const newPassword = adminAccountEditForm.newPassword || '';
@@ -8302,6 +8551,23 @@ function App() {
 
     if (!email) {
       triggerToast('관리자 로그인 이메일을 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (
+      adminRole !== (account.adminRole || 'owner') &&
+      (authenticatedAdminAccount?.adminRole || 'owner') !== 'owner'
+    ) {
+      triggerToast('최고 관리자만 관리자 권한 등급을 변경할 수 있습니다.', 'error');
+      return;
+    }
+
+    if (
+      (account.adminRole || 'owner') === 'owner' &&
+      adminRole !== 'owner' &&
+      (registeredAdminAccounts || []).filter((item) => (item.adminRole || 'owner') === 'owner').length <= 1
+    ) {
+      triggerToast('마지막 최고 관리자 권한은 변경할 수 없습니다.', 'error');
       return;
     }
 
@@ -8398,6 +8664,7 @@ function App() {
         userName,
         email,
         phone,
+        adminRole,
         updatedAt: nowText,
       };
 
@@ -8449,6 +8716,14 @@ function App() {
       return;
     }
 
+    if (
+      (account.adminRole || 'owner') === 'owner' &&
+      (registeredAdminAccounts || []).filter((item) => (item.adminRole || 'owner') === 'owner').length <= 1
+    ) {
+      triggerToast('마지막 최고 관리자 계정은 삭제할 수 없습니다.', 'error');
+      return;
+    }
+
     if (account.id === authenticatedAdminId) {
       triggerToast(
         '현재 로그인 중인 본인 관리자 ID는 관리자 ID 현황에서 삭제할 수 없습니다. 로그아웃 후 다른 관리자로 삭제해 주세요.',
@@ -8490,6 +8765,59 @@ function App() {
             '관리자 ID 삭제에 실패했습니다. Firestore 권한과 네트워크 상태를 확인해 주세요.',
             'error'
           );
+        }
+      }
+    );
+  };
+
+  const toggleAdminAccountLock = (account) => {
+    if ((authenticatedAdminAccount?.adminRole || 'owner') !== 'owner') {
+      triggerToast('최고 관리자만 관리자 계정을 잠그거나 해제할 수 있습니다.', 'error');
+      return;
+    }
+
+    if (!account?.id || account.id === authenticatedAdminId) {
+      triggerToast('현재 로그인 중인 본인 계정은 잠글 수 없습니다.', 'error');
+      return;
+    }
+
+    const isLocked = Number(account.lockUntil || 0) > Date.now();
+    const actionLabel = isLocked ? '잠금 해제' : '수동 잠금';
+
+    triggerConfirm(
+      `관리자 계정 ${actionLabel}`,
+      isLocked
+        ? `[${account.adminLoginId}] 관리자 계정의 잠금을 해제합니다.`
+        : `[${account.adminLoginId}] 관리자 계정을 수동 잠금합니다. 잠금 해제 전까지 로그인할 수 없습니다.`,
+      async () => {
+        try {
+          const nowText = new Date().toLocaleString('ko-KR');
+          const nextLockUntil = isLocked ? 0 : 4102444800000;
+          const nextLockReason = isLocked ? '' : '최고 관리자 수동 잠금';
+          await setDoc(
+            doc(db, 'adminAccounts', account.id),
+            {
+              lockUntil: nextLockUntil,
+              lockReason: nextLockReason,
+              updatedAt: nowText,
+              syncedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+          setAdminAccounts((prev) =>
+            (prev || []).map((item) =>
+              item.id === account.id
+                ? { ...item, lockUntil: nextLockUntil, lockReason: nextLockReason, updatedAt: nowText }
+                : item
+            )
+          );
+          triggerToast(
+            `[${account.adminLoginId}] 관리자 계정이 ${isLocked ? '잠금 해제' : '잠금'}되었습니다.`,
+            'success'
+          );
+        } catch (error) {
+          console.error('Admin account lock update error:', error);
+          triggerToast('관리자 계정 잠금 상태 변경에 실패했습니다.', 'error');
         }
       }
     );
@@ -11627,6 +11955,12 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       return;
     }
 
+    const rentalBlockReason = getServiceBlockReason(siteSettings, 'rental');
+    if (rentalBlockReason) {
+      triggerToast(rentalBlockReason, 'error');
+      return;
+    }
+
     if (!isSplitStorageReady) {
       triggerToast(
         'Firestore 분리 저장소 최종 전환이 완료되지 않아 대여신청을 제출할 수 없습니다. 관리자에게 문의해 주세요.',
@@ -12567,6 +12901,20 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
   };
 
   const openUserActionDialog = (request, type) => {
+    const serviceAction =
+      type === USER_REQUEST_ACTION.EXTEND
+        ? 'extend'
+        : type === USER_REQUEST_ACTION.RETURN
+          ? 'return'
+          : type === USER_REQUEST_ACTION.CANCEL
+            ? 'cancel'
+            : 'change';
+    const actionBlockReason = getServiceBlockReason(siteSettings, serviceAction);
+    if (actionBlockReason) {
+      triggerToast(actionBlockReason, 'error');
+      return;
+    }
+
     if (type === USER_REQUEST_ACTION.RETURN) {
       triggerToast(
         '조기 반납 요청 기능은 제공하지 않습니다.',
@@ -12680,6 +13028,19 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
   const submitUserActionRequest = async () => {
     const requestId = userActionDialog?.requestId || '';
     const actionType = userActionDialog?.type || '';
+    const serviceAction =
+      actionType === USER_REQUEST_ACTION.EXTEND
+        ? 'extend'
+        : actionType === USER_REQUEST_ACTION.RETURN
+          ? 'return'
+          : actionType === USER_REQUEST_ACTION.CANCEL
+            ? 'cancel'
+            : 'change';
+    const actionBlockReason = getServiceBlockReason(siteSettings, serviceAction);
+    if (actionBlockReason) {
+      triggerToast(actionBlockReason, 'error');
+      return;
+    }
 
     if (actionType === USER_REQUEST_ACTION.RETURN) {
       triggerToast(
@@ -18952,7 +19313,14 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     currentUserRestrictionReady,
     currentUserRequests,
     data,
+    siteSettings,
+    siteSettingsReady,
+    siteSettingsLoadErrorMessage,
+    systemAdminSettings,
+    systemAdminSettingsReady,
+    systemAdminSettingsLoadErrorMessage,
     deleteAdminAccount,
+    toggleAdminAccountLock,
     deleteLaptop,
     deleteTempAssetCategory,
     deleteTempBorrower,
@@ -19344,6 +19712,13 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
   };
 
   const showFirebaseLoadingOverlay = !firebaseReady;
+  const normalizedSiteSettings = normalizeSiteSettings(siteSettings);
+  const headerSubtitle = getHeaderSubtitle(normalizedSiteSettings);
+  const systemBannerKey = `${normalizedSiteSettings.systemBannerLevel}:${normalizedSiteSettings.systemBannerMessage}`;
+  const shouldShowSystemBanner =
+    normalizedSiteSettings.systemBannerEnabled &&
+    normalizedSiteSettings.systemBannerMessage &&
+    systemBannerDismissedKey !== systemBannerKey;
 
   if (firebaseLoadErrorMessage) {
     return (
@@ -19380,12 +19755,68 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     );
   }
 
+  if (
+    view === 'user' &&
+    normalizedSiteSettings.serviceMode === SERVICE_MODE.MAINTENANCE
+  ) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 px-6 font-sans text-white">
+        <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-white/10 p-7 text-center shadow-2xl backdrop-blur">
+          <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl mk-brand-gradient-tr text-white">
+            <Settings size={28} />
+          </div>
+          <h1 className="mt-5 text-2xl font-black">
+            {normalizedSiteSettings.maintenanceTitle}
+          </h1>
+          <p className="mx-auto mt-3 max-w-xl text-sm leading-7 text-slate-300">
+            {normalizedSiteSettings.maintenanceMessage}
+          </p>
+          {normalizedSiteSettings.maintenanceEndAt ? (
+            <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs text-slate-200">
+              예상 종료: {normalizedSiteSettings.maintenanceEndAt.replace('T', ' ')}
+            </div>
+          ) : null}
+          {normalizedSiteSettings.supportEnabled ? (
+            <div className="mt-5 text-xs leading-6 text-slate-300">
+              {normalizedSiteSettings.supportMessage ? <div>{normalizedSiteSettings.supportMessage}</div> : null}
+              {normalizedSiteSettings.supportDepartment ? <div>담당 부서: {normalizedSiteSettings.supportDepartment}</div> : null}
+              {normalizedSiteSettings.supportEmail ? <div>이메일: {normalizedSiteSettings.supportEmail}</div> : null}
+              {normalizedSiteSettings.supportPhone ? <div>전화번호: {normalizedSiteSettings.supportPhone}</div> : null}
+            </div>
+          ) : null}
+          <div className="mt-6 flex justify-center gap-2">
+            <Button variant="outline" onClick={() => window.location.reload()}>다시 확인</Button>
+            <Button onClick={() => { replaceAppPath('admin', 'home'); setView('admin'); }}>관리자 모드</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <div className={`flex min-h-screen flex-col bg-slate-50 text-slate-900 font-sans antialiased transition duration-200 ${
         showFirebaseLoadingOverlay ? 'pointer-events-none select-none blur-sm' : ''
       }`}>
-      {/* --- 상단 글로벌 네비게이션 --- */}
+      {shouldShowSystemBanner ? (
+        <div className={`relative z-40 border-b px-4 py-2 text-center text-xs font-bold ${
+          normalizedSiteSettings.systemBannerLevel === 'critical'
+            ? 'border-rose-300 bg-rose-600 text-white'
+            : normalizedSiteSettings.systemBannerLevel === 'warning'
+              ? 'border-amber-300 bg-amber-100 text-amber-900'
+              : 'border-sky-300 bg-sky-100 text-sky-900'
+        }`}>
+          {normalizedSiteSettings.systemBannerUrl ? (
+            <a href={normalizedSiteSettings.systemBannerUrl} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+              {normalizedSiteSettings.systemBannerMessage}
+            </a>
+          ) : normalizedSiteSettings.systemBannerMessage}
+          {normalizedSiteSettings.systemBannerDismissible ? (
+            <button type="button" onClick={() => setSystemBannerDismissedKey(systemBannerKey)} className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-1 hover:bg-black/10" aria-label="시스템 안내 닫기"><X size={14} /></button>
+          ) : null}
+        </div>
+      ) : null}
+            {/* --- 상단 글로벌 네비게이션 --- */}
       <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:px-6 sm:py-4 lg:flex-row lg:items-center lg:justify-between">
           <button
@@ -19393,16 +19824,31 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             onClick={goToAppHome}
             className="flex min-w-0 shrink-0 items-center gap-3.5 text-left sm:gap-4"
           >
-            <div className="shrink-0 rounded-2xl mk-brand-gradient-tr p-2.5 text-white mk-brand-shadow-md sm:p-3">
-              <Laptop size={26} />
-            </div>
+            {normalizedSiteSettings.logoMode === 'image' && normalizedSiteSettings.logoImageUrl ? (
+              <picture className="shrink-0">
+                {normalizedSiteSettings.mobileLogoImageUrl ? (
+                  <source media="(max-width: 639px)" srcSet={normalizedSiteSettings.mobileLogoImageUrl} />
+                ) : null}
+                <img
+                  src={normalizedSiteSettings.logoImageUrl}
+                  alt={normalizedSiteSettings.logoAltText}
+                  className="h-11 max-w-[150px] object-contain sm:h-12"
+                />
+              </picture>
+            ) : normalizedSiteSettings.logoMode === 'text' ? null : (
+              <div className="shrink-0 rounded-2xl mk-brand-gradient-tr p-2.5 text-white mk-brand-shadow-md sm:p-3">
+                <Laptop size={26} />
+              </div>
+            )}
             <div className="min-w-0">
               <h1 className="break-keep text-[16px] font-bold leading-snug tracking-tight text-slate-900 sm:text-lg lg:text-[21px]">
-                매일경제아카데미 기기 대여 시스템
+                {normalizedSiteSettings.siteName}
               </h1>
-              <p className="mt-0.5 truncate text-xs font-medium text-slate-500 sm:text-sm">
-                https://notebook.recruit.kro.kr
-              </p>
+              {headerSubtitle ? (
+                <p className="mt-0.5 truncate text-xs font-medium text-slate-500 sm:text-sm">
+                  {headerSubtitle}
+                </p>
+              ) : null}
             </div>
           </button>
 
@@ -19622,7 +20068,11 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/10 px-6 font-sans text-slate-900 backdrop-blur-[2px]">
           <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white/95 p-6 text-center shadow-xl">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl mk-brand-gradient-tr text-white mk-brand-shadow-md">
-              <Laptop size={24} />
+              {normalizedSiteSettings.logoMode === 'image' && normalizedSiteSettings.logoImageUrl ? (
+                <img src={normalizedSiteSettings.logoImageUrl} alt={normalizedSiteSettings.logoAltText} className="h-8 max-w-[120px] object-contain" />
+              ) : (
+                <Laptop size={24} />
+              )}
             </div>
             <h1 className="text-base font-bold text-slate-900">
               데이터를 불러오는 중입니다.

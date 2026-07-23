@@ -146,3 +146,25 @@ export const RENTAL_RESTRICTIONS_COLLECTION_REF = collection(
   db,
   'rentalRestrictions'
 );
+
+export const SITE_SETTINGS_DOC_REF = doc(
+  db,
+  'siteSettings',
+  'config'
+);
+
+export const SYSTEM_ADMIN_SETTINGS_DOC_REF = doc(
+  db,
+  'systemSettings',
+  'admin'
+);
+
+export const SYSTEM_AUDIT_LOGS_COLLECTION_REF = collection(
+  db,
+  'systemAuditLogs'
+);
+
+export const SYSTEM_RESET_JOBS_COLLECTION_REF = collection(
+  db,
+  'systemResetJobs'
+);

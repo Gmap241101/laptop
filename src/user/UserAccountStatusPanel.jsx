@@ -77,6 +77,7 @@ export default function UserAccountStatusPanel({ ctx }) {
     goToUserHome,
     goToUserLogin,
     userAccountStatusView,
+    siteSettings,
   } = ctx;
 
   const content = STATUS_CONTENT[userAccountStatusView?.type] || STATUS_CONTENT.loginRetired;
@@ -122,6 +123,16 @@ export default function UserAccountStatusPanel({ ctx }) {
         <div className={`rounded-2xl border px-5 py-5 text-sm leading-7 ${TONE_CLASS[content.tone]}`}>
           {content.description}
         </div>
+
+        {siteSettings?.supportEnabled && ['loginPending', 'loginBlocked', 'loginRetired'].includes(userAccountStatusView?.type) ? (
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-xs leading-6 text-slate-600">
+            {siteSettings.supportMessage ? <div className="font-semibold text-slate-800">{siteSettings.supportMessage}</div> : null}
+            {siteSettings.supportDepartment ? <div>담당 부서: {siteSettings.supportDepartment}</div> : null}
+            {siteSettings.supportEmail ? <div>이메일: {siteSettings.supportEmail}</div> : null}
+            {siteSettings.supportPhone ? <div>전화번호: {siteSettings.supportPhone}</div> : null}
+            {siteSettings.supportHours ? <div>문의 시간: {siteSettings.supportHours}</div> : null}
+          </div>
+        ) : null}
 
         <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           {content.secondaryLabel ? (

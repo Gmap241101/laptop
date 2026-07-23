@@ -32,6 +32,7 @@ export default function UserAuthPanel({ ctx }) {
     userAuthForm,
     userAuthLoading,
     userTab,
+    siteSettings,
   } = ctx;
 
   const isSignupMode = userTab === 'signup';
@@ -44,6 +45,9 @@ export default function UserAuthPanel({ ctx }) {
   const identityClaimsReady = Boolean(
     data.settings.memberIdentityClaimsReady
   );
+  const signupClosed =
+    siteSettings?.serviceMode !== 'normal' ||
+    siteSettings?.allowNewMemberSignup === false;
 
   const title = isSignupMode
     ? '일반 사용자 회원가입'
@@ -272,7 +276,9 @@ export default function UserAuthPanel({ ctx }) {
             )}
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-xs leading-5 text-slate-600">
-              {isSignupMode && !identityClaimsReady
+              {isSignupMode && signupClosed
+                ? '현재 신규 회원가입 접수가 일시 중지되어 있습니다. ' 
+                : isSignupMode && !identityClaimsReady
                 ? '회원 중복 확인 정보가 준비되지 않아 현재 가입할 수 없습니다. 관리자에게 문의해 주세요. '
                 : isSignupMode && directorySignupRequired
                   ? '관리자가 등록한 부서·성명과 일치하는 경우에만 가입할 수 있습니다. '
@@ -290,7 +296,7 @@ export default function UserAuthPanel({ ctx }) {
                 <Button
                   type="submit"
                   variant="primary"
-                  disabled={userAuthLoading || !firebaseAuthReady || !identityClaimsReady}
+                  disabled={userAuthLoading || !firebaseAuthReady || !identityClaimsReady || signupClosed}
                   className="w-full justify-center py-3"
                 >
                   {userAuthLoading ? '가입 정보 확인 중...' : '회원가입'}

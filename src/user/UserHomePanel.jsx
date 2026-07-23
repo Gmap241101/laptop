@@ -99,6 +99,7 @@ export default function UserHomePanel({ ctx }) {
     noticePostsReady,
     openNoticePost,
     stats,
+    siteSettings,
   } = ctx;
 
   const [banners, setBanners] = useState([]);
@@ -341,13 +342,25 @@ export default function UserHomePanel({ ctx }) {
         aria-label="메인 비주얼"
       >
         {heroBanners.length === 0 ? (
-          <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-slate-950 via-slate-800 to-orange-700 sm:aspect-[16/7] lg:aspect-[3/1]">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_75%_20%,rgba(255,255,255,0.18),transparent_34%)]" />
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent px-6 pb-8 pt-24 text-center text-white sm:pb-10">
-              <h2 className="text-2xl font-black tracking-tight drop-shadow-[0_2px_5px_rgba(0,0,0,0.9)] sm:text-3xl lg:text-4xl">매일경제아카데미 기기 대여 시스템</h2>
-              <p className="mt-3 text-sm font-semibold leading-6 text-white/95 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] sm:text-base">필요한 기기를 확인하고 신청 현황을 한곳에서 관리합니다.</p>
+          siteSettings?.defaultHeroEnabled === false ? (
+            <div className="flex aspect-[4/3] items-center justify-center bg-slate-900 px-6 text-center text-sm font-semibold text-slate-300 sm:aspect-[16/7] lg:aspect-[3/1]">
+              {siteSettings?.siteName || '기기 대여 시스템'}
             </div>
-          </div>
+          ) : (
+            <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-slate-950 via-slate-800 to-[var(--mk-orange-dark)] sm:aspect-[16/7] lg:aspect-[3/1]">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_75%_20%,rgba(255,255,255,0.18),transparent_34%)]" />
+              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent px-6 pb-8 pt-24 text-center text-white sm:pb-10">
+                <h2 className="text-2xl font-black tracking-tight drop-shadow-[0_2px_5px_rgba(0,0,0,0.9)] sm:text-3xl lg:text-4xl">
+                  {siteSettings?.defaultHeroTitle || siteSettings?.siteName || '기기 대여 시스템'}
+                </h2>
+                {siteSettings?.defaultHeroDescription ? (
+                  <p className="mt-3 text-sm font-semibold leading-6 text-white/95 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] sm:text-base">
+                    {siteSettings.defaultHeroDescription}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          )
         ) : (
           <>
             <div

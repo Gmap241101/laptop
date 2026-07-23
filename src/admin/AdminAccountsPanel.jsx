@@ -10,6 +10,7 @@ export default function AdminAccountsPanel({ ctx }) {
     adminAccountForm,
     adminAccountTotalPages,
     adminAccountUserOptions,
+    authenticatedAdminAccount,
     authenticatedAdminId,
     cancelEditAdminAccount,
     createDefaultAdminAccountForm,
@@ -26,6 +27,7 @@ export default function AdminAccountsPanel({ ctx }) {
     setAdminAccountForm,
     setAdminAccountPage,
     startEditAdminAccount,
+    toggleAdminAccountLock,
   } = ctx;
 
   return (
@@ -173,6 +175,21 @@ export default function AdminAccountsPanel({ ctx }) {
                             placeholder="예: admin@example.com"
                           />
 
+                          <Select
+                            label="관리자 권한"
+                            value={adminAccountForm.adminRole || 'admin'}
+                            onChange={(v) =>
+                              setAdminAccountForm({
+                                ...adminAccountForm,
+                                adminRole: v,
+                              })
+                            }
+                            disabled={(authenticatedAdminAccount?.adminRole || 'owner') !== 'owner'}
+                          >
+                            <option value="admin">일반 관리자</option>
+                            <option value="owner">최고 관리자</option>
+                          </Select>
+
                           <Input
                             label="전화번호"
                             value={adminAccountForm.phone}
@@ -285,6 +302,21 @@ export default function AdminAccountsPanel({ ctx }) {
                                             placeholder="사용자명 입력"
                                           />
 
+                                          <Select
+                                            label="관리자 권한"
+                                            value={adminAccountEditForm.adminRole || account.adminRole || 'owner'}
+                                            onChange={(v) =>
+                                              setAdminAccountEditForm({
+                                                ...adminAccountEditForm,
+                                                adminRole: v,
+                                              })
+                                            }
+                                            disabled={(authenticatedAdminAccount?.adminRole || 'owner') !== 'owner'}
+                                          >
+                                            <option value="admin">일반 관리자</option>
+                                            <option value="owner">최고 관리자</option>
+                                          </Select>
+
                                           <Input
                                             label="전화번호"
                                             value={adminAccountEditForm.phone}
@@ -396,6 +428,18 @@ export default function AdminAccountsPanel({ ctx }) {
                                             <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
                                               {account.authUid ? 'Firebase Auth 연결' : '기존 해시 계정'}
                                             </span>
+                                            <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                                              (account.adminRole || 'owner') === 'owner'
+                                                ? 'border-violet-200 bg-violet-50 text-violet-700'
+                                                : 'border-slate-200 bg-slate-50 text-slate-600'
+                                            }`}>
+                                              {(account.adminRole || 'owner') === 'owner' ? '최고 관리자' : '일반 관리자'}
+                                            </span>
+                                            {Number(account.lockUntil || 0) > Date.now() ? (
+                                              <span className="inline-flex rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
+                                                수동 잠금
+                                              </span>
+                                            ) : null}
                                             {isCurrentAdminAccount && (
                                               <span className="inline-flex rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] font-semibold mk-brand-text">
                                                 현재 로그인
@@ -420,7 +464,17 @@ export default function AdminAccountsPanel({ ctx }) {
                                           </div>
                                         </div>
 
-                                        <div className="flex shrink-0 gap-2">
+                                        <div className="flex shrink-0 flex-wrap gap-2">
+                                          {(authenticatedAdminAccount?.adminRole || 'owner') === 'owner' && !isCurrentAdminAccount ? (
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              className="px-3 py-2 text-xs"
+                                              onClick={() => toggleAdminAccountLock(account)}
+                                            >
+                                              {Number(account.lockUntil || 0) > Date.now() ? '잠금 해제' : '계정 잠금'}
+                                            </Button>
+                                          ) : null}
                                           <Button
                                             type="button"
                                             variant="outline"

@@ -3,21 +3,110 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // ==========================================
+    // 공통 함수
+    // ==========================================
+
     function signedIn() {
       return request.auth != null;
     }
 
     function isAdmin() {
       return signedIn()
-        && exists(
-          /databases/$(database)/documents/adminAccounts/$(request.auth.uid)
-        )
+        && exists(/databases/$(database)/documents/adminAccounts/$(request.auth.uid))
+        && get(/databases/$(database)/documents/adminAccounts/$(request.auth.uid)).data.id == request.auth.uid
+        && get(/databases/$(database)/documents/adminAccounts/$(request.auth.uid)).data.authUid == request.auth.uid;
+    }
+
+    function isOwnerAdmin() {
+      return isAdmin()
         && get(
           /databases/$(database)/documents/adminAccounts/$(request.auth.uid)
-        ).data.id == request.auth.uid
+        ).data.get('adminRole', 'owner') == 'owner';
+    }
+
+    function siteSettingsExist() {
+      return exists(/databases/$(database)/documents/siteSettings/config);
+    }
+
+    function currentServiceMode() {
+      return siteSettingsExist()
+        ? get(/databases/$(database)/documents/siteSettings/config).data.get('serviceMode', 'normal')
+        : 'normal';
+    }
+
+    function serviceAllowsUserWrites() {
+      return currentServiceMode() == 'normal';
+    }
+
+    function newMemberSignupAllowed() {
+      return serviceAllowsUserWrites()
+        && (
+          !siteSettingsExist()
+          || get(/databases/$(database)/documents/siteSettings/config).data.get('allowNewMemberSignup', true) == true
+        );
+    }
+
+    function newRentalRequestAllowed() {
+      return serviceAllowsUserWrites()
+        && (
+          !siteSettingsExist()
+          || get(/databases/$(database)/documents/siteSettings/config).data.get('allowNewRentalRequests', true) == true
+        );
+    }
+
+    function requestChangesAllowed() {
+      return serviceAllowsUserWrites()
+        && (
+          !siteSettingsExist()
+          || get(/databases/$(database)/documents/siteSettings/config).data.get('allowRequestChanges', true) == true
+        );
+    }
+
+    function extensionRequestsAllowed() {
+      return serviceAllowsUserWrites()
+        && (
+          !siteSettingsExist()
+          || get(/databases/$(database)/documents/siteSettings/config).data.get('allowExtensionRequests', true) == true
+        );
+    }
+
+    function returnRequestsAllowed() {
+      return serviceAllowsUserWrites()
+        && (
+          !siteSettingsExist()
+          || get(/databases/$(database)/documents/siteSettings/config).data.get('allowReturnRequests', true) == true
+        );
+    }
+
+    function directoryPolicyEnabled() {
+      return exists(/databases/$(database)/documents/rentalSystem/publicConfig)
         && get(
-          /databases/$(database)/documents/adminAccounts/$(request.auth.uid)
-        ).data.authUid == request.auth.uid;
+          /databases/$(database)/documents/rentalSystem/publicConfig
+        ).data.get('settings', {}).get('requireRegisteredMemberForSignup', false) == true;
+    }
+
+    function autoApproveNewMembersEnabled() {
+      return directoryPolicyEnabled()
+        && exists(/databases/$(database)/documents/rentalSystem/publicConfig)
+        && get(
+          /databases/$(database)/documents/rentalSystem/publicConfig
+        ).data.get('settings', {}).get('autoApproveNewMembers', false) == true;
+    }
+
+    function currentMemberDirectoryVersion() {
+      return exists(/databases/$(database)/documents/rentalSystem/publicConfig)
+        ? get(
+            /databases/$(database)/documents/rentalSystem/publicConfig
+          ).data.get('settings', {}).get('memberDirectoryVersion', 0)
+        : 0;
+    }
+
+    function memberIdentityClaimsReady() {
+      return exists(/databases/$(database)/documents/rentalSystem/publicConfig)
+        && get(
+          /databases/$(database)/documents/rentalSystem/publicConfig
+        ).data.get('settings', {}).get('memberIdentityClaimsReady', false) == true;
     }
 
     function isActiveUser() {
@@ -27,751 +116,1500 @@ service cloud.firestore {
         )
         && get(
           /databases/$(database)/documents/userAccounts/$(request.auth.uid)
-        ).data.status == 'active';
-    }
-
-    function isBlockingRentalStatus(status) {
-      return status == '신청중'
-        || status == '대여중'
-        || status == '보류';
-    }
-
-    function validReservationSummary(summary) {
-      return summary is map
-        && summary.keys().hasAll([
-          'id',
-          'laptopId',
-          'assetCategory',
-          'assetNo',
-          'startDate',
-          'dueDate',
-          'status'
-        ])
-        && summary.keys().hasOnly([
-          'id',
-          'laptopId',
-          'assetCategory',
-          'assetNo',
-          'startDate',
-          'dueDate',
-          'status',
-          'updatedAt'
-        ])
-        && summary.id is string
-        && summary.laptopId is string
-        && summary.assetCategory is string
-        && summary.assetNo is string
-        && summary.startDate is string
-        && summary.dueDate is string
-        && summary.status is string
-        && isBlockingRentalStatus(summary.status);
-    }
-
-    function reservationSummaryMatchesRequest(summary, requestData) {
-      return validReservationSummary(summary)
-        && requestData is map
-        && summary.id == requestData.id
-        && summary.laptopId == requestData.laptopId
-        && summary.assetCategory == requestData.assetCategory
-        && summary.assetNo == requestData.assetNo
-        && summary.startDate == requestData.startDate
-        && summary.dueDate == requestData.dueDate
-        && summary.status == requestData.status;
-    }
-
-    function validUserRentalRequestCreate(requestId) {
-      let availabilityPath =
-        /databases/$(database)/documents/rentalAvailability/$(requestId);
-      let assetPath =
-        /databases/$(database)/documents/rentalAssets/$(request.resource.data.laptopId);
-      let assetAfter = getAfter(assetPath).data;
-      let reservationsAfter = assetAfter.reservations;
-      let appendedReservation =
-        reservationsAfter[reservationsAfter.size() - 1];
-
-      return isActiveUser()
-        && request.resource.data.id == requestId
-        && request.resource.data.requesterUid == request.auth.uid
-        && request.resource.data.requesterEmail == request.auth.token.email
-        && request.resource.data.requesterName
-          == get(
+        ).data.status == 'active'
+        && (
+          !directoryPolicyEnabled()
+          || get(
             /databases/$(database)/documents/userAccounts/$(request.auth.uid)
-          ).data.name
-        && request.resource.data.requesterTeam
-          == get(
-            /databases/$(database)/documents/userAccounts/$(request.auth.uid)
-          ).data.team
-        && request.resource.data.status == '신청중'
-        && request.resource.data.adminMemo == ''
-        && request.resource.data.id is string
-        && request.resource.data.requesterUid is string
-        && request.resource.data.requesterEmail is string
-        && request.resource.data.requesterName is string
-        && request.resource.data.requesterTeam is string
-        && request.resource.data.laptopId is string
-        && request.resource.data.assetCategory is string
-        && request.resource.data.assetNo is string
-        && request.resource.data.team is string
-        && request.resource.data.borrower is string
-        && request.resource.data.startDate is string
-        && request.resource.data.dueDate is string
-        && request.resource.data.purpose is string
-        && request.resource.data.status is string
-        && request.resource.data.adminMemo is string
-        && request.resource.data.requestedAt is string
-        && request.resource.data.createdAt == request.time
-        && request.resource.data.updatedAt == request.time
-        && request.resource.data.keys().hasAll([
-          'id',
-          'requesterUid',
-          'requesterEmail',
-          'requesterName',
-          'requesterTeam',
-          'laptopId',
-          'assetCategory',
-          'assetNo',
-          'team',
-          'borrower',
-          'startDate',
-          'dueDate',
-          'purpose',
-          'status',
-          'adminMemo',
-          'requestedAt',
-          'createdAt',
-          'updatedAt'
-        ])
-        && request.resource.data.keys().hasOnly([
-          'id',
-          'requesterUid',
-          'requesterEmail',
-          'requesterName',
-          'requesterTeam',
-          'laptopId',
-          'assetCategory',
-          'assetNo',
-          'team',
-          'borrower',
-          'startDate',
-          'dueDate',
-          'purpose',
-          'status',
-          'adminMemo',
-          'requestedAt',
-          'createdAt',
-          'updatedAt'
-        ])
-        && existsAfter(availabilityPath)
-        && reservationSummaryMatchesRequest(
-          getAfter(availabilityPath).data,
-          request.resource.data
-        )
-        && getAfter(availabilityPath).data.updatedAt == request.time
-        && existsAfter(assetPath)
-        && reservationsAfter is list
-        && reservationsAfter.size() > 0
-        && reservationSummaryMatchesRequest(
-          appendedReservation,
-          request.resource.data
+          ).data.get('directoryVerifiedVersion', -1)
+            == currentMemberDirectoryVersion()
         );
     }
 
-    function validAvailabilityCreate(requestId) {
-      let requestPath =
-        /databases/$(database)/documents/rentalRequests/$(requestId);
-      let assetPath =
-        /databases/$(database)/documents/rentalAssets/$(request.resource.data.laptopId);
-      let assetAfter = getAfter(assetPath).data;
-      let reservationsAfter = assetAfter.reservations;
-      let appendedReservation =
-        reservationsAfter[reservationsAfter.size() - 1];
-
-      return isActiveUser()
-        && request.resource.data.id == requestId
-        && request.resource.data.status == '신청중'
-        && request.resource.data.updatedAt == request.time
-        && validReservationSummary(request.resource.data)
-        && existsAfter(requestPath)
-        && getAfter(requestPath).data.requesterUid == request.auth.uid
-        && reservationSummaryMatchesRequest(
-          request.resource.data,
-          getAfter(requestPath).data
+    function isReadableGeneralUser() {
+      return signedIn()
+        && exists(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
         )
-        && existsAfter(assetPath)
-        && reservationsAfter is list
-        && reservationsAfter.size() > 0
-        && reservationSummaryMatchesRequest(
-          appendedReservation,
-          request.resource.data
-        )
-        && assetAfter.id == request.resource.data.laptopId
-        && assetAfter.category == request.resource.data.assetCategory
-        && assetAfter.assetNo == request.resource.data.assetNo;
+        && get(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        ).data.status in ['active', 'profileRequired'];
     }
 
-    function validUserAssetReservationAppend(assetId) {
-      let reservationsBefore = resource.data.reservations;
-      let reservationsAfter = request.resource.data.reservations;
-      let appendedReservation =
-        reservationsAfter[reservationsAfter.size() - 1];
-      let requestPath =
-        /databases/$(database)/documents/rentalRequests/$(appendedReservation.id);
-      let availabilityPath =
-        /databases/$(database)/documents/rentalAvailability/$(appendedReservation.id);
-
-      return isActiveUser()
-        && resource.data.id == assetId
-        && request.resource.data.id == assetId
-        && resource.data.status != '대여불가'
-        && request.resource.data
-          .diff(resource.data)
-          .affectedKeys()
-          .hasOnly([
-            'reservations',
-            'updatedAt'
-          ])
-        && request.resource.data.updatedAt == request.time
-        && reservationsBefore is list
-        && reservationsAfter is list
-        && reservationsAfter.size() == reservationsBefore.size() + 1
-        && reservationsAfter[0:reservationsBefore.size()] == reservationsBefore
-        && validReservationSummary(appendedReservation)
-        && appendedReservation.status == '신청중'
-        && appendedReservation.laptopId == assetId
-        && appendedReservation.assetCategory == resource.data.category
-        && appendedReservation.assetNo == resource.data.assetNo
-        && existsAfter(requestPath)
-        && getAfter(requestPath).data.requesterUid == request.auth.uid
-        && reservationSummaryMatchesRequest(
-          appendedReservation,
-          getAfter(requestPath).data
-        )
-        && existsAfter(availabilityPath)
-        && reservationSummaryMatchesRequest(
-          appendedReservation,
-          getAfter(availabilityPath).data
-        )
-        && getAfter(availabilityPath).data.updatedAt == request.time;
+    function isValidMemberName(value) {
+      return value is string
+        && value.size() >= 2
+        && value.size() <= 30
+        && value.matches('^[A-Za-z가-힣]{2,30}$');
     }
 
-    function validUserActionRequest(action) {
-      return action is map
+    function isValidMemberTeam(value) {
+      return value is string
+        && value.size() >= 1
+        && value.size() <= 80;
+    }
+
+    function isValidDomesticPhone(value) {
+      return value is string
+        && value.matches('^(010|011|016|017|018|019|070|080|02|031|032|033|041|042|043|044|051|052|053|054|055|061|062|063|064)-[1-9][0-9]{2,3}-[0-9]{4}$');
+    }
+
+    function claimCurrentUid(data) {
+      return data.get('currentUid', data.get('uid', ''));
+    }
+
+    function identityClaimMatchesAfter(identityKey, userId, name, team) {
+      let claimPath = /databases/$(database)/documents/memberIdentityClaims/$(identityKey);
+
+      return identityKey is string
+        && identityKey.size() > 0
+        && existsAfter(claimPath)
+        && claimCurrentUid(getAfter(claimPath).data) == userId
+        && getAfter(claimPath).data.get('status', 'active') == 'active'
+        && getAfter(claimPath).data.get('conflict', false) == false
+        && getAfter(claimPath).data.name == name
+        && getAfter(claimPath).data.team == team;
+    }
+
+    function identityWasPreviouslyReleased(identityKey) {
+      let claimPath = /databases/$(database)/documents/memberIdentityClaims/$(identityKey);
+
+      return exists(claimPath)
         && (
-          action.type == 'change'
-          || action.type == 'cancel'
-          || action.type == 'extend'
-        )
-        && action.status == 'pending'
-        && action.reason is string
-        && action.team is string
-        && action.borrower is string
-        && action.startDate is string
-        && action.dueDate is string
-        && action.purpose is string
-        && action.requestedAt == request.time
-        && action.reviewedAt == null
-        && action.reviewedByUid == ''
-        && action.reviewedByName == ''
-        && action.reviewMemo == ''
-        && action.keys().hasAll([
-          'type',
-          'status',
-          'reason',
-          'team',
-          'borrower',
-          'startDate',
-          'dueDate',
-          'purpose',
-          'requestedAt',
-          'reviewedAt',
-          'reviewedByUid',
-          'reviewedByName',
-          'reviewMemo'
-        ])
-        && action.keys().hasOnly([
-          'type',
-          'status',
-          'reason',
-          'team',
-          'borrower',
-          'startDate',
-          'dueDate',
-          'purpose',
-          'requestedAt',
-          'reviewedAt',
-          'reviewedByUid',
-          'reviewedByName',
-          'reviewMemo'
-        ]);
+          get(claimPath).data.get('status', '') == 'released'
+          || get(claimPath).data.get('formerUids', []).size() > 0
+        );
     }
+
+    function identityFormerUidsBefore(identityKey) {
+      let claimPath = /databases/$(database)/documents/memberIdentityClaims/$(identityKey);
+
+      return exists(claimPath)
+        ? get(claimPath).data.get('formerUids', [])
+        : [];
+    }
+
+    function identityRestrictionBefore(identityKey) {
+      let claimPath = /databases/$(database)/documents/memberIdentityClaims/$(identityKey);
+
+      return exists(claimPath)
+        ? get(claimPath).data.get('restrictionSnapshot', {})
+        : {};
+    }
+
+    function directoryIdentityMatches(identityKey, name, team) {
+      let directoryPath = /databases/$(database)/documents/memberDirectoryKeys/$(identityKey);
+
+      return identityKey is string
+        && identityKey.size() > 0
+        && exists(directoryPath)
+        && get(directoryPath).data.get('enabled', true) != false
+        && get(directoryPath).data.name == name
+        && get(directoryPath).data.team == team;
+    }
+
+    function accountRecoveryMatchesAfter(recoveryKey, maskedEmail, status) {
+      let recoveryPath = /databases/$(database)/documents/accountRecoveryKeys/$(recoveryKey);
+
+      return recoveryKey is string
+        && recoveryKey.size() > 0
+        && existsAfter(recoveryPath)
+        && getAfter(recoveryPath).data.recoveryKey == recoveryKey
+        && getAfter(recoveryPath).data.maskedEmail == maskedEmail
+        && getAfter(recoveryPath).data.accountStatus == status
+        && getAfter(recoveryPath).data.get('enabled', true) == true;
+    }
+
+    function selfStatusTransitionAllowed(beforeData, afterData) {
+      return (
+          beforeData.status == 'active'
+          && afterData.status in ['active', 'profileRequired']
+        )
+        || (
+          beforeData.status == 'profileRequired'
+          && (
+            afterData.status == 'profileRequired'
+            || (
+              beforeData.get('profileRequiredReason', '') == 'directoryMismatch'
+              && afterData.status
+                == beforeData.get('statusBeforeProfileRequired', 'pending')
+              && afterData.status in ['active', 'pending']
+            )
+          )
+        );
+    }
+
+    function activeOrPendingIdentityIsValidAfter(userId) {
+      return request.resource.data.status == 'profileRequired'
+        || (
+          identityClaimMatchesAfter(
+            request.resource.data.identityKey,
+            userId,
+            request.resource.data.name,
+            request.resource.data.team
+          )
+          && (
+            !directoryPolicyEnabled()
+            || (
+              request.resource.data.get('directoryVerifiedVersion', -1)
+                == currentMemberDirectoryVersion()
+              && directoryIdentityMatches(
+                request.resource.data.identityKey,
+                request.resource.data.name,
+                request.resource.data.team
+              )
+            )
+          )
+        );
+    }
+
+    function hasBlockingRentalRestriction(userId) {
+      let restrictionPath = /databases/$(database)/documents/rentalRestrictions/$(userId);
+
+      return exists(restrictionPath)
+        && (
+          get(restrictionPath).data.get('manualBlock', false) == true
+          || get(restrictionPath).data.get('indefinite', false) == true
+          || get(restrictionPath).data.get('restrictionStatus', '') == 'active'
+          || get(restrictionPath).data.get('lossDamagePending', false) == true
+          || get(restrictionPath).data.get('incidentStatus', '') in ['pending', 'open', 'unresolved']
+        );
+    }
+
+    function ownsRentalRequest(requestId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/rentalRequests/$(requestId))
+        && get(/databases/$(database)/documents/rentalRequests/$(requestId)).data.requesterUid == request.auth.uid;
+    }
+
+    // ==========================================
+    // 1. 시스템 설정 및 자산 관련 규칙
+    // ==========================================
 
     match /rentalSystem/publicConfig {
       allow read: if true;
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
 
-      allow create, update:
-        if isAdmin()
-        && request.resource.data.assetCategories is list
-        && request.resource.data.teams is list
-        && request.resource.data.settings is map
-        && request.resource.data.updatedAt == request.time;
+    match /siteSettings/config {
+      allow read: if true;
+      allow create, update: if isAdmin()
+        && request.resource.data.get('serviceMode', 'normal') in ['normal', 'readOnly', 'maintenance']
+        && request.resource.data.get('primaryColor', '#FF6B00').matches('^#[0-9A-Fa-f]{6}$')
+        && request.resource.data.get('primaryDarkColor', '#E65300').matches('^#[0-9A-Fa-f]{6}$')
+        && request.resource.data.get('siteName', '').size() <= 100
+        && request.resource.data.get('siteShortName', '').size() <= 50
+        && request.resource.data.get('organizationName', '').size() <= 100;
+      allow delete: if false;
+    }
 
+    match /systemSettings/admin {
+      allow read: if isAdmin();
+
+      allow create: if isOwnerAdmin()
+        && request.resource.data.get('adminIdleTimeoutMinutes', 60) >= 15
+        && request.resource.data.get('adminIdleTimeoutMinutes', 60) <= 480
+        && request.resource.data.get('adminAbsoluteTimeoutHours', 8) >= 1
+        && request.resource.data.get('adminAbsoluteTimeoutHours', 8) <= 24
+        && request.resource.data.get('adminSecurityPolicyVersion', 1) >= 1;
+
+      allow update: if (
+          isOwnerAdmin()
+          && request.resource.data.get('adminIdleTimeoutMinutes', 60) >= 15
+          && request.resource.data.get('adminIdleTimeoutMinutes', 60) <= 480
+          && request.resource.data.get('adminAbsoluteTimeoutHours', 8) >= 1
+          && request.resource.data.get('adminAbsoluteTimeoutHours', 8) <= 24
+          && request.resource.data.get('adminSecurityPolicyVersion', 1) >= 1
+        ) || (
+          isAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'lastIntegrityCheckAt',
+            'lastIntegrityCheckBy',
+            'lastIntegrityCheckSummary',
+            'lastBackupGeneratedAt',
+            'lastBackupGeneratedBy'
+          ])
+        );
+      allow delete: if false;
+    }
+
+    match /systemAuditLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.get('adminUid', '') == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /systemResetJobs/{jobId} {
+      allow read, create, update: if isOwnerAdmin();
       allow delete: if false;
     }
 
     match /rentalAssets/{assetId} {
       allow read: if true;
-
       allow create, delete: if isAdmin();
 
-      allow update:
-        if isAdmin()
-        || validUserAssetReservationAppend(assetId);
+      allow update: if isAdmin() || (
+        isActiveUser()
+
+        // 일반 사용자가 변경할 수 있는 최상위 필드 제한
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'reservations',
+          'status',
+          'currentRequestId',
+          'updatedAt',
+          'reservationMutation'
+        ])
+
+        // 변경 전후 reservations는 모두 배열이어야 함
+        && resource.data.get('reservations', []) is list
+        && request.resource.data.get('reservations', []) is list
+
+        // 자산 상태와 대표 신청 ID는 일반 사용자가 변경할 수 없음
+        && request.resource.data.get('status', '')
+          == resource.data.get('status', '')
+
+        && request.resource.data.get('currentRequestId', null)
+          == resource.data.get('currentRequestId', null)
+
+        && (
+          // 신규 신청:
+          // 실제 신규 rentalRequests 및 rentalAvailability 문서와 연결된
+          // 정상 예약 1건만 배열 마지막에 추가할 수 있음
+          (
+            // 예약은 정확히 1건만 증가해야 함
+            request.resource.data.get('reservations', []).size()
+              == resource.data.get('reservations', []).size() + 1
+
+            // 기존 예약은 모두 그대로 보존되어야 함
+            && request.resource.data.get('reservations', []).hasAll(
+              resource.data.get('reservations', [])
+            )
+
+            // 새 예약은 배열 마지막에 추가된 지도형 데이터여야 함
+            && request.resource.data.get('reservations', [])[
+              resource.data.get('reservations', []).size()
+            ] is map
+
+            // 예약 객체에 허용되는 필드만 포함
+            && request.resource.data.get('reservations', [])[
+              resource.data.get('reservations', []).size()
+            ].keys().hasOnly([
+              'id',
+              'laptopId',
+              'assetCategory',
+              'assetNo',
+              'startDate',
+              'dueDate',
+              'status'
+            ])
+
+            // 예약 ID와 자산 ID의 기본 형식 검증
+            && request.resource.data.get('reservations', [])[
+              resource.data.get('reservations', []).size()
+            ].id is string
+
+            && request.resource.data.get('reservations', [])[
+              resource.data.get('reservations', []).size()
+            ].laptopId == assetId
+
+            // 같은 ID의 기존 신청을 재사용할 수 없음
+            && !exists(
+              /databases/$(database)/documents/rentalRequests/$(
+                request.resource.data.get('reservations', [])[
+                  resource.data.get('reservations', []).size()
+                ].id
+              )
+            )
+
+            // 동일 트랜잭션에서 신규 신청 문서가 생성되어야 함
+            && existsAfter(
+              /databases/$(database)/documents/rentalRequests/$(
+                request.resource.data.get('reservations', [])[
+                  resource.data.get('reservations', []).size()
+                ].id
+              )
+            )
+
+            // 신규 신청은 현재 로그인 사용자의 신청이어야 함
+            && getAfter(
+              /databases/$(database)/documents/rentalRequests/$(
+                request.resource.data.get('reservations', [])[
+                  resource.data.get('reservations', []).size()
+                ].id
+              )
+            ).data.requesterUid == request.auth.uid
+
+            // 자산 예약정보와 신규 신청서의 핵심 정보가 정확히 일치해야 함
+            && request.resource.data.get('reservations', [])[
+              resource.data.get('reservations', []).size()
+            ].laptopId == getAfter(
+              /databases/$(database)/documents/rentalRequests/$(
+                request.resource.data.get('reservations', [])[
+                  resource.data.get('reservations', []).size()
+                ].id
+              )
+            ).data.laptopId
+
+            && request.resource.data.get('reservations', [])[
+              resource.data.get('reservations', []).size()
+            ].assetCategory == getAfter(
+              /databases/$(database)/documents/rentalRequests/$(
+                request.resource.data.get('reservations', [])[
+                  resource.data.get('reservations', []).size()
+                ].id
+              )
+            ).data.assetCategory
+
+            && request.resource.data.get('reservations', [])[
+              resource.data.get('reservations', []).size()
+            ].assetNo == getAfter(
+              /databases/$(database)/documents/rentalRequests/$(
+                request.resource.data.get('reservations', [])[
+                  resource.data.get('reservations', []).size()
+                ].id
+              )
+            ).data.assetNo
+
+            && request.resource.data.get('reservations', [])[
+              resource.data.get('reservations', []).size()
+            ].startDate == getAfter(
+              /databases/$(database)/documents/rentalRequests/$(
+                request.resource.data.get('reservations', [])[
+                  resource.data.get('reservations', []).size()
+                ].id
+              )
+            ).data.startDate
+
+            && request.resource.data.get('reservations', [])[
+              resource.data.get('reservations', []).size()
+            ].dueDate == getAfter(
+              /databases/$(database)/documents/rentalRequests/$(
+                request.resource.data.get('reservations', [])[
+                  resource.data.get('reservations', []).size()
+                ].id
+              )
+            ).data.dueDate
+
+            && request.resource.data.get('reservations', [])[
+              resource.data.get('reservations', []).size()
+            ].status == getAfter(
+              /databases/$(database)/documents/rentalRequests/$(
+                request.resource.data.get('reservations', [])[
+                  resource.data.get('reservations', []).size()
+                ].id
+              )
+            ).data.status
+
+            // 동일 트랜잭션에서 공개 예약 문서도 생성되어야 함
+            && !exists(
+              /databases/$(database)/documents/rentalAvailability/$(
+                request.resource.data.get('reservations', [])[
+                  resource.data.get('reservations', []).size()
+                ].id
+              )
+            )
+
+            && existsAfter(
+              /databases/$(database)/documents/rentalAvailability/$(
+                request.resource.data.get('reservations', [])[
+                  resource.data.get('reservations', []).size()
+                ].id
+              )
+            )
+          )
+
+          ||
+
+          // 승인 전 사용자 직접 수정:
+          // 동일 신청의 일정과 목적만 변경하고 공개 예약 문서를 함께 갱신
+          (
+            request.resource.data.get('reservations', []).size()
+              == resource.data.get('reservations', []).size()
+
+            && request.resource.data.keys().hasAll(['reservationMutation'])
+            && request.resource.data.reservationMutation is map
+            && request.resource.data.reservationMutation.keys().hasOnly([
+              'type',
+              'requestId',
+              'requesterUid',
+              'updatedAt'
+            ])
+            && request.resource.data.reservationMutation.type == 'user-edit'
+            && request.resource.data.reservationMutation.requesterUid == request.auth.uid
+            && request.resource.data.reservationMutation.updatedAt == request.time
+            && request.resource.data.reservationMutation.requestId is string
+
+            && exists(
+              /databases/$(database)/documents/rentalRequests/$(request.resource.data.reservationMutation.requestId)
+            )
+            && existsAfter(
+              /databases/$(database)/documents/rentalRequests/$(request.resource.data.reservationMutation.requestId)
+            )
+
+            && get(
+              /databases/$(database)/documents/rentalRequests/$(request.resource.data.reservationMutation.requestId)
+            ).data.requesterUid == request.auth.uid
+            && getAfter(
+              /databases/$(database)/documents/rentalRequests/$(request.resource.data.reservationMutation.requestId)
+            ).data.requesterUid == request.auth.uid
+
+            && get(
+              /databases/$(database)/documents/rentalRequests/$(request.resource.data.reservationMutation.requestId)
+            ).data.laptopId == assetId
+            && getAfter(
+              /databases/$(database)/documents/rentalRequests/$(request.resource.data.reservationMutation.requestId)
+            ).data.laptopId == assetId
+
+            && get(
+              /databases/$(database)/documents/rentalRequests/$(request.resource.data.reservationMutation.requestId)
+            ).data.status in ['신청중', '보류']
+            && getAfter(
+              /databases/$(database)/documents/rentalRequests/$(request.resource.data.reservationMutation.requestId)
+            ).data.status
+              == get(
+                /databases/$(database)/documents/rentalRequests/$(request.resource.data.reservationMutation.requestId)
+              ).data.status
+
+            && existsAfter(
+              /databases/$(database)/documents/rentalAvailability/$(request.resource.data.reservationMutation.requestId)
+            )
+            && getAfter(
+              /databases/$(database)/documents/rentalAvailability/$(request.resource.data.reservationMutation.requestId)
+            ).data.startDate
+              == getAfter(
+                /databases/$(database)/documents/rentalRequests/$(request.resource.data.reservationMutation.requestId)
+              ).data.startDate
+            && getAfter(
+              /databases/$(database)/documents/rentalAvailability/$(request.resource.data.reservationMutation.requestId)
+            ).data.dueDate
+              == getAfter(
+                /databases/$(database)/documents/rentalRequests/$(request.resource.data.reservationMutation.requestId)
+              ).data.dueDate
+          )
+
+          ||
+
+          // 관리자 승인 전 사용자 직접 취소:
+          // 신청 문서와 공개 예약 문서를 삭제하면서 예약 배열에서 1건 제거
+          (
+            request.resource.data.get('reservations', []).size()
+              == resource.data.get('reservations', []).size() - 1
+
+            && request.resource.data.keys().hasAll(['reservationMutation'])
+            && request.resource.data.reservationMutation is map
+            && request.resource.data.reservationMutation.keys().hasOnly([
+              'type',
+              'requestId',
+              'requesterUid',
+              'updatedAt'
+            ])
+            && request.resource.data.reservationMutation.type == 'user-cancel'
+            && request.resource.data.reservationMutation.requesterUid == request.auth.uid
+            && request.resource.data.reservationMutation.updatedAt == request.time
+            && request.resource.data.reservationMutation.requestId is string
+
+            && exists(
+              /databases/$(database)/documents/rentalRequests/$(request.resource.data.reservationMutation.requestId)
+            )
+            && get(
+              /databases/$(database)/documents/rentalRequests/$(request.resource.data.reservationMutation.requestId)
+            ).data.requesterUid == request.auth.uid
+            && get(
+              /databases/$(database)/documents/rentalRequests/$(request.resource.data.reservationMutation.requestId)
+            ).data.status == '신청중'
+            && get(
+              /databases/$(database)/documents/rentalRequests/$(request.resource.data.reservationMutation.requestId)
+            ).data.laptopId == assetId
+
+            && !existsAfter(
+              /databases/$(database)/documents/rentalRequests/$(request.resource.data.reservationMutation.requestId)
+            )
+            && !existsAfter(
+              /databases/$(database)/documents/rentalAvailability/$(request.resource.data.reservationMutation.requestId)
+            )
+          )
+
+          ||
+
+          // 자동 연장:
+          // 현재 대표 신청이 실제로 자동 연장되는 동일 트랜잭션에서만
+          // 같은 개수의 예약 배열 갱신을 허용
+          (
+            request.resource.data.get('reservations', []).size()
+              == resource.data.get('reservations', []).size()
+
+            // 자동 연장 대상 신청 ID가 존재해야 함
+            && resource.data.get('currentRequestId', null) is string
+
+            // 변경 전 신청 문서가 존재해야 함
+            && exists(
+              /databases/$(database)/documents/rentalRequests/$(resource.data.currentRequestId)
+            )
+
+            // 트랜잭션 완료 후에도 신청 문서가 존재해야 함
+            && existsAfter(
+              /databases/$(database)/documents/rentalRequests/$(resource.data.currentRequestId)
+            )
+
+            // 변경 전후 신청 문서 모두 현재 사용자의 신청이어야 함
+            && get(
+              /databases/$(database)/documents/rentalRequests/$(resource.data.currentRequestId)
+            ).data.requesterUid == request.auth.uid
+
+            && getAfter(
+              /databases/$(database)/documents/rentalRequests/$(resource.data.currentRequestId)
+            ).data.requesterUid == request.auth.uid
+
+            // 연장 횟수가 정확히 1 증가해야 함
+            && getAfter(
+              /databases/$(database)/documents/rentalRequests/$(resource.data.currentRequestId)
+            ).data.get('extensionCount', 0)
+              == get(
+                /databases/$(database)/documents/rentalRequests/$(resource.data.currentRequestId)
+              ).data.get('extensionCount', 0) + 1
+
+            // 반납예정일이 실제로 변경되어야 함
+            && getAfter(
+              /databases/$(database)/documents/rentalRequests/$(resource.data.currentRequestId)
+            ).data.get('dueDate', '')
+              != get(
+                /databases/$(database)/documents/rentalRequests/$(resource.data.currentRequestId)
+              ).data.get('dueDate', '')
+
+            // 공개 예약 문서도 같은 트랜잭션에서 함께 갱신되어야 함
+            && existsAfter(
+              /databases/$(database)/documents/rentalAvailability/$(resource.data.currentRequestId)
+            )
+
+            && getAfter(
+              /databases/$(database)/documents/rentalAvailability/$(resource.data.currentRequestId)
+            ).data.dueDate
+              == getAfter(
+                /databases/$(database)/documents/rentalRequests/$(resource.data.currentRequestId)
+              ).data.dueDate
+          )
+        )
+      );
     }
 
     match /rentalAssetNumbers/{registryId} {
-      allow read, create, update, delete:
-        if isAdmin();
+      allow read, create, update, delete: if isAdmin();
     }
 
     match /rentalAvailability/{requestId} {
       allow read: if true;
 
-      allow create:
-        if isAdmin()
-        || validAvailabilityCreate(requestId);
+      // 신규 신청 및 자동 연장 시 공개 예약 문서는
+      // 동일한 rentalRequests 문서의 핵심 정보와 정확히 일치해야 함
+      allow create, update: if isAdmin() || (
+        isActiveUser()
 
-      allow update, delete:
-        if isAdmin();
+        // 같은 트랜잭션이 완료된 뒤의 대여 신청 문서를 기준으로 검증
+        && existsAfter(
+          /databases/$(database)/documents/rentalRequests/$(requestId)
+        )
+
+        // 해당 신청의 소유자가 현재 로그인 사용자여야 함
+        && getAfter(
+          /databases/$(database)/documents/rentalRequests/$(requestId)
+        ).data.requesterUid == request.auth.uid
+
+        // 공개 예약 문서에는 앱이 실제로 사용하는 필드만 허용
+        && request.resource.data.keys().hasOnly([
+          'id',
+          'laptopId',
+          'assetCategory',
+          'assetNo',
+          'startDate',
+          'dueDate',
+          'status',
+          'updatedAt'
+        ])
+
+        // 문서 ID와 내부 신청 ID가 일치해야 함
+        && request.resource.data.id == requestId
+
+        // 공개 예약 정보가 원본 대여 신청과 정확히 일치해야 함
+        && request.resource.data.laptopId == getAfter(
+          /databases/$(database)/documents/rentalRequests/$(requestId)
+        ).data.laptopId
+
+        && request.resource.data.assetCategory == getAfter(
+          /databases/$(database)/documents/rentalRequests/$(requestId)
+        ).data.assetCategory
+
+        && request.resource.data.assetNo == getAfter(
+          /databases/$(database)/documents/rentalRequests/$(requestId)
+        ).data.assetNo
+
+        && request.resource.data.startDate == getAfter(
+          /databases/$(database)/documents/rentalRequests/$(requestId)
+        ).data.startDate
+
+        && request.resource.data.dueDate == getAfter(
+          /databases/$(database)/documents/rentalRequests/$(requestId)
+        ).data.dueDate
+
+        && request.resource.data.status == getAfter(
+          /databases/$(database)/documents/rentalRequests/$(requestId)
+        ).data.status
+      );
+
+      allow delete: if isAdmin() || (
+        isActiveUser()
+        && exists(
+          /databases/$(database)/documents/rentalRequests/$(requestId)
+        )
+        && get(
+          /databases/$(database)/documents/rentalRequests/$(requestId)
+        ).data.requesterUid == request.auth.uid
+        && get(
+          /databases/$(database)/documents/rentalRequests/$(requestId)
+        ).data.status == '신청중'
+        && !existsAfter(
+          /databases/$(database)/documents/rentalRequests/$(requestId)
+        )
+        && existsAfter(
+          /databases/$(database)/documents/rentalAssets/$(resource.data.laptopId)
+        )
+        && getAfter(
+          /databases/$(database)/documents/rentalAssets/$(resource.data.laptopId)
+        ).data.reservationMutation.type == 'user-cancel'
+        && getAfter(
+          /databases/$(database)/documents/rentalAssets/$(resource.data.laptopId)
+        ).data.reservationMutation.requestId == requestId
+        && getAfter(
+          /databases/$(database)/documents/rentalAssets/$(resource.data.laptopId)
+        ).data.reservationMutation.requesterUid == request.auth.uid
+        && getAfter(
+          /databases/$(database)/documents/rentalAssets/$(resource.data.laptopId)
+        ).data.reservationMutation.updatedAt == request.time
+      );
     }
 
     match /rentalBorrowers/{borrowerId} {
-      allow get, list:
-        if isAdmin() || isActiveUser();
-
-      allow create, update:
-        if isAdmin()
-        && request.resource.data.id == borrowerId
-        && request.resource.data.name is string
-        && request.resource.data.team is string
-        && request.resource.data.sortOrder is int
-        && request.resource.data.updatedAt == request.time;
-
-      allow delete:
-        if isAdmin();
+      allow get, list: if isAdmin() || isActiveUser();
+      allow create, update, delete: if isAdmin();
     }
 
-    match /adminAccounts/{adminId} {
-      allow get:
-        if signedIn()
+    // 비로그인 회원가입에서는 정확한 해시 문서 1건만 확인할 수 있고,
+    // 전체 임직원 명부 목록은 관리자에게만 허용합니다.
+    match /memberDirectoryKeys/{identityKey} {
+      allow get: if true;
+      allow list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // 부서+성명 조합의 전역 중복 가입 및 탈퇴 후 재가입 연결 문서입니다.
+    match /memberIdentityClaims/{identityKey} {
+      allow get: if signedIn() || isAdmin();
+      allow list: if isAdmin();
+
+      allow create: if isAdmin() || (
+        serviceAllowsUserWrites()
+        && signedIn()
+        && request.resource.data.keys().hasOnly([
+          'identityKey',
+          'uid',
+          'currentUid',
+          'status',
+          'name',
+          'team',
+          'conflict',
+          'conflictingUids',
+          'formerUids',
+          'directoryMemberId',
+          'restrictionSnapshot',
+          'createdAt',
+          'releasedAt',
+          'updatedAt'
+        ])
+        && request.resource.data.identityKey == identityKey
+        && request.resource.data.get('currentUid', request.resource.data.get('uid', '')) == request.auth.uid
+        && request.resource.data.get('status', 'active') == 'active'
+        && request.resource.data.get('conflict', false) == false
+        && existsAfter(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        )
+        && getAfter(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        ).data.identityKey == identityKey
+        && getAfter(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        ).data.name == request.resource.data.name
+        && getAfter(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        ).data.team == request.resource.data.team
+      );
+
+      allow update: if isAdmin() || (
+        serviceAllowsUserWrites()
+        && signedIn()
+        && request.resource.data.keys().hasOnly([
+          'identityKey',
+          'uid',
+          'currentUid',
+          'status',
+          'name',
+          'team',
+          'conflict',
+          'conflictingUids',
+          'formerUids',
+          'directoryMemberId',
+          'restrictionSnapshot',
+          'createdAt',
+          'releasedAt',
+          'updatedAt'
+        ])
+        && request.resource.data.identityKey == identityKey
+        && request.resource.data.get('conflict', false) == false
+        && request.resource.data.get('formerUids', []).hasAll(
+          resource.data.get('formerUids', [])
+        )
         && (
-          request.auth.uid == adminId
-          || isAdmin()
-        );
+          // 신규 가입, 재가입 또는 마이페이지 수정으로 현재 계정을 점유
+          (
+            request.resource.data.get('currentUid', request.resource.data.get('uid', '')) == request.auth.uid
+            && request.resource.data.get('status', 'active') == 'active'
+            && (
+              claimCurrentUid(resource.data) == request.auth.uid
+              || (
+                resource.data.get('status', '') == 'released'
+                && claimCurrentUid(resource.data) == ''
+                && (
+                  !exists(
+                    /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+                  )
+                  || resource.data.get('formerUids', []).hasAny([request.auth.uid])
+                )
+              )
+            )
+            && existsAfter(
+              /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+            )
+            && getAfter(
+              /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+            ).data.identityKey == identityKey
+            && getAfter(
+              /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+            ).data.name == request.resource.data.name
+            && getAfter(
+              /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+            ).data.team == request.resource.data.team
+          )
+          ||
+          // 프로필 변경 또는 회원 탈퇴 시 이전 점유를 해제하고 UID 이력을 보존
+          (
+            claimCurrentUid(resource.data) == request.auth.uid
+            && request.resource.data.get('currentUid', '') == ''
+            && request.resource.data.get('uid', '') == ''
+            && request.resource.data.get('status', '') == 'released'
+            && request.resource.data.get('formerUids', []).hasAny([request.auth.uid])
+            && existsAfter(
+              /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+            )
+            && (
+              getAfter(
+                /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+              ).data.get('identityKey', '') != identityKey
+              || getAfter(
+                /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+              ).data.status == 'retired'
+            )
+          )
+        )
+      );
 
-      allow list:
-        if isAdmin();
+      allow delete: if isAdmin();
+    }
 
-      allow create:
-        if isAdmin()
+    // 이메일 찾기에는 원본 이메일이 아닌 마스킹된 주소만 저장합니다.
+    match /accountRecoveryKeys/{recoveryKey} {
+      allow get: if true;
+      allow list: if isAdmin();
+
+      allow create: if isAdmin() || (
+        serviceAllowsUserWrites()
+        && signedIn()
+        && request.resource.data.keys().hasOnly([
+          'recoveryKey',
+          'maskedEmail',
+          'accountStatus',
+          'enabled',
+          'updatedAt'
+        ])
+        && request.resource.data.recoveryKey == recoveryKey
+        && request.resource.data.maskedEmail is string
+        && request.resource.data.maskedEmail.size() > 0
+        && request.resource.data.get('enabled', true) == true
+        && existsAfter(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        )
+        && getAfter(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        ).data.get('recoveryKey', '') == recoveryKey
+        && getAfter(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        ).data.get('maskedEmail', '') == request.resource.data.maskedEmail
+        && getAfter(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        ).data.status == request.resource.data.accountStatus
+      );
+
+      // 본인은 기존 마스킹 이메일을 바꾸지 않고 상태만 동기화할 수 있습니다.
+      // 새 복구키는 create로만 생성되므로 다른 회원의 키를 덮어쓸 수 없습니다.
+      allow update: if isAdmin() || (
+        serviceAllowsUserWrites()
+        && signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'accountStatus',
+          'enabled',
+          'updatedAt'
+        ])
+        && request.resource.data.recoveryKey == resource.data.recoveryKey
+        && request.resource.data.maskedEmail == resource.data.maskedEmail
+        && request.resource.data.get('enabled', true) == true
+        && existsAfter(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        )
+        && getAfter(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        ).data.get('recoveryKey', '') == recoveryKey
+        && getAfter(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        ).data.get('maskedEmail', '') == request.resource.data.maskedEmail
+        && getAfter(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        ).data.status == request.resource.data.accountStatus
+      );
+
+      allow delete: if isAdmin() || (
+        serviceAllowsUserWrites()
+        && signedIn()
+        && existsAfter(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        )
+        && (
+          getAfter(
+            /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+          ).data.get('recoveryKey', '') != recoveryKey
+          || getAfter(
+            /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+          ).data.status == 'retired'
+        )
+      );
+    }
+
+    // ==========================================
+    // 2. 계정 권한 관련 규칙
+    // ==========================================
+
+    match /adminAccounts/{adminId} {
+      allow get: if signedIn() && (request.auth.uid == adminId || isAdmin());
+      allow list: if isAdmin();
+
+      allow create: if isOwnerAdmin()
         && request.resource.data.id == adminId
-        && request.resource.data.authUid == adminId;
+        && request.resource.data.authUid == adminId
+        && request.resource.data.get('adminRole', 'admin') in ['owner', 'admin'];
 
-      allow update:
-        if isAdmin()
+      allow update: if isOwnerAdmin() || (
+        isAdmin()
+        && request.auth.uid == adminId
+        && resource.data.id == adminId
         && request.resource.data.id == adminId
-        && request.resource.data.authUid == adminId;
+        && request.resource.data.authUid == resource.data.authUid
+        && request.resource.data.get('adminRole', 'owner') == resource.data.get('adminRole', 'owner')
+        && request.resource.data.get('lockUntil', 0) == resource.data.get('lockUntil', 0)
+        && request.resource.data.get('lockReason', '') == resource.data.get('lockReason', '')
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'adminLoginId',
+          'organizationName',
+          'userName',
+          'email',
+          'phone',
+          'authEmail',
+          'authProvider',
+          'authLinkedAt',
+          'passwordHash',
+          'passwordSalt',
+          'passwordHashAlgorithm',
+          'passwordHashIterations',
+          'failedLoginCount',
+          'lastLoginAt',
+          'passwordChangedAt',
+          'updatedAt',
+          'syncedAt'
+        ])
+      );
 
-      allow delete:
-        if isAdmin()
-        && request.auth.uid != adminId;
+      allow delete: if isOwnerAdmin() && request.auth.uid != adminId;
     }
 
     match /userAccounts/{userId} {
-      allow get:
-        if signedIn()
-        && (
-          request.auth.uid == userId
-          || isAdmin()
-        );
+      allow get: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
 
-      allow list:
-        if isAdmin();
-
-      allow create:
-        if signedIn()
+      allow create: if signedIn()
+        && newMemberSignupAllowed()
         && request.auth.uid == userId
-        && request.resource.data.uid == userId
-        && request.resource.data.email == request.auth.token.email
-        && request.resource.data.status == 'pending'
-        && request.resource.data.uid is string
-        && request.resource.data.email is string
-        && request.resource.data.name is string
-        && request.resource.data.team is string
-        && request.resource.data.phone is string
-        && request.resource.data.createdAt == request.time
-        && request.resource.data.updatedAt == request.time
-        && request.resource.data.keys().hasAll([
-          'uid',
-          'email',
-          'name',
-          'team',
-          'phone',
-          'status',
-          'createdAt',
-          'updatedAt'
-        ])
         && request.resource.data.keys().hasOnly([
           'uid',
           'email',
+          'maskedEmail',
           'name',
           'team',
           'phone',
           'status',
+          'identityKey',
+          'recoveryKey',
+          'directoryMemberId',
+          'directoryVerifiedVersion',
+          'directoryVerifiedAt',
+          'profileRequiredReason',
+          'profileRequiredAt',
+          'statusBeforeProfileRequired',
+          'rejoinedAccount',
+          'previousAccountUids',
+          'inheritedRestriction',
           'createdAt',
           'updatedAt'
-        ]);
-
-      allow update:
-        if isAdmin()
-        || (
-          isActiveUser()
-          && request.auth.uid == userId
-          && request.resource.data.uid == resource.data.uid
-          && request.resource.data.email == resource.data.email
-          && request.resource.data.status == resource.data.status
-          && request.resource.data.createdAt == resource.data.createdAt
-          && request.resource.data.updatedAt == request.time
-          && request.resource.data
-            .diff(resource.data)
-            .affectedKeys()
-            .hasOnly([
-              'name',
-              'team',
-              'phone',
-              'updatedAt'
-            ])
-        );
-
-      allow delete:
-        if isAdmin();
-    }
-
-    match /rentalRequests/{requestId} {
-      allow create:
-        if isAdmin()
-        || validUserRentalRequestCreate(requestId);
-
-      allow get, list:
-        if signedIn()
+        ])
+        && request.resource.data.keys().hasAll([
+          'uid',
+          'email',
+          'maskedEmail',
+          'name',
+          'team',
+          'phone',
+          'status',
+          'identityKey',
+          'recoveryKey',
+          'rejoinedAccount',
+          'previousAccountUids',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.uid == userId
+        && request.resource.data.email == request.auth.token.get('email', '')
+        && request.resource.data.status in ['pending', 'active']
         && (
-          isAdmin()
-          || resource.data.requesterUid == request.auth.uid
-        );
-
-      allow update:
-        if (
-          isAdmin()
-          && resource.data.id == requestId
-          && request.resource.data.id == requestId
-          && request.resource.data.laptopId == resource.data.laptopId
-          && (
-            (
-              resource.data.keys().hasAll(['requesterUid'])
-              && request.resource.data.keys().hasAll(['requesterUid'])
-              && request.resource.data.requesterUid == resource.data.requesterUid
-            )
-            ||
-            (
-              !resource.data.keys().hasAny(['requesterUid'])
-              && !request.resource.data.keys().hasAny(['requesterUid'])
+          request.resource.data.status == 'pending'
+          || (
+            autoApproveNewMembersEnabled()
+            && request.resource.data.get('rejoinedAccount', false) == false
+            && !identityWasPreviouslyReleased(request.resource.data.identityKey)
+          )
+        )
+        && request.resource.data.get('rejoinedAccount', false)
+          == identityWasPreviouslyReleased(request.resource.data.identityKey)
+        && request.resource.data.get('previousAccountUids', [])
+          == identityFormerUidsBefore(request.resource.data.identityKey)
+        && request.resource.data.get('inheritedRestriction', {})
+          == identityRestrictionBefore(request.resource.data.identityKey)
+        && memberIdentityClaimsReady()
+        && isValidMemberName(request.resource.data.name)
+        && isValidMemberTeam(request.resource.data.team)
+        && isValidDomesticPhone(request.resource.data.phone)
+        && identityClaimMatchesAfter(
+          request.resource.data.identityKey,
+          userId,
+          request.resource.data.name,
+          request.resource.data.team
+        )
+        && accountRecoveryMatchesAfter(
+          request.resource.data.recoveryKey,
+          request.resource.data.maskedEmail,
+          request.resource.data.status
+        )
+        && (
+          !directoryPolicyEnabled()
+          || (
+            request.resource.data.get('directoryVerifiedVersion', -1)
+              == currentMemberDirectoryVersion()
+            && directoryIdentityMatches(
+              request.resource.data.identityKey,
+              request.resource.data.name,
+              request.resource.data.team
             )
           )
-          && request.resource.data.updatedAt == request.time
-        )
-        ||
-        (
-          isActiveUser()
-          && resource.data.requesterUid == request.auth.uid
-          && request.resource.data.requesterUid == resource.data.requesterUid
-          && request.resource.data.id == resource.data.id
-          && request.resource.data.laptopId == resource.data.laptopId
-          && request.resource.data.status == resource.data.status
-          && request.resource.data.adminMemo == resource.data.adminMemo
-          && request.resource.data
-            .diff(resource.data)
-            .affectedKeys()
-            .hasOnly([
-              'userActionRequest',
-              'updatedAt'
-            ])
-          && request.resource.data.updatedAt == request.time
-          && validUserActionRequest(request.resource.data.userActionRequest)
         );
 
-      allow delete:
-        if isAdmin();
+      allow update: if isAdmin() || (
+        serviceAllowsUserWrites()
+        && signedIn()
+        && request.auth.uid == userId
+        && resource.data.uid == userId
+        && request.resource.data.uid == userId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'uid',
+          'email',
+          'maskedEmail',
+          'name',
+          'team',
+          'phone',
+          'status',
+          'identityKey',
+          'recoveryKey',
+          'directoryMemberId',
+          'directoryVerifiedVersion',
+          'directoryVerifiedAt',
+          'profileRequiredReason',
+          'profileRequiredAt',
+          'statusBeforeProfileRequired',
+          'rejoinedAccount',
+          'previousAccountUids',
+          'inheritedRestriction',
+          'formerIdentityKey',
+          'formerDirectoryMemberId',
+          'withdrawalPreviousStatus',
+          'withdrawalRollbackAllowed',
+          'withdrawnAt',
+          'createdAt',
+          'updatedAt'
+        ])
+        && (
+          // 정상 프로필 수정, 명부 재검증 및 정보 수정 필요 전환
+          (
+            resource.data.status in ['active', 'profileRequired']
+            && request.resource.data.status != 'retired'
+            && selfStatusTransitionAllowed(resource.data, request.resource.data)
+            && request.resource.data.email == request.auth.token.get('email', '')
+            && request.resource.data.get('rejoinedAccount', false)
+              == resource.data.get('rejoinedAccount', false)
+            && request.resource.data.get('previousAccountUids', [])
+              == resource.data.get('previousAccountUids', [])
+            && request.resource.data.get('inheritedRestriction', {})
+              == resource.data.get('inheritedRestriction', {})
+            && request.resource.data.get('formerIdentityKey', '')
+              == resource.data.get('formerIdentityKey', '')
+            && request.resource.data.get('formerDirectoryMemberId', '')
+              == resource.data.get('formerDirectoryMemberId', '')
+            && request.resource.data.get('withdrawalPreviousStatus', '')
+              == resource.data.get('withdrawalPreviousStatus', '')
+            && request.resource.data.get('withdrawalRollbackAllowed', false)
+              == resource.data.get('withdrawalRollbackAllowed', false)
+            && request.resource.data.get('withdrawnAt', '')
+              == resource.data.get('withdrawnAt', '')
+            && isValidMemberName(request.resource.data.name)
+            && isValidMemberTeam(request.resource.data.team)
+            && isValidDomesticPhone(request.resource.data.phone)
+            && activeOrPendingIdentityIsValidAfter(userId)
+            && (
+              request.resource.data.get('recoveryKey', '') == ''
+              || accountRecoveryMatchesAfter(
+                request.resource.data.recoveryKey,
+                request.resource.data.maskedEmail,
+                request.resource.data.status
+              )
+            )
+          )
+          ||
+          // 본인 회원 탈퇴: 개인정보 익명화, 점유 해제, 복구키 삭제
+          (
+            resource.data.status in ['active', 'profileRequired']
+            && request.resource.data.status == 'retired'
+            && request.resource.data.name == '탈퇴회원'
+            && request.resource.data.team == ''
+            && request.resource.data.email == ''
+            && request.resource.data.maskedEmail == ''
+            && request.resource.data.phone == ''
+            && request.resource.data.identityKey == ''
+            && request.resource.data.recoveryKey == ''
+            && request.resource.data.get('formerIdentityKey', '')
+              == resource.data.get('identityKey', '')
+            && request.resource.data.get('withdrawalPreviousStatus', '')
+              == resource.data.status
+            && request.resource.data.get('withdrawalRollbackAllowed', false) == true
+            && !hasBlockingRentalRestriction(userId)
+            && existsAfter(
+              /databases/$(database)/documents/memberIdentityClaims/$(resource.data.identityKey)
+            )
+            && getAfter(
+              /databases/$(database)/documents/memberIdentityClaims/$(resource.data.identityKey)
+            ).data.get('status', '') == 'released'
+            && claimCurrentUid(
+              getAfter(
+                /databases/$(database)/documents/memberIdentityClaims/$(resource.data.identityKey)
+              ).data
+            ) == ''
+            && getAfter(
+              /databases/$(database)/documents/memberIdentityClaims/$(resource.data.identityKey)
+            ).data.get('formerUids', []).hasAll(
+              resource.data.get('previousAccountUids', [])
+            )
+            && getAfter(
+              /databases/$(database)/documents/memberIdentityClaims/$(resource.data.identityKey)
+            ).data.get('formerUids', []).hasAny([userId])
+            && (
+              resource.data.get('recoveryKey', '') == ''
+              || !existsAfter(
+                /databases/$(database)/documents/accountRecoveryKeys/$(resource.data.recoveryKey)
+              )
+            )
+          )
+          ||
+          // Firebase Authentication 삭제 실패 시 같은 세션에서 탈퇴 트랜잭션 롤백
+          (
+            resource.data.status == 'retired'
+            && resource.data.get('withdrawalRollbackAllowed', false) == true
+            && request.resource.data.status
+              == resource.data.get('withdrawalPreviousStatus', 'active')
+            && request.resource.data.status in ['active', 'profileRequired']
+            && request.resource.data.email == request.auth.token.get('email', '')
+            && request.resource.data.get('withdrawalRollbackAllowed', false) == false
+            && identityClaimMatchesAfter(
+              request.resource.data.identityKey,
+              userId,
+              request.resource.data.name,
+              request.resource.data.team
+            )
+            && accountRecoveryMatchesAfter(
+              request.resource.data.recoveryKey,
+              request.resource.data.maskedEmail,
+              request.resource.data.status
+            )
+          )
+        )
+      );
+
+      allow delete: if isAdmin();
+    }
+
+
+    // ==========================================
+    // 3. 대여 신청 및 연장 규칙
+    // ==========================================
+
+    match /rentalRequests/{requestId} {
+      // 신규 신청은 본인 신청이며,
+      // 앱에서 사용하는 신청 필드 외에는 저장할 수 없음
+      allow create: if isAdmin() || (
+        newRentalRequestAllowed()
+        && isActiveUser()
+
+        // 신규 신청 문서에 허용되는 필드만 저장 가능
+        && request.resource.data.keys().hasOnly([
+          'id',
+          'requesterUid',
+          'requesterEmail',
+          'requesterName',
+          'requesterTeam',
+          'laptopId',
+          'assetCategory',
+          'assetNo',
+          'team',
+          'borrower',
+          'startDate',
+          'dueDate',
+          'purpose',
+          'status',
+          'adminMemo',
+          'extensionCount',
+          'lastExtensionApprovedDate',
+          'nextExtensionRequestDate',
+          'extensionHistory',
+          'requestedAt',
+          'createdAt',
+          'updatedAt'
+        ])
+
+        && request.resource.data.id == requestId
+        && request.resource.data.requesterUid == request.auth.uid
+        && request.resource.data.status == '신청중'
+
+        // 신청자 이메일은 Firebase Authentication 계정과 일치해야 함
+        && request.resource.data.requesterEmail
+          == request.auth.token.get('email', '')
+
+        // 신청자 이름과 부서는 현재 회원정보와 일치해야 함
+        && request.resource.data.requesterName
+          == get(
+            /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+          ).data.name
+
+        && request.resource.data.requesterTeam
+          == get(
+            /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+          ).data.team
+
+        // 실제 대여자 정보도 로그인 회원정보와 동일하게 고정
+        && request.resource.data.borrower
+          == request.resource.data.requesterName
+
+        && request.resource.data.team
+          == request.resource.data.requesterTeam
+
+        // 신규 신청 단계의 연장 관련 초기값 고정
+        && request.resource.data.extensionCount == 0
+        && request.resource.data.extensionHistory is list
+        && request.resource.data.extensionHistory.size() == 0
+        && request.resource.data.lastExtensionApprovedDate == ''
+        && request.resource.data.nextExtensionRequestDate == ''
+
+        // 신규 신청에 관리자 메모 삽입 차단
+        && request.resource.data.adminMemo == ''
+      );
+
+      allow get, list: if isAdmin() || (
+        isReadableGeneralUser() && resource.data.requesterUid == request.auth.uid
+      );
+
+      // [보안 강화] 사용자가 직접 셀프 연장 시 수치 조작을 방지하는 로직 도입
+      allow update: if isAdmin() || (
+        serviceAllowsUserWrites()
+        && isActiveUser()
+        && resource.data.requesterUid == request.auth.uid
+        && request.resource.data.requesterUid == resource.data.requesterUid
+        && request.resource.data.status == resource.data.status
+
+        && (
+          // 1. 관리자 승인 전 사용자 직접 수정:
+          // 신청 일정·목적과 동일 신청의 공개 예약·자산 예약을 함께 갱신
+          (
+            requestChangesAllowed()
+            && resource.data.status in ['신청중', '보류']
+            && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+                'startDate',
+                'dueDate',
+                'purpose',
+                'userActionRequest',
+                'updatedAt'
+              ])
+
+            && request.resource.data.id == resource.data.id
+            && request.resource.data.laptopId == resource.data.laptopId
+            && request.resource.data.assetCategory == resource.data.assetCategory
+            && request.resource.data.assetNo == resource.data.assetNo
+            && request.resource.data.requesterEmail == resource.data.requesterEmail
+            && request.resource.data.requesterName == resource.data.requesterName
+            && request.resource.data.requesterTeam == resource.data.requesterTeam
+            && request.resource.data.team == resource.data.team
+            && request.resource.data.borrower == resource.data.borrower
+            && request.resource.data.userActionRequest == null
+
+            && existsAfter(
+              /databases/$(database)/documents/rentalAvailability/$(requestId)
+            )
+            && getAfter(
+              /databases/$(database)/documents/rentalAvailability/$(requestId)
+            ).data.startDate == request.resource.data.startDate
+            && getAfter(
+              /databases/$(database)/documents/rentalAvailability/$(requestId)
+            ).data.dueDate == request.resource.data.dueDate
+
+            && existsAfter(
+              /databases/$(database)/documents/rentalAssets/$(resource.data.laptopId)
+            )
+            && getAfter(
+              /databases/$(database)/documents/rentalAssets/$(resource.data.laptopId)
+            ).data.reservationMutation.type == 'user-edit'
+            && getAfter(
+              /databases/$(database)/documents/rentalAssets/$(resource.data.laptopId)
+            ).data.reservationMutation.requestId == requestId
+            && getAfter(
+              /databases/$(database)/documents/rentalAssets/$(resource.data.laptopId)
+            ).data.reservationMutation.requesterUid == request.auth.uid
+            && getAfter(
+              /databases/$(database)/documents/rentalAssets/$(resource.data.laptopId)
+            ).data.reservationMutation.updatedAt == request.time
+          )
+
+          ||
+
+          // 2. 관리자 승인 방식의 대여 연장 신청 접수:
+          // 일반 변경·취소 요청은 더 이상 userActionRequest로 등록하지 않음
+          (
+            extensionRequestsAllowed()
+            && resource.data.status == '대여중'
+            && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+                'userActionRequest',
+                'updatedAt'
+              ])
+            && request.resource.data.userActionRequest is map
+            && request.resource.data.userActionRequest.type == 'extend'
+            && request.resource.data.userActionRequest.status == 'pending'
+          )
+
+          ||
+
+          // 3. 자동 연장 승인:
+          // 연장 횟수는 정확히 1 증가하고 이력도 정확히 1건 추가
+          (
+            extensionRequestsAllowed()
+            && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+                'userActionRequest',
+                'dueDate',
+                'extensionCount',
+                'lastExtensionApprovedDate',
+                'nextExtensionRequestDate',
+                'extensionHistory',
+                'updatedAt',
+                'syncedAt'
+              ])
+
+            && request.resource.data.get('extensionCount', 0)
+              == resource.data.get('extensionCount', 0) + 1
+
+            && request.resource.data.get('extensionCount', 0)
+              <= get(
+                /databases/$(database)/documents/rentalSystem/publicConfig
+              ).data.settings.rentalExtensionMaxCount
+
+            && request.resource.data.get('dueDate', '')
+              != resource.data.get('dueDate', '')
+
+            && request.resource.data.get('extensionHistory', []) is list
+            && resource.data.get('extensionHistory', []) is list
+
+            && request.resource.data.get('extensionHistory', []).size()
+              == resource.data.get('extensionHistory', []).size() + 1
+
+            // 자동 연장 시 공개 예약 문서도 같은 반납 예정일로 함께 갱신되어야 함
+            && existsAfter(
+              /databases/$(database)/documents/rentalAvailability/$(requestId)
+            )
+
+            && getAfter(
+              /databases/$(database)/documents/rentalAvailability/$(requestId)
+            ).data.dueDate == request.resource.data.dueDate
+          )
+        )
+      );
+
+      allow delete: if isAdmin() || (
+        requestChangesAllowed()
+        && isActiveUser()
+        && resource.data.requesterUid == request.auth.uid
+        && resource.data.status == '신청중'
+        && existsAfter(
+          /databases/$(database)/documents/rentalAssets/$(resource.data.laptopId)
+        )
+        && getAfter(
+          /databases/$(database)/documents/rentalAssets/$(resource.data.laptopId)
+        ).data.reservationMutation.type == 'user-cancel'
+        && getAfter(
+          /databases/$(database)/documents/rentalAssets/$(resource.data.laptopId)
+        ).data.reservationMutation.requestId == requestId
+        && getAfter(
+          /databases/$(database)/documents/rentalAssets/$(resource.data.laptopId)
+        ).data.reservationMutation.requesterUid == request.auth.uid
+        && getAfter(
+          /databases/$(database)/documents/rentalAssets/$(resource.data.laptopId)
+        ).data.reservationMutation.updatedAt == request.time
+        && !existsAfter(
+          /databases/$(database)/documents/rentalAvailability/$(requestId)
+        )
+      );
+    }
+
+    match /rentalRestrictions/{userId} {
+      // 일반 사용자는 본인의 현재 대여 제한 상태만 조회 가능
+      allow get: if signedIn() && (
+        request.auth.uid == userId || isAdmin()
+      );
+
+      allow list: if isAdmin();
+
+      // 페널티 산정과 변경은 반납을 처리하는 관리자만 수행
+      allow create, update: if isAdmin()
+        && request.resource.data.uid == userId;
+
+      allow delete: if isAdmin();
     }
 
     match /rentalRequestLogs/{logId} {
-      allow get, list:
-        if isAdmin();
-
-      allow create:
-        if isAdmin()
-        && request.resource.data.id == logId
-        && request.resource.data.requestId is string
-        && (
-          request.resource.data.action == 'status-changed'
-          || request.resource.data.action == 'status-restored'
-          || request.resource.data.action == 'request-edited'
-          || request.resource.data.action == 'memo-changed'
-          || request.resource.data.action == 'user-action-reviewed'
-        )
-        && request.resource.data.previousStatus is string
-        && request.resource.data.nextStatus is string
-        && request.resource.data.previousMemo is string
-        && request.resource.data.nextMemo is string
-        && request.resource.data.actorUid == request.auth.uid
-        && request.resource.data.actorAdminId is string
-        && request.resource.data.actorName is string
-        && request.resource.data.createdAt == request.time
-        && request.resource.data.keys().hasAll([
-          'id',
-          'requestId',
-          'action',
-          'previousStatus',
-          'nextStatus',
-          'previousMemo',
-          'nextMemo',
-          'actorUid',
-          'actorAdminId',
-          'actorName',
-          'createdAt'
-        ])
-        && request.resource.data.keys().hasOnly([
-          'id',
-          'requestId',
-          'action',
-          'previousStatus',
-          'nextStatus',
-          'previousMemo',
-          'nextMemo',
-          'actorUid',
-          'actorAdminId',
-          'actorName',
-          'detail',
-          'createdAt'
-        ]);
-
-      allow update, delete:
-        if false;
+      allow get, list: if isAdmin();
+      allow create: if isAdmin() && request.resource.data.actorUid == request.auth.uid;
+      allow update, delete: if false;
     }
+
+    // ==========================================
+    // 4. 게시판 관련 규칙
+    // ==========================================
 
     match /noticeBoard/config {
       allow read: if true;
-
-      allow create, update:
-        if isAdmin()
-        && request.resource.data.postsPerPage is int
-        && request.resource.data.postsPerPage >= 5
-        && request.resource.data.postsPerPage <= 50
-        && request.resource.data.updatedAt == request.time
-        && request.resource.data.keys().hasAll([
-          'postsPerPage',
-          'updatedAt'
-        ])
-        && request.resource.data.keys().hasOnly([
-          'postsPerPage',
-          'updatedAt'
-        ]);
-
+      allow create, update: if isAdmin();
       allow delete: if false;
     }
 
     match /noticePosts/{postId} {
       allow read: if true;
-
-      allow create:
-        if isAdmin()
-        && request.resource.data.id == postId
-        && request.resource.data.title is string
-        && request.resource.data.title.size() > 0
-        && request.resource.data.content is string
-        && request.resource.data.content.size() > 0
-        && request.resource.data.isPinned is bool
-        && request.resource.data.authorUid == request.auth.uid
-        && request.resource.data.authorName is string
-        && request.resource.data.authorName.size() > 0
-        && request.resource.data.viewCount == 0
-        && request.resource.data.createdAt == request.time
-        && request.resource.data.updatedAt == request.time
-        && request.resource.data.keys().hasAll([
-          'id',
-          'title',
-          'content',
-          'isPinned',
-          'authorUid',
-          'authorName',
-          'viewCount',
-          'createdAt',
-          'updatedAt'
-        ])
-        && request.resource.data.keys().hasOnly([
-          'id',
-          'title',
-          'content',
-          'isPinned',
-          'authorUid',
-          'authorName',
-          'viewCount',
-          'createdAt',
-          'updatedAt'
-        ]);
-
-      allow update:
-        if (
-          isAdmin()
-          && request.resource.data.id == postId
-          && request.resource.data.id == resource.data.id
-          && request.resource.data.authorUid == resource.data.authorUid
-          && request.resource.data.authorName == resource.data.authorName
-          && request.resource.data.createdAt == resource.data.createdAt
-          && request.resource.data.viewCount == resource.data.viewCount
-          && request.resource.data.updatedAt == request.time
-          && request.resource.data
-            .diff(resource.data)
-            .affectedKeys()
-            .hasOnly([
-              'title',
-              'content',
-              'isPinned',
-              'updatedAt'
-            ])
-        )
-        ||
-        (
-          resource.data.viewCount is int
-          && request.resource.data.viewCount is int
-          && request.resource.data.viewCount == resource.data.viewCount + 1
-          && request.resource.data
-            .diff(resource.data)
-            .affectedKeys()
-            .hasOnly([
-              'viewCount'
-            ])
-        );
-
-      allow delete:
-        if isAdmin();
+      allow create: if isAdmin();
+      allow update: if isAdmin() || (
+        resource.data.viewCount is int
+        && request.resource.data.viewCount == resource.data.viewCount + 1
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewCount'])
+      );
+      allow delete: if isAdmin();
     }
 
     match /faqBoard/config {
       allow read: if true;
-
-      allow create, update:
-        if isAdmin()
-        && request.resource.data.postsPerPage is int
-        && request.resource.data.postsPerPage >= 5
-        && request.resource.data.postsPerPage <= 50
-        && request.resource.data.updatedAt == request.time
-        && request.resource.data.keys().hasAll([
-          'postsPerPage',
-          'updatedAt'
-        ])
-        && request.resource.data.keys().hasOnly([
-          'postsPerPage',
-          'updatedAt'
-        ]);
-
+      allow create, update: if isAdmin();
       allow delete: if false;
     }
 
     match /faqCategories/{categoryId} {
       allow read: if true;
-
-      allow create:
-        if isAdmin()
-        && request.resource.data.id == categoryId
-        && request.resource.data.name is string
-        && request.resource.data.name.size() > 0
-        && request.resource.data.order is int
-        && request.resource.data.order >= 0
-        && request.resource.data.createdAt == request.time
-        && request.resource.data.updatedAt == request.time;
-
-      allow update:
-        if isAdmin()
-        && request.resource.data.id == resource.data.id
-        && request.resource.data.id == categoryId
-        && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.updatedAt == request.time
-        && request.resource.data
-          .diff(resource.data)
-          .affectedKeys()
-          .hasOnly([
-            'name',
-            'order',
-            'updatedAt'
-          ]);
-
-      allow delete:
-        if isAdmin();
+      allow create, update, delete: if isAdmin();
     }
 
     match /faqPosts/{postId} {
       allow read: if true;
-
-      allow create:
-        if isAdmin()
-        && request.resource.data.id == postId
-        && request.resource.data.categoryId is string
-        && request.resource.data.categoryId.size() > 0
-        && request.resource.data.title is string
-        && request.resource.data.title.size() > 0
-        && request.resource.data.content is string
-        && request.resource.data.content.size() > 0
-        && request.resource.data.isPinned is bool
-        && request.resource.data.authorUid == request.auth.uid
-        && request.resource.data.authorName is string
-        && request.resource.data.authorName.size() > 0
-        && request.resource.data.createdAt == request.time
-        && request.resource.data.updatedAt == request.time;
-
-      allow update:
-        if isAdmin()
-        && request.resource.data.id == resource.data.id
-        && request.resource.data.id == postId
-        && request.resource.data.authorUid == resource.data.authorUid
-        && request.resource.data.authorName == resource.data.authorName
-        && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.updatedAt == request.time
-        && request.resource.data
-          .diff(resource.data)
-          .affectedKeys()
-          .hasOnly([
-            'categoryId',
-            'title',
-            'content',
-            'isPinned',
-            'updatedAt'
-          ]);
-
-      allow delete:
-        if isAdmin();
+      allow create, update, delete: if isAdmin();
     }
 
-    // 이전 통합 문서는 백업 확인용으로 관리자만 읽을 수 있습니다.
-    match /laptopRentalDashboard/main {
-      allow read:
-        if isAdmin();
+    match /popupPosts/{popupId} {
+      // 관리자는 전체 팝업을 읽고 관리할 수 있으며,
+      // 일반 사용자는 사용함으로 설정된 팝업만 읽을 수 있음
+      allow read: if isAdmin() || resource.data.enabled == true;
+      allow create, update, delete: if isAdmin();
+    }
 
-      allow write:
-        if false;
+    match /siteFooter/config {
+      allow read: if true;
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /footerPages/{pageId} {
+      allow read: if isAdmin() || resource.data.enabled == true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /homePage/config {
+      allow read: if true;
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /homeBanners/{bannerId} {
+      // 관리자는 전체 배너를 조회·관리할 수 있고,
+      // 일반 사용자는 enabled == true 조건으로 조회한 배너만 읽을 수 있음
+      allow read: if isAdmin() || resource.data.enabled == true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /laptopRentalDashboard/main {
+      allow read: if isAdmin();
+      allow write: if false;
     }
 
     match /{document=**} {
-      allow read, write:
-        if false;
+      allow read, write: if false;
     }
   }
 }

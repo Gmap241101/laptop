@@ -1,0 +1,32 @@
+시스템 관리 운영 콘솔 검증 보고
+
+기준본
+- member_account_recovery_withdrawal_policy_deployment_package.zip
+
+변경 범위
+- DEPLOYMENT_NOTES.txt
+- firestore.rules
+- src/App.jsx
+- src/admin/AdminAccountsPanel.jsx
+- src/admin/AdminSettingsPanel.jsx
+- src/firebase.js
+- src/user/UserAccountStatusPanel.jsx
+- src/user/UserAuthPanel.jsx
+- src/user/UserHomePanel.jsx
+- src/utils/systemSettings.js (신규)
+- tools/delete-non-admin-auth-users.mjs (신규)
+- tools/README.txt (신규)
+
+검증 완료
+- JavaScript/JSX 40개 파일 TypeScript transpile 구문 검사 통과
+- 로컬 상대 import 경로 검사 통과
+- 관리자/사용자 패널 ctx 참조 검사 통과
+- systemSettings 유틸리티 기본 동작 검사 통과
+- Firebase Auth 정리 스크립트 node --check 통과
+- Firestore Rules 괄호·중괄호·대괄호 구조 검사 통과
+- Firestore Rules 중복 match 경로 검사 통과
+
+검증 제한
+- 기준 패키지에는 package.json 및 node_modules가 없어 npm run build를 실행하지 못했습니다.
+- 현재 환경에는 Firebase CLI/Emulator가 없어 Firestore Rules 공식 컴파일과 실제 프로젝트 배포 테스트를 수행하지 못했습니다.
+- 운영 배포 전에 별도 테스트 프로젝트 또는 Emulator에서 Rules와 데이터 초기화 시나리오를 검증해야 합니다.
