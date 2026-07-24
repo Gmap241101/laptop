@@ -31,6 +31,10 @@ import {
 } from 'firebase/firestore';
 import {
   Laptop,
+  Boxes,
+  PackageCheck,
+  CalendarClock,
+  PackageOpen,
   LayoutDashboard,
   Users,
   ClipboardList,
@@ -20500,11 +20504,34 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         {/* --- 실시간 주요 대여 현황 보드 --- */}
         {shouldShowStats && (
           <section className="mb-6 grid grid-cols-3 gap-2 sm:mb-8 sm:gap-4 md:grid-cols-3 xl:grid-cols-6">
-            <StatCard icon={Laptop} label="보유 자산" value={stats.total} />
-            <StatCard icon={CheckCircle2} label="대여 가능" value={stats.available} tone="green" />
+            <StatCard
+              icon={view === 'admin' && adminTab === 'dashboard' ? Boxes : Laptop}
+              label="보유 자산"
+              value={stats.total}
+              filled={view === 'admin' && adminTab === 'dashboard'}
+            />
+            <StatCard
+              icon={view === 'admin' && adminTab === 'dashboard' ? PackageCheck : CheckCircle2}
+              label="대여 가능"
+              value={stats.available}
+              tone="green"
+              filled={view === 'admin' && adminTab === 'dashboard'}
+            />
             <StatCard icon={Clock} label="승인 대기중" value={stats.requested} tone="amber" />
-            <StatCard icon={ShieldCheck} label="예약중" value={stats.reserved} tone="sky" />
-            <StatCard icon={Laptop} label="대여중" value={stats.approved} tone="blue" />
+            <StatCard
+              icon={view === 'admin' && adminTab === 'dashboard' ? CalendarClock : ShieldCheck}
+              label="예약중"
+              value={stats.reserved}
+              tone="sky"
+              filled={view === 'admin' && adminTab === 'dashboard'}
+            />
+            <StatCard
+              icon={view === 'admin' && adminTab === 'dashboard' ? PackageOpen : Laptop}
+              label="대여중"
+              value={stats.approved}
+              tone="blue"
+              filled={view === 'admin' && adminTab === 'dashboard'}
+            />
             <StatCard icon={XCircle} label="반납 지연중" value={stats.overdue} tone="rose" />
           </section>
         )}

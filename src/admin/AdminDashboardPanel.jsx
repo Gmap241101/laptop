@@ -158,7 +158,7 @@ function MetricCard({
         ) : null}
       </div>
       <div className="mt-4 text-xs font-bold text-slate-600">{label}</div>
-      <div className={`mt-1 text-2xl font-black tracking-tight ${colors.value}`}>{value}</div>
+      <div className={`mt-1 text-2xl font-extrabold tracking-tight ${colors.value}`}>{value}</div>
       <div className="mt-1 min-h-[2.25rem] text-[11px] leading-[1.125rem] text-slate-500">
         {detail}
       </div>
@@ -182,7 +182,21 @@ function StatusCard({ icon: Icon, label, value, tone }) {
         <Icon size={16} aria-hidden="true" />
         <span className="text-[11px] font-bold">{label}</span>
       </div>
-      <div className="mt-2 text-2xl font-black text-slate-900">{value}</div>
+      <div className="mt-2 text-2xl font-extrabold text-slate-800">{value}</div>
+    </div>
+  );
+}
+
+
+function DashboardSectionHeading({ id, title, description }) {
+  return (
+    <div>
+      <h3 id={id} className="text-base font-bold text-slate-900">
+        {title}
+      </h3>
+      <p className="mt-1 text-xs leading-5 text-slate-500">
+        {description}
+      </p>
     </div>
   );
 }
@@ -581,15 +595,12 @@ export default function AdminDashboardPanel({ ctx }) {
       ) : null}
 
       <section aria-labelledby="dashboard-priority-heading">
-        <div className="mb-3 flex items-end justify-between gap-3">
-          <div>
-            <h3 id="dashboard-priority-heading" className="text-sm font-black text-slate-900">
-              우선 처리 업무
-            </h3>
-            <p className="mt-1 text-[11px] text-slate-500">
-              숫자를 선택하면 해당 조건이 적용된 관리 화면으로 이동합니다.
-            </p>
-          </div>
+        <div className="mb-3">
+          <DashboardSectionHeading
+            id="dashboard-priority-heading"
+            title="우선 처리 업무"
+            description="숫자를 선택하면 해당 조건이 적용된 관리 화면으로 이동합니다."
+          />
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -683,12 +694,11 @@ export default function AdminDashboardPanel({ ctx }) {
 
       <section aria-labelledby="dashboard-assets-heading">
         <div className="mb-3">
-          <h3 id="dashboard-assets-heading" className="text-sm font-black text-slate-900">
-            자산 운영 현황
-          </h3>
-          <p className="mt-1 text-[11px] text-slate-500">
-            신청중·보류·예약·대여중인 자산은 현재 신청 가능 수에서 제외합니다.
-          </p>
+          <DashboardSectionHeading
+            id="dashboard-assets-heading"
+            title="자산 운영 현황"
+            description="신청중·보류·예약·대여중인 자산은 현재 신청 가능 수에서 제외합니다."
+          />
         </div>
 
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
@@ -729,39 +739,35 @@ export default function AdminDashboardPanel({ ctx }) {
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.75fr)]">
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-5 py-4">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <h3 className="text-sm font-black text-slate-900">오늘의 업무</h3>
-                <p className="mt-1 text-[11px] text-slate-500">
-                  항목을 선택하면 해당 신청 상세 화면으로 이동합니다.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {workTabs.map((tab) => {
-                  const isActive = activeWorkTab.id === tab.id;
-                  return (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => setWorkTab(tab.id)}
-                      className={`rounded-full border px-3 py-1.5 text-[11px] font-bold transition ${
-                        isActive
-                          ? 'border-slate-900 bg-slate-900 text-white'
-                          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+            <DashboardSectionHeading
+              title="오늘의 업무"
+              description="항목을 선택하면 해당 신청 상세 화면으로 이동합니다."
+            />
+            <div className="mt-3 flex flex-wrap gap-2">
+              {workTabs.map((tab) => {
+                const isActive = activeWorkTab.id === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setWorkTab(tab.id)}
+                    className={`rounded-full border px-3 py-1.5 text-[11px] font-bold transition ${
+                      isActive
+                        ? 'border-slate-800 bg-slate-800 text-white'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    {tab.label}
+                    <span
+                      className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] ${
+                        isActive ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-500'
                       }`}
                     >
-                      {tab.label}
-                      <span
-                        className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] ${
-                          isActive ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-500'
-                        }`}
-                      >
-                        {tab.count}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+                      {tab.count}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -811,7 +817,7 @@ export default function AdminDashboardPanel({ ctx }) {
 
                     <span className="min-w-0 flex-1">
                       <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <span className="truncate text-xs font-black text-slate-900">
+                        <span className="truncate text-xs font-bold text-slate-900">
                           {request.assetNo || '자산번호 미지정'}
                         </span>
                         <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
@@ -831,7 +837,7 @@ export default function AdminDashboardPanel({ ctx }) {
                     <span className="shrink-0 text-right">
                       {isOverdue ? (
                         <>
-                          <span className="block text-xs font-black text-rose-700">
+                          <span className="block text-xs font-bold text-rose-700">
                             {getDateDiffDays(request.dueDate, todayDate)}일 연체
                           </span>
                           <span className="mt-1 block text-[10px] text-slate-400">
@@ -895,7 +901,7 @@ export default function AdminDashboardPanel({ ctx }) {
                 <CalendarClock size={19} aria-hidden="true" />
               </span>
               <div>
-                <h3 className="text-sm font-black text-slate-900">현재 신청 기준 기본 일정</h3>
+                <h3 className="text-sm font-bold text-slate-900">현재 신청 기준 기본 일정</h3>
                 <p className="mt-0.5 text-[10px] text-slate-400">
                   사용자 신청 화면과 동일한 날짜 정책을 적용합니다.
                 </p>
@@ -905,13 +911,13 @@ export default function AdminDashboardPanel({ ctx }) {
             <div className="mt-5 grid grid-cols-2 gap-3">
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5">
                 <div className="text-[10px] font-bold text-slate-400">대여 시작일</div>
-                <div className="mt-1.5 text-sm font-black text-slate-900">
+                <div className="mt-1.5 text-sm font-bold text-slate-900">
                   {formatDateWithKoreanWeekday(defaultStartDate) || '-'}
                 </div>
               </div>
               <div className="rounded-xl border border-orange-200 bg-orange-50 p-3.5">
                 <div className="text-[10px] font-bold text-orange-500">최장 반납 예정일</div>
-                <div className="mt-1.5 text-sm font-black text-orange-800">
+                <div className="mt-1.5 text-sm font-bold text-orange-800">
                   {formatDateWithKoreanWeekday(defaultDueDate) || '-'}
                 </div>
               </div>
@@ -965,7 +971,7 @@ export default function AdminDashboardPanel({ ctx }) {
                 )}
               </span>
               <div>
-                <h3 className="text-sm font-black text-slate-900">시스템 데이터 점검</h3>
+                <h3 className="text-sm font-bold text-slate-900">시스템 데이터 점검</h3>
                 <p className="mt-0.5 text-[10px] text-slate-500">
                   {totalIssueCount
                     ? `확인이 필요한 항목 ${totalIssueCount}건`
@@ -984,7 +990,7 @@ export default function AdminDashboardPanel({ ctx }) {
                       className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-white/70 px-3 py-2.5 text-[11px]"
                     >
                       <span className="text-slate-600">{issue.label}</span>
-                      <span className="shrink-0 font-black text-amber-800">
+                      <span className="shrink-0 font-bold text-amber-800">
                         {issue.count}건
                       </span>
                     </div>
@@ -1013,7 +1019,7 @@ export default function AdminDashboardPanel({ ctx }) {
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
             <div>
-              <h3 className="text-sm font-black text-slate-900">회원가입 승인 대기</h3>
+              <h3 className="text-sm font-bold text-slate-900">회원가입 승인 대기</h3>
               <p className="mt-1 text-[11px] text-slate-500">
                 가입 신청일이 오래된 회원부터 표시합니다.
               </p>
@@ -1048,11 +1054,11 @@ export default function AdminDashboardPanel({ ctx }) {
                   onClick={openPendingMembers}
                   className="flex w-full items-center gap-3 px-5 py-3.5 text-left transition hover:bg-slate-50"
                 >
-                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-50 text-xs font-black text-violet-700">
+                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-50 text-xs font-bold text-violet-700">
                     {String(account.name || account.email || '?').slice(0, 1).toUpperCase()}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-xs font-black text-slate-900">
+                    <span className="block truncate text-xs font-bold text-slate-900">
                       {account.name || '이름 미입력'}
                     </span>
                     <span className="mt-1 block truncate text-[11px] text-slate-500">
@@ -1070,7 +1076,7 @@ export default function AdminDashboardPanel({ ctx }) {
 
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-5 py-4">
-            <h3 className="text-sm font-black text-slate-900">접수·검토 보조 현황</h3>
+            <h3 className="text-sm font-bold text-slate-900">접수·검토 보조 현황</h3>
             <p className="mt-1 text-[11px] text-slate-500">
               일반 신청과 사용자 후속 요청을 구분하여 확인합니다.
             </p>
@@ -1114,7 +1120,7 @@ export default function AdminDashboardPanel({ ctx }) {
                 className={`rounded-xl border p-3 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${item.tone}`}
               >
                 <div className="text-[10px] font-bold">{item.label}</div>
-                <div className="mt-1 text-xl font-black text-slate-900">{item.value}</div>
+                <div className="mt-1 text-xl font-bold text-slate-900">{item.value}</div>
               </button>
             ))}
           </div>

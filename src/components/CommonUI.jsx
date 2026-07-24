@@ -54,41 +54,67 @@ export function Badge({ children }) {
   );
 }
 
-export function StatCard({ icon: Icon, label, value, tone = 'slate' }) {
+export function StatCard({ icon: Icon, label, value, tone = 'slate', filled = false }) {
   const toneMap = {
-    slate: 'bg-slate-50 text-slate-700 border-slate-200',
-    green: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-    amber: 'bg-amber-50 text-amber-700 border-amber-100',
-    sky: 'bg-sky-50 text-sky-700 border-sky-100',
-    blue: 'bg-blue-50 text-blue-700 border-blue-100',
-    rose: 'bg-rose-50 text-rose-700 border-rose-100',
+    slate: {
+      card: 'border-slate-200 bg-white',
+      icon: 'border-slate-200 bg-slate-50 text-slate-700',
+    },
+    green: {
+      card: 'border-emerald-200 bg-emerald-50',
+      icon: 'border-emerald-200 bg-emerald-100 text-emerald-700',
+    },
+    amber: {
+      card: 'border-amber-200 bg-amber-50',
+      icon: 'border-amber-100 bg-amber-50 text-amber-700',
+    },
+    sky: {
+      card: 'border-sky-200 bg-sky-50',
+      icon: 'border-sky-200 bg-sky-100 text-sky-700',
+    },
+    blue: {
+      card: 'border-blue-200 bg-blue-50',
+      icon: 'border-blue-200 bg-blue-100 text-blue-700',
+    },
+    rose: {
+      card: 'border-rose-200 bg-rose-50',
+      icon: 'border-rose-100 bg-rose-50 text-rose-700',
+    },
   };
+  const colors = toneMap[tone] || toneMap.slate;
+
   return (
-    <Card>
+    <div
+      className={`overflow-hidden rounded-2xl border shadow-sm ${
+        filled ? colors.card : 'border-slate-200 bg-white'
+      }`}
+    >
       <CardContent className="px-2 py-[7px] sm:hidden">
         <div className="flex min-h-[30px] items-center justify-center gap-1">
-          <div className={`shrink-0 rounded-xl border p-1.5 ${toneMap[tone].split(' ')[0]} ${toneMap[tone].split(' ')[2]}`}>
-            <Icon className={`${toneMap[tone].split(' ')[1]} h-3.5 w-3.5`} />
+          <div className={`shrink-0 rounded-xl border p-1.5 ${colors.icon}`}>
+            <Icon className="h-3.5 w-3.5" />
           </div>
           <div className="max-w-[4.75rem] whitespace-normal break-keep text-left text-[10px] font-medium leading-tight text-slate-500">
             {label}
           </div>
         </div>
-        <div className="mt-1 text-center text-lg font-bold leading-none text-slate-900">
+        <div className={`mt-1 text-center text-lg font-bold leading-none ${filled ? 'text-slate-800' : 'text-slate-900'}`}>
           {value}
         </div>
       </CardContent>
 
       <CardContent className="hidden items-center gap-4 p-5 text-left sm:flex">
-        <div className={`rounded-2xl border p-3 ${toneMap[tone].split(' ')[0]} ${toneMap[tone].split(' ')[2]}`}>
-          <Icon className={`${toneMap[tone].split(' ')[1]} h-[22px] w-[22px]`} />
+        <div className={`rounded-2xl border p-3 ${colors.icon}`}>
+          <Icon className="h-[22px] w-[22px]" />
         </div>
         <div>
           <div className="text-xs font-medium uppercase tracking-wider text-slate-500">{label}</div>
-          <div className="mt-0.5 text-2xl font-bold text-slate-900">{value}</div>
+          <div className={`mt-0.5 text-2xl font-bold ${filled ? 'text-slate-800' : 'text-slate-900'}`}>
+            {value}
+          </div>
         </div>
       </CardContent>
-    </Card>
+    </div>
   );
 }
 
