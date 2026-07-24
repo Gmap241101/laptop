@@ -1,62 +1,83 @@
-시스템 관리 JSON 백업 복원 기능 검증 보고
+계정 보안 설정·세션 정책 기능 검증 보고
 
 기준본
-- system_management_operations_console_deployment_package.zip
+- system_management_json_restore_deployment_package.zip
 
-변경 범위
+변경 파일
 - DEPLOYMENT_NOTES.txt
 - VALIDATION_REPORT.txt
-- firestore.rules
+- rules/firestore.rules
+- src/App.jsx
+- src/admin/AdminAccountSecurityPanel.jsx (신규)
 - src/admin/AdminSettingsPanel.jsx
-- src/components/CommonUI.jsx
+- src/admin/AdminWorkspace.jsx
 - src/firebase.js
+- src/utils/systemRestore.js
 - src/utils/systemSettings.js
-- src/utils/systemRestore.js (신규)
-- tools/README.txt
 
 구현 범위
-- JSON 백업 형식 v2 및 Firestore Timestamp 명시적 직렬화
-- 기존 v1 Timestamp JSON 호환 변환
-- 사이트, 정책, 자산, 조직명부, 회원, 대여이력, 콘텐츠, 관리자 시스템 설정 영역별 복원
-- 없는 문서만 추가, 병합, 덮어쓰기, 선택 영역 초기화 후 복원
-- 최고 관리자 전용 타 프로젝트 강제 복원
-- 프로젝트 ID 및 스키마 버전 검사
-- 회원 개인정보 미포함 백업의 회원영역 복원 차단
-- 현재 데이터와 문서 ID 충돌 및 백업 외 현재 문서 수 미리보기
-- 자산 참조 오류와 중복 자산관리번호 사전 차단
-- 복원 직전 개인정보 포함 전체 자동 백업
-- 점검 모드 자동 전환 및 복원 완료 후 점검 모드 유지
-- 400건 단위 Firestore 배치 복원
-- systemRestoreJobs 기반 중단 작업 재개
-- 복원 후 데이터 건전성 검사와 감사 로그
-- 관리자 ID, 관리자 Auth, 초기화·복원 작업·감사 로그 복원 제외
+- 시스템 메뉴 아래 독립 '계정 보안 설정' 메뉴 추가
+- 시스템 관리 내부 관리자 보안 탭 제거
+- 관리자·사용자 세션 정책을 한 줄 설정 행 UX로 구성
+- 브라우저·탭 종료 시 로그아웃 토글
+- 관리자 무활동 15~480분
+- 사용자 무활동 15~1440분
+- 관리자·사용자 절대 최대 세션 0~168시간
+- 최대 유지시간 0을 제한 없음으로 처리
+- Firebase browserSessionPersistence/browserLocalPersistence 적용
+- sessionStorage/localStorage 역할별 연동
+- 관리자·사용자 정책 버전 변경 시 기존 세션 로그아웃
+- 일반 사용자 로그인·자동 승인 회원가입에 사용자 세션 정책 적용
+- 계정 보안 정책 JSON 백업·복원 포함
+- 복원 마지막 단계에서 세션 정책 원자적 반영
+- securityPolicies/userSession 공개 읽기·최고 관리자 쓰기 Rules 추가
+- Rules 제공 경로를 rules/firestore.rules로 변경
 
-검증 완료
-- JavaScript/JSX 41개 파일 TypeScript parser 구문 검사 통과
-- AdminSettingsPanel 필터링 의미 검사 통과(미정의 이름·중복 선언 없음)
+정적 검증 완료
+- JavaScript/JSX 42개 파일 TypeScript transpile 구문 검사 통과
+- 선택 TypeScript 진단 검사 통과
+  · 미정의 이름 없음
+  · 중복 블록 선언 없음
+  · 선언 전 참조 관련 진단 없음
 - 로컬 상대 import 경로 검사 통과
-- systemRestore 유틸리티 단위 검사 통과
-  · 동일 프로젝트 검증
-  · 타 프로젝트 불일치 검출
-  · 영역별 복원 계획 생성
-  · Firestore Timestamp v1/v2 변환
-- 비 JSX JavaScript node --check 통과
+- AdminAccountSecurityPanel 신규 import 및 렌더 경로 확인
+- 시스템 메뉴 그룹에 settings/accountSecurity 독립 항목 확인
+- AdminSettingsPanel의 기존 security 탭 제거 확인
+- systemSettings 정규화 검사 통과
+  · 관리자 최대시간 0 보존
+  · 사용자 최대시간 0 보존
+  · 관리자·사용자 입력 상한 적용
+- systemRestore 계획 검사 통과
+  · systemSettings/admin 보안 정책 포함
+  · securityPolicies/userSession 포함
+  · 최고 관리자 범위 제한
 - Firestore Rules 괄호·중괄호·대괄호 구조 검사 통과
-- systemRestoreJobs 및 lastRestore 필드 규칙 반영 확인
+- rules/firestore.rules 경로 존재 및 루트 firestore.rules 미포함 확인
+
+논리 검증 완료
+- 최대 유지시간 0이면 absoluteExpiresAt을 0으로 저장
+- absoluteExpiresAt이 0일 때 절대 만료 검사 생략
+- 활동 갱신 시 기존 absoluteExpiresAt 유지
+- 정책에 따라 Firebase 지속성과 앱 세션 저장소를 함께 전환
+- 관리자 정책 불일치 시 Firebase signOut 실행
+- 사용자 정책 불일치 시 Firebase signOut 실행
+- 관리자와 사용자 역할 전환 시 반대 역할 앱 세션 정리
+- 복원 중 계정 보안 정책을 마지막 단계까지 보류하여 현재 관리자 조기 로그아웃 방지
 
 검증 제한
-- 기준 패키지에는 package.json과 node_modules가 없어 실제 npm run build를 실행하지 못했습니다.
-- 현재 환경에는 Firebase CLI/Emulator가 없어 Firestore Rules 공식 컴파일과 실제 Firebase 프로젝트 쓰기 테스트를 수행하지 못했습니다.
-- 웹 클라이언트는 다른 사용자의 Firebase Authentication 계정 존재 여부를 조회할 수 없습니다. 회원 Firestore 문서 복원 후 Auth 계정 유무는 Firebase Console 또는 별도 Auth 백업으로 확인해야 합니다.
+- package.json과 설치 의존성이 없어 실제 npm run build를 실행하지 못했습니다.
+- Firebase CLI/Emulator가 없어 Firestore Rules 공식 컴파일을 수행하지 못했습니다.
+- 브라우저 탭·창 종료 후 Firebase 지속성의 실제 동작은 테스트 브라우저와 실제 Firebase 프로젝트에서 확인해야 합니다.
+- 동일 출처의 여러 탭 간 Firebase Auth 동기화 동작은 실제 브라우저 통합시험이 필요합니다.
 
 운영 배포 전 필수 시험
-1. 동일 프로젝트 백업의 없는 문서만 추가
-2. 같은 ID 병합 및 덮어쓰기
-3. 최고 관리자 선택 영역 초기화 후 복원
-4. 일반 관리자에게 초기화 후 복원 방식 비활성화 확인
-5. 프로젝트 ID 불일치 시 일반 관리자 차단
-6. 최고 관리자 강제 복원과 대상 프로젝트 ID 확인
-7. 복원 중 네트워크 중단 후 같은 파일로 재개
-8. 개인정보 제외 백업에서 회원영역 비활성화
-9. 자산 참조 오류가 있는 백업의 실행 차단
-10. 복원 완료 후 점검 모드 및 데이터 건전성 검사
+1. 최고 관리자 설정 저장
+2. 일반 관리자 읽기 전용
+3. 관리자·사용자 종료 시 로그아웃 ON/OFF
+4. 관리자·사용자 무활동 만료
+5. 관리자·사용자 절대 최대 만료
+6. 최대 유지시간 0
+7. 정책 버전 변경 후 기존 세션 종료
+8. 자동 승인 회원가입의 사용자 세션 생성
+9. JSON 백업·복원에서 계정 보안 정책 처리
+10. rules/firestore.rules 실제 배포

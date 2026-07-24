@@ -308,18 +308,20 @@ service cloud.firestore {
       allow read: if isAdmin();
 
       allow create: if isOwnerAdmin()
+        && request.resource.data.get('adminLogoutOnBrowserClose', true) is bool
         && request.resource.data.get('adminIdleTimeoutMinutes', 60) >= 15
         && request.resource.data.get('adminIdleTimeoutMinutes', 60) <= 480
-        && request.resource.data.get('adminAbsoluteTimeoutHours', 8) >= 1
-        && request.resource.data.get('adminAbsoluteTimeoutHours', 8) <= 24
+        && request.resource.data.get('adminAbsoluteTimeoutHours', 8) >= 0
+        && request.resource.data.get('adminAbsoluteTimeoutHours', 8) <= 168
         && request.resource.data.get('adminSecurityPolicyVersion', 1) >= 1;
 
       allow update: if (
           isOwnerAdmin()
+          && request.resource.data.get('adminLogoutOnBrowserClose', true) is bool
           && request.resource.data.get('adminIdleTimeoutMinutes', 60) >= 15
           && request.resource.data.get('adminIdleTimeoutMinutes', 60) <= 480
-          && request.resource.data.get('adminAbsoluteTimeoutHours', 8) >= 1
-          && request.resource.data.get('adminAbsoluteTimeoutHours', 8) <= 24
+          && request.resource.data.get('adminAbsoluteTimeoutHours', 8) >= 0
+          && request.resource.data.get('adminAbsoluteTimeoutHours', 8) <= 168
           && request.resource.data.get('adminSecurityPolicyVersion', 1) >= 1
         ) || (
           isAdmin()
@@ -334,6 +336,18 @@ service cloud.firestore {
             'lastRestoreSummary'
           ])
         );
+      allow delete: if false;
+    }
+
+    match /securityPolicies/userSession {
+      allow read: if true;
+      allow create, update: if isOwnerAdmin()
+        && request.resource.data.get('userLogoutOnBrowserClose', false) is bool
+        && request.resource.data.get('userIdleTimeoutMinutes', 120) >= 15
+        && request.resource.data.get('userIdleTimeoutMinutes', 120) <= 1440
+        && request.resource.data.get('userAbsoluteTimeoutHours', 24) >= 0
+        && request.resource.data.get('userAbsoluteTimeoutHours', 24) <= 168
+        && request.resource.data.get('userSecurityPolicyVersion', 1) >= 1;
       allow delete: if false;
     }
 

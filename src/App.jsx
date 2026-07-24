@@ -1,12 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
+  browserLocalPersistence,
+  browserSessionPersistence,
   createUserWithEmailAndPassword,
   deleteUser,
   EmailAuthProvider,
   onAuthStateChanged,
   reauthenticateWithCredential,
   sendPasswordResetEmail,
+  setPersistence,
   signInWithEmailAndPassword,
   signOut,
   updatePassword,
@@ -99,6 +102,7 @@ import {
   SITE_FOOTER_CONFIG_DOC_REF,
   SITE_SETTINGS_DOC_REF,
   SYSTEM_ADMIN_SETTINGS_DOC_REF,
+  USER_SESSION_POLICY_DOC_REF,
   USER_ACCOUNTS_COLLECTION_NAME,
   USER_ACCOUNTS_COLLECTION_REF,
   adminAccountCreationAuth,
@@ -147,11 +151,13 @@ import {
 import {
   DEFAULT_SITE_SETTINGS,
   DEFAULT_SYSTEM_ADMIN_SETTINGS,
+  DEFAULT_USER_SESSION_POLICY,
   SERVICE_MODE,
   getHeaderSubtitle,
   getServiceBlockReason,
   normalizeSiteSettings,
   normalizeSystemAdminSettings,
+  normalizeUserSessionPolicy,
 } from './utils/systemSettings.js';
 
 import {
@@ -1987,8 +1993,7 @@ const replaceAppPath = (
 const ADMIN_CUSTOM_OPTION_VALUE = '__ADMIN_CUSTOM_INPUT__';
 const ADMIN_ACCOUNT_PAGE_SIZE = 10;
 const ADMIN_AUTH_SESSION_KEY = 'mk_laptop_admin_auth_session';
-const ADMIN_AUTH_SESSION_DURATION_MS = 60 * 60 * 1000;
-const ADMIN_AUTH_ABSOLUTE_DURATION_MS = 8 * 60 * 60 * 1000;
+const USER_AUTH_SESSION_KEY = 'mk_laptop_user_auth_session';
 const ADMIN_PASSWORD_HASH_ALGORITHM = 'PBKDF2-SHA-256';
 const ADMIN_PASSWORD_HASH_ITERATIONS = 120000;
 
@@ -2346,69 +2351,192 @@ const verifyAdminPassword = async (password, adminAccount) => {
   };
 };
 
-const readAdminAuthSession = () => {
-  const emptySession = {
-    adminId: '',
-    expiresAt: 0,
-    absoluteExpiresAt: 0,
-    policyVersion: 0,
-    lastActivityAt: 0,
-  };
+const createEmptyAuthSession = (identityKey) => ({
+  [identityKey]: '',
+  expiresAt: 0,
+  absoluteExpiresAt: 0,
+  policyVersion: 0,
+  lastActivityAt: 0,
+  logoutOnBrowserClose: true,
+});
 
-  if (typeof window === 'undefined') return emptySession;
-
-  const rawSession = window.sessionStorage.getItem(ADMIN_AUTH_SESSION_KEY);
-  if (!rawSession) return emptySession;
-
-  try {
-    const parsedSession = JSON.parse(rawSession);
-    const now = Date.now();
-    const absoluteExpiresAt = Number(parsedSession?.absoluteExpiresAt || parsedSession?.expiresAt || 0);
-
-    if (
-      parsedSession?.adminId &&
-      Number(parsedSession?.expiresAt || 0) > now &&
-      absoluteExpiresAt > now
-    ) {
-      return {
-        ...emptySession,
-        ...parsedSession,
-        absoluteExpiresAt,
-      };
-    }
-
-    window.sessionStorage.removeItem(ADMIN_AUTH_SESSION_KEY);
-  } catch {
-    window.sessionStorage.removeItem(ADMIN_AUTH_SESSION_KEY);
-  }
-
-  return emptySession;
+const clearStoredAuthSession = (storageKey) => {
+  if (typeof window === 'undefined') return;
+  window.sessionStorage.removeItem(storageKey);
+  window.localStorage.removeItem(storageKey);
 };
 
-const saveAdminAuthSession = (adminId, securitySettings = {}, previousSession = null) => {
+const readStoredAuthSession = (storageKey, identityKey) => {
+  const emptySession = createEmptyAuthSession(identityKey);
+  if (typeof window === 'undefined') return emptySession;
+
+  const now = Date.now();
+  const candidates = [
+    [window.sessionStorage, true],
+    [window.localStorage, false],
+  ];
+  let selected = null;
+
+  candidates.forEach(([storage, sessionOnly]) => {
+    const raw = storage.getItem(storageKey);
+    if (!raw) return;
+
+    try {
+      const parsed = JSON.parse(raw);
+      const absoluteExpiresAt = Number(parsed?.absoluteExpiresAt || 0);
+      const absoluteIsValid = absoluteExpiresAt === 0 || absoluteExpiresAt > now;
+      const isValid =
+        Boolean(parsed?.[identityKey]) &&
+        Number(parsed?.expiresAt || 0) > now &&
+        absoluteIsValid;
+
+      if (!isValid) {
+        storage.removeItem(storageKey);
+        return;
+      }
+
+      const candidate = {
+        ...emptySession,
+        ...parsed,
+        absoluteExpiresAt,
+        logoutOnBrowserClose:
+          typeof parsed.logoutOnBrowserClose === 'boolean'
+            ? parsed.logoutOnBrowserClose
+            : sessionOnly,
+      };
+
+      if (
+        !selected ||
+        Number(candidate.lastActivityAt || 0) >
+          Number(selected.lastActivityAt || 0)
+      ) {
+        selected = candidate;
+      }
+    } catch {
+      storage.removeItem(storageKey);
+    }
+  });
+
+  return selected || emptySession;
+};
+
+const writeStoredAuthSession = (storageKey, session, logoutOnBrowserClose) => {
+  if (typeof window === 'undefined') return;
+  clearStoredAuthSession(storageKey);
+  const storage = logoutOnBrowserClose
+    ? window.sessionStorage
+    : window.localStorage;
+  storage.setItem(storageKey, JSON.stringify(session));
+};
+
+const configureFirebaseAuthPersistence = async (
+  authInstance,
+  logoutOnBrowserClose
+) => {
+  await setPersistence(
+    authInstance,
+    logoutOnBrowserClose
+      ? browserSessionPersistence
+      : browserLocalPersistence
+  );
+};
+
+const readAdminAuthSession = () =>
+  readStoredAuthSession(ADMIN_AUTH_SESSION_KEY, 'adminId');
+
+const saveAdminAuthSession = (
+  adminId,
+  securitySettings = {},
+  previousSession = null
+) => {
   const normalized = normalizeSystemAdminSettings(securitySettings);
   const now = Date.now();
   const idleDurationMs = normalized.adminIdleTimeoutMinutes * 60 * 1000;
-  const absoluteDurationMs = normalized.adminAbsoluteTimeoutHours * 60 * 60 * 1000;
-  const absoluteExpiresAt = Number(previousSession?.absoluteExpiresAt || 0) > now
-    ? Number(previousSession.absoluteExpiresAt)
-    : now + absoluteDurationMs;
+  const absoluteDurationMs =
+    normalized.adminAbsoluteTimeoutHours > 0
+      ? normalized.adminAbsoluteTimeoutHours * 60 * 60 * 1000
+      : 0;
+  const previousAbsoluteExpiresAt = Number(
+    previousSession?.absoluteExpiresAt || 0
+  );
+  const absoluteExpiresAt =
+    absoluteDurationMs === 0
+      ? 0
+      : previousAbsoluteExpiresAt > now
+        ? previousAbsoluteExpiresAt
+        : now + absoluteDurationMs;
+  const idleExpiresAt = now + idleDurationMs;
   const nextSession = {
     adminId,
     lastActivityAt: now,
-    expiresAt: Math.min(now + idleDurationMs, absoluteExpiresAt),
+    expiresAt:
+      absoluteExpiresAt > 0
+        ? Math.min(idleExpiresAt, absoluteExpiresAt)
+        : idleExpiresAt,
     absoluteExpiresAt,
     policyVersion: normalized.adminSecurityPolicyVersion,
+    logoutOnBrowserClose: normalized.adminLogoutOnBrowserClose,
   };
 
-  window.sessionStorage.setItem(ADMIN_AUTH_SESSION_KEY, JSON.stringify(nextSession));
+  writeStoredAuthSession(
+    ADMIN_AUTH_SESSION_KEY,
+    nextSession,
+    normalized.adminLogoutOnBrowserClose
+  );
   return nextSession;
 };
 
 const clearAdminAuthSession = () => {
-  if (typeof window === 'undefined') return;
+  clearStoredAuthSession(ADMIN_AUTH_SESSION_KEY);
+};
 
-  window.sessionStorage.removeItem(ADMIN_AUTH_SESSION_KEY);
+const readUserAuthSession = () =>
+  readStoredAuthSession(USER_AUTH_SESSION_KEY, 'userId');
+
+const saveUserAuthSession = (
+  userId,
+  policy = {},
+  previousSession = null
+) => {
+  const normalized = normalizeUserSessionPolicy(policy);
+  const now = Date.now();
+  const idleDurationMs = normalized.userIdleTimeoutMinutes * 60 * 1000;
+  const absoluteDurationMs =
+    normalized.userAbsoluteTimeoutHours > 0
+      ? normalized.userAbsoluteTimeoutHours * 60 * 60 * 1000
+      : 0;
+  const previousAbsoluteExpiresAt = Number(
+    previousSession?.absoluteExpiresAt || 0
+  );
+  const absoluteExpiresAt =
+    absoluteDurationMs === 0
+      ? 0
+      : previousAbsoluteExpiresAt > now
+        ? previousAbsoluteExpiresAt
+        : now + absoluteDurationMs;
+  const idleExpiresAt = now + idleDurationMs;
+  const nextSession = {
+    userId,
+    lastActivityAt: now,
+    expiresAt:
+      absoluteExpiresAt > 0
+        ? Math.min(idleExpiresAt, absoluteExpiresAt)
+        : idleExpiresAt,
+    absoluteExpiresAt,
+    policyVersion: normalized.userSecurityPolicyVersion,
+    logoutOnBrowserClose: normalized.userLogoutOnBrowserClose,
+  };
+
+  writeStoredAuthSession(
+    USER_AUTH_SESSION_KEY,
+    nextSession,
+    normalized.userLogoutOnBrowserClose
+  );
+  return nextSession;
+};
+
+const clearUserAuthSession = () => {
+  clearStoredAuthSession(USER_AUTH_SESSION_KEY);
 };
 
 function App() {
@@ -2419,6 +2547,9 @@ function App() {
   const [systemAdminSettings, setSystemAdminSettings] = useState(DEFAULT_SYSTEM_ADMIN_SETTINGS);
   const [systemAdminSettingsReady, setSystemAdminSettingsReady] = useState(false);
   const [systemAdminSettingsLoadErrorMessage, setSystemAdminSettingsLoadErrorMessage] = useState('');
+  const [userSessionPolicy, setUserSessionPolicy] = useState(DEFAULT_USER_SESSION_POLICY);
+  const [userSessionPolicyReady, setUserSessionPolicyReady] = useState(false);
+  const [userSessionPolicyLoadErrorMessage, setUserSessionPolicyLoadErrorMessage] = useState('');
   const [systemBannerDismissedKey, setSystemBannerDismissedKey] = useState('');
   const [firebaseReady, setFirebaseReady] = useState(false);
   const [firebaseLoadErrorMessage, setFirebaseLoadErrorMessage] = useState('');
@@ -2705,6 +2836,18 @@ function App() {
   const [adminAuthPolicyVersion, setAdminAuthPolicyVersion] = useState(
     () => readAdminAuthSession().policyVersion
   );
+  const [userAuthSessionUid, setUserAuthSessionUid] = useState(
+    () => readUserAuthSession().userId
+  );
+  const [userAuthSessionExpiresAt, setUserAuthSessionExpiresAt] = useState(
+    () => readUserAuthSession().expiresAt
+  );
+  const [userAuthSessionAbsoluteExpiresAt, setUserAuthSessionAbsoluteExpiresAt] = useState(
+    () => readUserAuthSession().absoluteExpiresAt
+  );
+  const [userAuthSessionPolicyVersion, setUserAuthSessionPolicyVersion] = useState(
+    () => readUserAuthSession().policyVersion
+  );
 
   const [firebaseAuthUser, setFirebaseAuthUser] = useState(null);
   const [firebaseAuthReady, setFirebaseAuthReady] = useState(false);
@@ -2759,6 +2902,7 @@ function App() {
   ] = useState('');
 
   const userStatusLogoutInProgressRef = useRef(false);
+  const userSessionLogoutInProgressRef = useRef(false);
 
   const [editingAdminAccountId, setEditingAdminAccountId] = useState('');
   const [adminAccountEditForm, setAdminAccountEditForm] = useState(createDefaultAdminAccountEditForm);
@@ -2990,6 +3134,13 @@ function App() {
         setCurrentAuthRoleReady(!user);
 
         setFirebaseAuthUser(user);
+        if (!user) {
+          clearUserAuthSession();
+          setUserAuthSessionUid('');
+          setUserAuthSessionExpiresAt(0);
+          setUserAuthSessionAbsoluteExpiresAt(0);
+          setUserAuthSessionPolicyVersion(0);
+        }
         setFirebaseAuthReady(true);
       },
       (error) => {
@@ -3000,6 +3151,11 @@ function App() {
         setCurrentAuthRoleReady(true);
 
         setFirebaseAuthUser(null);
+        clearUserAuthSession();
+        setUserAuthSessionUid('');
+        setUserAuthSessionExpiresAt(0);
+        setUserAuthSessionAbsoluteExpiresAt(0);
+        setUserAuthSessionPolicyVersion(0);
         setFirebaseAuthReady(true);
       }
     );
@@ -3285,6 +3441,7 @@ function App() {
     const logoutInactiveUser = async () => {
       try {
         showUserAccountStatus(statusPageType);
+        clearUserAuthenticatedSession();
         await signOut(firebaseAuth);
 
         clearUserLoginReturnTarget();
@@ -3896,6 +4053,32 @@ function App() {
       favicon.setAttribute('href', normalized.faviconUrl);
     }
   }, [siteSettings]);
+
+  useEffect(() => {
+    setUserSessionPolicyReady(false);
+    const unsubscribe = onSnapshot(
+      USER_SESSION_POLICY_DOC_REF,
+      (snapshot) => {
+        setUserSessionPolicy(
+          normalizeUserSessionPolicy(
+            snapshot.exists() ? snapshot.data() : DEFAULT_USER_SESSION_POLICY
+          )
+        );
+        setUserSessionPolicyLoadErrorMessage('');
+        setUserSessionPolicyReady(true);
+      },
+      (error) => {
+        console.error('User session policy sync error:', error);
+        setUserSessionPolicy(DEFAULT_USER_SESSION_POLICY);
+        setUserSessionPolicyLoadErrorMessage(
+          '사용자 세션 정책을 불러오지 못해 기본값을 사용합니다.'
+        );
+        setUserSessionPolicyReady(true);
+      }
+    );
+
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     const canReadSystemAdminSettings = Boolean(
@@ -6931,6 +7114,51 @@ function App() {
     activeFaqCategoryId,
   ]);
 
+  const setUserAuthenticatedSession = (userId, policyOverride = null) => {
+    const nextSession = saveUserAuthSession(
+      userId,
+      policyOverride || userSessionPolicy
+    );
+
+    setUserAuthSessionUid(nextSession.userId);
+    setUserAuthSessionExpiresAt(nextSession.expiresAt);
+    setUserAuthSessionAbsoluteExpiresAt(nextSession.absoluteExpiresAt);
+    setUserAuthSessionPolicyVersion(nextSession.policyVersion);
+  };
+
+  const clearUserAuthenticatedSession = () => {
+    clearUserAuthSession();
+    setUserAuthSessionUid('');
+    setUserAuthSessionExpiresAt(0);
+    setUserAuthSessionAbsoluteExpiresAt(0);
+    setUserAuthSessionPolicyVersion(0);
+  };
+
+  const expireCurrentUserSession = async (message) => {
+    if (userSessionLogoutInProgressRef.current) return;
+    userSessionLogoutInProgressRef.current = true;
+
+    try {
+      if (firebaseAuth.currentUser) {
+        await signOut(firebaseAuth);
+      }
+    } catch (error) {
+      console.error('Expired user Firebase Auth logout error:', error);
+    } finally {
+      clearUserAuthenticatedSession();
+      clearUserLoginReturnTarget();
+      setUserAuthForm(createDefaultUserAuthForm());
+      replaceAppPath('user', 'login');
+      setView('user');
+      setUserTab('login');
+      setSelectedFooterPageId('');
+      setSelectedNoticePostId('');
+      setIsCommunityMenuOpen(false);
+      userSessionLogoutInProgressRef.current = false;
+      triggerToast(message, 'error');
+    }
+  };
+
   const setAdminAuthenticatedSession = (adminId, securitySettingsOverride = null) => {
     const nextSession = saveAdminAuthSession(
       adminId,
@@ -6960,12 +7188,28 @@ function App() {
       adminAuthPolicyVersion &&
       adminAuthPolicyVersion !== normalizedSecurity.adminSecurityPolicyVersion
     ) {
-      clearAdminAuthenticatedSession();
-      setAdminAuthForm(createDefaultAdminAuthForm());
-      triggerToast(
-        '관리자 보안 설정이 변경되어 다시 로그인이 필요합니다.',
-        'error'
-      );
+      if (!adminLogoutInProgressRef.current) {
+        adminLogoutInProgressRef.current = true;
+        setAdminLogoutInProgress(true);
+        void (async () => {
+          try {
+            if (firebaseAuth.currentUser) {
+              await signOut(firebaseAuth);
+            }
+          } catch (error) {
+            console.error('Admin policy change logout error:', error);
+          } finally {
+            clearAdminAuthenticatedSession();
+            setAdminAuthForm(createDefaultAdminAuthForm());
+            adminLogoutInProgressRef.current = false;
+            setAdminLogoutInProgress(false);
+            triggerToast(
+              '관리자 보안 설정이 변경되어 다시 로그인이 필요합니다.',
+              'error'
+            );
+          }
+        })();
+      }
       return undefined;
     }
 
@@ -7005,6 +7249,167 @@ function App() {
     systemAdminSettingsReady,
     adminAuthPolicyVersion,
     adminAuthAbsoluteExpiresAt,
+  ]);
+
+  useEffect(() => {
+    if (
+      !firebaseAuthUser ||
+      !currentAuthRoleReady ||
+      currentAuthRoleErrorMessage ||
+      currentAuthAdminAccount ||
+      authenticatedAdminId ||
+      !userProfileReady ||
+      !userProfile ||
+      ![USER_PROFILE_STATUS.ACTIVE, USER_PROFILE_STATUS.PROFILE_REQUIRED].includes(
+        userProfile.status
+      ) ||
+      userAuthLoading ||
+      withdrawalLoading ||
+      !userSessionPolicyReady
+    ) {
+      return undefined;
+    }
+
+    const normalizedPolicy = normalizeUserSessionPolicy(userSessionPolicy);
+    if (
+      !userAuthSessionUid ||
+      userAuthSessionUid !== firebaseAuthUser.uid
+    ) {
+      void expireCurrentUserSession(
+        '로그인 세션 정보를 확인할 수 없어 다시 로그인이 필요합니다.'
+      );
+      return undefined;
+    }
+
+    if (
+      userAuthSessionPolicyVersion !==
+      normalizedPolicy.userSecurityPolicyVersion
+    ) {
+      void expireCurrentUserSession(
+        '사용자 보안 설정이 변경되어 다시 로그인이 필요합니다.'
+      );
+      return undefined;
+    }
+
+    if (
+      !userAuthSessionExpiresAt ||
+      userAuthSessionExpiresAt <= Date.now()
+    ) {
+      const absoluteExpired =
+        userAuthSessionAbsoluteExpiresAt > 0 &&
+        userAuthSessionAbsoluteExpiresAt <= Date.now();
+      void expireCurrentUserSession(
+        absoluteExpired
+          ? '로그인 최대 유지시간이 지나 자동으로 로그아웃되었습니다.'
+          : '장시간 사용하지 않아 자동으로 로그아웃되었습니다.'
+      );
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      const absoluteExpired =
+        userAuthSessionAbsoluteExpiresAt > 0 &&
+        userAuthSessionAbsoluteExpiresAt <= Date.now();
+      void expireCurrentUserSession(
+        absoluteExpired
+          ? '로그인 최대 유지시간이 지나 자동으로 로그아웃되었습니다.'
+          : '장시간 사용하지 않아 자동으로 로그아웃되었습니다.'
+      );
+    }, Math.max(0, userAuthSessionExpiresAt - Date.now()));
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    firebaseAuthUser?.uid,
+    currentAuthRoleReady,
+    currentAuthRoleErrorMessage,
+    currentAuthAdminAccount?.id,
+    authenticatedAdminId,
+    userProfileReady,
+    userProfile?.uid,
+    userProfile?.status,
+    userAuthLoading,
+    withdrawalLoading,
+    userSessionPolicy,
+    userSessionPolicyReady,
+    userAuthSessionUid,
+    userAuthSessionExpiresAt,
+    userAuthSessionAbsoluteExpiresAt,
+    userAuthSessionPolicyVersion,
+  ]);
+
+  useEffect(() => {
+    if (
+      !firebaseAuthUser ||
+      !currentAuthRoleReady ||
+      currentAuthRoleErrorMessage ||
+      currentAuthAdminAccount ||
+      authenticatedAdminId ||
+      !userProfileReady ||
+      !userProfile ||
+      ![USER_PROFILE_STATUS.ACTIVE, USER_PROFILE_STATUS.PROFILE_REQUIRED].includes(
+        userProfile.status
+      ) ||
+      userAuthSessionUid !== firebaseAuthUser.uid ||
+      !userSessionPolicyReady
+    ) {
+      return undefined;
+    }
+
+    const normalizedPolicy = normalizeUserSessionPolicy(userSessionPolicy);
+    let lastRefreshAt = 0;
+    const refreshSession = () => {
+      const now = Date.now();
+      if (now - lastRefreshAt < 30000) return;
+      lastRefreshAt = now;
+
+      const currentSession = readUserAuthSession();
+      if (
+        !currentSession.userId ||
+        currentSession.userId !== firebaseAuthUser.uid
+      ) {
+        return;
+      }
+
+      const nextSession = saveUserAuthSession(
+        firebaseAuthUser.uid,
+        normalizedPolicy,
+        {
+          absoluteExpiresAt: currentSession.absoluteExpiresAt,
+        }
+      );
+      setUserAuthSessionUid(nextSession.userId);
+      setUserAuthSessionExpiresAt(nextSession.expiresAt);
+      setUserAuthSessionAbsoluteExpiresAt(nextSession.absoluteExpiresAt);
+      setUserAuthSessionPolicyVersion(nextSession.policyVersion);
+    };
+
+    const events = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
+    events.forEach((eventName) =>
+      window.addEventListener(eventName, refreshSession, { passive: true })
+    );
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') refreshSession();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      events.forEach((eventName) =>
+        window.removeEventListener(eventName, refreshSession)
+      );
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [
+    firebaseAuthUser?.uid,
+    currentAuthRoleReady,
+    currentAuthRoleErrorMessage,
+    currentAuthAdminAccount?.id,
+    authenticatedAdminId,
+    userProfileReady,
+    userProfile?.uid,
+    userProfile?.status,
+    userAuthSessionUid,
+    userSessionPolicy,
+    userSessionPolicyReady,
   ]);
 
   useEffect(() => {
@@ -7124,6 +7529,7 @@ function App() {
     try {
       await signOut(firebaseAuth);
       clearUserLoginReturnTarget();
+      clearUserAuthenticatedSession();
       clearAdminAuthenticatedSession();
       setUserAuthForm(createDefaultUserAuthForm());
 
@@ -7338,10 +7744,27 @@ function App() {
 
     let createdSignupUser = null;
     let signedInUserForRoleCheck = null;
+    let effectiveUserSessionPolicy = normalizeUserSessionPolicy(
+      userSessionPolicy
+    );
 
     setUserAuthLoading(true);
 
     try {
+      const userSessionPolicySnapshot = await getDoc(
+        USER_SESSION_POLICY_DOC_REF
+      ).catch(() => null);
+      effectiveUserSessionPolicy = normalizeUserSessionPolicy(
+        userSessionPolicySnapshot?.exists()
+          ? userSessionPolicySnapshot.data()
+          : userSessionPolicy
+      );
+      await configureFirebaseAuthPersistence(
+        firebaseAuth,
+        effectiveUserSessionPolicy.userLogoutOnBrowserClose
+      );
+      clearAdminAuthenticatedSession();
+
       if (isSignupMode) {
         if (!data.settings.memberIdentityClaimsReady) {
           throw createMemberPolicyError('member/identity-index-not-ready');
@@ -7533,6 +7956,15 @@ function App() {
           });
         });
 
+        if (createdAccountStatus === USER_PROFILE_STATUS.ACTIVE) {
+          setUserAuthenticatedSession(
+            credential.user.uid,
+            effectiveUserSessionPolicy
+          );
+        } else {
+          clearUserAuthenticatedSession();
+        }
+
         createdSignupUser = null;
         setUserAuthForm(createDefaultUserAuthForm());
         clearUserLoginReturnTarget();
@@ -7615,6 +8047,10 @@ function App() {
       }
 
       if (signedInUserStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED) {
+        setUserAuthenticatedSession(
+          credential.user.uid,
+          effectiveUserSessionPolicy
+        );
         signedInUserForRoleCheck = null;
         clearAdminAuthenticatedSession();
         setUserAuthForm(createDefaultUserAuthForm());
@@ -7639,6 +8075,7 @@ function App() {
               : 'loginRetired';
 
         showUserAccountStatus(statusPageType);
+        clearUserAuthenticatedSession();
         await signOut(firebaseAuth).catch((logoutError) => {
           console.error('Inactive login sign-out error:', logoutError);
         });
@@ -7646,6 +8083,10 @@ function App() {
         return;
       }
 
+      setUserAuthenticatedSession(
+        credential.user.uid,
+        effectiveUserSessionPolicy
+      );
       signedInUserForRoleCheck = null;
       clearAdminAuthenticatedSession();
       setUserAuthForm(createDefaultUserAuthForm());
@@ -7708,6 +8149,7 @@ function App() {
         }
       }
 
+      clearUserAuthenticatedSession();
       clearAdminAuthenticatedSession();
       console.error('User auth error:', error);
 
@@ -7745,6 +8187,15 @@ function App() {
     setAdminAuthLoading(true);
 
     try {
+      const initialSecuritySettings = normalizeSystemAdminSettings(
+        systemAdminSettings
+      );
+      await configureFirebaseAuthPersistence(
+        firebaseAuth,
+        initialSecuritySettings.adminLogoutOnBrowserClose
+      );
+      clearUserAuthenticatedSession();
+
       const credential = await signInWithEmailAndPassword(
         firebaseAuth,
         adminEmail,
@@ -7851,6 +8302,10 @@ function App() {
         securitySettingsSnapshot?.exists()
           ? securitySettingsSnapshot.data()
           : systemAdminSettings
+      );
+      await configureFirebaseAuthPersistence(
+        firebaseAuth,
+        loginSecuritySettings.adminLogoutOnBrowserClose
       );
 
       setAdminAuthenticatedSession(
@@ -19319,6 +19774,9 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     systemAdminSettings,
     systemAdminSettingsReady,
     systemAdminSettingsLoadErrorMessage,
+    userSessionPolicy,
+    userSessionPolicyReady,
+    userSessionPolicyLoadErrorMessage,
     deleteAdminAccount,
     toggleAdminAccountLock,
     deleteLaptop,

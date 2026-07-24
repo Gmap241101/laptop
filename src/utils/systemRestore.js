@@ -66,9 +66,9 @@ export const RESTORE_SCOPE_META = {
     collections: ['noticePosts', 'faqPosts', 'faqCategories', 'popupPosts', 'homeBanners', 'footerPages'],
   },
   [SYSTEM_RESTORE_SCOPE.SYSTEM_ADMIN]: {
-    label: '관리자 시스템 설정',
-    description: '관리자 세션 보안 및 시스템 점검 메타데이터를 복원합니다. 최고 관리자만 선택할 수 있습니다.',
-    documentKeys: ['systemSettings/admin:security'],
+    label: '계정 보안 정책',
+    description: '관리자와 일반 사용자의 세션 보안 정책을 복원합니다. 최고 관리자만 선택할 수 있습니다.',
+    documentKeys: ['systemSettings/admin:security', 'securityPolicies/userSession:security'],
     collections: [],
     ownerOnly: true,
   },
@@ -191,6 +191,8 @@ export const getAvailableRestoreScopes = (payload, isOwner = false) => {
     meta.documentKeys.forEach((key) => {
       if (key === 'systemSettings/admin:security') {
         if (isPlainObject(payload?.documents?.['systemSettings/admin'])) hasData = true;
+      } else if (key === 'securityPolicies/userSession:security') {
+        if (isPlainObject(payload?.documents?.['securityPolicies/userSession'])) hasData = true;
       } else if (!key.includes(':') && isPlainObject(payload?.documents?.[key])) {
         hasData = true;
       }
@@ -319,16 +321,54 @@ const createPublicConfigPartialPlan = (payload, type) => {
 const createSystemAdminSecurityPlan = (payload) => {
   const source = getBackupDocument(payload, 'systemSettings/admin');
   if (!isPlainObject(source)) return null;
-  const idle = Math.min(480, Math.max(15, Math.trunc(Number(source.adminIdleTimeoutMinutes || 60))));
-  const absolute = Math.min(24, Math.max(1, Math.trunc(Number(source.adminAbsoluteTimeoutHours || 8))));
+  const idle = Math.min(
+    480,
+    Math.max(15, Math.trunc(Number(source.adminIdleTimeoutMinutes ?? 60)))
+  );
+  const absolute = Math.min(
+    168,
+    Math.max(0, Math.trunc(Number(source.adminAbsoluteTimeoutHours ?? 8)))
+  );
   return {
     key: 'systemSettings/admin:security',
     path: 'systemSettings/admin',
     collectionName: 'systemSettings',
     documentId: 'admin',
     data: {
+      adminLogoutOnBrowserClose:
+        typeof source.adminLogoutOnBrowserClose === 'boolean'
+          ? source.adminLogoutOnBrowserClose
+          : true,
       adminIdleTimeoutMinutes: idle,
       adminAbsoluteTimeoutHours: absolute,
+    },
+    partial: true,
+  };
+};
+
+const createUserSessionSecurityPlan = (payload) => {
+  const source = getBackupDocument(payload, 'securityPolicies/userSession');
+  if (!isPlainObject(source)) return null;
+  const idle = Math.min(
+    1440,
+    Math.max(15, Math.trunc(Number(source.userIdleTimeoutMinutes ?? 120)))
+  );
+  const absolute = Math.min(
+    168,
+    Math.max(0, Math.trunc(Number(source.userAbsoluteTimeoutHours ?? 24)))
+  );
+  return {
+    key: 'securityPolicies/userSession:security',
+    path: 'securityPolicies/userSession',
+    collectionName: 'securityPolicies',
+    documentId: 'userSession',
+    data: {
+      userLogoutOnBrowserClose:
+        typeof source.userLogoutOnBrowserClose === 'boolean'
+          ? source.userLogoutOnBrowserClose
+          : false,
+      userIdleTimeoutMinutes: idle,
+      userAbsoluteTimeoutHours: absolute,
     },
     partial: true,
   };
@@ -365,6 +405,8 @@ export const buildRestorePlan = (payload, selectedScopes = []) => {
         plan = createPublicConfigPartialPlan(payload, 'organization');
       } else if (key === 'systemSettings/admin:security') {
         plan = createSystemAdminSecurityPlan(payload);
+      } else if (key === 'securityPolicies/userSession:security') {
+        plan = createUserSessionSecurityPlan(payload);
       } else {
         plan = createFullDocumentPlan(payload, key);
       }

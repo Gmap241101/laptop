@@ -11,7 +11,6 @@ import {
   FileClock,
   HardDrive,
   Info,
-  LockKeyhole,
   Paintbrush,
   Play,
   RefreshCw,
@@ -21,7 +20,6 @@ import {
   ShieldAlert,
   Trash2,
   Upload,
-  Users,
   Wrench,
 } from 'lucide-react';
 import {
@@ -58,7 +56,6 @@ import {
 } from '../firebase.js';
 import {
   DEFAULT_SITE_SETTINGS,
-  DEFAULT_SYSTEM_ADMIN_SETTINGS,
   SERVICE_MODE,
   SYSTEM_MANAGEMENT_TAB,
   SYSTEM_RESET_SCOPE,
@@ -67,6 +64,7 @@ import {
   isValidHexColor,
   normalizeSiteSettings,
   normalizeSystemAdminSettings,
+  normalizeUserSessionPolicy,
   redactBackupDocument,
 } from '../utils/systemSettings.js';
 import {
@@ -86,7 +84,6 @@ import {
 const SYSTEM_TABS = [
   [SYSTEM_MANAGEMENT_TAB.SITE, Paintbrush, '사이트 기본 설정'],
   [SYSTEM_MANAGEMENT_TAB.SERVICE, Activity, '서비스 운영'],
-  [SYSTEM_MANAGEMENT_TAB.SECURITY, LockKeyhole, '관리자 보안'],
   [SYSTEM_MANAGEMENT_TAB.DATA, Database, '데이터 점검·백업'],
   [SYSTEM_MANAGEMENT_TAB.RESET, Trash2, '데이터 초기화'],
   [SYSTEM_MANAGEMENT_TAB.INFO, Info, '시스템 정보'],
@@ -166,6 +163,7 @@ const BACKUP_DOCUMENTS = [
   ['rentalSystem/publicConfig', 'rentalSystem', 'publicConfig'],
   ['siteSettings/config', 'siteSettings', 'config'],
   ['systemSettings/admin', 'systemSettings', 'admin'],
+  ['securityPolicies/userSession', 'securityPolicies', 'userSession'],
   ['noticeBoard/config', 'noticeBoard', 'config'],
   ['faqBoard/config', 'faqBoard', 'config'],
   ['homePage/config', 'homePage', 'config'],
@@ -324,9 +322,7 @@ export default function AdminSettingsPanel({ ctx }) {
 
   const [activeTab, setActiveTab] = useState(SYSTEM_MANAGEMENT_TAB.SITE);
   const [siteDraft, setSiteDraft] = useState(() => normalizeSiteSettings(siteSettings));
-  const [securityDraft, setSecurityDraft] = useState(() => normalizeSystemAdminSettings(systemAdminSettings));
   const [siteSaving, setSiteSaving] = useState(false);
-  const [securitySaving, setSecuritySaving] = useState(false);
   const [auditLogs, setAuditLogs] = useState([]);
   const [auditReady, setAuditReady] = useState(false);
   const [integrityLoading, setIntegrityLoading] = useState(false);
@@ -363,15 +359,10 @@ export default function AdminSettingsPanel({ ctx }) {
 
   const isOwner = getAdminRole(authenticatedAdminAccount) === 'owner';
   const siteDirty = JSON.stringify(siteDraft) !== JSON.stringify(normalizeSiteSettings(siteSettings));
-  const securityDirty = JSON.stringify(securityDraft) !== JSON.stringify(normalizeSystemAdminSettings(systemAdminSettings));
 
   useEffect(() => {
     setSiteDraft(normalizeSiteSettings(siteSettings));
   }, [siteSettings]);
-
-  useEffect(() => {
-    setSecurityDraft(normalizeSystemAdminSettings(systemAdminSettings));
-  }, [systemAdminSettings]);
 
   useEffect(() => {
     if (!authenticatedAdminAccount) return undefined;
@@ -496,58 +487,6 @@ export default function AdminSettingsPanel({ ctx }) {
       triggerToast('사이트 설정 저장에 실패했습니다. Firestore 권한을 확인해 주세요.', 'error');
     } finally {
       setSiteSaving(false);
-    }
-  };
-
-  const saveSecuritySettings = async () => {
-    if (!isOwner) {
-      triggerToast('최고 관리자만 관리자 보안 설정을 변경할 수 있습니다.', 'error');
-      return;
-    }
-
-    const normalized = normalizeSystemAdminSettings(securityDraft);
-    const beforeValues = normalizeSystemAdminSettings(systemAdminSettings);
-    const changed =
-      normalized.adminIdleTimeoutMinutes !== beforeValues.adminIdleTimeoutMinutes ||
-      normalized.adminAbsoluteTimeoutHours !== beforeValues.adminAbsoluteTimeoutHours;
-    const nextValues = {
-      ...normalized,
-      adminSecurityPolicyVersion: changed
-        ? beforeValues.adminSecurityPolicyVersion + 1
-        : beforeValues.adminSecurityPolicyVersion,
-    };
-
-    setSecuritySaving(true);
-    try {
-      await setDoc(
-        SYSTEM_ADMIN_SETTINGS_DOC_REF,
-        {
-          ...nextValues,
-          updatedAt: serverTimestamp(),
-          updatedBy: authenticatedAdminAccount?.id || '',
-        },
-        { merge: true }
-      );
-      await writeAuditLog({
-        action: 'admin-security-update',
-        section: '관리자 보안',
-        beforeValues,
-        afterValues: nextValues,
-        summary: changed
-          ? '관리자 세션 정책을 변경하여 기존 관리자 세션이 다음 확인 시 종료됩니다.'
-          : '관리자 보안 설정을 저장했습니다.',
-      });
-      triggerToast(
-        changed
-          ? '관리자 보안 설정이 저장되었습니다. 기존 관리자 세션은 다시 로그인이 필요합니다.'
-          : '관리자 보안 설정이 저장되었습니다.',
-        'success'
-      );
-    } catch (error) {
-      console.error('Admin security settings save error:', error);
-      triggerToast('관리자 보안 설정 저장에 실패했습니다.', 'error');
-    } finally {
-      setSecuritySaving(false);
     }
   };
 
@@ -1157,7 +1096,17 @@ export default function AdminSettingsPanel({ ctx }) {
         }
       }
 
-      for (const documentPlan of plan.documents) {
+      const deferredSecurityPlans = plan.documents.filter((documentPlan) =>
+        [
+          'systemSettings/admin:security',
+          'securityPolicies/userSession:security',
+        ].includes(documentPlan.key)
+      );
+      const regularDocumentPlans = plan.documents.filter(
+        (documentPlan) => !deferredSecurityPlans.includes(documentPlan)
+      );
+
+      for (const documentPlan of regularDocumentPlans) {
         const targetKey = `document:${documentPlan.key}`;
         if (completedTargets.has(targetKey)) continue;
         const reference = doc(db, documentPlan.collectionName, documentPlan.documentId);
@@ -1209,6 +1158,60 @@ export default function AdminSettingsPanel({ ctx }) {
         updatedBy: authenticatedAdminAccount?.id || '',
       }, { merge: true });
 
+      // 계정 보안 정책은 현재 세션을 종료시킬 수 있으므로 모든 데이터 복원과 건전성 검사를 마친 뒤 최종 원자 배치에서 적용합니다.
+      await runIntegrityCheck();
+
+      const finalBatch = writeBatch(db);
+      let adminSecurityUpdate = {};
+
+      for (const documentPlan of deferredSecurityPlans) {
+        const targetKey = `document:${documentPlan.key}`;
+        if (completedTargets.has(targetKey)) continue;
+        const reference = doc(db, documentPlan.collectionName, documentPlan.documentId);
+        const existing = await getDoc(reference);
+
+        if (mode === RESTORE_MODE.ADD_MISSING && existing.exists()) {
+          writtenCounts[targetKey] = 0;
+          completedTargets.add(targetKey);
+          continue;
+        }
+
+        const value = deserializeBackupValue(documentPlan.data);
+        if (documentPlan.key === 'systemSettings/admin:security') {
+          const currentSecurity = normalizeSystemAdminSettings(
+            existing.exists() ? existing.data() : {}
+          );
+          adminSecurityUpdate = {
+            ...value,
+            adminSecurityPolicyVersion: existing.exists()
+              ? currentSecurity.adminSecurityPolicyVersion + 1
+              : 1,
+            updatedAt: serverTimestamp(),
+            updatedBy: authenticatedAdminAccount?.id || '',
+          };
+        } else {
+          const currentSecurity = normalizeUserSessionPolicy(
+            existing.exists() ? existing.data() : {}
+          );
+          finalBatch.set(
+            reference,
+            {
+              ...value,
+              userSecurityPolicyVersion: existing.exists()
+                ? currentSecurity.userSecurityPolicyVersion + 1
+                : 1,
+              updatedAt: serverTimestamp(),
+              updatedBy: authenticatedAdminAccount?.id || '',
+            },
+            { merge: true }
+          );
+        }
+
+        writtenCounts[targetKey] = 1;
+        completedTargets.add(targetKey);
+        setRestoreProgress({ step: `${documentPlan.key} 복원`, completed: 1, total: 1 });
+      }
+
       const summary = {
         restoreJobId: jobRef.id,
         sourceProjectId: restoreValidation.metadata?.firebaseProjectId || '',
@@ -1220,33 +1223,49 @@ export default function AdminSettingsPanel({ ctx }) {
         writtenCounts,
       };
 
-      await setDoc(SYSTEM_ADMIN_SETTINGS_DOC_REF, {
-        lastBackupGeneratedAt: serverTimestamp(),
-        lastBackupGeneratedBy: authenticatedAdminAccount?.id || '',
-        lastRestoreCompletedAt: serverTimestamp(),
-        lastRestoreCompletedBy: authenticatedAdminAccount?.id || '',
-        lastRestoreSummary: summary,
-      }, { merge: true });
-      await updateRestoreJob(jobRef, {
-        status: 'completed',
-        currentStep: 'completed',
-        deletedCounts,
-        writtenCounts,
-        completedAt: serverTimestamp(),
-      });
-      await writeAuditLog({
+      finalBatch.set(
+        SYSTEM_ADMIN_SETTINGS_DOC_REF,
+        {
+          ...adminSecurityUpdate,
+          lastBackupGeneratedAt: serverTimestamp(),
+          lastBackupGeneratedBy: authenticatedAdminAccount?.id || '',
+          lastRestoreCompletedAt: serverTimestamp(),
+          lastRestoreCompletedBy: authenticatedAdminAccount?.id || '',
+          lastRestoreSummary: summary,
+        },
+        { merge: true }
+      );
+      finalBatch.set(
+        jobRef,
+        {
+          status: 'completed',
+          currentStep: 'completed',
+          deletedCounts,
+          writtenCounts,
+          completedTargets: Array.from(completedTargets),
+          completedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      finalBatch.set(doc(SYSTEM_AUDIT_LOGS_COLLECTION_REF), {
         action: forcedProject ? 'system-backup-force-restore' : 'system-backup-restore',
         section: '데이터 복원',
-        afterValues: summary,
+        afterValues: cloneForAudit(summary),
+        beforeValues: null,
         summary: `${RESTORE_SCOPE_META[scopes[0]]?.label || '선택 영역'} 외 ${Math.max(0, scopes.length - 1)}개 영역 복원 완료`,
+        adminUid: authenticatedAdminAccount?.id || '',
+        adminName: getAdminDisplayName(authenticatedAdminAccount),
+        adminEmail: authenticatedAdminAccount?.authEmail || authenticatedAdminAccount?.email || '',
+        createdAt: serverTimestamp(),
       });
+      await finalBatch.commit();
 
       setRestoreResult(summary);
       setRestoreProgress({ step: '복원 완료', completed: plan.totalDocuments, total: plan.totalDocuments });
       setRestorePassword('');
       setRestoreConfirmText('');
       setForceProjectConfirm('');
-      await runIntegrityCheck();
       triggerToast('백업 데이터 복원이 완료되었습니다. 시스템은 점검 모드로 유지됩니다.', 'success');
     } catch (error) {
       console.error('System restore error:', error);
@@ -1703,38 +1722,6 @@ export default function AdminSettingsPanel({ ctx }) {
     </div>
   );
 
-  const renderSecurityTab = () => (
-    <div className="space-y-5">
-      {!isOwner ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-800">
-          관리자 보안 설정은 최고 관리자만 변경할 수 있습니다. 현재 값은 읽기 전용으로 표시됩니다.
-        </div>
-      ) : null}
-      <SectionCard title="관리자 세션" description="마지막 활동 이후 자동 로그아웃 시간과 1회 로그인 절대 최대 유지시간을 설정합니다.">
-        <div className="grid gap-4 md:grid-cols-2">
-          <Input label="무활동 자동 로그아웃(분)" type="number" min="15" max="480" value={securityDraft.adminIdleTimeoutMinutes} onChange={(value) => setSecurityDraft({ ...securityDraft, adminIdleTimeoutMinutes: value })} disabled={!isOwner} />
-          <Input label="1회 로그인 최대 유지시간(시간)" type="number" min="1" max="24" value={securityDraft.adminAbsoluteTimeoutHours} onChange={(value) => setSecurityDraft({ ...securityDraft, adminAbsoluteTimeoutHours: value })} disabled={!isOwner} />
-        </div>
-        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs leading-5 text-slate-600">
-          정책 버전: {securityDraft.adminSecurityPolicyVersion}. 시간 설정을 변경하면 정책 버전이 증가하고 기존 관리자 세션은 다음 확인 시 로그아웃됩니다.
-        </div>
-      </SectionCard>
-      <SectionCard title="로그인 공격 보호" description="Firebase Authentication의 자동 비정상 요청 제한을 사용합니다.">
-        <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-          <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-600" size={18} />
-          <div>
-            <div className="text-sm font-bold text-emerald-900">Firebase Authentication 자동 보호 사용</div>
-            <p className="mt-1 text-xs leading-5 text-emerald-800">클라이언트가 임의로 실패 횟수를 기록하는 5회·5분 잠금은 계정 잠금 공격에 악용될 수 있어 사용하지 않습니다. 특정 관리자 계정의 수동 잠금은 관리자 ID 관리에서 처리합니다.</p>
-          </div>
-        </div>
-      </SectionCard>
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" disabled={!securityDirty || securitySaving} onClick={() => setSecurityDraft(normalizeSystemAdminSettings(systemAdminSettings))}>변경 취소</Button>
-        <Button type="button" disabled={!isOwner || !securityDirty || securitySaving} onClick={saveSecuritySettings}><Save size={14} />{securitySaving ? '저장 중' : '관리자 보안 설정 저장'}</Button>
-      </div>
-    </div>
-  );
-
   const renderDataTab = () => (
     <div className="space-y-5">
       <SectionCard title="Firestore 저장 구조" description="기존 분리 저장소 전환 상태와 데이터 스키마를 확인합니다.">
@@ -2049,7 +2036,6 @@ export default function AdminSettingsPanel({ ctx }) {
   const activeContent = useMemo(() => {
     if (activeTab === SYSTEM_MANAGEMENT_TAB.SITE) return renderSiteTab();
     if (activeTab === SYSTEM_MANAGEMENT_TAB.SERVICE) return renderServiceTab();
-    if (activeTab === SYSTEM_MANAGEMENT_TAB.SECURITY) return renderSecurityTab();
     if (activeTab === SYSTEM_MANAGEMENT_TAB.DATA) return renderDataTab();
     if (activeTab === SYSTEM_MANAGEMENT_TAB.RESET) return renderResetTab();
     if (activeTab === SYSTEM_MANAGEMENT_TAB.INFO) return renderInfoTab();
@@ -2057,11 +2043,9 @@ export default function AdminSettingsPanel({ ctx }) {
   }, [
     activeTab,
     siteDraft,
-    securityDraft,
     siteSettings,
     systemAdminSettings,
     siteSaving,
-    securitySaving,
     integrityLoading,
     integrityResult,
     backupLoading,
@@ -2108,7 +2092,7 @@ export default function AdminSettingsPanel({ ctx }) {
     <div className="space-y-6">
       <AdminPageHeader
         title="시스템 관리"
-        description="사이트 공통 설정, 서비스 운영상태, 관리자 보안, 데이터 점검·백업·복원과 초기화를 관리합니다."
+        description="사이트 공통 설정, 서비스 운영상태, 데이터 점검·백업·복원과 초기화를 관리합니다."
         badge={
           <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold ${
             siteSettings?.serviceMode === SERVICE_MODE.NORMAL

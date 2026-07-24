@@ -42,6 +42,7 @@ export const DEFAULT_SITE_SETTINGS = {
 
 export const DEFAULT_SYSTEM_ADMIN_SETTINGS = {
   schemaVersion: 1,
+  adminLogoutOnBrowserClose: true,
   adminIdleTimeoutMinutes: 60,
   adminAbsoluteTimeoutHours: 8,
   adminSecurityPolicyVersion: 1,
@@ -56,6 +57,14 @@ export const DEFAULT_SYSTEM_ADMIN_SETTINGS = {
   lastRestoreSummary: null,
 };
 
+
+export const DEFAULT_USER_SESSION_POLICY = {
+  userLogoutOnBrowserClose: false,
+  userIdleTimeoutMinutes: 120,
+  userAbsoluteTimeoutHours: 24,
+  userSecurityPolicyVersion: 1,
+};
+
 export const SERVICE_MODE = {
   NORMAL: 'normal',
   READ_ONLY: 'readOnly',
@@ -65,7 +74,6 @@ export const SERVICE_MODE = {
 export const SYSTEM_MANAGEMENT_TAB = {
   SITE: 'site',
   SERVICE: 'service',
-  SECURITY: 'security',
   DATA: 'data',
   RESET: 'reset',
   INFO: 'info',
@@ -160,6 +168,10 @@ export const normalizeSystemAdminSettings = (raw = {}) => ({
   ...DEFAULT_SYSTEM_ADMIN_SETTINGS,
   ...(raw || {}),
   schemaVersion: clampInteger(raw?.schemaVersion, 1, 9999, DEFAULT_SYSTEM_ADMIN_SETTINGS.schemaVersion),
+  adminLogoutOnBrowserClose:
+    typeof raw?.adminLogoutOnBrowserClose === 'boolean'
+      ? raw.adminLogoutOnBrowserClose
+      : DEFAULT_SYSTEM_ADMIN_SETTINGS.adminLogoutOnBrowserClose,
   adminIdleTimeoutMinutes: clampInteger(
     raw?.adminIdleTimeoutMinutes,
     15,
@@ -168,8 +180,8 @@ export const normalizeSystemAdminSettings = (raw = {}) => ({
   ),
   adminAbsoluteTimeoutHours: clampInteger(
     raw?.adminAbsoluteTimeoutHours,
-    1,
-    24,
+    0,
+    168,
     DEFAULT_SYSTEM_ADMIN_SETTINGS.adminAbsoluteTimeoutHours
   ),
   adminSecurityPolicyVersion: clampInteger(
@@ -177,6 +189,33 @@ export const normalizeSystemAdminSettings = (raw = {}) => ({
     1,
     999999,
     DEFAULT_SYSTEM_ADMIN_SETTINGS.adminSecurityPolicyVersion
+  ),
+});
+
+export const normalizeUserSessionPolicy = (raw = {}) => ({
+  ...DEFAULT_USER_SESSION_POLICY,
+  ...(raw || {}),
+  userLogoutOnBrowserClose:
+    typeof raw?.userLogoutOnBrowserClose === 'boolean'
+      ? raw.userLogoutOnBrowserClose
+      : DEFAULT_USER_SESSION_POLICY.userLogoutOnBrowserClose,
+  userIdleTimeoutMinutes: clampInteger(
+    raw?.userIdleTimeoutMinutes,
+    15,
+    1440,
+    DEFAULT_USER_SESSION_POLICY.userIdleTimeoutMinutes
+  ),
+  userAbsoluteTimeoutHours: clampInteger(
+    raw?.userAbsoluteTimeoutHours,
+    0,
+    168,
+    DEFAULT_USER_SESSION_POLICY.userAbsoluteTimeoutHours
+  ),
+  userSecurityPolicyVersion: clampInteger(
+    raw?.userSecurityPolicyVersion,
+    1,
+    999999,
+    DEFAULT_USER_SESSION_POLICY.userSecurityPolicyVersion
   ),
 });
 

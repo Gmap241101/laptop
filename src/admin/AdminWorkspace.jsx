@@ -12,6 +12,7 @@ import AdminFooterPanel from './AdminFooterPanel.jsx';
 import AdminMemberAccountsPanel from './AdminMemberAccountsPanel.jsx';
 import AdminAccountsPanel from './AdminAccountsPanel.jsx';
 import AdminSettingsPanel from './AdminSettingsPanel.jsx';
+import AdminAccountSecurityPanel from './AdminAccountSecurityPanel.jsx';
 import AdminExtensionSettingsPanel from './AdminExtensionSettingsPanel.jsx';
 import AdminHolidayManagementPanel from './AdminHolidayManagementPanel.jsx';
 import AdminHomeBannerPanel from './AdminHomeBannerPanel.jsx';
@@ -35,6 +36,7 @@ const ADMIN_TAB_GROUP = {
   memberAccounts: 'accounts',
   adminAccounts: 'accounts',
   settings: 'system',
+  accountSecurity: 'system',
 };
 
 export default function AdminWorkspace({ ctx }) {
@@ -411,7 +413,10 @@ export default function AdminWorkspace({ ctx }) {
       key: 'system',
       label: '시스템',
       Icon: Settings,
-      items: [['settings', Settings, '시스템 관리']],
+      items: [
+        ['settings', Settings, '시스템 관리'],
+        ['accountSecurity', ShieldCheck, '계정 보안 설정'],
+      ],
     },
   ];
 
@@ -795,6 +800,11 @@ export default function AdminWorkspace({ ctx }) {
                   {/* 시스템 관리 탭 */}
                   {adminTab === 'settings' && (
                     <AdminSettingsPanel ctx={ctx} />
+                  )}
+
+                  {/* 계정 보안 설정 탭 */}
+                  {adminTab === 'accountSecurity' && (
+                    <AdminAccountSecurityPanel ctx={ctx} />
                   )}
 
                   {/* 대여 정책 관리 탭 */}

@@ -159,6 +159,12 @@ export const SYSTEM_ADMIN_SETTINGS_DOC_REF = doc(
   'admin'
 );
 
+export const USER_SESSION_POLICY_DOC_REF = doc(
+  db,
+  'securityPolicies',
+  'userSession'
+);
+
 export const SYSTEM_AUDIT_LOGS_COLLECTION_REF = collection(
   db,
   'systemAuditLogs'
