@@ -2789,7 +2789,7 @@ function App() {
   const [adminAvailabilityFilter, setAdminAvailabilityFilter] = useState('전체');
   const [selectedLaptopId, setSelectedLaptopId] = useState(null);
   const [form, setForm] = useState(() => createDefaultRequestForm(data.settings));
-  const [adminTab, setAdminTab] = useState('dashboard'); // 'dashboard' | 'requests' | 'laptops' | 'categories' | 'people' | 'settings'
+  const [adminTab, setAdminTab] = useState('dashboard'); // 관리자 사이드바의 현재 메뉴 키
   const [editLaptop, setEditLaptop] = useState(null);
   const [newLaptop, setNewLaptop] = useState(null); // 신규 자산 생성을 위한 상태 값 추가
   const [newAssetCategory, setNewAssetCategory] = useState('');
@@ -4663,7 +4663,7 @@ function App() {
 
   // 설정 탭으로 변경되거나 시스템 원본 설정 값이 변경될 때 임시 설정 버퍼를 동기화
   useEffect(() => {
-    if (['settings', 'extensionSettings', 'holidaySettings'].includes(adminTab)) {
+    if (['serviceOperations', 'extensionSettings', 'holidaySettings'].includes(adminTab)) {
       setTempSettings(data.settings);
       setNewHolidayDate(today());
       setNewHolidayName('');

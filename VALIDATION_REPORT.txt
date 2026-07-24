@@ -1,83 +1,47 @@
-계정 보안 설정·세션 정책 기능 검증 보고
+사이트 기본 설정·시스템 메뉴 분리 검증 보고
 
 기준본
-- system_management_json_restore_deployment_package.zip
+- account_security_session_policy_deployment_package.zip
 
 변경 파일
 - DEPLOYMENT_NOTES.txt
 - VALIDATION_REPORT.txt
-- rules/firestore.rules
 - src/App.jsx
-- src/admin/AdminAccountSecurityPanel.jsx (신규)
 - src/admin/AdminSettingsPanel.jsx
 - src/admin/AdminWorkspace.jsx
-- src/firebase.js
-- src/utils/systemRestore.js
 - src/utils/systemSettings.js
 
-구현 범위
-- 시스템 메뉴 아래 독립 '계정 보안 설정' 메뉴 추가
-- 시스템 관리 내부 관리자 보안 탭 제거
-- 관리자·사용자 세션 정책을 한 줄 설정 행 UX로 구성
-- 브라우저·탭 종료 시 로그아웃 토글
-- 관리자 무활동 15~480분
-- 사용자 무활동 15~1440분
-- 관리자·사용자 절대 최대 세션 0~168시간
-- 최대 유지시간 0을 제한 없음으로 처리
-- Firebase browserSessionPersistence/browserLocalPersistence 적용
-- sessionStorage/localStorage 역할별 연동
-- 관리자·사용자 정책 버전 변경 시 기존 세션 로그아웃
-- 일반 사용자 로그인·자동 승인 회원가입에 사용자 세션 정책 적용
-- 계정 보안 정책 JSON 백업·복원 포함
-- 복원 마지막 단계에서 세션 정책 원자적 반영
-- securityPolicies/userSession 공개 읽기·최고 관리자 쓰기 Rules 추가
-- Rules 제공 경로를 rules/firestore.rules로 변경
+Rules
+- rules/firestore.rules는 기준본과 동일합니다.
+- 신규 컬렉션, 신규 필드 권한, Firestore 경로 변경이 없습니다.
 
-정적 검증 완료
-- JavaScript/JSX 42개 파일 TypeScript transpile 구문 검사 통과
-- 선택 TypeScript 진단 검사 통과
-  · 미정의 이름 없음
-  · 중복 블록 선언 없음
-  · 선언 전 참조 관련 진단 없음
+구현 확인
+- 사이트 관리 첫 번째 하위 메뉴에 '사이트 기본 설정' 추가
+- '홈 화면 기본 설정' 독립 메뉴 추가
+- 기본 메인 비주얼 편집 영역이 사이트 기본 설정에서 제거됨
+- 메인 비주얼·프로모션·바로가기 배너 기존 메뉴 유지
+- 기존 '시스템 관리' 사이드바 메뉴 제거
+- 서비스 운영 독립 메뉴 추가
+- 계정 보안 설정 독립 메뉴 유지
+- 데이터 관리 독립 메뉴 추가
+- 시스템 정보·로그 독립 메뉴 추가
+- 데이터 관리 내부 탭: 점검·백업·복원 / 데이터 초기화
+- 시스템 정보·로그 내부 탭: 시스템 정보 / 변경 이력
+- 이전 settings 메뉴 키의 서비스 운영 자동 전환
+- 사이트·홈·서비스 설정의 부분 필드 저장
+- 영역별 감사 로그 구분
+- 영역별 미저장 변경 이동 경고
+- 화면별 Firestore 실시간 구독 범위 제한
+
+정적 검증
+- JavaScript·JSX 42개 파일 TypeScript transpile 구문 검사 통과
 - 로컬 상대 import 경로 검사 통과
-- AdminAccountSecurityPanel 신규 import 및 렌더 경로 확인
-- 시스템 메뉴 그룹에 settings/accountSecurity 독립 항목 확인
-- AdminSettingsPanel의 기존 security 탭 제거 확인
-- systemSettings 정규화 검사 통과
-  · 관리자 최대시간 0 보존
-  · 사용자 최대시간 0 보존
-  · 관리자·사용자 입력 상한 적용
-- systemRestore 계획 검사 통과
-  · systemSettings/admin 보안 정책 포함
-  · securityPolicies/userSession 포함
-  · 최고 관리자 범위 제한
-- Firestore Rules 괄호·중괄호·대괄호 구조 검사 통과
-- rules/firestore.rules 경로 존재 및 루트 firestore.rules 미포함 확인
-
-논리 검증 완료
-- 최대 유지시간 0이면 absoluteExpiresAt을 0으로 저장
-- absoluteExpiresAt이 0일 때 절대 만료 검사 생략
-- 활동 갱신 시 기존 absoluteExpiresAt 유지
-- 정책에 따라 Firebase 지속성과 앱 세션 저장소를 함께 전환
-- 관리자 정책 불일치 시 Firebase signOut 실행
-- 사용자 정책 불일치 시 Firebase signOut 실행
-- 관리자와 사용자 역할 전환 시 반대 역할 앱 세션 정리
-- 복원 중 계정 보안 정책을 마지막 단계까지 보류하여 현재 관리자 조기 로그아웃 방지
+- 신규 관리자 메뉴 키와 패널 렌더링 연결 확인
+- 제거된 SYSTEM_TABS 및 기존 시스템 관리 메뉴 항목 잔존 여부 검사 통과
+- 기본 메인 비주얼 편집 UI가 홈 화면 기본 설정에만 존재함을 확인
+- 배포 패키지의 Rules 경로가 rules/firestore.rules임을 확인
 
 검증 제한
-- package.json과 설치 의존성이 없어 실제 npm run build를 실행하지 못했습니다.
-- Firebase CLI/Emulator가 없어 Firestore Rules 공식 컴파일을 수행하지 못했습니다.
-- 브라우저 탭·창 종료 후 Firebase 지속성의 실제 동작은 테스트 브라우저와 실제 Firebase 프로젝트에서 확인해야 합니다.
-- 동일 출처의 여러 탭 간 Firebase Auth 동기화 동작은 실제 브라우저 통합시험이 필요합니다.
-
-운영 배포 전 필수 시험
-1. 최고 관리자 설정 저장
-2. 일반 관리자 읽기 전용
-3. 관리자·사용자 종료 시 로그아웃 ON/OFF
-4. 관리자·사용자 무활동 만료
-5. 관리자·사용자 절대 최대 만료
-6. 최대 유지시간 0
-7. 정책 버전 변경 후 기존 세션 종료
-8. 자동 승인 회원가입의 사용자 세션 생성
-9. JSON 백업·복원에서 계정 보안 정책 처리
-10. rules/firestore.rules 실제 배포
+- 기준 패키지에 package.json과 node_modules가 포함되지 않아 실제 npm run build는 실행하지 못했습니다.
+- Firebase CLI와 Emulator가 없어 Rules 공식 컴파일과 실제 Firestore 저장 시험은 수행하지 못했습니다.
+- 운영 반영 전에 실제 프로젝트에서 각 설정의 저장, 감사 로그, 미저장 이동 경고를 확인해야 합니다.

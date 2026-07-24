@@ -1,4 +1,4 @@
-import { CalendarDays, ChevronDown, Menu } from 'lucide-react';
+import { Activity, CalendarDays, ChevronDown, Database, Info, Menu, Paintbrush } from 'lucide-react';
 import AdminDashboardPanel from './AdminDashboardPanel.jsx';
 import AdminRequestsPanel from './AdminRequestsPanel.jsx';
 import AdminAssetsPanel from './AdminAssetsPanel.jsx';
@@ -26,6 +26,8 @@ const ADMIN_TAB_GROUP = {
   categories: 'rental',
   noticePosts: 'community',
   faqPosts: 'community',
+  siteSettings: 'site',
+  homeContent: 'site',
   heroBanners: 'site',
   promotionBanners: 'site',
   quickLinkBanners: 'site',
@@ -36,7 +38,10 @@ const ADMIN_TAB_GROUP = {
   memberAccounts: 'accounts',
   adminAccounts: 'accounts',
   settings: 'system',
+  serviceOperations: 'system',
   accountSecurity: 'system',
+  dataManagement: 'system',
+  systemInfo: 'system',
 };
 
 export default function AdminWorkspace({ ctx }) {
@@ -365,6 +370,12 @@ export default function AdminWorkspace({ ctx }) {
     );
   }, [expandedAdminMenuGroups]);
 
+  React.useEffect(() => {
+    if (adminTab === 'settings') {
+      setAdminTab('serviceOperations');
+    }
+  }, [adminTab, setAdminTab]);
+
   const adminMenuGroups = [
     {
       key: 'rental',
@@ -391,6 +402,8 @@ export default function AdminWorkspace({ ctx }) {
       label: '사이트 관리',
       Icon: LayoutDashboard,
       items: [
+        ['siteSettings', Paintbrush, '사이트 기본 설정'],
+        ['homeContent', LayoutDashboard, '홈 화면 기본 설정'],
         ['heroBanners', LayoutDashboard, '메인 비주얼 관리'],
         ['promotionBanners', LayoutDashboard, '프로모션 배너 관리'],
         ['quickLinkBanners', LayoutDashboard, '바로가기 배너 관리'],
@@ -414,8 +427,10 @@ export default function AdminWorkspace({ ctx }) {
       label: '시스템',
       Icon: Settings,
       items: [
-        ['settings', Settings, '시스템 관리'],
+        ['serviceOperations', Activity, '서비스 운영'],
         ['accountSecurity', ShieldCheck, '계정 보안 설정'],
+        ['dataManagement', Database, '데이터 관리'],
+        ['systemInfo', Info, '시스템 정보·로그'],
       ],
     },
   ];
@@ -437,15 +452,25 @@ export default function AdminWorkspace({ ctx }) {
         key={key}
         variant={isActive ? 'primary' : 'ghost'}
         onClick={() => {
-          if (
-            typeof window !== 'undefined' &&
-            window.__mkHomeBannerUnsaved &&
-            !window.confirm('저장하지 않은 초기화면 배너 또는 표시 설정 변경사항이 있습니다. 저장하지 않고 이동하시겠습니까?')
-          ) {
-            return;
-          }
           if (typeof window !== 'undefined') {
+            if (
+              window.__mkHomeBannerUnsaved &&
+              !window.confirm('저장하지 않은 초기화면 배너 또는 표시 설정 변경사항이 있습니다. 저장하지 않고 이동하시겠습니까?')
+            ) {
+              return;
+            }
+            if (
+              window.__mkSystemSettingsUnsaved &&
+              !window.confirm(
+                window.__mkSystemSettingsUnsavedMessage ||
+                  '저장하지 않은 설정 변경사항이 있습니다. 저장하지 않고 이동하시겠습니까?'
+              )
+            ) {
+              return;
+            }
             window.__mkHomeBannerUnsaved = false;
+            window.__mkSystemSettingsUnsaved = false;
+            window.__mkSystemSettingsUnsavedMessage = '';
           }
           handleAdminTabChange(key);
         }}
@@ -757,6 +782,16 @@ export default function AdminWorkspace({ ctx }) {
                     <AdminNoticePanel ctx={ctx} />
                   )}
 
+                  {/* 사이트 기본 설정 탭 */}
+                  {adminTab === 'siteSettings' && (
+                    <AdminSettingsPanel ctx={ctx} mode="site" />
+                  )}
+
+                  {/* 홈 화면 기본 설정 탭 */}
+                  {adminTab === 'homeContent' && (
+                    <AdminSettingsPanel ctx={ctx} mode="home" />
+                  )}
+
                   {/* 메인 비주얼 관리 탭 */}
                   {adminTab === 'heroBanners' && (
                     <AdminHomeBannerPanel ctx={ctx} placement="hero" />
@@ -797,14 +832,29 @@ export default function AdminWorkspace({ ctx }) {
                     <AdminAccountsPanel ctx={ctx} />
                   )}
                   
-                  {/* 시스템 관리 탭 */}
-                  {adminTab === 'settings' && (
-                    <AdminSettingsPanel ctx={ctx} />
+                  {/* 서비스 운영 탭 */}
+                  {adminTab === 'serviceOperations' && (
+                    <AdminSettingsPanel ctx={ctx} mode="service" />
                   )}
 
                   {/* 계정 보안 설정 탭 */}
                   {adminTab === 'accountSecurity' && (
                     <AdminAccountSecurityPanel ctx={ctx} />
+                  )}
+
+                  {/* 데이터 관리 탭 */}
+                  {adminTab === 'dataManagement' && (
+                    <AdminSettingsPanel ctx={ctx} mode="data" />
+                  )}
+
+                  {/* 시스템 정보·로그 탭 */}
+                  {adminTab === 'systemInfo' && (
+                    <AdminSettingsPanel ctx={ctx} mode="info" />
+                  )}
+
+                  {/* 이전 시스템 관리 메뉴 키 호환 */}
+                  {adminTab === 'settings' && (
+                    <AdminSettingsPanel ctx={ctx} mode="service" />
                   )}
 
                   {/* 대여 정책 관리 탭 */}

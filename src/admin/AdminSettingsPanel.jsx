@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  Activity,
   AlertTriangle,
   Archive,
   CheckCircle2,
@@ -11,7 +10,6 @@ import {
   FileClock,
   HardDrive,
   Info,
-  Paintbrush,
   Play,
   RefreshCw,
   Save,
@@ -81,14 +79,81 @@ import {
   validateBackupPayload,
 } from '../utils/systemRestore.js';
 
-const SYSTEM_TABS = [
-  [SYSTEM_MANAGEMENT_TAB.SITE, Paintbrush, '사이트 기본 설정'],
-  [SYSTEM_MANAGEMENT_TAB.SERVICE, Activity, '서비스 운영'],
-  [SYSTEM_MANAGEMENT_TAB.DATA, Database, '데이터 점검·백업'],
+const DATA_MANAGEMENT_TABS = [
+  [SYSTEM_MANAGEMENT_TAB.DATA, Database, '점검·백업·복원'],
   [SYSTEM_MANAGEMENT_TAB.RESET, Trash2, '데이터 초기화'],
+];
+
+const SYSTEM_INFORMATION_TABS = [
   [SYSTEM_MANAGEMENT_TAB.INFO, Info, '시스템 정보'],
   [SYSTEM_MANAGEMENT_TAB.AUDIT, FileClock, '변경 이력'],
 ];
+
+const SITE_BASIC_SETTING_FIELDS = [
+  'siteName',
+  'siteShortName',
+  'organizationName',
+  'headerSubtitleMode',
+  'headerSubtitleText',
+  'siteUrl',
+  'logoMode',
+  'logoImageUrl',
+  'mobileLogoImageUrl',
+  'logoAltText',
+  'faviconUrl',
+  'browserTitle',
+  'metaDescription',
+  'primaryColor',
+  'primaryDarkColor',
+  'supportEnabled',
+  'supportDepartment',
+  'supportEmail',
+  'supportPhone',
+  'supportHours',
+  'supportMessage',
+];
+
+const HOME_CONTENT_SETTING_FIELDS = [
+  'defaultHeroEnabled',
+  'defaultHeroTitle',
+  'defaultHeroDescription',
+];
+
+const SERVICE_OPERATION_SETTING_FIELDS = [
+  'serviceMode',
+  'maintenanceTitle',
+  'maintenanceMessage',
+  'maintenanceStartAt',
+  'maintenanceEndAt',
+  'allowNewRentalRequests',
+  'allowNewMemberSignup',
+  'allowRequestChanges',
+  'allowExtensionRequests',
+  'allowReturnRequests',
+  'systemBannerEnabled',
+  'systemBannerLevel',
+  'systemBannerMessage',
+  'systemBannerUrl',
+  'systemBannerDismissible',
+];
+
+const SETTINGS_MODE = {
+  SITE: SYSTEM_MANAGEMENT_TAB.SITE,
+  HOME: SYSTEM_MANAGEMENT_TAB.HOME,
+  SERVICE: SYSTEM_MANAGEMENT_TAB.SERVICE,
+  DATA: SYSTEM_MANAGEMENT_TAB.DATA,
+  INFO: SYSTEM_MANAGEMENT_TAB.INFO,
+};
+
+const pickSettingsFields = (settings, fields) =>
+  Object.fromEntries(fields.map((field) => [field, settings[field]]));
+
+const getEditableSiteSettingFields = (mode) => {
+  if (mode === SETTINGS_MODE.SITE) return SITE_BASIC_SETTING_FIELDS;
+  if (mode === SETTINGS_MODE.HOME) return HOME_CONTENT_SETTING_FIELDS;
+  if (mode === SETTINGS_MODE.SERVICE) return SERVICE_OPERATION_SETTING_FIELDS;
+  return [];
+};
 
 const RESET_SCOPE_META = {
   [SYSTEM_RESET_SCOPE.ASSETS]: {
@@ -299,7 +364,7 @@ function SectionCard({ title, description, children, className = '' }) {
   );
 }
 
-export default function AdminSettingsPanel({ ctx }) {
+export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE }) {
   const {
     AdminPageHeader,
     Button,
@@ -320,7 +385,13 @@ export default function AdminSettingsPanel({ ctx }) {
     triggerToast,
   } = ctx;
 
-  const [activeTab, setActiveTab] = useState(SYSTEM_MANAGEMENT_TAB.SITE);
+  const initialSectionTab =
+    mode === SETTINGS_MODE.DATA
+      ? SYSTEM_MANAGEMENT_TAB.DATA
+      : mode === SETTINGS_MODE.INFO
+        ? SYSTEM_MANAGEMENT_TAB.INFO
+        : mode;
+  const [activeTab, setActiveTab] = useState(initialSectionTab);
   const [siteDraft, setSiteDraft] = useState(() => normalizeSiteSettings(siteSettings));
   const [siteSaving, setSiteSaving] = useState(false);
   const [auditLogs, setAuditLogs] = useState([]);
@@ -358,73 +429,123 @@ export default function AdminSettingsPanel({ ctx }) {
   const [restoreResult, setRestoreResult] = useState(null);
 
   const isOwner = getAdminRole(authenticatedAdminAccount) === 'owner';
-  const siteDirty = JSON.stringify(siteDraft) !== JSON.stringify(normalizeSiteSettings(siteSettings));
+  const editableSiteFields = getEditableSiteSettingFields(mode);
+  const normalizedSavedSiteSettings = normalizeSiteSettings(siteSettings);
+  const siteDirty =
+    editableSiteFields.length > 0 &&
+    JSON.stringify(pickSettingsFields(siteDraft, editableSiteFields)) !==
+      JSON.stringify(pickSettingsFields(normalizedSavedSiteSettings, editableSiteFields));
+
+  useEffect(() => {
+    setActiveTab(
+      mode === SETTINGS_MODE.DATA
+        ? SYSTEM_MANAGEMENT_TAB.DATA
+        : mode === SETTINGS_MODE.INFO
+          ? SYSTEM_MANAGEMENT_TAB.INFO
+          : mode
+    );
+  }, [mode]);
 
   useEffect(() => {
     setSiteDraft(normalizeSiteSettings(siteSettings));
   }, [siteSettings]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const managedMode = [SETTINGS_MODE.SITE, SETTINGS_MODE.HOME, SETTINGS_MODE.SERVICE].includes(mode);
+    window.__mkSystemSettingsUnsaved = managedMode && siteDirty;
+    window.__mkSystemSettingsUnsavedMessage =
+      mode === SETTINGS_MODE.SITE
+        ? '저장하지 않은 사이트 기본 설정 변경사항이 있습니다. 저장하지 않고 이동하시겠습니까?'
+        : mode === SETTINGS_MODE.HOME
+          ? '저장하지 않은 홈 화면 기본 설정 변경사항이 있습니다. 저장하지 않고 이동하시겠습니까?'
+          : '저장하지 않은 서비스 운영 설정 변경사항이 있습니다. 저장하지 않고 이동하시겠습니까?';
+
+    return () => {
+      window.__mkSystemSettingsUnsaved = false;
+      window.__mkSystemSettingsUnsavedMessage = '';
+    };
+  }, [mode, siteDirty]);
+
+  useEffect(() => {
     if (!authenticatedAdminAccount) return undefined;
 
-    const auditQuery = query(
-      SYSTEM_AUDIT_LOGS_COLLECTION_REF,
-      orderBy('createdAt', 'desc'),
-      limit(50)
-    );
-    const unsubscribeAudit = onSnapshot(
-      auditQuery,
-      (snapshot) => {
-        setAuditLogs(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
-        setAuditReady(true);
-      },
-      (error) => {
-        console.error('System audit log load error:', error);
-        setAuditReady(true);
-      }
-    );
-
+    let unsubscribeAudit = () => {};
     let unsubscribeReset = () => {};
-    if (getAdminRole(authenticatedAdminAccount) === 'owner') {
-      const resetQuery = query(
-        SYSTEM_RESET_JOBS_COLLECTION_REF,
+    let unsubscribeRestore = () => {};
+
+    if (mode === SETTINGS_MODE.INFO) {
+      const auditQuery = query(
+        SYSTEM_AUDIT_LOGS_COLLECTION_REF,
+        orderBy('createdAt', 'desc'),
+        limit(50)
+      );
+      unsubscribeAudit = onSnapshot(
+        auditQuery,
+        (snapshot) => {
+          setAuditLogs(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+          setAuditReady(true);
+        },
+        (error) => {
+          console.error('System audit log load error:', error);
+          setAuditReady(true);
+        }
+      );
+    } else {
+      setAuditLogs([]);
+      setAuditReady(false);
+    }
+
+    if (mode === SETTINGS_MODE.DATA) {
+      if (getAdminRole(authenticatedAdminAccount) === 'owner') {
+        const resetQuery = query(
+          SYSTEM_RESET_JOBS_COLLECTION_REF,
+          orderBy('startedAt', 'desc'),
+          limit(1)
+        );
+        unsubscribeReset = onSnapshot(
+          resetQuery,
+          (snapshot) => {
+            setLatestResetJob(snapshot.docs[0]
+              ? { id: snapshot.docs[0].id, ...snapshot.docs[0].data() }
+              : null);
+          },
+          (error) => console.error('System reset job load error:', error)
+        );
+      } else {
+        setLatestResetJob(null);
+      }
+
+      const restoreQuery = query(
+        SYSTEM_RESTORE_JOBS_COLLECTION_REF,
         orderBy('startedAt', 'desc'),
         limit(1)
       );
-      unsubscribeReset = onSnapshot(
-        resetQuery,
+      unsubscribeRestore = onSnapshot(
+        restoreQuery,
         (snapshot) => {
-          setLatestResetJob(snapshot.docs[0]
+          setLatestRestoreJob(snapshot.docs[0]
             ? { id: snapshot.docs[0].id, ...snapshot.docs[0].data() }
             : null);
         },
-        (error) => console.error('System reset job load error:', error)
+        (error) => console.error('System restore job load error:', error)
       );
     } else {
       setLatestResetJob(null);
+      setLatestRestoreJob(null);
     }
-
-    const restoreQuery = query(
-      SYSTEM_RESTORE_JOBS_COLLECTION_REF,
-      orderBy('startedAt', 'desc'),
-      limit(1)
-    );
-    const unsubscribeRestore = onSnapshot(
-      restoreQuery,
-      (snapshot) => {
-        setLatestRestoreJob(snapshot.docs[0]
-          ? { id: snapshot.docs[0].id, ...snapshot.docs[0].data() }
-          : null);
-      },
-      (error) => console.error('System restore job load error:', error)
-    );
 
     return () => {
       unsubscribeAudit();
       unsubscribeReset();
       unsubscribeRestore();
     };
-  }, [authenticatedAdminAccount?.id, authenticatedAdminAccount?.adminRole]);
+  }, [
+    authenticatedAdminAccount?.id,
+    authenticatedAdminAccount?.adminRole,
+    mode,
+  ]);
 
 
   const writeAuditLog = async ({ action, section, beforeValues = null, afterValues = null, summary = '' }) => {
@@ -442,14 +563,45 @@ export default function AdminSettingsPanel({ ctx }) {
   };
 
   const validateSiteDraft = () => {
-    if (!siteDraft.siteName.trim()) return '사이트 정식 명칭을 입력해 주세요.';
-    if (!siteDraft.siteShortName.trim()) return '사이트 짧은 명칭을 입력해 주세요.';
-    if (!isValidHexColor(siteDraft.primaryColor)) return '기본 강조색은 #RRGGBB 형식으로 입력해 주세요.';
-    if (!isValidHexColor(siteDraft.primaryDarkColor)) return '진한 강조색은 #RRGGBB 형식으로 입력해 주세요.';
-    if (siteDraft.serviceMode === SERVICE_MODE.MAINTENANCE && !siteDraft.maintenanceTitle.trim()) {
+    if (mode === SETTINGS_MODE.SITE) {
+      if (!siteDraft.siteName.trim()) return '사이트 정식 명칭을 입력해 주세요.';
+      if (!siteDraft.siteShortName.trim()) return '사이트 짧은 명칭을 입력해 주세요.';
+      if (!isValidHexColor(siteDraft.primaryColor)) return '기본 강조색은 #RRGGBB 형식으로 입력해 주세요.';
+      if (!isValidHexColor(siteDraft.primaryDarkColor)) return '진한 강조색은 #RRGGBB 형식으로 입력해 주세요.';
+    }
+    if (
+      mode === SETTINGS_MODE.SERVICE &&
+      siteDraft.serviceMode === SERVICE_MODE.MAINTENANCE &&
+      !siteDraft.maintenanceTitle.trim()
+    ) {
       return '점검 제목을 입력해 주세요.';
     }
     return '';
+  };
+
+  const getSiteSettingsSectionMeta = () => {
+    if (mode === SETTINGS_MODE.HOME) {
+      return {
+        action: 'home-content-settings-update',
+        section: '홈 화면 기본 설정',
+        summary: '등록된 메인 비주얼이 없을 때 표시할 기본 콘텐츠를 변경했습니다.',
+        successMessage: '홈 화면 기본 설정이 저장되었습니다.',
+      };
+    }
+    if (mode === SETTINGS_MODE.SERVICE) {
+      return {
+        action: 'service-operation-settings-update',
+        section: '서비스 운영',
+        summary: '서비스 운영상태와 기능별 접수 정책을 변경했습니다.',
+        successMessage: '서비스 운영 설정이 저장되었습니다.',
+      };
+    }
+    return {
+      action: 'site-basic-settings-update',
+      section: '사이트 기본 설정',
+      summary: '사이트 명칭, 브랜드, 헤더와 문의 정보를 변경했습니다.',
+      successMessage: '사이트 기본 설정이 저장되었습니다.',
+    };
   };
 
   const saveSiteSettings = async () => {
@@ -459,9 +611,13 @@ export default function AdminSettingsPanel({ ctx }) {
       return;
     }
 
+    const fields = getEditableSiteSettingFields(mode);
+    if (fields.length === 0) return;
+
     setSiteSaving(true);
-    const beforeValues = normalizeSiteSettings(siteSettings);
-    const afterValues = normalizeSiteSettings(siteDraft);
+    const beforeValues = pickSettingsFields(normalizeSiteSettings(siteSettings), fields);
+    const afterValues = pickSettingsFields(normalizeSiteSettings(siteDraft), fields);
+    const sectionMeta = getSiteSettingsSectionMeta();
 
     try {
       await setDoc(
@@ -475,16 +631,16 @@ export default function AdminSettingsPanel({ ctx }) {
         { merge: true }
       );
       await writeAuditLog({
-        action: 'site-settings-update',
-        section: activeTab === SYSTEM_MANAGEMENT_TAB.SERVICE ? '서비스 운영' : '사이트 기본 설정',
+        action: sectionMeta.action,
+        section: sectionMeta.section,
         beforeValues,
         afterValues,
-        summary: '사이트 공통 설정을 변경했습니다.',
+        summary: sectionMeta.summary,
       });
-      triggerToast('사이트 설정이 저장되었습니다.', 'success');
+      triggerToast(sectionMeta.successMessage, 'success');
     } catch (error) {
       console.error('Site settings save error:', error);
-      triggerToast('사이트 설정 저장에 실패했습니다. Firestore 권한을 확인해 주세요.', 'error');
+      triggerToast('설정 저장에 실패했습니다. Firestore 권한을 확인해 주세요.', 'error');
     } finally {
       setSiteSaving(false);
     }
@@ -630,7 +786,7 @@ export default function AdminSettingsPanel({ ctx }) {
         exportedAt: new Date().toISOString(),
         exportedAtKorea: new Date().toLocaleString('ko-KR'),
         backupFormatVersion: BACKUP_FORMAT_VERSION,
-        applicationVersion: 'system-management-restore-v2',
+        applicationVersion: 'site-system-menu-split-v1',
         schemaVersion: Number(systemAdminSettings?.schemaVersion || 1),
         firebaseProjectId: firebaseConfig.projectId,
         includeOperations,
@@ -1544,10 +1700,14 @@ export default function AdminSettingsPanel({ ctx }) {
     }
   };
 
+  const resetSiteDraft = () => {
+    setSiteDraft(normalizeSiteSettings(siteSettings));
+  };
+
   const renderSiteTab = () => (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
       <div className="space-y-5">
-        <SectionCard title="사이트 명칭" description="헤더, 로그인 화면, 기본 비주얼과 브라우저 제목에 적용됩니다.">
+        <SectionCard title="사이트 명칭" description="헤더, 로그인 화면과 브라우저 제목에 적용됩니다.">
           <div className="grid gap-4 md:grid-cols-2">
             <Input label="사이트 정식 명칭" value={siteDraft.siteName} onChange={(value) => setSiteDraft({ ...siteDraft, siteName: value })} />
             <Input label="사이트 짧은 명칭" value={siteDraft.siteShortName} onChange={(value) => setSiteDraft({ ...siteDraft, siteShortName: value })} />
@@ -1575,7 +1735,7 @@ export default function AdminSettingsPanel({ ctx }) {
           </div>
         </SectionCard>
 
-        <SectionCard title="로고·브랜드" description="오류·경고·성공 상태 색상은 변경하지 않고 주요 버튼과 선택 요소에만 적용됩니다.">
+        <SectionCard title="로고·브랜드" description="오류·경고·성공 상태 색상은 유지하고 주요 버튼과 선택 요소에만 적용됩니다.">
           <div className="grid gap-4 md:grid-cols-2">
             <Select label="로고 표시 방식" value={siteDraft.logoMode} onChange={(value) => setSiteDraft({ ...siteDraft, logoMode: value })}>
               <option value="icon">기본 노트북 아이콘</option>
@@ -1601,14 +1761,6 @@ export default function AdminSettingsPanel({ ctx }) {
           </div>
         </SectionCard>
 
-        <SectionCard title="기본 메인 비주얼" description="등록된 메인 배너가 없을 때만 표시됩니다.">
-          <div className="space-y-4">
-            <ToggleSwitch checked={siteDraft.defaultHeroEnabled} onChange={(value) => setSiteDraft({ ...siteDraft, defaultHeroEnabled: value })} label="기본 메인 비주얼 사용" description="끄면 등록 배너가 없는 경우 간소화된 빈 영역으로 표시됩니다." />
-            <Input label="기본 제목" value={siteDraft.defaultHeroTitle} onChange={(value) => setSiteDraft({ ...siteDraft, defaultHeroTitle: value })} placeholder="비워 두면 사이트 정식 명칭 사용" />
-            <Input label="기본 설명" value={siteDraft.defaultHeroDescription} onChange={(value) => setSiteDraft({ ...siteDraft, defaultHeroDescription: value })} />
-          </div>
-        </SectionCard>
-
         <SectionCard title="서비스 문의 정보" description="가입 대기, 이용 중지, 점검, 탈퇴 제한 안내에 공통으로 표시할 수 있습니다.">
           <div className="space-y-4">
             <ToggleSwitch checked={siteDraft.supportEnabled} onChange={(value) => setSiteDraft({ ...siteDraft, supportEnabled: value })} label="문의 정보 표시" />
@@ -1626,7 +1778,7 @@ export default function AdminSettingsPanel({ ctx }) {
       </div>
 
       <div className="space-y-5">
-        <SectionCard title="실시간 미리보기" description="저장 전 사이트 헤더와 주요 색상을 확인합니다.">
+        <SectionCard title="실시간 미리보기" description="저장 전 사이트 헤더와 주요 브랜드 요소를 확인합니다.">
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-center gap-3">
               {siteDraft.logoMode === 'image' && siteDraft.logoImageUrl ? (
@@ -1647,15 +1799,56 @@ export default function AdminSettingsPanel({ ctx }) {
                 </div>
               </div>
             </div>
-            <div className="mt-5 rounded-2xl px-5 py-7 text-white" style={{ background: `linear-gradient(135deg, #0f172a, ${siteDraft.primaryDarkColor})` }}>
-              <div className="text-lg font-black">{siteDraft.defaultHeroTitle || siteDraft.siteName}</div>
-              <div className="mt-2 text-xs text-white/80">{siteDraft.defaultHeroDescription}</div>
+            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="text-xs font-semibold text-slate-500">브라우저 제목</div>
+              <div className="mt-1 text-sm font-black text-slate-900">{siteDraft.browserTitle || siteDraft.siteName}</div>
+              <div className="mt-4 flex items-center gap-2">
+                <span className="inline-flex rounded-lg px-3 py-2 text-xs font-bold text-white" style={{ background: siteDraft.primaryColor }}>주요 버튼</span>
+                <span className="text-xs font-bold" style={{ color: siteDraft.primaryDarkColor }}>강조 링크</span>
+              </div>
             </div>
           </div>
         </SectionCard>
         <div className="sticky top-24 flex justify-end gap-2 rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-sm backdrop-blur">
-          <Button type="button" variant="outline" disabled={!siteDirty || siteSaving} onClick={() => setSiteDraft(normalizeSiteSettings(siteSettings))}>변경 취소</Button>
-          <Button type="button" disabled={!siteDirty || siteSaving} onClick={saveSiteSettings}><Save size={14} />{siteSaving ? '저장 중' : '사이트 설정 저장'}</Button>
+          <Button type="button" variant="outline" disabled={!siteDirty || siteSaving} onClick={resetSiteDraft}>변경 취소</Button>
+          <Button type="button" disabled={!siteDirty || siteSaving} onClick={saveSiteSettings}><Save size={14} />{siteSaving ? '저장 중' : '사이트 기본 설정 저장'}</Button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderHomeContentTab = () => (
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(340px,0.8fr)]">
+      <div className="space-y-5">
+        <SectionCard title="기본 메인 비주얼" description="등록된 메인 비주얼 배너가 없을 때 사용자 홈 화면에 표시할 기본 콘텐츠입니다.">
+          <div className="space-y-4">
+            <ToggleSwitch checked={siteDraft.defaultHeroEnabled} onChange={(value) => setSiteDraft({ ...siteDraft, defaultHeroEnabled: value })} label="기본 메인 비주얼 사용" description="끄면 등록된 메인 비주얼이 없는 경우 간소화된 빈 영역으로 표시됩니다." />
+            <Input label="기본 제목" value={siteDraft.defaultHeroTitle} onChange={(value) => setSiteDraft({ ...siteDraft, defaultHeroTitle: value })} placeholder="비워 두면 사이트 정식 명칭 사용" />
+            <Input label="기본 설명" value={siteDraft.defaultHeroDescription} onChange={(value) => setSiteDraft({ ...siteDraft, defaultHeroDescription: value })} />
+          </div>
+        </SectionCard>
+
+        <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-xs leading-5 text-sky-800">
+          이 화면은 등록된 메인 비주얼이 없을 때의 대체 콘텐츠만 관리합니다. 메인 비주얼, 프로모션 배너, 바로가기 배너의 등록·순서·노출 일정은 현재 각각의 기존 관리 메뉴에서 계속 관리합니다.
+        </div>
+      </div>
+
+      <div className="space-y-5">
+        <SectionCard title="홈 화면 미리보기" description="기본 메인 비주얼의 제목과 설명을 저장 전에 확인합니다.">
+          {siteDraft.defaultHeroEnabled ? (
+            <div className="rounded-2xl px-6 py-10 text-white shadow-sm" style={{ background: `linear-gradient(135deg, #0f172a, ${siteDraft.primaryDarkColor})` }}>
+              <div className="text-xl font-black">{siteDraft.defaultHeroTitle || siteDraft.siteName}</div>
+              <div className="mt-3 text-sm leading-6 text-white/80">{siteDraft.defaultHeroDescription || '기본 메인 비주얼 설명이 표시됩니다.'}</div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center text-xs font-semibold text-slate-500">
+              기본 메인 비주얼을 사용하지 않습니다.
+            </div>
+          )}
+        </SectionCard>
+        <div className="sticky top-24 flex justify-end gap-2 rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-sm backdrop-blur">
+          <Button type="button" variant="outline" disabled={!siteDirty || siteSaving} onClick={resetSiteDraft}>변경 취소</Button>
+          <Button type="button" disabled={!siteDirty || siteSaving} onClick={saveSiteSettings}><Save size={14} />{siteSaving ? '저장 중' : '홈 화면 기본 설정 저장'}</Button>
         </div>
       </div>
     </div>
@@ -1987,7 +2180,7 @@ export default function AdminSettingsPanel({ ctx }) {
       <SectionCard title="애플리케이션" description="현재 브라우저에서 확인 가능한 읽기 전용 정보입니다.">
         <dl className="space-y-3 text-xs">
           {[
-            ['애플리케이션 버전', 'system-management-restore-v2'],
+            ['애플리케이션 버전', 'site-system-menu-split-v1'],
             ['데이터 스키마 버전', systemAdminSettings?.schemaVersion || 1],
             ['현재 접속 주소', window.location.href],
             ['실행 모드', import.meta.env.MODE || 'production'],
@@ -2033,95 +2226,121 @@ export default function AdminSettingsPanel({ ctx }) {
     </SectionCard>
   );
 
-  const activeContent = useMemo(() => {
-    if (activeTab === SYSTEM_MANAGEMENT_TAB.SITE) return renderSiteTab();
-    if (activeTab === SYSTEM_MANAGEMENT_TAB.SERVICE) return renderServiceTab();
-    if (activeTab === SYSTEM_MANAGEMENT_TAB.DATA) return renderDataTab();
-    if (activeTab === SYSTEM_MANAGEMENT_TAB.RESET) return renderResetTab();
-    if (activeTab === SYSTEM_MANAGEMENT_TAB.INFO) return renderInfoTab();
-    return renderAuditTab();
-  }, [
-    activeTab,
-    siteDraft,
-    siteSettings,
-    systemAdminSettings,
-    siteSaving,
-    integrityLoading,
-    integrityResult,
-    backupLoading,
-    backupIncludeOperations,
-    backupIncludeMembers,
-    backupIncludePersonalData,
-    restoreFileName,
-    restoreFileHash,
-    restorePayload,
-    restoreValidation,
-    restoreAnalysis,
-    restoreAnalyzeLoading,
-    restoreRunning,
-    restoreProgress,
-    restoreMode,
-    selectedRestoreScopes,
-    forceProjectMismatch,
-    forceProjectConfirm,
-    restorePassword,
-    restoreConfirmText,
-    latestRestoreJob,
-    restoreResult,
-    selectedResetScopes,
-    resetCounts,
-    resetScanLoading,
-    resetRunning,
-    resetProgress,
-    resetPassword,
-    resetConfirmText,
-    resetBackupReady,
-    latestResetJob,
-    auditLogs,
-    auditReady,
-    isOwner,
-    isSplitStorageReady,
-    splitStorageFinalizeLoading,
-    siteSettingsReady,
-    siteSettingsLoadErrorMessage,
-    systemAdminSettingsReady,
-    systemAdminSettingsLoadErrorMessage,
-  ]);
+  const sectionTabs =
+    mode === SETTINGS_MODE.DATA
+      ? DATA_MANAGEMENT_TABS
+      : mode === SETTINGS_MODE.INFO
+        ? SYSTEM_INFORMATION_TABS
+        : [];
+
+  const pageMeta = (() => {
+    if (mode === SETTINGS_MODE.SITE) {
+      return {
+        title: '사이트 기본 설정',
+        description: '사이트 명칭, 헤더, 로고, 브랜드 색상과 공통 문의 정보를 관리합니다.',
+      };
+    }
+    if (mode === SETTINGS_MODE.HOME) {
+      return {
+        title: '홈 화면 기본 설정',
+        description: '등록된 메인 비주얼이 없을 때 표시할 사용자 홈 화면의 기본 콘텐츠를 관리합니다.',
+      };
+    }
+    if (mode === SETTINGS_MODE.DATA) {
+      return {
+        title: '데이터 관리',
+        description: '데이터 건전성 점검, JSON 백업·복원과 위험 초기화 작업을 관리합니다.',
+      };
+    }
+    if (mode === SETTINGS_MODE.INFO) {
+      return {
+        title: '시스템 정보·로그',
+        description: '애플리케이션과 Firebase 연결정보, 시스템 설정 변경 이력을 확인합니다.',
+      };
+    }
+    return {
+      title: '서비스 운영',
+      description: '서비스 운영모드, 기능별 접수 상태와 전역 시스템 안내를 관리합니다.',
+    };
+  })();
+
+  const activeContent = (() => {
+    if (mode === SETTINGS_MODE.SITE) return renderSiteTab();
+    if (mode === SETTINGS_MODE.HOME) return renderHomeContentTab();
+    if (mode === SETTINGS_MODE.SERVICE) return renderServiceTab();
+    if (mode === SETTINGS_MODE.DATA) {
+      return activeTab === SYSTEM_MANAGEMENT_TAB.RESET
+        ? renderResetTab()
+        : renderDataTab();
+    }
+    return activeTab === SYSTEM_MANAGEMENT_TAB.AUDIT
+      ? renderAuditTab()
+      : renderInfoTab();
+  })();
+
+  const loadErrorMessage =
+    mode === SETTINGS_MODE.SITE ||
+    mode === SETTINGS_MODE.HOME ||
+    mode === SETTINGS_MODE.SERVICE
+      ? siteSettingsLoadErrorMessage
+      : siteSettingsLoadErrorMessage || systemAdminSettingsLoadErrorMessage;
+
+  const serviceStatusBadge =
+    mode === SETTINGS_MODE.SERVICE ? (
+      <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold ${
+        siteSettings?.serviceMode === SERVICE_MODE.NORMAL
+          ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+          : siteSettings?.serviceMode === SERVICE_MODE.READ_ONLY
+            ? 'border-amber-300 bg-amber-50 text-amber-700'
+            : 'border-rose-300 bg-rose-50 text-rose-700'
+      }`}>
+        <span className="h-2 w-2 rounded-full bg-current" />
+        {siteSettings?.serviceMode === SERVICE_MODE.NORMAL
+          ? '정상 운영'
+          : siteSettings?.serviceMode === SERVICE_MODE.READ_ONLY
+            ? '읽기 전용'
+            : '점검 중'}
+      </span>
+    ) : null;
 
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        title="시스템 관리"
-        description="사이트 공통 설정, 서비스 운영상태, 데이터 점검·백업·복원과 초기화를 관리합니다."
-        badge={
-          <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold ${
-            siteSettings?.serviceMode === SERVICE_MODE.NORMAL
-              ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-              : siteSettings?.serviceMode === SERVICE_MODE.READ_ONLY
-                ? 'border-amber-300 bg-amber-50 text-amber-700'
-                : 'border-rose-300 bg-rose-50 text-rose-700'
-          }`}>
-            <span className="h-2 w-2 rounded-full bg-current" />
-            {siteSettings?.serviceMode === SERVICE_MODE.NORMAL ? '정상 운영' : siteSettings?.serviceMode === SERVICE_MODE.READ_ONLY ? '읽기 전용' : '점검 중'}
-          </span>
-        }
+        title={pageMeta.title}
+        description={pageMeta.description}
+        badge={serviceStatusBadge}
       />
 
-      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
-        <div className="flex min-w-max gap-1">
-          {SYSTEM_TABS.map(([key, Icon, label]) => (
-            <button key={key} type="button" onClick={() => setActiveTab(key)} className={`inline-flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold transition ${activeTab === key ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}>
-              <Icon size={14} />{label}
-            </button>
-          ))}
+      {sectionTabs.length > 0 ? (
+        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+          <div className="flex min-w-max gap-1">
+            {sectionTabs.map(([key, Icon, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setActiveTab(key)}
+                className={`inline-flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold transition ${
+                  activeTab === key
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <Icon size={14} />
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : null}
 
-      {siteSettingsLoadErrorMessage || systemAdminSettingsLoadErrorMessage ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs leading-5 text-rose-800">{siteSettingsLoadErrorMessage || systemAdminSettingsLoadErrorMessage}</div>
+      {loadErrorMessage ? (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs leading-5 text-rose-800">
+          {loadErrorMessage}
+        </div>
       ) : null}
 
       {activeContent}
     </div>
   );
+
 }

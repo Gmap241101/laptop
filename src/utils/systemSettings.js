@@ -73,6 +73,7 @@ export const SERVICE_MODE = {
 
 export const SYSTEM_MANAGEMENT_TAB = {
   SITE: 'site',
+  HOME: 'home',
   SERVICE: 'service',
   DATA: 'data',
   RESET: 'reset',
