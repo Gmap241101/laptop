@@ -1,32 +1,62 @@
-시스템 관리 운영 콘솔 검증 보고
+시스템 관리 JSON 백업 복원 기능 검증 보고
 
 기준본
-- member_account_recovery_withdrawal_policy_deployment_package.zip
+- system_management_operations_console_deployment_package.zip
 
 변경 범위
 - DEPLOYMENT_NOTES.txt
+- VALIDATION_REPORT.txt
 - firestore.rules
-- src/App.jsx
-- src/admin/AdminAccountsPanel.jsx
 - src/admin/AdminSettingsPanel.jsx
+- src/components/CommonUI.jsx
 - src/firebase.js
-- src/user/UserAccountStatusPanel.jsx
-- src/user/UserAuthPanel.jsx
-- src/user/UserHomePanel.jsx
-- src/utils/systemSettings.js (신규)
-- tools/delete-non-admin-auth-users.mjs (신규)
-- tools/README.txt (신규)
+- src/utils/systemSettings.js
+- src/utils/systemRestore.js (신규)
+- tools/README.txt
+
+구현 범위
+- JSON 백업 형식 v2 및 Firestore Timestamp 명시적 직렬화
+- 기존 v1 Timestamp JSON 호환 변환
+- 사이트, 정책, 자산, 조직명부, 회원, 대여이력, 콘텐츠, 관리자 시스템 설정 영역별 복원
+- 없는 문서만 추가, 병합, 덮어쓰기, 선택 영역 초기화 후 복원
+- 최고 관리자 전용 타 프로젝트 강제 복원
+- 프로젝트 ID 및 스키마 버전 검사
+- 회원 개인정보 미포함 백업의 회원영역 복원 차단
+- 현재 데이터와 문서 ID 충돌 및 백업 외 현재 문서 수 미리보기
+- 자산 참조 오류와 중복 자산관리번호 사전 차단
+- 복원 직전 개인정보 포함 전체 자동 백업
+- 점검 모드 자동 전환 및 복원 완료 후 점검 모드 유지
+- 400건 단위 Firestore 배치 복원
+- systemRestoreJobs 기반 중단 작업 재개
+- 복원 후 데이터 건전성 검사와 감사 로그
+- 관리자 ID, 관리자 Auth, 초기화·복원 작업·감사 로그 복원 제외
 
 검증 완료
-- JavaScript/JSX 40개 파일 TypeScript transpile 구문 검사 통과
+- JavaScript/JSX 41개 파일 TypeScript parser 구문 검사 통과
+- AdminSettingsPanel 필터링 의미 검사 통과(미정의 이름·중복 선언 없음)
 - 로컬 상대 import 경로 검사 통과
-- 관리자/사용자 패널 ctx 참조 검사 통과
-- systemSettings 유틸리티 기본 동작 검사 통과
-- Firebase Auth 정리 스크립트 node --check 통과
+- systemRestore 유틸리티 단위 검사 통과
+  · 동일 프로젝트 검증
+  · 타 프로젝트 불일치 검출
+  · 영역별 복원 계획 생성
+  · Firestore Timestamp v1/v2 변환
+- 비 JSX JavaScript node --check 통과
 - Firestore Rules 괄호·중괄호·대괄호 구조 검사 통과
-- Firestore Rules 중복 match 경로 검사 통과
+- systemRestoreJobs 및 lastRestore 필드 규칙 반영 확인
 
 검증 제한
-- 기준 패키지에는 package.json 및 node_modules가 없어 npm run build를 실행하지 못했습니다.
-- 현재 환경에는 Firebase CLI/Emulator가 없어 Firestore Rules 공식 컴파일과 실제 프로젝트 배포 테스트를 수행하지 못했습니다.
-- 운영 배포 전에 별도 테스트 프로젝트 또는 Emulator에서 Rules와 데이터 초기화 시나리오를 검증해야 합니다.
+- 기준 패키지에는 package.json과 node_modules가 없어 실제 npm run build를 실행하지 못했습니다.
+- 현재 환경에는 Firebase CLI/Emulator가 없어 Firestore Rules 공식 컴파일과 실제 Firebase 프로젝트 쓰기 테스트를 수행하지 못했습니다.
+- 웹 클라이언트는 다른 사용자의 Firebase Authentication 계정 존재 여부를 조회할 수 없습니다. 회원 Firestore 문서 복원 후 Auth 계정 유무는 Firebase Console 또는 별도 Auth 백업으로 확인해야 합니다.
+
+운영 배포 전 필수 시험
+1. 동일 프로젝트 백업의 없는 문서만 추가
+2. 같은 ID 병합 및 덮어쓰기
+3. 최고 관리자 선택 영역 초기화 후 복원
+4. 일반 관리자에게 초기화 후 복원 방식 비활성화 확인
+5. 프로젝트 ID 불일치 시 일반 관리자 차단
+6. 최고 관리자 강제 복원과 대상 프로젝트 ID 확인
+7. 복원 중 네트워크 중단 후 같은 파일로 재개
+8. 개인정보 제외 백업에서 회원영역 비활성화
+9. 자산 참조 오류가 있는 백업의 실행 차단
+10. 복원 완료 후 점검 모드 및 데이터 건전성 검사

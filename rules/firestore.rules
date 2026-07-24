@@ -328,7 +328,10 @@ service cloud.firestore {
             'lastIntegrityCheckBy',
             'lastIntegrityCheckSummary',
             'lastBackupGeneratedAt',
-            'lastBackupGeneratedBy'
+            'lastBackupGeneratedBy',
+            'lastRestoreCompletedAt',
+            'lastRestoreCompletedBy',
+            'lastRestoreSummary'
           ])
         );
       allow delete: if false;
@@ -343,6 +346,20 @@ service cloud.firestore {
 
     match /systemResetJobs/{jobId} {
       allow read, create, update: if isOwnerAdmin();
+      allow delete: if false;
+    }
+
+    match /systemRestoreJobs/{jobId} {
+      allow read: if isAdmin();
+      allow create, update: if isAdmin()
+        && (
+          request.resource.data.get('forceProjectMismatch', false) != true
+          || isOwnerAdmin()
+        )
+        && (
+          request.resource.data.get('mode', '') != 'replace'
+          || isOwnerAdmin()
+        );
       allow delete: if false;
     }
 

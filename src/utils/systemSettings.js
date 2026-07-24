@@ -51,6 +51,9 @@ export const DEFAULT_SYSTEM_ADMIN_SETTINGS = {
   lastIntegrityCheckSummary: null,
   lastBackupGeneratedAt: '',
   lastBackupGeneratedBy: '',
+  lastRestoreCompletedAt: '',
+  lastRestoreCompletedBy: '',
+  lastRestoreSummary: null,
 };
 
 export const SERVICE_MODE = {

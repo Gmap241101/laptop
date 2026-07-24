@@ -168,3 +168,8 @@ export const SYSTEM_RESET_JOBS_COLLECTION_REF = collection(
   db,
   'systemResetJobs'
 );
+
+export const SYSTEM_RESTORE_JOBS_COLLECTION_REF = collection(
+  db,
+  'systemRestoreJobs'
+);
