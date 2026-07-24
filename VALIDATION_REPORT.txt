@@ -40,3 +40,25 @@ Rules
 검증 제한
 - 기준 패키지에 package.json과 node_modules가 없어 npm run build는 실행하지 못했습니다.
 - 실제 브라우저 렌더링과 반응형 배치는 로컬 프로젝트 빌드 후 최종 확인이 필요합니다.
+
+회원 로그인 권한 오류 수정 검증
+
+검증 시나리오
+- 명부 제한 ON 상태에서 명부 불일치 회원을 profileRequired로 전환
+- 명부 제한 OFF 저장 시 해당 회원과 복구키 상태의 일괄 복원 경로 확인
+- 일괄 복원 실패 시 회원 로그인 트랜잭션의 자기 상태 복원 경로 확인
+- 읽기 전용 상태에서 active 회원의 로그인 시 명부 재검증 쓰기 생략 확인
+- 읽기 전용 상태에서 정책 해제 directoryMismatch 회원의 제한 복원 경로 확인
+- profileRequired/duplicateIdentity 회원은 읽기 전용에서 임의 active 전환되지 않음 확인
+- userAccounts/{uid}, adminAccounts/{uid} 단건 조회 규칙 유지 확인
+
+정적 검증
+- JavaScript/JSX 42개 파일 TypeScript transpile 구문 검사 통과
+- 상대 import 경로 검사 통과
+- Firestore Rules 괄호·대괄호·중괄호 구조 검사 통과
+- 정책 해제 자기 복원은 status 및 profileRequired 메타데이터만 변경하도록 제한
+- 복구키 생성·상태 갱신은 동일 로그인 UID의 전후 userAccounts 상태와 교차 검증
+
+검증 제한
+- Firebase CLI와 Emulator가 없어 Rules 공식 컴파일 및 실제 프로젝트 권한 시험은 수행하지 못했습니다.
+- 배포 전 테스트 프로젝트에서 두 재현 시나리오를 실제 로그인으로 확인해야 합니다.

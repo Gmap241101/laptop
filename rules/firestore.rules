@@ -239,6 +239,37 @@ service cloud.firestore {
         );
     }
 
+    function isDirectoryPolicyDisabledSelfRestore(beforeData, afterData, userId) {
+      return signedIn()
+        && request.auth.uid == userId
+        && !directoryPolicyEnabled()
+        && beforeData.uid == userId
+        && afterData.uid == userId
+        && beforeData.status == 'profileRequired'
+        && beforeData.get('profileRequiredReason', '') == 'directoryMismatch'
+        && afterData.status
+          == beforeData.get('statusBeforeProfileRequired', 'pending')
+        && afterData.status in ['active', 'pending']
+        && afterData.get('profileRequiredReason', '') == ''
+        && afterData.get('profileRequiredAt', '') == ''
+        && afterData.get('statusBeforeProfileRequired', '') == ''
+        && afterData.diff(beforeData).affectedKeys().hasOnly([
+          'status',
+          'profileRequiredReason',
+          'profileRequiredAt',
+          'statusBeforeProfileRequired',
+          'updatedAt'
+        ])
+        && (
+          afterData.get('recoveryKey', '') == ''
+          || accountRecoveryMatchesAfter(
+            afterData.recoveryKey,
+            afterData.maskedEmail,
+            afterData.status
+          )
+        );
+    }
+
     function activeOrPendingIdentityIsValidAfter(userId) {
       return request.resource.data.status == 'profileRequired'
         || (
@@ -962,6 +993,42 @@ service cloud.firestore {
       allow list: if isAdmin();
 
       allow create: if isAdmin() || (
+        signedIn()
+        && !directoryPolicyEnabled()
+        && request.resource.data.keys().hasOnly([
+          'recoveryKey',
+          'maskedEmail',
+          'accountStatus',
+          'enabled',
+          'updatedAt'
+        ])
+        && request.resource.data.recoveryKey == recoveryKey
+        && request.resource.data.maskedEmail is string
+        && request.resource.data.maskedEmail.size() > 0
+        && request.resource.data.accountStatus in ['active', 'pending']
+        && request.resource.data.get('enabled', true) == true
+        && exists(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        )
+        && get(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        ).data.status == 'profileRequired'
+        && get(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        ).data.get('profileRequiredReason', '') == 'directoryMismatch'
+        && existsAfter(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        )
+        && getAfter(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        ).data.get('recoveryKey', '') == recoveryKey
+        && getAfter(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        ).data.get('maskedEmail', '') == request.resource.data.maskedEmail
+        && getAfter(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        ).data.status == request.resource.data.accountStatus
+      ) || (
         serviceAllowsUserWrites()
         && signedIn()
         && request.resource.data.keys().hasOnly([
@@ -992,6 +1059,39 @@ service cloud.firestore {
       // 본인은 기존 마스킹 이메일을 바꾸지 않고 상태만 동기화할 수 있습니다.
       // 새 복구키는 create로만 생성되므로 다른 회원의 키를 덮어쓸 수 없습니다.
       allow update: if isAdmin() || (
+        signedIn()
+        && !directoryPolicyEnabled()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'accountStatus',
+          'updatedAt'
+        ])
+        && request.resource.data.recoveryKey == resource.data.recoveryKey
+        && request.resource.data.maskedEmail == resource.data.maskedEmail
+        && request.resource.data.get('enabled', true) == true
+        && resource.data.accountStatus == 'profileRequired'
+        && request.resource.data.accountStatus in ['active', 'pending']
+        && exists(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        )
+        && get(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        ).data.status == 'profileRequired'
+        && get(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        ).data.get('profileRequiredReason', '') == 'directoryMismatch'
+        && existsAfter(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        )
+        && getAfter(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        ).data.get('recoveryKey', '') == recoveryKey
+        && getAfter(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        ).data.get('maskedEmail', '') == request.resource.data.maskedEmail
+        && getAfter(
+          /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+        ).data.status == request.resource.data.accountStatus
+      ) || (
         serviceAllowsUserWrites()
         && signedIn()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -1168,7 +1268,13 @@ service cloud.firestore {
           )
         );
 
-      allow update: if isAdmin() || (
+      allow update: if isAdmin()
+        || isDirectoryPolicyDisabledSelfRestore(
+          resource.data,
+          request.resource.data,
+          userId
+        )
+        || (
         serviceAllowsUserWrites()
         && signedIn()
         && request.auth.uid == userId
