@@ -191,7 +191,7 @@ function LayoutPreview({ layout, banners = [], admin = false }) {
   );
 }
 
-export default function AdminHomeBannerPanel({ ctx, placement }) {
+export default function AdminHomeBannerPanel({ ctx, placement, embedded = false }) {
   const panelConfig = PLACEMENT_CONFIG[placement] || PLACEMENT_CONFIG.hero;
   const {
     AdminPageHeader,
@@ -559,7 +559,14 @@ export default function AdminHomeBannerPanel({ ctx, placement }) {
 
   return (
     <div className="space-y-8">
-      <AdminPageHeader title={panelConfig.title} description={panelConfig.description} />
+      {embedded ? (
+        <div>
+          <h3 className="text-base font-bold text-slate-900">{panelConfig.title}</h3>
+          <p className="mt-1 text-xs leading-5 text-slate-500">{panelConfig.description}</p>
+        </div>
+      ) : (
+        <AdminPageHeader title={panelConfig.title} description={panelConfig.description} />
+      )}
 
       {(placement === 'hero' || placement === 'promotion') && (
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">

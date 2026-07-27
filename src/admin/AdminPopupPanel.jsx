@@ -192,19 +192,30 @@ export default function AdminPopupPanel({ ctx }) {
         </div>
       ) : (
         <>
-          <div className="overflow-x-auto rounded-xl border border-slate-200">
-            <table className="w-full min-w-[900px] table-fixed border-collapse text-left">
+          <div className="overflow-x-auto rounded-xl border border-slate-200 lg:overflow-x-hidden">
+            <table className="w-full min-w-[760px] table-fixed border-collapse text-left lg:min-w-0">
+              <colgroup>
+                <col className="w-[5%]" />
+                <col className="w-[9%]" />
+                <col className="w-[7%]" />
+                <col className="w-[27%]" />
+                <col className="w-[10%]" />
+                <col className="w-[13%]" />
+                <col className="w-[8%]" />
+                <col className="w-[10%]" />
+                <col className="w-[11%]" />
+              </colgroup>
               <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600">
                 <tr>
-                  <th className="w-[50px] border-b border-slate-200 px-1 py-3 text-center">번호</th>
-                  <th className="w-[74px] border-b border-slate-200 px-1 py-3 text-center">순서</th>
-                  <th className="w-[58px] border-b border-slate-200 px-1 py-3 text-center">사용</th>
-                  <th className="border-b border-slate-200 px-3 py-3">제목·부제목</th>
-                  <th className="w-[78px] border-b border-slate-200 px-1 py-3 text-center">노출 페이지</th>
-                  <th className="w-[112px] border-b border-slate-200 px-1 py-3 text-center">노출 기간</th>
-                  <th className="w-[72px] border-b border-slate-200 px-1 py-3 text-center">현재 상태</th>
-                  <th className="w-[86px] border-b border-slate-200 px-1 py-3 text-center">등록일</th>
-                  <th className="w-[72px] border-b border-slate-200 px-1 py-3 text-center">관리</th>
+                  <th className="border-b border-slate-200 px-1 py-3 text-center">번호</th>
+                  <th className="border-b border-slate-200 px-1 py-3 text-center">순서</th>
+                  <th className="border-b border-slate-200 px-1 py-3 text-center">사용</th>
+                  <th className="border-b border-slate-200 px-2 py-3">제목·부제목</th>
+                  <th className="border-b border-slate-200 px-1 py-3 text-center">노출 페이지</th>
+                  <th className="border-b border-slate-200 px-1 py-3 text-center">노출 기간</th>
+                  <th className="border-b border-slate-200 px-1 py-3 text-center">현재 상태</th>
+                  <th className="border-b border-slate-200 px-1 py-3 text-center">등록일</th>
+                  <th className="border-b border-slate-200 px-1 py-3 text-center">관리</th>
                 </tr>
               </thead>
 
@@ -257,7 +268,7 @@ export default function AdminPopupPanel({ ctx }) {
                           <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${post.enabled ? 'translate-x-6' : 'translate-x-1'}`} />
                         </button>
                       </td>
-                      <td className="min-w-0 px-3 py-3">
+                      <td className="min-w-0 px-2 py-3">
                         <div className="truncate text-sm font-bold text-slate-800">
                           {title || subtitle || '제목 없음 · 본문/미디어 팝업'}
                         </div>
@@ -284,7 +295,7 @@ export default function AdminPopupPanel({ ctx }) {
                         <div className="whitespace-nowrap text-slate-500">~ {post.isIndefinite ? '무기한' : formatPopupDateTime(post.endAt)}</div>
                       </td>
                       <td className="px-1 py-3 text-center">
-                        <span className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${statusClassName[status.key] || statusClassName.ended}`}>
+                        <span className={`inline-flex whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${statusClassName[status.key] || statusClassName.ended}`}>
                           {status.label}
                         </span>
                       </td>

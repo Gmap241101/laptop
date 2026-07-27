@@ -364,7 +364,7 @@ function SectionCard({ title, description, children, className = '' }) {
   );
 }
 
-export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE }) {
+export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, embedded = false }) {
   const {
     AdminPageHeader,
     Button,
@@ -2305,11 +2305,18 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE }
 
   return (
     <div className="space-y-6">
-      <AdminPageHeader
-        title={pageMeta.title}
-        description={pageMeta.description}
-        badge={serviceStatusBadge}
-      />
+      {embedded ? (
+        <div>
+          <h3 className="text-base font-bold text-slate-900">{pageMeta.title}</h3>
+          <p className="mt-1 text-xs leading-5 text-slate-500">{pageMeta.description}</p>
+        </div>
+      ) : (
+        <AdminPageHeader
+          title={pageMeta.title}
+          description={pageMeta.description}
+          badge={serviceStatusBadge}
+        />
+      )}
 
       {sectionTabs.length > 0 ? (
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">

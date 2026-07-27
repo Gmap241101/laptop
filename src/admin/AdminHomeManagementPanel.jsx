@@ -18,6 +18,7 @@ const getInitialTab = () => {
 };
 
 export default function AdminHomeManagementPanel({ ctx }) {
+  const { AdminPageHeader } = ctx;
   const [activeTab, setActiveTab] = useState(getInitialTab);
 
   const changeTab = (nextTab) => {
@@ -53,6 +54,11 @@ export default function AdminHomeManagementPanel({ ctx }) {
 
   return (
     <div className="space-y-6">
+      <AdminPageHeader
+        title="홈 화면 관리"
+        description="사용자 홈 화면의 기본 콘텐츠와 메인 비주얼, 프로모션 및 바로가기 배너를 관리합니다."
+      />
+
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-2">
         <div className="flex min-w-max gap-2">
           {HOME_TABS.map(([key, label]) => (
@@ -72,10 +78,10 @@ export default function AdminHomeManagementPanel({ ctx }) {
         </div>
       </div>
 
-      {activeTab === 'basic' && <AdminSettingsPanel ctx={ctx} mode="home" />}
-      {activeTab === 'hero' && <AdminHomeBannerPanel ctx={ctx} placement="hero" />}
-      {activeTab === 'promotion' && <AdminHomeBannerPanel ctx={ctx} placement="promotion" />}
-      {activeTab === 'quickLink' && <AdminHomeBannerPanel ctx={ctx} placement="quickLink" />}
+      {activeTab === 'basic' && <AdminSettingsPanel ctx={ctx} mode="home" embedded />}
+      {activeTab === 'hero' && <AdminHomeBannerPanel ctx={ctx} placement="hero" embedded />}
+      {activeTab === 'promotion' && <AdminHomeBannerPanel ctx={ctx} placement="promotion" embedded />}
+      {activeTab === 'quickLink' && <AdminHomeBannerPanel ctx={ctx} placement="quickLink" embedded />}
     </div>
   );
 }

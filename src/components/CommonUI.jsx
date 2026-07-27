@@ -46,9 +46,9 @@ export function CardContent({ children, className = '' }) {
   return <div className={`p-6 ${className}`}>{children}</div>;
 }
 
-export function Badge({ children }) {
+export function Badge({ children, className = '' }) {
   return (
-    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold shadow-sm ${statusStyle[children] || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold shadow-sm ${statusStyle[children] || 'bg-slate-100 text-slate-700 border-slate-200'} ${className}`}>
       {children}
     </span>
   );

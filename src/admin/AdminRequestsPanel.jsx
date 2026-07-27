@@ -398,7 +398,7 @@ export default function AdminRequestsPanel({ ctx }) {
                                         {r.assetNo}
                                       </span>
 
-                                      <Badge>
+                                      <Badge className="whitespace-nowrap">
                                         {getRequestDisplayStatus(r)}
                                       </Badge>
 
@@ -717,13 +717,13 @@ export default function AdminRequestsPanel({ ctx }) {
                             <table className="w-full table-fixed border-collapse text-left">
                               <colgroup>
                                 <col className="w-[5%]" />
-                                <col className="w-[17%]" />
-                                <col className="w-[11%]" />
-                                <col className="w-[14%]" />
-                                <col className="w-[19%]" />
-                                <col className="w-[9%]" />
                                 <col className="w-[15%]" />
                                 <col className="w-[10%]" />
+                                <col className="w-[12%]" />
+                                <col className="w-[19%]" />
+                                <col className="w-[12%]" />
+                                <col className="w-[16%]" />
+                                <col className="w-[11%]" />
                               </colgroup>
 
                               <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600">
@@ -815,7 +815,7 @@ export default function AdminRequestsPanel({ ctx }) {
                                       </td>
 
                                       <td className="px-2 py-2.5 text-center">
-                                        <Badge>{getRequestDisplayStatus(request)}</Badge>
+                                        <Badge className="whitespace-nowrap">{getRequestDisplayStatus(request)}</Badge>
                                       </td>
 
                                       <td className="break-words px-2 py-2.5 text-[10px] leading-4 text-slate-500">
@@ -873,7 +873,7 @@ export default function AdminRequestsPanel({ ctx }) {
                                         {request.assetNo || '-'}
                                       </span>
                                     </div>
-                                    <Badge>{getRequestDisplayStatus(request)}</Badge>
+                                    <Badge className="whitespace-nowrap">{getRequestDisplayStatus(request)}</Badge>
                                   </div>
 
                                   <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 text-[11px]">

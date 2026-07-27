@@ -1,3 +1,40 @@
+홈 화면 제목 계층·팝업/신청 목록 너비 보정 검증 보고
+
+기준본
+- home_footer_popup_management_deployment_package.zip
+
+이번 변경 파일
+- DEPLOYMENT_NOTES.txt
+- VALIDATION_REPORT.txt
+- src/admin/AdminHomeManagementPanel.jsx
+- src/admin/AdminHomeBannerPanel.jsx
+- src/admin/AdminSettingsPanel.jsx
+- src/admin/AdminPopupPanel.jsx
+- src/admin/AdminRequestsPanel.jsx
+- src/components/CommonUI.jsx
+
+구현 확인
+- 홈 화면 관리 공통 AdminPageHeader 1개만 표시
+- 세부 탭 내비게이션이 공통 대제목 아래에 위치
+- 각 내부 화면 제목이 일반 섹션 제목 스타일로 표시
+- 팝업 표 데스크톱 최소 너비 제거 및 비율형 colgroup 적용
+- 팝업 상태 배지 한 줄 표시
+- 신청 관리 기기명·신청자·부서명 열 축소
+- 신청 관리 상태 열 확대
+- 신청 상태 배지 한 줄 표시
+
+정적 검증
+- JavaScript·JSX 43개 파일 TypeScript transpile 구문 검사 통과
+- 전체 상대 import 경로 검사 통과
+- 핵심 클래스·컴포넌트 연결 정적 확인 통과
+- rules/firestore.rules 기준본 SHA-256 동일 확인
+
+환경상 실행하지 못한 검증
+- 기준 패키지에 package.json과 node_modules가 없어 npm run build를 실행하지 못했습니다.
+- 실제 브라우저 렌더링은 로컬 프로젝트에서 최종 확인해야 합니다.
+
+--- 이전 검증 보고 ---
+
 홈 화면 통합·푸터 입력 UX·팝업 순서 기능 검증 보고
 
 기준본
