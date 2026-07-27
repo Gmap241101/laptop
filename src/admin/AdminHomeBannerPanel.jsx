@@ -663,7 +663,13 @@ export default function AdminHomeBannerPanel({ ctx, placement }) {
       )}
 
       {editing && (
-        <section className="overflow-hidden rounded-2xl border border-orange-200 bg-white shadow-sm">
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 px-4 py-6 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${panelConfig.itemLabel} ${form.id ? '수정' : '등록'}`}
+        >
+          <section className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-orange-200 bg-white shadow-2xl">
           <div className="flex items-center justify-between border-b border-orange-100 bg-orange-50 px-5 py-4">
             <div>
               <h3 className="text-sm font-bold text-slate-900">{form.id ? `${panelConfig.itemLabel} 수정` : `${panelConfig.itemLabel} 등록`}</h3>
@@ -898,7 +904,8 @@ export default function AdminHomeBannerPanel({ ctx, placement }) {
               </Button>
             </div>
           </div>
-        </section>
+          </section>
+        </div>
       )}
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">

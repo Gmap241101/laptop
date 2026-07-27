@@ -157,14 +157,20 @@ export default function AdminFooterPanel({ ctx }) {
       </section>
 
       {footerPageDialog && (
-        <section className="overflow-hidden rounded-2xl border border-orange-200 bg-white shadow-sm">
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 px-4 py-6 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label={footerPageDialog.mode === 'edit' ? '푸터 메뉴 페이지 수정' : '푸터 메뉴 페이지 등록'}
+        >
+          <section className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-orange-200 bg-white shadow-2xl">
           <div className="flex items-start justify-between gap-4 border-b border-orange-100 bg-orange-50 px-5 py-4">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">
                   {footerPageDialog.mode === 'edit' ? '푸터 메뉴 페이지 수정' : '푸터 메뉴 페이지 등록'}
                 </h3>
                 <p className="mt-1 text-[11px] leading-5 text-slate-500">
-                  배너 관리와 같은 편집 방식으로 제목, 연결 방식과 상세 본문을 등록합니다.
+                  배너 관리와 같은 입력 체계로 제목 표시, 연결 방식, 탭 열기와 상세 본문을 등록합니다.
                 </p>
               </div>
               <button
@@ -336,77 +342,86 @@ export default function AdminFooterPanel({ ctx }) {
                 </div>
               )}
 
-              <div>
-                <span className="mb-1.5 block text-xs font-semibold text-slate-600">연결 방식</span>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <label
-                    className={`cursor-pointer rounded-xl border px-4 py-3 transition ${
-                      footerPageForm.pageType !== 'link'
-                        ? 'border-orange-300 bg-orange-50 ring-1 ring-orange-200'
-                        : 'border-slate-200 bg-white hover:bg-slate-50'
-                    }`}
+              <div className="grid gap-4 sm:grid-cols-5">
+                <label className="block text-[11px] font-semibold text-slate-600 sm:col-span-1">
+                  연결 방식
+                  <select
+                    value={footerPageForm.pageType}
+                    disabled={footerPageSaving}
+                    onChange={(event) =>
+                      setFooterPageForm((prev) => ({
+                        ...prev,
+                        pageType: event.target.value,
+                        linkUrl: event.target.value === 'link' ? prev.linkUrl : '',
+                        openInNewTab: event.target.value === 'link' ? prev.openInNewTab : false,
+                      }))
+                    }
+                    className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none disabled:bg-slate-100 mk-form-focus"
                   >
-                    <input
-                      type="radio"
-                      name="footer-page-type"
-                      value="content"
-                      checked={footerPageForm.pageType !== 'link'}
-                      disabled={footerPageSaving}
-                      onChange={() =>
-                        setFooterPageForm((prev) => ({ ...prev, pageType: 'content' }))
-                      }
-                      className="sr-only"
-                    />
-                    <span className="block text-sm font-bold text-slate-800">본문 직접 입력</span>
-                    <span className="mt-1 block text-[11px] leading-5 text-slate-500">
-                      사이트 내부 상세 페이지에 웹에디터 본문을 표시합니다.
-                    </span>
-                  </label>
+                    <option value="content">본문 직접 입력</option>
+                    <option value="link">외부 링크</option>
+                    <option value="none">링크 없음</option>
+                  </select>
+                </label>
 
-                  <label
-                    className={`cursor-pointer rounded-xl border px-4 py-3 transition ${
-                      footerPageForm.pageType === 'link'
-                        ? 'border-orange-300 bg-orange-50 ring-1 ring-orange-200'
-                        : 'border-slate-200 bg-white hover:bg-slate-50'
-                    }`}
+                <label className="block text-[11px] font-semibold text-slate-600 sm:col-span-1">
+                  탭 열기
+                  <select
+                    value={footerPageForm.openInNewTab ? 'new' : 'current'}
+                    disabled={footerPageSaving || footerPageForm.pageType !== 'link'}
+                    onChange={(event) =>
+                      setFooterPageForm((prev) => ({
+                        ...prev,
+                        openInNewTab: event.target.value === 'new',
+                      }))
+                    }
+                    className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none disabled:bg-slate-100 mk-form-focus"
                   >
-                    <input
-                      type="radio"
-                      name="footer-page-type"
-                      value="link"
-                      checked={footerPageForm.pageType === 'link'}
-                      disabled={footerPageSaving}
-                      onChange={() =>
-                        setFooterPageForm((prev) => ({ ...prev, pageType: 'link' }))
-                      }
-                      className="sr-only"
-                    />
-                    <span className="block text-sm font-bold text-slate-800">링크 주소 입력</span>
-                    <span className="mt-1 block text-[11px] leading-5 text-slate-500">
-                      푸터 제목을 클릭하면 입력한 주소를 새 탭에서 엽니다.
-                    </span>
-                  </label>
+                    <option value="current">현재 탭</option>
+                    <option value="new">새 탭</option>
+                  </select>
+                </label>
+
+                <div className="sm:col-span-3">
+                  {footerPageForm.pageType === 'link' ? (
+                    <label className="block text-[11px] font-semibold text-slate-600">
+                      외부 링크 주소
+                      <input
+                        type="url"
+                        value={footerPageForm.linkUrl || ''}
+                        onChange={(event) =>
+                          setFooterPageForm((prev) => ({ ...prev, linkUrl: event.target.value }))
+                        }
+                        placeholder="https://www.example.com"
+                        disabled={footerPageSaving}
+                        className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none disabled:bg-slate-100 mk-form-focus"
+                      />
+                    </label>
+                  ) : footerPageForm.pageType === 'content' ? (
+                    <label className="block text-[11px] font-semibold text-slate-400">
+                      연결 대상
+                      <input
+                        value=""
+                        disabled
+                        placeholder="아래 본문 편집기에 상세 내용을 입력합니다."
+                        className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 text-xs outline-none"
+                      />
+                    </label>
+                  ) : (
+                    <label className="block text-[11px] font-semibold text-slate-400">
+                      연결 대상
+                      <input
+                        value=""
+                        disabled
+                        placeholder="클릭 동작 없이 푸터 제목만 표시합니다."
+                        className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 text-xs outline-none"
+                      />
+                    </label>
+                  )}
                 </div>
               </div>
 
-              {footerPageForm.pageType === 'link' ? (
-                <label className="block">
-                  <span className="mb-1.5 block text-xs font-semibold text-slate-600">링크 주소</span>
-                  <input
-                    type="text"
-                    value={footerPageForm.linkUrl || ''}
-                    onChange={(event) =>
-                      setFooterPageForm((prev) => ({ ...prev, linkUrl: event.target.value }))
-                    }
-                    placeholder="https://www.example.com"
-                    disabled={footerPageSaving}
-                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none mk-form-focus disabled:bg-slate-100"
-                  />
-                  <span className="mt-1.5 block text-[11px] leading-5 text-slate-500">
-                    http:// 또는 https://로 시작하는 전체 주소를 입력해 주세요. 이동 없이 제목만 표시하려면 #을 입력하세요. 실제 링크는 항상 새 탭에서 열립니다.
-                  </span>
-                </label>
-              ) : (
+              {footerPageForm.pageType === 'content' && (
                 <RichTextEditor
                   label="본문"
                   value={footerPageForm.contentHtml}
@@ -417,6 +432,12 @@ export default function AdminFooterPanel({ ctx }) {
                   minHeight={320}
                   disabled={footerPageSaving}
                 />
+              )}
+
+              {footerPageForm.pageType === 'none' && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
+                  사용자 푸터에는 제목 또는 제목 이미지만 표시되며 클릭 동작은 발생하지 않습니다.
+                </div>
               )}
             </div>
 
@@ -439,7 +460,8 @@ export default function AdminFooterPanel({ ctx }) {
                 {footerPageSaving ? '저장 중...' : footerPageDialog.mode === 'edit' ? '수정 저장' : '등록'}
               </Button>
             </div>
-        </section>
+          </section>
+        </div>
       )}
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -538,18 +560,18 @@ export default function AdminFooterPanel({ ctx }) {
                         <div className="flex min-w-0 items-center gap-2">
                           <span
                             className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                              page.pageType === 'link'
-                                ? String(page.linkUrl || '').trim() === '#'
-                                  ? 'border-slate-300 bg-slate-100 text-slate-700'
-                                  : 'border-orange-200 bg-orange-50 text-orange-700'
-                                : 'border-sky-200 bg-sky-50 text-sky-700'
+                              page.pageType === 'none' || (page.pageType === 'link' && String(page.linkUrl || '').trim() === '#')
+                                ? 'border-slate-300 bg-slate-100 text-slate-700'
+                                : page.pageType === 'link'
+                                  ? 'border-orange-200 bg-orange-50 text-orange-700'
+                                  : 'border-sky-200 bg-sky-50 text-sky-700'
                             }`}
                           >
-                            {page.pageType === 'link'
-                              ? String(page.linkUrl || '').trim() === '#'
-                                ? '표시만'
-                                : '링크'
-                              : '본문'}
+                            {page.pageType === 'none' || (page.pageType === 'link' && String(page.linkUrl || '').trim() === '#')
+                              ? '링크 없음'
+                              : page.pageType === 'link'
+                                ? `외부 링크 · ${page.openInNewTab === false ? '현재 탭' : '새 탭'}`
+                                : '본문'}
                           </span>
                           {page.titleDisplayType === 'image' && isSafeHttpImageUrl(page.titleImageUrl) ? (
                             <img

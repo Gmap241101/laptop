@@ -14,7 +14,11 @@ const getSafeExternalFooterUrl = (value = '') => {
   }
 };
 
-const isDisplayOnlyFooterLink = (value = '') => String(value || '').trim() === '#';
+const getFooterPageType = (page = {}) => {
+  if (page.pageType === 'none') return 'none';
+  if (page.pageType === 'link' && String(page.linkUrl || '').trim() === '#') return 'none';
+  return page.pageType === 'link' ? 'link' : 'content';
+};
 
 function FooterMenuLabel({ page }) {
   const [imageFailed, setImageFailed] = useState(false);
@@ -50,8 +54,8 @@ export default function UserFooter({ ctx }) {
 
   const visiblePages = (footerPages || []).filter((page) => {
     if (page.enabled === false) return false;
-    if (page.pageType === 'link') {
-      return isDisplayOnlyFooterLink(page.linkUrl) || Boolean(getSafeExternalFooterUrl(page.linkUrl));
+    if (getFooterPageType(page) === 'link') {
+      return Boolean(getSafeExternalFooterUrl(page.linkUrl));
     }
     return true;
   });
@@ -70,14 +74,13 @@ export default function UserFooter({ ctx }) {
             className="mx-auto flex max-w-7xl flex-wrap items-center justify-start gap-x-7 gap-y-2 px-5 py-4 text-xs sm:gap-x-9 sm:text-sm"
           >
             {visiblePages.map((page) => {
-              const isLinkPage = page.pageType === 'link';
-              const isDisplayOnly = isLinkPage && isDisplayOnlyFooterLink(page.linkUrl);
-              const safeLinkUrl = isLinkPage && !isDisplayOnly
-                ? getSafeExternalFooterUrl(page.linkUrl)
-                : '';
+              const pageType = getFooterPageType(page);
+              const isLinkPage = pageType === 'link';
+              const isDisplayOnly = pageType === 'none';
+              const safeLinkUrl = isLinkPage ? getSafeExternalFooterUrl(page.linkUrl) : '';
               const isImageTitle = page.titleDisplayType === 'image';
               const selected =
-                !isLinkPage &&
+                pageType === 'content' &&
                 userTab === 'footerPage' &&
                 selectedFooterPageId === page.id;
               const className = `inline-flex min-h-6 items-center break-keep transition ${
@@ -97,14 +100,15 @@ export default function UserFooter({ ctx }) {
               }
 
               if (isLinkPage && safeLinkUrl) {
+                const openInNewTab = page.openInNewTab !== false;
                 return (
                   <a
                     key={page.id}
                     href={safeLinkUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    target={openInNewTab ? '_blank' : undefined}
+                    rel={openInNewTab ? 'noopener noreferrer' : undefined}
                     className={className}
-                    title="새 탭에서 열기"
+                    title={openInNewTab ? '새 탭에서 열기' : '현재 탭에서 열기'}
                   >
                     <FooterMenuLabel page={page} />
                   </a>

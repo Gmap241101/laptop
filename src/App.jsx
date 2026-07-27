@@ -301,20 +301,21 @@ const createDefaultFooterConfigDraft = () => ({
 
 const FOOTER_PAGE_TYPE_CONTENT = 'content';
 const FOOTER_PAGE_TYPE_LINK = 'link';
+const FOOTER_PAGE_TYPE_NONE = 'none';
 const FOOTER_TITLE_DISPLAY_TEXT = 'text';
 const FOOTER_TITLE_DISPLAY_IMAGE = 'image';
 
-const getNormalizedFooterPageType = (value) =>
-  value === FOOTER_PAGE_TYPE_LINK
-    ? FOOTER_PAGE_TYPE_LINK
-    : FOOTER_PAGE_TYPE_CONTENT;
+const getNormalizedFooterPageType = (value) => {
+  if (value === FOOTER_PAGE_TYPE_LINK) return FOOTER_PAGE_TYPE_LINK;
+  if (value === FOOTER_PAGE_TYPE_NONE) return FOOTER_PAGE_TYPE_NONE;
+  return FOOTER_PAGE_TYPE_CONTENT;
+};
 
 const getNormalizedFooterTitleDisplayType = (value) =>
   value === FOOTER_TITLE_DISPLAY_IMAGE
     ? FOOTER_TITLE_DISPLAY_IMAGE
     : FOOTER_TITLE_DISPLAY_TEXT;
 
-const isFooterDisplayOnlyLink = (value = '') => String(value || '').trim() === '#';
 
 const getSafeFooterLinkUrl = (value = '') => {
   const normalizedValue = String(value || '').trim();
@@ -336,6 +337,7 @@ const createDefaultFooterPageForm = () => ({
   titleImageUrl: '',
   pageType: FOOTER_PAGE_TYPE_CONTENT,
   linkUrl: '',
+  openInNewTab: true,
   isTitleBold: false,
   contentHtml: '',
 });
@@ -6828,11 +6830,22 @@ function App() {
             ...popupDoc.data(),
             id: popupDoc.id,
           }))
-          .sort(
-            (first, second) =>
+          .sort((first, second) => {
+            const firstOrder = Number(first.sortOrder);
+            const secondOrder = Number(second.sortOrder);
+            const firstHasOrder = Number.isFinite(firstOrder) && firstOrder > 0;
+            const secondHasOrder = Number.isFinite(secondOrder) && secondOrder > 0;
+
+            if (firstHasOrder && secondHasOrder && firstOrder !== secondOrder) {
+              return firstOrder - secondOrder;
+            }
+            if (firstHasOrder !== secondHasOrder) return firstHasOrder ? -1 : 1;
+
+            return (
               getPopupDateMillis(second.createdAt) -
               getPopupDateMillis(first.createdAt)
-          );
+            );
+          });
 
         setPopupPosts(remotePosts);
         setPopupPostsLoadErrorMessage('');
@@ -15277,24 +15290,45 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     setPopupPostSaving(true);
 
     try {
-      await setDoc(popupDocRef, {
-        id: popupDocRef.id,
-        enabled: Boolean(popupPostForm.enabled),
-        title,
-        subtitle,
-        content: contentText,
-        contentText,
-        contentHtml,
-        contentFormat: 'rich-html-v1',
-        targetPages,
-        startAt,
-        endAt: isIndefinite ? null : endAt,
-        isIndefinite,
-        authorUid: editingPost?.authorUid || auditActor.uid,
-        authorName: editingPost?.authorName || auditActor.name,
-        createdAt: editingPost?.createdAt || serverTimestamp(),
-        updatedAt: serverTimestamp(),
+      const orderedPosts = isEditing
+        ? [...popupPosts]
+        : [...popupPosts, { id: popupDocRef.id }];
+      const batch = writeBatch(db);
+
+      orderedPosts.forEach((post, index) => {
+        const sortOrder = index + 1;
+        if (post.id === popupDocRef.id) {
+          batch.set(popupDocRef, {
+            id: popupDocRef.id,
+            enabled: Boolean(popupPostForm.enabled),
+            sortOrder,
+            title,
+            subtitle,
+            content: contentText,
+            contentText,
+            contentHtml,
+            contentFormat: 'rich-html-v1',
+            targetPages,
+            startAt,
+            endAt: isIndefinite ? null : endAt,
+            isIndefinite,
+            authorUid: editingPost?.authorUid || auditActor.uid,
+            authorName: editingPost?.authorName || auditActor.name,
+            createdAt: editingPost?.createdAt || serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+          return;
+        }
+
+        if (Number(post.sortOrder) !== sortOrder) {
+          batch.update(doc(POPUP_POSTS_COLLECTION_REF, post.id), {
+            sortOrder,
+            updatedAt: serverTimestamp(),
+          });
+        }
       });
+
+      await batch.commit();
 
       triggerToast(`팝업을 ${isEditing ? '수정' : '등록'}했습니다.`, 'success');
       setPopupPostDialog(null);
@@ -15337,6 +15371,36 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     }
   };
 
+  const movePopupPost = async (postId, direction) => {
+    if (!isAdminAuthenticated) {
+      triggerToast('관리자 인증 후 팝업 순서를 변경할 수 있습니다.', 'error');
+      return;
+    }
+
+    const currentIndex = popupPosts.findIndex((post) => post.id === postId);
+    const nextIndex = currentIndex + direction;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= popupPosts.length) return;
+
+    const reordered = [...popupPosts];
+    [reordered[currentIndex], reordered[nextIndex]] = [reordered[nextIndex], reordered[currentIndex]];
+
+    try {
+      const batch = writeBatch(db);
+      reordered.forEach((post, index) => {
+        const sortOrder = index + 1;
+        if (Number(post.sortOrder) === sortOrder) return;
+        batch.update(doc(POPUP_POSTS_COLLECTION_REF, post.id), {
+          sortOrder,
+          updatedAt: serverTimestamp(),
+        });
+      });
+      await batch.commit();
+    } catch (error) {
+      console.error('Popup order update error:', error);
+      triggerToast('팝업 순서 변경에 실패했습니다.', 'error');
+    }
+  };
+
   const confirmDeletePopupPost = (post) => {
     if (!isAdminAuthenticated || !post?.id) {
       triggerToast('관리자 인증과 팝업 정보를 확인해 주세요.', 'error');
@@ -15349,7 +15413,18 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       async () => {
         setPopupPostDeletingId(post.id);
         try {
-          await deleteDoc(doc(POPUP_POSTS_COLLECTION_REF, post.id));
+          const remainingPosts = popupPosts.filter((item) => item.id !== post.id);
+          const batch = writeBatch(db);
+          batch.delete(doc(POPUP_POSTS_COLLECTION_REF, post.id));
+          remainingPosts.forEach((item, index) => {
+            const sortOrder = index + 1;
+            if (Number(item.sortOrder) === sortOrder) return;
+            batch.update(doc(POPUP_POSTS_COLLECTION_REF, item.id), {
+              sortOrder,
+              updatedAt: serverTimestamp(),
+            });
+          });
+          await batch.commit();
           if (popupPostDialog?.postId === post.id) {
             setPopupPostDialog(null);
             setPopupPostForm(createDefaultPopupPostForm());
@@ -15422,13 +15497,19 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       return;
     }
 
+    const isLegacyDisplayOnlyLink =
+      page?.pageType === FOOTER_PAGE_TYPE_LINK &&
+      String(page?.linkUrl || '').trim() === '#';
     const nextForm = {
       enabled: page ? page.enabled !== false : true,
       title: page?.title || '',
       titleDisplayType: getNormalizedFooterTitleDisplayType(page?.titleDisplayType),
       titleImageUrl: String(page?.titleImageUrl || ''),
-      pageType: getNormalizedFooterPageType(page?.pageType),
-      linkUrl: String(page?.linkUrl || ''),
+      pageType: isLegacyDisplayOnlyLink
+        ? FOOTER_PAGE_TYPE_NONE
+        : getNormalizedFooterPageType(page?.pageType),
+      linkUrl: isLegacyDisplayOnlyLink ? '' : String(page?.linkUrl || ''),
+      openInNewTab: page ? page.openInNewTab !== false : true,
       isTitleBold: Boolean(page?.isTitleBold),
       contentHtml: sanitizeRichTextHtml(
         page?.contentHtml ||
@@ -15487,8 +15568,9 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     const safeTitleImageUrl = getSafeFooterLinkUrl(rawTitleImageUrl);
     const pageType = getNormalizedFooterPageType(footerPageForm.pageType);
     const rawLinkUrl = String(footerPageForm.linkUrl || '').trim();
-    const isDisplayOnlyLink = isFooterDisplayOnlyLink(rawLinkUrl);
-    const safeLinkUrl = isDisplayOnlyLink ? '#' : getSafeFooterLinkUrl(rawLinkUrl);
+    const safeLinkUrl = pageType === FOOTER_PAGE_TYPE_LINK
+      ? getSafeFooterLinkUrl(rawLinkUrl)
+      : '';
     const contentHtml = sanitizeRichTextHtml(footerPageForm.contentHtml || '');
     const contentText = richTextHtmlToText(contentHtml);
 
@@ -15527,7 +15609,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
     if (pageType === FOOTER_PAGE_TYPE_LINK && !safeLinkUrl) {
       triggerToast(
-        'http:// 또는 https://로 시작하는 올바른 링크 주소를 입력하거나, 이동 없이 표시만 하려면 #을 입력해 주세요.',
+        'http:// 또는 https://로 시작하는 올바른 링크 주소를 입력해 주세요.',
         'error'
       );
       return;
@@ -15562,7 +15644,10 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         titleDisplayType,
         titleImageUrl: safeTitleImageUrl,
         pageType,
-        linkUrl: safeLinkUrl || rawLinkUrl,
+        linkUrl: pageType === FOOTER_PAGE_TYPE_LINK ? safeLinkUrl : '',
+        openInNewTab: pageType === FOOTER_PAGE_TYPE_LINK
+          ? Boolean(footerPageForm.openInNewTab)
+          : false,
         isTitleBold: Boolean(footerPageForm.isTitleBold),
         sortOrder: nextSortOrder,
         content: contentText,
@@ -19677,6 +19762,16 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         );
       })
       .sort((first, second) => {
+        const firstOrder = Number(first.sortOrder);
+        const secondOrder = Number(second.sortOrder);
+        const firstHasOrder = Number.isFinite(firstOrder) && firstOrder > 0;
+        const secondHasOrder = Number.isFinite(secondOrder) && secondOrder > 0;
+
+        if (firstHasOrder && secondHasOrder && firstOrder !== secondOrder) {
+          return firstOrder - secondOrder;
+        }
+        if (firstHasOrder !== secondHasOrder) return firstHasOrder ? -1 : 1;
+
         const startDifference =
           getPopupDateMillis(second.startAt) - getPopupDateMillis(first.startAt);
         if (startDifference !== 0) return startDifference;
@@ -20281,6 +20376,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     closePopupPostDialog,
     savePopupPost,
     togglePopupPostEnabled,
+    movePopupPost,
     confirmDeletePopupPost,
     setPopupPostForm,
     getPopupDisplayStatus,

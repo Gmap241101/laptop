@@ -15,7 +15,7 @@ import AdminSettingsPanel from './AdminSettingsPanel.jsx';
 import AdminAccountSecurityPanel from './AdminAccountSecurityPanel.jsx';
 import AdminExtensionSettingsPanel from './AdminExtensionSettingsPanel.jsx';
 import AdminHolidayManagementPanel from './AdminHolidayManagementPanel.jsx';
-import AdminHomeBannerPanel from './AdminHomeBannerPanel.jsx';
+import AdminHomeManagementPanel from './AdminHomeManagementPanel.jsx';
 
 const ADMIN_MENU_GROUP_STATE_KEY = 'mk_laptop_admin_menu_groups';
 
@@ -27,6 +27,7 @@ const ADMIN_TAB_GROUP = {
   noticePosts: 'community',
   faqPosts: 'community',
   siteSettings: 'site',
+  homeManagement: 'site',
   homeContent: 'site',
   heroBanners: 'site',
   promotionBanners: 'site',
@@ -373,6 +374,21 @@ export default function AdminWorkspace({ ctx }) {
   React.useEffect(() => {
     if (adminTab === 'settings') {
       setAdminTab('serviceOperations');
+      return;
+    }
+
+    const legacyHomeTabs = {
+      homeContent: 'basic',
+      heroBanners: 'hero',
+      promotionBanners: 'promotion',
+      quickLinkBanners: 'quickLink',
+    };
+    const nextHomeTab = legacyHomeTabs[adminTab];
+    if (nextHomeTab) {
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.setItem('mk_home_management_tab', nextHomeTab);
+      }
+      setAdminTab('homeManagement');
     }
   }, [adminTab, setAdminTab]);
 
@@ -403,10 +419,7 @@ export default function AdminWorkspace({ ctx }) {
       Icon: LayoutDashboard,
       items: [
         ['siteSettings', Paintbrush, '사이트 기본 설정'],
-        ['homeContent', LayoutDashboard, '홈 화면 기본 설정'],
-        ['heroBanners', LayoutDashboard, '메인 비주얼 관리'],
-        ['promotionBanners', LayoutDashboard, '프로모션 배너 관리'],
-        ['quickLinkBanners', LayoutDashboard, '바로가기 배너 관리'],
+        ['homeManagement', LayoutDashboard, '홈 화면 관리'],
         ['popupPosts', ClipboardList, '팝업 관리'],
         ['footerManagement', ClipboardList, '푸터 관리'],
       ],
@@ -794,24 +807,9 @@ export default function AdminWorkspace({ ctx }) {
                     <AdminSettingsPanel ctx={ctx} mode="site" />
                   )}
 
-                  {/* 홈 화면 기본 설정 탭 */}
-                  {adminTab === 'homeContent' && (
-                    <AdminSettingsPanel ctx={ctx} mode="home" />
-                  )}
-
-                  {/* 메인 비주얼 관리 탭 */}
-                  {adminTab === 'heroBanners' && (
-                    <AdminHomeBannerPanel ctx={ctx} placement="hero" />
-                  )}
-
-                  {/* 프로모션 배너 관리 탭 */}
-                  {adminTab === 'promotionBanners' && (
-                    <AdminHomeBannerPanel ctx={ctx} placement="promotion" />
-                  )}
-
-                  {/* 바로가기 배너 관리 탭 */}
-                  {adminTab === 'quickLinkBanners' && (
-                    <AdminHomeBannerPanel ctx={ctx} placement="quickLink" />
+                  {/* 홈 화면 관리 탭 */}
+                  {adminTab === 'homeManagement' && (
+                    <AdminHomeManagementPanel ctx={ctx} />
                   )}
 
                   {/* 팝업 관리 탭 */}

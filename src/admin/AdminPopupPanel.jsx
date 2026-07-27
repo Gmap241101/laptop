@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
+  ArrowDown,
+  ArrowUp,
   Edit3,
   Monitor,
   Plus,
@@ -8,7 +10,7 @@ import {
   Trash2,
 } from 'lucide-react';
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE_OPTIONS = [10, 30, 50, 100];
 
 const STATUS_OPTIONS = [
   ['all', '전체 상태'],
@@ -38,6 +40,7 @@ export default function AdminPopupPanel({ ctx }) {
     confirmDeletePopupPost,
     formatPopupDateTime,
     getPopupDisplayStatus,
+    movePopupPost,
     openPopupPostDialog,
     popupPostDeletingId,
     popupPostToggleSavingId,
@@ -51,6 +54,7 @@ export default function AdminPopupPanel({ ctx }) {
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [pageFilter, setPageFilter] = useState('all');
+  const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(1);
 
   const filteredPosts = useMemo(() => {
@@ -73,11 +77,11 @@ export default function AdminPopupPanel({ ctx }) {
     });
   }, [getPopupDisplayStatus, pageFilter, popupNowMs, popupPosts, query, statusFilter]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredPosts.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(filteredPosts.length / pageSize));
   const safePage = Math.min(Math.max(1, page), totalPages);
   const paginatedPosts = filteredPosts.slice(
-    (safePage - 1) * PAGE_SIZE,
-    safePage * PAGE_SIZE
+    (safePage - 1) * pageSize,
+    safePage * pageSize
   );
 
   const resetPage = () => setPage(1);
@@ -86,7 +90,7 @@ export default function AdminPopupPanel({ ctx }) {
     <div className="space-y-6">
       <AdminPageHeader
         title="팝업 관리"
-        description="사용자 초기화면과 대여 신청 페이지에 표시할 팝업을 등록하고 노출 일정을 관리합니다."
+        description="사용자 초기화면과 대여 신청 페이지에 표시할 팝업을 등록하고 노출 일정과 순서를 관리합니다."
         actions={
           <Button
             type="button"
@@ -100,7 +104,7 @@ export default function AdminPopupPanel({ ctx }) {
         }
       />
 
-      <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 lg:grid-cols-[minmax(0,1fr)_180px_180px]">
+      <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 lg:grid-cols-[minmax(0,1fr)_150px_150px_120px]">
         <div>
           <label className="block text-[11px] font-semibold text-slate-600">팝업 검색</label>
           <div className="relative mt-2">
@@ -152,6 +156,22 @@ export default function AdminPopupPanel({ ctx }) {
             ))}
           </select>
         </label>
+
+        <label className="block text-[11px] font-semibold text-slate-600">
+          한 번에 보기
+          <select
+            value={pageSize}
+            onChange={(event) => {
+              setPageSize(Number(event.target.value));
+              resetPage();
+            }}
+            className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none mk-form-focus"
+          >
+            {PAGE_SIZE_OPTIONS.map((size) => (
+              <option key={size} value={size}>{size}개</option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {!popupPostsReady ? (
@@ -173,32 +193,56 @@ export default function AdminPopupPanel({ ctx }) {
       ) : (
         <>
           <div className="overflow-x-auto rounded-xl border border-slate-200">
-            <table className="w-full min-w-[820px] table-fixed border-collapse text-left">
+            <table className="w-full min-w-[900px] table-fixed border-collapse text-left">
               <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600">
                 <tr>
-                  <th className="w-[52px] border-b border-slate-200 px-1.5 py-3 text-center">번호</th>
-                  <th className="w-16 border-b border-slate-200 px-2 py-3 text-center">사용</th>
+                  <th className="w-[50px] border-b border-slate-200 px-1 py-3 text-center">번호</th>
+                  <th className="w-[74px] border-b border-slate-200 px-1 py-3 text-center">순서</th>
+                  <th className="w-[58px] border-b border-slate-200 px-1 py-3 text-center">사용</th>
                   <th className="border-b border-slate-200 px-3 py-3">제목·부제목</th>
-                  <th className="w-[90px] border-b border-slate-200 px-1 py-3 text-center">노출 페이지</th>
-                  <th className="w-[120px] border-b border-slate-200 px-1 py-3 text-center">노출 기간</th>
-                  <th className="w-20 border-b border-slate-200 px-2 py-3 text-center">현재 상태</th>
-                  <th className="w-24 border-b border-slate-200 px-2 py-3 text-center">등록일</th>
-                  <th className="w-20 border-b border-slate-200 px-2 py-3 text-center">관리</th>
+                  <th className="w-[78px] border-b border-slate-200 px-1 py-3 text-center">노출 페이지</th>
+                  <th className="w-[112px] border-b border-slate-200 px-1 py-3 text-center">노출 기간</th>
+                  <th className="w-[72px] border-b border-slate-200 px-1 py-3 text-center">현재 상태</th>
+                  <th className="w-[86px] border-b border-slate-200 px-1 py-3 text-center">등록일</th>
+                  <th className="w-[72px] border-b border-slate-200 px-1 py-3 text-center">관리</th>
                 </tr>
               </thead>
 
               <tbody>
                 {paginatedPosts.map((post, index) => {
                   const status = getPopupDisplayStatus(post, popupNowMs);
-                  const rowNumber = filteredPosts.length - ((safePage - 1) * PAGE_SIZE + index);
+                  const rowNumber = filteredPosts.length - ((safePage - 1) * pageSize + index);
+                  const globalIndex = (popupPosts || []).findIndex((item) => item.id === post.id);
                   const targetPages = Array.isArray(post.targetPages) ? post.targetPages : [];
                   const title = String(post.title || '').trim();
                   const subtitle = String(post.subtitle || '').trim();
 
                   return (
                     <tr key={post.id} className="border-b border-slate-100 align-middle last:border-b-0 hover:bg-slate-50">
-                      <td className="px-1.5 py-3 text-center text-xs text-slate-500">{rowNumber}</td>
-                      <td className="px-2 py-3 text-center">
+                      <td className="px-1 py-3 text-center text-xs text-slate-500">{rowNumber}</td>
+                      <td className="px-1 py-3">
+                        <div className="flex justify-center gap-1">
+                          <button
+                            type="button"
+                            disabled={globalIndex <= 0}
+                            onClick={() => movePopupPost(post.id, -1)}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 disabled:opacity-30"
+                            aria-label="위로 이동"
+                          >
+                            <ArrowUp size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={globalIndex < 0 || globalIndex >= popupPosts.length - 1}
+                            onClick={() => movePopupPost(post.id, 1)}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 disabled:opacity-30"
+                            aria-label="아래로 이동"
+                          >
+                            <ArrowDown size={14} />
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-1 py-3 text-center">
                         <button
                           type="button"
                           role="switch"
@@ -239,12 +283,12 @@ export default function AdminPopupPanel({ ctx }) {
                         <div className="whitespace-nowrap">{formatPopupDateTime(post.startAt)}</div>
                         <div className="whitespace-nowrap text-slate-500">~ {post.isIndefinite ? '무기한' : formatPopupDateTime(post.endAt)}</div>
                       </td>
-                      <td className="px-2 py-3 text-center">
+                      <td className="px-1 py-3 text-center">
                         <span className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${statusClassName[status.key] || statusClassName.ended}`}>
                           {status.label}
                         </span>
                       </td>
-                      <td className="px-2 py-3 text-center text-[11px] text-slate-500">{formatPopupDateTime(post.createdAt, true)}</td>
+                      <td className="px-1 py-3 text-center text-[10px] text-slate-500">{formatPopupDateTime(post.createdAt, true)}</td>
                       <td className="px-1 py-3">
                         <div className="flex items-center justify-center gap-1">
                           <button
@@ -275,10 +319,15 @@ export default function AdminPopupPanel({ ctx }) {
             </table>
           </div>
 
-          <div className="flex items-center justify-center gap-2">
-            <Button type="button" variant="outline" className="px-3 py-2 text-xs" disabled={safePage <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>이전</Button>
-            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">{safePage} / {totalPages}</div>
-            <Button type="button" variant="outline" className="px-3 py-2 text-xs" disabled={safePage >= totalPages} onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}>다음</Button>
+          <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
+            <div className="text-xs text-slate-500">
+              전체 {filteredPosts.length}개 · {pageSize}개씩 보기
+            </div>
+            <div className="flex items-center justify-center gap-2">
+              <Button type="button" variant="outline" className="px-3 py-2 text-xs" disabled={safePage <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>이전</Button>
+              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">{safePage} / {totalPages}</div>
+              <Button type="button" variant="outline" className="px-3 py-2 text-xs" disabled={safePage >= totalPages} onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}>다음</Button>
+            </div>
           </div>
         </>
       )}
