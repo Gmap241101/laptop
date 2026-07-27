@@ -1,3 +1,36 @@
+사용자 홈 대여 현황 전용 레이아웃 복원 검증 보고
+
+기준본
+- rental_policy_calendar_days_status_ui_fix_deployment_package.zip
+
+이번 추가 수정
+- src/user/UserHomePanel.jsx
+- 사용자 홈의 오늘의 대여 현황을 공통 RentalStatusBoard 카드형 레이아웃에서 기존 전용 가로형 셀 레이아웃으로 복원
+- 사용자 홈의 제목 영역, 기준일 표시, 3열/6열 반응형 셀 구조, 크기, 간격과 색상은 기존 형태 유지
+- 아이콘만 관리자 상단 공통 기준으로 교체
+  · 보유 자산: Boxes
+  · 대여 가능: PackageCheck
+  · 승인 대기: ClipboardCheck
+  · 예약중: CalendarClock
+  · 대여중: PackageOpen
+  · 반납 지연: XCircle
+- RentalStatusBoard.jsx는 관리자 전체 메뉴 상단과 사용자 대여 신청 상단에서 계속 사용
+- 대여 당일 제외 계산, 연장 달력일 계산, 휴일 조정, 충돌 검사와 Firestore 관련 코드는 변경하지 않음
+
+정적 검증
+- 기준본 대비 기능 코드 변경 파일은 src/user/UserHomePanel.jsx 1개
+- UserHomePanel.jsx에서 RentalStatusBoard import와 호출이 제거된 것을 확인
+- 기존 사용자 홈 전용 오늘의 대여 현황 레이아웃이 복원된 것을 확인
+- JavaScript·JSX 전체 파일 TypeScript transpile 구문 검사 통과
+- 전체 상대 import 경로 검사 통과
+- rules/firestore.rules는 기준본과 동일
+
+환경상 실행하지 못한 검증
+- 기준 패키지에 package.json과 node_modules가 없어 npm run build를 실행하지 못했습니다.
+- 실제 브라우저의 PC·모바일 렌더링은 로컬 프로젝트에서 최종 확인해야 합니다.
+
+--- 이전 검증 보고 ---
+
 대여 당일 제외·연장 달력일 전환·대여 현황 공통화 검증 보고
 
 기준본

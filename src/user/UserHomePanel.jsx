@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Boxes,
+  CalendarClock,
   ChevronLeft,
   ChevronRight,
+  ClipboardCheck,
+  PackageCheck,
+  PackageOpen,
+  XCircle,
 } from 'lucide-react';
 import { onSnapshot, query, where } from 'firebase/firestore';
-
-import RentalStatusBoard from '../components/RentalStatusBoard.jsx';
 
 import {
   HOME_BANNERS_COLLECTION_REF,
@@ -320,6 +324,15 @@ export default function UserHomePanel({ ctx }) {
     (_, index) => visiblePromotionBanners[index] || null
   );
 
+  const summaryItems = [
+    [Boxes, '보유 자산', stats?.total || 0, 'text-slate-700 bg-slate-100'],
+    [PackageCheck, '대여 가능', stats?.available || 0, 'text-emerald-700 bg-emerald-50'],
+    [ClipboardCheck, '승인 대기', stats?.requested || 0, 'text-amber-700 bg-amber-50'],
+    [CalendarClock, '예약중', stats?.reserved || 0, 'text-sky-700 bg-sky-50'],
+    [PackageOpen, '대여중', stats?.approved || 0, 'text-blue-700 bg-blue-50'],
+    [XCircle, '반납 지연', stats?.overdue || 0, 'text-rose-700 bg-rose-50'],
+  ];
+
   return (
     <div className="space-y-6 sm:space-y-8">
       <section
@@ -408,11 +421,30 @@ export default function UserHomePanel({ ctx }) {
         )}
       </section>
 
-      <RentalStatusBoard
-        stats={stats}
-        title="오늘의 대여 현황"
-        referenceLabel={formatKoreaReferenceDate()}
-      />
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="grid md:grid-cols-[240px_minmax(0,1fr)]">
+          <div className="flex items-center border-b border-slate-200 bg-gradient-to-br from-slate-900 to-slate-700 px-4 py-4 text-white sm:px-5 sm:py-5 md:border-b-0 md:border-r">
+            <span className="mr-2.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-orange-500 text-white shadow-sm ring-1 ring-white/20 sm:mr-3 sm:h-10 sm:w-10">
+              <Boxes className="h-[18px] w-[18px] sm:h-5 sm:w-5" strokeWidth={2.2} aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="whitespace-nowrap text-base font-black leading-tight sm:text-lg">오늘의 대여 현황</h2>
+              <p className="mt-1.5 text-xs font-semibold text-slate-300">({formatKoreaReferenceDate()})</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-px bg-slate-200 lg:grid-cols-6">
+            {summaryItems.map(([Icon, label, value, tone]) => (
+              <div key={label} className="flex min-h-[78px] items-center justify-center gap-2 bg-white px-2 py-3 sm:min-h-[84px] sm:px-3">
+                <span className={`hidden h-8 w-8 shrink-0 items-center justify-center rounded-xl sm:flex ${tone}`}><Icon size={16} /></span>
+                <div className="text-center sm:text-left">
+                  <div className="text-[10px] font-semibold text-slate-500 sm:text-[11px]">{label}</div>
+                  <div className="mt-0.5 text-lg font-black text-slate-900 sm:text-xl">{value}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
       <section className={`grid items-stretch gap-5 ${promotionBanners.length > 0 ? 'lg:grid-cols-2' : 'grid-cols-1'}`}>
         <div className="flex min-h-[300px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
