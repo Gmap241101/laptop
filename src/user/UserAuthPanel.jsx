@@ -1,3 +1,5 @@
+import { useRef } from 'react';
+
 import DomesticPhoneInput from '../components/DomesticPhoneInput.jsx';
 import { normalizeMemberName } from '../utils/memberPolicy.js';
 
@@ -34,6 +36,8 @@ export default function UserAuthPanel({ ctx }) {
     userTab,
     siteSettings,
   } = ctx;
+
+  const signupNameCompositionRef = useRef(false);
 
   const isSignupMode = userTab === 'signup';
   const isEmailRecoveryMode = userTab === 'findEmail';
@@ -101,14 +105,44 @@ export default function UserAuthPanel({ ctx }) {
           <form className="space-y-4" onSubmit={submitAccountRecovery}>
             <Input
               label="성명"
-              value={accountRecoveryForm.name}
-              onChange={(value) =>
-                setAccountRecoveryForm({
-                  ...accountRecoveryForm,
-                  name: normalizeMemberName(value).slice(0, 30),
-                })
-              }
+              value={userAuthForm.name}
+              onChange={(value) => {
+                const nextValue = String(value || '').slice(0, 30);
+
+                setUserAuthForm((prev) => ({
+                  ...prev,
+                  name: signupNameCompositionRef.current
+                    ? nextValue
+                    : normalizeMemberName(nextValue).slice(0, 30),
+                }));
+              }}
+              onCompositionStart={() => {
+                signupNameCompositionRef.current = true;
+              }}
+              onCompositionEnd={(event) => {
+                signupNameCompositionRef.current = false;
+
+                const normalizedName = normalizeMemberName(
+                  event.currentTarget.value
+                ).slice(0, 30);
+
+                setUserAuthForm((prev) => ({
+                  ...prev,
+                  name: normalizedName,
+                }));
+              }}
+              onBlur={(event) => {
+                const normalizedName = normalizeMemberName(
+                  event.currentTarget.value
+                ).slice(0, 30);
+
+                setUserAuthForm((prev) => ({
+                  ...prev,
+                  name: normalizedName,
+                }));
+              }}
               placeholder="공백 없이 성명을 입력하세요"
+              autoComplete="name"
               maxLength={30}
             />
 
