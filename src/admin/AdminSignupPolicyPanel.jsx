@@ -16,7 +16,7 @@ function PolicySwitch({ checked, disabled = false, label, description, onChange 
           className={`relative h-7 w-12 shrink-0 rounded-full transition ${checked ? 'bg-orange-500' : 'bg-slate-300'} ${disabled ? 'cursor-not-allowed' : 'cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-300 focus:ring-offset-2'}`}
         >
           <span
-            className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-6' : 'translate-x-1'}`}
+            className={`absolute left-0 top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-6' : 'translate-x-1'}`}
           />
           <span className="sr-only">{checked ? '켜짐' : '꺼짐'}</span>
         </button>

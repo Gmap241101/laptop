@@ -1,3 +1,52 @@
+회원가입 정책 토글 표시·명부 불일치 계정 자동 복원 수정 배포 안내
+
+기준 패키지
+- home_popup_request_layout_fix_deployment_package(1).zip
+
+이번 변경 파일
+- src/admin/AdminSignupPolicyPanel.jsx
+- src/App.jsx
+- rules/firestore.rules
+
+수정 내용
+1. 회원가입 정책 토글 표시
+- 토글 손잡이의 절대 위치 기준에 left-0을 추가했습니다.
+- 꺼짐 상태는 왼쪽, 켜짐 상태는 오른쪽에 정확히 표시됩니다.
+- 기존 색상, 크기, 비활성화 처리, 클릭 동작은 변경하지 않았습니다.
+
+2. 가입 제한 정책 해제 시 기존 회원 복원
+- 등록 명부 불일치로 profileRequired 상태가 된 회원만 복원 대상으로 제한합니다.
+- 가입 제한 정책이 꺼진 상태에서 관리자 회원 목록이 로드되면 남아 있는 명부 불일치 회원을 자동 복원합니다.
+- 정책 저장 시에도 정책이 꺼진 상태라면 명부 불일치 회원 복원을 다시 실행합니다.
+- statusBeforeProfileRequired가 active 또는 pending이면 원래 상태를 그대로 복원합니다.
+- 구버전 데이터처럼 이전 상태가 비어 있거나 잘못된 경우에는 active로 복원합니다.
+- 부서·성명 중복, 관리자 수동 이용 차단, 이용 종료 상태는 자동 복원하지 않습니다.
+
+3. 로그인·기존 세션 복원
+- profileRequiredReason이 directoryMismatch인 계정은 로컬 정책 버전 값과 관계없이 서버의 최신 정책을 다시 확인합니다.
+- 정책이 꺼져 있으면 로그인 과정에서 계정 상태와 이메일 찾기용 복구키 상태를 함께 복원합니다.
+- 명부 불일치 때문에 마이페이지로 강제 이동됐던 사용자가 active로 복원되면 기기 대여 화면으로 이동합니다.
+
+4. Firestore Rules
+- statusBeforeProfileRequired가 active 또는 pending이면 해당 값을 사용합니다.
+- 값이 없거나 유효하지 않으면 active를 복원 상태로 인정합니다.
+- 앱의 복원 상태 계산과 Rules의 허용 상태 계산을 동일하게 맞췄습니다.
+
+배포 순서
+1. 배포 패키지의 src 폴더를 프로젝트 src 폴더에 반영합니다.
+2. rules/firestore.rules를 프로젝트 Firestore Rules 전체 교체본으로 반영합니다.
+3. Firebase Console 또는 Firebase CLI에서 Firestore Rules를 반드시 게시합니다.
+4. 프로젝트를 빌드하고 배포합니다.
+5. 관리자 로그인 후 회원가입 정책 화면에서 토글 꺼짐 위치를 확인합니다.
+6. 등록된 부서·사용자만 가입 허용을 끈 상태에서 명부 불일치 회원이 active 또는 기존 pending 상태로 복원되는지 확인합니다.
+7. 해당 사용자가 다시 로그인했을 때 불필요한 마이페이지 강제 이동 없이 정상 이용 화면으로 진입하는지 확인합니다.
+
+주의
+- 이번 수정은 Firestore Rules 변경을 포함하므로 src만 교체하면 사용자 본인 복원이 permission-denied로 실패할 수 있습니다.
+- 정책 해제 자동 복원 대상은 profileRequiredReason == directoryMismatch인 계정뿐입니다.
+
+--- 이전 배포 안내 ---
+
 홈 화면 관리 제목 계층·팝업/신청 목록 너비 보정 추가 배포 안내
 
 기준 패키지

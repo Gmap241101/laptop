@@ -2097,7 +2097,7 @@ const getClaimStatus = (claim = {}) =>
 const getRestorableUserProfileStatus = (status) =>
   [USER_PROFILE_STATUS.ACTIVE, USER_PROFILE_STATUS.PENDING].includes(status)
     ? status
-    : USER_PROFILE_STATUS.PENDING;
+    : USER_PROFILE_STATUS.ACTIVE;
 
 const createMemberPolicyError = (code) => {
   const error = new Error(code);
@@ -2823,6 +2823,8 @@ function App() {
     Boolean(data.settings.autoApproveNewMembers)
   );
   const [signupPolicySaving, setSignupPolicySaving] = useState(false);
+  const directoryMismatchRestoreInProgressRef = useRef(false);
+  const directoryMismatchRestoreAttemptKeyRef = useRef('');
   const [memberDirectoryAuditLoading, setMemberDirectoryAuditLoading] = useState(false);
   const [memberDirectoryAuditResult, setMemberDirectoryAuditResult] = useState(null);
   const [editingBorrowerIndex, setEditingBorrowerIndex] = useState(null);
@@ -3408,7 +3410,27 @@ function App() {
       currentStatus ===
       USER_PROFILE_STATUS.ACTIVE
     ) {
+      const wasRedirectedForProfileRequired =
+        profileRequiredRedirectRef.current.startsWith(
+          `${firebaseAuthUser.uid}:`
+        );
+
       profileRequiredRedirectRef.current = '';
+
+      if (
+        wasRedirectedForProfileRequired &&
+        userTab === 'mypage'
+      ) {
+        replaceAppPath('user', 'rental');
+        setView('user');
+        setUserTab('rental');
+        setIsCommunityMenuOpen(false);
+        triggerToast(
+          '회원 상태가 정상 이용 가능 상태로 복원되었습니다.',
+          'success'
+        );
+      }
+
       return;
     }
 
@@ -3485,6 +3507,7 @@ function App() {
     userProfileReady,
     userProfile,
     userAuthLoading,
+    userTab,
     withdrawalLoading,
   ]);
 
@@ -3506,18 +3529,16 @@ function App() {
     const policyEnabled = isRegisteredMemberSignupRequired(data.settings);
     const directoryVersion = getSafeMemberDirectoryVersion(data.settings);
     const currentStatus = userProfile.status || '';
+    const isDirectoryMismatchProfile =
+      currentStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
+      userProfile.profileRequiredReason ===
+        PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
     const needsVerification =
+      isDirectoryMismatchProfile ||
       (policyEnabled &&
-        [
-          USER_PROFILE_STATUS.ACTIVE,
-          USER_PROFILE_STATUS.PROFILE_REQUIRED,
-        ].includes(currentStatus) &&
+        currentStatus === USER_PROFILE_STATUS.ACTIVE &&
         Number(userProfile.directoryVerifiedVersion || 0) !==
-          directoryVersion) ||
-      (!policyEnabled &&
-        currentStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
-        userProfile.profileRequiredReason ===
-          PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH);
+          directoryVersion);
 
     if (!needsVerification) {
       return;
@@ -5167,64 +5188,87 @@ function App() {
     });
   };
 
-  const restoreDirectoryMismatchAccountsAfterPolicyDisabled = async () => {
-    const accountsSnapshot = await getDocs(USER_ACCOUNTS_COLLECTION_REF);
-    const restoreOperations = [];
-    let restoredCount = 0;
-
-    accountsSnapshot.docs.forEach((accountDocument) => {
-      const account = accountDocument.data() || {};
-
-      if (
-        account.status !== USER_PROFILE_STATUS.PROFILE_REQUIRED ||
-        account.profileRequiredReason !==
-          PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH
-      ) {
-        return;
-      }
-
-      const restoredStatus = getRestorableUserProfileStatus(
-        account.statusBeforeProfileRequired
-      );
-
-      restoreOperations.push({
-        type: 'update',
-        ref: accountDocument.ref,
-        data: {
-          status: restoredStatus,
-          profileRequiredReason: '',
-          profileRequiredAt: '',
-          statusBeforeProfileRequired: '',
-          updatedAt: serverTimestamp(),
-        },
-      });
-
-      if (account.recoveryKey) {
-        restoreOperations.push({
-          type: 'set',
-          ref: doc(
-            ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
-            account.recoveryKey
-          ),
-          data: {
-            recoveryKey: account.recoveryKey,
-            maskedEmail: account.maskedEmail || '',
-            accountStatus: restoredStatus,
-            enabled: true,
-            updatedAt: serverTimestamp(),
-          },
-          options: { merge: true },
-        });
-      }
-
-      restoredCount += 1;
-    });
-
-    if (restoreOperations.length > 0) {
-      await commitFirestoreOperations(restoreOperations);
+  const restoreDirectoryMismatchAccountsAfterPolicyDisabled = async (
+    sourceAccounts = null
+  ) => {
+    if (directoryMismatchRestoreInProgressRef.current) {
+      return 0;
     }
 
-    return restoredCount;
+    directoryMismatchRestoreInProgressRef.current = true;
+
+    try {
+      const accountDocuments = Array.isArray(sourceAccounts)
+        ? sourceAccounts
+            .filter((account) => account?.uid)
+            .map((account) => ({
+              ref: doc(
+                db,
+                USER_ACCOUNTS_COLLECTION_NAME,
+                account.uid
+              ),
+              data: () => account,
+            }))
+        : (await getDocs(USER_ACCOUNTS_COLLECTION_REF)).docs;
+      const restoreOperations = [];
+      let restoredCount = 0;
+
+      accountDocuments.forEach((accountDocument) => {
+        const account = accountDocument.data() || {};
+
+        if (
+          account.status !== USER_PROFILE_STATUS.PROFILE_REQUIRED ||
+          account.profileRequiredReason !==
+            PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH
+        ) {
+          return;
+        }
+
+        const restoredStatus = getRestorableUserProfileStatus(
+          account.statusBeforeProfileRequired
+        );
+
+        restoreOperations.push({
+          type: 'update',
+          ref: accountDocument.ref,
+          data: {
+            status: restoredStatus,
+            profileRequiredReason: '',
+            profileRequiredAt: '',
+            statusBeforeProfileRequired: '',
+            updatedAt: serverTimestamp(),
+          },
+        });
+
+        if (account.recoveryKey) {
+          restoreOperations.push({
+            type: 'set',
+            ref: doc(
+              ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
+              account.recoveryKey
+            ),
+            data: {
+              recoveryKey: account.recoveryKey,
+              maskedEmail: account.maskedEmail || '',
+              accountStatus: restoredStatus,
+              enabled: true,
+              updatedAt: serverTimestamp(),
+            },
+            options: { merge: true },
+          });
+        }
+
+        restoredCount += 1;
+      });
+
+      if (restoreOperations.length > 0) {
+        await commitFirestoreOperations(restoreOperations);
+      }
+
+      return restoredCount;
+    } finally {
+      directoryMismatchRestoreInProgressRef.current = false;
+    }
   };
 
   const registeredAdminAccounts = adminAccounts || [];
@@ -8143,14 +8187,16 @@ function App() {
       ) {
         const policyEnabled = isRegisteredMemberSignupRequired(data.settings);
         const directoryVersion = getSafeMemberDirectoryVersion(data.settings);
+        const isDirectoryMismatchProfile =
+          signedInUserStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
+          signedInAccount.profileRequiredReason ===
+            PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
         const needsDirectoryVerification =
+          isDirectoryMismatchProfile ||
           (policyEnabled &&
+            signedInUserStatus === USER_PROFILE_STATUS.ACTIVE &&
             Number(signedInAccount.directoryVerifiedVersion || 0) !==
-              directoryVersion) ||
-          (!policyEnabled &&
-            signedInUserStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
-            signedInAccount.profileRequiredReason ===
-              PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH);
+              directoryVersion);
 
         if (needsDirectoryVerification) {
           const serviceMode = normalizeSiteSettings(siteSettings).serviceMode;
@@ -8586,6 +8632,78 @@ function App() {
   }, [
     adminUserAccounts,
     registeredAdminAccounts,
+  ]);
+
+  useEffect(() => {
+    if (
+      !isAdminAuthenticated ||
+      !isSplitStorageReady ||
+      !adminUserAccountsReady ||
+      isRegisteredMemberSignupRequired(data.settings)
+    ) {
+      return;
+    }
+
+    const directoryMismatchAccounts = managedUserAccounts.filter(
+      (account) =>
+        account.status === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
+        account.profileRequiredReason ===
+          PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH
+    );
+
+    if (directoryMismatchAccounts.length === 0) {
+      directoryMismatchRestoreAttemptKeyRef.current = '';
+      return;
+    }
+
+    const restoreAttemptKey = directoryMismatchAccounts
+      .map((account) =>
+        [
+          account.uid || '',
+          account.statusBeforeProfileRequired || '',
+          account.updatedAt?.seconds || account.updatedAt || '',
+        ].join(':')
+      )
+      .sort()
+      .join('|');
+
+    if (
+      !restoreAttemptKey ||
+      directoryMismatchRestoreAttemptKeyRef.current === restoreAttemptKey
+    ) {
+      return;
+    }
+
+    directoryMismatchRestoreAttemptKeyRef.current = restoreAttemptKey;
+
+    void restoreDirectoryMismatchAccountsAfterPolicyDisabled(
+      directoryMismatchAccounts
+    )
+      .then((restoredCount) => {
+        if (restoredCount > 0) {
+          triggerToast(
+            `가입 제한 정책이 꺼져 있어 등록 명부 불일치 회원 ${restoredCount}명을 이전 이용 상태로 자동 복원했습니다.`,
+            'success'
+          );
+        }
+      })
+      .catch((error) => {
+        console.error(
+          'Automatic directory mismatch account restoration error:',
+          error
+        );
+        directoryMismatchRestoreAttemptKeyRef.current = '';
+        triggerToast(
+          '등록 명부 불일치 회원의 자동 복원에 실패했습니다. 최신 Firestore Rules를 게시한 뒤 다시 확인해 주세요.',
+          'error'
+        );
+      });
+  }, [
+    adminUserAccountsReady,
+    data.settings.requireRegisteredMemberForSignup,
+    isAdminAuthenticated,
+    isSplitStorageReady,
+    managedUserAccounts,
   ]);
 
   const filteredManagedUserAccounts =
@@ -11047,7 +11165,7 @@ function App() {
       let restoredDirectoryMismatchCount = 0;
       let restoreWarning = '';
 
-      if (policyEnabledChanged && !nextRequireRegistered) {
+      if (!nextRequireRegistered) {
         try {
           restoredDirectoryMismatchCount =
             await restoreDirectoryMismatchAccountsAfterPolicyDisabled();
@@ -11056,6 +11174,7 @@ function App() {
             'Directory mismatch account restoration error:',
             restoreError
           );
+          directoryMismatchRestoreAttemptKeyRef.current = '';
           restoreWarning =
             ' 정책은 해제되었지만 일부 회원 상태 자동 복원에 실패했습니다. 최신 Firestore Rules를 게시한 뒤 해당 회원이 다시 로그인하도록 안내해 주세요.';
         }

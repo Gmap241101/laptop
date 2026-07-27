@@ -220,6 +220,12 @@ service cloud.firestore {
         && getAfter(recoveryPath).data.get('enabled', true) == true;
     }
 
+    function restorableDirectoryStatus(data) {
+      return data.get('statusBeforeProfileRequired', '') in ['active', 'pending']
+        ? data.get('statusBeforeProfileRequired', '')
+        : 'active';
+    }
+
     function selfStatusTransitionAllowed(beforeData, afterData) {
       return (
           beforeData.status == 'active'
@@ -232,7 +238,7 @@ service cloud.firestore {
             || (
               beforeData.get('profileRequiredReason', '') == 'directoryMismatch'
               && afterData.status
-                == beforeData.get('statusBeforeProfileRequired', 'pending')
+                == restorableDirectoryStatus(beforeData)
               && afterData.status in ['active', 'pending']
             )
           )
@@ -248,7 +254,7 @@ service cloud.firestore {
         && beforeData.status == 'profileRequired'
         && beforeData.get('profileRequiredReason', '') == 'directoryMismatch'
         && afterData.status
-          == beforeData.get('statusBeforeProfileRequired', 'pending')
+          == restorableDirectoryStatus(beforeData)
         && afterData.status in ['active', 'pending']
         && afterData.get('profileRequiredReason', '') == ''
         && afterData.get('profileRequiredAt', '') == ''

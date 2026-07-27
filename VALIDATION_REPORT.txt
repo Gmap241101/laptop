@@ -1,3 +1,45 @@
+회원가입 정책 토글 표시·명부 불일치 계정 자동 복원 검증 보고
+
+기준본
+- home_popup_request_layout_fix_deployment_package(1).zip
+
+변경 파일
+- src/admin/AdminSignupPolicyPanel.jsx
+- src/App.jsx
+- rules/firestore.rules
+- DEPLOYMENT_NOTES.txt
+- VALIDATION_REPORT.txt
+
+원인 확인
+- PolicySwitch 손잡이에 수평 기준점이 없어 꺼짐 상태에서도 브라우저의 정적 위치 기준에 따라 오른쪽에 표시될 수 있었습니다.
+- 정책 해제 후 일괄 복원은 정책 값이 변경되는 저장 시점에만 실행되어 이미 정책이 꺼진 상태로 남은 계정은 다시 처리되지 않았습니다.
+- 구버전 계정의 statusBeforeProfileRequired가 비어 있으면 앱은 대체 상태를 계산해도 Rules가 빈 값과 정확히 일치하도록 요구하여 본인 복원이 거부될 수 있었습니다.
+- directoryMismatch 계정의 검증 조건이 로컬 정책 버전 값에 의존하여 최신 서버 정책 확인이 생략될 수 있었습니다.
+- 강제 마이페이지 이동 뒤 계정이 active로 복원되어도 현재 화면을 정상 이용 화면으로 되돌리는 처리가 없었습니다.
+
+수정 확인
+- 토글 손잡이 left-0 기준점 적용
+- 정책 OFF 상태의 잔존 directoryMismatch 계정 관리자 자동 복원
+- 정책 OFF 저장 시 복원 재실행
+- directoryMismatch 계정 로그인·세션 재검증 항상 실행
+- 유효한 이전 상태 active/pending 보존
+- 이전 상태 누락·비정상 데이터 active 대체
+- Firestore Rules와 앱의 복원 상태 계산 일치
+- 강제 마이페이지 이동 후 active 복원 시 기기 대여 화면 이동
+- duplicateIdentity, blocked, retired 계정은 자동 복원 대상에서 제외
+
+정적 검증
+- JavaScript·JSX 43개 파일 TypeScript transpile 구문 검사 통과
+- 전체 상대 import 경로 검사 통과
+- Firestore Rules 괄호 구조 검사 통과
+- 기준본 대비 실제 기능 변경 파일은 App.jsx, AdminSignupPolicyPanel.jsx, firestore.rules 3개로 제한
+
+환경상 실행하지 못한 검증
+- 기준 패키지에 package.json과 node_modules가 없어 npm run build를 실행하지 못했습니다.
+- Firebase Emulator와 실제 운영 Firestore 데이터가 없어 Rules 승인·거부 및 실제 계정 상태 전환은 운영 반영 전 최종 확인이 필요합니다.
+
+--- 이전 검증 보고 ---
+
 홈 화면 제목 계층·팝업/신청 목록 너비 보정 검증 보고
 
 기준본
