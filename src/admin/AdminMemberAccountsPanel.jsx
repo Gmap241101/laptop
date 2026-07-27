@@ -7,8 +7,11 @@ export default function AdminMemberAccountsPanel({ ctx }) {
     Search,
     USER_PROFILE_STATUS,
     XCircle,
+    adminUserAccountHasNextPage,
     adminUserAccountQuery,
     adminUserAccountSavingUid,
+    adminUserAccountSearchMode,
+    adminUserAccountTotalPages,
     adminUserAccountStatusCounts,
     adminUserAccountStatusFilter,
     adminUserAccountsLoadErrorMessage,
@@ -18,6 +21,8 @@ export default function AdminMemberAccountsPanel({ ctx }) {
     getUserAccountStatusClassName,
     getUserAccountStatusLabel,
     getMemberAccountHistorySummary,
+    safeAdminUserAccountPage,
+    setAdminUserAccountPage,
     setAdminUserAccountQuery,
     setAdminUserAccountStatusFilter,
   } = ctx;
@@ -376,6 +381,51 @@ export default function AdminMemberAccountsPanel({ ctx }) {
                           )}
                         </div>
                       )}
+
+                      {adminUserAccountsReady && !adminUserAccountsLoadErrorMessage ? (
+                        <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                          <div className="text-xs text-slate-500">
+                            {adminUserAccountSearchMode
+                              ? '검색 결과는 최신 최대 200명 범위에서 표시됩니다.'
+                              : '서버 커서 페이지 · 페이지당 20명'}
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="px-3 py-2 text-xs"
+                              disabled={safeAdminUserAccountPage <= 1}
+                              onClick={() =>
+                                setAdminUserAccountPage((prev) => Math.max(1, prev - 1))
+                              }
+                            >
+                              이전
+                            </Button>
+
+                            <span className="min-w-[72px] text-center text-xs font-bold text-slate-700">
+                              {safeAdminUserAccountPage} / {adminUserAccountTotalPages}
+                            </span>
+
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="px-3 py-2 text-xs"
+                              disabled={
+                                safeAdminUserAccountPage >= adminUserAccountTotalPages ||
+                                (!adminUserAccountSearchMode && !adminUserAccountHasNextPage)
+                              }
+                              onClick={() =>
+                                setAdminUserAccountPage((prev) =>
+                                  Math.min(adminUserAccountTotalPages, prev + 1)
+                                )
+                              }
+                            >
+                              다음
+                            </Button>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
   );
 }

@@ -18,14 +18,18 @@ import {
 import {
   deleteDoc,
   doc,
+  getCountFromServer,
   getDoc,
   getDocs,
+  limit as firestoreLimit,
   onSnapshot,
+  orderBy,
   query as firestoreQuery,
   runTransaction,
   setDoc,
   updateDoc,
   serverTimestamp,
+  startAfter,
   where,
   writeBatch,
 } from 'firebase/firestore';
@@ -1965,10 +1969,185 @@ const replaceAppPath = (
 
 const ADMIN_CUSTOM_OPTION_VALUE = '__ADMIN_CUSTOM_INPUT__';
 const ADMIN_ACCOUNT_PAGE_SIZE = 10;
+const ADMIN_MEMBER_ACCOUNT_PAGE_SIZE = 20;
+const FIRESTORE_SEARCH_RESULT_LIMIT = 200;
+const FIRESTORE_PINNED_POST_LIMIT = 20;
+const ADMIN_DASHBOARD_ACTIVE_REQUEST_LIMIT = 100;
 const ADMIN_AUTH_SESSION_KEY = 'mk_laptop_admin_auth_session';
 const USER_AUTH_SESSION_KEY = 'mk_laptop_user_auth_session';
 const ADMIN_PASSWORD_HASH_ALGORITHM = 'PBKDF2-SHA-256';
 const ADMIN_PASSWORD_HASH_ITERATIONS = 120000;
+
+const useDebouncedValue = (value, delay = 350) => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [value, delay]);
+
+  return debouncedValue;
+};
+
+const getAdminRequestServerConstraints = ({
+  requestTab,
+  quickFilter,
+  referenceDate,
+}) => {
+  if (quickFilter === ADMIN_REQUEST_QUICK_FILTER.OVERDUE) {
+    return [
+      where('status', '==', STATUS.APPROVED),
+      where('dueDate', '<', referenceDate),
+      orderBy('dueDate', 'asc'),
+    ];
+  }
+
+  if (quickFilter === ADMIN_REQUEST_QUICK_FILTER.DUE_TODAY) {
+    return [
+      where('status', '==', STATUS.APPROVED),
+      where('dueDate', '==', referenceDate),
+      orderBy('createdAt', 'desc'),
+    ];
+  }
+
+  if (quickFilter === ADMIN_REQUEST_QUICK_FILTER.START_TODAY) {
+    return [
+      where('status', '==', STATUS.APPROVED),
+      where('startDate', '==', referenceDate),
+      orderBy('createdAt', 'desc'),
+    ];
+  }
+
+  if (quickFilter === ADMIN_REQUEST_QUICK_FILTER.PENDING_USER_ACTION) {
+    return [
+      where(
+        'userActionRequest.status',
+        '==',
+        USER_REQUEST_REVIEW_STATUS.PENDING
+      ),
+      orderBy('userActionRequest.requestedAt', 'asc'),
+    ];
+  }
+
+  if (quickFilter === ADMIN_REQUEST_QUICK_FILTER.REQUESTED) {
+    return [
+      where('status', '==', STATUS.REQUESTED),
+      orderBy('createdAt', 'asc'),
+    ];
+  }
+
+  if (quickFilter === ADMIN_REQUEST_QUICK_FILTER.ON_HOLD) {
+    return [
+      where('status', '==', STATUS.ON_HOLD),
+      orderBy('createdAt', 'asc'),
+    ];
+  }
+
+  if (quickFilter === ADMIN_REQUEST_QUICK_FILTER.RESERVED) {
+    return [
+      where('status', '==', STATUS.APPROVED),
+      where('startDate', '>', referenceDate),
+      orderBy('startDate', 'asc'),
+    ];
+  }
+
+  if (requestTab === ADMIN_REQUEST_TAB.PENDING) {
+    return [
+      where('status', 'in', [STATUS.REQUESTED, STATUS.ON_HOLD]),
+      orderBy('createdAt', 'asc'),
+    ];
+  }
+
+  if (requestTab === ADMIN_REQUEST_TAB.RENTAL) {
+    return [
+      where('status', '==', STATUS.APPROVED),
+      orderBy('createdAt', 'desc'),
+    ];
+  }
+
+  if (requestTab === ADMIN_REQUEST_TAB.CLOSED) {
+    return [
+      where('status', 'in', [STATUS.DENIED, STATUS.USER_CANCELLED]),
+      orderBy('createdAt', 'desc'),
+    ];
+  }
+
+  return [
+    where('status', '==', STATUS.RETURNED),
+    orderBy('createdAt', 'desc'),
+  ];
+};
+
+const getAdminRequestCountConstraints = ({
+  requestTab,
+  quickFilter,
+  referenceDate,
+}) => {
+  if (quickFilter === ADMIN_REQUEST_QUICK_FILTER.OVERDUE) {
+    return [
+      where('status', '==', STATUS.APPROVED),
+      where('dueDate', '<', referenceDate),
+    ];
+  }
+
+  if (quickFilter === ADMIN_REQUEST_QUICK_FILTER.DUE_TODAY) {
+    return [
+      where('status', '==', STATUS.APPROVED),
+      where('dueDate', '==', referenceDate),
+    ];
+  }
+
+  if (quickFilter === ADMIN_REQUEST_QUICK_FILTER.START_TODAY) {
+    return [
+      where('status', '==', STATUS.APPROVED),
+      where('startDate', '==', referenceDate),
+    ];
+  }
+
+  if (quickFilter === ADMIN_REQUEST_QUICK_FILTER.PENDING_USER_ACTION) {
+    return [
+      where(
+        'userActionRequest.status',
+        '==',
+        USER_REQUEST_REVIEW_STATUS.PENDING
+      ),
+    ];
+  }
+
+  if (quickFilter === ADMIN_REQUEST_QUICK_FILTER.REQUESTED) {
+    return [where('status', '==', STATUS.REQUESTED)];
+  }
+
+  if (quickFilter === ADMIN_REQUEST_QUICK_FILTER.ON_HOLD) {
+    return [where('status', '==', STATUS.ON_HOLD)];
+  }
+
+  if (quickFilter === ADMIN_REQUEST_QUICK_FILTER.RESERVED) {
+    return [
+      where('status', '==', STATUS.APPROVED),
+      where('startDate', '>', referenceDate),
+    ];
+  }
+
+  if (requestTab === ADMIN_REQUEST_TAB.PENDING) {
+    return [where('status', 'in', [STATUS.REQUESTED, STATUS.ON_HOLD])];
+  }
+
+  if (requestTab === ADMIN_REQUEST_TAB.RENTAL) {
+    return [where('status', '==', STATUS.APPROVED)];
+  }
+
+  if (requestTab === ADMIN_REQUEST_TAB.CLOSED) {
+    return [
+      where('status', 'in', [STATUS.DENIED, STATUS.USER_CANCELLED]),
+    ];
+  }
+
+  return [where('status', '==', STATUS.RETURNED)];
+};
 
 const createDefaultAdminAccountForm = () => ({
   adminLoginId: '',
@@ -2569,6 +2748,16 @@ function App() {
   const [adminRequestQuery, setAdminRequestQuery] = useState('');
   const [adminRequestPageSize, setAdminRequestPageSize] = useState(10);
   const [adminRequestPage, setAdminRequestPage] = useState(1);
+  const [adminRequestHasNextPage, setAdminRequestHasNextPage] = useState(false);
+  const [adminRequestTotalCount, setAdminRequestTotalCount] = useState(0);
+  const [adminRequestTabCountsRemote, setAdminRequestTabCountsRemote] = useState({
+    [ADMIN_REQUEST_TAB.PENDING]: 0,
+    [ADMIN_REQUEST_TAB.RENTAL]: 0,
+    [ADMIN_REQUEST_TAB.CLOSED]: 0,
+    [ADMIN_REQUEST_TAB.RETURNED]: 0,
+  });
+  const adminRequestCursorByPageRef = useRef(new Map([[1, null]]));
+  const adminRequestCursorKeyRef = useRef('');
   const [selectedAdminRequestId, setSelectedAdminRequestId] = useState('');
 
   const [adminRequestEditDialog, setAdminRequestEditDialog] = useState(null);
@@ -2583,6 +2772,12 @@ function App() {
   const [adminRequestRestoreSaving, setAdminRequestRestoreSaving] = useState(false);
   
   const [noticePosts, setNoticePosts] = useState([]);
+  const [noticePinnedPosts, setNoticePinnedPosts] = useState([]);
+  const [noticeRegularPagePosts, setNoticeRegularPagePosts] = useState([]);
+  const [noticeHasNextPage, setNoticeHasNextPage] = useState(false);
+  const [noticeRegularTotalCount, setNoticeRegularTotalCount] = useState(0);
+  const noticeCursorByPageRef = useRef(new Map([[1, null]]));
+  const noticeCursorKeyRef = useRef('');
   const [noticePostsReady, setNoticePostsReady] = useState(false);
   const [
     noticePostsLoadErrorMessage,
@@ -2599,6 +2794,7 @@ function App() {
   ] = useState('');
 
   const [selectedNoticePostId, setSelectedNoticePostId] = useState('');
+  const [selectedNoticePostOverride, setSelectedNoticePostOverride] = useState(null);
   const [noticePage, setNoticePage] = useState(1);
   const [adminNoticePage, setAdminNoticePage] = useState(1);
   const [userNoticeQuery, setUserNoticeQuery] = useState('');
@@ -2679,6 +2875,12 @@ function App() {
   ] = useState('');
 
   const [faqPosts, setFaqPosts] = useState([]);
+  const [faqPinnedPosts, setFaqPinnedPosts] = useState([]);
+  const [faqRegularPagePosts, setFaqRegularPagePosts] = useState([]);
+  const [faqHasNextPage, setFaqHasNextPage] = useState(false);
+  const [faqRegularTotalCount, setFaqRegularTotalCount] = useState(0);
+  const faqCursorByPageRef = useRef(new Map([[1, null]]));
+  const faqCursorKeyRef = useRef('');
   const [faqPostsReady, setFaqPostsReady] = useState(false);
   const [
     faqPostsLoadErrorMessage,
@@ -2862,6 +3064,18 @@ function App() {
   const [currentUserRestrictionReady, setCurrentUserRestrictionReady] = useState(false);
 
   const [adminUserAccounts, setAdminUserAccounts] = useState([]);
+  const [adminUserAccountPage, setAdminUserAccountPage] = useState(1);
+  const [adminUserAccountHasNextPage, setAdminUserAccountHasNextPage] = useState(false);
+  const [adminUserAccountTotalCount, setAdminUserAccountTotalCount] = useState(0);
+  const [adminUserAccountStatusCountsRemote, setAdminUserAccountStatusCountsRemote] = useState({
+    pending: 0,
+    active: 0,
+    profileRequired: 0,
+    blocked: 0,
+    retired: 0,
+  });
+  const adminUserAccountCursorByPageRef = useRef(new Map([[1, null]]));
+  const adminUserAccountCursorKeyRef = useRef('');
   const [adminUserAccountsReady, setAdminUserAccountsReady] = useState(false);
   const [
     adminUserAccountsLoadErrorMessage,
@@ -2874,6 +3088,26 @@ function App() {
     adminUserAccountStatusFilter,
     setAdminUserAccountStatusFilter,
   ] = useState('all');
+
+
+  const debouncedAdminRequestQuery = useDebouncedValue(adminRequestQuery);
+  const debouncedAdminUserAccountQuery = useDebouncedValue(
+    adminUserAccountQuery
+  );
+  const debouncedUserNoticeQuery = useDebouncedValue(userNoticeQuery);
+  const debouncedAdminNoticeQuery = useDebouncedValue(adminNoticeQuery);
+  const debouncedFaqQuery = useDebouncedValue(faqQuery);
+
+  const adminRequestServerPage = String(
+    debouncedAdminRequestQuery || ''
+  ).trim()
+    ? 1
+    : adminRequestPage;
+  const adminUserAccountServerPage = String(
+    debouncedAdminUserAccountQuery || ''
+  ).trim()
+    ? 1
+    : adminUserAccountPage;
 
   const [
     adminUserAccountSavingUid,
@@ -3619,24 +3853,6 @@ function App() {
         noticePostId: '',
       };
 
-    if (target.userTab === 'notice') {
-      const hasRequestedNotice =
-        !target.noticePostId ||
-        !noticePostsReady ||
-        noticePosts.some(
-          (post) =>
-            post.id ===
-            target.noticePostId
-        );
-
-      if (!hasRequestedNotice) {
-        target = {
-          ...target,
-          noticePostId: '',
-        };
-      }
-    }
-
     if (target.userTab === 'footerPage') {
       const requestedFooterPage =
         footerPages.find(
@@ -4199,6 +4415,28 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const shouldSubscribeAssets =
+      (view === 'user' && ['home', 'rental'].includes(userTab)) ||
+      (
+        view === 'admin' &&
+        Boolean(authenticatedAdminId) &&
+        Boolean(currentAuthAdminAccount?.id) &&
+        ['dashboard', 'laptops', 'requests'].includes(adminTab)
+      );
+
+    if (!shouldSubscribeAssets) {
+      setSplitSourceErrors((prev) => ({
+        ...prev,
+        assets: '',
+      }));
+      setSplitSourceReady((prev) => ({
+        ...prev,
+        assets: true,
+      }));
+      return undefined;
+    }
+
+    setFirebaseReady(false);
     setSplitSourceReady((prev) => ({
       ...prev,
       assets: false,
@@ -4248,9 +4486,38 @@ function App() {
     );
 
     return unsubscribe;
-  }, []);
+  }, [
+    view,
+    userTab,
+    adminTab,
+    authenticatedAdminId,
+    currentAuthAdminAccount?.id,
+  ]);
+
 
   useEffect(() => {
+    const shouldSubscribeAvailability =
+      (view === 'user' && ['home', 'rental'].includes(userTab)) ||
+      (
+        view === 'admin' &&
+        Boolean(authenticatedAdminId) &&
+        Boolean(currentAuthAdminAccount?.id) &&
+        ['dashboard', 'laptops', 'requests'].includes(adminTab)
+      );
+
+    if (!shouldSubscribeAvailability) {
+      setSplitSourceErrors((prev) => ({
+        ...prev,
+        availability: '',
+      }));
+      setSplitSourceReady((prev) => ({
+        ...prev,
+        availability: true,
+      }));
+      return undefined;
+    }
+
+    setFirebaseReady(false);
     setSplitSourceReady((prev) => ({
       ...prev,
       availability: false,
@@ -4299,35 +4566,26 @@ function App() {
     );
 
     return unsubscribe;
-  }, []);
+  }, [
+    view,
+    userTab,
+    adminTab,
+    authenticatedAdminId,
+    currentAuthAdminAccount?.id,
+  ]);
+
 
   useEffect(() => {
-    if (!firebaseAuthReady || !currentAuthRoleReady) {
-      setSplitSourceReady((prev) => ({
-        ...prev,
-        borrowers: false,
-      }));
-      return;
-    }
-
-    const canReadRentalBorrowers = Boolean(
-      firebaseAuthUser &&
+    const shouldLoadRentalBorrowers =
+      firebaseAuthReady &&
+      currentAuthRoleReady &&
       !currentAuthRoleErrorMessage &&
-      (
-        currentAuthAdminAccount ||
-        authenticatedAdminId ||
-        (
-          userProfile?.status === USER_PROFILE_STATUS.ACTIVE &&
-          (
-            !Boolean(data.settings.requireRegisteredMemberForSignup) ||
-            Number(userProfile.directoryVerifiedVersion || 0) ===
-              getSafeMemberDirectoryVersion(data.settings)
-          )
-        )
-      )
-    );
+      view === 'admin' &&
+      Boolean(authenticatedAdminId) &&
+      Boolean(currentAuthAdminAccount?.id) &&
+      ['people', 'signupPolicy', 'adminAccounts'].includes(adminTab);
 
-    if (!canReadRentalBorrowers) {
+    if (!shouldLoadRentalBorrowers) {
       setSplitRentalBorrowers([]);
       setSplitSourceErrors((prev) => ({
         ...prev,
@@ -4337,7 +4595,7 @@ function App() {
         ...prev,
         borrowers: true,
       }));
-      return;
+      return undefined;
     }
 
     setSplitSourceReady((prev) => ({
@@ -4398,14 +4656,12 @@ function App() {
     firebaseAuthReady,
     currentAuthRoleReady,
     currentAuthRoleErrorMessage,
-    currentAuthAdminAccount,
+    view,
+    adminTab,
     authenticatedAdminId,
-    firebaseAuthUser?.uid,
-    userProfile?.status,
-    userProfile?.directoryVerifiedVersion,
-    data.settings.requireRegisteredMemberForSignup,
-    data.settings.memberDirectoryVersion,
+    currentAuthAdminAccount?.id,
   ]);
+
 
   useEffect(() => {
     const allSplitSourcesReady =
@@ -4467,18 +4723,29 @@ function App() {
   useEffect(() => {
     if (!firebaseAuthReady || !currentAuthRoleReady) {
       setAdminAccountsReady(false);
-      return;
+      return undefined;
     }
 
+    const hasAdminSession =
+      Boolean(authenticatedAdminId) &&
+      Boolean(currentAuthAdminAccount?.id);
+
     const shouldLoadAdminAccounts =
-      Boolean(authenticatedAdminId) && Boolean(currentAuthAdminAccount);
+      hasAdminSession &&
+      view === 'admin' &&
+      adminTab === 'adminAccounts';
 
     if (!shouldLoadAdminAccounts) {
       allowAdminAccountsWriteRef.current = false;
-      setAdminAccounts([]);
+      setAdminAccounts(
+        hasAdminSession && currentAuthAdminAccount
+          ? [currentAuthAdminAccount]
+          : []
+      );
+      setAdminAccountsRemoteHasData(hasAdminSession);
       setAdminAccountsReady(true);
       setAdminAccountsLoadErrorMessage('');
-      return;
+      return undefined;
     }
 
     setAdminAccountsReady(false);
@@ -4496,11 +4763,6 @@ function App() {
             adminAccountsLastSyncedRef.current = {};
             adminAccountsApplyingRemoteRef.current = true;
             setAdminAccounts([]);
-            clearAdminAuthSession();
-            setAuthenticatedAdminId('');
-            setAdminAuthExpiresAt(0);
-          setAdminAuthAbsoluteExpiresAt(0);
-          setAdminAuthPolicyVersion(0);
             setAdminAccountsLoadErrorMessage(message);
             setAdminAccountsReady(true);
             return;
@@ -4538,11 +4800,6 @@ function App() {
 
           allowAdminAccountsWriteRef.current = false;
           setAdminAccountsRemoteHasData(false);
-          clearAdminAuthSession();
-          setAuthenticatedAdminId('');
-          setAdminAuthExpiresAt(0);
-          setAdminAuthAbsoluteExpiresAt(0);
-          setAdminAuthPolicyVersion(0);
           setAdminAccountsLoadErrorMessage(message);
           setAdminAccountsReady(true);
           setToast({
@@ -4558,11 +4815,6 @@ function App() {
         console.error('Admin accounts collection sync error:', error);
         allowAdminAccountsWriteRef.current = false;
         setAdminAccountsRemoteHasData(false);
-        clearAdminAuthSession();
-        setAuthenticatedAdminId('');
-        setAdminAuthExpiresAt(0);
-          setAdminAuthAbsoluteExpiresAt(0);
-          setAdminAuthPolicyVersion(0);
         setAdminAccountsLoadErrorMessage(message);
         setAdminAccountsReady(true);
         setToast({
@@ -4577,84 +4829,310 @@ function App() {
     firebaseAuthReady,
     currentAuthRoleReady,
     authenticatedAdminId,
-    currentAuthAdminAccount,
+    currentAuthAdminAccount?.id,
+    view,
+    adminTab,
   ]);
+
 
   useEffect(() => {
     if (!firebaseAuthReady || !currentAuthRoleReady) {
       setAdminUserAccountsReady(false);
-      return;
+      return undefined;
     }
 
-    const shouldLoadUserAccounts =
+    const hasAdminSession =
       Boolean(authenticatedAdminId) &&
-      Boolean(currentAuthAdminAccount);
+      Boolean(currentAuthAdminAccount?.id) &&
+      view === 'admin';
 
-    if (!shouldLoadUserAccounts) {
+    const shouldLoadDashboardAccounts =
+      hasAdminSession && adminTab === 'dashboard';
+    const shouldLoadMemberAccounts =
+      hasAdminSession && adminTab === 'memberAccounts';
+
+    if (!shouldLoadDashboardAccounts && !shouldLoadMemberAccounts) {
+      adminUserAccountCursorKeyRef.current = '';
+      adminUserAccountCursorByPageRef.current = new Map([[1, null]]);
       setAdminUserAccounts([]);
+      setAdminUserAccountHasNextPage(false);
+      setAdminUserAccountTotalCount(0);
       setAdminUserAccountsReady(true);
       setAdminUserAccountsLoadErrorMessage('');
-      return;
+      return undefined;
     }
 
     setAdminUserAccountsReady(false);
     setAdminUserAccountsLoadErrorMessage('');
 
-    const unsubscribe = onSnapshot(
-      USER_ACCOUNTS_COLLECTION_REF,
-      (snapshot) => {
-        const nextUserAccounts = snapshot.docs
-          .map((userDoc) => ({
-            ...userDoc.data(),
-            uid:
-              userDoc.data().uid ||
-              userDoc.id,
-          }))
-          .sort((first, second) =>
-            String(
-              first.name ||
-              first.email ||
-              first.uid ||
-              ''
-            ).localeCompare(
-              String(
-                second.name ||
-                second.email ||
-                second.uid ||
-                ''
-              ),
-              'ko'
-            )
-          );
+    if (shouldLoadDashboardAccounts) {
+      const dashboardSource = firestoreQuery(
+        USER_ACCOUNTS_COLLECTION_REF,
+        where('status', '==', USER_PROFILE_STATUS.PENDING),
+        orderBy('createdAt', 'asc'),
+        firestoreLimit(ADMIN_DASHBOARD_ACTIVE_REQUEST_LIMIT)
+      );
 
-        setAdminUserAccounts(nextUserAccounts);
+      const unsubscribe = onSnapshot(
+        dashboardSource,
+        (snapshot) => {
+          setAdminUserAccounts(
+            snapshot.docs.map((userDoc) => ({
+              ...userDoc.data(),
+              uid: userDoc.data().uid || userDoc.id,
+            }))
+          );
+          setAdminUserAccountHasNextPage(false);
+          setAdminUserAccountTotalCount(snapshot.size);
+          setAdminUserAccountsReady(true);
+          setAdminUserAccountsLoadErrorMessage('');
+        },
+        (error) => {
+          const message =
+            '승인 대기 회원 계정을 불러오지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.';
+          console.error('Dashboard pending user accounts sync error:', error);
+          setAdminUserAccounts([]);
+          setAdminUserAccountsReady(true);
+          setAdminUserAccountsLoadErrorMessage(message);
+          triggerToast(message, 'error');
+        }
+      );
+
+      return unsubscribe;
+    }
+
+    const normalizedSearch = String(debouncedAdminUserAccountQuery || '')
+      .trim()
+      .toLowerCase();
+    const searchMode = Boolean(normalizedSearch);
+    const cursorKey = `${adminUserAccountStatusFilter}|${searchMode ? 'search' : 'browse'}`;
+
+    const cursorKeyChanged =
+      adminUserAccountCursorKeyRef.current !== cursorKey;
+
+    if (cursorKeyChanged) {
+      adminUserAccountCursorKeyRef.current = cursorKey;
+      adminUserAccountCursorByPageRef.current = new Map([[1, null]]);
+    }
+
+    const statusConstraints =
+      adminUserAccountStatusFilter === 'all'
+        ? []
+        : [where('status', '==', adminUserAccountStatusFilter)];
+
+    const pageCursor = adminUserAccountCursorByPageRef.current.get(
+      adminUserAccountServerPage
+    );
+
+    if (!searchMode && adminUserAccountServerPage > 1 && !pageCursor) {
+      setAdminUserAccountPage(1);
+      return undefined;
+    }
+
+    const memberSource = firestoreQuery(
+      USER_ACCOUNTS_COLLECTION_REF,
+      ...statusConstraints,
+      orderBy('createdAt', 'desc'),
+      ...(!searchMode && pageCursor ? [startAfter(pageCursor)] : []),
+      firestoreLimit(
+        searchMode
+          ? FIRESTORE_SEARCH_RESULT_LIMIT
+          : ADMIN_MEMBER_ACCOUNT_PAGE_SIZE + 1
+      )
+    );
+
+    const unsubscribe = onSnapshot(
+      memberSource,
+      (snapshot) => {
+        const sourceDocs = snapshot.docs;
+        const visibleDocs = searchMode
+          ? sourceDocs
+          : sourceDocs.slice(0, ADMIN_MEMBER_ACCOUNT_PAGE_SIZE);
+        const hasNext =
+          !searchMode && sourceDocs.length > ADMIN_MEMBER_ACCOUNT_PAGE_SIZE;
+
+        if (!searchMode && visibleDocs.length > 0) {
+          adminUserAccountCursorByPageRef.current.set(
+            adminUserAccountServerPage + 1,
+            visibleDocs[visibleDocs.length - 1]
+          );
+        }
+
+        setAdminUserAccounts(
+          visibleDocs.map((userDoc) => ({
+            ...userDoc.data(),
+            uid: userDoc.data().uid || userDoc.id,
+          }))
+        );
+        setAdminUserAccountHasNextPage(hasNext);
+        if (searchMode) setAdminUserAccountTotalCount(visibleDocs.length);
         setAdminUserAccountsReady(true);
         setAdminUserAccountsLoadErrorMessage('');
       },
       (error) => {
         const message =
-          '회원 계정 목록을 불러오지 못했습니다. Firestore Rules의 userAccounts 목록 조회 권한을 확인해 주세요.';
+          '회원 계정 목록을 불러오지 못했습니다. Firestore Rules와 필요한 인덱스를 확인해 주세요.';
 
-        console.error(
-          'User accounts collection sync error:',
-          error
-        );
-
+        console.error('User accounts paged sync error:', error);
         setAdminUserAccounts([]);
+        setAdminUserAccountHasNextPage(false);
         setAdminUserAccountsReady(true);
         setAdminUserAccountsLoadErrorMessage(message);
-
         triggerToast(message, 'error');
       }
     );
+
+    if (
+      !searchMode &&
+      cursorKeyChanged &&
+      adminUserAccountStatusFilter === 'all'
+    ) {
+      void getCountFromServer(
+        USER_ACCOUNTS_COLLECTION_REF
+      )
+        .then((countSnapshot) => {
+          setAdminUserAccountTotalCount(countSnapshot.data().count);
+        })
+        .catch((error) => {
+          console.error('User accounts count error:', error);
+        });
+    }
 
     return unsubscribe;
   }, [
     firebaseAuthReady,
     currentAuthRoleReady,
     authenticatedAdminId,
-    currentAuthAdminAccount,
+    currentAuthAdminAccount?.id,
+    view,
+    adminTab,
+    adminUserAccountServerPage,
+    debouncedAdminUserAccountQuery,
+    adminUserAccountStatusFilter,
   ]);
+
+  useEffect(() => {
+    const shouldLoadStatusCounts =
+      firebaseAuthReady &&
+      currentAuthRoleReady &&
+      Boolean(authenticatedAdminId) &&
+      Boolean(currentAuthAdminAccount?.id) &&
+      view === 'admin' &&
+      adminTab === 'memberAccounts';
+
+    if (!shouldLoadStatusCounts) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void Promise.all([
+      [
+        'pending',
+        getCountFromServer(
+          firestoreQuery(
+            USER_ACCOUNTS_COLLECTION_REF,
+            where('status', '==', USER_PROFILE_STATUS.PENDING)
+          )
+        ),
+      ],
+      [
+        'active',
+        getCountFromServer(
+          firestoreQuery(
+            USER_ACCOUNTS_COLLECTION_REF,
+            where('status', '==', USER_PROFILE_STATUS.ACTIVE)
+          )
+        ),
+      ],
+      [
+        'profileRequired',
+        getCountFromServer(
+          firestoreQuery(
+            USER_ACCOUNTS_COLLECTION_REF,
+            where('status', '==', USER_PROFILE_STATUS.PROFILE_REQUIRED)
+          )
+        ),
+      ],
+      [
+        'blocked',
+        getCountFromServer(
+          firestoreQuery(
+            USER_ACCOUNTS_COLLECTION_REF,
+            where('status', '==', USER_PROFILE_STATUS.BLOCKED)
+          )
+        ),
+      ],
+      [
+        'retired',
+        getCountFromServer(
+          firestoreQuery(
+            USER_ACCOUNTS_COLLECTION_REF,
+            where('status', '==', USER_PROFILE_STATUS.RETIRED)
+          )
+        ),
+      ],
+    ])
+      .then((entries) => {
+        if (cancelled) return;
+        setAdminUserAccountStatusCountsRemote(
+          Object.fromEntries(
+            entries.map(([key, countSnapshot]) => [
+              key,
+              countSnapshot.data().count,
+            ])
+          )
+        );
+      })
+      .catch((error) => {
+        console.error('User account status counts error:', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    firebaseAuthReady,
+    currentAuthRoleReady,
+    authenticatedAdminId,
+    currentAuthAdminAccount?.id,
+    view,
+    adminTab,
+  ]);
+
+
+  useEffect(() => {
+    if (
+      isAdminAuthenticated &&
+      view === 'admin' &&
+      adminTab === 'memberAccounts' &&
+      adminUserAccountStatusFilter !== 'all' &&
+      !String(debouncedAdminUserAccountQuery || '').trim()
+    ) {
+      const statusCountKeyByValue = {
+        [USER_PROFILE_STATUS.PENDING]: 'pending',
+        [USER_PROFILE_STATUS.ACTIVE]: 'active',
+        [USER_PROFILE_STATUS.PROFILE_REQUIRED]: 'profileRequired',
+        [USER_PROFILE_STATUS.BLOCKED]: 'blocked',
+        [USER_PROFILE_STATUS.RETIRED]: 'retired',
+      };
+      const countKey = statusCountKeyByValue[adminUserAccountStatusFilter];
+
+      setAdminUserAccountTotalCount(
+        countKey
+          ? Number(adminUserAccountStatusCountsRemote[countKey]) || 0
+          : 0
+      );
+    }
+  }, [
+    isAdminAuthenticated,
+    view,
+    adminTab,
+    adminUserAccountStatusFilter,
+    debouncedAdminUserAccountQuery,
+    adminUserAccountStatusCountsRemote,
+  ]);
+
 
   // 첫 마운트 시 새 대여자 추가용 팀 초기화
   useEffect(() => {
@@ -5141,7 +5619,19 @@ function App() {
               ),
               data: () => account,
             }))
-        : (await getDocs(USER_ACCOUNTS_COLLECTION_REF)).docs;
+        : (
+            await getDocs(
+              firestoreQuery(
+                USER_ACCOUNTS_COLLECTION_REF,
+                where('status', '==', USER_PROFILE_STATUS.PROFILE_REQUIRED),
+                where(
+                  'profileRequiredReason',
+                  '==',
+                  PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH
+                )
+              )
+            )
+          ).docs;
       const restoreOperations = [];
       let restoredCount = 0;
 
@@ -5246,12 +5736,15 @@ function App() {
 
   const mergedRentalRequests = useMemo(() => {
     const requestMap = new Map();
+    const shouldMergeAvailabilitySummaries =
+      view === 'user' || (view === 'admin' && adminTab === 'dashboard');
 
-    (data.requests || []).forEach((request) => {
-      if (!request?.id) return;
-
-      requestMap.set(request.id, request);
-    });
+    if (shouldMergeAvailabilitySummaries) {
+      (data.requests || []).forEach((request) => {
+        if (!request?.id) return;
+        requestMap.set(request.id, request);
+      });
+    }
 
     (rentalRequests || []).forEach((request) => {
       if (!request?.id) return;
@@ -5263,7 +5756,7 @@ function App() {
     });
 
     return Array.from(requestMap.values());
-  }, [data.requests, rentalRequests]);
+  }, [data.requests, rentalRequests, view, adminTab]);
 
   const getMemberAccountHistorySummary = (account = {}) => {
     const linkedUids = new Set([
@@ -5307,21 +5800,7 @@ function App() {
     [rentalRequests]
   );
 
-  const orphanedRentalAvailabilityRequests =
-    useMemo(
-      () =>
-        (data.requests || []).filter(
-          (request) =>
-            request?.id &&
-            !rentalRequestIdSet.has(
-              request.id
-            )
-        ),
-      [
-        data.requests,
-        rentalRequestIdSet,
-      ]
-    );
+  const orphanedRentalAvailabilityRequests = [];
 
   const rentalRequestLogsByRequestId =
     useMemo(() => {
@@ -5344,58 +5823,7 @@ function App() {
       return logMap;
     }, [rentalRequestLogs]);
   
-  const adminRequestTabCounts = useMemo(
-    () => {
-      const counts = {
-        [ADMIN_REQUEST_TAB.PENDING]: 0,
-        [ADMIN_REQUEST_TAB.RENTAL]: 0,
-        [ADMIN_REQUEST_TAB.CLOSED]: 0,
-        [ADMIN_REQUEST_TAB.RETURNED]: 0,
-      };
-
-      (mergedRentalRequests || []).forEach(
-        (request) => {
-          if (
-            [
-              STATUS.REQUESTED,
-              STATUS.ON_HOLD,
-            ].includes(request.status)
-          ) {
-            counts[ADMIN_REQUEST_TAB.PENDING] += 1;
-            return;
-          }
-
-          if (
-            request.status ===
-            STATUS.APPROVED
-          ) {
-            counts[ADMIN_REQUEST_TAB.RENTAL] += 1;
-            return;
-          }
-
-          if (
-            [
-              STATUS.DENIED,
-              STATUS.USER_CANCELLED,
-            ].includes(request.status)
-          ) {
-            counts[ADMIN_REQUEST_TAB.CLOSED] += 1;
-            return;
-          }
-
-          if (
-            request.status ===
-            STATUS.RETURNED
-          ) {
-            counts[ADMIN_REQUEST_TAB.RETURNED] += 1;
-          }
-        }
-      );
-
-      return counts;
-    },
-    [mergedRentalRequests]
-  );
+  const adminRequestTabCounts = adminRequestTabCountsRemote;
 
   const filteredAdminRequests = useMemo(
     () => {
@@ -5646,11 +6074,16 @@ function App() {
     ]
   );
 
+  const adminRequestSearchMode = Boolean(
+    String(adminRequestQuery || '').trim()
+  );
+
   const adminRequestTotalPages = Math.max(
     1,
     Math.ceil(
-      filteredAdminRequests.length /
-      adminRequestPageSize
+      (adminRequestSearchMode
+        ? filteredAdminRequests.length
+        : adminRequestTotalCount) / adminRequestPageSize
     )
   );
 
@@ -5661,13 +6094,14 @@ function App() {
 
   const paginatedAdminRequests = useMemo(
     () =>
-      filteredAdminRequests.slice(
-        (safeAdminRequestPage - 1) *
-          adminRequestPageSize,
-        safeAdminRequestPage *
-          adminRequestPageSize
-      ),
+      adminRequestSearchMode
+        ? filteredAdminRequests.slice(
+            (safeAdminRequestPage - 1) * adminRequestPageSize,
+            safeAdminRequestPage * adminRequestPageSize
+          )
+        : filteredAdminRequests,
     [
+      adminRequestSearchMode,
       filteredAdminRequests,
       safeAdminRequestPage,
       adminRequestPageSize,
@@ -5722,15 +6156,39 @@ function App() {
     [noticePosts]
   );
 
+  const userNoticeSearchMode = Boolean(String(userNoticeQuery || '').trim());
+  const adminNoticeSearchMode = Boolean(String(adminNoticeQuery || '').trim());
+  const activeNoticePage =
+    view === 'admin' && adminTab === 'noticePosts'
+      ? adminNoticePage
+      : noticePage;
+  const activeNoticeSearchMode =
+    view === 'admin' && adminTab === 'noticePosts'
+      ? adminNoticeSearchMode
+      : userNoticeSearchMode;
+
   const noticeRegularPostNumberById = useMemo(
     () =>
       new Map(
         allRegularNoticePosts.map((post, index) => [
           post.id,
-          allRegularNoticePosts.length - index,
+          activeNoticeSearchMode
+            ? allRegularNoticePosts.length - index
+            : Math.max(
+                1,
+                noticeRegularTotalCount -
+                  (activeNoticePage - 1) * noticePostsPerPage -
+                  index
+              ),
         ])
       ),
-    [allRegularNoticePosts]
+    [
+      allRegularNoticePosts,
+      activeNoticePage,
+      activeNoticeSearchMode,
+      noticeRegularTotalCount,
+      noticePostsPerPage,
+    ]
   );
 
   const pinnedNoticePosts = useMemo(
@@ -5772,25 +6230,24 @@ function App() {
   const noticeTotalPages = Math.max(
     1,
     Math.ceil(
-      regularNoticePosts.length /
-      noticePostsPerPage
+      (userNoticeSearchMode
+        ? regularNoticePosts.length
+        : noticeRegularTotalCount) / noticePostsPerPage
     )
   );
 
-  const safeNoticePage = Math.min(
-    noticePage,
-    noticeTotalPages
-  );
+  const safeNoticePage = Math.min(noticePage, noticeTotalPages);
 
   const paginatedNoticePosts = useMemo(
     () =>
-      regularNoticePosts.slice(
-        (safeNoticePage - 1) *
-          noticePostsPerPage,
-        safeNoticePage *
-          noticePostsPerPage
-      ),
+      userNoticeSearchMode
+        ? regularNoticePosts.slice(
+            (safeNoticePage - 1) * noticePostsPerPage,
+            safeNoticePage * noticePostsPerPage
+          )
+        : regularNoticePosts,
     [
+      userNoticeSearchMode,
       regularNoticePosts,
       safeNoticePage,
       noticePostsPerPage,
@@ -5800,8 +6257,9 @@ function App() {
   const adminNoticeTotalPages = Math.max(
     1,
     Math.ceil(
-      adminRegularNoticePosts.length /
-      noticePostsPerPage
+      (adminNoticeSearchMode
+        ? adminRegularNoticePosts.length
+        : noticeRegularTotalCount) / noticePostsPerPage
     )
   );
 
@@ -5812,13 +6270,14 @@ function App() {
 
   const paginatedAdminNoticePosts = useMemo(
     () =>
-      adminRegularNoticePosts.slice(
-        (safeAdminNoticePage - 1) *
-          noticePostsPerPage,
-        safeAdminNoticePage *
-          noticePostsPerPage
-      ),
+      adminNoticeSearchMode
+        ? adminRegularNoticePosts.slice(
+            (safeAdminNoticePage - 1) * noticePostsPerPage,
+            safeAdminNoticePage * noticePostsPerPage
+          )
+        : adminRegularNoticePosts,
     [
+      adminNoticeSearchMode,
       adminRegularNoticePosts,
       safeAdminNoticePage,
       noticePostsPerPage,
@@ -5829,14 +6288,16 @@ function App() {
     () =>
       selectedNoticePostId
         ? noticePosts.find(
-            (post) =>
-              post.id ===
-              selectedNoticePostId
-          ) || null
+            (post) => post.id === selectedNoticePostId
+          ) ||
+          (selectedNoticePostOverride?.id === selectedNoticePostId
+            ? selectedNoticePostOverride
+            : null)
         : null,
     [
       noticePosts,
       selectedNoticePostId,
+      selectedNoticePostOverride,
     ]
   );
 
@@ -5965,32 +6426,28 @@ function App() {
     [categoryFilteredFaqPosts]
   );
 
+  const faqSearchMode = Boolean(String(faqQuery || '').trim());
+
   const faqTotalPages = Math.max(
     1,
     Math.ceil(
-      regularFaqPosts.length /
-      faqPostsPerPage
+      (faqSearchMode
+        ? regularFaqPosts.length
+        : faqRegularTotalCount) / faqPostsPerPage
     )
   );
 
-  const safeFaqPage = Math.min(
-    faqPage,
-    faqTotalPages
-  );
+  const safeFaqPage = Math.min(faqPage, faqTotalPages);
 
   const paginatedFaqPosts = useMemo(
     () =>
-      regularFaqPosts.slice(
-        (safeFaqPage - 1) *
-          faqPostsPerPage,
-        safeFaqPage *
-          faqPostsPerPage
-      ),
-    [
-      regularFaqPosts,
-      safeFaqPage,
-      faqPostsPerPage,
-    ]
+      faqSearchMode
+        ? regularFaqPosts.slice(
+            (safeFaqPage - 1) * faqPostsPerPage,
+            safeFaqPage * faqPostsPerPage
+          )
+        : regularFaqPosts,
+    [faqSearchMode, regularFaqPosts, safeFaqPage, faqPostsPerPage]
   );
 
   const displayedFaqPosts = useMemo(
@@ -6053,10 +6510,7 @@ function App() {
 
   const adminFaqTotalPages = Math.max(
     1,
-    Math.ceil(
-      adminRegularFaqPosts.length /
-      faqPostsPerPage
-    )
+    Math.ceil(faqRegularTotalCount / faqPostsPerPage)
   );
 
   const safeAdminFaqPage = Math.min(
@@ -6064,20 +6518,7 @@ function App() {
     adminFaqTotalPages
   );
 
-  const paginatedAdminFaqPosts = useMemo(
-    () =>
-      adminRegularFaqPosts.slice(
-        (safeAdminFaqPage - 1) *
-          faqPostsPerPage,
-        safeAdminFaqPage *
-          faqPostsPerPage
-      ),
-    [
-      adminRegularFaqPosts,
-      safeAdminFaqPage,
-      faqPostsPerPage,
-    ]
-  );
+  const paginatedAdminFaqPosts = adminRegularFaqPosts;
 
   const currentUserRequests = useMemo(() => {
     if (!firebaseAuthUser?.uid) return [];
@@ -6579,10 +7020,10 @@ function App() {
     }
   };
 
-    useEffect(() => {
+  useEffect(() => {
     if (!firebaseAuthReady || !currentAuthRoleReady) {
       setRentalRequestsReady(false);
-      return;
+      return undefined;
     }
 
     const canReadOwnRentalRequests = Boolean(
@@ -6598,52 +7039,259 @@ function App() {
       setRentalRequests([]);
       setRentalRequestsLoadErrorMessage('');
       setRentalRequestsReady(true);
-      return;
+      return undefined;
     }
 
     if (!firebaseAuthUser || currentAuthRoleErrorMessage) {
       setRentalRequests([]);
       setRentalRequestsLoadErrorMessage('');
       setRentalRequestsReady(true);
-      return;
+      return undefined;
     }
 
     setRentalRequestsReady(false);
     setRentalRequestsLoadErrorMessage('');
 
-    const requestSource = isAdminAuthenticated
-      ? RENTAL_REQUESTS_COLLECTION_REF
-      : firestoreQuery(
-          RENTAL_REQUESTS_COLLECTION_REF,
-          where('requesterUid', '==', firebaseAuthUser.uid)
-        );
+    if (!isAdminAuthenticated) {
+      const ownRequestSource = firestoreQuery(
+        RENTAL_REQUESTS_COLLECTION_REF,
+        where('requesterUid', '==', firebaseAuthUser.uid)
+      );
+
+      const unsubscribe = onSnapshot(
+        ownRequestSource,
+        (snapshot) => {
+          setRentalRequests(
+            snapshot.docs.map((requestDoc) => ({
+              ...requestDoc.data(),
+              id: requestDoc.id,
+            }))
+          );
+          setRentalRequestsLoadErrorMessage('');
+          setRentalRequestsReady(true);
+        },
+        (error) => {
+          const message =
+            '나의 대여신청 내역을 불러오지 못했습니다. Firestore Rules의 rentalRequests 본인 조회 권한을 확인해 주세요.';
+          console.error('Own rental requests sync error:', error);
+          setRentalRequests([]);
+          setRentalRequestsLoadErrorMessage(message);
+          setRentalRequestsReady(true);
+          triggerToast(message, 'error');
+        }
+      );
+
+      return unsubscribe;
+    }
+
+    if (view !== 'admin') {
+      setRentalRequests([]);
+      setRentalRequestsReady(true);
+      return undefined;
+    }
+
+    if (adminTab === 'dashboard') {
+      const dashboardRequestSource = firestoreQuery(
+        RENTAL_REQUESTS_COLLECTION_REF,
+        where('status', 'in', [
+          STATUS.REQUESTED,
+          STATUS.ON_HOLD,
+          STATUS.APPROVED,
+        ]),
+        orderBy('createdAt', 'desc'),
+        firestoreLimit(ADMIN_DASHBOARD_ACTIVE_REQUEST_LIMIT)
+      );
+
+      const unsubscribe = onSnapshot(
+        dashboardRequestSource,
+        (snapshot) => {
+          setRentalRequests(
+            snapshot.docs.map((requestDoc) => ({
+              ...requestDoc.data(),
+              id: requestDoc.id,
+            }))
+          );
+          setRentalRequestsLoadErrorMessage('');
+          setRentalRequestsReady(true);
+        },
+        (error) => {
+          const message =
+            '관리자 대시보드의 진행 중 대여신청을 불러오지 못했습니다. Firestore 인덱스를 확인해 주세요.';
+          console.error('Dashboard rental requests sync error:', error);
+          setRentalRequests([]);
+          setRentalRequestsLoadErrorMessage(message);
+          setRentalRequestsReady(true);
+          triggerToast(message, 'error');
+        }
+      );
+
+      return unsubscribe;
+    }
+
+    if (adminTab === 'memberAccounts') {
+      const requesterUids = [
+        ...new Set(
+          (adminUserAccounts || []).flatMap((account) => [
+            account.uid,
+            ...(Array.isArray(account.previousAccountUids)
+              ? account.previousAccountUids
+              : []),
+          ])
+        ),
+      ]
+        .filter(Boolean)
+        .slice(0, 30);
+
+      if (requesterUids.length === 0) {
+        setRentalRequests([]);
+        setRentalRequestsReady(true);
+        return undefined;
+      }
+
+      const memberHistorySource = firestoreQuery(
+        RENTAL_REQUESTS_COLLECTION_REF,
+        where('requesterUid', 'in', requesterUids)
+      );
+
+      const unsubscribe = onSnapshot(
+        memberHistorySource,
+        (snapshot) => {
+          setRentalRequests(
+            snapshot.docs.map((requestDoc) => ({
+              ...requestDoc.data(),
+              id: requestDoc.id,
+            }))
+          );
+          setRentalRequestsLoadErrorMessage('');
+          setRentalRequestsReady(true);
+        },
+        (error) => {
+          const message =
+            '현재 회원 페이지의 대여 이력을 불러오지 못했습니다.';
+          console.error('Member account rental history sync error:', error);
+          setRentalRequests([]);
+          setRentalRequestsLoadErrorMessage(message);
+          setRentalRequestsReady(true);
+        }
+      );
+
+      return unsubscribe;
+    }
+
+    if (adminTab !== 'requests') {
+      adminRequestCursorKeyRef.current = '';
+      adminRequestCursorByPageRef.current = new Map([[1, null]]);
+      setRentalRequests([]);
+      setRentalRequestsReady(true);
+      setAdminRequestHasNextPage(false);
+      setAdminRequestTotalCount(0);
+      return undefined;
+    }
+
+    const normalizedSearch = String(debouncedAdminRequestQuery || '').trim();
+    const searchMode = Boolean(normalizedSearch);
+    const baseConstraints = getAdminRequestServerConstraints({
+      requestTab: adminRequestTab,
+      quickFilter: adminRequestQuickFilter,
+      referenceDate: today(),
+    });
+    const cursorKey = [
+      adminRequestTab,
+      adminRequestQuickFilter,
+      adminRequestPageSize,
+      searchMode ? 'search' : 'browse',
+    ].join('|');
+
+    const cursorKeyChanged =
+      adminRequestCursorKeyRef.current !== cursorKey;
+
+    if (cursorKeyChanged) {
+      adminRequestCursorKeyRef.current = cursorKey;
+      adminRequestCursorByPageRef.current = new Map([[1, null]]);
+    }
+
+    const pageCursor = adminRequestCursorByPageRef.current.get(
+      adminRequestServerPage
+    );
+
+    if (!searchMode && adminRequestServerPage > 1 && !pageCursor) {
+      setAdminRequestPage(1);
+      return undefined;
+    }
+
+    const requestSource = firestoreQuery(
+      RENTAL_REQUESTS_COLLECTION_REF,
+      ...baseConstraints,
+      ...(!searchMode && pageCursor ? [startAfter(pageCursor)] : []),
+      firestoreLimit(
+        searchMode
+          ? FIRESTORE_SEARCH_RESULT_LIMIT
+          : adminRequestPageSize + 1
+      )
+    );
 
     const unsubscribe = onSnapshot(
       requestSource,
       (snapshot) => {
-        const remoteRequests = snapshot.docs.map((requestDoc) => ({
-          ...requestDoc.data(),
-          id: requestDoc.id,
-        }));
+        const sourceDocs = snapshot.docs;
+        const visibleDocs = searchMode
+          ? sourceDocs
+          : sourceDocs.slice(0, adminRequestPageSize);
+        const hasNext =
+          !searchMode && sourceDocs.length > adminRequestPageSize;
 
-        setRentalRequests(remoteRequests);
+        if (!searchMode && visibleDocs.length > 0) {
+          adminRequestCursorByPageRef.current.set(
+            adminRequestServerPage + 1,
+            visibleDocs[visibleDocs.length - 1]
+          );
+        }
+
+        setRentalRequests(
+          visibleDocs.map((requestDoc) => ({
+            ...requestDoc.data(),
+            id: requestDoc.id,
+          }))
+        );
+        setAdminRequestHasNextPage(hasNext);
+        if (searchMode) setAdminRequestTotalCount(visibleDocs.length);
         setRentalRequestsLoadErrorMessage('');
         setRentalRequestsReady(true);
       },
       (error) => {
-        const message = isAdminAuthenticated
-          ? '전체 대여신청 컬렉션을 불러오지 못했습니다. Firestore Rules의 rentalRequests 관리자 조회 권한을 확인해 주세요.'
-          : '나의 대여신청 내역을 불러오지 못했습니다. Firestore Rules의 rentalRequests 본인 조회 권한을 확인해 주세요.';
-
-        console.error('Rental requests sync error:', error);
-
+        const message =
+          '대여신청 목록을 불러오지 못했습니다. Firestore Rules와 필요한 인덱스를 확인해 주세요.';
+        console.error('Paged rental requests sync error:', error);
         setRentalRequests([]);
+        setAdminRequestHasNextPage(false);
         setRentalRequestsLoadErrorMessage(message);
         setRentalRequestsReady(true);
-
         triggerToast(message, 'error');
       }
     );
+
+    if (
+      !searchMode &&
+      cursorKeyChanged &&
+      adminRequestQuickFilter !== ADMIN_REQUEST_QUICK_FILTER.ALL
+    ) {
+      void getCountFromServer(
+        firestoreQuery(
+          RENTAL_REQUESTS_COLLECTION_REF,
+          ...getAdminRequestCountConstraints({
+            requestTab: adminRequestTab,
+            quickFilter: adminRequestQuickFilter,
+            referenceDate: today(),
+          })
+        )
+      )
+        .then((countSnapshot) => {
+          setAdminRequestTotalCount(countSnapshot.data().count);
+        })
+        .catch((error) => {
+          console.error('Rental request count error:', error);
+        });
+    }
 
     return unsubscribe;
   }, [
@@ -6653,126 +7301,575 @@ function App() {
     firebaseAuthUser?.uid,
     userProfile?.status,
     isAdminAuthenticated,
+    view,
+    adminTab,
+    adminRequestTab,
+    adminRequestQuickFilter,
+    debouncedAdminRequestQuery,
+    adminRequestServerPage,
+    adminRequestPageSize,
+    adminUserAccounts,
   ]);
 
   useEffect(() => {
-    if (
-      !firebaseAuthReady ||
-      !currentAuthRoleReady
-    ) {
-      setRentalRequestLogsReady(false);
-      return;
-    }
+    const shouldLoadSelectedRequest =
+      isAdminAuthenticated &&
+      view === 'admin' &&
+      adminTab === 'requests' &&
+      Boolean(selectedAdminRequestId) &&
+      !(rentalRequests || []).some(
+        (request) => request.id === selectedAdminRequestId
+      );
 
-    if (!isAdminAuthenticated) {
+    if (!shouldLoadSelectedRequest) return;
+
+    let cancelled = false;
+
+    void getDoc(
+      doc(RENTAL_REQUESTS_COLLECTION_REF, selectedAdminRequestId)
+    )
+      .then((snapshot) => {
+        if (cancelled || !snapshot.exists()) return;
+        setRentalRequests((currentRequests) => {
+          if (
+            currentRequests.some(
+              (request) => request.id === selectedAdminRequestId
+            )
+          ) {
+            return currentRequests;
+          }
+
+          return [
+            ...currentRequests,
+            {
+              ...snapshot.data(),
+              id: snapshot.id,
+            },
+          ];
+        });
+      })
+      .catch((error) => {
+        console.error('Selected rental request read error:', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isAdminAuthenticated,
+    view,
+    adminTab,
+    selectedAdminRequestId,
+    rentalRequests,
+  ]);
+
+  useEffect(() => {
+    setAdminRequestPage(1);
+    adminRequestCursorByPageRef.current = new Map([[1, null]]);
+  }, [
+    adminRequestTab,
+    adminRequestQuickFilter,
+    adminRequestQuery,
+    adminRequestPageSize,
+  ]);
+
+  useEffect(() => {
+    const shouldLoadRequestCounts =
+      isAdminAuthenticated &&
+      view === 'admin' &&
+      ['dashboard', 'requests'].includes(adminTab);
+
+    if (!shouldLoadRequestCounts) return;
+
+    let cancelled = false;
+
+    void Promise.all([
+      [
+        ADMIN_REQUEST_TAB.PENDING,
+        getCountFromServer(
+          firestoreQuery(
+            RENTAL_REQUESTS_COLLECTION_REF,
+            where('status', 'in', [STATUS.REQUESTED, STATUS.ON_HOLD])
+          )
+        ),
+      ],
+      [
+        ADMIN_REQUEST_TAB.RENTAL,
+        getCountFromServer(
+          firestoreQuery(
+            RENTAL_REQUESTS_COLLECTION_REF,
+            where('status', '==', STATUS.APPROVED)
+          )
+        ),
+      ],
+      [
+        ADMIN_REQUEST_TAB.CLOSED,
+        getCountFromServer(
+          firestoreQuery(
+            RENTAL_REQUESTS_COLLECTION_REF,
+            where('status', 'in', [STATUS.DENIED, STATUS.USER_CANCELLED])
+          )
+        ),
+      ],
+      [
+        ADMIN_REQUEST_TAB.RETURNED,
+        getCountFromServer(
+          firestoreQuery(
+            RENTAL_REQUESTS_COLLECTION_REF,
+            where('status', '==', STATUS.RETURNED)
+          )
+        ),
+      ],
+    ])
+      .then((entries) => {
+        if (cancelled) return;
+        setAdminRequestTabCountsRemote(
+          Object.fromEntries(
+            entries.map(([key, countSnapshot]) => [
+              key,
+              countSnapshot.data().count,
+            ])
+          )
+        );
+      })
+      .catch((error) => {
+        console.error('Rental request tab counts error:', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdminAuthenticated, view, adminTab]);
+
+  useEffect(() => {
+    if (
+      isAdminAuthenticated &&
+      view === 'admin' &&
+      adminTab === 'requests' &&
+      adminRequestQuickFilter === ADMIN_REQUEST_QUICK_FILTER.ALL &&
+      !String(debouncedAdminRequestQuery || '').trim()
+    ) {
+      setAdminRequestTotalCount(
+        Number(adminRequestTabCountsRemote[adminRequestTab]) || 0
+      );
+    }
+  }, [
+    isAdminAuthenticated,
+    view,
+    adminTab,
+    adminRequestTab,
+    adminRequestQuickFilter,
+    debouncedAdminRequestQuery,
+    adminRequestTabCountsRemote,
+  ]);
+
+  useEffect(() => {
+    const requestIds = (rentalRequests || [])
+      .map((request) => request.id)
+      .filter(Boolean);
+    const shouldLoadLogs =
+      isAdminAuthenticated &&
+      view === 'admin' &&
+      adminTab === 'requests' &&
+      requestIds.length > 0;
+
+    if (!shouldLoadLogs) {
       setRentalRequestLogs([]);
       setRentalRequestLogsLoadErrorMessage('');
       setRentalRequestLogsReady(true);
-      return;
+      return undefined;
     }
 
     setRentalRequestLogsReady(false);
     setRentalRequestLogsLoadErrorMessage('');
 
-    const unsubscribe = onSnapshot(
-      RENTAL_REQUEST_LOGS_COLLECTION_REF,
-      (snapshot) => {
-        const remoteLogs = snapshot.docs
-          .map((logDoc) => ({
-            ...logDoc.data(),
-            id: logDoc.id,
-          }))
-          .sort(
-            (first, second) =>
-              getFirestoreTimestampMillis(
-                second.createdAt
-              ) -
-              getFirestoreTimestampMillis(
-                first.createdAt
-              )
-          );
+    const chunks = [];
+    for (let index = 0; index < requestIds.length; index += 30) {
+      chunks.push(requestIds.slice(index, index + 30));
+    }
 
-        setRentalRequestLogs(remoteLogs);
-        setRentalRequestLogsLoadErrorMessage('');
-        setRentalRequestLogsReady(true);
+    const logsByChunk = new Map();
+    const updateCombinedLogs = () => {
+      const combinedLogs = Array.from(logsByChunk.values())
+        .flat()
+        .sort(
+          (first, second) =>
+            getFirestoreTimestampMillis(second.createdAt) -
+            getFirestoreTimestampMillis(first.createdAt)
+        );
+      setRentalRequestLogs(combinedLogs);
+      setRentalRequestLogsReady(logsByChunk.size === chunks.length);
+    };
+
+    const unsubscribes = chunks.map((requestIdChunk, chunkIndex) =>
+      onSnapshot(
+        firestoreQuery(
+          RENTAL_REQUEST_LOGS_COLLECTION_REF,
+          where('requestId', 'in', requestIdChunk)
+        ),
+        (snapshot) => {
+          logsByChunk.set(
+            chunkIndex,
+            snapshot.docs.map((logDoc) => ({
+              ...logDoc.data(),
+              id: logDoc.id,
+            }))
+          );
+          updateCombinedLogs();
+        },
+        (error) => {
+          const message =
+            '현재 페이지의 대여 신청 처리 이력을 불러오지 못했습니다.';
+          console.error('Paged rental request logs sync error:', error);
+          setRentalRequestLogsLoadErrorMessage(message);
+          setRentalRequestLogsReady(true);
+        }
+      )
+    );
+
+    return () => {
+      unsubscribes.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [
+    isAdminAuthenticated,
+    view,
+    adminTab,
+    rentalRequests,
+  ]);
+
+
+  useEffect(() => {
+    setNoticePosts([
+      ...(noticePinnedPosts || []),
+      ...(noticeRegularPagePosts || []),
+    ]);
+  }, [noticePinnedPosts, noticeRegularPagePosts]);
+
+  useEffect(() => {
+    const shouldLoadUserNotice = view === 'user' && userTab === 'notice';
+    const shouldLoadAdminNotice =
+      isAdminAuthenticated && view === 'admin' && adminTab === 'noticePosts';
+    const shouldLoadNotice = shouldLoadUserNotice || shouldLoadAdminNotice;
+
+    if (!shouldLoadNotice) {
+      setNoticeBoardConfigReady(true);
+      setNoticeBoardConfigLoadErrorMessage('');
+      return undefined;
+    }
+
+    setNoticeBoardConfigReady(false);
+    setNoticeBoardConfigLoadErrorMessage('');
+
+    const unsubscribe = onSnapshot(
+      NOTICE_BOARD_CONFIG_DOC_REF,
+      (snapshot) => {
+        const postsPerPage = getSafeNoticePostsPerPage(
+          snapshot.exists()
+            ? snapshot.data().postsPerPage
+            : DEFAULT_NOTICE_POSTS_PER_PAGE
+        );
+
+        setNoticeBoardConfig({ postsPerPage });
+        setNoticePostsPerPageInput(postsPerPage);
+        setNoticeBoardConfigLoadErrorMessage('');
+        setNoticeBoardConfigReady(true);
       },
       (error) => {
         const message =
-          '대여 신청 처리 이력을 불러오지 못했습니다. Firestore Rules의 rentalRequestLogs 관리자 조회 권한을 확인해 주세요.';
+          '공지사항 목록 설정을 불러오지 못해 기본값 10개를 사용합니다.';
+        console.error('Notice board config sync error:', error);
+        setNoticeBoardConfig({
+          postsPerPage: DEFAULT_NOTICE_POSTS_PER_PAGE,
+        });
+        setNoticePostsPerPageInput(DEFAULT_NOTICE_POSTS_PER_PAGE);
+        setNoticeBoardConfigLoadErrorMessage(message);
+        setNoticeBoardConfigReady(true);
+      }
+    );
 
-        console.error(
-          'Rental request logs sync error:',
-          error
+    return unsubscribe;
+  }, [isAdminAuthenticated, view, userTab, adminTab]);
+
+  useEffect(() => {
+    const shouldLoadUserNotice = view === 'user' && userTab === 'notice';
+    const shouldLoadUserHomeNotice = view === 'user' && userTab === 'home';
+    const shouldLoadAdminNotice =
+      isAdminAuthenticated && view === 'admin' && adminTab === 'noticePosts';
+    const shouldLoadNotice =
+      shouldLoadUserNotice || shouldLoadUserHomeNotice || shouldLoadAdminNotice;
+    const activeSearchQuery = shouldLoadUserHomeNotice
+      ? ''
+      : shouldLoadAdminNotice
+        ? debouncedAdminNoticeQuery
+        : debouncedUserNoticeQuery;
+    const searchMode = Boolean(String(activeSearchQuery || '').trim());
+
+    if (!shouldLoadNotice) {
+      noticeCursorKeyRef.current = '';
+      noticeCursorByPageRef.current = new Map([[1, null]]);
+      setNoticePinnedPosts([]);
+      setNoticeRegularPagePosts([]);
+      setNoticePostsReady(true);
+      setNoticePostsLoadErrorMessage('');
+      setNoticeHasNextPage(false);
+      return undefined;
+    }
+
+    if (searchMode) {
+      setNoticePostsReady(false);
+      setNoticePostsLoadErrorMessage('');
+
+      const searchSource = firestoreQuery(
+        NOTICE_POSTS_COLLECTION_REF,
+        orderBy('createdAt', 'desc'),
+        firestoreLimit(FIRESTORE_SEARCH_RESULT_LIMIT)
+      );
+
+      const unsubscribe = onSnapshot(
+        searchSource,
+        (snapshot) => {
+          const remotePosts = snapshot.docs.map((postDoc) => ({
+            ...postDoc.data(),
+            id: postDoc.id,
+          }));
+          setNoticePinnedPosts(remotePosts.filter((post) => post.isPinned));
+          setNoticeRegularPagePosts(remotePosts.filter((post) => !post.isPinned));
+          setNoticeRegularTotalCount(remotePosts.filter((post) => !post.isPinned).length);
+          setNoticeHasNextPage(false);
+          setNoticePostsLoadErrorMessage('');
+          setNoticePostsReady(true);
+        },
+        (error) => {
+          const message =
+            '공지사항 검색 범위를 불러오지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.';
+          console.error('Notice search sync error:', error);
+          setNoticePinnedPosts([]);
+          setNoticeRegularPagePosts([]);
+          setNoticeHasNextPage(false);
+          setNoticePostsLoadErrorMessage(message);
+          setNoticePostsReady(true);
+          triggerToast(message, 'error');
+        }
+      );
+
+      return unsubscribe;
+    }
+
+    const pinnedSource = firestoreQuery(
+      NOTICE_POSTS_COLLECTION_REF,
+      where('isPinned', '==', true),
+      orderBy('createdAt', 'desc'),
+      firestoreLimit(
+        shouldLoadUserHomeNotice ? 6 : FIRESTORE_PINNED_POST_LIMIT
+      )
+    );
+
+    const unsubscribe = onSnapshot(
+      pinnedSource,
+      (snapshot) => {
+        setNoticePinnedPosts(
+          snapshot.docs.map((postDoc) => ({
+            ...postDoc.data(),
+            id: postDoc.id,
+          }))
         );
-
-        setRentalRequestLogs([]);
-        setRentalRequestLogsLoadErrorMessage(
-          message
-        );
-        setRentalRequestLogsReady(true);
-
+        setNoticePostsLoadErrorMessage('');
+      },
+      (error) => {
+        const message =
+          '상단 고정 공지사항을 불러오지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.';
+        console.error('Pinned notice posts sync error:', error);
+        setNoticePinnedPosts([]);
+        setNoticePostsLoadErrorMessage(message);
+        setNoticePostsReady(true);
         triggerToast(message, 'error');
       }
     );
 
     return unsubscribe;
   }, [
-    firebaseAuthReady,
-    currentAuthRoleReady,
     isAdminAuthenticated,
+    view,
+    userTab,
+    adminTab,
+    debouncedUserNoticeQuery,
+    debouncedAdminNoticeQuery,
   ]);
 
   useEffect(() => {
+    const shouldLoadUserNotice = view === 'user' && userTab === 'notice';
+    const shouldLoadUserHomeNotice = view === 'user' && userTab === 'home';
+    const shouldLoadAdminNotice =
+      isAdminAuthenticated && view === 'admin' && adminTab === 'noticePosts';
+    const shouldLoadNotice =
+      shouldLoadUserNotice || shouldLoadUserHomeNotice || shouldLoadAdminNotice;
+    const activeSearchQuery = shouldLoadUserHomeNotice
+      ? ''
+      : shouldLoadAdminNotice
+        ? debouncedAdminNoticeQuery
+        : debouncedUserNoticeQuery;
+    const searchMode = Boolean(String(activeSearchQuery || '').trim());
+
+    if (!shouldLoadNotice || searchMode) return undefined;
+
+    const postsPerPage = shouldLoadUserHomeNotice
+      ? 6
+      : getSafeNoticePostsPerPage(noticeBoardConfig.postsPerPage);
+    const activePage = shouldLoadUserHomeNotice
+      ? 1
+      : shouldLoadAdminNotice
+        ? adminNoticePage
+        : noticePage;
+    const cursorKey = `${
+      shouldLoadUserHomeNotice
+        ? 'home'
+        : shouldLoadAdminNotice
+          ? 'admin'
+          : 'user'
+    }|${postsPerPage}`;
+    const cursorKeyChanged = noticeCursorKeyRef.current !== cursorKey;
+
+    if (cursorKeyChanged) {
+      noticeCursorKeyRef.current = cursorKey;
+      noticeCursorByPageRef.current = new Map([[1, null]]);
+    }
+
+    const pageCursor = noticeCursorByPageRef.current.get(activePage);
+    if (activePage > 1 && !pageCursor) {
+      if (shouldLoadAdminNotice) setAdminNoticePage(1);
+      else setNoticePage(1);
+      return undefined;
+    }
+
     setNoticePostsReady(false);
     setNoticePostsLoadErrorMessage('');
 
-    const unsubscribe = onSnapshot(
+    const regularSource = firestoreQuery(
       NOTICE_POSTS_COLLECTION_REF,
+      where('isPinned', '==', false),
+      orderBy('createdAt', 'desc'),
+      ...(pageCursor ? [startAfter(pageCursor)] : []),
+      firestoreLimit(postsPerPage + 1)
+    );
+
+    const unsubscribe = onSnapshot(
+      regularSource,
       (snapshot) => {
-        const remotePosts = snapshot.docs
-          .map((postDoc) => ({
+        const sourceDocs = snapshot.docs;
+        const visibleDocs = sourceDocs.slice(0, postsPerPage);
+        const hasNext = sourceDocs.length > postsPerPage;
+
+        if (visibleDocs.length > 0) {
+          noticeCursorByPageRef.current.set(
+            activePage + 1,
+            visibleDocs[visibleDocs.length - 1]
+          );
+        }
+
+        setNoticeRegularPagePosts(
+          visibleDocs.map((postDoc) => ({
             ...postDoc.data(),
             id: postDoc.id,
           }))
-          .sort(
-            (first, second) =>
-              getFirestoreTimestampMillis(
-                second.createdAt
-              ) -
-              getFirestoreTimestampMillis(
-                first.createdAt
-              )
-          );
-
-        setNoticePosts(remotePosts);
+        );
+        setNoticeHasNextPage(hasNext);
         setNoticePostsLoadErrorMessage('');
         setNoticePostsReady(true);
       },
       (error) => {
         const message =
-          '공지사항을 불러오지 못했습니다. Firestore Rules의 noticePosts 읽기 권한을 확인해 주세요.';
-
-        console.error(
-          'Notice posts sync error:',
-          error
-        );
-
-        setNoticePosts([]);
-        setNoticePostsLoadErrorMessage(
-          message
-        );
+          '공지사항 목록을 불러오지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.';
+        console.error('Paged notice posts sync error:', error);
+        setNoticeRegularPagePosts([]);
+        setNoticeHasNextPage(false);
+        setNoticePostsLoadErrorMessage(message);
         setNoticePostsReady(true);
-
         triggerToast(message, 'error');
       }
     );
 
+    if (cursorKeyChanged && !shouldLoadUserHomeNotice) {
+      void getCountFromServer(
+        firestoreQuery(
+          NOTICE_POSTS_COLLECTION_REF,
+          where('isPinned', '==', false)
+        )
+      )
+        .then((countSnapshot) => {
+          setNoticeRegularTotalCount(countSnapshot.data().count);
+        })
+        .catch((error) => {
+          console.error('Notice regular post count error:', error);
+        });
+    }
+
     return unsubscribe;
-  }, []);
+  }, [
+    isAdminAuthenticated,
+    view,
+    userTab,
+    adminTab,
+    noticePage,
+    adminNoticePage,
+    noticeBoardConfig.postsPerPage,
+    debouncedUserNoticeQuery,
+    debouncedAdminNoticeQuery,
+  ]);
 
   useEffect(() => {
+    noticeCursorByPageRef.current = new Map([[1, null]]);
+    noticeCursorKeyRef.current = '';
+    setNoticePage(1);
+  }, [debouncedUserNoticeQuery]);
+
+  useEffect(() => {
+    noticeCursorByPageRef.current = new Map([[1, null]]);
+    noticeCursorKeyRef.current = '';
+    setAdminNoticePage(1);
+  }, [debouncedAdminNoticeQuery]);
+
+  useEffect(() => {
+    const shouldLoadSelectedNotice =
+      view === 'user' &&
+      userTab === 'notice' &&
+      Boolean(selectedNoticePostId) &&
+      !selectedNoticePost;
+
+    if (!shouldLoadSelectedNotice) return undefined;
+
+    let cancelled = false;
+
+    void getDoc(doc(NOTICE_POSTS_COLLECTION_REF, selectedNoticePostId))
+      .then((snapshot) => {
+        if (cancelled || !snapshot.exists()) return;
+        setSelectedNoticePostOverride({
+          ...snapshot.data(),
+          id: snapshot.id,
+        });
+      })
+      .catch((error) => {
+        console.error('Selected notice post read error:', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [view, userTab, selectedNoticePostId, selectedNoticePost]);
+
+  useEffect(() => {
+    if (
+      !selectedNoticePostId ||
+      (noticePosts || []).some((post) => post.id === selectedNoticePostId)
+    ) {
+      setSelectedNoticePostOverride(null);
+    }
+  }, [selectedNoticePostId, noticePosts]);
+
+  useEffect(() => {
+    const shouldLoadAdminPopup =
+      isAdminAuthenticated && view === 'admin' && adminTab === 'popupPosts';
     const shouldSubscribe =
-      isAdminAuthenticated ||
+      shouldLoadAdminPopup ||
       (
         view === 'user' &&
         (
@@ -6791,7 +7888,7 @@ function App() {
     setPopupPostsReady(false);
     setPopupPostsLoadErrorMessage('');
 
-    const popupSource = isAdminAuthenticated
+    const popupSource = shouldLoadAdminPopup
       ? POPUP_POSTS_COLLECTION_REF
       : firestoreQuery(
           POPUP_POSTS_COLLECTION_REF,
@@ -6841,7 +7938,7 @@ function App() {
     );
 
     return unsubscribe;
-  }, [firebaseAuthUser?.uid, isAdminAuthenticated, userTab, view]);
+  }, [firebaseAuthUser?.uid, isAdminAuthenticated, userTab, view, adminTab]);
 
   useEffect(() => {
     setFooterConfigReady(false);
@@ -6986,55 +8083,17 @@ function App() {
   }, [userTab, view]);
 
   useEffect(() => {
-    setNoticeBoardConfigReady(false);
-    setNoticeBoardConfigLoadErrorMessage('');
+    const shouldLoadUserFaq = view === 'user' && userTab === 'faq';
+    const shouldLoadAdminFaq =
+      isAdminAuthenticated && view === 'admin' && adminTab === 'faqPosts';
+    const shouldLoadFaq = shouldLoadUserFaq || shouldLoadAdminFaq;
 
-    const unsubscribe = onSnapshot(
-      NOTICE_BOARD_CONFIG_DOC_REF,
-      (snapshot) => {
-        const postsPerPage =
-          getSafeNoticePostsPerPage(
-            snapshot.exists()
-              ? snapshot.data().postsPerPage
-              : DEFAULT_NOTICE_POSTS_PER_PAGE
-          );
+    if (!shouldLoadFaq) {
+      setFaqCategoriesReady(true);
+      setFaqCategoriesLoadErrorMessage('');
+      return undefined;
+    }
 
-        setNoticeBoardConfig({
-          postsPerPage,
-        });
-        setNoticePostsPerPageInput(
-          postsPerPage
-        );
-        setNoticeBoardConfigLoadErrorMessage('');
-        setNoticeBoardConfigReady(true);
-      },
-      (error) => {
-        const message =
-          '공지사항 목록 설정을 불러오지 못해 기본값 10개를 사용합니다.';
-
-        console.error(
-          'Notice board config sync error:',
-          error
-        );
-
-        setNoticeBoardConfig({
-          postsPerPage:
-            DEFAULT_NOTICE_POSTS_PER_PAGE,
-        });
-        setNoticePostsPerPageInput(
-          DEFAULT_NOTICE_POSTS_PER_PAGE
-        );
-        setNoticeBoardConfigLoadErrorMessage(
-          message
-        );
-        setNoticeBoardConfigReady(true);
-      }
-    );
-
-    return unsubscribe;
-  }, []);
-
-    useEffect(() => {
     setFaqCategoriesReady(false);
     setFaqCategoriesLoadErrorMessage('');
 
@@ -7048,19 +8107,10 @@ function App() {
           }))
           .sort((first, second) => {
             const orderDifference =
-              (Number(first.order) || 0) -
-              (Number(second.order) || 0);
-
-            if (orderDifference !== 0) {
-              return orderDifference;
-            }
-
-            return String(
-              first.name || ''
-            ).localeCompare(
-              String(
-                second.name || ''
-              ),
+              (Number(first.order) || 0) - (Number(second.order) || 0);
+            if (orderDifference !== 0) return orderDifference;
+            return String(first.name || '').localeCompare(
+              String(second.name || ''),
               'ko'
             );
           });
@@ -7072,121 +8122,290 @@ function App() {
       (error) => {
         const message =
           'FAQ 카테고리를 불러오지 못했습니다. Firestore Rules의 faqCategories 읽기 권한을 확인해 주세요.';
-
-        console.error(
-          'FAQ categories sync error:',
-          error
-        );
-
+        console.error('FAQ categories sync error:', error);
         setFaqCategories([]);
-        setFaqCategoriesLoadErrorMessage(
-          message
-        );
+        setFaqCategoriesLoadErrorMessage(message);
         setFaqCategoriesReady(true);
-
         triggerToast(message, 'error');
       }
     );
 
     return unsubscribe;
-  }, []);
+  }, [isAdminAuthenticated, view, userTab, adminTab]);
 
   useEffect(() => {
-    setFaqPostsReady(false);
-    setFaqPostsLoadErrorMessage('');
+    const shouldLoadUserFaq = view === 'user' && userTab === 'faq';
+    const shouldLoadAdminFaq =
+      isAdminAuthenticated && view === 'admin' && adminTab === 'faqPosts';
+    const shouldLoadFaq = shouldLoadUserFaq || shouldLoadAdminFaq;
 
-    const unsubscribe = onSnapshot(
-      FAQ_POSTS_COLLECTION_REF,
-      (snapshot) => {
-        const remotePosts = snapshot.docs
-          .map((postDoc) => ({
-            ...postDoc.data(),
-            id: postDoc.id,
-          }))
-          .sort(
-            (first, second) =>
-              getFirestoreTimestampMillis(
-                second.createdAt
-              ) -
-              getFirestoreTimestampMillis(
-                first.createdAt
-              )
-          );
+    if (!shouldLoadFaq) {
+      setFaqBoardConfigReady(true);
+      setFaqBoardConfigLoadErrorMessage('');
+      return undefined;
+    }
 
-        setFaqPosts(remotePosts);
-        setFaqPostsLoadErrorMessage('');
-        setFaqPostsReady(true);
-      },
-      (error) => {
-        const message =
-          'FAQ를 불러오지 못했습니다. Firestore Rules의 faqPosts 읽기 권한을 확인해 주세요.';
-
-        console.error(
-          'FAQ posts sync error:',
-          error
-        );
-
-        setFaqPosts([]);
-        setFaqPostsLoadErrorMessage(
-          message
-        );
-        setFaqPostsReady(true);
-
-        triggerToast(message, 'error');
-      }
-    );
-
-    return unsubscribe;
-  }, []);
-
-  useEffect(() => {
     setFaqBoardConfigReady(false);
     setFaqBoardConfigLoadErrorMessage('');
 
     const unsubscribe = onSnapshot(
       FAQ_BOARD_CONFIG_DOC_REF,
       (snapshot) => {
-        const postsPerPage =
-          getSafeFaqPostsPerPage(
-            snapshot.exists()
-              ? snapshot.data().postsPerPage
-              : DEFAULT_FAQ_POSTS_PER_PAGE
-          );
-
-        setFaqBoardConfig({
-          postsPerPage,
-        });
-        setFaqPostsPerPageInput(
-          postsPerPage
+        const postsPerPage = getSafeFaqPostsPerPage(
+          snapshot.exists()
+            ? snapshot.data().postsPerPage
+            : DEFAULT_FAQ_POSTS_PER_PAGE
         );
+        setFaqBoardConfig({ postsPerPage });
+        setFaqPostsPerPageInput(postsPerPage);
         setFaqBoardConfigLoadErrorMessage('');
         setFaqBoardConfigReady(true);
       },
       (error) => {
         const message =
           'FAQ 목록 설정을 불러오지 못해 기본값 10개를 사용합니다.';
-
-        console.error(
-          'FAQ board config sync error:',
-          error
-        );
-
-        setFaqBoardConfig({
-          postsPerPage:
-            DEFAULT_FAQ_POSTS_PER_PAGE,
-        });
-        setFaqPostsPerPageInput(
-          DEFAULT_FAQ_POSTS_PER_PAGE
-        );
-        setFaqBoardConfigLoadErrorMessage(
-          message
-        );
+        console.error('FAQ board config sync error:', error);
+        setFaqBoardConfig({ postsPerPage: DEFAULT_FAQ_POSTS_PER_PAGE });
+        setFaqPostsPerPageInput(DEFAULT_FAQ_POSTS_PER_PAGE);
+        setFaqBoardConfigLoadErrorMessage(message);
         setFaqBoardConfigReady(true);
       }
     );
 
     return unsubscribe;
-  }, []);
+  }, [isAdminAuthenticated, view, userTab, adminTab]);
+
+  useEffect(() => {
+    setFaqPosts([
+      ...(faqPinnedPosts || []),
+      ...(faqRegularPagePosts || []),
+    ]);
+  }, [faqPinnedPosts, faqRegularPagePosts]);
+
+  useEffect(() => {
+    const shouldLoadUserFaq = view === 'user' && userTab === 'faq';
+    const shouldLoadAdminFaq =
+      isAdminAuthenticated && view === 'admin' && adminTab === 'faqPosts';
+    const shouldLoadFaq = shouldLoadUserFaq || shouldLoadAdminFaq;
+    const searchMode = Boolean(String(debouncedFaqQuery || '').trim());
+    const shouldLimitToActiveCategory =
+      shouldLoadUserFaq &&
+      activeFaqCategoryId !== 'all' &&
+      (!searchMode || faqSearchWithinCategory);
+    const categoryConstraints = shouldLimitToActiveCategory
+      ? [where('categoryId', '==', activeFaqCategoryId)]
+      : [];
+
+    if (!shouldLoadFaq) {
+      faqCursorKeyRef.current = '';
+      faqCursorByPageRef.current = new Map([[1, null]]);
+      setFaqPinnedPosts([]);
+      setFaqRegularPagePosts([]);
+      setFaqPostsReady(true);
+      setFaqPostsLoadErrorMessage('');
+      setFaqHasNextPage(false);
+      return undefined;
+    }
+
+    if (searchMode) {
+      setFaqPostsReady(false);
+      setFaqPostsLoadErrorMessage('');
+      const searchSource = firestoreQuery(
+        FAQ_POSTS_COLLECTION_REF,
+        ...categoryConstraints,
+        orderBy('createdAt', 'desc'),
+        firestoreLimit(FIRESTORE_SEARCH_RESULT_LIMIT)
+      );
+
+      const unsubscribe = onSnapshot(
+        searchSource,
+        (snapshot) => {
+          const remotePosts = snapshot.docs.map((postDoc) => ({
+            ...postDoc.data(),
+            id: postDoc.id,
+          }));
+          setFaqPinnedPosts(remotePosts.filter((post) => post.isPinned));
+          setFaqRegularPagePosts(remotePosts.filter((post) => !post.isPinned));
+          setFaqRegularTotalCount(remotePosts.filter((post) => !post.isPinned).length);
+          setFaqHasNextPage(false);
+          setFaqPostsLoadErrorMessage('');
+          setFaqPostsReady(true);
+        },
+        (error) => {
+          const message =
+            'FAQ 검색 범위를 불러오지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.';
+          console.error('FAQ search sync error:', error);
+          setFaqPinnedPosts([]);
+          setFaqRegularPagePosts([]);
+          setFaqHasNextPage(false);
+          setFaqPostsLoadErrorMessage(message);
+          setFaqPostsReady(true);
+          triggerToast(message, 'error');
+        }
+      );
+
+      return unsubscribe;
+    }
+
+    const pinnedSource = firestoreQuery(
+      FAQ_POSTS_COLLECTION_REF,
+      ...categoryConstraints,
+      where('isPinned', '==', true),
+      orderBy('createdAt', 'desc'),
+      firestoreLimit(FIRESTORE_PINNED_POST_LIMIT)
+    );
+
+    const unsubscribe = onSnapshot(
+      pinnedSource,
+      (snapshot) => {
+        setFaqPinnedPosts(
+          snapshot.docs.map((postDoc) => ({
+            ...postDoc.data(),
+            id: postDoc.id,
+          }))
+        );
+        setFaqPostsLoadErrorMessage('');
+      },
+      (error) => {
+        const message =
+          '상단 고정 FAQ를 불러오지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.';
+        console.error('Pinned FAQ sync error:', error);
+        setFaqPinnedPosts([]);
+        setFaqPostsLoadErrorMessage(message);
+        setFaqPostsReady(true);
+        triggerToast(message, 'error');
+      }
+    );
+
+    return unsubscribe;
+  }, [
+    isAdminAuthenticated,
+    view,
+    userTab,
+    adminTab,
+    activeFaqCategoryId,
+    faqSearchWithinCategory,
+    debouncedFaqQuery,
+  ]);
+
+  useEffect(() => {
+    const shouldLoadUserFaq = view === 'user' && userTab === 'faq';
+    const shouldLoadAdminFaq =
+      isAdminAuthenticated && view === 'admin' && adminTab === 'faqPosts';
+    const shouldLoadFaq = shouldLoadUserFaq || shouldLoadAdminFaq;
+    const searchMode = Boolean(String(debouncedFaqQuery || '').trim());
+
+    if (!shouldLoadFaq || searchMode) return undefined;
+
+    const shouldLimitToActiveCategory =
+      shouldLoadUserFaq && activeFaqCategoryId !== 'all';
+    const categoryConstraints = shouldLimitToActiveCategory
+      ? [where('categoryId', '==', activeFaqCategoryId)]
+      : [];
+    const postsPerPage = getSafeFaqPostsPerPage(faqBoardConfig.postsPerPage);
+    const activePage = shouldLoadAdminFaq ? adminFaqPage : faqPage;
+    const cursorKey = [
+      shouldLoadAdminFaq ? 'admin' : 'user',
+      shouldLimitToActiveCategory ? activeFaqCategoryId : 'all',
+      postsPerPage,
+    ].join('|');
+    const cursorKeyChanged = faqCursorKeyRef.current !== cursorKey;
+
+    if (cursorKeyChanged) {
+      faqCursorKeyRef.current = cursorKey;
+      faqCursorByPageRef.current = new Map([[1, null]]);
+    }
+
+    const pageCursor = faqCursorByPageRef.current.get(activePage);
+    if (activePage > 1 && !pageCursor) {
+      if (shouldLoadAdminFaq) setAdminFaqPage(1);
+      else setFaqPage(1);
+      return undefined;
+    }
+
+    setFaqPostsReady(false);
+    setFaqPostsLoadErrorMessage('');
+
+    const regularSource = firestoreQuery(
+      FAQ_POSTS_COLLECTION_REF,
+      ...categoryConstraints,
+      where('isPinned', '==', false),
+      orderBy('createdAt', 'desc'),
+      ...(pageCursor ? [startAfter(pageCursor)] : []),
+      firestoreLimit(postsPerPage + 1)
+    );
+
+    const unsubscribe = onSnapshot(
+      regularSource,
+      (snapshot) => {
+        const sourceDocs = snapshot.docs;
+        const visibleDocs = sourceDocs.slice(0, postsPerPage);
+        const hasNext = sourceDocs.length > postsPerPage;
+
+        if (visibleDocs.length > 0) {
+          faqCursorByPageRef.current.set(
+            activePage + 1,
+            visibleDocs[visibleDocs.length - 1]
+          );
+        }
+
+        setFaqRegularPagePosts(
+          visibleDocs.map((postDoc) => ({
+            ...postDoc.data(),
+            id: postDoc.id,
+          }))
+        );
+        setFaqHasNextPage(hasNext);
+        setFaqPostsLoadErrorMessage('');
+        setFaqPostsReady(true);
+      },
+      (error) => {
+        const message =
+          'FAQ 목록을 불러오지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.';
+        console.error('Paged FAQ posts sync error:', error);
+        setFaqRegularPagePosts([]);
+        setFaqHasNextPage(false);
+        setFaqPostsLoadErrorMessage(message);
+        setFaqPostsReady(true);
+        triggerToast(message, 'error');
+      }
+    );
+
+    if (cursorKeyChanged) {
+      void getCountFromServer(
+        firestoreQuery(
+          FAQ_POSTS_COLLECTION_REF,
+          ...categoryConstraints,
+          where('isPinned', '==', false)
+        )
+      )
+        .then((countSnapshot) => {
+          setFaqRegularTotalCount(countSnapshot.data().count);
+        })
+        .catch((error) => {
+          console.error('FAQ regular post count error:', error);
+        });
+    }
+
+    return unsubscribe;
+  }, [
+    isAdminAuthenticated,
+    view,
+    userTab,
+    adminTab,
+    activeFaqCategoryId,
+    faqPage,
+    adminFaqPage,
+    faqBoardConfig.postsPerPage,
+    debouncedFaqQuery,
+  ]);
+
+  useEffect(() => {
+    faqCursorByPageRef.current = new Map([[1, null]]);
+    faqCursorKeyRef.current = '';
+    setFaqPage(1);
+    setAdminFaqPage(1);
+  }, [debouncedFaqQuery, activeFaqCategoryId, faqSearchWithinCategory]);
 
   useEffect(() => {
     if (
@@ -7842,14 +9061,16 @@ function App() {
     setUserAuthLoading(true);
 
     try {
-      const userSessionPolicySnapshot = await getDoc(
-        USER_SESSION_POLICY_DOC_REF
-      ).catch(() => null);
-      effectiveUserSessionPolicy = normalizeUserSessionPolicy(
-        userSessionPolicySnapshot?.exists()
-          ? userSessionPolicySnapshot.data()
-          : userSessionPolicy
-      );
+      if (!userSessionPolicyReady) {
+        const userSessionPolicySnapshot = await getDoc(
+          USER_SESSION_POLICY_DOC_REF
+        ).catch(() => null);
+        effectiveUserSessionPolicy = normalizeUserSessionPolicy(
+          userSessionPolicySnapshot?.exists()
+            ? userSessionPolicySnapshot.data()
+            : userSessionPolicy
+        );
+      }
       await configureFirebaseAuthPersistence(
         firebaseAuth,
         effectiveUserSessionPolicy.userLogoutOnBrowserClose
@@ -8567,40 +9788,20 @@ function App() {
   ]);
 
   useEffect(() => {
-    if (
-      !isAdminAuthenticated ||
-      !isSplitStorageReady ||
-      !adminUserAccountsReady ||
-      isRegisteredMemberSignupRequired(data.settings)
-    ) {
-      return;
-    }
+    const shouldCheckDirectoryMismatchRestore =
+      isAdminAuthenticated &&
+      isSplitStorageReady &&
+      view === 'admin' &&
+      adminTab === 'signupPolicy' &&
+      !isRegisteredMemberSignupRequired(data.settings);
 
-    const directoryMismatchAccounts = managedUserAccounts.filter(
-      (account) =>
-        account.status === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
-        account.profileRequiredReason ===
-          PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH
-    );
+    if (!shouldCheckDirectoryMismatchRestore) return;
 
-    if (directoryMismatchAccounts.length === 0) {
-      directoryMismatchRestoreAttemptKeyRef.current = '';
-      return;
-    }
-
-    const restoreAttemptKey = directoryMismatchAccounts
-      .map((account) =>
-        [
-          account.uid || '',
-          account.statusBeforeProfileRequired || '',
-          account.updatedAt?.seconds || account.updatedAt || '',
-        ].join(':')
-      )
-      .sort()
-      .join('|');
+    const restoreAttemptKey = `disabled:${getSafeMemberDirectoryVersion(
+      data.settings
+    )}`;
 
     if (
-      !restoreAttemptKey ||
       directoryMismatchRestoreAttemptKeyRef.current === restoreAttemptKey
     ) {
       return;
@@ -8608,9 +9809,7 @@ function App() {
 
     directoryMismatchRestoreAttemptKeyRef.current = restoreAttemptKey;
 
-    void restoreDirectoryMismatchAccountsAfterPolicyDisabled(
-      directoryMismatchAccounts
-    )
+    void restoreDirectoryMismatchAccountsAfterPolicyDisabled()
       .then((restoredCount) => {
         if (restoredCount > 0) {
           triggerToast(
@@ -8631,14 +9830,20 @@ function App() {
         );
       });
   }, [
-    adminUserAccountsReady,
+    adminTab,
+    data.settings.memberDirectoryVersion,
     data.settings.requireRegisteredMemberForSignup,
     isAdminAuthenticated,
     isSplitStorageReady,
-    managedUserAccounts,
+    view,
   ]);
 
-  const filteredManagedUserAccounts =
+  useEffect(() => {
+    setAdminUserAccountPage(1);
+    adminUserAccountCursorByPageRef.current = new Map([[1, null]]);
+  }, [adminUserAccountQuery, adminUserAccountStatusFilter]);
+
+  const matchedManagedUserAccounts =
     useMemo(() => {
       const normalizedQuery =
         adminUserAccountQuery
@@ -8683,46 +9888,44 @@ function App() {
       adminUserAccountStatusFilter,
     ]);
 
+  const adminUserAccountSearchMode = Boolean(
+    String(adminUserAccountQuery || '').trim()
+  );
+
+  const adminUserAccountTotalPages = Math.max(
+    1,
+    Math.ceil(
+      (adminUserAccountSearchMode
+        ? matchedManagedUserAccounts.length
+        : adminUserAccountTotalCount) / ADMIN_MEMBER_ACCOUNT_PAGE_SIZE
+    )
+  );
+
+  const safeAdminUserAccountPage = Math.min(
+    adminUserAccountPage,
+    adminUserAccountTotalPages
+  );
+
+  const filteredManagedUserAccounts = useMemo(
+    () =>
+      adminUserAccountSearchMode
+        ? matchedManagedUserAccounts.slice(
+            (safeAdminUserAccountPage - 1) *
+              ADMIN_MEMBER_ACCOUNT_PAGE_SIZE,
+            safeAdminUserAccountPage *
+              ADMIN_MEMBER_ACCOUNT_PAGE_SIZE
+          )
+        : matchedManagedUserAccounts,
+    [
+      adminUserAccountSearchMode,
+      matchedManagedUserAccounts,
+      safeAdminUserAccountPage,
+    ]
+  );
+
   const adminUserAccountStatusCounts =
-    useMemo(
-      () => ({
-        pending:
-          managedUserAccounts.filter(
-            (account) =>
-              account.status ===
-              USER_PROFILE_STATUS.PENDING
-          ).length,
+    adminUserAccountStatusCountsRemote;
 
-        active:
-          managedUserAccounts.filter(
-            (account) =>
-              account.status ===
-              USER_PROFILE_STATUS.ACTIVE
-          ).length,
-
-        profileRequired:
-          managedUserAccounts.filter(
-            (account) =>
-              account.status ===
-              USER_PROFILE_STATUS.PROFILE_REQUIRED
-          ).length,
-
-        blocked:
-          managedUserAccounts.filter(
-            (account) =>
-              account.status ===
-              USER_PROFILE_STATUS.BLOCKED
-          ).length,
-
-        retired:
-          managedUserAccounts.filter(
-            (account) =>
-              account.status ===
-              USER_PROFILE_STATUS.RETIRED
-          ).length,
-      }),
-      [managedUserAccounts]
-    );
 
   const getUserAccountStatusLabel = (
     status
@@ -10070,7 +11273,28 @@ function App() {
       }
     }
 
-    const duplicatedAdminId = (registeredAdminAccounts || []).some(
+    let adminAccountsForValidation = registeredAdminAccounts || [];
+
+    try {
+      const adminAccountsSnapshot = await getDocs(
+        ADMIN_ACCOUNTS_COLLECTION_REF
+      );
+      adminAccountsForValidation = adminAccountsSnapshot.docs.map(
+        (accountDocument) => ({
+          ...accountDocument.data(),
+          id: accountDocument.id,
+        })
+      );
+    } catch (error) {
+      console.error('Admin profile duplicate validation read error:', error);
+      triggerToast(
+        '관리자 ID 중복 확인에 실패했습니다. 네트워크와 Firestore 권한을 확인해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    const duplicatedAdminId = adminAccountsForValidation.some(
       (account) =>
         account.id !== authenticatedAdminAccount.id &&
         String(account.adminLoginId || '').trim().toLowerCase() ===
@@ -11224,21 +12448,29 @@ function App() {
         }))
       );
 
-      const accountEntries = await buildMemberAccountIndexEntries(
-        managedUserAccounts || []
-      );
-
       const [
-        currentBorrowersSnapshot,
+        currentUserAccountsSnapshot,
         currentDirectorySnapshot,
         currentClaimsSnapshot,
         currentRecoverySnapshot,
       ] = await Promise.all([
-        getDocs(RENTAL_BORROWERS_COLLECTION_REF),
+        getDocs(USER_ACCOUNTS_COLLECTION_REF),
         getDocs(MEMBER_DIRECTORY_KEYS_COLLECTION_REF),
         getDocs(MEMBER_IDENTITY_CLAIMS_COLLECTION_REF),
         getDocs(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF),
       ]);
+      const accountEntries = await buildMemberAccountIndexEntries(
+        currentUserAccountsSnapshot.docs.map((accountDocument) => ({
+          ...accountDocument.data(),
+          uid: accountDocument.data().uid || accountDocument.id,
+        }))
+      );
+      const currentBorrowerDocuments = (data.borrowers || [])
+        .filter((borrower) => borrower?.id)
+        .map((borrower) => ({
+          id: borrower.id,
+          ref: doc(RENTAL_BORROWERS_COLLECTION_REF, borrower.id),
+        }));
 
       const nextBorrowerIdSet = new Set(
         nextBorrowers.map((borrower) => borrower.id)
@@ -11256,7 +12488,7 @@ function App() {
             updatedAt: serverTimestamp(),
           },
         })),
-        ...currentBorrowersSnapshot.docs
+        ...currentBorrowerDocuments
           .filter(
             (borrowerDocument) =>
               !nextBorrowerIdSet.has(borrowerDocument.id)
@@ -11381,11 +12613,6 @@ function App() {
       return;
     }
 
-    if (!adminUserAccountsReady || adminUserAccountsLoadErrorMessage) {
-      triggerToast('회원 계정 목록이 준비되지 않았습니다.', 'error');
-      return;
-    }
-
     setMemberDirectoryAuditLoading(true);
     setMemberDirectoryAuditResult(null);
 
@@ -11405,13 +12632,21 @@ function App() {
       const directoryByIdentityKey = new Map(
         directoryEntries.map((entry) => [entry.identityKey, entry])
       );
-      const accountEntries = await buildMemberAccountIndexEntries(
-        managedUserAccounts || []
-      );
-      const [currentClaimsSnapshot, currentRecoverySnapshot] = await Promise.all([
+      const [
+        currentUserAccountsSnapshot,
+        currentClaimsSnapshot,
+        currentRecoverySnapshot,
+      ] = await Promise.all([
+        getDocs(USER_ACCOUNTS_COLLECTION_REF),
         getDocs(MEMBER_IDENTITY_CLAIMS_COLLECTION_REF),
         getDocs(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF),
       ]);
+      const accountEntries = await buildMemberAccountIndexEntries(
+        currentUserAccountsSnapshot.docs.map((accountDocument) => ({
+          ...accountDocument.data(),
+          uid: accountDocument.data().uid || accountDocument.id,
+        }))
+      );
       const {
         accountMetadataOperations,
         claimOperations,
@@ -12541,30 +13776,46 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     });
   };
 
+  const hasOtherCurrentOverdueRequest = async ({
+    requesterUid,
+    excludedRequestId,
+    referenceDate,
+  }) => {
+    if (!requesterUid || !referenceDate) {
+      return false;
+    }
+
+    const snapshot = await getDocs(
+      firestoreQuery(
+        RENTAL_REQUESTS_COLLECTION_REF,
+        where('requesterUid', '==', requesterUid),
+        where('status', '==', STATUS.APPROVED),
+        where('dueDate', '<', referenceDate),
+        firestoreLimit(2)
+      )
+    );
+
+    return snapshot.docs.some(
+      (requestDocument) => requestDocument.id !== excludedRequestId
+    );
+  };
+
   const getOverdueReturnResult = ({
     latestRequest,
     latestSettings,
     restrictionData,
     actualReturnDate,
     batchId,
-  }) => {
-    const otherCurrentOverdueRequests = getCurrentOverdueRequests(
-      mergedRentalRequests,
-      latestRequest.requesterUid,
-      actualReturnDate,
-      latestRequest.id
-    );
-
-    return buildOverdueReturnResult({
+    hasOtherCurrentOverdueRequests = false,
+  }) =>
+    buildOverdueReturnResult({
       request: latestRequest,
       actualReturnDate,
       settings: latestSettings,
       restriction: restrictionData,
-      hasOtherCurrentOverdueRequests:
-        otherCurrentOverdueRequests.length > 0,
+      hasOtherCurrentOverdueRequests,
       batchId,
     });
-  };
 
   const writeOverdueReturnSideEffects = ({
     transaction,
@@ -14196,6 +15447,16 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     setAdminUserActionSavingRequestId(id);
 
     try {
+      const hasOtherCurrentOverdueRequests =
+        approved &&
+        currentRequest.userActionRequest?.type === USER_REQUEST_ACTION.RETURN
+          ? await hasOtherCurrentOverdueRequest({
+              requesterUid: currentRequest.requesterUid,
+              excludedRequestId: currentRequest.id,
+              referenceDate: today(),
+            })
+          : false;
+
       await runTransaction(
         db,
         async (transaction) => {
@@ -14628,6 +15889,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                   restrictionData: latestRestriction,
                   actualReturnDate: today(),
                   batchId: overdueBatchId,
+                  hasOtherCurrentOverdueRequests,
                 });
 
               nextRequestFields = {
@@ -16468,7 +17730,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     }
   };
 
-  const confirmDeleteFaqCategory = (
+  const confirmDeleteFaqCategory = async (
     category
   ) => {
     if (
@@ -16482,12 +17744,24 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       return;
     }
 
-    const categoryPostCount =
-      faqPosts.filter(
-        (post) =>
-          post.categoryId ===
-          category.id
-      ).length;
+    let categoryPostCount = 0;
+
+    try {
+      const countSnapshot = await getCountFromServer(
+        firestoreQuery(
+          FAQ_POSTS_COLLECTION_REF,
+          where('categoryId', '==', category.id)
+        )
+      );
+      categoryPostCount = countSnapshot.data().count;
+    } catch (error) {
+      console.error('FAQ category usage count error:', error);
+      triggerToast(
+        'FAQ 카테고리 사용 여부를 확인하지 못해 삭제를 중단했습니다.',
+        'error'
+      );
+      return;
+    }
 
     if (categoryPostCount > 0) {
       triggerToast(
@@ -17715,6 +18989,15 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       );
 
     try {
+      const hasOtherCurrentOverdueRequests =
+        status === STATUS.RETURNED
+          ? await hasOtherCurrentOverdueRequest({
+              requesterUid: currentRequest.requesterUid,
+              excludedRequestId: currentRequest.id,
+              referenceDate: actualReturnDate,
+            })
+          : false;
+
       await runTransaction(
         db,
         async (transaction) => {
@@ -17828,6 +19111,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                   restrictionData: latestRestriction,
                   actualReturnDate,
                   batchId: overdueBatchId,
+                  hasOtherCurrentOverdueRequests,
                 })
               : null;
 
@@ -20016,8 +21300,12 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     adminRequestTotalPages,
     adminSelectedAssetCategory,
     adminTab,
+    adminUserAccountHasNextPage,
+    adminUserAccountPage,
     adminUserAccountQuery,
     adminUserAccountSavingUid,
+    adminUserAccountSearchMode,
+    adminUserAccountTotalPages,
     adminUserAccountStatusCounts,
     adminUserAccountStatusFilter,
     adminUserAccountsLoadErrorMessage,
@@ -20299,6 +21587,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     setAdminRequestTab,
     setAdminSelectedAssetCategory,
     setAdminTab,
+    safeAdminUserAccountPage,
+    setAdminUserAccountPage,
     setAdminUserAccountQuery,
     setAdminUserAccountStatusFilter,
     setAvailabilityFilter,

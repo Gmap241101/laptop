@@ -1,0 +1,43 @@
+Firestore 읽기 최적화 검증 보고서
+===================================
+
+기준본
+- user_name_korean_ime_fix_deployment_package.zip
+
+변경 파일
+- src/App.jsx
+- src/admin/AdminMemberAccountsPanel.jsx
+- firestore.indexes.json
+
+정적 검증 결과
+- JS/JSX 파일 44개 TypeScript parser 구문 분석: 통과
+- firestore.indexes.json JSON 구문 검사: 통과
+- Firestore 복합 인덱스 정의: 14개
+- 일반 사용자 rentalBorrowers 전체 구독 제거 조건: 확인
+- 자산/예약 화면별 구독 조건: 확인
+- 관리자 메뉴별 회원/신청/공지/FAQ/팝업 구독 조건: 확인
+- startAfter 커서 페이지네이션: 확인
+- 페이지 크기 + 1건 조회: 확인
+- getCountFromServer 집계: 확인
+- 검색 최대 200건 및 350ms 디바운스: 확인
+- 사용자 세션 정책 준비 완료 시 중복 getDoc 제거: 확인
+- 반납 시 다른 연체 건 최대 2건 제한 조회: 확인
+- FAQ 카테고리 삭제 전 서버 집계 검사: 확인
+- 직접 공지 접근 1문서 조회 및 목록 페이지 비오염: 확인
+
+호출 위치 수 비교
+- 기준 App.jsx onSnapshot(): 22개
+- 수정 App.jsx onSnapshot(): 30개
+- 기준 App.jsx getDoc(): 11개
+- 수정 App.jsx getDoc(): 13개
+- 기준 App.jsx getDocs(): 13개
+- 수정 App.jsx getDocs(): 16개
+- 수정 App.jsx getCountFromServer(): 14개
+- transaction.get(): 46개로 동일
+
+주의
+- 호출 위치 수 증가는 화면·필터별 제한 쿼리를 분리했기 때문이며, 동시에 활성화되는 전체 컬렉션 리스너 수가 증가한 것이 아님.
+- 기존의 한 개 전체 컬렉션 리스너를 여러 개의 상호 배타적인 화면별 limit/cursor 쿼리로 나눈 구조임.
+- package.json과 node_modules가 기준 배포 패키지에 포함되어 있지 않아 Vite production build는 수행하지 못함.
+- Firebase Emulator 기반 권한/쿼리 통합 테스트는 프로젝트 설정 및 테스트 데이터가 없어 수행하지 못함.
+- 실제 배포 전 firestore.indexes.json의 인덱스 생성 완료가 필요함.
