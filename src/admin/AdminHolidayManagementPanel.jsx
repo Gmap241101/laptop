@@ -694,7 +694,7 @@ export default function AdminHolidayManagementPanel({ ctx }) {
 
                         {reasons.length > 0 && (
                           <>
-                            <div className="flex gap-0.5 pt-8 sm:hidden">
+                            <div className="absolute left-1.5 right-1.5 top-9 flex gap-0.5 sm:hidden">
                               {reasons.slice(0, 3).map((reason, reasonIndex) => (
                                 <span
                                   key={`${reason.type}-${reasonIndex}`}
@@ -705,7 +705,7 @@ export default function AdminHolidayManagementPanel({ ctx }) {
                               ))}
                             </div>
 
-                            <div className="hidden space-y-1 pt-8 sm:block">
+                            <div className="absolute left-2 right-2 top-10 hidden space-y-1 sm:block">
                               {reasons.slice(0, 2).map((reason, reasonIndex) => (
                                 <div
                                   key={`${reason.type}-${reason.name}-${reasonIndex}`}
