@@ -460,6 +460,12 @@ export default function AdminWorkspace({ ctx }) {
               return;
             }
             if (
+              window.__mkFooterPageUnsaved &&
+              !window.confirm('저장하지 않은 푸터 메뉴 페이지 변경사항이 있습니다. 저장하지 않고 이동하시겠습니까?')
+            ) {
+              return;
+            }
+            if (
               window.__mkSystemSettingsUnsaved &&
               !window.confirm(
                 window.__mkSystemSettingsUnsavedMessage ||
@@ -469,6 +475,7 @@ export default function AdminWorkspace({ ctx }) {
               return;
             }
             window.__mkHomeBannerUnsaved = false;
+            window.__mkFooterPageUnsaved = false;
             window.__mkSystemSettingsUnsaved = false;
             window.__mkSystemSettingsUnsavedMessage = '';
           }

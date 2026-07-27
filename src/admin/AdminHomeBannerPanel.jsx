@@ -12,7 +12,6 @@ import {
   X,
 } from 'lucide-react';
 import {
-  deleteDoc,
   doc,
   onSnapshot,
   serverTimestamp,
@@ -76,6 +75,17 @@ const IMAGE_POSITION_OPTIONS = [
   ['right', '오른쪽'],
 ];
 
+const IMAGE_FIT_OPTIONS = [
+  ['cover', '영역 채우기'],
+  ['contain', '이미지 맞추기'],
+];
+
+const getDefaultImageFit = (placement, banner = null) => {
+  if (banner?.imageFit === 'contain') return 'contain';
+  if (banner?.imageFit === 'cover') return 'cover';
+  return placement === 'quickLink' ? 'contain' : 'cover';
+};
+
 const getMillis = (value) => {
   if (!value) return 0;
   if (typeof value?.toMillis === 'function') return value.toMillis();
@@ -124,18 +134,19 @@ const isSafeHttpUrl = (value = '') => {
   }
 };
 
-const createForm = (placement, banner = null, defaultSortOrder = 1) => ({
+const createForm = (placement, banner = null) => ({
   id: banner?.id || '',
   enabled: banner ? Boolean(banner.enabled) : true,
-  sortOrder: Number(banner?.sortOrder) || defaultSortOrder,
   title: banner?.title || '',
   subtitle: banner?.subtitle || '',
   altText: banner?.altText || '',
   imageUrl: banner?.imageUrl || '',
   mobileImageUrl: banner?.mobileImageUrl || '',
   imagePosition: banner?.imagePosition || 'center',
+  imageFit: getDefaultImageFit(placement, banner),
   linkType: placement === 'quickLink' ? 'external' : banner?.linkType || 'none',
   linkValue: banner?.linkValue || '',
+  openInNewTab: banner ? banner.openInNewTab !== false : placement === 'quickLink',
   startAt: toDateTimeLocal(banner?.startAt) || toDateTimeLocal(new Date()),
   endAt: toDateTimeLocal(banner?.endAt),
   isIndefinite: banner ? Boolean(banner.isIndefinite) : true,
@@ -170,8 +181,8 @@ function LayoutPreview({ layout, banners = [], admin = false }) {
             <img
               src={banner.imageUrl}
               alt=""
-              className="h-full w-full object-cover"
-              style={{ objectPosition: banner.imagePosition || 'center' }}
+              className="h-full w-full"
+              style={{ objectFit: getDefaultImageFit('promotion', banner), objectPosition: banner.imagePosition || 'center' }}
             />
           ) : admin ? '빈 슬롯' : null}
         </div>
@@ -301,14 +312,14 @@ export default function AdminHomeBannerPanel({ ctx, placement }) {
   }, [form.imageUrl]);
 
   const openCreate = () => {
-    const next = createForm(placement, null, banners.length + 1);
+    const next = createForm(placement);
     setForm(next);
     formBaselineRef.current = JSON.stringify(next);
     setEditing(true);
   };
 
   const openEdit = (banner) => {
-    const next = createForm(placement, banner, banners.length + 1);
+    const next = createForm(placement, banner);
     setForm(next);
     formBaselineRef.current = JSON.stringify(next);
     setEditing(true);
@@ -317,7 +328,7 @@ export default function AdminHomeBannerPanel({ ctx, placement }) {
   const closeEditor = () => {
     if (formDirty && !window.confirm('저장하지 않은 배너 변경사항을 취소하시겠습니까?')) return;
     setEditing(false);
-    const next = createForm(placement, null, banners.length + 1);
+    const next = createForm(placement);
     setForm(next);
     formBaselineRef.current = JSON.stringify(next);
   };
@@ -361,6 +372,7 @@ export default function AdminHomeBannerPanel({ ctx, placement }) {
     const altText = String(form.altText || '').trim();
     const linkType = placement === 'quickLink' ? 'external' : form.linkType;
     const linkValue = String(form.linkValue || '').trim();
+    const imageFit = form.imageFit === 'contain' ? 'contain' : 'cover';
     const startAt = form.startAt ? new Date(form.startAt) : null;
     const endAt = !form.isIndefinite && form.endAt ? new Date(form.endAt) : null;
 
@@ -407,31 +419,52 @@ export default function AdminHomeBannerPanel({ ctx, placement }) {
         ? doc(HOME_BANNERS_COLLECTION_REF, form.id)
         : doc(HOME_BANNERS_COLLECTION_REF);
       const existing = form.id ? banners.find((banner) => banner.id === form.id) : null;
-      await setDoc(targetRef, {
-        id: targetRef.id,
-        placement,
-        enabled: Boolean(form.enabled),
-        sortOrder: Math.max(1, Math.trunc(Number(form.sortOrder) || banners.length + 1)),
-        title,
-        subtitle: placement === 'hero' ? subtitle : '',
-        altText,
-        imageUrl,
-        mobileImageUrl: placement === 'quickLink' ? '' : mobileImageUrl,
-        imagePosition: form.imagePosition || 'center',
-        linkType,
-        linkValue: linkType === 'none' ? '' : linkValue,
-        openInNewTab: linkType === 'external',
-        startAt,
-        endAt: form.isIndefinite ? null : endAt,
-        isIndefinite: Boolean(form.isIndefinite),
-        authorUid: existing?.authorUid || authenticatedAdminId || '',
-        authorName: existing?.authorName || authenticatedAdminAccount?.userName || authenticatedAdminAccount?.adminLoginId || '관리자',
-        createdAt: existing?.createdAt || serverTimestamp(),
-        updatedAt: serverTimestamp(),
+      const orderedBanners = form.id && banners.some((banner) => banner.id === form.id)
+        ? [...banners]
+        : [...banners, { id: targetRef.id }];
+      const batch = writeBatch(db);
+
+      orderedBanners.forEach((banner, index) => {
+        const sortOrder = index + 1;
+        if (banner.id === targetRef.id) {
+          batch.set(targetRef, {
+            id: targetRef.id,
+            placement,
+            enabled: Boolean(form.enabled),
+            sortOrder,
+            title,
+            subtitle: placement === 'hero' ? subtitle : '',
+            altText,
+            imageUrl,
+            mobileImageUrl: placement === 'quickLink' ? '' : mobileImageUrl,
+            imagePosition: form.imagePosition || 'center',
+            imageFit,
+            linkType,
+            linkValue: linkType === 'none' ? '' : linkValue,
+            openInNewTab: linkType === 'none' ? false : Boolean(form.openInNewTab),
+            startAt,
+            endAt: form.isIndefinite ? null : endAt,
+            isIndefinite: Boolean(form.isIndefinite),
+            authorUid: existing?.authorUid || authenticatedAdminId || '',
+            authorName: existing?.authorName || authenticatedAdminAccount?.userName || authenticatedAdminAccount?.adminLoginId || '관리자',
+            createdAt: existing?.createdAt || serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+          return;
+        }
+
+        if (Number(banner.sortOrder) !== sortOrder) {
+          batch.update(doc(HOME_BANNERS_COLLECTION_REF, banner.id), {
+            sortOrder,
+            updatedAt: serverTimestamp(),
+          });
+        }
       });
+
+      await batch.commit();
       triggerToast(`${panelConfig.itemLabel}를 ${form.id ? '수정' : '등록'}했습니다.`, 'success');
       setEditing(false);
-      const next = createForm(placement, null, banners.length + 2);
+      const next = createForm(placement);
       setForm(next);
       formBaselineRef.current = JSON.stringify(next);
     } catch (error) {
@@ -463,19 +496,19 @@ export default function AdminHomeBannerPanel({ ctx, placement }) {
     const currentIndex = banners.findIndex((banner) => banner.id === bannerId);
     const nextIndex = currentIndex + direction;
     if (currentIndex < 0 || nextIndex < 0 || nextIndex >= banners.length) return;
-    const current = banners[currentIndex];
-    const adjacent = banners[nextIndex];
-    const currentOrder = Number(current.sortOrder) || currentIndex + 1;
-    const adjacentOrder = Number(adjacent.sortOrder) || nextIndex + 1;
+
+    const reordered = [...banners];
+    [reordered[currentIndex], reordered[nextIndex]] = [reordered[nextIndex], reordered[currentIndex]];
+
     try {
       const batch = writeBatch(db);
-      batch.update(doc(HOME_BANNERS_COLLECTION_REF, current.id), {
-        sortOrder: adjacentOrder,
-        updatedAt: serverTimestamp(),
-      });
-      batch.update(doc(HOME_BANNERS_COLLECTION_REF, adjacent.id), {
-        sortOrder: currentOrder,
-        updatedAt: serverTimestamp(),
+      reordered.forEach((banner, index) => {
+        const sortOrder = index + 1;
+        if (Number(banner.sortOrder) === sortOrder) return;
+        batch.update(doc(HOME_BANNERS_COLLECTION_REF, banner.id), {
+          sortOrder,
+          updatedAt: serverTimestamp(),
+        });
       });
       await batch.commit();
     } catch (error) {
@@ -491,7 +524,18 @@ export default function AdminHomeBannerPanel({ ctx, placement }) {
       async () => {
         setDeletingId(banner.id);
         try {
-          await deleteDoc(doc(HOME_BANNERS_COLLECTION_REF, banner.id));
+          const remaining = banners.filter((item) => item.id !== banner.id);
+          const batch = writeBatch(db);
+          batch.delete(doc(HOME_BANNERS_COLLECTION_REF, banner.id));
+          remaining.forEach((item, index) => {
+            const sortOrder = index + 1;
+            if (Number(item.sortOrder) === sortOrder) return;
+            batch.update(doc(HOME_BANNERS_COLLECTION_REF, item.id), {
+              sortOrder,
+              updatedAt: serverTimestamp(),
+            });
+          });
+          await batch.commit();
           if (form.id === banner.id) setEditing(false);
           triggerToast(`${panelConfig.itemLabel}를 삭제했습니다.`, 'success');
         } catch (error) {
@@ -647,27 +691,18 @@ export default function AdminHomeBannerPanel({ ctx, placement }) {
               </button>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="block text-[11px] font-semibold text-slate-600">
-                {placement === 'hero' ? '대제목(선택)' : '관리용 제목'}
-                <input
-                  value={form.title}
-                  onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
-                  placeholder={placement === 'hero' ? '이미지 위에 표시할 대제목' : '관리자 목록에서 구분할 제목'}
-                  className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none mk-form-focus"
-                />
-              </label>
-              <label className="block text-[11px] font-semibold text-slate-600">
-                정렬 순서
-                <input
-                  type="number"
-                  min="1"
-                  value={form.sortOrder}
-                  onChange={(event) => setForm((prev) => ({ ...prev, sortOrder: event.target.value }))}
-                  className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none mk-form-focus"
-                />
-              </label>
-            </div>
+            <label className="block text-[11px] font-semibold text-slate-600">
+              {placement === 'hero' ? '대제목(선택)' : '관리용 제목'}
+              <input
+                value={form.title}
+                onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
+                placeholder={placement === 'hero' ? '이미지 위에 표시할 대제목' : '관리자 목록에서 구분할 제목'}
+                className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none mk-form-focus"
+              />
+              <span className="mt-1.5 block text-[10px] font-normal text-slate-400">
+                정렬 순서는 등록 목록의 위·아래 이동 버튼으로만 변경할 수 있습니다.
+              </span>
+            </label>
 
             {placement === 'hero' && (
               <label className="block text-[11px] font-semibold text-slate-600">
@@ -713,16 +748,28 @@ export default function AdminHomeBannerPanel({ ctx, placement }) {
                     />
                   </label>
                 )}
-                <label className="block text-[11px] font-semibold text-slate-600">
-                  이미지 초점 위치
-                  <select
-                    value={form.imagePosition}
-                    onChange={(event) => setForm((prev) => ({ ...prev, imagePosition: event.target.value }))}
-                    className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none mk-form-focus"
-                  >
-                    {IMAGE_POSITION_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                  </select>
-                </label>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="block text-[11px] font-semibold text-slate-600">
+                    이미지 표시 방식
+                    <select
+                      value={form.imageFit}
+                      onChange={(event) => setForm((prev) => ({ ...prev, imageFit: event.target.value }))}
+                      className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none mk-form-focus"
+                    >
+                      {IMAGE_FIT_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </select>
+                  </label>
+                  <label className="block text-[11px] font-semibold text-slate-600">
+                    이미지 초점 위치
+                    <select
+                      value={form.imagePosition}
+                      onChange={(event) => setForm((prev) => ({ ...prev, imagePosition: event.target.value }))}
+                      className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none mk-form-focus"
+                    >
+                      {IMAGE_POSITION_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </select>
+                  </label>
+                </div>
               </div>
 
               <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
@@ -731,8 +778,8 @@ export default function AdminHomeBannerPanel({ ctx, placement }) {
                     src={form.imageUrl}
                     alt="배너 미리보기"
                     onError={() => setPreviewFailed(true)}
-                    className={`w-full object-cover ${placement === 'hero' ? 'aspect-[3/1]' : placement === 'quickLink' ? 'aspect-[3/1]' : 'aspect-video'}`}
-                    style={{ objectPosition: form.imagePosition || 'center' }}
+                    className={`w-full ${placement === 'hero' ? 'aspect-[3/1]' : placement === 'quickLink' ? 'aspect-[3/1]' : 'aspect-video'}`}
+                    style={{ objectFit: form.imageFit === 'contain' ? 'contain' : 'cover', objectPosition: form.imagePosition || 'center' }}
                   />
                 ) : (
                   <div className="flex aspect-video items-center justify-center px-4 text-center text-xs text-slate-400">
@@ -742,13 +789,18 @@ export default function AdminHomeBannerPanel({ ctx, placement }) {
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="block text-[11px] font-semibold text-slate-600">
+            <div className="grid gap-4 sm:grid-cols-5">
+              <label className="block text-[11px] font-semibold text-slate-600 sm:col-span-1">
                 링크 방식
                 <select
                   value={placement === 'quickLink' ? 'external' : form.linkType}
                   disabled={placement === 'quickLink'}
-                  onChange={(event) => setForm((prev) => ({ ...prev, linkType: event.target.value, linkValue: '' }))}
+                  onChange={(event) => setForm((prev) => ({
+                    ...prev,
+                    linkType: event.target.value,
+                    linkValue: '',
+                    openInNewTab: event.target.value === 'external',
+                  }))}
                   className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none disabled:bg-slate-100 mk-form-focus"
                 >
                   {placement !== 'quickLink' && <option value="none">링크 없음</option>}
@@ -757,32 +809,54 @@ export default function AdminHomeBannerPanel({ ctx, placement }) {
                 </select>
               </label>
 
-              {(placement === 'quickLink' || form.linkType === 'external') && (
-                <label className="block text-[11px] font-semibold text-slate-600">
-                  외부 링크 주소
-                  <input
-                    value={form.linkValue}
-                    onChange={(event) => setForm((prev) => ({ ...prev, linkValue: event.target.value }))}
-                    placeholder="https://example.com"
-                    className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none mk-form-focus"
-                  />
-                  <span className="mt-1 block text-[10px] text-slate-400">외부 주소는 새 탭에서 열립니다.</span>
-                </label>
-              )}
+              <label className="block text-[11px] font-semibold text-slate-600 sm:col-span-1">
+                탭 열기
+                <select
+                  value={form.openInNewTab ? 'new' : 'current'}
+                  disabled={form.linkType === 'none'}
+                  onChange={(event) => setForm((prev) => ({ ...prev, openInNewTab: event.target.value === 'new' }))}
+                  className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none disabled:bg-slate-100 mk-form-focus"
+                >
+                  <option value="current">현재 탭</option>
+                  <option value="new">새 탭</option>
+                </select>
+              </label>
 
-              {placement !== 'quickLink' && form.linkType === 'internal' && (
-                <label className="block text-[11px] font-semibold text-slate-600">
-                  사이트 내부 메뉴
-                  <select
-                    value={form.linkValue}
-                    onChange={(event) => setForm((prev) => ({ ...prev, linkValue: event.target.value }))}
-                    className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none mk-form-focus"
-                  >
-                    <option value="">메뉴 선택</option>
-                    {INTERNAL_LINK_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                  </select>
-                </label>
-              )}
+              <div className="sm:col-span-3">
+                {(placement === 'quickLink' || form.linkType === 'external') ? (
+                  <label className="block text-[11px] font-semibold text-slate-600">
+                    외부 링크 주소
+                    <input
+                      value={form.linkValue}
+                      onChange={(event) => setForm((prev) => ({ ...prev, linkValue: event.target.value }))}
+                      placeholder="https://example.com"
+                      className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none mk-form-focus"
+                    />
+                  </label>
+                ) : form.linkType === 'internal' ? (
+                  <label className="block text-[11px] font-semibold text-slate-600">
+                    사이트 내부 메뉴
+                    <select
+                      value={form.linkValue}
+                      onChange={(event) => setForm((prev) => ({ ...prev, linkValue: event.target.value }))}
+                      className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none mk-form-focus"
+                    >
+                      <option value="">메뉴 선택</option>
+                      {INTERNAL_LINK_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </select>
+                  </label>
+                ) : (
+                  <label className="block text-[11px] font-semibold text-slate-400">
+                    연결 주소
+                    <input
+                      value=""
+                      disabled
+                      placeholder="링크 없음"
+                      className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 text-xs outline-none"
+                    />
+                  </label>
+                )}
+              </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -883,7 +957,7 @@ export default function AdminHomeBannerPanel({ ctx, placement }) {
                           </button>
                         </td>
                         <td className="px-3 py-3">
-                          <img src={banner.imageUrl} alt="" className="h-14 w-28 rounded-lg border border-slate-200 bg-slate-100 object-cover" style={{ objectPosition: banner.imagePosition || 'center' }} />
+                          <img src={banner.imageUrl} alt="" className="h-14 w-28 rounded-lg border border-slate-200 bg-slate-100" style={{ objectFit: getDefaultImageFit(placement, banner), objectPosition: banner.imagePosition || 'center' }} />
                         </td>
                         <td className="min-w-0 px-4 py-3">
                           <div className="truncate text-sm font-bold text-slate-800">{banner.title || banner.altText || '제목 없음'}</div>
@@ -904,7 +978,7 @@ export default function AdminHomeBannerPanel({ ctx, placement }) {
                                     overflow: 'hidden',
                                   } : undefined}
                                 >
-                                  {banner.linkValue}
+                                  {banner.linkValue}{banner.linkType !== 'none' ? ` · ${banner.openInNewTab === false ? '현재 탭' : '새 탭'}` : ''}
                                 </span>
                               </>
                             )}

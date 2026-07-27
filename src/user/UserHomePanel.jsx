@@ -68,6 +68,7 @@ const formatKoreaReferenceDate = () => {
 };
 
 function ResponsiveBannerImage({ banner, className = '' }) {
+  const imageFit = banner?.imageFit === 'contain' ? 'contain' : 'cover';
   return (
     <picture>
       {banner.mobileImageUrl && (
@@ -76,8 +77,8 @@ function ResponsiveBannerImage({ banner, className = '' }) {
       <img
         src={banner.imageUrl}
         alt={banner.altText || ''}
-        className={`h-full w-full object-cover ${className}`}
-        style={{ objectPosition: banner.imagePosition || 'center' }}
+        className={`h-full w-full ${className}`}
+        style={{ objectFit: imageFit, objectPosition: banner.imagePosition || 'center' }}
       />
     </picture>
   );
@@ -255,10 +256,18 @@ export default function UserHomePanel({ ctx }) {
   const activateBanner = (banner) => {
     if (!banner || banner.linkType === 'none' || !banner.linkValue) return;
     if (banner.linkType === 'internal') {
+      if (banner.openInNewTab === true) {
+        window.open(banner.linkValue, '_blank', 'noopener,noreferrer');
+        return;
+      }
       navigateInternal(banner.linkValue);
       return;
     }
     if (banner.linkType === 'external' && isSafeHttpUrl(banner.linkValue)) {
+      if (banner.openInNewTab === false) {
+        window.location.assign(banner.linkValue);
+        return;
+      }
       window.open(banner.linkValue, '_blank', 'noopener,noreferrer');
     }
   };
@@ -269,14 +278,15 @@ export default function UserHomePanel({ ctx }) {
         ? Boolean(banner.linkValue)
         : banner.linkType === 'external' && isSafeHttpUrl(banner.linkValue);
     if (!hasLink) return <div className={className}>{children}</div>;
-    if (banner.linkType === 'external') {
+    if (banner.linkType === 'external' || (banner.linkType === 'internal' && banner.openInNewTab === true)) {
+      const opensNewTab = banner.openInNewTab !== false;
       return (
         <a
           href={banner.linkValue}
-          target="_blank"
-          rel="noopener noreferrer"
+          target={opensNewTab ? '_blank' : undefined}
+          rel={opensNewTab ? 'noopener noreferrer' : undefined}
           className={className}
-          aria-label={`${banner.altText || banner.title || '배너'} 새 창에서 열기`}
+          aria-label={`${banner.altText || banner.title || '배너'}${opensNewTab ? ' 새 탭에서 열기' : ''}`}
         >
           {children}
         </a>
@@ -487,34 +497,34 @@ export default function UserHomePanel({ ctx }) {
             <div className="flex h-[56px] w-full items-center justify-center">
               <a
                 href={quickLinkBanners[0].linkValue}
-                target="_blank"
-                rel="noopener noreferrer"
+                target={quickLinkBanners[0].openInNewTab === false ? undefined : '_blank'}
+                rel={quickLinkBanners[0].openInNewTab === false ? undefined : 'noopener noreferrer'}
                 className="inline-flex h-[56px] items-center px-5 py-2 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-orange-500"
                 title={quickLinkBanners[0].title || quickLinkBanners[0].altText || '바로가기'}
               >
-                <img src={quickLinkBanners[0].imageUrl} alt={quickLinkBanners[0].altText || quickLinkBanners[0].title || ''} className="h-10 w-auto max-w-[240px] object-contain" />
+                <img src={quickLinkBanners[0].imageUrl} alt={quickLinkBanners[0].altText || quickLinkBanners[0].title || ''} className="h-10 w-auto max-w-[240px]" style={{ objectFit: quickLinkBanners[0].imageFit === 'cover' ? 'cover' : 'contain' }} />
               </a>
             </div>
           ) : (
             <div className="home-quick-ticker-viewport h-[56px]">
               <div className="home-quick-ticker-track home-quick-ticker-animate h-[56px]">
-                {[0, 1].map((groupIndex) => (
+                {[0, 1, 2, 3].map((groupIndex) => (
                   <div
                     key={`quick-group-${groupIndex}`}
                     className="home-quick-ticker-group h-[56px]"
-                    aria-hidden={groupIndex === 1 ? 'true' : undefined}
+                    aria-hidden={groupIndex > 0 ? 'true' : undefined}
                   >
                     {quickLinkBanners.map((banner) => (
                       <a
                         key={`${banner.id}-${groupIndex}`}
                         href={banner.linkValue}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        tabIndex={groupIndex === 1 ? -1 : undefined}
+                        target={banner.openInNewTab === false ? undefined : '_blank'}
+                        rel={banner.openInNewTab === false ? undefined : 'noopener noreferrer'}
+                        tabIndex={groupIndex > 0 ? -1 : undefined}
                         className="inline-flex h-[56px] shrink-0 items-center px-5 py-2 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-orange-500"
                         title={banner.title || banner.altText || '바로가기'}
                       >
-                        <img src={banner.imageUrl} alt={groupIndex === 1 ? '' : banner.altText || banner.title || ''} className="h-10 w-auto max-w-[240px] object-contain" />
+                        <img src={banner.imageUrl} alt={groupIndex > 0 ? '' : banner.altText || banner.title || ''} className="h-10 w-auto max-w-[240px]" style={{ objectFit: banner.imageFit === 'cover' ? 'cover' : 'contain' }} />
                       </a>
                     ))}
                   </div>
