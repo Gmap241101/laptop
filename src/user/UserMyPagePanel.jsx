@@ -1,5 +1,5 @@
 import DomesticPhoneInput from '../components/DomesticPhoneInput.jsx';
-import { normalizeMemberName } from '../utils/memberPolicy.js';
+import { sanitizeMemberNameInput } from '../utils/memberPolicy.js';
 
 export default function UserMyPagePanel({ ctx }) {
   const {
@@ -275,7 +275,7 @@ export default function UserMyPagePanel({ ctx }) {
                                   onChange={(value) =>
                                     setUserProfileForm({
                                       ...userProfileForm,
-                                      name: normalizeMemberName(value).slice(0, 30),
+                                      name: sanitizeMemberNameInput(value).slice(0, 30),
                                     })
                                   }
                                   placeholder="공백 없이 성명을 입력하세요"

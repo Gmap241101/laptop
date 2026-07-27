@@ -40,6 +40,9 @@ const KOREAN_PUBLIC_SUFFIXES = new Set([
 const normalizeUnicode = (value) =>
   String(value || '').normalize('NFKC');
 
+export const sanitizeMemberNameInput = (value) =>
+  String(value || '').replace(/\s+/g, '');
+
 export const normalizeMemberName = (value) =>
   normalizeUnicode(value).replace(/\s+/g, '').trim();
 

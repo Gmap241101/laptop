@@ -1,0 +1,40 @@
+회원 성명 한글 IME 입력 오류 수정 검증 보고서
+========================================
+
+1. 기준본
+- user_home_status_layout_restore_deployment_package.zip
+
+2. 원인
+- 성명 입력의 onChange 이벤트마다 normalizeMemberName()을 실행함.
+- normalizeMemberName() 내부의 Unicode NFKC 정규화가 한글 IME 조합 중간값을 변환함.
+  예: ㄱ(U+3131) -> ᄀ(U+1100), ㄱㅣ -> 기, ㄱㅣㅁ -> 기ᄆ
+- 변환된 값을 controlled input에 즉시 다시 주입하면서 IME 조합 상태와 커서 위치가 깨져
+  자모 분리, 앞 글자 덮어쓰기, 4글자 이상 이름의 중간 글자 유실이 발생함.
+
+3. 수정 원칙
+- 입력 중: sanitizeMemberNameInput()으로 공백만 제거하고 한글 조합 문자열은 그대로 유지함.
+- 제출/저장 시: 기존 normalizeMemberName()과 isValidMemberName()을 그대로 사용함.
+- 따라서 기존 정책(한글/영문 2~30자, 공백 제거, 최종 Unicode 정규화)은 유지됨.
+
+4. 수정 파일
+- src/utils/memberPolicy.js
+- src/user/UserAuthPanel.jsx
+- src/user/UserMyPagePanel.jsx
+
+5. 적용 범위
+- 회원가입 성명 입력
+- 이메일 찾기 성명 입력
+- 마이페이지 성명 수정
+
+6. 검증 결과
+- 변경 3개 파일 TypeScript/JSX 구문 분석: 통과
+- 한글 IME 중간값 ㄱ, ㄱㅣ, 김유ㅌ 보존: 통과
+- 김유태 입력 보존: 통과
+- 김태평양 등 4글자 이상 입력 보존: 통과
+- 한글/영문 공백 제거: 통과
+- 최종 이름 정규화 및 유효성 검증: 통과
+- 입력 단계에서 normalizeMemberName(value)를 직접 호출하는 잔여 코드: 없음
+
+7. 비고
+- 기준 배포 패키지에는 package.json과 설치 의존성이 포함되어 있지 않아 전체 Vite 빌드는 수행하지 않음.
+- 대신 수정 파일의 JSX/JavaScript 구문 검사와 이름 처리 함수의 대상 동작 검증을 수행함.
