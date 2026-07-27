@@ -1,3 +1,47 @@
+관리자 로그인 대시보드 고정·휴일 달력 기본/표시 개선 검증 보고
+
+기준본
+- member_policy_toggle_restore_fix_deployment_package.zip
+
+변경 파일
+- src/App.jsx
+- src/admin/AdminHolidayManagementPanel.jsx
+- DEPLOYMENT_NOTES.txt
+- VALIDATION_REPORT.txt
+
+원인 확인
+- 관리자 로그인 성공 처리에는 setAdminTab('dashboard')가 이미 있었지만, adminAccounts 실시간 구독이 로그인 직후 일시적으로 빈 배열을 반환하면 별도 useEffect가 adminAccounts 탭으로 다시 덮어쓸 수 있었습니다.
+- 휴일 조회 화면은 localStorage 값이 calendar일 때만 달력으로 시작하고 나머지는 list로 시작하여 목록 화면이 사실상 기본값이었습니다.
+- 달력 날짜가 absolute로 분리되고 휴일 사유는 고정 pt-7 여백으로 배치되어 셀 높이에 따라 휴일 내용이 날짜와 떨어져 보였습니다.
+- 오늘 날짜는 흰색 배경과 검은색 2px ring으로 표시되어 달력의 기존 색상 체계와 시각적으로 충돌했습니다.
+
+수정 확인
+- adminAccounts 빈 배열에 따른 관리자 ID 관리 강제 이동 effect 제거
+- 관리자 로그인 성공 시 dashboard 지정 유지
+- 휴일 조회 초기값 calendar 적용
+- 휴일 관리 탭 재진입 시 calendar로 초기화
+- 휴일 조회 모드 localStorage 의존 제거
+- 날짜와 휴일 사유를 동일한 일반 문서 흐름으로 배치
+- 날짜와 휴일 사유 사이 mt-2 간격 적용
+- 동일 날짜 사유 2개 세로 연속 표시 유지
+- 오늘 날짜 bg-yellow-100 + border-orange-400 적용
+- 평일·토요일·일요일/휴일 날짜 글자색 분기 유지
+
+정적 검증
+- JavaScript·JSX 43개 파일 TypeScript transpile 구문 검사 통과
+- 전체 상대 import 경로 검사 통과
+- setAdminTab('adminAccounts') 자동 이동 호출이 제거된 것을 확인
+- holidayManagementView 초기값이 calendar인 것을 확인
+- 기존 검은 ring 클래스가 제거된 것을 확인
+- Firestore Rules는 기준본과 SHA-256 동일
+- 기준본 대비 실제 기능 변경 파일은 App.jsx와 AdminHolidayManagementPanel.jsx 2개로 제한
+
+환경상 실행하지 못한 검증
+- 기준 패키지에 package.json과 node_modules가 없어 npm run build를 실행하지 못했습니다.
+- 실제 Firebase Auth·Firestore 실시간 구독 순서와 브라우저 렌더링은 운영 반영 전 로컬 프로젝트에서 최종 확인해야 합니다.
+
+--- 이전 검증 보고 ---
+
 회원가입 정책 토글 표시·명부 불일치 계정 자동 복원 검증 보고
 
 기준본

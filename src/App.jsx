@@ -2940,26 +2940,13 @@ function App() {
   const [holidayManagementMonth, setHolidayManagementMonth] = useState(
     getKoreaNow().getUTCMonth() + 1
   );
-  const [holidayManagementView, setHolidayManagementView] = useState(() => {
-    try {
-      return window.localStorage.getItem('holidayManagementView') === 'calendar'
-        ? 'calendar'
-        : 'list';
-    } catch (error) {
-      return 'list';
-    }
-  });
+  const [holidayManagementView, setHolidayManagementView] = useState('calendar');
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        'holidayManagementView',
-        holidayManagementView
-      );
-    } catch (error) {
-      // 브라우저 저장소를 사용할 수 없는 환경에서는 현재 세션 상태만 유지합니다.
+    if (adminTab === 'holidaySettings') {
+      setHolidayManagementView('calendar');
     }
-  }, [holidayManagementView]);
+  }, [adminTab]);
 
   const holidaySettingsDirty = useMemo(
     () =>
@@ -4779,28 +4766,6 @@ function App() {
       setAdminAccountPage(1);
     }
   }, [adminTab]);
-
-  useEffect(() => {
-    if (
-      view === 'admin' &&
-      authenticatedAdminId &&
-      firebaseReady &&
-      adminAccountsReady &&
-      !adminAccountsLoadErrorMessage &&
-      (adminAccounts || []).length === 0 &&
-      (legacyAdminAccounts || []).length === 0
-    ) {
-      setAdminTab('adminAccounts');
-    }
-  }, [
-    view,
-    authenticatedAdminId,
-    firebaseReady,
-    adminAccountsReady,
-    adminAccountsLoadErrorMessage,
-    adminAccounts,
-    legacyAdminAccounts,
-  ]);
 
   useEffect(() => {
     if (!authenticatedAdminId) return;
