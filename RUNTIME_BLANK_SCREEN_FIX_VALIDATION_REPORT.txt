@@ -1,0 +1,27 @@
+빈 화면 런타임 오류 수정 검증 보고서
+====================================
+
+기준본
+- firestore_read_optimization_all_steps_deployment_package.zip
+
+원인
+- src/App.jsx의 회원 계정 상태 건수 동기화 useEffect가 const isAdminAuthenticated 선언보다 먼저 위치함.
+- useEffect의 의존성 배열을 컴포넌트 렌더링 중 평가할 때 JavaScript TDZ가 발생함.
+- 예상 브라우저 오류: ReferenceError: Cannot access 'isAdminAuthenticated' before initialization
+- 컴포넌트 첫 렌더링이 중단되므로 화면 전체가 빈 화면으로 표시됨.
+
+수정
+- 해당 useEffect 전체를 const isAdminAuthenticated 선언 직후로 이동함.
+- Effect의 조건, 상태 변경, 의존성 배열은 변경하지 않음.
+- Firestore 읽기 최적화 로직과 화면 기능은 그대로 유지함.
+
+검증
+- JS/JSX 44개 TypeScript transpile 구문 검사: 통과
+- TS2448 선언 전 참조 검사: 0건
+- TS2454 초기화 전 사용 검사: 0건
+- TS2304 미정의 이름 검사: 0건
+- firestore.indexes.json JSON 검사: 통과
+- 전체 ZIP 압축 무결성 검사: 통과
+
+제약
+- 기준 배포 패키지에 package.json과 node_modules가 없어 실제 Vite production build는 수행하지 못함.

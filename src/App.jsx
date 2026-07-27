@@ -5101,39 +5101,6 @@ function App() {
   ]);
 
 
-  useEffect(() => {
-    if (
-      isAdminAuthenticated &&
-      view === 'admin' &&
-      adminTab === 'memberAccounts' &&
-      adminUserAccountStatusFilter !== 'all' &&
-      !String(debouncedAdminUserAccountQuery || '').trim()
-    ) {
-      const statusCountKeyByValue = {
-        [USER_PROFILE_STATUS.PENDING]: 'pending',
-        [USER_PROFILE_STATUS.ACTIVE]: 'active',
-        [USER_PROFILE_STATUS.PROFILE_REQUIRED]: 'profileRequired',
-        [USER_PROFILE_STATUS.BLOCKED]: 'blocked',
-        [USER_PROFILE_STATUS.RETIRED]: 'retired',
-      };
-      const countKey = statusCountKeyByValue[adminUserAccountStatusFilter];
-
-      setAdminUserAccountTotalCount(
-        countKey
-          ? Number(adminUserAccountStatusCountsRemote[countKey]) || 0
-          : 0
-      );
-    }
-  }, [
-    isAdminAuthenticated,
-    view,
-    adminTab,
-    adminUserAccountStatusFilter,
-    debouncedAdminUserAccountQuery,
-    adminUserAccountStatusCountsRemote,
-  ]);
-
-
   // 첫 마운트 시 새 대여자 추가용 팀 초기화
   useEffect(() => {
     if (data.teams.length > 0 && !newBorrowerTeam) {
@@ -6644,6 +6611,39 @@ function App() {
     Boolean(authenticatedAdminAccount) &&
     !adminLogoutInProgress &&
     hasMatchingAdminFirebaseAuth;
+
+
+  useEffect(() => {
+    if (
+      isAdminAuthenticated &&
+      view === 'admin' &&
+      adminTab === 'memberAccounts' &&
+      adminUserAccountStatusFilter !== 'all' &&
+      !String(debouncedAdminUserAccountQuery || '').trim()
+    ) {
+      const statusCountKeyByValue = {
+        [USER_PROFILE_STATUS.PENDING]: 'pending',
+        [USER_PROFILE_STATUS.ACTIVE]: 'active',
+        [USER_PROFILE_STATUS.PROFILE_REQUIRED]: 'profileRequired',
+        [USER_PROFILE_STATUS.BLOCKED]: 'blocked',
+        [USER_PROFILE_STATUS.RETIRED]: 'retired',
+      };
+      const countKey = statusCountKeyByValue[adminUserAccountStatusFilter];
+
+      setAdminUserAccountTotalCount(
+        countKey
+          ? Number(adminUserAccountStatusCountsRemote[countKey]) || 0
+          : 0
+      );
+    }
+  }, [
+    isAdminAuthenticated,
+    view,
+    adminTab,
+    adminUserAccountStatusFilter,
+    debouncedAdminUserAccountQuery,
+    adminUserAccountStatusCountsRemote,
+  ]);
 
   const isSplitStorageReady =
     splitStorageVersion >= SPLIT_STORAGE_VERSION;
