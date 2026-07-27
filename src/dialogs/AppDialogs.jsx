@@ -526,7 +526,7 @@ export default function AppDialogs({ ctx }) {
                         {extensionPreview.extensionDueDate}
                       </div>
                       <div className="text-xs">
-                        연장 일수: {extensionPreview.extensionBusinessDays}영업일
+                        연장 일수: {extensionPreview.extensionDays}일(달력 기준)
                       </div>
                     </div>
 

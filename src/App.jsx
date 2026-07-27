@@ -31,10 +31,6 @@ import {
 } from 'firebase/firestore';
 import {
   Laptop,
-  Boxes,
-  PackageCheck,
-  CalendarClock,
-  PackageOpen,
   LayoutDashboard,
   Users,
   ClipboardList,
@@ -68,9 +64,9 @@ import {
   Input,
   LockIcon,
   Select,
-  StatCard,
 } from './components/CommonUI.jsx';
 
+import RentalStatusBoard from './components/RentalStatusBoard.jsx';
 import UserWorkspace from './user/UserWorkspace.jsx';
 import UserPopupLayer from './user/UserPopupLayer.jsx';
 import UserFooter from './user/UserFooter.jsx';
@@ -529,7 +525,7 @@ const DEFAULT_RENTAL_EXTENSION_ENABLED = false;
 const DEFAULT_RENTAL_EXTENSION_APPROVAL_MODE =
   RENTAL_EXTENSION_APPROVAL_MODE.MANUAL;
 const DEFAULT_RENTAL_EXTENSION_MAX_COUNT = 1;
-const DEFAULT_RENTAL_EXTENSION_BUSINESS_DAYS = 5;
+const DEFAULT_RENTAL_EXTENSION_DAYS = 5;
 const DEFAULT_RENTAL_EXTENSION_REQUEST_WAIT_DAYS = 7;
 
 const HOLIDAY_TYPE_LABEL = {
@@ -882,17 +878,18 @@ const getSafeRentalExtensionMaxCount = (settings = {}) => {
     : DEFAULT_RENTAL_EXTENSION_MAX_COUNT;
 };
 
-const getSafeRentalExtensionBusinessDays = (settings = {}) => {
+const getSafeRentalExtensionDays = (settings = {}) => {
   const parsedValue = Math.trunc(
     Number(
-      settings.rentalExtensionBusinessDays ??
-        DEFAULT_RENTAL_EXTENSION_BUSINESS_DAYS
+      settings.rentalExtensionDays ??
+        settings.rentalExtensionBusinessDays ??
+        DEFAULT_RENTAL_EXTENSION_DAYS
     )
   );
 
   return Number.isFinite(parsedValue) && parsedValue >= 1
     ? parsedValue
-    : DEFAULT_RENTAL_EXTENSION_BUSINESS_DAYS;
+    : DEFAULT_RENTAL_EXTENSION_DAYS;
 };
 
 const getSafeRentalExtensionRequestWaitDays = (settings = {}) => {
@@ -922,8 +919,8 @@ const normalizeRentalExtensionSettings = (settings = {}) => ({
     getRentalExtensionApprovalMode(settings),
   rentalExtensionMaxCount:
     getSafeRentalExtensionMaxCount(settings),
-  rentalExtensionBusinessDays:
-    getSafeRentalExtensionBusinessDays(settings),
+  rentalExtensionDays:
+    getSafeRentalExtensionDays(settings),
   rentalExtensionRequestWaitDays:
     getSafeRentalExtensionRequestWaitDays(settings),
 });
@@ -946,7 +943,7 @@ const RENTAL_POLICY_SETTING_KEYS = [
   'rentalExtensionEnabled',
   'rentalExtensionApprovalMode',
   'rentalExtensionMaxCount',
-  'rentalExtensionBusinessDays',
+  'rentalExtensionDays',
   'rentalExtensionRequestWaitDays',
   'overdueRentalBlockEnabled',
   'postOverduePenaltyEnabled',
@@ -954,36 +951,6 @@ const RENTAL_POLICY_SETTING_KEYS = [
   'overdueFixedDaysPerAsset',
   'overdueDayMultiplier',
 ];
-
-const addBusinessDaysInclusive = (
-  startDate,
-  businessDayCount,
-  settings = {}
-) => {
-  if (!startDate) return '';
-
-  const safeBusinessDayCount = Math.max(
-    1,
-    Math.trunc(Number(businessDayCount) || 1)
-  );
-
-  let candidateDate = startDate;
-  let countedBusinessDays = 0;
-
-  for (let i = 0; i < 3700; i += 1) {
-    if (isBusinessDay(candidateDate, settings)) {
-      countedBusinessDays += 1;
-
-      if (countedBusinessDays >= safeBusinessDayCount) {
-        return candidateDate;
-      }
-    }
-
-    candidateDate = addDaysFrom(candidateDate, 1);
-  }
-
-  return candidateDate;
-};
 
 const isRentalDueBusinessDay = (dateStr, settings = {}) =>
   isBusinessDay(dateStr, settings);
@@ -1010,7 +977,7 @@ const getMaxRentalDueDate = (startDate, settings = {}) => {
 
   const calendarDueDate = addDaysFrom(
     startDate,
-    getSafeMaxRentalDays(settings) - 1
+    getSafeMaxRentalDays(settings)
   );
 
   return getAdjustedRentalDueDate(calendarDueDate, settings);
@@ -1019,24 +986,24 @@ const getMaxRentalDueDate = (startDate, settings = {}) => {
 const getRentalExtensionPeriod = (
   request = {},
   settings = {},
-  businessDaysOverride
+  daysOverride
 ) => {
-  const extensionBusinessDays =
-    businessDaysOverride === undefined
-      ? getSafeRentalExtensionBusinessDays(settings)
-      : Math.max(1, Math.trunc(Number(businessDaysOverride) || 1));
+  const extensionDays =
+    daysOverride === undefined
+      ? getSafeRentalExtensionDays(settings)
+      : Math.max(1, Math.trunc(Number(daysOverride) || 1));
 
-  const extensionStartDate = getAdjustedRentalDueDate(
-    addDaysFrom(request.dueDate, 1),
-    settings
+  const extensionStartDate = addDaysFrom(request.dueDate, 1);
+  const calendarExtensionDueDate = addDaysFrom(
+    request.dueDate,
+    extensionDays
   );
 
   return {
-    extensionBusinessDays,
+    extensionDays,
     extensionStartDate,
-    extensionDueDate: addBusinessDaysInclusive(
-      extensionStartDate,
-      extensionBusinessDays,
+    extensionDueDate: getAdjustedRentalDueDate(
+      calendarExtensionDueDate,
       settings
     ),
   };
@@ -1319,7 +1286,7 @@ const initialData = {
     rentalExtensionEnabled: DEFAULT_RENTAL_EXTENSION_ENABLED,
     rentalExtensionApprovalMode: DEFAULT_RENTAL_EXTENSION_APPROVAL_MODE,
     rentalExtensionMaxCount: DEFAULT_RENTAL_EXTENSION_MAX_COUNT,
-    rentalExtensionBusinessDays: DEFAULT_RENTAL_EXTENSION_BUSINESS_DAYS,
+    rentalExtensionDays: DEFAULT_RENTAL_EXTENSION_DAYS,
     rentalExtensionRequestWaitDays: DEFAULT_RENTAL_EXTENSION_REQUEST_WAIT_DAYS,
     overdueRentalBlockEnabled: DEFAULT_OVERDUE_RENTAL_BLOCK_ENABLED,
     postOverduePenaltyEnabled: DEFAULT_POST_OVERDUE_PENALTY_ENABLED,
@@ -3050,7 +3017,7 @@ function App() {
     [
       'maxRentalDays',
       'rentalExtensionMaxCount',
-      'rentalExtensionBusinessDays',
+      'rentalExtensionDays',
       'rentalExtensionRequestWaitDays',
       'overdueFixedDaysPerAsset',
       'overdueDayMultiplier',
@@ -11679,12 +11646,12 @@ function App() {
       tempSettings.rentalExtensionEnabled &&
       (
         Number(tempSettings.rentalExtensionMaxCount) < 1 ||
-        Number(tempSettings.rentalExtensionBusinessDays) < 1 ||
+        Number(tempSettings.rentalExtensionDays) < 1 ||
         Number(tempSettings.rentalExtensionRequestWaitDays) < 0
       )
     ) {
       triggerToast(
-        '대여 연장 횟수와 회당 연장 영업일은 1 이상, 연장 신청 대기일은 0 이상으로 입력해 주세요.',
+        '대여 연장 횟수와 회당 연장 기간은 1 이상, 연장 신청 대기일은 0 이상으로 입력해 주세요.',
         'error'
       );
       return false;
@@ -12399,7 +12366,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
           if (nextDueDate > maxDueDate) {
             triggerToast(
-              `대여 가능 기간은 최대 ${maxRentalDays}일이며 달력 기준으로 계산됩니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxDueDate)}까지 선택할 수 있습니다.`,
+              `대여 가능 기간은 대여 시작일 다음 날부터 최대 ${maxRentalDays}일이며 달력 기준으로 계산됩니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxDueDate)}까지 선택할 수 있습니다.`,
               'error'
             );
 
@@ -12457,7 +12424,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
           if (nextDueDate > maxDueDate) {
             triggerToast(
-              `대여 가능 기간은 최대 ${maxRentalDays}일이며 달력 기준으로 계산됩니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxDueDate)}까지 선택할 수 있습니다.`,
+              `대여 가능 기간은 대여 시작일 다음 날부터 최대 ${maxRentalDays}일이며 달력 기준으로 계산됩니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxDueDate)}까지 선택할 수 있습니다.`,
               'error'
             );
 
@@ -12859,7 +12826,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
     if (form.dueDate > maxAllowedDate) {
       triggerToast(
-        `대여 가능 기간은 최대 ${maxRentalDays}일이며 달력 기준으로 계산됩니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxAllowedDate)}까지 선택할 수 있습니다.`,
+        `대여 가능 기간은 대여 시작일 다음 날부터 최대 ${maxRentalDays}일이며 달력 기준으로 계산됩니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxAllowedDate)}까지 선택할 수 있습니다.`,
         'error'
       );
       return;
@@ -13313,8 +13280,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             purpose: latestRequest.purpose || '',
             approvalMode,
             extensionNumber,
-            extensionBusinessDays:
-              extensionPeriod.extensionBusinessDays,
+            extensionDays:
+              extensionPeriod.extensionDays,
             requestedAt: serverTimestamp(),
             reviewedAt: null,
             reviewedByUid: '',
@@ -13389,8 +13356,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                 extensionPeriod.extensionStartDate,
               newDueDate:
                 extensionPeriod.extensionDueDate,
-              extensionBusinessDays:
-                extensionPeriod.extensionBusinessDays,
+              extensionDays:
+                extensionPeriod.extensionDays,
               requestedAt: approvedAt,
               approvedAt,
               approvedDate: approvalDate,
@@ -13855,7 +13822,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
       if (nextDueDate > maxAllowedDate) {
         triggerToast(
-          `최장 허용 대여 기간(${getSafeMaxRentalDays(data.settings)}일, 달력 기준)을 초과할 수 없습니다.`,
+          `최장 허용 대여 기간은 대여 시작일 다음 날부터 ${getSafeMaxRentalDays(data.settings)}일(달력 기준)입니다.`,
           'error'
         );
         return;
@@ -14494,7 +14461,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                 getRentalExtensionPeriod(
                   latestRequest,
                   latestSettings,
-                  userActionRequest.extensionBusinessDays
+                  userActionRequest.extensionDays ??
+                    userActionRequest.extensionBusinessDays
                 );
 
               const blockingRequest =
@@ -14536,8 +14504,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                   extensionPeriod.extensionStartDate,
                 dueDate:
                   extensionPeriod.extensionDueDate,
-                extensionBusinessDays:
-                  extensionPeriod.extensionBusinessDays,
+                extensionDays:
+                  extensionPeriod.extensionDays,
                 approvalDate,
                 nextExtensionRequestDate,
               };
@@ -14556,8 +14524,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                     extensionPeriod.extensionStartDate,
                   newDueDate:
                     extensionPeriod.extensionDueDate,
-                  extensionBusinessDays:
-                    extensionPeriod.extensionBusinessDays,
+                  extensionDays:
+                    extensionPeriod.extensionDays,
                   requestedAt:
                     userActionRequest.requestedAt ||
                     approvedAt,
@@ -20170,7 +20138,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     getRequestExtensionCount,
     getRentalExtensionApprovalMode,
     getRentalExtensionPeriod,
-    getSafeRentalExtensionBusinessDays,
+    getSafeRentalExtensionDays,
     getSafeRentalExtensionMaxCount,
     getSafeMaxRentalDays,
     getUserAccountStatusClassName,
@@ -20823,37 +20791,10 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         
         {/* --- 실시간 주요 대여 현황 보드 --- */}
         {shouldShowStats && (
-          <section className="mb-6 grid grid-cols-3 gap-2 sm:mb-8 sm:gap-4 md:grid-cols-3 xl:grid-cols-6">
-            <StatCard
-              icon={view === 'admin' && adminTab === 'dashboard' ? Boxes : Laptop}
-              label="보유 자산"
-              value={stats.total}
-              filled={view === 'admin' && adminTab === 'dashboard'}
-            />
-            <StatCard
-              icon={view === 'admin' && adminTab === 'dashboard' ? PackageCheck : CheckCircle2}
-              label="대여 가능"
-              value={stats.available}
-              tone="green"
-              filled={view === 'admin' && adminTab === 'dashboard'}
-            />
-            <StatCard icon={Clock} label="승인 대기중" value={stats.requested} tone="amber" />
-            <StatCard
-              icon={view === 'admin' && adminTab === 'dashboard' ? CalendarClock : ShieldCheck}
-              label="예약중"
-              value={stats.reserved}
-              tone="sky"
-              filled={view === 'admin' && adminTab === 'dashboard'}
-            />
-            <StatCard
-              icon={view === 'admin' && adminTab === 'dashboard' ? PackageOpen : Laptop}
-              label="대여중"
-              value={stats.approved}
-              tone="blue"
-              filled={view === 'admin' && adminTab === 'dashboard'}
-            />
-            <StatCard icon={XCircle} label="반납 지연중" value={stats.overdue} tone="rose" />
-          </section>
+          <RentalStatusBoard
+            stats={stats}
+            className="mb-6 sm:mb-8"
+          />
         )}
 
         {view === 'user' ? (

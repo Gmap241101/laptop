@@ -372,7 +372,7 @@ export default function AdminHolidayManagementPanel({ ctx }) {
     <div className="space-y-8">
       <AdminPageHeader
         title="휴일 관리"
-        description="법정·임시공휴일을 자동으로 불러오거나 회사휴일과 수동 휴일을 등록합니다. 등록된 휴일은 대여 시작일, 반납 예정일 및 연장 영업일 계산에 반영됩니다."
+        description="법정·임시공휴일을 자동으로 불러오거나 회사휴일과 수동 휴일을 등록합니다. 등록된 휴일은 대여 시작일과 대여·연장 최종 반납 예정일의 다음 영업일 조정에 반영됩니다."
         badge={
           holidaySettingsDirty ? (
             <span className="w-fit rounded-full border border-amber-200/70 bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-700">

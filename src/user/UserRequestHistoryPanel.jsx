@@ -26,7 +26,8 @@ export default function UserRequestHistoryPanel({ ctx }) {
     getExtensionRequestAvailableDate,
     getRequestDisplayStatus,
     getRequestExtensionCount,
-    getSafeRentalExtensionBusinessDays,
+    getRentalExtensionPeriod,
+    getSafeRentalExtensionDays,
     getSafeRentalExtensionMaxCount,
     getUserRequestActionLabel,
     getUserRequestReviewStatusLabel,
@@ -196,6 +197,20 @@ export default function UserRequestHistoryPanel({ ctx }) {
     const action = request.userActionRequest;
     if (!action) return null;
 
+    const pendingExtensionPeriod =
+      action.type === USER_REQUEST_ACTION.EXTEND &&
+      action.status === USER_REQUEST_REVIEW_STATUS.PENDING
+        ? getRentalExtensionPeriod(
+            request,
+            data.settings,
+            action.extensionDays ?? action.extensionBusinessDays
+          )
+        : null;
+    const displayedExtensionStartDate =
+      pendingExtensionPeriod?.extensionStartDate || action.extensionStartDate;
+    const displayedExtensionDueDate =
+      pendingExtensionPeriod?.extensionDueDate || action.dueDate;
+
     return (
       <div
         className={`rounded-xl border px-4 py-3 text-xs leading-5 ${
@@ -214,7 +229,7 @@ export default function UserRequestHistoryPanel({ ctx }) {
         {action.type === USER_REQUEST_ACTION.EXTEND && (
           <div className="mt-1 space-y-0.5">
             <div>
-              연장 기간: {action.extensionStartDate || '-'} ~ {action.dueDate || '-'}
+              연장 기간: {displayedExtensionStartDate || '-'} ~ {displayedExtensionDueDate || '-'}
             </div>
             <div>
               연장 차수: {action.extensionNumber || '-'}회차 · 처리 방식:{' '}
@@ -523,7 +538,7 @@ export default function UserRequestHistoryPanel({ ctx }) {
                         <div className="font-semibold text-slate-800">
                           연장 사용 {getRequestExtensionCount(selectedRequest)} /{' '}
                           {getSafeRentalExtensionMaxCount(data.settings)}회 · 1회{' '}
-                          {getSafeRentalExtensionBusinessDays(data.settings)}영업일
+                          {getSafeRentalExtensionDays(data.settings)}일(달력 기준)
                         </div>
                         <div className="mt-0.5">
                           {currentUserRentalRestrictionStatus?.blocked

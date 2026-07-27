@@ -1,3 +1,45 @@
+대여 당일 제외·연장 달력일 전환·대여 현황 공통화 검증 보고
+
+기준본
+- holiday_content_top_alignment_fix_deployment_package.zip
+
+핵심 구현 확인
+- getMaxRentalDueDate가 시작일 + 최대 대여 일수로 계산되도록 변경
+- 대여 시작일 당일 제외 안내와 최대 날짜 검증 문구 통일
+- 연장 시작일은 직전 반납 예정일 + 1일로 고정
+- 연장 마지막 날은 직전 반납 예정일 + 연장 일수로 달력 계산
+- 연장 마지막 날에만 휴무일 다음 영업일 조정 적용
+- 영업일 누적 함수 addBusinessDaysInclusive 제거
+- 자동 승인·관리자 승인·사용자 미리보기·승인 대기 표시에서 공통 연장 함수 사용
+- 신규 필드 rentalExtensionDays / extensionDays 적용
+- 구버전 rentalExtensionBusinessDays / extensionBusinessDays 읽기 fallback 유지
+- 공통 RentalStatusBoard.jsx 신규 추가
+- 관리자 상단과 사용자 대여 신청 상단의 조건부 아이콘·filled 분기 제거
+- 사용자 홈 오늘의 대여 현황을 동일 공통 카드로 교체
+- 승인 대기중 ClipboardCheck 아이콘 적용
+- 모든 현황 카드 흰색, 상태별 아이콘 영역 색상 유지
+
+계산 검증
+- 2026-07-28 + 14일 = 2026-08-11 확인
+- 직전 반납일 2026-08-10, 연장 5일의 연장 시작일 = 2026-08-11 확인
+- 달력상 연장 마지막 날 2026-08-15가 휴무일일 때 다음 영업일 2026-08-17로 조정되는 예제 확인
+
+정적 검증
+- JavaScript·JSX 44개 파일 TypeScript transpile 구문 검사 통과
+- 전체 상대 import 경로 검사 통과
+- maxRentalDays - 1 계산 잔존 여부 없음
+- addBusinessDaysInclusive 잔존 여부 없음
+- 기존 영업일 연장 필드는 호환 fallback 외 신규 저장 경로에 사용되지 않음
+- RentalStatusBoard가 App.jsx와 UserHomePanel.jsx 양쪽에서 사용되는 것을 확인
+- StatCard filled 호출 잔존 여부 없음
+- rules/firestore.rules는 기준본과 SHA-256 동일
+
+환경상 실행하지 못한 검증
+- 기준 패키지에 package.json과 node_modules가 없어 npm run build를 실행하지 못했습니다.
+- 실제 Firebase 트랜잭션, 예약 충돌 데이터와 브라우저 렌더링은 운영 반영 전 로컬 프로젝트에서 최종 확인해야 합니다.
+
+--- 이전 검증 보고 ---
+
 관리자 로그인 대시보드 고정·휴일 달력 기본/표시 개선 검증 보고
 
 기준본

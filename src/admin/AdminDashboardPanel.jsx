@@ -926,7 +926,7 @@ export default function AdminDashboardPanel({ ctx }) {
             <dl className="mt-4 space-y-2 text-[11px]">
               <div className="flex items-center justify-between gap-3">
                 <dt className="text-slate-500">최대 대여 기간</dt>
-                <dd className="font-bold text-slate-800">{maxRentalDays}일</dd>
+                <dd className="font-bold text-slate-800">{maxRentalDays}일 · 대여 당일 제외</dd>
               </div>
               <div className="flex items-center justify-between gap-3">
                 <dt className="text-slate-500">업무 종료 시간</dt>

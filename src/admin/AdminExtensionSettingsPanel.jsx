@@ -125,7 +125,7 @@ export default function AdminExtensionSettingsPanel({ ctx }) {
               </span>
             </div>
             <p className="mt-2 text-[11px] leading-5 text-slate-500">
-              대여 시작일을 1일차로 포함합니다. 계산된 마지막 날이 설정된 휴무 요일 또는 등록 휴일이면 다음 영업일로 자동 조정됩니다.
+              대여 시작일 당일은 기간 계산에서 제외하고 다음 날부터 계산합니다. 계산된 마지막 날이 설정된 휴무 요일 또는 등록 휴일이면 다음 영업일로 자동 조정됩니다.
             </p>
           </label>
         </div>
@@ -250,7 +250,7 @@ export default function AdminExtensionSettingsPanel({ ctx }) {
           </div>
 
           <p className="text-[11px] leading-5 text-slate-500">
-            휴무로 설정된 요일과 활성화된 등록 휴일은 대여 시작일, 반납 예정일 및 연장 영업일 계산에 공통 적용됩니다. 토요일 또는 일요일을 영업일로 운영하려면 해당 항목을 해제하세요.
+            휴무로 설정된 요일과 활성화된 등록 휴일은 대여 시작일과 최종 반납 예정일 조정에 공통 적용됩니다. 대여 및 연장 기간 자체는 달력일로 계산하며, 계산된 마지막 날이 휴무일일 때만 다음 영업일로 조정합니다.
           </p>
         </div>
 
@@ -350,6 +350,10 @@ export default function AdminExtensionSettingsPanel({ ctx }) {
             </div>
           </div>
 
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-800">
+            연장은 직전 반납 예정일 다음 날을 1일 차로 하여 달력일 기준으로 계산합니다. 기간 중 휴일은 일수에 포함하고, 계산된 마지막 날이 휴무일이면 다음 영업일로 자동 조정합니다.
+          </div>
+
           <div className="grid gap-4 sm:grid-cols-3">
             <label className="block">
               <span className="mb-1.5 block text-xs font-semibold text-slate-600">
@@ -384,17 +388,17 @@ export default function AdminExtensionSettingsPanel({ ctx }) {
                   min="1"
                   step="1"
                   disabled={!extensionEnabled}
-                  value={tempSettings.rentalExtensionBusinessDays ?? 5}
+                  value={tempSettings.rentalExtensionDays ?? 5}
                   onChange={(event) =>
                     updateSetting(
-                      'rentalExtensionBusinessDays',
+                      'rentalExtensionDays',
                       Number(event.target.value)
                     )
                   }
                   className="h-10 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none mk-form-border-focus disabled:cursor-not-allowed disabled:bg-slate-100"
                 />
                 <span className="text-xs font-semibold text-slate-500">
-                  영업일
+                  일
                 </span>
               </div>
             </label>

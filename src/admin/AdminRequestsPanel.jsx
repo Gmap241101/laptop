@@ -27,6 +27,7 @@ export default function AdminRequestsPanel({ ctx }) {
     getRequestDisplayStatus,
     getExtensionRequestAvailableDate,
     getRequestExtensionCount,
+    getRentalExtensionPeriod,
     getSafeRentalExtensionMaxCount,
     getUserRequestActionLabel,
     getUserRequestReviewStatusLabel,
@@ -89,6 +90,26 @@ export default function AdminRequestsPanel({ ctx }) {
       formatFirestoreTimestamp(request.createdAt || request.updatedAt) ||
       '-'
     );
+  };
+
+  const getDisplayedExtensionPeriod = (request) => {
+    const action = request.userActionRequest;
+
+    if (
+      action?.type === USER_REQUEST_ACTION.EXTEND &&
+      action?.status === USER_REQUEST_REVIEW_STATUS.PENDING
+    ) {
+      return getRentalExtensionPeriod(
+        request,
+        data.settings,
+        action.extensionDays ?? action.extensionBusinessDays
+      );
+    }
+
+    return {
+      extensionStartDate: action?.extensionStartDate || '',
+      extensionDueDate: action?.dueDate || '',
+    };
   };
 
   const getAdminRequestRemark = (request) => {
@@ -534,9 +555,9 @@ export default function AdminRequestsPanel({ ctx }) {
                                           <div className="space-y-0.5 leading-5">
                                             <div>
                                               연장 기간:{' '}
-                                              {userActionRequest.extensionStartDate || '-'}
+                                              {getDisplayedExtensionPeriod(r).extensionStartDate || '-'}
                                               {' ~ '}
-                                              {userActionRequest.dueDate || '-'}
+                                              {getDisplayedExtensionPeriod(r).extensionDueDate || '-'}
                                             </div>
                                             <div>
                                               연장 차수:{' '}
