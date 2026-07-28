@@ -20,6 +20,7 @@ import {
   DASHBOARD_SUMMARY_DOC_REF,
   PUBLIC_ASSET_CATALOG_DOC_REF,
   RENTAL_ASSETS_COLLECTION_REF,
+  RENTAL_AVAILABILITY_COLLECTION_REF,
   RENTAL_REQUESTS_COLLECTION_REF,
   USER_ACCOUNTS_COLLECTION_REF,
 } from '../firebase.js';
@@ -36,7 +37,7 @@ import {
 } from './publicAssetCatalog.js';
 
 export const ADMIN_DASHBOARD_ACTIVE_REQUEST_LIMIT = 100;
-export const DASHBOARD_SUMMARY_SCHEMA_VERSION = 1;
+export const DASHBOARD_SUMMARY_SCHEMA_VERSION = 2;
 // 대시보드 진입 시에만 오래된 요약을 갱신하며, 열린 화면에서는 주기적으로 폴링하지 않는다.
 export const DASHBOARD_SUMMARY_ENTRY_REFRESH_AGE_MS = 15 * 60 * 1000;
 export const DASHBOARD_SUMMARY_PENDING_ACCOUNT_LIMIT = 12;
@@ -118,15 +119,15 @@ export const refreshDashboardSummaryDocument = async ({ adminUid }) => {
   }
 
   const referenceDate = today();
+  // 통계는 최근 100건 미리보기가 아니라 모든 진행 신청을 기준으로 계산한다.
+  // 상세 목록만 아래에서 최근 100건으로 잘라 요약 문서 크기를 제한한다.
   const activeRequestSource = firestoreQuery(
     RENTAL_REQUESTS_COLLECTION_REF,
     where('status', 'in', [
       STATUS.REQUESTED,
       STATUS.ON_HOLD,
       STATUS.APPROVED,
-    ]),
-    orderBy('createdAt', 'desc'),
-    firestoreLimit(ADMIN_DASHBOARD_ACTIVE_REQUEST_LIMIT)
+    ])
   );
   const pendingAccountSource = firestoreQuery(
     USER_ACCOUNTS_COLLECTION_REF,
@@ -139,38 +140,15 @@ export const refreshDashboardSummaryDocument = async ({ adminUid }) => {
     activeRequestSnapshot,
     pendingAccountSnapshot,
     publicCatalogSnapshot,
-    requestedCountSnapshot,
-    onHoldCountSnapshot,
-    approvedCountSnapshot,
+    rentalAvailabilitySnapshot,
     closedCountSnapshot,
     returnedCountSnapshot,
-    pendingUserActionCountSnapshot,
-    overdueCountSnapshot,
-    dueTodayCountSnapshot,
-    startTodayCountSnapshot,
     pendingAccountCountSnapshot,
   ] = await Promise.all([
     getDocs(activeRequestSource),
     getDocs(pendingAccountSource),
     getDoc(PUBLIC_ASSET_CATALOG_DOC_REF),
-    getCountFromServer(
-      firestoreQuery(
-        RENTAL_REQUESTS_COLLECTION_REF,
-        where('status', '==', STATUS.REQUESTED)
-      )
-    ),
-    getCountFromServer(
-      firestoreQuery(
-        RENTAL_REQUESTS_COLLECTION_REF,
-        where('status', '==', STATUS.ON_HOLD)
-      )
-    ),
-    getCountFromServer(
-      firestoreQuery(
-        RENTAL_REQUESTS_COLLECTION_REF,
-        where('status', '==', STATUS.APPROVED)
-      )
-    ),
+    getDocs(RENTAL_AVAILABILITY_COLLECTION_REF),
     getCountFromServer(
       firestoreQuery(
         RENTAL_REQUESTS_COLLECTION_REF,
@@ -185,49 +163,29 @@ export const refreshDashboardSummaryDocument = async ({ adminUid }) => {
     ),
     getCountFromServer(
       firestoreQuery(
-        RENTAL_REQUESTS_COLLECTION_REF,
-        where(
-          'userActionRequest.status',
-          '==',
-          USER_REQUEST_REVIEW_STATUS.PENDING
-        )
-      )
-    ),
-    getCountFromServer(
-      firestoreQuery(
-        RENTAL_REQUESTS_COLLECTION_REF,
-        where('status', '==', STATUS.APPROVED),
-        where('dueDate', '<', referenceDate)
-      )
-    ),
-    getCountFromServer(
-      firestoreQuery(
-        RENTAL_REQUESTS_COLLECTION_REF,
-        where('status', '==', STATUS.APPROVED),
-        where('dueDate', '==', referenceDate)
-      )
-    ),
-    getCountFromServer(
-      firestoreQuery(
-        RENTAL_REQUESTS_COLLECTION_REF,
-        where('status', '==', STATUS.APPROVED),
-        where('startDate', '==', referenceDate)
-      )
-    ),
-    getCountFromServer(
-      firestoreQuery(
         USER_ACCOUNTS_COLLECTION_REF,
         where('status', '==', USER_PROFILE_STATUS.PENDING)
       )
     ),
   ]);
 
-  const activeRequests = activeRequestSnapshot.docs.map((requestDoc) =>
+  const allActiveRequests = activeRequestSnapshot.docs.map((requestDoc) =>
     toDashboardRequestSummary({
       ...requestDoc.data(),
       id: requestDoc.id,
     })
   );
+  const getRequestSortMillis = (request = {}) =>
+    getFirestoreTimestampMillis(
+      request.createdAt || request.requestedAt || request.updatedAt
+    );
+  const activeRequests = [...allActiveRequests]
+    .sort((first, second) => {
+      const timeDiff = getRequestSortMillis(second) - getRequestSortMillis(first);
+      if (timeDiff) return timeDiff;
+      return String(second.id || '').localeCompare(String(first.id || ''));
+    })
+    .slice(0, ADMIN_DASHBOARD_ACTIVE_REQUEST_LIMIT);
   const pendingAccounts = pendingAccountSnapshot.docs.map((accountDoc) =>
     toDashboardAccountSummary({
       ...accountDoc.data(),
@@ -273,8 +231,14 @@ export const refreshDashboardSummaryDocument = async ({ adminUid }) => {
     );
   }
 
-  const approvedRequests = activeRequests.filter(
+  const approvedRequests = allActiveRequests.filter(
     (request) => request.status === STATUS.APPROVED
+  );
+  const requestedRequests = allActiveRequests.filter(
+    (request) => request.status === STATUS.REQUESTED
+  );
+  const onHoldRequests = allActiveRequests.filter(
+    (request) => request.status === STATUS.ON_HOLD
   );
   const reservedRequests = approvedRequests.filter(
     (request) => Boolean(request.startDate) && request.startDate > referenceDate
@@ -288,8 +252,20 @@ export const refreshDashboardSummaryDocument = async ({ adminUid }) => {
       Boolean(request.dueDate) &&
       request.dueDate < referenceDate
   );
+  const dueTodayRequests = approvedRequests.filter(
+    (request) =>
+      (!request.startDate || request.startDate <= referenceDate) &&
+      request.dueDate === referenceDate
+  );
+  const startTodayRequests = approvedRequests.filter(
+    (request) => request.startDate === referenceDate
+  );
+  const pendingUserActionRequests = allActiveRequests.filter(
+    (request) =>
+      request.userActionRequest?.status === USER_REQUEST_REVIEW_STATUS.PENDING
+  );
   const blockedAssetIds = new Set(
-    activeRequests.map((request) => request.laptopId).filter(Boolean)
+    allActiveRequests.map((request) => request.laptopId).filter(Boolean)
   );
   const unavailableAssetIds = new Set(
     catalogAssets
@@ -300,15 +276,40 @@ export const refreshDashboardSummaryDocument = async ({ adminUid }) => {
   const assetIdSet = new Set(
     catalogAssets.map((asset) => asset.id).filter(Boolean)
   );
+  const activeRequestIdSet = new Set(
+    allActiveRequests.map((request) => request.id).filter(Boolean)
+  );
+  const orphanedAvailabilityRequests = rentalAvailabilitySnapshot.docs.filter(
+    (availabilityDoc) => {
+      const availabilityId = availabilityDoc.data()?.id || availabilityDoc.id;
+      return !activeRequestIdSet.has(availabilityId);
+    }
+  );
   const requestIdentity = (request = {}) =>
     request.requesterUid ||
     request.requesterEmail ||
     `${request.requesterName || request.borrower || ''}|${
       request.requesterTeam || request.team || ''
     }`;
-  const requestedCount = requestedCountSnapshot.data().count;
-  const onHoldCount = onHoldCountSnapshot.data().count;
-  const approvedCount = approvedCountSnapshot.data().count;
+  const requestedCount = requestedRequests.length;
+  const onHoldCount = onHoldRequests.length;
+  const approvedCount = approvedRequests.length;
+  const generatedAtClientMs = Date.now();
+  const getDateDiffDays = (fromDate, toDate) => {
+    if (!fromDate || !toDate) return 0;
+    const fromMillis = new Date(`${fromDate}T00:00:00Z`).getTime();
+    const toMillis = new Date(`${toDate}T00:00:00Z`).getTime();
+    if (!Number.isFinite(fromMillis) || !Number.isFinite(toMillis)) return 0;
+    return Math.max(0, Math.floor((toMillis - fromMillis) / 86400000));
+  };
+  const getWaitingDays = (value) => {
+    const valueMillis = getFirestoreTimestampMillis(value);
+    if (!valueMillis) return 0;
+    return Math.max(
+      0,
+      Math.floor((generatedAtClientMs - valueMillis) / 86400000)
+    );
+  };
   const requestTabCounts = {
     [ADMIN_REQUEST_TAB.PENDING]: requestedCount + onHoldCount,
     [ADMIN_REQUEST_TAB.RENTAL]: approvedCount,
@@ -319,10 +320,10 @@ export const refreshDashboardSummaryDocument = async ({ adminUid }) => {
     requestedCount,
     onHoldCount,
     approvedCount,
-    pendingUserActionCount: pendingUserActionCountSnapshot.data().count,
-    overdueCount: overdueCountSnapshot.data().count,
-    dueTodayCount: dueTodayCountSnapshot.data().count,
-    startTodayCount: startTodayCountSnapshot.data().count,
+    pendingUserActionCount: pendingUserActionRequests.length,
+    overdueCount: overdueRequests.length,
+    dueTodayCount: dueTodayRequests.length,
+    startTodayCount: startTodayRequests.length,
     pendingAccountCount: pendingAccountCountSnapshot.data().count,
     totalAssetCount: catalogAssets.length,
     availableCount: catalogAssets.filter(
@@ -344,22 +345,40 @@ export const refreshDashboardSummaryDocument = async ({ adminUid }) => {
     uniqueOverdueUsers: new Set(
       overdueRequests.map(requestIdentity).filter(Boolean)
     ).size,
+    longestOverdueDays: overdueRequests.reduce(
+      (maximum, request) =>
+        Math.max(maximum, getDateDiffDays(request.dueDate, referenceDate)),
+      0
+    ),
+    oldestRequestedDays: requestedRequests.reduce(
+      (maximum, request) =>
+        Math.max(
+          maximum,
+          getWaitingDays(request.createdAt || request.requestedAt || request.updatedAt)
+        ),
+      0
+    ),
+    oldestPendingMemberDays: pendingAccounts.reduce(
+      (maximum, account) =>
+        Math.max(maximum, getWaitingDays(account.createdAt || account.updatedAt)),
+      0
+    ),
   };
   const dataIssueCounts = {
-    orphanedAvailability: 0,
+    orphanedAvailability: orphanedAvailabilityRequests.length,
     missingDate: approvedRequests.filter(
       (request) => !request.startDate || !request.dueDate
     ).length,
-    invalidPeriod: activeRequests.filter(
+    invalidPeriod: allActiveRequests.filter(
       (request) =>
         request.startDate &&
         request.dueDate &&
         request.dueDate < request.startDate
     ).length,
-    missingAsset: activeRequests.filter(
+    missingAsset: allActiveRequests.filter(
       (request) => request.laptopId && !assetIdSet.has(request.laptopId)
     ).length,
-    missingRequester: activeRequests.filter(
+    missingRequester: allActiveRequests.filter(
       (request) =>
         !request.requesterUid &&
         !request.requesterEmail &&
@@ -367,7 +386,6 @@ export const refreshDashboardSummaryDocument = async ({ adminUid }) => {
         !request.borrower
     ).length,
   };
-  const generatedAtClientMs = Date.now();
   const summaryPayload = {
     schemaVersion: DASHBOARD_SUMMARY_SCHEMA_VERSION,
     businessDate: referenceDate,
@@ -381,13 +399,17 @@ export const refreshDashboardSummaryDocument = async ({ adminUid }) => {
     dataIssueCounts,
     sourceStats: {
       activeRequestPreviewCount: activeRequests.length,
-      activeRequestSourceCount: requestedCount + onHoldCount + approvedCount,
+      activeRequestSourceCount: allActiveRequests.length,
       activeRequestPreviewLimit: ADMIN_DASHBOARD_ACTIVE_REQUEST_LIMIT,
       activeRequestPreviewTruncated:
-        requestedCount + onHoldCount + approvedCount > activeRequests.length,
+        allActiveRequests.length > activeRequests.length,
       pendingAccountPreviewCount: pendingAccounts.length,
       pendingAccountSourceCount: pendingAccountCountSnapshot.data().count,
       pendingAccountPreviewLimit: DASHBOARD_SUMMARY_PENDING_ACCOUNT_LIMIT,
+      metricSource: 'all-active-requests',
+      metricSourceCount: allActiveRequests.length,
+      rentalAvailabilitySourceCount: rentalAvailabilitySnapshot.size,
+      orphanedAvailabilityCount: orphanedAvailabilityRequests.length,
     },
   };
 

@@ -1,0 +1,44 @@
+P0 DASHBOARD ACCURACY FIX VALIDATION REPORT
+Generated: 2026-07-28
+
+BASELINE
+- rental-system-react-profiler-bundle-optimization-deployment-package.zip
+
+CHANGED FILES
+- src/services/dashboardSummaryService.js
+- src/admin/AdminDashboardPanel.jsx
+- rules/firestore.rules
+
+STATIC VALIDATION
+- JavaScript/JSX files transpiled with TypeScript parser: 56
+- Syntax errors: 0
+- Missing relative imports: 0
+- Stale removed aggregate snapshot identifiers: 0
+- Firestore Rules brace counts: balanced
+- Dashboard schema version in service: 2
+- Dashboard schema version in Rules: 2
+
+ACCURACY TEST
+- Mock active requests: 125
+- Stored preview requests: 100
+- Full metric source requests: 125
+- Requests outside preview included in approved metrics: PASS
+- Available asset count includes requests outside preview: PASS
+- Unique active asset count uses full source: PASS
+- Unique reserved asset count uses full source: PASS
+- Orphaned rentalAvailability document detection: PASS
+
+QUERY STRUCTURE
+- Full active request query: status IN requested/onHold/approved, no 100-document limit
+- Preview limit: applied only after full result is sorted
+- Removed aggregate queries: requested, onHold, approved, pending user action, overdue, due today, start today
+- Retained aggregate queries: closed, returned, pending member count
+
+BUILD STATUS
+- npm ci could not be completed in the execution environment before timeout.
+- Full Vite production build was therefore not executed here.
+- The local deploy.ps1 runs npm run build before publication and will stop on build failure.
+
+DEPLOYMENT REQUIREMENT
+1. firebase deploy --only firestore:rules
+2. .\deploy.ps1

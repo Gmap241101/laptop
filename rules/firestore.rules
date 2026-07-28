@@ -1761,7 +1761,7 @@ service cloud.firestore {
       allow read: if isAdmin();
 
       allow create, update: if isAdmin()
-        && request.resource.data.get('schemaVersion', 0) == 1
+        && request.resource.data.get('schemaVersion', 0) == 2
         && request.resource.data.get('businessDate', '') is string
         && request.resource.data.get('generatedAtClientMs', 0) is int
         && request.resource.data.get('updatedByUid', '') == request.auth.uid

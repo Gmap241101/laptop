@@ -455,9 +455,18 @@ export default function AdminDashboardPanel({ ctx }) {
         'uniqueOverdueUsers',
         uniqueOverdueUsers
       ),
-      longestOverdueDays,
-      oldestRequestedDays,
-      oldestPendingMemberDays,
+      longestOverdueDays: getSummaryNumber(
+        'longestOverdueDays',
+        longestOverdueDays
+      ),
+      oldestRequestedDays: getSummaryNumber(
+        'oldestRequestedDays',
+        oldestRequestedDays
+      ),
+      oldestPendingMemberDays: getSummaryNumber(
+        'oldestPendingMemberDays',
+        oldestPendingMemberDays
+      ),
       unavailableCount: getSummaryNumber(
         'unavailableCount',
         unavailableLaptopIds.size
@@ -680,8 +689,8 @@ export default function AdminDashboardPanel({ ctx }) {
             <div>
               <div className="font-bold">진행 신청 상세 목록이 요약 한도를 초과했습니다.</div>
               <div className="mt-1">
-                상태별 숫자는 전체 집계값이며, 상세 목록과 일부 보조 지표는 최근
-                {dashboardSummary.sourceStats.activeRequestPreviewLimit}건을 기준으로 표시합니다.
+                상태별 숫자와 데이터 점검 수치는 전체 진행 신청을 기준으로 계산하며, 상세 목록만 최근
+                {dashboardSummary.sourceStats.activeRequestPreviewLimit}건을 표시합니다.
               </div>
             </div>
           </div>
