@@ -107,6 +107,12 @@ export const PUBLIC_CONFIG_DOC_REF = doc(
   'publicConfig'
 );
 
+export const PUBLIC_ASSET_CATALOG_DOC_REF = doc(
+  db,
+  'publicCatalog',
+  'main'
+);
+
 export const RENTAL_ASSETS_COLLECTION_REF = collection(
   db,
   'rentalAssets'

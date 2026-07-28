@@ -1,7 +1,5 @@
 {
   "projects": {
     "default": "laptop-system-mk"
-  },
-  "targets": {},
-  "etags": {}
+  }
 }

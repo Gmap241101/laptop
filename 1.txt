@@ -1,0 +1,46 @@
+ E 드라이브의 볼륨에는 이름이 없습니다.
+ 볼륨 일련 번호: A6A7-5F24
+
+ E:\project\rental-system\test_new 디렉터리
+
+2026-07-28  오전 12:38    <DIR>          .
+2026-07-19  오전 10:12    <DIR>          ..
+2026-07-28  오전 12:29                89 .firebaserc
+2026-07-16  오전 03:50                58 .gitignore
+2026-07-28  오전 12:38                 0 1.txt
+2026-07-19  오전 11:13    <DIR>          backup
+2026-07-16  오전 03:50               689 BUILD_REPORT.txt
+2026-07-16  오전 03:50               821 CHANGELOG_STAGE6.md
+2026-07-22  오후 05:22                 0 ddd.jsx
+2026-07-16  오전 03:12             1,217 deploy-old.ps1
+2026-07-23  오후 04:29            15,835 deploy-start.ps1
+2026-07-23  오후 04:58            17,107 deploy-unified-v8.ps1
+2026-07-19  오후 12:06             4,707 deploy-vercel-test.ps1
+2026-07-23  오후 05:15            19,390 deploy.ps1
+2026-07-27  오전 09:56            18,311 DEPLOYMENT_NOTES.txt
+2026-07-28  오전 12:36    <DIR>          dist
+2026-07-28  오전 12:21               168 firebase.json
+2026-07-27  오후 02:42             4,459 firestore.indexes.json
+2026-07-27  오후 02:45            10,003 FIRESTORE_READ_OPTIMIZATION_REPORT.md
+2026-07-27  오후 02:45             2,052 FIRESTORE_READ_OPTIMIZATION_VALIDATION_REPORT.txt
+2026-07-19  오후 12:06               826 index.html
+2026-07-27  오후 01:30             1,888 NAME_IME_FIX_VALIDATION_REPORT.txt
+2026-07-28  오전 12:36    <DIR>          node_modules
+2026-07-19  오전 11:56           148,501 package-lock.json
+2026-07-16  오전 03:12               866 package.json
+2026-07-07  오전 10:00                85 postcss.config.js
+2026-07-23  오후 05:13    <DIR>          public
+2026-07-16  오전 03:50             4,781 README_STAGE6.md
+2026-07-23  오후 11:53    <DIR>          rules
+2026-07-27  오후 03:34             1,252 RUNTIME_BLANK_SCREEN_FIX_VALIDATION_REPORT.txt
+2026-07-16  오전 03:50             3,485 SHA256SUMS.txt
+2026-07-19  오전 11:13    <DIR>          src
+2026-07-19  오후 05:22           128,651 src.zip
+2026-07-07  오전 10:00               220 tailwind.config.js
+2026-07-19  오전 11:12               190 testp.ps1
+2026-07-23  오후 11:53    <DIR>          tools
+2026-07-27  오전 09:56            12,261 VALIDATION_REPORT.txt
+2026-07-07  오전 11:23                92 vercel.json
+2026-07-23  오후 04:57               310 vite.config.js
+              30개 파일             398,314 바이트
+               9개 디렉터리   8,657,162,240 바이트 남음

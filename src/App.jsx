@@ -93,6 +93,7 @@ import {
   NOTICE_BOARD_CONFIG_DOC_REF,
   NOTICE_POSTS_COLLECTION_REF,
   POPUP_POSTS_COLLECTION_REF,
+  PUBLIC_ASSET_CATALOG_DOC_REF,
   PUBLIC_CONFIG_DOC_REF,
   MEMBER_DIRECTORY_KEYS_COLLECTION_REF,
   MEMBER_IDENTITY_CLAIMS_COLLECTION_REF,
@@ -1386,6 +1387,78 @@ const normalizeAssetReservations = (reservations = []) =>
         RENTAL_BLOCKING_REQUEST_STATUSES.includes(request.status)
     )
     .map((request) => toRentalAvailabilityRequest(request));
+
+const PUBLIC_ASSET_CATALOG_SCHEMA_VERSION = 1;
+const PUBLIC_ASSET_CATALOG_MAX_ASSETS = 200;
+const PUBLIC_ASSET_CATALOG_MAX_BYTES = 900000;
+
+const toPublicCatalogAsset = (asset = {}) => ({
+  id: String(asset.id || '').trim(),
+  category: String(asset.category || '').trim(),
+  assetNo: String(asset.assetNo || '').trim(),
+  serialNo: String(asset.serialNo || '').trim(),
+  model: String(asset.model || '').trim(),
+  manufactureDate: String(asset.manufactureDate || '').trim(),
+  photo: String(asset.photo || '').trim(),
+  note: String(asset.note || '').trim(),
+  baseStatus:
+    asset.baseStatus === STATUS.UNAVAILABLE ||
+    asset.status === STATUS.UNAVAILABLE
+      ? STATUS.UNAVAILABLE
+      : STATUS.AVAILABLE,
+});
+
+const normalizePublicCatalogAssets = (assets = []) =>
+  (Array.isArray(assets) ? assets : [])
+    .map((asset) => toPublicCatalogAsset(asset))
+    .filter((asset) => asset.id && asset.assetNo)
+    .slice(0, PUBLIC_ASSET_CATALOG_MAX_ASSETS);
+
+const getPublicCatalogFingerprint = (assets = []) =>
+  JSON.stringify(normalizePublicCatalogAssets(assets));
+
+const getPublicCatalogPayloadByteLength = (assets = []) => {
+  const serialized = JSON.stringify({
+    schemaVersion: PUBLIC_ASSET_CATALOG_SCHEMA_VERSION,
+    assets: normalizePublicCatalogAssets(assets),
+  });
+
+  if (typeof TextEncoder !== 'undefined') {
+    return new TextEncoder().encode(serialized).length;
+  }
+
+  return serialized.length * 2;
+};
+
+const hydratePublicCatalogAssets = (catalogAssets = [], availability = []) => {
+  const requestsByLaptopId = new Map();
+
+  normalizeAssetReservations(availability).forEach((request) => {
+    const current = requestsByLaptopId.get(request.laptopId) || [];
+    current.push(request);
+    requestsByLaptopId.set(request.laptopId, current);
+  });
+
+  return normalizePublicCatalogAssets(catalogAssets).map((asset) => {
+    const reservations = requestsByLaptopId.get(asset.id) || [];
+    const representativeRequest = getLaptopRepresentativeRequest(
+      reservations,
+      asset.id
+    );
+
+    return {
+      ...asset,
+      reservations,
+      status:
+        asset.baseStatus === STATUS.UNAVAILABLE
+          ? STATUS.UNAVAILABLE
+          : representativeRequest
+            ? representativeRequest.status
+            : STATUS.AVAILABLE,
+      currentRequestId: representativeRequest?.id || null,
+    };
+  });
+};
 
 const normalizeAssetNumber = (assetNo) =>
   String(assetNo || '').trim().toLowerCase();
@@ -2932,6 +3005,10 @@ function App() {
 
   const [splitPublicConfig, setSplitPublicConfig] = useState(null);
   const [splitRentalAssets, setSplitRentalAssets] = useState([]);
+  const [publicCatalogAssets, setPublicCatalogAssets] = useState([]);
+  const [publicCatalogAssetsReady, setPublicCatalogAssetsReady] = useState(false);
+  const publicCatalogFingerprintRef = useRef('');
+  const publicCatalogExpectedFingerprintRef = useRef('');
   const [splitRentalAvailability, setSplitRentalAvailability] = useState([]);
   const [splitRentalBorrowers, setSplitRentalBorrowers] = useState([]);
   const [splitStorageVersion, setSplitStorageVersion] = useState(0);
@@ -4415,16 +4492,23 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const shouldSubscribeAssets =
-      (view === 'user' && ['home', 'rental'].includes(userTab)) ||
-      (
-        view === 'admin' &&
-        Boolean(authenticatedAdminId) &&
-        Boolean(currentAuthAdminAccount?.id) &&
-        ['dashboard', 'laptops', 'requests'].includes(adminTab)
-      );
+    const shouldLoadUserCatalog =
+      view === 'user' && ['home', 'rental'].includes(userTab);
+    const shouldSubscribeAdminAssets =
+      view === 'admin' &&
+      Boolean(authenticatedAdminId) &&
+      Boolean(currentAuthAdminAccount?.id) &&
+      [
+        'dashboard',
+        'laptops',
+        'requests',
+        'categories',
+        'dataManagement',
+      ].includes(adminTab);
 
-    if (!shouldSubscribeAssets) {
+    if (!shouldLoadUserCatalog && !shouldSubscribeAdminAssets) {
+      setPublicCatalogAssets([]);
+      setPublicCatalogAssetsReady(false);
       setSplitSourceErrors((prev) => ({
         ...prev,
         assets: '',
@@ -4442,32 +4526,92 @@ function App() {
       assets: false,
     }));
 
-    const unsubscribe = onSnapshot(
-      RENTAL_ASSETS_COLLECTION_REF,
-      (snapshot) => {
-        const assets = snapshot.docs.map((assetDocument) => ({
-          ...assetDocument.data(),
-          id: assetDocument.id,
-          reservations: normalizeAssetReservations(
-            assetDocument.data().reservations || []
-          ),
-        }));
+    if (shouldSubscribeAdminAssets) {
+      setPublicCatalogAssets([]);
+      setPublicCatalogAssetsReady(false);
 
-        setSplitRentalAssets(assets);
+      const unsubscribe = onSnapshot(
+        RENTAL_ASSETS_COLLECTION_REF,
+        (snapshot) => {
+          const assets = snapshot.docs.map((assetDocument) => ({
+            ...assetDocument.data(),
+            id: assetDocument.id,
+            reservations: normalizeAssetReservations(
+              assetDocument.data().reservations || []
+            ),
+          }));
+
+          setSplitRentalAssets(assets);
+          setSplitSourceErrors((prev) => ({
+            ...prev,
+            assets: '',
+          }));
+          setSplitSourceReady((prev) => ({
+            ...prev,
+            assets: true,
+          }));
+        },
+        (error) => {
+          const message =
+            '대여 자산 컬렉션을 불러오지 못했습니다. rentalAssets 읽기 권한을 확인해 주세요.';
+
+          console.error('Rental assets sync error:', error);
+          setSplitRentalAssets([]);
+          setSplitSourceErrors((prev) => ({
+            ...prev,
+            assets: message,
+          }));
+          setSplitSourceReady((prev) => ({
+            ...prev,
+            assets: true,
+          }));
+          setFirebaseReady(true);
+          setToast({
+            message,
+            type: 'error',
+          });
+        }
+      );
+
+      return unsubscribe;
+    }
+
+    let cancelled = false;
+    setPublicCatalogAssetsReady(false);
+
+    const loadLegacyAssetFallback = async (reason = '') => {
+      try {
+        const fallbackSnapshot = await getDocs(RENTAL_ASSETS_COLLECTION_REF);
+        if (cancelled) return;
+
+        const fallbackAssets = normalizePublicCatalogAssets(
+          fallbackSnapshot.docs.map((assetDocument) => ({
+            ...assetDocument.data(),
+            id: assetDocument.id,
+          }))
+        );
+
+        setPublicCatalogAssets(fallbackAssets);
+        setPublicCatalogAssetsReady(true);
         setSplitSourceErrors((prev) => ({
           ...prev,
           assets: '',
         }));
-        setSplitSourceReady((prev) => ({
-          ...prev,
-          assets: true,
-        }));
-      },
-      (error) => {
-        const message =
-          '대여 자산 컬렉션을 불러오지 못했습니다. rentalAssets 읽기 권한을 확인해 주세요.';
 
-        console.error('Rental assets sync error:', error);
+        if (reason) {
+          console.warn(
+            'Public asset catalog fallback activated:',
+            reason
+          );
+        }
+      } catch (fallbackError) {
+        if (cancelled) return;
+
+        const message =
+          '공개 자산 카탈로그와 기존 자산 목록을 모두 불러오지 못했습니다.';
+        console.error('Public asset catalog fallback error:', fallbackError);
+        setPublicCatalogAssets([]);
+        setPublicCatalogAssetsReady(true);
         setSplitRentalAssets([]);
         setSplitSourceErrors((prev) => ({
           ...prev,
@@ -4478,20 +4622,177 @@ function App() {
           assets: true,
         }));
         setFirebaseReady(true);
-        setToast({
-          message,
-          type: 'error',
-        });
+        setToast({ message, type: 'error' });
+      }
+    };
+
+    const unsubscribe = onSnapshot(
+      PUBLIC_ASSET_CATALOG_DOC_REF,
+      (snapshot) => {
+        if (cancelled) return;
+
+        if (!snapshot.exists() || !Array.isArray(snapshot.data().assets)) {
+          void loadLegacyAssetFallback('publicCatalog/main 문서가 없습니다.');
+          return;
+        }
+
+        const catalogAssets = normalizePublicCatalogAssets(
+          snapshot.data().assets
+        );
+        publicCatalogFingerprintRef.current =
+          String(snapshot.data().fingerprint || '') ||
+          getPublicCatalogFingerprint(catalogAssets);
+        setPublicCatalogAssets(catalogAssets);
+        setPublicCatalogAssetsReady(true);
+        setSplitSourceErrors((prev) => ({
+          ...prev,
+          assets: '',
+        }));
+      },
+      (error) => {
+        if (cancelled) return;
+        console.error('Public asset catalog sync error:', error);
+        void loadLegacyAssetFallback(error?.code || error?.message || 'unknown-error');
       }
     );
 
-    return unsubscribe;
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, [
     view,
     userTab,
     adminTab,
     authenticatedAdminId,
     currentAuthAdminAccount?.id,
+  ]);
+
+  useEffect(() => {
+    const shouldHydrateUserCatalog =
+      view === 'user' &&
+      ['home', 'rental'].includes(userTab) &&
+      publicCatalogAssetsReady &&
+      splitSourceReady.availability;
+
+    if (!shouldHydrateUserCatalog) {
+      return;
+    }
+
+    setSplitRentalAssets(
+      hydratePublicCatalogAssets(
+        publicCatalogAssets,
+        splitRentalAvailability
+      )
+    );
+    setSplitSourceErrors((prev) => ({
+      ...prev,
+      assets: '',
+    }));
+    setSplitSourceReady((prev) => ({
+      ...prev,
+      assets: true,
+    }));
+  }, [
+    view,
+    userTab,
+    publicCatalogAssets,
+    publicCatalogAssetsReady,
+    splitRentalAvailability,
+    splitSourceReady.availability,
+  ]);
+
+  useEffect(() => {
+    const shouldSynchronizeCatalog =
+      view === 'admin' &&
+      Boolean(authenticatedAdminId) &&
+      Boolean(currentAuthAdminAccount?.id) &&
+      [
+        'dashboard',
+        'laptops',
+        'requests',
+        'categories',
+        'dataManagement',
+      ].includes(adminTab) &&
+      splitSourceReady.assets &&
+      !splitSourceErrors.assets;
+
+    if (!shouldSynchronizeCatalog) {
+      return;
+    }
+
+    const catalogAssets = normalizePublicCatalogAssets(splitRentalAssets);
+    const catalogPayloadByteLength =
+      getPublicCatalogPayloadByteLength(catalogAssets);
+    const fingerprint = getPublicCatalogFingerprint(catalogAssets);
+    publicCatalogExpectedFingerprintRef.current = fingerprint;
+
+    if (catalogPayloadByteLength > PUBLIC_ASSET_CATALOG_MAX_BYTES) {
+      console.error(
+        'Public asset catalog is too large:',
+        catalogPayloadByteLength
+      );
+      setToast({
+        message:
+          '공개 자산 카탈로그 크기가 안전 한도를 초과해 자동 동기화를 중단했습니다.',
+        type: 'error',
+      });
+      return;
+    }
+
+    if (publicCatalogFingerprintRef.current === fingerprint) {
+      return;
+    }
+
+    const synchronizeCatalog = async () => {
+      try {
+        const catalogSnapshot = await getDoc(PUBLIC_ASSET_CATALOG_DOC_REF);
+
+        const remoteFingerprint = catalogSnapshot.exists()
+          ? String(catalogSnapshot.data().fingerprint || '')
+          : '';
+
+        if (remoteFingerprint === fingerprint) {
+          publicCatalogFingerprintRef.current = fingerprint;
+          return;
+        }
+
+        if (publicCatalogExpectedFingerprintRef.current !== fingerprint) {
+          return;
+        }
+
+        await setDoc(
+          PUBLIC_ASSET_CATALOG_DOC_REF,
+          {
+            schemaVersion: PUBLIC_ASSET_CATALOG_SCHEMA_VERSION,
+            assets: catalogAssets,
+            assetCount: catalogAssets.length,
+            fingerprint,
+            updatedAt: serverTimestamp(),
+            updatedByUid: currentAuthAdminAccount?.id || authenticatedAdminId,
+          },
+          { merge: false }
+        );
+
+        if (publicCatalogExpectedFingerprintRef.current === fingerprint) {
+          publicCatalogFingerprintRef.current = fingerprint;
+        }
+      } catch (error) {
+        console.error('Public asset catalog synchronization error:', error);
+      }
+    };
+
+    window.setTimeout(() => {
+      void synchronizeCatalog();
+    }, 400);
+  }, [
+    view,
+    adminTab,
+    authenticatedAdminId,
+    currentAuthAdminAccount?.id,
+    splitRentalAssets,
+    splitSourceReady.assets,
+    splitSourceErrors.assets,
   ]);
 
 

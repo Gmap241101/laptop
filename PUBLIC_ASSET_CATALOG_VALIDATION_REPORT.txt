@@ -1,0 +1,43 @@
+PUBLIC ASSET CATALOG VALIDATION REPORT
+=====================================
+
+Baseline
+- firestore_read_optimization_runtime_fix_deployment_package.zip
+
+Modified source files
+- src/App.jsx
+- src/firebase.js
+- rules/firestore.rules
+
+Added deployment files
+- firebase.json
+- .firebaserc
+- deploy.ps1
+
+Validation results
+- JavaScript/JSX syntax: PASS (44 files, 0 errors)
+- firebase.json syntax: PASS
+- .firebaserc syntax: PASS
+- public catalog document reference export/import: PASS
+- user public catalog listener present: PASS
+- user legacy one-time rentalAssets fallback present: PASS
+- full rentalAssets realtime listener restricted to admin branch: PASS
+- catalog + rentalAvailability hydration logic present: PASS
+- admin fingerprint synchronization present: PASS
+- 400ms catalog synchronization debounce present: PASS
+- 900,000-byte catalog size guard present: PASS
+- Firestore publicCatalog/main rules present: PASS
+- public read / admin-only write / no delete rules present: PASS
+- synthetic 30-asset catalog size: approximately 9 KB
+- new composite index required: NO
+
+Not executed
+- Vite production build: package.json and installed project dependencies were not included in the baseline package.
+- Firebase Rules remote compilation: Firebase CLI is not installed in this execution container. Run firebase deploy --only firestore:rules in the actual project.
+- Firebase Emulator integration test: project emulator data and complete local project were not included.
+
+Deployment requirement
+1. firebase deploy --only firestore:rules
+2. deploy.ps1
+3. Sign in as an administrator and open the dashboard once.
+4. Verify Firestore document publicCatalog/main exists.

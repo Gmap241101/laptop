@@ -329,6 +329,17 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /publicCatalog/main {
+      allow read: if true;
+      allow create, update: if isAdmin()
+        && request.resource.data.get('schemaVersion', 0) == 1
+        && request.resource.data.get('assets', []) is list
+        && request.resource.data.get('assets', []).size() <= 200
+        && request.resource.data.get('assetCount', -1)
+          == request.resource.data.get('assets', []).size();
+      allow delete: if false;
+    }
+
     match /siteSettings/config {
       allow read: if true;
       allow create, update: if isAdmin()
