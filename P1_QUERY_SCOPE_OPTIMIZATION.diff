@@ -1,0 +1,979 @@
+--- p1_query_refactor_original/src/App.jsx	2026-07-28 05:29:54.000000000 +0000
++++ p1_query_refactor_work/src/App.jsx	2026-07-28 06:19:42.489064446 +0000
+@@ -4714,30 +4714,67 @@
+     return Array.from(requestMap.values());
+   }, [data.requests, rentalRequests, view, adminTab]);
+ 
+-  const getMemberAccountHistorySummary = (account = {}) => {
+-    const linkedUids = new Set([
+-      String(account.uid || ''),
+-      ...(Array.isArray(account.previousAccountUids)
+-        ? account.previousAccountUids
+-        : []),
+-    ].filter(Boolean));
+-    const linkedRequests = (mergedRentalRequests || []).filter((request) =>
+-      linkedUids.has(String(request.requesterUid || ''))
++  const loadMemberAccountHistorySummary = async (account = {}) => {
++    const linkedUids = [
++      ...new Set([
++        String(account.uid || ''),
++        ...(Array.isArray(account.previousAccountUids)
++          ? account.previousAccountUids.map((uid) => String(uid || ''))
++          : []),
++      ].filter(Boolean)),
++    ];
++
++    if (linkedUids.length === 0) {
++      return {
++        linkedUidCount: 0,
++        totalRequests: 0,
++        previousRequests: 0,
++        overdueRequests: 0,
++        activeRequests: 0,
++        inheritedRestriction: account.inheritedRestriction || {},
++      };
++    }
++
++    const uidChunks = [];
++    for (let index = 0; index < linkedUids.length; index += 30) {
++      uidChunks.push(linkedUids.slice(index, index + 30));
++    }
++
++    const snapshots = await Promise.all(
++      uidChunks.map((uidChunk) =>
++        getDocs(
++          firestoreQuery(
++            RENTAL_REQUESTS_COLLECTION_REF,
++            where('requesterUid', 'in', uidChunk)
++          )
++        )
++      )
++    );
++
++    const linkedRequests = snapshots.flatMap((snapshot) =>
++      snapshot.docs.map((requestDoc) => ({
++        ...requestDoc.data(),
++        id: requestDoc.id,
++      }))
+     );
++    const currentUid = String(account.uid || '');
+     const previousRequests = linkedRequests.filter(
+-      (request) => String(request.requesterUid || '') !== String(account.uid || '')
++      (request) => String(request.requesterUid || '') !== currentUid
+     );
++    const referenceDate = today();
+     const overdueRequests = linkedRequests.filter(
+       (request) =>
+         Number(request.overdueDaysAtReturn || 0) > 0 ||
+-        (request.status === STATUS.APPROVED && request.dueDate && request.dueDate < today())
++        (request.status === STATUS.APPROVED &&
++          request.dueDate &&
++          request.dueDate < referenceDate)
+     );
+     const activeRequests = linkedRequests.filter((request) =>
+       [STATUS.REQUESTED, STATUS.ON_HOLD, STATUS.APPROVED].includes(request.status)
+     );
+ 
+     return {
+-      linkedUidCount: linkedUids.size,
++      linkedUidCount: linkedUids.length,
+       totalRequests: linkedRequests.length,
+       previousRequests: previousRequests.length,
+       overdueRequests: overdueRequests.length,
+@@ -4788,40 +4825,11 @@
+           adminRequestQuery || ''
+         ).trim().toLowerCase();
+ 
+-      const getStatusLogTime = (
+-        request
+-      ) => {
+-        const statusLog =
+-          (
+-            rentalRequestLogsByRequestId.get(
+-              request.id
+-            ) || []
+-          ).find(
+-            (log) =>
+-              [
+-                RENTAL_REQUEST_AUDIT_ACTION.STATUS_CHANGED,
+-                RENTAL_REQUEST_AUDIT_ACTION.STATUS_RESTORED,
+-              ].includes(log.action) &&
+-              log.nextStatus ===
+-                request.status
+-          );
+-
+-        return (
+-          getFirestoreTimestampMillis(
+-            statusLog?.createdAt
+-          ) ||
+-          getFirestoreTimestampMillis(
+-            request.updatedAt
+-          ) ||
+-          getFirestoreTimestampMillis(
+-            request.createdAt
+-          ) ||
+-          Date.parse(
+-            request.requestedAt || ''
+-          ) ||
+-          0
+-        );
+-      };
++      const getStatusLogTime = (request) =>
++        getFirestoreTimestampMillis(request.updatedAt) ||
++        getFirestoreTimestampMillis(request.createdAt) ||
++        Date.parse(request.requestedAt || '') ||
++        0;
+ 
+       const tabFilteredRequests =
+         (mergedRentalRequests || []).filter(
+@@ -5026,7 +5034,6 @@
+       adminRequestQuickFilter,
+       adminRequestTab,
+       mergedRentalRequests,
+-      rentalRequestLogsByRequestId,
+     ]
+   );
+ 
+@@ -6044,7 +6051,12 @@
+     if (!isAdminAuthenticated) {
+       const ownRequestSource = firestoreQuery(
+         RENTAL_REQUESTS_COLLECTION_REF,
+-        where('requesterUid', '==', firebaseAuthUser.uid)
++        where('requesterUid', '==', firebaseAuthUser.uid),
++        where('status', 'in', [
++          STATUS.REQUESTED,
++          STATUS.ON_HOLD,
++          STATUS.APPROVED,
++        ])
+       );
+ 
+       const unsubscribe = onSnapshot(
+@@ -6086,56 +6098,6 @@
+       return undefined;
+     }
+ 
+-    if (adminTab === 'memberAccounts') {
+-      const requesterUids = [
+-        ...new Set(
+-          (adminUserAccounts || []).flatMap((account) => [
+-            account.uid,
+-            ...(Array.isArray(account.previousAccountUids)
+-              ? account.previousAccountUids
+-              : []),
+-          ])
+-        ),
+-      ]
+-        .filter(Boolean)
+-        .slice(0, 30);
+-
+-      if (requesterUids.length === 0) {
+-        setRentalRequests([]);
+-        setRentalRequestsReady(true);
+-        return undefined;
+-      }
+-
+-      const memberHistorySource = firestoreQuery(
+-        RENTAL_REQUESTS_COLLECTION_REF,
+-        where('requesterUid', 'in', requesterUids)
+-      );
+-
+-      const unsubscribe = onSnapshot(
+-        memberHistorySource,
+-        (snapshot) => {
+-          setRentalRequests(
+-            snapshot.docs.map((requestDoc) => ({
+-              ...requestDoc.data(),
+-              id: requestDoc.id,
+-            }))
+-          );
+-          setRentalRequestsLoadErrorMessage('');
+-          setRentalRequestsReady(true);
+-        },
+-        (error) => {
+-          const message =
+-            '현재 회원 페이지의 대여 이력을 불러오지 못했습니다.';
+-          console.error('Member account rental history sync error:', error);
+-          setRentalRequests([]);
+-          setRentalRequestsLoadErrorMessage(message);
+-          setRentalRequestsReady(true);
+-        }
+-      );
+-
+-      return unsubscribe;
+-    }
+-
+     if (adminTab !== 'requests') {
+       adminRequestCursorKeyRef.current = '';
+       adminRequestCursorByPageRef.current = new Map([[1, null]]);
+@@ -6266,7 +6228,6 @@
+     debouncedAdminRequestQuery,
+     adminRequestServerPage,
+     adminRequestPageSize,
+-    adminUserAccounts,
+   ]);
+ 
+   useEffect(() => {
+@@ -6422,14 +6383,11 @@
+   ]);
+ 
+   useEffect(() => {
+-    const requestIds = (rentalRequests || [])
+-      .map((request) => request.id)
+-      .filter(Boolean);
+     const shouldLoadLogs =
+       isAdminAuthenticated &&
+       view === 'admin' &&
+       adminTab === 'requests' &&
+-      requestIds.length > 0;
++      Boolean(selectedAdminRequestId);
+ 
+     if (!shouldLoadLogs) {
+       setRentalRequestLogs([]);
+@@ -6438,61 +6396,41 @@
+       return undefined;
+     }
+ 
++    setRentalRequestLogs([]);
+     setRentalRequestLogsReady(false);
+     setRentalRequestLogsLoadErrorMessage('');
+ 
+-    const chunks = [];
+-    for (let index = 0; index < requestIds.length; index += 30) {
+-      chunks.push(requestIds.slice(index, index + 30));
+-    }
+-
+-    const logsByChunk = new Map();
+-    const updateCombinedLogs = () => {
+-      const combinedLogs = Array.from(logsByChunk.values())
+-        .flat()
+-        .sort(
+-          (first, second) =>
+-            getFirestoreTimestampMillis(second.createdAt) -
+-            getFirestoreTimestampMillis(first.createdAt)
++    return onSnapshot(
++      firestoreQuery(
++        RENTAL_REQUEST_LOGS_COLLECTION_REF,
++        where('requestId', '==', selectedAdminRequestId),
++        orderBy('createdAt', 'desc'),
++        firestoreLimit(100)
++      ),
++      (snapshot) => {
++        setRentalRequestLogs(
++          snapshot.docs.map((logDoc) => ({
++            ...logDoc.data(),
++            id: logDoc.id,
++          }))
+         );
+-      setRentalRequestLogs(combinedLogs);
+-      setRentalRequestLogsReady(logsByChunk.size === chunks.length);
+-    };
+-
+-    const unsubscribes = chunks.map((requestIdChunk, chunkIndex) =>
+-      onSnapshot(
+-        firestoreQuery(
+-          RENTAL_REQUEST_LOGS_COLLECTION_REF,
+-          where('requestId', 'in', requestIdChunk)
+-        ),
+-        (snapshot) => {
+-          logsByChunk.set(
+-            chunkIndex,
+-            snapshot.docs.map((logDoc) => ({
+-              ...logDoc.data(),
+-              id: logDoc.id,
+-            }))
+-          );
+-          updateCombinedLogs();
+-        },
+-        (error) => {
+-          const message =
+-            '현재 페이지의 대여 신청 처리 이력을 불러오지 못했습니다.';
+-          console.error('Paged rental request logs sync error:', error);
+-          setRentalRequestLogsLoadErrorMessage(message);
+-          setRentalRequestLogsReady(true);
+-        }
+-      )
++        setRentalRequestLogsLoadErrorMessage('');
++        setRentalRequestLogsReady(true);
++      },
++      (error) => {
++        const message =
++          '선택한 대여 신청의 처리 이력을 불러오지 못했습니다.';
++        console.error('Selected rental request logs sync error:', error);
++        setRentalRequestLogs([]);
++        setRentalRequestLogsLoadErrorMessage(message);
++        setRentalRequestLogsReady(true);
++      }
+     );
+-
+-    return () => {
+-      unsubscribes.forEach((unsubscribe) => unsubscribe());
+-    };
+   }, [
+     isAdminAuthenticated,
+     view,
+     adminTab,
+-    rentalRequests,
++    selectedAdminRequestId,
+   ]);
+ 
+ 
+@@ -9005,7 +8943,18 @@
+       nextStatus === USER_PROFILE_STATUS.ACTIVE &&
+       account.rejoinedAccount
+     ) {
+-      const historySummary = getMemberAccountHistorySummary(account);
++      let historySummary;
++
++      try {
++        historySummary = await loadMemberAccountHistorySummary(account);
++      } catch (error) {
++        console.error('Rejoined member history check error:', error);
++        triggerToast(
++          '이전 계정의 진행 중 신청 여부를 확인하지 못해 가입 승인을 중단했습니다. 잠시 후 다시 시도해 주세요.',
++          'error'
++        );
++        return;
++      }
+ 
+       if (historySummary.activeRequests > 0) {
+         triggerToast(
+@@ -10010,6 +9959,15 @@
+         ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
+         currentRecoveryKey
+       );
++      const historicalOverdueCountSnapshot = await getCountFromServer(
++        firestoreQuery(
++          RENTAL_REQUESTS_COLLECTION_REF,
++          where('requesterUid', '==', firebaseAuthUser.uid),
++          where('overdueDaysAtReturn', '>', 0)
++        )
++      );
++      const historicalOverdueCount =
++        historicalOverdueCountSnapshot.data().count;
+ 
+       await runTransaction(db, async (transaction) => {
+         const userSnapshot = await transaction.get(userRef);
+@@ -10036,9 +9994,7 @@
+         const restrictionSnapshot = {
+           ...(currentUserRestriction || {}),
+           lastEvaluatedAt: new Date().toISOString(),
+-          historicalOverdueCount: currentUserRequests.filter(
+-            (request) => Number(request.overdueDaysAtReturn || 0) > 0
+-          ).length,
++          historicalOverdueCount,
+         };
+ 
+         rollbackState = {
+@@ -20397,7 +20353,7 @@
+     formatFirestoreDate,
+     formatFirestoreTimestamp,
+     getAdminRequestRestoreTargets,
+-    getMemberAccountHistorySummary,
++    loadMemberAccountHistorySummary,
+     defaultRentalStartDate,
+     getAdjustedRentalDueDate,
+     getDisplayRentalStatus,
+--- p1_query_refactor_original/src/user/UserRequestHistoryPanel.jsx	2026-07-28 05:17:20.000000000 +0000
++++ p1_query_refactor_work/src/user/UserRequestHistoryPanel.jsx	2026-07-28 06:17:48.153064446 +0000
+@@ -1,5 +1,7 @@
+ import { useEffect, useMemo, useState } from 'react';
+ 
++import useUserRequestHistory from '../hooks/useUserRequestHistory.js';
++
+ export default function UserRequestHistoryPanel({ ctx }) {
+   const {
+     ADMIN_REQUEST_PAGE_SIZE_OPTIONS,
+@@ -46,12 +48,42 @@
+   const [requestPage, setRequestPage] = useState(1);
+   const [selectedRequestId, setSelectedRequestId] = useState('');
+ 
++  const {
++    filteredHistoryRequests,
++    historyCounts,
++    historyCountsReady,
++    historyErrorMessage,
++    historyHasNextPage,
++    historyReady,
++    historySearchMode,
++    historyTab,
++    historyTotalCount,
++    historySearchLimit,
++  } = useUserRequestHistory({
++    enabled:
++      firebaseAuthReady &&
++      currentAuthRoleReady &&
++      Boolean(firebaseAuthUser?.uid) &&
++      !currentAuthAdminAccount &&
++      !isAdminAuthenticated,
++    userUid: firebaseAuthUser?.uid || '',
++    requestTab,
++    requestPage,
++    requestPageSize,
++    requestQuery,
++    setRequestPage,
++  });
++
+   const tabCounts = useMemo(() => {
+     const counts = {
+       [ADMIN_REQUEST_TAB.PENDING]: 0,
+       [ADMIN_REQUEST_TAB.RENTAL]: 0,
+-      [ADMIN_REQUEST_TAB.CLOSED]: 0,
+-      [ADMIN_REQUEST_TAB.RETURNED]: 0,
++      [ADMIN_REQUEST_TAB.CLOSED]: Number(
++        historyCounts[ADMIN_REQUEST_TAB.CLOSED]
++      ) || 0,
++      [ADMIN_REQUEST_TAB.RETURNED]: Number(
++        historyCounts[ADMIN_REQUEST_TAB.RETURNED]
++      ) || 0,
+     };
+ 
+     currentUserRequests.forEach((request) => {
+@@ -59,35 +91,23 @@
+         counts[ADMIN_REQUEST_TAB.PENDING] += 1;
+       } else if (request.status === STATUS.APPROVED) {
+         counts[ADMIN_REQUEST_TAB.RENTAL] += 1;
+-      } else if (request.status === STATUS.DENIED) {
+-        counts[ADMIN_REQUEST_TAB.CLOSED] += 1;
+-      } else if (request.status === STATUS.RETURNED) {
+-        counts[ADMIN_REQUEST_TAB.RETURNED] += 1;
+       }
+     });
+ 
+     return counts;
+-  }, [currentUserRequests]);
++  }, [currentUserRequests, historyCounts]);
+ 
+-  const filteredRequests = useMemo(() => {
++  const activeFilteredRequests = useMemo(() => {
+     const normalizedQuery = requestQuery.trim().toLowerCase();
+-
+     const tabFiltered = currentUserRequests.filter((request) => {
+       if (requestTab === ADMIN_REQUEST_TAB.PENDING) {
+         return [STATUS.REQUESTED, STATUS.ON_HOLD].includes(request.status);
+       }
+ 
+-      if (requestTab === ADMIN_REQUEST_TAB.RENTAL) {
+-        return request.status === STATUS.APPROVED;
+-      }
+-
+-      if (requestTab === ADMIN_REQUEST_TAB.CLOSED) {
+-        return request.status === STATUS.DENIED;
+-      }
+-
+-      return request.status === STATUS.RETURNED;
++      return requestTab === ADMIN_REQUEST_TAB.RENTAL
++        ? request.status === STATUS.APPROVED
++        : false;
+     });
+-
+     const queryFiltered = normalizedQuery
+       ? tabFiltered.filter((request) =>
+           [
+@@ -110,29 +130,32 @@
+         );
+       }
+ 
+-      if (requestTab === ADMIN_REQUEST_TAB.RENTAL) {
+-        return String(first.dueDate || '').localeCompare(
+-          String(second.dueDate || '')
+-        );
+-      }
+-
+-      return String(second.updatedAt || second.requestedAt || '').localeCompare(
+-        String(first.updatedAt || first.requestedAt || '')
++      return String(first.dueDate || '').localeCompare(
++        String(second.dueDate || '')
+       );
+     });
+   }, [currentUserRequests, requestQuery, requestTab, getRequestDisplayStatus]);
+ 
+-  const totalPages = Math.max(
+-    1,
+-    Math.ceil(filteredRequests.length / requestPageSize)
+-  );
++  const filteredRequests = historyTab
++    ? filteredHistoryRequests
++    : activeFilteredRequests;
++  const effectiveTotalCount = historyTab
++    ? historySearchMode
++      ? filteredRequests.length
++      : historyTotalCount
++    : filteredRequests.length;
++  const totalPages = Math.max(1, Math.ceil(effectiveTotalCount / requestPageSize));
+   const safePage = Math.min(requestPage, totalPages);
+-  const paginatedRequests = filteredRequests.slice(
+-    (safePage - 1) * requestPageSize,
+-    safePage * requestPageSize
+-  );
++  const paginatedRequests = historyTab && !historySearchMode
++    ? filteredRequests
++    : filteredRequests.slice(
++        (safePage - 1) * requestPageSize,
++        safePage * requestPageSize
++      );
+   const selectedRequest = selectedRequestId
+-    ? currentUserRequests.find((request) => request.id === selectedRequestId) || null
++    ? [...currentUserRequests, ...filteredHistoryRequests].find(
++        (request) => request.id === selectedRequestId
++      ) || null
+     : null;
+ 
+   useEffect(() => {
+@@ -311,6 +334,13 @@
+     requestOwnerName
+       ? `${requestOwnerName} 님의 기기 대여 신청과 처리 상태를 확인할 수 있습니다.`
+       : '회원님의 기기 대여 신청과 처리 상태를 확인할 수 있습니다.';
++  const requestDataReady =
++    rentalRequestsReady &&
++    historyCountsReady &&
++    (!historyTab || historyReady);
++  const requestLoadErrorMessage =
++    rentalRequestsLoadErrorMessage || historyErrorMessage;
++  const hasAnyRequest = Object.values(tabCounts).some((count) => count > 0);
+ 
+   return (
+     <div className="w-full space-y-6">
+@@ -329,19 +359,19 @@
+         </div>
+ 
+         <CardContent className="space-y-5 p-6">
+-          {!firebaseAuthReady || !currentAuthRoleReady || !rentalRequestsReady ? (
++          {!firebaseAuthReady || !currentAuthRoleReady || !requestDataReady ? (
+             <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
+               로그인 계정과 신청내역을 확인하는 중입니다.
+             </div>
+-          ) : rentalRequestsLoadErrorMessage ? (
++          ) : requestLoadErrorMessage ? (
+             <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-xs leading-5 text-rose-800">
+-              {rentalRequestsLoadErrorMessage}
++              {requestLoadErrorMessage}
+             </div>
+           ) : currentAuthAdminAccount || isAdminAuthenticated ? (
+             <div className="rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 text-xs leading-5 text-orange-800">
+               관리자 계정의 전체 대여신청은 관리자 모드의 대여 신청 관리에서 확인해 주세요.
+             </div>
+-          ) : currentUserRequests.length === 0 ? (
++          ) : !hasAnyRequest ? (
+             <div className="space-y-4">
+               <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center">
+                 <ClipboardList size={28} className="mx-auto mb-3 text-slate-300" />
+@@ -460,6 +490,12 @@
+                 </div>
+               )}
+ 
++              {!selectedRequest && historyTab && historySearchMode && (
++                <div className="text-[11px] text-slate-500">
++                  과거 이력 검색은 최신 최대 {historySearchLimit}건 범위에서 수행됩니다.
++                </div>
++              )}
++
+               {selectedRequest ? (
+                 <div className="space-y-4">
+                   <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+@@ -699,7 +735,7 @@
+ 
+                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                     <div className="text-xs text-slate-500">
+-                      총 {filteredRequests.length}건 · {safePage}/{totalPages}페이지
++                      총 {effectiveTotalCount}건 · {safePage}/{totalPages}페이지
+                     </div>
+                     <div className="flex gap-2">
+                       <Button
+@@ -713,7 +749,10 @@
+                       <Button
+                         type="button"
+                         variant="outline"
+-                        disabled={safePage >= totalPages}
++                        disabled={
++                          safePage >= totalPages ||
++                          (historyTab && !historySearchMode && !historyHasNextPage)
++                        }
+                         onClick={() =>
+                           setRequestPage((page) => Math.min(totalPages, page + 1))
+                         }
+--- p1_query_refactor_original/src/admin/AdminMemberAccountsPanel.jsx	2026-07-28 05:17:20.000000000 +0000
++++ p1_query_refactor_work/src/admin/AdminMemberAccountsPanel.jsx	2026-07-28 06:18:53.229064446 +0000
+@@ -1,3 +1,5 @@
++import { useState } from 'react';
++
+ export default function AdminMemberAccountsPanel({ ctx }) {
+   const {
+     AdminPageHeader,
+@@ -20,12 +22,36 @@
+     filteredManagedUserAccounts,
+     getUserAccountStatusClassName,
+     getUserAccountStatusLabel,
+-    getMemberAccountHistorySummary,
++    loadMemberAccountHistorySummary,
+     safeAdminUserAccountPage,
+     setAdminUserAccountPage,
+     setAdminUserAccountQuery,
+     setAdminUserAccountStatusFilter,
+   } = ctx;
++  const [historySummaryByUid, setHistorySummaryByUid] = useState({});
++  const [historyLoadingUid, setHistoryLoadingUid] = useState('');
++  const [historyErrorByUid, setHistoryErrorByUid] = useState({});
++
++  const loadHistorySummary = async (account) => {
++    const uid = String(account?.uid || '');
++    if (!uid || historyLoadingUid === uid) return;
++
++    setHistoryLoadingUid(uid);
++    setHistoryErrorByUid((current) => ({ ...current, [uid]: '' }));
++
++    try {
++      const summary = await loadMemberAccountHistorySummary(account);
++      setHistorySummaryByUid((current) => ({ ...current, [uid]: summary }));
++    } catch (error) {
++      console.error('Member history summary read error:', error);
++      setHistoryErrorByUid((current) => ({
++        ...current,
++        [uid]: '대여 이력을 불러오지 못했습니다.',
++      }));
++    } finally {
++      setHistoryLoadingUid('');
++    }
++  };
+ 
+   return (
+                     <div className="space-y-6">
+@@ -199,7 +225,11 @@
+                                 adminUserAccountSavingUid ===
+                                 account.uid;
+                               const historySummary =
+-                                getMemberAccountHistorySummary(account);
++                                historySummaryByUid[account.uid] || null;
++                              const historyLoading =
++                                historyLoadingUid === account.uid;
++                              const historyError =
++                                historyErrorByUid[account.uid] || '';
+ 
+                               const createdAtText =
+                                 typeof account.createdAt
+@@ -284,14 +314,39 @@
+                                       {account.rejoinedAccount ? (
+                                         <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-[11px] leading-5 text-violet-800">
+                                           <div className="font-bold">과거 탈퇴 후 재가입한 회원입니다.</div>
+-                                          <div>
+-                                            연결 계정 {historySummary.linkedUidCount}개 · 전체 대여 {historySummary.totalRequests}건 · 이전 계정 대여 {historySummary.previousRequests}건 · 진행 중 {historySummary.activeRequests}건 · 연체 이력 {historySummary.overdueRequests}건
+-                                          </div>
+-                                          {historySummary.inheritedRestriction?.eligibleFromDate ? (
++                                          {historySummary ? (
++                                            <div>
++                                              연결 계정 {historySummary.linkedUidCount}개 · 전체 대여 {historySummary.totalRequests}건 · 이전 계정 대여 {historySummary.previousRequests}건 · 진행 중 {historySummary.activeRequests}건 · 연체 이력 {historySummary.overdueRequests}건
++                                            </div>
++                                          ) : (
++                                            <div className="mt-1 text-violet-700">
++                                              대여 이력은 목록 진입 시 자동 조회하지 않습니다.
++                                            </div>
++                                          )}
++                                          {historySummary?.inheritedRestriction?.eligibleFromDate ? (
+                                             <div>
+                                               이전 대여 제한 기준일: {historySummary.inheritedRestriction.eligibleFromDate}
+                                             </div>
++                                          ) : account.inheritedRestriction?.eligibleFromDate ? (
++                                            <div>
++                                              이전 대여 제한 기준일: {account.inheritedRestriction.eligibleFromDate}
++                                            </div>
++                                          ) : null}
++                                          {historyError ? (
++                                            <div className="mt-1 text-rose-600">{historyError}</div>
+                                           ) : null}
++                                          <button
++                                            type="button"
++                                            className="mt-2 rounded-lg border border-violet-300 bg-white px-3 py-1.5 text-[11px] font-bold text-violet-700 hover:bg-violet-100 disabled:cursor-wait disabled:opacity-60"
++                                            disabled={historyLoading}
++                                            onClick={() => void loadHistorySummary(account)}
++                                          >
++                                            {historyLoading
++                                              ? '대여 이력 확인 중'
++                                              : historySummary
++                                                ? '대여 이력 새로고침'
++                                                : '대여 이력 확인'}
++                                          </button>
+                                         </div>
+                                       ) : null}
+                                     </div>
+--- /dev/null	2026-07-28 04:48:09.197064446 +0000
++++ p1_query_refactor_work/src/hooks/useUserRequestHistory.js	2026-07-28 06:22:30.473064446 +0000
+@@ -0,0 +1,225 @@
++import { useEffect, useMemo, useRef, useState } from 'react';
++import {
++  getCountFromServer,
++  getDocs,
++  limit as firestoreLimit,
++  orderBy,
++  query as firestoreQuery,
++  startAfter,
++  where,
++} from 'firebase/firestore';
++
++import { RENTAL_REQUESTS_COLLECTION_REF } from '../firebase.js';
++import { ADMIN_REQUEST_TAB, STATUS } from '../constants/appConstants.js';
++import { useDebouncedValue } from './useDebouncedValue.js';
++
++const USER_HISTORY_SEARCH_LIMIT = 200;
++
++const getHistoryStatusConstraints = (requestTab) => {
++  if (requestTab === ADMIN_REQUEST_TAB.CLOSED) {
++    return [where('status', 'in', [STATUS.DENIED, STATUS.USER_CANCELLED])];
++  }
++
++  return [where('status', '==', STATUS.RETURNED)];
++};
++
++export default function useUserRequestHistory({
++  enabled,
++  userUid,
++  requestTab,
++  requestPage,
++  requestPageSize,
++  requestQuery,
++  setRequestPage,
++}) {
++  const [historyRequests, setHistoryRequests] = useState([]);
++  const [historyReady, setHistoryReady] = useState(false);
++  const [historyErrorMessage, setHistoryErrorMessage] = useState('');
++  const [historyHasNextPage, setHistoryHasNextPage] = useState(false);
++  const [historyCounts, setHistoryCounts] = useState({
++    [ADMIN_REQUEST_TAB.CLOSED]: 0,
++    [ADMIN_REQUEST_TAB.RETURNED]: 0,
++  });
++  const [historyCountsReady, setHistoryCountsReady] = useState(false);
++  const cursorByPageRef = useRef(new Map([[1, null]]));
++  const cursorKeyRef = useRef('');
++  const debouncedRequestQuery = useDebouncedValue(requestQuery, 350);
++  const normalizedQuery = String(debouncedRequestQuery || '').trim().toLowerCase();
++  const searchMode = Boolean(normalizedQuery);
++  const historyTab = [
++    ADMIN_REQUEST_TAB.CLOSED,
++    ADMIN_REQUEST_TAB.RETURNED,
++  ].includes(requestTab);
++  const countRefreshKey = historyTab ? requestTab : 'active';
++
++  useEffect(() => {
++    if (!enabled || !userUid) {
++      setHistoryCounts({
++        [ADMIN_REQUEST_TAB.CLOSED]: 0,
++        [ADMIN_REQUEST_TAB.RETURNED]: 0,
++      });
++      setHistoryCountsReady(true);
++      return undefined;
++    }
++
++    let cancelled = false;
++    setHistoryCountsReady(false);
++
++    void Promise.all([
++      getCountFromServer(
++        firestoreQuery(
++          RENTAL_REQUESTS_COLLECTION_REF,
++          where('requesterUid', '==', userUid),
++          where('status', 'in', [STATUS.DENIED, STATUS.USER_CANCELLED])
++        )
++      ),
++      getCountFromServer(
++        firestoreQuery(
++          RENTAL_REQUESTS_COLLECTION_REF,
++          where('requesterUid', '==', userUid),
++          where('status', '==', STATUS.RETURNED)
++        )
++      ),
++    ])
++      .then(([closedSnapshot, returnedSnapshot]) => {
++        if (cancelled) return;
++        setHistoryCounts({
++          [ADMIN_REQUEST_TAB.CLOSED]: closedSnapshot.data().count,
++          [ADMIN_REQUEST_TAB.RETURNED]: returnedSnapshot.data().count,
++        });
++        setHistoryCountsReady(true);
++      })
++      .catch((error) => {
++        console.error('User rental history counts error:', error);
++        if (cancelled) return;
++        setHistoryCountsReady(true);
++      });
++
++    return () => {
++      cancelled = true;
++    };
++  }, [enabled, userUid, countRefreshKey]);
++
++  useEffect(() => {
++    if (!enabled || !userUid || !historyTab) {
++      cursorKeyRef.current = '';
++      cursorByPageRef.current = new Map([[1, null]]);
++      setHistoryRequests([]);
++      setHistoryErrorMessage('');
++      setHistoryHasNextPage(false);
++      setHistoryReady(true);
++      return undefined;
++    }
++
++    const cursorKey = [
++      userUid,
++      requestTab,
++      requestPageSize,
++      searchMode ? 'search' : 'browse',
++    ].join('|');
++    const cursorKeyChanged = cursorKeyRef.current !== cursorKey;
++
++    if (cursorKeyChanged) {
++      cursorKeyRef.current = cursorKey;
++      cursorByPageRef.current = new Map([[1, null]]);
++    }
++
++    const pageCursor = cursorByPageRef.current.get(requestPage);
++    if (!searchMode && requestPage > 1 && !pageCursor) {
++      setRequestPage(1);
++      return undefined;
++    }
++
++    let cancelled = false;
++    setHistoryReady(false);
++    setHistoryErrorMessage('');
++
++    const source = firestoreQuery(
++      RENTAL_REQUESTS_COLLECTION_REF,
++      where('requesterUid', '==', userUid),
++      ...getHistoryStatusConstraints(requestTab),
++      orderBy('createdAt', 'desc'),
++      ...(!searchMode && pageCursor ? [startAfter(pageCursor)] : []),
++      firestoreLimit(searchMode ? USER_HISTORY_SEARCH_LIMIT : requestPageSize + 1)
++    );
++
++    void getDocs(source)
++      .then((snapshot) => {
++        if (cancelled) return;
++        const sourceDocs = snapshot.docs;
++        const visibleDocs = searchMode
++          ? sourceDocs
++          : sourceDocs.slice(0, requestPageSize);
++        const hasNext = !searchMode && sourceDocs.length > requestPageSize;
++
++        if (!searchMode && visibleDocs.length > 0) {
++          cursorByPageRef.current.set(
++            requestPage + 1,
++            visibleDocs[visibleDocs.length - 1]
++          );
++        }
++
++        setHistoryRequests(
++          visibleDocs.map((requestDoc) => ({
++            ...requestDoc.data(),
++            id: requestDoc.id,
++          }))
++        );
++        setHistoryHasNextPage(hasNext);
++        setHistoryReady(true);
++      })
++      .catch((error) => {
++        console.error('User rental history page read error:', error);
++        if (cancelled) return;
++        setHistoryRequests([]);
++        setHistoryHasNextPage(false);
++        setHistoryErrorMessage(
++          '과거 대여 신청내역을 불러오지 못했습니다. Firestore 인덱스와 조회 권한을 확인해 주세요.'
++        );
++        setHistoryReady(true);
++      });
++
++    return () => {
++      cancelled = true;
++    };
++  }, [
++    enabled,
++    userUid,
++    historyTab,
++    requestTab,
++    requestPage,
++    requestPageSize,
++    searchMode,
++    setRequestPage,
++  ]);
++
++  const filteredHistoryRequests = useMemo(() => {
++    if (!searchMode) return historyRequests;
++
++    return historyRequests.filter((request) =>
++      [
++        request.assetNo,
++        request.assetCategory,
++        request.startDate,
++        request.dueDate,
++        request.purpose,
++        request.status,
++      ]
++        .map((value) => String(value || '').toLowerCase())
++        .some((value) => value.includes(normalizedQuery))
++    );
++  }, [historyRequests, normalizedQuery, searchMode]);
++
++  return {
++    filteredHistoryRequests,
++    historyCounts,
++    historyCountsReady,
++    historyErrorMessage,
++    historyHasNextPage,
++    historyReady,
++    historySearchMode: searchMode,
++    historyTab,
++    historyTotalCount: Number(historyCounts[requestTab]) || 0,
++    historySearchLimit: USER_HISTORY_SEARCH_LIMIT,
++  };
++}
+--- p1_query_refactor_original/firestore.indexes.json	2026-07-28 05:17:20.000000000 +0000
++++ p1_query_refactor_work/firestore.indexes.json	2026-07-28 06:19:42.493064446 +0000
+@@ -211,6 +211,52 @@
+           "order": "ASCENDING"
+         }
+       ]
++    },
++    {
++      "collectionGroup": "rentalRequests",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "requesterUid",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "status",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "createdAt",
++          "order": "DESCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "rentalRequests",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "requesterUid",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "overdueDaysAtReturn",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "rentalRequestLogs",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "requestId",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "createdAt",
++          "order": "DESCENDING"
++        }
++      ]
+     }
+   ],
+   "fieldOverrides": []

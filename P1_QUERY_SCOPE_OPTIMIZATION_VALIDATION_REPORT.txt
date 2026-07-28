@@ -1,0 +1,41 @@
+P1 QUERY SCOPE OPTIMIZATION VALIDATION REPORT
+=============================================
+
+Baseline:
+- rental-system-p0-dashboard-accuracy-fix-deployment-package.zip
+
+Changed files:
+- src/App.jsx
+- src/user/UserRequestHistoryPanel.jsx
+- src/admin/AdminMemberAccountsPanel.jsx
+- firestore.indexes.json
+
+Added files:
+- src/hooks/useUserRequestHistory.js
+
+Static validation:
+- JavaScript/JSX/MJS TypeScript syntax transform: PASS (60 files)
+- Relative local import path validation: PASS
+- firestore.indexes.json JSON validation: PASS
+- New history hook import/export path: PASS
+- Old unrestricted own rentalRequests query removed: PASS
+- Old memberAccounts page-wide history listener removed: PASS
+- Old requestId IN page log listener removed: PASS
+- User active request status restriction present: PASS
+- User history getDocs cursor pagination present: PASS
+- Member history on-demand getDocs present: PASS
+- Rejoined member activation server recheck present: PASS
+- Selected request log listener with limit 100 present: PASS
+- Withdrawal historical overdue aggregate present: PASS
+- Required three composite indexes present: PASS
+- Firestore Rules modified: NO
+
+Build validation:
+- npm dependency installation did not complete in this execution environment.
+- npm run build result: NOT EXECUTED SUCCESSFULLY because local vite binary was unavailable.
+- The deployment script will run npm run build before publishing on the user's PC.
+
+Known limitations:
+- Historical partial-text search is limited to the latest 200 records in the selected historical tab.
+- On-demand member history reads all requests linked to that member's current/previous UIDs.
+- Selected request audit log display is limited to the latest 100 logs.

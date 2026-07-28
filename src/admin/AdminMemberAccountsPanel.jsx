@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 export default function AdminMemberAccountsPanel({ ctx }) {
   const {
     AdminPageHeader,
@@ -20,12 +22,36 @@ export default function AdminMemberAccountsPanel({ ctx }) {
     filteredManagedUserAccounts,
     getUserAccountStatusClassName,
     getUserAccountStatusLabel,
-    getMemberAccountHistorySummary,
+    loadMemberAccountHistorySummary,
     safeAdminUserAccountPage,
     setAdminUserAccountPage,
     setAdminUserAccountQuery,
     setAdminUserAccountStatusFilter,
   } = ctx;
+  const [historySummaryByUid, setHistorySummaryByUid] = useState({});
+  const [historyLoadingUid, setHistoryLoadingUid] = useState('');
+  const [historyErrorByUid, setHistoryErrorByUid] = useState({});
+
+  const loadHistorySummary = async (account) => {
+    const uid = String(account?.uid || '');
+    if (!uid || historyLoadingUid === uid) return;
+
+    setHistoryLoadingUid(uid);
+    setHistoryErrorByUid((current) => ({ ...current, [uid]: '' }));
+
+    try {
+      const summary = await loadMemberAccountHistorySummary(account);
+      setHistorySummaryByUid((current) => ({ ...current, [uid]: summary }));
+    } catch (error) {
+      console.error('Member history summary read error:', error);
+      setHistoryErrorByUid((current) => ({
+        ...current,
+        [uid]: '대여 이력을 불러오지 못했습니다.',
+      }));
+    } finally {
+      setHistoryLoadingUid('');
+    }
+  };
 
   return (
                     <div className="space-y-6">
@@ -199,7 +225,11 @@ export default function AdminMemberAccountsPanel({ ctx }) {
                                 adminUserAccountSavingUid ===
                                 account.uid;
                               const historySummary =
-                                getMemberAccountHistorySummary(account);
+                                historySummaryByUid[account.uid] || null;
+                              const historyLoading =
+                                historyLoadingUid === account.uid;
+                              const historyError =
+                                historyErrorByUid[account.uid] || '';
 
                               const createdAtText =
                                 typeof account.createdAt
@@ -284,14 +314,39 @@ export default function AdminMemberAccountsPanel({ ctx }) {
                                       {account.rejoinedAccount ? (
                                         <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-[11px] leading-5 text-violet-800">
                                           <div className="font-bold">과거 탈퇴 후 재가입한 회원입니다.</div>
-                                          <div>
-                                            연결 계정 {historySummary.linkedUidCount}개 · 전체 대여 {historySummary.totalRequests}건 · 이전 계정 대여 {historySummary.previousRequests}건 · 진행 중 {historySummary.activeRequests}건 · 연체 이력 {historySummary.overdueRequests}건
-                                          </div>
-                                          {historySummary.inheritedRestriction?.eligibleFromDate ? (
+                                          {historySummary ? (
+                                            <div>
+                                              연결 계정 {historySummary.linkedUidCount}개 · 전체 대여 {historySummary.totalRequests}건 · 이전 계정 대여 {historySummary.previousRequests}건 · 진행 중 {historySummary.activeRequests}건 · 연체 이력 {historySummary.overdueRequests}건
+                                            </div>
+                                          ) : (
+                                            <div className="mt-1 text-violet-700">
+                                              대여 이력은 목록 진입 시 자동 조회하지 않습니다.
+                                            </div>
+                                          )}
+                                          {historySummary?.inheritedRestriction?.eligibleFromDate ? (
                                             <div>
                                               이전 대여 제한 기준일: {historySummary.inheritedRestriction.eligibleFromDate}
                                             </div>
+                                          ) : account.inheritedRestriction?.eligibleFromDate ? (
+                                            <div>
+                                              이전 대여 제한 기준일: {account.inheritedRestriction.eligibleFromDate}
+                                            </div>
                                           ) : null}
+                                          {historyError ? (
+                                            <div className="mt-1 text-rose-600">{historyError}</div>
+                                          ) : null}
+                                          <button
+                                            type="button"
+                                            className="mt-2 rounded-lg border border-violet-300 bg-white px-3 py-1.5 text-[11px] font-bold text-violet-700 hover:bg-violet-100 disabled:cursor-wait disabled:opacity-60"
+                                            disabled={historyLoading}
+                                            onClick={() => void loadHistorySummary(account)}
+                                          >
+                                            {historyLoading
+                                              ? '대여 이력 확인 중'
+                                              : historySummary
+                                                ? '대여 이력 새로고침'
+                                                : '대여 이력 확인'}
+                                          </button>
                                         </div>
                                       ) : null}
                                     </div>

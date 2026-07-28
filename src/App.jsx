@@ -4714,30 +4714,67 @@ function App() {
     return Array.from(requestMap.values());
   }, [data.requests, rentalRequests, view, adminTab]);
 
-  const getMemberAccountHistorySummary = (account = {}) => {
-    const linkedUids = new Set([
-      String(account.uid || ''),
-      ...(Array.isArray(account.previousAccountUids)
-        ? account.previousAccountUids
-        : []),
-    ].filter(Boolean));
-    const linkedRequests = (mergedRentalRequests || []).filter((request) =>
-      linkedUids.has(String(request.requesterUid || ''))
+  const loadMemberAccountHistorySummary = async (account = {}) => {
+    const linkedUids = [
+      ...new Set([
+        String(account.uid || ''),
+        ...(Array.isArray(account.previousAccountUids)
+          ? account.previousAccountUids.map((uid) => String(uid || ''))
+          : []),
+      ].filter(Boolean)),
+    ];
+
+    if (linkedUids.length === 0) {
+      return {
+        linkedUidCount: 0,
+        totalRequests: 0,
+        previousRequests: 0,
+        overdueRequests: 0,
+        activeRequests: 0,
+        inheritedRestriction: account.inheritedRestriction || {},
+      };
+    }
+
+    const uidChunks = [];
+    for (let index = 0; index < linkedUids.length; index += 30) {
+      uidChunks.push(linkedUids.slice(index, index + 30));
+    }
+
+    const snapshots = await Promise.all(
+      uidChunks.map((uidChunk) =>
+        getDocs(
+          firestoreQuery(
+            RENTAL_REQUESTS_COLLECTION_REF,
+            where('requesterUid', 'in', uidChunk)
+          )
+        )
+      )
     );
+
+    const linkedRequests = snapshots.flatMap((snapshot) =>
+      snapshot.docs.map((requestDoc) => ({
+        ...requestDoc.data(),
+        id: requestDoc.id,
+      }))
+    );
+    const currentUid = String(account.uid || '');
     const previousRequests = linkedRequests.filter(
-      (request) => String(request.requesterUid || '') !== String(account.uid || '')
+      (request) => String(request.requesterUid || '') !== currentUid
     );
+    const referenceDate = today();
     const overdueRequests = linkedRequests.filter(
       (request) =>
         Number(request.overdueDaysAtReturn || 0) > 0 ||
-        (request.status === STATUS.APPROVED && request.dueDate && request.dueDate < today())
+        (request.status === STATUS.APPROVED &&
+          request.dueDate &&
+          request.dueDate < referenceDate)
     );
     const activeRequests = linkedRequests.filter((request) =>
       [STATUS.REQUESTED, STATUS.ON_HOLD, STATUS.APPROVED].includes(request.status)
     );
 
     return {
-      linkedUidCount: linkedUids.size,
+      linkedUidCount: linkedUids.length,
       totalRequests: linkedRequests.length,
       previousRequests: previousRequests.length,
       overdueRequests: overdueRequests.length,
@@ -4788,40 +4825,11 @@ function App() {
           adminRequestQuery || ''
         ).trim().toLowerCase();
 
-      const getStatusLogTime = (
-        request
-      ) => {
-        const statusLog =
-          (
-            rentalRequestLogsByRequestId.get(
-              request.id
-            ) || []
-          ).find(
-            (log) =>
-              [
-                RENTAL_REQUEST_AUDIT_ACTION.STATUS_CHANGED,
-                RENTAL_REQUEST_AUDIT_ACTION.STATUS_RESTORED,
-              ].includes(log.action) &&
-              log.nextStatus ===
-                request.status
-          );
-
-        return (
-          getFirestoreTimestampMillis(
-            statusLog?.createdAt
-          ) ||
-          getFirestoreTimestampMillis(
-            request.updatedAt
-          ) ||
-          getFirestoreTimestampMillis(
-            request.createdAt
-          ) ||
-          Date.parse(
-            request.requestedAt || ''
-          ) ||
-          0
-        );
-      };
+      const getStatusLogTime = (request) =>
+        getFirestoreTimestampMillis(request.updatedAt) ||
+        getFirestoreTimestampMillis(request.createdAt) ||
+        Date.parse(request.requestedAt || '') ||
+        0;
 
       const tabFilteredRequests =
         (mergedRentalRequests || []).filter(
@@ -5026,7 +5034,6 @@ function App() {
       adminRequestQuickFilter,
       adminRequestTab,
       mergedRentalRequests,
-      rentalRequestLogsByRequestId,
     ]
   );
 
@@ -6044,7 +6051,12 @@ function App() {
     if (!isAdminAuthenticated) {
       const ownRequestSource = firestoreQuery(
         RENTAL_REQUESTS_COLLECTION_REF,
-        where('requesterUid', '==', firebaseAuthUser.uid)
+        where('requesterUid', '==', firebaseAuthUser.uid),
+        where('status', 'in', [
+          STATUS.REQUESTED,
+          STATUS.ON_HOLD,
+          STATUS.APPROVED,
+        ])
       );
 
       const unsubscribe = onSnapshot(
@@ -6084,56 +6096,6 @@ function App() {
       setRentalRequestsLoadErrorMessage('');
       setRentalRequestsReady(true);
       return undefined;
-    }
-
-    if (adminTab === 'memberAccounts') {
-      const requesterUids = [
-        ...new Set(
-          (adminUserAccounts || []).flatMap((account) => [
-            account.uid,
-            ...(Array.isArray(account.previousAccountUids)
-              ? account.previousAccountUids
-              : []),
-          ])
-        ),
-      ]
-        .filter(Boolean)
-        .slice(0, 30);
-
-      if (requesterUids.length === 0) {
-        setRentalRequests([]);
-        setRentalRequestsReady(true);
-        return undefined;
-      }
-
-      const memberHistorySource = firestoreQuery(
-        RENTAL_REQUESTS_COLLECTION_REF,
-        where('requesterUid', 'in', requesterUids)
-      );
-
-      const unsubscribe = onSnapshot(
-        memberHistorySource,
-        (snapshot) => {
-          setRentalRequests(
-            snapshot.docs.map((requestDoc) => ({
-              ...requestDoc.data(),
-              id: requestDoc.id,
-            }))
-          );
-          setRentalRequestsLoadErrorMessage('');
-          setRentalRequestsReady(true);
-        },
-        (error) => {
-          const message =
-            '현재 회원 페이지의 대여 이력을 불러오지 못했습니다.';
-          console.error('Member account rental history sync error:', error);
-          setRentalRequests([]);
-          setRentalRequestsLoadErrorMessage(message);
-          setRentalRequestsReady(true);
-        }
-      );
-
-      return unsubscribe;
     }
 
     if (adminTab !== 'requests') {
@@ -6266,7 +6228,6 @@ function App() {
     debouncedAdminRequestQuery,
     adminRequestServerPage,
     adminRequestPageSize,
-    adminUserAccounts,
   ]);
 
   useEffect(() => {
@@ -6422,14 +6383,11 @@ function App() {
   ]);
 
   useEffect(() => {
-    const requestIds = (rentalRequests || [])
-      .map((request) => request.id)
-      .filter(Boolean);
     const shouldLoadLogs =
       isAdminAuthenticated &&
       view === 'admin' &&
       adminTab === 'requests' &&
-      requestIds.length > 0;
+      Boolean(selectedAdminRequestId);
 
     if (!shouldLoadLogs) {
       setRentalRequestLogs([]);
@@ -6438,61 +6396,41 @@ function App() {
       return undefined;
     }
 
+    setRentalRequestLogs([]);
     setRentalRequestLogsReady(false);
     setRentalRequestLogsLoadErrorMessage('');
 
-    const chunks = [];
-    for (let index = 0; index < requestIds.length; index += 30) {
-      chunks.push(requestIds.slice(index, index + 30));
-    }
-
-    const logsByChunk = new Map();
-    const updateCombinedLogs = () => {
-      const combinedLogs = Array.from(logsByChunk.values())
-        .flat()
-        .sort(
-          (first, second) =>
-            getFirestoreTimestampMillis(second.createdAt) -
-            getFirestoreTimestampMillis(first.createdAt)
+    return onSnapshot(
+      firestoreQuery(
+        RENTAL_REQUEST_LOGS_COLLECTION_REF,
+        where('requestId', '==', selectedAdminRequestId),
+        orderBy('createdAt', 'desc'),
+        firestoreLimit(100)
+      ),
+      (snapshot) => {
+        setRentalRequestLogs(
+          snapshot.docs.map((logDoc) => ({
+            ...logDoc.data(),
+            id: logDoc.id,
+          }))
         );
-      setRentalRequestLogs(combinedLogs);
-      setRentalRequestLogsReady(logsByChunk.size === chunks.length);
-    };
-
-    const unsubscribes = chunks.map((requestIdChunk, chunkIndex) =>
-      onSnapshot(
-        firestoreQuery(
-          RENTAL_REQUEST_LOGS_COLLECTION_REF,
-          where('requestId', 'in', requestIdChunk)
-        ),
-        (snapshot) => {
-          logsByChunk.set(
-            chunkIndex,
-            snapshot.docs.map((logDoc) => ({
-              ...logDoc.data(),
-              id: logDoc.id,
-            }))
-          );
-          updateCombinedLogs();
-        },
-        (error) => {
-          const message =
-            '현재 페이지의 대여 신청 처리 이력을 불러오지 못했습니다.';
-          console.error('Paged rental request logs sync error:', error);
-          setRentalRequestLogsLoadErrorMessage(message);
-          setRentalRequestLogsReady(true);
-        }
-      )
+        setRentalRequestLogsLoadErrorMessage('');
+        setRentalRequestLogsReady(true);
+      },
+      (error) => {
+        const message =
+          '선택한 대여 신청의 처리 이력을 불러오지 못했습니다.';
+        console.error('Selected rental request logs sync error:', error);
+        setRentalRequestLogs([]);
+        setRentalRequestLogsLoadErrorMessage(message);
+        setRentalRequestLogsReady(true);
+      }
     );
-
-    return () => {
-      unsubscribes.forEach((unsubscribe) => unsubscribe());
-    };
   }, [
     isAdminAuthenticated,
     view,
     adminTab,
-    rentalRequests,
+    selectedAdminRequestId,
   ]);
 
 
@@ -9005,7 +8943,18 @@ function App() {
       nextStatus === USER_PROFILE_STATUS.ACTIVE &&
       account.rejoinedAccount
     ) {
-      const historySummary = getMemberAccountHistorySummary(account);
+      let historySummary;
+
+      try {
+        historySummary = await loadMemberAccountHistorySummary(account);
+      } catch (error) {
+        console.error('Rejoined member history check error:', error);
+        triggerToast(
+          '이전 계정의 진행 중 신청 여부를 확인하지 못해 가입 승인을 중단했습니다. 잠시 후 다시 시도해 주세요.',
+          'error'
+        );
+        return;
+      }
 
       if (historySummary.activeRequests > 0) {
         triggerToast(
@@ -10010,6 +9959,15 @@ function App() {
         ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
         currentRecoveryKey
       );
+      const historicalOverdueCountSnapshot = await getCountFromServer(
+        firestoreQuery(
+          RENTAL_REQUESTS_COLLECTION_REF,
+          where('requesterUid', '==', firebaseAuthUser.uid),
+          where('overdueDaysAtReturn', '>', 0)
+        )
+      );
+      const historicalOverdueCount =
+        historicalOverdueCountSnapshot.data().count;
 
       await runTransaction(db, async (transaction) => {
         const userSnapshot = await transaction.get(userRef);
@@ -10036,9 +9994,7 @@ function App() {
         const restrictionSnapshot = {
           ...(currentUserRestriction || {}),
           lastEvaluatedAt: new Date().toISOString(),
-          historicalOverdueCount: currentUserRequests.filter(
-            (request) => Number(request.overdueDaysAtReturn || 0) > 0
-          ).length,
+          historicalOverdueCount,
         };
 
         rollbackState = {
@@ -20397,7 +20353,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     formatFirestoreDate,
     formatFirestoreTimestamp,
     getAdminRequestRestoreTargets,
-    getMemberAccountHistorySummary,
+    loadMemberAccountHistorySummary,
     defaultRentalStartDate,
     getAdjustedRentalDueDate,
     getDisplayRentalStatus,

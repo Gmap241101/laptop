@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import useUserRequestHistory from '../hooks/useUserRequestHistory.js';
+
 export default function UserRequestHistoryPanel({ ctx }) {
   const {
     ADMIN_REQUEST_PAGE_SIZE_OPTIONS,
@@ -46,12 +48,42 @@ export default function UserRequestHistoryPanel({ ctx }) {
   const [requestPage, setRequestPage] = useState(1);
   const [selectedRequestId, setSelectedRequestId] = useState('');
 
+  const {
+    filteredHistoryRequests,
+    historyCounts,
+    historyCountsReady,
+    historyErrorMessage,
+    historyHasNextPage,
+    historyReady,
+    historySearchMode,
+    historyTab,
+    historyTotalCount,
+    historySearchLimit,
+  } = useUserRequestHistory({
+    enabled:
+      firebaseAuthReady &&
+      currentAuthRoleReady &&
+      Boolean(firebaseAuthUser?.uid) &&
+      !currentAuthAdminAccount &&
+      !isAdminAuthenticated,
+    userUid: firebaseAuthUser?.uid || '',
+    requestTab,
+    requestPage,
+    requestPageSize,
+    requestQuery,
+    setRequestPage,
+  });
+
   const tabCounts = useMemo(() => {
     const counts = {
       [ADMIN_REQUEST_TAB.PENDING]: 0,
       [ADMIN_REQUEST_TAB.RENTAL]: 0,
-      [ADMIN_REQUEST_TAB.CLOSED]: 0,
-      [ADMIN_REQUEST_TAB.RETURNED]: 0,
+      [ADMIN_REQUEST_TAB.CLOSED]: Number(
+        historyCounts[ADMIN_REQUEST_TAB.CLOSED]
+      ) || 0,
+      [ADMIN_REQUEST_TAB.RETURNED]: Number(
+        historyCounts[ADMIN_REQUEST_TAB.RETURNED]
+      ) || 0,
     };
 
     currentUserRequests.forEach((request) => {
@@ -59,35 +91,23 @@ export default function UserRequestHistoryPanel({ ctx }) {
         counts[ADMIN_REQUEST_TAB.PENDING] += 1;
       } else if (request.status === STATUS.APPROVED) {
         counts[ADMIN_REQUEST_TAB.RENTAL] += 1;
-      } else if (request.status === STATUS.DENIED) {
-        counts[ADMIN_REQUEST_TAB.CLOSED] += 1;
-      } else if (request.status === STATUS.RETURNED) {
-        counts[ADMIN_REQUEST_TAB.RETURNED] += 1;
       }
     });
 
     return counts;
-  }, [currentUserRequests]);
+  }, [currentUserRequests, historyCounts]);
 
-  const filteredRequests = useMemo(() => {
+  const activeFilteredRequests = useMemo(() => {
     const normalizedQuery = requestQuery.trim().toLowerCase();
-
     const tabFiltered = currentUserRequests.filter((request) => {
       if (requestTab === ADMIN_REQUEST_TAB.PENDING) {
         return [STATUS.REQUESTED, STATUS.ON_HOLD].includes(request.status);
       }
 
-      if (requestTab === ADMIN_REQUEST_TAB.RENTAL) {
-        return request.status === STATUS.APPROVED;
-      }
-
-      if (requestTab === ADMIN_REQUEST_TAB.CLOSED) {
-        return request.status === STATUS.DENIED;
-      }
-
-      return request.status === STATUS.RETURNED;
+      return requestTab === ADMIN_REQUEST_TAB.RENTAL
+        ? request.status === STATUS.APPROVED
+        : false;
     });
-
     const queryFiltered = normalizedQuery
       ? tabFiltered.filter((request) =>
           [
@@ -110,29 +130,32 @@ export default function UserRequestHistoryPanel({ ctx }) {
         );
       }
 
-      if (requestTab === ADMIN_REQUEST_TAB.RENTAL) {
-        return String(first.dueDate || '').localeCompare(
-          String(second.dueDate || '')
-        );
-      }
-
-      return String(second.updatedAt || second.requestedAt || '').localeCompare(
-        String(first.updatedAt || first.requestedAt || '')
+      return String(first.dueDate || '').localeCompare(
+        String(second.dueDate || '')
       );
     });
   }, [currentUserRequests, requestQuery, requestTab, getRequestDisplayStatus]);
 
-  const totalPages = Math.max(
-    1,
-    Math.ceil(filteredRequests.length / requestPageSize)
-  );
+  const filteredRequests = historyTab
+    ? filteredHistoryRequests
+    : activeFilteredRequests;
+  const effectiveTotalCount = historyTab
+    ? historySearchMode
+      ? filteredRequests.length
+      : historyTotalCount
+    : filteredRequests.length;
+  const totalPages = Math.max(1, Math.ceil(effectiveTotalCount / requestPageSize));
   const safePage = Math.min(requestPage, totalPages);
-  const paginatedRequests = filteredRequests.slice(
-    (safePage - 1) * requestPageSize,
-    safePage * requestPageSize
-  );
+  const paginatedRequests = historyTab && !historySearchMode
+    ? filteredRequests
+    : filteredRequests.slice(
+        (safePage - 1) * requestPageSize,
+        safePage * requestPageSize
+      );
   const selectedRequest = selectedRequestId
-    ? currentUserRequests.find((request) => request.id === selectedRequestId) || null
+    ? [...currentUserRequests, ...filteredHistoryRequests].find(
+        (request) => request.id === selectedRequestId
+      ) || null
     : null;
 
   useEffect(() => {
@@ -311,6 +334,13 @@ export default function UserRequestHistoryPanel({ ctx }) {
     requestOwnerName
       ? `${requestOwnerName} 님의 기기 대여 신청과 처리 상태를 확인할 수 있습니다.`
       : '회원님의 기기 대여 신청과 처리 상태를 확인할 수 있습니다.';
+  const requestDataReady =
+    rentalRequestsReady &&
+    historyCountsReady &&
+    (!historyTab || historyReady);
+  const requestLoadErrorMessage =
+    rentalRequestsLoadErrorMessage || historyErrorMessage;
+  const hasAnyRequest = Object.values(tabCounts).some((count) => count > 0);
 
   return (
     <div className="w-full space-y-6">
@@ -329,19 +359,19 @@ export default function UserRequestHistoryPanel({ ctx }) {
         </div>
 
         <CardContent className="space-y-5 p-6">
-          {!firebaseAuthReady || !currentAuthRoleReady || !rentalRequestsReady ? (
+          {!firebaseAuthReady || !currentAuthRoleReady || !requestDataReady ? (
             <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
               로그인 계정과 신청내역을 확인하는 중입니다.
             </div>
-          ) : rentalRequestsLoadErrorMessage ? (
+          ) : requestLoadErrorMessage ? (
             <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-xs leading-5 text-rose-800">
-              {rentalRequestsLoadErrorMessage}
+              {requestLoadErrorMessage}
             </div>
           ) : currentAuthAdminAccount || isAdminAuthenticated ? (
             <div className="rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 text-xs leading-5 text-orange-800">
               관리자 계정의 전체 대여신청은 관리자 모드의 대여 신청 관리에서 확인해 주세요.
             </div>
-          ) : currentUserRequests.length === 0 ? (
+          ) : !hasAnyRequest ? (
             <div className="space-y-4">
               <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center">
                 <ClipboardList size={28} className="mx-auto mb-3 text-slate-300" />
@@ -457,6 +487,12 @@ export default function UserRequestHistoryPanel({ ctx }) {
                       ))}
                     </select>
                   </label>
+                </div>
+              )}
+
+              {!selectedRequest && historyTab && historySearchMode && (
+                <div className="text-[11px] text-slate-500">
+                  과거 이력 검색은 최신 최대 {historySearchLimit}건 범위에서 수행됩니다.
                 </div>
               )}
 
@@ -699,7 +735,7 @@ export default function UserRequestHistoryPanel({ ctx }) {
 
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="text-xs text-slate-500">
-                      총 {filteredRequests.length}건 · {safePage}/{totalPages}페이지
+                      총 {effectiveTotalCount}건 · {safePage}/{totalPages}페이지
                     </div>
                     <div className="flex gap-2">
                       <Button
@@ -713,7 +749,10 @@ export default function UserRequestHistoryPanel({ ctx }) {
                       <Button
                         type="button"
                         variant="outline"
-                        disabled={safePage >= totalPages}
+                        disabled={
+                          safePage >= totalPages ||
+                          (historyTab && !historySearchMode && !historyHasNextPage)
+                        }
                         onClick={() =>
                           setRequestPage((page) => Math.min(totalPages, page + 1))
                         }
