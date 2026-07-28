@@ -1,0 +1,122 @@
+P2 ORGANIZATION PANEL LAZY FEATURE VALIDATION REPORT
+====================================================
+
+Baseline package
+----------------
+rental-system-p2-member-directory-editor-feature-split-deployment-package.zip
+
+Modified package
+----------------
+rental-system-p2-organization-panel-lazy-feature-deployment-package.zip
+
+1. JavaScript / JSX / MJS transpile validation
+------------------------------------------------
+Files checked: 86
+Syntax/transpile errors: 0
+Result: PASS
+
+2. Relative import validation
+-----------------------------
+Source files checked: 86
+Missing relative imports: 0
+Result: PASS
+
+3. Firestore strict audit
+-------------------------
+Source files: 79
+Total Firestore calls: 123
+onSnapshot: 32
+getDocs: 48
+getDoc: 23
+getCountFromServer: 20
+Approved risk findings: 51
+Unapproved warnings: 0
+Unapproved errors: 0
+Result: PASS
+
+4. AdminOrganizationPanel context contract
+-------------------------------------------
+Defined context keys: 15
+Destructured context keys: 15
+Missing keys: 0
+Extra keys: 0
+Result: PASS
+
+5. User-visible Korean string comparison
+-----------------------------------------
+Baseline Korean string literals: 2,047
+Modified Korean string literals: 2,047
+Removed strings: 0
+Added strings: 0
+Result: PASS
+
+6. Initial static source graph
+------------------------------
+Baseline initial modules: 39
+Modified initial modules: 38
+Change: -1
+
+Baseline initial source bytes: 825,675
+Modified initial source bytes: 810,629
+Change: -15,046 bytes (-1.8224%)
+
+Baseline App.jsx bytes: 543,901
+Modified App.jsx bytes: 543,123
+Change: -778 bytes
+
+Baseline top-level dynamic entries: 14
+Modified top-level dynamic entries: 13
+Change: -1
+
+7. Initial graph exclusion checks
+---------------------------------
+src/admin/AdminOrganizationPanel.jsx: excluded
+src/features/members/useAdminMemberDirectoryEditor.js: excluded
+src/features/members/useAdminMemberDirectorySaveActions.js: excluded
+src/features/members/memberDirectorySaveService.js: excluded
+Result: PASS
+
+8. Lazy dependency chain checks
+-------------------------------
+AdminWorkspace lazy-loads AdminOrganizationPanel: confirmed
+AdminOrganizationPanel imports directory editor hook: confirmed
+AdminOrganizationPanel imports directory save action hook: confirmed
+Directory save action dynamically imports memberDirectorySaveService: confirmed
+Result: PASS
+
+9. App bridge checks
+--------------------
+peopleSettingsDirty bridge state: present
+save/discard bridge ref: present
+panel registration callback: present
+deferred navigation uses registered save/discard handlers: confirmed
+panel unmount clears registration: confirmed
+Result: PASS
+
+10. Context reduction
+---------------------
+Baseline people panel context keys: 39
+Modified people panel context keys: 15
+Change: -24 keys (-61.5385%)
+Result: PASS
+
+11. Firestore / Firebase configuration changes
+----------------------------------------------
+firestore.rules: unchanged
+firestore.indexes.json: unchanged
+firebase.json: unchanged
+package.json: unchanged
+package-lock.json: unchanged
+Firestore data model: unchanged
+Result: PASS
+
+12. Production build attempt
+----------------------------
+Command: npm ci --no-audit --no-fund
+Result: container ClientError
+node_modules/.bin/vite: not created
+Production Vite bundle: not generated in this environment
+
+The project source passed static transpile validation and the Firestore prebuild
+audit. The actual project PC deploy.ps1 must still complete npm run build before
+publishing.

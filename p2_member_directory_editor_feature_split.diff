@@ -1,0 +1,952 @@
+diff -ruN '--exclude=.performance-reports' p2_directory_editor_original/SOURCE_GRAPH_ANALYSIS_REPORT.json p2_directory_editor_work/SOURCE_GRAPH_ANALYSIS_REPORT.json
+--- p2_directory_editor_original/SOURCE_GRAPH_ANALYSIS_REPORT.json	2026-07-28 10:27:17.000000000 +0000
++++ p2_directory_editor_work/SOURCE_GRAPH_ANALYSIS_REPORT.json	2026-07-28 10:59:28.856811644 +0000
+@@ -1,11 +1,11 @@
+ {
+-  "generatedAt": "2026-07-28T10:27:17.798Z",
+-  "initialModuleCount": 38,
+-  "initialSourceBytes": 823105,
++  "generatedAt": "2026-07-28T10:59:28.861Z",
++  "initialModuleCount": 39,
++  "initialSourceBytes": 825675,
+   "files": [
+     {
+       "file": "src/App.jsx",
+-      "bytes": 550747
++      "bytes": 543901
+     },
+     {
+       "file": "src/user/UserHomePanel.jsx",
+@@ -44,14 +44,18 @@
+       "bytes": 11743
+     },
+     {
+-      "file": "src/features/members/useAdminSignupPolicyDirectoryActions.js",
+-      "bytes": 10622
++      "file": "src/features/members/useAdminMemberDirectoryEditor.js",
++      "bytes": 11552
+     },
+     {
+       "file": "src/utils/overduePolicy.js",
+       "bytes": 8697
+     },
+     {
++      "file": "src/features/members/useAdminSignupPolicyDirectoryActions.js",
++      "bytes": 8486
++    },
++    {
+       "file": "src/features/members/memberAccountIndexService.js",
+       "bytes": 7375
+     },
+diff -ruN '--exclude=.performance-reports' p2_directory_editor_original/src/App.jsx p2_directory_editor_work/src/App.jsx
+--- p2_directory_editor_original/src/App.jsx	2026-07-28 10:25:36.000000000 +0000
++++ p2_directory_editor_work/src/App.jsx	2026-07-28 10:58:36.188813313 +0000
+@@ -232,6 +232,7 @@
+ import useAdminMemberAccountsController from './features/members/useAdminMemberAccountsController.js';
+ import useAdminMemberActions from './features/members/useAdminMemberActions.js';
+ import useAdminSignupPolicyDirectoryActions from './features/members/useAdminSignupPolicyDirectoryActions.js';
++import useAdminMemberDirectoryEditor from './features/members/useAdminMemberDirectoryEditor.js';
+ import {
+   commitFirestoreOperations,
+ } from './features/members/memberAccountIndexService.js';
+@@ -1480,17 +1481,6 @@
+   const [editingAssetCategoryIndex, setEditingAssetCategoryIndex] = useState(null);
+   const [editingAssetCategoryName, setEditingAssetCategoryName] = useState('');
+   const [draggingAssetCategoryIndex, setDraggingAssetCategoryIndex] = useState(null);
+-  const [newTeam, setNewTeam] = useState('');
+-  const [tempTeams, setTempTeams] = useState(data.teams || []);
+-  const [editingTeamIndex, setEditingTeamIndex] = useState(null);
+-  const [editingTeamName, setEditingTeamName] = useState('');
+-  const [draggingTeamIndex, setDraggingTeamIndex] = useState(null);
+-  const [newBorrower, setNewBorrower] = useState('');
+-  const [newBorrowerTeam, setNewBorrowerTeam] = useState('전체');
+-  const [tempBorrowers, setTempBorrowers] = useState(data.borrowers || []);
+-  const [editingBorrowerIndex, setEditingBorrowerIndex] = useState(null);
+-  const [editingBorrowerName, setEditingBorrowerName] = useState('');
+-  const [draggingBorrowerIndex, setDraggingBorrowerIndex] = useState(null);
+ 
+   const [adminAccountForm, setAdminAccountForm] = useState(createDefaultAdminAccountForm);
+   const [adminAccountPage, setAdminAccountPage] = useState(1);
+@@ -3383,13 +3373,6 @@
+ 
+ 
+ 
+-  // 첫 마운트 시 새 대여자 추가용 팀 초기화
+-  useEffect(() => {
+-    if (data.teams.length > 0 && !newBorrowerTeam) {
+-      setNewBorrowerTeam(data.teams[0]);
+-    }
+-  }, [data.teams]);
+-
+   // 설정 탭으로 변경되거나 시스템 원본 설정 값이 변경될 때 임시 설정 버퍼를 동기화
+   useEffect(() => {
+     if (['serviceOperations', 'extensionSettings', 'holidaySettings'].includes(adminTab)) {
+@@ -3418,27 +3401,6 @@
+     }
+   }, [adminTab, data.assetCategories]);
+ 
+-  // 부서·사용자 탭으로 변경되거나 시스템 원본 부서/사용자 값이 변경될 때 임시 버퍼를 동기화
+-  useEffect(() => {
+-    if (adminTab === 'people') {
+-      setTempTeams(data.teams || []);
+-      setTempBorrowers(data.borrowers || []);
+-      setEditingTeamIndex(null);
+-      setEditingTeamName('');
+-      setDraggingTeamIndex(null);
+-      setEditingBorrowerIndex(null);
+-      setEditingBorrowerName('');
+-      setDraggingBorrowerIndex(null);
+-      setNewTeam('');
+-      setNewBorrower('');
+-      setNewBorrowerTeam('전체');
+-    }
+-  }, [
+-    adminTab,
+-    data.teams,
+-    data.borrowers,
+-  ]);
+-
+   useEffect(() => {
+     if (adminTab === 'adminAccounts') {
+       setAdminAccountForm(createDefaultAdminAccountForm());
+@@ -4862,9 +4824,49 @@
+   });
+ 
+   const {
+-    cancelSignupPolicyChanges,
++    addTempBorrower,
++    addTempTeam,
++    applyEditTempBorrower,
++    applyEditTempTeam,
+     cancelTempPeopleChanges,
++    deleteTempBorrower,
++    deleteTempTeam,
++    displayedTempBorrowers,
++    draggingBorrowerIndex,
++    draggingTeamIndex,
++    editingBorrowerIndex,
++    editingBorrowerName,
++    editingTeamIndex,
++    editingTeamName,
++    moveTempBorrower,
++    moveTempTeam,
++    newBorrower,
++    newBorrowerTeam,
++    newTeam,
+     peopleSettingsDirty,
++    replaceTempPeopleDraft,
++    setDraggingBorrowerIndex,
++    setDraggingTeamIndex,
++    setEditingBorrowerIndex,
++    setEditingBorrowerName,
++    setEditingTeamIndex,
++    setEditingTeamName,
++    setNewBorrower,
++    setNewBorrowerTeam,
++    setNewTeam,
++    startEditTempBorrower,
++    startEditTempTeam,
++    tempBorrowers,
++    tempTeams,
++  } = useAdminMemberDirectoryEditor({
++    adminTab,
++    borrowers: data.borrowers,
++    teams: data.teams,
++    triggerToast,
++  });
++
++  const {
++    cancelSignupPolicyChanges,
+     saveSignupPolicyChanges,
+     saveTempPeopleChanges,
+     setTempAutoApproveNewMembers,
+@@ -4879,22 +4881,11 @@
+     clearMemberDirectoryAuditResult,
+     isAdminAuthenticated,
+     isSplitStorageReady,
++    replaceTempPeopleDraft,
+     resetDirectoryMismatchRestoreAttempt,
+     restoreDirectoryMismatchAccountsAfterPolicyDisabled,
+     setData,
+-    setDraggingBorrowerIndex,
+-    setDraggingTeamIndex,
+-    setEditingBorrowerIndex,
+-    setEditingBorrowerName,
+-    setEditingTeamIndex,
+-    setEditingTeamName,
+-    setNewBorrower,
+-    setNewBorrowerTeam,
+-    setNewTeam,
+-    setTempBorrowers,
+-    setTempTeams,
+     settings: data.settings,
+-    teams: data.teams,
+     tempBorrowers,
+     tempTeams,
+     triggerToast,
+@@ -10039,190 +10030,6 @@
+     }
+   };
+ 
+-  const addTempTeam = () => {
+-    const teamName = newTeam.trim();
+-
+-    if (!teamName) {
+-      triggerToast('부서명을 입력해 주세요.', 'error');
+-      return;
+-    }
+-
+-    if (tempTeams.some((team) => String(team || '').trim() === teamName)) {
+-      triggerToast('이미 등록된 부서명입니다.', 'error');
+-      return;
+-    }
+-
+-    setTempTeams((prev) => [...prev, teamName]);
+-    setNewTeam('');
+-    triggerToast(`[${teamName}] 부서가 임시 추가되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`, 'success');
+-  };
+-
+-  const startEditTempTeam = (team, index) => {
+-    setEditingTeamIndex(index);
+-    setEditingTeamName(team);
+-  };
+-
+-  const applyEditTempTeam = (team, index) => {
+-    const nextTeamName = editingTeamName.trim();
+-
+-    if (!nextTeamName) {
+-      triggerToast('부서명을 입력해 주세요.', 'error');
+-      return;
+-    }
+-
+-    if (
+-      tempTeams.some(
+-        (item, itemIndex) => itemIndex !== index && String(item || '').trim() === nextTeamName
+-      )
+-    ) {
+-      triggerToast('이미 등록된 부서명입니다.', 'error');
+-      return;
+-    }
+-
+-    setTempTeams((prev) =>
+-      prev.map((item, itemIndex) => (itemIndex === index ? nextTeamName : item))
+-    );
+-
+-    setTempBorrowers((prev) =>
+-      prev.map((borrower) =>
+-        borrower.team === team ? { ...borrower, team: nextTeamName } : borrower
+-      )
+-    );
+-
+-    if (newBorrowerTeam === team) {
+-      setNewBorrowerTeam(nextTeamName);
+-    }
+-
+-    setEditingTeamIndex(null);
+-    setEditingTeamName('');
+-    triggerToast(`[${team}] 부서명이 임시 수정되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`, 'success');
+-  };
+-
+-  const deleteTempTeam = (team, index) => {
+-    setTempTeams((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
+-    setTempBorrowers((prev) => prev.filter((borrower) => borrower.team !== team));
+-
+-    if (newBorrowerTeam === team) {
+-      setNewBorrowerTeam('전체');
+-    }
+-
+-    setEditingTeamIndex(null);
+-    setEditingTeamName('');
+-    triggerToast(`[${team}] 부서 및 해당 부서 소속 사용자가 임시 삭제되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`, 'success');
+-  };
+-
+-  const moveTempTeam = (fromIndex, toIndex) => {
+-    if (fromIndex === null || fromIndex === toIndex) return;
+-
+-    setTempTeams((prev) => {
+-      const next = [...prev];
+-      const [movedTeam] = next.splice(fromIndex, 1);
+-      next.splice(toIndex, 0, movedTeam);
+-      return next;
+-    });
+-
+-    setEditingTeamIndex(null);
+-    setEditingTeamName('');
+-  };
+-
+-  const addTempBorrower = () => {
+-    if (tempTeams.length === 0) {
+-      triggerToast('등록된 부서가 없어 사용자를 등록할 수 없습니다.', 'error');
+-      return;
+-    }
+-
+-    if (!newBorrowerTeam || newBorrowerTeam === '전체' || !tempTeams.includes(newBorrowerTeam)) {
+-      triggerToast('등록할 부서를 선택하세요', 'error');
+-      return;
+-    }
+-
+-    const borrowerName = normalizeMemberName(newBorrower);
+-
+-    if (!isValidMemberName(borrowerName)) {
+-      triggerToast(
+-        '사용자명은 공백 없이 한글 또는 영문 2~30자로 입력해 주세요.',
+-        'error'
+-      );
+-      return;
+-    }
+-
+-    if (
+-      tempBorrowers.some(
+-        (borrower) =>
+-          borrower.team === newBorrowerTeam &&
+-          String(borrower.name || '').trim() === borrowerName
+-      )
+-    ) {
+-      triggerToast('해당 부서에 이미 등록된 사용자명입니다.', 'error');
+-      return;
+-    }
+-
+-    setTempBorrowers((prev) => [...prev, { name: borrowerName, team: newBorrowerTeam }]);
+-    setNewBorrower('');
+-    triggerToast(`[${newBorrowerTeam}] ${borrowerName} 사용자가 임시 추가되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`, 'success');
+-  };
+-
+-  const startEditTempBorrower = (borrower, originalIndex) => {
+-    setEditingBorrowerIndex(originalIndex);
+-    setEditingBorrowerName(borrower.name);
+-  };
+-
+-  const applyEditTempBorrower = (borrower, originalIndex) => {
+-    const nextBorrowerName = normalizeMemberName(editingBorrowerName);
+-
+-    if (!isValidMemberName(nextBorrowerName)) {
+-      triggerToast(
+-        '사용자명은 공백 없이 한글 또는 영문 2~30자로 입력해 주세요.',
+-        'error'
+-      );
+-      return;
+-    }
+-
+-    if (
+-      tempBorrowers.some(
+-        (item, itemIndex) =>
+-          itemIndex !== originalIndex &&
+-          item.team === borrower.team &&
+-          String(item.name || '').trim() === nextBorrowerName
+-      )
+-    ) {
+-      triggerToast('해당 부서에 이미 등록된 사용자명입니다.', 'error');
+-      return;
+-    }
+-
+-    setTempBorrowers((prev) =>
+-      prev.map((item, itemIndex) =>
+-        itemIndex === originalIndex ? { ...item, name: nextBorrowerName } : item
+-      )
+-    );
+-
+-    setEditingBorrowerIndex(null);
+-    setEditingBorrowerName('');
+-    triggerToast(`[${borrower.name}] 사용자명이 임시 수정되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`, 'success');
+-  };
+-
+-  const deleteTempBorrower = (borrower, originalIndex) => {
+-    setTempBorrowers((prev) => prev.filter((_, itemIndex) => itemIndex !== originalIndex));
+-    setEditingBorrowerIndex(null);
+-    setEditingBorrowerName('');
+-    triggerToast(`[${borrower.name}] 사용자가 임시 삭제되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`, 'success');
+-  };
+-
+-  const moveTempBorrower = (fromIndex, toIndex) => {
+-    if (fromIndex === null || toIndex === null || fromIndex === toIndex) return;
+-
+-    setTempBorrowers((prev) => {
+-      const next = [...prev];
+-      const [movedBorrower] = next.splice(fromIndex, 1);
+-      next.splice(toIndex, 0, movedBorrower);
+-      return next;
+-    });
+-
+-    setEditingBorrowerIndex(null);
+-    setEditingBorrowerName('');
+-  };
+-
+-
+   const saveSystemSettings = async () => {
+     if (!isSplitStorageReady) {
+       triggerToast(
+@@ -11090,10 +10897,6 @@
+     </div>
+   );
+ 
+-  const displayedTempBorrowers = tempBorrowers
+-    .map((borrower, originalIndex) => ({ ...borrower, originalIndex }))
+-    .filter((borrower) => newBorrowerTeam === '전체' || borrower.team === newBorrowerTeam);
+-
+   const rentalStartAdjustmentInfo = getRentalStartAdjustmentInfo(data.settings);
+   const tempBusinessDayAdjustmentEnabled =
+     tempSettings.adjustStartDateToNextBusinessDay ??
+diff -ruN '--exclude=.performance-reports' p2_directory_editor_original/src/features/members/useAdminMemberDirectoryEditor.js p2_directory_editor_work/src/features/members/useAdminMemberDirectoryEditor.js
+--- p2_directory_editor_original/src/features/members/useAdminMemberDirectoryEditor.js	1970-01-01 00:00:00.000000000 +0000
++++ p2_directory_editor_work/src/features/members/useAdminMemberDirectoryEditor.js	2026-07-28 10:57:47.340814861 +0000
+@@ -0,0 +1,404 @@
++import {
++  useCallback,
++  useEffect,
++  useMemo,
++  useRef,
++  useState,
++} from 'react';
++
++import {
++  isValidMemberName,
++  normalizeMemberName,
++} from '../../utils/memberPolicy.js';
++
++const normalizeComparableTeams = (teams = []) =>
++  teams
++    .map((team) => String(team || '').trim())
++    .filter(Boolean);
++
++const normalizeComparableBorrowers = (borrowers = []) =>
++  borrowers.map((borrower) => ({
++    id: String(borrower.id || ''),
++    name: String(borrower.name || '').trim(),
++    team: String(borrower.team || '').trim(),
++  }));
++
++export default function useAdminMemberDirectoryEditor({
++  adminTab,
++  borrowers = [],
++  teams = [],
++  triggerToast,
++}) {
++  const triggerToastRef = useRef(triggerToast);
++  const [newTeam, setNewTeam] = useState('');
++  const [tempTeams, setTempTeams] = useState(teams || []);
++  const [editingTeamIndex, setEditingTeamIndex] = useState(null);
++  const [editingTeamName, setEditingTeamName] = useState('');
++  const [draggingTeamIndex, setDraggingTeamIndex] = useState(null);
++  const [newBorrower, setNewBorrower] = useState('');
++  const [newBorrowerTeam, setNewBorrowerTeam] = useState('전체');
++  const [tempBorrowers, setTempBorrowers] = useState(borrowers || []);
++  const [editingBorrowerIndex, setEditingBorrowerIndex] = useState(null);
++  const [editingBorrowerName, setEditingBorrowerName] = useState('');
++  const [draggingBorrowerIndex, setDraggingBorrowerIndex] = useState(null);
++
++  useEffect(() => {
++    triggerToastRef.current = triggerToast;
++  }, [triggerToast]);
++
++  useEffect(() => {
++    if (teams.length > 0 && !newBorrowerTeam) {
++      setNewBorrowerTeam(teams[0]);
++    }
++  }, [teams]);
++
++  const resetPeopleDraftUi = useCallback(() => {
++    setEditingTeamIndex(null);
++    setEditingTeamName('');
++    setDraggingTeamIndex(null);
++    setEditingBorrowerIndex(null);
++    setEditingBorrowerName('');
++    setDraggingBorrowerIndex(null);
++    setNewTeam('');
++    setNewBorrower('');
++    setNewBorrowerTeam('전체');
++  }, []);
++
++  const replaceTempPeopleDraft = useCallback(
++    ({ nextTeams = [], nextBorrowers = [] } = {}) => {
++      setTempTeams(nextTeams || []);
++      setTempBorrowers(nextBorrowers || []);
++      resetPeopleDraftUi();
++    },
++    [resetPeopleDraftUi]
++  );
++
++  useEffect(() => {
++    if (adminTab !== 'people') return;
++
++    replaceTempPeopleDraft({
++      nextTeams: teams || [],
++      nextBorrowers: borrowers || [],
++    });
++  }, [adminTab, borrowers, replaceTempPeopleDraft, teams]);
++
++  const peopleSettingsDirty = useMemo(
++    () =>
++      JSON.stringify(normalizeComparableTeams(tempTeams)) !==
++        JSON.stringify(normalizeComparableTeams(teams)) ||
++      JSON.stringify(normalizeComparableBorrowers(tempBorrowers)) !==
++        JSON.stringify(normalizeComparableBorrowers(borrowers)),
++    [borrowers, teams, tempBorrowers, tempTeams]
++  );
++
++  const cancelTempPeopleChanges = useCallback(
++    ({ silent = false } = {}) => {
++      replaceTempPeopleDraft({
++        nextTeams: teams || [],
++        nextBorrowers: borrowers || [],
++      });
++
++      if (!silent) {
++        triggerToastRef.current(
++          '부서·사용자 변경사항이 취소되고 이전 상태로 복원되었습니다.',
++          'success'
++        );
++      }
++    },
++    [borrowers, replaceTempPeopleDraft, teams]
++  );
++
++  const addTempTeam = useCallback(() => {
++    const teamName = newTeam.trim();
++
++    if (!teamName) {
++      triggerToastRef.current('부서명을 입력해 주세요.', 'error');
++      return;
++    }
++
++    if (tempTeams.some((team) => String(team || '').trim() === teamName)) {
++      triggerToastRef.current('이미 등록된 부서명입니다.', 'error');
++      return;
++    }
++
++    setTempTeams((previousTeams) => [...previousTeams, teamName]);
++    setNewTeam('');
++    triggerToastRef.current(
++      `[${teamName}] 부서가 임시 추가되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`,
++      'success'
++    );
++  }, [newTeam, tempTeams]);
++
++  const startEditTempTeam = useCallback((team, index) => {
++    setEditingTeamIndex(index);
++    setEditingTeamName(team);
++  }, []);
++
++  const applyEditTempTeam = useCallback(
++    (team, index) => {
++      const nextTeamName = editingTeamName.trim();
++
++      if (!nextTeamName) {
++        triggerToastRef.current('부서명을 입력해 주세요.', 'error');
++        return;
++      }
++
++      if (
++        tempTeams.some(
++          (item, itemIndex) =>
++            itemIndex !== index &&
++            String(item || '').trim() === nextTeamName
++        )
++      ) {
++        triggerToastRef.current('이미 등록된 부서명입니다.', 'error');
++        return;
++      }
++
++      setTempTeams((previousTeams) =>
++        previousTeams.map((item, itemIndex) =>
++          itemIndex === index ? nextTeamName : item
++        )
++      );
++      setTempBorrowers((previousBorrowers) =>
++        previousBorrowers.map((borrower) =>
++          borrower.team === team
++            ? { ...borrower, team: nextTeamName }
++            : borrower
++        )
++      );
++
++      if (newBorrowerTeam === team) {
++        setNewBorrowerTeam(nextTeamName);
++      }
++
++      setEditingTeamIndex(null);
++      setEditingTeamName('');
++      triggerToastRef.current(
++        `[${team}] 부서명이 임시 수정되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`,
++        'success'
++      );
++    },
++    [editingTeamName, newBorrowerTeam, tempTeams]
++  );
++
++  const deleteTempTeam = useCallback(
++    (team, index) => {
++      setTempTeams((previousTeams) =>
++        previousTeams.filter((_, itemIndex) => itemIndex !== index)
++      );
++      setTempBorrowers((previousBorrowers) =>
++        previousBorrowers.filter((borrower) => borrower.team !== team)
++      );
++
++      if (newBorrowerTeam === team) {
++        setNewBorrowerTeam('전체');
++      }
++
++      setEditingTeamIndex(null);
++      setEditingTeamName('');
++      triggerToastRef.current(
++        `[${team}] 부서 및 해당 부서 소속 사용자가 임시 삭제되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`,
++        'success'
++      );
++    },
++    [newBorrowerTeam]
++  );
++
++  const moveTempTeam = useCallback((fromIndex, toIndex) => {
++    if (fromIndex === null || fromIndex === toIndex) return;
++
++    setTempTeams((previousTeams) => {
++      const nextTeams = [...previousTeams];
++      const [movedTeam] = nextTeams.splice(fromIndex, 1);
++      nextTeams.splice(toIndex, 0, movedTeam);
++      return nextTeams;
++    });
++
++    setEditingTeamIndex(null);
++    setEditingTeamName('');
++  }, []);
++
++  const addTempBorrower = useCallback(() => {
++    if (tempTeams.length === 0) {
++      triggerToastRef.current(
++        '등록된 부서가 없어 사용자를 등록할 수 없습니다.',
++        'error'
++      );
++      return;
++    }
++
++    if (
++      !newBorrowerTeam ||
++      newBorrowerTeam === '전체' ||
++      !tempTeams.includes(newBorrowerTeam)
++    ) {
++      triggerToastRef.current('등록할 부서를 선택하세요', 'error');
++      return;
++    }
++
++    const borrowerName = normalizeMemberName(newBorrower);
++
++    if (!isValidMemberName(borrowerName)) {
++      triggerToastRef.current(
++        '사용자명은 공백 없이 한글 또는 영문 2~30자로 입력해 주세요.',
++        'error'
++      );
++      return;
++    }
++
++    if (
++      tempBorrowers.some(
++        (borrower) =>
++          borrower.team === newBorrowerTeam &&
++          String(borrower.name || '').trim() === borrowerName
++      )
++    ) {
++      triggerToastRef.current(
++        '해당 부서에 이미 등록된 사용자명입니다.',
++        'error'
++      );
++      return;
++    }
++
++    setTempBorrowers((previousBorrowers) => [
++      ...previousBorrowers,
++      {
++        name: borrowerName,
++        team: newBorrowerTeam,
++      },
++    ]);
++    setNewBorrower('');
++    triggerToastRef.current(
++      `[${newBorrowerTeam}] ${borrowerName} 사용자가 임시 추가되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`,
++      'success'
++    );
++  }, [newBorrower, newBorrowerTeam, tempBorrowers, tempTeams]);
++
++  const startEditTempBorrower = useCallback((borrower, originalIndex) => {
++    setEditingBorrowerIndex(originalIndex);
++    setEditingBorrowerName(borrower.name);
++  }, []);
++
++  const applyEditTempBorrower = useCallback(
++    (borrower, originalIndex) => {
++      const nextBorrowerName = normalizeMemberName(editingBorrowerName);
++
++      if (!isValidMemberName(nextBorrowerName)) {
++        triggerToastRef.current(
++          '사용자명은 공백 없이 한글 또는 영문 2~30자로 입력해 주세요.',
++          'error'
++        );
++        return;
++      }
++
++      if (
++        tempBorrowers.some(
++          (item, itemIndex) =>
++            itemIndex !== originalIndex &&
++            item.team === borrower.team &&
++            String(item.name || '').trim() === nextBorrowerName
++        )
++      ) {
++        triggerToastRef.current(
++          '해당 부서에 이미 등록된 사용자명입니다.',
++          'error'
++        );
++        return;
++      }
++
++      setTempBorrowers((previousBorrowers) =>
++        previousBorrowers.map((item, itemIndex) =>
++          itemIndex === originalIndex
++            ? { ...item, name: nextBorrowerName }
++            : item
++        )
++      );
++
++      setEditingBorrowerIndex(null);
++      setEditingBorrowerName('');
++      triggerToastRef.current(
++        `[${borrower.name}] 사용자명이 임시 수정되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`,
++        'success'
++      );
++    },
++    [editingBorrowerName, tempBorrowers]
++  );
++
++  const deleteTempBorrower = useCallback((borrower, originalIndex) => {
++    setTempBorrowers((previousBorrowers) =>
++      previousBorrowers.filter((_, itemIndex) => itemIndex !== originalIndex)
++    );
++    setEditingBorrowerIndex(null);
++    setEditingBorrowerName('');
++    triggerToastRef.current(
++      `[${borrower.name}] 사용자가 임시 삭제되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`,
++      'success'
++    );
++  }, []);
++
++  const moveTempBorrower = useCallback((fromIndex, toIndex) => {
++    if (fromIndex === null || toIndex === null || fromIndex === toIndex) return;
++
++    setTempBorrowers((previousBorrowers) => {
++      const nextBorrowers = [...previousBorrowers];
++      const [movedBorrower] = nextBorrowers.splice(fromIndex, 1);
++      nextBorrowers.splice(toIndex, 0, movedBorrower);
++      return nextBorrowers;
++    });
++
++    setEditingBorrowerIndex(null);
++    setEditingBorrowerName('');
++  }, []);
++
++  const displayedTempBorrowers = useMemo(
++    () =>
++      tempBorrowers
++        .map((borrower, originalIndex) => ({
++          ...borrower,
++          originalIndex,
++        }))
++        .filter(
++          (borrower) =>
++            newBorrowerTeam === '전체' ||
++            borrower.team === newBorrowerTeam
++        ),
++    [newBorrowerTeam, tempBorrowers]
++  );
++
++  return {
++    addTempBorrower,
++    addTempTeam,
++    applyEditTempBorrower,
++    applyEditTempTeam,
++    cancelTempPeopleChanges,
++    deleteTempBorrower,
++    deleteTempTeam,
++    displayedTempBorrowers,
++    draggingBorrowerIndex,
++    draggingTeamIndex,
++    editingBorrowerIndex,
++    editingBorrowerName,
++    editingTeamIndex,
++    editingTeamName,
++    moveTempBorrower,
++    moveTempTeam,
++    newBorrower,
++    newBorrowerTeam,
++    newTeam,
++    peopleSettingsDirty,
++    replaceTempPeopleDraft,
++    setDraggingBorrowerIndex,
++    setDraggingTeamIndex,
++    setEditingBorrowerIndex,
++    setEditingBorrowerName,
++    setEditingTeamIndex,
++    setEditingTeamName,
++    setNewBorrower,
++    setNewBorrowerTeam,
++    setNewTeam,
++    startEditTempBorrower,
++    startEditTempTeam,
++    tempBorrowers,
++    tempTeams,
++  };
++}
+diff -ruN '--exclude=.performance-reports' p2_directory_editor_original/src/features/members/useAdminSignupPolicyDirectoryActions.js p2_directory_editor_work/src/features/members/useAdminSignupPolicyDirectoryActions.js
+--- p2_directory_editor_original/src/features/members/useAdminSignupPolicyDirectoryActions.js	2026-07-28 10:27:17.000000000 +0000
++++ p2_directory_editor_work/src/features/members/useAdminSignupPolicyDirectoryActions.js	2026-07-28 10:59:04.384812419 +0000
+@@ -32,40 +32,17 @@
+   return memberDirectorySaveServicePromise;
+ };
+ 
+-const normalizeComparableTeams = (teams = []) =>
+-  teams
+-    .map((team) => String(team || '').trim())
+-    .filter(Boolean);
+-
+-const normalizeComparableBorrowers = (borrowers = []) =>
+-  borrowers.map((borrower) => ({
+-    id: String(borrower.id || ''),
+-    name: String(borrower.name || '').trim(),
+-    team: String(borrower.team || '').trim(),
+-  }));
+-
+ export default function useAdminSignupPolicyDirectoryActions({
+   adminTab,
+   borrowers,
+   clearMemberDirectoryAuditResult,
+   isAdminAuthenticated,
+   isSplitStorageReady,
++  replaceTempPeopleDraft,
+   resetDirectoryMismatchRestoreAttempt,
+   restoreDirectoryMismatchAccountsAfterPolicyDisabled,
+   setData,
+-  setDraggingBorrowerIndex,
+-  setDraggingTeamIndex,
+-  setEditingBorrowerIndex,
+-  setEditingBorrowerName,
+-  setEditingTeamIndex,
+-  setEditingTeamName,
+-  setNewBorrower,
+-  setNewBorrowerTeam,
+-  setNewTeam,
+-  setTempBorrowers,
+-  setTempTeams,
+   settings,
+-  teams,
+   tempBorrowers,
+   tempTeams,
+   triggerToast,
+@@ -96,15 +73,6 @@
+     settings.requireRegisteredMemberForSignup,
+   ]);
+ 
+-  const peopleSettingsDirty = useMemo(
+-    () =>
+-      JSON.stringify(normalizeComparableTeams(tempTeams)) !==
+-        JSON.stringify(normalizeComparableTeams(teams)) ||
+-      JSON.stringify(normalizeComparableBorrowers(tempBorrowers)) !==
+-        JSON.stringify(normalizeComparableBorrowers(borrowers)),
+-    [borrowers, teams, tempBorrowers, tempTeams]
+-  );
+-
+   const signupPolicyDirty = useMemo(
+     () =>
+       Boolean(tempRequireRegisteredMemberForSignup) !==
+@@ -119,49 +87,6 @@
+     ]
+   );
+ 
+-  const resetPeopleDraftUi = useCallback(() => {
+-    setEditingTeamIndex(null);
+-    setEditingTeamName('');
+-    setDraggingTeamIndex(null);
+-    setEditingBorrowerIndex(null);
+-    setEditingBorrowerName('');
+-    setDraggingBorrowerIndex(null);
+-    setNewTeam('');
+-    setNewBorrower('');
+-    setNewBorrowerTeam('전체');
+-  }, [
+-    setDraggingBorrowerIndex,
+-    setDraggingTeamIndex,
+-    setEditingBorrowerIndex,
+-    setEditingBorrowerName,
+-    setEditingTeamIndex,
+-    setEditingTeamName,
+-    setNewBorrower,
+-    setNewBorrowerTeam,
+-    setNewTeam,
+-  ]);
+-
+-  const cancelTempPeopleChanges = useCallback(
+-    ({ silent = false } = {}) => {
+-      setTempTeams(teams || []);
+-      setTempBorrowers(borrowers || []);
+-      resetPeopleDraftUi();
+-
+-      if (!silent) {
+-        triggerToastRef.current(
+-          '부서·사용자 변경사항이 취소되고 이전 상태로 복원되었습니다.',
+-          'success'
+-        );
+-      }
+-    }, [
+-      borrowers,
+-      resetPeopleDraftUi,
+-      setTempBorrowers,
+-      setTempTeams,
+-      teams,
+-    ]
+-  );
+-
+   const cancelSignupPolicyChanges = useCallback(() => {
+     setTempRequireRegisteredMemberForSignup(
+       Boolean(settings.requireRegisteredMemberForSignup)
+@@ -294,7 +219,6 @@
+ 
+     try {
+       const {
+-        MemberDirectoryValidationError,
+         saveMemberDirectory,
+       } = await loadMemberDirectorySaveService();
+ 
+@@ -315,11 +239,11 @@
+         borrowers: nextBorrowers,
+         settings: nextSettings,
+       }));
+-
+-      setTempTeams(nextTeams);
+-      setTempBorrowers(nextBorrowers);
++      replaceTempPeopleDraft({
++        nextTeams,
++        nextBorrowers,
++      });
+       clearMemberDirectoryAuditResult();
+-      resetPeopleDraftUi();
+ 
+       triggerToastRef.current(
+         '부서·사용자 명부가 저장되었습니다. 명부 버전이 변경되어 기존 회원은 다음 로그인 시 순차적으로 재검증됩니다.',
+@@ -347,10 +271,8 @@
+     borrowers,
+     clearMemberDirectoryAuditResult,
+     isSplitStorageReady,
+-    resetPeopleDraftUi,
++    replaceTempPeopleDraft,
+     setData,
+-    setTempBorrowers,
+-    setTempTeams,
+     settings,
+     tempBorrowers,
+     tempTeams,
+@@ -358,8 +280,6 @@
+ 
+   return {
+     cancelSignupPolicyChanges,
+-    cancelTempPeopleChanges,
+-    peopleSettingsDirty,
+     saveSignupPolicyChanges,
+     saveTempPeopleChanges,
+     setTempAutoApproveNewMembers,

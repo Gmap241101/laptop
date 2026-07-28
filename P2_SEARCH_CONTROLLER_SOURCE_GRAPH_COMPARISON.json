@@ -1,0 +1,27 @@
+{
+  "baseline": {
+    "initialModuleCount": 30,
+    "initialSourceBytes": 819859,
+    "appJsxBytes": 611148,
+    "appJsxLines": 21074,
+    "appUseRefCalls": 27,
+    "appProgressiveSearchCalls": 6
+  },
+  "modified": {
+    "initialModuleCount": 32,
+    "initialSourceBytes": 820759,
+    "appJsxBytes": 603966,
+    "appJsxLines": 20833,
+    "appUseRefCalls": 24,
+    "appProgressiveSearchCalls": 1
+  },
+  "delta": {
+    "initialModuleCount": 2,
+    "initialSourceBytes": 900,
+    "appJsxBytes": -7182,
+    "appJsxLines": -241,
+    "appUseRefCalls": -3,
+    "appProgressiveSearchCalls": -5
+  },
+  "interpretation": "검색 컨트롤러를 정적 feature 훅으로 분리해 App.jsx의 결합도는 감소했지만 초기 번들 총량 자체는 거의 동일합니다."
+}

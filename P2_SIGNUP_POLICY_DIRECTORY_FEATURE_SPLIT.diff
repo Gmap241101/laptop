@@ -1,0 +1,1284 @@
+diff --git a/SOURCE_GRAPH_ANALYSIS_REPORT.json b/SOURCE_GRAPH_ANALYSIS_REPORT.json
+index 0173cfb..f1e99e9 100644
+--- a/SOURCE_GRAPH_ANALYSIS_REPORT.json
++++ b/SOURCE_GRAPH_ANALYSIS_REPORT.json
+@@ -1,11 +1,11 @@
+ {
+-  "generatedAt": "2026-07-28T10:14:00.770Z",
+-  "initialModuleCount": 37,
+-  "initialSourceBytes": 824686,
++  "generatedAt": "2026-07-28T10:27:17.798Z",
++  "initialModuleCount": 38,
++  "initialSourceBytes": 823105,
+   "files": [
+     {
+       "file": "src/App.jsx",
+-      "bytes": 562950
++      "bytes": 550747
+     },
+     {
+       "file": "src/user/UserHomePanel.jsx",
+@@ -43,6 +43,10 @@
+       "file": "src/utils/systemSettings.js",
+       "bytes": 11743
+     },
++    {
++      "file": "src/features/members/useAdminSignupPolicyDirectoryActions.js",
++      "bytes": 10622
++    },
+     {
+       "file": "src/utils/overduePolicy.js",
+       "bytes": 8697
+@@ -155,6 +159,7 @@
+   "dynamicEntries": [
+     "src/admin/AdminWorkspace.jsx",
+     "src/dialogs/AppDialogs.jsx",
++    "src/features/members/memberDirectorySaveService.js",
+     "src/performance/DevPerformancePanel.jsx",
+     "src/services/dashboardSummaryService.js",
+     "src/services/publicAssetCatalogWriteThrough.js",
+diff --git a/src/App.jsx b/src/App.jsx
+index c0bb9bd..fc70308 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -231,9 +231,8 @@ import useAdminRequestProgressiveSearch from './features/requests/useAdminReques
+ import useBoardProgressiveSearch from './features/boards/useBoardProgressiveSearch.js';
+ import useAdminMemberAccountsController from './features/members/useAdminMemberAccountsController.js';
+ import useAdminMemberActions from './features/members/useAdminMemberActions.js';
++import useAdminSignupPolicyDirectoryActions from './features/members/useAdminSignupPolicyDirectoryActions.js';
+ import {
+-  buildMemberAccountIndexEntries,
+-  buildMemberAccountIndexOperations,
+   commitFirestoreOperations,
+ } from './features/members/memberAccountIndexService.js';
+ import {
+@@ -633,8 +632,6 @@ const normalizeAssetNumber = (assetNo) =>
+ const getAssetNumberRegistryId = (assetNo) =>
+   encodeURIComponent(normalizeAssetNumber(assetNo));
+ 
+-const createBorrowerDocumentId = () =>
+-  `BORROWER-${doc(RENTAL_BORROWERS_COLLECTION_REF).id}`;
+ 
+ function mergePersistedData(rawData) {
+   const parsed = { ...initialData, ...(rawData || {}) };
+@@ -1491,13 +1488,6 @@ function App() {
+   const [newBorrower, setNewBorrower] = useState('');
+   const [newBorrowerTeam, setNewBorrowerTeam] = useState('전체');
+   const [tempBorrowers, setTempBorrowers] = useState(data.borrowers || []);
+-  const [tempRequireRegisteredMemberForSignup, setTempRequireRegisteredMemberForSignup] = useState(
+-    Boolean(data.settings.requireRegisteredMemberForSignup)
+-  );
+-  const [tempAutoApproveNewMembers, setTempAutoApproveNewMembers] = useState(
+-    Boolean(data.settings.autoApproveNewMembers)
+-  );
+-  const [signupPolicySaving, setSignupPolicySaving] = useState(false);
+   const [editingBorrowerIndex, setEditingBorrowerIndex] = useState(null);
+   const [editingBorrowerName, setEditingBorrowerName] = useState('');
+   const [draggingBorrowerIndex, setDraggingBorrowerIndex] = useState(null);
+@@ -1631,45 +1621,6 @@ function App() {
+     );
+   }, [data.assetCategories, tempAssetCategories, tempAssetCategoryRenameMap]);
+ 
+-  const peopleSettingsDirty = useMemo(() => {
+-    const normalizeTeams = (teams = []) =>
+-      teams
+-        .map((team) => String(team || '').trim())
+-        .filter(Boolean);
+-
+-    const normalizeBorrowers = (borrowers = []) =>
+-      borrowers.map((borrower) => ({
+-        id: String(borrower.id || ''),
+-        name: String(borrower.name || '').trim(),
+-        team: String(borrower.team || '').trim(),
+-      }));
+-
+-    return (
+-      JSON.stringify(normalizeTeams(tempTeams)) !==
+-        JSON.stringify(normalizeTeams(data.teams || [])) ||
+-      JSON.stringify(normalizeBorrowers(tempBorrowers)) !==
+-        JSON.stringify(normalizeBorrowers(data.borrowers || []))
+-    );
+-  }, [
+-    data.borrowers,
+-    data.teams,
+-    tempBorrowers,
+-    tempTeams,
+-  ]);
+-
+-  const signupPolicyDirty = useMemo(
+-    () =>
+-      Boolean(tempRequireRegisteredMemberForSignup) !==
+-        Boolean(data.settings.requireRegisteredMemberForSignup) ||
+-      Boolean(tempAutoApproveNewMembers) !==
+-        Boolean(data.settings.autoApproveNewMembers),
+-    [
+-      data.settings.autoApproveNewMembers,
+-      data.settings.requireRegisteredMemberForSignup,
+-      tempAutoApproveNewMembers,
+-      tempRequireRegisteredMemberForSignup,
+-    ]
+-  );
+ 
+   const getComparableRentalPolicySettings = (settings = {}) => {
+     const excludeSaturdays =
+@@ -1746,32 +1697,6 @@ function App() {
+       sanitizeFooterCommonHtml(footerConfigDraft.contentHtml || '') !==
+         sanitizeFooterCommonHtml(footerConfig.contentHtml || ''));
+ 
+-  const currentAdminDeferredSettingsDirty = Boolean(
+-    (adminTab === 'extensionSettings' && rentalPolicySettingsDirty) ||
+-      (adminTab === 'holidaySettings' && holidaySettingsDirty) ||
+-      (adminTab === 'categories' && assetCategorySettingsDirty) ||
+-      (adminTab === 'people' && peopleSettingsDirty) ||
+-      (adminTab === 'noticePosts' && noticeBoardSettingsDirty) ||
+-      (adminTab === 'faqPosts' && faqBoardSettingsDirty) ||
+-      (adminTab === 'footerManagement' && footerConfigDirty)
+-  );
+-
+-  useEffect(() => {
+-    if (view !== 'admin' || !currentAdminDeferredSettingsDirty) {
+-      return undefined;
+-    }
+-
+-    const handleBeforeUnload = (event) => {
+-      event.preventDefault();
+-      event.returnValue = '';
+-    };
+-
+-    window.addEventListener('beforeunload', handleBeforeUnload);
+-
+-    return () => {
+-      window.removeEventListener('beforeunload', handleBeforeUnload);
+-    };
+-  }, [view, currentAdminDeferredSettingsDirty]);
+ 
+   const [
+     splitStorageFinalizeLoading,
+@@ -3514,21 +3439,6 @@ function App() {
+     data.borrowers,
+   ]);
+ 
+-  useEffect(() => {
+-    if (adminTab === 'signupPolicy') {
+-      setTempRequireRegisteredMemberForSignup(
+-        Boolean(data.settings.requireRegisteredMemberForSignup)
+-      );
+-      setTempAutoApproveNewMembers(
+-        Boolean(data.settings.autoApproveNewMembers)
+-      );
+-    }
+-  }, [
+-    adminTab,
+-    data.settings.requireRegisteredMemberForSignup,
+-    data.settings.autoApproveNewMembers,
+-  ]);
+-
+   useEffect(() => {
+     if (adminTab === 'adminAccounts') {
+       setAdminAccountForm(createDefaultAdminAccountForm());
+@@ -4951,6 +4861,72 @@ function App() {
+     view,
+   });
+ 
++  const {
++    cancelSignupPolicyChanges,
++    cancelTempPeopleChanges,
++    peopleSettingsDirty,
++    saveSignupPolicyChanges,
++    saveTempPeopleChanges,
++    setTempAutoApproveNewMembers,
++    setTempRequireRegisteredMemberForSignup,
++    signupPolicyDirty,
++    signupPolicySaving,
++    tempAutoApproveNewMembers,
++    tempRequireRegisteredMemberForSignup,
++  } = useAdminSignupPolicyDirectoryActions({
++    adminTab,
++    borrowers: data.borrowers,
++    clearMemberDirectoryAuditResult,
++    isAdminAuthenticated,
++    isSplitStorageReady,
++    resetDirectoryMismatchRestoreAttempt,
++    restoreDirectoryMismatchAccountsAfterPolicyDisabled,
++    setData,
++    setDraggingBorrowerIndex,
++    setDraggingTeamIndex,
++    setEditingBorrowerIndex,
++    setEditingBorrowerName,
++    setEditingTeamIndex,
++    setEditingTeamName,
++    setNewBorrower,
++    setNewBorrowerTeam,
++    setNewTeam,
++    setTempBorrowers,
++    setTempTeams,
++    settings: data.settings,
++    teams: data.teams,
++    tempBorrowers,
++    tempTeams,
++    triggerToast,
++  });
++
++  const currentAdminDeferredSettingsDirty = Boolean(
++    (adminTab === 'extensionSettings' && rentalPolicySettingsDirty) ||
++      (adminTab === 'holidaySettings' && holidaySettingsDirty) ||
++      (adminTab === 'categories' && assetCategorySettingsDirty) ||
++      (adminTab === 'people' && peopleSettingsDirty) ||
++      (adminTab === 'noticePosts' && noticeBoardSettingsDirty) ||
++      (adminTab === 'faqPosts' && faqBoardSettingsDirty) ||
++      (adminTab === 'footerManagement' && footerConfigDirty)
++  );
++
++  useEffect(() => {
++    if (view !== 'admin' || !currentAdminDeferredSettingsDirty) {
++      return undefined;
++    }
++
++    const handleBeforeUnload = (event) => {
++      event.preventDefault();
++      event.returnValue = '';
++    };
++
++    window.addEventListener('beforeunload', handleBeforeUnload);
++
++    return () => {
++      window.removeEventListener('beforeunload', handleBeforeUnload);
++    };
++  }, [view, currentAdminDeferredSettingsDirty]);
++
+ 
+   const shouldShowAdminLoadingPage =
+     view === 'admin' &&
+@@ -10246,357 +10222,6 @@ function App() {
+     setEditingBorrowerName('');
+   };
+ 
+-  const cancelTempPeopleChanges = ({ silent = false } = {}) => {
+-    setTempTeams(data.teams || []);
+-    setTempBorrowers(data.borrowers || []);
+-    setEditingTeamIndex(null);
+-    setEditingTeamName('');
+-    setDraggingTeamIndex(null);
+-    setEditingBorrowerIndex(null);
+-    setEditingBorrowerName('');
+-    setDraggingBorrowerIndex(null);
+-    setNewTeam('');
+-    setNewBorrower('');
+-    setNewBorrowerTeam('전체');
+-    if (!silent) {
+-      triggerToast('부서·사용자 변경사항이 취소되고 이전 상태로 복원되었습니다.', 'success');
+-    }
+-  };
+-
+-  const cancelSignupPolicyChanges = () => {
+-    setTempRequireRegisteredMemberForSignup(
+-      Boolean(data.settings.requireRegisteredMemberForSignup)
+-    );
+-    setTempAutoApproveNewMembers(
+-      Boolean(data.settings.autoApproveNewMembers)
+-    );
+-    triggerToast('회원가입 정책 변경사항을 취소했습니다.', 'success');
+-  };
+-
+-  const saveSignupPolicyChanges = async () => {
+-    if (!isAdminAuthenticated) {
+-      triggerToast('관리자 인증 후 회원가입 정책을 저장할 수 있습니다.', 'error');
+-      return false;
+-    }
+-
+-    if (!isSplitStorageReady) {
+-      triggerToast(
+-        'Firestore 분리 저장소 최종 전환이 완료되지 않아 회원가입 정책을 저장할 수 없습니다.',
+-        'error'
+-      );
+-      return false;
+-    }
+-
+-    const nextRequireRegistered = Boolean(
+-      tempRequireRegisteredMemberForSignup
+-    );
+-    const nextAutoApprove =
+-      nextRequireRegistered && Boolean(tempAutoApproveNewMembers);
+-    const policyEnabledChanged =
+-      nextRequireRegistered !==
+-      Boolean(data.settings.requireRegisteredMemberForSignup);
+-    const nextDirectoryVersion = policyEnabledChanged
+-      ? getSafeMemberDirectoryVersion(data.settings) + 1
+-      : getSafeMemberDirectoryVersion(data.settings);
+-    const nextSettings = {
+-      ...data.settings,
+-      requireRegisteredMemberForSignup: nextRequireRegistered,
+-      autoApproveNewMembers: nextAutoApprove,
+-      memberDirectoryVersion: nextDirectoryVersion,
+-    };
+-
+-    setSignupPolicySaving(true);
+-
+-    try {
+-      await setDoc(
+-        PUBLIC_CONFIG_DOC_REF,
+-        {
+-          settings: nextSettings,
+-          updatedAt: serverTimestamp(),
+-        },
+-        { merge: true }
+-      );
+-
+-      let restoredDirectoryMismatchCount = 0;
+-      let restoreWarning = '';
+-
+-      if (!nextRequireRegistered) {
+-        try {
+-          restoredDirectoryMismatchCount =
+-            await restoreDirectoryMismatchAccountsAfterPolicyDisabled();
+-        } catch (restoreError) {
+-          console.error(
+-            'Directory mismatch account restoration error:',
+-            restoreError
+-          );
+-          resetDirectoryMismatchRestoreAttempt();
+-          restoreWarning =
+-            ' 정책은 해제되었지만 일부 회원 상태 자동 복원에 실패했습니다. 최신 Firestore Rules를 게시한 뒤 해당 회원이 다시 로그인하도록 안내해 주세요.';
+-        }
+-      }
+-
+-      setData((prev) => ({
+-        ...prev,
+-        settings: nextSettings,
+-      }));
+-      setTempRequireRegisteredMemberForSignup(nextRequireRegistered);
+-      setTempAutoApproveNewMembers(nextAutoApprove);
+-
+-      triggerToast(
+-        nextRequireRegistered
+-          ? '회원가입 정책이 저장되었습니다. 기존 회원은 로그인 시 순차적으로 명부를 확인하며, 필요한 경우 전체 회원 명부 검사를 실행할 수 있습니다.'
+-          : `회원가입 제한 정책이 해제되었습니다. 신규 회원 자동 승인도 함께 해제되었습니다.${
+-              restoredDirectoryMismatchCount > 0
+-                ? ` 명부 불일치로 전환됐던 회원 ${restoredDirectoryMismatchCount}명의 상태를 복원했습니다.`
+-                : ''
+-            }${restoreWarning}`,
+-        restoreWarning ? 'error' : 'success'
+-      );
+-
+-      return true;
+-    } catch (error) {
+-      console.error('Signup policy save error:', error);
+-      triggerToast('회원가입 정책 저장에 실패했습니다.', 'error');
+-      return false;
+-    } finally {
+-      setSignupPolicySaving(false);
+-    }
+-  };
+-
+-  const saveTempPeopleChanges = async () => {
+-    if (!isSplitStorageReady) {
+-      triggerToast(
+-        'Firestore 분리 저장소 최종 전환이 완료되지 않아 부서·사용자 정보를 저장할 수 없습니다.',
+-        'error'
+-      );
+-      return false;
+-    }
+-
+-    const nextTeams = tempTeams
+-      .map((team) => normalizeMemberTeam(team))
+-      .filter(Boolean);
+-
+-    const duplicatedTeam = nextTeams.find(
+-      (team, index) =>
+-        nextTeams.findIndex(
+-          (item) => item.toLocaleLowerCase('ko-KR') === team.toLocaleLowerCase('ko-KR')
+-        ) !== index
+-    );
+-
+-    if (duplicatedTeam) {
+-      triggerToast(
+-        `[${duplicatedTeam}] 부서명이 중복되어 저장할 수 없습니다.`,
+-        'error'
+-      );
+-      return false;
+-    }
+-
+-    const nextBorrowers = tempBorrowers
+-      .map((borrower, index) => ({
+-        id: borrower.id || createBorrowerDocumentId(),
+-        name: normalizeMemberName(borrower.name || ''),
+-        team: normalizeMemberTeam(borrower.team || ''),
+-        sortOrder: index,
+-      }))
+-      .filter(
+-        (borrower) =>
+-          borrower.name &&
+-          borrower.team &&
+-          nextTeams.includes(borrower.team)
+-      );
+-
+-    const invalidBorrower = nextBorrowers.find(
+-      (borrower) => !isValidMemberName(borrower.name)
+-    );
+-
+-    if (invalidBorrower) {
+-      triggerToast(
+-        `[${invalidBorrower.team}] ${invalidBorrower.name} 사용자명은 공백 없이 한글 또는 영문 2~30자로 입력해 주세요.`,
+-        'error'
+-      );
+-      return false;
+-    }
+-
+-    const duplicatedBorrower = nextBorrowers.find(
+-      (borrower, index) =>
+-        nextBorrowers.findIndex(
+-          (item) =>
+-            normalizeMemberTeam(item.team).toLocaleLowerCase('ko-KR') ===
+-              normalizeMemberTeam(borrower.team).toLocaleLowerCase('ko-KR') &&
+-            normalizeMemberName(item.name).toLocaleLowerCase('ko-KR') ===
+-              normalizeMemberName(borrower.name).toLocaleLowerCase('ko-KR')
+-        ) !== index
+-    );
+-
+-    if (duplicatedBorrower) {
+-      triggerToast(
+-        `[${duplicatedBorrower.team}] ${duplicatedBorrower.name} 사용자명이 중복되어 저장할 수 없습니다.`,
+-        'error'
+-      );
+-      return false;
+-    }
+-
+-    try {
+-      const directoryEntries = await Promise.all(
+-        nextBorrowers.map(async (borrower) => ({
+-          ...borrower,
+-          identityKey: await createMemberIdentityKey(
+-            borrower.team,
+-            borrower.name
+-          ),
+-        }))
+-      );
+-
+-      const [
+-        currentUserAccountsSnapshot,
+-        currentDirectorySnapshot,
+-        currentClaimsSnapshot,
+-        currentRecoverySnapshot,
+-      ] = await Promise.all([
+-        getDocs(USER_ACCOUNTS_COLLECTION_REF),
+-        getDocs(MEMBER_DIRECTORY_KEYS_COLLECTION_REF),
+-        getDocs(MEMBER_IDENTITY_CLAIMS_COLLECTION_REF),
+-        getDocs(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF),
+-      ]);
+-      const accountEntries = await buildMemberAccountIndexEntries(
+-        currentUserAccountsSnapshot.docs.map((accountDocument) => ({
+-          ...accountDocument.data(),
+-          uid: accountDocument.data().uid || accountDocument.id,
+-        }))
+-      );
+-      const currentBorrowerDocuments = (data.borrowers || [])
+-        .filter((borrower) => borrower?.id)
+-        .map((borrower) => ({
+-          id: borrower.id,
+-          ref: doc(RENTAL_BORROWERS_COLLECTION_REF, borrower.id),
+-        }));
+-
+-      const nextBorrowerIdSet = new Set(
+-        nextBorrowers.map((borrower) => borrower.id)
+-      );
+-      const nextDirectoryKeySet = new Set(
+-        directoryEntries.map((entry) => entry.identityKey)
+-      );
+-
+-      const borrowerOperations = [
+-        ...nextBorrowers.map((borrower) => ({
+-          type: 'set',
+-          ref: doc(RENTAL_BORROWERS_COLLECTION_REF, borrower.id),
+-          data: {
+-            ...borrower,
+-            updatedAt: serverTimestamp(),
+-          },
+-        })),
+-        ...currentBorrowerDocuments
+-          .filter(
+-            (borrowerDocument) =>
+-              !nextBorrowerIdSet.has(borrowerDocument.id)
+-          )
+-          .map((borrowerDocument) => ({
+-            type: 'delete',
+-            ref: borrowerDocument.ref,
+-          })),
+-      ];
+-
+-      const directoryOperations = [
+-        ...directoryEntries.map((entry) => ({
+-          type: 'set',
+-          ref: doc(
+-            MEMBER_DIRECTORY_KEYS_COLLECTION_REF,
+-            entry.identityKey
+-          ),
+-          data: {
+-            identityKey: entry.identityKey,
+-            directoryMemberId: entry.id,
+-            name: entry.name,
+-            team: entry.team,
+-            sortOrder: entry.sortOrder,
+-            enabled: true,
+-            updatedAt: serverTimestamp(),
+-          },
+-        })),
+-        ...currentDirectorySnapshot.docs
+-          .filter(
+-            (directoryDocument) =>
+-              !nextDirectoryKeySet.has(directoryDocument.id)
+-          )
+-          .map((directoryDocument) => ({
+-            type: 'delete',
+-            ref: directoryDocument.ref,
+-          })),
+-      ];
+-
+-      const {
+-        accountMetadataOperations,
+-        claimOperations,
+-        recoveryOperations,
+-      } = buildMemberAccountIndexOperations({
+-        accountEntries,
+-        currentClaimDocuments: currentClaimsSnapshot.docs,
+-        currentRecoveryDocuments: currentRecoverySnapshot.docs,
+-      });
+-
+-      await commitFirestoreOperations([
+-        ...borrowerOperations,
+-        ...directoryOperations,
+-        ...claimOperations,
+-        ...recoveryOperations,
+-        ...accountMetadataOperations,
+-      ]);
+-
+-      const nextDirectoryVersion =
+-        getSafeMemberDirectoryVersion(data.settings) + 1;
+-      const nextSettings = {
+-        ...data.settings,
+-        memberDirectoryVersion: nextDirectoryVersion,
+-        memberIdentityClaimsReady: true,
+-      };
+-
+-      await setDoc(
+-        PUBLIC_CONFIG_DOC_REF,
+-        {
+-          teams: nextTeams,
+-          settings: nextSettings,
+-          updatedAt: serverTimestamp(),
+-        },
+-        { merge: true }
+-      );
+-
+-      setData((prev) => ({
+-        ...prev,
+-        teams: nextTeams,
+-        borrowers: nextBorrowers,
+-        settings: nextSettings,
+-      }));
+-
+-      setTempTeams(nextTeams);
+-      setTempBorrowers(nextBorrowers);
+-      clearMemberDirectoryAuditResult();
+-      setEditingTeamIndex(null);
+-      setEditingTeamName('');
+-      setDraggingTeamIndex(null);
+-      setEditingBorrowerIndex(null);
+-      setEditingBorrowerName('');
+-      setDraggingBorrowerIndex(null);
+-      setNewTeam('');
+-      setNewBorrower('');
+-      setNewBorrowerTeam('전체');
+-
+-      triggerToast(
+-        '부서·사용자 명부가 저장되었습니다. 명부 버전이 변경되어 기존 회원은 다음 로그인 시 순차적으로 재검증됩니다.',
+-        'success'
+-      );
+-
+-      return true;
+-    } catch (error) {
+-      console.error('People data save error:', error);
+-      triggerToast(
+-        '부서·사용자 저장에 실패했습니다. 기존 데이터는 유지됩니다.',
+-        'error'
+-      );
+-      return false;
+-    }
+-  };
+ 
+   const saveSystemSettings = async () => {
+     if (!isSplitStorageReady) {
+diff --git a/tmp/p2_signup_diff_new/src/features/members/memberDirectorySaveService.js b/src/features/members/memberDirectorySaveService.js
+new file mode 100644
+index 0000000..67f75e5
+--- /dev/null
++++ b/src/features/members/memberDirectorySaveService.js
+@@ -0,0 +1,260 @@
++import {
++  doc,
++  getDocs,
++  serverTimestamp,
++  setDoc,
++} from 'firebase/firestore';
++
++import {
++  ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
++  MEMBER_DIRECTORY_KEYS_COLLECTION_REF,
++  MEMBER_IDENTITY_CLAIMS_COLLECTION_REF,
++  PUBLIC_CONFIG_DOC_REF,
++  RENTAL_BORROWERS_COLLECTION_REF,
++  USER_ACCOUNTS_COLLECTION_REF,
++} from '../../firebase.js';
++import {
++  createMemberIdentityKey,
++  isValidMemberName,
++  normalizeMemberName,
++  normalizeMemberTeam,
++} from '../../utils/memberPolicy.js';
++import {
++  buildMemberAccountIndexEntries,
++  buildMemberAccountIndexOperations,
++  commitFirestoreOperations,
++} from './memberAccountIndexService.js';
++import {
++  getSafeMemberDirectoryVersion,
++} from './memberAccountPolicy.js';
++
++export class MemberDirectoryValidationError extends Error {
++  constructor(message) {
++    super(message);
++    this.name = 'MemberDirectoryValidationError';
++    this.userMessage = message;
++  }
++}
++
++const createBorrowerDocumentId = () =>
++  `BORROWER-${doc(RENTAL_BORROWERS_COLLECTION_REF).id}`;
++
++const findDuplicateByNormalizedValue = (values = []) =>
++  values.find(
++    (value, index) =>
++      values.findIndex(
++        (candidate) =>
++          candidate.toLocaleLowerCase('ko-KR') ===
++          value.toLocaleLowerCase('ko-KR')
++      ) !== index
++  );
++
++export const normalizeMemberDirectoryDraft = ({
++  tempTeams = [],
++  tempBorrowers = [],
++} = {}) => {
++  const nextTeams = tempTeams
++    .map((team) => normalizeMemberTeam(team))
++    .filter(Boolean);
++
++  const duplicatedTeam = findDuplicateByNormalizedValue(nextTeams);
++
++  if (duplicatedTeam) {
++    throw new MemberDirectoryValidationError(
++      `[${duplicatedTeam}] 부서명이 중복되어 저장할 수 없습니다.`
++    );
++  }
++
++  const nextBorrowers = tempBorrowers
++    .map((borrower, index) => ({
++      id: borrower.id || createBorrowerDocumentId(),
++      name: normalizeMemberName(borrower.name || ''),
++      team: normalizeMemberTeam(borrower.team || ''),
++      sortOrder: index,
++    }))
++    .filter(
++      (borrower) =>
++        borrower.name &&
++        borrower.team &&
++        nextTeams.includes(borrower.team)
++    );
++
++  const invalidBorrower = nextBorrowers.find(
++    (borrower) => !isValidMemberName(borrower.name)
++  );
++
++  if (invalidBorrower) {
++    throw new MemberDirectoryValidationError(
++      `[${invalidBorrower.team}] ${invalidBorrower.name} 사용자명은 공백 없이 한글 또는 영문 2~30자로 입력해 주세요.`
++    );
++  }
++
++  const duplicatedBorrower = nextBorrowers.find(
++    (borrower, index) =>
++      nextBorrowers.findIndex(
++        (candidate) =>
++          normalizeMemberTeam(candidate.team).toLocaleLowerCase('ko-KR') ===
++            normalizeMemberTeam(borrower.team).toLocaleLowerCase('ko-KR') &&
++          normalizeMemberName(candidate.name).toLocaleLowerCase('ko-KR') ===
++            normalizeMemberName(borrower.name).toLocaleLowerCase('ko-KR')
++      ) !== index
++  );
++
++  if (duplicatedBorrower) {
++    throw new MemberDirectoryValidationError(
++      `[${duplicatedBorrower.team}] ${duplicatedBorrower.name} 사용자명이 중복되어 저장할 수 없습니다.`
++    );
++  }
++
++  return {
++    nextTeams,
++    nextBorrowers,
++  };
++};
++
++export const saveMemberDirectory = async ({
++  currentBorrowers = [],
++  settings = {},
++  tempBorrowers = [],
++  tempTeams = [],
++} = {}) => {
++  const {
++    nextTeams,
++    nextBorrowers,
++  } = normalizeMemberDirectoryDraft({
++    tempTeams,
++    tempBorrowers,
++  });
++
++  const directoryEntries = await Promise.all(
++    nextBorrowers.map(async (borrower) => ({
++      ...borrower,
++      identityKey: await createMemberIdentityKey(
++        borrower.team,
++        borrower.name
++      ),
++    }))
++  );
++
++  const [
++    currentUserAccountsSnapshot,
++    currentDirectorySnapshot,
++    currentClaimsSnapshot,
++    currentRecoverySnapshot,
++  ] = await Promise.all([
++    getDocs(USER_ACCOUNTS_COLLECTION_REF),
++    getDocs(MEMBER_DIRECTORY_KEYS_COLLECTION_REF),
++    getDocs(MEMBER_IDENTITY_CLAIMS_COLLECTION_REF),
++    getDocs(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF),
++  ]);
++
++  const accountEntries = await buildMemberAccountIndexEntries(
++    currentUserAccountsSnapshot.docs.map((accountDocument) => ({
++      ...accountDocument.data(),
++      uid: accountDocument.data().uid || accountDocument.id,
++    }))
++  );
++
++  const currentBorrowerDocuments = currentBorrowers
++    .filter((borrower) => borrower?.id)
++    .map((borrower) => ({
++      id: borrower.id,
++      ref: doc(RENTAL_BORROWERS_COLLECTION_REF, borrower.id),
++    }));
++
++  const nextBorrowerIdSet = new Set(
++    nextBorrowers.map((borrower) => borrower.id)
++  );
++  const nextDirectoryKeySet = new Set(
++    directoryEntries.map((entry) => entry.identityKey)
++  );
++
++  const borrowerOperations = [
++    ...nextBorrowers.map((borrower) => ({
++      type: 'set',
++      ref: doc(RENTAL_BORROWERS_COLLECTION_REF, borrower.id),
++      data: {
++        ...borrower,
++        updatedAt: serverTimestamp(),
++      },
++    })),
++    ...currentBorrowerDocuments
++      .filter(
++        (borrowerDocument) =>
++          !nextBorrowerIdSet.has(borrowerDocument.id)
++      )
++      .map((borrowerDocument) => ({
++        type: 'delete',
++        ref: borrowerDocument.ref,
++      })),
++  ];
++
++  const directoryOperations = [
++    ...directoryEntries.map((entry) => ({
++      type: 'set',
++      ref: doc(
++        MEMBER_DIRECTORY_KEYS_COLLECTION_REF,
++        entry.identityKey
++      ),
++      data: {
++        identityKey: entry.identityKey,
++        directoryMemberId: entry.id,
++        name: entry.name,
++        team: entry.team,
++        sortOrder: entry.sortOrder,
++        enabled: true,
++        updatedAt: serverTimestamp(),
++      },
++    })),
++    ...currentDirectorySnapshot.docs
++      .filter(
++        (directoryDocument) =>
++          !nextDirectoryKeySet.has(directoryDocument.id)
++      )
++      .map((directoryDocument) => ({
++        type: 'delete',
++        ref: directoryDocument.ref,
++      })),
++  ];
++
++  const {
++    accountMetadataOperations,
++    claimOperations,
++    recoveryOperations,
++  } = buildMemberAccountIndexOperations({
++    accountEntries,
++    currentClaimDocuments: currentClaimsSnapshot.docs,
++    currentRecoveryDocuments: currentRecoverySnapshot.docs,
++  });
++
++  await commitFirestoreOperations([
++    ...borrowerOperations,
++    ...directoryOperations,
++    ...claimOperations,
++    ...recoveryOperations,
++    ...accountMetadataOperations,
++  ]);
++
++  const nextSettings = {
++    ...settings,
++    memberDirectoryVersion:
++      getSafeMemberDirectoryVersion(settings) + 1,
++    memberIdentityClaimsReady: true,
++  };
++
++  await setDoc(
++    PUBLIC_CONFIG_DOC_REF,
++    {
++      teams: nextTeams,
++      settings: nextSettings,
++      updatedAt: serverTimestamp(),
++    },
++    { merge: true }
++  );
++
++  return {
++    nextBorrowers,
++    nextSettings,
++    nextTeams,
++  };
++};
+diff --git a/tmp/p2_signup_diff_new/src/features/members/useAdminSignupPolicyDirectoryActions.js b/src/features/members/useAdminSignupPolicyDirectoryActions.js
+new file mode 100644
+index 0000000..f869e7f
+--- /dev/null
++++ b/src/features/members/useAdminSignupPolicyDirectoryActions.js
+@@ -0,0 +1,372 @@
++import {
++  useCallback,
++  useEffect,
++  useMemo,
++  useRef,
++  useState,
++} from 'react';
++import {
++  serverTimestamp,
++  setDoc,
++} from 'firebase/firestore';
++
++import {
++  PUBLIC_CONFIG_DOC_REF,
++} from '../../firebase.js';
++import {
++  getSafeMemberDirectoryVersion,
++} from './memberAccountPolicy.js';
++
++let memberDirectorySaveServicePromise = null;
++
++const loadMemberDirectorySaveService = () => {
++  if (!memberDirectorySaveServicePromise) {
++    memberDirectorySaveServicePromise = import(
++      './memberDirectorySaveService.js'
++    ).catch((error) => {
++      memberDirectorySaveServicePromise = null;
++      throw error;
++    });
++  }
++
++  return memberDirectorySaveServicePromise;
++};
++
++const normalizeComparableTeams = (teams = []) =>
++  teams
++    .map((team) => String(team || '').trim())
++    .filter(Boolean);
++
++const normalizeComparableBorrowers = (borrowers = []) =>
++  borrowers.map((borrower) => ({
++    id: String(borrower.id || ''),
++    name: String(borrower.name || '').trim(),
++    team: String(borrower.team || '').trim(),
++  }));
++
++export default function useAdminSignupPolicyDirectoryActions({
++  adminTab,
++  borrowers,
++  clearMemberDirectoryAuditResult,
++  isAdminAuthenticated,
++  isSplitStorageReady,
++  resetDirectoryMismatchRestoreAttempt,
++  restoreDirectoryMismatchAccountsAfterPolicyDisabled,
++  setData,
++  setDraggingBorrowerIndex,
++  setDraggingTeamIndex,
++  setEditingBorrowerIndex,
++  setEditingBorrowerName,
++  setEditingTeamIndex,
++  setEditingTeamName,
++  setNewBorrower,
++  setNewBorrowerTeam,
++  setNewTeam,
++  setTempBorrowers,
++  setTempTeams,
++  settings,
++  teams,
++  tempBorrowers,
++  tempTeams,
++  triggerToast,
++}) {
++  const triggerToastRef = useRef(triggerToast);
++  const [tempRequireRegisteredMemberForSignup, setTempRequireRegisteredMemberForSignup] =
++    useState(Boolean(settings.requireRegisteredMemberForSignup));
++  const [tempAutoApproveNewMembers, setTempAutoApproveNewMembers] =
++    useState(Boolean(settings.autoApproveNewMembers));
++  const [signupPolicySaving, setSignupPolicySaving] = useState(false);
++
++  useEffect(() => {
++    triggerToastRef.current = triggerToast;
++  }, [triggerToast]);
++
++  useEffect(() => {
++    if (adminTab !== 'signupPolicy') return;
++
++    setTempRequireRegisteredMemberForSignup(
++      Boolean(settings.requireRegisteredMemberForSignup)
++    );
++    setTempAutoApproveNewMembers(
++      Boolean(settings.autoApproveNewMembers)
++    );
++  }, [
++    adminTab,
++    settings.autoApproveNewMembers,
++    settings.requireRegisteredMemberForSignup,
++  ]);
++
++  const peopleSettingsDirty = useMemo(
++    () =>
++      JSON.stringify(normalizeComparableTeams(tempTeams)) !==
++        JSON.stringify(normalizeComparableTeams(teams)) ||
++      JSON.stringify(normalizeComparableBorrowers(tempBorrowers)) !==
++        JSON.stringify(normalizeComparableBorrowers(borrowers)),
++    [borrowers, teams, tempBorrowers, tempTeams]
++  );
++
++  const signupPolicyDirty = useMemo(
++    () =>
++      Boolean(tempRequireRegisteredMemberForSignup) !==
++        Boolean(settings.requireRegisteredMemberForSignup) ||
++      Boolean(tempAutoApproveNewMembers) !==
++        Boolean(settings.autoApproveNewMembers),
++    [
++      settings.autoApproveNewMembers,
++      settings.requireRegisteredMemberForSignup,
++      tempAutoApproveNewMembers,
++      tempRequireRegisteredMemberForSignup,
++    ]
++  );
++
++  const resetPeopleDraftUi = useCallback(() => {
++    setEditingTeamIndex(null);
++    setEditingTeamName('');
++    setDraggingTeamIndex(null);
++    setEditingBorrowerIndex(null);
++    setEditingBorrowerName('');
++    setDraggingBorrowerIndex(null);
++    setNewTeam('');
++    setNewBorrower('');
++    setNewBorrowerTeam('전체');
++  }, [
++    setDraggingBorrowerIndex,
++    setDraggingTeamIndex,
++    setEditingBorrowerIndex,
++    setEditingBorrowerName,
++    setEditingTeamIndex,
++    setEditingTeamName,
++    setNewBorrower,
++    setNewBorrowerTeam,
++    setNewTeam,
++  ]);
++
++  const cancelTempPeopleChanges = useCallback(
++    ({ silent = false } = {}) => {
++      setTempTeams(teams || []);
++      setTempBorrowers(borrowers || []);
++      resetPeopleDraftUi();
++
++      if (!silent) {
++        triggerToastRef.current(
++          '부서·사용자 변경사항이 취소되고 이전 상태로 복원되었습니다.',
++          'success'
++        );
++      }
++    }, [
++      borrowers,
++      resetPeopleDraftUi,
++      setTempBorrowers,
++      setTempTeams,
++      teams,
++    ]
++  );
++
++  const cancelSignupPolicyChanges = useCallback(() => {
++    setTempRequireRegisteredMemberForSignup(
++      Boolean(settings.requireRegisteredMemberForSignup)
++    );
++    setTempAutoApproveNewMembers(
++      Boolean(settings.autoApproveNewMembers)
++    );
++    triggerToastRef.current(
++      '회원가입 정책 변경사항을 취소했습니다.',
++      'success'
++    );
++  }, [
++    settings.autoApproveNewMembers,
++    settings.requireRegisteredMemberForSignup,
++  ]);
++
++  const saveSignupPolicyChanges = useCallback(async () => {
++    if (!isAdminAuthenticated) {
++      triggerToastRef.current(
++        '관리자 인증 후 회원가입 정책을 저장할 수 있습니다.',
++        'error'
++      );
++      return false;
++    }
++
++    if (!isSplitStorageReady) {
++      triggerToastRef.current(
++        'Firestore 분리 저장소 최종 전환이 완료되지 않아 회원가입 정책을 저장할 수 없습니다.',
++        'error'
++      );
++      return false;
++    }
++
++    const nextRequireRegistered = Boolean(
++      tempRequireRegisteredMemberForSignup
++    );
++    const nextAutoApprove =
++      nextRequireRegistered && Boolean(tempAutoApproveNewMembers);
++    const policyEnabledChanged =
++      nextRequireRegistered !==
++      Boolean(settings.requireRegisteredMemberForSignup);
++    const nextDirectoryVersion = policyEnabledChanged
++      ? getSafeMemberDirectoryVersion(settings) + 1
++      : getSafeMemberDirectoryVersion(settings);
++    const nextSettings = {
++      ...settings,
++      requireRegisteredMemberForSignup: nextRequireRegistered,
++      autoApproveNewMembers: nextAutoApprove,
++      memberDirectoryVersion: nextDirectoryVersion,
++    };
++
++    setSignupPolicySaving(true);
++
++    try {
++      await setDoc(
++        PUBLIC_CONFIG_DOC_REF,
++        {
++          settings: nextSettings,
++          updatedAt: serverTimestamp(),
++        },
++        { merge: true }
++      );
++
++      let restoredDirectoryMismatchCount = 0;
++      let restoreWarning = '';
++
++      if (!nextRequireRegistered) {
++        try {
++          restoredDirectoryMismatchCount =
++            await restoreDirectoryMismatchAccountsAfterPolicyDisabled();
++        } catch (restoreError) {
++          console.error(
++            'Directory mismatch account restoration error:',
++            restoreError
++          );
++          resetDirectoryMismatchRestoreAttempt();
++          restoreWarning =
++            ' 정책은 해제되었지만 일부 회원 상태 자동 복원에 실패했습니다. 최신 Firestore Rules를 게시한 뒤 해당 회원이 다시 로그인하도록 안내해 주세요.';
++        }
++      }
++
++      setData((previousData) => ({
++        ...previousData,
++        settings: nextSettings,
++      }));
++      setTempRequireRegisteredMemberForSignup(nextRequireRegistered);
++      setTempAutoApproveNewMembers(nextAutoApprove);
++
++      triggerToastRef.current(
++        nextRequireRegistered
++          ? '회원가입 정책이 저장되었습니다. 기존 회원은 로그인 시 순차적으로 명부를 확인하며, 필요한 경우 전체 회원 명부 검사를 실행할 수 있습니다.'
++          : `회원가입 제한 정책이 해제되었습니다. 신규 회원 자동 승인도 함께 해제되었습니다.${
++              restoredDirectoryMismatchCount > 0
++                ? ` 명부 불일치로 전환됐던 회원 ${restoredDirectoryMismatchCount}명의 상태를 복원했습니다.`
++                : ''
++            }${restoreWarning}`,
++        restoreWarning ? 'error' : 'success'
++      );
++
++      return true;
++    } catch (error) {
++      console.error('Signup policy save error:', error);
++      triggerToastRef.current(
++        '회원가입 정책 저장에 실패했습니다.',
++        'error'
++      );
++      return false;
++    } finally {
++      setSignupPolicySaving(false);
++    }
++  }, [
++    isAdminAuthenticated,
++    isSplitStorageReady,
++    resetDirectoryMismatchRestoreAttempt,
++    restoreDirectoryMismatchAccountsAfterPolicyDisabled,
++    setData,
++    settings,
++    tempAutoApproveNewMembers,
++    tempRequireRegisteredMemberForSignup,
++  ]);
++
++  const saveTempPeopleChanges = useCallback(async () => {
++    if (!isSplitStorageReady) {
++      triggerToastRef.current(
++        'Firestore 분리 저장소 최종 전환이 완료되지 않아 부서·사용자 정보를 저장할 수 없습니다.',
++        'error'
++      );
++      return false;
++    }
++
++    try {
++      const {
++        MemberDirectoryValidationError,
++        saveMemberDirectory,
++      } = await loadMemberDirectorySaveService();
++
++      const {
++        nextBorrowers,
++        nextSettings,
++        nextTeams,
++      } = await saveMemberDirectory({
++        currentBorrowers: borrowers,
++        settings,
++        tempBorrowers,
++        tempTeams,
++      });
++
++      setData((previousData) => ({
++        ...previousData,
++        teams: nextTeams,
++        borrowers: nextBorrowers,
++        settings: nextSettings,
++      }));
++
++      setTempTeams(nextTeams);
++      setTempBorrowers(nextBorrowers);
++      clearMemberDirectoryAuditResult();
++      resetPeopleDraftUi();
++
++      triggerToastRef.current(
++        '부서·사용자 명부가 저장되었습니다. 명부 버전이 변경되어 기존 회원은 다음 로그인 시 순차적으로 재검증됩니다.',
++        'success'
++      );
++
++      return true;
++    } catch (error) {
++      if (
++        error?.name === 'MemberDirectoryValidationError' &&
++        error?.userMessage
++      ) {
++        triggerToastRef.current(error.userMessage, 'error');
++        return false;
++      }
++
++      console.error('People data save error:', error);
++      triggerToastRef.current(
++        '부서·사용자 저장에 실패했습니다. 기존 데이터는 유지됩니다.',
++        'error'
++      );
++      return false;
++    }
++  }, [
++    borrowers,
++    clearMemberDirectoryAuditResult,
++    isSplitStorageReady,
++    resetPeopleDraftUi,
++    setData,
++    setTempBorrowers,
++    setTempTeams,
++    settings,
++    tempBorrowers,
++    tempTeams,
++  ]);
++
++  return {
++    cancelSignupPolicyChanges,
++    cancelTempPeopleChanges,
++    peopleSettingsDirty,
++    saveSignupPolicyChanges,
++    saveTempPeopleChanges,
++    setTempAutoApproveNewMembers,
++    setTempRequireRegisteredMemberForSignup,
++    signupPolicyDirty,
++    signupPolicySaving,
++    tempAutoApproveNewMembers,
++    tempRequireRegisteredMemberForSignup,
++  };
++}
+diff --git a/tools/firestore-audit-policy.json b/tools/firestore-audit-policy.json
+index 82e549c..1d68702 100644
+--- a/tools/firestore-audit-policy.json
++++ b/tools/firestore-audit-policy.json
+@@ -120,22 +120,22 @@
+       "reviewWhen": "컬렉션 규모, 화면 활성 조건, 데이터 보존 정책 또는 쿼리 구조가 변경될 때 재검토"
+     },
+     {
+-      "id": "getDocs:63b603d23c455113",
++      "id": "getDocs:52808d39c0871c25",
+       "reason": "관리자가 부서·사용자 명부 저장을 실행할 때 계정·식별키 색인을 전체 재구성하기 위한 명시적 일회성 무결성 작업입니다.",
+       "reviewWhen": "컬렉션 규모, 화면 활성 조건, 데이터 보존 정책 또는 쿼리 구조가 변경될 때 재검토"
+     },
+     {
+-      "id": "getDocs:99813abbe5dd141d",
++      "id": "getDocs:2d547d33f6520d10",
+       "reason": "관리자가 부서·사용자 명부 저장을 실행할 때 계정·식별키 색인을 전체 재구성하기 위한 명시적 일회성 무결성 작업입니다.",
+       "reviewWhen": "컬렉션 규모, 화면 활성 조건, 데이터 보존 정책 또는 쿼리 구조가 변경될 때 재검토"
+     },
+     {
+-      "id": "getDocs:4fe269dbb2306294",
++      "id": "getDocs:79250214918d076a",
+       "reason": "관리자가 부서·사용자 명부 저장을 실행할 때 계정·식별키 색인을 전체 재구성하기 위한 명시적 일회성 무결성 작업입니다.",
+       "reviewWhen": "컬렉션 규모, 화면 활성 조건, 데이터 보존 정책 또는 쿼리 구조가 변경될 때 재검토"
+     },
+     {
+-      "id": "getDocs:321df5b95cb51ac7",
++      "id": "getDocs:1f96ba6be6d1f426",
+       "reason": "관리자가 부서·사용자 명부 저장을 실행할 때 계정·식별키 색인을 전체 재구성하기 위한 명시적 일회성 무결성 작업입니다.",
+       "reviewWhen": "컬렉션 규모, 화면 활성 조건, 데이터 보존 정책 또는 쿼리 구조가 변경될 때 재검토"
+     },

@@ -1,0 +1,33 @@
+{
+  "baseline": {
+    "package": "rental-system-p2-member-directory-editor-feature-split-deployment-package.zip",
+    "initialModuleCount": 39,
+    "initialSourceBytes": 825675,
+    "appSourceBytes": 543901,
+    "topLevelDynamicEntryCount": 14,
+    "peoplePanelContextKeyCount": 39
+  },
+  "modified": {
+    "package": "rental-system-p2-organization-panel-lazy-feature-deployment-package.zip",
+    "initialModuleCount": 38,
+    "initialSourceBytes": 810629,
+    "appSourceBytes": 543123,
+    "topLevelDynamicEntryCount": 13,
+    "peoplePanelContextKeyCount": 15
+  },
+  "change": {
+    "initialModuleCount": -1,
+    "initialSourceBytes": -15046,
+    "initialSourcePercent": -1.8224,
+    "appSourceBytes": -778,
+    "topLevelDynamicEntryCount": -1,
+    "peoplePanelContextKeyCount": -24,
+    "peoplePanelContextPercent": -61.5385
+  },
+  "excludedFromInitialStaticGraph": [
+    "src/admin/AdminOrganizationPanel.jsx",
+    "src/features/members/useAdminMemberDirectoryEditor.js",
+    "src/features/members/useAdminMemberDirectorySaveActions.js",
+    "src/features/members/memberDirectorySaveService.js"
+  ]
+}

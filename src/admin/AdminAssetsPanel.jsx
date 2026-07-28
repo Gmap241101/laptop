@@ -1,3 +1,5 @@
+import useAssetBulkUpload from '../features/assets/useAssetBulkUpload.js';
+
 export default function AdminAssetsPanel({ ctx }) {
   const {
     AdminPageHeader,
@@ -17,25 +19,40 @@ export default function AdminAssetsPanel({ ctx }) {
     adminFilteredLaptops,
     adminLaptopQuery,
     adminSelectedAssetCategory,
-    assetUploadParserLoading,
+    authenticatedAdminId,
     createLaptop,
+    currentAuthAdminAccount,
     data,
     deleteLaptop,
     editLaptop,
     editLaptopInsertIndex,
     getLaptopAdminDisplayStatus,
     handleAddLaptopClick,
-    handleFileUpload,
     newLaptop,
     saveLaptop,
     setAdminAvailabilityFilter,
     setAdminLaptopQuery,
     setAdminSelectedAssetCategory,
+    setData,
     setEditLaptop,
     setNewLaptop,
     setShowUploadPanel,
     showUploadPanel,
+    splitRentalAssets,
+    triggerToast,
   } = ctx;
+
+  const {
+    assetUploadParserLoading,
+    handleFileUpload,
+  } = useAssetBulkUpload({
+    splitRentalAssets,
+    authenticatedAdminId,
+    currentAuthAdminAccountId: currentAuthAdminAccount?.id || '',
+    setData,
+    setShowUploadPanel,
+    triggerToast,
+  });
 
   return (
                     <div className="space-y-6">

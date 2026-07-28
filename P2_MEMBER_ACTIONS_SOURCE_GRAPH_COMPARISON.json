@@ -1,0 +1,21 @@
+{
+  "baselinePackage": "rental-system-p2-member-accounts-controller-feature-split-deployment-package.zip",
+  "before": {
+    "initialModuleCount": 33,
+    "initialSourceBytes": 819594,
+    "appBytes": 591011,
+    "appLines": 20387
+  },
+  "after": {
+    "initialModuleCount": 37,
+    "initialSourceBytes": 824686,
+    "appBytes": 562950,
+    "appLines": 19425
+  },
+  "delta": {
+    "initialModuleCount": 4,
+    "initialSourceBytes": 5092,
+    "appBytes": -28061,
+    "appLines": -962
+  }
+}

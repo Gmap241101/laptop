@@ -1,0 +1,39 @@
+{
+  "baselinePackage": "rental-system-p2-signup-policy-directory-feature-split-deployment-package.zip",
+  "before": {
+    "initialModuleCount": 38,
+    "initialSourceBytes": 823105,
+    "app": {
+      "lines": 19050,
+      "bytes": 550747,
+      "useStateCalls": 219,
+      "useEffectCalls": 66,
+      "useMemoCalls": 39,
+      "useRefCalls": 19
+    },
+    "signupPolicyHookBytes": 10622
+  },
+  "after": {
+    "initialModuleCount": 39,
+    "initialSourceBytes": 825675,
+    "app": {
+      "lines": 18853,
+      "bytes": 543901,
+      "useStateCalls": 208,
+      "useEffectCalls": 64,
+      "useMemoCalls": 39,
+      "useRefCalls": 19
+    },
+    "signupPolicyHookBytes": 8486,
+    "directoryEditorHookBytes": 11552
+  },
+  "delta": {
+    "initialModuleCount": 1,
+    "initialSourceBytes": 2570,
+    "appLines": -197,
+    "appBytes": -6846,
+    "appUseStateCalls": -11,
+    "appUseEffectCalls": -2,
+    "signupPolicyHookBytes": -2136
+  }
+}

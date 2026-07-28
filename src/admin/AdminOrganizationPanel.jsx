@@ -1,3 +1,8 @@
+import { useCallback, useEffect } from 'react';
+
+import useAdminMemberDirectoryEditor from '../features/members/useAdminMemberDirectoryEditor.js';
+import useAdminMemberDirectorySaveActions from '../features/members/useAdminMemberDirectorySaveActions.js';
+
 export default function AdminOrganizationPanel({ ctx }) {
   const {
     AdminPageHeader,
@@ -7,6 +12,17 @@ export default function AdminOrganizationPanel({ ctx }) {
     Save,
     Trash2,
     X,
+    clearMemberDirectoryAuditResult,
+    isSplitStorageReady,
+    memberDirectoryBorrowers,
+    memberDirectorySettings,
+    memberDirectoryTeams,
+    onMemberDirectoryDeferredStateChange,
+    setData,
+    triggerToast,
+  } = ctx;
+
+  const {
     addTempBorrower,
     addTempTeam,
     applyEditTempBorrower,
@@ -26,7 +42,8 @@ export default function AdminOrganizationPanel({ ctx }) {
     newBorrower,
     newBorrowerTeam,
     newTeam,
-    saveTempPeopleChanges,
+    peopleSettingsDirty,
+    replaceTempPeopleDraft,
     setDraggingBorrowerIndex,
     setDraggingTeamIndex,
     setEditingBorrowerIndex,
@@ -38,8 +55,52 @@ export default function AdminOrganizationPanel({ ctx }) {
     setNewTeam,
     startEditTempBorrower,
     startEditTempTeam,
+    tempBorrowers,
     tempTeams,
-  } = ctx;
+  } = useAdminMemberDirectoryEditor({
+    borrowers: memberDirectoryBorrowers,
+    teams: memberDirectoryTeams,
+    triggerToast,
+  });
+
+  const {
+    saveTempPeopleChanges,
+  } = useAdminMemberDirectorySaveActions({
+    currentBorrowers: memberDirectoryBorrowers,
+    clearMemberDirectoryAuditResult,
+    isSplitStorageReady,
+    replaceTempPeopleDraft,
+    setData,
+    settings: memberDirectorySettings,
+    tempBorrowers,
+    tempTeams,
+    triggerToast,
+  });
+
+  const discardTempPeopleChanges = useCallback(
+    () => cancelTempPeopleChanges({ silent: true }),
+    [cancelTempPeopleChanges]
+  );
+
+  useEffect(() => {
+    onMemberDirectoryDeferredStateChange({
+      dirty: peopleSettingsDirty,
+      discard: discardTempPeopleChanges,
+      save: saveTempPeopleChanges,
+    });
+  }, [
+    discardTempPeopleChanges,
+    onMemberDirectoryDeferredStateChange,
+    peopleSettingsDirty,
+    saveTempPeopleChanges,
+  ]);
+
+  useEffect(
+    () => () => {
+      onMemberDirectoryDeferredStateChange(null);
+    },
+    [onMemberDirectoryDeferredStateChange]
+  );
 
   return (
                     <div className="space-y-6">

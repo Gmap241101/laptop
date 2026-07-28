@@ -1,0 +1,47 @@
+P2 MEMBER ACCOUNTS CONTROLLER FEATURE SPLIT - VALIDATION
+Generated: 2026-07-28
+
+[PASS] JS/JSX/MJS transpile: 75 files, 0 errors
+[PASS] Relative imports: 132 checked, 0 missing
+
+> dept-laptop-rental@1.0.0 audit:firestore:strict
+> node tools/audit-firestore-access.mjs --strict
+
+Firestore access audit
+======================
+Generated: 2026-07-28T09:49:56.332Z
+Result: PASS
+Source files: 71
+Total calls: 123
+onSnapshot: 32
+getDocs: 48
+getDoc: 23
+getCountFromServer: 20
+Approved risk findings: 51
+Unapproved warnings: 0
+Unapproved errors: 0
+
+[PASS] Korean string literals: removed=0, added=0
+[PASS] Feature boundary: residual=0, appMissing=0, hookMissing=0
+[PASS] App.jsx lines: 20834 -> 20388 (-446)
+[PASS] App.jsx bytes: 603966 -> 591011 (-12955)
+[PASS] App.jsx useState: 234 -> 225 (-9)
+[PASS] App.jsx useEffect: 72 -> 68 (-4)
+[PASS] App.jsx useRef: 24 -> 21 (-3)
+[PASS] App.jsx useMemo: 44 -> 41 (-3)
+[PASS] New member controller: 427 lines, 11790 bytes
+[PASS] Initial modules: 32 -> 33
+[PASS] Initial source bytes: 820759 -> 819594 (-1165)
+[PASS] Firestore Rules unchanged
+[PASS] Firestore indexes unchanged
+[PASS] package.json and package-lock.json unchanged
+
+[LIMITATION] npm run build: prebuild audit passed, Vite bundle not generated
+[LIMITATION] Reason: node_modules/.bin/vite is missing in this execution environment
+[LIMITATION] Actual result: sh: 1: vite: not found (exit 127)
+
+[PASS] Full deployment ZIP integrity: no errors
+[PASS] Changed-files ZIP integrity: no errors
+[PASS] Full ZIP re-extracted transpile: 75 files, 0 errors
+[PASS] Full ZIP re-extracted Firestore strict audit: PASS
+[PASS] Forbidden paths in deployment ZIP: node_modules=0, dist=0, .git=0, .performance-reports=0

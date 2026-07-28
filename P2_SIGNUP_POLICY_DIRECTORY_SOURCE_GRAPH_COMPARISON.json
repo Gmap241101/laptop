@@ -1,0 +1,26 @@
+{
+  "baseline": {
+    "initialModuleCount": 37,
+    "initialSourceBytes": 824686,
+    "dynamicEntryCount": 13,
+    "appJsxLines": 19425,
+    "appJsxBytes": 562950
+  },
+  "current": {
+    "initialModuleCount": 38,
+    "initialSourceBytes": 823105,
+    "dynamicEntryCount": 14,
+    "appJsxLines": 19050,
+    "appJsxBytes": 550747
+  },
+  "delta": {
+    "initialModuleCount": 1,
+    "initialSourceBytes": -1581,
+    "dynamicEntryCount": 1,
+    "appJsxLines": -375,
+    "appJsxBytes": -12203
+  },
+  "newDynamicEntries": [
+    "src/features/members/memberDirectorySaveService.js"
+  ]
+}

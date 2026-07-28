@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-07-28T09:14:54.221Z",
-  "initialModuleCount": 30,
-  "initialSourceBytes": 837582,
+  "generatedAt": "2026-07-28T11:22:06.794Z",
+  "initialModuleCount": 38,
+  "initialSourceBytes": 810629,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 628913
+      "bytes": 543123
     },
     {
       "file": "src/user/UserHomePanel.jsx",
@@ -20,8 +20,12 @@
       "bytes": 21872
     },
     {
+      "file": "src/features/members/useAdminMemberActions.js",
+      "bytes": 21126
+    },
+    {
       "file": "src/context/appContextSlices.js",
-      "bytes": 19159
+      "bytes": 18715
     },
     {
       "file": "src/components/CommonUI.jsx",
@@ -32,6 +36,10 @@
       "bytes": 11870
     },
     {
+      "file": "src/features/members/useAdminMemberAccountsController.js",
+      "bytes": 11790
+    },
+    {
       "file": "src/utils/systemSettings.js",
       "bytes": 11743
     },
@@ -40,8 +48,16 @@
       "bytes": 8697
     },
     {
+      "file": "src/features/members/memberAccountIndexService.js",
+      "bytes": 7375
+    },
+    {
       "file": "src/hooks/useDashboardSummary.js",
       "bytes": 7332
+    },
+    {
+      "file": "src/features/members/useAdminSignupPolicyActions.js",
+      "bytes": 6168
     },
     {
       "file": "src/routing/appRoutes.js",
@@ -64,6 +80,10 @@
       "bytes": 4673
     },
     {
+      "file": "src/features/boards/useBoardProgressiveSearch.js",
+      "bytes": 4622
+    },
+    {
       "file": "src/user/UserWorkspace.jsx",
       "bytes": 4350
     },
@@ -80,6 +100,10 @@
       "bytes": 3601
     },
     {
+      "file": "src/features/requests/useAdminRequestProgressiveSearch.js",
+      "bytes": 3460
+    },
+    {
       "file": "src/services/publicAssetCatalog.js",
       "bytes": 3257
     },
@@ -94,6 +118,14 @@
     {
       "file": "src/services/progressiveFirestoreSearch.js",
       "bytes": 2997
+    },
+    {
+      "file": "src/features/members/memberAccountPolicy.js",
+      "bytes": 2442
+    },
+    {
+      "file": "src/features/members/memberAccountHistoryService.js",
+      "bytes": 2298
     },
     {
       "file": "src/utils/popupUtils.js",
@@ -130,7 +162,6 @@
     "src/performance/DevPerformancePanel.jsx",
     "src/services/dashboardSummaryService.js",
     "src/services/publicAssetCatalogWriteThrough.js",
-    "src/services/sheetJsLoader.js",
     "src/user/UserAccountStatusPanel.jsx",
     "src/user/UserAuthPanel.jsx",
     "src/user/UserBoardPanel.jsx",

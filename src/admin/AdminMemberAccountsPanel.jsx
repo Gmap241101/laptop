@@ -1,5 +1,13 @@
 import { useState } from 'react';
 
+import {
+  loadMemberAccountHistorySummary,
+} from '../features/members/memberAccountHistoryService.js';
+import {
+  getUserAccountStatusClassName,
+  getUserAccountStatusLabel,
+} from '../features/members/memberAccountPolicy.js';
+
 export default function AdminMemberAccountsPanel({ ctx }) {
   const {
     AdminPageHeader,
@@ -20,9 +28,6 @@ export default function AdminMemberAccountsPanel({ ctx }) {
     adminUserAccountsReady,
     confirmUserAccountStatusChange,
     filteredManagedUserAccounts,
-    getUserAccountStatusClassName,
-    getUserAccountStatusLabel,
-    loadMemberAccountHistorySummary,
     safeAdminUserAccountPage,
     setAdminUserAccountPage,
     setAdminUserAccountQuery,

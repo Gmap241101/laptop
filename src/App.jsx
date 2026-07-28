@@ -82,19 +82,6 @@ import {
 } from './context/appContextSlices.js';
 
 const AdminWorkspace = React.lazy(() => import('./admin/AdminWorkspace.jsx'));
-let sheetJsLoaderModulePromise = null;
-const loadSheetJsLoaderModule = () => {
-  if (!sheetJsLoaderModulePromise) {
-    sheetJsLoaderModulePromise = import('./services/sheetJsLoader.js').catch(
-      (error) => {
-        sheetJsLoaderModulePromise = null;
-        throw error;
-      }
-    );
-  }
-
-  return sheetJsLoaderModulePromise;
-};
 let appDialogsModulePromise = null;
 const loadAppDialogsModule = () => {
   if (!appDialogsModulePromise) {
@@ -240,6 +227,23 @@ import {
   serializeHolidayListForFirestore,
 } from './domain/rentalPolicy.js';
 import { useDashboardSummary } from './hooks/useDashboardSummary.js';
+import useAdminRequestProgressiveSearch from './features/requests/useAdminRequestProgressiveSearch.js';
+import useBoardProgressiveSearch from './features/boards/useBoardProgressiveSearch.js';
+import useAdminMemberAccountsController from './features/members/useAdminMemberAccountsController.js';
+import useAdminMemberActions from './features/members/useAdminMemberActions.js';
+import useAdminSignupPolicyActions from './features/members/useAdminSignupPolicyActions.js';
+import {
+  commitFirestoreOperations,
+} from './features/members/memberAccountIndexService.js';
+import {
+  getClaimCurrentUid,
+  getClaimFormerUids,
+  getClaimStatus,
+  getRestorableUserProfileStatus,
+  getSafeMemberDirectoryVersion,
+  isAutoApproveNewMembersEnabled,
+  isRegisteredMemberSignupRequired,
+} from './features/members/memberAccountPolicy.js';
 import { useDebouncedValue } from './hooks/useDebouncedValue.js';
 import {
   PROTECTED_USER_TABS,
@@ -260,10 +264,6 @@ import {
   getAdminRequestCountConstraints,
   getAdminRequestServerConstraints,
 } from './services/adminRequestQuery.js';
-import {
-  DEFAULT_PROGRESSIVE_SEARCH_BATCH_SIZE,
-  scanFirestoreMatches,
-} from './services/progressiveFirestoreSearch.js';
 import {
   PUBLIC_ASSET_CATALOG_SCHEMA_VERSION,
   hydratePublicCatalogAssets,
@@ -331,9 +331,6 @@ import {
 } from './utils/overduePolicy.js';
 
 const SPLIT_STORAGE_VERSION = 2;
-
-// Firestore 배치 최대 500건보다 여유 있게 400건씩 처리
-const FIRESTORE_BATCH_WRITE_LIMIT = 400;
 
 // --- 상태 및 스타일 정의 ---
 const getUserRequestActionLabel = (type) => {
@@ -635,234 +632,6 @@ const normalizeAssetNumber = (assetNo) =>
 const getAssetNumberRegistryId = (assetNo) =>
   encodeURIComponent(normalizeAssetNumber(assetNo));
 
-const createBorrowerDocumentId = () =>
-  `BORROWER-${doc(RENTAL_BORROWERS_COLLECTION_REF).id}`;
-
-const commitFirestoreOperations = async (
-  operations,
-  batchLimit = FIRESTORE_BATCH_WRITE_LIMIT
-) => {
-  for (
-    let startIndex = 0;
-    startIndex < operations.length;
-    startIndex += batchLimit
-  ) {
-    const operationChunk = operations.slice(
-      startIndex,
-      startIndex + batchLimit
-    );
-
-    const batch = writeBatch(db);
-
-    operationChunk.forEach((operation) => {
-      if (operation.type === 'delete') {
-        batch.delete(operation.ref);
-        return;
-      }
-
-      if (operation.type === 'update') {
-        batch.update(operation.ref, operation.data);
-        return;
-      }
-
-      if (operation.options) {
-        batch.set(
-          operation.ref,
-          operation.data,
-          operation.options
-        );
-        return;
-      }
-
-      batch.set(
-        operation.ref,
-        operation.data
-      );
-    });
-
-    await batch.commit();
-  }
-};
-
-const buildMemberAccountIndexEntries = async (accounts = []) =>
-  Promise.all(
-    (accounts || []).map(async (account) => {
-      const name = normalizeMemberName(account.name || '');
-      const team = normalizeMemberTeam(account.team || '');
-      const phone = String(account.phone || '').trim();
-      const email = normalizeEmailAddress(account.email || '');
-      const identityKey =
-        name && team ? await createMemberIdentityKey(team, name) : '';
-      const recoveryKey =
-        name && team && phone
-          ? await createAccountRecoveryKey({ team, name, phone })
-          : '';
-
-      return {
-        account,
-        name,
-        team,
-        phone,
-        email,
-        identityKey,
-        recoveryKey,
-        maskedEmail: maskEmailAddress(email),
-      };
-    })
-  );
-
-const buildMemberAccountIndexOperations = ({
-  accountEntries = [],
-  currentClaimDocuments = [],
-  currentRecoveryDocuments = [],
-} = {}) => {
-  const groups = new Map();
-
-  accountEntries.forEach((entry) => {
-    if (!entry.identityKey) return;
-    const group = groups.get(entry.identityKey) || [];
-    group.push(entry);
-    groups.set(entry.identityKey, group);
-  });
-
-  const currentClaims = new Map(
-    currentClaimDocuments.map((documentSnapshot) => [
-      documentSnapshot.id,
-      documentSnapshot.data(),
-    ])
-  );
-  const desiredClaimKeys = new Set();
-  const desiredRecoveryKeys = new Set();
-  const claimOperations = [];
-  const recoveryOperations = [];
-  const accountMetadataOperations = [];
-
-  groups.forEach((group, identityKey) => {
-    desiredClaimKeys.add(identityKey);
-    const currentClaim = currentClaims.get(identityKey) || {};
-    const liveEntries = group.filter(
-      (entry) => entry.account.status !== USER_PROFILE_STATUS.RETIRED
-    );
-    const retiredEntries = group.filter(
-      (entry) => entry.account.status === USER_PROFILE_STATUS.RETIRED
-    );
-    const representative = liveEntries[0] || retiredEntries[0] || group[0];
-    const formerUids = Array.from(
-      new Set([
-        ...getClaimFormerUids(currentClaim),
-        ...retiredEntries.map((entry) => entry.account.uid),
-        ...group.flatMap((entry) =>
-          Array.isArray(entry.account.previousAccountUids)
-            ? entry.account.previousAccountUids
-            : []
-        ),
-      ].filter(Boolean))
-    );
-    const conflict = liveEntries.length > 1;
-    const currentEntry = liveEntries.length === 1 ? liveEntries[0] : null;
-    const currentUid = currentEntry?.account?.uid || '';
-
-    claimOperations.push({
-      type: 'set',
-      ref: doc(MEMBER_IDENTITY_CLAIMS_COLLECTION_REF, identityKey),
-      data: {
-        identityKey,
-        uid: currentUid,
-        currentUid,
-        status: conflict ? 'conflict' : currentUid ? 'active' : 'released',
-        name: representative?.name || currentClaim.name || '',
-        team: representative?.team || currentClaim.team || '',
-        conflict,
-        conflictingUids: conflict
-          ? liveEntries.map((entry) => entry.account.uid)
-          : [],
-        formerUids: formerUids.filter((uid) => uid !== currentUid),
-        directoryMemberId:
-          currentEntry?.account?.directoryMemberId ||
-          currentClaim.directoryMemberId ||
-          '',
-        restrictionSnapshot: currentClaim.restrictionSnapshot || {},
-        createdAt: currentClaim.createdAt || serverTimestamp(),
-        releasedAt: !currentUid && !conflict
-          ? currentClaim.releasedAt || serverTimestamp()
-          : '',
-        updatedAt: serverTimestamp(),
-      },
-    });
-
-    if (currentEntry && !conflict && currentEntry.recoveryKey && currentEntry.maskedEmail) {
-      desiredRecoveryKeys.add(currentEntry.recoveryKey);
-      recoveryOperations.push({
-        type: 'set',
-        ref: doc(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF, currentEntry.recoveryKey),
-        data: {
-          recoveryKey: currentEntry.recoveryKey,
-          maskedEmail: currentEntry.maskedEmail,
-          accountStatus: currentEntry.account.status || USER_PROFILE_STATUS.PENDING,
-          enabled: true,
-          updatedAt: serverTimestamp(),
-        },
-      });
-      accountMetadataOperations.push({
-        type: 'set',
-        ref: doc(db, USER_ACCOUNTS_COLLECTION_NAME, currentEntry.account.uid),
-        data: {
-          identityKey,
-          recoveryKey: currentEntry.recoveryKey,
-          maskedEmail: currentEntry.maskedEmail,
-          previousAccountUids: formerUids.filter(
-            (uid) => uid !== currentEntry.account.uid
-          ),
-          rejoinedAccount:
-            Boolean(currentEntry.account.rejoinedAccount) || formerUids.length > 0,
-          updatedAt: serverTimestamp(),
-        },
-        options: { merge: true },
-      });
-    }
-  });
-
-  currentClaimDocuments.forEach((claimDocument) => {
-    if (desiredClaimKeys.has(claimDocument.id)) return;
-
-    const claimData = claimDocument.data();
-    const currentUid = getClaimCurrentUid(claimData);
-
-    if (currentUid) {
-      claimOperations.push({
-        type: 'set',
-        ref: claimDocument.ref,
-        data: {
-          ...claimData,
-          uid: '',
-          currentUid: '',
-          status: 'released',
-          formerUids: Array.from(
-            new Set([...getClaimFormerUids(claimData), currentUid])
-          ),
-          releasedAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        },
-      });
-    }
-  });
-
-  currentRecoveryDocuments.forEach((recoveryDocument) => {
-    if (!desiredRecoveryKeys.has(recoveryDocument.id)) {
-      recoveryOperations.push({
-        type: 'delete',
-        ref: recoveryDocument.ref,
-      });
-    }
-  });
-
-  return {
-    accountMetadataOperations,
-    claimOperations,
-    recoveryOperations,
-    groups,
-  };
-};
 
 function mergePersistedData(rawData) {
   const parsed = { ...initialData, ...(rawData || {}) };
@@ -925,7 +694,6 @@ function mergePersistedData(rawData) {
 
 const ADMIN_CUSTOM_OPTION_VALUE = '__ADMIN_CUSTOM_INPUT__';
 const ADMIN_ACCOUNT_PAGE_SIZE = 10;
-const ADMIN_MEMBER_ACCOUNT_PAGE_SIZE = 20;
 const FIRESTORE_PINNED_POST_LIMIT = 20;
 const ADMIN_AUTH_SESSION_KEY = 'mk_laptop_admin_auth_session';
 const USER_AUTH_SESSION_KEY = 'mk_laptop_user_auth_session';
@@ -977,43 +745,6 @@ const createDefaultAccountRecoveryForm = () => ({
   phoneMiddle: '',
   phoneLast: '',
 });
-
-const getSafeMemberDirectoryVersion = (settings = {}) => {
-  const parsedVersion = Math.trunc(Number(settings.memberDirectoryVersion || 0));
-  return Number.isFinite(parsedVersion) && parsedVersion >= 0
-    ? parsedVersion
-    : 0;
-};
-
-const isRegisteredMemberSignupRequired = (settings = {}) =>
-  Boolean(settings.requireRegisteredMemberForSignup);
-
-
-const isAutoApproveNewMembersEnabled = (settings = {}) =>
-  isRegisteredMemberSignupRequired(settings) &&
-  Boolean(settings.autoApproveNewMembers);
-
-const getClaimCurrentUid = (claim = {}) =>
-  String(claim.currentUid || claim.uid || '').trim();
-
-const getClaimFormerUids = (claim = {}) =>
-  Array.from(
-    new Set(
-      [
-        ...(Array.isArray(claim.formerUids) ? claim.formerUids : []),
-      ]
-        .map((uid) => String(uid || '').trim())
-        .filter(Boolean)
-    )
-  );
-
-const getClaimStatus = (claim = {}) =>
-  claim.status || (getClaimCurrentUid(claim) ? 'active' : 'released');
-
-const getRestorableUserProfileStatus = (status) =>
-  [USER_PROFILE_STATUS.ACTIVE, USER_PROFILE_STATUS.PENDING].includes(status)
-    ? status
-    : USER_PROFILE_STATUS.ACTIVE;
 
 const createMemberPolicyError = (code) => {
   const error = new Error(code);
@@ -1528,7 +1259,6 @@ function App() {
   });
   const adminRequestCursorByPageRef = useRef(new Map([[1, null]]));
   const adminRequestCursorKeyRef = useRef('');
-  const adminRequestSearchCacheRef = useRef(null);
   const [selectedAdminRequestId, setSelectedAdminRequestId] = useState('');
 
   const [adminRequestEditDialog, setAdminRequestEditDialog] = useState(null);
@@ -1549,7 +1279,6 @@ function App() {
   const [noticeRegularTotalCount, setNoticeRegularTotalCount] = useState(0);
   const noticeCursorByPageRef = useRef(new Map([[1, null]]));
   const noticeCursorKeyRef = useRef('');
-  const noticeSearchCacheRef = useRef(null);
   const [noticePostsReady, setNoticePostsReady] = useState(false);
   const [
     noticePostsLoadErrorMessage,
@@ -1652,7 +1381,6 @@ function App() {
   const [faqRegularTotalCount, setFaqRegularTotalCount] = useState(0);
   const faqCursorByPageRef = useRef(new Map([[1, null]]));
   const faqCursorKeyRef = useRef('');
-  const faqSearchCacheRef = useRef(null);
   const [faqPostsReady, setFaqPostsReady] = useState(false);
   const [
     faqPostsLoadErrorMessage,
@@ -1744,6 +1472,11 @@ function App() {
   const [selectedLaptopId, setSelectedLaptopId] = useState(null);
   const [form, setForm] = useState(() => createDefaultRequestForm(data.settings));
   const [adminTab, setAdminTab] = useState('dashboard'); // 관리자 사이드바의 현재 메뉴 키
+  const [peopleSettingsDirty, setPeopleSettingsDirty] = useState(false);
+  const memberDirectoryDeferredActionsRef = useRef({
+    discard: null,
+    save: null,
+  });
   const [editLaptop, setEditLaptop] = useState(null);
   const [newLaptop, setNewLaptop] = useState(null); // 신규 자산 생성을 위한 상태 값 추가
   const [newAssetCategory, setNewAssetCategory] = useState('');
@@ -1752,28 +1485,6 @@ function App() {
   const [editingAssetCategoryIndex, setEditingAssetCategoryIndex] = useState(null);
   const [editingAssetCategoryName, setEditingAssetCategoryName] = useState('');
   const [draggingAssetCategoryIndex, setDraggingAssetCategoryIndex] = useState(null);
-  const [newTeam, setNewTeam] = useState('');
-  const [tempTeams, setTempTeams] = useState(data.teams || []);
-  const [editingTeamIndex, setEditingTeamIndex] = useState(null);
-  const [editingTeamName, setEditingTeamName] = useState('');
-  const [draggingTeamIndex, setDraggingTeamIndex] = useState(null);
-  const [newBorrower, setNewBorrower] = useState('');
-  const [newBorrowerTeam, setNewBorrowerTeam] = useState('전체');
-  const [tempBorrowers, setTempBorrowers] = useState(data.borrowers || []);
-  const [tempRequireRegisteredMemberForSignup, setTempRequireRegisteredMemberForSignup] = useState(
-    Boolean(data.settings.requireRegisteredMemberForSignup)
-  );
-  const [tempAutoApproveNewMembers, setTempAutoApproveNewMembers] = useState(
-    Boolean(data.settings.autoApproveNewMembers)
-  );
-  const [signupPolicySaving, setSignupPolicySaving] = useState(false);
-  const directoryMismatchRestoreInProgressRef = useRef(false);
-  const directoryMismatchRestoreAttemptKeyRef = useRef('');
-  const [memberDirectoryAuditLoading, setMemberDirectoryAuditLoading] = useState(false);
-  const [memberDirectoryAuditResult, setMemberDirectoryAuditResult] = useState(null);
-  const [editingBorrowerIndex, setEditingBorrowerIndex] = useState(null);
-  const [editingBorrowerName, setEditingBorrowerName] = useState('');
-  const [draggingBorrowerIndex, setDraggingBorrowerIndex] = useState(null);
 
   const [adminAccountForm, setAdminAccountForm] = useState(createDefaultAdminAccountForm);
   const [adminAccountPage, setAdminAccountPage] = useState(1);
@@ -1838,49 +1549,12 @@ function App() {
   const [currentUserRestriction, setCurrentUserRestriction] = useState(null);
   const [currentUserRestrictionReady, setCurrentUserRestrictionReady] = useState(false);
 
-  const [adminUserAccounts, setAdminUserAccounts] = useState([]);
-  const [adminUserAccountPage, setAdminUserAccountPage] = useState(1);
-  const [adminUserAccountHasNextPage, setAdminUserAccountHasNextPage] = useState(false);
-  const [adminUserAccountTotalCount, setAdminUserAccountTotalCount] = useState(0);
-  const [adminUserAccountStatusCountsRemote, setAdminUserAccountStatusCountsRemote] = useState({
-    pending: 0,
-    active: 0,
-    profileRequired: 0,
-    blocked: 0,
-    retired: 0,
-  });
-  const adminUserAccountCursorByPageRef = useRef(new Map([[1, null]]));
-  const adminUserAccountCursorKeyRef = useRef('');
-  const adminUserAccountSearchCacheRef = useRef(null);
-  const [adminUserAccountsReady, setAdminUserAccountsReady] = useState(false);
-  const [
-    adminUserAccountsLoadErrorMessage,
-    setAdminUserAccountsLoadErrorMessage,
-  ] = useState('');
-
-  const [adminUserAccountQuery, setAdminUserAccountQuery] = useState('');
-
-  const [
-    adminUserAccountStatusFilter,
-    setAdminUserAccountStatusFilter,
-  ] = useState('all');
-
-
   const debouncedAdminRequestQuery = useDebouncedValue(adminRequestQuery);
-  const debouncedAdminUserAccountQuery = useDebouncedValue(
-    adminUserAccountQuery
-  );
   const debouncedUserNoticeQuery = useDebouncedValue(userNoticeQuery);
   const debouncedAdminNoticeQuery = useDebouncedValue(adminNoticeQuery);
   const debouncedFaqQuery = useDebouncedValue(faqQuery);
 
   const adminRequestServerPage = adminRequestPage;
-  const adminUserAccountServerPage = adminUserAccountPage;
-
-  const [
-    adminUserAccountSavingUid,
-    setAdminUserAccountSavingUid,
-  ] = useState('');
 
   const userStatusLogoutInProgressRef = useRef(false);
   const userSessionLogoutInProgressRef = useRef(false);
@@ -1893,7 +1567,6 @@ function App() {
 
   // 엑셀/CSV 업로드 패널 토글 상태 값 추가
   const [showUploadPanel, setShowUploadPanel] = useState(false);
-  const [assetUploadParserLoading, setAssetUploadParserLoading] = useState(false);
   const [assetGridColumns, setAssetGridColumns] = useState(1);
 
   // 설정 임시 저장을 위한 임시 상태 정의
@@ -1942,45 +1615,6 @@ function App() {
     );
   }, [data.assetCategories, tempAssetCategories, tempAssetCategoryRenameMap]);
 
-  const peopleSettingsDirty = useMemo(() => {
-    const normalizeTeams = (teams = []) =>
-      teams
-        .map((team) => String(team || '').trim())
-        .filter(Boolean);
-
-    const normalizeBorrowers = (borrowers = []) =>
-      borrowers.map((borrower) => ({
-        id: String(borrower.id || ''),
-        name: String(borrower.name || '').trim(),
-        team: String(borrower.team || '').trim(),
-      }));
-
-    return (
-      JSON.stringify(normalizeTeams(tempTeams)) !==
-        JSON.stringify(normalizeTeams(data.teams || [])) ||
-      JSON.stringify(normalizeBorrowers(tempBorrowers)) !==
-        JSON.stringify(normalizeBorrowers(data.borrowers || []))
-    );
-  }, [
-    data.borrowers,
-    data.teams,
-    tempBorrowers,
-    tempTeams,
-  ]);
-
-  const signupPolicyDirty = useMemo(
-    () =>
-      Boolean(tempRequireRegisteredMemberForSignup) !==
-        Boolean(data.settings.requireRegisteredMemberForSignup) ||
-      Boolean(tempAutoApproveNewMembers) !==
-        Boolean(data.settings.autoApproveNewMembers),
-    [
-      data.settings.autoApproveNewMembers,
-      data.settings.requireRegisteredMemberForSignup,
-      tempAutoApproveNewMembers,
-      tempRequireRegisteredMemberForSignup,
-    ]
-  );
 
   const getComparableRentalPolicySettings = (settings = {}) => {
     const excludeSaturdays =
@@ -2057,32 +1691,6 @@ function App() {
       sanitizeFooterCommonHtml(footerConfigDraft.contentHtml || '') !==
         sanitizeFooterCommonHtml(footerConfig.contentHtml || ''));
 
-  const currentAdminDeferredSettingsDirty = Boolean(
-    (adminTab === 'extensionSettings' && rentalPolicySettingsDirty) ||
-      (adminTab === 'holidaySettings' && holidaySettingsDirty) ||
-      (adminTab === 'categories' && assetCategorySettingsDirty) ||
-      (adminTab === 'people' && peopleSettingsDirty) ||
-      (adminTab === 'noticePosts' && noticeBoardSettingsDirty) ||
-      (adminTab === 'faqPosts' && faqBoardSettingsDirty) ||
-      (adminTab === 'footerManagement' && footerConfigDirty)
-  );
-
-  useEffect(() => {
-    if (view !== 'admin' || !currentAdminDeferredSettingsDirty) {
-      return undefined;
-    }
-
-    const handleBeforeUnload = (event) => {
-      event.preventDefault();
-      event.returnValue = '';
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, [view, currentAdminDeferredSettingsDirty]);
 
   const [
     splitStorageFinalizeLoading,
@@ -3643,6 +3251,7 @@ function App() {
     }
   }, [
     splitSourceReady,
+    splitRentalAssets,
     splitSourceErrors,
     splitPublicConfig,
     splitRentalAssets,
@@ -3765,316 +3374,8 @@ function App() {
   ]);
 
 
-  useEffect(() => {
-    if (!firebaseAuthReady || !currentAuthRoleReady) {
-      setAdminUserAccountsReady(false);
-      return undefined;
-    }
-
-    const hasAdminSession =
-      Boolean(authenticatedAdminId) &&
-      Boolean(currentAuthAdminAccount?.id) &&
-      view === 'admin';
-
-    const shouldLoadMemberAccounts =
-      hasAdminSession && adminTab === 'memberAccounts';
-
-    if (!shouldLoadMemberAccounts) {
-      adminUserAccountCursorKeyRef.current = '';
-      adminUserAccountCursorByPageRef.current = new Map([[1, null]]);
-      adminUserAccountSearchCacheRef.current = null;
-      setAdminUserAccounts([]);
-      setAdminUserAccountHasNextPage(false);
-      setAdminUserAccountTotalCount(0);
-      setAdminUserAccountsReady(true);
-      setAdminUserAccountsLoadErrorMessage('');
-      return undefined;
-    }
-
-    setAdminUserAccountsReady(false);
-    setAdminUserAccountsLoadErrorMessage('');
-
-    const normalizedSearch = String(debouncedAdminUserAccountQuery || '')
-      .trim()
-      .toLowerCase();
-    const searchMode = Boolean(normalizedSearch);
-    const statusConstraints =
-      adminUserAccountStatusFilter === 'all'
-        ? []
-        : [where('status', '==', adminUserAccountStatusFilter)];
-
-    if (searchMode) {
-      const searchKey = [
-        adminUserAccountStatusFilter,
-        normalizedSearch,
-      ].join('|');
-      const previousCache = adminUserAccountSearchCacheRef.current;
-      const cache =
-        previousCache?.key === searchKey
-          ? previousCache
-          : {
-              key: searchKey,
-              cursor: null,
-              exhausted: false,
-              matches: [],
-            };
-
-      adminUserAccountSearchCacheRef.current = cache;
-      let cancelled = false;
-
-      void scanFirestoreMatches({
-        collectionRef: USER_ACCOUNTS_COLLECTION_REF,
-        constraints: [
-          ...statusConstraints,
-          orderBy('createdAt', 'desc'),
-        ],
-        startCursor: cache.cursor,
-        existingMatches: cache.matches,
-        targetMatchCount:
-          adminUserAccountServerPage * ADMIN_MEMBER_ACCOUNT_PAGE_SIZE + 1,
-        batchSize: DEFAULT_PROGRESSIVE_SEARCH_BATCH_SIZE,
-        mapDocument: (userDoc) => ({
-          ...userDoc.data(),
-          uid: userDoc.data().uid || userDoc.id,
-        }),
-        matchesDocument: (account) =>
-          [
-            account.name,
-            account.email,
-            account.team,
-            account.phone,
-            account.uid,
-          ].some((value) =>
-            String(value || '')
-              .toLowerCase()
-              .includes(normalizedSearch)
-          ),
-        isCancelled: () => cancelled,
-      })
-        .then((result) => {
-          if (cancelled || result.cancelled) return;
-
-          adminUserAccountSearchCacheRef.current = {
-            key: searchKey,
-            cursor: result.cursor,
-            exhausted: result.exhausted,
-            matches: result.matches,
-          };
-          setAdminUserAccounts(result.matches);
-          setAdminUserAccountHasNextPage(
-            result.matches.length >
-              adminUserAccountServerPage * ADMIN_MEMBER_ACCOUNT_PAGE_SIZE ||
-              !result.exhausted
-          );
-          setAdminUserAccountTotalCount(result.matches.length);
-          setAdminUserAccountsReady(true);
-          setAdminUserAccountsLoadErrorMessage('');
-        })
-        .catch((error) => {
-          if (cancelled) return;
-
-          const message =
-            '회원 계정 검색 결과를 불러오지 못했습니다. Firestore Rules와 필요한 인덱스를 확인해 주세요.';
-
-          console.error('User accounts progressive search error:', error);
-          setAdminUserAccounts([]);
-          setAdminUserAccountHasNextPage(false);
-          setAdminUserAccountsReady(true);
-          setAdminUserAccountsLoadErrorMessage(message);
-          triggerToast(message, 'error');
-        });
-
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    adminUserAccountSearchCacheRef.current = null;
-    const cursorKey = `${adminUserAccountStatusFilter}|browse`;
-    const cursorKeyChanged =
-      adminUserAccountCursorKeyRef.current !== cursorKey;
-
-    if (cursorKeyChanged) {
-      adminUserAccountCursorKeyRef.current = cursorKey;
-      adminUserAccountCursorByPageRef.current = new Map([[1, null]]);
-    }
-
-    const pageCursor = adminUserAccountCursorByPageRef.current.get(
-      adminUserAccountServerPage
-    );
-
-    if (adminUserAccountServerPage > 1 && !pageCursor) {
-      setAdminUserAccountPage(1);
-      return undefined;
-    }
-
-    const memberSource = firestoreQuery(
-      USER_ACCOUNTS_COLLECTION_REF,
-      ...statusConstraints,
-      orderBy('createdAt', 'desc'),
-      ...(pageCursor ? [startAfter(pageCursor)] : []),
-      firestoreLimit(ADMIN_MEMBER_ACCOUNT_PAGE_SIZE + 1)
-    );
-
-    const unsubscribe = onSnapshot(
-      memberSource,
-      (snapshot) => {
-        const sourceDocs = snapshot.docs;
-        const visibleDocs = sourceDocs.slice(0, ADMIN_MEMBER_ACCOUNT_PAGE_SIZE);
-        const hasNext = sourceDocs.length > ADMIN_MEMBER_ACCOUNT_PAGE_SIZE;
-
-        if (visibleDocs.length > 0) {
-          adminUserAccountCursorByPageRef.current.set(
-            adminUserAccountServerPage + 1,
-            visibleDocs[visibleDocs.length - 1]
-          );
-        }
-
-        setAdminUserAccounts(
-          visibleDocs.map((userDoc) => ({
-            ...userDoc.data(),
-            uid: userDoc.data().uid || userDoc.id,
-          }))
-        );
-        setAdminUserAccountHasNextPage(hasNext);
-        setAdminUserAccountsReady(true);
-        setAdminUserAccountsLoadErrorMessage('');
-      },
-      (error) => {
-        const message =
-          '회원 계정 목록을 불러오지 못했습니다. Firestore Rules와 필요한 인덱스를 확인해 주세요.';
-
-        console.error('User accounts paged sync error:', error);
-        setAdminUserAccounts([]);
-        setAdminUserAccountHasNextPage(false);
-        setAdminUserAccountsReady(true);
-        setAdminUserAccountsLoadErrorMessage(message);
-        triggerToast(message, 'error');
-      }
-    );
-
-    if (
-      cursorKeyChanged &&
-      adminUserAccountStatusFilter === 'all'
-    ) {
-      void getCountFromServer(USER_ACCOUNTS_COLLECTION_REF)
-        .then((countSnapshot) => {
-          setAdminUserAccountTotalCount(countSnapshot.data().count);
-        })
-        .catch((error) => {
-          console.error('User accounts count error:', error);
-        });
-    }
-
-    return unsubscribe;
-  }, [
-    firebaseAuthReady,
-    currentAuthRoleReady,
-    authenticatedAdminId,
-    currentAuthAdminAccount?.id,
-    view,
-    adminTab,
-    adminUserAccountServerPage,
-    debouncedAdminUserAccountQuery,
-    adminUserAccountStatusFilter,
-  ]);
-
-  useEffect(() => {
-    const shouldLoadStatusCounts =
-      firebaseAuthReady &&
-      currentAuthRoleReady &&
-      Boolean(authenticatedAdminId) &&
-      Boolean(currentAuthAdminAccount?.id) &&
-      view === 'admin' &&
-      adminTab === 'memberAccounts';
-
-    if (!shouldLoadStatusCounts) {
-      return;
-    }
-
-    let cancelled = false;
-
-    void Promise.all([
-      [
-        'pending',
-        getCountFromServer(
-          firestoreQuery(
-            USER_ACCOUNTS_COLLECTION_REF,
-            where('status', '==', USER_PROFILE_STATUS.PENDING)
-          )
-        ),
-      ],
-      [
-        'active',
-        getCountFromServer(
-          firestoreQuery(
-            USER_ACCOUNTS_COLLECTION_REF,
-            where('status', '==', USER_PROFILE_STATUS.ACTIVE)
-          )
-        ),
-      ],
-      [
-        'profileRequired',
-        getCountFromServer(
-          firestoreQuery(
-            USER_ACCOUNTS_COLLECTION_REF,
-            where('status', '==', USER_PROFILE_STATUS.PROFILE_REQUIRED)
-          )
-        ),
-      ],
-      [
-        'blocked',
-        getCountFromServer(
-          firestoreQuery(
-            USER_ACCOUNTS_COLLECTION_REF,
-            where('status', '==', USER_PROFILE_STATUS.BLOCKED)
-          )
-        ),
-      ],
-      [
-        'retired',
-        getCountFromServer(
-          firestoreQuery(
-            USER_ACCOUNTS_COLLECTION_REF,
-            where('status', '==', USER_PROFILE_STATUS.RETIRED)
-          )
-        ),
-      ],
-    ])
-      .then((entries) => {
-        if (cancelled) return;
-        setAdminUserAccountStatusCountsRemote(
-          Object.fromEntries(
-            entries.map(([key, countSnapshot]) => [
-              key,
-              countSnapshot.data().count,
-            ])
-          )
-        );
-      })
-      .catch((error) => {
-        console.error('User account status counts error:', error);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    firebaseAuthReady,
-    currentAuthRoleReady,
-    authenticatedAdminId,
-    currentAuthAdminAccount?.id,
-    view,
-    adminTab,
-  ]);
 
 
-  // 첫 마운트 시 새 대여자 추가용 팀 초기화
-  useEffect(() => {
-    if (data.teams.length > 0 && !newBorrowerTeam) {
-      setNewBorrowerTeam(data.teams[0]);
-    }
-  }, [data.teams]);
 
   // 설정 탭으로 변경되거나 시스템 원본 설정 값이 변경될 때 임시 설정 버퍼를 동기화
   useEffect(() => {
@@ -4103,42 +3404,6 @@ function App() {
       setNewAssetCategory('');
     }
   }, [adminTab, data.assetCategories]);
-
-  // 부서·사용자 탭으로 변경되거나 시스템 원본 부서/사용자 값이 변경될 때 임시 버퍼를 동기화
-  useEffect(() => {
-    if (adminTab === 'people') {
-      setTempTeams(data.teams || []);
-      setTempBorrowers(data.borrowers || []);
-      setEditingTeamIndex(null);
-      setEditingTeamName('');
-      setDraggingTeamIndex(null);
-      setEditingBorrowerIndex(null);
-      setEditingBorrowerName('');
-      setDraggingBorrowerIndex(null);
-      setNewTeam('');
-      setNewBorrower('');
-      setNewBorrowerTeam('전체');
-    }
-  }, [
-    adminTab,
-    data.teams,
-    data.borrowers,
-  ]);
-
-  useEffect(() => {
-    if (adminTab === 'signupPolicy') {
-      setTempRequireRegisteredMemberForSignup(
-        Boolean(data.settings.requireRegisteredMemberForSignup)
-      );
-      setTempAutoApproveNewMembers(
-        Boolean(data.settings.autoApproveNewMembers)
-      );
-    }
-  }, [
-    adminTab,
-    data.settings.requireRegisteredMemberForSignup,
-    data.settings.autoApproveNewMembers,
-  ]);
 
   useEffect(() => {
     if (adminTab === 'adminAccounts') {
@@ -4550,101 +3815,6 @@ function App() {
     });
   };
 
-  const restoreDirectoryMismatchAccountsAfterPolicyDisabled = async (
-    sourceAccounts = null
-  ) => {
-    if (directoryMismatchRestoreInProgressRef.current) {
-      return 0;
-    }
-
-    directoryMismatchRestoreInProgressRef.current = true;
-
-    try {
-      const accountDocuments = Array.isArray(sourceAccounts)
-        ? sourceAccounts
-            .filter((account) => account?.uid)
-            .map((account) => ({
-              ref: doc(
-                db,
-                USER_ACCOUNTS_COLLECTION_NAME,
-                account.uid
-              ),
-              data: () => account,
-            }))
-        : (
-            await getDocs(
-              firestoreQuery(
-                USER_ACCOUNTS_COLLECTION_REF,
-                where('status', '==', USER_PROFILE_STATUS.PROFILE_REQUIRED),
-                where(
-                  'profileRequiredReason',
-                  '==',
-                  PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH
-                )
-              )
-            )
-          ).docs;
-      const restoreOperations = [];
-      let restoredCount = 0;
-
-      accountDocuments.forEach((accountDocument) => {
-        const account = accountDocument.data() || {};
-
-        if (
-          account.status !== USER_PROFILE_STATUS.PROFILE_REQUIRED ||
-          account.profileRequiredReason !==
-            PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH
-        ) {
-          return;
-        }
-
-        const restoredStatus = getRestorableUserProfileStatus(
-          account.statusBeforeProfileRequired
-        );
-
-        restoreOperations.push({
-          type: 'update',
-          ref: accountDocument.ref,
-          data: {
-            status: restoredStatus,
-            profileRequiredReason: '',
-            profileRequiredAt: '',
-            statusBeforeProfileRequired: '',
-            updatedAt: serverTimestamp(),
-          },
-        });
-
-        if (account.recoveryKey) {
-          restoreOperations.push({
-            type: 'set',
-            ref: doc(
-              ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
-              account.recoveryKey
-            ),
-            data: {
-              recoveryKey: account.recoveryKey,
-              maskedEmail: account.maskedEmail || '',
-              accountStatus: restoredStatus,
-              enabled: true,
-              updatedAt: serverTimestamp(),
-            },
-            options: { merge: true },
-          });
-        }
-
-        restoredCount += 1;
-      });
-
-      if (restoreOperations.length > 0) {
-        await commitFirestoreOperations(restoreOperations);
-      }
-
-      return restoredCount;
-    } finally {
-      directoryMismatchRestoreInProgressRef.current = false;
-    }
-  };
-
   const registeredAdminAccounts = adminAccounts || [];
 
   const authenticatedAdminAccount =
@@ -4708,75 +3878,6 @@ function App() {
 
     return Array.from(requestMap.values());
   }, [data.requests, rentalRequests, view, adminTab]);
-
-  const loadMemberAccountHistorySummary = async (account = {}) => {
-    const linkedUids = [
-      ...new Set([
-        String(account.uid || ''),
-        ...(Array.isArray(account.previousAccountUids)
-          ? account.previousAccountUids.map((uid) => String(uid || ''))
-          : []),
-      ].filter(Boolean)),
-    ];
-
-    if (linkedUids.length === 0) {
-      return {
-        linkedUidCount: 0,
-        totalRequests: 0,
-        previousRequests: 0,
-        overdueRequests: 0,
-        activeRequests: 0,
-        inheritedRestriction: account.inheritedRestriction || {},
-      };
-    }
-
-    const uidChunks = [];
-    for (let index = 0; index < linkedUids.length; index += 30) {
-      uidChunks.push(linkedUids.slice(index, index + 30));
-    }
-
-    const snapshots = await Promise.all(
-      uidChunks.map((uidChunk) =>
-        getDocs(
-          firestoreQuery(
-            RENTAL_REQUESTS_COLLECTION_REF,
-            where('requesterUid', 'in', uidChunk)
-          )
-        )
-      )
-    );
-
-    const linkedRequests = snapshots.flatMap((snapshot) =>
-      snapshot.docs.map((requestDoc) => ({
-        ...requestDoc.data(),
-        id: requestDoc.id,
-      }))
-    );
-    const currentUid = String(account.uid || '');
-    const previousRequests = linkedRequests.filter(
-      (request) => String(request.requesterUid || '') !== currentUid
-    );
-    const referenceDate = today();
-    const overdueRequests = linkedRequests.filter(
-      (request) =>
-        Number(request.overdueDaysAtReturn || 0) > 0 ||
-        (request.status === STATUS.APPROVED &&
-          request.dueDate &&
-          request.dueDate < referenceDate)
-    );
-    const activeRequests = linkedRequests.filter((request) =>
-      [STATUS.REQUESTED, STATUS.ON_HOLD, STATUS.APPROVED].includes(request.status)
-    );
-
-    return {
-      linkedUidCount: linkedUids.length,
-      totalRequests: linkedRequests.length,
-      previousRequests: previousRequests.length,
-      overdueRequests: overdueRequests.length,
-      activeRequests: activeRequests.length,
-      inheritedRestriction: account.inheritedRestriction || {},
-    };
-  };
 
   const rentalRequestIdSet = useMemo(
     () =>
@@ -5603,6 +4704,32 @@ function App() {
     !adminLogoutInProgress &&
     hasMatchingAdminFirebaseAuth;
 
+
+  const {
+    adminUserAccountHasNextPage,
+    adminUserAccountPage,
+    adminUserAccountQuery,
+    adminUserAccountSearchMode,
+    adminUserAccountStatusCounts,
+    adminUserAccountStatusFilter,
+    adminUserAccountTotalPages,
+    adminUserAccountsLoadErrorMessage,
+    adminUserAccountsReady,
+    filteredManagedUserAccounts,
+    safeAdminUserAccountPage,
+    setAdminUserAccountPage,
+    setAdminUserAccountQuery,
+    setAdminUserAccountStatusFilter,
+  } = useAdminMemberAccountsController({
+    prerequisitesReady: firebaseAuthReady && currentAuthRoleReady,
+    enabled:
+      isAdminAuthenticated &&
+      view === 'admin' &&
+      adminTab === 'memberAccounts',
+    registeredAdminAccounts,
+    triggerToast,
+  });
+
   useEffect(() => {
     if (!isAdminAuthenticated) {
       publicCatalogMigrationAdminUidRef.current = '';
@@ -5670,40 +4797,108 @@ function App() {
   ]);
 
 
-  useEffect(() => {
-    if (
-      isAdminAuthenticated &&
-      view === 'admin' &&
-      adminTab === 'memberAccounts' &&
-      adminUserAccountStatusFilter !== 'all' &&
-      !String(debouncedAdminUserAccountQuery || '').trim()
-    ) {
-      const statusCountKeyByValue = {
-        [USER_PROFILE_STATUS.PENDING]: 'pending',
-        [USER_PROFILE_STATUS.ACTIVE]: 'active',
-        [USER_PROFILE_STATUS.PROFILE_REQUIRED]: 'profileRequired',
-        [USER_PROFILE_STATUS.BLOCKED]: 'blocked',
-        [USER_PROFILE_STATUS.RETIRED]: 'retired',
-      };
-      const countKey = statusCountKeyByValue[adminUserAccountStatusFilter];
-
-      setAdminUserAccountTotalCount(
-        countKey
-          ? Number(adminUserAccountStatusCountsRemote[countKey]) || 0
-          : 0
-      );
-    }
-  }, [
-    isAdminAuthenticated,
-    view,
-    adminTab,
-    adminUserAccountStatusFilter,
-    debouncedAdminUserAccountQuery,
-    adminUserAccountStatusCountsRemote,
-  ]);
-
   const isSplitStorageReady =
     splitStorageVersion >= SPLIT_STORAGE_VERSION;
+
+
+  const {
+    adminUserAccountSavingUid,
+    clearMemberDirectoryAuditResult,
+    confirmUserAccountStatusChange,
+    memberDirectoryAuditLoading,
+    memberDirectoryAuditResult,
+    openProfileRequiredMembers,
+    resetDirectoryMismatchRestoreAttempt,
+    restoreDirectoryMismatchAccountsAfterPolicyDisabled,
+    runFullMemberDirectoryAudit,
+  } = useAdminMemberActions({
+    adminTab,
+    authenticatedAdminAccount,
+    authenticatedAdminId,
+    borrowers: data.borrowers,
+    isAdminAuthenticated,
+    isSplitStorageReady,
+    settings: data.settings,
+    setAdminTab,
+    setAdminUserAccountQuery,
+    setAdminUserAccountStatusFilter,
+    triggerConfirm,
+    triggerToast,
+    view,
+  });
+
+  const {
+    cancelSignupPolicyChanges,
+    saveSignupPolicyChanges,
+    setTempAutoApproveNewMembers,
+    setTempRequireRegisteredMemberForSignup,
+    signupPolicyDirty,
+    signupPolicySaving,
+    tempAutoApproveNewMembers,
+    tempRequireRegisteredMemberForSignup,
+  } = useAdminSignupPolicyActions({
+    adminTab,
+    isAdminAuthenticated,
+    isSplitStorageReady,
+    resetDirectoryMismatchRestoreAttempt,
+    restoreDirectoryMismatchAccountsAfterPolicyDisabled,
+    setData,
+    settings: data.settings,
+    triggerToast,
+  });
+
+
+  const handleMemberDirectoryDeferredStateChange = useCallback(
+    (nextState) => {
+      const nextDirty = Boolean(nextState?.dirty);
+
+      memberDirectoryDeferredActionsRef.current = {
+        discard:
+          typeof nextState?.discard === 'function'
+            ? nextState.discard
+            : null,
+        save:
+          typeof nextState?.save === 'function'
+            ? nextState.save
+            : null,
+      };
+
+      setPeopleSettingsDirty((currentDirty) =>
+        currentDirty === nextDirty
+          ? currentDirty
+          : nextDirty
+      );
+    },
+    []
+  );
+
+  const currentAdminDeferredSettingsDirty = Boolean(
+    (adminTab === 'extensionSettings' && rentalPolicySettingsDirty) ||
+      (adminTab === 'holidaySettings' && holidaySettingsDirty) ||
+      (adminTab === 'categories' && assetCategorySettingsDirty) ||
+      (adminTab === 'people' && peopleSettingsDirty) ||
+      (adminTab === 'noticePosts' && noticeBoardSettingsDirty) ||
+      (adminTab === 'faqPosts' && faqBoardSettingsDirty) ||
+      (adminTab === 'footerManagement' && footerConfigDirty)
+  );
+
+  useEffect(() => {
+    if (view !== 'admin' || !currentAdminDeferredSettingsDirty) {
+      return undefined;
+    }
+
+    const handleBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [view, currentAdminDeferredSettingsDirty]);
+
 
   const shouldShowAdminLoadingPage =
     view === 'admin' &&
@@ -6085,6 +5280,33 @@ function App() {
     }
   };
 
+  const adminRequestProgressiveSearchEnabled = Boolean(
+    firebaseAuthReady &&
+      currentAuthRoleReady &&
+      !currentAuthRoleErrorMessage &&
+      firebaseAuthUser?.uid &&
+      isAdminAuthenticated &&
+      view === 'admin' &&
+      adminTab === 'requests' &&
+      String(debouncedAdminRequestQuery || '').trim()
+  );
+
+  useAdminRequestProgressiveSearch({
+    enabled: adminRequestProgressiveSearchEnabled,
+    requestTab: adminRequestTab,
+    quickFilter: adminRequestQuickFilter,
+    searchQuery: debouncedAdminRequestQuery,
+    serverPage: adminRequestServerPage,
+    pageSize: adminRequestPageSize,
+    referenceDate: today(),
+    setRequests: setRentalRequests,
+    setHasNextPage: setAdminRequestHasNextPage,
+    setTotalCount: setAdminRequestTotalCount,
+    setLoadErrorMessage: setRentalRequestsLoadErrorMessage,
+    setReady: setRentalRequestsReady,
+    triggerToast,
+  });
+
   useEffect(() => {
     if (!firebaseAuthReady || !currentAuthRoleReady) {
       setRentalRequestsReady(false);
@@ -6170,7 +5392,6 @@ function App() {
     if (adminTab !== 'requests') {
       adminRequestCursorKeyRef.current = '';
       adminRequestCursorByPageRef.current = new Map([[1, null]]);
-      adminRequestSearchCacheRef.current = null;
       setRentalRequests([]);
       setRentalRequestsReady(true);
       setAdminRequestHasNextPage(false);
@@ -6188,92 +5409,8 @@ function App() {
       referenceDate: today(),
     });
 
-    if (searchMode) {
-      const searchKey = [
-        adminRequestTab,
-        adminRequestQuickFilter,
-        normalizedSearch,
-      ].join('|');
-      const previousCache = adminRequestSearchCacheRef.current;
-      const cache =
-        previousCache?.key === searchKey
-          ? previousCache
-          : {
-              key: searchKey,
-              cursor: null,
-              exhausted: false,
-              matches: [],
-            };
+    if (searchMode) return undefined;
 
-      adminRequestSearchCacheRef.current = cache;
-      let cancelled = false;
-
-      void scanFirestoreMatches({
-        collectionRef: RENTAL_REQUESTS_COLLECTION_REF,
-        constraints: baseConstraints,
-        startCursor: cache.cursor,
-        existingMatches: cache.matches,
-        targetMatchCount:
-          adminRequestServerPage * adminRequestPageSize + 1,
-        batchSize: DEFAULT_PROGRESSIVE_SEARCH_BATCH_SIZE,
-        mapDocument: (requestDoc) => ({
-          ...requestDoc.data(),
-          id: requestDoc.id,
-        }),
-        matchesDocument: (request) =>
-          [
-            request.assetNo,
-            request.assetCategory,
-            request.requesterName,
-            request.requesterEmail,
-            request.borrower,
-            request.team,
-            request.purpose,
-          ].some((value) =>
-            String(value || '')
-              .toLowerCase()
-              .includes(normalizedSearch)
-          ),
-        isCancelled: () => cancelled,
-      })
-        .then((result) => {
-          if (cancelled || result.cancelled) return;
-
-          adminRequestSearchCacheRef.current = {
-            key: searchKey,
-            cursor: result.cursor,
-            exhausted: result.exhausted,
-            matches: result.matches,
-          };
-          setRentalRequests(result.matches);
-          setAdminRequestHasNextPage(
-            result.matches.length >
-              adminRequestServerPage * adminRequestPageSize ||
-              !result.exhausted
-          );
-          setAdminRequestTotalCount(result.matches.length);
-          setRentalRequestsLoadErrorMessage('');
-          setRentalRequestsReady(true);
-        })
-        .catch((error) => {
-          if (cancelled) return;
-
-          const message =
-            '대여신청 검색 결과를 불러오지 못했습니다. Firestore Rules와 필요한 인덱스를 확인해 주세요.';
-          console.error('Rental request progressive search error:', error);
-          setRentalRequests([]);
-          setAdminRequestHasNextPage(false);
-          setRentalRequestsLoadErrorMessage(message);
-          setRentalRequestsReady(true);
-          triggerToast(message, 'error');
-        });
-
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    adminRequestSearchCacheRef.current = null;
     const cursorKey = [
       adminRequestTab,
       adminRequestQuickFilter,
@@ -6635,6 +5772,46 @@ function App() {
     return unsubscribe;
   }, [isAdminAuthenticated, view, userTab, adminTab]);
 
+  const shouldRunAdminNoticeSearch =
+    isAdminAuthenticated && view === 'admin' && adminTab === 'noticePosts';
+  const shouldRunUserNoticeSearch = view === 'user' && userTab === 'notice';
+  const activeNoticeSearchQuery = shouldRunAdminNoticeSearch
+    ? debouncedAdminNoticeQuery
+    : debouncedUserNoticeQuery;
+  const noticeSearchPostsPerPage = getSafeNoticePostsPerPage(
+    noticeBoardConfig.postsPerPage
+  );
+  const noticeSearchActivePage = shouldRunAdminNoticeSearch
+    ? adminNoticePage
+    : noticePage;
+  const noticeProgressiveSearchEnabled = Boolean(
+    (shouldRunAdminNoticeSearch || shouldRunUserNoticeSearch) &&
+      String(activeNoticeSearchQuery || '').trim()
+  );
+
+  useBoardProgressiveSearch({
+    enabled: noticeProgressiveSearchEnabled,
+    collectionRef: NOTICE_POSTS_COLLECTION_REF,
+    searchKey: [
+      shouldRunAdminNoticeSearch ? 'admin' : 'user',
+      String(activeNoticeSearchQuery || '').trim().toLowerCase(),
+    ].join('|'),
+    searchQuery: activeNoticeSearchQuery,
+    activePage: noticeSearchActivePage,
+    postsPerPage: noticeSearchPostsPerPage,
+    pinnedBatchSize: FIRESTORE_PINNED_POST_LIMIT,
+    errorMessage:
+      '공지사항 검색 결과를 불러오지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.',
+    errorLogLabel: 'Notice progressive search error:',
+    setPinnedPosts: setNoticePinnedPosts,
+    setRegularPagePosts: setNoticeRegularPagePosts,
+    setRegularTotalCount: setNoticeRegularTotalCount,
+    setHasNextPage: setNoticeHasNextPage,
+    setLoadErrorMessage: setNoticePostsLoadErrorMessage,
+    setReady: setNoticePostsReady,
+    triggerToast,
+  });
+
   useEffect(() => {
     const shouldLoadUserNotice = view === 'user' && userTab === 'notice';
     const shouldLoadUserHomeNotice = view === 'user' && userTab === 'home';
@@ -6652,7 +5829,6 @@ function App() {
     if (!shouldLoadNotice) {
       noticeCursorKeyRef.current = '';
       noticeCursorByPageRef.current = new Map([[1, null]]);
-      noticeSearchCacheRef.current = null;
       setNoticePinnedPosts([]);
       setNoticeRegularPagePosts([]);
       setNoticePostsReady(true);
@@ -6661,134 +5837,8 @@ function App() {
       return undefined;
     }
 
-    if (searchMode) {
-      setNoticePostsReady(false);
-      setNoticePostsLoadErrorMessage('');
+    if (searchMode) return undefined;
 
-      const normalizedSearch = String(activeSearchQuery || '')
-        .trim()
-        .toLowerCase();
-      const postsPerPage = getSafeNoticePostsPerPage(
-        noticeBoardConfig.postsPerPage
-      );
-      const activePage = shouldLoadAdminNotice
-        ? adminNoticePage
-        : noticePage;
-      const searchKey = [
-        shouldLoadAdminNotice ? 'admin' : 'user',
-        normalizedSearch,
-      ].join('|');
-      const previousCache = noticeSearchCacheRef.current;
-      const cache =
-        previousCache?.key === searchKey
-          ? previousCache
-          : {
-              key: searchKey,
-              pinned: {
-                cursor: null,
-                exhausted: false,
-                matches: [],
-              },
-              regular: {
-                cursor: null,
-                exhausted: false,
-                matches: [],
-              },
-            };
-
-      noticeSearchCacheRef.current = cache;
-      let cancelled = false;
-      const matchesNotice = (post) =>
-        filterNoticePostsByQuery([post], normalizedSearch).length > 0;
-
-      void Promise.all([
-        scanFirestoreMatches({
-          collectionRef: NOTICE_POSTS_COLLECTION_REF,
-          constraints: [
-            where('isPinned', '==', true),
-            orderBy('createdAt', 'desc'),
-          ],
-          startCursor: cache.pinned.cursor,
-          existingMatches: cache.pinned.matches,
-          targetMatchCount: Number.POSITIVE_INFINITY,
-          batchSize: FIRESTORE_PINNED_POST_LIMIT,
-          mapDocument: (postDoc) => ({
-            ...postDoc.data(),
-            id: postDoc.id,
-          }),
-          matchesDocument: matchesNotice,
-          isCancelled: () => cancelled,
-        }),
-        scanFirestoreMatches({
-          collectionRef: NOTICE_POSTS_COLLECTION_REF,
-          constraints: [
-            where('isPinned', '==', false),
-            orderBy('createdAt', 'desc'),
-          ],
-          startCursor: cache.regular.cursor,
-          existingMatches: cache.regular.matches,
-          targetMatchCount: activePage * postsPerPage + 1,
-          batchSize: DEFAULT_PROGRESSIVE_SEARCH_BATCH_SIZE,
-          mapDocument: (postDoc) => ({
-            ...postDoc.data(),
-            id: postDoc.id,
-          }),
-          matchesDocument: matchesNotice,
-          isCancelled: () => cancelled,
-        }),
-      ])
-        .then(([pinnedResult, regularResult]) => {
-          if (
-            cancelled ||
-            pinnedResult.cancelled ||
-            regularResult.cancelled
-          ) {
-            return;
-          }
-
-          noticeSearchCacheRef.current = {
-            key: searchKey,
-            pinned: {
-              cursor: pinnedResult.cursor,
-              exhausted: pinnedResult.exhausted,
-              matches: pinnedResult.matches,
-            },
-            regular: {
-              cursor: regularResult.cursor,
-              exhausted: regularResult.exhausted,
-              matches: regularResult.matches,
-            },
-          };
-          setNoticePinnedPosts(pinnedResult.matches);
-          setNoticeRegularPagePosts(regularResult.matches);
-          setNoticeRegularTotalCount(regularResult.matches.length);
-          setNoticeHasNextPage(
-            regularResult.matches.length > activePage * postsPerPage ||
-              !regularResult.exhausted
-          );
-          setNoticePostsLoadErrorMessage('');
-          setNoticePostsReady(true);
-        })
-        .catch((error) => {
-          if (cancelled) return;
-
-          const message =
-            '공지사항 검색 결과를 불러오지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.';
-          console.error('Notice progressive search error:', error);
-          setNoticePinnedPosts([]);
-          setNoticeRegularPagePosts([]);
-          setNoticeHasNextPage(false);
-          setNoticePostsLoadErrorMessage(message);
-          setNoticePostsReady(true);
-          triggerToast(message, 'error');
-        });
-
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    noticeSearchCacheRef.current = null;
 
     const pinnedSource = firestoreQuery(
       NOTICE_POSTS_COLLECTION_REF,
@@ -7416,6 +6466,51 @@ function App() {
     ]);
   }, [faqPinnedPosts, faqRegularPagePosts]);
 
+  const shouldRunAdminFaqSearch =
+    isAdminAuthenticated && view === 'admin' && adminTab === 'faqPosts';
+  const shouldRunUserFaqSearch = view === 'user' && userTab === 'faq';
+  const faqProgressiveSearchCategoryId =
+    shouldRunUserFaqSearch &&
+    activeFaqCategoryId !== 'all' &&
+    faqSearchWithinCategory
+      ? activeFaqCategoryId
+      : '';
+  const faqSearchPostsPerPage = getSafeFaqPostsPerPage(
+    faqBoardConfig.postsPerPage
+  );
+  const faqSearchActivePage = shouldRunAdminFaqSearch
+    ? adminFaqPage
+    : faqPage;
+  const faqProgressiveSearchEnabled = Boolean(
+    (shouldRunAdminFaqSearch || shouldRunUserFaqSearch) &&
+      String(debouncedFaqQuery || '').trim()
+  );
+
+  useBoardProgressiveSearch({
+    enabled: faqProgressiveSearchEnabled,
+    collectionRef: FAQ_POSTS_COLLECTION_REF,
+    searchKey: [
+      shouldRunAdminFaqSearch ? 'admin' : 'user',
+      faqProgressiveSearchCategoryId || 'all',
+      String(debouncedFaqQuery || '').trim().toLowerCase(),
+    ].join('|'),
+    searchQuery: debouncedFaqQuery,
+    activePage: faqSearchActivePage,
+    postsPerPage: faqSearchPostsPerPage,
+    pinnedBatchSize: FIRESTORE_PINNED_POST_LIMIT,
+    categoryId: faqProgressiveSearchCategoryId,
+    errorMessage:
+      'FAQ 검색 결과를 불러오지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.',
+    errorLogLabel: 'FAQ progressive search error:',
+    setPinnedPosts: setFaqPinnedPosts,
+    setRegularPagePosts: setFaqRegularPagePosts,
+    setRegularTotalCount: setFaqRegularTotalCount,
+    setHasNextPage: setFaqHasNextPage,
+    setLoadErrorMessage: setFaqPostsLoadErrorMessage,
+    setReady: setFaqPostsReady,
+    triggerToast,
+  });
+
   useEffect(() => {
     const shouldLoadUserFaq = view === 'user' && userTab === 'faq';
     const shouldLoadAdminFaq =
@@ -7433,7 +6528,6 @@ function App() {
     if (!shouldLoadFaq) {
       faqCursorKeyRef.current = '';
       faqCursorByPageRef.current = new Map([[1, null]]);
-      faqSearchCacheRef.current = null;
       setFaqPinnedPosts([]);
       setFaqRegularPagePosts([]);
       setFaqPostsReady(true);
@@ -7442,147 +6536,8 @@ function App() {
       return undefined;
     }
 
-    if (searchMode) {
-      setFaqPostsReady(false);
-      setFaqPostsLoadErrorMessage('');
+    if (searchMode) return undefined;
 
-      const normalizedSearch = String(debouncedFaqQuery || '')
-        .trim()
-        .toLowerCase();
-      const postsPerPage = getSafeFaqPostsPerPage(
-        faqBoardConfig.postsPerPage
-      );
-      const activePage = shouldLoadAdminFaq ? adminFaqPage : faqPage;
-      const categorySearchKey = shouldLimitToActiveCategory
-        ? activeFaqCategoryId
-        : 'all';
-      const searchKey = [
-        shouldLoadAdminFaq ? 'admin' : 'user',
-        categorySearchKey,
-        normalizedSearch,
-      ].join('|');
-      const previousCache = faqSearchCacheRef.current;
-      const cache =
-        previousCache?.key === searchKey
-          ? previousCache
-          : {
-              key: searchKey,
-              pinned: {
-                cursor: null,
-                exhausted: false,
-                matches: [],
-              },
-              regular: {
-                cursor: null,
-                exhausted: false,
-                matches: [],
-              },
-            };
-
-      faqSearchCacheRef.current = cache;
-      let cancelled = false;
-      const matchesFaq = (post) =>
-        String(post.title || '')
-          .toLowerCase()
-          .includes(normalizedSearch) ||
-        String(
-          post.contentText ||
-            post.content ||
-            richTextHtmlToText(post.contentHtml || '')
-        )
-          .toLowerCase()
-          .includes(normalizedSearch);
-
-      void Promise.all([
-        scanFirestoreMatches({
-          collectionRef: FAQ_POSTS_COLLECTION_REF,
-          constraints: [
-            ...categoryConstraints,
-            where('isPinned', '==', true),
-            orderBy('createdAt', 'desc'),
-          ],
-          startCursor: cache.pinned.cursor,
-          existingMatches: cache.pinned.matches,
-          targetMatchCount: Number.POSITIVE_INFINITY,
-          batchSize: FIRESTORE_PINNED_POST_LIMIT,
-          mapDocument: (postDoc) => ({
-            ...postDoc.data(),
-            id: postDoc.id,
-          }),
-          matchesDocument: matchesFaq,
-          isCancelled: () => cancelled,
-        }),
-        scanFirestoreMatches({
-          collectionRef: FAQ_POSTS_COLLECTION_REF,
-          constraints: [
-            ...categoryConstraints,
-            where('isPinned', '==', false),
-            orderBy('createdAt', 'desc'),
-          ],
-          startCursor: cache.regular.cursor,
-          existingMatches: cache.regular.matches,
-          targetMatchCount: activePage * postsPerPage + 1,
-          batchSize: DEFAULT_PROGRESSIVE_SEARCH_BATCH_SIZE,
-          mapDocument: (postDoc) => ({
-            ...postDoc.data(),
-            id: postDoc.id,
-          }),
-          matchesDocument: matchesFaq,
-          isCancelled: () => cancelled,
-        }),
-      ])
-        .then(([pinnedResult, regularResult]) => {
-          if (
-            cancelled ||
-            pinnedResult.cancelled ||
-            regularResult.cancelled
-          ) {
-            return;
-          }
-
-          faqSearchCacheRef.current = {
-            key: searchKey,
-            pinned: {
-              cursor: pinnedResult.cursor,
-              exhausted: pinnedResult.exhausted,
-              matches: pinnedResult.matches,
-            },
-            regular: {
-              cursor: regularResult.cursor,
-              exhausted: regularResult.exhausted,
-              matches: regularResult.matches,
-            },
-          };
-          setFaqPinnedPosts(pinnedResult.matches);
-          setFaqRegularPagePosts(regularResult.matches);
-          setFaqRegularTotalCount(regularResult.matches.length);
-          setFaqHasNextPage(
-            regularResult.matches.length > activePage * postsPerPage ||
-              !regularResult.exhausted
-          );
-          setFaqPostsLoadErrorMessage('');
-          setFaqPostsReady(true);
-        })
-        .catch((error) => {
-          if (cancelled) return;
-
-          const message =
-            'FAQ 검색 결과를 불러오지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.';
-          console.error('FAQ progressive search error:', error);
-          setFaqPinnedPosts([]);
-          setFaqRegularPagePosts([]);
-          setFaqHasNextPage(false);
-          setFaqPostsLoadErrorMessage(message);
-          setFaqPostsReady(true);
-          triggerToast(message, 'error');
-        });
-
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    faqSearchCacheRef.current = null;
 
     const pinnedSource = firestoreQuery(
       FAQ_POSTS_COLLECTION_REF,
@@ -9108,414 +8063,6 @@ function App() {
     safeAdminAccountPage * ADMIN_ACCOUNT_PAGE_SIZE
   );
 
-  const managedUserAccounts = useMemo(() => {
-    const adminUidSet = new Set(
-      (registeredAdminAccounts || [])
-        .flatMap((account) => [
-          account.id,
-          account.authUid,
-        ])
-        .filter(Boolean)
-    );
-
-    return (adminUserAccounts || []).filter(
-      (account) =>
-        !adminUidSet.has(account.uid)
-    );
-  }, [
-    adminUserAccounts,
-    registeredAdminAccounts,
-  ]);
-
-  useEffect(() => {
-    const shouldCheckDirectoryMismatchRestore =
-      isAdminAuthenticated &&
-      isSplitStorageReady &&
-      view === 'admin' &&
-      adminTab === 'signupPolicy' &&
-      !isRegisteredMemberSignupRequired(data.settings);
-
-    if (!shouldCheckDirectoryMismatchRestore) return;
-
-    const restoreAttemptKey = `disabled:${getSafeMemberDirectoryVersion(
-      data.settings
-    )}`;
-
-    if (
-      directoryMismatchRestoreAttemptKeyRef.current === restoreAttemptKey
-    ) {
-      return;
-    }
-
-    directoryMismatchRestoreAttemptKeyRef.current = restoreAttemptKey;
-
-    void restoreDirectoryMismatchAccountsAfterPolicyDisabled()
-      .then((restoredCount) => {
-        if (restoredCount > 0) {
-          triggerToast(
-            `가입 제한 정책이 꺼져 있어 등록 명부 불일치 회원 ${restoredCount}명을 이전 이용 상태로 자동 복원했습니다.`,
-            'success'
-          );
-        }
-      })
-      .catch((error) => {
-        console.error(
-          'Automatic directory mismatch account restoration error:',
-          error
-        );
-        directoryMismatchRestoreAttemptKeyRef.current = '';
-        triggerToast(
-          '등록 명부 불일치 회원의 자동 복원에 실패했습니다. 최신 Firestore Rules를 게시한 뒤 다시 확인해 주세요.',
-          'error'
-        );
-      });
-  }, [
-    adminTab,
-    data.settings.memberDirectoryVersion,
-    data.settings.requireRegisteredMemberForSignup,
-    isAdminAuthenticated,
-    isSplitStorageReady,
-    view,
-  ]);
-
-  useEffect(() => {
-    setAdminUserAccountPage(1);
-    adminUserAccountCursorByPageRef.current = new Map([[1, null]]);
-  }, [adminUserAccountQuery, adminUserAccountStatusFilter]);
-
-  const matchedManagedUserAccounts =
-    useMemo(() => {
-      const normalizedQuery =
-        adminUserAccountQuery
-          .trim()
-          .toLowerCase();
-
-      return managedUserAccounts.filter(
-        (account) => {
-          const accountStatus =
-            account.status || '';
-
-          const matchesStatus =
-            adminUserAccountStatusFilter ===
-              'all' ||
-            accountStatus ===
-              adminUserAccountStatusFilter;
-
-          if (!matchesStatus) {
-            return false;
-          }
-
-          if (!normalizedQuery) {
-            return true;
-          }
-
-          return [
-            account.name,
-            account.email,
-            account.team,
-            account.phone,
-            account.uid,
-          ].some((value) =>
-            String(value || '')
-              .toLowerCase()
-              .includes(normalizedQuery)
-          );
-        }
-      );
-    }, [
-      managedUserAccounts,
-      adminUserAccountQuery,
-      adminUserAccountStatusFilter,
-    ]);
-
-  const adminUserAccountSearchMode = Boolean(
-    String(adminUserAccountQuery || '').trim()
-  );
-
-  const adminUserAccountTotalPages = Math.max(
-    1,
-    Math.ceil(
-      (adminUserAccountSearchMode
-        ? matchedManagedUserAccounts.length
-        : adminUserAccountTotalCount) / ADMIN_MEMBER_ACCOUNT_PAGE_SIZE
-    )
-  );
-
-  const safeAdminUserAccountPage = Math.min(
-    adminUserAccountPage,
-    adminUserAccountTotalPages
-  );
-
-  const filteredManagedUserAccounts = useMemo(
-    () =>
-      adminUserAccountSearchMode
-        ? matchedManagedUserAccounts.slice(
-            (safeAdminUserAccountPage - 1) *
-              ADMIN_MEMBER_ACCOUNT_PAGE_SIZE,
-            safeAdminUserAccountPage *
-              ADMIN_MEMBER_ACCOUNT_PAGE_SIZE
-          )
-        : matchedManagedUserAccounts,
-    [
-      adminUserAccountSearchMode,
-      matchedManagedUserAccounts,
-      safeAdminUserAccountPage,
-    ]
-  );
-
-  const adminUserAccountStatusCounts =
-    adminUserAccountStatusCountsRemote;
-
-
-  const getUserAccountStatusLabel = (
-    status
-  ) => {
-    if (
-      status ===
-      USER_PROFILE_STATUS.PENDING
-    ) {
-      return '승인 대기';
-    }
-
-    if (
-      status ===
-      USER_PROFILE_STATUS.ACTIVE
-    ) {
-      return '활성';
-    }
-
-    if (
-      status ===
-      USER_PROFILE_STATUS.PROFILE_REQUIRED
-    ) {
-      return '정보 수정 필요';
-    }
-
-    if (
-      status ===
-      USER_PROFILE_STATUS.BLOCKED
-    ) {
-      return '차단';
-    }
-
-    if (
-      status ===
-      USER_PROFILE_STATUS.RETIRED
-    ) {
-      return '이용 종료';
-    }
-
-    return '상태 미지정';
-  };
-
-  const getUserAccountStatusClassName = (
-    status
-  ) => {
-    if (
-      status ===
-      USER_PROFILE_STATUS.PENDING
-    ) {
-      return 'border-amber-200 bg-amber-50 text-amber-700';
-    }
-
-    if (
-      status ===
-      USER_PROFILE_STATUS.ACTIVE
-    ) {
-      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-    }
-
-    if (
-      status ===
-      USER_PROFILE_STATUS.PROFILE_REQUIRED
-    ) {
-      return 'border-orange-200 bg-orange-50 text-orange-700';
-    }
-
-    if (
-      status ===
-      USER_PROFILE_STATUS.BLOCKED
-    ) {
-      return 'border-rose-200 bg-rose-50 text-rose-700';
-    }
-
-    if (
-      status ===
-      USER_PROFILE_STATUS.RETIRED
-    ) {
-      return 'border-slate-300 bg-slate-100 text-slate-700';
-    }
-
-    return 'border-slate-200 bg-white text-slate-600';
-  };
-
-  const updateUserAccountStatus = async (
-    account,
-    nextStatus
-  ) => {
-    const userUid =
-      account?.uid || '';
-
-    if (
-      !isAdminAuthenticated ||
-      !userUid
-    ) {
-      triggerToast(
-        '관리자 인증과 회원 UID를 확인해 주세요.',
-        'error'
-      );
-      return;
-    }
-
-    if (
-      ![
-        USER_PROFILE_STATUS.PENDING,
-        USER_PROFILE_STATUS.ACTIVE,
-        USER_PROFILE_STATUS.PROFILE_REQUIRED,
-        USER_PROFILE_STATUS.BLOCKED,
-        USER_PROFILE_STATUS.RETIRED,
-      ].includes(nextStatus)
-    ) {
-      triggerToast(
-        '지원하지 않는 회원 상태입니다.',
-        'error'
-      );
-      return;
-    }
-
-    if (
-      nextStatus === USER_PROFILE_STATUS.ACTIVE &&
-      account.rejoinedAccount
-    ) {
-      let historySummary;
-
-      try {
-        historySummary = await loadMemberAccountHistorySummary(account);
-      } catch (error) {
-        console.error('Rejoined member history check error:', error);
-        triggerToast(
-          '이전 계정의 진행 중 신청 여부를 확인하지 못해 가입 승인을 중단했습니다. 잠시 후 다시 시도해 주세요.',
-          'error'
-        );
-        return;
-      }
-
-      if (historySummary.activeRequests > 0) {
-        triggerToast(
-          `이전 계정에 진행 중인 신청 또는 대여 ${historySummary.activeRequests}건이 남아 있어 가입을 승인할 수 없습니다. 기존 신청을 먼저 정리해 주세요.`,
-          'error'
-        );
-        return;
-      }
-    }
-
-    setAdminUserAccountSavingUid(
-      userUid
-    );
-
-    try {
-      const batch = writeBatch(db);
-      batch.set(
-        doc(
-          db,
-          USER_ACCOUNTS_COLLECTION_NAME,
-          userUid
-        ),
-        {
-          status: nextStatus,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      if (account.recoveryKey) {
-        batch.set(
-          doc(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF, account.recoveryKey),
-          {
-            accountStatus: nextStatus,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-      }
-
-      const inheritedRestriction = account.inheritedRestriction || {};
-      const inheritedRestrictionStillActive = Boolean(
-        nextStatus === USER_PROFILE_STATUS.ACTIVE &&
-        account.rejoinedAccount &&
-        (inheritedRestriction.manualBlock === true ||
-          inheritedRestriction.indefinite === true ||
-          inheritedRestriction.restrictionStatus === 'active' ||
-          (inheritedRestriction.activePenalty === true &&
-            String(inheritedRestriction.eligibleFromDate || '') > today()))
-      );
-
-      if (inheritedRestrictionStillActive) {
-        batch.set(
-          doc(RENTAL_RESTRICTIONS_COLLECTION_REF, userUid),
-          {
-            ...inheritedRestriction,
-            uid: userUid,
-            inheritedFromPreviousAccount: true,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-      }
-
-      await batch.commit();
-
-      triggerToast(
-        `${
-          account.name ||
-          account.email ||
-          userUid
-        } 회원을 ${getUserAccountStatusLabel(
-          nextStatus
-        )} 상태로 변경했습니다.`,
-        'success'
-      );
-    } catch (error) {
-      console.error(
-        'User account status update error:',
-        error
-      );
-
-      triggerToast(
-        `회원 상태 변경에 실패했습니다. 오류 코드: ${
-          error?.code ||
-          error?.message ||
-          'unknown-error'
-        }`,
-        'error'
-      );
-    } finally {
-      setAdminUserAccountSavingUid('');
-    }
-  };
-
-  const confirmUserAccountStatusChange = (
-    account,
-    nextStatus
-  ) => {
-    const accountLabel =
-      account?.name ||
-      account?.email ||
-      account?.uid ||
-      '선택한 회원';
-
-    triggerConfirm(
-      '회원 상태 변경',
-      `${accountLabel} 회원을 ${getUserAccountStatusLabel(
-        nextStatus
-      )} 상태로 변경하시겠습니까?`,
-      () =>
-        updateUserAccountStatus(
-          account,
-          nextStatus
-        )
-    );
-  };
 
   const registerAdminAccount = async () => {
     const adminLoginId = adminAccountForm.adminLoginId.trim();
@@ -11464,799 +10011,6 @@ function App() {
     }
   };
 
-  const addTempTeam = () => {
-    const teamName = newTeam.trim();
-
-    if (!teamName) {
-      triggerToast('부서명을 입력해 주세요.', 'error');
-      return;
-    }
-
-    if (tempTeams.some((team) => String(team || '').trim() === teamName)) {
-      triggerToast('이미 등록된 부서명입니다.', 'error');
-      return;
-    }
-
-    setTempTeams((prev) => [...prev, teamName]);
-    setNewTeam('');
-    triggerToast(`[${teamName}] 부서가 임시 추가되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`, 'success');
-  };
-
-  const startEditTempTeam = (team, index) => {
-    setEditingTeamIndex(index);
-    setEditingTeamName(team);
-  };
-
-  const applyEditTempTeam = (team, index) => {
-    const nextTeamName = editingTeamName.trim();
-
-    if (!nextTeamName) {
-      triggerToast('부서명을 입력해 주세요.', 'error');
-      return;
-    }
-
-    if (
-      tempTeams.some(
-        (item, itemIndex) => itemIndex !== index && String(item || '').trim() === nextTeamName
-      )
-    ) {
-      triggerToast('이미 등록된 부서명입니다.', 'error');
-      return;
-    }
-
-    setTempTeams((prev) =>
-      prev.map((item, itemIndex) => (itemIndex === index ? nextTeamName : item))
-    );
-
-    setTempBorrowers((prev) =>
-      prev.map((borrower) =>
-        borrower.team === team ? { ...borrower, team: nextTeamName } : borrower
-      )
-    );
-
-    if (newBorrowerTeam === team) {
-      setNewBorrowerTeam(nextTeamName);
-    }
-
-    setEditingTeamIndex(null);
-    setEditingTeamName('');
-    triggerToast(`[${team}] 부서명이 임시 수정되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`, 'success');
-  };
-
-  const deleteTempTeam = (team, index) => {
-    setTempTeams((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
-    setTempBorrowers((prev) => prev.filter((borrower) => borrower.team !== team));
-
-    if (newBorrowerTeam === team) {
-      setNewBorrowerTeam('전체');
-    }
-
-    setEditingTeamIndex(null);
-    setEditingTeamName('');
-    triggerToast(`[${team}] 부서 및 해당 부서 소속 사용자가 임시 삭제되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`, 'success');
-  };
-
-  const moveTempTeam = (fromIndex, toIndex) => {
-    if (fromIndex === null || fromIndex === toIndex) return;
-
-    setTempTeams((prev) => {
-      const next = [...prev];
-      const [movedTeam] = next.splice(fromIndex, 1);
-      next.splice(toIndex, 0, movedTeam);
-      return next;
-    });
-
-    setEditingTeamIndex(null);
-    setEditingTeamName('');
-  };
-
-  const addTempBorrower = () => {
-    if (tempTeams.length === 0) {
-      triggerToast('등록된 부서가 없어 사용자를 등록할 수 없습니다.', 'error');
-      return;
-    }
-
-    if (!newBorrowerTeam || newBorrowerTeam === '전체' || !tempTeams.includes(newBorrowerTeam)) {
-      triggerToast('등록할 부서를 선택하세요', 'error');
-      return;
-    }
-
-    const borrowerName = normalizeMemberName(newBorrower);
-
-    if (!isValidMemberName(borrowerName)) {
-      triggerToast(
-        '사용자명은 공백 없이 한글 또는 영문 2~30자로 입력해 주세요.',
-        'error'
-      );
-      return;
-    }
-
-    if (
-      tempBorrowers.some(
-        (borrower) =>
-          borrower.team === newBorrowerTeam &&
-          String(borrower.name || '').trim() === borrowerName
-      )
-    ) {
-      triggerToast('해당 부서에 이미 등록된 사용자명입니다.', 'error');
-      return;
-    }
-
-    setTempBorrowers((prev) => [...prev, { name: borrowerName, team: newBorrowerTeam }]);
-    setNewBorrower('');
-    triggerToast(`[${newBorrowerTeam}] ${borrowerName} 사용자가 임시 추가되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`, 'success');
-  };
-
-  const startEditTempBorrower = (borrower, originalIndex) => {
-    setEditingBorrowerIndex(originalIndex);
-    setEditingBorrowerName(borrower.name);
-  };
-
-  const applyEditTempBorrower = (borrower, originalIndex) => {
-    const nextBorrowerName = normalizeMemberName(editingBorrowerName);
-
-    if (!isValidMemberName(nextBorrowerName)) {
-      triggerToast(
-        '사용자명은 공백 없이 한글 또는 영문 2~30자로 입력해 주세요.',
-        'error'
-      );
-      return;
-    }
-
-    if (
-      tempBorrowers.some(
-        (item, itemIndex) =>
-          itemIndex !== originalIndex &&
-          item.team === borrower.team &&
-          String(item.name || '').trim() === nextBorrowerName
-      )
-    ) {
-      triggerToast('해당 부서에 이미 등록된 사용자명입니다.', 'error');
-      return;
-    }
-
-    setTempBorrowers((prev) =>
-      prev.map((item, itemIndex) =>
-        itemIndex === originalIndex ? { ...item, name: nextBorrowerName } : item
-      )
-    );
-
-    setEditingBorrowerIndex(null);
-    setEditingBorrowerName('');
-    triggerToast(`[${borrower.name}] 사용자명이 임시 수정되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`, 'success');
-  };
-
-  const deleteTempBorrower = (borrower, originalIndex) => {
-    setTempBorrowers((prev) => prev.filter((_, itemIndex) => itemIndex !== originalIndex));
-    setEditingBorrowerIndex(null);
-    setEditingBorrowerName('');
-    triggerToast(`[${borrower.name}] 사용자가 임시 삭제되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`, 'success');
-  };
-
-  const moveTempBorrower = (fromIndex, toIndex) => {
-    if (fromIndex === null || toIndex === null || fromIndex === toIndex) return;
-
-    setTempBorrowers((prev) => {
-      const next = [...prev];
-      const [movedBorrower] = next.splice(fromIndex, 1);
-      next.splice(toIndex, 0, movedBorrower);
-      return next;
-    });
-
-    setEditingBorrowerIndex(null);
-    setEditingBorrowerName('');
-  };
-
-  const cancelTempPeopleChanges = ({ silent = false } = {}) => {
-    setTempTeams(data.teams || []);
-    setTempBorrowers(data.borrowers || []);
-    setEditingTeamIndex(null);
-    setEditingTeamName('');
-    setDraggingTeamIndex(null);
-    setEditingBorrowerIndex(null);
-    setEditingBorrowerName('');
-    setDraggingBorrowerIndex(null);
-    setNewTeam('');
-    setNewBorrower('');
-    setNewBorrowerTeam('전체');
-    if (!silent) {
-      triggerToast('부서·사용자 변경사항이 취소되고 이전 상태로 복원되었습니다.', 'success');
-    }
-  };
-
-  const cancelSignupPolicyChanges = () => {
-    setTempRequireRegisteredMemberForSignup(
-      Boolean(data.settings.requireRegisteredMemberForSignup)
-    );
-    setTempAutoApproveNewMembers(
-      Boolean(data.settings.autoApproveNewMembers)
-    );
-    triggerToast('회원가입 정책 변경사항을 취소했습니다.', 'success');
-  };
-
-  const saveSignupPolicyChanges = async () => {
-    if (!isAdminAuthenticated) {
-      triggerToast('관리자 인증 후 회원가입 정책을 저장할 수 있습니다.', 'error');
-      return false;
-    }
-
-    if (!isSplitStorageReady) {
-      triggerToast(
-        'Firestore 분리 저장소 최종 전환이 완료되지 않아 회원가입 정책을 저장할 수 없습니다.',
-        'error'
-      );
-      return false;
-    }
-
-    const nextRequireRegistered = Boolean(
-      tempRequireRegisteredMemberForSignup
-    );
-    const nextAutoApprove =
-      nextRequireRegistered && Boolean(tempAutoApproveNewMembers);
-    const policyEnabledChanged =
-      nextRequireRegistered !==
-      Boolean(data.settings.requireRegisteredMemberForSignup);
-    const nextDirectoryVersion = policyEnabledChanged
-      ? getSafeMemberDirectoryVersion(data.settings) + 1
-      : getSafeMemberDirectoryVersion(data.settings);
-    const nextSettings = {
-      ...data.settings,
-      requireRegisteredMemberForSignup: nextRequireRegistered,
-      autoApproveNewMembers: nextAutoApprove,
-      memberDirectoryVersion: nextDirectoryVersion,
-    };
-
-    setSignupPolicySaving(true);
-
-    try {
-      await setDoc(
-        PUBLIC_CONFIG_DOC_REF,
-        {
-          settings: nextSettings,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      let restoredDirectoryMismatchCount = 0;
-      let restoreWarning = '';
-
-      if (!nextRequireRegistered) {
-        try {
-          restoredDirectoryMismatchCount =
-            await restoreDirectoryMismatchAccountsAfterPolicyDisabled();
-        } catch (restoreError) {
-          console.error(
-            'Directory mismatch account restoration error:',
-            restoreError
-          );
-          directoryMismatchRestoreAttemptKeyRef.current = '';
-          restoreWarning =
-            ' 정책은 해제되었지만 일부 회원 상태 자동 복원에 실패했습니다. 최신 Firestore Rules를 게시한 뒤 해당 회원이 다시 로그인하도록 안내해 주세요.';
-        }
-      }
-
-      setData((prev) => ({
-        ...prev,
-        settings: nextSettings,
-      }));
-      setTempRequireRegisteredMemberForSignup(nextRequireRegistered);
-      setTempAutoApproveNewMembers(nextAutoApprove);
-
-      triggerToast(
-        nextRequireRegistered
-          ? '회원가입 정책이 저장되었습니다. 기존 회원은 로그인 시 순차적으로 명부를 확인하며, 필요한 경우 전체 회원 명부 검사를 실행할 수 있습니다.'
-          : `회원가입 제한 정책이 해제되었습니다. 신규 회원 자동 승인도 함께 해제되었습니다.${
-              restoredDirectoryMismatchCount > 0
-                ? ` 명부 불일치로 전환됐던 회원 ${restoredDirectoryMismatchCount}명의 상태를 복원했습니다.`
-                : ''
-            }${restoreWarning}`,
-        restoreWarning ? 'error' : 'success'
-      );
-
-      return true;
-    } catch (error) {
-      console.error('Signup policy save error:', error);
-      triggerToast('회원가입 정책 저장에 실패했습니다.', 'error');
-      return false;
-    } finally {
-      setSignupPolicySaving(false);
-    }
-  };
-
-  const saveTempPeopleChanges = async () => {
-    if (!isSplitStorageReady) {
-      triggerToast(
-        'Firestore 분리 저장소 최종 전환이 완료되지 않아 부서·사용자 정보를 저장할 수 없습니다.',
-        'error'
-      );
-      return false;
-    }
-
-    const nextTeams = tempTeams
-      .map((team) => normalizeMemberTeam(team))
-      .filter(Boolean);
-
-    const duplicatedTeam = nextTeams.find(
-      (team, index) =>
-        nextTeams.findIndex(
-          (item) => item.toLocaleLowerCase('ko-KR') === team.toLocaleLowerCase('ko-KR')
-        ) !== index
-    );
-
-    if (duplicatedTeam) {
-      triggerToast(
-        `[${duplicatedTeam}] 부서명이 중복되어 저장할 수 없습니다.`,
-        'error'
-      );
-      return false;
-    }
-
-    const nextBorrowers = tempBorrowers
-      .map((borrower, index) => ({
-        id: borrower.id || createBorrowerDocumentId(),
-        name: normalizeMemberName(borrower.name || ''),
-        team: normalizeMemberTeam(borrower.team || ''),
-        sortOrder: index,
-      }))
-      .filter(
-        (borrower) =>
-          borrower.name &&
-          borrower.team &&
-          nextTeams.includes(borrower.team)
-      );
-
-    const invalidBorrower = nextBorrowers.find(
-      (borrower) => !isValidMemberName(borrower.name)
-    );
-
-    if (invalidBorrower) {
-      triggerToast(
-        `[${invalidBorrower.team}] ${invalidBorrower.name} 사용자명은 공백 없이 한글 또는 영문 2~30자로 입력해 주세요.`,
-        'error'
-      );
-      return false;
-    }
-
-    const duplicatedBorrower = nextBorrowers.find(
-      (borrower, index) =>
-        nextBorrowers.findIndex(
-          (item) =>
-            normalizeMemberTeam(item.team).toLocaleLowerCase('ko-KR') ===
-              normalizeMemberTeam(borrower.team).toLocaleLowerCase('ko-KR') &&
-            normalizeMemberName(item.name).toLocaleLowerCase('ko-KR') ===
-              normalizeMemberName(borrower.name).toLocaleLowerCase('ko-KR')
-        ) !== index
-    );
-
-    if (duplicatedBorrower) {
-      triggerToast(
-        `[${duplicatedBorrower.team}] ${duplicatedBorrower.name} 사용자명이 중복되어 저장할 수 없습니다.`,
-        'error'
-      );
-      return false;
-    }
-
-    try {
-      const directoryEntries = await Promise.all(
-        nextBorrowers.map(async (borrower) => ({
-          ...borrower,
-          identityKey: await createMemberIdentityKey(
-            borrower.team,
-            borrower.name
-          ),
-        }))
-      );
-
-      const [
-        currentUserAccountsSnapshot,
-        currentDirectorySnapshot,
-        currentClaimsSnapshot,
-        currentRecoverySnapshot,
-      ] = await Promise.all([
-        getDocs(USER_ACCOUNTS_COLLECTION_REF),
-        getDocs(MEMBER_DIRECTORY_KEYS_COLLECTION_REF),
-        getDocs(MEMBER_IDENTITY_CLAIMS_COLLECTION_REF),
-        getDocs(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF),
-      ]);
-      const accountEntries = await buildMemberAccountIndexEntries(
-        currentUserAccountsSnapshot.docs.map((accountDocument) => ({
-          ...accountDocument.data(),
-          uid: accountDocument.data().uid || accountDocument.id,
-        }))
-      );
-      const currentBorrowerDocuments = (data.borrowers || [])
-        .filter((borrower) => borrower?.id)
-        .map((borrower) => ({
-          id: borrower.id,
-          ref: doc(RENTAL_BORROWERS_COLLECTION_REF, borrower.id),
-        }));
-
-      const nextBorrowerIdSet = new Set(
-        nextBorrowers.map((borrower) => borrower.id)
-      );
-      const nextDirectoryKeySet = new Set(
-        directoryEntries.map((entry) => entry.identityKey)
-      );
-
-      const borrowerOperations = [
-        ...nextBorrowers.map((borrower) => ({
-          type: 'set',
-          ref: doc(RENTAL_BORROWERS_COLLECTION_REF, borrower.id),
-          data: {
-            ...borrower,
-            updatedAt: serverTimestamp(),
-          },
-        })),
-        ...currentBorrowerDocuments
-          .filter(
-            (borrowerDocument) =>
-              !nextBorrowerIdSet.has(borrowerDocument.id)
-          )
-          .map((borrowerDocument) => ({
-            type: 'delete',
-            ref: borrowerDocument.ref,
-          })),
-      ];
-
-      const directoryOperations = [
-        ...directoryEntries.map((entry) => ({
-          type: 'set',
-          ref: doc(
-            MEMBER_DIRECTORY_KEYS_COLLECTION_REF,
-            entry.identityKey
-          ),
-          data: {
-            identityKey: entry.identityKey,
-            directoryMemberId: entry.id,
-            name: entry.name,
-            team: entry.team,
-            sortOrder: entry.sortOrder,
-            enabled: true,
-            updatedAt: serverTimestamp(),
-          },
-        })),
-        ...currentDirectorySnapshot.docs
-          .filter(
-            (directoryDocument) =>
-              !nextDirectoryKeySet.has(directoryDocument.id)
-          )
-          .map((directoryDocument) => ({
-            type: 'delete',
-            ref: directoryDocument.ref,
-          })),
-      ];
-
-      const {
-        accountMetadataOperations,
-        claimOperations,
-        recoveryOperations,
-      } = buildMemberAccountIndexOperations({
-        accountEntries,
-        currentClaimDocuments: currentClaimsSnapshot.docs,
-        currentRecoveryDocuments: currentRecoverySnapshot.docs,
-      });
-
-      await commitFirestoreOperations([
-        ...borrowerOperations,
-        ...directoryOperations,
-        ...claimOperations,
-        ...recoveryOperations,
-        ...accountMetadataOperations,
-      ]);
-
-      const nextDirectoryVersion =
-        getSafeMemberDirectoryVersion(data.settings) + 1;
-      const nextSettings = {
-        ...data.settings,
-        memberDirectoryVersion: nextDirectoryVersion,
-        memberIdentityClaimsReady: true,
-      };
-
-      await setDoc(
-        PUBLIC_CONFIG_DOC_REF,
-        {
-          teams: nextTeams,
-          settings: nextSettings,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      setData((prev) => ({
-        ...prev,
-        teams: nextTeams,
-        borrowers: nextBorrowers,
-        settings: nextSettings,
-      }));
-
-      setTempTeams(nextTeams);
-      setTempBorrowers(nextBorrowers);
-      setMemberDirectoryAuditResult(null);
-      setEditingTeamIndex(null);
-      setEditingTeamName('');
-      setDraggingTeamIndex(null);
-      setEditingBorrowerIndex(null);
-      setEditingBorrowerName('');
-      setDraggingBorrowerIndex(null);
-      setNewTeam('');
-      setNewBorrower('');
-      setNewBorrowerTeam('전체');
-
-      triggerToast(
-        '부서·사용자 명부가 저장되었습니다. 명부 버전이 변경되어 기존 회원은 다음 로그인 시 순차적으로 재검증됩니다.',
-        'success'
-      );
-
-      return true;
-    } catch (error) {
-      console.error('People data save error:', error);
-      triggerToast(
-        '부서·사용자 저장에 실패했습니다. 기존 데이터는 유지됩니다.',
-        'error'
-      );
-      return false;
-    }
-  };
-
-  const executeFullMemberDirectoryAudit = async () => {
-    if (!isAdminAuthenticated) {
-      triggerToast('관리자 인증 후 전체 회원 검사를 실행할 수 있습니다.', 'error');
-      return;
-    }
-
-    if (!isRegisteredMemberSignupRequired(data.settings)) {
-      triggerToast(
-        '회원가입 제한 정책을 저장한 뒤 전체 회원 검사를 실행해 주세요.',
-        'error'
-      );
-      return;
-    }
-
-    setMemberDirectoryAuditLoading(true);
-    setMemberDirectoryAuditResult(null);
-
-    try {
-      const directoryVersion = getSafeMemberDirectoryVersion(data.settings);
-      const directoryEntries = await Promise.all(
-        (data.borrowers || []).map(async (borrower) => ({
-          ...borrower,
-          name: normalizeMemberName(borrower.name || ''),
-          team: normalizeMemberTeam(borrower.team || ''),
-          identityKey: await createMemberIdentityKey(
-            borrower.team,
-            borrower.name
-          ),
-        }))
-      );
-      const directoryByIdentityKey = new Map(
-        directoryEntries.map((entry) => [entry.identityKey, entry])
-      );
-      const [
-        currentUserAccountsSnapshot,
-        currentClaimsSnapshot,
-        currentRecoverySnapshot,
-      ] = await Promise.all([
-        getDocs(USER_ACCOUNTS_COLLECTION_REF),
-        getDocs(MEMBER_IDENTITY_CLAIMS_COLLECTION_REF),
-        getDocs(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF),
-      ]);
-      const accountEntries = await buildMemberAccountIndexEntries(
-        currentUserAccountsSnapshot.docs.map((accountDocument) => ({
-          ...accountDocument.data(),
-          uid: accountDocument.data().uid || accountDocument.id,
-        }))
-      );
-      const {
-        accountMetadataOperations,
-        claimOperations,
-        recoveryOperations,
-        groups: accountGroups,
-      } = buildMemberAccountIndexOperations({
-        accountEntries,
-        currentClaimDocuments: currentClaimsSnapshot.docs,
-        currentRecoveryDocuments: currentRecoverySnapshot.docs,
-      });
-      let duplicateAccounts = 0;
-
-      accountGroups.forEach((group) => {
-        const liveEntries = group.filter(
-          (entry) => entry.account.status !== USER_PROFILE_STATUS.RETIRED
-        );
-        if (liveEntries.length > 1) {
-          duplicateAccounts += liveEntries.length;
-        }
-      });
-
-      const auditableStatuses = new Set([
-        USER_PROFILE_STATUS.PENDING,
-        USER_PROFILE_STATUS.ACTIVE,
-        USER_PROFILE_STATUS.PROFILE_REQUIRED,
-      ]);
-      const auditableTotal = accountEntries.filter((entry) =>
-        auditableStatuses.has(entry.account.status || '')
-      ).length;
-      const accountOperations = [];
-      let normal = 0;
-      let profileRequired = 0;
-      let missing = 0;
-
-      accountEntries.forEach((entry) => {
-        const { account, identityKey, name, team } = entry;
-        const accountStatus = account.status || '';
-        const isAuditable = auditableStatuses.has(accountStatus);
-        const group = identityKey ? accountGroups.get(identityKey) || [] : [];
-        const isDuplicate = group.filter(
-          (groupEntry) => groupEntry.account.status !== USER_PROFILE_STATUS.RETIRED
-        ).length > 1;
-        const directoryEntry = identityKey
-          ? directoryByIdentityKey.get(identityKey)
-          : null;
-        const directoryMatches = Boolean(
-          directoryEntry &&
-            directoryEntry.name === name &&
-            directoryEntry.team === team
-        );
-
-        if (!isAuditable) {
-          return;
-        }
-
-        if (!identityKey || !directoryMatches || isDuplicate) {
-          if (!identityKey || !directoryMatches) {
-            missing += 1;
-          }
-          profileRequired += 1;
-          const nextReason = isDuplicate
-            ? PROFILE_REQUIRED_REASON.DUPLICATE_IDENTITY
-            : PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
-          const previousStatus = [
-            USER_PROFILE_STATUS.PENDING,
-            USER_PROFILE_STATUS.ACTIVE,
-          ].includes(accountStatus)
-            ? accountStatus
-            : account.statusBeforeProfileRequired ||
-              USER_PROFILE_STATUS.PENDING;
-
-          accountOperations.push({
-            type: 'set',
-            ref: doc(db, USER_ACCOUNTS_COLLECTION_NAME, account.uid),
-            data: {
-              status: USER_PROFILE_STATUS.PROFILE_REQUIRED,
-              statusBeforeProfileRequired: previousStatus,
-              profileRequiredReason: nextReason,
-              profileRequiredAt: serverTimestamp(),
-              identityKey,
-              directoryMemberId: directoryMatches
-                ? directoryEntry.id || ''
-                : '',
-              directoryVerifiedVersion: 0,
-              directoryVerifiedAt: '',
-              updatedAt: serverTimestamp(),
-            },
-            options: { merge: true },
-            auditOutcome: 'profileRequired',
-          });
-          return;
-        }
-
-        normal += 1;
-        const shouldRestore =
-          accountStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
-          account.profileRequiredReason ===
-            PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
-        const nextStatus = shouldRestore
-          ? getRestorableUserProfileStatus(account.statusBeforeProfileRequired)
-          : accountStatus;
-
-        accountOperations.push({
-          type: 'set',
-          ref: doc(db, USER_ACCOUNTS_COLLECTION_NAME, account.uid),
-          data: {
-            status: nextStatus,
-            identityKey,
-            directoryMemberId: directoryEntry.id || '',
-            directoryVerifiedVersion: directoryVersion,
-            directoryVerifiedAt: serverTimestamp(),
-            profileRequiredReason: shouldRestore
-              ? ''
-              : account.profileRequiredReason || '',
-            profileRequiredAt: shouldRestore
-              ? ''
-              : account.profileRequiredAt || '',
-            statusBeforeProfileRequired: shouldRestore
-              ? ''
-              : account.statusBeforeProfileRequired || '',
-            updatedAt: serverTimestamp(),
-          },
-          options: { merge: true },
-          auditOutcome: 'normal',
-        });
-      });
-
-      await commitFirestoreOperations([
-        ...claimOperations,
-        ...recoveryOperations,
-        ...accountMetadataOperations,
-      ]);
-
-      let failed = 0;
-
-      for (const operation of accountOperations) {
-        try {
-          await setDoc(operation.ref, operation.data, operation.options);
-        } catch (accountError) {
-          failed += 1;
-
-          if (operation.auditOutcome === 'normal') {
-            normal = Math.max(0, normal - 1);
-          } else if (operation.auditOutcome === 'profileRequired') {
-            profileRequired = Math.max(0, profileRequired - 1);
-          }
-
-          console.error('Member directory audit account update error:', accountError);
-        }
-      }
-
-      const auditSummary = {
-        total: auditableTotal,
-        normal,
-        profileRequired,
-        duplicates: duplicateAccounts,
-        missing,
-        failed,
-        directoryVersion,
-        completedAtText: new Date().toLocaleString('ko-KR'),
-        completedBy:
-          authenticatedAdminAccount?.email ||
-          authenticatedAdminAccount?.adminLoginId ||
-          authenticatedAdminId,
-        completedAt: serverTimestamp(),
-      };
-
-      await setDoc(
-        PUBLIC_CONFIG_DOC_REF,
-        {
-          memberDirectoryAudit: auditSummary,
-          settings: {
-            ...data.settings,
-            memberIdentityClaimsReady: true,
-          },
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      setMemberDirectoryAuditResult(auditSummary);
-      triggerToast(
-        `전체 회원 명부 검사가 완료되었습니다. 정상 ${normal}명, 정보 수정 필요 ${profileRequired}명, 중복 ${duplicateAccounts}명, 실패 ${failed}명입니다.`,
-        profileRequired > 0 || failed > 0 ? 'error' : 'success'
-      );
-    } catch (error) {
-      console.error('Full member directory audit error:', error);
-      triggerToast(
-        '전체 회원 명부 검사에 실패했습니다. 기존 회원 상태는 가능한 범위에서 유지됩니다.',
-        'error'
-      );
-    } finally {
-      setMemberDirectoryAuditLoading(false);
-    }
-  };
-
-  const runFullMemberDirectoryAudit = () => {
-    triggerConfirm(
-      '전체 회원 명부 검사',
-      "현재 회원 계정과 부서·사용자 명부를 비교합니다. 불일치 회원은 '정보 수정 필요' 상태로 전환되며 등록 정보는 자동으로 변경되지 않습니다. 검사를 실행하시겠습니까?",
-      executeFullMemberDirectoryAudit
-    );
-  };
-
-  const openProfileRequiredMembers = () => {
-    setAdminUserAccountQuery('');
-    setAdminUserAccountStatusFilter(USER_PROFILE_STATUS.PROFILE_REQUIRED);
-    setAdminTab('memberAccounts');
-  };
-
   const saveSystemSettings = async () => {
     if (!isSplitStorageReady) {
       triggerToast(
@@ -12513,10 +10267,22 @@ function App() {
     }
 
     if (tab === 'people' && peopleSettingsDirty) {
+      const {
+        discard,
+        save,
+      } = memberDirectoryDeferredActionsRef.current;
+
+      if (
+        typeof discard !== 'function' ||
+        typeof save !== 'function'
+      ) {
+        return null;
+      }
+
       return {
         label: '부서·사용자',
-        discard: () => cancelTempPeopleChanges({ silent: true }),
-        save: saveTempPeopleChanges,
+        discard,
+        save,
       };
     }
 
@@ -13123,10 +10889,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       />
     </div>
   );
-
-  const displayedTempBorrowers = tempBorrowers
-    .map((borrower, originalIndex) => ({ ...borrower, originalIndex }))
-    .filter((borrower) => newBorrowerTeam === '전체' || borrower.team === newBorrowerTeam);
 
   const rentalStartAdjustmentInfo = getRentalStartAdjustmentInfo(data.settings);
   const tempBusinessDayAdjustmentEnabled =
@@ -19373,650 +17135,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     }
   };
 
-  // 엑셀/CSV 파일 일괄 자동 업로드 분석 처리 로직
-  const handleFileUpload = async (event) => {
-    const fileInput = event.currentTarget;
-    const file = fileInput.files?.[0];
-
-    if (!file || assetUploadParserLoading) return;
-
-    const fileName = file.name.toLowerCase();
-    const isExcelFile = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
-    const isCsvFile = fileName.endsWith('.csv');
-
-    if (!isExcelFile && !isCsvFile) {
-      triggerToast(
-        '엑셀(.xlsx, .xls) 또는 CSV(.csv) 파일만 업로드할 수 있습니다.',
-        'error'
-      );
-      fileInput.value = '';
-      return;
-    }
-
-    setAssetUploadParserLoading(true);
-
-    try {
-      let sheetJs = null;
-      let sheetJsLoaderModule = null;
-
-      try {
-        sheetJsLoaderModule = await loadSheetJsLoaderModule();
-        sheetJs = await sheetJsLoaderModule.loadSheetJs();
-      } catch (sheetJsError) {
-        if (isExcelFile) {
-          triggerToast(
-            sheetJsLoaderModule?.getSheetJsLoadErrorMessage?.(
-              sheetJsError
-            ) ||
-              '엑셀 처리 도구를 불러오지 못했습니다. 네트워크 연결 또는 외부 스크립트 차단 설정을 확인해 주세요.',
-            'error'
-          );
-          return;
-        }
-
-        console.error('SheetJS load error for CSV fallback:', sheetJsError);
-      }
-
-      const dataBuffer = await file.arrayBuffer();
-      const dataBytes = new Uint8Array(dataBuffer);
-      let jsonResult = [];
-
-      if (isExcelFile && sheetJs) {
-        const workbook = sheetJs.read(dataBytes, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
-        jsonResult = sheetJs.utils.sheet_to_json(sheet);
-      }
-
-      if (isCsvFile) {
-        const decoder = new TextDecoder('utf-8');
-        const csvText = decoder.decode(dataBytes);
-
-        if (sheetJs) {
-          const workbook = sheetJs.read(csvText, { type: 'string' });
-          const sheetName = workbook.SheetNames[0];
-          const sheet = workbook.Sheets[sheetName];
-          jsonResult = sheetJs.utils.sheet_to_json(sheet);
-        } else {
-          const lines = csvText
-            .split(/\r?\n/)
-            .filter((line) => line.trim());
-
-          if (lines.length > 0) {
-            const headers = lines[0]
-              .split(',')
-              .map((header) => header.trim().replace(/"/g, ''));
-
-            jsonResult = lines.slice(1).map((line) => {
-              const values = line
-                .split(',')
-                .map((value) => value.trim().replace(/"/g, ''));
-              const row = {};
-
-              headers.forEach((header, index) => {
-                row[header] = values[index] || '';
-              });
-
-              return row;
-            });
-          }
-        }
-      }
-
-      await processParsedData(jsonResult);
-    } catch (error) {
-      console.error('Asset upload file parse error:', error);
-      triggerToast(
-        '파일 파싱 중 에러가 발생했습니다. 파일 형식과 작성 규격을 확인해 주세요.',
-        'error'
-      );
-    } finally {
-      fileInput.value = '';
-      setAssetUploadParserLoading(false);
-    }
-  };
-
-  // 분석 완료된 자산 데이터 병합 가동
-  const processParsedData = async (jsonList) => {
-    if (!jsonList || jsonList.length === 0) {
-      triggerToast(
-        '업로드된 파일에서 읽어올 수 있는 자산이 감지되지 않았습니다.',
-        'error'
-      );
-      return;
-    }
-
-    const parsedCandidates = [];
-    let missingAssetNoCount = 0;
-
-    jsonList.forEach((row, index) => {
-      const matchVal = (keys) => {
-        const matchedKey = Object.keys(row).find((keyName) =>
-          keys.some((key) =>
-            keyName
-              .toLowerCase()
-              .replace(/\s+/g, '')
-              .includes(key.toLowerCase())
-          )
-        );
-
-        return matchedKey
-          ? String(row[matchedKey]).trim()
-          : '';
-      };
-
-      const category = matchVal([
-        '자산카테고리',
-        '카테고리',
-        '분류',
-        'category',
-        'assetcategory',
-        'asset_category',
-      ]);
-
-      const assetNo = matchVal([
-        '자산관리번호',
-        '관리번호',
-        '자산번호',
-        'assetno',
-        'asset_no',
-      ]);
-
-      const model = matchVal([
-        '모델명',
-        '모델',
-        '기종',
-        'model',
-      ]);
-
-      const serialNo = matchVal([
-        '시리얼번호',
-        '시리얼',
-        'serialno',
-        'serial_no',
-        'sn',
-        's/n',
-      ]);
-
-      const manufactureDate = matchVal([
-        '제조일자',
-        '제조일',
-        '구입일자',
-        '구입일',
-        'manufacturedate',
-        'manufacture_date',
-      ]);
-
-      const note = matchVal([
-        '비고',
-        '메모',
-        '특이사항',
-        'note',
-      ]);
-
-      const photo = matchVal([
-        '사진url',
-        '사진링크',
-        '사진',
-        'photo',
-        'image',
-      ]);
-
-      const statusVal = matchVal([
-        '대여가능여부',
-        '대여가능',
-        '대여상태',
-        '상태',
-        'status',
-      ]);
-
-      if (!assetNo) {
-        missingAssetNoCount++;
-        return;
-      }
-
-      const fallbackPhoto =
-        'https://images.unsplash.com/photo-1593642632823-8f785ba67e45?auto=format&fit=crop&w=500&q=80';
-
-      const finalStatus =
-        statusVal.includes('대여불가') ||
-        statusVal.toLowerCase().includes('unavailable') ||
-        statusVal.includes('불가')
-          ? STATUS.UNAVAILABLE
-          : STATUS.AVAILABLE;
-
-      parsedCandidates.push({
-        sourceIndex: index,
-        category,
-        assetNo: assetNo.trim(),
-        serialNo:
-          serialNo ||
-          `SN-AUTO-${Math.floor(
-            Math.random() * 90000 + 10000
-          )}`,
-        model: model || '미지정 기종',
-        manufactureDate:
-          manufactureDate || today(),
-        photo: photo || fallbackPhoto,
-        note: note || '',
-        status: finalStatus,
-        currentRequestId: null,
-      });
-    });
-
-    if (parsedCandidates.length === 0) {
-      if (missingAssetNoCount > 0) {
-        triggerToast(
-          '자산관리번호가 입력된 행이 없어 업로드하지 않았습니다.',
-          'error'
-        );
-        return;
-      }
-
-      triggerToast(
-        '헤더(자산카테고리, 자산관리번호, 모델명, 시리얼번호 등) 규격 정보가 일치하지 않아 가져오지 못했습니다.',
-        'error'
-      );
-      return;
-    }
-
-    const acceptedAssets = [];
-    const duplicateAssetNumbers = new Set();
-    const invalidCategoryNames = new Set();
-
-    let invalidCategoryCount = 0;
-    let duplicateAssetNoCount = 0;
-
-    try {
-      const configSnapshot =
-        await getDoc(PUBLIC_CONFIG_DOC_REF);
-
-      if (!configSnapshot.exists()) {
-        throw new Error(
-          'public-config-not-found'
-        );
-      }
-
-      const registeredCategoryMap =
-        new Map(
-          (
-            configSnapshot.data()
-              .assetCategories || []
-          ).map((category) => [
-            String(category || '')
-              .trim()
-              .toLowerCase(),
-            category,
-          ])
-        );
-
-      const fileAssetNoSet =
-        new Set();
-
-      const validatedCandidates = [];
-
-      parsedCandidates.forEach(
-        (candidate) => {
-          const normalizedCategory =
-            String(
-              candidate.category || ''
-            )
-              .trim()
-              .toLowerCase();
-
-          const matchedCategory =
-            registeredCategoryMap.get(
-              normalizedCategory
-            );
-
-          if (
-            !normalizedCategory ||
-            !matchedCategory
-          ) {
-            invalidCategoryCount++;
-            invalidCategoryNames.add(
-              candidate.category ||
-              '미입력'
-            );
-            return;
-          }
-
-          const normalizedAssetNo =
-            normalizeAssetNumber(
-              candidate.assetNo
-            );
-
-          if (
-            fileAssetNoSet.has(
-              normalizedAssetNo
-            )
-          ) {
-            duplicateAssetNoCount++;
-            duplicateAssetNumbers.add(
-              candidate.assetNo
-            );
-            return;
-          }
-
-          fileAssetNoSet.add(
-            normalizedAssetNo
-          );
-
-          const generatedAssetRef =
-            doc(
-              RENTAL_ASSETS_COLLECTION_REF
-            );
-
-          const assetId =
-            `NB-UP-${generatedAssetRef.id}`;
-
-          validatedCandidates.push({
-            ...candidate,
-            id: assetId,
-            category:
-              matchedCategory,
-            assetNoNormalized:
-              normalizedAssetNo,
-            reservations: [],
-          });
-        }
-      );
-
-      const transactionChunkSize = 100;
-
-      for (
-        let startIndex = 0;
-        startIndex <
-        validatedCandidates.length;
-        startIndex +=
-        transactionChunkSize
-      ) {
-        const candidateChunk =
-          validatedCandidates.slice(
-            startIndex,
-            startIndex +
-              transactionChunkSize
-          );
-
-        let chunkResult = null;
-
-        await runTransaction(
-          db,
-          async (transaction) => {
-            const registryEntries =
-              candidateChunk.map(
-                (candidate) => {
-                  const registryId =
-                    getAssetNumberRegistryId(
-                      candidate.assetNo
-                    );
-
-                  return {
-                    candidate,
-                    registryId,
-                    registryRef: doc(
-                      RENTAL_ASSET_NUMBERS_COLLECTION_REF,
-                      registryId
-                    ),
-                    assetRef: doc(
-                      RENTAL_ASSETS_COLLECTION_REF,
-                      candidate.id
-                    ),
-                  };
-                }
-              );
-
-            const registrySnapshots =
-              await Promise.all(
-                registryEntries.map(
-                  (entry) =>
-                    transaction.get(
-                      entry.registryRef
-                    )
-                )
-              );
-
-            const createdEntries = [];
-            const duplicatedAssetNumbers =
-              [];
-
-            registryEntries.forEach(
-              (entry, index) => {
-                if (
-                  registrySnapshots[
-                    index
-                  ].exists()
-                ) {
-                  duplicatedAssetNumbers.push(
-                    entry.candidate.assetNo
-                  );
-                  return;
-                }
-
-                createdEntries.push({
-                  entry,
-                  asset: {
-                    id:
-                      entry.candidate.id,
-                    category:
-                      entry.candidate
-                        .category,
-                    assetNo:
-                      entry.candidate
-                        .assetNo,
-                    assetNoNormalized:
-                      entry.candidate
-                        .assetNoNormalized,
-                    serialNo:
-                      entry.candidate
-                        .serialNo,
-                    model:
-                      entry.candidate
-                        .model,
-                    manufactureDate:
-                      entry.candidate
-                        .manufactureDate,
-                    photo:
-                      entry.candidate
-                        .photo,
-                    note:
-                      entry.candidate.note,
-                    status:
-                      entry.candidate
-                        .status,
-                    currentRequestId:
-                      null,
-                    reservations: [],
-                  },
-                });
-              }
-            );
-
-            const createdAssets =
-              createdEntries.map(
-                ({ asset }) => asset
-              );
-
-            if (createdAssets.length > 0) {
-              await writePublicAssetCatalogMutationInTransaction(
-                transaction,
-                {
-                  fallbackAssets: [
-                    ...splitRentalAssets,
-                    ...acceptedAssets,
-                  ],
-                  upsertAssets: createdAssets,
-                  updatedByUid:
-                    firebaseAuth.currentUser?.uid ||
-                    authenticatedAdminId ||
-                    currentAuthAdminAccount?.id ||
-                    '',
-                }
-              );
-            }
-
-            createdEntries.forEach(
-              ({ entry, asset }) => {
-                transaction.set(
-                  entry.assetRef,
-                  {
-                    ...asset,
-                    createdAt:
-                      serverTimestamp(),
-                    updatedAt:
-                      serverTimestamp(),
-                  }
-                );
-
-                transaction.set(
-                  entry.registryRef,
-                  {
-                    id:
-                      entry.registryId,
-                    assetId: asset.id,
-                    assetNo:
-                      asset.assetNo,
-                    assetNoNormalized:
-                      asset.assetNoNormalized,
-                    updatedAt:
-                      serverTimestamp(),
-                  }
-                );
-              }
-            );
-
-            chunkResult = {
-              createdAssets,
-              duplicatedAssetNumbers,
-            };
-          }
-        );
-
-        if (!chunkResult) {
-          throw new Error(
-            'bulk-upload-transaction-result-missing'
-          );
-        }
-
-        acceptedAssets.push(
-          ...chunkResult.createdAssets
-        );
-
-        chunkResult
-          .duplicatedAssetNumbers
-          .forEach((assetNo) => {
-            duplicateAssetNoCount++;
-            duplicateAssetNumbers.add(
-              assetNo
-            );
-          });
-      }
-
-      if (acceptedAssets.length > 0) {
-        setData((prev) => ({
-          ...prev,
-          laptops: [
-            ...(prev.laptops || []),
-            ...acceptedAssets,
-          ],
-        }));
-
-        setShowUploadPanel(false);
-
-        const skippedMessages = [];
-
-        if (invalidCategoryCount > 0) {
-          skippedMessages.push(
-            `카테고리 불일치 ${invalidCategoryCount}건 제외`
-          );
-        }
-
-        if (missingAssetNoCount > 0) {
-          skippedMessages.push(
-            `자산관리번호 누락 ${missingAssetNoCount}건 제외`
-          );
-        }
-
-        if (duplicateAssetNoCount > 0) {
-          skippedMessages.push(
-            `중복 자산관리번호 ${duplicateAssetNoCount}건 제외`
-          );
-        }
-
-        triggerToast(
-          `총 ${acceptedAssets.length}대의 기기를 엑셀/CSV 데이터베이스로 일괄 추가 등록했습니다.` +
-            `${
-              skippedMessages.length
-                ? ` (${skippedMessages.join(', ')})`
-                : ''
-            }`,
-          'success'
-        );
-        return;
-      }
-
-      if (invalidCategoryCount > 0) {
-        const invalidCategoryList =
-          Array.from(
-            invalidCategoryNames
-          )
-            .slice(0, 5)
-            .join(', ');
-
-        triggerToast(
-          `등록된 자산 카테고리와 일치하는 행이 없어 업로드하지 않았습니다. 불일치 카테고리: ${invalidCategoryList}`,
-          'error'
-        );
-        return;
-      }
-
-      if (duplicateAssetNoCount > 0) {
-        const duplicateAssetNoList =
-          Array.from(
-            duplicateAssetNumbers
-          )
-            .slice(0, 5)
-            .join(', ');
-
-        triggerToast(
-          `기존 자산 또는 업로드 파일 내부에 동일한 자산관리번호가 있어 업로드하지 않았습니다. 중복 번호: ${duplicateAssetNoList}`,
-          'error'
-        );
-        return;
-      }
-
-      triggerToast(
-        '업로드할 수 있는 유효한 자산이 없습니다.',
-        'error'
-      );
-    } catch (error) {
-      console.error(
-        'Bulk asset upload transaction error:',
-        error
-      );
-
-      const catalogErrorMessage =
-        await getPublicAssetCatalogWriteErrorMessage(error);
-
-      if (catalogErrorMessage) {
-        triggerToast(
-          acceptedAssets.length > 0
-            ? `${catalogErrorMessage} 현재까지 ${acceptedAssets.length}건은 저장되었습니다.`
-            : catalogErrorMessage,
-          'error'
-        );
-        return;
-      }
-
-      triggerToast(
-        acceptedAssets.length > 0
-          ? `엑셀/CSV 등록 중 일부 작업이 중단되었습니다. 현재까지 ${acceptedAssets.length}건은 저장되었으며 나머지는 등록되지 않았습니다.`
-          : '엑셀/CSV 자산 등록에 실패했습니다. 기존 자산 목록은 변경되지 않았습니다. Firestore 권한과 네트워크 상태를 확인해 주세요.',
-        'error'
-      );
-    }
-  };
-
   // 자산 영구 삭제 제어 로직
   const deleteLaptop = (id, assetNo) => {
     if (!isSplitStorageReady) {
@@ -20757,9 +17875,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     addDaysFrom,
     addFaqCategory,
     addTempAssetCategory,
-    addTempBorrower,
     addTempHoliday,
-    addTempTeam,
     adminAccountEditForm,
     adminAccountForm,
     adminAccountTotalPages,
@@ -20807,8 +17923,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     adminUserAccountsReady,
     adminUserActionSavingRequestId,
     applyEditTempAssetCategory,
-    applyEditTempBorrower,
-    applyEditTempTeam,
     authenticateAdmin,
     authenticatedAdminAccount,
     authenticatedAdminId,
@@ -20816,7 +17930,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     availableFilterLabel,
     cancelEditAdminAccount,
     cancelTempAssetCategoryChanges,
-    cancelTempPeopleChanges,
     cancelSignupPolicyChanges,
     cancelWithdrawal,
     cancelUserSignup,
@@ -20845,6 +17958,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     dashboardSummaryReady,
     dashboardSummaryRefreshing,
     data,
+    setData,
     siteSettings,
     siteSettingsReady,
     siteSettingsLoadErrorMessage,
@@ -20858,25 +17972,16 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     toggleAdminAccountLock,
     deleteLaptop,
     deleteTempAssetCategory,
-    deleteTempBorrower,
     deleteTempHoliday,
-    deleteTempTeam,
     displayedFaqPosts,
-    displayedTempBorrowers,
     draggingAssetCategoryIndex,
-    draggingBorrowerIndex,
-    draggingTeamIndex,
     editLaptop,
     editLaptopInsertIndex,
     editingAdminAccountId,
     editingAssetCategoryIndex,
     editingAssetCategoryName,
-    editingBorrowerIndex,
-    editingBorrowerName,
     editingFaqCategoryId,
     editingFaqCategoryName,
-    editingTeamIndex,
-    editingTeamName,
     expandedFaqPostId,
     faqBoardConfigLoadErrorMessage,
     faqBoardConfigReady,
@@ -20909,7 +18014,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     formatFirestoreDate,
     formatFirestoreTimestamp,
     getAdminRequestRestoreTargets,
-    loadMemberAccountHistorySummary,
     defaultRentalStartDate,
     getAdjustedRentalDueDate,
     getDisplayRentalStatus,
@@ -20926,8 +18030,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     getSafeRentalExtensionDays,
     getSafeRentalExtensionMaxCount,
     getSafeMaxRentalDays,
-    getUserAccountStatusClassName,
-    getUserAccountStatusLabel,
     getUserLaptopStatusLabel,
     getUserRequestActionLabel,
     getUserRequestReviewStatusLabel,
@@ -20941,8 +18043,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     goToUserPasswordReset,
     goToUserSignup,
     handleAddLaptopClick,
-    handleFileUpload,
-    assetUploadParserLoading,
     hasFirebaseAuthSession,
     handleAdminTabChange,
     holidayImportConflictModal,
@@ -20966,20 +18066,21 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     memberDirectoryAuditResult,
     memberDirectoryPolicyEnabled,
     memberIdentityClaimsReady,
+    clearMemberDirectoryAuditResult,
+    memberDirectoryBorrowers: data.borrowers,
+    memberDirectorySettings: data.settings,
+    memberDirectoryTeams: data.teams,
+    onMemberDirectoryDeferredStateChange:
+      handleMemberDirectoryDeferredStateChange,
     mergedRentalRequests,
     motion,
     moveTempAssetCategory,
-    moveTempBorrower,
-    moveTempTeam,
     newAssetCategory,
-    newBorrower,
-    newBorrowerTeam,
     newFaqCategoryName,
     newHolidayDate,
     newHolidayName,
     newHolidayType,
     newLaptop,
-    newTeam,
     noticeBoardConfigLoadErrorMessage,
     noticeBoardConfigReady,
     noticeBoardConfigSaving,
@@ -21054,7 +18155,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     saveSystemSettings,
     saveSignupPolicyChanges,
     saveTempAssetCategoryChanges,
-    saveTempPeopleChanges,
     selectedAdminRequest,
     selectedAssetCategory,
     selectedLaptop,
@@ -21092,17 +18192,11 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     setAvailabilityFilter,
     setConfirmModal,
     setDraggingAssetCategoryIndex,
-    setDraggingBorrowerIndex,
-    setDraggingTeamIndex,
     setEditLaptop,
     setEditingAssetCategoryIndex,
     setEditingAssetCategoryName,
-    setEditingBorrowerIndex,
-    setEditingBorrowerName,
     setEditingFaqCategoryId,
     setEditingFaqCategoryName,
-    setEditingTeamIndex,
-    setEditingTeamName,
     setExpandedFaqPostId,
     setFaqPage,
     setFaqPostForm,
@@ -21116,14 +18210,11 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     setHolidayManagementView,
     setHolidayManagementYear,
     setNewAssetCategory,
-    setNewBorrower,
-    setNewBorrowerTeam,
     setNewFaqCategoryName,
     setNewHolidayDate,
     setNewHolidayName,
     setNewHolidayType,
     setNewLaptop,
-    setNewTeam,
     setNoticePage,
     setNoticePostForm,
     setUserNoticeQuery,
@@ -21149,12 +18240,11 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     showUploadPanel,
     signupPolicyDirty,
     signupPolicySaving,
+    splitRentalAssets,
     splitStorageFinalizeLoading,
     startEditAdminAccount,
     startEditFaqCategory,
     startEditTempAssetCategory,
-    startEditTempBorrower,
-    startEditTempTeam,
     submitAccountRecovery,
     submitMembershipWithdrawal,
     submitPasswordReset,
@@ -21169,7 +18259,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     discardHolidayChanges,
     tempRequireRegisteredMemberForSignup,
     tempSettings,
-    tempTeams,
     toast,
     stats,
     today,

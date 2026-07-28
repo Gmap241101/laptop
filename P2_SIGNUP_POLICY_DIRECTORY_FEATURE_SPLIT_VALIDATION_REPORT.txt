@@ -1,0 +1,114 @@
+P2 SIGNUP POLICY / MEMBER DIRECTORY FEATURE SPLIT VALIDATION
+============================================================
+
+Baseline
+--------
+rental-system-p2-member-actions-feature-split-deployment-package.zip
+
+Changed source files
+--------------------
+src/App.jsx
+src/features/members/useAdminSignupPolicyDirectoryActions.js
+src/features/members/memberDirectorySaveService.js
+tools/firestore-audit-policy.json
+SOURCE_GRAPH_ANALYSIS_REPORT.json
+
+Static validation
+-----------------
+TypeScript transpile validation files: 81
+Syntax/transform errors: 0
+Relative imports inspected: 160
+Missing relative imports: 0
+
+Context contract
+----------------
+AdminOrganizationPanel required keys: 39
+admin.people context keys: 39
+Missing/extra keys: 0 / 0
+Missing keys in uiContext: 0
+
+AdminSignupPolicyPanel required keys: 17
+admin.signupPolicy context keys: 17
+Missing/extra keys: 0 / 0
+Missing keys in uiContext: 0
+
+Firestore access audit
+----------------------
+Result: PASS
+Total calls: 123
+onSnapshot: 32
+getDocs: 48
+getDoc: 23
+getCountFromServer: 20
+Approved risk findings: 51
+Unapproved warnings: 0
+Unapproved errors: 0
+
+Moved approved full reads
+-------------------------
+userAccounts
+memberDirectoryKeys
+memberIdentityClaims
+accountRecoveryKeys
+
+Runtime simulation
+------------------
+Directory normalization: PASS
+Duplicate department rejection: PASS
+Invalid member name rejection: PASS
+Duplicate member rejection: PASS
+Generated borrower document ID: PASS
+Four source collection reads: PASS
+Index operation commit: PASS
+Public config write: PASS
+memberDirectoryVersion increment: PASS
+memberIdentityClaimsReady flag: PASS
+
+Korean strings
+--------------
+Removed unique Korean strings: 0
+Added unique Korean strings: 0
+
+Code metrics
+------------
+App.jsx before: 19,425 lines / 562,950 bytes
+App.jsx after: 19,050 lines / 550,747 bytes
+Change: -375 lines / -12,203 bytes
+
+App.jsx useState: 222 -> 219
+App.jsx useEffect: 67 -> 66
+App.jsx useMemo: 41 -> 39
+App.jsx useRef: 19 -> 19
+
+Source graph
+------------
+Initial static modules: 37 -> 38
+Initial source bytes: 824,686 -> 823,105
+Dynamic entries: 13 -> 14
+New dynamic entry: src/features/members/memberDirectorySaveService.js
+
+Rules/indexes
+-------------
+rules/firestore.rules: unchanged
+firestore.indexes.json: unchanged
+firebase.json: unchanged
+
+Production build
+----------------
+npm ci attempted: YES
+Result: container ClientError
+node_modules/.bin/vite: not created
+Vite production build: NOT EXECUTED
+
+Package verification is recorded separately after ZIP creation.
+
+ZIP package verification
+------------------------
+Full package ZIP integrity: PASS
+Changed-files ZIP integrity: PASS
+Full package re-extraction: PASS
+Full package TypeScript transpile validation: 81 files / 0 errors
+Full package context contract validation: PASS
+Full package Firestore strict audit: PASS
+Changed-files package exact source comparison: PASS
+Forbidden paths in packages: none

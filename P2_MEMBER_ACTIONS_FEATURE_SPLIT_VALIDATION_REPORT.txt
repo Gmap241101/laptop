@@ -1,0 +1,76 @@
+P2 MEMBER ACTIONS FEATURE SPLIT VALIDATION
+==========================================
+
+Baseline
+--------
+rental-system-p2-member-accounts-controller-feature-split-deployment-package.zip
+
+Changed source files
+--------------------
+src/App.jsx
+src/admin/AdminMemberAccountsPanel.jsx
+src/context/appContextSlices.js
+tools/firestore-audit-policy.json
+SOURCE_GRAPH_ANALYSIS_REPORT.json
+
+New source files
+----------------
+src/features/members/memberAccountPolicy.js
+src/features/members/memberAccountIndexService.js
+src/features/members/memberAccountHistoryService.js
+src/features/members/useAdminMemberActions.js
+
+Static validation
+-----------------
+[PASS] 79 JS/JSX/MJS files parsed with TypeScript transpileModule
+[PASS] 0 syntax/transform errors
+[PASS] 0 missing relative imports
+[PASS] New member feature files pass node --check
+[PASS] No remaining App.jsx references to removed local member action state setters/refs
+
+Context contract validation
+---------------------------
+[PASS] AdminMemberAccountsPanel: 22 context keys, 22 destructured keys
+[PASS] AdminMemberAccountsPanel missing keys: 0
+[PASS] AdminMemberAccountsPanel extra keys: 0
+[PASS] AdminSignupPolicyPanel: 17 context keys, 17 destructured keys
+[PASS] AdminSignupPolicyPanel missing keys: 0
+[PASS] AdminSignupPolicyPanel extra keys: 0
+
+Member policy runtime validation
+--------------------------------
+[PASS] 11/11 checks
+[PASS] Directory version normalization
+[PASS] Signup restriction and auto-approval policy checks
+[PASS] Restorable status handling
+[PASS] Status label and style mapping
+[PASS] Claim current/former UID normalization
+
+Firestore access audit
+----------------------
+[PASS] Strict audit
+Source files: 75
+Total calls: 123
+onSnapshot: 32
+getDocs: 48
+getDoc: 23
+getCountFromServer: 20
+Approved findings: 51
+Unapproved warnings: 0
+Unapproved errors: 0
+
+Source metrics
+--------------
+App.jsx before: 20,387 lines / 591,011 bytes
+App.jsx after:  19,425 lines / 562,950 bytes
+Reduction:       962 lines / 28,061 bytes
+
+Initial source graph before: 33 modules / 819,594 bytes
+Initial source graph after:  37 modules / 824,686 bytes
+
+Production build
+----------------
+[PASS] npm run build prebuild Firestore audit
+[NOT RUN] Vite bundle generation
+Reason: npm ci failed with container ClientError and node_modules/.bin/vite was not created.
+Observed build output: sh: 1: vite: not found
