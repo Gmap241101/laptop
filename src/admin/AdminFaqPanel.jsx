@@ -80,7 +80,7 @@ export default function AdminFaqPanel({ ctx }) {
                             </h3>
 
                             <p className="mt-1 text-[11px] leading-5 text-slate-500">
-                              부서 관리와 같은 방식으로 카테고리를 등록, 수정, 삭제합니다.
+                              FAQ 카테고리를 등록, 수정, 삭제합니다.
                             </p>
                           </div>
 
@@ -283,7 +283,7 @@ export default function AdminFaqPanel({ ctx }) {
                               </h3>
 
                               <p className="mt-1 max-w-2xl text-[11px] leading-5 text-slate-500">
-                                상단 고정 FAQ는 제외하고 일반 FAQ만 설정한 개수만큼 한 페이지에 표시합니다.
+                                상단 고정 FAQ를 제외한 일반 FAQ만 설정한 개수만큼 한 페이지에 표시합니다.
                               </p>
                             </div>
 
