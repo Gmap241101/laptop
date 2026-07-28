@@ -15,7 +15,7 @@
     "analyze:source": "node tools/analyze-source-graph.mjs",
     "analyze:bundle": "npm run build && node tools/analyze-bundle.mjs",
     "analyze:bundle:baseline": "npm run build && node tools/analyze-bundle.mjs --save-baseline",
-    "analyze:bundle:compare": "npm run build && node tools/analyze-bundle.mjs --baseline=BUNDLE_ANALYSIS_BASELINE.json",
+    "analyze:bundle:compare": "npm run build && node tools/analyze-bundle.mjs --baseline=docs/performance-optimization/measurements/BUNDLE_ANALYSIS_BASELINE.json",
     "audit:firestore": "node tools/audit-firestore-access.mjs",
     "audit:firestore:strict": "node tools/audit-firestore-access.mjs --strict",
     "verify:performance": "npm run audit:firestore:strict && npm run analyze:source"

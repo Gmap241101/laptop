@@ -2,6 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const root = process.cwd();
+const measurementRoot = path.join(
+  root,
+  'docs',
+  'performance-optimization',
+  'measurements'
+);
 const entry = path.join(root, 'src', 'main.jsx');
 const extensions = ['', '.js', '.jsx', '.mjs', '.json'];
 const staticImportPattern = /(?:^|\n)\s*import\s+(?!\()(?:(?:[\s\S]*?)\s+from\s+)?['"]([^'"]+)['"]/g;
@@ -65,8 +71,10 @@ const report = {
     .sort(),
 };
 
+fs.mkdirSync(measurementRoot, { recursive: true });
+
 fs.writeFileSync(
-  path.join(root, 'SOURCE_GRAPH_ANALYSIS_REPORT.json'),
+  path.join(measurementRoot, 'SOURCE_GRAPH_ANALYSIS_REPORT.json'),
   `${JSON.stringify(report, null, 2)}\n`
 );
 console.log(JSON.stringify(report, null, 2));

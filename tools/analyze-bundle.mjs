@@ -6,9 +6,15 @@ const projectRoot = process.cwd();
 const distDir = path.join(projectRoot, 'dist');
 const assetsDir = path.join(distDir, 'assets');
 const manifestPath = path.join(distDir, '.vite', 'manifest.json');
-const reportJsonPath = path.join(projectRoot, 'BUNDLE_ANALYSIS_REPORT.json');
-const reportTextPath = path.join(projectRoot, 'BUNDLE_ANALYSIS_REPORT.txt');
-const defaultBaselinePath = path.join(projectRoot, 'BUNDLE_ANALYSIS_BASELINE.json');
+const measurementRoot = path.join(
+  projectRoot,
+  'docs',
+  'performance-optimization',
+  'measurements'
+);
+const reportJsonPath = path.join(measurementRoot, 'BUNDLE_ANALYSIS_REPORT.json');
+const reportTextPath = path.join(measurementRoot, 'BUNDLE_ANALYSIS_REPORT.txt');
+const defaultBaselinePath = path.join(measurementRoot, 'BUNDLE_ANALYSIS_BASELINE.json');
 
 const INITIAL_JS_GZIP_BUDGET = 350 * 1024;
 const INITIAL_TOTAL_GZIP_BUDGET = 400 * 1024;
@@ -22,6 +28,8 @@ const baselinePath = baselineArgument
     ? defaultBaselinePath
     : null;
 const shouldSaveBaseline = args.has('--save-baseline');
+
+fs.mkdirSync(measurementRoot, { recursive: true });
 
 if (!fs.existsSync(assetsDir)) {
   console.error('dist/assets가 없습니다. 먼저 npm run build를 실행하세요.');

@@ -1,0 +1,30 @@
+Project package organization validation
+=======================================
+
+- Root report Markdown files: 0
+- Root validation TXT files: 0
+- Root diff files: 0
+- Root source graph comparison JSON files: 0
+- Organized document folders: reports / validation / diffs / measurements
+- Source graph output path: docs/performance-optimization/measurements
+- Bundle analysis output path: docs/performance-optimization/measurements
+- Replacement metadata: PACKAGE_FILES / PACKAGE_SHA256SUMS / REMOVED_FILES
+- Replacement behavior: explicit deletion list, non-destructive copy, affected-file backup
+- Firestore Rules changes: none
+- Firestore index changes: none
+- Application business logic changes: none
+
+Integration simulation
+----------------------
+- Applied package manifest to a copy of the prior package: PASS
+- Removed old root reports/diffs/measurements: PASS
+- Removed obsolete feature file: PASS
+- Preserved .git sentinel: PASS
+- Preserved node_modules sentinel: PASS
+- Preserved .env.local and unrelated local file: PASS
+- Verified all copied files against package SHA-256: PASS
+
+PowerShell runtime note
+-----------------------
+- The current Linux validation environment does not include powershell.exe or pwsh.
+- The replacement workflow was therefore verified with an equivalent manifest/removal/hash integration simulation.
