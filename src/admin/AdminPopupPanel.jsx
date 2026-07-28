@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import useMinuteClock from '../hooks/useMinuteClock.js';
 import {
   ArrowDown,
   ArrowUp,
@@ -47,10 +48,10 @@ export default function AdminPopupPanel({ ctx }) {
     popupPosts,
     popupPostsLoadErrorMessage,
     popupPostsReady,
-    popupNowMs,
     togglePopupPostEnabled,
   } = ctx;
 
+  const popupNowMs = useMinuteClock();
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [pageFilter, setPageFilter] = useState('all');

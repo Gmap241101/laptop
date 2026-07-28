@@ -84,6 +84,13 @@ import {
   richTextHtmlToText,
   sanitizeRichTextHtml,
 } from './utils/richTextCore.js';
+import {
+  formatPopupDateTime,
+  getPopupDateMillis,
+  getPopupDisplayStatus,
+  getPopupVersionKey,
+  toDateTimeLocalValue,
+} from './utils/popupUtils.js';
 
 import {
   ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
@@ -440,73 +447,6 @@ const sanitizeFooterCommonHtml = (html = '') => {
     (wrapper || node).remove();
   });
   return sanitizeRichTextHtml(container.innerHTML);
-};
-
-const getPopupDateMillis = (value) => {
-  if (!value) return 0;
-  if (typeof value?.toMillis === 'function') return value.toMillis();
-  if (typeof value?.toDate === 'function') return value.toDate().getTime();
-  if (value instanceof Date) return value.getTime();
-
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
-};
-
-const getPopupVersionKey = (post = {}) => {
-  const popupId = String(post.id || '').trim();
-  if (!popupId) return '';
-
-  const versionMillis =
-    getPopupDateMillis(post.updatedAt) ||
-    getPopupDateMillis(post.createdAt) ||
-    getPopupDateMillis(post.startAt) ||
-    0;
-
-  return `${popupId}:${versionMillis}`;
-};
-
-const toDateTimeLocalValue = (value) => {
-  const millis = getPopupDateMillis(value);
-  if (!millis) return '';
-
-  const date = new Date(millis);
-  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return localDate.toISOString().slice(0, 16);
-};
-
-const formatPopupDateTime = (value, dateOnly = false) => {
-  const millis = getPopupDateMillis(value);
-  if (!millis) return '-';
-
-  return new Intl.DateTimeFormat('ko-KR', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    ...(dateOnly
-      ? {}
-      : {
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false,
-        }),
-  }).format(new Date(millis));
-};
-
-const getPopupDisplayStatus = (post = {}, nowMillis = Date.now()) => {
-  if (!post.enabled) return { key: 'disabled', label: '사용안함' };
-
-  const startMillis = getPopupDateMillis(post.startAt);
-  const endMillis = post.isIndefinite ? 0 : getPopupDateMillis(post.endAt);
-
-  if (!startMillis || nowMillis < startMillis) {
-    return { key: 'scheduled', label: '노출예정' };
-  }
-
-  if (!post.isIndefinite && (!endMillis || nowMillis > endMillis)) {
-    return { key: 'ended', label: '노출종료' };
-  }
-
-  return { key: 'active', label: '노출중' };
 };
 
 const createDefaultAdminRequestEditForm = (
@@ -1618,7 +1558,6 @@ function App() {
   const [footerPageDeletingId, setFooterPageDeletingId] = useState('');
   const [footerPageToggleSavingId, setFooterPageToggleSavingId] = useState('');
 
-  const [popupNowMs, setPopupNowMs] = useState(Date.now());
   const [temporarilyDismissedPopupVersions, setTemporarilyDismissedPopupVersions] = useState([]);
   const [dismissedPopupSessionVersions, setDismissedPopupSessionVersions] = useState(() => {
     if (typeof window === 'undefined') return [];
@@ -6837,6 +6776,23 @@ function App() {
   }, [firebaseAuthUser?.uid, isAdminAuthenticated, userTab, view, adminTab]);
 
   useEffect(() => {
+    const shouldLoadUserFooter = view === 'user';
+    const shouldLoadAdminFooter =
+      isAdminAuthenticated &&
+      view === 'admin' &&
+      adminTab === 'footerManagement';
+    const shouldSubscribeFooter =
+      shouldLoadUserFooter || shouldLoadAdminFooter;
+
+    if (!shouldSubscribeFooter) {
+      const defaultFooterConfig = createDefaultFooterConfigDraft();
+      setFooterConfig(defaultFooterConfig);
+      setFooterConfigDraft(defaultFooterConfig);
+      setFooterConfigLoadErrorMessage('');
+      setFooterConfigReady(true);
+      return undefined;
+    }
+
     setFooterConfigReady(false);
     setFooterConfigLoadErrorMessage('');
 
@@ -6850,7 +6806,9 @@ function App() {
           contentText: remoteData.contentText || remoteData.content || '',
           contentHtml: sanitizeFooterCommonHtml(
             remoteData.contentHtml ||
-              legacyTextToRichHtml(remoteData.contentText || remoteData.content || '')
+              legacyTextToRichHtml(
+                remoteData.contentText || remoteData.content || ''
+              )
           ),
           contentFormat: remoteData.contentFormat || 'rich-html-v1',
           updatedAt: remoteData.updatedAt || null,
@@ -6872,18 +6830,33 @@ function App() {
         setFooterConfigDraft(createDefaultFooterConfigDraft());
         setFooterConfigLoadErrorMessage(message);
         setFooterConfigReady(true);
-        if (isAdminAuthenticated) triggerToast(message, 'error');
+        if (shouldLoadAdminFooter) triggerToast(message, 'error');
       }
     );
 
     return unsubscribe;
-  }, [isAdminAuthenticated]);
+  }, [isAdminAuthenticated, view, adminTab]);
 
   useEffect(() => {
+    const shouldLoadUserFooter = view === 'user';
+    const shouldLoadAdminFooter =
+      isAdminAuthenticated &&
+      view === 'admin' &&
+      adminTab === 'footerManagement';
+    const shouldSubscribeFooter =
+      shouldLoadUserFooter || shouldLoadAdminFooter;
+
+    if (!shouldSubscribeFooter) {
+      setFooterPages([]);
+      setFooterPagesLoadErrorMessage('');
+      setFooterPagesReady(true);
+      return undefined;
+    }
+
     setFooterPagesReady(false);
     setFooterPagesLoadErrorMessage('');
 
-    const footerPagesSource = isAdminAuthenticated
+    const footerPagesSource = shouldLoadAdminFooter
       ? FOOTER_PAGES_COLLECTION_REF
       : firestoreQuery(
           FOOTER_PAGES_COLLECTION_REF,
@@ -6909,7 +6882,9 @@ function App() {
               getFirestoreTimestampMillis(second.createdAt);
             if (createdDifference !== 0) return createdDifference;
 
-            return String(first.id || '').localeCompare(String(second.id || ''));
+            return String(first.id || '').localeCompare(
+              String(second.id || '')
+            );
           });
 
         setFooterPages(remotePages);
@@ -6923,26 +6898,12 @@ function App() {
         setFooterPages([]);
         setFooterPagesLoadErrorMessage(message);
         setFooterPagesReady(true);
-        if (isAdminAuthenticated) triggerToast(message, 'error');
+        if (shouldLoadAdminFooter) triggerToast(message, 'error');
       }
     );
 
     return unsubscribe;
-  }, [isAdminAuthenticated]);
-
-  useEffect(() => {
-    const updateNow = () => setPopupNowMs(Date.now());
-    const intervalId = window.setInterval(updateNow, 60_000);
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') updateNow();
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      window.clearInterval(intervalId);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, []);
+  }, [isAdminAuthenticated, view, adminTab]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -6959,20 +6920,6 @@ function App() {
       JSON.stringify(dismissedPopupLocalVersions)
     );
   }, [dismissedPopupLocalVersions]);
-
-  useEffect(() => {
-    setDismissedPopupLocalVersions((currentVersions) => {
-      const nextEntries = Object.entries(currentVersions).filter(
-        ([versionKey, expiresAt]) => versionKey && Number(expiresAt) > popupNowMs
-      );
-
-      if (nextEntries.length === Object.keys(currentVersions).length) {
-        return currentVersions;
-      }
-
-      return Object.fromEntries(nextEntries);
-    });
-  }, [popupNowMs]);
 
   useEffect(() => {
     setTemporarilyDismissedPopupVersions([]);
@@ -20009,63 +19956,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
   };
 
 
-  const visibleUserPopups = useMemo(() => {
-    if (view !== 'user' || !['home', 'rental'].includes(userTab)) return [];
-    if (userTab === 'rental' && !firebaseAuthUser) return [];
-
-    const temporarilyDismissedSet = new Set(temporarilyDismissedPopupVersions);
-    const sessionDismissedSet = new Set(dismissedPopupSessionVersions);
-    const localDismissedSet = new Set(
-      Object.entries(dismissedPopupLocalVersions)
-        .filter(([, expiresAt]) => Number(expiresAt) > popupNowMs)
-        .map(([versionKey]) => versionKey)
-    );
-
-    return (popupPosts || [])
-      .filter((post) => {
-        const targetPages = Array.isArray(post.targetPages) ? post.targetPages : [];
-        const versionKey = getPopupVersionKey(post);
-
-        return (
-          getPopupDisplayStatus(post, popupNowMs).key === 'active' &&
-          targetPages.includes(userTab) &&
-          !temporarilyDismissedSet.has(versionKey) &&
-          !sessionDismissedSet.has(versionKey) &&
-          !localDismissedSet.has(versionKey)
-        );
-      })
-      .sort((first, second) => {
-        const firstOrder = Number(first.sortOrder);
-        const secondOrder = Number(second.sortOrder);
-        const firstHasOrder = Number.isFinite(firstOrder) && firstOrder > 0;
-        const secondHasOrder = Number.isFinite(secondOrder) && secondOrder > 0;
-
-        if (firstHasOrder && secondHasOrder && firstOrder !== secondOrder) {
-          return firstOrder - secondOrder;
-        }
-        if (firstHasOrder !== secondHasOrder) return firstHasOrder ? -1 : 1;
-
-        const startDifference =
-          getPopupDateMillis(second.startAt) - getPopupDateMillis(first.startAt);
-        if (startDifference !== 0) return startDifference;
-
-        const updateDifference =
-          getPopupDateMillis(second.updatedAt) - getPopupDateMillis(first.updatedAt);
-        if (updateDifference !== 0) return updateDifference;
-
-        return getPopupDateMillis(second.createdAt) - getPopupDateMillis(first.createdAt);
-      });
-  }, [
-    dismissedPopupLocalVersions,
-    dismissedPopupSessionVersions,
-    firebaseAuthUser?.uid,
-    popupNowMs,
-    popupPosts,
-    temporarilyDismissedPopupVersions,
-    userTab,
-    view,
-  ]);
-
   const selectedFooterPage = useMemo(
     () =>
       selectedFooterPageId
@@ -20644,7 +20534,9 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     withdrawalLoading,
     withdrawalPassword,
     userNoticeQuery,
-    visibleUserPopups,
+    temporarilyDismissedPopupVersions,
+    dismissedPopupSessionVersions,
+    dismissedPopupLocalVersions,
     dismissUserPopup,
     dismissAllUserPopups,
     popupPosts,
@@ -20655,7 +20547,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     popupPostSaving,
     popupPostDeletingId,
     popupPostToggleSavingId,
-    popupNowMs,
     openPopupPostDialog,
     closePopupPostDialog,
     savePopupPost,
@@ -21055,7 +20946,10 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       {view === 'user' && <UserFooter ctx={uiContext} />}
 
       <AppDialogs ctx={uiContext} />
-      <UserPopupLayer ctx={uiContext} />
+      {view === 'user' &&
+        (userTab === 'home' || (userTab === 'rental' && firebaseAuthUser)) && (
+          <UserPopupLayer ctx={uiContext} />
+        )}
       </div>
 
       {showFirebaseLoadingOverlay && (

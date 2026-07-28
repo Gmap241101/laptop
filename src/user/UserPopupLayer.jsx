@@ -1,14 +1,93 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import RichTextContent from '../components/RichTextContent.jsx';
+import useMinuteClock from '../hooks/useMinuteClock.js';
+import {
+  getPopupDateMillis,
+  getPopupDisplayStatus,
+  getPopupVersionKey,
+} from '../utils/popupUtils.js';
 import { isRichTextEmpty, legacyTextToRichHtml } from '../utils/richTextCore.js';
 
 export default function UserPopupLayer({ ctx }) {
   const {
+    dismissedPopupLocalVersions,
+    dismissedPopupSessionVersions,
     dismissAllUserPopups,
     dismissUserPopup,
-    visibleUserPopups,
+    firebaseAuthUser,
+    popupPosts,
+    temporarilyDismissedPopupVersions,
+    userTab,
   } = ctx;
+
+  const popupNowMs = useMinuteClock();
+  const visibleUserPopups = useMemo(() => {
+    if (!['home', 'rental'].includes(userTab)) return [];
+    if (userTab === 'rental' && !firebaseAuthUser) return [];
+
+    const temporarilyDismissedSet = new Set(
+      temporarilyDismissedPopupVersions || []
+    );
+    const sessionDismissedSet = new Set(
+      dismissedPopupSessionVersions || []
+    );
+    const localDismissedSet = new Set(
+      Object.entries(dismissedPopupLocalVersions || {})
+        .filter(([, expiresAt]) => Number(expiresAt) > popupNowMs)
+        .map(([versionKey]) => versionKey)
+    );
+
+    return (popupPosts || [])
+      .filter((post) => {
+        const targetPages = Array.isArray(post.targetPages)
+          ? post.targetPages
+          : [];
+        const versionKey = getPopupVersionKey(post);
+
+        return (
+          getPopupDisplayStatus(post, popupNowMs).key === 'active' &&
+          targetPages.includes(userTab) &&
+          !temporarilyDismissedSet.has(versionKey) &&
+          !sessionDismissedSet.has(versionKey) &&
+          !localDismissedSet.has(versionKey)
+        );
+      })
+      .sort((first, second) => {
+        const firstOrder = Number(first.sortOrder);
+        const secondOrder = Number(second.sortOrder);
+        const firstHasOrder = Number.isFinite(firstOrder) && firstOrder > 0;
+        const secondHasOrder = Number.isFinite(secondOrder) && secondOrder > 0;
+
+        if (firstHasOrder && secondHasOrder && firstOrder !== secondOrder) {
+          return firstOrder - secondOrder;
+        }
+        if (firstHasOrder !== secondHasOrder) return firstHasOrder ? -1 : 1;
+
+        const startDifference =
+          getPopupDateMillis(second.startAt) -
+          getPopupDateMillis(first.startAt);
+        if (startDifference !== 0) return startDifference;
+
+        const updateDifference =
+          getPopupDateMillis(second.updatedAt) -
+          getPopupDateMillis(first.updatedAt);
+        if (updateDifference !== 0) return updateDifference;
+
+        return (
+          getPopupDateMillis(second.createdAt) -
+          getPopupDateMillis(first.createdAt)
+        );
+      });
+  }, [
+    dismissedPopupLocalVersions,
+    dismissedPopupSessionVersions,
+    firebaseAuthUser?.uid,
+    popupNowMs,
+    popupPosts,
+    temporarilyDismissedPopupVersions,
+    userTab,
+  ]);
 
   const [activePopupId, setActivePopupId] = useState('');
   const [doNotShowAgain, setDoNotShowAgain] = useState(false);

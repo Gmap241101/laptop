@@ -1,0 +1,56 @@
+P1 LISTENER SCOPE OPTIMIZATION VALIDATION REPORT
+================================================
+
+Baseline:
+- rental-system-p1-query-scope-optimization-deployment-package.zip
+
+Changed existing files:
+- src/App.jsx
+- src/admin/AdminPopupPanel.jsx
+- src/user/UserPopupLayer.jsx
+
+Added files:
+- src/hooks/useMinuteClock.js
+- src/utils/popupUtils.js
+
+Static validation:
+- JavaScript / JSX / MJS files checked: 62
+- TypeScript transpile syntax errors: 0
+- Missing relative imports: 0
+- App global popup interval removed: PASS
+- App visibleUserPopups memo removed: PASS
+- Footer subscriptions depend on view/adminTab: PASS
+- Admin non-footer state cleanup: PASS
+- User popup owns local minute clock: PASS
+- Admin popup panel owns local minute clock: PASS
+- User popup layer conditional mount: PASS
+
+Popup utility runtime checks:
+- Date conversion: PASS
+- Active popup status: PASS
+- Scheduled popup status: PASS
+- Ended popup status: PASS
+- Popup version key: PASS
+- datetime-local conversion: PASS
+
+Firestore configuration:
+- rules/firestore.rules changed: NO
+- firestore.indexes.json changed: NO
+- firebase.json changed: NO
+
+Build validation:
+- npm ci did not complete within the available execution time.
+- node_modules/.bin/vite was not available.
+- Production Vite build was not executed in this environment.
+- deploy.ps1 will run npm run build before publishing on the project PC.
+
+Result:
+- Static validation passed.
+- ZIP integrity and post-extraction validation are performed during packaging.
+
+Package validation:
+- Full deployment ZIP extraction: PASS
+- Full deployment ZIP source validation: PASS (62 files)
+- Changed-files ZIP extraction: PASS
+- Changed-files ZIP syntax validation: PASS (5 source files)
+- Forbidden full ZIP paths (node_modules/dist/.git/backup): 0
