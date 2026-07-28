@@ -441,7 +441,9 @@ export default function AdminMemberAccountsPanel({ ctx }) {
                         <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3">
                           <div className="text-xs text-slate-500">
                             {adminUserAccountSearchMode
-                              ? '검색 결과는 최신 최대 200명 범위에서 표시됩니다.'
+                              ? adminUserAccountHasNextPage
+                                ? '전체 회원을 순차 검색 중입니다. 다음 페이지 이동 시 필요한 범위를 추가로 조회합니다.'
+                                : '전체 회원 검색이 완료되었습니다.'
                               : '서버 커서 페이지 · 페이지당 20명'}
                           </div>
 

@@ -58,7 +58,7 @@ export default function UserRequestHistoryPanel({ ctx }) {
     historySearchMode,
     historyTab,
     historyTotalCount,
-    historySearchLimit,
+    historySearchHasMore,
   } = useUserRequestHistory({
     enabled:
       firebaseAuthReady &&
@@ -492,7 +492,10 @@ export default function UserRequestHistoryPanel({ ctx }) {
 
               {!selectedRequest && historyTab && historySearchMode && (
                 <div className="text-[11px] text-slate-500">
-                  과거 이력 검색은 최신 최대 {historySearchLimit}건 범위에서 수행됩니다.
+                  검색 결과는 전체 과거 이력을 서버에서 순차 조회합니다.
+                  {historySearchHasMore
+                    ? ' 다음 페이지로 이동하면 필요한 범위를 추가로 검색합니다.'
+                    : ' 현재 검색 범위의 확인이 완료되었습니다.'}
                 </div>
               )}
 

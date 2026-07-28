@@ -248,6 +248,10 @@ import {
   getAdminRequestServerConstraints,
 } from './services/adminRequestQuery.js';
 import {
+  DEFAULT_PROGRESSIVE_SEARCH_BATCH_SIZE,
+  scanFirestoreMatches,
+} from './services/progressiveFirestoreSearch.js';
+import {
   PUBLIC_ASSET_CATALOG_SCHEMA_VERSION,
   hydratePublicCatalogAssets,
   normalizeAssetReservations,
@@ -909,7 +913,6 @@ function mergePersistedData(rawData) {
 const ADMIN_CUSTOM_OPTION_VALUE = '__ADMIN_CUSTOM_INPUT__';
 const ADMIN_ACCOUNT_PAGE_SIZE = 10;
 const ADMIN_MEMBER_ACCOUNT_PAGE_SIZE = 20;
-const FIRESTORE_SEARCH_RESULT_LIMIT = 200;
 const FIRESTORE_PINNED_POST_LIMIT = 20;
 const ADMIN_AUTH_SESSION_KEY = 'mk_laptop_admin_auth_session';
 const USER_AUTH_SESSION_KEY = 'mk_laptop_user_auth_session';
@@ -1512,6 +1515,7 @@ function App() {
   });
   const adminRequestCursorByPageRef = useRef(new Map([[1, null]]));
   const adminRequestCursorKeyRef = useRef('');
+  const adminRequestSearchCacheRef = useRef(null);
   const [selectedAdminRequestId, setSelectedAdminRequestId] = useState('');
 
   const [adminRequestEditDialog, setAdminRequestEditDialog] = useState(null);
@@ -1532,6 +1536,7 @@ function App() {
   const [noticeRegularTotalCount, setNoticeRegularTotalCount] = useState(0);
   const noticeCursorByPageRef = useRef(new Map([[1, null]]));
   const noticeCursorKeyRef = useRef('');
+  const noticeSearchCacheRef = useRef(null);
   const [noticePostsReady, setNoticePostsReady] = useState(false);
   const [
     noticePostsLoadErrorMessage,
@@ -1634,6 +1639,7 @@ function App() {
   const [faqRegularTotalCount, setFaqRegularTotalCount] = useState(0);
   const faqCursorByPageRef = useRef(new Map([[1, null]]));
   const faqCursorKeyRef = useRef('');
+  const faqSearchCacheRef = useRef(null);
   const [faqPostsReady, setFaqPostsReady] = useState(false);
   const [
     faqPostsLoadErrorMessage,
@@ -1832,6 +1838,7 @@ function App() {
   });
   const adminUserAccountCursorByPageRef = useRef(new Map([[1, null]]));
   const adminUserAccountCursorKeyRef = useRef('');
+  const adminUserAccountSearchCacheRef = useRef(null);
   const [adminUserAccountsReady, setAdminUserAccountsReady] = useState(false);
   const [
     adminUserAccountsLoadErrorMessage,
@@ -1854,16 +1861,8 @@ function App() {
   const debouncedAdminNoticeQuery = useDebouncedValue(adminNoticeQuery);
   const debouncedFaqQuery = useDebouncedValue(faqQuery);
 
-  const adminRequestServerPage = String(
-    debouncedAdminRequestQuery || ''
-  ).trim()
-    ? 1
-    : adminRequestPage;
-  const adminUserAccountServerPage = String(
-    debouncedAdminUserAccountQuery || ''
-  ).trim()
-    ? 1
-    : adminUserAccountPage;
+  const adminRequestServerPage = adminRequestPage;
+  const adminUserAccountServerPage = adminUserAccountPage;
 
   const [
     adminUserAccountSavingUid,
@@ -3779,6 +3778,7 @@ function App() {
     if (!shouldLoadMemberAccounts) {
       adminUserAccountCursorKeyRef.current = '';
       adminUserAccountCursorByPageRef.current = new Map([[1, null]]);
+      adminUserAccountSearchCacheRef.current = null;
       setAdminUserAccounts([]);
       setAdminUserAccountHasNextPage(false);
       setAdminUserAccountTotalCount(0);
@@ -3794,8 +3794,99 @@ function App() {
       .trim()
       .toLowerCase();
     const searchMode = Boolean(normalizedSearch);
-    const cursorKey = `${adminUserAccountStatusFilter}|${searchMode ? 'search' : 'browse'}`;
+    const statusConstraints =
+      adminUserAccountStatusFilter === 'all'
+        ? []
+        : [where('status', '==', adminUserAccountStatusFilter)];
 
+    if (searchMode) {
+      const searchKey = [
+        adminUserAccountStatusFilter,
+        normalizedSearch,
+      ].join('|');
+      const previousCache = adminUserAccountSearchCacheRef.current;
+      const cache =
+        previousCache?.key === searchKey
+          ? previousCache
+          : {
+              key: searchKey,
+              cursor: null,
+              exhausted: false,
+              matches: [],
+            };
+
+      adminUserAccountSearchCacheRef.current = cache;
+      let cancelled = false;
+
+      void scanFirestoreMatches({
+        collectionRef: USER_ACCOUNTS_COLLECTION_REF,
+        constraints: [
+          ...statusConstraints,
+          orderBy('createdAt', 'desc'),
+        ],
+        startCursor: cache.cursor,
+        existingMatches: cache.matches,
+        targetMatchCount:
+          adminUserAccountServerPage * ADMIN_MEMBER_ACCOUNT_PAGE_SIZE + 1,
+        batchSize: DEFAULT_PROGRESSIVE_SEARCH_BATCH_SIZE,
+        mapDocument: (userDoc) => ({
+          ...userDoc.data(),
+          uid: userDoc.data().uid || userDoc.id,
+        }),
+        matchesDocument: (account) =>
+          [
+            account.name,
+            account.email,
+            account.team,
+            account.phone,
+            account.uid,
+          ].some((value) =>
+            String(value || '')
+              .toLowerCase()
+              .includes(normalizedSearch)
+          ),
+        isCancelled: () => cancelled,
+      })
+        .then((result) => {
+          if (cancelled || result.cancelled) return;
+
+          adminUserAccountSearchCacheRef.current = {
+            key: searchKey,
+            cursor: result.cursor,
+            exhausted: result.exhausted,
+            matches: result.matches,
+          };
+          setAdminUserAccounts(result.matches);
+          setAdminUserAccountHasNextPage(
+            result.matches.length >
+              adminUserAccountServerPage * ADMIN_MEMBER_ACCOUNT_PAGE_SIZE ||
+              !result.exhausted
+          );
+          setAdminUserAccountTotalCount(result.matches.length);
+          setAdminUserAccountsReady(true);
+          setAdminUserAccountsLoadErrorMessage('');
+        })
+        .catch((error) => {
+          if (cancelled) return;
+
+          const message =
+            '회원 계정 검색 결과를 불러오지 못했습니다. Firestore Rules와 필요한 인덱스를 확인해 주세요.';
+
+          console.error('User accounts progressive search error:', error);
+          setAdminUserAccounts([]);
+          setAdminUserAccountHasNextPage(false);
+          setAdminUserAccountsReady(true);
+          setAdminUserAccountsLoadErrorMessage(message);
+          triggerToast(message, 'error');
+        });
+
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    adminUserAccountSearchCacheRef.current = null;
+    const cursorKey = `${adminUserAccountStatusFilter}|browse`;
     const cursorKeyChanged =
       adminUserAccountCursorKeyRef.current !== cursorKey;
 
@@ -3804,16 +3895,11 @@ function App() {
       adminUserAccountCursorByPageRef.current = new Map([[1, null]]);
     }
 
-    const statusConstraints =
-      adminUserAccountStatusFilter === 'all'
-        ? []
-        : [where('status', '==', adminUserAccountStatusFilter)];
-
     const pageCursor = adminUserAccountCursorByPageRef.current.get(
       adminUserAccountServerPage
     );
 
-    if (!searchMode && adminUserAccountServerPage > 1 && !pageCursor) {
+    if (adminUserAccountServerPage > 1 && !pageCursor) {
       setAdminUserAccountPage(1);
       return undefined;
     }
@@ -3822,25 +3908,18 @@ function App() {
       USER_ACCOUNTS_COLLECTION_REF,
       ...statusConstraints,
       orderBy('createdAt', 'desc'),
-      ...(!searchMode && pageCursor ? [startAfter(pageCursor)] : []),
-      firestoreLimit(
-        searchMode
-          ? FIRESTORE_SEARCH_RESULT_LIMIT
-          : ADMIN_MEMBER_ACCOUNT_PAGE_SIZE + 1
-      )
+      ...(pageCursor ? [startAfter(pageCursor)] : []),
+      firestoreLimit(ADMIN_MEMBER_ACCOUNT_PAGE_SIZE + 1)
     );
 
     const unsubscribe = onSnapshot(
       memberSource,
       (snapshot) => {
         const sourceDocs = snapshot.docs;
-        const visibleDocs = searchMode
-          ? sourceDocs
-          : sourceDocs.slice(0, ADMIN_MEMBER_ACCOUNT_PAGE_SIZE);
-        const hasNext =
-          !searchMode && sourceDocs.length > ADMIN_MEMBER_ACCOUNT_PAGE_SIZE;
+        const visibleDocs = sourceDocs.slice(0, ADMIN_MEMBER_ACCOUNT_PAGE_SIZE);
+        const hasNext = sourceDocs.length > ADMIN_MEMBER_ACCOUNT_PAGE_SIZE;
 
-        if (!searchMode && visibleDocs.length > 0) {
+        if (visibleDocs.length > 0) {
           adminUserAccountCursorByPageRef.current.set(
             adminUserAccountServerPage + 1,
             visibleDocs[visibleDocs.length - 1]
@@ -3854,7 +3933,6 @@ function App() {
           }))
         );
         setAdminUserAccountHasNextPage(hasNext);
-        if (searchMode) setAdminUserAccountTotalCount(visibleDocs.length);
         setAdminUserAccountsReady(true);
         setAdminUserAccountsLoadErrorMessage('');
       },
@@ -3872,13 +3950,10 @@ function App() {
     );
 
     if (
-      !searchMode &&
       cursorKeyChanged &&
       adminUserAccountStatusFilter === 'all'
     ) {
-      void getCountFromServer(
-        USER_ACCOUNTS_COLLECTION_REF
-      )
+      void getCountFromServer(USER_ACCOUNTS_COLLECTION_REF)
         .then((countSnapshot) => {
           setAdminUserAccountTotalCount(countSnapshot.data().count);
         })
@@ -6091,6 +6166,7 @@ function App() {
     if (adminTab !== 'requests') {
       adminRequestCursorKeyRef.current = '';
       adminRequestCursorByPageRef.current = new Map([[1, null]]);
+      adminRequestSearchCacheRef.current = null;
       setRentalRequests([]);
       setRentalRequestsReady(true);
       setAdminRequestHasNextPage(false);
@@ -6098,20 +6174,108 @@ function App() {
       return undefined;
     }
 
-    const normalizedSearch = String(debouncedAdminRequestQuery || '').trim();
+    const normalizedSearch = String(debouncedAdminRequestQuery || '')
+      .trim()
+      .toLowerCase();
     const searchMode = Boolean(normalizedSearch);
     const baseConstraints = getAdminRequestServerConstraints({
       requestTab: adminRequestTab,
       quickFilter: adminRequestQuickFilter,
       referenceDate: today(),
     });
+
+    if (searchMode) {
+      const searchKey = [
+        adminRequestTab,
+        adminRequestQuickFilter,
+        normalizedSearch,
+      ].join('|');
+      const previousCache = adminRequestSearchCacheRef.current;
+      const cache =
+        previousCache?.key === searchKey
+          ? previousCache
+          : {
+              key: searchKey,
+              cursor: null,
+              exhausted: false,
+              matches: [],
+            };
+
+      adminRequestSearchCacheRef.current = cache;
+      let cancelled = false;
+
+      void scanFirestoreMatches({
+        collectionRef: RENTAL_REQUESTS_COLLECTION_REF,
+        constraints: baseConstraints,
+        startCursor: cache.cursor,
+        existingMatches: cache.matches,
+        targetMatchCount:
+          adminRequestServerPage * adminRequestPageSize + 1,
+        batchSize: DEFAULT_PROGRESSIVE_SEARCH_BATCH_SIZE,
+        mapDocument: (requestDoc) => ({
+          ...requestDoc.data(),
+          id: requestDoc.id,
+        }),
+        matchesDocument: (request) =>
+          [
+            request.assetNo,
+            request.assetCategory,
+            request.requesterName,
+            request.requesterEmail,
+            request.borrower,
+            request.team,
+            request.purpose,
+          ].some((value) =>
+            String(value || '')
+              .toLowerCase()
+              .includes(normalizedSearch)
+          ),
+        isCancelled: () => cancelled,
+      })
+        .then((result) => {
+          if (cancelled || result.cancelled) return;
+
+          adminRequestSearchCacheRef.current = {
+            key: searchKey,
+            cursor: result.cursor,
+            exhausted: result.exhausted,
+            matches: result.matches,
+          };
+          setRentalRequests(result.matches);
+          setAdminRequestHasNextPage(
+            result.matches.length >
+              adminRequestServerPage * adminRequestPageSize ||
+              !result.exhausted
+          );
+          setAdminRequestTotalCount(result.matches.length);
+          setRentalRequestsLoadErrorMessage('');
+          setRentalRequestsReady(true);
+        })
+        .catch((error) => {
+          if (cancelled) return;
+
+          const message =
+            '대여신청 검색 결과를 불러오지 못했습니다. Firestore Rules와 필요한 인덱스를 확인해 주세요.';
+          console.error('Rental request progressive search error:', error);
+          setRentalRequests([]);
+          setAdminRequestHasNextPage(false);
+          setRentalRequestsLoadErrorMessage(message);
+          setRentalRequestsReady(true);
+          triggerToast(message, 'error');
+        });
+
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    adminRequestSearchCacheRef.current = null;
     const cursorKey = [
       adminRequestTab,
       adminRequestQuickFilter,
       adminRequestPageSize,
-      searchMode ? 'search' : 'browse',
+      'browse',
     ].join('|');
-
     const cursorKeyChanged =
       adminRequestCursorKeyRef.current !== cursorKey;
 
@@ -6124,7 +6288,7 @@ function App() {
       adminRequestServerPage
     );
 
-    if (!searchMode && adminRequestServerPage > 1 && !pageCursor) {
+    if (adminRequestServerPage > 1 && !pageCursor) {
       setAdminRequestPage(1);
       return undefined;
     }
@@ -6132,25 +6296,18 @@ function App() {
     const requestSource = firestoreQuery(
       RENTAL_REQUESTS_COLLECTION_REF,
       ...baseConstraints,
-      ...(!searchMode && pageCursor ? [startAfter(pageCursor)] : []),
-      firestoreLimit(
-        searchMode
-          ? FIRESTORE_SEARCH_RESULT_LIMIT
-          : adminRequestPageSize + 1
-      )
+      ...(pageCursor ? [startAfter(pageCursor)] : []),
+      firestoreLimit(adminRequestPageSize + 1)
     );
 
     const unsubscribe = onSnapshot(
       requestSource,
       (snapshot) => {
         const sourceDocs = snapshot.docs;
-        const visibleDocs = searchMode
-          ? sourceDocs
-          : sourceDocs.slice(0, adminRequestPageSize);
-        const hasNext =
-          !searchMode && sourceDocs.length > adminRequestPageSize;
+        const visibleDocs = sourceDocs.slice(0, adminRequestPageSize);
+        const hasNext = sourceDocs.length > adminRequestPageSize;
 
-        if (!searchMode && visibleDocs.length > 0) {
+        if (visibleDocs.length > 0) {
           adminRequestCursorByPageRef.current.set(
             adminRequestServerPage + 1,
             visibleDocs[visibleDocs.length - 1]
@@ -6164,7 +6321,6 @@ function App() {
           }))
         );
         setAdminRequestHasNextPage(hasNext);
-        if (searchMode) setAdminRequestTotalCount(visibleDocs.length);
         setRentalRequestsLoadErrorMessage('');
         setRentalRequestsReady(true);
       },
@@ -6181,7 +6337,6 @@ function App() {
     );
 
     if (
-      !searchMode &&
       cursorKeyChanged &&
       adminRequestQuickFilter !== ADMIN_REQUEST_QUICK_FILTER.ALL
     ) {
@@ -6493,6 +6648,7 @@ function App() {
     if (!shouldLoadNotice) {
       noticeCursorKeyRef.current = '';
       noticeCursorByPageRef.current = new Map([[1, null]]);
+      noticeSearchCacheRef.current = null;
       setNoticePinnedPosts([]);
       setNoticeRegularPagePosts([]);
       setNoticePostsReady(true);
@@ -6505,41 +6661,130 @@ function App() {
       setNoticePostsReady(false);
       setNoticePostsLoadErrorMessage('');
 
-      const searchSource = firestoreQuery(
-        NOTICE_POSTS_COLLECTION_REF,
-        orderBy('createdAt', 'desc'),
-        firestoreLimit(FIRESTORE_SEARCH_RESULT_LIMIT)
+      const normalizedSearch = String(activeSearchQuery || '')
+        .trim()
+        .toLowerCase();
+      const postsPerPage = getSafeNoticePostsPerPage(
+        noticeBoardConfig.postsPerPage
       );
+      const activePage = shouldLoadAdminNotice
+        ? adminNoticePage
+        : noticePage;
+      const searchKey = [
+        shouldLoadAdminNotice ? 'admin' : 'user',
+        normalizedSearch,
+      ].join('|');
+      const previousCache = noticeSearchCacheRef.current;
+      const cache =
+        previousCache?.key === searchKey
+          ? previousCache
+          : {
+              key: searchKey,
+              pinned: {
+                cursor: null,
+                exhausted: false,
+                matches: [],
+              },
+              regular: {
+                cursor: null,
+                exhausted: false,
+                matches: [],
+              },
+            };
 
-      const unsubscribe = onSnapshot(
-        searchSource,
-        (snapshot) => {
-          const remotePosts = snapshot.docs.map((postDoc) => ({
+      noticeSearchCacheRef.current = cache;
+      let cancelled = false;
+      const matchesNotice = (post) =>
+        filterNoticePostsByQuery([post], normalizedSearch).length > 0;
+
+      void Promise.all([
+        scanFirestoreMatches({
+          collectionRef: NOTICE_POSTS_COLLECTION_REF,
+          constraints: [
+            where('isPinned', '==', true),
+            orderBy('createdAt', 'desc'),
+          ],
+          startCursor: cache.pinned.cursor,
+          existingMatches: cache.pinned.matches,
+          targetMatchCount: Number.POSITIVE_INFINITY,
+          batchSize: FIRESTORE_PINNED_POST_LIMIT,
+          mapDocument: (postDoc) => ({
             ...postDoc.data(),
             id: postDoc.id,
-          }));
-          setNoticePinnedPosts(remotePosts.filter((post) => post.isPinned));
-          setNoticeRegularPagePosts(remotePosts.filter((post) => !post.isPinned));
-          setNoticeRegularTotalCount(remotePosts.filter((post) => !post.isPinned).length);
-          setNoticeHasNextPage(false);
+          }),
+          matchesDocument: matchesNotice,
+          isCancelled: () => cancelled,
+        }),
+        scanFirestoreMatches({
+          collectionRef: NOTICE_POSTS_COLLECTION_REF,
+          constraints: [
+            where('isPinned', '==', false),
+            orderBy('createdAt', 'desc'),
+          ],
+          startCursor: cache.regular.cursor,
+          existingMatches: cache.regular.matches,
+          targetMatchCount: activePage * postsPerPage + 1,
+          batchSize: DEFAULT_PROGRESSIVE_SEARCH_BATCH_SIZE,
+          mapDocument: (postDoc) => ({
+            ...postDoc.data(),
+            id: postDoc.id,
+          }),
+          matchesDocument: matchesNotice,
+          isCancelled: () => cancelled,
+        }),
+      ])
+        .then(([pinnedResult, regularResult]) => {
+          if (
+            cancelled ||
+            pinnedResult.cancelled ||
+            regularResult.cancelled
+          ) {
+            return;
+          }
+
+          noticeSearchCacheRef.current = {
+            key: searchKey,
+            pinned: {
+              cursor: pinnedResult.cursor,
+              exhausted: pinnedResult.exhausted,
+              matches: pinnedResult.matches,
+            },
+            regular: {
+              cursor: regularResult.cursor,
+              exhausted: regularResult.exhausted,
+              matches: regularResult.matches,
+            },
+          };
+          setNoticePinnedPosts(pinnedResult.matches);
+          setNoticeRegularPagePosts(regularResult.matches);
+          setNoticeRegularTotalCount(regularResult.matches.length);
+          setNoticeHasNextPage(
+            regularResult.matches.length > activePage * postsPerPage ||
+              !regularResult.exhausted
+          );
           setNoticePostsLoadErrorMessage('');
           setNoticePostsReady(true);
-        },
-        (error) => {
+        })
+        .catch((error) => {
+          if (cancelled) return;
+
           const message =
-            '공지사항 검색 범위를 불러오지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.';
-          console.error('Notice search sync error:', error);
+            '공지사항 검색 결과를 불러오지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.';
+          console.error('Notice progressive search error:', error);
           setNoticePinnedPosts([]);
           setNoticeRegularPagePosts([]);
           setNoticeHasNextPage(false);
           setNoticePostsLoadErrorMessage(message);
           setNoticePostsReady(true);
           triggerToast(message, 'error');
-        }
-      );
+        });
 
-      return unsubscribe;
+      return () => {
+        cancelled = true;
+      };
     }
+
+    noticeSearchCacheRef.current = null;
 
     const pinnedSource = firestoreQuery(
       NOTICE_POSTS_COLLECTION_REF,
@@ -6598,6 +6843,9 @@ function App() {
     adminTab,
     debouncedUserNoticeQuery,
     debouncedAdminNoticeQuery,
+    noticePage,
+    adminNoticePage,
+    noticeBoardConfig.postsPerPage,
   ]);
 
   useEffect(() => {
@@ -7181,6 +7429,7 @@ function App() {
     if (!shouldLoadFaq) {
       faqCursorKeyRef.current = '';
       faqCursorByPageRef.current = new Map([[1, null]]);
+      faqSearchCacheRef.current = null;
       setFaqPinnedPosts([]);
       setFaqRegularPagePosts([]);
       setFaqPostsReady(true);
@@ -7192,42 +7441,144 @@ function App() {
     if (searchMode) {
       setFaqPostsReady(false);
       setFaqPostsLoadErrorMessage('');
-      const searchSource = firestoreQuery(
-        FAQ_POSTS_COLLECTION_REF,
-        ...categoryConstraints,
-        orderBy('createdAt', 'desc'),
-        firestoreLimit(FIRESTORE_SEARCH_RESULT_LIMIT)
-      );
 
-      const unsubscribe = onSnapshot(
-        searchSource,
-        (snapshot) => {
-          const remotePosts = snapshot.docs.map((postDoc) => ({
+      const normalizedSearch = String(debouncedFaqQuery || '')
+        .trim()
+        .toLowerCase();
+      const postsPerPage = getSafeFaqPostsPerPage(
+        faqBoardConfig.postsPerPage
+      );
+      const activePage = shouldLoadAdminFaq ? adminFaqPage : faqPage;
+      const categorySearchKey = shouldLimitToActiveCategory
+        ? activeFaqCategoryId
+        : 'all';
+      const searchKey = [
+        shouldLoadAdminFaq ? 'admin' : 'user',
+        categorySearchKey,
+        normalizedSearch,
+      ].join('|');
+      const previousCache = faqSearchCacheRef.current;
+      const cache =
+        previousCache?.key === searchKey
+          ? previousCache
+          : {
+              key: searchKey,
+              pinned: {
+                cursor: null,
+                exhausted: false,
+                matches: [],
+              },
+              regular: {
+                cursor: null,
+                exhausted: false,
+                matches: [],
+              },
+            };
+
+      faqSearchCacheRef.current = cache;
+      let cancelled = false;
+      const matchesFaq = (post) =>
+        String(post.title || '')
+          .toLowerCase()
+          .includes(normalizedSearch) ||
+        String(
+          post.contentText ||
+            post.content ||
+            richTextHtmlToText(post.contentHtml || '')
+        )
+          .toLowerCase()
+          .includes(normalizedSearch);
+
+      void Promise.all([
+        scanFirestoreMatches({
+          collectionRef: FAQ_POSTS_COLLECTION_REF,
+          constraints: [
+            ...categoryConstraints,
+            where('isPinned', '==', true),
+            orderBy('createdAt', 'desc'),
+          ],
+          startCursor: cache.pinned.cursor,
+          existingMatches: cache.pinned.matches,
+          targetMatchCount: Number.POSITIVE_INFINITY,
+          batchSize: FIRESTORE_PINNED_POST_LIMIT,
+          mapDocument: (postDoc) => ({
             ...postDoc.data(),
             id: postDoc.id,
-          }));
-          setFaqPinnedPosts(remotePosts.filter((post) => post.isPinned));
-          setFaqRegularPagePosts(remotePosts.filter((post) => !post.isPinned));
-          setFaqRegularTotalCount(remotePosts.filter((post) => !post.isPinned).length);
-          setFaqHasNextPage(false);
+          }),
+          matchesDocument: matchesFaq,
+          isCancelled: () => cancelled,
+        }),
+        scanFirestoreMatches({
+          collectionRef: FAQ_POSTS_COLLECTION_REF,
+          constraints: [
+            ...categoryConstraints,
+            where('isPinned', '==', false),
+            orderBy('createdAt', 'desc'),
+          ],
+          startCursor: cache.regular.cursor,
+          existingMatches: cache.regular.matches,
+          targetMatchCount: activePage * postsPerPage + 1,
+          batchSize: DEFAULT_PROGRESSIVE_SEARCH_BATCH_SIZE,
+          mapDocument: (postDoc) => ({
+            ...postDoc.data(),
+            id: postDoc.id,
+          }),
+          matchesDocument: matchesFaq,
+          isCancelled: () => cancelled,
+        }),
+      ])
+        .then(([pinnedResult, regularResult]) => {
+          if (
+            cancelled ||
+            pinnedResult.cancelled ||
+            regularResult.cancelled
+          ) {
+            return;
+          }
+
+          faqSearchCacheRef.current = {
+            key: searchKey,
+            pinned: {
+              cursor: pinnedResult.cursor,
+              exhausted: pinnedResult.exhausted,
+              matches: pinnedResult.matches,
+            },
+            regular: {
+              cursor: regularResult.cursor,
+              exhausted: regularResult.exhausted,
+              matches: regularResult.matches,
+            },
+          };
+          setFaqPinnedPosts(pinnedResult.matches);
+          setFaqRegularPagePosts(regularResult.matches);
+          setFaqRegularTotalCount(regularResult.matches.length);
+          setFaqHasNextPage(
+            regularResult.matches.length > activePage * postsPerPage ||
+              !regularResult.exhausted
+          );
           setFaqPostsLoadErrorMessage('');
           setFaqPostsReady(true);
-        },
-        (error) => {
+        })
+        .catch((error) => {
+          if (cancelled) return;
+
           const message =
-            'FAQ 검색 범위를 불러오지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.';
-          console.error('FAQ search sync error:', error);
+            'FAQ 검색 결과를 불러오지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.';
+          console.error('FAQ progressive search error:', error);
           setFaqPinnedPosts([]);
           setFaqRegularPagePosts([]);
           setFaqHasNextPage(false);
           setFaqPostsLoadErrorMessage(message);
           setFaqPostsReady(true);
           triggerToast(message, 'error');
-        }
-      );
+        });
 
-      return unsubscribe;
+      return () => {
+        cancelled = true;
+      };
     }
+
+    faqSearchCacheRef.current = null;
 
     const pinnedSource = firestoreQuery(
       FAQ_POSTS_COLLECTION_REF,
@@ -7268,6 +7619,9 @@ function App() {
     activeFaqCategoryId,
     faqSearchWithinCategory,
     debouncedFaqQuery,
+    faqPage,
+    adminFaqPage,
+    faqBoardConfig.postsPerPage,
   ]);
 
   useEffect(() => {
