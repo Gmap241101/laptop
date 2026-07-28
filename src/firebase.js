@@ -31,6 +31,12 @@ export const adminAccountCreationApp = getApps().some(
   ? getApp('adminAccountCreation')
   : initializeApp(firebaseConfig, 'adminAccountCreation');
 
+export const userSignupApp = getApps().some(
+  (app) => app.name === 'userSignup'
+)
+  ? getApp('userSignup')
+  : initializeApp(firebaseConfig, 'userSignup');
+
 export const db = existingDefaultFirebaseApp
   ? getFirestore(firebaseApp)
   : initializeFirestore(firebaseApp, {
@@ -38,6 +44,7 @@ export const db = existingDefaultFirebaseApp
     });
 export const firebaseAuth = getAuth(firebaseApp);
 export const adminAccountCreationAuth = getAuth(adminAccountCreationApp);
+export const userSignupAuth = getAuth(userSignupApp);
 
 export const ADMIN_ACCOUNTS_COLLECTION_REF = collection(
   db,

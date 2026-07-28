@@ -4,6 +4,7 @@ import {
   browserLocalPersistence,
   browserSessionPersistence,
   createUserWithEmailAndPassword,
+  inMemoryPersistence,
   deleteUser,
   EmailAuthProvider,
   onAuthStateChanged,
@@ -160,6 +161,7 @@ import {
   adminAccountCreationAuth,
   db,
   firebaseAuth,
+  userSignupAuth,
 } from './firebase.js';
 
 
@@ -4260,10 +4262,27 @@ function App() {
   const currentUserRequests = useMemo(() => {
     if (!firebaseAuthUser?.uid) return [];
 
-    return mergedRentalRequests.filter(
-      (request) => request.requesterUid === firebaseAuthUser.uid
+    const currentUserEmail = normalizeEmailAddress(
+      firebaseAuthUser.email || userProfile?.email || ''
     );
-  }, [mergedRentalRequests, firebaseAuthUser?.uid]);
+
+    return mergedRentalRequests.filter((request) => {
+      if (request.requesterUid === firebaseAuthUser.uid) {
+        return true;
+      }
+
+      return (
+        !request.requesterUid &&
+        currentUserEmail &&
+        normalizeEmailAddress(request.requesterEmail || '') === currentUserEmail
+      );
+    });
+  }, [
+    mergedRentalRequests,
+    firebaseAuthUser?.uid,
+    firebaseAuthUser?.email,
+    userProfile?.email,
+  ]);
 
   const currentUserRentalRestrictionStatus = useMemo(
     () =>
@@ -4990,7 +5009,7 @@ function App() {
   };
 
   useEffect(() => {
-    if (!firebaseAuthReady || !currentAuthRoleReady) {
+    if (!firebaseAuthReady || !currentAuthRoleReady || !userProfileReady) {
       setRentalRequestsReady(false);
       return undefined;
     }
@@ -5021,27 +5040,50 @@ function App() {
     setRentalRequestsReady(false);
     setRentalRequestsLoadErrorMessage('');
 
-    const ownRequestSource = firestoreQuery(
+    let disposed = false;
+    let uidRequests = [];
+    let legacyEmailRequests = [];
+    let uidReady = false;
+    let legacyEmailReady = false;
+
+    const publishRequests = () => {
+      if (disposed || !uidReady || !legacyEmailReady) return;
+
+      const requestMap = new Map();
+
+      [...uidRequests, ...legacyEmailRequests].forEach((request) => {
+        requestMap.set(request.id, {
+          ...(requestMap.get(request.id) || {}),
+          ...request,
+        });
+      });
+
+      setRentalRequests(Array.from(requestMap.values()));
+      setRentalRequestsLoadErrorMessage('');
+      setRentalRequestsReady(true);
+    };
+
+    const ownUidRequestSource = firestoreQuery(
       RENTAL_REQUESTS_COLLECTION_REF,
       where('requesterUid', '==', firebaseAuthUser.uid)
     );
 
-    const unsubscribe = onSnapshot(
-      ownRequestSource,
+    const unsubscribeUid = onSnapshot(
+      ownUidRequestSource,
       (snapshot) => {
-        setRentalRequests(
-          snapshot.docs.map((requestDoc) => ({
-            ...requestDoc.data(),
-            id: requestDoc.id,
-          }))
-        );
-        setRentalRequestsLoadErrorMessage('');
-        setRentalRequestsReady(true);
+        uidRequests = snapshot.docs.map((requestDoc) => ({
+          ...requestDoc.data(),
+          id: requestDoc.id,
+        }));
+        uidReady = true;
+        publishRequests();
       },
       (error) => {
         const message =
           '나의 대여신청 내역을 불러오지 못했습니다. Firestore Rules의 rentalRequests 본인 조회 권한을 확인해 주세요.';
-        console.error('Own rental requests sync error:', error);
+        console.error('Own rental requests UID sync error:', error);
+        uidRequests = [];
+        uidReady = true;
         setRentalRequests([]);
         setRentalRequestsLoadErrorMessage(message);
         setRentalRequestsReady(true);
@@ -5049,14 +5091,55 @@ function App() {
       }
     );
 
-    return unsubscribe;
+    const requesterEmail = normalizeEmailAddress(
+      firebaseAuthUser.email || userProfile?.email || ''
+    );
+
+    let unsubscribeLegacyEmail = () => {};
+
+    if (requesterEmail) {
+      const ownLegacyEmailRequestSource = firestoreQuery(
+        RENTAL_REQUESTS_COLLECTION_REF,
+        where('requesterEmail', '==', requesterEmail)
+      );
+
+      unsubscribeLegacyEmail = onSnapshot(
+        ownLegacyEmailRequestSource,
+        (snapshot) => {
+          legacyEmailRequests = snapshot.docs.map((requestDoc) => ({
+            ...requestDoc.data(),
+            id: requestDoc.id,
+          }));
+          legacyEmailReady = true;
+          publishRequests();
+        },
+        (error) => {
+          console.error('Own rental requests legacy email sync error:', error);
+          legacyEmailRequests = [];
+          legacyEmailReady = true;
+          publishRequests();
+        }
+      );
+    } else {
+      legacyEmailReady = true;
+      publishRequests();
+    }
+
+    return () => {
+      disposed = true;
+      unsubscribeUid();
+      unsubscribeLegacyEmail();
+    };
   }, [
     currentAuthRoleErrorMessage,
     currentAuthRoleReady,
     firebaseAuthReady,
+    firebaseAuthUser?.email,
     firebaseAuthUser?.uid,
     isAdminAuthenticated,
+    userProfile?.email,
     userProfile?.status,
+    userProfileReady,
   ]);
 
 
@@ -6713,6 +6796,12 @@ function App() {
       clearAdminAuthenticatedSession();
 
       if (isSignupMode) {
+        await setPersistence(userSignupAuth, inMemoryPersistence);
+
+        if (userSignupAuth.currentUser) {
+          await signOut(userSignupAuth);
+        }
+
         if (!data.settings.memberIdentityClaimsReady) {
           throw createMemberPolicyError('member/identity-index-not-ready');
         }
@@ -6747,7 +6836,7 @@ function App() {
         }
 
         const credential = await createUserWithEmailAndPassword(
-          firebaseAuth,
+          userSignupAuth,
           email,
           password
         );
@@ -6903,9 +6992,19 @@ function App() {
           });
         });
 
+        await signOut(userSignupAuth).catch((logoutError) => {
+          console.error('Signup secondary auth sign-out error:', logoutError);
+        });
+
         if (createdAccountStatus === USER_PROFILE_STATUS.ACTIVE) {
+          const primaryCredential = await signInWithEmailAndPassword(
+            firebaseAuth,
+            email,
+            password
+          );
+
           setUserAuthenticatedSession(
-            credential.user.uid,
+            primaryCredential.user.uid,
             effectiveUserSessionPolicy
           );
         } else {
@@ -6920,9 +7019,6 @@ function App() {
           showUserAccountStatus('signupAutoApprovedComplete');
         } else {
           showUserAccountStatus('signupPendingComplete');
-          await signOut(firebaseAuth).catch((logoutError) => {
-            console.error('Pending signup sign-out error:', logoutError);
-          });
         }
 
         return;
@@ -7087,7 +7183,7 @@ function App() {
 
       if (
         createdSignupUser &&
-        firebaseAuth.currentUser?.uid === createdSignupUser.uid
+        userSignupAuth.currentUser?.uid === createdSignupUser.uid
       ) {
         try {
           await deleteUser(createdSignupUser);
@@ -7096,11 +7192,11 @@ function App() {
           console.error('User signup rollback error:', rollbackError);
 
           try {
-            await signOut(firebaseAuth);
+            await signOut(userSignupAuth);
           } catch (cleanupError) {
             firebaseAuthCleanupFailed = true;
             console.error(
-              'Failed signup Firebase Auth cleanup error:',
+              'Failed signup secondary Auth cleanup error:',
               cleanupError
             );
           }

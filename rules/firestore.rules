@@ -1509,7 +1509,12 @@ service cloud.firestore {
       );
 
       allow get, list: if isAdmin() || (
-        isReadableGeneralUser() && resource.data.requesterUid == request.auth.uid
+        isReadableGeneralUser()
+        && (
+          resource.data.get('requesterUid', '') == request.auth.uid
+          || resource.data.get('requesterEmail', '')
+            == request.auth.token.get('email', '')
+        )
       );
 
       // [보안 강화] 사용자가 직접 셀프 연장 시 수치 조작을 방지하는 로직 도입

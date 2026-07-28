@@ -128,17 +128,30 @@ try {
     }
 
     $expectedHashes = @{}
-    foreach ($line in (Get-Content -LiteralPath $hashPath -Encoding UTF8)) {
-        if ([string]::IsNullOrWhiteSpace($line) -or $line.TrimStart().StartsWith('#')) {
+    foreach ($rawLine in (Get-Content -LiteralPath $hashPath -Encoding UTF8)) {
+        $line = $rawLine.Trim()
+
+        if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith('#')) {
             continue
         }
 
-        $parts = $line -split "`t", 2
-        if ($parts.Count -ne 2) {
+        $hashMatch = [System.Text.RegularExpressions.Regex]::Match(
+            $line,
+            '^(?<Hash>[0-9a-fA-F]{64})\s+\*?(?<Path>.+?)\s*$'
+        )
+
+        if (-not $hashMatch.Success) {
             throw "잘못된 SHA-256 목록 형식입니다: $line"
         }
 
-        $expectedHashes[$parts[1].Trim()] = $parts[0].Trim().ToLowerInvariant()
+        $expectedHash = $hashMatch.Groups['Hash'].Value.ToLowerInvariant()
+        $relativePath = $hashMatch.Groups['Path'].Value.Trim()
+
+        if ($expectedHashes.ContainsKey($relativePath)) {
+            throw "SHA-256 목록에 중복 경로가 있습니다: $relativePath"
+        }
+
+        $expectedHashes[$relativePath] = $expectedHash
     }
 
     Write-Host '[2/6] 패키지 내부 SHA-256 검증'
