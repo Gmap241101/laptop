@@ -1,0 +1,55 @@
+{
+  "generatedAt": "2026-07-28T13:17:56.132Z",
+  "task": "P2_MEMBER_ACCOUNTS_PANEL_LAZY_FEATURE",
+  "before": {
+    "initialModuleCount": 35,
+    "initialSourceBytes": 782310,
+    "dynamicEntries": [
+      "src/admin/AdminWorkspace.jsx",
+      "src/dialogs/AppDialogs.jsx",
+      "src/performance/DevPerformancePanel.jsx",
+      "src/services/dashboardSummaryService.js",
+      "src/services/publicAssetCatalogWriteThrough.js",
+      "src/user/UserAccountStatusPanel.jsx",
+      "src/user/UserAuthPanel.jsx",
+      "src/user/UserBoardPanel.jsx",
+      "src/user/UserFooterPagePanel.jsx",
+      "src/user/UserMyPagePanel.jsx",
+      "src/user/UserPopupLayer.jsx",
+      "src/user/UserRentalPanel.jsx",
+      "src/user/UserRequestHistoryPanel.jsx"
+    ],
+    "appSourceBytes": 542334,
+    "controllerInInitialGraph": true
+  },
+  "after": {
+    "initialModuleCount": 34,
+    "initialSourceBytes": 769652,
+    "dynamicEntries": [
+      "src/admin/AdminWorkspace.jsx",
+      "src/dialogs/AppDialogs.jsx",
+      "src/performance/DevPerformancePanel.jsx",
+      "src/services/dashboardSummaryService.js",
+      "src/services/publicAssetCatalogWriteThrough.js",
+      "src/user/UserAccountStatusPanel.jsx",
+      "src/user/UserAuthPanel.jsx",
+      "src/user/UserBoardPanel.jsx",
+      "src/user/UserFooterPagePanel.jsx",
+      "src/user/UserMyPagePanel.jsx",
+      "src/user/UserPopupLayer.jsx",
+      "src/user/UserRentalPanel.jsx",
+      "src/user/UserRequestHistoryPanel.jsx"
+    ],
+    "appSourceBytes": 541803,
+    "controllerInInitialGraph": false
+  },
+  "delta": {
+    "initialModuleCount": -1,
+    "initialSourceBytes": -12658,
+    "appSourceBytes": -531,
+    "initialSourcePercent": -1.618
+  },
+  "excludedFromInitialGraph": [
+    "src/features/members/useAdminMemberAccountsController.js"
+  ]
+}

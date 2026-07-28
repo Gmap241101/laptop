@@ -1,0 +1,24 @@
+{
+  "generatedAt": "2026-07-28T12:14:58.283Z",
+  "before": {
+    "initialModuleCount": 38,
+    "initialSourceBytes": 812800,
+    "appSourceBytes": 543136,
+    "dynamicEntryCount": 13
+  },
+  "after": {
+    "initialModuleCount": 37,
+    "initialSourceBytes": 806925,
+    "appSourceBytes": 543442,
+    "dynamicEntryCount": 13
+  },
+  "delta": {
+    "initialModuleCount": -1,
+    "initialSourceBytes": -5875,
+    "appSourceBytes": 306,
+    "dynamicEntryCount": 0
+  },
+  "movedFromInitialGraph": [
+    "src/features/members/useAdminSignupPolicyActions.js"
+  ]
+}

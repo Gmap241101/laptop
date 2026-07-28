@@ -19,6 +19,13 @@ import {
 
 export const ADMIN_MEMBER_ACCOUNT_PAGE_SIZE = 20;
 
+const memberAccountsSessionState = {
+  lastNavigationRequestId: 0,
+  page: 1,
+  query: '',
+  statusFilter: 'all',
+};
+
 const createEmptySearchCache = (key) => ({
   key,
   cursor: null,
@@ -57,17 +64,42 @@ const STATUS_COUNT_KEY_BY_VALUE = {
 export default function useAdminMemberAccountsController({
   prerequisitesReady,
   enabled,
+  navigationRequest,
   registeredAdminAccounts,
   triggerToast,
 }) {
+  const navigationRequestId = Number(navigationRequest?.requestId || 0);
+  const initialNavigationRequestIdRef = useRef(null);
+
+  if (initialNavigationRequestIdRef.current === null) {
+    initialNavigationRequestIdRef.current = navigationRequestId;
+
+    if (
+      navigationRequestId >
+      memberAccountsSessionState.lastNavigationRequestId
+    ) {
+      memberAccountsSessionState.lastNavigationRequestId =
+        navigationRequestId;
+      memberAccountsSessionState.page = 1;
+      memberAccountsSessionState.query = String(
+        navigationRequest?.query || ''
+      );
+      memberAccountsSessionState.statusFilter = String(
+        navigationRequest?.statusFilter || 'all'
+      );
+    }
+  }
+
   const [accounts, setAccounts] = useState([]);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => memberAccountsSessionState.page);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
   const [ready, setReady] = useState(false);
   const [loadErrorMessage, setLoadErrorMessage] = useState('');
-  const [query, setQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [query, setQuery] = useState(() => memberAccountsSessionState.query);
+  const [statusFilter, setStatusFilter] = useState(
+    () => memberAccountsSessionState.statusFilter
+  );
   const [statusCounts, setStatusCounts] = useState({
     pending: 0,
     active: 0,
@@ -86,6 +118,37 @@ export default function useAdminMemberAccountsController({
     triggerToastRef.current = triggerToast;
   }, [triggerToast]);
 
+  useEffect(() => {
+    memberAccountsSessionState.page = page;
+    memberAccountsSessionState.query = query;
+    memberAccountsSessionState.statusFilter = statusFilter;
+  }, [page, query, statusFilter]);
+
+  useEffect(() => {
+    if (
+      !navigationRequestId ||
+      memberAccountsSessionState.lastNavigationRequestId ===
+        navigationRequestId
+    ) {
+      return;
+    }
+
+    const nextQuery = String(navigationRequest?.query || '');
+    const nextStatusFilter = String(
+      navigationRequest?.statusFilter || 'all'
+    );
+
+    memberAccountsSessionState.lastNavigationRequestId =
+      navigationRequestId;
+    memberAccountsSessionState.page = 1;
+    memberAccountsSessionState.query = nextQuery;
+    memberAccountsSessionState.statusFilter = nextStatusFilter;
+    setPage(1);
+    setQuery(nextQuery);
+    setStatusFilter(nextStatusFilter);
+    cursorByPageRef.current = new Map([[1, null]]);
+    searchCacheRef.current = null;
+  }, [navigationRequest, navigationRequestId]);
 
   useEffect(() => {
     if (!enabled) return undefined;

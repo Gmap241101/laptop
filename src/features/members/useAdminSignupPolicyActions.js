@@ -18,7 +18,6 @@ import {
 } from './memberAccountPolicy.js';
 
 export default function useAdminSignupPolicyActions({
-  adminTab,
   isAdminAuthenticated,
   isSplitStorageReady,
   resetDirectoryMismatchRestoreAttempt,
@@ -39,8 +38,6 @@ export default function useAdminSignupPolicyActions({
   }, [triggerToast]);
 
   useEffect(() => {
-    if (adminTab !== 'signupPolicy') return;
-
     setTempRequireRegisteredMemberForSignup(
       Boolean(settings.requireRegisteredMemberForSignup)
     );
@@ -48,7 +45,6 @@ export default function useAdminSignupPolicyActions({
       Boolean(settings.autoApproveNewMembers)
     );
   }, [
-    adminTab,
     settings.autoApproveNewMembers,
     settings.requireRegisteredMemberForSignup,
   ]);

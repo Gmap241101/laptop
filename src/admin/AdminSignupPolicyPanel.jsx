@@ -1,3 +1,8 @@
+import { useEffect } from 'react';
+
+import useAdminMemberDirectoryAuditActions from '../features/members/useAdminMemberDirectoryAuditActions.js';
+import useAdminSignupPolicyActions from '../features/members/useAdminSignupPolicyActions.js';
+
 function PolicySwitch({ checked, disabled = false, label, description, onChange }) {
   return (
     <div className={`rounded-2xl border p-5 ${disabled ? 'border-slate-200 bg-slate-50 opacity-70' : 'border-slate-200 bg-white'}`}>
@@ -29,22 +34,79 @@ export default function AdminSignupPolicyPanel({ ctx }) {
   const {
     AdminPageHeader,
     Button,
+    authenticatedAdminAccount,
+    authenticatedAdminId,
+    isAdminAuthenticated,
+    isSplitStorageReady,
     memberDirectoryAudit,
-    memberDirectoryAuditLoading,
-    memberDirectoryAuditResult,
+    memberDirectoryBorrowers,
     memberDirectoryPolicyEnabled,
     memberIdentityClaimsReady,
+    onSignupPolicyDeferredStateChange,
+    openAdminMemberAccounts,
+    setData,
+    signupPolicySettings,
+    triggerConfirm,
+    triggerToast,
+  } = ctx;
+
+  const {
+    memberDirectoryAuditLoading,
+    memberDirectoryAuditResult,
     openProfileRequiredMembers,
+    resetDirectoryMismatchRestoreAttempt,
+    restoreDirectoryMismatchAccountsAfterPolicyDisabled,
     runFullMemberDirectoryAudit,
-    signupPolicyDirty,
-    signupPolicySaving,
-    saveSignupPolicyChanges,
+  } = useAdminMemberDirectoryAuditActions({
+    authenticatedAdminAccount,
+    authenticatedAdminId,
+    borrowers: memberDirectoryBorrowers,
+    isAdminAuthenticated,
+    isSplitStorageReady,
+    settings: signupPolicySettings,
+    openAdminMemberAccounts,
+    triggerConfirm,
+    triggerToast,
+  });
+
+  const {
     cancelSignupPolicyChanges,
+    saveSignupPolicyChanges,
     setTempAutoApproveNewMembers,
     setTempRequireRegisteredMemberForSignup,
+    signupPolicyDirty,
+    signupPolicySaving,
     tempAutoApproveNewMembers,
     tempRequireRegisteredMemberForSignup,
-  } = ctx;
+  } = useAdminSignupPolicyActions({
+    isAdminAuthenticated,
+    isSplitStorageReady,
+    resetDirectoryMismatchRestoreAttempt,
+    restoreDirectoryMismatchAccountsAfterPolicyDisabled,
+    setData,
+    settings: signupPolicySettings,
+    triggerToast,
+  });
+
+  useEffect(() => {
+    onSignupPolicyDeferredStateChange({
+      dirty: signupPolicyDirty,
+      discard: cancelSignupPolicyChanges,
+      save: saveSignupPolicyChanges,
+    });
+  }, [
+    cancelSignupPolicyChanges,
+    onSignupPolicyDeferredStateChange,
+    saveSignupPolicyChanges,
+    signupPolicyDirty,
+  ]);
+
+  useEffect(
+    () => () => {
+      onSignupPolicyDeferredStateChange(null);
+    },
+    [onSignupPolicyDeferredStateChange]
+  );
 
   const autoApproveDisabled = !tempRequireRegisteredMemberForSignup;
 

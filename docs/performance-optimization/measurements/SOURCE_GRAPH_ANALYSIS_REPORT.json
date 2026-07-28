@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-07-28T11:59:32.988Z",
-  "initialModuleCount": 38,
-  "initialSourceBytes": 812800,
+  "generatedAt": "2026-07-28T13:54:08.768Z",
+  "initialModuleCount": 32,
+  "initialSourceBytes": 746259,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 543136
+      "bytes": 526542
     },
     {
       "file": "src/user/UserHomePanel.jsx",
@@ -20,24 +20,16 @@
       "bytes": 21872
     },
     {
-      "file": "src/features/members/useAdminMemberActions.js",
-      "bytes": 21126
-    },
-    {
-      "file": "src/context/appContextSlices.js",
-      "bytes": 18715
-    },
-    {
       "file": "src/components/CommonUI.jsx",
       "bytes": 18375
     },
     {
-      "file": "src/index.css",
-      "bytes": 11870
+      "file": "src/context/appContextSlices.js",
+      "bytes": 17948
     },
     {
-      "file": "src/features/members/useAdminMemberAccountsController.js",
-      "bytes": 11790
+      "file": "src/index.css",
+      "bytes": 11870
     },
     {
       "file": "src/utils/systemSettings.js",
@@ -53,11 +45,7 @@
     },
     {
       "file": "src/hooks/useDashboardSummary.js",
-      "bytes": 7332
-    },
-    {
-      "file": "src/features/members/useAdminSignupPolicyActions.js",
-      "bytes": 6168
+      "bytes": 7052
     },
     {
       "file": "src/routing/appRoutes.js",
@@ -92,16 +80,8 @@
       "bytes": 4085
     },
     {
-      "file": "src/services/adminRequestQuery.js",
-      "bytes": 4058
-    },
-    {
       "file": "src/constants/appConstants.js",
       "bytes": 3601
-    },
-    {
-      "file": "src/features/requests/useAdminRequestProgressiveSearch.js",
-      "bytes": 3460
     },
     {
       "file": "src/services/publicAssetCatalog.js",
@@ -126,10 +106,6 @@
     {
       "file": "src/main.jsx",
       "bytes": 2370
-    },
-    {
-      "file": "src/features/members/memberAccountHistoryService.js",
-      "bytes": 2298
     },
     {
       "file": "src/utils/popupUtils.js",

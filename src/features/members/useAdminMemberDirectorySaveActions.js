@@ -21,7 +21,6 @@ const loadMemberDirectorySaveService = () => {
 
 export default function useAdminMemberDirectorySaveActions({
   currentBorrowers,
-  clearMemberDirectoryAuditResult,
   isSplitStorageReady,
   replaceTempPeopleDraft,
   setData,
@@ -71,7 +70,6 @@ export default function useAdminMemberDirectorySaveActions({
         nextTeams,
         nextBorrowers,
       });
-      clearMemberDirectoryAuditResult();
 
       triggerToastRef.current(
         '부서·사용자 명부가 저장되었습니다. 명부 버전이 변경되어 기존 회원은 다음 로그인 시 순차적으로 재검증됩니다.',
@@ -96,8 +94,7 @@ export default function useAdminMemberDirectorySaveActions({
       return false;
     }
   }, [
-    clearMemberDirectoryAuditResult,
-    currentBorrowers,
+      currentBorrowers,
     isSplitStorageReady,
     replaceTempPeopleDraft,
     setData,

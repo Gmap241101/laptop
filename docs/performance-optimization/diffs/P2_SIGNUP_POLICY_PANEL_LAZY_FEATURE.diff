@@ -1,0 +1,331 @@
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -231,7 +231,6 @@
+ import useBoardProgressiveSearch from './features/boards/useBoardProgressiveSearch.js';
+ import useAdminMemberAccountsController from './features/members/useAdminMemberAccountsController.js';
+ import useAdminMemberActions from './features/members/useAdminMemberActions.js';
+-import useAdminSignupPolicyActions from './features/members/useAdminSignupPolicyActions.js';
+ import {
+   commitFirestoreOperations,
+ } from './features/members/memberAccountIndexService.js';
+@@ -1477,6 +1476,11 @@
+     discard: null,
+     save: null,
+   });
++  const [signupPolicyDirty, setSignupPolicyDirty] = useState(false);
++  const signupPolicyDeferredActionsRef = useRef({
++    discard: null,
++    save: null,
++  });
+   const [editLaptop, setEditLaptop] = useState(null);
+   const [newLaptop, setNewLaptop] = useState(null); // 신규 자산 생성을 위한 상태 값 추가
+   const [newAssetCategory, setNewAssetCategory] = useState('');
+@@ -4827,27 +4831,6 @@
+     view,
+   });
+ 
+-  const {
+-    cancelSignupPolicyChanges,
+-    saveSignupPolicyChanges,
+-    setTempAutoApproveNewMembers,
+-    setTempRequireRegisteredMemberForSignup,
+-    signupPolicyDirty,
+-    signupPolicySaving,
+-    tempAutoApproveNewMembers,
+-    tempRequireRegisteredMemberForSignup,
+-  } = useAdminSignupPolicyActions({
+-    adminTab,
+-    isAdminAuthenticated,
+-    isSplitStorageReady,
+-    resetDirectoryMismatchRestoreAttempt,
+-    restoreDirectoryMismatchAccountsAfterPolicyDisabled,
+-    setData,
+-    settings: data.settings,
+-    triggerToast,
+-  });
+-
+-
+   const handleMemberDirectoryDeferredStateChange = useCallback(
+     (nextState) => {
+       const nextDirty = Boolean(nextState?.dirty);
+@@ -4872,11 +4855,36 @@
+     []
+   );
+ 
++  const handleSignupPolicyDeferredStateChange = useCallback(
++    (nextState) => {
++      const nextDirty = Boolean(nextState?.dirty);
++
++      signupPolicyDeferredActionsRef.current = {
++        discard:
++          typeof nextState?.discard === 'function'
++            ? nextState.discard
++            : null,
++        save:
++          typeof nextState?.save === 'function'
++            ? nextState.save
++            : null,
++      };
++
++      setSignupPolicyDirty((currentDirty) =>
++        currentDirty === nextDirty
++          ? currentDirty
++          : nextDirty
++      );
++    },
++    []
++  );
++
+   const currentAdminDeferredSettingsDirty = Boolean(
+     (adminTab === 'extensionSettings' && rentalPolicySettingsDirty) ||
+       (adminTab === 'holidaySettings' && holidaySettingsDirty) ||
+       (adminTab === 'categories' && assetCategorySettingsDirty) ||
+       (adminTab === 'people' && peopleSettingsDirty) ||
++      (adminTab === 'signupPolicy' && signupPolicyDirty) ||
+       (adminTab === 'noticePosts' && noticeBoardSettingsDirty) ||
+       (adminTab === 'faqPosts' && faqBoardSettingsDirty) ||
+       (adminTab === 'footerManagement' && footerConfigDirty)
+@@ -10287,10 +10295,22 @@
+     }
+ 
+     if (tab === 'signupPolicy' && signupPolicyDirty) {
++      const {
++        discard,
++        save,
++      } = signupPolicyDeferredActionsRef.current;
++
++      if (
++        typeof discard !== 'function' ||
++        typeof save !== 'function'
++      ) {
++        return null;
++      }
++
+       return {
+         label: '회원가입 정책',
+-        discard: cancelSignupPolicyChanges,
+-        save: saveSignupPolicyChanges,
++        discard,
++        save,
+       };
+     }
+ 
+@@ -17930,7 +17950,6 @@
+     availableFilterLabel,
+     cancelEditAdminAccount,
+     cancelTempAssetCategoryChanges,
+-    cancelSignupPolicyChanges,
+     cancelWithdrawal,
+     cancelUserSignup,
+     categoryFilteredFaqPosts,
+@@ -18072,6 +18091,11 @@
+     memberDirectoryTeams: data.teams,
+     onMemberDirectoryDeferredStateChange:
+       handleMemberDirectoryDeferredStateChange,
++    onSignupPolicyDeferredStateChange:
++      handleSignupPolicyDeferredStateChange,
++    signupPolicySettings: data.settings,
++    resetDirectoryMismatchRestoreAttempt,
++    restoreDirectoryMismatchAccountsAfterPolicyDisabled,
+     mergedRentalRequests,
+     motion,
+     moveTempAssetCategory,
+@@ -18153,7 +18177,6 @@
+     saveRequestMemo,
+     saveHolidaySettings,
+     saveSystemSettings,
+-    saveSignupPolicyChanges,
+     saveTempAssetCategoryChanges,
+     selectedAdminRequest,
+     selectedAssetCategory,
+@@ -18225,8 +18248,6 @@
+     setSelectedAssetCategory,
+     setSelectedLaptopId,
+     setShowUploadPanel,
+-    setTempAutoApproveNewMembers,
+-    setTempRequireRegisteredMemberForSignup,
+     setTempSettings,
+     setToast,
+     setUserActionForm,
+@@ -18238,8 +18259,6 @@
+     shouldShowAdminLoadingPage,
+     shouldShowAdminLoginPage,
+     showUploadPanel,
+-    signupPolicyDirty,
+-    signupPolicySaving,
+     splitRentalAssets,
+     splitStorageFinalizeLoading,
+     startEditAdminAccount,
+@@ -18252,12 +18271,10 @@
+     submitUserActionRequest,
+     submitUserAuthForm,
+     tempAllowNonOverlappingSameAssetRequests,
+-    tempAutoApproveNewMembers,
+     tempAssetCategories,
+     tempBusinessDayAdjustmentEnabled,
+     tempHolidayList,
+     discardHolidayChanges,
+-    tempRequireRegisteredMemberForSignup,
+     tempSettings,
+     toast,
+     stats,
+--- a/src/admin/AdminSignupPolicyPanel.jsx
++++ b/src/admin/AdminSignupPolicyPanel.jsx
+@@ -1,3 +1,7 @@
++import { useEffect } from 'react';
++
++import useAdminSignupPolicyActions from '../features/members/useAdminSignupPolicyActions.js';
++
+ function PolicySwitch({ checked, disabled = false, label, description, onChange }) {
+   return (
+     <div className={`rounded-2xl border p-5 ${disabled ? 'border-slate-200 bg-slate-50 opacity-70' : 'border-slate-200 bg-white'}`}>
+@@ -34,17 +38,56 @@
+     memberDirectoryAuditResult,
+     memberDirectoryPolicyEnabled,
+     memberIdentityClaimsReady,
++    onSignupPolicyDeferredStateChange,
+     openProfileRequiredMembers,
++    resetDirectoryMismatchRestoreAttempt,
++    restoreDirectoryMismatchAccountsAfterPolicyDisabled,
+     runFullMemberDirectoryAudit,
+-    signupPolicyDirty,
+-    signupPolicySaving,
+-    saveSignupPolicyChanges,
++    setData,
++    signupPolicySettings,
++    triggerToast,
++    isAdminAuthenticated,
++    isSplitStorageReady,
++  } = ctx;
++
++  const {
+     cancelSignupPolicyChanges,
++    saveSignupPolicyChanges,
+     setTempAutoApproveNewMembers,
+     setTempRequireRegisteredMemberForSignup,
++    signupPolicyDirty,
++    signupPolicySaving,
+     tempAutoApproveNewMembers,
+     tempRequireRegisteredMemberForSignup,
+-  } = ctx;
++  } = useAdminSignupPolicyActions({
++    isAdminAuthenticated,
++    isSplitStorageReady,
++    resetDirectoryMismatchRestoreAttempt,
++    restoreDirectoryMismatchAccountsAfterPolicyDisabled,
++    setData,
++    settings: signupPolicySettings,
++    triggerToast,
++  });
++
++  useEffect(() => {
++    onSignupPolicyDeferredStateChange({
++      dirty: signupPolicyDirty,
++      discard: cancelSignupPolicyChanges,
++      save: saveSignupPolicyChanges,
++    });
++  }, [
++    cancelSignupPolicyChanges,
++    onSignupPolicyDeferredStateChange,
++    saveSignupPolicyChanges,
++    signupPolicyDirty,
++  ]);
++
++  useEffect(
++    () => () => {
++      onSignupPolicyDeferredStateChange(null);
++    },
++    [onSignupPolicyDeferredStateChange]
++  );
+ 
+   const autoApproveDisabled = !tempRequireRegisteredMemberForSignup;
+ 
+--- a/src/features/members/useAdminSignupPolicyActions.js
++++ b/src/features/members/useAdminSignupPolicyActions.js
+@@ -18,7 +18,6 @@
+ } from './memberAccountPolicy.js';
+ 
+ export default function useAdminSignupPolicyActions({
+-  adminTab,
+   isAdminAuthenticated,
+   isSplitStorageReady,
+   resetDirectoryMismatchRestoreAttempt,
+@@ -39,8 +38,6 @@
+   }, [triggerToast]);
+ 
+   useEffect(() => {
+-    if (adminTab !== 'signupPolicy') return;
+-
+     setTempRequireRegisteredMemberForSignup(
+       Boolean(settings.requireRegisteredMemberForSignup)
+     );
+@@ -48,7 +45,6 @@
+       Boolean(settings.autoApproveNewMembers)
+     );
+   }, [
+-    adminTab,
+     settings.autoApproveNewMembers,
+     settings.requireRegisteredMemberForSignup,
+   ]);
+--- a/src/context/appContextSlices.js
++++ b/src/context/appContextSlices.js
+@@ -24,7 +24,7 @@
+     holidaySettings: contextKeys('AdminPageHeader Button ClipboardList DEFAULT_HOLIDAY_TYPE HOLIDAY_TYPE_LABEL Plus Save Trash2 addTempHoliday applyHolidayImportConflictChoice data deleteTempHoliday discardHolidayChanges formatDateWithKoreanWeekday getKoreaNow holidayImportConflictModal holidayImportLoading holidayImportYear holidayManagementMonth holidayManagementView holidayManagementYear holidaySettingsDirty importKoreanPublicHolidaysFromJson newHolidayDate newHolidayName newHolidayType saveHolidaySettings setHolidayImportConflictModal setHolidayImportYear setHolidayManagementMonth setHolidayManagementView setHolidayManagementYear setNewHolidayDate setNewHolidayName setNewHolidayType tempHolidayList today updateTempHolidayReason'),
+     categories: contextKeys('AdminPageHeader Button Edit3 Plus Save Trash2 X addTempAssetCategory applyEditTempAssetCategory cancelTempAssetCategoryChanges deleteTempAssetCategory draggingAssetCategoryIndex editingAssetCategoryIndex editingAssetCategoryName moveTempAssetCategory newAssetCategory saveTempAssetCategoryChanges setDraggingAssetCategoryIndex setEditingAssetCategoryIndex setEditingAssetCategoryName setNewAssetCategory startEditTempAssetCategory tempAssetCategories'),
+     people: contextKeys('AdminPageHeader Button Edit3 Plus Save Trash2 X clearMemberDirectoryAuditResult isSplitStorageReady memberDirectoryBorrowers memberDirectorySettings memberDirectoryTeams onMemberDirectoryDeferredStateChange setData triggerToast'),
+-    signupPolicy: contextKeys('AdminPageHeader Button cancelSignupPolicyChanges memberDirectoryAudit memberDirectoryAuditLoading memberDirectoryAuditResult memberDirectoryPolicyEnabled memberIdentityClaimsReady openProfileRequiredMembers runFullMemberDirectoryAudit saveSignupPolicyChanges setTempAutoApproveNewMembers setTempRequireRegisteredMemberForSignup signupPolicyDirty signupPolicySaving tempAutoApproveNewMembers tempRequireRegisteredMemberForSignup'),
++    signupPolicy: contextKeys('AdminPageHeader Button isAdminAuthenticated isSplitStorageReady memberDirectoryAudit memberDirectoryAuditLoading memberDirectoryAuditResult memberDirectoryPolicyEnabled memberIdentityClaimsReady onSignupPolicyDeferredStateChange openProfileRequiredMembers resetDirectoryMismatchRestoreAttempt restoreDirectoryMismatchAccountsAfterPolicyDisabled runFullMemberDirectoryAudit setData signupPolicySettings triggerToast'),
+     noticePosts: contextKeys('AdminPageHeader Button Edit3 NOTICE_POSTS_PER_PAGE_OPTIONS Pin Plus Save Search Select Trash2 adminNoticeQuery adminNoticeTotalPages adminPinnedNoticePosts adminRegularNoticePosts confirmDeleteNoticePost formatFirestoreDate noticeBoardConfigLoadErrorMessage noticeBoardConfigReady noticeBoardConfigSaving noticePostDeletingId noticePosts noticePostsLoadErrorMessage noticePostsPerPageInput noticePostsReady noticeRegularPostNumberById openNoticePostDialog paginatedAdminNoticePosts safeAdminNoticePage saveNoticeBoardConfig setAdminNoticePage setAdminNoticeQuery setNoticePostsPerPageInput'),
+     siteSettings: contextKeys('AdminPageHeader Button Input Select authenticatedAdminAccount data finalizeSplitStorageMigration isSplitStorageReady siteSettings siteSettingsLoadErrorMessage siteSettingsReady splitStorageFinalizeLoading systemAdminSettings systemAdminSettingsLoadErrorMessage systemAdminSettingsReady triggerConfirm triggerToast'),
+     homeManagement: contextKeys('AdminPageHeader Button Input Select authenticatedAdminAccount authenticatedAdminId data finalizeSplitStorageMigration isAdminAuthenticated isSplitStorageReady siteSettings siteSettingsLoadErrorMessage siteSettingsReady splitStorageFinalizeLoading systemAdminSettings systemAdminSettingsLoadErrorMessage systemAdminSettingsReady triggerConfirm triggerToast'),
+--- a/docs/performance-optimization/README.md
++++ b/docs/performance-optimization/README.md
+@@ -28,3 +28,10 @@
+ - `diffs/P0_WHITE_SCREEN_RUNTIME_FIX.diff`
+ - `measurements/P0_WHITE_SCREEN_RUNTIME_FIX_SOURCE_GRAPH_COMPARISON.json`
+ 
++
++## 최신 순차 작업
++
++- `reports/P2_SIGNUP_POLICY_PANEL_LAZY_FEATURE_REPORT.md`
++- `validation/P2_SIGNUP_POLICY_PANEL_LAZY_FEATURE_VALIDATION_REPORT.txt`
++- `diffs/P2_SIGNUP_POLICY_PANEL_LAZY_FEATURE.diff`
++- `measurements/P2_SIGNUP_POLICY_PANEL_LAZY_SOURCE_GRAPH_COMPARISON.json`
+--- a/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json
++++ b/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json
+@@ -1,11 +1,11 @@
+ {
+-  "generatedAt": "2026-07-28T12:12:17.752Z",
+-  "initialModuleCount": 38,
+-  "initialSourceBytes": 812800,
++  "generatedAt": "2026-07-28T12:12:08.391Z",
++  "initialModuleCount": 37,
++  "initialSourceBytes": 806925,
+   "files": [
+     {
+       "file": "src/App.jsx",
+-      "bytes": 543136
++      "bytes": 543442
+     },
+     {
+       "file": "src/user/UserHomePanel.jsx",
+@@ -25,7 +25,7 @@
+     },
+     {
+       "file": "src/context/appContextSlices.js",
+-      "bytes": 18715
++      "bytes": 18702
+     },
+     {
+       "file": "src/components/CommonUI.jsx",
+@@ -56,10 +56,6 @@
+       "bytes": 7332
+     },
+     {
+-      "file": "src/features/members/useAdminSignupPolicyActions.js",
+-      "bytes": 6168
+-    },
+-    {
+       "file": "src/routing/appRoutes.js",
+       "bytes": 6053
+     },

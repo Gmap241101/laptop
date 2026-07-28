@@ -12,7 +12,6 @@ export default function AdminOrganizationPanel({ ctx }) {
     Save,
     Trash2,
     X,
-    clearMemberDirectoryAuditResult,
     isSplitStorageReady,
     memberDirectoryBorrowers,
     memberDirectorySettings,
@@ -67,7 +66,6 @@ export default function AdminOrganizationPanel({ ctx }) {
     saveTempPeopleChanges,
   } = useAdminMemberDirectorySaveActions({
     currentBorrowers: memberDirectoryBorrowers,
-    clearMemberDirectoryAuditResult,
     isSplitStorageReady,
     replaceTempPeopleDraft,
     setData,

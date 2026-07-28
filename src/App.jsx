@@ -227,11 +227,7 @@ import {
   serializeHolidayListForFirestore,
 } from './domain/rentalPolicy.js';
 import { useDashboardSummary } from './hooks/useDashboardSummary.js';
-import useAdminRequestProgressiveSearch from './features/requests/useAdminRequestProgressiveSearch.js';
 import useBoardProgressiveSearch from './features/boards/useBoardProgressiveSearch.js';
-import useAdminMemberAccountsController from './features/members/useAdminMemberAccountsController.js';
-import useAdminMemberActions from './features/members/useAdminMemberActions.js';
-import useAdminSignupPolicyActions from './features/members/useAdminSignupPolicyActions.js';
 import {
   commitFirestoreOperations,
 } from './features/members/memberAccountIndexService.js';
@@ -260,10 +256,6 @@ import {
   writeUserAccountStatusView,
   writeUserLoginReturnTarget,
 } from './routing/appRoutes.js';
-import {
-  getAdminRequestCountConstraints,
-  getAdminRequestServerConstraints,
-} from './services/adminRequestQuery.js';
 import {
   PUBLIC_ASSET_CATALOG_SCHEMA_VERSION,
   hydratePublicCatalogAssets,
@@ -1240,25 +1232,6 @@ function App() {
     setAdminUserActionSavingRequestId,
   ] = useState('');
 
-  const [adminRequestTab, setAdminRequestTab] = useState(
-    ADMIN_REQUEST_TAB.PENDING
-  );
-  const [adminRequestQuickFilter, setAdminRequestQuickFilter] = useState(
-    ADMIN_REQUEST_QUICK_FILTER.ALL
-  );
-  const [adminRequestQuery, setAdminRequestQuery] = useState('');
-  const [adminRequestPageSize, setAdminRequestPageSize] = useState(10);
-  const [adminRequestPage, setAdminRequestPage] = useState(1);
-  const [adminRequestHasNextPage, setAdminRequestHasNextPage] = useState(false);
-  const [adminRequestTotalCount, setAdminRequestTotalCount] = useState(0);
-  const [adminRequestTabCountsRemote, setAdminRequestTabCountsRemote] = useState({
-    [ADMIN_REQUEST_TAB.PENDING]: 0,
-    [ADMIN_REQUEST_TAB.RENTAL]: 0,
-    [ADMIN_REQUEST_TAB.CLOSED]: 0,
-    [ADMIN_REQUEST_TAB.RETURNED]: 0,
-  });
-  const adminRequestCursorByPageRef = useRef(new Map([[1, null]]));
-  const adminRequestCursorKeyRef = useRef('');
   const [selectedAdminRequestId, setSelectedAdminRequestId] = useState('');
 
   const [adminRequestEditDialog, setAdminRequestEditDialog] = useState(null);
@@ -1472,8 +1445,30 @@ function App() {
   const [selectedLaptopId, setSelectedLaptopId] = useState(null);
   const [form, setForm] = useState(() => createDefaultRequestForm(data.settings));
   const [adminTab, setAdminTab] = useState('dashboard'); // 관리자 사이드바의 현재 메뉴 키
+  const [adminMemberAccountsNavigationRequest, setAdminMemberAccountsNavigationRequest] = useState({
+    requestId: 0,
+    query: '',
+    statusFilter: 'all',
+  });
+  const [adminRequestsNavigationRequest, setAdminRequestsNavigationRequest] = useState({
+    requestId: 0,
+    query: '',
+    quickFilter: ADMIN_REQUEST_QUICK_FILTER.ALL,
+    requestTab: ADMIN_REQUEST_TAB.PENDING,
+  });
+  const [adminRequestsMutationVersion, setAdminRequestsMutationVersion] = useState(0);
+  const adminRequestsControllerRef = useRef({
+    getRequestById: null,
+    resetPage: null,
+    updateRequests: null,
+  });
   const [peopleSettingsDirty, setPeopleSettingsDirty] = useState(false);
   const memberDirectoryDeferredActionsRef = useRef({
+    discard: null,
+    save: null,
+  });
+  const [signupPolicyDirty, setSignupPolicyDirty] = useState(false);
+  const signupPolicyDeferredActionsRef = useRef({
     discard: null,
     save: null,
   });
@@ -1549,12 +1544,10 @@ function App() {
   const [currentUserRestriction, setCurrentUserRestriction] = useState(null);
   const [currentUserRestrictionReady, setCurrentUserRestrictionReady] = useState(false);
 
-  const debouncedAdminRequestQuery = useDebouncedValue(adminRequestQuery);
   const debouncedUserNoticeQuery = useDebouncedValue(userNoticeQuery);
   const debouncedAdminNoticeQuery = useDebouncedValue(adminNoticeQuery);
   const debouncedFaqQuery = useDebouncedValue(faqQuery);
 
-  const adminRequestServerPage = adminRequestPage;
 
   const userStatusLogoutInProgressRef = useRef(false);
   const userSessionLogoutInProgressRef = useRef(false);
@@ -3557,7 +3550,6 @@ function App() {
     currentAuthAdminAccountId: currentAuthAdminAccount?.id || '',
     view,
     adminTab,
-    setAdminRequestTabCountsRemote,
     triggerToast,
   });
 
@@ -3879,16 +3871,6 @@ function App() {
     return Array.from(requestMap.values());
   }, [data.requests, rentalRequests, view, adminTab]);
 
-  const rentalRequestIdSet = useMemo(
-    () =>
-      new Set(
-        (rentalRequests || [])
-          .map((request) => request?.id)
-          .filter(Boolean)
-      ),
-    [rentalRequests]
-  );
-
   const orphanedRentalAvailabilityRequests = [];
 
   const rentalRequestLogsByRequestId =
@@ -3912,276 +3894,6 @@ function App() {
       return logMap;
     }, [rentalRequestLogs]);
   
-  const adminRequestTabCounts = adminRequestTabCountsRemote;
-
-  const filteredAdminRequests = useMemo(
-    () => {
-      const normalizedQuery =
-        String(
-          adminRequestQuery || ''
-        ).trim().toLowerCase();
-
-      const getStatusLogTime = (request) =>
-        getFirestoreTimestampMillis(request.updatedAt) ||
-        getFirestoreTimestampMillis(request.createdAt) ||
-        Date.parse(request.requestedAt || '') ||
-        0;
-
-      const tabFilteredRequests =
-        (mergedRentalRequests || []).filter(
-          (request) => {
-            if (
-              adminRequestTab ===
-              ADMIN_REQUEST_TAB.PENDING
-            ) {
-              return [
-                STATUS.REQUESTED,
-                STATUS.ON_HOLD,
-              ].includes(request.status);
-            }
-
-            if (
-              adminRequestTab ===
-              ADMIN_REQUEST_TAB.RENTAL
-            ) {
-              return (
-                request.status ===
-                STATUS.APPROVED
-              );
-            }
-
-            if (
-              adminRequestTab ===
-              ADMIN_REQUEST_TAB.CLOSED
-            ) {
-              return [
-                STATUS.DENIED,
-                STATUS.USER_CANCELLED,
-              ].includes(request.status);
-            }
-
-            return (
-              request.status ===
-              STATUS.RETURNED
-            );
-          }
-        );
-
-      const todayDate = today();
-
-      const quickFilterSourceRequests =
-        adminRequestQuickFilter ===
-        ADMIN_REQUEST_QUICK_FILTER.PENDING_USER_ACTION
-          ? mergedRentalRequests || []
-          : tabFilteredRequests;
-
-      const quickFilteredRequests =
-        adminRequestQuickFilter === ADMIN_REQUEST_QUICK_FILTER.ALL
-          ? tabFilteredRequests
-          : quickFilterSourceRequests.filter((request) => {
-              if (
-                adminRequestQuickFilter ===
-                ADMIN_REQUEST_QUICK_FILTER.OVERDUE
-              ) {
-                return (
-                  request.status === STATUS.APPROVED &&
-                  (!request.startDate || request.startDate <= todayDate) &&
-                  Boolean(request.dueDate) &&
-                  request.dueDate < todayDate
-                );
-              }
-
-              if (
-                adminRequestQuickFilter ===
-                ADMIN_REQUEST_QUICK_FILTER.DUE_TODAY
-              ) {
-                return (
-                  request.status === STATUS.APPROVED &&
-                  (!request.startDate || request.startDate <= todayDate) &&
-                  request.dueDate === todayDate
-                );
-              }
-
-              if (
-                adminRequestQuickFilter ===
-                ADMIN_REQUEST_QUICK_FILTER.START_TODAY
-              ) {
-                return (
-                  request.status === STATUS.APPROVED &&
-                  request.startDate === todayDate
-                );
-              }
-
-              if (
-                adminRequestQuickFilter ===
-                ADMIN_REQUEST_QUICK_FILTER.PENDING_USER_ACTION
-              ) {
-                return (
-                  request.userActionRequest?.status ===
-                  USER_REQUEST_REVIEW_STATUS.PENDING
-                );
-              }
-
-              if (
-                adminRequestQuickFilter ===
-                ADMIN_REQUEST_QUICK_FILTER.REQUESTED
-              ) {
-                return request.status === STATUS.REQUESTED;
-              }
-
-              if (
-                adminRequestQuickFilter ===
-                ADMIN_REQUEST_QUICK_FILTER.ON_HOLD
-              ) {
-                return request.status === STATUS.ON_HOLD;
-              }
-
-              if (
-                adminRequestQuickFilter ===
-                ADMIN_REQUEST_QUICK_FILTER.RESERVED
-              ) {
-                return (
-                  request.status === STATUS.APPROVED &&
-                  Boolean(request.startDate) &&
-                  request.startDate > todayDate
-                );
-              }
-
-              return true;
-            });
-
-      const queryFilteredRequests =
-        normalizedQuery
-          ? quickFilteredRequests.filter(
-              (request) =>
-                [
-                  request.assetNo,
-                  request.assetCategory,
-                  request.requesterName,
-                  request.requesterEmail,
-                  request.borrower,
-                  request.team,
-                  request.purpose,
-                ]
-                  .map((value) =>
-                    String(
-                      value || ''
-                    ).toLowerCase()
-                  )
-                  .some((value) =>
-                    value.includes(
-                      normalizedQuery
-                    )
-                  )
-            )
-          : quickFilteredRequests;
-
-      return [
-        ...queryFilteredRequests,
-      ].sort((first, second) => {
-        if (
-          adminRequestTab ===
-          ADMIN_REQUEST_TAB.PENDING
-        ) {
-          return (
-            getStatusLogTime(first) -
-            getStatusLogTime(second)
-          );
-        }
-
-        if (
-          adminRequestTab ===
-          ADMIN_REQUEST_TAB.RENTAL
-        ) {
-          const firstOverdue =
-            first.dueDate &&
-            first.dueDate < today();
-
-          const secondOverdue =
-            second.dueDate &&
-            second.dueDate < today();
-
-          if (
-            firstOverdue !==
-            secondOverdue
-          ) {
-            return firstOverdue
-              ? -1
-              : 1;
-          }
-
-          return String(
-            first.dueDate || ''
-          ).localeCompare(
-            String(
-              second.dueDate || ''
-            )
-          );
-        }
-
-        return (
-          getStatusLogTime(second) -
-          getStatusLogTime(first)
-        );
-      });
-    },
-    [
-      adminRequestQuery,
-      adminRequestQuickFilter,
-      adminRequestTab,
-      mergedRentalRequests,
-    ]
-  );
-
-  const adminRequestSearchMode = Boolean(
-    String(adminRequestQuery || '').trim()
-  );
-
-  const adminRequestTotalPages = Math.max(
-    1,
-    Math.ceil(
-      (adminRequestSearchMode
-        ? filteredAdminRequests.length
-        : adminRequestTotalCount) / adminRequestPageSize
-    )
-  );
-
-  const safeAdminRequestPage = Math.min(
-    adminRequestPage,
-    adminRequestTotalPages
-  );
-
-  const paginatedAdminRequests = useMemo(
-    () =>
-      adminRequestSearchMode
-        ? filteredAdminRequests.slice(
-            (safeAdminRequestPage - 1) * adminRequestPageSize,
-            safeAdminRequestPage * adminRequestPageSize
-          )
-        : filteredAdminRequests,
-    [
-      adminRequestSearchMode,
-      filteredAdminRequests,
-      safeAdminRequestPage,
-      adminRequestPageSize,
-    ]
-  );
-
-  const selectedAdminRequest = useMemo(
-    () =>
-      selectedAdminRequestId
-        ? mergedRentalRequests.find(
-            (request) =>
-              request.id ===
-              selectedAdminRequestId
-          ) || null
-        : null,
-    [
-      mergedRentalRequests,
-      selectedAdminRequestId,
-    ]
-  );
-
   const adminRequestEditBorrowers = useMemo(
     () =>
       (data.borrowers || []).filter(
@@ -4705,31 +4417,6 @@ function App() {
     hasMatchingAdminFirebaseAuth;
 
 
-  const {
-    adminUserAccountHasNextPage,
-    adminUserAccountPage,
-    adminUserAccountQuery,
-    adminUserAccountSearchMode,
-    adminUserAccountStatusCounts,
-    adminUserAccountStatusFilter,
-    adminUserAccountTotalPages,
-    adminUserAccountsLoadErrorMessage,
-    adminUserAccountsReady,
-    filteredManagedUserAccounts,
-    safeAdminUserAccountPage,
-    setAdminUserAccountPage,
-    setAdminUserAccountQuery,
-    setAdminUserAccountStatusFilter,
-  } = useAdminMemberAccountsController({
-    prerequisitesReady: firebaseAuthReady && currentAuthRoleReady,
-    enabled:
-      isAdminAuthenticated &&
-      view === 'admin' &&
-      adminTab === 'memberAccounts',
-    registeredAdminAccounts,
-    triggerToast,
-  });
-
   useEffect(() => {
     if (!isAdminAuthenticated) {
       publicCatalogMigrationAdminUidRef.current = '';
@@ -4801,52 +4488,75 @@ function App() {
     splitStorageVersion >= SPLIT_STORAGE_VERSION;
 
 
-  const {
-    adminUserAccountSavingUid,
-    clearMemberDirectoryAuditResult,
-    confirmUserAccountStatusChange,
-    memberDirectoryAuditLoading,
-    memberDirectoryAuditResult,
-    openProfileRequiredMembers,
-    resetDirectoryMismatchRestoreAttempt,
-    restoreDirectoryMismatchAccountsAfterPolicyDisabled,
-    runFullMemberDirectoryAudit,
-  } = useAdminMemberActions({
-    adminTab,
-    authenticatedAdminAccount,
-    authenticatedAdminId,
-    borrowers: data.borrowers,
-    isAdminAuthenticated,
-    isSplitStorageReady,
-    settings: data.settings,
-    setAdminTab,
-    setAdminUserAccountQuery,
-    setAdminUserAccountStatusFilter,
-    triggerConfirm,
-    triggerToast,
-    view,
-  });
+  const openAdminMemberAccounts = useCallback(
+    ({ query = '', statusFilter = 'all' } = {}) => {
+      setAdminMemberAccountsNavigationRequest((currentRequest) => ({
+        requestId: Number(currentRequest?.requestId || 0) + 1,
+        query: String(query || ''),
+        statusFilter: String(statusFilter || 'all'),
+      }));
+      setAdminTab('memberAccounts');
+    },
+    []
+  );
 
-  const {
-    cancelSignupPolicyChanges,
-    saveSignupPolicyChanges,
-    setTempAutoApproveNewMembers,
-    setTempRequireRegisteredMemberForSignup,
-    signupPolicyDirty,
-    signupPolicySaving,
-    tempAutoApproveNewMembers,
-    tempRequireRegisteredMemberForSignup,
-  } = useAdminSignupPolicyActions({
-    adminTab,
-    isAdminAuthenticated,
-    isSplitStorageReady,
-    resetDirectoryMismatchRestoreAttempt,
-    restoreDirectoryMismatchAccountsAfterPolicyDisabled,
-    setData,
-    settings: data.settings,
-    triggerToast,
-  });
+  const handleAdminRequestsControllerStateChange = useCallback((nextState) => {
+    adminRequestsControllerRef.current = {
+      getRequestById:
+        typeof nextState?.getRequestById === 'function'
+          ? nextState.getRequestById
+          : null,
+      resetPage:
+        typeof nextState?.resetPage === 'function'
+          ? nextState.resetPage
+          : null,
+      updateRequests:
+        typeof nextState?.updateRequests === 'function'
+          ? nextState.updateRequests
+          : null,
+    };
+  }, []);
 
+  const openAdminRequests = useCallback(
+    ({
+      query = '',
+      quickFilter = ADMIN_REQUEST_QUICK_FILTER.ALL,
+      requestTab = ADMIN_REQUEST_TAB.PENDING,
+      selectedRequestId = '',
+    } = {}) => {
+      setAdminRequestsNavigationRequest((currentRequest) => ({
+        requestId: Number(currentRequest?.requestId || 0) + 1,
+        query: String(query || ''),
+        quickFilter: String(
+          quickFilter || ADMIN_REQUEST_QUICK_FILTER.ALL
+        ),
+        requestTab: String(
+          requestTab || ADMIN_REQUEST_TAB.PENDING
+        ),
+      }));
+      setSelectedAdminRequestId(String(selectedRequestId || ''));
+      setAdminTab('requests');
+    },
+    []
+  );
+
+  const getAdminRequestById = useCallback(
+    (requestId) =>
+      adminRequestsControllerRef.current.getRequestById?.(requestId) || null,
+    []
+  );
+
+  const updateAdminRequestPanelRequests = useCallback((updater) => {
+    adminRequestsControllerRef.current.updateRequests?.(updater);
+  }, []);
+
+  const resetAdminRequestPanelPage = useCallback(() => {
+    adminRequestsControllerRef.current.resetPage?.();
+  }, []);
+
+  const notifyAdminRequestMutation = useCallback(() => {
+    setAdminRequestsMutationVersion((currentVersion) => currentVersion + 1);
+  }, []);
 
   const handleMemberDirectoryDeferredStateChange = useCallback(
     (nextState) => {
@@ -4872,11 +4582,36 @@ function App() {
     []
   );
 
+  const handleSignupPolicyDeferredStateChange = useCallback(
+    (nextState) => {
+      const nextDirty = Boolean(nextState?.dirty);
+
+      signupPolicyDeferredActionsRef.current = {
+        discard:
+          typeof nextState?.discard === 'function'
+            ? nextState.discard
+            : null,
+        save:
+          typeof nextState?.save === 'function'
+            ? nextState.save
+            : null,
+      };
+
+      setSignupPolicyDirty((currentDirty) =>
+        currentDirty === nextDirty
+          ? currentDirty
+          : nextDirty
+      );
+    },
+    []
+  );
+
   const currentAdminDeferredSettingsDirty = Boolean(
     (adminTab === 'extensionSettings' && rentalPolicySettingsDirty) ||
       (adminTab === 'holidaySettings' && holidaySettingsDirty) ||
       (adminTab === 'categories' && assetCategorySettingsDirty) ||
       (adminTab === 'people' && peopleSettingsDirty) ||
+      (adminTab === 'signupPolicy' && signupPolicyDirty) ||
       (adminTab === 'noticePosts' && noticeBoardSettingsDirty) ||
       (adminTab === 'faqPosts' && faqBoardSettingsDirty) ||
       (adminTab === 'footerManagement' && footerConfigDirty)
@@ -5280,33 +5015,6 @@ function App() {
     }
   };
 
-  const adminRequestProgressiveSearchEnabled = Boolean(
-    firebaseAuthReady &&
-      currentAuthRoleReady &&
-      !currentAuthRoleErrorMessage &&
-      firebaseAuthUser?.uid &&
-      isAdminAuthenticated &&
-      view === 'admin' &&
-      adminTab === 'requests' &&
-      String(debouncedAdminRequestQuery || '').trim()
-  );
-
-  useAdminRequestProgressiveSearch({
-    enabled: adminRequestProgressiveSearchEnabled,
-    requestTab: adminRequestTab,
-    quickFilter: adminRequestQuickFilter,
-    searchQuery: debouncedAdminRequestQuery,
-    serverPage: adminRequestServerPage,
-    pageSize: adminRequestPageSize,
-    referenceDate: today(),
-    setRequests: setRentalRequests,
-    setHasNextPage: setAdminRequestHasNextPage,
-    setTotalCount: setAdminRequestTotalCount,
-    setLoadErrorMessage: setRentalRequestsLoadErrorMessage,
-    setReady: setRentalRequestsReady,
-    triggerToast,
-  });
-
   useEffect(() => {
     if (!firebaseAuthReady || !currentAuthRoleReady) {
       setRentalRequestsReady(false);
@@ -5322,14 +5030,14 @@ function App() {
       ].includes(userProfile?.status)
     );
 
-    if (!isAdminAuthenticated && !canReadOwnRentalRequests) {
+    if (isAdminAuthenticated) {
       setRentalRequests([]);
       setRentalRequestsLoadErrorMessage('');
       setRentalRequestsReady(true);
       return undefined;
     }
 
-    if (!firebaseAuthUser || currentAuthRoleErrorMessage) {
+    if (!canReadOwnRentalRequests) {
       setRentalRequests([]);
       setRentalRequestsLoadErrorMessage('');
       setRentalRequestsReady(true);
@@ -5339,333 +5047,47 @@ function App() {
     setRentalRequestsReady(false);
     setRentalRequestsLoadErrorMessage('');
 
-    if (!isAdminAuthenticated) {
-      const ownRequestSource = firestoreQuery(
-        RENTAL_REQUESTS_COLLECTION_REF,
-        where('requesterUid', '==', firebaseAuthUser.uid),
-        where('status', 'in', [
-          STATUS.REQUESTED,
-          STATUS.ON_HOLD,
-          STATUS.APPROVED,
-        ])
-      );
-
-      const unsubscribe = onSnapshot(
-        ownRequestSource,
-        (snapshot) => {
-          setRentalRequests(
-            snapshot.docs.map((requestDoc) => ({
-              ...requestDoc.data(),
-              id: requestDoc.id,
-            }))
-          );
-          setRentalRequestsLoadErrorMessage('');
-          setRentalRequestsReady(true);
-        },
-        (error) => {
-          const message =
-            '나의 대여신청 내역을 불러오지 못했습니다. Firestore Rules의 rentalRequests 본인 조회 권한을 확인해 주세요.';
-          console.error('Own rental requests sync error:', error);
-          setRentalRequests([]);
-          setRentalRequestsLoadErrorMessage(message);
-          setRentalRequestsReady(true);
-          triggerToast(message, 'error');
-        }
-      );
-
-      return unsubscribe;
-    }
-
-    if (view !== 'admin') {
-      setRentalRequests([]);
-      setRentalRequestsReady(true);
-      return undefined;
-    }
-
-    if (adminTab === 'dashboard') {
-      setRentalRequests([]);
-      setRentalRequestsLoadErrorMessage('');
-      setRentalRequestsReady(true);
-      return undefined;
-    }
-
-    if (adminTab !== 'requests') {
-      adminRequestCursorKeyRef.current = '';
-      adminRequestCursorByPageRef.current = new Map([[1, null]]);
-      setRentalRequests([]);
-      setRentalRequestsReady(true);
-      setAdminRequestHasNextPage(false);
-      setAdminRequestTotalCount(0);
-      return undefined;
-    }
-
-    const normalizedSearch = String(debouncedAdminRequestQuery || '')
-      .trim()
-      .toLowerCase();
-    const searchMode = Boolean(normalizedSearch);
-    const baseConstraints = getAdminRequestServerConstraints({
-      requestTab: adminRequestTab,
-      quickFilter: adminRequestQuickFilter,
-      referenceDate: today(),
-    });
-
-    if (searchMode) return undefined;
-
-    const cursorKey = [
-      adminRequestTab,
-      adminRequestQuickFilter,
-      adminRequestPageSize,
-      'browse',
-    ].join('|');
-    const cursorKeyChanged =
-      adminRequestCursorKeyRef.current !== cursorKey;
-
-    if (cursorKeyChanged) {
-      adminRequestCursorKeyRef.current = cursorKey;
-      adminRequestCursorByPageRef.current = new Map([[1, null]]);
-    }
-
-    const pageCursor = adminRequestCursorByPageRef.current.get(
-      adminRequestServerPage
-    );
-
-    if (adminRequestServerPage > 1 && !pageCursor) {
-      setAdminRequestPage(1);
-      return undefined;
-    }
-
-    const requestSource = firestoreQuery(
+    const ownRequestSource = firestoreQuery(
       RENTAL_REQUESTS_COLLECTION_REF,
-      ...baseConstraints,
-      ...(pageCursor ? [startAfter(pageCursor)] : []),
-      firestoreLimit(adminRequestPageSize + 1)
+      where('requesterUid', '==', firebaseAuthUser.uid),
+      where('status', 'in', [
+        STATUS.REQUESTED,
+        STATUS.ON_HOLD,
+        STATUS.APPROVED,
+      ])
     );
 
     const unsubscribe = onSnapshot(
-      requestSource,
+      ownRequestSource,
       (snapshot) => {
-        const sourceDocs = snapshot.docs;
-        const visibleDocs = sourceDocs.slice(0, adminRequestPageSize);
-        const hasNext = sourceDocs.length > adminRequestPageSize;
-
-        if (visibleDocs.length > 0) {
-          adminRequestCursorByPageRef.current.set(
-            adminRequestServerPage + 1,
-            visibleDocs[visibleDocs.length - 1]
-          );
-        }
-
         setRentalRequests(
-          visibleDocs.map((requestDoc) => ({
+          snapshot.docs.map((requestDoc) => ({
             ...requestDoc.data(),
             id: requestDoc.id,
           }))
         );
-        setAdminRequestHasNextPage(hasNext);
         setRentalRequestsLoadErrorMessage('');
         setRentalRequestsReady(true);
       },
       (error) => {
         const message =
-          '대여신청 목록을 불러오지 못했습니다. Firestore Rules와 필요한 인덱스를 확인해 주세요.';
-        console.error('Paged rental requests sync error:', error);
+          '나의 대여신청 내역을 불러오지 못했습니다. Firestore Rules의 rentalRequests 본인 조회 권한을 확인해 주세요.';
+        console.error('Own rental requests sync error:', error);
         setRentalRequests([]);
-        setAdminRequestHasNextPage(false);
         setRentalRequestsLoadErrorMessage(message);
         setRentalRequestsReady(true);
         triggerToast(message, 'error');
       }
     );
 
-    if (
-      cursorKeyChanged &&
-      adminRequestQuickFilter !== ADMIN_REQUEST_QUICK_FILTER.ALL
-    ) {
-      void getCountFromServer(
-        firestoreQuery(
-          RENTAL_REQUESTS_COLLECTION_REF,
-          ...getAdminRequestCountConstraints({
-            requestTab: adminRequestTab,
-            quickFilter: adminRequestQuickFilter,
-            referenceDate: today(),
-          })
-        )
-      )
-        .then((countSnapshot) => {
-          setAdminRequestTotalCount(countSnapshot.data().count);
-        })
-        .catch((error) => {
-          console.error('Rental request count error:', error);
-        });
-    }
-
     return unsubscribe;
   }, [
-    firebaseAuthReady,
-    currentAuthRoleReady,
     currentAuthRoleErrorMessage,
+    currentAuthRoleReady,
+    firebaseAuthReady,
     firebaseAuthUser?.uid,
+    isAdminAuthenticated,
     userProfile?.status,
-    isAdminAuthenticated,
-    view,
-    adminTab,
-    adminRequestTab,
-    adminRequestQuickFilter,
-    debouncedAdminRequestQuery,
-    adminRequestServerPage,
-    adminRequestPageSize,
-  ]);
-
-  useEffect(() => {
-    const shouldLoadSelectedRequest =
-      isAdminAuthenticated &&
-      view === 'admin' &&
-      adminTab === 'requests' &&
-      Boolean(selectedAdminRequestId) &&
-      !(rentalRequests || []).some(
-        (request) => request.id === selectedAdminRequestId
-      );
-
-    if (!shouldLoadSelectedRequest) return;
-
-    let cancelled = false;
-
-    void getDoc(
-      doc(RENTAL_REQUESTS_COLLECTION_REF, selectedAdminRequestId)
-    )
-      .then((snapshot) => {
-        if (cancelled || !snapshot.exists()) return;
-        setRentalRequests((currentRequests) => {
-          if (
-            currentRequests.some(
-              (request) => request.id === selectedAdminRequestId
-            )
-          ) {
-            return currentRequests;
-          }
-
-          return [
-            ...currentRequests,
-            {
-              ...snapshot.data(),
-              id: snapshot.id,
-            },
-          ];
-        });
-      })
-      .catch((error) => {
-        console.error('Selected rental request read error:', error);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    isAdminAuthenticated,
-    view,
-    adminTab,
-    selectedAdminRequestId,
-    rentalRequests,
-  ]);
-
-  useEffect(() => {
-    setAdminRequestPage(1);
-    adminRequestCursorByPageRef.current = new Map([[1, null]]);
-  }, [
-    adminRequestTab,
-    adminRequestQuickFilter,
-    adminRequestQuery,
-    adminRequestPageSize,
-  ]);
-
-  useEffect(() => {
-    const shouldLoadRequestCounts =
-      isAdminAuthenticated &&
-      view === 'admin' &&
-      adminTab === 'requests';
-
-    if (!shouldLoadRequestCounts) return;
-
-    let cancelled = false;
-
-    void Promise.all([
-      [
-        ADMIN_REQUEST_TAB.PENDING,
-        getCountFromServer(
-          firestoreQuery(
-            RENTAL_REQUESTS_COLLECTION_REF,
-            where('status', 'in', [STATUS.REQUESTED, STATUS.ON_HOLD])
-          )
-        ),
-      ],
-      [
-        ADMIN_REQUEST_TAB.RENTAL,
-        getCountFromServer(
-          firestoreQuery(
-            RENTAL_REQUESTS_COLLECTION_REF,
-            where('status', '==', STATUS.APPROVED)
-          )
-        ),
-      ],
-      [
-        ADMIN_REQUEST_TAB.CLOSED,
-        getCountFromServer(
-          firestoreQuery(
-            RENTAL_REQUESTS_COLLECTION_REF,
-            where('status', 'in', [STATUS.DENIED, STATUS.USER_CANCELLED])
-          )
-        ),
-      ],
-      [
-        ADMIN_REQUEST_TAB.RETURNED,
-        getCountFromServer(
-          firestoreQuery(
-            RENTAL_REQUESTS_COLLECTION_REF,
-            where('status', '==', STATUS.RETURNED)
-          )
-        ),
-      ],
-    ])
-      .then((entries) => {
-        if (cancelled) return;
-        setAdminRequestTabCountsRemote(
-          Object.fromEntries(
-            entries.map(([key, countSnapshot]) => [
-              key,
-              countSnapshot.data().count,
-            ])
-          )
-        );
-      })
-      .catch((error) => {
-        console.error('Rental request tab counts error:', error);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isAdminAuthenticated, view, adminTab]);
-
-  useEffect(() => {
-    if (
-      isAdminAuthenticated &&
-      view === 'admin' &&
-      adminTab === 'requests' &&
-      adminRequestQuickFilter === ADMIN_REQUEST_QUICK_FILTER.ALL &&
-      !String(debouncedAdminRequestQuery || '').trim()
-    ) {
-      setAdminRequestTotalCount(
-        Number(adminRequestTabCountsRemote[adminRequestTab]) || 0
-      );
-    }
-  }, [
-    isAdminAuthenticated,
-    view,
-    adminTab,
-    adminRequestTab,
-    adminRequestQuickFilter,
-    debouncedAdminRequestQuery,
-    adminRequestTabCountsRemote,
   ]);
 
   useEffect(() => {
@@ -10287,10 +9709,22 @@ function App() {
     }
 
     if (tab === 'signupPolicy' && signupPolicyDirty) {
+      const {
+        discard,
+        save,
+      } = signupPolicyDeferredActionsRef.current;
+
+      if (
+        typeof discard !== 'function' ||
+        typeof save !== 'function'
+      ) {
+        return null;
+      }
+
       return {
         label: '회원가입 정책',
-        discard: cancelSignupPolicyChanges,
-        save: saveSignupPolicyChanges,
+        discard,
+        save,
       };
     }
 
@@ -12571,9 +12005,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     }
 
     const currentRequest =
-      mergedRentalRequests.find(
-        (request) => request.id === id
-      );
+      getAdminRequestById(id);
 
     if (!currentRequest) {
       triggerToast(
@@ -13259,7 +12691,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         );
       }
 
-      setRentalRequests((prev) =>
+      updateAdminRequestPanelRequests((prev) =>
         (prev || []).map((request) =>
           request.id === id
             ? {
@@ -13303,6 +12735,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             ),
         }));
       }
+
+      notifyAdminRequestMutation();
 
       triggerToast(
         `${getUserRequestActionLabel(
@@ -15078,7 +14512,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     if (
       !isAdminAuthenticated ||
       !request?.id ||
-      !rentalRequestIdSet.has(request.id)
+      !getAdminRequestById(request.id)
     ) {
       triggerToast(
         '관리자 인증과 정식 신청 문서를 확인해 주세요.',
@@ -15120,14 +14554,10 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       '';
 
     const currentRequest =
-      mergedRentalRequests.find(
-        (request) =>
-          request.id === requestId
-      );
+      getAdminRequestById(requestId);
 
     if (
-      !currentRequest ||
-      !rentalRequestIdSet.has(requestId)
+      !currentRequest
     ) {
       triggerToast(
         '수정할 정식 대여 신청 문서를 찾을 수 없습니다.',
@@ -15501,7 +14931,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         );
       }
 
-      setRentalRequests((prev) =>
+      updateAdminRequestPanelRequests((prev) =>
         (prev || []).map(
           (request) =>
             request.id === requestId
@@ -15543,6 +14973,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       setAdminRequestEditForm(
         createDefaultAdminRequestEditForm()
       );
+
+      notifyAdminRequestMutation();
 
       triggerToast(
         adminDueDateAdjusted
@@ -15613,7 +15045,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     if (
       !isAdminAuthenticated ||
       !request?.id ||
-      !rentalRequestIdSet.has(request.id)
+      !getAdminRequestById(request.id)
     ) {
       triggerToast(
         '관리자 인증과 정식 신청 문서를 확인해 주세요.',
@@ -15667,10 +15099,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       '';
 
     const currentRequest =
-      mergedRentalRequests.find(
-        (request) =>
-          request.id === requestId
-      );
+      getAdminRequestById(requestId);
 
     const nextStatus =
       adminRequestRestoreTarget;
@@ -15681,8 +15110,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       ).trim();
 
     if (
-      !currentRequest ||
-      !rentalRequestIdSet.has(requestId)
+      !currentRequest
     ) {
       triggerToast(
         '복구할 정식 대여 신청 문서를 찾을 수 없습니다.',
@@ -15984,7 +15412,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         );
       }
 
-      setRentalRequests((prev) =>
+      updateAdminRequestPanelRequests((prev) =>
         (prev || []).map(
           (request) =>
             request.id === requestId
@@ -16024,7 +15452,9 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       setAdminRequestRestoreTarget('');
       setAdminRequestRestoreReason('');
       setSelectedAdminRequestId('');
-      setAdminRequestPage(1);
+      resetAdminRequestPanelPage();
+
+      notifyAdminRequestMutation();
 
       triggerToast(
         `상태를 [${nextStatus}]로 복구했습니다.`,
@@ -16119,9 +15549,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     }
 
     const currentRequest =
-      mergedRentalRequests.find(
-        (request) => request.id === id
-      );
+      getAdminRequestById(id);
 
     if (!currentRequest) {
       triggerToast(
@@ -16486,7 +15914,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         );
       }
 
-      setRentalRequests((prev) => {
+      updateAdminRequestPanelRequests((prev) => {
         const requestExists =
           (prev || []).some(
             (request) =>
@@ -16534,7 +15962,9 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       }));
 
       setSelectedAdminRequestId('');
-      setAdminRequestPage(1);
+      resetAdminRequestPanelPage();
+
+      notifyAdminRequestMutation();
 
       triggerToast(
         `상태가 [${nextDisplayStatus}]로 업데이트 되었습니다.`,
@@ -16612,9 +16042,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
   };
 
   const updateRequestMemo = (id, memo) => {
-    const currentRequest = mergedRentalRequests.find(
-      (request) => request.id === id
-    );
+    const currentRequest = getAdminRequestById(id);
 
     if (!currentRequest) return;
 
@@ -16623,7 +16051,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       adminMemo: memo,
     };
 
-    setRentalRequests((prev) => {
+    updateAdminRequestPanelRequests((prev) => {
       const requestExists = (prev || []).some(
         (request) => request.id === id
       );
@@ -16639,9 +16067,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
   };
 
   const saveRequestMemo = async (id, memo) => {
-    const currentRequest = mergedRentalRequests.find(
-      (request) => request.id === id
-    );
+    const currentRequest = getAdminRequestById(id);
 
     if (!currentRequest) {
       triggerToast(
@@ -16748,7 +16174,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         return;
       }
 
-      setRentalRequests((prev) =>
+      updateAdminRequestPanelRequests((prev) =>
         (prev || []).map((request) =>
           request.id === id
             ? {
@@ -17900,27 +17326,12 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     adminRequestEditDialog,
     adminRequestEditForm,
     adminRequestEditSaving,
-    adminRequestPageSize,
-    adminRequestQuery,
-    adminRequestQuickFilter,
     adminRequestRestoreDialog,
     adminRequestRestoreReason,
     adminRequestRestoreSaving,
     adminRequestRestoreTarget,
-    adminRequestTab,
-    adminRequestTabCounts,
-    adminRequestTotalPages,
     adminSelectedAssetCategory,
     adminTab,
-    adminUserAccountHasNextPage,
-    adminUserAccountQuery,
-    adminUserAccountSavingUid,
-    adminUserAccountSearchMode,
-    adminUserAccountTotalPages,
-    adminUserAccountStatusCounts,
-    adminUserAccountStatusFilter,
-    adminUserAccountsLoadErrorMessage,
-    adminUserAccountsReady,
     adminUserActionSavingRequestId,
     applyEditTempAssetCategory,
     authenticateAdmin,
@@ -17930,7 +17341,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     availableFilterLabel,
     cancelEditAdminAccount,
     cancelTempAssetCategoryChanges,
-    cancelSignupPolicyChanges,
     cancelWithdrawal,
     cancelUserSignup,
     categoryFilteredFaqPosts,
@@ -17944,7 +17354,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     confirmDeleteFaqPost,
     confirmDeleteNoticePost,
     confirmModal,
-    confirmUserAccountStatusChange,
     createDefaultAdminAccountForm,
     createLaptop,
     currentAuthAdminAccount,
@@ -18003,9 +17412,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     faqQuery,
     faqSearchWithinCategory,
     faqTotalPages,
-    filteredAdminRequests,
     filteredLaptops,
-    filteredManagedUserAccounts,
     finalizeSplitStorageMigration,
     firebaseAuthReady,
     firebaseAuthUser,
@@ -18045,6 +17452,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     handleAddLaptopClick,
     hasFirebaseAuthSession,
     handleAdminTabChange,
+    openAdminMemberAccounts,
+    openAdminRequests,
     holidayImportConflictModal,
     holidayImportLoading,
     holidayImportYear,
@@ -18062,17 +17471,28 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     logoutAdmin,
     logoutUser,
     memberDirectoryAudit,
-    memberDirectoryAuditLoading,
-    memberDirectoryAuditResult,
+    adminMemberAccountsNavigationRequest,
+    adminRequestsMutationVersion,
+    adminRequestsNavigationRequest,
+    adminRequestsPrerequisitesReady:
+      firebaseAuthReady &&
+      currentAuthRoleReady &&
+      !currentAuthRoleErrorMessage &&
+      Boolean(firebaseAuthUser?.uid),
+    onAdminRequestsControllerStateChange:
+      handleAdminRequestsControllerStateChange,
+    memberAccountsPrerequisitesReady:
+      firebaseAuthReady && currentAuthRoleReady,
     memberDirectoryPolicyEnabled,
     memberIdentityClaimsReady,
-    clearMemberDirectoryAuditResult,
     memberDirectoryBorrowers: data.borrowers,
     memberDirectorySettings: data.settings,
     memberDirectoryTeams: data.teams,
     onMemberDirectoryDeferredStateChange:
       handleMemberDirectoryDeferredStateChange,
-    mergedRentalRequests,
+    onSignupPolicyDeferredStateChange:
+      handleSignupPolicyDeferredStateChange,
+    signupPolicySettings: data.settings,
     motion,
     moveTempAssetCategory,
     newAssetCategory,
@@ -18100,14 +17520,12 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     openFaqPostDialog,
     openNoticePost,
     openNoticePostDialog,
-    openProfileRequiredMembers,
     openWithdrawalDialog,
     openUserActionDialog,
     orphanedRentalAvailabilityRequests,
     paginatedAdminAccounts,
     paginatedAdminFaqPosts,
     paginatedAdminNoticePosts,
-    paginatedAdminRequests,
     paginatedNoticePosts,
     passwordResetEmail,
     passwordResetLoading,
@@ -18123,21 +17541,16 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     rentalDeviceSectionDescription,
     rentalDeviceSectionTitle,
     rentalPeriodFields,
-    rentalRequestIdSet,
     rentalRequestLogsByRequestId,
     rentalRequestLogsLoadErrorMessage,
     rentalRequestLogsReady,
-    rentalRequestsLoadErrorMessage,
-    rentalRequestsReady,
     rentalStartAdjustmentInfo,
     requestSubmitLoading,
     restoreAdminRequestStatus,
     reviewUserActionRequest,
-    runFullMemberDirectoryAudit,
     safeAdminAccountPage,
     safeAdminFaqPage,
     safeAdminNoticePage,
-    safeAdminRequestPage,
     safeFaqPage,
     safeNoticePage,
     saveAdminAccountEdit,
@@ -18153,10 +17566,9 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     saveRequestMemo,
     saveHolidaySettings,
     saveSystemSettings,
-    saveSignupPolicyChanges,
     saveTempAssetCategoryChanges,
-    selectedAdminRequest,
     selectedAssetCategory,
+    selectedAdminRequestId,
     selectedLaptop,
     selectedLaptopAvailability,
     selectedLaptopId,
@@ -18176,19 +17588,10 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     setAdminNoticePage,
     setAdminNoticeQuery,
     setAdminRequestEditForm,
-    setAdminRequestPage,
-    setAdminRequestPageSize,
-    setAdminRequestQuickFilter,
-    setAdminRequestQuery,
     setAdminRequestRestoreReason,
     setAdminRequestRestoreTarget,
-    setAdminRequestTab,
     setAdminSelectedAssetCategory,
     setAdminTab,
-    safeAdminUserAccountPage,
-    setAdminUserAccountPage,
-    setAdminUserAccountQuery,
-    setAdminUserAccountStatusFilter,
     setAvailabilityFilter,
     setConfirmModal,
     setDraggingAssetCategoryIndex,
@@ -18225,8 +17628,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     setSelectedAssetCategory,
     setSelectedLaptopId,
     setShowUploadPanel,
-    setTempAutoApproveNewMembers,
-    setTempRequireRegisteredMemberForSignup,
     setTempSettings,
     setToast,
     setUserActionForm,
@@ -18238,8 +17639,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     shouldShowAdminLoadingPage,
     shouldShowAdminLoginPage,
     showUploadPanel,
-    signupPolicyDirty,
-    signupPolicySaving,
     splitRentalAssets,
     splitStorageFinalizeLoading,
     startEditAdminAccount,
@@ -18252,12 +17651,10 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     submitUserActionRequest,
     submitUserAuthForm,
     tempAllowNonOverlappingSameAssetRequests,
-    tempAutoApproveNewMembers,
     tempAssetCategories,
     tempBusinessDayAdjustmentEnabled,
     tempHolidayList,
     discardHolidayChanges,
-    tempRequireRegisteredMemberForSignup,
     tempSettings,
     toast,
     stats,

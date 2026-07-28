@@ -34,7 +34,6 @@ export const useDashboardSummary = ({
   currentAuthAdminAccountId,
   view,
   adminTab,
-  setAdminRequestTabCountsRemote,
   triggerToast,
 }) => {
   const [dashboardSummary, setDashboardSummary] = useState(null);
@@ -74,7 +73,6 @@ export const useDashboardSummary = ({
 
         setDashboardSummary(nextSummary);
         setDashboardSummaryReady(true);
-        setAdminRequestTabCountsRemote(nextSummary.requestTabCounts);
 
         if (showToast) {
           triggerToastRef.current?.(
@@ -92,11 +90,8 @@ export const useDashboardSummary = ({
         refreshInProgressRef.current = false;
         setDashboardSummaryRefreshing(false);
       }
-    }, [
-      authenticatedAdminId,
-      currentAuthAdminAccountId,
-      setAdminRequestTabCountsRemote,
-    ]
+    },
+    [authenticatedAdminId, currentAuthAdminAccountId]
   );
 
   const shouldSubscribeDashboardSummary =
@@ -147,7 +142,6 @@ export const useDashboardSummary = ({
             setDashboardSummary(nextSummary);
             setDashboardSummaryReady(true);
             setDashboardSummaryLoadErrorMessage('');
-            setAdminRequestTabCountsRemote(nextSummary.requestTabCounts);
           },
           (error) => {
             const message =
@@ -175,11 +169,7 @@ export const useDashboardSummary = ({
       cancelled = true;
       unsubscribe?.();
     };
-  }, [
-    shouldSubscribeDashboardSummary,
-    refreshDashboardSummary,
-    setAdminRequestTabCountsRemote,
-  ]);
+  }, [shouldSubscribeDashboardSummary, refreshDashboardSummary]);
 
   useEffect(() => {
     const previousAdminTab = previousAdminTabRef.current;

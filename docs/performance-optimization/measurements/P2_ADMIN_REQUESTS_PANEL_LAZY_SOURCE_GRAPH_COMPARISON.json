@@ -1,0 +1,323 @@
+{
+  "task": "P2_ADMIN_REQUESTS_PANEL_LAZY_FEATURE",
+  "before": {
+    "generatedAt": "2026-07-28T13:43:54.273Z",
+    "initialModuleCount": 34,
+    "initialSourceBytes": 769652,
+    "files": [
+      {
+        "file": "src/App.jsx",
+        "bytes": 541803
+      },
+      {
+        "file": "src/user/UserHomePanel.jsx",
+        "bytes": 24413
+      },
+      {
+        "file": "src/utils/richTextCore.js",
+        "bytes": 22251
+      },
+      {
+        "file": "src/domain/rentalPolicy.js",
+        "bytes": 21872
+      },
+      {
+        "file": "src/components/CommonUI.jsx",
+        "bytes": 18375
+      },
+      {
+        "file": "src/context/appContextSlices.js",
+        "bytes": 18282
+      },
+      {
+        "file": "src/index.css",
+        "bytes": 11870
+      },
+      {
+        "file": "src/utils/systemSettings.js",
+        "bytes": 11743
+      },
+      {
+        "file": "src/utils/overduePolicy.js",
+        "bytes": 8697
+      },
+      {
+        "file": "src/features/members/memberAccountIndexService.js",
+        "bytes": 7375
+      },
+      {
+        "file": "src/hooks/useDashboardSummary.js",
+        "bytes": 7332
+      },
+      {
+        "file": "src/routing/appRoutes.js",
+        "bytes": 6053
+      },
+      {
+        "file": "src/performance/DevRenderProfiler.jsx",
+        "bytes": 6026
+      },
+      {
+        "file": "src/components/RichTextContent.jsx",
+        "bytes": 5222
+      },
+      {
+        "file": "src/user/UserFooter.jsx",
+        "bytes": 4950
+      },
+      {
+        "file": "src/utils/memberPolicy.js",
+        "bytes": 4673
+      },
+      {
+        "file": "src/features/boards/useBoardProgressiveSearch.js",
+        "bytes": 4622
+      },
+      {
+        "file": "src/user/UserWorkspace.jsx",
+        "bytes": 4350
+      },
+      {
+        "file": "src/firebase.js",
+        "bytes": 4085
+      },
+      {
+        "file": "src/services/adminRequestQuery.js",
+        "bytes": 4058
+      },
+      {
+        "file": "src/constants/appConstants.js",
+        "bytes": 3601
+      },
+      {
+        "file": "src/features/requests/useAdminRequestProgressiveSearch.js",
+        "bytes": 3460
+      },
+      {
+        "file": "src/services/publicAssetCatalog.js",
+        "bytes": 3257
+      },
+      {
+        "file": "src/hooks/useStableContextGroups.js",
+        "bytes": 3205
+      },
+      {
+        "file": "src/utils/appUtils.js",
+        "bytes": 3149
+      },
+      {
+        "file": "src/services/progressiveFirestoreSearch.js",
+        "bytes": 2997
+      },
+      {
+        "file": "src/features/members/memberAccountPolicy.js",
+        "bytes": 2442
+      },
+      {
+        "file": "src/main.jsx",
+        "bytes": 2370
+      },
+      {
+        "file": "src/utils/popupUtils.js",
+        "bytes": 1990
+      },
+      {
+        "file": "src/services/publicAssetCatalogWriteThroughLoader.js",
+        "bytes": 1964
+      },
+      {
+        "file": "src/components/RentalStatusBoard.jsx",
+        "bytes": 1843
+      },
+      {
+        "file": "src/config/firestoreCachePolicy.js",
+        "bytes": 641
+      },
+      {
+        "file": "src/hooks/useDebouncedValue.js",
+        "bytes": 385
+      },
+      {
+        "file": "src/constants/memberConstants.js",
+        "bytes": 296
+      }
+    ],
+    "dynamicEntries": [
+      "src/admin/AdminWorkspace.jsx",
+      "src/dialogs/AppDialogs.jsx",
+      "src/performance/DevPerformancePanel.jsx",
+      "src/services/dashboardSummaryService.js",
+      "src/services/publicAssetCatalogWriteThrough.js",
+      "src/user/UserAccountStatusPanel.jsx",
+      "src/user/UserAuthPanel.jsx",
+      "src/user/UserBoardPanel.jsx",
+      "src/user/UserFooterPagePanel.jsx",
+      "src/user/UserMyPagePanel.jsx",
+      "src/user/UserPopupLayer.jsx",
+      "src/user/UserRentalPanel.jsx",
+      "src/user/UserRequestHistoryPanel.jsx"
+    ]
+  },
+  "after": {
+    "generatedAt": "2026-07-28T13:43:54.306Z",
+    "initialModuleCount": 32,
+    "initialSourceBytes": 746259,
+    "files": [
+      {
+        "file": "src/App.jsx",
+        "bytes": 526542
+      },
+      {
+        "file": "src/user/UserHomePanel.jsx",
+        "bytes": 24413
+      },
+      {
+        "file": "src/utils/richTextCore.js",
+        "bytes": 22251
+      },
+      {
+        "file": "src/domain/rentalPolicy.js",
+        "bytes": 21872
+      },
+      {
+        "file": "src/components/CommonUI.jsx",
+        "bytes": 18375
+      },
+      {
+        "file": "src/context/appContextSlices.js",
+        "bytes": 17948
+      },
+      {
+        "file": "src/index.css",
+        "bytes": 11870
+      },
+      {
+        "file": "src/utils/systemSettings.js",
+        "bytes": 11743
+      },
+      {
+        "file": "src/utils/overduePolicy.js",
+        "bytes": 8697
+      },
+      {
+        "file": "src/features/members/memberAccountIndexService.js",
+        "bytes": 7375
+      },
+      {
+        "file": "src/hooks/useDashboardSummary.js",
+        "bytes": 7052
+      },
+      {
+        "file": "src/routing/appRoutes.js",
+        "bytes": 6053
+      },
+      {
+        "file": "src/performance/DevRenderProfiler.jsx",
+        "bytes": 6026
+      },
+      {
+        "file": "src/components/RichTextContent.jsx",
+        "bytes": 5222
+      },
+      {
+        "file": "src/user/UserFooter.jsx",
+        "bytes": 4950
+      },
+      {
+        "file": "src/utils/memberPolicy.js",
+        "bytes": 4673
+      },
+      {
+        "file": "src/features/boards/useBoardProgressiveSearch.js",
+        "bytes": 4622
+      },
+      {
+        "file": "src/user/UserWorkspace.jsx",
+        "bytes": 4350
+      },
+      {
+        "file": "src/firebase.js",
+        "bytes": 4085
+      },
+      {
+        "file": "src/constants/appConstants.js",
+        "bytes": 3601
+      },
+      {
+        "file": "src/services/publicAssetCatalog.js",
+        "bytes": 3257
+      },
+      {
+        "file": "src/hooks/useStableContextGroups.js",
+        "bytes": 3205
+      },
+      {
+        "file": "src/utils/appUtils.js",
+        "bytes": 3149
+      },
+      {
+        "file": "src/services/progressiveFirestoreSearch.js",
+        "bytes": 2997
+      },
+      {
+        "file": "src/features/members/memberAccountPolicy.js",
+        "bytes": 2442
+      },
+      {
+        "file": "src/main.jsx",
+        "bytes": 2370
+      },
+      {
+        "file": "src/utils/popupUtils.js",
+        "bytes": 1990
+      },
+      {
+        "file": "src/services/publicAssetCatalogWriteThroughLoader.js",
+        "bytes": 1964
+      },
+      {
+        "file": "src/components/RentalStatusBoard.jsx",
+        "bytes": 1843
+      },
+      {
+        "file": "src/config/firestoreCachePolicy.js",
+        "bytes": 641
+      },
+      {
+        "file": "src/hooks/useDebouncedValue.js",
+        "bytes": 385
+      },
+      {
+        "file": "src/constants/memberConstants.js",
+        "bytes": 296
+      }
+    ],
+    "dynamicEntries": [
+      "src/admin/AdminWorkspace.jsx",
+      "src/dialogs/AppDialogs.jsx",
+      "src/performance/DevPerformancePanel.jsx",
+      "src/services/dashboardSummaryService.js",
+      "src/services/publicAssetCatalogWriteThrough.js",
+      "src/user/UserAccountStatusPanel.jsx",
+      "src/user/UserAuthPanel.jsx",
+      "src/user/UserBoardPanel.jsx",
+      "src/user/UserFooterPagePanel.jsx",
+      "src/user/UserMyPagePanel.jsx",
+      "src/user/UserPopupLayer.jsx",
+      "src/user/UserRentalPanel.jsx",
+      "src/user/UserRequestHistoryPanel.jsx"
+    ]
+  },
+  "delta": {
+    "initialModuleCount": -2,
+    "initialSourceBytes": -23393,
+    "initialSourcePercent": -3.0394,
+    "appSourceBytes": -15261,
+    "dynamicEntryCount": 0
+  },
+  "removedFromInitialGraph": [
+    "src/features/requests/useAdminRequestProgressiveSearch.js",
+    "src/services/adminRequestQuery.js"
+  ],
+  "addedToInitialGraph": []
+}

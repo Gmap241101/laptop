@@ -1,0 +1,92 @@
+P2 관리자 신청 목록 컨트롤러 패널 지연 로딩 검증 보고서
+================================================================
+
+1. 검증 대상
+- 기준 패키지: rental-system-p2-member-accounts-panel-lazy-feature-deployment-package.zip
+- 작업 패키지: rental-system-p2-admin-requests-panel-lazy-feature-deployment-package.zip
+- 주요 신규 파일: src/features/requests/useAdminRequestsController.js
+
+2. 소스 정적 검사
+- React Hook import 감사: PASS
+- React 소스 검사: 81개
+- JS/JSX/MJS TypeScript 변환 검사: 86개
+- 변환 오류: 0건
+- 상대 import 검사: 173개
+- 누락 상대 import: 0건
+- 미정의 식별자 TS2304/TS2552: 0건
+
+3. Firestore 엄격 감사
+- 결과: PASS
+- 전체 호출 위치: 123개
+- onSnapshot: 32개
+- getDocs: 48개
+- getDoc: 23개
+- getCountFromServer: 20개
+- 승인 위험 항목: 51개
+- 미승인 경고: 0개
+- 미승인 오류: 0개
+
+4. 패널 컨텍스트 계약
+- AdminRequestsPanel: 정의 44개 / 실제 사용 44개
+- AdminDashboardPanel: 정의 22개 / 실제 사용 22개
+- 누락 키: 0개
+- 과잉 키: 0개
+- uiContext 누락: 0개
+
+5. 화면 문구 보존
+- 수정 전 한국어 고유 문자열: 1,352개
+- 수정 후 한국어 고유 문자열: 1,352개
+- 삭제: 0개
+- 추가: 0개
+
+6. 초기 정적 소스 그래프
+- 수정 전 초기 정적 모듈: 34개
+- 수정 후 초기 정적 모듈: 32개
+- 변화: -2개
+- 수정 전 초기 정적 소스: 769,652 bytes
+- 수정 후 초기 정적 소스: 746,259 bytes
+- 변화: -23,393 bytes (-3.04%)
+- 수정 전 App.jsx: 541,803 bytes / 18,783줄
+- 수정 후 App.jsx: 526,542 bytes / 18,217줄
+- App.jsx 변화: -15,261 bytes / -566줄
+- 최상위 동적 진입점: 13개 유지
+
+7. 기능 구조 확인
+- 일반 사용자 활성 신청 구독과 관리자 전체 신청 목록 상태 분리: PASS
+- 관리자 신청 일반 목록 onSnapshot 유지: PASS
+- 검색 모드의 순차 getDocs 검색 유지: PASS
+- 신청 탭/빠른 필터/검색어/페이지 크기 세션 유지: PASS
+- 선택 신청 단건 보충 조회 유지: PASS
+- 대시보드 신청 탭/상세 이동 브리지: PASS
+- 신청 승인·수정·복구 후 패널 갱신 브리지: PASS
+- 신청 처리 이력 구독 연결 유지: PASS
+
+8. 프로덕션 빌드
+- npm run prebuild: PASS
+- React Hook 감사: PASS
+- Firestore 엄격 감사: PASS
+- Vite 번들: 실행 환경에 vite 실행 파일이 없어 미완료
+- 종료 메시지: sh: 1: vite: not found
+- build 종료 코드: 127
+
+9. 패키지 검증
+- 전체 ZIP manifest: 230개 파일
+- 전체 ZIP manifest 및 SHA-256: PASS
+- 변경 ZIP manifest: 12개 파일
+- 변경 ZIP manifest 및 SHA-256: PASS
+- ZIP 재추출 후 소스 변환 검사: PASS
+- ZIP 재추출 후 상대 import 검사: PASS
+- ZIP 재추출 후 React Hook 감사: PASS
+- ZIP 재추출 후 Firestore 엄격 감사: PASS
+- 금지 경로(node_modules, dist, .git, .performance-reports): 0건
+- 누적 삭제 목록: 66개 경로
+- 누적 삭제 목록 유지: PASS
+- 자동 교체 시뮬레이션: PASS
+- .git, node_modules, .env.local, 패키지 외 로컬 파일 보존: PASS
+
+10. 배포 범위
+- Firestore Rules 변경: 없음
+- Firestore 인덱스 변경: 없음
+- Firebase 설정 변경: 없음
+- npm 의존성 변경: 없음
+- 웹 배포만 필요

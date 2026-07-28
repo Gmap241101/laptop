@@ -1,8 +1,10 @@
 import { useState } from 'react';
 
+import useAdminMemberAccountsController from '../features/members/useAdminMemberAccountsController.js';
 import {
   loadMemberAccountHistorySummary,
 } from '../features/members/memberAccountHistoryService.js';
+import useAdminMemberAccountStatusActions from '../features/members/useAdminMemberAccountStatusActions.js';
 import {
   getUserAccountStatusClassName,
   getUserAccountStatusLabel,
@@ -17,22 +19,45 @@ export default function AdminMemberAccountsPanel({ ctx }) {
     Search,
     USER_PROFILE_STATUS,
     XCircle,
+    adminMemberAccountsNavigationRequest,
+    isAdminAuthenticated,
+    memberAccountsPrerequisitesReady,
+    registeredAdminAccounts,
+    triggerConfirm,
+    triggerToast,
+  } = ctx;
+
+  const {
     adminUserAccountHasNextPage,
     adminUserAccountQuery,
-    adminUserAccountSavingUid,
     adminUserAccountSearchMode,
     adminUserAccountTotalPages,
     adminUserAccountStatusCounts,
     adminUserAccountStatusFilter,
     adminUserAccountsLoadErrorMessage,
     adminUserAccountsReady,
-    confirmUserAccountStatusChange,
     filteredManagedUserAccounts,
     safeAdminUserAccountPage,
     setAdminUserAccountPage,
     setAdminUserAccountQuery,
     setAdminUserAccountStatusFilter,
-  } = ctx;
+  } = useAdminMemberAccountsController({
+    prerequisitesReady: memberAccountsPrerequisitesReady,
+    enabled: isAdminAuthenticated,
+    navigationRequest: adminMemberAccountsNavigationRequest,
+    registeredAdminAccounts,
+    triggerToast,
+  });
+
+  const {
+    adminUserAccountSavingUid,
+    confirmUserAccountStatusChange,
+  } = useAdminMemberAccountStatusActions({
+    isAdminAuthenticated,
+    triggerConfirm,
+    triggerToast,
+  });
+
   const [historySummaryByUid, setHistorySummaryByUid] = useState({});
   const [historyLoadingUid, setHistoryLoadingUid] = useState('');
   const [historyErrorByUid, setHistoryErrorByUid] = useState({});

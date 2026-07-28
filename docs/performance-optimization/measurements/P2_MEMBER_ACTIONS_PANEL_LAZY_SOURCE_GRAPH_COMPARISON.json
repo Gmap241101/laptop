@@ -1,0 +1,34 @@
+{
+  "generatedAt": "2026-07-28T12:43:35.705795+00:00",
+  "task": "P2_MEMBER_ACTIONS_PANEL_LAZY_FEATURE",
+  "before": {
+    "initialModuleCount": 37,
+    "initialSourceBytes": 806925,
+    "dynamicEntryCount": 13,
+    "appLines": 18837,
+    "appBytes": 543442
+  },
+  "after": {
+    "initialModuleCount": 35,
+    "initialSourceBytes": 782310,
+    "dynamicEntryCount": 13,
+    "appLines": 18801,
+    "appBytes": 542334
+  },
+  "delta": {
+    "initialModuleCount": -2,
+    "initialSourceBytes": -24615,
+    "initialSourcePercent": -3.0505,
+    "dynamicEntryCount": 0,
+    "appLines": -36,
+    "appBytes": -1108
+  },
+  "removedFromInitialGraph": [
+    "src/features/members/useAdminMemberActions.js",
+    "src/features/members/memberAccountHistoryService.js"
+  ],
+  "lazyPanelModules": [
+    "src/features/members/useAdminMemberAccountStatusActions.js",
+    "src/features/members/useAdminMemberDirectoryAuditActions.js"
+  ]
+}

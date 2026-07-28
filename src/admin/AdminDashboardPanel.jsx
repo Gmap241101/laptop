@@ -222,14 +222,8 @@ export default function AdminDashboardPanel({ ctx }) {
     orphanedRentalAvailabilityRequests,
     refreshDashboardSummary,
     rentalStartAdjustmentInfo,
-    setAdminRequestPage,
-    setAdminRequestQuery,
-    setAdminRequestQuickFilter,
-    setAdminRequestTab,
-    setAdminTab,
-    setAdminUserAccountQuery,
-    setAdminUserAccountStatusFilter,
-    setSelectedAdminRequestId,
+    openAdminMemberAccounts,
+    openAdminRequests,
     today,
   } = ctx;
 
@@ -589,27 +583,28 @@ export default function AdminDashboardPanel({ ctx }) {
     : '요약 생성 전';
 
   const openRequestList = (requestTab, quickFilter) => {
-    setAdminRequestTab(requestTab);
-    setAdminRequestQuickFilter(quickFilter);
-    setAdminRequestQuery('');
-    setAdminRequestPage(1);
-    setSelectedAdminRequestId('');
-    setAdminTab('requests');
+    openAdminRequests({
+      query: '',
+      quickFilter,
+      requestTab,
+      selectedRequestId: '',
+    });
   };
 
   const openRequestDetail = (request) => {
-    setAdminRequestTab(getRequestTab(request, ADMIN_REQUEST_TAB, STATUS));
-    setAdminRequestQuickFilter(ADMIN_REQUEST_QUICK_FILTER.ALL);
-    setAdminRequestQuery('');
-    setAdminRequestPage(1);
-    setSelectedAdminRequestId(request.id);
-    setAdminTab('requests');
+    openAdminRequests({
+      query: '',
+      quickFilter: ADMIN_REQUEST_QUICK_FILTER.ALL,
+      requestTab: getRequestTab(request, ADMIN_REQUEST_TAB, STATUS),
+      selectedRequestId: request.id,
+    });
   };
 
   const openPendingMembers = () => {
-    setAdminUserAccountQuery('');
-    setAdminUserAccountStatusFilter(USER_PROFILE_STATUS.PENDING);
-    setAdminTab('memberAccounts');
+    openAdminMemberAccounts({
+      query: '',
+      statusFilter: USER_PROFILE_STATUS.PENDING,
+    });
   };
 
   const dataIssues = [

@@ -1,0 +1,387 @@
+diff -ruN p2_member_accounts_panel_lazy_original/src/App.jsx p2_member_accounts_panel_lazy_work/src/App.jsx
+--- p2_member_accounts_panel_lazy_original/src/App.jsx	2026-07-28 12:38:25.000000000 +0000
++++ p2_member_accounts_panel_lazy_work/src/App.jsx	2026-07-28 13:13:58.116555886 +0000
+@@ -229,7 +229,6 @@
+ import { useDashboardSummary } from './hooks/useDashboardSummary.js';
+ import useAdminRequestProgressiveSearch from './features/requests/useAdminRequestProgressiveSearch.js';
+ import useBoardProgressiveSearch from './features/boards/useBoardProgressiveSearch.js';
+-import useAdminMemberAccountsController from './features/members/useAdminMemberAccountsController.js';
+ import {
+   commitFirestoreOperations,
+ } from './features/members/memberAccountIndexService.js';
+@@ -1470,6 +1469,11 @@
+   const [selectedLaptopId, setSelectedLaptopId] = useState(null);
+   const [form, setForm] = useState(() => createDefaultRequestForm(data.settings));
+   const [adminTab, setAdminTab] = useState('dashboard'); // 관리자 사이드바의 현재 메뉴 키
++  const [adminMemberAccountsNavigationRequest, setAdminMemberAccountsNavigationRequest] = useState({
++    requestId: 0,
++    query: '',
++    statusFilter: 'all',
++  });
+   const [peopleSettingsDirty, setPeopleSettingsDirty] = useState(false);
+   const memberDirectoryDeferredActionsRef = useRef({
+     discard: null,
+@@ -4708,31 +4712,6 @@
+     hasMatchingAdminFirebaseAuth;
+ 
+ 
+-  const {
+-    adminUserAccountHasNextPage,
+-    adminUserAccountPage,
+-    adminUserAccountQuery,
+-    adminUserAccountSearchMode,
+-    adminUserAccountStatusCounts,
+-    adminUserAccountStatusFilter,
+-    adminUserAccountTotalPages,
+-    adminUserAccountsLoadErrorMessage,
+-    adminUserAccountsReady,
+-    filteredManagedUserAccounts,
+-    safeAdminUserAccountPage,
+-    setAdminUserAccountPage,
+-    setAdminUserAccountQuery,
+-    setAdminUserAccountStatusFilter,
+-  } = useAdminMemberAccountsController({
+-    prerequisitesReady: firebaseAuthReady && currentAuthRoleReady,
+-    enabled:
+-      isAdminAuthenticated &&
+-      view === 'admin' &&
+-      adminTab === 'memberAccounts',
+-    registeredAdminAccounts,
+-    triggerToast,
+-  });
+-
+   useEffect(() => {
+     if (!isAdminAuthenticated) {
+       publicCatalogMigrationAdminUidRef.current = '';
+@@ -4804,6 +4783,18 @@
+     splitStorageVersion >= SPLIT_STORAGE_VERSION;
+ 
+ 
++  const openAdminMemberAccounts = useCallback(
++    ({ query = '', statusFilter = 'all' } = {}) => {
++      setAdminMemberAccountsNavigationRequest((currentRequest) => ({
++        requestId: Number(currentRequest?.requestId || 0) + 1,
++        query: String(query || ''),
++        statusFilter: String(statusFilter || 'all'),
++      }));
++      setAdminTab('memberAccounts');
++    },
++    []
++  );
++
+   const handleMemberDirectoryDeferredStateChange = useCallback(
+     (nextState) => {
+       const nextDirty = Boolean(nextState?.dirty);
+@@ -17905,14 +17896,6 @@
+     adminRequestTotalPages,
+     adminSelectedAssetCategory,
+     adminTab,
+-    adminUserAccountHasNextPage,
+-    adminUserAccountQuery,
+-    adminUserAccountSearchMode,
+-    adminUserAccountTotalPages,
+-    adminUserAccountStatusCounts,
+-    adminUserAccountStatusFilter,
+-    adminUserAccountsLoadErrorMessage,
+-    adminUserAccountsReady,
+     adminUserActionSavingRequestId,
+     applyEditTempAssetCategory,
+     authenticateAdmin,
+@@ -17995,7 +17978,6 @@
+     faqTotalPages,
+     filteredAdminRequests,
+     filteredLaptops,
+-    filteredManagedUserAccounts,
+     finalizeSplitStorageMigration,
+     firebaseAuthReady,
+     firebaseAuthUser,
+@@ -18035,6 +18017,7 @@
+     handleAddLaptopClick,
+     hasFirebaseAuthSession,
+     handleAdminTabChange,
++    openAdminMemberAccounts,
+     holidayImportConflictModal,
+     holidayImportLoading,
+     holidayImportYear,
+@@ -18052,6 +18035,9 @@
+     logoutAdmin,
+     logoutUser,
+     memberDirectoryAudit,
++    adminMemberAccountsNavigationRequest,
++    memberAccountsPrerequisitesReady:
++      firebaseAuthReady && currentAuthRoleReady,
+     memberDirectoryPolicyEnabled,
+     memberIdentityClaimsReady,
+     memberDirectoryBorrowers: data.borrowers,
+@@ -18172,10 +18158,6 @@
+     setAdminRequestTab,
+     setAdminSelectedAssetCategory,
+     setAdminTab,
+-    safeAdminUserAccountPage,
+-    setAdminUserAccountPage,
+-    setAdminUserAccountQuery,
+-    setAdminUserAccountStatusFilter,
+     setAvailabilityFilter,
+     setConfirmModal,
+     setDraggingAssetCategoryIndex,
+diff -ruN p2_member_accounts_panel_lazy_original/src/admin/AdminDashboardPanel.jsx p2_member_accounts_panel_lazy_work/src/admin/AdminDashboardPanel.jsx
+--- p2_member_accounts_panel_lazy_original/src/admin/AdminDashboardPanel.jsx	2026-07-28 06:06:26.000000000 +0000
++++ p2_member_accounts_panel_lazy_work/src/admin/AdminDashboardPanel.jsx	2026-07-28 13:13:58.116555886 +0000
+@@ -227,8 +227,7 @@
+     setAdminRequestQuickFilter,
+     setAdminRequestTab,
+     setAdminTab,
+-    setAdminUserAccountQuery,
+-    setAdminUserAccountStatusFilter,
++    openAdminMemberAccounts,
+     setSelectedAdminRequestId,
+     today,
+   } = ctx;
+@@ -607,9 +606,10 @@
+   };
+ 
+   const openPendingMembers = () => {
+-    setAdminUserAccountQuery('');
+-    setAdminUserAccountStatusFilter(USER_PROFILE_STATUS.PENDING);
+-    setAdminTab('memberAccounts');
++    openAdminMemberAccounts({
++      query: '',
++      statusFilter: USER_PROFILE_STATUS.PENDING,
++    });
+   };
+ 
+   const dataIssues = [
+diff -ruN p2_member_accounts_panel_lazy_original/src/admin/AdminMemberAccountsPanel.jsx p2_member_accounts_panel_lazy_work/src/admin/AdminMemberAccountsPanel.jsx
+--- p2_member_accounts_panel_lazy_original/src/admin/AdminMemberAccountsPanel.jsx	2026-07-28 12:38:25.000000000 +0000
++++ p2_member_accounts_panel_lazy_work/src/admin/AdminMemberAccountsPanel.jsx	2026-07-28 13:13:58.116555886 +0000
+@@ -1,5 +1,6 @@
+ import { useState } from 'react';
+ 
++import useAdminMemberAccountsController from '../features/members/useAdminMemberAccountsController.js';
+ import {
+   loadMemberAccountHistorySummary,
+ } from '../features/members/memberAccountHistoryService.js';
+@@ -18,6 +19,15 @@
+     Search,
+     USER_PROFILE_STATUS,
+     XCircle,
++    adminMemberAccountsNavigationRequest,
++    isAdminAuthenticated,
++    memberAccountsPrerequisitesReady,
++    registeredAdminAccounts,
++    triggerConfirm,
++    triggerToast,
++  } = ctx;
++
++  const {
+     adminUserAccountHasNextPage,
+     adminUserAccountQuery,
+     adminUserAccountSearchMode,
+@@ -27,14 +37,17 @@
+     adminUserAccountsLoadErrorMessage,
+     adminUserAccountsReady,
+     filteredManagedUserAccounts,
+-    isAdminAuthenticated,
+     safeAdminUserAccountPage,
+     setAdminUserAccountPage,
+     setAdminUserAccountQuery,
+     setAdminUserAccountStatusFilter,
+-    triggerConfirm,
++  } = useAdminMemberAccountsController({
++    prerequisitesReady: memberAccountsPrerequisitesReady,
++    enabled: isAdminAuthenticated,
++    navigationRequest: adminMemberAccountsNavigationRequest,
++    registeredAdminAccounts,
+     triggerToast,
+-  } = ctx;
++  });
+ 
+   const {
+     adminUserAccountSavingUid,
+diff -ruN p2_member_accounts_panel_lazy_original/src/admin/AdminSignupPolicyPanel.jsx p2_member_accounts_panel_lazy_work/src/admin/AdminSignupPolicyPanel.jsx
+--- p2_member_accounts_panel_lazy_original/src/admin/AdminSignupPolicyPanel.jsx	2026-07-28 12:38:25.000000000 +0000
++++ p2_member_accounts_panel_lazy_work/src/admin/AdminSignupPolicyPanel.jsx	2026-07-28 13:13:58.116555886 +0000
+@@ -43,9 +43,7 @@
+     memberDirectoryPolicyEnabled,
+     memberIdentityClaimsReady,
+     onSignupPolicyDeferredStateChange,
+-    setAdminTab,
+-    setAdminUserAccountQuery,
+-    setAdminUserAccountStatusFilter,
++    openAdminMemberAccounts,
+     setData,
+     signupPolicySettings,
+     triggerConfirm,
+@@ -66,9 +64,7 @@
+     isAdminAuthenticated,
+     isSplitStorageReady,
+     settings: signupPolicySettings,
+-    setAdminTab,
+-    setAdminUserAccountQuery,
+-    setAdminUserAccountStatusFilter,
++    openAdminMemberAccounts,
+     triggerConfirm,
+     triggerToast,
+   });
+diff -ruN p2_member_accounts_panel_lazy_original/src/context/appContextSlices.js p2_member_accounts_panel_lazy_work/src/context/appContextSlices.js
+--- p2_member_accounts_panel_lazy_original/src/context/appContextSlices.js	2026-07-28 12:38:25.000000000 +0000
++++ p2_member_accounts_panel_lazy_work/src/context/appContextSlices.js	2026-07-28 13:13:58.116555886 +0000
+@@ -18,20 +18,20 @@
+   }),
+   admin: Object.freeze({
+     shell: contextKeys('AlertCircle Button Card CardContent ClipboardList Clock Input Laptop LayoutDashboard LockIcon React Settings ShieldCheck UserCircle Users adminAccountsLoadErrorMessage adminAuthForm adminAuthLoading adminTab authenticateAdmin currentAuthRoleErrorMessage data faqPosts goToUserHome handleAdminTabChange noticePosts setAdminAuthForm setAdminTab shouldShowAdminAccountsErrorPage shouldShowAdminLoadingPage shouldShowAdminLoginPage'),
+-    dashboard: contextKeys('ADMIN_REQUEST_QUICK_FILTER ADMIN_REQUEST_TAB AdminPageHeader STATUS USER_PROFILE_STATUS USER_REQUEST_ACTION USER_REQUEST_REVIEW_STATUS dashboardSummary dashboardSummaryLoadErrorMessage dashboardSummaryReady dashboardSummaryRefreshing data defaultRentalStartDate formatDateWithKoreanWeekday getMaxRentalDueDate getSafeMaxRentalDays orphanedRentalAvailabilityRequests refreshDashboardSummary rentalStartAdjustmentInfo setAdminRequestPage setAdminRequestQuery setAdminRequestQuickFilter setAdminRequestTab setAdminTab setAdminUserAccountQuery setAdminUserAccountStatusFilter setSelectedAdminRequestId today'),
++    dashboard: contextKeys('ADMIN_REQUEST_QUICK_FILTER ADMIN_REQUEST_TAB AdminPageHeader STATUS USER_PROFILE_STATUS USER_REQUEST_ACTION USER_REQUEST_REVIEW_STATUS dashboardSummary dashboardSummaryLoadErrorMessage dashboardSummaryReady dashboardSummaryRefreshing data defaultRentalStartDate formatDateWithKoreanWeekday getMaxRentalDueDate getSafeMaxRentalDays openAdminMemberAccounts orphanedRentalAvailabilityRequests refreshDashboardSummary rentalStartAdjustmentInfo setAdminRequestPage setAdminRequestQuery setAdminRequestQuickFilter setAdminRequestTab setAdminTab setSelectedAdminRequestId today'),
+     requests: contextKeys('ADMIN_REQUEST_PAGE_SIZE_OPTIONS ADMIN_REQUEST_QUICK_FILTER ADMIN_REQUEST_TAB AdminPageHeader Badge Button Edit3 RENTAL_EXTENSION_APPROVAL_MODE RENTAL_REQUEST_AUDIT_ACTION STATUS Search USER_REQUEST_ACTION USER_REQUEST_REVIEW_STATUS adminRequestPageSize adminRequestQuery adminRequestQuickFilter adminRequestTab adminRequestTabCounts adminRequestTotalPages adminUserActionSavingRequestId data filteredAdminRequests formatFirestoreTimestamp getAdminRequestRestoreTargets getDisplayRentalStatus getExtensionRequestAvailableDate getRentalExtensionPeriod getRequestDisplayStatus getRequestExtensionCount getSafeRentalExtensionMaxCount getUserRequestActionLabel getUserRequestReviewStatusLabel mergedRentalRequests openAdminRequestEditDialog openAdminRequestRestoreDialog orphanedRentalAvailabilityRequests paginatedAdminRequests renderRequestActionButtons rentalRequestIdSet rentalRequestLogsByRequestId rentalRequestLogsLoadErrorMessage rentalRequestLogsReady rentalRequestsLoadErrorMessage rentalRequestsReady reviewUserActionRequest safeAdminRequestPage saveRequestMemo selectedAdminRequest setAdminRequestPage setAdminRequestPageSize setAdminRequestQuery setAdminRequestQuickFilter setAdminRequestTab setSelectedAdminRequestId today updateRequestMemo'),
+     laptops: contextKeys('AdminPageHeader Badge Button ClipboardList Edit3 Input Plus React STATUS Save Search Select Trash2 adminAvailabilityFilter adminFilteredLaptops adminLaptopQuery adminSelectedAssetCategory authenticatedAdminId createLaptop currentAuthAdminAccount data deleteLaptop editLaptop editLaptopInsertIndex getLaptopAdminDisplayStatus handleAddLaptopClick newLaptop saveLaptop setAdminAvailabilityFilter setAdminLaptopQuery setAdminSelectedAssetCategory setData setEditLaptop setNewLaptop setShowUploadPanel showUploadPanel splitRentalAssets triggerToast'),
+     holidaySettings: contextKeys('AdminPageHeader Button ClipboardList DEFAULT_HOLIDAY_TYPE HOLIDAY_TYPE_LABEL Plus Save Trash2 addTempHoliday applyHolidayImportConflictChoice data deleteTempHoliday discardHolidayChanges formatDateWithKoreanWeekday getKoreaNow holidayImportConflictModal holidayImportLoading holidayImportYear holidayManagementMonth holidayManagementView holidayManagementYear holidaySettingsDirty importKoreanPublicHolidaysFromJson newHolidayDate newHolidayName newHolidayType saveHolidaySettings setHolidayImportConflictModal setHolidayImportYear setHolidayManagementMonth setHolidayManagementView setHolidayManagementYear setNewHolidayDate setNewHolidayName setNewHolidayType tempHolidayList today updateTempHolidayReason'),
+     categories: contextKeys('AdminPageHeader Button Edit3 Plus Save Trash2 X addTempAssetCategory applyEditTempAssetCategory cancelTempAssetCategoryChanges deleteTempAssetCategory draggingAssetCategoryIndex editingAssetCategoryIndex editingAssetCategoryName moveTempAssetCategory newAssetCategory saveTempAssetCategoryChanges setDraggingAssetCategoryIndex setEditingAssetCategoryIndex setEditingAssetCategoryName setNewAssetCategory startEditTempAssetCategory tempAssetCategories'),
+     people: contextKeys('AdminPageHeader Button Edit3 Plus Save Trash2 X isSplitStorageReady memberDirectoryBorrowers memberDirectorySettings memberDirectoryTeams onMemberDirectoryDeferredStateChange setData triggerToast'),
+-    signupPolicy: contextKeys('AdminPageHeader Button authenticatedAdminAccount authenticatedAdminId isAdminAuthenticated isSplitStorageReady memberDirectoryAudit memberDirectoryBorrowers memberDirectoryPolicyEnabled memberIdentityClaimsReady onSignupPolicyDeferredStateChange setAdminTab setAdminUserAccountQuery setAdminUserAccountStatusFilter setData signupPolicySettings triggerConfirm triggerToast'),
++    signupPolicy: contextKeys('AdminPageHeader Button authenticatedAdminAccount authenticatedAdminId isAdminAuthenticated isSplitStorageReady memberDirectoryAudit memberDirectoryBorrowers memberDirectoryPolicyEnabled memberIdentityClaimsReady onSignupPolicyDeferredStateChange openAdminMemberAccounts setData signupPolicySettings triggerConfirm triggerToast'),
+     noticePosts: contextKeys('AdminPageHeader Button Edit3 NOTICE_POSTS_PER_PAGE_OPTIONS Pin Plus Save Search Select Trash2 adminNoticeQuery adminNoticeTotalPages adminPinnedNoticePosts adminRegularNoticePosts confirmDeleteNoticePost formatFirestoreDate noticeBoardConfigLoadErrorMessage noticeBoardConfigReady noticeBoardConfigSaving noticePostDeletingId noticePosts noticePostsLoadErrorMessage noticePostsPerPageInput noticePostsReady noticeRegularPostNumberById openNoticePostDialog paginatedAdminNoticePosts safeAdminNoticePage saveNoticeBoardConfig setAdminNoticePage setAdminNoticeQuery setNoticePostsPerPageInput'),
+     siteSettings: contextKeys('AdminPageHeader Button Input Select authenticatedAdminAccount data finalizeSplitStorageMigration isSplitStorageReady siteSettings siteSettingsLoadErrorMessage siteSettingsReady splitStorageFinalizeLoading systemAdminSettings systemAdminSettingsLoadErrorMessage systemAdminSettingsReady triggerConfirm triggerToast'),
+     homeManagement: contextKeys('AdminPageHeader Button Input Select authenticatedAdminAccount authenticatedAdminId data finalizeSplitStorageMigration isAdminAuthenticated isSplitStorageReady siteSettings siteSettingsLoadErrorMessage siteSettingsReady splitStorageFinalizeLoading systemAdminSettings systemAdminSettingsLoadErrorMessage systemAdminSettingsReady triggerConfirm triggerToast'),
+     popupPosts: contextKeys('AdminPageHeader Button confirmDeletePopupPost formatPopupDateTime getPopupDisplayStatus movePopupPost openPopupPostDialog popupPostDeletingId popupPostToggleSavingId popupPosts popupPostsLoadErrorMessage popupPostsReady togglePopupPostEnabled'),
+     faqPosts: contextKeys('AdminPageHeader AnimatePresence Button Edit3 FAQ_POSTS_PER_PAGE_OPTIONS Plus Save Select Trash2 X addFaqCategory adminExpandedFaqPostId adminFaqTotalPages adminPinnedFaqPosts adminRegularFaqPosts confirmDeleteFaqCategory confirmDeleteFaqPost editingFaqCategoryId editingFaqCategoryName faqBoardConfigLoadErrorMessage faqBoardConfigReady faqBoardConfigSaving faqCategories faqCategoriesLoadErrorMessage faqCategoriesReady faqCategoryDeletingId faqCategoryNameById faqCategorySavingId faqPostDeletingId faqPosts faqPostsLoadErrorMessage faqPostsPerPageInput faqPostsReady motion newFaqCategoryName openFaqPostDialog paginatedAdminFaqPosts safeAdminFaqPage saveFaqBoardConfig saveFaqCategoryName setAdminExpandedFaqPostId setAdminFaqPage setEditingFaqCategoryId setEditingFaqCategoryName setFaqPostsPerPageInput setNewFaqCategoryName startEditFaqCategory toggleAdminFaqPost'),
+     footerManagement: contextKeys('AdminPageHeader Button closeFooterPageDialog confirmDeleteFooterPage footerConfigDraft footerConfigLoadErrorMessage footerConfigReady footerConfigSaving footerPageDeletingId footerPageDialog footerPageForm footerPageSaving footerPageToggleSavingId footerPages footerPagesLoadErrorMessage footerPagesReady formatFirestoreDate moveFooterPage openFooterPageDialog saveFooterConfig saveFooterPage setFooterConfigDraft setFooterPageForm toggleFooterPageEnabled'),
+-    memberAccounts: contextKeys('AdminPageHeader Button CheckCircle2 LogOut Search USER_PROFILE_STATUS XCircle adminUserAccountHasNextPage adminUserAccountQuery adminUserAccountSearchMode adminUserAccountStatusCounts adminUserAccountStatusFilter adminUserAccountTotalPages adminUserAccountsLoadErrorMessage adminUserAccountsReady filteredManagedUserAccounts isAdminAuthenticated safeAdminUserAccountPage setAdminUserAccountPage setAdminUserAccountQuery setAdminUserAccountStatusFilter triggerConfirm triggerToast'),
++    memberAccounts: contextKeys('AdminPageHeader Button CheckCircle2 LogOut Search USER_PROFILE_STATUS XCircle adminMemberAccountsNavigationRequest isAdminAuthenticated memberAccountsPrerequisitesReady registeredAdminAccounts triggerConfirm triggerToast'),
+     adminAccounts: contextKeys('ADMIN_ACCOUNT_PAGE_SIZE ADMIN_CUSTOM_OPTION_VALUE AdminPageHeader Button Input Select adminAccountEditForm adminAccountForm adminAccountTotalPages adminAccountUserOptions authenticatedAdminAccount authenticatedAdminId cancelEditAdminAccount createDefaultAdminAccountForm data deleteAdminAccount editingAdminAccountId paginatedAdminAccounts registerAdminAccount registeredAdminAccounts safeAdminAccountPage saveAdminAccountEdit sendAdminAccountPasswordResetEmail setAdminAccountEditForm setAdminAccountForm setAdminAccountPage startEditAdminAccount toggleAdminAccountLock'),
+     serviceOperations: contextKeys('AdminPageHeader Button Input Select authenticatedAdminAccount data finalizeSplitStorageMigration isSplitStorageReady siteSettings siteSettingsLoadErrorMessage siteSettingsReady splitStorageFinalizeLoading systemAdminSettings systemAdminSettingsLoadErrorMessage systemAdminSettingsReady triggerConfirm triggerToast'),
+     accountSecurity: contextKeys('AdminPageHeader Button authenticatedAdminAccount systemAdminSettings systemAdminSettingsLoadErrorMessage systemAdminSettingsReady triggerToast userSessionPolicy userSessionPolicyLoadErrorMessage userSessionPolicyReady'),
+diff -ruN p2_member_accounts_panel_lazy_original/src/features/members/useAdminMemberAccountsController.js p2_member_accounts_panel_lazy_work/src/features/members/useAdminMemberAccountsController.js
+--- p2_member_accounts_panel_lazy_original/src/features/members/useAdminMemberAccountsController.js	2026-07-28 09:45:08.000000000 +0000
++++ p2_member_accounts_panel_lazy_work/src/features/members/useAdminMemberAccountsController.js	2026-07-28 13:15:14.088553478 +0000
+@@ -19,6 +19,13 @@
+ 
+ export const ADMIN_MEMBER_ACCOUNT_PAGE_SIZE = 20;
+ 
++const memberAccountsSessionState = {
++  lastNavigationRequestId: 0,
++  page: 1,
++  query: '',
++  statusFilter: 'all',
++};
++
+ const createEmptySearchCache = (key) => ({
+   key,
+   cursor: null,
+@@ -57,17 +64,42 @@
+ export default function useAdminMemberAccountsController({
+   prerequisitesReady,
+   enabled,
++  navigationRequest,
+   registeredAdminAccounts,
+   triggerToast,
+ }) {
++  const navigationRequestId = Number(navigationRequest?.requestId || 0);
++  const initialNavigationRequestIdRef = useRef(null);
++
++  if (initialNavigationRequestIdRef.current === null) {
++    initialNavigationRequestIdRef.current = navigationRequestId;
++
++    if (
++      navigationRequestId >
++      memberAccountsSessionState.lastNavigationRequestId
++    ) {
++      memberAccountsSessionState.lastNavigationRequestId =
++        navigationRequestId;
++      memberAccountsSessionState.page = 1;
++      memberAccountsSessionState.query = String(
++        navigationRequest?.query || ''
++      );
++      memberAccountsSessionState.statusFilter = String(
++        navigationRequest?.statusFilter || 'all'
++      );
++    }
++  }
++
+   const [accounts, setAccounts] = useState([]);
+-  const [page, setPage] = useState(1);
++  const [page, setPage] = useState(() => memberAccountsSessionState.page);
+   const [hasNextPage, setHasNextPage] = useState(false);
+   const [totalCount, setTotalCount] = useState(0);
+   const [ready, setReady] = useState(false);
+   const [loadErrorMessage, setLoadErrorMessage] = useState('');
+-  const [query, setQuery] = useState('');
+-  const [statusFilter, setStatusFilter] = useState('all');
++  const [query, setQuery] = useState(() => memberAccountsSessionState.query);
++  const [statusFilter, setStatusFilter] = useState(
++    () => memberAccountsSessionState.statusFilter
++  );
+   const [statusCounts, setStatusCounts] = useState({
+     pending: 0,
+     active: 0,
+@@ -86,6 +118,37 @@
+     triggerToastRef.current = triggerToast;
+   }, [triggerToast]);
+ 
++  useEffect(() => {
++    memberAccountsSessionState.page = page;
++    memberAccountsSessionState.query = query;
++    memberAccountsSessionState.statusFilter = statusFilter;
++  }, [page, query, statusFilter]);
++
++  useEffect(() => {
++    if (
++      !navigationRequestId ||
++      memberAccountsSessionState.lastNavigationRequestId ===
++        navigationRequestId
++    ) {
++      return;
++    }
++
++    const nextQuery = String(navigationRequest?.query || '');
++    const nextStatusFilter = String(
++      navigationRequest?.statusFilter || 'all'
++    );
++
++    memberAccountsSessionState.lastNavigationRequestId =
++      navigationRequestId;
++    memberAccountsSessionState.page = 1;
++    memberAccountsSessionState.query = nextQuery;
++    memberAccountsSessionState.statusFilter = nextStatusFilter;
++    setPage(1);
++    setQuery(nextQuery);
++    setStatusFilter(nextStatusFilter);
++    cursorByPageRef.current = new Map([[1, null]]);
++    searchCacheRef.current = null;
++  }, [navigationRequest, navigationRequestId]);
+ 
+   useEffect(() => {
+     if (!enabled) return undefined;
+diff -ruN p2_member_accounts_panel_lazy_original/src/features/members/useAdminMemberDirectoryAuditActions.js p2_member_accounts_panel_lazy_work/src/features/members/useAdminMemberDirectoryAuditActions.js
+--- p2_member_accounts_panel_lazy_original/src/features/members/useAdminMemberDirectoryAuditActions.js	2026-07-28 12:37:31.000000000 +0000
++++ p2_member_accounts_panel_lazy_work/src/features/members/useAdminMemberDirectoryAuditActions.js	2026-07-28 13:13:58.116555886 +0000
+@@ -48,9 +48,7 @@
+   isAdminAuthenticated,
+   isSplitStorageReady,
+   settings,
+-  setAdminTab,
+-  setAdminUserAccountQuery,
+-  setAdminUserAccountStatusFilter,
++  openAdminMemberAccounts,
+   triggerConfirm,
+   triggerToast,
+ }) {
+@@ -504,14 +502,11 @@
+   }, [executeFullMemberDirectoryAudit]);
+ 
+   const openProfileRequiredMembers = useCallback(() => {
+-    setAdminUserAccountQuery('');
+-    setAdminUserAccountStatusFilter(USER_PROFILE_STATUS.PROFILE_REQUIRED);
+-    setAdminTab('memberAccounts');
+-  }, [
+-    setAdminTab,
+-    setAdminUserAccountQuery,
+-    setAdminUserAccountStatusFilter,
+-  ]);
++    openAdminMemberAccounts({
++      query: '',
++      statusFilter: USER_PROFILE_STATUS.PROFILE_REQUIRED,
++    });
++  }, [openAdminMemberAccounts]);
+ 
+ 
+   return {

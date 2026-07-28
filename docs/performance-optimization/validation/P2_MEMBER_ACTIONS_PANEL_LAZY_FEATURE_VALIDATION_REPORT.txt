@@ -1,0 +1,69 @@
+P2 MEMBER ACTIONS PANEL LAZY FEATURE VALIDATION REPORT
+Generated: 2026-07-28T12:43:35.712646+00:00
+
+[RESULT]
+Static validation: PASS
+Production bundle: NOT COMPLETED - vite executable unavailable in validation container
+
+[SOURCE]
+JavaScript/JSX/MJS files checked: 80
+Syntax errors: 0
+Undefined identifier diagnostics TS2304/TS2552: 0
+React hook import audit: PASS
+Relative imports checked: 164
+Missing relative imports: 0
+
+[CONTEXT CONTRACT]
+AdminOrganizationPanel: 14 / 14, missing 0, extra 0, missing uiContext 0
+AdminSignupPolicyPanel: 18 / 18, missing 0, extra 0, missing uiContext 0
+AdminMemberAccountsPanel: 23 / 23, missing 0, extra 0, missing uiContext 0
+
+[FIRESTORE]
+Strict audit: PASS
+Total calls: 123
+onSnapshot: 32
+getDocs: 48
+getDoc: 23
+getCountFromServer: 20
+Approved risk findings: 51
+Unapproved warnings: 0
+Unapproved errors: 0
+
+[INITIAL SOURCE GRAPH]
+Before modules: 37
+After modules: 35
+Delta modules: -2
+Before bytes: 806925
+After bytes: 782310
+Delta bytes: -24615
+Reduction: 3.0505%
+Dynamic entries before/after: 13/13
+
+[BEHAVIOR PRESERVATION]
+Unique Korean strings before: 1352
+Unique Korean strings after: 1352
+Removed strings: 0
+Added strings: 0
+Old integrated hook removed: PASS
+New account status hook imported only by lazy member accounts panel: PASS
+New directory audit hook imported only by lazy signup policy panel: PASS
+Firestore rules unchanged: PASS
+Firestore indexes unchanged: PASS
+Firebase config unchanged: PASS
+package.json unchanged: PASS
+
+[BUILD]
+npm run prebuild: PASS
+npm run build: FAILED AFTER PREBUILD
+Failure: sh: 1: vite: not found
+
+[PACKAGE]
+Full package manifest files: 221
+Full package missing files: 0
+Full package SHA-256 mismatches: 0
+Changed package files: 15
+Changed package removal entries: 1
+ZIP integrity: PASS
+Replacement simulation: PASS
+Preserved during simulation: .git, node_modules, .env.local, local-only.txt
+Removed during simulation: src/features/members/useAdminMemberActions.js

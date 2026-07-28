@@ -1,0 +1,1778 @@
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -230,7 +230,6 @@
+ import useAdminRequestProgressiveSearch from './features/requests/useAdminRequestProgressiveSearch.js';
+ import useBoardProgressiveSearch from './features/boards/useBoardProgressiveSearch.js';
+ import useAdminMemberAccountsController from './features/members/useAdminMemberAccountsController.js';
+-import useAdminMemberActions from './features/members/useAdminMemberActions.js';
+ import {
+   commitFirestoreOperations,
+ } from './features/members/memberAccountIndexService.js';
+@@ -4804,32 +4803,6 @@
+   const isSplitStorageReady =
+     splitStorageVersion >= SPLIT_STORAGE_VERSION;
+ 
+-
+-  const {
+-    adminUserAccountSavingUid,
+-    clearMemberDirectoryAuditResult,
+-    confirmUserAccountStatusChange,
+-    memberDirectoryAuditLoading,
+-    memberDirectoryAuditResult,
+-    openProfileRequiredMembers,
+-    resetDirectoryMismatchRestoreAttempt,
+-    restoreDirectoryMismatchAccountsAfterPolicyDisabled,
+-    runFullMemberDirectoryAudit,
+-  } = useAdminMemberActions({
+-    adminTab,
+-    authenticatedAdminAccount,
+-    authenticatedAdminId,
+-    borrowers: data.borrowers,
+-    isAdminAuthenticated,
+-    isSplitStorageReady,
+-    settings: data.settings,
+-    setAdminTab,
+-    setAdminUserAccountQuery,
+-    setAdminUserAccountStatusFilter,
+-    triggerConfirm,
+-    triggerToast,
+-    view,
+-  });
+ 
+   const handleMemberDirectoryDeferredStateChange = useCallback(
+     (nextState) => {
+@@ -17934,7 +17907,6 @@
+     adminTab,
+     adminUserAccountHasNextPage,
+     adminUserAccountQuery,
+-    adminUserAccountSavingUid,
+     adminUserAccountSearchMode,
+     adminUserAccountTotalPages,
+     adminUserAccountStatusCounts,
+@@ -17963,7 +17935,6 @@
+     confirmDeleteFaqPost,
+     confirmDeleteNoticePost,
+     confirmModal,
+-    confirmUserAccountStatusChange,
+     createDefaultAdminAccountForm,
+     createLaptop,
+     currentAuthAdminAccount,
+@@ -18081,11 +18052,8 @@
+     logoutAdmin,
+     logoutUser,
+     memberDirectoryAudit,
+-    memberDirectoryAuditLoading,
+-    memberDirectoryAuditResult,
+     memberDirectoryPolicyEnabled,
+     memberIdentityClaimsReady,
+-    clearMemberDirectoryAuditResult,
+     memberDirectoryBorrowers: data.borrowers,
+     memberDirectorySettings: data.settings,
+     memberDirectoryTeams: data.teams,
+@@ -18094,8 +18062,6 @@
+     onSignupPolicyDeferredStateChange:
+       handleSignupPolicyDeferredStateChange,
+     signupPolicySettings: data.settings,
+-    resetDirectoryMismatchRestoreAttempt,
+-    restoreDirectoryMismatchAccountsAfterPolicyDisabled,
+     mergedRentalRequests,
+     motion,
+     moveTempAssetCategory,
+@@ -18124,7 +18090,6 @@
+     openFaqPostDialog,
+     openNoticePost,
+     openNoticePostDialog,
+-    openProfileRequiredMembers,
+     openWithdrawalDialog,
+     openUserActionDialog,
+     orphanedRentalAvailabilityRequests,
+@@ -18157,7 +18122,6 @@
+     requestSubmitLoading,
+     restoreAdminRequestStatus,
+     reviewUserActionRequest,
+-    runFullMemberDirectoryAudit,
+     safeAdminAccountPage,
+     safeAdminFaqPage,
+     safeAdminNoticePage,
+--- a/src/admin/AdminMemberAccountsPanel.jsx
++++ b/src/admin/AdminMemberAccountsPanel.jsx
+@@ -3,6 +3,7 @@
+ import {
+   loadMemberAccountHistorySummary,
+ } from '../features/members/memberAccountHistoryService.js';
++import useAdminMemberAccountStatusActions from '../features/members/useAdminMemberAccountStatusActions.js';
+ import {
+   getUserAccountStatusClassName,
+   getUserAccountStatusLabel,
+@@ -19,20 +20,31 @@
+     XCircle,
+     adminUserAccountHasNextPage,
+     adminUserAccountQuery,
+-    adminUserAccountSavingUid,
+     adminUserAccountSearchMode,
+     adminUserAccountTotalPages,
+     adminUserAccountStatusCounts,
+     adminUserAccountStatusFilter,
+     adminUserAccountsLoadErrorMessage,
+     adminUserAccountsReady,
+-    confirmUserAccountStatusChange,
+     filteredManagedUserAccounts,
++    isAdminAuthenticated,
+     safeAdminUserAccountPage,
+     setAdminUserAccountPage,
+     setAdminUserAccountQuery,
+     setAdminUserAccountStatusFilter,
++    triggerConfirm,
++    triggerToast,
+   } = ctx;
++
++  const {
++    adminUserAccountSavingUid,
++    confirmUserAccountStatusChange,
++  } = useAdminMemberAccountStatusActions({
++    isAdminAuthenticated,
++    triggerConfirm,
++    triggerToast,
++  });
++
+   const [historySummaryByUid, setHistorySummaryByUid] = useState({});
+   const [historyLoadingUid, setHistoryLoadingUid] = useState('');
+   const [historyErrorByUid, setHistoryErrorByUid] = useState({});
+--- a/src/admin/AdminOrganizationPanel.jsx
++++ b/src/admin/AdminOrganizationPanel.jsx
+@@ -12,7 +12,6 @@
+     Save,
+     Trash2,
+     X,
+-    clearMemberDirectoryAuditResult,
+     isSplitStorageReady,
+     memberDirectoryBorrowers,
+     memberDirectorySettings,
+@@ -67,7 +66,6 @@
+     saveTempPeopleChanges,
+   } = useAdminMemberDirectorySaveActions({
+     currentBorrowers: memberDirectoryBorrowers,
+-    clearMemberDirectoryAuditResult,
+     isSplitStorageReady,
+     replaceTempPeopleDraft,
+     setData,
+--- a/src/admin/AdminSignupPolicyPanel.jsx
++++ b/src/admin/AdminSignupPolicyPanel.jsx
+@@ -1,5 +1,6 @@
+ import { useEffect } from 'react';
+ 
++import useAdminMemberDirectoryAuditActions from '../features/members/useAdminMemberDirectoryAuditActions.js';
+ import useAdminSignupPolicyActions from '../features/members/useAdminSignupPolicyActions.js';
+ 
+ function PolicySwitch({ checked, disabled = false, label, description, onChange }) {
+@@ -33,22 +34,44 @@
+   const {
+     AdminPageHeader,
+     Button,
++    authenticatedAdminAccount,
++    authenticatedAdminId,
++    isAdminAuthenticated,
++    isSplitStorageReady,
+     memberDirectoryAudit,
+-    memberDirectoryAuditLoading,
+-    memberDirectoryAuditResult,
++    memberDirectoryBorrowers,
+     memberDirectoryPolicyEnabled,
+     memberIdentityClaimsReady,
+     onSignupPolicyDeferredStateChange,
++    setAdminTab,
++    setAdminUserAccountQuery,
++    setAdminUserAccountStatusFilter,
++    setData,
++    signupPolicySettings,
++    triggerConfirm,
++    triggerToast,
++  } = ctx;
++
++  const {
++    memberDirectoryAuditLoading,
++    memberDirectoryAuditResult,
+     openProfileRequiredMembers,
+     resetDirectoryMismatchRestoreAttempt,
+     restoreDirectoryMismatchAccountsAfterPolicyDisabled,
+     runFullMemberDirectoryAudit,
+-    setData,
+-    signupPolicySettings,
+-    triggerToast,
++  } = useAdminMemberDirectoryAuditActions({
++    authenticatedAdminAccount,
++    authenticatedAdminId,
++    borrowers: memberDirectoryBorrowers,
+     isAdminAuthenticated,
+     isSplitStorageReady,
+-  } = ctx;
++    settings: signupPolicySettings,
++    setAdminTab,
++    setAdminUserAccountQuery,
++    setAdminUserAccountStatusFilter,
++    triggerConfirm,
++    triggerToast,
++  });
+ 
+   const {
+     cancelSignupPolicyChanges,
+--- a/src/context/appContextSlices.js
++++ b/src/context/appContextSlices.js
+@@ -23,15 +23,15 @@
+     laptops: contextKeys('AdminPageHeader Badge Button ClipboardList Edit3 Input Plus React STATUS Save Search Select Trash2 adminAvailabilityFilter adminFilteredLaptops adminLaptopQuery adminSelectedAssetCategory authenticatedAdminId createLaptop currentAuthAdminAccount data deleteLaptop editLaptop editLaptopInsertIndex getLaptopAdminDisplayStatus handleAddLaptopClick newLaptop saveLaptop setAdminAvailabilityFilter setAdminLaptopQuery setAdminSelectedAssetCategory setData setEditLaptop setNewLaptop setShowUploadPanel showUploadPanel splitRentalAssets triggerToast'),
+     holidaySettings: contextKeys('AdminPageHeader Button ClipboardList DEFAULT_HOLIDAY_TYPE HOLIDAY_TYPE_LABEL Plus Save Trash2 addTempHoliday applyHolidayImportConflictChoice data deleteTempHoliday discardHolidayChanges formatDateWithKoreanWeekday getKoreaNow holidayImportConflictModal holidayImportLoading holidayImportYear holidayManagementMonth holidayManagementView holidayManagementYear holidaySettingsDirty importKoreanPublicHolidaysFromJson newHolidayDate newHolidayName newHolidayType saveHolidaySettings setHolidayImportConflictModal setHolidayImportYear setHolidayManagementMonth setHolidayManagementView setHolidayManagementYear setNewHolidayDate setNewHolidayName setNewHolidayType tempHolidayList today updateTempHolidayReason'),
+     categories: contextKeys('AdminPageHeader Button Edit3 Plus Save Trash2 X addTempAssetCategory applyEditTempAssetCategory cancelTempAssetCategoryChanges deleteTempAssetCategory draggingAssetCategoryIndex editingAssetCategoryIndex editingAssetCategoryName moveTempAssetCategory newAssetCategory saveTempAssetCategoryChanges setDraggingAssetCategoryIndex setEditingAssetCategoryIndex setEditingAssetCategoryName setNewAssetCategory startEditTempAssetCategory tempAssetCategories'),
+-    people: contextKeys('AdminPageHeader Button Edit3 Plus Save Trash2 X clearMemberDirectoryAuditResult isSplitStorageReady memberDirectoryBorrowers memberDirectorySettings memberDirectoryTeams onMemberDirectoryDeferredStateChange setData triggerToast'),
+-    signupPolicy: contextKeys('AdminPageHeader Button isAdminAuthenticated isSplitStorageReady memberDirectoryAudit memberDirectoryAuditLoading memberDirectoryAuditResult memberDirectoryPolicyEnabled memberIdentityClaimsReady onSignupPolicyDeferredStateChange openProfileRequiredMembers resetDirectoryMismatchRestoreAttempt restoreDirectoryMismatchAccountsAfterPolicyDisabled runFullMemberDirectoryAudit setData signupPolicySettings triggerToast'),
++    people: contextKeys('AdminPageHeader Button Edit3 Plus Save Trash2 X isSplitStorageReady memberDirectoryBorrowers memberDirectorySettings memberDirectoryTeams onMemberDirectoryDeferredStateChange setData triggerToast'),
++    signupPolicy: contextKeys('AdminPageHeader Button authenticatedAdminAccount authenticatedAdminId isAdminAuthenticated isSplitStorageReady memberDirectoryAudit memberDirectoryBorrowers memberDirectoryPolicyEnabled memberIdentityClaimsReady onSignupPolicyDeferredStateChange setAdminTab setAdminUserAccountQuery setAdminUserAccountStatusFilter setData signupPolicySettings triggerConfirm triggerToast'),
+     noticePosts: contextKeys('AdminPageHeader Button Edit3 NOTICE_POSTS_PER_PAGE_OPTIONS Pin Plus Save Search Select Trash2 adminNoticeQuery adminNoticeTotalPages adminPinnedNoticePosts adminRegularNoticePosts confirmDeleteNoticePost formatFirestoreDate noticeBoardConfigLoadErrorMessage noticeBoardConfigReady noticeBoardConfigSaving noticePostDeletingId noticePosts noticePostsLoadErrorMessage noticePostsPerPageInput noticePostsReady noticeRegularPostNumberById openNoticePostDialog paginatedAdminNoticePosts safeAdminNoticePage saveNoticeBoardConfig setAdminNoticePage setAdminNoticeQuery setNoticePostsPerPageInput'),
+     siteSettings: contextKeys('AdminPageHeader Button Input Select authenticatedAdminAccount data finalizeSplitStorageMigration isSplitStorageReady siteSettings siteSettingsLoadErrorMessage siteSettingsReady splitStorageFinalizeLoading systemAdminSettings systemAdminSettingsLoadErrorMessage systemAdminSettingsReady triggerConfirm triggerToast'),
+     homeManagement: contextKeys('AdminPageHeader Button Input Select authenticatedAdminAccount authenticatedAdminId data finalizeSplitStorageMigration isAdminAuthenticated isSplitStorageReady siteSettings siteSettingsLoadErrorMessage siteSettingsReady splitStorageFinalizeLoading systemAdminSettings systemAdminSettingsLoadErrorMessage systemAdminSettingsReady triggerConfirm triggerToast'),
+     popupPosts: contextKeys('AdminPageHeader Button confirmDeletePopupPost formatPopupDateTime getPopupDisplayStatus movePopupPost openPopupPostDialog popupPostDeletingId popupPostToggleSavingId popupPosts popupPostsLoadErrorMessage popupPostsReady togglePopupPostEnabled'),
+     faqPosts: contextKeys('AdminPageHeader AnimatePresence Button Edit3 FAQ_POSTS_PER_PAGE_OPTIONS Plus Save Select Trash2 X addFaqCategory adminExpandedFaqPostId adminFaqTotalPages adminPinnedFaqPosts adminRegularFaqPosts confirmDeleteFaqCategory confirmDeleteFaqPost editingFaqCategoryId editingFaqCategoryName faqBoardConfigLoadErrorMessage faqBoardConfigReady faqBoardConfigSaving faqCategories faqCategoriesLoadErrorMessage faqCategoriesReady faqCategoryDeletingId faqCategoryNameById faqCategorySavingId faqPostDeletingId faqPosts faqPostsLoadErrorMessage faqPostsPerPageInput faqPostsReady motion newFaqCategoryName openFaqPostDialog paginatedAdminFaqPosts safeAdminFaqPage saveFaqBoardConfig saveFaqCategoryName setAdminExpandedFaqPostId setAdminFaqPage setEditingFaqCategoryId setEditingFaqCategoryName setFaqPostsPerPageInput setNewFaqCategoryName startEditFaqCategory toggleAdminFaqPost'),
+     footerManagement: contextKeys('AdminPageHeader Button closeFooterPageDialog confirmDeleteFooterPage footerConfigDraft footerConfigLoadErrorMessage footerConfigReady footerConfigSaving footerPageDeletingId footerPageDialog footerPageForm footerPageSaving footerPageToggleSavingId footerPages footerPagesLoadErrorMessage footerPagesReady formatFirestoreDate moveFooterPage openFooterPageDialog saveFooterConfig saveFooterPage setFooterConfigDraft setFooterPageForm toggleFooterPageEnabled'),
+-    memberAccounts: contextKeys('AdminPageHeader Button CheckCircle2 LogOut Search USER_PROFILE_STATUS XCircle adminUserAccountHasNextPage adminUserAccountQuery adminUserAccountSavingUid adminUserAccountSearchMode adminUserAccountStatusCounts adminUserAccountStatusFilter adminUserAccountTotalPages adminUserAccountsLoadErrorMessage adminUserAccountsReady confirmUserAccountStatusChange filteredManagedUserAccounts safeAdminUserAccountPage setAdminUserAccountPage setAdminUserAccountQuery setAdminUserAccountStatusFilter'),
++    memberAccounts: contextKeys('AdminPageHeader Button CheckCircle2 LogOut Search USER_PROFILE_STATUS XCircle adminUserAccountHasNextPage adminUserAccountQuery adminUserAccountSearchMode adminUserAccountStatusCounts adminUserAccountStatusFilter adminUserAccountTotalPages adminUserAccountsLoadErrorMessage adminUserAccountsReady filteredManagedUserAccounts isAdminAuthenticated safeAdminUserAccountPage setAdminUserAccountPage setAdminUserAccountQuery setAdminUserAccountStatusFilter triggerConfirm triggerToast'),
+     adminAccounts: contextKeys('ADMIN_ACCOUNT_PAGE_SIZE ADMIN_CUSTOM_OPTION_VALUE AdminPageHeader Button Input Select adminAccountEditForm adminAccountForm adminAccountTotalPages adminAccountUserOptions authenticatedAdminAccount authenticatedAdminId cancelEditAdminAccount createDefaultAdminAccountForm data deleteAdminAccount editingAdminAccountId paginatedAdminAccounts registerAdminAccount registeredAdminAccounts safeAdminAccountPage saveAdminAccountEdit sendAdminAccountPasswordResetEmail setAdminAccountEditForm setAdminAccountForm setAdminAccountPage startEditAdminAccount toggleAdminAccountLock'),
+     serviceOperations: contextKeys('AdminPageHeader Button Input Select authenticatedAdminAccount data finalizeSplitStorageMigration isSplitStorageReady siteSettings siteSettingsLoadErrorMessage siteSettingsReady splitStorageFinalizeLoading systemAdminSettings systemAdminSettingsLoadErrorMessage systemAdminSettingsReady triggerConfirm triggerToast'),
+     accountSecurity: contextKeys('AdminPageHeader Button authenticatedAdminAccount systemAdminSettings systemAdminSettingsLoadErrorMessage systemAdminSettingsReady triggerToast userSessionPolicy userSessionPolicyLoadErrorMessage userSessionPolicyReady'),
+--- a/src/features/members/useAdminMemberDirectorySaveActions.js
++++ b/src/features/members/useAdminMemberDirectorySaveActions.js
+@@ -21,7 +21,6 @@
+ 
+ export default function useAdminMemberDirectorySaveActions({
+   currentBorrowers,
+-  clearMemberDirectoryAuditResult,
+   isSplitStorageReady,
+   replaceTempPeopleDraft,
+   setData,
+@@ -71,7 +70,6 @@
+         nextTeams,
+         nextBorrowers,
+       });
+-      clearMemberDirectoryAuditResult();
+ 
+       triggerToastRef.current(
+         '부서·사용자 명부가 저장되었습니다. 명부 버전이 변경되어 기존 회원은 다음 로그인 시 순차적으로 재검증됩니다.',
+@@ -96,8 +94,7 @@
+       return false;
+     }
+   }, [
+-    clearMemberDirectoryAuditResult,
+-    currentBorrowers,
++      currentBorrowers,
+     isSplitStorageReady,
+     replaceTempPeopleDraft,
+     setData,
+--- a/src/features/members/useAdminMemberAccountStatusActions.js
++++ b/src/features/members/useAdminMemberAccountStatusActions.js
+@@ -0,0 +1,199 @@
++import {
++  useCallback,
++  useEffect,
++  useRef,
++  useState,
++} from 'react';
++import {
++  doc,
++  serverTimestamp,
++  writeBatch,
++} from 'firebase/firestore';
++
++import {
++  ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
++  RENTAL_RESTRICTIONS_COLLECTION_REF,
++  USER_ACCOUNTS_COLLECTION_NAME,
++  db,
++} from '../../firebase.js';
++import {
++  USER_PROFILE_STATUS,
++} from '../../constants/memberConstants.js';
++import {
++  today,
++} from '../../utils/appUtils.js';
++import {
++  loadMemberAccountHistorySummary,
++} from './memberAccountHistoryService.js';
++import {
++  getUserAccountStatusLabel,
++} from './memberAccountPolicy.js';
++
++const VALID_USER_ACCOUNT_STATUSES = new Set([
++  USER_PROFILE_STATUS.PENDING,
++  USER_PROFILE_STATUS.ACTIVE,
++  USER_PROFILE_STATUS.PROFILE_REQUIRED,
++  USER_PROFILE_STATUS.BLOCKED,
++  USER_PROFILE_STATUS.RETIRED,
++]);
++
++export default function useAdminMemberAccountStatusActions({
++  isAdminAuthenticated,
++  triggerConfirm,
++  triggerToast,
++}) {
++  const triggerConfirmRef = useRef(triggerConfirm);
++  const triggerToastRef = useRef(triggerToast);
++  const [adminUserAccountSavingUid, setAdminUserAccountSavingUid] =
++    useState('');
++
++  useEffect(() => {
++    triggerConfirmRef.current = triggerConfirm;
++  }, [triggerConfirm]);
++
++  useEffect(() => {
++    triggerToastRef.current = triggerToast;
++  }, [triggerToast]);
++
++  const updateUserAccountStatus = useCallback(
++    async (account, nextStatus) => {
++      const userUid = account?.uid || '';
++
++      if (!isAdminAuthenticated || !userUid) {
++        triggerToastRef.current(
++          '관리자 인증과 회원 UID를 확인해 주세요.',
++          'error'
++        );
++        return;
++      }
++
++      if (!VALID_USER_ACCOUNT_STATUSES.has(nextStatus)) {
++        triggerToastRef.current(
++          '지원하지 않는 회원 상태입니다.',
++          'error'
++        );
++        return;
++      }
++
++      if (
++        nextStatus === USER_PROFILE_STATUS.ACTIVE &&
++        account.rejoinedAccount
++      ) {
++        let historySummary;
++
++        try {
++          historySummary = await loadMemberAccountHistorySummary(account);
++        } catch (error) {
++          console.error('Rejoined member history check error:', error);
++          triggerToastRef.current(
++            '이전 계정의 진행 중 신청 여부를 확인하지 못해 가입 승인을 중단했습니다. 잠시 후 다시 시도해 주세요.',
++            'error'
++          );
++          return;
++        }
++
++        if (historySummary.activeRequests > 0) {
++          triggerToastRef.current(
++            `이전 계정에 진행 중인 신청 또는 대여 ${historySummary.activeRequests}건이 남아 있어 가입을 승인할 수 없습니다. 기존 신청을 먼저 정리해 주세요.`,
++            'error'
++          );
++          return;
++        }
++      }
++
++      setAdminUserAccountSavingUid(userUid);
++
++      try {
++        const batch = writeBatch(db);
++        batch.set(
++          doc(db, USER_ACCOUNTS_COLLECTION_NAME, userUid),
++          {
++            status: nextStatus,
++            updatedAt: serverTimestamp(),
++          },
++          { merge: true }
++        );
++
++        if (account.recoveryKey) {
++          batch.set(
++            doc(
++              ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
++              account.recoveryKey
++            ),
++            {
++              accountStatus: nextStatus,
++              updatedAt: serverTimestamp(),
++            },
++            { merge: true }
++          );
++        }
++
++        const inheritedRestriction = account.inheritedRestriction || {};
++        const inheritedRestrictionStillActive = Boolean(
++          nextStatus === USER_PROFILE_STATUS.ACTIVE &&
++            account.rejoinedAccount &&
++            (inheritedRestriction.manualBlock === true ||
++              inheritedRestriction.indefinite === true ||
++              inheritedRestriction.restrictionStatus === 'active' ||
++              (inheritedRestriction.activePenalty === true &&
++                String(inheritedRestriction.eligibleFromDate || '') > today()))
++        );
++
++        if (inheritedRestrictionStillActive) {
++          batch.set(
++            doc(RENTAL_RESTRICTIONS_COLLECTION_REF, userUid),
++            {
++              ...inheritedRestriction,
++              uid: userUid,
++              inheritedFromPreviousAccount: true,
++              updatedAt: serverTimestamp(),
++            },
++            { merge: true }
++          );
++        }
++
++        await batch.commit();
++
++        triggerToastRef.current(
++          `${account.name || account.email || userUid} 회원을 ${getUserAccountStatusLabel(
++            nextStatus
++          )} 상태로 변경했습니다.`,
++          'success'
++        );
++      } catch (error) {
++        console.error('User account status update error:', error);
++
++        triggerToastRef.current(
++          `회원 상태 변경에 실패했습니다. 오류 코드: ${
++            error?.code || error?.message || 'unknown-error'
++          }`,
++          'error'
++        );
++      } finally {
++        setAdminUserAccountSavingUid('');
++      }
++    },
++    [isAdminAuthenticated]
++  );
++
++  const confirmUserAccountStatusChange = useCallback(
++    (account, nextStatus) => {
++      const accountLabel =
++        account?.name || account?.email || account?.uid || '선택한 회원';
++
++      triggerConfirmRef.current(
++        '회원 상태 변경',
++        `${accountLabel} 회원을 ${getUserAccountStatusLabel(
++          nextStatus
++        )} 상태로 변경하시겠습니까?`,
++        () => updateUserAccountStatus(account, nextStatus)
++      );
++    },
++    [updateUserAccountStatus]
++  );
++
++  return {
++    adminUserAccountSavingUid,
++    confirmUserAccountStatusChange,
++  };
++}
+--- a/src/features/members/useAdminMemberDirectoryAuditActions.js
++++ b/src/features/members/useAdminMemberDirectoryAuditActions.js
+@@ -0,0 +1,526 @@
++import {
++  useCallback,
++  useEffect,
++  useRef,
++  useState,
++} from 'react';
++import {
++  doc,
++  getDocs,
++  query as firestoreQuery,
++  serverTimestamp,
++  setDoc,
++  where,
++} from 'firebase/firestore';
++
++import {
++  ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
++  MEMBER_IDENTITY_CLAIMS_COLLECTION_REF,
++  PUBLIC_CONFIG_DOC_REF,
++  USER_ACCOUNTS_COLLECTION_NAME,
++  USER_ACCOUNTS_COLLECTION_REF,
++  db,
++} from '../../firebase.js';
++import {
++  PROFILE_REQUIRED_REASON,
++  USER_PROFILE_STATUS,
++} from '../../constants/memberConstants.js';
++import {
++  createMemberIdentityKey,
++  normalizeMemberName,
++  normalizeMemberTeam,
++} from '../../utils/memberPolicy.js';
++import {
++  buildMemberAccountIndexEntries,
++  buildMemberAccountIndexOperations,
++  commitFirestoreOperations,
++} from './memberAccountIndexService.js';
++import {
++  getRestorableUserProfileStatus,
++  getSafeMemberDirectoryVersion,
++  isRegisteredMemberSignupRequired,
++} from './memberAccountPolicy.js';
++
++export default function useAdminMemberDirectoryAuditActions({
++  authenticatedAdminAccount,
++  authenticatedAdminId,
++  borrowers,
++  isAdminAuthenticated,
++  isSplitStorageReady,
++  settings,
++  setAdminTab,
++  setAdminUserAccountQuery,
++  setAdminUserAccountStatusFilter,
++  triggerConfirm,
++  triggerToast,
++}) {
++  const directoryMismatchRestoreInProgressRef = useRef(false);
++  const directoryMismatchRestoreAttemptKeyRef = useRef('');
++  const triggerConfirmRef = useRef(triggerConfirm);
++  const triggerToastRef = useRef(triggerToast);
++  const [memberDirectoryAuditLoading, setMemberDirectoryAuditLoading] =
++    useState(false);
++  const [memberDirectoryAuditResult, setMemberDirectoryAuditResult] =
++    useState(null);
++
++  useEffect(() => {
++    triggerConfirmRef.current = triggerConfirm;
++  }, [triggerConfirm]);
++
++  useEffect(() => {
++    triggerToastRef.current = triggerToast;
++  }, [triggerToast]);
++
++  const resetDirectoryMismatchRestoreAttempt = useCallback(() => {
++    directoryMismatchRestoreAttemptKeyRef.current = '';
++  }, []);
++
++
++  const clearMemberDirectoryAuditResult = useCallback(() => {
++    setMemberDirectoryAuditResult(null);
++  }, []);
++
++  const restoreDirectoryMismatchAccountsAfterPolicyDisabled = useCallback(
++    async (sourceAccounts = null) => {
++      if (directoryMismatchRestoreInProgressRef.current) {
++        return 0;
++      }
++
++      directoryMismatchRestoreInProgressRef.current = true;
++
++      try {
++        const accountDocuments = Array.isArray(sourceAccounts)
++          ? sourceAccounts
++              .filter((account) => account?.uid)
++              .map((account) => ({
++                ref: doc(
++                  db,
++                  USER_ACCOUNTS_COLLECTION_NAME,
++                  account.uid
++                ),
++                data: () => account,
++              }))
++          : (
++              await getDocs(
++                firestoreQuery(
++                  USER_ACCOUNTS_COLLECTION_REF,
++                  where(
++                    'status',
++                    '==',
++                    USER_PROFILE_STATUS.PROFILE_REQUIRED
++                  ),
++                  where(
++                    'profileRequiredReason',
++                    '==',
++                    PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH
++                  )
++                )
++              )
++            ).docs;
++        const restoreOperations = [];
++        let restoredCount = 0;
++
++        accountDocuments.forEach((accountDocument) => {
++          const account = accountDocument.data() || {};
++
++          if (
++            account.status !== USER_PROFILE_STATUS.PROFILE_REQUIRED ||
++            account.profileRequiredReason !==
++              PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH
++          ) {
++            return;
++          }
++
++          const restoredStatus = getRestorableUserProfileStatus(
++            account.statusBeforeProfileRequired
++          );
++
++          restoreOperations.push({
++            type: 'update',
++            ref: accountDocument.ref,
++            data: {
++              status: restoredStatus,
++              profileRequiredReason: '',
++              profileRequiredAt: '',
++              statusBeforeProfileRequired: '',
++              updatedAt: serverTimestamp(),
++            },
++          });
++
++          if (account.recoveryKey) {
++            restoreOperations.push({
++              type: 'set',
++              ref: doc(
++                ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
++                account.recoveryKey
++              ),
++              data: {
++                recoveryKey: account.recoveryKey,
++                maskedEmail: account.maskedEmail || '',
++                accountStatus: restoredStatus,
++                enabled: true,
++                updatedAt: serverTimestamp(),
++              },
++              options: { merge: true },
++            });
++          }
++
++          restoredCount += 1;
++        });
++
++        if (restoreOperations.length > 0) {
++          await commitFirestoreOperations(restoreOperations);
++        }
++
++        return restoredCount;
++      } finally {
++        directoryMismatchRestoreInProgressRef.current = false;
++      }
++    },
++    []
++  );
++
++  useEffect(() => {
++    const shouldCheckDirectoryMismatchRestore =
++      isAdminAuthenticated &&
++      isSplitStorageReady &&
++      !isRegisteredMemberSignupRequired(settings);
++
++    if (!shouldCheckDirectoryMismatchRestore) return undefined;
++
++    const restoreAttemptKey = `disabled:${getSafeMemberDirectoryVersion(
++      settings
++    )}`;
++
++    if (
++      directoryMismatchRestoreAttemptKeyRef.current === restoreAttemptKey
++    ) {
++      return undefined;
++    }
++
++    directoryMismatchRestoreAttemptKeyRef.current = restoreAttemptKey;
++    let cancelled = false;
++
++    void restoreDirectoryMismatchAccountsAfterPolicyDisabled()
++      .then((restoredCount) => {
++        if (!cancelled && restoredCount > 0) {
++          triggerToastRef.current(
++            `가입 제한 정책이 꺼져 있어 등록 명부 불일치 회원 ${restoredCount}명을 이전 이용 상태로 자동 복원했습니다.`,
++            'success'
++          );
++        }
++      })
++      .catch((error) => {
++        if (cancelled) return;
++
++        console.error(
++          'Automatic directory mismatch account restoration error:',
++          error
++        );
++        directoryMismatchRestoreAttemptKeyRef.current = '';
++        triggerToastRef.current(
++          '등록 명부 불일치 회원의 자동 복원에 실패했습니다. 최신 Firestore Rules를 게시한 뒤 다시 확인해 주세요.',
++          'error'
++        );
++      });
++
++    return () => {
++      cancelled = true;
++    };
++  }, [
++    isAdminAuthenticated,
++    isSplitStorageReady,
++    restoreDirectoryMismatchAccountsAfterPolicyDisabled,
++    settings,
++  ]);
++
++
++  const executeFullMemberDirectoryAudit = useCallback(async () => {
++    if (!isAdminAuthenticated) {
++      triggerToastRef.current(
++        '관리자 인증 후 전체 회원 검사를 실행할 수 있습니다.',
++        'error'
++      );
++      return;
++    }
++
++    if (!isRegisteredMemberSignupRequired(settings)) {
++      triggerToastRef.current(
++        '회원가입 제한 정책을 저장한 뒤 전체 회원 검사를 실행해 주세요.',
++        'error'
++      );
++      return;
++    }
++
++    setMemberDirectoryAuditLoading(true);
++    setMemberDirectoryAuditResult(null);
++
++    try {
++      const directoryVersion = getSafeMemberDirectoryVersion(settings);
++      const directoryEntries = await Promise.all(
++        (borrowers || []).map(async (borrower) => ({
++          ...borrower,
++          name: normalizeMemberName(borrower.name || ''),
++          team: normalizeMemberTeam(borrower.team || ''),
++          identityKey: await createMemberIdentityKey(
++            borrower.team,
++            borrower.name
++          ),
++        }))
++      );
++      const directoryByIdentityKey = new Map(
++        directoryEntries.map((entry) => [entry.identityKey, entry])
++      );
++      const [
++        currentUserAccountsSnapshot,
++        currentClaimsSnapshot,
++        currentRecoverySnapshot,
++      ] = await Promise.all([
++        getDocs(USER_ACCOUNTS_COLLECTION_REF),
++        getDocs(MEMBER_IDENTITY_CLAIMS_COLLECTION_REF),
++        getDocs(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF),
++      ]);
++      const accountEntries = await buildMemberAccountIndexEntries(
++        currentUserAccountsSnapshot.docs.map((accountDocument) => ({
++          ...accountDocument.data(),
++          uid: accountDocument.data().uid || accountDocument.id,
++        }))
++      );
++      const {
++        accountMetadataOperations,
++        claimOperations,
++        recoveryOperations,
++        groups: accountGroups,
++      } = buildMemberAccountIndexOperations({
++        accountEntries,
++        currentClaimDocuments: currentClaimsSnapshot.docs,
++        currentRecoveryDocuments: currentRecoverySnapshot.docs,
++      });
++      let duplicateAccounts = 0;
++
++      accountGroups.forEach((group) => {
++        const liveEntries = group.filter(
++          (entry) => entry.account.status !== USER_PROFILE_STATUS.RETIRED
++        );
++
++        if (liveEntries.length > 1) {
++          duplicateAccounts += liveEntries.length;
++        }
++      });
++
++      const auditableStatuses = new Set([
++        USER_PROFILE_STATUS.PENDING,
++        USER_PROFILE_STATUS.ACTIVE,
++        USER_PROFILE_STATUS.PROFILE_REQUIRED,
++      ]);
++      const auditableTotal = accountEntries.filter((entry) =>
++        auditableStatuses.has(entry.account.status || '')
++      ).length;
++      const accountOperations = [];
++      let normal = 0;
++      let profileRequired = 0;
++      let missing = 0;
++
++      accountEntries.forEach((entry) => {
++        const { account, identityKey, name, team } = entry;
++        const accountStatus = account.status || '';
++        const isAuditable = auditableStatuses.has(accountStatus);
++        const group = identityKey ? accountGroups.get(identityKey) || [] : [];
++        const isDuplicate =
++          group.filter(
++            (groupEntry) =>
++              groupEntry.account.status !== USER_PROFILE_STATUS.RETIRED
++          ).length > 1;
++        const directoryEntry = identityKey
++          ? directoryByIdentityKey.get(identityKey)
++          : null;
++        const directoryMatches = Boolean(
++          directoryEntry &&
++            directoryEntry.name === name &&
++            directoryEntry.team === team
++        );
++
++        if (!isAuditable) {
++          return;
++        }
++
++        if (!identityKey || !directoryMatches || isDuplicate) {
++          if (!identityKey || !directoryMatches) {
++            missing += 1;
++          }
++
++          profileRequired += 1;
++          const nextReason = isDuplicate
++            ? PROFILE_REQUIRED_REASON.DUPLICATE_IDENTITY
++            : PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
++          const previousStatus = [
++            USER_PROFILE_STATUS.PENDING,
++            USER_PROFILE_STATUS.ACTIVE,
++          ].includes(accountStatus)
++            ? accountStatus
++            : account.statusBeforeProfileRequired ||
++              USER_PROFILE_STATUS.PENDING;
++
++          accountOperations.push({
++            type: 'set',
++            ref: doc(db, USER_ACCOUNTS_COLLECTION_NAME, account.uid),
++            data: {
++              status: USER_PROFILE_STATUS.PROFILE_REQUIRED,
++              statusBeforeProfileRequired: previousStatus,
++              profileRequiredReason: nextReason,
++              profileRequiredAt: serverTimestamp(),
++              identityKey,
++              directoryMemberId: directoryMatches
++                ? directoryEntry.id || ''
++                : '',
++              directoryVerifiedVersion: 0,
++              directoryVerifiedAt: '',
++              updatedAt: serverTimestamp(),
++            },
++            options: { merge: true },
++            auditOutcome: 'profileRequired',
++          });
++          return;
++        }
++
++        normal += 1;
++        const shouldRestore =
++          accountStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
++          account.profileRequiredReason ===
++            PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
++        const nextStatus = shouldRestore
++          ? getRestorableUserProfileStatus(account.statusBeforeProfileRequired)
++          : accountStatus;
++
++        accountOperations.push({
++          type: 'set',
++          ref: doc(db, USER_ACCOUNTS_COLLECTION_NAME, account.uid),
++          data: {
++            status: nextStatus,
++            identityKey,
++            directoryMemberId: directoryEntry.id || '',
++            directoryVerifiedVersion: directoryVersion,
++            directoryVerifiedAt: serverTimestamp(),
++            profileRequiredReason: shouldRestore
++              ? ''
++              : account.profileRequiredReason || '',
++            profileRequiredAt: shouldRestore
++              ? ''
++              : account.profileRequiredAt || '',
++            statusBeforeProfileRequired: shouldRestore
++              ? ''
++              : account.statusBeforeProfileRequired || '',
++            updatedAt: serverTimestamp(),
++          },
++          options: { merge: true },
++          auditOutcome: 'normal',
++        });
++      });
++
++      await commitFirestoreOperations([
++        ...claimOperations,
++        ...recoveryOperations,
++        ...accountMetadataOperations,
++      ]);
++
++      let failed = 0;
++
++      for (const operation of accountOperations) {
++        try {
++          await setDoc(operation.ref, operation.data, operation.options);
++        } catch (accountError) {
++          failed += 1;
++
++          if (operation.auditOutcome === 'normal') {
++            normal = Math.max(0, normal - 1);
++          } else if (operation.auditOutcome === 'profileRequired') {
++            profileRequired = Math.max(0, profileRequired - 1);
++          }
++
++          console.error(
++            'Member directory audit account update error:',
++            accountError
++          );
++        }
++      }
++
++      const auditSummary = {
++        total: auditableTotal,
++        normal,
++        profileRequired,
++        duplicates: duplicateAccounts,
++        missing,
++        failed,
++        directoryVersion,
++        completedAtText: new Date().toLocaleString('ko-KR'),
++        completedBy:
++          authenticatedAdminAccount?.email ||
++          authenticatedAdminAccount?.adminLoginId ||
++          authenticatedAdminId,
++        completedAt: serverTimestamp(),
++      };
++
++      await setDoc(
++        PUBLIC_CONFIG_DOC_REF,
++        {
++          memberDirectoryAudit: auditSummary,
++          settings: {
++            ...settings,
++            memberIdentityClaimsReady: true,
++          },
++          updatedAt: serverTimestamp(),
++        },
++        { merge: true }
++      );
++
++      setMemberDirectoryAuditResult(auditSummary);
++      triggerToastRef.current(
++        `전체 회원 명부 검사가 완료되었습니다. 정상 ${normal}명, 정보 수정 필요 ${profileRequired}명, 중복 ${duplicateAccounts}명, 실패 ${failed}명입니다.`,
++        profileRequired > 0 || failed > 0 ? 'error' : 'success'
++      );
++    } catch (error) {
++      console.error('Full member directory audit error:', error);
++      triggerToastRef.current(
++        '전체 회원 명부 검사에 실패했습니다. 기존 회원 상태는 가능한 범위에서 유지됩니다.',
++        'error'
++      );
++    } finally {
++      setMemberDirectoryAuditLoading(false);
++    }
++  }, [
++    authenticatedAdminAccount,
++    authenticatedAdminId,
++    borrowers,
++    isAdminAuthenticated,
++    settings,
++  ]);
++
++  const runFullMemberDirectoryAudit = useCallback(() => {
++    triggerConfirmRef.current(
++      '전체 회원 명부 검사',
++      "현재 회원 계정과 부서·사용자 명부를 비교합니다. 불일치 회원은 '정보 수정 필요' 상태로 전환되며 등록 정보는 자동으로 변경되지 않습니다. 검사를 실행하시겠습니까?",
++      executeFullMemberDirectoryAudit
++    );
++  }, [executeFullMemberDirectoryAudit]);
++
++  const openProfileRequiredMembers = useCallback(() => {
++    setAdminUserAccountQuery('');
++    setAdminUserAccountStatusFilter(USER_PROFILE_STATUS.PROFILE_REQUIRED);
++    setAdminTab('memberAccounts');
++  }, [
++    setAdminTab,
++    setAdminUserAccountQuery,
++    setAdminUserAccountStatusFilter,
++  ]);
++
++
++  return {
++    clearMemberDirectoryAuditResult,
++    memberDirectoryAuditLoading,
++    memberDirectoryAuditResult,
++    openProfileRequiredMembers,
++    resetDirectoryMismatchRestoreAttempt,
++    restoreDirectoryMismatchAccountsAfterPolicyDisabled,
++    runFullMemberDirectoryAudit,
++  };
++}
+--- a/src/features/members/useAdminMemberActions.js
++++ b/src/features/members/useAdminMemberActions.js
+@@ -1,688 +0,0 @@
+-import {
+-  useCallback,
+-  useEffect,
+-  useRef,
+-  useState,
+-} from 'react';
+-import {
+-  doc,
+-  getDocs,
+-  query as firestoreQuery,
+-  serverTimestamp,
+-  setDoc,
+-  where,
+-  writeBatch,
+-} from 'firebase/firestore';
+-
+-import {
+-  ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
+-  MEMBER_IDENTITY_CLAIMS_COLLECTION_REF,
+-  PUBLIC_CONFIG_DOC_REF,
+-  RENTAL_RESTRICTIONS_COLLECTION_REF,
+-  USER_ACCOUNTS_COLLECTION_NAME,
+-  USER_ACCOUNTS_COLLECTION_REF,
+-  db,
+-} from '../../firebase.js';
+-import {
+-  PROFILE_REQUIRED_REASON,
+-  USER_PROFILE_STATUS,
+-} from '../../constants/memberConstants.js';
+-import {
+-  createMemberIdentityKey,
+-  normalizeMemberName,
+-  normalizeMemberTeam,
+-} from '../../utils/memberPolicy.js';
+-import {
+-  today,
+-} from '../../utils/appUtils.js';
+-import {
+-  buildMemberAccountIndexEntries,
+-  buildMemberAccountIndexOperations,
+-  commitFirestoreOperations,
+-} from './memberAccountIndexService.js';
+-import {
+-  loadMemberAccountHistorySummary,
+-} from './memberAccountHistoryService.js';
+-import {
+-  getRestorableUserProfileStatus,
+-  getSafeMemberDirectoryVersion,
+-  getUserAccountStatusLabel,
+-  isRegisteredMemberSignupRequired,
+-} from './memberAccountPolicy.js';
+-
+-const VALID_USER_ACCOUNT_STATUSES = new Set([
+-  USER_PROFILE_STATUS.PENDING,
+-  USER_PROFILE_STATUS.ACTIVE,
+-  USER_PROFILE_STATUS.PROFILE_REQUIRED,
+-  USER_PROFILE_STATUS.BLOCKED,
+-  USER_PROFILE_STATUS.RETIRED,
+-]);
+-
+-export default function useAdminMemberActions({
+-  adminTab,
+-  authenticatedAdminAccount,
+-  authenticatedAdminId,
+-  borrowers,
+-  isAdminAuthenticated,
+-  isSplitStorageReady,
+-  settings,
+-  setAdminTab,
+-  setAdminUserAccountQuery,
+-  setAdminUserAccountStatusFilter,
+-  triggerConfirm,
+-  triggerToast,
+-  view,
+-}) {
+-  const directoryMismatchRestoreInProgressRef = useRef(false);
+-  const directoryMismatchRestoreAttemptKeyRef = useRef('');
+-  const triggerConfirmRef = useRef(triggerConfirm);
+-  const triggerToastRef = useRef(triggerToast);
+-  const [adminUserAccountSavingUid, setAdminUserAccountSavingUid] =
+-    useState('');
+-  const [memberDirectoryAuditLoading, setMemberDirectoryAuditLoading] =
+-    useState(false);
+-  const [memberDirectoryAuditResult, setMemberDirectoryAuditResult] =
+-    useState(null);
+-
+-  useEffect(() => {
+-    triggerConfirmRef.current = triggerConfirm;
+-  }, [triggerConfirm]);
+-
+-  useEffect(() => {
+-    triggerToastRef.current = triggerToast;
+-  }, [triggerToast]);
+-
+-  const resetDirectoryMismatchRestoreAttempt = useCallback(() => {
+-    directoryMismatchRestoreAttemptKeyRef.current = '';
+-  }, []);
+-
+-
+-  const clearMemberDirectoryAuditResult = useCallback(() => {
+-    setMemberDirectoryAuditResult(null);
+-  }, []);
+-
+-  const restoreDirectoryMismatchAccountsAfterPolicyDisabled = useCallback(
+-    async (sourceAccounts = null) => {
+-      if (directoryMismatchRestoreInProgressRef.current) {
+-        return 0;
+-      }
+-
+-      directoryMismatchRestoreInProgressRef.current = true;
+-
+-      try {
+-        const accountDocuments = Array.isArray(sourceAccounts)
+-          ? sourceAccounts
+-              .filter((account) => account?.uid)
+-              .map((account) => ({
+-                ref: doc(
+-                  db,
+-                  USER_ACCOUNTS_COLLECTION_NAME,
+-                  account.uid
+-                ),
+-                data: () => account,
+-              }))
+-          : (
+-              await getDocs(
+-                firestoreQuery(
+-                  USER_ACCOUNTS_COLLECTION_REF,
+-                  where(
+-                    'status',
+-                    '==',
+-                    USER_PROFILE_STATUS.PROFILE_REQUIRED
+-                  ),
+-                  where(
+-                    'profileRequiredReason',
+-                    '==',
+-                    PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH
+-                  )
+-                )
+-              )
+-            ).docs;
+-        const restoreOperations = [];
+-        let restoredCount = 0;
+-
+-        accountDocuments.forEach((accountDocument) => {
+-          const account = accountDocument.data() || {};
+-
+-          if (
+-            account.status !== USER_PROFILE_STATUS.PROFILE_REQUIRED ||
+-            account.profileRequiredReason !==
+-              PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH
+-          ) {
+-            return;
+-          }
+-
+-          const restoredStatus = getRestorableUserProfileStatus(
+-            account.statusBeforeProfileRequired
+-          );
+-
+-          restoreOperations.push({
+-            type: 'update',
+-            ref: accountDocument.ref,
+-            data: {
+-              status: restoredStatus,
+-              profileRequiredReason: '',
+-              profileRequiredAt: '',
+-              statusBeforeProfileRequired: '',
+-              updatedAt: serverTimestamp(),
+-            },
+-          });
+-
+-          if (account.recoveryKey) {
+-            restoreOperations.push({
+-              type: 'set',
+-              ref: doc(
+-                ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
+-                account.recoveryKey
+-              ),
+-              data: {
+-                recoveryKey: account.recoveryKey,
+-                maskedEmail: account.maskedEmail || '',
+-                accountStatus: restoredStatus,
+-                enabled: true,
+-                updatedAt: serverTimestamp(),
+-              },
+-              options: { merge: true },
+-            });
+-          }
+-
+-          restoredCount += 1;
+-        });
+-
+-        if (restoreOperations.length > 0) {
+-          await commitFirestoreOperations(restoreOperations);
+-        }
+-
+-        return restoredCount;
+-      } finally {
+-        directoryMismatchRestoreInProgressRef.current = false;
+-      }
+-    },
+-    []
+-  );
+-
+-  useEffect(() => {
+-    const shouldCheckDirectoryMismatchRestore =
+-      isAdminAuthenticated &&
+-      isSplitStorageReady &&
+-      view === 'admin' &&
+-      adminTab === 'signupPolicy' &&
+-      !isRegisteredMemberSignupRequired(settings);
+-
+-    if (!shouldCheckDirectoryMismatchRestore) return undefined;
+-
+-    const restoreAttemptKey = `disabled:${getSafeMemberDirectoryVersion(
+-      settings
+-    )}`;
+-
+-    if (
+-      directoryMismatchRestoreAttemptKeyRef.current === restoreAttemptKey
+-    ) {
+-      return undefined;
+-    }
+-
+-    directoryMismatchRestoreAttemptKeyRef.current = restoreAttemptKey;
+-    let cancelled = false;
+-
+-    void restoreDirectoryMismatchAccountsAfterPolicyDisabled()
+-      .then((restoredCount) => {
+-        if (!cancelled && restoredCount > 0) {
+-          triggerToastRef.current(
+-            `가입 제한 정책이 꺼져 있어 등록 명부 불일치 회원 ${restoredCount}명을 이전 이용 상태로 자동 복원했습니다.`,
+-            'success'
+-          );
+-        }
+-      })
+-      .catch((error) => {
+-        if (cancelled) return;
+-
+-        console.error(
+-          'Automatic directory mismatch account restoration error:',
+-          error
+-        );
+-        directoryMismatchRestoreAttemptKeyRef.current = '';
+-        triggerToastRef.current(
+-          '등록 명부 불일치 회원의 자동 복원에 실패했습니다. 최신 Firestore Rules를 게시한 뒤 다시 확인해 주세요.',
+-          'error'
+-        );
+-      });
+-
+-    return () => {
+-      cancelled = true;
+-    };
+-  }, [
+-    adminTab,
+-    isAdminAuthenticated,
+-    isSplitStorageReady,
+-    restoreDirectoryMismatchAccountsAfterPolicyDisabled,
+-    settings,
+-    view,
+-  ]);
+-
+-  const updateUserAccountStatus = useCallback(
+-    async (account, nextStatus) => {
+-      const userUid = account?.uid || '';
+-
+-      if (!isAdminAuthenticated || !userUid) {
+-        triggerToastRef.current(
+-          '관리자 인증과 회원 UID를 확인해 주세요.',
+-          'error'
+-        );
+-        return;
+-      }
+-
+-      if (!VALID_USER_ACCOUNT_STATUSES.has(nextStatus)) {
+-        triggerToastRef.current(
+-          '지원하지 않는 회원 상태입니다.',
+-          'error'
+-        );
+-        return;
+-      }
+-
+-      if (
+-        nextStatus === USER_PROFILE_STATUS.ACTIVE &&
+-        account.rejoinedAccount
+-      ) {
+-        let historySummary;
+-
+-        try {
+-          historySummary = await loadMemberAccountHistorySummary(account);
+-        } catch (error) {
+-          console.error('Rejoined member history check error:', error);
+-          triggerToastRef.current(
+-            '이전 계정의 진행 중 신청 여부를 확인하지 못해 가입 승인을 중단했습니다. 잠시 후 다시 시도해 주세요.',
+-            'error'
+-          );
+-          return;
+-        }
+-
+-        if (historySummary.activeRequests > 0) {
+-          triggerToastRef.current(
+-            `이전 계정에 진행 중인 신청 또는 대여 ${historySummary.activeRequests}건이 남아 있어 가입을 승인할 수 없습니다. 기존 신청을 먼저 정리해 주세요.`,
+-            'error'
+-          );
+-          return;
+-        }
+-      }
+-
+-      setAdminUserAccountSavingUid(userUid);
+-
+-      try {
+-        const batch = writeBatch(db);
+-        batch.set(
+-          doc(db, USER_ACCOUNTS_COLLECTION_NAME, userUid),
+-          {
+-            status: nextStatus,
+-            updatedAt: serverTimestamp(),
+-          },
+-          { merge: true }
+-        );
+-
+-        if (account.recoveryKey) {
+-          batch.set(
+-            doc(
+-              ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
+-              account.recoveryKey
+-            ),
+-            {
+-              accountStatus: nextStatus,
+-              updatedAt: serverTimestamp(),
+-            },
+-            { merge: true }
+-          );
+-        }
+-
+-        const inheritedRestriction = account.inheritedRestriction || {};
+-        const inheritedRestrictionStillActive = Boolean(
+-          nextStatus === USER_PROFILE_STATUS.ACTIVE &&
+-            account.rejoinedAccount &&
+-            (inheritedRestriction.manualBlock === true ||
+-              inheritedRestriction.indefinite === true ||
+-              inheritedRestriction.restrictionStatus === 'active' ||
+-              (inheritedRestriction.activePenalty === true &&
+-                String(inheritedRestriction.eligibleFromDate || '') > today()))
+-        );
+-
+-        if (inheritedRestrictionStillActive) {
+-          batch.set(
+-            doc(RENTAL_RESTRICTIONS_COLLECTION_REF, userUid),
+-            {
+-              ...inheritedRestriction,
+-              uid: userUid,
+-              inheritedFromPreviousAccount: true,
+-              updatedAt: serverTimestamp(),
+-            },
+-            { merge: true }
+-          );
+-        }
+-
+-        await batch.commit();
+-
+-        triggerToastRef.current(
+-          `${account.name || account.email || userUid} 회원을 ${getUserAccountStatusLabel(
+-            nextStatus
+-          )} 상태로 변경했습니다.`,
+-          'success'
+-        );
+-      } catch (error) {
+-        console.error('User account status update error:', error);
+-
+-        triggerToastRef.current(
+-          `회원 상태 변경에 실패했습니다. 오류 코드: ${
+-            error?.code || error?.message || 'unknown-error'
+-          }`,
+-          'error'
+-        );
+-      } finally {
+-        setAdminUserAccountSavingUid('');
+-      }
+-    },
+-    [isAdminAuthenticated]
+-  );
+-
+-  const confirmUserAccountStatusChange = useCallback(
+-    (account, nextStatus) => {
+-      const accountLabel =
+-        account?.name || account?.email || account?.uid || '선택한 회원';
+-
+-      triggerConfirmRef.current(
+-        '회원 상태 변경',
+-        `${accountLabel} 회원을 ${getUserAccountStatusLabel(
+-          nextStatus
+-        )} 상태로 변경하시겠습니까?`,
+-        () => updateUserAccountStatus(account, nextStatus)
+-      );
+-    },
+-    [updateUserAccountStatus]
+-  );
+-
+-  const executeFullMemberDirectoryAudit = useCallback(async () => {
+-    if (!isAdminAuthenticated) {
+-      triggerToastRef.current(
+-        '관리자 인증 후 전체 회원 검사를 실행할 수 있습니다.',
+-        'error'
+-      );
+-      return;
+-    }
+-
+-    if (!isRegisteredMemberSignupRequired(settings)) {
+-      triggerToastRef.current(
+-        '회원가입 제한 정책을 저장한 뒤 전체 회원 검사를 실행해 주세요.',
+-        'error'
+-      );
+-      return;
+-    }
+-
+-    setMemberDirectoryAuditLoading(true);
+-    setMemberDirectoryAuditResult(null);
+-
+-    try {
+-      const directoryVersion = getSafeMemberDirectoryVersion(settings);
+-      const directoryEntries = await Promise.all(
+-        (borrowers || []).map(async (borrower) => ({
+-          ...borrower,
+-          name: normalizeMemberName(borrower.name || ''),
+-          team: normalizeMemberTeam(borrower.team || ''),
+-          identityKey: await createMemberIdentityKey(
+-            borrower.team,
+-            borrower.name
+-          ),
+-        }))
+-      );
+-      const directoryByIdentityKey = new Map(
+-        directoryEntries.map((entry) => [entry.identityKey, entry])
+-      );
+-      const [
+-        currentUserAccountsSnapshot,
+-        currentClaimsSnapshot,
+-        currentRecoverySnapshot,
+-      ] = await Promise.all([
+-        getDocs(USER_ACCOUNTS_COLLECTION_REF),
+-        getDocs(MEMBER_IDENTITY_CLAIMS_COLLECTION_REF),
+-        getDocs(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF),
+-      ]);
+-      const accountEntries = await buildMemberAccountIndexEntries(
+-        currentUserAccountsSnapshot.docs.map((accountDocument) => ({
+-          ...accountDocument.data(),
+-          uid: accountDocument.data().uid || accountDocument.id,
+-        }))
+-      );
+-      const {
+-        accountMetadataOperations,
+-        claimOperations,
+-        recoveryOperations,
+-        groups: accountGroups,
+-      } = buildMemberAccountIndexOperations({
+-        accountEntries,
+-        currentClaimDocuments: currentClaimsSnapshot.docs,
+-        currentRecoveryDocuments: currentRecoverySnapshot.docs,
+-      });
+-      let duplicateAccounts = 0;
+-
+-      accountGroups.forEach((group) => {
+-        const liveEntries = group.filter(
+-          (entry) => entry.account.status !== USER_PROFILE_STATUS.RETIRED
+-        );
+-
+-        if (liveEntries.length > 1) {
+-          duplicateAccounts += liveEntries.length;
+-        }
+-      });
+-
+-      const auditableStatuses = new Set([
+-        USER_PROFILE_STATUS.PENDING,
+-        USER_PROFILE_STATUS.ACTIVE,
+-        USER_PROFILE_STATUS.PROFILE_REQUIRED,
+-      ]);
+-      const auditableTotal = accountEntries.filter((entry) =>
+-        auditableStatuses.has(entry.account.status || '')
+-      ).length;
+-      const accountOperations = [];
+-      let normal = 0;
+-      let profileRequired = 0;
+-      let missing = 0;
+-
+-      accountEntries.forEach((entry) => {
+-        const { account, identityKey, name, team } = entry;
+-        const accountStatus = account.status || '';
+-        const isAuditable = auditableStatuses.has(accountStatus);
+-        const group = identityKey ? accountGroups.get(identityKey) || [] : [];
+-        const isDuplicate =
+-          group.filter(
+-            (groupEntry) =>
+-              groupEntry.account.status !== USER_PROFILE_STATUS.RETIRED
+-          ).length > 1;
+-        const directoryEntry = identityKey
+-          ? directoryByIdentityKey.get(identityKey)
+-          : null;
+-        const directoryMatches = Boolean(
+-          directoryEntry &&
+-            directoryEntry.name === name &&
+-            directoryEntry.team === team
+-        );
+-
+-        if (!isAuditable) {
+-          return;
+-        }
+-
+-        if (!identityKey || !directoryMatches || isDuplicate) {
+-          if (!identityKey || !directoryMatches) {
+-            missing += 1;
+-          }
+-
+-          profileRequired += 1;
+-          const nextReason = isDuplicate
+-            ? PROFILE_REQUIRED_REASON.DUPLICATE_IDENTITY
+-            : PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
+-          const previousStatus = [
+-            USER_PROFILE_STATUS.PENDING,
+-            USER_PROFILE_STATUS.ACTIVE,
+-          ].includes(accountStatus)
+-            ? accountStatus
+-            : account.statusBeforeProfileRequired ||
+-              USER_PROFILE_STATUS.PENDING;
+-
+-          accountOperations.push({
+-            type: 'set',
+-            ref: doc(db, USER_ACCOUNTS_COLLECTION_NAME, account.uid),
+-            data: {
+-              status: USER_PROFILE_STATUS.PROFILE_REQUIRED,
+-              statusBeforeProfileRequired: previousStatus,
+-              profileRequiredReason: nextReason,
+-              profileRequiredAt: serverTimestamp(),
+-              identityKey,
+-              directoryMemberId: directoryMatches
+-                ? directoryEntry.id || ''
+-                : '',
+-              directoryVerifiedVersion: 0,
+-              directoryVerifiedAt: '',
+-              updatedAt: serverTimestamp(),
+-            },
+-            options: { merge: true },
+-            auditOutcome: 'profileRequired',
+-          });
+-          return;
+-        }
+-
+-        normal += 1;
+-        const shouldRestore =
+-          accountStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
+-          account.profileRequiredReason ===
+-            PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
+-        const nextStatus = shouldRestore
+-          ? getRestorableUserProfileStatus(account.statusBeforeProfileRequired)
+-          : accountStatus;
+-
+-        accountOperations.push({
+-          type: 'set',
+-          ref: doc(db, USER_ACCOUNTS_COLLECTION_NAME, account.uid),
+-          data: {
+-            status: nextStatus,
+-            identityKey,
+-            directoryMemberId: directoryEntry.id || '',
+-            directoryVerifiedVersion: directoryVersion,
+-            directoryVerifiedAt: serverTimestamp(),
+-            profileRequiredReason: shouldRestore
+-              ? ''
+-              : account.profileRequiredReason || '',
+-            profileRequiredAt: shouldRestore
+-              ? ''
+-              : account.profileRequiredAt || '',
+-            statusBeforeProfileRequired: shouldRestore
+-              ? ''
+-              : account.statusBeforeProfileRequired || '',
+-            updatedAt: serverTimestamp(),
+-          },
+-          options: { merge: true },
+-          auditOutcome: 'normal',
+-        });
+-      });
+-
+-      await commitFirestoreOperations([
+-        ...claimOperations,
+-        ...recoveryOperations,
+-        ...accountMetadataOperations,
+-      ]);
+-
+-      let failed = 0;
+-
+-      for (const operation of accountOperations) {
+-        try {
+-          await setDoc(operation.ref, operation.data, operation.options);
+-        } catch (accountError) {
+-          failed += 1;
+-
+-          if (operation.auditOutcome === 'normal') {
+-            normal = Math.max(0, normal - 1);
+-          } else if (operation.auditOutcome === 'profileRequired') {
+-            profileRequired = Math.max(0, profileRequired - 1);
+-          }
+-
+-          console.error(
+-            'Member directory audit account update error:',
+-            accountError
+-          );
+-        }
+-      }
+-
+-      const auditSummary = {
+-        total: auditableTotal,
+-        normal,
+-        profileRequired,
+-        duplicates: duplicateAccounts,
+-        missing,
+-        failed,
+-        directoryVersion,
+-        completedAtText: new Date().toLocaleString('ko-KR'),
+-        completedBy:
+-          authenticatedAdminAccount?.email ||
+-          authenticatedAdminAccount?.adminLoginId ||
+-          authenticatedAdminId,
+-        completedAt: serverTimestamp(),
+-      };
+-
+-      await setDoc(
+-        PUBLIC_CONFIG_DOC_REF,
+-        {
+-          memberDirectoryAudit: auditSummary,
+-          settings: {
+-            ...settings,
+-            memberIdentityClaimsReady: true,
+-          },
+-          updatedAt: serverTimestamp(),
+-        },
+-        { merge: true }
+-      );
+-
+-      setMemberDirectoryAuditResult(auditSummary);
+-      triggerToastRef.current(
+-        `전체 회원 명부 검사가 완료되었습니다. 정상 ${normal}명, 정보 수정 필요 ${profileRequired}명, 중복 ${duplicateAccounts}명, 실패 ${failed}명입니다.`,
+-        profileRequired > 0 || failed > 0 ? 'error' : 'success'
+-      );
+-    } catch (error) {
+-      console.error('Full member directory audit error:', error);
+-      triggerToastRef.current(
+-        '전체 회원 명부 검사에 실패했습니다. 기존 회원 상태는 가능한 범위에서 유지됩니다.',
+-        'error'
+-      );
+-    } finally {
+-      setMemberDirectoryAuditLoading(false);
+-    }
+-  }, [
+-    authenticatedAdminAccount,
+-    authenticatedAdminId,
+-    borrowers,
+-    isAdminAuthenticated,
+-    settings,
+-  ]);
+-
+-  const runFullMemberDirectoryAudit = useCallback(() => {
+-    triggerConfirmRef.current(
+-      '전체 회원 명부 검사',
+-      "현재 회원 계정과 부서·사용자 명부를 비교합니다. 불일치 회원은 '정보 수정 필요' 상태로 전환되며 등록 정보는 자동으로 변경되지 않습니다. 검사를 실행하시겠습니까?",
+-      executeFullMemberDirectoryAudit
+-    );
+-  }, [executeFullMemberDirectoryAudit]);
+-
+-  const openProfileRequiredMembers = useCallback(() => {
+-    setAdminUserAccountQuery('');
+-    setAdminUserAccountStatusFilter(USER_PROFILE_STATUS.PROFILE_REQUIRED);
+-    setAdminTab('memberAccounts');
+-  }, [
+-    setAdminTab,
+-    setAdminUserAccountQuery,
+-    setAdminUserAccountStatusFilter,
+-  ]);
+-
+-  return {
+-    adminUserAccountSavingUid,
+-    clearMemberDirectoryAuditResult,
+-    confirmUserAccountStatusChange,
+-    memberDirectoryAuditLoading,
+-    memberDirectoryAuditResult,
+-    openProfileRequiredMembers,
+-    resetDirectoryMismatchRestoreAttempt,
+-    restoreDirectoryMismatchAccountsAfterPolicyDisabled,
+-    runFullMemberDirectoryAudit,
+-  };
+-}
+--- a/tools/firestore-audit-policy.json
++++ b/tools/firestore-audit-policy.json
+@@ -50,7 +50,7 @@
+       "reviewWhen": "컬렉션 규모, 화면 활성 조건, 데이터 보존 정책 또는 쿼리 구조가 변경될 때 재검토"
+     },
+     {
+-      "id": "getDocs:bc9def8794e3a98f",
++      "id": "getDocs:72b10d99a9c59265",
+       "reason": "명부 제한 정책을 해제할 때 DIRECTORY_MISMATCH 상태 계정만 복원하는 관리자 작업입니다. 사용자가 명시적으로 정책을 변경할 때만 실행됩니다.",
+       "reviewWhen": "컬렉션 규모, 화면 활성 조건, 데이터 보존 정책 또는 쿼리 구조가 변경될 때 재검토"
+     },
+@@ -140,17 +140,17 @@
+       "reviewWhen": "컬렉션 규모, 화면 활성 조건, 데이터 보존 정책 또는 쿼리 구조가 변경될 때 재검토"
+     },
+     {
+-      "id": "getDocs:32f2ba97c00dd536",
++      "id": "getDocs:b6951788a53a0bae",
+       "reason": "관리자가 전체 회원 명부 감사를 실행할 때 계정·식별키·복구키 정합성을 재검사하는 명시적 일회성 작업입니다.",
+       "reviewWhen": "컬렉션 규모, 화면 활성 조건, 데이터 보존 정책 또는 쿼리 구조가 변경될 때 재검토"
+     },
+     {
+-      "id": "getDocs:55c09009a8a4e6f0",
++      "id": "getDocs:9f1ec00f15bec38a",
+       "reason": "관리자가 전체 회원 명부 감사를 실행할 때 계정·식별키·복구키 정합성을 재검사하는 명시적 일회성 작업입니다.",
+       "reviewWhen": "컬렉션 규모, 화면 활성 조건, 데이터 보존 정책 또는 쿼리 구조가 변경될 때 재검토"
+     },
+     {
+-      "id": "getDocs:003d5614b54a8ee2",
++      "id": "getDocs:66f2258d2349bcbc",
+       "reason": "관리자가 전체 회원 명부 감사를 실행할 때 계정·식별키·복구키 정합성을 재검사하는 명시적 일회성 작업입니다.",
+       "reviewWhen": "컬렉션 규모, 화면 활성 조건, 데이터 보존 정책 또는 쿼리 구조가 변경될 때 재검토"
+     },
+--- a/docs/performance-optimization/README.md
++++ b/docs/performance-optimization/README.md
+@@ -31,7 +31,7 @@
+ 
+ ## 최신 순차 작업
+ 
+-- `reports/P2_SIGNUP_POLICY_PANEL_LAZY_FEATURE_REPORT.md`
+-- `validation/P2_SIGNUP_POLICY_PANEL_LAZY_FEATURE_VALIDATION_REPORT.txt`
+-- `diffs/P2_SIGNUP_POLICY_PANEL_LAZY_FEATURE.diff`
+-- `measurements/P2_SIGNUP_POLICY_PANEL_LAZY_SOURCE_GRAPH_COMPARISON.json`
++- `reports/P2_MEMBER_ACTIONS_PANEL_LAZY_FEATURE_REPORT.md`
++- `validation/P2_MEMBER_ACTIONS_PANEL_LAZY_FEATURE_VALIDATION_REPORT.txt`
++- `diffs/P2_MEMBER_ACTIONS_PANEL_LAZY_FEATURE.diff`
++- `measurements/P2_MEMBER_ACTIONS_PANEL_LAZY_SOURCE_GRAPH_COMPARISON.json`
+--- a/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json
++++ b/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json
+@@ -1,11 +1,11 @@
+ {
+-  "generatedAt": "2026-07-28T12:40:20.684Z",
+-  "initialModuleCount": 37,
+-  "initialSourceBytes": 806925,
++  "generatedAt": "2026-07-28T12:40:20.715Z",
++  "initialModuleCount": 35,
++  "initialSourceBytes": 782310,
+   "files": [
+     {
+       "file": "src/App.jsx",
+-      "bytes": 543442
++      "bytes": 542334
+     },
+     {
+       "file": "src/user/UserHomePanel.jsx",
+@@ -20,12 +20,8 @@
+       "bytes": 21872
+     },
+     {
+-      "file": "src/features/members/useAdminMemberActions.js",
+-      "bytes": 21126
+-    },
+-    {
+       "file": "src/context/appContextSlices.js",
+-      "bytes": 18702
++      "bytes": 18619
+     },
+     {
+       "file": "src/components/CommonUI.jsx",
+@@ -124,10 +120,6 @@
+       "bytes": 2370
+     },
+     {
+-      "file": "src/features/members/memberAccountHistoryService.js",
+-      "bytes": 2298
+-    },
+-    {
+       "file": "src/utils/popupUtils.js",
+       "bytes": 1990
+     },
