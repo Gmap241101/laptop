@@ -113,6 +113,12 @@ export const PUBLIC_ASSET_CATALOG_DOC_REF = doc(
   'main'
 );
 
+export const DASHBOARD_SUMMARY_DOC_REF = doc(
+  db,
+  'laptopRentalDashboard',
+  'main'
+);
+
 export const RENTAL_ASSETS_COLLECTION_REF = collection(
   db,
   'rentalAssets'

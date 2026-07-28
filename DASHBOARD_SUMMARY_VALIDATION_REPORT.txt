@@ -1,0 +1,36 @@
+DASHBOARD SUMMARY OPTIMIZATION VALIDATION
+=========================================
+
+Baseline:
+- rental-system-latest-baseline.zip
+
+Modified files:
+- src/App.jsx
+- src/admin/AdminDashboardPanel.jsx
+- src/firebase.js
+- rules/firestore.rules
+
+Validation results:
+[PASS] ZIP baseline extracted with normalized path separators
+[PASS] 44 JavaScript/JSX files parsed with TypeScript transpileModule
+[PASS] Syntax errors: 0
+[PASS] Project-wide no-undefined-name diagnostic scan: 0 relevant errors
+[PASS] firebase.json valid JSON
+[PASS] firestore.indexes.json valid JSON
+[PASS] .firebaserc valid JSON
+[PASS] package.json valid JSON
+[PASS] Firestore Rules brace balance: 108 / 108
+[PASS] DASHBOARD_SUMMARY_DOC_REF exported and imported
+[PASS] laptopRentalDashboard/main rule exists
+[PASS] Dashboard no longer subscribes rentalAssets on dashboard tab
+[PASS] Dashboard no longer subscribes rentalAvailability on dashboard tab
+[PASS] Dashboard no longer subscribes pending userAccounts on dashboard tab
+[PASS] Dashboard no longer subscribes active rentalRequests on dashboard tab
+[PASS] Request/member management pagination remains in place
+[PASS] Synthetic 100-request + 12-account summary payload: approximately 56.9 KB
+[PASS] Payload remains well below the Firestore 1 MiB document limit
+[PASS] No firestore.indexes.json change required
+
+Build validation:
+[NOT RUN] Vite production build
+Reason: the uploaded baseline intentionally excludes node_modules. An offline npm ci attempt failed because one dependency archive was not present in the execution environment's npm cache. The user's local deploy.ps1 runs npm run build in the actual project environment.

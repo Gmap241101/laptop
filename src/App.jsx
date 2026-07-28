@@ -86,6 +86,7 @@ import {
 import {
   ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
   ADMIN_ACCOUNTS_COLLECTION_REF,
+  DASHBOARD_SUMMARY_DOC_REF,
   FAQ_BOARD_CONFIG_DOC_REF,
   FAQ_CATEGORIES_COLLECTION_REF,
   FAQ_POSTS_COLLECTION_REF,
@@ -2046,6 +2047,81 @@ const ADMIN_MEMBER_ACCOUNT_PAGE_SIZE = 20;
 const FIRESTORE_SEARCH_RESULT_LIMIT = 200;
 const FIRESTORE_PINNED_POST_LIMIT = 20;
 const ADMIN_DASHBOARD_ACTIVE_REQUEST_LIMIT = 100;
+const DASHBOARD_SUMMARY_SCHEMA_VERSION = 1;
+const DASHBOARD_SUMMARY_MAX_AGE_MS = 2 * 60 * 1000;
+const DASHBOARD_SUMMARY_PENDING_ACCOUNT_LIMIT = 12;
+
+const compactDefinedFields = (value = {}) =>
+  Object.fromEntries(
+    Object.entries(value).filter(([, fieldValue]) => fieldValue !== undefined)
+  );
+
+const toDashboardRequestSummary = (request = {}) =>
+  compactDefinedFields({
+    id: request.id,
+    status: request.status,
+    laptopId: request.laptopId,
+    assetNo: request.assetNo,
+    assetCategory: request.assetCategory,
+    startDate: request.startDate,
+    dueDate: request.dueDate,
+    requesterUid: request.requesterUid,
+    requesterName: request.requesterName,
+    requesterEmail: request.requesterEmail,
+    requesterTeam: request.requesterTeam,
+    borrower: request.borrower,
+    team: request.team,
+    createdAt: request.createdAt,
+    requestedAt: request.requestedAt,
+    updatedAt: request.updatedAt,
+    userActionRequest: request.userActionRequest
+      ? compactDefinedFields({
+          type: request.userActionRequest.type,
+          status: request.userActionRequest.status,
+          requestedAt: request.userActionRequest.requestedAt,
+        })
+      : undefined,
+  });
+
+const toDashboardAccountSummary = (account = {}) =>
+  compactDefinedFields({
+    id: account.id || account.uid,
+    uid: account.uid || account.id,
+    name: account.name,
+    email: account.email,
+    team: account.team,
+    status: account.status,
+    createdAt: account.createdAt,
+    updatedAt: account.updatedAt,
+  });
+
+const getDashboardSummaryGeneratedAtMillis = (summary = {}) =>
+  Number(summary.generatedAtClientMs || 0) ||
+  getFirestoreTimestampMillis(summary.generatedAt);
+
+const normalizeDashboardSummary = (summary = {}) => ({
+  ...summary,
+  schemaVersion: Number(summary.schemaVersion || 0),
+  activeRequests: Array.isArray(summary.activeRequests)
+    ? summary.activeRequests
+    : [],
+  pendingAccounts: Array.isArray(summary.pendingAccounts)
+    ? summary.pendingAccounts
+    : [],
+  metrics:
+    summary.metrics && typeof summary.metrics === 'object'
+      ? summary.metrics
+      : {},
+  requestTabCounts:
+    summary.requestTabCounts && typeof summary.requestTabCounts === 'object'
+      ? summary.requestTabCounts
+      : {},
+  dataIssueCounts:
+    summary.dataIssueCounts && typeof summary.dataIssueCounts === 'object'
+      ? summary.dataIssueCounts
+      : {},
+});
+
 const ADMIN_AUTH_SESSION_KEY = 'mk_laptop_admin_auth_session';
 const USER_AUTH_SESSION_KEY = 'mk_laptop_user_auth_session';
 const ADMIN_PASSWORD_HASH_ALGORITHM = 'PBKDF2-SHA-256';
@@ -2790,6 +2866,16 @@ function App() {
     rentalRequestsLoadErrorMessage,
     setRentalRequestsLoadErrorMessage,
   ] = useState('');
+
+  const [dashboardSummary, setDashboardSummary] = useState(null);
+  const [dashboardSummaryReady, setDashboardSummaryReady] = useState(false);
+  const [dashboardSummaryRefreshing, setDashboardSummaryRefreshing] = useState(false);
+  const [
+    dashboardSummaryLoadErrorMessage,
+    setDashboardSummaryLoadErrorMessage,
+  ] = useState('');
+  const dashboardSummaryRefreshInProgressRef = useRef(false);
+  const dashboardSummaryPreviousAdminTabRef = useRef('dashboard');
 
   const [rentalRequestLogs, setRentalRequestLogs] = useState([]);
   const [rentalRequestLogsReady, setRentalRequestLogsReady] = useState(false);
@@ -4499,7 +4585,6 @@ function App() {
       Boolean(authenticatedAdminId) &&
       Boolean(currentAuthAdminAccount?.id) &&
       [
-        'dashboard',
         'laptops',
         'requests',
         'categories',
@@ -4708,7 +4793,6 @@ function App() {
       Boolean(authenticatedAdminId) &&
       Boolean(currentAuthAdminAccount?.id) &&
       [
-        'dashboard',
         'laptops',
         'requests',
         'categories',
@@ -4803,7 +4887,7 @@ function App() {
         view === 'admin' &&
         Boolean(authenticatedAdminId) &&
         Boolean(currentAuthAdminAccount?.id) &&
-        ['dashboard', 'laptops', 'requests'].includes(adminTab)
+        ['laptops', 'requests'].includes(adminTab)
       );
 
     if (!shouldSubscribeAvailability) {
@@ -5147,12 +5231,10 @@ function App() {
       Boolean(currentAuthAdminAccount?.id) &&
       view === 'admin';
 
-    const shouldLoadDashboardAccounts =
-      hasAdminSession && adminTab === 'dashboard';
     const shouldLoadMemberAccounts =
       hasAdminSession && adminTab === 'memberAccounts';
 
-    if (!shouldLoadDashboardAccounts && !shouldLoadMemberAccounts) {
+    if (!shouldLoadMemberAccounts) {
       adminUserAccountCursorKeyRef.current = '';
       adminUserAccountCursorByPageRef.current = new Map([[1, null]]);
       setAdminUserAccounts([]);
@@ -5165,42 +5247,6 @@ function App() {
 
     setAdminUserAccountsReady(false);
     setAdminUserAccountsLoadErrorMessage('');
-
-    if (shouldLoadDashboardAccounts) {
-      const dashboardSource = firestoreQuery(
-        USER_ACCOUNTS_COLLECTION_REF,
-        where('status', '==', USER_PROFILE_STATUS.PENDING),
-        orderBy('createdAt', 'asc'),
-        firestoreLimit(ADMIN_DASHBOARD_ACTIVE_REQUEST_LIMIT)
-      );
-
-      const unsubscribe = onSnapshot(
-        dashboardSource,
-        (snapshot) => {
-          setAdminUserAccounts(
-            snapshot.docs.map((userDoc) => ({
-              ...userDoc.data(),
-              uid: userDoc.data().uid || userDoc.id,
-            }))
-          );
-          setAdminUserAccountHasNextPage(false);
-          setAdminUserAccountTotalCount(snapshot.size);
-          setAdminUserAccountsReady(true);
-          setAdminUserAccountsLoadErrorMessage('');
-        },
-        (error) => {
-          const message =
-            '승인 대기 회원 계정을 불러오지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.';
-          console.error('Dashboard pending user accounts sync error:', error);
-          setAdminUserAccounts([]);
-          setAdminUserAccountsReady(true);
-          setAdminUserAccountsLoadErrorMessage(message);
-          triggerToast(message, 'error');
-        }
-      );
-
-      return unsubscribe;
-    }
 
     const normalizedSearch = String(debouncedAdminUserAccountQuery || '')
       .trim()
@@ -5612,6 +5658,419 @@ function App() {
     setConfirmModal({ title, message, onConfirm });
   };
 
+  const refreshDashboardSummary = async ({ showToast = false } = {}) => {
+    if (dashboardSummaryRefreshInProgressRef.current) return;
+    if (!authenticatedAdminId || !currentAuthAdminAccount?.id) return;
+
+    dashboardSummaryRefreshInProgressRef.current = true;
+    setDashboardSummaryRefreshing(true);
+    setDashboardSummaryLoadErrorMessage('');
+
+    try {
+      const referenceDate = today();
+      const activeRequestSource = firestoreQuery(
+        RENTAL_REQUESTS_COLLECTION_REF,
+        where('status', 'in', [
+          STATUS.REQUESTED,
+          STATUS.ON_HOLD,
+          STATUS.APPROVED,
+        ]),
+        orderBy('createdAt', 'desc'),
+        firestoreLimit(ADMIN_DASHBOARD_ACTIVE_REQUEST_LIMIT)
+      );
+      const pendingAccountSource = firestoreQuery(
+        USER_ACCOUNTS_COLLECTION_REF,
+        where('status', '==', USER_PROFILE_STATUS.PENDING),
+        orderBy('createdAt', 'asc'),
+        firestoreLimit(DASHBOARD_SUMMARY_PENDING_ACCOUNT_LIMIT)
+      );
+
+      const [
+        activeRequestSnapshot,
+        pendingAccountSnapshot,
+        publicCatalogSnapshot,
+        requestedCountSnapshot,
+        onHoldCountSnapshot,
+        approvedCountSnapshot,
+        closedCountSnapshot,
+        returnedCountSnapshot,
+        pendingUserActionCountSnapshot,
+        overdueCountSnapshot,
+        dueTodayCountSnapshot,
+        startTodayCountSnapshot,
+        pendingAccountCountSnapshot,
+      ] = await Promise.all([
+        getDocs(activeRequestSource),
+        getDocs(pendingAccountSource),
+        getDoc(PUBLIC_ASSET_CATALOG_DOC_REF),
+        getCountFromServer(
+          firestoreQuery(
+            RENTAL_REQUESTS_COLLECTION_REF,
+            where('status', '==', STATUS.REQUESTED)
+          )
+        ),
+        getCountFromServer(
+          firestoreQuery(
+            RENTAL_REQUESTS_COLLECTION_REF,
+            where('status', '==', STATUS.ON_HOLD)
+          )
+        ),
+        getCountFromServer(
+          firestoreQuery(
+            RENTAL_REQUESTS_COLLECTION_REF,
+            where('status', '==', STATUS.APPROVED)
+          )
+        ),
+        getCountFromServer(
+          firestoreQuery(
+            RENTAL_REQUESTS_COLLECTION_REF,
+            where('status', 'in', [STATUS.DENIED, STATUS.USER_CANCELLED])
+          )
+        ),
+        getCountFromServer(
+          firestoreQuery(
+            RENTAL_REQUESTS_COLLECTION_REF,
+            where('status', '==', STATUS.RETURNED)
+          )
+        ),
+        getCountFromServer(
+          firestoreQuery(
+            RENTAL_REQUESTS_COLLECTION_REF,
+            where(
+              'userActionRequest.status',
+              '==',
+              USER_REQUEST_REVIEW_STATUS.PENDING
+            )
+          )
+        ),
+        getCountFromServer(
+          firestoreQuery(
+            RENTAL_REQUESTS_COLLECTION_REF,
+            where('status', '==', STATUS.APPROVED),
+            where('dueDate', '<', referenceDate)
+          )
+        ),
+        getCountFromServer(
+          firestoreQuery(
+            RENTAL_REQUESTS_COLLECTION_REF,
+            where('status', '==', STATUS.APPROVED),
+            where('dueDate', '==', referenceDate)
+          )
+        ),
+        getCountFromServer(
+          firestoreQuery(
+            RENTAL_REQUESTS_COLLECTION_REF,
+            where('status', '==', STATUS.APPROVED),
+            where('startDate', '==', referenceDate)
+          )
+        ),
+        getCountFromServer(
+          firestoreQuery(
+            USER_ACCOUNTS_COLLECTION_REF,
+            where('status', '==', USER_PROFILE_STATUS.PENDING)
+          )
+        ),
+      ]);
+
+      const activeRequests = activeRequestSnapshot.docs.map((requestDoc) =>
+        toDashboardRequestSummary({
+          ...requestDoc.data(),
+          id: requestDoc.id,
+        })
+      );
+      const pendingAccounts = pendingAccountSnapshot.docs.map((accountDoc) =>
+        toDashboardAccountSummary({
+          ...accountDoc.data(),
+          id: accountDoc.id,
+          uid: accountDoc.data().uid || accountDoc.id,
+        })
+      );
+
+      const shouldRepairPublicCatalog =
+        !publicCatalogSnapshot.exists() ||
+        !Array.isArray(publicCatalogSnapshot.data()?.assets);
+      let catalogAssets = publicCatalogSnapshot.exists()
+        ? normalizePublicCatalogAssets(publicCatalogSnapshot.data().assets || [])
+        : [];
+
+      if (!catalogAssets.length) {
+        const legacyAssetSnapshot = await getDocs(RENTAL_ASSETS_COLLECTION_REF);
+        catalogAssets = normalizePublicCatalogAssets(
+          legacyAssetSnapshot.docs.map((assetDoc) => ({
+            ...assetDoc.data(),
+            id: assetDoc.id,
+          }))
+        );
+      }
+
+      if (
+        shouldRepairPublicCatalog &&
+        catalogAssets.length > 0 &&
+        getPublicCatalogPayloadByteLength(catalogAssets) <=
+          PUBLIC_ASSET_CATALOG_MAX_BYTES
+      ) {
+        await setDoc(
+          PUBLIC_ASSET_CATALOG_DOC_REF,
+          {
+            schemaVersion: PUBLIC_ASSET_CATALOG_SCHEMA_VERSION,
+            assets: catalogAssets,
+            assetCount: catalogAssets.length,
+            fingerprint: getPublicCatalogFingerprint(catalogAssets),
+            updatedAt: serverTimestamp(),
+            updatedByUid: currentAuthAdminAccount?.id || authenticatedAdminId,
+          },
+          { merge: false }
+        );
+      }
+
+      const approvedRequests = activeRequests.filter(
+        (request) => request.status === STATUS.APPROVED
+      );
+      const reservedRequests = approvedRequests.filter(
+        (request) =>
+          Boolean(request.startDate) && request.startDate > referenceDate
+      );
+      const activeRentalRequests = approvedRequests.filter(
+        (request) => !request.startDate || request.startDate <= referenceDate
+      );
+      const overdueRequests = approvedRequests.filter(
+        (request) =>
+          (!request.startDate || request.startDate <= referenceDate) &&
+          Boolean(request.dueDate) &&
+          request.dueDate < referenceDate
+      );
+      const blockedAssetIds = new Set(
+        activeRequests.map((request) => request.laptopId).filter(Boolean)
+      );
+      const unavailableAssetIds = new Set(
+        catalogAssets
+          .filter((asset) => asset.baseStatus === STATUS.UNAVAILABLE)
+          .map((asset) => asset.id)
+          .filter(Boolean)
+      );
+      const assetIdSet = new Set(
+        catalogAssets.map((asset) => asset.id).filter(Boolean)
+      );
+      const requestIdentity = (request = {}) =>
+        request.requesterUid ||
+        request.requesterEmail ||
+        `${request.requesterName || request.borrower || ''}|${
+          request.requesterTeam || request.team || ''
+        }`;
+      const requestedCount = requestedCountSnapshot.data().count;
+      const onHoldCount = onHoldCountSnapshot.data().count;
+      const approvedCount = approvedCountSnapshot.data().count;
+      const requestTabCounts = {
+        [ADMIN_REQUEST_TAB.PENDING]: requestedCount + onHoldCount,
+        [ADMIN_REQUEST_TAB.RENTAL]: approvedCount,
+        [ADMIN_REQUEST_TAB.CLOSED]: closedCountSnapshot.data().count,
+        [ADMIN_REQUEST_TAB.RETURNED]: returnedCountSnapshot.data().count,
+      };
+      const metrics = {
+        requestedCount,
+        onHoldCount,
+        approvedCount,
+        pendingUserActionCount: pendingUserActionCountSnapshot.data().count,
+        overdueCount: overdueCountSnapshot.data().count,
+        dueTodayCount: dueTodayCountSnapshot.data().count,
+        startTodayCount: startTodayCountSnapshot.data().count,
+        pendingAccountCount: pendingAccountCountSnapshot.data().count,
+        totalAssetCount: catalogAssets.length,
+        availableCount: catalogAssets.filter(
+          (asset) =>
+            !unavailableAssetIds.has(asset.id) &&
+            !blockedAssetIds.has(asset.id)
+        ).length,
+        unavailableCount: unavailableAssetIds.size,
+        uniqueReservedAssets: new Set(
+          reservedRequests.map((request) => request.laptopId).filter(Boolean)
+        ).size,
+        uniqueActiveAssets: new Set(
+          activeRentalRequests.map((request) => request.laptopId).filter(Boolean)
+        ).size,
+        uniqueOverdueAssets: new Set(
+          overdueRequests
+            .map((request) => request.laptopId || request.assetNo)
+            .filter(Boolean)
+        ).size,
+        uniqueOverdueUsers: new Set(
+          overdueRequests.map(requestIdentity).filter(Boolean)
+        ).size,
+      };
+      const dataIssueCounts = {
+        orphanedAvailability: 0,
+        missingDate: approvedRequests.filter(
+          (request) => !request.startDate || !request.dueDate
+        ).length,
+        invalidPeriod: activeRequests.filter(
+          (request) =>
+            request.startDate &&
+            request.dueDate &&
+            request.dueDate < request.startDate
+        ).length,
+        missingAsset: activeRequests.filter(
+          (request) => request.laptopId && !assetIdSet.has(request.laptopId)
+        ).length,
+        missingRequester: activeRequests.filter(
+          (request) =>
+            !request.requesterUid &&
+            !request.requesterEmail &&
+            !request.requesterName &&
+            !request.borrower
+        ).length,
+      };
+      const generatedAtClientMs = Date.now();
+      const summaryPayload = {
+        schemaVersion: DASHBOARD_SUMMARY_SCHEMA_VERSION,
+        businessDate: referenceDate,
+        generatedAt: serverTimestamp(),
+        generatedAtClientMs,
+        updatedByUid: currentAuthAdminAccount?.id || authenticatedAdminId,
+        activeRequests,
+        pendingAccounts,
+        metrics,
+        requestTabCounts,
+        dataIssueCounts,
+        sourceStats: {
+          activeRequestPreviewCount: activeRequests.length,
+          activeRequestSourceCount: requestedCount + onHoldCount + approvedCount,
+          activeRequestPreviewLimit: ADMIN_DASHBOARD_ACTIVE_REQUEST_LIMIT,
+          activeRequestPreviewTruncated:
+            requestedCount + onHoldCount + approvedCount > activeRequests.length,
+          pendingAccountPreviewCount: pendingAccounts.length,
+          pendingAccountSourceCount: pendingAccountCountSnapshot.data().count,
+          pendingAccountPreviewLimit: DASHBOARD_SUMMARY_PENDING_ACCOUNT_LIMIT,
+        },
+      };
+
+      await setDoc(DASHBOARD_SUMMARY_DOC_REF, summaryPayload, { merge: false });
+      setDashboardSummary(
+        normalizeDashboardSummary({
+          ...summaryPayload,
+          generatedAt: generatedAtClientMs,
+        })
+      );
+      setDashboardSummaryReady(true);
+      setAdminRequestTabCountsRemote(requestTabCounts);
+
+      if (showToast) {
+        triggerToast('관리자 대시보드 요약을 최신 데이터로 갱신했습니다.');
+      }
+    } catch (error) {
+      const message =
+        '관리자 대시보드 요약을 갱신하지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.';
+      console.error('Dashboard summary refresh error:', error);
+      setDashboardSummaryLoadErrorMessage(message);
+      setDashboardSummaryReady(true);
+      if (showToast) triggerToast(message, 'error');
+    } finally {
+      dashboardSummaryRefreshInProgressRef.current = false;
+      setDashboardSummaryRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    const previousAdminTab = dashboardSummaryPreviousAdminTabRef.current;
+    dashboardSummaryPreviousAdminTabRef.current = adminTab;
+    const shouldForceRefreshAfterAdminWork =
+      adminTab === 'dashboard' &&
+      [
+        'requests',
+        'memberAccounts',
+        'laptops',
+        'categories',
+        'dataManagement',
+      ].includes(previousAdminTab);
+    const shouldLoadDashboardSummary =
+      firebaseAuthReady &&
+      currentAuthRoleReady &&
+      Boolean(authenticatedAdminId) &&
+      Boolean(currentAuthAdminAccount?.id) &&
+      view === 'admin' &&
+      adminTab === 'dashboard';
+
+    if (!shouldLoadDashboardSummary) {
+      setDashboardSummaryReady(false);
+      setDashboardSummaryLoadErrorMessage('');
+      return undefined;
+    }
+
+    setDashboardSummaryReady(false);
+    let refreshRequested = false;
+    let refreshTimerId = 0;
+
+    const requestRefreshOnce = () => {
+      if (refreshRequested) return;
+      refreshRequested = true;
+      void refreshDashboardSummary();
+    };
+
+    const unsubscribe = onSnapshot(
+      DASHBOARD_SUMMARY_DOC_REF,
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          setDashboardSummary(null);
+          setDashboardSummaryReady(false);
+          requestRefreshOnce();
+          return;
+        }
+
+        const nextSummary = normalizeDashboardSummary(snapshot.data());
+        const generatedAtMillis =
+          getDashboardSummaryGeneratedAtMillis(nextSummary);
+        const isStale =
+          nextSummary.schemaVersion !== DASHBOARD_SUMMARY_SCHEMA_VERSION ||
+          nextSummary.businessDate !== today() ||
+          !generatedAtMillis ||
+          Date.now() - generatedAtMillis > DASHBOARD_SUMMARY_MAX_AGE_MS;
+
+        setDashboardSummary(nextSummary);
+        setDashboardSummaryReady(true);
+        setDashboardSummaryLoadErrorMessage('');
+        setAdminRequestTabCountsRemote(nextSummary.requestTabCounts);
+
+        if (refreshTimerId) {
+          window.clearTimeout(refreshTimerId);
+          refreshTimerId = 0;
+        }
+
+        if (isStale || shouldForceRefreshAfterAdminWork) {
+          requestRefreshOnce();
+        } else {
+          const remainingFreshTime = Math.max(
+            1000,
+            DASHBOARD_SUMMARY_MAX_AGE_MS -
+              (Date.now() - generatedAtMillis)
+          );
+          refreshTimerId = window.setTimeout(
+            requestRefreshOnce,
+            remainingFreshTime
+          );
+        }
+      },
+      (error) => {
+        const message =
+          '관리자 대시보드 요약 문서를 불러오지 못했습니다.';
+        console.error('Dashboard summary sync error:', error);
+        setDashboardSummaryLoadErrorMessage(message);
+        setDashboardSummaryReady(true);
+        requestRefreshOnce();
+      }
+    );
+
+    return () => {
+      if (refreshTimerId) window.clearTimeout(refreshTimerId);
+      unsubscribe();
+    };
+  }, [
+    firebaseAuthReady,
+    currentAuthRoleReady,
+    authenticatedAdminId,
+    currentAuthAdminAccount?.id,
+    view,
+    adminTab,
+  ]);
+
   const verifyUserDirectoryMembership = async ({
     authUser,
     account,
@@ -6004,8 +6463,7 @@ function App() {
 
   const mergedRentalRequests = useMemo(() => {
     const requestMap = new Map();
-    const shouldMergeAvailabilitySummaries =
-      view === 'user' || (view === 'admin' && adminTab === 'dashboard');
+    const shouldMergeAvailabilitySummaries = view === 'user';
 
     if (shouldMergeAvailabilitySummaries) {
       (data.requests || []).forEach((request) => {
@@ -7392,41 +7850,10 @@ function App() {
     }
 
     if (adminTab === 'dashboard') {
-      const dashboardRequestSource = firestoreQuery(
-        RENTAL_REQUESTS_COLLECTION_REF,
-        where('status', 'in', [
-          STATUS.REQUESTED,
-          STATUS.ON_HOLD,
-          STATUS.APPROVED,
-        ]),
-        orderBy('createdAt', 'desc'),
-        firestoreLimit(ADMIN_DASHBOARD_ACTIVE_REQUEST_LIMIT)
-      );
-
-      const unsubscribe = onSnapshot(
-        dashboardRequestSource,
-        (snapshot) => {
-          setRentalRequests(
-            snapshot.docs.map((requestDoc) => ({
-              ...requestDoc.data(),
-              id: requestDoc.id,
-            }))
-          );
-          setRentalRequestsLoadErrorMessage('');
-          setRentalRequestsReady(true);
-        },
-        (error) => {
-          const message =
-            '관리자 대시보드의 진행 중 대여신청을 불러오지 못했습니다. Firestore 인덱스를 확인해 주세요.';
-          console.error('Dashboard rental requests sync error:', error);
-          setRentalRequests([]);
-          setRentalRequestsLoadErrorMessage(message);
-          setRentalRequestsReady(true);
-          triggerToast(message, 'error');
-        }
-      );
-
-      return unsubscribe;
+      setRentalRequests([]);
+      setRentalRequestsLoadErrorMessage('');
+      setRentalRequestsReady(true);
+      return undefined;
     }
 
     if (adminTab === 'memberAccounts') {
@@ -7678,7 +8105,7 @@ function App() {
     const shouldLoadRequestCounts =
       isAdminAuthenticated &&
       view === 'admin' &&
-      ['dashboard', 'requests'].includes(adminTab);
+      adminTab === 'requests';
 
     if (!shouldLoadRequestCounts) return;
 
@@ -21647,6 +22074,10 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     currentUserRestriction,
     currentUserRestrictionReady,
     currentUserRequests,
+    dashboardSummary,
+    dashboardSummaryLoadErrorMessage,
+    dashboardSummaryReady,
+    dashboardSummaryRefreshing,
     data,
     siteSettings,
     siteSettingsReady,
@@ -21817,6 +22248,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     pinnedNoticePosts,
     pushAppPath,
     query,
+    refreshDashboardSummary,
     registerAdminAccount,
     registeredAdminAccounts,
     regularFaqPosts,

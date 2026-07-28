@@ -1759,7 +1759,22 @@ service cloud.firestore {
 
     match /laptopRentalDashboard/main {
       allow read: if isAdmin();
-      allow write: if false;
+
+      allow create, update: if isAdmin()
+        && request.resource.data.get('schemaVersion', 0) == 1
+        && request.resource.data.get('businessDate', '') is string
+        && request.resource.data.get('generatedAtClientMs', 0) is int
+        && request.resource.data.get('updatedByUid', '') == request.auth.uid
+        && request.resource.data.get('activeRequests', []) is list
+        && request.resource.data.get('activeRequests', []).size() <= 100
+        && request.resource.data.get('pendingAccounts', []) is list
+        && request.resource.data.get('pendingAccounts', []).size() <= 12
+        && request.resource.data.get('metrics', {}) is map
+        && request.resource.data.get('requestTabCounts', {}) is map
+        && request.resource.data.get('dataIssueCounts', {}) is map
+        && request.resource.data.get('sourceStats', {}) is map;
+
+      allow delete: if false;
     }
 
     match /{document=**} {

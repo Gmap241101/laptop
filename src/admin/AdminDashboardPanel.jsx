@@ -210,18 +210,17 @@ export default function AdminDashboardPanel({ ctx }) {
     USER_PROFILE_STATUS,
     USER_REQUEST_ACTION,
     USER_REQUEST_REVIEW_STATUS,
-    adminUserAccountsLoadErrorMessage,
-    adminUserAccountsReady,
+    dashboardSummary,
+    dashboardSummaryLoadErrorMessage,
+    dashboardSummaryReady,
+    dashboardSummaryRefreshing,
     data,
     defaultRentalStartDate,
     formatDateWithKoreanWeekday,
     getMaxRentalDueDate,
     getSafeMaxRentalDays,
-    managedUserAccounts,
-    mergedRentalRequests,
     orphanedRentalAvailabilityRequests,
-    rentalRequestsLoadErrorMessage,
-    rentalRequestsReady,
+    refreshDashboardSummary,
     rentalStartAdjustmentInfo,
     setAdminRequestPage,
     setAdminRequestQuery,
@@ -244,9 +243,15 @@ export default function AdminDashboardPanel({ ctx }) {
 
   const todayDate = today();
   const settings = data.settings || {};
-  const requests = mergedRentalRequests || [];
+  const summaryMetrics = dashboardSummary?.metrics || {};
+  const summaryDataIssueCounts = dashboardSummary?.dataIssueCounts || {};
+  const requests = dashboardSummary?.activeRequests || [];
   const laptops = data.laptops || [];
-  const accounts = managedUserAccounts || [];
+  const accounts = dashboardSummary?.pendingAccounts || [];
+  const getSummaryNumber = (key, fallback = 0) => {
+    const value = Number(summaryMetrics[key]);
+    return Number.isFinite(value) ? value : fallback;
+  };
 
   const dashboardData = useMemo(() => {
     const approvedRequests = requests.filter(
@@ -419,15 +424,63 @@ export default function AdminDashboardPanel({ ctx }) {
       onHoldRequests,
       pendingUserActions,
       pendingAccounts,
-      availableCount,
-      uniqueReservedAssets,
-      uniqueActiveAssets,
-      uniqueOverdueAssets,
-      uniqueOverdueUsers,
+      overdueCount: getSummaryNumber('overdueCount', overdueRequests.length),
+      dueTodayCount: getSummaryNumber('dueTodayCount', dueTodayRequests.length),
+      startTodayCount: getSummaryNumber('startTodayCount', startTodayRequests.length),
+      requestedCount: getSummaryNumber('requestedCount', requestedRequests.length),
+      onHoldCount: getSummaryNumber('onHoldCount', onHoldRequests.length),
+      pendingUserActionCount: getSummaryNumber(
+        'pendingUserActionCount',
+        pendingUserActions.length
+      ),
+      pendingAccountCount: getSummaryNumber(
+        'pendingAccountCount',
+        pendingAccounts.length
+      ),
+      totalAssetCount: getSummaryNumber('totalAssetCount', laptops.length),
+      availableCount: getSummaryNumber('availableCount', availableCount),
+      uniqueReservedAssets: getSummaryNumber(
+        'uniqueReservedAssets',
+        uniqueReservedAssets
+      ),
+      uniqueActiveAssets: getSummaryNumber(
+        'uniqueActiveAssets',
+        uniqueActiveAssets
+      ),
+      uniqueOverdueAssets: getSummaryNumber(
+        'uniqueOverdueAssets',
+        uniqueOverdueAssets
+      ),
+      uniqueOverdueUsers: getSummaryNumber(
+        'uniqueOverdueUsers',
+        uniqueOverdueUsers
+      ),
       longestOverdueDays,
       oldestRequestedDays,
       oldestPendingMemberDays,
-      unavailableCount: unavailableLaptopIds.size,
+      unavailableCount: getSummaryNumber(
+        'unavailableCount',
+        unavailableLaptopIds.size
+      ),
+      missingDateCount: Number.isFinite(Number(summaryDataIssueCounts.missingDate))
+        ? Number(summaryDataIssueCounts.missingDate)
+        : missingDateRequests.length,
+      invalidPeriodCount: Number.isFinite(Number(summaryDataIssueCounts.invalidPeriod))
+        ? Number(summaryDataIssueCounts.invalidPeriod)
+        : invalidPeriodRequests.length,
+      missingAssetCount: Number.isFinite(Number(summaryDataIssueCounts.missingAsset))
+        ? Number(summaryDataIssueCounts.missingAsset)
+        : missingAssetRequests.length,
+      missingRequesterCount: Number.isFinite(
+        Number(summaryDataIssueCounts.missingRequester)
+      )
+        ? Number(summaryDataIssueCounts.missingRequester)
+        : missingRequesterRequests.length,
+      orphanedAvailabilityCount: Number.isFinite(
+        Number(summaryDataIssueCounts.orphanedAvailability)
+      )
+        ? Number(summaryDataIssueCounts.orphanedAvailability)
+        : orphanedRentalAvailabilityRequests.length,
       missingDateRequests,
       invalidPeriodRequests,
       missingAssetRequests,
@@ -441,7 +494,10 @@ export default function AdminDashboardPanel({ ctx }) {
     accounts,
     laptops,
     nowMillis,
+    orphanedRentalAvailabilityRequests,
     requests,
+    summaryDataIssueCounts,
+    summaryMetrics,
     todayDate,
   ]);
 
@@ -450,7 +506,7 @@ export default function AdminDashboardPanel({ ctx }) {
       {
         id: 'overdue',
         label: '연체',
-        count: dashboardData.overdueRequests.length,
+        count: dashboardData.overdueCount,
         items: dashboardData.overdueRequests,
         quickFilter: ADMIN_REQUEST_QUICK_FILTER.OVERDUE,
         requestTab: ADMIN_REQUEST_TAB.RENTAL,
@@ -458,7 +514,7 @@ export default function AdminDashboardPanel({ ctx }) {
       {
         id: 'dueToday',
         label: '오늘 반납',
-        count: dashboardData.dueTodayRequests.length,
+        count: dashboardData.dueTodayCount,
         items: dashboardData.dueTodayRequests,
         quickFilter: ADMIN_REQUEST_QUICK_FILTER.DUE_TODAY,
         requestTab: ADMIN_REQUEST_TAB.RENTAL,
@@ -466,7 +522,7 @@ export default function AdminDashboardPanel({ ctx }) {
       {
         id: 'startToday',
         label: '오늘 시작',
-        count: dashboardData.startTodayRequests.length,
+        count: dashboardData.startTodayCount,
         items: dashboardData.startTodayRequests,
         quickFilter: ADMIN_REQUEST_QUICK_FILTER.START_TODAY,
         requestTab: ADMIN_REQUEST_TAB.RENTAL,
@@ -474,7 +530,7 @@ export default function AdminDashboardPanel({ ctx }) {
       {
         id: 'userActions',
         label: '사용자 요청',
-        count: dashboardData.pendingUserActions.length,
+        count: dashboardData.pendingUserActionCount,
         items: dashboardData.pendingUserActions,
         quickFilter: ADMIN_REQUEST_QUICK_FILTER.PENDING_USER_ACTION,
         requestTab: ADMIN_REQUEST_TAB.RENTAL,
@@ -509,6 +565,20 @@ export default function AdminDashboardPanel({ ctx }) {
     hour12: false,
   }).format(new Date(nowMillis));
 
+  const summaryGeneratedAtMillis = getTimestampMillis(
+    dashboardSummary?.generatedAtClientMs || dashboardSummary?.generatedAt
+  );
+  const summaryUpdatedLabel = summaryGeneratedAtMillis
+    ? new Intl.DateTimeFormat('ko-KR', {
+        timeZone: 'Asia/Seoul',
+        month: 'numeric',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).format(new Date(summaryGeneratedAtMillis))
+    : '요약 생성 전';
+
   const openRequestList = (requestTab, quickFilter) => {
     setAdminRequestTab(requestTab);
     setAdminRequestQuickFilter(quickFilter);
@@ -536,33 +606,32 @@ export default function AdminDashboardPanel({ ctx }) {
   const dataIssues = [
     {
       label: '정식 신청 문서 없이 남은 예약 요약',
-      count: orphanedRentalAvailabilityRequests.length,
+      count: dashboardData.orphanedAvailabilityCount,
     },
     {
       label: '대여기간이 누락된 진행 건',
-      count: dashboardData.missingDateRequests.length,
+      count: dashboardData.missingDateCount,
     },
     {
       label: '시작일보다 반납일이 빠른 신청',
-      count: dashboardData.invalidPeriodRequests.length,
+      count: dashboardData.invalidPeriodCount,
     },
     {
       label: '등록되지 않은 자산을 참조하는 신청',
-      count: dashboardData.missingAssetRequests.length,
+      count: dashboardData.missingAssetCount,
     },
     {
       label: '신청자 정보가 누락된 신청',
-      count: dashboardData.missingRequesterRequests.length,
+      count: dashboardData.missingRequesterCount,
     },
   ];
 
   const totalIssueCount =
     dataIssues.reduce((sum, issue) => sum + issue.count, 0) +
-    (rentalRequestsLoadErrorMessage ? 1 : 0) +
-    (adminUserAccountsLoadErrorMessage ? 1 : 0);
+    (dashboardSummaryLoadErrorMessage ? 1 : 0);
 
-  const requestLoading = !rentalRequestsReady;
-  const accountLoading = !adminUserAccountsReady;
+  const requestLoading = !dashboardSummaryReady;
+  const accountLoading = !dashboardSummaryReady;
 
   return (
     <div className="space-y-6">
@@ -570,25 +639,50 @@ export default function AdminDashboardPanel({ ctx }) {
         title="관리자 대시보드"
         description="오늘 처리해야 할 대여·반납·회원 업무와 전체 자산 운영 상태를 한 화면에서 확인합니다."
         badge={
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-slate-200">
-            <Clock3 size={13} aria-hidden="true" />
-            {currentTimeLabel} 기준
-          </span>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-slate-200">
+              <Clock3 size={13} aria-hidden="true" />
+              {currentTimeLabel} 기준
+            </span>
+            <button
+              type="button"
+              onClick={() => refreshDashboardSummary({ showToast: true })}
+              disabled={dashboardSummaryRefreshing}
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-slate-200 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <RotateCcw
+                size={13}
+                className={dashboardSummaryRefreshing ? 'animate-spin' : ''}
+                aria-hidden="true"
+              />
+              {dashboardSummaryRefreshing ? '갱신 중' : `요약 ${summaryUpdatedLabel}`}
+            </button>
+          </div>
         }
       />
 
-      {rentalRequestsLoadErrorMessage || adminUserAccountsLoadErrorMessage ? (
+      {dashboardSummaryLoadErrorMessage ? (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs leading-5 text-rose-800">
           <div className="flex items-start gap-2">
             <AlertTriangle size={17} className="mt-0.5 shrink-0" aria-hidden="true" />
             <div>
-              <div className="font-bold">일부 대시보드 데이터를 불러오지 못했습니다.</div>
-              {rentalRequestsLoadErrorMessage ? (
-                <div className="mt-1">대여신청: {rentalRequestsLoadErrorMessage}</div>
-              ) : null}
-              {adminUserAccountsLoadErrorMessage ? (
-                <div className="mt-1">회원계정: {adminUserAccountsLoadErrorMessage}</div>
-              ) : null}
+              <div className="font-bold">대시보드 요약을 갱신하지 못했습니다.</div>
+              <div className="mt-1">{dashboardSummaryLoadErrorMessage}</div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {dashboardSummary?.sourceStats?.activeRequestPreviewTruncated ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-800">
+          <div className="flex items-start gap-2">
+            <AlertTriangle size={17} className="mt-0.5 shrink-0" aria-hidden="true" />
+            <div>
+              <div className="font-bold">진행 신청 상세 목록이 요약 한도를 초과했습니다.</div>
+              <div className="mt-1">
+                상태별 숫자는 전체 집계값이며, 상세 목록과 일부 보조 지표는 최근
+                {dashboardSummary.sourceStats.activeRequestPreviewLimit}건을 기준으로 표시합니다.
+              </div>
             </div>
           </div>
         </div>
@@ -615,11 +709,11 @@ export default function AdminDashboardPanel({ ctx }) {
             detail={
               requestLoading
                 ? '대여신청을 불러오는 중입니다.'
-                : dashboardData.overdueRequests.length
-                  ? `최장 ${dashboardData.longestOverdueDays}일 연체 · 총 ${dashboardData.overdueRequests.length}건`
+                : dashboardData.overdueCount
+                  ? `최장 ${dashboardData.longestOverdueDays}일 연체 · 총 ${dashboardData.overdueCount}건`
                   : '현재 연체 중인 기기가 없습니다.'
             }
-            tone={dashboardData.overdueRequests.length ? 'rose' : 'emerald'}
+            tone={dashboardData.overdueCount ? 'rose' : 'emerald'}
             disabled={requestLoading}
             onClick={() =>
               openRequestList(
@@ -632,11 +726,11 @@ export default function AdminDashboardPanel({ ctx }) {
           <MetricCard
             icon={CalendarCheck2}
             label="오늘 반납 예정"
-            value={requestLoading ? '—' : `${dashboardData.dueTodayRequests.length}대`}
+            value={requestLoading ? '—' : `${dashboardData.dueTodayCount}대`}
             detail={
               requestLoading
                 ? '대여신청을 불러오는 중입니다.'
-                : dashboardData.dueTodayRequests.length
+                : dashboardData.dueTodayCount
                   ? `반납 요청 ${dashboardData.dueTodayRequests.filter(
                       (request) =>
                         request.userActionRequest?.type === USER_REQUEST_ACTION.RETURN &&
@@ -645,7 +739,7 @@ export default function AdminDashboardPanel({ ctx }) {
                     ).length}건`
                   : '오늘 반납 예정인 기기가 없습니다.'
             }
-            tone={dashboardData.dueTodayRequests.length ? 'amber' : 'slate'}
+            tone={dashboardData.dueTodayCount ? 'amber' : 'slate'}
             disabled={requestLoading}
             onClick={() =>
               openRequestList(
@@ -658,13 +752,13 @@ export default function AdminDashboardPanel({ ctx }) {
           <MetricCard
             icon={ClipboardCheck}
             label="대여 승인 대기"
-            value={requestLoading ? '—' : `${dashboardData.requestedRequests.length}건`}
+            value={requestLoading ? '—' : `${dashboardData.requestedCount}건`}
             detail={
               requestLoading
                 ? '대여신청을 불러오는 중입니다.'
-                : `최장 대기 ${dashboardData.oldestRequestedDays}일 · 보류 ${dashboardData.onHoldRequests.length}건`
+                : `최장 대기 ${dashboardData.oldestRequestedDays}일 · 보류 ${dashboardData.onHoldCount}건`
             }
-            tone={dashboardData.requestedRequests.length ? 'blue' : 'slate'}
+            tone={dashboardData.requestedCount ? 'blue' : 'slate'}
             disabled={requestLoading}
             onClick={() =>
               openRequestList(
@@ -677,15 +771,15 @@ export default function AdminDashboardPanel({ ctx }) {
           <MetricCard
             icon={UserPlus}
             label="회원가입 승인 대기"
-            value={accountLoading ? '—' : `${dashboardData.pendingAccounts.length}명`}
+            value={accountLoading ? '—' : `${dashboardData.pendingAccountCount}명`}
             detail={
               accountLoading
                 ? '회원 계정을 불러오는 중입니다.'
-                : dashboardData.pendingAccounts.length
+                : dashboardData.pendingAccountCount
                   ? `최장 대기 ${dashboardData.oldestPendingMemberDays}일`
                   : '승인 대기 중인 회원이 없습니다.'
             }
-            tone={dashboardData.pendingAccounts.length ? 'violet' : 'slate'}
+            tone={dashboardData.pendingAccountCount ? 'violet' : 'slate'}
             disabled={accountLoading}
             onClick={openPendingMembers}
           />
@@ -702,7 +796,12 @@ export default function AdminDashboardPanel({ ctx }) {
         </div>
 
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-          <StatusCard icon={Boxes} label="전체 자산" value={laptops.length} tone="slate" />
+          <StatusCard
+            icon={Boxes}
+            label="전체 자산"
+            value={dashboardData.totalAssetCount}
+            tone="slate"
+          />
           <StatusCard
             icon={PackageCheck}
             label="대여 가능"
@@ -730,7 +829,7 @@ export default function AdminDashboardPanel({ ctx }) {
           <StatusCard
             icon={RotateCcw}
             label="오늘 대여 시작"
-            value={dashboardData.startTodayRequests.length}
+            value={dashboardData.startTodayCount}
             tone="orange"
           />
         </div>
@@ -771,7 +870,7 @@ export default function AdminDashboardPanel({ ctx }) {
             </div>
           </div>
 
-          {!rentalRequestsReady ? (
+          {requestLoading ? (
             <div className="py-16 text-center text-xs text-slate-400">
               오늘의 업무를 불러오는 중입니다.
             </div>
@@ -995,14 +1094,9 @@ export default function AdminDashboardPanel({ ctx }) {
                       </span>
                     </div>
                   ))}
-                {rentalRequestsLoadErrorMessage ? (
+                {dashboardSummaryLoadErrorMessage ? (
                   <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-[11px] text-rose-700">
-                    대여신청 데이터 로딩 오류
-                  </div>
-                ) : null}
-                {adminUserAccountsLoadErrorMessage ? (
-                  <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-[11px] text-rose-700">
-                    회원계정 데이터 로딩 오류
+                    대시보드 요약 데이터 갱신 오류
                   </div>
                 ) : null}
               </div>
@@ -1034,11 +1128,11 @@ export default function AdminDashboardPanel({ ctx }) {
             </button>
           </div>
 
-          {!adminUserAccountsReady ? (
+          {accountLoading ? (
             <div className="py-12 text-center text-xs text-slate-400">
               회원 계정을 불러오는 중입니다.
             </div>
-          ) : dashboardData.pendingAccounts.length === 0 ? (
+          ) : dashboardData.pendingAccountCount === 0 ? (
             <div className="flex flex-col items-center py-12 text-center">
               <Users size={24} className="text-slate-300" aria-hidden="true" />
               <div className="mt-2 text-xs font-bold text-slate-600">
@@ -1086,28 +1180,28 @@ export default function AdminDashboardPanel({ ctx }) {
             {[
               {
                 label: '신규 신청',
-                value: dashboardData.requestedRequests.length,
+                value: dashboardData.requestedCount,
                 tone: 'border-blue-200 bg-blue-50 text-blue-700',
                 tab: ADMIN_REQUEST_TAB.PENDING,
                 filter: ADMIN_REQUEST_QUICK_FILTER.REQUESTED,
               },
               {
                 label: '보류',
-                value: dashboardData.onHoldRequests.length,
+                value: dashboardData.onHoldCount,
                 tone: 'border-violet-200 bg-violet-50 text-violet-700',
                 tab: ADMIN_REQUEST_TAB.PENDING,
                 filter: ADMIN_REQUEST_QUICK_FILTER.ON_HOLD,
               },
               {
                 label: '예약중',
-                value: dashboardData.reservedRequests.length,
+                value: dashboardData.uniqueReservedAssets,
                 tone: 'border-sky-200 bg-sky-50 text-sky-700',
                 tab: ADMIN_REQUEST_TAB.RENTAL,
                 filter: ADMIN_REQUEST_QUICK_FILTER.RESERVED,
               },
               {
                 label: '사용자 요청',
-                value: dashboardData.pendingUserActions.length,
+                value: dashboardData.pendingUserActionCount,
                 tone: 'border-amber-200 bg-amber-50 text-amber-700',
                 tab: ADMIN_REQUEST_TAB.RENTAL,
                 filter: ADMIN_REQUEST_QUICK_FILTER.PENDING_USER_ACTION,
