@@ -235,15 +235,19 @@ import {
   getAdminRequestServerConstraints,
 } from './services/adminRequestQuery.js';
 import {
-  PUBLIC_ASSET_CATALOG_MAX_BYTES,
   PUBLIC_ASSET_CATALOG_SCHEMA_VERSION,
-  getPublicCatalogFingerprint,
-  getPublicCatalogPayloadByteLength,
   hydratePublicCatalogAssets,
   normalizeAssetReservations,
   normalizePublicCatalogAssets,
   toRentalAvailabilityRequest,
 } from './services/publicAssetCatalog.js';
+import {
+  createPublicAssetCatalogPayload,
+  ensurePublicAssetCatalogWriteThrough,
+  getPublicAssetCatalogWriteErrorMessage,
+  rebuildPublicAssetCatalogFromServer,
+  writePublicAssetCatalogMutationInTransaction,
+} from './services/publicAssetCatalogWriteThrough.js';
 
 import {
   buildDomesticPhoneNumber,
@@ -1670,8 +1674,7 @@ function App() {
   const [splitRentalAssets, setSplitRentalAssets] = useState([]);
   const [publicCatalogAssets, setPublicCatalogAssets] = useState([]);
   const [publicCatalogAssetsReady, setPublicCatalogAssetsReady] = useState(false);
-  const publicCatalogFingerprintRef = useRef('');
-  const publicCatalogExpectedFingerprintRef = useRef('');
+  const publicCatalogMigrationAdminUidRef = useRef('');
   const [splitRentalAvailability, setSplitRentalAvailability] = useState([]);
   const [splitRentalBorrowers, setSplitRentalBorrowers] = useState([]);
   const [splitStorageVersion, setSplitStorageVersion] = useState(0);
@@ -3324,17 +3327,26 @@ function App() {
       (snapshot) => {
         if (cancelled) return;
 
-        if (!snapshot.exists() || !Array.isArray(snapshot.data().assets)) {
-          void loadLegacyAssetFallback('publicCatalog/main 문서가 없습니다.');
+        const catalogData = snapshot.exists()
+          ? snapshot.data()
+          : null;
+        const hasCurrentCatalogSchema =
+          Number(catalogData?.schemaVersion || 0) ===
+            PUBLIC_ASSET_CATALOG_SCHEMA_VERSION &&
+          Array.isArray(catalogData?.assets);
+
+        if (!hasCurrentCatalogSchema) {
+          void loadLegacyAssetFallback(
+            snapshot.exists()
+              ? 'publicCatalog/main 문서가 이전 스키마입니다.'
+              : 'publicCatalog/main 문서가 없습니다.'
+          );
           return;
         }
 
         const catalogAssets = normalizePublicCatalogAssets(
           snapshot.data().assets
         );
-        publicCatalogFingerprintRef.current =
-          String(snapshot.data().fingerprint || '') ||
-          getPublicCatalogFingerprint(catalogAssets);
         setPublicCatalogAssets(catalogAssets);
         setPublicCatalogAssetsReady(true);
         setSplitSourceErrors((prev) => ({
@@ -3394,99 +3406,6 @@ function App() {
     splitRentalAvailability,
     splitSourceReady.availability,
   ]);
-
-  useEffect(() => {
-    const shouldSynchronizeCatalog =
-      view === 'admin' &&
-      Boolean(authenticatedAdminId) &&
-      Boolean(currentAuthAdminAccount?.id) &&
-      [
-        'laptops',
-        'requests',
-        'categories',
-        'dataManagement',
-      ].includes(adminTab) &&
-      splitSourceReady.assets &&
-      !splitSourceErrors.assets;
-
-    if (!shouldSynchronizeCatalog) {
-      return;
-    }
-
-    const catalogAssets = normalizePublicCatalogAssets(splitRentalAssets);
-    const catalogPayloadByteLength =
-      getPublicCatalogPayloadByteLength(catalogAssets);
-    const fingerprint = getPublicCatalogFingerprint(catalogAssets);
-    publicCatalogExpectedFingerprintRef.current = fingerprint;
-
-    if (catalogPayloadByteLength > PUBLIC_ASSET_CATALOG_MAX_BYTES) {
-      console.error(
-        'Public asset catalog is too large:',
-        catalogPayloadByteLength
-      );
-      setToast({
-        message:
-          '공개 자산 카탈로그 크기가 안전 한도를 초과해 자동 동기화를 중단했습니다.',
-        type: 'error',
-      });
-      return;
-    }
-
-    if (publicCatalogFingerprintRef.current === fingerprint) {
-      return;
-    }
-
-    const synchronizeCatalog = async () => {
-      try {
-        const catalogSnapshot = await getDoc(PUBLIC_ASSET_CATALOG_DOC_REF);
-
-        const remoteFingerprint = catalogSnapshot.exists()
-          ? String(catalogSnapshot.data().fingerprint || '')
-          : '';
-
-        if (remoteFingerprint === fingerprint) {
-          publicCatalogFingerprintRef.current = fingerprint;
-          return;
-        }
-
-        if (publicCatalogExpectedFingerprintRef.current !== fingerprint) {
-          return;
-        }
-
-        await setDoc(
-          PUBLIC_ASSET_CATALOG_DOC_REF,
-          {
-            schemaVersion: PUBLIC_ASSET_CATALOG_SCHEMA_VERSION,
-            assets: catalogAssets,
-            assetCount: catalogAssets.length,
-            fingerprint,
-            updatedAt: serverTimestamp(),
-            updatedByUid: currentAuthAdminAccount?.id || authenticatedAdminId,
-          },
-          { merge: false }
-        );
-
-        if (publicCatalogExpectedFingerprintRef.current === fingerprint) {
-          publicCatalogFingerprintRef.current = fingerprint;
-        }
-      } catch (error) {
-        console.error('Public asset catalog synchronization error:', error);
-      }
-    };
-
-    window.setTimeout(() => {
-      void synchronizeCatalog();
-    }, 400);
-  }, [
-    view,
-    adminTab,
-    authenticatedAdminId,
-    currentAuthAdminAccount?.id,
-    splitRentalAssets,
-    splitSourceReady.assets,
-    splitSourceErrors.assets,
-  ]);
-
 
   useEffect(() => {
     const shouldSubscribeAvailability =
@@ -5590,6 +5509,72 @@ function App() {
     !adminLogoutInProgress &&
     hasMatchingAdminFirebaseAuth;
 
+  useEffect(() => {
+    if (!isAdminAuthenticated) {
+      publicCatalogMigrationAdminUidRef.current = '';
+      return;
+    }
+
+    const adminUid =
+      firebaseAuth.currentUser?.uid ||
+      authenticatedAdminId ||
+      currentAuthAdminAccount?.id ||
+      '';
+
+    if (
+      !adminUid ||
+      publicCatalogMigrationAdminUidRef.current === adminUid
+    ) {
+      return;
+    }
+
+    publicCatalogMigrationAdminUidRef.current = adminUid;
+    let cancelled = false;
+
+    const ensureWriteThroughCatalog = async () => {
+      try {
+        const result =
+          await ensurePublicAssetCatalogWriteThrough({
+            updatedByUid: adminUid,
+          });
+
+        if (!cancelled && result.rebuilt) {
+          console.info(
+            'Public asset catalog migrated to write-through synchronization:',
+            result.assetCount
+          );
+        }
+      } catch (error) {
+        if (cancelled) return;
+
+        publicCatalogMigrationAdminUidRef.current = '';
+        console.error(
+          'Public asset catalog write-through migration error:',
+          error
+        );
+
+        const catalogErrorMessage =
+          getPublicAssetCatalogWriteErrorMessage(error);
+
+        triggerToast(
+          catalogErrorMessage ||
+            '공개 자산 카탈로그 동기화 방식 전환에 실패했습니다. 데이터 관리에서 무결성 점검을 실행해 주세요.',
+          'error'
+        );
+      }
+    };
+
+    void ensureWriteThroughCatalog();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isAdminAuthenticated,
+    authenticatedAdminId,
+    currentAuthAdminAccount?.id,
+  ]);
+
 
   useEffect(() => {
     if (
@@ -5906,6 +5891,14 @@ function App() {
         ...registryOperations,
         ...borrowerOperations,
       ]);
+
+      await rebuildPublicAssetCatalogFromServer({
+        updatedByUid:
+          firebaseAuth.currentUser?.uid ||
+          authenticatedAdminId ||
+          currentAuthAdminAccount?.id ||
+          '',
+      });
 
       await setDoc(
         PUBLIC_CONFIG_DOC_REF,
@@ -10882,6 +10875,7 @@ function App() {
         );
 
       const assetOperations = [];
+      const nextCatalogAssets = [];
 
       assetsSnapshot.docs.forEach(
         (assetDocument) => {
@@ -10936,6 +10930,8 @@ function App() {
               nextCategory,
           };
 
+          nextCatalogAssets.push(nextAsset);
+
           if (
             nextCategory !==
             assetData.category
@@ -10957,11 +10953,32 @@ function App() {
         }
       );
 
-      await commitFirestoreOperations(
-        assetOperations
+      const catalogPayload =
+        createPublicAssetCatalogPayload(
+          nextCatalogAssets,
+          {
+            updatedByUid:
+              firebaseAuth.currentUser?.uid ||
+              authenticatedAdminId ||
+              currentAuthAdminAccount?.id ||
+              '',
+          }
+        );
+
+      const categorySaveBatch =
+        writeBatch(db);
+
+      assetOperations.forEach(
+        (operation) => {
+          categorySaveBatch.set(
+            operation.ref,
+            operation.data,
+            operation.options
+          );
+        }
       );
 
-      await setDoc(
+      categorySaveBatch.set(
         PUBLIC_CONFIG_DOC_REF,
         {
           assetCategories:
@@ -10973,6 +10990,16 @@ function App() {
           merge: true,
         }
       );
+
+      categorySaveBatch.set(
+        PUBLIC_ASSET_CATALOG_DOC_REF,
+        catalogPayload,
+        {
+          merge: false,
+        }
+      );
+
+      await categorySaveBatch.commit();
 
       setData((prev) => ({
         ...prev,
@@ -11044,6 +11071,14 @@ function App() {
           `카테고리 [${error.category}]를 사용하는 최신 자산이 있어 삭제할 수 없습니다.`,
           'error'
         );
+        return false;
+      }
+
+      const catalogErrorMessage =
+        getPublicAssetCatalogWriteErrorMessage(error);
+
+      if (catalogErrorMessage) {
+        triggerToast(catalogErrorMessage, 'error');
         return false;
       }
 
@@ -18854,6 +18889,19 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             throw duplicateError;
           }
 
+          await writePublicAssetCatalogMutationInTransaction(
+            transaction,
+            {
+              fallbackAssets: splitRentalAssets,
+              upsertAssets: [newLaptopDraft],
+              updatedByUid:
+                firebaseAuth.currentUser?.uid ||
+                authenticatedAdminId ||
+                currentAuthAdminAccount?.id ||
+                '',
+            }
+          );
+
           transaction.set(
             assetDocRef,
             {
@@ -18934,6 +18982,14 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           '선택한 자산 카테고리가 최신 카테고리 목록에 없습니다. 신규 등록 패널을 닫고 다시 열어 주세요.',
           'error'
         );
+        return;
+      }
+
+      const catalogErrorMessage =
+        getPublicAssetCatalogWriteErrorMessage(error);
+
+      if (catalogErrorMessage) {
+        triggerToast(catalogErrorMessage, 'error');
         return;
       }
 
@@ -19315,7 +19371,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                 )
               );
 
-            const createdAssets = [];
+            const createdEntries = [];
             const duplicatedAssetNumbers =
               [];
 
@@ -19332,44 +19388,74 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                   return;
                 }
 
-                const assetForSave = {
-                  id:
-                    entry.candidate.id,
-                  category:
-                    entry.candidate
-                      .category,
-                  assetNo:
-                    entry.candidate
-                      .assetNo,
-                  assetNoNormalized:
-                    entry.candidate
-                      .assetNoNormalized,
-                  serialNo:
-                    entry.candidate
-                      .serialNo,
-                  model:
-                    entry.candidate
-                      .model,
-                  manufactureDate:
-                    entry.candidate
-                      .manufactureDate,
-                  photo:
-                    entry.candidate
-                      .photo,
-                  note:
-                    entry.candidate.note,
-                  status:
-                    entry.candidate
-                      .status,
-                  currentRequestId:
-                    null,
-                  reservations: [],
-                };
+                createdEntries.push({
+                  entry,
+                  asset: {
+                    id:
+                      entry.candidate.id,
+                    category:
+                      entry.candidate
+                        .category,
+                    assetNo:
+                      entry.candidate
+                        .assetNo,
+                    assetNoNormalized:
+                      entry.candidate
+                        .assetNoNormalized,
+                    serialNo:
+                      entry.candidate
+                        .serialNo,
+                    model:
+                      entry.candidate
+                        .model,
+                    manufactureDate:
+                      entry.candidate
+                        .manufactureDate,
+                    photo:
+                      entry.candidate
+                        .photo,
+                    note:
+                      entry.candidate.note,
+                    status:
+                      entry.candidate
+                        .status,
+                    currentRequestId:
+                      null,
+                    reservations: [],
+                  },
+                });
+              }
+            );
 
+            const createdAssets =
+              createdEntries.map(
+                ({ asset }) => asset
+              );
+
+            if (createdAssets.length > 0) {
+              await writePublicAssetCatalogMutationInTransaction(
+                transaction,
+                {
+                  fallbackAssets: [
+                    ...splitRentalAssets,
+                    ...acceptedAssets,
+                  ],
+                  upsertAssets: createdAssets,
+                  updatedByUid:
+                    firebaseAuth.currentUser?.uid ||
+                    authenticatedAdminId ||
+                    currentAuthAdminAccount?.id ||
+                    '',
+                }
+              );
+            }
+
+            createdEntries.forEach(
+              ({ entry, asset }) => {
                 transaction.set(
                   entry.assetRef,
                   {
-                    ...assetForSave,
+                    ...asset,
                     createdAt:
                       serverTimestamp(),
                     updatedAt:
@@ -19382,21 +19468,14 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                   {
                     id:
                       entry.registryId,
-                    assetId:
-                      assetForSave.id,
+                    assetId: asset.id,
                     assetNo:
-                      assetForSave
-                        .assetNo,
+                      asset.assetNo,
                     assetNoNormalized:
-                      assetForSave
-                        .assetNoNormalized,
+                      asset.assetNoNormalized,
                     updatedAt:
                       serverTimestamp(),
                   }
-                );
-
-                createdAssets.push(
-                  assetForSave
                 );
               }
             );
@@ -19511,6 +19590,19 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         error
       );
 
+      const catalogErrorMessage =
+        getPublicAssetCatalogWriteErrorMessage(error);
+
+      if (catalogErrorMessage) {
+        triggerToast(
+          acceptedAssets.length > 0
+            ? `${catalogErrorMessage} 현재까지 ${acceptedAssets.length}건은 저장되었습니다.`
+            : catalogErrorMessage,
+          'error'
+        );
+        return;
+      }
+
       triggerToast(
         acceptedAssets.length > 0
           ? `엑셀/CSV 등록 중 일부 작업이 중단되었습니다. 현재까지 ${acceptedAssets.length}건은 저장되었으며 나머지는 등록되지 않았습니다.`
@@ -19618,6 +19710,19 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                 registryDocRef
               );
 
+              await writePublicAssetCatalogMutationInTransaction(
+                transaction,
+                {
+                  fallbackAssets: splitRentalAssets,
+                  removeAssetIds: [id],
+                  updatedByUid:
+                    firebaseAuth.currentUser?.uid ||
+                    authenticatedAdminId ||
+                    currentAuthAdminAccount?.id ||
+                    '',
+                }
+              );
+
               transaction.delete(
                 assetDocRef
               );
@@ -19696,6 +19801,14 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
               `자산 ${assetNo}은(는) 이미 삭제되었거나 최신 자산 목록에서 찾을 수 없습니다.`,
               'error'
             );
+            return;
+          }
+
+          const catalogErrorMessage =
+            getPublicAssetCatalogWriteErrorMessage(error);
+
+          if (catalogErrorMessage) {
+            triggerToast(catalogErrorMessage, 'error');
             return;
           }
 
@@ -19948,6 +20061,19 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
               null,
           };
 
+          await writePublicAssetCatalogMutationInTransaction(
+            transaction,
+            {
+              fallbackAssets: splitRentalAssets,
+              upsertAssets: [nextAsset],
+              updatedByUid:
+                firebaseAuth.currentUser?.uid ||
+                authenticatedAdminId ||
+                currentAuthAdminAccount?.id ||
+                '',
+            }
+          );
+
           transaction.set(
             assetDocRef,
             {
@@ -20076,6 +20202,14 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           'error'
         );
         setEditLaptop(null);
+        return;
+      }
+
+      const catalogErrorMessage =
+        getPublicAssetCatalogWriteErrorMessage(error);
+
+      if (catalogErrorMessage) {
+        triggerToast(catalogErrorMessage, 'error');
         return;
       }
 

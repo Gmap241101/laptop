@@ -1,0 +1,63 @@
+P2 PUBLIC CATALOG WRITE-THROUGH VALIDATION
+==========================================
+
+Baseline:
+- rental-system-p1-performance-measurement-deployment-package.zip
+
+Changed files:
+- rules/firestore.rules
+- src/App.jsx
+- src/admin/AdminSettingsPanel.jsx
+- src/services/dashboardSummaryService.js
+- src/services/publicAssetCatalog.js
+- src/services/publicAssetCatalogWriteThrough.js (new)
+
+Static validation:
+- JavaScript/JSX/MJS files checked: 69
+- TypeScript transpile diagnostics: 0
+- Relative import targets missing: 0
+- Firestore Rules opening braces: 108
+- Firestore Rules closing braces: 108
+- Public catalog schema rule: version 2 confirmed
+- synchronizationMode rule: write-through confirmed
+
+Behavioral static checks:
+- Legacy delayed catalog synchronization effect: removed
+- Legacy 400 ms catalog synchronization timer: removed
+- New asset transaction updates catalog: confirmed
+- Asset edit transaction updates catalog: confirmed
+- Asset delete transaction updates catalog: confirmed
+- Bulk upload chunk transaction updates catalog: confirmed
+- Category batch updates catalog: confirmed
+- Split storage finalization rebuilds catalog: confirmed
+- Asset restore rebuilds catalog: confirmed
+- Asset reset rebuilds empty catalog: confirmed
+- Dashboard repair checks schema and mode: confirmed
+- Integrity check compares source and catalog: confirmed
+
+Runtime mock validation:
+- schemaVersion 2 payload: passed
+- synchronizationMode write-through: passed
+- deterministic ID sorting: passed
+- upsert mutation: passed
+- delete mutation: passed
+- transaction mutation: passed
+- schema 1 to schema 2 migration: passed
+- 201 asset limit rejection: passed
+
+Vite build:
+- npm ci did not finish within the execution limit.
+- node_modules/.bin/vite was not generated.
+- Production Vite build was not executed in this environment.
+
+Packaging validation is recorded after ZIP generation.
+
+Packaging validation:
+- Full deployment ZIP integrity: passed
+- Changed-files ZIP integrity: passed
+- Full ZIP JavaScript/JSX/MJS files checked: 69
+- Full ZIP transpile diagnostics: 0
+- Full ZIP missing relative imports: 0
+- Changed ZIP JavaScript/JSX files checked: 5
+- Changed ZIP transpile diagnostics: 0
+- Prohibited directories in full ZIP: none

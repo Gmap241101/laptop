@@ -26,7 +26,7 @@ export const normalizeAssetReservations = (reservations = []) =>
     )
     .map((request) => toRentalAvailabilityRequest(request));
 
-export const PUBLIC_ASSET_CATALOG_SCHEMA_VERSION = 1;
+export const PUBLIC_ASSET_CATALOG_SCHEMA_VERSION = 2;
 export const PUBLIC_ASSET_CATALOG_MAX_ASSETS = 200;
 export const PUBLIC_ASSET_CATALOG_MAX_BYTES = 900000;
 

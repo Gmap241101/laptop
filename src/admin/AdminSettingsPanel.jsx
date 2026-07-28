@@ -42,6 +42,7 @@ import {
 } from 'firebase/auth';
 
 import {
+  PUBLIC_ASSET_CATALOG_DOC_REF,
   PUBLIC_CONFIG_DOC_REF,
   SITE_SETTINGS_DOC_REF,
   SYSTEM_ADMIN_SETTINGS_DOC_REF,
@@ -78,6 +79,10 @@ import {
   serializeBackupValue,
   validateBackupPayload,
 } from '../utils/systemRestore.js';
+import {
+  createPublicAssetCatalogPayload,
+  rebuildPublicAssetCatalogFromServer,
+} from '../services/publicAssetCatalogWriteThrough.js';
 
 const DATA_MANAGEMENT_TABS = [
   [SYSTEM_MANAGEMENT_TAB.DATA, Database, '점검·백업·복원'],
@@ -649,7 +654,17 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
   const runIntegrityCheck = async () => {
     setIntegrityLoading(true);
     try {
-      const [assets, assetNumbers, availability, requests, users, claims, recovery, restrictions] = await Promise.all([
+      const [
+        assets,
+        assetNumbers,
+        availability,
+        requests,
+        users,
+        claims,
+        recovery,
+        restrictions,
+        publicCatalog,
+      ] = await Promise.all([
         getDocs(collection(db, 'rentalAssets')),
         getDocs(collection(db, 'rentalAssetNumbers')),
         getDocs(collection(db, 'rentalAvailability')),
@@ -658,6 +673,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
         getDocs(collection(db, 'memberIdentityClaims')),
         getDocs(collection(db, 'accountRecoveryKeys')),
         getDocs(collection(db, 'rentalRestrictions')),
+        getDoc(PUBLIC_ASSET_CATALOG_DOC_REF),
       ]);
 
       const assetIds = new Set(assets.docs.map((item) => item.id));
@@ -665,6 +681,56 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
       const userIds = new Set(users.docs.map((item) => item.id));
       const availabilityIds = new Set(availability.docs.map((item) => item.id));
       const issues = [];
+
+      let expectedCatalogPayload = null;
+
+      try {
+        expectedCatalogPayload =
+          createPublicAssetCatalogPayload(
+            assets.docs.map((item) => ({
+              ...item.data(),
+              id: item.id,
+            })),
+            {
+              updatedByUid:
+                authenticatedAdminAccount?.id || '',
+              updatedAt: null,
+            }
+          );
+      } catch (error) {
+        issues.push({
+          level: 'error',
+          code: error?.message || 'public-catalog-build-failed',
+          message:
+            error?.message === 'public-catalog-asset-limit-exceeded'
+              ? `원본 자산 ${error.assetCount || assets.size}건이 공개 카탈로그 최대 ${error.maximumAssetCount || 200}건을 초과합니다.`
+              : '원본 자산 데이터로 공개 자산 카탈로그를 생성할 수 없습니다.',
+        });
+      }
+
+      const actualCatalogFingerprint =
+        publicCatalog.exists()
+          ? String(publicCatalog.data()?.fingerprint || '')
+          : '';
+      const actualCatalogAssetCount =
+        publicCatalog.exists()
+          ? Number(publicCatalog.data()?.assetCount || 0)
+          : 0;
+
+      if (
+        expectedCatalogPayload &&
+        (
+          !publicCatalog.exists() ||
+          actualCatalogFingerprint !== expectedCatalogPayload.fingerprint ||
+          actualCatalogAssetCount !== expectedCatalogPayload.assetCount
+        )
+      ) {
+        issues.push({
+          level: 'warning',
+          code: 'public-catalog-out-of-sync',
+          message: `공개 자산 카탈로그 불일치: 원본 ${expectedCatalogPayload.assetCount}건, 카탈로그 ${actualCatalogAssetCount}건`,
+        });
+      }
 
       requests.docs.forEach((item) => {
         const value = item.data();
@@ -719,6 +785,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
           claims: claims.size,
           recovery: recovery.size,
           restrictions: restrictions.size,
+          publicCatalogAssets: actualCatalogAssetCount,
         },
         normal: issues.length === 0,
         warnings: issues.filter((item) => item.level === 'warning').length,
@@ -1305,6 +1372,23 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
         await updateRestoreJob(jobRef, { writtenCounts });
       }
 
+      if (scopes.includes(SYSTEM_RESTORE_SCOPE.ASSETS)) {
+        setRestoreProgress({
+          step: '공개 자산 카탈로그 재생성',
+          completed: 0,
+          total: 1,
+        });
+        await rebuildPublicAssetCatalogFromServer({
+          updatedByUid:
+            authenticatedAdminAccount?.id || '',
+        });
+        setRestoreProgress({
+          step: '공개 자산 카탈로그 재생성',
+          completed: 1,
+          total: 1,
+        });
+      }
+
       // 백업 안의 운영상태와 관계없이 복원 완료 후에도 점검 모드를 유지합니다.
       await setDoc(SITE_SETTINGS_DOC_REF, {
         serviceMode: SERVICE_MODE.MAINTENANCE,
@@ -1643,6 +1727,23 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
           ...publicConfigUpdates,
           updatedAt: serverTimestamp(),
         }, { merge: true });
+      }
+
+      if (scopes.includes(SYSTEM_RESET_SCOPE.ASSETS)) {
+        setResetProgress({
+          step: '공개 자산 카탈로그 초기화',
+          completed: 0,
+          total: 1,
+        });
+        await rebuildPublicAssetCatalogFromServer({
+          updatedByUid:
+            authenticatedAdminAccount?.id || '',
+        });
+        setResetProgress({
+          step: '공개 자산 카탈로그 초기화',
+          completed: 1,
+          total: 1,
+        });
       }
 
       if (scopes.includes(SYSTEM_RESET_SCOPE.SETTINGS)) {

@@ -194,14 +194,20 @@ export const refreshDashboardSummaryDocument = async ({ adminUid }) => {
     })
   );
 
+  const publicCatalogData = publicCatalogSnapshot.exists()
+    ? publicCatalogSnapshot.data()
+    : null;
   const shouldRepairPublicCatalog =
     !publicCatalogSnapshot.exists() ||
-    !Array.isArray(publicCatalogSnapshot.data()?.assets);
+    !Array.isArray(publicCatalogData?.assets) ||
+    Number(publicCatalogData?.schemaVersion || 0) !==
+      PUBLIC_ASSET_CATALOG_SCHEMA_VERSION ||
+    publicCatalogData?.synchronizationMode !== 'write-through';
   let catalogAssets = publicCatalogSnapshot.exists()
-    ? normalizePublicCatalogAssets(publicCatalogSnapshot.data().assets || [])
+    ? normalizePublicCatalogAssets(publicCatalogData?.assets || [])
     : [];
 
-  if (!catalogAssets.length) {
+  if (shouldRepairPublicCatalog || !catalogAssets.length) {
     const legacyAssetSnapshot = await getDocs(RENTAL_ASSETS_COLLECTION_REF);
     catalogAssets = normalizePublicCatalogAssets(
       legacyAssetSnapshot.docs.map((assetDoc) => ({
@@ -213,7 +219,6 @@ export const refreshDashboardSummaryDocument = async ({ adminUid }) => {
 
   if (
     shouldRepairPublicCatalog &&
-    catalogAssets.length > 0 &&
     getPublicCatalogPayloadByteLength(catalogAssets) <=
       PUBLIC_ASSET_CATALOG_MAX_BYTES
   ) {
@@ -226,6 +231,7 @@ export const refreshDashboardSummaryDocument = async ({ adminUid }) => {
         fingerprint: getPublicCatalogFingerprint(catalogAssets),
         updatedAt: serverTimestamp(),
         updatedByUid: adminUid,
+        synchronizationMode: 'write-through',
       },
       { merge: false }
     );
