@@ -9,7 +9,7 @@ import {
   PackageOpen,
   XCircle,
 } from 'lucide-react';
-import { onSnapshot, query, where } from 'firebase/firestore';
+import { getDoc, getDocs, query, where } from 'firebase/firestore';
 
 import {
   HOME_BANNERS_COLLECTION_REF,
@@ -118,30 +118,48 @@ export default function UserHomePanel({ ctx }) {
   const touchStartXRef = useRef(null);
 
   useEffect(() => {
-    const enabledQuery = query(
-      HOME_BANNERS_COLLECTION_REF,
-      where('enabled', '==', true)
-    );
-    const unsubscribe = onSnapshot(
-      enabledQuery,
-      (snapshot) => {
-        setBanners(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+    let cancelled = false;
+
+    const loadHomeBanners = async () => {
+      try {
+        const enabledQuery = query(
+          HOME_BANNERS_COLLECTION_REF,
+          where('enabled', '==', true)
+        );
+        const snapshot = await getDocs(enabledQuery);
+        if (cancelled) return;
+
+        setBanners(
+          snapshot.docs.map((item) => ({
+            id: item.id,
+            ...item.data(),
+          }))
+        );
         setBannersReady(true);
         setBannerLoadError('');
-      },
-      (error) => {
+      } catch (error) {
+        if (cancelled) return;
         console.error('User home banners load error:', error);
         setBannersReady(true);
         setBannerLoadError('초기화면 배너를 불러오지 못했습니다.');
       }
-    );
-    return unsubscribe;
+    };
+
+    void loadHomeBanners();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(
-      HOME_PAGE_CONFIG_DOC_REF,
-      (snapshot) => {
+    let cancelled = false;
+
+    const loadHomeConfig = async () => {
+      try {
+        const snapshot = await getDoc(HOME_PAGE_CONFIG_DOC_REF);
+        if (cancelled) return;
+
         const data = snapshot.exists() ? snapshot.data() : {};
         setHomeConfig({
           heroIntervalSeconds: [5, 7, 10].includes(Number(data.heroIntervalSeconds))
@@ -151,10 +169,17 @@ export default function UserHomePanel({ ctx }) {
             ? data.promotionLayout
             : '2x1',
         });
-      },
-      (error) => console.error('User home config load error:', error)
-    );
-    return unsubscribe;
+      } catch (error) {
+        if (cancelled) return;
+        console.error('User home config load error:', error);
+      }
+    };
+
+    void loadHomeConfig();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {

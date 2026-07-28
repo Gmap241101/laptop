@@ -1,0 +1,81 @@
+P1 GLOBAL LISTENER OPTIMIZATION VALIDATION REPORT
+=================================================
+
+Baseline package
+----------------
+rental-system-p1-listener-scope-optimization-deployment-package.zip
+
+Changed runtime source files
+----------------------------
+1. src/App.jsx
+2. src/user/UserHomePanel.jsx
+
+Static validation
+-----------------
+- JavaScript/JSX/MJS files checked: 62
+- TypeScript transpile syntax diagnostics: 0
+- Missing relative import targets: 0
+- UserHomePanel onSnapshot calls: 2 -> 0
+- UserHomePanel one-time Firestore reads: getDocs 1, getDoc 1
+- User home pinned notice one-time read: PASS
+- User home regular notice one-time read: PASS
+- User popup one-time read: PASS
+- User footer config one-time read: PASS
+- User footer pages one-time read: PASS
+- Admin popup real-time subscription retained: PASS
+- Admin footer config real-time subscription retained: PASS
+- Admin footer pages real-time subscription retained: PASS
+- User session policy subscription scope condition: PASS
+- Site settings real-time subscription retained: PASS
+- Public rental config real-time subscription retained: PASS
+- Admin security settings real-time subscription retained: PASS
+
+Expected active Firestore listeners by code path
+------------------------------------------------
+- Anonymous user home: 12 -> 4 (-8)
+- Authenticated user home: 16 -> 9 (-7)
+- Anonymous login screen: 5 -> 2 (-3)
+- General admin page: user session policy listener removed (-1)
+- Admin account-security page: unchanged
+- Admin popup/footer management pages: unchanged
+
+The figures above are code-path estimates and exclude Firebase Auth onAuthStateChanged.
+One-time reads still occur when the relevant screen is entered. The optimization
+removes persistent listeners and their subsequent update/reconnect reads.
+
+Unchanged files
+---------------
+- rules/firestore.rules: byte-for-byte unchanged
+- firestore.indexes.json: byte-for-byte unchanged
+- package.json: byte-for-byte unchanged
+- package-lock.json: byte-for-byte unchanged
+
+Runtime behavior checks
+-----------------------
+- User home banners are loaded once on UserHomePanel mount: PASS
+- User home display config is loaded once on UserHomePanel mount: PASS
+- Late async responses are ignored after component/effect cleanup: PASS
+- User notice page remains real-time: PASS
+- Admin notice management remains real-time: PASS
+- Admin popup management remains real-time: PASS
+- Admin footer management remains real-time: PASS
+- Active regular-user session policy remains real-time: PASS
+- Login action retains getDoc fallback when policy is not ready: PASS
+
+Production build
+----------------
+npm ci could not complete because the package proxy returned:
+503 Service Temporarily Unavailable
+
+The partial installation did not create node_modules/.bin/vite, so a Vite
+production build could not be run in this environment. deploy.ps1 runs
+npm run build before publishing and will stop if the local build fails.
+
+Archive validation
+------------------
+- Full deployment ZIP integrity: PASS
+- Changed-files ZIP integrity: PASS
+- Full ZIP re-extracted source syntax/import validation: PASS
+- Changed-files ZIP re-extracted source syntax validation: PASS
+- Source files inside ZIP match working copies: PASS
+- Forbidden directories (node_modules/dist/.git): none

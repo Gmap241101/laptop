@@ -3001,6 +3001,29 @@ function App() {
   }, [siteSettings]);
 
   useEffect(() => {
+    const shouldSubscribeForActiveUser = Boolean(
+      firebaseAuthUser &&
+      currentAuthRoleReady &&
+      !currentAuthRoleErrorMessage &&
+      !currentAuthAdminAccount &&
+      !authenticatedAdminId
+    );
+    const shouldSubscribeForAdminSecurity = Boolean(
+      firebaseAuthUser &&
+      currentAuthRoleReady &&
+      (currentAuthAdminAccount || authenticatedAdminId) &&
+      view === 'admin' &&
+      adminTab === 'accountSecurity'
+    );
+    const shouldSubscribeUserSessionPolicy =
+      shouldSubscribeForActiveUser || shouldSubscribeForAdminSecurity;
+
+    if (!shouldSubscribeUserSessionPolicy) {
+      setUserSessionPolicyReady(false);
+      setUserSessionPolicyLoadErrorMessage('');
+      return undefined;
+    }
+
     setUserSessionPolicyReady(false);
     const unsubscribe = onSnapshot(
       USER_SESSION_POLICY_DOC_REF,
@@ -3024,7 +3047,15 @@ function App() {
     );
 
     return unsubscribe;
-  }, []);
+  }, [
+    firebaseAuthUser?.uid,
+    currentAuthRoleReady,
+    currentAuthRoleErrorMessage,
+    currentAuthAdminAccount?.id,
+    authenticatedAdminId,
+    view,
+    adminTab,
+  ]);
 
   useEffect(() => {
     const canReadSystemAdminSettings = Boolean(
@@ -6499,29 +6530,47 @@ function App() {
       )
     );
 
-    const unsubscribe = onSnapshot(
-      pinnedSource,
-      (snapshot) => {
-        setNoticePinnedPosts(
-          snapshot.docs.map((postDoc) => ({
-            ...postDoc.data(),
-            id: postDoc.id,
-          }))
-        );
-        setNoticePostsLoadErrorMessage('');
-      },
-      (error) => {
-        const message =
-          '상단 고정 공지사항을 불러오지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.';
-        console.error('Pinned notice posts sync error:', error);
-        setNoticePinnedPosts([]);
-        setNoticePostsLoadErrorMessage(message);
-        setNoticePostsReady(true);
-        triggerToast(message, 'error');
-      }
-    );
+    const applyPinnedNoticeSnapshot = (snapshot) => {
+      setNoticePinnedPosts(
+        snapshot.docs.map((postDoc) => ({
+          ...postDoc.data(),
+          id: postDoc.id,
+        }))
+      );
+      setNoticePostsLoadErrorMessage('');
+    };
 
-    return unsubscribe;
+    const handlePinnedNoticeError = (error) => {
+      const message =
+        '상단 고정 공지사항을 불러오지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.';
+      console.error('Pinned notice posts load error:', error);
+      setNoticePinnedPosts([]);
+      setNoticePostsLoadErrorMessage(message);
+      setNoticePostsReady(true);
+      triggerToast(message, 'error');
+    };
+
+    if (shouldLoadUserHomeNotice) {
+      let cancelled = false;
+
+      void getDocs(pinnedSource)
+        .then((snapshot) => {
+          if (!cancelled) applyPinnedNoticeSnapshot(snapshot);
+        })
+        .catch((error) => {
+          if (!cancelled) handlePinnedNoticeError(error);
+        });
+
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    return onSnapshot(
+      pinnedSource,
+      applyPinnedNoticeSnapshot,
+      handlePinnedNoticeError
+    );
   }, [
     isAdminAuthenticated,
     view,
@@ -6587,41 +6636,58 @@ function App() {
       firestoreLimit(postsPerPage + 1)
     );
 
-    const unsubscribe = onSnapshot(
-      regularSource,
-      (snapshot) => {
-        const sourceDocs = snapshot.docs;
-        const visibleDocs = sourceDocs.slice(0, postsPerPage);
-        const hasNext = sourceDocs.length > postsPerPage;
+    const applyRegularNoticeSnapshot = (snapshot) => {
+      const sourceDocs = snapshot.docs;
+      const visibleDocs = sourceDocs.slice(0, postsPerPage);
+      const hasNext = sourceDocs.length > postsPerPage;
 
-        if (visibleDocs.length > 0) {
-          noticeCursorByPageRef.current.set(
-            activePage + 1,
-            visibleDocs[visibleDocs.length - 1]
-          );
-        }
-
-        setNoticeRegularPagePosts(
-          visibleDocs.map((postDoc) => ({
-            ...postDoc.data(),
-            id: postDoc.id,
-          }))
+      if (visibleDocs.length > 0) {
+        noticeCursorByPageRef.current.set(
+          activePage + 1,
+          visibleDocs[visibleDocs.length - 1]
         );
-        setNoticeHasNextPage(hasNext);
-        setNoticePostsLoadErrorMessage('');
-        setNoticePostsReady(true);
-      },
-      (error) => {
-        const message =
-          '공지사항 목록을 불러오지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.';
-        console.error('Paged notice posts sync error:', error);
-        setNoticeRegularPagePosts([]);
-        setNoticeHasNextPage(false);
-        setNoticePostsLoadErrorMessage(message);
-        setNoticePostsReady(true);
-        triggerToast(message, 'error');
       }
-    );
+
+      setNoticeRegularPagePosts(
+        visibleDocs.map((postDoc) => ({
+          ...postDoc.data(),
+          id: postDoc.id,
+        }))
+      );
+      setNoticeHasNextPage(hasNext);
+      setNoticePostsLoadErrorMessage('');
+      setNoticePostsReady(true);
+    };
+
+    const handleRegularNoticeError = (error) => {
+      const message =
+        '공지사항 목록을 불러오지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.';
+      console.error('Paged notice posts load error:', error);
+      setNoticeRegularPagePosts([]);
+      setNoticeHasNextPage(false);
+      setNoticePostsLoadErrorMessage(message);
+      setNoticePostsReady(true);
+      triggerToast(message, 'error');
+    };
+
+    let unsubscribe = null;
+    let cancelled = false;
+
+    if (shouldLoadUserHomeNotice) {
+      void getDocs(regularSource)
+        .then((snapshot) => {
+          if (!cancelled) applyRegularNoticeSnapshot(snapshot);
+        })
+        .catch((error) => {
+          if (!cancelled) handleRegularNoticeError(error);
+        });
+    } else {
+      unsubscribe = onSnapshot(
+        regularSource,
+        applyRegularNoticeSnapshot,
+        handleRegularNoticeError
+      );
+    }
 
     if (cursorKeyChanged && !shouldLoadUserHomeNotice) {
       void getCountFromServer(
@@ -6638,7 +6704,10 @@ function App() {
         });
     }
 
-    return unsubscribe;
+    return () => {
+      cancelled = true;
+      if (unsubscribe) unsubscribe();
+    };
   }, [
     isAdminAuthenticated,
     view,
@@ -6703,17 +6772,15 @@ function App() {
   useEffect(() => {
     const shouldLoadAdminPopup =
       isAdminAuthenticated && view === 'admin' && adminTab === 'popupPosts';
-    const shouldSubscribe =
-      shouldLoadAdminPopup ||
+    const shouldLoadUserPopup =
+      view === 'user' &&
       (
-        view === 'user' &&
-        (
-          userTab === 'home' ||
-          (userTab === 'rental' && Boolean(firebaseAuthUser))
-        )
+        userTab === 'home' ||
+        (userTab === 'rental' && Boolean(firebaseAuthUser))
       );
+    const shouldLoadPopup = shouldLoadAdminPopup || shouldLoadUserPopup;
 
-    if (!shouldSubscribe) {
+    if (!shouldLoadPopup) {
       setPopupPosts([]);
       setPopupPostsLoadErrorMessage('');
       setPopupPostsReady(true);
@@ -6730,49 +6797,67 @@ function App() {
           where('enabled', '==', true)
         );
 
-    const unsubscribe = onSnapshot(
+    const applyPopupSnapshot = (snapshot) => {
+      const remotePosts = snapshot.docs
+        .map((popupDoc) => ({
+          ...popupDoc.data(),
+          id: popupDoc.id,
+        }))
+        .sort((first, second) => {
+          const firstOrder = Number(first.sortOrder);
+          const secondOrder = Number(second.sortOrder);
+          const firstHasOrder = Number.isFinite(firstOrder) && firstOrder > 0;
+          const secondHasOrder = Number.isFinite(secondOrder) && secondOrder > 0;
+
+          if (firstHasOrder && secondHasOrder && firstOrder !== secondOrder) {
+            return firstOrder - secondOrder;
+          }
+          if (firstHasOrder !== secondHasOrder) return firstHasOrder ? -1 : 1;
+
+          return (
+            getPopupDateMillis(second.createdAt) -
+            getPopupDateMillis(first.createdAt)
+          );
+        });
+
+      setPopupPosts(remotePosts);
+      setPopupPostsLoadErrorMessage('');
+      setPopupPostsReady(true);
+    };
+
+    const handlePopupLoadError = (error) => {
+      const message =
+        '팝업을 불러오지 못했습니다. Firestore Rules의 popupPosts 읽기 권한을 확인해 주세요.';
+
+      console.error('Popup posts load error:', error);
+      setPopupPosts([]);
+      setPopupPostsLoadErrorMessage(message);
+      setPopupPostsReady(true);
+
+      if (shouldLoadAdminPopup) triggerToast(message, 'error');
+    };
+
+    if (shouldLoadUserPopup) {
+      let cancelled = false;
+
+      void getDocs(popupSource)
+        .then((snapshot) => {
+          if (!cancelled) applyPopupSnapshot(snapshot);
+        })
+        .catch((error) => {
+          if (!cancelled) handlePopupLoadError(error);
+        });
+
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    return onSnapshot(
       popupSource,
-      (snapshot) => {
-        const remotePosts = snapshot.docs
-          .map((popupDoc) => ({
-            ...popupDoc.data(),
-            id: popupDoc.id,
-          }))
-          .sort((first, second) => {
-            const firstOrder = Number(first.sortOrder);
-            const secondOrder = Number(second.sortOrder);
-            const firstHasOrder = Number.isFinite(firstOrder) && firstOrder > 0;
-            const secondHasOrder = Number.isFinite(secondOrder) && secondOrder > 0;
-
-            if (firstHasOrder && secondHasOrder && firstOrder !== secondOrder) {
-              return firstOrder - secondOrder;
-            }
-            if (firstHasOrder !== secondHasOrder) return firstHasOrder ? -1 : 1;
-
-            return (
-              getPopupDateMillis(second.createdAt) -
-              getPopupDateMillis(first.createdAt)
-            );
-          });
-
-        setPopupPosts(remotePosts);
-        setPopupPostsLoadErrorMessage('');
-        setPopupPostsReady(true);
-      },
-      (error) => {
-        const message =
-          '팝업을 불러오지 못했습니다. Firestore Rules의 popupPosts 읽기 권한을 확인해 주세요.';
-
-        console.error('Popup posts sync error:', error);
-        setPopupPosts([]);
-        setPopupPostsLoadErrorMessage(message);
-        setPopupPostsReady(true);
-
-        if (isAdminAuthenticated) triggerToast(message, 'error');
-      }
+      applyPopupSnapshot,
+      handlePopupLoadError
     );
-
-    return unsubscribe;
   }, [firebaseAuthUser?.uid, isAdminAuthenticated, userTab, view, adminTab]);
 
   useEffect(() => {
@@ -6781,10 +6866,9 @@ function App() {
       isAdminAuthenticated &&
       view === 'admin' &&
       adminTab === 'footerManagement';
-    const shouldSubscribeFooter =
-      shouldLoadUserFooter || shouldLoadAdminFooter;
+    const shouldLoadFooter = shouldLoadUserFooter || shouldLoadAdminFooter;
 
-    if (!shouldSubscribeFooter) {
+    if (!shouldLoadFooter) {
       const defaultFooterConfig = createDefaultFooterConfigDraft();
       setFooterConfig(defaultFooterConfig);
       setFooterConfigDraft(defaultFooterConfig);
@@ -6796,45 +6880,63 @@ function App() {
     setFooterConfigReady(false);
     setFooterConfigLoadErrorMessage('');
 
-    const unsubscribe = onSnapshot(
-      SITE_FOOTER_CONFIG_DOC_REF,
-      (snapshot) => {
-        const remoteData = snapshot.exists() ? snapshot.data() : {};
-        const nextConfig = {
-          enabled: snapshot.exists() ? remoteData.enabled !== false : true,
-          content: remoteData.content || '',
-          contentText: remoteData.contentText || remoteData.content || '',
-          contentHtml: sanitizeFooterCommonHtml(
-            remoteData.contentHtml ||
-              legacyTextToRichHtml(
-                remoteData.contentText || remoteData.content || ''
-              )
-          ),
-          contentFormat: remoteData.contentFormat || 'rich-html-v1',
-          updatedAt: remoteData.updatedAt || null,
-        };
+    const applyFooterConfigSnapshot = (snapshot) => {
+      const remoteData = snapshot.exists() ? snapshot.data() : {};
+      const nextConfig = {
+        enabled: snapshot.exists() ? remoteData.enabled !== false : true,
+        content: remoteData.content || '',
+        contentText: remoteData.contentText || remoteData.content || '',
+        contentHtml: sanitizeFooterCommonHtml(
+          remoteData.contentHtml ||
+            legacyTextToRichHtml(
+              remoteData.contentText || remoteData.content || ''
+            )
+        ),
+        contentFormat: remoteData.contentFormat || 'rich-html-v1',
+        updatedAt: remoteData.updatedAt || null,
+      };
 
-        setFooterConfig(nextConfig);
-        setFooterConfigDraft({
-          enabled: nextConfig.enabled,
-          contentHtml: nextConfig.contentHtml,
+      setFooterConfig(nextConfig);
+      setFooterConfigDraft({
+        enabled: nextConfig.enabled,
+        contentHtml: nextConfig.contentHtml,
+      });
+      setFooterConfigLoadErrorMessage('');
+      setFooterConfigReady(true);
+    };
+
+    const handleFooterConfigError = (error) => {
+      const message =
+        '푸터 공통 정보를 불러오지 못했습니다. Firestore Rules의 siteFooter 읽기 권한을 확인해 주세요.';
+      console.error('Footer config load error:', error);
+      setFooterConfig(createDefaultFooterConfigDraft());
+      setFooterConfigDraft(createDefaultFooterConfigDraft());
+      setFooterConfigLoadErrorMessage(message);
+      setFooterConfigReady(true);
+      if (shouldLoadAdminFooter) triggerToast(message, 'error');
+    };
+
+    if (shouldLoadUserFooter) {
+      let cancelled = false;
+
+      void getDoc(SITE_FOOTER_CONFIG_DOC_REF)
+        .then((snapshot) => {
+          if (!cancelled) applyFooterConfigSnapshot(snapshot);
+        })
+        .catch((error) => {
+          if (!cancelled) handleFooterConfigError(error);
         });
-        setFooterConfigLoadErrorMessage('');
-        setFooterConfigReady(true);
-      },
-      (error) => {
-        const message =
-          '푸터 공통 정보를 불러오지 못했습니다. Firestore Rules의 siteFooter 읽기 권한을 확인해 주세요.';
-        console.error('Footer config sync error:', error);
-        setFooterConfig(createDefaultFooterConfigDraft());
-        setFooterConfigDraft(createDefaultFooterConfigDraft());
-        setFooterConfigLoadErrorMessage(message);
-        setFooterConfigReady(true);
-        if (shouldLoadAdminFooter) triggerToast(message, 'error');
-      }
-    );
 
-    return unsubscribe;
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    return onSnapshot(
+      SITE_FOOTER_CONFIG_DOC_REF,
+      applyFooterConfigSnapshot,
+      handleFooterConfigError
+    );
   }, [isAdminAuthenticated, view, adminTab]);
 
   useEffect(() => {
@@ -6843,10 +6945,9 @@ function App() {
       isAdminAuthenticated &&
       view === 'admin' &&
       adminTab === 'footerManagement';
-    const shouldSubscribeFooter =
-      shouldLoadUserFooter || shouldLoadAdminFooter;
+    const shouldLoadFooter = shouldLoadUserFooter || shouldLoadAdminFooter;
 
-    if (!shouldSubscribeFooter) {
+    if (!shouldLoadFooter) {
       setFooterPages([]);
       setFooterPagesLoadErrorMessage('');
       setFooterPagesReady(true);
@@ -6863,46 +6964,64 @@ function App() {
           where('enabled', '==', true)
         );
 
-    const unsubscribe = onSnapshot(
+    const applyFooterPagesSnapshot = (snapshot) => {
+      const remotePages = snapshot.docs
+        .map((pageDoc) => ({
+          ...pageDoc.data(),
+          id: pageDoc.id,
+        }))
+        .sort((first, second) => {
+          const orderDifference =
+            (Number(first.sortOrder) || 0) -
+            (Number(second.sortOrder) || 0);
+          if (orderDifference !== 0) return orderDifference;
+
+          const createdDifference =
+            getFirestoreTimestampMillis(first.createdAt) -
+            getFirestoreTimestampMillis(second.createdAt);
+          if (createdDifference !== 0) return createdDifference;
+
+          return String(first.id || '').localeCompare(
+            String(second.id || '')
+          );
+        });
+
+      setFooterPages(remotePages);
+      setFooterPagesLoadErrorMessage('');
+      setFooterPagesReady(true);
+    };
+
+    const handleFooterPagesError = (error) => {
+      const message =
+        '푸터 메뉴 페이지를 불러오지 못했습니다. Firestore Rules의 footerPages 읽기 권한을 확인해 주세요.';
+      console.error('Footer pages load error:', error);
+      setFooterPages([]);
+      setFooterPagesLoadErrorMessage(message);
+      setFooterPagesReady(true);
+      if (shouldLoadAdminFooter) triggerToast(message, 'error');
+    };
+
+    if (shouldLoadUserFooter) {
+      let cancelled = false;
+
+      void getDocs(footerPagesSource)
+        .then((snapshot) => {
+          if (!cancelled) applyFooterPagesSnapshot(snapshot);
+        })
+        .catch((error) => {
+          if (!cancelled) handleFooterPagesError(error);
+        });
+
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    return onSnapshot(
       footerPagesSource,
-      (snapshot) => {
-        const remotePages = snapshot.docs
-          .map((pageDoc) => ({
-            ...pageDoc.data(),
-            id: pageDoc.id,
-          }))
-          .sort((first, second) => {
-            const orderDifference =
-              (Number(first.sortOrder) || 0) -
-              (Number(second.sortOrder) || 0);
-            if (orderDifference !== 0) return orderDifference;
-
-            const createdDifference =
-              getFirestoreTimestampMillis(first.createdAt) -
-              getFirestoreTimestampMillis(second.createdAt);
-            if (createdDifference !== 0) return createdDifference;
-
-            return String(first.id || '').localeCompare(
-              String(second.id || '')
-            );
-          });
-
-        setFooterPages(remotePages);
-        setFooterPagesLoadErrorMessage('');
-        setFooterPagesReady(true);
-      },
-      (error) => {
-        const message =
-          '푸터 메뉴 페이지를 불러오지 못했습니다. Firestore Rules의 footerPages 읽기 권한을 확인해 주세요.';
-        console.error('Footer pages sync error:', error);
-        setFooterPages([]);
-        setFooterPagesLoadErrorMessage(message);
-        setFooterPagesReady(true);
-        if (shouldLoadAdminFooter) triggerToast(message, 'error');
-      }
+      applyFooterPagesSnapshot,
+      handleFooterPagesError
     );
-
-    return unsubscribe;
   }, [isAdminAuthenticated, view, adminTab]);
 
   useEffect(() => {
