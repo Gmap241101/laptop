@@ -82,6 +82,19 @@ import {
 } from './context/appContextSlices.js';
 
 const AdminWorkspace = React.lazy(() => import('./admin/AdminWorkspace.jsx'));
+let sheetJsLoaderModulePromise = null;
+const loadSheetJsLoaderModule = () => {
+  if (!sheetJsLoaderModulePromise) {
+    sheetJsLoaderModulePromise = import('./services/sheetJsLoader.js').catch(
+      (error) => {
+        sheetJsLoaderModulePromise = null;
+        throw error;
+      }
+    );
+  }
+
+  return sheetJsLoaderModulePromise;
+};
 let appDialogsModulePromise = null;
 const loadAppDialogsModule = () => {
   if (!appDialogsModulePromise) {
@@ -1880,6 +1893,7 @@ function App() {
 
   // 엑셀/CSV 업로드 패널 토글 상태 값 추가
   const [showUploadPanel, setShowUploadPanel] = useState(false);
+  const [assetUploadParserLoading, setAssetUploadParserLoading] = useState(false);
   const [assetGridColumns, setAssetGridColumns] = useState(1);
 
   // 설정 임시 저장을 위한 임시 상태 정의
@@ -2945,16 +2959,6 @@ function App() {
       document.removeEventListener('keydown', handleCommunityMenuEscape, true);
     };
   }, [isCommunityMenuOpen]);
-
-  // 엑셀/CSV 파싱에 사용되는 라이브러리(SheetJS) 동적 주입 처리
-  useEffect(() => {
-    if (!window.XLSX) {
-      const script = document.createElement('script');
-      script.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
-      script.async = true;
-      document.body.appendChild(script);
-    }
-  }, []);
 
   useEffect(() => {
     const updateAssetGridColumns = () => {
@@ -19370,74 +19374,106 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
   };
 
   // 엑셀/CSV 파일 일괄 자동 업로드 분석 처리 로직
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  const handleFileUpload = async (event) => {
+    const fileInput = event.currentTarget;
+    const file = fileInput.files?.[0];
+
+    if (!file || assetUploadParserLoading) return;
 
     const fileName = file.name.toLowerCase();
     const isExcelFile = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
     const isCsvFile = fileName.endsWith('.csv');
 
     if (!isExcelFile && !isCsvFile) {
-      triggerToast('엑셀(.xlsx, .xls) 또는 CSV(.csv) 파일만 업로드할 수 있습니다.', 'error');
-      e.target.value = '';
+      triggerToast(
+        '엑셀(.xlsx, .xls) 또는 CSV(.csv) 파일만 업로드할 수 있습니다.',
+        'error'
+      );
+      fileInput.value = '';
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
+    setAssetUploadParserLoading(true);
+
+    try {
+      let sheetJs = null;
+      let sheetJsLoaderModule = null;
+
       try {
-        const dataBytes = new Uint8Array(evt.target.result);
-        let jsonResult = [];
-
+        sheetJsLoaderModule = await loadSheetJsLoaderModule();
+        sheetJs = await sheetJsLoaderModule.loadSheetJs();
+      } catch (sheetJsError) {
         if (isExcelFile) {
-          if (!window.XLSX) {
-            triggerToast('엑셀 처리 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도해 주세요.', 'error');
-            e.target.value = '';
-            return;
-          }
+          triggerToast(
+            sheetJsLoaderModule?.getSheetJsLoadErrorMessage?.(
+              sheetJsError
+            ) ||
+              '엑셀 처리 도구를 불러오지 못했습니다. 네트워크 연결 또는 외부 스크립트 차단 설정을 확인해 주세요.',
+            'error'
+          );
+          return;
+        }
 
-          const workbook = window.XLSX.read(dataBytes, { type: 'array' });
+        console.error('SheetJS load error for CSV fallback:', sheetJsError);
+      }
+
+      const dataBuffer = await file.arrayBuffer();
+      const dataBytes = new Uint8Array(dataBuffer);
+      let jsonResult = [];
+
+      if (isExcelFile && sheetJs) {
+        const workbook = sheetJs.read(dataBytes, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        jsonResult = sheetJs.utils.sheet_to_json(sheet);
+      }
+
+      if (isCsvFile) {
+        const decoder = new TextDecoder('utf-8');
+        const csvText = decoder.decode(dataBytes);
+
+        if (sheetJs) {
+          const workbook = sheetJs.read(csvText, { type: 'string' });
           const sheetName = workbook.SheetNames[0];
           const sheet = workbook.Sheets[sheetName];
-          jsonResult = window.XLSX.utils.sheet_to_json(sheet);
-        }
+          jsonResult = sheetJs.utils.sheet_to_json(sheet);
+        } else {
+          const lines = csvText
+            .split(/\r?\n/)
+            .filter((line) => line.trim());
 
-        if (isCsvFile) {
-          const decoder = new TextDecoder('utf-8');
-          const csvText = decoder.decode(dataBytes);
+          if (lines.length > 0) {
+            const headers = lines[0]
+              .split(',')
+              .map((header) => header.trim().replace(/"/g, ''));
 
-          if (window.XLSX) {
-            const workbook = window.XLSX.read(csvText, { type: 'string' });
-            const sheetName = workbook.SheetNames[0];
-            const sheet = workbook.Sheets[sheetName];
-            jsonResult = window.XLSX.utils.sheet_to_json(sheet);
-          } else {
-            const lines = csvText.split(/\r?\n/).filter(line => line.trim());
+            jsonResult = lines.slice(1).map((line) => {
+              const values = line
+                .split(',')
+                .map((value) => value.trim().replace(/"/g, ''));
+              const row = {};
 
-            if (lines.length > 0) {
-              const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-              jsonResult = lines.slice(1).map(line => {
-                const values = line.split(',').map(v => v.trim().replace(/"/g, ''));
-                const obj = {};
-                headers.forEach((header, index) => {
-                  obj[header] = values[index] || '';
-                });
-                return obj;
+              headers.forEach((header, index) => {
+                row[header] = values[index] || '';
               });
-            }
+
+              return row;
+            });
           }
         }
-
-        await processParsedData(jsonResult);
-        // 파일 인풋 버퍼 초기화로 동일 파일 재업로드 대응
-        e.target.value = '';
-      } catch (err) {
-        triggerToast('파일 파싱 중 에러가 발생했습니다. 규격을 확인해 주세요.', 'error');
-        e.target.value = '';
       }
-    };
-    reader.readAsArrayBuffer(file);
+
+      await processParsedData(jsonResult);
+    } catch (error) {
+      console.error('Asset upload file parse error:', error);
+      triggerToast(
+        '파일 파싱 중 에러가 발생했습니다. 파일 형식과 작성 규격을 확인해 주세요.',
+        'error'
+      );
+    } finally {
+      fileInput.value = '';
+      setAssetUploadParserLoading(false);
+    }
   };
 
   // 분석 완료된 자산 데이터 병합 가동
@@ -20906,6 +20942,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     goToUserSignup,
     handleAddLaptopClick,
     handleFileUpload,
+    assetUploadParserLoading,
     hasFirebaseAuthSession,
     handleAdminTabChange,
     holidayImportConflictModal,

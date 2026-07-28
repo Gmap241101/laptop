@@ -17,6 +17,7 @@ export default function AdminAssetsPanel({ ctx }) {
     adminFilteredLaptops,
     adminLaptopQuery,
     adminSelectedAssetCategory,
+    assetUploadParserLoading,
     createLaptop,
     data,
     deleteLaptop,
@@ -137,14 +138,26 @@ export default function AdminAssetsPanel({ ctx }) {
                               >
                                 <Save size={14} /> 샘플 엑셀 양식 다운로드
                               </a>
-                              <label htmlFor="excel-csv-file-selector" className="inline-flex items-center justify-center gap-2 font-semibold rounded-xl text-xs transition-all duration-150 active:scale-[0.98] bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-4 py-3 cursor-pointer shadow-sm">
-                                <Plus size={14} /> 엑셀 또는 CSV 파일 선택
+                              <label
+                                htmlFor="excel-csv-file-selector"
+                                aria-disabled={assetUploadParserLoading}
+                                className={`inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 shadow-sm transition-all duration-150 ${
+                                  assetUploadParserLoading
+                                    ? 'cursor-wait opacity-60'
+                                    : 'cursor-pointer hover:bg-slate-50 active:scale-[0.98]'
+                                }`}
+                              >
+                                <Plus size={14} />
+                                {assetUploadParserLoading
+                                  ? '파일 분석 및 등록 중'
+                                  : '엑셀 또는 CSV 파일 선택'}
                               </label>
                               <input
                                 id="excel-csv-file-selector"
                                 type="file"
                                 accept=".xlsx, .xls, .csv"
                                 onChange={handleFileUpload}
+                                disabled={assetUploadParserLoading}
                                 className="hidden"
                               />
                             </div>

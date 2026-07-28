@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-07-28T08:59:48.646Z",
+  "generatedAt": "2026-07-28T09:14:54.221Z",
   "initialModuleCount": 30,
-  "initialSourceBytes": 836826,
+  "initialSourceBytes": 837582,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 628182
+      "bytes": 628913
     },
     {
       "file": "src/user/UserHomePanel.jsx",
@@ -21,7 +21,7 @@
     },
     {
       "file": "src/context/appContextSlices.js",
-      "bytes": 19134
+      "bytes": 19159
     },
     {
       "file": "src/components/CommonUI.jsx",
@@ -130,6 +130,7 @@
     "src/performance/DevPerformancePanel.jsx",
     "src/services/dashboardSummaryService.js",
     "src/services/publicAssetCatalogWriteThrough.js",
+    "src/services/sheetJsLoader.js",
     "src/user/UserAccountStatusPanel.jsx",
     "src/user/UserAuthPanel.jsx",
     "src/user/UserBoardPanel.jsx",
