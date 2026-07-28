@@ -1509,10 +1509,17 @@ function App() {
   const [userDirectoryVerificationLoading, setUserDirectoryVerificationLoading] = useState(false);
   const userDirectoryVerificationKeyRef = useRef('');
   const profileRequiredRedirectRef = useRef('');
+  const observedFirebaseAuthUidRef = useRef('');
 
   const hasFirebaseAuthSession = Boolean(
     firebaseAuthUser ||
       firebaseAuth.currentUser
+  );
+
+  const hasEstablishedUserSession = Boolean(
+    firebaseAuthUser?.uid &&
+      userAuthSessionUid === firebaseAuthUser.uid &&
+      userAuthSessionExpiresAt > Date.now()
   );
 
   const [userProfile, setUserProfile] = useState(null);
@@ -1683,9 +1690,17 @@ function App() {
     const unsubscribe = onAuthStateChanged(
       firebaseAuth,
       (user) => {
-        setCurrentAuthAdminAccount(null);
-        setCurrentAuthRoleErrorMessage('');
-        setCurrentAuthRoleReady(!user);
+        const nextAuthUid = user?.uid || '';
+        const authIdentityChanged =
+          observedFirebaseAuthUidRef.current !== nextAuthUid;
+
+        observedFirebaseAuthUidRef.current = nextAuthUid;
+
+        if (authIdentityChanged) {
+          setCurrentAuthAdminAccount(null);
+          setCurrentAuthRoleErrorMessage('');
+          setCurrentAuthRoleReady(!user);
+        }
 
         setFirebaseAuthUser(user);
         if (!user) {
@@ -1700,6 +1715,7 @@ function App() {
       (error) => {
         console.error('Firebase Auth state error:', error);
 
+        observedFirebaseAuthUidRef.current = '';
         setCurrentAuthAdminAccount(null);
         setCurrentAuthRoleErrorMessage('');
         setCurrentAuthRoleReady(true);
@@ -1794,7 +1810,7 @@ function App() {
     );
 
     return unsubscribe;
-  }, [firebaseAuthReady, firebaseAuthUser]);
+  }, [firebaseAuthReady, firebaseAuthUser?.uid]);
 
   useEffect(() => {
     if (!hasFirebaseAuthSession) {
@@ -5007,12 +5023,7 @@ function App() {
 
     const ownRequestSource = firestoreQuery(
       RENTAL_REQUESTS_COLLECTION_REF,
-      where('requesterUid', '==', firebaseAuthUser.uid),
-      where('status', 'in', [
-        STATUS.REQUESTED,
-        STATUS.ON_HOLD,
-        STATUS.APPROVED,
-      ])
+      where('requesterUid', '==', firebaseAuthUser.uid)
     );
 
     const unsubscribe = onSnapshot(
@@ -16313,6 +16324,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     goToUserPasswordReset,
     goToUserSignup,
     handleAddLaptopClick,
+    hasEstablishedUserSession,
     hasFirebaseAuthSession,
     handleAdminTabChange,
     openAdminMemberAccounts,

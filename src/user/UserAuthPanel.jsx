@@ -15,6 +15,7 @@ export default function UserAuthPanel({ ctx }) {
     data,
     firebaseAuthReady,
     firebaseAuthUser,
+    hasEstablishedUserSession,
     goToProtectedUserTab,
     goToUserEmailRecovery,
     goToUserLogin,
@@ -82,7 +83,10 @@ export default function UserAuthPanel({ ctx }) {
       </div>
 
       <CardContent className="p-6">
-        {firebaseAuthUser && (isLoginMode || isSignupMode) ? (
+        {firebaseAuthUser &&
+        hasEstablishedUserSession &&
+        !userAuthLoading &&
+        (isLoginMode || isSignupMode) ? (
           <div className="space-y-4">
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm leading-6 text-emerald-800">
               현재 <span className="font-bold">{firebaseAuthUser.email}</span> 계정으로 로그인되어 있습니다.

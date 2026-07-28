@@ -1,0 +1,130 @@
+P0 사용자 신청내역 및 인증 피드백 흐름 수정 검증 보고서
+===========================================================
+
+1. 검증 대상
+------------
+기준 패키지:
+- rental-system-p2-admin-request-status-mutation-service-split-deployment-package.zip
+
+작업본:
+- p0_user_requests_auth_feedback_work
+
+2. 구조 검증
+------------
+PASS  본인 신청 쿼리가 requesterUid 단일 조건을 사용함
+PASS  본인 신청 쿼리 인접 범위에 status in 조건이 없음
+PASS  hasEstablishedUserSession 계산이 App.jsx에 존재함
+PASS  observedFirebaseAuthUidRef가 존재함
+PASS  관리자 역할 effect가 firebaseAuthUser?.uid를 의존성으로 사용함
+PASS  UserAuthPanel 로그인 안내가 확정 세션과 !userAuthLoading을 요구함
+PASS  UserRequestHistoryPanel에서 useUserRequestHistory 의존성이 제거됨
+PASS  UserRequestHistoryPanel이 currentUserRequests를 로컬 분류함
+PASS  auth context에 hasEstablishedUserSession이 포함됨
+PASS  src/hooks/useUserRequestHistory.js가 작업본에서 삭제됨
+
+구조 검사: 10/10 통과
+
+3. 구문 및 import 검증
+----------------------
+TypeScript transpile 검사 파일: 88개
+TypeScript transpile 오류: 0건
+
+src JS/JSX/MJS 파일: 83개
+상대 import 참조: 181개
+누락 상대 import: 0건
+
+React Hook import 감사:
+- PASS
+- 검사 파일: 83개
+
+4. Firestore 접근 감사
+----------------------
+결과: PASS
+소스 파일: 83개
+전체 호출: 120개
+onSnapshot: 32개
+getDocs: 47개
+getDoc: 23개
+getCountFromServer: 18개
+승인 위험 항목: 51개
+미승인 경고: 0개
+미승인 오류: 0개
+
+기준 대비:
+- 전체 호출 123 -> 120 (-3)
+- getDocs 48 -> 47 (-1)
+- getCountFromServer 20 -> 18 (-2)
+
+5. 소스 그래프
+---------------
+초기 정적 모듈: 32 -> 32
+초기 정적 소스: 716,843 -> 717,319 bytes (+476)
+
+전체 src JS 계열:
+- 파일: 84 -> 83 (-1)
+- 크기: 1,754,020 -> 1,748,032 bytes (-5,988)
+
+6. 화면 문구 검사
+-----------------
+삭제된 문구 3개는 제거된 서버 이력 훅의 오류·추가검색 안내임.
+- 과거 대여 신청내역 검색 결과를 불러오지 못했습니다. Firestore 인덱스와 조회 권한을 확인해 주세요.
+- 과거 대여 신청내역을 불러오지 못했습니다. Firestore 인덱스와 조회 권한을 확인해 주세요.
+- 다음 페이지로 이동하면 필요한 범위를 추가로 검색합니다.
+
+추가 문구:
+- 다음 페이지로 이동하면 필요한 범위를 추가로 확인합니다.
+
+기존 신청 탭 명칭, 상태 문구, 가입 오류 토스트, 마이페이지 성공·오류 토스트는 변경하지 않음.
+
+7. 프로덕션 빌드 시도
+----------------------
+prebuild:
+- React Hook import audit: PASS
+- Firestore access audit: PASS
+
+Vite build:
+- 실행 실패
+- 원인: 현재 검증 환경에 vite 실행 파일이 없음
+- 메시지: sh: 1: vite: not found
+- 종료 코드: 127
+
+따라서 실제 운영 PC에서 npm run build 또는 deploy.ps1 실행 검증이 필요함.
+
+8. 설정 변경 여부
+------------------
+Firestore Rules: 변경 없음
+Firestore indexes: 변경 없음
+firebase.json: 변경 없음
+package.json: 변경 없음
+package-lock.json: 변경 없음
+
+9. 패키지 구성
+---------------
+전체 프로젝트 manifest 파일: 248개
+변경 파일 manifest: 11개
+누적 삭제 경로: 67개
+금지 경로(node_modules/dist/.git/.performance-reports): 제외
+
+10. ZIP 재추출 및 자동 교체 시뮬레이션
+--------------------------------------
+전체 ZIP manifest/hash: 248/248, 불일치 0건
+변경 ZIP manifest/hash: 11/11, 불일치 0건
+전체 ZIP 누락 파일: 0건
+금지 경로 포함: 0건
+삭제된 useUserRequestHistory.js 포함 여부: 없음
+누적 삭제 경로: 67개
+ZIP 압축 무결성: 전체/변경 패키지 모두 통과
+
+재추출본 재검사:
+- React Hook import 감사 PASS
+- Firestore 엄격 감사 PASS
+- transpile 88개, 오류 0건
+- 상대 import 181개, 누락 0건
+
+자동 교체 시뮬레이션:
+- 패키지 파일 불일치 0건
+- 삭제 대상 잔존 0건
+- .git 보존 PASS
+- node_modules 보존 PASS
+- .env.local 보존 PASS
+- 패키지 외 로컬 파일 보존 PASS

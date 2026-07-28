@@ -1,0 +1,22 @@
+{
+  "generatedAt": "2026-07-29",
+  "baseline": {
+    "package": "rental-system-p2-admin-request-status-mutation-service-split-deployment-package.zip",
+    "initialModuleCount": 32,
+    "initialSourceBytes": 716843
+  },
+  "result": {
+    "initialModuleCount": 32,
+    "initialSourceBytes": 717319
+  },
+  "delta": {
+    "initialModuleCount": 0,
+    "initialSourceBytes": 476
+  },
+  "functionalChanges": {
+    "ownRequestQuery": "requesterUid equality only; all statuses loaded once and classified locally",
+    "removedLazyModule": "src/hooks/useUserRequestHistory.js",
+    "authFeedbackGate": "requires established app session and completed auth operation",
+    "sameUidAuthRoleRefresh": "admin-role listener keyed by Firebase UID, not mutable User object identity"
+  }
+}

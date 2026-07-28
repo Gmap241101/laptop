@@ -1,6 +1,25 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import useUserRequestHistory from '../hooks/useUserRequestHistory.js';
+const getRequestCreatedAtMillis = (request = {}) => {
+  const timestamp = request.createdAt;
+
+  if (typeof timestamp?.toMillis === 'function') {
+    return timestamp.toMillis();
+  }
+
+  if (Number.isFinite(timestamp?.seconds)) {
+    return (timestamp.seconds * 1000) + Math.floor((timestamp.nanoseconds || 0) / 1000000);
+  }
+
+  const parsed = Date.parse(
+    request.requestedAt ||
+      request.updatedAt ||
+      request.returnedAt ||
+      ''
+  );
+
+  return Number.isFinite(parsed) ? parsed : 0;
+};
 
 export default function UserRequestHistoryPanel({ ctx }) {
   const {
@@ -48,31 +67,71 @@ export default function UserRequestHistoryPanel({ ctx }) {
   const [requestPage, setRequestPage] = useState(1);
   const [selectedRequestId, setSelectedRequestId] = useState('');
 
-  const {
-    filteredHistoryRequests,
-    historyCounts,
-    historyCountsReady,
-    historyErrorMessage,
-    historyHasNextPage,
-    historyReady,
-    historySearchMode,
-    historyTab,
-    historyTotalCount,
-    historySearchHasMore,
-  } = useUserRequestHistory({
-    enabled:
-      firebaseAuthReady &&
-      currentAuthRoleReady &&
-      Boolean(firebaseAuthUser?.uid) &&
-      !currentAuthAdminAccount &&
-      !isAdminAuthenticated,
-    userUid: firebaseAuthUser?.uid || '',
-    requestTab,
-    requestPage,
-    requestPageSize,
-    requestQuery,
-    setRequestPage,
-  });
+  const historyTab = [
+    ADMIN_REQUEST_TAB.CLOSED,
+    ADMIN_REQUEST_TAB.RETURNED,
+  ].includes(requestTab);
+  const historySearchMode = Boolean(requestQuery.trim());
+
+  const historyCounts = useMemo(() => {
+    const counts = {
+      [ADMIN_REQUEST_TAB.CLOSED]: 0,
+      [ADMIN_REQUEST_TAB.RETURNED]: 0,
+    };
+
+    currentUserRequests.forEach((request) => {
+      if ([STATUS.DENIED, STATUS.USER_CANCELLED].includes(request.status)) {
+        counts[ADMIN_REQUEST_TAB.CLOSED] += 1;
+      } else if (request.status === STATUS.RETURNED) {
+        counts[ADMIN_REQUEST_TAB.RETURNED] += 1;
+      }
+    });
+
+    return counts;
+  }, [currentUserRequests]);
+
+  const historyStatusRequests = useMemo(() => {
+    if (!historyTab) return [];
+
+    return currentUserRequests
+      .filter((request) =>
+        requestTab === ADMIN_REQUEST_TAB.CLOSED
+          ? [STATUS.DENIED, STATUS.USER_CANCELLED].includes(request.status)
+          : request.status === STATUS.RETURNED
+      )
+      .sort(
+        (first, second) =>
+          getRequestCreatedAtMillis(second) -
+          getRequestCreatedAtMillis(first)
+      );
+  }, [currentUserRequests, historyTab, requestTab]);
+
+  const filteredHistoryRequests = useMemo(() => {
+    const normalizedQuery = requestQuery.trim().toLowerCase();
+
+    if (!normalizedQuery) {
+      return historyStatusRequests;
+    }
+
+    return historyStatusRequests.filter((request) =>
+      [
+        request.assetNo,
+        request.assetCategory,
+        request.startDate,
+        request.dueDate,
+        request.purpose,
+        getRequestDisplayStatus(request),
+      ]
+        .map((value) => String(value || '').toLowerCase())
+        .some((value) => value.includes(normalizedQuery))
+    );
+  }, [historyStatusRequests, requestQuery, getRequestDisplayStatus]);
+
+  const historyTotalCount = historyStatusRequests.length;
+  const historyCountsReady = rentalRequestsReady;
+  const historyReady = rentalRequestsReady;
+  const historyErrorMessage = '';
+  const historySearchHasMore = false;
 
   const tabCounts = useMemo(() => {
     const counts = {
@@ -146,14 +205,13 @@ export default function UserRequestHistoryPanel({ ctx }) {
     : filteredRequests.length;
   const totalPages = Math.max(1, Math.ceil(effectiveTotalCount / requestPageSize));
   const safePage = Math.min(requestPage, totalPages);
-  const paginatedRequests = historyTab && !historySearchMode
-    ? filteredRequests
-    : filteredRequests.slice(
-        (safePage - 1) * requestPageSize,
-        safePage * requestPageSize
-      );
+  const paginatedRequests = filteredRequests.slice(
+    (safePage - 1) * requestPageSize,
+    safePage * requestPageSize
+  );
+  const historyHasNextPage = safePage < totalPages;
   const selectedRequest = selectedRequestId
-    ? [...currentUserRequests, ...filteredHistoryRequests].find(
+    ? currentUserRequests.find(
         (request) => request.id === selectedRequestId
       ) || null
     : null;
@@ -492,9 +550,9 @@ export default function UserRequestHistoryPanel({ ctx }) {
 
               {!selectedRequest && historyTab && historySearchMode && (
                 <div className="text-[11px] text-slate-500">
-                  검색 결과는 전체 과거 이력을 서버에서 순차 조회합니다.
+                  검색 결과는 로그인 계정의 전체 과거 신청내역에서 확인합니다.
                   {historySearchHasMore
-                    ? ' 다음 페이지로 이동하면 필요한 범위를 추가로 검색합니다.'
+                    ? ' 다음 페이지로 이동하면 필요한 범위를 추가로 확인합니다.'
                     : ' 현재 검색 범위의 확인이 완료되었습니다.'}
                 </div>
               )}
