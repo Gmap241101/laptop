@@ -1,0 +1,41 @@
+APP.JSX STRUCTURE REFACTOR VALIDATION REPORT
+============================================
+
+BASELINE
+- rental-system-react-lazy-dashboard-read-optimization-deployment-package.zip
+
+CHANGED FILE
+- src/App.jsx
+
+NEW FILES
+- src/constants/memberConstants.js
+- src/domain/rentalPolicy.js
+- src/hooks/useDashboardSummary.js
+- src/hooks/useDebouncedValue.js
+- src/routing/appRoutes.js
+- src/services/adminRequestQuery.js
+- src/services/dashboardSummaryService.js
+- src/services/publicAssetCatalog.js
+
+APP.JSX SIZE
+- Before: 658943 bytes / 22855 lines
+- After : 610687 bytes / 21099 lines
+- Reduced: 48256 bytes / 1756 lines
+
+VALIDATION
+- TypeScript parser JS/JSX files: 52
+- Parse errors: 0
+- Local relative import/export check: PASS
+- Missing moved symbol check: PASS
+- Pure module runtime check: PASS
+- Service module runtime check: PASS
+- Korean string literals removed: 0
+- Korean string literals added: 0
+- Firestore Rules changed: NO
+- firestore.indexes.json changed: NO
+- firebase.json changed: NO
+
+BUILD LIMITATION
+- npm ci could not complete because the package gateway did not return all packages within the execution window.
+- Vite production build was therefore not run in this environment.
+- deploy.ps1 will run npm run build on the user's computer before publishing.
