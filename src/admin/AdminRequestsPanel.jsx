@@ -1,3 +1,5 @@
+import AdminRequestDialogs from './AdminRequestDialogs.jsx';
+import useAdminRequestDetailController from '../features/requests/useAdminRequestDetailController.js';
 import useAdminRequestsController from '../features/requests/useAdminRequestsController.js';
 
 export default function AdminRequestsPanel({ ctx }) {
@@ -19,9 +21,10 @@ export default function AdminRequestsPanel({ ctx }) {
     adminRequestsNavigationRequest,
     adminRequestsPrerequisitesReady,
     adminUserActionSavingRequestId,
+    commitAdminRequestEdit,
+    commitAdminRequestStatusRestore,
     data,
     formatFirestoreTimestamp,
-    getAdminRequestRestoreTargets,
     getDisplayRentalStatus,
     getExtensionRequestAvailableDate,
     getRentalExtensionPeriod,
@@ -32,17 +35,10 @@ export default function AdminRequestsPanel({ ctx }) {
     getUserRequestReviewStatusLabel,
     isAdminAuthenticated,
     onAdminRequestsControllerStateChange,
-    openAdminRequestEditDialog,
-    openAdminRequestRestoreDialog,
     orphanedRentalAvailabilityRequests,
     renderRequestActionButtons,
-    rentalRequestLogsByRequestId,
-    rentalRequestLogsLoadErrorMessage,
-    rentalRequestLogsReady,
     reviewUserActionRequest,
     saveRequestMemo,
-    selectedAdminRequestId,
-    setSelectedAdminRequestId,
     today,
     triggerToast,
     updateRequestMemo,
@@ -61,20 +57,53 @@ export default function AdminRequestsPanel({ ctx }) {
     rentalRequestIdSet,
     rentalRequestsLoadErrorMessage,
     rentalRequestsReady,
+    resetAdminRequestPage,
     safeAdminRequestPage,
     selectedAdminRequest,
+    selectedAdminRequestId,
     setAdminRequestPage,
     setAdminRequestPageSize,
     setAdminRequestQuery,
     setAdminRequestQuickFilter,
     setAdminRequestTab,
+    setSelectedAdminRequestId,
   } = useAdminRequestsController({
     enabled: isAdminAuthenticated,
     mutationVersion: adminRequestsMutationVersion,
     navigationRequest: adminRequestsNavigationRequest,
     onControllerStateChange: onAdminRequestsControllerStateChange,
     prerequisitesReady: adminRequestsPrerequisitesReady,
+    triggerToast,
+  });
+
+  const {
+    adminRequestEditDialog,
+    adminRequestEditForm,
+    adminRequestEditSaving,
+    adminRequestRestoreDialog,
+    adminRequestRestoreReason,
+    adminRequestRestoreSaving,
+    adminRequestRestoreTarget,
+    closeAdminRequestEditDialog,
+    closeAdminRequestRestoreDialog,
+    getAdminRequestRestoreTargets,
+    openAdminRequestEditDialog,
+    openAdminRequestRestoreDialog,
+    rentalRequestLogsByRequestId,
+    rentalRequestLogsLoadErrorMessage,
+    rentalRequestLogsReady,
+    restoreAdminRequestStatus,
+    saveAdminRequestEdit,
+    setAdminRequestEditForm,
+    setAdminRequestRestoreReason,
+    setAdminRequestRestoreTarget,
+  } = useAdminRequestDetailController({
+    commitAdminRequestEdit,
+    commitAdminRequestStatusRestore,
+    enabled: isAdminAuthenticated,
+    resetPage: resetAdminRequestPage,
     selectedRequestId: selectedAdminRequestId,
+    setSelectedRequestId: setSelectedAdminRequestId,
     triggerToast,
   });
 
@@ -156,6 +185,7 @@ export default function AdminRequestsPanel({ ctx }) {
   };
 
   return (
+    <>
                     <div className="space-y-5">
                       <AdminPageHeader
                         title="기기 대여 신청 관리"
@@ -1011,5 +1041,25 @@ export default function AdminRequestsPanel({ ctx }) {
                         </>
                       )}
                     </div>
+
+      <AdminRequestDialogs
+        adminRequestEditDialog={adminRequestEditDialog}
+        adminRequestEditForm={adminRequestEditForm}
+        adminRequestEditSaving={adminRequestEditSaving}
+        adminRequestRestoreDialog={adminRequestRestoreDialog}
+        adminRequestRestoreReason={adminRequestRestoreReason}
+        adminRequestRestoreSaving={adminRequestRestoreSaving}
+        adminRequestRestoreTarget={adminRequestRestoreTarget}
+        closeAdminRequestEditDialog={closeAdminRequestEditDialog}
+        closeAdminRequestRestoreDialog={closeAdminRequestRestoreDialog}
+        restoreAdminRequestStatus={restoreAdminRequestStatus}
+        saveAdminRequestEdit={saveAdminRequestEdit}
+        setAdminRequestEditForm={setAdminRequestEditForm}
+        setAdminRequestRestoreReason={setAdminRequestRestoreReason}
+        setAdminRequestRestoreTarget={setAdminRequestRestoreTarget}
+        settings={data.settings}
+        triggerToast={triggerToast}
+      />
+    </>
   );
 }

@@ -1,0 +1,1788 @@
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -162,7 +162,6 @@
+   NOTICE_POSTS_PER_PAGE_OPTIONS,
+   RENTAL_BLOCKING_REQUEST_STATUSES,
+   RENTAL_REQUEST_AUDIT_ACTION,
+-  RENTAL_REQUEST_RESTORE_TARGETS,
+   RENTAL_REQUEST_STATUS_TRANSITIONS,
+   RENTAL_EXTENSION_APPROVAL_MODE,
+   OVERDUE_PENALTY_MODE,
+@@ -484,17 +483,6 @@
+   return sanitizeRichTextHtml(container.innerHTML);
+ };
+ 
+-const createDefaultAdminRequestEditForm = (
+-  request = {}
+-) => ({
+-  team: request.team || '',
+-  borrower: request.borrower || '',
+-  startDate: request.startDate || '',
+-  dueDate: request.dueDate || '',
+-  purpose: request.purpose || '',
+-  adminMemo: request.adminMemo || '',
+-});
+-
+ // --- 초기 자산 데이터 생성 ---
+ function seedLaptops() {
+   return Array.from({ length: 15 }, (_, i) => {
+@@ -1211,14 +1199,6 @@
+     setRentalRequestsLoadErrorMessage,
+   ] = useState('');
+ 
+-  const [rentalRequestLogs, setRentalRequestLogs] = useState([]);
+-  const [rentalRequestLogsReady, setRentalRequestLogsReady] = useState(false);
+-
+-  const [
+-    rentalRequestLogsLoadErrorMessage,
+-    setRentalRequestLogsLoadErrorMessage,
+-  ] = useState('');
+-
+   const [requestSubmitLoading, setRequestSubmitLoading] = useState(false);
+   const requestSubmitInProgressRef = useRef(false);
+ 
+@@ -1232,19 +1212,6 @@
+     setAdminUserActionSavingRequestId,
+   ] = useState('');
+ 
+-  const [selectedAdminRequestId, setSelectedAdminRequestId] = useState('');
+-
+-  const [adminRequestEditDialog, setAdminRequestEditDialog] = useState(null);
+-  const [adminRequestEditForm, setAdminRequestEditForm] = useState(
+-    createDefaultAdminRequestEditForm
+-  );
+-  const [adminRequestEditSaving, setAdminRequestEditSaving] = useState(false);
+-
+-  const [adminRequestRestoreDialog, setAdminRequestRestoreDialog] = useState(null);
+-  const [adminRequestRestoreTarget, setAdminRequestRestoreTarget] = useState('');
+-  const [adminRequestRestoreReason, setAdminRequestRestoreReason] = useState('');
+-  const [adminRequestRestoreSaving, setAdminRequestRestoreSaving] = useState(false);
+-  
+   const [noticePosts, setNoticePosts] = useState([]);
+   const [noticePinnedPosts, setNoticePinnedPosts] = useState([]);
+   const [noticeRegularPagePosts, setNoticeRegularPagePosts] = useState([]);
+@@ -1455,9 +1422,11 @@
+     query: '',
+     quickFilter: ADMIN_REQUEST_QUICK_FILTER.ALL,
+     requestTab: ADMIN_REQUEST_TAB.PENDING,
++    selectedRequestId: '',
+   });
+   const [adminRequestsMutationVersion, setAdminRequestsMutationVersion] = useState(0);
+   const adminRequestsControllerRef = useRef({
++    clearSelection: null,
+     getRequestById: null,
+     resetPage: null,
+     updateRequests: null,
+@@ -3873,39 +3842,7 @@
+ 
+   const orphanedRentalAvailabilityRequests = [];
+ 
+-  const rentalRequestLogsByRequestId =
+-    useMemo(() => {
+-      const logMap = new Map();
+-
+-      (rentalRequestLogs || []).forEach(
+-        (log) => {
+-          if (!log?.requestId) return;
+-
+-          const currentLogs =
+-            logMap.get(log.requestId) || [];
+-
+-          logMap.set(log.requestId, [
+-            ...currentLogs,
+-            log,
+-          ]);
+-        }
+-      );
+-
+-      return logMap;
+-    }, [rentalRequestLogs]);
+-  
+-  const adminRequestEditBorrowers = useMemo(
+-    () =>
+-      (data.borrowers || []).filter(
+-        (borrower) =>
+-          borrower.team ===
+-          adminRequestEditForm.team
+-      ),
+-    [
+-      data.borrowers,
+-      adminRequestEditForm.team,
+-    ]
+-  );
++
+ 
+   const noticePostsPerPage = getSafeNoticePostsPerPage(
+     noticeBoardConfig.postsPerPage
+@@ -4502,6 +4439,10 @@
+ 
+   const handleAdminRequestsControllerStateChange = useCallback((nextState) => {
+     adminRequestsControllerRef.current = {
++      clearSelection:
++        typeof nextState?.clearSelection === 'function'
++          ? nextState.clearSelection
++          : null,
+       getRequestById:
+         typeof nextState?.getRequestById === 'function'
+           ? nextState.getRequestById
+@@ -4533,8 +4474,8 @@
+         requestTab: String(
+           requestTab || ADMIN_REQUEST_TAB.PENDING
+         ),
++        selectedRequestId: String(selectedRequestId || ''),
+       }));
+-      setSelectedAdminRequestId(String(selectedRequestId || ''));
+       setAdminTab('requests');
+     },
+     []
+@@ -4552,6 +4493,10 @@
+ 
+   const resetAdminRequestPanelPage = useCallback(() => {
+     adminRequestsControllerRef.current.resetPage?.();
++  }, []);
++
++  const clearAdminRequestPanelSelection = useCallback(() => {
++    adminRequestsControllerRef.current.clearSelection?.();
+   }, []);
+ 
+   const notifyAdminRequestMutation = useCallback(() => {
+@@ -5088,57 +5033,6 @@
+     firebaseAuthUser?.uid,
+     isAdminAuthenticated,
+     userProfile?.status,
+-  ]);
+-
+-  useEffect(() => {
+-    const shouldLoadLogs =
+-      isAdminAuthenticated &&
+-      view === 'admin' &&
+-      adminTab === 'requests' &&
+-      Boolean(selectedAdminRequestId);
+-
+-    if (!shouldLoadLogs) {
+-      setRentalRequestLogs([]);
+-      setRentalRequestLogsLoadErrorMessage('');
+-      setRentalRequestLogsReady(true);
+-      return undefined;
+-    }
+-
+-    setRentalRequestLogs([]);
+-    setRentalRequestLogsReady(false);
+-    setRentalRequestLogsLoadErrorMessage('');
+-
+-    return onSnapshot(
+-      firestoreQuery(
+-        RENTAL_REQUEST_LOGS_COLLECTION_REF,
+-        where('requestId', '==', selectedAdminRequestId),
+-        orderBy('createdAt', 'desc'),
+-        firestoreLimit(100)
+-      ),
+-      (snapshot) => {
+-        setRentalRequestLogs(
+-          snapshot.docs.map((logDoc) => ({
+-            ...logDoc.data(),
+-            id: logDoc.id,
+-          }))
+-        );
+-        setRentalRequestLogsLoadErrorMessage('');
+-        setRentalRequestLogsReady(true);
+-      },
+-      (error) => {
+-        const message =
+-          '선택한 대여 신청의 처리 이력을 불러오지 못했습니다.';
+-        console.error('Selected rental request logs sync error:', error);
+-        setRentalRequestLogs([]);
+-        setRentalRequestLogsLoadErrorMessage(message);
+-        setRentalRequestLogsReady(true);
+-      }
+-    );
+-  }, [
+-    isAdminAuthenticated,
+-    view,
+-    adminTab,
+-    selectedAdminRequestId,
+   ]);
+ 
+ 
+@@ -14460,87 +14354,7 @@
+     );
+   };
+ 
+-  const getAdminRequestRestoreTargets = (
+-    request
+-  ) => {
+-    if (!request?.id) {
+-      return [];
+-    }
+-
+-    const requestLogs =
+-      rentalRequestLogsByRequestId.get(
+-        request.id
+-      ) || [];
+-
+-    const latestStatusLog =
+-      requestLogs.find(
+-        (log) =>
+-          [
+-            RENTAL_REQUEST_AUDIT_ACTION.STATUS_CHANGED,
+-            RENTAL_REQUEST_AUDIT_ACTION.STATUS_RESTORED,
+-          ].includes(log.action) &&
+-          log.nextStatus ===
+-            request.status &&
+-          log.previousStatus &&
+-          log.previousStatus !==
+-            request.status
+-      );
+-
+-    const fallbackTargets =
+-      RENTAL_REQUEST_RESTORE_TARGETS[
+-        request.status
+-      ] || [];
+-
+-    return [
+-      ...new Set([
+-        latestStatusLog?.previousStatus,
+-        ...fallbackTargets,
+-      ].filter(Boolean)),
+-    ].filter(
+-      (targetStatus) =>
+-        (
+-          RENTAL_REQUEST_STATUS_TRANSITIONS[
+-            request.status
+-          ] || []
+-        ).includes(targetStatus)
+-    );
+-  };
+-
+-  const openAdminRequestEditDialog = (
+-    request
+-  ) => {
+-    if (
+-      !isAdminAuthenticated ||
+-      !request?.id ||
+-      !getAdminRequestById(request.id)
+-    ) {
+-      triggerToast(
+-        '관리자 인증과 정식 신청 문서를 확인해 주세요.',
+-        'error'
+-      );
+-      return;
+-    }
+-
+-    setAdminRequestEditDialog({
+-      requestId: request.id,
+-    });
+-    setAdminRequestEditForm(
+-      createDefaultAdminRequestEditForm(
+-        request
+-      )
+-    );
+-  };
+-
+-  const closeAdminRequestEditDialog = () => {
+-    if (adminRequestEditSaving) return;
+-
+-    setAdminRequestEditDialog(null);
+-    setAdminRequestEditForm(
+-      createDefaultAdminRequestEditForm()
+-    );
+-  };
+-
+-  const saveAdminRequestEdit = async () => {
++  const commitAdminRequestEdit = async ({ requestId = '', form = {} } = {}) => {
+     if (!isSplitStorageReady) {
+       triggerToast(
+         'Firestore 분리 저장소 최종 전환이 완료되지 않아 신청 정보를 수정할 수 없습니다.',
+@@ -14548,10 +14362,6 @@
+       );
+       return;
+     }
+-
+-    const requestId =
+-      adminRequestEditDialog?.requestId ||
+-      '';
+ 
+     const currentRequest =
+       getAdminRequestById(requestId);
+@@ -14582,13 +14392,13 @@
+ 
+     const nextStartDate =
+       String(
+-        adminRequestEditForm.startDate ||
++        form.startDate ||
+         ''
+       );
+ 
+     const requestedDueDate =
+       String(
+-        adminRequestEditForm.dueDate || ''
++        form.dueDate || ''
+       );
+ 
+     const nextDueDate = getAdjustedRentalDueDate(
+@@ -14600,12 +14410,12 @@
+ 
+     const nextPurpose =
+       String(
+-        adminRequestEditForm.purpose || ''
++        form.purpose || ''
+       ).trim();
+ 
+     const nextAdminMemo =
+       String(
+-        adminRequestEditForm.adminMemo ||
++        form.adminMemo ||
+         ''
+       ).trim();
+ 
+@@ -14652,8 +14462,6 @@
+     let committedAsset = null;
+     let committedAvailabilityRequest = null;
+     let shouldKeepAvailability = false;
+-
+-    setAdminRequestEditSaving(true);
+ 
+     try {
+       await runTransaction(
+@@ -14969,11 +14777,6 @@
+             : prev.laptops,
+       }));
+ 
+-      setAdminRequestEditDialog(null);
+-      setAdminRequestEditForm(
+-        createDefaultAdminRequestEditForm()
+-      );
+-
+       notifyAdminRequestMutation();
+ 
+       triggerToast(
+@@ -14982,6 +14785,8 @@
+           : '대여 신청 정보를 수정했습니다. 관리자 수정에는 기본 최대 대여 기간 제한을 적용하지 않았습니다.',
+         'success'
+       );
++
++      return true;
+     } catch (error) {
+       console.error(
+         'Admin rental request edit error:',
+@@ -15034,58 +14839,16 @@
+         }`,
+         'error'
+       );
+-    } finally {
+-      setAdminRequestEditSaving(false);
+-    }
++    }
++
++    return false;
+   };
+ 
+-  const openAdminRequestRestoreDialog = (
+-    request
+-  ) => {
+-    if (
+-      !isAdminAuthenticated ||
+-      !request?.id ||
+-      !getAdminRequestById(request.id)
+-    ) {
+-      triggerToast(
+-        '관리자 인증과 정식 신청 문서를 확인해 주세요.',
+-        'error'
+-      );
+-      return;
+-    }
+-
+-    const targetOptions =
+-      getAdminRequestRestoreTargets(
+-        request
+-      );
+-
+-    if (targetOptions.length === 0) {
+-      triggerToast(
+-        '현재 신청은 되돌릴 수 있는 이전 상태가 없습니다.',
+-        'error'
+-      );
+-      return;
+-    }
+-
+-    setAdminRequestRestoreDialog({
+-      requestId: request.id,
+-      targetOptions,
+-    });
+-    setAdminRequestRestoreTarget(
+-      targetOptions[0]
+-    );
+-    setAdminRequestRestoreReason('');
+-  };
+-
+-  const closeAdminRequestRestoreDialog = () => {
+-    if (adminRequestRestoreSaving) return;
+-
+-    setAdminRequestRestoreDialog(null);
+-    setAdminRequestRestoreTarget('');
+-    setAdminRequestRestoreReason('');
+-  };
+-
+-  const restoreAdminRequestStatus = async () => {
++  const commitAdminRequestStatusRestore = async ({
++    nextStatus = '',
++    requestId = '',
++    restoreReason = '',
++  } = {}) => {
+     if (!isSplitStorageReady) {
+       triggerToast(
+         'Firestore 분리 저장소 최종 전환이 완료되지 않아 상태를 복구할 수 없습니다.',
+@@ -15094,20 +14857,11 @@
+       return;
+     }
+ 
+-    const requestId =
+-      adminRequestRestoreDialog?.requestId ||
+-      '';
+-
+     const currentRequest =
+       getAdminRequestById(requestId);
+ 
+-    const nextStatus =
+-      adminRequestRestoreTarget;
+-
+-    const restoreReason =
+-      String(
+-        adminRequestRestoreReason || ''
+-      ).trim();
++    const normalizedRestoreReason =
++      String(restoreReason || '').trim();
+ 
+     if (
+       !currentRequest
+@@ -15119,7 +14873,7 @@
+       return;
+     }
+ 
+-    if (!restoreReason) {
++    if (!normalizedRestoreReason) {
+       triggerToast(
+         '상태 복구 사유를 입력해 주세요.',
+         'error'
+@@ -15160,8 +14914,6 @@
+     let committedAsset = null;
+     let committedAvailabilityRequest = null;
+     let shouldKeepAvailability = false;
+-
+-    setAdminRequestRestoreSaving(true);
+ 
+     try {
+       await runTransaction(
+@@ -15386,7 +15138,7 @@
+               actorName:
+                 auditActor.name,
+               detail:
+-                `상태 복구 사유: ${restoreReason}`,
++                `상태 복구 사유: ${normalizedRestoreReason}`,
+               createdAt:
+                 serverTimestamp(),
+             }
+@@ -15448,18 +15200,14 @@
+           ),
+       }));
+ 
+-      setAdminRequestRestoreDialog(null);
+-      setAdminRequestRestoreTarget('');
+-      setAdminRequestRestoreReason('');
+-      setSelectedAdminRequestId('');
+-      resetAdminRequestPanelPage();
+-
+       notifyAdminRequestMutation();
+ 
+       triggerToast(
+         `상태를 [${nextStatus}]로 복구했습니다.`,
+         'success'
+       );
++
++      return true;
+     } catch (error) {
+       console.error(
+         'Admin rental request restore error:',
+@@ -15534,9 +15282,9 @@
+         }`,
+         'error'
+       );
+-    } finally {
+-      setAdminRequestRestoreSaving(false);
+-    }
++    }
++
++    return false;
+   };
+   
+   const updateRequest = async (id, status) => {
+@@ -15961,7 +15709,7 @@
+           ),
+       }));
+ 
+-      setSelectedAdminRequestId('');
++      clearAdminRequestPanelSelection();
+       resetAdminRequestPanelPage();
+ 
+       notifyAdminRequestMutation();
+@@ -17322,14 +17070,6 @@
+     adminPinnedNoticePosts,
+     adminRegularFaqPosts,
+     adminRegularNoticePosts,
+-    adminRequestEditBorrowers,
+-    adminRequestEditDialog,
+-    adminRequestEditForm,
+-    adminRequestEditSaving,
+-    adminRequestRestoreDialog,
+-    adminRequestRestoreReason,
+-    adminRequestRestoreSaving,
+-    adminRequestRestoreTarget,
+     adminSelectedAssetCategory,
+     adminTab,
+     adminUserActionSavingRequestId,
+@@ -17344,8 +17084,6 @@
+     cancelWithdrawal,
+     cancelUserSignup,
+     categoryFilteredFaqPosts,
+-    closeAdminRequestEditDialog,
+-    closeAdminRequestRestoreDialog,
+     closeFaqPostDialog,
+     closeNoticePost,
+     closeNoticePostDialog,
+@@ -17420,7 +17158,6 @@
+     formatDateWithKoreanWeekday,
+     formatFirestoreDate,
+     formatFirestoreTimestamp,
+-    getAdminRequestRestoreTargets,
+     defaultRentalStartDate,
+     getAdjustedRentalDueDate,
+     getDisplayRentalStatus,
+@@ -17474,6 +17211,8 @@
+     adminMemberAccountsNavigationRequest,
+     adminRequestsMutationVersion,
+     adminRequestsNavigationRequest,
++    commitAdminRequestEdit,
++    commitAdminRequestStatusRestore,
+     adminRequestsPrerequisitesReady:
+       firebaseAuthReady &&
+       currentAuthRoleReady &&
+@@ -17515,8 +17254,6 @@
+     noticePostsReady,
+     noticeRegularPostNumberById,
+     noticeTotalPages,
+-    openAdminRequestEditDialog,
+-    openAdminRequestRestoreDialog,
+     openFaqPostDialog,
+     openNoticePost,
+     openNoticePostDialog,
+@@ -17541,12 +17278,8 @@
+     rentalDeviceSectionDescription,
+     rentalDeviceSectionTitle,
+     rentalPeriodFields,
+-    rentalRequestLogsByRequestId,
+-    rentalRequestLogsLoadErrorMessage,
+-    rentalRequestLogsReady,
+     rentalStartAdjustmentInfo,
+     requestSubmitLoading,
+-    restoreAdminRequestStatus,
+     reviewUserActionRequest,
+     safeAdminAccountPage,
+     safeAdminFaqPage,
+@@ -17554,7 +17287,6 @@
+     safeFaqPage,
+     safeNoticePage,
+     saveAdminAccountEdit,
+-    saveAdminRequestEdit,
+     saveFaqBoardConfig,
+     saveFaqCategoryName,
+     saveFaqPost,
+@@ -17568,7 +17300,6 @@
+     saveSystemSettings,
+     saveTempAssetCategoryChanges,
+     selectedAssetCategory,
+-    selectedAdminRequestId,
+     selectedLaptop,
+     selectedLaptopAvailability,
+     selectedLaptopId,
+@@ -17587,9 +17318,6 @@
+     setAdminMyProfileForm,
+     setAdminNoticePage,
+     setAdminNoticeQuery,
+-    setAdminRequestEditForm,
+-    setAdminRequestRestoreReason,
+-    setAdminRequestRestoreTarget,
+     setAdminSelectedAssetCategory,
+     setAdminTab,
+     setAvailabilityFilter,
+@@ -17624,7 +17352,6 @@
+     setNoticePostsPerPageInput,
+     setPasswordResetEmail,
+     setQuery,
+-    setSelectedAdminRequestId,
+     setSelectedAssetCategory,
+     setSelectedLaptopId,
+     setShowUploadPanel,
+@@ -17744,9 +17471,7 @@
+   });
+   const adminPanelContextKey = getAdminPanelContextKey(adminTab);
+   const hasVisibleAppDialog = Boolean(
+-    adminRequestEditDialog ||
+-      adminRequestRestoreDialog ||
+-      userActionDialog ||
++    userActionDialog ||
+       popupPostDialog ||
+       faqPostDialog ||
+       noticePostDialog ||
+--- /dev/null
++++ b/src/admin/AdminRequestDialogs.jsx
+@@ -0,0 +1,288 @@
++import { motion } from 'framer-motion';
++import { X } from 'lucide-react';
++
++import {
++  Button,
++  DateInputWithWeekday,
++} from '../components/CommonUI.jsx';
++import {
++  getAdjustedRentalDueDate,
++  getRentalDueDateAdjustmentReason,
++} from '../domain/rentalPolicy.js';
++import { formatDateWithKoreanWeekday } from '../utils/appUtils.js';
++
++export default function AdminRequestDialogs({
++  adminRequestEditDialog,
++  adminRequestEditForm,
++  adminRequestEditSaving,
++  adminRequestRestoreDialog,
++  adminRequestRestoreReason,
++  adminRequestRestoreSaving,
++  adminRequestRestoreTarget,
++  closeAdminRequestEditDialog,
++  closeAdminRequestRestoreDialog,
++  restoreAdminRequestStatus,
++  saveAdminRequestEdit,
++  setAdminRequestEditForm,
++  setAdminRequestRestoreReason,
++  setAdminRequestRestoreTarget,
++  settings,
++  triggerToast,
++}) {
++  return (
++    <>
++      {adminRequestEditDialog && (
++        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
++          <motion.div
++            initial={{ opacity: 0, scale: 0.95 }}
++            animate={{ opacity: 1, scale: 1 }}
++            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
++          >
++            <div className="flex items-start justify-between gap-4">
++              <div>
++                <h3 className="text-base font-bold text-slate-900">
++                  대여 신청정보 수정
++                </h3>
++                <p className="mt-1 text-xs leading-5 text-slate-500">
++                  관리자 수정에는 기본 최대 대여 기간 제한을 적용하지 않습니다. 반납 예정일이 휴무일이면 다음 영업일로 자동 조정됩니다.
++                </p>
++              </div>
++
++              <button
++                type="button"
++                onClick={closeAdminRequestEditDialog}
++                disabled={adminRequestEditSaving}
++                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed"
++              >
++                <X size={18} />
++              </button>
++            </div>
++
++            <div className="mt-5 space-y-4">
++              <div className="grid gap-3 sm:grid-cols-2">
++                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
++                  <div className="text-[11px] font-semibold text-slate-500">
++                    부서 / 팀
++                  </div>
++                  <div className="mt-1 text-sm font-bold text-slate-900">
++                    {adminRequestEditForm.team || '-'}
++                  </div>
++                </div>
++
++                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
++                  <div className="text-[11px] font-semibold text-slate-500">
++                    신청자
++                  </div>
++                  <div className="mt-1 text-sm font-bold text-slate-900">
++                    {adminRequestEditForm.borrower || '-'}
++                  </div>
++                </div>
++              </div>
++
++              <p className="text-[11px] leading-5 text-slate-500">
++                신청자와 부서는 로그인 계정 정보이므로 이 화면에서 변경할 수 없습니다. 회원 정보 변경은 회원 계정 관리에서 처리해 주세요.
++              </p>
++
++              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
++                <DateInputWithWeekday
++                  label="대여 시작일"
++                  value={adminRequestEditForm.startDate}
++                  onChange={(value) => {
++                    setAdminRequestEditForm((previousForm) => {
++                      const candidateDueDate =
++                        previousForm.dueDate < value
++                          ? value
++                          : previousForm.dueDate;
++                      const adjustedDueDate = getAdjustedRentalDueDate(
++                        candidateDueDate,
++                        settings
++                      );
++
++                      return {
++                        ...previousForm,
++                        startDate: value,
++                        dueDate: adjustedDueDate,
++                      };
++                    });
++                  }}
++                />
++
++                <DateInputWithWeekday
++                  label="반납 예정일"
++                  value={adminRequestEditForm.dueDate}
++                  min={adminRequestEditForm.startDate}
++                  onChange={(value) => {
++                    const adjustedDueDate = getAdjustedRentalDueDate(
++                      value,
++                      settings
++                    );
++
++                    if (adjustedDueDate !== value) {
++                      const reason = getRentalDueDateAdjustmentReason(
++                        value,
++                        settings
++                      );
++
++                      triggerToast(
++                        `선택한 반납 예정일이 ${reason || '휴무일'}이므로 다음 영업일인 ${formatDateWithKoreanWeekday(adjustedDueDate)}로 자동 조정되었습니다.`,
++                        'success'
++                      );
++                    }
++
++                    setAdminRequestEditForm((previousForm) => ({
++                      ...previousForm,
++                      dueDate: adjustedDueDate,
++                    }));
++                  }}
++                />
++              </div>
++
++              <label className="block">
++                <span className="mb-1.5 block text-xs font-semibold text-slate-600">
++                  대여 목적
++                </span>
++                <textarea
++                  value={adminRequestEditForm.purpose}
++                  onChange={(event) =>
++                    setAdminRequestEditForm((previousForm) => ({
++                      ...previousForm,
++                      purpose: event.target.value,
++                    }))
++                  }
++                  className="h-28 w-full rounded-xl border border-slate-200 p-3 text-xs leading-6 outline-none mk-form-ring-focus"
++                />
++              </label>
++
++              <label className="block">
++                <span className="mb-1.5 block text-xs font-semibold text-slate-600">
++                  관리자 메모
++                </span>
++                <textarea
++                  value={adminRequestEditForm.adminMemo}
++                  onChange={(event) =>
++                    setAdminRequestEditForm((previousForm) => ({
++                      ...previousForm,
++                      adminMemo: event.target.value,
++                    }))
++                  }
++                  className="h-24 w-full rounded-xl border border-slate-200 p-3 text-xs leading-6 outline-none mk-form-ring-focus"
++                />
++              </label>
++            </div>
++
++            <div className="mt-6 flex justify-end gap-2">
++              <Button
++                type="button"
++                variant="outline"
++                disabled={adminRequestEditSaving}
++                onClick={closeAdminRequestEditDialog}
++              >
++                취소
++              </Button>
++
++              <Button
++                type="button"
++                variant="primary"
++                disabled={adminRequestEditSaving}
++                onClick={saveAdminRequestEdit}
++              >
++                {adminRequestEditSaving ? '저장 중...' : '수정 저장'}
++              </Button>
++            </div>
++          </motion.div>
++        </div>
++      )}
++
++      {adminRequestRestoreDialog && (
++        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
++          <motion.div
++            initial={{ opacity: 0, scale: 0.95 }}
++            animate={{ opacity: 1, scale: 1 }}
++            className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
++          >
++            <div className="flex items-start justify-between gap-4">
++              <div>
++                <h3 className="text-base font-bold text-slate-900">
++                  신청 상태 되돌리기
++                </h3>
++                <p className="mt-1 text-xs leading-5 text-slate-500">
++                  활성 상태로 복구할 때 자산 예약 정보를 다시 생성하고 다른 예약과의 충돌을 검사합니다.
++                </p>
++              </div>
++
++              <button
++                type="button"
++                onClick={closeAdminRequestRestoreDialog}
++                disabled={adminRequestRestoreSaving}
++                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed"
++              >
++                <X size={18} />
++              </button>
++            </div>
++
++            <div className="mt-5 space-y-4">
++              <label className="block">
++                <span className="mb-1.5 block text-xs font-semibold text-slate-600">
++                  복구할 상태
++                </span>
++                <select
++                  value={adminRequestRestoreTarget}
++                  onChange={(event) =>
++                    setAdminRequestRestoreTarget(event.target.value)
++                  }
++                  className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none mk-form-border-focus"
++                >
++                  {(adminRequestRestoreDialog.targetOptions || []).map(
++                    (status) => (
++                      <option key={status} value={status}>
++                        {status}
++                      </option>
++                    )
++                  )}
++                </select>
++              </label>
++
++              <label className="block">
++                <span className="mb-1.5 block text-xs font-semibold text-slate-600">
++                  복구 사유
++                </span>
++                <textarea
++                  value={adminRequestRestoreReason}
++                  onChange={(event) =>
++                    setAdminRequestRestoreReason(event.target.value)
++                  }
++                  placeholder="잘못 처리한 이유와 복구가 필요한 사유를 입력해 주세요."
++                  className="h-28 w-full rounded-xl border border-slate-200 p-3 text-xs leading-6 outline-none mk-form-ring-focus"
++                />
++              </label>
++
++              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
++                관리자 복구에는 기본 최대 대여 기간 제한을 적용하지 않습니다. 다만 날짜 순서 오류와 동일 기기의 다른 활성 예약 충돌은 차단됩니다.
++              </div>
++            </div>
++
++            <div className="mt-6 flex justify-end gap-2">
++              <Button
++                type="button"
++                variant="outline"
++                disabled={adminRequestRestoreSaving}
++                onClick={closeAdminRequestRestoreDialog}
++              >
++                취소
++              </Button>
++
++              <Button
++                type="button"
++                variant="primary"
++                disabled={adminRequestRestoreSaving}
++                onClick={restoreAdminRequestStatus}
++              >
++                {adminRequestRestoreSaving ? '복구 중...' : '상태 복구'}
++              </Button>
++            </div>
++          </motion.div>
++        </div>
++      )}
++    </>
++  );
++}
+--- a/src/admin/AdminRequestsPanel.jsx
++++ b/src/admin/AdminRequestsPanel.jsx
+@@ -1,3 +1,5 @@
++import AdminRequestDialogs from './AdminRequestDialogs.jsx';
++import useAdminRequestDetailController from '../features/requests/useAdminRequestDetailController.js';
+ import useAdminRequestsController from '../features/requests/useAdminRequestsController.js';
+ 
+ export default function AdminRequestsPanel({ ctx }) {
+@@ -19,9 +21,10 @@
+     adminRequestsNavigationRequest,
+     adminRequestsPrerequisitesReady,
+     adminUserActionSavingRequestId,
++    commitAdminRequestEdit,
++    commitAdminRequestStatusRestore,
+     data,
+     formatFirestoreTimestamp,
+-    getAdminRequestRestoreTargets,
+     getDisplayRentalStatus,
+     getExtensionRequestAvailableDate,
+     getRentalExtensionPeriod,
+@@ -32,17 +35,10 @@
+     getUserRequestReviewStatusLabel,
+     isAdminAuthenticated,
+     onAdminRequestsControllerStateChange,
+-    openAdminRequestEditDialog,
+-    openAdminRequestRestoreDialog,
+     orphanedRentalAvailabilityRequests,
+     renderRequestActionButtons,
+-    rentalRequestLogsByRequestId,
+-    rentalRequestLogsLoadErrorMessage,
+-    rentalRequestLogsReady,
+     reviewUserActionRequest,
+     saveRequestMemo,
+-    selectedAdminRequestId,
+-    setSelectedAdminRequestId,
+     today,
+     triggerToast,
+     updateRequestMemo,
+@@ -61,20 +57,53 @@
+     rentalRequestIdSet,
+     rentalRequestsLoadErrorMessage,
+     rentalRequestsReady,
++    resetAdminRequestPage,
+     safeAdminRequestPage,
+     selectedAdminRequest,
++    selectedAdminRequestId,
+     setAdminRequestPage,
+     setAdminRequestPageSize,
+     setAdminRequestQuery,
+     setAdminRequestQuickFilter,
+     setAdminRequestTab,
++    setSelectedAdminRequestId,
+   } = useAdminRequestsController({
+     enabled: isAdminAuthenticated,
+     mutationVersion: adminRequestsMutationVersion,
+     navigationRequest: adminRequestsNavigationRequest,
+     onControllerStateChange: onAdminRequestsControllerStateChange,
+     prerequisitesReady: adminRequestsPrerequisitesReady,
++    triggerToast,
++  });
++
++  const {
++    adminRequestEditDialog,
++    adminRequestEditForm,
++    adminRequestEditSaving,
++    adminRequestRestoreDialog,
++    adminRequestRestoreReason,
++    adminRequestRestoreSaving,
++    adminRequestRestoreTarget,
++    closeAdminRequestEditDialog,
++    closeAdminRequestRestoreDialog,
++    getAdminRequestRestoreTargets,
++    openAdminRequestEditDialog,
++    openAdminRequestRestoreDialog,
++    rentalRequestLogsByRequestId,
++    rentalRequestLogsLoadErrorMessage,
++    rentalRequestLogsReady,
++    restoreAdminRequestStatus,
++    saveAdminRequestEdit,
++    setAdminRequestEditForm,
++    setAdminRequestRestoreReason,
++    setAdminRequestRestoreTarget,
++  } = useAdminRequestDetailController({
++    commitAdminRequestEdit,
++    commitAdminRequestStatusRestore,
++    enabled: isAdminAuthenticated,
++    resetPage: resetAdminRequestPage,
+     selectedRequestId: selectedAdminRequestId,
++    setSelectedRequestId: setSelectedAdminRequestId,
+     triggerToast,
+   });
+ 
+@@ -156,6 +185,7 @@
+   };
+ 
+   return (
++    <>
+                     <div className="space-y-5">
+                       <AdminPageHeader
+                         title="기기 대여 신청 관리"
+@@ -1011,5 +1041,25 @@
+                         </>
+                       )}
+                     </div>
++
++      <AdminRequestDialogs
++        adminRequestEditDialog={adminRequestEditDialog}
++        adminRequestEditForm={adminRequestEditForm}
++        adminRequestEditSaving={adminRequestEditSaving}
++        adminRequestRestoreDialog={adminRequestRestoreDialog}
++        adminRequestRestoreReason={adminRequestRestoreReason}
++        adminRequestRestoreSaving={adminRequestRestoreSaving}
++        adminRequestRestoreTarget={adminRequestRestoreTarget}
++        closeAdminRequestEditDialog={closeAdminRequestEditDialog}
++        closeAdminRequestRestoreDialog={closeAdminRequestRestoreDialog}
++        restoreAdminRequestStatus={restoreAdminRequestStatus}
++        saveAdminRequestEdit={saveAdminRequestEdit}
++        setAdminRequestEditForm={setAdminRequestEditForm}
++        setAdminRequestRestoreReason={setAdminRequestRestoreReason}
++        setAdminRequestRestoreTarget={setAdminRequestRestoreTarget}
++        settings={data.settings}
++        triggerToast={triggerToast}
++      />
++    </>
+   );
+ }
+--- a/src/context/appContextSlices.js
++++ b/src/context/appContextSlices.js
+@@ -19,7 +19,7 @@
+   admin: Object.freeze({
+     shell: contextKeys('AlertCircle Button Card CardContent ClipboardList Clock Input Laptop LayoutDashboard LockIcon React Settings ShieldCheck UserCircle Users adminAccountsLoadErrorMessage adminAuthForm adminAuthLoading adminTab authenticateAdmin currentAuthRoleErrorMessage data faqPosts goToUserHome handleAdminTabChange noticePosts setAdminAuthForm setAdminTab shouldShowAdminAccountsErrorPage shouldShowAdminLoadingPage shouldShowAdminLoginPage'),
+     dashboard: contextKeys('ADMIN_REQUEST_QUICK_FILTER ADMIN_REQUEST_TAB AdminPageHeader STATUS USER_PROFILE_STATUS USER_REQUEST_ACTION USER_REQUEST_REVIEW_STATUS dashboardSummary dashboardSummaryLoadErrorMessage dashboardSummaryReady dashboardSummaryRefreshing data defaultRentalStartDate formatDateWithKoreanWeekday getMaxRentalDueDate getSafeMaxRentalDays openAdminMemberAccounts openAdminRequests orphanedRentalAvailabilityRequests refreshDashboardSummary rentalStartAdjustmentInfo today'),
+-    requests: contextKeys('ADMIN_REQUEST_PAGE_SIZE_OPTIONS ADMIN_REQUEST_QUICK_FILTER ADMIN_REQUEST_TAB AdminPageHeader Badge Button Edit3 RENTAL_EXTENSION_APPROVAL_MODE RENTAL_REQUEST_AUDIT_ACTION STATUS Search USER_REQUEST_ACTION USER_REQUEST_REVIEW_STATUS adminRequestsMutationVersion adminRequestsNavigationRequest adminRequestsPrerequisitesReady adminUserActionSavingRequestId data formatFirestoreTimestamp getAdminRequestRestoreTargets getDisplayRentalStatus getExtensionRequestAvailableDate getRentalExtensionPeriod getRequestDisplayStatus getRequestExtensionCount getSafeRentalExtensionMaxCount getUserRequestActionLabel getUserRequestReviewStatusLabel isAdminAuthenticated onAdminRequestsControllerStateChange openAdminRequestEditDialog openAdminRequestRestoreDialog orphanedRentalAvailabilityRequests renderRequestActionButtons rentalRequestLogsByRequestId rentalRequestLogsLoadErrorMessage rentalRequestLogsReady reviewUserActionRequest saveRequestMemo selectedAdminRequestId setSelectedAdminRequestId today triggerToast updateRequestMemo'),
++    requests: contextKeys('ADMIN_REQUEST_PAGE_SIZE_OPTIONS ADMIN_REQUEST_QUICK_FILTER ADMIN_REQUEST_TAB AdminPageHeader Badge Button Edit3 RENTAL_EXTENSION_APPROVAL_MODE RENTAL_REQUEST_AUDIT_ACTION STATUS Search USER_REQUEST_ACTION USER_REQUEST_REVIEW_STATUS adminRequestsMutationVersion adminRequestsNavigationRequest adminRequestsPrerequisitesReady adminUserActionSavingRequestId data formatFirestoreTimestamp getDisplayRentalStatus getExtensionRequestAvailableDate getRentalExtensionPeriod getRequestDisplayStatus getRequestExtensionCount getSafeRentalExtensionMaxCount getUserRequestActionLabel getUserRequestReviewStatusLabel isAdminAuthenticated onAdminRequestsControllerStateChange orphanedRentalAvailabilityRequests renderRequestActionButtons reviewUserActionRequest saveRequestMemo today triggerToast updateRequestMemo commitAdminRequestEdit commitAdminRequestStatusRestore'),
+     laptops: contextKeys('AdminPageHeader Badge Button ClipboardList Edit3 Input Plus React STATUS Save Search Select Trash2 adminAvailabilityFilter adminFilteredLaptops adminLaptopQuery adminSelectedAssetCategory authenticatedAdminId createLaptop currentAuthAdminAccount data deleteLaptop editLaptop editLaptopInsertIndex getLaptopAdminDisplayStatus handleAddLaptopClick newLaptop saveLaptop setAdminAvailabilityFilter setAdminLaptopQuery setAdminSelectedAssetCategory setData setEditLaptop setNewLaptop setShowUploadPanel showUploadPanel splitRentalAssets triggerToast'),
+     holidaySettings: contextKeys('AdminPageHeader Button ClipboardList DEFAULT_HOLIDAY_TYPE HOLIDAY_TYPE_LABEL Plus Save Trash2 addTempHoliday applyHolidayImportConflictChoice data deleteTempHoliday discardHolidayChanges formatDateWithKoreanWeekday getKoreaNow holidayImportConflictModal holidayImportLoading holidayImportYear holidayManagementMonth holidayManagementView holidayManagementYear holidaySettingsDirty importKoreanPublicHolidaysFromJson newHolidayDate newHolidayName newHolidayType saveHolidaySettings setHolidayImportConflictModal setHolidayImportYear setHolidayManagementMonth setHolidayManagementView setHolidayManagementYear setNewHolidayDate setNewHolidayName setNewHolidayType tempHolidayList today updateTempHolidayReason'),
+     categories: contextKeys('AdminPageHeader Button Edit3 Plus Save Trash2 X addTempAssetCategory applyEditTempAssetCategory cancelTempAssetCategoryChanges deleteTempAssetCategory draggingAssetCategoryIndex editingAssetCategoryIndex editingAssetCategoryName moveTempAssetCategory newAssetCategory saveTempAssetCategoryChanges setDraggingAssetCategoryIndex setEditingAssetCategoryIndex setEditingAssetCategoryName setNewAssetCategory startEditTempAssetCategory tempAssetCategories'),
+@@ -41,7 +41,7 @@
+   }),
+   app: Object.freeze({
+     footer: contextKeys('footerConfig footerPages openFooterPage selectedFooterPageId userTab'),
+-    dialogs: contextKeys('AlertCircle AnimatePresence Button CheckCircle2 DateInputWithWeekday Input Select USER_REQUEST_ACTION X activeUserActionRentalRequest addDaysFrom adminRequestEditBorrowers adminRequestEditDialog adminRequestEditForm adminRequestEditSaving adminRequestRestoreDialog adminRequestRestoreReason adminRequestRestoreSaving adminRequestRestoreTarget closeAdminRequestEditDialog closeAdminRequestRestoreDialog closeFaqPostDialog closeNoticePostDialog closePopupPostDialog closeUserActionDialog confirmModal data faqCategories faqPostDialog faqPostForm faqPostSaving formatDateWithKoreanWeekday getAdjustedRentalDueDate getMaxRentalDueDate getRentalDueDateAdjustmentReason getRentalExtensionApprovalMode getRentalExtensionPeriod getUserRequestActionLabel motion noticePostDialog noticePostForm noticePostSaving popupPostDialog popupPostForm popupPostSaving restoreAdminRequestStatus saveAdminRequestEdit saveFaqPost saveNoticePost savePopupPost setAdminRequestEditForm setAdminRequestRestoreReason setAdminRequestRestoreTarget setConfirmModal setFaqPostForm setNoticePostForm setPopupPostForm setToast setUserActionForm submitUserActionRequest toast today triggerToast userActionBorrowers userActionDialog userActionForm userActionSaving'),
++    dialogs: contextKeys('AlertCircle AnimatePresence Button CheckCircle2 DateInputWithWeekday Input Select USER_REQUEST_ACTION X activeUserActionRentalRequest addDaysFrom closeFaqPostDialog closeNoticePostDialog closePopupPostDialog closeUserActionDialog confirmModal data faqCategories faqPostDialog faqPostForm faqPostSaving formatDateWithKoreanWeekday getAdjustedRentalDueDate getMaxRentalDueDate getRentalDueDateAdjustmentReason getRentalExtensionApprovalMode getRentalExtensionPeriod getUserRequestActionLabel motion noticePostDialog noticePostForm noticePostSaving popupPostDialog popupPostForm popupPostSaving saveFaqPost saveNoticePost savePopupPost setConfirmModal setFaqPostForm setNoticePostForm setPopupPostForm setToast setUserActionForm submitUserActionRequest toast today triggerToast userActionBorrowers userActionDialog userActionForm userActionSaving'),
+     popup: contextKeys('dismissAllUserPopups dismissUserPopup dismissedPopupLocalVersions dismissedPopupSessionVersions firebaseAuthUser popupPosts temporarilyDismissedPopupVersions userTab'),
+   }),
+ });
+--- a/src/dialogs/AppDialogs.jsx
++++ b/src/dialogs/AppDialogs.jsx
+@@ -31,16 +31,6 @@
+     X,
+     activeUserActionRentalRequest,
+     addDaysFrom,
+-    adminRequestEditBorrowers,
+-    adminRequestEditDialog,
+-    adminRequestEditForm,
+-    adminRequestEditSaving,
+-    adminRequestRestoreDialog,
+-    adminRequestRestoreReason,
+-    adminRequestRestoreSaving,
+-    adminRequestRestoreTarget,
+-    closeAdminRequestEditDialog,
+-    closeAdminRequestRestoreDialog,
+     closeFaqPostDialog,
+     closeNoticePostDialog,
+     closePopupPostDialog,
+@@ -65,14 +55,9 @@
+     popupPostDialog,
+     popupPostForm,
+     popupPostSaving,
+-    restoreAdminRequestStatus,
+-    saveAdminRequestEdit,
+     saveFaqPost,
+     saveNoticePost,
+     savePopupPost,
+-    setAdminRequestEditForm,
+-    setAdminRequestRestoreReason,
+-    setAdminRequestRestoreTarget,
+     setConfirmModal,
+     setFaqPostForm,
+     setNoticePostForm,
+@@ -104,276 +89,6 @@
+ 
+   return (
+     <>
+-      {adminRequestEditDialog && (
+-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+-          <motion.div
+-            initial={{ opacity: 0, scale: 0.95 }}
+-            animate={{ opacity: 1, scale: 1 }}
+-            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+-          >
+-            <div className="flex items-start justify-between gap-4">
+-              <div>
+-                <h3 className="text-base font-bold text-slate-900">
+-                  대여 신청정보 수정
+-                </h3>
+-                <p className="mt-1 text-xs leading-5 text-slate-500">
+-                  관리자 수정에는 기본 최대 대여 기간 제한을 적용하지 않습니다. 반납 예정일이 휴무일이면 다음 영업일로 자동 조정됩니다.
+-                </p>
+-              </div>
+-
+-              <button
+-                type="button"
+-                onClick={closeAdminRequestEditDialog}
+-                disabled={adminRequestEditSaving}
+-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed"
+-              >
+-                <X size={18} />
+-              </button>
+-            </div>
+-
+-            <div className="mt-5 space-y-4">
+-              <div className="grid gap-3 sm:grid-cols-2">
+-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+-                  <div className="text-[11px] font-semibold text-slate-500">
+-                    부서 / 팀
+-                  </div>
+-                  <div className="mt-1 text-sm font-bold text-slate-900">
+-                    {adminRequestEditForm.team || '-'}
+-                  </div>
+-                </div>
+-
+-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+-                  <div className="text-[11px] font-semibold text-slate-500">
+-                    신청자
+-                  </div>
+-                  <div className="mt-1 text-sm font-bold text-slate-900">
+-                    {adminRequestEditForm.borrower || '-'}
+-                  </div>
+-                </div>
+-              </div>
+-
+-              <p className="text-[11px] leading-5 text-slate-500">
+-                신청자와 부서는 로그인 계정 정보이므로 이 화면에서 변경할 수 없습니다. 회원 정보 변경은 회원 계정 관리에서 처리해 주세요.
+-              </p>
+-
+-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+-                <DateInputWithWeekday
+-                  label="대여 시작일"
+-                  value={adminRequestEditForm.startDate}
+-                  onChange={(value) => {
+-                    setAdminRequestEditForm((prev) => {
+-                      const candidateDueDate =
+-                        prev.dueDate < value
+-                          ? value
+-                          : prev.dueDate;
+-                      const adjustedDueDate = getAdjustedRentalDueDate(
+-                        candidateDueDate,
+-                        data.settings
+-                      );
+-
+-                      return {
+-                        ...prev,
+-                        startDate: value,
+-                        dueDate: adjustedDueDate,
+-                      };
+-                    });
+-                  }}
+-                />
+-
+-                <DateInputWithWeekday
+-                  label="반납 예정일"
+-                  value={adminRequestEditForm.dueDate}
+-                  min={adminRequestEditForm.startDate}
+-                  onChange={(value) => {
+-                    const adjustedDueDate = getAdjustedRentalDueDate(
+-                      value,
+-                      data.settings
+-                    );
+-
+-                    if (adjustedDueDate !== value) {
+-                      const reason = getRentalDueDateAdjustmentReason(
+-                        value,
+-                        data.settings
+-                      );
+-
+-                      triggerToast(
+-                        `선택한 반납 예정일이 ${reason || '휴무일'}이므로 다음 영업일인 ${formatDateWithKoreanWeekday(adjustedDueDate)}로 자동 조정되었습니다.`,
+-                        'success'
+-                      );
+-                    }
+-
+-                    setAdminRequestEditForm((prev) => ({
+-                      ...prev,
+-                      dueDate: adjustedDueDate,
+-                    }));
+-                  }}
+-                />
+-              </div>
+-
+-              <label className="block">
+-                <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+-                  대여 목적
+-                </span>
+-                <textarea
+-                  value={adminRequestEditForm.purpose}
+-                  onChange={(event) =>
+-                    setAdminRequestEditForm(
+-                      (prev) => ({
+-                        ...prev,
+-                        purpose:
+-                          event.target.value,
+-                      })
+-                    )
+-                  }
+-                  className="h-28 w-full rounded-xl border border-slate-200 p-3 text-xs leading-6 outline-none mk-form-ring-focus"
+-                />
+-              </label>
+-
+-              <label className="block">
+-                <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+-                  관리자 메모
+-                </span>
+-                <textarea
+-                  value={adminRequestEditForm.adminMemo}
+-                  onChange={(event) =>
+-                    setAdminRequestEditForm(
+-                      (prev) => ({
+-                        ...prev,
+-                        adminMemo:
+-                          event.target.value,
+-                      })
+-                    )
+-                  }
+-                  className="h-24 w-full rounded-xl border border-slate-200 p-3 text-xs leading-6 outline-none mk-form-ring-focus"
+-                />
+-              </label>
+-            </div>
+-
+-            <div className="mt-6 flex justify-end gap-2">
+-              <Button
+-                type="button"
+-                variant="outline"
+-                disabled={adminRequestEditSaving}
+-                onClick={closeAdminRequestEditDialog}
+-              >
+-                취소
+-              </Button>
+-
+-              <Button
+-                type="button"
+-                variant="primary"
+-                disabled={adminRequestEditSaving}
+-                onClick={saveAdminRequestEdit}
+-              >
+-                {adminRequestEditSaving
+-                  ? '저장 중...'
+-                  : '수정 저장'}
+-              </Button>
+-            </div>
+-          </motion.div>
+-        </div>
+-      )}
+-
+-      {adminRequestRestoreDialog && (
+-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+-          <motion.div
+-            initial={{ opacity: 0, scale: 0.95 }}
+-            animate={{ opacity: 1, scale: 1 }}
+-            className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+-          >
+-            <div className="flex items-start justify-between gap-4">
+-              <div>
+-                <h3 className="text-base font-bold text-slate-900">
+-                  신청 상태 되돌리기
+-                </h3>
+-                <p className="mt-1 text-xs leading-5 text-slate-500">
+-                  활성 상태로 복구할 때 자산 예약 정보를 다시 생성하고 다른 예약과의 충돌을 검사합니다.
+-                </p>
+-              </div>
+-
+-              <button
+-                type="button"
+-                onClick={closeAdminRequestRestoreDialog}
+-                disabled={adminRequestRestoreSaving}
+-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed"
+-              >
+-                <X size={18} />
+-              </button>
+-            </div>
+-
+-            <div className="mt-5 space-y-4">
+-              <label className="block">
+-                <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+-                  복구할 상태
+-                </span>
+-                <select
+-                  value={adminRequestRestoreTarget}
+-                  onChange={(event) =>
+-                    setAdminRequestRestoreTarget(
+-                      event.target.value
+-                    )
+-                  }
+-                  className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none mk-form-border-focus"
+-                >
+-                  {(adminRequestRestoreDialog.targetOptions || []).map(
+-                    (status) => (
+-                      <option
+-                        key={status}
+-                        value={status}
+-                      >
+-                        {status}
+-                      </option>
+-                    )
+-                  )}
+-                </select>
+-              </label>
+-
+-              <label className="block">
+-                <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+-                  복구 사유
+-                </span>
+-                <textarea
+-                  value={adminRequestRestoreReason}
+-                  onChange={(event) =>
+-                    setAdminRequestRestoreReason(
+-                      event.target.value
+-                    )
+-                  }
+-                  placeholder="잘못 처리한 이유와 복구가 필요한 사유를 입력해 주세요."
+-                  className="h-28 w-full rounded-xl border border-slate-200 p-3 text-xs leading-6 outline-none mk-form-ring-focus"
+-                />
+-              </label>
+-
+-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
+-                관리자 복구에는 기본 최대 대여 기간 제한을 적용하지 않습니다. 다만 날짜 순서 오류와 동일 기기의 다른 활성 예약 충돌은 차단됩니다.
+-              </div>
+-            </div>
+-
+-            <div className="mt-6 flex justify-end gap-2">
+-              <Button
+-                type="button"
+-                variant="outline"
+-                disabled={adminRequestRestoreSaving}
+-                onClick={closeAdminRequestRestoreDialog}
+-              >
+-                취소
+-              </Button>
+-
+-              <Button
+-                type="button"
+-                variant="primary"
+-                disabled={adminRequestRestoreSaving}
+-                onClick={restoreAdminRequestStatus}
+-              >
+-                {adminRequestRestoreSaving
+-                  ? '복구 중...'
+-                  : '상태 복구'}
+-              </Button>
+-            </div>
+-          </motion.div>
+-        </div>
+-      )}
+-
+       {userActionDialog && activeUserActionRentalRequest && (
+         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+           <motion.div
+--- /dev/null
++++ b/src/features/requests/useAdminRequestDetailController.js
+@@ -0,0 +1,304 @@
++import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
++import {
++  limit as firestoreLimit,
++  onSnapshot,
++  orderBy,
++  query as firestoreQuery,
++  where,
++} from 'firebase/firestore';
++
++import { RENTAL_REQUEST_LOGS_COLLECTION_REF } from '../../firebase.js';
++import {
++  RENTAL_REQUEST_AUDIT_ACTION,
++  RENTAL_REQUEST_RESTORE_TARGETS,
++  RENTAL_REQUEST_STATUS_TRANSITIONS,
++} from '../../constants/appConstants.js';
++
++export const createDefaultAdminRequestEditForm = (request = {}) => ({
++  team: request.team || '',
++  borrower: request.borrower || '',
++  startDate: request.startDate || '',
++  dueDate: request.dueDate || '',
++  purpose: request.purpose || '',
++  adminMemo: request.adminMemo || '',
++});
++
++export const getAdminRequestRestoreTargetsForLogs = (request, requestLogs = []) => {
++  if (!request?.id) return [];
++
++  const latestStatusLog = requestLogs.find(
++    (log) =>
++      [
++        RENTAL_REQUEST_AUDIT_ACTION.STATUS_CHANGED,
++        RENTAL_REQUEST_AUDIT_ACTION.STATUS_RESTORED,
++      ].includes(log.action) &&
++      log.nextStatus === request.status &&
++      log.previousStatus &&
++      log.previousStatus !== request.status
++  );
++
++  const fallbackTargets =
++    RENTAL_REQUEST_RESTORE_TARGETS[request.status] || [];
++
++  return [
++    ...new Set(
++      [latestStatusLog?.previousStatus, ...fallbackTargets].filter(Boolean)
++    ),
++  ].filter((targetStatus) =>
++    (RENTAL_REQUEST_STATUS_TRANSITIONS[request.status] || []).includes(
++      targetStatus
++    )
++  );
++};
++
++export default function useAdminRequestDetailController({
++  commitAdminRequestEdit,
++  commitAdminRequestStatusRestore,
++  enabled,
++  resetPage,
++  selectedRequestId,
++  setSelectedRequestId,
++  triggerToast,
++}) {
++  const [requestLogs, setRequestLogs] = useState([]);
++  const [requestLogsReady, setRequestLogsReady] = useState(false);
++  const [requestLogsLoadErrorMessage, setRequestLogsLoadErrorMessage] =
++    useState('');
++
++  const [editDialog, setEditDialog] = useState(null);
++  const [editForm, setEditForm] = useState(createDefaultAdminRequestEditForm);
++  const [editSaving, setEditSaving] = useState(false);
++
++  const [restoreDialog, setRestoreDialog] = useState(null);
++  const [restoreTarget, setRestoreTarget] = useState('');
++  const [restoreReason, setRestoreReason] = useState('');
++  const [restoreSaving, setRestoreSaving] = useState(false);
++
++  const triggerToastRef = useRef(triggerToast);
++
++  useEffect(() => {
++    triggerToastRef.current = triggerToast;
++  }, [triggerToast]);
++
++  useEffect(() => {
++    if (!enabled || !selectedRequestId) {
++      setRequestLogs([]);
++      setRequestLogsLoadErrorMessage('');
++      setRequestLogsReady(true);
++      return undefined;
++    }
++
++    setRequestLogs([]);
++    setRequestLogsReady(false);
++    setRequestLogsLoadErrorMessage('');
++
++    return onSnapshot(
++      firestoreQuery(
++        RENTAL_REQUEST_LOGS_COLLECTION_REF,
++        where('requestId', '==', selectedRequestId),
++        orderBy('createdAt', 'desc'),
++        firestoreLimit(100)
++      ),
++      (snapshot) => {
++        setRequestLogs(
++          snapshot.docs.map((logDoc) => ({
++            ...logDoc.data(),
++            id: logDoc.id,
++          }))
++        );
++        setRequestLogsLoadErrorMessage('');
++        setRequestLogsReady(true);
++      },
++      (error) => {
++        const message = '선택한 대여 신청의 처리 이력을 불러오지 못했습니다.';
++        console.error('Selected rental request logs sync error:', error);
++        setRequestLogs([]);
++        setRequestLogsLoadErrorMessage(message);
++        setRequestLogsReady(true);
++      }
++    );
++  }, [enabled, selectedRequestId]);
++
++  useEffect(() => {
++    if (selectedRequestId) return;
++
++    setEditDialog(null);
++    setEditForm(createDefaultAdminRequestEditForm());
++    setEditSaving(false);
++    setRestoreDialog(null);
++    setRestoreTarget('');
++    setRestoreReason('');
++    setRestoreSaving(false);
++  }, [selectedRequestId]);
++
++  const requestLogsByRequestId = useMemo(() => {
++    const map = new Map();
++
++    if (selectedRequestId) {
++      map.set(selectedRequestId, requestLogs);
++    }
++
++    return map;
++  }, [requestLogs, selectedRequestId]);
++
++  const getAdminRequestRestoreTargets = useCallback(
++    (request) => getAdminRequestRestoreTargetsForLogs(request, requestLogs),
++    [requestLogs]
++  );
++
++  const openAdminRequestEditDialog = useCallback(
++    (request) => {
++      if (!enabled || !request?.id || request.id !== selectedRequestId) {
++        triggerToastRef.current?.(
++          '관리자 인증과 정식 신청 문서를 확인해 주세요.',
++          'error'
++        );
++        return;
++      }
++
++      setEditDialog({ requestId: request.id });
++      setEditForm(createDefaultAdminRequestEditForm(request));
++    },
++    [enabled, selectedRequestId]
++  );
++
++  const closeAdminRequestEditDialog = useCallback(() => {
++    if (editSaving) return;
++
++    setEditDialog(null);
++    setEditForm(createDefaultAdminRequestEditForm());
++  }, [editSaving]);
++
++  const saveAdminRequestEdit = useCallback(async () => {
++    if (editSaving || !editDialog?.requestId) return false;
++
++    if (typeof commitAdminRequestEdit !== 'function') {
++      triggerToastRef.current?.(
++        '신청 정보 수정 기능을 불러오지 못했습니다.',
++        'error'
++      );
++      return false;
++    }
++
++    setEditSaving(true);
++
++    try {
++      const saved = await commitAdminRequestEdit({
++        form: editForm,
++        requestId: editDialog.requestId,
++      });
++
++      if (saved === true) {
++        setEditDialog(null);
++        setEditForm(createDefaultAdminRequestEditForm());
++      }
++
++      return saved === true;
++    } finally {
++      setEditSaving(false);
++    }
++  }, [commitAdminRequestEdit, editDialog, editForm, editSaving]);
++
++  const openAdminRequestRestoreDialog = useCallback(
++    (request) => {
++      if (!enabled || !request?.id || request.id !== selectedRequestId) {
++        triggerToastRef.current?.(
++          '관리자 인증과 정식 신청 문서를 확인해 주세요.',
++          'error'
++        );
++        return;
++      }
++
++      const targetOptions = getAdminRequestRestoreTargetsForLogs(request, requestLogs);
++
++      if (targetOptions.length === 0) {
++        triggerToastRef.current?.(
++          '현재 신청은 되돌릴 수 있는 이전 상태가 없습니다.',
++          'error'
++        );
++        return;
++      }
++
++      setRestoreDialog({
++        requestId: request.id,
++        targetOptions,
++      });
++      setRestoreTarget(targetOptions[0]);
++      setRestoreReason('');
++    },
++    [enabled, requestLogs, selectedRequestId]
++  );
++
++  const closeAdminRequestRestoreDialog = useCallback(() => {
++    if (restoreSaving) return;
++
++    setRestoreDialog(null);
++    setRestoreTarget('');
++    setRestoreReason('');
++  }, [restoreSaving]);
++
++  const restoreAdminRequestStatus = useCallback(async () => {
++    if (restoreSaving || !restoreDialog?.requestId) return false;
++
++    if (typeof commitAdminRequestStatusRestore !== 'function') {
++      triggerToastRef.current?.(
++        '신청 상태 복구 기능을 불러오지 못했습니다.',
++        'error'
++      );
++      return false;
++    }
++
++    setRestoreSaving(true);
++
++    try {
++      const restored = await commitAdminRequestStatusRestore({
++        nextStatus: restoreTarget,
++        requestId: restoreDialog.requestId,
++        restoreReason,
++      });
++
++      if (restored === true) {
++        setRestoreDialog(null);
++        setRestoreTarget('');
++        setRestoreReason('');
++        setSelectedRequestId('');
++        resetPage?.();
++      }
++
++      return restored === true;
++    } finally {
++      setRestoreSaving(false);
++    }
++  }, [
++    commitAdminRequestStatusRestore,
++    resetPage,
++    restoreDialog,
++    restoreReason,
++    restoreSaving,
++    restoreTarget,
++    setSelectedRequestId,
++  ]);
++
++  return {
++    adminRequestEditDialog: editDialog,
++    adminRequestEditForm: editForm,
++    adminRequestEditSaving: editSaving,
++    adminRequestRestoreDialog: restoreDialog,
++    adminRequestRestoreReason: restoreReason,
++    adminRequestRestoreSaving: restoreSaving,
++    adminRequestRestoreTarget: restoreTarget,
++    closeAdminRequestEditDialog,
++    closeAdminRequestRestoreDialog,
++    getAdminRequestRestoreTargets,
++    openAdminRequestEditDialog,
++    openAdminRequestRestoreDialog,
++    rentalRequestLogsByRequestId: requestLogsByRequestId,
++    rentalRequestLogsLoadErrorMessage: requestLogsLoadErrorMessage,
++    rentalRequestLogsReady: requestLogsReady,
++    restoreAdminRequestStatus,
++    saveAdminRequestEdit,
++    setAdminRequestEditForm: setEditForm,
++    setAdminRequestRestoreReason: setRestoreReason,
++    setAdminRequestRestoreTarget: setRestoreTarget,
++  };
++}
+--- a/src/features/requests/useAdminRequestsController.js
++++ b/src/features/requests/useAdminRequestsController.js
+@@ -54,7 +54,6 @@
+   navigationRequest,
+   onControllerStateChange,
+   prerequisitesReady,
+-  selectedRequestId,
+   triggerToast,
+ }) {
+   const [requests, setRequests] = useState([]);
+@@ -78,6 +77,7 @@
+   const [hasNextPage, setHasNextPage] = useState(false);
+   const [totalCount, setTotalCount] = useState(0);
+   const [tabCounts, setTabCounts] = useState(createDefaultTabCounts);
++  const [selectedRequestId, setSelectedRequestId] = useState('');
+ 
+   const cursorByPageRef = useRef(new Map([[1, null]]));
+   const cursorKeyRef = useRef('');
+@@ -121,6 +121,7 @@
+       navigationRequest?.quickFilter || ADMIN_REQUEST_QUICK_FILTER.ALL
+     );
+     setQuery(String(navigationRequest?.query || ''));
++    setSelectedRequestId(String(navigationRequest?.selectedRequestId || ''));
+     setPage(1);
+     cursorByPageRef.current = new Map([[1, null]]);
+     cursorKeyRef.current = '';
+@@ -154,6 +155,7 @@
+     if (typeof onControllerStateChange !== 'function') return undefined;
+ 
+     onControllerStateChange({
++      clearSelection: () => setSelectedRequestId(''),
+       getRequestById,
+       resetPage,
+       updateRequests,
+@@ -193,6 +195,7 @@
+       setLoadErrorMessage('');
+       setHasNextPage(false);
+       setTotalCount(0);
++      setSelectedRequestId('');
+       cursorKeyRef.current = '';
+       cursorByPageRef.current = new Map([[1, null]]);
+       return undefined;
+@@ -603,12 +606,15 @@
+     rentalRequestIdSet: requestIdSet,
+     rentalRequestsLoadErrorMessage: loadErrorMessage,
+     rentalRequestsReady: ready,
++    resetAdminRequestPage: resetPage,
+     safeAdminRequestPage: safePage,
+     selectedAdminRequest: selectedRequest,
++    selectedAdminRequestId: selectedRequestId,
+     setAdminRequestPage: setPage,
+     setAdminRequestPageSize: setPageSize,
+     setAdminRequestQuery: setQuery,
+     setAdminRequestQuickFilter: setQuickFilter,
+     setAdminRequestTab: setRequestTab,
++    setSelectedAdminRequestId: setSelectedRequestId,
+   };
+ }
+--- a/docs/performance-optimization/README.md
++++ b/docs/performance-optimization/README.md
+@@ -31,7 +31,7 @@
+ 
+ ## 최신 순차 작업
+ 
+-- `reports/P2_ADMIN_REQUESTS_PANEL_LAZY_FEATURE_REPORT.md`
+-- `validation/P2_ADMIN_REQUESTS_PANEL_LAZY_FEATURE_VALIDATION_REPORT.txt`
+-- `diffs/P2_ADMIN_REQUESTS_PANEL_LAZY_FEATURE.diff`
+-- `measurements/P2_ADMIN_REQUESTS_PANEL_LAZY_SOURCE_GRAPH_COMPARISON.json`
++- `reports/P2_ADMIN_REQUEST_DETAIL_DIALOG_FEATURE_SPLIT_REPORT.md`
++- `validation/P2_ADMIN_REQUEST_DETAIL_DIALOG_FEATURE_SPLIT_VALIDATION_REPORT.txt`
++- `diffs/P2_ADMIN_REQUEST_DETAIL_DIALOG_FEATURE_SPLIT.diff`
++- `measurements/P2_ADMIN_REQUEST_DETAIL_DIALOG_SOURCE_GRAPH_COMPARISON.json`
+--- a/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json
++++ b/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json
+@@ -1,11 +1,11 @@
+ {
+-  "generatedAt": "2026-07-28T14:25:48.567Z",
++  "generatedAt": "2026-07-28T14:27:18.678Z",
+   "initialModuleCount": 32,
+-  "initialSourceBytes": 746259,
++  "initialSourceBytes": 738633,
+   "files": [
+     {
+       "file": "src/App.jsx",
+-      "bytes": 526542
++      "bytes": 519468
+     },
+     {
+       "file": "src/user/UserHomePanel.jsx",
+@@ -25,7 +25,7 @@
+     },
+     {
+       "file": "src/context/appContextSlices.js",
+-      "bytes": 17948
++      "bytes": 17396
+     },
+     {
+       "file": "src/index.css",

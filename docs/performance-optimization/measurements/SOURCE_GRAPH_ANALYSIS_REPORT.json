@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-07-28T13:54:08.768Z",
+  "generatedAt": "2026-07-28T14:50:03.593Z",
   "initialModuleCount": 32,
-  "initialSourceBytes": 746259,
+  "initialSourceBytes": 725271,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 526542
+      "bytes": 506106
     },
     {
       "file": "src/user/UserHomePanel.jsx",
@@ -25,7 +25,7 @@
     },
     {
       "file": "src/context/appContextSlices.js",
-      "bytes": 17948
+      "bytes": 17396
     },
     {
       "file": "src/index.css",
@@ -135,6 +135,7 @@
   "dynamicEntries": [
     "src/admin/AdminWorkspace.jsx",
     "src/dialogs/AppDialogs.jsx",
+    "src/features/requests/adminRequestMutationService.js",
     "src/performance/DevPerformancePanel.jsx",
     "src/services/dashboardSummaryService.js",
     "src/services/publicAssetCatalogWriteThrough.js",

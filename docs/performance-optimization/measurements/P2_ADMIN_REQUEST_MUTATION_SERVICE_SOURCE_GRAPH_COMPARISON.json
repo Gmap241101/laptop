@@ -1,0 +1,32 @@
+{
+  "task": "P2_ADMIN_REQUEST_MUTATION_SERVICE_SPLIT",
+  "before": {
+    "initialModuleCount": 32,
+    "initialSourceBytes": 738633,
+    "dynamicEntryCount": 13,
+    "app": {
+      "lines": 17942,
+      "bytes": 519468
+    }
+  },
+  "after": {
+    "initialModuleCount": 32,
+    "initialSourceBytes": 725271,
+    "dynamicEntryCount": 14,
+    "app": {
+      "lines": 17404,
+      "bytes": 506106
+    },
+    "service": {
+      "lines": 516,
+      "bytes": 13370
+    }
+  },
+  "change": {
+    "initialModuleCount": 0,
+    "initialSourceBytes": -13362,
+    "dynamicEntryCount": 1,
+    "appLines": -538,
+    "appBytes": -13362
+  }
+}

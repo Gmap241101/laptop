@@ -1,0 +1,1506 @@
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -96,6 +96,19 @@
+   return appDialogsModulePromise;
+ };
+ const AppDialogs = React.lazy(loadAppDialogsModule);
++let adminRequestMutationServicePromise = null;
++const loadAdminRequestMutationService = () => {
++  if (!adminRequestMutationServicePromise) {
++    adminRequestMutationServicePromise = import(
++      './features/requests/adminRequestMutationService.js'
++    ).catch((error) => {
++      adminRequestMutationServicePromise = null;
++      throw error;
++    });
++  }
++
++  return adminRequestMutationServicePromise;
++};
+ const UserPopupLayer = React.lazy(() => import('./user/UserPopupLayer.jsx'));
+ const DevPerformancePanel = React.lazy(() =>
+   import('./performance/DevPerformancePanel.jsx')
+@@ -14360,87 +14373,18 @@
+         'Firestore 분리 저장소 최종 전환이 완료되지 않아 신청 정보를 수정할 수 없습니다.',
+         'error'
+       );
+-      return;
++      return false;
+     }
+ 
+     const currentRequest =
+       getAdminRequestById(requestId);
+ 
+-    if (
+-      !currentRequest
+-    ) {
++    if (!currentRequest) {
+       triggerToast(
+         '수정할 정식 대여 신청 문서를 찾을 수 없습니다.',
+         'error'
+       );
+-      return;
+-    }
+-
+-    const nextTeam =
+-      String(
+-        currentRequest.requesterTeam ||
+-        currentRequest.team ||
+-        ''
+-      ).trim();
+-
+-    const nextBorrower =
+-      String(
+-        currentRequest.requesterName ||
+-        currentRequest.borrower ||
+-        ''
+-      ).trim();
+-
+-    const nextStartDate =
+-      String(
+-        form.startDate ||
+-        ''
+-      );
+-
+-    const requestedDueDate =
+-      String(
+-        form.dueDate || ''
+-      );
+-
+-    const nextDueDate = getAdjustedRentalDueDate(
+-      requestedDueDate,
+-      data.settings
+-    );
+-    const adminDueDateAdjusted =
+-      Boolean(requestedDueDate) && nextDueDate !== requestedDueDate;
+-
+-    const nextPurpose =
+-      String(
+-        form.purpose || ''
+-      ).trim();
+-
+-    const nextAdminMemo =
+-      String(
+-        form.adminMemo ||
+-        ''
+-      ).trim();
+-
+-    if (
+-      !nextTeam ||
+-      !nextBorrower ||
+-      !nextStartDate ||
+-      !requestedDueDate
+-    ) {
+-      triggerToast(
+-        '부서, 대여자명, 대여 시작일과 반납 예정일을 모두 입력해 주세요.',
+-        'error'
+-      );
+-      return;
+-    }
+-
+-    if (
+-      requestedDueDate <
+-      nextStartDate
+-    ) {
+-      triggerToast(
+-        '반납 예정일은 대여 시작일보다 빠를 수 없습니다.',
+-        'error'
+-      );
+-      return;
++      return false;
+     }
+ 
+     const auditActor =
+@@ -14451,293 +14395,28 @@
+         '관리자 인증 정보를 확인할 수 없어 신청 정보 수정을 중단했습니다.',
+         'error'
+       );
+-      return;
++      return false;
+     }
+ 
+-    const requestLogDocRef = doc(
+-      RENTAL_REQUEST_LOGS_COLLECTION_REF
+-    );
+-
+-    let committedRequest = null;
+-    let committedAsset = null;
+-    let committedAvailabilityRequest = null;
+-    let shouldKeepAvailability = false;
+-
+     try {
+-      await runTransaction(
+-        db,
+-        async (transaction) => {
+-          const requestDocRef = doc(
+-            RENTAL_REQUESTS_COLLECTION_REF,
+-            requestId
+-          );
+-
+-          const availabilityDocRef = doc(
+-            RENTAL_AVAILABILITY_COLLECTION_REF,
+-            requestId
+-          );
+-
+-          const requestSnapshot =
+-            await transaction.get(
+-              requestDocRef
+-            );
+-
+-          if (!requestSnapshot.exists()) {
+-            throw new Error(
+-              'rental-request-not-found'
+-            );
+-          }
+-
+-          const latestRequest = {
+-            ...requestSnapshot.data(),
+-            id: requestSnapshot.id,
+-          };
+-
+-          shouldKeepAvailability =
+-            RENTAL_BLOCKING_REQUEST_STATUSES.includes(
+-              latestRequest.status
+-            );
+-
+-          const nextRequest = {
+-            ...latestRequest,
+-            team: nextTeam,
+-            borrower: nextBorrower,
+-            startDate: nextStartDate,
+-            dueDate: nextDueDate,
+-            purpose: nextPurpose,
+-            adminMemo: nextAdminMemo,
+-          };
+-
+-          if (shouldKeepAvailability) {
+-            const assetDocRef = doc(
+-              RENTAL_ASSETS_COLLECTION_REF,
+-              latestRequest.laptopId
+-            );
+-
+-            const assetSnapshot =
+-              await transaction.get(
+-                assetDocRef
+-              );
+-
+-            if (!assetSnapshot.exists()) {
+-              throw new Error(
+-                'rental-asset-not-found'
+-              );
+-            }
+-
+-            const latestAsset = {
+-              ...assetSnapshot.data(),
+-              id: assetSnapshot.id,
+-            };
+-
+-            const latestReservations =
+-              normalizeAssetReservations(
+-                latestAsset.reservations ||
+-                []
+-              ).filter(
+-                (request) =>
+-                  request.id !==
+-                  requestId
+-              );
+-
+-            const nextAvailability =
+-              getLaptopRentalAvailability(
+-                latestAsset,
+-                latestReservations,
+-                data.settings,
+-                nextStartDate,
+-                nextDueDate
+-              );
+-
+-            if (nextAvailability.blocked) {
+-              const conflictError =
+-                new Error(
+-                  'rental-period-conflict'
+-                );
+-
+-              conflictError.blockingRequest =
+-                nextAvailability.blockingRequest ||
+-                null;
+-
+-              throw conflictError;
+-            }
+-
+-            const availabilityRequest =
+-              toRentalAvailabilityRequest(
+-                nextRequest
+-              );
+-
+-            const updatedReservations = [
+-              ...latestReservations,
+-              availabilityRequest,
+-            ];
+-
+-            const representativeRequest =
+-              getLaptopRepresentativeRequest(
+-                updatedReservations,
+-                latestAsset.id
+-              );
+-
+-            const nextAsset = {
+-              ...latestAsset,
+-              reservations:
+-                updatedReservations,
+-              status:
+-                latestAsset.status ===
+-                STATUS.UNAVAILABLE
+-                  ? STATUS.UNAVAILABLE
+-                  : representativeRequest
+-                    ? representativeRequest.status
+-                    : STATUS.AVAILABLE,
+-              currentRequestId:
+-                representativeRequest?.id ||
+-                null,
+-            };
+-
+-            transaction.set(
+-              availabilityDocRef,
+-              {
+-                ...availabilityRequest,
+-                updatedAt:
+-                  serverTimestamp(),
+-              }
+-            );
+-
+-            transaction.update(
+-              assetDocRef,
+-              {
+-                reservations:
+-                  nextAsset.reservations,
+-                status:
+-                  nextAsset.status,
+-                currentRequestId:
+-                  nextAsset.currentRequestId,
+-                updatedAt:
+-                  serverTimestamp(),
+-              }
+-            );
+-
+-            committedAsset =
+-              nextAsset;
+-            committedAvailabilityRequest =
+-              availabilityRequest;
+-          }
+-
+-          const detailParts = [];
+-
+-          if (
+-            latestRequest.team !==
+-            nextTeam
+-          ) {
+-            detailParts.push(
+-              `부서: ${latestRequest.team || '-'} → ${nextTeam}`
+-            );
+-          }
+-
+-          if (
+-            latestRequest.borrower !==
+-            nextBorrower
+-          ) {
+-            detailParts.push(
+-              `대여자: ${latestRequest.borrower || '-'} → ${nextBorrower}`
+-            );
+-          }
+-
+-          if (
+-            latestRequest.startDate !==
+-            nextStartDate
+-          ) {
+-            detailParts.push(
+-              `대여 시작일: ${latestRequest.startDate || '-'} → ${nextStartDate}`
+-            );
+-          }
+-
+-          if (
+-            latestRequest.dueDate !==
+-            nextDueDate
+-          ) {
+-            detailParts.push(
+-              `반납 예정일: ${latestRequest.dueDate || '-'} → ${nextDueDate}`
+-            );
+-          }
+-
+-          if (
+-            String(
+-              latestRequest.purpose || ''
+-            ) !== nextPurpose
+-          ) {
+-            detailParts.push(
+-              '대여 목적 변경'
+-            );
+-          }
+-
+-          if (
+-            String(
+-              latestRequest.adminMemo ||
+-              ''
+-            ) !== nextAdminMemo
+-          ) {
+-            detailParts.push(
+-              '관리자 메모 변경'
+-            );
+-          }
+-
+-          transaction.update(
+-            requestDocRef,
+-            {
+-              team: nextTeam,
+-              borrower: nextBorrower,
+-              startDate: nextStartDate,
+-              dueDate: nextDueDate,
+-              purpose: nextPurpose,
+-              adminMemo: nextAdminMemo,
+-              updatedAt:
+-                serverTimestamp(),
+-              syncedAt:
+-                serverTimestamp(),
+-            }
+-          );
+-
+-          transaction.set(
+-            requestLogDocRef,
+-            {
+-              id: requestLogDocRef.id,
+-              requestId,
+-              action:
+-                RENTAL_REQUEST_AUDIT_ACTION.REQUEST_EDITED,
+-              previousStatus:
+-                latestRequest.status || '',
+-              nextStatus:
+-                latestRequest.status || '',
+-              previousMemo:
+-                latestRequest.adminMemo || '',
+-              nextMemo:
+-                nextAdminMemo,
+-              actorUid:
+-                auditActor.uid,
+-              actorAdminId:
+-                auditActor.adminId,
+-              actorName:
+-                auditActor.name,
+-              detail:
+-                detailParts.length > 0
+-                  ? detailParts.join(' / ')
+-                  : '신청 정보를 다시 저장했습니다.',
+-              createdAt:
+-                serverTimestamp(),
+-            }
+-          );
+-
+-          committedRequest =
+-            nextRequest;
+-        }
+-      );
++      const {
++        executeAdminRequestEditMutation,
++      } = await loadAdminRequestMutationService();
+ 
+-      if (!committedRequest) {
+-        throw new Error(
+-          'rental-request-edit-result-missing'
+-        );
+-      }
++      const {
++        adminDueDateAdjusted,
++        committedAsset,
++        committedAvailabilityRequest,
++        committedRequest,
++        nextDueDate,
++        shouldKeepAvailability,
++      } = await executeAdminRequestEditMutation({
++        auditActor,
++        currentRequest,
++        form,
++        requestId,
++        settings: data.settings,
++      });
+ 
+       updateAdminRequestPanelRequests((prev) =>
+         (prev || []).map(
+@@ -14756,21 +14435,18 @@
+                 committedAvailabilityRequest,
+                 ...(prev.requests || []).filter(
+                   (request) =>
+-                    request.id !==
+-                    requestId
++                    request.id !== requestId
+                 ),
+               ]
+             : (prev.requests || []).filter(
+                 (request) =>
+-                  request.id !==
+-                  requestId
++                  request.id !== requestId
+               ),
+         laptops:
+           committedAsset
+             ? (prev.laptops || []).map(
+                 (asset) =>
+-                  asset.id ===
+-                  committedAsset.id
++                  asset.id === committedAsset.id
+                     ? committedAsset
+                     : asset
+               )
+@@ -14795,6 +14471,39 @@
+ 
+       if (
+         error?.message ===
++        'required-rental-edit-fields-missing'
++      ) {
++        triggerToast(
++          '부서, 대여자명, 대여 시작일과 반납 예정일을 모두 입력해 주세요.',
++          'error'
++        );
++        return false;
++      }
++
++      if (
++        error?.message ===
++        'invalid-rental-edit-period'
++      ) {
++        triggerToast(
++          '반납 예정일은 대여 시작일보다 빠를 수 없습니다.',
++          'error'
++        );
++        return false;
++      }
++
++      if (
++        error?.message ===
++        'admin-audit-actor-missing'
++      ) {
++        triggerToast(
++          '관리자 인증 정보를 확인할 수 없어 신청 정보 수정을 중단했습니다.',
++          'error'
++        );
++        return false;
++      }
++
++      if (
++        error?.message ===
+         'rental-period-conflict'
+       ) {
+         const blockingRequest =
+@@ -14806,7 +14515,7 @@
+             : '동일 기기의 다른 활성 예약과 충돌하여 신청 정보를 수정할 수 없습니다.',
+           'error'
+         );
+-        return;
++        return false;
+       }
+ 
+       if (
+@@ -14817,7 +14526,7 @@
+           '정식 대여 신청 문서를 찾을 수 없습니다.',
+           'error'
+         );
+-        return;
++        return false;
+       }
+ 
+       if (
+@@ -14828,7 +14537,7 @@
+           '신청과 연결된 자산 문서를 찾을 수 없습니다.',
+           'error'
+         );
+-        return;
++        return false;
+       }
+ 
+       triggerToast(
+@@ -14854,45 +14563,18 @@
+         'Firestore 분리 저장소 최종 전환이 완료되지 않아 상태를 복구할 수 없습니다.',
+         'error'
+       );
+-      return;
++      return false;
+     }
+ 
+     const currentRequest =
+       getAdminRequestById(requestId);
+ 
+-    const normalizedRestoreReason =
+-      String(restoreReason || '').trim();
+-
+-    if (
+-      !currentRequest
+-    ) {
++    if (!currentRequest) {
+       triggerToast(
+         '복구할 정식 대여 신청 문서를 찾을 수 없습니다.',
+         'error'
+       );
+-      return;
+-    }
+-
+-    if (!normalizedRestoreReason) {
+-      triggerToast(
+-        '상태 복구 사유를 입력해 주세요.',
+-        'error'
+-      );
+-      return;
+-    }
+-
+-    if (
+-      !(
+-        RENTAL_REQUEST_STATUS_TRANSITIONS[
+-          currentRequest.status
+-        ] || []
+-      ).includes(nextStatus)
+-    ) {
+-      triggerToast(
+-        '현재 상태에서 선택한 상태로 복구할 수 없습니다.',
+-        'error'
+-      );
+-      return;
++      return false;
+     }
+ 
+     const auditActor =
+@@ -14903,266 +14585,27 @@
+         '관리자 인증 정보를 확인할 수 없어 상태 복구를 중단했습니다.',
+         'error'
+       );
+-      return;
++      return false;
+     }
+ 
+-    const requestLogDocRef = doc(
+-      RENTAL_REQUEST_LOGS_COLLECTION_REF
+-    );
+-
+-    let committedRequest = null;
+-    let committedAsset = null;
+-    let committedAvailabilityRequest = null;
+-    let shouldKeepAvailability = false;
+-
+     try {
+-      await runTransaction(
+-        db,
+-        async (transaction) => {
+-          const requestDocRef = doc(
+-            RENTAL_REQUESTS_COLLECTION_REF,
+-            requestId
+-          );
+-
+-          const availabilityDocRef = doc(
+-            RENTAL_AVAILABILITY_COLLECTION_REF,
+-            requestId
+-          );
+-
+-          const requestSnapshot =
+-            await transaction.get(
+-              requestDocRef
+-            );
+-
+-          if (!requestSnapshot.exists()) {
+-            throw new Error(
+-              'rental-request-not-found'
+-            );
+-          }
+-
+-          const latestRequest = {
+-            ...requestSnapshot.data(),
+-            id: requestSnapshot.id,
+-          };
+-
+-          if (
+-            !(
+-              RENTAL_REQUEST_STATUS_TRANSITIONS[
+-                latestRequest.status
+-              ] || []
+-            ).includes(nextStatus)
+-          ) {
+-            const transitionError =
+-              new Error(
+-                'invalid-rental-status-transition'
+-              );
+-
+-            transitionError.previousStatus =
+-              latestRequest.status || '';
+-            transitionError.nextStatus =
+-              nextStatus;
+-
+-            throw transitionError;
+-          }
+-
+-          if (
+-            !latestRequest.startDate ||
+-            !latestRequest.dueDate ||
+-            latestRequest.dueDate <
+-              latestRequest.startDate
+-          ) {
+-            throw new Error(
+-              'invalid-rental-period'
+-            );
+-          }
+-
+-          const assetDocRef = doc(
+-            RENTAL_ASSETS_COLLECTION_REF,
+-            latestRequest.laptopId
+-          );
+-
+-          const assetSnapshot =
+-            await transaction.get(
+-              assetDocRef
+-            );
+-
+-          if (!assetSnapshot.exists()) {
+-            throw new Error(
+-              'rental-asset-not-found'
+-            );
+-          }
+-
+-          const latestAsset = {
+-            ...assetSnapshot.data(),
+-            id: assetSnapshot.id,
+-          };
+-
+-          const latestReservations =
+-            normalizeAssetReservations(
+-              latestAsset.reservations || []
+-            ).filter(
+-              (request) =>
+-                request.id !==
+-                requestId
+-            );
+-
+-          const nextRequest = {
+-            ...latestRequest,
+-            status: nextStatus,
+-            userActionRequest: null,
+-          };
+-
+-          const availabilityRequest =
+-            toRentalAvailabilityRequest(
+-              nextRequest
+-            );
+-
+-          shouldKeepAvailability =
+-            RENTAL_BLOCKING_REQUEST_STATUSES.includes(
+-              nextStatus
+-            );
+-
+-          if (shouldKeepAvailability) {
+-            const nextAvailability =
+-              getLaptopRentalAvailability(
+-                latestAsset,
+-                latestReservations,
+-                data.settings,
+-                latestRequest.startDate,
+-                latestRequest.dueDate
+-              );
+-
+-            if (nextAvailability.blocked) {
+-              const conflictError =
+-                new Error(
+-                  'rental-period-conflict'
+-                );
+-
+-              conflictError.blockingRequest =
+-                nextAvailability.blockingRequest ||
+-                null;
+-
+-              throw conflictError;
+-            }
+-          }
+-
+-          const updatedReservations =
+-            shouldKeepAvailability
+-              ? [
+-                  ...latestReservations,
+-                  availabilityRequest,
+-                ]
+-              : latestReservations;
+-
+-          const representativeRequest =
+-            getLaptopRepresentativeRequest(
+-              updatedReservations,
+-              latestAsset.id
+-            );
+-
+-          const nextAsset = {
+-            ...latestAsset,
+-            reservations:
+-              updatedReservations,
+-            status:
+-              latestAsset.status ===
+-              STATUS.UNAVAILABLE
+-                ? STATUS.UNAVAILABLE
+-                : representativeRequest
+-                  ? representativeRequest.status
+-                  : STATUS.AVAILABLE,
+-            currentRequestId:
+-              representativeRequest?.id ||
+-              null,
+-          };
+-
+-          transaction.update(
+-            requestDocRef,
+-            {
+-              status: nextStatus,
+-              userActionRequest: null,
+-              updatedAt:
+-                serverTimestamp(),
+-              syncedAt:
+-                serverTimestamp(),
+-            }
+-          );
+-
+-          if (shouldKeepAvailability) {
+-            transaction.set(
+-              availabilityDocRef,
+-              {
+-                ...availabilityRequest,
+-                updatedAt:
+-                  serverTimestamp(),
+-              }
+-            );
+-          } else {
+-            transaction.delete(
+-              availabilityDocRef
+-            );
+-          }
+-
+-          transaction.update(
+-            assetDocRef,
+-            {
+-              reservations:
+-                nextAsset.reservations,
+-              status:
+-                nextAsset.status,
+-              currentRequestId:
+-                nextAsset.currentRequestId,
+-              updatedAt:
+-                serverTimestamp(),
+-            }
+-          );
+-
+-          transaction.set(
+-            requestLogDocRef,
+-            {
+-              id: requestLogDocRef.id,
+-              requestId,
+-              action:
+-                RENTAL_REQUEST_AUDIT_ACTION.STATUS_RESTORED,
+-              previousStatus:
+-                latestRequest.status || '',
+-              nextStatus,
+-              previousMemo:
+-                latestRequest.adminMemo || '',
+-              nextMemo:
+-                latestRequest.adminMemo || '',
+-              actorUid:
+-                auditActor.uid,
+-              actorAdminId:
+-                auditActor.adminId,
+-              actorName:
+-                auditActor.name,
+-              detail:
+-                `상태 복구 사유: ${normalizedRestoreReason}`,
+-              createdAt:
+-                serverTimestamp(),
+-            }
+-          );
+-
+-          committedRequest =
+-            nextRequest;
+-          committedAsset =
+-            nextAsset;
+-          committedAvailabilityRequest =
+-            shouldKeepAvailability
+-              ? availabilityRequest
+-              : null;
+-        }
+-      );
++      const {
++        executeAdminRequestStatusRestoreMutation,
++      } = await loadAdminRequestMutationService();
+ 
+-      if (
+-        !committedRequest ||
+-        !committedAsset
+-      ) {
+-        throw new Error(
+-          'rental-status-restore-result-missing'
+-        );
+-      }
++      const {
++        committedAsset,
++        committedAvailabilityRequest,
++        committedRequest,
++        shouldKeepAvailability,
++      } = await executeAdminRequestStatusRestoreMutation({
++        auditActor,
++        currentRequest,
++        nextStatus,
++        requestId,
++        restoreReason,
++        settings: data.settings,
++      });
+ 
+       updateAdminRequestPanelRequests((prev) =>
+         (prev || []).map(
+@@ -15181,20 +14624,17 @@
+                 committedAvailabilityRequest,
+                 ...(prev.requests || []).filter(
+                   (request) =>
+-                    request.id !==
+-                    requestId
++                    request.id !== requestId
+                 ),
+               ]
+             : (prev.requests || []).filter(
+                 (request) =>
+-                  request.id !==
+-                  requestId
++                  request.id !== requestId
+               ),
+         laptops:
+           (prev.laptops || []).map(
+             (asset) =>
+-              asset.id ===
+-              committedAsset.id
++              asset.id === committedAsset.id
+                 ? committedAsset
+                 : asset
+           ),
+@@ -15216,6 +14656,28 @@
+ 
+       if (
+         error?.message ===
++        'restore-reason-missing'
++      ) {
++        triggerToast(
++          '상태 복구 사유를 입력해 주세요.',
++          'error'
++        );
++        return false;
++      }
++
++      if (
++        error?.message ===
++        'admin-audit-actor-missing'
++      ) {
++        triggerToast(
++          '관리자 인증 정보를 확인할 수 없어 상태 복구를 중단했습니다.',
++          'error'
++        );
++        return false;
++      }
++
++      if (
++        error?.message ===
+         'rental-period-conflict'
+       ) {
+         const blockingRequest =
+@@ -15227,7 +14689,7 @@
+             : '동일 기기의 다른 활성 예약과 충돌하여 상태를 복구할 수 없습니다.',
+           'error'
+         );
+-        return;
++        return false;
+       }
+ 
+       if (
+@@ -15238,7 +14700,7 @@
+           '대여 시작일과 반납 예정일을 먼저 올바르게 수정해 주세요.',
+           'error'
+         );
+-        return;
++        return false;
+       }
+ 
+       if (
+@@ -15249,7 +14711,7 @@
+           `허용되지 않은 상태 복구입니다. 현재 상태: ${error.previousStatus || '-'}, 복구 대상: ${error.nextStatus || '-'}`,
+           'error'
+         );
+-        return;
++        return false;
+       }
+ 
+       if (
+@@ -15260,7 +14722,7 @@
+           '정식 대여 신청 문서를 찾을 수 없습니다.',
+           'error'
+         );
+-        return;
++        return false;
+       }
+ 
+       if (
+@@ -15271,7 +14733,7 @@
+           '신청과 연결된 자산 문서를 찾을 수 없습니다.',
+           'error'
+         );
+-        return;
++        return false;
+       }
+ 
+       triggerToast(
+--- /dev/null
++++ b/src/features/requests/adminRequestMutationService.js
+@@ -0,0 +1,516 @@
++import {
++  doc,
++  runTransaction,
++  serverTimestamp,
++} from 'firebase/firestore';
++
++import {
++  RENTAL_ASSETS_COLLECTION_REF,
++  RENTAL_AVAILABILITY_COLLECTION_REF,
++  RENTAL_REQUEST_LOGS_COLLECTION_REF,
++  RENTAL_REQUESTS_COLLECTION_REF,
++  db,
++} from '../../firebase.js';
++import {
++  RENTAL_BLOCKING_REQUEST_STATUSES,
++  RENTAL_REQUEST_AUDIT_ACTION,
++  RENTAL_REQUEST_STATUS_TRANSITIONS,
++  STATUS,
++} from '../../constants/appConstants.js';
++import {
++  getAdjustedRentalDueDate,
++  getLaptopRentalAvailability,
++  getLaptopRepresentativeRequest,
++} from '../../domain/rentalPolicy.js';
++import {
++  normalizeAssetReservations,
++  toRentalAvailabilityRequest,
++} from '../../services/publicAssetCatalog.js';
++
++const createMutationError = (code, details = {}) => {
++  const error = new Error(code);
++  Object.assign(error, details);
++  return error;
++};
++
++const requireAuditActor = (auditActor = {}) => {
++  if (!auditActor.uid) {
++    throw createMutationError('admin-audit-actor-missing');
++  }
++
++  return {
++    uid: String(auditActor.uid || ''),
++    adminId: String(auditActor.adminId || ''),
++    name: String(auditActor.name || ''),
++  };
++};
++
++export const executeAdminRequestEditMutation = async ({
++  auditActor,
++  currentRequest,
++  form = {},
++  requestId = '',
++  settings = {},
++} = {}) => {
++  if (!currentRequest || !requestId) {
++    throw createMutationError('rental-request-not-found');
++  }
++
++  const normalizedAuditActor = requireAuditActor(auditActor);
++
++  const nextTeam = String(
++    currentRequest.requesterTeam ||
++      currentRequest.team ||
++      ''
++  ).trim();
++
++  const nextBorrower = String(
++    currentRequest.requesterName ||
++      currentRequest.borrower ||
++      ''
++  ).trim();
++
++  const nextStartDate = String(form.startDate || '');
++  const requestedDueDate = String(form.dueDate || '');
++  const nextDueDate = getAdjustedRentalDueDate(
++    requestedDueDate,
++    settings
++  );
++  const adminDueDateAdjusted = Boolean(
++    requestedDueDate && nextDueDate !== requestedDueDate
++  );
++  const nextPurpose = String(form.purpose || '').trim();
++  const nextAdminMemo = String(form.adminMemo || '').trim();
++
++  if (
++    !nextTeam ||
++    !nextBorrower ||
++    !nextStartDate ||
++    !requestedDueDate
++  ) {
++    throw createMutationError('required-rental-edit-fields-missing');
++  }
++
++  if (requestedDueDate < nextStartDate) {
++    throw createMutationError('invalid-rental-edit-period');
++  }
++
++  const requestLogDocRef = doc(
++    RENTAL_REQUEST_LOGS_COLLECTION_REF
++  );
++
++  let committedRequest = null;
++  let committedAsset = null;
++  let committedAvailabilityRequest = null;
++  let shouldKeepAvailability = false;
++
++  await runTransaction(db, async (transaction) => {
++    const requestDocRef = doc(
++      RENTAL_REQUESTS_COLLECTION_REF,
++      requestId
++    );
++    const availabilityDocRef = doc(
++      RENTAL_AVAILABILITY_COLLECTION_REF,
++      requestId
++    );
++    const requestSnapshot = await transaction.get(
++      requestDocRef
++    );
++
++    if (!requestSnapshot.exists()) {
++      throw createMutationError('rental-request-not-found');
++    }
++
++    const latestRequest = {
++      ...requestSnapshot.data(),
++      id: requestSnapshot.id,
++    };
++
++    shouldKeepAvailability =
++      RENTAL_BLOCKING_REQUEST_STATUSES.includes(
++        latestRequest.status
++      );
++
++    const nextRequest = {
++      ...latestRequest,
++      team: nextTeam,
++      borrower: nextBorrower,
++      startDate: nextStartDate,
++      dueDate: nextDueDate,
++      purpose: nextPurpose,
++      adminMemo: nextAdminMemo,
++    };
++
++    if (shouldKeepAvailability) {
++      const assetDocRef = doc(
++        RENTAL_ASSETS_COLLECTION_REF,
++        latestRequest.laptopId
++      );
++      const assetSnapshot = await transaction.get(
++        assetDocRef
++      );
++
++      if (!assetSnapshot.exists()) {
++        throw createMutationError('rental-asset-not-found');
++      }
++
++      const latestAsset = {
++        ...assetSnapshot.data(),
++        id: assetSnapshot.id,
++      };
++      const latestReservations = normalizeAssetReservations(
++        latestAsset.reservations || []
++      ).filter((request) => request.id !== requestId);
++      const nextAvailability = getLaptopRentalAvailability(
++        latestAsset,
++        latestReservations,
++        settings,
++        nextStartDate,
++        nextDueDate
++      );
++
++      if (nextAvailability.blocked) {
++        throw createMutationError('rental-period-conflict', {
++          blockingRequest:
++            nextAvailability.blockingRequest || null,
++        });
++      }
++
++      const availabilityRequest =
++        toRentalAvailabilityRequest(nextRequest);
++      const updatedReservations = [
++        ...latestReservations,
++        availabilityRequest,
++      ];
++      const representativeRequest =
++        getLaptopRepresentativeRequest(
++          updatedReservations,
++          latestAsset.id
++        );
++      const nextAsset = {
++        ...latestAsset,
++        reservations: updatedReservations,
++        status:
++          latestAsset.status === STATUS.UNAVAILABLE
++            ? STATUS.UNAVAILABLE
++            : representativeRequest
++              ? representativeRequest.status
++              : STATUS.AVAILABLE,
++        currentRequestId: representativeRequest?.id || null,
++      };
++
++      transaction.set(availabilityDocRef, {
++        ...availabilityRequest,
++        updatedAt: serverTimestamp(),
++      });
++      transaction.update(assetDocRef, {
++        reservations: nextAsset.reservations,
++        status: nextAsset.status,
++        currentRequestId: nextAsset.currentRequestId,
++        updatedAt: serverTimestamp(),
++      });
++
++      committedAsset = nextAsset;
++      committedAvailabilityRequest = availabilityRequest;
++    }
++
++    const detailParts = [];
++
++    if (latestRequest.team !== nextTeam) {
++      detailParts.push(
++        `부서: ${latestRequest.team || '-'} → ${nextTeam}`
++      );
++    }
++
++    if (latestRequest.borrower !== nextBorrower) {
++      detailParts.push(
++        `대여자: ${latestRequest.borrower || '-'} → ${nextBorrower}`
++      );
++    }
++
++    if (latestRequest.startDate !== nextStartDate) {
++      detailParts.push(
++        `대여 시작일: ${latestRequest.startDate || '-'} → ${nextStartDate}`
++      );
++    }
++
++    if (latestRequest.dueDate !== nextDueDate) {
++      detailParts.push(
++        `반납 예정일: ${latestRequest.dueDate || '-'} → ${nextDueDate}`
++      );
++    }
++
++    if (String(latestRequest.purpose || '') !== nextPurpose) {
++      detailParts.push('대여 목적 변경');
++    }
++
++    if (
++      String(latestRequest.adminMemo || '') !==
++      nextAdminMemo
++    ) {
++      detailParts.push('관리자 메모 변경');
++    }
++
++    transaction.update(requestDocRef, {
++      team: nextTeam,
++      borrower: nextBorrower,
++      startDate: nextStartDate,
++      dueDate: nextDueDate,
++      purpose: nextPurpose,
++      adminMemo: nextAdminMemo,
++      updatedAt: serverTimestamp(),
++      syncedAt: serverTimestamp(),
++    });
++
++    transaction.set(requestLogDocRef, {
++      id: requestLogDocRef.id,
++      requestId,
++      action: RENTAL_REQUEST_AUDIT_ACTION.REQUEST_EDITED,
++      previousStatus: latestRequest.status || '',
++      nextStatus: latestRequest.status || '',
++      previousMemo: latestRequest.adminMemo || '',
++      nextMemo: nextAdminMemo,
++      actorUid: normalizedAuditActor.uid,
++      actorAdminId: normalizedAuditActor.adminId,
++      actorName: normalizedAuditActor.name,
++      detail:
++        detailParts.length > 0
++          ? detailParts.join(' / ')
++          : '신청 정보를 다시 저장했습니다.',
++      createdAt: serverTimestamp(),
++    });
++
++    committedRequest = nextRequest;
++  });
++
++  if (!committedRequest) {
++    throw createMutationError(
++      'rental-request-edit-result-missing'
++    );
++  }
++
++  return {
++    adminDueDateAdjusted,
++    committedAsset,
++    committedAvailabilityRequest,
++    committedRequest,
++    nextDueDate,
++    shouldKeepAvailability,
++  };
++};
++
++export const executeAdminRequestStatusRestoreMutation = async ({
++  auditActor,
++  currentRequest,
++  nextStatus = '',
++  requestId = '',
++  restoreReason = '',
++  settings = {},
++} = {}) => {
++  if (!currentRequest || !requestId) {
++    throw createMutationError('rental-request-not-found');
++  }
++
++  const normalizedRestoreReason = String(
++    restoreReason || ''
++  ).trim();
++
++  if (!normalizedRestoreReason) {
++    throw createMutationError('restore-reason-missing');
++  }
++
++  if (
++    !(
++      RENTAL_REQUEST_STATUS_TRANSITIONS[
++        currentRequest.status
++      ] || []
++    ).includes(nextStatus)
++  ) {
++    throw createMutationError(
++      'invalid-rental-status-transition',
++      {
++        previousStatus: currentRequest.status || '',
++        nextStatus,
++      }
++    );
++  }
++
++  const normalizedAuditActor = requireAuditActor(auditActor);
++  const requestLogDocRef = doc(
++    RENTAL_REQUEST_LOGS_COLLECTION_REF
++  );
++
++  let committedRequest = null;
++  let committedAsset = null;
++  let committedAvailabilityRequest = null;
++  let shouldKeepAvailability = false;
++
++  await runTransaction(db, async (transaction) => {
++    const requestDocRef = doc(
++      RENTAL_REQUESTS_COLLECTION_REF,
++      requestId
++    );
++    const availabilityDocRef = doc(
++      RENTAL_AVAILABILITY_COLLECTION_REF,
++      requestId
++    );
++    const requestSnapshot = await transaction.get(
++      requestDocRef
++    );
++
++    if (!requestSnapshot.exists()) {
++      throw createMutationError('rental-request-not-found');
++    }
++
++    const latestRequest = {
++      ...requestSnapshot.data(),
++      id: requestSnapshot.id,
++    };
++
++    if (
++      !(
++        RENTAL_REQUEST_STATUS_TRANSITIONS[
++          latestRequest.status
++        ] || []
++      ).includes(nextStatus)
++    ) {
++      throw createMutationError(
++        'invalid-rental-status-transition',
++        {
++          previousStatus: latestRequest.status || '',
++          nextStatus,
++        }
++      );
++    }
++
++    if (
++      !latestRequest.startDate ||
++      !latestRequest.dueDate ||
++      latestRequest.dueDate < latestRequest.startDate
++    ) {
++      throw createMutationError('invalid-rental-period');
++    }
++
++    const assetDocRef = doc(
++      RENTAL_ASSETS_COLLECTION_REF,
++      latestRequest.laptopId
++    );
++    const assetSnapshot = await transaction.get(assetDocRef);
++
++    if (!assetSnapshot.exists()) {
++      throw createMutationError('rental-asset-not-found');
++    }
++
++    const latestAsset = {
++      ...assetSnapshot.data(),
++      id: assetSnapshot.id,
++    };
++    const latestReservations = normalizeAssetReservations(
++      latestAsset.reservations || []
++    ).filter((request) => request.id !== requestId);
++    const nextRequest = {
++      ...latestRequest,
++      status: nextStatus,
++      userActionRequest: null,
++    };
++    const availabilityRequest =
++      toRentalAvailabilityRequest(nextRequest);
++
++    shouldKeepAvailability =
++      RENTAL_BLOCKING_REQUEST_STATUSES.includes(nextStatus);
++
++    if (shouldKeepAvailability) {
++      const nextAvailability = getLaptopRentalAvailability(
++        latestAsset,
++        latestReservations,
++        settings,
++        latestRequest.startDate,
++        latestRequest.dueDate
++      );
++
++      if (nextAvailability.blocked) {
++        throw createMutationError('rental-period-conflict', {
++          blockingRequest:
++            nextAvailability.blockingRequest || null,
++        });
++      }
++    }
++
++    const updatedReservations = shouldKeepAvailability
++      ? [...latestReservations, availabilityRequest]
++      : latestReservations;
++    const representativeRequest =
++      getLaptopRepresentativeRequest(
++        updatedReservations,
++        latestAsset.id
++      );
++    const nextAsset = {
++      ...latestAsset,
++      reservations: updatedReservations,
++      status:
++        latestAsset.status === STATUS.UNAVAILABLE
++          ? STATUS.UNAVAILABLE
++          : representativeRequest
++            ? representativeRequest.status
++            : STATUS.AVAILABLE,
++      currentRequestId: representativeRequest?.id || null,
++    };
++
++    transaction.update(requestDocRef, {
++      status: nextStatus,
++      userActionRequest: null,
++      updatedAt: serverTimestamp(),
++      syncedAt: serverTimestamp(),
++    });
++
++    if (shouldKeepAvailability) {
++      transaction.set(availabilityDocRef, {
++        ...availabilityRequest,
++        updatedAt: serverTimestamp(),
++      });
++    } else {
++      transaction.delete(availabilityDocRef);
++    }
++
++    transaction.update(assetDocRef, {
++      reservations: nextAsset.reservations,
++      status: nextAsset.status,
++      currentRequestId: nextAsset.currentRequestId,
++      updatedAt: serverTimestamp(),
++    });
++
++    transaction.set(requestLogDocRef, {
++      id: requestLogDocRef.id,
++      requestId,
++      action: RENTAL_REQUEST_AUDIT_ACTION.STATUS_RESTORED,
++      previousStatus: latestRequest.status || '',
++      nextStatus,
++      previousMemo: latestRequest.adminMemo || '',
++      nextMemo: latestRequest.adminMemo || '',
++      actorUid: normalizedAuditActor.uid,
++      actorAdminId: normalizedAuditActor.adminId,
++      actorName: normalizedAuditActor.name,
++      detail: `상태 복구 사유: ${normalizedRestoreReason}`,
++      createdAt: serverTimestamp(),
++    });
++
++    committedRequest = nextRequest;
++    committedAsset = nextAsset;
++    committedAvailabilityRequest = shouldKeepAvailability
++      ? availabilityRequest
++      : null;
++  });
++
++  if (!committedRequest || !committedAsset) {
++    throw createMutationError(
++      'rental-status-restore-result-missing'
++    );
++  }
++
++  return {
++    committedAsset,
++    committedAvailabilityRequest,
++    committedRequest,
++    shouldKeepAvailability,
++  };
++};
+--- a/docs/performance-optimization/README.md
++++ b/docs/performance-optimization/README.md
+@@ -31,7 +31,7 @@
+ 
+ ## 최신 순차 작업
+ 
+-- `reports/P2_ADMIN_REQUEST_DETAIL_DIALOG_FEATURE_SPLIT_REPORT.md`
+-- `validation/P2_ADMIN_REQUEST_DETAIL_DIALOG_FEATURE_SPLIT_VALIDATION_REPORT.txt`
+-- `diffs/P2_ADMIN_REQUEST_DETAIL_DIALOG_FEATURE_SPLIT.diff`
+-- `measurements/P2_ADMIN_REQUEST_DETAIL_DIALOG_SOURCE_GRAPH_COMPARISON.json`
++- `reports/P2_ADMIN_REQUEST_MUTATION_SERVICE_SPLIT_REPORT.md`
++- `validation/P2_ADMIN_REQUEST_MUTATION_SERVICE_SPLIT_VALIDATION_REPORT.txt`
++- `diffs/P2_ADMIN_REQUEST_MUTATION_SERVICE_SPLIT.diff`
++- `measurements/P2_ADMIN_REQUEST_MUTATION_SERVICE_SOURCE_GRAPH_COMPARISON.json`
+--- a/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json
++++ b/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json
+@@ -1,11 +1,11 @@
+ {
+-  "generatedAt": "2026-07-28T14:50:11.594Z",
++  "generatedAt": "2026-07-28T14:50:03.593Z",
+   "initialModuleCount": 32,
+-  "initialSourceBytes": 738633,
++  "initialSourceBytes": 725271,
+   "files": [
+     {
+       "file": "src/App.jsx",
+-      "bytes": 519468
++      "bytes": 506106
+     },
+     {
+       "file": "src/user/UserHomePanel.jsx",
+@@ -135,6 +135,7 @@
+   "dynamicEntries": [
+     "src/admin/AdminWorkspace.jsx",
+     "src/dialogs/AppDialogs.jsx",
++    "src/features/requests/adminRequestMutationService.js",
+     "src/performance/DevPerformancePanel.jsx",
+     "src/services/dashboardSummaryService.js",
+     "src/services/publicAssetCatalogWriteThrough.js",

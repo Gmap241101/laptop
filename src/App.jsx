@@ -96,6 +96,19 @@ const loadAppDialogsModule = () => {
   return appDialogsModulePromise;
 };
 const AppDialogs = React.lazy(loadAppDialogsModule);
+let adminRequestMutationServicePromise = null;
+const loadAdminRequestMutationService = () => {
+  if (!adminRequestMutationServicePromise) {
+    adminRequestMutationServicePromise = import(
+      './features/requests/adminRequestMutationService.js'
+    ).catch((error) => {
+      adminRequestMutationServicePromise = null;
+      throw error;
+    });
+  }
+
+  return adminRequestMutationServicePromise;
+};
 const UserPopupLayer = React.lazy(() => import('./user/UserPopupLayer.jsx'));
 const DevPerformancePanel = React.lazy(() =>
   import('./performance/DevPerformancePanel.jsx')
@@ -162,7 +175,6 @@ import {
   NOTICE_POSTS_PER_PAGE_OPTIONS,
   RENTAL_BLOCKING_REQUEST_STATUSES,
   RENTAL_REQUEST_AUDIT_ACTION,
-  RENTAL_REQUEST_RESTORE_TARGETS,
   RENTAL_REQUEST_STATUS_TRANSITIONS,
   RENTAL_EXTENSION_APPROVAL_MODE,
   OVERDUE_PENALTY_MODE,
@@ -483,17 +495,6 @@ const sanitizeFooterCommonHtml = (html = '') => {
   });
   return sanitizeRichTextHtml(container.innerHTML);
 };
-
-const createDefaultAdminRequestEditForm = (
-  request = {}
-) => ({
-  team: request.team || '',
-  borrower: request.borrower || '',
-  startDate: request.startDate || '',
-  dueDate: request.dueDate || '',
-  purpose: request.purpose || '',
-  adminMemo: request.adminMemo || '',
-});
 
 // --- 초기 자산 데이터 생성 ---
 function seedLaptops() {
@@ -1211,14 +1212,6 @@ function App() {
     setRentalRequestsLoadErrorMessage,
   ] = useState('');
 
-  const [rentalRequestLogs, setRentalRequestLogs] = useState([]);
-  const [rentalRequestLogsReady, setRentalRequestLogsReady] = useState(false);
-
-  const [
-    rentalRequestLogsLoadErrorMessage,
-    setRentalRequestLogsLoadErrorMessage,
-  ] = useState('');
-
   const [requestSubmitLoading, setRequestSubmitLoading] = useState(false);
   const requestSubmitInProgressRef = useRef(false);
 
@@ -1232,19 +1225,6 @@ function App() {
     setAdminUserActionSavingRequestId,
   ] = useState('');
 
-  const [selectedAdminRequestId, setSelectedAdminRequestId] = useState('');
-
-  const [adminRequestEditDialog, setAdminRequestEditDialog] = useState(null);
-  const [adminRequestEditForm, setAdminRequestEditForm] = useState(
-    createDefaultAdminRequestEditForm
-  );
-  const [adminRequestEditSaving, setAdminRequestEditSaving] = useState(false);
-
-  const [adminRequestRestoreDialog, setAdminRequestRestoreDialog] = useState(null);
-  const [adminRequestRestoreTarget, setAdminRequestRestoreTarget] = useState('');
-  const [adminRequestRestoreReason, setAdminRequestRestoreReason] = useState('');
-  const [adminRequestRestoreSaving, setAdminRequestRestoreSaving] = useState(false);
-  
   const [noticePosts, setNoticePosts] = useState([]);
   const [noticePinnedPosts, setNoticePinnedPosts] = useState([]);
   const [noticeRegularPagePosts, setNoticeRegularPagePosts] = useState([]);
@@ -1455,9 +1435,11 @@ function App() {
     query: '',
     quickFilter: ADMIN_REQUEST_QUICK_FILTER.ALL,
     requestTab: ADMIN_REQUEST_TAB.PENDING,
+    selectedRequestId: '',
   });
   const [adminRequestsMutationVersion, setAdminRequestsMutationVersion] = useState(0);
   const adminRequestsControllerRef = useRef({
+    clearSelection: null,
     getRequestById: null,
     resetPage: null,
     updateRequests: null,
@@ -3873,39 +3855,7 @@ function App() {
 
   const orphanedRentalAvailabilityRequests = [];
 
-  const rentalRequestLogsByRequestId =
-    useMemo(() => {
-      const logMap = new Map();
 
-      (rentalRequestLogs || []).forEach(
-        (log) => {
-          if (!log?.requestId) return;
-
-          const currentLogs =
-            logMap.get(log.requestId) || [];
-
-          logMap.set(log.requestId, [
-            ...currentLogs,
-            log,
-          ]);
-        }
-      );
-
-      return logMap;
-    }, [rentalRequestLogs]);
-  
-  const adminRequestEditBorrowers = useMemo(
-    () =>
-      (data.borrowers || []).filter(
-        (borrower) =>
-          borrower.team ===
-          adminRequestEditForm.team
-      ),
-    [
-      data.borrowers,
-      adminRequestEditForm.team,
-    ]
-  );
 
   const noticePostsPerPage = getSafeNoticePostsPerPage(
     noticeBoardConfig.postsPerPage
@@ -4502,6 +4452,10 @@ function App() {
 
   const handleAdminRequestsControllerStateChange = useCallback((nextState) => {
     adminRequestsControllerRef.current = {
+      clearSelection:
+        typeof nextState?.clearSelection === 'function'
+          ? nextState.clearSelection
+          : null,
       getRequestById:
         typeof nextState?.getRequestById === 'function'
           ? nextState.getRequestById
@@ -4533,8 +4487,8 @@ function App() {
         requestTab: String(
           requestTab || ADMIN_REQUEST_TAB.PENDING
         ),
+        selectedRequestId: String(selectedRequestId || ''),
       }));
-      setSelectedAdminRequestId(String(selectedRequestId || ''));
       setAdminTab('requests');
     },
     []
@@ -4552,6 +4506,10 @@ function App() {
 
   const resetAdminRequestPanelPage = useCallback(() => {
     adminRequestsControllerRef.current.resetPage?.();
+  }, []);
+
+  const clearAdminRequestPanelSelection = useCallback(() => {
+    adminRequestsControllerRef.current.clearSelection?.();
   }, []);
 
   const notifyAdminRequestMutation = useCallback(() => {
@@ -5088,57 +5046,6 @@ function App() {
     firebaseAuthUser?.uid,
     isAdminAuthenticated,
     userProfile?.status,
-  ]);
-
-  useEffect(() => {
-    const shouldLoadLogs =
-      isAdminAuthenticated &&
-      view === 'admin' &&
-      adminTab === 'requests' &&
-      Boolean(selectedAdminRequestId);
-
-    if (!shouldLoadLogs) {
-      setRentalRequestLogs([]);
-      setRentalRequestLogsLoadErrorMessage('');
-      setRentalRequestLogsReady(true);
-      return undefined;
-    }
-
-    setRentalRequestLogs([]);
-    setRentalRequestLogsReady(false);
-    setRentalRequestLogsLoadErrorMessage('');
-
-    return onSnapshot(
-      firestoreQuery(
-        RENTAL_REQUEST_LOGS_COLLECTION_REF,
-        where('requestId', '==', selectedAdminRequestId),
-        orderBy('createdAt', 'desc'),
-        firestoreLimit(100)
-      ),
-      (snapshot) => {
-        setRentalRequestLogs(
-          snapshot.docs.map((logDoc) => ({
-            ...logDoc.data(),
-            id: logDoc.id,
-          }))
-        );
-        setRentalRequestLogsLoadErrorMessage('');
-        setRentalRequestLogsReady(true);
-      },
-      (error) => {
-        const message =
-          '선택한 대여 신청의 처리 이력을 불러오지 못했습니다.';
-        console.error('Selected rental request logs sync error:', error);
-        setRentalRequestLogs([]);
-        setRentalRequestLogsLoadErrorMessage(message);
-        setRentalRequestLogsReady(true);
-      }
-    );
-  }, [
-    isAdminAuthenticated,
-    view,
-    adminTab,
-    selectedAdminRequestId,
   ]);
 
 
@@ -14460,177 +14367,24 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     );
   };
 
-  const getAdminRequestRestoreTargets = (
-    request
-  ) => {
-    if (!request?.id) {
-      return [];
-    }
-
-    const requestLogs =
-      rentalRequestLogsByRequestId.get(
-        request.id
-      ) || [];
-
-    const latestStatusLog =
-      requestLogs.find(
-        (log) =>
-          [
-            RENTAL_REQUEST_AUDIT_ACTION.STATUS_CHANGED,
-            RENTAL_REQUEST_AUDIT_ACTION.STATUS_RESTORED,
-          ].includes(log.action) &&
-          log.nextStatus ===
-            request.status &&
-          log.previousStatus &&
-          log.previousStatus !==
-            request.status
-      );
-
-    const fallbackTargets =
-      RENTAL_REQUEST_RESTORE_TARGETS[
-        request.status
-      ] || [];
-
-    return [
-      ...new Set([
-        latestStatusLog?.previousStatus,
-        ...fallbackTargets,
-      ].filter(Boolean)),
-    ].filter(
-      (targetStatus) =>
-        (
-          RENTAL_REQUEST_STATUS_TRANSITIONS[
-            request.status
-          ] || []
-        ).includes(targetStatus)
-    );
-  };
-
-  const openAdminRequestEditDialog = (
-    request
-  ) => {
-    if (
-      !isAdminAuthenticated ||
-      !request?.id ||
-      !getAdminRequestById(request.id)
-    ) {
-      triggerToast(
-        '관리자 인증과 정식 신청 문서를 확인해 주세요.',
-        'error'
-      );
-      return;
-    }
-
-    setAdminRequestEditDialog({
-      requestId: request.id,
-    });
-    setAdminRequestEditForm(
-      createDefaultAdminRequestEditForm(
-        request
-      )
-    );
-  };
-
-  const closeAdminRequestEditDialog = () => {
-    if (adminRequestEditSaving) return;
-
-    setAdminRequestEditDialog(null);
-    setAdminRequestEditForm(
-      createDefaultAdminRequestEditForm()
-    );
-  };
-
-  const saveAdminRequestEdit = async () => {
+  const commitAdminRequestEdit = async ({ requestId = '', form = {} } = {}) => {
     if (!isSplitStorageReady) {
       triggerToast(
         'Firestore 분리 저장소 최종 전환이 완료되지 않아 신청 정보를 수정할 수 없습니다.',
         'error'
       );
-      return;
+      return false;
     }
-
-    const requestId =
-      adminRequestEditDialog?.requestId ||
-      '';
 
     const currentRequest =
       getAdminRequestById(requestId);
 
-    if (
-      !currentRequest
-    ) {
+    if (!currentRequest) {
       triggerToast(
         '수정할 정식 대여 신청 문서를 찾을 수 없습니다.',
         'error'
       );
-      return;
-    }
-
-    const nextTeam =
-      String(
-        currentRequest.requesterTeam ||
-        currentRequest.team ||
-        ''
-      ).trim();
-
-    const nextBorrower =
-      String(
-        currentRequest.requesterName ||
-        currentRequest.borrower ||
-        ''
-      ).trim();
-
-    const nextStartDate =
-      String(
-        adminRequestEditForm.startDate ||
-        ''
-      );
-
-    const requestedDueDate =
-      String(
-        adminRequestEditForm.dueDate || ''
-      );
-
-    const nextDueDate = getAdjustedRentalDueDate(
-      requestedDueDate,
-      data.settings
-    );
-    const adminDueDateAdjusted =
-      Boolean(requestedDueDate) && nextDueDate !== requestedDueDate;
-
-    const nextPurpose =
-      String(
-        adminRequestEditForm.purpose || ''
-      ).trim();
-
-    const nextAdminMemo =
-      String(
-        adminRequestEditForm.adminMemo ||
-        ''
-      ).trim();
-
-    if (
-      !nextTeam ||
-      !nextBorrower ||
-      !nextStartDate ||
-      !requestedDueDate
-    ) {
-      triggerToast(
-        '부서, 대여자명, 대여 시작일과 반납 예정일을 모두 입력해 주세요.',
-        'error'
-      );
-      return;
-    }
-
-    if (
-      requestedDueDate <
-      nextStartDate
-    ) {
-      triggerToast(
-        '반납 예정일은 대여 시작일보다 빠를 수 없습니다.',
-        'error'
-      );
-      return;
+      return false;
     }
 
     const auditActor =
@@ -14641,295 +14395,28 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         '관리자 인증 정보를 확인할 수 없어 신청 정보 수정을 중단했습니다.',
         'error'
       );
-      return;
+      return false;
     }
 
-    const requestLogDocRef = doc(
-      RENTAL_REQUEST_LOGS_COLLECTION_REF
-    );
-
-    let committedRequest = null;
-    let committedAsset = null;
-    let committedAvailabilityRequest = null;
-    let shouldKeepAvailability = false;
-
-    setAdminRequestEditSaving(true);
-
     try {
-      await runTransaction(
-        db,
-        async (transaction) => {
-          const requestDocRef = doc(
-            RENTAL_REQUESTS_COLLECTION_REF,
-            requestId
-          );
+      const {
+        executeAdminRequestEditMutation,
+      } = await loadAdminRequestMutationService();
 
-          const availabilityDocRef = doc(
-            RENTAL_AVAILABILITY_COLLECTION_REF,
-            requestId
-          );
-
-          const requestSnapshot =
-            await transaction.get(
-              requestDocRef
-            );
-
-          if (!requestSnapshot.exists()) {
-            throw new Error(
-              'rental-request-not-found'
-            );
-          }
-
-          const latestRequest = {
-            ...requestSnapshot.data(),
-            id: requestSnapshot.id,
-          };
-
-          shouldKeepAvailability =
-            RENTAL_BLOCKING_REQUEST_STATUSES.includes(
-              latestRequest.status
-            );
-
-          const nextRequest = {
-            ...latestRequest,
-            team: nextTeam,
-            borrower: nextBorrower,
-            startDate: nextStartDate,
-            dueDate: nextDueDate,
-            purpose: nextPurpose,
-            adminMemo: nextAdminMemo,
-          };
-
-          if (shouldKeepAvailability) {
-            const assetDocRef = doc(
-              RENTAL_ASSETS_COLLECTION_REF,
-              latestRequest.laptopId
-            );
-
-            const assetSnapshot =
-              await transaction.get(
-                assetDocRef
-              );
-
-            if (!assetSnapshot.exists()) {
-              throw new Error(
-                'rental-asset-not-found'
-              );
-            }
-
-            const latestAsset = {
-              ...assetSnapshot.data(),
-              id: assetSnapshot.id,
-            };
-
-            const latestReservations =
-              normalizeAssetReservations(
-                latestAsset.reservations ||
-                []
-              ).filter(
-                (request) =>
-                  request.id !==
-                  requestId
-              );
-
-            const nextAvailability =
-              getLaptopRentalAvailability(
-                latestAsset,
-                latestReservations,
-                data.settings,
-                nextStartDate,
-                nextDueDate
-              );
-
-            if (nextAvailability.blocked) {
-              const conflictError =
-                new Error(
-                  'rental-period-conflict'
-                );
-
-              conflictError.blockingRequest =
-                nextAvailability.blockingRequest ||
-                null;
-
-              throw conflictError;
-            }
-
-            const availabilityRequest =
-              toRentalAvailabilityRequest(
-                nextRequest
-              );
-
-            const updatedReservations = [
-              ...latestReservations,
-              availabilityRequest,
-            ];
-
-            const representativeRequest =
-              getLaptopRepresentativeRequest(
-                updatedReservations,
-                latestAsset.id
-              );
-
-            const nextAsset = {
-              ...latestAsset,
-              reservations:
-                updatedReservations,
-              status:
-                latestAsset.status ===
-                STATUS.UNAVAILABLE
-                  ? STATUS.UNAVAILABLE
-                  : representativeRequest
-                    ? representativeRequest.status
-                    : STATUS.AVAILABLE,
-              currentRequestId:
-                representativeRequest?.id ||
-                null,
-            };
-
-            transaction.set(
-              availabilityDocRef,
-              {
-                ...availabilityRequest,
-                updatedAt:
-                  serverTimestamp(),
-              }
-            );
-
-            transaction.update(
-              assetDocRef,
-              {
-                reservations:
-                  nextAsset.reservations,
-                status:
-                  nextAsset.status,
-                currentRequestId:
-                  nextAsset.currentRequestId,
-                updatedAt:
-                  serverTimestamp(),
-              }
-            );
-
-            committedAsset =
-              nextAsset;
-            committedAvailabilityRequest =
-              availabilityRequest;
-          }
-
-          const detailParts = [];
-
-          if (
-            latestRequest.team !==
-            nextTeam
-          ) {
-            detailParts.push(
-              `부서: ${latestRequest.team || '-'} → ${nextTeam}`
-            );
-          }
-
-          if (
-            latestRequest.borrower !==
-            nextBorrower
-          ) {
-            detailParts.push(
-              `대여자: ${latestRequest.borrower || '-'} → ${nextBorrower}`
-            );
-          }
-
-          if (
-            latestRequest.startDate !==
-            nextStartDate
-          ) {
-            detailParts.push(
-              `대여 시작일: ${latestRequest.startDate || '-'} → ${nextStartDate}`
-            );
-          }
-
-          if (
-            latestRequest.dueDate !==
-            nextDueDate
-          ) {
-            detailParts.push(
-              `반납 예정일: ${latestRequest.dueDate || '-'} → ${nextDueDate}`
-            );
-          }
-
-          if (
-            String(
-              latestRequest.purpose || ''
-            ) !== nextPurpose
-          ) {
-            detailParts.push(
-              '대여 목적 변경'
-            );
-          }
-
-          if (
-            String(
-              latestRequest.adminMemo ||
-              ''
-            ) !== nextAdminMemo
-          ) {
-            detailParts.push(
-              '관리자 메모 변경'
-            );
-          }
-
-          transaction.update(
-            requestDocRef,
-            {
-              team: nextTeam,
-              borrower: nextBorrower,
-              startDate: nextStartDate,
-              dueDate: nextDueDate,
-              purpose: nextPurpose,
-              adminMemo: nextAdminMemo,
-              updatedAt:
-                serverTimestamp(),
-              syncedAt:
-                serverTimestamp(),
-            }
-          );
-
-          transaction.set(
-            requestLogDocRef,
-            {
-              id: requestLogDocRef.id,
-              requestId,
-              action:
-                RENTAL_REQUEST_AUDIT_ACTION.REQUEST_EDITED,
-              previousStatus:
-                latestRequest.status || '',
-              nextStatus:
-                latestRequest.status || '',
-              previousMemo:
-                latestRequest.adminMemo || '',
-              nextMemo:
-                nextAdminMemo,
-              actorUid:
-                auditActor.uid,
-              actorAdminId:
-                auditActor.adminId,
-              actorName:
-                auditActor.name,
-              detail:
-                detailParts.length > 0
-                  ? detailParts.join(' / ')
-                  : '신청 정보를 다시 저장했습니다.',
-              createdAt:
-                serverTimestamp(),
-            }
-          );
-
-          committedRequest =
-            nextRequest;
-        }
-      );
-
-      if (!committedRequest) {
-        throw new Error(
-          'rental-request-edit-result-missing'
-        );
-      }
+      const {
+        adminDueDateAdjusted,
+        committedAsset,
+        committedAvailabilityRequest,
+        committedRequest,
+        nextDueDate,
+        shouldKeepAvailability,
+      } = await executeAdminRequestEditMutation({
+        auditActor,
+        currentRequest,
+        form,
+        requestId,
+        settings: data.settings,
+      });
 
       updateAdminRequestPanelRequests((prev) =>
         (prev || []).map(
@@ -14948,31 +14435,23 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                 committedAvailabilityRequest,
                 ...(prev.requests || []).filter(
                   (request) =>
-                    request.id !==
-                    requestId
+                    request.id !== requestId
                 ),
               ]
             : (prev.requests || []).filter(
                 (request) =>
-                  request.id !==
-                  requestId
+                  request.id !== requestId
               ),
         laptops:
           committedAsset
             ? (prev.laptops || []).map(
                 (asset) =>
-                  asset.id ===
-                  committedAsset.id
+                  asset.id === committedAsset.id
                     ? committedAsset
                     : asset
               )
             : prev.laptops,
       }));
-
-      setAdminRequestEditDialog(null);
-      setAdminRequestEditForm(
-        createDefaultAdminRequestEditForm()
-      );
 
       notifyAdminRequestMutation();
 
@@ -14982,11 +14461,46 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           : '대여 신청 정보를 수정했습니다. 관리자 수정에는 기본 최대 대여 기간 제한을 적용하지 않았습니다.',
         'success'
       );
+
+      return true;
     } catch (error) {
       console.error(
         'Admin rental request edit error:',
         error
       );
+
+      if (
+        error?.message ===
+        'required-rental-edit-fields-missing'
+      ) {
+        triggerToast(
+          '부서, 대여자명, 대여 시작일과 반납 예정일을 모두 입력해 주세요.',
+          'error'
+        );
+        return false;
+      }
+
+      if (
+        error?.message ===
+        'invalid-rental-edit-period'
+      ) {
+        triggerToast(
+          '반납 예정일은 대여 시작일보다 빠를 수 없습니다.',
+          'error'
+        );
+        return false;
+      }
+
+      if (
+        error?.message ===
+        'admin-audit-actor-missing'
+      ) {
+        triggerToast(
+          '관리자 인증 정보를 확인할 수 없어 신청 정보 수정을 중단했습니다.',
+          'error'
+        );
+        return false;
+      }
 
       if (
         error?.message ===
@@ -15001,7 +14515,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             : '동일 기기의 다른 활성 예약과 충돌하여 신청 정보를 수정할 수 없습니다.',
           'error'
         );
-        return;
+        return false;
       }
 
       if (
@@ -15012,7 +14526,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           '정식 대여 신청 문서를 찾을 수 없습니다.',
           'error'
         );
-        return;
+        return false;
       }
 
       if (
@@ -15023,7 +14537,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           '신청과 연결된 자산 문서를 찾을 수 없습니다.',
           'error'
         );
-        return;
+        return false;
       }
 
       triggerToast(
@@ -15034,111 +14548,33 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         }`,
         'error'
       );
-    } finally {
-      setAdminRequestEditSaving(false);
-    }
-  };
-
-  const openAdminRequestRestoreDialog = (
-    request
-  ) => {
-    if (
-      !isAdminAuthenticated ||
-      !request?.id ||
-      !getAdminRequestById(request.id)
-    ) {
-      triggerToast(
-        '관리자 인증과 정식 신청 문서를 확인해 주세요.',
-        'error'
-      );
-      return;
     }
 
-    const targetOptions =
-      getAdminRequestRestoreTargets(
-        request
-      );
-
-    if (targetOptions.length === 0) {
-      triggerToast(
-        '현재 신청은 되돌릴 수 있는 이전 상태가 없습니다.',
-        'error'
-      );
-      return;
-    }
-
-    setAdminRequestRestoreDialog({
-      requestId: request.id,
-      targetOptions,
-    });
-    setAdminRequestRestoreTarget(
-      targetOptions[0]
-    );
-    setAdminRequestRestoreReason('');
+    return false;
   };
 
-  const closeAdminRequestRestoreDialog = () => {
-    if (adminRequestRestoreSaving) return;
-
-    setAdminRequestRestoreDialog(null);
-    setAdminRequestRestoreTarget('');
-    setAdminRequestRestoreReason('');
-  };
-
-  const restoreAdminRequestStatus = async () => {
+  const commitAdminRequestStatusRestore = async ({
+    nextStatus = '',
+    requestId = '',
+    restoreReason = '',
+  } = {}) => {
     if (!isSplitStorageReady) {
       triggerToast(
         'Firestore 분리 저장소 최종 전환이 완료되지 않아 상태를 복구할 수 없습니다.',
         'error'
       );
-      return;
+      return false;
     }
-
-    const requestId =
-      adminRequestRestoreDialog?.requestId ||
-      '';
 
     const currentRequest =
       getAdminRequestById(requestId);
 
-    const nextStatus =
-      adminRequestRestoreTarget;
-
-    const restoreReason =
-      String(
-        adminRequestRestoreReason || ''
-      ).trim();
-
-    if (
-      !currentRequest
-    ) {
+    if (!currentRequest) {
       triggerToast(
         '복구할 정식 대여 신청 문서를 찾을 수 없습니다.',
         'error'
       );
-      return;
-    }
-
-    if (!restoreReason) {
-      triggerToast(
-        '상태 복구 사유를 입력해 주세요.',
-        'error'
-      );
-      return;
-    }
-
-    if (
-      !(
-        RENTAL_REQUEST_STATUS_TRANSITIONS[
-          currentRequest.status
-        ] || []
-      ).includes(nextStatus)
-    ) {
-      triggerToast(
-        '현재 상태에서 선택한 상태로 복구할 수 없습니다.',
-        'error'
-      );
-      return;
+      return false;
     }
 
     const auditActor =
@@ -15149,268 +14585,27 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         '관리자 인증 정보를 확인할 수 없어 상태 복구를 중단했습니다.',
         'error'
       );
-      return;
+      return false;
     }
 
-    const requestLogDocRef = doc(
-      RENTAL_REQUEST_LOGS_COLLECTION_REF
-    );
-
-    let committedRequest = null;
-    let committedAsset = null;
-    let committedAvailabilityRequest = null;
-    let shouldKeepAvailability = false;
-
-    setAdminRequestRestoreSaving(true);
-
     try {
-      await runTransaction(
-        db,
-        async (transaction) => {
-          const requestDocRef = doc(
-            RENTAL_REQUESTS_COLLECTION_REF,
-            requestId
-          );
+      const {
+        executeAdminRequestStatusRestoreMutation,
+      } = await loadAdminRequestMutationService();
 
-          const availabilityDocRef = doc(
-            RENTAL_AVAILABILITY_COLLECTION_REF,
-            requestId
-          );
-
-          const requestSnapshot =
-            await transaction.get(
-              requestDocRef
-            );
-
-          if (!requestSnapshot.exists()) {
-            throw new Error(
-              'rental-request-not-found'
-            );
-          }
-
-          const latestRequest = {
-            ...requestSnapshot.data(),
-            id: requestSnapshot.id,
-          };
-
-          if (
-            !(
-              RENTAL_REQUEST_STATUS_TRANSITIONS[
-                latestRequest.status
-              ] || []
-            ).includes(nextStatus)
-          ) {
-            const transitionError =
-              new Error(
-                'invalid-rental-status-transition'
-              );
-
-            transitionError.previousStatus =
-              latestRequest.status || '';
-            transitionError.nextStatus =
-              nextStatus;
-
-            throw transitionError;
-          }
-
-          if (
-            !latestRequest.startDate ||
-            !latestRequest.dueDate ||
-            latestRequest.dueDate <
-              latestRequest.startDate
-          ) {
-            throw new Error(
-              'invalid-rental-period'
-            );
-          }
-
-          const assetDocRef = doc(
-            RENTAL_ASSETS_COLLECTION_REF,
-            latestRequest.laptopId
-          );
-
-          const assetSnapshot =
-            await transaction.get(
-              assetDocRef
-            );
-
-          if (!assetSnapshot.exists()) {
-            throw new Error(
-              'rental-asset-not-found'
-            );
-          }
-
-          const latestAsset = {
-            ...assetSnapshot.data(),
-            id: assetSnapshot.id,
-          };
-
-          const latestReservations =
-            normalizeAssetReservations(
-              latestAsset.reservations || []
-            ).filter(
-              (request) =>
-                request.id !==
-                requestId
-            );
-
-          const nextRequest = {
-            ...latestRequest,
-            status: nextStatus,
-            userActionRequest: null,
-          };
-
-          const availabilityRequest =
-            toRentalAvailabilityRequest(
-              nextRequest
-            );
-
-          shouldKeepAvailability =
-            RENTAL_BLOCKING_REQUEST_STATUSES.includes(
-              nextStatus
-            );
-
-          if (shouldKeepAvailability) {
-            const nextAvailability =
-              getLaptopRentalAvailability(
-                latestAsset,
-                latestReservations,
-                data.settings,
-                latestRequest.startDate,
-                latestRequest.dueDate
-              );
-
-            if (nextAvailability.blocked) {
-              const conflictError =
-                new Error(
-                  'rental-period-conflict'
-                );
-
-              conflictError.blockingRequest =
-                nextAvailability.blockingRequest ||
-                null;
-
-              throw conflictError;
-            }
-          }
-
-          const updatedReservations =
-            shouldKeepAvailability
-              ? [
-                  ...latestReservations,
-                  availabilityRequest,
-                ]
-              : latestReservations;
-
-          const representativeRequest =
-            getLaptopRepresentativeRequest(
-              updatedReservations,
-              latestAsset.id
-            );
-
-          const nextAsset = {
-            ...latestAsset,
-            reservations:
-              updatedReservations,
-            status:
-              latestAsset.status ===
-              STATUS.UNAVAILABLE
-                ? STATUS.UNAVAILABLE
-                : representativeRequest
-                  ? representativeRequest.status
-                  : STATUS.AVAILABLE,
-            currentRequestId:
-              representativeRequest?.id ||
-              null,
-          };
-
-          transaction.update(
-            requestDocRef,
-            {
-              status: nextStatus,
-              userActionRequest: null,
-              updatedAt:
-                serverTimestamp(),
-              syncedAt:
-                serverTimestamp(),
-            }
-          );
-
-          if (shouldKeepAvailability) {
-            transaction.set(
-              availabilityDocRef,
-              {
-                ...availabilityRequest,
-                updatedAt:
-                  serverTimestamp(),
-              }
-            );
-          } else {
-            transaction.delete(
-              availabilityDocRef
-            );
-          }
-
-          transaction.update(
-            assetDocRef,
-            {
-              reservations:
-                nextAsset.reservations,
-              status:
-                nextAsset.status,
-              currentRequestId:
-                nextAsset.currentRequestId,
-              updatedAt:
-                serverTimestamp(),
-            }
-          );
-
-          transaction.set(
-            requestLogDocRef,
-            {
-              id: requestLogDocRef.id,
-              requestId,
-              action:
-                RENTAL_REQUEST_AUDIT_ACTION.STATUS_RESTORED,
-              previousStatus:
-                latestRequest.status || '',
-              nextStatus,
-              previousMemo:
-                latestRequest.adminMemo || '',
-              nextMemo:
-                latestRequest.adminMemo || '',
-              actorUid:
-                auditActor.uid,
-              actorAdminId:
-                auditActor.adminId,
-              actorName:
-                auditActor.name,
-              detail:
-                `상태 복구 사유: ${restoreReason}`,
-              createdAt:
-                serverTimestamp(),
-            }
-          );
-
-          committedRequest =
-            nextRequest;
-          committedAsset =
-            nextAsset;
-          committedAvailabilityRequest =
-            shouldKeepAvailability
-              ? availabilityRequest
-              : null;
-        }
-      );
-
-      if (
-        !committedRequest ||
-        !committedAsset
-      ) {
-        throw new Error(
-          'rental-status-restore-result-missing'
-        );
-      }
+      const {
+        committedAsset,
+        committedAvailabilityRequest,
+        committedRequest,
+        shouldKeepAvailability,
+      } = await executeAdminRequestStatusRestoreMutation({
+        auditActor,
+        currentRequest,
+        nextStatus,
+        requestId,
+        restoreReason,
+        settings: data.settings,
+      });
 
       updateAdminRequestPanelRequests((prev) =>
         (prev || []).map(
@@ -15429,30 +14624,21 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
                 committedAvailabilityRequest,
                 ...(prev.requests || []).filter(
                   (request) =>
-                    request.id !==
-                    requestId
+                    request.id !== requestId
                 ),
               ]
             : (prev.requests || []).filter(
                 (request) =>
-                  request.id !==
-                  requestId
+                  request.id !== requestId
               ),
         laptops:
           (prev.laptops || []).map(
             (asset) =>
-              asset.id ===
-              committedAsset.id
+              asset.id === committedAsset.id
                 ? committedAsset
                 : asset
           ),
       }));
-
-      setAdminRequestRestoreDialog(null);
-      setAdminRequestRestoreTarget('');
-      setAdminRequestRestoreReason('');
-      setSelectedAdminRequestId('');
-      resetAdminRequestPanelPage();
 
       notifyAdminRequestMutation();
 
@@ -15460,11 +14646,35 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         `상태를 [${nextStatus}]로 복구했습니다.`,
         'success'
       );
+
+      return true;
     } catch (error) {
       console.error(
         'Admin rental request restore error:',
         error
       );
+
+      if (
+        error?.message ===
+        'restore-reason-missing'
+      ) {
+        triggerToast(
+          '상태 복구 사유를 입력해 주세요.',
+          'error'
+        );
+        return false;
+      }
+
+      if (
+        error?.message ===
+        'admin-audit-actor-missing'
+      ) {
+        triggerToast(
+          '관리자 인증 정보를 확인할 수 없어 상태 복구를 중단했습니다.',
+          'error'
+        );
+        return false;
+      }
 
       if (
         error?.message ===
@@ -15479,7 +14689,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             : '동일 기기의 다른 활성 예약과 충돌하여 상태를 복구할 수 없습니다.',
           'error'
         );
-        return;
+        return false;
       }
 
       if (
@@ -15490,7 +14700,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           '대여 시작일과 반납 예정일을 먼저 올바르게 수정해 주세요.',
           'error'
         );
-        return;
+        return false;
       }
 
       if (
@@ -15501,7 +14711,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           `허용되지 않은 상태 복구입니다. 현재 상태: ${error.previousStatus || '-'}, 복구 대상: ${error.nextStatus || '-'}`,
           'error'
         );
-        return;
+        return false;
       }
 
       if (
@@ -15512,7 +14722,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           '정식 대여 신청 문서를 찾을 수 없습니다.',
           'error'
         );
-        return;
+        return false;
       }
 
       if (
@@ -15523,7 +14733,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           '신청과 연결된 자산 문서를 찾을 수 없습니다.',
           'error'
         );
-        return;
+        return false;
       }
 
       triggerToast(
@@ -15534,9 +14744,9 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         }`,
         'error'
       );
-    } finally {
-      setAdminRequestRestoreSaving(false);
     }
+
+    return false;
   };
   
   const updateRequest = async (id, status) => {
@@ -15961,7 +15171,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           ),
       }));
 
-      setSelectedAdminRequestId('');
+      clearAdminRequestPanelSelection();
       resetAdminRequestPanelPage();
 
       notifyAdminRequestMutation();
@@ -17322,14 +16532,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     adminPinnedNoticePosts,
     adminRegularFaqPosts,
     adminRegularNoticePosts,
-    adminRequestEditBorrowers,
-    adminRequestEditDialog,
-    adminRequestEditForm,
-    adminRequestEditSaving,
-    adminRequestRestoreDialog,
-    adminRequestRestoreReason,
-    adminRequestRestoreSaving,
-    adminRequestRestoreTarget,
     adminSelectedAssetCategory,
     adminTab,
     adminUserActionSavingRequestId,
@@ -17344,8 +16546,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     cancelWithdrawal,
     cancelUserSignup,
     categoryFilteredFaqPosts,
-    closeAdminRequestEditDialog,
-    closeAdminRequestRestoreDialog,
     closeFaqPostDialog,
     closeNoticePost,
     closeNoticePostDialog,
@@ -17420,7 +16620,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     formatDateWithKoreanWeekday,
     formatFirestoreDate,
     formatFirestoreTimestamp,
-    getAdminRequestRestoreTargets,
     defaultRentalStartDate,
     getAdjustedRentalDueDate,
     getDisplayRentalStatus,
@@ -17474,6 +16673,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     adminMemberAccountsNavigationRequest,
     adminRequestsMutationVersion,
     adminRequestsNavigationRequest,
+    commitAdminRequestEdit,
+    commitAdminRequestStatusRestore,
     adminRequestsPrerequisitesReady:
       firebaseAuthReady &&
       currentAuthRoleReady &&
@@ -17515,8 +16716,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     noticePostsReady,
     noticeRegularPostNumberById,
     noticeTotalPages,
-    openAdminRequestEditDialog,
-    openAdminRequestRestoreDialog,
     openFaqPostDialog,
     openNoticePost,
     openNoticePostDialog,
@@ -17541,12 +16740,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     rentalDeviceSectionDescription,
     rentalDeviceSectionTitle,
     rentalPeriodFields,
-    rentalRequestLogsByRequestId,
-    rentalRequestLogsLoadErrorMessage,
-    rentalRequestLogsReady,
     rentalStartAdjustmentInfo,
     requestSubmitLoading,
-    restoreAdminRequestStatus,
     reviewUserActionRequest,
     safeAdminAccountPage,
     safeAdminFaqPage,
@@ -17554,7 +16749,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     safeFaqPage,
     safeNoticePage,
     saveAdminAccountEdit,
-    saveAdminRequestEdit,
     saveFaqBoardConfig,
     saveFaqCategoryName,
     saveFaqPost,
@@ -17568,7 +16762,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     saveSystemSettings,
     saveTempAssetCategoryChanges,
     selectedAssetCategory,
-    selectedAdminRequestId,
     selectedLaptop,
     selectedLaptopAvailability,
     selectedLaptopId,
@@ -17587,9 +16780,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     setAdminMyProfileForm,
     setAdminNoticePage,
     setAdminNoticeQuery,
-    setAdminRequestEditForm,
-    setAdminRequestRestoreReason,
-    setAdminRequestRestoreTarget,
     setAdminSelectedAssetCategory,
     setAdminTab,
     setAvailabilityFilter,
@@ -17624,7 +16814,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     setNoticePostsPerPageInput,
     setPasswordResetEmail,
     setQuery,
-    setSelectedAdminRequestId,
     setSelectedAssetCategory,
     setSelectedLaptopId,
     setShowUploadPanel,
@@ -17744,9 +16933,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
   });
   const adminPanelContextKey = getAdminPanelContextKey(adminTab);
   const hasVisibleAppDialog = Boolean(
-    adminRequestEditDialog ||
-      adminRequestRestoreDialog ||
-      userActionDialog ||
+    userActionDialog ||
       popupPostDialog ||
       faqPostDialog ||
       noticePostDialog ||

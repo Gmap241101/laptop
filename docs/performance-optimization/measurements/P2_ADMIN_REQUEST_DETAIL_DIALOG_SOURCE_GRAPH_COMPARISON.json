@@ -1,0 +1,83 @@
+{
+  "task": "P2_ADMIN_REQUEST_DETAIL_DIALOG_FEATURE_SPLIT",
+  "before": {
+    "sourceGraph": {
+      "initialModuleCount": 32,
+      "initialSourceBytes": 746259,
+      "dynamicEntryCount": 13
+    },
+    "files": {
+      "src/App.jsx": {
+        "bytes": 526542,
+        "lines": 18217
+      },
+      "src/dialogs/AppDialogs.jsx": {
+        "bytes": 46152,
+        "lines": 1161
+      },
+      "src/admin/AdminRequestsPanel.jsx": {
+        "bytes": 52790,
+        "lines": 1015
+      },
+      "src/features/requests/useAdminRequestsController.js": {
+        "bytes": 17057,
+        "lines": 614
+      }
+    },
+    "appHooks": {
+      "useState": 205,
+      "useEffect": 60,
+      "useMemo": 35,
+      "useRef": 20,
+      "useCallback": 9
+    }
+  },
+  "after": {
+    "sourceGraph": {
+      "initialModuleCount": 32,
+      "initialSourceBytes": 738633,
+      "dynamicEntryCount": 13
+    },
+    "files": {
+      "src/App.jsx": {
+        "bytes": 519468,
+        "lines": 17942
+      },
+      "src/dialogs/AppDialogs.jsx": {
+        "bytes": 34828,
+        "lines": 876
+      },
+      "src/admin/AdminRequestsPanel.jsx": {
+        "bytes": 54720,
+        "lines": 1065
+      },
+      "src/features/requests/useAdminRequestsController.js": {
+        "bytes": 17404,
+        "lines": 620
+      },
+      "src/features/requests/useAdminRequestDetailController.js": {
+        "bytes": 8577,
+        "lines": 304
+      },
+      "src/admin/AdminRequestDialogs.jsx": {
+        "bytes": 11391,
+        "lines": 288
+      }
+    },
+    "appHooks": {
+      "useState": 194,
+      "useEffect": 59,
+      "useMemo": 33,
+      "useRef": 20,
+      "useCallback": 10
+    }
+  },
+  "delta": {
+    "initialSourceBytes": -7626,
+    "initialModuleCount": 0,
+    "appBytes": -7074,
+    "appLines": -275,
+    "appDialogsBytes": -11324,
+    "appDialogsLines": -285
+  }
+}

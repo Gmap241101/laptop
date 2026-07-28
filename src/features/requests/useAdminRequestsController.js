@@ -54,7 +54,6 @@ export default function useAdminRequestsController({
   navigationRequest,
   onControllerStateChange,
   prerequisitesReady,
-  selectedRequestId,
   triggerToast,
 }) {
   const [requests, setRequests] = useState([]);
@@ -78,6 +77,7 @@ export default function useAdminRequestsController({
   const [hasNextPage, setHasNextPage] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
   const [tabCounts, setTabCounts] = useState(createDefaultTabCounts);
+  const [selectedRequestId, setSelectedRequestId] = useState('');
 
   const cursorByPageRef = useRef(new Map([[1, null]]));
   const cursorKeyRef = useRef('');
@@ -121,6 +121,7 @@ export default function useAdminRequestsController({
       navigationRequest?.quickFilter || ADMIN_REQUEST_QUICK_FILTER.ALL
     );
     setQuery(String(navigationRequest?.query || ''));
+    setSelectedRequestId(String(navigationRequest?.selectedRequestId || ''));
     setPage(1);
     cursorByPageRef.current = new Map([[1, null]]);
     cursorKeyRef.current = '';
@@ -154,6 +155,7 @@ export default function useAdminRequestsController({
     if (typeof onControllerStateChange !== 'function') return undefined;
 
     onControllerStateChange({
+      clearSelection: () => setSelectedRequestId(''),
       getRequestById,
       resetPage,
       updateRequests,
@@ -193,6 +195,7 @@ export default function useAdminRequestsController({
       setLoadErrorMessage('');
       setHasNextPage(false);
       setTotalCount(0);
+      setSelectedRequestId('');
       cursorKeyRef.current = '';
       cursorByPageRef.current = new Map([[1, null]]);
       return undefined;
@@ -603,12 +606,15 @@ export default function useAdminRequestsController({
     rentalRequestIdSet: requestIdSet,
     rentalRequestsLoadErrorMessage: loadErrorMessage,
     rentalRequestsReady: ready,
+    resetAdminRequestPage: resetPage,
     safeAdminRequestPage: safePage,
     selectedAdminRequest: selectedRequest,
+    selectedAdminRequestId: selectedRequestId,
     setAdminRequestPage: setPage,
     setAdminRequestPageSize: setPageSize,
     setAdminRequestQuery: setQuery,
     setAdminRequestQuickFilter: setQuickFilter,
     setAdminRequestTab: setRequestTab,
+    setSelectedAdminRequestId: setSelectedRequestId,
   };
 }
