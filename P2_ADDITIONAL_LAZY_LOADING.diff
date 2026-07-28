@@ -1,0 +1,452 @@
+--- /mnt/data/p2_lazy_original/src/App.jsx	2026-07-28 07:49:33.000000000 +0000
++++ /mnt/data/p2_lazy_work/src/App.jsx	2026-07-28 08:14:23.893064446 +0000
+@@ -72,9 +72,7 @@
+ 
+ import RentalStatusBoard from './components/RentalStatusBoard.jsx';
+ import UserWorkspace from './user/UserWorkspace.jsx';
+-import UserPopupLayer from './user/UserPopupLayer.jsx';
+ import UserFooter from './user/UserFooter.jsx';
+-import AppDialogs from './dialogs/AppDialogs.jsx';
+ import DevRenderProfiler from './performance/DevRenderProfiler.jsx';
+ import useStableContextGroups from './hooks/useStableContextGroups.js';
+ import {
+@@ -84,6 +82,21 @@
+ } from './context/appContextSlices.js';
+ 
+ const AdminWorkspace = React.lazy(() => import('./admin/AdminWorkspace.jsx'));
++let appDialogsModulePromise = null;
++const loadAppDialogsModule = () => {
++  if (!appDialogsModulePromise) {
++    appDialogsModulePromise = import('./dialogs/AppDialogs.jsx').catch(
++      (error) => {
++        appDialogsModulePromise = null;
++        throw error;
++      }
++    );
++  }
++
++  return appDialogsModulePromise;
++};
++const AppDialogs = React.lazy(loadAppDialogsModule);
++const UserPopupLayer = React.lazy(() => import('./user/UserPopupLayer.jsx'));
+ const DevPerformancePanel = React.lazy(() =>
+   import('./performance/DevPerformancePanel.jsx')
+ );
+@@ -247,7 +260,7 @@
+   getPublicAssetCatalogWriteErrorMessage,
+   rebuildPublicAssetCatalogFromServer,
+   writePublicAssetCatalogMutationInTransaction,
+-} from './services/publicAssetCatalogWriteThrough.js';
++} from './services/publicAssetCatalogWriteThroughLoader.js';
+ 
+ import {
+   buildDomesticPhoneNumber,
+@@ -2067,6 +2080,8 @@
+   const [toast, setToast] = useState(null);
+   // 커스텀 모달 확인창 상태
+   const [confirmModal, setConfirmModal] = useState(null);
++  // 대화상자 모듈은 최초 사용 전까지 지연하고, 한 번 활성화된 뒤에는 유지한다.
++  const [appDialogsActivated, setAppDialogsActivated] = useState(false);
+ 
+   useEffect(() => {
+     const unsubscribe = onAuthStateChanged(
+@@ -5554,7 +5569,7 @@
+         );
+ 
+         const catalogErrorMessage =
+-          getPublicAssetCatalogWriteErrorMessage(error);
++          await getPublicAssetCatalogWriteErrorMessage(error);
+ 
+         triggerToast(
+           catalogErrorMessage ||
+@@ -10954,7 +10969,7 @@
+       );
+ 
+       const catalogPayload =
+-        createPublicAssetCatalogPayload(
++        await createPublicAssetCatalogPayload(
+           nextCatalogAssets,
+           {
+             updatedByUid:
+@@ -11075,7 +11090,7 @@
+       }
+ 
+       const catalogErrorMessage =
+-        getPublicAssetCatalogWriteErrorMessage(error);
++        await getPublicAssetCatalogWriteErrorMessage(error);
+ 
+       if (catalogErrorMessage) {
+         triggerToast(catalogErrorMessage, 'error');
+@@ -18986,7 +19001,7 @@
+       }
+ 
+       const catalogErrorMessage =
+-        getPublicAssetCatalogWriteErrorMessage(error);
++        await getPublicAssetCatalogWriteErrorMessage(error);
+ 
+       if (catalogErrorMessage) {
+         triggerToast(catalogErrorMessage, 'error');
+@@ -19591,7 +19606,7 @@
+       );
+ 
+       const catalogErrorMessage =
+-        getPublicAssetCatalogWriteErrorMessage(error);
++        await getPublicAssetCatalogWriteErrorMessage(error);
+ 
+       if (catalogErrorMessage) {
+         triggerToast(
+@@ -19805,7 +19820,7 @@
+           }
+ 
+           const catalogErrorMessage =
+-            getPublicAssetCatalogWriteErrorMessage(error);
++            await getPublicAssetCatalogWriteErrorMessage(error);
+ 
+           if (catalogErrorMessage) {
+             triggerToast(catalogErrorMessage, 'error');
+@@ -20206,7 +20221,7 @@
+       }
+ 
+       const catalogErrorMessage =
+-        getPublicAssetCatalogWriteErrorMessage(error);
++        await getPublicAssetCatalogWriteErrorMessage(error);
+ 
+       if (catalogErrorMessage) {
+         triggerToast(catalogErrorMessage, 'error');
+@@ -20851,7 +20866,58 @@
+     isUserDirectoryAccessRestricted,
+   });
+   const adminPanelContextKey = getAdminPanelContextKey(adminTab);
++  const hasVisibleAppDialog = Boolean(
++    adminRequestEditDialog ||
++      adminRequestRestoreDialog ||
++      userActionDialog ||
++      popupPostDialog ||
++      faqPostDialog ||
++      noticePostDialog ||
++      confirmModal ||
++      toast
++  );
++  const shouldMountUserPopupLayer =
++    view === 'user' &&
++    Array.isArray(popupPosts) &&
++    popupPosts.length > 0 &&
++    (userTab === 'home' ||
++      (userTab === 'rental' && Boolean(firebaseAuthUser)));
++
++  useEffect(() => {
++    if (hasVisibleAppDialog && !appDialogsActivated) {
++      setAppDialogsActivated(true);
++    }
++  }, [appDialogsActivated, hasVisibleAppDialog]);
++
++  useEffect(() => {
++    if (appDialogsActivated || typeof window === 'undefined') {
++      return undefined;
++    }
+ 
++    const preloadAppDialogs = () => {
++      void loadAppDialogsModule().catch((error) => {
++        console.error('App dialogs preload error:', error);
++      });
++      window.removeEventListener('pointerdown', preloadAppDialogs);
++      window.removeEventListener('keydown', preloadAppDialogs);
++    };
++
++    window.addEventListener('pointerdown', preloadAppDialogs, {
++      once: true,
++      passive: true,
++    });
++    window.addEventListener('keydown', preloadAppDialogs, {
++      once: true,
++    });
++
++    return () => {
++      window.removeEventListener('pointerdown', preloadAppDialogs);
++      window.removeEventListener('keydown', preloadAppDialogs);
++    };
++  }, [appDialogsActivated]);
++
++  const shouldRenderAppDialogs =
++    hasVisibleAppDialog || appDialogsActivated;
+ 
+   const showFirebaseLoadingOverlay = !firebaseReady;
+   const normalizedSiteSettings = normalizeSiteSettings(siteSettings);
+@@ -21226,15 +21292,20 @@
+         </DevRenderProfiler>
+       )}
+ 
+-      <DevRenderProfiler id="Shared:AppDialogs">
+-        <MemoizedAppDialogs ctx={contextGroups.app.dialogs} />
+-      </DevRenderProfiler>
+-      {view === 'user' &&
+-        (userTab === 'home' || (userTab === 'rental' && firebaseAuthUser)) && (
++      {shouldRenderAppDialogs && (
++        <React.Suspense fallback={null}>
++          <DevRenderProfiler id="Shared:AppDialogs">
++            <MemoizedAppDialogs ctx={contextGroups.app.dialogs} />
++          </DevRenderProfiler>
++        </React.Suspense>
++      )}
++      {shouldMountUserPopupLayer && (
++        <React.Suspense fallback={null}>
+           <DevRenderProfiler id="Shared:UserPopupLayer">
+             <MemoizedUserPopupLayer ctx={contextGroups.app.popup} />
+           </DevRenderProfiler>
+-        )}
++        </React.Suspense>
++      )}
+ 
+       {import.meta.env.DEV && (
+         <React.Suspense fallback={null}>
+--- /mnt/data/p2_lazy_original/src/hooks/useDashboardSummary.js	2026-07-28 05:18:48.000000000 +0000
++++ /mnt/data/p2_lazy_work/src/hooks/useDashboardSummary.js	2026-07-28 08:11:46.249064446 +0000
+@@ -3,13 +3,21 @@
+ 
+ import { DASHBOARD_SUMMARY_DOC_REF } from '../firebase.js';
+ import { today } from '../utils/appUtils.js';
+-import {
+-  DASHBOARD_SUMMARY_ENTRY_REFRESH_AGE_MS,
+-  DASHBOARD_SUMMARY_SCHEMA_VERSION,
+-  getDashboardSummaryGeneratedAtMillis,
+-  normalizeDashboardSummary,
+-  refreshDashboardSummaryDocument,
+-} from '../services/dashboardSummaryService.js';
++
++let dashboardSummaryServicePromise = null;
++
++const loadDashboardSummaryService = () => {
++  if (!dashboardSummaryServicePromise) {
++    dashboardSummaryServicePromise = import(
++      '../services/dashboardSummaryService.js'
++    ).catch((error) => {
++      dashboardSummaryServicePromise = null;
++      throw error;
++    });
++  }
++
++  return dashboardSummaryServicePromise;
++};
+ 
+ const DASHBOARD_REFRESH_AFTER_ADMIN_TABS = new Set([
+   'requests',
+@@ -58,7 +66,12 @@
+       setDashboardSummaryLoadErrorMessage('');
+ 
+       try {
+-        const nextSummary = await refreshDashboardSummaryDocument({ adminUid });
++        const { refreshDashboardSummaryDocument } =
++          await loadDashboardSummaryService();
++        const nextSummary = await refreshDashboardSummaryDocument({
++          adminUid,
++        });
++
+         setDashboardSummary(nextSummary);
+         setDashboardSummaryReady(true);
+         setAdminRequestTabCountsRemote(nextSummary.requestTabCounts);
+@@ -102,42 +115,65 @@
+     }
+ 
+     setDashboardSummaryReady(false);
++
++    let cancelled = false;
++    let unsubscribe = null;
+     let refreshRequested = false;
+ 
+     const requestRefreshOnce = () => {
+-      if (refreshRequested) return;
++      if (refreshRequested || cancelled) return;
+       refreshRequested = true;
+       void refreshDashboardSummary();
+     };
+ 
+-    const unsubscribe = onSnapshot(
+-      DASHBOARD_SUMMARY_DOC_REF,
+-      (snapshot) => {
+-        if (!snapshot.exists()) {
+-          setDashboardSummary(null);
+-          setDashboardSummaryReady(false);
+-          requestRefreshOnce();
+-          return;
+-        }
++    const subscribeDashboardSummary = async () => {
++      try {
++        const { normalizeDashboardSummary } =
++          await loadDashboardSummaryService();
+ 
+-        const nextSummary = normalizeDashboardSummary(snapshot.data());
+-        setDashboardSummary(nextSummary);
+-        setDashboardSummaryReady(true);
+-        setDashboardSummaryLoadErrorMessage('');
+-        setAdminRequestTabCountsRemote(nextSummary.requestTabCounts);
+-      },
+-      (error) => {
+-        const message =
+-          '관리자 대시보드 요약 문서를 불러오지 못했습니다.';
+-        console.error('Dashboard summary sync error:', error);
+-        setDashboardSummaryLoadErrorMessage(message);
++        if (cancelled) return;
++
++        unsubscribe = onSnapshot(
++          DASHBOARD_SUMMARY_DOC_REF,
++          (snapshot) => {
++            if (!snapshot.exists()) {
++              setDashboardSummary(null);
++              setDashboardSummaryReady(false);
++              requestRefreshOnce();
++              return;
++            }
++
++            const nextSummary = normalizeDashboardSummary(snapshot.data());
++            setDashboardSummary(nextSummary);
++            setDashboardSummaryReady(true);
++            setDashboardSummaryLoadErrorMessage('');
++            setAdminRequestTabCountsRemote(nextSummary.requestTabCounts);
++          },
++          (error) => {
++            const message =
++              '관리자 대시보드 요약 문서를 불러오지 못했습니다.';
++            console.error('Dashboard summary sync error:', error);
++            setDashboardSummaryLoadErrorMessage(message);
++            setDashboardSummaryReady(true);
++            requestRefreshOnce();
++          }
++        );
++      } catch (error) {
++        if (cancelled) return;
++
++        console.error('Dashboard summary module load error:', error);
++        setDashboardSummaryLoadErrorMessage(
++          '관리자 대시보드 모듈을 불러오지 못했습니다.'
++        );
+         setDashboardSummaryReady(true);
+-        requestRefreshOnce();
+       }
+-    );
++    };
++
++    void subscribeDashboardSummary();
+ 
+     return () => {
+-      unsubscribe();
++      cancelled = true;
++      unsubscribe?.();
+     };
+   }, [
+     shouldSubscribeDashboardSummary,
+@@ -155,23 +191,47 @@
+       !dashboardSummaryReady ||
+       !dashboardSummary
+     ) {
+-      return;
++      return undefined;
+     }
+ 
+-    const generatedAtMillis =
+-      getDashboardSummaryGeneratedAtMillis(dashboardSummary);
+-    const isStale =
+-      dashboardSummary.schemaVersion !== DASHBOARD_SUMMARY_SCHEMA_VERSION ||
+-      dashboardSummary.businessDate !== today() ||
+-      !generatedAtMillis ||
+-      Date.now() - generatedAtMillis >
+-        DASHBOARD_SUMMARY_ENTRY_REFRESH_AGE_MS;
+-    const shouldForceRefreshAfterAdminWork =
+-      DASHBOARD_REFRESH_AFTER_ADMIN_TABS.has(previousAdminTab);
++    let cancelled = false;
+ 
+-    if (isStale || shouldForceRefreshAfterAdminWork) {
+-      void refreshDashboardSummary();
+-    }
++    const refreshStaleDashboardSummary = async () => {
++      try {
++        const {
++          DASHBOARD_SUMMARY_ENTRY_REFRESH_AGE_MS,
++          DASHBOARD_SUMMARY_SCHEMA_VERSION,
++          getDashboardSummaryGeneratedAtMillis,
++        } = await loadDashboardSummaryService();
++
++        if (cancelled) return;
++
++        const generatedAtMillis =
++          getDashboardSummaryGeneratedAtMillis(dashboardSummary);
++        const isStale =
++          dashboardSummary.schemaVersion !==
++            DASHBOARD_SUMMARY_SCHEMA_VERSION ||
++          dashboardSummary.businessDate !== today() ||
++          !generatedAtMillis ||
++          Date.now() - generatedAtMillis >
++            DASHBOARD_SUMMARY_ENTRY_REFRESH_AGE_MS;
++        const shouldForceRefreshAfterAdminWork =
++          DASHBOARD_REFRESH_AFTER_ADMIN_TABS.has(previousAdminTab);
++
++        if (isStale || shouldForceRefreshAfterAdminWork) {
++          void refreshDashboardSummary();
++        }
++      } catch (error) {
++        if (cancelled) return;
++        console.error('Dashboard summary staleness check error:', error);
++      }
++    };
++
++    void refreshStaleDashboardSummary();
++
++    return () => {
++      cancelled = true;
++    };
+   }, [
+     adminTab,
+     dashboardSummary,
+--- /dev/null	2026-07-28 04:48:09.197064446 +0000
++++ /mnt/data/p2_lazy_work/src/services/publicAssetCatalogWriteThroughLoader.js	2026-07-28 08:11:46.245064446 +0000
+@@ -0,0 +1,51 @@
++let publicAssetCatalogWriteThroughServicePromise = null;
++
++/**
++ * 사용자 최초 진입 시 관리자 전용 자산 쓰기 서비스를 내려받지 않는다.
++ * 최초 관리자 카탈로그 점검 또는 자산 쓰기 작업에서 한 번만 로드하고
++ * 이후에는 동일한 모듈 Promise를 재사용한다.
++ */
++export const loadPublicAssetCatalogWriteThroughService = () => {
++  if (!publicAssetCatalogWriteThroughServicePromise) {
++    publicAssetCatalogWriteThroughServicePromise = import(
++      './publicAssetCatalogWriteThrough.js'
++    ).catch((error) => {
++      publicAssetCatalogWriteThroughServicePromise = null;
++      throw error;
++    });
++  }
++
++  return publicAssetCatalogWriteThroughServicePromise;
++};
++
++export const createPublicAssetCatalogPayload = async (...args) => {
++  const service = await loadPublicAssetCatalogWriteThroughService();
++  return service.createPublicAssetCatalogPayload(...args);
++};
++
++export const ensurePublicAssetCatalogWriteThrough = async (...args) => {
++  const service = await loadPublicAssetCatalogWriteThroughService();
++  return service.ensurePublicAssetCatalogWriteThrough(...args);
++};
++
++export const getPublicAssetCatalogWriteErrorMessage = async (...args) => {
++  try {
++    const service = await loadPublicAssetCatalogWriteThroughService();
++    return service.getPublicAssetCatalogWriteErrorMessage(...args);
++  } catch (error) {
++    console.error('Public asset catalog error helper load error:', error);
++    return '';
++  }
++};
++
++export const rebuildPublicAssetCatalogFromServer = async (...args) => {
++  const service = await loadPublicAssetCatalogWriteThroughService();
++  return service.rebuildPublicAssetCatalogFromServer(...args);
++};
++
++export const writePublicAssetCatalogMutationInTransaction = async (...args) => {
++  const service = await loadPublicAssetCatalogWriteThroughService();
++  return service.writePublicAssetCatalogMutationInTransaction(...args);
++};
++
++export default loadPublicAssetCatalogWriteThroughService;

@@ -72,9 +72,7 @@ import {
 
 import RentalStatusBoard from './components/RentalStatusBoard.jsx';
 import UserWorkspace from './user/UserWorkspace.jsx';
-import UserPopupLayer from './user/UserPopupLayer.jsx';
 import UserFooter from './user/UserFooter.jsx';
-import AppDialogs from './dialogs/AppDialogs.jsx';
 import DevRenderProfiler from './performance/DevRenderProfiler.jsx';
 import useStableContextGroups from './hooks/useStableContextGroups.js';
 import {
@@ -84,6 +82,21 @@ import {
 } from './context/appContextSlices.js';
 
 const AdminWorkspace = React.lazy(() => import('./admin/AdminWorkspace.jsx'));
+let appDialogsModulePromise = null;
+const loadAppDialogsModule = () => {
+  if (!appDialogsModulePromise) {
+    appDialogsModulePromise = import('./dialogs/AppDialogs.jsx').catch(
+      (error) => {
+        appDialogsModulePromise = null;
+        throw error;
+      }
+    );
+  }
+
+  return appDialogsModulePromise;
+};
+const AppDialogs = React.lazy(loadAppDialogsModule);
+const UserPopupLayer = React.lazy(() => import('./user/UserPopupLayer.jsx'));
 const DevPerformancePanel = React.lazy(() =>
   import('./performance/DevPerformancePanel.jsx')
 );
@@ -247,7 +260,7 @@ import {
   getPublicAssetCatalogWriteErrorMessage,
   rebuildPublicAssetCatalogFromServer,
   writePublicAssetCatalogMutationInTransaction,
-} from './services/publicAssetCatalogWriteThrough.js';
+} from './services/publicAssetCatalogWriteThroughLoader.js';
 
 import {
   buildDomesticPhoneNumber,
@@ -2067,6 +2080,8 @@ function App() {
   const [toast, setToast] = useState(null);
   // 커스텀 모달 확인창 상태
   const [confirmModal, setConfirmModal] = useState(null);
+  // 대화상자 모듈은 최초 사용 전까지 지연하고, 한 번 활성화된 뒤에는 유지한다.
+  const [appDialogsActivated, setAppDialogsActivated] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(
@@ -5554,7 +5569,7 @@ function App() {
         );
 
         const catalogErrorMessage =
-          getPublicAssetCatalogWriteErrorMessage(error);
+          await getPublicAssetCatalogWriteErrorMessage(error);
 
         triggerToast(
           catalogErrorMessage ||
@@ -10954,7 +10969,7 @@ function App() {
       );
 
       const catalogPayload =
-        createPublicAssetCatalogPayload(
+        await createPublicAssetCatalogPayload(
           nextCatalogAssets,
           {
             updatedByUid:
@@ -11075,7 +11090,7 @@ function App() {
       }
 
       const catalogErrorMessage =
-        getPublicAssetCatalogWriteErrorMessage(error);
+        await getPublicAssetCatalogWriteErrorMessage(error);
 
       if (catalogErrorMessage) {
         triggerToast(catalogErrorMessage, 'error');
@@ -18986,7 +19001,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       }
 
       const catalogErrorMessage =
-        getPublicAssetCatalogWriteErrorMessage(error);
+        await getPublicAssetCatalogWriteErrorMessage(error);
 
       if (catalogErrorMessage) {
         triggerToast(catalogErrorMessage, 'error');
@@ -19591,7 +19606,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       );
 
       const catalogErrorMessage =
-        getPublicAssetCatalogWriteErrorMessage(error);
+        await getPublicAssetCatalogWriteErrorMessage(error);
 
       if (catalogErrorMessage) {
         triggerToast(
@@ -19805,7 +19820,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           }
 
           const catalogErrorMessage =
-            getPublicAssetCatalogWriteErrorMessage(error);
+            await getPublicAssetCatalogWriteErrorMessage(error);
 
           if (catalogErrorMessage) {
             triggerToast(catalogErrorMessage, 'error');
@@ -20206,7 +20221,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       }
 
       const catalogErrorMessage =
-        getPublicAssetCatalogWriteErrorMessage(error);
+        await getPublicAssetCatalogWriteErrorMessage(error);
 
       if (catalogErrorMessage) {
         triggerToast(catalogErrorMessage, 'error');
@@ -20851,7 +20866,58 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     isUserDirectoryAccessRestricted,
   });
   const adminPanelContextKey = getAdminPanelContextKey(adminTab);
+  const hasVisibleAppDialog = Boolean(
+    adminRequestEditDialog ||
+      adminRequestRestoreDialog ||
+      userActionDialog ||
+      popupPostDialog ||
+      faqPostDialog ||
+      noticePostDialog ||
+      confirmModal ||
+      toast
+  );
+  const shouldMountUserPopupLayer =
+    view === 'user' &&
+    Array.isArray(popupPosts) &&
+    popupPosts.length > 0 &&
+    (userTab === 'home' ||
+      (userTab === 'rental' && Boolean(firebaseAuthUser)));
 
+  useEffect(() => {
+    if (hasVisibleAppDialog && !appDialogsActivated) {
+      setAppDialogsActivated(true);
+    }
+  }, [appDialogsActivated, hasVisibleAppDialog]);
+
+  useEffect(() => {
+    if (appDialogsActivated || typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const preloadAppDialogs = () => {
+      void loadAppDialogsModule().catch((error) => {
+        console.error('App dialogs preload error:', error);
+      });
+      window.removeEventListener('pointerdown', preloadAppDialogs);
+      window.removeEventListener('keydown', preloadAppDialogs);
+    };
+
+    window.addEventListener('pointerdown', preloadAppDialogs, {
+      once: true,
+      passive: true,
+    });
+    window.addEventListener('keydown', preloadAppDialogs, {
+      once: true,
+    });
+
+    return () => {
+      window.removeEventListener('pointerdown', preloadAppDialogs);
+      window.removeEventListener('keydown', preloadAppDialogs);
+    };
+  }, [appDialogsActivated]);
+
+  const shouldRenderAppDialogs =
+    hasVisibleAppDialog || appDialogsActivated;
 
   const showFirebaseLoadingOverlay = !firebaseReady;
   const normalizedSiteSettings = normalizeSiteSettings(siteSettings);
@@ -21226,15 +21292,20 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         </DevRenderProfiler>
       )}
 
-      <DevRenderProfiler id="Shared:AppDialogs">
-        <MemoizedAppDialogs ctx={contextGroups.app.dialogs} />
-      </DevRenderProfiler>
-      {view === 'user' &&
-        (userTab === 'home' || (userTab === 'rental' && firebaseAuthUser)) && (
+      {shouldRenderAppDialogs && (
+        <React.Suspense fallback={null}>
+          <DevRenderProfiler id="Shared:AppDialogs">
+            <MemoizedAppDialogs ctx={contextGroups.app.dialogs} />
+          </DevRenderProfiler>
+        </React.Suspense>
+      )}
+      {shouldMountUserPopupLayer && (
+        <React.Suspense fallback={null}>
           <DevRenderProfiler id="Shared:UserPopupLayer">
             <MemoizedUserPopupLayer ctx={contextGroups.app.popup} />
           </DevRenderProfiler>
-        )}
+        </React.Suspense>
+      )}
 
       {import.meta.env.DEV && (
         <React.Suspense fallback={null}>

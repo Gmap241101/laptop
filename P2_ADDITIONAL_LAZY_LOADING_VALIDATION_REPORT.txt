@@ -1,0 +1,45 @@
+P2 추가 지연 로딩 최적화 검증 보고서
+======================================================
+
+[PASS] AppDialogs static import removed
+[PASS] AppDialogs lazy import present
+[PASS] AppDialogs conditional render present
+[PASS] AppDialogs first interaction preload present
+[PASS] UserPopupLayer static import removed
+[PASS] UserPopupLayer lazy import present
+[PASS] UserPopupLayer skips empty popup list
+[PASS] Dashboard service static import removed
+[PASS] Dashboard service dynamic import present
+[PASS] Dashboard async subscription cancellation present
+[PASS] Public catalog direct import removed from App
+[PASS] Public catalog loader dynamic import present
+[PASS] Loader export createPublicAssetCatalogPayload
+[PASS] Loader export ensurePublicAssetCatalogWriteThrough
+[PASS] Loader export getPublicAssetCatalogWriteErrorMessage
+[PASS] Loader export rebuildPublicAssetCatalogFromServer
+[PASS] Loader export writePublicAssetCatalogMutationInTransaction
+[PASS] Rules unchanged
+[PASS] Indexes unchanged
+[PASS] Package manifest unchanged
+[PASS] Package lock unchanged
+[PASS] Initial module count reduced | 32 -> 29
+[PASS] Initial source bytes reduced | 885031 -> 822570
+[PASS] Expected modules are dynamic entries | src/dialogs/AppDialogs.jsx, src/services/dashboardSummaryService.js, src/services/publicAssetCatalogWriteThrough.js, src/user/UserPopupLayer.jsx
+[PASS] Firestore listener call locations unchanged | 34 -> 34
+
+Total: 25
+Passed: 25
+Failed: 0
+
+구문 및 import 검사: 별도 TypeScript transpile 검사 67개 파일, 오류 0건.
+Vite 프로덕션 빌드: npm ci 실행이 컨테이너 ClientError로 종료되어 수행하지 못함.
+
+압축 패키지 검증
+------------------------------------------------------
+[PASS] 전체 프로젝트 ZIP 무결성 검사
+[PASS] 변경 파일 ZIP 무결성 검사
+[PASS] 전체 프로젝트 ZIP 중복 경로 0건
+[PASS] 변경 파일 ZIP 중복 경로 0건
+[PASS] node_modules, dist, .git 포함 0건
+[PASS] 전체 ZIP 재추출 후 67개 소스 구문 및 import 재검사
+[PASS] 변경 ZIP 8개 파일 원본 일치

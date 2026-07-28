@@ -3,13 +3,21 @@ import { onSnapshot } from 'firebase/firestore';
 
 import { DASHBOARD_SUMMARY_DOC_REF } from '../firebase.js';
 import { today } from '../utils/appUtils.js';
-import {
-  DASHBOARD_SUMMARY_ENTRY_REFRESH_AGE_MS,
-  DASHBOARD_SUMMARY_SCHEMA_VERSION,
-  getDashboardSummaryGeneratedAtMillis,
-  normalizeDashboardSummary,
-  refreshDashboardSummaryDocument,
-} from '../services/dashboardSummaryService.js';
+
+let dashboardSummaryServicePromise = null;
+
+const loadDashboardSummaryService = () => {
+  if (!dashboardSummaryServicePromise) {
+    dashboardSummaryServicePromise = import(
+      '../services/dashboardSummaryService.js'
+    ).catch((error) => {
+      dashboardSummaryServicePromise = null;
+      throw error;
+    });
+  }
+
+  return dashboardSummaryServicePromise;
+};
 
 const DASHBOARD_REFRESH_AFTER_ADMIN_TABS = new Set([
   'requests',
@@ -58,7 +66,12 @@ export const useDashboardSummary = ({
       setDashboardSummaryLoadErrorMessage('');
 
       try {
-        const nextSummary = await refreshDashboardSummaryDocument({ adminUid });
+        const { refreshDashboardSummaryDocument } =
+          await loadDashboardSummaryService();
+        const nextSummary = await refreshDashboardSummaryDocument({
+          adminUid,
+        });
+
         setDashboardSummary(nextSummary);
         setDashboardSummaryReady(true);
         setAdminRequestTabCountsRemote(nextSummary.requestTabCounts);
@@ -102,42 +115,65 @@ export const useDashboardSummary = ({
     }
 
     setDashboardSummaryReady(false);
+
+    let cancelled = false;
+    let unsubscribe = null;
     let refreshRequested = false;
 
     const requestRefreshOnce = () => {
-      if (refreshRequested) return;
+      if (refreshRequested || cancelled) return;
       refreshRequested = true;
       void refreshDashboardSummary();
     };
 
-    const unsubscribe = onSnapshot(
-      DASHBOARD_SUMMARY_DOC_REF,
-      (snapshot) => {
-        if (!snapshot.exists()) {
-          setDashboardSummary(null);
-          setDashboardSummaryReady(false);
-          requestRefreshOnce();
-          return;
-        }
+    const subscribeDashboardSummary = async () => {
+      try {
+        const { normalizeDashboardSummary } =
+          await loadDashboardSummaryService();
 
-        const nextSummary = normalizeDashboardSummary(snapshot.data());
-        setDashboardSummary(nextSummary);
+        if (cancelled) return;
+
+        unsubscribe = onSnapshot(
+          DASHBOARD_SUMMARY_DOC_REF,
+          (snapshot) => {
+            if (!snapshot.exists()) {
+              setDashboardSummary(null);
+              setDashboardSummaryReady(false);
+              requestRefreshOnce();
+              return;
+            }
+
+            const nextSummary = normalizeDashboardSummary(snapshot.data());
+            setDashboardSummary(nextSummary);
+            setDashboardSummaryReady(true);
+            setDashboardSummaryLoadErrorMessage('');
+            setAdminRequestTabCountsRemote(nextSummary.requestTabCounts);
+          },
+          (error) => {
+            const message =
+              '관리자 대시보드 요약 문서를 불러오지 못했습니다.';
+            console.error('Dashboard summary sync error:', error);
+            setDashboardSummaryLoadErrorMessage(message);
+            setDashboardSummaryReady(true);
+            requestRefreshOnce();
+          }
+        );
+      } catch (error) {
+        if (cancelled) return;
+
+        console.error('Dashboard summary module load error:', error);
+        setDashboardSummaryLoadErrorMessage(
+          '관리자 대시보드 모듈을 불러오지 못했습니다.'
+        );
         setDashboardSummaryReady(true);
-        setDashboardSummaryLoadErrorMessage('');
-        setAdminRequestTabCountsRemote(nextSummary.requestTabCounts);
-      },
-      (error) => {
-        const message =
-          '관리자 대시보드 요약 문서를 불러오지 못했습니다.';
-        console.error('Dashboard summary sync error:', error);
-        setDashboardSummaryLoadErrorMessage(message);
-        setDashboardSummaryReady(true);
-        requestRefreshOnce();
       }
-    );
+    };
+
+    void subscribeDashboardSummary();
 
     return () => {
-      unsubscribe();
+      cancelled = true;
+      unsubscribe?.();
     };
   }, [
     shouldSubscribeDashboardSummary,
@@ -155,23 +191,47 @@ export const useDashboardSummary = ({
       !dashboardSummaryReady ||
       !dashboardSummary
     ) {
-      return;
+      return undefined;
     }
 
-    const generatedAtMillis =
-      getDashboardSummaryGeneratedAtMillis(dashboardSummary);
-    const isStale =
-      dashboardSummary.schemaVersion !== DASHBOARD_SUMMARY_SCHEMA_VERSION ||
-      dashboardSummary.businessDate !== today() ||
-      !generatedAtMillis ||
-      Date.now() - generatedAtMillis >
-        DASHBOARD_SUMMARY_ENTRY_REFRESH_AGE_MS;
-    const shouldForceRefreshAfterAdminWork =
-      DASHBOARD_REFRESH_AFTER_ADMIN_TABS.has(previousAdminTab);
+    let cancelled = false;
 
-    if (isStale || shouldForceRefreshAfterAdminWork) {
-      void refreshDashboardSummary();
-    }
+    const refreshStaleDashboardSummary = async () => {
+      try {
+        const {
+          DASHBOARD_SUMMARY_ENTRY_REFRESH_AGE_MS,
+          DASHBOARD_SUMMARY_SCHEMA_VERSION,
+          getDashboardSummaryGeneratedAtMillis,
+        } = await loadDashboardSummaryService();
+
+        if (cancelled) return;
+
+        const generatedAtMillis =
+          getDashboardSummaryGeneratedAtMillis(dashboardSummary);
+        const isStale =
+          dashboardSummary.schemaVersion !==
+            DASHBOARD_SUMMARY_SCHEMA_VERSION ||
+          dashboardSummary.businessDate !== today() ||
+          !generatedAtMillis ||
+          Date.now() - generatedAtMillis >
+            DASHBOARD_SUMMARY_ENTRY_REFRESH_AGE_MS;
+        const shouldForceRefreshAfterAdminWork =
+          DASHBOARD_REFRESH_AFTER_ADMIN_TABS.has(previousAdminTab);
+
+        if (isStale || shouldForceRefreshAfterAdminWork) {
+          void refreshDashboardSummary();
+        }
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Dashboard summary staleness check error:', error);
+      }
+    };
+
+    void refreshStaleDashboardSummary();
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     adminTab,
     dashboardSummary,

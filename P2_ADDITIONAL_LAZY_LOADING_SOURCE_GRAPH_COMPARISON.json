@@ -1,0 +1,31 @@
+{
+  "generatedAt": "2026-07-28T08:14:32.987Z",
+  "before": {
+    "initialModuleCount": 32,
+    "initialSourceBytes": 885031,
+    "dynamicEntryCount": 10
+  },
+  "after": {
+    "initialModuleCount": 29,
+    "initialSourceBytes": 822570,
+    "dynamicEntryCount": 13
+  },
+  "delta": {
+    "initialModuleCount": -3,
+    "initialSourceBytes": -62461,
+    "initialSourcePercent": -7.06,
+    "dynamicEntryCount": 3
+  },
+  "newlyDeferredModules": [
+    "src/dialogs/AppDialogs.jsx",
+    "src/services/dashboardSummaryService.js",
+    "src/services/publicAssetCatalogWriteThrough.js",
+    "src/user/UserPopupLayer.jsx"
+  ],
+  "indirectlyRemovedFromInitialGraph": [
+    "src/hooks/useMinuteClock.js"
+  ],
+  "notes": [
+    "Dynamic entry count increases by 3 because RichTextEditor becomes nested behind the newly lazy AppDialogs module and is no longer a top-level dynamic entry in the initial graph."
+  ]
+}
