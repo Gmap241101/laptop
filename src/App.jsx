@@ -75,6 +75,7 @@ import UserWorkspace from './user/UserWorkspace.jsx';
 import UserPopupLayer from './user/UserPopupLayer.jsx';
 import UserFooter from './user/UserFooter.jsx';
 import AppDialogs from './dialogs/AppDialogs.jsx';
+import DevRenderProfiler from './performance/DevRenderProfiler.jsx';
 
 const AdminWorkspace = React.lazy(() => import('./admin/AdminWorkspace.jsx'));
 import {
@@ -82,7 +83,7 @@ import {
   legacyTextToRichHtml,
   richTextHtmlToText,
   sanitizeRichTextHtml,
-} from './components/RichTextEditor.jsx';
+} from './utils/richTextCore.js';
 
 import {
   ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
@@ -21074,7 +21075,9 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         )}
 
         {view === 'user' ? (
-          <UserWorkspace ctx={uiContext} />
+          <DevRenderProfiler id="UserWorkspace">
+            <UserWorkspace ctx={uiContext} />
+          </DevRenderProfiler>
         ) : (
           <React.Suspense
             fallback={(
@@ -21086,7 +21089,9 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
               </Card>
             )}
           >
-            <AdminWorkspace ctx={uiContext} />
+            <DevRenderProfiler id="AdminWorkspace">
+              <AdminWorkspace ctx={uiContext} />
+            </DevRenderProfiler>
           </React.Suspense>
         )}
       </main>

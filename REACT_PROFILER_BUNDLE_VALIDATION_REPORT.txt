@@ -1,0 +1,63 @@
+REACT PROFILER / BUNDLE OPTIMIZATION VALIDATION
+================================================
+
+Baseline
+- rental-system-admin-status-summary-fix-deployment-package.zip
+
+Changed existing files
+- package.json
+- src/App.jsx
+- src/admin/AdminFaqPanel.jsx
+- src/components/RichTextEditor.jsx
+- src/dialogs/AppDialogs.jsx
+- src/user/UserBoardPanel.jsx
+- src/user/UserFooter.jsx
+- src/user/UserFooterPagePanel.jsx
+- src/user/UserPopupLayer.jsx
+- src/user/UserWorkspace.jsx
+
+New files
+- src/components/RichTextContent.jsx
+- src/performance/DevRenderProfiler.jsx
+- src/utils/richTextCore.js
+- tools/analyze-bundle.mjs
+- tools/analyze-source-graph.mjs
+
+Static source graph
+- Before module count: 34
+- After module count: 28
+- Before source bytes: 1,065,887
+- After source bytes: 849,728
+- Reduced source bytes: 216,159
+- Reduction: 20.3%
+- Before dynamic entries: 1
+- After dynamic entries: 9
+
+Deferred source
+- User route panels: 133,450 bytes
+- RichTextEditor: 83,424 bytes
+
+Validation
+- TypeScript parser syntax: PASS (59 JS/JSX/MJS files)
+- TypeScript JSX transpile: PASS (56 JS/JSX files)
+- node --check for JS/MJS: PASS
+- Relative local imports: PASS
+- Named local exports: PASS
+- richTextCore runtime tests: PASS
+- Source graph analyzer runtime: PASS
+- Existing Korean strings removed: 0
+- Existing Korean strings added: 0
+- Firestore Rules changed: NO
+- Firestore indexes changed: NO
+- Firebase config changed: NO
+
+Build limitation
+- npm proxy returned HTTP 503 Service Temporarily Unavailable.
+- npm ci and Vite production build could not be completed in this environment.
+- Run `npm run analyze:bundle` on the deployment PC for actual raw/gzip bundle sizes.
+- Full ZIP integrity: PASS
+- Changed-files ZIP integrity: PASS
+- Full ZIP re-extraction checks: PASS
+- ZIP duplicate paths: 0
+- ZIP unsafe paths: 0
+- node_modules/dist/.git included: NO

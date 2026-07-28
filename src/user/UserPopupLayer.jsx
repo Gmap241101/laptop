@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
-import { isRichTextEmpty, legacyTextToRichHtml, RichTextContent } from '../components/RichTextEditor.jsx';
+import RichTextContent from '../components/RichTextContent.jsx';
+import { isRichTextEmpty, legacyTextToRichHtml } from '../utils/richTextCore.js';
 
 export default function UserPopupLayer({ ctx }) {
   const {

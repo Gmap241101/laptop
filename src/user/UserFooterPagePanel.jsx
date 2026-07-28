@@ -1,4 +1,4 @@
-import { RichTextContent } from '../components/RichTextEditor.jsx';
+import RichTextContent from '../components/RichTextContent.jsx';
 
 const getSafeExternalFooterUrl = (value = '') => {
   const normalizedValue = String(value || '').trim();

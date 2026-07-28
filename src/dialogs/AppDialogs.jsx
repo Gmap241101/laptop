@@ -1,4 +1,22 @@
-import { RichTextEditor } from '../components/RichTextEditor.jsx';
+import { lazy, Suspense } from 'react';
+
+const RichTextEditor = lazy(() =>
+  import('../components/RichTextEditor.jsx').then((module) => ({
+    default: module.RichTextEditor,
+  }))
+);
+
+const LazyRichTextEditor = (props) => (
+  <Suspense
+    fallback={
+      <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-8 text-center text-xs font-semibold text-slate-500">
+        편집기를 불러오는 중입니다.
+      </div>
+    }
+  >
+    <RichTextEditor {...props} />
+  </Suspense>
+);
 
 export default function AppDialogs({ ctx }) {
   const {
@@ -638,7 +656,7 @@ export default function AppDialogs({ ctx }) {
                 />
               </div>
 
-              <RichTextEditor
+              <LazyRichTextEditor
                 label="내용 (선택)"
                 value={popupPostForm.contentHtml}
                 onChange={(contentHtml) => setPopupPostForm((prev) => ({ ...prev, contentHtml }))}
@@ -799,7 +817,7 @@ export default function AppDialogs({ ctx }) {
                 placeholder="FAQ 질문 제목을 입력해 주세요."
               />
 
-              <RichTextEditor
+              <LazyRichTextEditor
                 label="본문"
                 value={faqPostForm.contentHtml}
                 onChange={(contentHtml) =>
@@ -917,7 +935,7 @@ export default function AppDialogs({ ctx }) {
                 placeholder="공지사항 제목을 입력해 주세요."
               />
 
-              <RichTextEditor
+              <LazyRichTextEditor
                 label="내용"
                 value={noticePostForm.contentHtml}
                 onChange={(contentHtml) =>

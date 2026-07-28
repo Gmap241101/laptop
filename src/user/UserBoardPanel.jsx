@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronUp } from 'lucide-react';
 
-import { RichTextContent } from '../components/RichTextEditor.jsx';
+import RichTextContent from '../components/RichTextContent.jsx';
 
 export default function UserBoardPanel({ ctx }) {
   const {

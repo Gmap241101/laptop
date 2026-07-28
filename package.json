@@ -10,7 +10,9 @@
     "deploy": "gh-pages -d dist",
     "build": "vite build",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "analyze:source": "node tools/analyze-source-graph.mjs",
+    "analyze:bundle": "npm run build && node tools/analyze-bundle.mjs"
   },
   "dependencies": {
     "firebase": "^10.14.1",
