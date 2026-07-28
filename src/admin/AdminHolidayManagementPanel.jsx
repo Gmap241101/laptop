@@ -400,7 +400,7 @@ export default function AdminHolidayManagementPanel({ ctx }) {
                   법정·임시공휴일 자동 불러오기
                 </h4>
                 <p className="mt-1 text-[11px] leading-5 text-blue-700">
-                  💡<b>운영 안내:</b> 연도별 JSON 파일(public/holidays)을 불러옵니다. 중복 날짜 발생 시 기존 사유 유지, 병합, 교체 중 선택할 수 있습니다.
+                  💡<b>운영 안내:</b> 연도별 JSON 파일(public/holidays)을 불러옵니다. 중복 날짜 발생 시 기존 사유 유지, 병합, 교체 중 선택 가능합니다.
                 </p>
               </div>
 
