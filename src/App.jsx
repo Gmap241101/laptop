@@ -76,8 +76,17 @@ import UserPopupLayer from './user/UserPopupLayer.jsx';
 import UserFooter from './user/UserFooter.jsx';
 import AppDialogs from './dialogs/AppDialogs.jsx';
 import DevRenderProfiler from './performance/DevRenderProfiler.jsx';
+import useStableContextGroups from './hooks/useStableContextGroups.js';
+import {
+  APP_CONTEXT_GROUP_KEYS,
+  getAdminPanelContextKey,
+  getUserPanelContextKey,
+} from './context/appContextSlices.js';
 
 const AdminWorkspace = React.lazy(() => import('./admin/AdminWorkspace.jsx'));
+const MemoizedUserFooter = React.memo(UserFooter);
+const MemoizedAppDialogs = React.memo(AppDialogs);
+const MemoizedUserPopupLayer = React.memo(UserPopupLayer);
 import {
   isRichTextEmpty,
   legacyTextToRichHtml,
@@ -20164,7 +20173,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     DEFAULT_EXCLUDE_HOLIDAYS_FOR_START_DATE,
     DEFAULT_EXCLUDE_SATURDAYS,
     DEFAULT_EXCLUDE_SUNDAYS,
-    DEFAULT_EXCLUDE_WEEKENDS_FOR_START_DATE,
     DEFAULT_HOLIDAY_TYPE,
     DEFAULT_WORK_END_TIME,
     DateInputWithWeekday,
@@ -20247,7 +20255,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     adminSelectedAssetCategory,
     adminTab,
     adminUserAccountHasNextPage,
-    adminUserAccountPage,
     adminUserAccountQuery,
     adminUserAccountSavingUid,
     adminUserAccountSearchMode,
@@ -20289,7 +20296,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     currentAuthRoleErrorMessage,
     currentAuthRoleReady,
     currentUserRentalRestrictionStatus,
-    currentUserRestriction,
     currentUserRestrictionReady,
     currentUserRequests,
     dashboardSummary,
@@ -20351,7 +20357,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     faqSearchWithinCategory,
     faqTotalPages,
     filteredAdminRequests,
-    filteredBorrowers,
     filteredLaptops,
     filteredManagedUserAccounts,
     finalizeSplitStorageMigration,
@@ -20419,7 +20424,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     memberDirectoryPolicyEnabled,
     memberIdentityClaimsReady,
     mergedRentalRequests,
-    managedUserAccounts,
     motion,
     moveTempAssetCategory,
     moveTempBorrower,
@@ -20564,12 +20568,10 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     setFaqSearchWithinCategory,
     setForm,
     setHolidayImportConflictModal,
-    setHolidayImportLoading,
     setHolidayImportYear,
     setHolidayManagementMonth,
     setHolidayManagementView,
     setHolidayManagementYear,
-    setIsCommunityMenuOpen,
     setNewAssetCategory,
     setNewBorrower,
     setNewBorrowerTeam,
@@ -20596,7 +20598,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     setUserActionForm,
     setUserAuthForm,
     setUserProfileForm,
-    setUserTab,
     setView,
     setWithdrawalPassword,
     shouldShowAdminAccountsErrorPage,
@@ -20702,6 +20703,18 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     openFooterPage,
     userTab,
   };
+
+  const contextGroups = useStableContextGroups(
+    uiContext,
+    APP_CONTEXT_GROUP_KEYS
+  );
+  const userPanelContextKey = getUserPanelContextKey({
+    userTab,
+    hasFirebaseAuthSession,
+    isUserDirectoryAccessRestricted,
+  });
+  const adminPanelContextKey = getAdminPanelContextKey(adminTab);
+
 
   const showFirebaseLoadingOverlay = !firebaseReady;
   const normalizedSiteSettings = normalizeSiteSettings(siteSettings);
@@ -21042,7 +21055,10 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
 
         {view === 'user' ? (
           <DevRenderProfiler id="UserWorkspace">
-            <UserWorkspace ctx={uiContext} />
+            <UserWorkspace
+              ctx={contextGroups.user.shell}
+              panelCtx={contextGroups.user[userPanelContextKey]}
+            />
           </DevRenderProfiler>
         ) : (
           <React.Suspense
@@ -21056,18 +21072,23 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             )}
           >
             <DevRenderProfiler id="AdminWorkspace">
-              <AdminWorkspace ctx={uiContext} />
+              <AdminWorkspace
+                ctx={contextGroups.admin.shell}
+                panelCtx={contextGroups.admin[adminPanelContextKey]}
+              />
             </DevRenderProfiler>
           </React.Suspense>
         )}
       </main>
 
-      {view === 'user' && <UserFooter ctx={uiContext} />}
+      {view === 'user' && (
+        <MemoizedUserFooter ctx={contextGroups.app.footer} />
+      )}
 
-      <AppDialogs ctx={uiContext} />
+      <MemoizedAppDialogs ctx={contextGroups.app.dialogs} />
       {view === 'user' &&
         (userTab === 'home' || (userTab === 'rental' && firebaseAuthUser)) && (
-          <UserPopupLayer ctx={uiContext} />
+          <MemoizedUserPopupLayer ctx={contextGroups.app.popup} />
         )}
       </div>
 

@@ -1,13 +1,20 @@
-import { lazy, Suspense } from 'react';
+import { lazy, memo, Suspense, useMemo } from 'react';
 import UserHomePanel from './UserHomePanel.jsx';
 
-const UserAuthPanel = lazy(() => import('./UserAuthPanel.jsx'));
-const UserAccountStatusPanel = lazy(() => import('./UserAccountStatusPanel.jsx'));
-const UserBoardPanel = lazy(() => import('./UserBoardPanel.jsx'));
-const UserMyPagePanel = lazy(() => import('./UserMyPagePanel.jsx'));
-const UserRentalPanel = lazy(() => import('./UserRentalPanel.jsx'));
-const UserRequestHistoryPanel = lazy(() => import('./UserRequestHistoryPanel.jsx'));
-const UserFooterPagePanel = lazy(() => import('./UserFooterPagePanel.jsx'));
+const UserAuthPanel = memo(lazy(() => import('./UserAuthPanel.jsx')));
+const UserAccountStatusPanel = memo(
+  lazy(() => import('./UserAccountStatusPanel.jsx'))
+);
+const UserBoardPanel = memo(lazy(() => import('./UserBoardPanel.jsx')));
+const UserMyPagePanel = memo(lazy(() => import('./UserMyPagePanel.jsx')));
+const UserRentalPanel = memo(lazy(() => import('./UserRentalPanel.jsx')));
+const UserRequestHistoryPanel = memo(
+  lazy(() => import('./UserRequestHistoryPanel.jsx'))
+);
+const UserFooterPagePanel = memo(
+  lazy(() => import('./UserFooterPagePanel.jsx'))
+);
+const MemoizedUserHomePanel = memo(UserHomePanel);
 
 const UserPanelLoading = () => (
   <div className="rounded-2xl border border-slate-200 bg-white px-6 py-12 text-center shadow-sm">
@@ -24,7 +31,7 @@ const renderLazyPanel = (panel) => (
   <Suspense fallback={<UserPanelLoading />}>{panel}</Suspense>
 );
 
-export default function UserWorkspace({ ctx }) {
+function UserWorkspace({ ctx, panelCtx }) {
   const {
     currentAuthRoleReady,
     firebaseAuthReady,
@@ -34,6 +41,10 @@ export default function UserWorkspace({ ctx }) {
     userTab,
   } = ctx;
 
+  const protectedLoginContext = useMemo(
+    () => ({ ...panelCtx, userTab: 'login' }),
+    [panelCtx]
+  );
   const isProtectedUserTab = ['rental', 'history'].includes(userTab);
 
   if (isProtectedUserTab && (!firebaseAuthReady || !currentAuthRoleReady)) {
@@ -50,7 +61,7 @@ export default function UserWorkspace({ ctx }) {
   }
 
   if (isProtectedUserTab && !hasFirebaseAuthSession) {
-    return renderLazyPanel(<UserAuthPanel ctx={{ ...ctx, userTab: 'login' }} />);
+    return renderLazyPanel(<UserAuthPanel ctx={protectedLoginContext} />);
   }
 
   if (isProtectedUserTab && hasFirebaseAuthSession && !firebaseAuthUser) {
@@ -66,29 +77,41 @@ export default function UserWorkspace({ ctx }) {
     );
   }
 
-  if (isProtectedUserTab && hasFirebaseAuthSession && isUserDirectoryAccessRestricted) {
-    return renderLazyPanel(<UserMyPagePanel ctx={ctx} />);
+  if (
+    isProtectedUserTab &&
+    hasFirebaseAuthSession &&
+    isUserDirectoryAccessRestricted
+  ) {
+    return renderLazyPanel(<UserMyPagePanel ctx={panelCtx} />);
   }
 
-  if (userTab === 'home') return <UserHomePanel ctx={ctx} />;
-  if (userTab === 'rental') return renderLazyPanel(<UserRentalPanel ctx={ctx} />);
-  if (userTab === 'mypage') return renderLazyPanel(<UserMyPagePanel ctx={ctx} />);
+  if (userTab === 'home') {
+    return <MemoizedUserHomePanel ctx={panelCtx} />;
+  }
+  if (userTab === 'rental') {
+    return renderLazyPanel(<UserRentalPanel ctx={panelCtx} />);
+  }
+  if (userTab === 'mypage') {
+    return renderLazyPanel(<UserMyPagePanel ctx={panelCtx} />);
+  }
 
   if (['login', 'signup', 'findEmail', 'resetPassword'].includes(userTab)) {
-    return renderLazyPanel(<UserAuthPanel ctx={ctx} />);
+    return renderLazyPanel(<UserAuthPanel ctx={panelCtx} />);
   }
 
   if (userTab === 'accountStatus') {
-    return renderLazyPanel(<UserAccountStatusPanel ctx={ctx} />);
+    return renderLazyPanel(<UserAccountStatusPanel ctx={panelCtx} />);
   }
 
   if (userTab === 'history') {
-    return renderLazyPanel(<UserRequestHistoryPanel ctx={ctx} />);
+    return renderLazyPanel(<UserRequestHistoryPanel ctx={panelCtx} />);
   }
 
   if (userTab === 'footerPage') {
-    return renderLazyPanel(<UserFooterPagePanel ctx={ctx} />);
+    return renderLazyPanel(<UserFooterPagePanel ctx={panelCtx} />);
   }
 
-  return renderLazyPanel(<UserBoardPanel ctx={ctx} />);
+  return renderLazyPanel(<UserBoardPanel ctx={panelCtx} />);
 }
+
+export default memo(UserWorkspace);

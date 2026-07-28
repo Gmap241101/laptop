@@ -1,23 +1,23 @@
-import { lazy, Suspense } from 'react';
+import { lazy, memo, Suspense } from 'react';
 import { Activity, CalendarDays, ChevronDown, Database, Info, Menu, Paintbrush } from 'lucide-react';
 
-const AdminDashboardPanel = lazy(() => import('./AdminDashboardPanel.jsx'));
-const AdminRequestsPanel = lazy(() => import('./AdminRequestsPanel.jsx'));
-const AdminAssetsPanel = lazy(() => import('./AdminAssetsPanel.jsx'));
-const AdminAssetCategoriesPanel = lazy(() => import('./AdminAssetCategoriesPanel.jsx'));
-const AdminOrganizationPanel = lazy(() => import('./AdminOrganizationPanel.jsx'));
-const AdminSignupPolicyPanel = lazy(() => import('./AdminSignupPolicyPanel.jsx'));
-const AdminNoticePanel = lazy(() => import('./AdminNoticePanel.jsx'));
-const AdminPopupPanel = lazy(() => import('./AdminPopupPanel.jsx'));
-const AdminFaqPanel = lazy(() => import('./AdminFaqPanel.jsx'));
-const AdminFooterPanel = lazy(() => import('./AdminFooterPanel.jsx'));
-const AdminMemberAccountsPanel = lazy(() => import('./AdminMemberAccountsPanel.jsx'));
-const AdminAccountsPanel = lazy(() => import('./AdminAccountsPanel.jsx'));
-const AdminSettingsPanel = lazy(() => import('./AdminSettingsPanel.jsx'));
-const AdminAccountSecurityPanel = lazy(() => import('./AdminAccountSecurityPanel.jsx'));
-const AdminExtensionSettingsPanel = lazy(() => import('./AdminExtensionSettingsPanel.jsx'));
-const AdminHolidayManagementPanel = lazy(() => import('./AdminHolidayManagementPanel.jsx'));
-const AdminHomeManagementPanel = lazy(() => import('./AdminHomeManagementPanel.jsx'));
+const AdminDashboardPanel = memo(lazy(() => import('./AdminDashboardPanel.jsx')));
+const AdminRequestsPanel = memo(lazy(() => import('./AdminRequestsPanel.jsx')));
+const AdminAssetsPanel = memo(lazy(() => import('./AdminAssetsPanel.jsx')));
+const AdminAssetCategoriesPanel = memo(lazy(() => import('./AdminAssetCategoriesPanel.jsx')));
+const AdminOrganizationPanel = memo(lazy(() => import('./AdminOrganizationPanel.jsx')));
+const AdminSignupPolicyPanel = memo(lazy(() => import('./AdminSignupPolicyPanel.jsx')));
+const AdminNoticePanel = memo(lazy(() => import('./AdminNoticePanel.jsx')));
+const AdminPopupPanel = memo(lazy(() => import('./AdminPopupPanel.jsx')));
+const AdminFaqPanel = memo(lazy(() => import('./AdminFaqPanel.jsx')));
+const AdminFooterPanel = memo(lazy(() => import('./AdminFooterPanel.jsx')));
+const AdminMemberAccountsPanel = memo(lazy(() => import('./AdminMemberAccountsPanel.jsx')));
+const AdminAccountsPanel = memo(lazy(() => import('./AdminAccountsPanel.jsx')));
+const AdminSettingsPanel = memo(lazy(() => import('./AdminSettingsPanel.jsx')));
+const AdminAccountSecurityPanel = memo(lazy(() => import('./AdminAccountSecurityPanel.jsx')));
+const AdminExtensionSettingsPanel = memo(lazy(() => import('./AdminExtensionSettingsPanel.jsx')));
+const AdminHolidayManagementPanel = memo(lazy(() => import('./AdminHolidayManagementPanel.jsx')));
+const AdminHomeManagementPanel = memo(lazy(() => import('./AdminHomeManagementPanel.jsx')));
 
 const ADMIN_MENU_GROUP_STATE_KEY = 'mk_laptop_admin_menu_groups';
 
@@ -47,283 +47,39 @@ const ADMIN_TAB_GROUP = {
   systemInfo: 'system',
 };
 
-export default function AdminWorkspace({ ctx }) {
+function AdminWorkspace({ ctx, panelCtx }) {
   const {
-    ADMIN_ACCOUNT_PAGE_SIZE,
-    ADMIN_CUSTOM_OPTION_VALUE,
-    ADMIN_REQUEST_PAGE_SIZE_OPTIONS,
-    ADMIN_REQUEST_TAB,
     AlertCircle,
-    AnimatePresence,
-    Badge,
     Button,
     Card,
     CardContent,
-    CheckCircle2,
     ClipboardList,
     Clock,
-    DEFAULT_EXCLUDE_HOLIDAYS_FOR_START_DATE,
-    DEFAULT_EXCLUDE_WEEKENDS_FOR_START_DATE,
-    DEFAULT_HOLIDAY_TYPE,
-    DEFAULT_WORK_END_TIME,
-    Edit3,
-    FAQ_POSTS_PER_PAGE_OPTIONS,
-    HOLIDAY_TYPE_LABEL,
     Input,
     Laptop,
     LayoutDashboard,
     LockIcon,
-    LogOut,
-    NOTICE_POSTS_PER_PAGE_OPTIONS,
-    Plus,
-    RENTAL_REQUEST_AUDIT_ACTION,
     React,
-    STATUS,
-    Save,
-    Search,
-    Select,
     Settings,
     ShieldCheck,
-    Trash2,
-    USER_PROFILE_STATUS,
-    USER_REQUEST_ACTION,
-    USER_REQUEST_REVIEW_STATUS,
     UserCircle,
     Users,
-    X,
-    XCircle,
-    addFaqCategory,
-    addTempAssetCategory,
-    addTempBorrower,
-    addTempHoliday,
-    addTempTeam,
-    adminAccountEditForm,
-    adminAccountForm,
-    adminAccountTotalPages,
-    adminAccountUserOptions,
     adminAccountsLoadErrorMessage,
     adminAuthForm,
     adminAuthLoading,
-    adminAvailabilityFilter,
-    adminExpandedFaqPostId,
-    adminFaqTotalPages,
-    adminFilteredLaptops,
-    adminLaptopQuery,
-    adminNoticeTotalPages,
-    adminPinnedFaqPosts,
-    adminRegularFaqPosts,
-    adminRequestPageSize,
-    adminRequestQuery,
-    adminRequestTab,
-    adminRequestTabCounts,
-    adminRequestTotalPages,
-    adminSelectedAssetCategory,
     adminTab,
-    adminUserAccountQuery,
-    adminUserAccountSavingUid,
-    adminUserAccountStatusCounts,
-    adminUserAccountStatusFilter,
-    adminUserAccountsLoadErrorMessage,
-    adminUserAccountsReady,
-    adminUserActionSavingRequestId,
-    applyEditTempAssetCategory,
-    applyEditTempBorrower,
-    applyEditTempTeam,
     authenticateAdmin,
-    authenticatedAdminId,
-    cancelEditAdminAccount,
-    cancelTempAssetCategoryChanges,
-    cancelTempPeopleChanges,
-    confirmDeleteFaqCategory,
-    confirmDeleteFaqPost,
-    confirmDeleteNoticePost,
-    confirmUserAccountStatusChange,
-    createDefaultAdminAccountForm,
-    createLaptop,
     currentAuthRoleErrorMessage,
     data,
-    deleteAdminAccount,
-    deleteLaptop,
-    deleteTempAssetCategory,
-    deleteTempBorrower,
-    deleteTempHoliday,
-    deleteTempTeam,
-    displayedTempBorrowers,
-    draggingAssetCategoryIndex,
-    draggingBorrowerIndex,
-    draggingTeamIndex,
-    editLaptop,
-    editLaptopInsertIndex,
-    editingAdminAccountId,
-    editingAssetCategoryIndex,
-    editingAssetCategoryName,
-    editingBorrowerIndex,
-    editingBorrowerName,
-    editingFaqCategoryId,
-    editingFaqCategoryName,
-    editingTeamIndex,
-    editingTeamName,
-    faqBoardConfigLoadErrorMessage,
-    faqBoardConfigReady,
-    faqBoardConfigSaving,
-    faqCategories,
-    faqCategoriesLoadErrorMessage,
-    faqCategoriesReady,
-    faqCategoryDeletingId,
-    faqCategoryNameById,
-    faqCategorySavingId,
-    faqPostDeletingId,
     faqPosts,
-    faqPostsLoadErrorMessage,
-    faqPostsPerPageInput,
-    faqPostsReady,
-    filteredAdminRequests,
-    filteredManagedUserAccounts,
-    finalizeSplitStorageMigration,
-    formatDateWithKoreanWeekday,
-    formatFirestoreDate,
-    formatFirestoreTimestamp,
-    getAdminRequestRestoreTargets,
-    getDisplayRentalStatus,
-    getKoreaNow,
-    getLaptopAdminDisplayStatus,
-    getUserAccountStatusClassName,
-    getUserAccountStatusLabel,
-    getUserRequestActionLabel,
-    getUserRequestReviewStatusLabel,
     goToUserHome,
-    handleAddLaptopClick,
-    handleFileUpload,
     handleAdminTabChange,
-    holidayImportLoading,
-    holidayImportYear,
-    importKoreanPublicHolidaysFromJson,
-    isSplitStorageReady,
-    mergedRentalRequests,
-    motion,
-    moveTempAssetCategory,
-    moveTempBorrower,
-    moveTempTeam,
-    newAssetCategory,
-    newBorrower,
-    newBorrowerTeam,
-    newFaqCategoryName,
-    newHolidayDate,
-    newHolidayName,
-    newHolidayType,
-    newLaptop,
-    newTeam,
-    noticeBoardConfigLoadErrorMessage,
-    noticeBoardConfigReady,
-    noticeBoardConfigSaving,
-    noticePostDeletingId,
     noticePosts,
-    noticePostsLoadErrorMessage,
-    noticePostsPerPage,
-    noticePostsPerPageInput,
-    noticePostsReady,
-    openAdminRequestEditDialog,
-    openAdminRequestRestoreDialog,
-    openFaqPostDialog,
-    openNoticePostDialog,
-    orphanedRentalAvailabilityRequests,
-    paginatedAdminAccounts,
-    paginatedAdminFaqPosts,
-    paginatedAdminNoticePosts,
-    paginatedAdminRequests,
-    pinnedNoticePosts,
-    registerAdminAccount,
-    registeredAdminAccounts,
-    regularNoticePosts,
-    renderRequestActionButtons,
-    rentalRequestIdSet,
-    rentalRequestLogsByRequestId,
-    rentalRequestLogsLoadErrorMessage,
-    rentalRequestLogsReady,
-    rentalRequestsLoadErrorMessage,
-    rentalRequestsReady,
-    reviewUserActionRequest,
-    safeAdminAccountPage,
-    safeAdminFaqPage,
-    safeAdminNoticePage,
-    safeAdminRequestPage,
-    saveAdminAccountEdit,
-    saveFaqBoardConfig,
-    saveFaqCategoryName,
-    saveLaptop,
-    saveNoticeBoardConfig,
-    saveRequestMemo,
-    saveSystemSettings,
-    saveTempAssetCategoryChanges,
-    saveTempPeopleChanges,
-    selectedAdminRequest,
-    sendAdminAccountPasswordResetEmail,
-    setAdminAccountEditForm,
-    setAdminAccountForm,
-    setAdminAccountPage,
     setAdminAuthForm,
-    setAdminAvailabilityFilter,
-    setAdminExpandedFaqPostId,
-    setAdminFaqPage,
-    setAdminLaptopQuery,
-    setAdminNoticePage,
-    setAdminRequestPage,
-    setAdminRequestPageSize,
-    setAdminRequestQuery,
-    setAdminRequestTab,
-    setAdminSelectedAssetCategory,
     setAdminTab,
-    setAdminUserAccountQuery,
-    setAdminUserAccountStatusFilter,
-    setDraggingAssetCategoryIndex,
-    setDraggingBorrowerIndex,
-    setDraggingTeamIndex,
-    setEditLaptop,
-    setEditingAssetCategoryIndex,
-    setEditingAssetCategoryName,
-    setEditingBorrowerIndex,
-    setEditingBorrowerName,
-    setEditingFaqCategoryId,
-    setEditingFaqCategoryName,
-    setEditingTeamIndex,
-    setEditingTeamName,
-    setFaqPostsPerPageInput,
-    setHolidayImportLoading,
-    setHolidayImportYear,
-    setNewAssetCategory,
-    setNewBorrower,
-    setNewBorrowerTeam,
-    setNewFaqCategoryName,
-    setNewHolidayDate,
-    setNewHolidayName,
-    setNewHolidayType,
-    setNewLaptop,
-    setNewTeam,
-    setNoticePostsPerPageInput,
-    setSelectedAdminRequestId,
-    setShowUploadPanel,
-    setTempSettings,
     shouldShowAdminAccountsErrorPage,
     shouldShowAdminLoadingPage,
     shouldShowAdminLoginPage,
-    showUploadPanel,
-    splitStorageFinalizeLoading,
-    startEditAdminAccount,
-    startEditFaqCategory,
-    startEditTempAssetCategory,
-    startEditTempBorrower,
-    startEditTempTeam,
-    tempAllowNonOverlappingSameAssetRequests,
-    tempAssetCategories,
-    tempBusinessDayAdjustmentEnabled,
-    tempHolidayList,
-    tempSettings,
-    tempTeams,
-    today,
-    toggleAdminFaqPost,
-    triggerConfirm,
-    triggerToast,
-    updateRequestMemo,
   } = ctx;
 
   const [expandedAdminMenuGroups, setExpandedAdminMenuGroups] = React.useState(() => {
@@ -776,107 +532,107 @@ export default function AdminWorkspace({ ctx }) {
                   
                   {/* 대시보드 탭 */}
                   {adminTab === 'dashboard' && (
-                    <AdminDashboardPanel ctx={ctx} />
+                    <AdminDashboardPanel ctx={panelCtx} />
                   )}
 
                   {/* 신청 관리 원장 탭 */}
                   {adminTab === 'requests' && (
-                    <AdminRequestsPanel ctx={ctx} />
+                    <AdminRequestsPanel ctx={panelCtx} />
                   )}
 
                   {/* 자산 목록 관리 탭 */}
                   {adminTab === 'laptops' && (
-                    <AdminAssetsPanel ctx={ctx} />
+                    <AdminAssetsPanel ctx={panelCtx} />
                   )}
 
                   {/* 휴일 관리 탭 */}
                   {adminTab === 'holidaySettings' && (
-                    <AdminHolidayManagementPanel ctx={ctx} />
+                    <AdminHolidayManagementPanel ctx={panelCtx} />
                   )}
 
                   {/* 자산 카테고리 관리 탭 */}
                   {adminTab === 'categories' && (
-                    <AdminAssetCategoriesPanel ctx={ctx} />
+                    <AdminAssetCategoriesPanel ctx={panelCtx} />
                   )}
 
                   {/* 팀명 및 대여자 관리 탭 */}
                   {adminTab === 'people' && (
-                    <AdminOrganizationPanel ctx={ctx} />
+                    <AdminOrganizationPanel ctx={panelCtx} />
                   )}
 
                   {/* 회원가입 정책 관리 탭 */}
                   {adminTab === 'signupPolicy' && (
-                    <AdminSignupPolicyPanel ctx={ctx} />
+                    <AdminSignupPolicyPanel ctx={panelCtx} />
                   )}
 
                                     {/* 공지사항 관리 탭 */}
                   {adminTab === 'noticePosts' && (
-                    <AdminNoticePanel ctx={ctx} />
+                    <AdminNoticePanel ctx={panelCtx} />
                   )}
 
                   {/* 사이트 기본 설정 탭 */}
                   {adminTab === 'siteSettings' && (
-                    <AdminSettingsPanel ctx={ctx} mode="site" />
+                    <AdminSettingsPanel ctx={panelCtx} mode="site" />
                   )}
 
                   {/* 홈 화면 관리 탭 */}
                   {adminTab === 'homeManagement' && (
-                    <AdminHomeManagementPanel ctx={ctx} />
+                    <AdminHomeManagementPanel ctx={panelCtx} />
                   )}
 
                   {/* 팝업 관리 탭 */}
                   {adminTab === 'popupPosts' && (
-                    <AdminPopupPanel ctx={ctx} />
+                    <AdminPopupPanel ctx={panelCtx} />
                   )}
 
                                     {/* FAQ 관리 탭 */}
                   {adminTab === 'faqPosts' && (
-                    <AdminFaqPanel ctx={ctx} />
+                    <AdminFaqPanel ctx={panelCtx} />
                   )}
 
                   {/* 푸터 관리 탭 */}
                   {adminTab === 'footerManagement' && (
-                    <AdminFooterPanel ctx={ctx} />
+                    <AdminFooterPanel ctx={panelCtx} />
                   )}
 
                   {/* 회원 계정 승인·차단 관리 탭 */}
                   {adminTab === 'memberAccounts' && (
-                    <AdminMemberAccountsPanel ctx={ctx} />
+                    <AdminMemberAccountsPanel ctx={panelCtx} />
                   )}
 
                   {/* 관리자 ID 관리 탭 */}
                   {adminTab === 'adminAccounts' && (
-                    <AdminAccountsPanel ctx={ctx} />
+                    <AdminAccountsPanel ctx={panelCtx} />
                   )}
                   
                   {/* 서비스 운영 탭 */}
                   {adminTab === 'serviceOperations' && (
-                    <AdminSettingsPanel ctx={ctx} mode="service" />
+                    <AdminSettingsPanel ctx={panelCtx} mode="service" />
                   )}
 
                   {/* 계정 보안 설정 탭 */}
                   {adminTab === 'accountSecurity' && (
-                    <AdminAccountSecurityPanel ctx={ctx} />
+                    <AdminAccountSecurityPanel ctx={panelCtx} />
                   )}
 
                   {/* 데이터 관리 탭 */}
                   {adminTab === 'dataManagement' && (
-                    <AdminSettingsPanel ctx={ctx} mode="data" />
+                    <AdminSettingsPanel ctx={panelCtx} mode="data" />
                   )}
 
                   {/* 시스템 정보·로그 탭 */}
                   {adminTab === 'systemInfo' && (
-                    <AdminSettingsPanel ctx={ctx} mode="info" />
+                    <AdminSettingsPanel ctx={panelCtx} mode="info" />
                   )}
 
                   {/* 이전 시스템 관리 메뉴 키 호환 */}
                   {adminTab === 'settings' && (
-                    <AdminSettingsPanel ctx={ctx} mode="service" />
+                    <AdminSettingsPanel ctx={panelCtx} mode="service" />
                   )}
 
                   {/* 대여 정책 관리 탭 */}
                   {adminTab === 'extensionSettings' && (
-                    <AdminExtensionSettingsPanel ctx={ctx} />
+                    <AdminExtensionSettingsPanel ctx={panelCtx} />
                   )}
                   </Suspense>
                 </CardContent>
@@ -886,3 +642,5 @@ export default function AdminWorkspace({ ctx }) {
           )
   );
 }
+
+export default memo(AdminWorkspace);

@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-07-28T06:43:53.310Z",
-  "initialModuleCount": 28,
-  "initialSourceBytes": 850161,
+  "generatedAt": "2026-07-28T07:14:48.407Z",
+  "initialModuleCount": 30,
+  "initialSourceBytes": 855279,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 610528
+      "bytes": 609828
     },
     {
       "file": "src/dialogs/AppDialogs.jsx",
@@ -13,7 +13,7 @@
     },
     {
       "file": "src/user/UserHomePanel.jsx",
-      "bytes": 23975
+      "bytes": 24413
     },
     {
       "file": "src/utils/richTextCore.js",
@@ -40,12 +40,12 @@
       "bytes": 11743
     },
     {
-      "file": "src/utils/overduePolicy.js",
-      "bytes": 8697
+      "file": "src/user/UserPopupLayer.jsx",
+      "bytes": 10712
     },
     {
-      "file": "src/user/UserPopupLayer.jsx",
-      "bytes": 8084
+      "file": "src/utils/overduePolicy.js",
+      "bytes": 8697
     },
     {
       "file": "src/routing/appRoutes.js",
@@ -92,12 +92,20 @@
       "bytes": 3149
     },
     {
+      "file": "src/utils/popupUtils.js",
+      "bytes": 1990
+    },
+    {
       "file": "src/components/RentalStatusBoard.jsx",
       "bytes": 1843
     },
     {
       "file": "src/performance/DevRenderProfiler.jsx",
       "bytes": 952
+    },
+    {
+      "file": "src/hooks/useMinuteClock.js",
+      "bytes": 762
     },
     {
       "file": "src/config/firestoreCachePolicy.js",
