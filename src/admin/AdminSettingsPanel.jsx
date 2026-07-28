@@ -1829,7 +1829,11 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
         </SectionCard>
 
         <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-xs leading-5 text-sky-800">
-          이 화면은 등록된 메인 비주얼이 없을 때의 대체 콘텐츠만 관리합니다. 메인 비주얼, 프로모션 배너, 바로가기 배너의 등록·순서·노출 일정은 현재 각각의 기존 관리 메뉴에서 계속 관리합니다.
+          💡<b>운영 안내:</b> 이 화면은 메인 비주얼 미등록 시 노출되는 '대체 콘텐츠' 전용 관리 창입니다.
+          <ul>
+            <li>기존 관리 메뉴 유지 항목: 메인 비주얼, 프로모션 배너, 바로가기 배너</li>
+            <li>관리 가능 범위: 각 배너의 등록 · 순서 · 노출 일정</li>
+          </ul>
         </div>
       </div>
 

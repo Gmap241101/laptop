@@ -250,7 +250,7 @@ export default function AdminExtensionSettingsPanel({ ctx }) {
           </div>
 
           <p className="text-[11px] leading-5 text-slate-500">
-            휴무로 설정된 요일과 활성화된 등록 휴일은 대여 시작일과 최종 반납 예정일 조정에 공통 적용됩니다. 대여 및 연장 기간 자체는 달력일로 계산하며, 계산된 마지막 날이 휴무일일 때만 다음 영업일로 조정합니다.
+            💡<b>운영 안내:</b> 대여·반납은 영업일 기준, 기간 계산은 달력일 기준입니다. 반납일이 휴무일이면 다음 영업일로 자동 연장됩니다.
           </p>
         </div>
 

@@ -926,7 +926,7 @@ export default function AdminDashboardPanel({ ctx }) {
             <dl className="mt-4 space-y-2 text-[11px]">
               <div className="flex items-center justify-between gap-3">
                 <dt className="text-slate-500">최대 대여 기간</dt>
-                <dd className="font-bold text-slate-800">{maxRentalDays}일 · 대여 당일 제외</dd>
+                <dd className="font-bold text-slate-800">{maxRentalDays}일</dd>
               </div>
               <div className="flex items-center justify-between gap-3">
                 <dt className="text-slate-500">업무 종료 시간</dt>
@@ -937,7 +937,7 @@ export default function AdminDashboardPanel({ ctx }) {
                 <dd className="max-w-[65%] text-right font-bold leading-4 text-slate-800">
                   {rentalStartAdjustmentInfo?.adjusted
                     ? rentalStartAdjustmentInfo.reasons.join(' · ') || '다음 영업일 적용'
-                    : '오늘부터 신청 가능'}
+                    : '당일 대여 신청 가능'}
                 </dd>
               </div>
               <div className="flex items-center justify-between gap-3">
@@ -1008,7 +1008,7 @@ export default function AdminDashboardPanel({ ctx }) {
               </div>
             ) : (
               <div className="mt-4 rounded-xl border border-emerald-200 bg-white/70 px-3 py-3 text-[11px] leading-5 text-emerald-800">
-                예약 요약, 대여기간, 자산 참조와 신청자 정보가 정상입니다.
+                예약 요약, 대여기간, 자산, 신청자 정보 정상.
               </div>
             )}
           </section>

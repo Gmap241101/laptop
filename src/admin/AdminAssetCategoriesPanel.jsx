@@ -59,7 +59,7 @@ export default function AdminAssetCategoriesPanel({ ctx }) {
                             </Button>
                           </div>
                           <div className="rounded-xl bg-slate-100 p-4 border border-slate-200/50 text-xs text-slate-600">
-                            💡 <b>운영 안내:</b> 카테고리 추가, 수정, 삭제, 순서 변경은 임시 편집 상태로 먼저 반영됩니다. 하단의 변경사항 저장을 눌러야 최종 DB에 저장됩니다.
+                            💡<b>운영 안내:</b> 카테고리 추가, 수정, 삭제, 순서 변경은 임시 편집 상태로 먼저 반영됩니다. 하단의 변경사항 저장을 눌러야 최종 DB에 저장됩니다.
                           </div>
                         </div>
 

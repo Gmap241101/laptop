@@ -400,7 +400,7 @@ export default function AdminHolidayManagementPanel({ ctx }) {
                   법정·임시공휴일 자동 불러오기
                 </h4>
                 <p className="mt-1 text-[11px] leading-5 text-blue-700">
-                  public/holidays 폴더의 연도별 JSON을 불러옵니다. 같은 날짜가 이미 있으면 기존 사유 유지, 병합 또는 교체 방식을 선택할 수 있습니다.
+                  💡<b>운영 안내:</b> 연도별 JSON 파일(public/holidays)을 불러옵니다. 중복 날짜 발생 시 기존 사유 유지, 병합, 교체 중 선택할 수 있습니다.
                 </p>
               </div>
 
@@ -762,7 +762,7 @@ export default function AdminHolidayManagementPanel({ ctx }) {
                   </div>
 
                   {calendarDetailHoliday && (
-                    <div className="mt-4 space-y-2">
+                    <div className="mt-2 space-y-1">
                       {(calendarDetailHoliday.reasons || []).map(
                         (reason, reasonIndex) =>
                           renderReasonRow(

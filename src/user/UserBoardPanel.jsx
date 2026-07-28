@@ -265,7 +265,7 @@ export default function UserBoardPanel({ ctx }) {
                                   <th className="w-20 border-b border-slate-200 px-4 py-3 text-center">
                                     번호
                                   </th>
-                                  <th className="border-b border-slate-200 px-4 py-3">
+                                  <th className="border-b border-slate-200 px-4 py-3 text-center">
                                     제목
                                   </th>
                                   <th className="w-32 border-b border-slate-200 px-4 py-3 text-center">

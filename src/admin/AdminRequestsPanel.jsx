@@ -752,22 +752,22 @@ export default function AdminRequestsPanel({ ctx }) {
                                   <th className="border-b border-slate-200 px-2 py-2.5 text-center">
                                     순번
                                   </th>
-                                  <th className="border-b border-slate-200 px-2 py-2.5">
+                                  <th className="border-b border-slate-200 px-2 py-2.5 text-center">
                                     기기명
                                   </th>
-                                  <th className="border-b border-slate-200 px-2 py-2.5">
+                                  <th className="border-b border-slate-200 px-2 py-2.5 text-center">
                                     신청자
                                   </th>
-                                  <th className="border-b border-slate-200 px-2 py-2.5">
+                                  <th className="border-b border-slate-200 px-2 py-2.5 text-center">
                                     부서명
                                   </th>
-                                  <th className="border-b border-slate-200 px-2 py-2.5">
+                                  <th className="border-b border-slate-200 px-2 py-2.5 text-center">
                                     대여기간
                                   </th>
                                   <th className="border-b border-slate-200 px-2 py-2.5 text-center">
                                     상태
                                   </th>
-                                  <th className="border-b border-slate-200 px-2 py-2.5">
+                                  <th className="border-b border-slate-200 px-2 py-2.5 text-center">
                                     접수·처리일
                                   </th>
                                   <th className="border-b border-slate-200 px-2 py-2.5 text-center">

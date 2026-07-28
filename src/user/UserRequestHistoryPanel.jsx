@@ -571,16 +571,16 @@ export default function UserRequestHistoryPanel({ ctx }) {
                           <th className="w-14 border-b border-slate-200 px-2.5 py-2.5 text-center">
                             순번
                           </th>
-                          <th className="w-48 border-b border-slate-200 px-2.5 py-2.5">
+                          <th className="w-48 border-b border-slate-200 px-2.5 py-2.5 text-center">
                             기기명
                           </th>
-                          <th className="border-b border-slate-200 px-2.5 py-2.5">
+                          <th className="border-b border-slate-200 px-2.5 py-2.5 text-center">
                             대여기간
                           </th>
                           <th className="w-24 border-b border-slate-200 px-2.5 py-2.5 text-center">
                             상태
                           </th>
-                          <th className="w-40 border-b border-slate-200 px-2.5 py-2.5">
+                          <th className="w-40 border-b border-slate-200 px-2.5 py-2.5 text-center">
                             접수·처리일
                           </th>
                           <th className="w-28 border-b border-slate-200 px-2.5 py-2.5 text-center">
