@@ -820,7 +820,7 @@ export default function AdminRequestsPanel({ ctx }) {
                                         </div>
                                       </td>
 
-                                      <td className="truncate px-2 py-2.5 text-xs font-semibold text-slate-800">
+                                      <td className="truncate px-2 py-2.5 text-xs font-semibold text-slate-800 text-center">
                                         {request.requesterName ||
                                           request.borrower ||
                                           request.requesterEmail ||
@@ -831,7 +831,7 @@ export default function AdminRequestsPanel({ ctx }) {
                                         {request.requesterTeam || request.team || '-'}
                                       </td>
 
-                                      <td className="whitespace-nowrap px-2 py-2.5 text-[11px] leading-5 text-slate-600">
+                                      <td className="whitespace-nowrap px-2 py-2.5 text-[11px] leading-5 text-slate-600 text-center">
                                         {request.startDate || '-'} ~ {request.dueDate || '-'}
                                       </td>
 
