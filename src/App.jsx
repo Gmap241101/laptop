@@ -74,8 +74,9 @@ import RentalStatusBoard from './components/RentalStatusBoard.jsx';
 import UserWorkspace from './user/UserWorkspace.jsx';
 import UserPopupLayer from './user/UserPopupLayer.jsx';
 import UserFooter from './user/UserFooter.jsx';
-import AdminWorkspace from './admin/AdminWorkspace.jsx';
 import AppDialogs from './dialogs/AppDialogs.jsx';
+
+const AdminWorkspace = React.lazy(() => import('./admin/AdminWorkspace.jsx'));
 import {
   isRichTextEmpty,
   legacyTextToRichHtml,
@@ -2048,7 +2049,8 @@ const FIRESTORE_SEARCH_RESULT_LIMIT = 200;
 const FIRESTORE_PINNED_POST_LIMIT = 20;
 const ADMIN_DASHBOARD_ACTIVE_REQUEST_LIMIT = 100;
 const DASHBOARD_SUMMARY_SCHEMA_VERSION = 1;
-const DASHBOARD_SUMMARY_MAX_AGE_MS = 2 * 60 * 1000;
+// 대시보드 진입 시에만 오래된 요약을 갱신하며, 열린 화면에서는 주기적으로 폴링하지 않는다.
+const DASHBOARD_SUMMARY_ENTRY_REFRESH_AGE_MS = 15 * 60 * 1000;
 const DASHBOARD_SUMMARY_PENDING_ACCOUNT_LIMIT = 12;
 
 const compactDefinedFields = (value = {}) =>
@@ -5997,7 +5999,6 @@ function App() {
 
     setDashboardSummaryReady(false);
     let refreshRequested = false;
-    let refreshTimerId = 0;
 
     const requestRefreshOnce = () => {
       if (refreshRequested) return;
@@ -6022,30 +6023,15 @@ function App() {
           nextSummary.schemaVersion !== DASHBOARD_SUMMARY_SCHEMA_VERSION ||
           nextSummary.businessDate !== today() ||
           !generatedAtMillis ||
-          Date.now() - generatedAtMillis > DASHBOARD_SUMMARY_MAX_AGE_MS;
+          Date.now() - generatedAtMillis > DASHBOARD_SUMMARY_ENTRY_REFRESH_AGE_MS;
 
         setDashboardSummary(nextSummary);
         setDashboardSummaryReady(true);
         setDashboardSummaryLoadErrorMessage('');
         setAdminRequestTabCountsRemote(nextSummary.requestTabCounts);
 
-        if (refreshTimerId) {
-          window.clearTimeout(refreshTimerId);
-          refreshTimerId = 0;
-        }
-
         if (isStale || shouldForceRefreshAfterAdminWork) {
           requestRefreshOnce();
-        } else {
-          const remainingFreshTime = Math.max(
-            1000,
-            DASHBOARD_SUMMARY_MAX_AGE_MS -
-              (Date.now() - generatedAtMillis)
-          );
-          refreshTimerId = window.setTimeout(
-            requestRefreshOnce,
-            remainingFreshTime
-          );
         }
       },
       (error) => {
@@ -6059,7 +6045,6 @@ function App() {
     );
 
     return () => {
-      if (refreshTimerId) window.clearTimeout(refreshTimerId);
       unsubscribe();
     };
   }, [
@@ -22823,7 +22808,18 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         {view === 'user' ? (
           <UserWorkspace ctx={uiContext} />
         ) : (
-          <AdminWorkspace ctx={uiContext} />
+          <React.Suspense
+            fallback={(
+              <Card className="mx-auto max-w-xl border-slate-200 bg-white shadow-sm">
+                <CardContent className="p-8 text-center">
+                  <div className="text-sm font-bold text-slate-700">관리자 화면을 불러오는 중입니다.</div>
+                  <div className="mt-2 text-xs text-slate-500">처음 진입할 때 관리자 모듈을 별도로 불러옵니다.</div>
+                </CardContent>
+              </Card>
+            )}
+          >
+            <AdminWorkspace ctx={uiContext} />
+          </React.Suspense>
         )}
       </main>
 

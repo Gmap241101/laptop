@@ -1,21 +1,23 @@
+import { lazy, Suspense } from 'react';
 import { Activity, CalendarDays, ChevronDown, Database, Info, Menu, Paintbrush } from 'lucide-react';
-import AdminDashboardPanel from './AdminDashboardPanel.jsx';
-import AdminRequestsPanel from './AdminRequestsPanel.jsx';
-import AdminAssetsPanel from './AdminAssetsPanel.jsx';
-import AdminAssetCategoriesPanel from './AdminAssetCategoriesPanel.jsx';
-import AdminOrganizationPanel from './AdminOrganizationPanel.jsx';
-import AdminSignupPolicyPanel from './AdminSignupPolicyPanel.jsx';
-import AdminNoticePanel from './AdminNoticePanel.jsx';
-import AdminPopupPanel from './AdminPopupPanel.jsx';
-import AdminFaqPanel from './AdminFaqPanel.jsx';
-import AdminFooterPanel from './AdminFooterPanel.jsx';
-import AdminMemberAccountsPanel from './AdminMemberAccountsPanel.jsx';
-import AdminAccountsPanel from './AdminAccountsPanel.jsx';
-import AdminSettingsPanel from './AdminSettingsPanel.jsx';
-import AdminAccountSecurityPanel from './AdminAccountSecurityPanel.jsx';
-import AdminExtensionSettingsPanel from './AdminExtensionSettingsPanel.jsx';
-import AdminHolidayManagementPanel from './AdminHolidayManagementPanel.jsx';
-import AdminHomeManagementPanel from './AdminHomeManagementPanel.jsx';
+
+const AdminDashboardPanel = lazy(() => import('./AdminDashboardPanel.jsx'));
+const AdminRequestsPanel = lazy(() => import('./AdminRequestsPanel.jsx'));
+const AdminAssetsPanel = lazy(() => import('./AdminAssetsPanel.jsx'));
+const AdminAssetCategoriesPanel = lazy(() => import('./AdminAssetCategoriesPanel.jsx'));
+const AdminOrganizationPanel = lazy(() => import('./AdminOrganizationPanel.jsx'));
+const AdminSignupPolicyPanel = lazy(() => import('./AdminSignupPolicyPanel.jsx'));
+const AdminNoticePanel = lazy(() => import('./AdminNoticePanel.jsx'));
+const AdminPopupPanel = lazy(() => import('./AdminPopupPanel.jsx'));
+const AdminFaqPanel = lazy(() => import('./AdminFaqPanel.jsx'));
+const AdminFooterPanel = lazy(() => import('./AdminFooterPanel.jsx'));
+const AdminMemberAccountsPanel = lazy(() => import('./AdminMemberAccountsPanel.jsx'));
+const AdminAccountsPanel = lazy(() => import('./AdminAccountsPanel.jsx'));
+const AdminSettingsPanel = lazy(() => import('./AdminSettingsPanel.jsx'));
+const AdminAccountSecurityPanel = lazy(() => import('./AdminAccountSecurityPanel.jsx'));
+const AdminExtensionSettingsPanel = lazy(() => import('./AdminExtensionSettingsPanel.jsx'));
+const AdminHolidayManagementPanel = lazy(() => import('./AdminHolidayManagementPanel.jsx'));
+const AdminHomeManagementPanel = lazy(() => import('./AdminHomeManagementPanel.jsx'));
 
 const ADMIN_MENU_GROUP_STATE_KEY = 'mk_laptop_admin_menu_groups';
 
@@ -761,6 +763,16 @@ export default function AdminWorkspace({ ctx }) {
             <div className="min-w-0 space-y-6">
               <Card className="min-w-0">
                 <CardContent className="min-w-0 p-6">
+                  <Suspense
+                    fallback={(
+                      <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 px-6 text-center">
+                        <div>
+                          <div className="text-sm font-bold text-slate-700">관리 메뉴를 불러오는 중입니다.</div>
+                          <div className="mt-2 text-xs text-slate-500">선택한 관리 기능의 코드를 처음 한 번만 불러옵니다.</div>
+                        </div>
+                      </div>
+                    )}
+                  >
                   
                   {/* 대시보드 탭 */}
                   {adminTab === 'dashboard' && (
@@ -866,6 +878,7 @@ export default function AdminWorkspace({ ctx }) {
                   {adminTab === 'extensionSettings' && (
                     <AdminExtensionSettingsPanel ctx={ctx} />
                   )}
+                  </Suspense>
                 </CardContent>
               </Card>
             </div>
