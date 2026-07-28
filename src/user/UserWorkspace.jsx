@@ -1,4 +1,5 @@
 import { lazy, memo, Suspense, useMemo } from 'react';
+import DevRenderProfiler from '../performance/DevRenderProfiler.jsx';
 import UserHomePanel from './UserHomePanel.jsx';
 
 const UserAuthPanel = memo(lazy(() => import('./UserAuthPanel.jsx')));
@@ -27,9 +28,19 @@ const UserPanelLoading = () => (
   </div>
 );
 
-const renderLazyPanel = (panel) => (
-  <Suspense fallback={<UserPanelLoading />}>{panel}</Suspense>
-);
+const renderProfiledPanel = (id, panel, { lazyPanel = true } = {}) => {
+  const content = lazyPanel ? (
+    <Suspense fallback={<UserPanelLoading />}>{panel}</Suspense>
+  ) : (
+    panel
+  );
+
+  return (
+    <DevRenderProfiler id={`UserPanel:${id}`}>
+      {content}
+    </DevRenderProfiler>
+  );
+};
 
 function UserWorkspace({ ctx, panelCtx }) {
   const {
@@ -61,7 +72,10 @@ function UserWorkspace({ ctx, panelCtx }) {
   }
 
   if (isProtectedUserTab && !hasFirebaseAuthSession) {
-    return renderLazyPanel(<UserAuthPanel ctx={protectedLoginContext} />);
+    return renderProfiledPanel(
+      'login',
+      <UserAuthPanel ctx={protectedLoginContext} />
+    );
   }
 
   if (isProtectedUserTab && hasFirebaseAuthSession && !firebaseAuthUser) {
@@ -82,36 +96,64 @@ function UserWorkspace({ ctx, panelCtx }) {
     hasFirebaseAuthSession &&
     isUserDirectoryAccessRestricted
   ) {
-    return renderLazyPanel(<UserMyPagePanel ctx={panelCtx} />);
+    return renderProfiledPanel(
+      'mypage',
+      <UserMyPagePanel ctx={panelCtx} />
+    );
   }
 
   if (userTab === 'home') {
-    return <MemoizedUserHomePanel ctx={panelCtx} />;
+    return renderProfiledPanel(
+      'home',
+      <MemoizedUserHomePanel ctx={panelCtx} />,
+      { lazyPanel: false }
+    );
   }
   if (userTab === 'rental') {
-    return renderLazyPanel(<UserRentalPanel ctx={panelCtx} />);
+    return renderProfiledPanel(
+      'rental',
+      <UserRentalPanel ctx={panelCtx} />
+    );
   }
   if (userTab === 'mypage') {
-    return renderLazyPanel(<UserMyPagePanel ctx={panelCtx} />);
+    return renderProfiledPanel(
+      'mypage',
+      <UserMyPagePanel ctx={panelCtx} />
+    );
   }
 
   if (['login', 'signup', 'findEmail', 'resetPassword'].includes(userTab)) {
-    return renderLazyPanel(<UserAuthPanel ctx={panelCtx} />);
+    return renderProfiledPanel(
+      userTab,
+      <UserAuthPanel ctx={panelCtx} />
+    );
   }
 
   if (userTab === 'accountStatus') {
-    return renderLazyPanel(<UserAccountStatusPanel ctx={panelCtx} />);
+    return renderProfiledPanel(
+      'accountStatus',
+      <UserAccountStatusPanel ctx={panelCtx} />
+    );
   }
 
   if (userTab === 'history') {
-    return renderLazyPanel(<UserRequestHistoryPanel ctx={panelCtx} />);
+    return renderProfiledPanel(
+      'history',
+      <UserRequestHistoryPanel ctx={panelCtx} />
+    );
   }
 
   if (userTab === 'footerPage') {
-    return renderLazyPanel(<UserFooterPagePanel ctx={panelCtx} />);
+    return renderProfiledPanel(
+      'footerPage',
+      <UserFooterPagePanel ctx={panelCtx} />
+    );
   }
 
-  return renderLazyPanel(<UserBoardPanel ctx={panelCtx} />);
+  return renderProfiledPanel(
+    `board-${userTab}`,
+    <UserBoardPanel ctx={panelCtx} />
+  );
 }
 
 export default memo(UserWorkspace);

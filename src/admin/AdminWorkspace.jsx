@@ -1,5 +1,6 @@
 import { lazy, memo, Suspense } from 'react';
 import { Activity, CalendarDays, ChevronDown, Database, Info, Menu, Paintbrush } from 'lucide-react';
+import DevRenderProfiler from '../performance/DevRenderProfiler.jsx';
 
 const AdminDashboardPanel = memo(lazy(() => import('./AdminDashboardPanel.jsx')));
 const AdminRequestsPanel = memo(lazy(() => import('./AdminRequestsPanel.jsx')));
@@ -519,16 +520,17 @@ function AdminWorkspace({ ctx, panelCtx }) {
             <div className="min-w-0 space-y-6">
               <Card className="min-w-0">
                 <CardContent className="min-w-0 p-6">
-                  <Suspense
-                    fallback={(
-                      <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 px-6 text-center">
-                        <div>
-                          <div className="text-sm font-bold text-slate-700">관리 메뉴를 불러오는 중입니다.</div>
-                          <div className="mt-2 text-xs text-slate-500">선택한 관리 기능의 코드를 처음 한 번만 불러옵니다.</div>
+                  <DevRenderProfiler id={`AdminPanel:${adminTab}`}>
+                    <Suspense
+                      fallback={(
+                        <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 px-6 text-center">
+                          <div>
+                            <div className="text-sm font-bold text-slate-700">관리 메뉴를 불러오는 중입니다.</div>
+                            <div className="mt-2 text-xs text-slate-500">선택한 관리 기능의 코드를 처음 한 번만 불러옵니다.</div>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  >
+                      )}
+                    >
                   
                   {/* 대시보드 탭 */}
                   {adminTab === 'dashboard' && (
@@ -634,7 +636,8 @@ function AdminWorkspace({ ctx, panelCtx }) {
                   {adminTab === 'extensionSettings' && (
                     <AdminExtensionSettingsPanel ctx={panelCtx} />
                   )}
-                  </Suspense>
+                    </Suspense>
+                  </DevRenderProfiler>
                 </CardContent>
               </Card>
             </div>

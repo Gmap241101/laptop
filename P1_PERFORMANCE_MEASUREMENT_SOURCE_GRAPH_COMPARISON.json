@@ -1,0 +1,19 @@
+{
+  "generatedAt": "2026-07-28T07:31:56.056Z",
+  "before": {
+    "initialModuleCount": 32,
+    "initialSourceBytes": 878721,
+    "dynamicEntryCount": 9
+  },
+  "after": {
+    "initialModuleCount": 32,
+    "initialSourceBytes": 885031,
+    "dynamicEntryCount": 10
+  },
+  "delta": {
+    "initialModuleCount": 0,
+    "initialSourceBytes": 6310,
+    "dynamicEntryCount": 1
+  },
+  "note": "DevPerformancePanel is a development-only dynamic entry. This comparison is source-graph data, not production bundle output."
+}

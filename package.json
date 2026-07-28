@@ -12,7 +12,9 @@
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "analyze:source": "node tools/analyze-source-graph.mjs",
-    "analyze:bundle": "npm run build && node tools/analyze-bundle.mjs"
+    "analyze:bundle": "npm run build && node tools/analyze-bundle.mjs",
+    "analyze:bundle:baseline": "npm run build && node tools/analyze-bundle.mjs --save-baseline",
+    "analyze:bundle:compare": "npm run build && node tools/analyze-bundle.mjs --baseline=BUNDLE_ANALYSIS_BASELINE.json"
   },
   "dependencies": {
     "firebase": "^10.14.1",

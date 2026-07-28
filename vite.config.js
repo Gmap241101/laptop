@@ -5,4 +5,8 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   base: "/", // 커스텀 도메인의 루트 경로를 기준으로 정적 파일 로드
   plugins: [react()],
+  build: {
+    // 번들 분석 도구가 초기 청크와 지연 청크를 구분할 수 있도록 생성
+    manifest: true,
+  },
 })

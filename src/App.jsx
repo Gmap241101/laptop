@@ -84,6 +84,9 @@ import {
 } from './context/appContextSlices.js';
 
 const AdminWorkspace = React.lazy(() => import('./admin/AdminWorkspace.jsx'));
+const DevPerformancePanel = React.lazy(() =>
+  import('./performance/DevPerformancePanel.jsx')
+);
 const MemoizedUserFooter = React.memo(UserFooter);
 const MemoizedAppDialogs = React.memo(AppDialogs);
 const MemoizedUserPopupLayer = React.memo(UserPopupLayer);
@@ -21046,11 +21049,13 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         
         {/* --- 실시간 주요 대여 현황 보드 --- */}
         {shouldShowStats && (
-          <RentalStatusBoard
-            stats={stats}
-            loading={statsLoading}
-            className="mb-6 sm:mb-8"
-          />
+          <DevRenderProfiler id="Shared:RentalStatusBoard">
+            <RentalStatusBoard
+              stats={stats}
+              loading={statsLoading}
+              className="mb-6 sm:mb-8"
+            />
+          </DevRenderProfiler>
         )}
 
         {view === 'user' ? (
@@ -21082,14 +21087,26 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       </main>
 
       {view === 'user' && (
-        <MemoizedUserFooter ctx={contextGroups.app.footer} />
+        <DevRenderProfiler id="Shared:UserFooter">
+          <MemoizedUserFooter ctx={contextGroups.app.footer} />
+        </DevRenderProfiler>
       )}
 
-      <MemoizedAppDialogs ctx={contextGroups.app.dialogs} />
+      <DevRenderProfiler id="Shared:AppDialogs">
+        <MemoizedAppDialogs ctx={contextGroups.app.dialogs} />
+      </DevRenderProfiler>
       {view === 'user' &&
         (userTab === 'home' || (userTab === 'rental' && firebaseAuthUser)) && (
-          <MemoizedUserPopupLayer ctx={contextGroups.app.popup} />
+          <DevRenderProfiler id="Shared:UserPopupLayer">
+            <MemoizedUserPopupLayer ctx={contextGroups.app.popup} />
+          </DevRenderProfiler>
         )}
+
+      {import.meta.env.DEV && (
+        <React.Suspense fallback={null}>
+          <DevPerformancePanel />
+        </React.Suspense>
+      )}
       </div>
 
       {showFirebaseLoadingOverlay && (

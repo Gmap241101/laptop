@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-07-28T07:14:48.407Z",
-  "initialModuleCount": 30,
-  "initialSourceBytes": 855279,
+  "generatedAt": "2026-07-28T07:31:55.919Z",
+  "initialModuleCount": 32,
+  "initialSourceBytes": 885031,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 609828
+      "bytes": 611171
     },
     {
       "file": "src/dialogs/AppDialogs.jsx",
@@ -22,6 +22,10 @@
     {
       "file": "src/domain/rentalPolicy.js",
       "bytes": 21872
+    },
+    {
+      "file": "src/context/appContextSlices.js",
+      "bytes": 19134
     },
     {
       "file": "src/components/CommonUI.jsx",
@@ -52,6 +56,10 @@
       "bytes": 6053
     },
     {
+      "file": "src/performance/DevRenderProfiler.jsx",
+      "bytes": 6026
+    },
+    {
       "file": "src/hooks/useDashboardSummary.js",
       "bytes": 5713
     },
@@ -68,6 +76,10 @@
       "bytes": 4673
     },
     {
+      "file": "src/user/UserWorkspace.jsx",
+      "bytes": 4350
+    },
+    {
       "file": "src/firebase.js",
       "bytes": 4085
     },
@@ -80,12 +92,12 @@
       "bytes": 3601
     },
     {
-      "file": "src/user/UserWorkspace.jsx",
-      "bytes": 3354
-    },
-    {
       "file": "src/services/publicAssetCatalog.js",
       "bytes": 3257
+    },
+    {
+      "file": "src/hooks/useStableContextGroups.js",
+      "bytes": 3205
     },
     {
       "file": "src/utils/appUtils.js",
@@ -98,10 +110,6 @@
     {
       "file": "src/components/RentalStatusBoard.jsx",
       "bytes": 1843
-    },
-    {
-      "file": "src/performance/DevRenderProfiler.jsx",
-      "bytes": 952
     },
     {
       "file": "src/hooks/useMinuteClock.js",
@@ -127,6 +135,7 @@
   "dynamicEntries": [
     "src/admin/AdminWorkspace.jsx",
     "src/components/RichTextEditor.jsx",
+    "src/performance/DevPerformancePanel.jsx",
     "src/user/UserAccountStatusPanel.jsx",
     "src/user/UserAuthPanel.jsx",
     "src/user/UserBoardPanel.jsx",
