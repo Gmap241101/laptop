@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-07-28T11:39:17.066Z",
+  "generatedAt": "2026-07-28T11:59:32.988Z",
   "initialModuleCount": 38,
-  "initialSourceBytes": 810629,
+  "initialSourceBytes": 812800,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 543123
+      "bytes": 543136
     },
     {
       "file": "src/user/UserHomePanel.jsx",
@@ -13,7 +13,7 @@
     },
     {
       "file": "src/utils/richTextCore.js",
-      "bytes": 22223
+      "bytes": 22251
     },
     {
       "file": "src/domain/rentalPolicy.js",
@@ -124,6 +124,10 @@
       "bytes": 2442
     },
     {
+      "file": "src/main.jsx",
+      "bytes": 2370
+    },
+    {
       "file": "src/features/members/memberAccountHistoryService.js",
       "bytes": 2298
     },
@@ -150,10 +154,6 @@
     {
       "file": "src/constants/memberConstants.js",
       "bytes": 296
-    },
-    {
-      "file": "src/main.jsx",
-      "bytes": 240
     }
   ],
   "dynamicEntries": [

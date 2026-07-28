@@ -21,3 +21,10 @@ npm run analyze:bundle:compare
 ```
 
 Firestore 접근 감사의 실행별 임시 결과는 기존과 같이 `.performance-reports/`에 생성되며 Git 추적 대상에서 제외됩니다.
+## 최신 긴급 수정
+
+- `reports/P0_WHITE_SCREEN_RUNTIME_FIX_REPORT.md`
+- `validation/P0_WHITE_SCREEN_RUNTIME_FIX_VALIDATION_REPORT.txt`
+- `diffs/P0_WHITE_SCREEN_RUNTIME_FIX.diff`
+- `measurements/P0_WHITE_SCREEN_RUNTIME_FIX_SOURCE_GRAPH_COMPARISON.json`
+

@@ -8,7 +8,7 @@
     "dev": "vite",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist",
-    "prebuild": "npm run audit:firestore:strict",
+    "prebuild": "npm run audit:react-hooks && npm run audit:firestore:strict",
     "build": "vite build",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
@@ -16,9 +16,10 @@
     "analyze:bundle": "npm run build && node tools/analyze-bundle.mjs",
     "analyze:bundle:baseline": "npm run build && node tools/analyze-bundle.mjs --save-baseline",
     "analyze:bundle:compare": "npm run build && node tools/analyze-bundle.mjs --baseline=docs/performance-optimization/measurements/BUNDLE_ANALYSIS_BASELINE.json",
+    "audit:react-hooks": "node tools/audit-react-hooks.mjs",
     "audit:firestore": "node tools/audit-firestore-access.mjs",
     "audit:firestore:strict": "node tools/audit-firestore-access.mjs --strict",
-    "verify:performance": "npm run audit:firestore:strict && npm run analyze:source"
+    "verify:performance": "npm run audit:react-hooks && npm run audit:firestore:strict && npm run analyze:source"
   },
   "dependencies": {
     "firebase": "^10.14.1",

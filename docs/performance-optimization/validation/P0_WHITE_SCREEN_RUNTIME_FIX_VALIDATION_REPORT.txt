@@ -1,0 +1,30 @@
+P0 WHITE SCREEN RUNTIME FIX VALIDATION
+======================================
+
+Primary cause
+- src/App.jsx used useCallback() without importing useCallback from react.
+- Deterministic runtime result before fix: ReferenceError: useCallback is not defined.
+- Fix: named import added.
+
+Secondary runtime issue
+- RichTextEditor used 4 undeclared range constants.
+- Fix: constants exported from richTextCore and imported by RichTextEditor.
+
+Validation results
+- React hook import audit: PASS (79 source files)
+- Regression test with useCallback import removed: FAIL as expected, exit code 1
+- Firestore strict audit: PASS
+- Firestore calls: 123
+- Unapproved Firestore warnings: 0
+- Unapproved Firestore errors: 0
+- JS/JSX/MJS transpile: 84 files, 0 errors
+- Relative imports: 79 source files, 0 missing
+- TypeScript semantic undefined identifier diagnostics TS2304/TS2552: 0
+- Source graph: 38 initial modules, 812800 bytes
+- Rules changed: no
+- Indexes changed: no
+- Dependencies changed: no
+
+Production build limitation
+- npm ci could not complete in the execution container due to ClientError.
+- The package now runs audit:react-hooks before the existing Firestore prebuild audit.

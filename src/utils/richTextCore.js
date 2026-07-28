@@ -74,10 +74,10 @@ const SAFE_STYLE_PROPERTIES = new Set([
 
 const FONT_SIZE_PRESETS = [11, 12, 13, 14, 16, 18, 20, 24, 28, 32];
 const LINE_HEIGHT_PRESETS = [1, 1.2, 1.4, 1.5, 1.6, 1.8, 2];
-const MIN_FONT_SIZE_PX = 8;
-const MAX_FONT_SIZE_PX = 72;
-const MIN_LINE_HEIGHT = 0.8;
-const MAX_LINE_HEIGHT = 3;
+export const MIN_FONT_SIZE_PX = 8;
+export const MAX_FONT_SIZE_PX = 72;
+export const MIN_LINE_HEIGHT = 0.8;
+export const MAX_LINE_HEIGHT = 3;
 const RICH_TEXT_BLOCK_SELECTOR = 'p,h1,h2,h3,li,blockquote,td,th,div';
 
 const normalizeFontSizeCssValue = (value = '') => {

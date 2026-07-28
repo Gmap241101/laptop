@@ -29,6 +29,10 @@ import {
 import {
   FONT_SIZE_PRESETS,
   LINE_HEIGHT_PRESETS,
+  MAX_FONT_SIZE_PX,
+  MAX_LINE_HEIGHT,
+  MIN_FONT_SIZE_PX,
+  MIN_LINE_HEIGHT,
   RICH_TEXT_BLOCK_SELECTOR,
   buildHtml5VideoHtml,
   buildYouTubeEmbedHtml,

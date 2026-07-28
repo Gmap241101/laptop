@@ -1,0 +1,354 @@
+--- /mnt/data/white_screen_audit/package.json	2026-07-28 11:37:07.000000000 +0000
++++ /mnt/data/white_screen_fix_work/package.json	2026-07-28 11:58:12.100699974 +0000
+@@ -8,7 +8,7 @@
+     "dev": "vite",
+     "predeploy": "npm run build",
+     "deploy": "gh-pages -d dist",
+-    "prebuild": "npm run audit:firestore:strict",
++    "prebuild": "npm run audit:react-hooks && npm run audit:firestore:strict",
+     "build": "vite build",
+     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
+     "preview": "vite preview",
+@@ -16,9 +16,10 @@
+     "analyze:bundle": "npm run build && node tools/analyze-bundle.mjs",
+     "analyze:bundle:baseline": "npm run build && node tools/analyze-bundle.mjs --save-baseline",
+     "analyze:bundle:compare": "npm run build && node tools/analyze-bundle.mjs --baseline=docs/performance-optimization/measurements/BUNDLE_ANALYSIS_BASELINE.json",
++    "audit:react-hooks": "node tools/audit-react-hooks.mjs",
+     "audit:firestore": "node tools/audit-firestore-access.mjs",
+     "audit:firestore:strict": "node tools/audit-firestore-access.mjs --strict",
+-    "verify:performance": "npm run audit:firestore:strict && npm run analyze:source"
++    "verify:performance": "npm run audit:react-hooks && npm run audit:firestore:strict && npm run analyze:source"
+   },
+   "dependencies": {
+     "firebase": "^10.14.1",
+--- /mnt/data/white_screen_audit/src/App.jsx	2026-07-28 11:21:23.000000000 +0000
++++ /mnt/data/white_screen_fix_work/src/App.jsx	2026-07-28 11:58:55.248698606 +0000
+@@ -1,4 +1,4 @@
+-import React, { useEffect, useMemo, useRef, useState } from 'react';
++import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+ import { motion, AnimatePresence } from 'framer-motion';
+ import {
+   browserLocalPersistence,
+--- /mnt/data/white_screen_audit/src/main.jsx	2026-07-28 05:17:20.000000000 +0000
++++ /mnt/data/white_screen_fix_work/src/main.jsx	2026-07-28 11:58:12.100699974 +0000
+@@ -4,8 +4,88 @@
+ import App from './App.jsx';
+ import './index.css';
+ 
+-ReactDOM.createRoot(document.getElementById('root')).render(
++class RootErrorBoundary extends React.Component {
++  constructor(props) {
++    super(props);
++    this.state = { error: null };
++  }
++
++  static getDerivedStateFromError(error) {
++    return { error };
++  }
++
++  componentDidCatch(error, errorInfo) {
++    console.error('Application render error:', error, errorInfo);
++  }
++
++  render() {
++    if (!this.state.error) {
++      return this.props.children;
++    }
++
++    return (
++      <main
++        role="alert"
++        style={{
++          minHeight: '100vh',
++          display: 'flex',
++          alignItems: 'center',
++          justifyContent: 'center',
++          padding: '24px',
++          background: '#f8fafc',
++          fontFamily: 'Arial, sans-serif',
++        }}
++      >
++        <section
++          style={{
++            width: '100%',
++            maxWidth: '640px',
++            padding: '28px',
++            border: '1px solid #e2e8f0',
++            borderRadius: '16px',
++            background: '#ffffff',
++            boxShadow: '0 12px 30px rgba(15, 23, 42, 0.08)',
++          }}
++        >
++          <h1 style={{ margin: 0, fontSize: '22px', color: '#0f172a' }}>
++            화면을 불러오는 중 오류가 발생했습니다.
++          </h1>
++          <p style={{ margin: '12px 0 0', lineHeight: 1.7, color: '#475569' }}>
++            브라우저를 새로고침해 주세요. 같은 문제가 반복되면 관리자에게
++            브라우저 개발자 도구의 오류 내용을 전달해 주세요.
++          </p>
++          <button
++            type="button"
++            onClick={() => window.location.reload()}
++            style={{
++              marginTop: '20px',
++              padding: '10px 16px',
++              border: 0,
++              borderRadius: '10px',
++              background: '#e65300',
++              color: '#ffffff',
++              fontWeight: 700,
++              cursor: 'pointer',
++            }}
++          >
++            새로고침
++          </button>
++        </section>
++      </main>
++    );
++  }
++}
++
++const rootElement = document.getElementById('root');
++
++if (!rootElement) {
++  throw new Error('React root element (#root) was not found.');
++}
++
++ReactDOM.createRoot(rootElement).render(
+   <React.StrictMode>
+-    <App />
++    <RootErrorBoundary>
++      <App />
++    </RootErrorBoundary>
+   </React.StrictMode>
+ );
+--- /mnt/data/white_screen_audit/src/components/RichTextEditor.jsx	2026-07-28 05:29:54.000000000 +0000
++++ /mnt/data/white_screen_fix_work/src/components/RichTextEditor.jsx	2026-07-28 11:58:12.100699974 +0000
+@@ -29,6 +29,10 @@
+ import {
+   FONT_SIZE_PRESETS,
+   LINE_HEIGHT_PRESETS,
++  MAX_FONT_SIZE_PX,
++  MAX_LINE_HEIGHT,
++  MIN_FONT_SIZE_PX,
++  MIN_LINE_HEIGHT,
+   RICH_TEXT_BLOCK_SELECTOR,
+   buildHtml5VideoHtml,
+   buildYouTubeEmbedHtml,
+--- /mnt/data/white_screen_audit/src/utils/richTextCore.js	2026-07-28 05:29:54.000000000 +0000
++++ /mnt/data/white_screen_fix_work/src/utils/richTextCore.js	2026-07-28 11:58:12.100699974 +0000
+@@ -74,10 +74,10 @@
+ 
+ const FONT_SIZE_PRESETS = [11, 12, 13, 14, 16, 18, 20, 24, 28, 32];
+ const LINE_HEIGHT_PRESETS = [1, 1.2, 1.4, 1.5, 1.6, 1.8, 2];
+-const MIN_FONT_SIZE_PX = 8;
+-const MAX_FONT_SIZE_PX = 72;
+-const MIN_LINE_HEIGHT = 0.8;
+-const MAX_LINE_HEIGHT = 3;
++export const MIN_FONT_SIZE_PX = 8;
++export const MAX_FONT_SIZE_PX = 72;
++export const MIN_LINE_HEIGHT = 0.8;
++export const MAX_LINE_HEIGHT = 3;
+ const RICH_TEXT_BLOCK_SELECTOR = 'p,h1,h2,h3,li,blockquote,td,th,div';
+ 
+ const normalizeFontSizeCssValue = (value = '') => {
+--- /dev/null	2026-07-28 08:57:03.269044464 +0000
++++ /mnt/data/white_screen_fix_work/tools/audit-react-hooks.mjs	2026-07-28 11:58:12.216699970 +0000
+@@ -0,0 +1,197 @@
++import fs from 'node:fs';
++import path from 'node:path';
++import process from 'node:process';
++
++const PROJECT_ROOT = process.cwd();
++const SOURCE_ROOT = path.join(PROJECT_ROOT, 'src');
++const SOURCE_EXTENSIONS = new Set(['.js', '.jsx', '.mjs']);
++
++const REACT_HOOKS = [
++  'useActionState',
++  'useCallback',
++  'useContext',
++  'useDebugValue',
++  'useDeferredValue',
++  'useEffect',
++  'useId',
++  'useImperativeHandle',
++  'useInsertionEffect',
++  'useLayoutEffect',
++  'useMemo',
++  'useOptimistic',
++  'useReducer',
++  'useRef',
++  'useState',
++  'useSyncExternalStore',
++  'useTransition',
++];
++
++const walkSourceFiles = (directory) =>
++  fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
++    const absolutePath = path.join(directory, entry.name);
++
++    if (entry.isDirectory()) {
++      return walkSourceFiles(absolutePath);
++    }
++
++    return SOURCE_EXTENSIONS.has(path.extname(entry.name))
++      ? [absolutePath]
++      : [];
++  });
++
++const stripCommentsAndStrings = (source) => {
++  let result = '';
++  let state = 'code';
++  let escaped = false;
++
++  for (let index = 0; index < source.length; index += 1) {
++    const current = source[index];
++    const next = source[index + 1] || '';
++
++    if (state === 'code') {
++      if (current === '/' && next === '/') {
++        result += '  ';
++        index += 1;
++        state = 'line-comment';
++      } else if (current === '/' && next === '*') {
++        result += '  ';
++        index += 1;
++        state = 'block-comment';
++      } else if (current === "'") {
++        result += ' ';
++        state = 'single-quote';
++        escaped = false;
++      } else if (current === '"') {
++        result += ' ';
++        state = 'double-quote';
++        escaped = false;
++      } else if (current === '`') {
++        result += ' ';
++        state = 'template';
++        escaped = false;
++      } else {
++        result += current;
++      }
++      continue;
++    }
++
++    if (current === '\n') {
++      result += '\n';
++      if (state === 'line-comment') state = 'code';
++      escaped = false;
++      continue;
++    }
++
++    result += ' ';
++
++    if (state === 'block-comment' && current === '*' && next === '/') {
++      result += ' ';
++      index += 1;
++      state = 'code';
++      continue;
++    }
++
++    if (escaped) {
++      escaped = false;
++      continue;
++    }
++
++    if (current === '\\') {
++      escaped = true;
++      continue;
++    }
++
++    if (
++      (state === 'single-quote' && current === "'") ||
++      (state === 'double-quote' && current === '"') ||
++      (state === 'template' && current === '`')
++    ) {
++      state = 'code';
++    }
++  }
++
++  return result;
++};
++
++const getNamedReactImports = (source) => {
++  const importedNames = new Set();
++  const importPattern = /import\s+([\s\S]*?)\s+from\s+['"]react['"]\s*;?/g;
++
++  for (const match of source.matchAll(importPattern)) {
++    const clause = match[1] || '';
++    const namedMatch = clause.match(/\{([\s\S]*?)\}/);
++    if (!namedMatch) continue;
++
++    namedMatch[1]
++      .split(',')
++      .map((entry) => entry.trim())
++      .filter(Boolean)
++      .forEach((entry) => {
++        const aliasParts = entry.split(/\s+as\s+/);
++        importedNames.add((aliasParts[1] || aliasParts[0]).trim());
++      });
++  }
++
++  return importedNames;
++};
++
++const removeImportDeclarations = (source) =>
++  source.replace(/import\s+[\s\S]*?\s+from\s+['"][^'"]+['"]\s*;?/g, '');
++
++const isLocallyDeclared = (source, identifier) => {
++  const escapedIdentifier = identifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
++  const declarationPatterns = [
++    new RegExp(`\\b(?:const|let|var)\\s+${escapedIdentifier}\\b`),
++    new RegExp(`\\bfunction\\s+${escapedIdentifier}\\b`),
++    new RegExp(`\\bclass\\s+${escapedIdentifier}\\b`),
++  ];
++
++  return declarationPatterns.some((pattern) => pattern.test(source));
++};
++
++const findings = [];
++const sourceFiles = walkSourceFiles(SOURCE_ROOT);
++
++sourceFiles.forEach((absolutePath) => {
++  const rawSource = fs.readFileSync(absolutePath, 'utf8');
++  const importedNames = getNamedReactImports(rawSource);
++  const executableSource = removeImportDeclarations(
++    stripCommentsAndStrings(rawSource)
++  );
++
++  REACT_HOOKS.forEach((hookName) => {
++    const usagePattern = new RegExp(
++      `(^|[^A-Za-z0-9_$\\.])${hookName}\\s*\\(`,
++      'm'
++    );
++
++    if (!usagePattern.test(executableSource)) return;
++    if (importedNames.has(hookName)) return;
++    if (isLocallyDeclared(executableSource, hookName)) return;
++
++    const beforeUsage = executableSource.slice(
++      0,
++      executableSource.search(usagePattern)
++    );
++
++    findings.push({
++      file: path.relative(PROJECT_ROOT, absolutePath).replaceAll(path.sep, '/'),
++      hook: hookName,
++      line: beforeUsage.split('\n').length,
++    });
++  });
++});
++
++if (findings.length > 0) {
++  console.error('React hook import audit: FAIL');
++  findings.forEach((finding) => {
++    console.error(
++      `- ${finding.file}:${finding.line} ${finding.hook}() is used without a matching named import from react.`
++    );
++  });
++  process.exit(1);
++}
++
++console.log(
++  `React hook import audit: PASS (${sourceFiles.length} source files checked)`
++);

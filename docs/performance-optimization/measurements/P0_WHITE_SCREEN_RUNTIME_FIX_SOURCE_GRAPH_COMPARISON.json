@@ -1,0 +1,21 @@
+{
+  "generatedAt": "2026-07-28T12:00:00Z",
+  "baselinePackage": "rental-system-organized-deployment-package.zip",
+  "fixedPackage": "rental-system-p0-white-screen-runtime-fix-deployment-package.zip",
+  "before": {
+    "initialModuleCount": 38,
+    "initialSourceBytes": 810629,
+    "appBytes": 543123
+  },
+  "after": {
+    "initialModuleCount": 38,
+    "initialSourceBytes": 812800,
+    "appBytes": 543136
+  },
+  "change": {
+    "initialModuleCount": 0,
+    "initialSourceBytes": 2171,
+    "appBytes": 13
+  },
+  "reason": "Root error boundary and runtime validation safeguards added; white-screen root cause fixed."
+}
