@@ -1,6 +1,12 @@
 import { getApp, getApps, initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { collection, doc, getFirestore } from 'firebase/firestore';
+import {
+  collection,
+  doc,
+  getFirestore,
+  initializeFirestore,
+} from 'firebase/firestore';
+import { createFirestoreLocalCache } from './config/firestoreCachePolicy.js';
 
 export const firebaseConfig = {
   apiKey: "AIzaSyA-hQv4mZwrTWUn10aiS3QSLgwSWzBNds0",
@@ -11,7 +17,11 @@ export const firebaseConfig = {
   appId: "1:978421108190:web:6bc9af49a57471ae2a614f"
 };
 
-export const firebaseApp = getApps().some((app) => app.name === '[DEFAULT]')
+const existingDefaultFirebaseApp = getApps().some(
+  (app) => app.name === '[DEFAULT]'
+);
+
+export const firebaseApp = existingDefaultFirebaseApp
   ? getApp()
   : initializeApp(firebaseConfig);
 
@@ -21,7 +31,11 @@ export const adminAccountCreationApp = getApps().some(
   ? getApp('adminAccountCreation')
   : initializeApp(firebaseConfig, 'adminAccountCreation');
 
-export const db = getFirestore(firebaseApp);
+export const db = existingDefaultFirebaseApp
+  ? getFirestore(firebaseApp)
+  : initializeFirestore(firebaseApp, {
+      localCache: createFirestoreLocalCache(),
+    });
 export const firebaseAuth = getAuth(firebaseApp);
 export const adminAccountCreationAuth = getAuth(adminAccountCreationApp);
 

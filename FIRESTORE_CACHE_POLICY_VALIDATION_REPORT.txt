@@ -1,0 +1,55 @@
+Firestore secure cache policy validation
+========================================
+
+Baseline:
+- rental-system-app-structure-refactor-deployment-package.zip
+
+Changed source files:
+- src/firebase.js
+- src/config/firestoreCachePolicy.js
+
+Policy checks:
+- Explicit memory-only Firestore local cache: PASS
+- Persistent IndexedDB cache enabled: NO
+- Eager in-memory garbage collector: PASS
+- Cache persists across browser sessions: NO
+- Existing Firebase app/HMR reuse path: PASS
+
+Runtime test-double checks:
+- FIRESTORE_CACHE_POLICY.mode == memory-only: PASS
+- memoryLocalCache factory result: PASS
+- memoryEagerGarbageCollector selected: PASS
+- initializeFirestore receives localCache: PASS
+
+Static checks:
+- src/firebase.js syntax: PASS
+- src/config/firestoreCachePolicy.js syntax: PASS
+- Relative import target exists: PASS
+- persistentLocalCache references in source: 0
+- enableIndexedDbPersistence references in source: 0
+- enableMultiTabIndexedDbPersistence references in source: 0
+- clearIndexedDbPersistence references in source: 0
+
+Unchanged deployment resources:
+- rules/firestore.rules: unchanged
+- firestore.indexes.json: unchanged
+- firebase.json: unchanged
+- deploy.ps1: unchanged
+
+Build note:
+- npm ci could not complete because one dependency tarball was unavailable in the execution environment's offline npm cache.
+- A full Vite production build was therefore not run here.
+- The changed JavaScript modules passed syntax and isolated runtime tests.
+- The project's deploy.ps1 runs npm build before publishing and will stop on a build error.
+
+Concrete verification:
+node-check firebase.js: PASS
+node-check cache policy: PASS
+relative import target: PASS
+persistentLocalCache refs: 0
+enableIndexedDbPersistence refs: 0
+enableMultiTabIndexedDbPersistence refs: 0
+rules unchanged: PASS
+indexes unchanged: PASS
+firebase.json unchanged: PASS
+deploy.ps1 unchanged: PASS
