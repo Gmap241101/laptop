@@ -361,13 +361,12 @@ export default function AdminAccountSecurityPanel({ ctx }) {
             />
             <SettingRow
               title="1회 로그인 최대 유지시간"
-              description="계속 사용 중이어도 최초 로그인부터 설정 시간이 지나면 종료합니다."
+              description="계속 사용 중이어도 최초 로그인부터 설정 시간이 지나면 종료합니다. * 0 = 제한 없음"
               control={
                 <NumberControl
                   min={0}
                   max={168}
                   unit="시간"
-                  zeroLabel="0 = 제한 없음"
                   value={adminDraft.adminAbsoluteTimeoutHours}
                   disabled={!isOwner}
                   onChange={(value) =>
@@ -432,13 +431,12 @@ export default function AdminAccountSecurityPanel({ ctx }) {
             />
             <SettingRow
               title="1회 로그인 최대 유지시간"
-              description="계속 사용 중이어도 최초 로그인부터 설정 시간이 지나면 종료합니다."
+              description="계속 사용 중이어도 최초 로그인부터 설정 시간이 지나면 종료합니다. * 0 = 제한 없음"
               control={
                 <NumberControl
                   min={0}
                   max={168}
                   unit="시간"
-                  zeroLabel="0 = 제한 없음"
                   value={userDraft.userAbsoluteTimeoutHours}
                   disabled={!isOwner}
                   onChange={(value) =>
