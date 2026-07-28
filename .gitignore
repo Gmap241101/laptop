@@ -3,3 +3,6 @@ dist/
 .firebase/
 firebase-debug.log
 *.local
+
+# Local performance and Firestore audit outputs
+.performance-reports/

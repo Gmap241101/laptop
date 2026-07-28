@@ -1,0 +1,51 @@
+P2 Firestore access audit validation
+=====================================
+
+Baseline package:
+rental-system-p2-additional-lazy-loading-deployment-package.zip
+
+Changed project files:
+- .gitignore
+- package.json
+- tools/audit-firestore-access.mjs
+- tools/firestore-audit-policy.json
+- tools/README_FIRESTORE_AUDIT.md
+
+Application business source changes: none
+Firestore Rules changes: none
+Firestore index changes: none
+Firebase configuration changes: none
+New npm dependencies: none
+
+Static source validation:
+- JavaScript/JSX/MJS files checked: 71
+- Syntax/transpile errors: 0
+- Relative import target errors: 0
+
+Firestore audit baseline:
+- src files scanned: 64
+- total Firestore access calls: 124
+- onSnapshot: 34
+- getDocs: 47
+- getDoc: 23
+- getCountFromServer: 20
+- approved existing risk findings: 51
+- unapproved warnings: 0
+- unapproved errors: 0
+- strict result: PASS
+
+Regression validation:
+- added temporary unbounded rentalRequests onSnapshot: blocked
+- strict exit code with regression fixture: 1
+- fixture removed and strict audit rerun: PASS
+- App.jsx line-shift stability test: PASS
+
+Build integration:
+- npm run prebuild: PASS
+- npm run build: prebuild PASS, Vite stage unavailable
+- Vite error: sh: 1: vite: not found
+
+Generated local reports:
+- .performance-reports/firestore-access-audit.json
+- .performance-reports/firestore-access-audit.txt
+- reports are ignored by Git
