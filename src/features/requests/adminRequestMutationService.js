@@ -7,8 +7,10 @@ import {
 import {
   RENTAL_ASSETS_COLLECTION_REF,
   RENTAL_AVAILABILITY_COLLECTION_REF,
+  PUBLIC_CONFIG_DOC_REF,
   RENTAL_REQUEST_LOGS_COLLECTION_REF,
   RENTAL_REQUESTS_COLLECTION_REF,
+  RENTAL_RESTRICTIONS_COLLECTION_REF,
   db,
 } from '../../firebase.js';
 import {
@@ -21,11 +23,15 @@ import {
   getAdjustedRentalDueDate,
   getLaptopRentalAvailability,
   getLaptopRepresentativeRequest,
+  normalizeRentalPolicySettings,
 } from '../../domain/rentalPolicy.js';
 import {
   normalizeAssetReservations,
   toRentalAvailabilityRequest,
 } from '../../services/publicAssetCatalog.js';
+import {
+  buildOverdueReturnResult,
+} from '../../utils/overduePolicy.js';
 
 const createMutationError = (code, details = {}) => {
   const error = new Error(code);
@@ -295,6 +301,300 @@ export const executeAdminRequestEditMutation = async ({
     committedAvailabilityRequest,
     committedRequest,
     nextDueDate,
+    shouldKeepAvailability,
+  };
+};
+
+
+const writeOverdueReturnSideEffects = ({
+  transaction,
+  requestId,
+  requesterUid,
+  returnResult,
+}) => {
+  if (!returnResult?.restrictionData || !requesterUid) {
+    return;
+  }
+
+  const restrictionDocRef = doc(
+    RENTAL_RESTRICTIONS_COLLECTION_REF,
+    requesterUid
+  );
+
+  transaction.set(
+    restrictionDocRef,
+    {
+      ...returnResult.restrictionData,
+      calculatedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  (returnResult.finalizedRequestIds || [])
+    .filter(
+      (pendingRequestId) => pendingRequestId !== requestId
+    )
+    .forEach((pendingRequestId) => {
+      transaction.update(
+        doc(
+          RENTAL_REQUESTS_COLLECTION_REF,
+          pendingRequestId
+        ),
+        {
+          overduePenaltyPending: false,
+          overduePenaltyBatchId:
+            returnResult.requestFields
+              .overduePenaltyBatchId || '',
+          updatedAt: serverTimestamp(),
+          syncedAt: serverTimestamp(),
+        }
+      );
+    });
+};
+
+export const executeAdminRequestStatusChangeMutation = async ({
+  actualReturnDate = '',
+  auditActor,
+  currentRequest,
+  hasOtherCurrentOverdueRequests = false,
+  nextStatus = '',
+  overdueBatchId = '',
+  requestId = '',
+  settings = {},
+} = {}) => {
+  if (!currentRequest || !requestId) {
+    throw createMutationError('rental-request-not-found');
+  }
+
+  const normalizedAuditActor = requireAuditActor(auditActor);
+  const requestLogDocRef = doc(
+    RENTAL_REQUEST_LOGS_COLLECTION_REF
+  );
+  const restrictionDocRef = currentRequest.requesterUid
+    ? doc(
+        RENTAL_RESTRICTIONS_COLLECTION_REF,
+        currentRequest.requesterUid
+      )
+    : null;
+
+  let committedRequest = null;
+  let committedAsset = null;
+  let committedAvailabilityRequest = null;
+  let shouldKeepAvailability = false;
+
+  await runTransaction(db, async (transaction) => {
+    const requestDocRef = doc(
+      RENTAL_REQUESTS_COLLECTION_REF,
+      requestId
+    );
+    const availabilityDocRef = doc(
+      RENTAL_AVAILABILITY_COLLECTION_REF,
+      requestId
+    );
+    const assetDocRef = doc(
+      RENTAL_ASSETS_COLLECTION_REF,
+      currentRequest.laptopId
+    );
+
+    const [
+      requestSnapshot,
+      assetSnapshot,
+      publicConfigSnapshot,
+      restrictionSnapshot,
+    ] = await Promise.all([
+      transaction.get(requestDocRef),
+      transaction.get(assetDocRef),
+      nextStatus === STATUS.RETURNED
+        ? transaction.get(PUBLIC_CONFIG_DOC_REF)
+        : Promise.resolve(null),
+      nextStatus === STATUS.RETURNED && restrictionDocRef
+        ? transaction.get(restrictionDocRef)
+        : Promise.resolve(null),
+    ]);
+
+    if (!requestSnapshot.exists()) {
+      throw createMutationError('rental-request-not-found');
+    }
+
+    if (!assetSnapshot.exists()) {
+      throw createMutationError('rental-asset-not-found');
+    }
+
+    const latestRequest = {
+      ...requestSnapshot.data(),
+      id: requestSnapshot.id,
+    };
+    const previousStatus = latestRequest.status || '';
+    const allowedNextStatuses =
+      RENTAL_REQUEST_STATUS_TRANSITIONS[previousStatus] || [];
+
+    if (!allowedNextStatuses.includes(nextStatus)) {
+      throw createMutationError(
+        'invalid-rental-status-transition',
+        {
+          previousStatus,
+          nextStatus,
+        }
+      );
+    }
+
+    const latestAsset = {
+      ...assetSnapshot.data(),
+      id: assetSnapshot.id,
+    };
+    const latestSettings =
+      nextStatus === STATUS.RETURNED
+        ? normalizeRentalPolicySettings({
+            ...settings,
+            ...(publicConfigSnapshot?.exists()
+              ? publicConfigSnapshot.data()?.settings || {}
+              : {}),
+          })
+        : settings;
+    const latestRestriction =
+      restrictionSnapshot?.exists()
+        ? {
+            ...restrictionSnapshot.data(),
+            uid: restrictionSnapshot.id,
+          }
+        : null;
+    const overdueReturnResult =
+      nextStatus === STATUS.RETURNED
+        ? buildOverdueReturnResult({
+            request: latestRequest,
+            actualReturnDate,
+            settings: latestSettings,
+            restriction: latestRestriction,
+            hasOtherCurrentOverdueRequests,
+            batchId: overdueBatchId,
+          })
+        : null;
+    const nextCommittedRequest = {
+      ...latestRequest,
+      status: nextStatus,
+      ...(overdueReturnResult
+        ? {
+            ...overdueReturnResult.requestFields,
+            returnedAt: new Date(),
+          }
+        : {}),
+    };
+    const availabilityRequest =
+      toRentalAvailabilityRequest(nextCommittedRequest);
+    const latestReservations = normalizeAssetReservations(
+      latestAsset.reservations || []
+    ).filter((request) => request.id !== requestId);
+
+    shouldKeepAvailability =
+      RENTAL_BLOCKING_REQUEST_STATUSES.includes(nextStatus);
+
+    if (shouldKeepAvailability) {
+      const nextAvailability = getLaptopRentalAvailability(
+        latestAsset,
+        latestReservations,
+        settings,
+        latestRequest.startDate,
+        latestRequest.dueDate
+      );
+
+      if (nextAvailability.blocked) {
+        throw createMutationError('rental-period-conflict', {
+          blockingRequest:
+            nextAvailability.blockingRequest || null,
+        });
+      }
+    }
+
+    const updatedReservations = shouldKeepAvailability
+      ? [...latestReservations, availabilityRequest]
+      : latestReservations;
+    const representativeRequest =
+      getLaptopRepresentativeRequest(
+        updatedReservations,
+        latestAsset.id
+      );
+    const nextAsset = {
+      ...latestAsset,
+      reservations: updatedReservations,
+      status:
+        latestAsset.status === STATUS.UNAVAILABLE
+          ? STATUS.UNAVAILABLE
+          : representativeRequest
+            ? representativeRequest.status
+            : STATUS.AVAILABLE,
+      currentRequestId: representativeRequest?.id || null,
+    };
+
+    transaction.update(requestDocRef, {
+      status: nextStatus,
+      adminMemo: latestRequest.adminMemo || '',
+      ...(overdueReturnResult
+        ? {
+            ...overdueReturnResult.requestFields,
+            returnedAt: serverTimestamp(),
+          }
+        : {}),
+      updatedAt: serverTimestamp(),
+      syncedAt: serverTimestamp(),
+    });
+
+    if (overdueReturnResult) {
+      writeOverdueReturnSideEffects({
+        transaction,
+        requestId,
+        requesterUid: latestRequest.requesterUid,
+        returnResult: overdueReturnResult,
+      });
+    }
+
+    transaction.set(requestLogDocRef, {
+      id: requestLogDocRef.id,
+      requestId,
+      action: RENTAL_REQUEST_AUDIT_ACTION.STATUS_CHANGED,
+      previousStatus,
+      nextStatus,
+      previousMemo: latestRequest.adminMemo || '',
+      nextMemo: latestRequest.adminMemo || '',
+      actorUid: normalizedAuditActor.uid,
+      actorAdminId: normalizedAuditActor.adminId,
+      actorName: normalizedAuditActor.name,
+      createdAt: serverTimestamp(),
+    });
+
+    if (shouldKeepAvailability) {
+      transaction.set(availabilityDocRef, {
+        ...availabilityRequest,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      transaction.delete(availabilityDocRef);
+    }
+
+    transaction.update(assetDocRef, {
+      reservations: nextAsset.reservations,
+      status: nextAsset.status,
+      currentRequestId: nextAsset.currentRequestId,
+      updatedAt: serverTimestamp(),
+    });
+
+    committedRequest = nextCommittedRequest;
+    committedAsset = nextAsset;
+    committedAvailabilityRequest = shouldKeepAvailability
+      ? availabilityRequest
+      : null;
+  });
+
+  if (!committedRequest || !committedAsset) {
+    throw createMutationError(
+      'rental-status-transaction-result-missing'
+    );
+  }
+
+  return {
+    committedAsset,
+    committedAvailabilityRequest,
+    committedRequest,
     shouldKeepAvailability,
   };
 };

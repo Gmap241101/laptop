@@ -1,0 +1,26 @@
+{
+  "task": "P2_ADMIN_REQUEST_STATUS_MUTATION_SERVICE_SPLIT",
+  "before": {
+    "initialModuleCount": 32,
+    "initialSourceBytes": 725271,
+    "appSourceBytes": 506106,
+    "dynamicEntryCount": 14,
+    "adminRequestMutationServiceBytes": 13370
+  },
+  "after": {
+    "initialModuleCount": 32,
+    "initialSourceBytes": 716843,
+    "appSourceBytes": 497678,
+    "dynamicEntryCount": 14,
+    "adminRequestMutationServiceBytes": 21373
+  },
+  "difference": {
+    "initialModuleCount": 0,
+    "initialSourceBytes": -8428,
+    "initialSourcePercent": -1.162,
+    "appSourceBytes": -8428,
+    "dynamicEntryCount": 0,
+    "adminRequestMutationServiceBytes": 8003
+  },
+  "interpretation": "The status-change transaction moved from the initial App.jsx path into the existing dynamically imported admin request mutation service. The dynamic entry count is unchanged because the service already existed as a dynamic entry."
+}

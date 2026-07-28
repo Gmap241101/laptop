@@ -1,0 +1,96 @@
+P2 ADMIN REQUEST STATUS MUTATION SERVICE SPLIT VALIDATION
+========================================================
+
+Result: PASS WITH ENVIRONMENT BUILD LIMITATION
+
+Source validation
+-----------------
+React hook import audit: PASS
+React source files checked: 84
+JS/JSX/MJS transpile files: 84
+Transpile errors: 0
+Relative imports: 182
+Missing relative imports: 0
+Undefined identifier diagnostics TS2304/TS2552: 0
+
+Firestore audit
+---------------
+Strict audit: PASS
+Total calls: 123
+onSnapshot: 32
+getDocs: 48
+getDoc: 23
+getCountFromServer: 20
+Approved risk findings: 51
+Unapproved warnings: 0
+Unapproved errors: 0
+
+Runtime mock
+------------
+Result: PASS
+Scenarios: 5
+- requested -> approved
+- requested -> denied
+- approved -> returned with overdue side effects
+- invalid transition rejection
+- rental period conflict rejection
+
+Source graph
+------------
+Initial modules before: 32
+Initial modules after: 32
+Initial source bytes before: 725271
+Initial source bytes after: 716843
+Initial source bytes difference: -8428
+Dynamic entries before: 14
+Dynamic entries after: 14
+App.jsx bytes before: 506106
+App.jsx bytes after: 497678
+
+Code structure
+--------------
+App.jsx lines before: 17404
+App.jsx lines after: 17068
+App.jsx direct runTransaction before: 16
+App.jsx direct runTransaction after: 15
+App.jsx direct transaction.get before: 41
+App.jsx direct transaction.get after: 37
+
+Production build
+----------------
+Prebuild React hook audit: PASS
+Prebuild Firestore strict audit: PASS
+Vite build: NOT EXECUTED TO COMPLETION
+Reason: vite executable is not installed in the validation container
+Observed message: sh: 1: vite: not found
+Exit code: 127
+
+Unchanged deployment configuration
+----------------------------------
+Firestore Rules: unchanged
+Firestore indexes: unchanged
+firebase.json: unchanged
+package.json: unchanged
+package-lock.json: unchanged
+
+Package preparation
+-------------------
+Full package project files: 245
+Cumulative removed paths: 67
+Changed/new project files in this step: 8
+Forbidden directories removed before packaging: .performance-reports, node_modules, dist, .git
+
+Package verification
+--------------------
+Full ZIP integrity: PASS
+Changed ZIP integrity: PASS
+Full package manifest files: 245
+Full package missing files: 0
+Full package SHA-256 mismatches: 0
+Changed package manifest files: 8
+Changed package missing files: 0
+Changed package SHA-256 mismatches: 0
+Changed package/work tree mismatches: 0
+Runtime mock against re-extracted full package: PASS
+Forbidden paths in ZIP: 0
+Cumulative removed paths retained: 67

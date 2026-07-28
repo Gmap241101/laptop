@@ -14758,8 +14758,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       return;
     }
 
-    const currentRequest =
-      getAdminRequestById(id);
+    const currentRequest = getAdminRequestById(id);
 
     if (!currentRequest) {
       triggerToast(
@@ -14769,8 +14768,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       return;
     }
 
-    const auditActor =
-      getCurrentAdminAuditActor();
+    const auditActor = getCurrentAdminAuditActor();
 
     if (!auditActor.uid) {
       triggerToast(
@@ -14780,36 +14778,17 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       return;
     }
 
-    const requestLogDocRef = doc(
-      RENTAL_REQUEST_LOGS_COLLECTION_REF
-    );
-
-    let committedRequest = null;
-    let committedAsset = null;
-    let committedAvailabilityRequest = null;
-    let shouldKeepAvailability = false;
-
     const actualReturnDate =
       status === STATUS.RETURNED ? today() : '';
-
     const overdueBatchId =
       status === STATUS.RETURNED
         ? `OVERDUE-${doc(RENTAL_RESTRICTIONS_COLLECTION_REF).id}`
         : '';
-
-    const restrictionDocRef = currentRequest.requesterUid
-      ? doc(
-          RENTAL_RESTRICTIONS_COLLECTION_REF,
-          currentRequest.requesterUid
-        )
-      : null;
-
-    const nextDisplayStatus =
-      getDisplayRentalStatus(
-        status,
-        currentRequest.startDate,
-        currentRequest.dueDate
-      );
+    const nextDisplayStatus = getDisplayRentalStatus(
+      status,
+      currentRequest.startDate,
+      currentRequest.dueDate
+    );
 
     try {
       const hasOtherCurrentOverdueRequests =
@@ -14820,360 +14799,60 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
               referenceDate: actualReturnDate,
             })
           : false;
-
-      await runTransaction(
-        db,
-        async (transaction) => {
-          const requestDocRef = doc(
-            RENTAL_REQUESTS_COLLECTION_REF,
-            id
-          );
-
-          const availabilityDocRef = doc(
-            RENTAL_AVAILABILITY_COLLECTION_REF,
-            id
-          );
-
-          const assetDocRef = doc(
-            RENTAL_ASSETS_COLLECTION_REF,
-            currentRequest.laptopId
-          );
-
-          const [
-            requestSnapshot,
-            assetSnapshot,
-            publicConfigSnapshot,
-            restrictionSnapshot,
-          ] = await Promise.all([
-            transaction.get(
-              requestDocRef
-            ),
-            transaction.get(
-              assetDocRef
-            ),
-            status === STATUS.RETURNED
-              ? transaction.get(PUBLIC_CONFIG_DOC_REF)
-              : Promise.resolve(null),
-            status === STATUS.RETURNED && restrictionDocRef
-              ? transaction.get(restrictionDocRef)
-              : Promise.resolve(null),
-          ]);
-
-          if (!requestSnapshot.exists()) {
-            throw new Error(
-              'rental-request-not-found'
-            );
-          }
-
-          if (!assetSnapshot.exists()) {
-            throw new Error(
-              'rental-asset-not-found'
-            );
-          }
-
-          const latestRequest = {
-            ...requestSnapshot.data(),
-            id: requestSnapshot.id,
-          };
-
-          const previousStatus =
-            latestRequest.status || '';
-
-          const allowedNextStatuses =
-            RENTAL_REQUEST_STATUS_TRANSITIONS[
-              previousStatus
-            ] || [];
-
-          if (
-            !allowedNextStatuses.includes(
-              status
-            )
-          ) {
-            const transitionError =
-              new Error(
-                'invalid-rental-status-transition'
-              );
-
-            transitionError.previousStatus =
-              previousStatus;
-
-            transitionError.nextStatus =
-              status;
-
-            throw transitionError;
-          }
-
-          const latestAsset = {
-            ...assetSnapshot.data(),
-            id: assetSnapshot.id,
-          };
-
-          const latestSettings =
-            status === STATUS.RETURNED
-              ? normalizeRentalPolicySettings({
-                  ...data.settings,
-                  ...(publicConfigSnapshot?.exists()
-                    ? publicConfigSnapshot.data()?.settings || {}
-                    : {}),
-                })
-              : data.settings;
-
-          const latestRestriction =
-            restrictionSnapshot?.exists()
-              ? {
-                  ...restrictionSnapshot.data(),
-                  uid: restrictionSnapshot.id,
-                }
-              : null;
-
-          const overdueReturnResult =
-            status === STATUS.RETURNED
-              ? getOverdueReturnResult({
-                  latestRequest,
-                  latestSettings,
-                  restrictionData: latestRestriction,
-                  actualReturnDate,
-                  batchId: overdueBatchId,
-                  hasOtherCurrentOverdueRequests,
-                })
-              : null;
-
-          const nextCommittedRequest = {
-            ...latestRequest,
-            status,
-            ...(overdueReturnResult
-              ? {
-                  ...overdueReturnResult.requestFields,
-                  returnedAt: new Date(),
-                }
-              : {}),
-          };
-
-          const availabilityRequest =
-            toRentalAvailabilityRequest(
-              nextCommittedRequest
-            );
-
-          const latestReservations =
-            normalizeAssetReservations(
-              latestAsset.reservations || []
-            ).filter(
-              (request) =>
-                request.id !== id
-            );
-
-          shouldKeepAvailability =
-            RENTAL_BLOCKING_REQUEST_STATUSES.includes(
-              status
-            );
-          
-          if (shouldKeepAvailability) {
-            const nextAvailability =
-              getLaptopRentalAvailability(
-                latestAsset,
-                latestReservations,
-                data.settings,
-                latestRequest.startDate,
-                latestRequest.dueDate
-              );
-
-            if (nextAvailability.blocked) {
-              const conflictError =
-                new Error(
-                  'rental-period-conflict'
-                );
-
-              conflictError.blockingRequest =
-                nextAvailability.blockingRequest ||
-                null;
-
-              throw conflictError;
-            }
-          }
-
-          const updatedReservations =
-            shouldKeepAvailability
-              ? [
-                  ...latestReservations,
-                  availabilityRequest,
-                ]
-              : latestReservations;
-
-          const representativeRequest =
-            getLaptopRepresentativeRequest(
-              updatedReservations,
-              latestAsset.id
-            );
-
-          const nextAsset = {
-            ...latestAsset,
-            reservations:
-              updatedReservations,
-            status:
-              latestAsset.status ===
-              STATUS.UNAVAILABLE
-                ? STATUS.UNAVAILABLE
-                : representativeRequest
-                  ? representativeRequest.status
-                  : STATUS.AVAILABLE,
-            currentRequestId:
-              representativeRequest?.id ||
-              null,
-          };
-
-          transaction.update(
-            requestDocRef,
-            {
-              status,
-              adminMemo:
-                latestRequest.adminMemo || '',
-              ...(overdueReturnResult
-                ? {
-                    ...overdueReturnResult.requestFields,
-                    returnedAt: serverTimestamp(),
-                  }
-                : {}),
-              updatedAt:
-                serverTimestamp(),
-              syncedAt:
-                serverTimestamp(),
-            }
-          );
-
-          if (overdueReturnResult) {
-            writeOverdueReturnSideEffects({
-              transaction,
-              requestId: id,
-              requesterUid: latestRequest.requesterUid,
-              returnResult: overdueReturnResult,
-            });
-          }
-
-          transaction.set(
-            requestLogDocRef,
-            {
-              id: requestLogDocRef.id,
-              requestId: id,
-              action:
-                RENTAL_REQUEST_AUDIT_ACTION.STATUS_CHANGED,
-              previousStatus,
-              nextStatus: status,
-              previousMemo:
-                latestRequest.adminMemo || '',
-              nextMemo:
-                latestRequest.adminMemo || '',
-              actorUid:
-                auditActor.uid,
-              actorAdminId:
-                auditActor.adminId,
-              actorName:
-                auditActor.name,
-              createdAt:
-                serverTimestamp(),
-            }
-          );
-
-          if (shouldKeepAvailability) {
-            transaction.set(
-              availabilityDocRef,
-              {
-                ...availabilityRequest,
-                updatedAt:
-                  serverTimestamp(),
-              }
-            );
-          } else {
-            transaction.delete(
-              availabilityDocRef
-            );
-          }
-
-          transaction.update(
-            assetDocRef,
-            {
-              reservations:
-                nextAsset.reservations,
-              status:
-                nextAsset.status,
-              currentRequestId:
-                nextAsset.currentRequestId,
-              updatedAt:
-                serverTimestamp(),
-            }
-          );
-
-          committedRequest =
-            nextCommittedRequest;
-
-          committedAsset =
-            nextAsset;
-
-          committedAvailabilityRequest =
-            shouldKeepAvailability
-              ? availabilityRequest
-              : null;
-        }
-      );
-
-      if (
-        !committedRequest ||
-        !committedAsset
-      ) {
-        throw new Error(
-          'rental-status-transaction-result-missing'
-        );
-      }
+      const {
+        executeAdminRequestStatusChangeMutation,
+      } = await loadAdminRequestMutationService();
+      const {
+        committedAsset,
+        committedAvailabilityRequest,
+        committedRequest,
+        shouldKeepAvailability,
+      } = await executeAdminRequestStatusChangeMutation({
+        actualReturnDate,
+        auditActor,
+        currentRequest,
+        hasOtherCurrentOverdueRequests,
+        nextStatus: status,
+        overdueBatchId,
+        requestId: id,
+        settings: data.settings,
+      });
 
       updateAdminRequestPanelRequests((prev) => {
-        const requestExists =
-          (prev || []).some(
-            (request) =>
-              request.id === id
-          );
+        const requestExists = (prev || []).some(
+          (request) => request.id === id
+        );
 
         if (!requestExists) {
-          return [
-            committedRequest,
-            ...(prev || []),
-          ];
+          return [committedRequest, ...(prev || [])];
         }
 
-        return (prev || []).map(
-          (request) =>
-            request.id === id
-              ? committedRequest
-              : request
+        return (prev || []).map((request) =>
+          request.id === id ? committedRequest : request
         );
       });
 
       setData((prev) => ({
         ...prev,
-        requests:
-          shouldKeepAvailability
-            ? [
-                committedAvailabilityRequest,
-                ...(prev.requests || []).filter(
-                  (request) =>
-                    request.id !== id
-                ),
-              ]
-            : (prev.requests || []).filter(
-                (request) =>
-                  request.id !== id
+        requests: shouldKeepAvailability
+          ? [
+              committedAvailabilityRequest,
+              ...(prev.requests || []).filter(
+                (request) => request.id !== id
               ),
-        laptops:
-          (prev.laptops || []).map(
-            (asset) =>
-              asset.id ===
-              committedAsset.id
-                ? committedAsset
-                : asset
-          ),
+            ]
+          : (prev.requests || []).filter(
+              (request) => request.id !== id
+            ),
+        laptops: (prev.laptops || []).map((asset) =>
+          asset.id === committedAsset.id
+            ? committedAsset
+            : asset
+        ),
       }));
 
       clearAdminRequestPanelSelection();
       resetAdminRequestPanelPage();
-
       notifyAdminRequestMutation();
 
       triggerToast(
@@ -15186,10 +14865,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         error
       );
 
-      if (
-        error?.message ===
-        'rental-request-not-found'
-      ) {
+      if (error?.message === 'rental-request-not-found') {
         triggerToast(
           '정식 대여 신청 문서를 찾을 수 없어 상태 변경을 중단했습니다.',
           'error'
@@ -15197,10 +14873,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         return;
       }
 
-      if (
-        error?.message ===
-        'rental-asset-not-found'
-      ) {
+      if (error?.message === 'rental-asset-not-found') {
         triggerToast(
           '신청과 연결된 자산 문서를 찾을 수 없어 상태 변경을 중단했습니다.',
           'error'
@@ -15209,26 +14882,19 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       }
 
       if (
-        error?.message ===
-        'invalid-rental-status-transition'
+        error?.message === 'invalid-rental-status-transition'
       ) {
         triggerToast(
           `허용되지 않은 상태 변경입니다. 현재 상태: ${
             error.previousStatus || '-'
-          }, 변경 요청: ${
-            error.nextStatus || '-'
-          }`,
+          }, 변경 요청: ${error.nextStatus || '-'}`,
           'error'
         );
         return;
       }
 
-      if (
-        error?.message ===
-        'rental-period-conflict'
-      ) {
-        const blockingRequest =
-          error.blockingRequest;
+      if (error?.message === 'rental-period-conflict') {
+        const blockingRequest = error.blockingRequest;
 
         triggerToast(
           blockingRequest
@@ -15240,9 +14906,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
       }
 
       const firebaseErrorCode =
-        error?.code ||
-        error?.message ||
-        'unknown-error';
+        error?.code || error?.message || 'unknown-error';
 
       triggerToast(
         `신청 상태와 기기 상태 저장에 실패했습니다. 오류 코드: ${firebaseErrorCode}`,
