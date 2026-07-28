@@ -50,12 +50,17 @@ const RENTAL_STATUS_ITEMS = [
 
 export default function RentalStatusBoard({
   stats = {},
+  loading = false,
   title = '',
   referenceLabel = '',
   className = '',
 }) {
   return (
-    <section className={className} aria-label={title || '대여 현황'}>
+    <section
+      className={className}
+      aria-label={title || '대여 현황'}
+      aria-busy={loading}
+    >
       {title ? (
         <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
           <h2 className="text-base font-black text-slate-900 sm:text-lg">
@@ -75,7 +80,7 @@ export default function RentalStatusBoard({
             key={key}
             icon={icon}
             label={label}
-            value={Number(stats?.[key] || 0)}
+            value={loading ? '—' : Number(stats?.[key] || 0)}
             tone={tone}
           />
         ))}

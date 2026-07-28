@@ -1,0 +1,36 @@
+ADMIN STATUS SUMMARY FIX VALIDATION REPORT
+=================================================
+
+Modified source files
+- src/App.jsx
+- src/hooks/useDashboardSummary.js
+- src/components/RentalStatusBoard.jsx
+
+Static validation
+- JavaScript/JSX files parsed: 53
+- TypeScript parser syntax errors: 0
+- Local relative import errors: 0
+- node --check for useDashboardSummary.js: PASS
+
+Behavioral source checks
+- Admin card values map to dashboardSummary.metrics: PASS
+- totalAssetCount mapping: PASS
+- availableCount mapping: PASS
+- requestedCount mapping: PASS
+- uniqueReservedAssets mapping: PASS
+- uniqueActiveAssets mapping: PASS
+- uniqueOverdueAssets mapping: PASS
+- Loading state displays em dash instead of zero: PASS
+- RentalStatusBoard aria-busy applied: PASS
+- Summary document subscription active across authenticated admin tabs: PASS
+- Automatic stale refresh remains dashboard-only: PASS
+- Refresh after relevant admin work remains enabled: PASS
+- Periodic setTimeout/setInterval polling in summary hook: NONE
+- Firestore Rules changed: NO
+- Firestore indexes changed: NO
+
+Build validation
+- npm ci attempt 1: FAILED (registry HTTP 503)
+- npm ci retry: FAILED (registry HTTP 503)
+- Vite production build: NOT RUN because dependencies could not be installed
+- Local deploy.ps1 will run npm run build before publishing

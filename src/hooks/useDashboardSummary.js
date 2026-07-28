@@ -86,21 +86,16 @@ export const useDashboardSummary = ({
     ]
   );
 
-  useEffect(() => {
-    const previousAdminTab = previousAdminTabRef.current;
-    previousAdminTabRef.current = adminTab;
-    const shouldForceRefreshAfterAdminWork =
-      adminTab === 'dashboard' &&
-      DASHBOARD_REFRESH_AFTER_ADMIN_TABS.has(previousAdminTab);
-    const shouldLoadDashboardSummary =
-      firebaseAuthReady &&
-      currentAuthRoleReady &&
-      Boolean(authenticatedAdminId) &&
-      Boolean(currentAuthAdminAccountId) &&
-      view === 'admin' &&
-      adminTab === 'dashboard';
+  const shouldSubscribeDashboardSummary =
+    firebaseAuthReady &&
+    currentAuthRoleReady &&
+    Boolean(authenticatedAdminId) &&
+    Boolean(currentAuthAdminAccountId) &&
+    view === 'admin';
 
-    if (!shouldLoadDashboardSummary) {
+  useEffect(() => {
+    if (!shouldSubscribeDashboardSummary) {
+      setDashboardSummary(null);
       setDashboardSummaryReady(false);
       setDashboardSummaryLoadErrorMessage('');
       return undefined;
@@ -126,23 +121,10 @@ export const useDashboardSummary = ({
         }
 
         const nextSummary = normalizeDashboardSummary(snapshot.data());
-        const generatedAtMillis =
-          getDashboardSummaryGeneratedAtMillis(nextSummary);
-        const isStale =
-          nextSummary.schemaVersion !== DASHBOARD_SUMMARY_SCHEMA_VERSION ||
-          nextSummary.businessDate !== today() ||
-          !generatedAtMillis ||
-          Date.now() - generatedAtMillis >
-            DASHBOARD_SUMMARY_ENTRY_REFRESH_AGE_MS;
-
         setDashboardSummary(nextSummary);
         setDashboardSummaryReady(true);
         setDashboardSummaryLoadErrorMessage('');
         setAdminRequestTabCountsRemote(nextSummary.requestTabCounts);
-
-        if (isStale || shouldForceRefreshAfterAdminWork) {
-          requestRefreshOnce();
-        }
       },
       (error) => {
         const message =
@@ -158,14 +140,44 @@ export const useDashboardSummary = ({
       unsubscribe();
     };
   }, [
-    firebaseAuthReady,
-    currentAuthRoleReady,
-    authenticatedAdminId,
-    currentAuthAdminAccountId,
-    view,
-    adminTab,
+    shouldSubscribeDashboardSummary,
     refreshDashboardSummary,
     setAdminRequestTabCountsRemote,
+  ]);
+
+  useEffect(() => {
+    const previousAdminTab = previousAdminTabRef.current;
+    previousAdminTabRef.current = adminTab;
+
+    if (
+      !shouldSubscribeDashboardSummary ||
+      adminTab !== 'dashboard' ||
+      !dashboardSummaryReady ||
+      !dashboardSummary
+    ) {
+      return;
+    }
+
+    const generatedAtMillis =
+      getDashboardSummaryGeneratedAtMillis(dashboardSummary);
+    const isStale =
+      dashboardSummary.schemaVersion !== DASHBOARD_SUMMARY_SCHEMA_VERSION ||
+      dashboardSummary.businessDate !== today() ||
+      !generatedAtMillis ||
+      Date.now() - generatedAtMillis >
+        DASHBOARD_SUMMARY_ENTRY_REFRESH_AGE_MS;
+    const shouldForceRefreshAfterAdminWork =
+      DASHBOARD_REFRESH_AFTER_ADMIN_TABS.has(previousAdminTab);
+
+    if (isStale || shouldForceRefreshAfterAdminWork) {
+      void refreshDashboardSummary();
+    }
+  }, [
+    adminTab,
+    dashboardSummary,
+    dashboardSummaryReady,
+    refreshDashboardSummary,
+    shouldSubscribeDashboardSummary,
   ]);
 
   return {

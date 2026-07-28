@@ -12161,9 +12161,8 @@ function App() {
     hasAdminAccess && adminTab === 'laptops';
 
   const shouldPrepareRentalStatus =
-    shouldShowStats ||
     shouldPrepareAdminAssetList ||
-    (view === 'user' && userTab === 'home');
+    (view === 'user' && ['home', 'rental'].includes(userTab));
 
   const rentalStatusSummary = useMemo(() => {
     const emptyStats = {
@@ -12245,7 +12244,31 @@ function App() {
   }, [shouldPrepareRentalStatus, data.requests, data.laptops]);
 
   const blockedLaptopIds = rentalStatusSummary.blockedLaptopIds;
-  const stats = rentalStatusSummary.stats;
+
+  const adminRentalStatusStats = useMemo(() => {
+    const metrics = dashboardSummary?.metrics || {};
+    const getMetric = (key) => {
+      const value = Number(metrics[key]);
+      return Number.isFinite(value) ? value : 0;
+    };
+
+    return {
+      total: getMetric('totalAssetCount'),
+      available: getMetric('availableCount'),
+      requested: getMetric('requestedCount'),
+      reserved: getMetric('uniqueReservedAssets'),
+      approved: getMetric('uniqueActiveAssets'),
+      overdue: getMetric('uniqueOverdueAssets'),
+    };
+  }, [dashboardSummary]);
+
+  const shouldUseAdminSummaryStats = view === 'admin' && isAdminAuthenticated;
+  const stats = shouldUseAdminSummaryStats
+    ? adminRentalStatusStats
+    : rentalStatusSummary.stats;
+  const statsLoading =
+    shouldUseAdminSummaryStats &&
+    (!dashboardSummaryReady || !dashboardSummary);
 
   const filteredLaptops = useMemo(() => {
     if (!shouldPrepareUserRentalList) {
@@ -21045,6 +21068,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         {shouldShowStats && (
           <RentalStatusBoard
             stats={stats}
+            loading={statsLoading}
             className="mb-6 sm:mb-8"
           />
         )}
