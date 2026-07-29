@@ -1635,7 +1635,9 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
     let jobRef = resumeJob?.id
       ? doc(SYSTEM_RESET_JOBS_COLLECTION_REF, resumeJob.id)
       : doc(SYSTEM_RESET_JOBS_COLLECTION_REF);
-    let authUids = [];
+    let authUids = Array.isArray(resumeJob?.authUids)
+      ? Array.from(new Set(resumeJob.authUids.filter(Boolean)))
+      : [];
 
     try {
       await reauthenticateWithCredential(firebaseAuth.currentUser, credential);
@@ -1653,7 +1655,12 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
           startedByName: getAdminDisplayName(authenticatedAdminAccount),
         });
       } else {
-        await updateResetJob(jobRef, { status: 'running', resumedAt: serverTimestamp() });
+        await updateResetJob(jobRef, {
+          status: 'running',
+          resumedAt: serverTimestamp(),
+          errorMessage: null,
+          failedAt: null,
+        });
       }
 
       const previousSiteSettings = normalizeSiteSettings(siteSettings);
@@ -1667,19 +1674,47 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
       }, { merge: true });
       await updateResetJob(jobRef, { currentStep: 'collect-auth-uids' });
 
+      const deletedCounts = {
+        ...(resumeJob?.deletedCounts || {}),
+      };
+      const userAccountsAlreadyDeleted = Object.prototype.hasOwnProperty.call(
+        deletedCounts,
+        'userAccounts'
+      );
+
       if (scopes.includes(SYSTEM_RESET_SCOPE.MEMBERS)) {
-        const userSnapshot = await getDocs(collection(db, 'userAccounts'));
-        authUids = userSnapshot.docs.map((item) => item.id).filter(Boolean);
-        downloadAuthCleanupFiles(authUids);
+        if (authUids.length === 0 && !userAccountsAlreadyDeleted) {
+          const userSnapshot = await getDocs(collection(db, 'userAccounts'));
+          authUids = Array.from(new Set(
+            userSnapshot.docs.map((item) => item.id).filter(Boolean)
+          ));
+          await updateResetJob(jobRef, {
+            authUids,
+            authUidCount: authUids.length,
+          });
+        }
+
+        if (authUids.length > 0) {
+          downloadAuthCleanupFiles(authUids);
+        }
       }
 
       const collectionNames = Array.from(new Set(
         scopes.flatMap((scope) => RESET_SCOPE_META[scope]?.collections || [])
       ));
-      const deletedCounts = {};
 
       for (let index = 0; index < collectionNames.length; index += 1) {
         const collectionName = collectionNames[index];
+
+        if (Object.prototype.hasOwnProperty.call(deletedCounts, collectionName)) {
+          setResetProgress({
+            step: `${collectionName} 삭제 완료`,
+            completed: index + 1,
+            total: collectionNames.length,
+          });
+          continue;
+        }
+
         setResetProgress({
           step: `${collectionName} 삭제`,
           completed: index,
@@ -1764,22 +1799,26 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
       setResetPassword('');
       setResetProgress({ step: '완료', completed: collectionNames.length, total: collectionNames.length });
 
+      const authUidCount = authUids.length > 0
+        ? authUids.length
+        : Number(resumeJob?.authUidCount || 0);
+
       await updateResetJob(jobRef, {
         status: 'completed',
         currentStep: 'completed',
         deletedCounts,
-        authUidCount: authUids.length,
+        authUidCount,
         completedAt: serverTimestamp(),
       });
       await writeAuditLog({
         action: 'system-data-reset',
         section: '데이터 초기화',
-        afterValues: { scopes, deletedCounts, authUidCount: authUids.length, resetJobId: jobRef.id },
+        afterValues: { scopes, deletedCounts, authUidCount, resetJobId: jobRef.id },
         summary: `데이터 초기화 완료: ${scopes.map((scope) => RESET_SCOPE_META[scope]?.label).join(', ')}`,
       });
       triggerToast(
-        authUids.length > 0
-          ? `Firestore 초기화가 완료되었습니다. 일반회원 Auth UID ${authUids.length}건은 내려받은 로컬 스크립트 또는 Firebase Console에서 삭제해 주세요.`
+        authUidCount > 0
+          ? `Firestore 초기화가 완료되었습니다. 일반회원 Auth UID ${authUidCount}건은 내려받은 로컬 스크립트 또는 Firebase Console에서 삭제해 주세요.`
           : 'Firestore 데이터 초기화가 완료되었습니다. 시스템은 점검 모드로 유지됩니다.',
         'success'
       );
@@ -2213,6 +2252,9 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
           <div className="text-sm font-bold text-amber-900">중단된 초기화 작업이 있습니다.</div>
           <p className="mt-1 text-xs text-amber-800">작업 ID {latestResetJob.id} · 현재 단계 {latestResetJob.currentStep || '확인 불가'}</p>
+          {latestResetJob.errorMessage ? (
+            <p className="mt-1 break-words text-xs leading-5 text-rose-700">중단 원인: {latestResetJob.errorMessage}</p>
+          ) : null}
           <div className="mt-3 flex justify-end">
             <Button type="button" variant="outline" disabled={resetRunning || !isOwner} onClick={() => executeReset({ resumeJob: latestResetJob })}><Play size={14} />중단된 초기화 계속하기</Button>
           </div>

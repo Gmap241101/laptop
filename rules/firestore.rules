@@ -1709,7 +1709,14 @@ service cloud.firestore {
     match /rentalRequestLogs/{logId} {
       allow get, list: if isAdmin();
       allow create: if isAdmin() && request.resource.data.actorUid == request.auth.uid;
-      allow update, delete: if false;
+
+      // 신청 처리 감사 로그는 일반 운영 중 수정하거나 삭제할 수 없습니다.
+      allow update: if false;
+
+      // 최고 관리자가 데이터 초기화를 수행하는 경우에만 삭제를 허용합니다.
+      // 초기화 코드는 삭제 전에 사이트를 점검 모드로 전환합니다.
+      allow delete: if isOwnerAdmin()
+        && currentServiceMode() == 'maintenance';
     }
 
     // ==========================================
