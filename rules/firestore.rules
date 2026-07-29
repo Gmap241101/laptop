@@ -1242,7 +1242,7 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // 이메일 찾기에는 원본 이메일이 아닌 마스킹된 주소만 저장합니다.
+    // 이메일 찾기에는 마스킹 주소만 저장하고, 비밀번호 재설정에는 복합 SHA-256 검증값을 사용합니다.
     match /accountRecoveryKeys/{recoveryKey} {
       allow get: if true;
       allow list: if isAdmin();
@@ -1253,6 +1253,7 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           'recoveryKey',
           'maskedEmail',
+          'emailVerifier',
           'accountStatus',
           'enabled',
           'updatedAt'
@@ -1260,6 +1261,8 @@ service cloud.firestore {
         && request.resource.data.recoveryKey == recoveryKey
         && request.resource.data.maskedEmail is string
         && request.resource.data.maskedEmail.size() > 0
+        && request.resource.data.emailVerifier is string
+        && request.resource.data.get('emailVerifier', '').matches('^[0-9a-f]{64}$')
         && request.resource.data.accountStatus in ['active', 'pending']
         && request.resource.data.get('enabled', true) == true
         && exists(
@@ -1289,6 +1292,7 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           'recoveryKey',
           'maskedEmail',
+          'emailVerifier',
           'accountStatus',
           'enabled',
           'updatedAt'
@@ -1296,6 +1300,8 @@ service cloud.firestore {
         && request.resource.data.recoveryKey == recoveryKey
         && request.resource.data.maskedEmail is string
         && request.resource.data.maskedEmail.size() > 0
+        && request.resource.data.emailVerifier is string
+        && request.resource.data.get('emailVerifier', '').matches('^[0-9a-f]{64}$')
         && request.resource.data.get('enabled', true) == true
         && existsAfter(
           /databases/$(database)/documents/userAccounts/$(request.auth.uid)
@@ -1318,10 +1324,19 @@ service cloud.firestore {
         && !directoryPolicyEnabled()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'accountStatus',
+          'emailVerifier',
           'updatedAt'
         ])
         && request.resource.data.recoveryKey == resource.data.recoveryKey
         && request.resource.data.maskedEmail == resource.data.maskedEmail
+        && (
+          request.resource.data.get('emailVerifier', '') == ''
+          || request.resource.data.get('emailVerifier', '').matches('^[0-9a-f]{64}$')
+        )
+        && (
+          resource.data.get('emailVerifier', '') == ''
+          || request.resource.data.get('emailVerifier', '') == resource.data.emailVerifier
+        )
         && request.resource.data.get('enabled', true) == true
         && resource.data.accountStatus == 'profileRequired'
         && request.resource.data.accountStatus in ['active', 'pending']
@@ -1352,10 +1367,19 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'accountStatus',
           'enabled',
+          'emailVerifier',
           'updatedAt'
         ])
         && request.resource.data.recoveryKey == resource.data.recoveryKey
         && request.resource.data.maskedEmail == resource.data.maskedEmail
+        && (
+          request.resource.data.get('emailVerifier', '') == ''
+          || request.resource.data.get('emailVerifier', '').matches('^[0-9a-f]{64}$')
+        )
+        && (
+          resource.data.get('emailVerifier', '') == ''
+          || request.resource.data.get('emailVerifier', '') == resource.data.emailVerifier
+        )
         && request.resource.data.get('enabled', true) == true
         && existsAfter(
           /databases/$(database)/documents/userAccounts/$(request.auth.uid)

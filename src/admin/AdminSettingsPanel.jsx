@@ -686,6 +686,9 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
       const requestIds = new Set(requests.docs.map((item) => item.id));
       const userIds = new Set(users.docs.map((item) => item.id));
       const availabilityIds = new Set(availability.docs.map((item) => item.id));
+      const recoveryById = new Map(
+        recovery.docs.map((item) => [item.id, item.data() || {}])
+      );
       const issues = [];
 
       let expectedCatalogPayload = null;
@@ -768,8 +771,23 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
         if (value.status !== 'retired' && value.identityKey && !claims.docs.some((claim) => claim.id === value.identityKey)) {
           issues.push({ level: 'warning', code: 'missing-claim', message: `${item.id}: 부서·성명 점유 문서 누락` });
         }
-        if (value.status !== 'retired' && value.recoveryKey && !recovery.docs.some((record) => record.id === value.recoveryKey)) {
+        if (value.status !== 'retired' && value.recoveryKey && !recoveryById.has(value.recoveryKey)) {
           issues.push({ level: 'warning', code: 'missing-recovery', message: `${item.id}: 이메일 찾기 복구키 누락` });
+        }
+
+        if (
+          value.status !== 'retired' &&
+          value.recoveryKey &&
+          recoveryById.has(value.recoveryKey) &&
+          !/^[0-9a-f]{64}$/.test(
+            String(recoveryById.get(value.recoveryKey)?.emailVerifier || '')
+          )
+        ) {
+          issues.push({
+            level: 'warning',
+            code: 'missing-recovery-email-verifier',
+            message: `${item.id}: 비밀번호 재설정 이메일 검증값 누락`,
+          });
         }
       });
 

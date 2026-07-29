@@ -42,7 +42,7 @@ const STATUS_CONTENT = {
   passwordResetSent: {
     tone: 'emerald',
     title: '비밀번호 재설정 안내를 전송했습니다.',
-    description: '입력한 이메일로 가입된 계정이 있다면 비밀번호 재설정 메일이 발송됩니다. 받은편지함과 스팸함을 확인해 주세요.',
+    description: '확인된 가입 이메일로 비밀번호 재설정 메일을 발송했습니다. 받은편지함과 스팸함을 확인해 주세요.',
     primaryLabel: '로그인하기',
     primaryAction: 'login',
     secondaryLabel: '홈으로',

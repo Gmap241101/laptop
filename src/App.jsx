@@ -296,6 +296,7 @@ import {
 
 import {
   buildDomesticPhoneNumber,
+  createAccountRecoveryEmailVerifier,
   createAccountRecoveryKey,
   createMemberIdentityKey,
   isValidDomesticPhoneNumber,
@@ -308,6 +309,13 @@ import {
   normalizeMemberTeam,
   parseDomesticPhoneNumber,
 } from './utils/memberPolicy.js';
+import {
+  createDefaultAccountRecoveryForm,
+  createDefaultPasswordResetForm,
+  findAccountRecoveryEmail,
+  validateAccountRecoveryIdentity,
+  verifyPasswordResetIdentity,
+} from './features/members/accountRecoveryService.js';
 
 import {
   DEFAULT_SITE_SETTINGS,
@@ -742,14 +750,6 @@ const createDefaultUserProfileForm = () => ({
   phoneLast: '',
   newPassword: '',
   newPasswordConfirm: '',
-});
-
-const createDefaultAccountRecoveryForm = () => ({
-  name: '',
-  team: '',
-  phonePrefix: '010',
-  phoneMiddle: '',
-  phoneLast: '',
 });
 
 const createMemberPolicyError = (code) => {
@@ -1528,8 +1528,9 @@ function App() {
   const [accountRecoveryForm, setAccountRecoveryForm] = useState(createDefaultAccountRecoveryForm);
   const [accountRecoveryLoading, setAccountRecoveryLoading] = useState(false);
   const [accountRecoveryResult, setAccountRecoveryResult] = useState(null);
-  const [passwordResetEmail, setPasswordResetEmail] = useState('');
+  const [passwordResetForm, setPasswordResetForm] = useState(createDefaultPasswordResetForm);
   const [passwordResetLoading, setPasswordResetLoading] = useState(false);
+  const [passwordResetVerificationResult, setPasswordResetVerificationResult] = useState(null);
   const [userAccountStatusView, setUserAccountStatusView] = useState(readUserAccountStatusView);
   const [userDirectoryVerificationLoading, setUserDirectoryVerificationLoading] = useState(false);
   const userDirectoryVerificationKeyRef = useRef('');
@@ -6535,7 +6536,8 @@ function App() {
     }
 
     setAccountRecoveryResult(null);
-    setPasswordResetEmail('');
+    setPasswordResetForm(createDefaultPasswordResetForm());
+    setPasswordResetVerificationResult(null);
     pushAppPath('user', 'login');
     setView('user');
     setUserTab('login');
@@ -6578,12 +6580,23 @@ function App() {
     setIsCommunityMenuOpen(false);
   };
 
-  const goToUserPasswordReset = () => {
-    setPasswordResetEmail('');
+  const resetAccountRecoverySearch = () => {
+    setAccountRecoveryForm(createDefaultAccountRecoveryForm());
+    setAccountRecoveryResult(null);
+  };
+
+  const goToUserPasswordReset = (initialValues = {}) => {
+    setPasswordResetForm(createDefaultPasswordResetForm(initialValues));
+    setPasswordResetVerificationResult(null);
     pushAppPath('user', 'resetPassword');
     setView('user');
     setUserTab('resetPassword');
     setIsCommunityMenuOpen(false);
+  };
+
+  const updatePasswordResetForm = (nextForm) => {
+    setPasswordResetForm(nextForm);
+    setPasswordResetVerificationResult(null);
   };
 
   const goToUserMypage = () => {
@@ -6656,27 +6669,12 @@ function App() {
     event.preventDefault();
 
     const lookupStartedAt = Date.now();
-    const name = normalizeMemberName(accountRecoveryForm.name);
-    const team = normalizeMemberTeam(accountRecoveryForm.team);
-    const phoneParts = {
-      prefix: accountRecoveryForm.phonePrefix,
-      middle: accountRecoveryForm.phoneMiddle,
-      last: accountRecoveryForm.phoneLast,
-    };
-    const phone = buildDomesticPhoneNumber(phoneParts);
+    const validation = validateAccountRecoveryIdentity({
+      form: accountRecoveryForm,
+    });
 
-    if (!isValidMemberName(name)) {
-      triggerToast('이름은 공백 없이 한글 또는 영문 2~30자로 입력해 주세요.', 'error');
-      return;
-    }
-
-    if (!team) {
-      triggerToast('부서 / 팀을 선택해 주세요.', 'error');
-      return;
-    }
-
-    if (!isValidDomesticPhoneNumber(phoneParts)) {
-      triggerToast('올바른 국내 연락처를 입력해 주세요.', 'error');
+    if (!validation.valid) {
+      triggerToast(validation.errorMessage, 'error');
       return;
     }
 
@@ -6684,33 +6682,27 @@ function App() {
     setAccountRecoveryResult(null);
 
     try {
-      const recoveryKey = await createAccountRecoveryKey({ team, name, phone });
-      const recoverySnapshot = await getDoc(
-        doc(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF, recoveryKey)
-      );
-      const recoveryData = recoverySnapshot.exists()
-        ? recoverySnapshot.data()
-        : null;
-      const maskedEmail = String(recoveryData?.maskedEmail || '');
-      const found = Boolean(
-        recoveryData &&
-        recoveryData.enabled !== false &&
-        maskedEmail
-      );
+      const result = await findAccountRecoveryEmail(validation);
 
       setAccountRecoveryResult({
-        found,
-        maskedEmail: found ? maskedEmail : '',
+        found: result.found,
+        maskedEmail: result.maskedEmail,
       });
     } catch (error) {
       console.error('Account recovery lookup error:', error);
-      triggerToast('이메일 확인 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.', 'error');
+      triggerToast(
+        '이메일 확인 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+        'error'
+      );
     } finally {
       const minimumResponseDelayMs = 600;
-      const remainingDelay = minimumResponseDelayMs - (Date.now() - lookupStartedAt);
+      const remainingDelay =
+        minimumResponseDelayMs - (Date.now() - lookupStartedAt);
 
       if (remainingDelay > 0) {
-        await new Promise((resolve) => window.setTimeout(resolve, remainingDelay));
+        await new Promise((resolve) =>
+          window.setTimeout(resolve, remainingDelay)
+        );
       }
 
       setAccountRecoveryLoading(false);
@@ -6720,29 +6712,65 @@ function App() {
   const submitPasswordReset = async (event) => {
     event.preventDefault();
 
-    const email = normalizeEmailAddress(passwordResetEmail);
+    const verificationStartedAt = Date.now();
+    const validation = validateAccountRecoveryIdentity({
+      email: passwordResetForm.email,
+      form: passwordResetForm,
+      requireEmail: true,
+    });
 
-    if (!isValidEmailAddress(email)) {
-      triggerToast('올바른 이메일 주소를 입력해 주세요.', 'error');
+    if (!validation.valid) {
+      triggerToast(validation.errorMessage, 'error');
       return;
     }
 
     setPasswordResetLoading(true);
+    setPasswordResetVerificationResult(null);
 
     try {
-      await sendPasswordResetEmail(firebaseAuth, email);
-      setPasswordResetEmail('');
+      const verification = await verifyPasswordResetIdentity(validation);
+
+      if (!verification.verified) {
+        setPasswordResetVerificationResult({
+          verified: false,
+          message: verification.verifierMissing
+            ? '계정 보안 정보가 아직 갱신되지 않았습니다. 관리자에게 계정 복구 정보 갱신을 요청해 주세요.'
+            : '입력한 가입 이메일과 회원정보가 모두 일치하는 계정을 찾지 못했습니다.',
+        });
+        return;
+      }
+
+      await sendPasswordResetEmail(firebaseAuth, validation.email);
+      setPasswordResetForm(createDefaultPasswordResetForm());
+      setPasswordResetVerificationResult(null);
       showUserAccountStatus('passwordResetSent');
     } catch (error) {
-      if (['auth/user-not-found', 'auth/invalid-credential'].includes(error?.code)) {
-        setPasswordResetEmail('');
-        showUserAccountStatus('passwordResetSent');
+      if (
+        ['auth/user-not-found', 'auth/invalid-credential'].includes(
+          error?.code
+        )
+      ) {
+        setPasswordResetVerificationResult({
+          verified: false,
+          message:
+            '입력한 가입 이메일과 회원정보가 모두 일치하는 계정을 찾지 못했습니다.',
+        });
         return;
       }
 
       console.error('User password reset email error:', error);
       triggerToast(getUserAuthErrorMessage(error), 'error');
     } finally {
+      const minimumResponseDelayMs = 600;
+      const remainingDelay =
+        minimumResponseDelayMs - (Date.now() - verificationStartedAt);
+
+      if (remainingDelay > 0) {
+        await new Promise((resolve) =>
+          window.setTimeout(resolve, remainingDelay)
+        );
+      }
+
       setPasswordResetLoading(false);
     }
   };
@@ -6884,6 +6912,12 @@ function App() {
 
         const identityKey = await createMemberIdentityKey(team, name);
         const recoveryKey = await createAccountRecoveryKey({ team, name, phone });
+        const recoveryEmailVerifier = await createAccountRecoveryEmailVerifier({
+          email,
+          team,
+          name,
+          phone,
+        });
         const maskedEmail = maskEmailAddress(email);
         const initialPolicyEnabled = isRegisteredMemberSignupRequired(
           data.settings
@@ -7184,6 +7218,7 @@ function App() {
           transaction.set(recoveryRef, {
             recoveryKey,
             maskedEmail,
+            emailVerifier: recoveryEmailVerifier,
             accountStatus: createdAccountStatus,
             enabled: true,
             updatedAt: serverTimestamp(),
@@ -8257,6 +8292,12 @@ function App() {
     try {
       const nextIdentityKey = await createMemberIdentityKey(team, name);
       const nextRecoveryKey = await createAccountRecoveryKey({ team, name, phone });
+      const nextRecoveryEmailVerifier = await createAccountRecoveryEmailVerifier({
+        email: firebaseAuthUser.email || userProfile?.email || '',
+        team,
+        name,
+        phone,
+      });
       const nextMaskedEmail = maskEmailAddress(
         firebaseAuthUser.email || userProfile?.email || ''
       );
@@ -8451,6 +8492,7 @@ function App() {
         transaction.set(nextRecoveryRef, {
           recoveryKey: nextRecoveryKey,
           maskedEmail: nextMaskedEmail,
+          emailVerifier: nextRecoveryEmailVerifier,
           accountStatus: nextStatus,
           enabled: true,
           updatedAt: serverTimestamp(),
@@ -16410,6 +16452,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     accountRecoveryForm,
     accountRecoveryLoading,
     accountRecoveryResult,
+    resetAccountRecoverySearch,
     addDaysFrom,
     addFaqCategory,
     addTempAssetCategory,
@@ -16631,8 +16674,9 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     paginatedAdminFaqPosts,
     paginatedAdminNoticePosts,
     paginatedNoticePosts,
-    passwordResetEmail,
+    passwordResetForm,
     passwordResetLoading,
+    passwordResetVerificationResult,
     pinnedNoticePosts,
     pushAppPath,
     query,
@@ -16717,7 +16761,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     setNoticePostForm,
     setUserNoticeQuery,
     setNoticePostsPerPageInput,
-    setPasswordResetEmail,
+    updatePasswordResetForm,
     setQuery,
     setSelectedAssetCategory,
     setSelectedLaptopId,

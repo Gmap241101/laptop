@@ -171,3 +171,30 @@ export const getAccountRecoverySource = ({ team, name, phone }) =>
 
 export const createAccountRecoveryKey = async ({ team, name, phone }) =>
   createSha256Key(getAccountRecoverySource({ team, name, phone }));
+
+export const getAccountRecoveryEmailVerifierSource = ({
+  email,
+  team,
+  name,
+  phone,
+}) =>
+  [
+    'password-reset-v1',
+    getAccountRecoverySource({ team, name, phone }),
+    normalizeEmailAddress(email),
+  ].join('\u001f');
+
+export const createAccountRecoveryEmailVerifier = async ({
+  email,
+  team,
+  name,
+  phone,
+}) =>
+  createSha256Key(
+    getAccountRecoveryEmailVerifierSource({
+      email,
+      team,
+      name,
+      phone,
+    })
+  );

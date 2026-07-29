@@ -14,6 +14,7 @@ import {
   USER_PROFILE_STATUS,
 } from '../../constants/memberConstants.js';
 import {
+  createAccountRecoveryEmailVerifier,
   createAccountRecoveryKey,
   createMemberIdentityKey,
   maskEmailAddress,
@@ -84,6 +85,15 @@ export const buildMemberAccountIndexEntries = async (accounts = []) =>
         name && team && phone
           ? await createAccountRecoveryKey({ team, name, phone })
           : '';
+      const emailVerifier =
+        name && team && phone && email
+          ? await createAccountRecoveryEmailVerifier({
+              email,
+              team,
+              name,
+              phone,
+            })
+          : '';
 
       return {
         account,
@@ -93,6 +103,7 @@ export const buildMemberAccountIndexEntries = async (accounts = []) =>
         email,
         identityKey,
         recoveryKey,
+        emailVerifier,
         maskedEmail: maskEmailAddress(email),
       };
     })
@@ -196,6 +207,7 @@ export const buildMemberAccountIndexOperations = ({
         data: {
           recoveryKey: currentEntry.recoveryKey,
           maskedEmail: currentEntry.maskedEmail,
+          emailVerifier: currentEntry.emailVerifier,
           accountStatus:
             currentEntry.account.status || USER_PROFILE_STATUS.PENDING,
           enabled: true,

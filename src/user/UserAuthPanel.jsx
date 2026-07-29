@@ -25,10 +25,12 @@ export default function UserAuthPanel({ ctx }) {
     goToUserPasswordReset,
     goToUserSignup,
     logoutUser,
-    passwordResetEmail,
+    passwordResetForm,
     passwordResetLoading,
+    passwordResetVerificationResult,
+    resetAccountRecoverySearch,
     setAccountRecoveryForm,
-    setPasswordResetEmail,
+    updatePasswordResetForm,
     setUserAuthForm,
     submitAccountRecovery,
     submitPasswordReset,
@@ -181,36 +183,134 @@ export default function UserAuthPanel({ ctx }) {
               </div>
             ) : null}
 
-            <div className="grid grid-cols-2 gap-2">
-              <Button type="button" variant="outline" disabled={accountRecoveryLoading} onClick={goToUserLogin} className="w-full justify-center py-3">
-                취소
-              </Button>
-              <Button type="submit" variant="primary" disabled={accountRecoveryLoading} className="w-full justify-center py-3">
-                {accountRecoveryLoading ? '확인 중...' : '이메일 찾기'}
-              </Button>
-            </div>
+            {accountRecoveryResult?.found ? (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={accountRecoveryLoading}
+                  onClick={resetAccountRecoverySearch}
+                  className="w-full justify-center py-3"
+                >
+                  취소
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={accountRecoveryLoading}
+                  onClick={goToUserLogin}
+                  className="w-full justify-center py-3"
+                >
+                  로그인 하기
+                </Button>
+                <Button
+                  type="button"
+                  variant="primary"
+                  disabled={accountRecoveryLoading}
+                  onClick={() =>
+                    goToUserPasswordReset({
+                      name: accountRecoveryForm.name,
+                      team: accountRecoveryForm.team,
+                      phonePrefix: accountRecoveryForm.phonePrefix,
+                      phoneMiddle: accountRecoveryForm.phoneMiddle,
+                      phoneLast: accountRecoveryForm.phoneLast,
+                    })
+                  }
+                  className="w-full justify-center py-3"
+                >
+                  비밀번호 재설정
+                </Button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <Button type="button" variant="outline" disabled={accountRecoveryLoading} onClick={goToUserLogin} className="w-full justify-center py-3">
+                  취소
+                </Button>
+                <Button type="submit" variant="primary" disabled={accountRecoveryLoading} className="w-full justify-center py-3">
+                  {accountRecoveryLoading ? '확인 중...' : '이메일 찾기'}
+                </Button>
+              </div>
+            )}
           </form>
         ) : isPasswordResetMode ? (
           <form className="space-y-4" onSubmit={submitPasswordReset}>
             <Input
               label="가입 이메일"
-              value={passwordResetEmail}
-              onChange={setPasswordResetEmail}
+              value={passwordResetForm.email}
+              onChange={(value) => {
+                updatePasswordResetForm({
+                  ...passwordResetForm,
+                  email: value,
+                });
+              }}
               placeholder="example@company.com"
               type="email"
               autoComplete="email"
             />
 
+            <Input
+              label="성명"
+              value={passwordResetForm.name}
+              onChange={(value) =>
+                updatePasswordResetForm({
+                  ...passwordResetForm,
+                  name: sanitizeMemberNameInput(value).slice(0, 30),
+                })
+              }
+              placeholder="공백 없이 성명을 입력하세요"
+              maxLength={30}
+            />
+
+            <Input
+              label="부서 / 팀"
+              value={passwordResetForm.team}
+              onChange={(value) =>
+                updatePasswordResetForm({
+                  ...passwordResetForm,
+                  team: value,
+                })
+              }
+              placeholder="가입할 때 입력한 부서 또는 팀명"
+              list="password-reset-team-options"
+              maxLength={80}
+            />
+            <datalist id="password-reset-team-options">
+              {(data.teams || []).map((team) => (
+                <option key={team} value={team} />
+              ))}
+            </datalist>
+
+            <DomesticPhoneInput
+              prefix={passwordResetForm.phonePrefix}
+              middle={passwordResetForm.phoneMiddle}
+              last={passwordResetForm.phoneLast}
+              disabled={passwordResetLoading}
+              onChange={(phoneParts) =>
+                updatePasswordResetForm({
+                  ...passwordResetForm,
+                  phonePrefix: phoneParts.prefix,
+                  phoneMiddle: phoneParts.middle,
+                  phoneLast: phoneParts.last,
+                })
+              }
+            />
+
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-xs leading-5 text-slate-600">
-              계정 존재 여부와 관계없이 같은 안내를 표시합니다. 받은편지함과 스팸함을 함께 확인해 주세요.
+              가입 이메일, 성명, 부서 / 팀, 연락처가 모두 일치하는 경우에만 비밀번호 재설정 메일을 발송합니다.
             </div>
+
+            {passwordResetVerificationResult ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-800">
+                {passwordResetVerificationResult.message}
+              </div>
+            ) : null}
 
             <div className="grid grid-cols-2 gap-2">
               <Button type="button" variant="outline" disabled={passwordResetLoading} onClick={goToUserLogin} className="w-full justify-center py-3">
                 취소
               </Button>
               <Button type="submit" variant="primary" disabled={passwordResetLoading || !firebaseAuthReady} className="w-full justify-center py-3">
-                {passwordResetLoading ? '전송 중...' : '재설정 메일 보내기'}
+                {passwordResetLoading ? '확인 중...' : '재설정 메일 보내기'}
               </Button>
             </div>
           </form>
