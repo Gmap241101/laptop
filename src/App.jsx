@@ -16387,6 +16387,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     currentUserRentalRestrictionStatus,
     currentUserRestrictionReady,
     currentUserRequests,
+    rentalRequestsLoadErrorMessage,
+    rentalRequestsReady,
     dashboardSummary,
     dashboardSummaryLoadErrorMessage,
     dashboardSummaryReady,
