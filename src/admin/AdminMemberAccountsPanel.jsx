@@ -1,5 +1,7 @@
 import { useState } from 'react';
 
+import AdminMemberTermsDialog from './AdminMemberTermsDialog.jsx';
+
 import useAdminMemberAccountsController from '../features/members/useAdminMemberAccountsController.js';
 import {
   loadMemberAccountHistorySummary,
@@ -61,6 +63,7 @@ export default function AdminMemberAccountsPanel({ ctx }) {
   const [historySummaryByUid, setHistorySummaryByUid] = useState({});
   const [historyLoadingUid, setHistoryLoadingUid] = useState('');
   const [historyErrorByUid, setHistoryErrorByUid] = useState({});
+  const [termsAccount, setTermsAccount] = useState(null);
 
   const loadHistorySummary = async (account) => {
     const uid = String(account?.uid || '');
@@ -332,6 +335,12 @@ export default function AdminMemberAccountsPanel({ ctx }) {
                                         UID: {account.uid}
                                       </div>
 
+                                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
+                                        약관 상태: {Number(account.termsConsentRevision || 0) > 0
+                                          ? `정책 버전 ${account.termsConsentRevision} 동의 기록 있음`
+                                          : '동의 기록 없음 또는 최초 적용 제외'}
+                                      </div>
+
                                       {accountStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED ? (
                                         <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-[11px] text-orange-700">
                                           사유: {account.profileRequiredReason === 'duplicateIdentity'
@@ -382,6 +391,13 @@ export default function AdminMemberAccountsPanel({ ctx }) {
                                     </div>
 
                                     <div className="flex shrink-0 flex-wrap gap-2 lg:max-w-[330px] lg:justify-end">
+                                      <Button
+                                        variant="outline"
+                                        className="px-3 py-2 text-xs"
+                                        onClick={() => setTermsAccount(account)}
+                                      >
+                                        약관 동의 내역
+                                      </Button>
                                       {accountStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED ? (
                                         <div className="w-full text-right text-[11px] leading-4 text-orange-600">
                                           사용자가 마이페이지에서 등록 정보를 확인해야 합니다.
@@ -512,6 +528,13 @@ export default function AdminMemberAccountsPanel({ ctx }) {
                             </Button>
                           </div>
                         </div>
+                      ) : null}
+
+                      {termsAccount ? (
+                        <AdminMemberTermsDialog
+                          account={termsAccount}
+                          onClose={() => setTermsAccount(null)}
+                        />
                       ) : null}
                     </div>
   );

@@ -213,3 +213,30 @@ export const SYSTEM_RESTORE_JOBS_COLLECTION_REF = collection(
   db,
   'systemRestoreJobs'
 );
+
+
+export const SIGNUP_TERMS_POLICY_DOC_REF = doc(
+  db,
+  'signupTermsPolicy',
+  'current'
+);
+
+export const SIGNUP_TERMS_COLLECTION_REF = collection(
+  db,
+  'signupTerms'
+);
+
+export const SIGNUP_TERM_VERSIONS_COLLECTION_REF = collection(
+  db,
+  'signupTermVersions'
+);
+
+export const USER_TERM_CONSENT_STATES_COLLECTION_REF = collection(
+  db,
+  'userTermConsentStates'
+);
+
+export const USER_TERM_CONSENT_LOGS_COLLECTION_REF = collection(
+  db,
+  'userTermConsentLogs'
+);

@@ -17,6 +17,7 @@ import {
   updateProfile,
 } from 'firebase/auth';
 import {
+  collection,
   deleteDoc,
   doc,
   getCountFromServer,
@@ -192,6 +193,13 @@ import {
   PROFILE_REQUIRED_REASON,
   USER_PROFILE_STATUS,
 } from './constants/memberConstants.js';
+import {
+  DEFAULT_SIGNUP_TERMS_SETTINGS,
+  TERMS_CONSENT_SOURCE,
+  TERMS_DECISION,
+  normalizeTermsPolicy,
+  normalizeTermsSettings,
+} from './features/terms/termsConstants.js';
 import {
   DEFAULT_ADJUST_START_DATE_AFTER_WORK_END,
   DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY,
@@ -543,6 +551,7 @@ const initialData = {
     autoApproveNewMembers: false,
     memberDirectoryVersion: 0,
     memberIdentityClaimsReady: false,
+    ...DEFAULT_SIGNUP_TERMS_SETTINGS,
     allowNonOverlappingSameAssetRequests: DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS,
     rentalExtensionEnabled: DEFAULT_RENTAL_EXTENSION_ENABLED,
     rentalExtensionApprovalMode: DEFAULT_RENTAL_EXTENSION_APPROVAL_MODE,
@@ -671,6 +680,7 @@ function mergePersistedData(rawData) {
     getSafeMemberDirectoryVersion(rawSettings);
   settings.memberIdentityClaimsReady =
     Boolean(rawSettings.memberIdentityClaimsReady);
+  Object.assign(settings, normalizeTermsSettings(rawSettings));
   settings.holidays = normalizeHolidayList(settings.holidays);
 
   const parsedWithoutAdminAccounts = stripAdminAccountsFromData(parsed);
@@ -789,6 +799,18 @@ const getUserAuthErrorMessage = (error) => {
 
   if (errorCode === 'member/identity-index-not-ready') {
     return '회원 중복 확인 정보가 준비되지 않았습니다. 관리자에게 문의해 주세요.';
+  }
+
+  if (errorCode === 'terms/policy-changed') {
+    return '회원가입 약관이 변경되었습니다. 약관 동의 단계로 돌아가 변경된 내용을 다시 확인해 주세요.';
+  }
+
+  if (errorCode === 'terms/required-not-accepted') {
+    return '필수 회원가입 약관을 모두 확인하고 동의해 주세요.';
+  }
+
+  if (errorCode === 'terms/decision-required') {
+    return '선택 약관에 동의하려면 약관 내용을 먼저 확인해 주세요.';
   }
 
   if (errorCode === 'auth/email-already-in-use') {
@@ -6725,10 +6747,18 @@ function App() {
     }
   };
 
-  const submitUserAuthForm = async (event) => {
+  const submitUserAuthForm = async (event, providedTermsSubmission = null) => {
     event.preventDefault();
 
     const isSignupMode = userTab === 'signup';
+    const signupTermsSubmission = providedTermsSubmission || {
+      ready: false,
+      enabled: false,
+      valid: false,
+      policyRevision: 0,
+      requiredRevision: 0,
+      decisions: [],
+    };
     const signupBlockReason = isSignupMode
       ? getServiceBlockReason(siteSettings, 'signup')
       : '';
@@ -6804,6 +6834,14 @@ function App() {
 
       if (password !== passwordConfirm) {
         triggerToast('비밀번호 확인이 일치하지 않습니다.', 'error');
+        return;
+      }
+
+      if (
+        normalizeTermsSettings(data.settings).signupTermsEnabled &&
+        (!signupTermsSubmission.ready || !signupTermsSubmission.valid)
+      ) {
+        triggerToast('필수 회원가입 약관을 확인하고 동의해 주세요.', 'error');
         return;
       }
     }
@@ -6908,9 +6946,38 @@ function App() {
           USER_ACCOUNTS_COLLECTION_NAME,
           credential.user.uid
         );
+        const signupTermsPolicyRef = doc(
+          userSignupDb,
+          'signupTermsPolicy',
+          'current'
+        );
+        const submittedTermsById = new Map(
+          (Array.isArray(signupTermsSubmission.decisions)
+            ? signupTermsSubmission.decisions
+            : []
+          ).map((decision) => [String(decision.termId || ''), decision])
+        );
+        const signupConsentRefs = new Map(
+          [...submittedTermsById.keys()].map((termId) => [
+            termId,
+            {
+              stateRef: doc(
+                userSignupDb,
+                'userTermConsentStates',
+                `${credential.user.uid}__${termId}`
+              ),
+              logRef: doc(
+                collection(userSignupDb, 'userTermConsentLogs')
+              ),
+            },
+          ])
+        );
 
         await runTransaction(userSignupDb, async (transaction) => {
-          const configSnapshot = await transaction.get(signupPublicConfigRef);
+          const [configSnapshot, termsPolicySnapshot] = await Promise.all([
+            transaction.get(signupPublicConfigRef),
+            transaction.get(signupTermsPolicyRef),
+          ]);
           const claimRef = signupClaimRef;
           const recoveryRef = signupRecoveryRef;
           const claimSnapshot = await transaction.get(claimRef);
@@ -6923,6 +6990,48 @@ function App() {
           const latestPolicyEnabled = isRegisteredMemberSignupRequired(
             latestSettings
           );
+          const latestTermsSettings = normalizeTermsSettings(latestSettings);
+          const latestTermsPolicy = normalizeTermsPolicy(
+            termsPolicySnapshot.exists() ? termsPolicySnapshot.data() : {}
+          );
+          const termsEnabled =
+            latestTermsSettings.signupTermsEnabled && latestTermsPolicy.enabled;
+          const activeTerms = termsEnabled ? latestTermsPolicy.activeTerms : [];
+
+          if (termsEnabled) {
+            if (
+              !signupTermsSubmission.ready ||
+              Number(signupTermsSubmission.policyRevision || 0) !==
+                latestTermsPolicy.revision ||
+              submittedTermsById.size !== activeTerms.length
+            ) {
+              throw createMemberPolicyError('terms/policy-changed');
+            }
+
+            activeTerms.forEach((term) => {
+              const decision = submittedTermsById.get(term.id);
+              const exactVersion =
+                Number(decision?.termVersion || 0) === Number(term.version || 0);
+              const exactVersionId =
+                String(decision?.termVersionId || '') === String(term.versionId || '');
+              const exactHash =
+                String(decision?.contentHash || '') === String(term.contentHash || '');
+              const accepted = decision?.decision === TERMS_DECISION.ACCEPTED;
+              const viewed = Number(decision?.viewedAtMs || 0) > 0;
+
+              if (!decision || !exactVersion || !exactVersionId || !exactHash) {
+                throw createMemberPolicyError('terms/policy-changed');
+              }
+
+              if (term.required && (!accepted || !viewed)) {
+                throw createMemberPolicyError('terms/required-not-accepted');
+              }
+
+              if (!term.required && accepted && !viewed) {
+                throw createMemberPolicyError('terms/decision-required');
+              }
+            });
+          }
 
           if (!latestSettings.memberIdentityClaimsReady) {
             throw createMemberPolicyError('member/identity-index-not-ready');
@@ -7032,10 +7141,45 @@ function App() {
               rejoinedAccount: createdAccountRejoined,
               previousAccountUids: claimFormerUids,
               inheritedRestriction: claimData.restrictionSnapshot || {},
+              termsConsentRevision: termsEnabled ? latestTermsPolicy.revision : 0,
+              termsConsentCompletedAt: termsEnabled ? serverTimestamp() : '',
+              termsConsentPolicyVersion: termsEnabled ? latestTermsPolicy.revision : 0,
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
             }
           );
+
+          if (termsEnabled) {
+            activeTerms.forEach((term) => {
+              const decision = submittedTermsById.get(term.id);
+              const refs = signupConsentRefs.get(term.id);
+              const decisionValue = decision.decision === TERMS_DECISION.ACCEPTED
+                ? TERMS_DECISION.ACCEPTED
+                : TERMS_DECISION.DECLINED;
+              const consentPayload = {
+                uid: credential.user.uid,
+                termId: term.id,
+                termVersion: term.version,
+                termVersionId: term.versionId || '',
+                policyRevision: latestTermsPolicy.revision,
+                decision: decisionValue,
+                requiredSnapshot: Boolean(term.required),
+                titleSnapshot: term.title,
+                contentHash: term.contentHash,
+                viewedAtMs: Number(decision.viewedAtMs || 0),
+                decidedAt: serverTimestamp(),
+                source: TERMS_CONSENT_SOURCE.SIGNUP,
+                updatedAt: serverTimestamp(),
+              };
+
+              transaction.set(refs.stateRef, consentPayload);
+              transaction.set(refs.logRef, {
+                ...consentPayload,
+                previousDecision: '',
+                createdAt: serverTimestamp(),
+              });
+            });
+          }
 
           transaction.set(recoveryRef, {
             recoveryKey,

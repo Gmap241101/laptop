@@ -30,9 +30,9 @@ export const RESTORE_SCOPE_META = {
   },
   [SYSTEM_RESTORE_SCOPE.POLICIES]: {
     label: '대여·회원가입 정책',
-    description: '공개 설정 문서의 대여 정책, 휴일 및 회원가입 정책을 복원합니다.',
-    documentKeys: ['rentalSystem/publicConfig:settings'],
-    collections: [],
+    description: '공개 설정 문서의 대여 정책, 휴일, 회원가입 정책과 약관·버전을 복원합니다.',
+    documentKeys: ['rentalSystem/publicConfig:settings', 'signupTermsPolicy/current'],
+    collections: ['signupTerms', 'signupTermVersions'],
   },
   [SYSTEM_RESTORE_SCOPE.ASSETS]: {
     label: '자산 및 자산번호',
@@ -48,9 +48,9 @@ export const RESTORE_SCOPE_META = {
   },
   [SYSTEM_RESTORE_SCOPE.MEMBERS]: {
     label: '회원 계정·인덱스',
-    description: '일반회원 문서, 부서·성명 점유와 이메일 찾기 인덱스를 복원합니다. Firebase Authentication 계정은 별도입니다.',
+    description: '일반회원 문서, 부서·성명 점유, 이메일 찾기 인덱스와 약관 동의 상태·이력을 복원합니다. Firebase Authentication 계정은 별도입니다.',
     documentKeys: [],
-    collections: ['userAccounts', 'memberIdentityClaims', 'accountRecoveryKeys'],
+    collections: ['userAccounts', 'memberIdentityClaims', 'accountRecoveryKeys', 'userTermConsentStates', 'userTermConsentLogs'],
     requiresPersonalData: true,
   },
   [SYSTEM_RESTORE_SCOPE.RENTALS]: {
@@ -79,6 +79,8 @@ export const RESTORE_DELETE_ORDER = [
   'rentalAvailability',
   'rentalRequests',
   'rentalRestrictions',
+  'userTermConsentLogs',
+  'userTermConsentStates',
   'accountRecoveryKeys',
   'memberIdentityClaims',
   'userAccounts',
@@ -92,6 +94,8 @@ export const RESTORE_DELETE_ORDER = [
   'popupPosts',
   'homeBanners',
   'footerPages',
+  'signupTermVersions',
+  'signupTerms',
 ];
 
 export const RESTORE_WRITE_ORDER = [
@@ -99,9 +103,13 @@ export const RESTORE_WRITE_ORDER = [
   'memberDirectoryKeys',
   'rentalAssets',
   'rentalAssetNumbers',
+  'signupTerms',
+  'signupTermVersions',
   'userAccounts',
   'memberIdentityClaims',
   'accountRecoveryKeys',
+  'userTermConsentStates',
+  'userTermConsentLogs',
   'rentalRequests',
   'rentalRequestLogs',
   'rentalAvailability',

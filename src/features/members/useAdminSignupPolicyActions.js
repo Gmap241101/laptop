@@ -6,13 +6,20 @@ import {
   useState,
 } from 'react';
 import {
+  runTransaction,
   serverTimestamp,
-  setDoc,
 } from 'firebase/firestore';
 
 import {
   PUBLIC_CONFIG_DOC_REF,
+  SIGNUP_TERMS_POLICY_DOC_REF,
+  db,
+  firebaseAuth,
 } from '../../firebase.js';
+import {
+  normalizeTermsPolicy,
+  normalizeTermsSettings,
+} from '../terms/termsConstants.js';
 import {
   getSafeMemberDirectoryVersion,
 } from './memberAccountPolicy.js';
@@ -27,10 +34,20 @@ export default function useAdminSignupPolicyActions({
   triggerToast,
 }) {
   const triggerToastRef = useRef(triggerToast);
+  const normalizedTermsSettings = normalizeTermsSettings(settings);
   const [tempRequireRegisteredMemberForSignup, setTempRequireRegisteredMemberForSignup] =
     useState(Boolean(settings.requireRegisteredMemberForSignup));
   const [tempAutoApproveNewMembers, setTempAutoApproveNewMembers] =
     useState(Boolean(settings.autoApproveNewMembers));
+  const [tempSignupTermsEnabled, setTempSignupTermsEnabled] = useState(
+    normalizedTermsSettings.signupTermsEnabled
+  );
+  const [tempSignupTermsRequireReconsentOnChange, setTempSignupTermsRequireReconsentOnChange] = useState(
+    normalizedTermsSettings.signupTermsRequireReconsentOnChange
+  );
+  const [tempSignupTermsApplyToExistingMembers, setTempSignupTermsApplyToExistingMembers] = useState(
+    normalizedTermsSettings.signupTermsApplyToExistingMembers
+  );
   const [signupPolicySaving, setSignupPolicySaving] = useState(false);
 
   useEffect(() => {
@@ -38,46 +55,64 @@ export default function useAdminSignupPolicyActions({
   }, [triggerToast]);
 
   useEffect(() => {
+    const nextTermsSettings = normalizeTermsSettings(settings);
     setTempRequireRegisteredMemberForSignup(
       Boolean(settings.requireRegisteredMemberForSignup)
     );
     setTempAutoApproveNewMembers(
       Boolean(settings.autoApproveNewMembers)
     );
-  }, [
-    settings.autoApproveNewMembers,
-    settings.requireRegisteredMemberForSignup,
-  ]);
+    setTempSignupTermsEnabled(nextTermsSettings.signupTermsEnabled);
+    setTempSignupTermsRequireReconsentOnChange(
+      nextTermsSettings.signupTermsRequireReconsentOnChange
+    );
+    setTempSignupTermsApplyToExistingMembers(
+      nextTermsSettings.signupTermsApplyToExistingMembers
+    );
+  }, [settings]);
 
-  const signupPolicyDirty = useMemo(
-    () =>
+  const signupPolicyDirty = useMemo(() => {
+    const currentTerms = normalizeTermsSettings(settings);
+    return (
       Boolean(tempRequireRegisteredMemberForSignup) !==
         Boolean(settings.requireRegisteredMemberForSignup) ||
       Boolean(tempAutoApproveNewMembers) !==
-        Boolean(settings.autoApproveNewMembers),
-    [
-      settings.autoApproveNewMembers,
-      settings.requireRegisteredMemberForSignup,
-      tempAutoApproveNewMembers,
-      tempRequireRegisteredMemberForSignup,
-    ]
-  );
+        Boolean(settings.autoApproveNewMembers) ||
+      Boolean(tempSignupTermsEnabled) !== currentTerms.signupTermsEnabled ||
+      Boolean(tempSignupTermsRequireReconsentOnChange) !==
+        currentTerms.signupTermsRequireReconsentOnChange ||
+      Boolean(tempSignupTermsApplyToExistingMembers) !==
+        currentTerms.signupTermsApplyToExistingMembers
+    );
+  }, [
+    settings,
+    tempAutoApproveNewMembers,
+    tempRequireRegisteredMemberForSignup,
+    tempSignupTermsApplyToExistingMembers,
+    tempSignupTermsEnabled,
+    tempSignupTermsRequireReconsentOnChange,
+  ]);
 
   const cancelSignupPolicyChanges = useCallback(() => {
+    const currentTerms = normalizeTermsSettings(settings);
     setTempRequireRegisteredMemberForSignup(
       Boolean(settings.requireRegisteredMemberForSignup)
     );
     setTempAutoApproveNewMembers(
       Boolean(settings.autoApproveNewMembers)
+    );
+    setTempSignupTermsEnabled(currentTerms.signupTermsEnabled);
+    setTempSignupTermsRequireReconsentOnChange(
+      currentTerms.signupTermsRequireReconsentOnChange
+    );
+    setTempSignupTermsApplyToExistingMembers(
+      currentTerms.signupTermsApplyToExistingMembers
     );
     triggerToastRef.current(
       '회원가입 정책 변경사항을 취소했습니다.',
       'success'
     );
-  }, [
-    settings.autoApproveNewMembers,
-    settings.requireRegisteredMemberForSignup,
-  ]);
+  }, [settings]);
 
   const saveSignupPolicyChanges = useCallback(async () => {
     if (!isAdminAuthenticated) {
@@ -107,24 +142,101 @@ export default function useAdminSignupPolicyActions({
     const nextDirectoryVersion = policyEnabledChanged
       ? getSafeMemberDirectoryVersion(settings) + 1
       : getSafeMemberDirectoryVersion(settings);
-    const nextSettings = {
-      ...settings,
-      requireRegisteredMemberForSignup: nextRequireRegistered,
-      autoApproveNewMembers: nextAutoApprove,
-      memberDirectoryVersion: nextDirectoryVersion,
-    };
-
     setSignupPolicySaving(true);
 
     try {
-      await setDoc(
-        PUBLIC_CONFIG_DOC_REF,
-        {
-          settings: nextSettings,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      let nextSettings = null;
+
+      await runTransaction(db, async (transaction) => {
+        const [publicConfigSnapshot, termsPolicySnapshot] = await Promise.all([
+          transaction.get(PUBLIC_CONFIG_DOC_REF),
+          transaction.get(SIGNUP_TERMS_POLICY_DOC_REF),
+        ]);
+        const publicConfig = publicConfigSnapshot.exists()
+          ? publicConfigSnapshot.data()
+          : {};
+        const currentSettings = {
+          ...(publicConfig.settings || settings),
+        };
+        const termsPolicy = normalizeTermsPolicy(
+          termsPolicySnapshot.exists() ? termsPolicySnapshot.data() : {}
+        );
+
+        if (tempSignupTermsEnabled && termsPolicy.activeTerms.length === 0) {
+          const error = new Error('terms/no-active-terms');
+          error.code = 'terms/no-active-terms';
+          throw error;
+        }
+
+        const currentTermsSettings = normalizeTermsSettings(currentSettings);
+        const enablingTerms =
+          !currentTermsSettings.signupTermsEnabled && tempSignupTermsEnabled;
+
+        let policyRevision = Math.max(
+          termsPolicy.revision,
+          Number(currentSettings.signupTermsPolicyRevision) || 0
+        );
+        if (enablingTerms && policyRevision === 0) policyRevision = 1;
+        let initialRevision = Math.max(
+          termsPolicy.initialRevision,
+          Number(currentSettings.signupTermsInitialRevision) || 0
+        );
+        let requiredRevision = Math.max(
+          termsPolicy.requiredRevision,
+          Number(currentSettings.signupTermsRequiredRevision) || 0
+        );
+
+        if (enablingTerms) {
+          initialRevision = policyRevision;
+          requiredRevision = policyRevision;
+        }
+
+        nextSettings = {
+          ...currentSettings,
+          requireRegisteredMemberForSignup: nextRequireRegistered,
+          autoApproveNewMembers: nextAutoApprove,
+          memberDirectoryVersion: nextDirectoryVersion,
+          signupTermsEnabled: Boolean(tempSignupTermsEnabled),
+          signupTermsRequireReconsentOnChange: Boolean(
+            tempSignupTermsRequireReconsentOnChange
+          ),
+          signupTermsApplyToExistingMembers: Boolean(
+            tempSignupTermsApplyToExistingMembers
+          ),
+          signupTermsPolicyRevision: policyRevision,
+          signupTermsRequiredRevision: requiredRevision,
+          signupTermsInitialRevision: initialRevision,
+        };
+
+        transaction.set(
+          PUBLIC_CONFIG_DOC_REF,
+          {
+            settings: nextSettings,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        transaction.set(
+          SIGNUP_TERMS_POLICY_DOC_REF,
+          {
+            enabled: Boolean(tempSignupTermsEnabled),
+            requireReconsentOnChange: Boolean(
+              tempSignupTermsRequireReconsentOnChange
+            ),
+            applyToExistingMembers: Boolean(
+              tempSignupTermsApplyToExistingMembers
+            ),
+            revision: policyRevision,
+            requiredRevision,
+            initialRevision,
+            activeTerms: termsPolicy.activeTerms,
+            updatedAt: serverTimestamp(),
+            updatedBy: firebaseAuth.currentUser?.uid || '',
+          },
+          { merge: true }
+        );
+      });
 
       let restoredDirectoryMismatchCount = 0;
       let restoreWarning = '';
@@ -152,13 +264,11 @@ export default function useAdminSignupPolicyActions({
       setTempAutoApproveNewMembers(nextAutoApprove);
 
       triggerToastRef.current(
-        nextRequireRegistered
-          ? '회원가입 정책이 저장되었습니다. 기존 회원은 로그인 시 순차적으로 명부를 확인하며, 필요한 경우 전체 회원 명부 검사를 실행할 수 있습니다.'
-          : `회원가입 제한 정책이 해제되었습니다. 신규 회원 자동 승인도 함께 해제되었습니다.${
-              restoredDirectoryMismatchCount > 0
-                ? ` 명부 불일치로 전환됐던 회원 ${restoredDirectoryMismatchCount}명의 상태를 복원했습니다.`
-                : ''
-            }${restoreWarning}`,
+        `회원가입 정책이 저장되었습니다.${
+          restoredDirectoryMismatchCount > 0
+            ? ` 명부 불일치로 전환됐던 회원 ${restoredDirectoryMismatchCount}명의 상태를 복원했습니다.`
+            : ''
+        }${restoreWarning}`,
         restoreWarning ? 'error' : 'success'
       );
 
@@ -166,7 +276,9 @@ export default function useAdminSignupPolicyActions({
     } catch (error) {
       console.error('Signup policy save error:', error);
       triggerToastRef.current(
-        '회원가입 정책 저장에 실패했습니다.',
+        error?.code === 'terms/no-active-terms'
+          ? '약관 기능을 사용하려면 이용약관 관리 탭에서 사용 중인 약관을 하나 이상 등록해 주세요.'
+          : '회원가입 정책 저장에 실패했습니다.',
         'error'
       );
       return false;
@@ -182,6 +294,9 @@ export default function useAdminSignupPolicyActions({
     settings,
     tempAutoApproveNewMembers,
     tempRequireRegisteredMemberForSignup,
+    tempSignupTermsApplyToExistingMembers,
+    tempSignupTermsEnabled,
+    tempSignupTermsRequireReconsentOnChange,
   ]);
 
   return {
@@ -189,9 +304,15 @@ export default function useAdminSignupPolicyActions({
     saveSignupPolicyChanges,
     setTempAutoApproveNewMembers,
     setTempRequireRegisteredMemberForSignup,
+    setTempSignupTermsApplyToExistingMembers,
+    setTempSignupTermsEnabled,
+    setTempSignupTermsRequireReconsentOnChange,
     signupPolicyDirty,
     signupPolicySaving,
     tempAutoApproveNewMembers,
     tempRequireRegisteredMemberForSignup,
+    tempSignupTermsApplyToExistingMembers,
+    tempSignupTermsEnabled,
+    tempSignupTermsRequireReconsentOnChange,
   };
 }

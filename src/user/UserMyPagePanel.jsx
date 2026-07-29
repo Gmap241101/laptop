@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import DomesticPhoneInput from '../components/DomesticPhoneInput.jsx';
 import { sanitizeMemberNameInput } from '../utils/memberPolicy.js';
+import UserTermsConsentPanel from './UserTermsConsentPanel.jsx';
 
 export default function UserMyPagePanel({ ctx }) {
   const {
@@ -39,6 +41,8 @@ export default function UserMyPagePanel({ ctx }) {
     submitMembershipWithdrawal,
     setWithdrawalPassword,
   } = ctx;
+
+  const [generalUserTab, setGeneralUserTab] = useState('profile');
 
   return (
             <div className="mx-auto max-w-3xl space-y-6">
@@ -234,156 +238,108 @@ export default function UserMyPagePanel({ ctx }) {
 
                       {isCurrentFirebaseAuthGeneralUser && (
                         <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
-                          <div className="mb-4">
-                            <h3 className="text-base font-bold text-slate-900">일반 회원 내 정보</h3>
-                            <p className="mt-1 text-xs text-slate-500">
-                              대여 신청에 사용할 본인 정보를 수정합니다.
-                            </p>
+                          <div className="mb-5 grid grid-cols-3 overflow-hidden rounded-xl border border-slate-200 bg-white text-center text-[11px] font-bold">
+                            {[
+                              ['profile', '기본 정보'],
+                              ['terms', '약관 동의'],
+                              ['withdrawal', '회원 탈퇴'],
+                            ].map(([value, label]) => (
+                              <button
+                                key={value}
+                                type="button"
+                                onClick={() => setGeneralUserTab(value)}
+                                className={`px-3 py-2.5 transition ${generalUserTab === value ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
+                              >
+                                {label}
+                              </button>
+                            ))}
                           </div>
 
-                          {!userProfileReady ? (
-                            <div className="rounded-2xl border border-slate-200 bg-white py-10 text-center text-xs text-slate-400">
-                              회원 정보를 불러오는 중입니다.
-                            </div>
-                          ) : (
-                            <>
-                              {userProfile?.status === 'profileRequired' && (
-                                <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4">
-                                  <div className="text-sm font-bold text-rose-900">
-                                    등록 정보 확인이 필요합니다
-                                  </div>
-                                  <p className="mt-1 text-xs leading-5 text-rose-800">
-                                    현재 등록 정보가 관리자 명부와 일치하지 않아 서비스 이용이 제한되었습니다.
-                                    등록된 부서와 성명을 입력해 저장해 주세요.
-                                  </p>
+                          {generalUserTab === 'profile' ? (
+                            <div>
+                              <div className="mb-4">
+                                <h3 className="text-base font-bold text-slate-900">일반 회원 내 정보</h3>
+                                <p className="mt-1 text-xs text-slate-500">대여 신청에 사용할 본인 정보를 수정합니다.</p>
+                              </div>
+
+                              {!userProfileReady ? (
+                                <div className="rounded-2xl border border-slate-200 bg-white py-10 text-center text-xs text-slate-400">
+                                  회원 정보를 불러오는 중입니다.
                                 </div>
+                              ) : (
+                                <>
+                                  {userProfile?.status === 'profileRequired' && (
+                                    <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4">
+                                      <div className="text-sm font-bold text-rose-900">등록 정보 확인이 필요합니다</div>
+                                      <p className="mt-1 text-xs leading-5 text-rose-800">
+                                        현재 등록 정보가 관리자 명부와 일치하지 않아 서비스 이용이 제한되었습니다. 등록된 부서와 성명을 입력해 저장해 주세요.
+                                      </p>
+                                    </div>
+                                  )}
+
+                                  <div className="grid gap-4 md:grid-cols-2">
+                                    <Input label="이메일" type="email" value={firebaseAuthUser.email || userProfile?.email || ''} onChange={() => {}} disabled placeholder="로그인 이메일" />
+                                    <Input
+                                      label="성명"
+                                      value={userProfileForm.name}
+                                      onChange={(value) => setUserProfileForm({ ...userProfileForm, name: sanitizeMemberNameInput(value).slice(0, 30) })}
+                                      placeholder="공백 없이 성명을 입력하세요"
+                                      maxLength={30}
+                                    />
+
+                                    {data.settings.requireRegisteredMemberForSignup ? (
+                                      <label className="block">
+                                        <span className="mb-1.5 block text-xs font-semibold tracking-wide text-slate-600">부서 / 팀</span>
+                                        <select
+                                          value={userProfileForm.team}
+                                          onChange={(event) => setUserProfileForm({ ...userProfileForm, team: event.target.value })}
+                                          className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none transition mk-form-focus"
+                                        >
+                                          <option value="">부서 / 팀을 선택해 주세요</option>
+                                          {(data.teams || []).map((team) => <option key={team} value={team}>{team}</option>)}
+                                        </select>
+                                      </label>
+                                    ) : (
+                                      <Input label="부서 / 팀" value={userProfileForm.team} onChange={(value) => setUserProfileForm({ ...userProfileForm, team: value })} placeholder="소속 부서 또는 팀명 입력" />
+                                    )}
+
+                                    <DomesticPhoneInput
+                                      prefix={userProfileForm.phonePrefix}
+                                      middle={userProfileForm.phoneMiddle}
+                                      last={userProfileForm.phoneLast}
+                                      disabled={userProfileSaving}
+                                      onChange={(phoneParts) => setUserProfileForm({ ...userProfileForm, phonePrefix: phoneParts.prefix, phoneMiddle: phoneParts.middle, phoneLast: phoneParts.last })}
+                                    />
+
+                                    <Input label="새 비밀번호" type="password" value={userProfileForm.newPassword || ''} onChange={(value) => setUserProfileForm({ ...userProfileForm, newPassword: value })} placeholder="8자 이상, 영문+숫자 포함" />
+                                    <Input label="새 비밀번호 확인" type="password" value={userProfileForm.newPasswordConfirm || ''} onChange={(value) => setUserProfileForm({ ...userProfileForm, newPasswordConfirm: value })} placeholder="새 비밀번호 재입력" />
+                                  </div>
+
+                                  <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[11px] leading-5 text-slate-500">
+                                    새 비밀번호는 8자 이상이며 영문과 숫자를 포함해야 합니다. Firebase Auth 계정은 보안상 최근 로그인 상태가 필요할 수 있습니다.
+                                  </div>
+
+                                  <div className="mt-5 flex justify-end">
+                                    <Button type="button" variant="primary" onClick={saveMyUserProfile} disabled={userProfileSaving || userDirectoryVerificationLoading}>
+                                      {userProfileSaving ? '저장 중...' : userDirectoryVerificationLoading ? '명부 확인 중...' : '일반 회원 내 정보 저장'}
+                                    </Button>
+                                  </div>
+                                </>
                               )}
+                            </div>
+                          ) : null}
 
-                              <div className="grid gap-4 md:grid-cols-2">
-                                <Input
-                                  label="이메일"
-                                  type="email"
-                                  value={firebaseAuthUser.email || userProfile?.email || ''}
-                                  onChange={() => {}}
-                                  disabled
-                                  placeholder="로그인 이메일"
-                                />
-
-                                <Input
-                                  label="성명"
-                                  value={userProfileForm.name}
-                                  onChange={(value) =>
-                                    setUserProfileForm({
-                                      ...userProfileForm,
-                                      name: sanitizeMemberNameInput(value).slice(0, 30),
-                                    })
-                                  }
-                                  placeholder="공백 없이 성명을 입력하세요"
-                                  maxLength={30}
-                                />
-
-                                {data.settings.requireRegisteredMemberForSignup ? (
-                                  <label className="block">
-                                    <span className="mb-1.5 block text-xs font-semibold tracking-wide text-slate-600">
-                                      부서 / 팀
-                                    </span>
-                                    <select
-                                      value={userProfileForm.team}
-                                      onChange={(event) =>
-                                        setUserProfileForm({
-                                          ...userProfileForm,
-                                          team: event.target.value,
-                                        })
-                                      }
-                                      className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none transition mk-form-focus"
-                                    >
-                                      <option value="">부서 / 팀을 선택해 주세요</option>
-                                      {(data.teams || []).map((team) => (
-                                        <option key={team} value={team}>
-                                          {team}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </label>
-                                ) : (
-                                  <Input
-                                    label="부서 / 팀"
-                                    value={userProfileForm.team}
-                                    onChange={(value) =>
-                                      setUserProfileForm({
-                                        ...userProfileForm,
-                                        team: value,
-                                      })
-                                    }
-                                    placeholder="소속 부서 또는 팀명 입력"
-                                  />
-                                )}
-
-                                <DomesticPhoneInput
-                                  prefix={userProfileForm.phonePrefix}
-                                  middle={userProfileForm.phoneMiddle}
-                                  last={userProfileForm.phoneLast}
-                                  disabled={userProfileSaving}
-                                  onChange={(phoneParts) =>
-                                    setUserProfileForm({
-                                      ...userProfileForm,
-                                      phonePrefix: phoneParts.prefix,
-                                      phoneMiddle: phoneParts.middle,
-                                      phoneLast: phoneParts.last,
-                                    })
-                                  }
-                                />
-
-                                <Input
-                                  label="새 비밀번호"
-                                  type="password"
-                                  value={userProfileForm.newPassword || ''}
-                                  onChange={(value) =>
-                                    setUserProfileForm({
-                                      ...userProfileForm,
-                                      newPassword: value,
-                                    })
-                                  }
-                                  placeholder="8자 이상, 영문+숫자 포함"
-                                />
-
-                                <Input
-                                  label="새 비밀번호 확인"
-                                  type="password"
-                                  value={userProfileForm.newPasswordConfirm || ''}
-                                  onChange={(value) =>
-                                    setUserProfileForm({
-                                      ...userProfileForm,
-                                      newPasswordConfirm: value,
-                                    })
-                                  }
-                                  placeholder="새 비밀번호 재입력"
-                                />
+                          {generalUserTab === 'terms' ? (
+                            <div>
+                              <div className="mb-4">
+                                <h3 className="text-base font-bold text-slate-900">약관 동의 내역</h3>
+                                <p className="mt-1 text-xs text-slate-500">현재 약관 동의 상태와 변경 이력을 확인하고 선택 약관을 수정합니다.</p>
                               </div>
+                              <UserTermsConsentPanel account={userProfile} Button={Button} triggerToast={ctx.triggerToast} />
+                            </div>
+                          ) : null}
 
-                              <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[11px] leading-5 text-slate-500">
-                                새 비밀번호는 8자 이상이며 영문과 숫자를 포함해야 합니다.
-                                Firebase Auth 계정은 보안상 최근 로그인 상태가 필요할 수 있습니다.
-                              </div>
-
-                              <div className="mt-5 flex justify-end">
-                                <Button
-                                  type="button"
-                                  variant="primary"
-                                  onClick={saveMyUserProfile}
-                                  disabled={userProfileSaving || userDirectoryVerificationLoading}
-                                >
-                                  {userProfileSaving
-                                    ? '저장 중...'
-                                    : userDirectoryVerificationLoading
-                                      ? '명부 확인 중...'
-                                      : '일반 회원 내 정보 저장'}
-                                </Button>
-                              </div>
-                            </>
-                          )}
-
-                          <div className="mt-8 border-t border-rose-100 pt-6">
+                          {generalUserTab === 'withdrawal' ? (
                             <div className="rounded-2xl border border-rose-200 bg-rose-50/70 p-5">
                               <h3 className="text-sm font-bold text-rose-900">회원 탈퇴</h3>
                               <p className="mt-2 text-xs leading-5 text-rose-800">
@@ -391,42 +347,27 @@ export default function UserMyPagePanel({ ctx }) {
                               </p>
 
                               {withdrawalBlockMessage ? (
-                                <div className="mt-3 rounded-xl border border-rose-200 bg-white px-4 py-3 text-[11px] leading-5 text-rose-700">
-                                  {withdrawalBlockMessage}
-                                </div>
+                                <div className="mt-3 rounded-xl border border-rose-200 bg-white px-4 py-3 text-[11px] leading-5 text-rose-700">{withdrawalBlockMessage}</div>
                               ) : null}
 
                               {withdrawalDialogOpen ? (
                                 <form className="mt-4 space-y-3" onSubmit={submitMembershipWithdrawal}>
-                                  <Input
-                                    label="현재 비밀번호"
-                                    type="password"
-                                    value={withdrawalPassword}
-                                    onChange={setWithdrawalPassword}
-                                    placeholder="본인 확인을 위해 현재 비밀번호 입력"
-                                    autoComplete="current-password"
-                                  />
+                                  <Input label="현재 비밀번호" type="password" value={withdrawalPassword} onChange={setWithdrawalPassword} placeholder="본인 확인을 위해 현재 비밀번호 입력" autoComplete="current-password" />
                                   <div className="rounded-xl border border-rose-200 bg-white px-4 py-3 text-[11px] leading-5 text-rose-700">
                                     탈퇴 시 이메일·연락처 등 개인정보는 비식별 처리되며, 대여·연체·제재 이력은 감사 및 재가입 확인을 위해 연결 정보가 보존됩니다.
                                   </div>
                                   <div className="flex justify-end gap-2">
-                                    <Button type="button" variant="outline" disabled={withdrawalLoading} onClick={cancelWithdrawal}>
-                                      취소
-                                    </Button>
-                                    <Button type="submit" variant="danger" disabled={withdrawalLoading || Boolean(withdrawalBlockMessage)}>
-                                      {withdrawalLoading ? '탈퇴 처리 중...' : '회원 탈퇴'}
-                                    </Button>
+                                    <Button type="button" variant="outline" disabled={withdrawalLoading} onClick={cancelWithdrawal}>취소</Button>
+                                    <Button type="submit" variant="danger" disabled={withdrawalLoading || Boolean(withdrawalBlockMessage)}>{withdrawalLoading ? '탈퇴 처리 중...' : '회원 탈퇴'}</Button>
                                   </div>
                                 </form>
                               ) : (
                                 <div className="mt-4 flex justify-end">
-                                  <Button type="button" variant="danger" onClick={openWithdrawalDialog} disabled={Boolean(withdrawalBlockMessage)}>
-                                    회원 탈퇴
-                                  </Button>
+                                  <Button type="button" variant="danger" onClick={openWithdrawalDialog} disabled={Boolean(withdrawalBlockMessage)}>회원 탈퇴</Button>
                                 </div>
                               )}
                             </div>
-                          </div>
+                          ) : null}
                         </div>
                       )}
                     </div>

@@ -109,6 +109,120 @@ service cloud.firestore {
         ).data.get('settings', {}).get('memberIdentityClaimsReady', false) == true;
     }
 
+    function signupTermsPolicyExists() {
+      return exists(/databases/$(database)/documents/signupTermsPolicy/current);
+    }
+
+    function signupTermsEnabled() {
+      return signupTermsPolicyExists()
+        && get(
+          /databases/$(database)/documents/signupTermsPolicy/current
+        ).data.get('enabled', false) == true;
+    }
+
+    function currentSignupTermsRevision() {
+      return signupTermsPolicyExists()
+        ? get(
+            /databases/$(database)/documents/signupTermsPolicy/current
+          ).data.get('revision', 0)
+        : 0;
+    }
+
+    function currentSignupTermsRequiredRevision() {
+      return signupTermsPolicyExists()
+        ? get(
+            /databases/$(database)/documents/signupTermsPolicy/current
+          ).data.get('requiredRevision', 0)
+        : 0;
+    }
+
+    function signupTermsInitialRevision() {
+      return signupTermsPolicyExists()
+        ? get(
+            /databases/$(database)/documents/signupTermsPolicy/current
+          ).data.get('initialRevision', 0)
+        : 0;
+    }
+
+    function signupTermsApplyToExistingMembers() {
+      return signupTermsPolicyExists()
+        && get(
+          /databases/$(database)/documents/signupTermsPolicy/current
+        ).data.get('applyToExistingMembers', false) == true;
+    }
+
+    function isTermsCompliantAccount(accountData) {
+      let consentRevision = accountData.get('termsConsentRevision', 0);
+      let requiredRevision = currentSignupTermsRequiredRevision();
+
+      return !signupTermsEnabled()
+        || requiredRevision <= 0
+        || consentRevision >= requiredRevision
+        || (
+          consentRevision == 0
+          && !signupTermsApplyToExistingMembers()
+          && requiredRevision <= signupTermsInitialRevision()
+        );
+    }
+
+    function validCurrentTermConsent(consentData) {
+      let termId = consentData.get('termId', '');
+      let termPath = /databases/$(database)/documents/signupTerms/$(termId);
+
+      return termId is string
+        && termId.size() > 0
+        && exists(termPath)
+        && get(termPath).data.get('enabled', false) == true
+        && get(termPath).data.get('archived', false) == false
+        && consentData.get('termVersion', 0)
+          == get(termPath).data.get('currentVersion', 0)
+        && consentData.get('termVersionId', '')
+          == get(termPath).data.get('currentVersionId', '')
+        && consentData.get('contentHash', '')
+          == get(termPath).data.get('contentHash', '')
+        && consentData.get('requiredSnapshot', false)
+          == get(termPath).data.get('required', false)
+        && consentData.get('titleSnapshot', '')
+          == get(termPath).data.get('title', '')
+        && consentData.get('policyRevision', 0)
+          == currentSignupTermsRevision()
+        && consentData.get('decision', '') in ['accepted', 'declined']
+        && (
+          get(termPath).data.get('required', false) != true
+          || consentData.get('decision', '') == 'accepted'
+        )
+        && (
+          consentData.get('viewedAtMs', 0) > 0
+          || (
+            get(termPath).data.get('required', false) != true
+            && consentData.get('decision', '') == 'declined'
+          )
+        )
+        && consentData.get('source', '') in ['signup', 'myPage', 'reconsent'];
+    }
+
+    function isTermsConsentSummaryUpdate(beforeData, afterData, userId) {
+      return serviceAllowsUserWrites()
+        && signedIn()
+        && request.auth.uid == userId
+        && beforeData.uid == userId
+        && afterData.uid == userId
+        && beforeData.status in ['active', 'profileRequired']
+        && afterData.status == beforeData.status
+        && afterData.diff(beforeData).affectedKeys().hasOnly([
+          'termsConsentRevision',
+          'termsConsentCompletedAt',
+          'termsConsentPolicyVersion',
+          'updatedAt'
+        ])
+        && afterData.get('termsConsentRevision', 0)
+          == currentSignupTermsRevision()
+        && afterData.get('termsConsentPolicyVersion', 0)
+          == currentSignupTermsRevision()
+        && afterData.get('termsConsentRevision', 0)
+          >= beforeData.get('termsConsentRevision', 0);
+    }
+
     function isActiveUser() {
       return signedIn()
         && exists(
@@ -123,6 +237,11 @@ service cloud.firestore {
             /databases/$(database)/documents/userAccounts/$(request.auth.uid)
           ).data.get('directoryVerifiedVersion', -1)
             == currentMemberDirectoryVersion()
+        )
+        && isTermsCompliantAccount(
+          get(
+            /databases/$(database)/documents/userAccounts/$(request.auth.uid)
+          ).data
         );
     }
 
@@ -342,6 +461,109 @@ service cloud.firestore {
       allow read: if true;
       allow create, update: if isAdmin();
       allow delete: if false;
+    }
+
+    match /signupTermsPolicy/current {
+      allow read: if true;
+      allow create, update: if isAdmin()
+        && request.resource.data.get('activeTerms', []) is list
+        && request.resource.data.get('activeTerms', []).size() <= 10
+        && request.resource.data.get('revision', 0) >= 0
+        && request.resource.data.get('requiredRevision', 0) >= 0
+        && request.resource.data.get('initialRevision', 0) >= 0;
+      allow delete: if isOwnerAdmin()
+        && currentServiceMode() == 'maintenance';
+    }
+
+    match /signupTerms/{termId} {
+      allow read: if true;
+      allow create, update: if isAdmin()
+        && request.resource.data.get('id', termId) == termId
+        && request.resource.data.get('title', '') is string
+        && request.resource.data.get('title', '').size() >= 1
+        && request.resource.data.get('title', '').size() <= 120
+        && request.resource.data.get('contentHtml', '') is string
+        && request.resource.data.get('contentHash', '') is string
+        && request.resource.data.get('currentVersion', 0) >= 1;
+      allow delete: if isOwnerAdmin()
+        && currentServiceMode() == 'maintenance';
+    }
+
+    match /signupTermVersions/{versionId} {
+      allow read: if true;
+      allow create: if isAdmin()
+        && request.resource.data.get('id', versionId) == versionId
+        && request.resource.data.get('termId', '') is string
+        && request.resource.data.get('version', 0) >= 1
+        && request.resource.data.get('contentHash', '') is string;
+      allow update: if false;
+      allow delete: if isOwnerAdmin()
+        && currentServiceMode() == 'maintenance';
+    }
+
+    match /userTermConsentStates/{stateId} {
+      allow get: if isAdmin()
+        || (
+          signedIn()
+          && stateId.matches(request.auth.uid + '__.*')
+        );
+      allow list: if isAdmin()
+        || (
+          signedIn()
+          && resource.data.get('uid', '') == request.auth.uid
+        );
+      allow create, update: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          'uid',
+          'termId',
+          'termVersion',
+          'termVersionId',
+          'policyRevision',
+          'decision',
+          'requiredSnapshot',
+          'titleSnapshot',
+          'contentHash',
+          'viewedAtMs',
+          'decidedAt',
+          'source',
+          'updatedAt'
+        ])
+        && request.resource.data.get('uid', '') == request.auth.uid
+        && stateId == request.auth.uid + '__' + request.resource.data.get('termId', '')
+        && validCurrentTermConsent(request.resource.data);
+      allow delete: if isOwnerAdmin()
+        && currentServiceMode() == 'maintenance';
+    }
+
+    match /userTermConsentLogs/{logId} {
+      allow get, list: if isAdmin()
+        || (
+          signedIn()
+          && resource.data.get('uid', '') == request.auth.uid
+        );
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          'uid',
+          'termId',
+          'termVersion',
+          'termVersionId',
+          'policyRevision',
+          'decision',
+          'requiredSnapshot',
+          'titleSnapshot',
+          'contentHash',
+          'viewedAtMs',
+          'decidedAt',
+          'source',
+          'updatedAt',
+          'previousDecision',
+          'createdAt'
+        ])
+        && request.resource.data.get('uid', '') == request.auth.uid
+        && validCurrentTermConsent(request.resource.data);
+      allow update: if false;
+      allow delete: if isOwnerAdmin()
+        && currentServiceMode() == 'maintenance';
     }
 
     match /publicCatalog/main {
@@ -1238,6 +1460,9 @@ service cloud.firestore {
           'rejoinedAccount',
           'previousAccountUids',
           'inheritedRestriction',
+          'termsConsentRevision',
+          'termsConsentCompletedAt',
+          'termsConsentPolicyVersion',
           'createdAt',
           'updatedAt'
         ])
@@ -1273,6 +1498,15 @@ service cloud.firestore {
           == identityFormerUidsBefore(request.resource.data.identityKey)
         && request.resource.data.get('inheritedRestriction', {})
           == identityRestrictionBefore(request.resource.data.identityKey)
+        && (
+          !signupTermsEnabled()
+          || (
+            request.resource.data.get('termsConsentRevision', 0)
+              == currentSignupTermsRevision()
+            && request.resource.data.get('termsConsentPolicyVersion', 0)
+              == currentSignupTermsRevision()
+          )
+        )
         && memberIdentityClaimsReady()
         && isValidMemberName(request.resource.data.name)
         && isValidMemberTeam(request.resource.data.team)
@@ -1303,6 +1537,11 @@ service cloud.firestore {
 
       allow update: if isAdmin()
         || isDirectoryPolicyDisabledSelfRestore(
+          resource.data,
+          request.resource.data,
+          userId
+        )
+        || isTermsConsentSummaryUpdate(
           resource.data,
           request.resource.data,
           userId

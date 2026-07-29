@@ -1,6 +1,8 @@
 import { lazy, memo, Suspense, useMemo } from 'react';
 import DevRenderProfiler from '../performance/DevRenderProfiler.jsx';
 import UserHomePanel from './UserHomePanel.jsx';
+import useUserTermsCompliance from '../features/terms/useUserTermsCompliance.js';
+import UserTermsConsentPanel from './UserTermsConsentPanel.jsx';
 
 const UserAuthPanel = memo(lazy(() => import('./UserAuthPanel.jsx')));
 const UserAccountStatusPanel = memo(
@@ -44,11 +46,15 @@ const renderProfiledPanel = (id, panel, { lazyPanel = true } = {}) => {
 
 function UserWorkspace({ ctx, panelCtx }) {
   const {
+    Button,
     currentAuthRoleReady,
     firebaseAuthReady,
     firebaseAuthUser,
     hasFirebaseAuthSession,
     isUserDirectoryAccessRestricted,
+    triggerToast,
+    userProfile,
+    userProfileReady,
     userTab,
   } = ctx;
 
@@ -57,6 +63,10 @@ function UserWorkspace({ ctx, panelCtx }) {
     [panelCtx]
   );
   const isProtectedUserTab = ['rental', 'history'].includes(userTab);
+  const termsCompliance = useUserTermsCompliance({
+    account: userProfile,
+    enabled: isProtectedUserTab && hasFirebaseAuthSession,
+  });
 
   if (isProtectedUserTab && (!firebaseAuthReady || !currentAuthRoleReady)) {
     return (
@@ -99,6 +109,43 @@ function UserWorkspace({ ctx, panelCtx }) {
     return renderProfiledPanel(
       'mypage',
       <UserMyPagePanel ctx={panelCtx} />
+    );
+  }
+
+  if (
+    isProtectedUserTab &&
+    hasFirebaseAuthSession &&
+    (!userProfileReady || !termsCompliance.ready)
+  ) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white px-6 py-12 text-center shadow-sm">
+        <div className="text-sm font-bold text-slate-900">약관 적용 상태를 확인하는 중입니다.</div>
+        <p className="mt-2 text-xs text-slate-500">확인이 완료되면 요청한 화면으로 이동합니다.</p>
+      </div>
+    );
+  }
+
+  if (isProtectedUserTab && hasFirebaseAuthSession && termsCompliance.errorMessage) {
+    return (
+      <div className="rounded-2xl border border-rose-200 bg-rose-50 px-6 py-8 text-center shadow-sm">
+        <div className="text-sm font-bold text-rose-900">약관 적용 상태를 확인하지 못했습니다.</div>
+        <p className="mt-2 text-xs text-rose-700">{termsCompliance.errorMessage}</p>
+      </div>
+    );
+  }
+
+  if (isProtectedUserTab && hasFirebaseAuthSession && termsCompliance.consentRequired) {
+    return renderProfiledPanel(
+      'terms-reconsent',
+      <div className="mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-slate-50/60 p-5 shadow-sm">
+        <UserTermsConsentPanel
+          account={userProfile}
+          Button={Button}
+          triggerToast={triggerToast}
+          mode="gate"
+        />
+      </div>,
+      { lazyPanel: false }
     );
   }
 

@@ -168,8 +168,8 @@ const RESET_SCOPE_META = {
   },
   [SYSTEM_RESET_SCOPE.MEMBERS]: {
     label: '일반회원 정보',
-    description: '일반회원 문서, 부서·성명 점유, 이메일 찾기 인덱스를 삭제합니다. Firebase Auth 계정은 별도 정리가 필요합니다.',
-    collections: ['userAccounts', 'memberIdentityClaims', 'accountRecoveryKeys'],
+    description: '일반회원 문서, 부서·성명 점유, 이메일 찾기 인덱스와 약관 동의 상태·이력을 삭제합니다. Firebase Auth 계정은 별도 정리가 필요합니다.',
+    collections: ['userAccounts', 'memberIdentityClaims', 'accountRecoveryKeys', 'userTermConsentStates', 'userTermConsentLogs'],
   },
   [SYSTEM_RESET_SCOPE.RENTALS]: {
     label: '신청·대여내역',
@@ -183,8 +183,8 @@ const RESET_SCOPE_META = {
   },
   [SYSTEM_RESET_SCOPE.CONTENT]: {
     label: '게시물·사이트 콘텐츠',
-    description: '공지, FAQ, 팝업, 배너, 푸터 콘텐츠를 삭제합니다.',
-    collections: ['noticePosts', 'faqPosts', 'faqCategories', 'popupPosts', 'homeBanners', 'footerPages'],
+    description: '공지, FAQ, 팝업, 배너, 푸터 콘텐츠와 회원가입 약관·버전을 삭제합니다.',
+    collections: ['noticePosts', 'faqPosts', 'faqCategories', 'popupPosts', 'homeBanners', 'footerPages', 'signupTerms', 'signupTermVersions'],
   },
   [SYSTEM_RESET_SCOPE.SETTINGS]: {
     label: '사이트·운영 설정',
@@ -213,6 +213,8 @@ const BACKUP_COLLECTIONS = {
     'homeBanners',
     'popupPosts',
     'footerPages',
+    'signupTerms',
+    'signupTermVersions',
   ],
   operations: [
     'rentalAssets',
@@ -226,6 +228,8 @@ const BACKUP_COLLECTIONS = {
     'userAccounts',
     'memberIdentityClaims',
     'accountRecoveryKeys',
+    'userTermConsentStates',
+    'userTermConsentLogs',
   ],
 };
 
@@ -238,6 +242,7 @@ const BACKUP_DOCUMENTS = [
   ['faqBoard/config', 'faqBoard', 'config'],
   ['homePage/config', 'homePage', 'config'],
   ['siteFooter/config', 'siteFooter', 'config'],
+  ['signupTermsPolicy/current', 'signupTermsPolicy', 'current'],
 ];
 
 const CONTENT_CONFIG_DOCS = [
@@ -245,6 +250,7 @@ const CONTENT_CONFIG_DOCS = [
   ['faqBoard', 'config'],
   ['homePage', 'config'],
   ['siteFooter', 'config'],
+  ['signupTermsPolicy', 'current'],
 ];
 
 const cloneForAudit = (value) => JSON.parse(JSON.stringify(value || {}));
@@ -1750,6 +1756,18 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
           autoApproveNewMembers: false,
           memberDirectoryVersion: Number(publicConfig.settings?.memberDirectoryVersion || 0) + 1,
           memberIdentityClaimsReady: false,
+        };
+      }
+
+      if (scopes.includes(SYSTEM_RESET_SCOPE.CONTENT)) {
+        publicConfigUpdates.settings = {
+          ...(publicConfigUpdates.settings || publicConfig.settings || {}),
+          signupTermsEnabled: false,
+          signupTermsRequireReconsentOnChange: true,
+          signupTermsApplyToExistingMembers: false,
+          signupTermsPolicyRevision: 0,
+          signupTermsRequiredRevision: 0,
+          signupTermsInitialRevision: 0,
         };
       }
 

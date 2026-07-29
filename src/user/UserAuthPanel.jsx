@@ -1,5 +1,8 @@
+import { useCallback, useEffect, useState } from 'react';
 import DomesticPhoneInput from '../components/DomesticPhoneInput.jsx';
 import { sanitizeMemberNameInput } from '../utils/memberPolicy.js';
+import UserSignupTermsSection from './UserSignupTermsSection.jsx';
+import { createEmptyTermsSubmission } from '../features/terms/termsConstants.js';
 
 export default function UserAuthPanel({ ctx }) {
   const {
@@ -49,6 +52,21 @@ export default function UserAuthPanel({ ctx }) {
   const signupClosed =
     siteSettings?.serviceMode !== 'normal' ||
     siteSettings?.allowNewMemberSignup === false;
+
+  const [signupStep, setSignupStep] = useState(1);
+  const [signupTermsSubmission, setSignupTermsSubmission] = useState(
+    createEmptyTermsSubmission
+  );
+  const handleSignupTermsChange = useCallback((nextSubmission) => {
+    setSignupTermsSubmission(nextSubmission);
+  }, []);
+
+  useEffect(() => {
+    if (!isSignupMode) {
+      setSignupStep(1);
+      setSignupTermsSubmission(createEmptyTermsSubmission());
+    }
+  }, [isSignupMode]);
 
   const title = isSignupMode
     ? '일반 사용자 회원가입'
@@ -192,144 +210,198 @@ export default function UserAuthPanel({ ctx }) {
             </div>
           </form>
         ) : (
-          <form className="space-y-4" onSubmit={submitUserAuthForm}>
-            <Input
-              label="이메일"
-              value={userAuthForm.email}
-              onChange={(value) => setUserAuthForm({ ...userAuthForm, email: value })}
-              placeholder="example@company.com"
-              type="email"
-              autoComplete="email"
-            />
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              if (isSignupMode && signupStep === 1) {
+                event.preventDefault();
+                if (signupTermsSubmission.ready && signupTermsSubmission.valid) {
+                  setSignupStep(2);
+                }
+                return;
+              }
+              submitUserAuthForm(event, signupTermsSubmission);
+            }}
+          >
+            {isSignupMode ? (
+              <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-center text-[11px] font-bold">
+                <div className={`px-3 py-2.5 ${signupStep === 1 ? 'bg-slate-900 text-white' : 'text-slate-500'}`}>1. 약관 동의</div>
+                <div className={`px-3 py-2.5 ${signupStep === 2 ? 'bg-slate-900 text-white' : 'text-slate-500'}`}>2. 회원정보 입력</div>
+              </div>
+            ) : null}
 
-            {isSignupMode && (
+            {isSignupMode && signupStep === 1 ? (
               <>
+                <UserSignupTermsSection onChange={handleSignupTermsChange} />
+
+                <div className="grid grid-cols-2 gap-2">
+                  <Button type="button" variant="outline" disabled={userAuthLoading} className="w-full justify-center py-3" onClick={cancelUserSignup}>
+                    취소
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    disabled={!signupTermsSubmission.ready || !signupTermsSubmission.valid || signupClosed}
+                    className="w-full justify-center py-3"
+                  >
+                    회원정보 입력
+                  </Button>
+                </div>
+
+                <div className="border-t border-slate-100 pt-4 text-center text-xs text-slate-500">
+                  <button type="button" onClick={goToUserLogin} className="font-bold mk-brand-text hover:underline">
+                    이미 계정이 있으면 로그인하기
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                {isSignupMode ? (
+                  <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[11px] text-emerald-800">
+                    <span className="font-bold">필수 약관 확인이 완료되었습니다.</span>
+                    <button type="button" onClick={() => setSignupStep(1)} className="font-bold underline underline-offset-2">약관 다시 보기</button>
+                  </div>
+                ) : null}
+
                 <Input
-                  label="성명"
-                  value={userAuthForm.name}
-                  onChange={(value) =>
-                    setUserAuthForm({
-                      ...userAuthForm,
-                      name: sanitizeMemberNameInput(value).slice(0, 30),
-                    })
-                  }
-                  placeholder="공백 없이 성명을 입력하세요"
-                  autoComplete="name"
-                  maxLength={30}
+                  label="이메일"
+                  value={userAuthForm.email}
+                  onChange={(value) => setUserAuthForm({ ...userAuthForm, email: value })}
+                  placeholder="example@company.com"
+                  type="email"
+                  autoComplete="email"
                 />
 
-                {directorySignupRequired ? (
-                  <label className="block">
-                    <span className="mb-1.5 block text-xs font-semibold tracking-wide text-slate-600">부서 / 팀</span>
-                    <select
-                      value={userAuthForm.team}
-                      onChange={(event) => setUserAuthForm({ ...userAuthForm, team: event.target.value })}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none transition mk-form-focus"
-                    >
-                      <option value="">부서 / 팀을 선택해 주세요</option>
-                      {(data.teams || []).map((team) => (
-                        <option key={team} value={team}>{team}</option>
-                      ))}
-                    </select>
-                  </label>
-                ) : (
+                {isSignupMode && (
+                  <>
+                    <Input
+                      label="성명"
+                      value={userAuthForm.name}
+                      onChange={(value) =>
+                        setUserAuthForm({
+                          ...userAuthForm,
+                          name: sanitizeMemberNameInput(value).slice(0, 30),
+                        })
+                      }
+                      placeholder="공백 없이 성명을 입력하세요"
+                      autoComplete="name"
+                      maxLength={30}
+                    />
+
+                    {directorySignupRequired ? (
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold tracking-wide text-slate-600">부서 / 팀</span>
+                        <select
+                          value={userAuthForm.team}
+                          onChange={(event) => setUserAuthForm({ ...userAuthForm, team: event.target.value })}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none transition mk-form-focus"
+                        >
+                          <option value="">부서 / 팀을 선택해 주세요</option>
+                          {(data.teams || []).map((team) => (
+                            <option key={team} value={team}>{team}</option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : (
+                      <Input
+                        label="부서 / 팀"
+                        value={userAuthForm.team}
+                        onChange={(value) => setUserAuthForm({ ...userAuthForm, team: value })}
+                        placeholder="소속 부서 또는 팀명을 입력하세요"
+                        maxLength={80}
+                      />
+                    )}
+
+                    <DomesticPhoneInput
+                      prefix={userAuthForm.phonePrefix}
+                      middle={userAuthForm.phoneMiddle}
+                      last={userAuthForm.phoneLast}
+                      disabled={userAuthLoading}
+                      onChange={(phoneParts) =>
+                        setUserAuthForm({
+                          ...userAuthForm,
+                          phonePrefix: phoneParts.prefix,
+                          phoneMiddle: phoneParts.middle,
+                          phoneLast: phoneParts.last,
+                        })
+                      }
+                    />
+                  </>
+                )}
+
+                <Input
+                  label="비밀번호"
+                  value={userAuthForm.password}
+                  onChange={(value) => setUserAuthForm({ ...userAuthForm, password: value })}
+                  placeholder={isSignupMode ? '8자 이상, 영문+숫자 포함' : '비밀번호 입력'}
+                  type="password"
+                  autoComplete={isSignupMode ? 'new-password' : 'current-password'}
+                />
+
+                {isSignupMode && (
                   <Input
-                    label="부서 / 팀"
-                    value={userAuthForm.team}
-                    onChange={(value) => setUserAuthForm({ ...userAuthForm, team: value })}
-                    placeholder="소속 부서 또는 팀명을 입력하세요"
-                    maxLength={80}
+                    label="비밀번호 확인"
+                    value={userAuthForm.passwordConfirm}
+                    onChange={(value) => setUserAuthForm({ ...userAuthForm, passwordConfirm: value })}
+                    placeholder="비밀번호를 한 번 더 입력"
+                    type="password"
+                    autoComplete="new-password"
                   />
                 )}
 
-                <DomesticPhoneInput
-                  prefix={userAuthForm.phonePrefix}
-                  middle={userAuthForm.phoneMiddle}
-                  last={userAuthForm.phoneLast}
-                  disabled={userAuthLoading}
-                  onChange={(phoneParts) =>
-                    setUserAuthForm({
-                      ...userAuthForm,
-                      phonePrefix: phoneParts.prefix,
-                      phoneMiddle: phoneParts.middle,
-                      phoneLast: phoneParts.last,
-                    })
-                  }
-                />
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-xs leading-5 text-slate-600">
+                  {isSignupMode && signupClosed
+                    ? '현재 신규 회원가입 접수가 일시 중지되어 있습니다. '
+                    : isSignupMode && !identityClaimsReady
+                    ? '회원 중복 확인 정보가 준비되지 않아 현재 가입할 수 없습니다. 관리자에게 문의해 주세요. '
+                    : isSignupMode && directorySignupRequired
+                      ? '관리자가 등록한 부서·성명과 일치하는 경우에만 가입할 수 있습니다. '
+                      : ''}
+                  {isSignupMode
+                    ? '비밀번호는 8자 이상이며 영문과 숫자를 포함해야 합니다.'
+                    : '가입한 이메일과 비밀번호를 입력해 주세요.'}
+                </div>
+
+                {isSignupMode ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button type="button" variant="outline" disabled={userAuthLoading} className="w-full justify-center py-3" onClick={() => setSignupStep(1)}>
+                      이전
+                    </Button>
+                    <Button
+                      type="submit"
+                      variant="primary"
+                      disabled={userAuthLoading || !firebaseAuthReady || !identityClaimsReady || signupClosed || !signupTermsSubmission.valid}
+                      className="w-full justify-center py-3"
+                    >
+                      {userAuthLoading ? '가입 정보 확인 중...' : '회원가입'}
+                    </Button>
+                  </div>
+                ) : (
+                  <Button type="submit" variant="primary" disabled={userAuthLoading || !firebaseAuthReady} className="w-full justify-center py-3">
+                    {userAuthLoading ? '처리 중...' : '로그인'}
+                  </Button>
+                )}
+
+                <div className="space-y-3 border-t border-slate-100 pt-4 text-center text-xs text-slate-500">
+                  {isSignupMode ? (
+                    <button type="button" onClick={goToUserLogin} className="font-bold mk-brand-text hover:underline">
+                      이미 계정이 있으면 로그인하기
+                    </button>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-center gap-3">
+                        <button type="button" onClick={goToUserEmailRecovery} className="font-semibold text-slate-600 hover:underline">이메일 찾기</button>
+                        <span className="text-slate-300">|</span>
+                        <button type="button" onClick={goToUserPasswordReset} className="font-semibold text-slate-600 hover:underline">비밀번호 재설정</button>
+                      </div>
+                      <button type="button" onClick={goToUserSignup} className="font-bold mk-brand-text hover:underline">
+                        계정이 없으면 회원가입하기
+                      </button>
+                    </>
+                  )}
+                </div>
               </>
             )}
-
-            <Input
-              label="비밀번호"
-              value={userAuthForm.password}
-              onChange={(value) => setUserAuthForm({ ...userAuthForm, password: value })}
-              placeholder={isSignupMode ? '8자 이상, 영문+숫자 포함' : '비밀번호 입력'}
-              type="password"
-              autoComplete={isSignupMode ? 'new-password' : 'current-password'}
-            />
-
-            {isSignupMode && (
-              <Input
-                label="비밀번호 확인"
-                value={userAuthForm.passwordConfirm}
-                onChange={(value) => setUserAuthForm({ ...userAuthForm, passwordConfirm: value })}
-                placeholder="비밀번호를 한 번 더 입력"
-                type="password"
-                autoComplete="new-password"
-              />
-            )}
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-xs leading-5 text-slate-600">
-              {isSignupMode && signupClosed
-                ? '현재 신규 회원가입 접수가 일시 중지되어 있습니다. ' 
-                : isSignupMode && !identityClaimsReady
-                ? '회원 중복 확인 정보가 준비되지 않아 현재 가입할 수 없습니다. 관리자에게 문의해 주세요. '
-                : isSignupMode && directorySignupRequired
-                  ? '관리자가 등록한 부서·성명과 일치하는 경우에만 가입할 수 있습니다. '
-                  : ''}
-              {isSignupMode
-                ? '비밀번호는 8자 이상이며 영문과 숫자를 포함해야 합니다.'
-                : '가입한 이메일과 비밀번호를 입력해 주세요.'}
-            </div>
-
-            {isSignupMode ? (
-              <div className="grid grid-cols-2 gap-2">
-                <Button type="button" variant="outline" disabled={userAuthLoading} className="w-full justify-center py-3" onClick={cancelUserSignup}>
-                  취소
-                </Button>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  disabled={userAuthLoading || !firebaseAuthReady || !identityClaimsReady || signupClosed}
-                  className="w-full justify-center py-3"
-                >
-                  {userAuthLoading ? '가입 정보 확인 중...' : '회원가입'}
-                </Button>
-              </div>
-            ) : (
-              <Button type="submit" variant="primary" disabled={userAuthLoading || !firebaseAuthReady} className="w-full justify-center py-3">
-                {userAuthLoading ? '처리 중...' : '로그인'}
-              </Button>
-            )}
-
-            <div className="space-y-3 border-t border-slate-100 pt-4 text-center text-xs text-slate-500">
-              {isSignupMode ? (
-                <button type="button" onClick={goToUserLogin} className="font-bold mk-brand-text hover:underline">
-                  이미 계정이 있으면 로그인하기
-                </button>
-              ) : (
-                <>
-                  <div className="flex items-center justify-center gap-3">
-                    <button type="button" onClick={goToUserEmailRecovery} className="font-semibold text-slate-600 hover:underline">이메일 찾기</button>
-                    <span className="text-slate-300">|</span>
-                    <button type="button" onClick={goToUserPasswordReset} className="font-semibold text-slate-600 hover:underline">비밀번호 재설정</button>
-                  </div>
-                  <button type="button" onClick={goToUserSignup} className="font-bold mk-brand-text hover:underline">
-                    계정이 없으면 회원가입하기
-                  </button>
-                </>
-              )}
-            </div>
           </form>
         )}
       </CardContent>
