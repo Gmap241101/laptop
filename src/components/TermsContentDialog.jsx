@@ -13,23 +13,37 @@ export default function TermsContentDialog({
   terms = [],
   onClose,
   onConfirm,
-  confirmLabel = '내용을 확인했습니다',
+  confirmLabel = '내용 확인',
+  agreedConfirmLabel = '동의하고 확인',
+  showAgreement = false,
+  agreementLabel = '위 약관 내용을 확인했으며 이에 동의합니다.',
+  initiallyViewed = false,
+  initialAgreementChecked = false,
 }) {
   const scrollRef = useRef(null);
   const [reachedEnd, setReachedEnd] = useState(false);
+  const [agreementChecked, setAgreementChecked] = useState(false);
   const normalizedTerms = useMemo(
     () => (Array.isArray(terms) ? terms.filter(Boolean) : []),
     [terms]
   );
+  const termsKey = normalizedTerms
+    .map((term, index) => `${term.id || index}:${term.version || 0}`)
+    .join('|');
 
   useEffect(() => {
     if (!open) return undefined;
-    setReachedEnd(false);
+
+    setReachedEnd(Boolean(initiallyViewed));
+    setAgreementChecked(Boolean(initialAgreementChecked));
+
     const timer = window.setTimeout(() => {
-      setReachedEnd(isScrolledToEnd(scrollRef.current));
+      if (initiallyViewed) return;
+      setReachedEnd((current) => current || isScrolledToEnd(scrollRef.current));
     }, 0);
+
     return () => window.clearTimeout(timer);
-  }, [open, normalizedTerms]);
+  }, [initialAgreementChecked, initiallyViewed, open, termsKey]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -41,6 +55,9 @@ export default function TermsContentDialog({
   }, [onClose, open]);
 
   if (!open) return null;
+
+  const activeConfirmLabel =
+    showAgreement && agreementChecked ? agreedConfirmLabel : confirmLabel;
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/55 p-4" role="dialog" aria-modal="true" aria-label={title}>
@@ -57,7 +74,11 @@ export default function TermsContentDialog({
 
         <div
           ref={scrollRef}
-          onScroll={(event) => setReachedEnd(isScrolledToEnd(event.currentTarget))}
+          onScroll={(event) => {
+            setReachedEnd((current) =>
+              current || isScrolledToEnd(event.currentTarget)
+            );
+          }}
           className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-5 py-5"
         >
           <div className="space-y-5">
@@ -68,7 +89,6 @@ export default function TermsContentDialog({
                     {term.required ? '필수' : '선택'}
                   </span>
                   <h4 className="text-sm font-black text-slate-900">{term.title}</h4>
-                  <span className="text-[10px] text-slate-400">버전 {term.version || 1}</span>
                 </div>
                 <RichTextContent html={term.contentHtml} text={term.contentText} className="text-sm leading-7 text-slate-700" />
               </section>
@@ -76,14 +96,35 @@ export default function TermsContentDialog({
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className={`text-[11px] ${reachedEnd ? 'text-emerald-600' : 'text-amber-600'}`}>
-            {reachedEnd ? '약관 내용을 끝까지 확인했습니다.' : '아래로 스크롤하여 전체 내용을 확인해 주세요.'}
+        <div className="border-t border-slate-200 bg-white px-5 py-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className={`text-[11px] ${reachedEnd ? 'text-emerald-600' : 'text-amber-600'}`}>
+              {reachedEnd ? '약관 내용을 끝까지 확인했습니다.' : '아래로 스크롤하여 전체 내용을 확인해 주세요.'}
+            </div>
+
+            {showAgreement ? (
+              <label className={`flex items-center gap-2 text-xs font-bold ${reachedEnd ? 'cursor-pointer text-slate-800' : 'cursor-not-allowed text-slate-400'}`}>
+                <input
+                  type="checkbox"
+                  checked={agreementChecked}
+                  disabled={!reachedEnd}
+                  onChange={(event) => setAgreementChecked(event.target.checked)}
+                  className="h-4 w-4 shrink-0 accent-slate-950 disabled:cursor-not-allowed"
+                />
+                <span>{agreementLabel}</span>
+              </label>
+            ) : null}
           </div>
-          <div className="flex justify-end gap-2">
+
+          <div className="mt-4 flex justify-end gap-2">
             <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50">취소</button>
-            <button type="button" disabled={!reachedEnd} onClick={onConfirm} className="rounded-xl bg-orange-500 px-4 py-2.5 text-xs font-bold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-300">
-              {confirmLabel}
+            <button
+              type="button"
+              disabled={!reachedEnd}
+              onClick={() => onConfirm?.({ agreed: showAgreement ? agreementChecked : false })}
+              className="rounded-xl bg-orange-500 px-4 py-2.5 text-xs font-bold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              {activeConfirmLabel}
             </button>
           </div>
         </div>

@@ -284,7 +284,6 @@ export default function UserTermsConsentPanel({
                   <div className="flex flex-wrap items-center gap-2">
                     <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${term.required ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-slate-200 bg-slate-100 text-slate-600'}`}>{term.required ? '필수' : '선택'}</span>
                     <span className="text-sm font-bold text-slate-900">{term.title}</span>
-                    <span className="text-[10px] text-slate-400">v{term.version}</span>
                   </div>
                   <div className="mt-1 text-[10px] text-slate-500">
                     {decisionState.currentVersion
@@ -342,7 +341,7 @@ export default function UserTermsConsentPanel({
               {logs.map((log) => (
                 <div key={log.id} className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-[11px] text-slate-600">
                   <div className="font-bold text-slate-800">{log.titleSnapshot || log.termId}</div>
-                  <div className="mt-1">v{log.termVersion} · {log.decision === TERMS_DECISION.ACCEPTED ? '동의' : '미동의'} · {formatTermsTimestamp(log.createdAt)}</div>
+                  <div className="mt-1">{log.decision === TERMS_DECISION.ACCEPTED ? '동의' : '미동의'} · {formatTermsTimestamp(log.createdAt)}</div>
                   <div className="mt-1 text-slate-400">처리 경로: {log.source || '-'}</div>
                   <button type="button" onClick={() => setHistoryLog(log)} className="mt-2 text-[11px] font-bold text-slate-700 underline underline-offset-2">동의 당시 내용 보기</button>
                 </div>
@@ -352,7 +351,7 @@ export default function UserTermsConsentPanel({
         </div>
       ) : null}
 
-      <TermsVersionDialog log={historyLog} onClose={() => setHistoryLog(null)} />
+      <TermsVersionDialog log={historyLog} showVersion={false} onClose={() => setHistoryLog(null)} />
 
       <TermsContentDialog
         open={dialogTermIds.length > 0}

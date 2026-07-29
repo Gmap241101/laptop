@@ -99,21 +99,45 @@ export default function UserSignupTermsSection({ onChange }) {
     policy.activeTerms.length > 0 &&
     policy.activeTerms.every((term) => acceptedById[term.id]);
 
+  const allViewed =
+    policy.activeTerms.length > 0 &&
+    policy.activeTerms.every((term) => viewedById[term.id]);
+
   const openSingle = (termId) => {
     setDialogMode('single');
     setDialogTermIds([termId]);
   };
 
   const openAll = () => {
+    const unviewedTermIds = policy.activeTerms
+      .filter((term) => !viewedById[term.id])
+      .map((term) => term.id);
+
+    if (unviewedTermIds.length === 0) {
+      setAcceptedById(
+        Object.fromEntries(policy.activeTerms.map((term) => [term.id, true]))
+      );
+      return;
+    }
+
     setDialogMode('all');
-    setDialogTermIds(policy.activeTerms.map((term) => term.id));
+    setDialogTermIds(unviewedTermIds);
   };
 
   const dialogTerms = policy.activeTerms.filter((term) =>
     dialogTermIds.includes(term.id)
   );
 
-  const confirmDialog = () => {
+  const dialogAlreadyViewed =
+    dialogTermIds.length > 0 &&
+    dialogTermIds.every((termId) => Boolean(viewedById[termId]));
+
+  const dialogAgreementChecked =
+    dialogMode === 'single' &&
+    dialogTermIds.length === 1 &&
+    Boolean(acceptedById[dialogTermIds[0]]);
+
+  const confirmDialog = ({ agreed = false } = {}) => {
     const viewedAtMs = Date.now();
     setViewedById((current) => ({
       ...current,
@@ -121,9 +145,16 @@ export default function UserSignupTermsSection({ onChange }) {
     }));
 
     if (dialogMode === 'all') {
+      if (agreed) {
+        setAcceptedById(
+          Object.fromEntries(policy.activeTerms.map((term) => [term.id, true]))
+        );
+      }
+    } else if (dialogTermIds.length === 1) {
+      const [termId] = dialogTermIds;
       setAcceptedById((current) => ({
         ...current,
-        ...Object.fromEntries(dialogTermIds.map((termId) => [termId, true])),
+        [termId]: Boolean(agreed),
       }));
     }
 
@@ -154,6 +185,11 @@ export default function UserSignupTermsSection({ onChange }) {
     );
   }
 
+  const allDialogTitle =
+    dialogTermIds.length === policy.activeTerms.length
+      ? '전체 약관 확인'
+      : '미확인 약관 전체 확인';
+
   return (
     <div className="space-y-4">
       <div className="rounded-2xl border border-slate-200 bg-white">
@@ -162,6 +198,10 @@ export default function UserSignupTermsSection({ onChange }) {
           onClick={() => {
             if (allAccepted) {
               setAcceptedById({});
+            } else if (allViewed) {
+              setAcceptedById(
+                Object.fromEntries(policy.activeTerms.map((term) => [term.id, true]))
+              );
             } else {
               openAll();
             }
@@ -205,7 +245,7 @@ export default function UserSignupTermsSection({ onChange }) {
                     [{term.required ? '필수' : '선택'}] {term.title}
                   </div>
                   <div className="mt-0.5 text-[10px] text-slate-400">
-                    {viewed ? `내용 확인 완료 · 버전 ${term.version}` : '보기를 눌러 내용을 먼저 확인해 주세요.'}
+                    {viewed ? '내용 확인 완료' : '보기를 눌러 내용을 먼저 확인해 주세요.'}
                   </div>
                 </div>
 
@@ -220,16 +260,23 @@ export default function UserSignupTermsSection({ onChange }) {
 
       <div className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] leading-5 text-slate-600">
         <FileText size={15} className="mt-0.5 shrink-0 text-slate-400" />
-        필수 약관은 모두 확인하고 동의해야 다음 단계로 이동할 수 있습니다. 선택 약관은 동의하지 않아도 가입할 수 있습니다.
+        필수 약관 확인 및 동의 후 가입 정보 입력이 가능하며, 선택 약관은 거부할 수 있습니다.
       </div>
 
       <TermsContentDialog
         open={dialogTermIds.length > 0}
-        title={dialogMode === 'all' ? '전체 약관 확인' : dialogTerms[0]?.title || '약관 확인'}
+        title={dialogMode === 'all' ? allDialogTitle : dialogTerms[0]?.title || '약관 확인'}
         terms={dialogTerms}
         onClose={() => setDialogTermIds([])}
         onConfirm={confirmDialog}
-        confirmLabel={dialogMode === 'all' ? '전체 약관을 확인하고 모두 동의' : '내용을 확인했습니다'}
+        confirmLabel="내용 확인"
+        agreedConfirmLabel={dialogMode === 'all' ? '전체 동의하고 확인' : '동의하고 확인'}
+        showAgreement
+        agreementLabel={dialogMode === 'all'
+          ? '위 내용을 확인했으며 전체 약관에 모두 동의합니다.'
+          : '위 약관 내용을 확인했으며 이에 동의합니다.'}
+        initiallyViewed={dialogAlreadyViewed}
+        initialAgreementChecked={dialogAgreementChecked}
       />
     </div>
   );

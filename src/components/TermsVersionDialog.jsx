@@ -5,7 +5,7 @@ import { X } from 'lucide-react';
 import { SIGNUP_TERM_VERSIONS_COLLECTION_REF } from '../firebase.js';
 import RichTextContent from './RichTextContent.jsx';
 
-export default function TermsVersionDialog({ log, onClose }) {
+export default function TermsVersionDialog({ log, onClose, showVersion = true }) {
   const [version, setVersion] = useState(null);
   const [ready, setReady] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -31,8 +31,8 @@ export default function TermsVersionDialog({ log, onClose }) {
         if (!disposed) {
           setErrorMessage(
             String(log?.termVersionId || '').trim()
-              ? '보관된 약관 버전 내용을 불러오지 못했습니다.'
-              : '이 기록에는 보관된 약관 버전 연결 정보가 없습니다.'
+              ? '보관된 약관 내용을 불러오지 못했습니다.'
+              : '이 기록에는 보관된 약관 내용 연결 정보가 없습니다.'
           );
         }
       } finally {
@@ -54,7 +54,8 @@ export default function TermsVersionDialog({ log, onClose }) {
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
           <div>
             <div className="text-[11px] font-bold text-orange-600">
-              {log.requiredSnapshot ? '필수' : '선택'} · 버전 {log.termVersion || '-'}
+              {log.requiredSnapshot ? '필수' : '선택'}
+              {showVersion ? ` · 버전 ${log.termVersion || '-'}` : ''}
             </div>
             <h3 className="mt-1 text-base font-black text-slate-900">{log.titleSnapshot || log.termId || '약관 내용'}</h3>
           </div>

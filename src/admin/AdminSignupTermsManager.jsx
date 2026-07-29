@@ -14,7 +14,6 @@ import {
   ArrowDown,
   ArrowUp,
   Edit3,
-  Eye,
   Plus,
   RotateCcw,
   Search,
@@ -76,9 +75,13 @@ const toActiveTermSnapshot = (term) => ({
   displayOrder: Number(term.displayOrder) || 0,
 });
 
-const formatDate = (value) => {
+const formatDateParts = (value) => {
   const date = value?.toDate?.();
-  return date ? date.toLocaleString('ko-KR') : '-';
+  if (!date) return { date: '-', time: '' };
+  return {
+    date: date.toLocaleDateString('ko-KR'),
+    time: date.toLocaleTimeString('ko-KR'),
+  };
 };
 
 export default function AdminSignupTermsManager({ Button, triggerConfirm, triggerToast }) {
@@ -488,13 +491,22 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
         <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">등록된 약관이 없습니다.</div>
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-          <table className="min-w-[920px] w-full border-collapse text-left">
+          <table className="min-w-[860px] w-full table-fixed border-collapse text-left">
+            <colgroup>
+              <col className="w-[88px]" />
+              <col className="w-[72px]" />
+              <col className="w-[74px]" />
+              <col className="w-[340px]" />
+              <col className="w-[64px]" />
+              <col className="w-[126px]" />
+              <col className="w-[96px]" />
+            </colgroup>
             <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600">
               <tr>
                 <th className="border-b border-slate-200 px-3 py-3 text-center">순서</th>
                 <th className="border-b border-slate-200 px-3 py-3 text-center">사용</th>
                 <th className="border-b border-slate-200 px-3 py-3 text-center">구분</th>
-                <th className="border-b border-slate-200 px-3 py-3">제목</th>
+                <th className="border-b border-slate-200 px-3 py-3">약관명</th>
                 <th className="border-b border-slate-200 px-3 py-3 text-center">버전</th>
                 <th className="border-b border-slate-200 px-3 py-3 text-center">최종 수정일</th>
                 <th className="border-b border-slate-200 px-3 py-3 text-center">관리</th>
@@ -503,6 +515,7 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
             <tbody>
               {filteredTerms.map((term) => {
                 const globalIndex = terms.findIndex((item) => item.id === term.id);
+                const updatedAt = formatDateParts(term.updatedAt);
                 return (
                   <tr key={term.id} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50">
                     <td className="px-3 py-3">
@@ -520,14 +533,23 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
                       <span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${term.required ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-slate-200 bg-slate-100 text-slate-600'}`}>{term.required ? '필수' : '선택'}</span>
                     </td>
                     <td className="px-3 py-3">
-                      <div className="text-sm font-bold text-slate-800">{term.title}</div>
-                      <div className="mt-1 line-clamp-1 text-[11px] text-slate-500">{term.archived ? '보관됨 · ' : ''}{term.contentText || '본문 없음'}</div>
+                      <button
+                        type="button"
+                        onClick={() => setPreviewTerm(term)}
+                        className="block w-full min-w-0 text-left"
+                        title={`${term.title} 보기`}
+                      >
+                        <span className="block truncate text-sm font-bold text-slate-800 underline-offset-2 hover:text-orange-600 hover:underline">{term.title}</span>
+                        <span className="mt-1 block truncate text-[11px] text-slate-500">{term.archived ? '보관됨 · ' : ''}{term.contentText || '본문 없음'}</span>
+                      </button>
                     </td>
                     <td className="px-3 py-3 text-center text-xs text-slate-600">v{term.currentVersion}</td>
-                    <td className="px-3 py-3 text-center text-[11px] text-slate-500">{formatDate(term.updatedAt)}</td>
+                    <td className="px-3 py-3 text-center text-[11px] leading-5 text-slate-500">
+                      <div className="whitespace-nowrap">{updatedAt.date}</div>
+                      <div className="whitespace-nowrap">{updatedAt.time}</div>
+                    </td>
                     <td className="px-3 py-3">
                       <div className="flex justify-center gap-1">
-                        <button type="button" onClick={() => setPreviewTerm(term)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200" title="보기"><Eye size={14} /></button>
                         {term.archived ? (
                           <button type="button" onClick={() => setTermEnabled(term, true)} disabled={actionId === term.id} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-200 text-emerald-700 disabled:opacity-40" title="보관 해제"><RotateCcw size={14} /></button>
                         ) : (
