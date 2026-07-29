@@ -8228,9 +8228,6 @@ function App() {
       last: userProfileForm.phoneLast,
     };
     const phone = buildDomesticPhoneNumber(phoneParts);
-    const newPassword = userProfileForm.newPassword || '';
-    const newPasswordConfirm = userProfileForm.newPasswordConfirm || '';
-    const shouldChangePassword = Boolean(newPassword || newPasswordConfirm);
 
     if (!isValidMemberName(name)) {
       triggerToast(
@@ -8255,21 +8252,6 @@ function App() {
       return;
     }
 
-    if (shouldChangePassword) {
-      if (!isValidMemberPassword(newPassword)) {
-        triggerToast(
-          '새 비밀번호는 8자 이상이며 영문과 숫자를 포함해야 합니다.',
-          'error'
-        );
-        return;
-      }
-
-      if (newPassword !== newPasswordConfirm) {
-        triggerToast('새 비밀번호 확인이 일치하지 않습니다.', 'error');
-        return;
-      }
-    }
-
     setUserProfileSaving(true);
 
     try {
@@ -8284,10 +8266,6 @@ function App() {
           ? await createMemberIdentityKey(userProfile.team, userProfile.name)
           : '');
       const previousRecoveryKey = String(userProfile?.recoveryKey || '');
-
-      if (shouldChangePassword) {
-        await updatePassword(firebaseAuthUser, newPassword);
-      }
 
       await runTransaction(db, async (transaction) => {
         const configSnapshot = await transaction.get(PUBLIC_CONFIG_DOC_REF);
@@ -8495,12 +8473,7 @@ function App() {
         newPasswordConfirm: '',
       }));
 
-      triggerToast(
-        shouldChangePassword
-          ? '마이페이지 정보와 비밀번호가 수정되었습니다.'
-          : '마이페이지 정보가 수정되었습니다.',
-        'success'
-      );
+      triggerToast('마이페이지 정보가 수정되었습니다.', 'success');
     } catch (error) {
       console.error('User profile save error:', error);
       triggerToast(getUserAuthErrorMessage(error), 'error');
@@ -8781,9 +8754,6 @@ function App() {
         ''
     ).trim();
     const phone = adminMyProfileForm.phone.trim();
-    const newPassword = adminMyProfileForm.newPassword || '';
-    const newPasswordConfirm = adminMyProfileForm.newPasswordConfirm || '';
-    const shouldChangePassword = Boolean(newPassword || newPasswordConfirm);
 
     if (!adminLoginId) {
       triggerToast('관리자 ID를 입력해 주세요.', 'error');
@@ -8798,18 +8768,6 @@ function App() {
     if (!userName) {
       triggerToast('사용자명을 입력해 주세요.', 'error');
       return;
-    }
-
-    if (shouldChangePassword) {
-      if (newPassword.length < 6) {
-        triggerToast('새 비밀번호는 6자 이상으로 입력해 주세요.', 'error');
-        return;
-      }
-
-      if (newPassword !== newPasswordConfirm) {
-        triggerToast('새 비밀번호 확인이 일치하지 않습니다.', 'error');
-        return;
-      }
     }
 
     let adminAccountsForValidation = registeredAdminAccounts || [];
@@ -8846,24 +8804,12 @@ function App() {
     }
 
     setAdminMyProfileSaving(true);
-    let firebasePasswordChanged = false;
 
     try {
       const nowText = new Date().toLocaleString('ko-KR');
-      let passwordUpdateFields = {};
-
-      if (shouldChangePassword) {
-        await updatePassword(firebaseAuthUser, newPassword);
-        firebasePasswordChanged = true;
-
-        passwordUpdateFields = {
-          passwordChangedAt: nowText,
-        };
-      }
 
       const nextAdminAccount = {
         ...authenticatedAdminAccount,
-        ...passwordUpdateFields,
         id: authenticatedAdminAccount.id,
         authUid: authenticatedAdminAccount.id,
         authProvider: 'firebase-auth',
@@ -8904,23 +8850,10 @@ function App() {
         newPasswordConfirm: '',
       }));
 
-      triggerToast(
-        shouldChangePassword
-          ? '관리자 내 정보와 비밀번호가 수정되었습니다.'
-          : '관리자 내 정보가 수정되었습니다.',
-        'success'
-      );
+      triggerToast('관리자 내 정보가 수정되었습니다.', 'success');
     } catch (error) {
       console.error('Admin my profile save error:', error);
-
-      if (firebasePasswordChanged) {
-        triggerToast(
-          '비밀번호는 변경되었지만 관리자 정보 저장에 실패했습니다. Firestore 권한과 네트워크 상태를 확인해 주세요.',
-          'error'
-        );
-      } else {
-        triggerToast(getAdminFirebaseAuthErrorMessage(error), 'error');
-      }
+      triggerToast(getAdminFirebaseAuthErrorMessage(error), 'error');
     } finally {
       setAdminMyProfileSaving(false);
     }

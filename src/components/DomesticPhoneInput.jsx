@@ -76,10 +76,6 @@ export default function DomesticPhoneInput({
           className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-center text-sm outline-none transition mk-form-focus disabled:bg-slate-100"
         />
       </div>
-
-      <span className="mt-1.5 block text-[11px] leading-4 text-slate-400">
-        국내 이동전화, 인터넷전화, 대표번호 또는 지역번호를 선택하고 숫자만 입력해 주세요.
-      </span>
     </label>
   );
 }

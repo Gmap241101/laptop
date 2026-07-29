@@ -52,6 +52,11 @@ export default function UserAuthPanel({ ctx }) {
   const signupClosed =
     siteSettings?.serviceMode !== 'normal' ||
     siteSettings?.allowNewMemberSignup === false;
+  const signupPasswordMismatch = Boolean(
+    isSignupMode &&
+      userAuthForm.passwordConfirm &&
+      userAuthForm.password !== userAuthForm.passwordConfirm
+  );
 
   const [signupStep, setSignupStep] = useState(1);
   const [signupTermsSubmission, setSignupTermsSubmission] = useState(
@@ -339,14 +344,23 @@ export default function UserAuthPanel({ ctx }) {
                 />
 
                 {isSignupMode && (
-                  <Input
-                    label="비밀번호 확인"
-                    value={userAuthForm.passwordConfirm}
-                    onChange={(value) => setUserAuthForm({ ...userAuthForm, passwordConfirm: value })}
-                    placeholder="비밀번호를 한 번 더 입력"
-                    type="password"
-                    autoComplete="new-password"
-                  />
+                  <>
+                    <Input
+                      label="비밀번호 확인"
+                      value={userAuthForm.passwordConfirm}
+                      onChange={(value) => setUserAuthForm({ ...userAuthForm, passwordConfirm: value })}
+                      placeholder="비밀번호를 한 번 더 입력"
+                      type="password"
+                      autoComplete="new-password"
+                      aria-invalid={signupPasswordMismatch || undefined}
+                    />
+
+                    {signupPasswordMismatch ? (
+                      <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-700">
+                        입력하신 비밀번호가 일치하지 않습니다.
+                      </div>
+                    ) : null}
+                  </>
                 )}
 
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-xs leading-5 text-slate-600">
@@ -370,7 +384,7 @@ export default function UserAuthPanel({ ctx }) {
                     <Button
                       type="submit"
                       variant="primary"
-                      disabled={userAuthLoading || !firebaseAuthReady || !identityClaimsReady || signupClosed || !signupTermsSubmission.valid}
+                      disabled={userAuthLoading || !firebaseAuthReady || !identityClaimsReady || signupClosed || !signupTermsSubmission.valid || signupPasswordMismatch}
                       className="w-full justify-center py-3"
                     >
                       {userAuthLoading ? '가입 정보 확인 중...' : '회원가입'}
