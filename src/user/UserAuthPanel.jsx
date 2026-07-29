@@ -259,7 +259,7 @@ export default function UserAuthPanel({ ctx }) {
                 {isSignupMode ? (
                   <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[11px] text-emerald-800">
                     <span className="font-bold">필수 약관 확인이 완료되었습니다.</span>
-                    <button type="button" onClick={() => setSignupStep(1)} className="font-bold underline underline-offset-2">약관 다시 보기</button>
+                    <button type="button" onClick={() => setSignupStep(1)} className="font-bold underline underline-offset-2">약관 동의 다시 하기</button>
                   </div>
                 ) : null}
 

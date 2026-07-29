@@ -126,21 +126,31 @@ export default function AdminSignupPolicyPanel({ ctx }) {
         description="가입 대상, 승인 방식, 회원가입 약관과 기존 회원 적용 정책을 관리합니다."
       />
 
-      <div className="flex gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-1">
-        <button
-          type="button"
-          onClick={() => setActivePolicyTab('policy')}
-          className={`flex-1 rounded-xl px-4 py-2.5 text-xs font-bold transition ${activePolicyTab === 'policy' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-        >
-          가입 정책
-        </button>
-        <button
-          type="button"
-          onClick={() => setActivePolicyTab('terms')}
-          className={`flex-1 rounded-xl px-4 py-2.5 text-xs font-bold transition ${activePolicyTab === 'terms' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-        >
-          이용약관 관리
-        </button>
+      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-2">
+        <div className="flex min-w-max gap-2">
+          <button
+            type="button"
+            onClick={() => setActivePolicyTab('policy')}
+            className={`rounded-xl px-4 py-2.5 text-xs font-bold transition ${
+              activePolicyTab === 'policy'
+                ? 'bg-orange-500 text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+          >
+            가입 정책
+          </button>
+          <button
+            type="button"
+            onClick={() => setActivePolicyTab('terms')}
+            className={`rounded-xl px-4 py-2.5 text-xs font-bold transition ${
+              activePolicyTab === 'terms'
+                ? 'bg-orange-500 text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+          >
+            이용약관 관리
+          </button>
+        </div>
       </div>
 
       {activePolicyTab === 'terms' ? (
@@ -223,7 +233,7 @@ export default function AdminSignupPolicyPanel({ ctx }) {
                     disabled={!tempSignupTermsEnabled}
                     checked={!tempSignupTermsApplyToExistingMembers}
                     onChange={() => setTempSignupTermsApplyToExistingMembers(false)}
-                    className="mt-0.5 h-4 w-4 accent-orange-500"
+                    className="mt-0.5"
                   />
                   <span>
                     <span className="block text-xs font-bold text-slate-800">신규 회원부터 적용</span>
@@ -237,7 +247,7 @@ export default function AdminSignupPolicyPanel({ ctx }) {
                     disabled={!tempSignupTermsEnabled}
                     checked={tempSignupTermsApplyToExistingMembers}
                     onChange={() => setTempSignupTermsApplyToExistingMembers(true)}
-                    className="mt-0.5 h-4 w-4 accent-orange-500"
+                    className="mt-0.5"
                   />
                   <span>
                     <span className="block text-xs font-bold text-slate-800">기존 회원 포함</span>
@@ -260,56 +270,58 @@ export default function AdminSignupPolicyPanel({ ctx }) {
             </Button>
           </div>
 
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0">
-                <h2 className="text-base font-bold text-slate-900">기존 회원 명부 검사</h2>
-                <p className="mt-1 text-xs leading-5 text-slate-500">
-                  기본 검증은 명부 버전이 변경된 사용자가 로그인할 때 본인 정보만 확인합니다. 필요한 경우 전체 회원을 수동으로 검사할 수 있습니다.
-                </p>
-              </div>
-
-              <Button
-                type="button"
-                variant="outline"
-                onClick={runFullMemberDirectoryAudit}
-                disabled={!memberDirectoryPolicyEnabled || memberDirectoryAuditLoading}
-                className="shrink-0"
-              >
-                {memberDirectoryAuditLoading ? '전체 회원 검사 중...' : '전체 회원 명부 검사'}
-              </Button>
+          <section className="space-y-3">
+            <div>
+              <h2 className="text-base font-bold text-slate-900">기존 회원 명부 검사</h2>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                기본 검증은 명부 버전이 변경된 사용자가 로그인할 때 본인 정보만 확인합니다. 필요한 경우 전체 회원을 수동으로 검사할 수 있습니다.
+              </p>
             </div>
 
-            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] leading-5 text-slate-600">
-              {memberDirectoryAudit?.completedAtText ? (
-                <>
-                  최근 전체 검사: {memberDirectoryAudit.completedAtText} · 정상 {memberDirectoryAudit.normal || 0}명 · 정보 수정 필요 {memberDirectoryAudit.profileRequired || 0}명 · 중복 {memberDirectoryAudit.duplicates || 0}명
-                </>
-              ) : (
-                '아직 전체 회원 명부 검사를 실행하지 않았습니다.'
-              )}
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                <div className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] leading-5 text-slate-600">
+                  {memberDirectoryAudit?.completedAtText ? (
+                    <>
+                      최근 전체 검사: {memberDirectoryAudit.completedAtText} · 정상 {memberDirectoryAudit.normal || 0}명 · 정보 수정 필요 {memberDirectoryAudit.profileRequired || 0}명 · 중복 {memberDirectoryAudit.duplicates || 0}명
+                    </>
+                  ) : (
+                    '아직 전체 회원 명부 검사를 실행하지 않았습니다.'
+                  )}
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={runFullMemberDirectoryAudit}
+                  disabled={!memberDirectoryPolicyEnabled || memberDirectoryAuditLoading}
+                  className="shrink-0"
+                >
+                  {memberDirectoryAuditLoading ? '전체 회원 검사 중...' : '전체 회원 명부 검사'}
+                </Button>
+              </div>
+
+              {!memberDirectoryPolicyEnabled ? (
+                <p className="mt-2 text-[11px] text-slate-400">전체 회원 검사는 저장된 가입 제한 정책이 켜져 있을 때 실행할 수 있습니다.</p>
+              ) : null}
+
+              {!memberIdentityClaimsReady ? (
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] leading-5 text-amber-800">
+                  기존 회원의 부서·성명 중복 확인 정보가 아직 준비되지 않았습니다. 부서·사용자 명부를 저장하거나 전체 회원 명부 검사를 실행해 주세요.
+                </div>
+              ) : null}
+
+              {memberDirectoryAuditResult ? (
+                <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">
+                  검사 {memberDirectoryAuditResult.total || 0}명 · 정상 {memberDirectoryAuditResult.normal || 0}명 · 정보 수정 필요 {memberDirectoryAuditResult.profileRequired || 0}명 · 중복 {memberDirectoryAuditResult.duplicates || 0}명 · 실패 {memberDirectoryAuditResult.failed || 0}명
+                  {(memberDirectoryAuditResult.profileRequired || 0) > 0 ? (
+                    <button type="button" onClick={openProfileRequiredMembers} className="ml-3 font-bold underline underline-offset-2">
+                      정보 수정 필요 회원 보기
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
-
-            {!memberDirectoryPolicyEnabled ? (
-              <p className="mt-2 text-[11px] text-slate-400">전체 회원 검사는 저장된 가입 제한 정책이 켜져 있을 때 실행할 수 있습니다.</p>
-            ) : null}
-
-            {!memberIdentityClaimsReady ? (
-              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] leading-5 text-amber-800">
-                기존 회원의 부서·성명 중복 확인 정보가 아직 준비되지 않았습니다. 부서·사용자 명부를 저장하거나 전체 회원 명부 검사를 실행해 주세요.
-              </div>
-            ) : null}
-
-            {memberDirectoryAuditResult ? (
-              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">
-                검사 {memberDirectoryAuditResult.total || 0}명 · 정상 {memberDirectoryAuditResult.normal || 0}명 · 정보 수정 필요 {memberDirectoryAuditResult.profileRequired || 0}명 · 중복 {memberDirectoryAuditResult.duplicates || 0}명 · 실패 {memberDirectoryAuditResult.failed || 0}명
-                {(memberDirectoryAuditResult.profileRequired || 0) > 0 ? (
-                  <button type="button" onClick={openProfileRequiredMembers} className="ml-3 font-bold underline underline-offset-2">
-                    정보 수정 필요 회원 보기
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
           </section>
         </>
       )}
