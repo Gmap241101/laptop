@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-07-28T16:01:53.195Z",
+  "generatedAt": "2026-07-28T16:23:36.287Z",
   "initialModuleCount": 32,
-  "initialSourceBytes": 720070,
+  "initialSourceBytes": 721702,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 500666
+      "bytes": 502241
     },
     {
       "file": "src/user/UserHomePanel.jsx",
@@ -72,12 +72,12 @@
       "bytes": 4622
     },
     {
-      "file": "src/user/UserWorkspace.jsx",
-      "bytes": 4350
+      "file": "src/firebase.js",
+      "bytes": 4355
     },
     {
-      "file": "src/firebase.js",
-      "bytes": 4298
+      "file": "src/user/UserWorkspace.jsx",
+      "bytes": 4350
     },
     {
       "file": "src/constants/appConstants.js",

@@ -45,6 +45,7 @@ export const db = existingDefaultFirebaseApp
 export const firebaseAuth = getAuth(firebaseApp);
 export const adminAccountCreationAuth = getAuth(adminAccountCreationApp);
 export const userSignupAuth = getAuth(userSignupApp);
+export const userSignupDb = getFirestore(userSignupApp);
 
 export const ADMIN_ACCOUNTS_COLLECTION_REF = collection(
   db,

@@ -162,6 +162,7 @@ import {
   db,
   firebaseAuth,
   userSignupAuth,
+  userSignupDb,
 } from './firebase.js';
 
 
@@ -4262,17 +4263,28 @@ function App() {
   const currentUserRequests = useMemo(() => {
     if (!firebaseAuthUser?.uid) return [];
 
+    const linkedRequesterUids = new Set(
+      [
+        firebaseAuthUser.uid,
+        ...(Array.isArray(userProfile?.previousAccountUids)
+          ? userProfile.previousAccountUids
+          : []),
+      ]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+    );
     const currentUserEmail = normalizeEmailAddress(
       firebaseAuthUser.email || userProfile?.email || ''
     );
 
     return mergedRentalRequests.filter((request) => {
-      if (request.requesterUid === firebaseAuthUser.uid) {
+      const requesterUid = String(request.requesterUid || '').trim();
+
+      if (requesterUid && linkedRequesterUids.has(requesterUid)) {
         return true;
       }
 
-      return (
-        !request.requesterUid &&
+      return Boolean(
         currentUserEmail &&
         normalizeEmailAddress(request.requesterEmail || '') === currentUserEmail
       );
@@ -4282,6 +4294,7 @@ function App() {
     firebaseAuthUser?.uid,
     firebaseAuthUser?.email,
     userProfile?.email,
+    userProfile?.previousAccountUids,
   ]);
 
   const currentUserRentalRestrictionStatus = useMemo(
@@ -5040,21 +5053,73 @@ function App() {
     setRentalRequestsReady(false);
     setRentalRequestsLoadErrorMessage('');
 
+    const linkedRequesterUids = [
+      ...new Set(
+        [
+          firebaseAuthUser.uid,
+          ...(Array.isArray(userProfile?.previousAccountUids)
+            ? userProfile.previousAccountUids
+            : []),
+        ]
+          .map((value) => String(value || '').trim())
+          .filter(Boolean)
+      ),
+    ];
+    const requesterEmail = normalizeEmailAddress(
+      firebaseAuthUser.email || userProfile?.email || ''
+    );
+    const sourceDefinitions = linkedRequesterUids.map((requesterUid, index) => ({
+      key: `uid:${index}`,
+      required: true,
+      source: firestoreQuery(
+        RENTAL_REQUESTS_COLLECTION_REF,
+        where('requesterUid', '==', requesterUid)
+      ),
+    }));
+
+    if (requesterEmail) {
+      sourceDefinitions.push({
+        key: 'email',
+        required: false,
+        source: firestoreQuery(
+          RENTAL_REQUESTS_COLLECTION_REF,
+          where('requesterEmail', '==', requesterEmail)
+        ),
+      });
+    }
+
+    if (sourceDefinitions.length === 0) {
+      setRentalRequests([]);
+      setRentalRequestsReady(true);
+      return undefined;
+    }
+
     let disposed = false;
-    let uidRequests = [];
-    let legacyEmailRequests = [];
-    let uidReady = false;
-    let legacyEmailReady = false;
+    const sourceState = new Map(
+      sourceDefinitions.map(({ key }) => [
+        key,
+        {
+          ready: false,
+          requests: [],
+        },
+      ])
+    );
 
     const publishRequests = () => {
-      if (disposed || !uidReady || !legacyEmailReady) return;
+      if (disposed) return;
+
+      const states = Array.from(sourceState.values());
+
+      if (!states.every((state) => state.ready)) return;
 
       const requestMap = new Map();
 
-      [...uidRequests, ...legacyEmailRequests].forEach((request) => {
-        requestMap.set(request.id, {
-          ...(requestMap.get(request.id) || {}),
-          ...request,
+      states.forEach((state) => {
+        state.requests.forEach((request) => {
+          requestMap.set(request.id, {
+            ...(requestMap.get(request.id) || {}),
+            ...request,
+          });
         });
       });
 
@@ -5063,72 +5128,44 @@ function App() {
       setRentalRequestsReady(true);
     };
 
-    const ownUidRequestSource = firestoreQuery(
-      RENTAL_REQUESTS_COLLECTION_REF,
-      where('requesterUid', '==', firebaseAuthUser.uid)
+    const unsubscribers = sourceDefinitions.map(
+      ({ key, required, source }) =>
+        onSnapshot(
+          source,
+          (snapshot) => {
+            sourceState.set(key, {
+              ready: true,
+              requests: snapshot.docs.map((requestDoc) => ({
+                ...requestDoc.data(),
+                id: requestDoc.id,
+              })),
+            });
+            publishRequests();
+          },
+          (error) => {
+            console.error(`Own rental requests ${key} sync error:`, error);
+            sourceState.set(key, {
+              ready: true,
+              requests: [],
+            });
+
+            if (required) {
+              const message =
+                '나의 대여신청 내역을 불러오지 못했습니다. Firestore Rules의 rentalRequests 본인 및 이전 계정 조회 권한을 확인해 주세요.';
+              setRentalRequestsLoadErrorMessage(message);
+              setRentalRequestsReady(true);
+              triggerToast(message, 'error');
+              return;
+            }
+
+            publishRequests();
+          }
+        )
     );
-
-    const unsubscribeUid = onSnapshot(
-      ownUidRequestSource,
-      (snapshot) => {
-        uidRequests = snapshot.docs.map((requestDoc) => ({
-          ...requestDoc.data(),
-          id: requestDoc.id,
-        }));
-        uidReady = true;
-        publishRequests();
-      },
-      (error) => {
-        const message =
-          '나의 대여신청 내역을 불러오지 못했습니다. Firestore Rules의 rentalRequests 본인 조회 권한을 확인해 주세요.';
-        console.error('Own rental requests UID sync error:', error);
-        uidRequests = [];
-        uidReady = true;
-        setRentalRequests([]);
-        setRentalRequestsLoadErrorMessage(message);
-        setRentalRequestsReady(true);
-        triggerToast(message, 'error');
-      }
-    );
-
-    const requesterEmail = normalizeEmailAddress(
-      firebaseAuthUser.email || userProfile?.email || ''
-    );
-
-    let unsubscribeLegacyEmail = () => {};
-
-    if (requesterEmail) {
-      const ownLegacyEmailRequestSource = firestoreQuery(
-        RENTAL_REQUESTS_COLLECTION_REF,
-        where('requesterEmail', '==', requesterEmail)
-      );
-
-      unsubscribeLegacyEmail = onSnapshot(
-        ownLegacyEmailRequestSource,
-        (snapshot) => {
-          legacyEmailRequests = snapshot.docs.map((requestDoc) => ({
-            ...requestDoc.data(),
-            id: requestDoc.id,
-          }));
-          legacyEmailReady = true;
-          publishRequests();
-        },
-        (error) => {
-          console.error('Own rental requests legacy email sync error:', error);
-          legacyEmailRequests = [];
-          legacyEmailReady = true;
-          publishRequests();
-        }
-      );
-    } else {
-      legacyEmailReady = true;
-      publishRequests();
-    }
 
     return () => {
       disposed = true;
-      unsubscribeUid();
-      unsubscribeLegacyEmail();
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
   }, [
     currentAuthRoleErrorMessage,
@@ -5138,6 +5175,7 @@ function App() {
     firebaseAuthUser?.uid,
     isAdminAuthenticated,
     userProfile?.email,
+    userProfile?.previousAccountUids,
     userProfile?.status,
     userProfileReady,
   ]);
@@ -6850,16 +6888,31 @@ function App() {
         let createdAccountStatus = USER_PROFILE_STATUS.PENDING;
         let createdAccountRejoined = false;
 
-        await runTransaction(db, async (transaction) => {
-          const configSnapshot = await transaction.get(PUBLIC_CONFIG_DOC_REF);
-          const claimRef = doc(
-            MEMBER_IDENTITY_CLAIMS_COLLECTION_REF,
-            identityKey
-          );
-          const recoveryRef = doc(
-            ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
-            recoveryKey
-          );
+        const signupPublicConfigRef = doc(
+          userSignupDb,
+          'rentalSystem',
+          'publicConfig'
+        );
+        const signupClaimRef = doc(
+          userSignupDb,
+          'memberIdentityClaims',
+          identityKey
+        );
+        const signupRecoveryRef = doc(
+          userSignupDb,
+          'accountRecoveryKeys',
+          recoveryKey
+        );
+        const signupUserAccountRef = doc(
+          userSignupDb,
+          USER_ACCOUNTS_COLLECTION_NAME,
+          credential.user.uid
+        );
+
+        await runTransaction(userSignupDb, async (transaction) => {
+          const configSnapshot = await transaction.get(signupPublicConfigRef);
+          const claimRef = signupClaimRef;
+          const recoveryRef = signupRecoveryRef;
           const claimSnapshot = await transaction.get(claimRef);
           const latestSettings = normalizeRentalPolicySettings({
             ...initialData.settings,
@@ -6882,7 +6935,8 @@ function App() {
 
           if (latestPolicyEnabled) {
             const directoryRef = doc(
-              MEMBER_DIRECTORY_KEYS_COLLECTION_REF,
+              userSignupDb,
+              'memberDirectoryKeys',
               identityKey
             );
             const directorySnapshot = await transaction.get(directoryRef);
@@ -6951,7 +7005,7 @@ function App() {
           });
 
           transaction.set(
-            doc(db, USER_ACCOUNTS_COLLECTION_NAME, credential.user.uid),
+            signupUserAccountRef,
             {
               uid: credential.user.uid,
               email: credential.user.email || email,

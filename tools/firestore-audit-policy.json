@@ -288,6 +288,11 @@
       "id": "onSnapshot:faed7646969563f0",
       "reason": "requesterUid가 없는 기존 신청 문서를 로그인 사용자 이메일 단일 조건으로 복구 조회하는 호환성 구독입니다. Firebase Auth 이메일과 Firestore Rules로 본인 문서만 허용하며 사용자 1명의 과거 이력 범위로 제한됩니다.",
       "reviewWhen": "기존 신청 문서의 requesterUid 보정이 완료되거나 이메일 변경 기능, 회원 계정 재생성 정책, 대여 이력 보존 정책이 변경될 때 재검토"
+    },
+    {
+      "id": "onSnapshot:67a5907f47b5c158",
+      "reason": "로그인 사용자의 현재 UID, 이전 계정 UID 묶음 및 동일 이메일 신청을 각각 제한 쿼리로 구독하고 문서 ID 기준으로 병합하는 본인 이력 조회입니다. 동적 sourceDefinitions 배열 때문에 감사기가 원본을 자동 판정하지 못하지만 각 쿼리는 requesterUid 또는 requesterEmail where 조건을 포함합니다.",
+      "reviewWhen": "회원 계정 재가입 연결 정책, previousAccountUids 최대 개수, 이메일 변경 정책 또는 사용자 신청 이력 보존 정책이 변경될 때 재검토"
     }
   ]
 }
