@@ -258,18 +258,6 @@ export default function AdminSignupPolicyPanel({ ctx }) {
             </div>
           </section>
 
-          <div className="flex flex-col gap-2 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
-            {signupPolicyDirty ? (
-              <div className="self-center text-[11px] text-orange-600 sm:mr-auto">저장되지 않은 변경사항이 있습니다.</div>
-            ) : null}
-            <Button type="button" variant="outline" disabled={!signupPolicyDirty || signupPolicySaving} onClick={cancelSignupPolicyChanges}>
-              변경 취소
-            </Button>
-            <Button type="button" variant="primary" disabled={!signupPolicyDirty || signupPolicySaving} onClick={saveSignupPolicyChanges}>
-              {signupPolicySaving ? '정책 저장 중...' : '정책 저장'}
-            </Button>
-          </div>
-
           <section className="space-y-3">
             <div>
               <h2 className="text-base font-bold text-slate-900">기존 회원 명부 검사</h2>
@@ -323,6 +311,19 @@ export default function AdminSignupPolicyPanel({ ctx }) {
               ) : null}
             </div>
           </section>
+
+          <div className="flex flex-col gap-2 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
+            {signupPolicyDirty ? (
+              <div className="self-center text-[11px] text-orange-600 sm:mr-auto">저장되지 않은 변경사항이 있습니다.</div>
+            ) : null}
+            <Button type="button" variant="outline" disabled={!signupPolicyDirty || signupPolicySaving} onClick={cancelSignupPolicyChanges}>
+              변경 취소
+            </Button>
+            <Button type="button" variant="primary" disabled={!signupPolicyDirty || signupPolicySaving} onClick={saveSignupPolicyChanges}>
+              {signupPolicySaving ? '정책 저장 중...' : '정책 저장'}
+            </Button>
+          </div>
+
         </>
       )}
     </div>

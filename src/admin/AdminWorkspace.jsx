@@ -83,6 +83,22 @@ function AdminWorkspace({ ctx, panelCtx }) {
     shouldShowAdminLoginPage,
   } = ctx;
 
+  const scrollAdminPageToTop = React.useCallback(() => {
+    if (typeof window === 'undefined') return;
+
+    window.requestAnimationFrame(() => {
+      window.scrollTo({
+        top: 0,
+        left: 0,
+        behavior: 'auto',
+      });
+
+      // 일부 브라우저나 레이아웃에서 window.scrollTo만으로 위치가 남는 경우를 보정합니다.
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    });
+  }, []);
+
   const [expandedAdminMenuGroups, setExpandedAdminMenuGroups] = React.useState(() => {
     const activeGroup = ADMIN_TAB_GROUP[adminTab];
 
@@ -109,6 +125,10 @@ function AdminWorkspace({ ctx, panelCtx }) {
       return activeGroup ? [activeGroup] : ['rental'];
     }
   });
+
+  React.useEffect(() => {
+    scrollAdminPageToTop();
+  }, [adminTab, scrollAdminPageToTop]);
 
   React.useEffect(() => {
     const activeGroup = ADMIN_TAB_GROUP[adminTab];
@@ -251,6 +271,11 @@ function AdminWorkspace({ ctx, panelCtx }) {
             window.__mkSystemSettingsUnsaved = false;
             window.__mkSystemSettingsUnsavedMessage = '';
           }
+          if (isActive) {
+            scrollAdminPageToTop();
+            return;
+          }
+
           handleAdminTabChange(key);
         }}
         className={`relative h-9 w-full justify-start !py-0 text-left ${
