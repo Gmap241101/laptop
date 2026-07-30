@@ -1,0 +1,57 @@
+{
+  "generatedAt": "2026-07-30T12:49:00+09:00",
+  "baselinePackage": "rental-system-user-account-recovery-controller-split-20260730_1148_deployment_package.zip",
+  "scope": "user login/logout controller and shared user auth state split",
+  "appJsx": {
+    "before": {
+      "lines": 17225,
+      "bytes": 502785,
+      "useState": 189,
+      "useEffect": 59,
+      "useRef": 21,
+      "useMemo": 33
+    },
+    "after": {
+      "lines": 17041,
+      "bytes": 496076,
+      "useState": 187,
+      "useEffect": 59,
+      "useRef": 21,
+      "useMemo": 33
+    },
+    "delta": {
+      "lines": -184,
+      "bytes": -6709,
+      "useState": -2,
+      "useEffect": 0,
+      "useRef": 0,
+      "useMemo": 0
+    }
+  },
+  "sourceGraph": {
+    "before": {
+      "initialModuleCount": 40,
+      "initialSourceBytes": 770187
+    },
+    "after": {
+      "initialModuleCount": 42,
+      "initialSourceBytes": 775484
+    },
+    "delta": {
+      "initialModuleCount": 2,
+      "initialSourceBytes": 5297
+    }
+  },
+  "newModules": [
+    {
+      "file": "src/features/auth/useUserLoginController.js",
+      "lines": 399,
+      "bytes": 11452
+    },
+    {
+      "file": "src/features/auth/userSessionPolicyService.js",
+      "lines": 21,
+      "bytes": 554
+    }
+  ]
+}

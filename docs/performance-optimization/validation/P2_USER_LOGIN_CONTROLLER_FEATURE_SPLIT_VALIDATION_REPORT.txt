@@ -1,0 +1,59 @@
+P2 USER LOGIN CONTROLLER FEATURE SPLIT - VALIDATION
+Generated: 2026-07-30
+
+[PASS] Input full package manifest: 263 files, SHA-256 mismatches=0
+[PASS] JS/JSX/MJS TypeScript transpile syntax: 102 files, 0 errors
+[PASS] TypeScript targeted semantic audit: changed files, selected diagnostics=0
+[PASS] React hook import audit: 97 source files, 0 errors
+[PASS] Relative imports: 229 checked, 0 missing
+
+Firestore access audit
+======================
+Result: PASS
+Source files: 97
+Total calls: 129
+onSnapshot: 35
+getDocs: 48
+getDoc: 28
+getCountFromServer: 18
+Approved risk findings: 51
+Unapproved warnings: 0
+Unapproved errors: 0
+
+[PASS] Firestore access counts unchanged: 129 -> 129
+[PASS] User-facing Korean string set: removed=0, added=0
+[PASS] Auth context contract: defined=33, provided=33, used=33, missing=0, extra=0
+[PASS] Login feature boundary: App-owned goToUserLogin=0, App-owned logoutUser=0, mixed login branch=0
+[PASS] Shared auth state boundary: App-owned user auth useState=0
+[PASS] Controller runtime mock: login navigation, protected-page logout, active login, admin-account rejection, pending-account status
+[PASS] App.jsx lines: 17225 -> 17041 (-184)
+[PASS] App.jsx bytes: 502785 -> 496076 (-6709)
+[PASS] App.jsx useState: 189 -> 187 (-2)
+[PASS] App.jsx useEffect: 59 -> 59 (0)
+[PASS] App.jsx useRef: 21 -> 21 (0)
+[PASS] App.jsx useMemo: 33 -> 33 (0)
+[PASS] New login controller: 399 lines, 11452 bytes
+[PASS] New session policy service: 21 lines, 554 bytes
+[PASS] Initial modules: 40 -> 42 (+2)
+[PASS] Initial source bytes: 770187 -> 775484 (+5297)
+[PASS] Firestore Rules unchanged
+[PASS] Firestore indexes unchanged
+[PASS] firebase.json and .firebaserc unchanged
+[PASS] package.json and package-lock.json unchanged
+[PASS] deploy.ps1 excluded from package as a protected local deployment script
+[PASS] New deleted files: 0
+[PASS] Existing package-meta/REMOVED_FILES.txt cumulative list preserved
+
+[LIMITATION] npm ci: FAIL in the execution environment
+[LIMITATION] Reason: internal npm registry returned E404 for yargs-parser-21.1.1.tgz
+[LIMITATION] npm run build could not be executed because node_modules was not installed
+[LIMITATION] Local deployment must complete the normal deploy.ps1 npm build stage before push
+
+[PASS] Full deployment ZIP manifest: 269 project files
+[PASS] Full deployment ZIP metadata: PACKAGE_FILES, PACKAGE_SHA256SUMS, REMOVED_FILES, README
+[PASS] Full deployment ZIP re-extracted manifest and SHA-256 verification: 0 errors
+[PASS] Full deployment ZIP re-extracted JS/JSX/MJS transpile: 102 files, 0 errors
+[PASS] Full deployment ZIP re-extracted React hook audit: PASS
+[PASS] Full deployment ZIP re-extracted Firestore strict audit: PASS
+[PASS] Forbidden runtime paths in ZIP: node_modules=0, dist=0, .git=0, .performance-reports=0, deploy.ps1=0
+[PASS] REMOVED_FILES cumulative entries: 67, duplicates=0, packaged-file conflicts=0

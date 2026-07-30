@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-07-30T02:51:04.341Z",
-  "initialModuleCount": 40,
-  "initialSourceBytes": 770187,
+  "generatedAt": "2026-07-30T03:53:47.728Z",
+  "initialModuleCount": 42,
+  "initialSourceBytes": 775484,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 502785
+      "bytes": 496076
     },
     {
       "file": "src/user/UserHomePanel.jsx",
@@ -38,6 +38,10 @@
     {
       "file": "src/utils/systemSettings.js",
       "bytes": 11743
+    },
+    {
+      "file": "src/features/auth/useUserLoginController.js",
+      "bytes": 11452
     },
     {
       "file": "src/utils/overduePolicy.js",
@@ -154,6 +158,10 @@
     {
       "file": "src/config/firestoreCachePolicy.js",
       "bytes": 641
+    },
+    {
+      "file": "src/features/auth/userSessionPolicyService.js",
+      "bytes": 554
     },
     {
       "file": "src/hooks/useDebouncedValue.js",

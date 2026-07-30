@@ -310,6 +310,11 @@ import {
   parseDomesticPhoneNumber,
 } from './utils/memberPolicy.js';
 import useUserAccountRecoveryController from './features/auth/useUserAccountRecoveryController.js';
+import useUserLoginController, {
+  createDefaultUserAuthForm,
+  useUserAuthState,
+} from './features/auth/useUserLoginController.js';
+import { resolveEffectiveUserSessionPolicy } from './features/auth/userSessionPolicyService.js';
 
 import {
   DEFAULT_SITE_SETTINGS,
@@ -723,17 +728,6 @@ const createDefaultAdminAccountForm = () => ({
 const createDefaultAdminAuthForm = () => ({
   adminLoginId: '',
   password: '',
-});
-
-const createDefaultUserAuthForm = () => ({
-  email: '',
-  password: '',
-  passwordConfirm: '',
-  name: '',
-  team: '',
-  phonePrefix: '010',
-  phoneMiddle: '',
-  phoneLast: '',
 });
 
 const createDefaultUserProfileForm = () => ({
@@ -1517,8 +1511,12 @@ function App() {
   const [currentAuthAdminAccount, setCurrentAuthAdminAccount] = useState(null);
   const [currentAuthRoleReady, setCurrentAuthRoleReady] = useState(false);
   const [currentAuthRoleErrorMessage, setCurrentAuthRoleErrorMessage] = useState('');
-  const [userAuthForm, setUserAuthForm] = useState(createDefaultUserAuthForm);
-  const [userAuthLoading, setUserAuthLoading] = useState(false);
+  const {
+    userAuthForm,
+    userAuthLoading,
+    setUserAuthForm,
+    setUserAuthLoading,
+  } = useUserAuthState();
   const [userAccountStatusView, setUserAccountStatusView] = useState(readUserAccountStatusView);
   const [userDirectoryVerificationLoading, setUserDirectoryVerificationLoading] = useState(false);
   const userDirectoryVerificationKeyRef = useRef('');
@@ -6548,21 +6546,38 @@ function App() {
     triggerToast,
   });
 
-  const goToUserLogin = () => {
-    pendingProtectedUserTabRef.current = '';
-
-    if (
-      !['login', 'signup', 'findEmail', 'resetPassword', 'accountStatus'].includes(userTab)
-    ) {
-      saveCurrentUserLoginReturnTarget();
-    }
-
-    resetAccountRecoveryForLogin();
-    pushAppPath('user', 'login');
-    setView('user');
-    setUserTab('login');
-    setIsCommunityMenuOpen(false);
-  };
+  const {
+    goToUserLogin,
+    logoutUser,
+    submitUserLogin,
+  } = useUserLoginController({
+    clearAdminAuthenticatedSession,
+    clearUserAuthenticatedSession,
+    configureFirebaseAuthPersistence,
+    createMemberPolicyError,
+    dataSettings: data.settings,
+    getUserAuthErrorMessage,
+    navigateToUserReturnTarget,
+    pendingProtectedUserTabRef,
+    resetAccountRecoveryForLogin,
+    saveCurrentUserLoginReturnTarget,
+    setIsCommunityMenuOpen,
+    setSelectedFooterPageId,
+    setSelectedNoticePostId,
+    setUserAuthenticatedSession,
+    siteSettings,
+    setUserAuthForm,
+    setUserAuthLoading,
+    setUserTab,
+    setView,
+    showUserAccountStatus,
+    triggerToast,
+    userAuthForm,
+    userSessionPolicy,
+    userSessionPolicyReady,
+    userTab,
+    verifyUserDirectoryMembership,
+  });
 
   const goToUserSignup = () => {
     pendingProtectedUserTabRef.current = '';
@@ -6601,39 +6616,6 @@ function App() {
     setIsCommunityMenuOpen(false);
   };
 
-  const logoutUser = async () => {
-    pendingProtectedUserTabRef.current = '';
-
-    const shouldLeaveProtectedPage =
-      PROTECTED_USER_TABS.has(userTab);
-
-    setUserAuthLoading(true);
-
-    try {
-      await signOut(firebaseAuth);
-      clearUserLoginReturnTarget();
-      clearUserAuthenticatedSession();
-      clearAdminAuthenticatedSession();
-      setUserAuthForm(createDefaultUserAuthForm());
-
-      if (shouldLeaveProtectedPage) {
-        replaceAppPath('user', 'home');
-        setView('user');
-        setUserTab('home');
-        setSelectedFooterPageId('');
-        setSelectedNoticePostId('');
-        setIsCommunityMenuOpen(false);
-      }
-
-      triggerToast('로그아웃되었습니다.', 'success');
-    } catch (error) {
-      console.error('User logout error:', error);
-      triggerToast('로그아웃 처리 중 오류가 발생했습니다.', 'error');
-    } finally {
-      setUserAuthLoading(false);
-    }
-  };
-
   const cancelUserSignup = () => {
     if (userAuthLoading) {
       return;
@@ -6647,10 +6629,12 @@ function App() {
     setIsCommunityMenuOpen(false);
   };
 
-  const submitUserAuthForm = async (event, providedTermsSubmission = null) => {
+  const submitUserSignupForm = async (
+    event,
+    providedTermsSubmission = null
+  ) => {
     event.preventDefault();
 
-    const isSignupMode = userTab === 'signup';
     const signupTermsSubmission = providedTermsSubmission || {
       ready: false,
       enabled: false,
@@ -6659,9 +6643,7 @@ function App() {
       requiredRevision: 0,
       decisions: [],
     };
-    const signupBlockReason = isSignupMode
-      ? getServiceBlockReason(siteSettings, 'signup')
-      : '';
+    const signupBlockReason = getServiceBlockReason(siteSettings, 'signup');
 
     if (signupBlockReason) {
       triggerToast(signupBlockReason, 'error');
@@ -6695,59 +6677,56 @@ function App() {
       return;
     }
 
-    if (isSignupMode) {
-      if (!isValidMemberPassword(password)) {
-        triggerToast(
-          '비밀번호는 8자 이상이며 영문과 숫자를 포함해야 합니다.',
-          'error'
-        );
-        return;
-      }
+    if (!isValidMemberPassword(password)) {
+      triggerToast(
+        '비밀번호는 8자 이상이며 영문과 숫자를 포함해야 합니다.',
+        'error'
+      );
+      return;
+    }
 
-      if (!name) {
-        triggerToast('이름을 입력해 주세요.', 'error');
-        return;
-      }
+    if (!name) {
+      triggerToast('이름을 입력해 주세요.', 'error');
+      return;
+    }
 
-      if (!isValidMemberName(name)) {
-        triggerToast(
-          '이름은 공백 없이 한글 또는 영문 2~30자로 입력해 주세요.',
-          'error'
-        );
-        return;
-      }
+    if (!isValidMemberName(name)) {
+      triggerToast(
+        '이름은 공백 없이 한글 또는 영문 2~30자로 입력해 주세요.',
+        'error'
+      );
+      return;
+    }
 
-      if (!team) {
-        triggerToast(
-          isRegisteredMemberSignupRequired(data.settings)
-            ? '부서 / 팀을 선택해 주세요.'
-            : '부서 / 팀을 입력해 주세요.',
-          'error'
-        );
-        return;
-      }
+    if (!team) {
+      triggerToast(
+        isRegisteredMemberSignupRequired(data.settings)
+          ? '부서 / 팀을 선택해 주세요.'
+          : '부서 / 팀을 입력해 주세요.',
+        'error'
+      );
+      return;
+    }
 
-      if (!isValidDomesticPhoneNumber(phoneParts)) {
-        triggerToast('올바른 국내 연락처를 입력해 주세요.', 'error');
-        return;
-      }
+    if (!isValidDomesticPhoneNumber(phoneParts)) {
+      triggerToast('올바른 국내 연락처를 입력해 주세요.', 'error');
+      return;
+    }
 
-      if (password !== passwordConfirm) {
-        triggerToast('비밀번호 확인이 일치하지 않습니다.', 'error');
-        return;
-      }
+    if (password !== passwordConfirm) {
+      triggerToast('비밀번호 확인이 일치하지 않습니다.', 'error');
+      return;
+    }
 
-      if (
-        normalizeTermsSettings(data.settings).signupTermsEnabled &&
-        (!signupTermsSubmission.ready || !signupTermsSubmission.valid)
-      ) {
-        triggerToast('필수 회원가입 약관을 확인하고 동의해 주세요.', 'error');
-        return;
-      }
+    if (
+      normalizeTermsSettings(data.settings).signupTermsEnabled &&
+      (!signupTermsSubmission.ready || !signupTermsSubmission.valid)
+    ) {
+      triggerToast('필수 회원가입 약관을 확인하고 동의해 주세요.', 'error');
+      return;
     }
 
     let createdSignupUser = null;
-    let signedInUserForRoleCheck = null;
     let effectiveUserSessionPolicy = normalizeUserSessionPolicy(
       userSessionPolicy
     );
@@ -6755,55 +6734,200 @@ function App() {
     setUserAuthLoading(true);
 
     try {
-      if (!userSessionPolicyReady) {
-        const userSessionPolicySnapshot = await getDoc(
-          USER_SESSION_POLICY_DOC_REF
-        ).catch(() => null);
-        effectiveUserSessionPolicy = normalizeUserSessionPolicy(
-          userSessionPolicySnapshot?.exists()
-            ? userSessionPolicySnapshot.data()
-            : userSessionPolicy
-        );
-      }
+      effectiveUserSessionPolicy = await resolveEffectiveUserSessionPolicy({
+        policy: userSessionPolicy,
+        policyReady: userSessionPolicyReady,
+      });
       await configureFirebaseAuthPersistence(
         firebaseAuth,
         effectiveUserSessionPolicy.userLogoutOnBrowserClose
       );
       clearAdminAuthenticatedSession();
 
-      if (isSignupMode) {
-        await setPersistence(userSignupAuth, inMemoryPersistence);
+      await setPersistence(userSignupAuth, inMemoryPersistence);
 
-        if (userSignupAuth.currentUser) {
-          await signOut(userSignupAuth);
+      if (userSignupAuth.currentUser) {
+        await signOut(userSignupAuth);
+      }
+
+      if (!data.settings.memberIdentityClaimsReady) {
+        throw createMemberPolicyError('member/identity-index-not-ready');
+      }
+
+      const identityKey = await createMemberIdentityKey(team, name);
+      const recoveryKey = await createAccountRecoveryKey({ team, name, phone });
+      const recoveryEmailVerifier = await createAccountRecoveryEmailVerifier({
+        email,
+        team,
+        name,
+        phone,
+      });
+      const maskedEmail = maskEmailAddress(email);
+      const initialPolicyEnabled = isRegisteredMemberSignupRequired(
+        data.settings
+      );
+
+      if (initialPolicyEnabled) {
+        if ((data.teams || []).length === 0) {
+          throw createMemberPolicyError('member/directory-not-ready');
         }
 
-        if (!data.settings.memberIdentityClaimsReady) {
+        const directorySnapshot = await getDoc(
+          doc(MEMBER_DIRECTORY_KEYS_COLLECTION_REF, identityKey)
+        );
+        const directoryData = directorySnapshot.exists()
+          ? directorySnapshot.data()
+          : null;
+
+        if (
+          !directoryData ||
+          directoryData.enabled === false ||
+          normalizeMemberName(directoryData.name || '') !== name ||
+          normalizeMemberTeam(directoryData.team || '') !== team
+        ) {
+          throw createMemberPolicyError('member/directory-mismatch');
+        }
+      }
+
+      const credential = await createUserWithEmailAndPassword(
+        userSignupAuth,
+        email,
+        password
+      );
+
+      createdSignupUser = credential.user;
+
+      await updateProfile(credential.user, {
+        displayName: name,
+      });
+
+      let createdAccountStatus = USER_PROFILE_STATUS.PENDING;
+      let createdAccountRejoined = false;
+
+      const signupPublicConfigRef = doc(
+        userSignupDb,
+        'rentalSystem',
+        'publicConfig'
+      );
+      const signupClaimRef = doc(
+        userSignupDb,
+        'memberIdentityClaims',
+        identityKey
+      );
+      const signupRecoveryRef = doc(
+        userSignupDb,
+        'accountRecoveryKeys',
+        recoveryKey
+      );
+      const signupUserAccountRef = doc(
+        userSignupDb,
+        USER_ACCOUNTS_COLLECTION_NAME,
+        credential.user.uid
+      );
+      const signupTermsPolicyRef = doc(
+        userSignupDb,
+        'signupTermsPolicy',
+        'current'
+      );
+      const submittedTermsById = new Map(
+        (Array.isArray(signupTermsSubmission.decisions)
+          ? signupTermsSubmission.decisions
+          : []
+        ).map((decision) => [String(decision.termId || ''), decision])
+      );
+      const signupConsentRefs = new Map(
+        [...submittedTermsById.keys()].map((termId) => [
+          termId,
+          {
+            stateRef: doc(
+              userSignupDb,
+              'userTermConsentStates',
+              `${credential.user.uid}__${termId}`
+            ),
+            logRef: doc(
+              collection(userSignupDb, 'userTermConsentLogs')
+            ),
+          },
+        ])
+      );
+
+      await runTransaction(userSignupDb, async (transaction) => {
+        const [configSnapshot, termsPolicySnapshot] = await Promise.all([
+          transaction.get(signupPublicConfigRef),
+          transaction.get(signupTermsPolicyRef),
+        ]);
+        const claimRef = signupClaimRef;
+        const recoveryRef = signupRecoveryRef;
+        const claimSnapshot = await transaction.get(claimRef);
+        const latestSettings = normalizeRentalPolicySettings({
+          ...initialData.settings,
+          ...(configSnapshot.exists()
+            ? configSnapshot.data()?.settings || {}
+            : {}),
+        });
+        const latestPolicyEnabled = isRegisteredMemberSignupRequired(
+          latestSettings
+        );
+        const latestTermsSettings = normalizeTermsSettings(latestSettings);
+        const latestTermsPolicy = normalizeTermsPolicy(
+          termsPolicySnapshot.exists() ? termsPolicySnapshot.data() : {}
+        );
+        const termsEnabled =
+          latestTermsSettings.signupTermsEnabled && latestTermsPolicy.enabled;
+        const activeTerms = termsEnabled ? latestTermsPolicy.activeTerms : [];
+
+        if (termsEnabled) {
+          if (
+            !signupTermsSubmission.ready ||
+            Number(signupTermsSubmission.policyRevision || 0) !==
+              latestTermsPolicy.revision ||
+            submittedTermsById.size !== activeTerms.length
+          ) {
+            throw createMemberPolicyError('terms/policy-changed');
+          }
+
+          activeTerms.forEach((term) => {
+            const decision = submittedTermsById.get(term.id);
+            const exactVersion =
+              Number(decision?.termVersion || 0) === Number(term.version || 0);
+            const exactVersionId =
+              String(decision?.termVersionId || '') === String(term.versionId || '');
+            const exactHash =
+              String(decision?.contentHash || '') === String(term.contentHash || '');
+            const accepted = decision?.decision === TERMS_DECISION.ACCEPTED;
+            const viewed = Number(decision?.viewedAtMs || 0) > 0;
+
+            if (!decision || !exactVersion || !exactVersionId || !exactHash) {
+              throw createMemberPolicyError('terms/policy-changed');
+            }
+
+            if (term.required && (!accepted || !viewed)) {
+              throw createMemberPolicyError('terms/required-not-accepted');
+            }
+
+            if (!term.required && accepted && !viewed) {
+              throw createMemberPolicyError('terms/decision-required');
+            }
+          });
+        }
+
+        if (!latestSettings.memberIdentityClaimsReady) {
           throw createMemberPolicyError('member/identity-index-not-ready');
         }
 
-        const identityKey = await createMemberIdentityKey(team, name);
-        const recoveryKey = await createAccountRecoveryKey({ team, name, phone });
-        const recoveryEmailVerifier = await createAccountRecoveryEmailVerifier({
-          email,
-          team,
-          name,
-          phone,
-        });
-        const maskedEmail = maskEmailAddress(email);
-        const initialPolicyEnabled = isRegisteredMemberSignupRequired(
-          data.settings
+        const directoryVersion = getSafeMemberDirectoryVersion(
+          latestSettings
         );
+        let directoryData = null;
 
-        if (initialPolicyEnabled) {
-          if ((data.teams || []).length === 0) {
-            throw createMemberPolicyError('member/directory-not-ready');
-          }
-
-          const directorySnapshot = await getDoc(
-            doc(MEMBER_DIRECTORY_KEYS_COLLECTION_REF, identityKey)
+        if (latestPolicyEnabled) {
+          const directoryRef = doc(
+            userSignupDb,
+            'memberDirectoryKeys',
+            identityKey
           );
-          const directoryData = directorySnapshot.exists()
+          const directorySnapshot = await transaction.get(directoryRef);
+          directoryData = directorySnapshot.exists()
             ? directorySnapshot.data()
             : null;
 
@@ -6817,474 +6941,173 @@ function App() {
           }
         }
 
-        const credential = await createUserWithEmailAndPassword(
-          userSignupAuth,
+        const claimData = claimSnapshot.exists()
+          ? claimSnapshot.data()
+          : {};
+        const claimCurrentUid = getClaimCurrentUid(claimData);
+        const claimFormerUids = getClaimFormerUids(claimData);
+        const claimStatus = getClaimStatus(claimData);
+        const isReleasedClaim =
+          claimSnapshot.exists() &&
+          claimStatus === 'released' &&
+          !claimCurrentUid;
+
+        if (
+          claimSnapshot.exists() &&
+          (claimData.conflict === true ||
+            (claimCurrentUid && claimCurrentUid !== credential.user.uid) ||
+            (!isReleasedClaim && !claimCurrentUid && claimStatus !== 'released'))
+        ) {
+          throw createMemberPolicyError('member/identity-already-claimed');
+        }
+
+        createdAccountRejoined =
+          isReleasedClaim || claimFormerUids.length > 0;
+        createdAccountStatus =
+          isAutoApproveNewMembersEnabled(latestSettings) &&
+          !createdAccountRejoined
+            ? USER_PROFILE_STATUS.ACTIVE
+            : USER_PROFILE_STATUS.PENDING;
+
+        transaction.set(claimRef, {
+          identityKey,
+          uid: credential.user.uid,
+          currentUid: credential.user.uid,
+          status: 'active',
+          name,
+          team,
+          conflict: false,
+          conflictingUids: [],
+          formerUids: claimFormerUids,
+          directoryMemberId:
+            latestPolicyEnabled && directoryData
+              ? directoryData.directoryMemberId || ''
+              : claimData.directoryMemberId || '',
+          restrictionSnapshot: claimData.restrictionSnapshot || {},
+          createdAt: claimSnapshot.exists()
+            ? claimData.createdAt || serverTimestamp()
+            : serverTimestamp(),
+          releasedAt: '',
+          updatedAt: serverTimestamp(),
+        });
+
+        transaction.set(
+          signupUserAccountRef,
+          {
+            uid: credential.user.uid,
+            email: credential.user.email || email,
+            maskedEmail,
+            name,
+            team,
+            phone,
+            status: createdAccountStatus,
+            identityKey,
+            recoveryKey,
+            directoryMemberId:
+              latestPolicyEnabled && directoryData
+                ? directoryData.directoryMemberId || ''
+                : '',
+            directoryVerifiedVersion: latestPolicyEnabled
+              ? directoryVersion
+              : 0,
+            directoryVerifiedAt: latestPolicyEnabled
+              ? serverTimestamp()
+              : '',
+            profileRequiredReason: '',
+            profileRequiredAt: '',
+            statusBeforeProfileRequired: '',
+            rejoinedAccount: createdAccountRejoined,
+            previousAccountUids: claimFormerUids,
+            inheritedRestriction: claimData.restrictionSnapshot || {},
+            termsConsentRevision: termsEnabled ? latestTermsPolicy.revision : 0,
+            termsConsentCompletedAt: termsEnabled ? serverTimestamp() : '',
+            termsConsentPolicyVersion: termsEnabled ? latestTermsPolicy.revision : 0,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          }
+        );
+
+        if (termsEnabled) {
+          activeTerms.forEach((term) => {
+            const decision = submittedTermsById.get(term.id);
+            const refs = signupConsentRefs.get(term.id);
+            const decisionValue = decision.decision === TERMS_DECISION.ACCEPTED
+              ? TERMS_DECISION.ACCEPTED
+              : TERMS_DECISION.DECLINED;
+            const consentPayload = {
+              uid: credential.user.uid,
+              termId: term.id,
+              termVersion: term.version,
+              termVersionId: term.versionId || '',
+              policyRevision: latestTermsPolicy.revision,
+              decision: decisionValue,
+              requiredSnapshot: Boolean(term.required),
+              titleSnapshot: term.title,
+              contentHash: term.contentHash,
+              viewedAtMs: Number(decision.viewedAtMs || 0),
+              decidedAt: serverTimestamp(),
+              source: TERMS_CONSENT_SOURCE.SIGNUP,
+              updatedAt: serverTimestamp(),
+            };
+
+            transaction.set(refs.stateRef, consentPayload);
+            transaction.set(refs.logRef, {
+              ...consentPayload,
+              previousDecision: '',
+              createdAt: serverTimestamp(),
+            });
+          });
+        }
+
+        transaction.set(recoveryRef, {
+          recoveryKey,
+          maskedEmail,
+          emailVerifier: recoveryEmailVerifier,
+          accountStatus: createdAccountStatus,
+          enabled: true,
+          updatedAt: serverTimestamp(),
+        });
+      });
+
+      await signOut(userSignupAuth).catch((logoutError) => {
+        console.error('Signup secondary auth sign-out error:', logoutError);
+      });
+
+      if (createdAccountStatus === USER_PROFILE_STATUS.ACTIVE) {
+        const primaryCredential = await signInWithEmailAndPassword(
+          firebaseAuth,
           email,
           password
         );
 
-        createdSignupUser = credential.user;
-
-        await updateProfile(credential.user, {
-          displayName: name,
-        });
-
-        let createdAccountStatus = USER_PROFILE_STATUS.PENDING;
-        let createdAccountRejoined = false;
-
-        const signupPublicConfigRef = doc(
-          userSignupDb,
-          'rentalSystem',
-          'publicConfig'
-        );
-        const signupClaimRef = doc(
-          userSignupDb,
-          'memberIdentityClaims',
-          identityKey
-        );
-        const signupRecoveryRef = doc(
-          userSignupDb,
-          'accountRecoveryKeys',
-          recoveryKey
-        );
-        const signupUserAccountRef = doc(
-          userSignupDb,
-          USER_ACCOUNTS_COLLECTION_NAME,
-          credential.user.uid
-        );
-        const signupTermsPolicyRef = doc(
-          userSignupDb,
-          'signupTermsPolicy',
-          'current'
-        );
-        const submittedTermsById = new Map(
-          (Array.isArray(signupTermsSubmission.decisions)
-            ? signupTermsSubmission.decisions
-            : []
-          ).map((decision) => [String(decision.termId || ''), decision])
-        );
-        const signupConsentRefs = new Map(
-          [...submittedTermsById.keys()].map((termId) => [
-            termId,
-            {
-              stateRef: doc(
-                userSignupDb,
-                'userTermConsentStates',
-                `${credential.user.uid}__${termId}`
-              ),
-              logRef: doc(
-                collection(userSignupDb, 'userTermConsentLogs')
-              ),
-            },
-          ])
-        );
-
-        await runTransaction(userSignupDb, async (transaction) => {
-          const [configSnapshot, termsPolicySnapshot] = await Promise.all([
-            transaction.get(signupPublicConfigRef),
-            transaction.get(signupTermsPolicyRef),
-          ]);
-          const claimRef = signupClaimRef;
-          const recoveryRef = signupRecoveryRef;
-          const claimSnapshot = await transaction.get(claimRef);
-          const latestSettings = normalizeRentalPolicySettings({
-            ...initialData.settings,
-            ...(configSnapshot.exists()
-              ? configSnapshot.data()?.settings || {}
-              : {}),
-          });
-          const latestPolicyEnabled = isRegisteredMemberSignupRequired(
-            latestSettings
-          );
-          const latestTermsSettings = normalizeTermsSettings(latestSettings);
-          const latestTermsPolicy = normalizeTermsPolicy(
-            termsPolicySnapshot.exists() ? termsPolicySnapshot.data() : {}
-          );
-          const termsEnabled =
-            latestTermsSettings.signupTermsEnabled && latestTermsPolicy.enabled;
-          const activeTerms = termsEnabled ? latestTermsPolicy.activeTerms : [];
-
-          if (termsEnabled) {
-            if (
-              !signupTermsSubmission.ready ||
-              Number(signupTermsSubmission.policyRevision || 0) !==
-                latestTermsPolicy.revision ||
-              submittedTermsById.size !== activeTerms.length
-            ) {
-              throw createMemberPolicyError('terms/policy-changed');
-            }
-
-            activeTerms.forEach((term) => {
-              const decision = submittedTermsById.get(term.id);
-              const exactVersion =
-                Number(decision?.termVersion || 0) === Number(term.version || 0);
-              const exactVersionId =
-                String(decision?.termVersionId || '') === String(term.versionId || '');
-              const exactHash =
-                String(decision?.contentHash || '') === String(term.contentHash || '');
-              const accepted = decision?.decision === TERMS_DECISION.ACCEPTED;
-              const viewed = Number(decision?.viewedAtMs || 0) > 0;
-
-              if (!decision || !exactVersion || !exactVersionId || !exactHash) {
-                throw createMemberPolicyError('terms/policy-changed');
-              }
-
-              if (term.required && (!accepted || !viewed)) {
-                throw createMemberPolicyError('terms/required-not-accepted');
-              }
-
-              if (!term.required && accepted && !viewed) {
-                throw createMemberPolicyError('terms/decision-required');
-              }
-            });
-          }
-
-          if (!latestSettings.memberIdentityClaimsReady) {
-            throw createMemberPolicyError('member/identity-index-not-ready');
-          }
-
-          const directoryVersion = getSafeMemberDirectoryVersion(
-            latestSettings
-          );
-          let directoryData = null;
-
-          if (latestPolicyEnabled) {
-            const directoryRef = doc(
-              userSignupDb,
-              'memberDirectoryKeys',
-              identityKey
-            );
-            const directorySnapshot = await transaction.get(directoryRef);
-            directoryData = directorySnapshot.exists()
-              ? directorySnapshot.data()
-              : null;
-
-            if (
-              !directoryData ||
-              directoryData.enabled === false ||
-              normalizeMemberName(directoryData.name || '') !== name ||
-              normalizeMemberTeam(directoryData.team || '') !== team
-            ) {
-              throw createMemberPolicyError('member/directory-mismatch');
-            }
-          }
-
-          const claimData = claimSnapshot.exists()
-            ? claimSnapshot.data()
-            : {};
-          const claimCurrentUid = getClaimCurrentUid(claimData);
-          const claimFormerUids = getClaimFormerUids(claimData);
-          const claimStatus = getClaimStatus(claimData);
-          const isReleasedClaim =
-            claimSnapshot.exists() &&
-            claimStatus === 'released' &&
-            !claimCurrentUid;
-
-          if (
-            claimSnapshot.exists() &&
-            (claimData.conflict === true ||
-              (claimCurrentUid && claimCurrentUid !== credential.user.uid) ||
-              (!isReleasedClaim && !claimCurrentUid && claimStatus !== 'released'))
-          ) {
-            throw createMemberPolicyError('member/identity-already-claimed');
-          }
-
-          createdAccountRejoined =
-            isReleasedClaim || claimFormerUids.length > 0;
-          createdAccountStatus =
-            isAutoApproveNewMembersEnabled(latestSettings) &&
-            !createdAccountRejoined
-              ? USER_PROFILE_STATUS.ACTIVE
-              : USER_PROFILE_STATUS.PENDING;
-
-          transaction.set(claimRef, {
-            identityKey,
-            uid: credential.user.uid,
-            currentUid: credential.user.uid,
-            status: 'active',
-            name,
-            team,
-            conflict: false,
-            conflictingUids: [],
-            formerUids: claimFormerUids,
-            directoryMemberId:
-              latestPolicyEnabled && directoryData
-                ? directoryData.directoryMemberId || ''
-                : claimData.directoryMemberId || '',
-            restrictionSnapshot: claimData.restrictionSnapshot || {},
-            createdAt: claimSnapshot.exists()
-              ? claimData.createdAt || serverTimestamp()
-              : serverTimestamp(),
-            releasedAt: '',
-            updatedAt: serverTimestamp(),
-          });
-
-          transaction.set(
-            signupUserAccountRef,
-            {
-              uid: credential.user.uid,
-              email: credential.user.email || email,
-              maskedEmail,
-              name,
-              team,
-              phone,
-              status: createdAccountStatus,
-              identityKey,
-              recoveryKey,
-              directoryMemberId:
-                latestPolicyEnabled && directoryData
-                  ? directoryData.directoryMemberId || ''
-                  : '',
-              directoryVerifiedVersion: latestPolicyEnabled
-                ? directoryVersion
-                : 0,
-              directoryVerifiedAt: latestPolicyEnabled
-                ? serverTimestamp()
-                : '',
-              profileRequiredReason: '',
-              profileRequiredAt: '',
-              statusBeforeProfileRequired: '',
-              rejoinedAccount: createdAccountRejoined,
-              previousAccountUids: claimFormerUids,
-              inheritedRestriction: claimData.restrictionSnapshot || {},
-              termsConsentRevision: termsEnabled ? latestTermsPolicy.revision : 0,
-              termsConsentCompletedAt: termsEnabled ? serverTimestamp() : '',
-              termsConsentPolicyVersion: termsEnabled ? latestTermsPolicy.revision : 0,
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-            }
-          );
-
-          if (termsEnabled) {
-            activeTerms.forEach((term) => {
-              const decision = submittedTermsById.get(term.id);
-              const refs = signupConsentRefs.get(term.id);
-              const decisionValue = decision.decision === TERMS_DECISION.ACCEPTED
-                ? TERMS_DECISION.ACCEPTED
-                : TERMS_DECISION.DECLINED;
-              const consentPayload = {
-                uid: credential.user.uid,
-                termId: term.id,
-                termVersion: term.version,
-                termVersionId: term.versionId || '',
-                policyRevision: latestTermsPolicy.revision,
-                decision: decisionValue,
-                requiredSnapshot: Boolean(term.required),
-                titleSnapshot: term.title,
-                contentHash: term.contentHash,
-                viewedAtMs: Number(decision.viewedAtMs || 0),
-                decidedAt: serverTimestamp(),
-                source: TERMS_CONSENT_SOURCE.SIGNUP,
-                updatedAt: serverTimestamp(),
-              };
-
-              transaction.set(refs.stateRef, consentPayload);
-              transaction.set(refs.logRef, {
-                ...consentPayload,
-                previousDecision: '',
-                createdAt: serverTimestamp(),
-              });
-            });
-          }
-
-          transaction.set(recoveryRef, {
-            recoveryKey,
-            maskedEmail,
-            emailVerifier: recoveryEmailVerifier,
-            accountStatus: createdAccountStatus,
-            enabled: true,
-            updatedAt: serverTimestamp(),
-          });
-        });
-
-        await signOut(userSignupAuth).catch((logoutError) => {
-          console.error('Signup secondary auth sign-out error:', logoutError);
-        });
-
-        if (createdAccountStatus === USER_PROFILE_STATUS.ACTIVE) {
-          const primaryCredential = await signInWithEmailAndPassword(
-            firebaseAuth,
-            email,
-            password
-          );
-
-          setUserAuthenticatedSession(
-            primaryCredential.user.uid,
-            effectiveUserSessionPolicy
-          );
-        } else {
-          clearUserAuthenticatedSession();
-        }
-
-        createdSignupUser = null;
-        setUserAuthForm(createDefaultUserAuthForm());
-        clearUserLoginReturnTarget();
-
-        if (createdAccountStatus === USER_PROFILE_STATUS.ACTIVE) {
-          showUserAccountStatus('signupAutoApprovedComplete');
-        } else {
-          showUserAccountStatus('signupPendingComplete');
-        }
-
-        return;
-      }
-
-      const credential = await signInWithEmailAndPassword(
-        firebaseAuth,
-        email,
-        password
-      );
-
-      signedInUserForRoleCheck = credential.user;
-
-      const adminAccountSnapshot = await getDoc(
-        doc(db, 'adminAccounts', credential.user.uid)
-      );
-
-      if (adminAccountSnapshot.exists()) {
-        await signOut(firebaseAuth);
-        signedInUserForRoleCheck = null;
-        triggerToast(
-          '관리자 계정은 사용자 로그인 화면이 아니라 관리자 모드에서 로그인해 주세요.',
-          'error'
-        );
-        return;
-      }
-
-      const userAccountSnapshot = await getDoc(
-        doc(db, USER_ACCOUNTS_COLLECTION_NAME, credential.user.uid)
-      );
-
-      if (!userAccountSnapshot.exists()) {
-        await signOut(firebaseAuth);
-        signedInUserForRoleCheck = null;
-        triggerToast(
-          '등록된 회원 정보가 없습니다. 관리자에게 문의해 주세요.',
-          'error'
-        );
-        return;
-      }
-
-      let signedInAccount = userAccountSnapshot.data();
-      let signedInUserStatus = signedInAccount.status || '';
-
-      if (
-        [
-          USER_PROFILE_STATUS.ACTIVE,
-          USER_PROFILE_STATUS.PROFILE_REQUIRED,
-        ].includes(signedInUserStatus)
-      ) {
-        const policyEnabled = isRegisteredMemberSignupRequired(data.settings);
-        const directoryVersion = getSafeMemberDirectoryVersion(data.settings);
-        const isDirectoryMismatchProfile =
-          signedInUserStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
-          signedInAccount.profileRequiredReason ===
-            PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
-        const needsDirectoryVerification =
-          isDirectoryMismatchProfile ||
-          (policyEnabled &&
-            signedInUserStatus === USER_PROFILE_STATUS.ACTIVE &&
-            Number(signedInAccount.directoryVerifiedVersion || 0) !==
-              directoryVersion);
-
-        if (needsDirectoryVerification) {
-          const serviceMode = normalizeSiteSettings(siteSettings).serviceMode;
-          const isPolicyDisabledRestore =
-            !policyEnabled &&
-            signedInUserStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
-            signedInAccount.profileRequiredReason ===
-              PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
-
-          if (
-            serviceMode === SERVICE_MODE.NORMAL ||
-            isPolicyDisabledRestore
-          ) {
-            try {
-              const verificationResult = await verifyUserDirectoryMembership({
-                authUser: credential.user,
-                account: signedInAccount,
-              });
-              signedInUserStatus = verificationResult.status;
-            } catch (verificationError) {
-              if (verificationError?.code === 'permission-denied') {
-                throw createMemberPolicyError(
-                  'member/directory-status-sync-permission-denied'
-                );
-              }
-              throw verificationError;
-            }
-          }
-        }
-      }
-
-      if (signedInUserStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED) {
         setUserAuthenticatedSession(
-          credential.user.uid,
+          primaryCredential.user.uid,
           effectiveUserSessionPolicy
         );
-        signedInUserForRoleCheck = null;
-        clearAdminAuthenticatedSession();
-        setUserAuthForm(createDefaultUserAuthForm());
-        clearUserLoginReturnTarget();
-        replaceAppPath('user', 'mypage');
-        setView('user');
-        setUserTab('mypage');
-        setIsCommunityMenuOpen(false);
-        triggerToast(
-          '등록 정보 확인이 필요합니다. 부서와 성명을 수정해 주세요.',
-          'error'
-        );
-        return;
-      }
-
-      if (signedInUserStatus !== USER_PROFILE_STATUS.ACTIVE) {
-        const statusPageType =
-          signedInUserStatus === USER_PROFILE_STATUS.PENDING
-            ? 'loginPending'
-            : signedInUserStatus === USER_PROFILE_STATUS.BLOCKED
-              ? 'loginBlocked'
-              : 'loginRetired';
-
-        showUserAccountStatus(statusPageType);
+      } else {
         clearUserAuthenticatedSession();
-        await signOut(firebaseAuth).catch((logoutError) => {
-          console.error('Inactive login sign-out error:', logoutError);
-        });
-        signedInUserForRoleCheck = null;
-        return;
       }
 
-      setUserAuthenticatedSession(
-        credential.user.uid,
-        effectiveUserSessionPolicy
-      );
-      signedInUserForRoleCheck = null;
-      clearAdminAuthenticatedSession();
+      createdSignupUser = null;
       setUserAuthForm(createDefaultUserAuthForm());
-      triggerToast('로그인되었습니다.', 'success');
-
-      const returnTarget = readUserLoginReturnTarget();
       clearUserLoginReturnTarget();
 
-      navigateToUserReturnTarget(
-        returnTarget || {
-          userTab: 'rental',
-          routeId: '',
-          noticePostId: '',
-        },
-        { replace: true }
-      );
+      if (createdAccountStatus === USER_PROFILE_STATUS.ACTIVE) {
+        showUserAccountStatus('signupAutoApprovedComplete');
+      } else {
+        showUserAccountStatus('signupPendingComplete');
+      }
+
+      return;
     } catch (error) {
       let signupRollbackFailed = false;
       let firebaseAuthCleanupFailed = false;
 
-      if (isSignupMode) {
-        setUserAuthForm((prev) => ({
-          ...prev,
-          password: '',
-          passwordConfirm: '',
-        }));
-      }
+      setUserAuthForm((prev) => ({
+        ...prev,
+        password: '',
+        passwordConfirm: '',
+      }));
 
       if (
         createdSignupUser &&
@@ -7308,18 +7131,6 @@ function App() {
         }
       }
 
-      if (
-        signedInUserForRoleCheck &&
-        firebaseAuth.currentUser?.uid === signedInUserForRoleCheck.uid
-      ) {
-        try {
-          await signOut(firebaseAuth);
-        } catch (logoutError) {
-          firebaseAuthCleanupFailed = true;
-          console.error('User role-check logout error:', logoutError);
-        }
-      }
-
       clearUserAuthenticatedSession();
       clearAdminAuthenticatedSession();
       console.error('User auth error:', error);
@@ -7338,6 +7149,11 @@ function App() {
       setUserAuthLoading(false);
     }
   };
+
+  const submitUserAuthForm = (event, providedTermsSubmission = null) =>
+    userTab === 'signup'
+      ? submitUserSignupForm(event, providedTermsSubmission)
+      : submitUserLogin(event);
 
     const authenticateAdmin = async () => {
     const adminEmail = adminAuthForm.adminLoginId.trim();
