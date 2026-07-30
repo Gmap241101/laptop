@@ -1,0 +1,35 @@
+P2 ADMIN BOARD POST CONTROLLER FEATURE SPLIT VALIDATION
+======================================================
+
+Baseline package
+- rental-system-user-request-history-action-controller-split-20260730_1455_deployment_package.zip
+
+Output package
+- rental-system-admin-board-post-controller-split-20260730_1513_deployment_package.zip
+
+Validation results
+- Baseline PACKAGE_SHA256SUMS verification: PASS (289 files)
+- JavaScript/JSX/MJS targeted TypeScript diagnostics: PASS (0 target diagnostics)
+- React Hook import audit: PASS (102 source files)
+- Relative import resolution: PASS (267 references, missing 0)
+- Firestore strict audit: PASS
+- Firestore access locations: 129 -> 129
+- Admin board post controller runtime mock: PASS (7 scenarios)
+- Korean UI string occurrence set: PASS (removed 0, added 0)
+- REMOVED_FILES cumulative inheritance: PASS (67 paths)
+- New removed paths: 0
+- Rules/index/package configuration hashes: unchanged
+
+Runtime mock scenarios
+1. Unauthorized notice editor entry blocked
+2. Authorized notice edit form hydrated from legacy text
+3. Notice create payload, author fields, and state reset
+4. Notice delete confirmation, document deletion, and selected-post cleanup
+5. FAQ create blocked when no category exists
+6. FAQ create payload, category, rich text, and state reset
+7. FAQ delete confirmation and user/admin expanded-state cleanup
+
+Production build
+- npm ci: NOT COMPLETED
+- Reason: internal npm registry returned E404 for yargs-parser-21.1.1.tgz
+- Local deploy.ps1 must confirm npm run build before Git push or production publication.

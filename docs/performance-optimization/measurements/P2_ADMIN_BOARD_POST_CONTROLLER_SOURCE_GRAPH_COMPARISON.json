@@ -1,0 +1,39 @@
+{
+  "baselinePackage": "rental-system-user-request-history-action-controller-split-20260730_1455_deployment_package.zip",
+  "outputPackage": "rental-system-admin-board-post-controller-split-20260730_1513_deployment_package.zip",
+  "baseline": {
+    "appLines": 14480,
+    "appBytes": 417913,
+    "appUseStateCalls": 176,
+    "appUseEffectCalls": 59,
+    "appUseRefCalls": 20,
+    "appUseMemoCalls": 30,
+    "appRunTransactionCalls": 7,
+    "initialModuleCount": 46,
+    "initialSourceBytes": 788191
+  },
+  "current": {
+    "appLines": 13950,
+    "appBytes": 406720,
+    "appUseStateCalls": 168,
+    "appUseEffectCalls": 59,
+    "appUseRefCalls": 20,
+    "appUseMemoCalls": 30,
+    "appRunTransactionCalls": 7,
+    "controllerLines": 499,
+    "controllerBytes": 12665,
+    "initialModuleCount": 47,
+    "initialSourceBytes": 789663
+  },
+  "delta": {
+    "appLines": -530,
+    "appBytes": -11193,
+    "appUseStateCalls": -8,
+    "appUseEffectCalls": 0,
+    "appUseRefCalls": 0,
+    "appUseMemoCalls": 0,
+    "appRunTransactionCalls": 0,
+    "initialModuleCount": 1,
+    "initialSourceBytes": 1472
+  }
+}
