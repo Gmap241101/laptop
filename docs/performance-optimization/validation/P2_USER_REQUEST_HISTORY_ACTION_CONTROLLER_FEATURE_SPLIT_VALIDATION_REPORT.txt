@@ -1,0 +1,27 @@
+P2 USER REQUEST HISTORY ACTION CONTROLLER FEATURE SPLIT VALIDATION
+=================================================================
+
+Baseline package
+- rental-system-user-rental-request-controller-split-20260730_1430_deployment_package.zip
+
+Output package
+- rental-system-user-request-history-action-controller-split-20260730_1455_deployment_package.zip
+
+Validation results
+- Baseline PACKAGE_SHA256SUMS verification: PASS (284 files)
+- JavaScript/JSX targeted TypeScript parse/diagnostics: PASS
+- React Hook import audit: PASS (101 source files)
+- Relative import resolution: PASS (264 references, missing 0)
+- Target context contract: PASS (9 keys defined/provided/consumed)
+- Firestore strict audit: PASS
+- Firestore access locations: 129 -> 129
+- User request history action controller runtime mock: PASS (5 scenarios)
+- Korean UI rendering text: unchanged; one template expression identifier changed from data.settings to dataSettings after dependency extraction
+- REMOVED_FILES cumulative inheritance: PASS (67 paths)
+- New removed paths: 0
+- Rules/index/package configuration hashes: unchanged
+
+Production build
+- npm ci: NOT COMPLETED
+- Reason: internal npm registry returned E404 for yargs-parser-21.1.1.tgz
+- Local deploy.ps1 must confirm npm run build before Git push or production publication.

@@ -1,0 +1,24 @@
+{
+  "baselinePackage": "rental-system-user-rental-request-controller-split-20260730_1430_deployment_package.zip",
+  "outputPackage": "rental-system-user-request-history-action-controller-split-20260730_1455_deployment_package.zip",
+  "before": {
+    "appLines": 15499,
+    "appBytes": 447316,
+    "initialModuleCount": 45,
+    "initialSourceBytes": 785354
+  },
+  "after": {
+    "appLines": 14480,
+    "appBytes": 417913,
+    "controllerLines": 1126,
+    "controllerBytes": 32240,
+    "initialModuleCount": 46,
+    "initialSourceBytes": 788191
+  },
+  "delta": {
+    "appLines": -1019,
+    "appBytes": -29403,
+    "initialModuleCount": 1,
+    "initialSourceBytes": 2837
+  }
+}
