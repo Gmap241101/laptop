@@ -1,0 +1,27 @@
+{
+  "generatedAt": "2026-07-30T15:21:00+09:00",
+  "task": "P2_ADMIN_BOARD_SETTINGS_CONTROLLER_FEATURE_SPLIT",
+  "before": {
+    "initialModuleCount": 47,
+    "initialSourceBytes": 789663,
+    "appBytes": 406720,
+    "appLines": 13950,
+    "appUseStateCount": 168
+  },
+  "after": {
+    "initialModuleCount": 48,
+    "initialSourceBytes": 792759,
+    "appBytes": 398116,
+    "appLines": 13563,
+    "appUseStateCount": 159,
+    "newControllerBytes": 11700,
+    "newControllerLines": 439
+  },
+  "delta": {
+    "initialModuleCount": 1,
+    "initialSourceBytes": 3096,
+    "appBytes": -8604,
+    "appLines": -387,
+    "appUseStateCount": -9
+  }
+}

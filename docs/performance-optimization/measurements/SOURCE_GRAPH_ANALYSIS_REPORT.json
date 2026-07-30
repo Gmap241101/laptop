@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-07-30T06:18:25.436Z",
-  "initialModuleCount": 47,
-  "initialSourceBytes": 789663,
+  "generatedAt": "2026-07-30T06:26:38.396Z",
+  "initialModuleCount": 48,
+  "initialSourceBytes": 792759,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 406720
+      "bytes": 398116
     },
     {
       "file": "src/features/requests/useUserRequestHistoryActionController.js",
@@ -58,6 +58,10 @@
     {
       "file": "src/utils/systemSettings.js",
       "bytes": 11743
+    },
+    {
+      "file": "src/features/boards/useAdminBoardSettingsController.js",
+      "bytes": 11700
     },
     {
       "file": "src/features/auth/useUserLoginController.js",

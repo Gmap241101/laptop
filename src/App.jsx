@@ -247,6 +247,9 @@ import useAdminBoardPostController, {
   useFaqPostAdminState,
   useNoticePostAdminState,
 } from './features/boards/useAdminBoardPostController.js';
+import useAdminBoardSettingsController, {
+  useAdminBoardSettingsState,
+} from './features/boards/useAdminBoardSettingsController.js';
 import {
   commitFirestoreOperations,
 } from './features/members/memberAccountIndexService.js';
@@ -1249,10 +1252,26 @@ function App() {
     setNoticePostForm,
     setNoticePostSaving,
   } = useNoticePostAdminState();
-  const [noticeBoardConfigSaving, setNoticeBoardConfigSaving] = useState(false);
-  const [noticePostsPerPageInput, setNoticePostsPerPageInput] = useState(
-    DEFAULT_NOTICE_POSTS_PER_PAGE
-  );
+  const {
+    editingFaqCategoryId,
+    editingFaqCategoryName,
+    faqBoardConfigSaving,
+    faqCategoryDeletingId,
+    faqCategorySavingId,
+    faqPostsPerPageInput,
+    newFaqCategoryName,
+    noticeBoardConfigSaving,
+    noticePostsPerPageInput,
+    setEditingFaqCategoryId,
+    setEditingFaqCategoryName,
+    setFaqBoardConfigSaving,
+    setFaqCategoryDeletingId,
+    setFaqCategorySavingId,
+    setFaqPostsPerPageInput,
+    setNewFaqCategoryName,
+    setNoticeBoardConfigSaving,
+    setNoticePostsPerPageInput,
+  } = useAdminBoardSettingsState();
 
   const [popupPosts, setPopupPosts] = useState([]);
   const [popupPostsReady, setPopupPostsReady] = useState(true);
@@ -1357,17 +1376,6 @@ function App() {
     setFaqPostForm,
     setFaqPostSaving,
   } = useFaqPostAdminState();
-
-  const [faqBoardConfigSaving, setFaqBoardConfigSaving] = useState(false);
-  const [faqPostsPerPageInput, setFaqPostsPerPageInput] = useState(
-    DEFAULT_FAQ_POSTS_PER_PAGE
-  );
-
-  const [newFaqCategoryName, setNewFaqCategoryName] = useState('');
-  const [editingFaqCategoryId, setEditingFaqCategoryId] = useState('');
-  const [editingFaqCategoryName, setEditingFaqCategoryName] = useState('');
-  const [faqCategorySavingId, setFaqCategorySavingId] = useState('');
-  const [faqCategoryDeletingId, setFaqCategoryDeletingId] = useState('');
 
   const [adminAccounts, setAdminAccounts] = useState([]);
   const [adminAccountsReady, setAdminAccountsReady] = useState(false);
@@ -1654,16 +1662,6 @@ function App() {
       JSON.stringify(getComparableRentalPolicySettings(data.settings)),
     [data.settings, tempSettings]
   );
-
-  const noticeBoardSettingsDirty =
-    noticeBoardConfigReady &&
-    getSafeNoticePostsPerPage(noticePostsPerPageInput) !==
-      getSafeNoticePostsPerPage(noticeBoardConfig.postsPerPage);
-
-  const faqBoardSettingsDirty =
-    faqBoardConfigReady &&
-    getSafeFaqPostsPerPage(faqPostsPerPageInput) !==
-      getSafeFaqPostsPerPage(faqBoardConfig.postsPerPage);
 
   const footerConfigDirty =
     footerConfigReady &&
@@ -4320,6 +4318,56 @@ function App() {
     Boolean(authenticatedAdminAccount) &&
     !adminLogoutInProgress &&
     hasMatchingAdminFirebaseAuth;
+
+  const {
+    addFaqCategory,
+    confirmDeleteFaqCategory,
+    discardFaqBoardConfigChanges,
+    discardNoticeBoardConfigChanges,
+    faqBoardSettingsDirty,
+    noticeBoardSettingsDirty,
+    saveFaqBoardConfig,
+    saveFaqCategoryName,
+    saveNoticeBoardConfig,
+    startEditFaqCategory,
+  } = useAdminBoardSettingsController({
+    activeFaqCategoryId,
+    editingFaqCategoryId,
+    editingFaqCategoryName,
+    faqBoardConfig,
+    faqBoardConfigReady,
+    faqCategories,
+    faqPostForm,
+    faqPostsPerPageInput,
+    getSafeFaqPostsPerPage,
+    getSafeNoticePostsPerPage,
+    isAdminAuthenticated,
+    newFaqCategoryName,
+    noticeBoardConfig,
+    noticeBoardConfigReady,
+    noticePostsPerPageInput,
+    setActiveFaqCategoryId,
+    setAdminExpandedFaqPostId,
+    setAdminFaqPage,
+    setAdminNoticePage,
+    setEditingFaqCategoryId,
+    setEditingFaqCategoryName,
+    setExpandedFaqPostId,
+    setFaqBoardConfig,
+    setFaqBoardConfigSaving,
+    setFaqCategoryDeletingId,
+    setFaqCategorySavingId,
+    setFaqPage,
+    setFaqPostForm,
+    setFaqPostsPerPageInput,
+    setNewFaqCategoryName,
+    setNoticeBoardConfig,
+    setNoticeBoardConfigSaving,
+    setNoticePage,
+    setNoticePostsPerPageInput,
+    triggerConfirm,
+    triggerToast,
+  });
 
 
   useEffect(() => {
@@ -8399,18 +8447,6 @@ function App() {
     }));
   };
 
-  const discardNoticeBoardConfigChanges = () => {
-    setNoticePostsPerPageInput(
-      getSafeNoticePostsPerPage(noticeBoardConfig.postsPerPage)
-    );
-  };
-
-  const discardFaqBoardConfigChanges = () => {
-    setFaqPostsPerPageInput(
-      getSafeFaqPostsPerPage(faqBoardConfig.postsPerPage)
-    );
-  };
-
   const discardFooterConfigChanges = () => {
     setFooterConfigDraft({
       enabled: Boolean(footerConfig.enabled),
@@ -10803,65 +10839,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const saveNoticeBoardConfig = async () => {
-    if (!isAdminAuthenticated) {
-      triggerToast(
-        '관리자 인증 후 공지사항 목록 설정을 저장할 수 있습니다.',
-        'error'
-      );
-      return false;
-    }
-
-    const postsPerPage =
-      getSafeNoticePostsPerPage(
-        noticePostsPerPageInput
-      );
-
-    setNoticeBoardConfigSaving(true);
-
-    try {
-      await setDoc(
-        NOTICE_BOARD_CONFIG_DOC_REF,
-        {
-          postsPerPage,
-          updatedAt:
-            serverTimestamp(),
-        }
-      );
-
-      setNoticeBoardConfig((prev) => ({ ...prev, postsPerPage }));
-      setNoticePostsPerPageInput(postsPerPage);
-      setNoticePage(1);
-      setAdminNoticePage(1);
-
-      triggerToast(
-        `공지사항 일반 게시글을 페이지당 ${postsPerPage}개씩 표시하도록 저장했습니다.`,
-        'success'
-      );
-
-      return true;
-    } catch (error) {
-      console.error(
-        'Notice board config save error:',
-        error
-      );
-
-      triggerToast(
-        `공지사항 목록 설정 저장에 실패했습니다. 오류 코드: ${
-          error?.code ||
-          error?.message ||
-          'unknown-error'
-        }`,
-        'error'
-      );
-
-      return false;
-    } finally {
-      setNoticeBoardConfigSaving(false);
-    }
-  };
-
-    const toggleFaqPost = (postId) => {
+  const toggleFaqPost = (postId) => {
     setExpandedFaqPostId(
       (currentPostId) =>
         currentPostId === postId
@@ -10876,371 +10854,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         currentPostId === postId
           ? ''
           : postId
-    );
-  };
-
-  const saveFaqBoardConfig = async () => {
-    if (!isAdminAuthenticated) {
-      triggerToast(
-        '관리자 인증 후 FAQ 목록 설정을 저장할 수 있습니다.',
-        'error'
-      );
-      return false;
-    }
-
-    const postsPerPage =
-      getSafeFaqPostsPerPage(
-        faqPostsPerPageInput
-      );
-
-    setFaqBoardConfigSaving(true);
-
-    try {
-      await setDoc(
-        FAQ_BOARD_CONFIG_DOC_REF,
-        {
-          postsPerPage,
-          updatedAt:
-            serverTimestamp(),
-        }
-      );
-
-      setFaqBoardConfig((prev) => ({ ...prev, postsPerPage }));
-      setFaqPostsPerPageInput(postsPerPage);
-      setFaqPage(1);
-      setAdminFaqPage(1);
-      setExpandedFaqPostId('');
-      setAdminExpandedFaqPostId('');
-
-      triggerToast(
-        `FAQ 일반 게시글을 페이지당 ${postsPerPage}개씩 표시하도록 저장했습니다.`,
-        'success'
-      );
-
-      return true;
-    } catch (error) {
-      console.error(
-        'FAQ board config save error:',
-        error
-      );
-
-      triggerToast(
-        `FAQ 목록 설정 저장에 실패했습니다. 오류 코드: ${
-          error?.code ||
-          error?.message ||
-          'unknown-error'
-        }`,
-        'error'
-      );
-
-      return false;
-    } finally {
-      setFaqBoardConfigSaving(false);
-    }
-  };
-
-  const addFaqCategory = async () => {
-    if (!isAdminAuthenticated) {
-      triggerToast(
-        '관리자 인증 후 FAQ 카테고리를 등록할 수 있습니다.',
-        'error'
-      );
-      return;
-    }
-
-    const categoryName =
-      String(
-        newFaqCategoryName || ''
-      ).trim();
-
-    if (!categoryName) {
-      triggerToast(
-        'FAQ 카테고리명을 입력해 주세요.',
-        'error'
-      );
-      return;
-    }
-
-    if (
-      faqCategories.some(
-        (category) =>
-          String(
-            category.name || ''
-          ).trim().toLowerCase() ===
-          categoryName.toLowerCase()
-      )
-    ) {
-      triggerToast(
-        '이미 등록된 FAQ 카테고리명입니다.',
-        'error'
-      );
-      return;
-    }
-
-    const categoryDocRef = doc(
-      FAQ_CATEGORIES_COLLECTION_REF
-    );
-
-    const nextOrder =
-      faqCategories.reduce(
-        (maximumOrder, category) =>
-          Math.max(
-            maximumOrder,
-            Number(category.order) || 0
-          ),
-        0
-      ) + 1;
-
-    setFaqCategorySavingId('new');
-
-    try {
-      await setDoc(
-        categoryDocRef,
-        {
-          id: categoryDocRef.id,
-          name: categoryName,
-          order: nextOrder,
-          createdAt:
-            serverTimestamp(),
-          updatedAt:
-            serverTimestamp(),
-        }
-      );
-
-      setNewFaqCategoryName('');
-
-      triggerToast(
-        `[${categoryName}] FAQ 카테고리를 등록했습니다.`,
-        'success'
-      );
-    } catch (error) {
-      console.error(
-        'FAQ category create error:',
-        error
-      );
-
-      triggerToast(
-        `FAQ 카테고리 등록에 실패했습니다. 오류 코드: ${
-          error?.code ||
-          error?.message ||
-          'unknown-error'
-        }`,
-        'error'
-      );
-    } finally {
-      setFaqCategorySavingId('');
-    }
-  };
-
-  const startEditFaqCategory = (
-    category
-  ) => {
-    setEditingFaqCategoryId(
-      category.id
-    );
-    setEditingFaqCategoryName(
-      category.name || ''
-    );
-  };
-
-  const saveFaqCategoryName = async (
-    category
-  ) => {
-    if (
-      !isAdminAuthenticated ||
-      !category?.id
-    ) {
-      triggerToast(
-        '관리자 인증과 FAQ 카테고리 정보를 확인해 주세요.',
-        'error'
-      );
-      return;
-    }
-
-    const nextCategoryName =
-      String(
-        editingFaqCategoryName || ''
-      ).trim();
-
-    if (!nextCategoryName) {
-      triggerToast(
-        'FAQ 카테고리명을 입력해 주세요.',
-        'error'
-      );
-      return;
-    }
-
-    if (
-      faqCategories.some(
-        (item) =>
-          item.id !== category.id &&
-          String(
-            item.name || ''
-          ).trim().toLowerCase() ===
-          nextCategoryName.toLowerCase()
-      )
-    ) {
-      triggerToast(
-        '이미 등록된 FAQ 카테고리명입니다.',
-        'error'
-      );
-      return;
-    }
-
-    setFaqCategorySavingId(
-      category.id
-    );
-
-    try {
-      await setDoc(
-        doc(
-          FAQ_CATEGORIES_COLLECTION_REF,
-          category.id
-        ),
-        {
-          name: nextCategoryName,
-          updatedAt:
-            serverTimestamp(),
-        },
-        {
-          merge: true,
-        }
-      );
-
-      setEditingFaqCategoryId('');
-      setEditingFaqCategoryName('');
-
-      triggerToast(
-        'FAQ 카테고리명을 수정했습니다.',
-        'success'
-      );
-    } catch (error) {
-      console.error(
-        'FAQ category update error:',
-        error
-      );
-
-      triggerToast(
-        `FAQ 카테고리 수정에 실패했습니다. 오류 코드: ${
-          error?.code ||
-          error?.message ||
-          'unknown-error'
-        }`,
-        'error'
-      );
-    } finally {
-      setFaqCategorySavingId('');
-    }
-  };
-
-  const confirmDeleteFaqCategory = async (
-    category
-  ) => {
-    if (
-      !isAdminAuthenticated ||
-      !category?.id
-    ) {
-      triggerToast(
-        '관리자 인증과 FAQ 카테고리 정보를 확인해 주세요.',
-        'error'
-      );
-      return;
-    }
-
-    let categoryPostCount = 0;
-
-    try {
-      const countSnapshot = await getCountFromServer(
-        firestoreQuery(
-          FAQ_POSTS_COLLECTION_REF,
-          where('categoryId', '==', category.id)
-        )
-      );
-      categoryPostCount = countSnapshot.data().count;
-    } catch (error) {
-      console.error('FAQ category usage count error:', error);
-      triggerToast(
-        'FAQ 카테고리 사용 여부를 확인하지 못해 삭제를 중단했습니다.',
-        'error'
-      );
-      return;
-    }
-
-    if (categoryPostCount > 0) {
-      triggerToast(
-        `[${category.name}] 카테고리를 사용하는 FAQ가 ${categoryPostCount}건 있어 삭제할 수 없습니다.`,
-        'error'
-      );
-      return;
-    }
-
-    triggerConfirm(
-      'FAQ 카테고리 삭제',
-      `[${category.name || '이름 없음'}] 카테고리를 삭제하시겠습니까?`,
-      async () => {
-        setFaqCategoryDeletingId(
-          category.id
-        );
-
-        try {
-          await deleteDoc(
-            doc(
-              FAQ_CATEGORIES_COLLECTION_REF,
-              category.id
-            )
-          );
-
-          if (
-            activeFaqCategoryId ===
-            category.id
-          ) {
-            setActiveFaqCategoryId('all');
-            setExpandedFaqPostId('');
-            setFaqPage(1);
-          }
-
-          if (
-            faqPostForm.categoryId ===
-            category.id
-          ) {
-            setFaqPostForm(
-              (currentForm) => ({
-                ...currentForm,
-                categoryId: '',
-              })
-            );
-          }
-
-          if (
-            editingFaqCategoryId ===
-            category.id
-          ) {
-            setEditingFaqCategoryId('');
-            setEditingFaqCategoryName('');
-          }
-
-          triggerToast(
-            'FAQ 카테고리를 삭제했습니다.',
-            'success'
-          );
-        } catch (error) {
-          console.error(
-            'FAQ category delete error:',
-            error
-          );
-
-          triggerToast(
-            `FAQ 카테고리 삭제에 실패했습니다. 오류 코드: ${
-              error?.code ||
-              error?.message ||
-              'unknown-error'
-            }`,
-            'error'
-          );
-        } finally {
-          setFaqCategoryDeletingId('');
-        }
-      }
     );
   };
 

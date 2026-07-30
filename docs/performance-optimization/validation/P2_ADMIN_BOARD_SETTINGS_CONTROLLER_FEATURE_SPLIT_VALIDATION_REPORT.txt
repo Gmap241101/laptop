@@ -1,0 +1,32 @@
+P2 ADMIN BOARD SETTINGS CONTROLLER FEATURE SPLIT VALIDATION
+===========================================================
+Generated: 2026-07-30 15:21 KST
+Baseline: rental-system-admin-board-post-controller-split-20260730_1513_deployment_package.zip
+
+[PASS] Input PACKAGE_SHA256SUMS.txt: 294 / 294
+[PASS] React Hook import audit: 103 source files
+[PASS] JavaScript/JSX/MJS TypeScript syntax transpilation: 108 files, 0 errors
+[PASS] Target semantic diagnostic comparison: no newly introduced diagnostics
+[PASS] Relative import resolution: 270 imports, 0 missing
+[PASS] Firestore strict audit: 129 calls, 0 unapproved warnings/errors
+[PASS] Admin noticePosts context contract: 32 required keys, 0 missing
+[PASS] Admin faqPosts context contract: 48 required keys, 0 missing
+[PASS] Normalized Korean UI string set: deleted 0, added 0
+[PASS] Board settings controller runtime mock: 7 scenarios
+[PASS] Rules/index/config/package manifests unchanged
+[PASS] REMOVED_FILES.txt byte-identical to baseline
+[PASS] REMOVED_FILES.txt non-empty entries: 68
+[PASS] New removed paths: 0
+
+Runtime mock scenarios:
+1. Notice board configuration save and page reset
+2. FAQ board configuration save and expanded-state reset
+3. FAQ category creation and order assignment
+4. FAQ category rename with merge update
+5. In-use FAQ category deletion block
+6. Unused FAQ category deletion confirmation
+7. Category deletion and related UI-state cleanup
+
+Vite build:
+[NOT COMPLETED] npm ci failed because the internal npm registry returned E404 for yargs-parser-21.1.1.tgz.
+The local deploy.ps1 build result remains mandatory before deployment is considered successful.
