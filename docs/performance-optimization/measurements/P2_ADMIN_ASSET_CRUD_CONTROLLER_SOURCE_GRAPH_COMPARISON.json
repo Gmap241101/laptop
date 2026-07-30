@@ -1,0 +1,25 @@
+{
+  "generatedAt": "2026-07-30T15:47:00+09:00",
+  "baselinePackage": "rental-system-admin-board-settings-controller-split-20260730_1521_deployment_package.zip",
+  "change": "admin asset CRUD controller feature split",
+  "before": {
+    "appLines": 13563,
+    "appBytes": 398116,
+    "initialModuleCount": 48,
+    "initialSourceBytes": 792759
+  },
+  "after": {
+    "appLines": 12711,
+    "appBytes": 376638,
+    "controllerLines": 941,
+    "controllerBytes": 23378,
+    "initialModuleCount": 49,
+    "initialSourceBytes": 794659
+  },
+  "delta": {
+    "appLines": -852,
+    "appBytes": -21478,
+    "initialModuleCount": 1,
+    "initialSourceBytes": 1900
+  }
+}

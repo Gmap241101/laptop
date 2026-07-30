@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-07-30T06:26:38.396Z",
-  "initialModuleCount": 48,
-  "initialSourceBytes": 792759,
+  "generatedAt": "2026-07-30T06:45:57.261Z",
+  "initialModuleCount": 49,
+  "initialSourceBytes": 794659,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 398116
+      "bytes": 376638
     },
     {
       "file": "src/features/requests/useUserRequestHistoryActionController.js",
@@ -14,6 +14,10 @@
     {
       "file": "src/user/UserHomePanel.jsx",
       "bytes": 24413
+    },
+    {
+      "file": "src/features/assets/useAdminAssetCrudController.js",
+      "bytes": 23378
     },
     {
       "file": "src/features/members/useUserMyPageAccountController.js",

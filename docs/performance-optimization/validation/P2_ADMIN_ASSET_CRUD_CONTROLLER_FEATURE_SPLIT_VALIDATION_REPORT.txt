@@ -1,0 +1,60 @@
+P2 ADMIN ASSET CRUD CONTROLLER FEATURE SPLIT VALIDATION
+=======================================================
+Generated: 2026-07-30 15:47 KST
+Baseline: rental-system-admin-board-settings-controller-split-20260730_1521_deployment_package.zip
+
+SOURCE VALIDATION
+-----------------
+[PASS] TypeScript transpile syntax check: 104 JS/JSX/MJS files
+[PASS] React Hook import audit: 104 source files
+[PASS] Relative local import resolution: 280 imports, missing 0
+[PASS] Targeted TypeScript undefined/duplicate identifier diagnostics: new TS2304/TS2451/TS2552/TS2448 errors 0
+[PASS] App.jsx asset CRUD declarations removed
+[PASS] New controller owns createLaptop/deleteLaptop/saveLaptop/handleAddLaptopClick
+[PASS] New state hook owns editLaptop/newLaptop
+
+FIRESTORE VALIDATION
+--------------------
+[PASS] Strict Firestore access audit
+[PASS] Total access locations: 129 -> 129
+[PASS] onSnapshot: 35
+[PASS] getDocs: 48
+[PASS] getDoc: 28
+[PASS] getCountFromServer: 18
+[PASS] Rules/index/config/package dependency files unchanged
+
+UI AND BEHAVIOR VALIDATION
+--------------------------
+[PASS] Korean string multiset preserved: 345 -> 345
+[PASS] Removed Korean strings: 0
+[PASS] Added Korean strings: 0
+[PASS] Runtime mock scenario 1: new asset panel open and upload/edit panel close
+[PASS] Runtime mock scenario 2: new asset panel re-click toggle close
+[PASS] Runtime mock scenario 3: successful asset creation and local-state reset
+[PASS] Runtime mock scenario 4: successful asset deletion and selection/edit cleanup
+[PASS] Runtime mock scenario 5: successful asset save and catalog write-through
+
+SOURCE GRAPH
+------------
+[PASS] App.jsx lines: 13,563 -> 12,711 (-852)
+[PASS] App.jsx bytes: 398,116 -> 376,638 (-21,478)
+[PASS] App.jsx useState(): 159 -> 157 (-2)
+[PASS] App.jsx runTransaction(): 7 -> 4 (-3; moved to controller)
+[INFO] Initial static modules: 48 -> 49 (+1)
+[INFO] Initial static source: 792,759 -> 794,659 bytes (+1,900)
+
+BUILD
+-----
+[BLOCKED] npm ci
+[E404] Internal npm registry does not contain yargs-parser-21.1.1.tgz
+[REQUIRED] Confirm npm run build succeeds through the local deploy.ps1 before treating deployment as complete.
+
+PACKAGE VALIDATION
+------------------
+[PASS] Full project payload files: 304
+[PASS] package-meta files: 4
+[PASS] Expected ZIP file entries: 308
+[PASS] Cumulative REMOVED_FILES entries: 68
+[PASS] REMOVED_FILES duplicate entries: 0
+[PASS] REMOVED_FILES/package payload conflicts: 0
+[PASS] Protected paths and deploy.ps1 excluded
