@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-07-30T03:53:47.728Z",
-  "initialModuleCount": 42,
-  "initialSourceBytes": 775484,
+  "generatedAt": "2026-07-30T05:04:49.579Z",
+  "initialModuleCount": 43,
+  "initialSourceBytes": 779356,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 496076
+      "bytes": 478977
     },
     {
       "file": "src/user/UserHomePanel.jsx",
@@ -18,6 +18,10 @@
     {
       "file": "src/domain/rentalPolicy.js",
       "bytes": 21872
+    },
+    {
+      "file": "src/features/auth/useUserSignupController.js",
+      "bytes": 20971
     },
     {
       "file": "src/components/CommonUI.jsx",

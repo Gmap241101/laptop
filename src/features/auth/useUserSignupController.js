@@ -1,0 +1,691 @@
+import { useCallback } from 'react';
+import {
+  createUserWithEmailAndPassword,
+  deleteUser,
+  inMemoryPersistence,
+  setPersistence,
+  signInWithEmailAndPassword,
+  signOut,
+  updateProfile,
+} from 'firebase/auth';
+import {
+  collection,
+  doc,
+  getDoc,
+  runTransaction,
+  serverTimestamp,
+} from 'firebase/firestore';
+
+import {
+  MEMBER_DIRECTORY_KEYS_COLLECTION_REF,
+  USER_ACCOUNTS_COLLECTION_NAME,
+  firebaseAuth,
+  userSignupAuth,
+  userSignupDb,
+} from '../../firebase.js';
+import { USER_PROFILE_STATUS } from '../../constants/memberConstants.js';
+import {
+  TERMS_CONSENT_SOURCE,
+  TERMS_DECISION,
+  normalizeTermsPolicy,
+  normalizeTermsSettings,
+} from '../terms/termsConstants.js';
+import {
+  getClaimCurrentUid,
+  getClaimFormerUids,
+  getClaimStatus,
+  getSafeMemberDirectoryVersion,
+  isAutoApproveNewMembersEnabled,
+  isRegisteredMemberSignupRequired,
+} from '../members/memberAccountPolicy.js';
+import { normalizeRentalPolicySettings } from '../../domain/rentalPolicy.js';
+import {
+  clearUserLoginReturnTarget,
+  pushAppPath,
+  replaceAppPath,
+} from '../../routing/appRoutes.js';
+import {
+  buildDomesticPhoneNumber,
+  createAccountRecoveryEmailVerifier,
+  createAccountRecoveryKey,
+  createMemberIdentityKey,
+  isValidDomesticPhoneNumber,
+  isValidEmailAddress,
+  isValidMemberName,
+  isValidMemberPassword,
+  maskEmailAddress,
+  normalizeEmailAddress,
+  normalizeMemberName,
+  normalizeMemberTeam,
+} from '../../utils/memberPolicy.js';
+import {
+  getServiceBlockReason,
+  normalizeUserSessionPolicy,
+} from '../../utils/systemSettings.js';
+import {
+  createDefaultUserAuthForm,
+} from './useUserLoginController.js';
+import { resolveEffectiveUserSessionPolicy } from './userSessionPolicyService.js';
+
+const DEFAULT_TERMS_SUBMISSION = Object.freeze({
+  ready: false,
+  enabled: false,
+  valid: false,
+  policyRevision: 0,
+  requiredRevision: 0,
+  decisions: [],
+});
+
+export default function useUserSignupController({
+  clearAdminAuthenticatedSession,
+  clearUserAuthenticatedSession,
+  configureFirebaseAuthPersistence,
+  createMemberPolicyError,
+  dataSettings,
+  dataTeams,
+  getUserAuthErrorMessage,
+  initialSettings,
+  pendingProtectedUserTabRef,
+  saveCurrentUserLoginReturnTarget,
+  setIsCommunityMenuOpen,
+  setUserAuthenticatedSession,
+  setUserAuthForm,
+  setUserAuthLoading,
+  setUserTab,
+  setView,
+  showUserAccountStatus,
+  siteSettings,
+  triggerToast,
+  userAuthForm,
+  userAuthLoading,
+  userSessionPolicy,
+  userSessionPolicyReady,
+  userTab,
+}) {
+  const goToUserSignup = useCallback(() => {
+    pendingProtectedUserTabRef.current = '';
+
+    if (
+      !['login', 'signup', 'findEmail', 'resetPassword', 'accountStatus'].includes(
+        userTab
+      )
+    ) {
+      saveCurrentUserLoginReturnTarget();
+    }
+
+    setUserAuthForm(createDefaultUserAuthForm());
+    pushAppPath('user', 'signup');
+    setView('user');
+    setUserTab('signup');
+    setIsCommunityMenuOpen(false);
+  }, [
+    pendingProtectedUserTabRef,
+    saveCurrentUserLoginReturnTarget,
+    setIsCommunityMenuOpen,
+    setUserAuthForm,
+    setUserTab,
+    setView,
+    userTab,
+  ]);
+
+  const cancelUserSignup = useCallback(() => {
+    if (userAuthLoading) {
+      return;
+    }
+
+    setUserAuthForm(createDefaultUserAuthForm());
+    clearUserLoginReturnTarget();
+    replaceAppPath('user', 'login');
+    setView('user');
+    setUserTab('login');
+    setIsCommunityMenuOpen(false);
+  }, [
+    setIsCommunityMenuOpen,
+    setUserAuthForm,
+    setUserTab,
+    setView,
+    userAuthLoading,
+  ]);
+
+  const submitUserSignupForm = useCallback(async (
+    event,
+    providedTermsSubmission = null
+  ) => {
+    event.preventDefault();
+
+    const signupTermsSubmission =
+      providedTermsSubmission || DEFAULT_TERMS_SUBMISSION;
+    const signupBlockReason = getServiceBlockReason(siteSettings, 'signup');
+
+    if (signupBlockReason) {
+      triggerToast(signupBlockReason, 'error');
+      return;
+    }
+
+    const email = normalizeEmailAddress(userAuthForm.email);
+    const password = userAuthForm.password;
+    const passwordConfirm = userAuthForm.passwordConfirm;
+    const name = normalizeMemberName(userAuthForm.name);
+    const team = normalizeMemberTeam(userAuthForm.team);
+    const phoneParts = {
+      prefix: userAuthForm.phonePrefix,
+      middle: userAuthForm.phoneMiddle,
+      last: userAuthForm.phoneLast,
+    };
+    const phone = buildDomesticPhoneNumber(phoneParts);
+
+    if (!email) {
+      triggerToast('이메일을 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (!isValidEmailAddress(email)) {
+      triggerToast('올바른 이메일 주소를 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (!password) {
+      triggerToast('비밀번호를 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (!isValidMemberPassword(password)) {
+      triggerToast(
+        '비밀번호는 8자 이상이며 영문과 숫자를 포함해야 합니다.',
+        'error'
+      );
+      return;
+    }
+
+    if (!name) {
+      triggerToast('이름을 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (!isValidMemberName(name)) {
+      triggerToast(
+        '이름은 공백 없이 한글 또는 영문 2~30자로 입력해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    if (!team) {
+      triggerToast(
+        isRegisteredMemberSignupRequired(dataSettings)
+          ? '부서 / 팀을 선택해 주세요.'
+          : '부서 / 팀을 입력해 주세요.',
+        'error'
+      );
+      return;
+    }
+
+    if (!isValidDomesticPhoneNumber(phoneParts)) {
+      triggerToast('올바른 국내 연락처를 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (password !== passwordConfirm) {
+      triggerToast('비밀번호 확인이 일치하지 않습니다.', 'error');
+      return;
+    }
+
+    if (
+      normalizeTermsSettings(dataSettings).signupTermsEnabled &&
+      (!signupTermsSubmission.ready || !signupTermsSubmission.valid)
+    ) {
+      triggerToast('필수 회원가입 약관을 확인하고 동의해 주세요.', 'error');
+      return;
+    }
+
+    let createdSignupUser = null;
+    let effectiveUserSessionPolicy = normalizeUserSessionPolicy(
+      userSessionPolicy
+    );
+
+    setUserAuthLoading(true);
+
+    try {
+      effectiveUserSessionPolicy = await resolveEffectiveUserSessionPolicy({
+        policy: userSessionPolicy,
+        policyReady: userSessionPolicyReady,
+      });
+      await configureFirebaseAuthPersistence(
+        firebaseAuth,
+        effectiveUserSessionPolicy.userLogoutOnBrowserClose
+      );
+      clearAdminAuthenticatedSession();
+
+      await setPersistence(userSignupAuth, inMemoryPersistence);
+
+      if (userSignupAuth.currentUser) {
+        await signOut(userSignupAuth);
+      }
+
+      if (!dataSettings.memberIdentityClaimsReady) {
+        throw createMemberPolicyError('member/identity-index-not-ready');
+      }
+
+      const identityKey = await createMemberIdentityKey(team, name);
+      const recoveryKey = await createAccountRecoveryKey({ team, name, phone });
+      const recoveryEmailVerifier = await createAccountRecoveryEmailVerifier({
+        email,
+        team,
+        name,
+        phone,
+      });
+      const maskedEmail = maskEmailAddress(email);
+      const initialPolicyEnabled = isRegisteredMemberSignupRequired(
+        dataSettings
+      );
+
+      if (initialPolicyEnabled) {
+        if ((dataTeams || []).length === 0) {
+          throw createMemberPolicyError('member/directory-not-ready');
+        }
+
+        const directorySnapshot = await getDoc(
+          doc(MEMBER_DIRECTORY_KEYS_COLLECTION_REF, identityKey)
+        );
+        const directoryData = directorySnapshot.exists()
+          ? directorySnapshot.data()
+          : null;
+
+        if (
+          !directoryData ||
+          directoryData.enabled === false ||
+          normalizeMemberName(directoryData.name || '') !== name ||
+          normalizeMemberTeam(directoryData.team || '') !== team
+        ) {
+          throw createMemberPolicyError('member/directory-mismatch');
+        }
+      }
+
+      const credential = await createUserWithEmailAndPassword(
+        userSignupAuth,
+        email,
+        password
+      );
+
+      createdSignupUser = credential.user;
+
+      await updateProfile(credential.user, {
+        displayName: name,
+      });
+
+      let createdAccountStatus = USER_PROFILE_STATUS.PENDING;
+      let createdAccountRejoined = false;
+
+      const signupPublicConfigRef = doc(
+        userSignupDb,
+        'rentalSystem',
+        'publicConfig'
+      );
+      const signupClaimRef = doc(
+        userSignupDb,
+        'memberIdentityClaims',
+        identityKey
+      );
+      const signupRecoveryRef = doc(
+        userSignupDb,
+        'accountRecoveryKeys',
+        recoveryKey
+      );
+      const signupUserAccountRef = doc(
+        userSignupDb,
+        USER_ACCOUNTS_COLLECTION_NAME,
+        credential.user.uid
+      );
+      const signupTermsPolicyRef = doc(
+        userSignupDb,
+        'signupTermsPolicy',
+        'current'
+      );
+      const submittedTermsById = new Map(
+        (Array.isArray(signupTermsSubmission.decisions)
+          ? signupTermsSubmission.decisions
+          : []
+        ).map((decision) => [String(decision.termId || ''), decision])
+      );
+      const signupConsentRefs = new Map(
+        [...submittedTermsById.keys()].map((termId) => [
+          termId,
+          {
+            stateRef: doc(
+              userSignupDb,
+              'userTermConsentStates',
+              `${credential.user.uid}__${termId}`
+            ),
+            logRef: doc(collection(userSignupDb, 'userTermConsentLogs')),
+          },
+        ])
+      );
+
+      await runTransaction(userSignupDb, async (transaction) => {
+        const [configSnapshot, termsPolicySnapshot] = await Promise.all([
+          transaction.get(signupPublicConfigRef),
+          transaction.get(signupTermsPolicyRef),
+        ]);
+        const claimRef = signupClaimRef;
+        const recoveryRef = signupRecoveryRef;
+        const claimSnapshot = await transaction.get(claimRef);
+        const latestSettings = normalizeRentalPolicySettings({
+          ...initialSettings,
+          ...(configSnapshot.exists()
+            ? configSnapshot.data()?.settings || {}
+            : {}),
+        });
+        const latestPolicyEnabled = isRegisteredMemberSignupRequired(
+          latestSettings
+        );
+        const latestTermsSettings = normalizeTermsSettings(latestSettings);
+        const latestTermsPolicy = normalizeTermsPolicy(
+          termsPolicySnapshot.exists() ? termsPolicySnapshot.data() : {}
+        );
+        const termsEnabled =
+          latestTermsSettings.signupTermsEnabled && latestTermsPolicy.enabled;
+        const activeTerms = termsEnabled ? latestTermsPolicy.activeTerms : [];
+
+        if (termsEnabled) {
+          if (
+            !signupTermsSubmission.ready ||
+            Number(signupTermsSubmission.policyRevision || 0) !==
+              latestTermsPolicy.revision ||
+            submittedTermsById.size !== activeTerms.length
+          ) {
+            throw createMemberPolicyError('terms/policy-changed');
+          }
+
+          activeTerms.forEach((term) => {
+            const decision = submittedTermsById.get(term.id);
+            const exactVersion =
+              Number(decision?.termVersion || 0) === Number(term.version || 0);
+            const exactVersionId =
+              String(decision?.termVersionId || '') ===
+              String(term.versionId || '');
+            const exactHash =
+              String(decision?.contentHash || '') ===
+              String(term.contentHash || '');
+            const accepted = decision?.decision === TERMS_DECISION.ACCEPTED;
+            const viewed = Number(decision?.viewedAtMs || 0) > 0;
+
+            if (!decision || !exactVersion || !exactVersionId || !exactHash) {
+              throw createMemberPolicyError('terms/policy-changed');
+            }
+
+            if (term.required && (!accepted || !viewed)) {
+              throw createMemberPolicyError('terms/required-not-accepted');
+            }
+
+            if (!term.required && accepted && !viewed) {
+              throw createMemberPolicyError('terms/decision-required');
+            }
+          });
+        }
+
+        if (!latestSettings.memberIdentityClaimsReady) {
+          throw createMemberPolicyError('member/identity-index-not-ready');
+        }
+
+        const directoryVersion = getSafeMemberDirectoryVersion(
+          latestSettings
+        );
+        let directoryData = null;
+
+        if (latestPolicyEnabled) {
+          const directoryRef = doc(
+            userSignupDb,
+            'memberDirectoryKeys',
+            identityKey
+          );
+          const directorySnapshot = await transaction.get(directoryRef);
+          directoryData = directorySnapshot.exists()
+            ? directorySnapshot.data()
+            : null;
+
+          if (
+            !directoryData ||
+            directoryData.enabled === false ||
+            normalizeMemberName(directoryData.name || '') !== name ||
+            normalizeMemberTeam(directoryData.team || '') !== team
+          ) {
+            throw createMemberPolicyError('member/directory-mismatch');
+          }
+        }
+
+        const claimData = claimSnapshot.exists()
+          ? claimSnapshot.data()
+          : {};
+        const claimCurrentUid = getClaimCurrentUid(claimData);
+        const claimFormerUids = getClaimFormerUids(claimData);
+        const claimStatus = getClaimStatus(claimData);
+        const isReleasedClaim =
+          claimSnapshot.exists() &&
+          claimStatus === 'released' &&
+          !claimCurrentUid;
+
+        if (
+          claimSnapshot.exists() &&
+          (claimData.conflict === true ||
+            (claimCurrentUid && claimCurrentUid !== credential.user.uid) ||
+            (!isReleasedClaim &&
+              !claimCurrentUid &&
+              claimStatus !== 'released'))
+        ) {
+          throw createMemberPolicyError('member/identity-already-claimed');
+        }
+
+        createdAccountRejoined =
+          isReleasedClaim || claimFormerUids.length > 0;
+        createdAccountStatus =
+          isAutoApproveNewMembersEnabled(latestSettings) &&
+          !createdAccountRejoined
+            ? USER_PROFILE_STATUS.ACTIVE
+            : USER_PROFILE_STATUS.PENDING;
+
+        transaction.set(claimRef, {
+          identityKey,
+          uid: credential.user.uid,
+          currentUid: credential.user.uid,
+          status: 'active',
+          name,
+          team,
+          conflict: false,
+          conflictingUids: [],
+          formerUids: claimFormerUids,
+          directoryMemberId:
+            latestPolicyEnabled && directoryData
+              ? directoryData.directoryMemberId || ''
+              : claimData.directoryMemberId || '',
+          restrictionSnapshot: claimData.restrictionSnapshot || {},
+          createdAt: claimSnapshot.exists()
+            ? claimData.createdAt || serverTimestamp()
+            : serverTimestamp(),
+          releasedAt: '',
+          updatedAt: serverTimestamp(),
+        });
+
+        transaction.set(signupUserAccountRef, {
+          uid: credential.user.uid,
+          email: credential.user.email || email,
+          maskedEmail,
+          name,
+          team,
+          phone,
+          status: createdAccountStatus,
+          identityKey,
+          recoveryKey,
+          directoryMemberId:
+            latestPolicyEnabled && directoryData
+              ? directoryData.directoryMemberId || ''
+              : '',
+          directoryVerifiedVersion: latestPolicyEnabled ? directoryVersion : 0,
+          directoryVerifiedAt: latestPolicyEnabled ? serverTimestamp() : '',
+          profileRequiredReason: '',
+          profileRequiredAt: '',
+          statusBeforeProfileRequired: '',
+          rejoinedAccount: createdAccountRejoined,
+          previousAccountUids: claimFormerUids,
+          inheritedRestriction: claimData.restrictionSnapshot || {},
+          termsConsentRevision: termsEnabled ? latestTermsPolicy.revision : 0,
+          termsConsentCompletedAt: termsEnabled ? serverTimestamp() : '',
+          termsConsentPolicyVersion: termsEnabled
+            ? latestTermsPolicy.revision
+            : 0,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+
+        if (termsEnabled) {
+          activeTerms.forEach((term) => {
+            const decision = submittedTermsById.get(term.id);
+            const refs = signupConsentRefs.get(term.id);
+            const decisionValue =
+              decision.decision === TERMS_DECISION.ACCEPTED
+                ? TERMS_DECISION.ACCEPTED
+                : TERMS_DECISION.DECLINED;
+            const consentPayload = {
+              uid: credential.user.uid,
+              termId: term.id,
+              termVersion: term.version,
+              termVersionId: term.versionId || '',
+              policyRevision: latestTermsPolicy.revision,
+              decision: decisionValue,
+              requiredSnapshot: Boolean(term.required),
+              titleSnapshot: term.title,
+              contentHash: term.contentHash,
+              viewedAtMs: Number(decision.viewedAtMs || 0),
+              decidedAt: serverTimestamp(),
+              source: TERMS_CONSENT_SOURCE.SIGNUP,
+              updatedAt: serverTimestamp(),
+            };
+
+            transaction.set(refs.stateRef, consentPayload);
+            transaction.set(refs.logRef, {
+              ...consentPayload,
+              previousDecision: '',
+              createdAt: serverTimestamp(),
+            });
+          });
+        }
+
+        transaction.set(recoveryRef, {
+          recoveryKey,
+          maskedEmail,
+          emailVerifier: recoveryEmailVerifier,
+          accountStatus: createdAccountStatus,
+          enabled: true,
+          updatedAt: serverTimestamp(),
+        });
+      });
+
+      await signOut(userSignupAuth).catch((logoutError) => {
+        console.error('Signup secondary auth sign-out error:', logoutError);
+      });
+
+      if (createdAccountStatus === USER_PROFILE_STATUS.ACTIVE) {
+        const primaryCredential = await signInWithEmailAndPassword(
+          firebaseAuth,
+          email,
+          password
+        );
+
+        setUserAuthenticatedSession(
+          primaryCredential.user.uid,
+          effectiveUserSessionPolicy
+        );
+      } else {
+        clearUserAuthenticatedSession();
+      }
+
+      createdSignupUser = null;
+      setUserAuthForm(createDefaultUserAuthForm());
+      clearUserLoginReturnTarget();
+
+      if (createdAccountStatus === USER_PROFILE_STATUS.ACTIVE) {
+        showUserAccountStatus('signupAutoApprovedComplete');
+      } else {
+        showUserAccountStatus('signupPendingComplete');
+      }
+    } catch (error) {
+      let signupRollbackFailed = false;
+      let firebaseAuthCleanupFailed = false;
+
+      setUserAuthForm((prev) => ({
+        ...prev,
+        password: '',
+        passwordConfirm: '',
+      }));
+
+      if (
+        createdSignupUser &&
+        userSignupAuth.currentUser?.uid === createdSignupUser.uid
+      ) {
+        try {
+          await deleteUser(createdSignupUser);
+        } catch (rollbackError) {
+          signupRollbackFailed = true;
+          console.error('User signup rollback error:', rollbackError);
+
+          try {
+            await signOut(userSignupAuth);
+          } catch (cleanupError) {
+            firebaseAuthCleanupFailed = true;
+            console.error(
+              'Failed signup secondary Auth cleanup error:',
+              cleanupError
+            );
+          }
+        }
+      }
+
+      clearUserAuthenticatedSession();
+      clearAdminAuthenticatedSession();
+      console.error('User auth error:', error);
+
+      const baseErrorMessage = signupRollbackFailed
+        ? '회원 프로필 저장과 생성된 인증 계정 정리에 실패했습니다. Firebase Authentication과 userAccounts 컬렉션을 확인해 주세요.'
+        : getUserAuthErrorMessage(error);
+
+      triggerToast(
+        firebaseAuthCleanupFailed
+          ? `${baseErrorMessage} Firebase Auth 로그아웃에도 실패했습니다. 페이지를 새로고침한 뒤 로그인 상태를 확인해 주세요.`
+          : baseErrorMessage,
+        'error'
+      );
+    } finally {
+      setUserAuthLoading(false);
+    }
+  }, [
+    clearAdminAuthenticatedSession,
+    clearUserAuthenticatedSession,
+    configureFirebaseAuthPersistence,
+    createMemberPolicyError,
+    dataSettings,
+    dataTeams,
+    getUserAuthErrorMessage,
+    initialSettings,
+    setUserAuthenticatedSession,
+    setUserAuthForm,
+    setUserAuthLoading,
+    showUserAccountStatus,
+    siteSettings,
+    triggerToast,
+    userAuthForm.email,
+    userAuthForm.name,
+    userAuthForm.password,
+    userAuthForm.passwordConfirm,
+    userAuthForm.phoneLast,
+    userAuthForm.phoneMiddle,
+    userAuthForm.phonePrefix,
+    userAuthForm.team,
+    userSessionPolicy,
+    userSessionPolicyReady,
+  ]);
+
+  return {
+    cancelUserSignup,
+    goToUserSignup,
+    submitUserSignupForm,
+  };
+}

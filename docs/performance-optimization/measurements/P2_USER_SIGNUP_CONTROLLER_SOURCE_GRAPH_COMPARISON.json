@@ -1,0 +1,52 @@
+{
+  "generatedAt": "2026-07-30T14:00:00+09:00",
+  "baselinePackage": "rental-system-user-login-controller-split-20260730_1256_deployment_package.zip",
+  "scope": "user signup navigation and submission controller split",
+  "appJsx": {
+    "before": {
+      "lines": 17041,
+      "bytes": 496076,
+      "useState": 187,
+      "useEffect": 59,
+      "useRef": 21,
+      "useMemo": 33
+    },
+    "after": {
+      "lines": 16513,
+      "bytes": 478977,
+      "useState": 187,
+      "useEffect": 59,
+      "useRef": 21,
+      "useMemo": 33
+    },
+    "delta": {
+      "lines": -528,
+      "bytes": -17099,
+      "useState": 0,
+      "useEffect": 0,
+      "useRef": 0,
+      "useMemo": 0
+    }
+  },
+  "sourceGraph": {
+    "before": {
+      "initialModuleCount": 42,
+      "initialSourceBytes": 775484
+    },
+    "after": {
+      "initialModuleCount": 43,
+      "initialSourceBytes": 779356
+    },
+    "delta": {
+      "initialModuleCount": 1,
+      "initialSourceBytes": 3872
+    }
+  },
+  "newModules": [
+    {
+      "file": "src/features/auth/useUserSignupController.js",
+      "lines": 691,
+      "bytes": 20971
+    }
+  ]
+}

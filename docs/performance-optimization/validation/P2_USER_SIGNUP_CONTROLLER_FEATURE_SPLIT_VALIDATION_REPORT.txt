@@ -1,0 +1,67 @@
+P2 USER SIGNUP CONTROLLER FEATURE SPLIT VALIDATION
+==================================================
+Generated: 2026-07-30 14:00 KST
+Baseline: rental-system-user-login-controller-split-20260730_1256_deployment_package.zip
+
+SOURCE CHANGES
+--------------
+App.jsx before: 17041 lines / 496076 bytes
+App.jsx after : 16513 lines / 478977 bytes
+Delta         : -528 lines / -17099 bytes
+New controller: src/features/auth/useUserSignupController.js
+Controller size: 691 lines / 20971 bytes
+
+STATIC VALIDATION
+-----------------
+[PASS] TypeScript transpile syntax: src/App.jsx
+[PASS] TypeScript transpile syntax: src/features/auth/useUserSignupController.js
+[PASS] Target semantic identifier diagnostics: 0
+[PASS] React hook import audit: 98 source files
+[PASS] Relative import audit: 243 imports
+[PASS] Firestore strict audit
+       source files: 98
+       total calls: 129
+       onSnapshot: 35
+       getDocs: 48
+       getDoc: 28
+       getCountFromServer: 18
+       unapproved warnings: 0
+       unapproved errors: 0
+[PASS] Korean UI string multiset comparison
+       removed: 0
+       added: 0
+
+RUNTIME MOCK
+------------
+[PASS] Signup route transition
+[PASS] Signup cancellation to login
+[PASS] Empty email validation
+[PASS] Auto-approved signup flow
+[PASS] Firestore transaction write sequence
+[PASS] User session creation
+[PASS] Signup completion status transition
+[PASS] Loading true/false lifecycle
+
+FIREBASE CONFIG INTEGRITY
+-------------------------
+[PASS] rules/firestore.rules unchanged
+       9b703839184e09c7303b80fde2209722a4545feefabc837ad8e885e0466b1d3e
+[PASS] firestore.indexes.json unchanged
+       e8331250b347f49156fc64e50c6bef5e198e310708f192ddd67ce472e3d9c70f
+[PASS] firebase.json unchanged
+[PASS] .firebaserc unchanged
+[PASS] package.json unchanged
+[PASS] package-lock.json unchanged
+
+REMOVED FILES
+-------------
+[PASS] Previous cumulative removed paths: 67
+[PASS] New removed paths: 0
+[PASS] Final cumulative removed paths: 67
+[PASS] Duplicate removed paths: 0
+
+PRODUCTION BUILD
+----------------
+[NOT RUN] npm ci failed before vite build.
+Reason: internal npm registry returned E404 for yargs-parser-21.1.1.tgz.
+Required local confirmation: npm run build must PASS before push/deployment.
