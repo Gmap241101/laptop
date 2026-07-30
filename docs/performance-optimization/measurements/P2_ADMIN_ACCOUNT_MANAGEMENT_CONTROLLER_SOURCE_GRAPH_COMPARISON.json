@@ -1,0 +1,46 @@
+{
+  "generatedAt": "2026-07-30T16:16:00+09:00",
+  "baselinePackage": "rental-system-admin-asset-crud-controller-split-20260730_1548_deployment_package.zip",
+  "before": {
+    "app": {
+      "lines": 12711,
+      "bytes": 376638,
+      "useState": 157,
+      "useEffect": 59,
+      "useMemo": 30,
+      "useRef": 20,
+      "runTransaction": 4
+    },
+    "initialModuleCount": 49,
+    "initialSourceBytes": 794659
+  },
+  "after": {
+    "app": {
+      "lines": 12042,
+      "bytes": 355160,
+      "useState": 151,
+      "useEffect": 58,
+      "useMemo": 30,
+      "useRef": 20,
+      "runTransaction": 4
+    },
+    "initialModuleCount": 50,
+    "initialSourceBytes": 797973
+  },
+  "delta": {
+    "app.lines": -669,
+    "app.bytes": -21478,
+    "app.useState": -6,
+    "app.useEffect": -1,
+    "app.useMemo": 0,
+    "app.useRef": 0,
+    "app.runTransaction": 0,
+    "initialModuleCount": 1,
+    "initialSourceBytes": 3314
+  },
+  "newModule": {
+    "file": "src/features/auth/useAdminAccountManagementController.js",
+    "lines": 813,
+    "bytes": 24792
+  }
+}

@@ -1,0 +1,1674 @@
+--- /mnt/data/rental_admin_account_baseline/src/App.jsx	2026-07-30 06:44:32.000000000 +0000
++++ /mnt/data/rental_admin_account_work/src/App.jsx	2026-07-30 07:10:20.630562794 +0000
+@@ -3,15 +3,10 @@
+ import {
+   browserLocalPersistence,
+   browserSessionPersistence,
+-  createUserWithEmailAndPassword,
+-  deleteUser,
+   onAuthStateChanged,
+-  sendPasswordResetEmail,
+   setPersistence,
+   signInWithEmailAndPassword,
+   signOut,
+-  updatePassword,
+-  updateProfile,
+ } from 'firebase/auth';
+ import {
+   collection,
+@@ -156,7 +151,6 @@
+   USER_SESSION_POLICY_DOC_REF,
+   USER_ACCOUNTS_COLLECTION_NAME,
+   USER_ACCOUNTS_COLLECTION_REF,
+-  adminAccountCreationAuth,
+   db,
+   firebaseAuth,
+ } from './firebase.js';
+@@ -310,6 +304,12 @@
+   useUserAuthState,
+ } from './features/auth/useUserLoginController.js';
+ import useUserSignupController from './features/auth/useUserSignupController.js';
++import useAdminAccountManagementController, {
++  ADMIN_ACCOUNT_PAGE_SIZE,
++  ADMIN_CUSTOM_OPTION_VALUE,
++  createDefaultAdminAccountForm,
++  useAdminAccountManagementState,
++} from './features/auth/useAdminAccountManagementController.js';
+ import useUserMyPageAccountController, {
+   createDefaultUserProfileForm,
+   useUserMyPageAccountState,
+@@ -679,26 +679,12 @@
+   };
+ }
+ 
+-const ADMIN_CUSTOM_OPTION_VALUE = '__ADMIN_CUSTOM_INPUT__';
+-const ADMIN_ACCOUNT_PAGE_SIZE = 10;
+ const FIRESTORE_PINNED_POST_LIMIT = 20;
+ const ADMIN_AUTH_SESSION_KEY = 'mk_laptop_admin_auth_session';
+ const USER_AUTH_SESSION_KEY = 'mk_laptop_user_auth_session';
+ const ADMIN_PASSWORD_HASH_ALGORITHM = 'PBKDF2-SHA-256';
+ const ADMIN_PASSWORD_HASH_ITERATIONS = 120000;
+ 
+-const createDefaultAdminAccountForm = () => ({
+-  adminLoginId: '',
+-  password: '',
+-  organizationName: '',
+-  customOrganizationName: '',
+-  userName: '',
+-  customUserName: '',
+-  email: '',
+-  phone: '',
+-  adminRole: 'admin',
+-});
+-
+ const createDefaultAdminAuthForm = () => ({
+   adminLoginId: '',
+   password: '',
+@@ -722,17 +708,6 @@
+   return '등록 정보 확인 필요';
+ };
+ 
+-const createDefaultAdminAccountEditForm = () => ({
+-  adminLoginId: '',
+-  organizationName: '',
+-  userName: '',
+-  email: '',
+-  phone: '',
+-  adminRole: 'admin',
+-  newPassword: '',
+-  newPasswordConfirm: '',
+-});
+-
+ const getUserAuthErrorMessage = (error) => {
+   const errorCode = error?.code || '';
+   const errorMessage = error?.message || '';
+@@ -1465,8 +1440,20 @@
+   const [editingAssetCategoryName, setEditingAssetCategoryName] = useState('');
+   const [draggingAssetCategoryIndex, setDraggingAssetCategoryIndex] = useState(null);
+ 
+-  const [adminAccountForm, setAdminAccountForm] = useState(createDefaultAdminAccountForm);
+-  const [adminAccountPage, setAdminAccountPage] = useState(1);
++  const {
++    adminAccountEditForm,
++    adminAccountForm,
++    adminAccountPage,
++    adminMyProfileForm,
++    adminMyProfileSaving,
++    editingAdminAccountId,
++    setAdminAccountEditForm,
++    setAdminAccountForm,
++    setAdminAccountPage,
++    setAdminMyProfileForm,
++    setAdminMyProfileSaving,
++    setEditingAdminAccountId,
++  } = useAdminAccountManagementState();
+   const [adminAuthForm, setAdminAuthForm] = useState(createDefaultAdminAuthForm);
+   const [adminAuthLoading, setAdminAuthLoading] = useState(false);
+   const [adminLogoutInProgress, setAdminLogoutInProgress] = useState(false);
+@@ -1549,12 +1536,6 @@
+   const userStatusLogoutInProgressRef = useRef(false);
+   const userSessionLogoutInProgressRef = useRef(false);
+ 
+-  const [editingAdminAccountId, setEditingAdminAccountId] = useState('');
+-  const [adminAccountEditForm, setAdminAccountEditForm] = useState(createDefaultAdminAccountEditForm);
+-
+-  const [adminMyProfileForm, setAdminMyProfileForm] = useState(createDefaultAdminAccountEditForm);
+-  const [adminMyProfileSaving, setAdminMyProfileSaving] = useState(false);
+-
+   // 엑셀/CSV 업로드 패널 토글 상태 값 추가
+   const [showUploadPanel, setShowUploadPanel] = useState(false);
+   const [assetGridColumns, setAssetGridColumns] = useState(1);
+@@ -6435,31 +6416,6 @@
+     userSessionPolicyReady,
+   ]);
+ 
+-  useEffect(() => {
+-    if (!authenticatedAdminAccount) {
+-      setAdminMyProfileForm(createDefaultAdminAccountEditForm());
+-      return;
+-    }
+-
+-    setAdminMyProfileForm({
+-      adminLoginId: authenticatedAdminAccount.adminLoginId || '',
+-      organizationName: authenticatedAdminAccount.organizationName || '',
+-      userName: authenticatedAdminAccount.userName || '',
+-      email: authenticatedAdminAccount.authEmail || authenticatedAdminAccount.email || '',
+-      phone: authenticatedAdminAccount.phone || '',
+-      newPassword: '',
+-      newPasswordConfirm: '',
+-    });
+-  }, [
+-    authenticatedAdminAccount?.id,
+-    authenticatedAdminAccount?.adminLoginId,
+-    authenticatedAdminAccount?.organizationName,
+-    authenticatedAdminAccount?.userName,
+-    authenticatedAdminAccount?.authEmail,
+-    authenticatedAdminAccount?.email,
+-    authenticatedAdminAccount?.phone,
+-  ]);
+-
+   const showUserAccountStatus = (type) => {
+     const nextView = { type };
+     writeUserAccountStatusView(nextView);
+@@ -6856,668 +6812,43 @@
+     }
+   };
+ 
+-  const selectedAdminOrganizationName =
+-    adminAccountForm.organizationName === ADMIN_CUSTOM_OPTION_VALUE
+-      ? adminAccountForm.customOrganizationName.trim()
+-      : adminAccountForm.organizationName;
+-
+-  const adminAccountUserOptions = data.borrowers.filter(
+-    (borrower) => borrower.team === selectedAdminOrganizationName
+-  );
+-
+-  const selectedAdminUserName =
+-    adminAccountForm.userName === ADMIN_CUSTOM_OPTION_VALUE ||
+-    adminAccountForm.organizationName === ADMIN_CUSTOM_OPTION_VALUE
+-      ? adminAccountForm.customUserName.trim()
+-      : adminAccountForm.userName;
+-
+-  const adminAccountTotalPages = Math.max(
+-    1,
+-    Math.ceil((registeredAdminAccounts || []).length / ADMIN_ACCOUNT_PAGE_SIZE)
+-  );
+-
+-  const safeAdminAccountPage = Math.min(adminAccountPage, adminAccountTotalPages);
+-
+-  const paginatedAdminAccounts = (registeredAdminAccounts || []).slice(
+-    (safeAdminAccountPage - 1) * ADMIN_ACCOUNT_PAGE_SIZE,
+-    safeAdminAccountPage * ADMIN_ACCOUNT_PAGE_SIZE
+-  );
+-
+-
+-  const registerAdminAccount = async () => {
+-    const adminLoginId = adminAccountForm.adminLoginId.trim();
+-    const password = adminAccountForm.password;
+-    const organizationName = selectedAdminOrganizationName;
+-    const userName = selectedAdminUserName;
+-    const email = adminAccountForm.email.trim();
+-    const phone = adminAccountForm.phone.trim();
+-    const adminRole = adminAccountForm.adminRole === 'owner' ? 'owner' : 'admin';
+-
+-    if (!adminLoginId) {
+-      triggerToast('관리자 ID를 입력해 주세요.', 'error');
+-      return;
+-    }
+-
+-    if (!email) {
+-      triggerToast('관리자 로그인 이메일을 입력해 주세요.', 'error');
+-      return;
+-    }
+-
+-    if (!password) {
+-      triggerToast('초기 비밀번호를 입력해 주세요.', 'error');
+-      return;
+-    }
+-
+-    if (password.length < 6) {
+-      triggerToast('초기 비밀번호는 6자 이상으로 입력해 주세요.', 'error');
+-      return;
+-    }
+-
+-    if (!organizationName) {
+-      triggerToast('조직명을 선택하거나 직접 입력해 주세요.', 'error');
+-      return;
+-    }
+-
+-    if (!userName) {
+-      triggerToast('사용자명을 선택하거나 직접 입력해 주세요.', 'error');
+-      return;
+-    }
+-
+-    if (
+-      adminRole === 'owner' &&
+-      (authenticatedAdminAccount?.adminRole || 'owner') !== 'owner'
+-    ) {
+-      triggerToast('최고 관리자만 다른 최고 관리자 계정을 등록할 수 있습니다.', 'error');
+-      return;
+-    }
+-
+-    const duplicatedAdminId = (registeredAdminAccounts || []).some(
+-      (account) =>
+-        String(account.adminLoginId || '').trim().toLowerCase() ===
+-        adminLoginId.toLowerCase()
+-    );
+-
+-    if (duplicatedAdminId) {
+-      triggerToast('이미 등록된 관리자 ID입니다.', 'error');
+-      return;
+-    }
+-
+-    const duplicatedAdminEmail = (registeredAdminAccounts || []).some((account) => {
+-      const accountEmail = String(account.email || '').trim().toLowerCase();
+-      const accountAuthEmail = String(account.authEmail || '').trim().toLowerCase();
+-
+-      return (
+-        accountEmail === email.toLowerCase() ||
+-        accountAuthEmail === email.toLowerCase()
+-      );
+-    });
+-
+-    if (duplicatedAdminEmail) {
+-      triggerToast('이미 등록된 관리자 로그인 이메일입니다.', 'error');
+-      return;
+-    }
+-
+-    let createdAdminUser = null;
+-
+-    try {
+-      const nowText = new Date().toLocaleString('ko-KR');
+-
+-      const credential = await createUserWithEmailAndPassword(
+-        adminAccountCreationAuth,
+-        email,
+-        password
+-      );
+-
+-      createdAdminUser = credential.user;
+-
+-      await updateProfile(credential.user, {
+-        displayName: userName || adminLoginId,
+-      });
+-
+-      const nextAdminAccount = {
+-        id: credential.user.uid,
+-        adminLoginId,
+-        authUid: credential.user.uid,
+-        authEmail: email,
+-        authProvider: 'firebase-auth',
+-        authLinkedAt: nowText,
+-        passwordHash: '',
+-        passwordSalt: '',
+-        passwordHashAlgorithm: 'Firebase Auth',
+-        passwordHashIterations: 0,
+-        failedLoginCount: 0,
+-        lockUntil: 0,
+-        lastLoginAt: '',
+-        passwordChangedAt: nowText,
+-        organizationName,
+-        userName,
+-        email,
+-        phone,
+-        adminRole,
+-        createdAt: nowText,
+-        updatedAt: nowText,
+-      };
+-
+-      await setDoc(doc(db, 'adminAccounts', credential.user.uid), {
+-        ...nextAdminAccount,
+-        syncedAt: serverTimestamp(),
+-      });
+-
+-      await signOut(adminAccountCreationAuth).catch((error) => {
+-        console.error('Secondary admin auth sign-out error:', error);
+-      });
+-
+-      setAdminAccounts((prev) => [
+-        nextAdminAccount,
+-        ...(prev || []).filter(
+-          (account) => account.id !== nextAdminAccount.id
+-        ),
+-      ]);
+-
+-      setAdminAccountForm(createDefaultAdminAccountForm());
+-      setAdminAccountPage(1);
+-
+-      triggerToast(
+-        `[${adminLoginId}] Firebase Auth 관리자 계정이 등록되었습니다.`,
+-        'success'
+-      );
+-    } catch (error) {
+-      if (createdAdminUser) {
+-        await deleteUser(createdAdminUser).catch((rollbackError) => {
+-          console.error('Admin Auth rollback error:', rollbackError);
+-        });
+-      }
+-
+-      await signOut(adminAccountCreationAuth).catch(() => {});
+-
+-      console.error('Admin Firebase Auth account creation error:', error);
+-      triggerToast(getAdminFirebaseAuthErrorMessage(error), 'error');
+-    }
+-  };
+-
+-  const startEditAdminAccount = (account) => {
+-    setEditingAdminAccountId(account.id);
+-    setAdminAccountEditForm({
+-      adminLoginId: account.adminLoginId || '',
+-      organizationName: account.organizationName || '',
+-      userName: account.userName || '',
+-      email: account.authEmail || account.email || '',
+-      phone: account.phone || '',
+-      adminRole: ['owner', 'admin'].includes(account.adminRole) ? account.adminRole : 'owner',
+-      newPassword: '',
+-      newPasswordConfirm: '',
+-    });
+-  };
+-
+-  const cancelEditAdminAccount = () => {
+-    setEditingAdminAccountId('');
+-    setAdminAccountEditForm(createDefaultAdminAccountEditForm());
+-  };
+-
+-  const sendAdminAccountPasswordResetEmail = async (account) => {
+-    const email = String(account.authEmail || account.email || '').trim();
+-
+-    if (!account.authUid) {
+-      triggerToast('기존 해시 계정은 수정 화면의 새 비밀번호 입력으로 직접 변경할 수 있습니다.', 'error');
+-      return;
+-    }
+-
+-    if (!email) {
+-      triggerToast('비밀번호 재설정 메일을 보낼 관리자 이메일이 없습니다.', 'error');
+-      return;
+-    }
+-
+-    try {
+-      await sendPasswordResetEmail(firebaseAuth, email);
+-      triggerToast(`[${account.adminLoginId}] 관리자에게 비밀번호 재설정 메일을 발송했습니다.`, 'success');
+-    } catch (error) {
+-      console.error('Admin password reset email error:', error);
+-      triggerToast(getAdminFirebaseAuthErrorMessage(error), 'error');
+-    }
+-  };
+-
+-  const saveAdminAccountEdit = async (account) => {
+-    const adminLoginId = adminAccountEditForm.adminLoginId.trim();
+-    const organizationName = adminAccountEditForm.organizationName.trim();
+-    const userName = adminAccountEditForm.userName.trim();
+-    const phone = adminAccountEditForm.phone.trim();
+-    const adminRole = adminAccountEditForm.adminRole === 'owner' ? 'owner' : 'admin';
+-    const email = String(account.authEmail || account.email || '').trim();
+-
+-    const newPassword = adminAccountEditForm.newPassword || '';
+-    const newPasswordConfirm = adminAccountEditForm.newPasswordConfirm || '';
+-    const shouldChangePassword = Boolean(newPassword || newPasswordConfirm);
+-
+-    if (!account.id || !account.authUid || account.id !== account.authUid) {
+-      triggerToast(
+-        '관리자 UID 문서 구조가 올바르지 않습니다. 문서 ID와 authUid가 같은지 확인해 주세요.',
+-        'error'
+-      );
+-      return;
+-    }
+-
+-    if (!adminLoginId) {
+-      triggerToast('관리자 ID를 입력해 주세요.', 'error');
+-      return;
+-    }
+-
+-    if (!organizationName) {
+-      triggerToast('조직명을 입력해 주세요.', 'error');
+-      return;
+-    }
+-
+-    if (!userName) {
+-      triggerToast('사용자명을 입력해 주세요.', 'error');
+-      return;
+-    }
+-
+-    if (!email) {
+-      triggerToast('관리자 로그인 이메일을 입력해 주세요.', 'error');
+-      return;
+-    }
+-
+-    if (
+-      adminRole !== (account.adminRole || 'owner') &&
+-      (authenticatedAdminAccount?.adminRole || 'owner') !== 'owner'
+-    ) {
+-      triggerToast('최고 관리자만 관리자 권한 등급을 변경할 수 있습니다.', 'error');
+-      return;
+-    }
+-
+-    if (
+-      (account.adminRole || 'owner') === 'owner' &&
+-      adminRole !== 'owner' &&
+-      (registeredAdminAccounts || []).filter((item) => (item.adminRole || 'owner') === 'owner').length <= 1
+-    ) {
+-      triggerToast('마지막 최고 관리자 권한은 변경할 수 없습니다.', 'error');
+-      return;
+-    }
+-
+-    if (shouldChangePassword) {
+-      if (newPassword.length < 6) {
+-        triggerToast('새 비밀번호는 6자 이상으로 입력해 주세요.', 'error');
+-        return;
+-      }
+-
+-      if (newPassword !== newPasswordConfirm) {
+-        triggerToast('새 비밀번호 확인이 일치하지 않습니다.', 'error');
+-        return;
+-      }
+-
+-      if (account.id !== authenticatedAdminId) {
+-        triggerToast(
+-          '다른 Firebase Auth 관리자 계정의 비밀번호는 직접 지정할 수 없습니다. 비밀번호 재설정 메일 발송 기능을 사용해 주세요.',
+-          'error'
+-        );
+-        return;
+-      }
+-
+-      if (firebaseAuthUser?.uid !== account.authUid) {
+-        triggerToast(
+-          '현재 Firebase Auth 관리자 세션을 확인할 수 없습니다. 로그아웃 후 다시 로그인한 다음 비밀번호를 변경해 주세요.',
+-          'error'
+-        );
+-        return;
+-      }
+-    }
+-
+-    const duplicatedAdminId = (registeredAdminAccounts || []).some(
+-      (item) =>
+-        item.id !== account.id &&
+-        String(item.adminLoginId || '').trim().toLowerCase() ===
+-          adminLoginId.toLowerCase()
+-    );
+-
+-    if (duplicatedAdminId) {
+-      triggerToast('이미 등록된 관리자 ID입니다.', 'error');
+-      return;
+-    }
+-
+-    const duplicatedAdminEmail = (registeredAdminAccounts || []).some((item) => {
+-      if (item.id === account.id) return false;
+-
+-      const itemEmail = String(item.email || '').trim().toLowerCase();
+-      const itemAuthEmail = String(item.authEmail || '').trim().toLowerCase();
+-
+-      return (
+-        itemEmail === email.toLowerCase() ||
+-        itemAuthEmail === email.toLowerCase()
+-      );
+-    });
+-
+-    if (duplicatedAdminEmail) {
+-      triggerToast('이미 등록된 관리자 로그인 이메일입니다.', 'error');
+-      return;
+-    }
+-
+-    if (
+-      adminAccountEditForm.email.trim() &&
+-      adminAccountEditForm.email.trim().toLowerCase() !== email.toLowerCase()
+-    ) {
+-      triggerToast(
+-        'Firebase Auth 연결 계정의 로그인 이메일은 이 화면에서 변경하지 않습니다.',
+-        'error'
+-      );
+-      return;
+-    }
+-
+-    let firebasePasswordChanged = false;
+-
+-    try {
+-      const nowText = new Date().toLocaleString('ko-KR');
+-      let passwordUpdateFields = {};
+-
+-      if (shouldChangePassword) {
+-        await updatePassword(firebaseAuthUser, newPassword);
+-        firebasePasswordChanged = true;
+-
+-        passwordUpdateFields = {
+-          passwordChangedAt: nowText,
+-        };
+-      }
+-
+-      const nextAdminAccount = {
+-        ...account,
+-        ...passwordUpdateFields,
+-        id: account.id,
+-        authUid: account.id,
+-        adminLoginId,
+-        organizationName,
+-        userName,
+-        email,
+-        phone,
+-        adminRole,
+-        updatedAt: nowText,
+-      };
+-
+-      await setDoc(
+-        doc(db, 'adminAccounts', account.id),
+-        {
+-          ...nextAdminAccount,
+-          syncedAt: serverTimestamp(),
+-        },
+-        { merge: true }
+-      );
+-
+-      setAdminAccounts((prev) =>
+-        (prev || []).map((item) =>
+-          item.id === account.id ? nextAdminAccount : item
+-        )
+-      );
+-
+-      if (currentAuthAdminAccount?.id === account.id) {
+-        setCurrentAuthAdminAccount(nextAdminAccount);
+-      }
+-
+-      cancelEditAdminAccount();
+-
+-      triggerToast(
+-        shouldChangePassword
+-          ? `[${adminLoginId}] 관리자 정보와 비밀번호가 수정되었습니다.`
+-          : `[${adminLoginId}] 관리자 정보가 수정되었습니다.`,
+-        'success'
+-      );
+-    } catch (error) {
+-      console.error('Admin account edit error:', error);
+-
+-      if (firebasePasswordChanged) {
+-        triggerToast(
+-          '비밀번호는 변경되었지만 관리자 정보 저장에 실패했습니다. Firestore 권한과 네트워크 상태를 확인해 주세요.',
+-          'error'
+-        );
+-        return;
+-      }
+-
+-      triggerToast(getAdminFirebaseAuthErrorMessage(error), 'error');
+-    }
+-  };
+-
+-  const deleteAdminAccount = (account) => {
+-    if ((registeredAdminAccounts || []).length <= 1) {
+-      triggerToast('마지막 관리자 ID는 삭제할 수 없습니다.', 'error');
+-      return;
+-    }
+-
+-    if (
+-      (account.adminRole || 'owner') === 'owner' &&
+-      (registeredAdminAccounts || []).filter((item) => (item.adminRole || 'owner') === 'owner').length <= 1
+-    ) {
+-      triggerToast('마지막 최고 관리자 계정은 삭제할 수 없습니다.', 'error');
+-      return;
+-    }
+-
+-    if (account.id === authenticatedAdminId) {
+-      triggerToast(
+-        '현재 로그인 중인 본인 관리자 ID는 관리자 ID 현황에서 삭제할 수 없습니다. 로그아웃 후 다른 관리자로 삭제해 주세요.',
+-        'error'
+-      );
+-      return;
+-    }
+-
+-    if (!account.id || !account.authUid || account.id !== account.authUid) {
+-      triggerToast(
+-        '관리자 UID 문서 구조가 올바르지 않습니다. 문서 ID와 authUid가 같은지 확인해 주세요.',
+-        'error'
+-      );
+-      return;
+-    }
+-
+-    triggerConfirm(
+-      '관리자 ID 삭제',
+-      `[${account.adminLoginId}] 관리자 권한을 삭제합니다. Firebase Auth 계정 자체는 Spark 무료/클라이언트 환경에서는 삭제하지 않고, 이 시스템의 관리자 권한만 제거됩니다.`,
+-      async () => {
+-        try {
+-          await deleteDoc(doc(db, 'adminAccounts', account.id));
+-
+-          setAdminAccounts((prev) =>
+-            (prev || []).filter((item) => item.id !== account.id)
+-          );
+-
+-          if (editingAdminAccountId === account.id) {
+-            cancelEditAdminAccount();
+-          }
+-
+-          triggerToast(
+-            `[${account.adminLoginId}] 관리자 ID가 삭제되었습니다.`,
+-            'success'
+-          );
+-        } catch (error) {
+-          console.error('Admin account delete error:', error);
+-          triggerToast(
+-            '관리자 ID 삭제에 실패했습니다. Firestore 권한과 네트워크 상태를 확인해 주세요.',
+-            'error'
+-          );
+-        }
+-      }
+-    );
+-  };
+-
+-  const toggleAdminAccountLock = (account) => {
+-    if ((authenticatedAdminAccount?.adminRole || 'owner') !== 'owner') {
+-      triggerToast('최고 관리자만 관리자 계정을 잠그거나 해제할 수 있습니다.', 'error');
+-      return;
+-    }
+-
+-    if (!account?.id || account.id === authenticatedAdminId) {
+-      triggerToast('현재 로그인 중인 본인 계정은 잠글 수 없습니다.', 'error');
+-      return;
+-    }
+-
+-    const isLocked = Number(account.lockUntil || 0) > Date.now();
+-    const actionLabel = isLocked ? '잠금 해제' : '수동 잠금';
+-
+-    triggerConfirm(
+-      `관리자 계정 ${actionLabel}`,
+-      isLocked
+-        ? `[${account.adminLoginId}] 관리자 계정의 잠금을 해제합니다.`
+-        : `[${account.adminLoginId}] 관리자 계정을 수동 잠금합니다. 잠금 해제 전까지 로그인할 수 없습니다.`,
+-      async () => {
+-        try {
+-          const nowText = new Date().toLocaleString('ko-KR');
+-          const nextLockUntil = isLocked ? 0 : 4102444800000;
+-          const nextLockReason = isLocked ? '' : '최고 관리자 수동 잠금';
+-          await setDoc(
+-            doc(db, 'adminAccounts', account.id),
+-            {
+-              lockUntil: nextLockUntil,
+-              lockReason: nextLockReason,
+-              updatedAt: nowText,
+-              syncedAt: serverTimestamp(),
+-            },
+-            { merge: true }
+-          );
+-          setAdminAccounts((prev) =>
+-            (prev || []).map((item) =>
+-              item.id === account.id
+-                ? { ...item, lockUntil: nextLockUntil, lockReason: nextLockReason, updatedAt: nowText }
+-                : item
+-            )
+-          );
+-          triggerToast(
+-            `[${account.adminLoginId}] 관리자 계정이 ${isLocked ? '잠금 해제' : '잠금'}되었습니다.`,
+-            'success'
+-          );
+-        } catch (error) {
+-          console.error('Admin account lock update error:', error);
+-          triggerToast('관리자 계정 잠금 상태 변경에 실패했습니다.', 'error');
+-        }
+-      }
+-    );
+-  };
+-
+-  const saveMyAdminProfile = async () => {
+-    if (!authenticatedAdminAccount) {
+-      triggerToast('관리자 인증 후 내 정보를 수정할 수 있습니다.', 'error');
+-      return;
+-    }
+-
+-    if (
+-      !authenticatedAdminAccount.id ||
+-      !authenticatedAdminAccount.authUid ||
+-      authenticatedAdminAccount.id !== authenticatedAdminAccount.authUid ||
+-      firebaseAuthUser?.uid !== authenticatedAdminAccount.authUid
+-    ) {
+-      triggerToast(
+-        '현재 관리자 UID 문서와 Firebase Auth 세션이 일치하지 않습니다. 로그아웃 후 다시 로그인해 주세요.',
+-        'error'
+-      );
+-      return;
+-    }
+-
+-    const adminLoginId = adminMyProfileForm.adminLoginId.trim();
+-    const organizationName = adminMyProfileForm.organizationName.trim();
+-    const userName = adminMyProfileForm.userName.trim();
+-    const email = String(
+-      authenticatedAdminAccount.authEmail ||
+-        authenticatedAdminAccount.email ||
+-        adminMyProfileForm.email ||
+-        ''
+-    ).trim();
+-    const phone = adminMyProfileForm.phone.trim();
+-
+-    if (!adminLoginId) {
+-      triggerToast('관리자 ID를 입력해 주세요.', 'error');
+-      return;
+-    }
+-
+-    if (!organizationName) {
+-      triggerToast('조직명을 입력해 주세요.', 'error');
+-      return;
+-    }
+-
+-    if (!userName) {
+-      triggerToast('사용자명을 입력해 주세요.', 'error');
+-      return;
+-    }
+-
+-    let adminAccountsForValidation = registeredAdminAccounts || [];
+-
+-    try {
+-      const adminAccountsSnapshot = await getDocs(
+-        ADMIN_ACCOUNTS_COLLECTION_REF
+-      );
+-      adminAccountsForValidation = adminAccountsSnapshot.docs.map(
+-        (accountDocument) => ({
+-          ...accountDocument.data(),
+-          id: accountDocument.id,
+-        })
+-      );
+-    } catch (error) {
+-      console.error('Admin profile duplicate validation read error:', error);
+-      triggerToast(
+-        '관리자 ID 중복 확인에 실패했습니다. 네트워크와 Firestore 권한을 확인해 주세요.',
+-        'error'
+-      );
+-      return;
+-    }
+-
+-    const duplicatedAdminId = adminAccountsForValidation.some(
+-      (account) =>
+-        account.id !== authenticatedAdminAccount.id &&
+-        String(account.adminLoginId || '').trim().toLowerCase() ===
+-          adminLoginId.toLowerCase()
+-    );
+-
+-    if (duplicatedAdminId) {
+-      triggerToast('이미 등록된 관리자 ID입니다.', 'error');
+-      return;
+-    }
+-
+-    setAdminMyProfileSaving(true);
+-
+-    try {
+-      const nowText = new Date().toLocaleString('ko-KR');
+-
+-      const nextAdminAccount = {
+-        ...authenticatedAdminAccount,
+-        id: authenticatedAdminAccount.id,
+-        authUid: authenticatedAdminAccount.id,
+-        authProvider: 'firebase-auth',
+-        passwordHash: '',
+-        passwordSalt: '',
+-        passwordHashAlgorithm: 'Firebase Auth',
+-        passwordHashIterations: 0,
+-        adminLoginId,
+-        organizationName,
+-        userName,
+-        email,
+-        phone,
+-        updatedAt: nowText,
+-      };
+-
+-      await setDoc(
+-        doc(db, 'adminAccounts', authenticatedAdminAccount.id),
+-        {
+-          ...nextAdminAccount,
+-          syncedAt: serverTimestamp(),
+-        },
+-        { merge: true }
+-      );
+-
+-      setCurrentAuthAdminAccount(nextAdminAccount);
+-
+-      setAdminAccounts((prev) =>
+-        (prev || []).map((account) =>
+-          account.id === authenticatedAdminAccount.id
+-            ? nextAdminAccount
+-            : account
+-        )
+-      );
+-
+-      setAdminMyProfileForm((prev) => ({
+-        ...prev,
+-        newPassword: '',
+-        newPasswordConfirm: '',
+-      }));
+-
+-      triggerToast('관리자 내 정보가 수정되었습니다.', 'success');
+-    } catch (error) {
+-      console.error('Admin my profile save error:', error);
+-      triggerToast(getAdminFirebaseAuthErrorMessage(error), 'error');
+-    } finally {
+-      setAdminMyProfileSaving(false);
+-    }
+-  };
++  const {
++    adminAccountTotalPages,
++    adminAccountUserOptions,
++    cancelEditAdminAccount,
++    deleteAdminAccount,
++    paginatedAdminAccounts,
++    registerAdminAccount,
++    safeAdminAccountPage,
++    saveAdminAccountEdit,
++    saveMyAdminProfile,
++    sendAdminAccountPasswordResetEmail,
++    startEditAdminAccount,
++    toggleAdminAccountLock,
++  } = useAdminAccountManagementController({
++    adminAccountEditForm,
++    adminAccountForm,
++    adminAccountPage,
++    adminMyProfileForm,
++    authenticatedAdminAccount,
++    authenticatedAdminId,
++    currentAuthAdminAccount,
++    dataBorrowers: data.borrowers,
++    editingAdminAccountId,
++    firebaseAuthUser,
++    getAdminFirebaseAuthErrorMessage,
++    registeredAdminAccounts,
++    setAdminAccountEditForm,
++    setAdminAccountForm,
++    setAdminAccountPage,
++    setAdminAccounts,
++    setAdminMyProfileForm,
++    setAdminMyProfileSaving,
++    setCurrentAuthAdminAccount,
++    setEditingAdminAccountId,
++    triggerConfirm,
++    triggerToast,
++  });
+ 
+   const addTempHoliday = () => {
+     const holidayDate = newHolidayDate;
+--- /dev/null	2026-07-30 05:00:57.110562794 +0000
++++ /mnt/data/rental_admin_account_work/src/features/auth/useAdminAccountManagementController.js	2026-07-30 07:10:20.618562794 +0000
+@@ -0,0 +1,813 @@
++import { useEffect, useState } from 'react';
++import {
++  createUserWithEmailAndPassword,
++  deleteUser,
++  sendPasswordResetEmail,
++  signOut,
++  updatePassword,
++  updateProfile,
++} from 'firebase/auth';
++import {
++  deleteDoc,
++  doc,
++  getDocs,
++  serverTimestamp,
++  setDoc,
++} from 'firebase/firestore';
++
++import {
++  ADMIN_ACCOUNTS_COLLECTION_REF,
++  adminAccountCreationAuth,
++  db,
++  firebaseAuth,
++} from '../../firebase.js';
++
++export const ADMIN_CUSTOM_OPTION_VALUE = '__ADMIN_CUSTOM_INPUT__';
++export const ADMIN_ACCOUNT_PAGE_SIZE = 10;
++
++export const createDefaultAdminAccountForm = () => ({
++  adminLoginId: '',
++  password: '',
++  organizationName: '',
++  customOrganizationName: '',
++  userName: '',
++  customUserName: '',
++  email: '',
++  phone: '',
++  adminRole: 'admin',
++});
++
++export const createDefaultAdminAccountEditForm = () => ({
++  adminLoginId: '',
++  organizationName: '',
++  userName: '',
++  email: '',
++  phone: '',
++  adminRole: 'admin',
++  newPassword: '',
++  newPasswordConfirm: '',
++});
++
++export const useAdminAccountManagementState = () => {
++  const [adminAccountForm, setAdminAccountForm] = useState(
++    createDefaultAdminAccountForm
++  );
++  const [adminAccountPage, setAdminAccountPage] = useState(1);
++  const [editingAdminAccountId, setEditingAdminAccountId] = useState('');
++  const [adminAccountEditForm, setAdminAccountEditForm] = useState(
++    createDefaultAdminAccountEditForm
++  );
++  const [adminMyProfileForm, setAdminMyProfileForm] = useState(
++    createDefaultAdminAccountEditForm
++  );
++  const [adminMyProfileSaving, setAdminMyProfileSaving] = useState(false);
++
++  return {
++    adminAccountEditForm,
++    adminAccountForm,
++    adminAccountPage,
++    adminMyProfileForm,
++    adminMyProfileSaving,
++    editingAdminAccountId,
++    setAdminAccountEditForm,
++    setAdminAccountForm,
++    setAdminAccountPage,
++    setAdminMyProfileForm,
++    setAdminMyProfileSaving,
++    setEditingAdminAccountId,
++  };
++};
++
++export default function useAdminAccountManagementController({
++  adminAccountEditForm,
++  adminAccountForm,
++  adminAccountPage,
++  adminMyProfileForm,
++  authenticatedAdminAccount,
++  authenticatedAdminId,
++  currentAuthAdminAccount,
++  dataBorrowers,
++  editingAdminAccountId,
++  firebaseAuthUser,
++  getAdminFirebaseAuthErrorMessage,
++  registeredAdminAccounts,
++  setAdminAccountEditForm,
++  setAdminAccountForm,
++  setAdminAccountPage,
++  setAdminAccounts,
++  setAdminMyProfileForm,
++  setAdminMyProfileSaving,
++  setCurrentAuthAdminAccount,
++  setEditingAdminAccountId,
++  triggerConfirm,
++  triggerToast,
++}) {
++  useEffect(() => {
++    if (!authenticatedAdminAccount) {
++      setAdminMyProfileForm(createDefaultAdminAccountEditForm());
++      return;
++    }
++
++    setAdminMyProfileForm({
++      adminLoginId: authenticatedAdminAccount.adminLoginId || '',
++      organizationName: authenticatedAdminAccount.organizationName || '',
++      userName: authenticatedAdminAccount.userName || '',
++      email:
++        authenticatedAdminAccount.authEmail ||
++        authenticatedAdminAccount.email ||
++        '',
++      phone: authenticatedAdminAccount.phone || '',
++      newPassword: '',
++      newPasswordConfirm: '',
++    });
++  }, [
++    authenticatedAdminAccount?.id,
++    authenticatedAdminAccount?.adminLoginId,
++    authenticatedAdminAccount?.organizationName,
++    authenticatedAdminAccount?.userName,
++    authenticatedAdminAccount?.authEmail,
++    authenticatedAdminAccount?.email,
++    authenticatedAdminAccount?.phone,
++    setAdminMyProfileForm,
++  ]);
++
++  const selectedAdminOrganizationName =
++    adminAccountForm.organizationName === ADMIN_CUSTOM_OPTION_VALUE
++      ? adminAccountForm.customOrganizationName.trim()
++      : adminAccountForm.organizationName;
++
++  const adminAccountUserOptions = (dataBorrowers || []).filter(
++    (borrower) => borrower.team === selectedAdminOrganizationName
++  );
++
++  const selectedAdminUserName =
++    adminAccountForm.userName === ADMIN_CUSTOM_OPTION_VALUE ||
++    adminAccountForm.organizationName === ADMIN_CUSTOM_OPTION_VALUE
++      ? adminAccountForm.customUserName.trim()
++      : adminAccountForm.userName;
++
++  const adminAccountTotalPages = Math.max(
++    1,
++    Math.ceil((registeredAdminAccounts || []).length / ADMIN_ACCOUNT_PAGE_SIZE)
++  );
++
++  const safeAdminAccountPage = Math.min(
++    adminAccountPage,
++    adminAccountTotalPages
++  );
++
++  const paginatedAdminAccounts = (registeredAdminAccounts || []).slice(
++    (safeAdminAccountPage - 1) * ADMIN_ACCOUNT_PAGE_SIZE,
++    safeAdminAccountPage * ADMIN_ACCOUNT_PAGE_SIZE
++  );
++
++  const registerAdminAccount = async () => {
++    const adminLoginId = adminAccountForm.adminLoginId.trim();
++    const password = adminAccountForm.password;
++    const organizationName = selectedAdminOrganizationName;
++    const userName = selectedAdminUserName;
++    const email = adminAccountForm.email.trim();
++    const phone = adminAccountForm.phone.trim();
++    const adminRole = adminAccountForm.adminRole === 'owner' ? 'owner' : 'admin';
++
++    if (!adminLoginId) {
++      triggerToast('관리자 ID를 입력해 주세요.', 'error');
++      return;
++    }
++
++    if (!email) {
++      triggerToast('관리자 로그인 이메일을 입력해 주세요.', 'error');
++      return;
++    }
++
++    if (!password) {
++      triggerToast('초기 비밀번호를 입력해 주세요.', 'error');
++      return;
++    }
++
++    if (password.length < 6) {
++      triggerToast('초기 비밀번호는 6자 이상으로 입력해 주세요.', 'error');
++      return;
++    }
++
++    if (!organizationName) {
++      triggerToast('조직명을 선택하거나 직접 입력해 주세요.', 'error');
++      return;
++    }
++
++    if (!userName) {
++      triggerToast('사용자명을 선택하거나 직접 입력해 주세요.', 'error');
++      return;
++    }
++
++    if (
++      adminRole === 'owner' &&
++      (authenticatedAdminAccount?.adminRole || 'owner') !== 'owner'
++    ) {
++      triggerToast('최고 관리자만 다른 최고 관리자 계정을 등록할 수 있습니다.', 'error');
++      return;
++    }
++
++    const duplicatedAdminId = (registeredAdminAccounts || []).some(
++      (account) =>
++        String(account.adminLoginId || '').trim().toLowerCase() ===
++        adminLoginId.toLowerCase()
++    );
++
++    if (duplicatedAdminId) {
++      triggerToast('이미 등록된 관리자 ID입니다.', 'error');
++      return;
++    }
++
++    const duplicatedAdminEmail = (registeredAdminAccounts || []).some((account) => {
++      const accountEmail = String(account.email || '').trim().toLowerCase();
++      const accountAuthEmail = String(account.authEmail || '').trim().toLowerCase();
++
++      return (
++        accountEmail === email.toLowerCase() ||
++        accountAuthEmail === email.toLowerCase()
++      );
++    });
++
++    if (duplicatedAdminEmail) {
++      triggerToast('이미 등록된 관리자 로그인 이메일입니다.', 'error');
++      return;
++    }
++
++    let createdAdminUser = null;
++
++    try {
++      const nowText = new Date().toLocaleString('ko-KR');
++
++      const credential = await createUserWithEmailAndPassword(
++        adminAccountCreationAuth,
++        email,
++        password
++      );
++
++      createdAdminUser = credential.user;
++
++      await updateProfile(credential.user, {
++        displayName: userName || adminLoginId,
++      });
++
++      const nextAdminAccount = {
++        id: credential.user.uid,
++        adminLoginId,
++        authUid: credential.user.uid,
++        authEmail: email,
++        authProvider: 'firebase-auth',
++        authLinkedAt: nowText,
++        passwordHash: '',
++        passwordSalt: '',
++        passwordHashAlgorithm: 'Firebase Auth',
++        passwordHashIterations: 0,
++        failedLoginCount: 0,
++        lockUntil: 0,
++        lastLoginAt: '',
++        passwordChangedAt: nowText,
++        organizationName,
++        userName,
++        email,
++        phone,
++        adminRole,
++        createdAt: nowText,
++        updatedAt: nowText,
++      };
++
++      await setDoc(doc(db, 'adminAccounts', credential.user.uid), {
++        ...nextAdminAccount,
++        syncedAt: serverTimestamp(),
++      });
++
++      await signOut(adminAccountCreationAuth).catch((error) => {
++        console.error('Secondary admin auth sign-out error:', error);
++      });
++
++      setAdminAccounts((prev) => [
++        nextAdminAccount,
++        ...(prev || []).filter(
++          (account) => account.id !== nextAdminAccount.id
++        ),
++      ]);
++
++      setAdminAccountForm(createDefaultAdminAccountForm());
++      setAdminAccountPage(1);
++
++      triggerToast(
++        `[${adminLoginId}] Firebase Auth 관리자 계정이 등록되었습니다.`,
++        'success'
++      );
++    } catch (error) {
++      if (createdAdminUser) {
++        await deleteUser(createdAdminUser).catch((rollbackError) => {
++          console.error('Admin Auth rollback error:', rollbackError);
++        });
++      }
++
++      await signOut(adminAccountCreationAuth).catch(() => {});
++
++      console.error('Admin Firebase Auth account creation error:', error);
++      triggerToast(getAdminFirebaseAuthErrorMessage(error), 'error');
++    }
++  };
++
++  const startEditAdminAccount = (account) => {
++    setEditingAdminAccountId(account.id);
++    setAdminAccountEditForm({
++      adminLoginId: account.adminLoginId || '',
++      organizationName: account.organizationName || '',
++      userName: account.userName || '',
++      email: account.authEmail || account.email || '',
++      phone: account.phone || '',
++      adminRole: ['owner', 'admin'].includes(account.adminRole) ? account.adminRole : 'owner',
++      newPassword: '',
++      newPasswordConfirm: '',
++    });
++  };
++
++  const cancelEditAdminAccount = () => {
++    setEditingAdminAccountId('');
++    setAdminAccountEditForm(createDefaultAdminAccountEditForm());
++  };
++
++  const sendAdminAccountPasswordResetEmail = async (account) => {
++    const email = String(account.authEmail || account.email || '').trim();
++
++    if (!account.authUid) {
++      triggerToast('기존 해시 계정은 수정 화면의 새 비밀번호 입력으로 직접 변경할 수 있습니다.', 'error');
++      return;
++    }
++
++    if (!email) {
++      triggerToast('비밀번호 재설정 메일을 보낼 관리자 이메일이 없습니다.', 'error');
++      return;
++    }
++
++    try {
++      await sendPasswordResetEmail(firebaseAuth, email);
++      triggerToast(`[${account.adminLoginId}] 관리자에게 비밀번호 재설정 메일을 발송했습니다.`, 'success');
++    } catch (error) {
++      console.error('Admin password reset email error:', error);
++      triggerToast(getAdminFirebaseAuthErrorMessage(error), 'error');
++    }
++  };
++
++  const saveAdminAccountEdit = async (account) => {
++    const adminLoginId = adminAccountEditForm.adminLoginId.trim();
++    const organizationName = adminAccountEditForm.organizationName.trim();
++    const userName = adminAccountEditForm.userName.trim();
++    const phone = adminAccountEditForm.phone.trim();
++    const adminRole = adminAccountEditForm.adminRole === 'owner' ? 'owner' : 'admin';
++    const email = String(account.authEmail || account.email || '').trim();
++
++    const newPassword = adminAccountEditForm.newPassword || '';
++    const newPasswordConfirm = adminAccountEditForm.newPasswordConfirm || '';
++    const shouldChangePassword = Boolean(newPassword || newPasswordConfirm);
++
++    if (!account.id || !account.authUid || account.id !== account.authUid) {
++      triggerToast(
++        '관리자 UID 문서 구조가 올바르지 않습니다. 문서 ID와 authUid가 같은지 확인해 주세요.',
++        'error'
++      );
++      return;
++    }
++
++    if (!adminLoginId) {
++      triggerToast('관리자 ID를 입력해 주세요.', 'error');
++      return;
++    }
++
++    if (!organizationName) {
++      triggerToast('조직명을 입력해 주세요.', 'error');
++      return;
++    }
++
++    if (!userName) {
++      triggerToast('사용자명을 입력해 주세요.', 'error');
++      return;
++    }
++
++    if (!email) {
++      triggerToast('관리자 로그인 이메일을 입력해 주세요.', 'error');
++      return;
++    }
++
++    if (
++      adminRole !== (account.adminRole || 'owner') &&
++      (authenticatedAdminAccount?.adminRole || 'owner') !== 'owner'
++    ) {
++      triggerToast('최고 관리자만 관리자 권한 등급을 변경할 수 있습니다.', 'error');
++      return;
++    }
++
++    if (
++      (account.adminRole || 'owner') === 'owner' &&
++      adminRole !== 'owner' &&
++      (registeredAdminAccounts || []).filter((item) => (item.adminRole || 'owner') === 'owner').length <= 1
++    ) {
++      triggerToast('마지막 최고 관리자 권한은 변경할 수 없습니다.', 'error');
++      return;
++    }
++
++    if (shouldChangePassword) {
++      if (newPassword.length < 6) {
++        triggerToast('새 비밀번호는 6자 이상으로 입력해 주세요.', 'error');
++        return;
++      }
++
++      if (newPassword !== newPasswordConfirm) {
++        triggerToast('새 비밀번호 확인이 일치하지 않습니다.', 'error');
++        return;
++      }
++
++      if (account.id !== authenticatedAdminId) {
++        triggerToast(
++          '다른 Firebase Auth 관리자 계정의 비밀번호는 직접 지정할 수 없습니다. 비밀번호 재설정 메일 발송 기능을 사용해 주세요.',
++          'error'
++        );
++        return;
++      }
++
++      if (firebaseAuthUser?.uid !== account.authUid) {
++        triggerToast(
++          '현재 Firebase Auth 관리자 세션을 확인할 수 없습니다. 로그아웃 후 다시 로그인한 다음 비밀번호를 변경해 주세요.',
++          'error'
++        );
++        return;
++      }
++    }
++
++    const duplicatedAdminId = (registeredAdminAccounts || []).some(
++      (item) =>
++        item.id !== account.id &&
++        String(item.adminLoginId || '').trim().toLowerCase() ===
++          adminLoginId.toLowerCase()
++    );
++
++    if (duplicatedAdminId) {
++      triggerToast('이미 등록된 관리자 ID입니다.', 'error');
++      return;
++    }
++
++    const duplicatedAdminEmail = (registeredAdminAccounts || []).some((item) => {
++      if (item.id === account.id) return false;
++
++      const itemEmail = String(item.email || '').trim().toLowerCase();
++      const itemAuthEmail = String(item.authEmail || '').trim().toLowerCase();
++
++      return (
++        itemEmail === email.toLowerCase() ||
++        itemAuthEmail === email.toLowerCase()
++      );
++    });
++
++    if (duplicatedAdminEmail) {
++      triggerToast('이미 등록된 관리자 로그인 이메일입니다.', 'error');
++      return;
++    }
++
++    if (
++      adminAccountEditForm.email.trim() &&
++      adminAccountEditForm.email.trim().toLowerCase() !== email.toLowerCase()
++    ) {
++      triggerToast(
++        'Firebase Auth 연결 계정의 로그인 이메일은 이 화면에서 변경하지 않습니다.',
++        'error'
++      );
++      return;
++    }
++
++    let firebasePasswordChanged = false;
++
++    try {
++      const nowText = new Date().toLocaleString('ko-KR');
++      let passwordUpdateFields = {};
++
++      if (shouldChangePassword) {
++        await updatePassword(firebaseAuthUser, newPassword);
++        firebasePasswordChanged = true;
++
++        passwordUpdateFields = {
++          passwordChangedAt: nowText,
++        };
++      }
++
++      const nextAdminAccount = {
++        ...account,
++        ...passwordUpdateFields,
++        id: account.id,
++        authUid: account.id,
++        adminLoginId,
++        organizationName,
++        userName,
++        email,
++        phone,
++        adminRole,
++        updatedAt: nowText,
++      };
++
++      await setDoc(
++        doc(db, 'adminAccounts', account.id),
++        {
++          ...nextAdminAccount,
++          syncedAt: serverTimestamp(),
++        },
++        { merge: true }
++      );
++
++      setAdminAccounts((prev) =>
++        (prev || []).map((item) =>
++          item.id === account.id ? nextAdminAccount : item
++        )
++      );
++
++      if (currentAuthAdminAccount?.id === account.id) {
++        setCurrentAuthAdminAccount(nextAdminAccount);
++      }
++
++      cancelEditAdminAccount();
++
++      triggerToast(
++        shouldChangePassword
++          ? `[${adminLoginId}] 관리자 정보와 비밀번호가 수정되었습니다.`
++          : `[${adminLoginId}] 관리자 정보가 수정되었습니다.`,
++        'success'
++      );
++    } catch (error) {
++      console.error('Admin account edit error:', error);
++
++      if (firebasePasswordChanged) {
++        triggerToast(
++          '비밀번호는 변경되었지만 관리자 정보 저장에 실패했습니다. Firestore 권한과 네트워크 상태를 확인해 주세요.',
++          'error'
++        );
++        return;
++      }
++
++      triggerToast(getAdminFirebaseAuthErrorMessage(error), 'error');
++    }
++  };
++
++  const deleteAdminAccount = (account) => {
++    if ((registeredAdminAccounts || []).length <= 1) {
++      triggerToast('마지막 관리자 ID는 삭제할 수 없습니다.', 'error');
++      return;
++    }
++
++    if (
++      (account.adminRole || 'owner') === 'owner' &&
++      (registeredAdminAccounts || []).filter((item) => (item.adminRole || 'owner') === 'owner').length <= 1
++    ) {
++      triggerToast('마지막 최고 관리자 계정은 삭제할 수 없습니다.', 'error');
++      return;
++    }
++
++    if (account.id === authenticatedAdminId) {
++      triggerToast(
++        '현재 로그인 중인 본인 관리자 ID는 관리자 ID 현황에서 삭제할 수 없습니다. 로그아웃 후 다른 관리자로 삭제해 주세요.',
++        'error'
++      );
++      return;
++    }
++
++    if (!account.id || !account.authUid || account.id !== account.authUid) {
++      triggerToast(
++        '관리자 UID 문서 구조가 올바르지 않습니다. 문서 ID와 authUid가 같은지 확인해 주세요.',
++        'error'
++      );
++      return;
++    }
++
++    triggerConfirm(
++      '관리자 ID 삭제',
++      `[${account.adminLoginId}] 관리자 권한을 삭제합니다. Firebase Auth 계정 자체는 Spark 무료/클라이언트 환경에서는 삭제하지 않고, 이 시스템의 관리자 권한만 제거됩니다.`,
++      async () => {
++        try {
++          await deleteDoc(doc(db, 'adminAccounts', account.id));
++
++          setAdminAccounts((prev) =>
++            (prev || []).filter((item) => item.id !== account.id)
++          );
++
++          if (editingAdminAccountId === account.id) {
++            cancelEditAdminAccount();
++          }
++
++          triggerToast(
++            `[${account.adminLoginId}] 관리자 ID가 삭제되었습니다.`,
++            'success'
++          );
++        } catch (error) {
++          console.error('Admin account delete error:', error);
++          triggerToast(
++            '관리자 ID 삭제에 실패했습니다. Firestore 권한과 네트워크 상태를 확인해 주세요.',
++            'error'
++          );
++        }
++      }
++    );
++  };
++
++  const toggleAdminAccountLock = (account) => {
++    if ((authenticatedAdminAccount?.adminRole || 'owner') !== 'owner') {
++      triggerToast('최고 관리자만 관리자 계정을 잠그거나 해제할 수 있습니다.', 'error');
++      return;
++    }
++
++    if (!account?.id || account.id === authenticatedAdminId) {
++      triggerToast('현재 로그인 중인 본인 계정은 잠글 수 없습니다.', 'error');
++      return;
++    }
++
++    const isLocked = Number(account.lockUntil || 0) > Date.now();
++    const actionLabel = isLocked ? '잠금 해제' : '수동 잠금';
++
++    triggerConfirm(
++      `관리자 계정 ${actionLabel}`,
++      isLocked
++        ? `[${account.adminLoginId}] 관리자 계정의 잠금을 해제합니다.`
++        : `[${account.adminLoginId}] 관리자 계정을 수동 잠금합니다. 잠금 해제 전까지 로그인할 수 없습니다.`,
++      async () => {
++        try {
++          const nowText = new Date().toLocaleString('ko-KR');
++          const nextLockUntil = isLocked ? 0 : 4102444800000;
++          const nextLockReason = isLocked ? '' : '최고 관리자 수동 잠금';
++          await setDoc(
++            doc(db, 'adminAccounts', account.id),
++            {
++              lockUntil: nextLockUntil,
++              lockReason: nextLockReason,
++              updatedAt: nowText,
++              syncedAt: serverTimestamp(),
++            },
++            { merge: true }
++          );
++          setAdminAccounts((prev) =>
++            (prev || []).map((item) =>
++              item.id === account.id
++                ? { ...item, lockUntil: nextLockUntil, lockReason: nextLockReason, updatedAt: nowText }
++                : item
++            )
++          );
++          triggerToast(
++            `[${account.adminLoginId}] 관리자 계정이 ${isLocked ? '잠금 해제' : '잠금'}되었습니다.`,
++            'success'
++          );
++        } catch (error) {
++          console.error('Admin account lock update error:', error);
++          triggerToast('관리자 계정 잠금 상태 변경에 실패했습니다.', 'error');
++        }
++      }
++    );
++  };
++
++  const saveMyAdminProfile = async () => {
++    if (!authenticatedAdminAccount) {
++      triggerToast('관리자 인증 후 내 정보를 수정할 수 있습니다.', 'error');
++      return;
++    }
++
++    if (
++      !authenticatedAdminAccount.id ||
++      !authenticatedAdminAccount.authUid ||
++      authenticatedAdminAccount.id !== authenticatedAdminAccount.authUid ||
++      firebaseAuthUser?.uid !== authenticatedAdminAccount.authUid
++    ) {
++      triggerToast(
++        '현재 관리자 UID 문서와 Firebase Auth 세션이 일치하지 않습니다. 로그아웃 후 다시 로그인해 주세요.',
++        'error'
++      );
++      return;
++    }
++
++    const adminLoginId = adminMyProfileForm.adminLoginId.trim();
++    const organizationName = adminMyProfileForm.organizationName.trim();
++    const userName = adminMyProfileForm.userName.trim();
++    const email = String(
++      authenticatedAdminAccount.authEmail ||
++        authenticatedAdminAccount.email ||
++        adminMyProfileForm.email ||
++        ''
++    ).trim();
++    const phone = adminMyProfileForm.phone.trim();
++
++    if (!adminLoginId) {
++      triggerToast('관리자 ID를 입력해 주세요.', 'error');
++      return;
++    }
++
++    if (!organizationName) {
++      triggerToast('조직명을 입력해 주세요.', 'error');
++      return;
++    }
++
++    if (!userName) {
++      triggerToast('사용자명을 입력해 주세요.', 'error');
++      return;
++    }
++
++    let adminAccountsForValidation = registeredAdminAccounts || [];
++
++    try {
++      const adminAccountsSnapshot = await getDocs(
++        ADMIN_ACCOUNTS_COLLECTION_REF
++      );
++      adminAccountsForValidation = adminAccountsSnapshot.docs.map(
++        (accountDocument) => ({
++          ...accountDocument.data(),
++          id: accountDocument.id,
++        })
++      );
++    } catch (error) {
++      console.error('Admin profile duplicate validation read error:', error);
++      triggerToast(
++        '관리자 ID 중복 확인에 실패했습니다. 네트워크와 Firestore 권한을 확인해 주세요.',
++        'error'
++      );
++      return;
++    }
++
++    const duplicatedAdminId = adminAccountsForValidation.some(
++      (account) =>
++        account.id !== authenticatedAdminAccount.id &&
++        String(account.adminLoginId || '').trim().toLowerCase() ===
++          adminLoginId.toLowerCase()
++    );
++
++    if (duplicatedAdminId) {
++      triggerToast('이미 등록된 관리자 ID입니다.', 'error');
++      return;
++    }
++
++    setAdminMyProfileSaving(true);
++
++    try {
++      const nowText = new Date().toLocaleString('ko-KR');
++
++      const nextAdminAccount = {
++        ...authenticatedAdminAccount,
++        id: authenticatedAdminAccount.id,
++        authUid: authenticatedAdminAccount.id,
++        authProvider: 'firebase-auth',
++        passwordHash: '',
++        passwordSalt: '',
++        passwordHashAlgorithm: 'Firebase Auth',
++        passwordHashIterations: 0,
++        adminLoginId,
++        organizationName,
++        userName,
++        email,
++        phone,
++        updatedAt: nowText,
++      };
++
++      await setDoc(
++        doc(db, 'adminAccounts', authenticatedAdminAccount.id),
++        {
++          ...nextAdminAccount,
++          syncedAt: serverTimestamp(),
++        },
++        { merge: true }
++      );
++
++      setCurrentAuthAdminAccount(nextAdminAccount);
++
++      setAdminAccounts((prev) =>
++        (prev || []).map((account) =>
++          account.id === authenticatedAdminAccount.id
++            ? nextAdminAccount
++            : account
++        )
++      );
++
++      setAdminMyProfileForm((prev) => ({
++        ...prev,
++        newPassword: '',
++        newPasswordConfirm: '',
++      }));
++
++      triggerToast('관리자 내 정보가 수정되었습니다.', 'success');
++    } catch (error) {
++      console.error('Admin my profile save error:', error);
++      triggerToast(getAdminFirebaseAuthErrorMessage(error), 'error');
++    } finally {
++      setAdminMyProfileSaving(false);
++    }
++  };
++
++  return {
++    adminAccountTotalPages,
++    adminAccountUserOptions,
++    cancelEditAdminAccount,
++    deleteAdminAccount,
++    paginatedAdminAccounts,
++    registerAdminAccount,
++    safeAdminAccountPage,
++    saveAdminAccountEdit,
++    saveMyAdminProfile,
++    sendAdminAccountPasswordResetEmail,
++    startEditAdminAccount,
++    toggleAdminAccountLock,
++  };
++}
