@@ -1,0 +1,17 @@
+{
+  "before": {
+    "initialModuleCount": 39,
+    "initialSourceBytes": 768222,
+    "appBytes": 507096
+  },
+  "after": {
+    "initialModuleCount": 40,
+    "initialSourceBytes": 770187,
+    "appBytes": 502785
+  },
+  "delta": {
+    "initialModuleCount": 1,
+    "initialSourceBytes": 1965,
+    "appBytes": -4311
+  }
+}

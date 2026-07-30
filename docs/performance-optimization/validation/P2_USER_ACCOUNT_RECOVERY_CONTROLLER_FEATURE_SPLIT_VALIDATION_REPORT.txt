@@ -1,0 +1,56 @@
+P2 USER ACCOUNT RECOVERY CONTROLLER FEATURE SPLIT - VALIDATION
+Generated: 2026-07-30
+
+[PASS] Input full package manifest: 259 files, SHA-256 mismatches=0
+[PASS] JS/JSX/MJS TypeScript transpile syntax: 100 files, 0 errors
+[PASS] TypeScript targeted semantic audit: 95 source files, selected diagnostics=0
+[PASS] React hook import audit: 95 source files, 0 errors
+[PASS] Relative imports: 222 checked, 0 missing
+
+Firestore access audit
+======================
+Result: PASS
+Source files: 95
+Total calls: 129
+onSnapshot: 35
+getDocs: 48
+getDoc: 28
+getCountFromServer: 18
+Approved risk findings: 51
+Unapproved warnings: 0
+Unapproved errors: 0
+
+[PASS] Firestore access counts unchanged: 129 -> 129
+[PASS] Korean source strings: removed=0, added=0
+[PASS] Auth context contract: defined=33, provided=33, used=33, missing=0, extra=0
+[PASS] Account recovery feature boundary: App-owned recovery useState=0, App-owned recovery submit handlers=0
+[PASS] Controller runtime mock: navigation, email lookup, mismatch, reset-mail, state reset
+[PASS] App.jsx lines: 17353 -> 17225 (-128)
+[PASS] App.jsx bytes: 507096 -> 502785 (-4311)
+[PASS] App.jsx useState: 195 -> 189 (-6)
+[PASS] App.jsx useEffect: 59 -> 59 (0)
+[PASS] App.jsx useRef: 21 -> 21 (0)
+[PASS] App.jsx useMemo: 33 -> 33 (0)
+[PASS] New recovery controller: 198 lines, 6276 bytes
+[PASS] Initial modules: 39 -> 40 (+1)
+[PASS] Initial source bytes: 768222 -> 770187 (+1965)
+[PASS] Firestore Rules unchanged
+[PASS] Firestore indexes unchanged
+[PASS] package.json and package-lock.json unchanged
+[PASS] deploy.ps1 excluded from package as the protected local v13.1 deployment script
+[PASS] New deleted files: 0
+[PASS] Existing package-meta/REMOVED_FILES.txt cumulative list preserved
+
+[LIMITATION] npm ci: FAIL in the execution environment
+[LIMITATION] Reason: internal npm registry returned E404 for yargs-parser-21.1.1.tgz
+[LIMITATION] npm run build could not be executed because node_modules was not installed
+[LIMITATION] Local deployment must complete the normal deploy.ps1 npm build stage before push
+
+[PASS] Full deployment ZIP manifest: 263 project files
+[PASS] Full deployment ZIP metadata: PACKAGE_FILES, PACKAGE_SHA256SUMS, REMOVED_FILES, README
+[PASS] Full deployment ZIP re-extracted manifest and SHA-256 verification: 0 errors
+[PASS] Full deployment ZIP re-extracted JS/JSX/MJS transpile: 100 files, 0 errors
+[PASS] Full deployment ZIP re-extracted React hook audit: PASS
+[PASS] Full deployment ZIP re-extracted Firestore strict audit: PASS
+[PASS] Forbidden runtime paths in ZIP: node_modules=0, dist=0, .git=0, .performance-reports=0
+[PASS] REMOVED_FILES cumulative entries: 67, duplicates=0, packaged-file conflicts=0

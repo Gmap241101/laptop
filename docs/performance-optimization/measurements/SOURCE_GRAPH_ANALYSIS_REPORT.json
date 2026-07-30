@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-07-28T16:23:36.287Z",
-  "initialModuleCount": 32,
-  "initialSourceBytes": 721702,
+  "generatedAt": "2026-07-30T02:51:04.341Z",
+  "initialModuleCount": 40,
+  "initialSourceBytes": 770187,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 502241
+      "bytes": 502785
     },
     {
       "file": "src/user/UserHomePanel.jsx",
@@ -25,7 +25,11 @@
     },
     {
       "file": "src/context/appContextSlices.js",
-      "bytes": 17422
+      "bytes": 17557
+    },
+    {
+      "file": "src/user/UserTermsConsentPanel.jsx",
+      "bytes": 16826
     },
     {
       "file": "src/index.css",
@@ -41,11 +45,19 @@
     },
     {
       "file": "src/features/members/memberAccountIndexService.js",
-      "bytes": 7375
+      "bytes": 7724
     },
     {
       "file": "src/hooks/useDashboardSummary.js",
       "bytes": 7052
+    },
+    {
+      "file": "src/features/auth/useUserAccountRecoveryController.js",
+      "bytes": 6276
+    },
+    {
+      "file": "src/user/UserWorkspace.jsx",
+      "bytes": 6094
     },
     {
       "file": "src/routing/appRoutes.js",
@@ -56,28 +68,40 @@
       "bytes": 6026
     },
     {
+      "file": "src/components/TermsContentDialog.jsx",
+      "bytes": 5830
+    },
+    {
       "file": "src/components/RichTextContent.jsx",
       "bytes": 5222
+    },
+    {
+      "file": "src/utils/memberPolicy.js",
+      "bytes": 5131
     },
     {
       "file": "src/user/UserFooter.jsx",
       "bytes": 4950
     },
     {
-      "file": "src/utils/memberPolicy.js",
-      "bytes": 4673
+      "file": "src/firebase.js",
+      "bytes": 4828
     },
     {
       "file": "src/features/boards/useBoardProgressiveSearch.js",
       "bytes": 4622
     },
     {
-      "file": "src/firebase.js",
-      "bytes": 4355
+      "file": "src/components/TermsVersionDialog.jsx",
+      "bytes": 4060
     },
     {
-      "file": "src/user/UserWorkspace.jsx",
-      "bytes": 4350
+      "file": "src/features/members/accountRecoveryService.js",
+      "bytes": 4013
+    },
+    {
+      "file": "src/features/terms/termsConstants.js",
+      "bytes": 3935
     },
     {
       "file": "src/constants/appConstants.js",
@@ -104,6 +128,10 @@
       "bytes": 2442
     },
     {
+      "file": "src/features/terms/termsService.js",
+      "bytes": 2427
+    },
+    {
       "file": "src/main.jsx",
       "bytes": 2370
     },
@@ -118,6 +146,10 @@
     {
       "file": "src/components/RentalStatusBoard.jsx",
       "bytes": 1843
+    },
+    {
+      "file": "src/features/terms/useUserTermsCompliance.js",
+      "bytes": 1415
     },
     {
       "file": "src/config/firestoreCachePolicy.js",

@@ -1,0 +1,445 @@
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -309,13 +309,7 @@
+   normalizeMemberTeam,
+   parseDomesticPhoneNumber,
+ } from './utils/memberPolicy.js';
+-import {
+-  createDefaultAccountRecoveryForm,
+-  createDefaultPasswordResetForm,
+-  findAccountRecoveryEmail,
+-  validateAccountRecoveryIdentity,
+-  verifyPasswordResetIdentity,
+-} from './features/members/accountRecoveryService.js';
++import useUserAccountRecoveryController from './features/auth/useUserAccountRecoveryController.js';
+ 
+ import {
+   DEFAULT_SITE_SETTINGS,
+@@ -1525,12 +1519,6 @@
+   const [currentAuthRoleErrorMessage, setCurrentAuthRoleErrorMessage] = useState('');
+   const [userAuthForm, setUserAuthForm] = useState(createDefaultUserAuthForm);
+   const [userAuthLoading, setUserAuthLoading] = useState(false);
+-  const [accountRecoveryForm, setAccountRecoveryForm] = useState(createDefaultAccountRecoveryForm);
+-  const [accountRecoveryLoading, setAccountRecoveryLoading] = useState(false);
+-  const [accountRecoveryResult, setAccountRecoveryResult] = useState(null);
+-  const [passwordResetForm, setPasswordResetForm] = useState(createDefaultPasswordResetForm);
+-  const [passwordResetLoading, setPasswordResetLoading] = useState(false);
+-  const [passwordResetVerificationResult, setPasswordResetVerificationResult] = useState(null);
+   const [userAccountStatusView, setUserAccountStatusView] = useState(readUserAccountStatusView);
+   const [userDirectoryVerificationLoading, setUserDirectoryVerificationLoading] = useState(false);
+   const userDirectoryVerificationKeyRef = useRef('');
+@@ -6526,6 +6514,40 @@
+     authenticatedAdminAccount?.phone,
+   ]);
+ 
++  const showUserAccountStatus = (type) => {
++    const nextView = { type };
++    writeUserAccountStatusView(nextView);
++    setUserAccountStatusView(nextView);
++    replaceAppPath('user', 'accountStatus');
++    setView('user');
++    setUserTab('accountStatus');
++    setIsCommunityMenuOpen(false);
++  };
++
++  const {
++    accountRecoveryForm,
++    accountRecoveryLoading,
++    accountRecoveryResult,
++    goToUserEmailRecovery,
++    goToUserPasswordReset,
++    passwordResetForm,
++    passwordResetLoading,
++    passwordResetVerificationResult,
++    resetAccountRecoveryForLogin,
++    resetAccountRecoverySearch,
++    setAccountRecoveryForm,
++    submitAccountRecovery,
++    submitPasswordReset,
++    updatePasswordResetForm,
++  } = useUserAccountRecoveryController({
++    getUserAuthErrorMessage,
++    setIsCommunityMenuOpen,
++    setUserTab,
++    setView,
++    showUserAccountStatus,
++    triggerToast,
++  });
++
+   const goToUserLogin = () => {
+     pendingProtectedUserTabRef.current = '';
+ 
+@@ -6535,9 +6557,7 @@
+       saveCurrentUserLoginReturnTarget();
+     }
+ 
+-    setAccountRecoveryResult(null);
+-    setPasswordResetForm(createDefaultPasswordResetForm());
+-    setPasswordResetVerificationResult(null);
++    resetAccountRecoveryForLogin();
+     pushAppPath('user', 'login');
+     setView('user');
+     setUserTab('login');
+@@ -6561,44 +6581,6 @@
+   };
+ 
+ 
+-  const showUserAccountStatus = (type) => {
+-    const nextView = { type };
+-    writeUserAccountStatusView(nextView);
+-    setUserAccountStatusView(nextView);
+-    replaceAppPath('user', 'accountStatus');
+-    setView('user');
+-    setUserTab('accountStatus');
+-    setIsCommunityMenuOpen(false);
+-  };
+-
+-  const goToUserEmailRecovery = () => {
+-    setAccountRecoveryForm(createDefaultAccountRecoveryForm());
+-    setAccountRecoveryResult(null);
+-    pushAppPath('user', 'findEmail');
+-    setView('user');
+-    setUserTab('findEmail');
+-    setIsCommunityMenuOpen(false);
+-  };
+-
+-  const resetAccountRecoverySearch = () => {
+-    setAccountRecoveryForm(createDefaultAccountRecoveryForm());
+-    setAccountRecoveryResult(null);
+-  };
+-
+-  const goToUserPasswordReset = (initialValues = {}) => {
+-    setPasswordResetForm(createDefaultPasswordResetForm(initialValues));
+-    setPasswordResetVerificationResult(null);
+-    pushAppPath('user', 'resetPassword');
+-    setView('user');
+-    setUserTab('resetPassword');
+-    setIsCommunityMenuOpen(false);
+-  };
+-
+-  const updatePasswordResetForm = (nextForm) => {
+-    setPasswordResetForm(nextForm);
+-    setPasswordResetVerificationResult(null);
+-  };
+-
+   const goToUserMypage = () => {
+     if (currentAuthAdminAccount && !isAdminAuthenticated) {
+       pushAppPath('admin');
+@@ -6665,116 +6647,6 @@
+     setIsCommunityMenuOpen(false);
+   };
+ 
+-  const submitAccountRecovery = async (event) => {
+-    event.preventDefault();
+-
+-    const lookupStartedAt = Date.now();
+-    const validation = validateAccountRecoveryIdentity({
+-      form: accountRecoveryForm,
+-    });
+-
+-    if (!validation.valid) {
+-      triggerToast(validation.errorMessage, 'error');
+-      return;
+-    }
+-
+-    setAccountRecoveryLoading(true);
+-    setAccountRecoveryResult(null);
+-
+-    try {
+-      const result = await findAccountRecoveryEmail(validation);
+-
+-      setAccountRecoveryResult({
+-        found: result.found,
+-        maskedEmail: result.maskedEmail,
+-      });
+-    } catch (error) {
+-      console.error('Account recovery lookup error:', error);
+-      triggerToast(
+-        '이메일 확인 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+-        'error'
+-      );
+-    } finally {
+-      const minimumResponseDelayMs = 600;
+-      const remainingDelay =
+-        minimumResponseDelayMs - (Date.now() - lookupStartedAt);
+-
+-      if (remainingDelay > 0) {
+-        await new Promise((resolve) =>
+-          window.setTimeout(resolve, remainingDelay)
+-        );
+-      }
+-
+-      setAccountRecoveryLoading(false);
+-    }
+-  };
+-
+-  const submitPasswordReset = async (event) => {
+-    event.preventDefault();
+-
+-    const verificationStartedAt = Date.now();
+-    const validation = validateAccountRecoveryIdentity({
+-      email: passwordResetForm.email,
+-      form: passwordResetForm,
+-      requireEmail: true,
+-    });
+-
+-    if (!validation.valid) {
+-      triggerToast(validation.errorMessage, 'error');
+-      return;
+-    }
+-
+-    setPasswordResetLoading(true);
+-    setPasswordResetVerificationResult(null);
+-
+-    try {
+-      const verification = await verifyPasswordResetIdentity(validation);
+-
+-      if (!verification.verified) {
+-        setPasswordResetVerificationResult({
+-          verified: false,
+-          message: verification.verifierMissing
+-            ? '계정 보안 정보가 아직 갱신되지 않았습니다. 관리자에게 계정 복구 정보 갱신을 요청해 주세요.'
+-            : '입력한 가입 이메일과 회원정보가 모두 일치하는 계정을 찾지 못했습니다.',
+-        });
+-        return;
+-      }
+-
+-      await sendPasswordResetEmail(firebaseAuth, validation.email);
+-      setPasswordResetForm(createDefaultPasswordResetForm());
+-      setPasswordResetVerificationResult(null);
+-      showUserAccountStatus('passwordResetSent');
+-    } catch (error) {
+-      if (
+-        ['auth/user-not-found', 'auth/invalid-credential'].includes(
+-          error?.code
+-        )
+-      ) {
+-        setPasswordResetVerificationResult({
+-          verified: false,
+-          message:
+-            '입력한 가입 이메일과 회원정보가 모두 일치하는 계정을 찾지 못했습니다.',
+-        });
+-        return;
+-      }
+-
+-      console.error('User password reset email error:', error);
+-      triggerToast(getUserAuthErrorMessage(error), 'error');
+-    } finally {
+-      const minimumResponseDelayMs = 600;
+-      const remainingDelay =
+-        minimumResponseDelayMs - (Date.now() - verificationStartedAt);
+-
+-      if (remainingDelay > 0) {
+-        await new Promise((resolve) =>
+-          window.setTimeout(resolve, remainingDelay)
+-        );
+-      }
+-
+-      setPasswordResetLoading(false);
+-    }
+-  };
+-
+   const submitUserAuthForm = async (event, providedTermsSubmission = null) => {
+     event.preventDefault();
+ 
+--- /dev/null
++++ b/src/features/auth/useUserAccountRecoveryController.js
+@@ -0,0 +1,198 @@
++import { useCallback, useState } from 'react';
++import { sendPasswordResetEmail } from 'firebase/auth';
++
++import { firebaseAuth } from '../../firebase.js';
++import { pushAppPath } from '../../routing/appRoutes.js';
++import {
++  createDefaultAccountRecoveryForm,
++  createDefaultPasswordResetForm,
++  findAccountRecoveryEmail,
++  validateAccountRecoveryIdentity,
++  verifyPasswordResetIdentity,
++} from '../members/accountRecoveryService.js';
++
++const waitForMinimumResponseDelay = async (startedAt, minimumDelayMs = 600) => {
++  const remainingDelay = minimumDelayMs - (Date.now() - startedAt);
++
++  if (remainingDelay > 0) {
++    await new Promise((resolve) => window.setTimeout(resolve, remainingDelay));
++  }
++};
++
++export default function useUserAccountRecoveryController({
++  getUserAuthErrorMessage,
++  setIsCommunityMenuOpen,
++  setUserTab,
++  setView,
++  showUserAccountStatus,
++  triggerToast,
++}) {
++  const [accountRecoveryForm, setAccountRecoveryForm] = useState(
++    createDefaultAccountRecoveryForm
++  );
++  const [accountRecoveryLoading, setAccountRecoveryLoading] = useState(false);
++  const [accountRecoveryResult, setAccountRecoveryResult] = useState(null);
++  const [passwordResetForm, setPasswordResetForm] = useState(
++    createDefaultPasswordResetForm
++  );
++  const [passwordResetLoading, setPasswordResetLoading] = useState(false);
++  const [passwordResetVerificationResult, setPasswordResetVerificationResult] =
++    useState(null);
++
++  const resetAccountRecoveryForLogin = useCallback(() => {
++    setAccountRecoveryResult(null);
++    setPasswordResetForm(createDefaultPasswordResetForm());
++    setPasswordResetVerificationResult(null);
++  }, []);
++
++  const goToUserEmailRecovery = useCallback(() => {
++    setAccountRecoveryForm(createDefaultAccountRecoveryForm());
++    setAccountRecoveryResult(null);
++    pushAppPath('user', 'findEmail');
++    setView('user');
++    setUserTab('findEmail');
++    setIsCommunityMenuOpen(false);
++  }, [setIsCommunityMenuOpen, setUserTab, setView]);
++
++  const resetAccountRecoverySearch = useCallback(() => {
++    setAccountRecoveryForm(createDefaultAccountRecoveryForm());
++    setAccountRecoveryResult(null);
++  }, []);
++
++  const goToUserPasswordReset = useCallback(
++    (initialValues = {}) => {
++      setPasswordResetForm(createDefaultPasswordResetForm(initialValues));
++      setPasswordResetVerificationResult(null);
++      pushAppPath('user', 'resetPassword');
++      setView('user');
++      setUserTab('resetPassword');
++      setIsCommunityMenuOpen(false);
++    },
++    [setIsCommunityMenuOpen, setUserTab, setView]
++  );
++
++  const updatePasswordResetForm = useCallback((nextForm) => {
++    setPasswordResetForm(nextForm);
++    setPasswordResetVerificationResult(null);
++  }, []);
++
++  const submitAccountRecovery = useCallback(
++    async (event) => {
++      event.preventDefault();
++
++      const lookupStartedAt = Date.now();
++      const validation = validateAccountRecoveryIdentity({
++        form: accountRecoveryForm,
++      });
++
++      if (!validation.valid) {
++        triggerToast(validation.errorMessage, 'error');
++        return;
++      }
++
++      setAccountRecoveryLoading(true);
++      setAccountRecoveryResult(null);
++
++      try {
++        const result = await findAccountRecoveryEmail(validation);
++
++        setAccountRecoveryResult({
++          found: result.found,
++          maskedEmail: result.maskedEmail,
++        });
++      } catch (error) {
++        console.error('Account recovery lookup error:', error);
++        triggerToast(
++          '이메일 확인 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
++          'error'
++        );
++      } finally {
++        await waitForMinimumResponseDelay(lookupStartedAt);
++        setAccountRecoveryLoading(false);
++      }
++    },
++    [accountRecoveryForm, triggerToast]
++  );
++
++  const submitPasswordReset = useCallback(
++    async (event) => {
++      event.preventDefault();
++
++      const verificationStartedAt = Date.now();
++      const validation = validateAccountRecoveryIdentity({
++        email: passwordResetForm.email,
++        form: passwordResetForm,
++        requireEmail: true,
++      });
++
++      if (!validation.valid) {
++        triggerToast(validation.errorMessage, 'error');
++        return;
++      }
++
++      setPasswordResetLoading(true);
++      setPasswordResetVerificationResult(null);
++
++      try {
++        const verification = await verifyPasswordResetIdentity(validation);
++
++        if (!verification.verified) {
++          setPasswordResetVerificationResult({
++            verified: false,
++            message: verification.verifierMissing
++              ? '계정 보안 정보가 아직 갱신되지 않았습니다. 관리자에게 계정 복구 정보 갱신을 요청해 주세요.'
++              : '입력한 가입 이메일과 회원정보가 모두 일치하는 계정을 찾지 못했습니다.',
++          });
++          return;
++        }
++
++        await sendPasswordResetEmail(firebaseAuth, validation.email);
++        setPasswordResetForm(createDefaultPasswordResetForm());
++        setPasswordResetVerificationResult(null);
++        showUserAccountStatus('passwordResetSent');
++      } catch (error) {
++        if (
++          ['auth/user-not-found', 'auth/invalid-credential'].includes(
++            error?.code
++          )
++        ) {
++          setPasswordResetVerificationResult({
++            verified: false,
++            message:
++              '입력한 가입 이메일과 회원정보가 모두 일치하는 계정을 찾지 못했습니다.',
++          });
++          return;
++        }
++
++        console.error('User password reset email error:', error);
++        triggerToast(getUserAuthErrorMessage(error), 'error');
++      } finally {
++        await waitForMinimumResponseDelay(verificationStartedAt);
++        setPasswordResetLoading(false);
++      }
++    },
++    [
++      getUserAuthErrorMessage,
++      passwordResetForm,
++      showUserAccountStatus,
++      triggerToast,
++    ]
++  );
++
++  return {
++    accountRecoveryForm,
++    accountRecoveryLoading,
++    accountRecoveryResult,
++    goToUserEmailRecovery,
++    goToUserPasswordReset,
++    passwordResetForm,
++    passwordResetLoading,
++    passwordResetVerificationResult,
++    resetAccountRecoveryForLogin,
++    resetAccountRecoverySearch,
++    setAccountRecoveryForm,
++    submitAccountRecovery,
++    submitPasswordReset,
++    updatePasswordResetForm,
++  };
++}
