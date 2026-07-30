@@ -1,0 +1,52 @@
+P2 ADMIN POPUP FOOTER CONTENT CONTROLLER FEATURE SPLIT VALIDATION
+================================================================
+
+Baseline package
+- rental-system-admin-account-management-controller-split-20260730_1616_deployment_package.zip
+
+Changed source
+- src/App.jsx
+- src/features/boards/useAdminPopupPostController.js (new)
+- src/features/boards/useAdminFooterContentController.js (new)
+
+Static validation
+- TypeScript transpile: PASS (112 JS/JSX/MJS source and tool files at validation time)
+- Selected semantic diagnostics: PASS (TS2304/TS2552/TS2451/TS2448/TS2449/TS2554/TS2349 = 0)
+- React Hook import audit: PASS (107 source files)
+- Relative import resolution: PASS (256 relative imports, missing 0)
+- Popup panel context contract: PASS (missing 0)
+- Footer panel context contract: PASS (missing 0)
+- Korean UI string occurrence comparison: PASS (removed 0, added 0)
+
+Firestore strict audit
+- Result: PASS
+- Source files: 107
+- Total calls: 129
+- onSnapshot: 35
+- getDocs: 48
+- getDoc: 28
+- getCountFromServer: 18
+- Unapproved warnings: 0
+- Unapproved errors: 0
+
+Runtime mock
+- Result: PASS
+- Scenarios: 7
+  1. Existing popup edit dialog initialization
+  2. New popup batch payload and commit
+  3. Popup delete confirmation, batch delete and dialog reset
+  4. Footer common configuration save payload
+  5. Legacy footer display-only link conversion
+  6. New footer page save payload
+  7. Footer page deletion and selected page/dialog reset
+
+Source graph
+- App.jsx: 12,042 lines / 355,160 bytes -> 11,468 lines / 334,576 bytes
+- App.jsx useState(): 151 -> 139
+- Initial modules: 50 -> 52
+- Initial source bytes: 797,973 -> 803,889
+
+Vite production build
+- npm ci: FAIL in validation environment
+- Error: E404 yargs-parser-21.1.1.tgz not found in internal npm registry
+- Final production build must be confirmed by local deploy.ps1 before push.

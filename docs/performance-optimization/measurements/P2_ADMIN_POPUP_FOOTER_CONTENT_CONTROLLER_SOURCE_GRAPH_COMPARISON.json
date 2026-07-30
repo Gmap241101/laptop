@@ -1,0 +1,42 @@
+{
+  "generatedAt": "2026-07-30T07:48:32.801Z",
+  "baselinePackage": "rental-system-admin-account-management-controller-split-20260730_1616_deployment_package.zip",
+  "feature": "admin-popup-footer-content-controller-split",
+  "before": {
+    "appJsxLines": 12042,
+    "appJsxBytes": 355160,
+    "appUseStateCalls": 151,
+    "appUseEffectCalls": 58,
+    "appUseMemoCalls": 30,
+    "appUseRefCalls": 20,
+    "appRunTransactionCalls": 4,
+    "initialModuleCount": 50,
+    "initialSourceBytes": 797973
+  },
+  "after": {
+    "appJsxLines": 11468,
+    "appJsxBytes": 334576,
+    "appUseStateCalls": 139,
+    "appUseEffectCalls": 58,
+    "appUseMemoCalls": 30,
+    "appUseRefCalls": 20,
+    "appRunTransactionCalls": 4,
+    "initialModuleCount": 52,
+    "initialSourceBytes": 803889,
+    "popupControllerLines": 385,
+    "popupControllerBytes": 11116,
+    "footerControllerLines": 533,
+    "footerControllerBytes": 15384
+  },
+  "delta": {
+    "appJsxLines": -574,
+    "appJsxBytes": -20584,
+    "appUseStateCalls": -12,
+    "appUseEffectCalls": 0,
+    "appUseMemoCalls": 0,
+    "appUseRefCalls": 0,
+    "appRunTransactionCalls": 0,
+    "initialModuleCount": 2,
+    "initialSourceBytes": 5916
+  }
+}

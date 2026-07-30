@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-07-30T07:13:57.089Z",
-  "initialModuleCount": 50,
-  "initialSourceBytes": 797973,
+  "generatedAt": "2026-07-30T07:48:32.801Z",
+  "initialModuleCount": 52,
+  "initialSourceBytes": 803889,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 355160
+      "bytes": 334576
     },
     {
       "file": "src/features/requests/useUserRequestHistoryActionController.js",
@@ -52,6 +52,10 @@
       "bytes": 16826
     },
     {
+      "file": "src/features/boards/useAdminFooterContentController.js",
+      "bytes": 15384
+    },
+    {
       "file": "src/features/requests/useUserRentalRequestController.js",
       "bytes": 14874
     },
@@ -74,6 +78,10 @@
     {
       "file": "src/features/auth/useUserLoginController.js",
       "bytes": 11452
+    },
+    {
+      "file": "src/features/boards/useAdminPopupPostController.js",
+      "bytes": 11116
     },
     {
       "file": "src/utils/overduePolicy.js",
