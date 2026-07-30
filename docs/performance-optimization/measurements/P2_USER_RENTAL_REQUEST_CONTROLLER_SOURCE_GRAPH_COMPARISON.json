@@ -1,0 +1,61 @@
+{
+  "generatedAt": "2026-07-30T05:32:44.516Z",
+  "baselinePackage": "rental-system-user-mypage-account-controller-split-20260730_1421_deployment_package.zip",
+  "outputPackage": "rental-system-user-rental-request-controller-split-20260730_1430_deployment_package.zip",
+  "appJsx": {
+    "before": {
+      "lines": 15946,
+      "bytes": 460043,
+      "useStateCalls": 182,
+      "useEffectCalls": 59,
+      "useRefCalls": 21,
+      "useMemoCalls": 32,
+      "runTransactionCalls": 10
+    },
+    "after": {
+      "lines": 15499,
+      "bytes": 447316,
+      "useStateCalls": 179,
+      "useEffectCalls": 59,
+      "useRefCalls": 20,
+      "useMemoCalls": 32,
+      "runTransactionCalls": 9
+    },
+    "delta": {
+      "lines": -447,
+      "bytes": -12727,
+      "useStateCalls": -3,
+      "useEffectCalls": 0,
+      "useRefCalls": -1,
+      "useMemoCalls": 0,
+      "runTransactionCalls": -1
+    }
+  },
+  "controller": {
+    "file": "src/features/requests/useUserRentalRequestController.js",
+    "lines": 480,
+    "bytes": 14874
+  },
+  "initialSourceGraph": {
+    "before": {
+      "moduleCount": 44,
+      "sourceBytes": 783207
+    },
+    "after": {
+      "moduleCount": 45,
+      "sourceBytes": 785354
+    },
+    "delta": {
+      "moduleCount": 1,
+      "sourceBytes": 2147
+    }
+  },
+  "firestoreAudit": {
+    "totalCalls": 129,
+    "onSnapshot": 35,
+    "getDocs": 48,
+    "getDoc": 28,
+    "getCountFromServer": 18,
+    "result": "PASS"
+  }
+}

@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-07-30T05:20:23.146Z",
-  "initialModuleCount": 44,
-  "initialSourceBytes": 783207,
+  "generatedAt": "2026-07-30T05:29:21.311Z",
+  "initialModuleCount": 45,
+  "initialSourceBytes": 785354,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 460043
+      "bytes": 447316
     },
     {
       "file": "src/user/UserHomePanel.jsx",
@@ -38,6 +38,10 @@
     {
       "file": "src/user/UserTermsConsentPanel.jsx",
       "bytes": 16826
+    },
+    {
+      "file": "src/features/requests/useUserRentalRequestController.js",
+      "bytes": 14874
     },
     {
       "file": "src/index.css",

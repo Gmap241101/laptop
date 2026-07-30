@@ -1,0 +1,28 @@
+P2 USER RENTAL REQUEST CONTROLLER FEATURE SPLIT VALIDATION
+==========================================================
+
+Baseline package
+- rental-system-user-mypage-account-controller-split-20260730_1421_deployment_package.zip
+
+Output package
+- rental-system-user-rental-request-controller-split-20260730_1430_deployment_package.zip
+
+Validation results
+- Baseline PACKAGE_SHA256SUMS verification: PASS (279 files)
+- JavaScript/JSX/MJS syntax transpile: PASS (105 files)
+- Target undefined/duplicate diagnostics: PASS (100 src files)
+- React Hook import audit: PASS (100 src files)
+- Relative import resolution: PASS (261 references)
+- Firestore strict audit: PASS
+- Firestore access locations: 129 -> 129
+- Korean UI string comparison: PASS (557 -> 557, removed 0, added 0)
+- User rental request controller runtime mock: PASS (4 scenarios)
+- Output PACKAGE_FILES/PACKAGE_SHA256SUMS: PASS (284 files)
+- REMOVED_FILES cumulative inheritance: PASS (67 paths)
+- New removed paths: 0
+- Protected path collision: PASS
+
+Production build
+- npm ci: NOT COMPLETED
+- Reason: internal npm registry returned E404 for yargs-parser-21.1.1.tgz
+- Local deploy.ps1 must confirm npm run build before Git push or production publication.
