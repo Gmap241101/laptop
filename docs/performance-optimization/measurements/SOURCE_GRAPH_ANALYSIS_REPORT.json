@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-07-30T07:48:32.801Z",
-  "initialModuleCount": 52,
-  "initialSourceBytes": 803889,
+  "generatedAt": "2026-07-30T08:08:09.735Z",
+  "initialModuleCount": 54,
+  "initialSourceBytes": 809711,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 334576
+      "bytes": 305279
     },
     {
       "file": "src/features/requests/useUserRequestHistoryActionController.js",
@@ -26,6 +26,10 @@
     {
       "file": "src/features/members/useUserMyPageAccountController.js",
       "bytes": 22785
+    },
+    {
+      "file": "src/features/settings/useAdminSystemSettingsController.js",
+      "bytes": 22555
     },
     {
       "file": "src/utils/richTextCore.js",
@@ -62,6 +66,10 @@
     {
       "file": "src/features/boards/useAdminBoardPostController.js",
       "bytes": 12665
+    },
+    {
+      "file": "src/features/assets/useAdminAssetCategoryController.js",
+      "bytes": 12564
     },
     {
       "file": "src/index.css",

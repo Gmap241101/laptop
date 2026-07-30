@@ -25,7 +25,6 @@ import {
   serverTimestamp,
   startAfter,
   where,
-  writeBatch,
 } from 'firebase/firestore';
 import {
   Laptop,
@@ -203,7 +202,6 @@ import {
   DEFAULT_RENTAL_EXTENSION_REQUEST_WAIT_DAYS,
   DEFAULT_WORK_END_TIME,
   HOLIDAY_TYPE_LABEL,
-  RENTAL_POLICY_SETTING_KEYS,
   createDefaultRequestForm,
   defaultRentalStartDate,
   findExtensionPeriodConflict,
@@ -211,7 +209,6 @@ import {
   getAdjustedRentalDueDate,
   getAdjustedRentalStartDate,
   getExtensionRequestAvailableDate,
-  getHolidayReasons,
   getNonBusinessDayReason,
   getLaptopAdminDisplayStatus,
   getLaptopRentalAvailability,
@@ -231,9 +228,7 @@ import {
   isRentalDueBusinessDay,
   isTemporaryDateInputValue,
   normalizeHolidayList,
-  normalizeHolidayReason,
   normalizeRentalPolicySettings,
-  serializeHolidayListForFirestore,
 } from './domain/rentalPolicy.js';
 import { useDashboardSummary } from './hooks/useDashboardSummary.js';
 import useBoardProgressiveSearch from './features/boards/useBoardProgressiveSearch.js';
@@ -257,6 +252,12 @@ import useAdminAssetCrudController, {
   normalizeAssetNumber,
   useAdminAssetCrudState,
 } from './features/assets/useAdminAssetCrudController.js';
+import useAdminAssetCategoryController, {
+  useAdminAssetCategoryState,
+} from './features/assets/useAdminAssetCategoryController.js';
+import useAdminSystemSettingsController, {
+  useAdminSystemSettingsState,
+} from './features/settings/useAdminSystemSettingsController.js';
 import {
   commitFirestoreOperations,
 } from './features/members/memberAccountIndexService.js';
@@ -292,7 +293,6 @@ import {
   toRentalAvailabilityRequest,
 } from './services/publicAssetCatalog.js';
 import {
-  createPublicAssetCatalogPayload,
   ensurePublicAssetCatalogWriteThrough,
   getPublicAssetCatalogWriteErrorMessage,
   rebuildPublicAssetCatalogFromServer,
@@ -1385,12 +1385,24 @@ function App() {
     setEditLaptop,
     setNewLaptop,
   } = useAdminAssetCrudState();
-  const [newAssetCategory, setNewAssetCategory] = useState('');
-  const [tempAssetCategories, setTempAssetCategories] = useState(data.assetCategories || []);
-  const [tempAssetCategoryRenameMap, setTempAssetCategoryRenameMap] = useState({});
-  const [editingAssetCategoryIndex, setEditingAssetCategoryIndex] = useState(null);
-  const [editingAssetCategoryName, setEditingAssetCategoryName] = useState('');
-  const [draggingAssetCategoryIndex, setDraggingAssetCategoryIndex] = useState(null);
+  const {
+    assetCategorySettingsDirty,
+    draggingAssetCategoryIndex,
+    editingAssetCategoryIndex,
+    editingAssetCategoryName,
+    newAssetCategory,
+    setDraggingAssetCategoryIndex,
+    setEditingAssetCategoryIndex,
+    setEditingAssetCategoryName,
+    setNewAssetCategory,
+    setTempAssetCategories,
+    setTempAssetCategoryRenameMap,
+    tempAssetCategories,
+    tempAssetCategoryRenameMap,
+  } = useAdminAssetCategoryState({
+    adminTab,
+    dataAssetCategories: data.assetCategories,
+  });
 
   const {
     adminAccountEditForm,
@@ -1492,111 +1504,33 @@ function App() {
   const [showUploadPanel, setShowUploadPanel] = useState(false);
   const [assetGridColumns, setAssetGridColumns] = useState(1);
 
-  // 설정 임시 저장을 위한 임시 상태 정의
-  const [tempSettings, setTempSettings] = useState(data.settings);
-  const [newHolidayDate, setNewHolidayDate] = useState(today());
-  const [newHolidayName, setNewHolidayName] = useState('');
-  const [newHolidayType, setNewHolidayType] = useState(DEFAULT_HOLIDAY_TYPE);
-  const [holidayImportYear, setHolidayImportYear] = useState(String(getKoreaNow().getUTCFullYear()));
-  const [holidayImportLoading, setHolidayImportLoading] = useState(false);
-  const [holidayImportConflictModal, setHolidayImportConflictModal] = useState(null);
-  const [holidayManagementYear, setHolidayManagementYear] = useState(
-    String(getKoreaNow().getUTCFullYear())
-  );
-  const [holidayManagementMonth, setHolidayManagementMonth] = useState(
-    getKoreaNow().getUTCMonth() + 1
-  );
-  const [holidayManagementView, setHolidayManagementView] = useState('calendar');
-
-  useEffect(() => {
-    if (adminTab === 'holidaySettings') {
-      setHolidayManagementView('calendar');
-    }
-  }, [adminTab]);
-
-  const holidaySettingsDirty = useMemo(
-    () =>
-      JSON.stringify(
-        serializeHolidayListForFirestore(tempSettings.holidays || [])
-      ) !==
-      JSON.stringify(
-        serializeHolidayListForFirestore(data.settings.holidays || [])
-      ),
-    [data.settings.holidays, tempSettings.holidays]
-  );
-
-  const assetCategorySettingsDirty = useMemo(() => {
-    const normalizeCategories = (categories = []) =>
-      categories
-        .map((category) => String(category || '').trim())
-        .filter(Boolean);
-
-    return (
-      JSON.stringify(normalizeCategories(tempAssetCategories)) !==
-        JSON.stringify(normalizeCategories(data.assetCategories || [])) ||
-      Object.keys(tempAssetCategoryRenameMap || {}).length > 0
-    );
-  }, [data.assetCategories, tempAssetCategories, tempAssetCategoryRenameMap]);
-
-
-  const getComparableRentalPolicySettings = (settings = {}) => {
-    const excludeSaturdays =
-      settings.excludeSaturdays ??
-      settings.excludeWeekendsForStartDate ??
-      DEFAULT_EXCLUDE_SATURDAYS;
-    const excludeSundays =
-      settings.excludeSundays ??
-      settings.excludeWeekendsForStartDate ??
-      DEFAULT_EXCLUDE_SUNDAYS;
-
-    const normalizedSettings = normalizeRentalPolicySettings({
-      ...data.settings,
-      ...settings,
-      holidays: data.settings.holidays,
-      allowNonOverlappingSameAssetRequests:
-        settings.allowNonOverlappingSameAssetRequests ??
-        DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS,
-      adjustStartDateAfterWorkEnd:
-        settings.adjustStartDateToNextBusinessDay ??
-        settings.adjustStartDateAfterWorkEnd ??
-        DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY,
-      adjustStartDateToNextBusinessDay:
-        settings.adjustStartDateToNextBusinessDay ??
-        settings.adjustStartDateAfterWorkEnd ??
-        DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY,
-      excludeSaturdays,
-      excludeSundays,
-      excludeWeekendsForStartDate: excludeSaturdays && excludeSundays,
-      maxRentalDays: getSafeMaxRentalDays(settings),
-    });
-
-    const comparableSettings = Object.fromEntries(
-      RENTAL_POLICY_SETTING_KEYS.map((key) => [key, normalizedSettings[key]])
-    );
-
-    [
-      'maxRentalDays',
-      'rentalExtensionMaxCount',
-      'rentalExtensionDays',
-      'rentalExtensionRequestWaitDays',
-      'overdueFixedDaysPerAsset',
-      'overdueDayMultiplier',
-      'workEndTime',
-    ].forEach((key) => {
-      comparableSettings[key] = String(
-        settings[key] ?? normalizedSettings[key] ?? ''
-      );
-    });
-
-    return comparableSettings;
-  };
-
-  const rentalPolicySettingsDirty = useMemo(
-    () =>
-      JSON.stringify(getComparableRentalPolicySettings(tempSettings)) !==
-      JSON.stringify(getComparableRentalPolicySettings(data.settings)),
-    [data.settings, tempSettings]
-  );
+  // 설정 임시 저장 상태와 변경 여부는 설정 feature에서 관리
+  const {
+    holidayImportConflictModal,
+    holidayImportLoading,
+    holidayImportYear,
+    holidayManagementMonth,
+    holidayManagementView,
+    holidayManagementYear,
+    holidaySettingsDirty,
+    newHolidayDate,
+    newHolidayName,
+    newHolidayType,
+    rentalPolicySettingsDirty,
+    setHolidayImportConflictModal,
+    setHolidayImportYear,
+    setHolidayManagementMonth,
+    setHolidayManagementView,
+    setHolidayManagementYear,
+    setNewHolidayDate,
+    setNewHolidayName,
+    setNewHolidayType,
+    setTempSettings,
+    tempSettings,
+  } = useAdminSystemSettingsState({
+    adminTab,
+    dataSettings: data.settings,
+  });
 
   const footerConfigDirty =
     footerConfigReady &&
@@ -3298,34 +3232,6 @@ function App() {
 
 
 
-
-  // 설정 탭으로 변경되거나 시스템 원본 설정 값이 변경될 때 임시 설정 버퍼를 동기화
-  useEffect(() => {
-    if (['serviceOperations', 'extensionSettings', 'holidaySettings'].includes(adminTab)) {
-      setTempSettings(data.settings);
-      setNewHolidayDate(today());
-      setNewHolidayName('');
-      setNewHolidayType(DEFAULT_HOLIDAY_TYPE);
-      setHolidayImportYear(String(getKoreaNow().getUTCFullYear()));
-      setHolidayImportLoading(false);
-      if (adminTab === 'holidaySettings') {
-        setHolidayManagementYear(String(getKoreaNow().getUTCFullYear()));
-        setHolidayManagementMonth(getKoreaNow().getUTCMonth() + 1);
-      }
-    }
-  }, [adminTab, data.settings]);
-
-  // 자산 카테고리 탭으로 변경되거나 시스템 원본 카테고리 값이 변경될 때 임시 카테고리 버퍼를 동기화
-  useEffect(() => {
-    if (adminTab === 'categories') {
-      setTempAssetCategories(data.assetCategories || []);
-      setTempAssetCategoryRenameMap({});
-      setEditingAssetCategoryIndex(null);
-      setEditingAssetCategoryName('');
-      setDraggingAssetCategoryIndex(null);
-      setNewAssetCategory('');
-    }
-  }, [adminTab, data.assetCategories]);
 
   useEffect(() => {
     if (adminTab === 'adminAccounts') {
@@ -6802,935 +6708,65 @@ function App() {
     triggerToast,
   });
 
-  const addTempHoliday = () => {
-    const holidayDate = newHolidayDate;
-    const holidayName = newHolidayName.trim();
-    const nextReason = normalizeHolidayReason({
-      type: newHolidayType || DEFAULT_HOLIDAY_TYPE,
-      name: holidayName,
-    });
-
-    if (!holidayDate) {
-      triggerToast('휴일 날짜를 선택해 주세요.', 'error');
-      return;
-    }
-
-    const normalizedHolidays = normalizeHolidayList(tempSettings.holidays);
-    const existingHoliday = normalizedHolidays.find(
-      (holiday) => holiday.date === holidayDate
-    );
-
-    if (
-      existingHoliday &&
-      getHolidayReasons(existingHoliday).some(
-        (reason) =>
-          reason.type === nextReason.type &&
-          reason.name === nextReason.name
-      )
-    ) {
-      triggerToast('같은 날짜에 동일한 휴일 사유가 이미 등록되어 있습니다.', 'error');
-      return;
-    }
-
-    const nextHolidays = existingHoliday
-      ? normalizedHolidays.map((holiday) =>
-          holiday.date === holidayDate
-            ? normalizeHolidayList([
-                holiday,
-                {
-                  date: holidayDate,
-                  reasons: [nextReason],
-                  enabled: true,
-                },
-              ])[0]
-            : holiday
-        )
-      : normalizeHolidayList([
-          ...normalizedHolidays,
-          {
-            date: holidayDate,
-            reasons: [nextReason],
-            enabled: true,
-          },
-        ]);
-
-    setTempSettings((prev) => ({
-      ...prev,
-      holidays: normalizeHolidayList(nextHolidays),
-    }));
-
-    setHolidayManagementYear(String(holidayDate).slice(0, 4));
-    setHolidayManagementMonth(Number(String(holidayDate).slice(5, 7)) || 1);
-    setNewHolidayName('');
-    triggerToast(
-      `[${formatDateWithKoreanWeekday(holidayDate)}] ${nextReason.name} 사유가 임시 추가되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`,
-      'success'
-    );
-  };
-
-  const updateTempHolidayReason = ({
-    sourceDate,
-    reasonIndex,
-    date,
-    type,
-    name,
-  }) => {
-    const nextDate = String(date || '').trim();
-    const nextReason = normalizeHolidayReason({ type, name });
-    const normalizedHolidays = normalizeHolidayList(tempSettings.holidays);
-    const sourceHoliday = normalizedHolidays.find(
-      (holiday) => holiday.date === sourceDate
-    );
-
-    if (!nextDate) {
-      triggerToast('휴일 날짜를 선택해 주세요.', 'error');
-      return false;
-    }
-
-    if (!sourceHoliday) {
-      triggerToast('수정할 휴일 정보를 찾지 못했습니다.', 'error');
-      return false;
-    }
-
-    if (
-      nextDate !== sourceDate &&
-      normalizedHolidays.some((holiday) => holiday.date === nextDate)
-    ) {
-      triggerToast(
-        '해당 날짜에는 이미 등록된 휴일이 있습니다. 기존 휴일에 사유를 추가하거나 다른 날짜를 선택해 주세요.',
-        'error'
-      );
-      return false;
-    }
-
-    const sourceReasons = getHolidayReasons(sourceHoliday);
-
-    if (
-      sourceReasons.some(
-        (reason, index) =>
-          index !== reasonIndex &&
-          reason.type === nextReason.type &&
-          reason.name === nextReason.name
-      )
-    ) {
-      triggerToast('같은 날짜에 동일한 휴일 사유가 이미 등록되어 있습니다.', 'error');
-      return false;
-    }
-
-    const nextSourceReasons = sourceReasons.filter(
-      (_, index) => index !== reasonIndex
-    );
-    const withoutSource = normalizedHolidays.filter(
-      (holiday) => holiday.date !== sourceDate
-    );
-    const rebuiltHolidays = [...withoutSource];
-
-    if (nextSourceReasons.length > 0) {
-      rebuiltHolidays.push({
-        ...sourceHoliday,
-        reasons: nextSourceReasons,
-      });
-    }
-
-    rebuiltHolidays.push({
-      date: nextDate,
-      reasons: [nextReason],
-      enabled: sourceHoliday.enabled !== false,
-    });
-
-    setTempSettings((prev) => ({
-      ...prev,
-      holidays: normalizeHolidayList(rebuiltHolidays),
-    }));
-    setHolidayManagementYear(nextDate.slice(0, 4));
-    setHolidayManagementMonth(Number(nextDate.slice(5, 7)) || 1);
-    triggerToast(
-      `[${formatDateWithKoreanWeekday(nextDate)}] 휴일 정보가 임시 수정되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`,
-      'success'
-    );
-
-    return true;
-  };
-
-  const deleteTempHoliday = (targetDate, reasonIndex) => {
-    const normalizedHolidays = normalizeHolidayList(tempSettings.holidays);
-    const targetHoliday = normalizedHolidays.find(
-      (holiday) => holiday.date === targetDate
-    );
-    const targetReason = getHolidayReasons(targetHoliday)[reasonIndex];
-
-    if (!targetHoliday || !targetReason) {
-      triggerToast('삭제할 휴일 정보를 찾지 못했습니다.', 'error');
-      return;
-    }
-
-    const nextReasons = getHolidayReasons(targetHoliday).filter(
-      (_, index) => index !== reasonIndex
-    );
-    const nextHolidays = normalizedHolidays
-      .filter((holiday) => holiday.date !== targetDate)
-      .concat(
-        nextReasons.length > 0
-          ? [
-              {
-                ...targetHoliday,
-                reasons: nextReasons,
-              },
-            ]
-          : []
-      );
-
-    setTempSettings((prev) => ({
-      ...prev,
-      holidays: normalizeHolidayList(nextHolidays),
-    }));
-
-    triggerToast(
-      `[${targetReason.name || '휴일'}] 휴일 사유가 임시 삭제되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`,
-      'success'
-    );
-  };
-
-  const mergeImportedHolidays = (
-    currentHolidays = [],
-    importedHolidays = [],
-    mode = 'merge'
-  ) => {
-    const currentList = normalizeHolidayList(currentHolidays);
-    const importedList = normalizeHolidayList(importedHolidays);
-    const holidayMap = new Map(
-      currentList.map((holiday) => [holiday.date, holiday])
-    );
-
-    importedList.forEach((importedHoliday) => {
-      const existingHoliday = holidayMap.get(importedHoliday.date);
-
-      if (!existingHoliday) {
-        holidayMap.set(importedHoliday.date, importedHoliday);
-        return;
-      }
-
-      if (mode === 'exclude') {
-        return;
-      }
-
-      if (mode === 'replace') {
-        holidayMap.set(importedHoliday.date, importedHoliday);
-        return;
-      }
-
-      holidayMap.set(
-        importedHoliday.date,
-        normalizeHolidayList([existingHoliday, importedHoliday])[0]
-      );
-    });
-
-    return normalizeHolidayList(Array.from(holidayMap.values()));
-  };
-
-  const applyHolidayImportConflictChoice = (mode) => {
-    const pendingImport = holidayImportConflictModal;
-
-    if (!pendingImport) return;
-
-    const nextMode = ['exclude', 'merge', 'replace'].includes(mode)
-      ? mode
-      : 'merge';
-
-    setTempSettings((prev) => ({
-      ...prev,
-      holidays: mergeImportedHolidays(
-        prev.holidays || [],
-        pendingImport.importedHolidays,
-        nextMode
-      ),
-    }));
-    setHolidayManagementYear(String(pendingImport.year));
-    setHolidayManagementMonth(
-      pendingImport.year === getKoreaNow().getUTCFullYear()
-        ? getKoreaNow().getUTCMonth() + 1
-        : 1
-    );
-    setHolidayImportConflictModal(null);
-
-    const actionLabel =
-      nextMode === 'exclude'
-        ? '중복 날짜를 제외하고'
-        : nextMode === 'replace'
-          ? '중복 날짜를 불러온 데이터로 교체하고'
-          : '기존 휴일 사유와 병합하고';
-
-    triggerToast(
-      `${pendingImport.year}년 공휴일을 ${actionLabel} 임시 목록에 반영했습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`,
-      'success'
-    );
-  };
-
-  const importKoreanPublicHolidaysFromJson = async () => {
-    const year = Number(holidayImportYear);
-
-    if (!year || year < 2000 || year > 2100) {
-      triggerToast('불러올 연도를 2000년부터 2100년 사이로 입력해 주세요.', 'error');
-      return;
-    }
-
-    setHolidayImportLoading(true);
-
-    try {
-      const jsonUrl = `${import.meta.env.BASE_URL}holidays/kr-holidays-${year}.json?ts=${Date.now()}`;
-      const response = await fetch(jsonUrl);
-
-      if (!response.ok) {
-        triggerToast(`${year}년 공휴일 JSON 파일을 찾지 못했습니다. 먼저 로컬 스크립트 또는 GitHub Actions로 public/holidays/kr-holidays-${year}.json 파일을 생성해 주세요.`, 'error');
-        return;
-      }
-
-      const payload = await response.json();
-      const importedHolidays = normalizeHolidayList(
-        Array.isArray(payload)
-          ? payload
-          : Array.isArray(payload.holidays)
-            ? payload.holidays
-            : []
-      );
-
-      if (importedHolidays.length === 0) {
-        triggerToast(`${year}년 공휴일 JSON에 불러올 휴일 데이터가 없습니다.`, 'error');
-        return;
-      }
-
-      const currentHolidays = normalizeHolidayList(tempSettings.holidays);
-      const currentDateSet = new Set(
-        currentHolidays.map((holiday) => holiday.date)
-      );
-      const duplicateHolidays = importedHolidays.filter((holiday) =>
-        currentDateSet.has(holiday.date)
-      );
-      const newHolidays = importedHolidays.filter(
-        (holiday) => !currentDateSet.has(holiday.date)
-      );
-
-      setHolidayManagementYear(String(year));
-      setHolidayManagementMonth(
-        year === getKoreaNow().getUTCFullYear()
-          ? getKoreaNow().getUTCMonth() + 1
-          : 1
-      );
-
-      if (duplicateHolidays.length > 0) {
-        setHolidayImportConflictModal({
-          year,
-          importedHolidays,
-          importedDateCount: importedHolidays.length,
-          newDateCount: newHolidays.length,
-          duplicateDateCount: duplicateHolidays.length,
-        });
-        return;
-      }
-
-      setTempSettings((prev) => ({
-        ...prev,
-        holidays: mergeImportedHolidays(
-          prev.holidays || [],
-          importedHolidays,
-          'merge'
-        ),
-      }));
-
-      triggerToast(`${year}년 법정/임시공휴일 ${importedHolidays.length}건을 임시 목록에 불러왔습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`, 'success');
-    } catch (error) {
-      console.error('Static holiday JSON import error:', error);
-      triggerToast('공휴일 JSON 파일을 불러오는 중 오류가 발생했습니다. public/holidays 파일 생성 및 배포 상태를 확인해 주세요.', 'error');
-    } finally {
-      setHolidayImportLoading(false);
-    }
-  };
-
-  const getOriginalAssetCategoryName = (category) => {
-    const matchedEntry = Object.entries(tempAssetCategoryRenameMap).find(
-      ([, renamedName]) => renamedName === category
-    );
-
-    return matchedEntry ? matchedEntry[0] : category;
-  };
-
-  const addTempAssetCategory = () => {
-    const categoryName = newAssetCategory.trim();
-
-    if (!categoryName) {
-      triggerToast('자산 카테고리 명칭을 입력해 주세요.', 'error');
-      return;
-    }
-
-    if (tempAssetCategories.some((category) => String(category || '').trim() === categoryName)) {
-      triggerToast('이미 등록된 자산 카테고리입니다.', 'error');
-      return;
-    }
-
-    setTempAssetCategories((prev) => [...prev, categoryName]);
-    setNewAssetCategory('');
-    triggerToast(`[${categoryName}] 자산 카테고리가 임시 추가되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`, 'success');
-  };
-
-  const startEditTempAssetCategory = (category, index) => {
-    setEditingAssetCategoryIndex(index);
-    setEditingAssetCategoryName(category);
-  };
-
-  const applyEditTempAssetCategory = (category, index) => {
-    const nextCategoryName = editingAssetCategoryName.trim();
-
-    if (!nextCategoryName) {
-      triggerToast('자산 카테고리 명칭을 입력해 주세요.', 'error');
-      return;
-    }
-
-    if (
-      tempAssetCategories.some(
-        (item, itemIndex) => itemIndex !== index && String(item || '').trim() === nextCategoryName
-      )
-    ) {
-      triggerToast('이미 등록된 자산 카테고리입니다.', 'error');
-      return;
-    }
-
-    const originalCategoryName = getOriginalAssetCategoryName(category);
-
-    setTempAssetCategories((prev) =>
-      prev.map((item, itemIndex) => (itemIndex === index ? nextCategoryName : item))
-    );
-
-    setTempAssetCategoryRenameMap((prev) => {
-      const nextMap = { ...prev };
-
-      if ((data.assetCategories || []).includes(originalCategoryName) && originalCategoryName !== nextCategoryName) {
-        nextMap[originalCategoryName] = nextCategoryName;
-      } else {
-        delete nextMap[originalCategoryName];
-      }
-
-      return nextMap;
-    });
-
-    setEditingAssetCategoryIndex(null);
-    setEditingAssetCategoryName('');
-    triggerToast(`[${category}] 카테고리명이 임시 수정되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`, 'success');
-  };
-
-  const deleteTempAssetCategory = (category, index) => {
-    const originalCategoryName = getOriginalAssetCategoryName(category);
-    const isCategoryInUse = data.laptops.some((asset) => {
-      const assetCategory = asset.category || '노트북';
-      return assetCategory === originalCategoryName || assetCategory === category;
-    });
-
-    if (isCategoryInUse) {
-      triggerToast('해당 카테고리를 사용하는 자산이 있어 삭제할 수 없습니다.', 'error');
-      return;
-    }
-
-    setTempAssetCategories((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
-    setTempAssetCategoryRenameMap((prev) => {
-      const nextMap = { ...prev };
-      delete nextMap[originalCategoryName];
-      return nextMap;
-    });
-    setEditingAssetCategoryIndex(null);
-    setEditingAssetCategoryName('');
-    triggerToast(`[${category}] 자산 카테고리가 임시 삭제되었습니다. 변경사항 저장을 눌러야 최종 반영됩니다.`, 'success');
-  };
-
-  const moveTempAssetCategory = (fromIndex, toIndex) => {
-    if (fromIndex === null || fromIndex === toIndex) return;
-
-    setTempAssetCategories((prev) => {
-      const next = [...prev];
-      const [movedCategory] = next.splice(fromIndex, 1);
-      next.splice(toIndex, 0, movedCategory);
-      return next;
-    });
-
-    setEditingAssetCategoryIndex(null);
-    setEditingAssetCategoryName('');
-  };
-
-  const cancelTempAssetCategoryChanges = ({ silent = false } = {}) => {
-    setTempAssetCategories(data.assetCategories || []);
-    setTempAssetCategoryRenameMap({});
-    setEditingAssetCategoryIndex(null);
-    setEditingAssetCategoryName('');
-    setDraggingAssetCategoryIndex(null);
-    setNewAssetCategory('');
-    if (!silent) {
-      triggerToast('자산 카테고리 변경사항이 취소되고 이전 상태로 복원되었습니다.', 'success');
-    }
-  };
-
-  const saveTempAssetCategoryChanges = async () => {
-    if (!isSplitStorageReady) {
-      triggerToast(
-        'Firestore 분리 저장소 최종 전환이 완료되지 않아 자산 카테고리를 저장할 수 없습니다.',
-        'error'
-      );
-      return false;
-    }
-
-    const nextAssetCategories =
-      tempAssetCategories
-        .map((category) =>
-          String(category || '').trim()
-        )
-        .filter(Boolean);
-
-    const duplicatedCategory =
-      nextAssetCategories.find(
-        (category, index) =>
-          nextAssetCategories.indexOf(
-            category
-          ) !== index
-      );
-
-    if (duplicatedCategory) {
-      triggerToast(
-        `[${duplicatedCategory}] 카테고리명이 중복되어 저장할 수 없습니다.`,
-        'error'
-      );
-      return false;
-    }
-
-    try {
-      const assetsSnapshot =
-        await getDocs(
-          RENTAL_ASSETS_COLLECTION_REF
-        );
-
-      const assetOperations = [];
-      const nextCatalogAssets = [];
-
-      assetsSnapshot.docs.forEach(
-        (assetDocument) => {
-          const assetData = {
-            ...assetDocument.data(),
-            id: assetDocument.id,
-          };
-
-          const nextCategory =
-            tempAssetCategoryRenameMap[
-              assetData.category
-            ] ||
-            assetData.category;
-
-          if (
-            nextCategory !==
-              assetData.category &&
-            normalizeAssetReservations(
-              assetData.reservations || []
-            ).length > 0
-          ) {
-            const activeRentalError =
-              new Error(
-                'active-rental-category-rename'
-              );
-
-            activeRentalError.assetNo =
-              assetData.assetNo;
-
-            throw activeRentalError;
-          }
-
-          if (
-            !nextAssetCategories.includes(
-              nextCategory
-            )
-          ) {
-            const categoryInUseError =
-              new Error(
-                'asset-category-still-in-use'
-              );
-
-            categoryInUseError.category =
-              assetData.category;
-
-            throw categoryInUseError;
-          }
-
-          const nextAsset = {
-            ...assetData,
-            category:
-              nextCategory,
-          };
-
-          nextCatalogAssets.push(nextAsset);
-
-          if (
-            nextCategory !==
-            assetData.category
-          ) {
-            assetOperations.push({
-              type: 'set',
-              ref: assetDocument.ref,
-              data: {
-                category:
-                  nextCategory,
-                updatedAt:
-                  serverTimestamp(),
-              },
-              options: {
-                merge: true,
-              },
-            });
-          }
-        }
-      );
-
-      const catalogPayload =
-        await createPublicAssetCatalogPayload(
-          nextCatalogAssets,
-          {
-            updatedByUid:
-              firebaseAuth.currentUser?.uid ||
-              authenticatedAdminId ||
-              currentAuthAdminAccount?.id ||
-              '',
-          }
-        );
-
-      const categorySaveBatch =
-        writeBatch(db);
-
-      assetOperations.forEach(
-        (operation) => {
-          categorySaveBatch.set(
-            operation.ref,
-            operation.data,
-            operation.options
-          );
-        }
-      );
-
-      categorySaveBatch.set(
-        PUBLIC_CONFIG_DOC_REF,
-        {
-          assetCategories:
-            nextAssetCategories,
-          updatedAt:
-            serverTimestamp(),
-        },
-        {
-          merge: true,
-        }
-      );
-
-      categorySaveBatch.set(
-        PUBLIC_ASSET_CATALOG_DOC_REF,
-        catalogPayload,
-        {
-          merge: false,
-        }
-      );
-
-      await categorySaveBatch.commit();
-
-      setData((prev) => ({
-        ...prev,
-        assetCategories:
-          nextAssetCategories,
-        laptops:
-          (prev.laptops || []).map(
-            (asset) => ({
-              ...asset,
-              category:
-                tempAssetCategoryRenameMap[
-                  asset.category
-                ] ||
-                asset.category,
-            })
-          ),
-      }));
-
-      setSelectedAssetCategory(
-        '전체'
-      );
-      setAdminSelectedAssetCategory(
-        '전체'
-      );
-      setTempAssetCategories(
-        nextAssetCategories
-      );
-      setTempAssetCategoryRenameMap(
-        {}
-      );
-      setEditingAssetCategoryIndex(
-        null
-      );
-      setEditingAssetCategoryName(
-        ''
-      );
-      setDraggingAssetCategoryIndex(
-        null
-      );
-
-      triggerToast(
-        '자산 카테고리 변경사항이 분리 저장소에 성공적으로 저장 및 반영되었습니다.',
-        'success'
-      );
-
-      return true;
-    } catch (error) {
-      console.error(
-        'Asset category save error:',
-        error
-      );
-
-      if (
-        error?.message ===
-        'active-rental-category-rename'
-      ) {
-        triggerToast(
-          `진행 중 예약이 있는 자산 [${error.assetNo}]이(가) 포함되어 카테고리명을 변경할 수 없습니다. 해당 신청을 먼저 완료해 주세요.`,
-          'error'
-        );
-        return false;
-      }
-
-      if (
-        error?.message ===
-        'asset-category-still-in-use'
-      ) {
-        triggerToast(
-          `카테고리 [${error.category}]를 사용하는 최신 자산이 있어 삭제할 수 없습니다.`,
-          'error'
-        );
-        return false;
-      }
-
-      const catalogErrorMessage =
-        await getPublicAssetCatalogWriteErrorMessage(error);
-
-      if (catalogErrorMessage) {
-        triggerToast(catalogErrorMessage, 'error');
-        return false;
-      }
-
-      triggerToast(
-        '자산 카테고리 저장에 실패했습니다. 기존 카테고리와 자산 정보는 유지됩니다.',
-        'error'
-      );
-
-      return false;
-    }
-  };
-
-  const saveSystemSettings = async () => {
-    if (!isSplitStorageReady) {
-      triggerToast(
-        'Firestore 분리 저장소 최종 전환이 완료되지 않아 대여 정책을 저장할 수 없습니다.',
-        'error'
-      );
-      return false;
-    }
-
-    if (
-      !Number.isInteger(Number(tempSettings.maxRentalDays)) ||
-      Number(tempSettings.maxRentalDays) < 1
-    ) {
-      triggerToast(
-        '기본 최장 허용 대여 기간은 1 이상의 정수로 입력해 주세요.',
-        'error'
-      );
-      return false;
-    }
-
-    if (
-      tempSettings.rentalExtensionEnabled &&
-      (
-        Number(tempSettings.rentalExtensionMaxCount) < 1 ||
-        Number(tempSettings.rentalExtensionDays) < 1 ||
-        Number(tempSettings.rentalExtensionRequestWaitDays) < 0
-      )
-    ) {
-      triggerToast(
-        '대여 연장 횟수와 회당 연장 기간은 1 이상, 연장 신청 대기일은 0 이상으로 입력해 주세요.',
-        'error'
-      );
-      return false;
-    }
-
-    if (
-      tempSettings.postOverduePenaltyEnabled &&
-      (
-        (
-          tempSettings.overduePenaltyMode ===
-            OVERDUE_PENALTY_MODE.FIXED_PER_ASSET &&
-          Number(tempSettings.overdueFixedDaysPerAsset) < 1
-        ) ||
-        (
-          tempSettings.overduePenaltyMode ===
-            OVERDUE_PENALTY_MODE.OVERDUE_DAY_MULTIPLIER &&
-          Number(tempSettings.overdueDayMultiplier) < 1
-        )
-      )
-    ) {
-      triggerToast(
-        '연체 페널티의 기기당 고정 일수와 연체일 배수는 1 이상의 정수로 입력해 주세요.',
-        'error'
-      );
-      return false;
-    }
-
-    const excludeSaturdays =
-      tempSettings.excludeSaturdays ??
-      tempSettings.excludeWeekendsForStartDate ??
-      DEFAULT_EXCLUDE_SATURDAYS;
-    const excludeSundays =
-      tempSettings.excludeSundays ??
-      tempSettings.excludeWeekendsForStartDate ??
-      DEFAULT_EXCLUDE_SUNDAYS;
-
-    const normalizedPolicySettings = normalizeRentalPolicySettings({
-      ...data.settings,
-      ...tempSettings,
-      holidays: data.settings.holidays,
-      allowNonOverlappingSameAssetRequests:
-        tempSettings.allowNonOverlappingSameAssetRequests ??
-        DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS,
-      adjustStartDateAfterWorkEnd:
-        tempSettings.adjustStartDateToNextBusinessDay ??
-        tempSettings.adjustStartDateAfterWorkEnd ??
-        DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY,
-      adjustStartDateToNextBusinessDay:
-        tempSettings.adjustStartDateToNextBusinessDay ??
-        tempSettings.adjustStartDateAfterWorkEnd ??
-        DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY,
-      excludeSaturdays,
-      excludeSundays,
-      excludeWeekendsForStartDate: excludeSaturdays && excludeSundays,
-      maxRentalDays: getSafeMaxRentalDays(tempSettings),
-    });
-
-    const policyValues = Object.fromEntries(
-      RENTAL_POLICY_SETTING_KEYS.map((key) => [key, normalizedPolicySettings[key]])
-    );
-    const firestorePolicyUpdates = Object.fromEntries(
-      RENTAL_POLICY_SETTING_KEYS.map((key) => [
-        `settings.${key}`,
-        normalizedPolicySettings[key],
-      ])
-    );
-
-    try {
-      await updateDoc(PUBLIC_CONFIG_DOC_REF, {
-        ...firestorePolicyUpdates,
-        updatedAt: serverTimestamp(),
-      });
-
-      const nextSettings = {
-        ...data.settings,
-        ...policyValues,
-        holidays: normalizeHolidayList(data.settings.holidays),
-      };
-
-      setData((prev) => ({
-        ...prev,
-        settings: {
-          ...prev.settings,
-          ...policyValues,
-        },
-      }));
-      setTempSettings(nextSettings);
-
-      triggerToast(
-        '대여 정책 변경사항이 성공적으로 저장 및 반영되었습니다.',
-        'success'
-      );
-
-      return true;
-    } catch (error) {
-      console.error('Rental policy settings save error:', error);
-
-      triggerToast(
-        '대여 정책 저장에 실패했습니다. 기존 설정은 유지됩니다.',
-        'error'
-      );
-
-      return false;
-    }
-  };
-
-  const saveHolidaySettings = async () => {
-    if (!isSplitStorageReady) {
-      triggerToast(
-        'Firestore 분리 저장소 최종 전환이 완료되지 않아 휴일을 저장할 수 없습니다.',
-        'error'
-      );
-      return false;
-    }
-
-    const nextHolidays = serializeHolidayListForFirestore(
-      tempSettings.holidays || []
-    );
-
-    try {
-      await updateDoc(PUBLIC_CONFIG_DOC_REF, {
-        'settings.holidays': nextHolidays,
-        updatedAt: serverTimestamp(),
-      });
-
-      const normalizedHolidays = normalizeHolidayList(nextHolidays);
-
-      setData((prev) => ({
-        ...prev,
-        settings: {
-          ...prev.settings,
-          holidays: normalizedHolidays,
-        },
-      }));
-      setTempSettings((prev) => ({
-        ...prev,
-        holidays: normalizedHolidays,
-      }));
-      setHolidayImportConflictModal(null);
-      setHolidayImportLoading(false);
-
-      triggerToast(
-        '휴일 변경사항이 성공적으로 저장 및 반영되었습니다.',
-        'success'
-      );
-
-      return true;
-    } catch (error) {
-      console.error('Holiday settings save error:', error);
-
-      triggerToast(
-        '휴일 저장에 실패했습니다. 기존 설정은 유지됩니다.',
-        'error'
-      );
-
-      return false;
-    }
-  };
-
-  const discardHolidayChanges = () => {
-    setTempSettings((prev) => ({
-      ...prev,
-      holidays: normalizeHolidayList(data.settings.holidays || []),
-    }));
-    setNewHolidayDate(today());
-    setNewHolidayName('');
-    setNewHolidayType(DEFAULT_HOLIDAY_TYPE);
-    setHolidayImportConflictModal(null);
-    setHolidayImportLoading(false);
-  };
-
-  const discardRentalPolicyChanges = () => {
-    const savedPolicyValues = getComparableRentalPolicySettings(data.settings);
-
-    setTempSettings((prev) => ({
-      ...prev,
-      ...savedPolicyValues,
-      holidays: prev.holidays,
-    }));
-  };
+  const {
+    addTempHoliday,
+    applyHolidayImportConflictChoice,
+    deleteTempHoliday,
+    discardHolidayChanges,
+    discardRentalPolicyChanges,
+    importKoreanPublicHolidaysFromJson,
+    saveHolidaySettings,
+    saveSystemSettings,
+    updateTempHolidayReason,
+  } = useAdminSystemSettingsController({
+    dataSettings: data.settings,
+    holidayImportConflictModal,
+    holidayImportYear,
+    isSplitStorageReady,
+    newHolidayDate,
+    newHolidayName,
+    newHolidayType,
+    setData,
+    setHolidayImportConflictModal,
+    setHolidayManagementMonth,
+    setHolidayManagementYear,
+    setNewHolidayDate,
+    setNewHolidayName,
+    setNewHolidayType,
+    setTempSettings,
+    tempSettings,
+    triggerToast,
+  });
+
+  const {
+    addTempAssetCategory,
+    applyEditTempAssetCategory,
+    cancelTempAssetCategoryChanges,
+    deleteTempAssetCategory,
+    moveTempAssetCategory,
+    saveTempAssetCategoryChanges,
+    startEditTempAssetCategory,
+  } = useAdminAssetCategoryController({
+    authenticatedAdminId,
+    currentAuthAdminAccount,
+    dataAssetCategories: data.assetCategories,
+    dataLaptops: data.laptops,
+    editingAssetCategoryName,
+    isSplitStorageReady,
+    newAssetCategory,
+    setAdminSelectedAssetCategory,
+    setData,
+    setDraggingAssetCategoryIndex,
+    setEditingAssetCategoryIndex,
+    setEditingAssetCategoryName,
+    setNewAssetCategory,
+    setSelectedAssetCategory,
+    setTempAssetCategories,
+    setTempAssetCategoryRenameMap,
+    tempAssetCategories,
+    tempAssetCategoryRenameMap,
+    triggerToast,
+  });
 
   const discardFooterConfigChanges = () => {
     setFooterConfigDraft({

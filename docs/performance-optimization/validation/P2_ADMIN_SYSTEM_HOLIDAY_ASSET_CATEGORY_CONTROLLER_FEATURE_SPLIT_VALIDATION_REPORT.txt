@@ -1,0 +1,59 @@
+P2 ADMIN SYSTEM HOLIDAY ASSET CATEGORY CONTROLLER FEATURE SPLIT VALIDATION
+============================================================================
+
+Baseline package
+- rental-system-admin-popup-footer-content-controller-split-20260730_1652_deployment_package.zip
+- PACKAGE_FILES / SHA-256: PASS (315/315)
+
+Changed source
+- src/App.jsx
+- src/features/settings/useAdminSystemSettingsController.js (new)
+- src/features/assets/useAdminAssetCategoryController.js (new)
+- tools/firestore-audit-policy.json (moved-call audit ID only)
+
+Static validation
+- TypeScript transpile: PASS (109 source files)
+- Selected semantic diagnostics: PASS (TS2304/TS2552/TS2451/TS2448/TS2454/TS2393/TS2395/TS2300 = 0)
+- React Hook import audit: PASS (109 source files)
+- Relative import resolution: PASS (294 relative imports, missing 0)
+- Holiday panel context contract: PASS (38/38/38, missing 0)
+- Asset category panel context contract: PASS (23/23/23, missing 0)
+- Rental policy panel context contract: PASS (18/18/18, missing 0)
+- Korean UI string occurrence comparison: PASS (1,977 -> 1,977, removed 0, added 0)
+- Korean UI unique string comparison: PASS (1,438 -> 1,438)
+
+Firestore strict audit
+- Result: PASS
+- Source files: 109
+- Total calls: 129
+- onSnapshot: 35
+- getDocs: 48
+- getDoc: 28
+- getCountFromServer: 18
+- Unapproved warnings: 0
+- Unapproved errors: 0
+- Audit policy change: asset category full asset scan ID relocation only
+
+Runtime mock
+- Result: PASS
+- Scenarios: 6
+  1. Temporary holiday reason addition
+  2. Holiday Firestore payload save
+  3. Invalid maximum rental-day validation
+  4. Valid rental-policy Firestore payload save
+  5. Asset category batch save and local state synchronization
+  6. Duplicate asset category validation
+
+Source graph
+- App.jsx: 11,468 lines / 334,576 bytes -> 10,504 lines / 305,279 bytes
+- App.jsx useState(): 139 -> 123
+- App.jsx useEffect(): 58 -> 55
+- App.jsx useMemo(): 30 -> 27
+- Initial modules: 52 -> 54
+- Initial source bytes: 803,889 -> 809,711
+
+Vite production build
+- npm ci: FAIL in validation environment
+- Error: E404 yargs-parser-21.1.1.tgz not found in internal npm registry
+- Public registry retry: unavailable in the container environment
+- Final production build must be confirmed by local deploy.ps1 before push.

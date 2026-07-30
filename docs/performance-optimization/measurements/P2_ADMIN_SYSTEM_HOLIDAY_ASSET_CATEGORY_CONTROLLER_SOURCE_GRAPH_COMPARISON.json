@@ -1,0 +1,42 @@
+{
+  "generatedAt": "2026-07-30T08:14:47Z",
+  "baselinePackage": "rental-system-admin-popup-footer-content-controller-split-20260730_1652_deployment_package.zip",
+  "feature": "admin-system-holiday-asset-category-controller-split",
+  "before": {
+    "appJsxLines": 11468,
+    "appJsxBytes": 334576,
+    "appUseStateCalls": 139,
+    "appUseEffectCalls": 58,
+    "appUseMemoCalls": 30,
+    "appUseRefCalls": 20,
+    "appRunTransactionCalls": 4,
+    "initialModuleCount": 52,
+    "initialSourceBytes": 803889
+  },
+  "after": {
+    "appJsxLines": 10504,
+    "appJsxBytes": 305279,
+    "appUseStateCalls": 123,
+    "appUseEffectCalls": 55,
+    "appUseMemoCalls": 27,
+    "appUseRefCalls": 20,
+    "appRunTransactionCalls": 4,
+    "initialModuleCount": 54,
+    "initialSourceBytes": 809711,
+    "systemSettingsControllerLines": 769,
+    "systemSettingsControllerBytes": 22555,
+    "assetCategoryControllerLines": 429,
+    "assetCategoryControllerBytes": 12564
+  },
+  "delta": {
+    "appJsxLines": -964,
+    "appJsxBytes": -29297,
+    "appUseStateCalls": -16,
+    "appUseEffectCalls": -3,
+    "appUseMemoCalls": -3,
+    "appUseRefCalls": 0,
+    "appRunTransactionCalls": 0,
+    "initialModuleCount": 2,
+    "initialSourceBytes": 5822
+  }
+}
