@@ -1,0 +1,53 @@
+{
+  "generatedAt": "2026-07-30T08:39:00.105395+00:00",
+  "baselinePackage": "rental-system-admin-system-holiday-asset-category-controller-split-20260730_1703_deployment_package.zip",
+  "task": "admin split-storage migration controller extraction and holiday save false-failure toast fix",
+  "app": {
+    "before": {
+      "lines": 10504,
+      "bytes": 305279,
+      "useState": 123,
+      "useEffect": 55,
+      "useMemo": 27,
+      "useRef": 20,
+      "runTransaction": 4
+    },
+    "after": {
+      "lines": 10176,
+      "bytes": 296485,
+      "useState": 122,
+      "useEffect": 55,
+      "useMemo": 27,
+      "useRef": 20,
+      "runTransaction": 4
+    },
+    "delta": {
+      "lines": -328,
+      "bytes": -8794,
+      "useState": -1,
+      "useEffect": 0,
+      "useMemo": 0,
+      "useRef": 0,
+      "runTransaction": 0
+    }
+  },
+  "controller": {
+    "file": "src/features/settings/useAdminSplitStorageMigrationController.js",
+    "lines": 319,
+    "bytes": 9525
+  },
+  "sourceGraph": {
+    "before": {
+      "initialModuleCount": 54,
+      "initialSourceBytes": 809711
+    },
+    "after": {
+      "initialModuleCount": 55,
+      "initialSourceBytes": 810442
+    },
+    "delta": {
+      "initialModuleCount": 1,
+      "initialSourceBytes": 731
+    }
+  }
+}

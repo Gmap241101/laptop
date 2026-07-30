@@ -1,0 +1,21 @@
+P2 ADMIN SPLIT STORAGE CONTROLLER + HOLIDAY SAVE FIX VALIDATION
+====================================================================
+
+[PASS] 기준 패키지 321개 파일 SHA-256 검증
+[PASS] React Hook import audit: 110 source files
+[PASS] JS/JSX/MJS TypeScript transpile: 110 files
+[PASS] selected semantic diagnostics: 0 new errors
+[PASS] relative import resolution: 306 imports, 0 missing
+[PASS] Firestore strict audit: 129 calls, unapproved 0
+[PASS] Korean UI string comparison: 1977 -> 1977, removed 0, added 0
+[PASS] AdminSettings context contract: finalize function/loading state preserved
+[PASS] Holiday setter contract: state destructure and controller argument both present
+[PASS] Runtime mock: split-storage success and unauthenticated guard
+[PASS] Runtime mock: holiday updateDoc success produces success toast, not false failure
+[PASS] Firestore Rules/indexes/package manifests unchanged
+[PASS] REMOVED_FILES.txt unchanged; 67 paths, duplicate 0
+
+VITE BUILD
+----------
+[NOT RUN] npm ci failed before build because the internal npm registry returned E404 for yargs-parser-21.1.1.tgz.
+Local deploy.ps1 must complete npm run build before deployment is considered successful.
