@@ -1,0 +1,99 @@
+P2 USER MY PAGE ACCOUNT CONTROLLER FEATURE SPLIT VALIDATION
+===========================================================
+Generated: 2026-07-30 14:21 KST
+Baseline: rental-system-user-signup-controller-split-20260730_1400_deployment_package.zip
+
+[1] INPUT PACKAGE INTEGRITY
+- PACKAGE_SHA256SUMS entries checked: 274
+- Result: PASS
+
+[2] SOURCE CHANGE
+- Modified: src/App.jsx
+- Added: src/features/members/useUserMyPageAccountController.js
+- Added reports/diff/measurement files
+- Deleted project files: 0
+- REMOVED_FILES.txt inherited entries: 67
+- REMOVED_FILES.txt duplicate entries: 0
+- Result: PASS
+
+[3] APP.JSX METRICS
+- Before: 16,513 lines / 478,977 bytes
+- After: 15,946 lines / 460,043 bytes
+- Delta: -567 lines / -18,934 bytes
+- useState: 187 -> 182
+- useMemo: 33 -> 32
+- useEffect: 59 -> 59
+- useRef: 21 -> 21
+
+[4] NEW CONTROLLER
+- File: src/features/members/useUserMyPageAccountController.js
+- Size: 722 lines / 22,785 bytes
+- Responsibilities:
+  * user profile form and loading state
+  * withdrawal dialog/password/loading state
+  * withdrawal blocking policy
+  * user profile save transaction
+  * withdrawal reauthentication and transaction
+  * withdrawal rollback
+
+[5] STATIC VALIDATION
+- TypeScript transpile check: PASS (104 files)
+- TypeScript target semantic check: PASS (99 files)
+- React hook import audit: PASS (99 source files)
+- Relative import check: PASS (253 local imports)
+- Korean UI string set comparison: PASS (removed 0, added 0)
+
+[6] FIRESTORE STRICT AUDIT
+Before:
+- Source files: 98
+- Total calls: 129
+- onSnapshot: 35
+- getDocs: 48
+- getDoc: 28
+- getCountFromServer: 18
+- Unapproved warnings: 0
+- Unapproved errors: 0
+
+After:
+- Source files: 99
+- Total calls: 129
+- onSnapshot: 35
+- getDocs: 48
+- getDoc: 28
+- getCountFromServer: 18
+- Unapproved warnings: 0
+- Unapproved errors: 0
+
+Result: PASS
+
+[7] RUNTIME MOCK
+Scenarios:
+1. withdrawal prerequisite loading block
+2. active rental request withdrawal block
+3. blocked withdrawal dialog open
+4. cancel ignored while withdrawal loading
+5. profile save rejected without authenticated user
+6. invalid member name rejected
+7. withdrawal rejected without current password
+Result: PASS
+
+[8] PROTECTED FILE HASH COMPARISON
+- rules/firestore.rules: SAME
+- firestore.indexes.json: SAME
+- firebase.json: SAME
+- .firebaserc: SAME
+- package.json: SAME
+- package-lock.json: SAME
+- package-meta/REMOVED_FILES.txt: SAME
+Result: PASS
+
+[9] SOURCE GRAPH
+- Initial modules: 43 -> 44
+- Initial source bytes: 779,356 -> 783,207
+- Delta: +1 module / +3,851 bytes
+
+[10] VITE PRODUCTION BUILD
+- npm ci: FAIL
+- Reason: internal npm registry returned E404 for yargs-parser-21.1.1.tgz
+- Source/static validation: PASS
+- Production bundle validation: must be completed by local deploy.ps1

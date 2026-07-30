@@ -1,15 +1,19 @@
 {
-  "generatedAt": "2026-07-30T05:04:49.579Z",
-  "initialModuleCount": 43,
-  "initialSourceBytes": 779356,
+  "generatedAt": "2026-07-30T05:20:23.146Z",
+  "initialModuleCount": 44,
+  "initialSourceBytes": 783207,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 478977
+      "bytes": 460043
     },
     {
       "file": "src/user/UserHomePanel.jsx",
       "bytes": 24413
+    },
+    {
+      "file": "src/features/members/useUserMyPageAccountController.js",
+      "bytes": 22785
     },
     {
       "file": "src/utils/richTextCore.js",

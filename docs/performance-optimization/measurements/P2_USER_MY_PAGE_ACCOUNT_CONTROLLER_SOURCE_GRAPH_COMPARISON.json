@@ -1,0 +1,37 @@
+{
+  "generatedAt": "2026-07-30T05:21:30Z",
+  "baselinePackage": "rental-system-user-signup-controller-split-20260730_1400_deployment_package.zip",
+  "work": "P2_USER_MY_PAGE_ACCOUNT_CONTROLLER_FEATURE_SPLIT",
+  "before": {
+    "appJsxLines": 16513,
+    "appJsxBytes": 478977,
+    "appUseStateCalls": 187,
+    "appUseEffectCalls": 59,
+    "appUseMemoCalls": 33,
+    "appUseRefCalls": 21,
+    "initialModuleCount": 43,
+    "initialSourceBytes": 779356
+  },
+  "after": {
+    "appJsxLines": 15946,
+    "appJsxBytes": 460043,
+    "appUseStateCalls": 182,
+    "appUseEffectCalls": 59,
+    "appUseMemoCalls": 32,
+    "appUseRefCalls": 21,
+    "controllerLines": 722,
+    "controllerBytes": 22785,
+    "initialModuleCount": 44,
+    "initialSourceBytes": 783207
+  },
+  "delta": {
+    "appJsxLines": -567,
+    "appJsxBytes": -18934,
+    "appUseStateCalls": -5,
+    "appUseEffectCalls": 0,
+    "appUseMemoCalls": -1,
+    "appUseRefCalls": 0,
+    "initialModuleCount": 1,
+    "initialSourceBytes": 3851
+  }
+}
