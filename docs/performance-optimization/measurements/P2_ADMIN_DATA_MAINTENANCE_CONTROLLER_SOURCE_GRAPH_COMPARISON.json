@@ -1,0 +1,86 @@
+{
+  "generatedAt": "2026-07-30T08:58:43.964312Z",
+  "baselinePackage": "rental-system-admin-split-storage-controller-holiday-save-fix-20260730_1728_deployment_package.zip",
+  "change": "Admin data maintenance controller feature split",
+  "initialSourceGraph": {
+    "before": {
+      "moduleCount": 55,
+      "sourceBytes": 810442
+    },
+    "after": {
+      "moduleCount": 55,
+      "sourceBytes": 810442
+    },
+    "delta": {
+      "moduleCount": 0,
+      "sourceBytes": 0
+    }
+  },
+  "appJs": {
+    "before": {
+      "lines": 10176,
+      "bytes": 296485,
+      "useStateCalls": 122,
+      "useEffectCalls": 55,
+      "getDocsCalls": 7,
+      "getDocCalls": 6,
+      "onSnapshotCalls": 23
+    },
+    "after": {
+      "lines": 10176,
+      "bytes": 296485,
+      "useStateCalls": 122,
+      "useEffectCalls": 55,
+      "getDocsCalls": 7,
+      "getDocCalls": 6,
+      "onSnapshotCalls": 23
+    },
+    "delta": {
+      "lines": 0,
+      "bytes": 0,
+      "useStateCalls": 0,
+      "useEffectCalls": 0,
+      "getDocsCalls": 0,
+      "getDocCalls": 0,
+      "onSnapshotCalls": 0
+    }
+  },
+  "adminSettingsPanel": {
+    "before": {
+      "lines": 2534,
+      "bytes": 121164,
+      "useStateCalls": 36,
+      "useEffectCalls": 4,
+      "getDocsCalls": 17,
+      "getDocCalls": 6,
+      "onSnapshotCalls": 3
+    },
+    "after": {
+      "lines": 1098,
+      "bytes": 63945,
+      "useStateCalls": 5,
+      "useEffectCalls": 4,
+      "getDocsCalls": 0,
+      "getDocCalls": 0,
+      "onSnapshotCalls": 1
+    },
+    "delta": {
+      "lines": -1436,
+      "bytes": -57219,
+      "useStateCalls": -31,
+      "useEffectCalls": 0,
+      "getDocsCalls": -17,
+      "getDocCalls": -6,
+      "onSnapshotCalls": -2
+    }
+  },
+  "newController": {
+    "lines": 1606,
+    "bytes": 61030,
+    "useStateCalls": 31,
+    "useEffectCalls": 1,
+    "getDocsCalls": 17,
+    "getDocCalls": 6,
+    "onSnapshotCalls": 2
+  }
+}

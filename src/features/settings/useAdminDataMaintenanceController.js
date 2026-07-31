@@ -1,0 +1,1606 @@
+import { useEffect, useState } from 'react';
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+  writeBatch,
+} from 'firebase/firestore';
+import {
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+} from 'firebase/auth';
+
+import {
+  PUBLIC_ASSET_CATALOG_DOC_REF,
+  PUBLIC_CONFIG_DOC_REF,
+  SITE_SETTINGS_DOC_REF,
+  SYSTEM_ADMIN_SETTINGS_DOC_REF,
+  SYSTEM_AUDIT_LOGS_COLLECTION_REF,
+  SYSTEM_RESET_JOBS_COLLECTION_REF,
+  SYSTEM_RESTORE_JOBS_COLLECTION_REF,
+  db,
+  firebaseAuth,
+  firebaseConfig,
+} from '../../firebase.js';
+import {
+  DEFAULT_SITE_SETTINGS,
+  SERVICE_MODE,
+  SYSTEM_MANAGEMENT_TAB,
+  SYSTEM_RESET_SCOPE,
+  createDownload,
+  formatBackupTimestamp,
+  normalizeSiteSettings,
+  normalizeSystemAdminSettings,
+  normalizeUserSessionPolicy,
+  redactBackupDocument,
+} from '../../utils/systemSettings.js';
+import {
+  BACKUP_FORMAT_VERSION,
+  RESTORE_CONFIRM_TEXT,
+  RESTORE_DELETE_ORDER,
+  RESTORE_MODE,
+  RESTORE_SCOPE_META,
+  SYSTEM_RESTORE_SCOPE,
+  buildRestorePlan,
+  computeBackupFileHash,
+  deserializeBackupValue,
+  serializeBackupValue,
+  validateBackupPayload,
+} from '../../utils/systemRestore.js';
+import {
+  createPublicAssetCatalogPayload,
+  rebuildPublicAssetCatalogFromServer,
+} from '../../services/publicAssetCatalogWriteThrough.js';
+
+export const RESET_SCOPE_META = {
+  [SYSTEM_RESET_SCOPE.ASSETS]: {
+    label: '자산',
+    description: '대여 자산과 자산관리번호 레지스트리를 삭제합니다.',
+    collections: ['rentalAssets', 'rentalAssetNumbers'],
+  },
+  [SYSTEM_RESET_SCOPE.MEMBERS]: {
+    label: '일반회원 정보',
+    description: '일반회원 문서, 부서·성명 점유, 이메일 찾기 인덱스와 약관 동의 상태·이력을 삭제합니다. Firebase Auth 계정은 별도 정리가 필요합니다.',
+    collections: ['userAccounts', 'memberIdentityClaims', 'accountRecoveryKeys', 'userTermConsentStates', 'userTermConsentLogs'],
+  },
+  [SYSTEM_RESET_SCOPE.RENTALS]: {
+    label: '신청·대여내역',
+    description: '대여신청, 신청 로그, 예약 잠금, 연체·대여 제한을 삭제합니다.',
+    collections: ['rentalRequestLogs', 'rentalAvailability', 'rentalRequests', 'rentalRestrictions'],
+  },
+  [SYSTEM_RESET_SCOPE.ORGANIZATION]: {
+    label: '부서·사용자 명부',
+    description: '부서 사용자 명부와 명부 검증 키를 삭제합니다.',
+    collections: ['rentalBorrowers', 'memberDirectoryKeys'],
+  },
+  [SYSTEM_RESET_SCOPE.CONTENT]: {
+    label: '게시물·사이트 콘텐츠',
+    description: '공지, FAQ, 팝업, 배너, 푸터 콘텐츠와 회원가입 약관·버전을 삭제합니다.',
+    collections: ['noticePosts', 'faqPosts', 'faqCategories', 'popupPosts', 'homeBanners', 'footerPages', 'signupTerms', 'signupTermVersions'],
+  },
+  [SYSTEM_RESET_SCOPE.SETTINGS]: {
+    label: '사이트·운영 설정',
+    description: '사이트 기본정보와 서비스 운영 설정을 기본값으로 되돌립니다. Firebase 연결과 관리자 계정은 유지합니다.',
+    collections: [],
+  },
+};
+
+export const TEST_DATA_PRESET = [
+  SYSTEM_RESET_SCOPE.ASSETS,
+  SYSTEM_RESET_SCOPE.MEMBERS,
+  SYSTEM_RESET_SCOPE.RENTALS,
+];
+
+export const FULL_RESET_PRESET = Object.values(SYSTEM_RESET_SCOPE);
+export const RESET_CONFIRM_TEXT = '테스트 데이터 전체 초기화';
+const FIRESTORE_DELETE_BATCH_SIZE = 400;
+
+const BACKUP_COLLECTIONS = {
+  settings: [
+    'rentalBorrowers',
+    'noticePosts',
+    'faqPosts',
+    'memberDirectoryKeys',
+    'faqCategories',
+    'homeBanners',
+    'popupPosts',
+    'footerPages',
+    'signupTerms',
+    'signupTermVersions',
+  ],
+  operations: [
+    'rentalAssets',
+    'rentalAssetNumbers',
+    'rentalAvailability',
+    'rentalRequests',
+    'rentalRequestLogs',
+    'rentalRestrictions',
+  ],
+  members: [
+    'userAccounts',
+    'memberIdentityClaims',
+    'accountRecoveryKeys',
+    'userTermConsentStates',
+    'userTermConsentLogs',
+  ],
+};
+
+const BACKUP_DOCUMENTS = [
+  ['rentalSystem/publicConfig', 'rentalSystem', 'publicConfig'],
+  ['siteSettings/config', 'siteSettings', 'config'],
+  ['systemSettings/admin', 'systemSettings', 'admin'],
+  ['securityPolicies/userSession', 'securityPolicies', 'userSession'],
+  ['noticeBoard/config', 'noticeBoard', 'config'],
+  ['faqBoard/config', 'faqBoard', 'config'],
+  ['homePage/config', 'homePage', 'config'],
+  ['siteFooter/config', 'siteFooter', 'config'],
+  ['signupTermsPolicy/current', 'signupTermsPolicy', 'current'],
+];
+
+const CONTENT_CONFIG_DOCS = [
+  ['noticeBoard', 'config'],
+  ['faqBoard', 'config'],
+  ['homePage', 'config'],
+  ['siteFooter', 'config'],
+  ['signupTermsPolicy', 'current'],
+];
+
+export const cloneForAudit = (value) => JSON.parse(JSON.stringify(value || {}));
+
+export const getAdminDisplayName = (account) =>
+  account?.userName || account?.adminLoginId || account?.authEmail || account?.id || '관리자';
+
+export const getAdminRole = (account) => account?.adminRole || 'owner';
+
+const snapshotCollection = async (collectionName, includePersonalData) => {
+  const snapshot = await getDocs(collection(db, collectionName));
+  return snapshot.docs.map((item) => ({
+    id: item.id,
+    data: serializeBackupValue(
+      redactBackupDocument(collectionName, item.data(), includePersonalData)
+    ),
+  }));
+};
+
+const deleteCollectionDocuments = async (collectionName, onProgress) => {
+  const snapshot = await getDocs(collection(db, collectionName));
+  const docs = snapshot.docs;
+  let deleted = 0;
+
+  for (let start = 0; start < docs.length; start += FIRESTORE_DELETE_BATCH_SIZE) {
+    const batch = writeBatch(db);
+    const slice = docs.slice(start, start + FIRESTORE_DELETE_BATCH_SIZE);
+    slice.forEach((item) => batch.delete(item.ref));
+    await batch.commit();
+    deleted += slice.length;
+    onProgress?.(deleted, docs.length);
+  }
+
+  return docs.length;
+};
+
+const buildAuthCleanupScript = () => `/**
+ * Firebase Authentication 일반회원 일괄 삭제 스크립트
+ *
+ * 준비:
+ *   npm install firebase-admin
+ *   Firebase Console > 프로젝트 설정 > 서비스 계정에서 키 JSON 다운로드
+ *
+ * 실행:
+ *   node delete-non-admin-auth-users.mjs ./service-account.json ./non-admin-auth-users-to-delete.json
+ *
+ * 주의: 서비스 계정 키를 GitHub, 웹 프로젝트, Firestore에 업로드하지 마십시오.
+ */
+import fs from 'node:fs/promises';
+import process from 'node:process';
+import { cert, initializeApp } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
+
+const [, , serviceAccountPath, uidFilePath] = process.argv;
+if (!serviceAccountPath || !uidFilePath) {
+  console.error('사용법: node delete-non-admin-auth-users.mjs <service-account.json> <uid-list.json>');
+  process.exit(1);
+}
+
+const serviceAccount = JSON.parse(await fs.readFile(serviceAccountPath, 'utf8'));
+const uidFile = JSON.parse(await fs.readFile(uidFilePath, 'utf8'));
+const uids = Array.isArray(uidFile.uids) ? uidFile.uids.filter(Boolean) : [];
+
+initializeApp({ credential: cert(serviceAccount) });
+
+if (uids.length === 0) {
+  console.log('삭제할 UID가 없습니다.');
+  process.exit(0);
+}
+
+const result = await getAuth().deleteUsers(uids);
+console.log('삭제 성공:', result.successCount);
+console.log('삭제 실패:', result.failureCount);
+result.errors.forEach((item) => {
+  console.error(item.index, uids[item.index], item.error?.message || item.error);
+});
+`;
+
+export default function useAdminDataMaintenanceController({
+  authenticatedAdminAccount,
+  mode,
+  siteSettings,
+  systemAdminSettings,
+  triggerToast,
+  writeAuditLog,
+}) {
+  const [integrityLoading, setIntegrityLoading] = useState(false);
+  const [integrityResult, setIntegrityResult] = useState(null);
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [backupIncludeOperations, setBackupIncludeOperations] = useState(true);
+  const [backupIncludeMembers, setBackupIncludeMembers] = useState(false);
+  const [backupIncludePersonalData, setBackupIncludePersonalData] = useState(false);
+  const [selectedResetScopes, setSelectedResetScopes] = useState(TEST_DATA_PRESET);
+  const [resetCounts, setResetCounts] = useState(null);
+  const [resetScanLoading, setResetScanLoading] = useState(false);
+  const [resetRunning, setResetRunning] = useState(false);
+  const [resetProgress, setResetProgress] = useState(null);
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetConfirmText, setResetConfirmText] = useState('');
+  const [resetBackupReady, setResetBackupReady] = useState(false);
+  const [latestResetJob, setLatestResetJob] = useState(null);
+  const [restoreFileName, setRestoreFileName] = useState('');
+  const [restoreFileHash, setRestoreFileHash] = useState('');
+  const [restorePayload, setRestorePayload] = useState(null);
+  const [restoreValidation, setRestoreValidation] = useState(null);
+  const [restoreAnalysis, setRestoreAnalysis] = useState(null);
+  const [restoreAnalyzeLoading, setRestoreAnalyzeLoading] = useState(false);
+  const [restoreRunning, setRestoreRunning] = useState(false);
+  const [restoreProgress, setRestoreProgress] = useState(null);
+  const [restoreMode, setRestoreMode] = useState(RESTORE_MODE.REPLACE);
+  const [selectedRestoreScopes, setSelectedRestoreScopes] = useState([]);
+  const [forceProjectMismatch, setForceProjectMismatch] = useState(false);
+  const [forceProjectConfirm, setForceProjectConfirm] = useState('');
+  const [restorePassword, setRestorePassword] = useState('');
+  const [restoreConfirmText, setRestoreConfirmText] = useState('');
+  const [latestRestoreJob, setLatestRestoreJob] = useState(null);
+  const [restoreResult, setRestoreResult] = useState(null);
+
+  const isOwner = getAdminRole(authenticatedAdminAccount) === 'owner';
+
+  useEffect(() => {
+    if (!authenticatedAdminAccount || mode !== SYSTEM_MANAGEMENT_TAB.DATA) {
+      setLatestResetJob(null);
+      setLatestRestoreJob(null);
+      return undefined;
+    }
+
+    let unsubscribeReset = () => {};
+    let unsubscribeRestore = () => {};
+
+    if (isOwner) {
+      const resetQuery = query(
+        SYSTEM_RESET_JOBS_COLLECTION_REF,
+        orderBy('startedAt', 'desc'),
+        limit(1)
+      );
+      unsubscribeReset = onSnapshot(
+        resetQuery,
+        (snapshot) => {
+          setLatestResetJob(snapshot.docs[0]
+            ? { id: snapshot.docs[0].id, ...snapshot.docs[0].data() }
+            : null);
+        },
+        (error) => console.error('System reset job load error:', error)
+      );
+    } else {
+      setLatestResetJob(null);
+    }
+
+    const restoreQuery = query(
+      SYSTEM_RESTORE_JOBS_COLLECTION_REF,
+      orderBy('startedAt', 'desc'),
+      limit(1)
+    );
+    unsubscribeRestore = onSnapshot(
+      restoreQuery,
+      (snapshot) => {
+        setLatestRestoreJob(snapshot.docs[0]
+          ? { id: snapshot.docs[0].id, ...snapshot.docs[0].data() }
+          : null);
+      },
+      (error) => console.error('System restore job load error:', error)
+    );
+
+    return () => {
+      unsubscribeReset();
+      unsubscribeRestore();
+    };
+  }, [
+    authenticatedAdminAccount?.id,
+    authenticatedAdminAccount?.adminRole,
+    isOwner,
+    mode,
+  ]);
+  const runIntegrityCheck = async () => {
+    setIntegrityLoading(true);
+    try {
+      const [
+        assets,
+        assetNumbers,
+        availability,
+        requests,
+        users,
+        claims,
+        recovery,
+        restrictions,
+        publicCatalog,
+      ] = await Promise.all([
+        getDocs(collection(db, 'rentalAssets')),
+        getDocs(collection(db, 'rentalAssetNumbers')),
+        getDocs(collection(db, 'rentalAvailability')),
+        getDocs(collection(db, 'rentalRequests')),
+        getDocs(collection(db, 'userAccounts')),
+        getDocs(collection(db, 'memberIdentityClaims')),
+        getDocs(collection(db, 'accountRecoveryKeys')),
+        getDocs(collection(db, 'rentalRestrictions')),
+        getDoc(PUBLIC_ASSET_CATALOG_DOC_REF),
+      ]);
+
+      const assetIds = new Set(assets.docs.map((item) => item.id));
+      const requestIds = new Set(requests.docs.map((item) => item.id));
+      const userIds = new Set(users.docs.map((item) => item.id));
+      const availabilityIds = new Set(availability.docs.map((item) => item.id));
+      const recoveryById = new Map(
+        recovery.docs.map((item) => [item.id, item.data() || {}])
+      );
+      const issues = [];
+
+      let expectedCatalogPayload = null;
+
+      try {
+        expectedCatalogPayload =
+          createPublicAssetCatalogPayload(
+            assets.docs.map((item) => ({
+              ...item.data(),
+              id: item.id,
+            })),
+            {
+              updatedByUid:
+                authenticatedAdminAccount?.id || '',
+              updatedAt: null,
+            }
+          );
+      } catch (error) {
+        issues.push({
+          level: 'error',
+          code: error?.message || 'public-catalog-build-failed',
+          message:
+            error?.message === 'public-catalog-asset-limit-exceeded'
+              ? `원본 자산 ${error.assetCount || assets.size}건이 공개 카탈로그 최대 ${error.maximumAssetCount || 200}건을 초과합니다.`
+              : '원본 자산 데이터로 공개 자산 카탈로그를 생성할 수 없습니다.',
+        });
+      }
+
+      const actualCatalogFingerprint =
+        publicCatalog.exists()
+          ? String(publicCatalog.data()?.fingerprint || '')
+          : '';
+      const actualCatalogAssetCount =
+        publicCatalog.exists()
+          ? Number(publicCatalog.data()?.assetCount || 0)
+          : 0;
+
+      if (
+        expectedCatalogPayload &&
+        (
+          !publicCatalog.exists() ||
+          actualCatalogFingerprint !== expectedCatalogPayload.fingerprint ||
+          actualCatalogAssetCount !== expectedCatalogPayload.assetCount
+        )
+      ) {
+        issues.push({
+          level: 'warning',
+          code: 'public-catalog-out-of-sync',
+          message: `공개 자산 카탈로그 불일치: 원본 ${expectedCatalogPayload.assetCount}건, 카탈로그 ${actualCatalogAssetCount}건`,
+        });
+      }
+
+      requests.docs.forEach((item) => {
+        const value = item.data();
+        if (value.laptopId && !assetIds.has(value.laptopId)) {
+          issues.push({ level: 'error', code: 'missing-asset', message: `${item.id}: 존재하지 않는 자산 ${value.laptopId} 참조` });
+        }
+        if (['신청중', '보류', '대여중'].includes(value.status) && (!value.startDate || !value.dueDate)) {
+          issues.push({ level: 'error', code: 'missing-period', message: `${item.id}: 진행 중 신청의 날짜 누락` });
+        }
+        if (value.startDate && value.dueDate && value.dueDate < value.startDate) {
+          issues.push({ level: 'error', code: 'invalid-period', message: `${item.id}: 반납일이 시작일보다 빠름` });
+        }
+        if (value.requesterUid && !userIds.has(value.requesterUid)) {
+          issues.push({ level: 'warning', code: 'missing-user', message: `${item.id}: 회원 문서가 없는 UID 참조` });
+        }
+      });
+
+      availability.docs.forEach((item) => {
+        if (!requestIds.has(item.id)) {
+          issues.push({ level: 'warning', code: 'orphan-availability', message: `${item.id}: 정식 신청 없이 예약 요약만 존재` });
+        }
+      });
+
+      users.docs.forEach((item) => {
+        const value = item.data();
+        if (value.status === 'retired' && value.identityKey) {
+          issues.push({ level: 'warning', code: 'retired-identity', message: `${item.id}: 탈퇴회원에 활성 identityKey 잔존` });
+        }
+        if (value.status !== 'retired' && value.identityKey && !claims.docs.some((claim) => claim.id === value.identityKey)) {
+          issues.push({ level: 'warning', code: 'missing-claim', message: `${item.id}: 부서·성명 점유 문서 누락` });
+        }
+        if (value.status !== 'retired' && value.recoveryKey && !recoveryById.has(value.recoveryKey)) {
+          issues.push({ level: 'warning', code: 'missing-recovery', message: `${item.id}: 이메일 찾기 복구키 누락` });
+        }
+
+        if (
+          value.status !== 'retired' &&
+          value.recoveryKey &&
+          recoveryById.has(value.recoveryKey) &&
+          !/^[0-9a-f]{64}$/.test(
+            String(recoveryById.get(value.recoveryKey)?.emailVerifier || '')
+          )
+        ) {
+          issues.push({
+            level: 'warning',
+            code: 'missing-recovery-email-verifier',
+            message: `${item.id}: 비밀번호 재설정 이메일 검증값 누락`,
+          });
+        }
+      });
+
+      restrictions.docs.forEach((item) => {
+        const value = item.data();
+        if (value.restrictionUntil && String(value.restrictionUntil) < new Date().toISOString().slice(0, 10) && value.restrictionStatus === 'active') {
+          issues.push({ level: 'warning', code: 'expired-restriction', message: `${item.id}: 만료된 제재가 활성 상태` });
+        }
+      });
+
+      const result = {
+        checkedAtText: new Date().toLocaleString('ko-KR'),
+        counts: {
+          assets: assets.size,
+          assetNumbers: assetNumbers.size,
+          availability: availability.size,
+          requests: requests.size,
+          users: users.size,
+          claims: claims.size,
+          recovery: recovery.size,
+          restrictions: restrictions.size,
+          publicCatalogAssets: actualCatalogAssetCount,
+        },
+        normal: issues.length === 0,
+        warnings: issues.filter((item) => item.level === 'warning').length,
+        errors: issues.filter((item) => item.level === 'error').length,
+        issues,
+      };
+
+      setIntegrityResult(result);
+      await setDoc(
+        SYSTEM_ADMIN_SETTINGS_DOC_REF,
+        {
+          lastIntegrityCheckAt: serverTimestamp(),
+          lastIntegrityCheckBy: authenticatedAdminAccount?.id || '',
+          lastIntegrityCheckSummary: {
+            normal: result.normal,
+            warnings: result.warnings,
+            errors: result.errors,
+            counts: result.counts,
+          },
+        },
+        { merge: true }
+      );
+      await writeAuditLog({
+        action: 'system-integrity-check',
+        section: '데이터 점검',
+        afterValues: result,
+        summary: `시스템 데이터 점검: 오류 ${result.errors}건, 주의 ${result.warnings}건`,
+      });
+      triggerToast(
+        result.normal
+          ? '시스템 데이터 점검 결과 이상이 없습니다.'
+          : `시스템 데이터 점검에서 오류 ${result.errors}건, 주의 ${result.warnings}건을 확인했습니다.`,
+        result.normal ? 'success' : 'error'
+      );
+    } catch (error) {
+      console.error('System integrity check error:', error);
+      triggerToast('시스템 데이터 점검에 실패했습니다.', 'error');
+    } finally {
+      setIntegrityLoading(false);
+    }
+  };
+
+  const createBackupPayload = async ({ includeOperations, includeMembers, includePersonalData }) => {
+    const collectionNames = new Set(BACKUP_COLLECTIONS.settings);
+    if (includeOperations) BACKUP_COLLECTIONS.operations.forEach((name) => collectionNames.add(name));
+    if (includeMembers) BACKUP_COLLECTIONS.members.forEach((name) => collectionNames.add(name));
+
+    const collections = {};
+    for (const collectionName of collectionNames) {
+      collections[collectionName] = await snapshotCollection(collectionName, includePersonalData);
+    }
+
+    const documents = {};
+    for (const [key, collectionName, documentId] of BACKUP_DOCUMENTS) {
+      const snapshot = await getDoc(doc(db, collectionName, documentId));
+      documents[key] = snapshot.exists()
+        ? serializeBackupValue(
+            redactBackupDocument(collectionName, snapshot.data(), includePersonalData)
+          )
+        : null;
+    }
+
+    return {
+      metadata: {
+        exportedAt: new Date().toISOString(),
+        exportedAtKorea: new Date().toLocaleString('ko-KR'),
+        backupFormatVersion: BACKUP_FORMAT_VERSION,
+        applicationVersion: 'site-system-menu-split-v1',
+        schemaVersion: Number(systemAdminSettings?.schemaVersion || 1),
+        firebaseProjectId: firebaseConfig.projectId,
+        includeOperations,
+        includeMembers,
+        includePersonalData,
+        exportedBy: authenticatedAdminAccount?.id || '',
+        collectionCounts: Object.fromEntries(
+          Object.entries(collections).map(([name, records]) => [name, records.length])
+        ),
+        documentKeys: Object.keys(documents),
+      },
+      documents,
+      collections,
+    };
+  };
+
+  const downloadBackup = async (options = {}) => {
+    setBackupLoading(true);
+    try {
+      const payload = await createBackupPayload({
+        includeOperations: options.includeOperations ?? backupIncludeOperations,
+        includeMembers: options.includeMembers ?? backupIncludeMembers,
+        includePersonalData: options.includePersonalData ?? backupIncludePersonalData,
+      });
+      const filename = `rental-system-backup-${formatBackupTimestamp()}.json`;
+      createDownload(filename, JSON.stringify(payload, null, 2));
+      await setDoc(
+        SYSTEM_ADMIN_SETTINGS_DOC_REF,
+        {
+          lastBackupGeneratedAt: serverTimestamp(),
+          lastBackupGeneratedBy: authenticatedAdminAccount?.id || '',
+        },
+        { merge: true }
+      );
+      await writeAuditLog({
+        action: 'system-backup-download',
+        section: '데이터 백업',
+        afterValues: payload.metadata,
+        summary: '시스템 백업 파일을 생성했습니다.',
+      });
+      triggerToast('백업 파일을 생성했습니다.', 'success');
+      return true;
+    } catch (error) {
+      console.error('System backup error:', error);
+      triggerToast('백업 파일 생성에 실패했습니다.', 'error');
+      return false;
+    } finally {
+      setBackupLoading(false);
+    }
+  };
+
+  const clearRestoreState = () => {
+    setRestoreFileName('');
+    setRestoreFileHash('');
+    setRestorePayload(null);
+    setRestoreValidation(null);
+    setRestoreAnalysis(null);
+    setSelectedRestoreScopes([]);
+    setForceProjectMismatch(false);
+    setForceProjectConfirm('');
+    setRestorePassword('');
+    setRestoreConfirmText('');
+    setRestoreProgress(null);
+    setRestoreResult(null);
+  };
+
+  const handleRestoreFile = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.json')) {
+      triggerToast('JSON 백업 파일만 선택할 수 있습니다.', 'error');
+      return;
+    }
+    if (file.size > 50 * 1024 * 1024) {
+      triggerToast('백업 파일은 최대 50MB까지 선택할 수 있습니다.', 'error');
+      return;
+    }
+
+    setRestoreAnalyzeLoading(true);
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      const fileHash = await computeBackupFileHash(text);
+      const validation = validateBackupPayload({
+        payload,
+        currentProjectId: firebaseConfig.projectId,
+        currentSchemaVersion: Number(systemAdminSettings?.schemaVersion || 1),
+        isOwner,
+      });
+
+      setRestoreFileName(file.name);
+      setRestoreFileHash(fileHash);
+      setRestorePayload(payload);
+      setRestoreValidation(validation);
+      setSelectedRestoreScopes(
+        validation.availableScopes.filter((scope) => scope !== SYSTEM_RESTORE_SCOPE.SYSTEM_ADMIN)
+      );
+      setRestoreMode(isOwner ? RESTORE_MODE.REPLACE : RESTORE_MODE.MERGE);
+      setRestoreAnalysis(null);
+      setForceProjectMismatch(
+        Boolean(latestRestoreJob?.fileHash === fileHash && latestRestoreJob?.forceProjectMismatch)
+      );
+      setForceProjectConfirm('');
+      setRestorePassword('');
+      setRestoreConfirmText('');
+      setRestoreProgress(null);
+      setRestoreResult(null);
+      triggerToast(
+        validation.valid ? '백업 파일을 확인했습니다. 복원 범위를 선택한 뒤 충돌 검사를 실행해 주세요.' : '백업 파일에 복원할 수 없는 문제가 있습니다.',
+        validation.valid ? 'success' : 'error'
+      );
+    } catch (error) {
+      console.error('Restore file parse error:', error);
+      clearRestoreState();
+      triggerToast('백업 JSON 파일을 읽지 못했습니다. 파일 형식을 확인해 주세요.', 'error');
+    } finally {
+      setRestoreAnalyzeLoading(false);
+    }
+  };
+
+  const analyzeRestore = async () => {
+    if (!restorePayload || !restoreValidation?.valid) {
+      triggerToast('먼저 유효한 백업 파일을 선택해 주세요.', 'error');
+      return;
+    }
+    if (selectedRestoreScopes.length === 0) {
+      triggerToast('복원할 데이터 영역을 선택해 주세요.', 'error');
+      return;
+    }
+    if (restoreMode === RESTORE_MODE.REPLACE && !isOwner) {
+      triggerToast('선택 영역 초기화 후 복원은 최고 관리자만 실행할 수 있습니다.', 'error');
+      return;
+    }
+
+    setRestoreAnalyzeLoading(true);
+    try {
+      const plan = buildRestorePlan(restorePayload, selectedRestoreScopes);
+      const collectionResults = [];
+      const documentResults = [];
+      const currentIdSets = {};
+      const currentSnapshots = {};
+      let existingCount = 0;
+      let missingCount = 0;
+      let currentExtraCount = 0;
+
+      for (const collectionPlan of plan.collections) {
+        const currentSnapshot = await getDocs(collection(db, collectionPlan.name));
+        currentSnapshots[collectionPlan.name] = currentSnapshot;
+        const currentIds = new Set(currentSnapshot.docs.map((item) => item.id));
+        currentIdSets[collectionPlan.name] = currentIds;
+        const backupIds = new Set(collectionPlan.records.map((item) => item.id));
+        const overlap = collectionPlan.records.filter((item) => currentIds.has(item.id)).length;
+        const missing = collectionPlan.records.length - overlap;
+        const extras = currentSnapshot.docs.filter((item) => !backupIds.has(item.id)).length;
+        existingCount += overlap;
+        missingCount += missing;
+        currentExtraCount += extras;
+        collectionResults.push({
+          name: collectionPlan.name,
+          backup: collectionPlan.records.length,
+          current: currentSnapshot.size,
+          overlap,
+          missing,
+          extras,
+        });
+      }
+
+      for (const documentPlan of plan.documents) {
+        const snapshot = await getDoc(doc(db, documentPlan.collectionName, documentPlan.documentId));
+        documentResults.push({
+          key: documentPlan.key,
+          exists: snapshot.exists(),
+          partial: documentPlan.partial,
+        });
+        if (snapshot.exists()) existingCount += 1;
+        else missingCount += 1;
+      }
+
+      const warnings = [...(restoreValidation.warnings || [])];
+      const blockingIssues = [];
+      const planCollectionMap = new Map(plan.collections.map((item) => [item.name, item]));
+      const getCurrentSnapshot = async (name) => {
+        if (currentSnapshots[name]) return currentSnapshots[name];
+        const snapshot = await getDocs(collection(db, name));
+        currentSnapshots[name] = snapshot;
+        currentIdSets[name] = new Set(snapshot.docs.map((item) => item.id));
+        return snapshot;
+      };
+
+      const currentAssetsSnapshot = await getCurrentSnapshot('rentalAssets');
+      const currentUsersSnapshot = await getCurrentSnapshot('userAccounts');
+      const currentRequestsSnapshot = await getCurrentSnapshot('rentalRequests');
+      const backupAssetRecords = planCollectionMap.get('rentalAssets')?.records || [];
+      const backupUserRecords = planCollectionMap.get('userAccounts')?.records || [];
+      const backupRequestRecords = planCollectionMap.get('rentalRequests')?.records || [];
+
+      const knownAssetIds = new Set(currentAssetsSnapshot.docs.map((item) => item.id));
+      if (selectedRestoreScopes.includes(SYSTEM_RESTORE_SCOPE.ASSETS) && restoreMode === RESTORE_MODE.REPLACE) {
+        knownAssetIds.clear();
+      }
+      backupAssetRecords.forEach((item) => knownAssetIds.add(item.id));
+
+      const knownUserIds = new Set(currentUsersSnapshot.docs.map((item) => item.id));
+      if (selectedRestoreScopes.includes(SYSTEM_RESTORE_SCOPE.MEMBERS) && restoreMode === RESTORE_MODE.REPLACE) {
+        knownUserIds.clear();
+      }
+      backupUserRecords.forEach((item) => knownUserIds.add(item.id));
+
+      const requestRecordMap = new Map(
+        currentRequestsSnapshot.docs.map((item) => [item.id, { id: item.id, data: item.data() }])
+      );
+      if (selectedRestoreScopes.includes(SYSTEM_RESTORE_SCOPE.RENTALS) && restoreMode === RESTORE_MODE.REPLACE) {
+        requestRecordMap.clear();
+      }
+      backupRequestRecords.forEach((item) => requestRecordMap.set(item.id, item));
+
+      const missingAssetRequestIds = [];
+      const missingUserRequestIds = [];
+      requestRecordMap.forEach((record) => {
+        const value = record.data || {};
+        if (value.laptopId && !knownAssetIds.has(value.laptopId)) missingAssetRequestIds.push(record.id);
+        if (value.requesterUid && !knownUserIds.has(value.requesterUid)) missingUserRequestIds.push(record.id);
+      });
+      if (missingAssetRequestIds.length > 0) {
+        blockingIssues.push(`복원 후 존재하지 않는 자산을 참조할 신청 ${missingAssetRequestIds.length}건이 예상됩니다.`);
+      }
+      if (missingUserRequestIds.length > 0) {
+        warnings.push(`복원 후 회원 문서가 없는 UID를 참조할 신청 ${missingUserRequestIds.length}건이 예상됩니다.`);
+      }
+
+      const assetNoMap = new Map();
+      backupAssetRecords.forEach((record) => {
+        const assetNo = String(record.data?.assetNo || '').trim().toLowerCase();
+        if (!assetNo) return;
+        const ids = assetNoMap.get(assetNo) || [];
+        ids.push(record.id);
+        assetNoMap.set(assetNo, ids);
+      });
+      const duplicateAssetNos = Array.from(assetNoMap.values()).filter((ids) => ids.length > 1);
+      if (duplicateAssetNos.length > 0) {
+        blockingIssues.push(`백업 자산에 중복 자산관리번호 ${duplicateAssetNos.length}건이 있습니다.`);
+      }
+
+      if (selectedRestoreScopes.includes(SYSTEM_RESTORE_SCOPE.POLICIES)
+        && !selectedRestoreScopes.includes(SYSTEM_RESTORE_SCOPE.ORGANIZATION)) {
+        warnings.push('회원가입 정책만 복원하면 현재 부서·사용자 명부와 명부 버전이 일치하지 않을 수 있습니다.');
+      }
+      if (selectedRestoreScopes.includes(SYSTEM_RESTORE_SCOPE.ORGANIZATION)
+        && !selectedRestoreScopes.includes(SYSTEM_RESTORE_SCOPE.POLICIES)) {
+        warnings.push('부서·사용자 명부만 복원하면 현재 회원가입 정책의 명부 버전과 차이가 생길 수 있습니다.');
+      }
+      plan.collections.forEach((item) => {
+        if (item.duplicateIdCount > 0) {
+          warnings.push(`${item.name}: 백업 내부 중복 문서 ID ${item.duplicateIdCount}건은 마지막 값으로 정리했습니다.`);
+        }
+      });
+      if (selectedRestoreScopes.includes(SYSTEM_RESTORE_SCOPE.MEMBERS)) {
+        warnings.push('브라우저에서는 다른 사용자의 Firebase Authentication 계정 존재 여부를 확인할 수 없습니다. Auth 계정이 삭제된 회원은 Firestore 복원 후에도 로그인할 수 없습니다.');
+      }
+      if (restoreMode === RESTORE_MODE.REPLACE && currentExtraCount > 0) {
+        warnings.push(`백업에 없는 현재 문서 ${currentExtraCount}건이 선택 영역에서 삭제됩니다.`);
+      }
+      if (restoreValidation.projectMismatch) {
+        warnings.push('타 프로젝트 강제 복원은 최고 관리자가 현재 프로젝트 ID를 직접 입력해야 실행됩니다.');
+      }
+
+      setRestoreAnalysis({
+        plan,
+        collectionResults,
+        documentResults,
+        existingCount,
+        missingCount,
+        currentExtraCount,
+        warnings,
+        blockingIssues,
+        analyzedAt: new Date().toISOString(),
+      });
+      triggerToast('복원 충돌 검사를 완료했습니다.', 'success');
+    } catch (error) {
+      console.error('Restore analysis error:', error);
+      triggerToast('복원 충돌 검사에 실패했습니다. Firestore 권한과 네트워크를 확인해 주세요.', 'error');
+    } finally {
+      setRestoreAnalyzeLoading(false);
+    }
+  };
+
+  const updateRestoreJob = async (jobRef, values) => {
+    await setDoc(jobRef, { ...values, updatedAt: serverTimestamp() }, { merge: true });
+  };
+
+  const writeRestoreCollection = async ({ collectionPlan, mode, completedTargets, jobRef }) => {
+    const targetKey = `write:${collectionPlan.name}`;
+    if (completedTargets.has(targetKey)) return 0;
+
+    let records = collectionPlan.records;
+    if (mode === RESTORE_MODE.ADD_MISSING) {
+      const currentSnapshot = await getDocs(collection(db, collectionPlan.name));
+      const currentIds = new Set(currentSnapshot.docs.map((item) => item.id));
+      records = records.filter((item) => !currentIds.has(item.id));
+    }
+
+    let written = 0;
+    for (let start = 0; start < records.length; start += FIRESTORE_DELETE_BATCH_SIZE) {
+      const batch = writeBatch(db);
+      const slice = records.slice(start, start + FIRESTORE_DELETE_BATCH_SIZE);
+      slice.forEach((record) => {
+        const reference = doc(db, collectionPlan.name, record.id);
+        const value = deserializeBackupValue(record.data);
+        if (mode === RESTORE_MODE.MERGE) batch.set(reference, value, { merge: true });
+        else batch.set(reference, value);
+      });
+      await batch.commit();
+      written += slice.length;
+      setRestoreProgress({
+        step: `${collectionPlan.name} 복원`,
+        completed: written,
+        total: records.length,
+      });
+      await updateRestoreJob(jobRef, {
+        currentStep: targetKey,
+        currentProgress: { completed: written, total: records.length },
+      });
+    }
+
+    completedTargets.add(targetKey);
+    await updateRestoreJob(jobRef, { completedTargets: Array.from(completedTargets) });
+    return records.length;
+  };
+
+  const executeRestore = async ({ resumeJob = null } = {}) => {
+    if (!restorePayload || !restoreValidation?.valid || !restoreAnalysis) {
+      triggerToast('백업 파일 선택과 충돌 검사를 먼저 완료해 주세요.', 'error');
+      return;
+    }
+    if (restoreAnalysis.blockingIssues?.length > 0) {
+      triggerToast('복원 충돌 검사에서 해결해야 할 오류가 확인되었습니다.', 'error');
+      return;
+    }
+
+    const scopes = Array.isArray(resumeJob?.selectedScopes)
+      ? resumeJob.selectedScopes
+      : selectedRestoreScopes;
+    const mode = resumeJob?.mode || restoreMode;
+    const forcedProject = Boolean(resumeJob?.forceProjectMismatch || forceProjectMismatch);
+
+    if (resumeJob?.fileHash && resumeJob.fileHash !== restoreFileHash) {
+      triggerToast('중단된 복원 작업과 같은 백업 파일을 다시 선택해 주세요.', 'error');
+      return;
+    }
+    if (mode === RESTORE_MODE.REPLACE && !isOwner) {
+      triggerToast('선택 영역 초기화 후 복원은 최고 관리자만 실행할 수 있습니다.', 'error');
+      return;
+    }
+    if (restoreValidation.projectMismatch) {
+      if (!isOwner || !forcedProject) {
+        triggerToast('프로젝트 ID가 다른 백업은 최고 관리자 강제 복원을 활성화해야 합니다.', 'error');
+        return;
+      }
+      if (forceProjectConfirm !== firebaseConfig.projectId) {
+        triggerToast(`현재 프로젝트 ID(${firebaseConfig.projectId})를 정확히 입력해 주세요.`, 'error');
+        return;
+      }
+    }
+    if (restoreConfirmText !== RESTORE_CONFIRM_TEXT) {
+      triggerToast(`확인 문구 '${RESTORE_CONFIRM_TEXT}'를 정확히 입력해 주세요.`, 'error');
+      return;
+    }
+    if (!restorePassword) {
+      triggerToast('현재 관리자 비밀번호를 입력해 주세요.', 'error');
+      return;
+    }
+
+    setRestoreRunning(true);
+    let jobRef = resumeJob?.id
+      ? doc(SYSTEM_RESTORE_JOBS_COLLECTION_REF, resumeJob.id)
+      : null;
+
+    try {
+      const currentUser = firebaseAuth.currentUser;
+      if (!currentUser?.email) throw new Error('현재 관리자 Firebase 인증 정보를 확인할 수 없습니다.');
+      await reauthenticateWithCredential(
+        currentUser,
+        EmailAuthProvider.credential(currentUser.email, restorePassword)
+      );
+
+      // 복원 직전 현재 상태를 개인정보 포함 전체 JSON으로 자동 백업합니다.
+      const preRestoreBackup = await createBackupPayload({
+        includeOperations: true,
+        includeMembers: true,
+        includePersonalData: true,
+      });
+      createDownload(
+        `pre-restore-backup-${formatBackupTimestamp()}.json`,
+        JSON.stringify(preRestoreBackup, null, 2)
+      );
+
+      const plan = buildRestorePlan(restorePayload, scopes);
+      const completedTargets = new Set(
+        Array.isArray(resumeJob?.completedTargets) ? resumeJob.completedTargets : []
+      );
+
+      if (!jobRef) {
+        jobRef = await addDoc(SYSTEM_RESTORE_JOBS_COLLECTION_REF, {
+          status: 'running',
+          fileName: restoreFileName,
+          fileHash: restoreFileHash,
+          sourceProjectId: restoreValidation.metadata?.firebaseProjectId || '',
+          targetProjectId: firebaseConfig.projectId,
+          forceProjectMismatch: forcedProject,
+          mode,
+          selectedScopes: scopes,
+          totalDocuments: plan.totalDocuments,
+          completedTargets: [],
+          currentStep: 'pre-restore-backup',
+          startedAt: serverTimestamp(),
+          startedBy: authenticatedAdminAccount?.id || '',
+        });
+      } else {
+        await updateRestoreJob(jobRef, {
+          status: 'running',
+          resumedAt: serverTimestamp(),
+          resumedBy: authenticatedAdminAccount?.id || '',
+        });
+      }
+
+      await setDoc(SITE_SETTINGS_DOC_REF, {
+        serviceMode: SERVICE_MODE.MAINTENANCE,
+        maintenanceTitle: '백업 데이터 복원 중입니다.',
+        maintenanceMessage: '관리자가 백업 데이터를 확인하고 있습니다. 복원이 끝날 때까지 잠시 기다려 주세요.',
+        updatedAt: serverTimestamp(),
+        updatedBy: authenticatedAdminAccount?.id || '',
+      }, { merge: true });
+
+      const deletedCounts = { ...(resumeJob?.deletedCounts || {}) };
+      const writtenCounts = { ...(resumeJob?.writtenCounts || {}) };
+
+      if (mode === RESTORE_MODE.REPLACE) {
+        const selectedCollections = new Set(plan.collections.map((item) => item.name));
+        const deleteNames = RESTORE_DELETE_ORDER.filter((name) => selectedCollections.has(name));
+        Array.from(selectedCollections)
+          .filter((name) => !RESTORE_DELETE_ORDER.includes(name))
+          .sort()
+          .forEach((name) => deleteNames.push(name));
+
+        for (const collectionName of deleteNames) {
+          const targetKey = `delete:${collectionName}`;
+          if (completedTargets.has(targetKey)) continue;
+          deletedCounts[collectionName] = await deleteCollectionDocuments(
+            collectionName,
+            (completed, total) => setRestoreProgress({
+              step: `${collectionName} 기존 문서 삭제`,
+              completed,
+              total,
+            })
+          );
+          completedTargets.add(targetKey);
+          await updateRestoreJob(jobRef, {
+            currentStep: targetKey,
+            deletedCounts,
+            completedTargets: Array.from(completedTargets),
+          });
+        }
+      }
+
+      const deferredSecurityPlans = plan.documents.filter((documentPlan) =>
+        [
+          'systemSettings/admin:security',
+          'securityPolicies/userSession:security',
+        ].includes(documentPlan.key)
+      );
+      const regularDocumentPlans = plan.documents.filter(
+        (documentPlan) => !deferredSecurityPlans.includes(documentPlan)
+      );
+
+      for (const documentPlan of regularDocumentPlans) {
+        const targetKey = `document:${documentPlan.key}`;
+        if (completedTargets.has(targetKey)) continue;
+        const reference = doc(db, documentPlan.collectionName, documentPlan.documentId);
+        const existing = await getDoc(reference);
+        if (!(mode === RESTORE_MODE.ADD_MISSING && existing.exists())) {
+          let value = deserializeBackupValue(documentPlan.data);
+          if (documentPlan.path === 'siteSettings/config') {
+            value = {
+              ...normalizeSiteSettings(value),
+              serviceMode: SERVICE_MODE.MAINTENANCE,
+              maintenanceTitle: '백업 데이터 복원 중입니다.',
+              maintenanceMessage: '관리자가 백업 데이터를 확인하고 있습니다. 복원이 끝날 때까지 잠시 기다려 주세요.',
+              updatedAt: serverTimestamp(),
+              updatedBy: authenticatedAdminAccount?.id || '',
+            };
+          }
+          const merge = documentPlan.partial || mode === RESTORE_MODE.MERGE;
+          if (merge) await setDoc(reference, value, { merge: true });
+          else await setDoc(reference, value);
+          writtenCounts[targetKey] = 1;
+        } else {
+          writtenCounts[targetKey] = 0;
+        }
+        completedTargets.add(targetKey);
+        setRestoreProgress({ step: `${documentPlan.key} 복원`, completed: 1, total: 1 });
+        await updateRestoreJob(jobRef, {
+          currentStep: targetKey,
+          writtenCounts,
+          completedTargets: Array.from(completedTargets),
+        });
+      }
+
+      for (const collectionPlan of plan.collections) {
+        writtenCounts[collectionPlan.name] = await writeRestoreCollection({
+          collectionPlan,
+          mode,
+          completedTargets,
+          jobRef,
+        });
+        await updateRestoreJob(jobRef, { writtenCounts });
+      }
+
+      if (scopes.includes(SYSTEM_RESTORE_SCOPE.ASSETS)) {
+        setRestoreProgress({
+          step: '공개 자산 카탈로그 재생성',
+          completed: 0,
+          total: 1,
+        });
+        await rebuildPublicAssetCatalogFromServer({
+          updatedByUid:
+            authenticatedAdminAccount?.id || '',
+        });
+        setRestoreProgress({
+          step: '공개 자산 카탈로그 재생성',
+          completed: 1,
+          total: 1,
+        });
+      }
+
+      // 백업 안의 운영상태와 관계없이 복원 완료 후에도 점검 모드를 유지합니다.
+      await setDoc(SITE_SETTINGS_DOC_REF, {
+        serviceMode: SERVICE_MODE.MAINTENANCE,
+        maintenanceTitle: '백업 데이터 복원이 완료되었습니다.',
+        maintenanceMessage: '관리자가 데이터 점검 결과를 확인한 후 정상 운영으로 전환합니다.',
+        updatedAt: serverTimestamp(),
+        updatedBy: authenticatedAdminAccount?.id || '',
+      }, { merge: true });
+
+      // 계정 보안 정책은 현재 세션을 종료시킬 수 있으므로 모든 데이터 복원과 건전성 검사를 마친 뒤 최종 원자 배치에서 적용합니다.
+      await runIntegrityCheck();
+
+      const finalBatch = writeBatch(db);
+      let adminSecurityUpdate = {};
+
+      for (const documentPlan of deferredSecurityPlans) {
+        const targetKey = `document:${documentPlan.key}`;
+        if (completedTargets.has(targetKey)) continue;
+        const reference = doc(db, documentPlan.collectionName, documentPlan.documentId);
+        const existing = await getDoc(reference);
+
+        if (mode === RESTORE_MODE.ADD_MISSING && existing.exists()) {
+          writtenCounts[targetKey] = 0;
+          completedTargets.add(targetKey);
+          continue;
+        }
+
+        const value = deserializeBackupValue(documentPlan.data);
+        if (documentPlan.key === 'systemSettings/admin:security') {
+          const currentSecurity = normalizeSystemAdminSettings(
+            existing.exists() ? existing.data() : {}
+          );
+          adminSecurityUpdate = {
+            ...value,
+            adminSecurityPolicyVersion: existing.exists()
+              ? currentSecurity.adminSecurityPolicyVersion + 1
+              : 1,
+            updatedAt: serverTimestamp(),
+            updatedBy: authenticatedAdminAccount?.id || '',
+          };
+        } else {
+          const currentSecurity = normalizeUserSessionPolicy(
+            existing.exists() ? existing.data() : {}
+          );
+          finalBatch.set(
+            reference,
+            {
+              ...value,
+              userSecurityPolicyVersion: existing.exists()
+                ? currentSecurity.userSecurityPolicyVersion + 1
+                : 1,
+              updatedAt: serverTimestamp(),
+              updatedBy: authenticatedAdminAccount?.id || '',
+            },
+            { merge: true }
+          );
+        }
+
+        writtenCounts[targetKey] = 1;
+        completedTargets.add(targetKey);
+        setRestoreProgress({ step: `${documentPlan.key} 복원`, completed: 1, total: 1 });
+      }
+
+      const summary = {
+        restoreJobId: jobRef.id,
+        sourceProjectId: restoreValidation.metadata?.firebaseProjectId || '',
+        targetProjectId: firebaseConfig.projectId,
+        forceProjectMismatch: forcedProject,
+        mode,
+        scopes,
+        deletedCounts,
+        writtenCounts,
+      };
+
+      finalBatch.set(
+        SYSTEM_ADMIN_SETTINGS_DOC_REF,
+        {
+          ...adminSecurityUpdate,
+          lastBackupGeneratedAt: serverTimestamp(),
+          lastBackupGeneratedBy: authenticatedAdminAccount?.id || '',
+          lastRestoreCompletedAt: serverTimestamp(),
+          lastRestoreCompletedBy: authenticatedAdminAccount?.id || '',
+          lastRestoreSummary: summary,
+        },
+        { merge: true }
+      );
+      finalBatch.set(
+        jobRef,
+        {
+          status: 'completed',
+          currentStep: 'completed',
+          deletedCounts,
+          writtenCounts,
+          completedTargets: Array.from(completedTargets),
+          completedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      finalBatch.set(doc(SYSTEM_AUDIT_LOGS_COLLECTION_REF), {
+        action: forcedProject ? 'system-backup-force-restore' : 'system-backup-restore',
+        section: '데이터 복원',
+        afterValues: cloneForAudit(summary),
+        beforeValues: null,
+        summary: `${RESTORE_SCOPE_META[scopes[0]]?.label || '선택 영역'} 외 ${Math.max(0, scopes.length - 1)}개 영역 복원 완료`,
+        adminUid: authenticatedAdminAccount?.id || '',
+        adminName: getAdminDisplayName(authenticatedAdminAccount),
+        adminEmail: authenticatedAdminAccount?.authEmail || authenticatedAdminAccount?.email || '',
+        createdAt: serverTimestamp(),
+      });
+      await finalBatch.commit();
+
+      setRestoreResult(summary);
+      setRestoreProgress({ step: '복원 완료', completed: plan.totalDocuments, total: plan.totalDocuments });
+      setRestorePassword('');
+      setRestoreConfirmText('');
+      setForceProjectConfirm('');
+      triggerToast('백업 데이터 복원이 완료되었습니다. 시스템은 점검 모드로 유지됩니다.', 'success');
+    } catch (error) {
+      console.error('System restore error:', error);
+      if (jobRef) {
+        await updateRestoreJob(jobRef, {
+          status: 'failed',
+          errorMessage: error?.message || String(error),
+          failedAt: serverTimestamp(),
+        }).catch(() => {});
+      }
+      triggerToast(
+        error?.code === 'auth/wrong-password' || error?.code === 'auth/invalid-credential'
+          ? '현재 관리자 비밀번호가 올바르지 않습니다.'
+          : '백업 복원이 중단되었습니다. 같은 백업 파일을 다시 선택한 후 이어서 실행할 수 있습니다.',
+        'error'
+      );
+    } finally {
+      setRestoreRunning(false);
+    }
+  };
+
+  const scanResetTargets = async () => {
+    if (!isOwner) {
+      triggerToast('최고 관리자만 데이터 초기화를 실행할 수 있습니다.', 'error');
+      return;
+    }
+    setResetScanLoading(true);
+    try {
+      const counts = {};
+      const collectionNames = Array.from(new Set(
+        selectedResetScopes.flatMap((scope) => RESET_SCOPE_META[scope]?.collections || [])
+      ));
+      for (const name of collectionNames) {
+        const snapshot = await getDocs(collection(db, name));
+        counts[name] = snapshot.size;
+      }
+      setResetCounts(counts);
+      setResetBackupReady(false);
+      triggerToast('초기화 대상 문서 수를 확인했습니다.', 'success');
+    } catch (error) {
+      console.error('Reset target scan error:', error);
+      triggerToast('초기화 대상 확인에 실패했습니다.', 'error');
+    } finally {
+      setResetScanLoading(false);
+    }
+  };
+
+  const downloadResetBackup = async () => {
+    const succeeded = await downloadBackup({
+      includeOperations: true,
+      includeMembers: true,
+      includePersonalData: true,
+    });
+    if (succeeded) setResetBackupReady(true);
+  };
+
+  const downloadAuthCleanupFiles = (uids) => {
+    createDownload(
+      'non-admin-auth-users-to-delete.json',
+      JSON.stringify({
+        generatedAt: new Date().toISOString(),
+        firebaseProjectId: firebaseConfig.projectId,
+        uids,
+      }, null, 2)
+    );
+    createDownload(
+      'delete-non-admin-auth-users.mjs',
+      buildAuthCleanupScript(),
+      'text/javascript;charset=utf-8'
+    );
+  };
+
+  const updateResetJob = async (jobRef, values) => {
+    await setDoc(jobRef, {
+      ...values,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+  };
+
+  const executeReset = async ({ resumeJob = null } = {}) => {
+    if (!isOwner) {
+      triggerToast('최고 관리자만 데이터 초기화를 실행할 수 있습니다.', 'error');
+      return;
+    }
+    if (!resetBackupReady && !resumeJob) {
+      triggerToast('초기화 전 개인정보 포함 백업 파일을 먼저 생성해 주세요.', 'error');
+      return;
+    }
+    if (!resumeJob && resetConfirmText !== RESET_CONFIRM_TEXT) {
+      triggerToast(`확인 문구 “${RESET_CONFIRM_TEXT}”를 정확히 입력해 주세요.`, 'error');
+      return;
+    }
+    if (!resetPassword) {
+      triggerToast('현재 관리자 비밀번호를 입력해 주세요.', 'error');
+      return;
+    }
+    if (!firebaseAuth.currentUser?.email) {
+      triggerToast('현재 Firebase 관리자 로그인 세션을 확인할 수 없습니다.', 'error');
+      return;
+    }
+
+    const scopes = resumeJob?.scopes || selectedResetScopes;
+
+    if (scopes.includes(SYSTEM_RESET_SCOPE.ASSETS) && !scopes.includes(SYSTEM_RESET_SCOPE.RENTALS)) {
+      const rentalSnapshot = await getDocs(collection(db, 'rentalRequests'));
+      if (!rentalSnapshot.empty) {
+        triggerToast('대여내역이 남아 있어 자산만 초기화할 수 없습니다. 신청·대여내역을 함께 선택해 주세요.', 'error');
+        return;
+      }
+    }
+    if (scopes.includes(SYSTEM_RESET_SCOPE.MEMBERS) && !scopes.includes(SYSTEM_RESET_SCOPE.RENTALS)) {
+      const rentalSnapshot = await getDocs(collection(db, 'rentalRequests'));
+      if (!rentalSnapshot.empty) {
+        triggerToast('대여내역이 남아 있어 회원정보만 초기화할 수 없습니다. 신청·대여내역을 함께 선택해 주세요.', 'error');
+        return;
+      }
+    }
+
+    const credential = EmailAuthProvider.credential(
+      firebaseAuth.currentUser.email,
+      resetPassword
+    );
+
+    setResetRunning(true);
+    setResetProgress({ step: '관리자 재인증', completed: 0, total: 1 });
+
+    let jobRef = resumeJob?.id
+      ? doc(SYSTEM_RESET_JOBS_COLLECTION_REF, resumeJob.id)
+      : doc(SYSTEM_RESET_JOBS_COLLECTION_REF);
+    let authUids = Array.isArray(resumeJob?.authUids)
+      ? Array.from(new Set(resumeJob.authUids.filter(Boolean)))
+      : [];
+
+    try {
+      await reauthenticateWithCredential(firebaseAuth.currentUser, credential);
+
+      if (!resumeJob) {
+        await setDoc(jobRef, {
+          status: 'running',
+          scopes,
+          selectedCollections: Array.from(new Set(scopes.flatMap((scope) => RESET_SCOPE_META[scope]?.collections || []))),
+          currentStep: 'maintenance',
+          deletedCounts: {},
+          failedDocuments: [],
+          startedAt: serverTimestamp(),
+          startedBy: authenticatedAdminAccount?.id || '',
+          startedByName: getAdminDisplayName(authenticatedAdminAccount),
+        });
+      } else {
+        await updateResetJob(jobRef, {
+          status: 'running',
+          resumedAt: serverTimestamp(),
+          errorMessage: null,
+          failedAt: null,
+        });
+      }
+
+      const previousSiteSettings = normalizeSiteSettings(siteSettings);
+      await setDoc(SITE_SETTINGS_DOC_REF, {
+        ...previousSiteSettings,
+        serviceMode: SERVICE_MODE.MAINTENANCE,
+        maintenanceTitle: '시스템 데이터 정비 중입니다.',
+        maintenanceMessage: '관리자가 시스템 데이터를 정비하고 있습니다. 작업 완료 후 다시 이용해 주세요.',
+        updatedAt: serverTimestamp(),
+        updatedBy: authenticatedAdminAccount?.id || '',
+      }, { merge: true });
+      await updateResetJob(jobRef, { currentStep: 'collect-auth-uids' });
+
+      const deletedCounts = {
+        ...(resumeJob?.deletedCounts || {}),
+      };
+      const userAccountsAlreadyDeleted = Object.prototype.hasOwnProperty.call(
+        deletedCounts,
+        'userAccounts'
+      );
+
+      if (scopes.includes(SYSTEM_RESET_SCOPE.MEMBERS)) {
+        if (authUids.length === 0 && !userAccountsAlreadyDeleted) {
+          const userSnapshot = await getDocs(collection(db, 'userAccounts'));
+          authUids = Array.from(new Set(
+            userSnapshot.docs.map((item) => item.id).filter(Boolean)
+          ));
+          await updateResetJob(jobRef, {
+            authUids,
+            authUidCount: authUids.length,
+          });
+        }
+
+        if (authUids.length > 0) {
+          downloadAuthCleanupFiles(authUids);
+        }
+      }
+
+      const collectionNames = Array.from(new Set(
+        scopes.flatMap((scope) => RESET_SCOPE_META[scope]?.collections || [])
+      ));
+
+      for (let index = 0; index < collectionNames.length; index += 1) {
+        const collectionName = collectionNames[index];
+
+        if (Object.prototype.hasOwnProperty.call(deletedCounts, collectionName)) {
+          setResetProgress({
+            step: `${collectionName} 삭제 완료`,
+            completed: index + 1,
+            total: collectionNames.length,
+          });
+          continue;
+        }
+
+        setResetProgress({
+          step: `${collectionName} 삭제`,
+          completed: index,
+          total: collectionNames.length,
+        });
+        await updateResetJob(jobRef, { currentStep: `delete:${collectionName}` });
+        deletedCounts[collectionName] = await deleteCollectionDocuments(
+          collectionName,
+          (completed, total) => setResetProgress({
+            step: `${collectionName} 삭제`,
+            completed,
+            total,
+          })
+        );
+        await updateResetJob(jobRef, { deletedCounts });
+      }
+
+      if (scopes.includes(SYSTEM_RESET_SCOPE.CONTENT)) {
+        for (const [collectionName, documentId] of CONTENT_CONFIG_DOCS) {
+          await deleteDoc(doc(db, collectionName, documentId)).catch(() => {});
+        }
+      }
+
+      const publicConfigSnapshot = await getDoc(PUBLIC_CONFIG_DOC_REF);
+      const publicConfig = publicConfigSnapshot.exists() ? publicConfigSnapshot.data() : {};
+      const publicConfigUpdates = {};
+
+      if (scopes.includes(SYSTEM_RESET_SCOPE.ORGANIZATION)) {
+        publicConfigUpdates.teams = [];
+        publicConfigUpdates.settings = {
+          ...(publicConfig.settings || {}),
+          requireRegisteredMemberForSignup: false,
+          autoApproveNewMembers: false,
+          memberDirectoryVersion: Number(publicConfig.settings?.memberDirectoryVersion || 0) + 1,
+          memberIdentityClaimsReady: false,
+        };
+      }
+
+      if (scopes.includes(SYSTEM_RESET_SCOPE.CONTENT)) {
+        publicConfigUpdates.settings = {
+          ...(publicConfigUpdates.settings || publicConfig.settings || {}),
+          signupTermsEnabled: false,
+          signupTermsRequireReconsentOnChange: true,
+          signupTermsApplyToExistingMembers: false,
+          signupTermsPolicyRevision: 0,
+          signupTermsRequiredRevision: 0,
+          signupTermsInitialRevision: 0,
+        };
+      }
+
+      if (scopes.includes(SYSTEM_RESET_SCOPE.ASSETS)) {
+        publicConfigUpdates.assetCategories = publicConfig.assetCategories || [];
+      }
+
+      if (Object.keys(publicConfigUpdates).length > 0) {
+        await setDoc(PUBLIC_CONFIG_DOC_REF, {
+          ...publicConfigUpdates,
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+      }
+
+      if (scopes.includes(SYSTEM_RESET_SCOPE.ASSETS)) {
+        setResetProgress({
+          step: '공개 자산 카탈로그 초기화',
+          completed: 0,
+          total: 1,
+        });
+        await rebuildPublicAssetCatalogFromServer({
+          updatedByUid:
+            authenticatedAdminAccount?.id || '',
+        });
+        setResetProgress({
+          step: '공개 자산 카탈로그 초기화',
+          completed: 1,
+          total: 1,
+        });
+      }
+
+      if (scopes.includes(SYSTEM_RESET_SCOPE.SETTINGS)) {
+        await setDoc(SITE_SETTINGS_DOC_REF, {
+          ...DEFAULT_SITE_SETTINGS,
+          serviceMode: SERVICE_MODE.MAINTENANCE,
+          maintenanceTitle: '시스템 데이터 정비가 완료되었습니다.',
+          maintenanceMessage: '관리자가 정상 운영 전환을 확인하고 있습니다.',
+          updatedAt: serverTimestamp(),
+          updatedBy: authenticatedAdminAccount?.id || '',
+        }, { merge: false });
+      }
+
+      setIntegrityResult(null);
+      setResetCounts(null);
+      setResetBackupReady(false);
+      setResetConfirmText('');
+      setResetPassword('');
+      setResetProgress({ step: '완료', completed: collectionNames.length, total: collectionNames.length });
+
+      const authUidCount = authUids.length > 0
+        ? authUids.length
+        : Number(resumeJob?.authUidCount || 0);
+
+      await updateResetJob(jobRef, {
+        status: 'completed',
+        currentStep: 'completed',
+        deletedCounts,
+        authUidCount,
+        completedAt: serverTimestamp(),
+      });
+      await writeAuditLog({
+        action: 'system-data-reset',
+        section: '데이터 초기화',
+        afterValues: { scopes, deletedCounts, authUidCount, resetJobId: jobRef.id },
+        summary: `데이터 초기화 완료: ${scopes.map((scope) => RESET_SCOPE_META[scope]?.label).join(', ')}`,
+      });
+      triggerToast(
+        authUidCount > 0
+          ? `Firestore 초기화가 완료되었습니다. 일반회원 Auth UID ${authUidCount}건은 내려받은 로컬 스크립트 또는 Firebase Console에서 삭제해 주세요.`
+          : 'Firestore 데이터 초기화가 완료되었습니다. 시스템은 점검 모드로 유지됩니다.',
+        'success'
+      );
+    } catch (error) {
+      console.error('System reset error:', error);
+      await updateResetJob(jobRef, {
+        status: 'failed',
+        errorMessage: error?.message || String(error),
+        failedAt: serverTimestamp(),
+      }).catch(() => {});
+      triggerToast(
+        error?.code === 'auth/wrong-password' || error?.code === 'auth/invalid-credential'
+          ? '현재 관리자 비밀번호가 올바르지 않습니다.'
+          : '데이터 초기화가 중단되었습니다. 중단된 작업을 다시 실행할 수 있습니다.',
+        'error'
+      );
+    } finally {
+      setResetRunning(false);
+    }
+  };
+
+  return {
+    analyzeRestore,
+    backupIncludeMembers,
+    backupIncludeOperations,
+    backupIncludePersonalData,
+    backupLoading,
+    clearRestoreState,
+    downloadBackup,
+    downloadResetBackup,
+    executeReset,
+    executeRestore,
+    forceProjectConfirm,
+    forceProjectMismatch,
+    handleRestoreFile,
+    integrityLoading,
+    integrityResult,
+    latestResetJob,
+    latestRestoreJob,
+    resetBackupReady,
+    resetConfirmText,
+    resetCounts,
+    resetPassword,
+    resetProgress,
+    resetRunning,
+    resetScanLoading,
+    restoreAnalysis,
+    restoreAnalyzeLoading,
+    restoreConfirmText,
+    restoreFileHash,
+    restoreFileName,
+    restoreMode,
+    restorePassword,
+    restorePayload,
+    restoreProgress,
+    restoreResult,
+    restoreRunning,
+    restoreValidation,
+    runIntegrityCheck,
+    scanResetTargets,
+    selectedResetScopes,
+    selectedRestoreScopes,
+    setBackupIncludeMembers,
+    setBackupIncludeOperations,
+    setBackupIncludePersonalData,
+    setForceProjectConfirm,
+    setForceProjectMismatch,
+    setResetBackupReady,
+    setResetConfirmText,
+    setResetCounts,
+    setResetPassword,
+    setRestoreAnalysis,
+    setRestoreConfirmText,
+    setRestoreMode,
+    setRestorePassword,
+    setRestoreResult,
+    setSelectedResetScopes,
+    setSelectedRestoreScopes,
+  };
+}

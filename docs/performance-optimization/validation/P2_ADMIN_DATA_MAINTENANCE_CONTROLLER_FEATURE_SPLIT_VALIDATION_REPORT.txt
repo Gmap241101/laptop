@@ -1,0 +1,26 @@
+P2 ADMIN DATA MAINTENANCE CONTROLLER FEATURE SPLIT VALIDATION
+====================================================================
+
+[PASS] 입력 기준 패키지 326개 프로젝트 파일 SHA-256 검증
+[PASS] React Hook import audit: 111 source files
+[PASS] JS/JSX/MJS TypeScript transpile: 111 files, syntax errors 0
+[PASS] selected semantic diagnostics: undefined/duplicate/call errors 0
+[PASS] relative import resolution: 276 imports, missing 0
+[PASS] Firestore strict audit: 129 calls, unapproved warnings 0, errors 0
+[PASS] Firestore call totals preserved: onSnapshot 35, getDocs 48, getDoc 28, getCountFromServer 18
+[PASS] Korean UI string comparison: total 1977 -> 1977, unique 1437 -> 1437, removed 0, added 0
+[PASS] Admin data maintenance return contract: integrity/backup/restore/reset functions present
+[PASS] Runtime mock: reset and restore latest-job listeners create 2 subscriptions for owner data mode
+[PASS] Runtime mock: system integrity check success path
+[PASS] Runtime mock: JSON backup creation and download success path
+[PASS] Runtime mock: non-owner reset execution guard blocks before reauthentication
+[PASS] App.jsx unchanged: 10176 lines, 296485 bytes
+[PASS] AdminSettingsPanel reduction: 2534 -> 1098 lines; useState 36 -> 5
+[PASS] initial source graph unchanged: 55 modules, 810442 bytes
+[PASS] Firestore Rules/indexes/firebase/package dependency files unchanged
+[PASS] REMOVED_FILES.txt cumulative list preserved; new removals 0
+
+VITE BUILD
+----------
+[NOT RUN] npm ci failed before build because the internal npm registry returned E404 for yargs-parser-21.1.1.tgz.
+Local deploy.ps1 must complete npm run build before deployment is considered successful.
