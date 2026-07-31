@@ -632,7 +632,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
         </div>
       </SectionCard>
 
-      <SectionCard title="전역 시스템 안내" description="운영 장애나 예정된 점검처럼 모든 화면에서 계속 보여야 하는 짧은 안내입니다.">
+      <SectionCard title="전역 시스템 안내" description="운영 장애나 예정된 점검처럼 사용자 화면 상단에 계속 표시할 짧은 안내입니다.">
         <div className="space-y-4">
           <ToggleSwitch checked={siteDraft.systemBannerEnabled} onChange={(value) => setSiteDraft({ ...siteDraft, systemBannerEnabled: value })} label="전역 안내 사용" />
           <div className="grid gap-4 md:grid-cols-2">

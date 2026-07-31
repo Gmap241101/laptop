@@ -49,7 +49,9 @@ export default function AdminRequestsPanel({ ctx }) {
     adminRequestQuery,
     adminRequestQuickFilter,
     adminRequestTab,
+    adminRequestTabCountErrors,
     adminRequestTabCounts,
+    adminRequestTabCountsReady,
     adminRequestTotalPages,
     filteredAdminRequests,
     mergedRentalRequests,
@@ -260,14 +262,23 @@ export default function AdminRequestsPanel({ ctx }) {
                                     : 'bg-slate-100 text-slate-500'
                                 }`}
                               >
-                                {adminRequestTabCounts[
-                                  tab.id
-                                ] || 0}
+                                {!adminRequestTabCountsReady
+                                  ? '…'
+                                  : adminRequestTabCountErrors[tab.id]
+                                    ? '-'
+                                    : adminRequestTabCounts[tab.id] ?? 0}
                               </span>
                             </button>
                           );
                         })}
                       </div>
+
+                      {adminRequestTabCountsReady &&
+                        Object.values(adminRequestTabCountErrors).some(Boolean) && (
+                          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
+                            일부 탭의 전체 건수를 불러오지 못했습니다. '-'로 표시된 탭은 목록을 기준으로 확인해 주세요.
+                          </div>
+                        )}
 
                       {adminRequestQuickFilter !==
                         ADMIN_REQUEST_QUICK_FILTER.ALL && (

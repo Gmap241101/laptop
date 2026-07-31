@@ -1,0 +1,27 @@
+{
+  "baselinePackage": "rental-system-admin-request-mutation-controller-split-20260731_1632_deployment_package.zip",
+  "outputPackage": "rental-system-admin-user-action-review-controller-banner-tab-count-fix-20260731_1709_deployment_package.zip",
+  "before": {
+    "appLines": 8184,
+    "appBytes": 239681,
+    "initialModuleCount": 60,
+    "initialSourceBytes": 823564
+  },
+  "after": {
+    "appLines": 7329,
+    "appBytes": 215437,
+    "initialModuleCount": 61,
+    "initialSourceBytes": 825715,
+    "newController": {
+      "file": "src/features/requests/useAdminUserActionReviewController.js",
+      "lines": 943,
+      "bytes": 26395
+    }
+  },
+  "delta": {
+    "appLines": -855,
+    "appBytes": -24244,
+    "initialModuleCount": 1,
+    "initialSourceBytes": 2151
+  }
+}

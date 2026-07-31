@@ -42,10 +42,17 @@ const adminRequestsSessionState = {
 };
 
 const createDefaultTabCounts = () => ({
-  [ADMIN_REQUEST_TAB.PENDING]: 0,
-  [ADMIN_REQUEST_TAB.RENTAL]: 0,
-  [ADMIN_REQUEST_TAB.CLOSED]: 0,
-  [ADMIN_REQUEST_TAB.RETURNED]: 0,
+  [ADMIN_REQUEST_TAB.PENDING]: null,
+  [ADMIN_REQUEST_TAB.RENTAL]: null,
+  [ADMIN_REQUEST_TAB.CLOSED]: null,
+  [ADMIN_REQUEST_TAB.RETURNED]: null,
+});
+
+const createDefaultTabCountErrors = () => ({
+  [ADMIN_REQUEST_TAB.PENDING]: false,
+  [ADMIN_REQUEST_TAB.RENTAL]: false,
+  [ADMIN_REQUEST_TAB.CLOSED]: false,
+  [ADMIN_REQUEST_TAB.RETURNED]: false,
 });
 
 export default function useAdminRequestsController({
@@ -77,6 +84,10 @@ export default function useAdminRequestsController({
   const [hasNextPage, setHasNextPage] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
   const [tabCounts, setTabCounts] = useState(createDefaultTabCounts);
+  const [tabCountErrors, setTabCountErrors] = useState(
+    createDefaultTabCountErrors
+  );
+  const [tabCountsReady, setTabCountsReady] = useState(false);
   const [selectedRequestId, setSelectedRequestId] = useState('');
 
   const cursorByPageRef = useRef(new Map([[1, null]]));
@@ -372,76 +383,112 @@ export default function useAdminRequestsController({
   }, [pageSize, query, quickFilter, requestTab]);
 
   useEffect(() => {
-    if (!enabled || !prerequisitesReady) return undefined;
+    if (!enabled) {
+      setTabCounts(createDefaultTabCounts());
+      setTabCountErrors(createDefaultTabCountErrors());
+      setTabCountsReady(true);
+      return undefined;
+    }
+
+    if (!prerequisitesReady) {
+      setTabCountsReady(false);
+      return undefined;
+    }
 
     let cancelled = false;
 
-    void Promise.all([
-      [
-        ADMIN_REQUEST_TAB.PENDING,
-        getCountFromServer(
+    setTabCounts(createDefaultTabCounts());
+    setTabCountErrors(createDefaultTabCountErrors());
+    setTabCountsReady(false);
+
+    const countRequests = [
+      {
+        key: ADMIN_REQUEST_TAB.PENDING,
+        promise: getCountFromServer(
           firestoreQuery(
             RENTAL_REQUESTS_COLLECTION_REF,
             where('status', 'in', [STATUS.REQUESTED, STATUS.ON_HOLD])
           )
         ),
-      ],
-      [
-        ADMIN_REQUEST_TAB.RENTAL,
-        getCountFromServer(
+      },
+      {
+        key: ADMIN_REQUEST_TAB.RENTAL,
+        promise: getCountFromServer(
           firestoreQuery(
             RENTAL_REQUESTS_COLLECTION_REF,
             where('status', '==', STATUS.APPROVED)
           )
         ),
-      ],
-      [
-        ADMIN_REQUEST_TAB.CLOSED,
-        getCountFromServer(
+      },
+      {
+        key: ADMIN_REQUEST_TAB.CLOSED,
+        promise: getCountFromServer(
           firestoreQuery(
             RENTAL_REQUESTS_COLLECTION_REF,
             where('status', 'in', [STATUS.DENIED, STATUS.USER_CANCELLED])
           )
         ),
-      ],
-      [
-        ADMIN_REQUEST_TAB.RETURNED,
-        getCountFromServer(
+      },
+      {
+        key: ADMIN_REQUEST_TAB.RETURNED,
+        promise: getCountFromServer(
           firestoreQuery(
             RENTAL_REQUESTS_COLLECTION_REF,
             where('status', '==', STATUS.RETURNED)
           )
         ),
-      ],
-    ])
-      .then((entries) => {
-        if (cancelled) return;
+      },
+    ];
 
-        setTabCounts(
-          Object.fromEntries(
-            entries.map(([key, countSnapshot]) => [
-              key,
-              countSnapshot.data().count,
-            ])
-          )
+    void Promise.allSettled(
+      countRequests.map(({ key, promise }) =>
+        promise.then((countSnapshot) => ({
+          count: countSnapshot.data().count,
+          key,
+        }))
+      )
+    ).then((results) => {
+      if (cancelled) return;
+
+      const nextCounts = createDefaultTabCounts();
+      const nextErrors = createDefaultTabCountErrors();
+
+      results.forEach((result, index) => {
+        const key = countRequests[index].key;
+
+        if (result.status === 'fulfilled') {
+          nextCounts[key] = Number(result.value.count) || 0;
+          return;
+        }
+
+        nextErrors[key] = true;
+        console.error(
+          `Rental request tab count error (${key}):`,
+          result.reason
         );
-      })
-      .catch((error) => {
-        console.error('Rental request tab counts error:', error);
       });
+
+      setTabCounts(nextCounts);
+      setTabCountErrors(nextErrors);
+      setTabCountsReady(true);
+    });
 
     return () => {
       cancelled = true;
     };
   }, [enabled, mutationVersion, prerequisitesReady]);
 
+
   useEffect(() => {
+    const currentTabCount = tabCounts[requestTab];
+
     if (
       enabled &&
       quickFilter === ADMIN_REQUEST_QUICK_FILTER.ALL &&
-      !String(debouncedQuery || '').trim()
+      !String(debouncedQuery || '').trim() &&
+      typeof currentTabCount === 'number'
     ) {
-      setTotalCount(Number(tabCounts[requestTab]) || 0);
+      setTotalCount(currentTabCount);
     }
   }, [debouncedQuery, enabled, quickFilter, requestTab, tabCounts]);
 
@@ -572,12 +619,13 @@ export default function useAdminRequestsController({
   }, [query, quickFilter, referenceDate, requestTab, requests]);
 
   const searchMode = Boolean(String(query || '').trim());
-  const totalPages = Math.max(
-    1,
-    Math.ceil(
-      (searchMode ? filteredRequests.length : totalCount) / pageSize
-    )
-  );
+  const currentTabCountAvailable =
+    typeof tabCounts[requestTab] === 'number';
+  const totalPages = searchMode
+    ? Math.max(1, Math.ceil(filteredRequests.length / pageSize))
+    : currentTabCountAvailable
+      ? Math.max(1, Math.ceil(totalCount / pageSize))
+      : Math.max(1, page + (hasNextPage ? 1 : 0));
   const safePage = Math.min(page, totalPages);
   const paginatedRequests = searchMode
     ? filteredRequests.slice(
@@ -598,7 +646,9 @@ export default function useAdminRequestsController({
     adminRequestQuery: query,
     adminRequestQuickFilter: quickFilter,
     adminRequestTab: requestTab,
+    adminRequestTabCountErrors: tabCountErrors,
     adminRequestTabCounts: tabCounts,
+    adminRequestTabCountsReady: tabCountsReady,
     adminRequestTotalPages: totalPages,
     filteredAdminRequests: filteredRequests,
     mergedRentalRequests: requests,
