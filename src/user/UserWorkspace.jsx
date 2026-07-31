@@ -1,19 +1,22 @@
-import { lazy, memo, Suspense, useMemo } from 'react';
+import { lazy, memo, Suspense, useEffect, useMemo } from 'react';
 import DevRenderProfiler from '../performance/DevRenderProfiler.jsx';
 import UserHomePanel from './UserHomePanel.jsx';
 import useUserTermsCompliance from '../features/terms/useUserTermsCompliance.js';
 import UserTermsConsentPanel from './UserTermsConsentPanel.jsx';
 
-const UserAuthPanel = memo(lazy(() => import('./UserAuthPanel.jsx')));
+const loadUserAuthPanel = () => import('./UserAuthPanel.jsx');
+const UserAuthPanel = memo(lazy(loadUserAuthPanel));
 const UserAccountStatusPanel = memo(
   lazy(() => import('./UserAccountStatusPanel.jsx'))
 );
-const UserBoardPanel = memo(lazy(() => import('./UserBoardPanel.jsx')));
-const UserMyPagePanel = memo(lazy(() => import('./UserMyPagePanel.jsx')));
-const UserRentalPanel = memo(lazy(() => import('./UserRentalPanel.jsx')));
-const UserRequestHistoryPanel = memo(
-  lazy(() => import('./UserRequestHistoryPanel.jsx'))
-);
+const loadUserBoardPanel = () => import('./UserBoardPanel.jsx');
+const UserBoardPanel = memo(lazy(loadUserBoardPanel));
+const loadUserMyPagePanel = () => import('./UserMyPagePanel.jsx');
+const loadUserRentalPanel = () => import('./UserRentalPanel.jsx');
+const loadUserRequestHistoryPanel = () => import('./UserRequestHistoryPanel.jsx');
+const UserMyPagePanel = memo(lazy(loadUserMyPagePanel));
+const UserRentalPanel = memo(lazy(loadUserRentalPanel));
+const UserRequestHistoryPanel = memo(lazy(loadUserRequestHistoryPanel));
 const UserFooterPagePanel = memo(
   lazy(() => import('./UserFooterPagePanel.jsx'))
 );
@@ -67,6 +70,46 @@ function UserWorkspace({ ctx, panelCtx }) {
     account: userProfile,
     enabled: isProtectedUserTab && hasFirebaseAuthSession,
   });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const preloadCurrentUserPanels = () => {
+      const loaders = [loadUserAuthPanel, loadUserBoardPanel];
+      if (hasFirebaseAuthSession) {
+        loaders.push(
+          loadUserRentalPanel,
+          loadUserRequestHistoryPanel,
+          loadUserMyPagePanel
+        );
+      }
+
+      void Promise.allSettled(loaders.map((loadPanel) => loadPanel()));
+    };
+
+    window.addEventListener('pointerdown', preloadCurrentUserPanels, {
+      once: true,
+      passive: true,
+    });
+
+    let idleRequestId = 0;
+    let timeoutId = 0;
+    if (typeof window.requestIdleCallback === 'function') {
+      idleRequestId = window.requestIdleCallback(preloadCurrentUserPanels, {
+        timeout: 1200,
+      });
+    } else {
+      timeoutId = window.setTimeout(preloadCurrentUserPanels, 250);
+    }
+
+    return () => {
+      window.removeEventListener('pointerdown', preloadCurrentUserPanels);
+      if (idleRequestId) window.cancelIdleCallback?.(idleRequestId);
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
+  }, [hasFirebaseAuthSession]);
 
   if (isProtectedUserTab && (!firebaseAuthReady || !currentAuthRoleReady)) {
     return (

@@ -1,0 +1,22 @@
+{
+  "generatedAt": "2026-07-31T09:27:09.416453+00:00",
+  "baselinePackage": "rental-system-auth-identity-policy-subscription-controller-split-20260731_1744_deployment_package.zip",
+  "outputPackage": "rental-system-auth-loading-render-stability-dashboard-fix-20260731_1824_deployment_package.zip",
+  "before": {
+    "initialModuleCount": 65,
+    "initialSourceBytes": 837387
+  },
+  "after": {
+    "initialModuleCount": 65,
+    "initialSourceBytes": 839800
+  },
+  "delta": {
+    "initialModuleCount": 0,
+    "initialSourceBytes": 2413
+  },
+  "notes": [
+    "사용자 패널은 lazy import를 유지하며 pointerdown/idle 시점에 사전 로드합니다.",
+    "App.jsx의 triggerToast/triggerConfirm 참조를 useCallback으로 안정화했습니다.",
+    "대시보드 대기 회원 조회에서 createdAt orderBy를 제거해 복합 인덱스 의존성을 없앴습니다."
+  ]
+}

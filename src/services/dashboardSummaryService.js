@@ -3,7 +3,6 @@ import {
   getDoc,
   getDocs,
   limit as firestoreLimit,
-  orderBy,
   query as firestoreQuery,
   serverTimestamp,
   setDoc,
@@ -132,8 +131,7 @@ export const refreshDashboardSummaryDocument = async ({ adminUid }) => {
   const pendingAccountSource = firestoreQuery(
     USER_ACCOUNTS_COLLECTION_REF,
     where('status', '==', USER_PROFILE_STATUS.PENDING),
-    orderBy('createdAt', 'asc'),
-    firestoreLimit(DASHBOARD_SUMMARY_PENDING_ACCOUNT_LIMIT)
+    firestoreLimit(100)
   );
 
   const [
@@ -186,13 +184,22 @@ export const refreshDashboardSummaryDocument = async ({ adminUid }) => {
       return String(second.id || '').localeCompare(String(first.id || ''));
     })
     .slice(0, ADMIN_DASHBOARD_ACTIVE_REQUEST_LIMIT);
-  const pendingAccounts = pendingAccountSnapshot.docs.map((accountDoc) =>
-    toDashboardAccountSummary({
-      ...accountDoc.data(),
-      id: accountDoc.id,
-      uid: accountDoc.data().uid || accountDoc.id,
+  const pendingAccounts = pendingAccountSnapshot.docs
+    .map((accountDoc) =>
+      toDashboardAccountSummary({
+        ...accountDoc.data(),
+        id: accountDoc.id,
+        uid: accountDoc.data().uid || accountDoc.id,
+      })
+    )
+    .sort((first, second) => {
+      const timeDiff =
+        getFirestoreTimestampMillis(first.createdAt) -
+        getFirestoreTimestampMillis(second.createdAt);
+      if (timeDiff) return timeDiff;
+      return String(first.id || '').localeCompare(String(second.id || ''));
     })
-  );
+    .slice(0, DASHBOARD_SUMMARY_PENDING_ACCOUNT_LIMIT);
 
   const publicCatalogData = publicCatalogSnapshot.exists()
     ? publicCatalogSnapshot.data()

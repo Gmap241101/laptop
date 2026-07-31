@@ -166,9 +166,14 @@ export default function useAuthIdentityPolicySubscriptionController({
   const adminAccountsApplyingRemoteRef = useRef(false);
   const adminAccountsLastSyncedRef = useRef({});
   const allowAdminAccountsWriteRef = useRef(false);
+  const triggerToastRef = useRef(triggerToast);
   const hasFirebaseAuthSession = Boolean(
     firebaseAuthUser || firebaseAuth.currentUser
   );
+
+  useEffect(() => {
+    triggerToastRef.current = triggerToast;
+  }, [triggerToast]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(
@@ -259,7 +264,7 @@ export default function useAuthIdentityPolicySubscriptionController({
           setCurrentAuthRoleErrorMessage(message);
           setCurrentAuthRoleReady(true);
 
-          triggerToast(message, 'error');
+          triggerToastRef.current?.(message, 'error');
           return;
         }
 
@@ -277,7 +282,7 @@ export default function useAuthIdentityPolicySubscriptionController({
         setCurrentAuthRoleErrorMessage(message);
         setCurrentAuthRoleReady(true);
 
-        triggerToast(message, 'error');
+        triggerToastRef.current?.(message, 'error');
       }
     );
 
@@ -351,7 +356,7 @@ export default function useAuthIdentityPolicySubscriptionController({
         console.error('User account sync error:', error);
         setUserProfile(null);
         setUserProfileReady(true);
-        triggerToast(
+        triggerToastRef.current?.(
           '마이페이지 정보를 불러오지 못했습니다. Firestore 권한을 확인해 주세요.',
           'error'
         );
@@ -360,10 +365,11 @@ export default function useAuthIdentityPolicySubscriptionController({
 
     return unsubscribe;
   }, [
-    firebaseAuthUser,
+    firebaseAuthUser?.displayName,
+    firebaseAuthUser?.uid,
     currentAuthRoleReady,
     currentAuthRoleErrorMessage,
-    currentAuthAdminAccount,
+    currentAuthAdminAccount?.id,
     authenticatedAdminId,
   ]);
 
@@ -402,7 +408,7 @@ export default function useAuthIdentityPolicySubscriptionController({
         console.error('Rental restriction sync error:', error);
         setCurrentUserRestriction(null);
         setCurrentUserRestrictionReady(true);
-        triggerToast(
+        triggerToastRef.current?.(
           '대여 제한 상태를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
           'error'
         );

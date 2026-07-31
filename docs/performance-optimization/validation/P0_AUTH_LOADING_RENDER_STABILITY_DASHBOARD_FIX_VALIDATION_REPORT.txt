@@ -1,0 +1,31 @@
+P0 AUTH LOADING / RENDER STABILITY / DASHBOARD FIX VALIDATION
+=============================================================
+
+입력 기준본
+- rental-system-auth-identity-policy-subscription-controller-split-20260731_1744_deployment_package.zip
+
+검증 결과
+- React Hook import audit: PASS (121 files)
+- Firestore strict audit: PASS
+- Firestore calls: 129 -> 129
+  - onSnapshot: 35
+  - getDocs: 48
+  - getDoc: 28
+  - getCountFromServer: 18
+- Relative import resolution: PASS (357 imports, missing 0)
+- Target TypeScript diagnostics (TS2304/TS2552/TS2451/TS2349): 0
+- Modified .js node syntax check: PASS
+- Stable toast/confirm callback source contract: PASS
+- Own rental request subscription callback-decoupling contract: PASS
+- Previous-account UID stable-key contract: PASS
+- Lazy panel pointerdown/idle preload contract: PASS
+- UserAuthPanel/UserBoardPanel dynamic import retention: PASS
+- Dashboard authenticated UID gate contract: PASS
+- Dashboard pending-account bounded non-orderBy query contract: PASS
+- Firestore Rules/index/config hashes: unchanged
+- REMOVED_FILES.txt SHA-256: unchanged
+- User-visible Korean single-line string literals: removed 0 / added 0
+
+Vite production build
+- 현재 검증 환경에는 완전한 node_modules/Vite 실행 파일이 없어 실제 Vite 번들은 생성하지 못했습니다.
+- 로컬 deploy.ps1에서 npm run build 성공 후에만 정상 배포로 판단해야 합니다.

@@ -32,6 +32,8 @@ export const useDashboardSummary = ({
   currentAuthRoleReady,
   authenticatedAdminId,
   currentAuthAdminAccountId,
+  firebaseAuthUserUid,
+  isAdminAuthenticated,
   view,
   adminTab,
   triggerToast,
@@ -97,8 +99,11 @@ export const useDashboardSummary = ({
   const shouldSubscribeDashboardSummary =
     firebaseAuthReady &&
     currentAuthRoleReady &&
+    isAdminAuthenticated &&
     Boolean(authenticatedAdminId) &&
     Boolean(currentAuthAdminAccountId) &&
+    Boolean(firebaseAuthUserUid) &&
+    firebaseAuthUserUid === currentAuthAdminAccountId &&
     view === 'admin';
 
   useEffect(() => {

@@ -1780,14 +1780,14 @@ function App() {
     }
   }, [adminTab]);
 
-  const triggerToast = (message, type = 'success') => {
+  const triggerToast = useCallback((message, type = 'success') => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
-  };
+    window.setTimeout(() => setToast(null), 3000);
+  }, []);
 
-  const triggerConfirm = (title, message, onConfirm) => {
+  const triggerConfirm = useCallback((title, message, onConfirm) => {
     setConfirmModal({ title, message, onConfirm });
-  };
+  }, []);
 
   useAuthIdentityPolicySubscriptionController({
     adminTab,
@@ -1822,22 +1822,6 @@ function App() {
     setUserSessionPolicyReady,
     triggerToast,
     view,
-  });
-
-  const {
-    dashboardSummary,
-    dashboardSummaryLoadErrorMessage,
-    dashboardSummaryReady,
-    dashboardSummaryRefreshing,
-    refreshDashboardSummary,
-  } = useDashboardSummary({
-    firebaseAuthReady,
-    currentAuthRoleReady,
-    authenticatedAdminId,
-    currentAuthAdminAccountId: currentAuthAdminAccount?.id || '',
-    view,
-    adminTab,
-    triggerToast,
   });
 
   const registeredAdminAccounts = adminAccounts || [];
@@ -1888,6 +1872,24 @@ function App() {
     systemAdminSettingsReady,
     triggerToast,
     userTab,
+    view,
+  });
+
+  const {
+    dashboardSummary,
+    dashboardSummaryLoadErrorMessage,
+    dashboardSummaryReady,
+    dashboardSummaryRefreshing,
+    refreshDashboardSummary,
+  } = useDashboardSummary({
+    adminTab,
+    authenticatedAdminId,
+    currentAuthAdminAccountId: currentAuthAdminAccount?.id || '',
+    currentAuthRoleReady,
+    firebaseAuthReady,
+    firebaseAuthUserUid: firebaseAuthUser?.uid || '',
+    isAdminAuthenticated,
+    triggerToast,
     view,
   });
 

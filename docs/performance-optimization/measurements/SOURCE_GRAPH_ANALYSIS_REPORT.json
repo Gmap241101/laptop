@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-07-31T08:55:57.984Z",
+  "generatedAt": "2026-07-31T09:24:39.019Z",
   "initialModuleCount": 65,
-  "initialSourceBytes": 837387,
+  "initialSourceBytes": 839800,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 182770
+      "bytes": 182891
     },
     {
       "file": "src/features/requests/useUserRequestHistoryActionController.js",
@@ -32,12 +32,12 @@
       "bytes": 22785
     },
     {
-      "file": "src/features/settings/useAdminSystemSettingsController.js",
-      "bytes": 22555
+      "file": "src/features/requests/useRentalDataSubscriptionController.js",
+      "bytes": 22771
     },
     {
-      "file": "src/features/requests/useRentalDataSubscriptionController.js",
-      "bytes": 22281
+      "file": "src/features/settings/useAdminSystemSettingsController.js",
+      "bytes": 22555
     },
     {
       "file": "src/utils/richTextCore.js",
@@ -57,7 +57,7 @@
     },
     {
       "file": "src/features/auth/useAuthIdentityPolicySubscriptionController.js",
-      "bytes": 19567
+      "bytes": 19798
     },
     {
       "file": "src/components/CommonUI.jsx",
@@ -132,16 +132,16 @@
       "bytes": 7724
     },
     {
+      "file": "src/user/UserWorkspace.jsx",
+      "bytes": 7497
+    },
+    {
       "file": "src/hooks/useDashboardSummary.js",
-      "bytes": 7052
+      "bytes": 7220
     },
     {
       "file": "src/features/auth/useUserAccountRecoveryController.js",
       "bytes": 6276
-    },
-    {
-      "file": "src/user/UserWorkspace.jsx",
-      "bytes": 6094
     },
     {
       "file": "src/routing/appRoutes.js",

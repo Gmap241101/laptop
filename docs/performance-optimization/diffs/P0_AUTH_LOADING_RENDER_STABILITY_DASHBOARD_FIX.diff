@@ -1,0 +1,412 @@
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -1780,14 +1780,14 @@
+     }
+   }, [adminTab]);
+ 
+-  const triggerToast = (message, type = 'success') => {
++  const triggerToast = useCallback((message, type = 'success') => {
+     setToast({ message, type });
+-    setTimeout(() => setToast(null), 3000);
+-  };
++    window.setTimeout(() => setToast(null), 3000);
++  }, []);
+ 
+-  const triggerConfirm = (title, message, onConfirm) => {
++  const triggerConfirm = useCallback((title, message, onConfirm) => {
+     setConfirmModal({ title, message, onConfirm });
+-  };
++  }, []);
+ 
+   useAuthIdentityPolicySubscriptionController({
+     adminTab,
+@@ -1824,22 +1824,6 @@
+     view,
+   });
+ 
+-  const {
+-    dashboardSummary,
+-    dashboardSummaryLoadErrorMessage,
+-    dashboardSummaryReady,
+-    dashboardSummaryRefreshing,
+-    refreshDashboardSummary,
+-  } = useDashboardSummary({
+-    firebaseAuthReady,
+-    currentAuthRoleReady,
+-    authenticatedAdminId,
+-    currentAuthAdminAccountId: currentAuthAdminAccount?.id || '',
+-    view,
+-    adminTab,
+-    triggerToast,
+-  });
+-
+   const registeredAdminAccounts = adminAccounts || [];
+ 
+   const {
+@@ -1891,6 +1875,24 @@
+     view,
+   });
+ 
++  const {
++    dashboardSummary,
++    dashboardSummaryLoadErrorMessage,
++    dashboardSummaryReady,
++    dashboardSummaryRefreshing,
++    refreshDashboardSummary,
++  } = useDashboardSummary({
++    adminTab,
++    authenticatedAdminId,
++    currentAuthAdminAccountId: currentAuthAdminAccount?.id || '',
++    currentAuthRoleReady,
++    firebaseAuthReady,
++    firebaseAuthUserUid: firebaseAuthUser?.uid || '',
++    isAdminAuthenticated,
++    triggerToast,
++    view,
++  });
++
+   useRentalDataSubscriptionController({
+     adminTab,
+     authenticatedAdminId,
+--- a/src/features/auth/useAuthIdentityPolicySubscriptionController.js
++++ b/src/features/auth/useAuthIdentityPolicySubscriptionController.js
+@@ -166,11 +166,16 @@
+   const adminAccountsApplyingRemoteRef = useRef(false);
+   const adminAccountsLastSyncedRef = useRef({});
+   const allowAdminAccountsWriteRef = useRef(false);
++  const triggerToastRef = useRef(triggerToast);
+   const hasFirebaseAuthSession = Boolean(
+     firebaseAuthUser || firebaseAuth.currentUser
+   );
+ 
+   useEffect(() => {
++    triggerToastRef.current = triggerToast;
++  }, [triggerToast]);
++
++  useEffect(() => {
+     const unsubscribe = onAuthStateChanged(
+       firebaseAuth,
+       (user) => {
+@@ -259,7 +264,7 @@
+           setCurrentAuthRoleErrorMessage(message);
+           setCurrentAuthRoleReady(true);
+ 
+-          triggerToast(message, 'error');
++          triggerToastRef.current?.(message, 'error');
+           return;
+         }
+ 
+@@ -277,7 +282,7 @@
+         setCurrentAuthRoleErrorMessage(message);
+         setCurrentAuthRoleReady(true);
+ 
+-        triggerToast(message, 'error');
++        triggerToastRef.current?.(message, 'error');
+       }
+     );
+ 
+@@ -351,7 +356,7 @@
+         console.error('User account sync error:', error);
+         setUserProfile(null);
+         setUserProfileReady(true);
+-        triggerToast(
++        triggerToastRef.current?.(
+           '마이페이지 정보를 불러오지 못했습니다. Firestore 권한을 확인해 주세요.',
+           'error'
+         );
+@@ -360,10 +365,11 @@
+ 
+     return unsubscribe;
+   }, [
+-    firebaseAuthUser,
++    firebaseAuthUser?.displayName,
++    firebaseAuthUser?.uid,
+     currentAuthRoleReady,
+     currentAuthRoleErrorMessage,
+-    currentAuthAdminAccount,
++    currentAuthAdminAccount?.id,
+     authenticatedAdminId,
+   ]);
+ 
+@@ -402,7 +408,7 @@
+         console.error('Rental restriction sync error:', error);
+         setCurrentUserRestriction(null);
+         setCurrentUserRestrictionReady(true);
+-        triggerToast(
++        triggerToastRef.current?.(
+           '대여 제한 상태를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
+           'error'
+         );
+--- a/src/features/requests/useRentalDataSubscriptionController.js
++++ b/src/features/requests/useRentalDataSubscriptionController.js
+@@ -1,4 +1,4 @@
+-import { useEffect, useState } from 'react';
++import { useEffect, useMemo, useRef, useState } from 'react';
+ import { getDocs, onSnapshot, query as firestoreQuery, where } from 'firebase/firestore';
+ 
+ import {
+@@ -92,6 +92,25 @@
+   userProfile,
+   userProfileReady,
+ }) {
++  const triggerToastRef = useRef(triggerToast);
++  const previousAccountUidsKey = useMemo(
++    () =>
++      JSON.stringify(
++        (Array.isArray(userProfile?.previousAccountUids)
++          ? userProfile.previousAccountUids
++          : []
++        )
++          .map((value) => String(value || '').trim())
++          .filter(Boolean)
++          .sort()
++      ),
++    [userProfile?.previousAccountUids]
++  );
++
++  useEffect(() => {
++    triggerToastRef.current = triggerToast;
++  }, [triggerToast]);
++
+   useEffect(() => {
+     if (!firebaseAuthReady || !currentAuthRoleReady || !userProfileReady) {
+       setRentalRequestsReady(false);
+@@ -225,7 +244,7 @@
+                 '나의 대여신청 내역을 불러오지 못했습니다. Firestore Rules의 rentalRequests 본인 및 이전 계정 조회 권한을 확인해 주세요.';
+               setRentalRequestsLoadErrorMessage(message);
+               setRentalRequestsReady(true);
+-              triggerToast(message, 'error');
++              triggerToastRef.current?.(message, 'error');
+               return;
+             }
+ 
+@@ -248,9 +267,8 @@
+     setRentalRequests,
+     setRentalRequestsLoadErrorMessage,
+     setRentalRequestsReady,
+-    triggerToast,
+     userProfile?.email,
+-    userProfile?.previousAccountUids,
++    previousAccountUidsKey,
+     userProfile?.status,
+     userProfileReady,
+   ]);
+--- a/src/hooks/useDashboardSummary.js
++++ b/src/hooks/useDashboardSummary.js
+@@ -32,6 +32,8 @@
+   currentAuthRoleReady,
+   authenticatedAdminId,
+   currentAuthAdminAccountId,
++  firebaseAuthUserUid,
++  isAdminAuthenticated,
+   view,
+   adminTab,
+   triggerToast,
+@@ -97,8 +99,11 @@
+   const shouldSubscribeDashboardSummary =
+     firebaseAuthReady &&
+     currentAuthRoleReady &&
++    isAdminAuthenticated &&
+     Boolean(authenticatedAdminId) &&
+     Boolean(currentAuthAdminAccountId) &&
++    Boolean(firebaseAuthUserUid) &&
++    firebaseAuthUserUid === currentAuthAdminAccountId &&
+     view === 'admin';
+ 
+   useEffect(() => {
+--- a/src/services/dashboardSummaryService.js
++++ b/src/services/dashboardSummaryService.js
+@@ -3,7 +3,6 @@
+   getDoc,
+   getDocs,
+   limit as firestoreLimit,
+-  orderBy,
+   query as firestoreQuery,
+   serverTimestamp,
+   setDoc,
+@@ -132,8 +131,7 @@
+   const pendingAccountSource = firestoreQuery(
+     USER_ACCOUNTS_COLLECTION_REF,
+     where('status', '==', USER_PROFILE_STATUS.PENDING),
+-    orderBy('createdAt', 'asc'),
+-    firestoreLimit(DASHBOARD_SUMMARY_PENDING_ACCOUNT_LIMIT)
++    firestoreLimit(100)
+   );
+ 
+   const [
+@@ -186,13 +184,22 @@
+       return String(second.id || '').localeCompare(String(first.id || ''));
+     })
+     .slice(0, ADMIN_DASHBOARD_ACTIVE_REQUEST_LIMIT);
+-  const pendingAccounts = pendingAccountSnapshot.docs.map((accountDoc) =>
+-    toDashboardAccountSummary({
+-      ...accountDoc.data(),
+-      id: accountDoc.id,
+-      uid: accountDoc.data().uid || accountDoc.id,
++  const pendingAccounts = pendingAccountSnapshot.docs
++    .map((accountDoc) =>
++      toDashboardAccountSummary({
++        ...accountDoc.data(),
++        id: accountDoc.id,
++        uid: accountDoc.data().uid || accountDoc.id,
++      })
++    )
++    .sort((first, second) => {
++      const timeDiff =
++        getFirestoreTimestampMillis(first.createdAt) -
++        getFirestoreTimestampMillis(second.createdAt);
++      if (timeDiff) return timeDiff;
++      return String(first.id || '').localeCompare(String(second.id || ''));
+     })
+-  );
++    .slice(0, DASHBOARD_SUMMARY_PENDING_ACCOUNT_LIMIT);
+ 
+   const publicCatalogData = publicCatalogSnapshot.exists()
+     ? publicCatalogSnapshot.data()
+--- a/src/user/UserWorkspace.jsx
++++ b/src/user/UserWorkspace.jsx
+@@ -1,19 +1,22 @@
+-import { lazy, memo, Suspense, useMemo } from 'react';
++import { lazy, memo, Suspense, useEffect, useMemo } from 'react';
+ import DevRenderProfiler from '../performance/DevRenderProfiler.jsx';
+ import UserHomePanel from './UserHomePanel.jsx';
+ import useUserTermsCompliance from '../features/terms/useUserTermsCompliance.js';
+ import UserTermsConsentPanel from './UserTermsConsentPanel.jsx';
+ 
+-const UserAuthPanel = memo(lazy(() => import('./UserAuthPanel.jsx')));
++const loadUserAuthPanel = () => import('./UserAuthPanel.jsx');
++const UserAuthPanel = memo(lazy(loadUserAuthPanel));
+ const UserAccountStatusPanel = memo(
+   lazy(() => import('./UserAccountStatusPanel.jsx'))
+ );
+-const UserBoardPanel = memo(lazy(() => import('./UserBoardPanel.jsx')));
+-const UserMyPagePanel = memo(lazy(() => import('./UserMyPagePanel.jsx')));
+-const UserRentalPanel = memo(lazy(() => import('./UserRentalPanel.jsx')));
+-const UserRequestHistoryPanel = memo(
+-  lazy(() => import('./UserRequestHistoryPanel.jsx'))
+-);
++const loadUserBoardPanel = () => import('./UserBoardPanel.jsx');
++const UserBoardPanel = memo(lazy(loadUserBoardPanel));
++const loadUserMyPagePanel = () => import('./UserMyPagePanel.jsx');
++const loadUserRentalPanel = () => import('./UserRentalPanel.jsx');
++const loadUserRequestHistoryPanel = () => import('./UserRequestHistoryPanel.jsx');
++const UserMyPagePanel = memo(lazy(loadUserMyPagePanel));
++const UserRentalPanel = memo(lazy(loadUserRentalPanel));
++const UserRequestHistoryPanel = memo(lazy(loadUserRequestHistoryPanel));
+ const UserFooterPagePanel = memo(
+   lazy(() => import('./UserFooterPagePanel.jsx'))
+ );
+@@ -68,6 +71,46 @@
+     enabled: isProtectedUserTab && hasFirebaseAuthSession,
+   });
+ 
++  useEffect(() => {
++    if (typeof window === 'undefined') {
++      return undefined;
++    }
++
++    const preloadCurrentUserPanels = () => {
++      const loaders = [loadUserAuthPanel, loadUserBoardPanel];
++      if (hasFirebaseAuthSession) {
++        loaders.push(
++          loadUserRentalPanel,
++          loadUserRequestHistoryPanel,
++          loadUserMyPagePanel
++        );
++      }
++
++      void Promise.allSettled(loaders.map((loadPanel) => loadPanel()));
++    };
++
++    window.addEventListener('pointerdown', preloadCurrentUserPanels, {
++      once: true,
++      passive: true,
++    });
++
++    let idleRequestId = 0;
++    let timeoutId = 0;
++    if (typeof window.requestIdleCallback === 'function') {
++      idleRequestId = window.requestIdleCallback(preloadCurrentUserPanels, {
++        timeout: 1200,
++      });
++    } else {
++      timeoutId = window.setTimeout(preloadCurrentUserPanels, 250);
++    }
++
++    return () => {
++      window.removeEventListener('pointerdown', preloadCurrentUserPanels);
++      if (idleRequestId) window.cancelIdleCallback?.(idleRequestId);
++      if (timeoutId) window.clearTimeout(timeoutId);
++    };
++  }, [hasFirebaseAuthSession]);
++
+   if (isProtectedUserTab && (!firebaseAuthReady || !currentAuthRoleReady)) {
+     return (
+       <div className="rounded-2xl border border-slate-200 bg-white px-6 py-12 text-center shadow-sm">
+--- a/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json
++++ b/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json
+@@ -1,11 +1,11 @@
+ {
+-  "generatedAt": "2026-07-31T08:55:57.984Z",
++  "generatedAt": "2026-07-31T09:24:39.019Z",
+   "initialModuleCount": 65,
+-  "initialSourceBytes": 837387,
++  "initialSourceBytes": 839800,
+   "files": [
+     {
+       "file": "src/App.jsx",
+-      "bytes": 182770
++      "bytes": 182891
+     },
+     {
+       "file": "src/features/requests/useUserRequestHistoryActionController.js",
+@@ -32,12 +32,12 @@
+       "bytes": 22785
+     },
+     {
+-      "file": "src/features/settings/useAdminSystemSettingsController.js",
+-      "bytes": 22555
++      "file": "src/features/requests/useRentalDataSubscriptionController.js",
++      "bytes": 22771
+     },
+     {
+-      "file": "src/features/requests/useRentalDataSubscriptionController.js",
+-      "bytes": 22281
++      "file": "src/features/settings/useAdminSystemSettingsController.js",
++      "bytes": 22555
+     },
+     {
+       "file": "src/utils/richTextCore.js",
+@@ -57,7 +57,7 @@
+     },
+     {
+       "file": "src/features/auth/useAuthIdentityPolicySubscriptionController.js",
+-      "bytes": 19567
++      "bytes": 19798
+     },
+     {
+       "file": "src/components/CommonUI.jsx",
+@@ -132,18 +132,18 @@
+       "bytes": 7724
+     },
+     {
++      "file": "src/user/UserWorkspace.jsx",
++      "bytes": 7497
++    },
++    {
+       "file": "src/hooks/useDashboardSummary.js",
+-      "bytes": 7052
++      "bytes": 7220
+     },
+     {
+       "file": "src/features/auth/useUserAccountRecoveryController.js",
+       "bytes": 6276
+     },
+     {
+-      "file": "src/user/UserWorkspace.jsx",
+-      "bytes": 6094
+-    },
+-    {
+       "file": "src/routing/appRoutes.js",
+       "bytes": 6053
+     },

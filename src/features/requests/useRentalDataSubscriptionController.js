@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { getDocs, onSnapshot, query as firestoreQuery, where } from 'firebase/firestore';
 
 import {
@@ -92,6 +92,25 @@ export function useOwnRentalRequestsSubscriptionController({
   userProfile,
   userProfileReady,
 }) {
+  const triggerToastRef = useRef(triggerToast);
+  const previousAccountUidsKey = useMemo(
+    () =>
+      JSON.stringify(
+        (Array.isArray(userProfile?.previousAccountUids)
+          ? userProfile.previousAccountUids
+          : []
+        )
+          .map((value) => String(value || '').trim())
+          .filter(Boolean)
+          .sort()
+      ),
+    [userProfile?.previousAccountUids]
+  );
+
+  useEffect(() => {
+    triggerToastRef.current = triggerToast;
+  }, [triggerToast]);
+
   useEffect(() => {
     if (!firebaseAuthReady || !currentAuthRoleReady || !userProfileReady) {
       setRentalRequestsReady(false);
@@ -225,7 +244,7 @@ export function useOwnRentalRequestsSubscriptionController({
                 '나의 대여신청 내역을 불러오지 못했습니다. Firestore Rules의 rentalRequests 본인 및 이전 계정 조회 권한을 확인해 주세요.';
               setRentalRequestsLoadErrorMessage(message);
               setRentalRequestsReady(true);
-              triggerToast(message, 'error');
+              triggerToastRef.current?.(message, 'error');
               return;
             }
 
@@ -248,9 +267,8 @@ export function useOwnRentalRequestsSubscriptionController({
     setRentalRequests,
     setRentalRequestsLoadErrorMessage,
     setRentalRequestsReady,
-    triggerToast,
     userProfile?.email,
-    userProfile?.previousAccountUids,
+    previousAccountUidsKey,
     userProfile?.status,
     userProfileReady,
   ]);
