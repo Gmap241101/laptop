@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-07-31T08:05:39.675Z",
-  "initialModuleCount": 61,
-  "initialSourceBytes": 825715,
+  "generatedAt": "2026-07-31T08:17:18.199Z",
+  "initialModuleCount": 63,
+  "initialSourceBytes": 827030,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 215437
+      "bytes": 214261
     },
     {
       "file": "src/features/requests/useUserRequestHistoryActionController.js",
@@ -224,6 +224,10 @@
       "bytes": 1964
     },
     {
+      "file": "src/features/requests/rentalRestrictionService.js",
+      "bytes": 1863
+    },
+    {
       "file": "src/components/RentalStatusBoard.jsx",
       "bytes": 1843
     },
@@ -234,6 +238,10 @@
     {
       "file": "src/config/firestoreCachePolicy.js",
       "bytes": 641
+    },
+    {
+      "file": "src/features/auth/adminAuditActorService.js",
+      "bytes": 628
     },
     {
       "file": "src/features/auth/userSessionPolicyService.js",

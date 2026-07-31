@@ -308,6 +308,12 @@ import useAdminRequestMutationController from './features/requests/useAdminReque
 import useAdminUserActionReviewController, {
   useAdminUserActionReviewState,
 } from './features/requests/useAdminUserActionReviewController.js';
+import {
+  createFreshRentalRestrictionStatusLoader,
+} from './features/requests/rentalRestrictionService.js';
+import {
+  createCurrentAdminAuditActorResolver,
+} from './features/auth/adminAuditActorService.js';
 
 import {
   DEFAULT_SITE_SETTINGS,
@@ -5855,56 +5861,10 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
         )
       : -1;
 
-  const loadFreshRentalRestrictionStatus = async (requesterUid) => {
-    const restrictionDocRef = doc(
-      RENTAL_RESTRICTIONS_COLLECTION_REF,
-      requesterUid
-    );
-
-    const [
-      publicConfigSnapshot,
-      userRequestsSnapshot,
-      restrictionSnapshot,
-    ] = await Promise.all([
-      getDoc(PUBLIC_CONFIG_DOC_REF),
-      getDocs(
-        firestoreQuery(
-          RENTAL_REQUESTS_COLLECTION_REF,
-          where('requesterUid', '==', requesterUid)
-        )
-      ),
-      getDoc(restrictionDocRef),
-    ]);
-
-    const latestSettings = normalizeRentalPolicySettings({
-      ...data.settings,
-      ...(publicConfigSnapshot.exists()
-        ? publicConfigSnapshot.data()?.settings || {}
-        : {}),
+  const loadFreshRentalRestrictionStatus =
+    createFreshRentalRestrictionStatusLoader({
+      fallbackSettings: data.settings,
     });
-
-    const latestRequests = userRequestsSnapshot.docs.map(
-      (requestDocument) => ({
-        ...requestDocument.data(),
-        id: requestDocument.id,
-      })
-    );
-
-    const latestRestriction = restrictionSnapshot.exists()
-      ? {
-          ...restrictionSnapshot.data(),
-          uid: restrictionSnapshot.id,
-        }
-      : null;
-
-    return getRentalRestrictionStatus({
-      requests: latestRequests,
-      requesterUid,
-      settings: latestSettings,
-      restriction: latestRestriction,
-      referenceDate: today(),
-    });
-  };
 
   const { submitRequest } = useUserRentalRequestController({
     currentAuthAdminAccount,
@@ -5959,22 +5919,11 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     userActionSaving,
   });
 
-  const getCurrentAdminAuditActor = () => ({
-    uid:
-      firebaseAuth.currentUser?.uid ||
-      authenticatedAdminAccount?.authUid ||
-      '',
-
-    adminId:
-      authenticatedAdminAccount?.id ||
-      '',
-
-    name:
-      authenticatedAdminAccount?.userName ||
-      authenticatedAdminAccount?.adminLoginId ||
-      authenticatedAdminAccount?.authEmail ||
-      '관리자',
-  });
+  const getCurrentAdminAuditActor =
+    createCurrentAdminAuditActorResolver({
+      firebaseAuth,
+      authenticatedAdminAccount,
+    });
 
   const {
     closeFaqPostDialog,

@@ -1,0 +1,84 @@
+P2 공용 대여 제한 조회·관리자 감사 주체 서비스 분리 검증 보고서
+================================================================
+
+검증 일시: 2026-07-31 17:19 KST
+입력 기준본: rental-system-admin-user-action-review-controller-banner-tab-count-fix-20260731_1709_deployment_package.zip
+출력 풀패키지: rental-system-shared-rental-restriction-admin-audit-service-split-20260731_1719_deployment_package.zip
+출력 프로젝트 파일: 363개
+
+1. 입력 패키지 무결성
+--------------------
+- PACKAGE_FILES.txt 항목: 357개
+- PACKAGE_SHA256SUMS.txt 항목: 357개
+- 입력 패키지 파일 해시 검증: PASS 357/357
+- 입력 ZIP SHA-256: f091b4cf3b820fa18381c95bf36d68a8f4330129bda5d10dfa0d3bd9b6a407f0
+
+2. 소스 구조 검증
+-----------------
+- JS/JSX/MJS 파일: 119개
+- TypeScript parser 구문 오류: 0건
+- 상대 import 실파일 누락: 0건
+- React Hook import 감사: PASS, 119개 파일
+- App.jsx 내 기존 대여 제한 조회 구현 제거: PASS
+- App.jsx 내 기존 관리자 감사 actor 구현 제거: PASS
+- 신규 대여 제한 loader 연결: PASS
+- 신규 관리자 감사 actor resolver 연결: PASS
+
+3. 기능 계약 검증
+-----------------
+- PUBLIC_CONFIG 최신 설정이 fallback 설정을 덮어쓰는지: PASS
+- fallback 설정의 미변경 필드가 유지되는지: PASS
+- 대여 신청 문서 ID 병합: PASS
+- 제한 문서 UID 병합: PASS
+- 기준일 today() 전달: PASS
+- loader factory의 requesterUid 전달: PASS
+- Firebase Auth UID 우선 적용: PASS
+- 관리자 authUid fallback: PASS
+- 관리자 이름 우선순위 userName > adminLoginId > authEmail > 관리자: PASS
+- 공용 서비스 runtime mock: PASS
+
+4. Firestore 감사
+-----------------
+- strict 감사: PASS
+- 전체 호출 수: 129 -> 129
+- onSnapshot: 35 -> 35
+- getDocs: 48 -> 48
+- getDoc: 28 -> 28
+- getCountFromServer: 18 -> 18
+- 미승인 warning: 0건
+- 미승인 error: 0건
+- 감사 정책 변경: 호출 파일 이동에 따른 승인 ID 1개만 갱신
+
+5. UI·문구 보존
+----------------
+- 한국어 문자열 발생 횟수: 3,384 -> 3,384
+- 한국어 고유 문자열: 2,393 -> 2,393
+- 삭제된 한국어 문자열: 0개
+- 추가된 한국어 문자열: 0개
+- JSX/UI/className 변경: 없음
+
+6. 설정·Firebase 파일
+---------------------
+- rules/firestore.rules: 변경 없음
+- firestore.indexes.json: 변경 없음
+- firebase.json: 변경 없음
+- .firebaserc: 변경 없음
+- package.json: 변경 없음
+- package-lock.json: 변경 없음
+- Firebase Rules/인덱스 배포 필요: 없음
+
+7. REMOVED_FILES.txt
+--------------------
+- 기존 누적 삭제 경로: 67개
+- 이번 신규 삭제 경로: 0개
+- 최종 누적 삭제 경로: 67개
+- 중복 경로: 0개
+- SHA-256: 17ad59f08176c623ca2eaa4d3b232992555e62b3ad1b22c824cb1af10778f212
+
+8. 실제 Vite 빌드
+-----------------
+- npm ci: FAIL
+- 원인: 내부 npm 저장소에서 yargs-parser-21.1.1.tgz E404
+- 소스 구문·Hook·상대 import·Firestore·runtime mock 검증: PASS
+- 실제 Vite 프로덕션 빌드: 로컬 deploy.ps1에서 확인 필요
+- 로컬 npm run build와 최종 완료 메시지 전에는 정상 배포로 간주하지 않음

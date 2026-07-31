@@ -1,0 +1,268 @@
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -308,6 +308,12 @@
+ import useAdminUserActionReviewController, {
+   useAdminUserActionReviewState,
+ } from './features/requests/useAdminUserActionReviewController.js';
++import {
++  createFreshRentalRestrictionStatusLoader,
++} from './features/requests/rentalRestrictionService.js';
++import {
++  createCurrentAdminAuditActorResolver,
++} from './features/auth/adminAuditActorService.js';
+ 
+ import {
+   DEFAULT_SITE_SETTINGS,
+@@ -5855,56 +5861,10 @@
+         )
+       : -1;
+ 
+-  const loadFreshRentalRestrictionStatus = async (requesterUid) => {
+-    const restrictionDocRef = doc(
+-      RENTAL_RESTRICTIONS_COLLECTION_REF,
+-      requesterUid
+-    );
+-
+-    const [
+-      publicConfigSnapshot,
+-      userRequestsSnapshot,
+-      restrictionSnapshot,
+-    ] = await Promise.all([
+-      getDoc(PUBLIC_CONFIG_DOC_REF),
+-      getDocs(
+-        firestoreQuery(
+-          RENTAL_REQUESTS_COLLECTION_REF,
+-          where('requesterUid', '==', requesterUid)
+-        )
+-      ),
+-      getDoc(restrictionDocRef),
+-    ]);
+-
+-    const latestSettings = normalizeRentalPolicySettings({
+-      ...data.settings,
+-      ...(publicConfigSnapshot.exists()
+-        ? publicConfigSnapshot.data()?.settings || {}
+-        : {}),
++  const loadFreshRentalRestrictionStatus =
++    createFreshRentalRestrictionStatusLoader({
++      fallbackSettings: data.settings,
+     });
+-
+-    const latestRequests = userRequestsSnapshot.docs.map(
+-      (requestDocument) => ({
+-        ...requestDocument.data(),
+-        id: requestDocument.id,
+-      })
+-    );
+-
+-    const latestRestriction = restrictionSnapshot.exists()
+-      ? {
+-          ...restrictionSnapshot.data(),
+-          uid: restrictionSnapshot.id,
+-        }
+-      : null;
+-
+-    return getRentalRestrictionStatus({
+-      requests: latestRequests,
+-      requesterUid,
+-      settings: latestSettings,
+-      restriction: latestRestriction,
+-      referenceDate: today(),
+-    });
+-  };
+ 
+   const { submitRequest } = useUserRentalRequestController({
+     currentAuthAdminAccount,
+@@ -5959,22 +5919,11 @@
+     userActionSaving,
+   });
+ 
+-  const getCurrentAdminAuditActor = () => ({
+-    uid:
+-      firebaseAuth.currentUser?.uid ||
+-      authenticatedAdminAccount?.authUid ||
+-      '',
+-
+-    adminId:
+-      authenticatedAdminAccount?.id ||
+-      '',
+-
+-    name:
+-      authenticatedAdminAccount?.userName ||
+-      authenticatedAdminAccount?.adminLoginId ||
+-      authenticatedAdminAccount?.authEmail ||
+-      '관리자',
+-  });
++  const getCurrentAdminAuditActor =
++    createCurrentAdminAuditActorResolver({
++      firebaseAuth,
++      authenticatedAdminAccount,
++    });
+ 
+   const {
+     closeFaqPostDialog,
+--- a/src/features/requests/rentalRestrictionService.js
++++ b/src/features/requests/rentalRestrictionService.js
+@@ -0,0 +1,79 @@
++import {
++  doc,
++  getDoc,
++  getDocs,
++  query as firestoreQuery,
++  where,
++} from 'firebase/firestore';
++
++import {
++  PUBLIC_CONFIG_DOC_REF,
++  RENTAL_REQUESTS_COLLECTION_REF,
++  RENTAL_RESTRICTIONS_COLLECTION_REF,
++} from '../../firebase.js';
++import { normalizeRentalPolicySettings } from '../../domain/rentalPolicy.js';
++import { today } from '../../utils/appUtils.js';
++import { getRentalRestrictionStatus } from '../../utils/overduePolicy.js';
++
++export const loadFreshRentalRestrictionStatus = async ({
++  requesterUid,
++  fallbackSettings,
++}) => {
++  const restrictionDocRef = doc(
++    RENTAL_RESTRICTIONS_COLLECTION_REF,
++    requesterUid
++  );
++
++  const [
++    publicConfigSnapshot,
++    userRequestsSnapshot,
++    restrictionSnapshot,
++  ] = await Promise.all([
++    getDoc(PUBLIC_CONFIG_DOC_REF),
++    getDocs(
++      firestoreQuery(
++        RENTAL_REQUESTS_COLLECTION_REF,
++        where('requesterUid', '==', requesterUid)
++      )
++    ),
++    getDoc(restrictionDocRef),
++  ]);
++
++  const latestSettings = normalizeRentalPolicySettings({
++    ...fallbackSettings,
++    ...(publicConfigSnapshot.exists()
++      ? publicConfigSnapshot.data()?.settings || {}
++      : {}),
++  });
++
++  const latestRequests = userRequestsSnapshot.docs.map(
++    (requestDocument) => ({
++      ...requestDocument.data(),
++      id: requestDocument.id,
++    })
++  );
++
++  const latestRestriction = restrictionSnapshot.exists()
++    ? {
++        ...restrictionSnapshot.data(),
++        uid: restrictionSnapshot.id,
++      }
++    : null;
++
++  return getRentalRestrictionStatus({
++    requests: latestRequests,
++    requesterUid,
++    settings: latestSettings,
++    restriction: latestRestriction,
++    referenceDate: today(),
++  });
++};
++
++export const createFreshRentalRestrictionStatusLoader = ({
++  fallbackSettings,
++}) =>
++  (requesterUid) =>
++    loadFreshRentalRestrictionStatus({
++      requesterUid,
++      fallbackSettings,
++    });
+--- a/src/features/auth/adminAuditActorService.js
++++ b/src/features/auth/adminAuditActorService.js
+@@ -0,0 +1,29 @@
++export const createAdminAuditActor = ({
++  firebaseUser,
++  authenticatedAdminAccount,
++}) => ({
++  uid:
++    firebaseUser?.uid ||
++    authenticatedAdminAccount?.authUid ||
++    '',
++
++  adminId:
++    authenticatedAdminAccount?.id ||
++    '',
++
++  name:
++    authenticatedAdminAccount?.userName ||
++    authenticatedAdminAccount?.adminLoginId ||
++    authenticatedAdminAccount?.authEmail ||
++    '관리자',
++});
++
++export const createCurrentAdminAuditActorResolver = ({
++  firebaseAuth,
++  authenticatedAdminAccount,
++}) =>
++  () =>
++    createAdminAuditActor({
++      firebaseUser: firebaseAuth?.currentUser,
++      authenticatedAdminAccount,
++    });
+--- a/tools/firestore-audit-policy.json
++++ b/tools/firestore-audit-policy.json
+@@ -155,7 +155,7 @@
+       "reviewWhen": "컬렉션 규모, 화면 활성 조건, 데이터 보존 정책 또는 쿼리 구조가 변경될 때 재검토"
+     },
+     {
+-      "id": "getDocs:2e0cb7ecd3c919f5",
++      "id": "getDocs:a64692c08f4241c1",
+       "reason": "반납·연체 처리 직전에 특정 사용자 1명의 전체 대여 이력을 다시 계산해 제한 정책을 정확히 적용하는 서버 최신성 검증입니다.",
+       "reviewWhen": "컬렉션 규모, 화면 활성 조건, 데이터 보존 정책 또는 쿼리 구조가 변경될 때 재검토"
+     },
+--- a/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json
++++ b/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json
+@@ -1,11 +1,11 @@
+ {
+-  "generatedAt": "2026-07-31T08:05:39.675Z",
+-  "initialModuleCount": 61,
+-  "initialSourceBytes": 825715,
++  "generatedAt": "2026-07-31T08:17:18.199Z",
++  "initialModuleCount": 63,
++  "initialSourceBytes": 827030,
+   "files": [
+     {
+       "file": "src/App.jsx",
+-      "bytes": 215437
++      "bytes": 214261
+     },
+     {
+       "file": "src/features/requests/useUserRequestHistoryActionController.js",
+@@ -224,6 +224,10 @@
+       "bytes": 1964
+     },
+     {
++      "file": "src/features/requests/rentalRestrictionService.js",
++      "bytes": 1863
++    },
++    {
+       "file": "src/components/RentalStatusBoard.jsx",
+       "bytes": 1843
+     },
+@@ -234,6 +238,10 @@
+     {
+       "file": "src/config/firestoreCachePolicy.js",
+       "bytes": 641
++    },
++    {
++      "file": "src/features/auth/adminAuditActorService.js",
++      "bytes": 628
+     },
+     {
+       "file": "src/features/auth/userSessionPolicyService.js",

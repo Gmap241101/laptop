@@ -1,0 +1,82 @@
+{
+  "generatedAt": "2026-07-31T17:19:42+09:00",
+  "task": "shared-rental-restriction-admin-audit-service-split",
+  "baselinePackage": "rental-system-admin-user-action-review-controller-banner-tab-count-fix-20260731_1709_deployment_package.zip",
+  "app": {
+    "before": {
+      "lines": 7329,
+      "bytes": 215437,
+      "useStateCalls": 108,
+      "useEffectCalls": 48,
+      "useRefCalls": 15,
+      "useMemoCalls": 27,
+      "getDocsCalls": 6,
+      "getDocCalls": 4,
+      "runTransactionCalls": 1
+    },
+    "after": {
+      "lines": 7278,
+      "bytes": 214261,
+      "useStateCalls": 108,
+      "useEffectCalls": 48,
+      "useRefCalls": 15,
+      "useMemoCalls": 27,
+      "getDocsCalls": 5,
+      "getDocCalls": 2,
+      "runTransactionCalls": 1
+    },
+    "delta": {
+      "lines": -51,
+      "bytes": -1176,
+      "useStateCalls": 0,
+      "useEffectCalls": 0,
+      "useRefCalls": 0,
+      "useMemoCalls": 0,
+      "getDocsCalls": -1,
+      "getDocCalls": -2,
+      "runTransactionCalls": 0
+    }
+  },
+  "newModules": [
+    {
+      "file": "src/features/requests/rentalRestrictionService.js",
+      "lines": 79,
+      "bytes": 1863
+    },
+    {
+      "file": "src/features/auth/adminAuditActorService.js",
+      "lines": 29,
+      "bytes": 628
+    }
+  ],
+  "initialStaticGraph": {
+    "before": {
+      "moduleCount": 61,
+      "sourceBytes": 825715
+    },
+    "after": {
+      "moduleCount": 63,
+      "sourceBytes": 827030
+    },
+    "delta": {
+      "moduleCount": 2,
+      "sourceBytes": 1315
+    }
+  },
+  "firestoreAudit": {
+    "before": {
+      "totalCalls": 129,
+      "onSnapshot": 35,
+      "getDocs": 48,
+      "getDoc": 28,
+      "getCountFromServer": 18
+    },
+    "after": {
+      "totalCalls": 129,
+      "onSnapshot": 35,
+      "getDocs": 48,
+      "getDoc": 28,
+      "getCountFromServer": 18
+    }
+  }
+}
