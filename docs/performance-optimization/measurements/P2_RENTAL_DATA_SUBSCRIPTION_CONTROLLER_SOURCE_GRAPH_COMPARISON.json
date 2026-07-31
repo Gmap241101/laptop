@@ -1,0 +1,69 @@
+{
+  "generatedAt": "2026-07-31T08:37:35.262Z",
+  "inputBaseline": "rental-system-shared-rental-restriction-admin-audit-service-split-20260731_1719_deployment_package.zip",
+  "outputPackage": "rental-system-rental-data-subscription-controller-split-20260731_1738_deployment_package.zip",
+  "app": {
+    "before": {
+      "lines": 7278,
+      "bytes": 214261,
+      "useState": 108,
+      "useEffect": 48,
+      "useRef": 15,
+      "useMemo": 27,
+      "onSnapshot": 23,
+      "getDocs": 5,
+      "getDoc": 2,
+      "runTransaction": 1
+    },
+    "after": {
+      "lines": 6646,
+      "bytes": 197436,
+      "useState": 96,
+      "useEffect": 41,
+      "useRef": 15,
+      "useMemo": 27,
+      "onSnapshot": 17,
+      "getDocs": 4,
+      "getDoc": 2,
+      "runTransaction": 1
+    },
+    "delta": {
+      "lines": -632,
+      "bytes": -16825,
+      "useState": -12,
+      "useEffect": -7,
+      "useRef": 0,
+      "useMemo": 0,
+      "onSnapshot": -6,
+      "getDocs": -1,
+      "getDoc": 0,
+      "runTransaction": 0
+    }
+  },
+  "controller": {
+    "lines": 810,
+    "bytes": 22281,
+    "useState": 12,
+    "useEffect": 7,
+    "useRef": 0,
+    "useMemo": 0,
+    "onSnapshot": 6,
+    "getDocs": 1,
+    "getDoc": 0,
+    "runTransaction": 0
+  },
+  "initialSourceGraph": {
+    "before": {
+      "moduleCount": 63,
+      "sourceBytes": 827030
+    },
+    "after": {
+      "moduleCount": 64,
+      "sourceBytes": 832486
+    },
+    "delta": {
+      "moduleCount": 1,
+      "sourceBytes": 5456
+    }
+  }
+}

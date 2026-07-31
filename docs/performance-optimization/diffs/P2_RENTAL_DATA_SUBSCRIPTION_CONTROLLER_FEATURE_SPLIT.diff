@@ -1,0 +1,1735 @@
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -112,12 +112,7 @@
+   NOTICE_BOARD_CONFIG_DOC_REF,
+   NOTICE_POSTS_COLLECTION_REF,
+   POPUP_POSTS_COLLECTION_REF,
+-  PUBLIC_ASSET_CATALOG_DOC_REF,
+-  PUBLIC_CONFIG_DOC_REF,
+   RENTAL_ASSET_NUMBERS_COLLECTION_REF,
+-  RENTAL_ASSETS_COLLECTION_REF,
+-  RENTAL_AVAILABILITY_COLLECTION_REF,
+-  RENTAL_BORROWERS_COLLECTION_REF,
+   RENTAL_REQUESTS_COLLECTION_REF,
+   RENTAL_RESTRICTIONS_COLLECTION_REF,
+   SITE_FOOTER_CONFIG_DOC_REF,
+@@ -254,10 +249,7 @@
+   writeUserLoginReturnTarget,
+ } from './routing/appRoutes.js';
+ import {
+-  PUBLIC_ASSET_CATALOG_SCHEMA_VERSION,
+-  hydratePublicCatalogAssets,
+   normalizeAssetReservations,
+-  normalizePublicCatalogAssets,
+   toRentalAvailabilityRequest,
+ } from './services/publicAssetCatalog.js';
+ import {
+@@ -311,6 +303,10 @@
+ import {
+   createFreshRentalRestrictionStatusLoader,
+ } from './features/requests/rentalRestrictionService.js';
++import useRentalDataSubscriptionController, {
++  useOwnRentalRequestsSubscriptionController,
++  useRentalDataSubscriptionState,
++} from './features/requests/useRentalDataSubscriptionController.js';
+ import {
+   createCurrentAdminAuditActorResolver,
+ } from './features/auth/adminAuditActorService.js';
+@@ -881,14 +877,6 @@
+   const [firebaseReady, setFirebaseReady] = useState(false);
+   const [firebaseLoadErrorMessage, setFirebaseLoadErrorMessage] = useState('');
+ 
+-  const [rentalRequests, setRentalRequests] = useState([]);
+-  const [rentalRequestsReady, setRentalRequestsReady] = useState(false);
+-
+-  const [
+-    rentalRequestsLoadErrorMessage,
+-    setRentalRequestsLoadErrorMessage,
+-  ] = useState('');
+-
+   const {
+     form,
+     requestSubmitInProgressRef,
+@@ -1098,27 +1086,33 @@
+ 
+   const initializedRemoteFormRef = useRef(false);
+ 
+-  const [splitPublicConfig, setSplitPublicConfig] = useState(null);
+-  const [splitRentalAssets, setSplitRentalAssets] = useState([]);
+-  const [publicCatalogAssets, setPublicCatalogAssets] = useState([]);
+-  const [publicCatalogAssetsReady, setPublicCatalogAssetsReady] = useState(false);
++  const {
++    publicCatalogAssets,
++    publicCatalogAssetsReady,
++    rentalRequests,
++    rentalRequestsLoadErrorMessage,
++    rentalRequestsReady,
++    setPublicCatalogAssets,
++    setPublicCatalogAssetsReady,
++    setRentalRequests,
++    setRentalRequestsLoadErrorMessage,
++    setRentalRequestsReady,
++    setSplitPublicConfig,
++    setSplitRentalAssets,
++    setSplitRentalAvailability,
++    setSplitRentalBorrowers,
++    setSplitSourceErrors,
++    setSplitSourceReady,
++    setSplitStorageVersion,
++    splitPublicConfig,
++    splitRentalAssets,
++    splitRentalAvailability,
++    splitRentalBorrowers,
++    splitSourceErrors,
++    splitSourceReady,
++    splitStorageVersion,
++  } = useRentalDataSubscriptionState();
+   const publicCatalogMigrationAdminUidRef = useRef('');
+-  const [splitRentalAvailability, setSplitRentalAvailability] = useState([]);
+-  const [splitRentalBorrowers, setSplitRentalBorrowers] = useState([]);
+-  const [splitStorageVersion, setSplitStorageVersion] = useState(0);
+-  const [splitSourceReady, setSplitSourceReady] = useState({
+-    config: false,
+-    assets: false,
+-    availability: false,
+-    borrowers: false,
+-  });
+-
+-  const [splitSourceErrors, setSplitSourceErrors] = useState({
+-    config: '',
+-    assets: '',
+-    availability: '',
+-    borrowers: '',
+-  });
+ 
+   const adminAccountsApplyingRemoteRef = useRef(false);
+   const adminAccountsLastSyncedRef = useRef({});
+@@ -2156,523 +2150,6 @@
+   ]);
+ 
+   useEffect(() => {
+-    setSplitSourceReady((prev) => ({
+-      ...prev,
+-      config: false,
+-    }));
+-
+-    const unsubscribe = onSnapshot(
+-      PUBLIC_CONFIG_DOC_REF,
+-      (snapshot) => {
+-        if (!snapshot.exists()) {
+-          const message =
+-            'Firestore 공개 설정 문서가 없습니다. rentalSystem/publicConfig 마이그레이션 상태를 확인해 주세요.';
+-
+-          setSplitPublicConfig(null);
+-          setSplitStorageVersion(0);
+-          setSplitSourceErrors((prev) => ({
+-            ...prev,
+-            config: message,
+-          }));
+-          setSplitSourceReady((prev) => ({
+-            ...prev,
+-            config: true,
+-          }));
+-          setFirebaseReady(true);
+-          setToast({
+-            message,
+-            type: 'error',
+-          });
+-          return;
+-        }
+-
+-        const configData = snapshot.data();
+-
+-        setSplitPublicConfig(configData);
+-        setSplitStorageVersion(
+-          Number(configData.storageVersion || 0)
+-        );
+-        setSplitSourceErrors((prev) => ({
+-          ...prev,
+-          config: '',
+-        }));
+-        setSplitSourceReady((prev) => ({
+-          ...prev,
+-          config: true,
+-        }));
+-      },
+-      (error) => {
+-        const message =
+-          'Firestore 공개 설정을 불러오지 못했습니다. rentalSystem/publicConfig 읽기 권한을 확인해 주세요.';
+-
+-        console.error('Public config sync error:', error);
+-        setSplitPublicConfig(null);
+-        setSplitStorageVersion(0);
+-        setSplitSourceErrors((prev) => ({
+-          ...prev,
+-          config: message,
+-        }));
+-        setSplitSourceReady((prev) => ({
+-          ...prev,
+-          config: true,
+-        }));
+-        setFirebaseReady(true);
+-        setToast({
+-          message,
+-          type: 'error',
+-        });
+-      }
+-    );
+-
+-    return unsubscribe;
+-  }, []);
+-
+-  useEffect(() => {
+-    const shouldLoadUserCatalog =
+-      view === 'user' && ['home', 'rental'].includes(userTab);
+-    const shouldSubscribeAdminAssets =
+-      view === 'admin' &&
+-      Boolean(authenticatedAdminId) &&
+-      Boolean(currentAuthAdminAccount?.id) &&
+-      [
+-        'laptops',
+-        'requests',
+-        'categories',
+-        'dataManagement',
+-      ].includes(adminTab);
+-
+-    if (!shouldLoadUserCatalog && !shouldSubscribeAdminAssets) {
+-      setPublicCatalogAssets([]);
+-      setPublicCatalogAssetsReady(false);
+-      setSplitSourceErrors((prev) => ({
+-        ...prev,
+-        assets: '',
+-      }));
+-      setSplitSourceReady((prev) => ({
+-        ...prev,
+-        assets: true,
+-      }));
+-      return undefined;
+-    }
+-
+-    setFirebaseReady(false);
+-    setSplitSourceReady((prev) => ({
+-      ...prev,
+-      assets: false,
+-    }));
+-
+-    if (shouldSubscribeAdminAssets) {
+-      setPublicCatalogAssets([]);
+-      setPublicCatalogAssetsReady(false);
+-
+-      const unsubscribe = onSnapshot(
+-        RENTAL_ASSETS_COLLECTION_REF,
+-        (snapshot) => {
+-          const assets = snapshot.docs.map((assetDocument) => ({
+-            ...assetDocument.data(),
+-            id: assetDocument.id,
+-            reservations: normalizeAssetReservations(
+-              assetDocument.data().reservations || []
+-            ),
+-          }));
+-
+-          setSplitRentalAssets(assets);
+-          setSplitSourceErrors((prev) => ({
+-            ...prev,
+-            assets: '',
+-          }));
+-          setSplitSourceReady((prev) => ({
+-            ...prev,
+-            assets: true,
+-          }));
+-        },
+-        (error) => {
+-          const message =
+-            '대여 자산 컬렉션을 불러오지 못했습니다. rentalAssets 읽기 권한을 확인해 주세요.';
+-
+-          console.error('Rental assets sync error:', error);
+-          setSplitRentalAssets([]);
+-          setSplitSourceErrors((prev) => ({
+-            ...prev,
+-            assets: message,
+-          }));
+-          setSplitSourceReady((prev) => ({
+-            ...prev,
+-            assets: true,
+-          }));
+-          setFirebaseReady(true);
+-          setToast({
+-            message,
+-            type: 'error',
+-          });
+-        }
+-      );
+-
+-      return unsubscribe;
+-    }
+-
+-    let cancelled = false;
+-    setPublicCatalogAssetsReady(false);
+-
+-    const loadLegacyAssetFallback = async (reason = '') => {
+-      try {
+-        const fallbackSnapshot = await getDocs(RENTAL_ASSETS_COLLECTION_REF);
+-        if (cancelled) return;
+-
+-        const fallbackAssets = normalizePublicCatalogAssets(
+-          fallbackSnapshot.docs.map((assetDocument) => ({
+-            ...assetDocument.data(),
+-            id: assetDocument.id,
+-          }))
+-        );
+-
+-        setPublicCatalogAssets(fallbackAssets);
+-        setPublicCatalogAssetsReady(true);
+-        setSplitSourceErrors((prev) => ({
+-          ...prev,
+-          assets: '',
+-        }));
+-
+-        if (reason) {
+-          console.warn(
+-            'Public asset catalog fallback activated:',
+-            reason
+-          );
+-        }
+-      } catch (fallbackError) {
+-        if (cancelled) return;
+-
+-        const message =
+-          '공개 자산 카탈로그와 기존 자산 목록을 모두 불러오지 못했습니다.';
+-        console.error('Public asset catalog fallback error:', fallbackError);
+-        setPublicCatalogAssets([]);
+-        setPublicCatalogAssetsReady(true);
+-        setSplitRentalAssets([]);
+-        setSplitSourceErrors((prev) => ({
+-          ...prev,
+-          assets: message,
+-        }));
+-        setSplitSourceReady((prev) => ({
+-          ...prev,
+-          assets: true,
+-        }));
+-        setFirebaseReady(true);
+-        setToast({ message, type: 'error' });
+-      }
+-    };
+-
+-    const unsubscribe = onSnapshot(
+-      PUBLIC_ASSET_CATALOG_DOC_REF,
+-      (snapshot) => {
+-        if (cancelled) return;
+-
+-        const catalogData = snapshot.exists()
+-          ? snapshot.data()
+-          : null;
+-        const hasCurrentCatalogSchema =
+-          Number(catalogData?.schemaVersion || 0) ===
+-            PUBLIC_ASSET_CATALOG_SCHEMA_VERSION &&
+-          Array.isArray(catalogData?.assets);
+-
+-        if (!hasCurrentCatalogSchema) {
+-          void loadLegacyAssetFallback(
+-            snapshot.exists()
+-              ? 'publicCatalog/main 문서가 이전 스키마입니다.'
+-              : 'publicCatalog/main 문서가 없습니다.'
+-          );
+-          return;
+-        }
+-
+-        const catalogAssets = normalizePublicCatalogAssets(
+-          snapshot.data().assets
+-        );
+-        setPublicCatalogAssets(catalogAssets);
+-        setPublicCatalogAssetsReady(true);
+-        setSplitSourceErrors((prev) => ({
+-          ...prev,
+-          assets: '',
+-        }));
+-      },
+-      (error) => {
+-        if (cancelled) return;
+-        console.error('Public asset catalog sync error:', error);
+-        void loadLegacyAssetFallback(error?.code || error?.message || 'unknown-error');
+-      }
+-    );
+-
+-    return () => {
+-      cancelled = true;
+-      unsubscribe();
+-    };
+-  }, [
+-    view,
+-    userTab,
+-    adminTab,
+-    authenticatedAdminId,
+-    currentAuthAdminAccount?.id,
+-  ]);
+-
+-  useEffect(() => {
+-    const shouldHydrateUserCatalog =
+-      view === 'user' &&
+-      ['home', 'rental'].includes(userTab) &&
+-      publicCatalogAssetsReady &&
+-      splitSourceReady.availability;
+-
+-    if (!shouldHydrateUserCatalog) {
+-      return;
+-    }
+-
+-    setSplitRentalAssets(
+-      hydratePublicCatalogAssets(
+-        publicCatalogAssets,
+-        splitRentalAvailability
+-      )
+-    );
+-    setSplitSourceErrors((prev) => ({
+-      ...prev,
+-      assets: '',
+-    }));
+-    setSplitSourceReady((prev) => ({
+-      ...prev,
+-      assets: true,
+-    }));
+-  }, [
+-    view,
+-    userTab,
+-    publicCatalogAssets,
+-    publicCatalogAssetsReady,
+-    splitRentalAvailability,
+-    splitSourceReady.availability,
+-  ]);
+-
+-  useEffect(() => {
+-    const shouldSubscribeAvailability =
+-      (view === 'user' && ['home', 'rental'].includes(userTab)) ||
+-      (
+-        view === 'admin' &&
+-        Boolean(authenticatedAdminId) &&
+-        Boolean(currentAuthAdminAccount?.id) &&
+-        ['laptops', 'requests'].includes(adminTab)
+-      );
+-
+-    if (!shouldSubscribeAvailability) {
+-      setSplitSourceErrors((prev) => ({
+-        ...prev,
+-        availability: '',
+-      }));
+-      setSplitSourceReady((prev) => ({
+-        ...prev,
+-        availability: true,
+-      }));
+-      return undefined;
+-    }
+-
+-    setFirebaseReady(false);
+-    setSplitSourceReady((prev) => ({
+-      ...prev,
+-      availability: false,
+-    }));
+-
+-    const unsubscribe = onSnapshot(
+-      RENTAL_AVAILABILITY_COLLECTION_REF,
+-      (snapshot) => {
+-        const availabilityRequests = snapshot.docs.map(
+-          (availabilityDocument) => ({
+-            ...availabilityDocument.data(),
+-            id: availabilityDocument.id,
+-          })
+-        );
+-
+-        setSplitRentalAvailability(availabilityRequests);
+-        setSplitSourceErrors((prev) => ({
+-          ...prev,
+-          availability: '',
+-        }));
+-        setSplitSourceReady((prev) => ({
+-          ...prev,
+-          availability: true,
+-        }));
+-      },
+-      (error) => {
+-        const message =
+-          '공개 예약 현황을 불러오지 못했습니다. rentalAvailability 읽기 권한을 확인해 주세요.';
+-
+-        console.error('Rental availability sync error:', error);
+-        setSplitRentalAvailability([]);
+-        setSplitSourceErrors((prev) => ({
+-          ...prev,
+-          availability: message,
+-        }));
+-        setSplitSourceReady((prev) => ({
+-          ...prev,
+-          availability: true,
+-        }));
+-        setFirebaseReady(true);
+-        setToast({
+-          message,
+-          type: 'error',
+-        });
+-      }
+-    );
+-
+-    return unsubscribe;
+-  }, [
+-    view,
+-    userTab,
+-    adminTab,
+-    authenticatedAdminId,
+-    currentAuthAdminAccount?.id,
+-  ]);
+-
+-
+-  useEffect(() => {
+-    const shouldLoadRentalBorrowers =
+-      firebaseAuthReady &&
+-      currentAuthRoleReady &&
+-      !currentAuthRoleErrorMessage &&
+-      view === 'admin' &&
+-      Boolean(authenticatedAdminId) &&
+-      Boolean(currentAuthAdminAccount?.id) &&
+-      ['people', 'signupPolicy', 'adminAccounts'].includes(adminTab);
+-
+-    if (!shouldLoadRentalBorrowers) {
+-      setSplitRentalBorrowers([]);
+-      setSplitSourceErrors((prev) => ({
+-        ...prev,
+-        borrowers: '',
+-      }));
+-      setSplitSourceReady((prev) => ({
+-        ...prev,
+-        borrowers: true,
+-      }));
+-      return undefined;
+-    }
+-
+-    setSplitSourceReady((prev) => ({
+-      ...prev,
+-      borrowers: false,
+-    }));
+-
+-    const unsubscribe = onSnapshot(
+-      RENTAL_BORROWERS_COLLECTION_REF,
+-      (snapshot) => {
+-        const borrowers = snapshot.docs
+-          .map((borrowerDocument, index) => ({
+-            ...borrowerDocument.data(),
+-            id: borrowerDocument.id,
+-            sortOrder:
+-              Number.isFinite(
+-                Number(borrowerDocument.data().sortOrder)
+-              )
+-                ? Number(borrowerDocument.data().sortOrder)
+-                : index,
+-          }))
+-          .sort((a, b) => a.sortOrder - b.sortOrder);
+-
+-        setSplitRentalBorrowers(borrowers);
+-        setSplitSourceErrors((prev) => ({
+-          ...prev,
+-          borrowers: '',
+-        }));
+-        setSplitSourceReady((prev) => ({
+-          ...prev,
+-          borrowers: true,
+-        }));
+-      },
+-      (error) => {
+-        const message =
+-          '대여자 목록을 불러오지 못했습니다. rentalBorrowers 조회 권한을 확인해 주세요.';
+-
+-        console.error('Rental borrowers sync error:', error);
+-        setSplitRentalBorrowers([]);
+-        setSplitSourceErrors((prev) => ({
+-          ...prev,
+-          borrowers: message,
+-        }));
+-        setSplitSourceReady((prev) => ({
+-          ...prev,
+-          borrowers: true,
+-        }));
+-        setFirebaseReady(true);
+-        setToast({
+-          message,
+-          type: 'error',
+-        });
+-      }
+-    );
+-
+-    return unsubscribe;
+-  }, [
+-    firebaseAuthReady,
+-    currentAuthRoleReady,
+-    currentAuthRoleErrorMessage,
+-    view,
+-    adminTab,
+-    authenticatedAdminId,
+-    currentAuthAdminAccount?.id,
+-  ]);
+-
+-
+-  useEffect(() => {
+-    const allSplitSourcesReady =
+-      splitSourceReady.config &&
+-      splitSourceReady.assets &&
+-      splitSourceReady.availability &&
+-      splitSourceReady.borrowers;
+-
+-    if (!allSplitSourcesReady) {
+-      return;
+-    }
+-
+-    const splitLoadError = Object.values(
+-      splitSourceErrors
+-    ).find(Boolean);
+-
+-    if (splitLoadError) {
+-      setFirebaseLoadErrorMessage(
+-        splitLoadError
+-      );
+-      setFirebaseReady(true);
+-      return;
+-    }
+-
+-    if (!splitPublicConfig) {
+-      return;
+-    }
+-
+-    const remoteData = mergePersistedData({
+-      laptops: splitRentalAssets,
+-      requests: splitRentalAvailability,
+-      assetCategories:
+-        splitPublicConfig.assetCategories || [],
+-      teams: splitPublicConfig.teams || [],
+-      borrowers: splitRentalBorrowers,
+-      settings: splitPublicConfig.settings || {},
+-    });
+-
+-    setData(remoteData);
+-    setFirebaseLoadErrorMessage('');
+-    setFirebaseReady(true);
+-
+-    if (!initializedRemoteFormRef.current) {
+-      setForm(
+-        createDefaultRequestForm(remoteData.settings)
+-      );
+-      setTempSettings(remoteData.settings);
+-      initializedRemoteFormRef.current = true;
+-    }
+-  }, [
+-    splitSourceReady,
+-    splitRentalAssets,
+-    splitSourceErrors,
+-    splitPublicConfig,
+-    splitRentalAssets,
+-    splitRentalAvailability,
+-    splitRentalBorrowers,
+-  ]);
+-
+-  useEffect(() => {
+     if (!firebaseAuthReady || !currentAuthRoleReady) {
+       setAdminAccountsReady(false);
+       return undefined;
+@@ -2873,6 +2350,57 @@
+     view,
+   });
+ 
++  useRentalDataSubscriptionController({
++    adminTab,
++    authenticatedAdminId,
++    createDefaultRequestForm,
++    currentAuthAdminAccount,
++    currentAuthRoleErrorMessage,
++    currentAuthRoleReady,
++    firebaseAuthReady,
++    initializedRemoteFormRef,
++    mergePersistedData,
++    publicCatalogAssets,
++    publicCatalogAssetsReady,
++    setData,
++    setFirebaseLoadErrorMessage,
++    setFirebaseReady,
++    setForm,
++    setPublicCatalogAssets,
++    setPublicCatalogAssetsReady,
++    setSplitPublicConfig,
++    setSplitRentalAssets,
++    setSplitRentalAvailability,
++    setSplitRentalBorrowers,
++    setSplitSourceErrors,
++    setSplitSourceReady,
++    setSplitStorageVersion,
++    setTempSettings,
++    setToast,
++    splitPublicConfig,
++    splitRentalAssets,
++    splitRentalAvailability,
++    splitRentalBorrowers,
++    splitSourceErrors,
++    splitSourceReady,
++    userTab,
++    view,
++  });
++
++  useOwnRentalRequestsSubscriptionController({
++    currentAuthRoleErrorMessage,
++    currentAuthRoleReady,
++    firebaseAuthReady,
++    firebaseAuthUser,
++    isAdminAuthenticated,
++    setRentalRequests,
++    setRentalRequestsLoadErrorMessage,
++    setRentalRequestsReady,
++    triggerToast,
++    userProfile,
++    userProfileReady,
++  });
++
+   const isCurrentFirebaseAuthAdmin =
+     Boolean(firebaseAuthUser) &&
+     currentAuthRoleReady &&
+@@ -3687,166 +3215,6 @@
+     !isAdminAuthenticated;
+   
+   useEffect(() => {
+-    if (!firebaseAuthReady || !currentAuthRoleReady || !userProfileReady) {
+-      setRentalRequestsReady(false);
+-      return undefined;
+-    }
+-
+-    const canReadOwnRentalRequests = Boolean(
+-      firebaseAuthUser &&
+-      !currentAuthRoleErrorMessage &&
+-      [
+-        USER_PROFILE_STATUS.ACTIVE,
+-        USER_PROFILE_STATUS.PROFILE_REQUIRED,
+-      ].includes(userProfile?.status)
+-    );
+-
+-    if (isAdminAuthenticated) {
+-      setRentalRequests([]);
+-      setRentalRequestsLoadErrorMessage('');
+-      setRentalRequestsReady(true);
+-      return undefined;
+-    }
+-
+-    if (!canReadOwnRentalRequests) {
+-      setRentalRequests([]);
+-      setRentalRequestsLoadErrorMessage('');
+-      setRentalRequestsReady(true);
+-      return undefined;
+-    }
+-
+-    setRentalRequestsReady(false);
+-    setRentalRequestsLoadErrorMessage('');
+-
+-    const linkedRequesterUids = [
+-      ...new Set(
+-        [
+-          firebaseAuthUser.uid,
+-          ...(Array.isArray(userProfile?.previousAccountUids)
+-            ? userProfile.previousAccountUids
+-            : []),
+-        ]
+-          .map((value) => String(value || '').trim())
+-          .filter(Boolean)
+-      ),
+-    ];
+-    const requesterEmail = normalizeEmailAddress(
+-      firebaseAuthUser.email || userProfile?.email || ''
+-    );
+-    const sourceDefinitions = linkedRequesterUids.map((requesterUid, index) => ({
+-      key: `uid:${index}`,
+-      required: true,
+-      source: firestoreQuery(
+-        RENTAL_REQUESTS_COLLECTION_REF,
+-        where('requesterUid', '==', requesterUid)
+-      ),
+-    }));
+-
+-    if (requesterEmail) {
+-      sourceDefinitions.push({
+-        key: 'email',
+-        required: false,
+-        source: firestoreQuery(
+-          RENTAL_REQUESTS_COLLECTION_REF,
+-          where('requesterEmail', '==', requesterEmail)
+-        ),
+-      });
+-    }
+-
+-    if (sourceDefinitions.length === 0) {
+-      setRentalRequests([]);
+-      setRentalRequestsReady(true);
+-      return undefined;
+-    }
+-
+-    let disposed = false;
+-    const sourceState = new Map(
+-      sourceDefinitions.map(({ key }) => [
+-        key,
+-        {
+-          ready: false,
+-          requests: [],
+-        },
+-      ])
+-    );
+-
+-    const publishRequests = () => {
+-      if (disposed) return;
+-
+-      const states = Array.from(sourceState.values());
+-
+-      if (!states.every((state) => state.ready)) return;
+-
+-      const requestMap = new Map();
+-
+-      states.forEach((state) => {
+-        state.requests.forEach((request) => {
+-          requestMap.set(request.id, {
+-            ...(requestMap.get(request.id) || {}),
+-            ...request,
+-          });
+-        });
+-      });
+-
+-      setRentalRequests(Array.from(requestMap.values()));
+-      setRentalRequestsLoadErrorMessage('');
+-      setRentalRequestsReady(true);
+-    };
+-
+-    const unsubscribers = sourceDefinitions.map(
+-      ({ key, required, source }) =>
+-        onSnapshot(
+-          source,
+-          (snapshot) => {
+-            sourceState.set(key, {
+-              ready: true,
+-              requests: snapshot.docs.map((requestDoc) => ({
+-                ...requestDoc.data(),
+-                id: requestDoc.id,
+-              })),
+-            });
+-            publishRequests();
+-          },
+-          (error) => {
+-            console.error(`Own rental requests ${key} sync error:`, error);
+-            sourceState.set(key, {
+-              ready: true,
+-              requests: [],
+-            });
+-
+-            if (required) {
+-              const message =
+-                '나의 대여신청 내역을 불러오지 못했습니다. Firestore Rules의 rentalRequests 본인 및 이전 계정 조회 권한을 확인해 주세요.';
+-              setRentalRequestsLoadErrorMessage(message);
+-              setRentalRequestsReady(true);
+-              triggerToast(message, 'error');
+-              return;
+-            }
+-
+-            publishRequests();
+-          }
+-        )
+-    );
+-
+-    return () => {
+-      disposed = true;
+-      unsubscribers.forEach((unsubscribe) => unsubscribe());
+-    };
+-  }, [
+-    currentAuthRoleErrorMessage,
+-    currentAuthRoleReady,
+-    firebaseAuthReady,
+-    firebaseAuthUser?.email,
+-    firebaseAuthUser?.uid,
+-    isAdminAuthenticated,
+-    userProfile?.email,
+-    userProfile?.previousAccountUids,
+-    userProfile?.status,
+-    userProfileReady,
+-  ]);
+-
+-
+-  useEffect(() => {
+     setNoticePosts([
+       ...(noticePinnedPosts || []),
+       ...(noticeRegularPagePosts || []),
+--- /dev/null
++++ b/src/features/requests/useRentalDataSubscriptionController.js
+@@ -0,0 +1,810 @@
++import { useEffect, useState } from 'react';
++import { getDocs, onSnapshot, query as firestoreQuery, where } from 'firebase/firestore';
++
++import {
++  PUBLIC_ASSET_CATALOG_DOC_REF,
++  PUBLIC_CONFIG_DOC_REF,
++  RENTAL_ASSETS_COLLECTION_REF,
++  RENTAL_AVAILABILITY_COLLECTION_REF,
++  RENTAL_BORROWERS_COLLECTION_REF,
++  RENTAL_REQUESTS_COLLECTION_REF,
++} from '../../firebase.js';
++import {
++  PUBLIC_ASSET_CATALOG_SCHEMA_VERSION,
++  hydratePublicCatalogAssets,
++  normalizeAssetReservations,
++  normalizePublicCatalogAssets,
++} from '../../services/publicAssetCatalog.js';
++import { USER_PROFILE_STATUS } from '../../constants/memberConstants.js';
++import { normalizeEmailAddress } from '../../utils/memberPolicy.js';
++
++const createDefaultSplitSourceReady = () => ({
++  config: false,
++  assets: false,
++  availability: false,
++  borrowers: false,
++});
++
++const createDefaultSplitSourceErrors = () => ({
++  config: '',
++  assets: '',
++  availability: '',
++  borrowers: '',
++});
++
++export const useRentalDataSubscriptionState = () => {
++  const [splitPublicConfig, setSplitPublicConfig] = useState(null);
++  const [splitRentalAssets, setSplitRentalAssets] = useState([]);
++  const [publicCatalogAssets, setPublicCatalogAssets] = useState([]);
++  const [publicCatalogAssetsReady, setPublicCatalogAssetsReady] = useState(false);
++  const [splitRentalAvailability, setSplitRentalAvailability] = useState([]);
++  const [splitRentalBorrowers, setSplitRentalBorrowers] = useState([]);
++  const [splitStorageVersion, setSplitStorageVersion] = useState(0);
++  const [splitSourceReady, setSplitSourceReady] = useState(
++    createDefaultSplitSourceReady
++  );
++  const [splitSourceErrors, setSplitSourceErrors] = useState(
++    createDefaultSplitSourceErrors
++  );
++  const [rentalRequests, setRentalRequests] = useState([]);
++  const [rentalRequestsReady, setRentalRequestsReady] = useState(false);
++  const [rentalRequestsLoadErrorMessage, setRentalRequestsLoadErrorMessage] =
++    useState('');
++
++  return {
++    publicCatalogAssets,
++    publicCatalogAssetsReady,
++    rentalRequests,
++    rentalRequestsLoadErrorMessage,
++    rentalRequestsReady,
++    setPublicCatalogAssets,
++    setPublicCatalogAssetsReady,
++    setRentalRequests,
++    setRentalRequestsLoadErrorMessage,
++    setRentalRequestsReady,
++    setSplitPublicConfig,
++    setSplitRentalAssets,
++    setSplitRentalAvailability,
++    setSplitRentalBorrowers,
++    setSplitSourceErrors,
++    setSplitSourceReady,
++    setSplitStorageVersion,
++    splitPublicConfig,
++    splitRentalAssets,
++    splitRentalAvailability,
++    splitRentalBorrowers,
++    splitSourceErrors,
++    splitSourceReady,
++    splitStorageVersion,
++  };
++};
++
++export function useOwnRentalRequestsSubscriptionController({
++  currentAuthRoleErrorMessage,
++  currentAuthRoleReady,
++  firebaseAuthReady,
++  firebaseAuthUser,
++  isAdminAuthenticated,
++  setRentalRequests,
++  setRentalRequestsLoadErrorMessage,
++  setRentalRequestsReady,
++  triggerToast,
++  userProfile,
++  userProfileReady,
++}) {
++  useEffect(() => {
++    if (!firebaseAuthReady || !currentAuthRoleReady || !userProfileReady) {
++      setRentalRequestsReady(false);
++      return undefined;
++    }
++
++    const canReadOwnRentalRequests = Boolean(
++      firebaseAuthUser &&
++        !currentAuthRoleErrorMessage &&
++        [
++          USER_PROFILE_STATUS.ACTIVE,
++          USER_PROFILE_STATUS.PROFILE_REQUIRED,
++        ].includes(userProfile?.status)
++    );
++
++    if (isAdminAuthenticated) {
++      setRentalRequests([]);
++      setRentalRequestsLoadErrorMessage('');
++      setRentalRequestsReady(true);
++      return undefined;
++    }
++
++    if (!canReadOwnRentalRequests) {
++      setRentalRequests([]);
++      setRentalRequestsLoadErrorMessage('');
++      setRentalRequestsReady(true);
++      return undefined;
++    }
++
++    setRentalRequestsReady(false);
++    setRentalRequestsLoadErrorMessage('');
++
++    const linkedRequesterUids = [
++      ...new Set(
++        [
++          firebaseAuthUser.uid,
++          ...(Array.isArray(userProfile?.previousAccountUids)
++            ? userProfile.previousAccountUids
++            : []),
++        ]
++          .map((value) => String(value || '').trim())
++          .filter(Boolean)
++      ),
++    ];
++    const requesterEmail = normalizeEmailAddress(
++      firebaseAuthUser.email || userProfile?.email || ''
++    );
++    const sourceDefinitions = linkedRequesterUids.map((requesterUid, index) => ({
++      key: `uid:${index}`,
++      required: true,
++      source: firestoreQuery(
++        RENTAL_REQUESTS_COLLECTION_REF,
++        where('requesterUid', '==', requesterUid)
++      ),
++    }));
++
++    if (requesterEmail) {
++      sourceDefinitions.push({
++        key: 'email',
++        required: false,
++        source: firestoreQuery(
++          RENTAL_REQUESTS_COLLECTION_REF,
++          where('requesterEmail', '==', requesterEmail)
++        ),
++      });
++    }
++
++    if (sourceDefinitions.length === 0) {
++      setRentalRequests([]);
++      setRentalRequestsReady(true);
++      return undefined;
++    }
++
++    let disposed = false;
++    const sourceState = new Map(
++      sourceDefinitions.map(({ key }) => [
++        key,
++        {
++          ready: false,
++          requests: [],
++        },
++      ])
++    );
++
++    const publishRequests = () => {
++      if (disposed) return;
++
++      const states = Array.from(sourceState.values());
++
++      if (!states.every((state) => state.ready)) return;
++
++      const requestMap = new Map();
++
++      states.forEach((state) => {
++        state.requests.forEach((request) => {
++          requestMap.set(request.id, {
++            ...(requestMap.get(request.id) || {}),
++            ...request,
++          });
++        });
++      });
++
++      setRentalRequests(Array.from(requestMap.values()));
++      setRentalRequestsLoadErrorMessage('');
++      setRentalRequestsReady(true);
++    };
++
++    const unsubscribers = sourceDefinitions.map(
++      ({ key, required, source }) =>
++        onSnapshot(
++          source,
++          (snapshot) => {
++            sourceState.set(key, {
++              ready: true,
++              requests: snapshot.docs.map((requestDocument) => ({
++                ...requestDocument.data(),
++                id: requestDocument.id,
++              })),
++            });
++            publishRequests();
++          },
++          (error) => {
++            console.error(`Own rental requests ${key} sync error:`, error);
++            sourceState.set(key, {
++              ready: true,
++              requests: [],
++            });
++
++            if (required) {
++              const message =
++                '나의 대여신청 내역을 불러오지 못했습니다. Firestore Rules의 rentalRequests 본인 및 이전 계정 조회 권한을 확인해 주세요.';
++              setRentalRequestsLoadErrorMessage(message);
++              setRentalRequestsReady(true);
++              triggerToast(message, 'error');
++              return;
++            }
++
++            publishRequests();
++          }
++        )
++    );
++
++    return () => {
++      disposed = true;
++      unsubscribers.forEach((unsubscribe) => unsubscribe());
++    };
++  }, [
++    currentAuthRoleErrorMessage,
++    currentAuthRoleReady,
++    firebaseAuthReady,
++    firebaseAuthUser?.email,
++    firebaseAuthUser?.uid,
++    isAdminAuthenticated,
++    setRentalRequests,
++    setRentalRequestsLoadErrorMessage,
++    setRentalRequestsReady,
++    triggerToast,
++    userProfile?.email,
++    userProfile?.previousAccountUids,
++    userProfile?.status,
++    userProfileReady,
++  ]);
++
++}
++
++export default function useRentalDataSubscriptionController({
++  adminTab,
++  authenticatedAdminId,
++  createDefaultRequestForm,
++  currentAuthAdminAccount,
++  currentAuthRoleErrorMessage,
++  currentAuthRoleReady,
++  firebaseAuthReady,
++  initializedRemoteFormRef,
++  mergePersistedData,
++  publicCatalogAssets,
++  publicCatalogAssetsReady,
++  setData,
++  setFirebaseLoadErrorMessage,
++  setFirebaseReady,
++  setForm,
++  setPublicCatalogAssets,
++  setPublicCatalogAssetsReady,
++  setSplitPublicConfig,
++  setSplitRentalAssets,
++  setSplitRentalAvailability,
++  setSplitRentalBorrowers,
++  setSplitSourceErrors,
++  setSplitSourceReady,
++  setSplitStorageVersion,
++  setTempSettings,
++  setToast,
++  splitPublicConfig,
++  splitRentalAssets,
++  splitRentalAvailability,
++  splitRentalBorrowers,
++  splitSourceErrors,
++  splitSourceReady,
++  userTab,
++  view,
++}) {
++  useEffect(() => {
++    setSplitSourceReady((previous) => ({
++      ...previous,
++      config: false,
++    }));
++
++    const unsubscribe = onSnapshot(
++      PUBLIC_CONFIG_DOC_REF,
++      (snapshot) => {
++        if (!snapshot.exists()) {
++          const message =
++            'Firestore 공개 설정 문서가 없습니다. rentalSystem/publicConfig 마이그레이션 상태를 확인해 주세요.';
++
++          setSplitPublicConfig(null);
++          setSplitStorageVersion(0);
++          setSplitSourceErrors((previous) => ({
++            ...previous,
++            config: message,
++          }));
++          setSplitSourceReady((previous) => ({
++            ...previous,
++            config: true,
++          }));
++          setFirebaseReady(true);
++          setToast({ message, type: 'error' });
++          return;
++        }
++
++        const configData = snapshot.data();
++
++        setSplitPublicConfig(configData);
++        setSplitStorageVersion(Number(configData.storageVersion || 0));
++        setSplitSourceErrors((previous) => ({
++          ...previous,
++          config: '',
++        }));
++        setSplitSourceReady((previous) => ({
++          ...previous,
++          config: true,
++        }));
++      },
++      (error) => {
++        const message =
++          'Firestore 공개 설정을 불러오지 못했습니다. rentalSystem/publicConfig 읽기 권한을 확인해 주세요.';
++
++        console.error('Public config sync error:', error);
++        setSplitPublicConfig(null);
++        setSplitStorageVersion(0);
++        setSplitSourceErrors((previous) => ({
++          ...previous,
++          config: message,
++        }));
++        setSplitSourceReady((previous) => ({
++          ...previous,
++          config: true,
++        }));
++        setFirebaseReady(true);
++        setToast({ message, type: 'error' });
++      }
++    );
++
++    return unsubscribe;
++  }, [
++    setFirebaseReady,
++    setSplitPublicConfig,
++    setSplitSourceErrors,
++    setSplitSourceReady,
++    setSplitStorageVersion,
++    setToast,
++  ]);
++
++  useEffect(() => {
++    const shouldLoadUserCatalog =
++      view === 'user' && ['home', 'rental'].includes(userTab);
++    const shouldSubscribeAdminAssets =
++      view === 'admin' &&
++      Boolean(authenticatedAdminId) &&
++      Boolean(currentAuthAdminAccount?.id) &&
++      ['laptops', 'requests', 'categories', 'dataManagement'].includes(adminTab);
++
++    if (!shouldLoadUserCatalog && !shouldSubscribeAdminAssets) {
++      setPublicCatalogAssets([]);
++      setPublicCatalogAssetsReady(false);
++      setSplitSourceErrors((previous) => ({
++        ...previous,
++        assets: '',
++      }));
++      setSplitSourceReady((previous) => ({
++        ...previous,
++        assets: true,
++      }));
++      return undefined;
++    }
++
++    setFirebaseReady(false);
++    setSplitSourceReady((previous) => ({
++      ...previous,
++      assets: false,
++    }));
++
++    if (shouldSubscribeAdminAssets) {
++      setPublicCatalogAssets([]);
++      setPublicCatalogAssetsReady(false);
++
++      const unsubscribe = onSnapshot(
++        RENTAL_ASSETS_COLLECTION_REF,
++        (snapshot) => {
++          const assets = snapshot.docs.map((assetDocument) => ({
++            ...assetDocument.data(),
++            id: assetDocument.id,
++            reservations: normalizeAssetReservations(
++              assetDocument.data().reservations || []
++            ),
++          }));
++
++          setSplitRentalAssets(assets);
++          setSplitSourceErrors((previous) => ({
++            ...previous,
++            assets: '',
++          }));
++          setSplitSourceReady((previous) => ({
++            ...previous,
++            assets: true,
++          }));
++        },
++        (error) => {
++          const message =
++            '대여 자산 컬렉션을 불러오지 못했습니다. rentalAssets 읽기 권한을 확인해 주세요.';
++
++          console.error('Rental assets sync error:', error);
++          setSplitRentalAssets([]);
++          setSplitSourceErrors((previous) => ({
++            ...previous,
++            assets: message,
++          }));
++          setSplitSourceReady((previous) => ({
++            ...previous,
++            assets: true,
++          }));
++          setFirebaseReady(true);
++          setToast({ message, type: 'error' });
++        }
++      );
++
++      return unsubscribe;
++    }
++
++    let cancelled = false;
++    setPublicCatalogAssetsReady(false);
++
++    const loadLegacyAssetFallback = async (reason = '') => {
++      try {
++        const fallbackSnapshot = await getDocs(RENTAL_ASSETS_COLLECTION_REF);
++        if (cancelled) return;
++
++        const fallbackAssets = normalizePublicCatalogAssets(
++          fallbackSnapshot.docs.map((assetDocument) => ({
++            ...assetDocument.data(),
++            id: assetDocument.id,
++          }))
++        );
++
++        setPublicCatalogAssets(fallbackAssets);
++        setPublicCatalogAssetsReady(true);
++        setSplitSourceErrors((previous) => ({
++          ...previous,
++          assets: '',
++        }));
++
++        if (reason) {
++          console.warn('Public asset catalog fallback activated:', reason);
++        }
++      } catch (fallbackError) {
++        if (cancelled) return;
++
++        const message =
++          '공개 자산 카탈로그와 기존 자산 목록을 모두 불러오지 못했습니다.';
++        console.error('Public asset catalog fallback error:', fallbackError);
++        setPublicCatalogAssets([]);
++        setPublicCatalogAssetsReady(true);
++        setSplitRentalAssets([]);
++        setSplitSourceErrors((previous) => ({
++          ...previous,
++          assets: message,
++        }));
++        setSplitSourceReady((previous) => ({
++          ...previous,
++          assets: true,
++        }));
++        setFirebaseReady(true);
++        setToast({ message, type: 'error' });
++      }
++    };
++
++    const unsubscribe = onSnapshot(
++      PUBLIC_ASSET_CATALOG_DOC_REF,
++      (snapshot) => {
++        if (cancelled) return;
++
++        const catalogData = snapshot.exists() ? snapshot.data() : null;
++        const hasCurrentCatalogSchema =
++          Number(catalogData?.schemaVersion || 0) ===
++            PUBLIC_ASSET_CATALOG_SCHEMA_VERSION &&
++          Array.isArray(catalogData?.assets);
++
++        if (!hasCurrentCatalogSchema) {
++          void loadLegacyAssetFallback(
++            snapshot.exists()
++              ? 'publicCatalog/main 문서가 이전 스키마입니다.'
++              : 'publicCatalog/main 문서가 없습니다.'
++          );
++          return;
++        }
++
++        const catalogAssets = normalizePublicCatalogAssets(
++          snapshot.data().assets
++        );
++        setPublicCatalogAssets(catalogAssets);
++        setPublicCatalogAssetsReady(true);
++        setSplitSourceErrors((previous) => ({
++          ...previous,
++          assets: '',
++        }));
++      },
++      (error) => {
++        if (cancelled) return;
++        console.error('Public asset catalog sync error:', error);
++        void loadLegacyAssetFallback(
++          error?.code || error?.message || 'unknown-error'
++        );
++      }
++    );
++
++    return () => {
++      cancelled = true;
++      unsubscribe();
++    };
++  }, [
++    adminTab,
++    authenticatedAdminId,
++    currentAuthAdminAccount?.id,
++    setFirebaseReady,
++    setPublicCatalogAssets,
++    setPublicCatalogAssetsReady,
++    setSplitRentalAssets,
++    setSplitSourceErrors,
++    setSplitSourceReady,
++    setToast,
++    userTab,
++    view,
++  ]);
++
++  useEffect(() => {
++    const shouldHydrateUserCatalog =
++      view === 'user' &&
++      ['home', 'rental'].includes(userTab) &&
++      publicCatalogAssetsReady &&
++      splitSourceReady.availability;
++
++    if (!shouldHydrateUserCatalog) {
++      return;
++    }
++
++    setSplitRentalAssets(
++      hydratePublicCatalogAssets(
++        publicCatalogAssets,
++        splitRentalAvailability
++      )
++    );
++    setSplitSourceErrors((previous) => ({
++      ...previous,
++      assets: '',
++    }));
++    setSplitSourceReady((previous) => ({
++      ...previous,
++      assets: true,
++    }));
++  }, [
++    publicCatalogAssets,
++    publicCatalogAssetsReady,
++    setSplitRentalAssets,
++    setSplitSourceErrors,
++    setSplitSourceReady,
++    splitRentalAvailability,
++    splitSourceReady.availability,
++    userTab,
++    view,
++  ]);
++
++  useEffect(() => {
++    const shouldSubscribeAvailability =
++      (view === 'user' && ['home', 'rental'].includes(userTab)) ||
++      (view === 'admin' &&
++        Boolean(authenticatedAdminId) &&
++        Boolean(currentAuthAdminAccount?.id) &&
++        ['laptops', 'requests'].includes(adminTab));
++
++    if (!shouldSubscribeAvailability) {
++      setSplitSourceErrors((previous) => ({
++        ...previous,
++        availability: '',
++      }));
++      setSplitSourceReady((previous) => ({
++        ...previous,
++        availability: true,
++      }));
++      return undefined;
++    }
++
++    setFirebaseReady(false);
++    setSplitSourceReady((previous) => ({
++      ...previous,
++      availability: false,
++    }));
++
++    const unsubscribe = onSnapshot(
++      RENTAL_AVAILABILITY_COLLECTION_REF,
++      (snapshot) => {
++        const availabilityRequests = snapshot.docs.map(
++          (availabilityDocument) => ({
++            ...availabilityDocument.data(),
++            id: availabilityDocument.id,
++          })
++        );
++
++        setSplitRentalAvailability(availabilityRequests);
++        setSplitSourceErrors((previous) => ({
++          ...previous,
++          availability: '',
++        }));
++        setSplitSourceReady((previous) => ({
++          ...previous,
++          availability: true,
++        }));
++      },
++      (error) => {
++        const message =
++          '공개 예약 현황을 불러오지 못했습니다. rentalAvailability 읽기 권한을 확인해 주세요.';
++
++        console.error('Rental availability sync error:', error);
++        setSplitRentalAvailability([]);
++        setSplitSourceErrors((previous) => ({
++          ...previous,
++          availability: message,
++        }));
++        setSplitSourceReady((previous) => ({
++          ...previous,
++          availability: true,
++        }));
++        setFirebaseReady(true);
++        setToast({ message, type: 'error' });
++      }
++    );
++
++    return unsubscribe;
++  }, [
++    adminTab,
++    authenticatedAdminId,
++    currentAuthAdminAccount?.id,
++    setFirebaseReady,
++    setSplitRentalAvailability,
++    setSplitSourceErrors,
++    setSplitSourceReady,
++    setToast,
++    userTab,
++    view,
++  ]);
++
++  useEffect(() => {
++    const shouldLoadRentalBorrowers =
++      firebaseAuthReady &&
++      currentAuthRoleReady &&
++      !currentAuthRoleErrorMessage &&
++      view === 'admin' &&
++      Boolean(authenticatedAdminId) &&
++      Boolean(currentAuthAdminAccount?.id) &&
++      ['people', 'signupPolicy', 'adminAccounts'].includes(adminTab);
++
++    if (!shouldLoadRentalBorrowers) {
++      setSplitRentalBorrowers([]);
++      setSplitSourceErrors((previous) => ({
++        ...previous,
++        borrowers: '',
++      }));
++      setSplitSourceReady((previous) => ({
++        ...previous,
++        borrowers: true,
++      }));
++      return undefined;
++    }
++
++    setSplitSourceReady((previous) => ({
++      ...previous,
++      borrowers: false,
++    }));
++
++    const unsubscribe = onSnapshot(
++      RENTAL_BORROWERS_COLLECTION_REF,
++  RENTAL_REQUESTS_COLLECTION_REF,
++      (snapshot) => {
++        const borrowers = snapshot.docs
++          .map((borrowerDocument, index) => ({
++            ...borrowerDocument.data(),
++            id: borrowerDocument.id,
++            sortOrder: Number.isFinite(
++              Number(borrowerDocument.data().sortOrder)
++            )
++              ? Number(borrowerDocument.data().sortOrder)
++              : index,
++          }))
++          .sort((left, right) => left.sortOrder - right.sortOrder);
++
++        setSplitRentalBorrowers(borrowers);
++        setSplitSourceErrors((previous) => ({
++          ...previous,
++          borrowers: '',
++        }));
++        setSplitSourceReady((previous) => ({
++          ...previous,
++          borrowers: true,
++        }));
++      },
++      (error) => {
++        const message =
++          '대여자 목록을 불러오지 못했습니다. rentalBorrowers 조회 권한을 확인해 주세요.';
++
++        console.error('Rental borrowers sync error:', error);
++        setSplitRentalBorrowers([]);
++        setSplitSourceErrors((previous) => ({
++          ...previous,
++          borrowers: message,
++        }));
++        setSplitSourceReady((previous) => ({
++          ...previous,
++          borrowers: true,
++        }));
++        setFirebaseReady(true);
++        setToast({ message, type: 'error' });
++      }
++    );
++
++    return unsubscribe;
++  }, [
++    adminTab,
++    authenticatedAdminId,
++    currentAuthAdminAccount?.id,
++    currentAuthRoleErrorMessage,
++    currentAuthRoleReady,
++    firebaseAuthReady,
++    setFirebaseReady,
++    setSplitRentalBorrowers,
++    setSplitSourceErrors,
++    setSplitSourceReady,
++    setToast,
++    view,
++  ]);
++
++  useEffect(() => {
++    const allSplitSourcesReady =
++      splitSourceReady.config &&
++      splitSourceReady.assets &&
++      splitSourceReady.availability &&
++      splitSourceReady.borrowers;
++
++    if (!allSplitSourcesReady) {
++      return;
++    }
++
++    const splitLoadError = Object.values(splitSourceErrors).find(Boolean);
++
++    if (splitLoadError) {
++      setFirebaseLoadErrorMessage(splitLoadError);
++      setFirebaseReady(true);
++      return;
++    }
++
++    if (!splitPublicConfig) {
++      return;
++    }
++
++    const remoteData = mergePersistedData({
++      laptops: splitRentalAssets,
++      requests: splitRentalAvailability,
++      assetCategories: splitPublicConfig.assetCategories || [],
++      teams: splitPublicConfig.teams || [],
++      borrowers: splitRentalBorrowers,
++      settings: splitPublicConfig.settings || {},
++    });
++
++    setData(remoteData);
++    setFirebaseLoadErrorMessage('');
++    setFirebaseReady(true);
++
++    if (!initializedRemoteFormRef.current) {
++      setForm(createDefaultRequestForm(remoteData.settings));
++      setTempSettings(remoteData.settings);
++      initializedRemoteFormRef.current = true;
++    }
++  }, [
++    createDefaultRequestForm,
++    initializedRemoteFormRef,
++    mergePersistedData,
++    setData,
++    setFirebaseLoadErrorMessage,
++    setFirebaseReady,
++    setForm,
++    setTempSettings,
++    splitPublicConfig,
++    splitRentalAssets,
++    splitRentalAvailability,
++    splitRentalBorrowers,
++    splitSourceErrors,
++    splitSourceReady,
++  ]);
++}
+--- a/tools/firestore-audit-policy.json
++++ b/tools/firestore-audit-policy.json
+@@ -25,22 +25,22 @@
+   ],
+   "approvedFindings": [
+     {
+-      "id": "onSnapshot:63104f1898e1eb15",
++      "id": "onSnapshot:228eacd4453f787e",
+       "reason": "관리자 자산·신청·카테고리·데이터관리 화면에서만 활성화되는 자산 편집용 구독입니다. 자산 카탈로그 정책상 최대 200대로 제한됩니다.",
+       "reviewWhen": "컬렉션 규모, 화면 활성 조건, 데이터 보존 정책 또는 쿼리 구조가 변경될 때 재검토"
+     },
+     {
+-      "id": "getDocs:45f25eed83900fe6",
++      "id": "getDocs:b835f721d075ef72",
+       "reason": "공개 카탈로그가 없거나 구버전일 때 사용자 화면을 복구하기 위한 예외 경로이며 정상 상태에서는 실행되지 않습니다.",
+       "reviewWhen": "컬렉션 규모, 화면 활성 조건, 데이터 보존 정책 또는 쿼리 구조가 변경될 때 재검토"
+     },
+     {
+-      "id": "onSnapshot:87d07625e5aabd69",
++      "id": "onSnapshot:10fc8527bffedfbb",
+       "reason": "사용자 홈·신청 및 관리자 자산·신청 화면에서 현재 예약·대여 상태를 충돌 없이 표시하기 위한 운영 상태 컬렉션 구독입니다. 종료 이력은 저장하지 않습니다.",
+       "reviewWhen": "컬렉션 규모, 화면 활성 조건, 데이터 보존 정책 또는 쿼리 구조가 변경될 때 재검토"
+     },
+     {
+-      "id": "onSnapshot:4226401047aa62b4",
++      "id": "onSnapshot:df554b1cbd1b5f24",
+       "reason": "관리자 사용자·가입정책·관리자계정 화면에서만 사용하는 관리 대상 사용자 명부 구독입니다. 명부 규모는 조직 관리 범위로 제한됩니다.",
+       "reviewWhen": "컬렉션 규모, 화면 활성 조건, 데이터 보존 정책 또는 쿼리 구조가 변경될 때 재검토"
+     },
+@@ -290,7 +290,7 @@
+       "reviewWhen": "기존 신청 문서의 requesterUid 보정이 완료되거나 이메일 변경 기능, 회원 계정 재생성 정책, 대여 이력 보존 정책이 변경될 때 재검토"
+     },
+     {
+-      "id": "onSnapshot:67a5907f47b5c158",
++      "id": "onSnapshot:f4ee6618eef4f82a",
+       "reason": "로그인 사용자의 현재 UID, 이전 계정 UID 묶음 및 동일 이메일 신청을 각각 제한 쿼리로 구독하고 문서 ID 기준으로 병합하는 본인 이력 조회입니다. 동적 sourceDefinitions 배열 때문에 감사기가 원본을 자동 판정하지 못하지만 각 쿼리는 requesterUid 또는 requesterEmail where 조건을 포함합니다.",
+       "reviewWhen": "회원 계정 재가입 연결 정책, previousAccountUids 최대 개수, 이메일 변경 정책 또는 사용자 신청 이력 보존 정책이 변경될 때 재검토"
+     }
+--- a/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json
++++ b/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json
+@@ -1,11 +1,11 @@
+ {
+-  "generatedAt": "2026-07-31T08:17:18.199Z",
+-  "initialModuleCount": 63,
+-  "initialSourceBytes": 827030,
++  "generatedAt": "2026-07-31T08:37:35.262Z",
++  "initialModuleCount": 64,
++  "initialSourceBytes": 832486,
+   "files": [
+     {
+       "file": "src/App.jsx",
+-      "bytes": 214261
++      "bytes": 197436
+     },
+     {
+       "file": "src/features/requests/useUserRequestHistoryActionController.js",
+@@ -36,6 +36,10 @@
+       "bytes": 22555
+     },
+     {
++      "file": "src/features/requests/useRentalDataSubscriptionController.js",
++      "bytes": 22281
++    },
++    {
+       "file": "src/utils/richTextCore.js",
+       "bytes": 22251
+     },

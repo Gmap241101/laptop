@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-07-31T08:17:18.199Z",
-  "initialModuleCount": 63,
-  "initialSourceBytes": 827030,
+  "generatedAt": "2026-07-31T08:37:35.262Z",
+  "initialModuleCount": 64,
+  "initialSourceBytes": 832486,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 214261
+      "bytes": 197436
     },
     {
       "file": "src/features/requests/useUserRequestHistoryActionController.js",
@@ -34,6 +34,10 @@
     {
       "file": "src/features/settings/useAdminSystemSettingsController.js",
       "bytes": 22555
+    },
+    {
+      "file": "src/features/requests/useRentalDataSubscriptionController.js",
+      "bytes": 22281
     },
     {
       "file": "src/utils/richTextCore.js",

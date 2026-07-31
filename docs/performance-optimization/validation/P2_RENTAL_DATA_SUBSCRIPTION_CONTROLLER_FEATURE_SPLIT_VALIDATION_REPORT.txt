@@ -1,0 +1,95 @@
+P2 대여 데이터 실시간 구독 컨트롤러 분리 검증 보고서
+========================================================
+
+기준본
+------
+입력: rental-system-shared-rental-restriction-admin-audit-service-split-20260731_1719_deployment_package.zip
+입력 프로젝트 파일 SHA-256: PASS (363/363)
+입력 ZIP SHA-256: 60dc0c5b13df47dbdf86f20da937714fad8ae76b6b2e763f391802d95e33d9b0
+
+변경 대상
+---------
+수정: src/App.jsx
+신규: src/features/requests/useRentalDataSubscriptionController.js
+수정: tools/firestore-audit-policy.json
+수정: docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json
+
+정적 검증
+---------
+1. TypeScript JS/JSX 구문·모듈 검사: PASS
+   - tsc --noEmit --allowJs --checkJs false --jsx preserve
+   - 전체 src JS/JSX/MJS 검사
+   - 미정의 식별자·중복 선언·호출 구문 오류: 0건
+
+2. React Hook import 감사: PASS
+   - 120개 소스 파일 검사
+
+3. 상대 import 실파일 검사: PASS
+   - 상대 import 353개
+   - 누락 경로 0개
+
+4. Firestore strict 감사: PASS
+   - 전체 호출 129개
+   - onSnapshot 35개
+   - getDocs 48개
+   - getDoc 28개
+   - getCountFromServer 18개
+   - 미승인 warning 0개
+   - 미승인 error 0개
+
+5. 이동 계약 검사: PASS
+   - App.jsx에서 이동 대상 useState 12개 제거
+   - App.jsx에서 이동 대상 useEffect 7개 제거
+   - App.jsx onSnapshot 6개 감소
+   - App.jsx getDocs 1개 감소
+   - 신규 컨트롤러 onSnapshot 6개 존재
+   - 신규 컨트롤러 getDocs 1개 존재
+   - Firestore 전체 호출 수 129개 유지
+
+6. 사용자 신청내역 context 계약: PASS
+   - rentalRequests
+   - rentalRequestsReady
+   - rentalRequestsLoadErrorMessage
+   - 기존 변수명 유지
+   - App context 제공 참조 유지
+   - UserRequestHistoryPanel 사용 참조 유지
+
+7. 한국어 문자열 보존: PASS
+   - 이동 전 App 대상 문자열 발생 139개
+   - 이동 후 App + 신규 컨트롤러 문자열 발생 139개
+   - 고유 문자열 118개 -> 118개
+   - 삭제 0개
+   - 추가 0개
+
+8. 소스 그래프 분석: PASS
+   - 초기 정적 모듈 63 -> 64
+   - 초기 정적 소스 827,030 -> 832,486 bytes
+
+패키지·삭제 목록 검증
+---------------------
+- package-meta/REMOVED_FILES.txt 기존 누적 목록 승계
+- 신규 삭제 파일 0개
+- 중복 삭제 경로 0개
+- 패키지 파일과 삭제 목록 충돌 0개
+- 보호 경로 포함 0개
+- deploy.ps1 포함 0개
+
+프로덕션 빌드
+-------------
+npm ci: FAIL (검증 환경 저장소 제한)
+오류: E404 yargs-parser-21.1.1.tgz
+
+판정
+----
+소스 구문 검증: PASS
+React Hook 감사: PASS
+상대 import 검사: PASS
+Firestore strict 감사: PASS
+문구 보존 검사: PASS
+패키지 무결성: PASS
+출력 프로젝트 파일: 368개
+ZIP 전체 파일 항목: 372개
+ZIP 중복 항목: 0개
+ZIP 누락·추가 항목: 0개
+ZIP 재추출 SHA-256: PASS (368/368)
+실제 Vite 프로덕션 빌드: 로컬 deploy.ps1에서 확인 필요
