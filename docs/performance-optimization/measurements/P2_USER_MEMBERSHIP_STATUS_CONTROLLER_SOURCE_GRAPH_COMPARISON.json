@@ -1,0 +1,34 @@
+{
+  "generatedAt": "2026-07-31T16:16:00+09:00",
+  "baselinePackage": "rental-system-user-authentication-session-controller-split-20260731_1555_deployment_package.zip",
+  "outputPackage": "rental-system-user-membership-status-controller-split-20260731_1616_deployment_package.zip",
+  "app": {
+    "linesBefore": 9363,
+    "linesAfter": 8918,
+    "lineDelta": -445,
+    "bytesBefore": 271446,
+    "bytesAfter": 258159,
+    "byteDelta": -13287,
+    "useStateBefore": 110,
+    "useStateAfter": 109,
+    "useEffectBefore": 50,
+    "useEffectAfter": 48,
+    "useRefBefore": 18,
+    "useRefAfter": 15,
+    "runTransactionBefore": 4,
+    "runTransactionAfter": 3
+  },
+  "newModule": {
+    "file": "src/features/members/useUserMembershipStatusController.js",
+    "lines": 570,
+    "bytes": 17434
+  },
+  "initialSourceGraph": {
+    "modulesBefore": 58,
+    "modulesAfter": 59,
+    "moduleDelta": 1,
+    "bytesBefore": 817635,
+    "bytesAfter": 821860,
+    "byteDelta": 4225
+  }
+}

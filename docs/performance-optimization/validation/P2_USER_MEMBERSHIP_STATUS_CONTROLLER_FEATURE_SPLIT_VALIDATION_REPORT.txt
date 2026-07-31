@@ -1,0 +1,116 @@
+P2 USER MEMBERSHIP STATUS CONTROLLER FEATURE SPLIT VALIDATION
+=============================================================
+Generated: 2026-07-31 16:16 KST
+Baseline: rental-system-user-authentication-session-controller-split-20260731_1555_deployment_package.zip
+Output: rental-system-user-membership-status-controller-split-20260731_1616_deployment_package.zip
+
+1. BASELINE PACKAGE
+-------------------
+PACKAGE_FILES entries: 342
+PACKAGE_SHA256SUMS entries: 342
+Missing files: 0
+SHA-256 mismatches: 0
+Result: PASS
+
+2. SOURCE CHANGE
+----------------
+App.jsx lines: 9363 -> 8918 (-445)
+App.jsx bytes: 271446 -> 258159 (-13287)
+App.jsx useState: 110 -> 109 (-1)
+App.jsx useEffect: 50 -> 48 (-2)
+App.jsx useRef: 18 -> 15 (-3)
+App.jsx runTransaction: 4 -> 3 (-1)
+New controller: 570 lines / 17434 bytes
+Result: PASS
+
+3. REACT HOOK AUDIT
+-------------------
+Source files checked: 115
+Missing React hook imports: 0
+Result: PASS
+
+4. TYPESCRIPT SYNTAX / TARGETED DIAGNOSTICS
+-------------------------------------------
+JS/JSX/MJS files checked: 115
+Undefined identifiers: 0
+Duplicate declarations: 0
+Invalid call targets: 0
+New targeted diagnostics: 0
+Result: PASS
+
+5. RELATIVE IMPORT RESOLUTION
+-----------------------------
+Relative imports checked: 334
+Missing targets: 0
+Result: PASS
+
+6. FIRESTORE STRICT AUDIT
+-------------------------
+Source files: 115
+Total calls: 129
+onSnapshot: 35
+getDocs: 48
+getDoc: 28
+getCountFromServer: 18
+Approved risk findings: 51
+Unapproved warnings: 0
+Unapproved errors: 0
+Result: PASS
+
+7. MEMBERSHIP STATUS RUNTIME MOCK
+---------------------------------
+- Blocked account status page and automatic logout: PASS
+- User and admin session cleanup: PASS
+- Profile-required mypage redirect without logout: PASS
+- Restored active account rental-page redirect: PASS
+- Directory verification transaction: PASS
+- Directory version update: PASS
+- Account recovery index status synchronization: PASS
+Result: PASS
+
+8. CONTEXT / CONTROLLER CONTRACT
+--------------------------------
+useUserMembershipStatusState connection: present
+useUserMembershipStatusController connection: present
+verifyUserDirectoryMembership passed to login controller: present
+userDirectoryVerificationLoading context key: present
+UserMyPagePanel consumer: present
+Missing contract keys: 0
+Result: PASS
+
+9. UI STRING PRESERVATION
+-------------------------
+Compared: baseline App.jsx vs modified App.jsx + new controller
+Korean string occurrences: 197 -> 197
+Removed strings: 0
+Added strings: 0
+Result: PASS
+
+10. SOURCE GRAPH
+----------------
+Initial modules: 58 -> 59 (+1)
+Initial source bytes: 817635 -> 821860 (+4225)
+Result: RECORDED
+
+11. PRODUCTION BUILD
+--------------------
+npm ci: FAIL
+Reason: internal npm registry returned E404 for yargs-parser-21.1.1.tgz
+vite build: NOT EXECUTED
+Source validation result: PASS
+Production deployment result: LOCAL deploy.ps1 BUILD REQUIRED
+
+12. OUTPUT PACKAGE
+------------------
+Project files: 347
+package-meta files: 4
+ZIP file entries: 351
+PACKAGE_FILES / SHA-256 verification: PASS
+REMOVED_FILES inherited paths: 67
+New removed paths: 0
+Removed-path duplicates: 0
+Removed-path/package conflicts: 0
+Forbidden paths: 0
+ZIP duplicate entries: 0
+ZIP extraction integrity: PASS
+Result: PASS

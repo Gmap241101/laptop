@@ -1,9 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  onAuthStateChanged,
-  signOut,
-} from 'firebase/auth';
+import { onAuthStateChanged } from 'firebase/auth';
 import {
   collection,
   deleteDoc,
@@ -120,7 +117,6 @@ import {
 } from './utils/popupUtils.js';
 
 import {
-  ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
   ADMIN_ACCOUNTS_COLLECTION_REF,
   FAQ_BOARD_CONFIG_DOC_REF,
   FAQ_CATEGORIES_COLLECTION_REF,
@@ -131,8 +127,6 @@ import {
   POPUP_POSTS_COLLECTION_REF,
   PUBLIC_ASSET_CATALOG_DOC_REF,
   PUBLIC_CONFIG_DOC_REF,
-  MEMBER_DIRECTORY_KEYS_COLLECTION_REF,
-  MEMBER_IDENTITY_CLAIMS_COLLECTION_REF,
   RENTAL_ASSET_NUMBERS_COLLECTION_REF,
   RENTAL_ASSETS_COLLECTION_REF,
   RENTAL_AVAILABILITY_COLLECTION_REF,
@@ -257,10 +251,7 @@ import useAdminSplitStorageMigrationController, {
   useAdminSplitStorageMigrationState,
 } from './features/settings/useAdminSplitStorageMigrationController.js';
 import {
-  getClaimCurrentUid,
-  getClaimFormerUids,
   getClaimStatus,
-  getRestorableUserProfileStatus,
   getSafeMemberDirectoryVersion,
   isRegisteredMemberSignupRequired,
 } from './features/members/memberAccountPolicy.js';
@@ -294,15 +285,11 @@ import {
 } from './services/publicAssetCatalogWriteThroughLoader.js';
 
 import {
-  createMemberIdentityKey,
   normalizeEmailAddress,
-  normalizeMemberName,
-  normalizeMemberTeam,
   parseDomesticPhoneNumber,
 } from './utils/memberPolicy.js';
 import useUserAccountRecoveryController from './features/auth/useUserAccountRecoveryController.js';
 import useUserLoginController, {
-  createDefaultUserAuthForm,
   useUserAuthState,
 } from './features/auth/useUserLoginController.js';
 import useUserSignupController from './features/auth/useUserSignupController.js';
@@ -326,6 +313,9 @@ import useUserMyPageAccountController, {
   createDefaultUserProfileForm,
   useUserMyPageAccountState,
 } from './features/members/useUserMyPageAccountController.js';
+import useUserMembershipStatusController, {
+  useUserMembershipStatusState,
+} from './features/members/useUserMembershipStatusController.js';
 import useUserRentalRequestController, {
   useUserRentalRequestState,
 } from './features/requests/useUserRentalRequestController.js';
@@ -1268,9 +1258,13 @@ function App() {
     setUserAuthLoading,
   } = useUserAuthState();
   const [userAccountStatusView, setUserAccountStatusView] = useState(readUserAccountStatusView);
-  const [userDirectoryVerificationLoading, setUserDirectoryVerificationLoading] = useState(false);
-  const userDirectoryVerificationKeyRef = useRef('');
-  const profileRequiredRedirectRef = useRef('');
+  const {
+    profileRequiredRedirectRef,
+    setUserDirectoryVerificationLoading,
+    userDirectoryVerificationKeyRef,
+    userDirectoryVerificationLoading,
+    userStatusLogoutInProgressRef,
+  } = useUserMembershipStatusState();
   const observedFirebaseAuthUidRef = useRef('');
 
   const hasFirebaseAuthSession = Boolean(
@@ -1300,8 +1294,6 @@ function App() {
   const debouncedAdminNoticeQuery = useDebouncedValue(adminNoticeQuery);
   const debouncedFaqQuery = useDebouncedValue(faqQuery);
 
-
-  const userStatusLogoutInProgressRef = useRef(false);
 
   // 엑셀/CSV 업로드 패널 토글 상태 값 추가
   const [showUploadPanel, setShowUploadPanel] = useState(false);
@@ -1601,220 +1593,6 @@ function App() {
     currentAuthRoleErrorMessage,
     currentAuthAdminAccount,
     authenticatedAdminId,
-  ]);
-
-  useEffect(() => {
-    if (
-      !firebaseAuthUser ||
-      !currentAuthRoleReady ||
-      currentAuthAdminAccount ||
-      authenticatedAdminId ||
-      !userProfileReady ||
-      !userProfile ||
-      userProfile.uid !== firebaseAuthUser.uid ||
-      userAuthLoading ||
-      withdrawalLoading
-    ) {
-      return;
-    }
-
-    const currentStatus =
-      userProfile.status || '';
-
-    if (
-      currentStatus ===
-      USER_PROFILE_STATUS.ACTIVE
-    ) {
-      const wasRedirectedForProfileRequired =
-        profileRequiredRedirectRef.current.startsWith(
-          `${firebaseAuthUser.uid}:`
-        );
-
-      profileRequiredRedirectRef.current = '';
-
-      if (
-        wasRedirectedForProfileRequired &&
-        userTab === 'mypage'
-      ) {
-        replaceAppPath('user', 'rental');
-        setView('user');
-        setUserTab('rental');
-        setIsCommunityMenuOpen(false);
-        triggerToast(
-          '회원 상태가 정상 이용 가능 상태로 복원되었습니다.',
-          'success'
-        );
-      }
-
-      return;
-    }
-
-    if (
-      currentStatus ===
-      USER_PROFILE_STATUS.PROFILE_REQUIRED
-    ) {
-      const redirectKey = `${firebaseAuthUser.uid}:${userProfile.profileRequiredReason || ''}`;
-
-      if (profileRequiredRedirectRef.current !== redirectKey) {
-        profileRequiredRedirectRef.current = redirectKey;
-        replaceAppPath('user', 'mypage');
-        setView('user');
-        setUserTab('mypage');
-        setIsCommunityMenuOpen(false);
-        triggerToast(
-          '등록 정보 확인이 필요합니다. 부서와 성명을 수정해 주세요.',
-          'error'
-        );
-      }
-
-      return;
-    }
-
-    if (
-      userStatusLogoutInProgressRef.current
-    ) {
-      return;
-    }
-
-    userStatusLogoutInProgressRef.current = true;
-
-    const statusPageType =
-      currentStatus === USER_PROFILE_STATUS.PENDING
-        ? 'loginPending'
-        : currentStatus === USER_PROFILE_STATUS.BLOCKED
-          ? 'loginBlocked'
-          : 'loginRetired';
-
-    const logoutInactiveUser = async () => {
-      try {
-        showUserAccountStatus(statusPageType);
-        clearUserAuthenticatedSession();
-        await signOut(firebaseAuth);
-
-        clearUserLoginReturnTarget();
-        clearAdminAuthenticatedSession();
-        setUserAuthForm(createDefaultUserAuthForm());
-      } catch (error) {
-        console.error(
-          'Inactive user automatic logout error:',
-          error
-        );
-
-        triggerToast(
-          '회원 상태 변경은 확인했지만 자동 로그아웃에 실패했습니다. 페이지를 새로고침해 주세요.',
-          'error'
-        );
-      } finally {
-        userStatusLogoutInProgressRef.current = false;
-      }
-    };
-
-    void logoutInactiveUser();
-  }, [
-    firebaseAuthUser,
-    currentAuthRoleReady,
-    currentAuthAdminAccount,
-    authenticatedAdminId,
-    userProfileReady,
-    userProfile,
-    userAuthLoading,
-    userTab,
-    withdrawalLoading,
-  ]);
-
-  useEffect(() => {
-    if (
-      !firebaseAuthUser ||
-      !currentAuthRoleReady ||
-      currentAuthRoleErrorMessage ||
-      currentAuthAdminAccount ||
-      authenticatedAdminId ||
-      !userProfileReady ||
-      !userProfile ||
-      userAuthLoading ||
-      userDirectoryVerificationLoading
-    ) {
-      return;
-    }
-
-    const policyEnabled = isRegisteredMemberSignupRequired(data.settings);
-    const directoryVersion = getSafeMemberDirectoryVersion(data.settings);
-    const currentStatus = userProfile.status || '';
-    const isDirectoryMismatchProfile =
-      currentStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
-      userProfile.profileRequiredReason ===
-        PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
-    const needsVerification =
-      isDirectoryMismatchProfile ||
-      (policyEnabled &&
-        currentStatus === USER_PROFILE_STATUS.ACTIVE &&
-        Number(userProfile.directoryVerifiedVersion || 0) !==
-          directoryVersion);
-
-    if (!needsVerification) {
-      return;
-    }
-
-    const serviceMode = normalizeSiteSettings(siteSettings).serviceMode;
-    const isPolicyDisabledRestore =
-      !policyEnabled &&
-      currentStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
-      userProfile.profileRequiredReason ===
-        PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
-
-    if (
-      serviceMode !== SERVICE_MODE.NORMAL &&
-      !isPolicyDisabledRestore
-    ) {
-      return;
-    }
-
-    const verificationKey = [
-      firebaseAuthUser.uid,
-      policyEnabled ? 'on' : 'off',
-      directoryVersion,
-      currentStatus,
-      userProfile.name || '',
-      userProfile.team || '',
-      userProfile.profileRequiredReason || '',
-    ].join(':');
-
-    if (userDirectoryVerificationKeyRef.current === verificationKey) {
-      return;
-    }
-
-    userDirectoryVerificationKeyRef.current = verificationKey;
-    setUserDirectoryVerificationLoading(true);
-
-    void verifyUserDirectoryMembership({
-      authUser: firebaseAuthUser,
-      account: userProfile,
-    })
-      .catch((error) => {
-        console.error('User directory verification error:', error);
-        userDirectoryVerificationKeyRef.current = '';
-        triggerToast(
-          error?.code === 'permission-denied'
-            ? '회원가입 명부 정책 변경에 따른 회원 상태 동기화 권한이 거부되었습니다. 최신 Firestore Rules를 게시한 뒤 다시 로그인해 주세요.'
-            : '회원 명부 확인 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
-          'error'
-        );
-      })
-      .finally(() => {
-        setUserDirectoryVerificationLoading(false);
-      });
-  }, [
-    authenticatedAdminId,
-    currentAuthAdminAccount,
-    currentAuthRoleErrorMessage,
-    currentAuthRoleReady,
-    data.settings,
-    firebaseAuthUser,
-    siteSettings.serviceMode,
-    userAuthLoading,
-    userDirectoryVerificationLoading,
-    userProfile,
-    userProfileReady,
   ]);
 
   const getCurrentUserLoginReturnTarget = () => {
@@ -3052,260 +2830,6 @@ function App() {
     adminTab,
     triggerToast,
   });
-
-  const verifyUserDirectoryMembership = async ({
-    authUser,
-    account,
-    force = false,
-  }) => {
-    if (!authUser?.uid || !account) {
-      throw createMemberPolicyError('member/account-not-ready');
-    }
-
-    const normalizedName = normalizeMemberName(account.name || '');
-    const normalizedTeam = normalizeMemberTeam(account.team || '');
-    const identityKey = await createMemberIdentityKey(
-      normalizedTeam,
-      normalizedName
-    );
-
-    return runTransaction(db, async (transaction) => {
-      const configRef = PUBLIC_CONFIG_DOC_REF;
-      const userRef = doc(
-        db,
-        USER_ACCOUNTS_COLLECTION_NAME,
-        authUser.uid
-      );
-      const directoryRef = doc(
-        MEMBER_DIRECTORY_KEYS_COLLECTION_REF,
-        identityKey
-      );
-      const claimRef = doc(
-        MEMBER_IDENTITY_CLAIMS_COLLECTION_REF,
-        identityKey
-      );
-
-      const configSnapshot = await transaction.get(configRef);
-      const userSnapshot = await transaction.get(userRef);
-
-      if (!userSnapshot.exists()) {
-        throw createMemberPolicyError('member/account-not-ready');
-      }
-
-      const currentAccount = userSnapshot.data();
-      const latestName = normalizeMemberName(currentAccount.name || '');
-      const latestTeam = normalizeMemberTeam(currentAccount.team || '');
-
-      if (latestName !== normalizedName || latestTeam !== normalizedTeam) {
-        throw createMemberPolicyError('member/profile-changed');
-      }
-
-      const settings = normalizeRentalPolicySettings({
-        ...initialData.settings,
-        ...(configSnapshot.exists()
-          ? configSnapshot.data()?.settings || {}
-          : {}),
-      });
-      const policyEnabled = isRegisteredMemberSignupRequired(settings);
-      const directoryVersion = getSafeMemberDirectoryVersion(settings);
-      const currentStatus = currentAccount.status || '';
-
-      if (!policyEnabled) {
-        if (
-          currentStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
-          currentAccount.profileRequiredReason ===
-            PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH
-        ) {
-          const restoredStatus = getRestorableUserProfileStatus(
-            currentAccount.statusBeforeProfileRequired
-          );
-
-          transaction.update(userRef, {
-            status: restoredStatus,
-            profileRequiredReason: '',
-            profileRequiredAt: '',
-            statusBeforeProfileRequired: '',
-            updatedAt: serverTimestamp(),
-          });
-
-          if (currentAccount.recoveryKey) {
-            transaction.set(
-              doc(
-                ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
-                currentAccount.recoveryKey
-              ),
-              {
-                recoveryKey: currentAccount.recoveryKey,
-                maskedEmail: currentAccount.maskedEmail || '',
-                accountStatus: restoredStatus,
-                enabled: true,
-                updatedAt: serverTimestamp(),
-              },
-              { merge: true }
-            );
-          }
-
-          return {
-            status: restoredStatus,
-            policyEnabled: false,
-            restored: true,
-          };
-        }
-
-        return {
-          status: currentStatus,
-          policyEnabled: false,
-          restored: false,
-        };
-      }
-
-      if (
-        !force &&
-        currentStatus === USER_PROFILE_STATUS.ACTIVE &&
-        Number(currentAccount.directoryVerifiedVersion || 0) ===
-          directoryVersion
-      ) {
-        return {
-          status: currentStatus,
-          policyEnabled: true,
-          verified: true,
-        };
-      }
-
-      const directorySnapshot = await transaction.get(directoryRef);
-      const claimSnapshot = await transaction.get(claimRef);
-      const directoryData = directorySnapshot.exists()
-        ? directorySnapshot.data()
-        : null;
-      const claimData = claimSnapshot.exists()
-        ? claimSnapshot.data()
-        : null;
-
-      const directoryMatches = Boolean(
-        directoryData &&
-          directoryData.enabled !== false &&
-          normalizeMemberName(directoryData.name || '') === normalizedName &&
-          normalizeMemberTeam(directoryData.team || '') === normalizedTeam
-      );
-      const claimConflict = Boolean(
-        claimData &&
-          (claimData.conflict === true ||
-            getClaimCurrentUid(claimData) !== authUser.uid)
-      );
-
-      if (directoryMatches && !claimConflict) {
-        transaction.set(
-          claimRef,
-          {
-            identityKey,
-            uid: authUser.uid,
-            currentUid: authUser.uid,
-            status: 'active',
-            name: normalizedName,
-            team: normalizedTeam,
-            conflict: false,
-            conflictingUids: [],
-            formerUids: getClaimFormerUids(claimData || {}),
-            directoryMemberId: directoryData.directoryMemberId || '',
-            restrictionSnapshot: claimData?.restrictionSnapshot || {},
-            createdAt: claimData?.createdAt || serverTimestamp(),
-            releasedAt: '',
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-
-        const shouldRestore =
-          currentStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
-          currentAccount.profileRequiredReason ===
-            PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
-        const nextStatus = shouldRestore
-          ? getRestorableUserProfileStatus(
-              currentAccount.statusBeforeProfileRequired
-            )
-          : currentStatus;
-
-        transaction.update(userRef, {
-          status: nextStatus,
-          identityKey,
-          directoryMemberId: directoryData.directoryMemberId || '',
-          directoryVerifiedVersion: directoryVersion,
-          directoryVerifiedAt: serverTimestamp(),
-          profileRequiredReason: shouldRestore
-            ? ''
-            : currentAccount.profileRequiredReason || '',
-          profileRequiredAt: shouldRestore
-            ? ''
-            : currentAccount.profileRequiredAt || '',
-          statusBeforeProfileRequired: shouldRestore
-            ? ''
-            : currentAccount.statusBeforeProfileRequired || '',
-          updatedAt: serverTimestamp(),
-        });
-
-        if (currentAccount.recoveryKey) {
-          transaction.set(
-            doc(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF, currentAccount.recoveryKey),
-            {
-              accountStatus: nextStatus,
-              updatedAt: serverTimestamp(),
-            },
-            { merge: true }
-          );
-        }
-
-        return {
-          status: nextStatus,
-          policyEnabled: true,
-          verified: true,
-          restored: shouldRestore,
-        };
-      }
-
-      const nextReason = claimConflict
-        ? PROFILE_REQUIRED_REASON.DUPLICATE_IDENTITY
-        : PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
-      const statusBeforeProfileRequired =
-        [USER_PROFILE_STATUS.ACTIVE, USER_PROFILE_STATUS.PENDING].includes(
-          currentStatus
-        )
-          ? currentStatus
-          : currentAccount.statusBeforeProfileRequired ||
-            USER_PROFILE_STATUS.PENDING;
-
-      transaction.update(userRef, {
-        status: USER_PROFILE_STATUS.PROFILE_REQUIRED,
-        statusBeforeProfileRequired,
-        profileRequiredReason: nextReason,
-        profileRequiredAt: serverTimestamp(),
-        identityKey,
-        directoryMemberId: directoryMatches
-          ? directoryData.directoryMemberId || ''
-          : '',
-        directoryVerifiedVersion: 0,
-        directoryVerifiedAt: '',
-        updatedAt: serverTimestamp(),
-      });
-
-      if (currentAccount.recoveryKey) {
-        transaction.set(
-          doc(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF, currentAccount.recoveryKey),
-          {
-            accountStatus: USER_PROFILE_STATUS.PROFILE_REQUIRED,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-      }
-
-      return {
-        status: USER_PROFILE_STATUS.PROFILE_REQUIRED,
-        policyEnabled: true,
-        verified: false,
-        reason: nextReason,
-      };
-    });
-  };
 
   const registeredAdminAccounts = adminAccounts || [];
 
@@ -5359,7 +4883,7 @@ function App() {
       withdrawalLoading,
     });
 
-  const showUserAccountStatus = (type) => {
+  const showUserAccountStatus = useCallback((type) => {
     const nextView = { type };
     writeUserAccountStatusView(nextView);
     setUserAccountStatusView(nextView);
@@ -5367,7 +4891,38 @@ function App() {
     setView('user');
     setUserTab('accountStatus');
     setIsCommunityMenuOpen(false);
-  };
+  }, []);
+
+  const { verifyUserDirectoryMembership } =
+    useUserMembershipStatusController({
+      authenticatedAdminId,
+      clearAdminAuthenticatedSession,
+      clearUserAuthenticatedSession,
+      createMemberPolicyError,
+      currentAuthAdminAccount,
+      currentAuthRoleErrorMessage,
+      currentAuthRoleReady,
+      dataSettings: data.settings,
+      firebaseAuthUser,
+      initialSettings: initialData.settings,
+      profileRequiredRedirectRef,
+      setIsCommunityMenuOpen,
+      setUserAuthForm,
+      setUserDirectoryVerificationLoading,
+      setUserTab,
+      setView,
+      showUserAccountStatus,
+      siteSettings,
+      triggerToast,
+      userAuthLoading,
+      userDirectoryVerificationKeyRef,
+      userDirectoryVerificationLoading,
+      userProfile,
+      userProfileReady,
+      userStatusLogoutInProgressRef,
+      userTab,
+      withdrawalLoading,
+    });
 
   const {
     cancelWithdrawal,
