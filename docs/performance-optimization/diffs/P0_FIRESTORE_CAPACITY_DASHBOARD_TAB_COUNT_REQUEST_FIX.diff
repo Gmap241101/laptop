@@ -1,0 +1,670 @@
+--- a/src/hooks/useDashboardSummary.js
++++ b/src/hooks/useDashboardSummary.js
+@@ -3,9 +3,18 @@
+ 
+ import { DASHBOARD_SUMMARY_DOC_REF } from '../firebase.js';
+ import { today } from '../utils/appUtils.js';
++import {
++  getFirestoreResourceExhaustedMessage,
++  isFirestoreCapacityCoolingDown,
++  isFirestoreResourceExhaustedError,
++  markFirestoreCapacityExhausted,
++} from '../utils/firestoreCapacity.js';
+ 
+ let dashboardSummaryServicePromise = null;
+ 
++const DASHBOARD_SUMMARY_CACHE_KEY =
++  'rental-system:admin-dashboard-summary-cache-v1';
++
+ const loadDashboardSummaryService = () => {
+   if (!dashboardSummaryServicePromise) {
+     dashboardSummaryServicePromise = import(
+@@ -19,13 +28,32 @@
+   return dashboardSummaryServicePromise;
+ };
+ 
+-const DASHBOARD_REFRESH_AFTER_ADMIN_TABS = new Set([
+-  'requests',
+-  'memberAccounts',
+-  'laptops',
+-  'categories',
+-  'dataManagement',
+-]);
++const readDashboardSummaryCache = () => {
++  if (typeof window === 'undefined') return null;
++
++  try {
++    const cached = JSON.parse(
++      window.localStorage.getItem(DASHBOARD_SUMMARY_CACHE_KEY) || 'null'
++    );
++
++    return cached && typeof cached === 'object' ? cached : null;
++  } catch {
++    return null;
++  }
++};
++
++const writeDashboardSummaryCache = (summary) => {
++  if (typeof window === 'undefined' || !summary) return;
++
++  try {
++    window.localStorage.setItem(
++      DASHBOARD_SUMMARY_CACHE_KEY,
++      JSON.stringify(summary)
++    );
++  } catch {
++    // 저장공간 제한 시 화면 데이터만 유지합니다.
++  }
++};
+ 
+ export const useDashboardSummary = ({
+   firebaseAuthReady,
+@@ -38,8 +66,14 @@
+   adminTab,
+   triggerToast,
+ }) => {
+-  const [dashboardSummary, setDashboardSummary] = useState(null);
+-  const [dashboardSummaryReady, setDashboardSummaryReady] = useState(false);
++  const cachedSummaryRef = useRef(readDashboardSummaryCache());
++  const dashboardSummaryRef = useRef(cachedSummaryRef.current);
++  const [dashboardSummary, setDashboardSummary] = useState(
++    () => cachedSummaryRef.current
++  );
++  const [dashboardSummaryReady, setDashboardSummaryReady] = useState(
++    () => Boolean(cachedSummaryRef.current)
++  );
+   const [dashboardSummaryRefreshing, setDashboardSummaryRefreshing] =
+     useState(false);
+   const [
+@@ -48,13 +82,47 @@
+   ] = useState('');
+ 
+   const refreshInProgressRef = useRef(false);
+-  const previousAdminTabRef = useRef('dashboard');
+   const triggerToastRef = useRef(triggerToast);
+ 
+   useEffect(() => {
+     triggerToastRef.current = triggerToast;
+   }, [triggerToast]);
+ 
++  const applyDashboardSummary = useCallback((nextSummary) => {
++    if (!nextSummary) return;
++
++    cachedSummaryRef.current = nextSummary;
++    dashboardSummaryRef.current = nextSummary;
++    setDashboardSummary(nextSummary);
++    setDashboardSummaryReady(true);
++    setDashboardSummaryLoadErrorMessage('');
++    writeDashboardSummaryCache(nextSummary);
++  }, []);
++
++  const applyCapacityError = useCallback((error, { showToast = false } = {}) => {
++    markFirestoreCapacityExhausted(error);
++
++    const cachedDataAvailable = Boolean(
++      cachedSummaryRef.current || dashboardSummaryRef.current
++    );
++    const message = getFirestoreResourceExhaustedMessage({
++      operation: '관리자 대시보드 요약 조회·갱신',
++      cachedDataAvailable,
++    });
++
++    if (cachedSummaryRef.current && !dashboardSummaryRef.current) {
++      dashboardSummaryRef.current = cachedSummaryRef.current;
++      setDashboardSummary(cachedSummaryRef.current);
++    }
++
++    setDashboardSummaryReady(true);
++    setDashboardSummaryLoadErrorMessage(message);
++
++    if (showToast) {
++      triggerToastRef.current?.(message, 'error');
++    }
++  }, []);
++
+   const refreshDashboardSummary = useCallback(
+     async ({ showToast = false } = {}) => {
+       if (refreshInProgressRef.current) return;
+@@ -62,6 +130,14 @@
+       const adminUid = currentAuthAdminAccountId || authenticatedAdminId;
+       if (!adminUid) return;
+ 
++      if (isFirestoreCapacityCoolingDown()) {
++        applyCapacityError(
++          { code: 'resource-exhausted' },
++          { showToast }
++        );
++        return;
++      }
++
+       refreshInProgressRef.current = true;
+       setDashboardSummaryRefreshing(true);
+       setDashboardSummaryLoadErrorMessage('');
+@@ -73,8 +149,7 @@
+           adminUid,
+         });
+ 
+-        setDashboardSummary(nextSummary);
+-        setDashboardSummaryReady(true);
++        applyDashboardSummary(nextSummary);
+ 
+         if (showToast) {
+           triggerToastRef.current?.(
+@@ -82,18 +157,28 @@
+           );
+         }
+       } catch (error) {
+-        const message =
+-          '관리자 대시보드 요약을 갱신하지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.';
+         console.error('Dashboard summary refresh error:', error);
+-        setDashboardSummaryLoadErrorMessage(message);
+-        setDashboardSummaryReady(true);
+-        if (showToast) triggerToastRef.current?.(message, 'error');
++
++        if (isFirestoreResourceExhaustedError(error)) {
++          applyCapacityError(error, { showToast });
++        } else {
++          const message =
++            '관리자 대시보드 요약을 갱신하지 못했습니다. Firestore 권한과 데이터 구조를 확인해 주세요.';
++          setDashboardSummaryLoadErrorMessage(message);
++          setDashboardSummaryReady(true);
++          if (showToast) triggerToastRef.current?.(message, 'error');
++        }
+       } finally {
+         refreshInProgressRef.current = false;
+         setDashboardSummaryRefreshing(false);
+       }
+     },
+-    [authenticatedAdminId, currentAuthAdminAccountId]
++    [
++      applyCapacityError,
++      applyDashboardSummary,
++      authenticatedAdminId,
++      currentAuthAdminAccountId,
++    ]
+   );
+ 
+   const shouldSubscribeDashboardSummary =
+@@ -108,20 +193,30 @@
+ 
+   useEffect(() => {
+     if (!shouldSubscribeDashboardSummary) {
+-      setDashboardSummary(null);
+-      setDashboardSummaryReady(false);
++      dashboardSummaryRef.current = cachedSummaryRef.current;
++      setDashboardSummary(cachedSummaryRef.current);
++      setDashboardSummaryReady(Boolean(cachedSummaryRef.current));
+       setDashboardSummaryLoadErrorMessage('');
+       return undefined;
+     }
+ 
+-    setDashboardSummaryReady(false);
++    if (!cachedSummaryRef.current) {
++      setDashboardSummaryReady(false);
++    }
+ 
+     let cancelled = false;
+     let unsubscribe = null;
+     let refreshRequested = false;
+ 
+     const requestRefreshOnce = () => {
+-      if (refreshRequested || cancelled) return;
++      if (
++        refreshRequested ||
++        cancelled ||
++        isFirestoreCapacityCoolingDown()
++      ) {
++        return;
++      }
++
+       refreshRequested = true;
+       void refreshDashboardSummary();
+     };
+@@ -137,21 +232,34 @@
+           DASHBOARD_SUMMARY_DOC_REF,
+           (snapshot) => {
+             if (!snapshot.exists()) {
+-              setDashboardSummary(null);
+-              setDashboardSummaryReady(false);
++              if (cachedSummaryRef.current) {
++                dashboardSummaryRef.current = cachedSummaryRef.current;
++                setDashboardSummary(cachedSummaryRef.current);
++                setDashboardSummaryReady(true);
++              } else {
++                dashboardSummaryRef.current = null;
++                setDashboardSummary(null);
++                setDashboardSummaryReady(false);
++              }
++
+               requestRefreshOnce();
+               return;
+             }
+ 
+-            const nextSummary = normalizeDashboardSummary(snapshot.data());
+-            setDashboardSummary(nextSummary);
+-            setDashboardSummaryReady(true);
+-            setDashboardSummaryLoadErrorMessage('');
++            applyDashboardSummary(
++              normalizeDashboardSummary(snapshot.data())
++            );
+           },
+           (error) => {
++            console.error('Dashboard summary sync error:', error);
++
++            if (isFirestoreResourceExhaustedError(error)) {
++              applyCapacityError(error);
++              return;
++            }
++
+             const message =
+               '관리자 대시보드 요약 문서를 불러오지 못했습니다.';
+-            console.error('Dashboard summary sync error:', error);
+             setDashboardSummaryLoadErrorMessage(message);
+             setDashboardSummaryReady(true);
+             requestRefreshOnce();
+@@ -174,17 +282,20 @@
+       cancelled = true;
+       unsubscribe?.();
+     };
+-  }, [shouldSubscribeDashboardSummary, refreshDashboardSummary]);
++  }, [
++    applyCapacityError,
++    applyDashboardSummary,
++    refreshDashboardSummary,
++    shouldSubscribeDashboardSummary,
++  ]);
+ 
+   useEffect(() => {
+-    const previousAdminTab = previousAdminTabRef.current;
+-    previousAdminTabRef.current = adminTab;
+-
+     if (
+       !shouldSubscribeDashboardSummary ||
+       adminTab !== 'dashboard' ||
+       !dashboardSummaryReady ||
+-      !dashboardSummary
++      !dashboardSummary ||
++      isFirestoreCapacityCoolingDown()
+     ) {
+       return undefined;
+     }
+@@ -210,10 +321,8 @@
+           !generatedAtMillis ||
+           Date.now() - generatedAtMillis >
+             DASHBOARD_SUMMARY_ENTRY_REFRESH_AGE_MS;
+-        const shouldForceRefreshAfterAdminWork =
+-          DASHBOARD_REFRESH_AFTER_ADMIN_TABS.has(previousAdminTab);
+ 
+-        if (isStale || shouldForceRefreshAfterAdminWork) {
++        if (isStale) {
+           void refreshDashboardSummary();
+         }
+       } catch (error) {
+
+--- a/src/services/dashboardSummaryService.js
++++ b/src/services/dashboardSummaryService.js
+@@ -38,7 +38,7 @@
+ export const ADMIN_DASHBOARD_ACTIVE_REQUEST_LIMIT = 100;
+ export const DASHBOARD_SUMMARY_SCHEMA_VERSION = 2;
+ // 대시보드 진입 시에만 오래된 요약을 갱신하며, 열린 화면에서는 주기적으로 폴링하지 않는다.
+-export const DASHBOARD_SUMMARY_ENTRY_REFRESH_AGE_MS = 15 * 60 * 1000;
++export const DASHBOARD_SUMMARY_ENTRY_REFRESH_AGE_MS = 60 * 60 * 1000;
+ export const DASHBOARD_SUMMARY_PENDING_ACCOUNT_LIMIT = 12;
+ 
+ const compactDefinedFields = (value = {}) =>
+
+--- a/src/features/requests/useAdminRequestsController.js
++++ b/src/features/requests/useAdminRequestsController.js
+@@ -28,6 +28,11 @@
+   getFirestoreTimestampMillis,
+   today,
+ } from '../../utils/appUtils.js';
++import {
++  isFirestoreCapacityCoolingDown,
++  isFirestoreResourceExhaustedError,
++  markFirestoreCapacityExhausted,
++} from '../../utils/firestoreCapacity.js';
+ import useAdminRequestProgressiveSearch from './useAdminRequestProgressiveSearch.js';
+ 
+ const DEFAULT_PAGE_SIZE = 10;
+@@ -57,6 +62,7 @@
+ 
+ export default function useAdminRequestsController({
+   enabled,
++  fallbackTabCounts = null,
+   mutationVersion = 0,
+   navigationRequest,
+   onControllerStateChange,
+@@ -88,6 +94,8 @@
+     createDefaultTabCountErrors
+   );
+   const [tabCountsReady, setTabCountsReady] = useState(false);
++  const [tabCountCapacityLimited, setTabCountCapacityLimited] =
++    useState(false);
+   const [selectedRequestId, setSelectedRequestId] = useState('');
+ 
+   const cursorByPageRef = useRef(new Map([[1, null]]));
+@@ -383,10 +391,20 @@
+   }, [pageSize, query, quickFilter, requestTab]);
+ 
+   useEffect(() => {
++    const normalizedFallbackCounts = createDefaultTabCounts();
++    Object.keys(normalizedFallbackCounts).forEach((key) => {
++      const fallbackValue = Number(fallbackTabCounts?.[key]);
++
++      if (Number.isFinite(fallbackValue) && fallbackValue >= 0) {
++        normalizedFallbackCounts[key] = fallbackValue;
++      }
++    });
++
+     if (!enabled) {
+       setTabCounts(createDefaultTabCounts());
+       setTabCountErrors(createDefaultTabCountErrors());
+       setTabCountsReady(true);
++      setTabCountCapacityLimited(false);
+       return undefined;
+     }
+ 
+@@ -395,11 +413,27 @@
+       return undefined;
+     }
+ 
++    if (isFirestoreCapacityCoolingDown()) {
++      setTabCounts(normalizedFallbackCounts);
++      setTabCountErrors(
++        Object.fromEntries(
++          Object.keys(createDefaultTabCountErrors()).map((key) => [
++            key,
++            typeof normalizedFallbackCounts[key] !== 'number',
++          ])
++        )
++      );
++      setTabCountsReady(true);
++      setTabCountCapacityLimited(true);
++      return undefined;
++    }
++
+     let cancelled = false;
+ 
+     setTabCounts(createDefaultTabCounts());
+     setTabCountErrors(createDefaultTabCountErrors());
+     setTabCountsReady(false);
++    setTabCountCapacityLimited(false);
+ 
+     const countRequests = [
+       {
+@@ -452,6 +486,7 @@
+ 
+       const nextCounts = createDefaultTabCounts();
+       const nextErrors = createDefaultTabCountErrors();
++      let capacityLimited = false;
+ 
+       results.forEach((result, index) => {
+         const key = countRequests[index].key;
+@@ -461,6 +496,16 @@
+           return;
+         }
+ 
++        if (isFirestoreResourceExhaustedError(result.reason)) {
++          markFirestoreCapacityExhausted(result.reason);
++          capacityLimited = true;
++
++          if (typeof normalizedFallbackCounts[key] === 'number') {
++            nextCounts[key] = normalizedFallbackCounts[key];
++            return;
++          }
++        }
++
+         nextErrors[key] = true;
+         console.error(
+           `Rental request tab count error (${key}):`,
+@@ -471,12 +516,13 @@
+       setTabCounts(nextCounts);
+       setTabCountErrors(nextErrors);
+       setTabCountsReady(true);
++      setTabCountCapacityLimited(capacityLimited);
+     });
+ 
+     return () => {
+       cancelled = true;
+     };
+-  }, [enabled, mutationVersion, prerequisitesReady]);
++  }, [enabled, fallbackTabCounts, mutationVersion, prerequisitesReady]);
+ 
+ 
+   useEffect(() => {
+@@ -647,6 +693,7 @@
+     adminRequestQuickFilter: quickFilter,
+     adminRequestTab: requestTab,
+     adminRequestTabCountErrors: tabCountErrors,
++    adminRequestTabCountCapacityLimited: tabCountCapacityLimited,
+     adminRequestTabCounts: tabCounts,
+     adminRequestTabCountsReady: tabCountsReady,
+     adminRequestTotalPages: totalPages,
+
+--- a/src/admin/AdminRequestsPanel.jsx
++++ b/src/admin/AdminRequestsPanel.jsx
+@@ -23,6 +23,7 @@
+     adminUserActionSavingRequestId,
+     commitAdminRequestEdit,
+     commitAdminRequestStatusRestore,
++    dashboardSummary,
+     data,
+     formatFirestoreTimestamp,
+     getDisplayRentalStatus,
+@@ -49,6 +50,7 @@
+     adminRequestQuery,
+     adminRequestQuickFilter,
+     adminRequestTab,
++    adminRequestTabCountCapacityLimited,
+     adminRequestTabCountErrors,
+     adminRequestTabCounts,
+     adminRequestTabCountsReady,
+@@ -71,6 +73,7 @@
+     setSelectedAdminRequestId,
+   } = useAdminRequestsController({
+     enabled: isAdminAuthenticated,
++    fallbackTabCounts: dashboardSummary?.requestTabCounts || null,
+     mutationVersion: adminRequestsMutationVersion,
+     navigationRequest: adminRequestsNavigationRequest,
+     onControllerStateChange: onAdminRequestsControllerStateChange,
+@@ -274,6 +277,14 @@
+                       </div>
+ 
+                       {adminRequestTabCountsReady &&
++                        adminRequestTabCountCapacityLimited && (
++                          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
++                            Firestore 사용량 한도에 도달해 탭 전체 건수의 실시간 집계를 중단했습니다. 숫자가 표시된 탭은 마지막 대시보드 요약값이며, '-'는 현재 목록을 기준으로 확인해 주세요.
++                          </div>
++                        )}
++
++                      {adminRequestTabCountsReady &&
++                        !adminRequestTabCountCapacityLimited &&
+                         Object.values(adminRequestTabCountErrors).some(Boolean) && (
+                           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
+                             일부 탭의 전체 건수를 불러오지 못했습니다. '-'로 표시된 탭은 목록을 기준으로 확인해 주세요.
+
+--- a/src/admin/AdminDashboardPanel.jsx
++++ b/src/admin/AdminDashboardPanel.jsx
+@@ -670,7 +670,11 @@
+           <div className="flex items-start gap-2">
+             <AlertTriangle size={17} className="mt-0.5 shrink-0" aria-hidden="true" />
+             <div>
+-              <div className="font-bold">대시보드 요약을 갱신하지 못했습니다.</div>
++              <div className="font-bold">
++                {dashboardSummaryLoadErrorMessage.includes('사용량 한도')
++                  ? 'Firestore 사용량 한도에 도달했습니다.'
++                  : '대시보드 요약을 갱신하지 못했습니다.'}
++              </div>
+               <div className="mt-1">{dashboardSummaryLoadErrorMessage}</div>
+             </div>
+           </div>
+
+--- a/src/context/appContextSlices.js
++++ b/src/context/appContextSlices.js
+@@ -19,7 +19,7 @@
+   admin: Object.freeze({
+     shell: contextKeys('AlertCircle Button Card CardContent ClipboardList Clock Input Laptop LayoutDashboard LockIcon React Settings ShieldCheck UserCircle Users adminAccountsLoadErrorMessage adminAuthForm adminAuthLoading adminTab authenticateAdmin currentAuthRoleErrorMessage data faqPosts goToUserHome handleAdminTabChange noticePosts setAdminAuthForm setAdminTab shouldShowAdminAccountsErrorPage shouldShowAdminLoadingPage shouldShowAdminLoginPage'),
+     dashboard: contextKeys('ADMIN_REQUEST_QUICK_FILTER ADMIN_REQUEST_TAB AdminPageHeader STATUS USER_PROFILE_STATUS USER_REQUEST_ACTION USER_REQUEST_REVIEW_STATUS dashboardSummary dashboardSummaryLoadErrorMessage dashboardSummaryReady dashboardSummaryRefreshing data defaultRentalStartDate formatDateWithKoreanWeekday getMaxRentalDueDate getSafeMaxRentalDays openAdminMemberAccounts openAdminRequests orphanedRentalAvailabilityRequests refreshDashboardSummary rentalStartAdjustmentInfo today'),
+-    requests: contextKeys('ADMIN_REQUEST_PAGE_SIZE_OPTIONS ADMIN_REQUEST_QUICK_FILTER ADMIN_REQUEST_TAB AdminPageHeader Badge Button Edit3 RENTAL_EXTENSION_APPROVAL_MODE RENTAL_REQUEST_AUDIT_ACTION STATUS Search USER_REQUEST_ACTION USER_REQUEST_REVIEW_STATUS adminRequestsMutationVersion adminRequestsNavigationRequest adminRequestsPrerequisitesReady adminUserActionSavingRequestId data formatFirestoreTimestamp getDisplayRentalStatus getExtensionRequestAvailableDate getRentalExtensionPeriod getRequestDisplayStatus getRequestExtensionCount getSafeRentalExtensionMaxCount getUserRequestActionLabel getUserRequestReviewStatusLabel isAdminAuthenticated onAdminRequestsControllerStateChange orphanedRentalAvailabilityRequests renderRequestActionButtons reviewUserActionRequest saveRequestMemo today triggerToast updateRequestMemo commitAdminRequestEdit commitAdminRequestStatusRestore'),
++    requests: contextKeys('ADMIN_REQUEST_PAGE_SIZE_OPTIONS ADMIN_REQUEST_QUICK_FILTER ADMIN_REQUEST_TAB AdminPageHeader Badge Button Edit3 RENTAL_EXTENSION_APPROVAL_MODE RENTAL_REQUEST_AUDIT_ACTION STATUS Search USER_REQUEST_ACTION USER_REQUEST_REVIEW_STATUS dashboardSummary adminRequestsMutationVersion adminRequestsNavigationRequest adminRequestsPrerequisitesReady adminUserActionSavingRequestId data formatFirestoreTimestamp getDisplayRentalStatus getExtensionRequestAvailableDate getRentalExtensionPeriod getRequestDisplayStatus getRequestExtensionCount getSafeRentalExtensionMaxCount getUserRequestActionLabel getUserRequestReviewStatusLabel isAdminAuthenticated onAdminRequestsControllerStateChange orphanedRentalAvailabilityRequests renderRequestActionButtons reviewUserActionRequest saveRequestMemo today triggerToast updateRequestMemo commitAdminRequestEdit commitAdminRequestStatusRestore'),
+     laptops: contextKeys('AdminPageHeader Badge Button ClipboardList Edit3 Input Plus React STATUS Save Search Select Trash2 adminAvailabilityFilter adminFilteredLaptops adminLaptopQuery adminSelectedAssetCategory authenticatedAdminId createLaptop currentAuthAdminAccount data deleteLaptop editLaptop editLaptopInsertIndex getLaptopAdminDisplayStatus handleAddLaptopClick newLaptop saveLaptop setAdminAvailabilityFilter setAdminLaptopQuery setAdminSelectedAssetCategory setData setEditLaptop setNewLaptop setShowUploadPanel showUploadPanel splitRentalAssets triggerToast'),
+     holidaySettings: contextKeys('AdminPageHeader Button ClipboardList DEFAULT_HOLIDAY_TYPE HOLIDAY_TYPE_LABEL Plus Save Trash2 addTempHoliday applyHolidayImportConflictChoice data deleteTempHoliday discardHolidayChanges formatDateWithKoreanWeekday getKoreaNow holidayImportConflictModal holidayImportLoading holidayImportYear holidayManagementMonth holidayManagementView holidayManagementYear holidaySettingsDirty importKoreanPublicHolidaysFromJson newHolidayDate newHolidayName newHolidayType saveHolidaySettings setHolidayImportConflictModal setHolidayImportYear setHolidayManagementMonth setHolidayManagementView setHolidayManagementYear setNewHolidayDate setNewHolidayName setNewHolidayType tempHolidayList today updateTempHolidayReason'),
+     categories: contextKeys('AdminPageHeader Button Edit3 Plus Save Trash2 X addTempAssetCategory applyEditTempAssetCategory cancelTempAssetCategoryChanges deleteTempAssetCategory draggingAssetCategoryIndex editingAssetCategoryIndex editingAssetCategoryName moveTempAssetCategory newAssetCategory saveTempAssetCategoryChanges setDraggingAssetCategoryIndex setEditingAssetCategoryIndex setEditingAssetCategoryName setNewAssetCategory startEditTempAssetCategory tempAssetCategories'),
+
+--- a/src/features/requests/useUserRentalRequestController.js
++++ b/src/features/requests/useUserRentalRequestController.js
+@@ -28,6 +28,12 @@
+   today,
+ } from '../../utils/appUtils.js';
+ import { getServiceBlockReason } from '../../utils/systemSettings.js';
++import {
++  getFirestoreResourceExhaustedMessage,
++  isFirestoreCapacityCoolingDown,
++  isFirestoreResourceExhaustedError,
++  markFirestoreCapacityExhausted,
++} from '../../utils/firestoreCapacity.js';
+ 
+ export const useUserRentalRequestState = (dataSettings) => {
+   const [requestSubmitLoading, setRequestSubmitLoading] = useState(false);
+@@ -166,6 +172,16 @@
+       return;
+     }
+ 
++    if (isFirestoreCapacityCoolingDown()) {
++      triggerToast(
++        getFirestoreResourceExhaustedMessage({
++          operation: '대여 신청 저장',
++        }),
++        'error'
++      );
++      return;
++    }
++
+     try {
+       const latestRestrictionStatus =
+         await loadFreshRentalRestrictionStatus(firebaseAuthUser.uid);
+@@ -181,6 +197,17 @@
+     } catch (error) {
+       console.error('Rental restriction preflight error:', error);
+ 
++      if (isFirestoreResourceExhaustedError(error)) {
++        markFirestoreCapacityExhausted(error);
++        triggerToast(
++          getFirestoreResourceExhaustedMessage({
++            operation: '대여 신청 전 제한 상태 확인',
++          }),
++          'error'
++        );
++        return;
++      }
++
+       triggerToast(
+         '최신 연체 및 대여 제한 상태를 확인하지 못해 신청을 중단했습니다. 잠시 후 다시 시도해 주세요.',
+         'error'
+@@ -450,6 +477,14 @@
+           '선택한 기기 정보를 찾을 수 없습니다. 목록을 새로고침한 뒤 다시 시도해 주세요.',
+           'error'
+         );
++      } else if (isFirestoreResourceExhaustedError(error)) {
++        markFirestoreCapacityExhausted(error);
++        triggerToast(
++          getFirestoreResourceExhaustedMessage({
++            operation: '대여 신청 저장',
++          }),
++          'error'
++        );
+       } else {
+         const firebaseErrorCode = error?.code || 'unknown-error';
+         const firebaseErrorMessage = error?.message || '오류 메시지 없음';
+
+--- /dev/null
++++ b/src/utils/firestoreCapacity.js
+@@ -0,0 +1,87 @@
++const FIRESTORE_CAPACITY_COOLDOWN_KEY =
++  'rental-system:firestore-capacity-cooldown-until';
++
++export const FIRESTORE_CAPACITY_COOLDOWN_MS = 60 * 1000;
++
++let memoryCooldownUntil = 0;
++
++export const getFirestoreErrorCode = (error) =>
++  String(error?.code || error?.name || '')
++    .trim()
++    .toLowerCase()
++    .replace(/^firestore\//, '');
++
++export const isFirestoreResourceExhaustedError = (error) => {
++  const code = getFirestoreErrorCode(error);
++  const message = String(error?.message || '').toLowerCase();
++
++  return (
++    code === 'resource-exhausted' ||
++    code === '8' ||
++    message.includes('resource_exhausted') ||
++    message.includes('resource-exhausted') ||
++    message.includes('daily quota') ||
++    message.includes('quota exceeded')
++  );
++};
++
++const readStoredCooldownUntil = () => {
++  if (typeof window === 'undefined') return 0;
++
++  try {
++    return Number(
++      window.sessionStorage.getItem(FIRESTORE_CAPACITY_COOLDOWN_KEY) || 0
++    );
++  } catch {
++    return 0;
++  }
++};
++
++export const getFirestoreCapacityCooldownUntil = () =>
++  Math.max(memoryCooldownUntil, readStoredCooldownUntil());
++
++export const isFirestoreCapacityCoolingDown = (now = Date.now()) =>
++  getFirestoreCapacityCooldownUntil() > now;
++
++export const markFirestoreCapacityExhausted = (
++  error,
++  cooldownMs = FIRESTORE_CAPACITY_COOLDOWN_MS
++) => {
++  if (!isFirestoreResourceExhaustedError(error)) return false;
++
++  const cooldownUntil = Date.now() + Math.max(1000, Number(cooldownMs) || 0);
++  memoryCooldownUntil = Math.max(memoryCooldownUntil, cooldownUntil);
++
++  if (typeof window !== 'undefined') {
++    try {
++      window.sessionStorage.setItem(
++        FIRESTORE_CAPACITY_COOLDOWN_KEY,
++        String(memoryCooldownUntil)
++      );
++    } catch {
++      // 저장소 사용이 제한된 브라우저에서도 메모리 차단은 유지합니다.
++    }
++  }
++
++  return true;
++};
++
++export const clearFirestoreCapacityCooldown = () => {
++  memoryCooldownUntil = 0;
++
++  if (typeof window !== 'undefined') {
++    try {
++      window.sessionStorage.removeItem(FIRESTORE_CAPACITY_COOLDOWN_KEY);
++    } catch {
++      // 저장소 접근 실패는 무시합니다.
++    }
++  }
++};
++
++export const getFirestoreResourceExhaustedMessage = ({
++  operation = 'Firestore 작업',
++  cachedDataAvailable = false,
++} = {}) =>
++  cachedDataAvailable
++    ? `${operation} 중 Firestore 사용량 한도에 도달했습니다. 마지막으로 저장된 화면 데이터를 표시하며, 무료 할당량 초기화 후 다시 갱신할 수 있습니다.`
++    : `${operation} 중 Firestore 사용량 한도에 도달했습니다. 무료 할당량이 초기화된 뒤 다시 시도하거나 Firebase 결제 사용 설정 여부를 확인해 주세요.`;

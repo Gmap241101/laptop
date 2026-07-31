@@ -28,6 +28,11 @@ import {
   getFirestoreTimestampMillis,
   today,
 } from '../../utils/appUtils.js';
+import {
+  isFirestoreCapacityCoolingDown,
+  isFirestoreResourceExhaustedError,
+  markFirestoreCapacityExhausted,
+} from '../../utils/firestoreCapacity.js';
 import useAdminRequestProgressiveSearch from './useAdminRequestProgressiveSearch.js';
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -57,6 +62,7 @@ const createDefaultTabCountErrors = () => ({
 
 export default function useAdminRequestsController({
   enabled,
+  fallbackTabCounts = null,
   mutationVersion = 0,
   navigationRequest,
   onControllerStateChange,
@@ -88,6 +94,8 @@ export default function useAdminRequestsController({
     createDefaultTabCountErrors
   );
   const [tabCountsReady, setTabCountsReady] = useState(false);
+  const [tabCountCapacityLimited, setTabCountCapacityLimited] =
+    useState(false);
   const [selectedRequestId, setSelectedRequestId] = useState('');
 
   const cursorByPageRef = useRef(new Map([[1, null]]));
@@ -383,10 +391,20 @@ export default function useAdminRequestsController({
   }, [pageSize, query, quickFilter, requestTab]);
 
   useEffect(() => {
+    const normalizedFallbackCounts = createDefaultTabCounts();
+    Object.keys(normalizedFallbackCounts).forEach((key) => {
+      const fallbackValue = Number(fallbackTabCounts?.[key]);
+
+      if (Number.isFinite(fallbackValue) && fallbackValue >= 0) {
+        normalizedFallbackCounts[key] = fallbackValue;
+      }
+    });
+
     if (!enabled) {
       setTabCounts(createDefaultTabCounts());
       setTabCountErrors(createDefaultTabCountErrors());
       setTabCountsReady(true);
+      setTabCountCapacityLimited(false);
       return undefined;
     }
 
@@ -395,11 +413,27 @@ export default function useAdminRequestsController({
       return undefined;
     }
 
+    if (isFirestoreCapacityCoolingDown()) {
+      setTabCounts(normalizedFallbackCounts);
+      setTabCountErrors(
+        Object.fromEntries(
+          Object.keys(createDefaultTabCountErrors()).map((key) => [
+            key,
+            typeof normalizedFallbackCounts[key] !== 'number',
+          ])
+        )
+      );
+      setTabCountsReady(true);
+      setTabCountCapacityLimited(true);
+      return undefined;
+    }
+
     let cancelled = false;
 
     setTabCounts(createDefaultTabCounts());
     setTabCountErrors(createDefaultTabCountErrors());
     setTabCountsReady(false);
+    setTabCountCapacityLimited(false);
 
     const countRequests = [
       {
@@ -452,6 +486,7 @@ export default function useAdminRequestsController({
 
       const nextCounts = createDefaultTabCounts();
       const nextErrors = createDefaultTabCountErrors();
+      let capacityLimited = false;
 
       results.forEach((result, index) => {
         const key = countRequests[index].key;
@@ -459,6 +494,16 @@ export default function useAdminRequestsController({
         if (result.status === 'fulfilled') {
           nextCounts[key] = Number(result.value.count) || 0;
           return;
+        }
+
+        if (isFirestoreResourceExhaustedError(result.reason)) {
+          markFirestoreCapacityExhausted(result.reason);
+          capacityLimited = true;
+
+          if (typeof normalizedFallbackCounts[key] === 'number') {
+            nextCounts[key] = normalizedFallbackCounts[key];
+            return;
+          }
         }
 
         nextErrors[key] = true;
@@ -471,12 +516,13 @@ export default function useAdminRequestsController({
       setTabCounts(nextCounts);
       setTabCountErrors(nextErrors);
       setTabCountsReady(true);
+      setTabCountCapacityLimited(capacityLimited);
     });
 
     return () => {
       cancelled = true;
     };
-  }, [enabled, mutationVersion, prerequisitesReady]);
+  }, [enabled, fallbackTabCounts, mutationVersion, prerequisitesReady]);
 
 
   useEffect(() => {
@@ -647,6 +693,7 @@ export default function useAdminRequestsController({
     adminRequestQuickFilter: quickFilter,
     adminRequestTab: requestTab,
     adminRequestTabCountErrors: tabCountErrors,
+    adminRequestTabCountCapacityLimited: tabCountCapacityLimited,
     adminRequestTabCounts: tabCounts,
     adminRequestTabCountsReady: tabCountsReady,
     adminRequestTotalPages: totalPages,

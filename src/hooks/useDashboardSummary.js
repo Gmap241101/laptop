@@ -3,8 +3,17 @@ import { onSnapshot } from 'firebase/firestore';
 
 import { DASHBOARD_SUMMARY_DOC_REF } from '../firebase.js';
 import { today } from '../utils/appUtils.js';
+import {
+  getFirestoreResourceExhaustedMessage,
+  isFirestoreCapacityCoolingDown,
+  isFirestoreResourceExhaustedError,
+  markFirestoreCapacityExhausted,
+} from '../utils/firestoreCapacity.js';
 
 let dashboardSummaryServicePromise = null;
+
+const DASHBOARD_SUMMARY_CACHE_KEY =
+  'rental-system:admin-dashboard-summary-cache-v1';
 
 const loadDashboardSummaryService = () => {
   if (!dashboardSummaryServicePromise) {
@@ -19,13 +28,32 @@ const loadDashboardSummaryService = () => {
   return dashboardSummaryServicePromise;
 };
 
-const DASHBOARD_REFRESH_AFTER_ADMIN_TABS = new Set([
-  'requests',
-  'memberAccounts',
-  'laptops',
-  'categories',
-  'dataManagement',
-]);
+const readDashboardSummaryCache = () => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const cached = JSON.parse(
+      window.localStorage.getItem(DASHBOARD_SUMMARY_CACHE_KEY) || 'null'
+    );
+
+    return cached && typeof cached === 'object' ? cached : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeDashboardSummaryCache = (summary) => {
+  if (typeof window === 'undefined' || !summary) return;
+
+  try {
+    window.localStorage.setItem(
+      DASHBOARD_SUMMARY_CACHE_KEY,
+      JSON.stringify(summary)
+    );
+  } catch {
+    // 저장공간 제한 시 화면 데이터만 유지합니다.
+  }
+};
 
 export const useDashboardSummary = ({
   firebaseAuthReady,
@@ -38,8 +66,14 @@ export const useDashboardSummary = ({
   adminTab,
   triggerToast,
 }) => {
-  const [dashboardSummary, setDashboardSummary] = useState(null);
-  const [dashboardSummaryReady, setDashboardSummaryReady] = useState(false);
+  const cachedSummaryRef = useRef(readDashboardSummaryCache());
+  const dashboardSummaryRef = useRef(cachedSummaryRef.current);
+  const [dashboardSummary, setDashboardSummary] = useState(
+    () => cachedSummaryRef.current
+  );
+  const [dashboardSummaryReady, setDashboardSummaryReady] = useState(
+    () => Boolean(cachedSummaryRef.current)
+  );
   const [dashboardSummaryRefreshing, setDashboardSummaryRefreshing] =
     useState(false);
   const [
@@ -48,12 +82,46 @@ export const useDashboardSummary = ({
   ] = useState('');
 
   const refreshInProgressRef = useRef(false);
-  const previousAdminTabRef = useRef('dashboard');
   const triggerToastRef = useRef(triggerToast);
 
   useEffect(() => {
     triggerToastRef.current = triggerToast;
   }, [triggerToast]);
+
+  const applyDashboardSummary = useCallback((nextSummary) => {
+    if (!nextSummary) return;
+
+    cachedSummaryRef.current = nextSummary;
+    dashboardSummaryRef.current = nextSummary;
+    setDashboardSummary(nextSummary);
+    setDashboardSummaryReady(true);
+    setDashboardSummaryLoadErrorMessage('');
+    writeDashboardSummaryCache(nextSummary);
+  }, []);
+
+  const applyCapacityError = useCallback((error, { showToast = false } = {}) => {
+    markFirestoreCapacityExhausted(error);
+
+    const cachedDataAvailable = Boolean(
+      cachedSummaryRef.current || dashboardSummaryRef.current
+    );
+    const message = getFirestoreResourceExhaustedMessage({
+      operation: '관리자 대시보드 요약 조회·갱신',
+      cachedDataAvailable,
+    });
+
+    if (cachedSummaryRef.current && !dashboardSummaryRef.current) {
+      dashboardSummaryRef.current = cachedSummaryRef.current;
+      setDashboardSummary(cachedSummaryRef.current);
+    }
+
+    setDashboardSummaryReady(true);
+    setDashboardSummaryLoadErrorMessage(message);
+
+    if (showToast) {
+      triggerToastRef.current?.(message, 'error');
+    }
+  }, []);
 
   const refreshDashboardSummary = useCallback(
     async ({ showToast = false } = {}) => {
@@ -61,6 +129,14 @@ export const useDashboardSummary = ({
 
       const adminUid = currentAuthAdminAccountId || authenticatedAdminId;
       if (!adminUid) return;
+
+      if (isFirestoreCapacityCoolingDown()) {
+        applyCapacityError(
+          { code: 'resource-exhausted' },
+          { showToast }
+        );
+        return;
+      }
 
       refreshInProgressRef.current = true;
       setDashboardSummaryRefreshing(true);
@@ -73,8 +149,7 @@ export const useDashboardSummary = ({
           adminUid,
         });
 
-        setDashboardSummary(nextSummary);
-        setDashboardSummaryReady(true);
+        applyDashboardSummary(nextSummary);
 
         if (showToast) {
           triggerToastRef.current?.(
@@ -82,18 +157,28 @@ export const useDashboardSummary = ({
           );
         }
       } catch (error) {
-        const message =
-          '관리자 대시보드 요약을 갱신하지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.';
         console.error('Dashboard summary refresh error:', error);
-        setDashboardSummaryLoadErrorMessage(message);
-        setDashboardSummaryReady(true);
-        if (showToast) triggerToastRef.current?.(message, 'error');
+
+        if (isFirestoreResourceExhaustedError(error)) {
+          applyCapacityError(error, { showToast });
+        } else {
+          const message =
+            '관리자 대시보드 요약을 갱신하지 못했습니다. Firestore 권한과 데이터 구조를 확인해 주세요.';
+          setDashboardSummaryLoadErrorMessage(message);
+          setDashboardSummaryReady(true);
+          if (showToast) triggerToastRef.current?.(message, 'error');
+        }
       } finally {
         refreshInProgressRef.current = false;
         setDashboardSummaryRefreshing(false);
       }
     },
-    [authenticatedAdminId, currentAuthAdminAccountId]
+    [
+      applyCapacityError,
+      applyDashboardSummary,
+      authenticatedAdminId,
+      currentAuthAdminAccountId,
+    ]
   );
 
   const shouldSubscribeDashboardSummary =
@@ -108,20 +193,30 @@ export const useDashboardSummary = ({
 
   useEffect(() => {
     if (!shouldSubscribeDashboardSummary) {
-      setDashboardSummary(null);
-      setDashboardSummaryReady(false);
+      dashboardSummaryRef.current = cachedSummaryRef.current;
+      setDashboardSummary(cachedSummaryRef.current);
+      setDashboardSummaryReady(Boolean(cachedSummaryRef.current));
       setDashboardSummaryLoadErrorMessage('');
       return undefined;
     }
 
-    setDashboardSummaryReady(false);
+    if (!cachedSummaryRef.current) {
+      setDashboardSummaryReady(false);
+    }
 
     let cancelled = false;
     let unsubscribe = null;
     let refreshRequested = false;
 
     const requestRefreshOnce = () => {
-      if (refreshRequested || cancelled) return;
+      if (
+        refreshRequested ||
+        cancelled ||
+        isFirestoreCapacityCoolingDown()
+      ) {
+        return;
+      }
+
       refreshRequested = true;
       void refreshDashboardSummary();
     };
@@ -137,21 +232,34 @@ export const useDashboardSummary = ({
           DASHBOARD_SUMMARY_DOC_REF,
           (snapshot) => {
             if (!snapshot.exists()) {
-              setDashboardSummary(null);
-              setDashboardSummaryReady(false);
+              if (cachedSummaryRef.current) {
+                dashboardSummaryRef.current = cachedSummaryRef.current;
+                setDashboardSummary(cachedSummaryRef.current);
+                setDashboardSummaryReady(true);
+              } else {
+                dashboardSummaryRef.current = null;
+                setDashboardSummary(null);
+                setDashboardSummaryReady(false);
+              }
+
               requestRefreshOnce();
               return;
             }
 
-            const nextSummary = normalizeDashboardSummary(snapshot.data());
-            setDashboardSummary(nextSummary);
-            setDashboardSummaryReady(true);
-            setDashboardSummaryLoadErrorMessage('');
+            applyDashboardSummary(
+              normalizeDashboardSummary(snapshot.data())
+            );
           },
           (error) => {
+            console.error('Dashboard summary sync error:', error);
+
+            if (isFirestoreResourceExhaustedError(error)) {
+              applyCapacityError(error);
+              return;
+            }
+
             const message =
               '관리자 대시보드 요약 문서를 불러오지 못했습니다.';
-            console.error('Dashboard summary sync error:', error);
             setDashboardSummaryLoadErrorMessage(message);
             setDashboardSummaryReady(true);
             requestRefreshOnce();
@@ -174,17 +282,20 @@ export const useDashboardSummary = ({
       cancelled = true;
       unsubscribe?.();
     };
-  }, [shouldSubscribeDashboardSummary, refreshDashboardSummary]);
+  }, [
+    applyCapacityError,
+    applyDashboardSummary,
+    refreshDashboardSummary,
+    shouldSubscribeDashboardSummary,
+  ]);
 
   useEffect(() => {
-    const previousAdminTab = previousAdminTabRef.current;
-    previousAdminTabRef.current = adminTab;
-
     if (
       !shouldSubscribeDashboardSummary ||
       adminTab !== 'dashboard' ||
       !dashboardSummaryReady ||
-      !dashboardSummary
+      !dashboardSummary ||
+      isFirestoreCapacityCoolingDown()
     ) {
       return undefined;
     }
@@ -210,10 +321,8 @@ export const useDashboardSummary = ({
           !generatedAtMillis ||
           Date.now() - generatedAtMillis >
             DASHBOARD_SUMMARY_ENTRY_REFRESH_AGE_MS;
-        const shouldForceRefreshAfterAdminWork =
-          DASHBOARD_REFRESH_AFTER_ADMIN_TABS.has(previousAdminTab);
 
-        if (isStale || shouldForceRefreshAfterAdminWork) {
+        if (isStale) {
           void refreshDashboardSummary();
         }
       } catch (error) {

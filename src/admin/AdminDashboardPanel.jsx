@@ -670,7 +670,11 @@ export default function AdminDashboardPanel({ ctx }) {
           <div className="flex items-start gap-2">
             <AlertTriangle size={17} className="mt-0.5 shrink-0" aria-hidden="true" />
             <div>
-              <div className="font-bold">대시보드 요약을 갱신하지 못했습니다.</div>
+              <div className="font-bold">
+                {dashboardSummaryLoadErrorMessage.includes('사용량 한도')
+                  ? 'Firestore 사용량 한도에 도달했습니다.'
+                  : '대시보드 요약을 갱신하지 못했습니다.'}
+              </div>
               <div className="mt-1">{dashboardSummaryLoadErrorMessage}</div>
             </div>
           </div>

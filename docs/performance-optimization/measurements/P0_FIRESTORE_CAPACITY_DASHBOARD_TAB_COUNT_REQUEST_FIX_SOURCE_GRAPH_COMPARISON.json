@@ -1,0 +1,23 @@
+{
+  "generatedAt": "2026-07-31T11:45:30Z",
+  "baselinePackage": "rental-system-auth-loading-render-stability-dashboard-fix-20260731_1824_deployment_package.zip",
+  "task": "Firestore capacity, dashboard summary, admin request tab counts, rental request error handling fix",
+  "before": {
+    "initialModuleCount": 65,
+    "initialSourceBytes": 839800,
+    "appJsLines": 6189,
+    "appJsBytes": 182891
+  },
+  "after": {
+    "initialModuleCount": 66,
+    "initialSourceBytes": 846342,
+    "appJsLines": 6189,
+    "appJsBytes": 182891
+  },
+  "delta": {
+    "initialModuleCount": 1,
+    "initialSourceBytes": 6542,
+    "appJsLines": 0,
+    "appJsBytes": 0
+  }
+}

@@ -38,7 +38,7 @@ import {
 export const ADMIN_DASHBOARD_ACTIVE_REQUEST_LIMIT = 100;
 export const DASHBOARD_SUMMARY_SCHEMA_VERSION = 2;
 // 대시보드 진입 시에만 오래된 요약을 갱신하며, 열린 화면에서는 주기적으로 폴링하지 않는다.
-export const DASHBOARD_SUMMARY_ENTRY_REFRESH_AGE_MS = 15 * 60 * 1000;
+export const DASHBOARD_SUMMARY_ENTRY_REFRESH_AGE_MS = 60 * 60 * 1000;
 export const DASHBOARD_SUMMARY_PENDING_ACCOUNT_LIMIT = 12;
 
 const compactDefinedFields = (value = {}) =>

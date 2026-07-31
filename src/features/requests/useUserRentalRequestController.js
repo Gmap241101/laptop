@@ -28,6 +28,12 @@ import {
   today,
 } from '../../utils/appUtils.js';
 import { getServiceBlockReason } from '../../utils/systemSettings.js';
+import {
+  getFirestoreResourceExhaustedMessage,
+  isFirestoreCapacityCoolingDown,
+  isFirestoreResourceExhaustedError,
+  markFirestoreCapacityExhausted,
+} from '../../utils/firestoreCapacity.js';
 
 export const useUserRentalRequestState = (dataSettings) => {
   const [requestSubmitLoading, setRequestSubmitLoading] = useState(false);
@@ -166,6 +172,16 @@ export default function useUserRentalRequestController({
       return;
     }
 
+    if (isFirestoreCapacityCoolingDown()) {
+      triggerToast(
+        getFirestoreResourceExhaustedMessage({
+          operation: '대여 신청 저장',
+        }),
+        'error'
+      );
+      return;
+    }
+
     try {
       const latestRestrictionStatus =
         await loadFreshRentalRestrictionStatus(firebaseAuthUser.uid);
@@ -180,6 +196,17 @@ export default function useUserRentalRequestController({
       }
     } catch (error) {
       console.error('Rental restriction preflight error:', error);
+
+      if (isFirestoreResourceExhaustedError(error)) {
+        markFirestoreCapacityExhausted(error);
+        triggerToast(
+          getFirestoreResourceExhaustedMessage({
+            operation: '대여 신청 전 제한 상태 확인',
+          }),
+          'error'
+        );
+        return;
+      }
 
       triggerToast(
         '최신 연체 및 대여 제한 상태를 확인하지 못해 신청을 중단했습니다. 잠시 후 다시 시도해 주세요.',
@@ -448,6 +475,14 @@ export default function useUserRentalRequestController({
       } else if (error?.message === 'selected-laptop-not-found') {
         triggerToast(
           '선택한 기기 정보를 찾을 수 없습니다. 목록을 새로고침한 뒤 다시 시도해 주세요.',
+          'error'
+        );
+      } else if (isFirestoreResourceExhaustedError(error)) {
+        markFirestoreCapacityExhausted(error);
+        triggerToast(
+          getFirestoreResourceExhaustedMessage({
+            operation: '대여 신청 저장',
+          }),
           'error'
         );
       } else {

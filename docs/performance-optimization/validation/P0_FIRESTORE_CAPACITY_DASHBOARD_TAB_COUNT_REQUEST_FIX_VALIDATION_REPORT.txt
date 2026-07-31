@@ -1,0 +1,55 @@
+P0 Firestore capacity/dashboard/tab-count/request fix validation
+================================================================
+Baseline: rental-system-auth-loading-render-stability-dashboard-fix-20260731_1824_deployment_package.zip
+
+Source validation
+-----------------
+React Hook import audit: PASS (122 files)
+TypeScript transpile syntax check: PASS (122 files)
+Firestore strict audit: PASS
+Firestore access calls: 129 -> 129
+  onSnapshot: 35 -> 35
+  getDocs: 48 -> 48
+  getDoc: 28 -> 28
+  getCountFromServer: 18 -> 18
+Relative import existence: PASS (364 imports, missing 0)
+
+Targeted contracts
+------------------
+resource-exhausted detector: PASS
+60-second shared cooldown: PASS
+dashboard cache fallback: PASS
+dashboard resource-exhausted no automatic refresh: PASS
+dashboard automatic refresh age: 15 minutes -> 60 minutes
+admin request count fallback from dashboard summary: PASS
+admin request capacity warning separation: PASS
+rental request resource-exhausted message: PASS
+App request context includes dashboardSummary: PASS
+
+Unchanged deployment assets
+---------------------------
+rules/firestore.rules SHA-256 unchanged: PASS
+firestore.indexes.json SHA-256 unchanged: PASS
+App.jsx bytes/lines unchanged: PASS
+REMOVED_FILES.txt cumulative inheritance: PASS (67 paths + 1 comment, unchanged)
+
+Build status
+------------
+Actual Vite production build: NOT COMPLETED
+Command: npm run build
+Result: prebuild audits PASS, Vite launch failed with `vite: not found` because node_modules is not installed in this validation workspace.
+Local deploy.ps1 must complete npm run build before deployment is considered successful.
+
+Final package verification
+--------------------------
+Project files: 382
+Package metadata files: 4
+ZIP total files: 386
+PACKAGE_SHA256SUMS verification: PASS (382/382)
+ZIP missing files: 0
+ZIP extra files: 0
+ZIP duplicate entries: 0
+Protected paths: 0
+Removed-file conflicts: 0
+REMOVED_FILES.txt: byte-identical to baseline
+ZIP compression test: PASS

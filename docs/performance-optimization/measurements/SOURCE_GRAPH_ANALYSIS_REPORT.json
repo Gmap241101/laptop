@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-07-31T09:24:39.019Z",
-  "initialModuleCount": 65,
-  "initialSourceBytes": 839800,
+  "generatedAt": "2026-07-31T11:44:15.900Z",
+  "initialModuleCount": 66,
+  "initialSourceBytes": 846342,
   "files": [
     {
       "file": "src/App.jsx",
@@ -64,12 +64,12 @@
       "bytes": 18375
     },
     {
-      "file": "src/features/auth/useAdminAuthenticationController.js",
+      "file": "src/context/appContextSlices.js",
       "bytes": 17574
     },
     {
-      "file": "src/context/appContextSlices.js",
-      "bytes": 17557
+      "file": "src/features/auth/useAdminAuthenticationController.js",
+      "bytes": 17574
     },
     {
       "file": "src/features/members/useUserMembershipStatusController.js",
@@ -80,12 +80,12 @@
       "bytes": 16826
     },
     {
-      "file": "src/features/boards/useAdminFooterContentController.js",
-      "bytes": 15384
+      "file": "src/features/requests/useUserRentalRequestController.js",
+      "bytes": 15859
     },
     {
-      "file": "src/features/requests/useUserRentalRequestController.js",
-      "bytes": 14874
+      "file": "src/features/boards/useAdminFooterContentController.js",
+      "bytes": 15384
     },
     {
       "file": "src/features/boards/useAdminBoardPostController.js",
@@ -116,6 +116,10 @@
       "bytes": 11116
     },
     {
+      "file": "src/hooks/useDashboardSummary.js",
+      "bytes": 10071
+    },
+    {
       "file": "src/features/settings/useAdminSplitStorageMigrationController.js",
       "bytes": 9525
     },
@@ -134,10 +138,6 @@
     {
       "file": "src/user/UserWorkspace.jsx",
       "bytes": 7497
-    },
-    {
-      "file": "src/hooks/useDashboardSummary.js",
-      "bytes": 7220
     },
     {
       "file": "src/features/auth/useUserAccountRecoveryController.js",
@@ -210,6 +210,10 @@
     {
       "file": "src/services/progressiveFirestoreSearch.js",
       "bytes": 2997
+    },
+    {
+      "file": "src/utils/firestoreCapacity.js",
+      "bytes": 2689
     },
     {
       "file": "src/features/members/memberAccountPolicy.js",
