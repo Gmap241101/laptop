@@ -1,0 +1,37 @@
+{
+  "generatedAt": "2026-07-31T16:29:00+09:00",
+  "baselinePackage": "rental-system-user-membership-status-controller-split-20260731_1616_deployment_package.zip",
+  "outputTask": "P2_ADMIN_REQUEST_MUTATION_CONTROLLER_FEATURE_SPLIT",
+  "appJsx": {
+    "before": {
+      "lines": 8918,
+      "bytes": 258159
+    },
+    "after": {
+      "lines": 8184,
+      "bytes": 239681
+    },
+    "delta": {
+      "lines": -734,
+      "bytes": -18478
+    }
+  },
+  "newController": {
+    "lines": 803,
+    "bytes": 20182
+  },
+  "initialGraph": {
+    "before": {
+      "moduleCount": 59,
+      "sourceBytes": 821860
+    },
+    "after": {
+      "moduleCount": 60,
+      "sourceBytes": 823564
+    },
+    "delta": {
+      "moduleCount": 1,
+      "sourceBytes": 1704
+    }
+  }
+}
