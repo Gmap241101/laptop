@@ -1,0 +1,118 @@
+P2 회원·관리자 권한 및 정책 실시간 구독 컨트롤러 분리 검증 보고서
+===================================================================
+
+기준본
+------
+입력: rental-system-rental-data-subscription-controller-split-20260731_1738_deployment_package.zip
+입력 프로젝트 파일 SHA-256: PASS (368/368)
+입력 ZIP SHA-256: d940e6b2f9c9faecdfe9eab466363cd33434c309d30f8940cd6097121e2acab6
+
+변경 대상
+---------
+수정: src/App.jsx
+신규: src/features/auth/useAuthIdentityPolicySubscriptionController.js
+수정: tools/firestore-audit-policy.json
+수정: docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json
+
+정적 검증
+---------
+1. JS/JSX/MJS 구문 검사: PASS
+   - TypeScript parser 기반 121개 소스 파일 검사
+   - 구문 오류 0건
+
+2. 기준본 대비 표적 의미 진단: PASS
+   - 미정의 식별자 TS2304/TS2552 신규 오류 0건
+   - 중복 선언 TS2451 신규 오류 0건
+   - 호출 불가 TS2349 신규 오류 0건
+
+3. React Hook import 감사: PASS
+   - 121개 소스 파일 검사
+
+4. 상대 import 실파일 검사: PASS
+   - 상대 import 327개
+   - 누락 경로 0개
+
+5. Firestore strict 감사: PASS
+   - 전체 호출 129개
+   - onSnapshot 35개
+   - getDocs 48개
+   - getDoc 28개
+   - getCountFromServer 18개
+   - 미승인 warning 0개
+   - 미승인 error 0개
+
+6. 이동 계약 검사: PASS
+   - App.jsx 인증·권한·정책 useState 19개 제거
+   - App.jsx 관련 useEffect 7개 제거
+   - App.jsx 내부 ref 4개 제거
+   - App.jsx onSnapshot 6개 감소
+   - App.jsx onAuthStateChanged 제거
+   - 신규 컨트롤러 useState 19개 존재
+   - 신규 컨트롤러 useEffect 7개 존재
+   - 신규 컨트롤러 useRef 4개 존재
+   - 신규 컨트롤러 onSnapshot 6개 존재
+   - 신규 컨트롤러 onAuthStateChanged 1개 존재
+   - Firestore 전체 호출 수 129개 유지
+
+7. 상태·함수 계약 검사: PASS
+   - firebaseAuthUser / firebaseAuthReady 유지
+   - currentAuthAdminAccount / currentAuthRoleReady / currentAuthRoleErrorMessage 유지
+   - userProfile / userProfileReady 유지
+   - currentUserRestriction / currentUserRestrictionReady 유지
+   - userSessionPolicy / systemAdminSettings 유지
+   - adminAccounts / adminAccountsReady / adminAccountsLoadErrorMessage 유지
+   - normalizeAdminAccounts 함수 계약 유지
+
+8. 런타임 모의시험: PASS
+   - Firebase Auth 상태 구독
+   - 일반회원 관리자 역할 없음 판정
+   - 사용자 프로필 전화번호 폼 변환
+   - 사용자 대여 제한 구독
+   - 사용자 세션 정책 구독
+   - 관리자 UID 구조 검증
+   - 관리자 시스템 보안 설정 구독
+   - 관리자 계정 전체 목록 정규화
+   - 관리자 계정 보안 화면 사용자 정책 구독
+
+9. 한국어 문자열 보존: PASS
+   - 전체 발생 3,384 -> 3,384
+   - 고유 문자열 2,393 -> 2,393
+   - 삭제 0개
+   - 추가 0개
+
+10. 소스 그래프 분석: PASS
+    - 초기 정적 모듈 64 -> 65
+    - 초기 정적 소스 832,486 -> 837,387 bytes
+
+패키지·삭제 목록 검증
+---------------------
+- package-meta/REMOVED_FILES.txt 기존 누적 목록 승계
+- 기존 실제 삭제 경로 67개
+- 상단 설명 주석 1줄
+- 신규 삭제 파일 0개
+- 중복 삭제 경로 0개
+- 패키지 파일과 삭제 목록 충돌 0개
+- 보호 경로 포함 0개
+- deploy.ps1 포함 0개
+
+프로덕션 빌드
+-------------
+npm ci: FAIL (검증 환경 저장소 제한)
+오류: E404 yargs-parser-21.1.1.tgz
+
+판정
+----
+소스 구문 검증: PASS
+표적 의미 진단: PASS
+React Hook 감사: PASS
+상대 import 검사: PASS
+Firestore strict 감사: PASS
+런타임 모의시험: PASS
+문구 보존 검사: PASS
+패키지 무결성: PASS
+출력 프로젝트 파일: 373개
+ZIP 전체 파일 항목: 377개
+ZIP 중복 항목: 0개
+ZIP 누락·추가 항목: 0개
+ZIP 재추출 SHA-256: PASS (373/373)
+실제 Vite 프로덕션 빌드: 로컬 deploy.ps1에서 확인 필요

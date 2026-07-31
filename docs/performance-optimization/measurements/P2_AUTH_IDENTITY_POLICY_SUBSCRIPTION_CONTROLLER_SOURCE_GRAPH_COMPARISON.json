@@ -1,0 +1,21 @@
+{
+  "generatedAt": "2026-07-31T09:00:29.096383+00:00",
+  "baselinePackage": "rental-system-rental-data-subscription-controller-split-20260731_1738_deployment_package.zip",
+  "outputPackage": "rental-system-auth-identity-policy-subscription-controller-split-20260731_1744_deployment_package.zip",
+  "before": {
+    "initialModuleCount": 64,
+    "initialSourceBytes": 832486
+  },
+  "after": {
+    "initialModuleCount": 65,
+    "initialSourceBytes": 837387
+  },
+  "delta": {
+    "initialModuleCount": 1,
+    "initialSourceBytes": 4901
+  },
+  "newStaticModules": [
+    "src/features/auth/useAuthIdentityPolicySubscriptionController.js"
+  ],
+  "note": "회원·관리자 권한, 사용자 프로필, 대여 제한, 사용자 세션 정책, 관리자 보안 설정 및 관리자 계정 목록의 실시간 구독 책임을 App.jsx에서 feature controller로 이동했습니다."
+}

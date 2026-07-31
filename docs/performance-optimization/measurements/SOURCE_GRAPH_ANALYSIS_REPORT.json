@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-07-31T08:37:35.262Z",
-  "initialModuleCount": 64,
-  "initialSourceBytes": 832486,
+  "generatedAt": "2026-07-31T08:55:57.984Z",
+  "initialModuleCount": 65,
+  "initialSourceBytes": 837387,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 197436
+      "bytes": 182770
     },
     {
       "file": "src/features/requests/useUserRequestHistoryActionController.js",
@@ -54,6 +54,10 @@
     {
       "file": "src/features/requests/useAdminRequestMutationController.js",
       "bytes": 20182
+    },
+    {
+      "file": "src/features/auth/useAuthIdentityPolicySubscriptionController.js",
+      "bytes": 19567
     },
     {
       "file": "src/components/CommonUI.jsx",
