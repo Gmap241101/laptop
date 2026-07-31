@@ -1,0 +1,66 @@
+{
+  "generatedAt": "2026-07-31T15:55:00+09:00",
+  "baselinePackage": "rental-system-admin-authentication-controller-split-20260731_1434_deployment_package.zip",
+  "outputPackage": "rental-system-user-authentication-session-controller-split-20260731_1555_deployment_package.zip",
+  "target": "user authentication session state and security controller",
+  "app": {
+    "before": {
+      "lines": 9559,
+      "bytes": 277692,
+      "useStateCalls": 114,
+      "useEffectCalls": 52,
+      "useRefCalls": 19,
+      "useMemoCalls": 27
+    },
+    "after": {
+      "lines": 9363,
+      "bytes": 271446,
+      "useStateCalls": 110,
+      "useEffectCalls": 50,
+      "useRefCalls": 18,
+      "useMemoCalls": 27
+    },
+    "delta": {
+      "lines": -196,
+      "bytes": -6246,
+      "useStateCalls": -4,
+      "useEffectCalls": -2,
+      "useRefCalls": -1,
+      "useMemoCalls": 0
+    }
+  },
+  "newModules": [
+    {
+      "file": "src/features/auth/useUserAuthenticationSessionController.js",
+      "lines": 311,
+      "bytes": 9065
+    }
+  ],
+  "adjustedModules": [
+    {
+      "file": "src/features/auth/useAdminAuthenticationController.js",
+      "beforeLines": 614,
+      "afterLines": 602,
+      "beforeBytes": 17928,
+      "afterBytes": 17574,
+      "lineDelta": -12,
+      "byteDelta": -354
+    }
+  ],
+  "initialSourceGraph": {
+    "beforeModules": 57,
+    "afterModules": 58,
+    "moduleDelta": 1,
+    "beforeBytes": 815170,
+    "afterBytes": 817635,
+    "byteDelta": 2465
+  },
+  "firestoreAudit": {
+    "beforeTotalCalls": 129,
+    "afterTotalCalls": 129,
+    "onSnapshot": 35,
+    "getDocs": 48,
+    "getDoc": 28,
+    "getCountFromServer": 18
+  }
+}

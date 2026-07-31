@@ -23,7 +23,6 @@ import {
 import { normalizeSystemAdminSettings } from '../../utils/systemSettings.js';
 import {
   clearAdminAuthSession,
-  clearUserAuthSession,
   configureFirebaseAuthPersistence,
   createDefaultAdminAuthForm,
   readAdminAuthSession,
@@ -105,6 +104,7 @@ export default function useAdminAuthenticationController({
   adminLogoutInProgressRef,
   authenticatedAdminId,
   clearAdminAuthenticatedSession,
+  clearUserAuthenticatedSession,
   currentAuthAdminAccount,
   currentAuthRoleReady,
   firebaseAuthReady,
@@ -126,10 +126,6 @@ export default function useAdminAuthenticationController({
   setIsCommunityMenuOpen,
   setSelectedFooterPageId,
   setSelectedNoticePostId,
-  setUserAuthSessionAbsoluteExpiresAt,
-  setUserAuthSessionExpiresAt,
-  setUserAuthSessionPolicyVersion,
-  setUserAuthSessionUid,
   setUserTab,
   setView,
   setAdminTab,
@@ -162,14 +158,6 @@ export default function useAdminAuthenticationController({
     Boolean(authenticatedAdminAccount) &&
     !adminLogoutInProgress &&
     hasMatchingAdminFirebaseAuth;
-
-  const clearUserAuthenticatedSession = () => {
-    clearUserAuthSession();
-    setUserAuthSessionUid('');
-    setUserAuthSessionExpiresAt(0);
-    setUserAuthSessionAbsoluteExpiresAt(0);
-    setUserAuthSessionPolicyVersion(0);
-  };
 
   useEffect(() => {
     if (!authenticatedAdminId) return undefined;

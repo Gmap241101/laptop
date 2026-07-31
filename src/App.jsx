@@ -311,11 +311,11 @@ import useAdminAuthenticationController, {
   useAdminAuthenticationState,
 } from './features/auth/useAdminAuthenticationController.js';
 import {
-  clearUserAuthSession,
   configureFirebaseAuthPersistence,
-  readUserAuthSession,
-  saveUserAuthSession,
 } from './features/auth/authSessionService.js';
+import useUserAuthenticationSessionController, {
+  useUserAuthenticationSessionState,
+} from './features/auth/useUserAuthenticationSessionController.js';
 import useAdminAccountManagementController, {
   ADMIN_ACCOUNT_PAGE_SIZE,
   ADMIN_CUSTOM_OPTION_VALUE,
@@ -1244,18 +1244,17 @@ function App() {
   } = useAdminAuthenticationState({
     systemAdminSettings,
   });
-  const [userAuthSessionUid, setUserAuthSessionUid] = useState(
-    () => readUserAuthSession().userId
-  );
-  const [userAuthSessionExpiresAt, setUserAuthSessionExpiresAt] = useState(
-    () => readUserAuthSession().expiresAt
-  );
-  const [userAuthSessionAbsoluteExpiresAt, setUserAuthSessionAbsoluteExpiresAt] = useState(
-    () => readUserAuthSession().absoluteExpiresAt
-  );
-  const [userAuthSessionPolicyVersion, setUserAuthSessionPolicyVersion] = useState(
-    () => readUserAuthSession().policyVersion
-  );
+  const {
+    clearUserAuthenticatedSession,
+    setUserAuthenticatedSession,
+    userAuthSessionAbsoluteExpiresAt,
+    userAuthSessionExpiresAt,
+    userAuthSessionPolicyVersion,
+    userAuthSessionUid,
+    userSessionLogoutInProgressRef,
+  } = useUserAuthenticationSessionState({
+    userSessionPolicy,
+  });
 
   const [firebaseAuthUser, setFirebaseAuthUser] = useState(null);
   const [firebaseAuthReady, setFirebaseAuthReady] = useState(false);
@@ -1277,12 +1276,6 @@ function App() {
   const hasFirebaseAuthSession = Boolean(
     firebaseAuthUser ||
       firebaseAuth.currentUser
-  );
-
-  const hasEstablishedUserSession = Boolean(
-    firebaseAuthUser?.uid &&
-      userAuthSessionUid === firebaseAuthUser.uid &&
-      userAuthSessionExpiresAt > Date.now()
   );
 
   const [userProfile, setUserProfile] = useState(null);
@@ -1309,7 +1302,6 @@ function App() {
 
 
   const userStatusLogoutInProgressRef = useRef(false);
-  const userSessionLogoutInProgressRef = useRef(false);
 
   // 엑셀/CSV 업로드 패널 토글 상태 값 추가
   const [showUploadPanel, setShowUploadPanel] = useState(false);
@@ -1381,11 +1373,7 @@ function App() {
 
         setFirebaseAuthUser(user);
         if (!user) {
-          clearUserAuthSession();
-          setUserAuthSessionUid('');
-          setUserAuthSessionExpiresAt(0);
-          setUserAuthSessionAbsoluteExpiresAt(0);
-          setUserAuthSessionPolicyVersion(0);
+          clearUserAuthenticatedSession();
         }
         setFirebaseAuthReady(true);
       },
@@ -1398,17 +1386,13 @@ function App() {
         setCurrentAuthRoleReady(true);
 
         setFirebaseAuthUser(null);
-        clearUserAuthSession();
-        setUserAuthSessionUid('');
-        setUserAuthSessionExpiresAt(0);
-        setUserAuthSessionAbsoluteExpiresAt(0);
-        setUserAuthSessionPolicyVersion(0);
+        clearUserAuthenticatedSession();
         setFirebaseAuthReady(true);
       }
     );
 
     return unsubscribe;
-  }, []);
+  }, [clearUserAuthenticatedSession]);
 
   useEffect(() => {
     if (!firebaseAuthReady) return;
@@ -3363,10 +3347,7 @@ function App() {
     setIsCommunityMenuOpen,
     setSelectedFooterPageId,
     setSelectedNoticePostId,
-    setUserAuthSessionAbsoluteExpiresAt,
-    setUserAuthSessionExpiresAt,
-    setUserAuthSessionPolicyVersion,
-    setUserAuthSessionUid,
+    clearUserAuthenticatedSession,
     setUserTab,
     setView,
     setAdminTab,
@@ -5349,211 +5330,34 @@ function App() {
     activeFaqCategoryId,
   ]);
 
-  const setUserAuthenticatedSession = (userId, policyOverride = null) => {
-    const nextSession = saveUserAuthSession(
-      userId,
-      policyOverride || userSessionPolicy
-    );
-
-    setUserAuthSessionUid(nextSession.userId);
-    setUserAuthSessionExpiresAt(nextSession.expiresAt);
-    setUserAuthSessionAbsoluteExpiresAt(nextSession.absoluteExpiresAt);
-    setUserAuthSessionPolicyVersion(nextSession.policyVersion);
-  };
-
-  const clearUserAuthenticatedSession = () => {
-    clearUserAuthSession();
-    setUserAuthSessionUid('');
-    setUserAuthSessionExpiresAt(0);
-    setUserAuthSessionAbsoluteExpiresAt(0);
-    setUserAuthSessionPolicyVersion(0);
-  };
-
-  const expireCurrentUserSession = async (message) => {
-    if (userSessionLogoutInProgressRef.current) return;
-    userSessionLogoutInProgressRef.current = true;
-
-    try {
-      if (firebaseAuth.currentUser) {
-        await signOut(firebaseAuth);
-      }
-    } catch (error) {
-      console.error('Expired user Firebase Auth logout error:', error);
-    } finally {
-      clearUserAuthenticatedSession();
-      clearUserLoginReturnTarget();
-      setUserAuthForm(createDefaultUserAuthForm());
-      replaceAppPath('user', 'login');
-      setView('user');
-      setUserTab('login');
-      setSelectedFooterPageId('');
-      setSelectedNoticePostId('');
-      setIsCommunityMenuOpen(false);
-      userSessionLogoutInProgressRef.current = false;
-      triggerToast(message, 'error');
-    }
-  };
-
-  useEffect(() => {
-    if (
-      !firebaseAuthUser ||
-      !currentAuthRoleReady ||
-      currentAuthRoleErrorMessage ||
-      currentAuthAdminAccount ||
-      authenticatedAdminId ||
-      !userProfileReady ||
-      !userProfile ||
-      ![USER_PROFILE_STATUS.ACTIVE, USER_PROFILE_STATUS.PROFILE_REQUIRED].includes(
-        userProfile.status
-      ) ||
-      userAuthLoading ||
-      withdrawalLoading ||
-      !userSessionPolicyReady
-    ) {
-      return undefined;
-    }
-
-    const normalizedPolicy = normalizeUserSessionPolicy(userSessionPolicy);
-    if (
-      !userAuthSessionUid ||
-      userAuthSessionUid !== firebaseAuthUser.uid
-    ) {
-      void expireCurrentUserSession(
-        '로그인 세션 정보를 확인할 수 없어 다시 로그인이 필요합니다.'
-      );
-      return undefined;
-    }
-
-    if (
-      userAuthSessionPolicyVersion !==
-      normalizedPolicy.userSecurityPolicyVersion
-    ) {
-      void expireCurrentUserSession(
-        '사용자 보안 설정이 변경되어 다시 로그인이 필요합니다.'
-      );
-      return undefined;
-    }
-
-    if (
-      !userAuthSessionExpiresAt ||
-      userAuthSessionExpiresAt <= Date.now()
-    ) {
-      const absoluteExpired =
-        userAuthSessionAbsoluteExpiresAt > 0 &&
-        userAuthSessionAbsoluteExpiresAt <= Date.now();
-      void expireCurrentUserSession(
-        absoluteExpired
-          ? '로그인 최대 유지시간이 지나 자동으로 로그아웃되었습니다.'
-          : '장시간 사용하지 않아 자동으로 로그아웃되었습니다.'
-      );
-      return undefined;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      const absoluteExpired =
-        userAuthSessionAbsoluteExpiresAt > 0 &&
-        userAuthSessionAbsoluteExpiresAt <= Date.now();
-      void expireCurrentUserSession(
-        absoluteExpired
-          ? '로그인 최대 유지시간이 지나 자동으로 로그아웃되었습니다.'
-          : '장시간 사용하지 않아 자동으로 로그아웃되었습니다.'
-      );
-    }, Math.max(0, userAuthSessionExpiresAt - Date.now()));
-
-    return () => window.clearTimeout(timeoutId);
-  }, [
-    firebaseAuthUser?.uid,
-    currentAuthRoleReady,
-    currentAuthRoleErrorMessage,
-    currentAuthAdminAccount?.id,
-    authenticatedAdminId,
-    userProfileReady,
-    userProfile?.uid,
-    userProfile?.status,
-    userAuthLoading,
-    withdrawalLoading,
-    userSessionPolicy,
-    userSessionPolicyReady,
-    userAuthSessionUid,
-    userAuthSessionExpiresAt,
-    userAuthSessionAbsoluteExpiresAt,
-    userAuthSessionPolicyVersion,
-  ]);
-
-  useEffect(() => {
-    if (
-      !firebaseAuthUser ||
-      !currentAuthRoleReady ||
-      currentAuthRoleErrorMessage ||
-      currentAuthAdminAccount ||
-      authenticatedAdminId ||
-      !userProfileReady ||
-      !userProfile ||
-      ![USER_PROFILE_STATUS.ACTIVE, USER_PROFILE_STATUS.PROFILE_REQUIRED].includes(
-        userProfile.status
-      ) ||
-      userAuthSessionUid !== firebaseAuthUser.uid ||
-      !userSessionPolicyReady
-    ) {
-      return undefined;
-    }
-
-    const normalizedPolicy = normalizeUserSessionPolicy(userSessionPolicy);
-    let lastRefreshAt = 0;
-    const refreshSession = () => {
-      const now = Date.now();
-      if (now - lastRefreshAt < 30000) return;
-      lastRefreshAt = now;
-
-      const currentSession = readUserAuthSession();
-      if (
-        !currentSession.userId ||
-        currentSession.userId !== firebaseAuthUser.uid
-      ) {
-        return;
-      }
-
-      const nextSession = saveUserAuthSession(
-        firebaseAuthUser.uid,
-        normalizedPolicy,
-        {
-          absoluteExpiresAt: currentSession.absoluteExpiresAt,
-        }
-      );
-      setUserAuthSessionUid(nextSession.userId);
-      setUserAuthSessionExpiresAt(nextSession.expiresAt);
-      setUserAuthSessionAbsoluteExpiresAt(nextSession.absoluteExpiresAt);
-      setUserAuthSessionPolicyVersion(nextSession.policyVersion);
-    };
-
-    const events = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
-    events.forEach((eventName) =>
-      window.addEventListener(eventName, refreshSession, { passive: true })
-    );
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') refreshSession();
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-
-    return () => {
-      events.forEach((eventName) =>
-        window.removeEventListener(eventName, refreshSession)
-      );
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
-  }, [
-    firebaseAuthUser?.uid,
-    currentAuthRoleReady,
-    currentAuthRoleErrorMessage,
-    currentAuthAdminAccount?.id,
-    authenticatedAdminId,
-    userProfileReady,
-    userProfile?.uid,
-    userProfile?.status,
-    userAuthSessionUid,
-    userSessionPolicy,
-    userSessionPolicyReady,
-  ]);
+  const { hasEstablishedUserSession } =
+    useUserAuthenticationSessionController({
+      authenticatedAdminId,
+      clearUserAuthenticatedSession,
+      currentAuthAdminAccount,
+      currentAuthRoleErrorMessage,
+      currentAuthRoleReady,
+      firebaseAuthUser,
+      setIsCommunityMenuOpen,
+      setSelectedFooterPageId,
+      setSelectedNoticePostId,
+      setUserAuthenticatedSession,
+      setUserAuthForm,
+      setUserTab,
+      setView,
+      triggerToast,
+      userAuthLoading,
+      userAuthSessionAbsoluteExpiresAt,
+      userAuthSessionExpiresAt,
+      userAuthSessionPolicyVersion,
+      userAuthSessionUid,
+      userProfile,
+      userProfileReady,
+      userSessionLogoutInProgressRef,
+      userSessionPolicy,
+      userSessionPolicyReady,
+      withdrawalLoading,
+    });
 
   const showUserAccountStatus = (type) => {
     const nextView = { type };

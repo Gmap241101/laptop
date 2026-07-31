@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-07-31T05:39:45.550Z",
-  "initialModuleCount": 57,
-  "initialSourceBytes": 815170,
+  "generatedAt": "2026-07-31T07:00:16.002Z",
+  "initialModuleCount": 58,
+  "initialSourceBytes": 817635,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 277692
+      "bytes": 271446
     },
     {
       "file": "src/features/requests/useUserRequestHistoryActionController.js",
@@ -49,7 +49,7 @@
     },
     {
       "file": "src/features/auth/useAdminAuthenticationController.js",
-      "bytes": 17928
+      "bytes": 17574
     },
     {
       "file": "src/context/appContextSlices.js",
@@ -98,6 +98,10 @@
     {
       "file": "src/features/settings/useAdminSplitStorageMigrationController.js",
       "bytes": 9525
+    },
+    {
+      "file": "src/features/auth/useUserAuthenticationSessionController.js",
+      "bytes": 9065
     },
     {
       "file": "src/utils/overduePolicy.js",

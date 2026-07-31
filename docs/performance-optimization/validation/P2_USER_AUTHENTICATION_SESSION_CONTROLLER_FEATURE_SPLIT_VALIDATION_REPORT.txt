@@ -1,0 +1,92 @@
+P2 USER AUTHENTICATION SESSION CONTROLLER FEATURE SPLIT VALIDATION
+=================================================================
+Generated: 2026-07-31 15:55 KST
+Baseline: rental-system-admin-authentication-controller-split-20260731_1434_deployment_package.zip
+Output: rental-system-user-authentication-session-controller-split-20260731_1555_deployment_package.zip
+
+1. BASELINE PACKAGE
+-------------------
+PACKAGE_FILES entries: 337
+PACKAGE_SHA256SUMS entries: 337
+Missing files: 0
+SHA-256 mismatches: 0
+Result: PASS
+
+2. SOURCE CHANGE
+----------------
+App.jsx lines: 9559 -> 9363 (-196)
+App.jsx bytes: 277692 -> 271446 (-6246)
+App.jsx useState: 114 -> 110 (-4)
+App.jsx useEffect: 52 -> 50 (-2)
+App.jsx useRef: 19 -> 18 (-1)
+New controller: 311 lines / 9065 bytes
+Admin authentication controller: 614 -> 602 lines
+Result: PASS
+
+3. REACT HOOK AUDIT
+-------------------
+Source files checked: 114
+Missing React hook imports: 0
+Result: PASS
+
+4. TYPESCRIPT SYNTAX / TARGETED DIAGNOSTICS
+-------------------------------------------
+JS/JSX/MJS files transpiled: 114
+Syntax failures: 0
+Baseline targeted diagnostics: 1
+Modified targeted diagnostics: 1
+New targeted diagnostics: 0
+Checked diagnostic classes: undefined identifiers, duplicate declarations, calls and assignment mismatches
+Result: PASS
+
+5. RELATIVE IMPORT RESOLUTION
+-----------------------------
+Relative imports checked: 290
+Missing targets: 0
+Result: PASS
+
+6. FIRESTORE STRICT AUDIT
+-------------------------
+Source files: 114
+Total calls: 129
+onSnapshot: 35
+getDocs: 48
+getDoc: 28
+getCountFromServer: 18
+Approved risk findings: 51
+Unapproved warnings: 0
+Unapproved errors: 0
+Result: PASS
+
+7. USER SESSION RUNTIME MOCK
+----------------------------
+- Session state save and clear: PASS
+- User policy supplied to session creation: PASS
+- Activity refresh handler registration: PASS
+- Existing absolute expiry preservation: PASS
+- Security policy version mismatch logout: PASS
+- Firebase Auth sign-out: PASS
+- Local session clear and login-route redirect: PASS
+Result: PASS
+
+8. CONTEXT CONTRACT
+-------------------
+hasEstablishedUserSession definition: present
+App context provider value: present
+UserAuthPanel consumer: present
+Missing contract keys: 0
+Result: PASS
+
+9. SOURCE GRAPH
+---------------
+Initial modules: 57 -> 58 (+1)
+Initial source bytes: 815170 -> 817635 (+2465)
+Result: RECORDED
+
+10. PRODUCTION BUILD
+--------------------
+npm ci: FAIL
+Reason: internal npm registry returned E404 for yargs-parser-21.1.1.tgz
+vite build: NOT EXECUTED
+Source validation result: PASS
+Production deployment result: LOCAL deploy.ps1 BUILD REQUIRED
