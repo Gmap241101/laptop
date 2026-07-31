@@ -1,0 +1,25 @@
+P2 ADMIN AUTHENTICATION CONTROLLER FEATURE SPLIT VALIDATION
+====================================================================
+
+[PASS] 입력 기준 패키지 331개 프로젝트 파일 SHA-256 검증
+[PASS] React Hook import audit: 113 source files
+[PASS] JS/JSX/MJS TypeScript parse/transpile: 113 files, syntax errors 0
+[PASS] selected semantic diagnostics: undefined/duplicate/call errors 0
+[PASS] relative import resolution: 284 imports, missing 0
+[PASS] Firestore strict audit: 129 calls, unapproved warnings 0, errors 0
+[PASS] Firestore call totals preserved: onSnapshot 35, getDocs 48, getDoc 28, getCountFromServer 18
+[PASS] Korean UI string comparison: total 2186 -> 2186, unique 1693 -> 1693, removed 0, added 0
+[PASS] Admin authentication return contract: login/logout/authenticated account/authenticated flag present
+[PASS] Session service contract: admin and user read/save/clear plus Firebase persistence present
+[PASS] App.jsx reduction: 10176 -> 9559 lines, 296485 -> 277692 bytes
+[PASS] App.jsx React state reduction: useState 122 -> 114, useEffect 55 -> 52, useRef 20 -> 19
+[PASS] initial source graph: 55 -> 57 modules, 810442 -> 815170 bytes
+[PASS] Firestore Rules/indexes/firebase/package dependency files unchanged
+[PASS] Output PACKAGE_FILES/PACKAGE_SHA256SUMS: 337 project files
+[PASS] REMOVED_FILES entries: 67 paths plus 1 comment line, duplicate 0, package conflicts 0
+[PASS] REMOVED_FILES.txt cumulative list preserved; new removals 0
+
+VITE BUILD
+----------
+[NOT RUN] npm ci failed before build because the internal npm registry returned E404 for yargs-parser-21.1.1.tgz.
+Local deploy.ps1 must complete npm run build before deployment is considered successful.

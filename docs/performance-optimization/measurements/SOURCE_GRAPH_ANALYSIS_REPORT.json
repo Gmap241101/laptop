@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-07-30T08:57:51.816Z",
-  "initialModuleCount": 55,
-  "initialSourceBytes": 810442,
+  "generatedAt": "2026-07-31T05:39:45.550Z",
+  "initialModuleCount": 57,
+  "initialSourceBytes": 815170,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 296485
+      "bytes": 277692
     },
     {
       "file": "src/features/requests/useUserRequestHistoryActionController.js",
@@ -46,6 +46,10 @@
     {
       "file": "src/components/CommonUI.jsx",
       "bytes": 18375
+    },
+    {
+      "file": "src/features/auth/useAdminAuthenticationController.js",
+      "bytes": 17928
     },
     {
       "file": "src/context/appContextSlices.js",
@@ -126,6 +130,10 @@
     {
       "file": "src/components/TermsContentDialog.jsx",
       "bytes": 5830
+    },
+    {
+      "file": "src/features/auth/authSessionService.js",
+      "bytes": 5593
     },
     {
       "file": "src/components/RichTextContent.jsx",

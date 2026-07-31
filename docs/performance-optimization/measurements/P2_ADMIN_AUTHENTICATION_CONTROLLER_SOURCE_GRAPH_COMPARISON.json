@@ -1,0 +1,79 @@
+{
+  "generatedAt": "2026-07-31T05:40:00.000Z",
+  "baselinePackage": "rental-system-admin-data-maintenance-controller-split-20260730_1757_deployment_package.zip",
+  "outputPackage": "rental-system-admin-authentication-controller-split-20260731_1434_deployment_package.zip",
+  "app": {
+    "before": {
+      "lines": 10176,
+      "bytes": 296485,
+      "useStateCalls": 122,
+      "useEffectCalls": 55,
+      "useRefCalls": 20,
+      "useMemoCalls": 27,
+      "getDocCalls": 6,
+      "setDocCalls": 1
+    },
+    "after": {
+      "lines": 9559,
+      "bytes": 277692,
+      "useStateCalls": 114,
+      "useEffectCalls": 52,
+      "useRefCalls": 19,
+      "useMemoCalls": 27,
+      "getDocCalls": 4,
+      "setDocCalls": 0
+    },
+    "delta": {
+      "lines": -617,
+      "bytes": -18793,
+      "useStateCalls": -8,
+      "useEffectCalls": -3,
+      "useRefCalls": -1,
+      "useMemoCalls": 0,
+      "getDocCalls": -2,
+      "setDocCalls": -1
+    }
+  },
+  "newModules": [
+    {
+      "file": "src/features/auth/useAdminAuthenticationController.js",
+      "lines": 614,
+      "bytes": 17928
+    },
+    {
+      "file": "src/features/auth/authSessionService.js",
+      "lines": 206,
+      "bytes": 5593
+    }
+  ],
+  "initialSourceGraph": {
+    "before": {
+      "moduleCount": 55,
+      "sourceBytes": 810442
+    },
+    "after": {
+      "moduleCount": 57,
+      "sourceBytes": 815170
+    },
+    "delta": {
+      "moduleCount": 2,
+      "sourceBytes": 4728
+    }
+  },
+  "firestoreAudit": {
+    "before": {
+      "totalCalls": 129,
+      "onSnapshot": 35,
+      "getDocs": 48,
+      "getDoc": 28,
+      "getCountFromServer": 18
+    },
+    "after": {
+      "totalCalls": 129,
+      "onSnapshot": 35,
+      "getDocs": 48,
+      "getDoc": 28,
+      "getCountFromServer": 18
+    }
+  }
+}

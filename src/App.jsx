@@ -1,11 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  browserLocalPersistence,
-  browserSessionPersistence,
   onAuthStateChanged,
-  setPersistence,
-  signInWithEmailAndPassword,
   signOut,
 } from 'firebase/auth';
 import {
@@ -310,6 +306,16 @@ import useUserLoginController, {
   useUserAuthState,
 } from './features/auth/useUserLoginController.js';
 import useUserSignupController from './features/auth/useUserSignupController.js';
+import useAdminAuthenticationController, {
+  createDefaultAdminAuthForm,
+  useAdminAuthenticationState,
+} from './features/auth/useAdminAuthenticationController.js';
+import {
+  clearUserAuthSession,
+  configureFirebaseAuthPersistence,
+  readUserAuthSession,
+  saveUserAuthSession,
+} from './features/auth/authSessionService.js';
 import useAdminAccountManagementController, {
   ADMIN_ACCOUNT_PAGE_SIZE,
   ADMIN_CUSTOM_OPTION_VALUE,
@@ -613,15 +619,8 @@ function mergePersistedData(rawData) {
 }
 
 const FIRESTORE_PINNED_POST_LIMIT = 20;
-const ADMIN_AUTH_SESSION_KEY = 'mk_laptop_admin_auth_session';
-const USER_AUTH_SESSION_KEY = 'mk_laptop_user_auth_session';
 const ADMIN_PASSWORD_HASH_ALGORITHM = 'PBKDF2-SHA-256';
 const ADMIN_PASSWORD_HASH_ITERATIONS = 120000;
-
-const createDefaultAdminAuthForm = () => ({
-  adminLoginId: '',
-  password: '',
-});
 
 const createMemberPolicyError = (code) => {
   const error = new Error(code);
@@ -886,194 +885,6 @@ const verifyAdminPassword = async (password, adminAccount) => {
   };
 };
 
-const createEmptyAuthSession = (identityKey) => ({
-  [identityKey]: '',
-  expiresAt: 0,
-  absoluteExpiresAt: 0,
-  policyVersion: 0,
-  lastActivityAt: 0,
-  logoutOnBrowserClose: true,
-});
-
-const clearStoredAuthSession = (storageKey) => {
-  if (typeof window === 'undefined') return;
-  window.sessionStorage.removeItem(storageKey);
-  window.localStorage.removeItem(storageKey);
-};
-
-const readStoredAuthSession = (storageKey, identityKey) => {
-  const emptySession = createEmptyAuthSession(identityKey);
-  if (typeof window === 'undefined') return emptySession;
-
-  const now = Date.now();
-  const candidates = [
-    [window.sessionStorage, true],
-    [window.localStorage, false],
-  ];
-  let selected = null;
-
-  candidates.forEach(([storage, sessionOnly]) => {
-    const raw = storage.getItem(storageKey);
-    if (!raw) return;
-
-    try {
-      const parsed = JSON.parse(raw);
-      const absoluteExpiresAt = Number(parsed?.absoluteExpiresAt || 0);
-      const absoluteIsValid = absoluteExpiresAt === 0 || absoluteExpiresAt > now;
-      const isValid =
-        Boolean(parsed?.[identityKey]) &&
-        Number(parsed?.expiresAt || 0) > now &&
-        absoluteIsValid;
-
-      if (!isValid) {
-        storage.removeItem(storageKey);
-        return;
-      }
-
-      const candidate = {
-        ...emptySession,
-        ...parsed,
-        absoluteExpiresAt,
-        logoutOnBrowserClose:
-          typeof parsed.logoutOnBrowserClose === 'boolean'
-            ? parsed.logoutOnBrowserClose
-            : sessionOnly,
-      };
-
-      if (
-        !selected ||
-        Number(candidate.lastActivityAt || 0) >
-          Number(selected.lastActivityAt || 0)
-      ) {
-        selected = candidate;
-      }
-    } catch {
-      storage.removeItem(storageKey);
-    }
-  });
-
-  return selected || emptySession;
-};
-
-const writeStoredAuthSession = (storageKey, session, logoutOnBrowserClose) => {
-  if (typeof window === 'undefined') return;
-  clearStoredAuthSession(storageKey);
-  const storage = logoutOnBrowserClose
-    ? window.sessionStorage
-    : window.localStorage;
-  storage.setItem(storageKey, JSON.stringify(session));
-};
-
-const configureFirebaseAuthPersistence = async (
-  authInstance,
-  logoutOnBrowserClose
-) => {
-  await setPersistence(
-    authInstance,
-    logoutOnBrowserClose
-      ? browserSessionPersistence
-      : browserLocalPersistence
-  );
-};
-
-const readAdminAuthSession = () =>
-  readStoredAuthSession(ADMIN_AUTH_SESSION_KEY, 'adminId');
-
-const saveAdminAuthSession = (
-  adminId,
-  securitySettings = {},
-  previousSession = null
-) => {
-  const normalized = normalizeSystemAdminSettings(securitySettings);
-  const now = Date.now();
-  const idleDurationMs = normalized.adminIdleTimeoutMinutes * 60 * 1000;
-  const absoluteDurationMs =
-    normalized.adminAbsoluteTimeoutHours > 0
-      ? normalized.adminAbsoluteTimeoutHours * 60 * 60 * 1000
-      : 0;
-  const previousAbsoluteExpiresAt = Number(
-    previousSession?.absoluteExpiresAt || 0
-  );
-  const absoluteExpiresAt =
-    absoluteDurationMs === 0
-      ? 0
-      : previousAbsoluteExpiresAt > now
-        ? previousAbsoluteExpiresAt
-        : now + absoluteDurationMs;
-  const idleExpiresAt = now + idleDurationMs;
-  const nextSession = {
-    adminId,
-    lastActivityAt: now,
-    expiresAt:
-      absoluteExpiresAt > 0
-        ? Math.min(idleExpiresAt, absoluteExpiresAt)
-        : idleExpiresAt,
-    absoluteExpiresAt,
-    policyVersion: normalized.adminSecurityPolicyVersion,
-    logoutOnBrowserClose: normalized.adminLogoutOnBrowserClose,
-  };
-
-  writeStoredAuthSession(
-    ADMIN_AUTH_SESSION_KEY,
-    nextSession,
-    normalized.adminLogoutOnBrowserClose
-  );
-  return nextSession;
-};
-
-const clearAdminAuthSession = () => {
-  clearStoredAuthSession(ADMIN_AUTH_SESSION_KEY);
-};
-
-const readUserAuthSession = () =>
-  readStoredAuthSession(USER_AUTH_SESSION_KEY, 'userId');
-
-const saveUserAuthSession = (
-  userId,
-  policy = {},
-  previousSession = null
-) => {
-  const normalized = normalizeUserSessionPolicy(policy);
-  const now = Date.now();
-  const idleDurationMs = normalized.userIdleTimeoutMinutes * 60 * 1000;
-  const absoluteDurationMs =
-    normalized.userAbsoluteTimeoutHours > 0
-      ? normalized.userAbsoluteTimeoutHours * 60 * 60 * 1000
-      : 0;
-  const previousAbsoluteExpiresAt = Number(
-    previousSession?.absoluteExpiresAt || 0
-  );
-  const absoluteExpiresAt =
-    absoluteDurationMs === 0
-      ? 0
-      : previousAbsoluteExpiresAt > now
-        ? previousAbsoluteExpiresAt
-        : now + absoluteDurationMs;
-  const idleExpiresAt = now + idleDurationMs;
-  const nextSession = {
-    userId,
-    lastActivityAt: now,
-    expiresAt:
-      absoluteExpiresAt > 0
-        ? Math.min(idleExpiresAt, absoluteExpiresAt)
-        : idleExpiresAt,
-    absoluteExpiresAt,
-    policyVersion: normalized.userSecurityPolicyVersion,
-    logoutOnBrowserClose: normalized.userLogoutOnBrowserClose,
-  };
-
-  writeStoredAuthSession(
-    USER_AUTH_SESSION_KEY,
-    nextSession,
-    normalized.userLogoutOnBrowserClose
-  );
-  return nextSession;
-};
-
-const clearUserAuthSession = () => {
-  clearStoredAuthSession(USER_AUTH_SESSION_KEY);
-};
-
 function App() {
   const [data, setData] = useState(initialData);
   const [siteSettings, setSiteSettings] = useState(DEFAULT_SITE_SETTINGS);
@@ -1303,7 +1114,6 @@ function App() {
   const [adminAccountsReady, setAdminAccountsReady] = useState(false);
   const [adminAccountsLoadErrorMessage, setAdminAccountsLoadErrorMessage] = useState('');
   const [adminAccountsRemoteHasData, setAdminAccountsRemoteHasData] = useState(false);
-  const [legacyAdminAccounts] = useState([]);
 
   const initializedRemoteFormRef = useRef(false);
 
@@ -1332,7 +1142,6 @@ function App() {
   const adminAccountsApplyingRemoteRef = useRef(false);
   const adminAccountsLastSyncedRef = useRef({});
   const allowAdminAccountsWriteRef = useRef(false);
-  const adminLogoutInProgressRef = useRef(false);
   const pendingProtectedUserTabRef = useRef('');
 
   const [view, setView] = useState(getInitialViewFromPath); // 'user' | 'admin'
@@ -1415,21 +1224,26 @@ function App() {
     setAdminMyProfileSaving,
     setEditingAdminAccountId,
   } = useAdminAccountManagementState();
-  const [adminAuthForm, setAdminAuthForm] = useState(createDefaultAdminAuthForm);
-  const [adminAuthLoading, setAdminAuthLoading] = useState(false);
-  const [adminLogoutInProgress, setAdminLogoutInProgress] = useState(false);
-  const [authenticatedAdminId, setAuthenticatedAdminId] = useState(
-    () => readAdminAuthSession().adminId
-  );
-  const [adminAuthExpiresAt, setAdminAuthExpiresAt] = useState(
-    () => readAdminAuthSession().expiresAt
-  );
-  const [adminAuthAbsoluteExpiresAt, setAdminAuthAbsoluteExpiresAt] = useState(
-    () => readAdminAuthSession().absoluteExpiresAt
-  );
-  const [adminAuthPolicyVersion, setAdminAuthPolicyVersion] = useState(
-    () => readAdminAuthSession().policyVersion
-  );
+  const {
+    adminAuthAbsoluteExpiresAt,
+    adminAuthExpiresAt,
+    adminAuthForm,
+    adminAuthLoading,
+    adminAuthPolicyVersion,
+    adminLogoutInProgress,
+    adminLogoutInProgressRef,
+    authenticatedAdminId,
+    clearAdminAuthenticatedSession,
+    setAdminAuthenticatedSession,
+    setAdminAuthAbsoluteExpiresAt,
+    setAdminAuthExpiresAt,
+    setAdminAuthForm,
+    setAdminAuthLoading,
+    setAdminAuthPolicyVersion,
+    setAdminLogoutInProgress,
+  } = useAdminAuthenticationState({
+    systemAdminSettings,
+  });
   const [userAuthSessionUid, setUserAuthSessionUid] = useState(
     () => readUserAuthSession().userId
   );
@@ -1640,11 +1454,7 @@ function App() {
           const message =
             '관리자 계정 문서의 UID 정보가 올바르지 않습니다. adminAccounts 문서 ID, id, authUid가 모두 같은지 확인해 주세요.';
 
-          clearAdminAuthSession();
-          setAuthenticatedAdminId('');
-          setAdminAuthExpiresAt(0);
-    setAdminAuthAbsoluteExpiresAt(0);
-    setAdminAuthPolicyVersion(0);
+          clearAdminAuthenticatedSession();
 
           setCurrentAuthAdminAccount(null);
           setCurrentAuthRoleErrorMessage(message);
@@ -1898,11 +1708,7 @@ function App() {
         await signOut(firebaseAuth);
 
         clearUserLoginReturnTarget();
-        clearAdminAuthSession();
-        setAuthenticatedAdminId('');
-        setAdminAuthExpiresAt(0);
-          setAdminAuthAbsoluteExpiresAt(0);
-          setAdminAuthPolicyVersion(0);
+        clearAdminAuthenticatedSession();
         setUserAuthForm(createDefaultUserAuthForm());
       } catch (error) {
         console.error(
@@ -3238,129 +3044,6 @@ function App() {
     }
   }, [adminTab]);
 
-  useEffect(() => {
-    if (!authenticatedAdminId) return;
-    if (!firebaseAuthReady) return;
-    if (!adminAccountsReady) return;
-
-    const expireAdminSession = async () => {
-      if (adminLogoutInProgressRef.current) return;
-
-      adminLogoutInProgressRef.current = true;
-      setAdminLogoutInProgress(true);
-
-      const expiringAdminAccount =
-        (adminAccounts || []).find(
-          (account) => account.id === authenticatedAdminId
-        ) ||
-        (
-          currentAuthAdminAccount?.id === authenticatedAdminId
-            ? currentAuthAdminAccount
-            : null
-        );
-
-      const shouldSignOutFirebaseAdmin =
-        Boolean(expiringAdminAccount?.authUid) &&
-        firebaseAuth.currentUser?.uid === expiringAdminAccount.authUid;
-
-      let firebaseSignOutFailed = false;
-
-      try {
-        if (shouldSignOutFirebaseAdmin) {
-          await signOut(firebaseAuth);
-        }
-      } catch (error) {
-        firebaseSignOutFailed = true;
-        console.error('Expired admin Firebase Auth logout error:', error);
-      } finally {
-        clearAdminAuthSession();
-        setAuthenticatedAdminId('');
-        setAdminAuthExpiresAt(0);
-          setAdminAuthAbsoluteExpiresAt(0);
-          setAdminAuthPolicyVersion(0);
-        setAdminAuthForm(createDefaultAdminAuthForm());
-
-        adminLogoutInProgressRef.current = false;
-        setAdminLogoutInProgress(false);
-
-        setToast({
-          message: firebaseSignOutFailed
-            ? '관리자 세션은 만료되었지만 Firebase Auth 로그아웃에 실패했습니다. 페이지를 새로고침한 뒤 로그인 상태를 확인해 주세요.'
-            : '관리자 세션이 만료되어 로그아웃되었습니다.',
-          type: firebaseSignOutFailed ? 'error' : 'success',
-        });
-
-        window.setTimeout(() => setToast(null), 3000);
-      }
-    };
-
-    if (!adminAuthExpiresAt || adminAuthExpiresAt <= Date.now()) {
-      void expireAdminSession();
-      return;
-    }
-
-    const remainingTime = adminAuthExpiresAt - Date.now();
-
-    const sessionTimer = window.setTimeout(() => {
-      void expireAdminSession();
-    }, remainingTime);
-
-    return () => {
-      window.clearTimeout(sessionTimer);
-    };
-  }, [
-    authenticatedAdminId,
-    adminAuthExpiresAt,
-    firebaseAuthReady,
-    adminAccountsReady,
-    adminAccounts,
-    legacyAdminAccounts,
-  ]);
-
-  useEffect(() => {
-    if (!authenticatedAdminId) return;
-    if (!firebaseReady) return;
-    if (!firebaseAuthReady) return;
-    if (!adminAccountsReady) return;
-    if (adminLogoutInProgressRef.current) return;
-
-    const authenticatedAccount =
-      (adminAccounts || []).find(
-        (account) => account.id === authenticatedAdminId
-      ) ||
-      (
-        currentAuthAdminAccount?.id === authenticatedAdminId
-          ? currentAuthAdminAccount
-          : null
-      );
-
-    const hasFirebaseAuthMismatch =
-      Boolean(authenticatedAccount?.authUid) &&
-      firebaseAuth.currentUser?.uid !== authenticatedAccount.authUid;
-    const hasActiveAdminLock = Number(authenticatedAccount?.lockUntil || 0) > Date.now();
-
-    if (!authenticatedAccount || hasFirebaseAuthMismatch || hasActiveAdminLock) {
-      if (hasActiveAdminLock && firebaseAuth.currentUser) {
-        void signOut(firebaseAuth).catch((error) => {
-          console.error('Locked admin Firebase Auth logout error:', error);
-        });
-      }
-      clearAdminAuthSession();
-      setAuthenticatedAdminId('');
-      setAdminAuthExpiresAt(0);
-          setAdminAuthAbsoluteExpiresAt(0);
-          setAdminAuthPolicyVersion(0);
-    }
-  }, [
-    authenticatedAdminId,
-    firebaseReady,
-    firebaseAuthReady,
-    firebaseAuthUser,
-    adminAccountsReady,
-    adminAccounts,
-    legacyAdminAccounts,
-  ]);
-
   const triggerToast = (message, type = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
@@ -3642,15 +3325,57 @@ function App() {
 
   const registeredAdminAccounts = adminAccounts || [];
 
-  const authenticatedAdminAccount =
-    registeredAdminAccounts.find(
-      (account) => account.id === authenticatedAdminId
-    ) ||
-    (
-      currentAuthAdminAccount?.id === authenticatedAdminId
-        ? currentAuthAdminAccount
-        : null
-    );
+  const {
+    authenticateAdmin,
+    authenticatedAdminAccount,
+    isAdminAuthenticated,
+    logoutAdmin,
+  } = useAdminAuthenticationController({
+    adminAccounts,
+    adminAccountsReady,
+    adminAuthAbsoluteExpiresAt,
+    adminAuthExpiresAt,
+    adminAuthForm,
+    adminAuthLoading,
+    adminAuthPolicyVersion,
+    adminLogoutInProgress,
+    adminLogoutInProgressRef,
+    authenticatedAdminId,
+    clearAdminAuthenticatedSession,
+    currentAuthAdminAccount,
+    currentAuthRoleReady,
+    firebaseAuthReady,
+    firebaseAuthUser,
+    firebaseReady,
+    getAdminFirebaseAuthErrorMessage,
+    normalizeAdminAccounts,
+    setAdminAccounts,
+    setAdminAuthenticatedSession,
+    setAdminAuthAbsoluteExpiresAt,
+    setAdminAuthExpiresAt,
+    setAdminAuthForm,
+    setAdminAuthLoading,
+    setAdminAuthPolicyVersion,
+    setAdminLogoutInProgress,
+    setCurrentAuthAdminAccount,
+    setCurrentAuthRoleErrorMessage,
+    setCurrentAuthRoleReady,
+    setIsCommunityMenuOpen,
+    setSelectedFooterPageId,
+    setSelectedNoticePostId,
+    setUserAuthSessionAbsoluteExpiresAt,
+    setUserAuthSessionExpiresAt,
+    setUserAuthSessionPolicyVersion,
+    setUserAuthSessionUid,
+    setUserTab,
+    setView,
+    setAdminTab,
+    systemAdminSettings,
+    systemAdminSettingsReady,
+    triggerToast,
+    userTab,
+    view,
+  });
 
   const isCurrentFirebaseAuthAdmin =
     Boolean(firebaseAuthUser) &&
@@ -4145,18 +3870,6 @@ function App() {
       currentUserRestriction,
     ]
   );
-
-  const hasMatchingAdminFirebaseAuth =
-    Boolean(authenticatedAdminAccount?.authUid) &&
-    firebaseAuthReady &&
-    currentAuthRoleReady &&
-    firebaseAuth.currentUser?.uid === authenticatedAdminAccount.authUid &&
-    currentAuthAdminAccount?.id === authenticatedAdminAccount.id;
-
-  const isAdminAuthenticated =
-    Boolean(authenticatedAdminAccount) &&
-    !adminLogoutInProgress &&
-    hasMatchingAdminFirebaseAuth;
 
   const {
     addFaqCategory,
@@ -5681,98 +5394,6 @@ function App() {
     }
   };
 
-  const setAdminAuthenticatedSession = (adminId, securitySettingsOverride = null) => {
-    const nextSession = saveAdminAuthSession(
-      adminId,
-      securitySettingsOverride || systemAdminSettings
-    );
-
-    setAuthenticatedAdminId(nextSession.adminId);
-    setAdminAuthExpiresAt(nextSession.expiresAt);
-    setAdminAuthAbsoluteExpiresAt(nextSession.absoluteExpiresAt);
-    setAdminAuthPolicyVersion(nextSession.policyVersion);
-  };
-
-  const clearAdminAuthenticatedSession = () => {
-    clearAdminAuthSession();
-    setAuthenticatedAdminId('');
-    setAdminAuthExpiresAt(0);
-    setAdminAuthAbsoluteExpiresAt(0);
-    setAdminAuthPolicyVersion(0);
-  };
-
-  useEffect(() => {
-    if (!authenticatedAdminId || !isAdminAuthenticated) return undefined;
-
-    const normalizedSecurity = normalizeSystemAdminSettings(systemAdminSettings);
-    if (
-      systemAdminSettingsReady &&
-      adminAuthPolicyVersion &&
-      adminAuthPolicyVersion !== normalizedSecurity.adminSecurityPolicyVersion
-    ) {
-      if (!adminLogoutInProgressRef.current) {
-        adminLogoutInProgressRef.current = true;
-        setAdminLogoutInProgress(true);
-        void (async () => {
-          try {
-            if (firebaseAuth.currentUser) {
-              await signOut(firebaseAuth);
-            }
-          } catch (error) {
-            console.error('Admin policy change logout error:', error);
-          } finally {
-            clearAdminAuthenticatedSession();
-            setAdminAuthForm(createDefaultAdminAuthForm());
-            adminLogoutInProgressRef.current = false;
-            setAdminLogoutInProgress(false);
-            triggerToast(
-              '관리자 보안 설정이 변경되어 다시 로그인이 필요합니다.',
-              'error'
-            );
-          }
-        })();
-      }
-      return undefined;
-    }
-
-    let lastRefreshAt = 0;
-    const refreshSession = () => {
-      const now = Date.now();
-      if (now - lastRefreshAt < 30000) return;
-      lastRefreshAt = now;
-
-      const currentSession = readAdminAuthSession();
-      if (!currentSession.adminId || currentSession.adminId !== authenticatedAdminId) return;
-      const nextSession = saveAdminAuthSession(
-        authenticatedAdminId,
-        normalizedSecurity,
-        { absoluteExpiresAt: adminAuthAbsoluteExpiresAt || currentSession.absoluteExpiresAt }
-      );
-      setAdminAuthExpiresAt(nextSession.expiresAt);
-      setAdminAuthAbsoluteExpiresAt(nextSession.absoluteExpiresAt);
-      setAdminAuthPolicyVersion(nextSession.policyVersion);
-    };
-
-    const events = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
-    events.forEach((eventName) => window.addEventListener(eventName, refreshSession, { passive: true }));
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') refreshSession();
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-
-    return () => {
-      events.forEach((eventName) => window.removeEventListener(eventName, refreshSession));
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
-  }, [
-    authenticatedAdminId,
-    isAdminAuthenticated,
-    systemAdminSettings,
-    systemAdminSettingsReady,
-    adminAuthPolicyVersion,
-    adminAuthAbsoluteExpiresAt,
-  ]);
-
   useEffect(() => {
     if (
       !firebaseAuthUser ||
@@ -6091,244 +5712,6 @@ function App() {
     userTab === 'signup'
       ? submitUserSignupForm(event, providedTermsSubmission)
       : submitUserLogin(event);
-
-    const authenticateAdmin = async () => {
-    const adminEmail = adminAuthForm.adminLoginId.trim();
-    const password = adminAuthForm.password;
-
-    if (!adminEmail) {
-      triggerToast('관리자 로그인 이메일을 입력해 주세요.', 'error');
-      return;
-    }
-
-    if (!password) {
-      triggerToast('비밀번호를 입력해 주세요.', 'error');
-      return;
-    }
-
-    let signedInAdminUser = null;
-
-    setAdminAuthLoading(true);
-
-    try {
-      const initialSecuritySettings = normalizeSystemAdminSettings(
-        systemAdminSettings
-      );
-      await configureFirebaseAuthPersistence(
-        firebaseAuth,
-        initialSecuritySettings.adminLogoutOnBrowserClose
-      );
-      clearUserAuthenticatedSession();
-
-      const credential = await signInWithEmailAndPassword(
-        firebaseAuth,
-        adminEmail,
-        password
-      );
-
-      signedInAdminUser = credential.user;
-
-      const adminAccountDocRef = doc(
-        db,
-        'adminAccounts',
-        credential.user.uid
-      );
-
-      const adminAccountSnapshot = await getDoc(adminAccountDocRef);
-
-      if (!adminAccountSnapshot.exists()) {
-        await signOut(firebaseAuth);
-        signedInAdminUser = null;
-
-        triggerToast(
-          'Firebase Auth 로그인은 성공했지만 등록된 관리자 권한이 없습니다.',
-          'error'
-        );
-
-        return;
-      }
-
-      const matchedAdminAccount = normalizeAdminAccounts([
-        {
-          ...adminAccountSnapshot.data(),
-          id: adminAccountSnapshot.id,
-        },
-      ])[0];
-
-      const hasValidAdminUidStructure =
-        Boolean(matchedAdminAccount) &&
-        adminAccountSnapshot.id === credential.user.uid &&
-        matchedAdminAccount.id === credential.user.uid &&
-        matchedAdminAccount.authUid === credential.user.uid;
-
-      if (!hasValidAdminUidStructure) {
-        throw new Error('admin-auth-uid-mismatch');
-      }
-
-      if (
-        matchedAdminAccount.lockUntil &&
-        matchedAdminAccount.lockUntil > Date.now()
-      ) {
-        const remainingMinutes = Math.ceil(
-          (matchedAdminAccount.lockUntil - Date.now()) / 60000
-        );
-
-        await signOut(firebaseAuth);
-        signedInAdminUser = null;
-
-        triggerToast(
-          `관리자 계정이 잠금 상태입니다. 약 ${remainingMinutes}분 후 다시 시도해 주세요.`,
-          'error'
-        );
-
-        return;
-      }
-
-      const nowText = new Date().toLocaleString('ko-KR');
-
-      const nextAdminAccount = {
-        ...matchedAdminAccount,
-        id: credential.user.uid,
-        authUid: credential.user.uid,
-        authEmail:
-          credential.user.email ||
-          matchedAdminAccount.authEmail ||
-          '',
-        authProvider: 'firebase-auth',
-        lastLoginAt: nowText,
-        updatedAt: nowText,
-      };
-
-      await setDoc(
-        adminAccountDocRef,
-        {
-          ...nextAdminAccount,
-          syncedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      setCurrentAuthAdminAccount(nextAdminAccount);
-      setCurrentAuthRoleErrorMessage('');
-      setCurrentAuthRoleReady(true);
-
-      setAdminAccounts((prev) => [
-        nextAdminAccount,
-        ...(prev || []).filter(
-          (account) => account.id !== nextAdminAccount.id
-        ),
-      ]);
-
-      const securitySettingsSnapshot = await getDoc(
-        SYSTEM_ADMIN_SETTINGS_DOC_REF
-      ).catch(() => null);
-      const loginSecuritySettings = normalizeSystemAdminSettings(
-        securitySettingsSnapshot?.exists()
-          ? securitySettingsSnapshot.data()
-          : systemAdminSettings
-      );
-      await configureFirebaseAuthPersistence(
-        firebaseAuth,
-        loginSecuritySettings.adminLogoutOnBrowserClose
-      );
-
-      setAdminAuthenticatedSession(
-        nextAdminAccount.id,
-        loginSecuritySettings
-      );
-      setAdminAuthForm(createDefaultAdminAuthForm());
-      setAdminTab('dashboard');
-
-      signedInAdminUser = null;
-
-      triggerToast(
-        `[${nextAdminAccount.adminLoginId}] 관리자 인증이 완료되었습니다.`,
-        'success'
-      );
-    } catch (error) {
-      let firebaseAuthCleanupFailed = false;
-
-      if (
-        signedInAdminUser &&
-        firebaseAuth.currentUser?.uid === signedInAdminUser.uid
-      ) {
-        try {
-          await signOut(firebaseAuth);
-        } catch (logoutError) {
-          firebaseAuthCleanupFailed = true;
-          console.error('Failed admin login cleanup error:', logoutError);
-        }
-      }
-
-      clearAdminAuthenticatedSession();
-      setCurrentAuthAdminAccount(null);
-
-      console.error('Admin authentication error:', error);
-
-      const baseErrorMessage = getAdminFirebaseAuthErrorMessage(error);
-
-      triggerToast(
-        firebaseAuthCleanupFailed
-          ? `${baseErrorMessage} Firebase Auth 로그아웃에도 실패했습니다. 페이지를 새로고침한 뒤 로그인 상태를 확인해 주세요.`
-          : baseErrorMessage,
-        'error'
-      );
-    } finally {
-      setAdminAuthLoading(false);
-    }
-  };
-
-  const logoutAdmin = async () => {
-    if (adminLogoutInProgressRef.current || adminLogoutInProgress) return;
-
-    const shouldLeaveProtectedUserPage =
-      view === 'user' &&
-      PROTECTED_USER_TABS.has(userTab);
-
-    adminLogoutInProgressRef.current = true;
-    setAdminLogoutInProgress(true);
-
-    const adminAccountForLogout =
-      authenticatedAdminAccount || currentAuthAdminAccount;
-
-    const shouldSignOutFirebaseAdmin =
-      Boolean(adminAccountForLogout?.authUid) &&
-      firebaseAuth.currentUser?.uid === adminAccountForLogout.authUid;
-
-    let firebaseSignOutFailed = false;
-
-    try {
-      if (shouldSignOutFirebaseAdmin) {
-        await signOut(firebaseAuth);
-      }
-    } catch (error) {
-      firebaseSignOutFailed = true;
-      console.error('Admin Firebase Auth logout error:', error);
-    } finally {
-      clearUserLoginReturnTarget();
-      clearAdminAuthenticatedSession();
-      setAdminAuthForm(createDefaultAdminAuthForm());
-
-      if (shouldLeaveProtectedUserPage) {
-        replaceAppPath('user', 'home');
-        setView('user');
-        setUserTab('home');
-        setSelectedFooterPageId('');
-        setSelectedNoticePostId('');
-        setIsCommunityMenuOpen(false);
-      }
-
-      adminLogoutInProgressRef.current = false;
-      setAdminLogoutInProgress(false);
-
-      triggerToast(
-        firebaseSignOutFailed
-          ? '관리자 화면 인증은 해제되었지만 Firebase Auth 로그아웃에 실패했습니다. 페이지를 새로고침한 뒤 로그인 상태를 확인해 주세요.'
-          : '관리자 인증이 해제되었습니다.',
-        firebaseSignOutFailed ? 'error' : 'success'
-      );
-    }
-  };
 
   const {
     adminAccountTotalPages,
