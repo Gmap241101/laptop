@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-08-01T12:18:40.056Z",
-  "initialModuleCount": 72,
-  "initialSourceBytes": 869773,
+  "generatedAt": "2026-08-01T12:28:01.323Z",
+  "initialModuleCount": 74,
+  "initialSourceBytes": 871265,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 129405
+      "bytes": 121371
     },
     {
       "file": "src/features/requests/useUserRequestHistoryActionController.js",
@@ -156,6 +156,10 @@
       "bytes": 7497
     },
     {
+      "file": "src/services/appDataCompatibilityService.js",
+      "bytes": 7285
+    },
+    {
       "file": "src/features/auth/useUserAccountRecoveryController.js",
       "bytes": 6276
     },
@@ -246,6 +250,10 @@
     {
       "file": "src/main.jsx",
       "bytes": 2370
+    },
+    {
+      "file": "src/features/assets/usePublicAssetCatalogCompatibilityController.js",
+      "bytes": 2241
     },
     {
       "file": "src/utils/popupUtils.js",

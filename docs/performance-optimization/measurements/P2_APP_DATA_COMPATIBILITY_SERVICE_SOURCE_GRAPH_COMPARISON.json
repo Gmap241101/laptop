@@ -1,0 +1,39 @@
+{
+  "generatedAt": "2026-08-01T21:34:06+09:00",
+  "task": "P2_APP_DATA_COMPATIBILITY_SERVICE_SPLIT",
+  "baselinePackage": "rental-system-rental-derived-selectors-split-20260801_2120_deployment_package.zip",
+  "before": {
+    "appLines": 4390,
+    "appBytes": 129405,
+    "appUseStateCalls": 21,
+    "appUseEffectCalls": 7,
+    "appUseRefCalls": 5,
+    "appUseMemoCalls": 19,
+    "initialModuleCount": 72,
+    "initialSourceBytes": 869773
+  },
+  "after": {
+    "appLines": 4155,
+    "appBytes": 121371,
+    "appUseStateCalls": 21,
+    "appUseEffectCalls": 6,
+    "appUseRefCalls": 4,
+    "appUseMemoCalls": 19,
+    "compatibilityServiceLines": 210,
+    "compatibilityServiceBytes": 7285,
+    "catalogCompatibilityControllerLines": 85,
+    "catalogCompatibilityControllerBytes": 2241,
+    "initialModuleCount": 74,
+    "initialSourceBytes": 871265
+  },
+  "delta": {
+    "appLines": -235,
+    "appBytes": -8034,
+    "appUseStateCalls": 0,
+    "appUseEffectCalls": -1,
+    "appUseRefCalls": -1,
+    "appUseMemoCalls": 0,
+    "initialModuleCount": 2,
+    "initialSourceBytes": 1492
+  }
+}

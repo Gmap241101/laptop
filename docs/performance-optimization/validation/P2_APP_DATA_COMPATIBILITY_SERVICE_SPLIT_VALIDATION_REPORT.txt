@@ -1,0 +1,65 @@
+P2_APP_DATA_COMPATIBILITY_SERVICE_SPLIT validation
+==================================================
+Generated: 2026-08-01T21:34:06+09:00
+Baseline: rental-system-rental-derived-selectors-split-20260801_2120_deployment_package.zip
+
+[PASS] Input package metadata SHA-256 verification: 408/408
+[PASS] React hook import audit: 130 source files
+[PASS] Firestore strict audit
+       Total calls: 129
+       onSnapshot: 35
+       getDocs: 48
+       getDoc: 28
+       getCountFromServer: 18
+       Unapproved warnings: 0
+       Unapproved errors: 0
+[PASS] JS/JSX/MJS TypeScript transpile syntax check: 135 source/tool files, 0 syntax errors
+[PASS] JavaScript node --check: all .js/.mjs files
+[PASS] TypeScript baseline comparison
+       New non-external project-code semantic findings: 0
+       One additional external-module finding is expected because the new controller imports React while node_modules is unavailable.
+[PASS] Relative import resolution: 393 imports, 0 missing
+[PASS] App.jsx initial data and merge helpers removed
+[PASS] Initial data and legacy compatibility rules moved to appDataCompatibilityService.js
+[PASS] Administrator public catalog migration effect moved to compatibility controller
+[PASS] Existing write-through service loader retained
+[PASS] App data compatibility runtime mock
+       Default initial settings
+       Seed asset compatibility helper
+       Legacy start-date setting migration
+       Legacy weekend setting migration
+       Signup auto-approval gating
+       Holiday de-duplication
+       Administrator account field removal
+       Borrower string-to-object normalization
+       Asset category and reservation normalization
+[PASS] Korean UI string multiset preserved across src
+       Occurrences: 2184 -> 2184
+       Unique strings: 1660 -> 1660
+       Removed: 0
+       Added: 0
+[PASS] Source graph analysis
+       Initial modules: 72 -> 74
+       Initial source bytes: 869773 -> 871265
+[PASS] App.jsx metrics
+       Lines: 4390 -> 4155
+       Bytes: 129405 -> 121371
+       useState(): 21 -> 21
+       useEffect(): 7 -> 6
+       useRef(): 5 -> 4
+       useMemo(): 19 -> 19
+
+[NOT COMPLETED] npm ci / Vite production build
+Reason:
+E404 yargs-parser-21.1.1.tgz was unavailable from the internal npm registry.
+The local deploy.ps1 build must succeed before deployment is considered complete.
+
+[PASS] Output package metadata SHA-256 verification: 414/414
+[PASS] ZIP expected entries: 418
+       Project files: 414
+       package-meta files: 4
+[PASS] Cumulative removed-file list retained
+       Actual removed paths: 67
+       Duplicate paths: 0
+       Package conflicts: 0
+       SHA-256: 17ad59f08176c623ca2eaa4d3b232992555e62b3ad1b22c824cb1af10778f212
