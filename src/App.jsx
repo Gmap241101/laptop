@@ -74,9 +74,6 @@ import useAdminNavigationController, {
 } from './admin/useAdminNavigationController.js';
 import useAdminWorkspaceBridgeController from './admin/useAdminWorkspaceBridgeController.js';
 import { useDebouncedValue } from './hooks/useDebouncedValue.js';
-import {
-  readUserAccountStatusView,
-} from './routing/appRoutes.js';
 import useAppNavigationController, {
   useAppNavigationState,
 } from './routing/useAppNavigationController.js';
@@ -607,8 +604,10 @@ function App() {
     selectedFooterPageId,
     setIsCommunityMenuOpen,
     setSelectedFooterPageId,
+    setUserAccountStatusView,
     setUserTab,
     setView,
+    userAccountStatusView,
     userTab,
     view,
   } = useAppNavigationState();
@@ -729,7 +728,6 @@ function App() {
     setUserAuthForm,
     setUserAuthLoading,
   } = useUserAuthState();
-  const [userAccountStatusView, setUserAccountStatusView] = useState(readUserAccountStatusView);
   const {
     profileRequiredRedirectRef,
     setUserDirectoryVerificationLoading,

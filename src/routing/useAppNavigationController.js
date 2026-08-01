@@ -14,6 +14,7 @@ import {
   getRouteStateFromPath,
   normalizeUserLoginReturnTarget,
   pushAppPath,
+  readUserAccountStatusView,
   readUserLoginReturnTarget,
   replaceAppPath,
   writeUserAccountStatusView,
@@ -29,6 +30,9 @@ export const useAppNavigationState = () => {
     getInitialFooterPageIdFromPath
   );
   const [isCommunityMenuOpen, setIsCommunityMenuOpen] = useState(false);
+  const [userAccountStatusView, setUserAccountStatusView] = useState(
+    readUserAccountStatusView
+  );
 
   return {
     communityMenuRef,
@@ -37,8 +41,10 @@ export const useAppNavigationState = () => {
     selectedFooterPageId,
     setIsCommunityMenuOpen,
     setSelectedFooterPageId,
+    setUserAccountStatusView,
     setUserTab,
     setView,
+    userAccountStatusView,
     userTab,
     view,
   };

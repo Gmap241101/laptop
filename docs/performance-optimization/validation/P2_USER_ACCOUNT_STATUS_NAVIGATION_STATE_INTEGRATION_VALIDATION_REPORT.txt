@@ -1,0 +1,71 @@
+P2 USER ACCOUNT STATUS NAVIGATION STATE INTEGRATION VALIDATION
+================================================================
+
+INPUT PACKAGE
+- rental-system-app-initialization-readiness-controller-split-20260802_0130_deployment_package.zip
+- ZIP SHA-256: cae8f817c0a405978d3e3e70964e6917fa8a484892b0a9ace573c59904e28efb
+- PACKAGE_FILES: 485
+- Input hash mismatches: 0
+- Cumulative removed paths: 65
+
+SOURCE CHANGES
+- src/App.jsx: modified
+- src/routing/useAppNavigationController.js: modified
+- tools/audit-app-flow-contracts.mjs: modified
+- No source files deleted
+
+STRUCTURE
+- App.jsx: 2183 -> 2181 lines
+- App.jsx: 67766 -> 67655 bytes
+- App direct useState: 2 -> 1
+- App direct useEffect: 1 -> 1
+- App direct useMemo: 0 -> 0
+- App direct useRef: 0 -> 0
+- Initial modules: 87 -> 87
+- Initial source bytes: 880878 -> 880958
+- Dynamic entries: 14 -> 14
+
+VALIDATION
+- React hook audit: PASS (144 source files)
+- Application flow audit: PASS (99 contracts)
+- User routes: PASS (11)
+- Administrator tabs: PASS (20)
+- Relative imports: PASS (430, missing 0)
+- Firestore strict audit: PASS (129 read calls)
+- Navigation-state runtime mock: PASS
+- TypeScript semantic baseline comparison: PASS (new diagnostics 0)
+- Korean UI string AST comparison: PASS (added 0, removed 0)
+- npm run prebuild: PASS
+
+FIRESTORE
+- onSnapshot: 35 -> 35
+- getDocs: 48 -> 48
+- getDoc: 28 -> 28
+- getCountFromServer: 18 -> 18
+- runTransaction: 24 -> 24
+- setDoc: 34 -> 34
+- updateDoc: 5 -> 5
+- deleteDoc: 6 -> 6
+- Rules changed: NO
+- Indexes changed: NO
+- Firebase configuration changed: NO
+
+BUILD
+- npm ci: FAIL due to external/internal registry E404
+- Missing registry artifact: yargs-parser-21.1.1.tgz
+- npm run prebuild: PASS
+- Vite production build: NOT RUN
+- Local deploy.ps1 build confirmation required
+
+PACKAGE DECISION
+- Source validation: PASS
+- Output PACKAGE_FILES: PASS (489)
+- Output PACKAGE_SHA256SUMS: PASS (489/489)
+- ZIP total files: PASS (492)
+- ZIP duplicate entries: PASS (0)
+- ZIP directory entries: PASS (0)
+- Protected path inclusion: PASS (0)
+- ZIP re-extraction byte comparison: PASS (489/489)
+- Re-extracted npm run prebuild: PASS
+- Package validation: PASS
+- Deployment decision: CONDITIONAL PASS pending local Vite build

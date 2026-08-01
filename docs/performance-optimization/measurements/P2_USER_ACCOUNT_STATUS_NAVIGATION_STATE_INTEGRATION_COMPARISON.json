@@ -1,0 +1,92 @@
+{
+  "work": "P2_USER_ACCOUNT_STATUS_NAVIGATION_STATE_INTEGRATION",
+  "inputPackage": "rental-system-app-initialization-readiness-controller-split-20260802_0130_deployment_package.zip",
+  "outputPackage": "rental-system-user-account-status-navigation-state-integration-20260802_0145_deployment_package.zip",
+  "app": {
+    "before": {
+      "lines": 2183,
+      "bytes": 67766,
+      "useState": 2,
+      "useEffect": 1,
+      "useMemo": 0,
+      "useRef": 0,
+      "directFirestoreCalls": 0
+    },
+    "after": {
+      "lines": 2181,
+      "bytes": 67655,
+      "useState": 1,
+      "useEffect": 1,
+      "useMemo": 0,
+      "useRef": 0,
+      "directFirestoreCalls": 0
+    }
+  },
+  "navigationState": {
+    "before": {
+      "lines": 511,
+      "bytes": 13207,
+      "useState": 4
+    },
+    "after": {
+      "lines": 517,
+      "bytes": 13398,
+      "useState": 5
+    }
+  },
+  "initialSourceGraph": {
+    "before": {
+      "moduleCount": 87,
+      "sourceBytes": 880878,
+      "dynamicEntries": 14
+    },
+    "after": {
+      "moduleCount": 87,
+      "sourceBytes": 880958,
+      "dynamicEntries": 14
+    }
+  },
+  "contracts": {
+    "reactHookSourceFiles": 144,
+    "appFlowContracts": 99,
+    "userRoutes": 11,
+    "administratorTabs": 20,
+    "relativeImports": 430,
+    "missingRelativeImports": 0
+  },
+  "firestore": {
+    "totalReadCalls": 129,
+    "onSnapshot": 35,
+    "getDocs": 48,
+    "getDoc": 28,
+    "getCountFromServer": 18,
+    "runTransaction": 24,
+    "setDoc": 34,
+    "updateDoc": 5,
+    "deleteDoc": 6,
+    "unapprovedWarnings": 0,
+    "unapprovedErrors": 0
+  },
+  "uiStrings": {
+    "beforeUnique": 1670,
+    "beforeOccurrences": 2229,
+    "afterUnique": 1670,
+    "afterOccurrences": 2229,
+    "added": 0,
+    "removed": 0,
+    "scanner": "TypeScript AST string and template literal scan"
+  },
+  "runtimeMock": {
+    "navigationStateSlots": 5,
+    "navigationRefs": 2,
+    "accountStatusSessionRestored": true,
+    "setterUpdatedStatusSlot": true,
+    "result": "PASS"
+  },
+  "typescriptSemanticComparison": {
+    "baselineUniqueDiagnostics": 319,
+    "workUniqueDiagnostics": 319,
+    "newDiagnostics": 0,
+    "removedDiagnostics": 0
+  }
+}

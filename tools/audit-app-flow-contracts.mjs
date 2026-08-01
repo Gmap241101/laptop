@@ -72,6 +72,7 @@ const adminWorkspaceBridge = read('src/admin/useAdminWorkspaceBridgeController.j
 const boardDerivedSelectors = read('src/features/boards/useBoardDerivedSelectors.js');
 const assetCatalogViewController = read('src/features/assets/useAssetCatalogViewController.js');
 const appInitializationReadinessController = read('src/shell/useAppInitializationReadinessController.js');
+const appNavigationController = read('src/routing/useAppNavigationController.js');
 const rentalDataSubscriptionController = read('src/features/requests/useRentalDataSubscriptionController.js');
 
 const protectedTabs = extractStringSet(
@@ -344,6 +345,39 @@ check(
   !appSource.includes('initializedRemoteFormRef') &&
     rentalDataSubscriptionController.includes('const initializedRemoteFormRef = useRef(false);'),
   'Remote rental form initialization guard is owned by the rental data subscription controller.'
+);
+
+check(
+  appNavigationController.includes('readUserAccountStatusView') &&
+    appNavigationController.includes('const [userAccountStatusView, setUserAccountStatusView] = useState('),
+  'User account status view state is owned by the application navigation state hook.'
+);
+check(
+  appNavigationController.includes('setUserAccountStatusView,') &&
+    appNavigationController.includes('userAccountStatusView,'),
+  'Application navigation state exposes the user account status view and setter.'
+);
+check(
+  !appSource.includes('readUserAccountStatusView') &&
+    !appSource.includes('const [userAccountStatusView, setUserAccountStatusView] = useState('),
+  'App has no duplicate user account status navigation state implementation.'
+);
+const accountStatusNavigationBlock = extractBlock(
+  appNavigationController,
+  'const showUserAccountStatus = useCallback(',
+  'useEffect(() => {'
+);
+check(
+  accountStatusNavigationBlock.includes('writeUserAccountStatusView(nextView);'),
+  'User account status navigation persists the selected status view.'
+);
+check(
+  accountStatusNavigationBlock.includes('setUserAccountStatusView(nextView);'),
+  'User account status navigation updates the in-memory navigation state.'
+);
+check(
+  accountStatusNavigationBlock.includes("navigateToUserTab('accountStatus'"),
+  'User account status navigation opens the account-status route.'
 );
 
 const dashboardHeadingBlocks = [
