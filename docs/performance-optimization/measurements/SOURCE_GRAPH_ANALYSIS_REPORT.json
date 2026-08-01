@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-08-01T13:12:02.922Z",
-  "initialModuleCount": 76,
-  "initialSourceBytes": 876398,
+  "generatedAt": "2026-08-01T13:27:44.976Z",
+  "initialModuleCount": 77,
+  "initialSourceBytes": 877545,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 104423
+      "bytes": 104035
     },
     {
       "file": "src/features/requests/useUserRequestHistoryActionController.js",
@@ -188,12 +188,12 @@
       "bytes": 5222
     },
     {
-      "file": "src/utils/memberPolicy.js",
-      "bytes": 5131
+      "file": "src/context/useAppContextAssembler.js",
+      "bytes": 5211
     },
     {
-      "file": "src/context/useAppContextAssembler.js",
-      "bytes": 5036
+      "file": "src/utils/memberPolicy.js",
+      "bytes": 5131
     },
     {
       "file": "src/user/UserFooter.jsx",
@@ -282,6 +282,10 @@
     {
       "file": "src/features/terms/useUserTermsCompliance.js",
       "bytes": 1415
+    },
+    {
+      "file": "src/context/appDynamicContextValues.js",
+      "bytes": 1360
     },
     {
       "file": "src/config/firestoreCachePolicy.js",

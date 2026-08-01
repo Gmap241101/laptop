@@ -1,0 +1,75 @@
+P2 APP DYNAMIC CONTEXT VALUES FEATURE SPLIT VALIDATION
+=====================================================
+Generated: 2026-08-01 22:27 KST
+Baseline: rental-system-app-shell-component-split-20260801_2212_deployment_package.zip
+Output: rental-system-app-dynamic-context-values-split-20260801_2227_deployment_package.zip
+
+[Context contract]
+Dynamic context groups:
+- shared: 34
+- identity: 86
+- rental: 82
+- boards: 80
+- operations: 41
+- content: 36
+- dialogs: 29
+- total: 388
+Baseline flat keys: 388
+Modified merged keys: 388
+Missing keys: 0
+Added keys: 0
+Changed value expressions: 0
+Duplicate keys: 0
+
+[Runtime guards]
+Dynamic context merge: PASS
+Duplicate-key guard: PASS
+Unsupported-group guard: PASS
+
+[Source validation]
+TypeScript transpile parse: PASS (133 files)
+React hook import audit: PASS (133 files)
+Relative imports checked: 402
+Missing relative imports: 0
+Firestore strict audit: PASS
+Firestore total calls: 129
+onSnapshot: 35
+getDocs: 48
+getDoc: 28
+getCountFromServer: 18
+Unapproved Firestore warnings: 0
+Unapproved Firestore errors: 0
+
+[Text preservation]
+Baseline Korean string literal occurrences: 2184
+Modified Korean string literal occurrences: 2184
+Removed Korean string literals: 0
+Added Korean string literals: 0
+
+[Source graph]
+Baseline initial modules: 76
+Modified initial modules: 77
+Delta: +1
+Baseline initial source bytes: 876398
+Modified initial source bytes: 877545
+Delta: +1147
+
+[App.jsx]
+Baseline: 3683 lines, 104423 bytes
+Modified: 3419 lines, 104035 bytes
+Delta: -264 lines, -388 bytes
+
+[Vite build]
+Status: NOT COMPLETED
+Command: npm ci --ignore-scripts
+Failure: Internal npm registry E404 for yargs-parser-21.1.1.tgz
+Production build must be confirmed by local deploy.ps1.
+
+[Package structure]
+Project files listed: 429
+Package metadata files: 4
+Expected ZIP entries: 433
+REMOVED_FILES lines: 68
+REMOVED_FILES actual paths: 67
+REMOVED_FILES SHA-256: 17ad59f08176c623ca2eaa4d3b232992555e62b3ad1b22c824cb1af10778f212
+Forbidden paths expected: 0

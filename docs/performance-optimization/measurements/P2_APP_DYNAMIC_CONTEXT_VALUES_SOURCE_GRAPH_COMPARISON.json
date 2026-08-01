@@ -1,0 +1,39 @@
+{
+  "generatedAt": "2026-08-01T22:27:44+09:00",
+  "baselinePackage": "rental-system-app-shell-component-split-20260801_2212_deployment_package.zip",
+  "outputPackage": "rental-system-app-dynamic-context-values-split-20260801_2227_deployment_package.zip",
+  "baseline": {
+    "appJsxLines": 3683,
+    "appJsxBytes": 104423,
+    "initialModuleCount": 76,
+    "initialSourceBytes": 876398
+  },
+  "modified": {
+    "appJsxLines": 3419,
+    "appJsxBytes": 104035,
+    "initialModuleCount": 77,
+    "initialSourceBytes": 877545
+  },
+  "delta": {
+    "appJsxLines": -264,
+    "appJsxBytes": -388,
+    "initialModuleCount": 1,
+    "initialSourceBytes": 1147
+  },
+  "dynamicContextContract": {
+    "baselineFlatKeys": 388,
+    "modifiedMergedKeys": 388,
+    "missingKeys": 0,
+    "addedKeys": 0,
+    "changedExpressions": 0,
+    "groups": {
+      "shared": 34,
+      "identity": 86,
+      "rental": 82,
+      "boards": 80,
+      "operations": 41,
+      "content": 36,
+      "dialogs": 29
+    }
+  }
+}

@@ -76,6 +76,7 @@ import {
 } from '../features/auth/useAdminAccountManagementController.js';
 import { getUserLaptopStatusLabel } from '../features/requests/useRentalDerivedSelectors.js';
 import useStableContextGroups from '../hooks/useStableContextGroups.js';
+import { mergeAppDynamicContextValueGroups } from './appDynamicContextValues.js';
 import { pushAppPath } from '../routing/appRoutes.js';
 import {
   addDaysFrom,
@@ -188,11 +189,15 @@ export const APP_CONTEXT_STATIC_VALUES = Object.freeze({
  */
 export default function useAppContextAssembler({
   adminTab,
-  dynamicValues,
+  dynamicValueGroups,
   hasFirebaseAuthSession,
   isUserDirectoryAccessRestricted,
   userTab,
 }) {
+  const dynamicValues = mergeAppDynamicContextValueGroups(
+    dynamicValueGroups
+  );
+
   const contextGroups = useStableContextGroups(
     {
       ...APP_CONTEXT_STATIC_VALUES,
