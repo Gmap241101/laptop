@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from './components/CommonUI.jsx';
 import useAppContextAssembler from './context/useAppContextAssembler.js';
 import AppShell from './shell/AppShell.jsx';
 import AppBlockingStateScreen, {
   getAppBlockingState,
 } from './shell/AppBlockingStateScreen.jsx';
+import useAppInitializationReadinessController from './shell/useAppInitializationReadinessController.js';
 
 import useGlobalUiController, {
   useGlobalUiState,
@@ -373,8 +374,12 @@ function App() {
     systemBannerDismissedKey,
     toast,
   } = useGlobalUiState();
-  const [firebaseReady, setFirebaseReady] = useState(false);
-  const [firebaseLoadErrorMessage, setFirebaseLoadErrorMessage] = useState('');
+  const {
+    firebaseLoadErrorMessage,
+    firebaseReady,
+    setFirebaseLoadErrorMessage,
+    setFirebaseReady,
+  } = useAppInitializationReadinessController();
 
   const {
     form,
@@ -567,7 +572,6 @@ function App() {
     setFaqPostSaving,
   } = useFaqPostAdminState();
 
-  const initializedRemoteFormRef = useRef(false);
 
   const {
     publicCatalogAssets,
@@ -1009,7 +1013,6 @@ function App() {
     currentAuthRoleErrorMessage,
     currentAuthRoleReady,
     firebaseAuthReady,
-    initializedRemoteFormRef,
     mergePersistedData,
     publicCatalogAssets,
     publicCatalogAssetsReady,

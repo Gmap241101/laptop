@@ -1,0 +1,127 @@
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -1,10 +1,11 @@
+-import { useEffect, useRef, useState } from 'react';
++import { useEffect, useState } from 'react';
+ import { Button } from './components/CommonUI.jsx';
+ import useAppContextAssembler from './context/useAppContextAssembler.js';
+ import AppShell from './shell/AppShell.jsx';
+ import AppBlockingStateScreen, {
+   getAppBlockingState,
+ } from './shell/AppBlockingStateScreen.jsx';
++import useAppInitializationReadinessController from './shell/useAppInitializationReadinessController.js';
+ 
+ import useGlobalUiController, {
+   useGlobalUiState,
+@@ -373,8 +374,12 @@
+     systemBannerDismissedKey,
+     toast,
+   } = useGlobalUiState();
+-  const [firebaseReady, setFirebaseReady] = useState(false);
+-  const [firebaseLoadErrorMessage, setFirebaseLoadErrorMessage] = useState('');
++  const {
++    firebaseLoadErrorMessage,
++    firebaseReady,
++    setFirebaseLoadErrorMessage,
++    setFirebaseReady,
++  } = useAppInitializationReadinessController();
+ 
+   const {
+     form,
+@@ -567,7 +572,6 @@
+     setFaqPostSaving,
+   } = useFaqPostAdminState();
+ 
+-  const initializedRemoteFormRef = useRef(false);
+ 
+   const {
+     publicCatalogAssets,
+@@ -1009,7 +1013,6 @@
+     currentAuthRoleErrorMessage,
+     currentAuthRoleReady,
+     firebaseAuthReady,
+-    initializedRemoteFormRef,
+     mergePersistedData,
+     publicCatalogAssets,
+     publicCatalogAssetsReady,
+--- a/src/features/requests/useRentalDataSubscriptionController.js
++++ b/src/features/requests/useRentalDataSubscriptionController.js
+@@ -283,7 +283,6 @@
+   currentAuthRoleErrorMessage,
+   currentAuthRoleReady,
+   firebaseAuthReady,
+-  initializedRemoteFormRef,
+   mergePersistedData,
+   publicCatalogAssets,
+   publicCatalogAssetsReady,
+@@ -311,6 +310,8 @@
+   userTab,
+   view,
+ }) {
++  const initializedRemoteFormRef = useRef(false);
++
+   useEffect(() => {
+     setSplitSourceReady((previous) => ({
+       ...previous,
+--- /dev/null
++++ b/src/shell/useAppInitializationReadinessController.js
+@@ -0,0 +1,13 @@
++import { useState } from 'react';
++
++export default function useAppInitializationReadinessController() {
++  const [firebaseReady, setFirebaseReady] = useState(false);
++  const [firebaseLoadErrorMessage, setFirebaseLoadErrorMessage] = useState('');
++
++  return {
++    firebaseLoadErrorMessage,
++    firebaseReady,
++    setFirebaseLoadErrorMessage,
++    setFirebaseReady,
++  };
++}
+--- a/tools/audit-app-flow-contracts.mjs
++++ b/tools/audit-app-flow-contracts.mjs
+@@ -71,6 +71,8 @@
+ const adminWorkspaceBridge = read('src/admin/useAdminWorkspaceBridgeController.js');
+ const boardDerivedSelectors = read('src/features/boards/useBoardDerivedSelectors.js');
+ const assetCatalogViewController = read('src/features/assets/useAssetCatalogViewController.js');
++const appInitializationReadinessController = read('src/shell/useAppInitializationReadinessController.js');
++const rentalDataSubscriptionController = read('src/features/requests/useRentalDataSubscriptionController.js');
+ 
+ const protectedTabs = extractStringSet(
+   appRoutes,
+@@ -316,6 +318,34 @@
+   'App has no duplicate asset catalog filter, upload-panel, or responsive-grid state implementation.'
+ );
+ 
++
++check(
++  appSource.includes("import useAppInitializationReadinessController from './shell/useAppInitializationReadinessController.js';") &&
++    appSource.includes('} = useAppInitializationReadinessController();'),
++  'App delegates Firebase initialization readiness state to the dedicated controller.'
++);
++[
++  'firebaseLoadErrorMessage',
++  'firebaseReady',
++  'setFirebaseLoadErrorMessage',
++  'setFirebaseReady',
++].forEach((readinessKey) => {
++  check(
++    appInitializationReadinessController.includes(readinessKey),
++    `App initialization readiness controller exposes ${readinessKey}.`
++  );
++});
++check(
++  !appSource.includes('const [firebaseReady, setFirebaseReady] = useState(false);') &&
++    !appSource.includes("const [firebaseLoadErrorMessage, setFirebaseLoadErrorMessage] = useState('');"),
++  'App has no duplicate Firebase initialization readiness state implementation.'
++);
++check(
++  !appSource.includes('initializedRemoteFormRef') &&
++    rentalDataSubscriptionController.includes('const initializedRemoteFormRef = useRef(false);'),
++  'Remote rental form initialization guard is owned by the rental data subscription controller.'
++);
++
+ const dashboardHeadingBlocks = [
+   ...adminDashboard.matchAll(/<DashboardSectionHeading([\s\S]*?)\/>/g),
+ ].map((match) => match[1]);

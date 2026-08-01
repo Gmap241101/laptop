@@ -1,0 +1,67 @@
+{
+  "work": "P2_APP_READINESS_STATE_REMOTE_FORM_GUARD_SPLIT",
+  "inputPackage": "rental-system-asset-catalog-view-controller-split-20260802_0118_deployment_package.zip",
+  "outputPackage": "rental-system-app-initialization-readiness-controller-split-20260802_0130_deployment_package.zip",
+  "app": {
+    "before": {
+      "lines": 2180,
+      "bytes": 67726,
+      "useState": 4,
+      "useEffect": 1,
+      "useMemo": 0,
+      "useRef": 1,
+      "directFirestoreCalls": 0
+    },
+    "after": {
+      "lines": 2183,
+      "bytes": 67766,
+      "useState": 2,
+      "useEffect": 1,
+      "useMemo": 0,
+      "useRef": 0,
+      "directFirestoreCalls": 0
+    }
+  },
+  "initialSourceGraph": {
+    "before": {
+      "moduleCount": 86,
+      "sourceBytes": 880448,
+      "dynamicEntries": 14
+    },
+    "after": {
+      "moduleCount": 87,
+      "sourceBytes": 880878,
+      "dynamicEntries": 14
+    }
+  },
+  "contracts": {
+    "reactHookSourceFiles": 144,
+    "appFlowContracts": 93,
+    "userRoutes": 11,
+    "administratorTabs": 20,
+    "relativeImports": 427,
+    "missingRelativeImports": 0
+  },
+  "firestore": {
+    "totalReadCalls": 129,
+    "onSnapshot": 35,
+    "getDocs": 48,
+    "getDoc": 28,
+    "getCountFromServer": 18,
+    "unapprovedWarnings": 0,
+    "unapprovedErrors": 0
+  },
+  "uiStrings": {
+    "beforeUnique": 1717,
+    "beforeOccurrences": 2181,
+    "afterUnique": 1717,
+    "afterOccurrences": 2181,
+    "added": 0,
+    "removed": 0
+  },
+  "runtimeMock": {
+    "returnedValues": 4,
+    "stateSlots": 2,
+    "result": "PASS"
+  }
+}

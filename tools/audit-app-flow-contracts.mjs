@@ -71,6 +71,8 @@ const adminDashboard = read('src/admin/AdminDashboardPanel.jsx');
 const adminWorkspaceBridge = read('src/admin/useAdminWorkspaceBridgeController.js');
 const boardDerivedSelectors = read('src/features/boards/useBoardDerivedSelectors.js');
 const assetCatalogViewController = read('src/features/assets/useAssetCatalogViewController.js');
+const appInitializationReadinessController = read('src/shell/useAppInitializationReadinessController.js');
+const rentalDataSubscriptionController = read('src/features/requests/useRentalDataSubscriptionController.js');
 
 const protectedTabs = extractStringSet(
   appRoutes,
@@ -314,6 +316,34 @@ check(
     !appSource.includes('const [showUploadPanel, setShowUploadPanel] = useState(false);') &&
     !appSource.includes('useResponsiveAssetGridColumns();'),
   'App has no duplicate asset catalog filter, upload-panel, or responsive-grid state implementation.'
+);
+
+
+check(
+  appSource.includes("import useAppInitializationReadinessController from './shell/useAppInitializationReadinessController.js';") &&
+    appSource.includes('} = useAppInitializationReadinessController();'),
+  'App delegates Firebase initialization readiness state to the dedicated controller.'
+);
+[
+  'firebaseLoadErrorMessage',
+  'firebaseReady',
+  'setFirebaseLoadErrorMessage',
+  'setFirebaseReady',
+].forEach((readinessKey) => {
+  check(
+    appInitializationReadinessController.includes(readinessKey),
+    `App initialization readiness controller exposes ${readinessKey}.`
+  );
+});
+check(
+  !appSource.includes('const [firebaseReady, setFirebaseReady] = useState(false);') &&
+    !appSource.includes("const [firebaseLoadErrorMessage, setFirebaseLoadErrorMessage] = useState('');"),
+  'App has no duplicate Firebase initialization readiness state implementation.'
+);
+check(
+  !appSource.includes('initializedRemoteFormRef') &&
+    rentalDataSubscriptionController.includes('const initializedRemoteFormRef = useRef(false);'),
+  'Remote rental form initialization guard is owned by the rental data subscription controller.'
 );
 
 const dashboardHeadingBlocks = [

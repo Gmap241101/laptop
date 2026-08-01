@@ -283,7 +283,6 @@ export default function useRentalDataSubscriptionController({
   currentAuthRoleErrorMessage,
   currentAuthRoleReady,
   firebaseAuthReady,
-  initializedRemoteFormRef,
   mergePersistedData,
   publicCatalogAssets,
   publicCatalogAssetsReady,
@@ -311,6 +310,8 @@ export default function useRentalDataSubscriptionController({
   userTab,
   view,
 }) {
+  const initializedRemoteFormRef = useRef(false);
+
   useEffect(() => {
     setSplitSourceReady((previous) => ({
       ...previous,

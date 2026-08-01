@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-08-01T16:16:27.740Z",
-  "initialModuleCount": 86,
-  "initialSourceBytes": 880448,
+  "generatedAt": "2026-08-01T16:28:23.581Z",
+  "initialModuleCount": 87,
+  "initialSourceBytes": 880878,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 67726
+      "bytes": 67766
     },
     {
       "file": "src/features/requests/useUserRequestHistoryActionController.js",
@@ -32,12 +32,12 @@
       "bytes": 23378
     },
     {
-      "file": "src/features/members/useUserMyPageAccountController.js",
-      "bytes": 22785
+      "file": "src/features/requests/useRentalDataSubscriptionController.js",
+      "bytes": 22794
     },
     {
-      "file": "src/features/requests/useRentalDataSubscriptionController.js",
-      "bytes": 22771
+      "file": "src/features/members/useUserMyPageAccountController.js",
+      "bytes": 22785
     },
     {
       "file": "src/features/settings/useAdminSystemSettingsController.js",
@@ -338,6 +338,10 @@
     {
       "file": "src/hooks/useDebouncedValue.js",
       "bytes": 385
+    },
+    {
+      "file": "src/shell/useAppInitializationReadinessController.js",
+      "bytes": 367
     },
     {
       "file": "src/dialogs/appDialogsLoader.js",
