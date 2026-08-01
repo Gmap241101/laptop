@@ -1,0 +1,342 @@
+diff -ruN '--exclude=package-meta' '--exclude=.performance-reports' '--exclude=node_modules' '--exclude=dist' '--exclude=P2_APP_FLOW_REGRESSION_CONTRACT_AUDIT_REPORT.md' '--exclude=P2_APP_FLOW_REGRESSION_CONTRACT_AUDIT_VALIDATION_REPORT.txt' '--exclude=P2_APP_FLOW_REGRESSION_CONTRACT_AUDIT.diff' '--exclude=P2_APP_FLOW_REGRESSION_CONTRACT_AUDIT_COMPARISON.json' /mnt/data/next_seq_base/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json /mnt/data/next_seq_work/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json
+--- /mnt/data/next_seq_base/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json	2026-08-01 15:09:52.000000000 +0000
++++ /mnt/data/next_seq_work/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json	2026-08-01 15:24:33.074975031 +0000
+@@ -1,7 +1,7 @@
+ {
+-  "generatedAt": "2026-08-01T15:09:52.540Z",
++  "generatedAt": "2026-08-01T15:24:33.081Z",
+   "initialModuleCount": 83,
+-  "initialSourceBytes": 876470,
++  "initialSourceBytes": 876583,
+   "files": [
+     {
+       "file": "src/App.jsx",
+@@ -73,7 +73,7 @@
+     },
+     {
+       "file": "src/context/appContextSlices.js",
+-      "bytes": 17438
++      "bytes": 17495
+     },
+     {
+       "file": "src/features/members/useUserMembershipStatusController.js",
+@@ -161,7 +161,7 @@
+     },
+     {
+       "file": "src/user/UserWorkspace.jsx",
+-      "bytes": 7497
++      "bytes": 7553
+     },
+     {
+       "file": "src/services/appDataCompatibilityService.js",
+diff -ruN '--exclude=package-meta' '--exclude=.performance-reports' '--exclude=node_modules' '--exclude=dist' '--exclude=P2_APP_FLOW_REGRESSION_CONTRACT_AUDIT_REPORT.md' '--exclude=P2_APP_FLOW_REGRESSION_CONTRACT_AUDIT_VALIDATION_REPORT.txt' '--exclude=P2_APP_FLOW_REGRESSION_CONTRACT_AUDIT.diff' '--exclude=P2_APP_FLOW_REGRESSION_CONTRACT_AUDIT_COMPARISON.json' /mnt/data/next_seq_base/package.json /mnt/data/next_seq_work/package.json
+--- /mnt/data/next_seq_base/package.json	2026-08-01 22:50:00.000000000 +0000
++++ /mnt/data/next_seq_work/package.json	2026-08-01 15:24:10.030975761 +0000
+@@ -8,7 +8,7 @@
+     "dev": "vite",
+     "predeploy": "npm run build",
+     "deploy": "gh-pages -d dist",
+-    "prebuild": "npm run audit:react-hooks && npm run audit:firestore:strict",
++    "prebuild": "npm run audit:react-hooks && npm run audit:app-flows && npm run audit:firestore:strict",
+     "build": "vite build",
+     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
+     "preview": "vite preview",
+@@ -19,7 +19,8 @@
+     "audit:react-hooks": "node tools/audit-react-hooks.mjs",
+     "audit:firestore": "node tools/audit-firestore-access.mjs",
+     "audit:firestore:strict": "node tools/audit-firestore-access.mjs --strict",
+-    "verify:performance": "npm run audit:react-hooks && npm run audit:firestore:strict && npm run analyze:source"
++    "verify:performance": "npm run audit:react-hooks && npm run audit:app-flows && npm run audit:firestore:strict && npm run analyze:source",
++    "audit:app-flows": "node tools/audit-app-flow-contracts.mjs"
+   },
+   "dependencies": {
+     "firebase": "^10.14.1",
+diff -ruN '--exclude=package-meta' '--exclude=.performance-reports' '--exclude=node_modules' '--exclude=dist' '--exclude=P2_APP_FLOW_REGRESSION_CONTRACT_AUDIT_REPORT.md' '--exclude=P2_APP_FLOW_REGRESSION_CONTRACT_AUDIT_VALIDATION_REPORT.txt' '--exclude=P2_APP_FLOW_REGRESSION_CONTRACT_AUDIT.diff' '--exclude=P2_APP_FLOW_REGRESSION_CONTRACT_AUDIT_COMPARISON.json' /mnt/data/next_seq_base/src/admin/AdminDashboardPanel.jsx /mnt/data/next_seq_work/src/admin/AdminDashboardPanel.jsx
+--- /mnt/data/next_seq_base/src/admin/AdminDashboardPanel.jsx	2026-08-01 22:50:00.000000000 +0000
++++ /mnt/data/next_seq_work/src/admin/AdminDashboardPanel.jsx	2026-08-01 15:24:10.030975761 +0000
+@@ -844,9 +844,13 @@
+       </section>
+ 
+       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.75fr)]">
+-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
++        <section
++          aria-labelledby="dashboard-today-work-heading"
++          className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
++        >
+           <div className="border-b border-slate-200 px-5 py-4">
+             <DashboardSectionHeading
++              id="dashboard-today-work-heading"
+               title="오늘의 업무"
+               description="항목을 선택하면 해당 신청 상세 화면으로 이동합니다."
+             />
+diff -ruN '--exclude=package-meta' '--exclude=.performance-reports' '--exclude=node_modules' '--exclude=dist' '--exclude=P2_APP_FLOW_REGRESSION_CONTRACT_AUDIT_REPORT.md' '--exclude=P2_APP_FLOW_REGRESSION_CONTRACT_AUDIT_VALIDATION_REPORT.txt' '--exclude=P2_APP_FLOW_REGRESSION_CONTRACT_AUDIT.diff' '--exclude=P2_APP_FLOW_REGRESSION_CONTRACT_AUDIT_COMPARISON.json' /mnt/data/next_seq_base/src/context/appContextSlices.js /mnt/data/next_seq_work/src/context/appContextSlices.js
+--- /mnt/data/next_seq_base/src/context/appContextSlices.js	2026-08-01 15:03:28.000000000 +0000
++++ /mnt/data/next_seq_work/src/context/appContextSlices.js	2026-08-01 15:24:10.030975761 +0000
+@@ -1,3 +1,5 @@
++import { PROTECTED_USER_TABS } from '../routing/appRoutes.js';
++
+ /**
+  * App.jsx의 대형 상태 객체를 화면별 최소 컨텍스트로 분리하기 위한 키 정의입니다.
+  * 각 문자열은 해당 컴포넌트가 실제로 참조하는 키만 포함합니다.
+@@ -66,7 +68,7 @@
+   hasFirebaseAuthSession,
+   isUserDirectoryAccessRestricted,
+ }) => {
+-  const isProtectedTab = ['rental', 'history'].includes(userTab);
++  const isProtectedTab = PROTECTED_USER_TABS.has(userTab);
+ 
+   if (isProtectedTab && !hasFirebaseAuthSession) return 'auth';
+   if (isProtectedTab && isUserDirectoryAccessRestricted) return 'myPage';
+diff -ruN '--exclude=package-meta' '--exclude=.performance-reports' '--exclude=node_modules' '--exclude=dist' '--exclude=P2_APP_FLOW_REGRESSION_CONTRACT_AUDIT_REPORT.md' '--exclude=P2_APP_FLOW_REGRESSION_CONTRACT_AUDIT_VALIDATION_REPORT.txt' '--exclude=P2_APP_FLOW_REGRESSION_CONTRACT_AUDIT.diff' '--exclude=P2_APP_FLOW_REGRESSION_CONTRACT_AUDIT_COMPARISON.json' /mnt/data/next_seq_base/src/user/UserWorkspace.jsx /mnt/data/next_seq_work/src/user/UserWorkspace.jsx
+--- /mnt/data/next_seq_base/src/user/UserWorkspace.jsx	2026-08-01 22:50:00.000000000 +0000
++++ /mnt/data/next_seq_work/src/user/UserWorkspace.jsx	2026-08-01 15:24:10.030975761 +0000
+@@ -1,5 +1,6 @@
+ import { lazy, memo, Suspense, useEffect, useMemo } from 'react';
+ import DevRenderProfiler from '../performance/DevRenderProfiler.jsx';
++import { PROTECTED_USER_TABS } from '../routing/appRoutes.js';
+ import UserHomePanel from './UserHomePanel.jsx';
+ import useUserTermsCompliance from '../features/terms/useUserTermsCompliance.js';
+ import UserTermsConsentPanel from './UserTermsConsentPanel.jsx';
+@@ -65,7 +66,7 @@
+     () => ({ ...panelCtx, userTab: 'login' }),
+     [panelCtx]
+   );
+-  const isProtectedUserTab = ['rental', 'history'].includes(userTab);
++  const isProtectedUserTab = PROTECTED_USER_TABS.has(userTab);
+   const termsCompliance = useUserTermsCompliance({
+     account: userProfile,
+     enabled: isProtectedUserTab && hasFirebaseAuthSession,
+diff -ruN '--exclude=package-meta' '--exclude=.performance-reports' '--exclude=node_modules' '--exclude=dist' '--exclude=P2_APP_FLOW_REGRESSION_CONTRACT_AUDIT_REPORT.md' '--exclude=P2_APP_FLOW_REGRESSION_CONTRACT_AUDIT_VALIDATION_REPORT.txt' '--exclude=P2_APP_FLOW_REGRESSION_CONTRACT_AUDIT.diff' '--exclude=P2_APP_FLOW_REGRESSION_CONTRACT_AUDIT_COMPARISON.json' /mnt/data/next_seq_base/tools/audit-app-flow-contracts.mjs /mnt/data/next_seq_work/tools/audit-app-flow-contracts.mjs
+--- /mnt/data/next_seq_base/tools/audit-app-flow-contracts.mjs	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/next_seq_work/tools/audit-app-flow-contracts.mjs	2026-08-01 15:24:10.134975758 +0000
+@@ -0,0 +1,230 @@
++import fs from 'node:fs';
++import path from 'node:path';
++import process from 'node:process';
++
++const root = process.cwd();
++const read = (relativePath) =>
++  fs.readFileSync(path.join(root, relativePath), 'utf8');
++
++const failures = [];
++const checks = [];
++
++const check = (condition, message) => {
++  checks.push(message);
++  if (!condition) failures.push(message);
++};
++
++const extractBlock = (source, startMarker, endMarker) => {
++  const start = source.indexOf(startMarker);
++  if (start < 0) return '';
++  const contentStart = start + startMarker.length;
++  const end = source.indexOf(endMarker, contentStart);
++  return end < 0 ? '' : source.slice(contentStart, end);
++};
++
++const extractObjectKeys = (source, marker) => {
++  const block = extractBlock(source, marker, '});');
++  return new Set(
++    [...block.matchAll(/^\s{2}([A-Za-z][A-Za-z0-9]*):/gm)].map(
++      (match) => match[1]
++    )
++  );
++};
++
++const extractStringSet = (source, marker) => {
++  const block = extractBlock(source, marker, ']);');
++  return new Set(
++    [...block.matchAll(/['"]([^'"]+)['"]/g)].map((match) => match[1])
++  );
++};
++
++const extractJsxProps = (source, componentName) => {
++  const match = source.match(
++    new RegExp(`<${componentName}\\s+([\\s\\S]*?)\\n\\s*/>`)
++  );
++  if (!match) return new Set();
++
++  return new Set(
++    [...match[1].matchAll(/^\s*([A-Za-z][A-Za-z0-9]*)\s*(?:=|$)/gm)].map(
++      (entry) => entry[1]
++    )
++  );
++};
++
++const extractDestructuredParameters = (source, marker, endMarker) => {
++  const block = extractBlock(source, marker, endMarker);
++  return new Set(
++    block
++      .split(',')
++      .map((entry) => entry.trim())
++      .filter((entry) => /^[A-Za-z][A-Za-z0-9]*$/.test(entry))
++  );
++};
++
++const appRoutes = read('src/routing/appRoutes.js');
++const userWorkspace = read('src/user/UserWorkspace.jsx');
++const contextSlices = read('src/context/appContextSlices.js');
++const appSource = read('src/App.jsx');
++const appShell = read('src/shell/AppShell.jsx');
++const adminWorkspace = read('src/admin/AdminWorkspace.jsx');
++const adminDashboard = read('src/admin/AdminDashboardPanel.jsx');
++
++const protectedTabs = extractStringSet(
++  appRoutes,
++  'export const PROTECTED_USER_TABS = new Set(['
++);
++check(
++  protectedTabs.size > 0,
++  'Protected user tab set is declared in appRoutes.js.'
++);
++check(
++  userWorkspace.includes('PROTECTED_USER_TABS.has(userTab)'),
++  'UserWorkspace uses the shared protected user tab set.'
++);
++check(
++  contextSlices.includes('PROTECTED_USER_TABS.has(userTab)'),
++  'Context selection uses the shared protected user tab set.'
++);
++
++const hardcodedProtectedTabPattern =
++  /\[\s*['"]rental['"]\s*,\s*['"]history['"]\s*\]\.includes\(userTab\)/;
++check(
++  !hardcodedProtectedTabPattern.test(userWorkspace) &&
++    !hardcodedProtectedTabPattern.test(contextSlices),
++  'No duplicate protected-tab array remains in workspace or context selection.'
++);
++
++const routeMapBlock = extractBlock(
++  appRoutes,
++  'export const USER_ROUTE_PATHS = {',
++  '};'
++);
++const routeEntries = [...routeMapBlock.matchAll(
++  /^\s{2}([A-Za-z][A-Za-z0-9]*):\s*['"]([^'"]*)['"],?$/gm
++)].map((match) => ({ tab: match[1], route: match[2] }));
++
++check(routeEntries.length >= 10, 'User route map contains the expected route set.');
++routeEntries.forEach(({ tab, route }) => {
++  if (tab === 'home') {
++    check(
++      appRoutes.includes("if (pathname === '/')") &&
++        appRoutes.includes("userTab: 'home'"),
++      'Home route resolves to the user home tab.'
++    );
++    return;
++  }
++
++  check(
++    appRoutes.includes(`pathname === '${route}'`) &&
++      appRoutes.includes(`userTab: '${tab}'`),
++    `Route ${route} resolves to user tab ${tab}.`
++  );
++});
++
++const appShellParameters = extractDestructuredParameters(
++  appShell,
++  'const AppShell = ({',
++  '}) => {'
++);
++const appShellProps = extractJsxProps(appSource, 'AppShell');
++const missingAppShellProps = [...appShellParameters].filter(
++  (name) => !appShellProps.has(name)
++);
++const extraAppShellProps = [...appShellProps].filter(
++  (name) => !appShellParameters.has(name)
++);
++check(
++  appShellParameters.size > 0 && appShellProps.size > 0,
++  'AppShell parameter and call-site contracts are readable.'
++);
++check(
++  missingAppShellProps.length === 0,
++  `AppShell call supplies every declared prop${
++    missingAppShellProps.length ? `: ${missingAppShellProps.join(', ')}` : ''
++  }.`
++);
++check(
++  extraAppShellProps.length === 0,
++  `AppShell call has no undeclared prop${
++    extraAppShellProps.length ? `: ${extraAppShellProps.join(', ')}` : ''
++  }.`
++);
++
++const guardCall = extractBlock(
++  appSource,
++  'useSelectedRentalAssetAvailabilityGuard({',
++  '});'
++);
++[
++  'selectedLaptop',
++  'selectedLaptopAvailability',
++  'selectedLaptopId',
++  'setSelectedLaptopId',
++  'triggerToast',
++].forEach((requiredKey) => {
++  check(
++    new RegExp(`\\b${requiredKey}\\b`).test(guardCall),
++    `Selected rental asset guard receives ${requiredKey}.`
++  );
++});
++
++const adminMenuTabs = new Set(
++  [...adminWorkspace.matchAll(
++    /\[\s*['"]([A-Za-z][A-Za-z0-9]*)['"]\s*,\s*[A-Za-z][A-Za-z0-9]*\s*,/g
++  )].map((match) => match[1])
++);
++const adminRenderedTabs = new Set(
++  [...adminWorkspace.matchAll(/adminTab\s*===\s*['"]([^'"]+)['"]/g)].map(
++    (match) => match[1]
++  )
++);
++const adminContextTabs = extractObjectKeys(
++  contextSlices,
++  'const ADMIN_TAB_CONTEXT_KEY = Object.freeze({'
++);
++
++const missingAdminRenderTabs = [...adminMenuTabs].filter(
++  (tab) => !adminRenderedTabs.has(tab)
++);
++const missingAdminContextTabs = [...adminMenuTabs].filter(
++  (tab) => !adminContextTabs.has(tab)
++);
++check(adminMenuTabs.size >= 20, 'Administrator menu tabs are discoverable.');
++check(
++  missingAdminRenderTabs.length === 0,
++  `Every administrator menu tab has a render branch${
++    missingAdminRenderTabs.length ? `: ${missingAdminRenderTabs.join(', ')}` : ''
++  }.`
++);
++check(
++  missingAdminContextTabs.length === 0,
++  `Every administrator menu tab has a context mapping${
++    missingAdminContextTabs.length ? `: ${missingAdminContextTabs.join(', ')}` : ''
++  }.`
++);
++
++const dashboardHeadingBlocks = [
++  ...adminDashboard.matchAll(/<DashboardSectionHeading([\s\S]*?)\/>/g),
++].map((match) => match[1]);
++check(
++  dashboardHeadingBlocks.length >= 3,
++  'Administrator dashboard section headings are discoverable.'
++);
++check(
++  dashboardHeadingBlocks.every((block) => /\bid=/.test(block)),
++  'Every administrator dashboard section heading has a stable id.'
++);
++check(
++  adminDashboard.includes('aria-labelledby="dashboard-today-work-heading"'),
++  'Today-work dashboard section references its heading id.'
++);
++
++if (failures.length > 0) {
++  console.error('Application flow contract audit: FAIL');
++  failures.forEach((failure) => console.error(`- ${failure}`));
++  process.exit(1);
++}
++
++console.log(
++  `Application flow contract audit: PASS (${checks.length} contracts checked, ${routeEntries.length} user routes, ${adminMenuTabs.size} administrator tabs)`
++);

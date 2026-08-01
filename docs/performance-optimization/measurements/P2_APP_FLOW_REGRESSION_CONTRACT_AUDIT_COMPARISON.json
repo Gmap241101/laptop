@@ -1,0 +1,129 @@
+{
+  "task": "P2 app flow regression contract audit",
+  "baselinePackage": "rental-system-context-contract-unused-supply-cleanup-20260802_0010_deployment_package.zip",
+  "flowAudit": {
+    "before": "FAIL",
+    "beforeFindings": [
+      "UserWorkspace did not use shared PROTECTED_USER_TABS",
+      "Context selection did not use shared PROTECTED_USER_TABS",
+      "Duplicate protected-tab arrays remained",
+      "One dashboard section heading had no id",
+      "Today-work section had no aria-labelledby link"
+    ],
+    "after": "PASS",
+    "checkedContracts": 30,
+    "userRoutes": 11,
+    "administratorTabs": 20
+  },
+  "appMetrics": {
+    "before": {
+      "lines": 2564,
+      "bytes": 77251,
+      "useState": 14,
+      "useEffect": 1,
+      "useMemo": 19,
+      "useRef": 2
+    },
+    "after": {
+      "lines": 2564,
+      "bytes": 77251,
+      "useState": 14,
+      "useEffect": 1,
+      "useMemo": 19,
+      "useRef": 2
+    }
+  },
+  "sourceGraph": {
+    "before": {
+      "initialModuleCount": 83,
+      "initialSourceBytes": 876470,
+      "dynamicEntries": 14
+    },
+    "after": {
+      "initialModuleCount": 83,
+      "initialSourceBytes": 876583,
+      "dynamicEntries": 14
+    }
+  },
+  "changedFiles": {
+    "src/user/UserWorkspace.jsx": {
+      "beforeLines": 249,
+      "afterLines": 250,
+      "beforeBytes": 7497,
+      "afterBytes": 7553
+    },
+    "src/context/appContextSlices.js": {
+      "beforeLines": 106,
+      "afterLines": 108,
+      "beforeBytes": 17438,
+      "afterBytes": 17495
+    },
+    "src/admin/AdminDashboardPanel.jsx": {
+      "beforeLines": 1233,
+      "afterLines": 1237,
+      "beforeBytes": 46771,
+      "afterBytes": 46895
+    },
+    "package.json": {
+      "beforeLines": 41,
+      "afterLines": 42,
+      "beforeBytes": 1627,
+      "afterBytes": 1747
+    },
+    "tools/audit-app-flow-contracts.mjs": {
+      "beforeLines": 0,
+      "afterLines": 230,
+      "beforeBytes": 0,
+      "afterBytes": 6809
+    }
+  },
+  "firestore": {
+    "total": 129,
+    "onSnapshot": 35,
+    "getDocs": 48,
+    "getDoc": 28,
+    "getCountFromServer": 18,
+    "changed": false
+  },
+  "uiStrings": {
+    "uniqueBefore": 1662,
+    "uniqueAfter": 1662,
+    "occurrencesBefore": 2204,
+    "occurrencesAfter": 2204,
+    "added": 0,
+    "removed": 0
+  },
+  "typescriptComparison": {
+    "removedBaselineDiagnostics": 1,
+    "newDiagnostics": 0,
+    "removedDiagnostic": "AdminDashboardPanel DashboardSectionHeading missing id"
+  },
+  "protectedFiles": {
+    "rules/firestore.rules": {
+      "beforeSha256": "9b703839184e09c7303b80fde2209722a4545feefabc837ad8e885e0466b1d3e",
+      "afterSha256": "9b703839184e09c7303b80fde2209722a4545feefabc837ad8e885e0466b1d3e",
+      "changed": false
+    },
+    "firestore.indexes.json": {
+      "beforeSha256": "e8331250b347f49156fc64e50c6bef5e198e310708f192ddd67ce472e3d9c70f",
+      "afterSha256": "e8331250b347f49156fc64e50c6bef5e198e310708f192ddd67ce472e3d9c70f",
+      "changed": false
+    },
+    "firebase.json": {
+      "beforeSha256": "9f47f5d83c8ac8006ca7ec119dbf681d9b5d773ac9957c9254517bc01e514e8f",
+      "afterSha256": "9f47f5d83c8ac8006ca7ec119dbf681d9b5d773ac9957c9254517bc01e514e8f",
+      "changed": false
+    },
+    ".firebaserc": {
+      "beforeSha256": "b17b7da5c0ba946de5766077657b967dddd43541da4150600374412e8bc463b1",
+      "afterSha256": "b17b7da5c0ba946de5766077657b967dddd43541da4150600374412e8bc463b1",
+      "changed": false
+    }
+  },
+  "removedFiles": {
+    "previous": 65,
+    "new": 0,
+    "restored": 0,
+    "final": 65
+  }
+}

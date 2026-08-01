@@ -1,0 +1,94 @@
+P2 사용자·관리자 주요 흐름 회귀 계약 감사 검증 보고서
+========================================================
+
+입력 기준본
+- rental-system-context-contract-unused-supply-cleanup-20260802_0010_deployment_package.zip
+- PACKAGE_FILES: 460개
+- 입력 SHA-256 불일치: 0건
+- 입력 누적 삭제 경로: 65개
+- 입력 App.jsx: 2,564줄 / 77,251 bytes
+
+변경 범위
+- src/user/UserWorkspace.jsx
+- src/context/appContextSlices.js
+- src/admin/AdminDashboardPanel.jsx
+- tools/audit-app-flow-contracts.mjs 신규
+- package.json
+- 성능 분석·보고·검증 문서
+
+애플리케이션 흐름 계약 감사
+- 기준본: FAIL 5건
+  1. UserWorkspace가 공용 보호 탭 집합을 사용하지 않음
+  2. Context 선택기가 공용 보호 탭 집합을 사용하지 않음
+  3. 중복 보호 탭 배열 2개 잔존
+  4. 관리자 대시보드 제목 ID 1개 누락
+  5. 오늘의 업무 영역 aria-labelledby 연결 누락
+- 수정본: PASS
+- 검사 계약: 30개
+- 사용자 경로: 11개
+- 관리자 메뉴·렌더링·Context 매핑: 20개
+
+소스 검증
+- JavaScript/JSX/MJS 구문 변환: PASS, 146개
+- React Hook import 감사: PASS, 140개 소스
+- 상대 import 검사: PASS, 423개
+- AppShell props 계약: PASS, 누락 0 / 초과 0
+- 선택 자산 가드 인수 계약: PASS, 5/5
+- 관리자 탭 렌더링 계약: PASS, 20/20
+- 관리자 탭 Context 계약: PASS, 20/20
+- TypeScript 기준본 비교: 신규 진단 0건
+- 기준본 DashboardSectionHeading id 누락 진단 제거: 1건
+
+UI 보존
+- 한국어 고유 문자열: 1,662 -> 1,662
+- 한국어 문자열 발생: 2,204 -> 2,204
+- 추가 문자열: 0
+- 삭제 문자열: 0
+
+App.jsx
+- 줄 수: 2,564 -> 2,564
+- 바이트: 77,251 -> 77,251
+- useState: 14 -> 14
+- useEffect: 1 -> 1
+- useMemo: 19 -> 19
+- useRef: 2 -> 2
+- 직접 Firestore 호출: 0 -> 0
+
+초기 소스 그래프
+- 초기 정적 모듈: 83 -> 83
+- 초기 정적 소스: 876,470 -> 876,583 bytes
+- 변화: +113 bytes
+- 동적 엔트리: 14 -> 14
+
+Firestore strict 감사
+- 결과: PASS
+- 전체: 129 -> 129
+- onSnapshot: 35 -> 35
+- getDocs: 48 -> 48
+- getDoc: 28 -> 28
+- getCountFromServer: 18 -> 18
+- 승인되지 않은 경고: 0
+- 승인되지 않은 오류: 0
+
+보호 파일
+- rules/firestore.rules: 변경 없음
+- firestore.indexes.json: 변경 없음
+- firebase.json: 변경 없음
+- .firebaserc: 변경 없음
+
+누적 삭제
+- 직전 누적 삭제 경로: 65개
+- 이번 신규 삭제: 0개
+- 이번 복원 제외: 0개
+- 최종 누적 삭제 경로: 65개
+
+prebuild
+- npm run audit:react-hooks: PASS
+- npm run audit:app-flows: PASS
+- npm run audit:firestore:strict: PASS
+
+실제 빌드
+- npm ci: 외부 환경 실패
+- 원인: 내부 npm 저장소의 yargs-parser-21.1.1.tgz E404
+- Vite 프로덕션 빌드: 미수행
+- 로컬 deploy.ps1에서 npm run build 성공 확인 필요

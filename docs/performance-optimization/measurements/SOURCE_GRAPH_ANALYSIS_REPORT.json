@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-08-01T15:09:52.540Z",
+  "generatedAt": "2026-08-01T15:24:33.081Z",
   "initialModuleCount": 83,
-  "initialSourceBytes": 876470,
+  "initialSourceBytes": 876583,
   "files": [
     {
       "file": "src/App.jsx",
@@ -73,7 +73,7 @@
     },
     {
       "file": "src/context/appContextSlices.js",
-      "bytes": 17438
+      "bytes": 17495
     },
     {
       "file": "src/features/members/useUserMembershipStatusController.js",
@@ -161,7 +161,7 @@
     },
     {
       "file": "src/user/UserWorkspace.jsx",
-      "bytes": 7497
+      "bytes": 7553
     },
     {
       "file": "src/services/appDataCompatibilityService.js",

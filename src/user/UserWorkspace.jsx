@@ -1,5 +1,6 @@
 import { lazy, memo, Suspense, useEffect, useMemo } from 'react';
 import DevRenderProfiler from '../performance/DevRenderProfiler.jsx';
+import { PROTECTED_USER_TABS } from '../routing/appRoutes.js';
 import UserHomePanel from './UserHomePanel.jsx';
 import useUserTermsCompliance from '../features/terms/useUserTermsCompliance.js';
 import UserTermsConsentPanel from './UserTermsConsentPanel.jsx';
@@ -65,7 +66,7 @@ function UserWorkspace({ ctx, panelCtx }) {
     () => ({ ...panelCtx, userTab: 'login' }),
     [panelCtx]
   );
-  const isProtectedUserTab = ['rental', 'history'].includes(userTab);
+  const isProtectedUserTab = PROTECTED_USER_TABS.has(userTab);
   const termsCompliance = useUserTermsCompliance({
     account: userProfile,
     enabled: isProtectedUserTab && hasFirebaseAuthSession,

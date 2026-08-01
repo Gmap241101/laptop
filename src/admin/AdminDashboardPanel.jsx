@@ -844,9 +844,13 @@ export default function AdminDashboardPanel({ ctx }) {
       </section>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.75fr)]">
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <section
+          aria-labelledby="dashboard-today-work-heading"
+          className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+        >
           <div className="border-b border-slate-200 px-5 py-4">
             <DashboardSectionHeading
+              id="dashboard-today-work-heading"
               title="오늘의 업무"
               description="항목을 선택하면 해당 신청 상세 화면으로 이동합니다."
             />

@@ -1,3 +1,5 @@
+import { PROTECTED_USER_TABS } from '../routing/appRoutes.js';
+
 /**
  * App.jsx의 대형 상태 객체를 화면별 최소 컨텍스트로 분리하기 위한 키 정의입니다.
  * 각 문자열은 해당 컴포넌트가 실제로 참조하는 키만 포함합니다.
@@ -66,7 +68,7 @@ export const getUserPanelContextKey = ({
   hasFirebaseAuthSession,
   isUserDirectoryAccessRestricted,
 }) => {
-  const isProtectedTab = ['rental', 'history'].includes(userTab);
+  const isProtectedTab = PROTECTED_USER_TABS.has(userTab);
 
   if (isProtectedTab && !hasFirebaseAuthSession) return 'auth';
   if (isProtectedTab && isUserDirectoryAccessRestricted) return 'myPage';
