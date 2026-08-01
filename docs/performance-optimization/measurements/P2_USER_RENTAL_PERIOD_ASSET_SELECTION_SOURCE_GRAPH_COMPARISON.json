@@ -1,0 +1,83 @@
+{
+  "generatedAt": "2026-08-01T23:54:00+09:00",
+  "baselinePackage": "rental-system-admin-navigation-controller-split-20260801_2340_deployment_package.zip",
+  "outputPackage": "rental-system-user-rental-period-asset-selection-split-20260801_2354_deployment_package.zip",
+  "appJsx": {
+    "baseline": {
+      "lines": 2855,
+      "bytes": 86834,
+      "useState": 14,
+      "useEffect": 2,
+      "useMemo": 19,
+      "useRef": 2,
+      "useCallback": 6
+    },
+    "output": {
+      "lines": 2566,
+      "bytes": 77352,
+      "useState": 14,
+      "useEffect": 1,
+      "useMemo": 19,
+      "useRef": 2,
+      "useCallback": 6
+    },
+    "delta": {
+      "lines": -289,
+      "bytes": -9482,
+      "useState": 0,
+      "useEffect": -1,
+      "useMemo": 0,
+      "useRef": 0,
+      "useCallback": 0
+    }
+  },
+  "sourceGraph": {
+    "baseline": {
+      "initialModuleCount": 82,
+      "initialSourceBytes": 885284,
+      "dynamicEntryCount": 14
+    },
+    "output": {
+      "initialModuleCount": 83,
+      "initialSourceBytes": 877026,
+      "dynamicEntryCount": 14
+    },
+    "delta": {
+      "initialModuleCount": 1,
+      "initialSourceBytes": -8258,
+      "dynamicEntryCount": 0
+    }
+  },
+  "changedModules": [
+    {
+      "file": "src/user/UserRentalPanel.jsx",
+      "lines": 405,
+      "bytes": 19460
+    },
+    {
+      "file": "src/user/UserRentalPeriodFields.jsx",
+      "lines": 292,
+      "bytes": 9141,
+      "initialStatic": false
+    },
+    {
+      "file": "src/features/requests/useSelectedRentalAssetAvailabilityGuard.js",
+      "lines": 45,
+      "bytes": 1230,
+      "initialStatic": true
+    },
+    {
+      "file": "src/context/appContextSlices.js",
+      "lines": 106,
+      "bytes": 17568
+    }
+  ],
+  "firestoreAccess": {
+    "baselineTotal": 129,
+    "outputTotal": 129,
+    "onSnapshot": 35,
+    "getDocs": 48,
+    "getDoc": 28,
+    "getCountFromServer": 18
+  }
+}

@@ -1,0 +1,157 @@
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -1559,7 +1559,6 @@
+     rentalDeviceSectionTitle,
+     selectedLaptop,
+     selectedLaptopAvailability,
+-    selectedLaptopId,
+     shouldShowStats,
+     stats,
+     statsLoading,
+@@ -1987,6 +1986,7 @@
+   useSelectedRentalAssetAvailabilityGuard({
+     selectedLaptop,
+     selectedLaptopAvailability,
++    selectedLaptopId,
+     setSelectedLaptopId,
+     triggerToast,
+   });
+@@ -2041,11 +2041,9 @@
+     closeUserActionDialog,
+     openUserActionDialog,
+     submitUserActionRequest,
+-    userActionBorrowers,
+   } = useUserRequestHistoryActionController({
+     currentUserRentalRestrictionStatus,
+     currentUserRequests,
+-    dataBorrowers: data.borrowers,
+     dataSettings: data.settings,
+     firebaseAuthUser,
+     loadFreshRentalRestrictionStatus,
+@@ -2444,7 +2442,7 @@
+       faqPostDeletingId, faqPostsLoadErrorMessage, faqPostsPerPageInput, faqPostsReady,
+       faqQuery, faqSearchWithinCategory, faqTotalPages, newFaqCategoryName,
+       noticeBoardConfigLoadErrorMessage, noticeBoardConfigReady, noticeBoardConfigSaving, noticePostDeletingId,
+-      noticePostsPerPage, noticePostsPerPageInput, noticeRegularPostNumberById, noticeTotalPages,
++      noticePostsPerPageInput, noticeRegularPostNumberById, noticeTotalPages,
+       openFaqPostDialog, openNoticePostDialog, paginatedAdminFaqPosts, paginatedAdminNoticePosts,
+       paginatedNoticePosts, pinnedNoticePosts, regularFaqPosts, regularNoticePosts,
+       safeAdminFaqPage, safeAdminNoticePage, safeFaqPage, safeNoticePage,
+@@ -2488,7 +2486,7 @@
+       noticePostDialog, noticePostForm, noticePostSaving, saveFaqPost,
+       saveNoticePost, setConfirmModal, setFaqPostForm, setNoticePostForm,
+       setToast, setUserActionForm, submitUserActionRequest, toast,
+-      userActionBorrowers, userActionDialog, userActionForm, popupPostDialog,
++      userActionDialog, userActionForm, popupPostDialog,
+       popupPostForm, popupPostSaving, closePopupPostDialog, savePopupPost,
+       setPopupPostForm,
+     },
+--- a/src/context/appContextSlices.js
++++ b/src/context/appContextSlices.js
+@@ -14,34 +14,34 @@
+     accountStatus: contextKeys('AlertCircle Button Card CardContent CheckCircle2 Clock UserCircle goToProtectedUserTab goToUserHome goToUserLogin siteSettings userAccountStatusView'),
+     history: contextKeys('ADMIN_REQUEST_PAGE_SIZE_OPTIONS ADMIN_REQUEST_TAB Badge Button Card CardContent ClipboardList RENTAL_EXTENSION_APPROVAL_MODE STATUS Search USER_REQUEST_ACTION USER_REQUEST_REVIEW_STATUS currentAuthAdminAccount currentAuthRoleReady currentUserRentalRestrictionStatus currentUserRequests data firebaseAuthReady firebaseAuthUser formatDateWithKoreanWeekday formatFirestoreTimestamp getExtensionRequestAvailableDate getRentalExtensionPeriod getRequestDisplayStatus getRequestExtensionCount getSafeRentalExtensionDays getSafeRentalExtensionMaxCount getUserRequestActionLabel getUserRequestReviewStatusLabel goToProtectedUserTab isAdminAuthenticated openUserActionDialog rentalRequestsLoadErrorMessage rentalRequestsReady userActionSaving userProfile'),
+     footerPage: contextKeys('AlertCircle Button Card CardContent footerPagesLoadErrorMessage footerPagesReady goToUserHome selectedFooterPage'),
+-    board: contextKeys('AnimatePresence Button Card CardContent Clock Pin Search activeFaqCategoryId activeFaqCategoryName categoryFilteredFaqPosts closeNoticePost displayedFaqPosts expandedFaqPostId faqCategories faqCategoriesLoadErrorMessage faqCategoriesReady faqCategoryNameById faqPostsLoadErrorMessage faqPostsReady faqQuery faqSearchWithinCategory faqTotalPages formatFirestoreDate goToUserHome motion noticePosts noticePostsLoadErrorMessage noticePostsPerPage noticePostsReady noticeRegularPostNumberById noticeTotalPages openNoticePost paginatedNoticePosts pinnedNoticePosts regularFaqPosts regularNoticePosts safeFaqPage safeNoticePage selectedNoticePost setActiveFaqCategoryId setExpandedFaqPostId setFaqPage setFaqQuery setFaqSearchWithinCategory setNoticePage setUserNoticeQuery toggleFaqPost userNoticeQuery userTab'),
++    board: contextKeys('AnimatePresence Button Card CardContent Clock Pin Search activeFaqCategoryId activeFaqCategoryName categoryFilteredFaqPosts closeNoticePost displayedFaqPosts expandedFaqPostId faqCategories faqCategoriesLoadErrorMessage faqCategoriesReady faqCategoryNameById faqPostsLoadErrorMessage faqPostsReady faqQuery faqSearchWithinCategory faqTotalPages formatFirestoreDate goToUserHome motion noticePosts noticePostsLoadErrorMessage noticePostsReady noticeRegularPostNumberById noticeTotalPages openNoticePost paginatedNoticePosts pinnedNoticePosts regularFaqPosts regularNoticePosts safeFaqPage safeNoticePage selectedNoticePost setActiveFaqCategoryId setExpandedFaqPostId setFaqPage setFaqQuery setFaqSearchWithinCategory setNoticePage setUserNoticeQuery toggleFaqPost userNoticeQuery userTab'),
+   }),
+   admin: Object.freeze({
+-    shell: contextKeys('AlertCircle Button Card CardContent ClipboardList Clock Input Laptop LayoutDashboard LockIcon React Settings ShieldCheck UserCircle Users adminAccountsLoadErrorMessage adminAuthForm adminAuthLoading adminTab authenticateAdmin currentAuthRoleErrorMessage data faqPosts goToUserHome handleAdminTabChange noticePosts setAdminAuthForm setAdminTab shouldShowAdminAccountsErrorPage shouldShowAdminLoadingPage shouldShowAdminLoginPage'),
++    shell: contextKeys('AlertCircle Button Card CardContent ClipboardList Clock Input Laptop LayoutDashboard LockIcon React Settings ShieldCheck UserCircle Users adminAccountsLoadErrorMessage adminAuthForm adminAuthLoading adminTab authenticateAdmin currentAuthRoleErrorMessage goToUserHome handleAdminTabChange setAdminAuthForm setAdminTab shouldShowAdminAccountsErrorPage shouldShowAdminLoadingPage shouldShowAdminLoginPage'),
+     dashboard: contextKeys('ADMIN_REQUEST_QUICK_FILTER ADMIN_REQUEST_TAB AdminPageHeader STATUS USER_PROFILE_STATUS USER_REQUEST_ACTION USER_REQUEST_REVIEW_STATUS dashboardSummary dashboardSummaryLoadErrorMessage dashboardSummaryReady dashboardSummaryRefreshing data defaultRentalStartDate formatDateWithKoreanWeekday getMaxRentalDueDate getSafeMaxRentalDays openAdminMemberAccounts openAdminRequests orphanedRentalAvailabilityRequests refreshDashboardSummary rentalStartAdjustmentInfo today'),
+-    requests: contextKeys('ADMIN_REQUEST_PAGE_SIZE_OPTIONS ADMIN_REQUEST_QUICK_FILTER ADMIN_REQUEST_TAB AdminPageHeader Badge Button Edit3 RENTAL_EXTENSION_APPROVAL_MODE RENTAL_REQUEST_AUDIT_ACTION STATUS Search USER_REQUEST_ACTION USER_REQUEST_REVIEW_STATUS dashboardSummary adminRequestsMutationVersion adminRequestsNavigationRequest adminRequestsPrerequisitesReady adminUserActionSavingRequestId data formatFirestoreTimestamp getDisplayRentalStatus getExtensionRequestAvailableDate getRentalExtensionPeriod getRequestDisplayStatus getRequestExtensionCount getSafeRentalExtensionMaxCount getUserRequestActionLabel getUserRequestReviewStatusLabel isAdminAuthenticated onAdminRequestsControllerStateChange orphanedRentalAvailabilityRequests renderRequestActionButtons reviewUserActionRequest saveRequestMemo today triggerToast updateRequestMemo commitAdminRequestEdit commitAdminRequestStatusRestore'),
++    requests: contextKeys('ADMIN_REQUEST_PAGE_SIZE_OPTIONS ADMIN_REQUEST_QUICK_FILTER ADMIN_REQUEST_TAB AdminPageHeader Badge Button Edit3 RENTAL_EXTENSION_APPROVAL_MODE RENTAL_REQUEST_AUDIT_ACTION STATUS Search USER_REQUEST_ACTION USER_REQUEST_REVIEW_STATUS dashboardSummary adminRequestsMutationVersion adminRequestsNavigationRequest adminRequestsPrerequisitesReady adminUserActionSavingRequestId data formatFirestoreTimestamp getExtensionRequestAvailableDate getRentalExtensionPeriod getRequestDisplayStatus getRequestExtensionCount getSafeRentalExtensionMaxCount getUserRequestActionLabel getUserRequestReviewStatusLabel isAdminAuthenticated onAdminRequestsControllerStateChange orphanedRentalAvailabilityRequests renderRequestActionButtons reviewUserActionRequest saveRequestMemo today triggerToast updateRequestMemo commitAdminRequestEdit commitAdminRequestStatusRestore'),
+     laptops: contextKeys('AdminPageHeader Badge Button ClipboardList Edit3 Input Plus React STATUS Save Search Select Trash2 adminAvailabilityFilter adminFilteredLaptops adminLaptopQuery adminSelectedAssetCategory authenticatedAdminId createLaptop currentAuthAdminAccount data deleteLaptop editLaptop editLaptopInsertIndex getLaptopAdminDisplayStatus handleAddLaptopClick newLaptop saveLaptop setAdminAvailabilityFilter setAdminLaptopQuery setAdminSelectedAssetCategory setData setEditLaptop setNewLaptop setShowUploadPanel showUploadPanel splitRentalAssets triggerToast'),
+-    holidaySettings: contextKeys('AdminPageHeader Button ClipboardList DEFAULT_HOLIDAY_TYPE HOLIDAY_TYPE_LABEL Plus Save Trash2 addTempHoliday applyHolidayImportConflictChoice data deleteTempHoliday discardHolidayChanges formatDateWithKoreanWeekday getKoreaNow holidayImportConflictModal holidayImportLoading holidayImportYear holidayManagementMonth holidayManagementView holidayManagementYear holidaySettingsDirty importKoreanPublicHolidaysFromJson newHolidayDate newHolidayName newHolidayType saveHolidaySettings setHolidayImportConflictModal setHolidayImportYear setHolidayManagementMonth setHolidayManagementView setHolidayManagementYear setNewHolidayDate setNewHolidayName setNewHolidayType tempHolidayList today updateTempHolidayReason'),
++    holidaySettings: contextKeys('AdminPageHeader Button ClipboardList DEFAULT_HOLIDAY_TYPE HOLIDAY_TYPE_LABEL Plus Save Trash2 addTempHoliday applyHolidayImportConflictChoice deleteTempHoliday discardHolidayChanges formatDateWithKoreanWeekday getKoreaNow holidayImportConflictModal holidayImportLoading holidayImportYear holidayManagementMonth holidayManagementView holidayManagementYear holidaySettingsDirty importKoreanPublicHolidaysFromJson newHolidayDate newHolidayName newHolidayType saveHolidaySettings setHolidayImportConflictModal setHolidayImportYear setHolidayManagementMonth setHolidayManagementView setHolidayManagementYear setNewHolidayDate setNewHolidayName setNewHolidayType tempHolidayList today updateTempHolidayReason'),
+     categories: contextKeys('AdminPageHeader Button Edit3 Plus Save Trash2 X addTempAssetCategory applyEditTempAssetCategory cancelTempAssetCategoryChanges deleteTempAssetCategory draggingAssetCategoryIndex editingAssetCategoryIndex editingAssetCategoryName moveTempAssetCategory newAssetCategory saveTempAssetCategoryChanges setDraggingAssetCategoryIndex setEditingAssetCategoryIndex setEditingAssetCategoryName setNewAssetCategory startEditTempAssetCategory tempAssetCategories'),
+     people: contextKeys('AdminPageHeader Button Edit3 Plus Save Trash2 X isSplitStorageReady memberDirectoryBorrowers memberDirectorySettings memberDirectoryTeams onMemberDirectoryDeferredStateChange setData triggerToast'),
+     signupPolicy: contextKeys('AdminPageHeader Button authenticatedAdminAccount authenticatedAdminId isAdminAuthenticated isSplitStorageReady memberDirectoryAudit memberDirectoryBorrowers memberDirectoryPolicyEnabled memberIdentityClaimsReady onSignupPolicyDeferredStateChange openAdminMemberAccounts setData signupPolicySettings triggerConfirm triggerToast'),
+     noticePosts: contextKeys('AdminPageHeader Button Edit3 NOTICE_POSTS_PER_PAGE_OPTIONS Pin Plus Save Search Select Trash2 adminNoticeQuery adminNoticeTotalPages adminPinnedNoticePosts adminRegularNoticePosts confirmDeleteNoticePost formatFirestoreDate noticeBoardConfigLoadErrorMessage noticeBoardConfigReady noticeBoardConfigSaving noticePostDeletingId noticePosts noticePostsLoadErrorMessage noticePostsPerPageInput noticePostsReady noticeRegularPostNumberById openNoticePostDialog paginatedAdminNoticePosts safeAdminNoticePage saveNoticeBoardConfig setAdminNoticePage setAdminNoticeQuery setNoticePostsPerPageInput'),
+-    siteSettings: contextKeys('AdminPageHeader Button Input Select authenticatedAdminAccount data finalizeSplitStorageMigration isSplitStorageReady siteSettings siteSettingsLoadErrorMessage siteSettingsReady splitStorageFinalizeLoading systemAdminSettings systemAdminSettingsLoadErrorMessage systemAdminSettingsReady triggerConfirm triggerToast'),
+-    homeManagement: contextKeys('AdminPageHeader Button Input Select authenticatedAdminAccount authenticatedAdminId data finalizeSplitStorageMigration isAdminAuthenticated isSplitStorageReady siteSettings siteSettingsLoadErrorMessage siteSettingsReady splitStorageFinalizeLoading systemAdminSettings systemAdminSettingsLoadErrorMessage systemAdminSettingsReady triggerConfirm triggerToast'),
++    siteSettings: contextKeys('AdminPageHeader Button Input Select authenticatedAdminAccount finalizeSplitStorageMigration isSplitStorageReady siteSettings siteSettingsLoadErrorMessage siteSettingsReady splitStorageFinalizeLoading systemAdminSettings systemAdminSettingsLoadErrorMessage systemAdminSettingsReady triggerConfirm triggerToast'),
++    homeManagement: contextKeys('AdminPageHeader Button Input Select authenticatedAdminAccount authenticatedAdminId finalizeSplitStorageMigration isAdminAuthenticated isSplitStorageReady siteSettings siteSettingsLoadErrorMessage siteSettingsReady splitStorageFinalizeLoading systemAdminSettings systemAdminSettingsLoadErrorMessage systemAdminSettingsReady triggerConfirm triggerToast'),
+     popupPosts: contextKeys('AdminPageHeader Button confirmDeletePopupPost formatPopupDateTime getPopupDisplayStatus movePopupPost openPopupPostDialog popupPostDeletingId popupPostToggleSavingId popupPosts popupPostsLoadErrorMessage popupPostsReady togglePopupPostEnabled'),
+     faqPosts: contextKeys('AdminPageHeader AnimatePresence Button Edit3 FAQ_POSTS_PER_PAGE_OPTIONS Plus Save Select Trash2 X addFaqCategory adminExpandedFaqPostId adminFaqTotalPages adminPinnedFaqPosts adminRegularFaqPosts confirmDeleteFaqCategory confirmDeleteFaqPost editingFaqCategoryId editingFaqCategoryName faqBoardConfigLoadErrorMessage faqBoardConfigReady faqBoardConfigSaving faqCategories faqCategoriesLoadErrorMessage faqCategoriesReady faqCategoryDeletingId faqCategoryNameById faqCategorySavingId faqPostDeletingId faqPosts faqPostsLoadErrorMessage faqPostsPerPageInput faqPostsReady motion newFaqCategoryName openFaqPostDialog paginatedAdminFaqPosts safeAdminFaqPage saveFaqBoardConfig saveFaqCategoryName setAdminExpandedFaqPostId setAdminFaqPage setEditingFaqCategoryId setEditingFaqCategoryName setFaqPostsPerPageInput setNewFaqCategoryName startEditFaqCategory toggleAdminFaqPost'),
+     footerManagement: contextKeys('AdminPageHeader Button closeFooterPageDialog confirmDeleteFooterPage footerConfigDraft footerConfigLoadErrorMessage footerConfigReady footerConfigSaving footerPageDeletingId footerPageDialog footerPageForm footerPageSaving footerPageToggleSavingId footerPages footerPagesLoadErrorMessage footerPagesReady formatFirestoreDate moveFooterPage openFooterPageDialog saveFooterConfig saveFooterPage setFooterConfigDraft setFooterPageForm toggleFooterPageEnabled'),
+     memberAccounts: contextKeys('AdminPageHeader Button CheckCircle2 LogOut Search USER_PROFILE_STATUS XCircle adminMemberAccountsNavigationRequest isAdminAuthenticated memberAccountsPrerequisitesReady registeredAdminAccounts triggerConfirm triggerToast'),
+     adminAccounts: contextKeys('ADMIN_ACCOUNT_PAGE_SIZE ADMIN_CUSTOM_OPTION_VALUE AdminPageHeader Button Input Select adminAccountEditForm adminAccountForm adminAccountTotalPages adminAccountUserOptions authenticatedAdminAccount authenticatedAdminId cancelEditAdminAccount createDefaultAdminAccountForm data deleteAdminAccount editingAdminAccountId paginatedAdminAccounts registerAdminAccount registeredAdminAccounts safeAdminAccountPage saveAdminAccountEdit sendAdminAccountPasswordResetEmail setAdminAccountEditForm setAdminAccountForm setAdminAccountPage startEditAdminAccount toggleAdminAccountLock'),
+-    serviceOperations: contextKeys('AdminPageHeader Button Input Select authenticatedAdminAccount data finalizeSplitStorageMigration isSplitStorageReady siteSettings siteSettingsLoadErrorMessage siteSettingsReady splitStorageFinalizeLoading systemAdminSettings systemAdminSettingsLoadErrorMessage systemAdminSettingsReady triggerConfirm triggerToast'),
++    serviceOperations: contextKeys('AdminPageHeader Button Input Select authenticatedAdminAccount finalizeSplitStorageMigration isSplitStorageReady siteSettings siteSettingsLoadErrorMessage siteSettingsReady splitStorageFinalizeLoading systemAdminSettings systemAdminSettingsLoadErrorMessage systemAdminSettingsReady triggerConfirm triggerToast'),
+     accountSecurity: contextKeys('AdminPageHeader Button authenticatedAdminAccount systemAdminSettings systemAdminSettingsLoadErrorMessage systemAdminSettingsReady triggerToast userSessionPolicy userSessionPolicyLoadErrorMessage userSessionPolicyReady'),
+-    dataManagement: contextKeys('AdminPageHeader Button Input Select authenticatedAdminAccount data finalizeSplitStorageMigration isSplitStorageReady siteSettings siteSettingsLoadErrorMessage siteSettingsReady splitStorageFinalizeLoading systemAdminSettings systemAdminSettingsLoadErrorMessage systemAdminSettingsReady triggerConfirm triggerToast'),
+-    systemInfo: contextKeys('AdminPageHeader Button Input Select authenticatedAdminAccount data finalizeSplitStorageMigration isSplitStorageReady siteSettings siteSettingsLoadErrorMessage siteSettingsReady splitStorageFinalizeLoading systemAdminSettings systemAdminSettingsLoadErrorMessage systemAdminSettingsReady triggerConfirm triggerToast'),
++    dataManagement: contextKeys('AdminPageHeader Button Input Select authenticatedAdminAccount finalizeSplitStorageMigration isSplitStorageReady siteSettings siteSettingsLoadErrorMessage siteSettingsReady splitStorageFinalizeLoading systemAdminSettings systemAdminSettingsLoadErrorMessage systemAdminSettingsReady triggerConfirm triggerToast'),
++    systemInfo: contextKeys('AdminPageHeader Button Input Select authenticatedAdminAccount finalizeSplitStorageMigration isSplitStorageReady siteSettings siteSettingsLoadErrorMessage siteSettingsReady splitStorageFinalizeLoading systemAdminSettings systemAdminSettingsLoadErrorMessage systemAdminSettingsReady triggerConfirm triggerToast'),
+     extensionSettings: contextKeys('AdminPageHeader Button DEFAULT_EXCLUDE_HOLIDAYS_FOR_START_DATE DEFAULT_EXCLUDE_SATURDAYS DEFAULT_EXCLUDE_SUNDAYS DEFAULT_WORK_END_TIME OVERDUE_PENALTY_MODE RENTAL_EXTENSION_APPROVAL_MODE Save data getKoreaNow handleAdminTabChange saveSystemSettings setTempSettings tempAllowNonOverlappingSameAssetRequests tempBusinessDayAdjustmentEnabled tempSettings triggerToast'),
+   }),
+   app: Object.freeze({
+     footer: contextKeys('footerConfig footerPages openFooterPage selectedFooterPageId userTab'),
+-    dialogs: contextKeys('AlertCircle AnimatePresence Button CheckCircle2 DateInputWithWeekday Input Select USER_REQUEST_ACTION X activeUserActionRentalRequest addDaysFrom closeFaqPostDialog closeNoticePostDialog closePopupPostDialog closeUserActionDialog confirmModal data faqCategories faqPostDialog faqPostForm faqPostSaving formatDateWithKoreanWeekday getAdjustedRentalDueDate getMaxRentalDueDate getRentalDueDateAdjustmentReason getRentalExtensionApprovalMode getRentalExtensionPeriod getUserRequestActionLabel motion noticePostDialog noticePostForm noticePostSaving popupPostDialog popupPostForm popupPostSaving saveFaqPost saveNoticePost savePopupPost setConfirmModal setFaqPostForm setNoticePostForm setPopupPostForm setToast setUserActionForm submitUserActionRequest toast today triggerToast userActionBorrowers userActionDialog userActionForm userActionSaving'),
++    dialogs: contextKeys('AlertCircle AnimatePresence Button CheckCircle2 DateInputWithWeekday Input Select USER_REQUEST_ACTION X activeUserActionRentalRequest closeFaqPostDialog closeNoticePostDialog closePopupPostDialog closeUserActionDialog confirmModal data faqCategories faqPostDialog faqPostForm faqPostSaving formatDateWithKoreanWeekday getAdjustedRentalDueDate getMaxRentalDueDate getRentalDueDateAdjustmentReason getRentalExtensionApprovalMode getRentalExtensionPeriod getUserRequestActionLabel motion noticePostDialog noticePostForm noticePostSaving popupPostDialog popupPostForm popupPostSaving saveFaqPost saveNoticePost savePopupPost setConfirmModal setFaqPostForm setNoticePostForm setPopupPostForm setToast setUserActionForm submitUserActionRequest toast today triggerToast userActionDialog userActionForm userActionSaving'),
+     popup: contextKeys('dismissAllUserPopups dismissUserPopup dismissedPopupLocalVersions dismissedPopupSessionVersions firebaseAuthUser popupPosts temporarilyDismissedPopupVersions userTab'),
+   }),
+ });
+--- a/src/context/useAppContextAssembler.js
++++ b/src/context/useAppContextAssembler.js
+@@ -79,11 +79,9 @@
+ import { mergeAppDynamicContextValueGroups } from './appDynamicContextValues.js';
+ import { pushAppPath } from '../routing/appRoutes.js';
+ import {
+-  addDaysFrom,
+   formatDateWithKoreanWeekday,
+   formatFirestoreDate,
+   formatFirestoreTimestamp,
+-  getDisplayRentalStatus,
+   getKoreaNow,
+   getRequestDisplayStatus,
+   today,
+@@ -154,7 +152,6 @@
+   Users,
+   X,
+   XCircle,
+-  addDaysFrom,
+   createDefaultAdminAccountForm,
+   defaultRentalStartDate,
+   formatDateWithKoreanWeekday,
+@@ -162,7 +159,6 @@
+   formatFirestoreTimestamp,
+   formatPopupDateTime,
+   getAdjustedRentalDueDate,
+-  getDisplayRentalStatus,
+   getExtensionRequestAvailableDate,
+   getKoreaNow,
+   getLaptopAdminDisplayStatus,
+--- a/src/features/requests/useUserRequestHistoryActionController.js
++++ b/src/features/requests/useUserRequestHistoryActionController.js
+@@ -71,7 +71,6 @@
+ export default function useUserRequestHistoryActionController({
+   currentUserRentalRestrictionStatus,
+   currentUserRequests,
+-  dataBorrowers,
+   dataSettings,
+   firebaseAuthUser,
+   loadFreshRentalRestrictionStatus,
+@@ -96,14 +95,6 @@
+     [currentUserRequests, userActionDialog?.requestId]
+   );
+ 
+-  const userActionBorrowers = useMemo(
+-    () =>
+-      (dataBorrowers || []).filter(
+-        (borrower) => borrower.team === userActionForm.team
+-      ),
+-    [dataBorrowers, userActionForm.team]
+-  );
+-
+   const submitRentalExtensionRequest = async (request) => {
+     if (userActionSaving) return;
+ 
+@@ -1121,6 +1112,5 @@
+     closeUserActionDialog,
+     openUserActionDialog,
+     submitUserActionRequest,
+-    userActionBorrowers,
+   };
+ }

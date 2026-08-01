@@ -1,0 +1,76 @@
+P2 CONTEXT CONTRACT UNUSED SUPPLY CLEANUP VALIDATION REPORT
+===========================================================
+
+Baseline package
+- rental-system-user-rental-period-asset-selection-split-20260801_2354_deployment_package.zip
+
+Output package
+- rental-system-context-contract-unused-supply-cleanup-20260802_0010_deployment_package.zip
+
+Changed source files
+- src/App.jsx
+- src/context/appContextSlices.js
+- src/context/useAppContextAssembler.js
+- src/features/requests/useUserRequestHistoryActionController.js
+
+Validation results
+1. Input ZIP integrity: PASS
+2. Input package SHA-256 manifest: PASS (456/456)
+3. Context consumer contract audit: PASS
+   - before: defined occurrences 806, consumed 793, unused 13, missing 0
+   - after: defined occurrences 793, consumed 793, unused 0, missing 0
+4. Global context supply audit: PASS
+   - dynamic keys: 387 -> 385
+   - static keys: 78 -> 76
+   - unique keys: 465 -> 461
+   - missing 0, duplicate 0, extra 0
+5. JavaScript/JSX syntax parse: PASS (145 files, parse errors 0)
+6. TypeScript baseline comparison: PASS
+   - diagnostic lines: 351 -> 347
+   - new normalized semantic diagnostics: 0
+   - removed diagnostics: 3
+     - duplicate selectedLaptopId declaration
+     - missing selectedLaptopId guard argument and its detail line
+   - new unused-binding diagnostics: 0
+   - 5 pre-existing TS6133 diagnostics unchanged
+7. React Hook import audit: PASS (140 source files)
+8. Relative import target audit: PASS (387 imports, missing 0)
+9. Firestore strict audit: PASS
+   - audited read calls: 129 -> 129
+   - onSnapshot 35, getDocs 48, getDoc 28, getCountFromServer 18
+   - write/transaction call counts unchanged
+10. Korean user-facing string multiset: PASS
+    - unique strings: 1569 -> 1569
+    - occurrences: 2133 -> 2133
+    - removed 0, added 0
+11. Source graph analysis: PASS
+    - initial modules: 83 -> 83
+    - initial source bytes: 877026 -> 876470
+    - dynamic entries: 14 -> 14
+12. App.jsx reduction: PASS
+    - lines: 2566 -> 2564
+    - bytes: 77352 -> 77251
+    - direct Firestore calls: 0 -> 0
+13. Protected Firebase/config files unchanged: PASS
+    - rules/firestore.rules
+    - firestore.indexes.json
+    - firebase.json
+    - .firebaserc
+    - package.json
+    - package-lock.json
+14. REMOVED_FILES cumulative list: PASS
+    - baseline 67 paths
+    - new deletions 0
+    - restored paths 0
+    - protected metadata paths excluded 2
+    - final 65 paths
+15. npm ci / Vite build: NOT COMPLETED
+    - internal registry E404 for yargs-parser-21.1.1.tgz
+    - local deploy.ps1 build verification required
+16. Output project manifest: PASS (460/460 project files)
+17. ZIP entry set: PASS (463 files, directory entries 0, duplicates 0)
+18. ZIP extraction byte comparison: PASS (460/460 project files plus 3 package-meta files)
+19. Output SHA-256 manifest: PASS (460/460)
+20. Protected paths included: PASS (none of .git, node_modules, dist, deploy.ps1, .env, secrets, .performance-reports)
+
+Result: PASS for source-level completion and package creation eligibility. Final production build remains conditional on local deploy.ps1 success.

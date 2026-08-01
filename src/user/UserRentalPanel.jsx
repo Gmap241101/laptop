@@ -1,3 +1,5 @@
+import UserRentalPeriodFields from './UserRentalPeriodFields.jsx';
+
 export default function UserRentalPanel({ ctx }) {
   const {
     Badge,
@@ -31,7 +33,6 @@ export default function UserRentalPanel({ ctx }) {
     query,
     rentalDeviceSectionDescription,
     rentalDeviceSectionTitle,
-    rentalPeriodFields,
     rentalStartAdjustmentInfo,
     requestSubmitLoading,
     selectedAssetCategory,
@@ -44,6 +45,7 @@ export default function UserRentalPanel({ ctx }) {
     setSelectedAssetCategory,
     setSelectedLaptopId,
     submitRequest,
+    triggerToast,
     unavailableFilterLabel,
     userProfile,
     userProfileReady,
@@ -143,7 +145,12 @@ export default function UserRentalPanel({ ctx }) {
                   </div>
                 </div>
 
-                {rentalPeriodFields}
+                <UserRentalPeriodFields
+                  form={form}
+                  setForm={setForm}
+                  settings={data.settings}
+                  triggerToast={triggerToast}
+                />
 
                 <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
                   <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">

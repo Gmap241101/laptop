@@ -71,7 +71,6 @@ export const useUserRequestHistoryActionState = () => {
 export default function useUserRequestHistoryActionController({
   currentUserRentalRestrictionStatus,
   currentUserRequests,
-  dataBorrowers,
   dataSettings,
   firebaseAuthUser,
   loadFreshRentalRestrictionStatus,
@@ -94,14 +93,6 @@ export default function useUserRequestHistoryActionController({
           ) || null
         : null,
     [currentUserRequests, userActionDialog?.requestId]
-  );
-
-  const userActionBorrowers = useMemo(
-    () =>
-      (dataBorrowers || []).filter(
-        (borrower) => borrower.team === userActionForm.team
-      ),
-    [dataBorrowers, userActionForm.team]
   );
 
   const submitRentalExtensionRequest = async (request) => {
@@ -1121,6 +1112,5 @@ export default function useUserRequestHistoryActionController({
     closeUserActionDialog,
     openUserActionDialog,
     submitUserActionRequest,
-    userActionBorrowers,
   };
 }

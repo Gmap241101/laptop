@@ -1,15 +1,15 @@
 {
-  "generatedAt": "2026-08-01T14:38:00.497Z",
-  "initialModuleCount": 82,
-  "initialSourceBytes": 885284,
+  "generatedAt": "2026-08-01T15:09:52.540Z",
+  "initialModuleCount": 83,
+  "initialSourceBytes": 876470,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 86834
+      "bytes": 77251
     },
     {
       "file": "src/features/requests/useUserRequestHistoryActionController.js",
-      "bytes": 32240
+      "bytes": 31997
     },
     {
       "file": "src/features/boards/useBoardContentSubscriptionController.js",
@@ -68,12 +68,12 @@
       "bytes": 18375
     },
     {
-      "file": "src/context/appContextSlices.js",
+      "file": "src/features/auth/useAdminAuthenticationController.js",
       "bytes": 17574
     },
     {
-      "file": "src/features/auth/useAdminAuthenticationController.js",
-      "bytes": 17574
+      "file": "src/context/appContextSlices.js",
+      "bytes": 17438
     },
     {
       "file": "src/features/members/useUserMembershipStatusController.js",
@@ -192,12 +192,12 @@
       "bytes": 5215
     },
     {
-      "file": "src/context/useAppContextAssembler.js",
-      "bytes": 5211
-    },
-    {
       "file": "src/utils/memberPolicy.js",
       "bytes": 5131
+    },
+    {
+      "file": "src/context/useAppContextAssembler.js",
+      "bytes": 5129
     },
     {
       "file": "src/user/UserFooter.jsx",
@@ -306,6 +306,10 @@
     {
       "file": "src/context/appDynamicContextValues.js",
       "bytes": 1360
+    },
+    {
+      "file": "src/features/requests/useSelectedRentalAssetAvailabilityGuard.js",
+      "bytes": 1230
     },
     {
       "file": "src/config/firestoreCachePolicy.js",

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, DateInputWithWeekday } from './components/CommonUI.jsx';
+import { Button } from './components/CommonUI.jsx';
 import useAppContextAssembler from './context/useAppContextAssembler.js';
 import AppShell from './shell/AppShell.jsx';
 import AppBlockingStateScreen, {
@@ -28,14 +28,7 @@ import {
   DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY,
   DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS,
   createDefaultRequestForm,
-  getAdjustedRentalDueDate,
-  getAdjustedRentalStartDate,
-  getNonBusinessDayReason,
-  getMaxRentalDueDate,
-  getRentalDueDateAdjustmentReason,
   getRentalStartAdjustmentInfo,
-  getSafeMaxRentalDays,
-  isTemporaryDateInputValue,
   normalizeHolidayList,
 } from './domain/rentalPolicy.js';
 import { useDashboardSummary } from './hooks/useDashboardSummary.js';
@@ -119,6 +112,7 @@ import useUserMembershipStatusController, {
 import useUserRentalRequestController, {
   useUserRentalRequestState,
 } from './features/requests/useUserRentalRequestController.js';
+import useSelectedRentalAssetAvailabilityGuard from './features/requests/useSelectedRentalAssetAvailabilityGuard.js';
 import useUserRequestHistoryActionController, {
   useUserRequestHistoryActionState,
 } from './features/requests/useUserRequestHistoryActionController.js';
@@ -1989,296 +1983,13 @@ function App() {
 
 
 
-  useEffect(() => {
-    if (!selectedLaptop || !selectedLaptopAvailability?.blocked) {
-      return;
-    }
-
-    setSelectedLaptopId(null);
-
-    if (selectedLaptopAvailability.reason === 'periodOverlap') {
-      triggerToast(
-        '선택한 대여 기간에는 기존 선택 기기를 사용할 수 없어 선택이 해제되었습니다.',
-        'error'
-      );
-      return;
-    }
-
-    if (selectedLaptopAvailability.reason === 'assetUnavailable') {
-      triggerToast(
-        '선택한 기기가 대여불가 상태여서 선택이 해제되었습니다.',
-        'error'
-      );
-      return;
-    }
-
-    triggerToast(
-      '선택한 기기가 현재 신청할 수 없는 상태여서 선택이 해제되었습니다.',
-      'error'
-    );
-  }, [
+  useSelectedRentalAssetAvailabilityGuard({
+    selectedLaptop,
+    selectedLaptopAvailability,
     selectedLaptopId,
-    selectedLaptop?.id,
-    selectedLaptopAvailability?.blocked,
-    selectedLaptopAvailability?.reason,
-    selectedLaptopAvailability?.blockingRequest?.startDate,
-    selectedLaptopAvailability?.blockingRequest?.dueDate,
-  ]);
-
-
-  const rentalPeriodFields = (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-      <DateInputWithWeekday
-        label="대여 시작일"
-        value={form.startDate}
-        min={today()}
-        onInvalidDate={() => triggerToast('올바른 날짜를 입력해 주세요.', 'error')}
-        onChange={(v) => {
-          const minStartDate = today();
-
-          if (!v) {
-            const nextStartDate = getAdjustedRentalStartDate(minStartDate, data.settings);
-
-            setForm({
-              ...form,
-              startDate: nextStartDate,
-              dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
-            });
-
-            return nextStartDate;
-          }
-
-          if (isTemporaryDateInputValue(v)) {
-            setForm({
-              ...form,
-              startDate: v,
-            });
-
-            return v;
-          }
-
-          if (v < minStartDate) {
-            const nextStartDate = getAdjustedRentalStartDate(minStartDate, data.settings);
-
-            triggerToast(
-              `대여 시작일은 오늘보다 이전일 수 없습니다. 선택 가능한 가장 빠른 대여 시작일은 ${formatDateWithKoreanWeekday(nextStartDate)}입니다.`,
-              'error'
-            );
-
-            setForm({
-              ...form,
-              startDate: nextStartDate,
-              dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
-            });
-
-            return nextStartDate;
-          }
-
-          const nextStartDate = getAdjustedRentalStartDate(v, data.settings);
-
-          if (nextStartDate !== v) {
-            const reason = getNonBusinessDayReason(v, data.settings);
-
-            triggerToast(
-              `대여 시작일은 ${reason ? `${reason}이라` : '영업일이 아니라'} 선택할 수 없습니다. ${formatDateWithKoreanWeekday(nextStartDate)}로 조정되었습니다.`,
-              'error'
-            );
-          }
-
-          setForm({
-            ...form,
-            startDate: nextStartDate,
-            dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
-          });
-
-          return nextStartDate;
-        }}
-        onDateBlur={(v) => {
-          const minStartDate = today();
-
-          if (!v || isTemporaryDateInputValue(v) || v < minStartDate) {
-            const nextStartDate = getAdjustedRentalStartDate(minStartDate, data.settings);
-
-            triggerToast(
-              `대여 시작일은 오늘보다 이전일 수 없습니다. 선택 가능한 가장 빠른 대여 시작일은 ${formatDateWithKoreanWeekday(nextStartDate)}입니다.`,
-              'error'
-            );
-
-            setForm({
-              ...form,
-              startDate: nextStartDate,
-              dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
-            });
-
-            return nextStartDate;
-          }
-
-          const nextStartDate = getAdjustedRentalStartDate(v, data.settings);
-
-          if (nextStartDate !== v) {
-            const reason = getNonBusinessDayReason(v, data.settings);
-
-            triggerToast(
-              `대여 시작일은 ${reason ? `${reason}이라` : '영업일이 아니라'} 선택할 수 없습니다. ${formatDateWithKoreanWeekday(nextStartDate)}로 조정되었습니다.`,
-              'error'
-            );
-
-            setForm({
-              ...form,
-              startDate: nextStartDate,
-              dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
-            });
-
-            return nextStartDate;
-          }
-
-          setForm({
-            ...form,
-            startDate: nextStartDate,
-            dueDate: getMaxRentalDueDate(nextStartDate, data.settings),
-          });
-
-          return nextStartDate;
-        }}
-      />
-
-      <DateInputWithWeekday
-        label="반납 예정일"
-        value={form.dueDate}
-        min={form.startDate}
-        max={getMaxRentalDueDate(form.startDate, data.settings)}
-        onInvalidDate={() => triggerToast('올바른 날짜를 입력해 주세요.', 'error')}
-        onChange={(v) => {
-          const minDueDate = form.startDate;
-          const maxDueDate = getMaxRentalDueDate(form.startDate, data.settings);
-          const maxRentalDays = getSafeMaxRentalDays(data.settings);
-          let nextDueDate = v;
-
-          if (!nextDueDate) {
-            const adjustedMinDueDate = getAdjustedRentalDueDate(
-              minDueDate,
-              data.settings
-            );
-
-            setForm({ ...form, dueDate: adjustedMinDueDate });
-            return adjustedMinDueDate;
-          }
-
-          if (isTemporaryDateInputValue(nextDueDate)) {
-            setForm({ ...form, dueDate: nextDueDate });
-            return nextDueDate;
-          }
-
-          if (nextDueDate < minDueDate) {
-            triggerToast(
-              `반납 예정일은 대여 시작일보다 빠를 수 없습니다. 최소 반납 예정일은 ${formatDateWithKoreanWeekday(minDueDate)}입니다.`,
-              'error'
-            );
-
-            nextDueDate = minDueDate;
-          }
-
-          if (nextDueDate > maxDueDate) {
-            triggerToast(
-              `대여 가능 기간은 대여 시작일 다음 날부터 최대 ${maxRentalDays}일이며 달력 기준으로 계산됩니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxDueDate)}까지 선택할 수 있습니다.`,
-              'error'
-            );
-
-            nextDueDate = maxDueDate;
-          }
-
-          const adjustedDueDate = getAdjustedRentalDueDate(
-            nextDueDate,
-            data.settings
-          );
-
-          if (adjustedDueDate !== nextDueDate) {
-            const adjustmentReason = getRentalDueDateAdjustmentReason(
-              nextDueDate,
-              data.settings
-            );
-            const finalDueDate =
-              adjustedDueDate > maxDueDate
-                ? maxDueDate
-                : adjustedDueDate;
-
-            triggerToast(
-              `선택한 반납 예정일이 ${adjustmentReason || '휴무일'}이므로 다음 영업일인 ${formatDateWithKoreanWeekday(finalDueDate)}로 자동 조정되었습니다.`,
-              'success'
-            );
-
-            nextDueDate = finalDueDate;
-          }
-
-          setForm({ ...form, dueDate: nextDueDate });
-
-          return nextDueDate;
-        }}
-        onDateBlur={(v) => {
-          const minDueDate = form.startDate;
-          const maxDueDate = getMaxRentalDueDate(form.startDate, data.settings);
-          const maxRentalDays = getSafeMaxRentalDays(data.settings);
-          let nextDueDate = v;
-
-          if (!nextDueDate || isTemporaryDateInputValue(nextDueDate) || nextDueDate < minDueDate) {
-            const adjustedMinDueDate = getAdjustedRentalDueDate(
-              minDueDate,
-              data.settings
-            );
-
-            triggerToast(
-              `반납 예정일은 대여 시작일보다 빠를 수 없습니다. 최소 반납 예정일은 ${formatDateWithKoreanWeekday(adjustedMinDueDate)}입니다.`,
-              'error'
-            );
-
-            setForm({ ...form, dueDate: adjustedMinDueDate });
-
-            return adjustedMinDueDate;
-          }
-
-          if (nextDueDate > maxDueDate) {
-            triggerToast(
-              `대여 가능 기간은 대여 시작일 다음 날부터 최대 ${maxRentalDays}일이며 달력 기준으로 계산됩니다. 반납 예정일은 ${formatDateWithKoreanWeekday(maxDueDate)}까지 선택할 수 있습니다.`,
-              'error'
-            );
-
-            setForm({ ...form, dueDate: maxDueDate });
-
-            return maxDueDate;
-          }
-
-          const adjustedDueDate = getAdjustedRentalDueDate(
-            nextDueDate,
-            data.settings
-          );
-
-          if (adjustedDueDate !== nextDueDate) {
-            const adjustmentReason = getRentalDueDateAdjustmentReason(
-              nextDueDate,
-              data.settings
-            );
-            const finalDueDate =
-              adjustedDueDate > maxDueDate
-                ? maxDueDate
-                : adjustedDueDate;
-
-            triggerToast(
-              `선택한 반납 예정일이 ${adjustmentReason || '휴무일'}이므로 다음 영업일인 ${formatDateWithKoreanWeekday(finalDueDate)}로 자동 조정되었습니다.`,
-              'success'
-            );
-
-            setForm({ ...form, dueDate: finalDueDate });
-
-            return finalDueDate;
-          }
-
-          setForm({ ...form, dueDate: nextDueDate });
-
-          return nextDueDate;
-        }}
-      />
-    </div>
-  );
+    setSelectedLaptopId,
+    triggerToast,
+  });
 
   const rentalStartAdjustmentInfo = getRentalStartAdjustmentInfo(data.settings);
   const tempBusinessDayAdjustmentEnabled =
@@ -2330,11 +2041,9 @@ function App() {
     closeUserActionDialog,
     openUserActionDialog,
     submitUserActionRequest,
-    userActionBorrowers,
   } = useUserRequestHistoryActionController({
     currentUserRentalRestrictionStatus,
     currentUserRequests,
-    dataBorrowers: data.borrowers,
     dataSettings: data.settings,
     firebaseAuthUser,
     loadFreshRentalRestrictionStatus,
@@ -2704,7 +2413,7 @@ function App() {
       isPeriodBasedRentalMode, adminRequestsMutationVersion, adminRequestsNavigationRequest, commitAdminRequestEdit,
       commitAdminRequestStatusRestore, moveTempAssetCategory, newAssetCategory, newLaptop,
       openUserActionDialog, orphanedRentalAvailabilityRequests, query, refreshDashboardSummary,
-      renderRequestActionButtons, rentalDeviceSectionDescription, rentalDeviceSectionTitle, rentalPeriodFields,
+      renderRequestActionButtons, rentalDeviceSectionDescription, rentalDeviceSectionTitle,
       rentalStartAdjustmentInfo, requestSubmitLoading, reviewUserActionRequest, saveLaptop,
       saveRequestMemo, saveTempAssetCategoryChanges, selectedAssetCategory, selectedLaptop,
       selectedLaptopAvailability, selectedLaptopId, setAdminAvailabilityFilter, setAdminLaptopQuery,
@@ -2733,7 +2442,7 @@ function App() {
       faqPostDeletingId, faqPostsLoadErrorMessage, faqPostsPerPageInput, faqPostsReady,
       faqQuery, faqSearchWithinCategory, faqTotalPages, newFaqCategoryName,
       noticeBoardConfigLoadErrorMessage, noticeBoardConfigReady, noticeBoardConfigSaving, noticePostDeletingId,
-      noticePostsPerPage, noticePostsPerPageInput, noticeRegularPostNumberById, noticeTotalPages,
+      noticePostsPerPageInput, noticeRegularPostNumberById, noticeTotalPages,
       openFaqPostDialog, openNoticePostDialog, paginatedAdminFaqPosts, paginatedAdminNoticePosts,
       paginatedNoticePosts, pinnedNoticePosts, regularFaqPosts, regularNoticePosts,
       safeAdminFaqPage, safeAdminNoticePage, safeFaqPage, safeNoticePage,
@@ -2777,7 +2486,7 @@ function App() {
       noticePostDialog, noticePostForm, noticePostSaving, saveFaqPost,
       saveNoticePost, setConfirmModal, setFaqPostForm, setNoticePostForm,
       setToast, setUserActionForm, submitUserActionRequest, toast,
-      userActionBorrowers, userActionDialog, userActionForm, popupPostDialog,
+      userActionDialog, userActionForm, popupPostDialog,
       popupPostForm, popupPostSaving, closePopupPostDialog, savePopupPost,
       setPopupPostForm,
     },

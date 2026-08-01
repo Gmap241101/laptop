@@ -1,0 +1,169 @@
+{
+  "generatedAt": "2026-08-02T00:07:17+09:00",
+  "baselinePackage": "rental-system-user-rental-period-asset-selection-split-20260801_2354_deployment_package.zip",
+  "outputPackage": "rental-system-context-contract-unused-supply-cleanup-20260802_0010_deployment_package.zip",
+  "appJsx": {
+    "baseline": {
+      "lines": 2566,
+      "bytes": 77352,
+      "useState": 14,
+      "useEffect": 1,
+      "useMemo": 19,
+      "useRef": 2
+    },
+    "output": {
+      "lines": 2564,
+      "bytes": 77251,
+      "useState": 14,
+      "useEffect": 1,
+      "useMemo": 19,
+      "useRef": 2
+    },
+    "delta": {
+      "lines": -2,
+      "bytes": -101,
+      "useState": 0,
+      "useEffect": 0,
+      "useMemo": 0,
+      "useRef": 0
+    }
+  },
+  "contextContract": {
+    "baseline": {
+      "sliceOccurrences": 806,
+      "consumedOccurrences": 776,
+      "unusedOccurrences": 30,
+      "missingOccurrences": 0,
+      "uniqueKeys": 461,
+      "dynamicKeys": 385,
+      "staticKeys": 76
+    },
+    "output": {
+      "sliceOccurrences": 793,
+      "consumedOccurrences": 793,
+      "unusedOccurrences": 0,
+      "missingOccurrences": 0,
+      "uniqueKeys": 461,
+      "dynamicKeys": 385,
+      "staticKeys": 76
+    },
+    "removedSliceOccurrences": [
+      {
+        "slice": "user.board",
+        "key": "noticePostsPerPage"
+      },
+      {
+        "slice": "admin.shell",
+        "key": "data"
+      },
+      {
+        "slice": "admin.shell",
+        "key": "faqPosts"
+      },
+      {
+        "slice": "admin.shell",
+        "key": "noticePosts"
+      },
+      {
+        "slice": "admin.requests",
+        "key": "getDisplayRentalStatus"
+      },
+      {
+        "slice": "admin.holidaySettings",
+        "key": "data"
+      },
+      {
+        "slice": "admin.siteSettings",
+        "key": "data"
+      },
+      {
+        "slice": "admin.homeManagement",
+        "key": "data"
+      },
+      {
+        "slice": "admin.serviceOperations",
+        "key": "data"
+      },
+      {
+        "slice": "admin.dataManagement",
+        "key": "data"
+      },
+      {
+        "slice": "admin.systemInfo",
+        "key": "data"
+      },
+      {
+        "slice": "app.dialogs",
+        "key": "addDaysFrom"
+      },
+      {
+        "slice": "app.dialogs",
+        "key": "userActionBorrowers"
+      }
+    ],
+    "removedGlobalContextKeys": [
+      "noticePostsPerPage",
+      "userActionBorrowers",
+      "addDaysFrom",
+      "getDisplayRentalStatus"
+    ],
+    "delta": {
+      "sliceOccurrences": -13,
+      "consumedOccurrences": 17,
+      "unusedOccurrences": -30,
+      "missingOccurrences": 0,
+      "uniqueKeys": 0,
+      "dynamicKeys": 0,
+      "staticKeys": 0
+    }
+  },
+  "sourceGraph": {
+    "baseline": {
+      "initialModuleCount": 83,
+      "initialSourceBytes": 877026,
+      "dynamicEntryCount": 14
+    },
+    "output": {
+      "initialModuleCount": 83,
+      "initialSourceBytes": 876470,
+      "dynamicEntryCount": 14
+    },
+    "delta": {
+      "initialModuleCount": 0,
+      "initialSourceBytes": -556,
+      "dynamicEntryCount": 0
+    }
+  },
+  "firestoreAccess": {
+    "baselineTotalReadAudit": 129,
+    "outputTotalReadAudit": 129,
+    "baseline": {
+      "onSnapshot": 35,
+      "getDocs": 48,
+      "getDoc": 28,
+      "getCountFromServer": 18,
+      "runTransaction": 24,
+      "setDoc": 34,
+      "updateDoc": 5,
+      "deleteDoc": 6
+    },
+    "output": {
+      "onSnapshot": 35,
+      "getDocs": 48,
+      "getDoc": 28,
+      "getCountFromServer": 18,
+      "runTransaction": 24,
+      "setDoc": 34,
+      "updateDoc": 5,
+      "deleteDoc": 6
+    }
+  },
+  "compileContractCorrection": {
+    "duplicateBindingRemoved": "selectedLaptopId from useRentalDerivedSelectors destructuring",
+    "requiredGuardArgumentAdded": "selectedLaptopId passed to useSelectedRentalAssetAvailabilityGuard",
+    "baselineDiagnosticLines": 351,
+    "outputDiagnosticLines": 347,
+    "newNormalizedDiagnostics": 0,
+    "removedDiagnostics": 3
+  }
+}

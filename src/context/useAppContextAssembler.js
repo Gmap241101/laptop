@@ -79,11 +79,9 @@ import useStableContextGroups from '../hooks/useStableContextGroups.js';
 import { mergeAppDynamicContextValueGroups } from './appDynamicContextValues.js';
 import { pushAppPath } from '../routing/appRoutes.js';
 import {
-  addDaysFrom,
   formatDateWithKoreanWeekday,
   formatFirestoreDate,
   formatFirestoreTimestamp,
-  getDisplayRentalStatus,
   getKoreaNow,
   getRequestDisplayStatus,
   today,
@@ -154,7 +152,6 @@ export const APP_CONTEXT_STATIC_VALUES = Object.freeze({
   Users,
   X,
   XCircle,
-  addDaysFrom,
   createDefaultAdminAccountForm,
   defaultRentalStartDate,
   formatDateWithKoreanWeekday,
@@ -162,7 +159,6 @@ export const APP_CONTEXT_STATIC_VALUES = Object.freeze({
   formatFirestoreTimestamp,
   formatPopupDateTime,
   getAdjustedRentalDueDate,
-  getDisplayRentalStatus,
   getExtensionRequestAvailableDate,
   getKoreaNow,
   getLaptopAdminDisplayStatus,
