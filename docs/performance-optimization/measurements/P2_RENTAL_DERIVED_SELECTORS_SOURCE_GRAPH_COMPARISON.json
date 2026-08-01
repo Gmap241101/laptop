@@ -1,0 +1,37 @@
+{
+  "generatedAt": "2026-08-01T21:18:47+09:00",
+  "task": "P2_RENTAL_DERIVED_SELECTORS_FEATURE_SPLIT",
+  "baselinePackage": "rental-system-global-ui-controller-split-20260801_2108_deployment_package.zip",
+  "before": {
+    "appLines": 4667,
+    "appBytes": 137290,
+    "appUseStateCalls": 21,
+    "appUseEffectCalls": 7,
+    "appUseRefCalls": 5,
+    "appUseMemoCalls": 26,
+    "initialModuleCount": 71,
+    "initialSourceBytes": 865008
+  },
+  "after": {
+    "appLines": 4390,
+    "appBytes": 129405,
+    "appUseStateCalls": 21,
+    "appUseEffectCalls": 7,
+    "appUseRefCalls": 5,
+    "appUseMemoCalls": 19,
+    "selectorModuleLines": 494,
+    "selectorModuleBytes": 12650,
+    "initialModuleCount": 72,
+    "initialSourceBytes": 869773
+  },
+  "delta": {
+    "appLines": -277,
+    "appBytes": -7885,
+    "appUseStateCalls": 0,
+    "appUseEffectCalls": 0,
+    "appUseRefCalls": 0,
+    "appUseMemoCalls": -7,
+    "initialModuleCount": 1,
+    "initialSourceBytes": 4765
+  }
+}

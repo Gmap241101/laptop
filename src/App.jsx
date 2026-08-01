@@ -219,7 +219,6 @@ import {
   writePublicAssetCatalogMutationInTransaction,
 } from './services/publicAssetCatalogWriteThroughLoader.js';
 
-import { normalizeEmailAddress } from './utils/memberPolicy.js';
 import useUserAccountRecoveryController from './features/auth/useUserAccountRecoveryController.js';
 import useAuthIdentityPolicySubscriptionController, {
   normalizeAdminAccounts,
@@ -268,6 +267,9 @@ import useRentalDataSubscriptionController, {
   useOwnRentalRequestsSubscriptionController,
   useRentalDataSubscriptionState,
 } from './features/requests/useRentalDataSubscriptionController.js';
+import useRentalDerivedSelectors, {
+  getUserLaptopStatusLabel,
+} from './features/requests/useRentalDerivedSelectors.js';
 import {
   createCurrentAdminAuditActorResolver,
 } from './features/auth/adminAuditActorService.js';
@@ -299,7 +301,6 @@ import {
   DEFAULT_OVERDUE_PENALTY_MODE,
   DEFAULT_OVERDUE_RENTAL_BLOCK_ENABLED,
   DEFAULT_POST_OVERDUE_PENALTY_ENABLED,
-  getRentalRestrictionStatus,
 } from './utils/overduePolicy.js';
 
 
@@ -1555,28 +1556,6 @@ function App() {
   const memberDirectoryAudit =
     splitPublicConfig?.memberDirectoryAudit || null;
 
-  const mergedRentalRequests = useMemo(() => {
-    const requestMap = new Map();
-    const shouldMergeAvailabilitySummaries = view === 'user';
-
-    if (shouldMergeAvailabilitySummaries) {
-      (data.requests || []).forEach((request) => {
-        if (!request?.id) return;
-        requestMap.set(request.id, request);
-      });
-    }
-
-    (rentalRequests || []).forEach((request) => {
-      if (!request?.id) return;
-
-      requestMap.set(request.id, {
-        ...(requestMap.get(request.id) || {}),
-        ...request,
-      });
-    });
-
-    return Array.from(requestMap.values());
-  }, [data.requests, rentalRequests, view, adminTab]);
 
   const orphanedRentalAvailabilityRequests = [];
 
@@ -1966,60 +1945,6 @@ function App() {
 
   const paginatedAdminFaqPosts = adminRegularFaqPosts;
 
-  const currentUserRequests = useMemo(() => {
-    if (!firebaseAuthUser?.uid) return [];
-
-    const linkedRequesterUids = new Set(
-      [
-        firebaseAuthUser.uid,
-        ...(Array.isArray(userProfile?.previousAccountUids)
-          ? userProfile.previousAccountUids
-          : []),
-      ]
-        .map((value) => String(value || '').trim())
-        .filter(Boolean)
-    );
-    const currentUserEmail = normalizeEmailAddress(
-      firebaseAuthUser.email || userProfile?.email || ''
-    );
-
-    return mergedRentalRequests.filter((request) => {
-      const requesterUid = String(request.requesterUid || '').trim();
-
-      if (requesterUid && linkedRequesterUids.has(requesterUid)) {
-        return true;
-      }
-
-      return Boolean(
-        currentUserEmail &&
-        normalizeEmailAddress(request.requesterEmail || '') === currentUserEmail
-      );
-    });
-  }, [
-    mergedRentalRequests,
-    firebaseAuthUser?.uid,
-    firebaseAuthUser?.email,
-    userProfile?.email,
-    userProfile?.previousAccountUids,
-  ]);
-
-  const currentUserRentalRestrictionStatus = useMemo(
-    () =>
-      getRentalRestrictionStatus({
-        requests: currentUserRequests,
-        requesterUid: firebaseAuthUser?.uid || '',
-        settings: data.settings,
-        restriction: currentUserRestriction,
-        referenceDate: today(),
-      }),
-    [
-      currentUserRequests,
-      firebaseAuthUser?.uid,
-      data.settings,
-      currentUserRestriction,
-    ]
-  );
-
   const {
     addFaqCategory,
     confirmDeleteFaqCategory,
@@ -2327,6 +2252,51 @@ function App() {
     !adminAccountsLoadErrorMessage &&
     !currentAuthRoleErrorMessage &&
     isAdminAuthenticated;
+
+  const {
+    adminFilteredLaptops,
+    availableFilterLabel,
+    currentUserRentalRestrictionStatus,
+    currentUserRequests,
+    editLaptopInsertIndex,
+    filteredBorrowers,
+    filteredLaptops,
+    isPeriodBasedRentalMode,
+    rentalDeviceSectionDescription,
+    rentalDeviceSectionTitle,
+    selectedLaptop,
+    selectedLaptopAvailability,
+    shouldShowStats,
+    stats,
+    statsLoading,
+    unavailableFilterLabel,
+  } = useRentalDerivedSelectors({
+    adminAvailabilityFilter,
+    adminLaptopQuery,
+    adminSelectedAssetCategory,
+    adminTab,
+    assetGridColumns,
+    availabilityFilter,
+    currentUserRestriction,
+    dashboardSummary,
+    dashboardSummaryReady,
+    dataBorrowers: data.borrowers,
+    dataLaptops: data.laptops,
+    dataRequests: data.requests,
+    dataSettings: data.settings,
+    editLaptop,
+    firebaseAuthUser,
+    form,
+    hasAdminAccess,
+    isAdminAuthenticated,
+    query,
+    rentalRequests,
+    selectedAssetCategory,
+    selectedLaptopId,
+    userProfile,
+    userTab,
+    view,
+  });
 
   const shouldShowAdminLoginPage =
     view === 'admin' &&
@@ -2892,244 +2862,6 @@ function App() {
     goToUserHome();
   };
 
-  const shouldShowStats =
-    hasAdminAccess || (view === 'user' && userTab === 'rental');
-
-  const shouldPrepareUserRentalList =
-    view === 'user' && userTab === 'rental';
-
-  const shouldPrepareAdminAssetList =
-    hasAdminAccess && adminTab === 'laptops';
-
-  const shouldPrepareRentalStatus =
-    shouldPrepareAdminAssetList ||
-    (view === 'user' && ['home', 'rental'].includes(userTab));
-
-  const rentalStatusSummary = useMemo(() => {
-    const emptyStats = {
-      total: 0,
-      available: 0,
-      requested: 0,
-      reserved: 0,
-      approved: 0,
-      overdue: 0,
-    };
-
-    if (!shouldPrepareRentalStatus) {
-      return {
-        blockedLaptopIds: new Set(),
-        stats: emptyStats,
-      };
-    }
-
-    const todayDate = today();
-    const nextBlockedLaptopIds = new Set();
-
-    let requested = 0;
-    let reserved = 0;
-    let approved = 0;
-    let overdue = 0;
-
-    data.requests.forEach((request) => {
-      if (
-        request.status === STATUS.REQUESTED ||
-        request.status === STATUS.APPROVED ||
-        request.status === STATUS.ON_HOLD
-      ) {
-        nextBlockedLaptopIds.add(request.laptopId);
-      }
-
-      if (request.status === STATUS.REQUESTED) {
-        requested += 1;
-        return;
-      }
-
-      if (request.status !== STATUS.APPROVED) {
-        return;
-      }
-
-      if (request.startDate && request.startDate > todayDate) {
-        reserved += 1;
-        return;
-      }
-
-      approved += 1;
-
-      if (request.dueDate && request.dueDate < todayDate) {
-        overdue += 1;
-      }
-    });
-
-    let available = 0;
-
-    data.laptops.forEach((laptop) => {
-      if (
-        !nextBlockedLaptopIds.has(laptop.id) &&
-        laptop.status !== STATUS.UNAVAILABLE
-      ) {
-        available += 1;
-      }
-    });
-
-    return {
-      blockedLaptopIds: nextBlockedLaptopIds,
-      stats: {
-        total: data.laptops.length,
-        available,
-        requested,
-        reserved,
-        approved,
-        overdue,
-      },
-    };
-  }, [shouldPrepareRentalStatus, data.requests, data.laptops]);
-
-  const blockedLaptopIds = rentalStatusSummary.blockedLaptopIds;
-
-  const adminRentalStatusStats = useMemo(() => {
-    const metrics = dashboardSummary?.metrics || {};
-    const getMetric = (key) => {
-      const value = Number(metrics[key]);
-      return Number.isFinite(value) ? value : 0;
-    };
-
-    return {
-      total: getMetric('totalAssetCount'),
-      available: getMetric('availableCount'),
-      requested: getMetric('requestedCount'),
-      reserved: getMetric('uniqueReservedAssets'),
-      approved: getMetric('uniqueActiveAssets'),
-      overdue: getMetric('uniqueOverdueAssets'),
-    };
-  }, [dashboardSummary]);
-
-  const shouldUseAdminSummaryStats = view === 'admin' && isAdminAuthenticated;
-  const stats = shouldUseAdminSummaryStats
-    ? adminRentalStatusStats
-    : rentalStatusSummary.stats;
-  const statsLoading =
-    shouldUseAdminSummaryStats &&
-    (!dashboardSummaryReady || !dashboardSummary);
-
-  const filteredLaptops = useMemo(() => {
-    if (!shouldPrepareUserRentalList) {
-      return [];
-    }
-
-    const normalizedQuery = query.trim().toLowerCase();
-
-    return data.laptops.filter((l) => {
-      const laptopAvailability = getLaptopRentalAvailability(
-        l,
-        data.requests,
-        data.settings,
-        form.startDate,
-        form.dueDate
-      );
-
-      const keywordMatched = `${l.category || ''} ${l.assetNo} ${l.serialNo} ${l.model} ${l.note}`
-        .toLowerCase()
-        .includes(normalizedQuery);
-
-      const categoryMatched =
-        selectedAssetCategory === '전체' || l.category === selectedAssetCategory;
-
-      const availabilityMatched =
-        availabilityFilter === '전체'
-          ? true
-          : availabilityFilter === STATUS.AVAILABLE
-            ? !laptopAvailability.blocked
-            : laptopAvailability.blocked;
-
-      return keywordMatched && categoryMatched && availabilityMatched;
-    });
-  }, [
-    shouldPrepareUserRentalList,
-    data.laptops,
-    data.requests,
-    data.settings,
-    form.startDate,
-    form.dueDate,
-    query,
-    selectedAssetCategory,
-    availabilityFilter,
-  ]);
-
-  const adminFilteredLaptops = useMemo(() => {
-    if (!shouldPrepareAdminAssetList) {
-      return [];
-    }
-
-    const normalizedAdminLaptopQuery = adminLaptopQuery.trim().toLowerCase();
-
-    return data.laptops.filter((l) => {
-      const keywordMatched = `${l.category || ''} ${l.assetNo} ${l.serialNo} ${l.model} ${l.note}`
-        .toLowerCase()
-        .includes(normalizedAdminLaptopQuery);
-
-      const categoryMatched =
-        adminSelectedAssetCategory === '전체' || l.category === adminSelectedAssetCategory;
-
-      const availabilityMatched =
-        adminAvailabilityFilter === '전체'
-          ? true
-          : adminAvailabilityFilter === STATUS.AVAILABLE
-            ? !blockedLaptopIds.has(l.id) && l.status !== STATUS.UNAVAILABLE
-            : blockedLaptopIds.has(l.id) || l.status === STATUS.UNAVAILABLE;
-
-      return keywordMatched && categoryMatched && availabilityMatched;
-    });
-  }, [
-    shouldPrepareAdminAssetList,
-    data.laptops,
-    adminLaptopQuery,
-    adminSelectedAssetCategory,
-    adminAvailabilityFilter,
-    blockedLaptopIds,
-  ]);
-
-  const selectedLaptop = data.laptops.find((l) => l.id === selectedLaptopId);
-
-  const isPeriodBasedRentalMode =
-    data.settings.allowNonOverlappingSameAssetRequests ??
-    DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS;
-
-  const rentalDeviceSectionTitle = isPeriodBasedRentalMode
-    ? '대여 기기 선택'
-    : '대여 기기 선택';
-
-  const rentalDeviceSectionDescription = isPeriodBasedRentalMode
-    ? '선택 기간 중 [대여가능] 기기만 신청할 수 있습니다.'
-    : '[대여가능] 기기만 신청할 수 있습니다.';
-
-  const availableFilterLabel = STATUS.AVAILABLE;
-  const unavailableFilterLabel = STATUS.UNAVAILABLE;
-
-const getUserLaptopStatusLabel = (laptopAvailability) => {
-  if (!laptopAvailability) {
-    return STATUS.AVAILABLE;
-  }
-
-  if (laptopAvailability.reason === 'assetUnavailable') {
-    return STATUS.UNAVAILABLE;
-  }
-
-  return getDisplayRentalStatus(
-    laptopAvailability.status,
-    laptopAvailability.blockingRequest?.startDate
-  );
-};
-
-  const selectedLaptopAvailability = selectedLaptop
-    ? getLaptopRentalAvailability(
-        selectedLaptop,
-        data.requests,
-        data.settings,
-        form.startDate,
-        form.dueDate
-      )
-    : null;
-
   useEffect(() => {
     if (!selectedLaptop || !selectedLaptopAvailability?.blocked) {
       return;
@@ -3166,7 +2898,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     selectedLaptopAvailability?.blockingRequest?.dueDate,
   ]);
 
-  const filteredBorrowers = data.borrowers.filter((b) => b.team === form.team);
 
   const rentalPeriodFields = (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -3433,14 +3164,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     tempSettings.allowNonOverlappingSameAssetRequests ??
     DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS;
 
-  const editLaptopIndex = editLaptop ? adminFilteredLaptops.findIndex((l) => l.id === editLaptop.id) : -1;
-  const editLaptopInsertIndex =
-    editLaptopIndex >= 0
-      ? Math.min(
-          Math.ceil((editLaptopIndex + 1) / assetGridColumns) * assetGridColumns - 1,
-          adminFilteredLaptops.length - 1
-        )
-      : -1;
 
   const loadFreshRentalRestrictionStatus =
     createFreshRentalRestrictionStatusLoader({

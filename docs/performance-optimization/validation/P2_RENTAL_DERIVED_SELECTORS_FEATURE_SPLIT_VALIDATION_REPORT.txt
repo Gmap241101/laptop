@@ -1,0 +1,53 @@
+P2_RENTAL_DERIVED_SELECTORS_FEATURE_SPLIT validation
+====================================================
+Generated: 2026-08-01T21:18:47+09:00
+Baseline: rental-system-global-ui-controller-split-20260801_2108_deployment_package.zip
+
+[PASS] Input package metadata SHA-256 verification: 403/403
+[PASS] React hook import audit: 128 source files
+[PASS] Firestore strict audit
+       Total calls: 129
+       onSnapshot: 35
+       getDocs: 48
+       getDoc: 28
+       getCountFromServer: 18
+       Unapproved warnings: 0
+       Unapproved errors: 0
+[PASS] JS/JSX/MJS TypeScript transpile syntax check: 128 source files, 0 errors
+[PASS] TypeScript baseline comparison
+       New non-external project-code semantic findings: 0
+[PASS] Relative import resolution: 353 imports, 0 missing
+[PASS] Old App.jsx rental-derived useMemo blocks removed
+[PASS] Current-user request selection moved to selector module
+[PASS] User restriction status calculation moved to selector module
+[PASS] Rental status board statistics moved to selector module
+[PASS] User and administrator asset filters moved to selector module
+[PASS] Selected asset availability and edit insertion index moved to selector module
+[PASS] Existing selected-asset invalidation effect retained in App.jsx
+[PASS] Selector runtime mock
+       Request-source merge
+       Current UID / previous UID / email matching
+       Requested / reserved / active / overdue statistics
+       Administrator dashboard metric mapping
+       User and administrator asset filtering
+       Status label and edit insertion index
+[PASS] Korean UI string multiset preserved for changed code
+       Occurrences: 129 -> 129
+       Unique strings: 95 -> 95
+       Removed: 0
+       Added: 0
+[PASS] Source graph analysis
+       Initial modules: 71 -> 72
+       Initial source bytes: 865008 -> 869773
+[PASS] App.jsx metrics
+       Lines: 4667 -> 4390
+       Bytes: 137290 -> 129405
+       useState(): 21 -> 21
+       useEffect(): 7 -> 7
+       useRef(): 5 -> 5
+       useMemo(): 26 -> 19
+
+[NOT COMPLETED] npm ci / Vite production build
+Reason:
+E404 yargs-parser-21.1.1.tgz was unavailable from the internal npm registry.
+The local deploy.ps1 build must succeed before deployment is considered complete.
