@@ -74,6 +74,7 @@ const assetCatalogViewController = read('src/features/assets/useAssetCatalogView
 const appInitializationReadinessController = read('src/shell/useAppInitializationReadinessController.js');
 const appNavigationController = read('src/routing/useAppNavigationController.js');
 const rentalDataSubscriptionController = read('src/features/requests/useRentalDataSubscriptionController.js');
+const adminAccountManagementController = read('src/features/auth/useAdminAccountManagementController.js');
 
 const protectedTabs = extractStringSet(
   appRoutes,
@@ -378,6 +379,40 @@ check(
 check(
   accountStatusNavigationBlock.includes("navigateToUserTab('accountStatus'"),
   'User account status navigation opens the account-status route.'
+);
+
+
+check(
+  appSource.includes('} = useAdminAccountManagementState({ adminTab });'),
+  'App delegates administrator account tab-entry initialization to the account management state hook.'
+);
+check(
+  adminAccountManagementController.includes('export const useAdminAccountManagementState = ({ adminTab }) => {'),
+  'Administrator account management state hook accepts the active administrator tab.'
+);
+const adminAccountStateBlock = extractBlock(
+  adminAccountManagementController,
+  'export const useAdminAccountManagementState = ({ adminTab }) => {',
+  'export default function useAdminAccountManagementController('
+);
+check(
+  adminAccountStateBlock.includes("if (adminTab !== 'adminAccounts') return;") &&
+    adminAccountStateBlock.includes('setAdminAccountForm(createDefaultAdminAccountForm());') &&
+    adminAccountStateBlock.includes('setAdminAccountPage(1);'),
+  'Administrator account state hook resets the registration form and page when the administrator-account tab opens.'
+);
+check(
+  !appSource.includes("if (adminTab === 'adminAccounts')") &&
+    !appSource.includes('setAdminAccountForm(createDefaultAdminAccountForm());'),
+  'App has no duplicate administrator account tab-entry initialization effect.'
+);
+check(
+  !/\buseEffect\s*\(/.test(appSource),
+  'App has no direct useEffect calls after administrator account initialization is delegated.'
+);
+check(
+  !appSource.includes('createDefaultAdminAccountForm,'),
+  'App no longer imports the administrator account form factory solely for tab-entry initialization.'
 );
 
 const dashboardHeadingBlocks = [

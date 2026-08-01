@@ -48,7 +48,7 @@ export const createDefaultAdminAccountEditForm = () => ({
   newPasswordConfirm: '',
 });
 
-export const useAdminAccountManagementState = () => {
+export const useAdminAccountManagementState = ({ adminTab }) => {
   const [adminAccountForm, setAdminAccountForm] = useState(
     createDefaultAdminAccountForm
   );
@@ -61,6 +61,13 @@ export const useAdminAccountManagementState = () => {
     createDefaultAdminAccountEditForm
   );
   const [adminMyProfileSaving, setAdminMyProfileSaving] = useState(false);
+
+  useEffect(() => {
+    if (adminTab !== 'adminAccounts') return;
+
+    setAdminAccountForm(createDefaultAdminAccountForm());
+    setAdminAccountPage(1);
+  }, [adminTab]);
 
   return {
     adminAccountEditForm,

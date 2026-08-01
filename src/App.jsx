@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Button } from './components/CommonUI.jsx';
 import useAppContextAssembler from './context/useAppContextAssembler.js';
 import AppShell from './shell/AppShell.jsx';
@@ -96,7 +96,6 @@ import useUserAuthenticationSessionController, {
   useUserAuthenticationSessionState,
 } from './features/auth/useUserAuthenticationSessionController.js';
 import useAdminAccountManagementController, {
-  createDefaultAdminAccountForm,
   useAdminAccountManagementState,
 } from './features/auth/useAdminAccountManagementController.js';
 import useUserMyPageAccountController, {
@@ -689,7 +688,7 @@ function App() {
     setAdminMyProfileForm,
     setAdminMyProfileSaving,
     setEditingAdminAccountId,
-  } = useAdminAccountManagementState();
+  } = useAdminAccountManagementState({ adminTab });
   const {
     adminAuthAbsoluteExpiresAt,
     adminAuthExpiresAt,
@@ -793,13 +792,6 @@ function App() {
     setSplitStorageFinalizeLoading,
     splitStorageFinalizeLoading,
   } = useAdminSplitStorageMigrationState();
-
-  useEffect(() => {
-    if (adminTab === 'adminAccounts') {
-      setAdminAccountForm(createDefaultAdminAccountForm());
-      setAdminAccountPage(1);
-    }
-  }, [adminTab]);
 
   const {
     dismissSystemBanner,

@@ -1,0 +1,57 @@
+P2 관리자 계정 탭 초기화 효과 이동 검증 보고서
+================================================
+
+[입력 기준본]
+rental-system-user-account-status-navigation-state-integration-20260802_0145_deployment_package.zip
+SHA-256: 7695b689971b2c29299107716c0f046c4e1463d8299d0a3e16e6f9c423904d57
+
+[변경 범위]
+- src/App.jsx
+- src/features/auth/useAdminAccountManagementController.js
+- tools/audit-app-flow-contracts.mjs
+- SOURCE_GRAPH_ANALYSIS_REPORT.json 및 작업 보고 산출물
+
+[입력 검증]
+- ZIP 압축 무결성: PASS
+- PACKAGE_FILES: 489개
+- 실제 프로젝트 파일: 489개
+- 파일 집합 일치: PASS
+- SHA-256: 489/489 PASS
+- 누적 삭제 경로: 65개
+
+[소스 검증]
+- 비 JSX JavaScript/MJS node --check: PASS
+- React Hook 감사: PASS, 144개 소스
+- 앱 흐름 계약 감사: PASS, 105개 계약
+- 사용자 경로 계약: 11개 PASS
+- 관리자 탭 계약: 20개 PASS
+- 상대 import: 429개, 누락 0건
+- Firestore strict 감사: PASS, 129개 호출
+- 관리자 계정 탭 초기화 런타임 모의 검증: PASS
+- TypeScript 동일 환경 비교: 기준본 319 / 수정본 319 / 신규 0 / 제거 0
+- 사용자 표시 문자열: 추가 0 / 삭제 0
+
+[구조 변화]
+- App.jsx: 2,181줄 -> 2,173줄 (-8)
+- App.jsx: 67,655 bytes -> 67,448 bytes (-207)
+- App.jsx 직접 useEffect: 1 -> 0
+- App.jsx 직접 useState: 1 -> 1
+- 초기 정적 모듈: 87 -> 87
+- 초기 정적 소스: 880,958 -> 880,940 bytes (-18)
+- 동적 엔트리: 14 -> 14
+
+[Firestore 영향]
+- onSnapshot: 35 -> 35
+- getDocs: 48 -> 48
+- getDoc: 28 -> 28
+- getCountFromServer: 18 -> 18
+- Rules 변경: 없음
+- 인덱스 변경: 없음
+- Firebase 설정 변경: 없음
+
+[빌드]
+- npm run prebuild: PASS
+- npm ci: FAIL (외부 내부 npm 저장소 E404)
+- 실패 패키지: yargs-parser-21.1.1.tgz
+- 실제 Vite 빌드: 미수행
+- 로컬 deploy.ps1에서 npm run build 성공 확인 필요

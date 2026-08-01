@@ -1,0 +1,106 @@
+{
+  "generatedAt": "2026-08-02T01:52:00+09:00",
+  "task": "Administrator account tab initialization effect transfer",
+  "inputPackage": "rental-system-user-account-status-navigation-state-integration-20260802_0145_deployment_package.zip",
+  "outputPackage": "rental-system-admin-account-tab-initialization-effect-transfer-20260802_0152_deployment_package.zip",
+  "app": {
+    "before": {
+      "lines": 2181,
+      "bytes": 67655,
+      "useState": 1,
+      "useEffect": 1,
+      "useMemo": 0,
+      "useRef": 0,
+      "useCallback": 0
+    },
+    "after": {
+      "lines": 2173,
+      "bytes": 67448,
+      "useState": 1,
+      "useEffect": 0,
+      "useMemo": 0,
+      "useRef": 0,
+      "useCallback": 0
+    }
+  },
+  "adminAccountManagementController": {
+    "before": {
+      "lines": 813,
+      "bytes": 24792
+    },
+    "after": {
+      "lines": 820,
+      "bytes": 24976
+    }
+  },
+  "sourceGraph": {
+    "before": {
+      "initialModuleCount": 87,
+      "initialSourceBytes": 880958,
+      "dynamicEntryCount": 14
+    },
+    "after": {
+      "initialModuleCount": 87,
+      "initialSourceBytes": 880935,
+      "dynamicEntryCount": 14
+    }
+  },
+  "flowContracts": {
+    "before": 99,
+    "after": 105
+  },
+  "relativeImports": {
+    "checked": 429,
+    "missing": 0
+  },
+  "firestore": {
+    "totalReadCalls": 129,
+    "onSnapshot": 35,
+    "getDocs": 48,
+    "getDoc": 28,
+    "getCountFromServer": 18,
+    "changed": false
+  },
+  "uiStrings": {
+    "added": 0,
+    "removed": 0
+  },
+  "typescriptDiagnostics": {
+    "normalizedBaseline": 319,
+    "normalizedModified": 319,
+    "new": 0,
+    "removed": 0
+  },
+  "protectedHashes": {
+    "rules/firestore.rules": {
+      "before": "9b703839184e09c7303b80fde2209722a4545feefabc837ad8e885e0466b1d3e",
+      "after": "9b703839184e09c7303b80fde2209722a4545feefabc837ad8e885e0466b1d3e",
+      "changed": false
+    },
+    "firestore.indexes.json": {
+      "before": "e8331250b347f49156fc64e50c6bef5e198e310708f192ddd67ce472e3d9c70f",
+      "after": "e8331250b347f49156fc64e50c6bef5e198e310708f192ddd67ce472e3d9c70f",
+      "changed": false
+    },
+    "firebase.json": {
+      "before": "9f47f5d83c8ac8006ca7ec119dbf681d9b5d773ac9957c9254517bc01e514e8f",
+      "after": "9f47f5d83c8ac8006ca7ec119dbf681d9b5d773ac9957c9254517bc01e514e8f",
+      "changed": false
+    },
+    ".firebaserc": {
+      "before": "b17b7da5c0ba946de5766077657b967dddd43541da4150600374412e8bc463b1",
+      "after": "b17b7da5c0ba946de5766077657b967dddd43541da4150600374412e8bc463b1",
+      "changed": false
+    },
+    "package.json": {
+      "before": "49ce67f110c62d8e1788c9579623aa129d230045d0edef445623b12ec7854639",
+      "after": "49ce67f110c62d8e1788c9579623aa129d230045d0edef445623b12ec7854639",
+      "changed": false
+    },
+    "package-lock.json": {
+      "before": "59ff408bd366536cd0bf655e197f5c48be56ef06d744b03e0b30ed767a8ac175",
+      "after": "59ff408bd366536cd0bf655e197f5c48be56ef06d744b03e0b30ed767a8ac175",
+      "changed": false
+    }
+  }
+}

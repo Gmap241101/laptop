@@ -1,0 +1,3736 @@
+diff -ruN '--exclude=package-meta' '--exclude=P2_ADMIN_ACCOUNT_TAB_INITIALIZATION_EFFECT_TRANSFER.diff' '--exclude=P2_ADMIN_ACCOUNT_TAB_INITIALIZATION_EFFECT_TRANSFER_COMPARISON.json' '--exclude=P2_ADMIN_ACCOUNT_TAB_INITIALIZATION_EFFECT_TRANSFER_REPORT.md' '--exclude=P2_ADMIN_ACCOUNT_TAB_INITIALIZATION_EFFECT_TRANSFER_VALIDATION_REPORT.txt' /mnt/data/seq_008_base/.performance-reports/firestore-access-audit.json /mnt/data/seq_008_work/.performance-reports/firestore-access-audit.json
+--- /mnt/data/seq_008_base/.performance-reports/firestore-access-audit.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/seq_008_work/.performance-reports/firestore-access-audit.json	2026-08-01 16:51:31.350809636 +0000
+@@ -0,0 +1,3278 @@
++{
++  "generatedAt": "2026-08-01T16:51:31.354Z",
++  "project": "seq_008_work",
++  "strictMode": true,
++  "sourceFilesScanned": 144,
++  "totalCalls": 129,
++  "countsByCall": {
++    "onSnapshot": 35,
++    "getDocs": 48,
++    "getDoc": 28,
++    "getCountFromServer": 18
++  },
++  "countsByRule": {
++    "unbounded-collection-listener": 2,
++    "document-listener": 15,
++    "bounded-listener": 11,
++    "document-read": 28,
++    "full-high-growth-read": 19,
++    "unbounded-high-growth-listener": 4,
++    "aggregation-read": 18,
++    "bounded-read": 6,
++    "filtered-unbounded-collection-read": 3,
++    "filtered-unbounded-collection-listener": 2,
++    "filtered-unbounded-high-growth-read": 4,
++    "full-collection-read": 16,
++    "unresolved-listener-source": 1
++  },
++  "approvedRiskFindings": 51,
++  "unapprovedWarnings": 0,
++  "unapprovedErrors": 0,
++  "result": "pass",
++  "policy": {
++    "path": "tools/firestore-audit-policy.json",
++    "highGrowthCollections": [
++      "RENTAL_REQUESTS_COLLECTION_REF",
++      "RENTAL_REQUEST_LOGS_COLLECTION_REF",
++      "USER_ACCOUNTS_COLLECTION_REF",
++      "RENTAL_ASSETS_COLLECTION_REF",
++      "RENTAL_AVAILABILITY_COLLECTION_REF",
++      "RENTAL_BORROWERS_COLLECTION_REF",
++      "ADMIN_ACCOUNTS_COLLECTION_REF",
++      "NOTICE_POSTS_COLLECTION_REF",
++      "FAQ_POSTS_COLLECTION_REF",
++      "SYSTEM_AUDIT_LOGS_COLLECTION_REF",
++      "rentalRequests",
++      "rentalRequestLogs",
++      "userAccounts",
++      "rentalAssets",
++      "rentalAvailability",
++      "rentalBorrowers",
++      "adminAccounts",
++      "noticePosts",
++      "faqPosts",
++      "systemAuditLogs"
++    ]
++  },
++  "findings": [
++    {
++      "id": "onSnapshot:cf6e709dc3c10bc1",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "관리자 홈 배너 편집 패널이 열린 동안만 활성화되는 소규모 콘텐츠 컬렉션 구독입니다.",
++      "rule": "unbounded-collection-listener",
++      "message": "컬렉션 전체 실시간 구독이며 limit이 없습니다.",
++      "call": "onSnapshot",
++      "file": "src/admin/AdminHomeBannerPanel.jsx",
++      "line": 226,
++      "source": "HOME_BANNERS_COLLECTION_REF",
++      "resolvedSource": "collection( db, 'homeBanners' )",
++      "collections": [
++        "HOME_BANNERS_COLLECTION_REF",
++        "homeBanners"
++      ],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "onSnapshot:e5aaa8add7ee8dc7",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-listener",
++      "message": "문서 단건 실시간 구독입니다.",
++      "call": "onSnapshot",
++      "file": "src/admin/AdminHomeBannerPanel.jsx",
++      "line": 243,
++      "source": "HOME_PAGE_CONFIG_DOC_REF",
++      "resolvedSource": "doc( db, 'homePage', 'config' )",
++      "collections": [
++        "homePage"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "onSnapshot:b452e7239f7c2033",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "bounded-listener",
++      "message": "limit이 적용된 실시간 쿼리입니다.",
++      "call": "onSnapshot",
++      "file": "src/admin/AdminSettingsPanel.jsx",
++      "line": 257,
++      "source": "auditQuery",
++      "resolvedSource": "query( SYSTEM_AUDIT_LOGS_COLLECTION_REF, orderBy('createdAt', 'desc'), limit(50) )",
++      "collections": [
++        "SYSTEM_AUDIT_LOGS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": true,
++      "hasLimit": true,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "onSnapshot:4b6d5bea996c0a62",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "bounded-listener",
++      "message": "limit이 적용된 실시간 쿼리입니다.",
++      "call": "onSnapshot",
++      "file": "src/admin/AdminSignupTermsManager.jsx",
++      "line": 99,
++      "source": "firestoreQuery(SIGNUP_TERMS_COLLECTION_REF, limit(100))",
++      "resolvedSource": "firestoreQuery(SIGNUP_TERMS_COLLECTION_REF, limit(100))",
++      "collections": [
++        "SIGNUP_TERMS_COLLECTION_REF"
++      ],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": true,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDoc:b4b829db5f438518",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/admin/AdminSignupTermsManager.jsx",
++      "line": 441,
++      "source": "SIGNUP_TERMS_POLICY_DOC_REF",
++      "resolvedSource": "doc( db, 'signupTermsPolicy', 'current' )",
++      "collections": [
++        "signupTermsPolicy"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDoc:b148535ba506d591",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/components/TermsVersionDialog.jsx",
++      "line": 24,
++      "source": "doc(SIGNUP_TERM_VERSIONS_COLLECTION_REF, versionId)",
++      "resolvedSource": "doc(SIGNUP_TERM_VERSIONS_COLLECTION_REF, versionId)",
++      "collections": [
++        "SIGNUP_TERM_VERSIONS_COLLECTION_REF"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:a5ec14d8f2dd1cbd",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "관리자가 자산 카테고리 일괄 변경을 저장할 때 전체 자산을 원자적으로 재작성하기 위한 명시적 일회성 조회입니다. 자산은 최대 200대입니다.",
++      "rule": "full-high-growth-read",
++      "message": "증가 가능성이 큰 컬렉션을 전체 일회성 조회합니다.",
++      "call": "getDocs",
++      "file": "src/features/assets/useAdminAssetCategoryController.js",
++      "line": 270,
++      "source": "RENTAL_ASSETS_COLLECTION_REF",
++      "resolvedSource": "collection( db, 'rentalAssets' )",
++      "collections": [
++        "RENTAL_ASSETS_COLLECTION_REF",
++        "rentalAssets"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDoc:71813411572a4736",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/features/assets/useAssetBulkUpload.js",
++      "line": 79,
++      "source": "PUBLIC_CONFIG_DOC_REF",
++      "resolvedSource": "doc( db, 'rentalSystem', 'publicConfig' )",
++      "collections": [
++        "rentalSystem"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:717951e655928974",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "관리자 계정 변경 작업 전에 전체 관리자 계정 충돌을 검증하는 명시적 일회성 조회입니다.",
++      "rule": "full-high-growth-read",
++      "message": "증가 가능성이 큰 컬렉션을 전체 일회성 조회합니다.",
++      "call": "getDocs",
++      "file": "src/features/auth/useAdminAccountManagementController.js",
++      "line": 720,
++      "source": "ADMIN_ACCOUNTS_COLLECTION_REF",
++      "resolvedSource": "collection( db, 'adminAccounts' )",
++      "collections": [
++        "ADMIN_ACCOUNTS_COLLECTION_REF",
++        "adminAccounts"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDoc:a6f4d45349af64bd",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/features/auth/useAdminAuthenticationController.js",
++      "line": 400,
++      "source": "adminAccountDocRef",
++      "resolvedSource": "doc( db, 'adminAccounts', credential.user.uid )",
++      "collections": [
++        "adminAccounts"
++      ],
++      "highGrowth": true,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDoc:078809dac9e8a98b",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/features/auth/useAdminAuthenticationController.js",
++      "line": 485,
++      "source": "SYSTEM_ADMIN_SETTINGS_DOC_REF",
++      "resolvedSource": "doc( db, 'systemSettings', 'admin' )",
++      "collections": [
++        "systemSettings"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "onSnapshot:149ccafca4fd4d63",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-listener",
++      "message": "문서 단건 실시간 구독입니다.",
++      "call": "onSnapshot",
++      "file": "src/features/auth/useAuthIdentityPolicySubscriptionController.js",
++      "line": 233,
++      "source": "doc(db, 'adminAccounts', currentAuthUid)",
++      "resolvedSource": "doc(db, 'adminAccounts', currentAuthUid)",
++      "collections": [
++        "adminAccounts"
++      ],
++      "highGrowth": true,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "onSnapshot:c1d101d182251b3c",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-listener",
++      "message": "문서 단건 실시간 구독입니다.",
++      "call": "onSnapshot",
++      "file": "src/features/auth/useAuthIdentityPolicySubscriptionController.js",
++      "line": 321,
++      "source": "doc(db, USER_ACCOUNTS_COLLECTION_NAME, firebaseAuthUser.uid)",
++      "resolvedSource": "doc(db, USER_ACCOUNTS_COLLECTION_NAME, firebaseAuthUser.uid)",
++      "collections": [],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "onSnapshot:384fe4b453bef87b",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-listener",
++      "message": "문서 단건 실시간 구독입니다.",
++      "call": "onSnapshot",
++      "file": "src/features/auth/useAuthIdentityPolicySubscriptionController.js",
++      "line": 391,
++      "source": "doc( RENTAL_RESTRICTIONS_COLLECTION_REF, firebaseAuthUser.uid )",
++      "resolvedSource": "doc( RENTAL_RESTRICTIONS_COLLECTION_REF, firebaseAuthUser.uid )",
++      "collections": [
++        "RENTAL_RESTRICTIONS_COLLECTION_REF"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "onSnapshot:ca4258f2d42f2d53",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-listener",
++      "message": "문서 단건 실시간 구독입니다.",
++      "call": "onSnapshot",
++      "file": "src/features/auth/useAuthIdentityPolicySubscriptionController.js",
++      "line": 452,
++      "source": "USER_SESSION_POLICY_DOC_REF",
++      "resolvedSource": "doc( db, 'securityPolicies', 'userSession' )",
++      "collections": [
++        "securityPolicies"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "onSnapshot:d1862d305b3d05ae",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-listener",
++      "message": "문서 단건 실시간 구독입니다.",
++      "call": "onSnapshot",
++      "file": "src/features/auth/useAuthIdentityPolicySubscriptionController.js",
++      "line": 499,
++      "source": "SYSTEM_ADMIN_SETTINGS_DOC_REF",
++      "resolvedSource": "doc( db, 'systemSettings', 'admin' )",
++      "collections": [
++        "systemSettings"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "onSnapshot:af6dbfebe9a290a7",
++      "occurrence": 1,
++      "severity": "error",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "관리자 계정 관리 탭에서만 활성화되는 관리자 계정 목록 구독입니다. 일반 사용자 경로에서는 실행되지 않습니다.",
++      "rule": "unbounded-high-growth-listener",
++      "message": "증가 가능성이 큰 컬렉션을 조건과 limit 없이 실시간 구독합니다.",
++      "call": "onSnapshot",
++      "file": "src/features/auth/useAuthIdentityPolicySubscriptionController.js",
++      "line": 558,
++      "source": "ADMIN_ACCOUNTS_COLLECTION_REF",
++      "resolvedSource": "collection( db, 'adminAccounts' )",
++      "collections": [
++        "ADMIN_ACCOUNTS_COLLECTION_REF",
++        "adminAccounts"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "getDoc:276b8537396d4a0b",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/features/auth/useUserLoginController.js",
++      "line": 203,
++      "source": "doc(db, 'adminAccounts', credential.user.uid)",
++      "resolvedSource": "doc(db, 'adminAccounts', credential.user.uid)",
++      "collections": [
++        "adminAccounts"
++      ],
++      "highGrowth": true,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDoc:a4ec148883ca0fdb",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/features/auth/useUserLoginController.js",
++      "line": 217,
++      "source": "doc(db, USER_ACCOUNTS_COLLECTION_NAME, credential.user.uid)",
++      "resolvedSource": "doc(db, USER_ACCOUNTS_COLLECTION_NAME, credential.user.uid)",
++      "collections": [],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDoc:ee7d04bcd635dea4",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/features/auth/useUserSignupController.js",
++      "line": 287,
++      "source": "doc(MEMBER_DIRECTORY_KEYS_COLLECTION_REF, identityKey)",
++      "resolvedSource": "doc(MEMBER_DIRECTORY_KEYS_COLLECTION_REF, identityKey)",
++      "collections": [
++        "MEMBER_DIRECTORY_KEYS_COLLECTION_REF"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDoc:5a3266e986db5037",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/features/auth/userSessionPolicyService.js",
++      "line": 14,
++      "source": "USER_SESSION_POLICY_DOC_REF",
++      "resolvedSource": "doc( db, 'securityPolicies', 'userSession' )",
++      "collections": [
++        "securityPolicies"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getCountFromServer:13c7637876af9d2f",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "aggregation-read",
++      "message": "서버 집계 조회입니다.",
++      "call": "getCountFromServer",
++      "file": "src/features/boards/useAdminBoardSettingsController.js",
++      "line": 357,
++      "source": "firestoreQuery( FAQ_POSTS_COLLECTION_REF, where('categoryId', '==', category.id) )",
++      "resolvedSource": "firestoreQuery( FAQ_POSTS_COLLECTION_REF, where('categoryId', '==', category.id) )",
++      "collections": [
++        "FAQ_POSTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "onSnapshot:16c5d370a1f87eb3",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-listener",
++      "message": "문서 단건 실시간 구독입니다.",
++      "call": "onSnapshot",
++      "file": "src/features/boards/useBoardContentSubscriptionController.js",
++      "line": 299,
++      "source": "NOTICE_BOARD_CONFIG_DOC_REF",
++      "resolvedSource": "doc( db, 'noticeBoard', 'config' )",
++      "collections": [
++        "noticeBoard"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "getDocs:8676a628a35f8be0",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "bounded-read",
++      "message": "limit이 적용된 일회성 조회입니다.",
++      "call": "getDocs",
++      "file": "src/features/boards/useBoardContentSubscriptionController.js",
++      "line": 426,
++      "source": "pinnedSource",
++      "resolvedSource": "firestoreQuery( NOTICE_POSTS_COLLECTION_REF, where('isPinned', '==', true), orderBy('createdAt', 'desc'), firestoreLimit( shouldLoadUserHomeNotice ? 6 : FIRESTORE_PINNED_POST_LIMIT ) )",
++      "collections": [
++        "NOTICE_POSTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": true,
++      "hasLimit": true,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "onSnapshot:41621172a91f103b",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "bounded-listener",
++      "message": "limit이 적용된 실시간 쿼리입니다.",
++      "call": "onSnapshot",
++      "file": "src/features/boards/useBoardContentSubscriptionController.js",
++      "line": 439,
++      "source": "pinnedSource",
++      "resolvedSource": "firestoreQuery( NOTICE_POSTS_COLLECTION_REF, where('isPinned', '==', true), orderBy('createdAt', 'desc'), firestoreLimit( shouldLoadUserHomeNotice ? 6 : FIRESTORE_PINNED_POST_LIMIT ) )",
++      "collections": [
++        "NOTICE_POSTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": true,
++      "hasLimit": true,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "getDocs:a19c64e9b8b014fc",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "bounded-read",
++      "message": "limit이 적용된 일회성 조회입니다.",
++      "call": "getDocs",
++      "file": "src/features/boards/useBoardContentSubscriptionController.js",
++      "line": 551,
++      "source": "regularSource",
++      "resolvedSource": "firestoreQuery( NOTICE_POSTS_COLLECTION_REF, where('isPinned', '==', false), orderBy('createdAt', 'desc'), ...(pageCursor ? [startAfter(pageCursor)] : []), firestoreLimit(postsPerPage + 1) )",
++      "collections": [
++        "NOTICE_POSTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": true,
++      "hasLimit": true,
++      "hasCursor": true,
++      "scopeSignal": false
++    },
++    {
++      "id": "onSnapshot:090b26666e376e70",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "bounded-listener",
++      "message": "limit이 적용된 실시간 쿼리입니다.",
++      "call": "onSnapshot",
++      "file": "src/features/boards/useBoardContentSubscriptionController.js",
++      "line": 559,
++      "source": "regularSource",
++      "resolvedSource": "firestoreQuery( NOTICE_POSTS_COLLECTION_REF, where('isPinned', '==', false), orderBy('createdAt', 'desc'), ...(pageCursor ? [startAfter(pageCursor)] : []), firestoreLimit(postsPerPage + 1) )",
++      "collections": [
++        "NOTICE_POSTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": true,
++      "hasLimit": true,
++      "hasCursor": true,
++      "scopeSignal": false
++    },
++    {
++      "id": "getCountFromServer:2eb45c515a1ec094",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "aggregation-read",
++      "message": "서버 집계 조회입니다.",
++      "call": "getCountFromServer",
++      "file": "src/features/boards/useBoardContentSubscriptionController.js",
++      "line": 567,
++      "source": "firestoreQuery( NOTICE_POSTS_COLLECTION_REF, where('isPinned', '==', false) )",
++      "resolvedSource": "firestoreQuery( NOTICE_POSTS_COLLECTION_REF, where('isPinned', '==', false) )",
++      "collections": [
++        "NOTICE_POSTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "getDoc:756126e13faedf5d",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/features/boards/useBoardContentSubscriptionController.js",
++      "line": 627,
++      "source": "doc(NOTICE_POSTS_COLLECTION_REF, selectedNoticePostId)",
++      "resolvedSource": "doc(NOTICE_POSTS_COLLECTION_REF, selectedNoticePostId)",
++      "collections": [
++        "NOTICE_POSTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "onSnapshot:364a7b390d49a9a4",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "FAQ 관리·사용자 FAQ 화면에서 사용하는 관리자 정의 카테고리 목록입니다. 게시글이 아닌 소수의 분류값 컬렉션입니다.",
++      "rule": "unbounded-collection-listener",
++      "message": "컬렉션 전체 실시간 구독이며 limit이 없습니다.",
++      "call": "onSnapshot",
++      "file": "src/features/boards/useBoardContentSubscriptionController.js",
++      "line": 674,
++      "source": "FAQ_CATEGORIES_COLLECTION_REF",
++      "resolvedSource": "collection( db, 'faqCategories' )",
++      "collections": [
++        "FAQ_CATEGORIES_COLLECTION_REF",
++        "faqCategories"
++      ],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "onSnapshot:3b72670198129e1f",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-listener",
++      "message": "문서 단건 실시간 구독입니다.",
++      "call": "onSnapshot",
++      "file": "src/features/boards/useBoardContentSubscriptionController.js",
++      "line": 723,
++      "source": "FAQ_BOARD_CONFIG_DOC_REF",
++      "resolvedSource": "doc( db, 'faqBoard', 'config' )",
++      "collections": [
++        "faqBoard"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "onSnapshot:f74c1ded73500576",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "bounded-listener",
++      "message": "limit이 적용된 실시간 쿼리입니다.",
++      "call": "onSnapshot",
++      "file": "src/features/boards/useBoardContentSubscriptionController.js",
++      "line": 828,
++      "source": "pinnedSource",
++      "resolvedSource": "firestoreQuery( FAQ_POSTS_COLLECTION_REF, ...categoryConstraints, where('isPinned', '==', true), orderBy('createdAt', 'desc'), firestoreLimit(FIRESTORE_PINNED_POST_LIMIT) )",
++      "collections": [
++        "FAQ_POSTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": true,
++      "hasLimit": true,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "onSnapshot:2e262cadcae88205",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "bounded-listener",
++      "message": "limit이 적용된 실시간 쿼리입니다.",
++      "call": "onSnapshot",
++      "file": "src/features/boards/useBoardContentSubscriptionController.js",
++      "line": 910,
++      "source": "regularSource",
++      "resolvedSource": "firestoreQuery( FAQ_POSTS_COLLECTION_REF, ...categoryConstraints, where('isPinned', '==', false), orderBy('createdAt', 'desc'), ...(pageCursor ? [startAfter(pageCursor)] : []), firestoreLimit(postsPerPage + 1) )",
++      "collections": [
++        "FAQ_POSTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": true,
++      "hasLimit": true,
++      "hasCursor": true,
++      "scopeSignal": true
++    },
++    {
++      "id": "getCountFromServer:f4a6f7775c68da9c",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "aggregation-read",
++      "message": "서버 집계 조회입니다.",
++      "call": "getCountFromServer",
++      "file": "src/features/boards/useBoardContentSubscriptionController.js",
++      "line": 947,
++      "source": "firestoreQuery( FAQ_POSTS_COLLECTION_REF, ...categoryConstraints, where('isPinned', '==', false) )",
++      "resolvedSource": "firestoreQuery( FAQ_POSTS_COLLECTION_REF, ...categoryConstraints, where('isPinned', '==', false) )",
++      "collections": [
++        "FAQ_POSTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "getDocs:31bce5a3449246bb",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "사용자 화면에서는 enabled 팝업을 1회 조회하고 관리자 팝업 편집 화면에서만 전체 실시간 구독합니다. 관리자 생성 콘텐츠 규모로 제한됩니다.",
++      "rule": "filtered-unbounded-collection-read",
++      "message": "where 조건은 있지만 결과 개수 limit이 없는 일회성 쿼리입니다.",
++      "call": "getDocs",
++      "file": "src/features/boards/usePopupFooterContentSubscriptionController.js",
++      "line": 254,
++      "source": "popupSource",
++      "resolvedSource": "shouldLoadAdminPopup ? POPUP_POSTS_COLLECTION_REF : firestoreQuery( POPUP_POSTS_COLLECTION_REF, where('enabled', '==', true) )",
++      "collections": [
++        "POPUP_POSTS_COLLECTION_REF"
++      ],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "onSnapshot:2e14b30e3ae4906e",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "사용자 화면에서는 enabled 팝업을 1회 조회하고 관리자 팝업 편집 화면에서만 전체 실시간 구독합니다. 관리자 생성 콘텐츠 규모로 제한됩니다.",
++      "rule": "filtered-unbounded-collection-listener",
++      "message": "where 조건은 있지만 결과 개수 limit이 없는 실시간 쿼리입니다.",
++      "call": "onSnapshot",
++      "file": "src/features/boards/usePopupFooterContentSubscriptionController.js",
++      "line": 267,
++      "source": "popupSource",
++      "resolvedSource": "shouldLoadAdminPopup ? POPUP_POSTS_COLLECTION_REF : firestoreQuery( POPUP_POSTS_COLLECTION_REF, where('enabled', '==', true) )",
++      "collections": [
++        "POPUP_POSTS_COLLECTION_REF"
++      ],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "getDoc:30abf55e303ee5c9",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/features/boards/usePopupFooterContentSubscriptionController.js",
++      "line": 344,
++      "source": "SITE_FOOTER_CONFIG_DOC_REF",
++      "resolvedSource": "doc( db, 'siteFooter', 'config' )",
++      "collections": [
++        "siteFooter"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "onSnapshot:f591ec15c1e7275a",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-listener",
++      "message": "문서 단건 실시간 구독입니다.",
++      "call": "onSnapshot",
++      "file": "src/features/boards/usePopupFooterContentSubscriptionController.js",
++      "line": 357,
++      "source": "SITE_FOOTER_CONFIG_DOC_REF",
++      "resolvedSource": "doc( db, 'siteFooter', 'config' )",
++      "collections": [
++        "siteFooter"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "getDocs:a526eb8743589c17",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "사용자 화면에서는 enabled 푸터 페이지를 1회 조회하고 관리자 푸터 편집 화면에서만 전체 실시간 구독합니다. 소수의 고정 페이지 컬렉션입니다.",
++      "rule": "filtered-unbounded-collection-read",
++      "message": "where 조건은 있지만 결과 개수 limit이 없는 일회성 쿼리입니다.",
++      "call": "getDocs",
++      "file": "src/features/boards/usePopupFooterContentSubscriptionController.js",
++      "line": 439,
++      "source": "footerPagesSource",
++      "resolvedSource": "shouldLoadAdminFooter ? FOOTER_PAGES_COLLECTION_REF : firestoreQuery( FOOTER_PAGES_COLLECTION_REF, where('enabled', '==', true) )",
++      "collections": [
++        "FOOTER_PAGES_COLLECTION_REF"
++      ],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "onSnapshot:0d1101884c045459",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "사용자 화면에서는 enabled 푸터 페이지를 1회 조회하고 관리자 푸터 편집 화면에서만 전체 실시간 구독합니다. 소수의 고정 페이지 컬렉션입니다.",
++      "rule": "filtered-unbounded-collection-listener",
++      "message": "where 조건은 있지만 결과 개수 limit이 없는 실시간 쿼리입니다.",
++      "call": "onSnapshot",
++      "file": "src/features/boards/usePopupFooterContentSubscriptionController.js",
++      "line": 452,
++      "source": "footerPagesSource",
++      "resolvedSource": "shouldLoadAdminFooter ? FOOTER_PAGES_COLLECTION_REF : firestoreQuery( FOOTER_PAGES_COLLECTION_REF, where('enabled', '==', true) )",
++      "collections": [
++        "FOOTER_PAGES_COLLECTION_REF"
++      ],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "getDoc:2f70f5ba04d5462f",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/features/members/accountRecoveryService.js",
++      "line": 102,
++      "source": "doc(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF, recoveryKey)",
++      "resolvedSource": "doc(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF, recoveryKey)",
++      "collections": [
++        "ACCOUNT_RECOVERY_KEYS_COLLECTION_REF"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDoc:d0fd8fe5dffa57b9",
++      "occurrence": 2,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/features/members/accountRecoveryService.js",
++      "line": 134,
++      "source": "doc(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF, recoveryKey)",
++      "resolvedSource": "doc(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF, recoveryKey)",
++      "collections": [
++        "ACCOUNT_RECOVERY_KEYS_COLLECTION_REF"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:e353aa83f706b6ca",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "재가입 회원의 연결 UID별 전체 대여 이력을 관리자 버튼 클릭 또는 가입 승인 시 검증하기 위한 일회성 조회입니다.",
++      "rule": "filtered-unbounded-high-growth-read",
++      "message": "증가 가능성이 큰 컬렉션을 where로 제한하지만 결과 개수 limit이 없습니다.",
++      "call": "getDocs",
++      "file": "src/features/members/memberAccountHistoryService.js",
++      "line": 48,
++      "source": "firestoreQuery( RENTAL_REQUESTS_COLLECTION_REF, where('requesterUid', 'in', uidChunk) )",
++      "resolvedSource": "firestoreQuery( RENTAL_REQUESTS_COLLECTION_REF, where('requesterUid', 'in', uidChunk) )",
++      "collections": [
++        "RENTAL_REQUESTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:52808d39c0871c25",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "관리자가 부서·사용자 명부 저장을 실행할 때 계정·식별키 색인을 전체 재구성하기 위한 명시적 일회성 무결성 작업입니다.",
++      "rule": "full-high-growth-read",
++      "message": "증가 가능성이 큰 컬렉션을 전체 일회성 조회합니다.",
++      "call": "getDocs",
++      "file": "src/features/members/memberDirectorySaveService.js",
++      "line": 145,
++      "source": "USER_ACCOUNTS_COLLECTION_REF",
++      "resolvedSource": "collection( db, USER_ACCOUNTS_COLLECTION_NAME )",
++      "collections": [
++        "USER_ACCOUNTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:2d547d33f6520d10",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "관리자가 부서·사용자 명부 저장을 실행할 때 계정·식별키 색인을 전체 재구성하기 위한 명시적 일회성 무결성 작업입니다.",
++      "rule": "full-collection-read",
++      "message": "컬렉션 전체 일회성 조회이며 limit이 없습니다.",
++      "call": "getDocs",
++      "file": "src/features/members/memberDirectorySaveService.js",
++      "line": 146,
++      "source": "MEMBER_DIRECTORY_KEYS_COLLECTION_REF",
++      "resolvedSource": "collection( db, 'memberDirectoryKeys' )",
++      "collections": [
++        "MEMBER_DIRECTORY_KEYS_COLLECTION_REF",
++        "memberDirectoryKeys"
++      ],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:79250214918d076a",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "관리자가 부서·사용자 명부 저장을 실행할 때 계정·식별키 색인을 전체 재구성하기 위한 명시적 일회성 무결성 작업입니다.",
++      "rule": "full-collection-read",
++      "message": "컬렉션 전체 일회성 조회이며 limit이 없습니다.",
++      "call": "getDocs",
++      "file": "src/features/members/memberDirectorySaveService.js",
++      "line": 147,
++      "source": "MEMBER_IDENTITY_CLAIMS_COLLECTION_REF",
++      "resolvedSource": "collection( db, 'memberIdentityClaims' )",
++      "collections": [
++        "MEMBER_IDENTITY_CLAIMS_COLLECTION_REF",
++        "memberIdentityClaims"
++      ],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:1f96ba6be6d1f426",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "관리자가 부서·사용자 명부 저장을 실행할 때 계정·식별키 색인을 전체 재구성하기 위한 명시적 일회성 무결성 작업입니다.",
++      "rule": "full-collection-read",
++      "message": "컬렉션 전체 일회성 조회이며 limit이 없습니다.",
++      "call": "getDocs",
++      "file": "src/features/members/memberDirectorySaveService.js",
++      "line": 148,
++      "source": "ACCOUNT_RECOVERY_KEYS_COLLECTION_REF",
++      "resolvedSource": "collection( db, 'accountRecoveryKeys' )",
++      "collections": [
++        "ACCOUNT_RECOVERY_KEYS_COLLECTION_REF",
++        "accountRecoveryKeys"
++      ],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getCountFromServer:f1cb7221c02b22bc",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "aggregation-read",
++      "message": "서버 집계 조회입니다.",
++      "call": "getCountFromServer",
++      "file": "src/features/members/useAdminMemberAccountsController.js",
++      "line": 161,
++      "source": "firestoreQuery( USER_ACCOUNTS_COLLECTION_REF, where('status', '==', USER_PROFILE_STATUS.PENDING) )",
++      "resolvedSource": "firestoreQuery( USER_ACCOUNTS_COLLECTION_REF, where('status', '==', USER_PROFILE_STATUS.PENDING) )",
++      "collections": [
++        "USER_ACCOUNTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getCountFromServer:e1ca6dc632646c5f",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "aggregation-read",
++      "message": "서버 집계 조회입니다.",
++      "call": "getCountFromServer",
++      "file": "src/features/members/useAdminMemberAccountsController.js",
++      "line": 170,
++      "source": "firestoreQuery( USER_ACCOUNTS_COLLECTION_REF, where('status', '==', USER_PROFILE_STATUS.ACTIVE) )",
++      "resolvedSource": "firestoreQuery( USER_ACCOUNTS_COLLECTION_REF, where('status', '==', USER_PROFILE_STATUS.ACTIVE) )",
++      "collections": [
++        "USER_ACCOUNTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getCountFromServer:66708041f342ae00",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "aggregation-read",
++      "message": "서버 집계 조회입니다.",
++      "call": "getCountFromServer",
++      "file": "src/features/members/useAdminMemberAccountsController.js",
++      "line": 179,
++      "source": "firestoreQuery( USER_ACCOUNTS_COLLECTION_REF, where('status', '==', USER_PROFILE_STATUS.PROFILE_REQUIRED) )",
++      "resolvedSource": "firestoreQuery( USER_ACCOUNTS_COLLECTION_REF, where('status', '==', USER_PROFILE_STATUS.PROFILE_REQUIRED) )",
++      "collections": [
++        "USER_ACCOUNTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getCountFromServer:0aa87fdece9a1068",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "aggregation-read",
++      "message": "서버 집계 조회입니다.",
++      "call": "getCountFromServer",
++      "file": "src/features/members/useAdminMemberAccountsController.js",
++      "line": 188,
++      "source": "firestoreQuery( USER_ACCOUNTS_COLLECTION_REF, where('status', '==', USER_PROFILE_STATUS.BLOCKED) )",
++      "resolvedSource": "firestoreQuery( USER_ACCOUNTS_COLLECTION_REF, where('status', '==', USER_PROFILE_STATUS.BLOCKED) )",
++      "collections": [
++        "USER_ACCOUNTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getCountFromServer:428515f3e053f308",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "aggregation-read",
++      "message": "서버 집계 조회입니다.",
++      "call": "getCountFromServer",
++      "file": "src/features/members/useAdminMemberAccountsController.js",
++      "line": 197,
++      "source": "firestoreQuery( USER_ACCOUNTS_COLLECTION_REF, where('status', '==', USER_PROFILE_STATUS.RETIRED) )",
++      "resolvedSource": "firestoreQuery( USER_ACCOUNTS_COLLECTION_REF, where('status', '==', USER_PROFILE_STATUS.RETIRED) )",
++      "collections": [
++        "USER_ACCOUNTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "onSnapshot:f5f1dcdb37e5d59b",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "bounded-listener",
++      "message": "limit이 적용된 실시간 쿼리입니다.",
++      "call": "onSnapshot",
++      "file": "src/features/members/useAdminMemberAccountsController.js",
++      "line": 352,
++      "source": "memberSource",
++      "resolvedSource": "firestoreQuery( USER_ACCOUNTS_COLLECTION_REF, ...statusConstraints, orderBy('createdAt', 'desc'), ...(pageCursor ? [startAfter(pageCursor)] : []), firestoreLimit(ADMIN_MEMBER_ACCOUNT_PAGE_SIZE + 1) )",
++      "collections": [
++        "USER_ACCOUNTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": true,
++      "hasLimit": true,
++      "hasCursor": true,
++      "scopeSignal": false
++    },
++    {
++      "id": "getCountFromServer:d4e1447e3ba2985b",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "aggregation-read",
++      "message": "서버 집계 조회입니다.",
++      "call": "getCountFromServer",
++      "file": "src/features/members/useAdminMemberAccountsController.js",
++      "line": 393,
++      "source": "USER_ACCOUNTS_COLLECTION_REF",
++      "resolvedSource": "collection( db, USER_ACCOUNTS_COLLECTION_NAME )",
++      "collections": [
++        "USER_ACCOUNTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:72b10d99a9c59265",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "명부 제한 정책을 해제할 때 DIRECTORY_MISMATCH 상태 계정만 복원하는 관리자 작업입니다. 사용자가 명시적으로 정책을 변경할 때만 실행됩니다.",
++      "rule": "filtered-unbounded-high-growth-read",
++      "message": "증가 가능성이 큰 컬렉션을 where로 제한하지만 결과 개수 limit이 없습니다.",
++      "call": "getDocs",
++      "file": "src/features/members/useAdminMemberDirectoryAuditActions.js",
++      "line": 102,
++      "source": "firestoreQuery( USER_ACCOUNTS_COLLECTION_REF, where( 'status', '==', USER_PROFILE_STATUS.PROFILE_REQUIRED ), where( 'profileRequiredReason', '==', PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH ) )",
++      "resolvedSource": "firestoreQuery( USER_ACCOUNTS_COLLECTION_REF, where( 'status', '==', USER_PROFILE_STATUS.PROFILE_REQUIRED ), where( 'profileRequiredReason', '==', PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH ) )",
++      "collections": [
++        "USER_ACCOUNTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:b6951788a53a0bae",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "관리자가 전체 회원 명부 감사를 실행할 때 계정·식별키·복구키 정합성을 재검사하는 명시적 일회성 작업입니다.",
++      "rule": "full-high-growth-read",
++      "message": "증가 가능성이 큰 컬렉션을 전체 일회성 조회합니다.",
++      "call": "getDocs",
++      "file": "src/features/members/useAdminMemberDirectoryAuditActions.js",
++      "line": 277,
++      "source": "USER_ACCOUNTS_COLLECTION_REF",
++      "resolvedSource": "collection( db, USER_ACCOUNTS_COLLECTION_NAME )",
++      "collections": [
++        "USER_ACCOUNTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:9f1ec00f15bec38a",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "관리자가 전체 회원 명부 감사를 실행할 때 계정·식별키·복구키 정합성을 재검사하는 명시적 일회성 작업입니다.",
++      "rule": "full-collection-read",
++      "message": "컬렉션 전체 일회성 조회이며 limit이 없습니다.",
++      "call": "getDocs",
++      "file": "src/features/members/useAdminMemberDirectoryAuditActions.js",
++      "line": 278,
++      "source": "MEMBER_IDENTITY_CLAIMS_COLLECTION_REF",
++      "resolvedSource": "collection( db, 'memberIdentityClaims' )",
++      "collections": [
++        "MEMBER_IDENTITY_CLAIMS_COLLECTION_REF",
++        "memberIdentityClaims"
++      ],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:66f2258d2349bcbc",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "관리자가 전체 회원 명부 감사를 실행할 때 계정·식별키·복구키 정합성을 재검사하는 명시적 일회성 작업입니다.",
++      "rule": "full-collection-read",
++      "message": "컬렉션 전체 일회성 조회이며 limit이 없습니다.",
++      "call": "getDocs",
++      "file": "src/features/members/useAdminMemberDirectoryAuditActions.js",
++      "line": 279,
++      "source": "ACCOUNT_RECOVERY_KEYS_COLLECTION_REF",
++      "resolvedSource": "collection( db, 'accountRecoveryKeys' )",
++      "collections": [
++        "ACCOUNT_RECOVERY_KEYS_COLLECTION_REF",
++        "accountRecoveryKeys"
++      ],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getCountFromServer:e304fc959d72635f",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "aggregation-read",
++      "message": "서버 집계 조회입니다.",
++      "call": "getCountFromServer",
++      "file": "src/features/members/useUserMyPageAccountController.js",
++      "line": 545,
++      "source": "firestoreQuery( RENTAL_REQUESTS_COLLECTION_REF, where('requesterUid', '==', firebaseAuthUser.uid), where('overdueDaysAtReturn', '>', 0) )",
++      "resolvedSource": "firestoreQuery( RENTAL_REQUESTS_COLLECTION_REF, where('requesterUid', '==', firebaseAuthUser.uid), where('overdueDaysAtReturn', '>', 0) )",
++      "collections": [
++        "RENTAL_REQUESTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "getDoc:88ac079c93093242",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/features/requests/rentalRestrictionService.js",
++      "line": 32,
++      "source": "PUBLIC_CONFIG_DOC_REF",
++      "resolvedSource": "doc( db, 'rentalSystem', 'publicConfig' )",
++      "collections": [
++        "rentalSystem"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:a64692c08f4241c1",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "반납·연체 처리 직전에 특정 사용자 1명의 전체 대여 이력을 다시 계산해 제한 정책을 정확히 적용하는 서버 최신성 검증입니다.",
++      "rule": "filtered-unbounded-high-growth-read",
++      "message": "증가 가능성이 큰 컬렉션을 where로 제한하지만 결과 개수 limit이 없습니다.",
++      "call": "getDocs",
++      "file": "src/features/requests/rentalRestrictionService.js",
++      "line": 33,
++      "source": "firestoreQuery( RENTAL_REQUESTS_COLLECTION_REF, where('requesterUid', '==', requesterUid) )",
++      "resolvedSource": "firestoreQuery( RENTAL_REQUESTS_COLLECTION_REF, where('requesterUid', '==', requesterUid) )",
++      "collections": [
++        "RENTAL_REQUESTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDoc:c3cb00f226981b6b",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/features/requests/rentalRestrictionService.js",
++      "line": 39,
++      "source": "restrictionDocRef",
++      "resolvedSource": "doc( RENTAL_RESTRICTIONS_COLLECTION_REF, requesterUid )",
++      "collections": [
++        "RENTAL_RESTRICTIONS_COLLECTION_REF"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "onSnapshot:c72f42a82f75063c",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "bounded-listener",
++      "message": "limit이 적용된 실시간 쿼리입니다.",
++      "call": "onSnapshot",
++      "file": "src/features/requests/useAdminRequestDetailController.js",
++      "line": 95,
++      "source": "firestoreQuery( RENTAL_REQUEST_LOGS_COLLECTION_REF, where('requestId', '==', selectedRequestId), orderBy('createdAt', 'desc'), firestoreLimit(100) )",
++      "resolvedSource": "firestoreQuery( RENTAL_REQUEST_LOGS_COLLECTION_REF, where('requestId', '==', selectedRequestId), orderBy('createdAt', 'desc'), firestoreLimit(100) )",
++      "collections": [
++        "RENTAL_REQUEST_LOGS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": true,
++      "hasLimit": true,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:0d6bd7bd2618505b",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "bounded-read",
++      "message": "limit이 적용된 일회성 조회입니다.",
++      "call": "getDocs",
++      "file": "src/features/requests/useAdminRequestMutationController.js",
++      "line": 50,
++      "source": "firestoreQuery( RENTAL_REQUESTS_COLLECTION_REF, where('requesterUid', '==', requesterUid), where('status', '==', STATUS.APPROVED), where('dueDate', '<', referenceDate), firestoreLimit(2) )",
++      "resolvedSource": "firestoreQuery( RENTAL_REQUESTS_COLLECTION_REF, where('requesterUid', '==', requesterUid), where('status', '==', STATUS.APPROVED), where('dueDate', '<', referenceDate), firestoreLimit(2) )",
++      "collections": [
++        "RENTAL_REQUESTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": true,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "onSnapshot:340bb07ac9de24e7",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "bounded-listener",
++      "message": "limit이 적용된 실시간 쿼리입니다.",
++      "call": "onSnapshot",
++      "file": "src/features/requests/useAdminRequestsController.js",
++      "line": 270,
++      "source": "requestSource",
++      "resolvedSource": "firestoreQuery( RENTAL_REQUESTS_COLLECTION_REF, ...baseConstraints, ...(pageCursor ? [startAfter(pageCursor)] : []), firestoreLimit(pageSize + 1) )",
++      "collections": [
++        "RENTAL_REQUESTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": true,
++      "hasCursor": true,
++      "scopeSignal": false
++    },
++    {
++      "id": "getCountFromServer:09d4b3c2276d4752",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "aggregation-read",
++      "message": "서버 집계 조회입니다.",
++      "call": "getCountFromServer",
++      "file": "src/features/requests/useAdminRequestsController.js",
++      "line": 310,
++      "source": "firestoreQuery( RENTAL_REQUESTS_COLLECTION_REF, ...getAdminRequestCountConstraints({ requestTab, quickFilter, referenceDate, }) )",
++      "resolvedSource": "firestoreQuery( RENTAL_REQUESTS_COLLECTION_REF, ...getAdminRequestCountConstraints({ requestTab, quickFilter, referenceDate, }) )",
++      "collections": [
++        "RENTAL_REQUESTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDoc:76687fe82af36943",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/features/requests/useAdminRequestsController.js",
++      "line": 354,
++      "source": "doc(RENTAL_REQUESTS_COLLECTION_REF, selectedRequestId)",
++      "resolvedSource": "doc(RENTAL_REQUESTS_COLLECTION_REF, selectedRequestId)",
++      "collections": [
++        "RENTAL_REQUESTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getCountFromServer:4ee2839fe1c7b7f4",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "aggregation-read",
++      "message": "서버 집계 조회입니다.",
++      "call": "getCountFromServer",
++      "file": "src/features/requests/useAdminRequestsController.js",
++      "line": 441,
++      "source": "firestoreQuery( RENTAL_REQUESTS_COLLECTION_REF, where('status', 'in', [STATUS.REQUESTED, STATUS.ON_HOLD]) )",
++      "resolvedSource": "firestoreQuery( RENTAL_REQUESTS_COLLECTION_REF, where('status', 'in', [STATUS.REQUESTED, STATUS.ON_HOLD]) )",
++      "collections": [
++        "RENTAL_REQUESTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getCountFromServer:e2c5c671f22df9c0",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "aggregation-read",
++      "message": "서버 집계 조회입니다.",
++      "call": "getCountFromServer",
++      "file": "src/features/requests/useAdminRequestsController.js",
++      "line": 450,
++      "source": "firestoreQuery( RENTAL_REQUESTS_COLLECTION_REF, where('status', '==', STATUS.APPROVED) )",
++      "resolvedSource": "firestoreQuery( RENTAL_REQUESTS_COLLECTION_REF, where('status', '==', STATUS.APPROVED) )",
++      "collections": [
++        "RENTAL_REQUESTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getCountFromServer:dab5c979cb8ec8b6",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "aggregation-read",
++      "message": "서버 집계 조회입니다.",
++      "call": "getCountFromServer",
++      "file": "src/features/requests/useAdminRequestsController.js",
++      "line": 459,
++      "source": "firestoreQuery( RENTAL_REQUESTS_COLLECTION_REF, where('status', 'in', [STATUS.DENIED, STATUS.USER_CANCELLED]) )",
++      "resolvedSource": "firestoreQuery( RENTAL_REQUESTS_COLLECTION_REF, where('status', 'in', [STATUS.DENIED, STATUS.USER_CANCELLED]) )",
++      "collections": [
++        "RENTAL_REQUESTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getCountFromServer:b8bdbb6da91c84e2",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "aggregation-read",
++      "message": "서버 집계 조회입니다.",
++      "call": "getCountFromServer",
++      "file": "src/features/requests/useAdminRequestsController.js",
++      "line": 468,
++      "source": "firestoreQuery( RENTAL_REQUESTS_COLLECTION_REF, where('status', '==', STATUS.RETURNED) )",
++      "resolvedSource": "firestoreQuery( RENTAL_REQUESTS_COLLECTION_REF, where('status', '==', STATUS.RETURNED) )",
++      "collections": [
++        "RENTAL_REQUESTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "onSnapshot:f4ee6618eef4f82a",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "로그인 사용자의 현재 UID, 이전 계정 UID 묶음 및 동일 이메일 신청을 각각 제한 쿼리로 구독하고 문서 ID 기준으로 병합하는 본인 이력 조회입니다. 동적 sourceDefinitions 배열 때문에 감사기가 원본을 자동 판정하지 못하지만 각 쿼리는 requesterUid 또는 requesterEmail where 조건을 포함합니다.",
++      "rule": "unresolved-listener-source",
++      "message": "실시간 구독 데이터 원본과 제한 조건을 자동 판정하지 못했습니다.",
++      "call": "onSnapshot",
++      "file": "src/features/requests/useRentalDataSubscriptionController.js",
++      "line": 223,
++      "source": "source",
++      "resolvedSource": "String(html || '').trim() ? html : legacyTextToRichHtml(text)",
++      "collections": [],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "onSnapshot:6bacc8662fd5f714",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-listener",
++      "message": "문서 단건 실시간 구독입니다.",
++      "call": "onSnapshot",
++      "file": "src/features/requests/useRentalDataSubscriptionController.js",
++      "line": 321,
++      "source": "PUBLIC_CONFIG_DOC_REF",
++      "resolvedSource": "doc( db, 'rentalSystem', 'publicConfig' )",
++      "collections": [
++        "rentalSystem"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "onSnapshot:228eacd4453f787e",
++      "occurrence": 1,
++      "severity": "error",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "관리자 자산·신청·카테고리·데이터관리 화면에서만 활성화되는 자산 편집용 구독입니다. 자산 카탈로그 정책상 최대 200대로 제한됩니다.",
++      "rule": "unbounded-high-growth-listener",
++      "message": "증가 가능성이 큰 컬렉션을 조건과 limit 없이 실시간 구독합니다.",
++      "call": "onSnapshot",
++      "file": "src/features/requests/useRentalDataSubscriptionController.js",
++      "line": 419,
++      "source": "RENTAL_ASSETS_COLLECTION_REF",
++      "resolvedSource": "collection( db, 'rentalAssets' )",
++      "collections": [
++        "RENTAL_ASSETS_COLLECTION_REF",
++        "rentalAssets"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "getDocs:b835f721d075ef72",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "공개 카탈로그가 없거나 구버전일 때 사용자 화면을 복구하기 위한 예외 경로이며 정상 상태에서는 실행되지 않습니다.",
++      "rule": "full-high-growth-read",
++      "message": "증가 가능성이 큰 컬렉션을 전체 일회성 조회합니다.",
++      "call": "getDocs",
++      "file": "src/features/requests/useRentalDataSubscriptionController.js",
++      "line": 467,
++      "source": "RENTAL_ASSETS_COLLECTION_REF",
++      "resolvedSource": "collection( db, 'rentalAssets' )",
++      "collections": [
++        "RENTAL_ASSETS_COLLECTION_REF",
++        "rentalAssets"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "onSnapshot:4c7fada8cbced64b",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-listener",
++      "message": "문서 단건 실시간 구독입니다.",
++      "call": "onSnapshot",
++      "file": "src/features/requests/useRentalDataSubscriptionController.js",
++      "line": 509,
++      "source": "PUBLIC_ASSET_CATALOG_DOC_REF",
++      "resolvedSource": "doc( db, 'publicCatalog', 'main' )",
++      "collections": [
++        "publicCatalog"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "onSnapshot:10fc8527bffedfbb",
++      "occurrence": 1,
++      "severity": "error",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "사용자 홈·신청 및 관리자 자산·신청 화면에서 현재 예약·대여 상태를 충돌 없이 표시하기 위한 운영 상태 컬렉션 구독입니다. 종료 이력은 저장하지 않습니다.",
++      "rule": "unbounded-high-growth-listener",
++      "message": "증가 가능성이 큰 컬렉션을 조건과 limit 없이 실시간 구독합니다.",
++      "call": "onSnapshot",
++      "file": "src/features/requests/useRentalDataSubscriptionController.js",
++      "line": 630,
++      "source": "RENTAL_AVAILABILITY_COLLECTION_REF",
++      "resolvedSource": "collection( db, 'rentalAvailability' )",
++      "collections": [
++        "RENTAL_AVAILABILITY_COLLECTION_REF",
++        "rentalAvailability"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "onSnapshot:df554b1cbd1b5f24",
++      "occurrence": 1,
++      "severity": "error",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "관리자 사용자·가입정책·관리자계정 화면에서만 사용하는 관리 대상 사용자 명부 구독입니다. 명부 규모는 조직 관리 범위로 제한됩니다.",
++      "rule": "unbounded-high-growth-listener",
++      "message": "증가 가능성이 큰 컬렉션을 조건과 limit 없이 실시간 구독합니다.",
++      "call": "onSnapshot",
++      "file": "src/features/requests/useRentalDataSubscriptionController.js",
++      "line": 711,
++      "source": "RENTAL_BORROWERS_COLLECTION_REF",
++      "resolvedSource": "collection( db, 'rentalBorrowers' )",
++      "collections": [
++        "RENTAL_BORROWERS_COLLECTION_REF",
++        "rentalBorrowers"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "getDocs:cb6f32da9c25895c",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "최고 관리자 백업 또는 초기화 실행 시 선택한 컬렉션 전체를 직렬화·삭제하기 위한 명시적 유지보수 함수입니다.",
++      "rule": "full-collection-read",
++      "message": "컬렉션 전체 일회성 조회이며 limit이 없습니다.",
++      "call": "getDocs",
++      "file": "src/features/settings/useAdminDataMaintenanceController.js",
++      "line": 165,
++      "source": "collection(db, collectionName)",
++      "resolvedSource": "collection(db, collectionName)",
++      "collections": [],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:baed19a1e84b72dc",
++      "occurrence": 2,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "최고 관리자 백업 또는 초기화 실행 시 선택한 컬렉션 전체를 직렬화·삭제하기 위한 명시적 유지보수 함수입니다.",
++      "rule": "full-collection-read",
++      "message": "컬렉션 전체 일회성 조회이며 limit이 없습니다.",
++      "call": "getDocs",
++      "file": "src/features/settings/useAdminDataMaintenanceController.js",
++      "line": 175,
++      "source": "collection(db, collectionName)",
++      "resolvedSource": "collection(db, collectionName)",
++      "collections": [],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "onSnapshot:cdcb91483f3f843b",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "bounded-listener",
++      "message": "limit이 적용된 실시간 쿼리입니다.",
++      "call": "onSnapshot",
++      "file": "src/features/settings/useAdminDataMaintenanceController.js",
++      "line": 291,
++      "source": "resetQuery",
++      "resolvedSource": "query( SYSTEM_RESET_JOBS_COLLECTION_REF, orderBy('startedAt', 'desc'), limit(1) )",
++      "collections": [
++        "SYSTEM_RESET_JOBS_COLLECTION_REF"
++      ],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": true,
++      "hasLimit": true,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "onSnapshot:203ee849de011066",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "bounded-listener",
++      "message": "limit이 적용된 실시간 쿼리입니다.",
++      "call": "onSnapshot",
++      "file": "src/features/settings/useAdminDataMaintenanceController.js",
++      "line": 309,
++      "source": "restoreQuery",
++      "resolvedSource": "query( SYSTEM_RESTORE_JOBS_COLLECTION_REF, orderBy('startedAt', 'desc'), limit(1) )",
++      "collections": [
++        "SYSTEM_RESTORE_JOBS_COLLECTION_REF"
++      ],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": true,
++      "hasLimit": true,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "getDocs:48b11b7e5f0c53eb",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "관리자가 데이터 무결성 점검 버튼을 실행할 때 교차 컬렉션 참조를 검증하기 위한 전체 일회성 조회입니다.",
++      "rule": "full-high-growth-read",
++      "message": "증가 가능성이 큰 컬렉션을 전체 일회성 조회합니다.",
++      "call": "getDocs",
++      "file": "src/features/settings/useAdminDataMaintenanceController.js",
++      "line": 343,
++      "source": "collection(db, 'rentalAssets')",
++      "resolvedSource": "collection(db, 'rentalAssets')",
++      "collections": [
++        "rentalAssets"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "getDocs:e1f869c435db8be9",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "관리자가 데이터 무결성 점검 버튼을 실행할 때 교차 컬렉션 참조를 검증하기 위한 전체 일회성 조회입니다.",
++      "rule": "full-collection-read",
++      "message": "컬렉션 전체 일회성 조회이며 limit이 없습니다.",
++      "call": "getDocs",
++      "file": "src/features/settings/useAdminDataMaintenanceController.js",
++      "line": 344,
++      "source": "collection(db, 'rentalAssetNumbers')",
++      "resolvedSource": "collection(db, 'rentalAssetNumbers')",
++      "collections": [
++        "rentalAssetNumbers"
++      ],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "getDocs:e02e4581e44b46f4",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "관리자가 데이터 무결성 점검 버튼을 실행할 때 교차 컬렉션 참조를 검증하기 위한 전체 일회성 조회입니다.",
++      "rule": "full-high-growth-read",
++      "message": "증가 가능성이 큰 컬렉션을 전체 일회성 조회합니다.",
++      "call": "getDocs",
++      "file": "src/features/settings/useAdminDataMaintenanceController.js",
++      "line": 345,
++      "source": "collection(db, 'rentalAvailability')",
++      "resolvedSource": "collection(db, 'rentalAvailability')",
++      "collections": [
++        "rentalAvailability"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "getDocs:67b768fc3fc209fe",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "관리자가 데이터 무결성 점검 버튼을 실행할 때 교차 컬렉션 참조를 검증하기 위한 전체 일회성 조회입니다.",
++      "rule": "full-high-growth-read",
++      "message": "증가 가능성이 큰 컬렉션을 전체 일회성 조회합니다.",
++      "call": "getDocs",
++      "file": "src/features/settings/useAdminDataMaintenanceController.js",
++      "line": 346,
++      "source": "collection(db, 'rentalRequests')",
++      "resolvedSource": "collection(db, 'rentalRequests')",
++      "collections": [
++        "rentalRequests"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "getDocs:fa2f53291857a796",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "관리자가 데이터 무결성 점검 버튼을 실행할 때 교차 컬렉션 참조를 검증하기 위한 전체 일회성 조회입니다.",
++      "rule": "full-high-growth-read",
++      "message": "증가 가능성이 큰 컬렉션을 전체 일회성 조회합니다.",
++      "call": "getDocs",
++      "file": "src/features/settings/useAdminDataMaintenanceController.js",
++      "line": 347,
++      "source": "collection(db, 'userAccounts')",
++      "resolvedSource": "collection(db, 'userAccounts')",
++      "collections": [
++        "userAccounts"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "getDocs:979508e078430f7a",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "관리자가 데이터 무결성 점검 버튼을 실행할 때 교차 컬렉션 참조를 검증하기 위한 전체 일회성 조회입니다.",
++      "rule": "full-collection-read",
++      "message": "컬렉션 전체 일회성 조회이며 limit이 없습니다.",
++      "call": "getDocs",
++      "file": "src/features/settings/useAdminDataMaintenanceController.js",
++      "line": 348,
++      "source": "collection(db, 'memberIdentityClaims')",
++      "resolvedSource": "collection(db, 'memberIdentityClaims')",
++      "collections": [
++        "memberIdentityClaims"
++      ],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "getDocs:588f29610e99af90",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "관리자가 데이터 무결성 점검 버튼을 실행할 때 교차 컬렉션 참조를 검증하기 위한 전체 일회성 조회입니다.",
++      "rule": "full-collection-read",
++      "message": "컬렉션 전체 일회성 조회이며 limit이 없습니다.",
++      "call": "getDocs",
++      "file": "src/features/settings/useAdminDataMaintenanceController.js",
++      "line": 349,
++      "source": "collection(db, 'accountRecoveryKeys')",
++      "resolvedSource": "collection(db, 'accountRecoveryKeys')",
++      "collections": [
++        "accountRecoveryKeys"
++      ],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "getDocs:9c2e68ffe815a955",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "관리자가 데이터 무결성 점검 버튼을 실행할 때 교차 컬렉션 참조를 검증하기 위한 전체 일회성 조회입니다.",
++      "rule": "full-collection-read",
++      "message": "컬렉션 전체 일회성 조회이며 limit이 없습니다.",
++      "call": "getDocs",
++      "file": "src/features/settings/useAdminDataMaintenanceController.js",
++      "line": 350,
++      "source": "collection(db, 'rentalRestrictions')",
++      "resolvedSource": "collection(db, 'rentalRestrictions')",
++      "collections": [
++        "rentalRestrictions"
++      ],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "getDoc:6edcb7b05d0b1bc1",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/features/settings/useAdminDataMaintenanceController.js",
++      "line": 351,
++      "source": "PUBLIC_ASSET_CATALOG_DOC_REF",
++      "resolvedSource": "doc( db, 'publicCatalog', 'main' )",
++      "collections": [
++        "publicCatalog"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDoc:43ad6c3b49fef714",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/features/settings/useAdminDataMaintenanceController.js",
++      "line": 535,
++      "source": "doc(db, collectionName, documentId)",
++      "resolvedSource": "doc(db, collectionName, documentId)",
++      "collections": [],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:4a543196b8d738e2",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "백업 복원 전 충돌 분석에서 현재 문서와 백업 문서를 비교하기 위한 명시적 일회성 전체 조회입니다.",
++      "rule": "full-collection-read",
++      "message": "컬렉션 전체 일회성 조회이며 limit이 없습니다.",
++      "call": "getDocs",
++      "file": "src/features/settings/useAdminDataMaintenanceController.js",
++      "line": 696,
++      "source": "collection(db, collectionPlan.name)",
++      "resolvedSource": "collection(db, collectionPlan.name)",
++      "collections": [],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDoc:72dd611af8323968",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/features/settings/useAdminDataMaintenanceController.js",
++      "line": 718,
++      "source": "doc(db, documentPlan.collectionName, documentPlan.documentId)",
++      "resolvedSource": "doc(db, documentPlan.collectionName, documentPlan.documentId)",
++      "collections": [],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:3e49f9a89c455b18",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "백업 복원 전 충돌 분석에서 현재 문서와 백업 문서를 비교하기 위한 명시적 일회성 전체 조회입니다.",
++      "rule": "full-collection-read",
++      "message": "컬렉션 전체 일회성 조회이며 limit이 없습니다.",
++      "call": "getDocs",
++      "file": "src/features/settings/useAdminDataMaintenanceController.js",
++      "line": 733,
++      "source": "collection(db, name)",
++      "resolvedSource": "collection(db, name)",
++      "collections": [],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:faa566ed129ed251",
++      "occurrence": 2,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "ADD_MISSING 복원 모드에서 이미 존재하는 문서를 제외하기 위한 명시적 복원 작업 조회입니다.",
++      "rule": "full-collection-read",
++      "message": "컬렉션 전체 일회성 조회이며 limit이 없습니다.",
++      "call": "getDocs",
++      "file": "src/features/settings/useAdminDataMaintenanceController.js",
++      "line": 846,
++      "source": "collection(db, collectionPlan.name)",
++      "resolvedSource": "collection(db, collectionPlan.name)",
++      "collections": [],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "getDoc:bc1fe0336645e2fc",
++      "occurrence": 2,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/features/settings/useAdminDataMaintenanceController.js",
++      "line": 1028,
++      "source": "reference",
++      "resolvedSource": "doc(db, documentPlan.collectionName, documentPlan.documentId)",
++      "collections": [],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "getDoc:f87d4c6a1f2324a4",
++      "occurrence": 3,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/features/settings/useAdminDataMaintenanceController.js",
++      "line": 1103,
++      "source": "reference",
++      "resolvedSource": "doc(db, documentPlan.collectionName, documentPlan.documentId)",
++      "collections": [],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "getDocs:455ec24ed0dae361",
++      "occurrence": 2,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "데이터 초기화 전 선택 범위의 문서 수를 확인하는 최고 관리자 전용 명시적 조회입니다.",
++      "rule": "full-collection-read",
++      "message": "컬렉션 전체 일회성 조회이며 limit이 없습니다.",
++      "call": "getDocs",
++      "file": "src/features/settings/useAdminDataMaintenanceController.js",
++      "line": 1234,
++      "source": "collection(db, name)",
++      "resolvedSource": "collection(db, name)",
++      "collections": [],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:6cb70a7327bcdfb6",
++      "occurrence": 2,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "자산 또는 회원만 초기화하기 전에 대여내역 잔존 여부를 검사해 참조 무결성 파괴를 차단하는 최고 관리자 작업입니다.",
++      "rule": "full-high-growth-read",
++      "message": "증가 가능성이 큰 컬렉션을 전체 일회성 조회합니다.",
++      "call": "getDocs",
++      "file": "src/features/settings/useAdminDataMaintenanceController.js",
++      "line": 1305,
++      "source": "collection(db, 'rentalRequests')",
++      "resolvedSource": "collection(db, 'rentalRequests')",
++      "collections": [
++        "rentalRequests"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:6c87a2e56ea9b42c",
++      "occurrence": 3,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "자산 또는 회원만 초기화하기 전에 대여내역 잔존 여부를 검사해 참조 무결성 파괴를 차단하는 최고 관리자 작업입니다.",
++      "rule": "full-high-growth-read",
++      "message": "증가 가능성이 큰 컬렉션을 전체 일회성 조회합니다.",
++      "call": "getDocs",
++      "file": "src/features/settings/useAdminDataMaintenanceController.js",
++      "line": 1312,
++      "source": "collection(db, 'rentalRequests')",
++      "resolvedSource": "collection(db, 'rentalRequests')",
++      "collections": [
++        "rentalRequests"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:52631ace74c92956",
++      "occurrence": 2,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "회원정보 초기화 시 Firebase Authentication 정리 대상 UID 파일을 생성하기 위한 최고 관리자 전용 조회입니다.",
++      "rule": "full-high-growth-read",
++      "message": "증가 가능성이 큰 컬렉션을 전체 일회성 조회합니다.",
++      "call": "getDocs",
++      "file": "src/features/settings/useAdminDataMaintenanceController.js",
++      "line": 1379,
++      "source": "collection(db, 'userAccounts')",
++      "resolvedSource": "collection(db, 'userAccounts')",
++      "collections": [
++        "userAccounts"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDoc:382c3fe26f6fd850",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/features/settings/useAdminDataMaintenanceController.js",
++      "line": 1433,
++      "source": "PUBLIC_CONFIG_DOC_REF",
++      "resolvedSource": "doc( db, 'rentalSystem', 'publicConfig' )",
++      "collections": [
++        "rentalSystem"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDoc:e07ed8ee53068b4a",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/features/settings/useAdminSplitStorageMigrationController.js",
++      "line": 77,
++      "source": "PUBLIC_CONFIG_DOC_REF",
++      "resolvedSource": "doc( db, 'rentalSystem', 'publicConfig' )",
++      "collections": [
++        "rentalSystem"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "getDocs:c74ccc4eb29b5528",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "최고 관리자가 분리 저장소 최종 전환을 명시적으로 실행할 때 원본 컬렉션 전체를 검증·마이그레이션하는 일회성 작업입니다.",
++      "rule": "full-high-growth-read",
++      "message": "증가 가능성이 큰 컬렉션을 전체 일회성 조회합니다.",
++      "call": "getDocs",
++      "file": "src/features/settings/useAdminSplitStorageMigrationController.js",
++      "line": 78,
++      "source": "RENTAL_ASSETS_COLLECTION_REF",
++      "resolvedSource": "collection( db, 'rentalAssets' )",
++      "collections": [
++        "RENTAL_ASSETS_COLLECTION_REF",
++        "rentalAssets"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "getDocs:58f05f1b98ebd3bc",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "최고 관리자가 분리 저장소 최종 전환을 명시적으로 실행할 때 원본 컬렉션 전체를 검증·마이그레이션하는 일회성 작업입니다.",
++      "rule": "full-high-growth-read",
++      "message": "증가 가능성이 큰 컬렉션을 전체 일회성 조회합니다.",
++      "call": "getDocs",
++      "file": "src/features/settings/useAdminSplitStorageMigrationController.js",
++      "line": 79,
++      "source": "RENTAL_AVAILABILITY_COLLECTION_REF",
++      "resolvedSource": "collection( db, 'rentalAvailability' )",
++      "collections": [
++        "RENTAL_AVAILABILITY_COLLECTION_REF",
++        "rentalAvailability"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "getDocs:a9d945b3d0f2f628",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "최고 관리자가 분리 저장소 최종 전환을 명시적으로 실행할 때 원본 컬렉션 전체를 검증·마이그레이션하는 일회성 작업입니다.",
++      "rule": "full-high-growth-read",
++      "message": "증가 가능성이 큰 컬렉션을 전체 일회성 조회합니다.",
++      "call": "getDocs",
++      "file": "src/features/settings/useAdminSplitStorageMigrationController.js",
++      "line": 80,
++      "source": "RENTAL_BORROWERS_COLLECTION_REF",
++      "resolvedSource": "collection( db, 'rentalBorrowers' )",
++      "collections": [
++        "RENTAL_BORROWERS_COLLECTION_REF",
++        "rentalBorrowers"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "getDocs:579d7bc0a1bb1fd7",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "최고 관리자가 분리 저장소 최종 전환을 명시적으로 실행할 때 원본 컬렉션 전체를 검증·마이그레이션하는 일회성 작업입니다.",
++      "rule": "full-collection-read",
++      "message": "컬렉션 전체 일회성 조회이며 limit이 없습니다.",
++      "call": "getDocs",
++      "file": "src/features/settings/useAdminSplitStorageMigrationController.js",
++      "line": 81,
++      "source": "RENTAL_ASSET_NUMBERS_COLLECTION_REF",
++      "resolvedSource": "collection( db, 'rentalAssetNumbers' )",
++      "collections": [
++        "RENTAL_ASSET_NUMBERS_COLLECTION_REF",
++        "rentalAssetNumbers"
++      ],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": true
++    },
++    {
++      "id": "onSnapshot:1ed603f510f4beeb",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-listener",
++      "message": "문서 단건 실시간 구독입니다.",
++      "call": "onSnapshot",
++      "file": "src/features/settings/useSiteSettingsController.js",
++      "line": 57,
++      "source": "SITE_SETTINGS_DOC_REF",
++      "resolvedSource": "doc( db, 'siteSettings', 'config' )",
++      "collections": [
++        "siteSettings"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDoc:8964082c4222c8de",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/features/terms/termsService.js",
++      "line": 40,
++      "source": "SIGNUP_TERMS_POLICY_DOC_REF",
++      "resolvedSource": "doc( db, 'signupTermsPolicy', 'current' )",
++      "collections": [
++        "signupTermsPolicy"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDoc:ff928b86fde14f29",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/features/terms/termsService.js",
++      "line": 48,
++      "source": "doc( USER_TERM_CONSENT_STATES_COLLECTION_REF, getTermsConsentStateId(uid, term.id) )",
++      "resolvedSource": "doc( USER_TERM_CONSENT_STATES_COLLECTION_REF, getTermsConsentStateId(uid, term.id) )",
++      "collections": [
++        "USER_TERM_CONSENT_STATES_COLLECTION_REF"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:ea3d0b7b6d553e89",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "bounded-read",
++      "message": "limit이 적용된 일회성 조회입니다.",
++      "call": "getDocs",
++      "file": "src/features/terms/termsService.js",
++      "line": 62,
++      "source": "query( USER_TERM_CONSENT_LOGS_COLLECTION_REF, where('uid', '==', uid), limit(500) )",
++      "resolvedSource": "query( USER_TERM_CONSENT_LOGS_COLLECTION_REF, where('uid', '==', uid), limit(500) )",
++      "collections": [
++        "USER_TERM_CONSENT_LOGS_COLLECTION_REF"
++      ],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": true,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "onSnapshot:4add54fdfb2edbbc",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-listener",
++      "message": "문서 단건 실시간 구독입니다.",
++      "call": "onSnapshot",
++      "file": "src/features/terms/useUserTermsCompliance.js",
++      "line": 23,
++      "source": "SIGNUP_TERMS_POLICY_DOC_REF",
++      "resolvedSource": "doc( db, 'signupTermsPolicy', 'current' )",
++      "collections": [
++        "signupTermsPolicy"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "onSnapshot:cba0e9fc9d442dfc",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-listener",
++      "message": "문서 단건 실시간 구독입니다.",
++      "call": "onSnapshot",
++      "file": "src/hooks/useDashboardSummary.js",
++      "line": 231,
++      "source": "DASHBOARD_SUMMARY_DOC_REF",
++      "resolvedSource": "doc( db, 'laptopRentalDashboard', 'main' )",
++      "collections": [
++        "laptopRentalDashboard"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:c63089d07cffbf09",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "관리자 대시보드 요약을 정확히 재생성하는 명시적 집계 작업입니다. 주기 폴링은 없고 진입·수동 갱신·관리 작업 후 복귀 조건에서만 실행됩니다.",
++      "rule": "filtered-unbounded-high-growth-read",
++      "message": "증가 가능성이 큰 컬렉션을 where로 제한하지만 결과 개수 limit이 없습니다.",
++      "call": "getDocs",
++      "file": "src/services/dashboardSummaryService.js",
++      "line": 146,
++      "source": "activeRequestSource",
++      "resolvedSource": "firestoreQuery( RENTAL_REQUESTS_COLLECTION_REF, where('status', 'in', [ STATUS.REQUESTED, STATUS.ON_HOLD, STATUS.APPROVED, ]) )",
++      "collections": [
++        "RENTAL_REQUESTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:d1fcedb99acf246a",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "bounded-read",
++      "message": "limit이 적용된 일회성 조회입니다.",
++      "call": "getDocs",
++      "file": "src/services/dashboardSummaryService.js",
++      "line": 147,
++      "source": "pendingAccountSource",
++      "resolvedSource": "firestoreQuery( USER_ACCOUNTS_COLLECTION_REF, where('status', '==', USER_PROFILE_STATUS.PENDING), firestoreLimit(100) )",
++      "collections": [
++        "USER_ACCOUNTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": true,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDoc:c06bb26a69344ff2",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/services/dashboardSummaryService.js",
++      "line": 148,
++      "source": "PUBLIC_ASSET_CATALOG_DOC_REF",
++      "resolvedSource": "doc( db, 'publicCatalog', 'main' )",
++      "collections": [
++        "publicCatalog"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:bd5f34d91bec50ad",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "관리자 대시보드 요약을 정확히 재생성하는 명시적 집계 작업입니다. 주기 폴링은 없고 진입·수동 갱신·관리 작업 후 복귀 조건에서만 실행됩니다.",
++      "rule": "full-high-growth-read",
++      "message": "증가 가능성이 큰 컬렉션을 전체 일회성 조회합니다.",
++      "call": "getDocs",
++      "file": "src/services/dashboardSummaryService.js",
++      "line": 149,
++      "source": "RENTAL_AVAILABILITY_COLLECTION_REF",
++      "resolvedSource": "collection( db, 'rentalAvailability' )",
++      "collections": [
++        "RENTAL_AVAILABILITY_COLLECTION_REF",
++        "rentalAvailability"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getCountFromServer:f5e871a7ca524072",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "aggregation-read",
++      "message": "서버 집계 조회입니다.",
++      "call": "getCountFromServer",
++      "file": "src/services/dashboardSummaryService.js",
++      "line": 150,
++      "source": "firestoreQuery( RENTAL_REQUESTS_COLLECTION_REF, where('status', 'in', [STATUS.DENIED, STATUS.USER_CANCELLED]) )",
++      "resolvedSource": "firestoreQuery( RENTAL_REQUESTS_COLLECTION_REF, where('status', 'in', [STATUS.DENIED, STATUS.USER_CANCELLED]) )",
++      "collections": [
++        "RENTAL_REQUESTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getCountFromServer:2f0e6618bf35b9a8",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "aggregation-read",
++      "message": "서버 집계 조회입니다.",
++      "call": "getCountFromServer",
++      "file": "src/services/dashboardSummaryService.js",
++      "line": 156,
++      "source": "firestoreQuery( RENTAL_REQUESTS_COLLECTION_REF, where('status', '==', STATUS.RETURNED) )",
++      "resolvedSource": "firestoreQuery( RENTAL_REQUESTS_COLLECTION_REF, where('status', '==', STATUS.RETURNED) )",
++      "collections": [
++        "RENTAL_REQUESTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getCountFromServer:91b4d7e586b3e4ec",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "aggregation-read",
++      "message": "서버 집계 조회입니다.",
++      "call": "getCountFromServer",
++      "file": "src/services/dashboardSummaryService.js",
++      "line": 162,
++      "source": "firestoreQuery( USER_ACCOUNTS_COLLECTION_REF, where('status', '==', USER_PROFILE_STATUS.PENDING) )",
++      "resolvedSource": "firestoreQuery( USER_ACCOUNTS_COLLECTION_REF, where('status', '==', USER_PROFILE_STATUS.PENDING) )",
++      "collections": [
++        "USER_ACCOUNTS_COLLECTION_REF"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:655c3727bf65e273",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "관리자 대시보드 요약을 정확히 재생성하는 명시적 집계 작업입니다. 주기 폴링은 없고 진입·수동 갱신·관리 작업 후 복귀 조건에서만 실행됩니다.",
++      "rule": "full-high-growth-read",
++      "message": "증가 가능성이 큰 컬렉션을 전체 일회성 조회합니다.",
++      "call": "getDocs",
++      "file": "src/services/dashboardSummaryService.js",
++      "line": 218,
++      "source": "RENTAL_ASSETS_COLLECTION_REF",
++      "resolvedSource": "collection( db, 'rentalAssets' )",
++      "collections": [
++        "RENTAL_ASSETS_COLLECTION_REF",
++        "rentalAssets"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:ec260a8e67a49cb7",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "bounded-read",
++      "message": "limit이 적용된 일회성 조회입니다.",
++      "call": "getDocs",
++      "file": "src/services/progressiveFirestoreSearch.js",
++      "line": 81,
++      "source": "source",
++      "resolvedSource": "firestoreQuery( collectionRef, ...constraints, ...(cursor ? [startAfter(cursor)] : []), firestoreLimit(safeBatchSize) )",
++      "collections": [],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": true,
++      "hasCursor": true,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:d34f914d2be95d2a",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "공개 카탈로그 스키마 전환·복구·재생성 시 서버의 전체 자산을 기준으로 일관된 스냅샷을 만드는 관리자 전용 작업입니다. 자산은 최대 200대입니다.",
++      "rule": "full-high-growth-read",
++      "message": "증가 가능성이 큰 컬렉션을 전체 일회성 조회합니다.",
++      "call": "getDocs",
++      "file": "src/services/publicAssetCatalogWriteThrough.js",
++      "line": 145,
++      "source": "RENTAL_ASSETS_COLLECTION_REF",
++      "resolvedSource": "collection( db, 'rentalAssets' )",
++      "collections": [
++        "RENTAL_ASSETS_COLLECTION_REF",
++        "rentalAssets"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDoc:ceb66f9e24d6c95c",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/services/publicAssetCatalogWriteThrough.js",
++      "line": 174,
++      "source": "PUBLIC_ASSET_CATALOG_DOC_REF",
++      "resolvedSource": "doc( db, 'publicCatalog', 'main' )",
++      "collections": [
++        "publicCatalog"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:bb8e0536925e0071",
++      "occurrence": 2,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "공개 카탈로그 스키마 전환·복구·재생성 시 서버의 전체 자산을 기준으로 일관된 스냅샷을 만드는 관리자 전용 작업입니다. 자산은 최대 200대입니다.",
++      "rule": "full-high-growth-read",
++      "message": "증가 가능성이 큰 컬렉션을 전체 일회성 조회합니다.",
++      "call": "getDocs",
++      "file": "src/services/publicAssetCatalogWriteThrough.js",
++      "line": 195,
++      "source": "RENTAL_ASSETS_COLLECTION_REF",
++      "resolvedSource": "collection( db, 'rentalAssets' )",
++      "collections": [
++        "RENTAL_ASSETS_COLLECTION_REF",
++        "rentalAssets"
++      ],
++      "highGrowth": true,
++      "documentSource": false,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDocs:6b074a2d82f321a9",
++      "occurrence": 1,
++      "severity": "warning",
++      "effectiveSeverity": "approved",
++      "approved": true,
++      "approvalReason": "사용자 홈 진입 시 enabled 배너만 한 번 조회하는 저빈도 콘텐츠 로드입니다. 실시간 구독이 아니며 관리자 생성 배너 수로 제한됩니다.",
++      "rule": "filtered-unbounded-collection-read",
++      "message": "where 조건은 있지만 결과 개수 limit이 없는 일회성 쿼리입니다.",
++      "call": "getDocs",
++      "file": "src/user/UserHomePanel.jsx",
++      "line": 129,
++      "source": "enabledQuery",
++      "resolvedSource": "query( HOME_BANNERS_COLLECTION_REF, where('enabled', '==', true) )",
++      "collections": [
++        "HOME_BANNERS_COLLECTION_REF"
++      ],
++      "highGrowth": false,
++      "documentSource": false,
++      "hasWhere": true,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "getDoc:6b101785cf04b9e8",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-read",
++      "message": "문서 단건 조회입니다.",
++      "call": "getDoc",
++      "file": "src/user/UserHomePanel.jsx",
++      "line": 160,
++      "source": "HOME_PAGE_CONFIG_DOC_REF",
++      "resolvedSource": "doc( db, 'homePage', 'config' )",
++      "collections": [
++        "homePage"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    },
++    {
++      "id": "onSnapshot:19d3a462940f4b6f",
++      "occurrence": 1,
++      "severity": "info",
++      "effectiveSeverity": "info",
++      "approved": false,
++      "approvalReason": "",
++      "rule": "document-listener",
++      "message": "문서 단건 실시간 구독입니다.",
++      "call": "onSnapshot",
++      "file": "src/user/UserSignupTermsSection.jsx",
++      "line": 55,
++      "source": "SIGNUP_TERMS_POLICY_DOC_REF",
++      "resolvedSource": "doc( db, 'signupTermsPolicy', 'current' )",
++      "collections": [
++        "signupTermsPolicy"
++      ],
++      "highGrowth": false,
++      "documentSource": true,
++      "hasWhere": false,
++      "hasOrderBy": false,
++      "hasLimit": false,
++      "hasCursor": false,
++      "scopeSignal": false
++    }
++  ]
++}
+diff -ruN '--exclude=package-meta' '--exclude=P2_ADMIN_ACCOUNT_TAB_INITIALIZATION_EFFECT_TRANSFER.diff' '--exclude=P2_ADMIN_ACCOUNT_TAB_INITIALIZATION_EFFECT_TRANSFER_COMPARISON.json' '--exclude=P2_ADMIN_ACCOUNT_TAB_INITIALIZATION_EFFECT_TRANSFER_REPORT.md' '--exclude=P2_ADMIN_ACCOUNT_TAB_INITIALIZATION_EFFECT_TRANSFER_VALIDATION_REPORT.txt' /mnt/data/seq_008_base/.performance-reports/firestore-access-audit.txt /mnt/data/seq_008_work/.performance-reports/firestore-access-audit.txt
+--- /mnt/data/seq_008_base/.performance-reports/firestore-access-audit.txt	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/seq_008_work/.performance-reports/firestore-access-audit.txt	2026-08-01 16:51:31.350809636 +0000
+@@ -0,0 +1,305 @@
++Firestore access audit
++======================
++Generated: 2026-08-01T16:51:31.354Z
++Result: PASS
++Source files: 144
++Total calls: 129
++onSnapshot: 35
++getDocs: 48
++getDoc: 28
++getCountFromServer: 18
++Approved risk findings: 51
++Unapproved warnings: 0
++Unapproved errors: 0
++
++Unapproved findings
++-------------------
++None
++
++Approved exceptions
++-------------------
++[APPROVED WARNING] onSnapshot:cf6e709dc3c10bc1
++  src/admin/AdminHomeBannerPanel.jsx:226
++  관리자 홈 배너 편집 패널이 열린 동안만 활성화되는 소규모 콘텐츠 컬렉션 구독입니다.
++[APPROVED WARNING] getDocs:a5ec14d8f2dd1cbd
++  src/features/assets/useAdminAssetCategoryController.js:270
++  관리자가 자산 카테고리 일괄 변경을 저장할 때 전체 자산을 원자적으로 재작성하기 위한 명시적 일회성 조회입니다. 자산은 최대 200대입니다.
++[APPROVED WARNING] getDocs:717951e655928974
++  src/features/auth/useAdminAccountManagementController.js:720
++  관리자 계정 변경 작업 전에 전체 관리자 계정 충돌을 검증하는 명시적 일회성 조회입니다.
++[APPROVED ERROR] onSnapshot:af6dbfebe9a290a7
++  src/features/auth/useAuthIdentityPolicySubscriptionController.js:558
++  관리자 계정 관리 탭에서만 활성화되는 관리자 계정 목록 구독입니다. 일반 사용자 경로에서는 실행되지 않습니다.
++[APPROVED WARNING] onSnapshot:364a7b390d49a9a4
++  src/features/boards/useBoardContentSubscriptionController.js:674
++  FAQ 관리·사용자 FAQ 화면에서 사용하는 관리자 정의 카테고리 목록입니다. 게시글이 아닌 소수의 분류값 컬렉션입니다.
++[APPROVED WARNING] getDocs:31bce5a3449246bb
++  src/features/boards/usePopupFooterContentSubscriptionController.js:254
++  사용자 화면에서는 enabled 팝업을 1회 조회하고 관리자 팝업 편집 화면에서만 전체 실시간 구독합니다. 관리자 생성 콘텐츠 규모로 제한됩니다.
++[APPROVED WARNING] onSnapshot:2e14b30e3ae4906e
++  src/features/boards/usePopupFooterContentSubscriptionController.js:267
++  사용자 화면에서는 enabled 팝업을 1회 조회하고 관리자 팝업 편집 화면에서만 전체 실시간 구독합니다. 관리자 생성 콘텐츠 규모로 제한됩니다.
++[APPROVED WARNING] getDocs:a526eb8743589c17
++  src/features/boards/usePopupFooterContentSubscriptionController.js:439
++  사용자 화면에서는 enabled 푸터 페이지를 1회 조회하고 관리자 푸터 편집 화면에서만 전체 실시간 구독합니다. 소수의 고정 페이지 컬렉션입니다.
++[APPROVED WARNING] onSnapshot:0d1101884c045459
++  src/features/boards/usePopupFooterContentSubscriptionController.js:452
++  사용자 화면에서는 enabled 푸터 페이지를 1회 조회하고 관리자 푸터 편집 화면에서만 전체 실시간 구독합니다. 소수의 고정 페이지 컬렉션입니다.
++[APPROVED WARNING] getDocs:e353aa83f706b6ca
++  src/features/members/memberAccountHistoryService.js:48
++  재가입 회원의 연결 UID별 전체 대여 이력을 관리자 버튼 클릭 또는 가입 승인 시 검증하기 위한 일회성 조회입니다.
++[APPROVED WARNING] getDocs:52808d39c0871c25
++  src/features/members/memberDirectorySaveService.js:145
++  관리자가 부서·사용자 명부 저장을 실행할 때 계정·식별키 색인을 전체 재구성하기 위한 명시적 일회성 무결성 작업입니다.
++[APPROVED WARNING] getDocs:2d547d33f6520d10
++  src/features/members/memberDirectorySaveService.js:146
++  관리자가 부서·사용자 명부 저장을 실행할 때 계정·식별키 색인을 전체 재구성하기 위한 명시적 일회성 무결성 작업입니다.
++[APPROVED WARNING] getDocs:79250214918d076a
++  src/features/members/memberDirectorySaveService.js:147
++  관리자가 부서·사용자 명부 저장을 실행할 때 계정·식별키 색인을 전체 재구성하기 위한 명시적 일회성 무결성 작업입니다.
++[APPROVED WARNING] getDocs:1f96ba6be6d1f426
++  src/features/members/memberDirectorySaveService.js:148
++  관리자가 부서·사용자 명부 저장을 실행할 때 계정·식별키 색인을 전체 재구성하기 위한 명시적 일회성 무결성 작업입니다.
++[APPROVED WARNING] getDocs:72b10d99a9c59265
++  src/features/members/useAdminMemberDirectoryAuditActions.js:102
++  명부 제한 정책을 해제할 때 DIRECTORY_MISMATCH 상태 계정만 복원하는 관리자 작업입니다. 사용자가 명시적으로 정책을 변경할 때만 실행됩니다.
++[APPROVED WARNING] getDocs:b6951788a53a0bae
++  src/features/members/useAdminMemberDirectoryAuditActions.js:277
++  관리자가 전체 회원 명부 감사를 실행할 때 계정·식별키·복구키 정합성을 재검사하는 명시적 일회성 작업입니다.
++[APPROVED WARNING] getDocs:9f1ec00f15bec38a
++  src/features/members/useAdminMemberDirectoryAuditActions.js:278
++  관리자가 전체 회원 명부 감사를 실행할 때 계정·식별키·복구키 정합성을 재검사하는 명시적 일회성 작업입니다.
++[APPROVED WARNING] getDocs:66f2258d2349bcbc
++  src/features/members/useAdminMemberDirectoryAuditActions.js:279
++  관리자가 전체 회원 명부 감사를 실행할 때 계정·식별키·복구키 정합성을 재검사하는 명시적 일회성 작업입니다.
++[APPROVED WARNING] getDocs:a64692c08f4241c1
++  src/features/requests/rentalRestrictionService.js:33
++  반납·연체 처리 직전에 특정 사용자 1명의 전체 대여 이력을 다시 계산해 제한 정책을 정확히 적용하는 서버 최신성 검증입니다.
++[APPROVED WARNING] onSnapshot:f4ee6618eef4f82a
++  src/features/requests/useRentalDataSubscriptionController.js:223
++  로그인 사용자의 현재 UID, 이전 계정 UID 묶음 및 동일 이메일 신청을 각각 제한 쿼리로 구독하고 문서 ID 기준으로 병합하는 본인 이력 조회입니다. 동적 sourceDefinitions 배열 때문에 감사기가 원본을 자동 판정하지 못하지만 각 쿼리는 requesterUid 또는 requesterEmail where 조건을 포함합니다.
++[APPROVED ERROR] onSnapshot:228eacd4453f787e
++  src/features/requests/useRentalDataSubscriptionController.js:419
++  관리자 자산·신청·카테고리·데이터관리 화면에서만 활성화되는 자산 편집용 구독입니다. 자산 카탈로그 정책상 최대 200대로 제한됩니다.
++[APPROVED WARNING] getDocs:b835f721d075ef72
++  src/features/requests/useRentalDataSubscriptionController.js:467
++  공개 카탈로그가 없거나 구버전일 때 사용자 화면을 복구하기 위한 예외 경로이며 정상 상태에서는 실행되지 않습니다.
++[APPROVED ERROR] onSnapshot:10fc8527bffedfbb
++  src/features/requests/useRentalDataSubscriptionController.js:630
++  사용자 홈·신청 및 관리자 자산·신청 화면에서 현재 예약·대여 상태를 충돌 없이 표시하기 위한 운영 상태 컬렉션 구독입니다. 종료 이력은 저장하지 않습니다.
++[APPROVED ERROR] onSnapshot:df554b1cbd1b5f24
++  src/features/requests/useRentalDataSubscriptionController.js:711
++  관리자 사용자·가입정책·관리자계정 화면에서만 사용하는 관리 대상 사용자 명부 구독입니다. 명부 규모는 조직 관리 범위로 제한됩니다.
++[APPROVED WARNING] getDocs:cb6f32da9c25895c
++  src/features/settings/useAdminDataMaintenanceController.js:165
++  최고 관리자 백업 또는 초기화 실행 시 선택한 컬렉션 전체를 직렬화·삭제하기 위한 명시적 유지보수 함수입니다.
++[APPROVED WARNING] getDocs:baed19a1e84b72dc
++  src/features/settings/useAdminDataMaintenanceController.js:175
++  최고 관리자 백업 또는 초기화 실행 시 선택한 컬렉션 전체를 직렬화·삭제하기 위한 명시적 유지보수 함수입니다.
++[APPROVED WARNING] getDocs:48b11b7e5f0c53eb
++  src/features/settings/useAdminDataMaintenanceController.js:343
++  관리자가 데이터 무결성 점검 버튼을 실행할 때 교차 컬렉션 참조를 검증하기 위한 전체 일회성 조회입니다.
++[APPROVED WARNING] getDocs:e1f869c435db8be9
++  src/features/settings/useAdminDataMaintenanceController.js:344
++  관리자가 데이터 무결성 점검 버튼을 실행할 때 교차 컬렉션 참조를 검증하기 위한 전체 일회성 조회입니다.
++[APPROVED WARNING] getDocs:e02e4581e44b46f4
++  src/features/settings/useAdminDataMaintenanceController.js:345
++  관리자가 데이터 무결성 점검 버튼을 실행할 때 교차 컬렉션 참조를 검증하기 위한 전체 일회성 조회입니다.
++[APPROVED WARNING] getDocs:67b768fc3fc209fe
++  src/features/settings/useAdminDataMaintenanceController.js:346
++  관리자가 데이터 무결성 점검 버튼을 실행할 때 교차 컬렉션 참조를 검증하기 위한 전체 일회성 조회입니다.
++[APPROVED WARNING] getDocs:fa2f53291857a796
++  src/features/settings/useAdminDataMaintenanceController.js:347
++  관리자가 데이터 무결성 점검 버튼을 실행할 때 교차 컬렉션 참조를 검증하기 위한 전체 일회성 조회입니다.
++[APPROVED WARNING] getDocs:979508e078430f7a
++  src/features/settings/useAdminDataMaintenanceController.js:348
++  관리자가 데이터 무결성 점검 버튼을 실행할 때 교차 컬렉션 참조를 검증하기 위한 전체 일회성 조회입니다.
++[APPROVED WARNING] getDocs:588f29610e99af90
++  src/features/settings/useAdminDataMaintenanceController.js:349
++  관리자가 데이터 무결성 점검 버튼을 실행할 때 교차 컬렉션 참조를 검증하기 위한 전체 일회성 조회입니다.
++[APPROVED WARNING] getDocs:9c2e68ffe815a955
++  src/features/settings/useAdminDataMaintenanceController.js:350
++  관리자가 데이터 무결성 점검 버튼을 실행할 때 교차 컬렉션 참조를 검증하기 위한 전체 일회성 조회입니다.
++[APPROVED WARNING] getDocs:4a543196b8d738e2
++  src/features/settings/useAdminDataMaintenanceController.js:696
++  백업 복원 전 충돌 분석에서 현재 문서와 백업 문서를 비교하기 위한 명시적 일회성 전체 조회입니다.
++[APPROVED WARNING] getDocs:3e49f9a89c455b18
++  src/features/settings/useAdminDataMaintenanceController.js:733
++  백업 복원 전 충돌 분석에서 현재 문서와 백업 문서를 비교하기 위한 명시적 일회성 전체 조회입니다.
++[APPROVED WARNING] getDocs:faa566ed129ed251
++  src/features/settings/useAdminDataMaintenanceController.js:846
++  ADD_MISSING 복원 모드에서 이미 존재하는 문서를 제외하기 위한 명시적 복원 작업 조회입니다.
++[APPROVED WARNING] getDocs:455ec24ed0dae361
++  src/features/settings/useAdminDataMaintenanceController.js:1234
++  데이터 초기화 전 선택 범위의 문서 수를 확인하는 최고 관리자 전용 명시적 조회입니다.
++[APPROVED WARNING] getDocs:6cb70a7327bcdfb6
++  src/features/settings/useAdminDataMaintenanceController.js:1305
++  자산 또는 회원만 초기화하기 전에 대여내역 잔존 여부를 검사해 참조 무결성 파괴를 차단하는 최고 관리자 작업입니다.
++[APPROVED WARNING] getDocs:6c87a2e56ea9b42c
++  src/features/settings/useAdminDataMaintenanceController.js:1312
++  자산 또는 회원만 초기화하기 전에 대여내역 잔존 여부를 검사해 참조 무결성 파괴를 차단하는 최고 관리자 작업입니다.
++[APPROVED WARNING] getDocs:52631ace74c92956
++  src/features/settings/useAdminDataMaintenanceController.js:1379
++  회원정보 초기화 시 Firebase Authentication 정리 대상 UID 파일을 생성하기 위한 최고 관리자 전용 조회입니다.
++[APPROVED WARNING] getDocs:c74ccc4eb29b5528
++  src/features/settings/useAdminSplitStorageMigrationController.js:78
++  최고 관리자가 분리 저장소 최종 전환을 명시적으로 실행할 때 원본 컬렉션 전체를 검증·마이그레이션하는 일회성 작업입니다.
++[APPROVED WARNING] getDocs:58f05f1b98ebd3bc
++  src/features/settings/useAdminSplitStorageMigrationController.js:79
++  최고 관리자가 분리 저장소 최종 전환을 명시적으로 실행할 때 원본 컬렉션 전체를 검증·마이그레이션하는 일회성 작업입니다.
++[APPROVED WARNING] getDocs:a9d945b3d0f2f628
++  src/features/settings/useAdminSplitStorageMigrationController.js:80
++  최고 관리자가 분리 저장소 최종 전환을 명시적으로 실행할 때 원본 컬렉션 전체를 검증·마이그레이션하는 일회성 작업입니다.
++[APPROVED WARNING] getDocs:579d7bc0a1bb1fd7
++  src/features/settings/useAdminSplitStorageMigrationController.js:81
++  최고 관리자가 분리 저장소 최종 전환을 명시적으로 실행할 때 원본 컬렉션 전체를 검증·마이그레이션하는 일회성 작업입니다.
++[APPROVED WARNING] getDocs:c63089d07cffbf09
++  src/services/dashboardSummaryService.js:146
++  관리자 대시보드 요약을 정확히 재생성하는 명시적 집계 작업입니다. 주기 폴링은 없고 진입·수동 갱신·관리 작업 후 복귀 조건에서만 실행됩니다.
++[APPROVED WARNING] getDocs:bd5f34d91bec50ad
++  src/services/dashboardSummaryService.js:149
++  관리자 대시보드 요약을 정확히 재생성하는 명시적 집계 작업입니다. 주기 폴링은 없고 진입·수동 갱신·관리 작업 후 복귀 조건에서만 실행됩니다.
++[APPROVED WARNING] getDocs:655c3727bf65e273
++  src/services/dashboardSummaryService.js:218
++  관리자 대시보드 요약을 정확히 재생성하는 명시적 집계 작업입니다. 주기 폴링은 없고 진입·수동 갱신·관리 작업 후 복귀 조건에서만 실행됩니다.
++[APPROVED WARNING] getDocs:d34f914d2be95d2a
++  src/services/publicAssetCatalogWriteThrough.js:145
++  공개 카탈로그 스키마 전환·복구·재생성 시 서버의 전체 자산을 기준으로 일관된 스냅샷을 만드는 관리자 전용 작업입니다. 자산은 최대 200대입니다.
++[APPROVED WARNING] getDocs:bb8e0536925e0071
++  src/services/publicAssetCatalogWriteThrough.js:195
++  공개 카탈로그 스키마 전환·복구·재생성 시 서버의 전체 자산을 기준으로 일관된 스냅샷을 만드는 관리자 전용 작업입니다. 자산은 최대 200대입니다.
++[APPROVED WARNING] getDocs:6b074a2d82f321a9
++  src/user/UserHomePanel.jsx:129
++  사용자 홈 진입 시 enabled 배너만 한 번 조회하는 저빈도 콘텐츠 로드입니다. 실시간 구독이 아니며 관리자 생성 배너 수로 제한됩니다.
++
++All calls
++---------
++[APPROVED] onSnapshot src/admin/AdminHomeBannerPanel.jsx:226 unbounded-collection-listener
++[INFO] onSnapshot src/admin/AdminHomeBannerPanel.jsx:243 document-listener
++[INFO] onSnapshot src/admin/AdminSettingsPanel.jsx:257 bounded-listener
++[INFO] onSnapshot src/admin/AdminSignupTermsManager.jsx:99 bounded-listener
++[INFO] getDoc src/admin/AdminSignupTermsManager.jsx:441 document-read
++[INFO] getDoc src/components/TermsVersionDialog.jsx:24 document-read
++[APPROVED] getDocs src/features/assets/useAdminAssetCategoryController.js:270 full-high-growth-read
++[INFO] getDoc src/features/assets/useAssetBulkUpload.js:79 document-read
++[APPROVED] getDocs src/features/auth/useAdminAccountManagementController.js:720 full-high-growth-read
++[INFO] getDoc src/features/auth/useAdminAuthenticationController.js:400 document-read
++[INFO] getDoc src/features/auth/useAdminAuthenticationController.js:485 document-read
++[INFO] onSnapshot src/features/auth/useAuthIdentityPolicySubscriptionController.js:233 document-listener
++[INFO] onSnapshot src/features/auth/useAuthIdentityPolicySubscriptionController.js:321 document-listener
++[INFO] onSnapshot src/features/auth/useAuthIdentityPolicySubscriptionController.js:391 document-listener
++[INFO] onSnapshot src/features/auth/useAuthIdentityPolicySubscriptionController.js:452 document-listener
++[INFO] onSnapshot src/features/auth/useAuthIdentityPolicySubscriptionController.js:499 document-listener
++[APPROVED] onSnapshot src/features/auth/useAuthIdentityPolicySubscriptionController.js:558 unbounded-high-growth-listener
++[INFO] getDoc src/features/auth/useUserLoginController.js:203 document-read
++[INFO] getDoc src/features/auth/useUserLoginController.js:217 document-read
++[INFO] getDoc src/features/auth/useUserSignupController.js:287 document-read
++[INFO] getDoc src/features/auth/userSessionPolicyService.js:14 document-read
++[INFO] getCountFromServer src/features/boards/useAdminBoardSettingsController.js:357 aggregation-read
++[INFO] onSnapshot src/features/boards/useBoardContentSubscriptionController.js:299 document-listener
++[INFO] getDocs src/features/boards/useBoardContentSubscriptionController.js:426 bounded-read
++[INFO] onSnapshot src/features/boards/useBoardContentSubscriptionController.js:439 bounded-listener
++[INFO] getDocs src/features/boards/useBoardContentSubscriptionController.js:551 bounded-read
++[INFO] onSnapshot src/features/boards/useBoardContentSubscriptionController.js:559 bounded-listener
++[INFO] getCountFromServer src/features/boards/useBoardContentSubscriptionController.js:567 aggregation-read
++[INFO] getDoc src/features/boards/useBoardContentSubscriptionController.js:627 document-read
++[APPROVED] onSnapshot src/features/boards/useBoardContentSubscriptionController.js:674 unbounded-collection-listener
++[INFO] onSnapshot src/features/boards/useBoardContentSubscriptionController.js:723 document-listener
++[INFO] onSnapshot src/features/boards/useBoardContentSubscriptionController.js:828 bounded-listener
++[INFO] onSnapshot src/features/boards/useBoardContentSubscriptionController.js:910 bounded-listener
++[INFO] getCountFromServer src/features/boards/useBoardContentSubscriptionController.js:947 aggregation-read
++[APPROVED] getDocs src/features/boards/usePopupFooterContentSubscriptionController.js:254 filtered-unbounded-collection-read
++[APPROVED] onSnapshot src/features/boards/usePopupFooterContentSubscriptionController.js:267 filtered-unbounded-collection-listener
++[INFO] getDoc src/features/boards/usePopupFooterContentSubscriptionController.js:344 document-read
++[INFO] onSnapshot src/features/boards/usePopupFooterContentSubscriptionController.js:357 document-listener
++[APPROVED] getDocs src/features/boards/usePopupFooterContentSubscriptionController.js:439 filtered-unbounded-collection-read
++[APPROVED] onSnapshot src/features/boards/usePopupFooterContentSubscriptionController.js:452 filtered-unbounded-collection-listener
++[INFO] getDoc src/features/members/accountRecoveryService.js:102 document-read
++[INFO] getDoc src/features/members/accountRecoveryService.js:134 document-read
++[APPROVED] getDocs src/features/members/memberAccountHistoryService.js:48 filtered-unbounded-high-growth-read
++[APPROVED] getDocs src/features/members/memberDirectorySaveService.js:145 full-high-growth-read
++[APPROVED] getDocs src/features/members/memberDirectorySaveService.js:146 full-collection-read
++[APPROVED] getDocs src/features/members/memberDirectorySaveService.js:147 full-collection-read
++[APPROVED] getDocs src/features/members/memberDirectorySaveService.js:148 full-collection-read
++[INFO] getCountFromServer src/features/members/useAdminMemberAccountsController.js:161 aggregation-read
++[INFO] getCountFromServer src/features/members/useAdminMemberAccountsController.js:170 aggregation-read
++[INFO] getCountFromServer src/features/members/useAdminMemberAccountsController.js:179 aggregation-read
++[INFO] getCountFromServer src/features/members/useAdminMemberAccountsController.js:188 aggregation-read
++[INFO] getCountFromServer src/features/members/useAdminMemberAccountsController.js:197 aggregation-read
++[INFO] onSnapshot src/features/members/useAdminMemberAccountsController.js:352 bounded-listener
++[INFO] getCountFromServer src/features/members/useAdminMemberAccountsController.js:393 aggregation-read
++[APPROVED] getDocs src/features/members/useAdminMemberDirectoryAuditActions.js:102 filtered-unbounded-high-growth-read
++[APPROVED] getDocs src/features/members/useAdminMemberDirectoryAuditActions.js:277 full-high-growth-read
++[APPROVED] getDocs src/features/members/useAdminMemberDirectoryAuditActions.js:278 full-collection-read
++[APPROVED] getDocs src/features/members/useAdminMemberDirectoryAuditActions.js:279 full-collection-read
++[INFO] getCountFromServer src/features/members/useUserMyPageAccountController.js:545 aggregation-read
++[INFO] getDoc src/features/requests/rentalRestrictionService.js:32 document-read
++[APPROVED] getDocs src/features/requests/rentalRestrictionService.js:33 filtered-unbounded-high-growth-read
++[INFO] getDoc src/features/requests/rentalRestrictionService.js:39 document-read
++[INFO] onSnapshot src/features/requests/useAdminRequestDetailController.js:95 bounded-listener
++[INFO] getDocs src/features/requests/useAdminRequestMutationController.js:50 bounded-read
++[INFO] onSnapshot src/features/requests/useAdminRequestsController.js:270 bounded-listener
++[INFO] getCountFromServer src/features/requests/useAdminRequestsController.js:310 aggregation-read
++[INFO] getDoc src/features/requests/useAdminRequestsController.js:354 document-read
++[INFO] getCountFromServer src/features/requests/useAdminRequestsController.js:441 aggregation-read
++[INFO] getCountFromServer src/features/requests/useAdminRequestsController.js:450 aggregation-read
++[INFO] getCountFromServer src/features/requests/useAdminRequestsController.js:459 aggregation-read
++[INFO] getCountFromServer src/features/requests/useAdminRequestsController.js:468 aggregation-read
++[APPROVED] onSnapshot src/features/requests/useRentalDataSubscriptionController.js:223 unresolved-listener-source
++[INFO] onSnapshot src/features/requests/useRentalDataSubscriptionController.js:321 document-listener
++[APPROVED] onSnapshot src/features/requests/useRentalDataSubscriptionController.js:419 unbounded-high-growth-listener
++[APPROVED] getDocs src/features/requests/useRentalDataSubscriptionController.js:467 full-high-growth-read
++[INFO] onSnapshot src/features/requests/useRentalDataSubscriptionController.js:509 document-listener
++[APPROVED] onSnapshot src/features/requests/useRentalDataSubscriptionController.js:630 unbounded-high-growth-listener
++[APPROVED] onSnapshot src/features/requests/useRentalDataSubscriptionController.js:711 unbounded-high-growth-listener
++[APPROVED] getDocs src/features/settings/useAdminDataMaintenanceController.js:165 full-collection-read
++[APPROVED] getDocs src/features/settings/useAdminDataMaintenanceController.js:175 full-collection-read
++[INFO] onSnapshot src/features/settings/useAdminDataMaintenanceController.js:291 bounded-listener
++[INFO] onSnapshot src/features/settings/useAdminDataMaintenanceController.js:309 bounded-listener
++[APPROVED] getDocs src/features/settings/useAdminDataMaintenanceController.js:343 full-high-growth-read
++[APPROVED] getDocs src/features/settings/useAdminDataMaintenanceController.js:344 full-collection-read
++[APPROVED] getDocs src/features/settings/useAdminDataMaintenanceController.js:345 full-high-growth-read
++[APPROVED] getDocs src/features/settings/useAdminDataMaintenanceController.js:346 full-high-growth-read
++[APPROVED] getDocs src/features/settings/useAdminDataMaintenanceController.js:347 full-high-growth-read
++[APPROVED] getDocs src/features/settings/useAdminDataMaintenanceController.js:348 full-collection-read
++[APPROVED] getDocs src/features/settings/useAdminDataMaintenanceController.js:349 full-collection-read
++[APPROVED] getDocs src/features/settings/useAdminDataMaintenanceController.js:350 full-collection-read
++[INFO] getDoc src/features/settings/useAdminDataMaintenanceController.js:351 document-read
++[INFO] getDoc src/features/settings/useAdminDataMaintenanceController.js:535 document-read
++[APPROVED] getDocs src/features/settings/useAdminDataMaintenanceController.js:696 full-collection-read
++[INFO] getDoc src/features/settings/useAdminDataMaintenanceController.js:718 document-read
++[APPROVED] getDocs src/features/settings/useAdminDataMaintenanceController.js:733 full-collection-read
++[APPROVED] getDocs src/features/settings/useAdminDataMaintenanceController.js:846 full-collection-read
++[INFO] getDoc src/features/settings/useAdminDataMaintenanceController.js:1028 document-read
++[INFO] getDoc src/features/settings/useAdminDataMaintenanceController.js:1103 document-read
++[APPROVED] getDocs src/features/settings/useAdminDataMaintenanceController.js:1234 full-collection-read
++[APPROVED] getDocs src/features/settings/useAdminDataMaintenanceController.js:1305 full-high-growth-read
++[APPROVED] getDocs src/features/settings/useAdminDataMaintenanceController.js:1312 full-high-growth-read
++[APPROVED] getDocs src/features/settings/useAdminDataMaintenanceController.js:1379 full-high-growth-read
++[INFO] getDoc src/features/settings/useAdminDataMaintenanceController.js:1433 document-read
++[INFO] getDoc src/features/settings/useAdminSplitStorageMigrationController.js:77 document-read
++[APPROVED] getDocs src/features/settings/useAdminSplitStorageMigrationController.js:78 full-high-growth-read
++[APPROVED] getDocs src/features/settings/useAdminSplitStorageMigrationController.js:79 full-high-growth-read
++[APPROVED] getDocs src/features/settings/useAdminSplitStorageMigrationController.js:80 full-high-growth-read
++[APPROVED] getDocs src/features/settings/useAdminSplitStorageMigrationController.js:81 full-collection-read
++[INFO] onSnapshot src/features/settings/useSiteSettingsController.js:57 document-listener
++[INFO] getDoc src/features/terms/termsService.js:40 document-read
++[INFO] getDoc src/features/terms/termsService.js:48 document-read
++[INFO] getDocs src/features/terms/termsService.js:62 bounded-read
++[INFO] onSnapshot src/features/terms/useUserTermsCompliance.js:23 document-listener
++[INFO] onSnapshot src/hooks/useDashboardSummary.js:231 document-listener
++[APPROVED] getDocs src/services/dashboardSummaryService.js:146 filtered-unbounded-high-growth-read
++[INFO] getDocs src/services/dashboardSummaryService.js:147 bounded-read
++[INFO] getDoc src/services/dashboardSummaryService.js:148 document-read
++[APPROVED] getDocs src/services/dashboardSummaryService.js:149 full-high-growth-read
++[INFO] getCountFromServer src/services/dashboardSummaryService.js:150 aggregation-read
++[INFO] getCountFromServer src/services/dashboardSummaryService.js:156 aggregation-read
++[INFO] getCountFromServer src/services/dashboardSummaryService.js:162 aggregation-read
++[APPROVED] getDocs src/services/dashboardSummaryService.js:218 full-high-growth-read
++[INFO] getDocs src/services/progressiveFirestoreSearch.js:81 bounded-read
++[APPROVED] getDocs src/services/publicAssetCatalogWriteThrough.js:145 full-high-growth-read
++[INFO] getDoc src/services/publicAssetCatalogWriteThrough.js:174 document-read
++[APPROVED] getDocs src/services/publicAssetCatalogWriteThrough.js:195 full-high-growth-read
++[APPROVED] getDocs src/user/UserHomePanel.jsx:129 filtered-unbounded-collection-read
++[INFO] getDoc src/user/UserHomePanel.jsx:160 document-read
++[INFO] onSnapshot src/user/UserSignupTermsSection.jsx:55 document-listener
+diff -ruN '--exclude=package-meta' '--exclude=P2_ADMIN_ACCOUNT_TAB_INITIALIZATION_EFFECT_TRANSFER.diff' '--exclude=P2_ADMIN_ACCOUNT_TAB_INITIALIZATION_EFFECT_TRANSFER_COMPARISON.json' '--exclude=P2_ADMIN_ACCOUNT_TAB_INITIALIZATION_EFFECT_TRANSFER_REPORT.md' '--exclude=P2_ADMIN_ACCOUNT_TAB_INITIALIZATION_EFFECT_TRANSFER_VALIDATION_REPORT.txt' /mnt/data/seq_008_base/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json /mnt/data/seq_008_work/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json
+--- /mnt/data/seq_008_base/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json	2026-08-01 16:39:06.000000000 +0000
++++ /mnt/data/seq_008_work/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json	2026-08-01 16:51:31.470809632 +0000
+@@ -1,11 +1,11 @@
+ {
+-  "generatedAt": "2026-08-01T16:39:07.430Z",
++  "generatedAt": "2026-08-01T16:51:31.474Z",
+   "initialModuleCount": 87,
+-  "initialSourceBytes": 880958,
++  "initialSourceBytes": 880935,
+   "files": [
+     {
+       "file": "src/App.jsx",
+-      "bytes": 67655
++      "bytes": 67448
+     },
+     {
+       "file": "src/features/requests/useUserRequestHistoryActionController.js",
+@@ -21,7 +21,7 @@
+     },
+     {
+       "file": "src/features/auth/useAdminAccountManagementController.js",
+-      "bytes": 24792
++      "bytes": 24976
+     },
+     {
+       "file": "src/user/UserHomePanel.jsx",
+diff -ruN '--exclude=package-meta' '--exclude=P2_ADMIN_ACCOUNT_TAB_INITIALIZATION_EFFECT_TRANSFER.diff' '--exclude=P2_ADMIN_ACCOUNT_TAB_INITIALIZATION_EFFECT_TRANSFER_COMPARISON.json' '--exclude=P2_ADMIN_ACCOUNT_TAB_INITIALIZATION_EFFECT_TRANSFER_REPORT.md' '--exclude=P2_ADMIN_ACCOUNT_TAB_INITIALIZATION_EFFECT_TRANSFER_VALIDATION_REPORT.txt' /mnt/data/seq_008_base/src/App.jsx /mnt/data/seq_008_work/src/App.jsx
+--- /mnt/data/seq_008_base/src/App.jsx	2026-08-01 16:38:40.000000000 +0000
++++ /mnt/data/seq_008_work/src/App.jsx	2026-08-01 16:50:00.234812524 +0000
+@@ -1,4 +1,4 @@
+-import { useEffect, useState } from 'react';
++import { useState } from 'react';
+ import { Button } from './components/CommonUI.jsx';
+ import useAppContextAssembler from './context/useAppContextAssembler.js';
+ import AppShell from './shell/AppShell.jsx';
+@@ -96,7 +96,6 @@
+   useUserAuthenticationSessionState,
+ } from './features/auth/useUserAuthenticationSessionController.js';
+ import useAdminAccountManagementController, {
+-  createDefaultAdminAccountForm,
+   useAdminAccountManagementState,
+ } from './features/auth/useAdminAccountManagementController.js';
+ import useUserMyPageAccountController, {
+@@ -689,7 +688,7 @@
+     setAdminMyProfileForm,
+     setAdminMyProfileSaving,
+     setEditingAdminAccountId,
+-  } = useAdminAccountManagementState();
++  } = useAdminAccountManagementState({ adminTab });
+   const {
+     adminAuthAbsoluteExpiresAt,
+     adminAuthExpiresAt,
+@@ -794,13 +793,6 @@
+     splitStorageFinalizeLoading,
+   } = useAdminSplitStorageMigrationState();
+ 
+-  useEffect(() => {
+-    if (adminTab === 'adminAccounts') {
+-      setAdminAccountForm(createDefaultAdminAccountForm());
+-      setAdminAccountPage(1);
+-    }
+-  }, [adminTab]);
+-
+   const {
+     dismissSystemBanner,
+     shouldRenderAppDialogs,
+diff -ruN '--exclude=package-meta' '--exclude=P2_ADMIN_ACCOUNT_TAB_INITIALIZATION_EFFECT_TRANSFER.diff' '--exclude=P2_ADMIN_ACCOUNT_TAB_INITIALIZATION_EFFECT_TRANSFER_COMPARISON.json' '--exclude=P2_ADMIN_ACCOUNT_TAB_INITIALIZATION_EFFECT_TRANSFER_REPORT.md' '--exclude=P2_ADMIN_ACCOUNT_TAB_INITIALIZATION_EFFECT_TRANSFER_VALIDATION_REPORT.txt' /mnt/data/seq_008_base/src/features/auth/useAdminAccountManagementController.js /mnt/data/seq_008_work/src/features/auth/useAdminAccountManagementController.js
+--- /mnt/data/seq_008_base/src/features/auth/useAdminAccountManagementController.js	2026-08-01 22:50:00.000000000 +0000
++++ /mnt/data/seq_008_work/src/features/auth/useAdminAccountManagementController.js	2026-08-01 16:51:30.306809669 +0000
+@@ -48,7 +48,7 @@
+   newPasswordConfirm: '',
+ });
+ 
+-export const useAdminAccountManagementState = () => {
++export const useAdminAccountManagementState = ({ adminTab }) => {
+   const [adminAccountForm, setAdminAccountForm] = useState(
+     createDefaultAdminAccountForm
+   );
+@@ -62,6 +62,13 @@
+   );
+   const [adminMyProfileSaving, setAdminMyProfileSaving] = useState(false);
+ 
++  useEffect(() => {
++    if (adminTab !== 'adminAccounts') return;
++
++    setAdminAccountForm(createDefaultAdminAccountForm());
++    setAdminAccountPage(1);
++  }, [adminTab]);
++
+   return {
+     adminAccountEditForm,
+     adminAccountForm,
+diff -ruN '--exclude=package-meta' '--exclude=P2_ADMIN_ACCOUNT_TAB_INITIALIZATION_EFFECT_TRANSFER.diff' '--exclude=P2_ADMIN_ACCOUNT_TAB_INITIALIZATION_EFFECT_TRANSFER_COMPARISON.json' '--exclude=P2_ADMIN_ACCOUNT_TAB_INITIALIZATION_EFFECT_TRANSFER_REPORT.md' '--exclude=P2_ADMIN_ACCOUNT_TAB_INITIALIZATION_EFFECT_TRANSFER_VALIDATION_REPORT.txt' /mnt/data/seq_008_base/tools/audit-app-flow-contracts.mjs /mnt/data/seq_008_work/tools/audit-app-flow-contracts.mjs
+--- /mnt/data/seq_008_base/tools/audit-app-flow-contracts.mjs	2026-08-01 16:42:12.000000000 +0000
++++ /mnt/data/seq_008_work/tools/audit-app-flow-contracts.mjs	2026-08-01 16:51:30.306809669 +0000
+@@ -74,6 +74,7 @@
+ const appInitializationReadinessController = read('src/shell/useAppInitializationReadinessController.js');
+ const appNavigationController = read('src/routing/useAppNavigationController.js');
+ const rentalDataSubscriptionController = read('src/features/requests/useRentalDataSubscriptionController.js');
++const adminAccountManagementController = read('src/features/auth/useAdminAccountManagementController.js');
+ 
+ const protectedTabs = extractStringSet(
+   appRoutes,
+@@ -380,6 +381,40 @@
+   'User account status navigation opens the account-status route.'
+ );
+ 
++
++check(
++  appSource.includes('} = useAdminAccountManagementState({ adminTab });'),
++  'App delegates administrator account tab-entry initialization to the account management state hook.'
++);
++check(
++  adminAccountManagementController.includes('export const useAdminAccountManagementState = ({ adminTab }) => {'),
++  'Administrator account management state hook accepts the active administrator tab.'
++);
++const adminAccountStateBlock = extractBlock(
++  adminAccountManagementController,
++  'export const useAdminAccountManagementState = ({ adminTab }) => {',
++  'export default function useAdminAccountManagementController('
++);
++check(
++  adminAccountStateBlock.includes("if (adminTab !== 'adminAccounts') return;") &&
++    adminAccountStateBlock.includes('setAdminAccountForm(createDefaultAdminAccountForm());') &&
++    adminAccountStateBlock.includes('setAdminAccountPage(1);'),
++  'Administrator account state hook resets the registration form and page when the administrator-account tab opens.'
++);
++check(
++  !appSource.includes("if (adminTab === 'adminAccounts')") &&
++    !appSource.includes('setAdminAccountForm(createDefaultAdminAccountForm());'),
++  'App has no duplicate administrator account tab-entry initialization effect.'
++);
++check(
++  !/\buseEffect\s*\(/.test(appSource),
++  'App has no direct useEffect calls after administrator account initialization is delegated.'
++);
++check(
++  !appSource.includes('createDefaultAdminAccountForm,'),
++  'App no longer imports the administrator account form factory solely for tab-entry initialization.'
++);
++
+ const dashboardHeadingBlocks = [
+   ...adminDashboard.matchAll(/<DashboardSectionHeading([\s\S]*?)\/>/g),
+ ].map((match) => match[1]);
