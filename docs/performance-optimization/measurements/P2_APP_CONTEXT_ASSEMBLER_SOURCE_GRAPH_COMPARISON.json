@@ -1,0 +1,35 @@
+{
+  "generatedAt": "2026-08-01T21:44:00+09:00",
+  "baselinePackage": "rental-system-app-data-compatibility-service-split-20260801_2134_deployment_package.zip",
+  "before": {
+    "appFile": "src/App.jsx",
+    "appLines": 4155,
+    "appBytes": 121371,
+    "initialModuleCount": 74,
+    "initialSourceBytes": 871265
+  },
+  "after": {
+    "appFile": "src/App.jsx",
+    "appLines": 4018,
+    "appBytes": 118285,
+    "contextAssemblerFile": "src/context/useAppContextAssembler.js",
+    "contextAssemblerLines": 213,
+    "contextAssemblerBytes": 5036,
+    "initialModuleCount": 75,
+    "initialSourceBytes": 873215
+  },
+  "delta": {
+    "appLines": -137,
+    "appBytes": -3086,
+    "initialModuleCount": 1,
+    "initialSourceBytes": 1950
+  },
+  "contextContract": {
+    "requiredUniqueKeys": 466,
+    "dynamicKeys": 388,
+    "staticKeys": 78,
+    "missingKeys": 0,
+    "duplicateKeys": 0,
+    "extraKeys": 0
+  }
+}

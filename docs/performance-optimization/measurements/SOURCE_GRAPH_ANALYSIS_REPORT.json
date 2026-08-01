@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-08-01T12:28:01.323Z",
-  "initialModuleCount": 74,
-  "initialSourceBytes": 871265,
+  "generatedAt": "2026-08-01T12:43:57.765Z",
+  "initialModuleCount": 75,
+  "initialSourceBytes": 873215,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 121371
+      "bytes": 118285
     },
     {
       "file": "src/features/requests/useUserRequestHistoryActionController.js",
@@ -186,6 +186,10 @@
     {
       "file": "src/utils/memberPolicy.js",
       "bytes": 5131
+    },
+    {
+      "file": "src/context/useAppContextAssembler.js",
+      "bytes": 5036
     },
     {
       "file": "src/user/UserFooter.jsx",

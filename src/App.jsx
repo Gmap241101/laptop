@@ -9,23 +9,9 @@ import {
 } from 'firebase/firestore';
 import {
   Laptop,
-  LayoutDashboard,
-  Users,
-  ClipboardList,
   Settings,
-  Plus,
-  Pin,
-  Search,
-  CheckCircle2,
-  Clock,
-  XCircle,
-  Save,
-  Trash2,
-  Edit3,
-  ShieldCheck,
   AlertCircle,
   X,
-  Info,
   UserPlus,
   LogIn,
   UserCircle,
@@ -33,27 +19,17 @@ import {
 } from 'lucide-react';
 
 import {
-  AdminPageHeader,
-  Badge,
   Button,
   Card,
   CardContent,
   DateInputWithWeekday,
-  Input,
-  LockIcon,
-  Select,
 } from './components/CommonUI.jsx';
 
 import RentalStatusBoard from './components/RentalStatusBoard.jsx';
 import UserWorkspace from './user/UserWorkspace.jsx';
 import UserFooter from './user/UserFooter.jsx';
 import DevRenderProfiler from './performance/DevRenderProfiler.jsx';
-import useStableContextGroups from './hooks/useStableContextGroups.js';
-import {
-  APP_CONTEXT_GROUP_KEYS,
-  getAdminPanelContextKey,
-  getUserPanelContextKey,
-} from './context/appContextSlices.js';
+import useAppContextAssembler from './context/useAppContextAssembler.js';
 
 import { loadAppDialogsModule } from './dialogs/appDialogsLoader.js';
 import useGlobalUiController, {
@@ -76,11 +52,6 @@ import {
   sanitizeRichTextHtml,
 } from './utils/richTextCore.js';
 import {
-  formatPopupDateTime,
-  getPopupDisplayStatus,
-} from './utils/popupUtils.js';
-
-import {
   RENTAL_ASSET_NUMBERS_COLLECTION_REF,
   RENTAL_REQUESTS_COLLECTION_REF,
   SITE_SETTINGS_DOC_REF,
@@ -92,16 +63,10 @@ import {
 
 
 import {
-  ADMIN_REQUEST_PAGE_SIZE_OPTIONS,
   ADMIN_REQUEST_QUICK_FILTER,
   ADMIN_REQUEST_TAB,
   DISPLAY_STATUS,
-  FAQ_POSTS_PER_PAGE_OPTIONS,
-  NOTICE_POSTS_PER_PAGE_OPTIONS,
-  RENTAL_REQUEST_AUDIT_ACTION,
   RENTAL_REQUEST_STATUS_TRANSITIONS,
-  RENTAL_EXTENSION_APPROVAL_MODE,
-  OVERDUE_PENALTY_MODE,
   STATUS,
   USER_REQUEST_ACTION,
   USER_REQUEST_REVIEW_STATUS,
@@ -116,32 +81,17 @@ import {
 import {
   DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY,
   DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS,
-  DEFAULT_EXCLUDE_HOLIDAYS_FOR_START_DATE,
-  DEFAULT_EXCLUDE_SATURDAYS,
-  DEFAULT_EXCLUDE_SUNDAYS,
-  DEFAULT_HOLIDAY_TYPE,
-  DEFAULT_WORK_END_TIME,
-  HOLIDAY_TYPE_LABEL,
   createDefaultRequestForm,
-  defaultRentalStartDate,
   findSameAssetBlockingRequest,
   getAdjustedRentalDueDate,
   getAdjustedRentalStartDate,
-  getExtensionRequestAvailableDate,
   getNonBusinessDayReason,
-  getLaptopAdminDisplayStatus,
-  getLaptopRentalAvailability,
   getLaptopRepresentativeRequest,
   getMaxRentalDueDate,
   getRentalDueDateAdjustmentReason,
-  getRentalExtensionApprovalMode,
   getRentalExtensionEligibility,
-  getRentalExtensionPeriod,
   getRentalStartAdjustmentInfo,
-  getRequestExtensionCount,
   getSafeMaxRentalDays,
-  getSafeRentalExtensionDays,
-  getSafeRentalExtensionMaxCount,
   isRentalDueBusinessDay,
   isTemporaryDateInputValue,
   normalizeHolidayList,
@@ -191,7 +141,6 @@ import {
 } from './features/members/memberAccountPolicy.js';
 import { useDebouncedValue } from './hooks/useDebouncedValue.js';
 import {
-  pushAppPath,
   readUserAccountStatusView,
 } from './routing/appRoutes.js';
 import useAppNavigationController, {
@@ -218,8 +167,6 @@ import useUserAuthenticationSessionController, {
   useUserAuthenticationSessionState,
 } from './features/auth/useUserAuthenticationSessionController.js';
 import useAdminAccountManagementController, {
-  ADMIN_ACCOUNT_PAGE_SIZE,
-  ADMIN_CUSTOM_OPTION_VALUE,
   createDefaultAdminAccountForm,
   useAdminAccountManagementState,
 } from './features/auth/useAdminAccountManagementController.js';
@@ -246,9 +193,7 @@ import useRentalDataSubscriptionController, {
   useOwnRentalRequestsSubscriptionController,
   useRentalDataSubscriptionState,
 } from './features/requests/useRentalDataSubscriptionController.js';
-import useRentalDerivedSelectors, {
-  getUserLaptopStatusLabel,
-} from './features/requests/useRentalDerivedSelectors.js';
+import useRentalDerivedSelectors from './features/requests/useRentalDerivedSelectors.js';
 import {
   initialData,
   mergePersistedData,
@@ -266,15 +211,10 @@ import {
 } from './utils/systemSettings.js';
 
 import {
-  addDaysFrom,
   formatDate,
   formatDateWithKoreanWeekday,
-  formatFirestoreDate,
-  formatFirestoreTimestamp,
   getDisplayRentalStatus,
-  getRequestDisplayStatus,
   getFirestoreTimestampMillis,
-  getKoreaNow,
   today,
 } from './utils/appUtils.js';
 
@@ -3246,58 +3186,7 @@ function App() {
 
 
 
-  const uiContext = {
-    ADMIN_ACCOUNT_PAGE_SIZE,
-    ADMIN_CUSTOM_OPTION_VALUE,
-    ADMIN_REQUEST_PAGE_SIZE_OPTIONS,
-    ADMIN_REQUEST_QUICK_FILTER,
-    ADMIN_REQUEST_TAB,
-    AlertCircle,
-    AnimatePresence,
-    AdminPageHeader,
-    Badge,
-    Button,
-    Card,
-    CardContent,
-    CheckCircle2,
-    ClipboardList,
-    Clock,
-    DEFAULT_EXCLUDE_HOLIDAYS_FOR_START_DATE,
-    DEFAULT_EXCLUDE_SATURDAYS,
-    DEFAULT_EXCLUDE_SUNDAYS,
-    DEFAULT_HOLIDAY_TYPE,
-    DEFAULT_WORK_END_TIME,
-    DateInputWithWeekday,
-    Edit3,
-    FAQ_POSTS_PER_PAGE_OPTIONS,
-    HOLIDAY_TYPE_LABEL,
-    Info,
-    Input,
-    Laptop,
-    LayoutDashboard,
-    LockIcon,
-    LogOut,
-    NOTICE_POSTS_PER_PAGE_OPTIONS,
-    OVERDUE_PENALTY_MODE,
-    Pin,
-    Plus,
-    RENTAL_EXTENSION_APPROVAL_MODE,
-    RENTAL_REQUEST_AUDIT_ACTION,
-    React,
-    STATUS,
-    Save,
-    Search,
-    Select,
-    Settings,
-    ShieldCheck,
-    Trash2,
-    USER_PROFILE_STATUS,
-    USER_REQUEST_ACTION,
-    USER_REQUEST_REVIEW_STATUS,
-    UserCircle,
-    Users,
-    X,
-    XCircle,
+  const dynamicContextValues = {
     activeFaqCategoryId,
     activeFaqCategoryName,
     activeUserActionRentalRequest,
@@ -3305,7 +3194,6 @@ function App() {
     accountRecoveryLoading,
     accountRecoveryResult,
     resetAccountRecoverySearch,
-    addDaysFrom,
     addFaqCategory,
     addTempAssetCategory,
     addTempHoliday,
@@ -3351,7 +3239,6 @@ function App() {
     confirmDeleteFaqPost,
     confirmDeleteNoticePost,
     confirmModal,
-    createDefaultAdminAccountForm,
     createLaptop,
     currentAuthAdminAccount,
     currentAuthRoleErrorMessage,
@@ -3416,26 +3303,6 @@ function App() {
     firebaseAuthReady,
     firebaseAuthUser,
     form,
-    formatDateWithKoreanWeekday,
-    formatFirestoreDate,
-    formatFirestoreTimestamp,
-    defaultRentalStartDate,
-    getAdjustedRentalDueDate,
-    getDisplayRentalStatus,
-    getRequestDisplayStatus,
-    getKoreaNow,
-    getLaptopAdminDisplayStatus,
-    getLaptopRentalAvailability,
-    getMaxRentalDueDate,
-    getRentalDueDateAdjustmentReason,
-    getExtensionRequestAvailableDate,
-    getRequestExtensionCount,
-    getRentalExtensionApprovalMode,
-    getRentalExtensionPeriod,
-    getSafeRentalExtensionDays,
-    getSafeRentalExtensionMaxCount,
-    getSafeMaxRentalDays,
-    getUserLaptopStatusLabel,
     getUserRequestActionLabel,
     getUserRequestReviewStatusLabel,
     goToUserEmailRecovery,
@@ -3494,7 +3361,6 @@ function App() {
     onSignupPolicyDeferredStateChange:
       handleSignupPolicyDeferredStateChange,
     signupPolicySettings: data.settings,
-    motion,
     moveTempAssetCategory,
     newAssetCategory,
     newFaqCategoryName,
@@ -3530,7 +3396,6 @@ function App() {
     passwordResetLoading,
     passwordResetVerificationResult,
     pinnedNoticePosts,
-    pushAppPath,
     query,
     refreshDashboardSummary,
     registerAdminAccount,
@@ -3648,7 +3513,6 @@ function App() {
     tempSettings,
     toast,
     stats,
-    today,
     toggleAdminFaqPost,
     toggleFaqPost,
     triggerConfirm,
@@ -3693,8 +3557,6 @@ function App() {
     movePopupPost,
     confirmDeletePopupPost,
     setPopupPostForm,
-    getPopupDisplayStatus,
-    formatPopupDateTime,
     footerConfig,
     footerConfigDraft,
     footerConfigReady,
@@ -3723,16 +3585,17 @@ function App() {
     userTab,
   };
 
-  const contextGroups = useStableContextGroups(
-    uiContext,
-    APP_CONTEXT_GROUP_KEYS
-  );
-  const userPanelContextKey = getUserPanelContextKey({
-    userTab,
+  const {
+    adminPanelContextKey,
+    contextGroups,
+    userPanelContextKey,
+  } = useAppContextAssembler({
+    adminTab,
+    dynamicValues: dynamicContextValues,
     hasFirebaseAuthSession,
     isUserDirectoryAccessRestricted,
+    userTab,
   });
-  const adminPanelContextKey = getAdminPanelContextKey(adminTab);
   const shouldMountUserPopupLayer =
     view === 'user' &&
     Array.isArray(popupPosts) &&

@@ -1,0 +1,54 @@
+P2 APP CONTEXT ASSEMBLER FEATURE SPLIT VALIDATION
+=================================================
+Generated: 2026-08-01 21:44 KST
+Baseline: rental-system-app-data-compatibility-service-split-20260801_2134_deployment_package.zip
+
+SOURCE CONTRACT
+---------------
+PASS  Existing context unique keys: 466
+PASS  Dynamic context keys: 388
+PASS  Static context keys: 78
+PASS  Missing context keys: 0
+PASS  Duplicate context keys: 0
+PASS  Extra context keys: 0
+PASS  APP_CONTEXT_GROUP_KEYS unchanged
+PASS  User panel key resolver preserved
+PASS  Admin panel key resolver preserved
+
+STATIC VALIDATION
+-----------------
+PASS  TypeScript transpile syntax check: 131 JS/JSX/MJS source files
+PASS  React Hook import audit: 131 source files
+PASS  Relative import resolution: missing 0
+PASS  Firestore strict audit
+      Total calls: 129
+      onSnapshot: 35
+      getDocs: 48
+      getDoc: 28
+      getCountFromServer: 18
+      Unapproved warnings: 0
+      Unapproved errors: 0
+
+SOURCE GRAPH
+------------
+PASS  Initial static modules: 74 -> 75
+PASS  Initial source bytes: 871265 -> 873215
+PASS  App.jsx lines: 4155 -> 4018
+PASS  App.jsx bytes: 121371 -> 118285
+
+FUNCTIONAL SCOPE
+----------------
+PASS  No Firestore query/write moved or added
+PASS  No Rules or index change
+PASS  No user-facing text change
+PASS  No route or panel selection change
+PASS  No React.memo/context stabilization rule change
+PASS  No cumulative removed-file entry changed
+
+PRODUCTION BUILD
+----------------
+NOT COMPLETED
+npm ci --ignore-scripts failed before Vite execution because the internal npm registry returned E404 for:
+yargs-parser-21.1.1.tgz
+
+A local deploy.ps1 run must confirm npm run build and the final deployment completion message.
