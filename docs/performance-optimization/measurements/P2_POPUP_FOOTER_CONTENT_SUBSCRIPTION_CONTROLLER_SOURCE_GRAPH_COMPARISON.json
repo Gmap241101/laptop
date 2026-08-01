@@ -1,0 +1,75 @@
+{
+  "generatedAt": "2026-08-01T09:08:48.690054+00:00",
+  "workId": "P2_POPUP_FOOTER_CONTENT_SUBSCRIPTION_CONTROLLER_FEATURE_SPLIT",
+  "baselinePackage": "rental-system-board-content-subscription-controller-split-20260801_1754_deployment_package.zip",
+  "app": {
+    "before": {
+      "lines": 5430,
+      "bytes": 158782,
+      "useState": 41,
+      "useEffect": 19,
+      "useRef": 7,
+      "useMemo": 27,
+      "onSnapshot": 4,
+      "getDocs": 2,
+      "getDoc": 1
+    },
+    "after": {
+      "lines": 5089,
+      "bytes": 147858,
+      "useState": 29,
+      "useEffect": 13,
+      "useRef": 7,
+      "useMemo": 26,
+      "onSnapshot": 1,
+      "getDocs": 0,
+      "getDoc": 0
+    },
+    "delta": {
+      "lines": -341,
+      "bytes": -10924,
+      "useState": -12,
+      "useEffect": -6,
+      "useRef": 0,
+      "useMemo": -1,
+      "onSnapshot": -3,
+      "getDocs": -2,
+      "getDoc": -1
+    }
+  },
+  "newController": {
+    "file": "src/features/boards/usePopupFooterContentSubscriptionController.js",
+    "lines": 577,
+    "bytes": 15896
+  },
+  "sourceGraph": {
+    "before": {
+      "initialModuleCount": 67,
+      "initialSourceBytes": 853989
+    },
+    "after": {
+      "initialModuleCount": 68,
+      "initialSourceBytes": 858961
+    },
+    "delta": {
+      "initialModuleCount": 1,
+      "initialSourceBytes": 4972
+    }
+  },
+  "firestoreCalls": {
+    "before": {
+      "total": 129,
+      "onSnapshot": 35,
+      "getDocs": 48,
+      "getDoc": 28,
+      "getCountFromServer": 18
+    },
+    "after": {
+      "total": 129,
+      "onSnapshot": 35,
+      "getDocs": 48,
+      "getDoc": 28,
+      "getCountFromServer": 18
+    }
+  }
+}

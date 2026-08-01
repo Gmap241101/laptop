@@ -1,0 +1,52 @@
+P2_POPUP_FOOTER_CONTENT_SUBSCRIPTION_CONTROLLER_FEATURE_SPLIT
+============================================================
+
+기준본
+- rental-system-board-content-subscription-controller-split-20260801_1754_deployment_package.zip
+- 기준본 PACKAGE_FILES SHA-256 검증: PASS (387/387)
+
+정적 검사
+- React Hook import 감사: PASS (124개 소스 파일)
+- JS/JSX/MJS TypeScript 구문 변환: PASS (124개 소스 파일)
+- 표적 의미 진단(TS2304/2552/2451/2448/2349/2554/2722): PASS (0건)
+- 상대 import 실파일 검사: PASS (374개, 누락 0개)
+- Firestore strict 감사: PASS
+- Firestore 전체 호출 수: PASS (129 -> 129)
+
+컨텍스트 계약
+- 사용자 팝업 context: PASS (8/8)
+- 사용자 푸터 context: PASS (5/5)
+- 푸터 상세 context: PASS (8/8)
+- 관리자 팝업 context: PASS (13/13)
+- 관리자 푸터 관리 context: PASS (24/24)
+
+런타임 모의시험
+- 사용자 팝업 enabled 쿼리 및 정렬: PASS
+- 사용자 푸터 공통 정보 일회성 조회: PASS
+- 사용자 푸터 페이지 enabled 쿼리 및 정렬: PASS
+- 세션 동안 보지 않기 저장: PASS
+- 현재 탭에서 전체 팝업 닫기: PASS
+- 관리자 팝업 실시간 구독: PASS
+- 관리자 푸터 공통 정보 실시간 구독: PASS
+- 관리자 푸터 페이지 실시간 구독: PASS
+
+구조 결과
+- App.jsx: 5,430줄 / 158,782 bytes -> 5,089줄 / 147,858 bytes
+- App.jsx useState: 41 -> 29
+- App.jsx useEffect: 19 -> 13
+- App.jsx Firestore 직접 호출: onSnapshot 4 -> 1, getDocs 2 -> 0, getDoc 1 -> 0
+- 신규 컨트롤러: 577줄 / 15,896 bytes
+- 초기 정적 모듈: 67 -> 68
+- 초기 정적 소스: 853,989 -> 858,961 bytes
+
+실제 Vite 빌드
+- npm ci: FAIL
+- 원인: 내부 npm 저장소에서 yargs-parser-21.1.1.tgz E404
+- 소스·감사·경로·런타임 모의시험은 통과
+- 최종 프로덕션 번들은 로컬 deploy.ps1에서 npm run build 성공 여부를 확인해야 함
+
+삭제 목록
+- 기존 실제 삭제 경로: 67개
+- 이번 신규 삭제 경로: 0개
+- 중복 경로: 0개
+- 프로젝트 파일과 삭제 목록 충돌: 0개
