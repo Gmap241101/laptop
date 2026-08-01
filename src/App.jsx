@@ -1,10 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  collection,
-  deleteDoc,
   doc,
-  getCountFromServer,
   getDoc,
   getDocs,
   limit as firestoreLimit,
@@ -12,10 +9,6 @@ import {
   orderBy,
   query as firestoreQuery,
   runTransaction,
-  setDoc,
-  updateDoc,
-  serverTimestamp,
-  startAfter,
   where,
 } from 'firebase/firestore';
 import {
@@ -103,12 +96,7 @@ import {
 } from './utils/popupUtils.js';
 
 import {
-  FAQ_BOARD_CONFIG_DOC_REF,
-  FAQ_CATEGORIES_COLLECTION_REF,
-  FAQ_POSTS_COLLECTION_REF,
   FOOTER_PAGES_COLLECTION_REF,
-  NOTICE_BOARD_CONFIG_DOC_REF,
-  NOTICE_POSTS_COLLECTION_REF,
   POPUP_POSTS_COLLECTION_REF,
   RENTAL_ASSET_NUMBERS_COLLECTION_REF,
   RENTAL_REQUESTS_COLLECTION_REF,
@@ -125,8 +113,6 @@ import {
   ADMIN_REQUEST_PAGE_SIZE_OPTIONS,
   ADMIN_REQUEST_QUICK_FILTER,
   ADMIN_REQUEST_TAB,
-  DEFAULT_FAQ_POSTS_PER_PAGE,
-  DEFAULT_NOTICE_POSTS_PER_PAGE,
   DISPLAY_STATUS,
   FAQ_POSTS_PER_PAGE_OPTIONS,
   NOTICE_POSTS_PER_PAGE_OPTIONS,
@@ -192,7 +178,12 @@ import {
   normalizeRentalPolicySettings,
 } from './domain/rentalPolicy.js';
 import { useDashboardSummary } from './hooks/useDashboardSummary.js';
-import useBoardProgressiveSearch from './features/boards/useBoardProgressiveSearch.js';
+import useBoardContentSubscriptionController, {
+  filterNoticePostsByQuery,
+  getSafeFaqPostsPerPage,
+  getSafeNoticePostsPerPage,
+  useBoardContentSubscriptionState,
+} from './features/boards/useBoardContentSubscriptionController.js';
 import useAdminBoardPostController, {
   useFaqPostAdminState,
   useNoticePostAdminState,
@@ -354,49 +345,6 @@ const getUserRequestReviewStatusLabel = (status) => {
   return '상태 미지정';
 };
 
-const getSafeNoticePostsPerPage = (value) => {
-  const parsedValue = Math.trunc(Number(value));
-
-  return parsedValue >= 5 &&
-    parsedValue <= 50
-    ? parsedValue
-    : DEFAULT_NOTICE_POSTS_PER_PAGE;
-};
-
-const filterNoticePostsByQuery = (posts = [], queryText = '') => {
-  const normalizedQuery = String(queryText || '')
-    .trim()
-    .toLowerCase();
-
-  if (!normalizedQuery) {
-    return posts;
-  }
-
-  return posts.filter(
-    (post) =>
-      String(post.title || '')
-        .toLowerCase()
-        .includes(normalizedQuery) ||
-      String(
-        post.contentText ||
-          post.content ||
-          richTextHtmlToText(post.contentHtml || '')
-      )
-        .toLowerCase()
-        .includes(normalizedQuery)
-  );
-};
-
-const getSafeFaqPostsPerPage = (value) => {
-  const parsedValue = Math.trunc(Number(value));
-
-  return parsedValue >= 5 &&
-    parsedValue <= 50
-    ? parsedValue
-    : DEFAULT_FAQ_POSTS_PER_PAGE;
-};
-
-
 const POPUP_DISMISSED_SESSION_KEY = 'rentalSystemDismissedPopupVersions';
 const POPUP_DISMISSED_LOCAL_KEY = 'rentalSystemDismissedPopupVersionsUntil';
 const POPUP_DISMISS_SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -551,7 +499,6 @@ function mergePersistedData(rawData) {
   };
 }
 
-const FIRESTORE_PINNED_POST_LIMIT = 20;
 const ADMIN_PASSWORD_HASH_ALGORITHM = 'PBKDF2-SHA-256';
 const ADMIN_PASSWORD_HASH_ITERATIONS = 120000;
 
@@ -890,34 +837,82 @@ function App() {
     setAdminUserActionSavingRequestId,
   } = useAdminUserActionReviewState();
 
-  const [noticePosts, setNoticePosts] = useState([]);
-  const [noticePinnedPosts, setNoticePinnedPosts] = useState([]);
-  const [noticeRegularPagePosts, setNoticeRegularPagePosts] = useState([]);
-  const [noticeHasNextPage, setNoticeHasNextPage] = useState(false);
-  const [noticeRegularTotalCount, setNoticeRegularTotalCount] = useState(0);
-  const noticeCursorByPageRef = useRef(new Map([[1, null]]));
-  const noticeCursorKeyRef = useRef('');
-  const [noticePostsReady, setNoticePostsReady] = useState(false);
-  const [
-    noticePostsLoadErrorMessage,
-    setNoticePostsLoadErrorMessage,
-  ] = useState('');
-
-  const [noticeBoardConfig, setNoticeBoardConfig] = useState({
-    postsPerPage: DEFAULT_NOTICE_POSTS_PER_PAGE,
-  });
-  const [noticeBoardConfigReady, setNoticeBoardConfigReady] = useState(false);
-  const [
+  const {
+    activeFaqCategoryId,
+    adminExpandedFaqPostId,
+    adminFaqPage,
+    adminNoticePage,
+    adminNoticeQuery,
+    expandedFaqPostId,
+    faqBoardConfig,
+    faqBoardConfigLoadErrorMessage,
+    faqBoardConfigReady,
+    faqCategories,
+    faqCategoriesLoadErrorMessage,
+    faqCategoriesReady,
+    faqCursorByPageRef,
+    faqCursorKeyRef,
+    faqHasNextPage,
+    faqPage,
+    faqPinnedPosts,
+    faqPosts,
+    faqPostsLoadErrorMessage,
+    faqPostsReady,
+    faqQuery,
+    faqRegularPagePosts,
+    faqRegularTotalCount,
+    faqSearchWithinCategory,
+    noticeBoardConfig,
     noticeBoardConfigLoadErrorMessage,
+    noticeBoardConfigReady,
+    noticeCursorByPageRef,
+    noticeCursorKeyRef,
+    noticeHasNextPage,
+    noticePage,
+    noticePinnedPosts,
+    noticePosts,
+    noticePostsLoadErrorMessage,
+    noticePostsReady,
+    noticeRegularPagePosts,
+    noticeRegularTotalCount,
+    selectedNoticePostId,
+    selectedNoticePostOverride,
+    setActiveFaqCategoryId,
+    setAdminExpandedFaqPostId,
+    setAdminFaqPage,
+    setAdminNoticePage,
+    setAdminNoticeQuery,
+    setExpandedFaqPostId,
+    setFaqBoardConfig,
+    setFaqBoardConfigLoadErrorMessage,
+    setFaqBoardConfigReady,
+    setFaqCategories,
+    setFaqCategoriesLoadErrorMessage,
+    setFaqCategoriesReady,
+    setFaqHasNextPage,
+    setFaqPage,
+    setFaqPinnedPosts,
+    setFaqPostsLoadErrorMessage,
+    setFaqPostsReady,
+    setFaqQuery,
+    setFaqRegularPagePosts,
+    setFaqRegularTotalCount,
+    setFaqSearchWithinCategory,
+    setNoticeBoardConfig,
     setNoticeBoardConfigLoadErrorMessage,
-  ] = useState('');
-
-  const [selectedNoticePostId, setSelectedNoticePostId] = useState('');
-  const [selectedNoticePostOverride, setSelectedNoticePostOverride] = useState(null);
-  const [noticePage, setNoticePage] = useState(1);
-  const [adminNoticePage, setAdminNoticePage] = useState(1);
-  const [userNoticeQuery, setUserNoticeQuery] = useState('');
-  const [adminNoticeQuery, setAdminNoticeQuery] = useState('');
+    setNoticeBoardConfigReady,
+    setNoticeHasNextPage,
+    setNoticePage,
+    setNoticePinnedPosts,
+    setNoticePostsLoadErrorMessage,
+    setNoticePostsReady,
+    setNoticeRegularPagePosts,
+    setNoticeRegularTotalCount,
+    setSelectedNoticePostId,
+    setSelectedNoticePostOverride,
+    setUserNoticeQuery,
+    userNoticeQuery,
+  } = useBoardContentSubscriptionState();
   const {
     noticePostDeletingId,
     noticePostDialog,
@@ -1020,43 +1015,6 @@ function App() {
       return {};
     }
   });
-
-  const [faqCategories, setFaqCategories] = useState([]);
-  const [faqCategoriesReady, setFaqCategoriesReady] = useState(false);
-  const [
-    faqCategoriesLoadErrorMessage,
-    setFaqCategoriesLoadErrorMessage,
-  ] = useState('');
-
-  const [faqPosts, setFaqPosts] = useState([]);
-  const [faqPinnedPosts, setFaqPinnedPosts] = useState([]);
-  const [faqRegularPagePosts, setFaqRegularPagePosts] = useState([]);
-  const [faqHasNextPage, setFaqHasNextPage] = useState(false);
-  const [faqRegularTotalCount, setFaqRegularTotalCount] = useState(0);
-  const faqCursorByPageRef = useRef(new Map([[1, null]]));
-  const faqCursorKeyRef = useRef('');
-  const [faqPostsReady, setFaqPostsReady] = useState(false);
-  const [
-    faqPostsLoadErrorMessage,
-    setFaqPostsLoadErrorMessage,
-  ] = useState('');
-
-  const [faqBoardConfig, setFaqBoardConfig] = useState({
-    postsPerPage: DEFAULT_FAQ_POSTS_PER_PAGE,
-  });
-  const [faqBoardConfigReady, setFaqBoardConfigReady] = useState(false);
-  const [
-    faqBoardConfigLoadErrorMessage,
-    setFaqBoardConfigLoadErrorMessage,
-  ] = useState('');
-
-  const [activeFaqCategoryId, setActiveFaqCategoryId] = useState('all');
-  const [faqQuery, setFaqQuery] = useState('');
-  const [faqSearchWithinCategory, setFaqSearchWithinCategory] = useState(false);
-  const [expandedFaqPostId, setExpandedFaqPostId] = useState('');
-  const [adminExpandedFaqPostId, setAdminExpandedFaqPostId] = useState('');
-  const [faqPage, setFaqPage] = useState(1);
-  const [adminFaqPage, setAdminFaqPage] = useState(1);
 
   const {
     faqPostDeletingId,
@@ -2757,376 +2715,65 @@ function App() {
     !currentAuthRoleErrorMessage &&
     !isAdminAuthenticated;
   
-  useEffect(() => {
-    setNoticePosts([
-      ...(noticePinnedPosts || []),
-      ...(noticeRegularPagePosts || []),
-    ]);
-  }, [noticePinnedPosts, noticeRegularPagePosts]);
-
-  useEffect(() => {
-    const shouldLoadUserNotice = view === 'user' && userTab === 'notice';
-    const shouldLoadAdminNotice =
-      isAdminAuthenticated && view === 'admin' && adminTab === 'noticePosts';
-    const shouldLoadNotice = shouldLoadUserNotice || shouldLoadAdminNotice;
-
-    if (!shouldLoadNotice) {
-      setNoticeBoardConfigReady(true);
-      setNoticeBoardConfigLoadErrorMessage('');
-      return undefined;
-    }
-
-    setNoticeBoardConfigReady(false);
-    setNoticeBoardConfigLoadErrorMessage('');
-
-    const unsubscribe = onSnapshot(
-      NOTICE_BOARD_CONFIG_DOC_REF,
-      (snapshot) => {
-        const postsPerPage = getSafeNoticePostsPerPage(
-          snapshot.exists()
-            ? snapshot.data().postsPerPage
-            : DEFAULT_NOTICE_POSTS_PER_PAGE
-        );
-
-        setNoticeBoardConfig({ postsPerPage });
-        setNoticePostsPerPageInput(postsPerPage);
-        setNoticeBoardConfigLoadErrorMessage('');
-        setNoticeBoardConfigReady(true);
-      },
-      (error) => {
-        const message =
-          '공지사항 목록 설정을 불러오지 못해 기본값 10개를 사용합니다.';
-        console.error('Notice board config sync error:', error);
-        setNoticeBoardConfig({
-          postsPerPage: DEFAULT_NOTICE_POSTS_PER_PAGE,
-        });
-        setNoticePostsPerPageInput(DEFAULT_NOTICE_POSTS_PER_PAGE);
-        setNoticeBoardConfigLoadErrorMessage(message);
-        setNoticeBoardConfigReady(true);
-      }
-    );
-
-    return unsubscribe;
-  }, [isAdminAuthenticated, view, userTab, adminTab]);
-
-  const shouldRunAdminNoticeSearch =
-    isAdminAuthenticated && view === 'admin' && adminTab === 'noticePosts';
-  const shouldRunUserNoticeSearch = view === 'user' && userTab === 'notice';
-  const activeNoticeSearchQuery = shouldRunAdminNoticeSearch
-    ? debouncedAdminNoticeQuery
-    : debouncedUserNoticeQuery;
-  const noticeSearchPostsPerPage = getSafeNoticePostsPerPage(
-    noticeBoardConfig.postsPerPage
-  );
-  const noticeSearchActivePage = shouldRunAdminNoticeSearch
-    ? adminNoticePage
-    : noticePage;
-  const noticeProgressiveSearchEnabled = Boolean(
-    (shouldRunAdminNoticeSearch || shouldRunUserNoticeSearch) &&
-      String(activeNoticeSearchQuery || '').trim()
-  );
-
-  useBoardProgressiveSearch({
-    enabled: noticeProgressiveSearchEnabled,
-    collectionRef: NOTICE_POSTS_COLLECTION_REF,
-    searchKey: [
-      shouldRunAdminNoticeSearch ? 'admin' : 'user',
-      String(activeNoticeSearchQuery || '').trim().toLowerCase(),
-    ].join('|'),
-    searchQuery: activeNoticeSearchQuery,
-    activePage: noticeSearchActivePage,
-    postsPerPage: noticeSearchPostsPerPage,
-    pinnedBatchSize: FIRESTORE_PINNED_POST_LIMIT,
-    errorMessage:
-      '공지사항 검색 결과를 불러오지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.',
-    errorLogLabel: 'Notice progressive search error:',
-    setPinnedPosts: setNoticePinnedPosts,
-    setRegularPagePosts: setNoticeRegularPagePosts,
-    setRegularTotalCount: setNoticeRegularTotalCount,
-    setHasNextPage: setNoticeHasNextPage,
-    setLoadErrorMessage: setNoticePostsLoadErrorMessage,
-    setReady: setNoticePostsReady,
-    triggerToast,
-  });
-
-  useEffect(() => {
-    const shouldLoadUserNotice = view === 'user' && userTab === 'notice';
-    const shouldLoadUserHomeNotice = view === 'user' && userTab === 'home';
-    const shouldLoadAdminNotice =
-      isAdminAuthenticated && view === 'admin' && adminTab === 'noticePosts';
-    const shouldLoadNotice =
-      shouldLoadUserNotice || shouldLoadUserHomeNotice || shouldLoadAdminNotice;
-    const activeSearchQuery = shouldLoadUserHomeNotice
-      ? ''
-      : shouldLoadAdminNotice
-        ? debouncedAdminNoticeQuery
-        : debouncedUserNoticeQuery;
-    const searchMode = Boolean(String(activeSearchQuery || '').trim());
-
-    if (!shouldLoadNotice) {
-      noticeCursorKeyRef.current = '';
-      noticeCursorByPageRef.current = new Map([[1, null]]);
-      setNoticePinnedPosts([]);
-      setNoticeRegularPagePosts([]);
-      setNoticePostsReady(true);
-      setNoticePostsLoadErrorMessage('');
-      setNoticeHasNextPage(false);
-      return undefined;
-    }
-
-    if (searchMode) return undefined;
-
-
-    const pinnedSource = firestoreQuery(
-      NOTICE_POSTS_COLLECTION_REF,
-      where('isPinned', '==', true),
-      orderBy('createdAt', 'desc'),
-      firestoreLimit(
-        shouldLoadUserHomeNotice ? 6 : FIRESTORE_PINNED_POST_LIMIT
-      )
-    );
-
-    const applyPinnedNoticeSnapshot = (snapshot) => {
-      setNoticePinnedPosts(
-        snapshot.docs.map((postDoc) => ({
-          ...postDoc.data(),
-          id: postDoc.id,
-        }))
-      );
-      setNoticePostsLoadErrorMessage('');
-    };
-
-    const handlePinnedNoticeError = (error) => {
-      const message =
-        '상단 고정 공지사항을 불러오지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.';
-      console.error('Pinned notice posts load error:', error);
-      setNoticePinnedPosts([]);
-      setNoticePostsLoadErrorMessage(message);
-      setNoticePostsReady(true);
-      triggerToast(message, 'error');
-    };
-
-    if (shouldLoadUserHomeNotice) {
-      let cancelled = false;
-
-      void getDocs(pinnedSource)
-        .then((snapshot) => {
-          if (!cancelled) applyPinnedNoticeSnapshot(snapshot);
-        })
-        .catch((error) => {
-          if (!cancelled) handlePinnedNoticeError(error);
-        });
-
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    return onSnapshot(
-      pinnedSource,
-      applyPinnedNoticeSnapshot,
-      handlePinnedNoticeError
-    );
-  }, [
-    isAdminAuthenticated,
-    view,
-    userTab,
-    adminTab,
-    debouncedUserNoticeQuery,
-    debouncedAdminNoticeQuery,
-    noticePage,
-    adminNoticePage,
-    noticeBoardConfig.postsPerPage,
-  ]);
-
-  useEffect(() => {
-    const shouldLoadUserNotice = view === 'user' && userTab === 'notice';
-    const shouldLoadUserHomeNotice = view === 'user' && userTab === 'home';
-    const shouldLoadAdminNotice =
-      isAdminAuthenticated && view === 'admin' && adminTab === 'noticePosts';
-    const shouldLoadNotice =
-      shouldLoadUserNotice || shouldLoadUserHomeNotice || shouldLoadAdminNotice;
-    const activeSearchQuery = shouldLoadUserHomeNotice
-      ? ''
-      : shouldLoadAdminNotice
-        ? debouncedAdminNoticeQuery
-        : debouncedUserNoticeQuery;
-    const searchMode = Boolean(String(activeSearchQuery || '').trim());
-
-    if (!shouldLoadNotice || searchMode) return undefined;
-
-    const postsPerPage = shouldLoadUserHomeNotice
-      ? 6
-      : getSafeNoticePostsPerPage(noticeBoardConfig.postsPerPage);
-    const activePage = shouldLoadUserHomeNotice
-      ? 1
-      : shouldLoadAdminNotice
-        ? adminNoticePage
-        : noticePage;
-    const cursorKey = `${
-      shouldLoadUserHomeNotice
-        ? 'home'
-        : shouldLoadAdminNotice
-          ? 'admin'
-          : 'user'
-    }|${postsPerPage}`;
-    const cursorKeyChanged = noticeCursorKeyRef.current !== cursorKey;
-
-    if (cursorKeyChanged) {
-      noticeCursorKeyRef.current = cursorKey;
-      noticeCursorByPageRef.current = new Map([[1, null]]);
-    }
-
-    const pageCursor = noticeCursorByPageRef.current.get(activePage);
-    if (activePage > 1 && !pageCursor) {
-      if (shouldLoadAdminNotice) setAdminNoticePage(1);
-      else setNoticePage(1);
-      return undefined;
-    }
-
-    setNoticePostsReady(false);
-    setNoticePostsLoadErrorMessage('');
-
-    const regularSource = firestoreQuery(
-      NOTICE_POSTS_COLLECTION_REF,
-      where('isPinned', '==', false),
-      orderBy('createdAt', 'desc'),
-      ...(pageCursor ? [startAfter(pageCursor)] : []),
-      firestoreLimit(postsPerPage + 1)
-    );
-
-    const applyRegularNoticeSnapshot = (snapshot) => {
-      const sourceDocs = snapshot.docs;
-      const visibleDocs = sourceDocs.slice(0, postsPerPage);
-      const hasNext = sourceDocs.length > postsPerPage;
-
-      if (visibleDocs.length > 0) {
-        noticeCursorByPageRef.current.set(
-          activePage + 1,
-          visibleDocs[visibleDocs.length - 1]
-        );
-      }
-
-      setNoticeRegularPagePosts(
-        visibleDocs.map((postDoc) => ({
-          ...postDoc.data(),
-          id: postDoc.id,
-        }))
-      );
-      setNoticeHasNextPage(hasNext);
-      setNoticePostsLoadErrorMessage('');
-      setNoticePostsReady(true);
-    };
-
-    const handleRegularNoticeError = (error) => {
-      const message =
-        '공지사항 목록을 불러오지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.';
-      console.error('Paged notice posts load error:', error);
-      setNoticeRegularPagePosts([]);
-      setNoticeHasNextPage(false);
-      setNoticePostsLoadErrorMessage(message);
-      setNoticePostsReady(true);
-      triggerToast(message, 'error');
-    };
-
-    let unsubscribe = null;
-    let cancelled = false;
-
-    if (shouldLoadUserHomeNotice) {
-      void getDocs(regularSource)
-        .then((snapshot) => {
-          if (!cancelled) applyRegularNoticeSnapshot(snapshot);
-        })
-        .catch((error) => {
-          if (!cancelled) handleRegularNoticeError(error);
-        });
-    } else {
-      unsubscribe = onSnapshot(
-        regularSource,
-        applyRegularNoticeSnapshot,
-        handleRegularNoticeError
-      );
-    }
-
-    if (cursorKeyChanged && !shouldLoadUserHomeNotice) {
-      void getCountFromServer(
-        firestoreQuery(
-          NOTICE_POSTS_COLLECTION_REF,
-          where('isPinned', '==', false)
-        )
-      )
-        .then((countSnapshot) => {
-          setNoticeRegularTotalCount(countSnapshot.data().count);
-        })
-        .catch((error) => {
-          console.error('Notice regular post count error:', error);
-        });
-    }
-
-    return () => {
-      cancelled = true;
-      if (unsubscribe) unsubscribe();
-    };
-  }, [
-    isAdminAuthenticated,
-    view,
-    userTab,
-    adminTab,
-    noticePage,
-    adminNoticePage,
-    noticeBoardConfig.postsPerPage,
-    debouncedUserNoticeQuery,
-    debouncedAdminNoticeQuery,
-  ]);
-
-  useEffect(() => {
-    noticeCursorByPageRef.current = new Map([[1, null]]);
-    noticeCursorKeyRef.current = '';
-    setNoticePage(1);
-  }, [debouncedUserNoticeQuery]);
-
-  useEffect(() => {
-    noticeCursorByPageRef.current = new Map([[1, null]]);
-    noticeCursorKeyRef.current = '';
-    setAdminNoticePage(1);
-  }, [debouncedAdminNoticeQuery]);
-
-  useEffect(() => {
-    const shouldLoadSelectedNotice =
-      view === 'user' &&
-      userTab === 'notice' &&
-      Boolean(selectedNoticePostId) &&
-      !selectedNoticePost;
-
-    if (!shouldLoadSelectedNotice) return undefined;
-
-    let cancelled = false;
-
-    void getDoc(doc(NOTICE_POSTS_COLLECTION_REF, selectedNoticePostId))
-      .then((snapshot) => {
-        if (cancelled || !snapshot.exists()) return;
-        setSelectedNoticePostOverride({
-          ...snapshot.data(),
-          id: snapshot.id,
-        });
-      })
-      .catch((error) => {
-        console.error('Selected notice post read error:', error);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [view, userTab, selectedNoticePostId, selectedNoticePost]);
-
-  useEffect(() => {
-    if (
-      !selectedNoticePostId ||
-      (noticePosts || []).some((post) => post.id === selectedNoticePostId)
-    ) {
-      setSelectedNoticePostOverride(null);
-    }
-  }, [selectedNoticePostId, noticePosts]);
+  const { closeNoticePost, openNoticePost } =
+    useBoardContentSubscriptionController({
+      activeFaqCategoryId,
+      adminFaqPage,
+      adminNoticePage,
+      adminNoticeQuery,
+      adminTab,
+      debouncedAdminNoticeQuery,
+      debouncedFaqQuery,
+      debouncedUserNoticeQuery,
+      faqBoardConfig,
+      faqCategories,
+      faqCursorByPageRef,
+      faqCursorKeyRef,
+      faqPage,
+      faqSearchWithinCategory,
+      isAdminAuthenticated,
+      noticeBoardConfig,
+      noticeCursorByPageRef,
+      noticeCursorKeyRef,
+      noticePage,
+      noticePosts,
+      selectedNoticePostId,
+      selectedNoticePostOverride,
+      setActiveFaqCategoryId,
+      setAdminFaqPage,
+      setAdminNoticePage,
+      setExpandedFaqPostId,
+      setFaqBoardConfig,
+      setFaqBoardConfigLoadErrorMessage,
+      setFaqBoardConfigReady,
+      setFaqCategories,
+      setFaqCategoriesLoadErrorMessage,
+      setFaqCategoriesReady,
+      setFaqHasNextPage,
+      setFaqPage,
+      setFaqPinnedPosts,
+      setFaqPostsLoadErrorMessage,
+      setFaqPostsPerPageInput,
+      setFaqPostsReady,
+      setFaqRegularPagePosts,
+      setFaqRegularTotalCount,
+      setNoticeBoardConfig,
+      setNoticeBoardConfigLoadErrorMessage,
+      setNoticeBoardConfigReady,
+      setNoticeHasNextPage,
+      setNoticePage,
+      setNoticePinnedPosts,
+      setNoticePostsLoadErrorMessage,
+      setNoticePostsPerPageInput,
+      setNoticePostsReady,
+      setNoticeRegularPagePosts,
+      setNoticeRegularTotalCount,
+      setSelectedNoticePostId,
+      setSelectedNoticePostOverride,
+      triggerToast,
+      userTab,
+      view,
+    });
 
   useEffect(() => {
     const shouldLoadAdminPopup =
@@ -3402,359 +3049,6 @@ function App() {
   useEffect(() => {
     setTemporarilyDismissedPopupVersions([]);
   }, [userTab, view]);
-
-  useEffect(() => {
-    const shouldLoadUserFaq = view === 'user' && userTab === 'faq';
-    const shouldLoadAdminFaq =
-      isAdminAuthenticated && view === 'admin' && adminTab === 'faqPosts';
-    const shouldLoadFaq = shouldLoadUserFaq || shouldLoadAdminFaq;
-
-    if (!shouldLoadFaq) {
-      setFaqCategoriesReady(true);
-      setFaqCategoriesLoadErrorMessage('');
-      return undefined;
-    }
-
-    setFaqCategoriesReady(false);
-    setFaqCategoriesLoadErrorMessage('');
-
-    const unsubscribe = onSnapshot(
-      FAQ_CATEGORIES_COLLECTION_REF,
-      (snapshot) => {
-        const remoteCategories = snapshot.docs
-          .map((categoryDoc) => ({
-            ...categoryDoc.data(),
-            id: categoryDoc.id,
-          }))
-          .sort((first, second) => {
-            const orderDifference =
-              (Number(first.order) || 0) - (Number(second.order) || 0);
-            if (orderDifference !== 0) return orderDifference;
-            return String(first.name || '').localeCompare(
-              String(second.name || ''),
-              'ko'
-            );
-          });
-
-        setFaqCategories(remoteCategories);
-        setFaqCategoriesLoadErrorMessage('');
-        setFaqCategoriesReady(true);
-      },
-      (error) => {
-        const message =
-          'FAQ 카테고리를 불러오지 못했습니다. Firestore Rules의 faqCategories 읽기 권한을 확인해 주세요.';
-        console.error('FAQ categories sync error:', error);
-        setFaqCategories([]);
-        setFaqCategoriesLoadErrorMessage(message);
-        setFaqCategoriesReady(true);
-        triggerToast(message, 'error');
-      }
-    );
-
-    return unsubscribe;
-  }, [isAdminAuthenticated, view, userTab, adminTab]);
-
-  useEffect(() => {
-    const shouldLoadUserFaq = view === 'user' && userTab === 'faq';
-    const shouldLoadAdminFaq =
-      isAdminAuthenticated && view === 'admin' && adminTab === 'faqPosts';
-    const shouldLoadFaq = shouldLoadUserFaq || shouldLoadAdminFaq;
-
-    if (!shouldLoadFaq) {
-      setFaqBoardConfigReady(true);
-      setFaqBoardConfigLoadErrorMessage('');
-      return undefined;
-    }
-
-    setFaqBoardConfigReady(false);
-    setFaqBoardConfigLoadErrorMessage('');
-
-    const unsubscribe = onSnapshot(
-      FAQ_BOARD_CONFIG_DOC_REF,
-      (snapshot) => {
-        const postsPerPage = getSafeFaqPostsPerPage(
-          snapshot.exists()
-            ? snapshot.data().postsPerPage
-            : DEFAULT_FAQ_POSTS_PER_PAGE
-        );
-        setFaqBoardConfig({ postsPerPage });
-        setFaqPostsPerPageInput(postsPerPage);
-        setFaqBoardConfigLoadErrorMessage('');
-        setFaqBoardConfigReady(true);
-      },
-      (error) => {
-        const message =
-          'FAQ 목록 설정을 불러오지 못해 기본값 10개를 사용합니다.';
-        console.error('FAQ board config sync error:', error);
-        setFaqBoardConfig({ postsPerPage: DEFAULT_FAQ_POSTS_PER_PAGE });
-        setFaqPostsPerPageInput(DEFAULT_FAQ_POSTS_PER_PAGE);
-        setFaqBoardConfigLoadErrorMessage(message);
-        setFaqBoardConfigReady(true);
-      }
-    );
-
-    return unsubscribe;
-  }, [isAdminAuthenticated, view, userTab, adminTab]);
-
-  useEffect(() => {
-    setFaqPosts([
-      ...(faqPinnedPosts || []),
-      ...(faqRegularPagePosts || []),
-    ]);
-  }, [faqPinnedPosts, faqRegularPagePosts]);
-
-  const shouldRunAdminFaqSearch =
-    isAdminAuthenticated && view === 'admin' && adminTab === 'faqPosts';
-  const shouldRunUserFaqSearch = view === 'user' && userTab === 'faq';
-  const faqProgressiveSearchCategoryId =
-    shouldRunUserFaqSearch &&
-    activeFaqCategoryId !== 'all' &&
-    faqSearchWithinCategory
-      ? activeFaqCategoryId
-      : '';
-  const faqSearchPostsPerPage = getSafeFaqPostsPerPage(
-    faqBoardConfig.postsPerPage
-  );
-  const faqSearchActivePage = shouldRunAdminFaqSearch
-    ? adminFaqPage
-    : faqPage;
-  const faqProgressiveSearchEnabled = Boolean(
-    (shouldRunAdminFaqSearch || shouldRunUserFaqSearch) &&
-      String(debouncedFaqQuery || '').trim()
-  );
-
-  useBoardProgressiveSearch({
-    enabled: faqProgressiveSearchEnabled,
-    collectionRef: FAQ_POSTS_COLLECTION_REF,
-    searchKey: [
-      shouldRunAdminFaqSearch ? 'admin' : 'user',
-      faqProgressiveSearchCategoryId || 'all',
-      String(debouncedFaqQuery || '').trim().toLowerCase(),
-    ].join('|'),
-    searchQuery: debouncedFaqQuery,
-    activePage: faqSearchActivePage,
-    postsPerPage: faqSearchPostsPerPage,
-    pinnedBatchSize: FIRESTORE_PINNED_POST_LIMIT,
-    categoryId: faqProgressiveSearchCategoryId,
-    errorMessage:
-      'FAQ 검색 결과를 불러오지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.',
-    errorLogLabel: 'FAQ progressive search error:',
-    setPinnedPosts: setFaqPinnedPosts,
-    setRegularPagePosts: setFaqRegularPagePosts,
-    setRegularTotalCount: setFaqRegularTotalCount,
-    setHasNextPage: setFaqHasNextPage,
-    setLoadErrorMessage: setFaqPostsLoadErrorMessage,
-    setReady: setFaqPostsReady,
-    triggerToast,
-  });
-
-  useEffect(() => {
-    const shouldLoadUserFaq = view === 'user' && userTab === 'faq';
-    const shouldLoadAdminFaq =
-      isAdminAuthenticated && view === 'admin' && adminTab === 'faqPosts';
-    const shouldLoadFaq = shouldLoadUserFaq || shouldLoadAdminFaq;
-    const searchMode = Boolean(String(debouncedFaqQuery || '').trim());
-    const shouldLimitToActiveCategory =
-      shouldLoadUserFaq &&
-      activeFaqCategoryId !== 'all' &&
-      (!searchMode || faqSearchWithinCategory);
-    const categoryConstraints = shouldLimitToActiveCategory
-      ? [where('categoryId', '==', activeFaqCategoryId)]
-      : [];
-
-    if (!shouldLoadFaq) {
-      faqCursorKeyRef.current = '';
-      faqCursorByPageRef.current = new Map([[1, null]]);
-      setFaqPinnedPosts([]);
-      setFaqRegularPagePosts([]);
-      setFaqPostsReady(true);
-      setFaqPostsLoadErrorMessage('');
-      setFaqHasNextPage(false);
-      return undefined;
-    }
-
-    if (searchMode) return undefined;
-
-
-    const pinnedSource = firestoreQuery(
-      FAQ_POSTS_COLLECTION_REF,
-      ...categoryConstraints,
-      where('isPinned', '==', true),
-      orderBy('createdAt', 'desc'),
-      firestoreLimit(FIRESTORE_PINNED_POST_LIMIT)
-    );
-
-    const unsubscribe = onSnapshot(
-      pinnedSource,
-      (snapshot) => {
-        setFaqPinnedPosts(
-          snapshot.docs.map((postDoc) => ({
-            ...postDoc.data(),
-            id: postDoc.id,
-          }))
-        );
-        setFaqPostsLoadErrorMessage('');
-      },
-      (error) => {
-        const message =
-          '상단 고정 FAQ를 불러오지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.';
-        console.error('Pinned FAQ sync error:', error);
-        setFaqPinnedPosts([]);
-        setFaqPostsLoadErrorMessage(message);
-        setFaqPostsReady(true);
-        triggerToast(message, 'error');
-      }
-    );
-
-    return unsubscribe;
-  }, [
-    isAdminAuthenticated,
-    view,
-    userTab,
-    adminTab,
-    activeFaqCategoryId,
-    faqSearchWithinCategory,
-    debouncedFaqQuery,
-    faqPage,
-    adminFaqPage,
-    faqBoardConfig.postsPerPage,
-  ]);
-
-  useEffect(() => {
-    const shouldLoadUserFaq = view === 'user' && userTab === 'faq';
-    const shouldLoadAdminFaq =
-      isAdminAuthenticated && view === 'admin' && adminTab === 'faqPosts';
-    const shouldLoadFaq = shouldLoadUserFaq || shouldLoadAdminFaq;
-    const searchMode = Boolean(String(debouncedFaqQuery || '').trim());
-
-    if (!shouldLoadFaq || searchMode) return undefined;
-
-    const shouldLimitToActiveCategory =
-      shouldLoadUserFaq && activeFaqCategoryId !== 'all';
-    const categoryConstraints = shouldLimitToActiveCategory
-      ? [where('categoryId', '==', activeFaqCategoryId)]
-      : [];
-    const postsPerPage = getSafeFaqPostsPerPage(faqBoardConfig.postsPerPage);
-    const activePage = shouldLoadAdminFaq ? adminFaqPage : faqPage;
-    const cursorKey = [
-      shouldLoadAdminFaq ? 'admin' : 'user',
-      shouldLimitToActiveCategory ? activeFaqCategoryId : 'all',
-      postsPerPage,
-    ].join('|');
-    const cursorKeyChanged = faqCursorKeyRef.current !== cursorKey;
-
-    if (cursorKeyChanged) {
-      faqCursorKeyRef.current = cursorKey;
-      faqCursorByPageRef.current = new Map([[1, null]]);
-    }
-
-    const pageCursor = faqCursorByPageRef.current.get(activePage);
-    if (activePage > 1 && !pageCursor) {
-      if (shouldLoadAdminFaq) setAdminFaqPage(1);
-      else setFaqPage(1);
-      return undefined;
-    }
-
-    setFaqPostsReady(false);
-    setFaqPostsLoadErrorMessage('');
-
-    const regularSource = firestoreQuery(
-      FAQ_POSTS_COLLECTION_REF,
-      ...categoryConstraints,
-      where('isPinned', '==', false),
-      orderBy('createdAt', 'desc'),
-      ...(pageCursor ? [startAfter(pageCursor)] : []),
-      firestoreLimit(postsPerPage + 1)
-    );
-
-    const unsubscribe = onSnapshot(
-      regularSource,
-      (snapshot) => {
-        const sourceDocs = snapshot.docs;
-        const visibleDocs = sourceDocs.slice(0, postsPerPage);
-        const hasNext = sourceDocs.length > postsPerPage;
-
-        if (visibleDocs.length > 0) {
-          faqCursorByPageRef.current.set(
-            activePage + 1,
-            visibleDocs[visibleDocs.length - 1]
-          );
-        }
-
-        setFaqRegularPagePosts(
-          visibleDocs.map((postDoc) => ({
-            ...postDoc.data(),
-            id: postDoc.id,
-          }))
-        );
-        setFaqHasNextPage(hasNext);
-        setFaqPostsLoadErrorMessage('');
-        setFaqPostsReady(true);
-      },
-      (error) => {
-        const message =
-          'FAQ 목록을 불러오지 못했습니다. Firestore Rules와 인덱스를 확인해 주세요.';
-        console.error('Paged FAQ posts sync error:', error);
-        setFaqRegularPagePosts([]);
-        setFaqHasNextPage(false);
-        setFaqPostsLoadErrorMessage(message);
-        setFaqPostsReady(true);
-        triggerToast(message, 'error');
-      }
-    );
-
-    if (cursorKeyChanged) {
-      void getCountFromServer(
-        firestoreQuery(
-          FAQ_POSTS_COLLECTION_REF,
-          ...categoryConstraints,
-          where('isPinned', '==', false)
-        )
-      )
-        .then((countSnapshot) => {
-          setFaqRegularTotalCount(countSnapshot.data().count);
-        })
-        .catch((error) => {
-          console.error('FAQ regular post count error:', error);
-        });
-    }
-
-    return unsubscribe;
-  }, [
-    isAdminAuthenticated,
-    view,
-    userTab,
-    adminTab,
-    activeFaqCategoryId,
-    faqPage,
-    adminFaqPage,
-    faqBoardConfig.postsPerPage,
-    debouncedFaqQuery,
-  ]);
-
-  useEffect(() => {
-    faqCursorByPageRef.current = new Map([[1, null]]);
-    faqCursorKeyRef.current = '';
-    setFaqPage(1);
-    setAdminFaqPage(1);
-  }, [debouncedFaqQuery, activeFaqCategoryId, faqSearchWithinCategory]);
-
-  useEffect(() => {
-    if (
-      activeFaqCategoryId !== 'all' &&
-      !faqCategories.some(
-        (category) =>
-          category.id === activeFaqCategoryId
-      )
-    ) {
-      setActiveFaqCategoryId('all');
-      setExpandedFaqPostId('');
-      setFaqPage(1);
-    }
-  }, [
-    faqCategories,
-    activeFaqCategoryId,
-  ]);
 
   const { hasEstablishedUserSession } =
     useUserAuthenticationSessionController({
@@ -4877,59 +4171,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
   });
 
 
-
-  const openNoticePost = async (post) => {
-    if (!post?.id) {
-      return;
-    }
-
-    setSelectedNoticePostId(
-      post.id
-    );
-
-    try {
-      await runTransaction(
-        db,
-        async (transaction) => {
-          const postDocRef = doc(
-            NOTICE_POSTS_COLLECTION_REF,
-            post.id
-          );
-
-          const postSnapshot =
-            await transaction.get(
-              postDocRef
-            );
-
-          if (!postSnapshot.exists()) {
-            return;
-          }
-
-          const currentViewCount =
-            Number(
-              postSnapshot.data().viewCount
-            ) || 0;
-
-          transaction.update(
-            postDocRef,
-            {
-              viewCount:
-                currentViewCount + 1,
-            }
-          );
-        }
-      );
-    } catch (error) {
-      console.error(
-        'Notice post view count update error:',
-        error
-      );
-    }
-  };
-
-  const closeNoticePost = () => {
-    setSelectedNoticePostId('');
-  };
 
   const {
     closePopupPostDialog,

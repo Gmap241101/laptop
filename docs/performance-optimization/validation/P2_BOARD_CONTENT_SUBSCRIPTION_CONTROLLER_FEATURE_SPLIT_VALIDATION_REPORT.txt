@@ -1,0 +1,72 @@
+P2 BOARD CONTENT SUBSCRIPTION CONTROLLER FEATURE SPLIT VALIDATION
+=================================================================
+
+Baseline
+--------
+rental-system-firestore-capacity-dashboard-tab-count-request-fix-20260731_2047_deployment_package.zip
+
+Changed source files
+--------------------
+- src/App.jsx
+- src/features/boards/useBoardContentSubscriptionController.js (new)
+- tools/firestore-audit-policy.json
+- docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json
+
+Static validation
+-----------------
+PASS - React Hook import audit: 123 source files
+PASS - TypeScript transpile syntax check: 123 JS/JSX/MJS files, 0 errors
+PASS - Target semantic diagnostics: TS2304/TS2451/TS2552/TS2448/TS2349/TS2554 = 0
+PASS - Relative import targets: no missing files
+PASS - Removed App helpers and old board subscription effects
+PASS - Existing board context variable names preserved
+
+Firestore validation
+--------------------
+PASS - strict audit
+PASS - total calls: 129 -> 129
+PASS - onSnapshot: 35 -> 35
+PASS - getDocs: 48 -> 48
+PASS - getDoc: 28 -> 28
+PASS - getCountFromServer: 18 -> 18
+PASS - Rules unchanged
+PASS - indexes unchanged
+NOTE - FAQ category subscription audit ID moved with source location only
+
+Runtime mock
+------------
+PASS - safe notice page-size normalization
+PASS - safe FAQ page-size normalization
+PASS - notice title/body filtering
+PASS - state hook public contract
+PASS - notice selection
+PASS - notice view-count transaction increment
+PASS - notice detail close
+
+UI string validation
+--------------------
+PASS - Korean string literal occurrence count: 1,985 -> 1,985
+PASS - Korean unique string count: 1,445 -> 1,445
+PASS - removed strings: 0
+PASS - added strings: 0
+
+Source graph
+------------
+App.jsx: 6,189 lines / 182,891 bytes -> 5,430 lines / 158,782 bytes
+Initial modules: 66 -> 67
+Initial source bytes: 846,342 -> 853,989
+New module: 1,029 lines / 31,756 bytes
+
+Production build
+----------------
+SOURCE VALIDATION: PASS
+VITE BUILD: NOT COMPLETED
+Reason: npm ci failed because the internal npm registry returned E404 for yargs-parser-21.1.1.tgz.
+Local deploy.ps1 must complete npm run build before deployment is considered successful.
+
+Removed files
+-------------
+Previous cumulative paths: 67
+New paths in this work: 0
+Final cumulative paths: 67
+REMOVED_FILES.txt SHA-256: 17ad59f08176c623ca2eaa4d3b232992555e62b3ad1b22c824cb1af10778f212

@@ -1,0 +1,56 @@
+{
+  "generatedAt": "2026-08-01T08:55:27.653276+00:00",
+  "baselinePackage": "rental-system-firestore-capacity-dashboard-tab-count-request-fix-20260731_2047_deployment_package.zip",
+  "work": "P2_BOARD_CONTENT_SUBSCRIPTION_CONTROLLER_FEATURE_SPLIT",
+  "app": {
+    "before": {
+      "lines": 6189,
+      "bytes": 182891,
+      "useState": 77,
+      "useEffect": 34,
+      "useRef": 11,
+      "useMemo": 27,
+      "onSnapshot": 11,
+      "getDocs": 4,
+      "getDoc": 2,
+      "getCountFromServer": 2,
+      "runTransaction": 1
+    },
+    "after": {
+      "lines": 5430,
+      "bytes": 158782,
+      "useState": 41,
+      "useEffect": 19,
+      "useRef": 7,
+      "useMemo": 27,
+      "onSnapshot": 4,
+      "getDocs": 2,
+      "getDoc": 1,
+      "getCountFromServer": 0,
+      "runTransaction": 0
+    }
+  },
+  "newModule": {
+    "file": "src/features/boards/useBoardContentSubscriptionController.js",
+    "lines": 1029,
+    "bytes": 31756
+  },
+  "sourceGraph": {
+    "before": {
+      "initialModuleCount": 66,
+      "initialSourceBytes": 846342
+    },
+    "after": {
+      "initialModuleCount": 67,
+      "initialSourceBytes": 853989
+    }
+  },
+  "firestoreAudit": {
+    "beforeTotalCalls": 129,
+    "afterTotalCalls": 129,
+    "onSnapshot": 35,
+    "getDocs": 48,
+    "getDoc": 28,
+    "getCountFromServer": 18
+  }
+}

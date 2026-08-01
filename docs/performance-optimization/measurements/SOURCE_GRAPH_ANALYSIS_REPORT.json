@@ -1,15 +1,19 @@
 {
-  "generatedAt": "2026-07-31T11:44:15.900Z",
-  "initialModuleCount": 66,
-  "initialSourceBytes": 846342,
+  "generatedAt": "2026-08-01T08:54:03.278Z",
+  "initialModuleCount": 67,
+  "initialSourceBytes": 853989,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 182891
+      "bytes": 158782
     },
     {
       "file": "src/features/requests/useUserRequestHistoryActionController.js",
       "bytes": 32240
+    },
+    {
+      "file": "src/features/boards/useBoardContentSubscriptionController.js",
+      "bytes": 31756
     },
     {
       "file": "src/features/requests/useAdminUserActionReviewController.js",
