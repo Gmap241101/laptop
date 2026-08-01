@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-08-01T12:43:57.765Z",
-  "initialModuleCount": 75,
-  "initialSourceBytes": 873215,
+  "generatedAt": "2026-08-01T13:12:02.922Z",
+  "initialModuleCount": 76,
+  "initialSourceBytes": 876398,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 118285
+      "bytes": 104423
     },
     {
       "file": "src/features/requests/useUserRequestHistoryActionController.js",
@@ -78,6 +78,10 @@
     {
       "file": "src/features/members/useUserMembershipStatusController.js",
       "bytes": 17434
+    },
+    {
+      "file": "src/shell/AppShell.jsx",
+      "bytes": 17045
     },
     {
       "file": "src/user/UserTermsConsentPanel.jsx",

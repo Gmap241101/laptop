@@ -1,5 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   doc,
   limit as firestoreLimit,
@@ -7,44 +6,16 @@ import {
   orderBy,
   runTransaction,
 } from 'firebase/firestore';
-import {
-  Laptop,
-  Settings,
-  AlertCircle,
-  X,
-  UserPlus,
-  LogIn,
-  UserCircle,
-  LogOut,
-} from 'lucide-react';
+import { AlertCircle, Settings } from 'lucide-react';
 
-import {
-  Button,
-  Card,
-  CardContent,
-  DateInputWithWeekday,
-} from './components/CommonUI.jsx';
-
-import RentalStatusBoard from './components/RentalStatusBoard.jsx';
-import UserWorkspace from './user/UserWorkspace.jsx';
-import UserFooter from './user/UserFooter.jsx';
-import DevRenderProfiler from './performance/DevRenderProfiler.jsx';
+import { Button, DateInputWithWeekday } from './components/CommonUI.jsx';
 import useAppContextAssembler from './context/useAppContextAssembler.js';
+import AppShell from './shell/AppShell.jsx';
 
-import { loadAppDialogsModule } from './dialogs/appDialogsLoader.js';
 import useGlobalUiController, {
   useGlobalUiState,
 } from './ui/useGlobalUiController.js';
 
-const AdminWorkspace = React.lazy(() => import('./admin/AdminWorkspace.jsx'));
-const AppDialogs = React.lazy(loadAppDialogsModule);
-const UserPopupLayer = React.lazy(() => import('./user/UserPopupLayer.jsx'));
-const DevPerformancePanel = React.lazy(() =>
-  import('./performance/DevPerformancePanel.jsx')
-);
-const MemoizedUserFooter = React.memo(UserFooter);
-const MemoizedAppDialogs = React.memo(AppDialogs);
-const MemoizedUserPopupLayer = React.memo(UserPopupLayer);
 import {
   isRichTextEmpty,
   legacyTextToRichHtml,
@@ -205,7 +176,6 @@ import {
 import {
   DEFAULT_SITE_SETTINGS,
   SERVICE_MODE,
-  getHeaderSubtitle,
   getServiceBlockReason,
   normalizeSiteSettings,
 } from './utils/systemSettings.js';
@@ -3596,16 +3566,6 @@ function App() {
     isUserDirectoryAccessRestricted,
     userTab,
   });
-  const shouldMountUserPopupLayer =
-    view === 'user' &&
-    Array.isArray(popupPosts) &&
-    popupPosts.length > 0 &&
-    (userTab === 'home' ||
-      (userTab === 'rental' && Boolean(firebaseAuthUser)));
-
-  const showFirebaseLoadingOverlay = !firebaseReady;
-  const headerSubtitle = getHeaderSubtitle(normalizedSiteSettings);
-
   if (firebaseLoadErrorMessage) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6 font-sans text-slate-900">
@@ -3680,339 +3640,44 @@ function App() {
   }
 
   return (
-    <>
-      <div className={`flex min-h-screen flex-col bg-slate-50 text-slate-900 font-sans antialiased transition duration-200 ${
-        showFirebaseLoadingOverlay ? 'pointer-events-none select-none blur-sm' : ''
-      }`}>
-      {shouldShowSystemBanner ? (
-        <div className={`relative z-40 border-b px-4 py-2 text-center text-sm font-bold leading-5 ${
-          normalizedSiteSettings.systemBannerLevel === 'critical'
-            ? 'border-rose-300 bg-rose-600 text-white'
-            : normalizedSiteSettings.systemBannerLevel === 'warning'
-              ? 'border-amber-300 bg-amber-100 text-amber-900'
-              : 'border-sky-300 bg-sky-100 text-sky-900'
-        }`}>
-          {normalizedSiteSettings.systemBannerUrl ? (
-            <a href={normalizedSiteSettings.systemBannerUrl} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
-              {normalizedSiteSettings.systemBannerMessage}
-            </a>
-          ) : normalizedSiteSettings.systemBannerMessage}
-          {normalizedSiteSettings.systemBannerDismissible ? (
-            <button type="button" onClick={dismissSystemBanner} className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-1 hover:bg-black/10" aria-label="시스템 안내 닫기"><X size={14} /></button>
-          ) : null}
-        </div>
-      ) : null}
-            {/* --- 상단 글로벌 네비게이션 --- */}
-      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:px-6 sm:py-4 lg:flex-row lg:items-center lg:justify-between">
-          <button
-            type="button"
-            onClick={goToAppHome}
-            className="flex min-w-0 shrink-0 items-center gap-3.5 text-left sm:gap-4"
-          >
-            {normalizedSiteSettings.logoMode === 'image' && normalizedSiteSettings.logoImageUrl ? (
-              <picture className="shrink-0">
-                {normalizedSiteSettings.mobileLogoImageUrl ? (
-                  <source media="(max-width: 639px)" srcSet={normalizedSiteSettings.mobileLogoImageUrl} />
-                ) : null}
-                <img
-                  src={normalizedSiteSettings.logoImageUrl}
-                  alt={normalizedSiteSettings.logoAltText}
-                  className="h-11 max-w-[150px] object-contain sm:h-12"
-                />
-              </picture>
-            ) : normalizedSiteSettings.logoMode === 'text' ? null : (
-              <div className="shrink-0 rounded-2xl mk-brand-gradient-tr p-2.5 text-white mk-brand-shadow-md sm:p-3">
-                <Laptop size={26} />
-              </div>
-            )}
-            <div className="min-w-0">
-              <h1 className="break-keep text-[16px] font-bold leading-snug tracking-tight text-slate-900 sm:text-lg lg:text-[21px]">
-                {normalizedSiteSettings.siteName}
-              </h1>
-              {headerSubtitle ? (
-                <p className="mt-0.5 truncate text-xs font-medium text-slate-500 sm:text-sm">
-                  {headerSubtitle}
-                </p>
-              ) : null}
-            </div>
-          </button>
-
-          {view === 'user' && (
-            <nav
-              ref={communityMenuRef}
-              className="relative flex w-full flex-wrap items-center justify-end gap-5 sm:gap-8 lg:w-auto lg:gap-12 xl:gap-14"
-            >
-              <button
-                type="button"
-                onClick={() =>
-                  goToProtectedUserTab('rental')
-                }
-                className={`rounded-lg px-2.5 py-2 text-[15px] transition sm:px-3 sm:text-base lg:px-4 lg:text-lg ${
-                  userTab === 'rental'
-                    ? 'bg-orange-50 font-semibold mk-brand-text'
-                    : 'font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-950'
-                }`}
-              >
-                대여신청
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  goToProtectedUserTab('history')
-                }
-                className={`rounded-lg px-2.5 py-2 text-[15px] transition sm:px-3 sm:text-base lg:px-4 lg:text-lg ${
-                  userTab === 'history'
-                    ? 'bg-orange-50 font-semibold mk-brand-text'
-                    : 'font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-950'
-                }`}
-              >
-                신청내역
-              </button>
-
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setIsCommunityMenuOpen((prev) => !prev)}
-                  className={`rounded-lg px-2.5 py-2 text-[15px] transition sm:px-3 sm:text-base lg:px-4 lg:text-lg ${
-                    ['notice', 'faq'].includes(userTab) || isCommunityMenuOpen
-                      ? 'bg-orange-50 font-semibold mk-brand-text'
-                      : 'font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-950'
-                  }`}
-                >
-                  커뮤니티
-                </button>
-
-                <AnimatePresence>
-                  {isCommunityMenuOpen && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -6, scale: 0.98 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -6, scale: 0.98 }}
-                      className="absolute left-0 top-full z-40 mt-2 w-36 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
-                    >
-                      <button
-                        type="button"
-                        onClick={goToUserNotice}
-                        className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-bold transition ${
-                          userTab === 'notice'
-                            ? 'bg-orange-50 mk-brand-text'
-                            : 'text-slate-700 hover:bg-slate-50'
-                        }`}
-                      >
-                        공지사항
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={goToUserFaq}
-                        className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-bold transition ${
-                          userTab === 'faq'
-                            ? 'bg-orange-50 mk-brand-text'
-                            : 'text-slate-700 hover:bg-slate-50'
-                        }`}
-                      >
-                        FAQ
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {firebaseAuthUser || isAdminAuthenticated ? (
-                  <>
-                    {!currentAuthRoleErrorMessage && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={goToUserMypage}
-                        className="px-3 py-2 text-xs"
-                      >
-                        <UserCircle size={14} />
-                        마이페이지
-                      </Button>
-                    )}
-
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={
-                        isCurrentFirebaseAuthAdmin || isAdminAuthenticated
-                          ? logoutAdmin
-                          : logoutUser
-                      }
-                      disabled={
-                        userAuthLoading ||
-                        adminLogoutInProgress ||
-                        !firebaseAuthReady
-                      }
-                      className="px-3 py-2 text-xs"
-                    >
-                      <LogOut size={14} />
-                      {adminLogoutInProgress ? '로그아웃 중...' : '로그아웃'}
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={goToUserSignup}
-                      disabled={userAuthLoading || !firebaseAuthReady}
-                      className="px-3 py-2 text-xs"
-                    >
-                      <UserPlus size={14} />
-                      회원가입
-                    </Button>
-
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={goToUserLogin}
-                      disabled={userAuthLoading || !firebaseAuthReady}
-                      className="px-3 py-2 text-xs"
-                    >
-                      <LogIn size={14} />
-                      로그인
-                    </Button>
-                  </>
-                )}
-              </div>
-            </nav>
-          )}
-
-          {view === 'admin' && (
-            <div className="flex w-fit items-center gap-2">
-              {isAdminAuthenticated && (
-                <div className="hidden rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 sm:block">
-                  {authenticatedAdminAccount.adminLoginId} 인증됨
-                </div>
-              )}
-
-              <div className="rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600">
-                관리자 모드
-              </div>
-
-              {isAdminAuthenticated && (
-                <>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={goToUserMypage}
-                    className="px-3 py-2 text-xs"
-                  >
-                    마이페이지
-                  </Button>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={logoutAdmin}
-                    disabled={adminLogoutInProgress || !firebaseAuthReady}
-                    className="px-3 py-2 text-xs"
-                  >
-                    {adminLogoutInProgress ? '로그아웃 중...' : '로그아웃'}
-                  </Button>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      </header>
-
-      {/* --- 메인 워크스페이스 --- */}
-      <main className="mx-auto w-full max-w-7xl flex-1 px-6 py-8">
-        
-        {/* --- 실시간 주요 대여 현황 보드 --- */}
-        {shouldShowStats && (
-          <DevRenderProfiler id="Shared:RentalStatusBoard">
-            <RentalStatusBoard
-              stats={stats}
-              loading={statsLoading}
-              className="mb-6 sm:mb-8"
-            />
-          </DevRenderProfiler>
-        )}
-
-        {view === 'user' ? (
-          <DevRenderProfiler id="UserWorkspace">
-            <UserWorkspace
-              ctx={contextGroups.user.shell}
-              panelCtx={contextGroups.user[userPanelContextKey]}
-            />
-          </DevRenderProfiler>
-        ) : (
-          <React.Suspense
-            fallback={(
-              <Card className="mx-auto max-w-xl border-slate-200 bg-white shadow-sm">
-                <CardContent className="p-8 text-center">
-                  <div className="text-sm font-bold text-slate-700">관리자 화면을 불러오는 중입니다.</div>
-                  <div className="mt-2 text-xs text-slate-500">처음 진입할 때 관리자 모듈을 별도로 불러옵니다.</div>
-                </CardContent>
-              </Card>
-            )}
-          >
-            <DevRenderProfiler id="AdminWorkspace">
-              <AdminWorkspace
-                ctx={contextGroups.admin.shell}
-                panelCtx={contextGroups.admin[adminPanelContextKey]}
-              />
-            </DevRenderProfiler>
-          </React.Suspense>
-        )}
-      </main>
-
-      {view === 'user' && (
-        <DevRenderProfiler id="Shared:UserFooter">
-          <MemoizedUserFooter ctx={contextGroups.app.footer} />
-        </DevRenderProfiler>
-      )}
-
-      {shouldRenderAppDialogs && (
-        <React.Suspense fallback={null}>
-          <DevRenderProfiler id="Shared:AppDialogs">
-            <MemoizedAppDialogs ctx={contextGroups.app.dialogs} />
-          </DevRenderProfiler>
-        </React.Suspense>
-      )}
-      {shouldMountUserPopupLayer && (
-        <React.Suspense fallback={null}>
-          <DevRenderProfiler id="Shared:UserPopupLayer">
-            <MemoizedUserPopupLayer ctx={contextGroups.app.popup} />
-          </DevRenderProfiler>
-        </React.Suspense>
-      )}
-
-      {import.meta.env.DEV && (
-        <React.Suspense fallback={null}>
-          <DevPerformancePanel />
-        </React.Suspense>
-      )}
-      </div>
-
-      {showFirebaseLoadingOverlay && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/10 px-6 font-sans text-slate-900 backdrop-blur-[2px]">
-          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white/95 p-6 text-center shadow-xl">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl mk-brand-gradient-tr text-white mk-brand-shadow-md">
-              {normalizedSiteSettings.logoMode === 'image' && normalizedSiteSettings.logoImageUrl ? (
-                <img src={normalizedSiteSettings.logoImageUrl} alt={normalizedSiteSettings.logoAltText} className="h-8 max-w-[120px] object-contain" />
-              ) : (
-                <Laptop size={24} />
-              )}
-            </div>
-            <h1 className="text-base font-bold text-slate-900">
-              데이터를 불러오는 중입니다.
-            </h1>
-            <p className="mt-2 text-xs leading-relaxed text-slate-500">
-              Firebase 원격 DB 기준으로 데이터를 불러오고 있습니다. 잠시만 기다려 주십시오.
-            </p>
-          </div>
-        </div>
-      )}
-    </>
+    <AppShell
+      adminLogoutInProgress={adminLogoutInProgress}
+      adminPanelContextKey={adminPanelContextKey}
+      authenticatedAdminAccount={authenticatedAdminAccount}
+      communityMenuRef={communityMenuRef}
+      contextGroups={contextGroups}
+      currentAuthRoleErrorMessage={currentAuthRoleErrorMessage}
+      dismissSystemBanner={dismissSystemBanner}
+      firebaseAuthReady={firebaseAuthReady}
+      firebaseAuthUser={firebaseAuthUser}
+      firebaseReady={firebaseReady}
+      goToAppHome={goToAppHome}
+      goToProtectedUserTab={goToProtectedUserTab}
+      goToUserFaq={goToUserFaq}
+      goToUserLogin={goToUserLogin}
+      goToUserMypage={goToUserMypage}
+      goToUserNotice={goToUserNotice}
+      goToUserSignup={goToUserSignup}
+      isAdminAuthenticated={isAdminAuthenticated}
+      isCommunityMenuOpen={isCommunityMenuOpen}
+      isCurrentFirebaseAuthAdmin={isCurrentFirebaseAuthAdmin}
+      logoutAdmin={logoutAdmin}
+      logoutUser={logoutUser}
+      normalizedSiteSettings={normalizedSiteSettings}
+      popupPosts={popupPosts}
+      setIsCommunityMenuOpen={setIsCommunityMenuOpen}
+      shouldRenderAppDialogs={shouldRenderAppDialogs}
+      shouldShowStats={shouldShowStats}
+      shouldShowSystemBanner={shouldShowSystemBanner}
+      stats={stats}
+      statsLoading={statsLoading}
+      userAuthLoading={userAuthLoading}
+      userPanelContextKey={userPanelContextKey}
+      userTab={userTab}
+      view={view}
+    />
   );
+
 }
 
 export default App;

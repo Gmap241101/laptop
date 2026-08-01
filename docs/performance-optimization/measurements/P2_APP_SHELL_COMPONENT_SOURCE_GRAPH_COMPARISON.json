@@ -1,0 +1,35 @@
+{
+  "generatedAt": "2026-08-01T22:12:00+09:00",
+  "baselinePackage": "rental-system-app-context-assembler-split-20260801_2146_deployment_package.zip",
+  "before": {
+    "appFile": "src/App.jsx",
+    "appLines": 4018,
+    "appBytes": 118285,
+    "initialModuleCount": 75,
+    "initialSourceBytes": 873215
+  },
+  "after": {
+    "appFile": "src/App.jsx",
+    "appLines": 3683,
+    "appBytes": 104423,
+    "appShellFile": "src/shell/AppShell.jsx",
+    "appShellLines": 444,
+    "appShellBytes": 17045,
+    "initialModuleCount": 76,
+    "initialSourceBytes": 876398
+  },
+  "delta": {
+    "appLines": -335,
+    "appBytes": -13862,
+    "initialModuleCount": 1,
+    "initialSourceBytes": 3183
+  },
+  "shellContract": {
+    "acceptedProps": 34,
+    "passedProps": 34,
+    "missingProps": 0,
+    "extraProps": 0,
+    "userFacingKoreanStringsRemoved": 0,
+    "userFacingKoreanStringsAdded": 0
+  }
+}

@@ -1,0 +1,68 @@
+P2 APP SHELL COMPONENT FEATURE SPLIT VALIDATION
+================================================
+Generated: 2026-08-01 22:12 KST
+Baseline: rental-system-app-context-assembler-split-20260801_2146_deployment_package.zip
+Baseline ZIP SHA-256: fc7ef1bf15036a396dc6f198078186271bb64f94bf20d02ba826463a348adbb5
+
+SHELL CONTRACT
+--------------
+PASS  AppShell accepted props: 34
+PASS  App.jsx passed props: 34
+PASS  Missing shell props: 0
+PASS  Extra shell props: 0
+PASS  Admin workspace remains React.lazy
+PASS  App dialogs remain React.lazy with shared loader
+PASS  User popup layer remains React.lazy
+PASS  Dev performance panel remains React.lazy
+PASS  User footer memo boundary preserved
+PASS  App dialogs memo boundary preserved
+PASS  User popup layer memo boundary preserved
+
+STATIC VALIDATION
+-----------------
+PASS  TypeScript transpile syntax check: all 132 JS/JSX/MJS source files
+PASS  React Hook import audit: 132 source files
+PASS  Relative import resolution: 405 imports, missing 0
+PASS  Firestore strict audit
+      Total calls: 129
+      onSnapshot: 35
+      getDocs: 48
+      getDoc: 28
+      getCountFromServer: 18
+      Unapproved warnings: 0
+      Unapproved errors: 0
+PASS  Removed App.jsx shell imports/usages: stale references 0
+PASS  User-facing Korean quoted strings: 93 -> 93
+PASS  Removed Korean strings: 0
+PASS  Added Korean strings: 0
+
+SOURCE GRAPH
+------------
+PASS  Initial static modules: 75 -> 76
+PASS  Initial source bytes: 873215 -> 876398
+PASS  App.jsx lines: 4018 -> 3683
+PASS  App.jsx bytes: 118285 -> 104423
+PASS  AppShell.jsx lines: 444
+PASS  AppShell.jsx bytes: 17045
+
+FUNCTIONAL SCOPE
+----------------
+PASS  Header and navigation handlers preserved
+PASS  User/admin workspace context selection preserved
+PASS  Admin workspace fallback text preserved
+PASS  Rental status board condition and props preserved
+PASS  Footer/dialog/popup render conditions preserved
+PASS  System banner condition and dismissal preserved
+PASS  Firebase loading overlay condition preserved
+PASS  No Firestore query/write moved or added
+PASS  No Rules or index change
+PASS  No authentication or route logic change
+PASS  No cumulative removed-file entry changed
+
+PRODUCTION BUILD
+----------------
+NOT COMPLETED
+npm ci --ignore-scripts failed before Vite execution because the internal npm registry returned E404 for:
+yargs-parser-21.1.1.tgz
+
+A local deploy.ps1 run must confirm npm run build and the final deployment completion message.
