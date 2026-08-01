@@ -75,6 +75,8 @@ const appInitializationReadinessController = read('src/shell/useAppInitializatio
 const appNavigationController = read('src/routing/useAppNavigationController.js');
 const rentalDataSubscriptionController = read('src/features/requests/useRentalDataSubscriptionController.js');
 const adminAccountManagementController = read('src/features/auth/useAdminAccountManagementController.js');
+const appContextAssembler = read('src/context/useAppContextAssembler.js');
+const appDynamicContextValues = read('src/context/appDynamicContextValues.js');
 
 const protectedTabs = extractStringSet(
   appRoutes,
@@ -413,6 +415,46 @@ check(
 check(
   !appSource.includes('createDefaultAdminAccountForm,'),
   'App no longer imports the administrator account form factory solely for tab-entry initialization.'
+);
+
+
+check(
+  appSource.includes('const dynamicContextSourceValues = {') &&
+    appSource.includes('dynamicSourceValues: dynamicContextSourceValues,'),
+  'App supplies a flat dynamic context source contract to the context assembler.'
+);
+check(
+  !appSource.includes('const dynamicContextValueGroups = {') &&
+    !appSource.includes('dynamicValueGroups: dynamicContextValueGroups,'),
+  'App no longer owns feature-grouped dynamic context assembly.'
+);
+check(
+  appContextAssembler.includes("import { createAppDynamicContextValues } from './appDynamicContextValues.js';") &&
+    appContextAssembler.includes('const dynamicValues = createAppDynamicContextValues(dynamicSourceValues);'),
+  'The context assembler derives the flat dynamic context contract in the context layer.'
+);
+[
+  'adminRequestsPrerequisitesReady',
+  'memberAccountsPrerequisitesReady',
+  'memberDirectoryBorrowers',
+  'memberDirectorySettings',
+  'memberDirectoryTeams',
+  'onAdminRequestsControllerStateChange',
+  'onMemberDirectoryDeferredStateChange',
+  'onSignupPolicyDeferredStateChange',
+  'signupPolicySettings',
+].forEach((derivedKey) => {
+  check(
+    appDynamicContextValues.includes(derivedKey),
+    `Dynamic context derivation exposes ${derivedKey}.`
+  );
+});
+check(
+  appDynamicContextValues.includes('...dynamicValues') &&
+    appDynamicContextValues.includes('handleAdminRequestsControllerStateChange,') &&
+    appDynamicContextValues.includes('handleMemberDirectoryDeferredStateChange,') &&
+    appDynamicContextValues.includes('handleSignupPolicyDeferredStateChange,'),
+  'Internal deferred-state handlers are converted to public context aliases instead of leaking as extra keys.'
 );
 
 const dashboardHeadingBlocks = [

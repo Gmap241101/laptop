@@ -1,0 +1,461 @@
+diff -ruN '--exclude=package-meta' '--exclude=.performance-reports' /mnt/data/seq_009_base/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json /mnt/data/seq_009_work/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json
+--- /mnt/data/seq_009_base/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json	2026-08-01 16:51:30.000000000 +0000
++++ /mnt/data/seq_009_work/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json	2026-08-01 17:00:01.866793455 +0000
+@@ -1,11 +1,11 @@
+ {
+-  "generatedAt": "2026-08-01T16:51:31.474Z",
++  "generatedAt": "2026-08-01T17:00:01.871Z",
+   "initialModuleCount": 87,
+-  "initialSourceBytes": 880935,
++  "initialSourceBytes": 879655,
+   "files": [
+     {
+       "file": "src/App.jsx",
+-      "bytes": 67448
++      "bytes": 66164
+     },
+     {
+       "file": "src/features/requests/useUserRequestHistoryActionController.js",
+@@ -201,7 +201,7 @@
+     },
+     {
+       "file": "src/context/useAppContextAssembler.js",
+-      "bytes": 5129
++      "bytes": 5115
+     },
+     {
+       "file": "src/user/UserFooter.jsx",
+@@ -313,7 +313,7 @@
+     },
+     {
+       "file": "src/context/appDynamicContextValues.js",
+-      "bytes": 1360
++      "bytes": 1378
+     },
+     {
+       "file": "src/features/requests/useSelectedRentalAssetAvailabilityGuard.js",
+diff -ruN '--exclude=package-meta' '--exclude=.performance-reports' /mnt/data/seq_009_base/src/App.jsx /mnt/data/seq_009_work/src/App.jsx
+--- /mnt/data/seq_009_base/src/App.jsx	2026-08-01 16:50:00.000000000 +0000
++++ /mnt/data/seq_009_work/src/App.jsx	2026-08-01 16:58:00.698797295 +0000
+@@ -1963,142 +1963,106 @@
+     triggerToast,
+   });
+ 
+-  const dynamicContextValueGroups = {
+-    // 여러 기능에서 공동으로 사용하는 인증·데이터·이동 값
+-    shared: {
+-      authenticatedAdminAccount, authenticatedAdminId, currentAuthAdminAccount, currentAuthRoleErrorMessage,
+-      currentAuthRoleReady, data, setData, siteSettings,
+-      faqCategories, faqPosts, firebaseAuthReady, firebaseAuthUser,
+-      getUserRequestActionLabel, goToUserHome, goToProtectedUserTab, goToUserLogin,
+-      goToUserMypage, handleAdminTabChange, openAdminMemberAccounts, isAdminAuthenticated,
+-      isCurrentFirebaseAuthGeneralUser, isSplitStorageReady, noticePosts, noticePostsLoadErrorMessage,
+-      noticePostsReady, openNoticePost, triggerConfirm, triggerToast,
+-      userActionSaving, userProfile, userProfileReady, footerPagesReady,
+-      footerPagesLoadErrorMessage, userTab,
+-    },
+-    // 사용자 인증·회원·관리자 계정 값
+-    identity: {
+-      accountRecoveryForm, accountRecoveryLoading, accountRecoveryResult, resetAccountRecoverySearch,
+-      adminAccountEditForm, adminAccountForm, adminAccountTotalPages, adminAccountUserOptions,
+-      adminAccountsLoadErrorMessage, adminAuthForm, adminAuthLoading, adminMyProfileForm,
+-      adminMyProfileSaving, adminTab, authenticateAdmin, cancelEditAdminAccount,
+-      cancelWithdrawal, cancelUserSignup, deleteAdminAccount, toggleAdminAccountLock,
+-      editingAdminAccountId, goToUserEmailRecovery, goToUserFaq, goToUserNotice,
+-      goToUserPasswordReset, goToUserSignup, hasEstablishedUserSession, hasFirebaseAuthSession,
+-      isUserDirectoryAccessRestricted, logoutAdmin, logoutUser, memberDirectoryAudit,
+-      adminMemberAccountsNavigationRequest, memberDirectoryPolicyEnabled, memberIdentityClaimsReady, openWithdrawalDialog,
+-      paginatedAdminAccounts, passwordResetForm, passwordResetLoading, passwordResetVerificationResult,
+-      registerAdminAccount, registeredAdminAccounts, safeAdminAccountPage, saveAdminAccountEdit,
+-      saveMyAdminProfile, saveMyUserProfile, sendAdminAccountPasswordResetEmail, setAccountRecoveryForm,
+-      setAdminAccountEditForm, setAdminAccountForm, setAdminAccountPage, setAdminAuthForm,
+-      setAdminMyProfileForm, setAdminTab, updatePasswordResetForm, setUserAuthForm,
+-      setUserProfileForm, setView, setWithdrawalPassword, shouldShowAdminAccountsErrorPage,
+-      shouldShowAdminLoadingPage, shouldShowAdminLoginPage, startEditAdminAccount, submitAccountRecovery,
+-      submitMembershipWithdrawal, submitPasswordReset, submitUserAuthForm, stats,
+-      userAccountStatusView, userAuthForm, userAuthLoading, userDirectoryVerificationLoading,
+-      userProfileForm, userProfileSaving, withdrawalBlockMessage, withdrawalDialogOpen,
+-      withdrawalLoading, withdrawalPassword, selectedFooterPage,
+-      memberAccountsPrerequisitesReady:
+-        firebaseAuthReady && currentAuthRoleReady,
+-      memberDirectoryBorrowers: data.borrowers,
+-      memberDirectorySettings: data.settings,
+-      memberDirectoryTeams: data.teams,
+-      onMemberDirectoryDeferredStateChange:
+-        handleMemberDirectoryDeferredStateChange,
+-      onSignupPolicyDeferredStateChange:
+-        handleSignupPolicyDeferredStateChange,
+-      signupPolicySettings: data.settings,
+-    },
+-    // 대여 신청·신청내역·관리자 신청 및 자산 값
+-    rental: {
+-      addTempAssetCategory, adminAvailabilityFilter, adminFilteredLaptops, adminLaptopQuery,
+-      adminSelectedAssetCategory, adminUserActionSavingRequestId, applyEditTempAssetCategory, availabilityFilter,
+-      availableFilterLabel, cancelTempAssetCategoryChanges, createLaptop, currentUserRentalRestrictionStatus,
+-      currentUserRestrictionReady, currentUserRequests, rentalRequestsLoadErrorMessage, rentalRequestsReady,
+-      dashboardSummary, dashboardSummaryLoadErrorMessage, dashboardSummaryReady, dashboardSummaryRefreshing,
+-      deleteLaptop, deleteTempAssetCategory, draggingAssetCategoryIndex, editLaptop,
+-      editLaptopInsertIndex, editingAssetCategoryIndex, editingAssetCategoryName, filteredLaptops,
+-      form, getUserRequestReviewStatusLabel, handleAddLaptopClick, openAdminRequests,
+-      isPeriodBasedRentalMode, adminRequestsMutationVersion, adminRequestsNavigationRequest, commitAdminRequestEdit,
+-      commitAdminRequestStatusRestore, moveTempAssetCategory, newAssetCategory, newLaptop,
+-      openUserActionDialog, orphanedRentalAvailabilityRequests, query, refreshDashboardSummary,
+-      renderRequestActionButtons, rentalDeviceSectionDescription, rentalDeviceSectionTitle,
+-      rentalStartAdjustmentInfo, requestSubmitLoading, reviewUserActionRequest, saveLaptop,
+-      saveRequestMemo, saveTempAssetCategoryChanges, selectedAssetCategory, selectedLaptop,
+-      selectedLaptopAvailability, selectedLaptopId, setAdminAvailabilityFilter, setAdminLaptopQuery,
+-      setAdminSelectedAssetCategory, setAvailabilityFilter, setDraggingAssetCategoryIndex, setEditLaptop,
+-      setEditingAssetCategoryIndex, setEditingAssetCategoryName, setForm, setNewAssetCategory,
+-      setNewLaptop, setQuery, setSelectedAssetCategory, setSelectedLaptopId,
+-      setShowUploadPanel, showUploadPanel, splitRentalAssets, startEditTempAssetCategory,
+-      submitRequest, tempAssetCategories, unavailableFilterLabel, updateRequestMemo,
+-      adminRequestsPrerequisitesReady:
+-        firebaseAuthReady &&
+-        currentAuthRoleReady &&
+-        !currentAuthRoleErrorMessage &&
+-        Boolean(firebaseAuthUser?.uid),
+-      onAdminRequestsControllerStateChange:
+-        handleAdminRequestsControllerStateChange,
+-    },
+-    // 공지사항·FAQ 값
+-    boards: {
+-      activeFaqCategoryId, activeFaqCategoryName, addFaqCategory, adminExpandedFaqPostId,
+-      adminFaqTotalPages, adminNoticeQuery, adminNoticeTotalPages, adminPinnedFaqPosts,
+-      adminPinnedNoticePosts, adminRegularFaqPosts, adminRegularNoticePosts, categoryFilteredFaqPosts,
+-      closeNoticePost, confirmDeleteFaqCategory, confirmDeleteFaqPost, confirmDeleteNoticePost,
+-      displayedFaqPosts, editingFaqCategoryId, editingFaqCategoryName, expandedFaqPostId,
+-      faqBoardConfigLoadErrorMessage, faqBoardConfigReady, faqBoardConfigSaving, faqCategoriesLoadErrorMessage,
+-      faqCategoriesReady, faqCategoryDeletingId, faqCategoryNameById, faqCategorySavingId,
+-      faqPostDeletingId, faqPostsLoadErrorMessage, faqPostsPerPageInput, faqPostsReady,
+-      faqQuery, faqSearchWithinCategory, faqTotalPages, newFaqCategoryName,
+-      noticeBoardConfigLoadErrorMessage, noticeBoardConfigReady, noticeBoardConfigSaving, noticePostDeletingId,
+-      noticePostsPerPageInput, noticeRegularPostNumberById, noticeTotalPages,
+-      openFaqPostDialog, openNoticePostDialog, paginatedAdminFaqPosts, paginatedAdminNoticePosts,
+-      paginatedNoticePosts, pinnedNoticePosts, regularFaqPosts, regularNoticePosts,
+-      safeAdminFaqPage, safeAdminNoticePage, safeFaqPage, safeNoticePage,
+-      saveFaqBoardConfig, saveFaqCategoryName, saveNoticeBoardConfig, selectedNoticePost,
+-      setActiveFaqCategoryId, setAdminExpandedFaqPostId, setAdminFaqPage, setAdminNoticePage,
+-      setAdminNoticeQuery, setEditingFaqCategoryId, setEditingFaqCategoryName, setExpandedFaqPostId,
+-      setFaqPage, setFaqPostsPerPageInput, setFaqQuery, setFaqSearchWithinCategory,
+-      setNewFaqCategoryName, setNoticePage, setUserNoticeQuery, setNoticePostsPerPageInput,
+-      startEditFaqCategory, toggleAdminFaqPost, toggleFaqPost, userNoticeQuery,
+-    },
+-    // 시스템 설정·공휴일·운영 관리 값
+-    operations: {
+-      addTempHoliday, siteSettingsReady, siteSettingsLoadErrorMessage, systemAdminSettings,
+-      systemAdminSettingsReady, systemAdminSettingsLoadErrorMessage, userSessionPolicy, userSessionPolicyReady,
+-      userSessionPolicyLoadErrorMessage, deleteTempHoliday, finalizeSplitStorageMigration, holidayImportConflictModal,
+-      holidayImportLoading, holidayImportYear, holidayManagementMonth, holidayManagementView,
+-      holidayManagementYear, holidaySettingsDirty, importKoreanPublicHolidaysFromJson, applyHolidayImportConflictChoice,
+-      newHolidayDate, newHolidayName, newHolidayType, saveHolidaySettings,
+-      saveSystemSettings, setHolidayImportConflictModal, setHolidayImportYear, setHolidayManagementMonth,
+-      setHolidayManagementView, setHolidayManagementYear, setNewHolidayDate, setNewHolidayName,
+-      setNewHolidayType, setTempSettings, splitStorageFinalizeLoading, tempAllowNonOverlappingSameAssetRequests,
+-      tempBusinessDayAdjustmentEnabled, tempHolidayList, discardHolidayChanges, tempSettings,
+-      updateTempHolidayReason,
+-    },
+-    // 팝업·푸터 값
+-    content: {
+-      temporarilyDismissedPopupVersions, dismissedPopupSessionVersions, dismissedPopupLocalVersions, dismissUserPopup,
+-      dismissAllUserPopups, popupPosts, popupPostsReady, popupPostsLoadErrorMessage,
+-      popupPostDeletingId, popupPostToggleSavingId, openPopupPostDialog, togglePopupPostEnabled,
+-      movePopupPost, confirmDeletePopupPost, footerConfig, footerConfigDraft,
+-      footerConfigReady, footerConfigLoadErrorMessage, footerConfigSaving, footerPages,
+-      footerPageDialog, footerPageForm, footerPageSaving, footerPageDeletingId,
+-      footerPageToggleSavingId, selectedFooterPageId, setFooterConfigDraft, setFooterPageForm,
+-      saveFooterConfig, openFooterPageDialog, closeFooterPageDialog, saveFooterPage,
+-      toggleFooterPageEnabled, moveFooterPage, confirmDeleteFooterPage, openFooterPage,
+-    },
+-    // 공통 대화상자 값
+-    dialogs: {
+-      activeUserActionRentalRequest, closeFaqPostDialog, closeNoticePostDialog, closeUserActionDialog,
+-      confirmModal, faqPostDialog, faqPostForm, faqPostSaving,
+-      noticePostDialog, noticePostForm, noticePostSaving, saveFaqPost,
+-      saveNoticePost, setConfirmModal, setFaqPostForm, setNoticePostForm,
+-      setToast, setUserActionForm, submitUserActionRequest, toast,
+-      userActionDialog, userActionForm, popupPostDialog,
+-      popupPostForm, popupPostSaving, closePopupPostDialog, savePopupPost,
+-      setPopupPostForm,
+-    },
++  const dynamicContextSourceValues = {
++    authenticatedAdminAccount, authenticatedAdminId, currentAuthAdminAccount,
++    currentAuthRoleErrorMessage, currentAuthRoleReady, data, setData, siteSettings, faqCategories,
++    faqPosts, firebaseAuthReady, firebaseAuthUser, getUserRequestActionLabel, goToUserHome,
++    goToProtectedUserTab, goToUserLogin, goToUserMypage, handleAdminTabChange,
++    openAdminMemberAccounts, isAdminAuthenticated, isCurrentFirebaseAuthGeneralUser,
++    isSplitStorageReady, noticePosts, noticePostsLoadErrorMessage, noticePostsReady,
++    openNoticePost, triggerConfirm, triggerToast, userActionSaving, userProfile, userProfileReady,
++    footerPagesReady, footerPagesLoadErrorMessage, userTab, accountRecoveryForm,
++    accountRecoveryLoading, accountRecoveryResult, resetAccountRecoverySearch,
++    adminAccountEditForm, adminAccountForm, adminAccountTotalPages, adminAccountUserOptions,
++    adminAccountsLoadErrorMessage, adminAuthForm, adminAuthLoading, adminMyProfileForm,
++    adminMyProfileSaving, adminTab, authenticateAdmin, cancelEditAdminAccount, cancelWithdrawal,
++    cancelUserSignup, deleteAdminAccount, toggleAdminAccountLock, editingAdminAccountId,
++    goToUserEmailRecovery, goToUserFaq, goToUserNotice, goToUserPasswordReset, goToUserSignup,
++    hasEstablishedUserSession, hasFirebaseAuthSession, isUserDirectoryAccessRestricted,
++    logoutAdmin, logoutUser, memberDirectoryAudit, adminMemberAccountsNavigationRequest,
++    memberDirectoryPolicyEnabled, memberIdentityClaimsReady, openWithdrawalDialog,
++    paginatedAdminAccounts, passwordResetForm, passwordResetLoading,
++    passwordResetVerificationResult, registerAdminAccount, registeredAdminAccounts,
++    safeAdminAccountPage, saveAdminAccountEdit, saveMyAdminProfile, saveMyUserProfile,
++    sendAdminAccountPasswordResetEmail, setAccountRecoveryForm, setAdminAccountEditForm,
++    setAdminAccountForm, setAdminAccountPage, setAdminAuthForm, setAdminMyProfileForm, setAdminTab,
++    updatePasswordResetForm, setUserAuthForm, setUserProfileForm, setView, setWithdrawalPassword,
++    shouldShowAdminAccountsErrorPage, shouldShowAdminLoadingPage, shouldShowAdminLoginPage,
++    startEditAdminAccount, submitAccountRecovery, submitMembershipWithdrawal, submitPasswordReset,
++    submitUserAuthForm, stats, userAccountStatusView, userAuthForm, userAuthLoading,
++    userDirectoryVerificationLoading, userProfileForm, userProfileSaving, withdrawalBlockMessage,
++    withdrawalDialogOpen, withdrawalLoading, withdrawalPassword, selectedFooterPage,
++    addTempAssetCategory, adminAvailabilityFilter, adminFilteredLaptops, adminLaptopQuery,
++    adminSelectedAssetCategory, adminUserActionSavingRequestId, applyEditTempAssetCategory,
++    availabilityFilter, availableFilterLabel, cancelTempAssetCategoryChanges, createLaptop,
++    currentUserRentalRestrictionStatus, currentUserRestrictionReady, currentUserRequests,
++    rentalRequestsLoadErrorMessage, rentalRequestsReady, dashboardSummary,
++    dashboardSummaryLoadErrorMessage, dashboardSummaryReady, dashboardSummaryRefreshing,
++    deleteLaptop, deleteTempAssetCategory, draggingAssetCategoryIndex, editLaptop,
++    editLaptopInsertIndex, editingAssetCategoryIndex, editingAssetCategoryName, filteredLaptops,
++    form, getUserRequestReviewStatusLabel, handleAddLaptopClick, openAdminRequests,
++    isPeriodBasedRentalMode, adminRequestsMutationVersion, adminRequestsNavigationRequest,
++    commitAdminRequestEdit, commitAdminRequestStatusRestore, moveTempAssetCategory,
++    newAssetCategory, newLaptop, openUserActionDialog, orphanedRentalAvailabilityRequests, query,
++    refreshDashboardSummary, renderRequestActionButtons, rentalDeviceSectionDescription,
++    rentalDeviceSectionTitle, rentalStartAdjustmentInfo, requestSubmitLoading,
++    reviewUserActionRequest, saveLaptop, saveRequestMemo, saveTempAssetCategoryChanges,
++    selectedAssetCategory, selectedLaptop, selectedLaptopAvailability, selectedLaptopId,
++    setAdminAvailabilityFilter, setAdminLaptopQuery, setAdminSelectedAssetCategory,
++    setAvailabilityFilter, setDraggingAssetCategoryIndex, setEditLaptop,
++    setEditingAssetCategoryIndex, setEditingAssetCategoryName, setForm, setNewAssetCategory,
++    setNewLaptop, setQuery, setSelectedAssetCategory, setSelectedLaptopId, setShowUploadPanel,
++    showUploadPanel, splitRentalAssets, startEditTempAssetCategory, submitRequest,
++    tempAssetCategories, unavailableFilterLabel, updateRequestMemo, activeFaqCategoryId,
++    activeFaqCategoryName, addFaqCategory, adminExpandedFaqPostId, adminFaqTotalPages,
++    adminNoticeQuery, adminNoticeTotalPages, adminPinnedFaqPosts, adminPinnedNoticePosts,
++    adminRegularFaqPosts, adminRegularNoticePosts, categoryFilteredFaqPosts, closeNoticePost,
++    confirmDeleteFaqCategory, confirmDeleteFaqPost, confirmDeleteNoticePost, displayedFaqPosts,
++    editingFaqCategoryId, editingFaqCategoryName, expandedFaqPostId,
++    faqBoardConfigLoadErrorMessage, faqBoardConfigReady, faqBoardConfigSaving,
++    faqCategoriesLoadErrorMessage, faqCategoriesReady, faqCategoryDeletingId, faqCategoryNameById,
++    faqCategorySavingId, faqPostDeletingId, faqPostsLoadErrorMessage, faqPostsPerPageInput,
++    faqPostsReady, faqQuery, faqSearchWithinCategory, faqTotalPages, newFaqCategoryName,
++    noticeBoardConfigLoadErrorMessage, noticeBoardConfigReady, noticeBoardConfigSaving,
++    noticePostDeletingId, noticePostsPerPageInput, noticeRegularPostNumberById, noticeTotalPages,
++    openFaqPostDialog, openNoticePostDialog, paginatedAdminFaqPosts, paginatedAdminNoticePosts,
++    paginatedNoticePosts, pinnedNoticePosts, regularFaqPosts, regularNoticePosts, safeAdminFaqPage,
++    safeAdminNoticePage, safeFaqPage, safeNoticePage, saveFaqBoardConfig, saveFaqCategoryName,
++    saveNoticeBoardConfig, selectedNoticePost, setActiveFaqCategoryId, setAdminExpandedFaqPostId,
++    setAdminFaqPage, setAdminNoticePage, setAdminNoticeQuery, setEditingFaqCategoryId,
++    setEditingFaqCategoryName, setExpandedFaqPostId, setFaqPage, setFaqPostsPerPageInput,
++    setFaqQuery, setFaqSearchWithinCategory, setNewFaqCategoryName, setNoticePage,
++    setUserNoticeQuery, setNoticePostsPerPageInput, startEditFaqCategory, toggleAdminFaqPost,
++    toggleFaqPost, userNoticeQuery, addTempHoliday, siteSettingsReady,
++    siteSettingsLoadErrorMessage, systemAdminSettings, systemAdminSettingsReady,
++    systemAdminSettingsLoadErrorMessage, userSessionPolicy, userSessionPolicyReady,
++    userSessionPolicyLoadErrorMessage, deleteTempHoliday, finalizeSplitStorageMigration,
++    holidayImportConflictModal, holidayImportLoading, holidayImportYear, holidayManagementMonth,
++    holidayManagementView, holidayManagementYear, holidaySettingsDirty,
++    importKoreanPublicHolidaysFromJson, applyHolidayImportConflictChoice, newHolidayDate,
++    newHolidayName, newHolidayType, saveHolidaySettings, saveSystemSettings,
++    setHolidayImportConflictModal, setHolidayImportYear, setHolidayManagementMonth,
++    setHolidayManagementView, setHolidayManagementYear, setNewHolidayDate, setNewHolidayName,
++    setNewHolidayType, setTempSettings, splitStorageFinalizeLoading,
++    tempAllowNonOverlappingSameAssetRequests, tempBusinessDayAdjustmentEnabled, tempHolidayList,
++    discardHolidayChanges, tempSettings, updateTempHolidayReason,
++    temporarilyDismissedPopupVersions, dismissedPopupSessionVersions, dismissedPopupLocalVersions,
++    dismissUserPopup, dismissAllUserPopups, popupPosts, popupPostsReady,
++    popupPostsLoadErrorMessage, popupPostDeletingId, popupPostToggleSavingId, openPopupPostDialog,
++    togglePopupPostEnabled, movePopupPost, confirmDeletePopupPost, footerConfig, footerConfigDraft,
++    footerConfigReady, footerConfigLoadErrorMessage, footerConfigSaving, footerPages,
++    footerPageDialog, footerPageForm, footerPageSaving, footerPageDeletingId,
++    footerPageToggleSavingId, selectedFooterPageId, setFooterConfigDraft, setFooterPageForm,
++    saveFooterConfig, openFooterPageDialog, closeFooterPageDialog, saveFooterPage,
++    toggleFooterPageEnabled, moveFooterPage, confirmDeleteFooterPage, openFooterPage,
++    activeUserActionRentalRequest, closeFaqPostDialog, closeNoticePostDialog,
++    closeUserActionDialog, confirmModal, faqPostDialog, faqPostForm, faqPostSaving,
++    noticePostDialog, noticePostForm, noticePostSaving, saveFaqPost, saveNoticePost,
++    setConfirmModal, setFaqPostForm, setNoticePostForm, setToast, setUserActionForm,
++    submitUserActionRequest, toast, userActionDialog, userActionForm, popupPostDialog,
++    popupPostForm, popupPostSaving, closePopupPostDialog, savePopupPost, setPopupPostForm,
++    handleMemberDirectoryDeferredStateChange, handleSignupPolicyDeferredStateChange,
++    handleAdminRequestsControllerStateChange,
+   };
+ 
+   const {
+@@ -2107,7 +2071,7 @@
+     userPanelContextKey,
+   } = useAppContextAssembler({
+     adminTab,
+-    dynamicValueGroups: dynamicContextValueGroups,
++    dynamicSourceValues: dynamicContextSourceValues,
+     hasFirebaseAuthSession,
+     isUserDirectoryAccessRestricted,
+     userTab,
+diff -ruN '--exclude=package-meta' '--exclude=.performance-reports' /mnt/data/seq_009_base/src/context/appDynamicContextValues.js /mnt/data/seq_009_work/src/context/appDynamicContextValues.js
+--- /mnt/data/seq_009_base/src/context/appDynamicContextValues.js	2026-08-01 22:50:00.000000000 +0000
++++ /mnt/data/seq_009_work/src/context/appDynamicContextValues.js	2026-08-01 16:58:00.802797292 +0000
+@@ -1,48 +1,33 @@
+-const APP_DYNAMIC_CONTEXT_GROUP_ORDER = Object.freeze([
+-  'shared',
+-  'identity',
+-  'rental',
+-  'boards',
+-  'operations',
+-  'content',
+-  'dialogs',
+-]);
+-
+ /**
+- * 기능별로 나눈 App 동적 컨텍스트 값을 기존 평면 계약으로 병합합니다.
+- * 중복 키는 조립 경계 오류이므로 즉시 감지하고, 누락된 그룹은 빈 객체로 처리합니다.
++ * App.jsx가 제공하는 평면 동적 상태·행동에서 화면 컨텍스트용 파생 값을 조립합니다.
++ * 화면별 키 선택은 appContextSlices.js가 담당하므로 App.jsx는 기능 그룹 내부 구조를 알 필요가 없습니다.
+  */
+-export const mergeAppDynamicContextValueGroups = (groups = {}) => {
+-  const mergedValues = {};
+-  const ownerByKey = new Map();
+-  const supportedGroupNames = new Set(APP_DYNAMIC_CONTEXT_GROUP_ORDER);
+-
+-  Object.keys(groups).forEach((groupName) => {
+-    if (!supportedGroupNames.has(groupName)) {
+-      throw new Error(
+-        `Unsupported App context value group: "${groupName}".`
+-      );
+-    }
+-  });
+-
+-  APP_DYNAMIC_CONTEXT_GROUP_ORDER.forEach((groupName) => {
+-    const groupValues = groups[groupName] || {};
+-
+-    Object.entries(groupValues).forEach(([key, value]) => {
+-      const existingOwner = ownerByKey.get(key);
+-      if (existingOwner) {
+-        throw new Error(
+-          `App context value "${key}" is duplicated in "${existingOwner}" and "${groupName}".`
+-        );
+-      }
+-
+-      ownerByKey.set(key, groupName);
+-      mergedValues[key] = value;
+-    });
+-  });
+-
+-  return mergedValues;
++export const createAppDynamicContextValues = (sourceValues = {}) => {
++  const {
++    handleAdminRequestsControllerStateChange,
++    handleMemberDirectoryDeferredStateChange,
++    handleSignupPolicyDeferredStateChange,
++    ...dynamicValues
++  } = sourceValues;
++
++  return {
++    ...dynamicValues,
++    adminRequestsPrerequisitesReady:
++      sourceValues.firebaseAuthReady &&
++      sourceValues.currentAuthRoleReady &&
++      !sourceValues.currentAuthRoleErrorMessage &&
++      Boolean(sourceValues.firebaseAuthUser?.uid),
++    memberAccountsPrerequisitesReady:
++      sourceValues.firebaseAuthReady && sourceValues.currentAuthRoleReady,
++    memberDirectoryBorrowers: sourceValues.data.borrowers,
++    memberDirectorySettings: sourceValues.data.settings,
++    memberDirectoryTeams: sourceValues.data.teams,
++    onAdminRequestsControllerStateChange:
++      handleAdminRequestsControllerStateChange,
++    onMemberDirectoryDeferredStateChange:
++      handleMemberDirectoryDeferredStateChange,
++    onSignupPolicyDeferredStateChange:
++      handleSignupPolicyDeferredStateChange,
++    signupPolicySettings: sourceValues.data.settings,
++  };
+ };
+-
+-export const APP_DYNAMIC_CONTEXT_GROUP_NAMES =
+-  APP_DYNAMIC_CONTEXT_GROUP_ORDER;
+diff -ruN '--exclude=package-meta' '--exclude=.performance-reports' /mnt/data/seq_009_base/src/context/useAppContextAssembler.js /mnt/data/seq_009_work/src/context/useAppContextAssembler.js
+--- /mnt/data/seq_009_base/src/context/useAppContextAssembler.js	2026-08-01 15:03:28.000000000 +0000
++++ /mnt/data/seq_009_work/src/context/useAppContextAssembler.js	2026-08-01 16:58:01.214797279 +0000
+@@ -76,7 +76,7 @@
+ } from '../features/auth/useAdminAccountManagementController.js';
+ import { getUserLaptopStatusLabel } from '../features/requests/useRentalDerivedSelectors.js';
+ import useStableContextGroups from '../hooks/useStableContextGroups.js';
+-import { mergeAppDynamicContextValueGroups } from './appDynamicContextValues.js';
++import { createAppDynamicContextValues } from './appDynamicContextValues.js';
+ import { pushAppPath } from '../routing/appRoutes.js';
+ import {
+   formatDateWithKoreanWeekday,
+@@ -185,14 +185,12 @@
+  */
+ export default function useAppContextAssembler({
+   adminTab,
+-  dynamicValueGroups,
++  dynamicSourceValues,
+   hasFirebaseAuthSession,
+   isUserDirectoryAccessRestricted,
+   userTab,
+ }) {
+-  const dynamicValues = mergeAppDynamicContextValueGroups(
+-    dynamicValueGroups
+-  );
++  const dynamicValues = createAppDynamicContextValues(dynamicSourceValues);
+ 
+   const contextGroups = useStableContextGroups(
+     {
+diff -ruN '--exclude=package-meta' '--exclude=.performance-reports' /mnt/data/seq_009_base/tools/audit-app-flow-contracts.mjs /mnt/data/seq_009_work/tools/audit-app-flow-contracts.mjs
+--- /mnt/data/seq_009_base/tools/audit-app-flow-contracts.mjs	2026-08-01 16:51:30.000000000 +0000
++++ /mnt/data/seq_009_work/tools/audit-app-flow-contracts.mjs	2026-08-01 16:58:33.042796270 +0000
+@@ -75,6 +75,8 @@
+ const appNavigationController = read('src/routing/useAppNavigationController.js');
+ const rentalDataSubscriptionController = read('src/features/requests/useRentalDataSubscriptionController.js');
+ const adminAccountManagementController = read('src/features/auth/useAdminAccountManagementController.js');
++const appContextAssembler = read('src/context/useAppContextAssembler.js');
++const appDynamicContextValues = read('src/context/appDynamicContextValues.js');
+ 
+ const protectedTabs = extractStringSet(
+   appRoutes,
+@@ -415,6 +417,46 @@
+   'App no longer imports the administrator account form factory solely for tab-entry initialization.'
+ );
+ 
++
++check(
++  appSource.includes('const dynamicContextSourceValues = {') &&
++    appSource.includes('dynamicSourceValues: dynamicContextSourceValues,'),
++  'App supplies a flat dynamic context source contract to the context assembler.'
++);
++check(
++  !appSource.includes('const dynamicContextValueGroups = {') &&
++    !appSource.includes('dynamicValueGroups: dynamicContextValueGroups,'),
++  'App no longer owns feature-grouped dynamic context assembly.'
++);
++check(
++  appContextAssembler.includes("import { createAppDynamicContextValues } from './appDynamicContextValues.js';") &&
++    appContextAssembler.includes('const dynamicValues = createAppDynamicContextValues(dynamicSourceValues);'),
++  'The context assembler derives the flat dynamic context contract in the context layer.'
++);
++[
++  'adminRequestsPrerequisitesReady',
++  'memberAccountsPrerequisitesReady',
++  'memberDirectoryBorrowers',
++  'memberDirectorySettings',
++  'memberDirectoryTeams',
++  'onAdminRequestsControllerStateChange',
++  'onMemberDirectoryDeferredStateChange',
++  'onSignupPolicyDeferredStateChange',
++  'signupPolicySettings',
++].forEach((derivedKey) => {
++  check(
++    appDynamicContextValues.includes(derivedKey),
++    `Dynamic context derivation exposes ${derivedKey}.`
++  );
++});
++check(
++  appDynamicContextValues.includes('...dynamicValues') &&
++    appDynamicContextValues.includes('handleAdminRequestsControllerStateChange,') &&
++    appDynamicContextValues.includes('handleMemberDirectoryDeferredStateChange,') &&
++    appDynamicContextValues.includes('handleSignupPolicyDeferredStateChange,'),
++  'Internal deferred-state handlers are converted to public context aliases instead of leaking as extra keys.'
++);
++
+ const dashboardHeadingBlocks = [
+   ...adminDashboard.matchAll(/<DashboardSectionHeading([\s\S]*?)\/>/g),
+ ].map((match) => match[1]);

@@ -1,0 +1,93 @@
+{
+  "task": "P2_DYNAMIC_CONTEXT_ASSEMBLY_BOUNDARY_SPLIT",
+  "inputPackage": "rental-system-admin-account-tab-initialization-effect-transfer-20260802_0152_deployment_package.zip",
+  "app": {
+    "before": {
+      "lines": 2173,
+      "bytes": 67448,
+      "useState": 1,
+      "useEffect": 0,
+      "useMemo": 0,
+      "useRef": 0,
+      "useCallback": 0
+    },
+    "after": {
+      "lines": 2137,
+      "bytes": 66164,
+      "useState": 1,
+      "useEffect": 0,
+      "useMemo": 0,
+      "useRef": 0,
+      "useCallback": 0
+    }
+  },
+  "contextAssembly": {
+    "before": {
+      "intermediateFeatureGroups": 7,
+      "publicDynamicKeys": 385,
+      "sourceKeys": 379,
+      "appOwnedDerivedKeys": 9
+    },
+    "after": {
+      "intermediateFeatureGroups": 0,
+      "publicDynamicKeys": 385,
+      "sourceKeys": 379,
+      "contextLayerDerivedKeys": 9
+    },
+    "missingPublicKeys": [],
+    "addedPublicKeys": [],
+    "duplicateSourceKeys": 0
+  },
+  "sourceGraph": {
+    "before": {
+      "initialModuleCount": 87,
+      "initialSourceBytes": 880935,
+      "dynamicEntryCount": 14
+    },
+    "after": {
+      "initialModuleCount": 87,
+      "initialSourceBytes": 879655,
+      "dynamicEntryCount": 14
+    }
+  },
+  "firestore": {
+    "before": {
+      "onSnapshot": 35,
+      "getDocs": 48,
+      "getDoc": 28,
+      "getCountFromServer": 18,
+      "runTransaction": 24,
+      "setDoc": 34,
+      "updateDoc": 5,
+      "deleteDoc": 6
+    },
+    "after": {
+      "onSnapshot": 35,
+      "getDocs": 48,
+      "getDoc": 28,
+      "getCountFromServer": 18,
+      "runTransaction": 24,
+      "setDoc": 34,
+      "updateDoc": 5,
+      "deleteDoc": 6
+    }
+  },
+  "validation": {
+    "reactHookSourceFiles": 144,
+    "appFlowContracts": 118,
+    "relativeImports": 430,
+    "missingRelativeImports": 0,
+    "typescriptNormalizedBefore": 319,
+    "typescriptNormalizedAfter": 319,
+    "typescriptNewDiagnostics": 0,
+    "uiStringsBefore": {
+      "unique": 1670,
+      "occurrences": 2229
+    },
+    "uiStringsAfter": {
+      "unique": 1670,
+      "occurrences": 2229
+    },
+    "dynamicContextRuntimeChecks": 13
+  }
+}

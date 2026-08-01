@@ -1,48 +1,33 @@
-const APP_DYNAMIC_CONTEXT_GROUP_ORDER = Object.freeze([
-  'shared',
-  'identity',
-  'rental',
-  'boards',
-  'operations',
-  'content',
-  'dialogs',
-]);
-
 /**
- * 기능별로 나눈 App 동적 컨텍스트 값을 기존 평면 계약으로 병합합니다.
- * 중복 키는 조립 경계 오류이므로 즉시 감지하고, 누락된 그룹은 빈 객체로 처리합니다.
+ * App.jsx가 제공하는 평면 동적 상태·행동에서 화면 컨텍스트용 파생 값을 조립합니다.
+ * 화면별 키 선택은 appContextSlices.js가 담당하므로 App.jsx는 기능 그룹 내부 구조를 알 필요가 없습니다.
  */
-export const mergeAppDynamicContextValueGroups = (groups = {}) => {
-  const mergedValues = {};
-  const ownerByKey = new Map();
-  const supportedGroupNames = new Set(APP_DYNAMIC_CONTEXT_GROUP_ORDER);
+export const createAppDynamicContextValues = (sourceValues = {}) => {
+  const {
+    handleAdminRequestsControllerStateChange,
+    handleMemberDirectoryDeferredStateChange,
+    handleSignupPolicyDeferredStateChange,
+    ...dynamicValues
+  } = sourceValues;
 
-  Object.keys(groups).forEach((groupName) => {
-    if (!supportedGroupNames.has(groupName)) {
-      throw new Error(
-        `Unsupported App context value group: "${groupName}".`
-      );
-    }
-  });
-
-  APP_DYNAMIC_CONTEXT_GROUP_ORDER.forEach((groupName) => {
-    const groupValues = groups[groupName] || {};
-
-    Object.entries(groupValues).forEach(([key, value]) => {
-      const existingOwner = ownerByKey.get(key);
-      if (existingOwner) {
-        throw new Error(
-          `App context value "${key}" is duplicated in "${existingOwner}" and "${groupName}".`
-        );
-      }
-
-      ownerByKey.set(key, groupName);
-      mergedValues[key] = value;
-    });
-  });
-
-  return mergedValues;
+  return {
+    ...dynamicValues,
+    adminRequestsPrerequisitesReady:
+      sourceValues.firebaseAuthReady &&
+      sourceValues.currentAuthRoleReady &&
+      !sourceValues.currentAuthRoleErrorMessage &&
+      Boolean(sourceValues.firebaseAuthUser?.uid),
+    memberAccountsPrerequisitesReady:
+      sourceValues.firebaseAuthReady && sourceValues.currentAuthRoleReady,
+    memberDirectoryBorrowers: sourceValues.data.borrowers,
+    memberDirectorySettings: sourceValues.data.settings,
+    memberDirectoryTeams: sourceValues.data.teams,
+    onAdminRequestsControllerStateChange:
+      handleAdminRequestsControllerStateChange,
+    onMemberDirectoryDeferredStateChange:
+      handleMemberDirectoryDeferredStateChange,
+    onSignupPolicyDeferredStateChange:
+      handleSignupPolicyDeferredStateChange,
+    signupPolicySettings: sourceValues.data.settings,
+  };
 };
-
-export const APP_DYNAMIC_CONTEXT_GROUP_NAMES =
-  APP_DYNAMIC_CONTEXT_GROUP_ORDER;

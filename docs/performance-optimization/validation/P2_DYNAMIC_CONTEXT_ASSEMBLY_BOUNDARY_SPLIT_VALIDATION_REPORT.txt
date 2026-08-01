@@ -1,0 +1,72 @@
+P2 동적 Context 조립 경계 분리 검증 보고서
+=============================================
+
+[입력 기준본]
+rental-system-admin-account-tab-initialization-effect-transfer-20260802_0152_deployment_package.zip
+SHA-256: af672715c33efb3ee46029fc7771a6c4798a5fdbf64bca4e3e07dafaffc1c036
+
+[변경 범위]
+- src/App.jsx
+- src/context/appDynamicContextValues.js
+- src/context/useAppContextAssembler.js
+- tools/audit-app-flow-contracts.mjs
+- SOURCE_GRAPH_ANALYSIS_REPORT.json 및 작업 보고 산출물
+
+[입력 검증]
+- ZIP 압축 무결성: PASS
+- PACKAGE_FILES: 493개
+- 실제 프로젝트 파일: 493개
+- 파일 집합 일치: PASS
+- SHA-256: 493/493 PASS
+- 누적 삭제 경로: 65개
+
+[Context 계약]
+- 수정 전 최종 공개 동적 키: 385개
+- 수정 후 최종 공개 동적 키: 385개
+- App 원본 동적 값: 379개
+- 파생 공개 키: 9개
+- 내부 전용 콜백: 3개
+- 누락: 0개
+- 추가: 0개
+- 중복: 0개
+- 런타임 모의 검증: 13/13 PASS
+
+[소스 검증]
+- 비 JSX JavaScript/MJS node --check: PASS
+- React Hook 감사: PASS, 144개 소스
+- 앱 흐름 계약 감사: PASS, 118개 계약
+- 사용자 경로 계약: 11개 PASS
+- 관리자 탭 계약: 20개 PASS
+- 상대 import: 430개, 누락 0건
+- Firestore strict 감사: PASS, 129개 호출
+- TypeScript 동일 환경 비교: 기준본 319 / 수정본 319 / 신규 0 / 제거 0
+- 사용자 표시 문자열: 고유 1,670 / 발생 2,229, 추가 0 / 삭제 0
+
+[구조 변화]
+- App.jsx: 2,173줄 -> 2,137줄 (-36)
+- App.jsx: 67,448 bytes -> 66,164 bytes (-1,284)
+- App.jsx 직접 useState: 1 -> 1
+- App.jsx 직접 useEffect/useMemo/useRef/useCallback: 모두 0 유지
+- 초기 정적 모듈: 87 -> 87
+- 초기 정적 소스: 880,935 -> 879,655 bytes (-1,280)
+- 동적 엔트리: 14 -> 14
+
+[Firestore 영향]
+- onSnapshot: 35 -> 35
+- getDocs: 48 -> 48
+- getDoc: 28 -> 28
+- getCountFromServer: 18 -> 18
+- runTransaction: 24 -> 24
+- setDoc: 34 -> 34
+- updateDoc: 5 -> 5
+- deleteDoc: 6 -> 6
+- Rules 변경: 없음
+- 인덱스 변경: 없음
+- Firebase 설정 변경: 없음
+
+[빌드]
+- npm run prebuild: PASS
+- npm ci: FAIL (외부 내부 npm 저장소 E404)
+- 실패 패키지: yargs-parser-21.1.1.tgz
+- 실제 Vite 빌드: 미수행
+- 로컬 deploy.ps1에서 npm run build 성공 확인 필요

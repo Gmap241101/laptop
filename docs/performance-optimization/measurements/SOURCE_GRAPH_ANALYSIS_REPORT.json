@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-08-01T16:51:31.474Z",
+  "generatedAt": "2026-08-01T17:00:01.871Z",
   "initialModuleCount": 87,
-  "initialSourceBytes": 880935,
+  "initialSourceBytes": 879655,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 67448
+      "bytes": 66164
     },
     {
       "file": "src/features/requests/useUserRequestHistoryActionController.js",
@@ -201,7 +201,7 @@
     },
     {
       "file": "src/context/useAppContextAssembler.js",
-      "bytes": 5129
+      "bytes": 5115
     },
     {
       "file": "src/user/UserFooter.jsx",
@@ -313,7 +313,7 @@
     },
     {
       "file": "src/context/appDynamicContextValues.js",
-      "bytes": 1360
+      "bytes": 1378
     },
     {
       "file": "src/features/requests/useSelectedRentalAssetAvailabilityGuard.js",
