@@ -211,20 +211,12 @@ import {
 } from './features/members/memberAccountPolicy.js';
 import { useDebouncedValue } from './hooks/useDebouncedValue.js';
 import {
-  PROTECTED_USER_TABS,
-  clearUserLoginReturnTarget,
-  getInitialFooterPageIdFromPath,
-  getInitialUserTabFromPath,
-  getInitialViewFromPath,
-  getRouteStateFromPath,
-  normalizeUserLoginReturnTarget,
   pushAppPath,
   readUserAccountStatusView,
-  readUserLoginReturnTarget,
-  replaceAppPath,
-  writeUserAccountStatusView,
-  writeUserLoginReturnTarget,
 } from './routing/appRoutes.js';
+import useAppNavigationController, {
+  useAppNavigationState,
+} from './routing/useAppNavigationController.js';
 import {
   normalizeAssetReservations,
   toRentalAvailabilityRequest,
@@ -1029,13 +1021,18 @@ function App() {
   } = useRentalDataSubscriptionState();
   const publicCatalogMigrationAdminUidRef = useRef('');
 
-  const pendingProtectedUserTabRef = useRef('');
-
-  const [view, setView] = useState(getInitialViewFromPath); // 'user' | 'admin'
-  const [userTab, setUserTab] = useState(getInitialUserTabFromPath); // 'home' | 'rental' | 'history' | 'notice' | 'faq' | 'footerPage' | 'notFound'
-  const [selectedFooterPageId, setSelectedFooterPageId] = useState(getInitialFooterPageIdFromPath);
-  const [isCommunityMenuOpen, setIsCommunityMenuOpen] = useState(false);
-  const communityMenuRef = useRef(null);
+  const {
+    communityMenuRef,
+    isCommunityMenuOpen,
+    pendingProtectedUserTabRef,
+    selectedFooterPageId,
+    setIsCommunityMenuOpen,
+    setSelectedFooterPageId,
+    setUserTab,
+    setView,
+    userTab,
+    view,
+  } = useAppNavigationState();
   const [query, setQuery] = useState('');
   const [selectedAssetCategory, setSelectedAssetCategory] = useState('전체');
   const [availabilityFilter, setAvailabilityFilter] = useState(STATUS.AVAILABLE);
@@ -1234,401 +1231,6 @@ function App() {
   const [appDialogsActivated, setAppDialogsActivated] = useState(false);
 
 
-  const getCurrentUserLoginReturnTarget = () => {
-    if (view !== 'user') {
-      return null;
-    }
-
-    if (
-      userTab === 'login' ||
-      userTab === 'signup'
-    ) {
-      return readUserLoginReturnTarget();
-    }
-
-    if (userTab === 'notFound') {
-      return {
-        userTab: 'home',
-        routeId: '',
-        noticePostId: '',
-      };
-    }
-
-    return normalizeUserLoginReturnTarget({
-      userTab,
-      routeId:
-        userTab === 'footerPage'
-          ? selectedFooterPageId
-          : '',
-      noticePostId:
-        userTab === 'notice'
-          ? selectedNoticePostId
-          : '',
-    });
-  };
-
-  const saveCurrentUserLoginReturnTarget = () => {
-    const returnTarget =
-      getCurrentUserLoginReturnTarget();
-
-    if (!returnTarget) {
-      return readUserLoginReturnTarget();
-    }
-
-    return writeUserLoginReturnTarget(
-      returnTarget
-    );
-  };
-
-  const navigateToUserReturnTarget = (
-    rawTarget,
-    { replace = false } = {}
-  ) => {
-    let target =
-      normalizeUserLoginReturnTarget(
-        rawTarget
-      ) || {
-        userTab: 'rental',
-        routeId: '',
-        noticePostId: '',
-      };
-
-    if (target.userTab === 'footerPage') {
-      const requestedFooterPage =
-        footerPages.find(
-          (page) =>
-            page.id === target.routeId &&
-            page.enabled !== false
-        );
-
-      if (
-        footerPagesReady &&
-        !requestedFooterPage
-      ) {
-        target = {
-          userTab: 'home',
-          routeId: '',
-          noticePostId: '',
-        };
-      }
-    }
-
-    const updatePath = replace
-      ? replaceAppPath
-      : pushAppPath;
-
-    updatePath(
-      'user',
-      target.userTab,
-      target.routeId
-    );
-
-    setView('user');
-    setUserTab(target.userTab);
-    setSelectedFooterPageId(
-      target.userTab === 'footerPage'
-        ? target.routeId
-        : ''
-    );
-    setSelectedNoticePostId(
-      target.userTab === 'notice'
-        ? target.noticePostId
-        : ''
-    );
-    setIsCommunityMenuOpen(false);
-
-    if (typeof window !== 'undefined') {
-      window.scrollTo({
-        top: 0,
-        behavior: 'auto',
-      });
-    }
-  };
-
-  const goToProtectedUserTab = (
-    nextUserTab
-  ) => {
-    if (
-      !PROTECTED_USER_TABS.has(
-        nextUserTab
-      )
-    ) {
-      return;
-    }
-
-    if (
-      !firebaseAuthReady ||
-      !currentAuthRoleReady
-    ) {
-      pendingProtectedUserTabRef.current =
-        nextUserTab;
-      return;
-    }
-
-    pendingProtectedUserTabRef.current = '';
-
-    if (!hasFirebaseAuthSession) {
-      writeUserLoginReturnTarget({
-        userTab: nextUserTab,
-        routeId: '',
-        noticePostId: '',
-      });
-
-      replaceAppPath('user', 'login');
-      setView('user');
-      setUserTab('login');
-      setSelectedFooterPageId('');
-      setSelectedNoticePostId('');
-      setIsCommunityMenuOpen(false);
-      return;
-    }
-
-    const directoryPolicyEnabled = isRegisteredMemberSignupRequired(
-      data.settings
-    );
-    const directoryVersion = getSafeMemberDirectoryVersion(data.settings);
-    const directoryAccessRestricted = Boolean(
-      userProfile &&
-        (userProfile.status === USER_PROFILE_STATUS.PROFILE_REQUIRED ||
-          (directoryPolicyEnabled &&
-            userProfile.status === USER_PROFILE_STATUS.ACTIVE &&
-            Number(userProfile.directoryVerifiedVersion || 0) !==
-              directoryVersion))
-    );
-
-    if (directoryAccessRestricted) {
-      replaceAppPath('user', 'mypage');
-      setView('user');
-      setUserTab('mypage');
-      setSelectedFooterPageId('');
-      setSelectedNoticePostId('');
-      setIsCommunityMenuOpen(false);
-      triggerToast(
-        '등록 정보 확인 후 서비스를 이용해 주세요.',
-        'error'
-      );
-      return;
-    }
-
-    navigateToUserReturnTarget({
-      userTab: nextUserTab,
-      routeId: '',
-      noticePostId: '',
-    });
-  };
-
-  useEffect(() => {
-    if (
-      !firebaseAuthReady ||
-      !currentAuthRoleReady ||
-      !pendingProtectedUserTabRef.current
-    ) {
-      return;
-    }
-
-    const pendingUserTab =
-      pendingProtectedUserTabRef.current;
-
-    pendingProtectedUserTabRef.current = '';
-    goToProtectedUserTab(pendingUserTab);
-  }, [
-    firebaseAuthReady,
-    currentAuthRoleReady,
-    firebaseAuthUser,
-    hasFirebaseAuthSession,
-  ]);
-
-  const goToUserHome = () => {
-    pendingProtectedUserTabRef.current = '';
-
-    if (
-      userTab === 'login' ||
-      userTab === 'signup'
-    ) {
-      clearUserLoginReturnTarget();
-    }
-
-    navigateToUserReturnTarget({
-      userTab: 'home',
-      routeId: '',
-      noticePostId: '',
-    });
-  };
-
-  const goToUserNotice = () => {
-    pendingProtectedUserTabRef.current = '';
-
-    if (
-      userTab === 'login' ||
-      userTab === 'signup'
-    ) {
-      clearUserLoginReturnTarget();
-    }
-
-    navigateToUserReturnTarget({
-      userTab: 'notice',
-      routeId: '',
-      noticePostId: '',
-    });
-  };
-
-  const goToUserFaq = () => {
-    pendingProtectedUserTabRef.current = '';
-
-    if (
-      userTab === 'login' ||
-      userTab === 'signup'
-    ) {
-      clearUserLoginReturnTarget();
-    }
-
-    navigateToUserReturnTarget({
-      userTab: 'faq',
-      routeId: '',
-      noticePostId: '',
-    });
-  };
-
-  const goToAppHome = () => {
-    if (
-      view === 'admin' &&
-      typeof window !== 'undefined' &&
-      window.__mkHomeBannerUnsaved &&
-      !window.confirm('저장하지 않은 초기화면 배너 또는 표시 설정 변경사항이 있습니다. 저장하지 않고 이동하시겠습니까?')
-    ) {
-      return;
-    }
-
-    if (typeof window !== 'undefined') {
-      window.__mkHomeBannerUnsaved = false;
-    }
-
-    if (view === 'admin') {
-      pushAppPath('admin');
-      setView('admin');
-      handleAdminTabChange('dashboard');
-      setIsCommunityMenuOpen(false);
-      return;
-    }
-
-    goToUserHome();
-  };
-
-  useEffect(() => {
-    const syncViewWithPath = () => {
-      const nextRouteState = getRouteStateFromPath();
-
-      pendingProtectedUserTabRef.current = '';
-
-      if (
-        nextRouteState.redirectTo &&
-        window.location.pathname !== nextRouteState.redirectTo
-      ) {
-        window.history.replaceState(null, '', nextRouteState.redirectTo);
-      }
-
-      if (
-        nextRouteState.view === 'user' &&
-        ![
-          'login',
-          'signup',
-          'rental',
-          'history',
-        ].includes(
-          nextRouteState.userTab
-        )
-      ) {
-        clearUserLoginReturnTarget();
-      }
-
-      setView(nextRouteState.view);
-      setUserTab(nextRouteState.userTab);
-      setSelectedFooterPageId(nextRouteState.footerPageId || '');
-      setIsCommunityMenuOpen(false);
-    };
-
-    syncViewWithPath();
-
-    window.addEventListener('popstate', syncViewWithPath);
-
-    return () => {
-      window.removeEventListener('popstate', syncViewWithPath);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (
-      view !== 'user' ||
-      !PROTECTED_USER_TABS.has(userTab)
-    ) {
-      return;
-    }
-
-    if (
-      !firebaseAuthReady ||
-      !currentAuthRoleReady ||
-      userAuthLoading ||
-      adminLogoutInProgress ||
-      userStatusLogoutInProgressRef.current
-    ) {
-      return;
-    }
-
-    if (hasFirebaseAuthSession) {
-      return;
-    }
-
-    writeUserLoginReturnTarget({
-      userTab,
-      routeId: '',
-      noticePostId: '',
-    });
-
-    replaceAppPath('user', 'login');
-    setUserTab('login');
-    setSelectedFooterPageId('');
-    setSelectedNoticePostId('');
-    setIsCommunityMenuOpen(false);
-  }, [
-    view,
-    userTab,
-    firebaseAuthReady,
-    currentAuthRoleReady,
-    firebaseAuthUser,
-    hasFirebaseAuthSession,
-    userAuthLoading,
-    adminLogoutInProgress,
-  ]);
-
-    useEffect(() => {
-    if (!isCommunityMenuOpen) return;
-
-    const handleCommunityMenuOutsideClick = (event) => {
-      if (
-        communityMenuRef.current &&
-        !communityMenuRef.current.contains(event.target)
-      ) {
-        setIsCommunityMenuOpen(false);
-      }
-    };
-
-    const handleCommunityMenuEscape = (event) => {
-      if (event.key === 'Escape') {
-        setIsCommunityMenuOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleCommunityMenuOutsideClick, true);
-    document.addEventListener('touchstart', handleCommunityMenuOutsideClick, true);
-    document.addEventListener('keydown', handleCommunityMenuEscape, true);
-
-    return () => {
-      document.removeEventListener('mousedown', handleCommunityMenuOutsideClick, true);
-      document.removeEventListener('touchstart', handleCommunityMenuOutsideClick, true);
-      document.removeEventListener('keydown', handleCommunityMenuEscape, true);
-    };
-  }, [isCommunityMenuOpen]);
-
   useEffect(() => {
     const updateAssetGridColumns = () => {
       if (window.matchMedia('(min-width: 1280px)').matches) {
@@ -1820,6 +1422,46 @@ function App() {
     firebaseAuthUserUid: firebaseAuthUser?.uid || '',
     isAdminAuthenticated,
     triggerToast,
+    view,
+  });
+
+  const {
+    goToProtectedUserTab,
+    goToUserFaq,
+    goToUserHome,
+    goToUserMypage,
+    goToUserNotice,
+    navigateToAdminHome,
+    navigateToUserReturnTarget,
+    openFooterPage,
+    saveCurrentUserLoginReturnTarget,
+    showUserAccountStatus,
+  } = useAppNavigationController({
+    adminLogoutInProgress,
+    communityMenuRef,
+    currentAuthAdminAccount,
+    currentAuthRoleReady,
+    dataSettings: data.settings,
+    firebaseAuthReady,
+    footerPages,
+    footerPagesReady,
+    hasFirebaseAuthSession,
+    isAdminAuthenticated,
+    isCommunityMenuOpen,
+    pendingProtectedUserTabRef,
+    selectedFooterPageId,
+    selectedNoticePostId,
+    setIsCommunityMenuOpen,
+    setSelectedFooterPageId,
+    setSelectedNoticePostId,
+    setUserAccountStatusView,
+    setUserTab,
+    setView,
+    triggerToast,
+    userAuthLoading,
+    userProfile,
+    userStatusLogoutInProgressRef,
+    userTab,
     view,
   });
 
@@ -2807,16 +2449,6 @@ function App() {
       withdrawalLoading,
     });
 
-  const showUserAccountStatus = useCallback((type) => {
-    const nextView = { type };
-    writeUserAccountStatusView(nextView);
-    setUserAccountStatusView(nextView);
-    replaceAppPath('user', 'accountStatus');
-    setView('user');
-    setUserTab('accountStatus');
-    setIsCommunityMenuOpen(false);
-  }, []);
-
   const { verifyUserDirectoryMembership } =
     useUserMembershipStatusController({
       authenticatedAdminId,
@@ -2970,25 +2602,6 @@ function App() {
     userTab,
   });
 
-  const goToUserMypage = () => {
-    if (currentAuthAdminAccount && !isAdminAuthenticated) {
-      pushAppPath('admin');
-      setView('admin');
-      setIsCommunityMenuOpen(false);
-
-      triggerToast(
-        '관리자 계정은 관리자 모드에서 다시 인증해 주세요.',
-        'error'
-      );
-
-      return;
-    }
-
-    pushAppPath('user', 'mypage');
-    setView('user');
-    setUserTab('mypage');
-    setIsCommunityMenuOpen(false);
-  };
 
 
   const submitUserAuthForm = (event, providedTermsSubmission = null) =>
@@ -3242,6 +2855,31 @@ function App() {
         return true;
       },
     });
+  };
+
+  const goToAppHome = () => {
+    if (
+      view === 'admin' &&
+      typeof window !== 'undefined' &&
+      window.__mkHomeBannerUnsaved &&
+      !window.confirm(
+        '저장하지 않은 초기화면 배너 또는 표시 설정 변경사항이 있습니다. 저장하지 않고 이동하시겠습니까?'
+      )
+    ) {
+      return;
+    }
+
+    if (typeof window !== 'undefined') {
+      window.__mkHomeBannerUnsaved = false;
+    }
+
+    if (view === 'admin') {
+      navigateToAdminHome();
+      handleAdminTabChange('dashboard');
+      return;
+    }
+
+    goToUserHome();
   };
 
   const shouldShowStats =
@@ -3951,26 +3589,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     triggerToast,
   });
 
-  const openFooterPage = (pageId) => {
-    const normalizedPageId = String(pageId || '').trim();
-    if (!normalizedPageId) return;
 
-    pendingProtectedUserTabRef.current = '';
-
-    if (
-      userTab === 'login' ||
-      userTab === 'signup'
-    ) {
-      clearUserLoginReturnTarget();
-    }
-
-    pushAppPath('user', 'footerPage', normalizedPageId);
-    setView('user');
-    setUserTab('footerPage');
-    setSelectedFooterPageId(normalizedPageId);
-    setIsCommunityMenuOpen(false);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
 
   const toggleFaqPost = (postId) => {
     setExpandedFaqPostId(
@@ -4743,7 +4362,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
           ) : null}
           <div className="mt-6 flex justify-center gap-2">
             <Button variant="outline" onClick={() => window.location.reload()}>다시 확인</Button>
-            <Button onClick={() => { replaceAppPath('admin', 'home'); setView('admin'); }}>관리자 모드</Button>
+            <Button onClick={() => navigateToAdminHome({ replace: true })}>관리자 모드</Button>
           </div>
         </div>
       </div>

@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-08-01T09:07:16.710Z",
-  "initialModuleCount": 68,
-  "initialSourceBytes": 858961,
+  "generatedAt": "2026-08-01T09:37:34.566Z",
+  "initialModuleCount": 69,
+  "initialSourceBytes": 863209,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 147858
+      "bytes": 138899
     },
     {
       "file": "src/features/requests/useUserRequestHistoryActionController.js",
@@ -94,6 +94,10 @@
     {
       "file": "src/features/boards/useAdminFooterContentController.js",
       "bytes": 15384
+    },
+    {
+      "file": "src/routing/useAppNavigationController.js",
+      "bytes": 13207
     },
     {
       "file": "src/features/boards/useAdminBoardPostController.js",

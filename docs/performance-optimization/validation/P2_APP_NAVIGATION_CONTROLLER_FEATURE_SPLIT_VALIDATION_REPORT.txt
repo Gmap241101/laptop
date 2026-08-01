@@ -1,0 +1,34 @@
+P2 APP NAVIGATION CONTROLLER FEATURE SPLIT VALIDATION
+=====================================================
+Generated: 2026-08-01 18:37 KST
+Baseline: rental-system-popup-footer-content-subscription-controller-split-20260801_1810_deployment_package.zip
+
+[PASS] New module syntax: src/routing/useAppNavigationController.js
+[PASS] React Hook import audit: 125 source files
+[PASS] Firestore strict audit: 129 total calls, 0 unapproved warnings/errors
+[PASS] Relative import audit: 379 imports, 0 missing
+[PASS] TypeScript baseline comparison: 0 newly introduced semantic errors
+       - only additional diagnostic is the expected missing external React type for the new source file in this no-node_modules environment
+[PASS] Korean UI string preservation
+       - before occurrences: 2,196
+       - after occurrences: 2,196
+       - removed: 0
+       - added: 0
+[PASS] Navigation runtime mock
+       - valid footer route
+       - invalid footer fallback to home
+       - account status replace navigation
+       - protected route login redirect
+       - admin account mypage redirect
+[PASS] App route state ownership moved to useAppNavigationState
+[PASS] Browser popstate synchronization moved
+[PASS] Protected user route guard moved
+[PASS] Community menu outside-click and Escape handling moved
+[PASS] Firestore access counts unchanged
+[PASS] Firestore Rules/index/package dependency files unchanged
+[PASS] REMOVED_FILES.txt retained without new deletion entries
+
+[VITE BUILD NOT COMPLETED]
+npm ci --ignore-scripts failed because the internal npm registry returned E404 for:
+yargs-parser-21.1.1.tgz
+The local deploy.ps1 build must succeed before deployment is considered complete.

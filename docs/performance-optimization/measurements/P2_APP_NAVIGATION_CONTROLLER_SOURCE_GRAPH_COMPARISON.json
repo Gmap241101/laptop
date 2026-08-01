@@ -1,0 +1,34 @@
+{
+  "generatedAt": "2026-08-01T09:37:51Z",
+  "task": "P2_APP_NAVIGATION_CONTROLLER_FEATURE_SPLIT",
+  "baselinePackage": "rental-system-popup-footer-content-subscription-controller-split-20260801_1810_deployment_package.zip",
+  "before": {
+    "appLines": 5089,
+    "appBytes": 147858,
+    "appUseStateCalls": 29,
+    "appUseEffectCalls": 13,
+    "appUseRefCalls": 7,
+    "initialModuleCount": 68,
+    "initialSourceBytes": 858961
+  },
+  "after": {
+    "appLines": 4708,
+    "appBytes": 138899,
+    "appUseStateCalls": 25,
+    "appUseEffectCalls": 9,
+    "appUseRefCalls": 5,
+    "navigationControllerLines": 511,
+    "navigationControllerBytes": 13207,
+    "initialModuleCount": 69,
+    "initialSourceBytes": 863209
+  },
+  "delta": {
+    "appLines": -381,
+    "appBytes": -8959,
+    "appUseStateCalls": -4,
+    "appUseEffectCalls": -4,
+    "appUseRefCalls": -2,
+    "initialModuleCount": 1,
+    "initialSourceBytes": 4248
+  }
+}
