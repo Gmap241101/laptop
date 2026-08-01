@@ -1,33 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  doc,
-  limit as firestoreLimit,
-  onSnapshot,
-  orderBy,
-  runTransaction,
-} from 'firebase/firestore';
-import { AlertCircle, Settings } from 'lucide-react';
-
+import { onSnapshot } from 'firebase/firestore';
 import { Button, DateInputWithWeekday } from './components/CommonUI.jsx';
 import useAppContextAssembler from './context/useAppContextAssembler.js';
 import AppShell from './shell/AppShell.jsx';
+import AppBlockingStateScreen, {
+  getAppBlockingState,
+} from './shell/AppBlockingStateScreen.jsx';
 
 import useGlobalUiController, {
   useGlobalUiState,
 } from './ui/useGlobalUiController.js';
 
+import { richTextHtmlToText } from './utils/richTextCore.js';
 import {
-  isRichTextEmpty,
-  legacyTextToRichHtml,
-  richTextHtmlToText,
-  sanitizeRichTextHtml,
-} from './utils/richTextCore.js';
-import {
-  RENTAL_ASSET_NUMBERS_COLLECTION_REF,
-  RENTAL_REQUESTS_COLLECTION_REF,
   SITE_SETTINGS_DOC_REF,
-  USER_ACCOUNTS_COLLECTION_REF,
-  db,
   firebaseAuth,
 } from './firebase.js';
 
@@ -36,34 +22,24 @@ import {
 import {
   ADMIN_REQUEST_QUICK_FILTER,
   ADMIN_REQUEST_TAB,
-  DISPLAY_STATUS,
-  RENTAL_REQUEST_STATUS_TRANSITIONS,
   STATUS,
   USER_REQUEST_ACTION,
   USER_REQUEST_REVIEW_STATUS,
-  statusStyle,
 } from './constants/appConstants.js';
 
 
-import {
-  PROFILE_REQUIRED_REASON,
-  USER_PROFILE_STATUS,
-} from './constants/memberConstants.js';
+import { USER_PROFILE_STATUS } from './constants/memberConstants.js';
 import {
   DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY,
   DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS,
   createDefaultRequestForm,
-  findSameAssetBlockingRequest,
   getAdjustedRentalDueDate,
   getAdjustedRentalStartDate,
   getNonBusinessDayReason,
-  getLaptopRepresentativeRequest,
   getMaxRentalDueDate,
   getRentalDueDateAdjustmentReason,
-  getRentalExtensionEligibility,
   getRentalStartAdjustmentInfo,
   getSafeMaxRentalDays,
-  isRentalDueBusinessDay,
   isTemporaryDateInputValue,
   normalizeHolidayList,
 } from './domain/rentalPolicy.js';
@@ -106,7 +82,6 @@ import useAdminSplitStorageMigrationController, {
   useAdminSplitStorageMigrationState,
 } from './features/settings/useAdminSplitStorageMigrationController.js';
 import {
-  getClaimStatus,
   getSafeMemberDirectoryVersion,
   isRegisteredMemberSignupRequired,
 } from './features/members/memberAccountPolicy.js';
@@ -117,7 +92,6 @@ import {
 import useAppNavigationController, {
   useAppNavigationState,
 } from './routing/useAppNavigationController.js';
-import { toRentalAvailabilityRequest } from './services/publicAssetCatalog.js';
 import useUserAccountRecoveryController from './features/auth/useUserAccountRecoveryController.js';
 import useAuthIdentityPolicySubscriptionController, {
   normalizeAdminAccounts,
@@ -128,7 +102,6 @@ import useUserLoginController, {
 } from './features/auth/useUserLoginController.js';
 import useUserSignupController from './features/auth/useUserSignupController.js';
 import useAdminAuthenticationController, {
-  createDefaultAdminAuthForm,
   useAdminAuthenticationState,
 } from './features/auth/useAdminAuthenticationController.js';
 import {
@@ -175,13 +148,10 @@ import {
 
 import {
   DEFAULT_SITE_SETTINGS,
-  SERVICE_MODE,
-  getServiceBlockReason,
   normalizeSiteSettings,
 } from './utils/systemSettings.js';
 
 import {
-  formatDate,
   formatDateWithKoreanWeekday,
   getDisplayRentalStatus,
   getFirestoreTimestampMillis,
@@ -207,25 +177,10 @@ const getUserRequestReviewStatusLabel = (status) => {
   return '상태 미지정';
 };
 
-const ADMIN_PASSWORD_HASH_ALGORITHM = 'PBKDF2-SHA-256';
-const ADMIN_PASSWORD_HASH_ITERATIONS = 120000;
-
 const createMemberPolicyError = (code) => {
   const error = new Error(code);
   error.code = code;
   return error;
-};
-
-const getProfileRequiredReasonLabel = (reason) => {
-  if (reason === PROFILE_REQUIRED_REASON.DUPLICATE_IDENTITY) {
-    return '부서·성명 중복 계정';
-  }
-
-  if (reason === PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH) {
-    return '등록 명부 불일치';
-  }
-
-  return '등록 정보 확인 필요';
 };
 
 const getUserAuthErrorMessage = (error) => {
@@ -377,101 +332,6 @@ const getAdminFirebaseAuthErrorMessage = (error) => {
   return getUserAuthErrorMessage(error).replace('사용자 인증', '관리자 인증');
 };
 
-const bufferToHex = (buffer) =>
-  Array.from(new Uint8Array(buffer))
-    .map((value) => value.toString(16).padStart(2, '0'))
-    .join('');
-
-const hexToBuffer = (hex) => {
-  const bytes = new Uint8Array(hex.length / 2);
-
-  for (let index = 0; index < bytes.length; index += 1) {
-    bytes[index] = parseInt(hex.slice(index * 2, index * 2 + 2), 16);
-  }
-
-  return bytes;
-};
-
-const createAdminPasswordSalt = () => {
-  const saltValues = new Uint8Array(16);
-  window.crypto.getRandomValues(saltValues);
-
-  return bufferToHex(saltValues);
-};
-
-const hashAdminPasswordLegacy = async (password) => {
-  const encoder = new TextEncoder();
-  const passwordBuffer = encoder.encode(password);
-  const hashBuffer = await window.crypto.subtle.digest('SHA-256', passwordBuffer);
-
-  return bufferToHex(hashBuffer);
-};
-
-const hashAdminPassword = async (
-  password,
-  salt,
-  iterations = ADMIN_PASSWORD_HASH_ITERATIONS
-) => {
-  const encoder = new TextEncoder();
-
-  const keyMaterial = await window.crypto.subtle.importKey(
-    'raw',
-    encoder.encode(password),
-    'PBKDF2',
-    false,
-    ['deriveBits']
-  );
-
-  const derivedBits = await window.crypto.subtle.deriveBits(
-    {
-      name: 'PBKDF2',
-      salt: hexToBuffer(salt),
-      iterations,
-      hash: 'SHA-256',
-    },
-    keyMaterial,
-    256
-  );
-
-  return bufferToHex(derivedBits);
-};
-
-const createAdminPasswordSecurity = async (password) => {
-  const passwordSalt = createAdminPasswordSalt();
-  const passwordHash = await hashAdminPassword(password, passwordSalt);
-
-  return {
-    passwordHash,
-    passwordSalt,
-    passwordHashAlgorithm: ADMIN_PASSWORD_HASH_ALGORITHM,
-    passwordHashIterations: ADMIN_PASSWORD_HASH_ITERATIONS,
-  };
-};
-
-const verifyAdminPassword = async (password, adminAccount) => {
-  if (
-    adminAccount.passwordHashAlgorithm === ADMIN_PASSWORD_HASH_ALGORITHM &&
-    adminAccount.passwordSalt
-  ) {
-    const passwordHash = await hashAdminPassword(
-      password,
-      adminAccount.passwordSalt,
-      Number(adminAccount.passwordHashIterations) || ADMIN_PASSWORD_HASH_ITERATIONS
-    );
-
-    return {
-      matched: passwordHash === adminAccount.passwordHash,
-      shouldMigratePassword: false,
-    };
-  }
-
-  const legacyPasswordHash = await hashAdminPasswordLegacy(password);
-
-  return {
-    matched: legacyPasswordHash === adminAccount.passwordHash,
-    shouldMigratePassword: legacyPasswordHash === adminAccount.passwordHash,
-  };
-};
 
 function App() {
   const [data, setData] = useState(initialData);
@@ -482,7 +342,6 @@ function App() {
     adminAccounts,
     adminAccountsLoadErrorMessage,
     adminAccountsReady,
-    adminAccountsRemoteHasData,
     currentAuthAdminAccount,
     currentAuthRoleErrorMessage,
     currentAuthRoleReady,
@@ -569,14 +428,11 @@ function App() {
     faqCategoriesReady,
     faqCursorByPageRef,
     faqCursorKeyRef,
-    faqHasNextPage,
     faqPage,
-    faqPinnedPosts,
     faqPosts,
     faqPostsLoadErrorMessage,
     faqPostsReady,
     faqQuery,
-    faqRegularPagePosts,
     faqRegularTotalCount,
     faqSearchWithinCategory,
     noticeBoardConfig,
@@ -584,13 +440,10 @@ function App() {
     noticeBoardConfigReady,
     noticeCursorByPageRef,
     noticeCursorKeyRef,
-    noticeHasNextPage,
     noticePage,
-    noticePinnedPosts,
     noticePosts,
     noticePostsLoadErrorMessage,
     noticePostsReady,
-    noticeRegularPagePosts,
     noticeRegularTotalCount,
     selectedNoticePostId,
     selectedNoticePostOverride,
@@ -1934,7 +1787,6 @@ function App() {
     currentUserRentalRestrictionStatus,
     currentUserRequests,
     editLaptopInsertIndex,
-    filteredBorrowers,
     filteredLaptops,
     isPeriodBasedRentalMode,
     rentalDeviceSectionDescription,
@@ -3302,76 +3154,20 @@ function App() {
     isUserDirectoryAccessRestricted,
     userTab,
   });
-  if (firebaseLoadErrorMessage) {
+  const appBlockingState = getAppBlockingState({
+    firebaseLoadErrorMessage,
+    normalizedSiteSettings,
+    view,
+  });
+
+  if (appBlockingState) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6 font-sans text-slate-900">
-        <div className="w-full max-w-lg rounded-2xl border border-rose-200 bg-white p-6 shadow-sm">
-          <div className="mb-4 flex items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
-              <AlertCircle size={22} />
-            </div>
-            <div>
-              <h1 className="text-base font-bold text-slate-900">
-                Firebase 데이터를 불러오지 못했습니다.
-              </h1>
-              <p className="mt-0.5 text-xs text-slate-500">
-                원격 DB 보호를 위해 화면 데이터 저장을 차단했습니다.
-              </p>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-rose-100 bg-rose-50 p-4 text-xs leading-relaxed text-rose-700">
-            {firebaseLoadErrorMessage}
-          </div>
-
-          <div className="mt-5 flex justify-end">
-            <Button
-              variant="outline"
-              onClick={() => window.location.reload()}
-            >
-              다시 불러오기
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (
-    view === 'user' &&
-    normalizedSiteSettings.serviceMode === SERVICE_MODE.MAINTENANCE
-  ) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 px-6 font-sans text-white">
-        <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-white/10 p-7 text-center shadow-2xl backdrop-blur">
-          <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl mk-brand-gradient-tr text-white">
-            <Settings size={28} />
-          </div>
-          <h1 className="mt-5 text-2xl font-black">
-            {normalizedSiteSettings.maintenanceTitle}
-          </h1>
-          <p className="mx-auto mt-3 max-w-xl text-sm leading-7 text-slate-300">
-            {normalizedSiteSettings.maintenanceMessage}
-          </p>
-          {normalizedSiteSettings.maintenanceEndAt ? (
-            <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs text-slate-200">
-              예상 종료: {normalizedSiteSettings.maintenanceEndAt.replace('T', ' ')}
-            </div>
-          ) : null}
-          {normalizedSiteSettings.supportEnabled ? (
-            <div className="mt-5 text-xs leading-6 text-slate-300">
-              {normalizedSiteSettings.supportMessage ? <div>{normalizedSiteSettings.supportMessage}</div> : null}
-              {normalizedSiteSettings.supportDepartment ? <div>담당 부서: {normalizedSiteSettings.supportDepartment}</div> : null}
-              {normalizedSiteSettings.supportEmail ? <div>이메일: {normalizedSiteSettings.supportEmail}</div> : null}
-              {normalizedSiteSettings.supportPhone ? <div>전화번호: {normalizedSiteSettings.supportPhone}</div> : null}
-            </div>
-          ) : null}
-          <div className="mt-6 flex justify-center gap-2">
-            <Button variant="outline" onClick={() => window.location.reload()}>다시 확인</Button>
-            <Button onClick={() => navigateToAdminHome({ replace: true })}>관리자 모드</Button>
-          </div>
-        </div>
-      </div>
+      <AppBlockingStateScreen
+        firebaseLoadErrorMessage={firebaseLoadErrorMessage}
+        navigateToAdminHome={navigateToAdminHome}
+        normalizedSiteSettings={normalizedSiteSettings}
+        state={appBlockingState}
+      />
     );
   }
 

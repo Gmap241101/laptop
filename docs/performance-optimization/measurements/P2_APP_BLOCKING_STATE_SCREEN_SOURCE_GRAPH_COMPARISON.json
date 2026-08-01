@@ -1,0 +1,25 @@
+{
+  "generatedAt": "2026-08-01T22:50:00+09:00",
+  "task": "P2_APP_BLOCKING_STATE_SCREEN_FEATURE_SPLIT",
+  "baselinePackage": "rental-system-app-dynamic-context-values-split-20260801_2227_deployment_package.zip",
+  "outputPackage": "rental-system-app-blocking-state-screen-split-20260801_2250_deployment_package.zip",
+  "baseline": {
+    "initialModuleCount": 77,
+    "initialSourceBytes": 877545,
+    "dynamicEntryCount": 14,
+    "appJsxBytes": 104035
+  },
+  "modified": {
+    "initialModuleCount": 78,
+    "initialSourceBytes": 879075,
+    "dynamicEntryCount": 14,
+    "appJsxBytes": 101082,
+    "blockingStateScreenBytes": 4483
+  },
+  "delta": {
+    "initialModuleCount": 1,
+    "initialSourceBytes": 1530,
+    "dynamicEntryCount": 0,
+    "appJsxBytes": -2953
+  }
+}

@@ -26,7 +26,6 @@ export default function AdminRequestsPanel({ ctx }) {
     dashboardSummary,
     data,
     formatFirestoreTimestamp,
-    getDisplayRentalStatus,
     getExtensionRequestAvailableDate,
     getRentalExtensionPeriod,
     getRequestDisplayStatus,

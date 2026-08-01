@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-08-01T13:27:44.976Z",
-  "initialModuleCount": 77,
-  "initialSourceBytes": 877545,
+  "generatedAt": "2026-08-01T13:53:04.285Z",
+  "initialModuleCount": 78,
+  "initialSourceBytes": 875401,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 104035
+      "bytes": 97415
     },
     {
       "file": "src/features/requests/useUserRequestHistoryActionController.js",
@@ -185,7 +185,7 @@
     },
     {
       "file": "src/components/RichTextContent.jsx",
-      "bytes": 5222
+      "bytes": 5215
     },
     {
       "file": "src/context/useAppContextAssembler.js",
@@ -206,6 +206,10 @@
     {
       "file": "src/features/boards/useBoardProgressiveSearch.js",
       "bytes": 4622
+    },
+    {
+      "file": "src/shell/AppBlockingStateScreen.jsx",
+      "bytes": 4483
     },
     {
       "file": "src/components/TermsVersionDialog.jsx",

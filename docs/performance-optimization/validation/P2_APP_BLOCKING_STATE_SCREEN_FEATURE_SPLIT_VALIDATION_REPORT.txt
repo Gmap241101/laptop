@@ -1,0 +1,76 @@
+P2 APP BLOCKING STATE SCREEN FEATURE SPLIT VALIDATION
+=====================================================
+Generated: 2026-08-01 22:50 KST
+Baseline: rental-system-app-dynamic-context-values-split-20260801_2227_deployment_package.zip
+Output: rental-system-app-blocking-state-screen-split-20260801_2250_deployment_package.zip
+
+[Feature contract]
+Firebase load error screen moved: PASS
+Maintenance mode screen moved: PASS
+Firebase error precedence: PASS
+User maintenance blocking: PASS
+Admin maintenance bypass: PASS
+Reload actions preserved: PASS
+Admin navigation uses replace=true: PASS
+Original Tailwind class contract preserved: PASS
+
+[Source validation]
+TypeScript no-resolve parse: PASS (134 files)
+React hook import audit: PASS (134 files)
+Relative imports checked: 409
+Missing relative imports: 0
+Firestore strict audit: PASS
+Firestore total calls: 129
+onSnapshot: 35
+getDocs: 48
+getDoc: 28
+getCountFromServer: 18
+Unapproved Firestore warnings: 0
+Unapproved Firestore errors: 0
+
+[Runtime mock]
+Firebase error precedence over maintenance: PASS
+User maintenance state: PASS
+Admin maintenance bypass: PASS
+Normal user state: PASS
+
+[Text preservation]
+Baseline Korean token occurrences: 690
+Modified Korean token occurrences: 690
+Removed Korean tokens: 0
+Added Korean tokens: 0
+
+[Source graph]
+Baseline initial modules: 77
+Modified initial modules: 78
+Delta: +1
+Baseline initial source bytes: 877545
+Modified initial source bytes: 879075
+Delta: +1530
+Baseline dynamic entries: 14
+Modified dynamic entries: 14
+
+[App.jsx]
+Baseline: 3419 lines, 104035 bytes
+Modified: 3363 lines, 101082 bytes
+Delta: -56 lines, -2953 bytes
+
+[New component]
+src/shell/AppBlockingStateScreen.jsx: 132 lines, 4483 bytes
+
+[Vite build]
+Status: NOT COMPLETED
+Command: npm ci --ignore-scripts
+Failure: Internal npm registry E404 for yargs-parser-21.1.1.tgz
+Production build must be confirmed by local deploy.ps1.
+
+[REMOVED_FILES]
+Baseline file preserved byte-for-byte: PASS
+Actual removed paths: 67
+Duplicate paths: 0
+
+[Package structure]
+Project files listed: 434
+Package metadata files: 4
+Expected ZIP entries: 438
+Forbidden paths expected: 0

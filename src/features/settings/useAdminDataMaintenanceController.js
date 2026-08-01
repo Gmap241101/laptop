@@ -354,7 +354,6 @@ export default function useAdminDataMaintenanceController({
       const assetIds = new Set(assets.docs.map((item) => item.id));
       const requestIds = new Set(requests.docs.map((item) => item.id));
       const userIds = new Set(users.docs.map((item) => item.id));
-      const availabilityIds = new Set(availability.docs.map((item) => item.id));
       const recoveryById = new Map(
         recovery.docs.map((item) => [item.id, item.data() || {}])
       );

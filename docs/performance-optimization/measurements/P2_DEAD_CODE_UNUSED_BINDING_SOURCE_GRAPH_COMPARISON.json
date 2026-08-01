@@ -1,0 +1,42 @@
+{
+  "baselinePackage": "rental-system-app-blocking-state-screen-split-20260801_2250_deployment_package.zip",
+  "outputPackage": "rental-system-dead-code-unused-binding-cleanup-20260801_2255_deployment_package.zip",
+  "appJsx": {
+    "baselineLines": 3363,
+    "outputLines": 3215,
+    "lineDelta": -148,
+    "baselineBytes": 101082,
+    "outputBytes": 97415,
+    "byteDelta": -3667
+  },
+  "unusedBindings": {
+    "baselineTotalTs6133": 53,
+    "outputTotalTs6133": 0,
+    "baselineAppTs6133": 34,
+    "outputAppTs6133": 0
+  },
+  "sourceGraph": {
+    "baselineInitialModuleCount": 78,
+    "outputInitialModuleCount": 78,
+    "initialModuleDelta": 0,
+    "baselineInitialSourceBytes": 879075,
+    "outputInitialSourceBytes": 875401,
+    "initialSourceByteDelta": -3674,
+    "baselineDynamicEntryCount": 14,
+    "outputDynamicEntryCount": 14,
+    "dynamicEntryDelta": 0
+  },
+  "sourceChange": {
+    "changedSourceFiles": 10,
+    "insertions": 5,
+    "deletions": 169
+  },
+  "firestore": {
+    "baselineTotalCalls": 129,
+    "outputTotalCalls": 129,
+    "onSnapshot": 35,
+    "getDocs": 48,
+    "getDoc": 28,
+    "getCountFromServer": 18
+  }
+}

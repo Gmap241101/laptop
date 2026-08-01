@@ -25,7 +25,6 @@ export default function AdminHolidayManagementPanel({ ctx }) {
     Trash2,
     addTempHoliday,
     applyHolidayImportConflictChoice,
-    data,
     deleteTempHoliday,
     discardHolidayChanges,
     formatDateWithKoreanWeekday,

@@ -31,7 +31,6 @@ export default function UserBoardPanel({ ctx }) {
     motion,
     noticePosts,
     noticePostsLoadErrorMessage,
-    noticePostsPerPage,
     noticePostsReady,
     noticeRegularPostNumberById,
     noticeTotalPages,

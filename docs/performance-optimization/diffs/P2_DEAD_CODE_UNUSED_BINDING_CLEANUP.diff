@@ -1,0 +1,424 @@
+diff --git a/src/App.jsx b/src/App.jsx
+index d282a19..5ba53c4 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -1,11 +1,5 @@
+ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+-import {
+-  doc,
+-  limit as firestoreLimit,
+-  onSnapshot,
+-  orderBy,
+-  runTransaction,
+-} from 'firebase/firestore';
++import { onSnapshot } from 'firebase/firestore';
+ import { Button, DateInputWithWeekday } from './components/CommonUI.jsx';
+ import useAppContextAssembler from './context/useAppContextAssembler.js';
+ import AppShell from './shell/AppShell.jsx';
+@@ -17,18 +11,9 @@ import useGlobalUiController, {
+   useGlobalUiState,
+ } from './ui/useGlobalUiController.js';
+ 
++import { richTextHtmlToText } from './utils/richTextCore.js';
+ import {
+-  isRichTextEmpty,
+-  legacyTextToRichHtml,
+-  richTextHtmlToText,
+-  sanitizeRichTextHtml,
+-} from './utils/richTextCore.js';
+-import {
+-  RENTAL_ASSET_NUMBERS_COLLECTION_REF,
+-  RENTAL_REQUESTS_COLLECTION_REF,
+   SITE_SETTINGS_DOC_REF,
+-  USER_ACCOUNTS_COLLECTION_REF,
+-  db,
+   firebaseAuth,
+ } from './firebase.js';
+ 
+@@ -37,34 +22,24 @@ import {
+ import {
+   ADMIN_REQUEST_QUICK_FILTER,
+   ADMIN_REQUEST_TAB,
+-  DISPLAY_STATUS,
+-  RENTAL_REQUEST_STATUS_TRANSITIONS,
+   STATUS,
+   USER_REQUEST_ACTION,
+   USER_REQUEST_REVIEW_STATUS,
+-  statusStyle,
+ } from './constants/appConstants.js';
+ 
+ 
+-import {
+-  PROFILE_REQUIRED_REASON,
+-  USER_PROFILE_STATUS,
+-} from './constants/memberConstants.js';
++import { USER_PROFILE_STATUS } from './constants/memberConstants.js';
+ import {
+   DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY,
+   DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS,
+   createDefaultRequestForm,
+-  findSameAssetBlockingRequest,
+   getAdjustedRentalDueDate,
+   getAdjustedRentalStartDate,
+   getNonBusinessDayReason,
+-  getLaptopRepresentativeRequest,
+   getMaxRentalDueDate,
+   getRentalDueDateAdjustmentReason,
+-  getRentalExtensionEligibility,
+   getRentalStartAdjustmentInfo,
+   getSafeMaxRentalDays,
+-  isRentalDueBusinessDay,
+   isTemporaryDateInputValue,
+   normalizeHolidayList,
+ } from './domain/rentalPolicy.js';
+@@ -107,7 +82,6 @@ import useAdminSplitStorageMigrationController, {
+   useAdminSplitStorageMigrationState,
+ } from './features/settings/useAdminSplitStorageMigrationController.js';
+ import {
+-  getClaimStatus,
+   getSafeMemberDirectoryVersion,
+   isRegisteredMemberSignupRequired,
+ } from './features/members/memberAccountPolicy.js';
+@@ -118,7 +92,6 @@ import {
+ import useAppNavigationController, {
+   useAppNavigationState,
+ } from './routing/useAppNavigationController.js';
+-import { toRentalAvailabilityRequest } from './services/publicAssetCatalog.js';
+ import useUserAccountRecoveryController from './features/auth/useUserAccountRecoveryController.js';
+ import useAuthIdentityPolicySubscriptionController, {
+   normalizeAdminAccounts,
+@@ -129,7 +102,6 @@ import useUserLoginController, {
+ } from './features/auth/useUserLoginController.js';
+ import useUserSignupController from './features/auth/useUserSignupController.js';
+ import useAdminAuthenticationController, {
+-  createDefaultAdminAuthForm,
+   useAdminAuthenticationState,
+ } from './features/auth/useAdminAuthenticationController.js';
+ import {
+@@ -176,12 +148,10 @@ import {
+ 
+ import {
+   DEFAULT_SITE_SETTINGS,
+-  getServiceBlockReason,
+   normalizeSiteSettings,
+ } from './utils/systemSettings.js';
+ 
+ import {
+-  formatDate,
+   formatDateWithKoreanWeekday,
+   getDisplayRentalStatus,
+   getFirestoreTimestampMillis,
+@@ -207,27 +177,12 @@ const getUserRequestReviewStatusLabel = (status) => {
+   return '상태 미지정';
+ };
+ 
+-const ADMIN_PASSWORD_HASH_ALGORITHM = 'PBKDF2-SHA-256';
+-const ADMIN_PASSWORD_HASH_ITERATIONS = 120000;
+-
+ const createMemberPolicyError = (code) => {
+   const error = new Error(code);
+   error.code = code;
+   return error;
+ };
+ 
+-const getProfileRequiredReasonLabel = (reason) => {
+-  if (reason === PROFILE_REQUIRED_REASON.DUPLICATE_IDENTITY) {
+-    return '부서·성명 중복 계정';
+-  }
+-
+-  if (reason === PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH) {
+-    return '등록 명부 불일치';
+-  }
+-
+-  return '등록 정보 확인 필요';
+-};
+-
+ const getUserAuthErrorMessage = (error) => {
+   const errorCode = error?.code || '';
+   const errorMessage = error?.message || '';
+@@ -377,101 +332,6 @@ const getAdminFirebaseAuthErrorMessage = (error) => {
+   return getUserAuthErrorMessage(error).replace('사용자 인증', '관리자 인증');
+ };
+ 
+-const bufferToHex = (buffer) =>
+-  Array.from(new Uint8Array(buffer))
+-    .map((value) => value.toString(16).padStart(2, '0'))
+-    .join('');
+-
+-const hexToBuffer = (hex) => {
+-  const bytes = new Uint8Array(hex.length / 2);
+-
+-  for (let index = 0; index < bytes.length; index += 1) {
+-    bytes[index] = parseInt(hex.slice(index * 2, index * 2 + 2), 16);
+-  }
+-
+-  return bytes;
+-};
+-
+-const createAdminPasswordSalt = () => {
+-  const saltValues = new Uint8Array(16);
+-  window.crypto.getRandomValues(saltValues);
+-
+-  return bufferToHex(saltValues);
+-};
+-
+-const hashAdminPasswordLegacy = async (password) => {
+-  const encoder = new TextEncoder();
+-  const passwordBuffer = encoder.encode(password);
+-  const hashBuffer = await window.crypto.subtle.digest('SHA-256', passwordBuffer);
+-
+-  return bufferToHex(hashBuffer);
+-};
+-
+-const hashAdminPassword = async (
+-  password,
+-  salt,
+-  iterations = ADMIN_PASSWORD_HASH_ITERATIONS
+-) => {
+-  const encoder = new TextEncoder();
+-
+-  const keyMaterial = await window.crypto.subtle.importKey(
+-    'raw',
+-    encoder.encode(password),
+-    'PBKDF2',
+-    false,
+-    ['deriveBits']
+-  );
+-
+-  const derivedBits = await window.crypto.subtle.deriveBits(
+-    {
+-      name: 'PBKDF2',
+-      salt: hexToBuffer(salt),
+-      iterations,
+-      hash: 'SHA-256',
+-    },
+-    keyMaterial,
+-    256
+-  );
+-
+-  return bufferToHex(derivedBits);
+-};
+-
+-const createAdminPasswordSecurity = async (password) => {
+-  const passwordSalt = createAdminPasswordSalt();
+-  const passwordHash = await hashAdminPassword(password, passwordSalt);
+-
+-  return {
+-    passwordHash,
+-    passwordSalt,
+-    passwordHashAlgorithm: ADMIN_PASSWORD_HASH_ALGORITHM,
+-    passwordHashIterations: ADMIN_PASSWORD_HASH_ITERATIONS,
+-  };
+-};
+-
+-const verifyAdminPassword = async (password, adminAccount) => {
+-  if (
+-    adminAccount.passwordHashAlgorithm === ADMIN_PASSWORD_HASH_ALGORITHM &&
+-    adminAccount.passwordSalt
+-  ) {
+-    const passwordHash = await hashAdminPassword(
+-      password,
+-      adminAccount.passwordSalt,
+-      Number(adminAccount.passwordHashIterations) || ADMIN_PASSWORD_HASH_ITERATIONS
+-    );
+-
+-    return {
+-      matched: passwordHash === adminAccount.passwordHash,
+-      shouldMigratePassword: false,
+-    };
+-  }
+-
+-  const legacyPasswordHash = await hashAdminPasswordLegacy(password);
+-
+-  return {
+-    matched: legacyPasswordHash === adminAccount.passwordHash,
+-    shouldMigratePassword: legacyPasswordHash === adminAccount.passwordHash,
+-  };
+-};
+ 
+ function App() {
+   const [data, setData] = useState(initialData);
+@@ -482,7 +342,6 @@ function App() {
+     adminAccounts,
+     adminAccountsLoadErrorMessage,
+     adminAccountsReady,
+-    adminAccountsRemoteHasData,
+     currentAuthAdminAccount,
+     currentAuthRoleErrorMessage,
+     currentAuthRoleReady,
+@@ -569,14 +428,11 @@ function App() {
+     faqCategoriesReady,
+     faqCursorByPageRef,
+     faqCursorKeyRef,
+-    faqHasNextPage,
+     faqPage,
+-    faqPinnedPosts,
+     faqPosts,
+     faqPostsLoadErrorMessage,
+     faqPostsReady,
+     faqQuery,
+-    faqRegularPagePosts,
+     faqRegularTotalCount,
+     faqSearchWithinCategory,
+     noticeBoardConfig,
+@@ -584,13 +440,10 @@ function App() {
+     noticeBoardConfigReady,
+     noticeCursorByPageRef,
+     noticeCursorKeyRef,
+-    noticeHasNextPage,
+     noticePage,
+-    noticePinnedPosts,
+     noticePosts,
+     noticePostsLoadErrorMessage,
+     noticePostsReady,
+-    noticeRegularPagePosts,
+     noticeRegularTotalCount,
+     selectedNoticePostId,
+     selectedNoticePostOverride,
+@@ -1934,7 +1787,6 @@ function App() {
+     currentUserRentalRestrictionStatus,
+     currentUserRequests,
+     editLaptopInsertIndex,
+-    filteredBorrowers,
+     filteredLaptops,
+     isPeriodBasedRentalMode,
+     rentalDeviceSectionDescription,
+diff --git a/src/admin/AdminHolidayManagementPanel.jsx b/src/admin/AdminHolidayManagementPanel.jsx
+index f5b6aee..a2061c8 100644
+--- a/src/admin/AdminHolidayManagementPanel.jsx
++++ b/src/admin/AdminHolidayManagementPanel.jsx
+@@ -25,7 +25,6 @@ export default function AdminHolidayManagementPanel({ ctx }) {
+     Trash2,
+     addTempHoliday,
+     applyHolidayImportConflictChoice,
+-    data,
+     deleteTempHoliday,
+     discardHolidayChanges,
+     formatDateWithKoreanWeekday,
+diff --git a/src/admin/AdminRequestsPanel.jsx b/src/admin/AdminRequestsPanel.jsx
+index 8286ad1..4e8f6e1 100644
+--- a/src/admin/AdminRequestsPanel.jsx
++++ b/src/admin/AdminRequestsPanel.jsx
+@@ -26,7 +26,6 @@ export default function AdminRequestsPanel({ ctx }) {
+     dashboardSummary,
+     data,
+     formatFirestoreTimestamp,
+-    getDisplayRentalStatus,
+     getExtensionRequestAvailableDate,
+     getRentalExtensionPeriod,
+     getRequestDisplayStatus,
+diff --git a/src/admin/AdminSettingsPanel.jsx b/src/admin/AdminSettingsPanel.jsx
+index 5db1983..d8717f6 100644
+--- a/src/admin/AdminSettingsPanel.jsx
++++ b/src/admin/AdminSettingsPanel.jsx
+@@ -1,9 +1,6 @@
+ import { useEffect, useState } from 'react';
+ import {
+-  AlertTriangle,
+-  Archive,
+   CheckCircle2,
+-  Clock3,
+   Database,
+   Download,
+   FileSearch,
+@@ -13,12 +10,9 @@ import {
+   Play,
+   RefreshCw,
+   Save,
+-  ServerCog,
+-  Settings2,
+   ShieldAlert,
+   Trash2,
+   Upload,
+-  Wrench,
+ } from 'lucide-react';
+ import {
+   addDoc,
+@@ -184,7 +178,6 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE,
+     Input,
+     Select,
+     authenticatedAdminAccount,
+-    data,
+     finalizeSplitStorageMigration,
+     isSplitStorageReady,
+     siteSettings,
+diff --git a/src/admin/AdminWorkspace.jsx b/src/admin/AdminWorkspace.jsx
+index 7936171..b6bbd1f 100644
+--- a/src/admin/AdminWorkspace.jsx
++++ b/src/admin/AdminWorkspace.jsx
+@@ -71,11 +71,8 @@ function AdminWorkspace({ ctx, panelCtx }) {
+     adminTab,
+     authenticateAdmin,
+     currentAuthRoleErrorMessage,
+-    data,
+-    faqPosts,
+     goToUserHome,
+     handleAdminTabChange,
+-    noticePosts,
+     setAdminAuthForm,
+     setAdminTab,
+     shouldShowAdminAccountsErrorPage,
+diff --git a/src/components/RichTextContent.jsx b/src/components/RichTextContent.jsx
+index a9dec7e..bc4cac8 100644
+--- a/src/components/RichTextContent.jsx
++++ b/src/components/RichTextContent.jsx
+@@ -1,4 +1,4 @@
+-import React, { useEffect, useMemo, useRef } from 'react';
++import { useEffect, useMemo, useRef } from 'react';
+ import {
+   buildYouTubeEmbedUrl,
+   legacyTextToRichHtml,
+diff --git a/src/components/RichTextEditor.jsx b/src/components/RichTextEditor.jsx
+index 460ae68..86f70b7 100644
+--- a/src/components/RichTextEditor.jsx
++++ b/src/components/RichTextEditor.jsx
+@@ -1,4 +1,4 @@
+-import React, { useEffect, useMemo, useRef, useState } from 'react';
++import { useEffect, useRef, useState } from 'react';
+ import {
+   AlignCenter,
+   AlignLeft,
+diff --git a/src/dialogs/AppDialogs.jsx b/src/dialogs/AppDialogs.jsx
+index 65d2990..22c9eff 100644
+--- a/src/dialogs/AppDialogs.jsx
++++ b/src/dialogs/AppDialogs.jsx
+@@ -30,7 +30,6 @@ export default function AppDialogs({ ctx }) {
+     USER_REQUEST_ACTION,
+     X,
+     activeUserActionRentalRequest,
+-    addDaysFrom,
+     closeFaqPostDialog,
+     closeNoticePostDialog,
+     closePopupPostDialog,
+@@ -68,7 +67,6 @@ export default function AppDialogs({ ctx }) {
+     toast,
+     today,
+     triggerToast,
+-    userActionBorrowers,
+     userActionDialog,
+     userActionForm,
+     userActionSaving,
+diff --git a/src/features/settings/useAdminDataMaintenanceController.js b/src/features/settings/useAdminDataMaintenanceController.js
+index 175da6b..09a2f2c 100644
+--- a/src/features/settings/useAdminDataMaintenanceController.js
++++ b/src/features/settings/useAdminDataMaintenanceController.js
+@@ -354,7 +354,6 @@ export default function useAdminDataMaintenanceController({
+       const assetIds = new Set(assets.docs.map((item) => item.id));
+       const requestIds = new Set(requests.docs.map((item) => item.id));
+       const userIds = new Set(users.docs.map((item) => item.id));
+-      const availabilityIds = new Set(availability.docs.map((item) => item.id));
+       const recoveryById = new Map(
+         recovery.docs.map((item) => [item.id, item.data() || {}])
+       );
+diff --git a/src/user/UserBoardPanel.jsx b/src/user/UserBoardPanel.jsx
+index 63aa590..3079ebf 100644
+--- a/src/user/UserBoardPanel.jsx
++++ b/src/user/UserBoardPanel.jsx
+@@ -31,7 +31,6 @@ export default function UserBoardPanel({ ctx }) {
+     motion,
+     noticePosts,
+     noticePostsLoadErrorMessage,
+-    noticePostsPerPage,
+     noticePostsReady,
+     noticeRegularPostNumberById,
+     noticeTotalPages,
