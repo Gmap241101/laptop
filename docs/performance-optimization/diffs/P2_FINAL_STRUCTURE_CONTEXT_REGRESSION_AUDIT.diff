@@ -1,0 +1,208 @@
+diff -ruN '--exclude=package-meta' '--exclude=.performance-reports' '--exclude=node_modules' '--exclude=dist' /mnt/data/seq_010_base/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json /mnt/data/seq_010_work/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json
+--- /mnt/data/seq_010_base/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json	2026-08-01 17:00:00.000000000 +0000
++++ /mnt/data/seq_010_work/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json	2026-08-01 17:09:54.670774666 +0000
+@@ -1,11 +1,11 @@
+ {
+-  "generatedAt": "2026-08-01T17:00:01.871Z",
++  "generatedAt": "2026-08-01T17:09:54.673Z",
+   "initialModuleCount": 87,
+-  "initialSourceBytes": 879655,
++  "initialSourceBytes": 879450,
+   "files": [
+     {
+       "file": "src/App.jsx",
+-      "bytes": 66164
++      "bytes": 66036
+     },
+     {
+       "file": "src/features/requests/useUserRequestHistoryActionController.js",
+@@ -13,7 +13,7 @@
+     },
+     {
+       "file": "src/features/boards/useBoardContentSubscriptionController.js",
+-      "bytes": 31756
++      "bytes": 31736
+     },
+     {
+       "file": "src/features/requests/useAdminUserActionReviewController.js",
+@@ -69,7 +69,7 @@
+     },
+     {
+       "file": "src/features/auth/useAdminAuthenticationController.js",
+-      "bytes": 17574
++      "bytes": 17554
+     },
+     {
+       "file": "src/context/appContextSlices.js",
+@@ -89,7 +89,7 @@
+     },
+     {
+       "file": "src/features/boards/usePopupFooterContentSubscriptionController.js",
+-      "bytes": 15896
++      "bytes": 15859
+     },
+     {
+       "file": "src/features/requests/useUserRentalRequestController.js",
+diff -ruN '--exclude=package-meta' '--exclude=.performance-reports' '--exclude=node_modules' '--exclude=dist' /mnt/data/seq_010_base/src/App.jsx /mnt/data/seq_010_work/src/App.jsx
+--- /mnt/data/seq_010_base/src/App.jsx	2026-08-01 16:58:00.000000000 +0000
++++ /mnt/data/seq_010_work/src/App.jsx	2026-08-01 17:09:18.106775825 +0000
+@@ -132,11 +132,7 @@
+ } from './features/auth/adminAuditActorService.js';
+ 
+ 
+-import {
+-  formatDateWithKoreanWeekday,
+-  getDisplayRentalStatus,
+-  today,
+-} from './utils/appUtils.js';
++import { getDisplayRentalStatus } from './utils/appUtils.js';
+ 
+ 
+ // --- 상태 및 스타일 정의 ---
+@@ -866,7 +862,6 @@
+     adminAuthAbsoluteExpiresAt,
+     adminAuthExpiresAt,
+     adminAuthForm,
+-    adminAuthLoading,
+     adminAuthPolicyVersion,
+     adminLogoutInProgress,
+     adminLogoutInProgressRef,
+@@ -1205,7 +1200,6 @@
+       activeFaqCategoryId,
+       adminFaqPage,
+       adminNoticePage,
+-      adminNoticeQuery,
+       adminTab,
+       debouncedAdminNoticeQuery,
+       debouncedFaqQuery,
+@@ -1285,7 +1279,6 @@
+     setPopupPostsLoadErrorMessage,
+     setPopupPostsReady,
+     setTemporarilyDismissedPopupVersions,
+-    temporarilyDismissedPopupVersions,
+     triggerToast,
+     userTab,
+     view,
+diff -ruN '--exclude=package-meta' '--exclude=.performance-reports' '--exclude=node_modules' '--exclude=dist' /mnt/data/seq_010_base/src/features/auth/useAdminAuthenticationController.js /mnt/data/seq_010_work/src/features/auth/useAdminAuthenticationController.js
+--- /mnt/data/seq_010_base/src/features/auth/useAdminAuthenticationController.js	2026-08-01 22:50:00.000000000 +0000
++++ /mnt/data/seq_010_work/src/features/auth/useAdminAuthenticationController.js	2026-08-01 17:07:55.870778431 +0000
+@@ -98,7 +98,6 @@
+   adminAuthAbsoluteExpiresAt,
+   adminAuthExpiresAt,
+   adminAuthForm,
+-  adminAuthLoading,
+   adminAuthPolicyVersion,
+   adminLogoutInProgress,
+   adminLogoutInProgressRef,
+diff -ruN '--exclude=package-meta' '--exclude=.performance-reports' '--exclude=node_modules' '--exclude=dist' /mnt/data/seq_010_base/src/features/boards/useBoardContentSubscriptionController.js /mnt/data/seq_010_work/src/features/boards/useBoardContentSubscriptionController.js
+--- /mnt/data/seq_010_base/src/features/boards/useBoardContentSubscriptionController.js	2026-08-01 22:50:00.000000000 +0000
++++ /mnt/data/seq_010_work/src/features/boards/useBoardContentSubscriptionController.js	2026-08-01 17:07:55.870778431 +0000
+@@ -217,7 +217,6 @@
+   activeFaqCategoryId,
+   adminFaqPage,
+   adminNoticePage,
+-  adminNoticeQuery,
+   adminTab,
+   debouncedAdminNoticeQuery,
+   debouncedFaqQuery,
+diff -ruN '--exclude=package-meta' '--exclude=.performance-reports' '--exclude=node_modules' '--exclude=dist' /mnt/data/seq_010_base/src/features/boards/usePopupFooterContentSubscriptionController.js /mnt/data/seq_010_work/src/features/boards/usePopupFooterContentSubscriptionController.js
+--- /mnt/data/seq_010_base/src/features/boards/usePopupFooterContentSubscriptionController.js	2026-08-01 22:50:00.000000000 +0000
++++ /mnt/data/seq_010_work/src/features/boards/usePopupFooterContentSubscriptionController.js	2026-08-01 17:07:55.874778431 +0000
+@@ -160,7 +160,6 @@
+   setPopupPostsLoadErrorMessage,
+   setPopupPostsReady,
+   setTemporarilyDismissedPopupVersions,
+-  temporarilyDismissedPopupVersions,
+   triggerToast,
+   userTab,
+   view,
+diff -ruN '--exclude=package-meta' '--exclude=.performance-reports' '--exclude=node_modules' '--exclude=dist' /mnt/data/seq_010_base/tools/audit-app-flow-contracts.mjs /mnt/data/seq_010_work/tools/audit-app-flow-contracts.mjs
+--- /mnt/data/seq_010_base/tools/audit-app-flow-contracts.mjs	2026-08-01 16:58:32.000000000 +0000
++++ /mnt/data/seq_010_work/tools/audit-app-flow-contracts.mjs	2026-08-01 17:07:55.894778430 +0000
+@@ -77,6 +77,9 @@
+ const adminAccountManagementController = read('src/features/auth/useAdminAccountManagementController.js');
+ const appContextAssembler = read('src/context/useAppContextAssembler.js');
+ const appDynamicContextValues = read('src/context/appDynamicContextValues.js');
++const adminAuthenticationController = read('src/features/auth/useAdminAuthenticationController.js');
++const boardContentSubscriptionController = read('src/features/boards/useBoardContentSubscriptionController.js');
++const popupFooterContentSubscriptionController = read('src/features/boards/usePopupFooterContentSubscriptionController.js');
+ 
+ const protectedTabs = extractStringSet(
+   appRoutes,
+@@ -457,6 +460,76 @@
+   'Internal deferred-state handlers are converted to public context aliases instead of leaking as extra keys.'
+ );
+ 
++const appDirectHookCalls = {
++  useCallback: [...appSource.matchAll(/\buseCallback\s*\(/g)].length,
++  useEffect: [...appSource.matchAll(/\buseEffect\s*\(/g)].length,
++  useMemo: [...appSource.matchAll(/\buseMemo\s*\(/g)].length,
++  useRef: [...appSource.matchAll(/\buseRef\s*\(/g)].length,
++  useState: [...appSource.matchAll(/\buseState\s*\(/g)].length,
++};
++check(
++  appDirectHookCalls.useState === 1 &&
++    appSource.includes('const [data, setData] = useState(initialData);'),
++  'App retains only the top-level compatibility data state.'
++);
++check(
++  appDirectHookCalls.useCallback === 0 &&
++    appDirectHookCalls.useEffect === 0 &&
++    appDirectHookCalls.useMemo === 0 &&
++    appDirectHookCalls.useRef === 0,
++  'App has no residual direct effect, memo, ref, or callback hooks.'
++);
++check(
++  !appSource.includes('formatDateWithKoreanWeekday') &&
++    !/\btoday\b/.test(appSource.split("from './utils/appUtils.js';")[0].split('import').at(-1) || ''),
++  'App has no stale rental-date utility imports after UI extraction.'
++);
++const adminAuthControllerCall = extractBlock(
++  appSource,
++  'useAdminAuthenticationController({',
++  '});'
++);
++check(
++  !/\badminAuthLoading\b/.test(
++    extractBlock(
++      adminAuthenticationController,
++      'export default function useAdminAuthenticationController({',
++      '}) {'
++    )
++  ) && !/\badminAuthLoading\b/.test(adminAuthControllerCall),
++  'Administrator authentication controller has no unused loading input.'
++);
++const boardSubscriptionCall = extractBlock(
++  appSource,
++  'useBoardContentSubscriptionController({',
++  '});'
++);
++check(
++  !/\badminNoticeQuery\b/.test(
++    extractBlock(
++      boardContentSubscriptionController,
++      'export default function useBoardContentSubscriptionController({',
++      '}) {'
++    )
++  ) && !/\badminNoticeQuery\b/.test(boardSubscriptionCall),
++  'Board subscription controller has no unused raw administrator notice query input.'
++);
++const popupSubscriptionCall = extractBlock(
++  appSource,
++  'usePopupFooterContentSubscriptionController({',
++  '});'
++);
++check(
++  !/\btemporarilyDismissedPopupVersions\b/.test(
++    extractBlock(
++      popupFooterContentSubscriptionController,
++      'export default function usePopupFooterContentSubscriptionController({',
++      '}) {'
++    )
++  ) && !/\btemporarilyDismissedPopupVersions\b/.test(popupSubscriptionCall),
++  'Popup subscription controller has no unused temporary-dismissal input.'
++);
++
+ const dashboardHeadingBlocks = [
+   ...adminDashboard.matchAll(/<DashboardSectionHeading([\s\S]*?)\/>/g),
+ ].map((match) => match[1]);

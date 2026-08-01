@@ -132,11 +132,7 @@ import {
 } from './features/auth/adminAuditActorService.js';
 
 
-import {
-  formatDateWithKoreanWeekday,
-  getDisplayRentalStatus,
-  today,
-} from './utils/appUtils.js';
+import { getDisplayRentalStatus } from './utils/appUtils.js';
 
 
 // --- 상태 및 스타일 정의 ---
@@ -866,7 +862,6 @@ function App() {
     adminAuthAbsoluteExpiresAt,
     adminAuthExpiresAt,
     adminAuthForm,
-    adminAuthLoading,
     adminAuthPolicyVersion,
     adminLogoutInProgress,
     adminLogoutInProgressRef,
@@ -1205,7 +1200,6 @@ function App() {
       activeFaqCategoryId,
       adminFaqPage,
       adminNoticePage,
-      adminNoticeQuery,
       adminTab,
       debouncedAdminNoticeQuery,
       debouncedFaqQuery,
@@ -1285,7 +1279,6 @@ function App() {
     setPopupPostsLoadErrorMessage,
     setPopupPostsReady,
     setTemporarilyDismissedPopupVersions,
-    temporarilyDismissedPopupVersions,
     triggerToast,
     userTab,
     view,

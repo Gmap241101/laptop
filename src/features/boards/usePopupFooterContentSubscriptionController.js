@@ -160,7 +160,6 @@ export default function usePopupFooterContentSubscriptionController({
   setPopupPostsLoadErrorMessage,
   setPopupPostsReady,
   setTemporarilyDismissedPopupVersions,
-  temporarilyDismissedPopupVersions,
   triggerToast,
   userTab,
   view,

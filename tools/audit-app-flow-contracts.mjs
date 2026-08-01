@@ -77,6 +77,9 @@ const rentalDataSubscriptionController = read('src/features/requests/useRentalDa
 const adminAccountManagementController = read('src/features/auth/useAdminAccountManagementController.js');
 const appContextAssembler = read('src/context/useAppContextAssembler.js');
 const appDynamicContextValues = read('src/context/appDynamicContextValues.js');
+const adminAuthenticationController = read('src/features/auth/useAdminAuthenticationController.js');
+const boardContentSubscriptionController = read('src/features/boards/useBoardContentSubscriptionController.js');
+const popupFooterContentSubscriptionController = read('src/features/boards/usePopupFooterContentSubscriptionController.js');
 
 const protectedTabs = extractStringSet(
   appRoutes,
@@ -455,6 +458,76 @@ check(
     appDynamicContextValues.includes('handleMemberDirectoryDeferredStateChange,') &&
     appDynamicContextValues.includes('handleSignupPolicyDeferredStateChange,'),
   'Internal deferred-state handlers are converted to public context aliases instead of leaking as extra keys.'
+);
+
+const appDirectHookCalls = {
+  useCallback: [...appSource.matchAll(/\buseCallback\s*\(/g)].length,
+  useEffect: [...appSource.matchAll(/\buseEffect\s*\(/g)].length,
+  useMemo: [...appSource.matchAll(/\buseMemo\s*\(/g)].length,
+  useRef: [...appSource.matchAll(/\buseRef\s*\(/g)].length,
+  useState: [...appSource.matchAll(/\buseState\s*\(/g)].length,
+};
+check(
+  appDirectHookCalls.useState === 1 &&
+    appSource.includes('const [data, setData] = useState(initialData);'),
+  'App retains only the top-level compatibility data state.'
+);
+check(
+  appDirectHookCalls.useCallback === 0 &&
+    appDirectHookCalls.useEffect === 0 &&
+    appDirectHookCalls.useMemo === 0 &&
+    appDirectHookCalls.useRef === 0,
+  'App has no residual direct effect, memo, ref, or callback hooks.'
+);
+check(
+  !appSource.includes('formatDateWithKoreanWeekday') &&
+    !/\btoday\b/.test(appSource.split("from './utils/appUtils.js';")[0].split('import').at(-1) || ''),
+  'App has no stale rental-date utility imports after UI extraction.'
+);
+const adminAuthControllerCall = extractBlock(
+  appSource,
+  'useAdminAuthenticationController({',
+  '});'
+);
+check(
+  !/\badminAuthLoading\b/.test(
+    extractBlock(
+      adminAuthenticationController,
+      'export default function useAdminAuthenticationController({',
+      '}) {'
+    )
+  ) && !/\badminAuthLoading\b/.test(adminAuthControllerCall),
+  'Administrator authentication controller has no unused loading input.'
+);
+const boardSubscriptionCall = extractBlock(
+  appSource,
+  'useBoardContentSubscriptionController({',
+  '});'
+);
+check(
+  !/\badminNoticeQuery\b/.test(
+    extractBlock(
+      boardContentSubscriptionController,
+      'export default function useBoardContentSubscriptionController({',
+      '}) {'
+    )
+  ) && !/\badminNoticeQuery\b/.test(boardSubscriptionCall),
+  'Board subscription controller has no unused raw administrator notice query input.'
+);
+const popupSubscriptionCall = extractBlock(
+  appSource,
+  'usePopupFooterContentSubscriptionController({',
+  '});'
+);
+check(
+  !/\btemporarilyDismissedPopupVersions\b/.test(
+    extractBlock(
+      popupFooterContentSubscriptionController,
+      'export default function usePopupFooterContentSubscriptionController({',
+      '}) {'
+    )
+  ) && !/\btemporarilyDismissedPopupVersions\b/.test(popupSubscriptionCall),
+  'Popup subscription controller has no unused temporary-dismissal input.'
 );
 
 const dashboardHeadingBlocks = [

@@ -217,7 +217,6 @@ export default function useBoardContentSubscriptionController({
   activeFaqCategoryId,
   adminFaqPage,
   adminNoticePage,
-  adminNoticeQuery,
   adminTab,
   debouncedAdminNoticeQuery,
   debouncedFaqQuery,

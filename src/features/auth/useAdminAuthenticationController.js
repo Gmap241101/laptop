@@ -98,7 +98,6 @@ export default function useAdminAuthenticationController({
   adminAuthAbsoluteExpiresAt,
   adminAuthExpiresAt,
   adminAuthForm,
-  adminAuthLoading,
   adminAuthPolicyVersion,
   adminLogoutInProgress,
   adminLogoutInProgressRef,

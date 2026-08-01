@@ -1,0 +1,113 @@
+{
+  "task": "P2_FINAL_STRUCTURE_CONTEXT_REGRESSION_AUDIT",
+  "generatedAtKst": "2026-08-02T02:11:24.011977+09:00",
+  "inputPackage": "rental-system-dynamic-context-assembly-boundary-split-20260802_0200_deployment_package.zip",
+  "app": {
+    "before": {
+      "lines": 2137,
+      "bytes": 66164,
+      "useState": 1,
+      "useEffect": 0,
+      "useMemo": 0,
+      "useRef": 0,
+      "useCallback": 0
+    },
+    "after": {
+      "lines": 2130,
+      "bytes": 66036,
+      "useState": 1,
+      "useEffect": 0,
+      "useMemo": 0,
+      "useRef": 0,
+      "useCallback": 0
+    }
+  },
+  "sourceGraph": {
+    "before": {
+      "initialModuleCount": 87,
+      "initialSourceBytes": 879655
+    },
+    "after": {
+      "initialModuleCount": 87,
+      "initialSourceBytes": 879450
+    }
+  },
+  "unusedBindings": {
+    "before": 5,
+    "after": 0,
+    "removed": [
+      {
+        "file": "src/App.jsx",
+        "line": 136,
+        "col": 3,
+        "code": 6133,
+        "msg": "'formatDateWithKoreanWeekday' is declared but its value is never read."
+      },
+      {
+        "file": "src/App.jsx",
+        "line": 138,
+        "col": 3,
+        "code": 6133,
+        "msg": "'today' is declared but its value is never read."
+      },
+      {
+        "file": "src/features/auth/useAdminAuthenticationController.js",
+        "line": 101,
+        "col": 3,
+        "code": 6133,
+        "msg": "'adminAuthLoading' is declared but its value is never read."
+      },
+      {
+        "file": "src/features/boards/useBoardContentSubscriptionController.js",
+        "line": 220,
+        "col": 3,
+        "code": 6133,
+        "msg": "'adminNoticeQuery' is declared but its value is never read."
+      },
+      {
+        "file": "src/features/boards/usePopupFooterContentSubscriptionController.js",
+        "line": 163,
+        "col": 3,
+        "code": 6133,
+        "msg": "'temporarilyDismissedPopupVersions' is declared but its value is never read."
+      }
+    ]
+  },
+  "typescriptDiagnostics": {
+    "baseRaw": 364,
+    "baseUnique": 277,
+    "workRaw": 364,
+    "workUnique": 277,
+    "addedCount": 0,
+    "removedCount": 0,
+    "added": [],
+    "removed": []
+  },
+  "context": {
+    "beforeFinalDynamicKeys": 385,
+    "afterFinalDynamicKeys": 385,
+    "dynamicAdded": [],
+    "dynamicRemoved": [],
+    "sliceEntriesBefore": 793,
+    "sliceEntriesAfter": 793,
+    "sliceUniqueBefore": 461,
+    "sliceUniqueAfter": 461
+  },
+  "uiStrings": {
+    "hangulUniqueBefore": 2289,
+    "hangulUniqueAfter": 2289,
+    "hangulOccurrencesBefore": 2990,
+    "hangulOccurrencesAfter": 2990
+  },
+  "firestoreReadAudit": {
+    "total": 129,
+    "onSnapshot": 35,
+    "getDocs": 48,
+    "getDoc": 28,
+    "getCountFromServer": 18
+  },
+  "appFlowContracts": {
+    "before": 118,
+    "after": 124
+  }
+}
