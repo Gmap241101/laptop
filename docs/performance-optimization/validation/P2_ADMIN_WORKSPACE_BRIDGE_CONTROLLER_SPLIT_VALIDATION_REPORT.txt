@@ -1,0 +1,97 @@
+P2 관리자 워크스페이스 브리지 컨트롤러 분리 검증 보고서
+============================================================
+
+기준본
+------
+입력: rental-system-app-flow-regression-contract-audit-20260802_0027_deployment_package.zip
+입력 ZIP SHA-256: b1239b602964ee59e933aca601b00d998f65f65b919da7341b4a442904c83aa0
+입력 프로젝트 파일 SHA-256: PASS (465/465)
+입력 누적 삭제 경로: 65개
+
+변경 대상
+---------
+수정: src/App.jsx
+신규: src/admin/useAdminWorkspaceBridgeController.js
+수정: tools/audit-app-flow-contracts.mjs
+수정: docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json
+신규: 작업 diff·비교 JSON·보고서·검증 보고서
+
+정적 검증
+---------
+1. TypeScript JS/JSX/MJS 구문·모듈 검사: PASS
+   - tsc --noEmit --allowJs --checkJs false --jsx preserve
+   - 전체 src 파일 검사
+   - 오류 0건
+
+2. React Hook import 감사: PASS
+   - 141개 소스 파일
+
+3. 애플리케이션 흐름 계약 감사: PASS
+   - 43개 계약
+   - 사용자 경로 11개
+   - 관리자 탭 20개
+
+4. 상대 import 실파일 검사: PASS
+   - 상대 import 421개
+   - 누락 0개
+
+5. 브리지 이동 계약: PASS
+   - App.jsx useState 3개 제거
+   - App.jsx useRef 1개 제거
+   - App.jsx useCallback 6개 제거
+   - 기존 공개 브리지 키 11개 유지
+   - App.jsx 중복 레지스트리 0개
+
+6. UI 문자열 보존: PASS
+   - 고유 문자열 1659 -> 1659
+   - 발생 수 2180 -> 2180
+   - 추가 0개
+   - 삭제 0개
+
+7. Firestore strict 감사: PASS
+   - 전체 129개
+   - onSnapshot 35개
+   - getDocs 48개
+   - getDoc 28개
+   - getCountFromServer 18개
+   - 미승인 warning 0개
+   - 미승인 error 0개
+
+App.jsx
+-------
+줄 수: 2564 -> 2512 (-52)
+바이트: 77251 -> 75731 (-1520)
+useState: 14 -> 11
+useEffect: 1 -> 1
+useMemo: 19 -> 19
+useRef: 2 -> 1
+useCallback: 6 -> 0
+직접 Firestore 호출: 0 -> 0
+
+초기 소스 그래프
+----------------
+초기 정적 모듈: 83 -> 84
+초기 정적 소스: 876583 -> 877977 bytes
+동적 엔트리: 14 -> 14
+
+보호 파일
+---------
+rules/firestore.rules: 9b703839184e09c7303b80fde2209722a4545feefabc837ad8e885e0466b1d3e (변경 없음)
+firestore.indexes.json: e8331250b347f49156fc64e50c6bef5e198e310708f192ddd67ce472e3d9c70f (변경 없음)
+firebase.json: 9f47f5d83c8ac8006ca7ec119dbf681d9b5d773ac9957c9254517bc01e514e8f (변경 없음)
+.firebaserc: b17b7da5c0ba946de5766077657b967dddd43541da4150600374412e8bc463b1 (변경 없음)
+
+누적 삭제 관리
+--------------
+직전 누적 삭제 경로: 65개
+이번 신규 삭제: 0개
+이번 복원으로 제외: 0개
+최종 누적 삭제 경로: 65개
+
+프로덕션 빌드
+-------------
+npm run prebuild: PASS
+npm ci: FAIL (검증 환경 내부 저장소 E404)
+오류 대상: yargs-parser-21.1.1.tgz
+실제 Vite 빌드: 미수행
+로컬 deploy.ps1에서 확인 필요

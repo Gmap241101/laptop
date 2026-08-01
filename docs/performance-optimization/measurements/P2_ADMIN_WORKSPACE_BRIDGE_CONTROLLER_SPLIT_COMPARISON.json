@@ -1,0 +1,85 @@
+{
+  "generatedAt": "2026-08-01T15:38:54.224015+00:00",
+  "task": "P2 admin workspace bridge controller split",
+  "inputPackage": "rental-system-app-flow-regression-contract-audit-20260802_0027_deployment_package.zip",
+  "app": {
+    "before": {
+      "lines": 2564,
+      "bytes": 77251,
+      "useState": 14,
+      "useEffect": 1,
+      "useMemo": 19,
+      "useRef": 2,
+      "useCallback": 6,
+      "directFirestoreCalls": 0
+    },
+    "after": {
+      "lines": 2512,
+      "bytes": 75731,
+      "useState": 11,
+      "useEffect": 1,
+      "useMemo": 19,
+      "useRef": 1,
+      "useCallback": 0,
+      "directFirestoreCalls": 0
+    },
+    "delta": {
+      "lines": -52,
+      "bytes": -1520,
+      "useState": -3,
+      "useEffect": 0,
+      "useMemo": 0,
+      "useRef": -1,
+      "useCallback": -6,
+      "directFirestoreCalls": 0
+    }
+  },
+  "sourceGraph": {
+    "before": {
+      "initialModuleCount": 83,
+      "initialSourceBytes": 876583,
+      "dynamicEntryCount": 14
+    },
+    "after": {
+      "initialModuleCount": 84,
+      "initialSourceBytes": 877977,
+      "dynamicEntryCount": 14
+    },
+    "delta": {
+      "initialModuleCount": 1,
+      "initialSourceBytes": 1394,
+      "dynamicEntryCount": 0
+    }
+  },
+  "uiStrings": {
+    "before": {
+      "unique": 1659,
+      "occurrences": 2180
+    },
+    "after": {
+      "unique": 1659,
+      "occurrences": 2180
+    },
+    "added": [],
+    "removed": []
+  },
+  "flowAudit": {
+    "beforeContractCount": 30,
+    "afterContractCount": 43,
+    "afterResult": "PASS"
+  },
+  "firestore": {
+    "beforeTotal": 129,
+    "afterTotal": 129,
+    "onSnapshot": 35,
+    "getDocs": 48,
+    "getDoc": 28,
+    "getCountFromServer": 18
+  },
+  "removedFiles": {
+    "before": 65,
+    "new": 0,
+    "restored": 0,
+    "after": 65
+  }
+}

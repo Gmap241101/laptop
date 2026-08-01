@@ -68,6 +68,7 @@ const appSource = read('src/App.jsx');
 const appShell = read('src/shell/AppShell.jsx');
 const adminWorkspace = read('src/admin/AdminWorkspace.jsx');
 const adminDashboard = read('src/admin/AdminDashboardPanel.jsx');
+const adminWorkspaceBridge = read('src/admin/useAdminWorkspaceBridgeController.js');
 
 const protectedTabs = extractStringSet(
   appRoutes,
@@ -201,6 +202,36 @@ check(
   `Every administrator menu tab has a context mapping${
     missingAdminContextTabs.length ? `: ${missingAdminContextTabs.join(', ')}` : ''
   }.`
+);
+
+
+check(
+  appSource.includes("import useAdminWorkspaceBridgeController from './admin/useAdminWorkspaceBridgeController.js';") &&
+    appSource.includes('} = useAdminWorkspaceBridgeController();'),
+  'App delegates administrator workspace bridge state to the dedicated controller.'
+);
+[
+  'adminMemberAccountsNavigationRequest',
+  'adminRequestsMutationVersion',
+  'adminRequestsNavigationRequest',
+  'clearAdminRequestPanelSelection',
+  'getAdminRequestById',
+  'handleAdminRequestsControllerStateChange',
+  'notifyAdminRequestMutation',
+  'resetAdminRequestPanelPage',
+  'setAdminMemberAccountsNavigationRequest',
+  'setAdminRequestsNavigationRequest',
+  'updateAdminRequestPanelRequests',
+].forEach((bridgeKey) => {
+  check(
+    adminWorkspaceBridge.includes(bridgeKey),
+    `Administrator workspace bridge exposes ${bridgeKey}.`
+  );
+});
+check(
+  !appSource.includes('const adminRequestsControllerRef = useRef(') &&
+    !appSource.includes('setAdminRequestsMutationVersion((currentVersion)'),
+  'App has no duplicate administrator request bridge registry or mutation-version state.'
 );
 
 const dashboardHeadingBlocks = [

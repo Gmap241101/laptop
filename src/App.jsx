@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from './components/CommonUI.jsx';
 import useAppContextAssembler from './context/useAppContextAssembler.js';
 import AppShell from './shell/AppShell.jsx';
@@ -16,8 +16,6 @@ import { firebaseAuth } from './firebase.js';
 
 
 import {
-  ADMIN_REQUEST_QUICK_FILTER,
-  ADMIN_REQUEST_TAB,
   STATUS,
   USER_REQUEST_ACTION,
   USER_REQUEST_REVIEW_STATUS,
@@ -74,6 +72,7 @@ import useAdminSplitStorageMigrationController, {
 import useAdminNavigationController, {
   useAdminNavigationState,
 } from './admin/useAdminNavigationController.js';
+import useAdminWorkspaceBridgeController from './admin/useAdminWorkspaceBridgeController.js';
 import { useDebouncedValue } from './hooks/useDebouncedValue.js';
 import {
   readUserAccountStatusView,
@@ -627,25 +626,19 @@ function App() {
     signupPolicyDeferredActionsRef,
     signupPolicyDirty,
   } = useAdminNavigationState();
-  const [adminMemberAccountsNavigationRequest, setAdminMemberAccountsNavigationRequest] = useState({
-    requestId: 0,
-    query: '',
-    statusFilter: 'all',
-  });
-  const [adminRequestsNavigationRequest, setAdminRequestsNavigationRequest] = useState({
-    requestId: 0,
-    query: '',
-    quickFilter: ADMIN_REQUEST_QUICK_FILTER.ALL,
-    requestTab: ADMIN_REQUEST_TAB.PENDING,
-    selectedRequestId: '',
-  });
-  const [adminRequestsMutationVersion, setAdminRequestsMutationVersion] = useState(0);
-  const adminRequestsControllerRef = useRef({
-    clearSelection: null,
-    getRequestById: null,
-    resetPage: null,
-    updateRequests: null,
-  });
+  const {
+    adminMemberAccountsNavigationRequest,
+    adminRequestsMutationVersion,
+    adminRequestsNavigationRequest,
+    clearAdminRequestPanelSelection,
+    getAdminRequestById,
+    handleAdminRequestsControllerStateChange,
+    notifyAdminRequestMutation,
+    resetAdminRequestPanelPage,
+    setAdminMemberAccountsNavigationRequest,
+    setAdminRequestsNavigationRequest,
+    updateAdminRequestPanelRequests,
+  } = useAdminWorkspaceBridgeController();
   const {
     editLaptop,
     newLaptop,
@@ -1500,51 +1493,6 @@ function App() {
     isAdminAuthenticated,
     triggerToast,
   });
-
-
-  const handleAdminRequestsControllerStateChange = useCallback((nextState) => {
-    adminRequestsControllerRef.current = {
-      clearSelection:
-        typeof nextState?.clearSelection === 'function'
-          ? nextState.clearSelection
-          : null,
-      getRequestById:
-        typeof nextState?.getRequestById === 'function'
-          ? nextState.getRequestById
-          : null,
-      resetPage:
-        typeof nextState?.resetPage === 'function'
-          ? nextState.resetPage
-          : null,
-      updateRequests:
-        typeof nextState?.updateRequests === 'function'
-          ? nextState.updateRequests
-          : null,
-    };
-  }, []);
-
-  const getAdminRequestById = useCallback(
-    (requestId) =>
-      adminRequestsControllerRef.current.getRequestById?.(requestId) || null,
-    []
-  );
-
-  const updateAdminRequestPanelRequests = useCallback((updater) => {
-    adminRequestsControllerRef.current.updateRequests?.(updater);
-  }, []);
-
-  const resetAdminRequestPanelPage = useCallback(() => {
-    adminRequestsControllerRef.current.resetPage?.();
-  }, []);
-
-  const clearAdminRequestPanelSelection = useCallback(() => {
-    adminRequestsControllerRef.current.clearSelection?.();
-  }, []);
-
-  const notifyAdminRequestMutation = useCallback(() => {
-    setAdminRequestsMutationVersion((currentVersion) => currentVersion + 1);
-  }, []);
-
 
 
   const {

@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-08-01T15:24:33.081Z",
-  "initialModuleCount": 83,
-  "initialSourceBytes": 876583,
+  "generatedAt": "2026-08-01T15:38:16.232Z",
+  "initialModuleCount": 84,
+  "initialSourceBytes": 877977,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 77251
+      "bytes": 75731
     },
     {
       "file": "src/features/requests/useUserRequestHistoryActionController.js",
@@ -258,6 +258,10 @@
     {
       "file": "src/selectors/appReadinessSelectors.js",
       "bytes": 2964
+    },
+    {
+      "file": "src/admin/useAdminWorkspaceBridgeController.js",
+      "bytes": 2914
     },
     {
       "file": "src/utils/firestoreCapacity.js",

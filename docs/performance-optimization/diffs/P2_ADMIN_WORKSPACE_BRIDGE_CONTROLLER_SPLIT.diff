@@ -1,0 +1,293 @@
+diff -ruN '--exclude=package-meta' '--exclude=.performance-reports' '--exclude=node_modules' '--exclude=P2_ADMIN_WORKSPACE_BRIDGE_CONTROLLER_SPLIT_REPORT.md' '--exclude=P2_ADMIN_WORKSPACE_BRIDGE_CONTROLLER_SPLIT_VALIDATION_REPORT.txt' '--exclude=P2_ADMIN_WORKSPACE_BRIDGE_CONTROLLER_SPLIT_COMPARISON.json' '--exclude=P2_ADMIN_WORKSPACE_BRIDGE_CONTROLLER_SPLIT.diff' /mnt/data/seq_next_base/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json /mnt/data/seq_next_work/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json
+--- /mnt/data/seq_next_base/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json	2026-08-01 15:24:32.000000000 +0000
++++ /mnt/data/seq_next_work/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json	2026-08-01 15:38:16.226948941 +0000
+@@ -1,11 +1,11 @@
+ {
+-  "generatedAt": "2026-08-01T15:24:33.081Z",
+-  "initialModuleCount": 83,
+-  "initialSourceBytes": 876583,
++  "generatedAt": "2026-08-01T15:38:16.232Z",
++  "initialModuleCount": 84,
++  "initialSourceBytes": 877977,
+   "files": [
+     {
+       "file": "src/App.jsx",
+-      "bytes": 77251
++      "bytes": 75731
+     },
+     {
+       "file": "src/features/requests/useUserRequestHistoryActionController.js",
+@@ -260,6 +260,10 @@
+       "bytes": 2964
+     },
+     {
++      "file": "src/admin/useAdminWorkspaceBridgeController.js",
++      "bytes": 2914
++    },
++    {
+       "file": "src/utils/firestoreCapacity.js",
+       "bytes": 2689
+     },
+diff -ruN '--exclude=package-meta' '--exclude=.performance-reports' '--exclude=node_modules' '--exclude=P2_ADMIN_WORKSPACE_BRIDGE_CONTROLLER_SPLIT_REPORT.md' '--exclude=P2_ADMIN_WORKSPACE_BRIDGE_CONTROLLER_SPLIT_VALIDATION_REPORT.txt' '--exclude=P2_ADMIN_WORKSPACE_BRIDGE_CONTROLLER_SPLIT_COMPARISON.json' '--exclude=P2_ADMIN_WORKSPACE_BRIDGE_CONTROLLER_SPLIT.diff' /mnt/data/seq_next_base/src/App.jsx /mnt/data/seq_next_work/src/App.jsx
+--- /mnt/data/seq_next_base/src/App.jsx	2026-08-01 15:09:40.000000000 +0000
++++ /mnt/data/seq_next_work/src/App.jsx	2026-08-01 15:38:14.242949004 +0000
+@@ -1,4 +1,4 @@
+-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
++import { useEffect, useMemo, useRef, useState } from 'react';
+ import { Button } from './components/CommonUI.jsx';
+ import useAppContextAssembler from './context/useAppContextAssembler.js';
+ import AppShell from './shell/AppShell.jsx';
+@@ -16,8 +16,6 @@
+ 
+ 
+ import {
+-  ADMIN_REQUEST_QUICK_FILTER,
+-  ADMIN_REQUEST_TAB,
+   STATUS,
+   USER_REQUEST_ACTION,
+   USER_REQUEST_REVIEW_STATUS,
+@@ -74,6 +72,7 @@
+ import useAdminNavigationController, {
+   useAdminNavigationState,
+ } from './admin/useAdminNavigationController.js';
++import useAdminWorkspaceBridgeController from './admin/useAdminWorkspaceBridgeController.js';
+ import { useDebouncedValue } from './hooks/useDebouncedValue.js';
+ import {
+   readUserAccountStatusView,
+@@ -627,25 +626,19 @@
+     signupPolicyDeferredActionsRef,
+     signupPolicyDirty,
+   } = useAdminNavigationState();
+-  const [adminMemberAccountsNavigationRequest, setAdminMemberAccountsNavigationRequest] = useState({
+-    requestId: 0,
+-    query: '',
+-    statusFilter: 'all',
+-  });
+-  const [adminRequestsNavigationRequest, setAdminRequestsNavigationRequest] = useState({
+-    requestId: 0,
+-    query: '',
+-    quickFilter: ADMIN_REQUEST_QUICK_FILTER.ALL,
+-    requestTab: ADMIN_REQUEST_TAB.PENDING,
+-    selectedRequestId: '',
+-  });
+-  const [adminRequestsMutationVersion, setAdminRequestsMutationVersion] = useState(0);
+-  const adminRequestsControllerRef = useRef({
+-    clearSelection: null,
+-    getRequestById: null,
+-    resetPage: null,
+-    updateRequests: null,
+-  });
++  const {
++    adminMemberAccountsNavigationRequest,
++    adminRequestsMutationVersion,
++    adminRequestsNavigationRequest,
++    clearAdminRequestPanelSelection,
++    getAdminRequestById,
++    handleAdminRequestsControllerStateChange,
++    notifyAdminRequestMutation,
++    resetAdminRequestPanelPage,
++    setAdminMemberAccountsNavigationRequest,
++    setAdminRequestsNavigationRequest,
++    updateAdminRequestPanelRequests,
++  } = useAdminWorkspaceBridgeController();
+   const {
+     editLaptop,
+     newLaptop,
+@@ -1502,51 +1495,6 @@
+   });
+ 
+ 
+-  const handleAdminRequestsControllerStateChange = useCallback((nextState) => {
+-    adminRequestsControllerRef.current = {
+-      clearSelection:
+-        typeof nextState?.clearSelection === 'function'
+-          ? nextState.clearSelection
+-          : null,
+-      getRequestById:
+-        typeof nextState?.getRequestById === 'function'
+-          ? nextState.getRequestById
+-          : null,
+-      resetPage:
+-        typeof nextState?.resetPage === 'function'
+-          ? nextState.resetPage
+-          : null,
+-      updateRequests:
+-        typeof nextState?.updateRequests === 'function'
+-          ? nextState.updateRequests
+-          : null,
+-    };
+-  }, []);
+-
+-  const getAdminRequestById = useCallback(
+-    (requestId) =>
+-      adminRequestsControllerRef.current.getRequestById?.(requestId) || null,
+-    []
+-  );
+-
+-  const updateAdminRequestPanelRequests = useCallback((updater) => {
+-    adminRequestsControllerRef.current.updateRequests?.(updater);
+-  }, []);
+-
+-  const resetAdminRequestPanelPage = useCallback(() => {
+-    adminRequestsControllerRef.current.resetPage?.();
+-  }, []);
+-
+-  const clearAdminRequestPanelSelection = useCallback(() => {
+-    adminRequestsControllerRef.current.clearSelection?.();
+-  }, []);
+-
+-  const notifyAdminRequestMutation = useCallback(() => {
+-    setAdminRequestsMutationVersion((currentVersion) => currentVersion + 1);
+-  }, []);
+-
+-
+-
+   const {
+     adminFilteredLaptops,
+     availableFilterLabel,
+diff -ruN '--exclude=package-meta' '--exclude=.performance-reports' '--exclude=node_modules' '--exclude=P2_ADMIN_WORKSPACE_BRIDGE_CONTROLLER_SPLIT_REPORT.md' '--exclude=P2_ADMIN_WORKSPACE_BRIDGE_CONTROLLER_SPLIT_VALIDATION_REPORT.txt' '--exclude=P2_ADMIN_WORKSPACE_BRIDGE_CONTROLLER_SPLIT_COMPARISON.json' '--exclude=P2_ADMIN_WORKSPACE_BRIDGE_CONTROLLER_SPLIT.diff' /mnt/data/seq_next_base/src/admin/useAdminWorkspaceBridgeController.js /mnt/data/seq_next_work/src/admin/useAdminWorkspaceBridgeController.js
+--- /mnt/data/seq_next_base/src/admin/useAdminWorkspaceBridgeController.js	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/seq_next_work/src/admin/useAdminWorkspaceBridgeController.js	2026-08-01 15:36:30.742952284 +0000
+@@ -0,0 +1,94 @@
++import { useCallback, useRef, useState } from 'react';
++
++import {
++  ADMIN_REQUEST_QUICK_FILTER,
++  ADMIN_REQUEST_TAB,
++} from '../constants/appConstants.js';
++
++const createInitialMemberAccountsNavigationRequest = () => ({
++  requestId: 0,
++  query: '',
++  statusFilter: 'all',
++});
++
++const createInitialRequestsNavigationRequest = () => ({
++  requestId: 0,
++  query: '',
++  quickFilter: ADMIN_REQUEST_QUICK_FILTER.ALL,
++  requestTab: ADMIN_REQUEST_TAB.PENDING,
++  selectedRequestId: '',
++});
++
++const createEmptyRequestsController = () => ({
++  clearSelection: null,
++  getRequestById: null,
++  resetPage: null,
++  updateRequests: null,
++});
++
++export default function useAdminWorkspaceBridgeController() {
++  const [adminMemberAccountsNavigationRequest, setAdminMemberAccountsNavigationRequest] =
++    useState(createInitialMemberAccountsNavigationRequest);
++  const [adminRequestsNavigationRequest, setAdminRequestsNavigationRequest] = useState(
++    createInitialRequestsNavigationRequest
++  );
++  const [adminRequestsMutationVersion, setAdminRequestsMutationVersion] = useState(0);
++  const adminRequestsControllerRef = useRef(createEmptyRequestsController());
++
++  const handleAdminRequestsControllerStateChange = useCallback((nextState) => {
++    adminRequestsControllerRef.current = {
++      clearSelection:
++        typeof nextState?.clearSelection === 'function'
++          ? nextState.clearSelection
++          : null,
++      getRequestById:
++        typeof nextState?.getRequestById === 'function'
++          ? nextState.getRequestById
++          : null,
++      resetPage:
++        typeof nextState?.resetPage === 'function'
++          ? nextState.resetPage
++          : null,
++      updateRequests:
++        typeof nextState?.updateRequests === 'function'
++          ? nextState.updateRequests
++          : null,
++    };
++  }, []);
++
++  const getAdminRequestById = useCallback(
++    (requestId) =>
++      adminRequestsControllerRef.current.getRequestById?.(requestId) || null,
++    []
++  );
++
++  const updateAdminRequestPanelRequests = useCallback((updater) => {
++    adminRequestsControllerRef.current.updateRequests?.(updater);
++  }, []);
++
++  const resetAdminRequestPanelPage = useCallback(() => {
++    adminRequestsControllerRef.current.resetPage?.();
++  }, []);
++
++  const clearAdminRequestPanelSelection = useCallback(() => {
++    adminRequestsControllerRef.current.clearSelection?.();
++  }, []);
++
++  const notifyAdminRequestMutation = useCallback(() => {
++    setAdminRequestsMutationVersion((currentVersion) => currentVersion + 1);
++  }, []);
++
++  return {
++    adminMemberAccountsNavigationRequest,
++    adminRequestsMutationVersion,
++    adminRequestsNavigationRequest,
++    clearAdminRequestPanelSelection,
++    getAdminRequestById,
++    handleAdminRequestsControllerStateChange,
++    notifyAdminRequestMutation,
++    resetAdminRequestPanelPage,
++    setAdminMemberAccountsNavigationRequest,
++    setAdminRequestsNavigationRequest,
++    updateAdminRequestPanelRequests,
++  };
++}
+diff -ruN '--exclude=package-meta' '--exclude=.performance-reports' '--exclude=node_modules' '--exclude=P2_ADMIN_WORKSPACE_BRIDGE_CONTROLLER_SPLIT_REPORT.md' '--exclude=P2_ADMIN_WORKSPACE_BRIDGE_CONTROLLER_SPLIT_VALIDATION_REPORT.txt' '--exclude=P2_ADMIN_WORKSPACE_BRIDGE_CONTROLLER_SPLIT_COMPARISON.json' '--exclude=P2_ADMIN_WORKSPACE_BRIDGE_CONTROLLER_SPLIT.diff' /mnt/data/seq_next_base/tools/audit-app-flow-contracts.mjs /mnt/data/seq_next_work/tools/audit-app-flow-contracts.mjs
+--- /mnt/data/seq_next_base/tools/audit-app-flow-contracts.mjs	2026-08-01 15:24:10.000000000 +0000
++++ /mnt/data/seq_next_work/tools/audit-app-flow-contracts.mjs	2026-08-01 15:36:46.542951783 +0000
+@@ -68,6 +68,7 @@
+ const appShell = read('src/shell/AppShell.jsx');
+ const adminWorkspace = read('src/admin/AdminWorkspace.jsx');
+ const adminDashboard = read('src/admin/AdminDashboardPanel.jsx');
++const adminWorkspaceBridge = read('src/admin/useAdminWorkspaceBridgeController.js');
+ 
+ const protectedTabs = extractStringSet(
+   appRoutes,
+@@ -203,6 +204,36 @@
+   }.`
+ );
+ 
++
++check(
++  appSource.includes("import useAdminWorkspaceBridgeController from './admin/useAdminWorkspaceBridgeController.js';") &&
++    appSource.includes('} = useAdminWorkspaceBridgeController();'),
++  'App delegates administrator workspace bridge state to the dedicated controller.'
++);
++[
++  'adminMemberAccountsNavigationRequest',
++  'adminRequestsMutationVersion',
++  'adminRequestsNavigationRequest',
++  'clearAdminRequestPanelSelection',
++  'getAdminRequestById',
++  'handleAdminRequestsControllerStateChange',
++  'notifyAdminRequestMutation',
++  'resetAdminRequestPanelPage',
++  'setAdminMemberAccountsNavigationRequest',
++  'setAdminRequestsNavigationRequest',
++  'updateAdminRequestPanelRequests',
++].forEach((bridgeKey) => {
++  check(
++    adminWorkspaceBridge.includes(bridgeKey),
++    `Administrator workspace bridge exposes ${bridgeKey}.`
++  );
++});
++check(
++  !appSource.includes('const adminRequestsControllerRef = useRef(') &&
++    !appSource.includes('setAdminRequestsMutationVersion((currentVersion)'),
++  'App has no duplicate administrator request bridge registry or mutation-version state.'
++);
++
+ const dashboardHeadingBlocks = [
+   ...adminDashboard.matchAll(/<DashboardSectionHeading([\s\S]*?)\/>/g),
+ ].map((match) => match[1]);
