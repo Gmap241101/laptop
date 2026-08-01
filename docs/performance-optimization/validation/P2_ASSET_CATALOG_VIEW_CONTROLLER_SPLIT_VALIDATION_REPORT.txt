@@ -1,0 +1,39 @@
+P2_ASSET_CATALOG_VIEW_CONTROLLER_SPLIT_VALIDATION_REPORT
+=========================================================
+
+[입력 기준본]
+- 파일: rental-system-board-derived-selectors-split-20260802_0055_deployment_package.zip
+- ZIP SHA-256: ee1e1879f35021bb1304e7e96bb45b97d13a2de3acad9aa534b5bbab7b0ee1ad
+- PACKAGE_FILES: 475
+- SHA-256 불일치: 0
+- REMOVED_FILES: 65
+
+[소스 구조]
+- App.jsx: 2174 lines / 67919 bytes -> 2180 lines / 67726 bytes
+- App.jsx useState: 11 -> 4
+- New controller: 33 lines / 1203 bytes / 7 useState / 15 returned values
+- Initial modules: 85 -> 86
+- Initial source bytes: 879438 -> 880448
+- Dynamic entries: 14 -> 14
+
+[검증]
+- npm run prebuild: PASS
+- React hook audit: PASS (143 source files)
+- Application flow contract audit: PASS (86 contracts)
+- Firestore strict audit: PASS (129 read calls)
+- Relative imports: PASS (430 checked, 0 missing)
+- Runtime mock: PASS (15 returned values / 7 state slots)
+- Korean quoted UI literals: PASS (1273 unique / 1397 occurrences, unchanged)
+- TypeScript baseline comparison: PASS (0 new normalized semantic diagnostics)
+- Firestore operation counts: unchanged
+- Rules/index/firebase config/package hashes: unchanged
+
+[빌드]
+- npm ci: FAIL (validation registry E404 for yargs-parser-21.1.1.tgz)
+- vite build: NOT RUN
+- local deploy.ps1 build confirmation required
+
+[판정]
+- Source validation: PASS
+- Package generation: PASS (package-meta and ZIP re-extraction verified)
+- Final deployment status: conditional until local Vite build succeeds

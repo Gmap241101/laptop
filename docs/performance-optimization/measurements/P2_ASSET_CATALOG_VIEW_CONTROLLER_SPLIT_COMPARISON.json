@@ -1,0 +1,128 @@
+{
+  "workItem": "P2_ASSET_CATALOG_VIEW_CONTROLLER_SPLIT",
+  "inputPackage": "rental-system-board-derived-selectors-split-20260802_0055_deployment_package.zip",
+  "inputPackageSha256": "ee1e1879f35021bb1304e7e96bb45b97d13a2de3acad9aa534b5bbab7b0ee1ad",
+  "app": {
+    "before": {
+      "lines": 2174,
+      "bytes": 67919,
+      "useState": 11,
+      "useEffect": 1,
+      "useMemo": 0,
+      "useRef": 1,
+      "useCallback": 0
+    },
+    "after": {
+      "lines": 2180,
+      "bytes": 67726,
+      "useState": 4,
+      "useEffect": 1,
+      "useMemo": 0,
+      "useRef": 1,
+      "useCallback": 0
+    }
+  },
+  "newController": {
+    "lines": 33,
+    "bytes": 1203,
+    "useState": 7,
+    "useEffect": 0,
+    "useMemo": 0,
+    "useRef": 0,
+    "useCallback": 0
+  },
+  "newControllerReturnValues": 15,
+  "newControllerStateSlots": 7,
+  "sourceGraph": {
+    "before": {
+      "initialModuleCount": 85,
+      "initialSourceBytes": 879438,
+      "dynamicEntries": 14
+    },
+    "after": {
+      "initialModuleCount": 86,
+      "initialSourceBytes": 880448,
+      "dynamicEntries": 14
+    }
+  },
+  "firestoreOperations": {
+    "before": {
+      "onSnapshot": 35,
+      "getDocs": 48,
+      "getDoc": 28,
+      "getCountFromServer": 18,
+      "runTransaction": 24,
+      "setDoc": 34,
+      "updateDoc": 5,
+      "deleteDoc": 6
+    },
+    "after": {
+      "onSnapshot": 35,
+      "getDocs": 48,
+      "getDoc": 28,
+      "getCountFromServer": 18,
+      "runTransaction": 24,
+      "setDoc": 34,
+      "updateDoc": 5,
+      "deleteDoc": 6
+    }
+  },
+  "audits": {
+    "reactHookSourceFiles": 143,
+    "appFlowContracts": 86,
+    "userRoutes": 11,
+    "administratorTabs": 20,
+    "firestoreReadCalls": 129,
+    "relativeImports": 430,
+    "relativeImportMissing": 0,
+    "runtimeReturnedValues": 15,
+    "runtimeStateSlots": 7,
+    "koreanQuotedUnique": 1273,
+    "koreanQuotedOccurrences": 1397,
+    "koreanAdded": 0,
+    "koreanRemoved": 0,
+    "newNormalizedTypeScriptDiagnostics": 0
+  },
+  "protectedFileHashes": {
+    "rules/firestore.rules": {
+      "before": "9b703839184e09c7303b80fde2209722a4545feefabc837ad8e885e0466b1d3e",
+      "after": "9b703839184e09c7303b80fde2209722a4545feefabc837ad8e885e0466b1d3e"
+    },
+    "firestore.indexes.json": {
+      "before": "e8331250b347f49156fc64e50c6bef5e198e310708f192ddd67ce472e3d9c70f",
+      "after": "e8331250b347f49156fc64e50c6bef5e198e310708f192ddd67ce472e3d9c70f"
+    },
+    "firebase.json": {
+      "before": "9f47f5d83c8ac8006ca7ec119dbf681d9b5d773ac9957c9254517bc01e514e8f",
+      "after": "9f47f5d83c8ac8006ca7ec119dbf681d9b5d773ac9957c9254517bc01e514e8f"
+    },
+    ".firebaserc": {
+      "before": "b17b7da5c0ba946de5766077657b967dddd43541da4150600374412e8bc463b1",
+      "after": "b17b7da5c0ba946de5766077657b967dddd43541da4150600374412e8bc463b1"
+    },
+    "package.json": {
+      "before": "49ce67f110c62d8e1788c9579623aa129d230045d0edef445623b12ec7854639",
+      "after": "49ce67f110c62d8e1788c9579623aa129d230045d0edef445623b12ec7854639"
+    },
+    "package-lock.json": {
+      "before": "59ff408bd366536cd0bf655e197f5c48be56ef06d744b03e0b30ed767a8ac175",
+      "after": "59ff408bd366536cd0bf655e197f5c48be56ef06d744b03e0b30ed767a8ac175"
+    }
+  },
+  "removedFiles": {
+    "before": 65,
+    "newlyRemoved": 0,
+    "restored": 0,
+    "after": 65
+  },
+  "remainingWork": {
+    "estimatedProgressPercent": [
+      93,
+      95
+    ],
+    "minimumIterations": 3,
+    "recommendedIterations": 5,
+    "maximumIterations": 7,
+    "nextPriority": "앱 초기화·준비 상태 브리지 분리 및 초기 원격 폼 Ref 재평가"
+  }
+}

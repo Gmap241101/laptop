@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-08-01T15:49:25.721Z",
-  "initialModuleCount": 85,
-  "initialSourceBytes": 879438,
+  "generatedAt": "2026-08-01T16:16:27.740Z",
+  "initialModuleCount": 86,
+  "initialSourceBytes": 880448,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 67919
+      "bytes": 67726
     },
     {
       "file": "src/features/requests/useUserRequestHistoryActionController.js",
@@ -318,6 +318,10 @@
     {
       "file": "src/features/requests/useSelectedRentalAssetAvailabilityGuard.js",
       "bytes": 1230
+    },
+    {
+      "file": "src/features/assets/useAssetCatalogViewController.js",
+      "bytes": 1203
     },
     {
       "file": "src/config/firestoreCachePolicy.js",

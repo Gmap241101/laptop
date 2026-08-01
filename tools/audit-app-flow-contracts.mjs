@@ -70,6 +70,7 @@ const adminWorkspace = read('src/admin/AdminWorkspace.jsx');
 const adminDashboard = read('src/admin/AdminDashboardPanel.jsx');
 const adminWorkspaceBridge = read('src/admin/useAdminWorkspaceBridgeController.js');
 const boardDerivedSelectors = read('src/features/boards/useBoardDerivedSelectors.js');
+const assetCatalogViewController = read('src/features/assets/useAssetCatalogViewController.js');
 
 const protectedTabs = extractStringSet(
   appRoutes,
@@ -277,6 +278,42 @@ check(
     !appSource.includes('const categoryFilteredFaqPosts = useMemo(') &&
     !appSource.includes('const displayedFaqPosts = useMemo('),
   'App has no duplicate notice or FAQ derived-selector implementation.'
+);
+
+
+check(
+  appSource.includes("import useAssetCatalogViewController from './features/assets/useAssetCatalogViewController.js';") &&
+    appSource.includes('} = useAssetCatalogViewController();'),
+  'App delegates asset catalog filters, upload visibility, and responsive grid state to the dedicated controller.'
+);
+[
+  'adminAvailabilityFilter',
+  'adminLaptopQuery',
+  'adminSelectedAssetCategory',
+  'assetGridColumns',
+  'availabilityFilter',
+  'query',
+  'selectedAssetCategory',
+  'setAdminAvailabilityFilter',
+  'setAdminLaptopQuery',
+  'setAdminSelectedAssetCategory',
+  'setAvailabilityFilter',
+  'setQuery',
+  'setSelectedAssetCategory',
+  'setShowUploadPanel',
+  'showUploadPanel',
+].forEach((viewKey) => {
+  check(
+    assetCatalogViewController.includes(viewKey),
+    `Asset catalog view controller exposes ${viewKey}.`
+  );
+});
+check(
+  !appSource.includes("const [query, setQuery] = useState('');") &&
+    !appSource.includes("const [adminLaptopQuery, setAdminLaptopQuery] = useState('');") &&
+    !appSource.includes('const [showUploadPanel, setShowUploadPanel] = useState(false);') &&
+    !appSource.includes('useResponsiveAssetGridColumns();'),
+  'App has no duplicate asset catalog filter, upload-panel, or responsive-grid state implementation.'
 );
 
 const dashboardHeadingBlocks = [

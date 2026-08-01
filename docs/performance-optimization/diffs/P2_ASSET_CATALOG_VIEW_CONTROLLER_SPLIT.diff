@@ -1,0 +1,178 @@
+--- /mnt/data/seq_005_base/src/App.jsx	2026-08-01 15:48:54.000000000 +0000
++++ src/App.jsx	2026-08-01 16:15:35.510877966 +0000
+@@ -30,7 +30,6 @@
+ } from './domain/rentalPolicy.js';
+ import { useDashboardSummary } from './hooks/useDashboardSummary.js';
+ import useSiteSettingsController from './features/settings/useSiteSettingsController.js';
+-import useResponsiveAssetGridColumns from './hooks/useResponsiveAssetGridColumns.js';
+ import { selectAppReadiness } from './selectors/appReadinessSelectors.js';
+ import useBoardContentSubscriptionController, {
+   getSafeFaqPostsPerPage,
+@@ -62,6 +61,7 @@
+   useAdminAssetCategoryState,
+ } from './features/assets/useAdminAssetCategoryController.js';
+ import usePublicAssetCatalogCompatibilityController from './features/assets/usePublicAssetCatalogCompatibilityController.js';
++import useAssetCatalogViewController from './features/assets/useAssetCatalogViewController.js';
+ import useAdminSystemSettingsController, {
+   useAdminSystemSettingsState,
+ } from './features/settings/useAdminSystemSettingsController.js';
+@@ -608,12 +608,23 @@
+     userTab,
+     view,
+   } = useAppNavigationState();
+-  const [query, setQuery] = useState('');
+-  const [selectedAssetCategory, setSelectedAssetCategory] = useState('전체');
+-  const [availabilityFilter, setAvailabilityFilter] = useState(STATUS.AVAILABLE);
+-  const [adminLaptopQuery, setAdminLaptopQuery] = useState('');
+-  const [adminSelectedAssetCategory, setAdminSelectedAssetCategory] = useState('전체');
+-  const [adminAvailabilityFilter, setAdminAvailabilityFilter] = useState('전체');
++  const {
++    adminAvailabilityFilter,
++    adminLaptopQuery,
++    adminSelectedAssetCategory,
++    assetGridColumns,
++    availabilityFilter,
++    query,
++    selectedAssetCategory,
++    setAdminAvailabilityFilter,
++    setAdminLaptopQuery,
++    setAdminSelectedAssetCategory,
++    setAvailabilityFilter,
++    setQuery,
++    setSelectedAssetCategory,
++    setShowUploadPanel,
++    showUploadPanel,
++  } = useAssetCatalogViewController();
+   const {
+     adminTab,
+     handleMemberDirectoryDeferredStateChange,
+@@ -740,11 +751,6 @@
+   const debouncedAdminNoticeQuery = useDebouncedValue(adminNoticeQuery);
+   const debouncedFaqQuery = useDebouncedValue(faqQuery);
+ 
+-
+-  // 엑셀/CSV 업로드 패널 토글 상태 값 추가
+-  const [showUploadPanel, setShowUploadPanel] = useState(false);
+-  const assetGridColumns = useResponsiveAssetGridColumns();
+-
+   // 설정 임시 저장 상태와 변경 여부는 설정 feature에서 관리
+   const {
+     holidayImportConflictModal,
+--- /dev/null	2026-08-01 14:50:25.319039935 +0000
++++ src/features/assets/useAssetCatalogViewController.js	2026-08-01 16:15:35.110877979 +0000
+@@ -0,0 +1,33 @@
++import { useState } from 'react';
++
++import { STATUS } from '../../constants/appConstants.js';
++import useResponsiveAssetGridColumns from '../../hooks/useResponsiveAssetGridColumns.js';
++
++export default function useAssetCatalogViewController() {
++  const [query, setQuery] = useState('');
++  const [selectedAssetCategory, setSelectedAssetCategory] = useState('전체');
++  const [availabilityFilter, setAvailabilityFilter] = useState(STATUS.AVAILABLE);
++  const [adminLaptopQuery, setAdminLaptopQuery] = useState('');
++  const [adminSelectedAssetCategory, setAdminSelectedAssetCategory] = useState('전체');
++  const [adminAvailabilityFilter, setAdminAvailabilityFilter] = useState('전체');
++  const [showUploadPanel, setShowUploadPanel] = useState(false);
++  const assetGridColumns = useResponsiveAssetGridColumns();
++
++  return {
++    adminAvailabilityFilter,
++    adminLaptopQuery,
++    adminSelectedAssetCategory,
++    assetGridColumns,
++    availabilityFilter,
++    query,
++    selectedAssetCategory,
++    setAdminAvailabilityFilter,
++    setAdminLaptopQuery,
++    setAdminSelectedAssetCategory,
++    setAvailabilityFilter,
++    setQuery,
++    setSelectedAssetCategory,
++    setShowUploadPanel,
++    showUploadPanel,
++  };
++}
+--- /mnt/data/seq_005_base/tools/audit-app-flow-contracts.mjs	2026-08-01 15:48:54.000000000 +0000
++++ tools/audit-app-flow-contracts.mjs	2026-08-01 16:15:36.014877950 +0000
+@@ -70,6 +70,7 @@
+ const adminDashboard = read('src/admin/AdminDashboardPanel.jsx');
+ const adminWorkspaceBridge = read('src/admin/useAdminWorkspaceBridgeController.js');
+ const boardDerivedSelectors = read('src/features/boards/useBoardDerivedSelectors.js');
++const assetCatalogViewController = read('src/features/assets/useAssetCatalogViewController.js');
+ 
+ const protectedTabs = extractStringSet(
+   appRoutes,
+@@ -279,6 +280,42 @@
+   'App has no duplicate notice or FAQ derived-selector implementation.'
+ );
+ 
++
++check(
++  appSource.includes("import useAssetCatalogViewController from './features/assets/useAssetCatalogViewController.js';") &&
++    appSource.includes('} = useAssetCatalogViewController();'),
++  'App delegates asset catalog filters, upload visibility, and responsive grid state to the dedicated controller.'
++);
++[
++  'adminAvailabilityFilter',
++  'adminLaptopQuery',
++  'adminSelectedAssetCategory',
++  'assetGridColumns',
++  'availabilityFilter',
++  'query',
++  'selectedAssetCategory',
++  'setAdminAvailabilityFilter',
++  'setAdminLaptopQuery',
++  'setAdminSelectedAssetCategory',
++  'setAvailabilityFilter',
++  'setQuery',
++  'setSelectedAssetCategory',
++  'setShowUploadPanel',
++  'showUploadPanel',
++].forEach((viewKey) => {
++  check(
++    assetCatalogViewController.includes(viewKey),
++    `Asset catalog view controller exposes ${viewKey}.`
++  );
++});
++check(
++  !appSource.includes("const [query, setQuery] = useState('');") &&
++    !appSource.includes("const [adminLaptopQuery, setAdminLaptopQuery] = useState('');") &&
++    !appSource.includes('const [showUploadPanel, setShowUploadPanel] = useState(false);') &&
++    !appSource.includes('useResponsiveAssetGridColumns();'),
++  'App has no duplicate asset catalog filter, upload-panel, or responsive-grid state implementation.'
++);
++
+ const dashboardHeadingBlocks = [
+   ...adminDashboard.matchAll(/<DashboardSectionHeading([\s\S]*?)\/>/g),
+ ].map((match) => match[1]);
+--- /mnt/data/seq_005_base/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json	2026-08-01 16:16:34.970876081 +0000
++++ docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json	2026-08-01 16:16:27.734876311 +0000
+@@ -1,11 +1,11 @@
+ {
+-  "generatedAt": "2026-08-01T16:16:34.975Z",
+-  "initialModuleCount": 85,
+-  "initialSourceBytes": 879438,
++  "generatedAt": "2026-08-01T16:16:27.740Z",
++  "initialModuleCount": 86,
++  "initialSourceBytes": 880448,
+   "files": [
+     {
+       "file": "src/App.jsx",
+-      "bytes": 67919
++      "bytes": 67726
+     },
+     {
+       "file": "src/features/requests/useUserRequestHistoryActionController.js",
+@@ -320,6 +320,10 @@
+       "bytes": 1230
+     },
+     {
++      "file": "src/features/assets/useAssetCatalogViewController.js",
++      "bytes": 1203
++    },
++    {
+       "file": "src/config/firestoreCachePolicy.js",
+       "bytes": 641
+     },

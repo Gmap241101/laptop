@@ -30,7 +30,6 @@ import {
 } from './domain/rentalPolicy.js';
 import { useDashboardSummary } from './hooks/useDashboardSummary.js';
 import useSiteSettingsController from './features/settings/useSiteSettingsController.js';
-import useResponsiveAssetGridColumns from './hooks/useResponsiveAssetGridColumns.js';
 import { selectAppReadiness } from './selectors/appReadinessSelectors.js';
 import useBoardContentSubscriptionController, {
   getSafeFaqPostsPerPage,
@@ -62,6 +61,7 @@ import useAdminAssetCategoryController, {
   useAdminAssetCategoryState,
 } from './features/assets/useAdminAssetCategoryController.js';
 import usePublicAssetCatalogCompatibilityController from './features/assets/usePublicAssetCatalogCompatibilityController.js';
+import useAssetCatalogViewController from './features/assets/useAssetCatalogViewController.js';
 import useAdminSystemSettingsController, {
   useAdminSystemSettingsState,
 } from './features/settings/useAdminSystemSettingsController.js';
@@ -608,12 +608,23 @@ function App() {
     userTab,
     view,
   } = useAppNavigationState();
-  const [query, setQuery] = useState('');
-  const [selectedAssetCategory, setSelectedAssetCategory] = useState('전체');
-  const [availabilityFilter, setAvailabilityFilter] = useState(STATUS.AVAILABLE);
-  const [adminLaptopQuery, setAdminLaptopQuery] = useState('');
-  const [adminSelectedAssetCategory, setAdminSelectedAssetCategory] = useState('전체');
-  const [adminAvailabilityFilter, setAdminAvailabilityFilter] = useState('전체');
+  const {
+    adminAvailabilityFilter,
+    adminLaptopQuery,
+    adminSelectedAssetCategory,
+    assetGridColumns,
+    availabilityFilter,
+    query,
+    selectedAssetCategory,
+    setAdminAvailabilityFilter,
+    setAdminLaptopQuery,
+    setAdminSelectedAssetCategory,
+    setAvailabilityFilter,
+    setQuery,
+    setSelectedAssetCategory,
+    setShowUploadPanel,
+    showUploadPanel,
+  } = useAssetCatalogViewController();
   const {
     adminTab,
     handleMemberDirectoryDeferredStateChange,
@@ -739,11 +750,6 @@ function App() {
   const debouncedUserNoticeQuery = useDebouncedValue(userNoticeQuery);
   const debouncedAdminNoticeQuery = useDebouncedValue(adminNoticeQuery);
   const debouncedFaqQuery = useDebouncedValue(faqQuery);
-
-
-  // 엑셀/CSV 업로드 패널 토글 상태 값 추가
-  const [showUploadPanel, setShowUploadPanel] = useState(false);
-  const assetGridColumns = useResponsiveAssetGridColumns();
 
   // 설정 임시 저장 상태와 변경 여부는 설정 feature에서 관리
   const {
