@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { onSnapshot } from 'firebase/firestore';
 import { Button, DateInputWithWeekday } from './components/CommonUI.jsx';
 import useAppContextAssembler from './context/useAppContextAssembler.js';
 import AppShell from './shell/AppShell.jsx';
@@ -12,10 +11,7 @@ import useGlobalUiController, {
 } from './ui/useGlobalUiController.js';
 
 import { richTextHtmlToText } from './utils/richTextCore.js';
-import {
-  SITE_SETTINGS_DOC_REF,
-  firebaseAuth,
-} from './firebase.js';
+import { firebaseAuth } from './firebase.js';
 
 
 
@@ -28,7 +24,6 @@ import {
 } from './constants/appConstants.js';
 
 
-import { USER_PROFILE_STATUS } from './constants/memberConstants.js';
 import {
   DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY,
   DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS,
@@ -44,6 +39,9 @@ import {
   normalizeHolidayList,
 } from './domain/rentalPolicy.js';
 import { useDashboardSummary } from './hooks/useDashboardSummary.js';
+import useSiteSettingsController from './features/settings/useSiteSettingsController.js';
+import useResponsiveAssetGridColumns from './hooks/useResponsiveAssetGridColumns.js';
+import { selectAppReadiness } from './selectors/appReadinessSelectors.js';
 import useBoardContentSubscriptionController, {
   filterNoticePostsByQuery,
   getSafeFaqPostsPerPage,
@@ -78,13 +76,8 @@ import useAdminSystemSettingsController, {
   useAdminSystemSettingsState,
 } from './features/settings/useAdminSystemSettingsController.js';
 import useAdminSplitStorageMigrationController, {
-  SPLIT_STORAGE_VERSION,
   useAdminSplitStorageMigrationState,
 } from './features/settings/useAdminSplitStorageMigrationController.js';
-import {
-  getSafeMemberDirectoryVersion,
-  isRegisteredMemberSignupRequired,
-} from './features/members/memberAccountPolicy.js';
 import { useDebouncedValue } from './hooks/useDebouncedValue.js';
 import {
   readUserAccountStatusView,
@@ -146,10 +139,6 @@ import {
   createCurrentAdminAuditActorResolver,
 } from './features/auth/adminAuditActorService.js';
 
-import {
-  DEFAULT_SITE_SETTINGS,
-  normalizeSiteSettings,
-} from './utils/systemSettings.js';
 
 import {
   formatDateWithKoreanWeekday,
@@ -335,9 +324,12 @@ const getAdminFirebaseAuthErrorMessage = (error) => {
 
 function App() {
   const [data, setData] = useState(initialData);
-  const [siteSettings, setSiteSettings] = useState(DEFAULT_SITE_SETTINGS);
-  const [siteSettingsReady, setSiteSettingsReady] = useState(false);
-  const [siteSettingsLoadErrorMessage, setSiteSettingsLoadErrorMessage] = useState('');
+  const {
+    normalizedSiteSettings,
+    siteSettings,
+    siteSettingsLoadErrorMessage,
+    siteSettingsReady,
+  } = useSiteSettingsController();
   const {
     adminAccounts,
     adminAccountsLoadErrorMessage,
@@ -744,11 +736,6 @@ function App() {
     userStatusLogoutInProgressRef,
   } = useUserMembershipStatusState();
 
-  const hasFirebaseAuthSession = Boolean(
-    firebaseAuthUser ||
-      firebaseAuth.currentUser
-  );
-
   const {
     setUserProfileForm,
     setUserProfileSaving,
@@ -769,7 +756,7 @@ function App() {
 
   // 엑셀/CSV 업로드 패널 토글 상태 값 추가
   const [showUploadPanel, setShowUploadPanel] = useState(false);
-  const [assetGridColumns, setAssetGridColumns] = useState(1);
+  const assetGridColumns = useResponsiveAssetGridColumns();
 
   // 설정 임시 저장 상태와 변경 여부는 설정 feature에서 관리
   const {
@@ -813,87 +800,12 @@ function App() {
   } = useAdminSplitStorageMigrationState();
 
   useEffect(() => {
-    const updateAssetGridColumns = () => {
-      if (window.matchMedia('(min-width: 1280px)').matches) {
-        setAssetGridColumns(3);
-      } else if (window.matchMedia('(min-width: 640px)').matches) {
-        setAssetGridColumns(2);
-      } else {
-        setAssetGridColumns(1);
-      }
-    };
-
-    updateAssetGridColumns();
-    window.addEventListener('resize', updateAssetGridColumns);
-
-    return () => {
-      window.removeEventListener('resize', updateAssetGridColumns);
-    };
-  }, []);
-
-  useEffect(() => {
-    setSiteSettingsReady(false);
-    const unsubscribe = onSnapshot(
-      SITE_SETTINGS_DOC_REF,
-      (snapshot) => {
-        const nextSettings = normalizeSiteSettings(
-          snapshot.exists() ? snapshot.data() : DEFAULT_SITE_SETTINGS
-        );
-        setSiteSettings(nextSettings);
-        setSiteSettingsLoadErrorMessage('');
-        setSiteSettingsReady(true);
-      },
-      (error) => {
-        console.error('Site settings sync error:', error);
-        setSiteSettings(DEFAULT_SITE_SETTINGS);
-        setSiteSettingsLoadErrorMessage(
-          '사이트 공통 설정을 불러오지 못했습니다. 기본 설정으로 표시합니다.'
-        );
-        setSiteSettingsReady(true);
-      }
-    );
-    return unsubscribe;
-  }, []);
-
-  useEffect(() => {
-    const normalized = normalizeSiteSettings(siteSettings);
-    const root = document.documentElement;
-    root.style.setProperty('--mk-orange', normalized.primaryColor);
-    root.style.setProperty('--mk-orange-dark', normalized.primaryDarkColor);
-    root.style.setProperty('--mk-orange-soft', normalized.primaryColor + '1A');
-    root.style.setProperty('--mk-orange-border', normalized.primaryColor + '40');
-    root.style.setProperty('--mk-orange-ring', normalized.primaryColor + '26');
-    root.style.setProperty('--mk-orange-shadow', normalized.primaryColor + '33');
-
-    document.title = normalized.browserTitle || normalized.siteName;
-    let descriptionMeta = document.querySelector('meta[name="description"]');
-    if (!descriptionMeta) {
-      descriptionMeta = document.createElement('meta');
-      descriptionMeta.setAttribute('name', 'description');
-      document.head.appendChild(descriptionMeta);
-    }
-    descriptionMeta.setAttribute('content', normalized.metaDescription || '');
-
-    let favicon = document.querySelector('link[rel="icon"]');
-    if (normalized.faviconUrl) {
-      if (!favicon) {
-        favicon = document.createElement('link');
-        favicon.setAttribute('rel', 'icon');
-        document.head.appendChild(favicon);
-      }
-      favicon.setAttribute('href', normalized.faviconUrl);
-    }
-  }, [siteSettings]);
-
-
-  useEffect(() => {
     if (adminTab === 'adminAccounts') {
       setAdminAccountForm(createDefaultAdminAccountForm());
       setAdminAccountPage(1);
     }
   }, [adminTab]);
 
-  const normalizedSiteSettings = normalizeSiteSettings(siteSettings);
   const {
     dismissSystemBanner,
     shouldRenderAppDialogs,
@@ -1006,6 +918,39 @@ function App() {
   });
 
   const {
+    hasAdminAccess,
+    hasFirebaseAuthSession,
+    isCurrentFirebaseAuthAdmin,
+    isCurrentFirebaseAuthGeneralUser,
+    isSplitStorageReady,
+    isUserDirectoryAccessRestricted,
+    memberDirectoryAudit,
+    memberDirectoryPolicyEnabled,
+    memberIdentityClaimsReady,
+    shouldShowAdminAccountsErrorPage,
+    shouldShowAdminLoadingPage,
+    shouldShowAdminLoginPage,
+  } = selectAppReadiness({
+    adminAccountsLoadErrorMessage,
+    adminAccountsReady,
+    adminLogoutInProgress,
+    currentAuthAdminAccount,
+    currentAuthRoleErrorMessage,
+    currentAuthRoleReady,
+    dataSettings: data.settings,
+    firebaseAuthCurrentUser: firebaseAuth.currentUser,
+    firebaseAuthReady,
+    firebaseAuthUser,
+    firebaseLoadErrorMessage,
+    firebaseReady,
+    isAdminAuthenticated,
+    splitPublicConfig,
+    splitStorageVersion,
+    userProfile,
+    view,
+  });
+
+  const {
     dashboardSummary,
     dashboardSummaryLoadErrorMessage,
     dashboardSummaryReady,
@@ -1113,36 +1058,6 @@ function App() {
     userProfile,
     userProfileReady,
   });
-
-  const isCurrentFirebaseAuthAdmin =
-    Boolean(firebaseAuthUser) &&
-    currentAuthRoleReady &&
-    Boolean(currentAuthAdminAccount);
-
-  const isCurrentFirebaseAuthGeneralUser =
-    Boolean(firebaseAuthUser) &&
-    currentAuthRoleReady &&
-    !currentAuthRoleErrorMessage &&
-    !currentAuthAdminAccount;
-
-  const memberDirectoryPolicyEnabled =
-    isRegisteredMemberSignupRequired(data.settings);
-  const memberIdentityClaimsReady = Boolean(
-    data.settings.memberIdentityClaimsReady
-  );
-  const currentMemberDirectoryVersion =
-    getSafeMemberDirectoryVersion(data.settings);
-  const isUserDirectoryAccessRestricted = Boolean(
-    userProfile &&
-      (userProfile.status === USER_PROFILE_STATUS.PROFILE_REQUIRED ||
-        (memberDirectoryPolicyEnabled &&
-          userProfile.status === USER_PROFILE_STATUS.ACTIVE &&
-          Number(userProfile.directoryVerifiedVersion || 0) !==
-            currentMemberDirectoryVersion))
-  );
-  const memberDirectoryAudit =
-    splitPublicConfig?.memberDirectoryAudit || null;
-
 
   const orphanedRentalAvailabilityRequests = [];
 
@@ -1591,10 +1506,6 @@ function App() {
   });
 
 
-  const isSplitStorageReady =
-    splitStorageVersion >= SPLIT_STORAGE_VERSION;
-
-
   const openAdminMemberAccounts = useCallback(
     ({ query = '', statusFilter = 'all' } = {}) => {
       setAdminMemberAccountsNavigationRequest((currentRequest) => ({
@@ -1750,37 +1661,6 @@ function App() {
   }, [view, currentAdminDeferredSettingsDirty]);
 
 
-  const shouldShowAdminLoadingPage =
-    view === 'admin' &&
-    (
-      !firebaseReady ||
-      !firebaseAuthReady ||
-      !currentAuthRoleReady ||
-      !adminAccountsReady ||
-      adminLogoutInProgress
-    );
-
-  const shouldShowAdminAccountsErrorPage =
-    view === 'admin' &&
-    firebaseReady &&
-    firebaseAuthReady &&
-    currentAuthRoleReady &&
-    adminAccountsReady &&
-    Boolean(
-      adminAccountsLoadErrorMessage || currentAuthRoleErrorMessage
-    );
-
-  const hasAdminAccess =
-    view === 'admin' &&
-    firebaseReady &&
-    firebaseAuthReady &&
-    currentAuthRoleReady &&
-    adminAccountsReady &&
-    !firebaseLoadErrorMessage &&
-    !adminAccountsLoadErrorMessage &&
-    !currentAuthRoleErrorMessage &&
-    isAdminAuthenticated;
-
   const {
     adminFilteredLaptops,
     availableFilterLabel,
@@ -1825,17 +1705,6 @@ function App() {
     view,
   });
 
-  const shouldShowAdminLoginPage =
-    view === 'admin' &&
-    firebaseReady &&
-    firebaseAuthReady &&
-    currentAuthRoleReady &&
-    adminAccountsReady &&
-    !firebaseLoadErrorMessage &&
-    !adminAccountsLoadErrorMessage &&
-    !currentAuthRoleErrorMessage &&
-    !isAdminAuthenticated;
-  
   const { closeNoticePost, openNoticePost } =
     useBoardContentSubscriptionController({
       activeFaqCategoryId,

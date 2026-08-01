@@ -1,0 +1,645 @@
+diff -ruN /mnt/data/rental_seq20_baseline/src/App.jsx /mnt/data/rental_seq20_work/src/App.jsx
+--- /mnt/data/rental_seq20_baseline/src/App.jsx	2026-08-01 13:51:58.000000000 +0000
++++ /mnt/data/rental_seq20_work/src/App.jsx	2026-08-01 14:14:23.825403371 +0000
+@@ -1,5 +1,4 @@
+ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+-import { onSnapshot } from 'firebase/firestore';
+ import { Button, DateInputWithWeekday } from './components/CommonUI.jsx';
+ import useAppContextAssembler from './context/useAppContextAssembler.js';
+ import AppShell from './shell/AppShell.jsx';
+@@ -12,10 +11,7 @@
+ } from './ui/useGlobalUiController.js';
+ 
+ import { richTextHtmlToText } from './utils/richTextCore.js';
+-import {
+-  SITE_SETTINGS_DOC_REF,
+-  firebaseAuth,
+-} from './firebase.js';
++import { firebaseAuth } from './firebase.js';
+ 
+ 
+ 
+@@ -28,7 +24,6 @@
+ } from './constants/appConstants.js';
+ 
+ 
+-import { USER_PROFILE_STATUS } from './constants/memberConstants.js';
+ import {
+   DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY,
+   DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS,
+@@ -44,6 +39,9 @@
+   normalizeHolidayList,
+ } from './domain/rentalPolicy.js';
+ import { useDashboardSummary } from './hooks/useDashboardSummary.js';
++import useSiteSettingsController from './features/settings/useSiteSettingsController.js';
++import useResponsiveAssetGridColumns from './hooks/useResponsiveAssetGridColumns.js';
++import { selectAppReadiness } from './selectors/appReadinessSelectors.js';
+ import useBoardContentSubscriptionController, {
+   filterNoticePostsByQuery,
+   getSafeFaqPostsPerPage,
+@@ -78,13 +76,8 @@
+   useAdminSystemSettingsState,
+ } from './features/settings/useAdminSystemSettingsController.js';
+ import useAdminSplitStorageMigrationController, {
+-  SPLIT_STORAGE_VERSION,
+   useAdminSplitStorageMigrationState,
+ } from './features/settings/useAdminSplitStorageMigrationController.js';
+-import {
+-  getSafeMemberDirectoryVersion,
+-  isRegisteredMemberSignupRequired,
+-} from './features/members/memberAccountPolicy.js';
+ import { useDebouncedValue } from './hooks/useDebouncedValue.js';
+ import {
+   readUserAccountStatusView,
+@@ -146,10 +139,6 @@
+   createCurrentAdminAuditActorResolver,
+ } from './features/auth/adminAuditActorService.js';
+ 
+-import {
+-  DEFAULT_SITE_SETTINGS,
+-  normalizeSiteSettings,
+-} from './utils/systemSettings.js';
+ 
+ import {
+   formatDateWithKoreanWeekday,
+@@ -335,9 +324,12 @@
+ 
+ function App() {
+   const [data, setData] = useState(initialData);
+-  const [siteSettings, setSiteSettings] = useState(DEFAULT_SITE_SETTINGS);
+-  const [siteSettingsReady, setSiteSettingsReady] = useState(false);
+-  const [siteSettingsLoadErrorMessage, setSiteSettingsLoadErrorMessage] = useState('');
++  const {
++    normalizedSiteSettings,
++    siteSettings,
++    siteSettingsLoadErrorMessage,
++    siteSettingsReady,
++  } = useSiteSettingsController();
+   const {
+     adminAccounts,
+     adminAccountsLoadErrorMessage,
+@@ -744,11 +736,6 @@
+     userStatusLogoutInProgressRef,
+   } = useUserMembershipStatusState();
+ 
+-  const hasFirebaseAuthSession = Boolean(
+-    firebaseAuthUser ||
+-      firebaseAuth.currentUser
+-  );
+-
+   const {
+     setUserProfileForm,
+     setUserProfileSaving,
+@@ -769,7 +756,7 @@
+ 
+   // 엑셀/CSV 업로드 패널 토글 상태 값 추가
+   const [showUploadPanel, setShowUploadPanel] = useState(false);
+-  const [assetGridColumns, setAssetGridColumns] = useState(1);
++  const assetGridColumns = useResponsiveAssetGridColumns();
+ 
+   // 설정 임시 저장 상태와 변경 여부는 설정 feature에서 관리
+   const {
+@@ -813,87 +800,12 @@
+   } = useAdminSplitStorageMigrationState();
+ 
+   useEffect(() => {
+-    const updateAssetGridColumns = () => {
+-      if (window.matchMedia('(min-width: 1280px)').matches) {
+-        setAssetGridColumns(3);
+-      } else if (window.matchMedia('(min-width: 640px)').matches) {
+-        setAssetGridColumns(2);
+-      } else {
+-        setAssetGridColumns(1);
+-      }
+-    };
+-
+-    updateAssetGridColumns();
+-    window.addEventListener('resize', updateAssetGridColumns);
+-
+-    return () => {
+-      window.removeEventListener('resize', updateAssetGridColumns);
+-    };
+-  }, []);
+-
+-  useEffect(() => {
+-    setSiteSettingsReady(false);
+-    const unsubscribe = onSnapshot(
+-      SITE_SETTINGS_DOC_REF,
+-      (snapshot) => {
+-        const nextSettings = normalizeSiteSettings(
+-          snapshot.exists() ? snapshot.data() : DEFAULT_SITE_SETTINGS
+-        );
+-        setSiteSettings(nextSettings);
+-        setSiteSettingsLoadErrorMessage('');
+-        setSiteSettingsReady(true);
+-      },
+-      (error) => {
+-        console.error('Site settings sync error:', error);
+-        setSiteSettings(DEFAULT_SITE_SETTINGS);
+-        setSiteSettingsLoadErrorMessage(
+-          '사이트 공통 설정을 불러오지 못했습니다. 기본 설정으로 표시합니다.'
+-        );
+-        setSiteSettingsReady(true);
+-      }
+-    );
+-    return unsubscribe;
+-  }, []);
+-
+-  useEffect(() => {
+-    const normalized = normalizeSiteSettings(siteSettings);
+-    const root = document.documentElement;
+-    root.style.setProperty('--mk-orange', normalized.primaryColor);
+-    root.style.setProperty('--mk-orange-dark', normalized.primaryDarkColor);
+-    root.style.setProperty('--mk-orange-soft', normalized.primaryColor + '1A');
+-    root.style.setProperty('--mk-orange-border', normalized.primaryColor + '40');
+-    root.style.setProperty('--mk-orange-ring', normalized.primaryColor + '26');
+-    root.style.setProperty('--mk-orange-shadow', normalized.primaryColor + '33');
+-
+-    document.title = normalized.browserTitle || normalized.siteName;
+-    let descriptionMeta = document.querySelector('meta[name="description"]');
+-    if (!descriptionMeta) {
+-      descriptionMeta = document.createElement('meta');
+-      descriptionMeta.setAttribute('name', 'description');
+-      document.head.appendChild(descriptionMeta);
+-    }
+-    descriptionMeta.setAttribute('content', normalized.metaDescription || '');
+-
+-    let favicon = document.querySelector('link[rel="icon"]');
+-    if (normalized.faviconUrl) {
+-      if (!favicon) {
+-        favicon = document.createElement('link');
+-        favicon.setAttribute('rel', 'icon');
+-        document.head.appendChild(favicon);
+-      }
+-      favicon.setAttribute('href', normalized.faviconUrl);
+-    }
+-  }, [siteSettings]);
+-
+-
+-  useEffect(() => {
+     if (adminTab === 'adminAccounts') {
+       setAdminAccountForm(createDefaultAdminAccountForm());
+       setAdminAccountPage(1);
+     }
+   }, [adminTab]);
+ 
+-  const normalizedSiteSettings = normalizeSiteSettings(siteSettings);
+   const {
+     dismissSystemBanner,
+     shouldRenderAppDialogs,
+@@ -1006,6 +918,39 @@
+   });
+ 
+   const {
++    hasAdminAccess,
++    hasFirebaseAuthSession,
++    isCurrentFirebaseAuthAdmin,
++    isCurrentFirebaseAuthGeneralUser,
++    isSplitStorageReady,
++    isUserDirectoryAccessRestricted,
++    memberDirectoryAudit,
++    memberDirectoryPolicyEnabled,
++    memberIdentityClaimsReady,
++    shouldShowAdminAccountsErrorPage,
++    shouldShowAdminLoadingPage,
++    shouldShowAdminLoginPage,
++  } = selectAppReadiness({
++    adminAccountsLoadErrorMessage,
++    adminAccountsReady,
++    adminLogoutInProgress,
++    currentAuthAdminAccount,
++    currentAuthRoleErrorMessage,
++    currentAuthRoleReady,
++    dataSettings: data.settings,
++    firebaseAuthCurrentUser: firebaseAuth.currentUser,
++    firebaseAuthReady,
++    firebaseAuthUser,
++    firebaseLoadErrorMessage,
++    firebaseReady,
++    isAdminAuthenticated,
++    splitPublicConfig,
++    splitStorageVersion,
++    userProfile,
++    view,
++  });
++
++  const {
+     dashboardSummary,
+     dashboardSummaryLoadErrorMessage,
+     dashboardSummaryReady,
+@@ -1114,36 +1059,6 @@
+     userProfileReady,
+   });
+ 
+-  const isCurrentFirebaseAuthAdmin =
+-    Boolean(firebaseAuthUser) &&
+-    currentAuthRoleReady &&
+-    Boolean(currentAuthAdminAccount);
+-
+-  const isCurrentFirebaseAuthGeneralUser =
+-    Boolean(firebaseAuthUser) &&
+-    currentAuthRoleReady &&
+-    !currentAuthRoleErrorMessage &&
+-    !currentAuthAdminAccount;
+-
+-  const memberDirectoryPolicyEnabled =
+-    isRegisteredMemberSignupRequired(data.settings);
+-  const memberIdentityClaimsReady = Boolean(
+-    data.settings.memberIdentityClaimsReady
+-  );
+-  const currentMemberDirectoryVersion =
+-    getSafeMemberDirectoryVersion(data.settings);
+-  const isUserDirectoryAccessRestricted = Boolean(
+-    userProfile &&
+-      (userProfile.status === USER_PROFILE_STATUS.PROFILE_REQUIRED ||
+-        (memberDirectoryPolicyEnabled &&
+-          userProfile.status === USER_PROFILE_STATUS.ACTIVE &&
+-          Number(userProfile.directoryVerifiedVersion || 0) !==
+-            currentMemberDirectoryVersion))
+-  );
+-  const memberDirectoryAudit =
+-    splitPublicConfig?.memberDirectoryAudit || null;
+-
+-
+   const orphanedRentalAvailabilityRequests = [];
+ 
+ 
+@@ -1591,10 +1506,6 @@
+   });
+ 
+ 
+-  const isSplitStorageReady =
+-    splitStorageVersion >= SPLIT_STORAGE_VERSION;
+-
+-
+   const openAdminMemberAccounts = useCallback(
+     ({ query = '', statusFilter = 'all' } = {}) => {
+       setAdminMemberAccountsNavigationRequest((currentRequest) => ({
+@@ -1750,37 +1661,6 @@
+   }, [view, currentAdminDeferredSettingsDirty]);
+ 
+ 
+-  const shouldShowAdminLoadingPage =
+-    view === 'admin' &&
+-    (
+-      !firebaseReady ||
+-      !firebaseAuthReady ||
+-      !currentAuthRoleReady ||
+-      !adminAccountsReady ||
+-      adminLogoutInProgress
+-    );
+-
+-  const shouldShowAdminAccountsErrorPage =
+-    view === 'admin' &&
+-    firebaseReady &&
+-    firebaseAuthReady &&
+-    currentAuthRoleReady &&
+-    adminAccountsReady &&
+-    Boolean(
+-      adminAccountsLoadErrorMessage || currentAuthRoleErrorMessage
+-    );
+-
+-  const hasAdminAccess =
+-    view === 'admin' &&
+-    firebaseReady &&
+-    firebaseAuthReady &&
+-    currentAuthRoleReady &&
+-    adminAccountsReady &&
+-    !firebaseLoadErrorMessage &&
+-    !adminAccountsLoadErrorMessage &&
+-    !currentAuthRoleErrorMessage &&
+-    isAdminAuthenticated;
+-
+   const {
+     adminFilteredLaptops,
+     availableFilterLabel,
+@@ -1825,17 +1705,6 @@
+     view,
+   });
+ 
+-  const shouldShowAdminLoginPage =
+-    view === 'admin' &&
+-    firebaseReady &&
+-    firebaseAuthReady &&
+-    currentAuthRoleReady &&
+-    adminAccountsReady &&
+-    !firebaseLoadErrorMessage &&
+-    !adminAccountsLoadErrorMessage &&
+-    !currentAuthRoleErrorMessage &&
+-    !isAdminAuthenticated;
+-  
+   const { closeNoticePost, openNoticePost } =
+     useBoardContentSubscriptionController({
+       activeFaqCategoryId,
+diff -ruN /mnt/data/rental_seq20_baseline/src/features/settings/useSiteSettingsController.js /mnt/data/rental_seq20_work/src/features/settings/useSiteSettingsController.js
+--- /mnt/data/rental_seq20_baseline/src/features/settings/useSiteSettingsController.js	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/rental_seq20_work/src/features/settings/useSiteSettingsController.js	2026-08-01 14:13:15.537404140 +0000
+@@ -0,0 +1,91 @@
++import { useEffect, useMemo, useState } from 'react';
++import { onSnapshot } from 'firebase/firestore';
++import { SITE_SETTINGS_DOC_REF } from '../../firebase.js';
++import {
++  DEFAULT_SITE_SETTINGS,
++  normalizeSiteSettings,
++} from '../../utils/systemSettings.js';
++
++const applySiteDocumentPresentation = (siteSettings) => {
++  if (typeof document === 'undefined') {
++    return;
++  }
++
++  const root = document.documentElement;
++  root.style.setProperty('--mk-orange', siteSettings.primaryColor);
++  root.style.setProperty('--mk-orange-dark', siteSettings.primaryDarkColor);
++  root.style.setProperty('--mk-orange-soft', `${siteSettings.primaryColor}1A`);
++  root.style.setProperty('--mk-orange-border', `${siteSettings.primaryColor}40`);
++  root.style.setProperty('--mk-orange-ring', `${siteSettings.primaryColor}26`);
++  root.style.setProperty('--mk-orange-shadow', `${siteSettings.primaryColor}33`);
++
++  document.title = siteSettings.browserTitle || siteSettings.siteName;
++
++  let descriptionMeta = document.querySelector('meta[name="description"]');
++  if (!descriptionMeta) {
++    descriptionMeta = document.createElement('meta');
++    descriptionMeta.setAttribute('name', 'description');
++    document.head.appendChild(descriptionMeta);
++  }
++  descriptionMeta.setAttribute('content', siteSettings.metaDescription || '');
++
++  let favicon = document.querySelector('link[rel="icon"]');
++  if (siteSettings.faviconUrl) {
++    if (!favicon) {
++      favicon = document.createElement('link');
++      favicon.setAttribute('rel', 'icon');
++      document.head.appendChild(favicon);
++    }
++    favicon.setAttribute('href', siteSettings.faviconUrl);
++  }
++};
++
++export default function useSiteSettingsController() {
++  const [siteSettings, setSiteSettings] = useState(DEFAULT_SITE_SETTINGS);
++  const [siteSettingsReady, setSiteSettingsReady] = useState(false);
++  const [siteSettingsLoadErrorMessage, setSiteSettingsLoadErrorMessage] =
++    useState('');
++
++  const normalizedSiteSettings = useMemo(
++    () => normalizeSiteSettings(siteSettings),
++    [siteSettings]
++  );
++
++  useEffect(() => {
++    setSiteSettingsReady(false);
++
++    const unsubscribe = onSnapshot(
++      SITE_SETTINGS_DOC_REF,
++      (snapshot) => {
++        setSiteSettings(
++          normalizeSiteSettings(
++            snapshot.exists() ? snapshot.data() : DEFAULT_SITE_SETTINGS
++          )
++        );
++        setSiteSettingsLoadErrorMessage('');
++        setSiteSettingsReady(true);
++      },
++      (error) => {
++        console.error('Site settings sync error:', error);
++        setSiteSettings(DEFAULT_SITE_SETTINGS);
++        setSiteSettingsLoadErrorMessage(
++          '사이트 공통 설정을 불러오지 못했습니다. 기본 설정으로 표시합니다.'
++        );
++        setSiteSettingsReady(true);
++      }
++    );
++
++    return unsubscribe;
++  }, []);
++
++  useEffect(() => {
++    applySiteDocumentPresentation(normalizedSiteSettings);
++  }, [normalizedSiteSettings]);
++
++  return {
++    normalizedSiteSettings,
++    siteSettings,
++    siteSettingsLoadErrorMessage,
++    siteSettingsReady,
++  };
++}
+diff -ruN /mnt/data/rental_seq20_baseline/src/hooks/useResponsiveAssetGridColumns.js /mnt/data/rental_seq20_work/src/hooks/useResponsiveAssetGridColumns.js
+--- /mnt/data/rental_seq20_baseline/src/hooks/useResponsiveAssetGridColumns.js	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/rental_seq20_work/src/hooks/useResponsiveAssetGridColumns.js	2026-08-01 14:16:19.533402068 +0000
+@@ -0,0 +1,60 @@
++import { useEffect, useState } from 'react';
++
++const getAssetGridColumns = () => {
++  if (typeof window === 'undefined') {
++    return 1;
++  }
++
++  if (window.matchMedia('(min-width: 1280px)').matches) {
++    return 3;
++  }
++
++  if (window.matchMedia('(min-width: 640px)').matches) {
++    return 2;
++  }
++
++  return 1;
++};
++
++const addMediaQueryListener = (mediaQuery, listener) => {
++  if (typeof mediaQuery.addEventListener === 'function') {
++    mediaQuery.addEventListener('change', listener);
++    return () => mediaQuery.removeEventListener('change', listener);
++  }
++
++  mediaQuery.addListener(listener);
++  return () => mediaQuery.removeListener(listener);
++};
++
++export default function useResponsiveAssetGridColumns() {
++  const [assetGridColumns, setAssetGridColumns] = useState(getAssetGridColumns);
++
++  useEffect(() => {
++    const updateAssetGridColumns = () => {
++      setAssetGridColumns((currentColumns) => {
++        const nextColumns = getAssetGridColumns();
++        return currentColumns === nextColumns ? currentColumns : nextColumns;
++      });
++    };
++
++    const desktopQuery = window.matchMedia('(min-width: 1280px)');
++    const tabletQuery = window.matchMedia('(min-width: 640px)');
++    const removeDesktopListener = addMediaQueryListener(
++      desktopQuery,
++      updateAssetGridColumns
++    );
++    const removeTabletListener = addMediaQueryListener(
++      tabletQuery,
++      updateAssetGridColumns
++    );
++
++    updateAssetGridColumns();
++
++    return () => {
++      removeDesktopListener();
++      removeTabletListener();
++    };
++  }, []);
++
++  return assetGridColumns;
++}
+diff -ruN /mnt/data/rental_seq20_baseline/src/selectors/appReadinessSelectors.js /mnt/data/rental_seq20_work/src/selectors/appReadinessSelectors.js
+--- /mnt/data/rental_seq20_baseline/src/selectors/appReadinessSelectors.js	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/rental_seq20_work/src/selectors/appReadinessSelectors.js	2026-08-01 14:13:15.541404140 +0000
+@@ -0,0 +1,101 @@
++import { USER_PROFILE_STATUS } from '../constants/memberConstants.js';
++import {
++  getSafeMemberDirectoryVersion,
++  isRegisteredMemberSignupRequired,
++} from '../features/members/memberAccountPolicy.js';
++import { SPLIT_STORAGE_VERSION } from '../features/settings/useAdminSplitStorageMigrationController.js';
++
++export const selectAppReadiness = ({
++  adminAccountsLoadErrorMessage,
++  adminAccountsReady,
++  adminLogoutInProgress,
++  currentAuthAdminAccount,
++  currentAuthRoleErrorMessage,
++  currentAuthRoleReady,
++  dataSettings,
++  firebaseAuthCurrentUser,
++  firebaseAuthReady,
++  firebaseAuthUser,
++  firebaseLoadErrorMessage,
++  firebaseReady,
++  isAdminAuthenticated,
++  splitPublicConfig,
++  splitStorageVersion,
++  userProfile,
++  view,
++}) => {
++  const hasFirebaseAuthSession = Boolean(
++    firebaseAuthUser || firebaseAuthCurrentUser
++  );
++
++  const isCurrentFirebaseAuthAdmin =
++    Boolean(firebaseAuthUser) &&
++    currentAuthRoleReady &&
++    Boolean(currentAuthAdminAccount);
++
++  const isCurrentFirebaseAuthGeneralUser =
++    Boolean(firebaseAuthUser) &&
++    currentAuthRoleReady &&
++    !currentAuthRoleErrorMessage &&
++    !currentAuthAdminAccount;
++
++  const memberDirectoryPolicyEnabled =
++    isRegisteredMemberSignupRequired(dataSettings);
++  const memberIdentityClaimsReady = Boolean(
++    dataSettings?.memberIdentityClaimsReady
++  );
++  const currentMemberDirectoryVersion =
++    getSafeMemberDirectoryVersion(dataSettings);
++
++  const isUserDirectoryAccessRestricted = Boolean(
++    userProfile &&
++      (userProfile.status === USER_PROFILE_STATUS.PROFILE_REQUIRED ||
++        (memberDirectoryPolicyEnabled &&
++          userProfile.status === USER_PROFILE_STATUS.ACTIVE &&
++          Number(userProfile.directoryVerifiedVersion || 0) !==
++            currentMemberDirectoryVersion))
++  );
++
++  const adminBaseReady =
++    view === 'admin' &&
++    firebaseReady &&
++    firebaseAuthReady &&
++    currentAuthRoleReady &&
++    adminAccountsReady;
++
++  const adminLoadError = Boolean(
++    adminAccountsLoadErrorMessage || currentAuthRoleErrorMessage
++  );
++
++  return {
++    hasAdminAccess:
++      adminBaseReady &&
++      !firebaseLoadErrorMessage &&
++      !adminLoadError &&
++      isAdminAuthenticated,
++    hasFirebaseAuthSession,
++    isCurrentFirebaseAuthAdmin,
++    isCurrentFirebaseAuthGeneralUser,
++    isSplitStorageReady:
++      splitStorageVersion >= SPLIT_STORAGE_VERSION,
++    isUserDirectoryAccessRestricted,
++    memberDirectoryAudit:
++      splitPublicConfig?.memberDirectoryAudit || null,
++    memberDirectoryPolicyEnabled,
++    memberIdentityClaimsReady,
++    shouldShowAdminAccountsErrorPage:
++      adminBaseReady && adminLoadError,
++    shouldShowAdminLoadingPage:
++      view === 'admin' &&
++      (!firebaseReady ||
++        !firebaseAuthReady ||
++        !currentAuthRoleReady ||
++        !adminAccountsReady ||
++        adminLogoutInProgress),
++    shouldShowAdminLoginPage:
++      adminBaseReady &&
++      !firebaseLoadErrorMessage &&
++      !adminLoadError &&
++      !isAdminAuthenticated,
++  };
++};
+--- /mnt/data/rental_seq20_baseline/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json	2026-08-01 14:17:37.665401189 +0000
++++ /mnt/data/rental_seq20_work/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json	2026-08-01 14:21:28.125398594 +0000
+@@ -1,11 +1,11 @@
+ {
+-  "generatedAt": "2026-08-01T14:17:37.671Z",
+-  "initialModuleCount": 78,
+-  "initialSourceBytes": 875401,
++  "generatedAt": "2026-08-01T14:21:28.131Z",
++  "initialModuleCount": 81,
++  "initialSourceBytes": 878586,
+   "files": [
+     {
+       "file": "src/App.jsx",
+-      "bytes": 97415
++      "bytes": 93060
+     },
+     {
+       "file": "src/features/requests/useUserRequestHistoryActionController.js",
+@@ -244,10 +244,18 @@
+       "bytes": 3110
+     },
+     {
++      "file": "src/features/settings/useSiteSettingsController.js",
++      "bytes": 3018
++    },
++    {
+       "file": "src/services/progressiveFirestoreSearch.js",
+       "bytes": 2997
+     },
+     {
++      "file": "src/selectors/appReadinessSelectors.js",
++      "bytes": 2964
++    },
++    {
+       "file": "src/utils/firestoreCapacity.js",
+       "bytes": 2689
+     },
+@@ -284,6 +292,10 @@
+       "bytes": 1843
+     },
+     {
++      "file": "src/hooks/useResponsiveAssetGridColumns.js",
++      "bytes": 1558
++    },
++    {
+       "file": "src/features/terms/useUserTermsCompliance.js",
+       "bytes": 1415
+     },

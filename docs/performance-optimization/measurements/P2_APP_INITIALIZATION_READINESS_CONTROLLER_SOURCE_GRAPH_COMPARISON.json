@@ -1,0 +1,79 @@
+{
+  "generatedAt": "2026-08-01T23:18:00+09:00",
+  "baselinePackage": "rental-system-dead-code-unused-binding-cleanup-20260801_2255_deployment_package.zip",
+  "outputPackage": "rental-system-app-initialization-readiness-controller-split-20260801_2318_deployment_package.zip",
+  "appJsx": {
+    "baseline": {
+      "lines": 3215,
+      "bytes": 97415,
+      "useState": 21,
+      "useEffect": 6,
+      "useMemo": 19,
+      "useRef": 4,
+      "useCallback": 10,
+      "onSnapshot": 1
+    },
+    "output": {
+      "lines": 3084,
+      "bytes": 93060,
+      "useState": 17,
+      "useEffect": 3,
+      "useMemo": 19,
+      "useRef": 4,
+      "useCallback": 10,
+      "onSnapshot": 0
+    },
+    "delta": {
+      "lines": -131,
+      "bytes": -4355,
+      "useState": -4,
+      "useEffect": -3,
+      "useMemo": 0,
+      "useRef": 0,
+      "useCallback": 0,
+      "onSnapshot": -1
+    }
+  },
+  "sourceGraph": {
+    "baseline": {
+      "initialModuleCount": 78,
+      "initialSourceBytes": 875401,
+      "dynamicEntryCount": 14
+    },
+    "output": {
+      "initialModuleCount": 81,
+      "initialSourceBytes": 878249,
+      "dynamicEntryCount": 14
+    },
+    "delta": {
+      "initialModuleCount": 3,
+      "initialSourceBytes": 2848,
+      "dynamicEntryCount": 0
+    }
+  },
+  "newModules": [
+    {
+      "file": "src/features/settings/useSiteSettingsController.js",
+      "lines": 91,
+      "bytes": 3018
+    },
+    {
+      "file": "src/hooks/useResponsiveAssetGridColumns.js",
+      "lines": 60,
+      "bytes": 1558
+    },
+    {
+      "file": "src/selectors/appReadinessSelectors.js",
+      "lines": 101,
+      "bytes": 2964
+    }
+  ],
+  "firestoreAccess": {
+    "baselineTotal": 129,
+    "outputTotal": 129,
+    "onSnapshot": 35,
+    "getDocs": 48,
+    "getDoc": 28,
+    "getCountFromServer": 18
+  }
+}

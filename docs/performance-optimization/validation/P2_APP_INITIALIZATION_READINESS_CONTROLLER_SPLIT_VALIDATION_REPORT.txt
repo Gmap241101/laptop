@@ -1,0 +1,72 @@
+P2 APP INITIALIZATION / READINESS CONTROLLER SPLIT VALIDATION REPORT
+==================================================================
+
+Baseline package
+- rental-system-dead-code-unused-binding-cleanup-20260801_2255_deployment_package.zip
+
+Output package
+- rental-system-app-initialization-readiness-controller-split-20260801_2318_deployment_package.zip
+
+Changed source files
+- src/App.jsx
+- src/features/settings/useSiteSettingsController.js (new)
+- src/hooks/useResponsiveAssetGridColumns.js (new)
+- src/selectors/appReadinessSelectors.js (new)
+
+Validation results
+1. Input package SHA-256 manifest: PASS (438/438)
+2. TypeScript parser JS/JSX/MJS syntax audit: PASS (137 source files)
+3. TypeScript noUnusedLocals audit: PASS (TS6133 findings 0)
+4. React Hook import audit: PASS (137 source files)
+5. Relative import target audit: PASS (413 imports, missing 0)
+6. Firestore strict audit: PASS
+   - total calls: 129
+   - onSnapshot: 35
+   - getDocs: 48
+   - getDoc: 28
+   - getCountFromServer: 18
+7. App readiness selector runtime mock: PASS
+   - general user role
+   - member-directory version restriction
+   - authenticated admin access
+   - admin loading state
+   - admin account error state
+8. Site document presentation runtime mock: PASS
+   - CSS variables
+   - browser title
+   - meta description
+   - favicon
+9. Responsive asset grid runtime mock: PASS
+10. Korean token preservation: PASS
+    - occurrences: 14851 -> 14851
+    - unique tokens: 2562 -> 2562
+11. Source graph analysis: PASS
+    - initial modules: 78 -> 81
+    - initial source bytes: 875401 -> 878249
+    - dynamic entries: 14 -> 14
+12. App.jsx reduction: PASS
+    - lines: 3215 -> 3084
+    - bytes: 97415 -> 93060
+    - useState: 21 -> 17
+    - useEffect: 6 -> 3
+    - onSnapshot: 1 -> 0 (moved to controller)
+13. Protected Firebase/config files unchanged: PASS
+    - rules/firestore.rules
+    - firestore.indexes.json
+    - firebase.json
+    - .firebaserc
+    - tools/firestore-audit-policy.json
+    - package.json
+    - package-lock.json
+14. npm ci / Vite build: NOT COMPLETED
+    - internal registry E404 for yargs-parser-21.1.1.tgz
+    - local deploy.ps1 build verification required
+15. Output package manifest: PASS (445/445 project files)
+16. ZIP file entries: PASS (449 files, 0 directory entries)
+17. ZIP compression integrity: PASS
+18. ZIP extraction byte comparison: PASS (449/449 files)
+19. REMOVED_FILES cumulative paths: PASS (67 paths, duplicates 0, package conflicts 0)
+20. Protected paths included: PASS (none of .git, node_modules, dist, deploy.ps1, .env files)
+21. ZIP SHA-256 and size: reported in the completion response after final ZIP creation
+
+Result: PASS for source syntax, hooks, imports, Firestore access, runtime mocks and source-graph validation. Actual Vite production build must be confirmed by local deploy.ps1.

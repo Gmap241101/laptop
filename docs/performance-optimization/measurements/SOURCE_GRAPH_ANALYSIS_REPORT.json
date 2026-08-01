@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-08-01T13:53:04.285Z",
-  "initialModuleCount": 78,
-  "initialSourceBytes": 875401,
+  "generatedAt": "2026-08-01T14:21:28.131Z",
+  "initialModuleCount": 81,
+  "initialSourceBytes": 878586,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 97415
+      "bytes": 93060
     },
     {
       "file": "src/features/requests/useUserRequestHistoryActionController.js",
@@ -244,8 +244,16 @@
       "bytes": 3110
     },
     {
+      "file": "src/features/settings/useSiteSettingsController.js",
+      "bytes": 3018
+    },
+    {
       "file": "src/services/progressiveFirestoreSearch.js",
       "bytes": 2997
+    },
+    {
+      "file": "src/selectors/appReadinessSelectors.js",
+      "bytes": 2964
     },
     {
       "file": "src/utils/firestoreCapacity.js",
@@ -282,6 +290,10 @@
     {
       "file": "src/components/RentalStatusBoard.jsx",
       "bytes": 1843
+    },
+    {
+      "file": "src/hooks/useResponsiveAssetGridColumns.js",
+      "bytes": 1558
     },
     {
       "file": "src/features/terms/useUserTermsCompliance.js",
