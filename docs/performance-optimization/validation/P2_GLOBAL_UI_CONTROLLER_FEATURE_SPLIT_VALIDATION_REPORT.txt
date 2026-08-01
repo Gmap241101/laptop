@@ -1,0 +1,46 @@
+P2_GLOBAL_UI_CONTROLLER_FEATURE_SPLIT validation
+================================================
+Generated: 2026-08-01T21:08:03+09:00
+Baseline: rental-system-app-navigation-controller-split-20260801_1838_deployment_package.zip
+
+[PASS] Input package metadata SHA-256 verification: 397/397
+[PASS] React hook import audit: 127 source files
+[PASS] Firestore strict audit
+       Total calls: 129
+       onSnapshot: 35
+       getDocs: 48
+       getDoc: 28
+       getCountFromServer: 18
+       Unapproved warnings: 0
+       Unapproved errors: 0
+[PASS] Relative import resolution: 382 imports, 0 missing
+[PASS] Dialog context contract: 52/52 keys available in uiContext
+[PASS] Old App.jsx global UI state declarations removed
+[PASS] Old App.jsx dialog Promise cache removed
+[PASS] Shared AppDialogs loader imported by React.lazy and preload controller
+[PASS] Dynamic import failure resets cached Promise
+[PASS] Toast and confirm callbacks moved to global UI controller
+[PASS] Dialog activation and pointer/keyboard preload effects moved to controller
+[PASS] System banner close action moved to controller
+[PASS] Korean UI string multiset preserved
+       Occurrences: 2196 -> 2196
+       Unique strings: 1702 -> 1702
+       Removed: 0
+       Added: 0
+[PASS] Node syntax check: new .js modules
+[PASS] TypeScript baseline comparison
+       New semantic findings: only missing external React typings for the new hook file
+       New project-code semantic findings: 0
+[PASS] Source graph analysis
+       Initial modules: 69 -> 71
+       Initial source bytes: 863209 -> 865008
+[PASS] App.jsx metrics
+       Lines: 4708 -> 4667
+       Bytes: 138899 -> 137290
+       useState(): 25 -> 21
+       useEffect(): 9 -> 7
+
+[NOT COMPLETED] npm ci / Vite production build
+Reason:
+E404 yargs-parser-21.1.1.tgz was unavailable from the internal npm registry.
+The local deploy.ps1 build must succeed before deployment is considered complete.

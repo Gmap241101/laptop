@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-08-01T09:37:34.566Z",
-  "initialModuleCount": 69,
-  "initialSourceBytes": 863209,
+  "generatedAt": "2026-08-01T12:06:43.112Z",
+  "initialModuleCount": 71,
+  "initialSourceBytes": 865008,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 138899
+      "bytes": 137290
     },
     {
       "file": "src/features/requests/useUserRequestHistoryActionController.js",
@@ -220,6 +220,10 @@
       "bytes": 3149
     },
     {
+      "file": "src/ui/useGlobalUiController.js",
+      "bytes": 3110
+    },
+    {
       "file": "src/services/progressiveFirestoreSearch.js",
       "bytes": 2997
     },
@@ -274,6 +278,10 @@
     {
       "file": "src/hooks/useDebouncedValue.js",
       "bytes": 385
+    },
+    {
+      "file": "src/dialogs/appDialogsLoader.js",
+      "bytes": 298
     },
     {
       "file": "src/constants/memberConstants.js",

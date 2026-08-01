@@ -55,20 +55,12 @@ import {
   getUserPanelContextKey,
 } from './context/appContextSlices.js';
 
-const AdminWorkspace = React.lazy(() => import('./admin/AdminWorkspace.jsx'));
-let appDialogsModulePromise = null;
-const loadAppDialogsModule = () => {
-  if (!appDialogsModulePromise) {
-    appDialogsModulePromise = import('./dialogs/AppDialogs.jsx').catch(
-      (error) => {
-        appDialogsModulePromise = null;
-        throw error;
-      }
-    );
-  }
+import { loadAppDialogsModule } from './dialogs/appDialogsLoader.js';
+import useGlobalUiController, {
+  useGlobalUiState,
+} from './ui/useGlobalUiController.js';
 
-  return appDialogsModulePromise;
-};
+const AdminWorkspace = React.lazy(() => import('./admin/AdminWorkspace.jsx'));
 const AppDialogs = React.lazy(loadAppDialogsModule);
 const UserPopupLayer = React.lazy(() => import('./user/UserPopupLayer.jsx'));
 const DevPerformancePanel = React.lazy(() =>
@@ -790,7 +782,16 @@ function App() {
     userSessionPolicyLoadErrorMessage,
     userSessionPolicyReady,
   } = useAuthIdentityPolicySubscriptionState();
-  const [systemBannerDismissedKey, setSystemBannerDismissedKey] = useState('');
+  const {
+    appDialogsActivated,
+    confirmModal,
+    setAppDialogsActivated,
+    setConfirmModal,
+    setSystemBannerDismissedKey,
+    setToast,
+    systemBannerDismissedKey,
+    toast,
+  } = useGlobalUiState();
   const [firebaseReady, setFirebaseReady] = useState(false);
   const [firebaseLoadErrorMessage, setFirebaseLoadErrorMessage] = useState('');
 
@@ -1223,14 +1224,6 @@ function App() {
     splitStorageFinalizeLoading,
   } = useAdminSplitStorageMigrationState();
 
-  // Toast 메시지 상태
-  const [toast, setToast] = useState(null);
-  // 커스텀 모달 확인창 상태
-  const [confirmModal, setConfirmModal] = useState(null);
-  // 대화상자 모듈은 최초 사용 전까지 지연하고, 한 번 활성화된 뒤에는 유지한다.
-  const [appDialogsActivated, setAppDialogsActivated] = useState(false);
-
-
   useEffect(() => {
     const updateAssetGridColumns = () => {
       if (window.matchMedia('(min-width: 1280px)').matches) {
@@ -1312,14 +1305,31 @@ function App() {
     }
   }, [adminTab]);
 
-  const triggerToast = useCallback((message, type = 'success') => {
-    setToast({ message, type });
-    window.setTimeout(() => setToast(null), 3000);
-  }, []);
-
-  const triggerConfirm = useCallback((title, message, onConfirm) => {
-    setConfirmModal({ title, message, onConfirm });
-  }, []);
+  const normalizedSiteSettings = normalizeSiteSettings(siteSettings);
+  const {
+    dismissSystemBanner,
+    shouldRenderAppDialogs,
+    shouldShowSystemBanner,
+    triggerConfirm,
+    triggerToast,
+  } = useGlobalUiController({
+    appDialogsActivated,
+    confirmModal,
+    faqPostDialog,
+    noticePostDialog,
+    popupPostDialog,
+    setAppDialogsActivated,
+    setConfirmModal,
+    setSystemBannerDismissedKey,
+    setToast,
+    systemBannerDismissedKey,
+    systemBannerEnabled: normalizedSiteSettings.systemBannerEnabled,
+    systemBannerLevel: normalizedSiteSettings.systemBannerLevel,
+    systemBannerMessage: normalizedSiteSettings.systemBannerMessage,
+    toast,
+    userActionDialog,
+    view,
+  });
 
   useAuthIdentityPolicySubscriptionController({
     adminTab,
@@ -4235,14 +4245,6 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     isUserDirectoryAccessRestricted,
   });
   const adminPanelContextKey = getAdminPanelContextKey(adminTab);
-  const hasVisibleAppDialog = Boolean(
-    userActionDialog ||
-      popupPostDialog ||
-      faqPostDialog ||
-      noticePostDialog ||
-      confirmModal ||
-      toast
-  );
   const shouldMountUserPopupLayer =
     view === 'user' &&
     Array.isArray(popupPosts) &&
@@ -4250,51 +4252,8 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
     (userTab === 'home' ||
       (userTab === 'rental' && Boolean(firebaseAuthUser)));
 
-  useEffect(() => {
-    if (hasVisibleAppDialog && !appDialogsActivated) {
-      setAppDialogsActivated(true);
-    }
-  }, [appDialogsActivated, hasVisibleAppDialog]);
-
-  useEffect(() => {
-    if (appDialogsActivated || typeof window === 'undefined') {
-      return undefined;
-    }
-
-    const preloadAppDialogs = () => {
-      void loadAppDialogsModule().catch((error) => {
-        console.error('App dialogs preload error:', error);
-      });
-      window.removeEventListener('pointerdown', preloadAppDialogs);
-      window.removeEventListener('keydown', preloadAppDialogs);
-    };
-
-    window.addEventListener('pointerdown', preloadAppDialogs, {
-      once: true,
-      passive: true,
-    });
-    window.addEventListener('keydown', preloadAppDialogs, {
-      once: true,
-    });
-
-    return () => {
-      window.removeEventListener('pointerdown', preloadAppDialogs);
-      window.removeEventListener('keydown', preloadAppDialogs);
-    };
-  }, [appDialogsActivated]);
-
-  const shouldRenderAppDialogs =
-    hasVisibleAppDialog || appDialogsActivated;
-
   const showFirebaseLoadingOverlay = !firebaseReady;
-  const normalizedSiteSettings = normalizeSiteSettings(siteSettings);
   const headerSubtitle = getHeaderSubtitle(normalizedSiteSettings);
-  const systemBannerKey = `${normalizedSiteSettings.systemBannerLevel}:${normalizedSiteSettings.systemBannerMessage}`;
-  const shouldShowSystemBanner =
-    view === 'user' &&
-    normalizedSiteSettings.systemBannerEnabled &&
-    normalizedSiteSettings.systemBannerMessage &&
-    systemBannerDismissedKey !== systemBannerKey;
 
   if (firebaseLoadErrorMessage) {
     return (
@@ -4388,7 +4347,7 @@ const getUserLaptopStatusLabel = (laptopAvailability) => {
             </a>
           ) : normalizedSiteSettings.systemBannerMessage}
           {normalizedSiteSettings.systemBannerDismissible ? (
-            <button type="button" onClick={() => setSystemBannerDismissedKey(systemBannerKey)} className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-1 hover:bg-black/10" aria-label="시스템 안내 닫기"><X size={14} /></button>
+            <button type="button" onClick={dismissSystemBanner} className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-1 hover:bg-black/10" aria-label="시스템 안내 닫기"><X size={14} /></button>
           ) : null}
         </div>
       ) : null}

@@ -1,0 +1,39 @@
+{
+  "generatedAt": "2026-08-01T21:08:03+09:00",
+  "task": "P2_GLOBAL_UI_CONTROLLER_FEATURE_SPLIT",
+  "baselinePackage": "rental-system-app-navigation-controller-split-20260801_1838_deployment_package.zip",
+  "before": {
+    "appLines": 4708,
+    "appBytes": 138899,
+    "appUseStateCalls": 25,
+    "appUseEffectCalls": 9,
+    "appUseRefCalls": 5,
+    "appUseMemoCalls": 26,
+    "initialModuleCount": 69,
+    "initialSourceBytes": 863209
+  },
+  "after": {
+    "appLines": 4667,
+    "appBytes": 137290,
+    "appUseStateCalls": 21,
+    "appUseEffectCalls": 7,
+    "appUseRefCalls": 5,
+    "appUseMemoCalls": 26,
+    "globalUiControllerLines": 117,
+    "globalUiControllerBytes": 3110,
+    "appDialogsLoaderLines": 12,
+    "appDialogsLoaderBytes": 298,
+    "initialModuleCount": 71,
+    "initialSourceBytes": 865008
+  },
+  "delta": {
+    "appLines": -41,
+    "appBytes": -1609,
+    "appUseStateCalls": -4,
+    "appUseEffectCalls": -2,
+    "appUseRefCalls": 0,
+    "appUseMemoCalls": 0,
+    "initialModuleCount": 2,
+    "initialSourceBytes": 1799
+  }
+}
