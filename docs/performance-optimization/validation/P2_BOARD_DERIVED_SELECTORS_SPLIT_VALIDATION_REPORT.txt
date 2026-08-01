@@ -1,0 +1,39 @@
+P2_BOARD_DERIVED_SELECTORS_SPLIT_VALIDATION_REPORT
+====================================================
+
+[입력 기준본]
+- 파일: rental-system-admin-workspace-bridge-controller-split-20260802_0039_deployment_package.zip
+- ZIP SHA-256: 1468ed49974fcca11f161aaae69fb42675ffe4a26906b96664c1c82f2447c0a4
+- PACKAGE_FILES: 470
+- SHA-256 불일치: 0
+- REMOVED_FILES: 65
+
+[소스 구조]
+- App.jsx: 2512 lines / 75731 bytes -> 2174 lines / 67919 bytes
+- App.jsx useMemo: 19 -> 0
+- New hook: 341 lines / 9273 bytes / 19 useMemo / 24 outputs
+- Initial modules: 84 -> 85
+- Initial source bytes: 877977 -> 879438
+- Dynamic entries: 14 -> 14
+
+[검증]
+- npm run prebuild: PASS
+- React hook audit: PASS (142 source files)
+- Application flow contract audit: PASS (69 contracts)
+- Firestore strict audit: PASS (129 read calls)
+- Relative imports: PASS (428 checked, 0 missing)
+- Runtime scenarios: PASS (6)
+- Korean UI text set: PASS (2524 unique / 3316 occurrences, unchanged)
+- TypeScript baseline comparison: PASS (0 new semantic diagnostics; only expected external react module diagnostic for the new hook in the dependency-free environment)
+- Firestore operation counts: unchanged
+- Rules/index/firebase config hashes: unchanged
+
+[빌드]
+- npm ci: FAIL (external/internal registry E404 for yargs-parser-21.1.1.tgz)
+- vite build: NOT RUN
+- local deploy.ps1 build confirmation required
+
+[판정]
+- Source validation: PASS
+- Package generation: PASS after final package-meta and ZIP re-extraction verification
+- Final deployment status: conditional until local Vite build succeeds

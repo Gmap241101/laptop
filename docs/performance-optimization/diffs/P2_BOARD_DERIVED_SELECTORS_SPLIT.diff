@@ -1,0 +1,904 @@
+--- /mnt/data/seq_004_base/src/App.jsx	2026-08-01 15:38:14.000000000 +0000
++++ /mnt/data/seq_004_work/src/App.jsx	2026-08-01 15:48:55.526928678 +0000
+@@ -1,4 +1,4 @@
+-import { useEffect, useMemo, useRef, useState } from 'react';
++import { useEffect, useRef, useState } from 'react';
+ import { Button } from './components/CommonUI.jsx';
+ import useAppContextAssembler from './context/useAppContextAssembler.js';
+ import AppShell from './shell/AppShell.jsx';
+@@ -10,7 +10,6 @@
+   useGlobalUiState,
+ } from './ui/useGlobalUiController.js';
+ 
+-import { richTextHtmlToText } from './utils/richTextCore.js';
+ import { firebaseAuth } from './firebase.js';
+ 
+ 
+@@ -34,11 +33,11 @@
+ import useResponsiveAssetGridColumns from './hooks/useResponsiveAssetGridColumns.js';
+ import { selectAppReadiness } from './selectors/appReadinessSelectors.js';
+ import useBoardContentSubscriptionController, {
+-  filterNoticePostsByQuery,
+   getSafeFaqPostsPerPage,
+   getSafeNoticePostsPerPage,
+   useBoardContentSubscriptionState,
+ } from './features/boards/useBoardContentSubscriptionController.js';
++import useBoardDerivedSelectors from './features/boards/useBoardDerivedSelectors.js';
+ import useAdminBoardPostController, {
+   useFaqPostAdminState,
+   useNoticePostAdminState,
+@@ -139,7 +138,6 @@
+ import {
+   formatDateWithKoreanWeekday,
+   getDisplayRentalStatus,
+-  getFirestoreTimestampMillis,
+   today,
+ } from './utils/appUtils.js';
+ 
+@@ -1052,389 +1050,53 @@
+ 
+ 
+ 
+-  const noticePostsPerPage = getSafeNoticePostsPerPage(
+-    noticeBoardConfig.postsPerPage
+-  );
+-
+-  const allPinnedNoticePosts = useMemo(
+-    () =>
+-      (noticePosts || []).filter(
+-        (post) => post.isPinned
+-      ),
+-    [noticePosts]
+-  );
+-
+-  const allRegularNoticePosts = useMemo(
+-    () =>
+-      (noticePosts || []).filter(
+-        (post) => !post.isPinned
+-      ),
+-    [noticePosts]
+-  );
+-
+-  const userNoticeSearchMode = Boolean(String(userNoticeQuery || '').trim());
+-  const adminNoticeSearchMode = Boolean(String(adminNoticeQuery || '').trim());
+-  const activeNoticePage =
+-    view === 'admin' && adminTab === 'noticePosts'
+-      ? adminNoticePage
+-      : noticePage;
+-  const activeNoticeSearchMode =
+-    view === 'admin' && adminTab === 'noticePosts'
+-      ? adminNoticeSearchMode
+-      : userNoticeSearchMode;
+-
+-  const noticeRegularPostNumberById = useMemo(
+-    () =>
+-      new Map(
+-        allRegularNoticePosts.map((post, index) => [
+-          post.id,
+-          activeNoticeSearchMode
+-            ? allRegularNoticePosts.length - index
+-            : Math.max(
+-                1,
+-                noticeRegularTotalCount -
+-                  (activeNoticePage - 1) * noticePostsPerPage -
+-                  index
+-              ),
+-        ])
+-      ),
+-    [
+-      allRegularNoticePosts,
+-      activeNoticePage,
+-      activeNoticeSearchMode,
+-      noticeRegularTotalCount,
+-      noticePostsPerPage,
+-    ]
+-  );
+-
+-  const pinnedNoticePosts = useMemo(
+-    () =>
+-      filterNoticePostsByQuery(
+-        allPinnedNoticePosts,
+-        userNoticeQuery
+-      ),
+-    [allPinnedNoticePosts, userNoticeQuery]
+-  );
+-
+-  const regularNoticePosts = useMemo(
+-    () =>
+-      filterNoticePostsByQuery(
+-        allRegularNoticePosts,
+-        userNoticeQuery
+-      ),
+-    [allRegularNoticePosts, userNoticeQuery]
+-  );
+-
+-  const adminPinnedNoticePosts = useMemo(
+-    () =>
+-      filterNoticePostsByQuery(
+-        allPinnedNoticePosts,
+-        adminNoticeQuery
+-      ),
+-    [allPinnedNoticePosts, adminNoticeQuery]
+-  );
+-
+-  const adminRegularNoticePosts = useMemo(
+-    () =>
+-      filterNoticePostsByQuery(
+-        allRegularNoticePosts,
+-        adminNoticeQuery
+-      ),
+-    [allRegularNoticePosts, adminNoticeQuery]
+-  );
+-
+-  const noticeTotalPages = Math.max(
+-    1,
+-    Math.ceil(
+-      (userNoticeSearchMode
+-        ? regularNoticePosts.length
+-        : noticeRegularTotalCount) / noticePostsPerPage
+-    )
+-  );
+-
+-  const safeNoticePage = Math.min(noticePage, noticeTotalPages);
+-
+-  const paginatedNoticePosts = useMemo(
+-    () =>
+-      userNoticeSearchMode
+-        ? regularNoticePosts.slice(
+-            (safeNoticePage - 1) * noticePostsPerPage,
+-            safeNoticePage * noticePostsPerPage
+-          )
+-        : regularNoticePosts,
+-    [
+-      userNoticeSearchMode,
+-      regularNoticePosts,
+-      safeNoticePage,
+-      noticePostsPerPage,
+-    ]
+-  );
+-
+-  const adminNoticeTotalPages = Math.max(
+-    1,
+-    Math.ceil(
+-      (adminNoticeSearchMode
+-        ? adminRegularNoticePosts.length
+-        : noticeRegularTotalCount) / noticePostsPerPage
+-    )
+-  );
+-
+-  const safeAdminNoticePage = Math.min(
++  const {
++    activeFaqCategoryName,
++    adminFaqTotalPages,
++    adminNoticeTotalPages,
++    adminPinnedFaqPosts,
++    adminPinnedNoticePosts,
++    adminRegularFaqPosts,
++    adminRegularNoticePosts,
++    categoryFilteredFaqPosts,
++    displayedFaqPosts,
++    faqCategoryNameById,
++    faqTotalPages,
++    noticeRegularPostNumberById,
++    noticeTotalPages,
++    paginatedAdminFaqPosts,
++    paginatedAdminNoticePosts,
++    paginatedNoticePosts,
++    pinnedNoticePosts,
++    regularFaqPosts,
++    regularNoticePosts,
++    safeAdminFaqPage,
++    safeAdminNoticePage,
++    safeFaqPage,
++    safeNoticePage,
++    selectedNoticePost,
++  } = useBoardDerivedSelectors({
++    activeFaqCategoryId,
++    adminFaqPage,
+     adminNoticePage,
+-    adminNoticeTotalPages
+-  );
+-
+-  const paginatedAdminNoticePosts = useMemo(
+-    () =>
+-      adminNoticeSearchMode
+-        ? adminRegularNoticePosts.slice(
+-            (safeAdminNoticePage - 1) * noticePostsPerPage,
+-            safeAdminNoticePage * noticePostsPerPage
+-          )
+-        : adminRegularNoticePosts,
+-    [
+-      adminNoticeSearchMode,
+-      adminRegularNoticePosts,
+-      safeAdminNoticePage,
+-      noticePostsPerPage,
+-    ]
+-  );
+-
+-  const selectedNoticePost = useMemo(
+-    () =>
+-      selectedNoticePostId
+-        ? noticePosts.find(
+-            (post) => post.id === selectedNoticePostId
+-          ) ||
+-          (selectedNoticePostOverride?.id === selectedNoticePostId
+-            ? selectedNoticePostOverride
+-            : null)
+-        : null,
+-    [
+-      noticePosts,
+-      selectedNoticePostId,
+-      selectedNoticePostOverride,
+-    ]
+-  );
+-
+-  const faqCategoryNameById = useMemo(
+-    () =>
+-      new Map(
+-        (faqCategories || []).map(
+-          (category) => [
+-            category.id,
+-            category.name,
+-          ]
+-        )
+-      ),
+-    [faqCategories]
+-  );
+-
+-  const faqPostsPerPage = getSafeFaqPostsPerPage(
+-    faqBoardConfig.postsPerPage
+-  );
+-
+-  const activeFaqCategoryName =
+-    activeFaqCategoryId === 'all'
+-      ? '전체'
+-      : faqCategoryNameById.get(
+-          activeFaqCategoryId
+-        ) || '선택 카테고리';
+-
+-  const faqCategoryOrderById = useMemo(
+-    () =>
+-      new Map(
+-        (faqCategories || []).map(
+-          (category, index) => [
+-            category.id,
+-            index,
+-          ]
+-        )
+-      ),
+-    [faqCategories]
+-  );
+-
+-  const categoryFilteredFaqPosts = useMemo(() => {
+-    const normalizedQuery = faqQuery
+-      .trim()
+-      .toLowerCase();
+-
+-    const shouldLimitToActiveCategory =
+-      activeFaqCategoryId !== 'all' &&
+-      (
+-        !normalizedQuery ||
+-        faqSearchWithinCategory
+-      );
+-
+-    return (faqPosts || [])
+-      .filter((post) => {
+-        const categoryMatched =
+-          !shouldLimitToActiveCategory ||
+-          post.categoryId ===
+-            activeFaqCategoryId;
+-
+-        const keywordMatched =
+-          !normalizedQuery ||
+-          String(post.title || '')
+-            .toLowerCase()
+-            .includes(normalizedQuery) ||
+-          String(
+-            post.contentText ||
+-              post.content ||
+-              richTextHtmlToText(post.contentHtml || '')
+-          )
+-            .toLowerCase()
+-            .includes(normalizedQuery);
+-
+-        return categoryMatched && keywordMatched;
+-      })
+-      .sort((first, second) => {
+-        const firstCategoryOrder =
+-          faqCategoryOrderById.get(
+-            first.categoryId
+-          ) ?? Number.MAX_SAFE_INTEGER;
+-
+-        const secondCategoryOrder =
+-          faqCategoryOrderById.get(
+-            second.categoryId
+-          ) ?? Number.MAX_SAFE_INTEGER;
+-
+-        if (
+-          firstCategoryOrder !==
+-          secondCategoryOrder
+-        ) {
+-          return (
+-            firstCategoryOrder -
+-            secondCategoryOrder
+-          );
+-        }
+-
+-        return (
+-          getFirestoreTimestampMillis(
+-            second.createdAt
+-          ) -
+-          getFirestoreTimestampMillis(
+-            first.createdAt
+-          )
+-        );
+-      });
+-  }, [
++    adminNoticeQuery,
++    adminTab,
++    faqBoardConfig,
++    faqCategories,
++    faqPage,
+     faqPosts,
+     faqQuery,
++    faqRegularTotalCount,
+     faqSearchWithinCategory,
+-    activeFaqCategoryId,
+-    faqCategoryOrderById,
+-  ]);
+-
+-  const pinnedFaqPosts = useMemo(
+-    () =>
+-      categoryFilteredFaqPosts.filter(
+-        (post) => post.isPinned
+-      ),
+-    [categoryFilteredFaqPosts]
+-  );
+-
+-  const regularFaqPosts = useMemo(
+-    () =>
+-      categoryFilteredFaqPosts.filter(
+-        (post) => !post.isPinned
+-      ),
+-    [categoryFilteredFaqPosts]
+-  );
+-
+-  const faqSearchMode = Boolean(String(faqQuery || '').trim());
+-
+-  const faqTotalPages = Math.max(
+-    1,
+-    Math.ceil(
+-      (faqSearchMode
+-        ? regularFaqPosts.length
+-        : faqRegularTotalCount) / faqPostsPerPage
+-    )
+-  );
+-
+-  const safeFaqPage = Math.min(faqPage, faqTotalPages);
+-
+-  const paginatedFaqPosts = useMemo(
+-    () =>
+-      faqSearchMode
+-        ? regularFaqPosts.slice(
+-            (safeFaqPage - 1) * faqPostsPerPage,
+-            safeFaqPage * faqPostsPerPage
+-          )
+-        : regularFaqPosts,
+-    [faqSearchMode, regularFaqPosts, safeFaqPage, faqPostsPerPage]
+-  );
+-
+-  const displayedFaqPosts = useMemo(
+-    () =>
+-      [
+-        ...pinnedFaqPosts,
+-        ...paginatedFaqPosts,
+-      ].sort((first, second) => {
+-        const firstCategoryOrder =
+-          faqCategoryOrderById.get(
+-            first.categoryId
+-          ) ?? Number.MAX_SAFE_INTEGER;
+-
+-        const secondCategoryOrder =
+-          faqCategoryOrderById.get(
+-            second.categoryId
+-          ) ?? Number.MAX_SAFE_INTEGER;
+-
+-        if (
+-          firstCategoryOrder !==
+-          secondCategoryOrder
+-        ) {
+-          return (
+-            firstCategoryOrder -
+-            secondCategoryOrder
+-          );
+-        }
+-
+-        return (
+-          getFirestoreTimestampMillis(
+-            second.createdAt
+-          ) -
+-          getFirestoreTimestampMillis(
+-            first.createdAt
+-          )
+-        );
+-      }),
+-    [
+-      pinnedFaqPosts,
+-      paginatedFaqPosts,
+-      faqCategoryOrderById,
+-    ]
+-  );
+-
+-  const adminPinnedFaqPosts = useMemo(
+-    () =>
+-      (faqPosts || []).filter(
+-        (post) => post.isPinned
+-      ),
+-    [faqPosts]
+-  );
+-
+-  const adminRegularFaqPosts = useMemo(
+-    () =>
+-      (faqPosts || []).filter(
+-        (post) => !post.isPinned
+-      ),
+-    [faqPosts]
+-  );
+-
+-  const adminFaqTotalPages = Math.max(
+-    1,
+-    Math.ceil(faqRegularTotalCount / faqPostsPerPage)
+-  );
+-
+-  const safeAdminFaqPage = Math.min(
+-    adminFaqPage,
+-    adminFaqTotalPages
+-  );
+-
+-  const paginatedAdminFaqPosts = adminRegularFaqPosts;
++    noticeBoardConfig,
++    noticePage,
++    noticePosts,
++    noticeRegularTotalCount,
++    selectedNoticePostId,
++    selectedNoticePostOverride,
++    userNoticeQuery,
++    view,
++  });
+ 
+   const {
+     addFaqCategory,
+--- /dev/null	2026-08-01 14:50:25.319039935 +0000
++++ /mnt/data/seq_004_work/src/features/boards/useBoardDerivedSelectors.js	2026-08-01 15:48:43.462929060 +0000
+@@ -0,0 +1,341 @@
++import { useMemo } from 'react';
++
++import { richTextHtmlToText } from '../../utils/richTextCore.js';
++import { getFirestoreTimestampMillis } from '../../utils/appUtils.js';
++import {
++  filterNoticePostsByQuery,
++  getSafeFaqPostsPerPage,
++  getSafeNoticePostsPerPage,
++} from './useBoardContentSubscriptionController.js';
++
++export default function useBoardDerivedSelectors({
++  activeFaqCategoryId,
++  adminFaqPage,
++  adminNoticePage,
++  adminNoticeQuery,
++  adminTab,
++  faqBoardConfig,
++  faqCategories,
++  faqPage,
++  faqPosts,
++  faqQuery,
++  faqRegularTotalCount,
++  faqSearchWithinCategory,
++  noticeBoardConfig,
++  noticePage,
++  noticePosts,
++  noticeRegularTotalCount,
++  selectedNoticePostId,
++  selectedNoticePostOverride,
++  userNoticeQuery,
++  view,
++}) {
++  const noticePostsPerPage = getSafeNoticePostsPerPage(
++    noticeBoardConfig.postsPerPage
++  );
++
++  const allPinnedNoticePosts = useMemo(
++    () => (noticePosts || []).filter((post) => post.isPinned),
++    [noticePosts]
++  );
++
++  const allRegularNoticePosts = useMemo(
++    () => (noticePosts || []).filter((post) => !post.isPinned),
++    [noticePosts]
++  );
++
++  const userNoticeSearchMode = Boolean(String(userNoticeQuery || '').trim());
++  const adminNoticeSearchMode = Boolean(String(adminNoticeQuery || '').trim());
++  const activeNoticePage =
++    view === 'admin' && adminTab === 'noticePosts'
++      ? adminNoticePage
++      : noticePage;
++  const activeNoticeSearchMode =
++    view === 'admin' && adminTab === 'noticePosts'
++      ? adminNoticeSearchMode
++      : userNoticeSearchMode;
++
++  const noticeRegularPostNumberById = useMemo(
++    () =>
++      new Map(
++        allRegularNoticePosts.map((post, index) => [
++          post.id,
++          activeNoticeSearchMode
++            ? allRegularNoticePosts.length - index
++            : Math.max(
++                1,
++                noticeRegularTotalCount -
++                  (activeNoticePage - 1) * noticePostsPerPage -
++                  index
++              ),
++        ])
++      ),
++    [
++      allRegularNoticePosts,
++      activeNoticePage,
++      activeNoticeSearchMode,
++      noticeRegularTotalCount,
++      noticePostsPerPage,
++    ]
++  );
++
++  const pinnedNoticePosts = useMemo(
++    () => filterNoticePostsByQuery(allPinnedNoticePosts, userNoticeQuery),
++    [allPinnedNoticePosts, userNoticeQuery]
++  );
++
++  const regularNoticePosts = useMemo(
++    () => filterNoticePostsByQuery(allRegularNoticePosts, userNoticeQuery),
++    [allRegularNoticePosts, userNoticeQuery]
++  );
++
++  const adminPinnedNoticePosts = useMemo(
++    () => filterNoticePostsByQuery(allPinnedNoticePosts, adminNoticeQuery),
++    [allPinnedNoticePosts, adminNoticeQuery]
++  );
++
++  const adminRegularNoticePosts = useMemo(
++    () => filterNoticePostsByQuery(allRegularNoticePosts, adminNoticeQuery),
++    [allRegularNoticePosts, adminNoticeQuery]
++  );
++
++  const noticeTotalPages = Math.max(
++    1,
++    Math.ceil(
++      (userNoticeSearchMode
++        ? regularNoticePosts.length
++        : noticeRegularTotalCount) / noticePostsPerPage
++    )
++  );
++
++  const safeNoticePage = Math.min(noticePage, noticeTotalPages);
++
++  const paginatedNoticePosts = useMemo(
++    () =>
++      userNoticeSearchMode
++        ? regularNoticePosts.slice(
++            (safeNoticePage - 1) * noticePostsPerPage,
++            safeNoticePage * noticePostsPerPage
++          )
++        : regularNoticePosts,
++    [
++      userNoticeSearchMode,
++      regularNoticePosts,
++      safeNoticePage,
++      noticePostsPerPage,
++    ]
++  );
++
++  const adminNoticeTotalPages = Math.max(
++    1,
++    Math.ceil(
++      (adminNoticeSearchMode
++        ? adminRegularNoticePosts.length
++        : noticeRegularTotalCount) / noticePostsPerPage
++    )
++  );
++
++  const safeAdminNoticePage = Math.min(
++    adminNoticePage,
++    adminNoticeTotalPages
++  );
++
++  const paginatedAdminNoticePosts = useMemo(
++    () =>
++      adminNoticeSearchMode
++        ? adminRegularNoticePosts.slice(
++            (safeAdminNoticePage - 1) * noticePostsPerPage,
++            safeAdminNoticePage * noticePostsPerPage
++          )
++        : adminRegularNoticePosts,
++    [
++      adminNoticeSearchMode,
++      adminRegularNoticePosts,
++      safeAdminNoticePage,
++      noticePostsPerPage,
++    ]
++  );
++
++  const selectedNoticePost = useMemo(
++    () =>
++      selectedNoticePostId
++        ? noticePosts.find((post) => post.id === selectedNoticePostId) ||
++          (selectedNoticePostOverride?.id === selectedNoticePostId
++            ? selectedNoticePostOverride
++            : null)
++        : null,
++    [noticePosts, selectedNoticePostId, selectedNoticePostOverride]
++  );
++
++  const faqCategoryNameById = useMemo(
++    () =>
++      new Map(
++        (faqCategories || []).map((category) => [category.id, category.name])
++      ),
++    [faqCategories]
++  );
++
++  const faqPostsPerPage = getSafeFaqPostsPerPage(
++    faqBoardConfig.postsPerPage
++  );
++
++  const activeFaqCategoryName =
++    activeFaqCategoryId === 'all'
++      ? '전체'
++      : faqCategoryNameById.get(activeFaqCategoryId) || '선택 카테고리';
++
++  const faqCategoryOrderById = useMemo(
++    () =>
++      new Map(
++        (faqCategories || []).map((category, index) => [category.id, index])
++      ),
++    [faqCategories]
++  );
++
++  const categoryFilteredFaqPosts = useMemo(() => {
++    const normalizedQuery = faqQuery.trim().toLowerCase();
++
++    const shouldLimitToActiveCategory =
++      activeFaqCategoryId !== 'all' &&
++      (!normalizedQuery || faqSearchWithinCategory);
++
++    return (faqPosts || [])
++      .filter((post) => {
++        const categoryMatched =
++          !shouldLimitToActiveCategory ||
++          post.categoryId === activeFaqCategoryId;
++
++        const keywordMatched =
++          !normalizedQuery ||
++          String(post.title || '').toLowerCase().includes(normalizedQuery) ||
++          String(
++            post.contentText ||
++              post.content ||
++              richTextHtmlToText(post.contentHtml || '')
++          )
++            .toLowerCase()
++            .includes(normalizedQuery);
++
++        return categoryMatched && keywordMatched;
++      })
++      .sort((first, second) => {
++        const firstCategoryOrder =
++          faqCategoryOrderById.get(first.categoryId) ?? Number.MAX_SAFE_INTEGER;
++        const secondCategoryOrder =
++          faqCategoryOrderById.get(second.categoryId) ?? Number.MAX_SAFE_INTEGER;
++
++        if (firstCategoryOrder !== secondCategoryOrder) {
++          return firstCategoryOrder - secondCategoryOrder;
++        }
++
++        return (
++          getFirestoreTimestampMillis(second.createdAt) -
++          getFirestoreTimestampMillis(first.createdAt)
++        );
++      });
++  }, [
++    faqPosts,
++    faqQuery,
++    faqSearchWithinCategory,
++    activeFaqCategoryId,
++    faqCategoryOrderById,
++  ]);
++
++  const pinnedFaqPosts = useMemo(
++    () => categoryFilteredFaqPosts.filter((post) => post.isPinned),
++    [categoryFilteredFaqPosts]
++  );
++
++  const regularFaqPosts = useMemo(
++    () => categoryFilteredFaqPosts.filter((post) => !post.isPinned),
++    [categoryFilteredFaqPosts]
++  );
++
++  const faqSearchMode = Boolean(String(faqQuery || '').trim());
++
++  const faqTotalPages = Math.max(
++    1,
++    Math.ceil(
++      (faqSearchMode ? regularFaqPosts.length : faqRegularTotalCount) /
++        faqPostsPerPage
++    )
++  );
++
++  const safeFaqPage = Math.min(faqPage, faqTotalPages);
++
++  const paginatedFaqPosts = useMemo(
++    () =>
++      faqSearchMode
++        ? regularFaqPosts.slice(
++            (safeFaqPage - 1) * faqPostsPerPage,
++            safeFaqPage * faqPostsPerPage
++          )
++        : regularFaqPosts,
++    [faqSearchMode, regularFaqPosts, safeFaqPage, faqPostsPerPage]
++  );
++
++  const displayedFaqPosts = useMemo(
++    () =>
++      [...pinnedFaqPosts, ...paginatedFaqPosts].sort((first, second) => {
++        const firstCategoryOrder =
++          faqCategoryOrderById.get(first.categoryId) ?? Number.MAX_SAFE_INTEGER;
++        const secondCategoryOrder =
++          faqCategoryOrderById.get(second.categoryId) ?? Number.MAX_SAFE_INTEGER;
++
++        if (firstCategoryOrder !== secondCategoryOrder) {
++          return firstCategoryOrder - secondCategoryOrder;
++        }
++
++        return (
++          getFirestoreTimestampMillis(second.createdAt) -
++          getFirestoreTimestampMillis(first.createdAt)
++        );
++      }),
++    [pinnedFaqPosts, paginatedFaqPosts, faqCategoryOrderById]
++  );
++
++  const adminPinnedFaqPosts = useMemo(
++    () => (faqPosts || []).filter((post) => post.isPinned),
++    [faqPosts]
++  );
++
++  const adminRegularFaqPosts = useMemo(
++    () => (faqPosts || []).filter((post) => !post.isPinned),
++    [faqPosts]
++  );
++
++  const adminFaqTotalPages = Math.max(
++    1,
++    Math.ceil(faqRegularTotalCount / faqPostsPerPage)
++  );
++
++  const safeAdminFaqPage = Math.min(adminFaqPage, adminFaqTotalPages);
++  const paginatedAdminFaqPosts = adminRegularFaqPosts;
++
++  return {
++    activeFaqCategoryName,
++    adminFaqTotalPages,
++    adminNoticeTotalPages,
++    adminPinnedFaqPosts,
++    adminPinnedNoticePosts,
++    adminRegularFaqPosts,
++    adminRegularNoticePosts,
++    categoryFilteredFaqPosts,
++    displayedFaqPosts,
++    faqCategoryNameById,
++    faqTotalPages,
++    noticeRegularPostNumberById,
++    noticeTotalPages,
++    paginatedAdminFaqPosts,
++    paginatedAdminNoticePosts,
++    paginatedNoticePosts,
++    pinnedNoticePosts,
++    regularFaqPosts,
++    regularNoticePosts,
++    safeAdminFaqPage,
++    safeAdminNoticePage,
++    safeFaqPage,
++    safeNoticePage,
++    selectedNoticePost,
++  };
++}
+--- /mnt/data/seq_004_base/tools/audit-app-flow-contracts.mjs	2026-08-01 15:36:46.000000000 +0000
++++ /mnt/data/seq_004_work/tools/audit-app-flow-contracts.mjs	2026-08-01 15:48:55.526928678 +0000
+@@ -69,6 +69,7 @@
+ const adminWorkspace = read('src/admin/AdminWorkspace.jsx');
+ const adminDashboard = read('src/admin/AdminDashboardPanel.jsx');
+ const adminWorkspaceBridge = read('src/admin/useAdminWorkspaceBridgeController.js');
++const boardDerivedSelectors = read('src/features/boards/useBoardDerivedSelectors.js');
+ 
+ const protectedTabs = extractStringSet(
+   appRoutes,
+@@ -234,6 +235,50 @@
+   'App has no duplicate administrator request bridge registry or mutation-version state.'
+ );
+ 
++
++check(
++  appSource.includes("import useBoardDerivedSelectors from './features/boards/useBoardDerivedSelectors.js';") &&
++    appSource.includes('} = useBoardDerivedSelectors({'),
++  'App delegates board filtering, numbering, and pagination to the dedicated selector hook.'
++);
++[
++  'activeFaqCategoryName',
++  'adminFaqTotalPages',
++  'adminNoticeTotalPages',
++  'adminPinnedFaqPosts',
++  'adminPinnedNoticePosts',
++  'adminRegularFaqPosts',
++  'adminRegularNoticePosts',
++  'categoryFilteredFaqPosts',
++  'displayedFaqPosts',
++  'faqCategoryNameById',
++  'faqTotalPages',
++  'noticeRegularPostNumberById',
++  'noticeTotalPages',
++  'paginatedAdminFaqPosts',
++  'paginatedAdminNoticePosts',
++  'paginatedNoticePosts',
++  'pinnedNoticePosts',
++  'regularFaqPosts',
++  'regularNoticePosts',
++  'safeAdminFaqPage',
++  'safeAdminNoticePage',
++  'safeFaqPage',
++  'safeNoticePage',
++  'selectedNoticePost',
++].forEach((selectorKey) => {
++  check(
++    boardDerivedSelectors.includes(selectorKey),
++    `Board selector hook exposes ${selectorKey}.`
++  );
++});
++check(
++  !appSource.includes('const allPinnedNoticePosts = useMemo(') &&
++    !appSource.includes('const categoryFilteredFaqPosts = useMemo(') &&
++    !appSource.includes('const displayedFaqPosts = useMemo('),
++  'App has no duplicate notice or FAQ derived-selector implementation.'
++);
++
+ const dashboardHeadingBlocks = [
+   ...adminDashboard.matchAll(/<DashboardSectionHeading([\s\S]*?)\/>/g),
+ ].map((match) => match[1]);
+--- /mnt/data/seq_004_base/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json	2026-08-01 15:38:16.000000000 +0000
++++ /mnt/data/seq_004_work/docs/performance-optimization/measurements/SOURCE_GRAPH_ANALYSIS_REPORT.json	2026-08-01 15:49:25.714927721 +0000
+@@ -1,11 +1,11 @@
+ {
+-  "generatedAt": "2026-08-01T15:38:16.232Z",
+-  "initialModuleCount": 84,
+-  "initialSourceBytes": 877977,
++  "generatedAt": "2026-08-01T15:49:25.721Z",
++  "initialModuleCount": 85,
++  "initialSourceBytes": 879438,
+   "files": [
+     {
+       "file": "src/App.jsx",
+-      "bytes": 75731
++      "bytes": 67919
+     },
+     {
+       "file": "src/features/requests/useUserRequestHistoryActionController.js",
+@@ -148,6 +148,10 @@
+       "bytes": 9525
+     },
+     {
++      "file": "src/features/boards/useBoardDerivedSelectors.js",
++      "bytes": 9273
++    },
++    {
+       "file": "src/features/auth/useUserAuthenticationSessionController.js",
+       "bytes": 9143
+     },

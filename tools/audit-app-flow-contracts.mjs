@@ -69,6 +69,7 @@ const appShell = read('src/shell/AppShell.jsx');
 const adminWorkspace = read('src/admin/AdminWorkspace.jsx');
 const adminDashboard = read('src/admin/AdminDashboardPanel.jsx');
 const adminWorkspaceBridge = read('src/admin/useAdminWorkspaceBridgeController.js');
+const boardDerivedSelectors = read('src/features/boards/useBoardDerivedSelectors.js');
 
 const protectedTabs = extractStringSet(
   appRoutes,
@@ -232,6 +233,50 @@ check(
   !appSource.includes('const adminRequestsControllerRef = useRef(') &&
     !appSource.includes('setAdminRequestsMutationVersion((currentVersion)'),
   'App has no duplicate administrator request bridge registry or mutation-version state.'
+);
+
+
+check(
+  appSource.includes("import useBoardDerivedSelectors from './features/boards/useBoardDerivedSelectors.js';") &&
+    appSource.includes('} = useBoardDerivedSelectors({'),
+  'App delegates board filtering, numbering, and pagination to the dedicated selector hook.'
+);
+[
+  'activeFaqCategoryName',
+  'adminFaqTotalPages',
+  'adminNoticeTotalPages',
+  'adminPinnedFaqPosts',
+  'adminPinnedNoticePosts',
+  'adminRegularFaqPosts',
+  'adminRegularNoticePosts',
+  'categoryFilteredFaqPosts',
+  'displayedFaqPosts',
+  'faqCategoryNameById',
+  'faqTotalPages',
+  'noticeRegularPostNumberById',
+  'noticeTotalPages',
+  'paginatedAdminFaqPosts',
+  'paginatedAdminNoticePosts',
+  'paginatedNoticePosts',
+  'pinnedNoticePosts',
+  'regularFaqPosts',
+  'regularNoticePosts',
+  'safeAdminFaqPage',
+  'safeAdminNoticePage',
+  'safeFaqPage',
+  'safeNoticePage',
+  'selectedNoticePost',
+].forEach((selectorKey) => {
+  check(
+    boardDerivedSelectors.includes(selectorKey),
+    `Board selector hook exposes ${selectorKey}.`
+  );
+});
+check(
+  !appSource.includes('const allPinnedNoticePosts = useMemo(') &&
+    !appSource.includes('const categoryFilteredFaqPosts = useMemo(') &&
+    !appSource.includes('const displayedFaqPosts = useMemo('),
+  'App has no duplicate notice or FAQ derived-selector implementation.'
 );
 
 const dashboardHeadingBlocks = [

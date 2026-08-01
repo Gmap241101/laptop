@@ -1,0 +1,91 @@
+{
+  "workName": "P2_BOARD_DERIVED_SELECTORS_SPLIT",
+  "inputPackage": "rental-system-admin-workspace-bridge-controller-split-20260802_0039_deployment_package.zip",
+  "inputPackageSha256": "1468ed49974fcca11f161aaae69fb42675ffe4a26906b96664c1c82f2447c0a4",
+  "before": {
+    "app": {
+      "lines": 2512,
+      "bytes": 75731,
+      "useState": 11,
+      "useEffect": 1,
+      "useMemo": 19,
+      "useRef": 1,
+      "directFirestoreCalls": 0
+    },
+    "sourceGraph": {
+      "initialModuleCount": 84,
+      "initialSourceBytes": 877977,
+      "dynamicEntryCount": 14
+    },
+    "firestoreCalls": {
+      "onSnapshot": 35,
+      "getDocs": 48,
+      "getDoc": 28,
+      "getCountFromServer": 18,
+      "runTransaction": 24,
+      "setDoc": 34,
+      "updateDoc": 5,
+      "deleteDoc": 6
+    }
+  },
+  "after": {
+    "app": {
+      "lines": 2174,
+      "bytes": 67919,
+      "useState": 11,
+      "useEffect": 1,
+      "useMemo": 0,
+      "useRef": 1,
+      "directFirestoreCalls": 0
+    },
+    "sourceGraph": {
+      "initialModuleCount": 85,
+      "initialSourceBytes": 879438,
+      "dynamicEntryCount": 14
+    },
+    "firestoreCalls": {
+      "onSnapshot": 35,
+      "getDocs": 48,
+      "getDoc": 28,
+      "getCountFromServer": 18,
+      "runTransaction": 24,
+      "setDoc": 34,
+      "updateDoc": 5,
+      "deleteDoc": 6
+    }
+  },
+  "newModule": {
+    "path": "src/features/boards/useBoardDerivedSelectors.js",
+    "lines": 341,
+    "bytes": 9273,
+    "useMemo": 19,
+    "publicOutputs": 24
+  },
+  "validation": {
+    "inputManifestFiles": 470,
+    "inputHashMismatches": 0,
+    "appFlowContracts": 69,
+    "reactHookSourceFiles": 142,
+    "relativeImportsChecked": 428,
+    "relativeImportMissing": 0,
+    "firestoreStrictCalls": 129,
+    "runtimeScenarios": 6,
+    "koreanUniqueBefore": 2524,
+    "koreanUniqueAfter": 2524,
+    "koreanOccurrencesBefore": 3316,
+    "koreanOccurrencesAfter": 3316,
+    "newSemanticTypeScriptDiagnostics": 0,
+    "npmCi": "FAIL_EXTERNAL_REGISTRY_E404",
+    "viteBuild": "NOT_RUN"
+  },
+  "remainingEstimate": {
+    "structuralProgressPercentRange": [
+      91,
+      93
+    ],
+    "minimumSequentialTasks": 4,
+    "recommendedSequentialTasks": 6,
+    "maximumExpectedSequentialTasks": 8,
+    "nextPriority": "asset catalog search/filter/upload view-state controller split"
+  }
+}

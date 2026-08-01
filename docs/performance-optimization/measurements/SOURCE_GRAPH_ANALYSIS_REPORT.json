@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-08-01T15:38:16.232Z",
-  "initialModuleCount": 84,
-  "initialSourceBytes": 877977,
+  "generatedAt": "2026-08-01T15:49:25.721Z",
+  "initialModuleCount": 85,
+  "initialSourceBytes": 879438,
   "files": [
     {
       "file": "src/App.jsx",
-      "bytes": 75731
+      "bytes": 67919
     },
     {
       "file": "src/features/requests/useUserRequestHistoryActionController.js",
@@ -146,6 +146,10 @@
     {
       "file": "src/features/settings/useAdminSplitStorageMigrationController.js",
       "bytes": 9525
+    },
+    {
+      "file": "src/features/boards/useBoardDerivedSelectors.js",
+      "bytes": 9273
     },
     {
       "file": "src/features/auth/useUserAuthenticationSessionController.js",
