@@ -241,33 +241,6 @@ function AdminWorkspace({ ctx, panelCtx }) {
         key={key}
         variant={isActive ? 'primary' : 'ghost'}
         onClick={() => {
-          if (typeof window !== 'undefined') {
-            if (
-              window.__mkHomeBannerUnsaved &&
-              !window.confirm('저장하지 않은 초기화면 배너 또는 표시 설정 변경사항이 있습니다. 저장하지 않고 이동하시겠습니까?')
-            ) {
-              return;
-            }
-            if (
-              window.__mkFooterPageUnsaved &&
-              !window.confirm('저장하지 않은 푸터 메뉴 페이지 변경사항이 있습니다. 저장하지 않고 이동하시겠습니까?')
-            ) {
-              return;
-            }
-            if (
-              window.__mkSystemSettingsUnsaved &&
-              !window.confirm(
-                window.__mkSystemSettingsUnsavedMessage ||
-                  '저장하지 않은 설정 변경사항이 있습니다. 저장하지 않고 이동하시겠습니까?'
-              )
-            ) {
-              return;
-            }
-            window.__mkHomeBannerUnsaved = false;
-            window.__mkFooterPageUnsaved = false;
-            window.__mkSystemSettingsUnsaved = false;
-            window.__mkSystemSettingsUnsavedMessage = '';
-          }
           if (isActive) {
             scrollAdminPageToTop();
             return;

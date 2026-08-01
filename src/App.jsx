@@ -78,6 +78,9 @@ import useAdminSystemSettingsController, {
 import useAdminSplitStorageMigrationController, {
   useAdminSplitStorageMigrationState,
 } from './features/settings/useAdminSplitStorageMigrationController.js';
+import useAdminNavigationController, {
+  useAdminNavigationState,
+} from './admin/useAdminNavigationController.js';
 import { useDebouncedValue } from './hooks/useDebouncedValue.js';
 import {
   readUserAccountStatusView,
@@ -620,7 +623,16 @@ function App() {
   const [adminLaptopQuery, setAdminLaptopQuery] = useState('');
   const [adminSelectedAssetCategory, setAdminSelectedAssetCategory] = useState('전체');
   const [adminAvailabilityFilter, setAdminAvailabilityFilter] = useState('전체');
-  const [adminTab, setAdminTab] = useState('dashboard'); // 관리자 사이드바의 현재 메뉴 키
+  const {
+    adminTab,
+    handleMemberDirectoryDeferredStateChange,
+    handleSignupPolicyDeferredStateChange,
+    memberDirectoryDeferredActionsRef,
+    peopleSettingsDirty,
+    setAdminTab,
+    signupPolicyDeferredActionsRef,
+    signupPolicyDirty,
+  } = useAdminNavigationState();
   const [adminMemberAccountsNavigationRequest, setAdminMemberAccountsNavigationRequest] = useState({
     requestId: 0,
     query: '',
@@ -639,16 +651,6 @@ function App() {
     getRequestById: null,
     resetPage: null,
     updateRequests: null,
-  });
-  const [peopleSettingsDirty, setPeopleSettingsDirty] = useState(false);
-  const memberDirectoryDeferredActionsRef = useRef({
-    discard: null,
-    save: null,
-  });
-  const [signupPolicyDirty, setSignupPolicyDirty] = useState(false);
-  const signupPolicyDeferredActionsRef = useRef({
-    discard: null,
-    save: null,
   });
   const {
     editLaptop,
@@ -1506,18 +1508,6 @@ function App() {
   });
 
 
-  const openAdminMemberAccounts = useCallback(
-    ({ query = '', statusFilter = 'all' } = {}) => {
-      setAdminMemberAccountsNavigationRequest((currentRequest) => ({
-        requestId: Number(currentRequest?.requestId || 0) + 1,
-        query: String(query || ''),
-        statusFilter: String(statusFilter || 'all'),
-      }));
-      setAdminTab('memberAccounts');
-    },
-    []
-  );
-
   const handleAdminRequestsControllerStateChange = useCallback((nextState) => {
     adminRequestsControllerRef.current = {
       clearSelection:
@@ -1538,29 +1528,6 @@ function App() {
           : null,
     };
   }, []);
-
-  const openAdminRequests = useCallback(
-    ({
-      query = '',
-      quickFilter = ADMIN_REQUEST_QUICK_FILTER.ALL,
-      requestTab = ADMIN_REQUEST_TAB.PENDING,
-      selectedRequestId = '',
-    } = {}) => {
-      setAdminRequestsNavigationRequest((currentRequest) => ({
-        requestId: Number(currentRequest?.requestId || 0) + 1,
-        query: String(query || ''),
-        quickFilter: String(
-          quickFilter || ADMIN_REQUEST_QUICK_FILTER.ALL
-        ),
-        requestTab: String(
-          requestTab || ADMIN_REQUEST_TAB.PENDING
-        ),
-        selectedRequestId: String(selectedRequestId || ''),
-      }));
-      setAdminTab('requests');
-    },
-    []
-  );
 
   const getAdminRequestById = useCallback(
     (requestId) =>
@@ -1584,81 +1551,6 @@ function App() {
     setAdminRequestsMutationVersion((currentVersion) => currentVersion + 1);
   }, []);
 
-  const handleMemberDirectoryDeferredStateChange = useCallback(
-    (nextState) => {
-      const nextDirty = Boolean(nextState?.dirty);
-
-      memberDirectoryDeferredActionsRef.current = {
-        discard:
-          typeof nextState?.discard === 'function'
-            ? nextState.discard
-            : null,
-        save:
-          typeof nextState?.save === 'function'
-            ? nextState.save
-            : null,
-      };
-
-      setPeopleSettingsDirty((currentDirty) =>
-        currentDirty === nextDirty
-          ? currentDirty
-          : nextDirty
-      );
-    },
-    []
-  );
-
-  const handleSignupPolicyDeferredStateChange = useCallback(
-    (nextState) => {
-      const nextDirty = Boolean(nextState?.dirty);
-
-      signupPolicyDeferredActionsRef.current = {
-        discard:
-          typeof nextState?.discard === 'function'
-            ? nextState.discard
-            : null,
-        save:
-          typeof nextState?.save === 'function'
-            ? nextState.save
-            : null,
-      };
-
-      setSignupPolicyDirty((currentDirty) =>
-        currentDirty === nextDirty
-          ? currentDirty
-          : nextDirty
-      );
-    },
-    []
-  );
-
-  const currentAdminDeferredSettingsDirty = Boolean(
-    (adminTab === 'extensionSettings' && rentalPolicySettingsDirty) ||
-      (adminTab === 'holidaySettings' && holidaySettingsDirty) ||
-      (adminTab === 'categories' && assetCategorySettingsDirty) ||
-      (adminTab === 'people' && peopleSettingsDirty) ||
-      (adminTab === 'signupPolicy' && signupPolicyDirty) ||
-      (adminTab === 'noticePosts' && noticeBoardSettingsDirty) ||
-      (adminTab === 'faqPosts' && faqBoardSettingsDirty) ||
-      (adminTab === 'footerManagement' && footerConfigDirty)
-  );
-
-  useEffect(() => {
-    if (view !== 'admin' || !currentAdminDeferredSettingsDirty) {
-      return undefined;
-    }
-
-    const handleBeforeUnload = (event) => {
-      event.preventDefault();
-      event.returnValue = '';
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, [view, currentAdminDeferredSettingsDirty]);
 
 
   const {
@@ -2095,168 +1987,7 @@ function App() {
     triggerToast,
   });
 
-  const discardFooterConfigChanges = () => {
-    setFooterConfigDraft({
-      enabled: Boolean(footerConfig.enabled),
-      contentHtml: footerConfig.contentHtml || '',
-    });
-  };
 
-  const getAdminDeferredChangesConfig = (tab) => {
-    if (tab === 'extensionSettings' && rentalPolicySettingsDirty) {
-      return {
-        label: '대여 정책',
-        discard: discardRentalPolicyChanges,
-        save: saveSystemSettings,
-      };
-    }
-
-    if (tab === 'holidaySettings' && holidaySettingsDirty) {
-      return {
-        label: '휴일',
-        discard: discardHolidayChanges,
-        save: saveHolidaySettings,
-      };
-    }
-
-    if (tab === 'categories' && assetCategorySettingsDirty) {
-      return {
-        label: '자산 카테고리',
-        discard: () => cancelTempAssetCategoryChanges({ silent: true }),
-        save: saveTempAssetCategoryChanges,
-      };
-    }
-
-    if (tab === 'people' && peopleSettingsDirty) {
-      const {
-        discard,
-        save,
-      } = memberDirectoryDeferredActionsRef.current;
-
-      if (
-        typeof discard !== 'function' ||
-        typeof save !== 'function'
-      ) {
-        return null;
-      }
-
-      return {
-        label: '부서·사용자',
-        discard,
-        save,
-      };
-    }
-
-    if (tab === 'signupPolicy' && signupPolicyDirty) {
-      const {
-        discard,
-        save,
-      } = signupPolicyDeferredActionsRef.current;
-
-      if (
-        typeof discard !== 'function' ||
-        typeof save !== 'function'
-      ) {
-        return null;
-      }
-
-      return {
-        label: '회원가입 정책',
-        discard,
-        save,
-      };
-    }
-
-    if (tab === 'noticePosts' && noticeBoardSettingsDirty) {
-      return {
-        label: '공지사항 목록 설정',
-        discard: discardNoticeBoardConfigChanges,
-        save: saveNoticeBoardConfig,
-      };
-    }
-
-    if (tab === 'faqPosts' && faqBoardSettingsDirty) {
-      return {
-        label: 'FAQ 목록 설정',
-        discard: discardFaqBoardConfigChanges,
-        save: saveFaqBoardConfig,
-      };
-    }
-
-    if (tab === 'footerManagement' && footerConfigDirty) {
-      return {
-        label: '푸터 공통 정보',
-        discard: discardFooterConfigChanges,
-        save: saveFooterConfig,
-      };
-    }
-
-    return null;
-  };
-
-  const handleAdminTabChange = (nextTab) => {
-    if (!nextTab || nextTab === adminTab) {
-      return;
-    }
-
-    const deferredChanges = getAdminDeferredChangesConfig(adminTab);
-
-    if (!deferredChanges) {
-      setAdminTab(nextTab);
-      return;
-    }
-
-    setConfirmModal({
-      title: `저장되지 않은 ${deferredChanges.label} 변경사항`,
-      message: `저장되지 않은 ${deferredChanges.label} 변경사항이 있습니다. 변경사항을 저장한 후 이동하시겠습니까?`,
-      cancelLabel: '계속 편집',
-      secondaryLabel: '저장하지 않고 이동',
-      confirmLabel: '저장 후 이동',
-      confirmLoadingLabel: '저장 중...',
-      variant: 'primary',
-      secondaryVariant: 'outline',
-      onSecondary: () => {
-        deferredChanges.discard();
-        setAdminTab(nextTab);
-        return true;
-      },
-      onConfirm: async () => {
-        const saved = await deferredChanges.save();
-
-        if (!saved) {
-          return false;
-        }
-
-        setAdminTab(nextTab);
-        return true;
-      },
-    });
-  };
-
-  const goToAppHome = () => {
-    if (
-      view === 'admin' &&
-      typeof window !== 'undefined' &&
-      window.__mkHomeBannerUnsaved &&
-      !window.confirm(
-        '저장하지 않은 초기화면 배너 또는 표시 설정 변경사항이 있습니다. 저장하지 않고 이동하시겠습니까?'
-      )
-    ) {
-      return;
-    }
-
-    if (typeof window !== 'undefined') {
-      window.__mkHomeBannerUnsaved = false;
-    }
-
-    if (view === 'admin') {
-      navigateToAdminHome();
-      handleAdminTabChange('dashboard');
-      return;
-    }
-
-    goToUserHome();
-  };
 
   useEffect(() => {
     if (!selectedLaptop || !selectedLaptopAvailability?.blocked) {
@@ -2716,6 +2447,46 @@ function App() {
     setSelectedFooterPageId,
     triggerConfirm,
     triggerToast,
+  });
+
+
+  const {
+    goToAppHome,
+    handleAdminTabChange,
+    openAdminMemberAccounts,
+    openAdminRequests,
+  } = useAdminNavigationController({
+    adminTab,
+    assetCategorySettingsDirty,
+    cancelTempAssetCategoryChanges,
+    discardFaqBoardConfigChanges,
+    discardHolidayChanges,
+    discardNoticeBoardConfigChanges,
+    discardRentalPolicyChanges,
+    faqBoardSettingsDirty,
+    footerConfig,
+    footerConfigDirty,
+    goToUserHome,
+    holidaySettingsDirty,
+    memberDirectoryDeferredActionsRef,
+    navigateToAdminHome,
+    noticeBoardSettingsDirty,
+    peopleSettingsDirty,
+    rentalPolicySettingsDirty,
+    saveFaqBoardConfig,
+    saveFooterConfig,
+    saveHolidaySettings,
+    saveNoticeBoardConfig,
+    saveSystemSettings,
+    saveTempAssetCategoryChanges,
+    setAdminMemberAccountsNavigationRequest,
+    setAdminRequestsNavigationRequest,
+    setAdminTab,
+    setConfirmModal,
+    setFooterConfigDraft,
+    signupPolicyDeferredActionsRef,
+    signupPolicyDirty,
+    view,
   });
 
 

@@ -1,0 +1,58 @@
+{
+  "baselinePackage": "rental-system-app-initialization-readiness-controller-split-20260801_2318_deployment_package.zip",
+  "outputPackage": "rental-system-admin-navigation-controller-split-20260801_2340_deployment_package.zip",
+  "baseline": {
+    "initialModuleCount": 81,
+    "initialSourceBytes": 878586,
+    "dynamicEntryCount": 14,
+    "appJsx": {
+      "lines": 3084,
+      "bytes": 93060,
+      "useStateCalls": 17,
+      "useEffectCalls": 3,
+      "useMemoCalls": 19,
+      "useRefCalls": 4,
+      "useCallbackCalls": 10
+    },
+    "adminWorkspace": {
+      "lines": 671,
+      "bytes": 26447
+    }
+  },
+  "current": {
+    "initialModuleCount": 82,
+    "initialSourceBytes": 885284,
+    "dynamicEntryCount": 14,
+    "appJsx": {
+      "lines": 2855,
+      "bytes": 86834,
+      "useStateCalls": 14,
+      "useEffectCalls": 2,
+      "useMemoCalls": 19,
+      "useRefCalls": 2,
+      "useCallbackCalls": 6
+    },
+    "adminWorkspace": {
+      "lines": 644,
+      "bytes": 25275
+    },
+    "adminNavigationController": {
+      "lines": 478,
+      "bytes": 12924
+    }
+  },
+  "delta": {
+    "initialModuleCount": 1,
+    "initialSourceBytes": 6698,
+    "dynamicEntryCount": 0,
+    "appJsxLines": -229,
+    "appJsxBytes": -6226,
+    "appUseStateCalls": -3,
+    "appUseEffectCalls": -1,
+    "appUseMemoCalls": 0,
+    "appUseRefCalls": -2,
+    "appUseCallbackCalls": -4,
+    "adminWorkspaceLines": -27,
+    "adminWorkspaceBytes": -1172
+  }
+}

@@ -1,0 +1,77 @@
+P2 ADMIN NAVIGATION CONTROLLER FEATURE SPLIT VALIDATION REPORT
+============================================================
+
+Baseline package
+- rental-system-app-initialization-readiness-controller-split-20260801_2318_deployment_package.zip
+
+Output package
+- rental-system-admin-navigation-controller-split-20260801_2340_deployment_package.zip
+
+Changed source files
+- src/App.jsx
+- src/admin/AdminWorkspace.jsx
+- src/admin/useAdminNavigationController.js (new)
+
+Validation results
+1. Input package SHA-256 manifest: PASS (445/445)
+2. TypeScript JS/JSX semantic comparison: PASS
+   - baseline TS6133 findings: 0
+   - current TS6133 findings: 0
+   - current-only non-external diagnostics: 0
+3. React Hook import audit: PASS (138 source files)
+4. Relative import target audit: PASS (416 imports, missing 0)
+5. Firestore strict audit: PASS
+   - total calls: 129
+   - onSnapshot: 35
+   - getDocs: 48
+   - getDoc: 28
+   - getCountFromServer: 18
+6. Admin navigation controller runtime mock: PASS
+   - immediate tab transition
+   - discard and move
+   - failed save blocks transition
+   - legacy unsaved confirmation cancellation
+   - legacy marker retained until transition commit
+   - request-management navigation payload
+   - administrator home navigation
+7. Deferred unsaved areas: PASS (8 areas)
+8. Legacy unsaved marker consolidation: PASS (3 marker groups)
+9. Active admin menu re-click contract: PASS
+   - scroll only
+   - no duplicate unsaved prompt
+10. Korean user-facing string set: PASS
+    - unique strings: 103 -> 103
+    - occurrences: 118 -> 117
+    - one duplicate home-banner warning occurrence removed
+11. Source graph analysis: PASS
+    - initial modules: 81 -> 82
+    - initial source bytes: 878586 -> 885284
+    - dynamic entries: 14 -> 14
+12. App.jsx reduction: PASS
+    - lines: 3084 -> 2855
+    - bytes: 93060 -> 86834
+    - useState: 17 -> 14
+    - useEffect: 3 -> 2
+    - useRef: 4 -> 2
+    - useCallback: 10 -> 6
+13. AdminWorkspace reduction: PASS
+    - lines: 671 -> 644
+    - bytes: 26447 -> 25275
+14. Protected Firebase/config files unchanged: PASS
+    - rules/firestore.rules
+    - firestore.indexes.json
+    - firebase.json
+    - .firebaserc
+    - tools/firestore-audit-policy.json
+    - package.json
+    - package-lock.json
+15. npm ci / Vite build: NOT COMPLETED
+    - internal registry E404 for yargs-parser-21.1.1.tgz
+    - local deploy.ps1 build verification required
+16. Output project manifest: PASS (450/450 project files)
+17. ZIP file entries: PASS (454 files, 0 directory entries, 0 duplicates)
+18. ZIP extraction byte comparison: PASS (454/454 files)
+19. REMOVED_FILES cumulative paths: PASS (67 paths, duplicates 0, package conflicts 0)
+20. Protected paths included: PASS (none of .git, node_modules, dist, deploy.ps1, .env files)
+
+Result: PASS for source semantics, hooks, relative imports, Firestore access, navigation runtime mocks and source-graph validation. Actual Vite production build must be confirmed by local deploy.ps1.
