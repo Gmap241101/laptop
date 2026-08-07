@@ -29,6 +29,7 @@ const authenticateFirebaseRequest = async (request) => {
     email: 'smoke@example.com',
     emailVerified: false,
     signInProvider: 'password',
+    idToken: 'firebase-smoke-token',
   };
 };
 let currentIdentity = null;
@@ -77,6 +78,55 @@ const firebaseLinkService = {
     return firebaseLink;
   },
 };
+
+let memberShadow = null;
+const memberShadowService = {
+  async getCurrent(userId) {
+    if (userId !== 'user_smoke') throw new Error('Unexpected member-shadow user ID.');
+    return memberShadow;
+  },
+  async syncCurrent(userId, firebaseIdentity) {
+    if (userId !== 'user_smoke' || firebaseIdentity.uid !== 'firebase_uid_smoke') {
+      throw new Error('Unexpected member-shadow sync identity.');
+    }
+    memberShadow = {
+      appUserId: '42',
+      firebaseUid: 'firebase_uid_smoke',
+      uid: 'firebase_uid_smoke',
+      email: 'smoke@example.com',
+      maskedEmail: 's***@example.com',
+      name: 'Smoke User',
+      team: 'QA',
+      phone: '010-0000-0000',
+      status: 'active',
+      directoryMemberId: '',
+      directoryVerifiedVersion: 0,
+      profileRequiredReason: '',
+      rejoinedAccount: false,
+      termsConsentRevision: 0,
+      termsConsentPolicyVersion: 0,
+      sourceHash: 'a'.repeat(64),
+      sourceCreatedAt: new Date('2026-08-07T00:00:00.000Z'),
+      sourceUpdatedAt: new Date('2026-08-07T00:00:00.000Z'),
+      syncedAt: new Date('2026-08-07T00:00:00.000Z'),
+      updatedAt: new Date('2026-08-07T00:00:00.000Z'),
+    };
+    return memberShadow;
+  },
+  async compareCurrent(userId, firebaseIdentity) {
+    if (userId !== 'user_smoke' || firebaseIdentity.uid !== 'firebase_uid_smoke' || !memberShadow) {
+      throw new Error('Unexpected member-shadow comparison state.');
+    }
+    return {
+      equivalent: true,
+      sourceHash: memberShadow.sourceHash,
+      shadowHash: memberShadow.sourceHash,
+      changedFields: [],
+      sourceUpdatedAt: memberShadow.sourceUpdatedAt,
+      shadowSyncedAt: memberShadow.syncedAt,
+    };
+  },
+};
 const server = createServer(
   createRequestHandler({
     config,
@@ -85,6 +135,7 @@ const server = createServer(
     authenticateFirebaseRequest,
     userIdentityService,
     firebaseLinkService,
+    memberShadowService,
   }),
 );
 
@@ -175,6 +226,33 @@ if (afterLink.status !== 200) throw new Error(`/api/users/me/legacy/firebase loo
 const afterLinkBody = await afterLink.json();
 if (afterLinkBody.firebaseLink?.appUserId !== '42') throw new Error('Firebase legacy link lookup is invalid.');
 
+
+const beforeMemberShadow = await fetch(`${baseUrl}/api/users/me/legacy/member-shadow`, { headers: authHeaders });
+if (beforeMemberShadow.status !== 404) throw new Error(`/api/users/me/legacy/member-shadow before sync returned ${beforeMemberShadow.status}`);
+
+const syncMemberShadow = await fetch(`${baseUrl}/api/users/me/legacy/member-shadow/sync`, {
+  method: 'POST',
+  headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+});
+if (syncMemberShadow.status !== 200) throw new Error(`/api/users/me/legacy/member-shadow/sync returned ${syncMemberShadow.status}`);
+const syncMemberShadowBody = await syncMemberShadow.json();
+if (!syncMemberShadowBody.synchronized || syncMemberShadowBody.memberShadow?.name !== 'Smoke User') {
+  throw new Error('Member shadow synchronization response is invalid.');
+}
+
+const readMemberShadow = await fetch(`${baseUrl}/api/users/me/legacy/member-shadow`, { headers: authHeaders });
+if (readMemberShadow.status !== 200) throw new Error(`/api/users/me/legacy/member-shadow lookup returned ${readMemberShadow.status}`);
+
+const compareMemberShadow = await fetch(`${baseUrl}/api/users/me/legacy/member-shadow/compare`, {
+  method: 'POST',
+  headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+});
+if (compareMemberShadow.status !== 200) throw new Error(`/api/users/me/legacy/member-shadow/compare returned ${compareMemberShadow.status}`);
+const compareMemberShadowBody = await compareMemberShadow.json();
+if (compareMemberShadowBody.comparison?.equivalent !== true) {
+  throw new Error('Member shadow comparison response is invalid.');
+}
+
 const invalidFirebase = await fetch(`${baseUrl}/api/users/me/legacy/firebase`, {
   method: 'POST',
   headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer wrong-token' },
@@ -185,4 +263,4 @@ const missing = await fetch(`${baseUrl}/missing`);
 if (missing.status !== 404) throw new Error(`/missing returned ${missing.status}`);
 
 await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, CORS, 404)');
+console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, CORS, 404)');

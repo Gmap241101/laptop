@@ -9,6 +9,9 @@ import {
   requestCurrentUserIdentitySync,
   requestFirebaseLegacyLink,
   requestFirebaseLegacyLinkStatus,
+  requestMemberShadowStatus,
+  requestMemberShadowSync,
+  requestMemberShadowComparison,
 } from '../../src/clerk/clerkStagingClient.js';
 
 const encode = (value) => Buffer.from(`${value}$`, 'utf8').toString('base64');
@@ -132,6 +135,29 @@ const fetchForRequests = async (url, options) => {
       },
     };
   }
+  if (url.endsWith('/api/users/me/legacy/member-shadow/sync')) {
+    return {
+      ok: true,
+      status: 200,
+      async json() {
+        return { authenticated: true, synchronized: true, memberShadow: { firebaseUid: 'firebase_uid_test', name: 'Phase Seven', sourceHash: 'a'.repeat(64) } };
+      },
+    };
+  }
+  if (url.endsWith('/api/users/me/legacy/member-shadow/compare')) {
+    return {
+      ok: true,
+      status: 200,
+      async json() { return { authenticated: true, comparison: { equivalent: true, changedFields: [] } }; },
+    };
+  }
+  if (url.endsWith('/api/users/me/legacy/member-shadow')) {
+    return {
+      ok: true,
+      status: 200,
+      async json() { return { authenticated: true, memberShadow: { firebaseUid: 'firebase_uid_test', name: 'Phase Seven', sourceHash: 'a'.repeat(64) } }; },
+    };
+  }
   if (url.endsWith('/api/users/me')) {
     return {
       ok: true,
@@ -183,6 +209,30 @@ const firebaseLinkStatus = await requestFirebaseLegacyLinkStatus({
 });
 assert.equal(firebaseLinkStatus.firebaseLink.appUserId, '7');
 assert.ok(calls.every((call) => call.options.headers.Authorization === 'Bearer test-token-that-must-not-be-logged'));
+
+const shadowSyncPayload = await requestMemberShadowSync({
+  clerk: fakeSessionClerk,
+  apiBaseUrl: 'https://api.example.com',
+  fetchImpl: fetchForRequests,
+  firebaseIdToken: 'firebase-id-token-that-must-not-be-logged',
+});
+assert.equal(shadowSyncPayload.memberShadow.firebaseUid, 'firebase_uid_test');
+assert.equal(calls.at(-1).options.headers['X-Firebase-Authorization'], 'Bearer firebase-id-token-that-must-not-be-logged');
+
+const shadowStatusPayload = await requestMemberShadowStatus({
+  clerk: fakeSessionClerk,
+  apiBaseUrl: 'https://api.example.com',
+  fetchImpl: fetchForRequests,
+});
+assert.equal(shadowStatusPayload.memberShadow.name, 'Phase Seven');
+
+const shadowComparePayload = await requestMemberShadowComparison({
+  clerk: fakeSessionClerk,
+  apiBaseUrl: 'https://api.example.com',
+  fetchImpl: fetchForRequests,
+  firebaseIdToken: 'firebase-id-token-that-must-not-be-logged',
+});
+assert.equal(shadowComparePayload.comparison.equivalent, true);
 
 const unsynced = await requestCurrentUserIdentity({
   clerk: fakeSessionClerk,
@@ -296,6 +346,15 @@ const client = createClerkStagingClient({
       }
       return { ok: true, status: 200, async json() { return { authenticated: true, firebaseLink: { appUserId: '11', firebaseUid: 'firebase_uid_browser' } }; } };
     }
+    if (url.endsWith('/api/users/me/legacy/member-shadow/sync')) {
+      return { ok: true, status: 200, async json() { return { authenticated: true, synchronized: true, memberShadow: { firebaseUid: 'firebase_uid_browser', name: 'Browser User', sourceHash: 'b'.repeat(64) } }; } };
+    }
+    if (url.endsWith('/api/users/me/legacy/member-shadow/compare')) {
+      return { ok: true, status: 200, async json() { return { authenticated: true, comparison: { equivalent: true, changedFields: [] } }; } };
+    }
+    if (url.endsWith('/api/users/me/legacy/member-shadow')) {
+      return { ok: true, status: 200, async json() { return { authenticated: true, memberShadow: { firebaseUid: 'firebase_uid_browser', name: 'Browser User', sourceHash: 'b'.repeat(64) } }; } };
+    }
     if (url.endsWith('/api/users/me')) {
       return { ok: true, status: 200, async json() { return { authenticated: true, user: { id: '11', clerkUserId: 'user_browser' } }; } };
     }
@@ -321,8 +380,11 @@ assert.equal((await client.syncBackendUserIdentity()).user.id, '11');
 assert.equal((await client.getBackendUserIdentity()).user.id, '11');
 assert.equal((await client.linkFirebaseLegacyAccount('firebase-browser-token')).firebaseLink.firebaseUid, 'firebase_uid_browser');
 assert.equal((await client.getFirebaseLegacyLink()).firebaseLink.appUserId, '11');
+assert.equal((await client.syncMemberShadow('firebase-browser-token')).memberShadow.firebaseUid, 'firebase_uid_browser');
+assert.equal((await client.getMemberShadow()).memberShadow.name, 'Browser User');
+assert.equal((await client.compareMemberShadow('firebase-browser-token')).comparison.equivalent, true);
 assert.ok(browserCalls.every((call) => call.options.headers.Authorization === 'Bearer browser-session-token'));
 const firebaseBrowserCall = browserCalls.find((call) => call.options.headers['X-Firebase-Authorization']);
 assert.equal(firebaseBrowserCall.options.headers['X-Firebase-Authorization'], 'Bearer firebase-browser-token');
 
-console.log('[clerk-frontend-smoke] PASS (config, CDN loader, Clerk bearer auth, Phase 5 identity, Phase 6 Firebase link bridge)');
+console.log('[clerk-frontend-smoke] PASS (config, CDN loader, Clerk bearer auth, Phase 5 identity, Phase 6 Firebase link, Phase 7 member shadow)');

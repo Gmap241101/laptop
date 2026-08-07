@@ -80,3 +80,16 @@ Heroku Phase 6 configuration adds:
 - `FIREBASE_CERT_TIMEOUT_MS=8000` is optional; 8000 ms is the default.
 
 No Firebase service-account private key is required for Phase 6. Existing Firebase Auth, Firestore rules, rental flows, and production authorization remain authoritative and unchanged.
+
+## Phase 7: Firestore userAccounts read-only shadow
+
+Phase 7 does not transfer authority away from Firestore. It reads only the currently linked user's own `userAccounts/{firebase_uid}` document through the Cloud Firestore REST API using that user's verified Firebase ID token. Because the REST request uses a Firebase Authentication ID token, the existing Firestore Security Rules remain the authorization boundary for the read.
+
+Endpoints:
+- `GET /api/users/me/legacy/member-shadow`: reads the last PostgreSQL shadow without contacting Firestore.
+- `POST /api/users/me/legacy/member-shadow/sync`: requires Clerk auth plus `X-Firebase-Authorization`, reads `userAccounts/{uid}` from Firestore, then upserts a PostgreSQL shadow.
+- `POST /api/users/me/legacy/member-shadow/compare`: requires both sessions, rereads Firestore without mutating the shadow, and reports whether the current source still matches the saved shadow.
+
+Migration `004_phase7_member_profile_shadow.sql` creates `app_user_member_shadows`. It stores only selected member-profile fields plus a deterministic SHA-256 hash of the decoded source for drift detection; the full Firestore document payload is not duplicated into PostgreSQL. `app_runtime_metadata` explicitly records Firestore as the authoritative source during Phase 7.
+
+No Firebase service-account credential is introduced. `FIREBASE_PROJECT_ID` from Phase 6 is reused. `FIRESTORE_REST_TIMEOUT_MS` is optional and defaults to 8000 ms.

@@ -1,0 +1,127 @@
+GitHub Education Phase 7 - Firestore Member Profile Shadow Validation
+=====================================================================
+
+Date: 2026-08-07
+Baseline: rental-system-github-education-phase6-firebase-identity-bridge-20260807-fixed_deployment_package.zip
+Baseline SHA-256: 31d4e6c1ec1bd4bf4ed99fdc9b0d00d9897a94836f5f2bdb1af91cd2e2e5cd4e
+
+SCOPE
+-----
+- Read only the current linked user's Firestore userAccounts/{uid} document using that user's Firebase ID token.
+- Keep Firestore Security Rules as the authorization boundary for the source read.
+- Persist selected member-profile fields and a deterministic source hash into PostgreSQL.
+- Add non-mutating Firestore-vs-shadow drift comparison.
+- Keep all existing Firebase rental/authorization behavior authoritative and unchanged.
+
+PHASE 7 SECURITY / DATA TESTS
+-----------------------------
+PASS  Firestore REST typed-value decoding for string, boolean, integer, timestamp, array, and map values.
+PASS  Firestore REST request sends the Firebase ID token only as Authorization: Bearer.
+PASS  Firestore document UID must match the Phase 6 linked Firebase UID.
+PASS  Current verified Firebase token UID must match the saved Phase 6 link.
+PASS  Firestore member email must match Clerk/PostgreSQL email when both are present.
+PASS  PostgreSQL shadow upsert preserves the same app_user_id / firebase_uid identity.
+PASS  Source SHA-256 is deterministic.
+PASS  Equal Firestore source and PostgreSQL shadow report equivalent=true.
+PASS  Changed source member field reports equivalent=false and changed field names.
+PASS  Comparison does not overwrite the saved shadow.
+PASS  Full Firestore source payload is not stored in the new PostgreSQL shadow table.
+
+SERVER / FRONTEND REGRESSION
+----------------------------
+PASS  migration-static-check (Phase 6 JSONB hotfix invariant + Phase 7 migration markers).
+PASS  server foundation validation (21 JavaScript files + Procfile + Phase 2/5/6/7 invariants).
+PASS  server HTTP smoke (/health, Clerk auth, identity, Firebase link, member shadow sync/compare, CORS, 404).
+PASS  Clerk RSA JWT smoke.
+PASS  Clerk Backend API/PostgreSQL identity sync smoke.
+PASS  Firebase identity bridge RS256/certificate-cache/email/one-to-one-link smoke.
+PASS  Phase 7 Firestore member-profile shadow smoke.
+PASS  Clerk frontend smoke including Phase 7 member shadow endpoints.
+PASS  React Hook audit (146 source files).
+PASS  Application flow audit (124 contracts, 11 user routes, 20 administrator tabs).
+PASS  Firestore strict audit (129 calls; 51 approved risks; 0 new warnings; 0 errors).
+
+STAGING CONFIG TEST
+-------------------
+PASS  APP_ENV=staging accepts existing Phase 6 variables and SERVICE_VERSION=phase7.
+PASS  FIRESTORE_REST_TIMEOUT_MS defaults to 8000 ms.
+PASS  Config output reports only configured/non-secret values and does not print Clerk/Firebase tokens.
+
+FIRESTORE AUDIT COUNTS
+----------------------
+Total existing frontend calls: 129
+onSnapshot: 35
+getDocs: 48
+getDoc: 28
+getCountFromServer: 18
+Approved existing risk findings: 51
+Unapproved warnings: 0
+Unapproved errors: 0
+
+The new server Firestore REST read is intentionally outside the frontend SDK audit count and occurs only on explicit Phase 7 shadow sync/compare actions.
+
+UNCHANGED CRITICAL FILES VS PHASE 6 FIXED BASELINE
+--------------------------------------------------
+PASS  src/App.jsx
+PASS  src/firebase.js
+PASS  rules/firestore.rules
+PASS  firestore.indexes.json
+PASS  public/CNAME
+PASS  vercel.json
+PASS  src/main.jsx
+PASS  package-lock.json
+
+App.jsx: 2,130 lines / 66,036 bytes
+App.jsx SHA-256: b30af55defc814cac9b33e056f4c89263444eca04b565c89ef0517d96b4b1117
+
+DATABASE IMPACT
+---------------
+NEW migration: 004_phase7_member_profile_shadow.sql
+NEW table: app_user_member_shadows
+Firestore remains authoritative.
+No Firestore mutation is performed by Phase 7.
+No Firebase Auth mutation is performed by Phase 7.
+
+DEPENDENCIES
+------------
+New npm dependencies: 0
+Root package-lock dependency graph: unchanged.
+Server pg dependency: unchanged at 8.22.0.
+Server package version: 0.5.0.
+
+BUILD LIMITATION
+----------------
+The execution environment does not contain the root node_modules/Vite executable.
+`npm run build:staging` completed React/app-flow/Firestore/Clerk config checks and then stopped at `vite: not found` (exit 127).
+Phase 7 adds no npm dependency; the final Vite bundle remains a deploy.ps1/user-environment validation step.
+
+SOURCE CHANGE SUMMARY BEFORE PACKAGE METADATA
+---------------------------------------------
+Baseline non-package-meta files: 557
+Phase 7 non-package-meta files including Phase 7 reports: 565
+New files: 8
+Modified existing files: 16
+Deleted files: 0
+Cumulative REMOVED_FILES entries: 65 (preserved from the Phase 6 fixed baseline).
+
+PACKAGE VALIDATION
+------------------
+PACKAGE_FILES_COUNT=565
+Expected ZIP entry count=568 (565 source/config + 3 package-meta files)
+Protected paths required=0
+Missing manifest files required=0
+SHA mismatches required=0
+ZIP integrity must pass after archive creation.
+ZIP SHA-256 is reported externally in the final delivery message after archive creation.
+
+MANUAL EXTERNAL ACTION
+----------------------
+- Heroku: no new required secret/Config Var. Keep FIREBASE_PROJECT_ID from Phase 6.
+- Optional only: FIRESTORE_REST_TIMEOUT_MS=8000; normally omit because it is the default.
+- Publish gh-pages-3 only with deploy.ps1 v13.1.
+- If Heroku auto deploy is disabled, manually deploy gh-pages-3 to the staging API.
+- Confirm migration 004, then set SERVICE_VERSION=phase7.
+- Vercel: no new variable; redeploy only if its gh-pages-3 automatic deployment is disabled.
+- Clerk: no new setting.
+- Firebase Console: no new setting or service-account key.
+- Browser: confirm Phase 6 Firebase link, then run member Shadow sync/read/compare.

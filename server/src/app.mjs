@@ -63,6 +63,38 @@ const sanitizeFirebaseLink = (link) => ({
   updatedAt: link.updatedAt,
 });
 
+const sanitizeMemberShadow = (shadow) => ({
+  appUserId: shadow.appUserId,
+  firebaseUid: shadow.firebaseUid,
+  uid: shadow.uid,
+  email: shadow.email,
+  maskedEmail: shadow.maskedEmail,
+  name: shadow.name,
+  team: shadow.team,
+  phone: shadow.phone,
+  status: shadow.status,
+  directoryMemberId: shadow.directoryMemberId,
+  directoryVerifiedVersion: shadow.directoryVerifiedVersion,
+  profileRequiredReason: shadow.profileRequiredReason,
+  rejoinedAccount: shadow.rejoinedAccount,
+  termsConsentRevision: shadow.termsConsentRevision,
+  termsConsentPolicyVersion: shadow.termsConsentPolicyVersion,
+  sourceHash: shadow.sourceHash,
+  sourceCreatedAt: shadow.sourceCreatedAt,
+  sourceUpdatedAt: shadow.sourceUpdatedAt,
+  syncedAt: shadow.syncedAt,
+  updatedAt: shadow.updatedAt,
+});
+
+const sanitizeMemberComparison = (comparison) => ({
+  equivalent: Boolean(comparison.equivalent),
+  sourceHash: comparison.sourceHash,
+  shadowHash: comparison.shadowHash,
+  changedFields: comparison.changedFields,
+  sourceUpdatedAt: comparison.sourceUpdatedAt,
+  shadowSyncedAt: comparison.shadowSyncedAt,
+});
+
 export const createRequestHandler = ({
   config,
   databaseCheck,
@@ -70,6 +102,7 @@ export const createRequestHandler = ({
   authenticateFirebaseRequest,
   userIdentityService,
   firebaseLinkService,
+  memberShadowService,
 }) => {
   if (typeof databaseCheck !== 'function') {
     throw new TypeError('databaseCheck must be a function.');
@@ -85,6 +118,14 @@ export const createRequestHandler = ({
   }
   if (!firebaseLinkService || typeof firebaseLinkService.getCurrent !== 'function' || typeof firebaseLinkService.linkCurrent !== 'function') {
     throw new TypeError('firebaseLinkService getCurrent/linkCurrent methods are required.');
+  }
+  if (
+    !memberShadowService ||
+    typeof memberShadowService.getCurrent !== 'function' ||
+    typeof memberShadowService.syncCurrent !== 'function' ||
+    typeof memberShadowService.compareCurrent !== 'function'
+  ) {
+    throw new TypeError('memberShadowService getCurrent/syncCurrent/compareCurrent methods are required.');
   }
 
   const basePayload = {
@@ -150,6 +191,7 @@ export const createRequestHandler = ({
           currentUser: '/api/users/me',
           syncCurrentUser: '/api/users/me/sync',
           firebaseLink: '/api/users/me/legacy/firebase',
+          memberShadow: '/api/users/me/legacy/member-shadow',
         },
         headers,
       );
@@ -374,6 +416,135 @@ export const createRequestHandler = ({
           return;
         }
         writeJson(response, 503, { ...basePayload, authenticated: true, error: 'legacy_link_store_unavailable' }, headers);
+      }
+      return;
+    }
+
+
+    if (request.method === 'GET' && url.pathname === '/api/users/me/legacy/member-shadow') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+
+      try {
+        const shadow = await memberShadowService.getCurrent(auth.userId);
+        if (!shadow) {
+          writeJson(
+            response,
+            404,
+            { ...basePayload, authenticated: true, error: 'member_shadow_not_found' },
+            headers,
+          );
+          return;
+        }
+        writeJson(
+          response,
+          200,
+          { ...basePayload, authenticated: true, memberShadow: sanitizeMemberShadow(shadow) },
+          headers,
+        );
+      } catch (error) {
+        console.error('[legacy] member shadow lookup failed', {
+          requestId,
+          code: error?.code,
+          name: error?.name,
+        });
+        const statusCode = ['profile_not_synced', 'legacy_link_not_found'].includes(error?.code) ? 409 : 503;
+        writeJson(response, statusCode, { ...basePayload, authenticated: true, error: error?.code || 'member_shadow_store_unavailable' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/users/me/legacy/member-shadow/sync') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+
+      try {
+        const shadow = await memberShadowService.syncCurrent(auth.userId, firebaseIdentity);
+        writeJson(
+          response,
+          200,
+          {
+            ...basePayload,
+            authenticated: true,
+            synchronized: true,
+            authoritativeSource: 'firestore',
+            memberShadow: sanitizeMemberShadow(shadow),
+          },
+          headers,
+        );
+      } catch (error) {
+        console.warn('[legacy] member shadow synchronization rejected', {
+          requestId,
+          code: error?.code,
+          status: error?.status,
+          name: error?.name,
+        });
+        if (['profile_not_synced', 'legacy_link_not_found', 'legacy_link_token_mismatch', 'member_source_uid_mismatch', 'member_source_email_mismatch', 'member_shadow_uid_conflict'].includes(error?.code)) {
+          writeJson(response, 409, { ...basePayload, authenticated: true, error: error.code }, headers);
+          return;
+        }
+        if (error?.code === 'member_source_not_found') {
+          writeJson(response, 404, { ...basePayload, authenticated: true, error: error.code }, headers);
+          return;
+        }
+        if (error?.code === 'firestore_user_account_forbidden') {
+          writeJson(response, 403, { ...basePayload, authenticated: true, error: 'member_source_forbidden' }, headers);
+          return;
+        }
+        if (error?.code === 'firestore_user_account_unauthorized') {
+          writeJson(response, 401, { ...basePayload, authenticated: true, error: 'legacy_firebase_unauthorized' }, headers);
+          return;
+        }
+        writeJson(response, 503, { ...basePayload, authenticated: true, error: 'member_shadow_sync_unavailable' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/users/me/legacy/member-shadow/compare') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+
+      try {
+        const comparison = await memberShadowService.compareCurrent(auth.userId, firebaseIdentity);
+        writeJson(
+          response,
+          200,
+          {
+            ...basePayload,
+            authenticated: true,
+            authoritativeSource: 'firestore',
+            comparison: sanitizeMemberComparison(comparison),
+          },
+          headers,
+        );
+      } catch (error) {
+        console.warn('[legacy] member shadow comparison failed', {
+          requestId,
+          code: error?.code,
+          status: error?.status,
+          name: error?.name,
+        });
+        if (['profile_not_synced', 'legacy_link_not_found', 'legacy_link_token_mismatch', 'member_source_uid_mismatch', 'member_source_email_mismatch'].includes(error?.code)) {
+          writeJson(response, 409, { ...basePayload, authenticated: true, error: error.code }, headers);
+          return;
+        }
+        if (error?.code === 'member_shadow_not_found' || error?.code === 'member_source_not_found') {
+          writeJson(response, 404, { ...basePayload, authenticated: true, error: error.code }, headers);
+          return;
+        }
+        if (error?.code === 'firestore_user_account_forbidden') {
+          writeJson(response, 403, { ...basePayload, authenticated: true, error: 'member_source_forbidden' }, headers);
+          return;
+        }
+        if (error?.code === 'firestore_user_account_unauthorized') {
+          writeJson(response, 401, { ...basePayload, authenticated: true, error: 'legacy_firebase_unauthorized' }, headers);
+          return;
+        }
+        writeJson(response, 503, { ...basePayload, authenticated: true, error: 'member_shadow_compare_unavailable' }, headers);
       }
       return;
     }

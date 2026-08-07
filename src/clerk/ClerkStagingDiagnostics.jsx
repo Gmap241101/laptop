@@ -54,6 +54,14 @@ export default function ClerkStagingDiagnostics() {
     legacyFirebaseEmail: null,
     legacyFirebaseEmailVerified: false,
     legacyFirebaseSignInProvider: null,
+    memberShadowFirebaseUid: null,
+    memberShadowName: null,
+    memberShadowTeam: null,
+    memberShadowStatus: null,
+    memberShadowSourceHash: null,
+    memberShadowSyncedAt: null,
+    memberShadowEquivalent: null,
+    memberShadowChangedFields: [],
     error: null,
   });
 
@@ -77,6 +85,14 @@ export default function ClerkStagingDiagnostics() {
             postgresUserId: snapshot.signedIn ? current.postgresUserId : null,
             primaryEmail: snapshot.signedIn ? current.primaryEmail : null,
             primaryEmailVerified: snapshot.signedIn ? current.primaryEmailVerified : false,
+            memberShadowFirebaseUid: snapshot.signedIn ? current.memberShadowFirebaseUid : null,
+            memberShadowName: snapshot.signedIn ? current.memberShadowName : null,
+            memberShadowTeam: snapshot.signedIn ? current.memberShadowTeam : null,
+            memberShadowStatus: snapshot.signedIn ? current.memberShadowStatus : null,
+            memberShadowSourceHash: snapshot.signedIn ? current.memberShadowSourceHash : null,
+            memberShadowSyncedAt: snapshot.signedIn ? current.memberShadowSyncedAt : null,
+            memberShadowEquivalent: snapshot.signedIn ? current.memberShadowEquivalent : null,
+            memberShadowChangedFields: snapshot.signedIn ? current.memberShadowChangedFields : [],
             error: null,
           }));
         };
@@ -148,6 +164,21 @@ export default function ClerkStagingDiagnostics() {
     }));
   };
 
+  const applyMemberShadow = (shadow) => {
+    setState((current) => ({
+      ...current,
+      memberShadowFirebaseUid: shadow?.firebaseUid || null,
+      memberShadowName: shadow?.name || null,
+      memberShadowTeam: shadow?.team || null,
+      memberShadowStatus: shadow?.status || null,
+      memberShadowSourceHash: shadow?.sourceHash || null,
+      memberShadowSyncedAt: shadow?.syncedAt || null,
+      memberShadowEquivalent: shadow ? current.memberShadowEquivalent : null,
+      memberShadowChangedFields: shadow ? current.memberShadowChangedFields : [],
+      error: null,
+    }));
+  };
+
   const verifyBackend = () =>
     run(async () => {
       const payload = await clerkStagingClient.verifyBackendSession();
@@ -193,9 +224,49 @@ export default function ClerkStagingDiagnostics() {
       applyFirebaseLink(payload.firebaseLink);
     });
 
+
+  const readMemberShadow = () =>
+    run(async () => {
+      const payload = await clerkStagingClient.getMemberShadow();
+      if (!payload) {
+        applyMemberShadow(null);
+        return;
+      }
+      applyMemberShadow(payload.memberShadow);
+    });
+
+  const syncMemberShadow = () =>
+    run(async () => {
+      const firebaseUser = firebaseAuth.currentUser;
+      if (!firebaseUser) throw new Error('기존 Firebase 로그인이 필요합니다. 먼저 홈페이지 계정으로 로그인해 주세요.');
+      const firebaseIdToken = await firebaseUser.getIdToken(true);
+      const payload = await clerkStagingClient.syncMemberShadow(firebaseIdToken);
+      applyMemberShadow(payload.memberShadow);
+      setState((current) => ({
+        ...current,
+        memberShadowEquivalent: true,
+        memberShadowChangedFields: [],
+        error: null,
+      }));
+    });
+
+  const compareMemberShadow = () =>
+    run(async () => {
+      const firebaseUser = firebaseAuth.currentUser;
+      if (!firebaseUser) throw new Error('기존 Firebase 로그인이 필요합니다. 먼저 홈페이지 계정으로 로그인해 주세요.');
+      const firebaseIdToken = await firebaseUser.getIdToken(true);
+      const payload = await clerkStagingClient.compareMemberShadow(firebaseIdToken);
+      setState((current) => ({
+        ...current,
+        memberShadowEquivalent: Boolean(payload.comparison.equivalent),
+        memberShadowChangedFields: payload.comparison.changedFields || [],
+        error: null,
+      }));
+    });
+
   return (
     <aside style={panelStyle} aria-label="Clerk staging diagnostics">
-      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 6</div>
+      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 7</div>
       <div>SDK: {state.phase === 'loading' ? 'loading' : state.phase}</div>
       <div>Signed in: {state.signedIn ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Clerk user: {state.userId || '-'}</div>
@@ -212,6 +283,19 @@ export default function ClerkStagingDiagnostics() {
       </div>
       <div style={{ overflowWrap: 'anywhere' }}>
         Firebase provider: {state.legacyFirebaseSignInProvider || '-'}
+      </div>
+
+      <div style={{ marginTop: '6px', fontWeight: 700 }}>Legacy member shadow</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Shadow Firebase: {state.memberShadowFirebaseUid || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Shadow member: {state.memberShadowName || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Shadow team: {state.memberShadowTeam || '-'}</div>
+      <div>Shadow status: {state.memberShadowStatus || '-'}</div>
+      <div>Shadow equivalent: {state.memberShadowEquivalent === null ? '-' : state.memberShadowEquivalent ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>
+        Changed fields: {state.memberShadowChangedFields.length ? state.memberShadowChangedFields.join(', ') : '-'}
+      </div>
+      <div style={{ overflowWrap: 'anywhere' }}>
+        Shadow hash: {state.memberShadowSourceHash ? state.memberShadowSourceHash.slice(0, 16) : '-'}
       </div>
 
       {state.error ? (
@@ -246,6 +330,26 @@ export default function ClerkStagingDiagnostics() {
             </button>
             <button type="button" style={buttonStyle} onClick={readFirebaseLink}>
               Firebase 연결 조회
+            </button>
+
+            <button
+              type="button"
+              style={buttonStyle}
+              disabled={!state.firebaseSignedIn || !state.legacyFirebaseUid}
+              onClick={syncMemberShadow}
+            >
+              회원 Shadow 동기화
+            </button>
+            <button type="button" style={buttonStyle} onClick={readMemberShadow}>
+              회원 Shadow 조회
+            </button>
+            <button
+              type="button"
+              style={buttonStyle}
+              disabled={!state.firebaseSignedIn || !state.legacyFirebaseUid}
+              onClick={compareMemberShadow}
+            >
+              회원 Shadow 비교
             </button>
             <button type="button" style={buttonStyle} onClick={() => run(() => clerkStagingClient.signOut())}>
               Clerk 로그아웃

@@ -7,6 +7,7 @@ const DEFAULT_CLERK_CLOCK_SKEW_SECONDS = 5;
 const DEFAULT_CLERK_API_URL = 'https://api.clerk.com/v1';
 const DEFAULT_CLERK_API_TIMEOUT_MS = 8000;
 const DEFAULT_FIREBASE_CERT_TIMEOUT_MS = 8000;
+const DEFAULT_FIRESTORE_REST_TIMEOUT_MS = 8000;
 const SSL_MODES = new Set(['auto', 'require', 'disable']);
 
 const readInteger = (name, fallback, { min, max }) => {
@@ -156,7 +157,7 @@ export const readServerConfig = () => {
   return Object.freeze({
     appEnv,
     serviceName: (process.env.SERVICE_NAME || 'rental-api').trim(),
-    serviceVersion: (process.env.SERVICE_VERSION || 'phase6').trim(),
+    serviceVersion: (process.env.SERVICE_VERSION || 'phase7').trim(),
     port: readInteger('PORT', DEFAULT_PORT, { min: 1, max: 65535 }),
     databaseUrl: readDatabaseUrl(),
     databaseSslMode: readSslMode(),
@@ -187,6 +188,10 @@ export const readServerConfig = () => {
     }),
     firebaseProjectId: readFirebaseProjectId(appEnv),
     firebaseCertTimeoutMs: readInteger('FIREBASE_CERT_TIMEOUT_MS', DEFAULT_FIREBASE_CERT_TIMEOUT_MS, {
+      min: 1000,
+      max: 30000,
+    }),
+    firestoreRestTimeoutMs: readInteger('FIRESTORE_REST_TIMEOUT_MS', DEFAULT_FIRESTORE_REST_TIMEOUT_MS, {
       min: 1000,
       max: 30000,
     }),

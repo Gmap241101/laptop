@@ -220,6 +220,81 @@ export const requestFirebaseLegacyLinkStatus = async ({ clerk, apiBaseUrl, fetch
   return payload;
 };
 
+
+export const requestMemberShadowStatus = async ({ clerk, apiBaseUrl, fetchImpl }) => {
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/users/me/legacy/member-shadow',
+  });
+
+  if (response.status === 404 && payload?.error === 'member_shadow_not_found') return null;
+  if (!response.ok) {
+    const code = payload?.error ? ` (${payload.error})` : '';
+    const error = new Error(`Legacy member shadow lookup failed with HTTP ${response.status}${code}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (!payload?.authenticated || !payload?.memberShadow?.firebaseUid) {
+    throw new Error('Backend returned an invalid legacy member-shadow response.');
+  }
+  return payload;
+};
+
+export const requestMemberShadowSync = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken }) => {
+  const token = trim(firebaseIdToken);
+  if (!token) throw new Error('Firebase sign-in is required before synchronizing the legacy member shadow.');
+
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/users/me/legacy/member-shadow/sync',
+    method: 'POST',
+    headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    const code = payload?.error ? ` (${payload.error})` : '';
+    const error = new Error(`Legacy member shadow synchronization failed with HTTP ${response.status}${code}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (!payload?.authenticated || !payload?.synchronized || !payload?.memberShadow?.firebaseUid) {
+    throw new Error('Backend returned an invalid member-shadow synchronization response.');
+  }
+  return payload;
+};
+
+export const requestMemberShadowComparison = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken }) => {
+  const token = trim(firebaseIdToken);
+  if (!token) throw new Error('Firebase sign-in is required before comparing the legacy member shadow.');
+
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/users/me/legacy/member-shadow/compare',
+    method: 'POST',
+    headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    const code = payload?.error ? ` (${payload.error})` : '';
+    const error = new Error(`Legacy member shadow comparison failed with HTTP ${response.status}${code}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (!payload?.authenticated || typeof payload?.comparison?.equivalent !== 'boolean') {
+    throw new Error('Backend returned an invalid member-shadow comparison response.');
+  }
+  return payload;
+};
+
 const createScriptLoader = (documentRef) => (id, src, attributes = {}) =>
   new Promise((resolve, reject) => {
     const existing = documentRef.getElementById(id);
@@ -344,6 +419,28 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async getFirebaseLegacyLink() {
       const clerk = await initialize();
       return requestFirebaseLegacyLinkStatus({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
+    },
+    async getMemberShadow() {
+      const clerk = await initialize();
+      return requestMemberShadowStatus({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
+    },
+    async syncMemberShadow(firebaseIdToken) {
+      const clerk = await initialize();
+      return requestMemberShadowSync({
+        clerk,
+        apiBaseUrl: config.apiBaseUrl,
+        fetchImpl,
+        firebaseIdToken,
+      });
+    },
+    async compareMemberShadow(firebaseIdToken) {
+      const clerk = await initialize();
+      return requestMemberShadowComparison({
+        clerk,
+        apiBaseUrl: config.apiBaseUrl,
+        fetchImpl,
+        firebaseIdToken,
+      });
     },
   });
 };

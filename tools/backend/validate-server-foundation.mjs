@@ -9,8 +9,11 @@ const files = [
   'server/src/users/user-repository.mjs',
   'server/src/users/user-service.mjs',
   'server/src/firebase/firebase-id-token.mjs',
+  'server/src/firestore/firestore-user-account.mjs',
   'server/src/legacy/firebase-link-repository.mjs',
   'server/src/legacy/firebase-link-service.mjs',
+  'server/src/legacy/member-shadow-repository.mjs',
+  'server/src/legacy/member-shadow-service.mjs',
   'server/src/app.mjs',
   'server/src/index.mjs',
   'server/scripts/check-config.mjs',
@@ -19,6 +22,7 @@ const files = [
   'tools/backend/smoke-clerk-auth.mjs',
   'tools/backend/smoke-clerk-user-sync.mjs',
   'tools/backend/smoke-firebase-identity-bridge.mjs',
+  'tools/backend/smoke-member-profile-shadow.mjs',
 ];
 
 for (const file of files) {
@@ -49,8 +53,13 @@ for (const marker of ['CREATE TABLE IF NOT EXISTS app_user_firebase_links', 'fir
   if (!phase6Migration.includes(marker)) throw new Error(`Phase 6 Firebase bridge migration marker is missing: ${marker}`);
 }
 
+const phase7Migration = readFileSync('server/migrations/004_phase7_member_profile_shadow.sql', 'utf8');
+for (const marker of ['CREATE TABLE IF NOT EXISTS app_user_member_shadows', 'source_hash TEXT NOT NULL', "'authoritative', 'firestore'"]) {
+  if (!phase7Migration.includes(marker)) throw new Error(`Phase 7 member shadow migration marker is missing: ${marker}`);
+}
+
 const app = readFileSync('server/src/app.mjs', 'utf8');
-for (const marker of ["url.pathname === '/api/auth/session'", "url.pathname === '/api/users/me'", "url.pathname === '/api/users/me/sync'", "url.pathname === '/api/users/me/legacy/firebase'", "'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'", "X-Firebase-Authorization", "'WWW-Authenticate': 'Bearer'"]) {
+for (const marker of ["url.pathname === '/api/auth/session'", "url.pathname === '/api/users/me'", "url.pathname === '/api/users/me/sync'", "url.pathname === '/api/users/me/legacy/firebase'", "url.pathname === '/api/users/me/legacy/member-shadow'", "url.pathname === '/api/users/me/legacy/member-shadow/sync'", "url.pathname === '/api/users/me/legacy/member-shadow/compare'", "'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'", "X-Firebase-Authorization", "'WWW-Authenticate': 'Bearer'"]) {
   if (!app.includes(marker)) throw new Error(`Server route/security marker is missing: ${marker}`);
 }
 
@@ -79,9 +88,19 @@ for (const marker of ['firebase_link_user_conflict', 'firebase_link_uid_conflict
   if (!firebaseRepository.includes(marker)) throw new Error(`Phase 6 Firebase repository marker is missing: ${marker}`);
 }
 
+const firestoreUserAccount = readFileSync('server/src/firestore/firestore-user-account.mjs', 'utf8');
+for (const marker of ['firestore.googleapis.com/v1/projects/', 'Authorization: `Bearer ${token}`', 'decodeFirestoreDocument']) {
+  if (!firestoreUserAccount.includes(marker)) throw new Error(`Phase 7 Firestore REST marker is missing: ${marker}`);
+}
+
+const memberShadowService = readFileSync('server/src/legacy/member-shadow-service.mjs', 'utf8');
+for (const marker of ['legacy_link_token_mismatch', 'member_source_email_mismatch', 'sourceHash', 'changedFields']) {
+  if (!memberShadowService.includes(marker)) throw new Error(`Phase 7 member shadow service marker is missing: ${marker}`);
+}
+
 const configTemplate = readFileSync('docs/github-education/HEROKU_CONFIG_VARS_TEMPLATE.txt', 'utf8');
 for (const variable of ['CLERK_JWT_KEY=', 'CLERK_AUTHORIZED_PARTIES=', 'CLERK_SECRET_KEY=sk_test_', 'CLERK_API_TIMEOUT_MS=8000', 'FIREBASE_PROJECT_ID=laptop-system-mk']) {
   if (!configTemplate.includes(variable)) throw new Error(`Phase 6 config template is missing ${variable}`);
 }
 
-console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6 database/auth invariants)`);
+console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7 database/auth invariants)`);

@@ -54,6 +54,11 @@ const firebaseLinkService = {
   async getCurrent() { return null; },
   async linkCurrent() { throw new Error('not used in Clerk auth smoke'); },
 };
+const memberShadowService = {
+  async getCurrent() { return null; },
+  async syncCurrent() { throw new Error('not used in Clerk auth smoke'); },
+  async compareCurrent() { throw new Error('not used in Clerk auth smoke'); },
+};
 const server = createServer(createRequestHandler({
   config,
   databaseCheck,
@@ -61,6 +66,7 @@ const server = createServer(createRequestHandler({
   authenticateFirebaseRequest,
   userIdentityService,
   firebaseLinkService,
+  memberShadowService,
 }));
 
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));

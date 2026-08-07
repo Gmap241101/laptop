@@ -41,7 +41,9 @@
     "verify:phase5": "npm run frontend:clerk:smoke && npm run frontend:clerk:config:check && npm run server:check && npm run server:smoke && npm run server:auth:smoke && npm run server:user-sync:smoke && npm run audit:react-hooks && npm run audit:app-flows && npm run audit:firestore:strict && npm run package:guard",
     "server:firebase-bridge:smoke": "node tools/backend/smoke-firebase-identity-bridge.mjs",
     "verify:phase6": "npm run server:migrations:static-check && npm run frontend:clerk:smoke && npm run frontend:clerk:config:check && npm run server:check && npm run server:smoke && npm run server:auth:smoke && npm run server:user-sync:smoke && npm run server:firebase-bridge:smoke && npm run audit:react-hooks && npm run audit:app-flows && npm run audit:firestore:strict && npm run package:guard",
-    "server:migrations:static-check": "node tools/backend/validate-migrations.mjs"
+    "server:migrations:static-check": "node tools/backend/validate-migrations.mjs",
+    "server:member-shadow:smoke": "node tools/backend/smoke-member-profile-shadow.mjs",
+    "verify:phase7": "npm run server:migrations:static-check && npm run frontend:clerk:smoke && npm run frontend:clerk:config:check && npm run server:check && npm run server:smoke && npm run server:auth:smoke && npm run server:user-sync:smoke && npm run server:firebase-bridge:smoke && npm run server:member-shadow:smoke && npm run audit:react-hooks && npm run audit:app-flows && npm run audit:firestore:strict && npm run package:guard"
   },
   "dependencies": {
     "firebase": "^10.14.1",

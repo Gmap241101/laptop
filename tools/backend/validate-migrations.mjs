@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 
 const phase2 = readFileSync('server/migrations/001_phase2_platform_baseline.sql', 'utf8');
 const phase6 = readFileSync('server/migrations/003_phase6_firebase_identity_bridge.sql', 'utf8');
+const phase7 = readFileSync('server/migrations/004_phase7_member_profile_shadow.sql', 'utf8');
 
 if (!/value\s+JSONB\s+NOT\s+NULL/i.test(phase2)) {
   throw new Error('app_runtime_metadata.value must remain JSONB NOT NULL.');
@@ -20,4 +21,13 @@ if (!phase6.includes('CREATE TABLE IF NOT EXISTS app_user_firebase_links')) {
   throw new Error('Phase 6 Firebase link table migration is missing.');
 }
 
-console.log('[migration-static-check] PASS (Phase 6 JSONB metadata write is type-safe)');
+for (const marker of [
+  'CREATE TABLE IF NOT EXISTS app_user_member_shadows',
+  'source_hash TEXT NOT NULL',
+  'app_user_member_shadows_uid_matches_source',
+  "'authoritative', 'firestore'",
+]) {
+  if (!phase7.includes(marker)) throw new Error(`Phase 7 member shadow migration marker is missing: ${marker}`);
+}
+
+console.log('[migration-static-check] PASS (Phase 6 identity bridge + Phase 7 read-only member shadow migrations are type-safe)');

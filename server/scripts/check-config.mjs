@@ -38,6 +38,7 @@ try {
   console.log(`CLERK_API_TIMEOUT_MS=${config.clerkApiTimeoutMs}`);
   console.log(`FIREBASE_PROJECT_ID=${config.firebaseProjectId || 'not-configured'}`);
   console.log(`FIREBASE_CERT_TIMEOUT_MS=${config.firebaseCertTimeoutMs}`);
+  console.log(`FIRESTORE_REST_TIMEOUT_MS=${config.firestoreRestTimeoutMs}`);
 } catch (error) {
   console.error(`[config] invalid server configuration: ${error.message}`);
   process.exit(1);
