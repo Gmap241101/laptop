@@ -95,6 +95,30 @@ const sanitizeMemberComparison = (comparison) => ({
   shadowSyncedAt: comparison.shadowSyncedAt,
 });
 
+const sanitizeMemberProfileReadCandidate = (shadow) => ({
+  source: 'postgresql-shadow',
+  authoritative: false,
+  firebaseUid: shadow.firebaseUid,
+  profile: {
+    uid: shadow.uid,
+    email: shadow.email,
+    maskedEmail: shadow.maskedEmail,
+    name: shadow.name,
+    team: shadow.team,
+    phone: shadow.phone,
+    status: shadow.status,
+    directoryMemberId: shadow.directoryMemberId,
+    directoryVerifiedVersion: shadow.directoryVerifiedVersion,
+    profileRequiredReason: shadow.profileRequiredReason,
+    rejoinedAccount: shadow.rejoinedAccount,
+    termsConsentRevision: shadow.termsConsentRevision,
+    termsConsentPolicyVersion: shadow.termsConsentPolicyVersion,
+  },
+  sourceHash: shadow.sourceHash,
+  sourceUpdatedAt: shadow.sourceUpdatedAt,
+  shadowSyncedAt: shadow.syncedAt,
+});
+
 export const createRequestHandler = ({
   config,
   databaseCheck,
@@ -192,6 +216,7 @@ export const createRequestHandler = ({
           syncCurrentUser: '/api/users/me/sync',
           firebaseLink: '/api/users/me/legacy/firebase',
           memberShadow: '/api/users/me/legacy/member-shadow',
+          memberProfileReadCandidate: '/api/users/me/member-profile-candidate',
         },
         headers,
       );
@@ -416,6 +441,44 @@ export const createRequestHandler = ({
           return;
         }
         writeJson(response, 503, { ...basePayload, authenticated: true, error: 'legacy_link_store_unavailable' }, headers);
+      }
+      return;
+    }
+
+
+    if (request.method === 'GET' && url.pathname === '/api/users/me/member-profile-candidate') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+
+      try {
+        const shadow = await memberShadowService.getCurrent(auth.userId);
+        if (!shadow) {
+          writeJson(
+            response,
+            404,
+            { ...basePayload, authenticated: true, error: 'member_shadow_not_found' },
+            headers,
+          );
+          return;
+        }
+        writeJson(
+          response,
+          200,
+          {
+            ...basePayload,
+            authenticated: true,
+            readCandidate: sanitizeMemberProfileReadCandidate(shadow),
+          },
+          headers,
+        );
+      } catch (error) {
+        console.error('[member-read] PostgreSQL candidate lookup failed', {
+          requestId,
+          code: error?.code,
+          name: error?.name,
+        });
+        const statusCode = ['profile_not_synced', 'legacy_link_not_found'].includes(error?.code) ? 409 : 503;
+        writeJson(response, statusCode, { ...basePayload, authenticated: true, error: error?.code || 'member_read_candidate_unavailable' }, headers);
       }
       return;
     }

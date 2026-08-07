@@ -1,0 +1,94 @@
+GitHub Education Phase 8 - Member Profile Parallel Read Validation
+Date: 2026-08-07
+
+BASELINE
+- Package: rental-system-github-education-phase7-member-profile-shadow-20260807_deployment_package.zip
+- SHA-256: 4d8bd6b55741b96c1c48f391c0fa10feb2e8d2bab9c155a4d8974a9d25c78c6b
+- Phase 7 live acceptance supplied by user: PASS
+  - migration 004 applied successfully
+  - /health and /health/live: phase7 / ok
+  - Clerk user = Backend user
+  - Firebase user = linked Firebase UID
+  - Shadow equivalent = yes
+  - changed fields = none
+
+PHASE 8 SCOPE
+- Firestore remains authoritative for the real application member profile.
+- The existing userAccounts/{uid} onSnapshot() result is observed without changing userProfile state.
+- New PostgreSQL-only candidate endpoint: GET /api/users/me/member-profile-candidate
+- Candidate response explicitly reports source=postgresql-shadow and authoritative=false.
+- Staging diagnostics compare the exact real application Firestore read with the PostgreSQL candidate.
+- The parity action adds no Firestore read; it reuses the current onSnapshot result and performs one PostgreSQL API GET.
+- No SQL migration.
+- No new dependency.
+- No new Vercel/Heroku/Clerk/Firebase setting.
+
+VALIDATION RESULTS
+PASS  Clerk frontend smoke including Phase 8 read candidate request.
+PASS  Phase 8 member read parity smoke.
+PASS  Actual application subscription contains publishMemberProfileReadObservation(profileData).
+PASS  Normalization treats equivalent e-mail casing/whitespace consistently.
+PASS  Equal Firestore/candidate profiles produce equivalent=true and changedFields=[].
+PASS  Deliberate team drift produces equivalent=false and changedFields=[team].
+PASS  Missing profile is fail-closed as profileMissing.
+PASS  Migration static validation; Phase 8 adds no migration.
+PASS  Server static validation including candidate route, non-authoritative marker, and actual-app observation hook.
+PASS  Server HTTP smoke including GET /api/users/me/member-profile-candidate.
+PASS  Existing Clerk RS256 JWT smoke.
+PASS  Existing Clerk Backend API/PostgreSQL identity sync smoke.
+PASS  Existing Firebase ID-token bridge smoke.
+PASS  Existing Phase 7 Firestore REST/PostgreSQL member Shadow smoke.
+PASS  React hook import audit: 147 source files.
+PASS  Application flow contract audit: 124 contracts, 11 user routes, 20 administrator tabs.
+PASS  Firestore strict access audit: 129 calls, 51 approved risks, 0 new warnings, 0 errors.
+
+FIRESTORE AUDIT
+- Total calls: 129
+- onSnapshot: 35
+- getDocs: 48
+- getDoc: 28
+- getCountFromServer: 18
+- Approved existing risks: 51
+- New warnings: 0
+- Errors: 0
+
+BUILD STATUS
+- npm run build:staging reached and passed all prebuild audits and the Clerk config check.
+- Final Vite bundle was not produced in the model execution environment because root node_modules is not installed and the vite executable is unavailable.
+- Observed final error: vite: not found (exit 127).
+- Phase 8 adds no npm dependency and does not change the root package-lock.json; deploy.ps1 v13.1 remains the final local Vite build gate.
+
+UNCHANGED PRODUCTION-CRITICAL FILES
+- src/App.jsx: unchanged; 2,130 lines / 66,036 bytes.
+- src/firebase.js: unchanged.
+- rules/firestore.rules: unchanged.
+- firestore.indexes.json: unchanged.
+- public/CNAME: unchanged.
+- vercel.json: unchanged.
+- src/main.jsx: unchanged.
+- root package-lock.json: unchanged.
+
+DATABASE IMPACT
+- New migration: none.
+- Existing migrations 001-004 remain unchanged.
+- PostgreSQL candidate endpoint is read-only.
+- Existing Shadow synchronization remains an explicit Phase 7 action and is not triggered automatically.
+
+EXTERNAL PLATFORM ACTIONS
+- New secret/config: none.
+- Keep SERVICE_VERSION=phase7 until the Phase 8 Heroku deploy succeeds.
+- Then set SERVICE_VERSION=phase8.
+- Heroku Release Phase must skip migrations 001-004 as already applied; no new migration should be applied.
+- Vercel requires no new environment variable.
+- Clerk requires no new setting.
+- Firebase Console requires no new setting.
+- Publish gh-pages-3 only; do not publish gh-pages production.
+
+PACKAGE SAFETY
+- package guard must report protected paths=0, missing files=0, duplicates=0, unlisted files=0.
+- Final ZIP must contain no .env*, .git, node_modules, dist, .performance-reports, secrets/.secrets, or deploy.ps1.
+- ZIP contents must be generated from PACKAGE_FILES.txt plus the three package-meta files only.
+
+NEGATIVE PACKAGE-GUARD TESTS
+PASS  Injected `.env.example` manifest entry was rejected with exit 1.
+PASS  Injected missing-file manifest entry was rejected with exit 1.

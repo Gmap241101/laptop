@@ -93,3 +93,17 @@ Endpoints:
 Migration `004_phase7_member_profile_shadow.sql` creates `app_user_member_shadows`. It stores only selected member-profile fields plus a deterministic SHA-256 hash of the decoded source for drift detection; the full Firestore document payload is not duplicated into PostgreSQL. `app_runtime_metadata` explicitly records Firestore as the authoritative source during Phase 7.
 
 No Firebase service-account credential is introduced. `FIREBASE_PROJECT_ID` from Phase 6 is reused. `FIRESTORE_REST_TIMEOUT_MS` is optional and defaults to 8000 ms.
+
+## Phase 8 member profile parallel-read candidate
+
+Phase 8 does not change the authoritative member-profile read path. The React application continues to consume the existing Firestore `userAccounts/{uid}` `onSnapshot()` result for all user-facing behavior.
+
+A new authenticated endpoint exposes the already-synchronized PostgreSQL shadow through a stable future read contract:
+
+- `GET /api/users/me/member-profile-candidate`
+
+The response declares `source=postgresql-shadow` and `authoritative=false`. No Firebase ID token is required for this endpoint because it reads PostgreSQL only after Clerk session authentication.
+
+When Clerk staging diagnostics are enabled and `?clerkTest=1` is present, the existing Firestore `onSnapshot()` callback publishes a browser-local sanitized observation. The Phase 8 diagnostics panel compares that exact application read result with the PostgreSQL read candidate. It does not perform another Firestore document read and it does not replace `userProfile` in the application.
+
+Phase 8 introduces no database migration, no new secret, and no new runtime dependency. It is a parity gate for a later staging-only read cutover.

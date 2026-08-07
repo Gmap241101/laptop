@@ -18,6 +18,7 @@ import {
   normalizeSystemAdminSettings,
   normalizeUserSessionPolicy,
 } from '../../utils/systemSettings.js';
+import { publishMemberProfileReadObservation } from '../members/memberProfileReadObservation.js';
 import { createDefaultUserProfileForm } from '../members/useUserMyPageAccountController.js';
 
 export const normalizeAdminAccounts = function(adminAccounts) {
@@ -322,6 +323,7 @@ export default function useAuthIdentityPolicySubscriptionController({
       doc(db, USER_ACCOUNTS_COLLECTION_NAME, firebaseAuthUser.uid),
       (snapshot) => {
         if (!snapshot.exists()) {
+          publishMemberProfileReadObservation({ firebaseUid: firebaseAuthUser.uid, profile: null });
           setUserProfile(null);
           setUserProfileForm({
             name: firebaseAuthUser.displayName || '',
@@ -337,6 +339,11 @@ export default function useAuthIdentityPolicySubscriptionController({
         }
 
         const profileData = snapshot.data();
+
+        publishMemberProfileReadObservation({
+          firebaseUid: firebaseAuthUser.uid,
+          profile: profileData,
+        });
 
         const parsedPhone = parseDomesticPhoneNumber(profileData.phone || '');
 

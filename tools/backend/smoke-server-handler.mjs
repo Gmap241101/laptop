@@ -5,7 +5,7 @@ const allowedOrigin = 'https://staging.example.vercel.app';
 const config = {
   serviceName: 'rental-api',
   appEnv: 'test',
-  serviceVersion: 'phase6-smoke',
+  serviceVersion: 'phase8-smoke',
   corsAllowedOrigins: [allowedOrigin],
 };
 
@@ -243,6 +243,18 @@ if (!syncMemberShadowBody.synchronized || syncMemberShadowBody.memberShadow?.nam
 const readMemberShadow = await fetch(`${baseUrl}/api/users/me/legacy/member-shadow`, { headers: authHeaders });
 if (readMemberShadow.status !== 200) throw new Error(`/api/users/me/legacy/member-shadow lookup returned ${readMemberShadow.status}`);
 
+const readCandidate = await fetch(`${baseUrl}/api/users/me/member-profile-candidate`, { headers: authHeaders });
+if (readCandidate.status !== 200) throw new Error(`/api/users/me/member-profile-candidate returned ${readCandidate.status}`);
+const readCandidateBody = await readCandidate.json();
+if (
+  readCandidateBody.readCandidate?.source !== 'postgresql-shadow' ||
+  readCandidateBody.readCandidate?.authoritative !== false ||
+  readCandidateBody.readCandidate?.profile?.uid !== 'firebase_uid_smoke' ||
+  readCandidateBody.readCandidate?.profile?.name !== 'Smoke User'
+) {
+  throw new Error('Member profile read candidate response is invalid.');
+}
+
 const compareMemberShadow = await fetch(`${baseUrl}/api/users/me/legacy/member-shadow/compare`, {
   method: 'POST',
   headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
@@ -263,4 +275,4 @@ const missing = await fetch(`${baseUrl}/missing`);
 if (missing.status !== 404) throw new Error(`/missing returned ${missing.status}`);
 
 await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, CORS, 404)');
+console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 8 PostgreSQL read candidate, CORS, 404)');

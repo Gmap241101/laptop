@@ -221,6 +221,32 @@ export const requestFirebaseLegacyLinkStatus = async ({ clerk, apiBaseUrl, fetch
 };
 
 
+export const requestMemberProfileReadCandidate = async ({ clerk, apiBaseUrl, fetchImpl }) => {
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/users/me/member-profile-candidate',
+  });
+
+  if (response.status === 404 && payload?.error === 'member_shadow_not_found') return null;
+  if (!response.ok) {
+    const code = payload?.error ? ` (${payload.error})` : '';
+    const error = new Error(`Member profile read candidate lookup failed with HTTP ${response.status}${code}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (
+    !payload?.authenticated ||
+    payload?.readCandidate?.source !== 'postgresql-shadow' ||
+    !payload?.readCandidate?.profile?.uid
+  ) {
+    throw new Error('Backend returned an invalid member profile read candidate response.');
+  }
+  return payload;
+};
+
 export const requestMemberShadowStatus = async ({ clerk, apiBaseUrl, fetchImpl }) => {
   const { response, payload } = await requestWithSession({
     clerk,
@@ -419,6 +445,10 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async getFirebaseLegacyLink() {
       const clerk = await initialize();
       return requestFirebaseLegacyLinkStatus({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
+    },
+    async getMemberProfileReadCandidate() {
+      const clerk = await initialize();
+      return requestMemberProfileReadCandidate({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
     },
     async getMemberShadow() {
       const clerk = await initialize();

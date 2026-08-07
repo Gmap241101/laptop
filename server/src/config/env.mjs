@@ -157,7 +157,7 @@ export const readServerConfig = () => {
   return Object.freeze({
     appEnv,
     serviceName: (process.env.SERVICE_NAME || 'rental-api').trim(),
-    serviceVersion: (process.env.SERVICE_VERSION || 'phase7').trim(),
+    serviceVersion: (process.env.SERVICE_VERSION || 'phase8').trim(),
     port: readInteger('PORT', DEFAULT_PORT, { min: 1, max: 65535 }),
     databaseUrl: readDatabaseUrl(),
     databaseSslMode: readSslMode(),

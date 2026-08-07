@@ -2,6 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 
 import { firebaseAuth } from '../firebase.js';
+import {
+  compareMemberProfileReads,
+  getLatestMemberProfileReadObservation,
+  subscribeMemberProfileReadObservation,
+} from '../features/members/memberProfileReadObservation.js';
 import { clerkStagingClient } from './clerkStagingClient.js';
 
 const panelStyle = {
@@ -62,6 +67,12 @@ export default function ClerkStagingDiagnostics() {
     memberShadowSyncedAt: null,
     memberShadowEquivalent: null,
     memberShadowChangedFields: [],
+    appReadFirebaseUid: null,
+    appReadProfile: null,
+    memberReadCandidateSource: null,
+    memberReadCandidateProfile: null,
+    memberReadCandidateEquivalent: null,
+    memberReadCandidateChangedFields: [],
     error: null,
   });
 
@@ -130,6 +141,23 @@ export default function ClerkStagingDiagnostics() {
         legacyFirebaseSignInProvider: user ? current.legacyFirebaseSignInProvider : null,
       }));
     });
+  }, [requested]);
+
+  useEffect(() => {
+    if (!requested) return undefined;
+
+    const applyObservation = (observation) => {
+      setState((current) => ({
+        ...current,
+        appReadFirebaseUid: observation?.firebaseUid || null,
+        appReadProfile: observation?.profile || null,
+        memberReadCandidateEquivalent: null,
+        memberReadCandidateChangedFields: [],
+      }));
+    };
+
+    applyObservation(getLatestMemberProfileReadObservation());
+    return subscribeMemberProfileReadObservation(applyObservation);
   }, [requested]);
 
   if (!requested) return null;
@@ -264,9 +292,36 @@ export default function ClerkStagingDiagnostics() {
       }));
     });
 
+  const verifyMemberReadParity = () =>
+    run(async () => {
+      const observation = getLatestMemberProfileReadObservation();
+      if (!observation?.profile) {
+        throw new Error('The application Firestore member profile has not been observed yet.');
+      }
+      const payload = await clerkStagingClient.getMemberProfileReadCandidate();
+      if (!payload?.readCandidate?.profile) {
+        throw new Error('PostgreSQL member profile read candidate is not available.');
+      }
+      const comparison = compareMemberProfileReads(
+        observation.profile,
+        payload.readCandidate.profile,
+      );
+      setState((current) => ({
+        ...current,
+        appReadFirebaseUid: observation.firebaseUid || null,
+        appReadProfile: observation.profile,
+        memberReadCandidateSource: payload.readCandidate.source || null,
+        memberReadCandidateProfile: payload.readCandidate.profile,
+        memberReadCandidateEquivalent: comparison.equivalent,
+        memberReadCandidateChangedFields: comparison.changedFields,
+        error: null,
+      }));
+    });
+
+
   return (
     <aside style={panelStyle} aria-label="Clerk staging diagnostics">
-      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 7</div>
+      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 8</div>
       <div>SDK: {state.phase === 'loading' ? 'loading' : state.phase}</div>
       <div>Signed in: {state.signedIn ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Clerk user: {state.userId || '-'}</div>
@@ -296,6 +351,21 @@ export default function ClerkStagingDiagnostics() {
       </div>
       <div style={{ overflowWrap: 'anywhere' }}>
         Shadow hash: {state.memberShadowSourceHash ? state.memberShadowSourceHash.slice(0, 16) : '-'}
+      </div>
+
+      <div style={{ marginTop: '6px', fontWeight: 700 }}>Member profile parallel read</div>
+      <div style={{ overflowWrap: 'anywhere' }}>App read source: {state.appReadProfile ? 'firestore-onSnapshot' : '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>App read Firebase: {state.appReadFirebaseUid || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>App read member: {state.appReadProfile?.name || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>App read team: {state.appReadProfile?.team || '-'}</div>
+      <div>App read status: {state.appReadProfile?.status || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Candidate source: {state.memberReadCandidateSource || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Candidate member: {state.memberReadCandidateProfile?.name || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Candidate team: {state.memberReadCandidateProfile?.team || '-'}</div>
+      <div>Candidate status: {state.memberReadCandidateProfile?.status || '-'}</div>
+      <div>Read equivalent: {state.memberReadCandidateEquivalent === null ? '-' : state.memberReadCandidateEquivalent ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>
+        Read changed fields: {state.memberReadCandidateChangedFields.length ? state.memberReadCandidateChangedFields.join(', ') : '-'}
       </div>
 
       {state.error ? (
@@ -350,6 +420,9 @@ export default function ClerkStagingDiagnostics() {
               onClick={compareMemberShadow}
             >
               회원 Shadow 비교
+            </button>
+            <button type="button" style={buttonStyle} onClick={verifyMemberReadParity}>
+              {'\uc571 \uc77d\uae30 \ubcd1\ud589\uac80\uc99d'}
             </button>
             <button type="button" style={buttonStyle} onClick={() => run(() => clerkStagingClient.signOut())}>
               Clerk 로그아웃
