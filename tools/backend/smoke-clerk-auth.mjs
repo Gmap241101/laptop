@@ -43,7 +43,11 @@ const validClaims = {
 
 const authenticateRequest = createClerkSessionAuthenticator(config);
 const databaseCheck = async () => ({ latencyMs: 1, databaseTime: new Date() });
-const server = createServer(createRequestHandler({ config, databaseCheck, authenticateRequest }));
+const userIdentityService = {
+  async getCurrent() { return null; },
+  async syncCurrent() { throw new Error('not used in auth smoke'); },
+};
+const server = createServer(createRequestHandler({ config, databaseCheck, authenticateRequest, userIdentityService }));
 
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 const address = server.address();

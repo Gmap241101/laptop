@@ -5,7 +5,7 @@ const trim = (value) => (typeof value === 'string' ? value.trim() : '');
 
 const normalizeBoolean = (value) => trim(value).toLowerCase() === 'true';
 
-const normalizeApiBaseUrl = (value, mode) => {
+const normalizeApiBaseUrl = (value) => {
   const raw = trim(value);
   if (!raw) throw new Error('VITE_API_URL is required when Clerk staging diagnostics are enabled.');
 
@@ -73,34 +73,49 @@ export const readClerkStagingConfig = (env, decodeBase64) => {
     mode,
     publishableKey,
     frontendApiDomain: decodeClerkFrontendApiDomain(publishableKey, decodeBase64),
-    apiBaseUrl: normalizeApiBaseUrl(env?.VITE_API_URL, mode),
+    apiBaseUrl: normalizeApiBaseUrl(env?.VITE_API_URL),
   });
 };
 
-export const requestAuthenticatedSession = async ({ clerk, apiBaseUrl, fetchImpl }) => {
+const parseJsonResponse = async (response) => {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+};
+
+const getSessionToken = async (clerk) => {
   const session = clerk?.session;
   if (!session || typeof session.getToken !== 'function') {
-    throw new Error('Clerk sign-in is required before verifying the backend session.');
+    throw new Error('Clerk sign-in is required before calling the backend.');
   }
 
   const token = await session.getToken();
   if (!token) throw new Error('Clerk did not return a session token.');
+  return token;
+};
 
-  const response = await fetchImpl(`${apiBaseUrl}/api/auth/session`, {
-    method: 'GET',
+const requestWithSession = async ({ clerk, apiBaseUrl, fetchImpl, path, method = 'GET' }) => {
+  const token = await getSessionToken(clerk);
+  const response = await fetchImpl(`${apiBaseUrl}${path}`, {
+    method,
     headers: {
       Accept: 'application/json',
       Authorization: `Bearer ${token}`,
     },
     cache: 'no-store',
   });
+  return { response, payload: await parseJsonResponse(response) };
+};
 
-  let payload = null;
-  try {
-    payload = await response.json();
-  } catch {
-    payload = null;
-  }
+export const requestAuthenticatedSession = async ({ clerk, apiBaseUrl, fetchImpl }) => {
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/auth/session',
+  });
 
   if (!response.ok) {
     const error = new Error(`Backend Clerk session verification failed with HTTP ${response.status}.`);
@@ -112,6 +127,46 @@ export const requestAuthenticatedSession = async ({ clerk, apiBaseUrl, fetchImpl
     throw new Error('Backend returned an invalid authenticated-session response.');
   }
 
+  return payload;
+};
+
+export const requestCurrentUserIdentity = async ({ clerk, apiBaseUrl, fetchImpl }) => {
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/users/me',
+  });
+
+  if (response.status === 404 && payload?.error === 'profile_not_synced') return null;
+  if (!response.ok) {
+    const error = new Error(`Backend user lookup failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    throw error;
+  }
+  if (!payload?.authenticated || !payload?.user?.id || !payload?.user?.clerkUserId) {
+    throw new Error('Backend returned an invalid current-user response.');
+  }
+  return payload;
+};
+
+export const requestCurrentUserIdentitySync = async ({ clerk, apiBaseUrl, fetchImpl }) => {
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/users/me/sync',
+    method: 'POST',
+  });
+
+  if (!response.ok) {
+    const error = new Error(`Backend user synchronization failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    throw error;
+  }
+  if (!payload?.authenticated || !payload?.synchronized || !payload?.user?.id || !payload?.user?.clerkUserId) {
+    throw new Error('Backend returned an invalid user-synchronization response.');
+  }
   return payload;
 };
 
@@ -218,6 +273,14 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async verifyBackendSession() {
       const clerk = await initialize();
       return requestAuthenticatedSession({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
+    },
+    async getBackendUserIdentity() {
+      const clerk = await initialize();
+      return requestCurrentUserIdentity({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
+    },
+    async syncBackendUserIdentity() {
+      const clerk = await initialize();
+      return requestCurrentUserIdentitySync({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
     },
   });
 };

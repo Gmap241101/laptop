@@ -1,10 +1,18 @@
 import { createClerkSessionAuthenticator } from '../src/auth/clerk-session.mjs';
+import { createClerkBackendClient } from '../src/clerk/clerk-api.mjs';
 import { readServerConfig, shouldUseDatabaseSsl } from '../src/config/env.mjs';
 
 try {
   const config = readServerConfig();
   const sslEnabled = shouldUseDatabaseSsl(config.databaseUrl, config.databaseSslMode);
   createClerkSessionAuthenticator(config);
+  if (config.clerkSecretKey) {
+    createClerkBackendClient({
+      secretKey: config.clerkSecretKey,
+      apiUrl: config.clerkApiUrl,
+      timeoutMs: config.clerkApiTimeoutMs,
+    });
+  }
 
   console.log('[config] server configuration is valid');
   console.log(`APP_ENV=${config.appEnv}`);
@@ -18,6 +26,9 @@ try {
   console.log('CLERK_JWT_KEY=configured');
   console.log(`CLERK_AUTHORIZED_PARTIES=${config.clerkAuthorizedParties.join(',')}`);
   console.log(`CLERK_REJECT_PENDING_SESSION=${config.clerkRejectPendingSession}`);
+  console.log(`CLERK_SECRET_KEY=${config.clerkSecretKey ? 'configured' : 'not-configured'}`);
+  console.log(`CLERK_API_URL=${config.clerkApiUrl}`);
+  console.log(`CLERK_API_TIMEOUT_MS=${config.clerkApiTimeoutMs}`);
 } catch (error) {
   console.error(`[config] invalid server configuration: ${error.message}`);
   process.exit(1);

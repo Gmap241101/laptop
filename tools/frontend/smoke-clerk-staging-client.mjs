@@ -5,6 +5,8 @@ import {
   decodeClerkFrontendApiDomain,
   readClerkStagingConfig,
   requestAuthenticatedSession,
+  requestCurrentUserIdentity,
+  requestCurrentUserIdentitySync,
 } from '../../src/clerk/clerkStagingClient.js';
 
 const encode = (value) => Buffer.from(`${value}$`, 'utf8').toString('base64');
@@ -80,30 +82,81 @@ assert.throws(
   /https:\/\//,
 );
 
-let authorizationHeader = null;
-const payload = await requestAuthenticatedSession({
-  clerk: {
-    session: {
-      async getToken() {
-        return 'test-token-that-must-not-be-logged';
-      },
+const fakeSessionClerk = {
+  session: {
+    async getToken() {
+      return 'test-token-that-must-not-be-logged';
     },
   },
-  apiBaseUrl: 'https://api.example.com',
-  fetchImpl: async (url, options) => {
-    assert.equal(url, 'https://api.example.com/api/auth/session');
-    authorizationHeader = options.headers.Authorization;
+};
+let calls = [];
+const fetchForRequests = async (url, options) => {
+  calls.push({ url, options });
+  if (url.endsWith('/api/auth/session')) {
+    return {
+      ok: true,
+      status: 200,
+      async json() { return { authenticated: true, session: { userId: 'user_test' } }; },
+    };
+  }
+  if (url.endsWith('/api/users/me/sync')) {
     return {
       ok: true,
       status: 200,
       async json() {
-        return { authenticated: true, session: { userId: 'user_test' } };
+        return {
+          authenticated: true,
+          synchronized: true,
+          user: { id: '7', clerkUserId: 'user_test', primaryEmail: 'test@example.com' },
+        };
       },
     };
-  },
+  }
+  if (url.endsWith('/api/users/me')) {
+    return {
+      ok: true,
+      status: 200,
+      async json() {
+        return { authenticated: true, user: { id: '7', clerkUserId: 'user_test' } };
+      },
+    };
+  }
+  throw new Error(`Unexpected request: ${url}`);
+};
+
+const payload = await requestAuthenticatedSession({
+  clerk: fakeSessionClerk,
+  apiBaseUrl: 'https://api.example.com',
+  fetchImpl: fetchForRequests,
 });
-assert.equal(authorizationHeader, 'Bearer test-token-that-must-not-be-logged');
 assert.equal(payload.session.userId, 'user_test');
+
+const syncPayload = await requestCurrentUserIdentitySync({
+  clerk: fakeSessionClerk,
+  apiBaseUrl: 'https://api.example.com',
+  fetchImpl: fetchForRequests,
+});
+assert.equal(syncPayload.user.id, '7');
+assert.equal(calls.at(-1).options.method, 'POST');
+
+const currentPayload = await requestCurrentUserIdentity({
+  clerk: fakeSessionClerk,
+  apiBaseUrl: 'https://api.example.com',
+  fetchImpl: fetchForRequests,
+});
+assert.equal(currentPayload.user.clerkUserId, 'user_test');
+assert.ok(calls.every((call) => call.options.headers.Authorization === 'Bearer test-token-that-must-not-be-logged'));
+
+const unsynced = await requestCurrentUserIdentity({
+  clerk: fakeSessionClerk,
+  apiBaseUrl: 'https://api.example.com',
+  fetchImpl: async () => ({
+    ok: false,
+    status: 404,
+    async json() { return { authenticated: true, error: 'profile_not_synced' }; },
+  }),
+});
+assert.equal(unsynced, null);
 
 await assert.rejects(
   () =>
@@ -182,7 +235,7 @@ const documentRef = {
   },
 };
 
-let browserFetchAuth = null;
+const browserCalls = [];
 const client = createClerkStagingClient({
   env: {
     MODE: 'staging',
@@ -193,15 +246,17 @@ const client = createClerkStagingClient({
   windowRef,
   documentRef,
   fetchImpl: async (url, options) => {
-    assert.equal(url, 'https://api.example.com/api/auth/session');
-    browserFetchAuth = options.headers.Authorization;
-    return {
-      ok: true,
-      status: 200,
-      async json() {
-        return { authenticated: true, session: { userId: 'user_browser' } };
-      },
-    };
+    browserCalls.push({ url, options });
+    if (url.endsWith('/api/auth/session')) {
+      return { ok: true, status: 200, async json() { return { authenticated: true, session: { userId: 'user_browser' } }; } };
+    }
+    if (url.endsWith('/api/users/me/sync')) {
+      return { ok: true, status: 200, async json() { return { authenticated: true, synchronized: true, user: { id: '11', clerkUserId: 'user_browser' } }; } };
+    }
+    if (url.endsWith('/api/users/me')) {
+      return { ok: true, status: 200, async json() { return { authenticated: true, user: { id: '11', clerkUserId: 'user_browser' } }; } };
+    }
+    throw new Error(`Unexpected browser request: ${url}`);
   },
 });
 
@@ -218,8 +273,9 @@ assert.equal(
 );
 assert.equal(scripts.get('clerk-staging-js').attributes['data-clerk-publishable-key'], key);
 
-const browserPayload = await client.verifyBackendSession();
-assert.equal(browserFetchAuth, 'Bearer browser-session-token');
-assert.equal(browserPayload.session.userId, 'user_browser');
+assert.equal((await client.verifyBackendSession()).session.userId, 'user_browser');
+assert.equal((await client.syncBackendUserIdentity()).user.id, '11');
+assert.equal((await client.getBackendUserIdentity()).user.id, '11');
+assert.ok(browserCalls.every((call) => call.options.headers.Authorization === 'Bearer browser-session-token'));
 
-console.log('[clerk-frontend-smoke] PASS (config, Vercel production-mode staging, CDN loader, bearer request)');
+console.log('[clerk-frontend-smoke] PASS (config, CDN loader, bearer auth, Phase 5 identity sync/read)');

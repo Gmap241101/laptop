@@ -49,3 +49,15 @@ node --env-file=.env server/src/index.mjs
 2. Web: `npm --prefix server start`
 
 Heroku 배포 전 `DATABASE_URL`, `CORS_ALLOWED_ORIGINS`, `CLERK_JWT_KEY`, `CLERK_AUTHORIZED_PARTIES`가 모두 설정돼 있어야 한다.
+
+## Phase 5: Clerk user identity persistence
+
+Phase 5 keeps Firebase authorization and all rental data flows unchanged, but adds a parallel PostgreSQL identity table for the authenticated Clerk user.
+
+Endpoints:
+- `GET /api/users/me`: returns the existing PostgreSQL identity for the authenticated Clerk user, or `404 profile_not_synced` before first sync.
+- `POST /api/users/me/sync`: verifies the Clerk session, fetches that exact user from Clerk Backend API using server-only `CLERK_SECRET_KEY`, then upserts the trusted profile into `app_user_identities` by unique `clerk_user_id`.
+
+The browser never supplies email/name fields for persistence. `CLERK_SECRET_KEY` must remain a Heroku-only secret and must never be prefixed with `VITE_`.
+
+Migration `002_phase5_clerk_user_identity.sql` creates `app_user_identities`. Phase 5 deliberately does not create roles or replace Firebase authorization.

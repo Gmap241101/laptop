@@ -1,0 +1,79 @@
+GitHub Education Phase 5 - Clerk/PostgreSQL User Identity Validation
+Date: 2026-08-07
+Baseline: rental-system-github-education-phase4-clerk-frontend-bridge-20260807-fixed_deployment_package.zip
+
+SCOPE
+- Add Clerk Backend API user lookup using server-only Secret Key.
+- Add PostgreSQL app_user_identities migration and upsert/read repository.
+- Add authenticated GET /api/users/me and POST /api/users/me/sync.
+- Extend the opt-in Clerk staging diagnostics panel to validate PostgreSQL identity persistence.
+- Keep Firebase authorization/data flows unchanged.
+
+VALIDATION RESULTS
+- Clerk frontend smoke: PASS
+  - existing session verification preserved
+  - Phase 5 identity POST uses Bearer token
+  - Phase 5 identity GET uses Bearer token
+  - unsynced 404 handled
+- Server static foundation: PASS
+  - 13 JavaScript files syntax checked
+  - Procfile invariants checked
+  - phase2 + phase5 migration markers checked
+  - auth/session/user endpoint markers checked
+- Server HTTP smoke: PASS
+  - /health/live
+  - /health
+  - /api/auth/session
+  - /api/users/me before sync -> 404
+  - POST /api/users/me/sync -> 200
+  - /api/users/me after sync -> stable identity
+  - POST CORS preflight
+  - 404
+- Clerk JWT cryptographic smoke: PASS
+  - valid RS256 accepted
+  - missing token rejected
+  - wrong azp rejected
+  - expired rejected
+  - pending rejected
+  - wrong algorithm rejected
+  - wrong signature rejected
+- Clerk Backend API / PostgreSQL identity smoke: PASS
+  - Secret Key sent only as server-side Bearer header
+  - Backend User profile normalization
+  - verified primary-email state preserved
+  - PostgreSQL upsert by unique clerk_user_id
+  - subsequent lookup returns same internal ID
+  - Clerk API HTTP failure rejected
+- Staging config smoke: PASS
+  - sk_test_ Secret Key accepted
+  - missing Secret Key rejected
+  - sk_live_ rejected for staging
+  - config output does not print Secret Key
+- React Hook audit: PASS (146 source files)
+- Application flow contract audit: PASS (124 contracts, 11 user routes, 20 administrator tabs)
+- Firestore strict audit: PASS
+  - total calls: 129
+  - onSnapshot: 35
+  - getDocs: 48
+  - getDoc: 28
+  - getCountFromServer: 18
+  - approved risk: 51
+  - new warnings: 0
+  - errors: 0
+
+BUILD LIMITATION
+- Full Vite bundle was not produced in the model runtime because root node_modules is absent.
+- No new npm dependency was added in Phase 5.
+- Existing root package-lock.json is unchanged.
+- Final Vite build remains a deploy.ps1/local CI validation item.
+
+DATABASE LIMITATION
+- No live Heroku PostgreSQL credential is available in the model environment.
+- Migration 002 is statically validated and must be executed/confirmed by Heroku Release Phase after deployment.
+
+EXTERNAL VALIDATION REQUIRED
+- Add CLERK_SECRET_KEY=sk_test_... to Heroku staging before Phase 5 deploy.
+- Deploy gh-pages-3 only.
+- Confirm migration 002 applies.
+- Use ?clerkTest=1 -> Postgres synchronization -> Postgres lookup.
+- Same Clerk user must retain the same PostgreSQL internal ID across repeated lookups/sign-ins.

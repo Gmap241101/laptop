@@ -7,7 +7,7 @@ const panelStyle = {
   right: '16px',
   bottom: '16px',
   zIndex: 99999,
-  width: 'min(360px, calc(100vw - 32px))',
+  width: 'min(380px, calc(100vw - 32px))',
   padding: '14px',
   border: '1px solid #cbd5e1',
   borderRadius: '12px',
@@ -43,6 +43,9 @@ export default function ClerkStagingDiagnostics() {
     userId: null,
     sessionId: null,
     backendUserId: null,
+    postgresUserId: null,
+    primaryEmail: null,
+    primaryEmailVerified: false,
     error: null,
   });
 
@@ -63,6 +66,9 @@ export default function ClerkStagingDiagnostics() {
             phase: 'ready',
             ...snapshot,
             backendUserId: snapshot.signedIn ? current.backendUserId : null,
+            postgresUserId: snapshot.signedIn ? current.postgresUserId : null,
+            primaryEmail: snapshot.signedIn ? current.primaryEmail : null,
+            primaryEmailVerified: snapshot.signedIn ? current.primaryEmailVerified : false,
             error: null,
           }));
         };
@@ -98,6 +104,16 @@ export default function ClerkStagingDiagnostics() {
     }
   };
 
+  const applyBackendIdentity = (user) => {
+    setState((current) => ({
+      ...current,
+      postgresUserId: user?.id || null,
+      primaryEmail: user?.primaryEmail || null,
+      primaryEmailVerified: Boolean(user?.primaryEmailVerified),
+      error: null,
+    }));
+  };
+
   const verifyBackend = () =>
     run(async () => {
       const payload = await clerkStagingClient.verifyBackendSession();
@@ -108,13 +124,32 @@ export default function ClerkStagingDiagnostics() {
       }));
     });
 
+  const syncIdentity = () =>
+    run(async () => {
+      const payload = await clerkStagingClient.syncBackendUserIdentity();
+      applyBackendIdentity(payload.user);
+    });
+
+  const readIdentity = () =>
+    run(async () => {
+      const payload = await clerkStagingClient.getBackendUserIdentity();
+      if (!payload) {
+        setState((current) => ({ ...current, postgresUserId: null, primaryEmail: null }));
+        return;
+      }
+      applyBackendIdentity(payload.user);
+    });
+
   return (
     <aside style={panelStyle} aria-label="Clerk staging diagnostics">
-      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test</div>
+      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 5</div>
       <div>SDK: {state.phase === 'loading' ? 'loading' : state.phase}</div>
       <div>Signed in: {state.signedIn ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Clerk user: {state.userId || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Backend user: {state.backendUserId || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Postgres user: {state.postgresUserId || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Email: {state.primaryEmail || '-'}</div>
+      <div>Email verified: {state.primaryEmail ? (state.primaryEmailVerified ? 'yes' : 'no') : '-'}</div>
 
       {state.error ? (
         <div role="alert" style={{ marginTop: '8px', color: '#b91c1c', overflowWrap: 'anywhere' }}>
@@ -131,6 +166,12 @@ export default function ClerkStagingDiagnostics() {
           <>
             <button type="button" style={buttonStyle} onClick={verifyBackend}>
               Backend 검증
+            </button>
+            <button type="button" style={buttonStyle} onClick={syncIdentity}>
+              Postgres 동기화
+            </button>
+            <button type="button" style={buttonStyle} onClick={readIdentity}>
+              Postgres 조회
             </button>
             <button type="button" style={buttonStyle} onClick={() => run(() => clerkStagingClient.signOut())}>
               Clerk 로그아웃

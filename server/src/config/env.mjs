@@ -4,6 +4,8 @@ const DEFAULT_DB_POOL_MAX = 5;
 const DEFAULT_CONNECTION_TIMEOUT_MS = 5000;
 const DEFAULT_IDLE_TIMEOUT_MS = 10000;
 const DEFAULT_CLERK_CLOCK_SKEW_SECONDS = 5;
+const DEFAULT_CLERK_API_URL = 'https://api.clerk.com/v1';
+const DEFAULT_CLERK_API_TIMEOUT_MS = 8000;
 const SSL_MODES = new Set(['auto', 'require', 'disable']);
 
 const readInteger = (name, fallback, { min, max }) => {
@@ -103,6 +105,37 @@ const readClerkJwtKey = (appEnv) => {
   return normalized;
 };
 
+const readClerkSecretKey = (appEnv) => {
+  const raw = process.env.CLERK_SECRET_KEY?.trim();
+  if (!raw) {
+    if (appEnv === 'local' || appEnv === 'development' || appEnv === 'test') return null;
+    throw new Error('CLERK_SECRET_KEY is required outside local development in Phase 5.');
+  }
+
+  if (!/^sk_(?:test|live)_/.test(raw)) {
+    throw new Error('CLERK_SECRET_KEY must be a Clerk Secret Key (sk_test_... or sk_live_...).');
+  }
+  if (appEnv === 'staging' && !raw.startsWith('sk_test_')) {
+    throw new Error('Staging requires a Clerk Development Secret Key (sk_test_...).');
+  }
+  if (appEnv === 'production' && !raw.startsWith('sk_live_')) {
+    throw new Error('Production requires a Clerk Production Secret Key (sk_live_...).');
+  }
+  return raw;
+};
+
+const readClerkApiUrl = () => {
+  const raw = (process.env.CLERK_API_URL || DEFAULT_CLERK_API_URL).trim();
+  const parsed = new URL(raw);
+  if (parsed.protocol !== 'https:') {
+    throw new Error('CLERK_API_URL must use https://.');
+  }
+  if (parsed.username || parsed.password || parsed.search || parsed.hash) {
+    throw new Error('CLERK_API_URL must not contain credentials, query, or hash.');
+  }
+  return raw.replace(/\/+$/, '');
+};
+
 export const readServerConfig = () => {
   const appEnv = (process.env.APP_ENV || 'local').trim().toLowerCase();
   const corsAllowedOrigins = readOrigins('CORS_ALLOWED_ORIGINS', appEnv, true);
@@ -114,7 +147,7 @@ export const readServerConfig = () => {
   return Object.freeze({
     appEnv,
     serviceName: (process.env.SERVICE_NAME || 'rental-api').trim(),
-    serviceVersion: (process.env.SERVICE_VERSION || 'phase3').trim(),
+    serviceVersion: (process.env.SERVICE_VERSION || 'phase5').trim(),
     port: readInteger('PORT', DEFAULT_PORT, { min: 1, max: 65535 }),
     databaseUrl: readDatabaseUrl(),
     databaseSslMode: readSslMode(),
@@ -137,6 +170,12 @@ export const readServerConfig = () => {
       { min: 0, max: 60 },
     ),
     clerkRejectPendingSession: readBoolean('CLERK_REJECT_PENDING_SESSION', true),
+    clerkSecretKey: readClerkSecretKey(appEnv),
+    clerkApiUrl: readClerkApiUrl(),
+    clerkApiTimeoutMs: readInteger('CLERK_API_TIMEOUT_MS', DEFAULT_CLERK_API_TIMEOUT_MS, {
+      min: 1000,
+      max: 30000,
+    }),
   });
 };
 

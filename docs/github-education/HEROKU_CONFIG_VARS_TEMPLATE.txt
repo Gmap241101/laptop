@@ -1,31 +1,37 @@
-# Phase 3 configuration reference only.
+# Phase 5 configuration reference only.
 # Do NOT rename this file to .env* inside a deployment package.
 # Heroku values belong in Heroku Dashboard/CLI Config Vars.
 # Vercel frontend values belong in Vercel Project Environment Variables.
 
-# Frontend (Phase 4+; configure in Vercel, not Heroku)
-VITE_API_URL=http://localhost:3001
+# Frontend (configure in Vercel, not Heroku)
+VITE_CLERK_STAGING_ENABLED=true
+VITE_API_URL=https://YOUR-HEROKU-STAGING-APP.herokuapp.com
 VITE_CLERK_PUBLISHABLE_KEY=pk_test_REPLACE_ME
 
 # Backend runtime (Heroku Config Vars)
-APP_ENV=local
+APP_ENV=staging
 SERVICE_NAME=rental-api
-SERVICE_VERSION=phase3
+SERVICE_VERSION=phase5
 # PORT is local-only. Do not set PORT manually in Heroku.
-PORT=3001
 
 # PostgreSQL connection. Heroku Postgres manages DATABASE_URL automatically.
-DATABASE_URL=postgres://postgres:postgres@localhost:5432/laptop_rental_staging
-DATABASE_SSL_MODE=auto
+DATABASE_URL=HEROKU_MANAGED_DO_NOT_COPY
+DATABASE_SSL_MODE=require
 DB_POOL_MAX=5
 DB_CONNECTION_TIMEOUT_MS=5000
 DB_IDLE_TIMEOUT_MS=10000
 
 # Exact comma-separated frontend origins.
-CORS_ALLOWED_ORIGINS=http://localhost:5173,https://your-staging-project.vercel.app
+CORS_ALLOWED_ORIGINS=https://YOUR-STAGING-PROJECT.vercel.app
 
 # Clerk Development instance JWT public key (PEM), stored only as a Heroku Config Var.
 CLERK_JWT_KEY="-----BEGIN PUBLIC KEY-----\nREPLACE_WITH_CLERK_JWT_PUBLIC_KEY\n-----END PUBLIC KEY-----"
-CLERK_AUTHORIZED_PARTIES=http://localhost:5173,https://your-staging-project.vercel.app
+CLERK_AUTHORIZED_PARTIES=https://YOUR-STAGING-PROJECT.vercel.app
 CLERK_CLOCK_SKEW_SECONDS=5
 CLERK_REJECT_PENDING_SESSION=true
+
+# Phase 5: Clerk Backend API access. Backend-only secret; never prefix with VITE_.
+CLERK_SECRET_KEY=sk_test_REPLACE_ME
+# Optional. Defaults shown below; normally leave CLERK_API_URL unset in Heroku.
+CLERK_API_URL=https://api.clerk.com/v1
+CLERK_API_TIMEOUT_MS=8000
