@@ -1,0 +1,45 @@
+GitHub Education Phase 1 Deployment Guard Validation
+====================================================
+
+Baseline:
+rental-system-final-structure-context-regression-audit-20260802_0212_deployment_package(1).zip
+
+Scope:
+- Production gh-pages accidental publication guard
+- Explicit staging/production build scripts
+- Production domain confirmation and dist/CNAME verification
+- package.json homepage correction
+- local .env secret-file exclusion
+
+Unchanged critical scope:
+- src/App.jsx: unchanged
+- src/firebase.js: unchanged
+- rules/firestore.rules: unchanged
+- firestore.indexes.json: unchanged
+- public/CNAME: unchanged (notebook.recruit.kro.kr)
+- vercel.json: unchanged
+- Firebase data/auth/rules behavior: unchanged
+
+Validation results:
+[PASS] Node syntax: tools/deployment/block-legacy-deploy.mjs
+[PASS] Node syntax: tools/deployment/deploy-production.mjs
+[PASS] Legacy npm run deploy is blocked with exit code 1
+[PASS] npm run deploy:production without CONFIRM_PRODUCTION_DEPLOY is blocked with exit code 1
+[PASS] Positive-path mocked production deployment reaches gh-pages with exact args: -d dist -b gh-pages
+[PASS] Positive-path mocked production deployment verifies dist/CNAME=notebook.recruit.kro.kr before publishing
+[PASS] React hook import audit: 144 source files checked
+[PASS] Application flow contract audit: 124 contracts, 11 user routes, 20 administrator tabs
+[PASS] Firestore strict audit: 144 source files, 129 calls, 51 approved risk findings, 0 warnings, 0 errors
+[PASS] App.jsx preserved at 2,130 lines / 66,036 bytes
+[PASS] No Firebase or Firestore implementation files changed
+[PASS] No production CNAME or Vercel rewrite changes
+
+Build limitation:
+[LIMITATION] npm ci could not complete in the execution environment because its internal npm registry returned E404 for yargs-parser-21.1.1.tgz.
+[LIMITATION] Therefore the actual Vite staging/production bundle was not generated here.
+[REQUIRED] The user's local deploy.ps1 v13.1 must complete its normal npm build stage before the gh-pages-3 test push is treated as successful.
+
+Deployment target for this package:
+- Test only: gh-pages-3
+- Production gh-pages: DO NOT publish in Phase 1
+- Production domain: https://notebook.recruit.kro.kr remains unchanged

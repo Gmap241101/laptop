@@ -1,13 +1,15 @@
 {
-  "homepage": "https://Gmap241101.github.io/laptop",
+  "homepage": "https://notebook.recruit.kro.kr",
   "name": "dept-laptop-rental",
   "private": true,
   "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist",
+    "deploy": "node tools/deployment/block-legacy-deploy.mjs",
+    "build:staging": "npm run prebuild && vite build --mode staging",
+    "build:production": "npm run prebuild && vite build --mode production",
+    "deploy:production": "node tools/deployment/deploy-production.mjs",
     "prebuild": "npm run audit:react-hooks && npm run audit:app-flows && npm run audit:firestore:strict",
     "build": "vite build",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
