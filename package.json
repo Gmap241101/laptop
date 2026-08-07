@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "deploy": "node tools/deployment/block-legacy-deploy.mjs",
-    "build:staging": "npm run prebuild && vite build --mode staging",
+    "build:staging": "npm run prebuild && npm run frontend:clerk:config:check && vite build --mode staging",
     "build:production": "npm run prebuild && vite build --mode production",
     "deploy:production": "node tools/deployment/deploy-production.mjs",
     "prebuild": "npm run audit:react-hooks && npm run audit:app-flows && npm run audit:firestore:strict",
@@ -33,7 +33,10 @@
     "heroku-postbuild": "npm run server:prepare",
     "server:smoke": "node tools/backend/smoke-server-handler.mjs",
     "server:auth:smoke": "node tools/backend/smoke-clerk-auth.mjs",
-    "package:guard": "node tools/deployment/validate-package-manifest.mjs"
+    "package:guard": "node tools/deployment/validate-package-manifest.mjs",
+    "frontend:clerk:smoke": "node tools/frontend/smoke-clerk-staging-client.mjs",
+    "verify:phase4": "npm run frontend:clerk:smoke && npm run frontend:clerk:config:check && npm run server:check && npm run server:smoke && npm run server:auth:smoke && npm run audit:react-hooks && npm run audit:app-flows && npm run audit:firestore:strict && npm run package:guard",
+    "frontend:clerk:config:check": "node tools/frontend/check-clerk-staging-config.mjs"
   },
   "dependencies": {
     "firebase": "^10.14.1",

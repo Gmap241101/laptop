@@ -1,0 +1,90 @@
+GitHub Education Phase 4 Clerk frontend staging bridge validation
+Date: 2026-08-07
+Baseline: rental-system-github-education-phase3-clerk-auth-foundation-20260807-fixed_deployment_package.zip
+
+SCOPE
+- Add a gh-pages-3/Vercel-only ClerkJS staging diagnostics bridge.
+- Do not replace or alter existing Firebase Auth or Firestore application flows.
+- Do not change production gh-pages, notebook.recruit.kro.kr, CNAME, Firebase configuration, Firestore rules/indexes, or PostgreSQL migrations.
+- No new npm package is added.
+
+FRONTEND CLERK BRIDGE
+- Uses Clerk Development publishable keys only (pk_test_...).
+- Vite production mode hard-disables the staging bridge.
+- Staging activation requires VITE_CLERK_STAGING_ENABLED=true.
+- Diagnostics UI additionally requires ?clerkTest=1.
+- VITE_API_URL must be HTTPS in staging.
+- Loads Clerk's supported frontend scripts from the Frontend API domain encoded in the publishable key:
+  - @clerk/ui@1/dist/ui.browser.js
+  - @clerk/clerk-js@6/dist/clerk.browser.js
+- Retrieves the current session token with Clerk session.getToken().
+- Sends the token only as Authorization: Bearer <token> to GET /api/auth/session.
+- Does not render or log the token.
+
+FRONTEND VALIDATION
+- Clerk staging config parser: PASS
+- Production-mode hard disable: PASS
+- pk_live_ rejection in staging: PASS
+- non-HTTPS staging API rejection: PASS
+- Clerk Frontend API domain decoding: PASS
+- Clerk UI/JS CDN loader sequence: PASS (mock browser DOM)
+- Clerk publishable-key script attribute: PASS
+- Bearer request to /api/auth/session: PASS
+- HTTP 401 propagation: PASS
+- enabled staging config check: PASS
+- disabled staging config check: PASS
+
+REGRESSION VALIDATION
+- server foundation syntax/invariants: PASS
+- server HTTP smoke: PASS
+- Clerk backend RSA JWT smoke: PASS
+- React hook audit: PASS (146 source files)
+- application flow contract audit: PASS (124 contracts; 11 user routes; 20 administrator tabs)
+- Firestore strict audit: PASS (129 calls; approved risk 51; warnings 0; errors 0)
+- package protected-path guard: PASS before final manifest regeneration
+
+PRODUCTION CORE SHA COMPARISON AGAINST PHASE 3 FIXED BASELINE
+- src/App.jsx: SAME
+- src/firebase.js: SAME
+- rules/firestore.rules: SAME
+- firestore.indexes.json: SAME
+- public/CNAME: SAME
+- vercel.json: SAME
+- App.jsx: 2,130 lines / 66,036 bytes
+- src/main.jsx: 91 -> 93 lines; 2,370 -> 2,479 bytes
+
+FUNCTIONAL / DATABASE IMPACT
+- Existing React UI and Firebase login: no functional replacement; staging test overlay only when explicitly enabled and requested.
+- Firebase Auth: no change.
+- Firestore access/logic: no change.
+- Firestore rules/indexes: no change.
+- PostgreSQL migrations/schema: no change.
+- Backend Clerk JWT verification: no change.
+- CNAME / production domain: no change.
+
+BUILD STATUS
+- prebuild audits: PASS.
+- Phase 4 Clerk staging config check with a synthetic Development publishable key: PASS.
+- Vite bundle generation in the current execution environment: NOT COMPLETED because node_modules is intentionally absent and the vite executable is unavailable (exit 127: vite not found).
+- No new frontend npm dependency is required by Phase 4, so package-lock.json remains unchanged.
+- Final Vite build must be verified by deploy.ps1 v13.1 / the user's normal npm install or npm ci environment.
+
+DEPLOYMENT RULE
+- Apply only to gh-pages-3 / Vercel staging.
+- Do not publish gh-pages / production.
+- Configure Vercel environment variables from docs/github-education/VERCEL_PHASE4_CLERK_STAGING_VARS_TEMPLATE.txt.
+- Do not create or package .env* files.
+
+PACKAGE-SAFETY HARDENING
+- package manifest generator preserves leading-dot filenames such as .firebaserc.
+- package:guard now verifies both protected-path absence and existence/regular-file status for every PACKAGE_FILES.txt entry.
+- negative .env.example manifest injection: expected rejection.
+- negative missing-file manifest entry: expected rejection.
+- final ZIP is constructed from PACKAGE_FILES.txt plus the three package-meta files only; it is not created by blindly zipping the working directory.
+
+FINAL PACKAGE-MANIFEST VALIDATION
+- PACKAGE_FILES.txt entries: 536
+- package:guard: PASS (protected paths=0; missing files=0)
+- injected .env.example: PASS as a negative test (guard rejected with exit code 1)
+- injected missing file: PASS as a negative test (guard rejected with exit code 1)
+- legacy npm run deploy: PASS as a negative test (blocked with exit code 1)

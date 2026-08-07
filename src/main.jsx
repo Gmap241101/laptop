@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 
 import App from './App.jsx';
+import ClerkStagingDiagnostics from './clerk/ClerkStagingDiagnostics.jsx';
 import './index.css';
 
 class RootErrorBoundary extends React.Component {
@@ -86,6 +87,7 @@ ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
     <RootErrorBoundary>
       <App />
+      <ClerkStagingDiagnostics />
     </RootErrorBoundary>
   </React.StrictMode>
 );

@@ -1,0 +1,18 @@
+# Phase 4 Vercel Staging environment-variable reference.
+# Configure these in the Vercel gh-pages-3 staging project UI.
+# Do NOT create or package .env* files for deploy.ps1 v13.1.
+
+# Required to enable the Phase 4 Clerk diagnostics bridge.
+VITE_CLERK_STAGING_ENABLED=true
+
+# Heroku Staging API origin, with no trailing path required.
+VITE_API_URL=https://YOUR-HEROKU-STAGING-APP.herokuapp.com
+
+# Clerk Development instance Publishable Key. Must begin with pk_test_.
+VITE_CLERK_PUBLISHABLE_KEY=pk_test_REPLACE_ME
+
+# The diagnostics UI is additionally gated by the query string:
+#   ?clerkTest=1
+# Example:
+#   https://YOUR-STAGING-PROJECT.vercel.app/?clerkTest=1
+# A production-mode Vite build cannot activate this bridge even if the flag is accidentally present.

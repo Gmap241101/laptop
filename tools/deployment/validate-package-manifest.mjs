@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, statSync, readFileSync } from 'node:fs';
 
 const manifestPath = process.argv[2] || 'package-meta/PACKAGE_FILES.txt';
 const lines = readFileSync(manifestPath, 'utf8')
@@ -27,10 +27,28 @@ const blocked = lines
   .map((path) => ({ path, reason: protectedReason(path) }))
   .filter((item) => item.reason);
 
-if (blocked.length) {
-  console.error('[package-guard] FAIL: protected paths are present in PACKAGE_FILES.txt');
-  for (const item of blocked) console.error(`- ${item.path} (${item.reason})`);
+const missing = lines.filter((path) => {
+  const normalized = normalize(path);
+  if (!existsSync(normalized)) return true;
+  try {
+    return !statSync(normalized).isFile();
+  } catch {
+    return true;
+  }
+});
+
+if (blocked.length || missing.length) {
+  if (blocked.length) {
+    console.error('[package-guard] FAIL: protected paths are present in PACKAGE_FILES.txt');
+    for (const item of blocked) console.error(`- ${item.path} (${item.reason})`);
+  }
+  if (missing.length) {
+    console.error('[package-guard] FAIL: manifest paths are missing or are not regular files');
+    for (const path of missing) console.error(`- ${path}`);
+  }
   process.exit(1);
 }
 
-console.log(`[package-guard] PASS (${lines.length} manifest entries; protected paths=0)`);
+console.log(
+  `[package-guard] PASS (${lines.length} manifest entries; protected paths=0; missing files=0)`,
+);
