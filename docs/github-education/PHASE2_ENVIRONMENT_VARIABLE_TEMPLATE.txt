@@ -1,0 +1,36 @@
+PHASE 2 ENVIRONMENT VARIABLE TEMPLATE
+=====================================
+This is documentation only. Do not rename this file to .env inside the deployment package.
+Do not commit real passwords, DATABASE_URL values, Clerk secrets, or other credentials.
+
+Frontend public value (reserved for the later API cutover):
+VITE_API_URL=http://localhost:3001
+
+Backend runtime:
+APP_ENV=local
+SERVICE_NAME=rental-api
+SERVICE_VERSION=phase2
+PORT=3001
+
+PostgreSQL local example only:
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/laptop_rental_staging
+DATABASE_SSL_MODE=auto
+DB_POOL_MAX=5
+DB_CONNECTION_TIMEOUT_MS=5000
+DB_IDLE_TIMEOUT_MS=10000
+
+CORS example only - replace the staging origin with the actual fixed Vercel staging origin:
+CORS_ALLOWED_ORIGINS=http://localhost:5173,https://your-staging-project.vercel.app
+
+Heroku staging recommended values:
+APP_ENV=staging
+SERVICE_NAME=rental-api
+SERVICE_VERSION=phase2
+DATABASE_SSL_MODE=require
+DB_POOL_MAX=5
+DB_CONNECTION_TIMEOUT_MS=5000
+DB_IDLE_TIMEOUT_MS=10000
+CORS_ALLOWED_ORIGINS=https://your-fixed-staging-project.vercel.app
+
+Heroku provisions DATABASE_URL through the Postgres add-on. Do not copy that value into Git.
+Do not set PORT manually on Heroku; Heroku supplies it at runtime.
