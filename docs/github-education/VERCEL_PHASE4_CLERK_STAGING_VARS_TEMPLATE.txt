@@ -15,4 +15,5 @@ VITE_CLERK_PUBLISHABLE_KEY=pk_test_REPLACE_ME
 #   ?clerkTest=1
 # Example:
 #   https://YOUR-STAGING-PROJECT.vercel.app/?clerkTest=1
-# A production-mode Vite build cannot activate this bridge even if the flag is accidentally present.
+# The dedicated Vercel test project may build with Vite production mode.
+# Activation is controlled by VITE_CLERK_STAGING_ENABLED=true, and the UI still requires ?clerkTest=1.

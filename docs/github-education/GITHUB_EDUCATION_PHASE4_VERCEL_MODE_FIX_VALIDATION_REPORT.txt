@@ -1,0 +1,44 @@
+GitHub Education Phase 4 Vercel Mode Fix Validation
+=====================================================
+Baseline: rental-system-github-education-phase4-clerk-frontend-bridge-20260807_deployment_package.zip
+Issue: dedicated Vercel staging project builds with Vite MODE=production, suppressing the diagnostics bridge.
+
+Corrected behavior
+------------------
+- VITE_CLERK_STAGING_ENABLED=false -> bridge disabled: PASS
+- VITE_CLERK_STAGING_ENABLED=true + MODE=production -> bridge enabled: PASS
+- pk_test_ Clerk Development key enforcement: PASS
+- Non-local VITE_API_URL HTTPS enforcement: PASS
+- Runtime diagnostics query gate (?clerkTest=1) retained: PASS
+
+Regression validation
+---------------------
+- Clerk frontend smoke: PASS
+- Backend foundation: PASS
+- Backend HTTP smoke: PASS
+- Clerk RSA JWT smoke: PASS
+- React hook audit: PASS (146 source files)
+- Application flow audit: PASS (124 contracts, 11 user routes, 20 admin tabs)
+- Firestore strict audit: PASS (129 calls, 51 approved risks, 0 new warnings, 0 errors)
+
+Protected/core preservation
+---------------------------
+- src/App.jsx: unchanged from Phase 4 baseline
+- src/firebase.js: unchanged from Phase 4 baseline
+- rules/firestore.rules: unchanged from Phase 4 baseline
+- firestore.indexes.json: unchanged from Phase 4 baseline
+- public/CNAME: unchanged from Phase 4 baseline
+- vercel.json: unchanged from Phase 4 baseline
+- New npm dependencies: 0
+- Deleted files: 0
+- Cumulative REMOVED_FILES entries: 65
+
+Package validation
+------------------
+- PACKAGE_FILES entries: 538
+- PACKAGE_SHA256SUMS entries: 538
+- ZIP entries: 541
+- Missing manifest files: 0
+- SHA-256 mismatches after re-extraction: 0
+- Protected paths (.env*, .git, node_modules, dist, secrets, deploy.ps1): 0
+- ZIP integrity: PASS

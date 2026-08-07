@@ -10,7 +10,8 @@ SCOPE
 
 FRONTEND CLERK BRIDGE
 - Uses Clerk Development publishable keys only (pk_test_...).
-- Vite production mode hard-disables the staging bridge.
+- Explicit VITE_CLERK_STAGING_ENABLED=true enables the bridge even when the dedicated Vercel staging project builds with Vite production mode.
+- The diagnostic UI still requires ?clerkTest=1 at runtime.
 - Staging activation requires VITE_CLERK_STAGING_ENABLED=true.
 - Diagnostics UI additionally requires ?clerkTest=1.
 - VITE_API_URL must be HTTPS in staging.
@@ -23,7 +24,7 @@ FRONTEND CLERK BRIDGE
 
 FRONTEND VALIDATION
 - Clerk staging config parser: PASS
-- Production-mode hard disable: PASS
+- Vercel production-mode staging with explicit enable flag: PASS
 - pk_live_ rejection in staging: PASS
 - non-HTTPS staging API rejection: PASS
 - Clerk Frontend API domain decoding: PASS

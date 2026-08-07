@@ -14,7 +14,18 @@ const key = `pk_test_${encode(domain)}`;
 
 assert.equal(decodeClerkFrontendApiDomain(key, decode), domain);
 
-const disabled = readClerkStagingConfig(
+const disabledByDefault = readClerkStagingConfig(
+  {
+    MODE: 'production',
+    VITE_CLERK_STAGING_ENABLED: 'false',
+    VITE_CLERK_PUBLISHABLE_KEY: key,
+    VITE_API_URL: 'https://api.example.com',
+  },
+  decode,
+);
+assert.equal(disabledByDefault.enabled, false, 'The staging bridge must remain disabled unless explicitly enabled.');
+
+const vercelProductionStaging = readClerkStagingConfig(
   {
     MODE: 'production',
     VITE_CLERK_STAGING_ENABLED: 'true',
@@ -23,7 +34,11 @@ const disabled = readClerkStagingConfig(
   },
   decode,
 );
-assert.equal(disabled.enabled, false, 'Production mode must never enable Clerk staging diagnostics.');
+assert.equal(
+  vercelProductionStaging.enabled,
+  true,
+  'A dedicated Vercel staging project can build in Vite production mode when the explicit staging flag is enabled.',
+);
 
 const staging = readClerkStagingConfig(
   {
@@ -207,4 +222,4 @@ const browserPayload = await client.verifyBackendSession();
 assert.equal(browserFetchAuth, 'Bearer browser-session-token');
 assert.equal(browserPayload.session.userId, 'user_browser');
 
-console.log('[clerk-frontend-smoke] PASS (config, production gate, CDN loader, bearer request)');
+console.log('[clerk-frontend-smoke] PASS (config, Vercel production-mode staging, CDN loader, bearer request)');

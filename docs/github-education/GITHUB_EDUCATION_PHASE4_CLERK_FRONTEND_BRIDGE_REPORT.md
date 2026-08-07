@@ -14,7 +14,7 @@ The bridge requires all of the following:
 4. `VITE_API_URL` is configured and HTTPS in staging.
 5. The browser URL includes `?clerkTest=1` before the diagnostics panel is rendered.
 
-A production-mode build hard-disables the bridge even if Vercel environment variables are accidentally copied.
+The dedicated Vercel staging project may use Vite production mode. The bridge is controlled by the explicit staging flag plus the runtime `?clerkTest=1` gate, not by Vite MODE.
 
 ## Clerk loading strategy
 No new npm dependency was introduced. The bridge follows Clerk's supported JavaScript script-tag distribution model and loads `@clerk/ui@1` followed by `@clerk/clerk-js@6` from the Frontend API domain encoded in the Clerk Development publishable key.

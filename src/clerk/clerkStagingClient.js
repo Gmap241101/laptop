@@ -1,6 +1,5 @@
 const CLERK_UI_MAJOR = '1';
 const CLERK_JS_MAJOR = '6';
-const ENABLED_MODES = new Set(['staging', 'development', 'test']);
 
 const trim = (value) => (typeof value === 'string' ? value.trim() : '');
 
@@ -23,8 +22,9 @@ const normalizeApiBaseUrl = (value, mode) => {
   if (parsed.username || parsed.password || parsed.search || parsed.hash) {
     throw new Error('VITE_API_URL must not include credentials, query, or hash.');
   }
-  if (mode === 'staging' && parsed.protocol !== 'https:') {
-    throw new Error('VITE_API_URL must use https:// in staging mode.');
+  const localHost = ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname);
+  if (!localHost && parsed.protocol !== 'https:') {
+    throw new Error('VITE_API_URL must use https:// outside local development.');
   }
 
   const pathname = parsed.pathname.replace(/\/+$/, '');
@@ -57,8 +57,7 @@ export const decodeClerkFrontendApiDomain = (publishableKey, decodeBase64) => {
 
 export const readClerkStagingConfig = (env, decodeBase64) => {
   const mode = trim(env?.MODE || 'production').toLowerCase();
-  const requested = normalizeBoolean(env?.VITE_CLERK_STAGING_ENABLED);
-  const enabled = requested && ENABLED_MODES.has(mode);
+  const enabled = normalizeBoolean(env?.VITE_CLERK_STAGING_ENABLED);
 
   if (!enabled) {
     return Object.freeze({ enabled: false, mode });
