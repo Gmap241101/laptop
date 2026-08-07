@@ -7,6 +7,8 @@ import {
   requestAuthenticatedSession,
   requestCurrentUserIdentity,
   requestCurrentUserIdentitySync,
+  requestFirebaseLegacyLink,
+  requestFirebaseLegacyLinkStatus,
 } from '../../src/clerk/clerkStagingClient.js';
 
 const encode = (value) => Buffer.from(`${value}$`, 'utf8').toString('base64');
@@ -112,6 +114,24 @@ const fetchForRequests = async (url, options) => {
       },
     };
   }
+  if (url.endsWith('/api/users/me/legacy/firebase')) {
+    if (options.method === 'POST') {
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return { authenticated: true, linked: true, firebaseLink: { appUserId: '7', firebaseUid: 'firebase_uid_test' } };
+        },
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      async json() {
+        return { authenticated: true, firebaseLink: { appUserId: '7', firebaseUid: 'firebase_uid_test' } };
+      },
+    };
+  }
   if (url.endsWith('/api/users/me')) {
     return {
       ok: true,
@@ -145,6 +165,23 @@ const currentPayload = await requestCurrentUserIdentity({
   fetchImpl: fetchForRequests,
 });
 assert.equal(currentPayload.user.clerkUserId, 'user_test');
+assert.ok(calls.every((call) => call.options.headers.Authorization === 'Bearer test-token-that-must-not-be-logged'));
+
+const firebaseLinkPayload = await requestFirebaseLegacyLink({
+  clerk: fakeSessionClerk,
+  apiBaseUrl: 'https://api.example.com',
+  fetchImpl: fetchForRequests,
+  firebaseIdToken: 'firebase-id-token-that-must-not-be-logged',
+});
+assert.equal(firebaseLinkPayload.firebaseLink.firebaseUid, 'firebase_uid_test');
+assert.equal(calls.at(-1).options.headers['X-Firebase-Authorization'], 'Bearer firebase-id-token-that-must-not-be-logged');
+
+const firebaseLinkStatus = await requestFirebaseLegacyLinkStatus({
+  clerk: fakeSessionClerk,
+  apiBaseUrl: 'https://api.example.com',
+  fetchImpl: fetchForRequests,
+});
+assert.equal(firebaseLinkStatus.firebaseLink.appUserId, '7');
 assert.ok(calls.every((call) => call.options.headers.Authorization === 'Bearer test-token-that-must-not-be-logged'));
 
 const unsynced = await requestCurrentUserIdentity({
@@ -253,6 +290,12 @@ const client = createClerkStagingClient({
     if (url.endsWith('/api/users/me/sync')) {
       return { ok: true, status: 200, async json() { return { authenticated: true, synchronized: true, user: { id: '11', clerkUserId: 'user_browser' } }; } };
     }
+    if (url.endsWith('/api/users/me/legacy/firebase')) {
+      if (options.method === 'POST') {
+        return { ok: true, status: 200, async json() { return { authenticated: true, linked: true, firebaseLink: { appUserId: '11', firebaseUid: 'firebase_uid_browser' } }; } };
+      }
+      return { ok: true, status: 200, async json() { return { authenticated: true, firebaseLink: { appUserId: '11', firebaseUid: 'firebase_uid_browser' } }; } };
+    }
     if (url.endsWith('/api/users/me')) {
       return { ok: true, status: 200, async json() { return { authenticated: true, user: { id: '11', clerkUserId: 'user_browser' } }; } };
     }
@@ -276,6 +319,10 @@ assert.equal(scripts.get('clerk-staging-js').attributes['data-clerk-publishable-
 assert.equal((await client.verifyBackendSession()).session.userId, 'user_browser');
 assert.equal((await client.syncBackendUserIdentity()).user.id, '11');
 assert.equal((await client.getBackendUserIdentity()).user.id, '11');
+assert.equal((await client.linkFirebaseLegacyAccount('firebase-browser-token')).firebaseLink.firebaseUid, 'firebase_uid_browser');
+assert.equal((await client.getFirebaseLegacyLink()).firebaseLink.appUserId, '11');
 assert.ok(browserCalls.every((call) => call.options.headers.Authorization === 'Bearer browser-session-token'));
+const firebaseBrowserCall = browserCalls.find((call) => call.options.headers['X-Firebase-Authorization']);
+assert.equal(firebaseBrowserCall.options.headers['X-Firebase-Authorization'], 'Bearer firebase-browser-token');
 
-console.log('[clerk-frontend-smoke] PASS (config, CDN loader, bearer auth, Phase 5 identity sync/read)');
+console.log('[clerk-frontend-smoke] PASS (config, CDN loader, Clerk bearer auth, Phase 5 identity, Phase 6 Firebase link bridge)');

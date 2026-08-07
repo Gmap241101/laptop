@@ -1,0 +1,91 @@
+GitHub Education Phase 6 - Firebase Identity Bridge Validation
+Date: 2026-08-07
+Baseline: rental-system-github-education-phase5-clerk-postgres-identity-20260807_deployment_package.zip
+
+SCOPE
+- Add Firebase Authentication ID-token verification on the Heroku backend.
+- Add one-to-one Clerk/PostgreSQL <-> legacy Firebase UID persistence.
+- Extend the staging-only Clerk diagnostics panel for explicit Firebase-account linking/lookup.
+- Keep Firebase/Firestore rental production behavior unchanged.
+
+SECURITY TESTS
+PASS  Firebase token RS256 signature verification with generated RSA key pair.
+PASS  Reject wrong Firebase audience.
+PASS  Reject expired Firebase token.
+PASS  Reject non-RS256 Firebase algorithm.
+PASS  Reject wrong Firebase signature.
+PASS  Firebase signing-certificate cache is reused.
+PASS  Firebase bearer extraction rejects a missing header.
+PASS  Clerk/Postgres email must match Firebase token email before linking.
+PASS  PostgreSQL link can be read and re-verified without changing app_user_id.
+PASS  HTTP endpoint rejects invalid Firebase token with HTTP 401.
+PASS  CORS permits X-Firebase-Authorization only through the existing allowed-origin response.
+
+SERVER / FRONTEND TESTS
+PASS  server:check (17 JavaScript files + Procfile + Phase 2/5/6 invariants)
+PASS  server:smoke (/health, Clerk auth, identity, Firebase link, CORS, 404)
+PASS  server:auth:smoke
+PASS  server:user-sync:smoke
+PASS  server:firebase-bridge:smoke
+PASS  frontend:clerk:smoke
+PASS  React Hook audit (146 source files)
+PASS  Application flow audit (124 contracts, 11 user routes, 20 admin tabs)
+PASS  Firestore strict audit (129 calls; 51 approved risk; 0 new warnings; 0 errors)
+
+CONFIG TESTS
+PASS  staging config accepts FIREBASE_PROJECT_ID=laptop-system-mk.
+PASS  staging config reports FIREBASE_PROJECT_ID and never prints Firebase/Clerk tokens.
+PASS  staging config fails closed when FIREBASE_PROJECT_ID is omitted.
+
+FIRESTORE AUDIT COUNTS
+Total calls: 129
+onSnapshot: 35
+getDocs: 48
+getDoc: 28
+getCountFromServer: 18
+Approved existing risk findings: 51
+Unapproved warnings: 0
+Unapproved errors: 0
+
+UNCHANGED CRITICAL FILES VS PHASE 5 BASELINE
+PASS  src/App.jsx
+PASS  src/firebase.js
+PASS  rules/firestore.rules
+PASS  firestore.indexes.json
+PASS  public/CNAME
+PASS  vercel.json
+PASS  src/main.jsx
+PASS  package-lock.json
+
+App.jsx: 2,130 lines / 66,036 bytes
+App.jsx SHA-256: b30af55defc814cac9b33e056f4c89263444eca04b565c89ef0517d96b4b1117
+
+DATABASE IMPACT
+NEW migration: 003_phase6_firebase_identity_bridge.sql
+NEW table: app_user_firebase_links
+No Firestore migration or production data mutation is performed by the deployment package.
+
+DEPENDENCIES
+New npm dependencies: 0
+Root package-lock dependency graph: unchanged.
+Server pg dependency: unchanged at 8.22.0.
+
+BUILD LIMITATION
+The current execution environment does not contain the root node_modules/Vite executable. Full Vite bundle generation therefore remains a deploy.ps1/user-environment validation step. Phase 6 adds no npm dependency.
+
+PACKAGE VALIDATION
+PACKAGE_FILES_COUNT=554
+ZIP_ENTRY_COUNT=557
+PROTECTED_PATHS=0
+MISSING_FILES=0
+SHA_MISMATCHES=0
+ZIP_INTEGRITY=PASS
+ZIP_SHA256=reported in the final delivery message after archive creation
+
+MANUAL EXTERNAL ACTION REQUIRED
+- Heroku: add FIREBASE_PROJECT_ID=laptop-system-mk before Phase 6 deploy.
+- Vercel: no new variable required.
+- Clerk: no new setting required.
+- Firebase Console: no service-account/private-key action required.
+- After gh-pages-3 publication, deploy gh-pages-3 to the Heroku staging app if automatic deploy is disabled.
+- Confirm migration 003, then set SERVICE_VERSION=phase6 and execute the browser link/lookup tests described in PHASE6_MANUAL_PLATFORM_ACTIONS.md.

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import { onAuthStateChanged } from 'firebase/auth';
 
+import { firebaseAuth } from '../firebase.js';
 import { clerkStagingClient } from './clerkStagingClient.js';
 
 const panelStyle = {
@@ -46,6 +48,12 @@ export default function ClerkStagingDiagnostics() {
     postgresUserId: null,
     primaryEmail: null,
     primaryEmailVerified: false,
+    firebaseSignedIn: Boolean(firebaseAuth.currentUser),
+    firebaseUserId: firebaseAuth.currentUser?.uid || null,
+    legacyFirebaseUid: null,
+    legacyFirebaseEmail: null,
+    legacyFirebaseEmailVerified: false,
+    legacyFirebaseSignInProvider: null,
     error: null,
   });
 
@@ -93,6 +101,21 @@ export default function ClerkStagingDiagnostics() {
     };
   }, [requested]);
 
+  useEffect(() => {
+    if (!requested) return undefined;
+    return onAuthStateChanged(firebaseAuth, (user) => {
+      setState((current) => ({
+        ...current,
+        firebaseSignedIn: Boolean(user),
+        firebaseUserId: user?.uid || null,
+        legacyFirebaseUid: user ? current.legacyFirebaseUid : null,
+        legacyFirebaseEmail: user ? current.legacyFirebaseEmail : null,
+        legacyFirebaseEmailVerified: user ? current.legacyFirebaseEmailVerified : false,
+        legacyFirebaseSignInProvider: user ? current.legacyFirebaseSignInProvider : null,
+      }));
+    });
+  }, [requested]);
+
   if (!requested) return null;
 
   const run = async (operation) => {
@@ -110,6 +133,17 @@ export default function ClerkStagingDiagnostics() {
       postgresUserId: user?.id || null,
       primaryEmail: user?.primaryEmail || null,
       primaryEmailVerified: Boolean(user?.primaryEmailVerified),
+      error: null,
+    }));
+  };
+
+  const applyFirebaseLink = (link) => {
+    setState((current) => ({
+      ...current,
+      legacyFirebaseUid: link?.firebaseUid || null,
+      legacyFirebaseEmail: link?.firebaseEmail || null,
+      legacyFirebaseEmailVerified: Boolean(link?.firebaseEmailVerified),
+      legacyFirebaseSignInProvider: link?.firebaseSignInProvider || null,
       error: null,
     }));
   };
@@ -140,9 +174,28 @@ export default function ClerkStagingDiagnostics() {
       applyBackendIdentity(payload.user);
     });
 
+  const linkFirebaseIdentity = () =>
+    run(async () => {
+      const firebaseUser = firebaseAuth.currentUser;
+      if (!firebaseUser) throw new Error('기존 Firebase 로그인이 필요합니다. 먼저 홈페이지 계정으로 로그인해 주세요.');
+      const firebaseIdToken = await firebaseUser.getIdToken(true);
+      const payload = await clerkStagingClient.linkFirebaseLegacyAccount(firebaseIdToken);
+      applyFirebaseLink(payload.firebaseLink);
+    });
+
+  const readFirebaseLink = () =>
+    run(async () => {
+      const payload = await clerkStagingClient.getFirebaseLegacyLink();
+      if (!payload) {
+        applyFirebaseLink(null);
+        return;
+      }
+      applyFirebaseLink(payload.firebaseLink);
+    });
+
   return (
     <aside style={panelStyle} aria-label="Clerk staging diagnostics">
-      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 5</div>
+      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 6</div>
       <div>SDK: {state.phase === 'loading' ? 'loading' : state.phase}</div>
       <div>Signed in: {state.signedIn ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Clerk user: {state.userId || '-'}</div>
@@ -150,6 +203,16 @@ export default function ClerkStagingDiagnostics() {
       <div style={{ overflowWrap: 'anywhere' }}>Postgres user: {state.postgresUserId || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Email: {state.primaryEmail || '-'}</div>
       <div>Email verified: {state.primaryEmail ? (state.primaryEmailVerified ? 'yes' : 'no') : '-'}</div>
+      <div>Firebase signed in: {state.firebaseSignedIn ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Firebase user: {state.firebaseUserId || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Linked Firebase: {state.legacyFirebaseUid || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Legacy email: {state.legacyFirebaseEmail || '-'}</div>
+      <div>
+        Legacy email verified: {state.legacyFirebaseEmail ? (state.legacyFirebaseEmailVerified ? 'yes' : 'no') : '-'}
+      </div>
+      <div style={{ overflowWrap: 'anywhere' }}>
+        Firebase provider: {state.legacyFirebaseSignInProvider || '-'}
+      </div>
 
       {state.error ? (
         <div role="alert" style={{ marginTop: '8px', color: '#b91c1c', overflowWrap: 'anywhere' }}>
@@ -172,6 +235,17 @@ export default function ClerkStagingDiagnostics() {
             </button>
             <button type="button" style={buttonStyle} onClick={readIdentity}>
               Postgres 조회
+            </button>
+            <button
+              type="button"
+              style={buttonStyle}
+              disabled={!state.firebaseSignedIn}
+              onClick={linkFirebaseIdentity}
+            >
+              Firebase 계정 연결
+            </button>
+            <button type="button" style={buttonStyle} onClick={readFirebaseLink}>
+              Firebase 연결 조회
             </button>
             <button type="button" style={buttonStyle} onClick={() => run(() => clerkStagingClient.signOut())}>
               Clerk 로그아웃

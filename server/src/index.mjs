@@ -3,9 +3,12 @@ import { createRequestHandler } from './app.mjs';
 import { createClerkSessionAuthenticator } from './auth/clerk-session.mjs';
 import { createClerkBackendClient } from './clerk/clerk-api.mjs';
 import { readServerConfig } from './config/env.mjs';
+import { createFirebaseIdTokenVerifier, extractFirebaseBearerToken } from './firebase/firebase-id-token.mjs';
 import { checkDatabase, closePool, getPool } from './db/pool.mjs';
 import { createUserRepository } from './users/user-repository.mjs';
 import { createUserIdentityService } from './users/user-service.mjs';
+import { createFirebaseLinkRepository } from './legacy/firebase-link-repository.mjs';
+import { createFirebaseLinkService } from './legacy/firebase-link-service.mjs';
 
 const config = readServerConfig();
 const authenticateRequest = createClerkSessionAuthenticator(config);
@@ -22,10 +25,34 @@ const clerkClient = config.clerkSecretKey
         throw error;
       },
     };
-const userRepository = createUserRepository(getPool());
+const pool = getPool();
+const userRepository = createUserRepository(pool);
 const userIdentityService = createUserIdentityService({ clerkClient, userRepository });
+const firebaseLinkRepository = createFirebaseLinkRepository(pool);
+const firebaseLinkService = createFirebaseLinkService({ userRepository, firebaseLinkRepository });
+const verifyFirebaseIdToken = config.firebaseProjectId
+  ? createFirebaseIdTokenVerifier({
+      projectId: config.firebaseProjectId,
+      timeoutMs: config.firebaseCertTimeoutMs,
+    })
+  : async () => {
+      const error = new Error('Firebase ID token verification is not configured.');
+      error.code = 'firebase_verification_not_configured';
+      throw error;
+    };
+const authenticateFirebaseRequest = async (request) => {
+  const idToken = extractFirebaseBearerToken(request);
+  return verifyFirebaseIdToken(idToken);
+};
 const server = createServer(
-  createRequestHandler({ config, databaseCheck: checkDatabase, authenticateRequest, userIdentityService }),
+  createRequestHandler({
+    config,
+    databaseCheck: checkDatabase,
+    authenticateRequest,
+    authenticateFirebaseRequest,
+    userIdentityService,
+    firebaseLinkService,
+  }),
 );
 
 server.listen(config.port, '0.0.0.0', () => {
@@ -37,6 +64,7 @@ server.listen(config.port, '0.0.0.0', () => {
     clerkJwtVerification: 'RS256-public-key',
     clerkBackendApi: config.clerkSecretKey ? 'configured' : 'disabled',
     userIdentityStore: 'postgresql',
+    firebaseIdentityBridge: config.firebaseProjectId ? 'configured' : 'disabled',
   });
 });
 

@@ -5,7 +5,7 @@ const allowedOrigin = 'https://staging.example.vercel.app';
 const config = {
   serviceName: 'rental-api',
   appEnv: 'test',
-  serviceVersion: 'phase5-smoke',
+  serviceVersion: 'phase6-smoke',
   corsAllowedOrigins: [allowedOrigin],
 };
 
@@ -18,6 +18,19 @@ const authenticateRequest = async () => ({
   expiresAt: 2,
   status: 'active',
 });
+const authenticateFirebaseRequest = async (request) => {
+  if (request.headers['x-firebase-authorization'] !== 'Bearer firebase-smoke-token') {
+    const error = new Error('Invalid Firebase smoke token.');
+    error.code = 'firebase_signature_invalid';
+    throw error;
+  }
+  return {
+    uid: 'firebase_uid_smoke',
+    email: 'smoke@example.com',
+    emailVerified: false,
+    signInProvider: 'password',
+  };
+};
 let currentIdentity = null;
 const userIdentityService = {
   async getCurrent(userId) {
@@ -42,8 +55,37 @@ const userIdentityService = {
     return currentIdentity;
   },
 };
+let firebaseLink = null;
+const firebaseLinkService = {
+  async getCurrent(userId) {
+    if (userId !== 'user_smoke') throw new Error('Unexpected Firebase-link user ID.');
+    return firebaseLink;
+  },
+  async linkCurrent(userId, firebaseIdentity) {
+    if (userId !== 'user_smoke') throw new Error('Unexpected Firebase-link user ID.');
+    firebaseLink = {
+      appUserId: '42',
+      firebaseUid: firebaseIdentity.uid,
+      firebaseEmail: firebaseIdentity.email,
+      firebaseEmailVerified: firebaseIdentity.emailVerified,
+      firebaseSignInProvider: firebaseIdentity.signInProvider,
+      linkedAt: new Date('2026-08-07T00:00:00.000Z'),
+      lastVerifiedAt: new Date('2026-08-07T00:00:00.000Z'),
+      createdAt: new Date('2026-08-07T00:00:00.000Z'),
+      updatedAt: new Date('2026-08-07T00:00:00.000Z'),
+    };
+    return firebaseLink;
+  },
+};
 const server = createServer(
-  createRequestHandler({ config, databaseCheck, authenticateRequest, userIdentityService }),
+  createRequestHandler({
+    config,
+    databaseCheck,
+    authenticateRequest,
+    authenticateFirebaseRequest,
+    userIdentityService,
+    firebaseLinkService,
+  }),
 );
 
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -102,8 +144,45 @@ if (afterSync.status !== 200) throw new Error(`/api/users/me after sync returned
 const afterSyncBody = await afterSync.json();
 if (afterSyncBody.user?.primaryEmail !== 'smoke@example.com') throw new Error('Synced user lookup is invalid.');
 
+const beforeLink = await fetch(`${baseUrl}/api/users/me/legacy/firebase`, { headers: authHeaders });
+if (beforeLink.status !== 404) throw new Error(`/api/users/me/legacy/firebase before link returned ${beforeLink.status}`);
+
+const firebasePreflight = await fetch(`${baseUrl}/api/users/me/legacy/firebase`, {
+  method: 'OPTIONS',
+  headers: {
+    Origin: allowedOrigin,
+    'Access-Control-Request-Method': 'POST',
+    'Access-Control-Request-Headers': 'authorization,x-firebase-authorization',
+  },
+});
+if (firebasePreflight.status !== 204) throw new Error(`Firebase link preflight returned ${firebasePreflight.status}`);
+if (!firebasePreflight.headers.get('access-control-allow-headers')?.includes('X-Firebase-Authorization')) {
+  throw new Error('Firebase authorization header is missing from CORS allow headers.');
+}
+
+const link = await fetch(`${baseUrl}/api/users/me/legacy/firebase`, {
+  method: 'POST',
+  headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+});
+if (link.status !== 200) throw new Error(`/api/users/me/legacy/firebase link returned ${link.status}`);
+const linkBody = await link.json();
+if (!linkBody.linked || linkBody.firebaseLink?.firebaseUid !== 'firebase_uid_smoke') {
+  throw new Error('Firebase legacy link response is invalid.');
+}
+
+const afterLink = await fetch(`${baseUrl}/api/users/me/legacy/firebase`, { headers: authHeaders });
+if (afterLink.status !== 200) throw new Error(`/api/users/me/legacy/firebase lookup returned ${afterLink.status}`);
+const afterLinkBody = await afterLink.json();
+if (afterLinkBody.firebaseLink?.appUserId !== '42') throw new Error('Firebase legacy link lookup is invalid.');
+
+const invalidFirebase = await fetch(`${baseUrl}/api/users/me/legacy/firebase`, {
+  method: 'POST',
+  headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer wrong-token' },
+});
+if (invalidFirebase.status !== 401) throw new Error(`Invalid Firebase token returned ${invalidFirebase.status}`);
+
 const missing = await fetch(`${baseUrl}/missing`);
 if (missing.status !== 404) throw new Error(`/missing returned ${missing.status}`);
 
 await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-console.log('[server-smoke] PASS (/health, auth, identity GET/POST, CORS, 404)');
+console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, CORS, 404)');

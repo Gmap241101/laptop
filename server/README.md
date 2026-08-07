@@ -1,7 +1,7 @@
-# Rental API - Phase 3 Clerk authentication foundation
+# Rental API - Phase 6 Clerk/PostgreSQL/Firebase identity bridge
 
 이 폴더는 기존 React/Firebase 운영 기능과 분리된 Node.js + PostgreSQL backend다.
-Phase 3에서는 기존 업무 API를 아직 이전하지 않고, Clerk session JWT를 서버에서 검증하는 인증 경계를 추가한다.
+Phase 6에서도 기존 Firebase 업무 기능은 그대로 유지한다. 새 backend는 Clerk identity를 PostgreSQL에 유지하고, 현재 로그인한 Firebase Authentication 계정을 서버에서 검증해 동일 사용자와 1:1로 연결한다.
 
 ## Runtime
 
@@ -61,3 +61,22 @@ Endpoints:
 The browser never supplies email/name fields for persistence. `CLERK_SECRET_KEY` must remain a Heroku-only secret and must never be prefixed with `VITE_`.
 
 Migration `002_phase5_clerk_user_identity.sql` creates `app_user_identities`. Phase 5 deliberately does not create roles or replace Firebase authorization.
+
+
+## Phase 6: legacy Firebase identity bridge
+
+Phase 6 adds a transition-only proof bridge between the new Clerk/PostgreSQL identity and the existing Firebase Authentication account.
+
+Endpoints:
+- `GET /api/users/me/legacy/firebase`: reads the Firebase account already linked to the authenticated Clerk/PostgreSQL user.
+- `POST /api/users/me/legacy/firebase`: requires both the normal Clerk `Authorization` bearer token and `X-Firebase-Authorization: Bearer <Firebase ID token>`.
+
+The backend does not trust a browser-supplied Firebase UID. It verifies the Firebase ID token as RS256, checks the Google signing key `kid`, `exp`, `iat`, `auth_time`, project `aud`, and `iss`, then uses the verified `sub` claim as the Firebase UID. Signing keys are cached according to the Google certificate endpoint `Cache-Control` max-age.
+
+Migration `003_phase6_firebase_identity_bridge.sql` creates `app_user_firebase_links` with both `app_user_id` and `firebase_uid` uniqueness so neither side can be linked to multiple identities. The existing PostgreSQL/Clerk email and verified Firebase-token email must match before a new link is accepted.
+
+Heroku Phase 6 configuration adds:
+- `FIREBASE_PROJECT_ID=laptop-system-mk`
+- `FIREBASE_CERT_TIMEOUT_MS=8000` is optional; 8000 ms is the default.
+
+No Firebase service-account private key is required for Phase 6. Existing Firebase Auth, Firestore rules, rental flows, and production authorization remain authoritative and unchanged.

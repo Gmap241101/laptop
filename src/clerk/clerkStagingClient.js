@@ -96,13 +96,14 @@ const getSessionToken = async (clerk) => {
   return token;
 };
 
-const requestWithSession = async ({ clerk, apiBaseUrl, fetchImpl, path, method = 'GET' }) => {
+const requestWithSession = async ({ clerk, apiBaseUrl, fetchImpl, path, method = 'GET', headers = {} }) => {
   const token = await getSessionToken(clerk);
   const response = await fetchImpl(`${apiBaseUrl}${path}`, {
     method,
     headers: {
       Accept: 'application/json',
       Authorization: `Bearer ${token}`,
+      ...headers,
     },
     cache: 'no-store',
   });
@@ -166,6 +167,55 @@ export const requestCurrentUserIdentitySync = async ({ clerk, apiBaseUrl, fetchI
   }
   if (!payload?.authenticated || !payload?.synchronized || !payload?.user?.id || !payload?.user?.clerkUserId) {
     throw new Error('Backend returned an invalid user-synchronization response.');
+  }
+  return payload;
+};
+
+
+export const requestFirebaseLegacyLink = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken }) => {
+  const token = trim(firebaseIdToken);
+  if (!token) throw new Error('Firebase sign-in is required before linking the legacy account.');
+
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/users/me/legacy/firebase',
+    method: 'POST',
+    headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    const code = payload?.error ? ` (${payload.error})` : '';
+    const error = new Error(`Firebase legacy account link failed with HTTP ${response.status}${code}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (!payload?.authenticated || !payload?.linked || !payload?.firebaseLink?.firebaseUid) {
+    throw new Error('Backend returned an invalid Firebase legacy-link response.');
+  }
+  return payload;
+};
+
+export const requestFirebaseLegacyLinkStatus = async ({ clerk, apiBaseUrl, fetchImpl }) => {
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/users/me/legacy/firebase',
+  });
+
+  if (response.status === 404 && payload?.error === 'legacy_link_not_found') return null;
+  if (!response.ok) {
+    const code = payload?.error ? ` (${payload.error})` : '';
+    const error = new Error(`Firebase legacy account lookup failed with HTTP ${response.status}${code}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (!payload?.authenticated || !payload?.firebaseLink?.firebaseUid) {
+    throw new Error('Backend returned an invalid Firebase legacy-link lookup response.');
   }
   return payload;
 };
@@ -281,6 +331,19 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async syncBackendUserIdentity() {
       const clerk = await initialize();
       return requestCurrentUserIdentitySync({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
+    },
+    async linkFirebaseLegacyAccount(firebaseIdToken) {
+      const clerk = await initialize();
+      return requestFirebaseLegacyLink({
+        clerk,
+        apiBaseUrl: config.apiBaseUrl,
+        fetchImpl,
+        firebaseIdToken,
+      });
+    },
+    async getFirebaseLegacyLink() {
+      const clerk = await initialize();
+      return requestFirebaseLegacyLinkStatus({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
     },
   });
 };

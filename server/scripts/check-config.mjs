@@ -1,6 +1,7 @@
 import { createClerkSessionAuthenticator } from '../src/auth/clerk-session.mjs';
 import { createClerkBackendClient } from '../src/clerk/clerk-api.mjs';
 import { readServerConfig, shouldUseDatabaseSsl } from '../src/config/env.mjs';
+import { createFirebaseIdTokenVerifier } from '../src/firebase/firebase-id-token.mjs';
 
 try {
   const config = readServerConfig();
@@ -11,6 +12,12 @@ try {
       secretKey: config.clerkSecretKey,
       apiUrl: config.clerkApiUrl,
       timeoutMs: config.clerkApiTimeoutMs,
+    });
+  }
+  if (config.firebaseProjectId) {
+    createFirebaseIdTokenVerifier({
+      projectId: config.firebaseProjectId,
+      timeoutMs: config.firebaseCertTimeoutMs,
     });
   }
 
@@ -29,6 +36,8 @@ try {
   console.log(`CLERK_SECRET_KEY=${config.clerkSecretKey ? 'configured' : 'not-configured'}`);
   console.log(`CLERK_API_URL=${config.clerkApiUrl}`);
   console.log(`CLERK_API_TIMEOUT_MS=${config.clerkApiTimeoutMs}`);
+  console.log(`FIREBASE_PROJECT_ID=${config.firebaseProjectId || 'not-configured'}`);
+  console.log(`FIREBASE_CERT_TIMEOUT_MS=${config.firebaseCertTimeoutMs}`);
 } catch (error) {
   console.error(`[config] invalid server configuration: ${error.message}`);
   process.exit(1);

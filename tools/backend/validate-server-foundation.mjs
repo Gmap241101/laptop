@@ -8,6 +8,9 @@ const files = [
   'server/src/clerk/clerk-api.mjs',
   'server/src/users/user-repository.mjs',
   'server/src/users/user-service.mjs',
+  'server/src/firebase/firebase-id-token.mjs',
+  'server/src/legacy/firebase-link-repository.mjs',
+  'server/src/legacy/firebase-link-service.mjs',
   'server/src/app.mjs',
   'server/src/index.mjs',
   'server/scripts/check-config.mjs',
@@ -15,6 +18,7 @@ const files = [
   'tools/backend/smoke-server-handler.mjs',
   'tools/backend/smoke-clerk-auth.mjs',
   'tools/backend/smoke-clerk-user-sync.mjs',
+  'tools/backend/smoke-firebase-identity-bridge.mjs',
 ];
 
 for (const file of files) {
@@ -40,8 +44,13 @@ for (const marker of ['CREATE TABLE app_user_identities', 'clerk_user_id TEXT NO
   if (!phase5Migration.includes(marker)) throw new Error(`Phase 5 identity migration marker is missing: ${marker}`);
 }
 
+const phase6Migration = readFileSync('server/migrations/003_phase6_firebase_identity_bridge.sql', 'utf8');
+for (const marker of ['CREATE TABLE IF NOT EXISTS app_user_firebase_links', 'firebase_uid TEXT NOT NULL UNIQUE', 'app_user_id BIGINT PRIMARY KEY', "'identity_bridge_phase', 'phase6'"]) {
+  if (!phase6Migration.includes(marker)) throw new Error(`Phase 6 Firebase bridge migration marker is missing: ${marker}`);
+}
+
 const app = readFileSync('server/src/app.mjs', 'utf8');
-for (const marker of ["url.pathname === '/api/auth/session'", "url.pathname === '/api/users/me'", "url.pathname === '/api/users/me/sync'", "'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'", "'WWW-Authenticate': 'Bearer'"]) {
+for (const marker of ["url.pathname === '/api/auth/session'", "url.pathname === '/api/users/me'", "url.pathname === '/api/users/me/sync'", "url.pathname === '/api/users/me/legacy/firebase'", "'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'", "X-Firebase-Authorization", "'WWW-Authenticate': 'Bearer'"]) {
   if (!app.includes(marker)) throw new Error(`Server route/security marker is missing: ${marker}`);
 }
 
@@ -60,9 +69,19 @@ for (const marker of ['ON CONFLICT (clerk_user_id) DO UPDATE', 'WHERE clerk_user
   if (!repository.includes(marker)) throw new Error(`Phase 5 user repository marker is missing: ${marker}`);
 }
 
-const configTemplate = readFileSync('docs/github-education/HEROKU_CONFIG_VARS_TEMPLATE.txt', 'utf8');
-for (const variable of ['CLERK_JWT_KEY=', 'CLERK_AUTHORIZED_PARTIES=', 'CLERK_SECRET_KEY=sk_test_', 'CLERK_API_TIMEOUT_MS=8000']) {
-  if (!configTemplate.includes(variable)) throw new Error(`Phase 5 config template is missing ${variable}`);
+const firebaseVerifier = readFileSync('server/src/firebase/firebase-id-token.mjs', 'utf8');
+for (const marker of ["header.alg !== 'RS256'", 'payload.aud !== normalizedProjectId', 'https://securetoken.google.com/${normalizedProjectId}', 'x-firebase-authorization']) {
+  if (!firebaseVerifier.includes(marker)) throw new Error(`Phase 6 Firebase verification marker is missing: ${marker}`);
 }
 
-console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5 database/auth invariants)`);
+const firebaseRepository = readFileSync('server/src/legacy/firebase-link-repository.mjs', 'utf8');
+for (const marker of ['firebase_link_user_conflict', 'firebase_link_uid_conflict', 'ON CONFLICT (app_user_id) DO UPDATE']) {
+  if (!firebaseRepository.includes(marker)) throw new Error(`Phase 6 Firebase repository marker is missing: ${marker}`);
+}
+
+const configTemplate = readFileSync('docs/github-education/HEROKU_CONFIG_VARS_TEMPLATE.txt', 'utf8');
+for (const variable of ['CLERK_JWT_KEY=', 'CLERK_AUTHORIZED_PARTIES=', 'CLERK_SECRET_KEY=sk_test_', 'CLERK_API_TIMEOUT_MS=8000', 'FIREBASE_PROJECT_ID=laptop-system-mk']) {
+  if (!configTemplate.includes(variable)) throw new Error(`Phase 6 config template is missing ${variable}`);
+}
+
+console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6 database/auth invariants)`);

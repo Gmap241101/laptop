@@ -47,7 +47,21 @@ const userIdentityService = {
   async getCurrent() { return null; },
   async syncCurrent() { throw new Error('not used in auth smoke'); },
 };
-const server = createServer(createRequestHandler({ config, databaseCheck, authenticateRequest, userIdentityService }));
+const authenticateFirebaseRequest = async () => {
+  throw new Error('not used in Clerk auth smoke');
+};
+const firebaseLinkService = {
+  async getCurrent() { return null; },
+  async linkCurrent() { throw new Error('not used in Clerk auth smoke'); },
+};
+const server = createServer(createRequestHandler({
+  config,
+  databaseCheck,
+  authenticateRequest,
+  authenticateFirebaseRequest,
+  userIdentityService,
+  firebaseLinkService,
+}));
 
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 const address = server.address();

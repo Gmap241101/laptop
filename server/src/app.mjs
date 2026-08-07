@@ -19,7 +19,7 @@ const buildCorsHeaders = (request, allowedOrigins) => {
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-    'Access-Control-Allow-Headers': 'Authorization,Content-Type,X-Request-Id',
+    'Access-Control-Allow-Headers': 'Authorization,Content-Type,X-Request-Id,X-Firebase-Authorization',
     'Access-Control-Max-Age': '600',
     Vary: 'Origin',
   };
@@ -52,15 +52,39 @@ const sanitizeUserIdentity = (user) => ({
   updatedAt: user.updatedAt,
 });
 
-export const createRequestHandler = ({ config, databaseCheck, authenticateRequest, userIdentityService }) => {
+const sanitizeFirebaseLink = (link) => ({
+  appUserId: link.appUserId,
+  firebaseUid: link.firebaseUid,
+  firebaseEmail: link.firebaseEmail,
+  firebaseEmailVerified: link.firebaseEmailVerified,
+  firebaseSignInProvider: link.firebaseSignInProvider,
+  linkedAt: link.linkedAt,
+  lastVerifiedAt: link.lastVerifiedAt,
+  updatedAt: link.updatedAt,
+});
+
+export const createRequestHandler = ({
+  config,
+  databaseCheck,
+  authenticateRequest,
+  authenticateFirebaseRequest,
+  userIdentityService,
+  firebaseLinkService,
+}) => {
   if (typeof databaseCheck !== 'function') {
     throw new TypeError('databaseCheck must be a function.');
   }
   if (typeof authenticateRequest !== 'function') {
     throw new TypeError('authenticateRequest must be a function.');
   }
+  if (typeof authenticateFirebaseRequest !== 'function') {
+    throw new TypeError('authenticateFirebaseRequest must be a function.');
+  }
   if (!userIdentityService || typeof userIdentityService.getCurrent !== 'function' || typeof userIdentityService.syncCurrent !== 'function') {
     throw new TypeError('userIdentityService getCurrent/syncCurrent methods are required.');
+  }
+  if (!firebaseLinkService || typeof firebaseLinkService.getCurrent !== 'function' || typeof firebaseLinkService.linkCurrent !== 'function') {
+    throw new TypeError('firebaseLinkService getCurrent/linkCurrent methods are required.');
   }
 
   const basePayload = {
@@ -78,6 +102,24 @@ export const createRequestHandler = ({ config, databaseCheck, authenticateReques
         code: error?.code || 'authentication_failed',
       });
       writeUnauthorized(response, basePayload, headers);
+      return null;
+    }
+  };
+
+
+  const authenticateFirebase = async (request, response, headers, requestId) => {
+    try {
+      return await authenticateFirebaseRequest(request);
+    } catch (error) {
+      console.warn('[auth] Firebase session rejected', {
+        requestId,
+        code: error?.code || 'firebase_authentication_failed',
+      });
+      if (['firebase_certificates_unavailable', 'firebase_certificates_invalid'].includes(error?.code)) {
+        writeJson(response, 503, { ...basePayload, error: 'legacy_firebase_verification_unavailable' }, headers);
+      } else {
+        writeJson(response, 401, { ...basePayload, authenticated: true, error: 'legacy_firebase_unauthorized' }, headers);
+      }
       return null;
     }
   };
@@ -107,6 +149,7 @@ export const createRequestHandler = ({ config, databaseCheck, authenticateReques
           authSession: '/api/auth/session',
           currentUser: '/api/users/me',
           syncCurrentUser: '/api/users/me/sync',
+          firebaseLink: '/api/users/me/legacy/firebase',
         },
         headers,
       );
@@ -260,6 +303,77 @@ export const createRequestHandler = ({ config, databaseCheck, authenticateReques
         });
         const statusCode = ['clerk_api_timeout', 'clerk_api_unavailable', 'clerk_backend_not_configured'].includes(error?.code) ? 503 : 502;
         writeJson(response, statusCode, { ...basePayload, error: 'identity_sync_failed' }, headers);
+      }
+      return;
+    }
+
+
+    if (request.method === 'GET' && url.pathname === '/api/users/me/legacy/firebase') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+
+      try {
+        const link = await firebaseLinkService.getCurrent(auth.userId);
+        if (!link) {
+          writeJson(
+            response,
+            404,
+            { ...basePayload, authenticated: true, error: 'legacy_link_not_found' },
+            headers,
+          );
+          return;
+        }
+        writeJson(
+          response,
+          200,
+          { ...basePayload, authenticated: true, firebaseLink: sanitizeFirebaseLink(link) },
+          headers,
+        );
+      } catch (error) {
+        console.error('[legacy] Firebase link lookup failed', {
+          requestId,
+          code: error?.code,
+          name: error?.name,
+        });
+        const statusCode = error?.code === 'profile_not_synced' ? 409 : 503;
+        const errorCode = error?.code === 'profile_not_synced' ? 'profile_not_synced' : 'legacy_link_store_unavailable';
+        writeJson(response, statusCode, { ...basePayload, authenticated: true, error: errorCode }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/users/me/legacy/firebase') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+
+      try {
+        const link = await firebaseLinkService.linkCurrent(auth.userId, firebaseIdentity);
+        writeJson(
+          response,
+          200,
+          {
+            ...basePayload,
+            authenticated: true,
+            linked: true,
+            firebaseLink: sanitizeFirebaseLink(link),
+          },
+          headers,
+        );
+      } catch (error) {
+        console.warn('[legacy] Firebase identity link rejected', {
+          requestId,
+          code: error?.code,
+          name: error?.name,
+        });
+        if (
+          ['profile_not_synced', 'firebase_email_mismatch', 'firebase_link_user_conflict', 'firebase_link_uid_conflict'].includes(error?.code)
+        ) {
+          writeJson(response, 409, { ...basePayload, authenticated: true, error: error.code }, headers);
+          return;
+        }
+        writeJson(response, 503, { ...basePayload, authenticated: true, error: 'legacy_link_store_unavailable' }, headers);
       }
       return;
     }

@@ -1,4 +1,4 @@
-# Phase 5 configuration reference only.
+# Phase 6 configuration reference only.
 # Do NOT rename this file to .env* inside a deployment package.
 # Heroku values belong in Heroku Dashboard/CLI Config Vars.
 # Vercel frontend values belong in Vercel Project Environment Variables.
@@ -11,7 +11,7 @@ VITE_CLERK_PUBLISHABLE_KEY=pk_test_REPLACE_ME
 # Backend runtime (Heroku Config Vars)
 APP_ENV=staging
 SERVICE_NAME=rental-api
-SERVICE_VERSION=phase5
+SERVICE_VERSION=phase6
 # PORT is local-only. Do not set PORT manually in Heroku.
 
 # PostgreSQL connection. Heroku Postgres manages DATABASE_URL automatically.
@@ -35,3 +35,10 @@ CLERK_SECRET_KEY=sk_test_REPLACE_ME
 # Optional. Defaults shown below; normally leave CLERK_API_URL unset in Heroku.
 CLERK_API_URL=https://api.clerk.com/v1
 CLERK_API_TIMEOUT_MS=8000
+
+
+# Phase 6: verify the existing Firebase Authentication ID token on Heroku.
+# This is a public project identifier, not a secret.
+FIREBASE_PROJECT_ID=laptop-system-mk
+# Optional; defaults to 8000 ms. Controls Google signing-certificate fetch timeout.
+FIREBASE_CERT_TIMEOUT_MS=8000

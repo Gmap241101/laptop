@@ -6,6 +6,7 @@ const DEFAULT_IDLE_TIMEOUT_MS = 10000;
 const DEFAULT_CLERK_CLOCK_SKEW_SECONDS = 5;
 const DEFAULT_CLERK_API_URL = 'https://api.clerk.com/v1';
 const DEFAULT_CLERK_API_TIMEOUT_MS = 8000;
+const DEFAULT_FIREBASE_CERT_TIMEOUT_MS = 8000;
 const SSL_MODES = new Set(['auto', 'require', 'disable']);
 
 const readInteger = (name, fallback, { min, max }) => {
@@ -109,7 +110,7 @@ const readClerkSecretKey = (appEnv) => {
   const raw = process.env.CLERK_SECRET_KEY?.trim();
   if (!raw) {
     if (appEnv === 'local' || appEnv === 'development' || appEnv === 'test') return null;
-    throw new Error('CLERK_SECRET_KEY is required outside local development in Phase 5.');
+    throw new Error('CLERK_SECRET_KEY is required outside local development in Phase 5 and later.');
   }
 
   if (!/^sk_(?:test|live)_/.test(raw)) {
@@ -122,6 +123,14 @@ const readClerkSecretKey = (appEnv) => {
     throw new Error('Production requires a Clerk Production Secret Key (sk_live_...).');
   }
   return raw;
+};
+
+
+const readFirebaseProjectId = (appEnv) => {
+  const raw = process.env.FIREBASE_PROJECT_ID?.trim();
+  if (raw) return raw;
+  if (appEnv === 'local' || appEnv === 'development' || appEnv === 'test') return null;
+  throw new Error('FIREBASE_PROJECT_ID is required outside local development in Phase 6.');
 };
 
 const readClerkApiUrl = () => {
@@ -147,7 +156,7 @@ export const readServerConfig = () => {
   return Object.freeze({
     appEnv,
     serviceName: (process.env.SERVICE_NAME || 'rental-api').trim(),
-    serviceVersion: (process.env.SERVICE_VERSION || 'phase5').trim(),
+    serviceVersion: (process.env.SERVICE_VERSION || 'phase6').trim(),
     port: readInteger('PORT', DEFAULT_PORT, { min: 1, max: 65535 }),
     databaseUrl: readDatabaseUrl(),
     databaseSslMode: readSslMode(),
@@ -173,6 +182,11 @@ export const readServerConfig = () => {
     clerkSecretKey: readClerkSecretKey(appEnv),
     clerkApiUrl: readClerkApiUrl(),
     clerkApiTimeoutMs: readInteger('CLERK_API_TIMEOUT_MS', DEFAULT_CLERK_API_TIMEOUT_MS, {
+      min: 1000,
+      max: 30000,
+    }),
+    firebaseProjectId: readFirebaseProjectId(appEnv),
+    firebaseCertTimeoutMs: readInteger('FIREBASE_CERT_TIMEOUT_MS', DEFAULT_FIREBASE_CERT_TIMEOUT_MS, {
       min: 1000,
       max: 30000,
     }),
