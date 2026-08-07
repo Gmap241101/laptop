@@ -183,6 +183,32 @@ export const createMemberShadowService = ({
       return memberShadowRepository.findByAppUserId(firebaseLink.appUserId);
     },
 
+    async readCurrentSourceByFirebaseIdentity(firebaseIdentity) {
+      const firebaseUid = normalizeText(firebaseIdentity?.uid);
+      if (!firebaseUid) throw serviceError('firebase_identity_missing', 'Verified Firebase identity is required.');
+      const firebaseLink = await firebaseLinkRepository.findByFirebaseUid(firebaseUid);
+      if (!firebaseLink) throw serviceError('legacy_link_not_found', 'Firebase legacy identity has not been linked.');
+      const tokenEmail = normalizeEmail(firebaseIdentity?.email);
+      const linkedEmail = normalizeEmail(firebaseLink.firebaseEmail);
+      if (tokenEmail && linkedEmail && tokenEmail !== linkedEmail) {
+        throw serviceError('firebase_link_email_mismatch', 'Firebase token email does not match the linked identity.');
+      }
+      if (!firebaseIdentity.idToken) {
+        throw serviceError('firebase_id_token_missing', 'The verified Firebase request did not retain its ID token.');
+      }
+      const document = await firestoreUserAccountClient.getUserAccount({
+        firebaseUid,
+        firebaseIdToken: firebaseIdentity.idToken,
+      });
+      if (!document) throw serviceError('member_source_not_found', 'Firestore userAccounts document does not exist.');
+      const source = normalizeMemberSource({ document, firebaseUid });
+      const sourceEmail = normalizeEmail(source.email);
+      if (sourceEmail && linkedEmail && sourceEmail !== linkedEmail) {
+        throw serviceError('member_source_email_mismatch', 'Firestore member email does not match the linked Firebase identity.');
+      }
+      return source;
+    },
+
     async syncCurrent(clerkUserId, firebaseIdentity) {
       const { appUser, firebaseLink } = await context(clerkUserId);
       const source = await readSource({ appUser, firebaseLink, firebaseIdentity });

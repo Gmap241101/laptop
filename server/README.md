@@ -121,3 +121,6 @@ Phase 9 adds a staging-only transition path for the current member profile. The 
 - The browser cutover is gated by `VITE_MEMBER_PROFILE_POSTGRES_READ_ENABLED=true` and the explicit `?memberRead=postgres` query parameter.
 - Firestore `onSnapshot(userAccounts/{uid})` remains subscribed during Phase 9 as a guard. The PostgreSQL candidate becomes the active `userProfile` only when the candidate is field-equivalent to the live Firestore snapshot. Any mismatch or candidate failure immediately keeps/falls back to Firestore.
 - Because the Firestore guard remains subscribed, Phase 9 is a correctness cutover test, not yet a Firestore quota-reduction phase.
+
+## Phase 10 member-profile watcher disable
+`GET /api/legacy/member-profile-firestore-fallback` is an emergency one-time fallback used only when the dedicated staging member-profile PostgreSQL primary read fails. It requires a verified Firebase ID Token and does not create a realtime Firestore listener.

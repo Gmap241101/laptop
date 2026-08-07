@@ -21,9 +21,12 @@ import {
 import { publishMemberProfileReadObservation } from '../members/memberProfileReadObservation.js';
 import {
   chooseMemberProfileReadSource,
+  loadMemberProfileWithoutFirestoreWatcher,
   publishMemberProfileCutoverObservation,
   readMemberProfileCutoverConfig,
   requestMemberProfileCutoverCandidate,
+  requestMemberProfileFirestoreFallback,
+  shouldUseMemberProfileFirestoreWatcher,
 } from '../members/memberProfileReadCutover.js';
 import { createDefaultUserProfileForm } from '../members/useUserMyPageAccountController.js';
 
@@ -332,6 +335,98 @@ export default function useAuthIdentityPolicySubscriptionController({
     let postgresCandidateError = '';
     const cutoverConfig = readMemberProfileCutoverConfig();
 
+    const commitResolvedProfile = ({
+      profile,
+      source,
+      equivalent = null,
+      changedFields = [],
+      fallbackReason = '',
+      firestoreFallbackReads = 0,
+    }) => {
+      if (!active) return;
+
+      publishMemberProfileCutoverObservation({
+        requested: cutoverConfig.requested,
+        enabled: cutoverConfig.enabled,
+        firebaseUid: firebaseAuthUser.uid,
+        activeSource: source,
+        equivalent,
+        changedFields,
+        fallbackReason,
+        firestoreWatcherDisabled: cutoverConfig.firestoreWatcherDisabled,
+        firestoreFallbackReads,
+      });
+
+      if (!profile) {
+        setUserProfile(null);
+        setUserProfileForm({
+          name: firebaseAuthUser.displayName || '',
+          team: '',
+          phonePrefix: '010',
+          phoneMiddle: '',
+          phoneLast: '',
+          newPassword: '',
+          newPasswordConfirm: '',
+        });
+        setUserProfileReady(true);
+        return;
+      }
+
+      const parsedPhone = parseDomesticPhoneNumber(profile.phone || '');
+      setUserProfile(profile);
+      setUserProfileForm({
+        name: profile.name || '',
+        team: profile.team || '',
+        phonePrefix: parsedPhone.prefix,
+        phoneMiddle: parsedPhone.middle,
+        phoneLast: parsedPhone.last,
+        newPassword: '',
+        newPasswordConfirm: '',
+      });
+      setUserProfileReady(true);
+    };
+
+    if (!shouldUseMemberProfileFirestoreWatcher(cutoverConfig)) {
+      void loadMemberProfileWithoutFirestoreWatcher({
+        loadPostgresCandidate: () =>
+          requestMemberProfileCutoverCandidate({
+            firebaseUser: firebaseAuthUser,
+            apiBaseUrl: cutoverConfig.apiBaseUrl,
+          }),
+        loadFirestoreFallback: () =>
+          requestMemberProfileFirestoreFallback({
+            firebaseUser: firebaseAuthUser,
+            apiBaseUrl: cutoverConfig.apiBaseUrl,
+          }),
+      })
+        .then((result) => {
+          commitResolvedProfile(result);
+        })
+        .catch((error) => {
+          if (!active) return;
+          console.error('Member profile primary read failed with Firestore watcher disabled:', {
+            code: error?.code,
+            candidateCode: error?.candidateCode,
+          });
+          commitResolvedProfile({
+            profile: null,
+            source: 'unavailable',
+            equivalent: null,
+            changedFields: [],
+            fallbackReason: error?.code || 'member-profile-read-unavailable',
+            firestoreFallbackReads: Number(error?.firestoreFallbackReads) || 1,
+          });
+          triggerToastRef.current?.(
+            '회원 정보를 불러오지 못했습니다. PostgreSQL 및 Firestore 연결 상태를 확인해 주세요.',
+            'error'
+          );
+        });
+
+      return () => {
+        active = false;
+      };
+    }
+
     const applyResolvedProfile = () => {
       if (!active || firestoreProfile === undefined) return;
       const decision = chooseMemberProfileReadSource({
@@ -347,44 +442,14 @@ export default function useAuthIdentityPolicySubscriptionController({
             : decision.fallbackReason
         : decision.fallbackReason;
 
-      publishMemberProfileCutoverObservation({
-        requested: cutoverConfig.requested,
-        enabled: cutoverConfig.enabled,
-        firebaseUid: firebaseAuthUser.uid,
-        activeSource: decision.source,
+      commitResolvedProfile({
+        profile: decision.profile,
+        source: decision.source,
         equivalent: decision.equivalent,
         changedFields: decision.changedFields,
         fallbackReason,
+        firestoreFallbackReads: 0,
       });
-
-      const resolvedProfile = decision.profile;
-      if (!resolvedProfile) {
-        setUserProfile(null);
-        setUserProfileForm({
-          name: firebaseAuthUser.displayName || '',
-          team: '',
-          phonePrefix: '010',
-          phoneMiddle: '',
-          phoneLast: '',
-          newPassword: '',
-          newPasswordConfirm: '',
-        });
-        setUserProfileReady(true);
-        return;
-      }
-
-      const parsedPhone = parseDomesticPhoneNumber(resolvedProfile.phone || '');
-      setUserProfile(resolvedProfile);
-      setUserProfileForm({
-        name: resolvedProfile.name || '',
-        team: resolvedProfile.team || '',
-        phonePrefix: parsedPhone.prefix,
-        phoneMiddle: parsedPhone.middle,
-        phoneLast: parsedPhone.last,
-        newPassword: '',
-        newPasswordConfirm: '',
-      });
-      setUserProfileReady(true);
     };
 
     if (cutoverConfig.requested) {

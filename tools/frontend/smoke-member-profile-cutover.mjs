@@ -10,11 +10,18 @@ import {
 const env = {
   VITE_CLERK_STAGING_ENABLED: 'true',
   VITE_MEMBER_PROFILE_POSTGRES_READ_ENABLED: 'true',
+  VITE_MEMBER_PROFILE_FIRESTORE_WATCHER_DISABLED: 'false',
   VITE_API_URL: 'https://api.example.test',
 };
 assert.deepEqual(
   readMemberProfileCutoverConfig({ env, location: { search: '?memberRead=postgres' } }),
-  { enabled: true, requested: true, apiBaseUrl: 'https://api.example.test' },
+  {
+    enabled: true,
+    requested: true,
+    firestoreWatcherDisableEnabled: false,
+    firestoreWatcherDisabled: false,
+    apiBaseUrl: 'https://api.example.test',
+  },
 );
 assert.equal(
   readMemberProfileCutoverConfig({ env, location: { search: '' } }).requested,

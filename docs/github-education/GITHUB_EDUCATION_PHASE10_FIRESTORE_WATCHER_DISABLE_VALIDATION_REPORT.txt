@@ -1,0 +1,97 @@
+GitHub Education Phase 10 - Firestore Member Watcher Disable Validation
+=======================================================================
+
+Baseline
+--------
+rental-system-github-education-phase9-member-profile-cutover-20260807_deployment_package.zip
+
+Scope
+-----
+- Dedicated gh-pages-3 / mkrental staging only.
+- PostgreSQL member shadow primary read.
+- userAccounts/{uid} client Firestore onSnapshot is not created when the Phase 10 gate is active.
+- PostgreSQL failure uses a one-time server-side Firestore fallback document read.
+- Normal URLs retain the existing Firestore realtime behavior.
+
+Runtime gate
+------------
+VITE_CLERK_STAGING_ENABLED=true
+VITE_MEMBER_PROFILE_POSTGRES_READ_ENABLED=true
+VITE_MEMBER_PROFILE_FIRESTORE_WATCHER_DISABLED=true
+URL: ?memberRead=postgres&memberWatcher=off
+
+Automated validation
+--------------------
+verify:phase10: PASS
+Phase 10 watcher-disable smoke: PASS
+- explicit staging environment gate: PASS
+- explicit memberWatcher=off query gate: PASS
+- PostgreSQL success path: PASS
+- Firestore member fallback loader calls on PostgreSQL success: 0
+- expected Firestore userAccounts realtime watcher in active Phase 10 path: 0
+- PostgreSQL failure -> one-time Firestore fallback: PASS
+- one-time fallback read count: 1
+
+Backend smoke: PASS
+- /api/legacy/member-profile-firestore-fallback: PASS
+- Firebase ID Token required: PASS
+- sanitized Firestore profile response: PASS
+
+Existing regression audits
+--------------------------
+React Hook audit: PASS (148 source files)
+Application flow contract audit: PASS (124 contracts; 11 user routes; 20 administrator tabs)
+Firestore strict audit: PASS
+- static source calls: 129
+- onSnapshot: 35
+- getDocs: 48
+- getDoc: 28
+- getCountFromServer: 18
+- approved existing risk findings: 51
+- new warnings: 0
+- errors: 0
+
+The static onSnapshot count intentionally remains 35 because the normal/Production-compatible fallback path is still present in source. Phase 10 reduces runtime reads only when its explicit staging watcher-disable gate is active.
+
+Database / migration impact
+---------------------------
+New migration: none
+Existing migrations 001-005 remain unchanged.
+Expected Heroku Release Phase after deploy: all migrations already applied; newly applied=0.
+
+Production compatibility
+------------------------
+src/App.jsx: unchanged
+- 2,130 lines
+- 66,036 bytes
+- SHA-256 b30af55defc814cac9b33e056f4c89263444eca04b565c89ef0517d96b4b1117
+
+Also unchanged from Phase 9 baseline:
+- src/firebase.js
+- rules/firestore.rules
+- firestore.indexes.json
+- public/CNAME
+- vercel.json
+- src/main.jsx
+- root package-lock.json
+
+Dependencies
+------------
+New npm dependencies: 0
+server package version: 0.7.0 -> 0.8.0
+
+Build status
+------------
+build:staging prebuild checks: PASS
+- React audit PASS
+- App flow audit PASS
+- Firestore strict audit PASS
+- Clerk staging config check executed
+Final Vite bundle: NOT EXECUTED in this container because root node_modules is not installed (`vite: not found`, exit 127).
+No new frontend dependency was introduced; deploy.ps1 v13.1 remains the final build environment.
+
+Package safety
+--------------
+Protected paths are excluded from PACKAGE_FILES and ZIP:
+.env*, .git, node_modules, dist, .performance-reports, secrets/.secrets, deploy.ps1
+REMOVED_FILES cumulative list preserved.

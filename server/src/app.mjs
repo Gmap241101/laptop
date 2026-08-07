@@ -153,10 +153,11 @@ export const createRequestHandler = ({
     !memberShadowService ||
     typeof memberShadowService.getCurrent !== 'function' ||
     typeof memberShadowService.getCurrentByFirebaseIdentity !== 'function' ||
+    typeof memberShadowService.readCurrentSourceByFirebaseIdentity !== 'function' ||
     typeof memberShadowService.syncCurrent !== 'function' ||
     typeof memberShadowService.compareCurrent !== 'function'
   ) {
-    throw new TypeError('memberShadowService getCurrent/getCurrentByFirebaseIdentity/syncCurrent/compareCurrent methods are required.');
+    throw new TypeError('memberShadowService getCurrent/getCurrentByFirebaseIdentity/readCurrentSourceByFirebaseIdentity/syncCurrent/compareCurrent methods are required.');
   }
 
   const basePayload = {
@@ -225,6 +226,7 @@ export const createRequestHandler = ({
           memberShadow: '/api/users/me/legacy/member-shadow',
           memberProfileReadCandidate: '/api/users/me/member-profile-candidate',
           memberProfileCutoverCandidate: '/api/legacy/member-profile-cutover-candidate',
+          memberProfileFirestoreFallback: '/api/legacy/member-profile-firestore-fallback',
         },
         headers,
       );
@@ -489,6 +491,63 @@ export const createRequestHandler = ({
         });
         const statusCode = ['legacy_link_not_found', 'firebase_link_email_mismatch'].includes(error?.code) ? 409 : 503;
         writeJson(response, statusCode, { ...basePayload, authenticated: true, error: error?.code || 'member_read_cutover_candidate_unavailable' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/legacy/member-profile-firestore-fallback') {
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+
+      try {
+        const source = await memberShadowService.readCurrentSourceByFirebaseIdentity(firebaseIdentity);
+        writeJson(
+          response,
+          200,
+          {
+            ...basePayload,
+            authenticated: true,
+            authentication: 'firebase-id-token',
+            readFallback: {
+              source: 'firestore-one-time-fallback',
+              authoritative: true,
+              firebaseUid: source.uid,
+              profile: {
+                uid: source.uid,
+                email: source.email,
+                maskedEmail: source.maskedEmail,
+                name: source.name,
+                team: source.team,
+                phone: source.phone,
+                status: source.status,
+                directoryMemberId: source.directoryMemberId,
+                directoryVerifiedVersion: source.directoryVerifiedVersion,
+                profileRequiredReason: source.profileRequiredReason,
+                rejoinedAccount: source.rejoinedAccount,
+                termsConsentRevision: source.termsConsentRevision,
+                termsConsentPolicyVersion: source.termsConsentPolicyVersion,
+                identityKey: source.identityKey,
+                recoveryKey: source.recoveryKey,
+                previousAccountUids: source.previousAccountUids,
+              },
+              sourceHash: source.sourceHash,
+              sourceUpdatedAt: source.sourceUpdatedAt,
+            },
+          },
+          headers,
+        );
+      } catch (error) {
+        console.error('[member-read] one-time Firestore fallback failed', {
+          requestId,
+          code: error?.code,
+          name: error?.name,
+        });
+        const statusCode = ['legacy_link_not_found', 'firebase_link_email_mismatch', 'member_source_email_mismatch'].includes(error?.code)
+          ? 409
+          : error?.code === 'member_source_not_found'
+            ? 404
+            : 503;
+        writeJson(response, statusCode, { ...basePayload, authenticated: true, error: error?.code || 'member_profile_firestore_fallback_unavailable' }, headers);
       }
       return;
     }

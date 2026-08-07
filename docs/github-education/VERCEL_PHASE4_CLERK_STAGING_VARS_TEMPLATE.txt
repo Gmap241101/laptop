@@ -26,3 +26,11 @@ VITE_MEMBER_PROFILE_POSTGRES_READ_ENABLED=true
 #   ?memberRead=postgres
 # Recommended diagnostics URL:
 #   https://YOUR-STAGING-PROJECT.vercel.app/?clerkTest=1&memberRead=postgres
+
+# Phase 10 opt-in: disable only the userAccounts/{uid} realtime watcher in the dedicated staging project.
+VITE_MEMBER_PROFILE_FIRESTORE_WATCHER_DISABLED=true
+
+# The watcher is disabled only when all Phase 9/10 gates are present:
+#   ?memberRead=postgres&memberWatcher=off
+# Recommended Phase 10 diagnostics URL:
+#   https://YOUR-STAGING-PROJECT.vercel.app/?clerkTest=1&memberRead=postgres&memberWatcher=off

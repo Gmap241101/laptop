@@ -89,6 +89,29 @@ const memberShadowService = {
     if (firebaseIdentity.uid !== 'firebase_uid_smoke') throw new Error('Unexpected Firebase cutover identity.');
     return memberShadow;
   },
+  async readCurrentSourceByFirebaseIdentity(firebaseIdentity) {
+    if (firebaseIdentity.uid !== 'firebase_uid_smoke') throw new Error('Unexpected Firebase fallback identity.');
+    return {
+      uid: 'firebase_uid_smoke',
+      email: 'smoke@example.com',
+      maskedEmail: 's***@example.com',
+      name: 'Smoke User Firestore',
+      team: 'QA',
+      phone: '010-0000-0000',
+      status: 'active',
+      directoryMemberId: '',
+      directoryVerifiedVersion: 0,
+      profileRequiredReason: '',
+      rejoinedAccount: false,
+      termsConsentRevision: 0,
+      termsConsentPolicyVersion: 0,
+      identityKey: 'identity_smoke',
+      recoveryKey: 'recovery_smoke',
+      previousAccountUids: ['firebase_uid_old'],
+      sourceHash: 'f'.repeat(64),
+      sourceUpdatedAt: new Date('2026-08-07T01:00:00.000Z'),
+    };
+  },
   async syncCurrent(userId, firebaseIdentity) {
     if (userId !== 'user_smoke' || firebaseIdentity.uid !== 'firebase_uid_smoke') {
       throw new Error('Unexpected member-shadow sync identity.');
@@ -281,6 +304,24 @@ if (
   throw new Error('Firebase-authenticated member cutover candidate response is invalid.');
 }
 
+const firestoreFallback = await fetch(`${baseUrl}/api/legacy/member-profile-firestore-fallback`, {
+  headers: {
+    Origin: allowedOrigin,
+    'X-Firebase-Authorization': 'Bearer firebase-smoke-token',
+  },
+});
+if (firestoreFallback.status !== 200) {
+  throw new Error(`/api/legacy/member-profile-firestore-fallback returned ${firestoreFallback.status}`);
+}
+const firestoreFallbackBody = await firestoreFallback.json();
+if (
+  firestoreFallbackBody.readFallback?.source !== 'firestore-one-time-fallback' ||
+  firestoreFallbackBody.readFallback?.authoritative !== true ||
+  firestoreFallbackBody.readFallback?.profile?.name !== 'Smoke User Firestore'
+) {
+  throw new Error('One-time Firestore fallback response is invalid.');
+}
+
 const compareMemberShadow = await fetch(`${baseUrl}/api/users/me/legacy/member-shadow/compare`, {
   method: 'POST',
   headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
@@ -301,4 +342,4 @@ const missing = await fetch(`${baseUrl}/missing`);
 if (missing.status !== 404) throw new Error(`/missing returned ${missing.status}`);
 
 await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 Firebase-authenticated PostgreSQL cutover candidate, CORS, 404)');
+console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, CORS, 404)');

@@ -82,6 +82,8 @@ export default function ClerkStagingDiagnostics() {
     cutoverEquivalent: null,
     cutoverChangedFields: [],
     cutoverFallbackReason: null,
+    firestoreWatcherDisabled: false,
+    firestoreFallbackReads: 0,
     error: null,
   });
 
@@ -180,6 +182,8 @@ export default function ClerkStagingDiagnostics() {
           typeof observation?.equivalent === 'boolean' ? observation.equivalent : null,
         cutoverChangedFields: observation?.changedFields || [],
         cutoverFallbackReason: observation?.fallbackReason || null,
+        firestoreWatcherDisabled: Boolean(observation?.firestoreWatcherDisabled),
+        firestoreFallbackReads: Number(observation?.firestoreFallbackReads) || 0,
       }));
     };
     applyCutover(getLatestMemberProfileCutoverObservation());
@@ -347,7 +351,7 @@ export default function ClerkStagingDiagnostics() {
 
   return (
     <aside style={panelStyle} aria-label="Clerk staging diagnostics">
-      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 9</div>
+      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 10</div>
       <div>SDK: {state.phase === 'loading' ? 'loading' : state.phase}</div>
       <div>Signed in: {state.signedIn ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Clerk user: {state.userId || '-'}</div>
@@ -380,7 +384,9 @@ export default function ClerkStagingDiagnostics() {
       </div>
 
       <div style={{ marginTop: '6px', fontWeight: 700 }}>Member profile parallel read</div>
-      <div style={{ overflowWrap: 'anywhere' }}>App read source: {state.appReadProfile ? 'firestore-onSnapshot' : '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>
+        App read source: {state.firestoreWatcherDisabled ? 'disabled' : state.appReadProfile ? 'firestore-onSnapshot' : '-'}
+      </div>
       <div style={{ overflowWrap: 'anywhere' }}>App read Firebase: {state.appReadFirebaseUid || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>App read member: {state.appReadProfile?.name || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>App read team: {state.appReadProfile?.team || '-'}</div>
@@ -402,6 +408,13 @@ export default function ClerkStagingDiagnostics() {
         Cutover changed fields: {state.cutoverChangedFields.length ? state.cutoverChangedFields.join(', ') : '-'}
       </div>
       <div style={{ overflowWrap: 'anywhere' }}>Fallback reason: {state.cutoverFallbackReason || '-'}</div>
+
+      <div style={{ marginTop: '6px', fontWeight: 700 }}>Phase 10 Firestore read reduction</div>
+      <div>Firestore member watcher: {state.firestoreWatcherDisabled ? 'disabled' : 'active'}</div>
+      <div>One-time Firestore fallback reads: {state.firestoreFallbackReads}</div>
+      <div>
+        Expected userAccounts realtime reads: {state.firestoreWatcherDisabled ? '0 while this page session stays on PostgreSQL' : 'existing realtime behavior'}
+      </div>
 
       {state.error ? (
         <div role="alert" style={{ marginTop: '8px', color: '#b91c1c', overflowWrap: 'anywhere' }}>
@@ -456,7 +469,7 @@ export default function ClerkStagingDiagnostics() {
             >
               회원 Shadow 비교
             </button>
-            <button type="button" style={buttonStyle} onClick={verifyMemberReadParity}>
+            <button type="button" style={buttonStyle} disabled={state.firestoreWatcherDisabled} onClick={verifyMemberReadParity}>
               {'\uc571 \uc77d\uae30 \ubcd1\ud589\uac80\uc99d'}
             </button>
             <button type="button" style={buttonStyle} onClick={() => run(() => clerkStagingClient.signOut())}>

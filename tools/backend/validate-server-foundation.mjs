@@ -65,7 +65,7 @@ for (const marker of ['identity_key TEXT', 'recovery_key TEXT', 'previous_accoun
 }
 
 const app = readFileSync('server/src/app.mjs', 'utf8');
-for (const marker of ["url.pathname === '/api/auth/session'", "url.pathname === '/api/users/me'", "url.pathname === '/api/users/me/sync'", "url.pathname === '/api/users/me/legacy/firebase'", "url.pathname === '/api/users/me/legacy/member-shadow'", "url.pathname === '/api/users/me/legacy/member-shadow/sync'", "url.pathname === '/api/users/me/legacy/member-shadow/compare'", "url.pathname === '/api/users/me/member-profile-candidate'", "url.pathname === '/api/legacy/member-profile-cutover-candidate'", "source: 'postgresql-shadow'", "authoritative: false", "'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'", "X-Firebase-Authorization", "'WWW-Authenticate': 'Bearer'"]) {
+for (const marker of ["url.pathname === '/api/auth/session'", "url.pathname === '/api/users/me'", "url.pathname === '/api/users/me/sync'", "url.pathname === '/api/users/me/legacy/firebase'", "url.pathname === '/api/users/me/legacy/member-shadow'", "url.pathname === '/api/users/me/legacy/member-shadow/sync'", "url.pathname === '/api/users/me/legacy/member-shadow/compare'", "url.pathname === '/api/users/me/member-profile-candidate'", "url.pathname === '/api/legacy/member-profile-cutover-candidate'", "url.pathname === '/api/legacy/member-profile-firestore-fallback'", "source: 'postgresql-shadow'", "authoritative: false", "'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'", "X-Firebase-Authorization", "'WWW-Authenticate': 'Bearer'"]) {
   if (!app.includes(marker)) throw new Error(`Server route/security marker is missing: ${marker}`);
 }
 
@@ -100,7 +100,7 @@ for (const marker of ['firestore.googleapis.com/v1/projects/', 'Authorization: `
 }
 
 const memberShadowService = readFileSync('server/src/legacy/member-shadow-service.mjs', 'utf8');
-for (const marker of ['legacy_link_token_mismatch', 'member_source_email_mismatch', 'getCurrentByFirebaseIdentity', 'identityKey', 'previousAccountUids', 'sourceHash', 'changedFields']) {
+for (const marker of ['legacy_link_token_mismatch', 'member_source_email_mismatch', 'getCurrentByFirebaseIdentity', 'readCurrentSourceByFirebaseIdentity', 'identityKey', 'previousAccountUids', 'sourceHash', 'changedFields']) {
   if (!memberShadowService.includes(marker)) throw new Error(`Phase 7 member shadow service marker is missing: ${marker}`);
 }
 
@@ -122,9 +122,16 @@ for (const marker of ['requestMemberProfileCutoverCandidate', 'chooseMemberProfi
   if (!subscription.includes(marker)) throw new Error(`Phase 9 auth subscription cutover marker is missing: ${marker}`);
 }
 
+for (const marker of ['VITE_MEMBER_PROFILE_FIRESTORE_WATCHER_DISABLED', "get('memberWatcher') === 'off'", 'requestMemberProfileFirestoreFallback', 'loadMemberProfileWithoutFirestoreWatcher', 'firestore-one-time-fallback']) {
+  if (!memberReadCutover.includes(marker)) throw new Error(`Phase 10 watcher-disable marker is missing: ${marker}`);
+}
+for (const marker of ['shouldUseMemberProfileFirestoreWatcher', 'loadMemberProfileWithoutFirestoreWatcher', 'requestMemberProfileFirestoreFallback', 'firestoreWatcherDisabled', 'firestoreFallbackReads']) {
+  if (!subscription.includes(marker)) throw new Error(`Phase 10 auth subscription watcher-disable marker is missing: ${marker}`);
+}
+
 const configTemplate = readFileSync('docs/github-education/HEROKU_CONFIG_VARS_TEMPLATE.txt', 'utf8');
 for (const variable of ['CLERK_JWT_KEY=', 'CLERK_AUTHORIZED_PARTIES=', 'CLERK_SECRET_KEY=sk_test_', 'CLERK_API_TIMEOUT_MS=8000', 'FIREBASE_PROJECT_ID=laptop-system-mk']) {
   if (!configTemplate.includes(variable)) throw new Error(`Phase 6 config template is missing ${variable}`);
 }
 
-console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9 database/auth + phase8 parallel-read + phase9 opt-in cutover invariants)`);
+console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9 database/auth + phase8 parallel-read + phase9 opt-in cutover + phase10 watcher-disable/fallback invariants)`);
