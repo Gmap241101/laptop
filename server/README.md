@@ -1,27 +1,51 @@
-# Rental API - Phase 2 backend foundation (hotfix)
+# Rental API - Phase 3 Clerk authentication foundation
 
-This folder is the new Node.js + PostgreSQL backend foundation and is isolated from the existing React/Firebase production path.
-Phase 2 exposes only health/readiness endpoints and the migration foundation; business APIs are not enabled yet.
+이 폴더는 기존 React/Firebase 운영 기능과 분리된 Node.js + PostgreSQL backend다.
+Phase 3에서는 기존 업무 API를 아직 이전하지 않고, Clerk session JWT를 서버에서 검증하는 인증 경계를 추가한다.
 
 ## Runtime
+
 - Node.js 22.x
+- npm 10.x
 - `pg` 8.22.0
 - Heroku Postgres `DATABASE_URL`
+- Clerk RS256 JWT public-key verification (Node.js built-in `crypto`)
 
 ## Endpoints
-- `GET /` - service identity
-- `GET /health/live` - process liveness without a DB query
-- `GET /health` - readiness with a PostgreSQL query
-- `GET /health/ready` - same readiness check
 
-## Configuration
-See `docs/github-education/PHASE2_ENVIRONMENT_VARIABLE_TEMPLATE.txt` at the repository root.
-Do not place real `.env` or `.env.*` files in a deployment package or commit them to Git.
+- `GET /` - 서비스 식별
+- `GET /health/live` - 프로세스 liveness, DB를 조회하지 않음
+- `GET /health` - PostgreSQL `SELECT`를 포함한 readiness
+- `GET /health/ready` - `/health`와 동일
+- `GET /api/auth/session` - `Authorization: Bearer <Clerk session token>`을 검증하는 보호 endpoint
+
+`/api/auth/session`은 토큰 자체나 Clerk secret을 응답하지 않는다. 성공 시 `sub`, `sid`, `azp`, 시간 claim 중 진단에 필요한 값만 반환한다.
+
+## Clerk configuration
+
+Staging/production에서는 다음 값이 필수다.
+
+- `CLERK_JWT_KEY`: Clerk Dashboard API Keys 페이지의 JWT public key (PEM)
+- `CLERK_AUTHORIZED_PARTIES`: 토큰 `azp` claim으로 허용할 정확한 frontend origin
+- `CLERK_CLOCK_SKEW_SECONDS`: 기본 5초
+- `CLERK_REJECT_PENDING_SESSION`: 기본 true
+
+Phase 3은 Clerk의 공식 수동 JWT 검증 절차에 맞춰 RS256 signature, `exp`, `nbf`, `azp`를 검증한다. `sts=pending` session도 기본 거부한다.
+
+## Local configuration
+
+`docs/github-education/HEROKU_CONFIG_VARS_TEMPLATE.txt`를 참고해 로컬/Heroku 값을 설정한다. 배포 패키지에는 `.env*` 파일을 포함하지 않으며 실제 `.env`도 Git에 커밋하지 않는다.
+
+```bash
+npm --prefix server ci
+node --env-file=.env server/src/index.mjs
+```
 
 ## Heroku
-The root `Procfile` declares:
-1. Release phase: `npm --prefix server run db:migrate`
-2. Web process: `npm --prefix server start`
 
-The root Heroku build hooks prepare `server` dependencies before the release phase.
-Provision the Heroku Postgres add-on first so `DATABASE_URL` exists before migration runs.
+루트 `Procfile` 순서는 Phase 2와 동일하다.
+
+1. Release phase: `npm --prefix server run db:migrate`
+2. Web: `npm --prefix server start`
+
+Heroku 배포 전 `DATABASE_URL`, `CORS_ALLOWED_ORIGINS`, `CLERK_JWT_KEY`, `CLERK_AUTHORIZED_PARTIES`가 모두 설정돼 있어야 한다.

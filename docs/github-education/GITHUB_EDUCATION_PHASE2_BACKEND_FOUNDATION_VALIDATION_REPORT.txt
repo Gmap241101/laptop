@@ -1,10 +1,67 @@
 GitHub Education Phase 2 Backend Foundation Validation
 ======================================================
-server syntax/foundation validation: PASS
-server handler smoke test: PASS
-staging config validation: PASS
-React hook audit: PASS (144 source files)
-application flow contract audit: PASS (124 contracts)
-Firestore strict audit: PASS (129 calls, 0 unapproved warnings, 0 errors)
-App.jsx unchanged: PASS
-Firebase/rules/CNAME/vercel protected file hashes unchanged: PASS
+
+Baseline
+--------
+rental-system-github-education-phase1-deployment-guard-20260807_deployment_package.zip
+
+Scope
+-----
+- Add Node.js backend foundation under server/
+- Add PostgreSQL pg driver dependency under server/package.json only
+- Add migration runner and Phase 2 baseline migration
+- Add Heroku Procfile release/web processes
+- Add health/liveness API
+- Add environment/CORS validation
+- Preserve React/Firebase production behavior
+
+Validation Results
+------------------
+PASS - root package-lock metadata validation (npm ci --package-lock-only --offline)
+PASS - server package-lock metadata validation (npm --prefix server ci --package-lock-only --offline)
+PASS - server JavaScript syntax validation
+PASS - Procfile contract validation
+PASS - baseline migration presence validation
+PASS - server configuration validation with staging-like environment values
+PASS - server handler smoke test: /health/live
+PASS - server handler smoke test: /health
+PASS - server handler smoke test: allowed CORS origin
+PASS - server handler smoke test: 404
+PASS - React hook audit: 144 source files
+PASS - application flow contract audit: 124 contracts, 11 user routes, 20 administrator tabs
+PASS - Firestore strict audit: 129 calls, 51 approved risk findings, 0 unapproved warnings, 0 errors
+
+Build / External Dependency Limitation
+--------------------------------------
+The execution environment's internal npm registry does not contain pg@8.22.0, so an actual server npm ci and real PostgreSQL socket test cannot be completed here.
+The server lockfile itself is structurally validated offline. A normal public npm registry/Heroku build must install pg@8.22.0 before runtime validation.
+
+A real PostgreSQL migration was not executed because no Heroku/PostgreSQL credentials are available in this environment.
+The migration runner was syntax/contract checked and uses a transaction plus PostgreSQL advisory transaction lock.
+
+Frontend npm install/build remains subject to the same execution-environment registry limitation documented in Phase 1; no frontend dependency was added in Phase 2.
+
+Production Impact
+-----------------
+None. Existing React/Firebase runtime code is unchanged. The new server is not referenced by the frontend in Phase 2.
+
+Preservation / Deployment Guard Checks
+--------------------------------------
+PASS - src/App.jsx unchanged from Phase 1: 2,130 lines / 66,036 bytes
+PASS - src/App.jsx SHA-256 unchanged: b30af55defc814cac9b33e056f4c89263444eca04b565c89ef0517d96b4b1117
+PASS - src/firebase.js unchanged from Phase 1
+PASS - rules/firestore.rules unchanged from Phase 1
+PASS - firestore.indexes.json unchanged from Phase 1
+PASS - public/CNAME unchanged: notebook.recruit.kro.kr
+PASS - vercel.json unchanged from Phase 1
+PASS - legacy `npm run deploy` remains blocked with exit code 1
+PASS - production deploy without CONFIRM_PRODUCTION_DEPLOY remains blocked with exit code 1
+PASS - no source files deleted in Phase 2
+PASS - cumulative REMOVED_FILES.txt retained (65 entries)
+
+Package Scope
+-------------
+Changed existing source/config files: 2
+New source/config/report files: 17
+Deleted source/config files: 0
+Expected source manifest count after Phase 2: 522

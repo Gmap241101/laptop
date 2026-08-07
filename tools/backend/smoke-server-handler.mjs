@@ -1,26 +1,53 @@
 import { createServer } from 'node:http';
-import { once } from 'node:events';
 import { createRequestHandler } from '../../server/src/app.mjs';
 
 const config = {
   serviceName: 'rental-api',
-  appEnv: 'staging',
-  serviceVersion: 'phase2-hotfix-test',
-  corsAllowedOrigins: ['https://staging.example.test'],
+  appEnv: 'test',
+  serviceVersion: 'phase3-smoke',
+  corsAllowedOrigins: ['https://staging.example.vercel.app'],
 };
-const server = createServer(createRequestHandler({ config, checkDatabaseFn: async () => ({ latencyMs: 3 }) }));
-server.listen(0, '127.0.0.1');
-await once(server, 'listening');
-const { port } = server.address();
-const base = `http://127.0.0.1:${port}`;
-const live = await fetch(`${base}/health/live`);
-if (live.status !== 200 || (await live.json()).status !== 'ok') throw new Error('/health/live smoke test failed');
-const health = await fetch(`${base}/health`, { headers: { Origin: 'https://staging.example.test' } });
-const healthBody = await health.json();
-if (health.status !== 200 || healthBody.database?.status !== 'ok') throw new Error('/health smoke test failed');
-if (health.headers.get('access-control-allow-origin') !== 'https://staging.example.test') throw new Error('CORS smoke test failed');
-const missing = await fetch(`${base}/missing`);
-if (missing.status !== 404) throw new Error('404 smoke test failed');
-server.close();
-await once(server, 'close');
-console.log('[server-smoke] PASS (/health/live, /health, CORS, 404)');
+
+const databaseCheck = async () => ({ latencyMs: 1, databaseTime: new Date() });
+const authenticateRequest = async () => ({
+  userId: 'user_smoke',
+  sessionId: 'sess_smoke',
+  authorizedParty: 'https://staging.example.vercel.app',
+  issuedAt: 1,
+  expiresAt: 2,
+  status: 'active',
+});
+const server = createServer(createRequestHandler({ config, databaseCheck, authenticateRequest }));
+
+await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+const address = server.address();
+if (!address || typeof address === 'string') throw new Error('Unable to resolve smoke-test port.');
+const baseUrl = `http://127.0.0.1:${address.port}`;
+
+const live = await fetch(`${baseUrl}/health/live`);
+if (live.status !== 200) throw new Error(`/health/live returned ${live.status}`);
+const liveBody = await live.json();
+if (liveBody.status !== 'ok') throw new Error('/health/live payload is invalid.');
+
+const ready = await fetch(`${baseUrl}/health`, {
+  headers: { Origin: 'https://staging.example.vercel.app' },
+});
+if (ready.status !== 200) throw new Error(`/health returned ${ready.status}`);
+const readyBody = await ready.json();
+if (readyBody.database?.status !== 'ok') throw new Error('/health database payload is invalid.');
+if (ready.headers.get('access-control-allow-origin') !== 'https://staging.example.vercel.app') {
+  throw new Error('Allowed CORS origin was not reflected.');
+}
+
+const session = await fetch(`${baseUrl}/api/auth/session`, {
+  headers: { Authorization: 'Bearer smoke-token' },
+});
+if (session.status !== 200) throw new Error(`/api/auth/session returned ${session.status}`);
+const sessionBody = await session.json();
+if (sessionBody.session?.userId !== 'user_smoke') throw new Error('Auth session payload is invalid.');
+
+const missing = await fetch(`${baseUrl}/missing`);
+if (missing.status !== 404) throw new Error(`/missing returned ${missing.status}`);
+
+await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+console.log('[server-smoke] PASS (/health/live, /health, /api/auth/session, CORS, 404)');

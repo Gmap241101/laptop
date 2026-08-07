@@ -1,0 +1,86 @@
+GitHub Education Phase 3 Clerk Auth Foundation Validation
+=========================================================
+
+Baseline
+--------
+rental-system-github-education-phase2-backend-foundation-20260807_deployment_package.zip
+
+Scope
+-----
+- Preserve existing React/Firebase production behavior
+- Add Clerk session JWT verification boundary to Node backend
+- Add protected GET /api/auth/session endpoint
+- Enforce RS256, signature, exp, nbf, azp, and pending-session checks
+- Require Clerk public-key configuration in staging/production
+- Add no new external npm dependency
+- Preserve Phase 2 PostgreSQL schema/migration behavior
+
+Validation Results
+------------------
+PASS - server JavaScript syntax/contract validation
+PASS - Procfile and Phase 2 migration invariants retained
+PASS - server handler smoke: /health/live
+PASS - server handler smoke: /health
+PASS - server handler smoke: /api/auth/session
+PASS - server handler smoke: CORS
+PASS - server handler smoke: 404
+PASS - Clerk auth smoke: valid locally signed RS256 JWT -> HTTP 200
+PASS - Clerk auth smoke: missing bearer token -> HTTP 401
+PASS - Clerk auth smoke: disallowed azp -> HTTP 401
+PASS - Clerk auth smoke: expired JWT -> HTTP 401
+PASS - Clerk auth smoke: sts=pending -> HTTP 401
+PASS - Clerk auth smoke: non-RS256 alg -> HTTP 401
+PASS - Clerk auth smoke: signature from different key -> HTTP 401
+PASS - Clerk auth smoke: Authorization CORS preflight -> HTTP 204
+PASS - staging-like config with valid RSA public key
+PASS - staging config without CLERK_JWT_KEY is blocked with exit code 1
+PASS - server package.json/package-lock version and dependency set match
+PASS - React hook audit: 144 source files
+PASS - application flow contract audit: 124 contracts, 11 user routes, 20 administrator tabs
+PASS - Firestore strict audit: 129 calls, 51 approved risk findings, 0 unapproved warnings, 0 errors
+PASS - legacy `npm run deploy` remains blocked with exit code 1
+PASS - production deploy without CONFIRM_PRODUCTION_DEPLOY remains blocked with exit code 1
+PASS - Clerk secret material scan: no secret key material found
+
+Authentication Security Properties
+----------------------------------
+- Authorization header must be Bearer format.
+- JWT algorithm must be RS256.
+- Signature is verified with CLERK_JWT_KEY using Node.js built-in crypto.
+- exp and nbf claims are validated with configurable 0-60 second clock skew.
+- sub and sid claims are required.
+- azp is checked against exact CLERK_AUTHORIZED_PARTIES when present.
+- sts=pending is rejected by default.
+- Raw JWT and signature are never returned by /api/auth/session.
+- Authentication errors return a generic unauthorized response to clients.
+
+Build / External Environment Limitation
+---------------------------------------
+No new npm dependency was added in Phase 3, so the Phase 2 server lockfile dependency set remains pg@8.22.0 only.
+The current execution environment does not provide the user's real Clerk application, Clerk JWT public key, Heroku app, or a real Clerk session token. Therefore the cryptographic behavior was tested with an ephemeral RSA key pair and Clerk-compatible JWT claim shapes, not with the user's live Clerk instance.
+
+A real PostgreSQL migration/socket test remains dependent on the user's Heroku Postgres environment. No PostgreSQL migration was added in Phase 3.
+Frontend npm install/Vite build remains subject to the existing execution-environment npm registry limitation; Phase 3 adds no frontend dependency and does not modify the frontend runtime.
+
+Production Impact
+-----------------
+None. Existing React/Firebase runtime code remains unchanged and does not call the Phase 3 auth endpoint.
+
+Preservation Checks
+-------------------
+PASS - src/App.jsx unchanged from Phase 2: 2,130 lines / 66,036 bytes
+PASS - src/App.jsx SHA-256 unchanged: b30af55defc814cac9b33e056f4c89263444eca04b565c89ef0517d96b4b1117
+PASS - src/firebase.js unchanged from Phase 2
+PASS - rules/firestore.rules unchanged from Phase 2
+PASS - firestore.indexes.json unchanged from Phase 2
+PASS - public/CNAME unchanged: notebook.recruit.kro.kr
+PASS - vercel.json unchanged from Phase 2
+PASS - no source/config files deleted in Phase 3
+PASS - cumulative REMOVED_FILES.txt retained (65 entries)
+
+Expected Package Scope
+----------------------
+Modified existing source/config files: 11
+New source/config/report files: 4
+Deleted source/config files: 0
+Expected source manifest count after Phase 3: 526

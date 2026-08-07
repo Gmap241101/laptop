@@ -1,0 +1,55 @@
+GitHub Education Phase 3 deployment package compatibility fix validation
+Date: 2026-08-07
+Baseline: rental-system-github-education-phase3-clerk-auth-foundation-20260807_deployment_package.zip
+
+ROOT CAUSE
+- The baseline package physically contained .env.example.
+- package-meta/PACKAGE_FILES.txt listed .env.example as a replacement payload entry.
+- deploy.ps1 v13.1 correctly rejects .env* as protected paths, so deployment stopped before completion.
+
+FIX
+- Removed .env.example from the deliverable package.
+- Moved non-secret configuration examples to docs/github-education/HEROKU_CONFIG_VARS_TEMPLATE.txt.
+- Removed the .gitignore exception that allowed .env.example.
+- Updated tools/backend/validate-server-foundation.mjs to validate the safe config template instead.
+- Added tools/deployment/validate-package-manifest.mjs.
+- Added npm run package:guard.
+- The package guard rejects .env*, .git, node_modules, dist, secrets/.secrets, and deploy.ps1 entries.
+- .env.example is intentionally NOT added to REMOVED_FILES.txt because .env* is a protected local path and must not be mutated by the replacement package.
+
+REGRESSION VALIDATION
+- server foundation syntax/invariants: PASS
+- server HTTP smoke: PASS
+- Clerk JWT cryptographic smoke: PASS
+- React hook audit: PASS (144 source files)
+- application flow contract audit: PASS (124 contracts; 11 user routes; 20 administrator tabs)
+- Firestore strict audit: PASS (129 calls; approved risk 51; warnings 0; errors 0)
+- legacy npm run deploy guard: PASS (blocked intentionally)
+- package manifest protected-path guard: PASS
+- negative package guard with injected .env.example: PASS (rejected with exit code 1)
+
+PRODUCTION CORE SHA COMPARISON AGAINST PHASE 3 BASELINE
+- src/App.jsx: SAME
+- src/firebase.js: SAME
+- rules/firestore.rules: SAME
+- firestore.indexes.json: SAME
+- public/CNAME: SAME
+- vercel.json: SAME
+- App.jsx: 2,130 lines / 66,036 bytes
+
+FUNCTIONAL / DATABASE IMPACT
+- Existing React UI: no change
+- Firebase Auth: no change
+- Firestore access/logic: no change
+- Firestore rules/indexes: no change
+- PostgreSQL migrations: no change
+- Clerk JWT verification behavior: no change
+- CNAME / production domain: no change
+- Fix scope is deployment-package compatibility and validation only.
+
+EXTERNAL DEPENDENCIES
+- No new npm package.
+
+DEPLOYMENT RULE
+- Apply only to gh-pages-3 / staging.
+- Do not publish gh-pages / production.

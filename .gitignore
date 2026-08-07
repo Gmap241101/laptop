@@ -7,8 +7,6 @@ firebase-debug.log
 # Local performance and Firestore audit outputs
 .performance-reports/
 
-# Local/server environment files and secrets
+# Local environment files (never commit secrets)
 .env
 .env.*
-server/.env
-server/.env.*

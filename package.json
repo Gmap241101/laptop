@@ -6,12 +6,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build:staging": "vite build --mode staging",
-    "build:production": "vite build --mode production",
     "deploy": "node tools/deployment/block-legacy-deploy.mjs",
+    "build:staging": "npm run prebuild && vite build --mode staging",
+    "build:production": "npm run prebuild && vite build --mode production",
     "deploy:production": "node tools/deployment/deploy-production.mjs",
-    "build": "vite build",
     "prebuild": "npm run audit:react-hooks && npm run audit:app-flows && npm run audit:firestore:strict",
+    "build": "vite build",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "analyze:source": "node tools/analyze-source-graph.mjs",
@@ -23,10 +23,17 @@
     "audit:firestore:strict": "node tools/audit-firestore-access.mjs --strict",
     "verify:performance": "npm run audit:react-hooks && npm run audit:app-flows && npm run audit:firestore:strict && npm run analyze:source",
     "audit:app-flows": "node tools/audit-app-flow-contracts.mjs",
+    "start": "node server/src/index.mjs",
+    "server:start": "node server/src/index.mjs",
     "server:check": "node tools/backend/validate-server-foundation.mjs",
     "server:config:check": "node server/scripts/check-config.mjs",
-    "heroku-build": "node tools/backend/prepare-server-dependencies.mjs",
-    "heroku-postbuild": "node tools/backend/prepare-server-dependencies.mjs"
+    "server:prepare": "node tools/backend/prepare-server-dependencies.mjs",
+    "db:migrate": "node server/scripts/migrate.mjs",
+    "heroku-build": "npm run server:prepare",
+    "heroku-postbuild": "npm run server:prepare",
+    "server:smoke": "node tools/backend/smoke-server-handler.mjs",
+    "server:auth:smoke": "node tools/backend/smoke-clerk-auth.mjs",
+    "package:guard": "node tools/deployment/validate-package-manifest.mjs"
   },
   "dependencies": {
     "firebase": "^10.14.1",
@@ -46,6 +53,10 @@
     "vite": "^5.1.0"
   },
   "engines": {
-    "node": "22.x"
-  }
+    "node": "22.x",
+    "npm": "10.x"
+  },
+  "cacheDirectories": [
+    "server/node_modules"
+  ]
 }

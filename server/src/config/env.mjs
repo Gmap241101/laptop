@@ -3,67 +3,147 @@ const DEFAULT_PORT = 3001;
 const DEFAULT_DB_POOL_MAX = 5;
 const DEFAULT_CONNECTION_TIMEOUT_MS = 5000;
 const DEFAULT_IDLE_TIMEOUT_MS = 10000;
+const DEFAULT_CLERK_CLOCK_SKEW_SECONDS = 5;
 const SSL_MODES = new Set(['auto', 'require', 'disable']);
 
 const readInteger = (name, fallback, { min, max }) => {
   const raw = process.env[name];
   if (raw === undefined || raw === '') return fallback;
+
   const value = Number.parseInt(raw, 10);
   if (!Number.isInteger(value) || value < min || value > max) {
     throw new Error(`${name} must be an integer between ${min} and ${max}.`);
   }
+
   return value;
 };
 
-const readOrigins = (appEnv) => {
-  const raw = process.env.CORS_ALLOWED_ORIGINS?.trim();
-  if (!raw) {
-    if (appEnv === 'local' || appEnv === 'development') return [DEFAULT_LOCAL_ORIGIN];
-    throw new Error('CORS_ALLOWED_ORIGINS is required outside local development.');
+const readBoolean = (name, fallback) => {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === 'true') return true;
+  if (normalized === 'false') return false;
+  throw new Error(`${name} must be true or false.`);
+};
+
+const normalizeOrigins = (name, raw) => {
+  const origins = raw
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  if (origins.length === 0) {
+    throw new Error(`${name} must contain at least one origin.`);
   }
-  const origins = raw.split(',').map((origin) => origin.trim()).filter(Boolean);
-  if (origins.length === 0) throw new Error('CORS_ALLOWED_ORIGINS must contain at least one origin.');
-  for (const origin of origins) {
+
+  const normalized = origins.map((origin) => {
     const parsed = new URL(origin);
-    if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error(`Unsupported CORS origin protocol: ${origin}`);
-    if (parsed.pathname !== '/' || parsed.search || parsed.hash) throw new Error(`CORS origin must not include a path, query, or hash: ${origin}`);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error(`Unsupported ${name} protocol: ${origin}`);
+    }
+    if (parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) {
+      throw new Error(`${name} entries must be origins only (no credentials, path, query, or hash): ${origin}`);
+    }
+    return parsed.origin;
+  });
+
+  return [...new Set(normalized)];
+};
+
+const readOrigins = (name, appEnv, fallbackToLocal = false) => {
+  const raw = process.env[name]?.trim();
+  if (!raw) {
+    if (fallbackToLocal && (appEnv === 'local' || appEnv === 'development' || appEnv === 'test')) {
+      return [DEFAULT_LOCAL_ORIGIN];
+    }
+    throw new Error(`${name} is required outside local development.`);
   }
-  return [...new Set(origins)];
+
+  return normalizeOrigins(name, raw);
 };
 
 const readDatabaseUrl = () => {
   const raw = process.env.DATABASE_URL?.trim();
-  if (!raw) throw new Error('DATABASE_URL is required.');
+  if (!raw) {
+    throw new Error('DATABASE_URL is required.');
+  }
+
   const parsed = new URL(raw);
-  if (!['postgres:', 'postgresql:'].includes(parsed.protocol)) throw new Error('DATABASE_URL must use postgres:// or postgresql://.');
+  if (!['postgres:', 'postgresql:'].includes(parsed.protocol)) {
+    throw new Error('DATABASE_URL must use postgres:// or postgresql://.');
+  }
+
   return raw;
 };
 
 const readSslMode = () => {
   const mode = (process.env.DATABASE_SSL_MODE || 'auto').trim().toLowerCase();
-  if (!SSL_MODES.has(mode)) throw new Error('DATABASE_SSL_MODE must be one of: auto, require, disable.');
+  if (!SSL_MODES.has(mode)) {
+    throw new Error('DATABASE_SSL_MODE must be one of: auto, require, disable.');
+  }
   return mode;
+};
+
+const normalizePem = (value) => value.replace(/\\n/g, '\n').trim();
+
+const readClerkJwtKey = (appEnv) => {
+  const raw = process.env.CLERK_JWT_KEY?.trim();
+  if (!raw) {
+    if (appEnv === 'local' || appEnv === 'development' || appEnv === 'test') {
+      return null;
+    }
+    throw new Error('CLERK_JWT_KEY is required outside local development.');
+  }
+
+  const normalized = normalizePem(raw);
+  if (!/-----BEGIN (?:RSA )?PUBLIC KEY-----/.test(normalized)) {
+    throw new Error('CLERK_JWT_KEY must be a PEM public key from the Clerk API keys page.');
+  }
+  return normalized;
 };
 
 export const readServerConfig = () => {
   const appEnv = (process.env.APP_ENV || 'local').trim().toLowerCase();
+  const corsAllowedOrigins = readOrigins('CORS_ALLOWED_ORIGINS', appEnv, true);
+  const clerkJwtKey = readClerkJwtKey(appEnv);
+  const clerkAuthorizedParties = clerkJwtKey
+    ? readOrigins('CLERK_AUTHORIZED_PARTIES', appEnv, true)
+    : [];
+
   return Object.freeze({
     appEnv,
     serviceName: (process.env.SERVICE_NAME || 'rental-api').trim(),
-    serviceVersion: (process.env.SERVICE_VERSION || 'phase2').trim(),
+    serviceVersion: (process.env.SERVICE_VERSION || 'phase3').trim(),
     port: readInteger('PORT', DEFAULT_PORT, { min: 1, max: 65535 }),
     databaseUrl: readDatabaseUrl(),
     databaseSslMode: readSslMode(),
     dbPoolMax: readInteger('DB_POOL_MAX', DEFAULT_DB_POOL_MAX, { min: 1, max: 10 }),
-    dbConnectionTimeoutMs: readInteger('DB_CONNECTION_TIMEOUT_MS', DEFAULT_CONNECTION_TIMEOUT_MS, { min: 1000, max: 30000 }),
-    dbIdleTimeoutMs: readInteger('DB_IDLE_TIMEOUT_MS', DEFAULT_IDLE_TIMEOUT_MS, { min: 1000, max: 60000 }),
-    corsAllowedOrigins: readOrigins(appEnv),
+    dbConnectionTimeoutMs: readInteger(
+      'DB_CONNECTION_TIMEOUT_MS',
+      DEFAULT_CONNECTION_TIMEOUT_MS,
+      { min: 1000, max: 30000 },
+    ),
+    dbIdleTimeoutMs: readInteger('DB_IDLE_TIMEOUT_MS', DEFAULT_IDLE_TIMEOUT_MS, {
+      min: 1000,
+      max: 60000,
+    }),
+    corsAllowedOrigins,
+    clerkJwtKey,
+    clerkAuthorizedParties,
+    clerkClockSkewSeconds: readInteger(
+      'CLERK_CLOCK_SKEW_SECONDS',
+      DEFAULT_CLERK_CLOCK_SKEW_SECONDS,
+      { min: 0, max: 60 },
+    ),
+    clerkRejectPendingSession: readBoolean('CLERK_REJECT_PENDING_SESSION', true),
   });
 };
 
 export const shouldUseDatabaseSsl = (databaseUrl, sslMode) => {
   if (sslMode === 'require') return true;
   if (sslMode === 'disable') return false;
+
   const hostname = new URL(databaseUrl).hostname.toLowerCase();
   return !['localhost', '127.0.0.1', '::1'].includes(hostname);
 };
