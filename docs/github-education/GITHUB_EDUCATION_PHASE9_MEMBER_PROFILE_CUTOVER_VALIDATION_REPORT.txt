@@ -1,0 +1,112 @@
+GitHub Education Phase 9 Validation
+===================================
+
+Baseline
+--------
+rental-system-github-education-phase8-member-profile-parallel-read-20260807_deployment_package.zip
+
+Scope
+-----
+- staging-only member-profile opt-in read cutover
+- PostgreSQL preferred only when equivalent to the live Firestore userAccounts snapshot
+- Firestore onSnapshot retained as realtime guard/fallback
+- migration 005 completes the current React userProfile runtime contract
+
+Change inventory vs Phase 8
+---------------------------
+- source/config baseline: 570 files
+- Phase 9 source/config: 577 files
+- new files: 7
+- modified existing files: 18
+- deleted files: 0
+- cumulative REMOVED_FILES list: unchanged
+
+App.jsx
+-------
+- Phase 8 lines: 2,130
+- Phase 9 lines: 2,130
+- Phase 8 bytes: 66,036
+- Phase 9 bytes: 66,036
+- SHA-256: b30af55defc814cac9b33e056f4c89263444eca04b565c89ef0517d96b4b1117
+- result: unchanged
+
+Production-sensitive baseline comparison
+----------------------------------------
+- src/App.jsx: SAME
+- src/firebase.js: SAME
+- rules/firestore.rules: SAME
+- firestore.indexes.json: SAME
+- public/CNAME: SAME
+- vercel.json: SAME
+- src/main.jsx: SAME
+- root package-lock.json: SAME
+
+Static / smoke validation
+-------------------------
+- migration static check: PASS
+- Clerk frontend smoke: PASS
+- Phase 8 member read parity smoke: PASS
+- Phase 9 member cutover frontend smoke: PASS
+- server foundation validation: PASS
+- server HTTP smoke including Firebase-authenticated cutover candidate: PASS
+- Clerk RS256 JWT smoke: PASS
+- Clerk Backend API/PostgreSQL identity smoke: PASS
+- Firebase ID-token bridge smoke: PASS
+- Firestore member shadow smoke: PASS
+- Phase 9 linked-Firebase-to-runtime-shadow smoke: PASS
+- React Hook audit: PASS (148 source files)
+- application flow audit: PASS (124 contracts, 11 user routes, 20 administrator tabs)
+- Firestore strict audit: PASS
+  total calls: 129
+  onSnapshot: 35
+  getDocs: 48
+  getDoc: 28
+  getCountFromServer: 18
+  approved risks: 51
+  new warnings: 0
+  errors: 0
+
+Security / fallback validation
+------------------------------
+- requires VITE_CLERK_STAGING_ENABLED=true: PASS
+- requires VITE_MEMBER_PROFILE_POSTGRES_READ_ENABLED=true: PASS
+- requires explicit ?memberRead=postgres: PASS
+- cutover candidate uses Firebase ID-token authentication: PASS
+- Firebase UID resolves through existing one-to-one app_user_firebase_links: PASS
+- linked email mismatch is rejected: PASS
+- candidate missing -> Firestore fallback: PASS
+- candidate/profile mismatch -> Firestore fallback: PASS
+- equivalent candidate -> PostgreSQL active source: PASS
+- runtime identityKey/recoveryKey/previousAccountUids preserved: PASS
+- Firestore onSnapshot retained: PASS
+
+Package-guard regression tests
+------------------------------
+- normal PACKAGE_FILES: PASS
+- forced .env.example entry: correctly BLOCKED (exit 1)
+- forced missing-file entry: correctly BLOCKED (exit 1)
+
+Build status
+------------
+`npm run build:staging` completed all prebuild audits and Clerk config checking, then stopped at final Vite invocation because the execution environment does not contain root node_modules/Vite:
+
+  vite: not found
+  exit code 127
+
+No npm dependency was added in Phase 9 and the root package-lock.json is unchanged. Final Vite bundling must therefore be verified by deploy.ps1 v13.1 in the operator environment.
+
+Database impact
+---------------
+New additive migration:
+  005_phase9_member_profile_runtime_contract.sql
+
+Adds to app_user_member_shadows:
+  identity_key TEXT NOT NULL DEFAULT ''
+  recovery_key TEXT NOT NULL DEFAULT ''
+  previous_account_uids JSONB NOT NULL DEFAULT []
+
+No destructive SQL, table deletion, column rename, or Firestore migration is performed.
+
+Firestore impact
+----------------
+The existing Firestore SDK audit remains 129 calls / 35 onSnapshot. Phase 9 does not reduce quota yet because Firestore remains the guard/fallback. No Firestore Rules or indexes are changed.

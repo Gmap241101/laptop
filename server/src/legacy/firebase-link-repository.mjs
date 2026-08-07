@@ -40,6 +40,16 @@ export const createFirebaseLinkRepository = (pool) => {
       return mapRow(result.rows[0]);
     },
 
+    async findByFirebaseUid(firebaseUid) {
+      const result = await pool.query(
+        `SELECT ${selectColumns}
+           FROM app_user_firebase_links
+          WHERE firebase_uid = $1`,
+        [firebaseUid],
+      );
+      return mapRow(result.rows[0]);
+    },
+
     async link(appUserId, firebaseIdentity) {
       const existingForUser = await pool.query(
         `SELECT ${selectColumns}

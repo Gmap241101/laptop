@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 const phase2 = readFileSync('server/migrations/001_phase2_platform_baseline.sql', 'utf8');
 const phase6 = readFileSync('server/migrations/003_phase6_firebase_identity_bridge.sql', 'utf8');
 const phase7 = readFileSync('server/migrations/004_phase7_member_profile_shadow.sql', 'utf8');
+const phase9 = readFileSync('server/migrations/005_phase9_member_profile_runtime_contract.sql', 'utf8');
 
 if (!/value\s+JSONB\s+NOT\s+NULL/i.test(phase2)) {
   throw new Error('app_runtime_metadata.value must remain JSONB NOT NULL.');
@@ -30,4 +31,13 @@ for (const marker of [
   if (!phase7.includes(marker)) throw new Error(`Phase 7 member shadow migration marker is missing: ${marker}`);
 }
 
-console.log('[migration-static-check] PASS (Phase 6 identity bridge + Phase 7 read-only member shadow migrations are type-safe)');
+for (const marker of [
+  'ADD COLUMN IF NOT EXISTS identity_key',
+  'ADD COLUMN IF NOT EXISTS recovery_key',
+  'ADD COLUMN IF NOT EXISTS previous_account_uids JSONB',
+  "'mode', 'postgresql-preferred-with-firestore-guard'",
+]) {
+  if (!phase9.includes(marker)) throw new Error(`Phase 9 member runtime-contract migration marker is missing: ${marker}`);
+}
+
+console.log('[migration-static-check] PASS (Phase 6 identity bridge + Phase 7 shadow + Phase 9 runtime read-contract migrations are type-safe)');

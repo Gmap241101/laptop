@@ -53,6 +53,11 @@ export const normalizeMemberSource = ({ document, firebaseUid }) => {
     rejoinedAccount: Boolean(sourcePayload.rejoinedAccount),
     termsConsentRevision: normalizeInteger(sourcePayload.termsConsentRevision),
     termsConsentPolicyVersion: normalizeInteger(sourcePayload.termsConsentPolicyVersion),
+    identityKey: normalizeText(sourcePayload.identityKey),
+    recoveryKey: normalizeText(sourcePayload.recoveryKey),
+    previousAccountUids: normalizeArray(sourcePayload.previousAccountUids)
+      .map((value) => normalizeText(value))
+      .filter(Boolean),
     sourceCreatedAt: sourcePayload.createdAt || document?.createTime || null,
     sourceUpdatedAt: sourcePayload.updatedAt || document?.updateTime || null,
     sourceHash: hashPayload(sourcePayload),
@@ -73,6 +78,9 @@ const comparableShadow = (shadow) => ({
   rejoinedAccount: shadow.rejoinedAccount,
   termsConsentRevision: shadow.termsConsentRevision,
   termsConsentPolicyVersion: shadow.termsConsentPolicyVersion,
+  identityKey: shadow.identityKey,
+  recoveryKey: shadow.recoveryKey,
+  previousAccountUids: shadow.previousAccountUids,
 });
 
 const comparableSource = (source) => ({
@@ -89,6 +97,9 @@ const comparableSource = (source) => ({
   rejoinedAccount: source.rejoinedAccount,
   termsConsentRevision: source.termsConsentRevision,
   termsConsentPolicyVersion: source.termsConsentPolicyVersion,
+  identityKey: source.identityKey,
+  recoveryKey: source.recoveryKey,
+  previousAccountUids: source.previousAccountUids,
 });
 
 const changedFields = (shadow, source) => {
@@ -106,8 +117,12 @@ export const createMemberShadowService = ({
   if (!userRepository || typeof userRepository.findByClerkUserId !== 'function') {
     throw new TypeError('userRepository.findByClerkUserId() is required.');
   }
-  if (!firebaseLinkRepository || typeof firebaseLinkRepository.findByAppUserId !== 'function') {
-    throw new TypeError('firebaseLinkRepository.findByAppUserId() is required.');
+  if (
+    !firebaseLinkRepository ||
+    typeof firebaseLinkRepository.findByAppUserId !== 'function' ||
+    typeof firebaseLinkRepository.findByFirebaseUid !== 'function'
+  ) {
+    throw new TypeError('firebaseLinkRepository findByAppUserId/findByFirebaseUid methods are required.');
   }
   if (!memberShadowRepository || typeof memberShadowRepository.findByAppUserId !== 'function' || typeof memberShadowRepository.upsert !== 'function') {
     throw new TypeError('memberShadowRepository find/upsert methods are required.');
@@ -153,6 +168,19 @@ export const createMemberShadowService = ({
     async getCurrent(clerkUserId) {
       const { appUser } = await context(clerkUserId);
       return memberShadowRepository.findByAppUserId(appUser.id);
+    },
+
+    async getCurrentByFirebaseIdentity(firebaseIdentity) {
+      const firebaseUid = normalizeText(firebaseIdentity?.uid);
+      if (!firebaseUid) throw serviceError('firebase_identity_missing', 'Verified Firebase identity is required.');
+      const firebaseLink = await firebaseLinkRepository.findByFirebaseUid(firebaseUid);
+      if (!firebaseLink) throw serviceError('legacy_link_not_found', 'Firebase legacy identity has not been linked.');
+      const tokenEmail = normalizeEmail(firebaseIdentity?.email);
+      const linkedEmail = normalizeEmail(firebaseLink.firebaseEmail);
+      if (tokenEmail && linkedEmail && tokenEmail !== linkedEmail) {
+        throw serviceError('firebase_link_email_mismatch', 'Firebase token email does not match the linked identity.');
+      }
+      return memberShadowRepository.findByAppUserId(firebaseLink.appUserId);
     },
 
     async syncCurrent(clerkUserId, firebaseIdentity) {

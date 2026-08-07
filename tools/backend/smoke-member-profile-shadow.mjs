@@ -87,9 +87,12 @@ const pool = {
         rejoined_account: params[13],
         terms_consent_revision: params[14],
         terms_consent_policy_version: params[15],
-        source_created_at: params[16],
-        source_updated_at: params[17],
-        source_hash: params[18],
+        identity_key: params[16],
+        recovery_key: params[17],
+        previous_account_uids: JSON.parse(params[18]),
+        source_created_at: params[19],
+        source_updated_at: params[20],
+        source_hash: params[21],
         synced_at: new Date('2026-08-07T00:00:00.000Z'),
         created_at: new Date('2026-08-07T00:00:00.000Z'),
         updated_at: new Date('2026-08-07T00:00:00.000Z'),
@@ -110,7 +113,12 @@ const userRepository = {
 const firebaseLinkRepository = {
   async findByAppUserId(appUserId) {
     return String(appUserId) === '9'
-      ? { appUserId: '9', firebaseUid: 'firebase_uid_phase7' }
+      ? { appUserId: '9', firebaseUid: 'firebase_uid_phase7', firebaseEmail: 'phase7@example.com' }
+      : null;
+  },
+  async findByFirebaseUid(firebaseUid) {
+    return firebaseUid === 'firebase_uid_phase7'
+      ? { appUserId: '9', firebaseUid, firebaseEmail: 'phase7@example.com' }
       : null;
   },
 };
@@ -139,7 +147,15 @@ const shadow = await service.syncCurrent('user_phase7', firebaseIdentity);
 assert.equal(shadow.appUserId, '9');
 assert.equal(shadow.name, 'Phase Seven');
 assert.equal(shadow.status, 'active');
+assert.equal(shadow.identityKey, 'identity_phase7');
+assert.equal(shadow.recoveryKey, 'recovery_phase7');
+assert.deepEqual(shadow.previousAccountUids, ['old_uid']);
 assert.equal(shadow.sourceHash.length, 64);
+const firebaseLookup = await service.getCurrentByFirebaseIdentity({
+  uid: 'firebase_uid_phase7',
+  email: 'phase7@example.com',
+});
+assert.equal(firebaseLookup?.appUserId, '9');
 
 const equalComparison = await service.compareCurrent('user_phase7', firebaseIdentity);
 assert.equal(equalComparison.equivalent, true);

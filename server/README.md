@@ -107,3 +107,17 @@ The response declares `source=postgresql-shadow` and `authoritative=false`. No F
 When Clerk staging diagnostics are enabled and `?clerkTest=1` is present, the existing Firestore `onSnapshot()` callback publishes a browser-local sanitized observation. The Phase 8 diagnostics panel compares that exact application read result with the PostgreSQL read candidate. It does not perform another Firestore document read and it does not replace `userProfile` in the application.
 
 Phase 8 introduces no database migration, no new secret, and no new runtime dependency. It is a parity gate for a later staging-only read cutover.
+
+## Phase 9 member-profile opt-in read cutover
+
+Phase 9 adds a staging-only transition path for the current member profile. The existing Firebase Auth session remains the authentication source for this transition endpoint.
+
+- `GET /api/legacy/member-profile-cutover-candidate`
+  - Header: `X-Firebase-Authorization: Bearer <Firebase ID token>`
+  - Resolves the verified Firebase UID through `app_user_firebase_links`.
+  - Returns the linked `app_user_member_shadows` runtime profile.
+  - Does not query Firestore.
+- Migration `005_phase9_member_profile_runtime_contract.sql` adds `identity_key`, `recovery_key`, and `previous_account_uids` to the shadow so the existing React `userProfile` runtime contract remains compatible.
+- The browser cutover is gated by `VITE_MEMBER_PROFILE_POSTGRES_READ_ENABLED=true` and the explicit `?memberRead=postgres` query parameter.
+- Firestore `onSnapshot(userAccounts/{uid})` remains subscribed during Phase 9 as a guard. The PostgreSQL candidate becomes the active `userProfile` only when the candidate is field-equivalent to the live Firestore snapshot. Any mismatch or candidate failure immediately keeps/falls back to Firestore.
+- Because the Firestore guard remains subscribed, Phase 9 is a correctness cutover test, not yet a Firestore quota-reduction phase.

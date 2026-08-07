@@ -17,3 +17,12 @@ VITE_CLERK_PUBLISHABLE_KEY=pk_test_REPLACE_ME
 #   https://YOUR-STAGING-PROJECT.vercel.app/?clerkTest=1
 # The dedicated Vercel test project may build with Vite production mode.
 # Activation is controlled by VITE_CLERK_STAGING_ENABLED=true, and the UI still requires ?clerkTest=1.
+
+
+# Phase 9 opt-in member-profile read cutover. Keep this only on the dedicated mkrental staging project.
+VITE_MEMBER_PROFILE_POSTGRES_READ_ENABLED=true
+
+# The actual cutover still requires the explicit URL query parameter:
+#   ?memberRead=postgres
+# Recommended diagnostics URL:
+#   https://YOUR-STAGING-PROJECT.vercel.app/?clerkTest=1&memberRead=postgres

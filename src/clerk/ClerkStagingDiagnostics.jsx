@@ -7,6 +7,10 @@ import {
   getLatestMemberProfileReadObservation,
   subscribeMemberProfileReadObservation,
 } from '../features/members/memberProfileReadObservation.js';
+import {
+  getLatestMemberProfileCutoverObservation,
+  subscribeMemberProfileCutoverObservation,
+} from '../features/members/memberProfileReadCutover.js';
 import { clerkStagingClient } from './clerkStagingClient.js';
 
 const panelStyle = {
@@ -73,6 +77,11 @@ export default function ClerkStagingDiagnostics() {
     memberReadCandidateProfile: null,
     memberReadCandidateEquivalent: null,
     memberReadCandidateChangedFields: [],
+    cutoverRequested: false,
+    cutoverActiveSource: null,
+    cutoverEquivalent: null,
+    cutoverChangedFields: [],
+    cutoverFallbackReason: null,
     error: null,
   });
 
@@ -158,6 +167,23 @@ export default function ClerkStagingDiagnostics() {
 
     applyObservation(getLatestMemberProfileReadObservation());
     return subscribeMemberProfileReadObservation(applyObservation);
+  }, [requested]);
+
+  useEffect(() => {
+    if (!requested) return undefined;
+    const applyCutover = (observation) => {
+      setState((current) => ({
+        ...current,
+        cutoverRequested: Boolean(observation?.requested),
+        cutoverActiveSource: observation?.activeSource || null,
+        cutoverEquivalent:
+          typeof observation?.equivalent === 'boolean' ? observation.equivalent : null,
+        cutoverChangedFields: observation?.changedFields || [],
+        cutoverFallbackReason: observation?.fallbackReason || null,
+      }));
+    };
+    applyCutover(getLatestMemberProfileCutoverObservation());
+    return subscribeMemberProfileCutoverObservation(applyCutover);
   }, [requested]);
 
   if (!requested) return null;
@@ -321,7 +347,7 @@ export default function ClerkStagingDiagnostics() {
 
   return (
     <aside style={panelStyle} aria-label="Clerk staging diagnostics">
-      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 8</div>
+      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 9</div>
       <div>SDK: {state.phase === 'loading' ? 'loading' : state.phase}</div>
       <div>Signed in: {state.signedIn ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Clerk user: {state.userId || '-'}</div>
@@ -367,6 +393,15 @@ export default function ClerkStagingDiagnostics() {
       <div style={{ overflowWrap: 'anywhere' }}>
         Read changed fields: {state.memberReadCandidateChangedFields.length ? state.memberReadCandidateChangedFields.join(', ') : '-'}
       </div>
+
+      <div style={{ marginTop: '6px', fontWeight: 700 }}>Member profile opt-in cutover</div>
+      <div>Cutover requested: {state.cutoverRequested ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Active read source: {state.cutoverActiveSource || '-'}</div>
+      <div>Cutover equivalent: {state.cutoverEquivalent === null ? '-' : state.cutoverEquivalent ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>
+        Cutover changed fields: {state.cutoverChangedFields.length ? state.cutoverChangedFields.join(', ') : '-'}
+      </div>
+      <div style={{ overflowWrap: 'anywhere' }}>Fallback reason: {state.cutoverFallbackReason || '-'}</div>
 
       {state.error ? (
         <div role="alert" style={{ marginTop: '8px', color: '#b91c1c', overflowWrap: 'anywhere' }}>

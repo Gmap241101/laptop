@@ -5,7 +5,7 @@ const allowedOrigin = 'https://staging.example.vercel.app';
 const config = {
   serviceName: 'rental-api',
   appEnv: 'test',
-  serviceVersion: 'phase8-smoke',
+  serviceVersion: 'phase9-smoke',
   corsAllowedOrigins: [allowedOrigin],
 };
 
@@ -85,6 +85,10 @@ const memberShadowService = {
     if (userId !== 'user_smoke') throw new Error('Unexpected member-shadow user ID.');
     return memberShadow;
   },
+  async getCurrentByFirebaseIdentity(firebaseIdentity) {
+    if (firebaseIdentity.uid !== 'firebase_uid_smoke') throw new Error('Unexpected Firebase cutover identity.');
+    return memberShadow;
+  },
   async syncCurrent(userId, firebaseIdentity) {
     if (userId !== 'user_smoke' || firebaseIdentity.uid !== 'firebase_uid_smoke') {
       throw new Error('Unexpected member-shadow sync identity.');
@@ -105,6 +109,9 @@ const memberShadowService = {
       rejoinedAccount: false,
       termsConsentRevision: 0,
       termsConsentPolicyVersion: 0,
+      identityKey: 'identity_smoke',
+      recoveryKey: 'recovery_smoke',
+      previousAccountUids: ['firebase_uid_old'],
       sourceHash: 'a'.repeat(64),
       sourceCreatedAt: new Date('2026-08-07T00:00:00.000Z'),
       sourceUpdatedAt: new Date('2026-08-07T00:00:00.000Z'),
@@ -255,6 +262,25 @@ if (
   throw new Error('Member profile read candidate response is invalid.');
 }
 
+const firebaseCutoverCandidate = await fetch(`${baseUrl}/api/legacy/member-profile-cutover-candidate`, {
+  headers: {
+    Origin: allowedOrigin,
+    'X-Firebase-Authorization': 'Bearer firebase-smoke-token',
+  },
+});
+if (firebaseCutoverCandidate.status !== 200) {
+  throw new Error(`/api/legacy/member-profile-cutover-candidate returned ${firebaseCutoverCandidate.status}`);
+}
+const firebaseCutoverBody = await firebaseCutoverCandidate.json();
+if (
+  firebaseCutoverBody.authentication !== 'firebase-id-token' ||
+  firebaseCutoverBody.readCandidate?.profile?.identityKey !== 'identity_smoke' ||
+  firebaseCutoverBody.readCandidate?.profile?.recoveryKey !== 'recovery_smoke' ||
+  firebaseCutoverBody.readCandidate?.profile?.previousAccountUids?.[0] !== 'firebase_uid_old'
+) {
+  throw new Error('Firebase-authenticated member cutover candidate response is invalid.');
+}
+
 const compareMemberShadow = await fetch(`${baseUrl}/api/users/me/legacy/member-shadow/compare`, {
   method: 'POST',
   headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
@@ -275,4 +301,4 @@ const missing = await fetch(`${baseUrl}/missing`);
 if (missing.status !== 404) throw new Error(`/missing returned ${missing.status}`);
 
 await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 8 PostgreSQL read candidate, CORS, 404)');
+console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 Firebase-authenticated PostgreSQL cutover candidate, CORS, 404)');

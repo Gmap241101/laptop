@@ -79,6 +79,9 @@ const sanitizeMemberShadow = (shadow) => ({
   rejoinedAccount: shadow.rejoinedAccount,
   termsConsentRevision: shadow.termsConsentRevision,
   termsConsentPolicyVersion: shadow.termsConsentPolicyVersion,
+  identityKey: shadow.identityKey,
+  recoveryKey: shadow.recoveryKey,
+  previousAccountUids: shadow.previousAccountUids,
   sourceHash: shadow.sourceHash,
   sourceCreatedAt: shadow.sourceCreatedAt,
   sourceUpdatedAt: shadow.sourceUpdatedAt,
@@ -113,6 +116,9 @@ const sanitizeMemberProfileReadCandidate = (shadow) => ({
     rejoinedAccount: shadow.rejoinedAccount,
     termsConsentRevision: shadow.termsConsentRevision,
     termsConsentPolicyVersion: shadow.termsConsentPolicyVersion,
+    identityKey: shadow.identityKey,
+    recoveryKey: shadow.recoveryKey,
+    previousAccountUids: shadow.previousAccountUids,
   },
   sourceHash: shadow.sourceHash,
   sourceUpdatedAt: shadow.sourceUpdatedAt,
@@ -146,10 +152,11 @@ export const createRequestHandler = ({
   if (
     !memberShadowService ||
     typeof memberShadowService.getCurrent !== 'function' ||
+    typeof memberShadowService.getCurrentByFirebaseIdentity !== 'function' ||
     typeof memberShadowService.syncCurrent !== 'function' ||
     typeof memberShadowService.compareCurrent !== 'function'
   ) {
-    throw new TypeError('memberShadowService getCurrent/syncCurrent/compareCurrent methods are required.');
+    throw new TypeError('memberShadowService getCurrent/getCurrentByFirebaseIdentity/syncCurrent/compareCurrent methods are required.');
   }
 
   const basePayload = {
@@ -217,6 +224,7 @@ export const createRequestHandler = ({
           firebaseLink: '/api/users/me/legacy/firebase',
           memberShadow: '/api/users/me/legacy/member-shadow',
           memberProfileReadCandidate: '/api/users/me/member-profile-candidate',
+          memberProfileCutoverCandidate: '/api/legacy/member-profile-cutover-candidate',
         },
         headers,
       );
@@ -445,6 +453,45 @@ export const createRequestHandler = ({
       return;
     }
 
+
+
+    if (request.method === 'GET' && url.pathname === '/api/legacy/member-profile-cutover-candidate') {
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+
+      try {
+        const shadow = await memberShadowService.getCurrentByFirebaseIdentity(firebaseIdentity);
+        if (!shadow) {
+          writeJson(
+            response,
+            404,
+            { ...basePayload, authenticated: true, error: 'member_shadow_not_found' },
+            headers,
+          );
+          return;
+        }
+        writeJson(
+          response,
+          200,
+          {
+            ...basePayload,
+            authenticated: true,
+            authentication: 'firebase-id-token',
+            readCandidate: sanitizeMemberProfileReadCandidate(shadow),
+          },
+          headers,
+        );
+      } catch (error) {
+        console.error('[member-read] Firebase-authenticated cutover candidate lookup failed', {
+          requestId,
+          code: error?.code,
+          name: error?.name,
+        });
+        const statusCode = ['legacy_link_not_found', 'firebase_link_email_mismatch'].includes(error?.code) ? 409 : 503;
+        writeJson(response, statusCode, { ...basePayload, authenticated: true, error: error?.code || 'member_read_cutover_candidate_unavailable' }, headers);
+      }
+      return;
+    }
 
     if (request.method === 'GET' && url.pathname === '/api/users/me/member-profile-candidate') {
       const auth = await authenticate(request, response, headers, requestId);

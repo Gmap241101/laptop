@@ -19,6 +19,12 @@ import {
   normalizeUserSessionPolicy,
 } from '../../utils/systemSettings.js';
 import { publishMemberProfileReadObservation } from '../members/memberProfileReadObservation.js';
+import {
+  chooseMemberProfileReadSource,
+  publishMemberProfileCutoverObservation,
+  readMemberProfileCutoverConfig,
+  requestMemberProfileCutoverCandidate,
+} from '../members/memberProfileReadCutover.js';
 import { createDefaultUserProfileForm } from '../members/useUserMyPageAccountController.js';
 
 export const normalizeAdminAccounts = function(adminAccounts) {
@@ -319,45 +325,111 @@ export default function useAuthIdentityPolicySubscriptionController({
 
     setUserProfileReady(false);
 
-    const unsubscribe = onSnapshot(
-      doc(db, USER_ACCOUNTS_COLLECTION_NAME, firebaseAuthUser.uid),
-      (snapshot) => {
-        if (!snapshot.exists()) {
-          publishMemberProfileReadObservation({ firebaseUid: firebaseAuthUser.uid, profile: null });
-          setUserProfile(null);
-          setUserProfileForm({
-            name: firebaseAuthUser.displayName || '',
-            team: '',
-            phonePrefix: '010',
-            phoneMiddle: '',
-            phoneLast: '',
-            newPassword: '',
-            newPasswordConfirm: '',
-          });
-          setUserProfileReady(true);
-          return;
-        }
+    let active = true;
+    let firestoreProfile = undefined;
+    let postgresProfile = null;
+    let postgresCandidateState = 'pending';
+    let postgresCandidateError = '';
+    const cutoverConfig = readMemberProfileCutoverConfig();
 
-        const profileData = snapshot.data();
+    const applyResolvedProfile = () => {
+      if (!active || firestoreProfile === undefined) return;
+      const decision = chooseMemberProfileReadSource({
+        firestoreProfile,
+        postgresProfile,
+        requested: cutoverConfig.requested && postgresCandidateState === 'ready',
+      });
+      const fallbackReason = cutoverConfig.requested
+        ? postgresCandidateState === 'error'
+          ? postgresCandidateError || 'postgres-candidate-error'
+          : postgresCandidateState === 'pending'
+            ? 'postgres-candidate-pending'
+            : decision.fallbackReason
+        : decision.fallbackReason;
 
-        publishMemberProfileReadObservation({
-          firebaseUid: firebaseAuthUser.uid,
-          profile: profileData,
-        });
+      publishMemberProfileCutoverObservation({
+        requested: cutoverConfig.requested,
+        enabled: cutoverConfig.enabled,
+        firebaseUid: firebaseAuthUser.uid,
+        activeSource: decision.source,
+        equivalent: decision.equivalent,
+        changedFields: decision.changedFields,
+        fallbackReason,
+      });
 
-        const parsedPhone = parseDomesticPhoneNumber(profileData.phone || '');
-
-        setUserProfile(profileData);
+      const resolvedProfile = decision.profile;
+      if (!resolvedProfile) {
+        setUserProfile(null);
         setUserProfileForm({
-          name: profileData.name || '',
-          team: profileData.team || '',
-          phonePrefix: parsedPhone.prefix,
-          phoneMiddle: parsedPhone.middle,
-          phoneLast: parsedPhone.last,
+          name: firebaseAuthUser.displayName || '',
+          team: '',
+          phonePrefix: '010',
+          phoneMiddle: '',
+          phoneLast: '',
           newPassword: '',
           newPasswordConfirm: '',
         });
         setUserProfileReady(true);
+        return;
+      }
+
+      const parsedPhone = parseDomesticPhoneNumber(resolvedProfile.phone || '');
+      setUserProfile(resolvedProfile);
+      setUserProfileForm({
+        name: resolvedProfile.name || '',
+        team: resolvedProfile.team || '',
+        phonePrefix: parsedPhone.prefix,
+        phoneMiddle: parsedPhone.middle,
+        phoneLast: parsedPhone.last,
+        newPassword: '',
+        newPasswordConfirm: '',
+      });
+      setUserProfileReady(true);
+    };
+
+    if (cutoverConfig.requested) {
+      void requestMemberProfileCutoverCandidate({
+        firebaseUser: firebaseAuthUser,
+        apiBaseUrl: cutoverConfig.apiBaseUrl,
+      })
+        .then((candidate) => {
+          if (!active) return;
+          postgresProfile = candidate.profile;
+          postgresCandidateState = 'ready';
+          postgresCandidateError = '';
+          applyResolvedProfile();
+        })
+        .catch((error) => {
+          if (!active) return;
+          console.warn('PostgreSQL member profile cutover candidate unavailable; Firestore fallback remains active.', {
+            code: error?.code,
+            status: error?.status,
+          });
+          postgresProfile = null;
+          postgresCandidateState = 'error';
+          postgresCandidateError = error?.code || 'postgres-candidate-error';
+          applyResolvedProfile();
+        });
+    } else {
+      postgresCandidateState = 'disabled';
+    }
+
+    const unsubscribe = onSnapshot(
+      doc(db, USER_ACCOUNTS_COLLECTION_NAME, firebaseAuthUser.uid),
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          firestoreProfile = null;
+          publishMemberProfileReadObservation({ firebaseUid: firebaseAuthUser.uid, profile: null });
+          applyResolvedProfile();
+          return;
+        }
+
+        firestoreProfile = snapshot.data();
+        publishMemberProfileReadObservation({
+          firebaseUid: firebaseAuthUser.uid,
+          profile: firestoreProfile,
+        });
+        applyResolvedProfile();
       },
       (error) => {
         console.error('User account sync error:', error);
@@ -370,7 +442,10 @@ export default function useAuthIdentityPolicySubscriptionController({
       }
     );
 
-    return unsubscribe;
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, [
     firebaseAuthUser?.displayName,
     firebaseAuthUser?.uid,

@@ -20,6 +20,9 @@ const firestoreProfile = {
   rejoinedAccount: false,
   termsConsentRevision: 4,
   termsConsentPolicyVersion: 2,
+  identityKey: 'identity_test',
+  recoveryKey: 'recovery_test',
+  previousAccountUids: ['firebase_old'],
 };
 
 const candidate = {
@@ -49,7 +52,7 @@ const subscriptionSource = await readFile(
   'utf8',
 );
 assert.match(subscriptionSource, /publishMemberProfileReadObservation\(/);
-assert.match(subscriptionSource, /profile:\s*profileData/);
+assert.match(subscriptionSource, /profile:\s*firestoreProfile/);
 
 const diagnosticsSource = await readFile(
   new URL('../../src/clerk/ClerkStagingDiagnostics.jsx', import.meta.url),
@@ -57,6 +60,6 @@ const diagnosticsSource = await readFile(
 );
 assert.match(diagnosticsSource, /getMemberProfileReadCandidate\(\)/);
 assert.match(diagnosticsSource, /compareMemberProfileReads\(/);
-assert.match(diagnosticsSource, /Phase 8/);
+assert.match(diagnosticsSource, /Phase 9/);
 
 console.log('[member-read-parity-smoke] PASS (actual Firestore subscription observation, PostgreSQL read candidate normalization, parity and drift)');

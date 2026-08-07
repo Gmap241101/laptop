@@ -22,6 +22,13 @@ export const normalizeMemberProfileRead = (profile, firebaseUid = '') => {
     rejoinedAccount: Boolean(profile.rejoinedAccount),
     termsConsentRevision: normalizeInteger(profile.termsConsentRevision),
     termsConsentPolicyVersion: normalizeInteger(profile.termsConsentPolicyVersion),
+    identityKey: trim(profile.identityKey),
+    recoveryKey: trim(profile.recoveryKey),
+    previousAccountUids: Object.freeze(
+      (Array.isArray(profile.previousAccountUids) ? profile.previousAccountUids : [])
+        .map((value) => trim(value))
+        .filter(Boolean),
+    ),
   });
 };
 
@@ -39,6 +46,9 @@ const comparableKeys = Object.freeze([
   'rejoinedAccount',
   'termsConsentRevision',
   'termsConsentPolicyVersion',
+  'identityKey',
+  'recoveryKey',
+  'previousAccountUids',
 ]);
 
 export const compareMemberProfileReads = (left, right) => {
@@ -47,9 +57,14 @@ export const compareMemberProfileReads = (left, right) => {
   if (!normalizedLeft || !normalizedRight) {
     return Object.freeze({ equivalent: false, changedFields: ['profileMissing'] });
   }
-  const changedFields = comparableKeys.filter(
-    (key) => normalizedLeft[key] !== normalizedRight[key],
-  );
+  const changedFields = comparableKeys.filter((key) => {
+    const leftValue = normalizedLeft[key];
+    const rightValue = normalizedRight[key];
+    if (Array.isArray(leftValue) || Array.isArray(rightValue)) {
+      return JSON.stringify(leftValue || []) !== JSON.stringify(rightValue || []);
+    }
+    return leftValue !== rightValue;
+  });
   return Object.freeze({ equivalent: changedFields.length === 0, changedFields });
 };
 

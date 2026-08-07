@@ -23,6 +23,7 @@ const files = [
   'tools/backend/smoke-clerk-user-sync.mjs',
   'tools/backend/smoke-firebase-identity-bridge.mjs',
   'tools/backend/smoke-member-profile-shadow.mjs',
+  'tools/backend/smoke-member-profile-cutover.mjs',
 ];
 
 for (const file of files) {
@@ -58,8 +59,13 @@ for (const marker of ['CREATE TABLE IF NOT EXISTS app_user_member_shadows', 'sou
   if (!phase7Migration.includes(marker)) throw new Error(`Phase 7 member shadow migration marker is missing: ${marker}`);
 }
 
+const phase9Migration = readFileSync('server/migrations/005_phase9_member_profile_runtime_contract.sql', 'utf8');
+for (const marker of ['identity_key TEXT', 'recovery_key TEXT', 'previous_account_uids JSONB', "'mode', 'postgresql-preferred-with-firestore-guard'"]) {
+  if (!phase9Migration.includes(marker)) throw new Error(`Phase 9 runtime contract migration marker is missing: ${marker}`);
+}
+
 const app = readFileSync('server/src/app.mjs', 'utf8');
-for (const marker of ["url.pathname === '/api/auth/session'", "url.pathname === '/api/users/me'", "url.pathname === '/api/users/me/sync'", "url.pathname === '/api/users/me/legacy/firebase'", "url.pathname === '/api/users/me/legacy/member-shadow'", "url.pathname === '/api/users/me/legacy/member-shadow/sync'", "url.pathname === '/api/users/me/legacy/member-shadow/compare'", "url.pathname === '/api/users/me/member-profile-candidate'", "source: 'postgresql-shadow'", "authoritative: false", "'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'", "X-Firebase-Authorization", "'WWW-Authenticate': 'Bearer'"]) {
+for (const marker of ["url.pathname === '/api/auth/session'", "url.pathname === '/api/users/me'", "url.pathname === '/api/users/me/sync'", "url.pathname === '/api/users/me/legacy/firebase'", "url.pathname === '/api/users/me/legacy/member-shadow'", "url.pathname === '/api/users/me/legacy/member-shadow/sync'", "url.pathname === '/api/users/me/legacy/member-shadow/compare'", "url.pathname === '/api/users/me/member-profile-candidate'", "url.pathname === '/api/legacy/member-profile-cutover-candidate'", "source: 'postgresql-shadow'", "authoritative: false", "'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'", "X-Firebase-Authorization", "'WWW-Authenticate': 'Bearer'"]) {
   if (!app.includes(marker)) throw new Error(`Server route/security marker is missing: ${marker}`);
 }
 
@@ -84,7 +90,7 @@ for (const marker of ["header.alg !== 'RS256'", 'payload.aud !== normalizedProje
 }
 
 const firebaseRepository = readFileSync('server/src/legacy/firebase-link-repository.mjs', 'utf8');
-for (const marker of ['firebase_link_user_conflict', 'firebase_link_uid_conflict', 'ON CONFLICT (app_user_id) DO UPDATE']) {
+for (const marker of ['firebase_link_user_conflict', 'firebase_link_uid_conflict', 'findByFirebaseUid', 'ON CONFLICT (app_user_id) DO UPDATE']) {
   if (!firebaseRepository.includes(marker)) throw new Error(`Phase 6 Firebase repository marker is missing: ${marker}`);
 }
 
@@ -94,7 +100,7 @@ for (const marker of ['firestore.googleapis.com/v1/projects/', 'Authorization: `
 }
 
 const memberShadowService = readFileSync('server/src/legacy/member-shadow-service.mjs', 'utf8');
-for (const marker of ['legacy_link_token_mismatch', 'member_source_email_mismatch', 'sourceHash', 'changedFields']) {
+for (const marker of ['legacy_link_token_mismatch', 'member_source_email_mismatch', 'getCurrentByFirebaseIdentity', 'identityKey', 'previousAccountUids', 'sourceHash', 'changedFields']) {
   if (!memberShadowService.includes(marker)) throw new Error(`Phase 7 member shadow service marker is missing: ${marker}`);
 }
 
@@ -108,9 +114,17 @@ if (!subscription.includes('publishMemberProfileReadObservation')) {
   throw new Error('Phase 8 actual app Firestore subscription observation hook is missing.');
 }
 
+const memberReadCutover = readFileSync('src/features/members/memberProfileReadCutover.js', 'utf8');
+for (const marker of ['VITE_MEMBER_PROFILE_POSTGRES_READ_ENABLED', "get('memberRead') === 'postgres'", 'postgresql-shadow', 'firestore-onSnapshot', 'profile-mismatch']) {
+  if (!memberReadCutover.includes(marker)) throw new Error(`Phase 9 member cutover marker is missing: ${marker}`);
+}
+for (const marker of ['requestMemberProfileCutoverCandidate', 'chooseMemberProfileReadSource', 'Firestore fallback remains active']) {
+  if (!subscription.includes(marker)) throw new Error(`Phase 9 auth subscription cutover marker is missing: ${marker}`);
+}
+
 const configTemplate = readFileSync('docs/github-education/HEROKU_CONFIG_VARS_TEMPLATE.txt', 'utf8');
 for (const variable of ['CLERK_JWT_KEY=', 'CLERK_AUTHORIZED_PARTIES=', 'CLERK_SECRET_KEY=sk_test_', 'CLERK_API_TIMEOUT_MS=8000', 'FIREBASE_PROJECT_ID=laptop-system-mk']) {
   if (!configTemplate.includes(variable)) throw new Error(`Phase 6 config template is missing ${variable}`);
 }
 
-console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7 database/auth + phase8 parallel-read invariants)`);
+console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9 database/auth + phase8 parallel-read + phase9 opt-in cutover invariants)`);

@@ -18,6 +18,9 @@ const mapRow = (row) => {
     rejoinedAccount: Boolean(row.rejoined_account),
     termsConsentRevision: Number(row.terms_consent_revision || 0),
     termsConsentPolicyVersion: Number(row.terms_consent_policy_version || 0),
+    identityKey: row.identity_key || '',
+    recoveryKey: row.recovery_key || '',
+    previousAccountUids: Array.isArray(row.previous_account_uids) ? row.previous_account_uids : [],
     sourceCreatedAt: row.source_created_at,
     sourceUpdatedAt: row.source_updated_at,
     sourceHash: row.source_hash,
@@ -32,6 +35,7 @@ const selectColumns = `app_user_id, firebase_uid, source_collection, source_docu
                        directory_member_id, directory_verified_version,
                        profile_required_reason, rejoined_account,
                        terms_consent_revision, terms_consent_policy_version,
+                       identity_key, recovery_key, previous_account_uids,
                        source_created_at, source_updated_at, source_hash,
                        synced_at, created_at, updated_at`;
 
@@ -59,12 +63,13 @@ export const createMemberShadowRepository = (pool) => {
            directory_member_id, directory_verified_version,
            profile_required_reason, rejoined_account,
            terms_consent_revision, terms_consent_policy_version,
+           identity_key, recovery_key, previous_account_uids,
            source_created_at, source_updated_at, source_hash, synced_at
          ) VALUES (
            $1, $2, 'userAccounts', $3,
            $4, $5, $6, $7, $8, $9, $10,
            $11, $12, $13, $14,
-           $15, $16, $17, $18, $19, NOW()
+           $15, $16, $17, $18, $19::jsonb, $20, $21, $22, NOW()
          )
          ON CONFLICT (app_user_id) DO UPDATE SET
            source_document_path = EXCLUDED.source_document_path,
@@ -81,6 +86,9 @@ export const createMemberShadowRepository = (pool) => {
            rejoined_account = EXCLUDED.rejoined_account,
            terms_consent_revision = EXCLUDED.terms_consent_revision,
            terms_consent_policy_version = EXCLUDED.terms_consent_policy_version,
+           identity_key = EXCLUDED.identity_key,
+           recovery_key = EXCLUDED.recovery_key,
+           previous_account_uids = EXCLUDED.previous_account_uids,
            source_created_at = EXCLUDED.source_created_at,
            source_updated_at = EXCLUDED.source_updated_at,
            source_hash = EXCLUDED.source_hash,
@@ -105,6 +113,9 @@ export const createMemberShadowRepository = (pool) => {
           shadow.rejoinedAccount,
           shadow.termsConsentRevision,
           shadow.termsConsentPolicyVersion,
+          shadow.identityKey,
+          shadow.recoveryKey,
+          JSON.stringify(shadow.previousAccountUids || []),
           shadow.sourceCreatedAt,
           shadow.sourceUpdatedAt,
           shadow.sourceHash,
