@@ -1,0 +1,52 @@
+GitHub Education Phase 6 Migration JSONB Hotfix Validation
+===========================================================
+
+Incident observed on Heroku Release Phase
+-----------------------------------------
+001_phase2_platform_baseline.sql: already applied
+002_phase5_clerk_user_identity.sql: already applied
+003_phase6_firebase_identity_bridge.sql: failed
+PostgreSQL code: 22P02
+Message: invalid input syntax for type json
+
+Root cause
+----------
+app_runtime_metadata.value is JSONB NOT NULL, but migration 003 attempted to insert plain SQL text 'phase6'.
+
+Correction
+----------
+Migration 003 now writes structured JSONB using:
+jsonb_build_object('phase', 6, 'bridge', 'firebase-auth')
+
+Rollback / retry safety
+-----------------------
+The migration runner starts BEGIN before migrations and issues ROLLBACK on any failure. Therefore the failed 003 transaction is expected not to be recorded in schema_migrations and its CREATE TABLE / CREATE INDEX statements are expected not to be committed. Editing the failed, unapplied 003 migration is therefore the correct retry path.
+
+Validation
+----------
+PASS  New migration-static-check rejects the old plain-text JSONB expression.
+PASS  New migration-static-check requires jsonb_build_object for Phase 6 metadata.
+PASS  server foundation validation.
+PASS  server HTTP smoke.
+PASS  Clerk RSA JWT smoke.
+PASS  Clerk Backend API/Postgres identity sync smoke.
+PASS  Firebase identity bridge RS256/cert-cache/email/one-to-one-link smoke.
+PASS  frontend Clerk/Firebase bridge smoke.
+PASS  React Hook audit (146 source files).
+PASS  Application flow audit (124 contracts, 11 user routes, 20 admin tabs).
+PASS  Firestore strict audit (129 calls, 51 approved risks, 0 new warnings, 0 errors).
+PASS  Critical production files unchanged: App.jsx, firebase.js, Firestore rules/indexes, CNAME, vercel.json, main.jsx, root package-lock.json.
+PASS  No new npm dependencies.
+
+Runtime limitation
+------------------
+The current execution environment does not provide a PostgreSQL server, so the corrected SQL could not be executed locally against PostgreSQL. The type-error regression is guarded statically and the retry must be confirmed by the Heroku Release Phase. The corrected expression uses PostgreSQL's native jsonb_build_object() constructor and does not rely on textual JSON parsing.
+
+Expected Heroku retry log
+-------------------------
+[migration] already applied: 001_phase2_platform_baseline.sql
+[migration] already applied: 002_phase5_clerk_user_identity.sql
+[migration] applying: 003_phase6_firebase_identity_bridge.sql
+[migration] complete; newly applied=1
+
+If Heroku instead reports a checksum mismatch for 003, stop and inspect schema_migrations before making further changes.

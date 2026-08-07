@@ -89,3 +89,7 @@ MANUAL EXTERNAL ACTION REQUIRED
 - Firebase Console: no service-account/private-key action required.
 - After gh-pages-3 publication, deploy gh-pages-3 to the Heroku staging app if automatic deploy is disabled.
 - Confirm migration 003, then set SERVICE_VERSION=phase6 and execute the browser link/lookup tests described in PHASE6_MANUAL_PLATFORM_ACTIONS.md.
+
+POST-DELIVERY CORRECTION
+------------------------
+The original static validation did not execute migration 003 against a live PostgreSQL JSONB column. A real Heroku Release Phase later exposed PostgreSQL error 22P02 because migration 003 wrote plain SQL text 'phase6' to app_runtime_metadata.value (JSONB). This report is superseded for migration-003 validity by GITHUB_EDUCATION_PHASE6_MIGRATION_JSONB_HOTFIX_VALIDATION_REPORT.txt. All non-migration Phase 6 tests remain valid.

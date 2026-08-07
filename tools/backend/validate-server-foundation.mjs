@@ -45,7 +45,7 @@ for (const marker of ['CREATE TABLE app_user_identities', 'clerk_user_id TEXT NO
 }
 
 const phase6Migration = readFileSync('server/migrations/003_phase6_firebase_identity_bridge.sql', 'utf8');
-for (const marker of ['CREATE TABLE IF NOT EXISTS app_user_firebase_links', 'firebase_uid TEXT NOT NULL UNIQUE', 'app_user_id BIGINT PRIMARY KEY', "'identity_bridge_phase', 'phase6'"]) {
+for (const marker of ['CREATE TABLE IF NOT EXISTS app_user_firebase_links', 'firebase_uid TEXT NOT NULL UNIQUE', 'app_user_id BIGINT PRIMARY KEY', "jsonb_build_object('phase', 6, 'bridge', 'firebase-auth')"]) {
   if (!phase6Migration.includes(marker)) throw new Error(`Phase 6 Firebase bridge migration marker is missing: ${marker}`);
 }
 

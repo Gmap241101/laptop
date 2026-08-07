@@ -16,7 +16,11 @@ CREATE INDEX IF NOT EXISTS app_user_firebase_links_email_idx
   WHERE firebase_email <> '';
 
 INSERT INTO app_runtime_metadata (key, value, updated_at)
-VALUES ('identity_bridge_phase', 'phase6', NOW())
+VALUES (
+  'identity_bridge_phase',
+  jsonb_build_object('phase', 6, 'bridge', 'firebase-auth'),
+  NOW()
+)
 ON CONFLICT (key) DO UPDATE SET
   value = EXCLUDED.value,
   updated_at = NOW();
