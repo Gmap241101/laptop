@@ -43,6 +43,11 @@ import {
   readAdminRentalRequestCutoverConfig,
   subscribeAdminRentalRequestCutoverObservation,
 } from '../features/requests/adminRentalRequestCutover.js';
+import {
+  getLatestRentalRequestUserActionObservation,
+  readRentalRequestUserActionCutoverConfig,
+  subscribeRentalRequestUserActionObservation,
+} from '../features/requests/rentalRequestUserActionCutover.js';
 import { clerkStagingClient } from './clerkStagingClient.js';
 
 const panelStyle = {
@@ -90,6 +95,7 @@ export default function ClerkStagingDiagnostics() {
   const rentalRequestCutoverConfig = useMemo(() => readRentalRequestCutoverConfig(), []);
   const rentalRequestWriteConfig = useMemo(() => readRentalRequestWriteCutoverConfig(), []);
   const adminRentalRequestCutoverConfig = useMemo(() => readAdminRentalRequestCutoverConfig(), []);
+  const rentalRequestUserActionConfig = useMemo(() => readRentalRequestUserActionCutoverConfig(), []);
   const [state, setState] = useState({
     phase: requested ? 'loading' : 'hidden',
     signedIn: false,
@@ -168,6 +174,14 @@ export default function ClerkStagingDiagnostics() {
     rentalRequestWriteShadowSynchronized: null,
     rentalRequestWriteReused: false,
     rentalRequestWriteError: null,
+    rentalRequestUserActionRequested: rentalRequestUserActionConfig.requested,
+    rentalRequestUserActionSource: null,
+    rentalRequestUserActionOperation: null,
+    rentalRequestUserActionRequestId: null,
+    rentalRequestUserActionApprovalMode: null,
+    rentalRequestUserActionMirror: null,
+    rentalRequestUserActionShadowSynchronized: null,
+    rentalRequestUserActionError: null,
     adminRentalRequestReadRequested: adminRentalRequestCutoverConfig.readRequested,
     adminRentalRequestReadSource: adminRentalRequestCutoverConfig.readRequested ? 'awaiting-admin-view' : null,
     adminRentalRequestWatcherDisabled: adminRentalRequestCutoverConfig.readRequested,
@@ -393,6 +407,30 @@ export default function ClerkStagingDiagnostics() {
     applyObservation(getLatestRentalRequestWriteObservation());
     return subscribeRentalRequestWriteObservation(applyObservation);
   }, [requested, rentalRequestWriteConfig.requested]);
+
+  useEffect(() => {
+    if (!requested) return undefined;
+    const applyObservation = (observation) => {
+      setState((current) => ({
+        ...current,
+        rentalRequestUserActionRequested: observation
+          ? Boolean(observation.requested)
+          : rentalRequestUserActionConfig.requested,
+        rentalRequestUserActionSource: observation?.source || null,
+        rentalRequestUserActionOperation: observation?.operation || null,
+        rentalRequestUserActionRequestId: observation?.requestId || null,
+        rentalRequestUserActionApprovalMode: observation?.approvalMode || null,
+        rentalRequestUserActionMirror: observation?.firestoreMirror || null,
+        rentalRequestUserActionShadowSynchronized:
+          observation && typeof observation.shadowSynchronized === 'boolean'
+            ? observation.shadowSynchronized
+            : null,
+        rentalRequestUserActionError: observation?.error || null,
+      }));
+    };
+    applyObservation(getLatestRentalRequestUserActionObservation());
+    return subscribeRentalRequestUserActionObservation(applyObservation);
+  }, [requested, rentalRequestUserActionConfig.requested]);
 
   useEffect(() => {
     if (!requested) return undefined;
@@ -633,7 +671,7 @@ export default function ClerkStagingDiagnostics() {
 
   return (
     <aside style={panelStyle} aria-label="Clerk staging diagnostics">
-      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 18</div>
+      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 19</div>
       <div>SDK: {state.phase === 'loading' ? 'loading' : state.phase}</div>
       <div>Signed in: {state.signedIn ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Clerk user: {state.userId || '-'}</div>
@@ -754,6 +792,16 @@ export default function ClerkStagingDiagnostics() {
       <div>Post-write shadow synchronized: {state.rentalRequestWriteShadowSynchronized === null ? '-' : state.rentalRequestWriteShadowSynchronized ? 'yes' : 'no'}</div>
       <div>Idempotent reuse: {state.rentalRequestWriteReused ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Write error: {state.rentalRequestWriteError || '-'}</div>
+
+      <div style={{ marginTop: '6px', fontWeight: 700 }}>Phase 19 rental request user action lifecycle</div>
+      <div>User action write cutover requested: {state.rentalRequestUserActionRequested ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>User action write source: {state.rentalRequestUserActionSource || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Last user action: {state.rentalRequestUserActionOperation || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Last user action request: {state.rentalRequestUserActionRequestId || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Extension approval mode: {state.rentalRequestUserActionApprovalMode || '-'}</div>
+      <div>Firestore user-action mirror: {state.rentalRequestUserActionMirror || '-'}</div>
+      <div>Post-action shadow synchronized: {state.rentalRequestUserActionShadowSynchronized === null ? '-' : state.rentalRequestUserActionShadowSynchronized ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>User action error: {state.rentalRequestUserActionError || '-'}</div>
 
       <div style={{ marginTop: '6px', fontWeight: 700 }}>Phase 18 admin rental request PostgreSQL mutation completion</div>
       <div>Admin rental request read requested: {state.adminRentalRequestReadRequested ? 'yes' : 'no'}</div>

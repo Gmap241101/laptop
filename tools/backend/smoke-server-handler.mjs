@@ -214,6 +214,26 @@ const rentalRequestWriteService = {
   },
 };
 
+const rentalRequestUserActionService = {
+  async editCurrent(userId, firebaseIdentity, input) {
+    return {
+      authority: 'postgresql', operation: 'edit', firestoreMirror: 'synced', shadowSynchronized: true,
+      request: { id: input.requestId, requesterUid: firebaseIdentity.uid, laptopId: 'ASSET-SMOKE-1', startDate: input.startDate, dueDate: input.dueDate, purpose: input.purpose, status: '신청중' },
+      availability: { id: input.requestId, laptopId: 'ASSET-SMOKE-1', startDate: input.startDate, dueDate: input.dueDate, status: '신청중' },
+      asset: { id: 'ASSET-SMOKE-1', reservations: [], status: '신청중', currentRequestId: input.requestId },
+    };
+  },
+  async cancelCurrent(userId, firebaseIdentity, input) {
+    return { authority: 'postgresql', operation: 'cancel', firestoreMirror: 'synced', shadowSynchronized: true, deleted: true, request: { id: input.requestId }, asset: { id: 'ASSET-SMOKE-1', reservations: [] } };
+  },
+  async extendCurrent(userId, firebaseIdentity, input) {
+    return {
+      authority: 'postgresql', operation: 'extend', approvalMode: 'manual', firestoreMirror: 'synced', shadowSynchronized: true,
+      request: { id: input.requestId, requesterUid: firebaseIdentity.uid, laptopId: 'ASSET-SMOKE-1', startDate: '2026-08-10', dueDate: '2026-08-14', status: '대여중', userActionRequest: { type: 'extend', status: 'pending' } },
+    };
+  },
+};
+
 const adminRentalRequestService = {
   async bootstrap(firebaseIdentity) {
     if (firebaseIdentity.uid !== 'firebase_uid_smoke') throw new Error('Unexpected admin bootstrap identity.');
@@ -264,6 +284,15 @@ const adminRentalRequestService = {
       asset: { id: 'ASSET-SMOKE-1', reservations: [], status: input.nextStatus, currentRequestId: input.requestId },
     };
   },
+  async reviewUserAction(firebaseIdentity, input) {
+    return {
+      admin: { uid: firebaseIdentity.uid }, authority: 'postgresql', firestoreMirror: 'synced', operation: 'user-action-review',
+      actionType: 'extend', approved: Boolean(input.approved), restrictionUpdated: false,
+      request: { id: input.requestId, laptopId: 'ASSET-SMOKE-1', startDate: '2026-08-10', dueDate: '2026-08-16', status: '대여중', userActionRequest: { type: 'extend', status: input.approved ? 'approved' : 'denied' } },
+      availability: input.approved ? { id: input.requestId, laptopId: 'ASSET-SMOKE-1', startDate: '2026-08-10', dueDate: '2026-08-16', status: '대여중' } : null,
+      asset: input.approved ? { id: 'ASSET-SMOKE-1', reservations: [], status: '대여중', currentRequestId: input.requestId } : null,
+    };
+  },
   async changeStatus(firebaseIdentity, input) {
     if (firebaseIdentity.uid !== 'firebase_uid_smoke' || input.requestId !== 'REQ-Phase17HandlerSmoke001' || input.nextStatus !== '대여중') {
       throw new Error('Unexpected admin status input.');
@@ -291,6 +320,7 @@ const server = createServer(
     firebaseLinkService,
     memberShadowService,
     rentalRequestWriteService,
+    rentalRequestUserActionService,
     adminRentalRequestService,
   }),
 );
@@ -508,6 +538,30 @@ if (
   throw new Error('Phase 16 rental request create HTTP response is invalid.');
 }
 
+const userEdit = await fetch(`${baseUrl}/api/users/me/rental-requests/REQ-Phase19HandlerSmoke001/edit`, {
+  method: 'POST',
+  headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+  body: JSON.stringify({ startDate: '2026-08-11', dueDate: '2026-08-15', purpose: 'phase19 edit' }),
+});
+const userEditBody = await userEdit.json();
+if (userEdit.status !== 200 || userEditBody.rentalRequestUserAction?.authority !== 'postgresql' || userEditBody.rentalRequestUserAction?.operation !== 'edit') {
+  throw new Error('Phase 19 user edit HTTP response is invalid.');
+}
+const userExtend = await fetch(`${baseUrl}/api/users/me/rental-requests/REQ-Phase19HandlerSmoke001/extend`, {
+  method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' }, body: '{}',
+});
+const userExtendBody = await userExtend.json();
+if (userExtend.status !== 200 || userExtendBody.rentalRequestUserAction?.approvalMode !== 'manual' || userExtendBody.rentalRequestUserAction?.request?.userActionRequest?.status !== 'pending') {
+  throw new Error('Phase 19 user extension HTTP response is invalid.');
+}
+const userCancel = await fetch(`${baseUrl}/api/users/me/rental-requests/REQ-Phase19HandlerSmoke001/cancel`, {
+  method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' }, body: '{}',
+});
+const userCancelBody = await userCancel.json();
+if (userCancel.status !== 200 || userCancelBody.rentalRequestUserAction?.operation !== 'cancel' || userCancelBody.rentalRequestUserAction?.deleted !== true) {
+  throw new Error('Phase 19 user cancel HTTP response is invalid.');
+}
+
 const adminBootstrap = await fetch(`${baseUrl}/api/admin/rental-requests/bootstrap`, {
   method: 'POST',
   headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
@@ -573,6 +627,15 @@ if (adminRestore.status !== 200 || (await adminRestore.json()).adminRentalReques
   throw new Error('Phase 18 admin restore HTTP response is invalid.');
 }
 
+const adminUserActionReview = await fetch(`${baseUrl}/api/admin/rental-requests/REQ-Phase17HandlerSmoke001/user-action-review`, {
+  method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+  body: JSON.stringify({ approved: true }),
+});
+const adminUserActionReviewBody = await adminUserActionReview.json();
+if (adminUserActionReview.status !== 200 || adminUserActionReviewBody.adminRentalRequestMutation?.authority !== 'postgresql' || adminUserActionReviewBody.adminRentalRequestMutation?.operation !== 'user-action-review') {
+  throw new Error('Phase 19 admin user action review HTTP response is invalid.');
+}
+
 const invalidFirebase = await fetch(`${baseUrl}/api/users/me/legacy/firebase`, {
   method: 'POST',
   headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer wrong-token' },
@@ -583,4 +646,4 @@ const missing = await fetch(`${baseUrl}/missing`);
 if (missing.status !== 404) throw new Error(`/missing returned ${missing.status}`);
 
 await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, Phase 16 rental-request POST, Phase 17 admin bootstrap/list/dashboard/status + Phase 18 sync/events/edit/memo/restore, CORS, 404)');
+console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, Phase 16 rental-request POST, Phase 17 admin bootstrap/list/dashboard/status + Phase 18 sync/events/edit/memo/restore + Phase 19 user edit/cancel/extend/admin-review, CORS, 404)');

@@ -1,4 +1,5 @@
 import { findBlockingReservation, koreaToday, normalizeAssetReservationsForWrite } from './rental-request-write-policy.mjs';
+import { buildExtensionPeriod, findExtensionConflict, getExtensionAvailableDate, getRequestExtensionCount, normalizeExtensionSettings, validateDirectEditPeriod } from './rental-request-user-action-policy.mjs';
 
 const trim = (value) => String(value ?? '').trim();
 const lower = (value) => trim(value).toLowerCase();
@@ -484,6 +485,200 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient })
         },
       });
       return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'synced', request: committed, availability: nextAvailability, asset: nextAsset });
+    },
+
+    async reviewUserAction(firebaseIdentity, { requestId, approved = false }) {
+      const admin = await verify(firebaseIdentity);
+      const id = trim(requestId);
+      if (!id) throw serviceError('admin_rental_request_id_missing', 'Rental request ID is required.', 400);
+      const sourceDoc = await firestoreClient.getRentalRequest({ requestId: id, firebaseIdToken: firebaseIdentity.idToken });
+      if (!sourceDoc) throw serviceError('rental_request_not_found', 'Rental request was not found.', 404);
+      const sourceRequest = normalizeRequestDocument(sourceDoc);
+      await repository.upsertImportedRequests([sourceRequest]);
+      const action = sourceRequest.userActionRequest;
+      if (!action || action.status !== 'pending') throw serviceError('user_action_request_not_pending', 'No pending user action exists.', 409);
+      const actionType = trim(action.type);
+      if (!['change', 'cancel', 'extend', 'return'].includes(actionType)) throw serviceError('invalid_user_action_request_type', 'User action type is invalid.', 400);
+
+      const [assetDoc, publicConfig, restrictionDoc] = await Promise.all([
+        firestoreClient.getRentalAsset({ assetId: sourceRequest.laptopId, firebaseIdToken: firebaseIdentity.idToken }),
+        firestoreClient.getPublicConfig({ firebaseIdToken: firebaseIdentity.idToken }),
+        actionType === 'return' && sourceRequest.requesterUid
+          ? firestoreClient.getRentalRestriction({ firebaseUid: sourceRequest.requesterUid, firebaseIdToken: firebaseIdentity.idToken })
+          : Promise.resolve(null),
+      ]);
+      if (!assetDoc) throw serviceError('rental_asset_not_found', 'Rental asset was not found.', 404);
+      const settings = publicConfig?.fields?.settings && typeof publicConfig.fields.settings === 'object' ? publicConfig.fields.settings : {};
+      const asset = Object.freeze({ id: requestIdFromDocument(assetDoc) || sourceRequest.laptopId, ...(assetDoc.fields || {}) });
+      const reviewedAt = new Date();
+      const nextReviewStatus = approved ? 'approved' : 'denied';
+      let nextAction = {
+        ...action,
+        status: nextReviewStatus,
+        reviewedAt,
+        reviewedByUid: admin.uid,
+        reviewedByName: admin.name,
+        reviewMemo: sourceRequest.adminMemo || '',
+      };
+      let nextRequest = { ...sourceRequest, userActionRequest: nextAction };
+      let restrictionFields = null;
+      let relatedRequestUpdates = [];
+      let touchAsset = false;
+      let allowNonOverlapping = false;
+
+      if (approved && actionType === 'change') {
+        if (!['신청중', '보류'].includes(sourceRequest.status)) throw serviceError('invalid_user_action_request_status', 'Current status cannot approve this user action.', 409);
+        const period = validateDirectEditPeriod({ startDate: trim(action.startDate), dueDate: trim(action.dueDate), settings });
+        const conflict = findBlockingReservation({
+          reservations: normalizeAssetReservationsForWrite(asset.reservations || []).filter((item) => item.id !== id),
+          laptopId: sourceRequest.laptopId,
+          startDate: period.startDate,
+          dueDate: period.dueDate,
+          settings,
+        });
+        if (conflict) throw serviceError('user_action_period_conflict', 'Requested change conflicts with another reservation.', 409, { blockingRequest: conflict });
+        nextRequest = { ...nextRequest, startDate: period.startDate, dueDate: period.dueDate, purpose: trim(action.purpose) };
+        touchAsset = true;
+        allowNonOverlapping = Boolean(settings.allowNonOverlappingSameAssetRequests ?? false);
+      }
+
+      if (approved && actionType === 'extend') {
+        if (sourceRequest.status !== '대여중') throw serviceError('invalid_user_action_request_status', 'Only active rentals can be extended.', 409);
+        const extensionSettings = normalizeExtensionSettings(settings);
+        if (!extensionSettings.rentalExtensionEnabled) throw serviceError('rental_extension_disabled', 'Rental extension is disabled.', 409);
+        const count = getRequestExtensionCount(sourceRequest);
+        if (count >= extensionSettings.rentalExtensionMaxCount) throw serviceError('rental_extension_count_exceeded', 'Rental extension count exceeded.', 409);
+        const availableDate = getExtensionAvailableDate(sourceRequest, extensionSettings);
+        if (availableDate && koreaToday() < availableDate) throw serviceError('rental_extension_too_early', 'Rental extension request is too early.', 409, { availableDate });
+        const period = buildExtensionPeriod({ request: sourceRequest, settings: extensionSettings });
+        const conflict = findExtensionConflict({ reservations: asset.reservations || [], requestId: id, laptopId: sourceRequest.laptopId, startDate: period.extensionStartDate, dueDate: period.extensionDueDate });
+        if (conflict) throw serviceError('rental_extension_period_conflict', 'Rental extension conflicts with another reservation.', 409, { blockingRequest: conflict });
+        const extensionNumber = count + 1;
+        const approvalDate = koreaToday();
+        const nextExtensionRequestDate = addDays(approvalDate, extensionSettings.rentalExtensionRequestWaitDays);
+        nextAction = {
+          ...nextAction,
+          extensionStartDate: period.extensionStartDate,
+          dueDate: period.extensionDueDate,
+          extensionDays: period.extensionDays,
+          extensionNumber,
+          approvalDate,
+          nextExtensionRequestDate,
+        };
+        const extensionHistory = [
+          ...(Array.isArray(sourceRequest.extensionHistory) ? sourceRequest.extensionHistory : []),
+          {
+            extensionNumber,
+            approvalMode: trim(action.approvalMode) || 'manual',
+            previousDueDate: sourceRequest.dueDate,
+            extensionStartDate: period.extensionStartDate,
+            newDueDate: period.extensionDueDate,
+            extensionDays: period.extensionDays,
+            requestedAt: action.requestedAt || reviewedAt,
+            approvedAt: reviewedAt,
+            approvedDate: approvalDate,
+            approvedByUid: admin.uid,
+            approvedByName: admin.name,
+            status: 'approved',
+          },
+        ];
+        nextRequest = {
+          ...nextRequest,
+          dueDate: period.extensionDueDate,
+          extensionCount: extensionNumber,
+          lastExtensionApprovedDate: approvalDate,
+          nextExtensionRequestDate,
+          extensionHistory,
+          userActionRequest: nextAction,
+        };
+        touchAsset = true;
+        allowNonOverlapping = true;
+      }
+
+      if (approved && actionType === 'cancel') {
+        if (!['신청중', '보류'].includes(sourceRequest.status)) throw serviceError('invalid_user_action_request_status', 'Current status cannot approve cancellation.', 409);
+        nextRequest = { ...nextRequest, status: '사용자취소' };
+        touchAsset = true;
+      }
+
+      if (approved && actionType === 'return') {
+        if (sourceRequest.status !== '대여중') throw serviceError('invalid_user_action_request_status', 'Only active rentals can be returned.', 409);
+        const hasOther = await repository.hasOtherCurrentOverdue({ requesterUid: sourceRequest.requesterUid, excludedRequestId: id, referenceDate: koreaToday() });
+        const restriction = restrictionDoc?.fields || null;
+        const returnResult = buildReturnResult({
+          request: sourceRequest,
+          actualReturnDate: koreaToday(),
+          settings,
+          restriction,
+          hasOtherOverdue: hasOther,
+          batchId: `OVERDUE-${id}-${Date.now()}`,
+        });
+        nextRequest = { ...nextRequest, status: '반납완료', ...returnResult.requestFields };
+        restrictionFields = returnResult.restrictionFields;
+        relatedRequestUpdates = (returnResult.finalizedRequestIds || [])
+          .filter((relatedId) => relatedId !== id)
+          .map((relatedId) => ({ id: relatedId, fields: { overduePenaltyPending: false, overduePenaltyBatchId: returnResult.requestFields.overduePenaltyBatchId || '' } }));
+        touchAsset = true;
+      }
+
+      const baseReservations = normalizeAssetReservationsForWrite(asset.reservations || []).filter((item) => item.id !== id);
+      const nextAvailability = BLOCKING.has(nextRequest.status) ? createAvailability(nextRequest) : null;
+      const nextReservations = approved
+        ? (nextAvailability ? [...baseReservations, nextAvailability] : baseReservations)
+        : normalizeAssetReservationsForWrite(asset.reservations || []);
+      const representative = representativeReservation(nextReservations, asset.id, koreaToday());
+      const nextAsset = Object.freeze({
+        ...asset,
+        reservations: nextReservations,
+        status: asset.status === '대여불가' ? '대여불가' : (representative?.status || '대여가능'),
+        currentRequestId: representative?.id || null,
+      });
+
+      const committed = await repository.reviewUserAction({
+        requestId: id,
+        nextRequest,
+        auditActor: admin,
+        approved: Boolean(approved),
+        allowNonOverlappingSameAssetRequests: allowNonOverlapping,
+        relatedRequestUpdates,
+        eventPayload: {
+          userActionType: actionType,
+          reviewStatus: nextReviewStatus,
+          detail: actionType === 'extend'
+            ? `대여 연장 신청 ${approved ? '승인' : '불허'} · ${trim(action.extensionStartDate) || '-'} ~ ${trim(action.dueDate) || '-'}`
+            : `${actionType} ${approved ? '승인' : '불허'} · 요청 사유: ${trim(action.reason) || '-'}`,
+        },
+        beforeCommit: ({ currentRequest, nextRequest: canonicalNext }) => firestoreClient.commitUserActionReview({
+          request: canonicalNext,
+          previousRequest: currentRequest,
+          availability: nextAvailability,
+          asset: nextAsset,
+          requestUpdateTime: sourceDoc.updateTime,
+          assetUpdateTime: assetDoc.updateTime,
+          auditActor: admin,
+          approved: Boolean(approved),
+          actionType,
+          detail: actionType === 'extend'
+            ? `대여 연장 신청 ${approved ? '승인' : '불허'}`
+            : `${actionType} ${approved ? '승인' : '불허'}`,
+          restriction: restrictionFields ? { uid: sourceRequest.requesterUid, fields: restrictionFields } : null,
+          relatedRequestUpdates,
+          touchAsset: Boolean(approved && touchAsset),
+          firebaseIdToken: firebaseIdentity.idToken,
+        }),
+      });
+      return Object.freeze({
+        admin,
+        authority: 'postgresql',
+        firestoreMirror: 'synced',
+        operation: 'user-action-review',
+        actionType,
+        approved: Boolean(approved),
+        request: committed,
+        availability: approved && touchAsset ? nextAvailability : null,
+        asset: approved && touchAsset ? nextAsset : null,
+        restrictionUpdated: Boolean(restrictionFields),
+      });
     },
 
     async changeStatus(firebaseIdentity, { requestId, nextStatus }) {

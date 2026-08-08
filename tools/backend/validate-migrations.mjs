@@ -9,6 +9,7 @@ const phase14 = readFileSync('server/migrations/007_phase14_rental_request_found
 const phase16 = readFileSync('server/migrations/008_phase16_rental_request_authoritative_write.sql', 'utf8');
 const phase17 = readFileSync('server/migrations/009_phase17_admin_rental_request_cutover.sql', 'utf8');
 const phase18 = readFileSync('server/migrations/010_phase18_admin_rental_mutation_completion.sql', 'utf8');
+const phase19 = readFileSync('server/migrations/011_phase19_user_action_lifecycle.sql', 'utf8');
 
 if (!/value\s+JSONB\s+NOT\s+NULL/i.test(phase2)) {
   throw new Error('app_runtime_metadata.value must remain JSONB NOT NULL.');
@@ -107,4 +108,15 @@ for (const marker of [
   if (!phase18.includes(marker)) throw new Error(`Phase 18 admin rental mutation migration marker is missing: ${marker}`);
 }
 
-console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion are type-safe)');
+
+for (const marker of [
+  'app_rental_requests_user_action_pending_idx',
+  "'rental_request_user_action_phase'",
+  "'phase', 19",
+  "'adminUserActionReviewAuthority', 'postgresql'",
+  "'earlyReturnRequest', 'disabled-by-existing-product-policy'",
+]) {
+  if (!phase19.includes(marker)) throw new Error(`Phase 19 user action lifecycle migration marker is missing: ${marker}`);
+}
+
+console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion + Phase 19 user-action lifecycle are type-safe)');

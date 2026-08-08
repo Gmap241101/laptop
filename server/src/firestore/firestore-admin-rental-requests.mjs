@@ -476,6 +476,126 @@ export const createFirestoreAdminRentalRequestsClient = ({
       });
     },
 
+    async commitUserActionReview({
+      request,
+      previousRequest,
+      availability = null,
+      asset = null,
+      requestUpdateTime,
+      assetUpdateTime = '',
+      auditActor,
+      approved,
+      actionType,
+      detail = '',
+      restriction = null,
+      relatedRequestUpdates = [],
+      touchAsset = false,
+      firebaseIdToken,
+    }) {
+      const requestId = normalize(request?.id);
+      if (!requestId || !normalize(requestUpdateTime)) {
+        throw createError('firestore_admin_user_action_mirror_invalid', 'Admin user action mirror payload is incomplete.', 400);
+      }
+      if (touchAsset && (!normalize(asset?.id) || !normalize(assetUpdateTime))) {
+        throw createError('firestore_admin_user_action_asset_invalid', 'Admin user action asset mirror payload is incomplete.', 400);
+      }
+      const logId = randomUUID();
+      const requestFields = {
+        status: request.status,
+        startDate: request.startDate,
+        dueDate: request.dueDate,
+        purpose: request.purpose || '',
+        userActionRequest: request.userActionRequest,
+        extensionCount: Number(request.extensionCount || 0),
+        lastExtensionApprovedDate: request.lastExtensionApprovedDate || '',
+        nextExtensionRequestDate: request.nextExtensionRequestDate || '',
+        extensionHistory: request.extensionHistory || [],
+        actualReturnDate: request.actualReturnDate || '',
+        overdueDaysAtReturn: Number(request.overdueDaysAtReturn || 0),
+        overduePenaltyPending: Boolean(request.overduePenaltyPending),
+        overduePenaltyBatchId: request.overduePenaltyBatchId || '',
+      };
+      const writes = [
+        {
+          update: { name: documentName(`rentalRequests/${requestId}`), fields: encodeFields(requestFields) },
+          updateMask: { fieldPaths: Object.keys(requestFields) },
+          currentDocument: { updateTime: requestUpdateTime },
+          updateTransforms: [
+            ...(request.returnedAt ? [{ fieldPath: 'returnedAt', setToServerValue: 'REQUEST_TIME' }] : []),
+            { fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' },
+            { fieldPath: 'syncedAt', setToServerValue: 'REQUEST_TIME' },
+          ],
+        },
+        {
+          update: {
+            name: documentName(`rentalRequestLogs/${logId}`),
+            fields: encodeFields({
+              id: logId,
+              requestId,
+              action: 'user-action-reviewed',
+              previousStatus: previousRequest?.status || '',
+              nextStatus: request.status || '',
+              previousMemo: previousRequest?.adminMemo || '',
+              nextMemo: request.adminMemo || '',
+              actorUid: auditActor.uid,
+              actorAdminId: auditActor.adminId,
+              actorName: auditActor.name,
+              detail: detail || `${actionType || 'user-action'} ${approved ? '승인' : '불허'}`,
+            }),
+          },
+          currentDocument: { exists: false },
+          updateTransforms: [{ fieldPath: 'createdAt', setToServerValue: 'REQUEST_TIME' }],
+        },
+      ];
+      if (touchAsset) {
+        if (availability) {
+          writes.push({
+            update: { name: documentName(`rentalAvailability/${requestId}`), fields: encodeFields(availability) },
+            updateTransforms: [{ fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' }],
+          });
+        } else {
+          writes.push({ delete: documentName(`rentalAvailability/${requestId}`) });
+        }
+        writes.push({
+          update: {
+            name: documentName(`rentalAssets/${asset.id}`),
+            fields: encodeFields({ reservations: asset.reservations || [], status: asset.status, currentRequestId: asset.currentRequestId ?? null }),
+          },
+          updateMask: { fieldPaths: ['reservations', 'status', 'currentRequestId'] },
+          currentDocument: { updateTime: assetUpdateTime },
+          updateTransforms: [{ fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' }],
+        });
+      }
+      if (restriction?.uid) {
+        writes.push({
+          update: { name: documentName(`rentalRestrictions/${restriction.uid}`), fields: encodeFields(restriction.fields || {}) },
+          updateMask: { fieldPaths: Object.keys(restriction.fields || {}) },
+          updateTransforms: [
+            { fieldPath: 'calculatedAt', setToServerValue: 'REQUEST_TIME' },
+            { fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' },
+          ],
+        });
+      }
+      for (const related of relatedRequestUpdates || []) {
+        if (!normalize(related?.id)) continue;
+        writes.push({
+          update: { name: documentName(`rentalRequests/${related.id}`), fields: encodeFields(related.fields || {}) },
+          updateMask: { fieldPaths: Object.keys(related.fields || {}) },
+          updateTransforms: [
+            { fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' },
+            { fieldPath: 'syncedAt', setToServerValue: 'REQUEST_TIME' },
+          ],
+        });
+      }
+      return requestJson({
+        url: `${baseUrl}:commit`,
+        method: 'POST',
+        firebaseIdToken,
+        codePrefix: 'firestore_admin_user_action_mirror',
+        body: { writes },
+      });
+    },
+
     async commitStatusChange({
       request,
       previousRequest,

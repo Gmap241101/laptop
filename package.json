@@ -72,7 +72,10 @@
     "verify:phase17": "npm run verify:phase16 && npm run server:admin-rental-request:smoke && npm run frontend:admin-rental-request:smoke",
     "server:admin-rental-mutation:smoke": "node tools/backend/smoke-admin-rental-mutation-completion.mjs",
     "frontend:admin-rental-mutation:smoke": "node tools/frontend/smoke-admin-rental-mutation-completion.mjs",
-    "verify:phase18": "npm run verify:phase17 && npm run server:admin-rental-mutation:smoke && npm run frontend:admin-rental-mutation:smoke"
+    "verify:phase18": "npm run verify:phase17 && npm run server:admin-rental-mutation:smoke && npm run frontend:admin-rental-mutation:smoke",
+    "server:rental-request-user-action:smoke": "node tools/backend/smoke-rental-request-user-action-lifecycle.mjs",
+    "frontend:rental-request-user-action:smoke": "node tools/frontend/smoke-rental-request-user-action-lifecycle.mjs",
+    "verify:phase19": "npm run verify:phase18 && npm run server:rental-request-user-action:smoke && npm run frontend:rental-request-user-action:smoke"
   },
   "dependencies": {
     "firebase": "^10.14.1",

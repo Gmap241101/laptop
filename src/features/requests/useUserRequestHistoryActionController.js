@@ -40,6 +40,11 @@ import {
   today,
 } from '../../utils/appUtils.js';
 import { getServiceBlockReason } from '../../utils/systemSettings.js';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import {
+  publishRentalRequestUserActionObservation,
+  readRentalRequestUserActionCutoverConfig,
+} from './rentalRequestUserActionCutover.js';
 
 const createDefaultUserActionForm = () => ({
   type: '',
@@ -94,6 +99,46 @@ export default function useUserRequestHistoryActionController({
         : null,
     [currentUserRequests, userActionDialog?.requestId]
   );
+
+  const userActionCutoverConfig = useMemo(
+    () => readRentalRequestUserActionCutoverConfig(),
+    []
+  );
+
+  const publishPostgresUserAction = (detail = {}) =>
+    publishRentalRequestUserActionObservation({
+      requested: userActionCutoverConfig.requested,
+      ...detail,
+    });
+
+  const updatePostgresUserActionState = (mutation, requestId) => {
+    const committedRequest = mutation?.request || null;
+    const committedAsset = mutation?.asset || null;
+    const committedAvailability = mutation?.availability || null;
+    if (mutation?.deleted) {
+      setRentalRequests((prev) => (prev || []).filter((item) => item.id !== requestId));
+      setData((prev) => ({
+        ...prev,
+        requests: (prev.requests || []).filter((item) => item.id !== requestId),
+        laptops: (prev.laptops || []).map((asset) => asset.id === committedAsset?.id ? committedAsset : asset),
+      }));
+      return;
+    }
+    if (committedRequest) {
+      setRentalRequests((prev) => (prev || []).map((item) => item.id === requestId ? committedRequest : item));
+    }
+    if (committedAsset || committedAvailability) {
+      setData((prev) => ({
+        ...prev,
+        requests: committedAvailability
+          ? [committedAvailability, ...(prev.requests || []).filter((item) => item.id !== requestId)]
+          : prev.requests,
+        laptops: committedAsset
+          ? (prev.laptops || []).map((asset) => asset.id === committedAsset.id ? committedAsset : asset)
+          : prev.laptops,
+      }));
+    }
+  };
 
   const submitRentalExtensionRequest = async (request) => {
     if (userActionSaving) return;
@@ -159,6 +204,53 @@ export default function useUserRequestHistoryActionController({
         '연체자 대여 제한 적용 중에는 현재 보유 중인 모든 기기의 대여 연장을 신청할 수 없습니다.',
         'error'
       );
+      return;
+    }
+
+    if (userActionCutoverConfig.requested) {
+      setUserActionSaving(true);
+      try {
+        const firebaseIdToken = await firebaseAuthUser.getIdToken();
+        const payload = await clerkStagingClient.extendRentalRequest(firebaseIdToken, request.id);
+        const mutation = payload?.rentalRequestUserAction || {};
+        updatePostgresUserActionState(mutation, request.id);
+        publishPostgresUserAction({
+          source: 'postgresql-authoritative',
+          operation: 'extend',
+          requestId: request.id,
+          approvalMode: mutation.approvalMode || '',
+          firestoreMirror: mutation.firestoreMirror || '',
+          shadowSynchronized: Boolean(mutation.shadowSynchronized),
+          error: '',
+        });
+        triggerToast(
+          mutation.approvalMode === RENTAL_EXTENSION_APPROVAL_MODE.AUTO
+            ? '대여 기간이 연장되었습니다.'
+            : '대여 연장 요청이 접수되었습니다.',
+          'success'
+        );
+      } catch (error) {
+        console.error('PostgreSQL rental extension request error:', error);
+        publishPostgresUserAction({
+          source: 'postgresql-authoritative', operation: 'extend', requestId: request.id,
+          error: error?.code || error?.message || 'unknown-error',
+        });
+        const legacyCode = String(error?.code || error?.message || '').replaceAll('_', '-');
+        const knownErrorCodes = [
+          'rental-extension-disabled', 'invalid-rental-extension-status', 'user-action-request-already-pending',
+          'rental-extension-count-exceeded', 'rental-extension-too-early', 'rental-extension-period-conflict',
+        ];
+        triggerToast(
+          knownErrorCodes.includes(legacyCode)
+            ? getRentalExtensionErrorMessage(legacyCode, error?.availableDate || '')
+            : legacyCode === 'rental-extension-restriction-blocked'
+              ? '연체자 대여 제한 적용 중에는 현재 보유 중인 모든 기기의 대여 연장을 신청할 수 없습니다.'
+              : `대여 연장 요청 처리에 실패했습니다. 오류 코드: ${error?.code || error?.message || 'unknown-error'}`,
+          'error'
+        );
+      } finally {
+        setUserActionSaving(false);
+      }
       return;
     }
 
@@ -829,6 +921,61 @@ export default function useUserRequestHistoryActionController({
         );
         return;
       }
+    }
+
+    if (userActionCutoverConfig.requested) {
+      setUserActionSaving(true);
+      try {
+        const firebaseIdToken = await firebaseAuthUser.getIdToken();
+        const payload = actionType === USER_REQUEST_ACTION.CANCEL
+          ? await clerkStagingClient.cancelRentalRequest(firebaseIdToken, requestId)
+          : await clerkStagingClient.editRentalRequest(firebaseIdToken, requestId, {
+              startDate: nextStartDate,
+              dueDate: nextDueDate,
+              purpose: nextPurpose,
+            });
+        const mutation = payload?.rentalRequestUserAction || {};
+        updatePostgresUserActionState(mutation, requestId);
+        publishPostgresUserAction({
+          source: 'postgresql-authoritative',
+          operation: actionType === USER_REQUEST_ACTION.CANCEL ? 'cancel' : 'edit',
+          requestId,
+          firestoreMirror: mutation.firestoreMirror || '',
+          shadowSynchronized: Boolean(mutation.shadowSynchronized),
+          error: '',
+        });
+        triggerToast(
+          actionType === USER_REQUEST_ACTION.CANCEL
+            ? '대여 신청이 취소되어 신청내역에서 삭제되었습니다.'
+            : '대여 신청정보가 수정되었습니다.',
+          'success'
+        );
+        setUserActionDialog(null);
+        setUserActionForm(createDefaultUserActionForm());
+      } catch (error) {
+        console.error('PostgreSQL direct user rental action error:', error);
+        publishPostgresUserAction({
+          source: 'postgresql-authoritative', operation: actionType === USER_REQUEST_ACTION.CANCEL ? 'cancel' : 'edit', requestId,
+          error: error?.code || error?.message || 'unknown-error',
+        });
+        const legacyCode = String(error?.code || error?.message || '').replaceAll('_', '-');
+        const errorMessages = {
+          'invalid-direct-cancel-status': '대여 신청 취소는 관리자 처리 전 신청중 상태에서만 가능합니다.',
+          'invalid-direct-edit-status': '신청정보 수정은 신청중 또는 보류 상태에서만 가능합니다.',
+          'direct-edit-period-conflict': '같은 기기의 기존 신청·예약·대여 일정과 겹쳐 수정할 수 없습니다.',
+          'rental-request-owner-mismatch': '본인 신청이 아닌 항목은 변경할 수 없습니다.',
+          'rental-request-not-found': '정식 대여 신청 문서를 찾을 수 없습니다.',
+          'rental-asset-not-found': '대여 기기 정보를 찾을 수 없습니다.',
+          'asset-reservation-not-found': '대여 기기의 예약 정보를 찾을 수 없어 처리할 수 없습니다.',
+        };
+        triggerToast(
+          errorMessages[legacyCode] || `사용자 신청 처리에 실패했습니다. 오류 코드: ${error?.code || error?.message || 'unknown-error'}`,
+          'error'
+        );
+      } finally {
+        setUserActionSaving(false);
+      }
+      return;
     }
 
     const requestDocRef = doc(

@@ -22,6 +22,8 @@ import { createRentalRequestRepository } from './rentals/rental-request-reposito
 import { createRentalRequestService } from './rentals/rental-request-service.mjs';
 import { createRentalRequestWriteRepository } from './rentals/rental-request-write-repository.mjs';
 import { createRentalRequestWriteService } from './rentals/rental-request-write-service.mjs';
+import { createRentalRequestUserActionRepository } from './rentals/rental-request-user-action-repository.mjs';
+import { createRentalRequestUserActionService } from './rentals/rental-request-user-action-service.mjs';
 import { createAdminRentalRequestRepository } from './rentals/admin-rental-request-repository.mjs';
 import { createAdminRentalRequestService } from './rentals/admin-rental-request-service.mjs';
 
@@ -119,6 +121,26 @@ const firestoreRentalRequestWriteClient = config.firebaseProjectId
         error.code = 'firestore_rental_request_write_not_configured';
         throw error;
       },
+      async getRentalRequest() {
+        const error = new Error('Firestore rental request user action bridge is not configured.');
+        error.code = 'firestore_rental_request_write_not_configured';
+        throw error;
+      },
+      async commitUserRequestEdit() {
+        const error = new Error('Firestore rental request user action bridge is not configured.');
+        error.code = 'firestore_rental_request_write_not_configured';
+        throw error;
+      },
+      async commitUserRequestCancel() {
+        const error = new Error('Firestore rental request user action bridge is not configured.');
+        error.code = 'firestore_rental_request_write_not_configured';
+        throw error;
+      },
+      async commitUserExtension() {
+        const error = new Error('Firestore rental request user action bridge is not configured.');
+        error.code = 'firestore_rental_request_write_not_configured';
+        throw error;
+      },
       async commitRentalRequestCreate() {
         const error = new Error('Firestore rental request write compatibility bridge is not configured.');
         error.code = 'firestore_rental_request_write_not_configured';
@@ -133,6 +155,16 @@ const rentalRequestWriteService = createRentalRequestWriteService({
   rentalRequestService,
   rentalRequestWriteRepository,
   firestoreRentalRequestWriteClient,
+});
+const rentalRequestUserActionRepository = createRentalRequestUserActionRepository(pool);
+const rentalRequestUserActionService = createRentalRequestUserActionService({
+  userRepository,
+  firebaseLinkRepository,
+  memberShadowRepository,
+  rentalRestrictionService,
+  rentalRequestService,
+  repository: rentalRequestUserActionRepository,
+  firestoreClient: firestoreRentalRequestWriteClient,
 });
 const adminRentalRequestRepository = createAdminRentalRequestRepository(pool);
 const firestoreAdminRentalRequestsClient = config.firebaseProjectId
@@ -174,6 +206,7 @@ const server = createServer(
     rentalRestrictionService,
     rentalRequestService,
     rentalRequestWriteService,
+    rentalRequestUserActionService,
     adminRentalRequestService,
   }),
 );
@@ -192,6 +225,7 @@ server.listen(config.port, '0.0.0.0', () => {
     rentalRestrictionShadow: config.firebaseProjectId ? 'postgresql-user-token-security-rules' : 'disabled',
     rentalRequestShadow: config.firebaseProjectId ? 'normalized-postgresql-user-token-security-rules' : 'disabled',
     rentalRequestWrite: config.firebaseProjectId ? 'postgresql-authoritative-firestore-compatibility-mirror' : 'disabled',
+    rentalRequestUserActions: config.firebaseProjectId ? 'postgresql-authoritative-user-actions-firestore-compatibility-mirror' : 'disabled',
     adminRentalRequests: config.firebaseProjectId ? 'postgresql-read-admin-mutations-audit-firestore-compatibility-mirror' : 'disabled',
   });
 });

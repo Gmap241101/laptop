@@ -541,6 +541,39 @@ export const requestRentalRequestCreate = async ({ clerk, apiBaseUrl, fetchImpl,
   return payload;
 };
 
+const requestRentalRequestUserAction = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, requestId, action, body = {} }) => {
+  const token = trim(firebaseIdToken);
+  const id = trim(requestId);
+  if (!token) throw new Error('Firebase sign-in is required before changing a PostgreSQL rental request.');
+  if (!id) throw new Error('Rental request ID is required.');
+  const { response, payload } = await requestWithSession({
+    clerk, apiBaseUrl, fetchImpl,
+    path: `/api/users/me/rental-requests/${encodeURIComponent(id)}/${action}`,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Firebase-Authorization': `Bearer ${token}` },
+    body: JSON.stringify(body || {}),
+  });
+  if (!response.ok) {
+    const error = new Error(payload?.error || `rental_request_user_${action}_unavailable`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    error.blockingRequest = payload?.blockingRequest || null;
+    error.availableDate = payload?.availableDate || '';
+    throw error;
+  }
+  if (!payload?.authenticated || payload?.rentalRequestUserAction?.authority !== 'postgresql') {
+    throw new Error(`Backend returned an invalid rental request user ${action} response.`);
+  }
+  if (action !== 'cancel' && !payload?.rentalRequestUserAction?.request?.id) {
+    throw new Error(`Backend returned no rental request after user ${action}.`);
+  }
+  return payload;
+};
+
+export const requestRentalRequestUserEdit = async (args) => requestRentalRequestUserAction({ ...args, action: 'edit', body: { startDate: args.startDate, dueDate: args.dueDate, purpose: args.purpose || '' } });
+export const requestRentalRequestUserCancel = async (args) => requestRentalRequestUserAction({ ...args, action: 'cancel' });
+export const requestRentalRequestUserExtend = async (args) => requestRentalRequestUserAction({ ...args, action: 'extend' });
+
 export const requestRentalRequestReadCandidate = async ({ clerk, apiBaseUrl, fetchImpl }) => {
   const { response, payload } = await requestWithSession({
     clerk,
@@ -806,6 +839,22 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
         firebaseIdToken,
         request,
       });
+    },
+    async editRentalRequest(firebaseIdToken, requestId, form) {
+      const clerk = await initialize();
+      return requestRentalRequestUserEdit({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, requestId, ...form });
+    },
+    async cancelRentalRequest(firebaseIdToken, requestId) {
+      const clerk = await initialize();
+      return requestRentalRequestUserCancel({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, requestId });
+    },
+    async extendRentalRequest(firebaseIdToken, requestId) {
+      const clerk = await initialize();
+      return requestRentalRequestUserExtend({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, requestId });
+    },
+    async reviewAdminRentalUserAction(firebaseIdToken, requestId, approved) {
+      const clerk = await initialize();
+      return requestAdminRentalRequestMutationAction({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, requestId, action: 'user-action-review', body: { approved: Boolean(approved) } });
     },
     async getRentalRequestReadCandidate() {
       const clerk = await initialize();

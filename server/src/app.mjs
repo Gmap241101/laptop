@@ -222,6 +222,11 @@ export const createRequestHandler = ({
   rentalRequestWriteService = {
     async createCurrent() { const error = new Error('Rental request write service is not configured.'); error.code = 'rental_request_write_not_configured'; throw error; },
   },
+  rentalRequestUserActionService = {
+    async editCurrent() { const error = new Error('Rental request user action service is not configured.'); error.code = 'rental_request_user_action_not_configured'; throw error; },
+    async cancelCurrent() { const error = new Error('Rental request user action service is not configured.'); error.code = 'rental_request_user_action_not_configured'; throw error; },
+    async extendCurrent() { const error = new Error('Rental request user action service is not configured.'); error.code = 'rental_request_user_action_not_configured'; throw error; },
+  },
   adminRentalRequestService = {
     async bootstrap() { const error = new Error('Admin rental request service is not configured.'); error.code = 'admin_rental_request_not_configured'; throw error; },
     async list() { const error = new Error('Admin rental request service is not configured.'); error.code = 'admin_rental_request_not_configured'; throw error; },
@@ -231,6 +236,7 @@ export const createRequestHandler = ({
     async editRequest() { const error = new Error('Admin rental request service is not configured.'); error.code = 'admin_rental_request_not_configured'; throw error; },
     async saveMemo() { const error = new Error('Admin rental request service is not configured.'); error.code = 'admin_rental_request_not_configured'; throw error; },
     async restoreStatus() { const error = new Error('Admin rental request service is not configured.'); error.code = 'admin_rental_request_not_configured'; throw error; },
+    async reviewUserAction() { const error = new Error('Admin rental request service is not configured.'); error.code = 'admin_rental_request_not_configured'; throw error; },
     async changeStatus() { const error = new Error('Admin rental request service is not configured.'); error.code = 'admin_rental_request_not_configured'; throw error; },
   },
 }) => {
@@ -279,6 +285,12 @@ export const createRequestHandler = ({
   if (!rentalRequestWriteService || typeof rentalRequestWriteService.createCurrent !== 'function') {
     throw new TypeError('rentalRequestWriteService createCurrent method is required.');
   }
+  if (!rentalRequestUserActionService
+    || typeof rentalRequestUserActionService.editCurrent !== 'function'
+    || typeof rentalRequestUserActionService.cancelCurrent !== 'function'
+    || typeof rentalRequestUserActionService.extendCurrent !== 'function') {
+    throw new TypeError('rentalRequestUserActionService Phase 19 methods are required.');
+  }
   if (
     !adminRentalRequestService ||
     typeof adminRentalRequestService.bootstrap !== 'function' ||
@@ -289,9 +301,10 @@ export const createRequestHandler = ({
     typeof adminRentalRequestService.editRequest !== 'function' ||
     typeof adminRentalRequestService.saveMemo !== 'function' ||
     typeof adminRentalRequestService.restoreStatus !== 'function' ||
+    typeof adminRentalRequestService.reviewUserAction !== 'function' ||
     typeof adminRentalRequestService.changeStatus !== 'function'
   ) {
-    throw new TypeError('adminRentalRequestService Phase 18 methods are required.');
+    throw new TypeError('adminRentalRequestService Phase 19 methods are required.');
   }
 
 
@@ -368,6 +381,9 @@ export const createRequestHandler = ({
           rentalRestrictionWriteThrough: '/api/legacy/rental-restriction-shadow/write-through',
           rentalRequestCandidate: '/api/users/me/rental-requests',
           rentalRequestCreate: '/api/users/me/rental-requests',
+          rentalRequestUserEdit: '/api/users/me/rental-requests/:id/edit',
+          rentalRequestUserCancel: '/api/users/me/rental-requests/:id/cancel',
+          rentalRequestUserExtend: '/api/users/me/rental-requests/:id/extend',
           rentalRequestShadowSync: '/api/users/me/legacy/rental-request-shadows/sync',
           rentalRequestShadowCompare: '/api/users/me/legacy/rental-request-shadows/compare',
           adminRentalRequestBootstrap: '/api/admin/rental-requests/bootstrap',
@@ -378,6 +394,7 @@ export const createRequestHandler = ({
           adminRentalRequestEdit: '/api/admin/rental-requests/:id/edit',
           adminRentalRequestMemo: '/api/admin/rental-requests/:id/memo',
           adminRentalRequestRestore: '/api/admin/rental-requests/:id/restore',
+          adminRentalUserActionReview: '/api/admin/rental-requests/:id/user-action-review',
         },
         headers,
       );
@@ -800,6 +817,54 @@ export const createRequestHandler = ({
       }
     }
 
+    const adminUserActionReviewMatch = request.method === 'POST'
+      ? url.pathname.match(/^\/api\/admin\/rental-requests\/([^/]+)\/user-action-review$/)
+      : null;
+    if (adminUserActionReviewMatch) {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      let body;
+      try {
+        body = await readJsonBody(request);
+      } catch (error) {
+        writeJson(response, error?.status || 400, { ...basePayload, authenticated: true, error: error?.code || 'invalid_json_body' }, headers);
+        return;
+      }
+      try {
+        const result = await adminRentalRequestService.reviewUserAction(firebaseIdentity, {
+          requestId: decodeURIComponent(adminUserActionReviewMatch[1]),
+          approved: Boolean(body?.approved),
+        });
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          adminRentalRequestMutation: {
+            authority: result.authority,
+            operation: result.operation,
+            userActionType: result.actionType,
+            approved: result.approved,
+            firestoreMirror: result.firestoreMirror,
+            request: sanitizeRentalRequest(result.request),
+            availability: result.availability,
+            asset: result.asset,
+            restrictionUpdated: result.restrictionUpdated,
+          },
+        }, headers);
+      } catch (error) {
+        const code = error?.code || 'admin_rental_user_action_review_unavailable';
+        const statusCode = error?.status || (['user_action_request_not_pending','invalid_user_action_request_status','user_action_period_conflict','rental_extension_period_conflict','rental_extension_count_exceeded','rental_extension_too_early','rental_extension_disabled'].includes(code) ? 409 : 503);
+        writeJson(response, statusCode, {
+          ...basePayload, authenticated: true, error: code,
+          blockingRequest: error?.blockingRequest || null,
+          availableDate: error?.availableDate || null,
+        }, headers);
+      }
+      return;
+    }
+
     const adminStatusMatch = request.method === 'POST'
       ? url.pathname.match(/^\/api\/admin\/rental-requests\/([^/]+)\/status$/)
       : null;
@@ -846,6 +911,60 @@ export const createRequestHandler = ({
           blockingRequest: error?.blockingRequest || null,
           previousStatus: error?.previousStatus || null,
           nextStatus: error?.nextStatus || null,
+        }, headers);
+      }
+      return;
+    }
+
+    const userRentalActionMatch = request.method === 'POST'
+      ? url.pathname.match(/^\/api\/users\/me\/rental-requests\/([^/]+)\/(edit|cancel|extend)$/)
+      : null;
+    if (userRentalActionMatch) {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      let body = {};
+      try {
+        body = await readJsonBody(request);
+      } catch (error) {
+        writeJson(response, error?.status || 400, { ...basePayload, authenticated: true, error: error?.code || 'invalid_json_body' }, headers);
+        return;
+      }
+      const rentalRequestId = decodeURIComponent(userRentalActionMatch[1]);
+      const action = userRentalActionMatch[2];
+      try {
+        const result = action === 'edit'
+          ? await rentalRequestUserActionService.editCurrent(auth.userId, firebaseIdentity, { requestId: rentalRequestId, ...body })
+          : action === 'cancel'
+            ? await rentalRequestUserActionService.cancelCurrent(auth.userId, firebaseIdentity, { requestId: rentalRequestId })
+            : await rentalRequestUserActionService.extendCurrent(auth.userId, firebaseIdentity, { requestId: rentalRequestId });
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          rentalRequestUserAction: {
+            authority: result.authority,
+            operation: result.operation,
+            approvalMode: result.approvalMode || '',
+            firestoreMirror: result.firestoreMirror,
+            shadowSynchronized: Boolean(result.shadowSynchronized),
+            deleted: Boolean(result.deleted),
+            request: result.deleted ? null : sanitizeRentalRequest(result.request),
+            availability: result.availability || null,
+            asset: result.asset || null,
+          },
+        }, headers);
+      } catch (error) {
+        const code = error?.code || `rental_request_user_${action}_unavailable`;
+        const statusCode = error?.status
+          || (['direct_edit_period_conflict','rental_extension_period_conflict','invalid_direct_edit_status','invalid_direct_cancel_status','rental_extension_count_exceeded','rental_extension_too_early'].includes(code) ? 409
+            : ['rental_request_owner_mismatch','rental_request_member_inactive','rental_extension_restriction_blocked'].includes(code) ? 403
+            : ['rental_request_not_found','rental_asset_not_found'].includes(code) ? 404
+            : 503);
+        writeJson(response, statusCode, {
+          ...basePayload, authenticated: true, error: code,
+          blockingRequest: error?.blockingRequest || null,
+          availableDate: error?.availableDate || null,
         }, headers);
       }
       return;

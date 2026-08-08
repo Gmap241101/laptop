@@ -93,3 +93,11 @@ VITE_ADMIN_RENTAL_REQUEST_POSTGRES_WRITE_ENABLED=true
 # VITE_ADMIN_RENTAL_REQUEST_POSTGRES_READ_ENABLED=true
 # VITE_ADMIN_RENTAL_REQUEST_POSTGRES_WRITE_ENABLED=true
 # Keep Environment=Production for the mkrental Vercel project and redeploy only when source/config changed.
+
+# Phase 19: 사용자 신청정보 변경/취소/연장 lifecycle PostgreSQL authoritative write (Staging opt-in)
+VITE_RENTAL_REQUEST_USER_ACTION_POSTGRES_WRITE_ENABLED=true
+# Requires explicit query/session latch:
+#   ?rentalRequestActionWrite=postgres
+# Recommended full Phase 19 diagnostic URL:
+#   ?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWriteThrough=on&restrictionRead=postgres&restrictionWatcher=off&rentalRequestRead=postgres&rentalRequestWatcher=off&rentalRequestWrite=postgres&adminRequestRead=postgres&adminRequestWrite=postgres&rentalRequestActionWrite=postgres
+# Configure in the mkrental Vercel project's Production environment and redeploy.

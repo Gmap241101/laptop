@@ -547,6 +547,120 @@ export const createAdminRentalRequestRepository = (pool) => {
       }
     },
 
+    async reviewUserAction({
+      requestId,
+      nextRequest,
+      auditActor,
+      approved = false,
+      allowNonOverlappingSameAssetRequests = false,
+      relatedRequestUpdates = [],
+      beforeCommit,
+      eventPayload = {},
+    }) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const locked = await client.query(
+          `SELECT ${SELECT}
+             FROM app_rental_requests request
+             LEFT JOIN app_rental_request_items item ON item.rental_request_id = request.id
+            WHERE request.request_id = $1
+            FOR UPDATE OF request`,
+          [requestId],
+        );
+        const current = mapRow(locked.rows[0]);
+        if (!current) {
+          const error = new Error('rental-request-not-found');
+          error.code = 'rental_request_not_found';
+          throw error;
+        }
+        if (!current.userActionRequest || current.userActionRequest.status !== 'pending') {
+          const error = new Error('user-action-request-not-pending');
+          error.code = 'user_action_request_not_pending';
+          throw error;
+        }
+        const canonicalNext = Object.freeze({ ...current, ...(nextRequest || {}) });
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [current.laptopId]);
+        if (approved && BLOCKING.has(canonicalNext.status)) {
+          const conflict = await client.query(
+            `SELECT request_id, start_date::text, due_date::text, status
+               FROM app_rental_asset_reservation_guards
+              WHERE laptop_id=$1 AND active=TRUE AND request_id<>$2
+                AND ($5::boolean = FALSE OR (start_date <= $4::date AND due_date >= $3::date))
+              ORDER BY start_date, request_id LIMIT 1`,
+            [current.laptopId, requestId, canonicalNext.startDate, canonicalNext.dueDate, Boolean(allowNonOverlappingSameAssetRequests)],
+          );
+          if (conflict.rowCount) {
+            const error = new Error('user-action-period-conflict');
+            error.code = 'user_action_period_conflict';
+            error.blockingRequest = conflict.rows[0];
+            throw error;
+          }
+        }
+        if (typeof beforeCommit === 'function') await beforeCommit({ currentRequest: current, nextRequest: canonicalNext, client });
+        await client.query(
+          `UPDATE app_rental_requests SET
+             start_date=$2::date, due_date=$3::date, purpose=$4, status=$5,
+             extension_count=$6, last_extension_approved_date=$7,
+             next_extension_request_date=$8, extension_history=$9::jsonb,
+             user_action_request=$10::jsonb, returned_at=$11,
+             actual_return_date=$12, overdue_days_at_return=$13,
+             overdue_penalty_pending=$14, overdue_penalty_batch_id=$15,
+             source_mode='postgresql-authoritative-admin-user-action',
+             firestore_mirror_status='synced', firestore_mirror_error='', firestore_mirrored_at=NOW(),
+             source_updated_at=NOW(), source_synced_at=NOW(), updated_at=NOW()
+           WHERE request_id=$1`,
+          [
+            requestId, canonicalNext.startDate, canonicalNext.dueDate, canonicalNext.purpose || '', canonicalNext.status,
+            Number(canonicalNext.extensionCount || 0), canonicalNext.lastExtensionApprovedDate || '',
+            canonicalNext.nextExtensionRequestDate || '', JSON.stringify(canonicalNext.extensionHistory || []),
+            canonicalNext.userActionRequest == null ? null : JSON.stringify(canonicalNext.userActionRequest),
+            canonicalNext.returnedAt || null, canonicalNext.actualReturnDate || '', Number(canonicalNext.overdueDaysAtReturn || 0),
+            Boolean(canonicalNext.overduePenaltyPending), canonicalNext.overduePenaltyBatchId || '',
+          ],
+        );
+        await client.query(
+          `UPDATE app_rental_asset_reservation_guards SET
+             start_date=$2::date, due_date=$3::date, status=$4, active=$5,
+             source_mode='postgresql-authoritative-admin-user-action', synced_at=NOW(), updated_at=NOW()
+           WHERE request_id=$1`,
+          [requestId, canonicalNext.startDate, canonicalNext.dueDate, canonicalNext.status, BLOCKING.has(canonicalNext.status)],
+        );
+        for (const related of Array.isArray(relatedRequestUpdates) ? relatedRequestUpdates : []) {
+          const relatedId = trim(related?.id);
+          if (!relatedId || relatedId === requestId) continue;
+          const fields = related?.fields || {};
+          await client.query(
+            `UPDATE app_rental_requests SET overdue_penalty_pending=$2, overdue_penalty_batch_id=$3,
+               source_updated_at=NOW(), source_synced_at=NOW(), updated_at=NOW()
+             WHERE request_id=$1`,
+            [relatedId, Boolean(fields.overduePenaltyPending), trim(fields.overduePenaltyBatchId)],
+          );
+        }
+        await client.query(
+          `INSERT INTO app_rental_request_events (
+             rental_request_id,event_type,actor_app_user_id,actor_firebase_uid,event_payload,source_mode
+           ) SELECT id,'user-action-reviewed',NULL,$2,$3::jsonb,'postgresql-authoritative-admin-user-action'
+               FROM app_rental_requests WHERE request_id=$1`,
+          [requestId, auditActor.uid, JSON.stringify({
+            action: 'user-action-reviewed', previousStatus: current.status, nextStatus: canonicalNext.status,
+            previousMemo: current.adminMemo || '', nextMemo: canonicalNext.adminMemo || '',
+            actorUid: auditActor.uid, actorAdminId: auditActor.adminId, actorName: auditActor.name,
+            approved: Boolean(approved), ...eventPayload,
+          })],
+        );
+        await client.query('COMMIT');
+        return mapRow((await pool.query(
+          `SELECT ${SELECT} FROM app_rental_requests request
+             LEFT JOIN app_rental_request_items item ON item.rental_request_id=request.id
+            WHERE request.request_id=$1`, [requestId],
+        )).rows[0]);
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally { client.release(); }
+    },
+
     async changeStatus({ requestId, nextStatus, auditActor, returnFields = {}, allowNonOverlappingSameAssetRequests = false, relatedRequestUpdates = [], beforeCommit, eventType = 'admin-status-changed', eventPayload = {}, clearUserActionRequest = false }) {
       const client = await pool.connect();
       try {

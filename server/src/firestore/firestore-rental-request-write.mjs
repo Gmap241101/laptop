@@ -13,6 +13,7 @@ const createError = (code, message, status = null) => {
 
 const encodeFirestoreValue = (value) => {
   if (value == null) return { nullValue: null };
+  if (value instanceof Date) return { timestampValue: value.toISOString() };
   if (typeof value === 'string') return { stringValue: value };
   if (typeof value === 'boolean') return { booleanValue: value };
   if (typeof value === 'number') {
@@ -84,6 +85,38 @@ export const createFirestoreRentalRequestWriteClient = ({
     }
   };
 
+  const commitWrites = async ({ firebaseIdToken, codePrefix, writes }) => {
+    const token = normalize(firebaseIdToken);
+    if (!token) throw createError('firebase_id_token_missing', 'Firebase ID token is required.', 401);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetchImpl(`${baseUrl}:commit`, {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ writes }),
+        cache: 'no-store',
+        signal: controller.signal,
+      });
+      if (response.status === 401) throw createError(`${codePrefix}_unauthorized`, 'Firestore rejected the Firebase ID token.', 401);
+      if (response.status === 403) throw createError(`${codePrefix}_forbidden`, 'Firestore Security Rules rejected the compatibility mirror.', 403);
+      if (!response.ok) {
+        const detail = await responseErrorCode(response);
+        const conflict = [409, 412].includes(response.status) || /ABORTED|FAILED_PRECONDITION/i.test(detail);
+        if (conflict) throw createError(`${codePrefix}_conflict`, 'Firestore document changed before compatibility mirror commit.', 409);
+        throw createError(`${codePrefix}_unavailable`, `Firestore compatibility mirror failed with HTTP ${response.status}.`, response.status);
+      }
+      const payload = await response.json();
+      return Object.freeze({ commitTime: payload?.commitTime || null, writeResults: Array.isArray(payload?.writeResults) ? payload.writeResults : [] });
+    } catch (error) {
+      if (error?.name === 'AbortError') throw createError(`${codePrefix}_timeout`, 'Firestore compatibility mirror timed out.', 503);
+      if (error?.code) throw error;
+      throw createError(`${codePrefix}_unavailable`, 'Firestore compatibility mirror failed.', 503);
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
   return Object.freeze({
     async getPublicConfig({ firebaseIdToken }) {
       return fetchDocument({
@@ -101,6 +134,128 @@ export const createFirestoreRentalRequestWriteClient = ({
         firebaseIdToken,
         codePrefix: 'firestore_rental_asset',
       });
+    },
+
+    async getRentalRequest({ requestId, firebaseIdToken }) {
+      const id = normalize(requestId);
+      if (!id) throw createError('rental_request_id_missing', 'Rental request ID is required.');
+      return fetchDocument({
+        path: `rentalRequests/${encodeURIComponent(id)}`,
+        firebaseIdToken,
+        codePrefix: 'firestore_rental_request',
+      });
+    },
+
+    async commitUserRequestEdit({ request, availability, asset, requestUpdateTime, assetUpdateTime, firebaseIdToken }) {
+      const token = normalize(firebaseIdToken);
+      const requestId = normalize(request?.id);
+      const assetId = normalize(asset?.id);
+      if (!token || !requestId || !assetId || !normalize(requestUpdateTime) || !normalize(assetUpdateTime)) {
+        throw createError('firestore_user_request_edit_invalid', 'User request edit mirror payload is incomplete.', 400);
+      }
+      const requestName = `projects/${normalizedProjectId}/databases/(default)/documents/rentalRequests/${requestId}`;
+      const availabilityName = `projects/${normalizedProjectId}/databases/(default)/documents/rentalAvailability/${requestId}`;
+      const assetName = `projects/${normalizedProjectId}/databases/(default)/documents/rentalAssets/${assetId}`;
+      return commitWrites({
+        firebaseIdToken: token,
+        codePrefix: 'firestore_user_request_edit',
+        writes: [
+          {
+            update: { name: requestName, fields: encodeFields({ startDate: request.startDate, dueDate: request.dueDate, purpose: request.purpose, userActionRequest: null }) },
+            updateMask: { fieldPaths: ['startDate', 'dueDate', 'purpose', 'userActionRequest'] },
+            currentDocument: { updateTime: requestUpdateTime },
+            updateTransforms: [{ fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' }],
+          },
+          {
+            update: { name: availabilityName, fields: encodeFields(availability) },
+            updateTransforms: [{ fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' }],
+          },
+          {
+            update: { name: assetName, fields: encodeFields({ reservations: asset.reservations, reservationMutation: { type: 'user-edit', requestId, requesterUid: request.requesterUid } }) },
+            updateMask: { fieldPaths: ['reservations', 'reservationMutation'] },
+            currentDocument: { updateTime: assetUpdateTime },
+            updateTransforms: [
+              { fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' },
+              { fieldPath: 'reservationMutation.updatedAt', setToServerValue: 'REQUEST_TIME' },
+            ],
+          },
+        ],
+      });
+    },
+
+    async commitUserRequestCancel({ request, asset, requestUpdateTime, assetUpdateTime, firebaseIdToken }) {
+      const token = normalize(firebaseIdToken);
+      const requestId = normalize(request?.id);
+      const assetId = normalize(asset?.id);
+      if (!token || !requestId || !assetId || !normalize(requestUpdateTime) || !normalize(assetUpdateTime)) {
+        throw createError('firestore_user_request_cancel_invalid', 'User request cancel mirror payload is incomplete.', 400);
+      }
+      const requestName = `projects/${normalizedProjectId}/databases/(default)/documents/rentalRequests/${requestId}`;
+      const availabilityName = `projects/${normalizedProjectId}/databases/(default)/documents/rentalAvailability/${requestId}`;
+      const assetName = `projects/${normalizedProjectId}/databases/(default)/documents/rentalAssets/${assetId}`;
+      return commitWrites({
+        firebaseIdToken: token,
+        codePrefix: 'firestore_user_request_cancel',
+        writes: [
+          { delete: requestName, currentDocument: { updateTime: requestUpdateTime } },
+          { delete: availabilityName },
+          {
+            update: { name: assetName, fields: encodeFields({ reservations: asset.reservations, reservationMutation: { type: 'user-cancel', requestId, requesterUid: request.requesterUid } }) },
+            updateMask: { fieldPaths: ['reservations', 'reservationMutation'] },
+            currentDocument: { updateTime: assetUpdateTime },
+            updateTransforms: [
+              { fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' },
+              { fieldPath: 'reservationMutation.updatedAt', setToServerValue: 'REQUEST_TIME' },
+            ],
+          },
+        ],
+      });
+    },
+
+    async commitUserExtension({ request, availability = null, asset = null, requestUpdateTime, assetUpdateTime = '', autoApproved = false, firebaseIdToken }) {
+      const token = normalize(firebaseIdToken);
+      const requestId = normalize(request?.id);
+      if (!token || !requestId || !normalize(requestUpdateTime)) {
+        throw createError('firestore_user_extension_invalid', 'User extension mirror payload is incomplete.', 400);
+      }
+      const requestName = `projects/${normalizedProjectId}/databases/(default)/documents/rentalRequests/${requestId}`;
+      const requestFields = autoApproved
+        ? {
+            dueDate: request.dueDate,
+            extensionCount: request.extensionCount,
+            lastExtensionApprovedDate: request.lastExtensionApprovedDate,
+            nextExtensionRequestDate: request.nextExtensionRequestDate,
+            extensionHistory: request.extensionHistory || [],
+            userActionRequest: request.userActionRequest,
+          }
+        : { userActionRequest: request.userActionRequest };
+      const fieldPaths = Object.keys(requestFields);
+      const writes = [{
+        update: { name: requestName, fields: encodeFields(requestFields) },
+        updateMask: { fieldPaths },
+        currentDocument: { updateTime: requestUpdateTime },
+        updateTransforms: [
+          { fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' },
+          ...(autoApproved ? [{ fieldPath: 'syncedAt', setToServerValue: 'REQUEST_TIME' }] : []),
+        ],
+      }];
+      if (autoApproved) {
+        const assetId = normalize(asset?.id);
+        if (!availability || !assetId || !normalize(assetUpdateTime)) {
+          throw createError('firestore_user_extension_auto_invalid', 'Automatic extension mirror payload is incomplete.', 400);
+        }
+        writes.push({
+          update: { name: `projects/${normalizedProjectId}/databases/(default)/documents/rentalAvailability/${requestId}`, fields: encodeFields(availability) },
+          updateTransforms: [{ fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' }],
+        });
+        writes.push({
+          update: { name: `projects/${normalizedProjectId}/databases/(default)/documents/rentalAssets/${assetId}`, fields: encodeFields({ reservations: asset.reservations }) },
+          updateMask: { fieldPaths: ['reservations'] },
+          currentDocument: { updateTime: assetUpdateTime },
+          updateTransforms: [{ fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' }],
+        });
+      }
+      return commitWrites({ firebaseIdToken: token, codePrefix: 'firestore_user_extension', writes });
     },
 
     async commitRentalRequestCreate({ request, availability, asset, assetUpdateTime, firebaseIdToken }) {

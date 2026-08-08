@@ -47,7 +47,10 @@ import { buildOverdueReturnResult } from '../../utils/overduePolicy.js';
 import { hasOtherCurrentOverdueRequest } from './useAdminRequestMutationController.js';
 import { syncRentalRestrictionWriteThroughBestEffort } from './rentalRestrictionReadCutover.js';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
-import { readAdminRentalRequestCutoverConfig } from './adminRentalRequestCutover.js';
+import {
+  publishAdminRentalRequestCutoverObservation,
+  readAdminRentalRequestCutoverConfig,
+} from './adminRentalRequestCutover.js';
 
 export const useAdminUserActionReviewState = () => {
   const [
@@ -204,6 +207,86 @@ export default function useAdminUserActionReviewController({
     let processedActionType = '';
 
     setAdminUserActionSavingRequestId(id);
+
+    const adminCutoverConfig = readAdminRentalRequestCutoverConfig();
+    if (adminCutoverConfig.writeRequested) {
+      try {
+        const firebaseUser = firebaseAuth.currentUser;
+        if (!firebaseUser) throw new Error('admin-firebase-sign-in-required');
+        const firebaseIdToken = await firebaseUser.getIdToken();
+        const payload = await clerkStagingClient.reviewAdminRentalUserAction(
+          firebaseIdToken,
+          id,
+          approved
+        );
+        const mutation = payload?.adminRentalRequestMutation || {};
+        const committedRequest = mutation.request || null;
+        processedActionType = mutation.userActionType || currentRequest.userActionRequest?.type || '';
+        if (!committedRequest) throw new Error('user-action-review-result-missing');
+
+        updateAdminRequestPanelRequests((prev) =>
+          (prev || []).map((request) => request.id === id ? committedRequest : request)
+        );
+        if (approved && mutation.asset) {
+          setData((prev) => ({
+            ...prev,
+            requests: mutation.availability
+              ? [mutation.availability, ...(prev.requests || []).filter((request) => request.id !== id)]
+              : (prev.requests || []).filter((request) => request.id !== id),
+            laptops: (prev.laptops || []).map((asset) => asset.id === mutation.asset.id ? mutation.asset : asset),
+          }));
+        }
+
+        publishAdminRentalRequestCutoverObservation({
+          writeRequested: true,
+          writeSource: 'postgresql-authoritative',
+          requestId: id,
+          operation: 'user-action-review',
+          nextStatus: committedRequest.status || '',
+          firestoreMirror: mutation.firestoreMirror || '',
+          error: '',
+        });
+        notifyAdminRequestMutation();
+
+        if (approved && processedActionType === USER_REQUEST_ACTION.RETURN && currentRequest.requesterUid) {
+          await syncRentalRestrictionWriteThroughBestEffort({
+            firebaseUser,
+            firebaseUid: currentRequest.requesterUid,
+            reason: `admin-user-action-${processedActionType || 'review'}-restriction`,
+          });
+        }
+
+        triggerToast(
+          `${getUserRequestActionLabel(processedActionType)}을 ${approved ? '승인' : '불허'}했습니다.`,
+          'success'
+        );
+      } catch (error) {
+        console.error('PostgreSQL admin user action review error:', error);
+        publishAdminRentalRequestCutoverObservation({
+          writeRequested: true,
+          writeSource: 'postgresql-authoritative',
+          requestId: id,
+          operation: 'user-action-review',
+          error: error?.code || error?.message || 'unknown-error',
+        });
+        const legacyCode = String(error?.code || error?.message || '').replaceAll('_', '-');
+        const extensionCodes = [
+          'rental-extension-disabled', 'rental-extension-count-exceeded',
+          'rental-extension-too-early', 'rental-extension-period-conflict',
+        ];
+        const message = extensionCodes.includes(legacyCode)
+          ? getRentalExtensionErrorMessage(legacyCode, error?.availableDate || '')
+          : legacyCode === 'user-action-request-not-pending'
+            ? '검토할 사용자 요청이 없거나 이미 처리되었습니다.'
+            : legacyCode === 'user-action-period-conflict'
+              ? '변경 요청 기간이 같은 기기의 기존 예약·대여 일정과 겹칩니다.'
+              : `사용자 요청 처리에 실패했습니다. 오류 코드: ${error?.code || error?.message || 'unknown-error'}`;
+        triggerToast(message, 'error');
+      } finally {
+        setAdminUserActionSavingRequestId('');
+      }
+      return;
+    }
 
     try {
       const hasOtherCurrentOverdueRequests =

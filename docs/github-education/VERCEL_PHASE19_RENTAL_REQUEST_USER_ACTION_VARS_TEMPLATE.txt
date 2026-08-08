@@ -1,0 +1,15 @@
+# Phase 19 - Rental Request User Action Lifecycle
+# Vercel project: mkrental
+# Environment: Production (this project is operational Staging but uses Vercel Production deployments)
+
+VITE_RENTAL_REQUEST_USER_ACTION_POSTGRES_WRITE_ENABLED=true
+
+# Keep existing validated Phase 14-18 variables.
+# Explicit Staging opt-in is also required:
+#   rentalRequestActionWrite=postgres
+#
+# Recommended full diagnostic URL:
+# https://mkrental.vercel.app/?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWriteThrough=on&restrictionRead=postgres&restrictionWatcher=off&rentalRequestRead=postgres&rentalRequestWatcher=off&rentalRequestWrite=postgres&adminRequestRead=postgres&adminRequestWrite=postgres&rentalRequestActionWrite=postgres
+#
+# VITE_* is build-time configuration. Redeploy after adding/changing the value.
+# NEVER place DATABASE_URL, CLERK_SECRET_KEY, CLERK_JWT_KEY, or Firebase service-account private keys in VITE_* variables.

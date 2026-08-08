@@ -105,7 +105,7 @@ const diagnosticsSource = await readFile(
 );
 assert.match(diagnosticsSource, /syncAndVerifyRentalRequestParity/);
 assert.match(diagnosticsSource, /대여신청 Shadow 동기화·병행검증/);
-assert.match(diagnosticsSource, /Clerk Staging Test · Phase (14|15|16|17|18)/);
+assert.match(diagnosticsSource, /Clerk Staging Test · Phase (14|15|16|17|18|19)/);
 
 const clientSource = await readFile(
   new URL('../../src/clerk/clerkStagingClient.js', import.meta.url),

@@ -103,6 +103,7 @@ for (const marker of [
 const phase16Migration = readFileSync('server/migrations/008_phase16_rental_request_authoritative_write.sql', 'utf8');
 const phase17Migration = readFileSync('server/migrations/009_phase17_admin_rental_request_cutover.sql', 'utf8');
 const phase18Migration = readFileSync('server/migrations/010_phase18_admin_rental_mutation_completion.sql', 'utf8');
+const phase19Migration = readFileSync('server/migrations/011_phase19_user_action_lifecycle.sql', 'utf8');
 for (const marker of [
   'CREATE TABLE IF NOT EXISTS app_rental_requests',
   'CREATE TABLE IF NOT EXISTS app_rental_request_items',
@@ -133,6 +134,15 @@ for (const marker of [
   "'postMutationBootstrap', 'targeted-request-sync'",
 ]) {
   if (!phase18Migration.includes(marker)) throw new Error(`Phase 18 admin rental mutation migration marker is missing: ${marker}`);
+}
+
+for (const marker of [
+  'app_rental_requests_user_action_pending_idx',
+  "'rental_request_user_action_phase'",
+  "'phase', 19",
+  "'adminUserActionReviewAuthority', 'postgresql'",
+]) {
+  if (!phase19Migration.includes(marker)) throw new Error(`Phase 19 user action lifecycle migration marker is missing: ${marker}`);
 }
 
 
@@ -327,9 +337,25 @@ for (const marker of ["adminAccounts/", ':runQuery', ':commit', 'Authorization: 
   if (!adminRentalFirestore.includes(marker)) throw new Error(`Phase 17 admin Firestore compatibility marker is missing: ${marker}`);
 }
 
+
+const rentalRequestUserActionRepository = readFileSync('server/src/rentals/rental-request-user-action-repository.mjs', 'utf8');
+for (const marker of ['countCurrentOverdue', 'pg_advisory_xact_lock', 'editAuthoritative', 'cancelAuthoritative', 'submitManualExtension', 'autoExtendAuthoritative']) {
+  if (!rentalRequestUserActionRepository.includes(marker)) throw new Error(`Phase 19 user action repository marker is missing: ${marker}`);
+}
+const rentalRequestUserActionService = readFileSync('server/src/rentals/rental-request-user-action-service.mjs', 'utf8');
+for (const marker of ['editCurrent', 'cancelCurrent', 'extendCurrent', 'countCurrentOverdue', 'commitUserRequestEdit', 'commitUserRequestCancel', 'commitUserExtension']) {
+  if (!rentalRequestUserActionService.includes(marker)) throw new Error(`Phase 19 user action service marker is missing: ${marker}`);
+}
+for (const marker of ['commitUserRequestEdit', 'commitUserRequestCancel', 'commitUserExtension']) {
+  if (!rentalRequestWriteClient.includes(marker)) throw new Error(`Phase 19 Firestore user action mirror marker is missing: ${marker}`);
+}
+for (const marker of ['reviewUserAction', 'commitUserActionReview']) {
+  if (!(adminRentalService.includes(marker) || adminRentalFirestore.includes(marker))) throw new Error(`Phase 19 admin user-action review marker is missing: ${marker}`);
+}
+
 const configTemplate = readFileSync('docs/github-education/HEROKU_CONFIG_VARS_TEMPLATE.txt', 'utf8');
 for (const variable of ['CLERK_JWT_KEY=', 'CLERK_AUTHORIZED_PARTIES=', 'CLERK_SECRET_KEY=sk_test_', 'CLERK_API_TIMEOUT_MS=8000', 'FIREBASE_PROJECT_ID=laptop-system-mk']) {
   if (!configTemplate.includes(variable)) throw new Error(`Phase 6 config template is missing ${variable}`);
 }
 
-console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request shadow/parity + phase16 authoritative write + phase17 admin rental-request cutover + phase18 mutation/audit completion invariants)`);
+console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request shadow/parity + phase16 authoritative write + phase17 admin rental-request cutover + phase18 mutation/audit completion + phase19 user-action lifecycle invariants)`);

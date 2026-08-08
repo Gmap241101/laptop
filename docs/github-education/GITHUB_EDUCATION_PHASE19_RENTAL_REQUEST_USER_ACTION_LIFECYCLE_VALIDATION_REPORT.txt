@@ -1,0 +1,35 @@
+Phase 19 validation scope
+=========================
+
+Implementation targets:
+- PostgreSQL authoritative user direct edit
+- PostgreSQL authoritative user direct cancel
+- PostgreSQL manual/automatic extension lifecycle
+- whole-user overdue restriction revalidation
+- PostgreSQL authoritative administrator pending user-action review
+- Firestore compatibility mirror
+- PostgreSQL request shadow refresh after user mutation
+- early return remains disabled per current product policy
+
+Expected automated validation:
+- migration static validation: PASS
+- backend foundation validation: PASS
+- backend HTTP smoke including user edit/cancel/extend and admin review: PASS
+- Phase 19 backend lifecycle smoke: PASS
+- Phase 19 frontend lifecycle smoke: PASS
+- React Hook audit: PASS
+- application flow audit: PASS
+- Firestore strict audit: PASS with no new warning/error
+- package guard: PASS
+- protected-path forced failure: exit code 1
+- nonexistent-manifest-entry forced failure: exit code 1
+- final ZIP manifest/hash/integrity verification: PASS
+
+Runtime acceptance still required after deployment:
+1. Migration 011 applies successfully and health/live are OK.
+2. User direct edit succeeds through postgresql-authoritative and remains visible after reload.
+3. User cancellation succeeds and disappears from both user/admin active listings as expected.
+4. Extension follows the configured manual/auto policy and keeps Firestore compatibility mirror synchronized.
+5. For manual extension, administrator approve/deny uses postgresql-authoritative and the user view reflects the result.
+6. An overdue user cannot extend another active rental.
+7. Early return remains disabled as before.
