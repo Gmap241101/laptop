@@ -309,7 +309,245 @@ export const createAdminRentalRequestRepository = (pool) => {
       return result.rowCount > 0;
     },
 
-    async changeStatus({ requestId, nextStatus, auditActor, returnFields = {}, allowNonOverlappingSameAssetRequests = false, relatedRequestUpdates = [], beforeCommit }) {
+    async upsertImportedEvents(requestId, events = []) {
+      const id = trim(requestId);
+      if (!id || !Array.isArray(events) || events.length === 0) return 0;
+      const requestResult = await pool.query(
+        'SELECT id FROM app_rental_requests WHERE request_id = $1',
+        [id],
+      );
+      const rentalRequestId = requestResult.rows[0]?.id;
+      if (!rentalRequestId) return 0;
+      let synchronized = 0;
+      for (const event of events) {
+        const sourceEventId = trim(event?.id);
+        if (!sourceEventId) continue;
+        await pool.query(
+          `INSERT INTO app_rental_request_events (
+             rental_request_id, event_type, actor_app_user_id, actor_firebase_uid,
+             event_payload, created_at, source_event_id, source_mode
+           ) VALUES ($1,$2,NULL,$3,$4::jsonb,COALESCE($5::timestamptz,NOW()),$6,'firestore-admin-import')
+           ON CONFLICT (source_event_id) WHERE source_event_id IS NOT NULL AND source_event_id <> ''
+           DO UPDATE SET
+             event_type = EXCLUDED.event_type,
+             actor_firebase_uid = EXCLUDED.actor_firebase_uid,
+             event_payload = EXCLUDED.event_payload,
+             created_at = EXCLUDED.created_at,
+             source_mode = EXCLUDED.source_mode`,
+          [
+            rentalRequestId,
+            trim(event.action) || 'legacy-admin-event',
+            trim(event.actorUid),
+            JSON.stringify({
+              action: trim(event.action),
+              previousStatus: trim(event.previousStatus),
+              nextStatus: trim(event.nextStatus),
+              previousMemo: String(event.previousMemo ?? ''),
+              nextMemo: String(event.nextMemo ?? ''),
+              actorUid: trim(event.actorUid),
+              actorAdminId: trim(event.actorAdminId),
+              actorName: trim(event.actorName),
+              detail: String(event.detail ?? ''),
+            }),
+            event.createdAt || null,
+            sourceEventId,
+          ],
+        );
+        synchronized += 1;
+      }
+      return synchronized;
+    },
+
+    async listEvents(requestId, limit = 100) {
+      const result = await pool.query(
+        `SELECT event.id, event.event_type, event.actor_firebase_uid,
+                event.event_payload, event.created_at, event.source_event_id,
+                event.source_mode
+           FROM app_rental_request_events event
+           JOIN app_rental_requests request ON request.id = event.rental_request_id
+          WHERE request.request_id = $1
+          ORDER BY event.created_at DESC, event.id DESC
+          LIMIT $2`,
+        [requestId, Math.min(200, Math.max(1, Math.trunc(Number(limit || 100))))],
+      );
+      return result.rows.map((row) => {
+        const payload = asJson(row.event_payload, {}) || {};
+        return Object.freeze({
+          id: row.source_event_id || `PG-EVT-${row.id}`,
+          action: payload.action || row.event_type || '',
+          previousStatus: payload.previousStatus || '',
+          nextStatus: payload.nextStatus || '',
+          previousMemo: payload.previousMemo || '',
+          nextMemo: payload.nextMemo || '',
+          actorUid: payload.actorUid || row.actor_firebase_uid || '',
+          actorAdminId: payload.actorAdminId || '',
+          actorName: payload.actorName || '',
+          detail: payload.detail || '',
+          createdAt: row.created_at,
+          sourceMode: row.source_mode || 'postgresql-authoritative',
+        });
+      });
+    },
+
+    async editRequest({ requestId, updates = {}, auditActor, allowNonOverlappingSameAssetRequests = false, beforeCommit }) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const locked = await client.query(
+          `SELECT ${SELECT}
+             FROM app_rental_requests request
+             LEFT JOIN app_rental_request_items item ON item.rental_request_id = request.id
+            WHERE request.request_id = $1
+            FOR UPDATE OF request`,
+          [requestId],
+        );
+        const current = mapRow(locked.rows[0]);
+        if (!current) {
+          const error = new Error('rental-request-not-found');
+          error.code = 'rental_request_not_found';
+          throw error;
+        }
+        const nextRequest = Object.freeze({
+          ...current,
+          requesterTeam: trim(updates.requesterTeam || current.requesterTeam),
+          team: trim(updates.requesterTeam || current.requesterTeam),
+          requesterName: trim(updates.requesterName || current.requesterName),
+          borrower: trim(updates.requesterName || current.requesterName),
+          startDate: trim(updates.startDate || current.startDate),
+          dueDate: trim(updates.dueDate || current.dueDate),
+          purpose: String(updates.purpose ?? current.purpose ?? '').trim(),
+          adminMemo: String(updates.adminMemo ?? current.adminMemo ?? '').trim(),
+        });
+        if (!nextRequest.requesterTeam || !nextRequest.requesterName || !nextRequest.startDate || !nextRequest.dueDate) {
+          const error = new Error('required-rental-edit-fields-missing');
+          error.code = 'required_rental_edit_fields_missing';
+          throw error;
+        }
+        if (nextRequest.dueDate < nextRequest.startDate) {
+          const error = new Error('invalid-rental-edit-period');
+          error.code = 'invalid_rental_edit_period';
+          throw error;
+        }
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [current.laptopId]);
+        if (BLOCKING.has(current.status)) {
+          const conflict = await client.query(
+            `SELECT request_id, start_date, due_date, status
+               FROM app_rental_asset_reservation_guards
+              WHERE laptop_id = $1 AND active = TRUE AND request_id <> $2
+                AND ($5::boolean = FALSE OR (start_date <= $4::date AND due_date >= $3::date))
+              ORDER BY start_date, request_id LIMIT 1`,
+            [current.laptopId, requestId, nextRequest.startDate, nextRequest.dueDate, Boolean(allowNonOverlappingSameAssetRequests)],
+          );
+          if (conflict.rowCount) {
+            const error = new Error('rental-period-conflict');
+            error.code = 'rental_period_conflict';
+            error.blockingRequest = conflict.rows[0];
+            throw error;
+          }
+        }
+        if (typeof beforeCommit === 'function') await beforeCommit({ currentRequest: current, nextRequest, client });
+        await client.query(
+          `UPDATE app_rental_requests SET
+             requester_team = $2, requester_name = $3, start_date = $4::date, due_date = $5::date,
+             purpose = $6, admin_memo = $7,
+             firestore_mirror_status = 'synced', firestore_mirror_error = '', firestore_mirrored_at = NOW(),
+             source_updated_at = NOW(), source_synced_at = NOW(), updated_at = NOW()
+           WHERE request_id = $1`,
+          [requestId, nextRequest.requesterTeam, nextRequest.requesterName, nextRequest.startDate, nextRequest.dueDate, nextRequest.purpose, nextRequest.adminMemo],
+        );
+        await client.query(
+          `UPDATE app_rental_asset_reservation_guards SET
+             start_date = $2::date, due_date = $3::date,
+             source_mode = 'postgresql-authoritative-admin', synced_at = NOW(), updated_at = NOW()
+           WHERE request_id = $1`,
+          [requestId, nextRequest.startDate, nextRequest.dueDate],
+        );
+        await client.query(
+          `INSERT INTO app_rental_request_events (
+             rental_request_id, event_type, actor_app_user_id, actor_firebase_uid, event_payload, source_mode
+           ) SELECT id, 'request-edited', NULL, $2, $3::jsonb, 'postgresql-authoritative-admin'
+               FROM app_rental_requests WHERE request_id = $1`,
+          [requestId, auditActor.uid, JSON.stringify({
+            action: 'request-edited', previousStatus: current.status, nextStatus: current.status,
+            previousMemo: current.adminMemo || '', nextMemo: nextRequest.adminMemo || '',
+            actorUid: auditActor.uid, actorAdminId: auditActor.adminId, actorName: auditActor.name,
+            detail: '관리자 신청 정보 수정',
+          })],
+        );
+        await client.query('COMMIT');
+        return mapRow((await pool.query(
+          `SELECT ${SELECT} FROM app_rental_requests request
+             LEFT JOIN app_rental_request_items item ON item.rental_request_id = request.id
+            WHERE request.request_id = $1`, [requestId],
+        )).rows[0]);
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+
+    async saveMemo({ requestId, memo = '', auditActor, beforeCommit }) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const locked = await client.query(
+          `SELECT ${SELECT} FROM app_rental_requests request
+             LEFT JOIN app_rental_request_items item ON item.rental_request_id = request.id
+            WHERE request.request_id = $1 FOR UPDATE OF request`,
+          [requestId],
+        );
+        const current = mapRow(locked.rows[0]);
+        if (!current) {
+          const error = new Error('rental-request-not-found');
+          error.code = 'rental_request_not_found';
+          throw error;
+        }
+        const nextMemo = String(memo ?? '');
+        if (String(current.adminMemo || '') === nextMemo) {
+          await client.query('COMMIT');
+          return Object.freeze({ request: current, changed: false });
+        }
+        const nextRequest = Object.freeze({ ...current, adminMemo: nextMemo });
+        if (typeof beforeCommit === 'function') await beforeCommit({ currentRequest: current, nextRequest, client });
+        await client.query(
+          `UPDATE app_rental_requests SET admin_memo = $2,
+             firestore_mirror_status = 'synced', firestore_mirror_error = '', firestore_mirrored_at = NOW(),
+             source_updated_at = NOW(), source_synced_at = NOW(), updated_at = NOW()
+           WHERE request_id = $1`,
+          [requestId, nextMemo],
+        );
+        await client.query(
+          `INSERT INTO app_rental_request_events (
+             rental_request_id, event_type, actor_app_user_id, actor_firebase_uid, event_payload, source_mode
+           ) SELECT id, 'memo-changed', NULL, $2, $3::jsonb, 'postgresql-authoritative-admin'
+               FROM app_rental_requests WHERE request_id = $1`,
+          [requestId, auditActor.uid, JSON.stringify({
+            action: 'memo-changed', previousStatus: current.status, nextStatus: current.status,
+            previousMemo: current.adminMemo || '', nextMemo,
+            actorUid: auditActor.uid, actorAdminId: auditActor.adminId, actorName: auditActor.name,
+            detail: '관리자 메모 변경',
+          })],
+        );
+        await client.query('COMMIT');
+        return Object.freeze({
+          request: mapRow((await pool.query(
+            `SELECT ${SELECT} FROM app_rental_requests request
+               LEFT JOIN app_rental_request_items item ON item.rental_request_id = request.id
+              WHERE request.request_id = $1`, [requestId],
+          )).rows[0]),
+          changed: true,
+        });
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+
+    async changeStatus({ requestId, nextStatus, auditActor, returnFields = {}, allowNonOverlappingSameAssetRequests = false, relatedRequestUpdates = [], beforeCommit, eventType = 'admin-status-changed', eventPayload = {}, clearUserActionRequest = false }) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -373,6 +611,7 @@ export const createAdminRentalRequestRepository = (pool) => {
              overdue_days_at_return = $5,
              overdue_penalty_pending = $6,
              overdue_penalty_batch_id = $7,
+             user_action_request = CASE WHEN $8::boolean THEN NULL ELSE user_action_request END,
              firestore_mirror_status = 'synced',
              firestore_mirror_error = '',
              firestore_mirrored_at = NOW(),
@@ -384,6 +623,7 @@ export const createAdminRentalRequestRepository = (pool) => {
             requestId, nextStatus, nextRequest.returnedAt || null,
             nextRequest.actualReturnDate || '', Number(nextRequest.overdueDaysAtReturn || 0),
             Boolean(nextRequest.overduePenaltyPending), nextRequest.overduePenaltyBatchId || '',
+            Boolean(clearUserActionRequest),
           ],
         );
         await client.query(
@@ -410,14 +650,19 @@ export const createAdminRentalRequestRepository = (pool) => {
         }
         await client.query(
           `INSERT INTO app_rental_request_events (
-             rental_request_id, event_type, actor_app_user_id, actor_firebase_uid, event_payload
-           ) SELECT id, 'admin-status-changed', NULL, $2, $3::jsonb
+             rental_request_id, event_type, actor_app_user_id, actor_firebase_uid, event_payload, source_mode
+           ) SELECT id, $2, NULL, $3, $4::jsonb, 'postgresql-authoritative-admin'
                FROM app_rental_requests WHERE request_id = $1`,
-          [requestId, auditActor.uid, JSON.stringify({
+          [requestId, eventType, auditActor.uid, JSON.stringify({
+            action: eventType,
             previousStatus: current.status,
             nextStatus,
+            previousMemo: current.adminMemo || '',
+            nextMemo: current.adminMemo || '',
+            actorUid: auditActor.uid,
             actorAdminId: auditActor.adminId,
             actorName: auditActor.name,
+            ...eventPayload,
           })],
         );
         await client.query('COMMIT');

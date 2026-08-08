@@ -1,0 +1,47 @@
+Phase 18 validation report
+==========================
+
+Baseline
+--------
+rental-system-github-education-phase17-admin-rental-request-postgres-cutover-20260808_deployment_package.zip
+
+Scope
+-----
+- Migration 010 admin event source identity/runtime metadata
+- Legacy rentalRequestLogs import to PostgreSQL app_rental_request_events
+- PostgreSQL administrator event read
+- Targeted single-request source synchronization
+- PostgreSQL-authoritative administrator direct edit + Firestore compatibility mirror
+- PostgreSQL-authoritative administrator memo save + Firestore compatibility mirror
+- PostgreSQL-authoritative administrator status restore + Firestore compatibility mirror
+- No per-mutation full rentalRequests bootstrap invalidation
+- Existing Firestore user-action review followed by targeted request/event sync
+- Phase 1-17 full regression
+
+Automated result
+----------------
+verify:phase18: PASS (exit 0)
+React Hook audit: PASS, 157 source files
+Application flow audit: PASS, 124 contracts / 11 user routes / 20 administrator tabs
+Firestore strict audit: PASS
+  total calls: 130
+  onSnapshot: 35
+  getDocs: 49
+  getDoc: 28
+  getCountFromServer: 18
+  approved risk findings: 51
+  unapproved warnings: 0
+  unapproved errors: 0
+Phase 18 backend mutation smoke: PASS
+Phase 18 frontend mutation/audit/bootstrap smoke: PASS
+Package guard: PASS
+
+Build
+-----
+build:staging prebuild audits: PASS
+Vite bundle: not executed in this workspace because root node_modules is unavailable (`vite: not found`, exit 127).
+This is the documented ChatGPT workspace limitation; final bundle validation is performed by Vercel deployment.
+
+Promotion gate
+--------------
+Do not promote this Phase 18 package as the next baseline until Staging browser verification confirms administrator direct edit, memo save, status restore, and PostgreSQL processing-history read.

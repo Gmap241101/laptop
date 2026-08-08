@@ -70,7 +70,7 @@ const diagnosticsSource = await readFile(
   new URL('../../src/clerk/ClerkStagingDiagnostics.jsx', import.meta.url),
   'utf8',
 );
-assert.match(diagnosticsSource, /Clerk Staging Test · Phase (16|17)/);
+assert.match(diagnosticsSource, /Clerk Staging Test · Phase (16|17|18)/);
 assert.match(diagnosticsSource, /Phase 16 rental request authoritative write/);
 assert.match(diagnosticsSource, /Firestore compatibility mirror/);
 

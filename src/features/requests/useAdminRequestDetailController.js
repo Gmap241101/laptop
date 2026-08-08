@@ -7,7 +7,12 @@ import {
   where,
 } from 'firebase/firestore';
 
-import { RENTAL_REQUEST_LOGS_COLLECTION_REF } from '../../firebase.js';
+import { RENTAL_REQUEST_LOGS_COLLECTION_REF, firebaseAuth } from '../../firebase.js';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import {
+  publishAdminRentalRequestCutoverObservation,
+  readAdminRentalRequestCutoverConfig,
+} from './adminRentalRequestCutover.js';
 import {
   RENTAL_REQUEST_AUDIT_ACTION,
   RENTAL_REQUEST_RESTORE_TARGETS,
@@ -55,6 +60,7 @@ export default function useAdminRequestDetailController({
   commitAdminRequestEdit,
   commitAdminRequestStatusRestore,
   enabled,
+  mutationVersion,
   resetPage,
   selectedRequestId,
   setSelectedRequestId,
@@ -92,6 +98,53 @@ export default function useAdminRequestDetailController({
     setRequestLogsReady(false);
     setRequestLogsLoadErrorMessage('');
 
+    const cutoverConfig = readAdminRentalRequestCutoverConfig();
+    if (cutoverConfig.readRequested) {
+      let cancelled = false;
+      const loadPostgresEvents = async () => {
+        try {
+          const firebaseUser = firebaseAuth.currentUser;
+          if (!firebaseUser) throw new Error('admin-firebase-sign-in-required');
+          const firebaseIdToken = await firebaseUser.getIdToken();
+          const payload = await clerkStagingClient.getAdminRentalRequestEvents(
+            firebaseIdToken,
+            selectedRequestId
+          );
+          if (cancelled) return;
+          const events = payload?.adminRentalRequestEvents?.events || [];
+          setRequestLogs(events);
+          setRequestLogsLoadErrorMessage('');
+          setRequestLogsReady(true);
+          publishAdminRentalRequestCutoverObservation({
+            readRequested: true,
+            readSource: 'postgresql',
+            firestoreWatcher: 'disabled',
+            auditSource: 'postgresql',
+            auditCount: events.length,
+            error: '',
+          });
+        } catch (error) {
+          if (cancelled) return;
+          console.error('PostgreSQL selected rental request events error:', error);
+          setRequestLogs([]);
+          setRequestLogsLoadErrorMessage('선택한 대여 신청의 PostgreSQL 처리 이력을 불러오지 못했습니다.');
+          setRequestLogsReady(true);
+          publishAdminRentalRequestCutoverObservation({
+            readRequested: true,
+            readSource: 'postgresql',
+            firestoreWatcher: 'disabled',
+            auditSource: 'postgresql-error',
+            auditCount: 0,
+            error: error?.code || error?.message || 'admin-rental-request-events-read-failed',
+          });
+        }
+      };
+      void loadPostgresEvents();
+      return () => {
+        cancelled = true;
+      };
+    }
+
     return onSnapshot(
       firestoreQuery(
         RENTAL_REQUEST_LOGS_COLLECTION_REF,
@@ -117,7 +170,7 @@ export default function useAdminRequestDetailController({
         setRequestLogsReady(true);
       }
     );
-  }, [enabled, selectedRequestId]);
+  }, [enabled, mutationVersion, selectedRequestId]);
 
   useEffect(() => {
     if (selectedRequestId) return;

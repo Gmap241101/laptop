@@ -169,13 +169,16 @@ export default function ClerkStagingDiagnostics() {
     rentalRequestWriteReused: false,
     rentalRequestWriteError: null,
     adminRentalRequestReadRequested: adminRentalRequestCutoverConfig.readRequested,
-    adminRentalRequestReadSource: null,
-    adminRentalRequestWatcherDisabled: false,
+    adminRentalRequestReadSource: adminRentalRequestCutoverConfig.readRequested ? 'awaiting-admin-view' : null,
+    adminRentalRequestWatcherDisabled: adminRentalRequestCutoverConfig.readRequested,
     adminRentalRequestBootstrapCount: null,
     adminRentalRequestTotalCount: null,
+    adminRentalRequestAuditSource: null,
+    adminRentalRequestAuditCount: null,
     adminRentalRequestWriteRequested: adminRentalRequestCutoverConfig.writeRequested,
     adminRentalRequestWriteSource: null,
     adminRentalRequestWriteRequestId: null,
+    adminRentalRequestWriteOperation: null,
     adminRentalRequestWriteNextStatus: null,
     adminRentalRequestWriteMirror: null,
     adminRentalRequestError: null,
@@ -413,12 +416,18 @@ export default function ClerkStagingDiagnostics() {
           observation && Object.prototype.hasOwnProperty.call(observation, 'totalCount')
             ? observation.totalCount
             : current.adminRentalRequestTotalCount,
+        adminRentalRequestAuditSource: observation?.auditSource || current.adminRentalRequestAuditSource,
+        adminRentalRequestAuditCount:
+          observation && Object.prototype.hasOwnProperty.call(observation, 'auditCount')
+            ? observation.auditCount
+            : current.adminRentalRequestAuditCount,
         adminRentalRequestWriteRequested:
           observation && Object.prototype.hasOwnProperty.call(observation, 'writeRequested')
             ? Boolean(observation.writeRequested)
             : current.adminRentalRequestWriteRequested,
         adminRentalRequestWriteSource: observation?.writeSource || current.adminRentalRequestWriteSource,
         adminRentalRequestWriteRequestId: observation?.requestId || current.adminRentalRequestWriteRequestId,
+        adminRentalRequestWriteOperation: observation?.operation || current.adminRentalRequestWriteOperation,
         adminRentalRequestWriteNextStatus: observation?.nextStatus || current.adminRentalRequestWriteNextStatus,
         adminRentalRequestWriteMirror: observation?.firestoreMirror || current.adminRentalRequestWriteMirror,
         adminRentalRequestError:
@@ -624,7 +633,7 @@ export default function ClerkStagingDiagnostics() {
 
   return (
     <aside style={panelStyle} aria-label="Clerk staging diagnostics">
-      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 17</div>
+      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 18</div>
       <div>SDK: {state.phase === 'loading' ? 'loading' : state.phase}</div>
       <div>Signed in: {state.signedIn ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Clerk user: {state.userId || '-'}</div>
@@ -746,15 +755,18 @@ export default function ClerkStagingDiagnostics() {
       <div>Idempotent reuse: {state.rentalRequestWriteReused ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Write error: {state.rentalRequestWriteError || '-'}</div>
 
-      <div style={{ marginTop: '6px', fontWeight: 700 }}>Phase 17 admin rental request PostgreSQL cutover</div>
+      <div style={{ marginTop: '6px', fontWeight: 700 }}>Phase 18 admin rental request PostgreSQL mutation completion</div>
       <div>Admin rental request read requested: {state.adminRentalRequestReadRequested ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Admin rental request active source: {state.adminRentalRequestReadSource || '-'}</div>
       <div>Admin rental request Firestore watcher: {state.adminRentalRequestWatcherDisabled ? 'disabled' : 'active'}</div>
       <div>Admin bootstrap synchronized: {state.adminRentalRequestBootstrapCount === null ? '-' : state.adminRentalRequestBootstrapCount}</div>
       <div>Admin query result count: {state.adminRentalRequestTotalCount === null ? '-' : state.adminRentalRequestTotalCount}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Admin processing history source: {state.adminRentalRequestAuditSource || '-'}</div>
+      <div>Admin processing history count: {state.adminRentalRequestAuditCount === null ? '-' : state.adminRentalRequestAuditCount}</div>
       <div>Admin rental request write requested: {state.adminRentalRequestWriteRequested ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Last admin write source: {state.adminRentalRequestWriteSource || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Last admin write request: {state.adminRentalRequestWriteRequestId || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Last admin operation: {state.adminRentalRequestWriteOperation || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Last admin write status: {state.adminRentalRequestWriteNextStatus || '-'}</div>
       <div>Admin Firestore compatibility mirror: {state.adminRentalRequestWriteMirror || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Admin cutover error: {state.adminRentalRequestError || '-'}</div>

@@ -192,7 +192,7 @@ server.listen(config.port, '0.0.0.0', () => {
     rentalRestrictionShadow: config.firebaseProjectId ? 'postgresql-user-token-security-rules' : 'disabled',
     rentalRequestShadow: config.firebaseProjectId ? 'normalized-postgresql-user-token-security-rules' : 'disabled',
     rentalRequestWrite: config.firebaseProjectId ? 'postgresql-authoritative-firestore-compatibility-mirror' : 'disabled',
-    adminRentalRequests: config.firebaseProjectId ? 'postgresql-read-status-write-firestore-compatibility-mirror' : 'disabled',
+    adminRentalRequests: config.firebaseProjectId ? 'postgresql-read-admin-mutations-audit-firestore-compatibility-mirror' : 'disabled',
   });
 });
 

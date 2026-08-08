@@ -51,8 +51,8 @@ for (const marker of [
 for (const marker of [
   'requestAdminRentalRequestBootstrap', 'requestAdminRentalRequests', 'requestAdminRentalDashboard', 'requestAdminRentalRequestStatusChange',
 ]) assert.ok(client.includes(marker), `Missing Phase 17 Clerk client marker: ${marker}`);
-assert.match(diagnostics, /Clerk Staging Test · Phase 17/);
-assert.match(diagnostics, /Phase 17 admin rental request PostgreSQL cutover/);
+assert.match(diagnostics, /Clerk Staging Test · Phase (?:17|18)/);
+assert.match(diagnostics, /Phase (?:17 admin rental request PostgreSQL cutover|18 admin rental request PostgreSQL mutation completion)/);
 assert.match(dashboard, /rentalRequestMetricSource: 'postgresql-phase17'/);
 assert.match(dashboard, /getAdminRentalDashboard/);
 

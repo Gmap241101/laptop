@@ -206,7 +206,7 @@ export default function useAdminRequestsController({
   useEffect(() => {
     if (!adminCutoverConfig.readRequested) return;
     postgresBootstrapRef.current = false;
-  }, [adminCutoverConfig.readRequested, mutationVersion]);
+  }, [adminCutoverConfig.readRequested]);
 
   const progressiveSearchEnabled = Boolean(
     enabled &&

@@ -185,6 +185,297 @@ export const createFirestoreAdminRentalRequestsClient = ({
       });
     },
 
+    async listAllRentalRequestLogs({ firebaseIdToken }) {
+      const payload = await requestJson({
+        url: `${baseUrl}:runQuery`,
+        method: 'POST',
+        firebaseIdToken,
+        codePrefix: 'firestore_admin_all_rental_request_logs',
+        body: {
+          structuredQuery: {
+            from: [{ collectionId: 'rentalRequestLogs' }],
+          },
+        },
+      });
+      if (!Array.isArray(payload)) {
+        throw createError('firestore_admin_all_rental_request_logs_invalid', 'Firestore rental request log list response is invalid.', 503);
+      }
+      return payload
+        .map((entry) => entry?.document)
+        .filter(Boolean)
+        .map(decodeFirestoreDocument)
+        .map((document) => ({
+          id: normalize(document?.fields?.id) || normalize(document?.name).split('/').at(-1) || '',
+          ...(document?.fields || {}),
+          createdAt: document?.fields?.createdAt || document?.createTime || null,
+        }));
+    },
+
+    async listRentalRequestLogs({ requestId, firebaseIdToken }) {
+      const id = normalize(requestId);
+      if (!id) throw createError('rental_request_id_missing', 'Rental request ID is required.', 400);
+      const payload = await requestJson({
+        url: `${baseUrl}:runQuery`,
+        method: 'POST',
+        firebaseIdToken,
+        codePrefix: 'firestore_admin_rental_request_logs',
+        body: {
+          structuredQuery: {
+            from: [{ collectionId: 'rentalRequestLogs' }],
+            where: {
+              fieldFilter: {
+                field: { fieldPath: 'requestId' },
+                op: 'EQUAL',
+                value: { stringValue: id },
+              },
+            },
+            orderBy: [
+              { field: { fieldPath: 'createdAt' }, direction: 'DESCENDING' },
+            ],
+            limit: 100,
+          },
+        },
+      });
+      if (!Array.isArray(payload)) {
+        throw createError('firestore_admin_rental_request_logs_invalid', 'Firestore rental request log response is invalid.', 503);
+      }
+      return payload
+        .map((entry) => entry?.document)
+        .filter(Boolean)
+        .map(decodeFirestoreDocument)
+        .map((document) => ({
+          id: normalize(document?.fields?.id) || normalize(document?.name).split('/').at(-1) || '',
+          ...(document?.fields || {}),
+          createdAt: document?.fields?.createdAt || document?.createTime || null,
+        }));
+    },
+
+    async commitRequestEdit({
+      request,
+      previousRequest,
+      availability,
+      asset,
+      requestUpdateTime,
+      assetUpdateTime,
+      auditActor,
+      detail = '',
+      firebaseIdToken,
+    }) {
+      const requestId = normalize(request?.id);
+      const assetId = normalize(asset?.id);
+      if (!requestId || !assetId || !normalize(requestUpdateTime) || !normalize(assetUpdateTime)) {
+        throw createError('firestore_admin_edit_mirror_invalid', 'Admin edit mirror payload is incomplete.', 400);
+      }
+      const logId = randomUUID();
+      const writes = [
+        {
+          update: {
+            name: documentName(`rentalRequests/${requestId}`),
+            fields: encodeFields({
+              team: request.requesterTeam || request.team || '',
+              borrower: request.requesterName || request.borrower || '',
+              requesterTeam: request.requesterTeam || request.team || '',
+              requesterName: request.requesterName || request.borrower || '',
+              startDate: request.startDate,
+              dueDate: request.dueDate,
+              purpose: request.purpose || '',
+              adminMemo: request.adminMemo || '',
+            }),
+          },
+          updateMask: {
+            fieldPaths: ['team', 'borrower', 'requesterTeam', 'requesterName', 'startDate', 'dueDate', 'purpose', 'adminMemo'],
+          },
+          currentDocument: { updateTime: requestUpdateTime },
+          updateTransforms: [
+            { fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' },
+            { fieldPath: 'syncedAt', setToServerValue: 'REQUEST_TIME' },
+          ],
+        },
+        {
+          update: {
+            name: documentName(`rentalRequestLogs/${logId}`),
+            fields: encodeFields({
+              id: logId,
+              requestId,
+              action: 'request-edited',
+              previousStatus: previousRequest?.status || '',
+              nextStatus: request.status || '',
+              previousMemo: previousRequest?.adminMemo || '',
+              nextMemo: request.adminMemo || '',
+              actorUid: auditActor.uid,
+              actorAdminId: auditActor.adminId,
+              actorName: auditActor.name,
+              detail,
+            }),
+          },
+          currentDocument: { exists: false },
+          updateTransforms: [{ fieldPath: 'createdAt', setToServerValue: 'REQUEST_TIME' }],
+        },
+      ];
+      if (availability) {
+        writes.push({
+          update: {
+            name: documentName(`rentalAvailability/${requestId}`),
+            fields: encodeFields(availability),
+          },
+          updateTransforms: [{ fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' }],
+        });
+      }
+      writes.push({
+        update: {
+          name: documentName(`rentalAssets/${assetId}`),
+          fields: encodeFields({
+            reservations: asset.reservations || [],
+            status: asset.status,
+            currentRequestId: asset.currentRequestId ?? null,
+          }),
+        },
+        updateMask: { fieldPaths: ['reservations', 'status', 'currentRequestId'] },
+        currentDocument: { updateTime: assetUpdateTime },
+        updateTransforms: [{ fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' }],
+      });
+      return requestJson({
+        url: `${baseUrl}:commit`,
+        method: 'POST',
+        firebaseIdToken,
+        codePrefix: 'firestore_admin_edit_mirror',
+        body: { writes },
+      });
+    },
+
+    async commitMemo({ requestId, previousRequest, nextMemo, requestUpdateTime, auditActor, firebaseIdToken }) {
+      const id = normalize(requestId);
+      if (!id || !normalize(requestUpdateTime)) {
+        throw createError('firestore_admin_memo_mirror_invalid', 'Admin memo mirror payload is incomplete.', 400);
+      }
+      const logId = randomUUID();
+      return requestJson({
+        url: `${baseUrl}:commit`,
+        method: 'POST',
+        firebaseIdToken,
+        codePrefix: 'firestore_admin_memo_mirror',
+        body: {
+          writes: [
+            {
+              update: {
+                name: documentName(`rentalRequests/${id}`),
+                fields: encodeFields({ adminMemo: nextMemo || '' }),
+              },
+              updateMask: { fieldPaths: ['adminMemo'] },
+              currentDocument: { updateTime: requestUpdateTime },
+              updateTransforms: [
+                { fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' },
+                { fieldPath: 'syncedAt', setToServerValue: 'REQUEST_TIME' },
+              ],
+            },
+            {
+              update: {
+                name: documentName(`rentalRequestLogs/${logId}`),
+                fields: encodeFields({
+                  id: logId,
+                  requestId: id,
+                  action: 'memo-changed',
+                  previousStatus: previousRequest?.status || '',
+                  nextStatus: previousRequest?.status || '',
+                  previousMemo: previousRequest?.adminMemo || '',
+                  nextMemo: nextMemo || '',
+                  actorUid: auditActor.uid,
+                  actorAdminId: auditActor.adminId,
+                  actorName: auditActor.name,
+                }),
+              },
+              currentDocument: { exists: false },
+              updateTransforms: [{ fieldPath: 'createdAt', setToServerValue: 'REQUEST_TIME' }],
+            },
+          ],
+        },
+      });
+    },
+
+    async commitStatusRestore({
+      request,
+      previousRequest,
+      availability,
+      asset,
+      requestUpdateTime,
+      assetUpdateTime,
+      auditActor,
+      restoreReason,
+      firebaseIdToken,
+    }) {
+      const requestId = normalize(request?.id);
+      const assetId = normalize(asset?.id);
+      if (!requestId || !assetId || !normalize(requestUpdateTime) || !normalize(assetUpdateTime)) {
+        throw createError('firestore_admin_restore_mirror_invalid', 'Admin restore mirror payload is incomplete.', 400);
+      }
+      const logId = randomUUID();
+      const writes = [
+        {
+          update: {
+            name: documentName(`rentalRequests/${requestId}`),
+            fields: encodeFields({ status: request.status, userActionRequest: null }),
+          },
+          updateMask: { fieldPaths: ['status', 'userActionRequest'] },
+          currentDocument: { updateTime: requestUpdateTime },
+          updateTransforms: [
+            { fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' },
+            { fieldPath: 'syncedAt', setToServerValue: 'REQUEST_TIME' },
+          ],
+        },
+        {
+          update: {
+            name: documentName(`rentalRequestLogs/${logId}`),
+            fields: encodeFields({
+              id: logId,
+              requestId,
+              action: 'status-restored',
+              previousStatus: previousRequest?.status || '',
+              nextStatus: request.status || '',
+              previousMemo: previousRequest?.adminMemo || '',
+              nextMemo: request.adminMemo || '',
+              actorUid: auditActor.uid,
+              actorAdminId: auditActor.adminId,
+              actorName: auditActor.name,
+              detail: `상태 복구 사유: ${normalize(restoreReason)}`,
+            }),
+          },
+          currentDocument: { exists: false },
+          updateTransforms: [{ fieldPath: 'createdAt', setToServerValue: 'REQUEST_TIME' }],
+        },
+      ];
+      if (availability) {
+        writes.push({
+          update: {
+            name: documentName(`rentalAvailability/${requestId}`),
+            fields: encodeFields(availability),
+          },
+          updateTransforms: [{ fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' }],
+        });
+      } else {
+        writes.push({ delete: documentName(`rentalAvailability/${requestId}`) });
+      }
+      writes.push({
+        update: {
+          name: documentName(`rentalAssets/${assetId}`),
+          fields: encodeFields({
+            reservations: asset.reservations || [],
+            status: asset.status,
+            currentRequestId: asset.currentRequestId ?? null,
+          }),
+        },
+        updateMask: { fieldPaths: ['reservations', 'status', 'currentRequestId'] },
+        currentDocument: { updateTime: assetUpdateTime },
+        updateTransforms: [{ fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' }],
+      });
+      return requestJson({
+        url: `${baseUrl}:commit`,
+        method: 'POST',
+        firebaseIdToken,
+        codePrefix: 'firestore_admin_restore_mirror',
+        body: { writes },
+      });
+    },
+
     async commitStatusChange({
       request,
       previousRequest,

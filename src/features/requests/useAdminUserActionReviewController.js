@@ -46,6 +46,8 @@ import {
 import { buildOverdueReturnResult } from '../../utils/overduePolicy.js';
 import { hasOtherCurrentOverdueRequest } from './useAdminRequestMutationController.js';
 import { syncRentalRestrictionWriteThroughBestEffort } from './rentalRestrictionReadCutover.js';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { readAdminRentalRequestCutoverConfig } from './adminRentalRequestCutover.js';
 
 export const useAdminUserActionReviewState = () => {
   const [
@@ -874,6 +876,22 @@ export default function useAdminUserActionReviewController({
                   : asset
             ),
         }));
+      }
+
+      const adminCutoverConfig = readAdminRentalRequestCutoverConfig();
+      if (adminCutoverConfig.readRequested) {
+        try {
+          const firebaseUser = firebaseAuth.currentUser;
+          if (!firebaseUser) throw new Error('admin-firebase-sign-in-required');
+          const firebaseIdToken = await firebaseUser.getIdToken();
+          await clerkStagingClient.syncAdminRentalRequest(firebaseIdToken, id);
+        } catch (syncError) {
+          console.error('Admin rental request targeted PostgreSQL sync error:', syncError);
+          triggerToast(
+            '사용자 요청 처리는 완료됐지만 PostgreSQL 관리자 목록 동기화에 실패했습니다. 관리 메뉴를 다시 열어 동기화를 재시도해 주세요.',
+            'error'
+          );
+        }
       }
 
       notifyAdminRequestMutation();

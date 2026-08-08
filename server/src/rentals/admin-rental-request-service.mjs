@@ -164,6 +164,44 @@ const buildReturnResult = ({ request, actualReturnDate, settings, restriction, h
   };
 };
 
+const weekday = (dateText) => {
+  const date = new Date(`${dateText}T00:00:00Z`);
+  return Number.isFinite(date.getTime()) ? date.getUTCDay() : -1;
+};
+
+const getAdjustedDueDate = (dateText, settings = {}) => {
+  let candidate = trim(dateText);
+  if (!DATE_RE.test(candidate)) return candidate;
+  const holidays = Array.isArray(settings.holidays) ? settings.holidays : [];
+  const holidaySet = new Set(
+    holidays
+      .filter((holiday) => holiday && holiday.enabled !== false && trim(holiday.date))
+      .map((holiday) => trim(holiday.date)),
+  );
+  const excludeSaturday = Boolean(settings.excludeSaturdays ?? settings.excludeWeekendsForStartDate ?? true);
+  const excludeSunday = Boolean(settings.excludeSundays ?? settings.excludeWeekendsForStartDate ?? true);
+  const excludeHolidays = Boolean(settings.excludeHolidaysForStartDate ?? true);
+  for (let index = 0; index < 370; index += 1) {
+    const day = weekday(candidate);
+    const blocked = (excludeSaturday && day === 6)
+      || (excludeSunday && day === 0)
+      || (excludeHolidays && holidaySet.has(candidate));
+    if (!blocked) return candidate;
+    candidate = addDays(candidate, 1);
+  }
+  return candidate;
+};
+
+const createAvailability = (request) => Object.freeze({
+  id: request.id,
+  laptopId: request.laptopId,
+  assetCategory: request.assetCategory,
+  assetNo: request.assetNo,
+  startDate: request.startDate,
+  dueDate: request.dueDate,
+  status: request.status,
+});
+
 const representativeReservation = (reservations, laptopId, referenceDate) => {
   const items = normalizeAssetReservationsForWrite(reservations)
     .filter((item) => item.laptopId === laptopId && BLOCKING.has(item.status));
@@ -193,12 +231,41 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient })
     });
   };
 
+  const syncOne = async (firebaseIdentity, requestId, { includeEvents = true } = {}) => {
+    const id = trim(requestId);
+    if (!id) throw serviceError('admin_rental_request_id_missing', 'Rental request ID is required.', 400);
+    const sourceDoc = await firestoreClient.getRentalRequest({ requestId: id, firebaseIdToken: firebaseIdentity.idToken });
+    if (!sourceDoc) throw serviceError('rental_request_not_found', 'Rental request was not found.', 404);
+    const request = normalizeRequestDocument(sourceDoc);
+    await repository.upsertImportedRequests([request]);
+    let eventCount = 0;
+    if (includeEvents && typeof firestoreClient.listRentalRequestLogs === 'function') {
+      const events = await firestoreClient.listRentalRequestLogs({ requestId: id, firebaseIdToken: firebaseIdentity.idToken });
+      eventCount = await repository.upsertImportedEvents(id, events);
+    }
+    return Object.freeze({ request, sourceDoc, eventCount });
+  };
+
   const bootstrap = async (firebaseIdentity) => {
     const admin = await verify(firebaseIdentity);
     const documents = await firestoreClient.listAllRentalRequests({ firebaseIdToken: firebaseIdentity.idToken });
     const requests = documents.map(normalizeRequestDocument);
     const synchronized = await repository.upsertImportedRequests(requests);
-    return Object.freeze({ admin, synchronized, sourceCount: requests.length });
+    let eventCount = 0;
+    if (typeof firestoreClient.listAllRentalRequestLogs === 'function') {
+      const events = await firestoreClient.listAllRentalRequestLogs({ firebaseIdToken: firebaseIdentity.idToken });
+      const grouped = new Map();
+      for (const event of events) {
+        const requestId = trim(event?.requestId);
+        if (!requestId) continue;
+        if (!grouped.has(requestId)) grouped.set(requestId, []);
+        grouped.get(requestId).push(event);
+      }
+      for (const [requestId, requestEvents] of grouped) {
+        eventCount += await repository.upsertImportedEvents(requestId, requestEvents);
+      }
+    }
+    return Object.freeze({ admin, synchronized, sourceCount: requests.length, eventCount });
   };
 
   return Object.freeze({
@@ -226,6 +293,197 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient })
     async getDashboard(firebaseIdentity, referenceDate = koreaToday()) {
       const admin = await verify(firebaseIdentity);
       return Object.freeze({ admin, referenceDate, counts: await repository.getCounts(referenceDate) });
+    },
+
+    async syncRequest(firebaseIdentity, requestId) {
+      const admin = await verify(firebaseIdentity);
+      const synchronized = await syncOne(firebaseIdentity, requestId, { includeEvents: true });
+      return Object.freeze({ admin, synchronized: 1, eventCount: synchronized.eventCount, request: synchronized.request });
+    },
+
+    async getEvents(firebaseIdentity, requestId) {
+      const admin = await verify(firebaseIdentity);
+      const events = await repository.listEvents(trim(requestId), 100);
+      return Object.freeze({ admin, events });
+    },
+
+    async editRequest(firebaseIdentity, { requestId, form = {} }) {
+      const admin = await verify(firebaseIdentity);
+      const id = trim(requestId);
+      if (!id) throw serviceError('admin_rental_request_id_missing', 'Rental request ID is required.', 400);
+      const sourceDoc = await firestoreClient.getRentalRequest({ requestId: id, firebaseIdToken: firebaseIdentity.idToken });
+      if (!sourceDoc) throw serviceError('rental_request_not_found', 'Rental request was not found.', 404);
+      const sourceRequest = normalizeRequestDocument(sourceDoc);
+      await repository.upsertImportedRequests([sourceRequest]);
+      const assetDoc = await firestoreClient.getRentalAsset({ assetId: sourceRequest.laptopId, firebaseIdToken: firebaseIdentity.idToken });
+      if (!assetDoc) throw serviceError('rental_asset_not_found', 'Rental asset was not found.', 404);
+      const publicConfig = await firestoreClient.getPublicConfig({ firebaseIdToken: firebaseIdentity.idToken });
+      const settings = publicConfig?.fields?.settings || {};
+      const requestedDueDate = trim(form.dueDate);
+      const nextRequest = Object.freeze({
+        ...sourceRequest,
+        startDate: trim(form.startDate),
+        dueDate: getAdjustedDueDate(requestedDueDate, settings),
+        purpose: trim(form.purpose),
+        adminMemo: String(form.adminMemo ?? '').trim(),
+      });
+      if (!nextRequest.requesterTeam || !nextRequest.requesterName || !DATE_RE.test(nextRequest.startDate) || !DATE_RE.test(requestedDueDate)) {
+        throw serviceError('required_rental_edit_fields_missing', 'Required rental edit fields are missing.', 400);
+      }
+      if (requestedDueDate < nextRequest.startDate) {
+        throw serviceError('invalid_rental_edit_period', 'Rental due date cannot be before the start date.', 400);
+      }
+      const assetFields = assetDoc.fields || {};
+      const existingReservations = normalizeAssetReservationsForWrite(assetFields.reservations || [])
+        .filter((reservation) => reservation.id !== id);
+      if (BLOCKING.has(sourceRequest.status)) {
+        const conflict = findBlockingReservation({
+          reservations: existingReservations,
+          laptopId: sourceRequest.laptopId,
+          startDate: nextRequest.startDate,
+          dueDate: nextRequest.dueDate,
+          settings,
+        });
+        if (conflict) throw serviceError('rental_period_conflict', 'The edited period conflicts with an existing reservation.', 409, { blockingRequest: conflict });
+      }
+      const nextAvailability = BLOCKING.has(sourceRequest.status) ? createAvailability(nextRequest) : null;
+      const nextReservations = nextAvailability ? [...existingReservations, nextAvailability] : existingReservations;
+      const representative = representativeReservation(nextReservations, sourceRequest.laptopId, koreaToday());
+      const nextAsset = Object.freeze({
+        id: sourceRequest.laptopId,
+        reservations: nextReservations,
+        status: trim(assetFields.status) === '대여불가' ? '대여불가' : representative?.status || '대여가능',
+        currentRequestId: representative?.id || null,
+      });
+      const detail = [
+        sourceRequest.startDate !== nextRequest.startDate ? `대여 시작일: ${sourceRequest.startDate || '-'} → ${nextRequest.startDate}` : '',
+        sourceRequest.dueDate !== nextRequest.dueDate ? `반납 예정일: ${sourceRequest.dueDate || '-'} → ${nextRequest.dueDate}` : '',
+        sourceRequest.purpose !== nextRequest.purpose ? '대여 목적 변경' : '',
+        sourceRequest.adminMemo !== nextRequest.adminMemo ? '관리자 메모 변경' : '',
+      ].filter(Boolean).join(' / ') || '신청 정보를 다시 저장했습니다.';
+      const committed = await repository.editRequest({
+        requestId: id,
+        updates: {
+          requesterTeam: sourceRequest.requesterTeam,
+          requesterName: sourceRequest.requesterName,
+          startDate: nextRequest.startDate,
+          dueDate: nextRequest.dueDate,
+          purpose: nextRequest.purpose,
+          adminMemo: nextRequest.adminMemo,
+        },
+        auditActor: admin,
+        allowNonOverlappingSameAssetRequests: Boolean(settings.allowNonOverlappingSameAssetRequests ?? false),
+        beforeCommit: async ({ currentRequest, nextRequest: canonicalNext }) => {
+          await firestoreClient.commitRequestEdit({
+            request: canonicalNext,
+            previousRequest: currentRequest,
+            availability: nextAvailability,
+            asset: nextAsset,
+            requestUpdateTime: sourceDoc.updateTime,
+            assetUpdateTime: assetDoc.updateTime,
+            auditActor: admin,
+            detail,
+            firebaseIdToken: firebaseIdentity.idToken,
+          });
+        },
+      });
+      return Object.freeze({
+        admin,
+        authority: 'postgresql',
+        firestoreMirror: 'synced',
+        request: committed,
+        availability: nextAvailability,
+        asset: nextAsset,
+        dueDateAdjusted: Boolean(requestedDueDate && requestedDueDate !== nextRequest.dueDate),
+      });
+    },
+
+    async saveMemo(firebaseIdentity, { requestId, memo = '' }) {
+      const admin = await verify(firebaseIdentity);
+      const id = trim(requestId);
+      const sourceDoc = await firestoreClient.getRentalRequest({ requestId: id, firebaseIdToken: firebaseIdentity.idToken });
+      if (!sourceDoc) throw serviceError('rental_request_not_found', 'Rental request was not found.', 404);
+      const sourceRequest = normalizeRequestDocument(sourceDoc);
+      await repository.upsertImportedRequests([sourceRequest]);
+      const result = await repository.saveMemo({
+        requestId: id,
+        memo: String(memo ?? ''),
+        auditActor: admin,
+        beforeCommit: async ({ currentRequest, nextRequest }) => {
+          await firestoreClient.commitMemo({
+            requestId: id,
+            previousRequest: currentRequest,
+            nextMemo: nextRequest.adminMemo,
+            requestUpdateTime: sourceDoc.updateTime,
+            auditActor: admin,
+            firebaseIdToken: firebaseIdentity.idToken,
+          });
+        },
+      });
+      return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: result.changed ? 'synced' : 'not-needed', ...result });
+    },
+
+    async restoreStatus(firebaseIdentity, { requestId, nextStatus, restoreReason }) {
+      const admin = await verify(firebaseIdentity);
+      const id = trim(requestId);
+      const status = trim(nextStatus);
+      const reason = trim(restoreReason);
+      if (!id || !status) throw serviceError('admin_rental_restore_input_missing', 'Request ID and restore status are required.', 400);
+      if (!reason) throw serviceError('restore_reason_missing', 'Restore reason is required.', 400);
+      const sourceDoc = await firestoreClient.getRentalRequest({ requestId: id, firebaseIdToken: firebaseIdentity.idToken });
+      if (!sourceDoc) throw serviceError('rental_request_not_found', 'Rental request was not found.', 404);
+      const sourceRequest = normalizeRequestDocument(sourceDoc);
+      await repository.upsertImportedRequests([sourceRequest]);
+      const assetDoc = await firestoreClient.getRentalAsset({ assetId: sourceRequest.laptopId, firebaseIdToken: firebaseIdentity.idToken });
+      if (!assetDoc) throw serviceError('rental_asset_not_found', 'Rental asset was not found.', 404);
+      const publicConfig = await firestoreClient.getPublicConfig({ firebaseIdToken: firebaseIdentity.idToken });
+      const settings = publicConfig?.fields?.settings || {};
+      const assetFields = assetDoc.fields || {};
+      const existingReservations = normalizeAssetReservationsForWrite(assetFields.reservations || [])
+        .filter((reservation) => reservation.id !== id);
+      const restoredRequest = Object.freeze({ ...sourceRequest, status, userActionRequest: null });
+      if (BLOCKING.has(status)) {
+        const conflict = findBlockingReservation({
+          reservations: existingReservations,
+          laptopId: sourceRequest.laptopId,
+          startDate: sourceRequest.startDate,
+          dueDate: sourceRequest.dueDate,
+          settings,
+        });
+        if (conflict) throw serviceError('rental_period_conflict', 'The restored rental period conflicts with an existing reservation.', 409, { blockingRequest: conflict });
+      }
+      const nextAvailability = BLOCKING.has(status) ? createAvailability(restoredRequest) : null;
+      const nextReservations = nextAvailability ? [...existingReservations, nextAvailability] : existingReservations;
+      const representative = representativeReservation(nextReservations, sourceRequest.laptopId, koreaToday());
+      const nextAsset = Object.freeze({
+        id: sourceRequest.laptopId,
+        reservations: nextReservations,
+        status: trim(assetFields.status) === '대여불가' ? '대여불가' : representative?.status || '대여가능',
+        currentRequestId: representative?.id || null,
+      });
+      const committed = await repository.changeStatus({
+        requestId: id,
+        nextStatus: status,
+        auditActor: admin,
+        allowNonOverlappingSameAssetRequests: Boolean(settings.allowNonOverlappingSameAssetRequests ?? false),
+        eventType: 'status-restored',
+        eventPayload: { detail: `상태 복구 사유: ${reason}` },
+        clearUserActionRequest: true,
+        beforeCommit: async ({ currentRequest, nextRequest }) => {
+          await firestoreClient.commitStatusRestore({
+            request: nextRequest,
+            previousRequest: currentRequest,
+            availability: nextAvailability,
+            asset: nextAsset,
+            requestUpdateTime: sourceDoc.updateTime,
+            assetUpdateTime: assetDoc.updateTime,
+            auditActor: admin,
+            restoreReason: reason,
+            firebaseIdToken: firebaseIdentity.idToken,
+          });
+        },
+      });
+      return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'synced', request: committed, availability: nextAvailability, asset: nextAsset });
     },
 
     async changeStatus(firebaseIdentity, { requestId, nextStatus }) {

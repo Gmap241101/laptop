@@ -8,6 +8,7 @@ const phase12 = readFileSync('server/migrations/006_phase12_rental_restriction_s
 const phase14 = readFileSync('server/migrations/007_phase14_rental_request_foundation.sql', 'utf8');
 const phase16 = readFileSync('server/migrations/008_phase16_rental_request_authoritative_write.sql', 'utf8');
 const phase17 = readFileSync('server/migrations/009_phase17_admin_rental_request_cutover.sql', 'utf8');
+const phase18 = readFileSync('server/migrations/010_phase18_admin_rental_mutation_completion.sql', 'utf8');
 
 if (!/value\s+JSONB\s+NOT\s+NULL/i.test(phase2)) {
   throw new Error('app_runtime_metadata.value must remain JSONB NOT NULL.');
@@ -90,4 +91,20 @@ for (const marker of [
   if (!phase17.includes(marker)) throw new Error(`Phase 17 admin rental-request migration marker is missing: ${marker}`);
 }
 
-console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17 admin rental-request cutover are type-safe)');
+
+for (const marker of [
+  'ADD COLUMN IF NOT EXISTS source_event_id',
+  'ADD COLUMN IF NOT EXISTS source_mode',
+  'app_rental_request_events_source_event_unique',
+  'app_rental_request_events_request_created_desc_idx',
+  "'admin_rental_request_mutation_phase'",
+  "'directEditAuthority', 'postgresql'",
+  "'memoAuthority', 'postgresql'",
+  "'statusRestoreAuthority', 'postgresql'",
+  "'auditReadAuthority', 'postgresql'",
+  "'postMutationBootstrap', 'targeted-request-sync'",
+]) {
+  if (!phase18.includes(marker)) throw new Error(`Phase 18 admin rental mutation migration marker is missing: ${marker}`);
+}
+
+console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion are type-safe)');

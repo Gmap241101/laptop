@@ -102,6 +102,7 @@ for (const marker of [
 
 const phase16Migration = readFileSync('server/migrations/008_phase16_rental_request_authoritative_write.sql', 'utf8');
 const phase17Migration = readFileSync('server/migrations/009_phase17_admin_rental_request_cutover.sql', 'utf8');
+const phase18Migration = readFileSync('server/migrations/010_phase18_admin_rental_mutation_completion.sql', 'utf8');
 for (const marker of [
   'CREATE TABLE IF NOT EXISTS app_rental_requests',
   'CREATE TABLE IF NOT EXISTS app_rental_request_items',
@@ -123,6 +124,17 @@ for (const marker of [
 ]) {
   if (!phase17Migration.includes(marker)) throw new Error(`Phase 17 admin rental request migration marker is missing: ${marker}`);
 }
+
+for (const marker of [
+  'ADD COLUMN IF NOT EXISTS source_event_id',
+  'ADD COLUMN IF NOT EXISTS source_mode',
+  'app_rental_request_events_source_event_unique',
+  "'admin_rental_request_mutation_phase'",
+  "'postMutationBootstrap', 'targeted-request-sync'",
+]) {
+  if (!phase18Migration.includes(marker)) throw new Error(`Phase 18 admin rental mutation migration marker is missing: ${marker}`);
+}
+
 
 const app = readFileSync('server/src/app.mjs', 'utf8');
 for (const marker of [
@@ -303,15 +315,15 @@ for (const marker of [':commit', 'currentDocument: { exists: false }', 'currentD
 }
 
 const adminRentalRepository = readFileSync('server/src/rentals/admin-rental-request-repository.mjs', 'utf8');
-for (const marker of ['app_rental_requests', 'pg_advisory_xact_lock', 'allowNonOverlappingSameAssetRequests', 'relatedRequestUpdates', "source_mode = 'postgresql-authoritative-admin'"]) {
+for (const marker of ['app_rental_requests', 'pg_advisory_xact_lock', 'allowNonOverlappingSameAssetRequests', 'relatedRequestUpdates', "source_mode = 'postgresql-authoritative-admin'", 'upsertImportedEvents', 'listEvents', 'async editRequest', 'async saveMemo']) {
   if (!adminRentalRepository.includes(marker)) throw new Error(`Phase 17 admin rental repository marker is missing: ${marker}`);
 }
 const adminRentalService = readFileSync('server/src/rentals/admin-rental-request-service.mjs', 'utf8');
-for (const marker of ['verifyAdmin', 'listAllRentalRequests', 'findBlockingReservation', 'getPublicConfig', 'commitStatusChange', "authority: 'postgresql'"]) {
+for (const marker of ['verifyAdmin', 'listAllRentalRequests', 'findBlockingReservation', 'getPublicConfig', 'commitStatusChange', "authority: 'postgresql'", 'syncRequest', 'getEvents', 'editRequest', 'saveMemo', 'restoreStatus']) {
   if (!adminRentalService.includes(marker)) throw new Error(`Phase 17 admin rental service marker is missing: ${marker}`);
 }
 const adminRentalFirestore = readFileSync('server/src/firestore/firestore-admin-rental-requests.mjs', 'utf8');
-for (const marker of ["adminAccounts/", ':runQuery', ':commit', 'Authorization: `Bearer ${token}`', 'currentDocument']) {
+for (const marker of ["adminAccounts/", ':runQuery', ':commit', 'Authorization: `Bearer ${token}`', 'currentDocument', 'listAllRentalRequestLogs', 'listRentalRequestLogs', 'commitRequestEdit', 'commitMemo', 'commitStatusRestore']) {
   if (!adminRentalFirestore.includes(marker)) throw new Error(`Phase 17 admin Firestore compatibility marker is missing: ${marker}`);
 }
 
@@ -320,4 +332,4 @@ for (const variable of ['CLERK_JWT_KEY=', 'CLERK_AUTHORIZED_PARTIES=', 'CLERK_SE
   if (!configTemplate.includes(variable)) throw new Error(`Phase 6 config template is missing ${variable}`);
 }
 
-console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request shadow/parity + phase16 authoritative write + phase17 admin rental-request cutover invariants)`);
+console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request shadow/parity + phase16 authoritative write + phase17 admin rental-request cutover + phase18 mutation/audit completion invariants)`);

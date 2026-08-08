@@ -87,3 +87,9 @@ VITE_ADMIN_RENTAL_REQUEST_POSTGRES_WRITE_ENABLED=true
 # Recommended full Phase 17 diagnostic URL:
 #   ?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWriteThrough=on&restrictionRead=postgres&restrictionWatcher=off&rentalRequestRead=postgres&rentalRequestWatcher=off&rentalRequestWrite=postgres&adminRequestRead=postgres&adminRequestWrite=postgres
 # These are frontend build-time values. Configure them only in the mkrental Vercel project's Production environment and redeploy.
+
+# Phase 18: 관리자 직접수정/메모/상태복구/처리이력 PostgreSQL completion
+# No new Vercel key is required. Reuse the Phase 17 gates below:
+# VITE_ADMIN_RENTAL_REQUEST_POSTGRES_READ_ENABLED=true
+# VITE_ADMIN_RENTAL_REQUEST_POSTGRES_WRITE_ENABLED=true
+# Keep Environment=Production for the mkrental Vercel project and redeploy only when source/config changed.

@@ -113,24 +113,62 @@ export default function useAdminRequestMutationController({
     }
   
     try {
-      const {
-        executeAdminRequestEditMutation,
-      } = await loadAdminRequestMutationService();
-  
-      const {
-        adminDueDateAdjusted,
-        committedAsset,
-        committedAvailabilityRequest,
-        committedRequest,
-        nextDueDate,
-        shouldKeepAvailability,
-      } = await executeAdminRequestEditMutation({
-        auditActor,
-        currentRequest,
-        form,
-        requestId,
-        settings: dataSettings,
-      });
+      const adminCutoverConfig = readAdminRentalRequestCutoverConfig();
+      let adminDueDateAdjusted = false;
+      let committedAsset = null;
+      let committedAvailabilityRequest = null;
+      let committedRequest = null;
+      let nextDueDate = String(form?.dueDate || '');
+      let shouldKeepAvailability = false;
+
+      if (adminCutoverConfig.writeRequested) {
+        const firebaseUser = firebaseAuth.currentUser;
+        if (!firebaseUser) {
+          const authError = new Error('admin-firebase-sign-in-required');
+          authError.code = 'admin_firebase_sign_in_required';
+          throw authError;
+        }
+        const firebaseIdToken = await firebaseUser.getIdToken();
+        const payload = await clerkStagingClient.editAdminRentalRequest(
+          firebaseIdToken,
+          requestId,
+          form
+        );
+        const mutation = payload?.adminRentalRequestMutation || {};
+        committedRequest = mutation.request || null;
+        committedAvailabilityRequest = mutation.availability || null;
+        committedAsset = mutation.asset || null;
+        shouldKeepAvailability = Boolean(committedAvailabilityRequest);
+        adminDueDateAdjusted = Boolean(mutation.dueDateAdjusted);
+        nextDueDate = committedRequest?.dueDate || nextDueDate;
+        publishAdminRentalRequestCutoverObservation({
+          readRequested: adminCutoverConfig.readRequested,
+          writeRequested: true,
+          writeSource: 'postgresql-authoritative',
+          requestId,
+          operation: 'edit',
+          firestoreMirror: mutation.firestoreMirror || '-',
+          error: '',
+        });
+      } else {
+        const {
+          executeAdminRequestEditMutation,
+        } = await loadAdminRequestMutationService();
+        ({
+          adminDueDateAdjusted,
+          committedAsset,
+          committedAvailabilityRequest,
+          committedRequest,
+          nextDueDate,
+          shouldKeepAvailability,
+        } = await executeAdminRequestEditMutation({
+          auditActor,
+          currentRequest,
+          form,
+          requestId,
+          settings: dataSettings,
+        }));
+      }
   
       updateAdminRequestPanelRequests((prev) =>
         (prev || []).map(
@@ -184,8 +222,7 @@ export default function useAdminRequestMutationController({
       );
   
       if (
-        error?.message ===
-        'required-rental-edit-fields-missing'
+        ['required-rental-edit-fields-missing', 'required_rental_edit_fields_missing'].includes(error?.message || error?.code)
       ) {
         triggerToast(
           '부서, 대여자명, 대여 시작일과 반납 예정일을 모두 입력해 주세요.',
@@ -195,8 +232,7 @@ export default function useAdminRequestMutationController({
       }
   
       if (
-        error?.message ===
-        'invalid-rental-edit-period'
+        ['invalid-rental-edit-period', 'invalid_rental_edit_period'].includes(error?.message || error?.code)
       ) {
         triggerToast(
           '반납 예정일은 대여 시작일보다 빠를 수 없습니다.',
@@ -217,8 +253,7 @@ export default function useAdminRequestMutationController({
       }
   
       if (
-        error?.message ===
-        'rental-period-conflict'
+        ['rental-period-conflict', 'rental_period_conflict'].includes(error?.message || error?.code)
       ) {
         const blockingRequest =
           error.blockingRequest;
@@ -303,23 +338,59 @@ export default function useAdminRequestMutationController({
     }
   
     try {
-      const {
-        executeAdminRequestStatusRestoreMutation,
-      } = await loadAdminRequestMutationService();
-  
-      const {
-        committedAsset,
-        committedAvailabilityRequest,
-        committedRequest,
-        shouldKeepAvailability,
-      } = await executeAdminRequestStatusRestoreMutation({
-        auditActor,
-        currentRequest,
-        nextStatus,
-        requestId,
-        restoreReason,
-        settings: dataSettings,
-      });
+      const adminCutoverConfig = readAdminRentalRequestCutoverConfig();
+      let committedAsset = null;
+      let committedAvailabilityRequest = null;
+      let committedRequest = null;
+      let shouldKeepAvailability = false;
+
+      if (adminCutoverConfig.writeRequested) {
+        const firebaseUser = firebaseAuth.currentUser;
+        if (!firebaseUser) {
+          const authError = new Error('admin-firebase-sign-in-required');
+          authError.code = 'admin_firebase_sign_in_required';
+          throw authError;
+        }
+        const firebaseIdToken = await firebaseUser.getIdToken();
+        const payload = await clerkStagingClient.restoreAdminRentalRequestStatus(
+          firebaseIdToken,
+          requestId,
+          nextStatus,
+          restoreReason
+        );
+        const mutation = payload?.adminRentalRequestMutation || {};
+        committedRequest = mutation.request || null;
+        committedAvailabilityRequest = mutation.availability || null;
+        committedAsset = mutation.asset || null;
+        shouldKeepAvailability = Boolean(committedAvailabilityRequest);
+        publishAdminRentalRequestCutoverObservation({
+          readRequested: adminCutoverConfig.readRequested,
+          writeRequested: true,
+          writeSource: 'postgresql-authoritative',
+          requestId,
+          nextStatus,
+          operation: 'restore',
+          firestoreMirror: mutation.firestoreMirror || '-',
+          error: '',
+        });
+      } else {
+        const {
+          executeAdminRequestStatusRestoreMutation,
+        } = await loadAdminRequestMutationService();
+        ({
+          committedAsset,
+          committedAvailabilityRequest,
+          committedRequest,
+          shouldKeepAvailability,
+        } = await executeAdminRequestStatusRestoreMutation({
+          auditActor,
+          currentRequest,
+          nextStatus,
+          requestId,
+          restoreReason,
+          settings: dataSettings,
+        }));
+      }
   
       updateAdminRequestPanelRequests((prev) =>
         (prev || []).map(
@@ -369,8 +440,7 @@ export default function useAdminRequestMutationController({
       );
   
       if (
-        error?.message ===
-        'restore-reason-missing'
+        ['restore-reason-missing', 'restore_reason_missing'].includes(error?.message || error?.code)
       ) {
         triggerToast(
           '상태 복구 사유를 입력해 주세요.',
@@ -391,8 +461,7 @@ export default function useAdminRequestMutationController({
       }
   
       if (
-        error?.message ===
-        'rental-period-conflict'
+        ['rental-period-conflict', 'rental_period_conflict'].includes(error?.message || error?.code)
       ) {
         const blockingRequest =
           error.blockingRequest;
@@ -737,6 +806,47 @@ export default function useAdminRequestMutationController({
       return;
     }
   
+    const adminCutoverConfig = readAdminRentalRequestCutoverConfig();
+    if (adminCutoverConfig.writeRequested) {
+      try {
+        const firebaseUser = firebaseAuth.currentUser;
+        if (!firebaseUser) throw new Error('admin-firebase-sign-in-required');
+        const firebaseIdToken = await firebaseUser.getIdToken();
+        const payload = await clerkStagingClient.saveAdminRentalRequestMemo(
+          firebaseIdToken,
+          id,
+          memo
+        );
+        const mutation = payload?.adminRentalRequestMutation || {};
+        if (mutation.changed === false) return;
+        const committedRequest = mutation.request;
+        if (!committedRequest?.id) throw new Error('admin-rental-memo-result-missing');
+        updateAdminRequestPanelRequests((prev) =>
+          (prev || []).map((request) =>
+            request.id === id ? committedRequest : request
+          )
+        );
+        notifyAdminRequestMutation();
+        publishAdminRentalRequestCutoverObservation({
+          readRequested: adminCutoverConfig.readRequested,
+          writeRequested: true,
+          writeSource: 'postgresql-authoritative',
+          requestId: id,
+          operation: 'memo',
+          firestoreMirror: mutation.firestoreMirror || '-',
+          error: '',
+        });
+        return;
+      } catch (error) {
+        console.error('PostgreSQL rental request memo save error:', error);
+        triggerToast(
+          `관리자 메모 저장에 실패했습니다. 오류 코드: ${error?.code || error?.message || 'unknown-error'}`,
+          'error'
+        );
+        return;
+      }
+    }
+
     const requestDocRef = doc(
       RENTAL_REQUESTS_COLLECTION_REF,
       id

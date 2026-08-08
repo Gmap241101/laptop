@@ -236,6 +236,34 @@ const adminRentalRequestService = {
     if (firebaseIdentity.uid !== 'firebase_uid_smoke') throw new Error('Unexpected admin dashboard identity.');
     return { admin: { uid: firebaseIdentity.uid }, referenceDate: referenceDate || '2026-08-08', counts: { pending: 1, rental: 0, closed: 0, returned: 0 } };
   },
+  async syncRequest(firebaseIdentity, requestId) {
+    return { admin: { uid: firebaseIdentity.uid }, synchronized: 1, eventCount: 1, request: { id: requestId } };
+  },
+  async getEvents(firebaseIdentity, requestId) {
+    return { admin: { uid: firebaseIdentity.uid }, events: [{ id: 'PG-EVT-1', requestId, action: 'status-changed' }] };
+  },
+  async editRequest(firebaseIdentity, input) {
+    return {
+      admin: { uid: firebaseIdentity.uid }, authority: 'postgresql', firestoreMirror: 'synced', dueDateAdjusted: false,
+      request: { id: input.requestId, laptopId: 'ASSET-SMOKE-1', startDate: '2026-08-10', dueDate: '2026-08-14', status: '신청중', purpose: input.form?.purpose || '' },
+      availability: { id: input.requestId, laptopId: 'ASSET-SMOKE-1', startDate: '2026-08-10', dueDate: '2026-08-14', status: '신청중' },
+      asset: { id: 'ASSET-SMOKE-1', reservations: [], status: '신청중', currentRequestId: input.requestId },
+    };
+  },
+  async saveMemo(firebaseIdentity, input) {
+    return {
+      admin: { uid: firebaseIdentity.uid }, authority: 'postgresql', firestoreMirror: 'synced', changed: true,
+      request: { id: input.requestId, laptopId: 'ASSET-SMOKE-1', startDate: '2026-08-10', dueDate: '2026-08-14', status: '신청중', adminMemo: input.memo || '' },
+    };
+  },
+  async restoreStatus(firebaseIdentity, input) {
+    return {
+      admin: { uid: firebaseIdentity.uid }, authority: 'postgresql', firestoreMirror: 'synced',
+      request: { id: input.requestId, laptopId: 'ASSET-SMOKE-1', startDate: '2026-08-10', dueDate: '2026-08-14', status: input.nextStatus },
+      availability: { id: input.requestId, laptopId: 'ASSET-SMOKE-1', startDate: '2026-08-10', dueDate: '2026-08-14', status: input.nextStatus },
+      asset: { id: 'ASSET-SMOKE-1', reservations: [], status: input.nextStatus, currentRequestId: input.requestId },
+    };
+  },
   async changeStatus(firebaseIdentity, input) {
     if (firebaseIdentity.uid !== 'firebase_uid_smoke' || input.requestId !== 'REQ-Phase17HandlerSmoke001' || input.nextStatus !== '대여중') {
       throw new Error('Unexpected admin status input.');
@@ -511,6 +539,40 @@ if (adminStatus.status !== 200 || adminStatusBody.adminRentalRequestMutation?.au
   throw new Error('Phase 17 admin rental status HTTP response is invalid.');
 }
 
+const adminSync = await fetch(`${baseUrl}/api/admin/rental-requests/REQ-Phase17HandlerSmoke001/sync`, {
+  method: 'POST', headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+});
+if (adminSync.status !== 200 || (await adminSync.json()).adminRentalRequestSync?.target !== 'postgresql') {
+  throw new Error('Phase 18 admin targeted sync HTTP response is invalid.');
+}
+const adminEvents = await fetch(`${baseUrl}/api/admin/rental-requests/REQ-Phase17HandlerSmoke001/events`, {
+  headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+});
+if (adminEvents.status !== 200 || !Array.isArray((await adminEvents.json()).adminRentalRequestEvents?.events)) {
+  throw new Error('Phase 18 admin event read HTTP response is invalid.');
+}
+const adminEdit = await fetch(`${baseUrl}/api/admin/rental-requests/REQ-Phase17HandlerSmoke001/edit`, {
+  method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+  body: JSON.stringify({ form: { startDate: '2026-08-10', dueDate: '2026-08-14', purpose: 'edited' } }),
+});
+if (adminEdit.status !== 200 || (await adminEdit.json()).adminRentalRequestMutation?.operation !== 'edit') {
+  throw new Error('Phase 18 admin edit HTTP response is invalid.');
+}
+const adminMemo = await fetch(`${baseUrl}/api/admin/rental-requests/REQ-Phase17HandlerSmoke001/memo`, {
+  method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+  body: JSON.stringify({ memo: 'phase18 memo' }),
+});
+if (adminMemo.status !== 200 || (await adminMemo.json()).adminRentalRequestMutation?.operation !== 'memo') {
+  throw new Error('Phase 18 admin memo HTTP response is invalid.');
+}
+const adminRestore = await fetch(`${baseUrl}/api/admin/rental-requests/REQ-Phase17HandlerSmoke001/restore`, {
+  method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+  body: JSON.stringify({ status: '신청중', restoreReason: 'smoke restore' }),
+});
+if (adminRestore.status !== 200 || (await adminRestore.json()).adminRentalRequestMutation?.operation !== 'restore') {
+  throw new Error('Phase 18 admin restore HTTP response is invalid.');
+}
+
 const invalidFirebase = await fetch(`${baseUrl}/api/users/me/legacy/firebase`, {
   method: 'POST',
   headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer wrong-token' },
@@ -521,4 +583,4 @@ const missing = await fetch(`${baseUrl}/missing`);
 if (missing.status !== 404) throw new Error(`/missing returned ${missing.status}`);
 
 await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, Phase 16 rental-request POST, Phase 17 admin bootstrap/list/dashboard/status, CORS, 404)');
+console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, Phase 16 rental-request POST, Phase 17 admin bootstrap/list/dashboard/status + Phase 18 sync/events/edit/memo/restore, CORS, 404)');

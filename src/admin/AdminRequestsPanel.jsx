@@ -105,6 +105,7 @@ export default function AdminRequestsPanel({ ctx }) {
     commitAdminRequestEdit,
     commitAdminRequestStatusRestore,
     enabled: isAdminAuthenticated,
+    mutationVersion: adminRequestsMutationVersion,
     resetPage: resetAdminRequestPage,
     selectedRequestId: selectedAdminRequestId,
     setSelectedRequestId: setSelectedAdminRequestId,

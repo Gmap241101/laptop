@@ -226,6 +226,11 @@ export const createRequestHandler = ({
     async bootstrap() { const error = new Error('Admin rental request service is not configured.'); error.code = 'admin_rental_request_not_configured'; throw error; },
     async list() { const error = new Error('Admin rental request service is not configured.'); error.code = 'admin_rental_request_not_configured'; throw error; },
     async getDashboard() { const error = new Error('Admin rental request service is not configured.'); error.code = 'admin_rental_request_not_configured'; throw error; },
+    async syncRequest() { const error = new Error('Admin rental request service is not configured.'); error.code = 'admin_rental_request_not_configured'; throw error; },
+    async getEvents() { const error = new Error('Admin rental request service is not configured.'); error.code = 'admin_rental_request_not_configured'; throw error; },
+    async editRequest() { const error = new Error('Admin rental request service is not configured.'); error.code = 'admin_rental_request_not_configured'; throw error; },
+    async saveMemo() { const error = new Error('Admin rental request service is not configured.'); error.code = 'admin_rental_request_not_configured'; throw error; },
+    async restoreStatus() { const error = new Error('Admin rental request service is not configured.'); error.code = 'admin_rental_request_not_configured'; throw error; },
     async changeStatus() { const error = new Error('Admin rental request service is not configured.'); error.code = 'admin_rental_request_not_configured'; throw error; },
   },
 }) => {
@@ -279,9 +284,14 @@ export const createRequestHandler = ({
     typeof adminRentalRequestService.bootstrap !== 'function' ||
     typeof adminRentalRequestService.list !== 'function' ||
     typeof adminRentalRequestService.getDashboard !== 'function' ||
+    typeof adminRentalRequestService.syncRequest !== 'function' ||
+    typeof adminRentalRequestService.getEvents !== 'function' ||
+    typeof adminRentalRequestService.editRequest !== 'function' ||
+    typeof adminRentalRequestService.saveMemo !== 'function' ||
+    typeof adminRentalRequestService.restoreStatus !== 'function' ||
     typeof adminRentalRequestService.changeStatus !== 'function'
   ) {
-    throw new TypeError('adminRentalRequestService bootstrap/list/getDashboard/changeStatus methods are required.');
+    throw new TypeError('adminRentalRequestService Phase 18 methods are required.');
   }
 
 
@@ -363,6 +373,11 @@ export const createRequestHandler = ({
           adminRentalRequestBootstrap: '/api/admin/rental-requests/bootstrap',
           adminRentalRequests: '/api/admin/rental-requests',
           adminRentalDashboard: '/api/admin/rental-dashboard',
+          adminRentalRequestEvents: '/api/admin/rental-requests/:id/events',
+          adminRentalRequestSync: '/api/admin/rental-requests/:id/sync',
+          adminRentalRequestEdit: '/api/admin/rental-requests/:id/edit',
+          adminRentalRequestMemo: '/api/admin/rental-requests/:id/memo',
+          adminRentalRequestRestore: '/api/admin/rental-requests/:id/restore',
         },
         headers,
       );
@@ -684,6 +699,105 @@ export const createRequestHandler = ({
         writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: code }, headers);
       }
       return;
+    }
+
+    const adminRequestActionMatch = url.pathname.match(/^\/api\/admin\/rental-requests\/([^/]+)\/(sync|events|edit|memo|restore)$/);
+    if (adminRequestActionMatch) {
+      const action = adminRequestActionMatch[2];
+      const isGet = request.method === 'GET' && action === 'events';
+      const isPost = request.method === 'POST' && action !== 'events';
+      if (isGet || isPost) {
+        const auth = await authenticate(request, response, headers, requestId);
+        if (!auth) return;
+        const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+        if (!firebaseIdentity) return;
+        const rentalRequestId = decodeURIComponent(adminRequestActionMatch[1]);
+        let body = {};
+        if (isPost && action !== 'sync') {
+          try {
+            body = await readJsonBody(request);
+          } catch (error) {
+            writeJson(response, error?.status || 400, { ...basePayload, authenticated: true, error: error?.code || 'invalid_json_body' }, headers);
+            return;
+          }
+        }
+        try {
+          if (action === 'sync') {
+            const result = await adminRentalRequestService.syncRequest(firebaseIdentity, rentalRequestId);
+            writeJson(response, 200, {
+              ...basePayload, authenticated: true, authorized: true,
+              adminRentalRequestSync: {
+                target: 'postgresql', synchronized: result.synchronized,
+                eventCount: result.eventCount, request: sanitizeRentalRequest(result.request),
+              },
+            }, headers);
+            return;
+          }
+          if (action === 'events') {
+            const result = await adminRentalRequestService.getEvents(firebaseIdentity, rentalRequestId);
+            writeJson(response, 200, {
+              ...basePayload, authenticated: true, authorized: true,
+              adminRentalRequestEvents: { source: 'postgresql', events: result.events },
+            }, headers);
+            return;
+          }
+          if (action === 'edit') {
+            const result = await adminRentalRequestService.editRequest(firebaseIdentity, {
+              requestId: rentalRequestId,
+              form: body?.form || body || {},
+            });
+            writeJson(response, 200, {
+              ...basePayload, authenticated: true, authorized: true,
+              adminRentalRequestMutation: {
+                authority: result.authority, operation: 'edit', firestoreMirror: result.firestoreMirror,
+                request: sanitizeRentalRequest(result.request), availability: result.availability,
+                asset: result.asset, dueDateAdjusted: result.dueDateAdjusted,
+              },
+            }, headers);
+            return;
+          }
+          if (action === 'memo') {
+            const result = await adminRentalRequestService.saveMemo(firebaseIdentity, {
+              requestId: rentalRequestId, memo: body?.memo,
+            });
+            writeJson(response, 200, {
+              ...basePayload, authenticated: true, authorized: true,
+              adminRentalRequestMutation: {
+                authority: result.authority, operation: 'memo', firestoreMirror: result.firestoreMirror,
+                request: sanitizeRentalRequest(result.request), changed: result.changed,
+              },
+            }, headers);
+            return;
+          }
+          if (action === 'restore') {
+            const result = await adminRentalRequestService.restoreStatus(firebaseIdentity, {
+              requestId: rentalRequestId, nextStatus: body?.status, restoreReason: body?.restoreReason,
+            });
+            writeJson(response, 200, {
+              ...basePayload, authenticated: true, authorized: true,
+              adminRentalRequestMutation: {
+                authority: result.authority, operation: 'restore', firestoreMirror: result.firestoreMirror,
+                request: sanitizeRentalRequest(result.request), availability: result.availability, asset: result.asset,
+              },
+            }, headers);
+            return;
+          }
+        } catch (error) {
+          const code = error?.code || `admin_rental_request_${action}_unavailable`;
+          const statusCode = error?.status
+            || (['invalid_rental_status_transition', 'rental_period_conflict'].includes(code) ? 409
+              : ['rental_request_not_found', 'rental_asset_not_found'].includes(code) ? 404
+              : ['required_rental_edit_fields_missing', 'invalid_rental_edit_period', 'restore_reason_missing'].includes(code) ? 400
+              : 503);
+          writeJson(response, statusCode, {
+            ...basePayload, authenticated: true, error: code,
+            blockingRequest: error?.blockingRequest || null,
+            previousStatus: error?.previousStatus || null,
+            nextStatus: error?.nextStatus || null,
+          }, headers);
+          return;
+        }
+      }
     }
 
     const adminStatusMatch = request.method === 'POST'
