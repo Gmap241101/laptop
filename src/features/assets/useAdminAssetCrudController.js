@@ -21,6 +21,8 @@ import {
   writePublicAssetCatalogMutationInTransaction,
 } from '../../services/publicAssetCatalogWriteThroughLoader.js';
 import { getDisplayRentalStatus, today } from '../../utils/appUtils.js';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { publishAssetDomainCutoverObservation, readAssetDomainCutoverConfig } from './assetDomainCutover.js';
 
 export const normalizeAssetNumber = (assetNo) =>
   String(assetNo || '').trim().toLowerCase();
@@ -57,6 +59,36 @@ export default function useAdminAssetCrudController({
   triggerConfirm,
   triggerToast,
 }) {
+  const assetCutoverConfig = readAssetDomainCutoverConfig();
+
+  const applyPostgresCatalog = (catalog) => {
+    if (!catalog) return;
+    setData((prev) => ({
+      ...prev,
+      laptops: Array.isArray(catalog.assets) ? catalog.assets : prev.laptops,
+      assetCategories: Array.isArray(catalog.categories) && catalog.categories.length ? catalog.categories : prev.assetCategories,
+      requests: Array.isArray(catalog.availability) ? catalog.availability : prev.requests,
+    }));
+    publishAssetDomainCutoverObservation({
+      readRequested: assetCutoverConfig.readRequested, writeRequested: assetCutoverConfig.writeRequested,
+      activeSource: 'postgresql', writeSource: 'postgresql-authoritative', firestoreMirror: 'synced',
+      assetWatcherDisabled: assetCutoverConfig.readRequested, availabilityWatcherDisabled: assetCutoverConfig.readRequested,
+      assetCount: catalog.assets?.length || 0, categoryCount: catalog.categories?.length || 0, availabilityCount: catalog.availability?.length || 0,
+      firestoreFallbackReads: 0, error: '',
+    });
+  };
+
+  const showPostgresAssetError = (error, fallbackMessage) => {
+    const code = error?.code || '';
+    if (code === 'duplicate-asset-number') { triggerToast('동일한 자산관리번호가 이미 등록되어 있습니다.', 'error'); return; }
+    if (code === 'asset-category-not-found') { triggerToast('선택한 자산 카테고리가 최신 카테고리 목록에 없습니다.', 'error'); return; }
+    if (code === 'active-rental-identity-change') { triggerToast('현재 진행 중인 신청이 있어 자산 카테고리 또는 자산관리번호를 변경할 수 없습니다.', 'error'); return; }
+    if (code === 'active-rental-exists') { triggerToast('현재 진행 중인 신청이 있어 자산을 삭제할 수 없습니다.', 'error'); return; }
+    if (code === 'laptop-not-found') { triggerToast('자산이 이미 삭제되었거나 최신 자산 목록에서 찾을 수 없습니다.', 'error'); return; }
+    if (code === 'public-catalog-asset-limit-exceeded') { triggerToast('공개 자산 카탈로그의 최대 등록 수를 초과했습니다.', 'error'); return; }
+    triggerToast(fallbackMessage, 'error');
+  };
+
   const handleAddLaptopClick = () => {
     setShowUploadPanel(false);
     setEditLaptop(null);
@@ -117,6 +149,30 @@ export default function useAdminAssetCrudController({
         '자산 카테고리를 선택해 주세요.',
         'error'
       );
+      return;
+    }
+
+    if (assetCutoverConfig.writeRequested) {
+      try {
+        const firebaseUser = firebaseAuth.currentUser;
+        if (!firebaseUser) throw new Error('firebase-admin-session-missing');
+        const payload = await clerkStagingClient.createAdminAsset(
+          await firebaseUser.getIdToken(),
+          {
+            ...newLaptop,
+            assetNo: newAssetNo,
+            category: newCategory,
+            baseStatus: newLaptop.status === STATUS.UNAVAILABLE ? STATUS.UNAVAILABLE : STATUS.AVAILABLE,
+          }
+        );
+        const mutation = payload?.adminAssetMutation;
+        applyPostgresCatalog(mutation?.catalog);
+        setNewLaptop(null);
+        triggerToast(`자산 ${newAssetNo}이(가) 신규 등록되었습니다.`, 'success');
+      } catch (error) {
+        console.error('PostgreSQL asset create error:', error);
+        showPostgresAssetError(error, '신규 자산 등록에 실패했습니다. 입력 내용은 유지됩니다.');
+      }
       return;
     }
 
@@ -358,6 +414,22 @@ export default function useAdminAssetCrudController({
       '자산 삭제',
       `정말로 자산 [${assetNo}] 기기를 시스템 목록에서 영구적으로 삭제하시겠습니까? 완료된 신청 원장은 보존되나 기기 목록에서는 삭제됩니다.`,
       async () => {
+        if (assetCutoverConfig.writeRequested) {
+          try {
+            const firebaseUser = firebaseAuth.currentUser;
+            if (!firebaseUser) throw new Error('firebase-admin-session-missing');
+            const payload = await clerkStagingClient.deleteAdminAsset(await firebaseUser.getIdToken(), id);
+            applyPostgresCatalog(payload?.adminAssetMutation?.catalog);
+            if (selectedLaptopId === id) setSelectedLaptopId(null);
+            if (editLaptop?.id === id) setEditLaptop(null);
+            triggerToast(`자산 ${assetNo}이(가) 성공적으로 삭제되었습니다.`, 'success');
+          } catch (error) {
+            console.error('PostgreSQL asset delete error:', error);
+            showPostgresAssetError(error, `자산 ${assetNo} 삭제에 실패했습니다.`);
+          }
+          return;
+        }
+
         let deletedAsset = null;
 
         try {
@@ -586,6 +658,25 @@ export default function useAdminAssetCrudController({
         ),
       category: editedCategory,
     };
+
+    if (assetCutoverConfig.writeRequested) {
+      try {
+        const firebaseUser = firebaseAuth.currentUser;
+        if (!firebaseUser) throw new Error('firebase-admin-session-missing');
+        const payload = await clerkStagingClient.editAdminAsset(
+          await firebaseUser.getIdToken(),
+          editingLaptopId,
+          { ...editedLaptopDraft, baseStatus: editedLaptopDraft.status === STATUS.UNAVAILABLE ? STATUS.UNAVAILABLE : STATUS.AVAILABLE }
+        );
+        applyPostgresCatalog(payload?.adminAssetMutation?.catalog);
+        setEditLaptop(null);
+        triggerToast('자산 상세 정보가 성공적으로 반영되었습니다.', 'success');
+      } catch (error) {
+        console.error('PostgreSQL asset edit error:', error);
+        showPostgresAssetError(error, '자산 정보 저장에 실패했습니다. 기존 자산 정보는 변경되지 않았습니다.');
+      }
+      return;
+    }
 
     let committedAsset = null;
 

@@ -104,6 +104,7 @@ const phase16Migration = readFileSync('server/migrations/008_phase16_rental_requ
 const phase17Migration = readFileSync('server/migrations/009_phase17_admin_rental_request_cutover.sql', 'utf8');
 const phase18Migration = readFileSync('server/migrations/010_phase18_admin_rental_mutation_completion.sql', 'utf8');
 const phase19Migration = readFileSync('server/migrations/011_phase19_user_action_lifecycle.sql', 'utf8');
+const phase20Migration = readFileSync('server/migrations/012_phase20_asset_domain_cutover.sql', 'utf8');
 for (const marker of [
   'CREATE TABLE IF NOT EXISTS app_rental_requests',
   'CREATE TABLE IF NOT EXISTS app_rental_request_items',
@@ -144,7 +145,15 @@ for (const marker of [
 ]) {
   if (!phase19Migration.includes(marker)) throw new Error(`Phase 19 user action lifecycle migration marker is missing: ${marker}`);
 }
-
+for (const marker of [
+  'CREATE TABLE IF NOT EXISTS app_asset_categories',
+  'CREATE TABLE IF NOT EXISTS app_rental_assets',
+  'CREATE TABLE IF NOT EXISTS app_asset_catalog_syncs',
+  "'asset_domain_phase'",
+  "'phase', 20",
+]) {
+  if (!phase20Migration.includes(marker)) throw new Error(`Phase 20 asset domain migration marker is missing: ${marker}`);
+}
 
 const app = readFileSync('server/src/app.mjs', 'utf8');
 for (const marker of [
@@ -168,6 +177,11 @@ for (const marker of [
   "url.pathname === '/api/admin/rental-requests/bootstrap'",
   "url.pathname === '/api/admin/rental-requests'",
   "url.pathname === '/api/admin/rental-dashboard'",
+  "url.pathname === '/api/assets/catalog'",
+  "url.pathname === '/api/admin/assets/bootstrap'",
+  "url.pathname === '/api/admin/assets'",
+  "url.pathname === '/api/admin/assets/bulk'",
+  "url.pathname === '/api/admin/assets/categories'",
   "source: 'postgresql-shadow'",
   'authoritative: false',
   "'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'",
@@ -353,9 +367,26 @@ for (const marker of ['reviewUserAction', 'commitUserActionReview']) {
   if (!(adminRentalService.includes(marker) || adminRentalFirestore.includes(marker))) throw new Error(`Phase 19 admin user-action review marker is missing: ${marker}`);
 }
 
+const assetRepository = readFileSync('server/src/assets/asset-repository.mjs', 'utf8');
+for (const marker of ['app_asset_categories', 'app_rental_assets', 'app_rental_asset_reservation_guards', 'pg_advisory_xact_lock', 'bulkCreateAuthoritative', 'saveCategoriesAuthoritative']) {
+  if (!assetRepository.includes(marker)) throw new Error(`Phase 20 asset repository marker is missing: ${marker}`);
+}
+const assetService = readFileSync('server/src/assets/asset-service.mjs', 'utf8');
+for (const marker of ['getPublicCatalog', 'bootstrap(firebaseIdentity)', 'create(firebaseIdentity', 'edit(firebaseIdentity', 'delete(firebaseIdentity', 'bulkCreate(firebaseIdentity', 'saveCategories(firebaseIdentity']) {
+  if (!assetService.includes(marker)) throw new Error(`Phase 20 asset service marker is missing: ${marker}`);
+}
+const assetFirestore = readFileSync('server/src/firestore/firestore-assets.mjs', 'utf8');
+for (const marker of ['rentalAssets', 'rentalAssetNumbers', 'publicAssetCatalog', 'mirrorCreate', 'mirrorEdit', 'mirrorDelete', 'mirrorBulkCreate', 'mirrorCategories']) {
+  if (!assetFirestore.includes(marker)) throw new Error(`Phase 20 asset Firestore compatibility marker is missing: ${marker}`);
+}
+const assetCutover = readFileSync('src/features/assets/assetDomainCutover.js', 'utf8');
+for (const marker of ['VITE_ASSET_POSTGRES_READ_ENABLED', 'VITE_ASSET_POSTGRES_WRITE_ENABLED', "get('assetRead') === 'postgres'", "get('assetWrite') === 'postgres'"]) {
+  if (!assetCutover.includes(marker)) throw new Error(`Phase 20 frontend asset cutover marker is missing: ${marker}`);
+}
+
 const configTemplate = readFileSync('docs/github-education/HEROKU_CONFIG_VARS_TEMPLATE.txt', 'utf8');
 for (const variable of ['CLERK_JWT_KEY=', 'CLERK_AUTHORIZED_PARTIES=', 'CLERK_SECRET_KEY=sk_test_', 'CLERK_API_TIMEOUT_MS=8000', 'FIREBASE_PROJECT_ID=laptop-system-mk']) {
   if (!configTemplate.includes(variable)) throw new Error(`Phase 6 config template is missing ${variable}`);
 }
 
-console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request shadow/parity + phase16 authoritative write + phase17 admin rental-request cutover + phase18 mutation/audit completion + phase19 user-action lifecycle invariants)`);
+console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request shadow/parity + phase16 authoritative write + phase17 admin rental-request cutover + phase18 mutation/audit completion + phase19 user-action lifecycle + phase20 asset-domain invariants)`);

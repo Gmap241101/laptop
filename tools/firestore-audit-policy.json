@@ -293,6 +293,11 @@
       "id": "onSnapshot:f4ee6618eef4f82a",
       "reason": "로그인 사용자의 현재 UID, 이전 계정 UID 묶음 및 동일 이메일 신청을 각각 제한 쿼리로 구독하고 문서 ID 기준으로 병합하는 본인 이력 조회입니다. 동적 sourceDefinitions 배열 때문에 감사기가 원본을 자동 판정하지 못하지만 각 쿼리는 requesterUid 또는 requesterEmail where 조건을 포함합니다.",
       "reviewWhen": "회원 계정 재가입 연결 정책, previousAccountUids 최대 개수, 이메일 변경 정책 또는 사용자 신청 이력 보존 정책이 변경될 때 재검토"
+    },
+    {
+      "id": "getDocs:e830b471c18b1a02",
+      "reason": "Phase 20 PostgreSQL 자산 카탈로그/가용성 API가 실패한 경우에만 기존 화면을 유지하기 위해 rentalAvailability를 한 번 조회하는 비상 fallback입니다. 정상 opt-in 경로에서는 rentalAssets/rentalAvailability realtime watcher가 생성되지 않으며 fallback 조회도 0회입니다.",
+      "reviewWhen": "PostgreSQL 자산 도메인이 안정화되어 Firestore compatibility fallback을 제거하거나 rentalAvailability 보존/아카이브 정책이 변경될 때 재검토"
     }
   ]
 }

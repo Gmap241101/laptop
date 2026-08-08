@@ -5,6 +5,7 @@ import { DASHBOARD_SUMMARY_DOC_REF, firebaseAuth } from '../firebase.js';
 import { today } from '../utils/appUtils.js';
 import { clerkStagingClient } from '../clerk/clerkStagingClient.js';
 import { readAdminRentalRequestCutoverConfig } from '../features/requests/adminRentalRequestCutover.js';
+import { readAssetDomainCutoverConfig } from '../features/assets/assetDomainCutover.js';
 import {
   getFirestoreResourceExhaustedMessage,
   isFirestoreCapacityCoolingDown,
@@ -88,6 +89,7 @@ export const useDashboardSummary = ({
   const adminRentalCutoverConfigRef = useRef(
     readAdminRentalRequestCutoverConfig()
   );
+  const assetCutoverConfigRef = useRef(readAssetDomainCutoverConfig());
 
   useEffect(() => {
     triggerToastRef.current = triggerToast;
@@ -154,6 +156,40 @@ export const useDashboardSummary = ({
         ...(currentSummary.sourceStats || {}),
         rentalRequestMetricSource: 'postgresql-phase17',
         rentalRequestMetricReferenceDate: dashboard?.referenceDate || today(),
+      },
+    };
+    applyDashboardSummary(nextSummary);
+    return nextSummary;
+  }, [applyDashboardSummary]);
+
+  const applyPostgresAssetDashboard = useCallback(async () => {
+    if (!assetCutoverConfigRef.current.readRequested) return null;
+    const payload = await clerkStagingClient.getAssetCatalog();
+    const catalog = payload?.assetCatalog;
+    const metrics = catalog?.metrics || {};
+    const currentSummary = dashboardSummaryRef.current || cachedSummaryRef.current || {
+      schemaVersion: 2,
+      businessDate: today(),
+      activeRequests: [],
+      pendingAccounts: [],
+      metrics: {},
+      requestTabCounts: {},
+      dataIssueCounts: {},
+      sourceStats: {},
+    };
+    const nextSummary = {
+      ...currentSummary,
+      metrics: {
+        ...(currentSummary.metrics || {}),
+        totalAssetCount: Number(metrics.totalAssetCount || 0),
+        availableCount: Number(metrics.availableCount || 0),
+        unavailableCount: Number(metrics.unavailableCount || 0),
+      },
+      sourceStats: {
+        ...(currentSummary.sourceStats || {}),
+        assetMetricSource: 'postgresql-phase20',
+        assetCatalogCount: Number(metrics.totalAssetCount || 0),
+        assetAvailabilityCount: Array.isArray(catalog?.availability) ? catalog.availability.length : 0,
       },
     };
     applyDashboardSummary(nextSummary);
@@ -365,8 +401,9 @@ export const useDashboardSummary = ({
 
     const refreshStaleDashboardSummary = async () => {
       try {
-        if (adminRentalCutoverConfigRef.current.readRequested) {
-          await applyPostgresRentalDashboard();
+        if (adminRentalCutoverConfigRef.current.readRequested || assetCutoverConfigRef.current.readRequested) {
+          if (adminRentalCutoverConfigRef.current.readRequested) await applyPostgresRentalDashboard();
+          if (assetCutoverConfigRef.current.readRequested) await applyPostgresAssetDashboard();
           return;
         }
 
@@ -408,6 +445,7 @@ export const useDashboardSummary = ({
     dashboardSummaryReady,
     refreshDashboardSummary,
     applyPostgresRentalDashboard,
+    applyPostgresAssetDashboard,
     shouldSubscribeDashboardSummary,
   ]);
 

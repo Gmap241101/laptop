@@ -174,6 +174,17 @@ const sanitizeRentalRequestCandidate = ({ requests, syncState }) => ({
   shadowSyncedAt: syncState.syncedAt,
 });
 
+const sanitizeAssetCatalog = (catalog = {}) => ({
+  source: catalog.source || 'postgresql',
+  authoritative: Boolean(catalog.authoritative),
+  synchronized: Boolean(catalog.synchronized),
+  categories: Array.isArray(catalog.categories) ? catalog.categories : [],
+  assets: Array.isArray(catalog.assets) ? catalog.assets : [],
+  availability: Array.isArray(catalog.availability) ? catalog.availability : [],
+  metrics: catalog.metrics || {},
+  sync: catalog.sync || null,
+});
+
 const sanitizeMemberProfileReadCandidate = (shadow) => ({
   source: 'postgresql-shadow',
   authoritative: false,
@@ -238,6 +249,15 @@ export const createRequestHandler = ({
     async restoreStatus() { const error = new Error('Admin rental request service is not configured.'); error.code = 'admin_rental_request_not_configured'; throw error; },
     async reviewUserAction() { const error = new Error('Admin rental request service is not configured.'); error.code = 'admin_rental_request_not_configured'; throw error; },
     async changeStatus() { const error = new Error('Admin rental request service is not configured.'); error.code = 'admin_rental_request_not_configured'; throw error; },
+  },
+  assetService = {
+    async getPublicCatalog() { const error = new Error('Asset service is not configured.'); error.code = 'asset_service_not_configured'; throw error; },
+    async bootstrap() { const error = new Error('Asset service is not configured.'); error.code = 'asset_service_not_configured'; throw error; },
+    async create() { const error = new Error('Asset service is not configured.'); error.code = 'asset_service_not_configured'; throw error; },
+    async edit() { const error = new Error('Asset service is not configured.'); error.code = 'asset_service_not_configured'; throw error; },
+    async delete() { const error = new Error('Asset service is not configured.'); error.code = 'asset_service_not_configured'; throw error; },
+    async bulkCreate() { const error = new Error('Asset service is not configured.'); error.code = 'asset_service_not_configured'; throw error; },
+    async saveCategories() { const error = new Error('Asset service is not configured.'); error.code = 'asset_service_not_configured'; throw error; },
   },
 }) => {
   if (typeof databaseCheck !== 'function') {
@@ -305,6 +325,16 @@ export const createRequestHandler = ({
     typeof adminRentalRequestService.changeStatus !== 'function'
   ) {
     throw new TypeError('adminRentalRequestService Phase 19 methods are required.');
+  }
+  if (!assetService
+    || typeof assetService.getPublicCatalog !== 'function'
+    || typeof assetService.bootstrap !== 'function'
+    || typeof assetService.create !== 'function'
+    || typeof assetService.edit !== 'function'
+    || typeof assetService.delete !== 'function'
+    || typeof assetService.bulkCreate !== 'function'
+    || typeof assetService.saveCategories !== 'function') {
+    throw new TypeError('assetService Phase 20 methods are required.');
   }
 
 
@@ -395,6 +425,11 @@ export const createRequestHandler = ({
           adminRentalRequestMemo: '/api/admin/rental-requests/:id/memo',
           adminRentalRequestRestore: '/api/admin/rental-requests/:id/restore',
           adminRentalUserActionReview: '/api/admin/rental-requests/:id/user-action-review',
+          assetCatalog: '/api/assets/catalog',
+          adminAssetBootstrap: '/api/admin/assets/bootstrap',
+          adminAssets: '/api/admin/assets',
+          adminAssetBulk: '/api/admin/assets/bulk',
+          adminAssetCategories: '/api/admin/assets/categories',
         },
         headers,
       );
@@ -626,6 +661,113 @@ export const createRequestHandler = ({
 
 
 
+
+
+    if (request.method === 'GET' && url.pathname === '/api/assets/catalog') {
+      try {
+        const catalog = await assetService.getPublicCatalog();
+        writeJson(response, 200, { ...basePayload, assetCatalog: sanitizeAssetCatalog(catalog) }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'asset_catalog_unavailable' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/admin/assets/bootstrap') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      try {
+        const result = await assetService.bootstrap(firebaseIdentity);
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true,
+          adminAssetBootstrap: { target: 'postgresql', assetCount: result.assetCount, categoryCount: result.categoryCount, catalog: sanitizeAssetCatalog(result.catalog) } }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'admin_asset_bootstrap_unavailable' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/admin/assets') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      let body;
+      try { body = await readJsonBody(request); }
+      catch (error) { writeJson(response, error?.status || 400, { ...basePayload, authenticated: true, error: error?.code || 'invalid_json_body' }, headers); return; }
+      try {
+        const result = await assetService.create(firebaseIdentity, body?.asset || body || {});
+        writeJson(response, 201, { ...basePayload, authenticated: true, authorized: true,
+          adminAssetMutation: { authority: result.authority, operation: 'create', firestoreMirror: result.firestoreMirror, asset: result.asset, catalog: sanitizeAssetCatalog(result.catalog) } }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'admin_asset_create_unavailable', assetNo: error?.assetNo || '', category: error?.category || '', blockingRequest: error?.blockingRequest || null }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/admin/assets/bulk') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      let body;
+      try { body = await readJsonBody(request, { maxBytes: 1024 * 1024 }); }
+      catch (error) { writeJson(response, error?.status || 400, { ...basePayload, authenticated: true, error: error?.code || 'invalid_json_body' }, headers); return; }
+      try {
+        const result = await assetService.bulkCreate(firebaseIdentity, body?.assets || []);
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true,
+          adminAssetMutation: { authority: result.authority, operation: 'bulk-create', firestoreMirror: result.firestoreMirror, assets: result.assets, duplicateAssetNumbers: result.duplicateAssetNumbers, invalidCategories: result.invalidCategories, catalog: sanitizeAssetCatalog(result.catalog) } }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'admin_asset_bulk_unavailable', duplicateAssetNumbers: error?.duplicateAssetNumbers || [], invalidCategories: error?.invalidCategories || [] }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/admin/assets/categories') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      let body;
+      try { body = await readJsonBody(request); }
+      catch (error) { writeJson(response, error?.status || 400, { ...basePayload, authenticated: true, error: error?.code || 'invalid_json_body' }, headers); return; }
+      try {
+        const result = await assetService.saveCategories(firebaseIdentity, body || {});
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true,
+          adminAssetMutation: { authority: result.authority, operation: 'categories', firestoreMirror: result.firestoreMirror, catalog: sanitizeAssetCatalog(result.catalog) } }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'admin_asset_categories_unavailable', assetNo: error?.assetNo || '', category: error?.category || '', blockingRequest: error?.blockingRequest || null }, headers);
+      }
+      return;
+    }
+
+    const adminAssetActionMatch = request.method === 'POST'
+      ? url.pathname.match(/^\/api\/admin\/assets\/([^/]+)\/(edit|delete)$/)
+      : null;
+    if (adminAssetActionMatch) {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      let body = {};
+      if (adminAssetActionMatch[2] === 'edit') {
+        try { body = await readJsonBody(request); }
+        catch (error) { writeJson(response, error?.status || 400, { ...basePayload, authenticated: true, error: error?.code || 'invalid_json_body' }, headers); return; }
+      }
+      try {
+        const assetId = decodeURIComponent(adminAssetActionMatch[1]);
+        const result = adminAssetActionMatch[2] === 'edit'
+          ? await assetService.edit(firebaseIdentity, assetId, body?.asset || body || {})
+          : await assetService.delete(firebaseIdentity, assetId);
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true,
+          adminAssetMutation: { authority: result.authority, operation: adminAssetActionMatch[2], firestoreMirror: result.firestoreMirror,
+            asset: result.asset || null, deletedAsset: result.deletedAsset || null, catalog: sanitizeAssetCatalog(result.catalog) } }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || `admin_asset_${adminAssetActionMatch[2]}_unavailable`, assetNo: error?.assetNo || '', category: error?.category || '', blockingRequest: error?.blockingRequest || null }, headers);
+      }
+      return;
+    }
 
     if (request.method === 'POST' && url.pathname === '/api/admin/rental-requests/bootstrap') {
       const auth = await authenticate(request, response, headers, requestId);

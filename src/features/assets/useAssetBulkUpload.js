@@ -17,6 +17,8 @@ import {
   getPublicAssetCatalogWriteErrorMessage,
   writePublicAssetCatalogMutationInTransaction,
 } from '../../services/publicAssetCatalogWriteThroughLoader.js';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { publishAssetDomainCutoverObservation, readAssetDomainCutoverConfig } from './assetDomainCutover.js';
 import {
   createAssetUploadCandidates,
   getAssetUploadFileType,
@@ -39,6 +41,7 @@ export default function useAssetBulkUpload({
 }) {
   const [assetUploadParserLoading, setAssetUploadParserLoading] =
     useState(false);
+  const assetCutoverConfig = readAssetDomainCutoverConfig();
 
   const processParsedData = useCallback(
     async (jsonList) => {
@@ -66,6 +69,50 @@ export default function useAssetBulkUpload({
           '헤더(자산카테고리, 자산관리번호, 모델명, 시리얼번호 등) 규격 정보가 일치하지 않아 가져오지 못했습니다.',
           'error'
         );
+        return;
+      }
+
+      if (assetCutoverConfig.writeRequested) {
+        try {
+          const firebaseUser = firebaseAuth.currentUser;
+          if (!firebaseUser) throw new Error('firebase-admin-session-missing');
+          const payload = await clerkStagingClient.bulkCreateAdminAssets(
+            await firebaseUser.getIdToken(),
+            parsedCandidates
+          );
+          const mutation = payload?.adminAssetMutation;
+          const catalog = mutation?.catalog;
+          const createdAssets = mutation?.assets || [];
+          setData((previousData) => ({
+            ...previousData,
+            laptops: catalog?.assets || previousData.laptops,
+            assetCategories: catalog?.categories || previousData.assetCategories,
+            requests: catalog?.availability || previousData.requests,
+          }));
+          setShowUploadPanel(false);
+          publishAssetDomainCutoverObservation({
+            readRequested: assetCutoverConfig.readRequested, writeRequested: true,
+            activeSource: 'postgresql', writeSource: 'postgresql-authoritative', firestoreMirror: 'synced',
+            assetWatcherDisabled: assetCutoverConfig.readRequested, availabilityWatcherDisabled: assetCutoverConfig.readRequested,
+            assetCount: catalog?.assets?.length || 0, categoryCount: catalog?.categories?.length || 0,
+            availabilityCount: catalog?.availability?.length || 0, firestoreFallbackReads: 0, error: '',
+          });
+          const skipped = [];
+          if (missingAssetNoCount > 0) skipped.push(`자산관리번호 누락 ${missingAssetNoCount}건 제외`);
+          if ((mutation?.invalidCategories || []).length) skipped.push(`카테고리 불일치 ${mutation.invalidCategories.length}건 제외`);
+          if ((mutation?.duplicateAssetNumbers || []).length) skipped.push(`중복 자산관리번호 ${mutation.duplicateAssetNumbers.length}건 제외`);
+          triggerToast(
+            `총 ${createdAssets.length}대의 기기를 PostgreSQL 데이터베이스로 일괄 추가 등록했습니다.${skipped.length ? ` (${skipped.join(', ')})` : ''}`,
+            'success'
+          );
+        } catch (error) {
+          console.error('PostgreSQL bulk asset upload error:', error);
+          if (error?.code === 'asset-bulk-no-valid-assets') {
+            triggerToast('업로드할 수 있는 유효한 자산이 없습니다. 카테고리와 중복 자산관리번호를 확인해 주세요.', 'error');
+          } else {
+            triggerToast('엑셀/CSV 자산 등록에 실패했습니다. 기존 자산 목록은 변경되지 않았습니다.', 'error');
+          }
+        }
         return;
       }
 
@@ -318,6 +365,8 @@ export default function useAssetBulkUpload({
       }
     },
     [
+      assetCutoverConfig.readRequested,
+      assetCutoverConfig.writeRequested,
       authenticatedAdminId,
       currentAuthAdminAccountId,
       setData,

@@ -101,3 +101,13 @@ VITE_RENTAL_REQUEST_USER_ACTION_POSTGRES_WRITE_ENABLED=true
 # Recommended full Phase 19 diagnostic URL:
 #   ?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWriteThrough=on&restrictionRead=postgres&restrictionWatcher=off&rentalRequestRead=postgres&rentalRequestWatcher=off&rentalRequestWrite=postgres&adminRequestRead=postgres&adminRequestWrite=postgres&rentalRequestActionWrite=postgres
 # Configure in the mkrental Vercel project's Production environment and redeploy.
+
+
+# Phase 20: asset master/catalog/availability/admin CRUD PostgreSQL cutover (Staging opt-in)
+VITE_ASSET_POSTGRES_READ_ENABLED=true
+VITE_ASSET_POSTGRES_WRITE_ENABLED=true
+# Requires explicit query/session latch:
+#   ?assetRead=postgres&assetWrite=postgres
+# Recommended admin diagnostic URL:
+#   https://mkrental.vercel.app/admin?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWriteThrough=on&restrictionRead=postgres&restrictionWatcher=off&rentalRequestRead=postgres&rentalRequestWatcher=off&rentalRequestWrite=postgres&adminRequestRead=postgres&adminRequestWrite=postgres&rentalRequestActionWrite=postgres&assetRead=postgres&assetWrite=postgres
+# Configure in the mkrental Vercel project's Production environment and redeploy.

@@ -234,6 +234,22 @@ const rentalRequestUserActionService = {
   },
 };
 
+const assetCatalogSmoke = {
+  source: 'postgresql', authoritative: true, synchronized: true, categories: ['노트북'],
+  assets: [{ id: 'ASSET-SMOKE-1', category: '노트북', assetNo: 'NB-SMOKE', model: 'Smoke Model', baseStatus: '대여가능', status: '대여가능', reservations: [] }],
+  availability: [], metrics: { totalAssetCount: 1, availableCount: 1, unavailableCount: 0, reservedOrRentedCount: 0 },
+  sync: { assetCount: 1, categoryCount: 1, sourceHash: 'asset-smoke', sourceMode: 'test', syncedAt: '2026-08-09T00:00:00Z' },
+};
+const assetService = {
+  async getPublicCatalog() { return assetCatalogSmoke; },
+  async bootstrap(firebaseIdentity) { return { admin: { uid: firebaseIdentity.uid }, target: 'postgresql', assetCount: 1, categoryCount: 1, catalog: assetCatalogSmoke }; },
+  async create(firebaseIdentity, asset) { return { admin: { uid: firebaseIdentity.uid }, authority: 'postgresql', firestoreMirror: 'synced', asset: { id: 'ASSET-CREATED', ...asset }, catalog: assetCatalogSmoke }; },
+  async edit(firebaseIdentity, assetId, asset) { return { admin: { uid: firebaseIdentity.uid }, authority: 'postgresql', firestoreMirror: 'synced', asset: { id: assetId, ...asset }, catalog: assetCatalogSmoke }; },
+  async delete(firebaseIdentity, assetId) { return { admin: { uid: firebaseIdentity.uid }, authority: 'postgresql', firestoreMirror: 'synced', deletedAsset: { id: assetId }, catalog: assetCatalogSmoke }; },
+  async bulkCreate(firebaseIdentity, assets) { return { admin: { uid: firebaseIdentity.uid }, authority: 'postgresql', firestoreMirror: 'synced', assets: assets.map((asset, index) => ({ id: `ASSET-BULK-${index+1}`, ...asset })), duplicateAssetNumbers: [], invalidCategories: [], catalog: assetCatalogSmoke }; },
+  async saveCategories(firebaseIdentity) { return { admin: { uid: firebaseIdentity.uid }, authority: 'postgresql', firestoreMirror: 'synced', catalog: assetCatalogSmoke }; },
+};
+
 const adminRentalRequestService = {
   async bootstrap(firebaseIdentity) {
     if (firebaseIdentity.uid !== 'firebase_uid_smoke') throw new Error('Unexpected admin bootstrap identity.');
@@ -322,6 +338,7 @@ const server = createServer(
     rentalRequestWriteService,
     rentalRequestUserActionService,
     adminRentalRequestService,
+    assetService,
   }),
 );
 
@@ -636,6 +653,24 @@ if (adminUserActionReview.status !== 200 || adminUserActionReviewBody.adminRenta
   throw new Error('Phase 19 admin user action review HTTP response is invalid.');
 }
 
+const assetCatalog = await fetch(`${baseUrl}/api/assets/catalog`);
+const assetCatalogBody = await assetCatalog.json();
+if (assetCatalog.status !== 200 || assetCatalogBody.assetCatalog?.source !== 'postgresql' || assetCatalogBody.assetCatalog?.assets?.length !== 1) {
+  throw new Error('Phase 20 public asset catalog HTTP response is invalid.');
+}
+const assetBootstrap = await fetch(`${baseUrl}/api/admin/assets/bootstrap`, { method: 'POST', headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' } });
+if (assetBootstrap.status !== 200 || (await assetBootstrap.json()).adminAssetBootstrap?.target !== 'postgresql') throw new Error('Phase 20 admin asset bootstrap HTTP response is invalid.');
+const assetCreate = await fetch(`${baseUrl}/api/admin/assets`, { method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' }, body: JSON.stringify({ asset: { category: '노트북', assetNo: 'A-NEW', model: 'New' } }) });
+if (assetCreate.status !== 201 || (await assetCreate.json()).adminAssetMutation?.operation !== 'create') throw new Error('Phase 20 admin asset create HTTP response is invalid.');
+const assetEdit = await fetch(`${baseUrl}/api/admin/assets/ASSET-SMOKE-1/edit`, { method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' }, body: JSON.stringify({ asset: { category: '노트북', assetNo: 'NB-SMOKE', model: 'Edited' } }) });
+if (assetEdit.status !== 200 || (await assetEdit.json()).adminAssetMutation?.operation !== 'edit') throw new Error('Phase 20 admin asset edit HTTP response is invalid.');
+const assetBulk = await fetch(`${baseUrl}/api/admin/assets/bulk`, { method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' }, body: JSON.stringify({ assets: [{ category: '노트북', assetNo: 'B-1' }] }) });
+if (assetBulk.status !== 200 || (await assetBulk.json()).adminAssetMutation?.operation !== 'bulk-create') throw new Error('Phase 20 admin asset bulk HTTP response is invalid.');
+const assetCategories = await fetch(`${baseUrl}/api/admin/assets/categories`, { method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' }, body: JSON.stringify({ categories: ['노트북'] }) });
+if (assetCategories.status !== 200 || (await assetCategories.json()).adminAssetMutation?.operation !== 'categories') throw new Error('Phase 20 admin asset categories HTTP response is invalid.');
+const assetDelete = await fetch(`${baseUrl}/api/admin/assets/ASSET-SMOKE-1/delete`, { method: 'POST', headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' } });
+if (assetDelete.status !== 200 || (await assetDelete.json()).adminAssetMutation?.operation !== 'delete') throw new Error('Phase 20 admin asset delete HTTP response is invalid.');
+
 const invalidFirebase = await fetch(`${baseUrl}/api/users/me/legacy/firebase`, {
   method: 'POST',
   headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer wrong-token' },
@@ -646,4 +681,4 @@ const missing = await fetch(`${baseUrl}/missing`);
 if (missing.status !== 404) throw new Error(`/missing returned ${missing.status}`);
 
 await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, Phase 16 rental-request POST, Phase 17 admin bootstrap/list/dashboard/status + Phase 18 sync/events/edit/memo/restore + Phase 19 user edit/cancel/extend/admin-review, CORS, 404)');
+console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, Phase 16 rental-request POST, Phase 17 admin bootstrap/list/dashboard/status + Phase 18 sync/events/edit/memo/restore + Phase 19 user edit/cancel/extend/admin-review + Phase 20 asset catalog/bootstrap/CRUD/bulk/categories, CORS, 404)');

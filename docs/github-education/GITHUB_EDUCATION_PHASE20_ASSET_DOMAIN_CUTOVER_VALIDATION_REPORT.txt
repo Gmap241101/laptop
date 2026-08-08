@@ -1,0 +1,45 @@
+Phase 20 validation report
+==========================
+
+Result before browser deployment: PASS (automated validation)
+
+Phase-specific backend
+- Migration 012 static contract: PASS
+- PostgreSQL asset/category bootstrap and catalog: PASS
+- Existing reservation guard availability integration: PASS
+- Public asset catalog API contract: PASS
+- Administrator bootstrap HTTP contract: PASS
+- Administrator create/edit/delete HTTP + service authority: PASS
+- Administrator bulk create HTTP + service authority: PASS
+- Administrator category write HTTP + service authority: PASS
+- Firestore compatibility mirrors: PASS
+
+Phase-specific frontend
+- assetRead/assetWrite staging gates and session latches: PASS
+- PostgreSQL catalog path: PASS
+- rentalAssets watcher-off contract: PASS
+- rentalAvailability watcher-off contract: PASS
+- one-time Firestore fallback contract: PASS
+- administrator CRUD/bulk/category cutover: PASS
+- dashboard PostgreSQL asset metric overlay: PASS
+- Phase 20 diagnostics: PASS
+
+Regression/audits
+- Phase 1-19 regression suite: PASS
+- React Hook audit: PASS (159 source files)
+- Application flow audit: PASS (124 contracts; 11 user routes; 20 administrator tabs)
+- Firestore strict audit: PASS
+  Total calls: 131
+  onSnapshot: 35
+  getDocs: 50
+  getDoc: 28
+  getCountFromServer: 18
+  Approved risk findings: 52
+  Unapproved warnings: 0
+  Unapproved errors: 0
+
+The single additional static getDocs compared with Phase 19 is the Phase 20 one-time rentalAvailability Firestore fallback used only if PostgreSQL asset catalog/bootstrap is unavailable. Normal PostgreSQL opt-in runtime creates neither the rentalAssets nor rentalAvailability realtime watcher and expects fallback reads=0.
+
+Build environment
+- prebuild React/App-flow/Firestore audits: PASS
+- Vite bundle in ChatGPT environment: unavailable because root node_modules is absent (`vite: not found`); Vercel deployment must perform final bundle validation.

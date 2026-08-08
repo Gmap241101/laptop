@@ -507,6 +507,54 @@ export const requestAdminRentalRequestStatusChange = async ({ clerk, apiBaseUrl,
   return payload;
 };
 
+export const requestAssetCatalog = async ({ apiBaseUrl, fetchImpl }) => {
+  const response = await fetchImpl(`${apiBaseUrl}/api/assets/catalog`, {
+    method: 'GET', headers: { Accept: 'application/json' }, cache: 'no-store',
+  });
+  const payload = await parseJsonResponse(response);
+  if (!response.ok) {
+    const error = new Error(`PostgreSQL asset catalog read failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (payload?.assetCatalog?.source !== 'postgresql' || !Array.isArray(payload?.assetCatalog?.assets) || !Array.isArray(payload?.assetCatalog?.categories)) {
+    throw new Error('Backend returned an invalid PostgreSQL asset catalog response.');
+  }
+  return payload;
+};
+
+export const requestAdminAssetBootstrap = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken }) => {
+  const token = trim(firebaseIdToken);
+  if (!token) throw new Error('Firebase admin sign-in is required before synchronizing PostgreSQL assets.');
+  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: '/api/admin/assets/bootstrap', method: 'POST', headers: { 'X-Firebase-Authorization': `Bearer ${token}` } });
+  if (!response.ok) {
+    const error = new Error(`Admin asset bootstrap failed with HTTP ${response.status}.`); error.status = response.status; error.code = payload?.error || null; throw error;
+  }
+  if (!payload?.authenticated || !payload?.authorized || payload?.adminAssetBootstrap?.target !== 'postgresql') throw new Error('Backend returned an invalid admin asset bootstrap response.');
+  return payload;
+};
+
+const requestAdminAssetMutation = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, path, body = {}, expectedOperation }) => {
+  const token = trim(firebaseIdToken);
+  if (!token) throw new Error('Firebase admin sign-in is required before changing PostgreSQL assets.');
+  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path, method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Firebase-Authorization': `Bearer ${token}` }, body: JSON.stringify(body) });
+  if (!response.ok) {
+    const error = new Error(`Admin PostgreSQL asset ${expectedOperation} failed with HTTP ${response.status}.`);
+    error.status = response.status; error.code = payload?.error || null; error.assetNo = payload?.assetNo || ''; error.category = payload?.category || ''; error.blockingRequest = payload?.blockingRequest || null;
+    error.duplicateAssetNumbers = payload?.duplicateAssetNumbers || []; error.invalidCategories = payload?.invalidCategories || [];
+    throw error;
+  }
+  if (!payload?.authenticated || !payload?.authorized || payload?.adminAssetMutation?.authority !== 'postgresql') throw new Error(`Backend returned an invalid admin asset ${expectedOperation} response.`);
+  return payload;
+};
+
+export const requestAdminAssetCreate = (args) => requestAdminAssetMutation({ ...args, path: '/api/admin/assets', body: { asset: args.asset || {} }, expectedOperation: 'create' });
+export const requestAdminAssetEdit = (args) => requestAdminAssetMutation({ ...args, path: `/api/admin/assets/${encodeURIComponent(trim(args.assetId))}/edit`, body: { asset: args.asset || {} }, expectedOperation: 'edit' });
+export const requestAdminAssetDelete = (args) => requestAdminAssetMutation({ ...args, path: `/api/admin/assets/${encodeURIComponent(trim(args.assetId))}/delete`, body: {}, expectedOperation: 'delete' });
+export const requestAdminAssetBulkCreate = (args) => requestAdminAssetMutation({ ...args, path: '/api/admin/assets/bulk', body: { assets: args.assets || [] }, expectedOperation: 'bulk-create' });
+export const requestAdminAssetCategories = (args) => requestAdminAssetMutation({ ...args, path: '/api/admin/assets/categories', body: { categories: args.categories || [], renameMap: args.renameMap || {} }, expectedOperation: 'categories' });
+
 export const requestRentalRequestCreate = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, request }) => {
   const token = trim(firebaseIdToken);
   if (!token) throw new Error('Firebase sign-in is required before creating a PostgreSQL rental request.');
@@ -805,6 +853,33 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async getAdminRentalDashboard(firebaseIdToken, referenceDate) {
       const clerk = await initialize();
       return requestAdminRentalDashboard({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, referenceDate });
+    },
+    async getAssetCatalog() {
+      return requestAssetCatalog({ apiBaseUrl: config.apiBaseUrl, fetchImpl });
+    },
+    async bootstrapAdminAssets(firebaseIdToken) {
+      const clerk = await initialize();
+      return requestAdminAssetBootstrap({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken });
+    },
+    async createAdminAsset(firebaseIdToken, asset) {
+      const clerk = await initialize();
+      return requestAdminAssetCreate({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, asset });
+    },
+    async editAdminAsset(firebaseIdToken, assetId, asset) {
+      const clerk = await initialize();
+      return requestAdminAssetEdit({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, assetId, asset });
+    },
+    async deleteAdminAsset(firebaseIdToken, assetId) {
+      const clerk = await initialize();
+      return requestAdminAssetDelete({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, assetId });
+    },
+    async bulkCreateAdminAssets(firebaseIdToken, assets) {
+      const clerk = await initialize();
+      return requestAdminAssetBulkCreate({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, assets });
+    },
+    async saveAdminAssetCategories(firebaseIdToken, categories, renameMap) {
+      const clerk = await initialize();
+      return requestAdminAssetCategories({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, categories, renameMap });
     },
     async syncAdminRentalRequest(firebaseIdToken, requestId) {
       const clerk = await initialize();

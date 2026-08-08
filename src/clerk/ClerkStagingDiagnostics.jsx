@@ -48,6 +48,11 @@ import {
   readRentalRequestUserActionCutoverConfig,
   subscribeRentalRequestUserActionObservation,
 } from '../features/requests/rentalRequestUserActionCutover.js';
+import {
+  getLatestAssetDomainCutoverObservation,
+  readAssetDomainCutoverConfig,
+  subscribeAssetDomainCutoverObservation,
+} from '../features/assets/assetDomainCutover.js';
 import { clerkStagingClient } from './clerkStagingClient.js';
 
 const panelStyle = {
@@ -96,6 +101,7 @@ export default function ClerkStagingDiagnostics() {
   const rentalRequestWriteConfig = useMemo(() => readRentalRequestWriteCutoverConfig(), []);
   const adminRentalRequestCutoverConfig = useMemo(() => readAdminRentalRequestCutoverConfig(), []);
   const rentalRequestUserActionConfig = useMemo(() => readRentalRequestUserActionCutoverConfig(), []);
+  const assetDomainCutoverConfig = useMemo(() => readAssetDomainCutoverConfig(), []);
   const [state, setState] = useState({
     phase: requested ? 'loading' : 'hidden',
     signedIn: false,
@@ -196,6 +202,20 @@ export default function ClerkStagingDiagnostics() {
     adminRentalRequestWriteNextStatus: null,
     adminRentalRequestWriteMirror: null,
     adminRentalRequestError: null,
+    assetReadRequested: assetDomainCutoverConfig.readRequested,
+    assetWriteRequested: assetDomainCutoverConfig.writeRequested,
+    assetActiveSource: assetDomainCutoverConfig.readRequested ? 'awaiting-asset-view' : null,
+    assetWatcherDisabled: assetDomainCutoverConfig.readRequested,
+    assetAvailabilityWatcherDisabled: assetDomainCutoverConfig.readRequested,
+    assetCount: null,
+    assetCategoryCount: null,
+    assetAvailabilityCount: null,
+    assetFirestoreFallbackReads: 0,
+    assetBootstrapped: false,
+    assetSyncAt: null,
+    assetWriteSource: null,
+    assetFirestoreMirror: null,
+    assetError: null,
     error: null,
   });
 
@@ -478,6 +498,61 @@ export default function ClerkStagingDiagnostics() {
     return subscribeAdminRentalRequestCutoverObservation(applyObservation);
   }, [requested]);
 
+  useEffect(() => {
+    if (!requested) return undefined;
+    const applyObservation = (observation) => {
+      setState((current) => ({
+        ...current,
+        assetReadRequested:
+          observation && Object.prototype.hasOwnProperty.call(observation, 'readRequested')
+            ? Boolean(observation.readRequested)
+            : current.assetReadRequested,
+        assetWriteRequested:
+          observation && Object.prototype.hasOwnProperty.call(observation, 'writeRequested')
+            ? Boolean(observation.writeRequested)
+            : current.assetWriteRequested,
+        assetActiveSource: observation?.activeSource || current.assetActiveSource,
+        assetWatcherDisabled:
+          observation && Object.prototype.hasOwnProperty.call(observation, 'assetWatcherDisabled')
+            ? Boolean(observation.assetWatcherDisabled)
+            : current.assetWatcherDisabled,
+        assetAvailabilityWatcherDisabled:
+          observation && Object.prototype.hasOwnProperty.call(observation, 'availabilityWatcherDisabled')
+            ? Boolean(observation.availabilityWatcherDisabled)
+            : current.assetAvailabilityWatcherDisabled,
+        assetCount:
+          observation && Object.prototype.hasOwnProperty.call(observation, 'assetCount')
+            ? Number(observation.assetCount) || 0
+            : current.assetCount,
+        assetCategoryCount:
+          observation && Object.prototype.hasOwnProperty.call(observation, 'categoryCount')
+            ? Number(observation.categoryCount) || 0
+            : current.assetCategoryCount,
+        assetAvailabilityCount:
+          observation && Object.prototype.hasOwnProperty.call(observation, 'availabilityCount')
+            ? Number(observation.availabilityCount) || 0
+            : current.assetAvailabilityCount,
+        assetFirestoreFallbackReads:
+          observation && Object.prototype.hasOwnProperty.call(observation, 'firestoreFallbackReads')
+            ? Number(observation.firestoreFallbackReads) || 0
+            : current.assetFirestoreFallbackReads,
+        assetBootstrapped:
+          observation && Object.prototype.hasOwnProperty.call(observation, 'bootstrapped')
+            ? Boolean(observation.bootstrapped)
+            : current.assetBootstrapped,
+        assetSyncAt: observation?.syncAt || current.assetSyncAt,
+        assetWriteSource: observation?.writeSource || current.assetWriteSource,
+        assetFirestoreMirror: observation?.firestoreMirror || current.assetFirestoreMirror,
+        assetError:
+          observation && Object.prototype.hasOwnProperty.call(observation, 'error')
+            ? observation.error || null
+            : current.assetError,
+      }));
+    };
+    applyObservation(getLatestAssetDomainCutoverObservation());
+    return subscribeAssetDomainCutoverObservation(applyObservation);
+  }, [requested]);
+
   if (!requested) return null;
 
   const run = async (operation) => {
@@ -671,7 +746,7 @@ export default function ClerkStagingDiagnostics() {
 
   return (
     <aside style={panelStyle} aria-label="Clerk staging diagnostics">
-      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 19</div>
+      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 20</div>
       <div>SDK: {state.phase === 'loading' ? 'loading' : state.phase}</div>
       <div>Signed in: {state.signedIn ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Clerk user: {state.userId || '-'}</div>
@@ -818,6 +893,22 @@ export default function ClerkStagingDiagnostics() {
       <div style={{ overflowWrap: 'anywhere' }}>Last admin write status: {state.adminRentalRequestWriteNextStatus || '-'}</div>
       <div>Admin Firestore compatibility mirror: {state.adminRentalRequestWriteMirror || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Admin cutover error: {state.adminRentalRequestError || '-'}</div>
+
+      <div style={{ marginTop: '6px', fontWeight: 700 }}>Phase 20 asset domain PostgreSQL cutover</div>
+      <div>Asset read requested: {state.assetReadRequested ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Asset active source: {state.assetActiveSource || '-'}</div>
+      <div>rentalAssets watcher: {state.assetWatcherDisabled ? 'disabled' : 'active'}</div>
+      <div>rentalAvailability watcher: {state.assetAvailabilityWatcherDisabled ? 'disabled' : 'active'}</div>
+      <div>PostgreSQL asset count: {state.assetCount === null ? '-' : state.assetCount}</div>
+      <div>Asset category count: {state.assetCategoryCount === null ? '-' : state.assetCategoryCount}</div>
+      <div>Availability count: {state.assetAvailabilityCount === null ? '-' : state.assetAvailabilityCount}</div>
+      <div>Asset bootstrap this load: {state.assetBootstrapped ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Asset catalog synced: {state.assetSyncAt || '-'}</div>
+      <div>One-time Firestore asset fallback reads: {state.assetFirestoreFallbackReads}</div>
+      <div>Asset write requested: {state.assetWriteRequested ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Last asset write source: {state.assetWriteSource || '-'}</div>
+      <div>Asset Firestore compatibility mirror: {state.assetFirestoreMirror || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Asset cutover error: {state.assetError || '-'}</div>
 
       {state.error ? (
         <div role="alert" style={{ marginTop: '8px', color: '#b91c1c', overflowWrap: 'anywhere' }}>

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 import { firebaseAuth } from '../../firebase.js';
+import { readAssetDomainCutoverConfig } from './assetDomainCutover.js';
 import {
   ensurePublicAssetCatalogWriteThrough,
   getPublicAssetCatalogWriteErrorMessage,
@@ -23,6 +24,12 @@ export default function usePublicAssetCatalogCompatibilityController({
   }, [triggerToast]);
 
   useEffect(() => {
+    const assetCutoverConfig = readAssetDomainCutoverConfig();
+    if (assetCutoverConfig.readRequested || assetCutoverConfig.writeRequested) {
+      migrationAdminUidRef.current = '';
+      return undefined;
+    }
+
     if (!isAdminAuthenticated) {
       migrationAdminUidRef.current = '';
       return undefined;

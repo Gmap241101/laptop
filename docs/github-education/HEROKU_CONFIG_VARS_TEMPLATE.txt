@@ -11,7 +11,7 @@ VITE_CLERK_PUBLISHABLE_KEY=pk_test_REPLACE_ME
 # Backend runtime (Heroku Config Vars)
 APP_ENV=staging
 SERVICE_NAME=rental-api
-SERVICE_VERSION=phase19
+SERVICE_VERSION=phase20
 # PORT is local-only. Do not set PORT manually in Heroku.
 
 # PostgreSQL connection. Heroku Postgres manages DATABASE_URL automatically.
@@ -57,6 +57,13 @@ FIRESTORE_REST_TIMEOUT_MS=8000
 
 # Phase 17: no new backend secret is required.
 # After deploying the Phase 17 server source, set the diagnostic version marker to:
-# SERVICE_VERSION=phase19
+# SERVICE_VERSION=phase20
 # Migration 009 is applied by the existing Procfile release phase.
 # Admin rental-request bootstrap/status mirror continues to use the verified caller Firebase ID token through Security Rules.
+
+
+# Phase 20: asset-domain PostgreSQL read/write cutover.
+# No new backend secret is required. Migration 012 creates the normalized asset/category catalog.
+# Existing FIREBASE_PROJECT_ID/FIRESTORE_REST_TIMEOUT_MS are reused for administrator bootstrap
+# and Firestore compatibility mirrors under the current Firebase administrator token.
+# Recommended diagnostic version marker: SERVICE_VERSION=phase20

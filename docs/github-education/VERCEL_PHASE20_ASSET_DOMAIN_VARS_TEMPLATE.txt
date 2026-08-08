@@ -1,0 +1,19 @@
+# Phase 20 - Asset Domain PostgreSQL Cutover
+# Vercel project: mkrental
+# Environment: Production (service role is Staging, but mkrental uses Vercel Production deployments)
+
+VITE_ASSET_POSTGRES_READ_ENABLED=true
+VITE_ASSET_POSTGRES_WRITE_ENABLED=true
+
+# Both flags still require explicit Staging query/session opt-in:
+#   assetRead=postgres
+#   assetWrite=postgres
+#
+# Recommended administrator diagnostic URL:
+# https://mkrental.vercel.app/admin?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWriteThrough=on&restrictionRead=postgres&restrictionWatcher=off&rentalRequestRead=postgres&rentalRequestWatcher=off&rentalRequestWrite=postgres&adminRequestRead=postgres&adminRequestWrite=postgres&rentalRequestActionWrite=postgres&assetRead=postgres&assetWrite=postgres
+#
+# Recommended user diagnostic URL:
+# https://mkrental.vercel.app/?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWriteThrough=on&restrictionRead=postgres&restrictionWatcher=off&rentalRequestRead=postgres&rentalRequestWatcher=off&rentalRequestWrite=postgres&rentalRequestActionWrite=postgres&assetRead=postgres
+#
+# VITE_* variables are build-time settings. Redeploy after adding/changing them.
+# NEVER expose DATABASE_URL, CLERK_SECRET_KEY, CLERK_JWT_KEY, or Firebase service-account private keys via VITE_*.

@@ -9,6 +9,8 @@ import {
   firebaseAuth,
 } from '../../firebase.js';
 import { normalizeAssetReservations } from '../../services/publicAssetCatalog.js';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { publishAssetDomainCutoverObservation, readAssetDomainCutoverConfig } from './assetDomainCutover.js';
 import {
   createPublicAssetCatalogPayload,
   getPublicAssetCatalogWriteErrorMessage,
@@ -93,6 +95,8 @@ export default function useAdminAssetCategoryController({
   tempAssetCategoryRenameMap,
   triggerToast,
 }) {
+  const assetCutoverConfig = readAssetDomainCutoverConfig();
+
   const getOriginalAssetCategoryName = (category) => {
     const matchedEntry = Object.entries(tempAssetCategoryRenameMap).find(
       ([, renamedName]) => renamedName === category
@@ -264,6 +268,53 @@ export default function useAdminAssetCategoryController({
         'error'
       );
       return false;
+    }
+
+    if (assetCutoverConfig.writeRequested) {
+      try {
+        const firebaseUser = firebaseAuth.currentUser;
+        if (!firebaseUser) throw new Error('firebase-admin-session-missing');
+        const payload = await clerkStagingClient.saveAdminAssetCategories(
+          await firebaseUser.getIdToken(),
+          nextAssetCategories,
+          tempAssetCategoryRenameMap
+        );
+        const catalog = payload?.adminAssetMutation?.catalog;
+        setData((prev) => ({
+          ...prev,
+          assetCategories: catalog?.categories || nextAssetCategories,
+          laptops: catalog?.assets || prev.laptops,
+          requests: catalog?.availability || prev.requests,
+        }));
+        setSelectedAssetCategory('전체');
+        setAdminSelectedAssetCategory('전체');
+        setTempAssetCategories(catalog?.categories || nextAssetCategories);
+        setTempAssetCategoryRenameMap({});
+        setEditingAssetCategoryIndex(null);
+        setEditingAssetCategoryName('');
+        setDraggingAssetCategoryIndex(null);
+        publishAssetDomainCutoverObservation({
+          readRequested: assetCutoverConfig.readRequested, writeRequested: true,
+          activeSource: 'postgresql', writeSource: 'postgresql-authoritative', firestoreMirror: 'synced',
+          assetWatcherDisabled: assetCutoverConfig.readRequested, availabilityWatcherDisabled: assetCutoverConfig.readRequested,
+          assetCount: catalog?.assets?.length || 0, categoryCount: catalog?.categories?.length || 0,
+          availabilityCount: catalog?.availability?.length || 0, firestoreFallbackReads: 0, error: '',
+        });
+        triggerToast('자산 카테고리 변경사항이 PostgreSQL과 호환 저장소에 성공적으로 반영되었습니다.', 'success');
+        return true;
+      } catch (error) {
+        console.error('PostgreSQL asset category save error:', error);
+        if (error?.code === 'active-rental-category-rename') {
+          triggerToast(`진행 중 예약이 있는 자산${error?.assetNo ? ` [${error.assetNo}]` : ''}이 포함되어 카테고리명을 변경할 수 없습니다.`, 'error');
+          return false;
+        }
+        if (error?.code === 'asset-category-still-in-use') {
+          triggerToast(`카테고리${error?.category ? ` [${error.category}]` : ''}를 사용하는 최신 자산이 있어 삭제할 수 없습니다.`, 'error');
+          return false;
+        }
+        triggerToast('자산 카테고리 저장에 실패했습니다. 기존 카테고리와 자산 정보는 유지됩니다.', 'error');
+        return false;
+      }
     }
 
     try {

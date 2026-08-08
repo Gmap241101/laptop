@@ -26,6 +26,9 @@ import { createRentalRequestUserActionRepository } from './rentals/rental-reques
 import { createRentalRequestUserActionService } from './rentals/rental-request-user-action-service.mjs';
 import { createAdminRentalRequestRepository } from './rentals/admin-rental-request-repository.mjs';
 import { createAdminRentalRequestService } from './rentals/admin-rental-request-service.mjs';
+import { createFirestoreAssetClient } from './firestore/firestore-assets.mjs';
+import { createAssetRepository } from './assets/asset-repository.mjs';
+import { createAssetService } from './assets/asset-service.mjs';
 
 const config = readServerConfig();
 const authenticateRequest = createClerkSessionAuthenticator(config);
@@ -179,6 +182,13 @@ const adminRentalRequestService = createAdminRentalRequestService({
   repository: adminRentalRequestRepository,
   firestoreClient: firestoreAdminRentalRequestsClient,
 });
+const assetRepository = createAssetRepository(pool);
+const firestoreAssetClient = config.firebaseProjectId
+  ? createFirestoreAssetClient({ projectId: config.firebaseProjectId, timeoutMs: config.firestoreRestTimeoutMs })
+  : {
+      async verifyAdmin() { const error = new Error('Firestore asset bridge is not configured.'); error.code = 'firestore_asset_not_configured'; throw error; },
+    };
+const assetService = createAssetService({ repository: assetRepository, firestoreClient: firestoreAssetClient });
 const verifyFirebaseIdToken = config.firebaseProjectId
   ? createFirebaseIdTokenVerifier({
       projectId: config.firebaseProjectId,
@@ -208,6 +218,7 @@ const server = createServer(
     rentalRequestWriteService,
     rentalRequestUserActionService,
     adminRentalRequestService,
+    assetService,
   }),
 );
 
@@ -227,6 +238,7 @@ server.listen(config.port, '0.0.0.0', () => {
     rentalRequestWrite: config.firebaseProjectId ? 'postgresql-authoritative-firestore-compatibility-mirror' : 'disabled',
     rentalRequestUserActions: config.firebaseProjectId ? 'postgresql-authoritative-user-actions-firestore-compatibility-mirror' : 'disabled',
     adminRentalRequests: config.firebaseProjectId ? 'postgresql-read-admin-mutations-audit-firestore-compatibility-mirror' : 'disabled',
+    assetDomain: config.firebaseProjectId ? 'postgresql-read-write-firestore-compatibility-mirror' : 'disabled',
   });
 });
 
