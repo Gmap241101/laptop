@@ -7,6 +7,7 @@ import { createFirebaseIdTokenVerifier, extractFirebaseBearerToken } from './fir
 import { createFirestoreUserAccountClient } from './firestore/firestore-user-account.mjs';
 import { createFirestoreRentalRestrictionClient } from './firestore/firestore-rental-restriction.mjs';
 import { createFirestoreRentalRequestsClient } from './firestore/firestore-rental-requests.mjs';
+import { createFirestoreRentalRequestWriteClient } from './firestore/firestore-rental-request-write.mjs';
 import { checkDatabase, closePool, getPool } from './db/pool.mjs';
 import { createUserRepository } from './users/user-repository.mjs';
 import { createUserIdentityService } from './users/user-service.mjs';
@@ -18,6 +19,8 @@ import { createRentalRestrictionRepository } from './restrictions/rental-restric
 import { createRentalRestrictionService } from './restrictions/rental-restriction-service.mjs';
 import { createRentalRequestRepository } from './rentals/rental-request-repository.mjs';
 import { createRentalRequestService } from './rentals/rental-request-service.mjs';
+import { createRentalRequestWriteRepository } from './rentals/rental-request-write-repository.mjs';
+import { createRentalRequestWriteService } from './rentals/rental-request-write-service.mjs';
 
 const config = readServerConfig();
 const authenticateRequest = createClerkSessionAuthenticator(config);
@@ -96,6 +99,38 @@ const rentalRequestService = createRentalRequestService({
   rentalRequestRepository,
   firestoreRentalRequestsClient,
 });
+const rentalRequestWriteRepository = createRentalRequestWriteRepository(pool);
+const firestoreRentalRequestWriteClient = config.firebaseProjectId
+  ? createFirestoreRentalRequestWriteClient({
+      projectId: config.firebaseProjectId,
+      timeoutMs: config.firestoreRestTimeoutMs,
+    })
+  : {
+      async getPublicConfig() {
+        const error = new Error('Firestore rental request write compatibility bridge is not configured.');
+        error.code = 'firestore_rental_request_write_not_configured';
+        throw error;
+      },
+      async getRentalAsset() {
+        const error = new Error('Firestore rental request write compatibility bridge is not configured.');
+        error.code = 'firestore_rental_request_write_not_configured';
+        throw error;
+      },
+      async commitRentalRequestCreate() {
+        const error = new Error('Firestore rental request write compatibility bridge is not configured.');
+        error.code = 'firestore_rental_request_write_not_configured';
+        throw error;
+      },
+    };
+const rentalRequestWriteService = createRentalRequestWriteService({
+  userRepository,
+  firebaseLinkRepository,
+  memberShadowRepository,
+  rentalRestrictionService,
+  rentalRequestService,
+  rentalRequestWriteRepository,
+  firestoreRentalRequestWriteClient,
+});
 const verifyFirebaseIdToken = config.firebaseProjectId
   ? createFirebaseIdTokenVerifier({
       projectId: config.firebaseProjectId,
@@ -122,6 +157,7 @@ const server = createServer(
     memberShadowService,
     rentalRestrictionService,
     rentalRequestService,
+    rentalRequestWriteService,
   }),
 );
 
@@ -138,6 +174,7 @@ server.listen(config.port, '0.0.0.0', () => {
     firestoreMemberShadow: config.firebaseProjectId ? 'user-token-security-rules' : 'disabled',
     rentalRestrictionShadow: config.firebaseProjectId ? 'postgresql-user-token-security-rules' : 'disabled',
     rentalRequestShadow: config.firebaseProjectId ? 'normalized-postgresql-user-token-security-rules' : 'disabled',
+    rentalRequestWrite: config.firebaseProjectId ? 'postgresql-authoritative-firestore-compatibility-mirror' : 'disabled',
   });
 });
 

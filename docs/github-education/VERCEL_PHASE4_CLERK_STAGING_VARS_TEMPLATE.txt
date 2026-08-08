@@ -75,3 +75,6 @@ VITE_RENTAL_REQUEST_FIRESTORE_WATCHER_DISABLED=true
 # Phase 15 Stage B after Stage A parity passes:
 #   ?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWriteThrough=on&restrictionRead=postgres&restrictionWatcher=off&rentalRequestRead=postgres&rentalRequestWatcher=off
 # Use ?rentalRequestRead=firestore&rentalRequestParity=0 or close the tab to reset.
+
+# Phase 16: 신규 대여 신청 PostgreSQL authoritative transaction (Staging opt-in)
+VITE_RENTAL_REQUEST_POSTGRES_WRITE_ENABLED=true

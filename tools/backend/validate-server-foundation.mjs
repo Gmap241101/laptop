@@ -20,6 +20,10 @@ const files = [
   'server/src/restrictions/rental-restriction-service.mjs',
   'server/src/rentals/rental-request-repository.mjs',
   'server/src/rentals/rental-request-service.mjs',
+  'server/src/rentals/rental-request-write-policy.mjs',
+  'server/src/rentals/rental-request-write-repository.mjs',
+  'server/src/rentals/rental-request-write-service.mjs',
+  'server/src/firestore/firestore-rental-request-write.mjs',
   'server/src/app.mjs',
   'server/src/index.mjs',
   'server/scripts/check-config.mjs',
@@ -33,6 +37,7 @@ const files = [
   'tools/backend/smoke-member-profile-write-through.mjs',
   'tools/backend/smoke-rental-restriction-shadow.mjs',
   'tools/backend/smoke-rental-request-shadow.mjs',
+  'tools/backend/smoke-rental-request-authoritative-write.mjs',
 ];
 
 for (const file of files) {
@@ -90,6 +95,19 @@ for (const marker of [
   if (!phase14Migration.includes(marker)) throw new Error(`Phase 14 rental request migration marker is missing: ${marker}`);
 }
 
+
+const phase16Migration = readFileSync('server/migrations/008_phase16_rental_request_authoritative_write.sql', 'utf8');
+for (const marker of [
+  'CREATE TABLE IF NOT EXISTS app_rental_requests',
+  'CREATE TABLE IF NOT EXISTS app_rental_request_items',
+  'CREATE TABLE IF NOT EXISTS app_rental_asset_reservation_guards',
+  'CREATE TABLE IF NOT EXISTS app_rental_request_events',
+  "'authority', 'postgresql'",
+  "'firestoreMirror', 'required-before-postgresql-commit'",
+]) {
+  if (!phase16Migration.includes(marker)) throw new Error(`Phase 16 rental request migration marker is missing: ${marker}`);
+}
+
 const app = readFileSync('server/src/app.mjs', 'utf8');
 for (const marker of [
   "url.pathname === '/api/auth/session'",
@@ -116,6 +134,14 @@ for (const marker of [
   "'WWW-Authenticate': 'Bearer'",
 ]) {
   if (!app.includes(marker)) throw new Error(`Server route/security marker is missing: ${marker}`);
+}
+
+
+if (!app.includes("request.method === 'POST' && url.pathname === '/api/users/me/rental-requests'")) {
+  throw new Error('Phase 16 rental request create route is missing.');
+}
+for (const marker of ['readJsonBody', 'rentalRequestWriteService.createCurrent', "authority: result.authority", 'firestoreMirror: result.firestoreMirror']) {
+  if (!app.includes(marker)) throw new Error(`Phase 16 rental request create API marker is missing: ${marker}`);
 }
 
 
@@ -241,9 +267,25 @@ if (!rentalSubscription.includes('publishRentalRequestReadObservation')) {
   throw new Error('Phase 14 actual Firestore rental request subscription observation hook is missing.');
 }
 
+
+const rentalRequestWriteRepository = readFileSync('server/src/rentals/rental-request-write-repository.mjs', 'utf8');
+for (const marker of ['pg_advisory_xact_lock', 'app_rental_asset_reservation_guards', 'BEGIN', 'beforeCommit', 'firestore_mirror_status', 'ROLLBACK']) {
+  if (!rentalRequestWriteRepository.includes(marker)) throw new Error(`Phase 16 rental request write repository marker is missing: ${marker}`);
+}
+
+const rentalRequestWriteService = readFileSync('server/src/rentals/rental-request-write-service.mjs', 'utf8');
+for (const marker of ['syncLinkedFirebaseUid', 'syncCurrent', 'validateRequestedPeriod', 'commitRentalRequestCreate', "authority: 'postgresql'"]) {
+  if (!rentalRequestWriteService.includes(marker)) throw new Error(`Phase 16 rental request write service marker is missing: ${marker}`);
+}
+
+const rentalRequestWriteClient = readFileSync('server/src/firestore/firestore-rental-request-write.mjs', 'utf8');
+for (const marker of [':commit', 'currentDocument: { exists: false }', 'currentDocument: { updateTime: assetUpdateTime }', "Authorization: `Bearer ${token}`"]) {
+  if (!rentalRequestWriteClient.includes(marker)) throw new Error(`Phase 16 Firestore compatibility mirror marker is missing: ${marker}`);
+}
+
 const configTemplate = readFileSync('docs/github-education/HEROKU_CONFIG_VARS_TEMPLATE.txt', 'utf8');
 for (const variable of ['CLERK_JWT_KEY=', 'CLERK_AUTHORIZED_PARTIES=', 'CLERK_SECRET_KEY=sk_test_', 'CLERK_API_TIMEOUT_MS=8000', 'FIREBASE_PROJECT_ID=laptop-system-mk']) {
   if (!configTemplate.includes(variable)) throw new Error(`Phase 6 config template is missing ${variable}`);
 }
 
-console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request normalized shadow/parallel-parity invariants)`);
+console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request shadow/parity + phase16 authoritative write invariants)`);

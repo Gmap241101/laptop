@@ -10,6 +10,31 @@ const writeJson = (response, statusCode, payload, extraHeaders = {}) => {
   response.end(JSON.stringify(payload));
 };
 
+
+const readJsonBody = async (request, { maxBytes = 32 * 1024 } = {}) => {
+  let size = 0;
+  const chunks = [];
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > maxBytes) {
+      const error = new Error('Request body is too large.');
+      error.code = 'request_body_too_large';
+      error.status = 413;
+      throw error;
+    }
+    chunks.push(chunk);
+  }
+  if (chunks.length === 0) return {};
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  } catch {
+    const error = new Error('Request body must contain valid JSON.');
+    error.code = 'invalid_json_body';
+    error.status = 400;
+    throw error;
+  }
+};
+
 const buildCorsHeaders = (request, allowedOrigins) => {
   const origin = request.headers.origin;
   if (!origin || !allowedOrigins.includes(origin)) {
@@ -192,6 +217,9 @@ export const createRequestHandler = ({
     async syncCurrent() { const error = new Error('Rental request service is not configured.'); error.code = 'rental_request_not_configured'; throw error; },
     async compareCurrent() { const error = new Error('Rental request service is not configured.'); error.code = 'rental_request_not_configured'; throw error; },
   },
+  rentalRequestWriteService = {
+    async createCurrent() { const error = new Error('Rental request write service is not configured.'); error.code = 'rental_request_write_not_configured'; throw error; },
+  },
 }) => {
   if (typeof databaseCheck !== 'function') {
     throw new TypeError('databaseCheck must be a function.');
@@ -234,6 +262,9 @@ export const createRequestHandler = ({
     typeof rentalRequestService.compareCurrent !== 'function'
   ) {
     throw new TypeError('rentalRequestService getCurrent/syncCurrent/compareCurrent methods are required.');
+  }
+  if (!rentalRequestWriteService || typeof rentalRequestWriteService.createCurrent !== 'function') {
+    throw new TypeError('rentalRequestWriteService createCurrent method is required.');
   }
 
 
@@ -309,6 +340,7 @@ export const createRequestHandler = ({
           rentalRestrictionFallback: '/api/legacy/rental-restriction-firestore-fallback',
           rentalRestrictionWriteThrough: '/api/legacy/rental-restriction-shadow/write-through',
           rentalRequestCandidate: '/api/users/me/rental-requests',
+          rentalRequestCreate: '/api/users/me/rental-requests',
           rentalRequestShadowSync: '/api/users/me/legacy/rental-request-shadows/sync',
           rentalRequestShadowCompare: '/api/users/me/legacy/rental-request-shadows/compare',
         },
@@ -540,6 +572,52 @@ export const createRequestHandler = ({
     }
 
 
+
+
+    if (request.method === 'POST' && url.pathname === '/api/users/me/rental-requests') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      let body;
+      try {
+        body = await readJsonBody(request);
+      } catch (error) {
+        writeJson(response, error?.status || 400, { ...basePayload, authenticated: true, error: error?.code || 'invalid_json_body' }, headers);
+        return;
+      }
+      try {
+        const result = await rentalRequestWriteService.createCurrent(auth.userId, firebaseIdentity, body);
+        writeJson(response, result.reused ? 200 : 201, {
+          ...basePayload,
+          authenticated: true,
+          created: !result.reused,
+          reused: Boolean(result.reused),
+          rentalRequestWrite: {
+            authority: result.authority,
+            firestoreMirror: result.firestoreMirror,
+            shadowSynchronized: Boolean(result.shadowSynchronized),
+            request: sanitizeRentalRequest(result.request),
+            availability: result.availability,
+          },
+        }, headers);
+      } catch (error) {
+        const errorCode = error?.code || 'rental_request_create_unavailable';
+        const statusCode = error?.status
+          || (['rental_request_asset_conflict', 'rental_request_asset_unavailable', 'firestore_rental_asset_write_conflict'].includes(errorCode) ? 409
+            : ['rental_request_member_inactive', 'rental_request_current_overdue_blocked', 'rental_request_penalty_blocked'].includes(errorCode) ? 403
+            : ['rental_request_asset_not_found', 'profile_not_synced', 'legacy_link_not_found', 'member_shadow_not_found'].includes(errorCode) ? 404
+            : 503);
+        console.warn('[rental-request-write] create failed', { requestId, code: errorCode, name: error?.name });
+        writeJson(response, statusCode, {
+          ...basePayload,
+          authenticated: true,
+          error: errorCode,
+          blockingRequest: error?.blockingRequest || null,
+        }, headers);
+      }
+      return;
+    }
 
     if (request.method === 'GET' && url.pathname === '/api/users/me/rental-requests') {
       const auth = await authenticate(request, response, headers, requestId);

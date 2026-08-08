@@ -171,6 +171,49 @@ const memberShadowService = {
     };
   },
 };
+
+const rentalRequestWriteService = {
+  async createCurrent(userId, firebaseIdentity, input) {
+    if (userId !== 'user_smoke' || firebaseIdentity.uid !== 'firebase_uid_smoke') {
+      throw new Error('Unexpected rental-request write identity.');
+    }
+    if (input.requestId !== 'REQ-Phase16HandlerSmoke001' || input.laptopId !== 'ASSET-SMOKE-1') {
+      throw new Error('Unexpected rental-request write body.');
+    }
+    return {
+      authority: 'postgresql',
+      reused: false,
+      firestoreMirror: 'synced',
+      shadowSynchronized: true,
+      request: {
+        id: input.requestId,
+        requesterUid: firebaseIdentity.uid,
+        requesterEmail: firebaseIdentity.email,
+        requesterName: 'Smoke User',
+        requesterTeam: 'QA',
+        team: 'QA',
+        borrower: 'Smoke User',
+        laptopId: input.laptopId,
+        assetCategory: '노트북',
+        assetNo: 'NB-SMOKE',
+        startDate: input.startDate,
+        dueDate: input.dueDate,
+        purpose: input.purpose,
+        status: '신청중',
+      },
+      availability: {
+        id: input.requestId,
+        laptopId: input.laptopId,
+        assetCategory: '노트북',
+        assetNo: 'NB-SMOKE',
+        startDate: input.startDate,
+        dueDate: input.dueDate,
+        status: '신청중',
+      },
+    };
+  },
+};
+
 const server = createServer(
   createRequestHandler({
     config,
@@ -180,6 +223,7 @@ const server = createServer(
     userIdentityService,
     firebaseLinkService,
     memberShadowService,
+    rentalRequestWriteService,
   }),
 );
 
@@ -365,6 +409,37 @@ if (compareMemberShadowBody.comparison?.equivalent !== true) {
   throw new Error('Member shadow comparison response is invalid.');
 }
 
+
+const rentalRequestCreate = await fetch(`${baseUrl}/api/users/me/rental-requests`, {
+  method: 'POST',
+  headers: {
+    ...authHeaders,
+    'Content-Type': 'application/json',
+    'X-Firebase-Authorization': 'Bearer firebase-smoke-token',
+  },
+  body: JSON.stringify({
+    requestId: 'REQ-Phase16HandlerSmoke001',
+    idempotencyKey: 'REQ-Phase16HandlerSmoke001',
+    laptopId: 'ASSET-SMOKE-1',
+    startDate: '2026-08-10',
+    dueDate: '2026-08-14',
+    purpose: 'Handler smoke',
+  }),
+});
+if (rentalRequestCreate.status !== 201) {
+  throw new Error(`/api/users/me/rental-requests POST returned ${rentalRequestCreate.status}`);
+}
+const rentalRequestCreateBody = await rentalRequestCreate.json();
+if (
+  rentalRequestCreateBody.created !== true ||
+  rentalRequestCreateBody.rentalRequestWrite?.authority !== 'postgresql' ||
+  rentalRequestCreateBody.rentalRequestWrite?.firestoreMirror !== 'synced' ||
+  rentalRequestCreateBody.rentalRequestWrite?.shadowSynchronized !== true ||
+  rentalRequestCreateBody.rentalRequestWrite?.request?.id !== 'REQ-Phase16HandlerSmoke001'
+) {
+  throw new Error('Phase 16 rental request create HTTP response is invalid.');
+}
+
 const invalidFirebase = await fetch(`${baseUrl}/api/users/me/legacy/firebase`, {
   method: 'POST',
   headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer wrong-token' },
@@ -375,4 +450,4 @@ const missing = await fetch(`${baseUrl}/missing`);
 if (missing.status !== 404) throw new Error(`/missing returned ${missing.status}`);
 
 await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, CORS, 404)');
+console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, Phase 16 rental-request POST, CORS, 404)');

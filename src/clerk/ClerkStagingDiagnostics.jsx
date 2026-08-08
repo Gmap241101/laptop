@@ -33,6 +33,11 @@ import {
   readRentalRequestCutoverConfig,
   subscribeRentalRequestCutoverObservation,
 } from '../features/requests/rentalRequestReadCutover.js';
+import {
+  getLatestRentalRequestWriteObservation,
+  readRentalRequestWriteCutoverConfig,
+  subscribeRentalRequestWriteObservation,
+} from '../features/requests/rentalRequestWriteCutover.js';
 import { clerkStagingClient } from './clerkStagingClient.js';
 
 const panelStyle = {
@@ -78,6 +83,7 @@ export default function ClerkStagingDiagnostics() {
   const writeThroughConfig = useMemo(() => readMemberProfileWriteThroughConfig(), []);
   const rentalRequestParityConfig = useMemo(() => readRentalRequestParityConfig(), []);
   const rentalRequestCutoverConfig = useMemo(() => readRentalRequestCutoverConfig(), []);
+  const rentalRequestWriteConfig = useMemo(() => readRentalRequestWriteCutoverConfig(), []);
   const [state, setState] = useState({
     phase: requested ? 'loading' : 'hidden',
     signedIn: false,
@@ -149,6 +155,13 @@ export default function ClerkStagingDiagnostics() {
     rentalRequestFallbackReads: 0,
     rentalRequestCutoverShadowSyncedAt: null,
     rentalRequestSourceRefreshes: 0,
+    rentalRequestWriteRequested: rentalRequestWriteConfig.requested,
+    rentalRequestWriteSource: null,
+    rentalRequestWriteRequestId: null,
+    rentalRequestWriteMirror: null,
+    rentalRequestWriteShadowSynchronized: null,
+    rentalRequestWriteReused: false,
+    rentalRequestWriteError: null,
     error: null,
   });
 
@@ -339,6 +352,27 @@ export default function ClerkStagingDiagnostics() {
     applyObservation(getLatestRentalRequestCutoverObservation());
     return subscribeRentalRequestCutoverObservation(applyObservation);
   }, [requested]);
+
+  useEffect(() => {
+    if (!requested) return undefined;
+    const applyObservation = (observation) => {
+      setState((current) => ({
+        ...current,
+        rentalRequestWriteRequested: observation ? Boolean(observation.requested) : rentalRequestWriteConfig.requested,
+        rentalRequestWriteSource: observation?.activeWriteSource || null,
+        rentalRequestWriteRequestId: observation?.requestId || null,
+        rentalRequestWriteMirror: observation?.firestoreMirror || null,
+        rentalRequestWriteShadowSynchronized:
+          observation && typeof observation.shadowSynchronized === 'boolean'
+            ? observation.shadowSynchronized
+            : null,
+        rentalRequestWriteReused: Boolean(observation?.reused),
+        rentalRequestWriteError: observation?.error || null,
+      }));
+    };
+    applyObservation(getLatestRentalRequestWriteObservation());
+    return subscribeRentalRequestWriteObservation(applyObservation);
+  }, [requested, rentalRequestWriteConfig.requested]);
 
   if (!requested) return null;
 
@@ -533,7 +567,7 @@ export default function ClerkStagingDiagnostics() {
 
   return (
     <aside style={panelStyle} aria-label="Clerk staging diagnostics">
-      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 15</div>
+      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 16</div>
       <div>SDK: {state.phase === 'loading' ? 'loading' : state.phase}</div>
       <div>Signed in: {state.signedIn ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Clerk user: {state.userId || '-'}</div>
@@ -645,6 +679,15 @@ export default function ClerkStagingDiagnostics() {
       <div>
         Expected rentalRequests realtime reads: {state.rentalRequestWatcherDisabled ? '0 while this page session stays on PostgreSQL' : 'existing realtime behavior'}
       </div>
+
+      <div style={{ marginTop: '6px', fontWeight: 700 }}>Phase 16 rental request authoritative write</div>
+      <div>Rental request write cutover requested: {state.rentalRequestWriteRequested ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Rental request write source: {state.rentalRequestWriteSource || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Last created request: {state.rentalRequestWriteRequestId || '-'}</div>
+      <div>Firestore compatibility mirror: {state.rentalRequestWriteMirror || '-'}</div>
+      <div>Post-write shadow synchronized: {state.rentalRequestWriteShadowSynchronized === null ? '-' : state.rentalRequestWriteShadowSynchronized ? 'yes' : 'no'}</div>
+      <div>Idempotent reuse: {state.rentalRequestWriteReused ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Write error: {state.rentalRequestWriteError || '-'}</div>
 
       {state.error ? (
         <div role="alert" style={{ marginTop: '8px', color: '#b91c1c', overflowWrap: 'anywhere' }}>

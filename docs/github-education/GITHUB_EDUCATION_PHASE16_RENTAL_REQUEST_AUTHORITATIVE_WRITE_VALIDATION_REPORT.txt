@@ -1,0 +1,68 @@
+Phase 16 validation report
+==========================
+Baseline: rental-system-github-education-phase15-rental-request-read-cutover-20260808_deployment_package.zip
+Scope: new user rental-request PostgreSQL authoritative write + Firestore compatibility mirror
+
+User runtime acceptance of Phase 15 before Phase 16
+----------------------------------------------------
+Stage A: PASS safety fallback
+- Firestore requests: 3
+- PostgreSQL requests: 2
+- active source: firestore-onSnapshot
+- mismatch detected: REQ-Rm6HeZR760Q9EhmEgxTt
+- fallback reason: rental-request-mismatch
+
+Stage B: PASS read cutover
+- active source: postgresql-shadow
+- watcher: disabled
+- Firestore one-time fallback queries: 0
+- cutover equivalent: yes
+- source refreshes: 1
+
+Phase 16 automated validation
+-----------------------------
+Migration static validation: PASS (includes 008)
+Backend foundation validation: PASS
+Backend HTTP smoke: PASS (includes POST /api/users/me/rental-requests)
+Backend authoritative-write smoke: PASS
+Frontend authoritative-write smoke: PASS
+Phase 1-15 regression suite: PASS
+React Hook audit: PASS (156 source files)
+Application flow audit: PASS (124 contracts; 11 user routes; 20 admin tabs)
+Firestore strict audit: PASS
+- total calls: 130
+- onSnapshot: 35
+- getDocs: 49
+- getDoc: 28
+- getCountFromServer: 18
+- approved risk findings: 51
+- new warnings: 0
+- errors: 0
+
+Phase 15 non-opt-in regression correction
+-----------------------------------------
+PASS. Non-opt-in rental-request read now returns firestore-onSnapshot without referencing an undefined candidate variable. Dedicated Phase 15 and Phase 16 frontend smoke assertions cover this branch.
+
+Build environment
+-----------------
+`npm run build:staging` prebuild audits: PASS
+Final Vite bundle in this ChatGPT environment: unavailable (`vite: not found`, exit 127) because root node_modules is absent.
+A new Vercel deployment must perform the actual bundle build.
+
+Package guard
+-------------
+Normal manifest: PASS
+Forced `.env.example` manifest entry: exit 1
+Forced nonexistent manifest entry: exit 1
+
+Browser acceptance target after deployment
+------------------------------------------
+- Phase 15 read remains postgresql-shadow with watcher disabled
+- Phase 16 write cutover requested: yes
+- write source: postgresql-authoritative
+- Last created request: REQ-...
+- Firestore compatibility mirror: synced
+- Post-write shadow synchronized: yes
+- Idempotent reuse: no for a fresh submission
+- Write error: -
+- New request remains visible through existing Firestore-based administrator request management

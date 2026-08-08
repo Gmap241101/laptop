@@ -9,6 +9,7 @@ import {
 } from '../../firebase.js';
 import { STATUS } from '../../constants/appConstants.js';
 import { USER_PROFILE_STATUS } from '../../constants/memberConstants.js';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 import {
   createDefaultRequestForm,
   getAdjustedRentalDueDate,
@@ -28,6 +29,10 @@ import {
   today,
 } from '../../utils/appUtils.js';
 import { getServiceBlockReason } from '../../utils/systemSettings.js';
+import {
+  publishRentalRequestWriteObservation,
+  readRentalRequestWriteCutoverConfig,
+} from './rentalRequestWriteCutover.js';
 import {
   getFirestoreResourceExhaustedMessage,
   isFirestoreCapacityCoolingDown,
@@ -350,6 +355,7 @@ export default function useUserRentalRequestController({
       extensionHistory: [],
       requestedAt,
     };
+    const writeCutoverConfig = readRentalRequestWriteCutoverConfig();
 
     let committedRequest = null;
     let committedAsset = null;
@@ -359,7 +365,50 @@ export default function useUserRentalRequestController({
     setRequestSubmitLoading(true);
 
     try {
-      await runTransaction(db, async (transaction) => {
+      if (writeCutoverConfig.requested) {
+        const firebaseIdToken = await firebaseAuthUser.getIdToken();
+        const payload = await clerkStagingClient.createRentalRequest(
+          firebaseIdToken,
+          {
+            requestId,
+            idempotencyKey: requestId,
+            laptopId: selectedLaptop.id,
+            startDate: form.startDate,
+            dueDate: form.dueDate,
+            purpose: form.purpose,
+          }
+        );
+        const backendWrite = payload?.rentalRequestWrite || {};
+        committedRequest = {
+          ...nextRequest,
+          ...(backendWrite.request || {}),
+          id: backendWrite.request?.id || requestId,
+        };
+        committedAvailabilityRequest = {
+          ...(backendWrite.availability || toRentalAvailabilityRequest(committedRequest)),
+          id: backendWrite.availability?.id || requestId,
+        };
+        const storedReservations = Array.isArray(selectedLaptop.reservations)
+          ? selectedLaptop.reservations
+          : [];
+        committedAsset = {
+          ...selectedLaptop,
+          reservations: [
+            ...storedReservations.filter((reservation) => reservation?.id !== requestId),
+            committedAvailabilityRequest,
+          ],
+        };
+        publishRentalRequestWriteObservation({
+          requested: true,
+          activeWriteSource: 'postgresql-authoritative',
+          requestId,
+          firestoreMirror: backendWrite.firestoreMirror || '-',
+          shadowSynchronized: Boolean(backendWrite.shadowSynchronized),
+          reused: Boolean(payload?.reused),
+          error: '',
+        });
+      } else {
+        await runTransaction(db, async (transaction) => {
         const assetSnapshot = await transaction.get(assetDocRef);
 
         if (!assetSnapshot.exists()) {
@@ -424,7 +473,17 @@ export default function useUserRentalRequestController({
           ...latestAsset,
           reservations: nextReservations,
         };
-      });
+        });
+        publishRentalRequestWriteObservation({
+          requested: false,
+          activeWriteSource: 'firestore-transaction',
+          requestId,
+          firestoreMirror: 'native-firestore',
+          shadowSynchronized: false,
+          reused: false,
+          error: '',
+        });
+      }
 
       if (
         !committedRequest ||
@@ -462,8 +521,34 @@ export default function useUserRentalRequestController({
       );
     } catch (error) {
       console.error('Rental request create error:', error);
+      if (writeCutoverConfig.requested) {
+        publishRentalRequestWriteObservation({
+          requested: true,
+          activeWriteSource: 'postgresql-authoritative',
+          requestId,
+          firestoreMirror: '-',
+          shadowSynchronized: false,
+          reused: false,
+          error: error?.code || error?.message || 'rental-request-create-failed',
+        });
+      }
 
-      if (error?.message === 'rental-conflict') {
+      if (error?.code === 'rental_request_asset_conflict' || error?.code === 'firestore_rental_asset_write_conflict') {
+        const blockingRequest = error?.blockingRequest;
+        triggerToast(
+          blockingRequest?.startDate && blockingRequest?.dueDate
+            ? `${selectedLaptop.assetNo}은(는) ${formatDateWithKoreanWeekday(blockingRequest.startDate)} ~ ${formatDateWithKoreanWeekday(blockingRequest.dueDate)} 기간에 이미 ${blockingRequest.status || '예약'} 상태의 신청이 있어 신청할 수 없습니다.`
+            : '다른 사용자의 신청이 먼저 접수되어 현재 선택한 기기를 신청할 수 없습니다.',
+          'error'
+        );
+      } else if (error?.code === 'rental_request_current_overdue_blocked' || error?.code === 'rental_request_penalty_blocked') {
+        triggerToast(
+          '최신 연체 및 대여 제한 상태에 따라 신규 대여 신청이 차단되었습니다.',
+          'error'
+        );
+      } else if (error?.code === 'rental_request_asset_unavailable') {
+        triggerToast('대여불가로 설정된 기기입니다.', 'error');
+      } else if (error?.message === 'rental-conflict') {
         const blockingRequest = error.availability?.blockingRequest;
 
         triggerToast(

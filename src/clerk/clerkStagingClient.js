@@ -96,7 +96,7 @@ const getSessionToken = async (clerk) => {
   return token;
 };
 
-const requestWithSession = async ({ clerk, apiBaseUrl, fetchImpl, path, method = 'GET', headers = {} }) => {
+const requestWithSession = async ({ clerk, apiBaseUrl, fetchImpl, path, method = 'GET', headers = {}, body }) => {
   const token = await getSessionToken(clerk);
   const response = await fetchImpl(`${apiBaseUrl}${path}`, {
     method,
@@ -106,6 +106,7 @@ const requestWithSession = async ({ clerk, apiBaseUrl, fetchImpl, path, method =
       ...headers,
     },
     cache: 'no-store',
+    ...(body === undefined ? {} : { body }),
   });
   return { response, payload: await parseJsonResponse(response) };
 };
@@ -317,6 +318,40 @@ export const requestMemberShadowComparison = async ({ clerk, apiBaseUrl, fetchIm
   }
   if (!payload?.authenticated || typeof payload?.comparison?.equivalent !== 'boolean') {
     throw new Error('Backend returned an invalid member-shadow comparison response.');
+  }
+  return payload;
+};
+
+export const requestRentalRequestCreate = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, request }) => {
+  const token = trim(firebaseIdToken);
+  if (!token) throw new Error('Firebase sign-in is required before creating a PostgreSQL rental request.');
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/users/me/rental-requests',
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Firebase-Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify(request || {}),
+  });
+  if (!response.ok) {
+    const code = payload?.error ? ` (${payload.error})` : '';
+    const error = new Error(`PostgreSQL rental request creation failed with HTTP ${response.status}${code}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    error.blockingRequest = payload?.blockingRequest || null;
+    throw error;
+  }
+  if (
+    !payload?.authenticated ||
+    payload?.rentalRequestWrite?.authority !== 'postgresql' ||
+    !payload?.rentalRequestWrite?.request?.id ||
+    !payload?.rentalRequestWrite?.availability?.id
+  ) {
+    throw new Error('Backend returned an invalid PostgreSQL rental request creation response.');
   }
   return payload;
 };
@@ -539,6 +574,16 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
         apiBaseUrl: config.apiBaseUrl,
         fetchImpl,
         firebaseIdToken,
+      });
+    },
+    async createRentalRequest(firebaseIdToken, request) {
+      const clerk = await initialize();
+      return requestRentalRequestCreate({
+        clerk,
+        apiBaseUrl: config.apiBaseUrl,
+        fetchImpl,
+        firebaseIdToken,
+        request,
       });
     },
     async getRentalRequestReadCandidate() {

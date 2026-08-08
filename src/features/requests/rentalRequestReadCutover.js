@@ -120,7 +120,7 @@ export const chooseRentalRequestReadSource = ({
     return Object.freeze({
       source: 'firestore-onSnapshot',
       requests: normalizedFirestore,
-      equivalent: Number(candidate.sourceRefreshes) > 0 ? true : null,
+      equivalent: null,
       changedRequestIds: [],
       changedFields: [],
       fallbackReason: 'cutover-not-requested',

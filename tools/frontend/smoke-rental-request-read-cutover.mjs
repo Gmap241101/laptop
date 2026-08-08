@@ -42,6 +42,15 @@ assert.equal(watcherOff.requested, true);
 assert.equal(watcherOff.firestoreWatcherDisabled, true);
 assert.equal(shouldUseRentalRequestFirestoreWatcher(watcherOff), false);
 
+const nonOptInRead = chooseRentalRequestReadSource({
+  firestoreRequests: [],
+  postgresRequests: null,
+  requested: false,
+});
+assert.equal(nonOptInRead.source, 'firestore-onSnapshot');
+assert.equal(nonOptInRead.equivalent, null);
+assert.equal(nonOptInRead.fallbackReason, 'cutover-not-requested');
+
 const latchedNavigation = readRentalRequestCutoverConfig({
   env,
   location: { search: '' },
@@ -211,7 +220,7 @@ const diagnosticsSource = await readFile(
   new URL('../../src/clerk/ClerkStagingDiagnostics.jsx', import.meta.url),
   'utf8',
 );
-assert.match(diagnosticsSource, /Clerk Staging Test · Phase 15/);
+assert.match(diagnosticsSource, /Clerk Staging Test · Phase (15|16)/);
 assert.match(diagnosticsSource, /Phase 15 rental request read cutover/);
 assert.match(diagnosticsSource, /Rental request active source/);
 assert.match(diagnosticsSource, /Rental shadow source refreshes this load/);

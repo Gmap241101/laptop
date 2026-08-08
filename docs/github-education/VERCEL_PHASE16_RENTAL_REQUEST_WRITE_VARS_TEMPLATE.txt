@@ -1,0 +1,20 @@
+# Phase 16 - Vercel mkrental / Production Environment
+# mkrental.vercel.app is service Staging but Vercel project Production Deployment.
+
+VITE_RENTAL_REQUEST_POSTGRES_WRITE_ENABLED=true
+
+# Keep the previously verified Phase 15 read settings:
+VITE_RENTAL_REQUEST_POSTGRES_READ_ENABLED=true
+VITE_RENTAL_REQUEST_FIRESTORE_WATCHER_DISABLED=true
+VITE_RENTAL_REQUEST_POSTGRES_PARITY_ENABLED=true
+
+# Runtime opt-in query for the Phase 16 browser test:
+# rentalRequestWrite=postgres
+# To reset the same-tab session latch back to legacy Firestore writes:
+# rentalRequestWrite=firestore
+
+# Never expose backend secrets as VITE_* values:
+# DATABASE_URL
+# CLERK_SECRET_KEY
+# CLERK_JWT_KEY
+# Firebase service-account/private key

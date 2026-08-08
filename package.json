@@ -63,7 +63,10 @@
     "frontend:rental-request-parity:smoke": "node tools/frontend/smoke-rental-request-read-parity.mjs",
     "verify:phase14": "npm run verify:phase13 && npm run server:rental-request-shadow:smoke && npm run frontend:rental-request-parity:smoke",
     "frontend:rental-request-cutover:smoke": "node tools/frontend/smoke-rental-request-read-cutover.mjs",
-    "verify:phase15": "npm run verify:phase14 && npm run frontend:rental-request-cutover:smoke"
+    "verify:phase15": "npm run verify:phase14 && npm run frontend:rental-request-cutover:smoke",
+    "server:rental-request-write:smoke": "node tools/backend/smoke-rental-request-authoritative-write.mjs",
+    "frontend:rental-request-write:smoke": "node tools/frontend/smoke-rental-request-authoritative-write.mjs",
+    "verify:phase16": "npm run verify:phase15 && npm run server:rental-request-write:smoke && npm run frontend:rental-request-write:smoke"
   },
   "dependencies": {
     "firebase": "^10.14.1",
