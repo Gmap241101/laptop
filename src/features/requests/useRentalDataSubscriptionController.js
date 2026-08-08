@@ -11,6 +11,15 @@ import {
 } from '../../firebase.js';
 import { publishRentalRequestReadObservation } from './rentalRequestReadParity.js';
 import {
+  chooseRentalRequestReadSource,
+  loadRentalRequestsWithoutFirestoreWatcher,
+  publishRentalRequestCutoverObservation,
+  readRentalRequestCandidatePayload,
+  readRentalRequestCutoverConfig,
+  shouldUseRentalRequestFirestoreWatcher,
+} from './rentalRequestReadCutover.js';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import {
   PUBLIC_ASSET_CATALOG_SCHEMA_VERSION,
   hydratePublicCatalogAssets,
   normalizeAssetReservations,
@@ -186,6 +195,132 @@ export function useOwnRentalRequestsSubscriptionController({
     }
 
     let disposed = false;
+    const cutoverConfig = readRentalRequestCutoverConfig();
+
+    const mergeRequestLists = (requestLists) => {
+      const requestMap = new Map();
+      requestLists.forEach((requests) => {
+        requests.forEach((request) => {
+          requestMap.set(request.id, {
+            ...(requestMap.get(request.id) || {}),
+            ...request,
+          });
+        });
+      });
+      return Array.from(requestMap.values());
+    };
+
+    const loadPostgresCandidate = async ({ refreshSource = false } = {}) => {
+      let payload = null;
+      let sourceRefreshes = 0;
+
+      if (refreshSource) {
+        const firebaseIdToken = await firebaseAuthUser.getIdToken();
+        payload = await clerkStagingClient.syncRentalRequestShadow(firebaseIdToken);
+        sourceRefreshes = 1;
+      } else {
+        payload = await clerkStagingClient.getRentalRequestReadCandidate();
+        if (!payload) {
+          const firebaseIdToken = await firebaseAuthUser.getIdToken();
+          payload = await clerkStagingClient.syncRentalRequestShadow(firebaseIdToken);
+          sourceRefreshes = 1;
+        }
+      }
+
+      return Object.freeze({
+        ...readRentalRequestCandidatePayload(payload),
+        sourceRefreshes,
+      });
+    };
+
+    const loadFirestoreOnce = async () => {
+      const requestLists = [];
+      let firestoreFallbackReads = 0;
+
+      for (const { key, required, source } of sourceDefinitions) {
+        firestoreFallbackReads += 1;
+        try {
+          const snapshot = await getDocs(source);
+          requestLists.push(
+            snapshot.docs.map((requestDocument) => ({
+              ...requestDocument.data(),
+              id: requestDocument.id,
+            }))
+          );
+        } catch (error) {
+          console.error(`Own rental requests ${key} one-time fallback error:`, error);
+          if (required) {
+            const fallbackError = new Error(
+              'Required Firestore rental request fallback query failed.'
+            );
+            fallbackError.code =
+              error?.code || 'rental-request-firestore-fallback-failed';
+            fallbackError.firestoreFallbackReads = firestoreFallbackReads;
+            throw fallbackError;
+          }
+        }
+      }
+
+      return {
+        requests: mergeRequestLists(requestLists),
+        firestoreFallbackReads,
+      };
+    };
+
+    if (!shouldUseRentalRequestFirestoreWatcher(cutoverConfig)) {
+      void loadRentalRequestsWithoutFirestoreWatcher({
+        loadPostgresCandidate: () =>
+          loadPostgresCandidate({ refreshSource: true }),
+        loadFirestoreFallback: loadFirestoreOnce,
+      })
+        .then((result) => {
+          if (disposed) return;
+          setRentalRequests(result.requests);
+          setRentalRequestsLoadErrorMessage('');
+          setRentalRequestsReady(true);
+          publishRentalRequestCutoverObservation({
+            requested: cutoverConfig.requested,
+            enabled: cutoverConfig.enabled,
+            activeSource: result.source,
+            equivalent: result.equivalent,
+            changedRequestIds: result.changedRequestIds,
+            changedFields: result.changedFields,
+            fallbackReason: result.fallbackReason,
+            firestoreWatcherDisabled: true,
+            firestoreFallbackReads: result.firestoreFallbackReads,
+            shadowSyncedAt: result.shadowSyncedAt,
+            sourceRefreshes: result.sourceRefreshes,
+          });
+        })
+        .catch((error) => {
+          if (disposed) return;
+          console.error('Rental request PostgreSQL read and one-time Firestore fallback both failed:', error);
+          const message =
+            '나의 대여신청 내역을 불러오지 못했습니다. PostgreSQL 및 Firestore 연결 상태를 확인해 주세요.';
+          setRentalRequests([]);
+          setRentalRequestsLoadErrorMessage(message);
+          setRentalRequestsReady(true);
+          publishRentalRequestCutoverObservation({
+            requested: cutoverConfig.requested,
+            enabled: cutoverConfig.enabled,
+            activeSource: 'unavailable',
+            equivalent: null,
+            changedRequestIds: [],
+            changedFields: [],
+            fallbackReason: error?.code || 'rental-request-read-unavailable',
+            firestoreWatcherDisabled: true,
+            firestoreFallbackReads: Number(error?.firestoreFallbackReads) || 1,
+            shadowSyncedAt: '',
+            sourceRefreshes: 0,
+          });
+          triggerToastRef.current?.(message, 'error');
+        });
+
+      return () => {
+        disposed = true;
+      };
+    }
+
     const sourceState = new Map(
       sourceDefinitions.map(({ key }) => [
         key,
@@ -195,31 +330,77 @@ export function useOwnRentalRequestsSubscriptionController({
         },
       ])
     );
+    let postgresRequests = null;
+    let postgresCandidateState = cutoverConfig.requested ? 'pending' : 'disabled';
+    let postgresCandidateError = '';
+    let postgresShadowSyncedAt = '';
 
     const publishRequests = () => {
       if (disposed) return;
 
       const states = Array.from(sourceState.values());
-
       if (!states.every((state) => state.ready)) return;
 
-      const requestMap = new Map();
+      const firestoreRequests = mergeRequestLists(
+        states.map((state) => state.requests)
+      );
+      publishRentalRequestReadObservation({ requests: firestoreRequests });
 
-      states.forEach((state) => {
-        state.requests.forEach((request) => {
-          requestMap.set(request.id, {
-            ...(requestMap.get(request.id) || {}),
-            ...request,
-          });
-        });
+      const decision = chooseRentalRequestReadSource({
+        firestoreRequests,
+        postgresRequests,
+        requested:
+          cutoverConfig.requested && postgresCandidateState !== 'pending',
       });
+      const fallbackReason = cutoverConfig.requested
+        ? postgresCandidateState === 'error'
+          ? postgresCandidateError || 'postgres-candidate-error'
+          : postgresCandidateState === 'pending'
+            ? 'postgres-candidate-pending'
+            : decision.fallbackReason
+        : decision.fallbackReason;
 
-      const nextRequests = Array.from(requestMap.values());
-      setRentalRequests(nextRequests);
-      publishRentalRequestReadObservation({ requests: nextRequests });
+      setRentalRequests(decision.requests);
       setRentalRequestsLoadErrorMessage('');
       setRentalRequestsReady(true);
+      publishRentalRequestCutoverObservation({
+        requested: cutoverConfig.requested,
+        enabled: cutoverConfig.enabled,
+        activeSource: decision.source,
+        equivalent: decision.equivalent,
+        changedRequestIds: decision.changedRequestIds,
+        changedFields: decision.changedFields,
+        fallbackReason,
+        firestoreWatcherDisabled: false,
+        firestoreFallbackReads: 0,
+        shadowSyncedAt: postgresShadowSyncedAt,
+        sourceRefreshes: 0,
+      });
     };
+
+    if (cutoverConfig.requested) {
+      void loadPostgresCandidate()
+        .then((candidate) => {
+          if (disposed) return;
+          postgresRequests = candidate.requests;
+          postgresCandidateState = 'ready';
+          postgresCandidateError = '';
+          postgresShadowSyncedAt = candidate.shadowSyncedAt;
+          publishRequests();
+        })
+        .catch((error) => {
+          if (disposed) return;
+          console.warn(
+            'PostgreSQL rental request cutover candidate unavailable; Firestore watcher remains active.',
+            { code: error?.code, status: error?.status }
+          );
+          postgresRequests = null;
+          postgresCandidateState = 'error';
+          postgresCandidateError =
+            error?.code || 'rental-request-candidate-error';
+          publishRequests();
+        });
+    }
 
     const unsubscribers = sourceDefinitions.map(
       ({ key, required, source }) =>

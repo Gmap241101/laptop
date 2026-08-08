@@ -28,6 +28,11 @@ import {
   readRentalRequestParityConfig,
   subscribeRentalRequestReadObservation,
 } from '../features/requests/rentalRequestReadParity.js';
+import {
+  getLatestRentalRequestCutoverObservation,
+  readRentalRequestCutoverConfig,
+  subscribeRentalRequestCutoverObservation,
+} from '../features/requests/rentalRequestReadCutover.js';
 import { clerkStagingClient } from './clerkStagingClient.js';
 
 const panelStyle = {
@@ -72,6 +77,7 @@ export default function ClerkStagingDiagnostics() {
   const requested = useMemo(() => clerkStagingClient.isDiagnosticsRequested(), []);
   const writeThroughConfig = useMemo(() => readMemberProfileWriteThroughConfig(), []);
   const rentalRequestParityConfig = useMemo(() => readRentalRequestParityConfig(), []);
+  const rentalRequestCutoverConfig = useMemo(() => readRentalRequestCutoverConfig(), []);
   const [state, setState] = useState({
     phase: requested ? 'loading' : 'hidden',
     signedIn: false,
@@ -133,6 +139,16 @@ export default function ClerkStagingDiagnostics() {
     rentalRequestCandidateSource: null,
     rentalRequestShadowSyncedAt: null,
     rentalRequestBackendEquivalent: null,
+    rentalRequestCutoverRequested: rentalRequestCutoverConfig.requested,
+    rentalRequestActiveSource: null,
+    rentalRequestCutoverEquivalent: null,
+    rentalRequestCutoverChangedRequestIds: [],
+    rentalRequestCutoverChangedFields: [],
+    rentalRequestCutoverFallbackReason: null,
+    rentalRequestWatcherDisabled: rentalRequestCutoverConfig.firestoreWatcherDisabled,
+    rentalRequestFallbackReads: 0,
+    rentalRequestCutoverShadowSyncedAt: null,
+    rentalRequestSourceRefreshes: 0,
     error: null,
   });
 
@@ -301,6 +317,28 @@ export default function ClerkStagingDiagnostics() {
     applyObservation(getLatestRentalRequestReadObservation());
     return subscribeRentalRequestReadObservation(applyObservation);
   }, [requested, rentalRequestParityConfig.requested]);
+
+  useEffect(() => {
+    if (!requested) return undefined;
+    const applyObservation = (observation) => {
+      setState((current) => ({
+        ...current,
+        rentalRequestCutoverRequested: Boolean(observation?.requested),
+        rentalRequestActiveSource: observation?.activeSource || null,
+        rentalRequestCutoverEquivalent:
+          typeof observation?.equivalent === 'boolean' ? observation.equivalent : null,
+        rentalRequestCutoverChangedRequestIds: observation?.changedRequestIds || [],
+        rentalRequestCutoverChangedFields: observation?.changedFields || [],
+        rentalRequestCutoverFallbackReason: observation?.fallbackReason || null,
+        rentalRequestWatcherDisabled: Boolean(observation?.firestoreWatcherDisabled),
+        rentalRequestFallbackReads: Number(observation?.firestoreFallbackReads) || 0,
+        rentalRequestCutoverShadowSyncedAt: observation?.shadowSyncedAt || null,
+        rentalRequestSourceRefreshes: Number(observation?.sourceRefreshes) || 0,
+      }));
+    };
+    applyObservation(getLatestRentalRequestCutoverObservation());
+    return subscribeRentalRequestCutoverObservation(applyObservation);
+  }, [requested]);
 
   if (!requested) return null;
 
@@ -495,7 +533,7 @@ export default function ClerkStagingDiagnostics() {
 
   return (
     <aside style={panelStyle} aria-label="Clerk staging diagnostics">
-      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 14</div>
+      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 15</div>
       <div>SDK: {state.phase === 'loading' ? 'loading' : state.phase}</div>
       <div>Signed in: {state.signedIn ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Clerk user: {state.userId || '-'}</div>
@@ -593,6 +631,21 @@ export default function ClerkStagingDiagnostics() {
       <div style={{ overflowWrap: 'anywhere' }}>Changed request fields: {state.rentalRequestChangedFields.length ? state.rentalRequestChangedFields.join(', ') : '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Rental shadow synced: {state.rentalRequestShadowSyncedAt || '-'}</div>
 
+      <div style={{ marginTop: '6px', fontWeight: 700 }}>Phase 15 rental request read cutover</div>
+      <div>Rental request cutover requested: {state.rentalRequestCutoverRequested ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Rental request active source: {state.rentalRequestActiveSource || '-'}</div>
+      <div>Rental request watcher: {state.rentalRequestWatcherDisabled ? 'disabled' : 'active'}</div>
+      <div>Rental request one-time Firestore fallback queries: {state.rentalRequestFallbackReads}</div>
+      <div>Cutover equivalent: {state.rentalRequestCutoverEquivalent === null ? '-' : state.rentalRequestCutoverEquivalent ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Cutover changed request IDs: {state.rentalRequestCutoverChangedRequestIds.length ? state.rentalRequestCutoverChangedRequestIds.join(', ') : '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Cutover changed fields: {state.rentalRequestCutoverChangedFields.length ? state.rentalRequestCutoverChangedFields.join(', ') : '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Cutover fallback reason: {state.rentalRequestCutoverFallbackReason || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Cutover shadow synced: {state.rentalRequestCutoverShadowSyncedAt || '-'}</div>
+      <div>Rental shadow source refreshes this load: {state.rentalRequestSourceRefreshes}</div>
+      <div>
+        Expected rentalRequests realtime reads: {state.rentalRequestWatcherDisabled ? '0 while this page session stays on PostgreSQL' : 'existing realtime behavior'}
+      </div>
+
       {state.error ? (
         <div role="alert" style={{ marginTop: '8px', color: '#b91c1c', overflowWrap: 'anywhere' }}>
           {state.error}
@@ -652,7 +705,11 @@ export default function ClerkStagingDiagnostics() {
             <button
               type="button"
               style={buttonStyle}
-              disabled={!state.firebaseSignedIn || !state.rentalRequestParityRequested}
+              disabled={
+                !state.firebaseSignedIn ||
+                !state.rentalRequestParityRequested ||
+                state.rentalRequestWatcherDisabled
+              }
               onClick={syncAndVerifyRentalRequestParity}
             >
               {'대여신청 Shadow 동기화·병행검증'}

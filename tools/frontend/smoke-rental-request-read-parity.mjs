@@ -97,7 +97,7 @@ const subscriptionSource = await readFile(
   new URL('../../src/features/requests/useRentalDataSubscriptionController.js', import.meta.url),
   'utf8',
 );
-assert.match(subscriptionSource, /publishRentalRequestReadObservation\(\{ requests: nextRequests \}\)/);
+assert.match(subscriptionSource, /publishRentalRequestReadObservation\(\{ requests: [A-Za-z]+Requests \}\)/);
 
 const diagnosticsSource = await readFile(
   new URL('../../src/clerk/ClerkStagingDiagnostics.jsx', import.meta.url),
@@ -105,7 +105,7 @@ const diagnosticsSource = await readFile(
 );
 assert.match(diagnosticsSource, /syncAndVerifyRentalRequestParity/);
 assert.match(diagnosticsSource, /대여신청 Shadow 동기화·병행검증/);
-assert.match(diagnosticsSource, /Clerk Staging Test · Phase 14/);
+assert.match(diagnosticsSource, /Clerk Staging Test · Phase 1[45]/);
 
 const clientSource = await readFile(
   new URL('../../src/clerk/clerkStagingClient.js', import.meta.url),

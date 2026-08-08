@@ -61,7 +61,9 @@
     "verify:phase13": "npm run verify:phase12 && npm run frontend:admin-member-ui:smoke",
     "server:rental-request-shadow:smoke": "node tools/backend/smoke-rental-request-shadow.mjs",
     "frontend:rental-request-parity:smoke": "node tools/frontend/smoke-rental-request-read-parity.mjs",
-    "verify:phase14": "npm run verify:phase13 && npm run server:rental-request-shadow:smoke && npm run frontend:rental-request-parity:smoke"
+    "verify:phase14": "npm run verify:phase13 && npm run server:rental-request-shadow:smoke && npm run frontend:rental-request-parity:smoke",
+    "frontend:rental-request-cutover:smoke": "node tools/frontend/smoke-rental-request-read-cutover.mjs",
+    "verify:phase15": "npm run verify:phase14 && npm run frontend:rental-request-cutover:smoke"
   },
   "dependencies": {
     "firebase": "^10.14.1",

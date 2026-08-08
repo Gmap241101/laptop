@@ -61,3 +61,17 @@ VITE_RENTAL_REQUEST_POSTGRES_PARITY_ENABLED=true
 #   ?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWriteThrough=on&restrictionRead=postgres&restrictionWatcher=off&rentalRequestParity=1
 # rentalRequestParity=1 is latched in sessionStorage for the current tab.
 # Use ?rentalRequestParity=0 or close the tab to disable Phase 14 parity observation.
+
+# Phase 15 opt-in: use the validated PostgreSQL rental request shadow as the preferred
+# user request-history read source, with Firestore fallback.
+VITE_RENTAL_REQUEST_POSTGRES_READ_ENABLED=true
+
+# Phase 15 watcher reduction gate. This only takes effect when rentalRequestRead=postgres
+# and rentalRequestWatcher=off are explicitly requested in the staging session.
+VITE_RENTAL_REQUEST_FIRESTORE_WATCHER_DISABLED=true
+
+# Phase 15 Stage A:
+#   ?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWriteThrough=on&restrictionRead=postgres&restrictionWatcher=off&rentalRequestParity=1&rentalRequestRead=postgres
+# Phase 15 Stage B after Stage A parity passes:
+#   ?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWriteThrough=on&restrictionRead=postgres&restrictionWatcher=off&rentalRequestRead=postgres&rentalRequestWatcher=off
+# Use ?rentalRequestRead=firestore&rentalRequestParity=0 or close the tab to reset.

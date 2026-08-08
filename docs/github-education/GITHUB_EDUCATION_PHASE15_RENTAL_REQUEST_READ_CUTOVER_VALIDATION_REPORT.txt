@@ -1,0 +1,177 @@
+GitHub Education Phase 15 - Rental Request Read Cutover Validation
+==================================================================
+Date: 2026-08-08
+Baseline: rental-system-github-education-phase14-rental-request-foundation-parity-20260808_deployment_package.zip
+Baseline SHA-256: 8c33e2652458c9b5148b77e31bf8e5f198213e2f97b103e563eb2411d0463e63
+
+Phase 14 user/runtime acceptance
+--------------------------------
+PASS
+- migration 007_phase14_rental_request_foundation.sql applied successfully
+- Heroku health status ok, database status ok
+- Heroku live status ok
+- Clerk user == Backend user
+- PostgreSQL app user = 1
+- linked Firebase UID matches active Firebase user
+- rental request parity requested = yes
+- rental request candidate source = postgresql-shadow
+- Firestore request count = 2
+- PostgreSQL request count = 2
+- frontend parity = yes
+- backend shadow parity = yes
+- changed request IDs = none
+- changed request fields = none
+
+Phase 15 scope
+--------------
+PASS
+- Staging-only PostgreSQL-preferred rental request read gate added
+- Firestore parity mismatch preserves Firestore as active source
+- explicit rentalRequests watcher-disable gate added
+- watcher-off path refreshes the normalized PostgreSQL shadow once through the Phase 14 authenticated sync API
+- watcher-off PostgreSQL success path creates no browser rentalRequests onSnapshot listener
+- PostgreSQL/backend failure uses one-time browser Firestore getDocs fallback
+- Production/default path remains existing Firestore behavior
+- request writes remain Firestore-authoritative
+- no administrator request-management cutover
+
+Phase 15 frontend smoke
+-----------------------
+PASS
+[rental-request-read-cutover-smoke]
+- staging gate
+- session latch and reset
+- PostgreSQL preferred read
+- parity mismatch Firestore fallback
+- watcher-off primary path
+- one-time Firestore fallback
+- diagnostics wiring
+
+Phase 14 rental request regression smoke
+----------------------------------------
+PASS
+[rental-request-read-parity-smoke]
+- Timestamp normalization
+- parity/drift/order comparison
+- actual application Firestore observation hook
+- Phase 14 backend client API markers
+
+Full regression
+---------------
+PASS: npm run verify:phase15
+
+Covered regression chain:
+- migration static check
+- Clerk frontend smoke/config guard
+- member read parity
+- member read cutover
+- member watcher disable
+- member write-through
+- rental restriction cutover
+- backend foundation validation
+- backend HTTP smoke
+- Clerk JWT verification
+- Clerk/PostgreSQL identity
+- Firebase identity bridge
+- member shadow/cutover/write-through backend smoke
+- rental restriction shadow
+- Phase 13 administrator member UI regression
+- Phase 14 rental request shadow
+- Phase 14 rental request parity
+- Phase 15 rental request cutover
+
+React Hook audit
+----------------
+PASS
+155 source files checked
+
+Application flow audit
+----------------------
+PASS
+124 contracts checked
+11 user routes
+20 administrator tabs
+
+Firestore strict audit
+----------------------
+PASS
+Source files: 155
+Total calls: 130
+onSnapshot: 35
+getDocs: 49
+getDoc: 28
+getCountFromServer: 18
+Approved risk findings: 51
+Unapproved warnings: 0
+Unapproved errors: 0
+
+Phase 14 baseline was 129 total calls / 48 getDocs. The single added static getDocs call is the explicit Phase 15 one-time browser fallback path. It is not executed when the watcher-off PostgreSQL source-refresh path succeeds.
+
+Build check
+-----------
+Command: npm run build:staging
+Result: environment limitation after prebuild PASS
+Exit: 127
+Final message: sh: 1: vite: not found
+
+Before the missing Vite binary:
+- React Hook audit PASS
+- Application flow audit PASS
+- Firestore strict audit PASS
+- Clerk staging config check completed
+
+This matches the known ChatGPT workspace limitation: root node_modules is absent. A real Vercel deployment must perform the final Vite bundle build.
+
+Package guard negative tests
+----------------------------
+PASS
+- forced .env.example manifest entry -> exit code 1
+- forced nonexistent source file -> exit code 1
+
+Protected/runtime files are excluded from the final manifest and ZIP.
+
+App.jsx
+-------
+Lines: 2130
+Bytes: 66036
+SHA-256: b30af55defc814cac9b33e056f4c89263444eca04b565c89ef0517d96b4b1117
+Result: unchanged from Phase 14 baseline
+
+Protected baseline application files
+------------------------------------
+Unchanged:
+- src/firebase.js
+- rules/firestore.rules
+- firestore.indexes.json
+- public/CNAME
+- vercel.json
+- src/main.jsx
+
+Database / dependency impact
+----------------------------
+- new PostgreSQL migration: none
+- existing migration 007 unchanged
+- new backend endpoint: none
+- new npm dependency: none
+- package-lock.json unchanged
+- Firestore Rules/index changes: none
+- Firebase Admin/private-key addition: none
+
+Runtime validation required after deployment
+--------------------------------------------
+Stage A:
+- rentalRequestRead=postgres
+- Firestore request watcher remains active
+- expected active source: postgresql-shadow only when equivalent
+- expected cutover equivalent: yes
+- expected changed IDs/fields: none
+
+Stage B after Stage A passes:
+- rentalRequestRead=postgres&rentalRequestWatcher=off
+- expected active source: postgresql-shadow
+- expected rental request watcher: disabled
+- expected one-time Firestore fallback queries: 0
+- expected shadow source refreshes this load: 1
+- expected rentalRequests realtime reads: 0 for the page session
+
+Phase 16 remains the PostgreSQL-authoritative new-rental-request transaction phase.
