@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FileCheck2, History, X } from 'lucide-react';
+import { X } from 'lucide-react';
 
-import { loadMemberAccountHistorySummary } from '../features/members/memberAccountHistoryService.js';
 import {
   DOMESTIC_PHONE_PREFIXES,
   normalizePhoneDigits,
@@ -22,7 +21,6 @@ export default function AdminMemberAccountEditDialog({
   account,
   Button,
   onClose,
-  onOpenTerms,
   onSave,
   saving,
 }) {
@@ -37,9 +35,6 @@ export default function AdminMemberAccountEditDialog({
     phoneMiddle: initialPhone.middle,
     phoneLast: initialPhone.last,
   }));
-  const [historySummary, setHistorySummary] = useState(null);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyError, setHistoryError] = useState('');
 
   useEffect(() => {
     const phone = parseDomesticPhoneNumber(account?.phone || '');
@@ -50,33 +45,19 @@ export default function AdminMemberAccountEditDialog({
       phoneMiddle: phone.middle,
       phoneLast: phone.last,
     });
-    setHistorySummary(null);
-    setHistoryError('');
-  }, [account?.uid]);
+  }, [account?.uid, account?.name, account?.team, account?.phone]);
 
   if (!account) return null;
 
-  const loadHistory = async () => {
-    if (historyLoading) return;
-    setHistoryLoading(true);
-    setHistoryError('');
-    try {
-      setHistorySummary(await loadMemberAccountHistorySummary(account));
-    } catch (error) {
-      console.error('Admin member history summary read error:', error);
-      setHistoryError('대여 이력을 불러오지 못했습니다.');
-    } finally {
-      setHistoryLoading(false);
-    }
-  };
-
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/55 p-4">
-      <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+      <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
           <div>
-            <h3 className="text-base font-black text-slate-900">회원정보 확인 및 수정</h3>
-            <p className="mt-1 text-[11px] text-slate-500">이메일과 UID는 로그인 식별정보이므로 이 화면에서 변경하지 않습니다.</p>
+            <h3 className="text-base font-black text-slate-900">회원정보 수정</h3>
+            <p className="mt-1 text-[11px] text-slate-500">
+              이름·부서·전화번호만 변경합니다. 이메일과 UID는 로그인 식별정보이므로 변경하지 않습니다.
+            </p>
           </div>
           <button
             type="button"
@@ -173,36 +154,9 @@ export default function AdminMemberAccountEditDialog({
             </div>
           ) : null}
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={onOpenTerms}
-              className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50"
-            >
-              <FileCheck2 size={15} /> 약관 동의 내역
-            </button>
-            <button
-              type="button"
-              onClick={() => void loadHistory()}
-              disabled={historyLoading}
-              className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-            >
-              <History size={15} /> {historyLoading ? '대여 이력 확인 중' : '대여 이력 확인'}
-            </button>
-          </div>
-
-          {historySummary ? (
-            <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-[11px] leading-5 text-violet-800">
-              전체 대여 {historySummary.totalRequests}건 · 이전 계정 대여 {historySummary.previousRequests}건 · 진행 중 {historySummary.activeRequests}건 · 연체 이력 {historySummary.overdueRequests}건
-            </div>
-          ) : null}
-          {historyError ? (
-            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">{historyError}</div>
-          ) : null}
-
           <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
             <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
-              닫기
+              취소
             </Button>
             <Button
               type="button"

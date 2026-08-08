@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 
+import AdminMemberAccountDetailPanel from './AdminMemberAccountDetailPanel.jsx';
 import AdminMemberAccountEditDialog from './AdminMemberAccountEditDialog.jsx';
 import AdminMemberTermsDialog from './AdminMemberTermsDialog.jsx';
 
@@ -17,6 +18,8 @@ const formatCreatedAt = (account) =>
   typeof account?.createdAt?.toDate === 'function'
     ? account.createdAt.toDate().toLocaleString('ko-KR')
     : '-';
+
+const compactActionButtonClass = '!gap-1 !rounded-lg !px-2 !py-1 !text-[10px]';
 
 export default function AdminMemberAccountsPanel({ ctx }) {
   const {
@@ -77,25 +80,89 @@ export default function AdminMemberAccountsPanel({ ctx }) {
     triggerToast,
   });
 
+  const [selectedAccount, setSelectedAccount] = useState(null);
   const [editAccount, setEditAccount] = useState(null);
   const [termsAccount, setTermsAccount] = useState(null);
+
+  const toggleSelectedAccount = (account) => {
+    setSelectedAccount((current) => (current?.uid === account.uid ? null : account));
+  };
 
   const saveEditAccount = async (form) => {
     if (!editAccount) return;
     try {
-      await saveAdminMemberAccountProfile({ account: editAccount, form });
+      const savedProfile = await saveAdminMemberAccountProfile({ account: editAccount, form });
       refreshAdminUserAccounts();
+      if (savedProfile) {
+        setSelectedAccount((current) =>
+          current?.uid === editAccount.uid ? { ...current, ...savedProfile } : current
+        );
+      }
       setEditAccount(null);
     } catch {
       // 오류 메시지는 저장 훅에서 표시한다. 다이얼로그는 수정할 수 있도록 유지한다.
     }
   };
 
+  const renderUseManagementActions = (account, isSaving, stopPropagation = false) => {
+    const accountStatus = account.status || '';
+    const click = (nextStatus) => (event) => {
+      if (stopPropagation) event?.stopPropagation?.();
+      confirmUserAccountStatusChange(account, nextStatus);
+    };
+
+    return (
+      <div className="flex flex-wrap items-center justify-center gap-1">
+        {accountStatus !== USER_PROFILE_STATUS.ACTIVE &&
+        accountStatus !== USER_PROFILE_STATUS.PROFILE_REQUIRED ? (
+          <Button
+            variant="primary"
+            className={compactActionButtonClass}
+            disabled={isSaving}
+            onClick={click(USER_PROFILE_STATUS.ACTIVE)}
+          >
+            <CheckCircle2 size={11} />
+            {accountStatus === USER_PROFILE_STATUS.PENDING ? '가입 승인' : '이용 재개'}
+          </Button>
+        ) : null}
+        {accountStatus !== USER_PROFILE_STATUS.BLOCKED ? (
+          <Button
+            variant="dangerOutline"
+            className={compactActionButtonClass}
+            disabled={isSaving}
+            onClick={click(USER_PROFILE_STATUS.BLOCKED)}
+          >
+            <XCircle size={11} /> 이용 차단
+          </Button>
+        ) : null}
+        {accountStatus !== USER_PROFILE_STATUS.RETIRED ? (
+          <Button
+            variant="outline"
+            className={compactActionButtonClass}
+            disabled={isSaving}
+            onClick={click(USER_PROFILE_STATUS.RETIRED)}
+          >
+            <LogOut size={11} /> 이용 종료
+          </Button>
+        ) : null}
+      </div>
+    );
+  };
+
+  const renderMemberDetail = (account) => (
+    <AdminMemberAccountDetailPanel
+      account={account}
+      onClose={() => setSelectedAccount(null)}
+      onOpenTerms={() => setTermsAccount(account)}
+      onEdit={() => setEditAccount(account)}
+    />
+  );
+
   return (
     <div className="space-y-6">
       <AdminPageHeader
         title="회원 계정 관리"
-        description="회원 계정을 목록으로 확인하고 상태 변경, 회원정보 수정, 이용 종료를 관리합니다. 회원명을 선택하면 상세정보를 확인·수정할 수 있습니다."
+        description="회원 계정을 목록으로 확인하고 이용 상태를 관리합니다. 행을 선택하면 상세정보가 목록 본문에 펼쳐지며, 회원정보 변경은 회원수정 버튼을 통해 별도 팝업에서 진행합니다."
       />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
@@ -182,13 +249,13 @@ export default function AdminMemberAccountsPanel({ ctx }) {
           <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white xl:block">
             <table className="w-full table-fixed border-collapse text-left">
               <colgroup>
-                <col className="w-[56px]" />
-                <col className="w-[105px]" />
+                <col className="w-[50px]" />
+                <col className="w-[92px]" />
                 <col />
-                <col className="w-[145px]" />
-                <col className="w-[175px]" />
-                <col className="w-[245px]" />
-                <col className="w-[96px]" />
+                <col className="w-[130px]" />
+                <col className="w-[160px]" />
+                <col className="w-[215px]" />
+                <col className="w-[86px]" />
               </colgroup>
               <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600">
                 <tr>
@@ -197,97 +264,65 @@ export default function AdminMemberAccountsPanel({ ctx }) {
                   <th className="border-b border-slate-200 px-3 py-2.5">이름</th>
                   <th className="border-b border-slate-200 px-3 py-2.5">부서</th>
                   <th className="border-b border-slate-200 px-3 py-2.5 text-center">가입일시</th>
-                  <th className="border-b border-slate-200 px-2 py-2.5 text-center">이용 재개 / 차단</th>
-                  <th className="border-b border-slate-200 px-2 py-2.5 text-center">이용 종료</th>
+                  <th className="border-b border-slate-200 px-2 py-2.5 text-center">이용 관리</th>
+                  <th className="border-b border-slate-200 px-2 py-2.5 text-center">회원정보</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredManagedUserAccounts.map((account, index) => {
                   const accountStatus = account.status || '';
                   const isSaving = adminUserAccountSavingUid === account.uid;
+                  const isSelected = selectedAccount?.uid === account.uid;
                   const sequence = (safeAdminUserAccountPage - 1) * adminUserAccountPageSize + index + 1;
 
                   return (
-                    <tr
-                      key={account.uid}
-                      className="cursor-pointer border-b border-slate-100 align-middle last:border-b-0 hover:bg-slate-50"
-                      onClick={() => setEditAccount(account)}
-                    >
-                      <td className="px-2 py-3 text-center text-[11px] font-semibold text-slate-400">{sequence}</td>
-                      <td className="px-2 py-3 text-center">
-                        <span className={`inline-flex whitespace-nowrap rounded-full border px-2.5 py-1 text-[10px] font-semibold ${getUserAccountStatusClassName(accountStatus)}`}>
-                          {getUserAccountStatusLabel(accountStatus)}
-                        </span>
-                      </td>
-                      <td className="px-3 py-3">
-                        <button
-                          type="button"
-                          className="max-w-full truncate text-left text-xs font-bold text-slate-900 hover:text-orange-600 hover:underline"
-                          title="회원 상세정보 확인 및 수정"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setEditAccount(account);
-                          }}
-                        >
+                    <Fragment key={account.uid}>
+                      <tr
+                        className={`cursor-pointer border-b border-slate-100 align-middle hover:bg-slate-50 ${isSelected ? 'bg-orange-50/50' : ''}`}
+                        onClick={() => toggleSelectedAccount(account)}
+                      >
+                        <td className="px-2 py-2.5 text-center text-[11px] font-semibold text-slate-400">{sequence}</td>
+                        <td className="px-2 py-2.5 text-center">
+                          <span className={`inline-flex whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-semibold ${getUserAccountStatusClassName(accountStatus)}`}>
+                            {getUserAccountStatusLabel(accountStatus)}
+                          </span>
+                        </td>
+                        <td className="truncate px-3 py-2.5 text-xs font-bold text-slate-900" title={account.name || '이름 미등록'}>
                           {account.name || '이름 미등록'}
-                        </button>
-                      </td>
-                      <td className="truncate px-3 py-3 text-xs text-slate-600" title={account.team || '-'}>
-                        {account.team || '-'}
-                      </td>
-                      <td className="px-3 py-3 text-center text-[11px] leading-4 text-slate-500">
-                        {formatCreatedAt(account)}
-                      </td>
-                      <td className="px-2 py-3">
-                        <div className="flex items-center justify-center gap-1.5">
-                          {accountStatus !== USER_PROFILE_STATUS.ACTIVE &&
-                          accountStatus !== USER_PROFILE_STATUS.PROFILE_REQUIRED ? (
-                            <Button
-                              variant="primary"
-                              className="whitespace-nowrap px-2.5 py-1.5 text-[11px]"
-                              disabled={isSaving}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                confirmUserAccountStatusChange(account, USER_PROFILE_STATUS.ACTIVE);
-                              }}
-                            >
-                              <CheckCircle2 size={13} />
-                              {accountStatus === USER_PROFILE_STATUS.PENDING ? '가입 승인' : '이용 재개'}
-                            </Button>
-                          ) : null}
-                          {accountStatus !== USER_PROFILE_STATUS.BLOCKED ? (
-                            <Button
-                              variant="dangerOutline"
-                              className="whitespace-nowrap px-2.5 py-1.5 text-[11px]"
-                              disabled={isSaving}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                confirmUserAccountStatusChange(account, USER_PROFILE_STATUS.BLOCKED);
-                              }}
-                            >
-                              <XCircle size={13} /> 이용 차단
-                            </Button>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td className="px-2 py-3 text-center">
-                        {accountStatus !== USER_PROFILE_STATUS.RETIRED ? (
+                        </td>
+                        <td className="truncate px-3 py-2.5 text-xs text-slate-600" title={account.team || '-'}>
+                          {account.team || '-'}
+                        </td>
+                        <td className="px-3 py-2.5 text-center text-[11px] leading-4 text-slate-500">
+                          {formatCreatedAt(account)}
+                        </td>
+                        <td className="px-2 py-2.5">
+                          {renderUseManagementActions(account, isSaving, true)}
+                        </td>
+                        <td className="px-2 py-2.5 text-center">
                           <Button
+                            type="button"
                             variant="outline"
-                            className="whitespace-nowrap px-2.5 py-1.5 text-[11px]"
-                            disabled={isSaving}
+                            className={compactActionButtonClass}
+                            disabled={accountStatus === USER_PROFILE_STATUS.RETIRED}
+                            title={accountStatus === USER_PROFILE_STATUS.RETIRED ? '이용 재개 후 수정할 수 있습니다.' : '회원정보 수정'}
                             onClick={(event) => {
                               event.stopPropagation();
-                              confirmUserAccountStatusChange(account, USER_PROFILE_STATUS.RETIRED);
+                              setEditAccount(account);
                             }}
                           >
-                            <LogOut size={13} /> 이용 종료
+                            회원 수정
                           </Button>
-                        ) : (
-                          <span className="text-[11px] text-slate-400">-</span>
-                        )}
-                      </td>
-                    </tr>
+                        </td>
+                      </tr>
+                      {isSelected ? (
+                        <tr className="border-b border-slate-200 bg-slate-50/60">
+                          <td colSpan={7} className="p-3">
+                            {renderMemberDetail(account)}
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
                   );
                 })}
               </tbody>
@@ -298,14 +333,15 @@ export default function AdminMemberAccountsPanel({ ctx }) {
             {filteredManagedUserAccounts.map((account, index) => {
               const accountStatus = account.status || '';
               const isSaving = adminUserAccountSavingUid === account.uid;
+              const isSelected = selectedAccount?.uid === account.uid;
               const sequence = (safeAdminUserAccountPage - 1) * adminUserAccountPageSize + index + 1;
 
               return (
                 <div
                   key={account.uid}
-                  className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+                  className={`rounded-xl border bg-white p-4 shadow-sm ${isSelected ? 'border-orange-200' : 'border-slate-200'}`}
                 >
-                  <button type="button" className="w-full text-left" onClick={() => setEditAccount(account)}>
+                  <button type="button" className="w-full text-left" onClick={() => toggleSelectedAccount(account)}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 items-center gap-2">
                         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-bold text-slate-500">{sequence}</span>
@@ -314,45 +350,27 @@ export default function AdminMemberAccountsPanel({ ctx }) {
                           <div className="mt-0.5 truncate text-[11px] text-slate-500">{account.team || '-'}</div>
                         </div>
                       </div>
-                      <span className={`inline-flex shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold ${getUserAccountStatusClassName(accountStatus)}`}>
+                      <span className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${getUserAccountStatusClassName(accountStatus)}`}>
                         {getUserAccountStatusLabel(accountStatus)}
                       </span>
                     </div>
                     <div className="mt-3 text-[11px] text-slate-500">가입일시 {formatCreatedAt(account)}</div>
                   </button>
-                  <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
-                    {accountStatus !== USER_PROFILE_STATUS.ACTIVE &&
-                    accountStatus !== USER_PROFILE_STATUS.PROFILE_REQUIRED ? (
-                      <Button
-                        variant="primary"
-                        className="px-3 py-2 text-xs"
-                        disabled={isSaving}
-                        onClick={() => confirmUserAccountStatusChange(account, USER_PROFILE_STATUS.ACTIVE)}
-                      >
-                        {accountStatus === USER_PROFILE_STATUS.PENDING ? '가입 승인' : '이용 재개'}
-                      </Button>
-                    ) : null}
-                    {accountStatus !== USER_PROFILE_STATUS.BLOCKED ? (
-                      <Button
-                        variant="dangerOutline"
-                        className="px-3 py-2 text-xs"
-                        disabled={isSaving}
-                        onClick={() => confirmUserAccountStatusChange(account, USER_PROFILE_STATUS.BLOCKED)}
-                      >
-                        이용 차단
-                      </Button>
-                    ) : null}
-                    {accountStatus !== USER_PROFILE_STATUS.RETIRED ? (
-                      <Button
-                        variant="outline"
-                        className="px-3 py-2 text-xs"
-                        disabled={isSaving}
-                        onClick={() => confirmUserAccountStatusChange(account, USER_PROFILE_STATUS.RETIRED)}
-                      >
-                        이용 종료
-                      </Button>
-                    ) : null}
+
+                  <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-3">
+                    {renderUseManagementActions(account, isSaving)}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className={compactActionButtonClass}
+                      disabled={accountStatus === USER_PROFILE_STATUS.RETIRED}
+                      onClick={() => setEditAccount(account)}
+                    >
+                      회원 수정
+                    </Button>
                   </div>
+
+                  {isSelected ? <div className="mt-3">{renderMemberDetail(account)}</div> : null}
                 </div>
               );
             })}
@@ -406,7 +424,6 @@ export default function AdminMemberAccountsPanel({ ctx }) {
           Button={Button}
           saving={adminMemberProfileSavingUid === editAccount.uid}
           onClose={() => setEditAccount(null)}
-          onOpenTerms={() => setTermsAccount(editAccount)}
           onSave={saveEditAccount}
         />
       ) : null}
