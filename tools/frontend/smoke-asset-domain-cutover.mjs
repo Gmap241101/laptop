@@ -29,6 +29,12 @@ const [subscription, crud, categories, bulk, catalogCompat, dashboard, client, d
 for (const marker of ['readAssetDomainCutoverConfig', 'bootstrapAdminAssets', 'getAssetCatalog', 'firestore-one-time-fallback', 'mk_asset_postgres_bootstrap:', 'assetWatcherDisabled', 'availabilityWatcherDisabled']) assert.ok(subscription.includes(marker), marker);
 for (const marker of ['createAdminAsset', 'editAdminAsset', 'deleteAdminAsset', "writeSource: 'postgresql-authoritative'"]) assert.ok(crud.includes(marker), marker);
 assert.ok(categories.includes('saveAdminAssetCategories'));
+
+assert.ok(subscription.includes('splitAssetCategoriesRef'), 'asset catalog fallback must use a ref for current categories');
+assert.ok(!subscription.includes('    splitPublicConfig?.assetCategories,\n    userTab,'), 'asset catalog effect must not depend on the categories array it updates');
+assert.ok(categories.includes('dataAssetCategoriesKey'), 'category editor must compare persisted category content');
+assert.ok(categories.includes('[adminTab, dataAssetCategoriesKey]'), 'category editor reset must not depend on array identity');
+assert.ok(!categories.includes('[adminTab, dataAssetCategories]'), 'category editor must not reset for same-content array replacements');
 assert.ok(bulk.includes('bulkCreateAdminAssets'));
 assert.ok(catalogCompat.includes('readAssetDomainCutoverConfig'));
 for (const marker of ['getAssetCatalog', "assetMetricSource: 'postgresql-phase20'"]) assert.ok(dashboard.includes(marker), marker);

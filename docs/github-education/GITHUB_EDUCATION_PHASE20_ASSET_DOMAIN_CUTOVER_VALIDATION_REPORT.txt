@@ -43,3 +43,15 @@ The single additional static getDocs compared with Phase 19 is the Phase 20 one-
 Build environment
 - prebuild React/App-flow/Firestore audits: PASS
 - Vite bundle in ChatGPT environment: unavailable because root node_modules is absent (`vite: not found`); Vercel deployment must perform final bundle validation.
+
+Runtime UI stability hotfix validation
+--------------------------------------
+- Removed self-triggering dependency on splitPublicConfig.assetCategories from Phase 20 asset catalog loader: PASS
+- One-time Firestore fallback uses latest categories through splitAssetCategoriesRef: PASS
+- Category editor reset uses normalized dataAssetCategoriesKey content rather than array identity: PASS
+- New/edit asset UI is no longer repeatedly disabled by asset catalog reload loop: covered by regression contract
+- Category create/rename input no longer resets on same-content catalog refresh: covered by regression contract
+- Phase 1-20 verify suite after hotfix: PASS
+- React Hook audit after hotfix: PASS (159 source files)
+- Application flow audit after hotfix: PASS (124 contracts; 11 user routes; 20 administrator tabs)
+- Firestore strict audit after hotfix: PASS (131 total calls; 0 unapproved warnings/errors)

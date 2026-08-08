@@ -42,3 +42,20 @@ Asset identity changes and deletion remain blocked while an active reservation e
 - Firestore strict audit: 131 total calls, 35 `onSnapshot`, 50 `getDocs`, 28 `getDoc`, 18 `getCountFromServer`, 52 approved risks, 0 unapproved warnings/errors
 - No new npm dependency
 - Root `App.jsx` is intentionally unchanged from the Phase 19 baseline.
+
+## Runtime UI stability hotfix after first staging test
+The first staging deployment exposed a frontend-only feedback loop in the Phase 20 asset read controller. The PostgreSQL catalog loader wrote a newly allocated `assetCategories` array into `splitPublicConfig` while the same array reference was also an effect dependency. This could repeatedly restart the loader, toggle `firebaseReady` back to false, temporarily apply the app-wide `pointer-events-none` loading state, and replace the same category list with a new array.
+
+Observed runtime symptoms:
+- administrator new-asset and edit buttons appeared unresponsive
+- asset forms could fail to stay open
+- category create/rename text was cleared immediately while typing
+- temporary category edits/deletes were reset when the catalog loop re-synchronized unchanged category content
+
+Fix:
+- the asset catalog effect no longer depends on the category array it updates
+- the latest category list needed by the one-time Firestore fallback is read through a ref instead
+- the category editor reset effect now keys persisted categories by normalized content rather than array identity
+- frontend Phase 20 smoke now rejects both regression patterns
+
+No PostgreSQL schema, migration, API contract, Firestore Rules/index, App.jsx, or npm dependency change was required for this hotfix.

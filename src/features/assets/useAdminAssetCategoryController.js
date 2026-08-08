@@ -38,16 +38,22 @@ export const useAdminAssetCategoryState = ({
   const [draggingAssetCategoryIndex, setDraggingAssetCategoryIndex] =
     useState(null);
 
+  const dataAssetCategoriesKey = useMemo(
+    () => JSON.stringify(normalizeCategories(dataAssetCategories || [])),
+    [dataAssetCategories]
+  );
+
   useEffect(() => {
     if (adminTab === 'categories') {
-      setTempAssetCategories(dataAssetCategories || []);
+      const persistedCategories = JSON.parse(dataAssetCategoriesKey);
+      setTempAssetCategories(persistedCategories);
       setTempAssetCategoryRenameMap({});
       setEditingAssetCategoryIndex(null);
       setEditingAssetCategoryName('');
       setDraggingAssetCategoryIndex(null);
       setNewAssetCategory('');
     }
-  }, [adminTab, dataAssetCategories]);
+  }, [adminTab, dataAssetCategoriesKey]);
 
   const assetCategorySettingsDirty = useMemo(
     () =>

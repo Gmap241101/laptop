@@ -499,6 +499,11 @@ export default function useRentalDataSubscriptionController({
   view,
 }) {
   const initializedRemoteFormRef = useRef(false);
+  const splitAssetCategoriesRef = useRef(splitPublicConfig?.assetCategories || []);
+
+  useEffect(() => {
+    splitAssetCategoriesRef.current = splitPublicConfig?.assetCategories || [];
+  }, [splitPublicConfig?.assetCategories]);
 
   useEffect(() => {
     setSplitSourceReady((previous) => ({
@@ -648,7 +653,7 @@ export default function useRentalDataSubscriptionController({
         applyCatalogPayload({
           assets,
           availability,
-          categories: splitPublicConfig?.assetCategories || [],
+          categories: splitAssetCategoriesRef.current,
           sync: null,
         }, 'firestore-one-time-fallback', reads, false);
         if (reason) console.warn('Phase 20 PostgreSQL asset catalog fallback activated:', reason);
@@ -792,7 +797,6 @@ export default function useRentalDataSubscriptionController({
     setSplitSourceErrors,
     setSplitSourceReady,
     setToast,
-    splitPublicConfig?.assetCategories,
     userTab,
     view,
   ]);
