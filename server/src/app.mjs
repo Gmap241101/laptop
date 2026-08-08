@@ -108,6 +108,45 @@ const sanitizeRentalRestrictionShadow = (shadow) => ({
   syncedAt: shadow.syncedAt,
 });
 
+const sanitizeRentalRequest = (request) => ({
+  id: request.id,
+  requesterUid: request.requesterUid,
+  requesterEmail: request.requesterEmail,
+  requesterName: request.requesterName,
+  requesterTeam: request.requesterTeam,
+  laptopId: request.laptopId,
+  assetCategory: request.assetCategory,
+  assetNo: request.assetNo,
+  team: request.team,
+  borrower: request.borrower,
+  startDate: request.startDate,
+  dueDate: request.dueDate,
+  purpose: request.purpose,
+  status: request.status,
+  adminMemo: request.adminMemo,
+  extensionCount: request.extensionCount,
+  lastExtensionApprovedDate: request.lastExtensionApprovedDate,
+  nextExtensionRequestDate: request.nextExtensionRequestDate,
+  extensionHistory: request.extensionHistory,
+  userActionRequest: request.userActionRequest,
+  requestedAt: request.requestedAt,
+  returnedAt: request.returnedAt,
+  overduePenaltyPending: Boolean(request.overduePenaltyPending),
+  overduePenaltyBatchId: request.overduePenaltyBatchId,
+  syncedAt: request.syncedAt,
+  createdAt: request.createdAt,
+  updatedAt: request.updatedAt,
+});
+
+const sanitizeRentalRequestCandidate = ({ requests, syncState }) => ({
+  source: 'postgresql-shadow',
+  authoritative: false,
+  requests: requests.map(sanitizeRentalRequest),
+  count: requests.length,
+  sourceHash: syncState.sourceHash,
+  shadowSyncedAt: syncState.syncedAt,
+});
+
 const sanitizeMemberProfileReadCandidate = (shadow) => ({
   source: 'postgresql-shadow',
   authoritative: false,
@@ -148,6 +187,11 @@ export const createRequestHandler = ({
     async readCurrentSourceByFirebaseIdentity() { const error = new Error('Rental restriction service is not configured.'); error.code = 'rental_restriction_not_configured'; throw error; },
     async syncLinkedFirebaseUid() { const error = new Error('Rental restriction service is not configured.'); error.code = 'rental_restriction_not_configured'; throw error; },
   },
+  rentalRequestService = {
+    async getCurrent() { const error = new Error('Rental request service is not configured.'); error.code = 'rental_request_not_configured'; throw error; },
+    async syncCurrent() { const error = new Error('Rental request service is not configured.'); error.code = 'rental_request_not_configured'; throw error; },
+    async compareCurrent() { const error = new Error('Rental request service is not configured.'); error.code = 'rental_request_not_configured'; throw error; },
+  },
 }) => {
   if (typeof databaseCheck !== 'function') {
     throw new TypeError('databaseCheck must be a function.');
@@ -182,6 +226,14 @@ export const createRequestHandler = ({
     typeof rentalRestrictionService.syncLinkedFirebaseUid !== 'function'
   ) {
     throw new TypeError('rentalRestrictionService getCurrentByFirebaseIdentity/readCurrentSourceByFirebaseIdentity/syncLinkedFirebaseUid methods are required.');
+  }
+  if (
+    !rentalRequestService ||
+    typeof rentalRequestService.getCurrent !== 'function' ||
+    typeof rentalRequestService.syncCurrent !== 'function' ||
+    typeof rentalRequestService.compareCurrent !== 'function'
+  ) {
+    throw new TypeError('rentalRequestService getCurrent/syncCurrent/compareCurrent methods are required.');
   }
 
 
@@ -256,6 +308,9 @@ export const createRequestHandler = ({
           rentalRestrictionCandidate: '/api/legacy/rental-restriction-candidate',
           rentalRestrictionFallback: '/api/legacy/rental-restriction-firestore-fallback',
           rentalRestrictionWriteThrough: '/api/legacy/rental-restriction-shadow/write-through',
+          rentalRequestCandidate: '/api/users/me/rental-requests',
+          rentalRequestShadowSync: '/api/users/me/legacy/rental-request-shadows/sync',
+          rentalRequestShadowCompare: '/api/users/me/legacy/rental-request-shadows/compare',
         },
         headers,
       );
@@ -485,6 +540,73 @@ export const createRequestHandler = ({
     }
 
 
+
+    if (request.method === 'GET' && url.pathname === '/api/users/me/rental-requests') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      try {
+        const result = await rentalRequestService.getCurrent(auth.userId);
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          rentalRequestCandidate: sanitizeRentalRequestCandidate(result),
+        }, headers);
+      } catch (error) {
+        const errorCode = error?.code || 'rental_request_candidate_unavailable';
+        const statusCode = ['profile_not_synced', 'legacy_link_not_found', 'member_shadow_not_found', 'rental_request_shadow_not_synced'].includes(errorCode) ? 404 : 503;
+        writeJson(response, statusCode, { ...basePayload, authenticated: true, error: errorCode }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/users/me/legacy/rental-request-shadows/sync') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      try {
+        const result = await rentalRequestService.syncCurrent(auth.userId, firebaseIdentity);
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          synchronized: true,
+          rentalRequestCandidate: sanitizeRentalRequestCandidate(result),
+        }, headers);
+      } catch (error) {
+        const errorCode = error?.code || 'rental_request_shadow_sync_unavailable';
+        const statusCode = ['profile_not_synced', 'legacy_link_not_found', 'member_shadow_not_found'].includes(errorCode) ? 404
+          : ['legacy_link_token_mismatch', 'firebase_link_email_mismatch'].includes(errorCode) ? 409
+          : error?.status === 403 ? 403
+          : error?.status === 401 ? 401
+          : 503;
+        writeJson(response, statusCode, { ...basePayload, authenticated: true, error: errorCode }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/users/me/legacy/rental-request-shadows/compare') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      try {
+        const comparison = await rentalRequestService.compareCurrent(auth.userId, firebaseIdentity);
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          comparison,
+        }, headers);
+      } catch (error) {
+        const errorCode = error?.code || 'rental_request_shadow_compare_unavailable';
+        const statusCode = ['profile_not_synced', 'legacy_link_not_found', 'member_shadow_not_found', 'rental_request_shadow_not_synced'].includes(errorCode) ? 404
+          : ['legacy_link_token_mismatch', 'firebase_link_email_mismatch'].includes(errorCode) ? 409
+          : error?.status === 403 ? 403
+          : error?.status === 401 ? 401
+          : 503;
+        writeJson(response, statusCode, { ...basePayload, authenticated: true, error: errorCode }, headers);
+      }
+      return;
+    }
 
     if (request.method === 'GET' && url.pathname === '/api/legacy/rental-restriction-candidate') {
       const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);

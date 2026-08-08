@@ -5,6 +5,7 @@ const phase6 = readFileSync('server/migrations/003_phase6_firebase_identity_brid
 const phase7 = readFileSync('server/migrations/004_phase7_member_profile_shadow.sql', 'utf8');
 const phase9 = readFileSync('server/migrations/005_phase9_member_profile_runtime_contract.sql', 'utf8');
 const phase12 = readFileSync('server/migrations/006_phase12_rental_restriction_shadow.sql', 'utf8');
+const phase14 = readFileSync('server/migrations/007_phase14_rental_request_foundation.sql', 'utf8');
 
 if (!/value\s+JSONB\s+NOT\s+NULL/i.test(phase2)) {
   throw new Error('app_runtime_metadata.value must remain JSONB NOT NULL.');
@@ -50,4 +51,15 @@ for (const marker of [
   if (!phase12.includes(marker)) throw new Error(`Phase 12 rental restriction shadow migration marker is missing: ${marker}`);
 }
 
-console.log('[migration-static-check] PASS (Phase 6 identity bridge + Phase 7 member shadow + Phase 9 runtime contract + Phase 12 rental restriction shadow migrations are type-safe)');
+for (const marker of [
+  'CREATE TABLE IF NOT EXISTS app_user_rental_request_shadows',
+  'CREATE TABLE IF NOT EXISTS app_user_rental_request_item_shadows',
+  'CREATE TABLE IF NOT EXISTS app_user_rental_request_shadow_syncs',
+  'source_request_id TEXT NOT NULL UNIQUE',
+  "'mode', 'normalized-shadow-parallel-read'",
+  "'authoritative', 'firestore'",
+]) {
+  if (!phase14.includes(marker)) throw new Error(`Phase 14 rental request migration marker is missing: ${marker}`);
+}
+
+console.log('[migration-static-check] PASS (Phase 6 identity bridge + Phase 7 member shadow + Phase 9 runtime contract + Phase 12 restriction shadow + Phase 14 normalized rental-request shadow migrations are type-safe)');

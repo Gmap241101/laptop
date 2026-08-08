@@ -1,0 +1,16 @@
+# Phase 14 Vercel staging-project reference only.
+# Configure in Vercel UI. Do not package or create .env* files.
+
+VITE_RENTAL_REQUEST_POSTGRES_PARITY_ENABLED=true
+
+# Required existing context (do not duplicate if already present):
+# VITE_CLERK_STAGING_ENABLED=true
+# VITE_API_URL=https://<HEROKU-STAGING-API>
+# VITE_CLERK_PUBLISHABLE_KEY=pk_test_...
+# VITE_MEMBER_PROFILE_POSTGRES_READ_ENABLED=true
+# VITE_MEMBER_PROFILE_FIRESTORE_WATCHER_DISABLED=true
+# VITE_MEMBER_PROFILE_WRITE_THROUGH_ENABLED=true
+# VITE_RENTAL_RESTRICTION_POSTGRES_READ_ENABLED=true
+
+# Phase 14 diagnostic URL query:
+# ?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWriteThrough=on&restrictionRead=postgres&restrictionWatcher=off&rentalRequestParity=1

@@ -9,6 +9,7 @@ import {
   RENTAL_BORROWERS_COLLECTION_REF,
   RENTAL_REQUESTS_COLLECTION_REF,
 } from '../../firebase.js';
+import { publishRentalRequestReadObservation } from './rentalRequestReadParity.js';
 import {
   PUBLIC_ASSET_CATALOG_SCHEMA_VERSION,
   hydratePublicCatalogAssets,
@@ -213,7 +214,9 @@ export function useOwnRentalRequestsSubscriptionController({
         });
       });
 
-      setRentalRequests(Array.from(requestMap.values()));
+      const nextRequests = Array.from(requestMap.values());
+      setRentalRequests(nextRequests);
+      publishRentalRequestReadObservation({ requests: nextRequests });
       setRentalRequestsLoadErrorMessage('');
       setRentalRequestsReady(true);
     };

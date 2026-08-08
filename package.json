@@ -58,7 +58,10 @@
     "server:restriction-shadow:smoke": "node tools/backend/smoke-rental-restriction-shadow.mjs",
     "verify:phase12": "npm run server:migrations:static-check && npm run frontend:clerk:smoke && npm run frontend:member-read:smoke && npm run frontend:member-cutover:smoke && npm run frontend:member-watcher-disable:smoke && npm run frontend:member-write-through:smoke && npm run frontend:restriction-cutover:smoke && npm run frontend:clerk:config:check && npm run server:check && npm run server:smoke && npm run server:auth:smoke && npm run server:user-sync:smoke && npm run server:firebase-bridge:smoke && npm run server:member-shadow:smoke && npm run server:member-cutover:smoke && npm run server:member-write-through:smoke && npm run server:restriction-shadow:smoke && npm run audit:react-hooks && npm run audit:app-flows && npm run audit:firestore:strict && npm run package:guard",
     "frontend:admin-member-ui:smoke": "node tools/frontend/smoke-admin-member-management-ui.mjs",
-    "verify:phase13": "npm run verify:phase12 && npm run frontend:admin-member-ui:smoke"
+    "verify:phase13": "npm run verify:phase12 && npm run frontend:admin-member-ui:smoke",
+    "server:rental-request-shadow:smoke": "node tools/backend/smoke-rental-request-shadow.mjs",
+    "frontend:rental-request-parity:smoke": "node tools/frontend/smoke-rental-request-read-parity.mjs",
+    "verify:phase14": "npm run verify:phase13 && npm run server:rental-request-shadow:smoke && npm run frontend:rental-request-parity:smoke"
   },
   "dependencies": {
     "firebase": "^10.14.1",

@@ -22,6 +22,12 @@ import {
   subscribeRentalRestrictionCutoverObservation,
   subscribeRentalRestrictionWriteThroughObservation,
 } from '../features/requests/rentalRestrictionReadCutover.js';
+import {
+  compareRentalRequestReads,
+  getLatestRentalRequestReadObservation,
+  readRentalRequestParityConfig,
+  subscribeRentalRequestReadObservation,
+} from '../features/requests/rentalRequestReadParity.js';
 import { clerkStagingClient } from './clerkStagingClient.js';
 
 const panelStyle = {
@@ -65,6 +71,7 @@ const getClerkSnapshot = (clerk) => ({
 export default function ClerkStagingDiagnostics() {
   const requested = useMemo(() => clerkStagingClient.isDiagnosticsRequested(), []);
   const writeThroughConfig = useMemo(() => readMemberProfileWriteThroughConfig(), []);
+  const rentalRequestParityConfig = useMemo(() => readRentalRequestParityConfig(), []);
   const [state, setState] = useState({
     phase: requested ? 'loading' : 'hidden',
     signedIn: false,
@@ -117,6 +124,15 @@ export default function ClerkStagingDiagnostics() {
     restrictionWriteReason: null,
     restrictionWriteFirebaseUid: null,
     restrictionWriteCounters: { attempted: 0, synced: 0, failed: 0 },
+    rentalRequestParityRequested: rentalRequestParityConfig.requested,
+    rentalRequestFirestoreCount: 0,
+    rentalRequestPostgresCount: 0,
+    rentalRequestEquivalent: null,
+    rentalRequestChangedRequestIds: [],
+    rentalRequestChangedFields: [],
+    rentalRequestCandidateSource: null,
+    rentalRequestShadowSyncedAt: null,
+    rentalRequestBackendEquivalent: null,
     error: null,
   });
 
@@ -270,6 +286,21 @@ export default function ClerkStagingDiagnostics() {
     applyObservation(getLatestRentalRestrictionWriteThroughObservation());
     return subscribeRentalRestrictionWriteThroughObservation(applyObservation);
   }, [requested]);
+
+  useEffect(() => {
+    if (!requested || !rentalRequestParityConfig.requested) return undefined;
+    const applyObservation = (observation) => {
+      setState((current) => ({
+        ...current,
+        rentalRequestFirestoreCount: Number(observation?.count) || 0,
+        rentalRequestEquivalent: null,
+        rentalRequestChangedRequestIds: [],
+        rentalRequestChangedFields: [],
+      }));
+    };
+    applyObservation(getLatestRentalRequestReadObservation());
+    return subscribeRentalRequestReadObservation(applyObservation);
+  }, [requested, rentalRequestParityConfig.requested]);
 
   if (!requested) return null;
 
@@ -430,9 +461,41 @@ export default function ClerkStagingDiagnostics() {
     });
 
 
+  const syncAndVerifyRentalRequestParity = () =>
+    run(async () => {
+      if (!rentalRequestParityConfig.requested) {
+        throw new Error('Phase 14 rental request parity opt-in is not enabled for this session.');
+      }
+      const observation = getLatestRentalRequestReadObservation();
+      if (!observation?.requests) {
+        throw new Error('The application Firestore rental request list has not been observed yet. Open 신청내역 first.');
+      }
+      const firebaseUser = firebaseAuth.currentUser;
+      if (!firebaseUser) throw new Error('기존 Firebase 로그인이 필요합니다. 먼저 홈페이지 계정으로 로그인해 주세요.');
+      const firebaseIdToken = await firebaseUser.getIdToken(true);
+      const syncPayload = await clerkStagingClient.syncRentalRequestShadow(firebaseIdToken);
+      const candidate = syncPayload?.rentalRequestCandidate;
+      if (!candidate?.requests) throw new Error('PostgreSQL rental request read candidate is not available after synchronization.');
+      const comparison = compareRentalRequestReads(observation.requests, candidate.requests);
+      const backendPayload = await clerkStagingClient.compareRentalRequestShadow(firebaseIdToken);
+      setState((current) => ({
+        ...current,
+        rentalRequestFirestoreCount: comparison.firestoreCount,
+        rentalRequestPostgresCount: comparison.postgresCount,
+        rentalRequestEquivalent: comparison.equivalent,
+        rentalRequestChangedRequestIds: comparison.changedRequestIds,
+        rentalRequestChangedFields: comparison.changedFields,
+        rentalRequestCandidateSource: candidate.source || null,
+        rentalRequestShadowSyncedAt: candidate.shadowSyncedAt || null,
+        rentalRequestBackendEquivalent: Boolean(backendPayload?.comparison?.equivalent),
+        error: null,
+      }));
+    });
+
+
   return (
     <aside style={panelStyle} aria-label="Clerk staging diagnostics">
-      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 13</div>
+      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 14</div>
       <div>SDK: {state.phase === 'loading' ? 'loading' : state.phase}</div>
       <div>Signed in: {state.signedIn ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Clerk user: {state.userId || '-'}</div>
@@ -519,6 +582,17 @@ export default function ClerkStagingDiagnostics() {
       <div style={{ overflowWrap: 'anywhere' }}>Restriction write Firebase: {state.restrictionWriteFirebaseUid || '-'}</div>
       <div>Restriction write counters: attempted {state.restrictionWriteCounters.attempted} / synced {state.restrictionWriteCounters.synced} / failed {state.restrictionWriteCounters.failed}</div>
 
+      <div style={{ marginTop: '6px', fontWeight: 700 }}>Phase 14 rental request parallel parity</div>
+      <div>Rental request parity requested: {state.rentalRequestParityRequested ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Rental request candidate source: {state.rentalRequestCandidateSource || '-'}</div>
+      <div>Firestore request count: {state.rentalRequestFirestoreCount}</div>
+      <div>PostgreSQL request count: {state.rentalRequestPostgresCount}</div>
+      <div>Frontend parity: {state.rentalRequestEquivalent === null ? '-' : state.rentalRequestEquivalent ? 'yes' : 'no'}</div>
+      <div>Backend shadow parity: {state.rentalRequestBackendEquivalent === null ? '-' : state.rentalRequestBackendEquivalent ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Changed request IDs: {state.rentalRequestChangedRequestIds.length ? state.rentalRequestChangedRequestIds.join(', ') : '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Changed request fields: {state.rentalRequestChangedFields.length ? state.rentalRequestChangedFields.join(', ') : '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Rental shadow synced: {state.rentalRequestShadowSyncedAt || '-'}</div>
+
       {state.error ? (
         <div role="alert" style={{ marginTop: '8px', color: '#b91c1c', overflowWrap: 'anywhere' }}>
           {state.error}
@@ -574,6 +648,14 @@ export default function ClerkStagingDiagnostics() {
             </button>
             <button type="button" style={buttonStyle} disabled={state.firestoreWatcherDisabled} onClick={verifyMemberReadParity}>
               {'\uc571 \uc77d\uae30 \ubcd1\ud589\uac80\uc99d'}
+            </button>
+            <button
+              type="button"
+              style={buttonStyle}
+              disabled={!state.firebaseSignedIn || !state.rentalRequestParityRequested}
+              onClick={syncAndVerifyRentalRequestParity}
+            >
+              {'대여신청 Shadow 동기화·병행검증'}
             </button>
             <button type="button" style={buttonStyle} onClick={() => run(() => clerkStagingClient.signOut())}>
               Clerk 로그아웃

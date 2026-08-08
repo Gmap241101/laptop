@@ -52,3 +52,12 @@ VITE_RENTAL_RESTRICTION_POSTGRES_READ_ENABLED=true
 #   ?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWriteThrough=on&restrictionRead=postgres&restrictionWatcher=off
 # restrictionRead=postgres + restrictionWatcher=off is latched in sessionStorage for the current tab.
 # Use ?restrictionRead=firestore or close the tab to return this restriction read to Firestore realtime mode.
+
+# Phase 14 opt-in: enable rentalRequests PostgreSQL shadow parallel-parity diagnostics.
+# This does NOT cut over application reads or writes. Firestore remains authoritative.
+VITE_RENTAL_REQUEST_POSTGRES_PARITY_ENABLED=true
+
+# Start the Phase 14 staging session with:
+#   ?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWriteThrough=on&restrictionRead=postgres&restrictionWatcher=off&rentalRequestParity=1
+# rentalRequestParity=1 is latched in sessionStorage for the current tab.
+# Use ?rentalRequestParity=0 or close the tab to disable Phase 14 parity observation.

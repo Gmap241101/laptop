@@ -1,0 +1,121 @@
+GitHub Education Phase 14 Rental Request Foundation Validation
+===============================================================
+Baseline: rental-system-github-education-phase13-admin-member-management-ux-refinement2-20260808_deployment_package.zip
+Baseline SHA-256: e5548e3ac95a36471a2a38e3ee212e130299e3bf52ba8142aa2c19fbcbf9f8f2
+Target package: rental-system-github-education-phase14-rental-request-foundation-parity-20260808_deployment_package.zip
+Scope: normalized PostgreSQL rental-request shadow + Firestore owner sync + read candidate + staging parallel parity. No write cutover.
+
+Baseline/package source audit
+-----------------------------
+- Baseline SHA-256 exact match: PASS
+- Baseline PACKAGE_FILES entries: 610
+- Baseline protected paths: 0
+- Baseline missing manifest files: 0
+- Baseline duplicate manifest files: 0
+- Baseline SHA mismatches: 0
+
+Phase 14 data-contract audit
+----------------------------
+- Primary request collection: rentalRequests/{requestId}
+- Current + previous Firebase UID user read scope traced: PASS
+- Email compatibility query traced: PASS
+- Request-ID deduplication traced: PASS
+- Request creation/read/update fields traced from source + Firestore Rules: PASS
+- rentalRequestLogs admin-only read rule identified: PASS
+- Firebase Admin/service-account bypass added: NO
+
+Phase 14 migration/backend validation
+-------------------------------------
+- Migration 007 static validation: PASS
+- app_user_rental_request_shadows: PASS
+- app_user_rental_request_item_shadows: PASS
+- app_user_rental_request_shadow_syncs: PASS
+- PostgreSQL transaction BEGIN/COMMIT/ROLLBACK markers: PASS
+- Firestore REST runQuery + caller Firebase bearer auth: PASS
+- Previous-UID/current-UID/email query dedup smoke: PASS
+- PostgreSQL shadow sync smoke: PASS
+- Backend parity equivalent test: PASS
+- Backend parity drift detection: PASS
+- Linked Firebase UID mismatch rejection: PASS
+- PostgreSQL candidate explicitly non-authoritative: PASS
+
+Phase 14 frontend validation
+----------------------------
+- VITE_RENTAL_REQUEST_POSTGRES_PARITY_ENABLED gate: PASS
+- rentalRequestParity=1 session latch: PASS
+- rentalRequestParity=0 reset: PASS
+- Firestore Timestamp / ISO normalization: PASS
+- Request full-field parity test: PASS
+- Status drift detection: PASS
+- Missing request detection: PASS
+- Request order detection: PASS
+- Existing Firestore request subscription observation hook: PASS
+- Phase 14 diagnostics action wiring: PASS
+
+Regression validation
+---------------------
+- Migration static check: PASS
+- Clerk frontend smoke: PASS
+- Member read parity smoke: PASS
+- Member cutover smoke: PASS
+- Member watcher-disable smoke: PASS
+- Member write-through frontend smoke: PASS
+- Rental restriction cutover smoke: PASS
+- Phase 13 admin member UI smoke: PASS
+- Clerk staging config static check: PASS (disabled in local sandbox because no Vercel build env)
+- Backend foundation validation: PASS
+- Backend HTTP smoke: PASS
+- Clerk JWT verification smoke: PASS
+- Clerk/PostgreSQL user sync smoke: PASS
+- Firebase identity bridge smoke: PASS
+- Member shadow smoke: PASS
+- Member cutover backend smoke: PASS
+- Member write-through backend smoke: PASS
+- Rental restriction shadow smoke: PASS
+- Phase 14 rental request shadow smoke: PASS
+- React Hook audit: PASS (154 source files)
+- Application flow audit: PASS (124 contracts, 11 user routes, 20 admin tabs)
+- Firestore strict audit: PASS
+  Total calls: 129
+  onSnapshot: 35
+  getDocs: 48
+  getDoc: 28
+  getCountFromServer: 18
+  Approved risk: 51
+  New warnings: 0
+  Errors: 0
+
+Build result
+------------
+- npm run build:staging prebuild audits: PASS
+- Vite bundle step: NOT EXECUTED in ChatGPT sandbox
+- Sandbox reason: vite: not found (root node_modules absent)
+- This is the documented environment limitation and is not treated as a Phase 14 logic failure.
+- Vercel must perform the real frontend build after the Production environment variable is added.
+
+Protected/core preservation
+---------------------------
+- src/App.jsx: unchanged, 2,130 lines, 66,036 bytes
+- src/App.jsx SHA-256: b30af55defc814cac9b33e056f4c89263444eca04b565c89ef0517d96b4b1117
+- src/firebase.js: unchanged
+- rules/firestore.rules: unchanged
+- firestore.indexes.json: unchanged
+- public/CNAME: unchanged
+- vercel.json: unchanged
+- src/main.jsx: unchanged
+- New npm dependencies: 0
+- Deleted files in Phase 14: 0
+- Cumulative REMOVED_FILES entries: 65
+
+Expected final package invariants
+---------------------------------
+- PACKAGE_FILES entries after this validation report is included: 621
+- Protected paths: 0
+- Missing files: 0
+- Duplicates: 0
+- Unlisted source files: 0
+- Manifest SHA mismatch: 0
+- Unexpected ZIP entries: 0
+- ZIP corruption: 0
+- Negative guard .env.example injection: must exit 1
+- Negative guard missing-file injection: must exit 1

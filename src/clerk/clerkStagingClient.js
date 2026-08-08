@@ -321,6 +321,75 @@ export const requestMemberShadowComparison = async ({ clerk, apiBaseUrl, fetchIm
   return payload;
 };
 
+export const requestRentalRequestReadCandidate = async ({ clerk, apiBaseUrl, fetchImpl }) => {
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/users/me/rental-requests',
+  });
+  if (response.status === 404 && payload?.error === 'rental_request_shadow_not_synced') return null;
+  if (!response.ok) {
+    const code = payload?.error ? ` (${payload.error})` : '';
+    const error = new Error(`Rental request read candidate lookup failed with HTTP ${response.status}${code}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (!payload?.authenticated || payload?.rentalRequestCandidate?.source !== 'postgresql-shadow' || !Array.isArray(payload?.rentalRequestCandidate?.requests)) {
+    throw new Error('Backend returned an invalid rental request read candidate response.');
+  }
+  return payload;
+};
+
+export const requestRentalRequestShadowSync = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken }) => {
+  const token = trim(firebaseIdToken);
+  if (!token) throw new Error('Firebase sign-in is required before synchronizing rental requests.');
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/users/me/legacy/rental-request-shadows/sync',
+    method: 'POST',
+    headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const code = payload?.error ? ` (${payload.error})` : '';
+    const error = new Error(`Rental request shadow synchronization failed with HTTP ${response.status}${code}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (!payload?.authenticated || !payload?.synchronized || payload?.rentalRequestCandidate?.source !== 'postgresql-shadow' || !Array.isArray(payload?.rentalRequestCandidate?.requests)) {
+    throw new Error('Backend returned an invalid rental request shadow synchronization response.');
+  }
+  return payload;
+};
+
+export const requestRentalRequestShadowComparison = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken }) => {
+  const token = trim(firebaseIdToken);
+  if (!token) throw new Error('Firebase sign-in is required before comparing rental request shadows.');
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/users/me/legacy/rental-request-shadows/compare',
+    method: 'POST',
+    headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const code = payload?.error ? ` (${payload.error})` : '';
+    const error = new Error(`Rental request shadow comparison failed with HTTP ${response.status}${code}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (!payload?.authenticated || typeof payload?.comparison?.equivalent !== 'boolean') {
+    throw new Error('Backend returned an invalid rental request shadow comparison response.');
+  }
+  return payload;
+};
+
 const createScriptLoader = (documentRef) => (id, src, attributes = {}) =>
   new Promise((resolve, reject) => {
     const existing = documentRef.getElementById(id);
@@ -466,6 +535,28 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async compareMemberShadow(firebaseIdToken) {
       const clerk = await initialize();
       return requestMemberShadowComparison({
+        clerk,
+        apiBaseUrl: config.apiBaseUrl,
+        fetchImpl,
+        firebaseIdToken,
+      });
+    },
+    async getRentalRequestReadCandidate() {
+      const clerk = await initialize();
+      return requestRentalRequestReadCandidate({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
+    },
+    async syncRentalRequestShadow(firebaseIdToken) {
+      const clerk = await initialize();
+      return requestRentalRequestShadowSync({
+        clerk,
+        apiBaseUrl: config.apiBaseUrl,
+        fetchImpl,
+        firebaseIdToken,
+      });
+    },
+    async compareRentalRequestShadow(firebaseIdToken) {
+      const clerk = await initialize();
+      return requestRentalRequestShadowComparison({
         clerk,
         apiBaseUrl: config.apiBaseUrl,
         fetchImpl,

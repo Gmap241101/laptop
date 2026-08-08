@@ -56,6 +56,6 @@ assert(editActions.includes("reason: 'admin-member-profile-edit'"), 'Admin membe
 assert(statusActions.includes('requested: Boolean(memberWriteThroughConfig.enabled)'), 'Admin status changes must write through in enabled staging mode.');
 assert(diagnostics.includes("maxHeight: 'calc(100vh - 32px)'"), 'Diagnostics panel must cap viewport height.');
 assert(diagnostics.includes("overflowY: 'auto'"), 'Diagnostics panel must have an internal vertical scrollbar.');
-assert(diagnostics.includes('Clerk Staging Test · Phase 13'), 'Diagnostics phase label must remain Phase 13 for this UI refinement.');
+assert(/Clerk Staging Test · Phase (13|14)/.test(diagnostics), 'Diagnostics must retain a recognized staging phase label after later phases.');
 
 console.log('[phase13-admin-member-ui] PASS');

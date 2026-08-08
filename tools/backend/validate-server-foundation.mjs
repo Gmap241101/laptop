@@ -11,12 +11,15 @@ const files = [
   'server/src/firebase/firebase-id-token.mjs',
   'server/src/firestore/firestore-user-account.mjs',
   'server/src/firestore/firestore-rental-restriction.mjs',
+  'server/src/firestore/firestore-rental-requests.mjs',
   'server/src/legacy/firebase-link-repository.mjs',
   'server/src/legacy/firebase-link-service.mjs',
   'server/src/legacy/member-shadow-repository.mjs',
   'server/src/legacy/member-shadow-service.mjs',
   'server/src/restrictions/rental-restriction-repository.mjs',
   'server/src/restrictions/rental-restriction-service.mjs',
+  'server/src/rentals/rental-request-repository.mjs',
+  'server/src/rentals/rental-request-service.mjs',
   'server/src/app.mjs',
   'server/src/index.mjs',
   'server/scripts/check-config.mjs',
@@ -29,6 +32,7 @@ const files = [
   'tools/backend/smoke-member-profile-cutover.mjs',
   'tools/backend/smoke-member-profile-write-through.mjs',
   'tools/backend/smoke-rental-restriction-shadow.mjs',
+  'tools/backend/smoke-rental-request-shadow.mjs',
 ];
 
 for (const file of files) {
@@ -74,6 +78,18 @@ for (const marker of ['CREATE TABLE IF NOT EXISTS app_user_rental_restriction_sh
   if (!phase12Migration.includes(marker)) throw new Error(`Phase 12 rental restriction migration marker is missing: ${marker}`);
 }
 
+const phase14Migration = readFileSync('server/migrations/007_phase14_rental_request_foundation.sql', 'utf8');
+for (const marker of [
+  'CREATE TABLE IF NOT EXISTS app_user_rental_request_shadows',
+  'CREATE TABLE IF NOT EXISTS app_user_rental_request_item_shadows',
+  'CREATE TABLE IF NOT EXISTS app_user_rental_request_shadow_syncs',
+  'source_request_id TEXT NOT NULL UNIQUE',
+  "'mode', 'normalized-shadow-parallel-read'",
+  "'authoritative', 'firestore'",
+]) {
+  if (!phase14Migration.includes(marker)) throw new Error(`Phase 14 rental request migration marker is missing: ${marker}`);
+}
+
 const app = readFileSync('server/src/app.mjs', 'utf8');
 for (const marker of [
   "url.pathname === '/api/auth/session'",
@@ -90,6 +106,9 @@ for (const marker of [
   "url.pathname === '/api/legacy/rental-restriction-candidate'",
   "url.pathname === '/api/legacy/rental-restriction-firestore-fallback'",
   "url.pathname === '/api/legacy/rental-restriction-shadow/write-through'",
+  "url.pathname === '/api/users/me/rental-requests'",
+  "url.pathname === '/api/users/me/legacy/rental-request-shadows/sync'",
+  "url.pathname === '/api/users/me/legacy/rental-request-shadows/compare'",
   "source: 'postgresql-shadow'",
   'authoritative: false',
   "'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'",
@@ -197,9 +216,34 @@ for (const marker of ['readRentalRestrictionCutoverConfig', 'requestRentalRestri
   if (!subscription.includes(marker)) throw new Error(`Phase 12 restriction subscription marker is missing: ${marker}`);
 }
 
+const rentalRequestClient = readFileSync('server/src/firestore/firestore-rental-requests.mjs', 'utf8');
+for (const marker of ['documents:runQuery', "collectionId: 'rentalRequests'", 'Authorization: `Bearer ${token}`', "fieldPath: 'requesterUid'", "fieldPath: 'requesterEmail'"]) {
+  if (!rentalRequestClient.includes(marker)) throw new Error(`Phase 14 rental request Firestore client marker is missing: ${marker}`);
+}
+
+const rentalRequestRepository = readFileSync('server/src/rentals/rental-request-repository.mjs', 'utf8');
+for (const marker of ['app_user_rental_request_shadows', 'app_user_rental_request_item_shadows', 'app_user_rental_request_shadow_syncs', 'BEGIN', 'COMMIT', 'ROLLBACK']) {
+  if (!rentalRequestRepository.includes(marker)) throw new Error(`Phase 14 rental request repository marker is missing: ${marker}`);
+}
+
+const rentalRequestService = readFileSync('server/src/rentals/rental-request-service.mjs', 'utf8');
+for (const marker of ['previousAccountUids', 'requesterEmail', 'listOwnRentalRequests', 'rental_request_shadow_not_synced', 'compareCurrent', 'sourceHash']) {
+  if (!rentalRequestService.includes(marker)) throw new Error(`Phase 14 rental request service marker is missing: ${marker}`);
+}
+
+const rentalRequestParity = readFileSync('src/features/requests/rentalRequestReadParity.js', 'utf8');
+for (const marker of ['VITE_RENTAL_REQUEST_POSTGRES_PARITY_ENABLED', "get('rentalRequestParity') === '1'", 'firestore-onSnapshot', 'compareRentalRequestReads', 'requestOrder']) {
+  if (!rentalRequestParity.includes(marker)) throw new Error(`Phase 14 rental request parity marker is missing: ${marker}`);
+}
+
+const rentalSubscription = readFileSync('src/features/requests/useRentalDataSubscriptionController.js', 'utf8');
+if (!rentalSubscription.includes('publishRentalRequestReadObservation')) {
+  throw new Error('Phase 14 actual Firestore rental request subscription observation hook is missing.');
+}
+
 const configTemplate = readFileSync('docs/github-education/HEROKU_CONFIG_VARS_TEMPLATE.txt', 'utf8');
 for (const variable of ['CLERK_JWT_KEY=', 'CLERK_AUTHORIZED_PARTIES=', 'CLERK_SECRET_KEY=sk_test_', 'CLERK_API_TIMEOUT_MS=8000', 'FIREBASE_PROJECT_ID=laptop-system-mk']) {
   if (!configTemplate.includes(variable)) throw new Error(`Phase 6 config template is missing ${variable}`);
 }
 
-console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9 database/auth + phase8 parallel-read + phase9 opt-in cutover + phase10 watcher-disable/fallback + phase11 member write-through + phase12 rental-restriction PostgreSQL shadow/watcher-reduction invariants)`);
+console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request normalized shadow/parallel-parity invariants)`);

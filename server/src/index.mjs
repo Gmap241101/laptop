@@ -6,6 +6,7 @@ import { readServerConfig } from './config/env.mjs';
 import { createFirebaseIdTokenVerifier, extractFirebaseBearerToken } from './firebase/firebase-id-token.mjs';
 import { createFirestoreUserAccountClient } from './firestore/firestore-user-account.mjs';
 import { createFirestoreRentalRestrictionClient } from './firestore/firestore-rental-restriction.mjs';
+import { createFirestoreRentalRequestsClient } from './firestore/firestore-rental-requests.mjs';
 import { checkDatabase, closePool, getPool } from './db/pool.mjs';
 import { createUserRepository } from './users/user-repository.mjs';
 import { createUserIdentityService } from './users/user-service.mjs';
@@ -15,6 +16,8 @@ import { createMemberShadowRepository } from './legacy/member-shadow-repository.
 import { createMemberShadowService } from './legacy/member-shadow-service.mjs';
 import { createRentalRestrictionRepository } from './restrictions/rental-restriction-repository.mjs';
 import { createRentalRestrictionService } from './restrictions/rental-restriction-service.mjs';
+import { createRentalRequestRepository } from './rentals/rental-request-repository.mjs';
+import { createRentalRequestService } from './rentals/rental-request-service.mjs';
 
 const config = readServerConfig();
 const authenticateRequest = createClerkSessionAuthenticator(config);
@@ -73,6 +76,26 @@ const rentalRestrictionService = createRentalRestrictionService({
   rentalRestrictionRepository,
   firestoreRentalRestrictionClient,
 });
+const rentalRequestRepository = createRentalRequestRepository(pool);
+const firestoreRentalRequestsClient = config.firebaseProjectId
+  ? createFirestoreRentalRequestsClient({
+      projectId: config.firebaseProjectId,
+      timeoutMs: config.firestoreRestTimeoutMs,
+    })
+  : {
+      async listOwnRentalRequests() {
+        const error = new Error('Firestore rental request read is not configured.');
+        error.code = 'firestore_rental_requests_not_configured';
+        throw error;
+      },
+    };
+const rentalRequestService = createRentalRequestService({
+  userRepository,
+  firebaseLinkRepository,
+  memberShadowRepository,
+  rentalRequestRepository,
+  firestoreRentalRequestsClient,
+});
 const verifyFirebaseIdToken = config.firebaseProjectId
   ? createFirebaseIdTokenVerifier({
       projectId: config.firebaseProjectId,
@@ -98,6 +121,7 @@ const server = createServer(
     firebaseLinkService,
     memberShadowService,
     rentalRestrictionService,
+    rentalRequestService,
   }),
 );
 
@@ -113,6 +137,7 @@ server.listen(config.port, '0.0.0.0', () => {
     firebaseIdentityBridge: config.firebaseProjectId ? 'configured' : 'disabled',
     firestoreMemberShadow: config.firebaseProjectId ? 'user-token-security-rules' : 'disabled',
     rentalRestrictionShadow: config.firebaseProjectId ? 'postgresql-user-token-security-rules' : 'disabled',
+    rentalRequestShadow: config.firebaseProjectId ? 'normalized-postgresql-user-token-security-rules' : 'disabled',
   });
 });
 
