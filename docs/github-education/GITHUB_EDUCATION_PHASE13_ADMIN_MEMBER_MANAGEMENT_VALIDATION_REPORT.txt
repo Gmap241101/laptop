@@ -1,0 +1,59 @@
+GitHub Education Phase 13 - Admin Member Management Validation
+================================================================
+
+Baseline:
+  rental-system-github-education-phase12-rental-restriction-read-reduction-20260808_deployment_package.zip
+
+Automated checks:
+  Phase 13 admin member UI smoke                         PASS
+  Phase 12 rental restriction frontend smoke            PASS
+  Phase 11 member write-through frontend smoke          PASS
+  Phase 10 watcher-disable frontend smoke               PASS
+  Phase 9 member cutover frontend smoke                 PASS
+  Phase 8 member parallel-read frontend smoke           PASS
+  Server migrations static check                        PASS
+  Server foundation                                     PASS
+  Server HTTP smoke                                     PASS
+  Clerk JWT smoke                                       PASS
+  Clerk Backend API user sync                           PASS
+  Firebase identity bridge                              PASS
+  Member shadow                                         PASS
+  Member cutover                                        PASS
+  Member write-through                                  PASS
+  Rental restriction shadow                             PASS
+  React hook audit                                      PASS (152 source files)
+  Application flow contract audit                       PASS (124 contracts / 11 user routes / 20 admin tabs)
+  Firestore strict audit                                PASS
+    total calls: 129
+    onSnapshot: 35
+    getDocs: 48
+    getDoc: 28
+    getCountFromServer: 18
+    approved risks: 51
+    new warnings: 0
+    errors: 0
+
+Phase 13 specific invariants:
+  diagnostics viewport max-height/internal scroll       PASS
+  page-size options 10/30/50                            PASS
+  selected page-size used by browse query               PASS
+  selected page-size used by progressive search         PASS
+  desktop fixed table columns                           PASS
+  member edit dialog wired from list                    PASS
+  admin edit uses Firestore transaction                 PASS
+  identity-claim maintenance                            PASS
+  account-recovery-key maintenance                      PASS
+  staging PostgreSQL write-through hook                 PASS
+
+Build limitation:
+  Full Vite build cannot be completed in the model runtime when root node_modules is absent.
+  No new npm dependency was introduced; deploy.ps1 v13.1 remains the final bundle/build validation environment.
+
+Package guard negative tests:
+  injected .env.example                                  BLOCKED / exit 1
+  injected missing file                                 BLOCKED / exit 1
+
+Staging build attempt:
+  prebuild audits                                        PASS
+  Clerk config check                                     PASS (disabled in model runtime)
+  Vite bundle                                            NOT RUN: `vite` executable unavailable because root node_modules is absent

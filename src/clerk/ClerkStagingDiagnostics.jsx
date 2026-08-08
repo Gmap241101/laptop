@@ -30,6 +30,11 @@ const panelStyle = {
   bottom: '16px',
   zIndex: 99999,
   width: 'min(380px, calc(100vw - 32px))',
+  maxHeight: 'calc(100vh - 32px)',
+  overflowY: 'auto',
+  overscrollBehavior: 'contain',
+  scrollbarGutter: 'stable',
+  WebkitOverflowScrolling: 'touch',
   padding: '14px',
   border: '1px solid #cbd5e1',
   borderRadius: '12px',
@@ -427,7 +432,7 @@ export default function ClerkStagingDiagnostics() {
 
   return (
     <aside style={panelStyle} aria-label="Clerk staging diagnostics">
-      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 12</div>
+      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 13</div>
       <div>SDK: {state.phase === 'loading' ? 'loading' : state.phase}</div>
       <div>Signed in: {state.signedIn ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Clerk user: {state.userId || '-'}</div>

@@ -17,13 +17,15 @@ import {
   scanFirestoreMatches,
 } from '../../services/progressiveFirestoreSearch.js';
 
-export const ADMIN_MEMBER_ACCOUNT_PAGE_SIZE = 20;
+export const ADMIN_MEMBER_ACCOUNT_PAGE_SIZE_OPTIONS = Object.freeze([10, 30, 50]);
+export const DEFAULT_ADMIN_MEMBER_ACCOUNT_PAGE_SIZE = 10;
 
 const memberAccountsSessionState = {
   lastNavigationRequestId: 0,
   page: 1,
   query: '',
   statusFilter: 'all',
+  pageSize: DEFAULT_ADMIN_MEMBER_ACCOUNT_PAGE_SIZE,
 };
 
 const createEmptySearchCache = (key) => ({
@@ -96,9 +98,13 @@ export default function useAdminMemberAccountsController({
   const [totalCount, setTotalCount] = useState(0);
   const [ready, setReady] = useState(false);
   const [loadErrorMessage, setLoadErrorMessage] = useState('');
+  const [refreshRevision, setRefreshRevision] = useState(0);
   const [query, setQuery] = useState(() => memberAccountsSessionState.query);
   const [statusFilter, setStatusFilter] = useState(
     () => memberAccountsSessionState.statusFilter
+  );
+  const [pageSize, setPageSize] = useState(
+    () => memberAccountsSessionState.pageSize
   );
   const [statusCounts, setStatusCounts] = useState({
     pending: 0,
@@ -122,7 +128,8 @@ export default function useAdminMemberAccountsController({
     memberAccountsSessionState.page = page;
     memberAccountsSessionState.query = query;
     memberAccountsSessionState.statusFilter = statusFilter;
-  }, [page, query, statusFilter]);
+    memberAccountsSessionState.pageSize = pageSize;
+  }, [page, pageSize, query, statusFilter]);
 
   useEffect(() => {
     if (
@@ -227,7 +234,7 @@ export default function useAdminMemberAccountsController({
   useEffect(() => {
     setPage(1);
     cursorByPageRef.current = new Map([[1, null]]);
-  }, [query, statusFilter]);
+  }, [pageSize, query, statusFilter]);
 
   useEffect(() => {
     if (!prerequisitesReady) {
@@ -278,7 +285,7 @@ export default function useAdminMemberAccountsController({
         ],
         startCursor: cache.cursor,
         existingMatches: cache.matches,
-        targetMatchCount: page * ADMIN_MEMBER_ACCOUNT_PAGE_SIZE + 1,
+        targetMatchCount: page * pageSize + 1,
         batchSize: DEFAULT_PROGRESSIVE_SEARCH_BATCH_SIZE,
         mapDocument: (userDoc) => ({
           ...userDoc.data(),
@@ -299,7 +306,7 @@ export default function useAdminMemberAccountsController({
           };
           setAccounts(result.matches);
           setHasNextPage(
-            result.matches.length > page * ADMIN_MEMBER_ACCOUNT_PAGE_SIZE ||
+            result.matches.length > page * pageSize ||
               !result.exhausted
           );
           setTotalCount(result.matches.length);
@@ -326,7 +333,7 @@ export default function useAdminMemberAccountsController({
     }
 
     searchCacheRef.current = null;
-    const cursorKey = `${statusFilter}|browse`;
+    const cursorKey = `${statusFilter}|${pageSize}|browse`;
     const cursorKeyChanged = cursorKeyRef.current !== cursorKey;
 
     if (cursorKeyChanged) {
@@ -346,7 +353,7 @@ export default function useAdminMemberAccountsController({
       ...statusConstraints,
       orderBy('createdAt', 'desc'),
       ...(pageCursor ? [startAfter(pageCursor)] : []),
-      firestoreLimit(ADMIN_MEMBER_ACCOUNT_PAGE_SIZE + 1)
+      firestoreLimit(pageSize + 1)
     );
 
     const unsubscribe = onSnapshot(
@@ -355,9 +362,9 @@ export default function useAdminMemberAccountsController({
         const sourceDocs = snapshot.docs;
         const visibleDocs = sourceDocs.slice(
           0,
-          ADMIN_MEMBER_ACCOUNT_PAGE_SIZE
+          pageSize
         );
-        const hasNext = sourceDocs.length > ADMIN_MEMBER_ACCOUNT_PAGE_SIZE;
+        const hasNext = sourceDocs.length > pageSize;
 
         if (visibleDocs.length > 0) {
           cursorByPageRef.current.set(
@@ -404,7 +411,9 @@ export default function useAdminMemberAccountsController({
     debouncedQuery,
     enabled,
     page,
+    pageSize,
     prerequisitesReady,
+    refreshRevision,
     statusFilter,
   ]);
 
@@ -453,7 +462,7 @@ export default function useAdminMemberAccountsController({
     1,
     Math.ceil(
       (searchMode ? matchedManagedAccounts.length : totalCount) /
-        ADMIN_MEMBER_ACCOUNT_PAGE_SIZE
+        pageSize
     )
   );
 
@@ -463,16 +472,22 @@ export default function useAdminMemberAccountsController({
     () =>
       searchMode
         ? matchedManagedAccounts.slice(
-            (safePage - 1) * ADMIN_MEMBER_ACCOUNT_PAGE_SIZE,
-            safePage * ADMIN_MEMBER_ACCOUNT_PAGE_SIZE
+            (safePage - 1) * pageSize,
+            safePage * pageSize
           )
         : matchedManagedAccounts,
-    [matchedManagedAccounts, safePage, searchMode]
+    [matchedManagedAccounts, pageSize, safePage, searchMode]
   );
+
+  const refreshAdminUserAccounts = () => {
+    searchCacheRef.current = null;
+    setRefreshRevision((revision) => revision + 1);
+  };
 
   return {
     adminUserAccountHasNextPage: hasNextPage,
     adminUserAccountPage: page,
+    adminUserAccountPageSize: pageSize,
     adminUserAccountQuery: query,
     adminUserAccountSearchMode: searchMode,
     adminUserAccountStatusCounts: statusCounts,
@@ -481,8 +496,10 @@ export default function useAdminMemberAccountsController({
     adminUserAccountsLoadErrorMessage: loadErrorMessage,
     adminUserAccountsReady: ready,
     filteredManagedUserAccounts: filteredAccounts,
+    refreshAdminUserAccounts,
     safeAdminUserAccountPage: safePage,
     setAdminUserAccountPage: setPage,
+    setAdminUserAccountPageSize: setPageSize,
     setAdminUserAccountQuery: setQuery,
     setAdminUserAccountStatusFilter: setStatusFilter,
   };

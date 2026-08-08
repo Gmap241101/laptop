@@ -29,7 +29,10 @@ import {
 import {
   getUserAccountStatusLabel,
 } from './memberAccountPolicy.js';
-import { syncMemberProfileWriteThroughBestEffort } from './memberProfileWriteThrough.js';
+import {
+  readMemberProfileWriteThroughConfig,
+  syncMemberProfileWriteThroughBestEffort,
+} from './memberProfileWriteThrough.js';
 import { syncRentalRestrictionWriteThroughBestEffort } from '../requests/rentalRestrictionReadCutover.js';
 
 const VALID_USER_ACCOUNT_STATUSES = new Set([
@@ -157,10 +160,15 @@ export default function useAdminMemberAccountStatusActions({
 
         await batch.commit();
 
+        const memberWriteThroughConfig = readMemberProfileWriteThroughConfig();
         await syncMemberProfileWriteThroughBestEffort({
           firebaseUser: firebaseAuth.currentUser,
           firebaseUid: userUid,
           reason: 'admin-member-status-change',
+          config: {
+            ...memberWriteThroughConfig,
+            requested: Boolean(memberWriteThroughConfig.enabled),
+          },
         });
 
         if (inheritedRestrictionStillActive) {
