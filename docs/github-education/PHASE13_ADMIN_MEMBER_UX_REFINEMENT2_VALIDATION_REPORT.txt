@@ -1,0 +1,45 @@
+PHASE 13 ADMIN MEMBER UX REFINEMENT 2 VALIDATION
+================================================
+
+Scope
+-----
+- Expand member search field to consume toolbar remainder.
+- Match Admin Request pagination/footer layout.
+- Replace inline table-row/member-card expansion with dedicated list/detail body switching.
+
+Automated validation
+--------------------
+- npm run verify:phase13: PASS
+- Phase 12 regression suite: PASS
+- Phase 13 admin member UI smoke: PASS
+- React Hook audit: PASS (153 source files)
+- Application flow audit: PASS (124 contracts, 11 user routes, 20 admin tabs)
+- Firestore strict audit: PASS
+  - total calls: 129
+  - onSnapshot: 35
+  - getDocs: 48
+  - getDoc: 28
+  - getCountFromServer: 18
+  - approved risks: 51
+  - warnings: 0
+  - errors: 0
+
+New UI contract assertions
+--------------------------
+PASS: member search uses flexible remaining toolbar width
+PASS: status and page-size controls remain fixed-width
+PASS: pagination summary uses '검색 결과 N건 · page / pages페이지'
+PASS: legacy '서버 커서 페이지' footer copy removed
+PASS: selected member switches list body to dedicated detail body
+PASS: dedicated detail provides '목록으로'
+PASS: desktop colSpan inline expansion removed
+PASS: member detail retains terms/history/member-edit actions
+PASS: member edit remains a separate modal
+
+Backend/data changes
+--------------------
+- migration: none
+- backend API: none
+- environment variables: none
+- npm dependencies: none
+- Heroku SERVICE_VERSION: keep phase12

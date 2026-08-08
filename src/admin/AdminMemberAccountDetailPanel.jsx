@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FileCheck2, History, PencilLine, X } from 'lucide-react';
+import { FileCheck2, History, PencilLine } from 'lucide-react';
 
 import { loadMemberAccountHistorySummary } from '../features/members/memberAccountHistoryService.js';
 import {
@@ -14,7 +14,6 @@ const getCreatedAtText = (account) =>
 
 export default function AdminMemberAccountDetailPanel({
   account,
-  onClose,
   onEdit,
   onOpenTerms,
 }) {
@@ -44,11 +43,11 @@ export default function AdminMemberAccountDetailPanel({
   };
 
   return (
-    <div className="rounded-xl border border-orange-100 bg-orange-50/40 p-4 text-left">
-      <div className="flex items-start justify-between gap-4">
+    <div className="space-y-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm text-left">
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="truncate text-sm font-black text-slate-900">
+            <h3 className="truncate text-base font-black text-slate-950">
               {account.name || '이름 미등록'} 회원 상세
             </h3>
             <span
@@ -58,20 +57,12 @@ export default function AdminMemberAccountDetailPanel({
             </span>
           </div>
           <p className="mt-1 text-[11px] text-slate-500">
-            목록에서는 조회만 하며, 회원정보 변경은 아래의 회원수정 버튼으로 별도 팝업을 열어 진행합니다.
+            회원정보를 조회하는 상세 본문입니다. 수정이 필요한 경우 아래 회원수정 버튼을 눌러 별도 팝업에서 진행합니다.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
-          aria-label="회원 상세 닫기"
-        >
-          <X size={14} />
-        </button>
       </div>
 
-      <div className="mt-4 grid gap-x-5 gap-y-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-x-5 gap-y-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
           ['이름', account.name || '-'],
           ['부서 / 팀', account.team || '-'],
@@ -93,12 +84,12 @@ export default function AdminMemberAccountDetailPanel({
       </div>
 
       {account.status === 'retired' ? (
-        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-800">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-800">
           이용 종료 계정은 회원정보 수정이 잠겨 있습니다. 목록에서 이용 재개 후 수정해 주세요.
         </div>
       ) : null}
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-4">
         <button
           type="button"
           onClick={onOpenTerms}
@@ -125,12 +116,12 @@ export default function AdminMemberAccountDetailPanel({
       </div>
 
       {historySummary ? (
-        <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-[11px] leading-5 text-violet-800">
+        <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-[11px] leading-5 text-violet-800">
           전체 대여 {historySummary.totalRequests}건 · 이전 계정 대여 {historySummary.previousRequests}건 · 진행 중 {historySummary.activeRequests}건 · 연체 이력 {historySummary.overdueRequests}건
         </div>
       ) : null}
       {historyError ? (
-        <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
           {historyError}
         </div>
       ) : null}

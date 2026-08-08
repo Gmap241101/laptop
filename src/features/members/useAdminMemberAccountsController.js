@@ -484,9 +484,12 @@ export default function useAdminMemberAccountsController({
     setRefreshRevision((revision) => revision + 1);
   };
 
+  const resultCount = searchMode ? matchedManagedAccounts.length : totalCount;
+
   return {
     adminUserAccountHasNextPage: hasNextPage,
     adminUserAccountPage: page,
+    adminUserAccountResultCount: resultCount,
     adminUserAccountPageSize: pageSize,
     adminUserAccountQuery: query,
     adminUserAccountSearchMode: searchMode,

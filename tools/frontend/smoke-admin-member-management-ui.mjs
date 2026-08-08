@@ -23,19 +23,29 @@ assert(
 );
 assert(controller.includes('firestoreLimit(pageSize + 1)'), 'Browse query must use selected pageSize.');
 assert(controller.includes('targetMatchCount: page * pageSize + 1'), 'Search query must use selected pageSize.');
+assert(controller.includes('adminUserAccountResultCount: resultCount'), 'Member controller must expose result count for request-style pagination summary.');
 assert(panel.includes('페이지당 표시'), 'Member account panel must expose page-size selector.');
+assert(
+  panel.includes('md:grid-cols-[minmax(0,1fr)_160px_140px]'),
+  'Member search field must consume the remaining toolbar width like the admin request toolbar.'
+);
 assert(panel.includes('번호') && panel.includes('활성여부') && panel.includes('가입일시'), 'Desktop member table columns are incomplete.');
 assert(panel.includes('이용 관리') && panel.includes('회원정보'), 'Consolidated member action columns are missing.');
 assert(!panel.includes('>이용 재개 / 차단<'), 'Legacy split status-action table heading must be removed.');
 assert(panel.includes("compactActionButtonClass = '!gap-1 !rounded-lg !px-2 !py-1 !text-[10px]'"), 'Member action buttons must use compact sizing.');
-assert(panel.includes('AdminMemberAccountDetailPanel'), 'Inline member detail panel must be wired to the list.');
-assert(panel.includes('toggleSelectedAccount(account)'), 'Member row click must toggle inline detail instead of opening edit immediately.');
-assert(panel.includes('colSpan={7}'), 'Desktop member detail must expand as a full-width body row.');
-assert(panel.includes('회원 수정'), 'Member edit action must exist beside consolidated use-management actions.');
-assert(detail.includes('약관 동의 내역'), 'Inline member detail must keep terms history access.');
-assert(detail.includes('대여 이력 확인'), 'Inline member detail must keep rental history access.');
-assert(detail.includes('회원수정'), 'Inline member detail must expose explicit member-edit action.');
-assert(detail.includes('목록에서는 조회만 하며'), 'Inline detail must make read-only behavior explicit.');
+assert(panel.includes('AdminMemberAccountDetailPanel'), 'Member detail body must be wired to the member management view.');
+assert(panel.includes('onClick={() => setSelectedAccount(account)}'), 'Member row click must select a dedicated detail body.');
+assert(panel.includes('selectedAccount ? ('), 'Selected member must switch the management body from list mode to detail mode.');
+assert(panel.includes('목록으로'), 'Dedicated member detail body must provide a list-return action.');
+assert(!panel.includes('colSpan={7}'), 'Member detail must not render as an inline table expansion row.');
+assert(!panel.includes('서버 커서 페이지'), 'Legacy server-cursor footer copy must be removed.');
+assert(panel.includes('검색 결과 {adminUserAccountResultCount}건'), 'Pagination summary must use the admin-request list style.');
+assert(panel.includes('회원 수정'), 'Member edit action must remain available beside consolidated use-management actions.');
+assert(detail.includes('약관 동의 내역'), 'Member detail body must keep terms history access.');
+assert(detail.includes('대여 이력 확인'), 'Member detail body must keep rental history access.');
+assert(detail.includes('회원수정'), 'Member detail body must expose explicit member-edit action.');
+assert(detail.includes('회원정보를 조회하는 상세 본문입니다.'), 'Member detail must explicitly be a read-only detail body.');
+assert(!detail.includes('aria-label="회원 상세 닫기"'), 'Inline expansion close control must be removed from the dedicated detail body.');
 assert(dialog.includes('회원정보 수정'), 'Member edit dialog heading is missing.');
 assert(dialog.includes('회원정보 저장'), 'Member edit dialog save action is missing.');
 assert(!dialog.includes('약관 동의 내역') && !dialog.includes('대여 이력 확인'), 'Edit popup must not own terms/history actions anymore.');
