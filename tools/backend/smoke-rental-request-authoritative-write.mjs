@@ -3,8 +3,19 @@ import assert from 'node:assert/strict';
 import { createRentalRequestWriteService } from '../../server/src/rentals/rental-request-write-service.mjs';
 import {
   findBlockingReservation,
+  koreaRequestedAtText,
   validateRequestedPeriod,
 } from '../../server/src/rentals/rental-request-write-policy.mjs';
+
+
+assert.equal(
+  koreaRequestedAtText(new Date('2026-08-08T04:20:40.000Z')),
+  '2026. 8. 8. 오후 1:20:40',
+);
+assert.equal(
+  koreaRequestedAtText(new Date('2026-08-08T00:05:06.000Z')),
+  '2026. 8. 8. 오전 9:05:06',
+);
 
 const settings = {
   maxRentalDays: 14,

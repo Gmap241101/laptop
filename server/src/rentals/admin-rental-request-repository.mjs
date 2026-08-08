@@ -1,5 +1,13 @@
 const trim = (value) => String(value ?? '').trim();
 const asJson = (value, fallback) => value == null ? fallback : value;
+const dateText = (value) => {
+  if (!value) return '';
+  if (value instanceof Date) return Number.isFinite(value.getTime()) ? value.toISOString().slice(0, 10) : '';
+  const text = trim(value);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const parsed = Date.parse(text);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString().slice(0, 10) : text.slice(0, 10);
+};
 const BLOCKING = new Set(['신청중', '대여중', '보류']);
 const TRANSITIONS = Object.freeze({
   '신청중': ['대여중', '보류', '불허', '사용자취소'],
@@ -22,8 +30,8 @@ const mapRow = (row) => row ? Object.freeze({
   laptopId: row.laptop_id || '',
   assetCategory: row.asset_category || '',
   assetNo: row.asset_no || '',
-  startDate: row.start_date ? String(row.start_date).slice(0, 10) : '',
-  dueDate: row.due_date ? String(row.due_date).slice(0, 10) : '',
+  startDate: dateText(row.start_date),
+  dueDate: dateText(row.due_date),
   purpose: row.purpose,
   status: row.status,
   adminMemo: row.admin_memo || '',
@@ -49,7 +57,7 @@ const SELECT = `
   request.request_id, request.app_user_id, request.firebase_uid,
   request.requester_email, request.requester_name, request.requester_team,
   item.laptop_id, item.asset_category, item.asset_no,
-  request.start_date, request.due_date, request.purpose, request.status,
+  request.start_date::text AS start_date, request.due_date::text AS due_date, request.purpose, request.status,
   request.admin_memo, request.extension_count, request.last_extension_approved_date,
   request.next_extension_request_date, request.extension_history, request.user_action_request,
   request.requested_at_text, request.returned_at, request.actual_return_date,

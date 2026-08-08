@@ -22,16 +22,23 @@ export const koreaToday = (now = new Date()) => {
   return `${values.year}-${values.month}-${values.day}`;
 };
 
-export const koreaRequestedAtText = (now = new Date()) =>
-  new Intl.DateTimeFormat('ko-KR', {
+export const koreaRequestedAtText = (now = new Date()) => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Seoul',
     year: 'numeric',
     month: 'numeric',
     day: 'numeric',
-    hour: 'numeric',
-    minute: 'numeric',
-    second: 'numeric',
-  }).format(now);
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(now);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const hour24 = Number(values.hour);
+  const hour12 = hour24 % 12 || 12;
+  const dayPeriod = hour24 < 12 ? '오전' : '오후';
+  return `${values.year}. ${Number(values.month)}. ${Number(values.day)}. ${dayPeriod} ${hour12}:${values.minute}:${values.second}`;
+};
 
 const getEnabledHoliday = (dateText, settings = {}) => {
   const holidays = Array.isArray(settings?.holidays) ? settings.holidays : [];

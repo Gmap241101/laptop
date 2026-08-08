@@ -30,3 +30,23 @@ The actual source behavior differs from an earlier high-level plan: request chan
 
 ## Remaining major migration domains
 After Phase 19, the rental-request workflow is effectively PostgreSQL-authoritative end-to-end, but Firestore compatibility mirrors remain while other domains still depend on Firestore. The next grouped work should move the rental asset/catalog/availability domain, followed by member/restriction writes and then low-change settings/content domains.
+
+## Phase 19 staging hotfix - admin status DATE normalization
+
+A staging runtime defect was found after Phase 19 deployment: administrator approval/on-hold/rejection actions could return PostgreSQL error code `22007`. The administrator rental-request repository read `DATE` columns without forcing text representation and then converted them with `String(value).slice(0, 10)`. When the PostgreSQL driver returns a JavaScript `Date`, this can produce a non-ISO fragment such as `Sat Aug 08`, which is invalid when passed back to PostgreSQL as `$n::date`.
+
+The hotfix preserves all existing workflow behavior and changes only the administrator repository date boundary:
+
+- `start_date` and `due_date` are selected as `::text`.
+- Repository mapping normalizes JavaScript `Date` and string values to `YYYY-MM-DD`.
+- The backend admin rental request smoke now covers JavaScript `Date` rows and verifies the explicit `::text` SELECT contract.
+- No migration, Firestore rule, index, dependency, UI, or production-routing change is required.
+
+
+## Pre-apply hotfix: deterministic Korean request timestamp
+
+- The Phase 16+ backend-generated `requestedAt` text no longer relies on the Node/Heroku ICU day-period label.
+- `koreaRequestedAtText()` now formats Asia/Seoul components deterministically as `YYYY. M. D. 오전/오후 h:mm:ss`.
+- Example: `2026. 8. 8. 오후 1:20:40`.
+- This is a display/data-contract consistency fix and is separate from the PostgreSQL `22007` admin DATE normalization fix.
+- No migration, Firestore Rules/index, or npm dependency change is required.

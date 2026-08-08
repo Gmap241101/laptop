@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createAdminRentalRequestService } from '../../server/src/rentals/admin-rental-request-service.mjs';
+import { createAdminRentalRequestRepository } from '../../server/src/rentals/admin-rental-request-repository.mjs';
 
 const identity = { uid: 'admin-uid', idToken: 'firebase-token' };
 const sourceDocument = {
@@ -74,4 +75,34 @@ await assert.rejects(
   (error) => error?.code === 'rental_period_conflict',
 );
 
-console.log('[admin-rental-request-cutover-backend-smoke] PASS (admin auth, bootstrap, PostgreSQL list/status authority, source reservation policy, Firestore compatibility mirror)');
+
+
+let dateSelectSql = '';
+const dateRowPool = {
+  async connect() { throw new Error('connect-not-needed-for-date-read-smoke'); },
+  async query(sql) {
+    dateSelectSql = String(sql || '');
+    return {
+      rows: [{
+        request_id: 'REQ-DATE-1', app_user_id: 1, firebase_uid: 'user-uid', requester_email: 'user@example.com',
+        requester_name: 'Tester', requester_team: 'QA', laptop_id: 'asset-1', asset_category: '노트북', asset_no: 'A-1',
+        start_date: new Date('2026-08-10T00:00:00.000Z'), due_date: new Date('2026-08-11T00:00:00.000Z'),
+        purpose: 'Date normalization', status: '신청중', admin_memo: '', extension_count: 0,
+        last_extension_approved_date: '', next_extension_request_date: '', extension_history: [], user_action_request: null,
+        requested_at_text: '', returned_at: null, actual_return_date: '', overdue_days_at_return: 0,
+        overdue_penalty_pending: false, overdue_penalty_batch_id: '', source_mode: 'firestore-admin-import',
+        firestore_mirror_status: 'legacy-source', source_created_at: null, source_updated_at: null,
+        source_synced_at: null, created_at: new Date('2026-08-08T00:00:00.000Z'), updated_at: new Date('2026-08-08T00:00:00.000Z'),
+      }],
+      rowCount: 1,
+    };
+  },
+};
+const dateRepository = createAdminRentalRequestRepository(dateRowPool);
+const normalizedDateRequest = await dateRepository.getByRequestId('REQ-DATE-1');
+assert.equal(normalizedDateRequest.startDate, '2026-08-10');
+assert.equal(normalizedDateRequest.dueDate, '2026-08-11');
+assert.match(dateSelectSql, /request\.start_date::text AS start_date/);
+assert.match(dateSelectSql, /request\.due_date::text AS due_date/);
+
+console.log('[admin-rental-request-cutover-backend-smoke] PASS (admin auth, bootstrap, PostgreSQL list/status authority, DATE normalization, source reservation policy, Firestore compatibility mirror)');

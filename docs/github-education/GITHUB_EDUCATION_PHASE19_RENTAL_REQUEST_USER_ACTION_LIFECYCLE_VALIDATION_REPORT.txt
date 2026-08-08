@@ -33,3 +33,27 @@ Runtime acceptance still required after deployment:
 5. For manual extension, administrator approve/deny uses postgresql-authoritative and the user view reflects the result.
 6. An overdue user cannot extend another active rental.
 7. Early return remains disabled as before.
+
+PHASE 19 STAGING HOTFIX - ADMIN STATUS DATE NORMALIZATION
+-------------------------------------------------------
+Observed runtime symptom:
+- Admin approve/on-hold/reject failed.
+- Diagnostic error: 22007.
+
+Root cause fixed:
+- Administrator canonical DATE values were not normalized consistently at the PostgreSQL driver boundary.
+
+Regression coverage:
+- Admin repository maps JavaScript Date start/due values to YYYY-MM-DD: PASS
+- Admin SELECT explicitly uses start_date::text / due_date::text: PASS
+- Existing Phase 17 admin status service smoke: PASS
+
+Schema migration: none
+New npm dependency: none
+Firestore rules/index change: none
+
+PRE-APPLY HOTFIX - KOREAN REQUEST TIMESTAMP
+- deterministic Asia/Seoul requestedAt format: PASS
+- expected PM sample -> `2026. 8. 8. 오후 1:20:40`: PASS
+- expected AM sample -> `2026. 8. 8. 오전 9:05:06`: PASS
+- unrelated to PostgreSQL SQLSTATE 22007 DATE normalization: confirmed
