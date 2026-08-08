@@ -154,10 +154,11 @@ export const createRequestHandler = ({
     typeof memberShadowService.getCurrent !== 'function' ||
     typeof memberShadowService.getCurrentByFirebaseIdentity !== 'function' ||
     typeof memberShadowService.readCurrentSourceByFirebaseIdentity !== 'function' ||
+    typeof memberShadowService.syncLinkedFirebaseUid !== 'function' ||
     typeof memberShadowService.syncCurrent !== 'function' ||
     typeof memberShadowService.compareCurrent !== 'function'
   ) {
-    throw new TypeError('memberShadowService getCurrent/getCurrentByFirebaseIdentity/readCurrentSourceByFirebaseIdentity/syncCurrent/compareCurrent methods are required.');
+    throw new TypeError('memberShadowService getCurrent/getCurrentByFirebaseIdentity/readCurrentSourceByFirebaseIdentity/syncLinkedFirebaseUid/syncCurrent/compareCurrent methods are required.');
   }
 
   const basePayload = {
@@ -227,6 +228,7 @@ export const createRequestHandler = ({
           memberProfileReadCandidate: '/api/users/me/member-profile-candidate',
           memberProfileCutoverCandidate: '/api/legacy/member-profile-cutover-candidate',
           memberProfileFirestoreFallback: '/api/legacy/member-profile-firestore-fallback',
+          memberProfileWriteThrough: '/api/legacy/member-shadow/write-through',
         },
         headers,
       );
@@ -548,6 +550,57 @@ export const createRequestHandler = ({
             ? 404
             : 503;
         writeJson(response, statusCode, { ...basePayload, authenticated: true, error: error?.code || 'member_profile_firestore_fallback_unavailable' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/legacy/member-shadow/write-through') {
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+
+      const targetFirebaseUid = String(url.searchParams.get('firebaseUid') || '').trim();
+
+      try {
+        const result = await memberShadowService.syncLinkedFirebaseUid(firebaseIdentity, targetFirebaseUid);
+        writeJson(
+          response,
+          200,
+          {
+            ...basePayload,
+            authenticated: true,
+            authentication: 'firebase-id-token',
+            writeThrough: {
+              status: result.status,
+              reason: result.reason || '',
+              firebaseUid: result.firebaseUid,
+              actorUid: result.actorUid,
+              appUserId: result.appUserId || null,
+              memberShadow: result.shadow ? sanitizeMemberShadow(result.shadow) : null,
+            },
+          },
+          headers,
+        );
+      } catch (error) {
+        console.warn('[member-write-through] shadow synchronization failed', {
+          requestId,
+          code: error?.code,
+          status: error?.status,
+          name: error?.name,
+          targetFirebaseUid: targetFirebaseUid || firebaseIdentity.uid,
+        });
+        if (error?.code === 'firestore_user_account_forbidden') {
+          writeJson(response, 403, { ...basePayload, authenticated: true, error: 'member_source_forbidden' }, headers);
+          return;
+        }
+        if (error?.code === 'firestore_user_account_unauthorized') {
+          writeJson(response, 401, { ...basePayload, authenticated: true, error: 'legacy_firebase_unauthorized' }, headers);
+          return;
+        }
+        if (['member_source_uid_mismatch', 'member_source_email_mismatch', 'member_shadow_uid_conflict'].includes(error?.code)) {
+          writeJson(response, 409, { ...basePayload, authenticated: true, error: error.code }, headers);
+          return;
+        }
+        writeJson(response, 503, { ...basePayload, authenticated: true, error: error?.code || 'member_write_through_unavailable' }, headers);
       }
       return;
     }

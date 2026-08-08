@@ -11,6 +11,11 @@ import {
   getLatestMemberProfileCutoverObservation,
   subscribeMemberProfileCutoverObservation,
 } from '../features/members/memberProfileReadCutover.js';
+import {
+  getLatestMemberProfileWriteThroughObservation,
+  readMemberProfileWriteThroughConfig,
+  subscribeMemberProfileWriteThroughObservation,
+} from '../features/members/memberProfileWriteThrough.js';
 import { clerkStagingClient } from './clerkStagingClient.js';
 
 const panelStyle = {
@@ -48,6 +53,7 @@ const getClerkSnapshot = (clerk) => ({
 
 export default function ClerkStagingDiagnostics() {
   const requested = useMemo(() => clerkStagingClient.isDiagnosticsRequested(), []);
+  const writeThroughConfig = useMemo(() => readMemberProfileWriteThroughConfig(), []);
   const [state, setState] = useState({
     phase: requested ? 'loading' : 'hidden',
     signedIn: false,
@@ -84,6 +90,13 @@ export default function ClerkStagingDiagnostics() {
     cutoverFallbackReason: null,
     firestoreWatcherDisabled: false,
     firestoreFallbackReads: 0,
+    writeThroughRequested: writeThroughConfig.requested,
+    writeThroughStatus: null,
+    writeThroughReason: null,
+    writeThroughFirebaseUid: null,
+    writeThroughBackendReason: null,
+    writeThroughErrorCode: null,
+    writeThroughCounters: { attempted: 0, synced: 0, skipped: 0, failed: 0 },
     error: null,
   });
 
@@ -188,6 +201,23 @@ export default function ClerkStagingDiagnostics() {
     };
     applyCutover(getLatestMemberProfileCutoverObservation());
     return subscribeMemberProfileCutoverObservation(applyCutover);
+  }, [requested]);
+
+  useEffect(() => {
+    if (!requested) return undefined;
+    const applyWriteThrough = (observation) => {
+      setState((current) => ({
+        ...current,
+        writeThroughStatus: observation?.status || null,
+        writeThroughReason: observation?.reason || null,
+        writeThroughFirebaseUid: observation?.firebaseUid || null,
+        writeThroughBackendReason: observation?.backendReason || null,
+        writeThroughErrorCode: observation?.errorCode || null,
+        writeThroughCounters: observation?.counters || current.writeThroughCounters,
+      }));
+    };
+    applyWriteThrough(getLatestMemberProfileWriteThroughObservation());
+    return subscribeMemberProfileWriteThroughObservation(applyWriteThrough);
   }, [requested]);
 
   if (!requested) return null;
@@ -351,7 +381,7 @@ export default function ClerkStagingDiagnostics() {
 
   return (
     <aside style={panelStyle} aria-label="Clerk staging diagnostics">
-      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 10</div>
+      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 11</div>
       <div>SDK: {state.phase === 'loading' ? 'loading' : state.phase}</div>
       <div>Signed in: {state.signedIn ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Clerk user: {state.userId || '-'}</div>
@@ -414,6 +444,17 @@ export default function ClerkStagingDiagnostics() {
       <div>One-time Firestore fallback reads: {state.firestoreFallbackReads}</div>
       <div>
         Expected userAccounts realtime reads: {state.firestoreWatcherDisabled ? '0 while this page session stays on PostgreSQL' : 'existing realtime behavior'}
+      </div>
+
+      <div style={{ marginTop: '6px', fontWeight: 700 }}>Phase 11 member write-through</div>
+      <div>Write-through requested: {state.writeThroughRequested ? 'yes' : 'no'}</div>
+      <div>Last write-through: {state.writeThroughStatus || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Write reason: {state.writeThroughReason || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Write Firebase: {state.writeThroughFirebaseUid || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Backend reason: {state.writeThroughBackendReason || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Write error: {state.writeThroughErrorCode || '-'}</div>
+      <div>
+        Write-through counters: attempted {state.writeThroughCounters.attempted} / synced {state.writeThroughCounters.synced} / skipped {state.writeThroughCounters.skipped} / failed {state.writeThroughCounters.failed}
       </div>
 
       {state.error ? (

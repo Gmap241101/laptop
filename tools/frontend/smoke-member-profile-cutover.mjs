@@ -13,16 +13,13 @@ const env = {
   VITE_MEMBER_PROFILE_FIRESTORE_WATCHER_DISABLED: 'false',
   VITE_API_URL: 'https://api.example.test',
 };
-assert.deepEqual(
-  readMemberProfileCutoverConfig({ env, location: { search: '?memberRead=postgres' } }),
-  {
-    enabled: true,
-    requested: true,
-    firestoreWatcherDisableEnabled: false,
-    firestoreWatcherDisabled: false,
-    apiBaseUrl: 'https://api.example.test',
-  },
-);
+const initialConfig = readMemberProfileCutoverConfig({ env, location: { search: '?memberRead=postgres' } });
+assert.equal(initialConfig.enabled, true);
+assert.equal(initialConfig.requested, true);
+assert.equal(initialConfig.queryRequested, true);
+assert.equal(initialConfig.firestoreWatcherDisableEnabled, false);
+assert.equal(initialConfig.firestoreWatcherDisabled, false);
+assert.equal(initialConfig.apiBaseUrl, 'https://api.example.test');
 assert.equal(
   readMemberProfileCutoverConfig({ env, location: { search: '' } }).requested,
   false,
@@ -34,6 +31,34 @@ assert.equal(
   }).requested,
   false,
 );
+
+const storageState = new Map();
+const fakeStorage = {
+  setItem(key, value) { storageState.set(key, String(value)); },
+  getItem(key) { return storageState.has(key) ? storageState.get(key) : null; },
+  removeItem(key) { storageState.delete(key); },
+};
+const latchedStart = readMemberProfileCutoverConfig({
+  env: { ...env, VITE_MEMBER_PROFILE_FIRESTORE_WATCHER_DISABLED: 'true' },
+  location: { search: '?memberRead=postgres&memberWatcher=off' },
+  storage: fakeStorage,
+});
+assert.equal(latchedStart.requested, true);
+assert.equal(latchedStart.firestoreWatcherDisabled, true);
+const latchedNavigation = readMemberProfileCutoverConfig({
+  env: { ...env, VITE_MEMBER_PROFILE_FIRESTORE_WATCHER_DISABLED: 'true' },
+  location: { search: '' },
+  storage: fakeStorage,
+});
+assert.equal(latchedNavigation.requested, true, 'SPA navigation must preserve the staging cutover within the same tab.');
+assert.equal(latchedNavigation.firestoreWatcherDisabled, true);
+const resetConfig = readMemberProfileCutoverConfig({
+  env: { ...env, VITE_MEMBER_PROFILE_FIRESTORE_WATCHER_DISABLED: 'true' },
+  location: { search: '?memberRead=firestore' },
+  storage: fakeStorage,
+});
+assert.equal(resetConfig.requested, false);
+assert.equal(resetConfig.firestoreWatcherDisabled, false);
 
 const firestoreProfile = {
   uid: 'firebase_uid_phase9',

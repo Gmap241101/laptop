@@ -56,6 +56,9 @@ import {
   getSafeMemberDirectoryVersion,
   isRegisteredMemberSignupRequired,
 } from './memberAccountPolicy.js';
+import {
+  syncMemberProfileWriteThroughBestEffort,
+} from './memberProfileWriteThrough.js';
 
 export const createDefaultUserProfileForm = () => ({
   name: '',
@@ -446,6 +449,12 @@ export default function useUserMyPageAccountController({
         }
       });
 
+      await syncMemberProfileWriteThroughBestEffort({
+        firebaseUser: firebaseAuthUser,
+        firebaseUid: firebaseAuthUser.uid,
+        reason: 'user-profile-save',
+      });
+
       await updateProfile(firebaseAuthUser, {
         displayName: name,
       });
@@ -648,6 +657,12 @@ export default function useUserMyPageAccountController({
         }
       });
 
+      await syncMemberProfileWriteThroughBestEffort({
+        firebaseUser: firebaseAuthUser,
+        firebaseUid: firebaseAuthUser.uid,
+        reason: 'user-membership-withdrawal',
+      });
+
       await deleteUser(firebaseAuthUser);
 
       setWithdrawalDialogOpen(false);
@@ -694,6 +709,11 @@ export default function useUserMyPageAccountController({
                 { merge: false }
               );
             }
+          });
+          await syncMemberProfileWriteThroughBestEffort({
+            firebaseUser: firebaseAuth.currentUser,
+            firebaseUid: firebaseAuth.currentUser?.uid || '',
+            reason: 'user-membership-withdrawal-rollback',
           });
         } catch (rollbackError) {
           console.error('Membership withdrawal rollback error:', rollbackError);

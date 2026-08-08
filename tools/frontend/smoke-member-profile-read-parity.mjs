@@ -60,6 +60,6 @@ const diagnosticsSource = await readFile(
 );
 assert.match(diagnosticsSource, /getMemberProfileReadCandidate\(\)/);
 assert.match(diagnosticsSource, /compareMemberProfileReads\(/);
-assert.match(diagnosticsSource, /Phase 10/);
+assert.match(diagnosticsSource, /Phase 11/);
 
 console.log('[member-read-parity-smoke] PASS (actual Firestore subscription observation, PostgreSQL read candidate normalization, parity and drift)');

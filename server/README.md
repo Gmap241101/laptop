@@ -124,3 +124,22 @@ Phase 9 adds a staging-only transition path for the current member profile. The 
 
 ## Phase 10 member-profile watcher disable
 `GET /api/legacy/member-profile-firestore-fallback` is an emergency one-time fallback used only when the dedicated staging member-profile PostgreSQL primary read fails. It requires a verified Firebase ID Token and does not create a realtime Firestore listener.
+
+## Phase 11 member-profile Firestore write-through
+
+Phase 11 keeps Firestore as the authoritative write source, but removes the freshness gap created by the Phase 10 `userAccounts/{uid}` realtime-watcher shutdown.
+
+- `POST /api/legacy/member-shadow/write-through?firebaseUid=<target UID>`
+  - Requires `X-Firebase-Authorization: Bearer <Firebase ID token>`.
+  - The backend never trusts profile fields from the browser. It rereads `userAccounts/{targetUid}` through Firestore REST using the actor's verified Firebase token, so the existing Firestore Security Rules remain the authorization boundary.
+  - If the target Firebase UID is linked to PostgreSQL, the trusted Firestore document is normalized and upserted into `app_user_member_shadows`.
+  - The Firestore target read is attempted before link lookup so Security Rules authorize the actor/target relationship before the API reveals whether that UID has a PostgreSQL link. If the authorized target has not yet been linked, the endpoint returns non-fatal `skipped / legacy_link_not_found`.
+  - An ordinary member cannot sync another member because Firestore REST must authorize the target document read. An authenticated administrator can sync a target account only when the existing Firestore Rules permit that administrator to read it.
+
+The React staging client activates this only when `VITE_MEMBER_PROFILE_WRITE_THROUGH_ENABLED=true` and the explicit Phase 11 test gate has been requested. Firestore writes remain successful even if the PostgreSQL write-through request fails; failures are surfaced through diagnostics instead of rolling back an already-committed Firestore mutation.
+
+Standard member-profile mutation paths covered in Phase 11 include user profile edits, terms-consent revision updates, automatic member-directory verification/status updates, administrator account-status changes, member-directory rebuild/audit writes, and withdrawal/rollback profile writes. New-account signup is intentionally not write-through synchronized before a Clerk/PostgreSQL identity link exists; the existing identity/link/shadow synchronization flow establishes that initial shadow later.
+
+With the Phase 10 watcher disabled, the active member profile is refreshed immediately after a successful write-through event for the current user and is also refreshed from PostgreSQL every 15 seconds. The periodic refresh does not read Firestore and skips React profile/form state updates when the PostgreSQL profile is unchanged, preventing unsaved My Page form input from being overwritten by a no-op poll.
+
+Phase 11 introduces no new database migration and no new npm dependency.

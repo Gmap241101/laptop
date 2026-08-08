@@ -1,6 +1,6 @@
 {
   "name": "dept-laptop-rental-api",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -17,7 +17,8 @@
     "smoke:user-sync": "node ../tools/backend/smoke-clerk-user-sync.mjs",
     "smoke:firebase-bridge": "node ../tools/backend/smoke-firebase-identity-bridge.mjs",
     "smoke:member-shadow": "node ../tools/backend/smoke-member-profile-shadow.mjs",
-    "smoke:member-cutover": "node ../tools/backend/smoke-member-profile-cutover.mjs"
+    "smoke:member-cutover": "node ../tools/backend/smoke-member-profile-cutover.mjs",
+    "smoke:member-write-through": "node ../tools/backend/smoke-member-profile-write-through.mjs"
   },
   "dependencies": {
     "pg": "8.22.0"

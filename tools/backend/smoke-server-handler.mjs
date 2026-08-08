@@ -5,7 +5,7 @@ const allowedOrigin = 'https://staging.example.vercel.app';
 const config = {
   serviceName: 'rental-api',
   appEnv: 'test',
-  serviceVersion: 'phase9-smoke',
+  serviceVersion: 'phase11-smoke',
   corsAllowedOrigins: [allowedOrigin],
 };
 
@@ -110,6 +110,20 @@ const memberShadowService = {
       previousAccountUids: ['firebase_uid_old'],
       sourceHash: 'f'.repeat(64),
       sourceUpdatedAt: new Date('2026-08-07T01:00:00.000Z'),
+    };
+  },
+  async syncLinkedFirebaseUid(firebaseIdentity, targetFirebaseUid = '') {
+    const firebaseUid = targetFirebaseUid || firebaseIdentity.uid;
+    if (firebaseIdentity.uid !== 'firebase_uid_smoke' || firebaseUid !== 'firebase_uid_smoke') {
+      throw new Error('Unexpected member write-through identity.');
+    }
+    return {
+      status: 'synced',
+      reason: '',
+      firebaseUid,
+      actorUid: firebaseIdentity.uid,
+      appUserId: '42',
+      shadow: memberShadow,
     };
   },
   async syncCurrent(userId, firebaseIdentity) {
@@ -322,6 +336,25 @@ if (
   throw new Error('One-time Firestore fallback response is invalid.');
 }
 
+const writeThrough = await fetch(`${baseUrl}/api/legacy/member-shadow/write-through?firebaseUid=firebase_uid_smoke`, {
+  method: 'POST',
+  headers: {
+    Origin: allowedOrigin,
+    'X-Firebase-Authorization': 'Bearer firebase-smoke-token',
+  },
+});
+if (writeThrough.status !== 200) {
+  throw new Error(`/api/legacy/member-shadow/write-through returned ${writeThrough.status}`);
+}
+const writeThroughBody = await writeThrough.json();
+if (
+  writeThroughBody.writeThrough?.status !== 'synced' ||
+  writeThroughBody.writeThrough?.firebaseUid !== 'firebase_uid_smoke' ||
+  writeThroughBody.writeThrough?.actorUid !== 'firebase_uid_smoke'
+) {
+  throw new Error('Member write-through response is invalid.');
+}
+
 const compareMemberShadow = await fetch(`${baseUrl}/api/users/me/legacy/member-shadow/compare`, {
   method: 'POST',
   headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
@@ -342,4 +375,4 @@ const missing = await fetch(`${baseUrl}/missing`);
 if (missing.status !== 404) throw new Error(`/missing returned ${missing.status}`);
 
 await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, CORS, 404)');
+console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, CORS, 404)');

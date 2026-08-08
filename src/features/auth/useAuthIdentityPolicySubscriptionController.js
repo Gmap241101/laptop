@@ -28,6 +28,7 @@ import {
   requestMemberProfileFirestoreFallback,
   shouldUseMemberProfileFirestoreWatcher,
 } from '../members/memberProfileReadCutover.js';
+import { subscribeMemberProfileWriteThroughObservation } from '../members/memberProfileWriteThrough.js';
 import { createDefaultUserProfileForm } from '../members/useUserMyPageAccountController.js';
 
 export const normalizeAdminAccounts = function(adminAccounts) {
@@ -333,6 +334,7 @@ export default function useAuthIdentityPolicySubscriptionController({
     let postgresProfile = null;
     let postgresCandidateState = 'pending';
     let postgresCandidateError = '';
+    let lastCommittedProfileKey = null;
     const cutoverConfig = readMemberProfileCutoverConfig();
 
     const commitResolvedProfile = ({
@@ -356,6 +358,13 @@ export default function useAuthIdentityPolicySubscriptionController({
         firestoreWatcherDisabled: cutoverConfig.firestoreWatcherDisabled,
         firestoreFallbackReads,
       });
+
+      const nextProfileKey = profile ? JSON.stringify(profile) : '__null__';
+      if (lastCommittedProfileKey === nextProfileKey) {
+        setUserProfileReady(true);
+        return;
+      }
+      lastCommittedProfileKey = nextProfileKey;
 
       if (!profile) {
         setUserProfile(null);
@@ -387,43 +396,89 @@ export default function useAuthIdentityPolicySubscriptionController({
     };
 
     if (!shouldUseMemberProfileFirestoreWatcher(cutoverConfig)) {
-      void loadMemberProfileWithoutFirestoreWatcher({
-        loadPostgresCandidate: () =>
-          requestMemberProfileCutoverCandidate({
+      let refreshInFlight = false;
+      const refreshPostgresProfile = async ({ allowFirestoreFallback = false } = {}) => {
+        if (!active || refreshInFlight) return;
+        refreshInFlight = true;
+        try {
+          if (allowFirestoreFallback) {
+            const result = await loadMemberProfileWithoutFirestoreWatcher({
+              loadPostgresCandidate: () =>
+                requestMemberProfileCutoverCandidate({
+                  firebaseUser: firebaseAuthUser,
+                  apiBaseUrl: cutoverConfig.apiBaseUrl,
+                }),
+              loadFirestoreFallback: () =>
+                requestMemberProfileFirestoreFallback({
+                  firebaseUser: firebaseAuthUser,
+                  apiBaseUrl: cutoverConfig.apiBaseUrl,
+                }),
+            });
+            commitResolvedProfile(result);
+            return;
+          }
+
+          const candidate = await requestMemberProfileCutoverCandidate({
             firebaseUser: firebaseAuthUser,
             apiBaseUrl: cutoverConfig.apiBaseUrl,
-          }),
-        loadFirestoreFallback: () =>
-          requestMemberProfileFirestoreFallback({
-            firebaseUser: firebaseAuthUser,
-            apiBaseUrl: cutoverConfig.apiBaseUrl,
-          }),
-      })
-        .then((result) => {
-          commitResolvedProfile(result);
-        })
-        .catch((error) => {
-          if (!active) return;
-          console.error('Member profile primary read failed with Firestore watcher disabled:', {
-            code: error?.code,
-            candidateCode: error?.candidateCode,
           });
           commitResolvedProfile({
-            profile: null,
-            source: 'unavailable',
-            equivalent: null,
+            profile: candidate.profile,
+            source: 'postgresql-shadow',
+            equivalent: true,
             changedFields: [],
-            fallbackReason: error?.code || 'member-profile-read-unavailable',
-            firestoreFallbackReads: Number(error?.firestoreFallbackReads) || 1,
+            fallbackReason: '',
+            firestoreFallbackReads: 0,
           });
-          triggerToastRef.current?.(
-            '회원 정보를 불러오지 못했습니다. PostgreSQL 및 Firestore 연결 상태를 확인해 주세요.',
-            'error'
-          );
-        });
+        } catch (error) {
+          if (!active) return;
+          if (allowFirestoreFallback) {
+            console.error('Member profile primary read failed with Firestore watcher disabled:', {
+              code: error?.code,
+              candidateCode: error?.candidateCode,
+            });
+            commitResolvedProfile({
+              profile: null,
+              source: 'unavailable',
+              equivalent: null,
+              changedFields: [],
+              fallbackReason: error?.code || 'member-profile-read-unavailable',
+              firestoreFallbackReads: Number(error?.firestoreFallbackReads) || 1,
+            });
+            triggerToastRef.current?.(
+              '회원 정보를 불러오지 못했습니다. PostgreSQL 및 Firestore 연결 상태를 확인해 주세요.',
+              'error'
+            );
+            return;
+          }
+          console.warn('PostgreSQL member profile refresh failed; keeping the last known profile.', {
+            code: error?.code,
+            status: error?.status,
+          });
+        } finally {
+          refreshInFlight = false;
+        }
+      };
+
+      void refreshPostgresProfile({ allowFirestoreFallback: true });
+
+      const postgresRefreshTimer = setInterval(() => {
+        void refreshPostgresProfile();
+      }, 15000);
+
+      const unsubscribeWriteThrough = subscribeMemberProfileWriteThroughObservation((observation) => {
+        if (
+          observation?.status === 'synced' &&
+          observation?.firebaseUid === firebaseAuthUser.uid
+        ) {
+          void refreshPostgresProfile();
+        }
+      });
 
       return () => {
         active = false;
+        clearInterval(postgresRefreshTimer);
+        unsubscribeWriteThrough();
       };
     }
 

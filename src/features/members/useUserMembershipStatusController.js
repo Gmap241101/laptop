@@ -41,6 +41,7 @@ import {
   getSafeMemberDirectoryVersion,
   isRegisteredMemberSignupRequired,
 } from './memberAccountPolicy.js';
+import { syncMemberProfileWriteThroughBestEffort } from './memberProfileWriteThrough.js';
 
 export const useUserMembershipStatusState = () => {
   const [
@@ -102,7 +103,7 @@ export default function useUserMembershipStatusController({
         normalizedName
       );
 
-      return runTransaction(db, async (transaction) => {
+      const result = await runTransaction(db, async (transaction) => {
         const configRef = PUBLIC_CONFIG_DOC_REF;
         const userRef = doc(
           db,
@@ -182,6 +183,7 @@ export default function useUserMembershipStatusController({
               status: restoredStatus,
               policyEnabled: false,
               restored: true,
+              changed: true,
             };
           }
 
@@ -189,6 +191,7 @@ export default function useUserMembershipStatusController({
             status: currentStatus,
             policyEnabled: false,
             restored: false,
+            changed: false,
           };
         }
 
@@ -202,6 +205,7 @@ export default function useUserMembershipStatusController({
             status: currentStatus,
             policyEnabled: true,
             verified: true,
+            changed: false,
           };
         }
 
@@ -295,6 +299,7 @@ export default function useUserMembershipStatusController({
             policyEnabled: true,
             verified: true,
             restored: shouldRestore,
+            changed: true,
           };
         }
 
@@ -342,8 +347,19 @@ export default function useUserMembershipStatusController({
           policyEnabled: true,
           verified: false,
           reason: nextReason,
+          changed: true,
         };
       });
+
+      if (result?.changed) {
+        await syncMemberProfileWriteThroughBestEffort({
+          firebaseUser: authUser,
+          firebaseUid: authUser.uid,
+          reason: 'user-directory-membership-sync',
+        });
+      }
+
+      return result;
     },
     [createMemberPolicyError, initialSettings]
   );

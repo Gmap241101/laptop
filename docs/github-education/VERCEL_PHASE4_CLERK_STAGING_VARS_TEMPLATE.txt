@@ -34,3 +34,12 @@ VITE_MEMBER_PROFILE_FIRESTORE_WATCHER_DISABLED=true
 #   ?memberRead=postgres&memberWatcher=off
 # Recommended Phase 10 diagnostics URL:
 #   https://YOUR-STAGING-PROJECT.vercel.app/?clerkTest=1&memberRead=postgres&memberWatcher=off
+
+# Phase 11 opt-in: after a Firestore userAccounts write succeeds, refresh the linked PostgreSQL member shadow.
+VITE_MEMBER_PROFILE_WRITE_THROUGH_ENABLED=true
+
+# Start the Phase 11 staging session with all gates present once:
+#   ?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWriteThrough=on
+# The Phase 9/10/11 test gates are latched in sessionStorage for the current browser tab so SPA navigation
+# to /mypage or /admin does not silently disable the test. Close the tab, or use ?memberRead=firestore,
+# to reset the PostgreSQL/watcher cutover latch.

@@ -12,6 +12,7 @@ import {
   PUBLIC_CONFIG_DOC_REF,
   RENTAL_BORROWERS_COLLECTION_REF,
   USER_ACCOUNTS_COLLECTION_REF,
+  firebaseAuth,
 } from '../../firebase.js';
 import {
   createMemberIdentityKey,
@@ -27,6 +28,7 @@ import {
 import {
   getSafeMemberDirectoryVersion,
 } from './memberAccountPolicy.js';
+import { syncMemberProfilesWriteThroughBestEffort } from './memberProfileWriteThrough.js';
 
 export class MemberDirectoryValidationError extends Error {
   constructor(message) {
@@ -234,6 +236,14 @@ export const saveMemberDirectory = async ({
     ...recoveryOperations,
     ...accountMetadataOperations,
   ]);
+
+  await syncMemberProfilesWriteThroughBestEffort({
+    firebaseUser: firebaseAuth.currentUser,
+    firebaseUids: accountMetadataOperations
+      .filter((operation) => operation?.ref?.parent?.id === 'userAccounts')
+      .map((operation) => operation.ref.id),
+    reason: 'admin-member-directory-save',
+  });
 
   const nextSettings = {
     ...settings,

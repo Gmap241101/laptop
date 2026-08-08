@@ -20,6 +20,7 @@ import {
   USER_ACCOUNTS_COLLECTION_NAME,
   USER_ACCOUNTS_COLLECTION_REF,
   db,
+  firebaseAuth,
 } from '../../firebase.js';
 import {
   PROFILE_REQUIRED_REASON,
@@ -40,6 +41,7 @@ import {
   getSafeMemberDirectoryVersion,
   isRegisteredMemberSignupRequired,
 } from './memberAccountPolicy.js';
+import { syncMemberProfilesWriteThroughBestEffort } from './memberProfileWriteThrough.js';
 
 export default function useAdminMemberDirectoryAuditActions({
   authenticatedAdminAccount,
@@ -116,6 +118,7 @@ export default function useAdminMemberDirectoryAuditActions({
               )
             ).docs;
         const restoreOperations = [];
+        const restoredUids = [];
         let restoredCount = 0;
 
         accountDocuments.forEach((accountDocument) => {
@@ -163,11 +166,17 @@ export default function useAdminMemberDirectoryAuditActions({
             });
           }
 
+          restoredUids.push(accountDocument.ref.id);
           restoredCount += 1;
         });
 
         if (restoreOperations.length > 0) {
           await commitFirestoreOperations(restoreOperations);
+          await syncMemberProfilesWriteThroughBestEffort({
+            firebaseUser: firebaseAuth.currentUser,
+            firebaseUids: restoredUids,
+            reason: 'admin-directory-policy-restore',
+          });
         }
 
         return restoredCount;
@@ -421,11 +430,21 @@ export default function useAdminMemberDirectoryAuditActions({
         ...accountMetadataOperations,
       ]);
 
+      await syncMemberProfilesWriteThroughBestEffort({
+        firebaseUser: firebaseAuth.currentUser,
+        firebaseUids: accountMetadataOperations
+          .filter((operation) => operation?.ref?.parent?.id === USER_ACCOUNTS_COLLECTION_NAME)
+          .map((operation) => operation.ref.id),
+        reason: 'admin-member-index-rebuild',
+      });
+
       let failed = 0;
+      const updatedAccountUids = [];
 
       for (const operation of accountOperations) {
         try {
           await setDoc(operation.ref, operation.data, operation.options);
+          updatedAccountUids.push(operation.ref.id);
         } catch (accountError) {
           failed += 1;
 
@@ -441,6 +460,12 @@ export default function useAdminMemberDirectoryAuditActions({
           );
         }
       }
+
+      await syncMemberProfilesWriteThroughBestEffort({
+        firebaseUser: firebaseAuth.currentUser,
+        firebaseUids: updatedAccountUids,
+        reason: 'admin-member-directory-audit',
+      });
 
       const auditSummary = {
         total: auditableTotal,

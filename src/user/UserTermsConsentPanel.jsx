@@ -29,6 +29,7 @@ import {
   loadUserTermConsentLogs,
   loadUserTermConsentStates,
 } from '../features/terms/termsService.js';
+import { syncMemberProfileWriteThroughBestEffort } from '../features/members/memberProfileWriteThrough.js';
 
 const createDecisionState = (policy, states) => Object.fromEntries(
   policy.activeTerms.map((term) => {
@@ -224,6 +225,12 @@ export default function UserTermsConsentPanel({
           termsConsentPolicyVersion: latestPolicy.revision,
           updatedAt: serverTimestamp(),
         });
+      });
+
+      await syncMemberProfileWriteThroughBestEffort({
+        firebaseUser: firebaseAuth.currentUser,
+        firebaseUid: uid,
+        reason: 'user-terms-consent-save',
       });
 
       triggerToast('약관 동의 정보가 저장되었습니다.', 'success');

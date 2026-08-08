@@ -209,6 +209,59 @@ export const createMemberShadowService = ({
       return source;
     },
 
+    async syncLinkedFirebaseUid(firebaseIdentity, targetFirebaseUid = '') {
+      const actorUid = normalizeText(firebaseIdentity?.uid);
+      const firebaseUid = normalizeText(targetFirebaseUid) || actorUid;
+      if (!actorUid || !firebaseUid) {
+        throw serviceError('firebase_identity_missing', 'Verified Firebase identity and target UID are required.');
+      }
+      if (!firebaseIdentity.idToken) {
+        throw serviceError('firebase_id_token_missing', 'The verified Firebase request did not retain its ID token.');
+      }
+
+      const document = await firestoreUserAccountClient.getUserAccount({
+        firebaseUid,
+        firebaseIdToken: firebaseIdentity.idToken,
+      });
+      if (!document) {
+        return Object.freeze({
+          status: 'skipped',
+          reason: 'member_source_not_found',
+          firebaseUid,
+          actorUid,
+          shadow: null,
+        });
+      }
+
+      const firebaseLink = await firebaseLinkRepository.findByFirebaseUid(firebaseUid);
+      if (!firebaseLink) {
+        return Object.freeze({
+          status: 'skipped',
+          reason: 'legacy_link_not_found',
+          firebaseUid,
+          actorUid,
+          shadow: null,
+        });
+      }
+
+      const source = normalizeMemberSource({ document, firebaseUid });
+      const sourceEmail = normalizeEmail(source.email);
+      const linkedEmail = normalizeEmail(firebaseLink.firebaseEmail);
+      if (sourceEmail && linkedEmail && sourceEmail !== linkedEmail) {
+        throw serviceError('member_source_email_mismatch', 'Firestore member email does not match the linked Firebase identity.');
+      }
+
+      const shadow = await memberShadowRepository.upsert(firebaseLink.appUserId, firebaseUid, source);
+      return Object.freeze({
+        status: 'synced',
+        reason: '',
+        firebaseUid,
+        actorUid,
+        appUserId: firebaseLink.appUserId,
+        shadow,
+      });
+    },
+
     async syncCurrent(clerkUserId, firebaseIdentity) {
       const { appUser, firebaseLink } = await context(clerkUserId);
       const source = await readSource({ appUser, firebaseLink, firebaseIdentity });

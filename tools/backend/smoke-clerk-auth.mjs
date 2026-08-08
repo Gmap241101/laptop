@@ -58,6 +58,7 @@ const memberShadowService = {
   async getCurrent() { return null; },
   async getCurrentByFirebaseIdentity() { return null; },
   async readCurrentSourceByFirebaseIdentity() { throw new Error('not used in Clerk auth smoke'); },
+  async syncLinkedFirebaseUid() { throw new Error('not used in Clerk auth smoke'); },
   async syncCurrent() { throw new Error('not used in Clerk auth smoke'); },
   async compareCurrent() { throw new Error('not used in Clerk auth smoke'); },
 };

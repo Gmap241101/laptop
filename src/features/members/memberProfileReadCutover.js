@@ -1,6 +1,8 @@
 import { compareMemberProfileReads, normalizeMemberProfileRead } from './memberProfileReadObservation.js';
 
 const EVENT_NAME = 'rental:member-profile-read-cutover';
+const READ_SESSION_KEY = 'mk_member_profile_postgres_read_test';
+const WATCHER_SESSION_KEY = 'mk_member_profile_watcher_off_test';
 const trim = (value) => (typeof value === 'string' ? value.trim() : '');
 const bool = (value) => trim(value).toLowerCase() === 'true';
 
@@ -16,27 +18,55 @@ const normalizeApiBaseUrl = (value) => {
   }
 };
 
-export const readMemberProfileCutoverConfig = ({ env = import.meta.env, location = globalThis.location } = {}) => {
+export const readMemberProfileCutoverConfig = ({
+  env = import.meta.env,
+  location = globalThis.location,
+  storage = globalThis.sessionStorage,
+} = {}) => {
   const stagingBridgeEnabled = bool(env?.VITE_CLERK_STAGING_ENABLED);
   const postgresReadEnabled = bool(env?.VITE_MEMBER_PROFILE_POSTGRES_READ_ENABLED);
   const firestoreWatcherDisableEnabled = bool(env?.VITE_MEMBER_PROFILE_FIRESTORE_WATCHER_DISABLED);
   const params = location ? new URLSearchParams(location.search || '') : new URLSearchParams();
-  const requested = Boolean(
-    stagingBridgeEnabled &&
-    postgresReadEnabled &&
-    location &&
-    params.get('memberRead') === 'postgres'
-  );
-  const firestoreWatcherDisabled = Boolean(
-    requested &&
+  const enabled = stagingBridgeEnabled && postgresReadEnabled;
+  const queryRequested = Boolean(enabled && location && params.get('memberRead') === 'postgres');
+  const queryWatcherDisabled = Boolean(
+    queryRequested &&
     firestoreWatcherDisableEnabled &&
     params.get('memberWatcher') === 'off'
   );
+
+  let sessionRequested = false;
+  let sessionWatcherDisabled = false;
+  try {
+    if (params.get('memberRead') === 'firestore') {
+      storage?.removeItem?.(READ_SESSION_KEY);
+      storage?.removeItem?.(WATCHER_SESSION_KEY);
+    } else {
+      if (queryRequested) storage?.setItem?.(READ_SESSION_KEY, '1');
+      if (queryWatcherDisabled) storage?.setItem?.(WATCHER_SESSION_KEY, '1');
+    }
+    sessionRequested = storage?.getItem?.(READ_SESSION_KEY) === '1';
+    sessionWatcherDisabled = storage?.getItem?.(WATCHER_SESSION_KEY) === '1';
+  } catch {
+    sessionRequested = false;
+    sessionWatcherDisabled = false;
+  }
+
+  const requested = Boolean(enabled && (queryRequested || sessionRequested));
+  const firestoreWatcherDisabled = Boolean(
+    requested &&
+    firestoreWatcherDisableEnabled &&
+    (queryWatcherDisabled || sessionWatcherDisabled)
+  );
   return Object.freeze({
-    enabled: stagingBridgeEnabled && postgresReadEnabled,
+    enabled,
     requested,
+    queryRequested,
+    sessionRequested,
     firestoreWatcherDisableEnabled,
     firestoreWatcherDisabled,
+    queryWatcherDisabled,
+    sessionWatcherDisabled,
     apiBaseUrl: normalizeApiBaseUrl(env?.VITE_API_URL),
   });
 };

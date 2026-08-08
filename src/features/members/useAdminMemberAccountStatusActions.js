@@ -15,6 +15,7 @@ import {
   RENTAL_RESTRICTIONS_COLLECTION_REF,
   USER_ACCOUNTS_COLLECTION_NAME,
   db,
+  firebaseAuth,
 } from '../../firebase.js';
 import {
   USER_PROFILE_STATUS,
@@ -28,6 +29,7 @@ import {
 import {
   getUserAccountStatusLabel,
 } from './memberAccountPolicy.js';
+import { syncMemberProfileWriteThroughBestEffort } from './memberProfileWriteThrough.js';
 
 const VALID_USER_ACCOUNT_STATUSES = new Set([
   USER_PROFILE_STATUS.PENDING,
@@ -153,6 +155,12 @@ export default function useAdminMemberAccountStatusActions({
         }
 
         await batch.commit();
+
+        await syncMemberProfileWriteThroughBestEffort({
+          firebaseUser: firebaseAuth.currentUser,
+          firebaseUid: userUid,
+          reason: 'admin-member-status-change',
+        });
 
         triggerToastRef.current(
           `${account.name || account.email || userUid} 회원을 ${getUserAccountStatusLabel(

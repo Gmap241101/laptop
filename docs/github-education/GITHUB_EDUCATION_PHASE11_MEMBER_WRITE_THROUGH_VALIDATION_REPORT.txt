@@ -1,0 +1,165 @@
+GitHub Education Phase 11 - Member Profile Firestore Write-Through Validation
+
+Status: PASS (content/static/smoke validation complete; full Vite bundle deferred to deploy.ps1 environment)
+Date: 2026-08-08
+
+1. Baseline
+- Sole baseline package: rental-system-github-education-phase10-firestore-watcher-disable-20260808_deployment_package.zip
+- Baseline SHA-256: 8bf31682109cdce03db6b213ff8d85d3dc759d6e0aa13275e0848cc054b3cbd5
+- Phase 10 user acceptance supplied before Phase 11:
+  - Active read source: postgresql-shadow
+  - Firestore member watcher: disabled
+  - One-time Firestore fallback reads: 0
+  - Heroku version=phase10/status=ok/database=ok
+  - migrations 001-005 already applied; newly applied=0
+
+2. Phase 11 objective
+- Keep Firestore authoritative for covered member-profile writes.
+- After a successful covered Firestore mutation, best-effort synchronize the trusted committed Firestore document into the linked PostgreSQL member shadow.
+- Do not convert a successful Firestore write into an application error if PostgreSQL write-through fails.
+- Keep Phase 10 Firestore member-profile watcher disabled in the explicit staging path.
+- Refresh the active PostgreSQL profile immediately after current-user write-through and every 15 seconds for remote changes, without Firestore polling.
+
+3. Security / consistency validation
+PASS - Browser does not submit trusted member-profile fields to PostgreSQL.
+PASS - Backend receives actor Firebase ID Token and target Firebase UID only.
+PASS - Backend rereads target userAccounts/{uid} from Firestore REST after the Firestore mutation.
+PASS - Existing Firestore Security Rules remain the authorization boundary for the target read.
+PASS - Firestore authorization is attempted before PostgreSQL link-status lookup, preventing link-status probing of arbitrary UIDs.
+PASS - Unlinked targets return a non-fatal skipped result only after the target read is authorized.
+PASS - Write-through failure is isolated from the already-successful Firestore mutation.
+PASS - No new Firebase Admin private key/service-account dependency introduced.
+
+4. Runtime freshness validation
+PASS - Successful current-user write-through event triggers immediate PostgreSQL candidate refresh.
+PASS - Watcher-disabled mode runs a PostgreSQL-only 15-second refresh for remote changes.
+PASS - Periodic refresh does not perform a Firestore member-profile read.
+PASS - Unchanged PostgreSQL refresh results do not rewrite profile/form state.
+PASS - lastCommittedProfileKey guard protects unsaved My Page form input from no-op polling updates.
+PASS - Explicit Phase 9/10/11 staging opt-in is latched in sessionStorage so SPA navigation does not silently disable the test path.
+PASS - ?memberRead=firestore resets the Postgres/watcher cutover latch.
+
+5. Covered standard mutation paths
+PASS - user My Page profile save -> user-profile-save
+PASS - membership withdrawal -> user-membership-withdrawal
+PASS - withdrawal rollback -> user-membership-withdrawal-rollback
+PASS - user terms consent save -> user-terms-consent-save
+PASS - member directory membership reconciliation -> user-directory-membership-sync
+PASS - admin member status change -> admin-member-status-change
+PASS - admin directory policy restore -> admin-directory-policy-restore
+PASS - admin member index rebuild -> admin-member-index-rebuild
+PASS - admin directory audit -> admin-member-directory-audit
+PASS - admin member directory save/index metadata -> admin-member-directory-save
+NOTE - New-account signup remains outside write-through until Clerk/PostgreSQL/Firebase linking exists.
+NOTE - System backup/restore remains a maintenance path requiring explicit post-restore shadow synchronization.
+
+6. Database / dependency impact
+- New PostgreSQL migration: 0
+- Existing migrations: 001 through 005 only
+- Expected Heroku Release Phase: all already applied; newly applied=0
+- Server package version: 0.9.0
+- New npm dependencies: 0
+- Root package-lock dependency tree: unchanged from Phase 10
+- Existing Firestore Rules: unchanged
+- Existing Firestore indexes: unchanged
+
+7. Automated Phase 11 verification
+Command: npm run verify:phase11
+Exit code: 0
+Result: PASS
+
+PASS - migration static validation
+PASS - Clerk frontend smoke
+PASS - member-profile parallel-read smoke
+PASS - PostgreSQL read-cutover smoke
+PASS - Firestore watcher-disable smoke
+PASS - Phase 11 frontend write-through smoke
+PASS - server foundation validation
+PASS - server HTTP smoke
+PASS - Clerk RSA JWT validation smoke
+PASS - Clerk Backend API/PostgreSQL identity smoke
+PASS - Firebase ID-token bridge smoke
+PASS - member-profile shadow smoke
+PASS - member-profile cutover backend smoke
+PASS - member-profile write-through backend smoke
+PASS - React Hook audit
+PASS - application flow contract audit
+PASS - Firestore strict audit
+PASS - package guard
+
+8. React / application-flow regression
+- React source files checked: 149
+- React Hook audit: PASS
+- Application contracts: 124
+- User routes: 11
+- Administrator tabs: 20
+- Application flow audit: PASS
+
+9. Firestore static audit
+Result: PASS
+- Source files: 149
+- Total calls: 129
+- onSnapshot: 35
+- getDocs: 48
+- getDoc: 28
+- getCountFromServer: 18
+- Approved risk findings: 51
+- Unapproved warnings: 0
+- Unapproved errors: 0
+
+Interpretation:
+The static call count remains unchanged because production/fallback Firestore paths remain in source. In the explicit watcher-disabled staging runtime, the userAccounts member-profile realtime listener is not created. Phase 11 write-through adds one Firestore REST target-document reread after each covered successful write, rather than restoring a realtime watcher.
+
+10. Core-file preservation against Phase 10 baseline
+PASS - src/App.jsx unchanged
+PASS - src/firebase.js unchanged
+PASS - rules/firestore.rules unchanged
+PASS - firestore.indexes.json unchanged
+PASS - public/CNAME unchanged
+PASS - vercel.json unchanged
+PASS - src/main.jsx unchanged
+PASS - root package-lock.json unchanged
+
+App.jsx:
+- Lines: 2,130 -> 2,130
+- Bytes: 66,036 -> 66,036
+- SHA-256: b30af55defc814cac9b33e056f4c89263444eca04b565c89ef0517d96b4b1117
+
+11. Source/config change summary vs Phase 10
+- Phase 10 source/config files: 581
+- Phase 11 source/config files: 587
+- New files: 6
+- Modified existing files: 21
+- Deleted files: 0
+- Cumulative REMOVED_FILES entries: 65 (unchanged)
+
+12. Build validation
+Command: npm run build:staging
+- React audit: PASS
+- Application flow audit: PASS
+- Firestore strict audit: PASS
+- Clerk staging config check: DISABLED in this isolated execution environment because VITE_CLERK_STAGING_ENABLED is not set
+- Final Vite bundle: NOT EXECUTED
+- Reason: root node_modules is absent in this execution environment; shell reports `vite: not found` (exit 127)
+- New Phase 11 npm dependencies: none
+- Final bundle validation must be completed by the existing deploy.ps1 v13.1 npm install/build environment.
+
+13. Manual staging acceptance required after deployment
+- Add Vercel Production env: VITE_MEMBER_PROFILE_WRITE_THROUGH_ENABLED=true
+- Deploy only gh-pages-3.
+- Heroku release must show migrations 001-005 already applied and newly applied=0.
+- Set SERVICE_VERSION=phase11 only after the code release succeeds.
+- /health/live and /health must report phase11/ok; DB must be ok.
+- Open a fresh tab with:
+  https://mkrental.vercel.app/?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWriteThrough=on
+- Confirm Active read source=postgresql-shadow, Firestore member watcher=disabled, fallback reads=0, Write-through requested=yes.
+- Perform at least one safe real member-profile edit through the existing UI.
+- Confirm Last write-through=synced and reason=user-profile-save.
+- Confirm PostgreSQL Shadow contains the updated value and normal member screens still work.
+- Recommended: verify a remote admin member change appears in the member session within about 15 seconds via PostgreSQL-only refresh.
+
+14. Production impact
+- gh-pages production branch: not modified by this package creation step.
+- notebook.recruit.kro.kr: not modified.
+- Production Firestore read/write authority: unchanged.
+- Phase 11 write-through is staging-gated and requires explicit Vercel configuration plus URL opt-in.
