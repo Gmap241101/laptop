@@ -16,6 +16,12 @@ import {
   readMemberProfileWriteThroughConfig,
   subscribeMemberProfileWriteThroughObservation,
 } from '../features/members/memberProfileWriteThrough.js';
+import {
+  getLatestRentalRestrictionCutoverObservation,
+  getLatestRentalRestrictionWriteThroughObservation,
+  subscribeRentalRestrictionCutoverObservation,
+  subscribeRentalRestrictionWriteThroughObservation,
+} from '../features/requests/rentalRestrictionReadCutover.js';
 import { clerkStagingClient } from './clerkStagingClient.js';
 
 const panelStyle = {
@@ -97,6 +103,15 @@ export default function ClerkStagingDiagnostics() {
     writeThroughBackendReason: null,
     writeThroughErrorCode: null,
     writeThroughCounters: { attempted: 0, synced: 0, skipped: 0, failed: 0 },
+    restrictionCutoverRequested: false,
+    restrictionActiveSource: null,
+    restrictionWatcherDisabled: false,
+    restrictionFallbackReads: 0,
+    restrictionFallbackReason: null,
+    restrictionWriteStatus: null,
+    restrictionWriteReason: null,
+    restrictionWriteFirebaseUid: null,
+    restrictionWriteCounters: { attempted: 0, synced: 0, failed: 0 },
     error: null,
   });
 
@@ -218,6 +233,37 @@ export default function ClerkStagingDiagnostics() {
     };
     applyWriteThrough(getLatestMemberProfileWriteThroughObservation());
     return subscribeMemberProfileWriteThroughObservation(applyWriteThrough);
+  }, [requested]);
+
+  useEffect(() => {
+    if (!requested) return undefined;
+    const applyObservation = (observation) => {
+      setState((current) => ({
+        ...current,
+        restrictionCutoverRequested: Boolean(observation?.requested),
+        restrictionActiveSource: observation?.activeSource || null,
+        restrictionWatcherDisabled: Boolean(observation?.firestoreWatcherDisabled),
+        restrictionFallbackReads: Number(observation?.firestoreFallbackReads) || 0,
+        restrictionFallbackReason: observation?.fallbackReason || null,
+      }));
+    };
+    applyObservation(getLatestRentalRestrictionCutoverObservation());
+    return subscribeRentalRestrictionCutoverObservation(applyObservation);
+  }, [requested]);
+
+  useEffect(() => {
+    if (!requested) return undefined;
+    const applyObservation = (observation) => {
+      setState((current) => ({
+        ...current,
+        restrictionWriteStatus: observation?.status || null,
+        restrictionWriteReason: observation?.reason || null,
+        restrictionWriteFirebaseUid: observation?.firebaseUid || null,
+        restrictionWriteCounters: observation?.counters || current.restrictionWriteCounters,
+      }));
+    };
+    applyObservation(getLatestRentalRestrictionWriteThroughObservation());
+    return subscribeRentalRestrictionWriteThroughObservation(applyObservation);
   }, [requested]);
 
   if (!requested) return null;
@@ -381,7 +427,7 @@ export default function ClerkStagingDiagnostics() {
 
   return (
     <aside style={panelStyle} aria-label="Clerk staging diagnostics">
-      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 11</div>
+      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 12</div>
       <div>SDK: {state.phase === 'loading' ? 'loading' : state.phase}</div>
       <div>Signed in: {state.signedIn ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Clerk user: {state.userId || '-'}</div>
@@ -456,6 +502,17 @@ export default function ClerkStagingDiagnostics() {
       <div>
         Write-through counters: attempted {state.writeThroughCounters.attempted} / synced {state.writeThroughCounters.synced} / skipped {state.writeThroughCounters.skipped} / failed {state.writeThroughCounters.failed}
       </div>
+
+      <div style={{ marginTop: '6px', fontWeight: 700 }}>Phase 12 rental restriction read reduction</div>
+      <div>Restriction cutover requested: {state.restrictionCutoverRequested ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Restriction active source: {state.restrictionActiveSource || '-'}</div>
+      <div>Restriction watcher: {state.restrictionWatcherDisabled ? 'disabled' : 'active'}</div>
+      <div>Restriction one-time Firestore fallback reads: {state.restrictionFallbackReads}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Restriction fallback reason: {state.restrictionFallbackReason || '-'}</div>
+      <div>Last restriction write-through: {state.restrictionWriteStatus || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Restriction write reason: {state.restrictionWriteReason || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Restriction write Firebase: {state.restrictionWriteFirebaseUid || '-'}</div>
+      <div>Restriction write counters: attempted {state.restrictionWriteCounters.attempted} / synced {state.restrictionWriteCounters.synced} / failed {state.restrictionWriteCounters.failed}</div>
 
       {state.error ? (
         <div role="alert" style={{ marginTop: '8px', color: '#b91c1c', overflowWrap: 'anywhere' }}>

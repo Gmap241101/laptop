@@ -1,0 +1,80 @@
+import { createHash } from 'node:crypto';
+
+const normalizeText = (value) => String(value ?? '').trim();
+const stableValue = (value) => {
+  if (Array.isArray(value)) return value.map(stableValue);
+  if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stableValue(value[key])]));
+  return value;
+};
+const hashPayload = (value) => createHash('sha256').update(JSON.stringify(stableValue(value))).digest('hex');
+const serviceError = (code, message) => {
+  const error = new Error(message);
+  error.name = 'RentalRestrictionServiceError';
+  error.code = code;
+  return error;
+};
+
+const normalizeSource = ({ document, firebaseUid }) => {
+  if (!document) {
+    return Object.freeze({ exists: false, restriction: null, sourceDocumentPath: '', sourceUpdatedAt: null, sourceHash: hashPayload(null) });
+  }
+  const payload = { ...(document.fields || {}) };
+  const sourceUid = normalizeText(payload.uid || firebaseUid);
+  if (sourceUid !== firebaseUid) throw serviceError('rental_restriction_uid_mismatch', 'Firestore rental restriction UID does not match the requested Firebase UID.');
+  payload.uid = firebaseUid;
+  return Object.freeze({
+    exists: true,
+    restriction: Object.freeze(payload),
+    sourceDocumentPath: normalizeText(document.name),
+    sourceUpdatedAt: document.updateTime || null,
+    sourceHash: hashPayload(payload),
+  });
+};
+
+export const createRentalRestrictionService = ({ firebaseLinkRepository, rentalRestrictionRepository, firestoreRentalRestrictionClient }) => {
+  if (!firebaseLinkRepository || typeof firebaseLinkRepository.findByFirebaseUid !== 'function') throw new TypeError('firebaseLinkRepository is required.');
+  if (!rentalRestrictionRepository || typeof rentalRestrictionRepository.findByFirebaseUid !== 'function' || typeof rentalRestrictionRepository.upsert !== 'function') throw new TypeError('rentalRestrictionRepository is required.');
+  if (!firestoreRentalRestrictionClient || typeof firestoreRentalRestrictionClient.getRentalRestriction !== 'function') throw new TypeError('firestoreRentalRestrictionClient is required.');
+
+  const verifyIdentity = async (firebaseIdentity, firebaseUid) => {
+    const actorUid = normalizeText(firebaseIdentity?.uid);
+    if (!actorUid || !firebaseIdentity?.idToken) throw serviceError('firebase_identity_missing', 'Verified Firebase identity is required.');
+    const link = await firebaseLinkRepository.findByFirebaseUid(firebaseUid);
+    return { actorUid, link };
+  };
+
+  const readSource = async (firebaseIdentity, firebaseUid) => {
+    const document = await firestoreRentalRestrictionClient.getRentalRestriction({
+      firebaseUid,
+      firebaseIdToken: firebaseIdentity.idToken,
+    });
+    return normalizeSource({ document, firebaseUid });
+  };
+
+  return Object.freeze({
+    async getCurrentByFirebaseIdentity(firebaseIdentity) {
+      const firebaseUid = normalizeText(firebaseIdentity?.uid);
+      if (!firebaseUid) throw serviceError('firebase_identity_missing', 'Verified Firebase identity is required.');
+      return rentalRestrictionRepository.findByFirebaseUid(firebaseUid);
+    },
+
+    async readCurrentSourceByFirebaseIdentity(firebaseIdentity) {
+      const firebaseUid = normalizeText(firebaseIdentity?.uid);
+      await verifyIdentity(firebaseIdentity, firebaseUid);
+      return readSource(firebaseIdentity, firebaseUid);
+    },
+
+    async syncLinkedFirebaseUid(firebaseIdentity, targetFirebaseUid = '') {
+      const actorUid = normalizeText(firebaseIdentity?.uid);
+      const firebaseUid = normalizeText(targetFirebaseUid) || actorUid;
+      const { link } = await verifyIdentity(firebaseIdentity, firebaseUid);
+      const source = await readSource(firebaseIdentity, firebaseUid);
+      const shadow = await rentalRestrictionRepository.upsert({
+        firebaseUid,
+        appUserId: link?.appUserId || null,
+        ...source,
+      });
+      return Object.freeze({ status: 'synced', firebaseUid, actorUid, shadow });
+    },
+  });
+};

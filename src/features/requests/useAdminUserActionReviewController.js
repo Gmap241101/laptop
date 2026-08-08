@@ -13,6 +13,7 @@ import {
   RENTAL_REQUESTS_COLLECTION_REF,
   RENTAL_RESTRICTIONS_COLLECTION_REF,
   db,
+  firebaseAuth,
 } from '../../firebase.js';
 import {
   RENTAL_BLOCKING_REQUEST_STATUSES,
@@ -44,6 +45,7 @@ import {
 } from '../../utils/appUtils.js';
 import { buildOverdueReturnResult } from '../../utils/overduePolicy.js';
 import { hasOtherCurrentOverdueRequest } from './useAdminRequestMutationController.js';
+import { syncRentalRestrictionWriteThroughBestEffort } from './rentalRestrictionReadCutover.js';
 
 export const useAdminUserActionReviewState = () => {
   const [
@@ -875,6 +877,18 @@ export default function useAdminUserActionReviewController({
       }
 
       notifyAdminRequestMutation();
+
+      if (
+        approved &&
+        processedActionType === USER_REQUEST_ACTION.RETURN &&
+        currentRequest.requesterUid
+      ) {
+        await syncRentalRestrictionWriteThroughBestEffort({
+          firebaseUser: firebaseAuth.currentUser,
+          firebaseUid: currentRequest.requesterUid,
+          reason: `admin-user-action-${processedActionType || 'review'}-restriction`,
+        });
+      }
 
       triggerToast(
         `${getUserRequestActionLabel(

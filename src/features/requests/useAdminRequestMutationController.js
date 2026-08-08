@@ -13,6 +13,7 @@ import {
   RENTAL_REQUESTS_COLLECTION_REF,
   RENTAL_RESTRICTIONS_COLLECTION_REF,
   db,
+  firebaseAuth,
 } from '../../firebase.js';
 import {
   RENTAL_REQUEST_AUDIT_ACTION,
@@ -23,6 +24,7 @@ import {
   getDisplayRentalStatus,
   today,
 } from '../../utils/appUtils.js';
+import { syncRentalRestrictionWriteThroughBestEffort } from './rentalRestrictionReadCutover.js';
 
 let adminRequestMutationServicePromise = null;
 const loadAdminRequestMutationService = () => {
@@ -561,6 +563,14 @@ export default function useAdminRequestMutationController({
       clearAdminRequestPanelSelection();
       resetAdminRequestPanelPage();
       notifyAdminRequestMutation();
+
+      if (status === STATUS.RETURNED && currentRequest.requesterUid) {
+        await syncRentalRestrictionWriteThroughBestEffort({
+          firebaseUser: firebaseAuth.currentUser,
+          firebaseUid: currentRequest.requesterUid,
+          reason: 'admin-request-return-restriction',
+        });
+      }
   
       triggerToast(
         `상태가 [${nextDisplayStatus}]로 업데이트 되었습니다.`,

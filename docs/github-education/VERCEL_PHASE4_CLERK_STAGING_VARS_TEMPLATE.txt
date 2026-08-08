@@ -43,3 +43,12 @@ VITE_MEMBER_PROFILE_WRITE_THROUGH_ENABLED=true
 # The Phase 9/10/11 test gates are latched in sessionStorage for the current browser tab so SPA navigation
 # to /mypage or /admin does not silently disable the test. Close the tab, or use ?memberRead=firestore,
 # to reset the PostgreSQL/watcher cutover latch.
+
+# Phase 12 opt-in: serve the current user's rentalRestrictions/{uid} state from PostgreSQL
+# and disable that single Firestore realtime listener in the dedicated staging project.
+VITE_RENTAL_RESTRICTION_POSTGRES_READ_ENABLED=true
+
+# Start the Phase 12 staging session with:
+#   ?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWriteThrough=on&restrictionRead=postgres&restrictionWatcher=off
+# restrictionRead=postgres + restrictionWatcher=off is latched in sessionStorage for the current tab.
+# Use ?restrictionRead=firestore or close the tab to return this restriction read to Firestore realtime mode.

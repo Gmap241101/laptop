@@ -29,6 +29,14 @@ import {
   shouldUseMemberProfileFirestoreWatcher,
 } from '../members/memberProfileReadCutover.js';
 import { subscribeMemberProfileWriteThroughObservation } from '../members/memberProfileWriteThrough.js';
+import {
+  loadRentalRestrictionWithoutFirestoreWatcher,
+  publishRentalRestrictionCutoverObservation,
+  readRentalRestrictionCutoverConfig,
+  requestRentalRestrictionCandidate,
+  requestRentalRestrictionFallback,
+  subscribeRentalRestrictionWriteThroughObservation,
+} from '../requests/rentalRestrictionReadCutover.js';
 import { createDefaultUserProfileForm } from '../members/useUserMyPageAccountController.js';
 
 export const normalizeAdminAccounts = function(adminAccounts) {
@@ -589,6 +597,110 @@ export default function useAuthIdentityPolicySubscriptionController({
     }
 
     setCurrentUserRestrictionReady(false);
+    const restrictionCutoverConfig = readRentalRestrictionCutoverConfig();
+
+    if (restrictionCutoverConfig.requested) {
+      let active = true;
+      let refreshInFlight = false;
+
+      const refreshRestriction = async ({ allowFirestoreFallback = false } = {}) => {
+        if (!active || refreshInFlight) return;
+        refreshInFlight = true;
+        try {
+          if (allowFirestoreFallback) {
+            const result = await loadRentalRestrictionWithoutFirestoreWatcher({
+              loadCandidate: () =>
+                requestRentalRestrictionCandidate({
+                  firebaseUser: firebaseAuthUser,
+                  apiBaseUrl: restrictionCutoverConfig.apiBaseUrl,
+                }),
+              loadFallback: () =>
+                requestRentalRestrictionFallback({
+                  firebaseUser: firebaseAuthUser,
+                  apiBaseUrl: restrictionCutoverConfig.apiBaseUrl,
+                }),
+            });
+            if (!active) return;
+            setCurrentUserRestriction(result.restriction);
+            setCurrentUserRestrictionReady(true);
+            publishRentalRestrictionCutoverObservation({
+              requested: true,
+              activeSource: result.source,
+              firestoreWatcherDisabled: true,
+              firestoreFallbackReads: result.firestoreFallbackReads,
+              fallbackReason: result.fallbackReason,
+              firebaseUid: firebaseAuthUser.uid,
+            });
+            return;
+          }
+
+          const candidate = await requestRentalRestrictionCandidate({
+            firebaseUser: firebaseAuthUser,
+            apiBaseUrl: restrictionCutoverConfig.apiBaseUrl,
+          });
+          if (!active) return;
+          setCurrentUserRestriction(candidate.exists ? candidate.restriction : null);
+          setCurrentUserRestrictionReady(true);
+          publishRentalRestrictionCutoverObservation({
+            requested: true,
+            activeSource: 'postgresql-shadow',
+            firestoreWatcherDisabled: true,
+            firestoreFallbackReads: 0,
+            fallbackReason: '',
+            firebaseUid: firebaseAuthUser.uid,
+          });
+        } catch (error) {
+          if (!active) return;
+          if (allowFirestoreFallback) {
+            console.error('Rental restriction PostgreSQL read and one-time Firestore fallback both failed:', error);
+            setCurrentUserRestriction(null);
+            setCurrentUserRestrictionReady(true);
+            publishRentalRestrictionCutoverObservation({
+              requested: true,
+              activeSource: 'unavailable',
+              firestoreWatcherDisabled: true,
+              firestoreFallbackReads: Number(error?.firestoreFallbackReads) || 1,
+              fallbackReason: error?.code || 'rental-restriction-unavailable',
+              firebaseUid: firebaseAuthUser.uid,
+            });
+            triggerToastRef.current?.(
+              '대여 제한 상태를 불러오지 못했습니다. PostgreSQL 및 Firestore 연결 상태를 확인해 주세요.',
+              'error'
+            );
+          } else {
+            console.warn('PostgreSQL rental restriction refresh failed; keeping the last known restriction.', {
+              code: error?.code,
+              status: error?.status,
+            });
+          }
+        } finally {
+          refreshInFlight = false;
+        }
+      };
+
+      void refreshRestriction({ allowFirestoreFallback: true });
+      const refreshTimer = setInterval(() => void refreshRestriction(), 15000);
+      const unsubscribeWriteThrough = subscribeRentalRestrictionWriteThroughObservation((observation) => {
+        if (observation?.status === 'synced' && observation?.firebaseUid === firebaseAuthUser.uid) {
+          void refreshRestriction();
+        }
+      });
+
+      return () => {
+        active = false;
+        clearInterval(refreshTimer);
+        unsubscribeWriteThrough();
+      };
+    }
+
+    publishRentalRestrictionCutoverObservation({
+      requested: false,
+      activeSource: 'firestore-onSnapshot',
+      firestoreWatcherDisabled: false,
+      firestoreFallbackReads: 0,
+      fallbackReason: 'restriction-cutover-not-requested',
+      firebaseUid: firebaseAuthUser.uid,
+    });
 
     const unsubscribe = onSnapshot(
       doc(

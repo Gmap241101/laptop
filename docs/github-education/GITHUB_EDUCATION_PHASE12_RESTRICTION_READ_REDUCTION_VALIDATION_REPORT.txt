@@ -1,0 +1,63 @@
+GitHub Education Phase 12 - Rental Restriction Read Reduction Validation
+Date: 2026-08-08
+Baseline: rental-system-github-education-phase11-member-profile-write-through-20260808_deployment_package.zip
+
+RESULT: PASS (source/static/runtime-contract validation)
+
+Scope
+- Added PostgreSQL rental restriction shadow migration 006.
+- Added Firestore REST rentalRestrictions/{uid} read using the verified Firebase ID token.
+- Added PostgreSQL candidate, one-time Firestore seed/fallback, and write-through endpoints.
+- Added staging opt-in current-user restriction watcher disable with 15-second PostgreSQL refresh.
+- Added write-through hooks only to actual restriction mutation paths (overdue return and inherited restriction restoration).
+- Existing administrator UI has no general-member profile edit capability; no unnecessary admin profile-edit path was added.
+
+Automated verification
+- npm run verify:phase12: PASS / exit 0
+- migration static validation: PASS
+- Phase 12 backend restriction shadow smoke: PASS
+- Phase 12 frontend restriction cutover smoke: PASS
+- Phase 3-11 regression smoke suites: PASS
+- React Hook audit: PASS (150 source files)
+- Application flow contracts: PASS (124 contracts, 11 user routes, 20 admin tabs)
+- Firestore strict audit: PASS
+  Total calls: 129
+  onSnapshot: 35
+  getDocs: 48
+  getDoc: 28
+  getCountFromServer: 18
+  Approved existing risks: 51
+  New warnings: 0
+  Errors: 0
+- Package guard: PASS
+
+Runtime contract verified by Phase 12 smoke
+- Explicit staging gate required.
+- PostgreSQL candidate success performs no Firestore restriction fallback read.
+- Missing PostgreSQL shadow uses one Firestore REST read and seeds PostgreSQL.
+- Absent rentalRestrictions document is represented explicitly in PostgreSQL and does not require repeated Firestore reads.
+- Existing Firestore Security Rules remain authoritative because Heroku uses the actor Firebase ID token for source reads.
+- Write-through is best-effort and runs only after the existing Firestore mutation has succeeded.
+
+Build
+- npm run build:staging prebuild/audits: PASS.
+- Final Vite bundle could not run in this execution environment because root node_modules is not present: `vite: not found` (exit 127).
+- No new npm dependency was added; root package-lock.json is unchanged from Phase 11.
+
+Protected-path regression
+- Normal manifest: PASS.
+- Forced `.env.example`: BLOCKED / exit 1.
+- Forced missing file: BLOCKED / exit 1.
+
+Production invariants
+- src/App.jsx unchanged: 2,130 lines / 66,036 bytes.
+- App.jsx SHA-256: b30af55defc814cac9b33e056f4c89263444eca04b565c89ef0517d96b4b1117
+- src/firebase.js unchanged.
+- rules/firestore.rules unchanged.
+- firestore.indexes.json unchanged.
+- public/CNAME unchanged.
+- vercel.json unchanged.
+- src/main.jsx unchanged.
+- root package-lock.json unchanged.
+- New npm dependencies: 0.
+- Deleted files: 0.

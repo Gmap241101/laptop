@@ -143,3 +143,7 @@ Standard member-profile mutation paths covered in Phase 11 include user profile 
 With the Phase 10 watcher disabled, the active member profile is refreshed immediately after a successful write-through event for the current user and is also refreshed from PostgreSQL every 15 seconds. The periodic refresh does not read Firestore and skips React profile/form state updates when the PostgreSQL profile is unchanged, preventing unsaved My Page form input from being overwritten by a no-op poll.
 
 Phase 11 introduces no new database migration and no new npm dependency.
+
+## Phase 12 rental restriction shadow
+
+The staging API can shadow `rentalRestrictions/{uid}` into PostgreSQL and serve the current user's restriction without a client Firestore realtime listener. The source read and write-through sync use the caller's verified Firebase ID token, so existing Firestore Security Rules remain the authorization boundary. The first missing-shadow read may perform one Firestore REST read to seed PostgreSQL; steady-state reads use PostgreSQL. No new Heroku secret is required.
