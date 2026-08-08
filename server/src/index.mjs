@@ -8,6 +8,7 @@ import { createFirestoreUserAccountClient } from './firestore/firestore-user-acc
 import { createFirestoreRentalRestrictionClient } from './firestore/firestore-rental-restriction.mjs';
 import { createFirestoreRentalRequestsClient } from './firestore/firestore-rental-requests.mjs';
 import { createFirestoreRentalRequestWriteClient } from './firestore/firestore-rental-request-write.mjs';
+import { createFirestoreAdminRentalRequestsClient } from './firestore/firestore-admin-rental-requests.mjs';
 import { checkDatabase, closePool, getPool } from './db/pool.mjs';
 import { createUserRepository } from './users/user-repository.mjs';
 import { createUserIdentityService } from './users/user-service.mjs';
@@ -21,6 +22,8 @@ import { createRentalRequestRepository } from './rentals/rental-request-reposito
 import { createRentalRequestService } from './rentals/rental-request-service.mjs';
 import { createRentalRequestWriteRepository } from './rentals/rental-request-write-repository.mjs';
 import { createRentalRequestWriteService } from './rentals/rental-request-write-service.mjs';
+import { createAdminRentalRequestRepository } from './rentals/admin-rental-request-repository.mjs';
+import { createAdminRentalRequestService } from './rentals/admin-rental-request-service.mjs';
 
 const config = readServerConfig();
 const authenticateRequest = createClerkSessionAuthenticator(config);
@@ -131,6 +134,19 @@ const rentalRequestWriteService = createRentalRequestWriteService({
   rentalRequestWriteRepository,
   firestoreRentalRequestWriteClient,
 });
+const adminRentalRequestRepository = createAdminRentalRequestRepository(pool);
+const firestoreAdminRentalRequestsClient = config.firebaseProjectId
+  ? createFirestoreAdminRentalRequestsClient({
+      projectId: config.firebaseProjectId,
+      timeoutMs: config.firestoreRestTimeoutMs,
+    })
+  : {
+      async verifyAdmin() { const error = new Error('Firestore admin rental request bridge is not configured.'); error.code = 'firestore_admin_rental_request_not_configured'; throw error; },
+    };
+const adminRentalRequestService = createAdminRentalRequestService({
+  repository: adminRentalRequestRepository,
+  firestoreClient: firestoreAdminRentalRequestsClient,
+});
 const verifyFirebaseIdToken = config.firebaseProjectId
   ? createFirebaseIdTokenVerifier({
       projectId: config.firebaseProjectId,
@@ -158,6 +174,7 @@ const server = createServer(
     rentalRestrictionService,
     rentalRequestService,
     rentalRequestWriteService,
+    adminRentalRequestService,
   }),
 );
 
@@ -175,6 +192,7 @@ server.listen(config.port, '0.0.0.0', () => {
     rentalRestrictionShadow: config.firebaseProjectId ? 'postgresql-user-token-security-rules' : 'disabled',
     rentalRequestShadow: config.firebaseProjectId ? 'normalized-postgresql-user-token-security-rules' : 'disabled',
     rentalRequestWrite: config.firebaseProjectId ? 'postgresql-authoritative-firestore-compatibility-mirror' : 'disabled',
+    adminRentalRequests: config.firebaseProjectId ? 'postgresql-read-status-write-firestore-compatibility-mirror' : 'disabled',
   });
 });
 

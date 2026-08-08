@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { onSnapshot } from 'firebase/firestore';
 
-import { DASHBOARD_SUMMARY_DOC_REF } from '../firebase.js';
+import { DASHBOARD_SUMMARY_DOC_REF, firebaseAuth } from '../firebase.js';
 import { today } from '../utils/appUtils.js';
+import { clerkStagingClient } from '../clerk/clerkStagingClient.js';
+import { readAdminRentalRequestCutoverConfig } from '../features/requests/adminRentalRequestCutover.js';
 import {
   getFirestoreResourceExhaustedMessage,
   isFirestoreCapacityCoolingDown,
@@ -83,6 +85,9 @@ export const useDashboardSummary = ({
 
   const refreshInProgressRef = useRef(false);
   const triggerToastRef = useRef(triggerToast);
+  const adminRentalCutoverConfigRef = useRef(
+    readAdminRentalRequestCutoverConfig()
+  );
 
   useEffect(() => {
     triggerToastRef.current = triggerToast;
@@ -98,6 +103,62 @@ export const useDashboardSummary = ({
     setDashboardSummaryLoadErrorMessage('');
     writeDashboardSummaryCache(nextSummary);
   }, []);
+
+  const applyPostgresRentalDashboard = useCallback(async () => {
+    if (!adminRentalCutoverConfigRef.current.readRequested) return null;
+    const firebaseUser = firebaseAuth.currentUser;
+    if (!firebaseUser) return null;
+    const firebaseIdToken = await firebaseUser.getIdToken();
+    const payload = await clerkStagingClient.getAdminRentalDashboard(
+      firebaseIdToken,
+      today()
+    );
+    const dashboard = payload?.adminRentalDashboard;
+    const counts = dashboard?.counts || {};
+    const currentSummary = dashboardSummaryRef.current || cachedSummaryRef.current || {
+      schemaVersion: 2,
+      businessDate: today(),
+      activeRequests: [],
+      pendingAccounts: [],
+      metrics: {},
+      requestTabCounts: {},
+      dataIssueCounts: {},
+      sourceStats: {},
+    };
+    const nextSummary = {
+      ...currentSummary,
+      businessDate: today(),
+      metrics: {
+        ...(currentSummary.metrics || {}),
+        requestedCount: Number(counts.requested || 0),
+        onHoldCount: Number(counts.on_hold || 0),
+        approvedCount: Number(counts.rental || 0),
+        pendingUserActionCount: Number(counts.pending_user_action || 0),
+        overdueCount: Number(counts.overdue || 0),
+        dueTodayCount: Number(counts.due_today || 0),
+        startTodayCount: Number(counts.start_today || 0),
+        uniqueReservedAssets: Number(counts.unique_reserved_assets || 0),
+        uniqueActiveAssets: Number(counts.unique_active_assets || 0),
+        uniqueOverdueAssets: Number(counts.unique_overdue_assets || 0),
+        uniqueOverdueUsers: Number(counts.unique_overdue_users || 0),
+        longestOverdueDays: Number(counts.longest_overdue_days || 0),
+        oldestRequestedDays: Number(counts.oldest_requested_days || 0),
+      },
+      requestTabCounts: {
+        pending: Number(counts.pending || 0),
+        rental: Number(counts.rental || 0),
+        closed: Number(counts.closed || 0),
+        returned: Number(counts.returned || 0),
+      },
+      sourceStats: {
+        ...(currentSummary.sourceStats || {}),
+        rentalRequestMetricSource: 'postgresql-phase17',
+        rentalRequestMetricReferenceDate: dashboard?.referenceDate || today(),
+      },
+    };
+    applyDashboardSummary(nextSummary);
+    return nextSummary;
+  }, [applyDashboardSummary]);
 
   const applyCapacityError = useCallback((error, { showToast = false } = {}) => {
     markFirestoreCapacityExhausted(error);
@@ -304,6 +365,11 @@ export const useDashboardSummary = ({
 
     const refreshStaleDashboardSummary = async () => {
       try {
+        if (adminRentalCutoverConfigRef.current.readRequested) {
+          await applyPostgresRentalDashboard();
+          return;
+        }
+
         const {
           DASHBOARD_SUMMARY_ENTRY_REFRESH_AGE_MS,
           DASHBOARD_SUMMARY_SCHEMA_VERSION,
@@ -341,6 +407,7 @@ export const useDashboardSummary = ({
     dashboardSummary,
     dashboardSummaryReady,
     refreshDashboardSummary,
+    applyPostgresRentalDashboard,
     shouldSubscribeDashboardSummary,
   ]);
 

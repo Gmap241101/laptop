@@ -1588,6 +1588,7 @@ function App() {
   useSelectedRentalAssetAvailabilityGuard({
     selectedLaptop,
     selectedLaptopAvailability,
+    requestSubmitLoading,
     selectedLaptopId,
     setSelectedLaptopId,
     triggerToast,

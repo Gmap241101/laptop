@@ -156,6 +156,8 @@ const sanitizeRentalRequest = (request) => ({
   userActionRequest: request.userActionRequest,
   requestedAt: request.requestedAt,
   returnedAt: request.returnedAt,
+  actualReturnDate: request.actualReturnDate || '',
+  overdueDaysAtReturn: Number(request.overdueDaysAtReturn || 0),
   overduePenaltyPending: Boolean(request.overduePenaltyPending),
   overduePenaltyBatchId: request.overduePenaltyBatchId,
   syncedAt: request.syncedAt,
@@ -220,6 +222,12 @@ export const createRequestHandler = ({
   rentalRequestWriteService = {
     async createCurrent() { const error = new Error('Rental request write service is not configured.'); error.code = 'rental_request_write_not_configured'; throw error; },
   },
+  adminRentalRequestService = {
+    async bootstrap() { const error = new Error('Admin rental request service is not configured.'); error.code = 'admin_rental_request_not_configured'; throw error; },
+    async list() { const error = new Error('Admin rental request service is not configured.'); error.code = 'admin_rental_request_not_configured'; throw error; },
+    async getDashboard() { const error = new Error('Admin rental request service is not configured.'); error.code = 'admin_rental_request_not_configured'; throw error; },
+    async changeStatus() { const error = new Error('Admin rental request service is not configured.'); error.code = 'admin_rental_request_not_configured'; throw error; },
+  },
 }) => {
   if (typeof databaseCheck !== 'function') {
     throw new TypeError('databaseCheck must be a function.');
@@ -265,6 +273,15 @@ export const createRequestHandler = ({
   }
   if (!rentalRequestWriteService || typeof rentalRequestWriteService.createCurrent !== 'function') {
     throw new TypeError('rentalRequestWriteService createCurrent method is required.');
+  }
+  if (
+    !adminRentalRequestService ||
+    typeof adminRentalRequestService.bootstrap !== 'function' ||
+    typeof adminRentalRequestService.list !== 'function' ||
+    typeof adminRentalRequestService.getDashboard !== 'function' ||
+    typeof adminRentalRequestService.changeStatus !== 'function'
+  ) {
+    throw new TypeError('adminRentalRequestService bootstrap/list/getDashboard/changeStatus methods are required.');
   }
 
 
@@ -343,6 +360,9 @@ export const createRequestHandler = ({
           rentalRequestCreate: '/api/users/me/rental-requests',
           rentalRequestShadowSync: '/api/users/me/legacy/rental-request-shadows/sync',
           rentalRequestShadowCompare: '/api/users/me/legacy/rental-request-shadows/compare',
+          adminRentalRequestBootstrap: '/api/admin/rental-requests/bootstrap',
+          adminRentalRequests: '/api/admin/rental-requests',
+          adminRentalDashboard: '/api/admin/rental-dashboard',
         },
         headers,
       );
@@ -573,6 +593,149 @@ export const createRequestHandler = ({
 
 
 
+
+
+    if (request.method === 'POST' && url.pathname === '/api/admin/rental-requests/bootstrap') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      try {
+        const result = await adminRentalRequestService.bootstrap(firebaseIdentity);
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          adminRentalRequestBootstrap: {
+            source: 'firestore-admin-security-rules',
+            target: 'postgresql',
+            synchronized: result.synchronized,
+            sourceCount: result.sourceCount,
+            adminUid: result.admin.uid,
+          },
+        }, headers);
+      } catch (error) {
+        const code = error?.code || 'admin_rental_request_bootstrap_unavailable';
+        const statusCode = error?.status || (String(code).includes('admin_') ? 403 : 503);
+        console.warn('[admin-rental-request] bootstrap failed', { requestId, code });
+        writeJson(response, statusCode, { ...basePayload, authenticated: true, error: code }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/admin/rental-requests') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      try {
+        const result = await adminRentalRequestService.list(firebaseIdentity, {
+          tab: url.searchParams.get('tab') || 'pending',
+          quickFilter: url.searchParams.get('quickFilter') || 'all',
+          query: url.searchParams.get('query') || '',
+          page: url.searchParams.get('page') || '1',
+          pageSize: url.searchParams.get('pageSize') || '10',
+          referenceDate: url.searchParams.get('referenceDate') || '',
+        });
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          adminRentalRequests: {
+            source: 'postgresql',
+            requests: result.requests.map(sanitizeRentalRequest),
+            totalCount: result.totalCount,
+            counts: result.counts,
+            page: result.page,
+            pageSize: result.pageSize,
+            referenceDate: result.referenceDate,
+          },
+        }, headers);
+      } catch (error) {
+        const code = error?.code || 'admin_rental_request_read_unavailable';
+        const statusCode = error?.status || 503;
+        writeJson(response, statusCode, { ...basePayload, authenticated: true, error: code }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/admin/rental-dashboard') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      try {
+        const result = await adminRentalRequestService.getDashboard(
+          firebaseIdentity,
+          url.searchParams.get('referenceDate') || undefined,
+        );
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          adminRentalDashboard: {
+            source: 'postgresql',
+            referenceDate: result.referenceDate,
+            counts: result.counts,
+          },
+        }, headers);
+      } catch (error) {
+        const code = error?.code || 'admin_rental_dashboard_unavailable';
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: code }, headers);
+      }
+      return;
+    }
+
+    const adminStatusMatch = request.method === 'POST'
+      ? url.pathname.match(/^\/api\/admin\/rental-requests\/([^/]+)\/status$/)
+      : null;
+    if (adminStatusMatch) {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      let body;
+      try {
+        body = await readJsonBody(request);
+      } catch (error) {
+        writeJson(response, error?.status || 400, { ...basePayload, authenticated: true, error: error?.code || 'invalid_json_body' }, headers);
+        return;
+      }
+      try {
+        const result = await adminRentalRequestService.changeStatus(firebaseIdentity, {
+          requestId: decodeURIComponent(adminStatusMatch[1]),
+          nextStatus: body?.status,
+        });
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          adminRentalRequestMutation: {
+            authority: result.authority,
+            firestoreMirror: result.firestoreMirror,
+            request: sanitizeRentalRequest(result.request),
+            availability: result.availability,
+            asset: result.asset,
+            restrictionUpdated: result.restrictionUpdated,
+          },
+        }, headers);
+      } catch (error) {
+        const code = error?.code || 'admin_rental_status_change_unavailable';
+        const statusCode = error?.status
+          || (['invalid_rental_status_transition', 'rental_period_conflict'].includes(code) ? 409
+            : ['rental_request_not_found', 'rental_asset_not_found'].includes(code) ? 404
+            : 503);
+        writeJson(response, statusCode, {
+          ...basePayload,
+          authenticated: true,
+          error: code,
+          blockingRequest: error?.blockingRequest || null,
+          previousStatus: error?.previousStatus || null,
+          nextStatus: error?.nextStatus || null,
+        }, headers);
+      }
+      return;
+    }
 
     if (request.method === 'POST' && url.pathname === '/api/users/me/rental-requests') {
       const auth = await authenticate(request, response, headers, requestId);

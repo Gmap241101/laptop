@@ -21,7 +21,8 @@
     "smoke:member-write-through": "node ../tools/backend/smoke-member-profile-write-through.mjs",
     "smoke:restriction-shadow": "node ../tools/backend/smoke-rental-restriction-shadow.mjs",
     "smoke:rental-request-shadow": "node ../tools/backend/smoke-rental-request-shadow.mjs",
-    "smoke:rental-request-write": "node ../tools/backend/smoke-rental-request-authoritative-write.mjs"
+    "smoke:rental-request-write": "node ../tools/backend/smoke-rental-request-authoritative-write.mjs",
+    "smoke:admin-rental-request": "node ../tools/backend/smoke-admin-rental-request-cutover.mjs"
   },
   "dependencies": {
     "pg": "8.22.0"

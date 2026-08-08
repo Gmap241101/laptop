@@ -4,11 +4,12 @@ export default function useSelectedRentalAssetAvailabilityGuard({
   selectedLaptop,
   selectedLaptopId,
   selectedLaptopAvailability,
+  requestSubmitLoading,
   setSelectedLaptopId,
   triggerToast,
 }) {
   useEffect(() => {
-    if (!selectedLaptop || !selectedLaptopAvailability?.blocked) {
+    if (requestSubmitLoading || !selectedLaptop || !selectedLaptopAvailability?.blocked) {
       return;
     }
 
@@ -35,6 +36,7 @@ export default function useSelectedRentalAssetAvailabilityGuard({
       'error'
     );
   }, [
+    requestSubmitLoading,
     selectedLaptopId,
     selectedLaptop?.id,
     selectedLaptopAvailability?.blocked,

@@ -25,6 +25,11 @@ import {
   today,
 } from '../../utils/appUtils.js';
 import { syncRentalRestrictionWriteThroughBestEffort } from './rentalRestrictionReadCutover.js';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import {
+  publishAdminRentalRequestCutoverObservation,
+  readAdminRentalRequestCutoverConfig,
+} from './adminRentalRequestCutover.js';
 
 let adminRequestMutationServicePromise = null;
 const loadAdminRequestMutationService = () => {
@@ -500,32 +505,71 @@ export default function useAdminRequestMutationController({
     );
   
     try {
-      const hasOtherCurrentOverdueRequests =
-        status === STATUS.RETURNED
-          ? await hasOtherCurrentOverdueRequest({
-              requesterUid: currentRequest.requesterUid,
-              excludedRequestId: currentRequest.id,
-              referenceDate: actualReturnDate,
-            })
-          : false;
-      const {
-        executeAdminRequestStatusChangeMutation,
-      } = await loadAdminRequestMutationService();
-      const {
-        committedAsset,
-        committedAvailabilityRequest,
-        committedRequest,
-        shouldKeepAvailability,
-      } = await executeAdminRequestStatusChangeMutation({
-        actualReturnDate,
-        auditActor,
-        currentRequest,
-        hasOtherCurrentOverdueRequests,
-        nextStatus: status,
-        overdueBatchId,
-        requestId: id,
-        settings: dataSettings,
-      });
+      const adminCutoverConfig = readAdminRentalRequestCutoverConfig();
+      let committedAsset;
+      let committedAvailabilityRequest;
+      let committedRequest;
+      let shouldKeepAvailability;
+
+      if (adminCutoverConfig.writeRequested) {
+        const firebaseUser = firebaseAuth.currentUser;
+        if (!firebaseUser) {
+          const authError = new Error('admin-firebase-sign-in-required');
+          authError.code = 'admin_firebase_sign_in_required';
+          throw authError;
+        }
+        const firebaseIdToken = await firebaseUser.getIdToken();
+        const payload = await clerkStagingClient.changeAdminRentalRequestStatus(
+          firebaseIdToken,
+          id,
+          status
+        );
+        const mutation = payload?.adminRentalRequestMutation || {};
+        committedRequest = mutation.request;
+        committedAvailabilityRequest = mutation.availability || null;
+        committedAsset = mutation.asset;
+        shouldKeepAvailability = Boolean(committedAvailabilityRequest);
+        publishAdminRentalRequestCutoverObservation({
+          readRequested: adminCutoverConfig.readRequested,
+          writeRequested: true,
+          writeSource: 'postgresql-authoritative',
+          requestId: id,
+          nextStatus: status,
+          firestoreMirror: mutation.firestoreMirror || '-',
+          error: '',
+        });
+      } else {
+        const hasOtherCurrentOverdueRequests =
+          status === STATUS.RETURNED
+            ? await hasOtherCurrentOverdueRequest({
+                requesterUid: currentRequest.requesterUid,
+                excludedRequestId: currentRequest.id,
+                referenceDate: actualReturnDate,
+              })
+            : false;
+        const {
+          executeAdminRequestStatusChangeMutation,
+        } = await loadAdminRequestMutationService();
+        ({
+          committedAsset,
+          committedAvailabilityRequest,
+          committedRequest,
+          shouldKeepAvailability,
+        } = await executeAdminRequestStatusChangeMutation({
+          actualReturnDate,
+          auditActor,
+          currentRequest,
+          hasOtherCurrentOverdueRequests,
+          nextStatus: status,
+          overdueBatchId,
+          requestId: id,
+          settings: dataSettings,
+        }));
+      }
+
+      if (!committedRequest || !committedAsset) {
+        throw new Error('admin-rental-status-result-missing');
+      }
   
       updateAdminRequestPanelRequests((prev) => {
         const requestExists = (prev || []).some(
@@ -582,7 +626,7 @@ export default function useAdminRequestMutationController({
         error
       );
   
-      if (error?.message === 'rental-request-not-found') {
+      if (error?.message === 'rental-request-not-found' || error?.code === 'rental_request_not_found') {
         triggerToast(
           '정식 대여 신청 문서를 찾을 수 없어 상태 변경을 중단했습니다.',
           'error'
@@ -590,7 +634,7 @@ export default function useAdminRequestMutationController({
         return;
       }
   
-      if (error?.message === 'rental-asset-not-found') {
+      if (error?.message === 'rental-asset-not-found' || error?.code === 'rental_asset_not_found') {
         triggerToast(
           '신청과 연결된 자산 문서를 찾을 수 없어 상태 변경을 중단했습니다.',
           'error'
@@ -599,7 +643,8 @@ export default function useAdminRequestMutationController({
       }
   
       if (
-        error?.message === 'invalid-rental-status-transition'
+        error?.message === 'invalid-rental-status-transition' ||
+        error?.code === 'invalid_rental_status_transition'
       ) {
         triggerToast(
           `허용되지 않은 상태 변경입니다. 현재 상태: ${
@@ -610,7 +655,7 @@ export default function useAdminRequestMutationController({
         return;
       }
   
-      if (error?.message === 'rental-period-conflict') {
+      if (error?.message === 'rental-period-conflict' || error?.code === 'rental_period_conflict') {
         const blockingRequest = error.blockingRequest;
   
         triggerToast(
@@ -624,6 +669,19 @@ export default function useAdminRequestMutationController({
   
       const firebaseErrorCode =
         error?.code || error?.message || 'unknown-error';
+
+      const adminCutoverConfig = readAdminRentalRequestCutoverConfig();
+      if (adminCutoverConfig.writeRequested) {
+        publishAdminRentalRequestCutoverObservation({
+          readRequested: adminCutoverConfig.readRequested,
+          writeRequested: true,
+          writeSource: 'postgresql-authoritative',
+          requestId: id,
+          nextStatus: status,
+          firestoreMirror: '-',
+          error: firebaseErrorCode,
+        });
+      }
   
       triggerToast(
         `신청 상태와 기기 상태 저장에 실패했습니다. 오류 코드: ${firebaseErrorCode}`,

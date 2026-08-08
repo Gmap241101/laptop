@@ -322,6 +322,112 @@ export const requestMemberShadowComparison = async ({ clerk, apiBaseUrl, fetchIm
   return payload;
 };
 
+export const requestAdminRentalRequestBootstrap = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken }) => {
+  const token = trim(firebaseIdToken);
+  if (!token) throw new Error('Firebase admin sign-in is required before synchronizing admin rental requests.');
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/admin/rental-requests/bootstrap',
+    method: 'POST',
+    headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const error = new Error(`Admin rental request bootstrap failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (!payload?.authenticated || !payload?.authorized || payload?.adminRentalRequestBootstrap?.target !== 'postgresql') {
+    throw new Error('Backend returned an invalid admin rental request bootstrap response.');
+  }
+  return payload;
+};
+
+export const requestAdminRentalRequests = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, options = {} }) => {
+  const token = trim(firebaseIdToken);
+  if (!token) throw new Error('Firebase admin sign-in is required before reading PostgreSQL rental requests.');
+  const params = new URLSearchParams();
+  ['tab', 'quickFilter', 'query', 'page', 'pageSize', 'referenceDate'].forEach((key) => {
+    const value = options?.[key];
+    if (value !== undefined && value !== null && String(value) !== '') params.set(key, String(value));
+  });
+  const query = params.toString();
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: `/api/admin/rental-requests${query ? `?${query}` : ''}`,
+    headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const error = new Error(`Admin PostgreSQL rental request read failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (!payload?.authenticated || !payload?.authorized || payload?.adminRentalRequests?.source !== 'postgresql' || !Array.isArray(payload?.adminRentalRequests?.requests)) {
+    throw new Error('Backend returned an invalid admin rental request response.');
+  }
+  return payload;
+};
+
+export const requestAdminRentalDashboard = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, referenceDate = '' }) => {
+  const token = trim(firebaseIdToken);
+  if (!token) throw new Error('Firebase admin sign-in is required before reading the PostgreSQL rental dashboard.');
+  const query = referenceDate ? `?referenceDate=${encodeURIComponent(referenceDate)}` : '';
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: `/api/admin/rental-dashboard${query}`,
+    headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const error = new Error(`Admin PostgreSQL rental dashboard read failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (!payload?.authenticated || !payload?.authorized || payload?.adminRentalDashboard?.source !== 'postgresql') {
+    throw new Error('Backend returned an invalid admin rental dashboard response.');
+  }
+  return payload;
+};
+
+export const requestAdminRentalRequestStatusChange = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, requestId, status }) => {
+  const token = trim(firebaseIdToken);
+  const id = trim(requestId);
+  if (!token) throw new Error('Firebase admin sign-in is required before changing a PostgreSQL rental request.');
+  if (!id) throw new Error('Rental request ID is required.');
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: `/api/admin/rental-requests/${encodeURIComponent(id)}/status`,
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Firebase-Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({ status }),
+  });
+  if (!response.ok) {
+    const error = new Error(`Admin PostgreSQL rental request status change failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    error.blockingRequest = payload?.blockingRequest || null;
+    error.previousStatus = payload?.previousStatus || null;
+    error.nextStatus = payload?.nextStatus || null;
+    throw error;
+  }
+  if (!payload?.authenticated || !payload?.authorized || payload?.adminRentalRequestMutation?.authority !== 'postgresql' || !payload?.adminRentalRequestMutation?.request?.id) {
+    throw new Error('Backend returned an invalid admin rental request mutation response.');
+  }
+  return payload;
+};
+
 export const requestRentalRequestCreate = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, request }) => {
   const token = trim(firebaseIdToken);
   if (!token) throw new Error('Firebase sign-in is required before creating a PostgreSQL rental request.');
@@ -575,6 +681,22 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
         fetchImpl,
         firebaseIdToken,
       });
+    },
+    async bootstrapAdminRentalRequests(firebaseIdToken) {
+      const clerk = await initialize();
+      return requestAdminRentalRequestBootstrap({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken });
+    },
+    async getAdminRentalRequests(firebaseIdToken, options) {
+      const clerk = await initialize();
+      return requestAdminRentalRequests({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, options });
+    },
+    async getAdminRentalDashboard(firebaseIdToken, referenceDate) {
+      const clerk = await initialize();
+      return requestAdminRentalDashboard({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, referenceDate });
+    },
+    async changeAdminRentalRequestStatus(firebaseIdToken, requestId, status) {
+      const clerk = await initialize();
+      return requestAdminRentalRequestStatusChange({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, requestId, status });
     },
     async createRentalRequest(firebaseIdToken, request) {
       const clerk = await initialize();

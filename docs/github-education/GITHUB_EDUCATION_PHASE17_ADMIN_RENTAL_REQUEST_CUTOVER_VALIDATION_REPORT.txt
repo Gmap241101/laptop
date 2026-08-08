@@ -1,0 +1,20 @@
+Phase 17 validation report
+Generated: 2026-08-08
+
+Scope
+- Phase 16 false selected-asset availability toast regression fix
+- Admin rental-request PostgreSQL bootstrap/read/search/server-paging/tab-count cutover
+- PostgreSQL authoritative core admin status transitions + Firestore compatibility mirror
+- PostgreSQL dashboard rental-request metrics
+- Legacy admin Firestore edit/memo/user-action review resync bridge
+
+Validation
+- npm run verify:phase17: PASS / exit 0
+- React Hook audit: PASS / 157 source files
+- Application flow audit: PASS / 124 contracts / 11 user routes / 20 admin tabs
+- Firestore strict audit: PASS / total 130 / onSnapshot 35 / getDocs 49 / getDoc 28 / getCountFromServer 18 / approved risk 51 / warnings 0 / errors 0
+- Backend HTTP smoke: PASS including Phase 17 admin bootstrap/list/dashboard/status routes
+- Phase 17 backend smoke: PASS including admin auth, source bootstrap, PostgreSQL list/status authority, reservation policy and Firestore compatibility mirror
+- Phase 17 frontend smoke: PASS including opt-in gates/session latch, PostgreSQL admin read/status, Firestore fallback, dashboard counts and Phase 16 false-toast suppression
+- build:staging: prebuild audits PASS; final Vite bundle unavailable in the ChatGPT environment because root node_modules is absent (`vite: not found`, exit 127)
+- No new npm dependency

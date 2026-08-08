@@ -78,3 +78,12 @@ VITE_RENTAL_REQUEST_FIRESTORE_WATCHER_DISABLED=true
 
 # Phase 16: 신규 대여 신청 PostgreSQL authoritative transaction (Staging opt-in)
 VITE_RENTAL_REQUEST_POSTGRES_WRITE_ENABLED=true
+
+# Phase 17: 관리자 대여 신청 목록/검색/탭 건수 및 핵심 상태변경 PostgreSQL cutover (Staging opt-in)
+VITE_ADMIN_RENTAL_REQUEST_POSTGRES_READ_ENABLED=true
+VITE_ADMIN_RENTAL_REQUEST_POSTGRES_WRITE_ENABLED=true
+# Both gates still require explicit staging query/session opt-in:
+#   ?adminRequestRead=postgres&adminRequestWrite=postgres
+# Recommended full Phase 17 diagnostic URL:
+#   ?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWriteThrough=on&restrictionRead=postgres&restrictionWatcher=off&rentalRequestRead=postgres&rentalRequestWatcher=off&rentalRequestWrite=postgres&adminRequestRead=postgres&adminRequestWrite=postgres
+# These are frontend build-time values. Configure them only in the mkrental Vercel project's Production environment and redeploy.

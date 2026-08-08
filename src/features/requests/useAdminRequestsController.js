@@ -12,6 +12,7 @@ import {
 
 import {
   RENTAL_REQUESTS_COLLECTION_REF,
+  firebaseAuth,
 } from '../../firebase.js';
 import {
   ADMIN_REQUEST_QUICK_FILTER,
@@ -34,6 +35,11 @@ import {
   markFirestoreCapacityExhausted,
 } from '../../utils/firestoreCapacity.js';
 import useAdminRequestProgressiveSearch from './useAdminRequestProgressiveSearch.js';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import {
+  publishAdminRentalRequestCutoverObservation,
+  readAdminRentalRequestCutoverConfig,
+} from './adminRentalRequestCutover.js';
 
 const DEFAULT_PAGE_SIZE = 10;
 
@@ -102,6 +108,18 @@ export default function useAdminRequestsController({
   const cursorKeyRef = useRef('');
   const requestsRef = useRef(requests);
   const triggerToastRef = useRef(triggerToast);
+  const postgresBootstrapRef = useRef(false);
+  const [postgresFallbackActive, setPostgresFallbackActive] = useState(false);
+  const adminCutoverConfig = useMemo(() => readAdminRentalRequestCutoverConfig(), []);
+  const postgresServerPaging = Boolean(
+    adminCutoverConfig.readRequested && !postgresFallbackActive
+  );
+
+  useEffect(() => {
+    if (enabled && prerequisitesReady) return;
+    postgresBootstrapRef.current = false;
+    setPostgresFallbackActive(false);
+  }, [enabled, prerequisitesReady]);
 
   const debouncedQuery = useDebouncedValue(query);
   const referenceDate = today();
@@ -185,9 +203,15 @@ export default function useAdminRequestsController({
     };
   }, [getRequestById, onControllerStateChange, resetPage, updateRequests]);
 
+  useEffect(() => {
+    if (!adminCutoverConfig.readRequested) return;
+    postgresBootstrapRef.current = false;
+  }, [adminCutoverConfig.readRequested, mutationVersion]);
+
   const progressiveSearchEnabled = Boolean(
     enabled &&
       prerequisitesReady &&
+      !postgresServerPaging &&
       String(debouncedQuery || '').trim()
   );
 
@@ -208,6 +232,136 @@ export default function useAdminRequestsController({
   });
 
   useEffect(() => {
+    if (!postgresServerPaging) return undefined;
+    if (!enabled) {
+      setRequests([]);
+      setReady(true);
+      setLoadErrorMessage('');
+      setHasNextPage(false);
+      setTotalCount(0);
+      return undefined;
+    }
+    if (!prerequisitesReady) {
+      setReady(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setReady(false);
+    setLoadErrorMessage('');
+
+    const loadPostgresRequests = async () => {
+      try {
+        const firebaseUser = firebaseAuth.currentUser;
+        if (!firebaseUser) {
+          const error = new Error('Firebase admin sign-in is required.');
+          error.code = 'admin_firebase_sign_in_required';
+          throw error;
+        }
+        const firebaseIdToken = await firebaseUser.getIdToken();
+        let bootstrapCount = null;
+        if (!postgresBootstrapRef.current) {
+          const bootstrapPayload = await clerkStagingClient.bootstrapAdminRentalRequests(firebaseIdToken);
+          bootstrapCount = Number(bootstrapPayload?.adminRentalRequestBootstrap?.synchronized || 0);
+          postgresBootstrapRef.current = true;
+        }
+        const payload = await clerkStagingClient.getAdminRentalRequests(firebaseIdToken, {
+          tab: requestTab,
+          quickFilter,
+          query: debouncedQuery,
+          page,
+          pageSize,
+          referenceDate,
+        });
+        if (cancelled) return;
+        const candidate = payload.adminRentalRequests;
+        let nextRequests = Array.isArray(candidate.requests) ? candidate.requests : [];
+
+        if (
+          selectedRequestId &&
+          !nextRequests.some((request) => request.id === selectedRequestId)
+        ) {
+          try {
+            const selectedPayload = await clerkStagingClient.getAdminRentalRequests(firebaseIdToken, {
+              tab: requestTab,
+              quickFilter: ADMIN_REQUEST_QUICK_FILTER.ALL,
+              query: selectedRequestId,
+              page: 1,
+              pageSize: 1,
+              referenceDate,
+            });
+            const selectedCandidate = selectedPayload?.adminRentalRequests?.requests?.[0];
+            if (selectedCandidate?.id === selectedRequestId) {
+              nextRequests = [...nextRequests, selectedCandidate];
+            }
+          } catch (selectedError) {
+            console.warn('PostgreSQL selected rental request lookup failed:', selectedError);
+          }
+        }
+
+        const counts = candidate.counts || {};
+        setRequests(nextRequests);
+        setTotalCount(Number(candidate.totalCount || 0));
+        setHasNextPage(page * pageSize < Number(candidate.totalCount || 0));
+        setTabCounts({
+          [ADMIN_REQUEST_TAB.PENDING]: Number(counts.pending || 0),
+          [ADMIN_REQUEST_TAB.RENTAL]: Number(counts.rental || 0),
+          [ADMIN_REQUEST_TAB.CLOSED]: Number(counts.closed || 0),
+          [ADMIN_REQUEST_TAB.RETURNED]: Number(counts.returned || 0),
+        });
+        setTabCountErrors(createDefaultTabCountErrors());
+        setTabCountsReady(true);
+        setTabCountCapacityLimited(false);
+        setLoadErrorMessage('');
+        setReady(true);
+        publishAdminRentalRequestCutoverObservation({
+          readRequested: true,
+          readSource: 'postgresql',
+          firestoreWatcher: 'disabled',
+          bootstrapCount,
+          totalCount: Number(candidate.totalCount || 0),
+          page,
+          pageSize,
+          error: '',
+        });
+      } catch (error) {
+        if (cancelled) return;
+        console.error('PostgreSQL admin rental request read error:', error);
+        publishAdminRentalRequestCutoverObservation({
+          readRequested: true,
+          readSource: 'firestore-fallback',
+          firestoreWatcher: 'active',
+          bootstrapCount: null,
+          totalCount: null,
+          error: error?.code || error?.message || 'admin-rental-request-read-failed',
+        });
+        setPostgresFallbackActive(true);
+        setLoadErrorMessage(
+          'PostgreSQL 관리자 대여신청 조회에 실패해 기존 Firestore 조회로 전환했습니다.'
+        );
+        setReady(false);
+      }
+    };
+
+    void loadPostgresRequests();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    debouncedQuery,
+    enabled,
+    mutationVersion,
+    page,
+    pageSize,
+    postgresServerPaging,
+    prerequisitesReady,
+    quickFilter,
+    referenceDate,
+    requestTab,
+    selectedRequestId,
+  ]);
+
+  useEffect(() => {
     if (!enabled) {
       setRequests([]);
       setReady(true);
@@ -224,6 +378,8 @@ export default function useAdminRequestsController({
       setReady(false);
       return undefined;
     }
+
+    if (postgresServerPaging) return undefined;
 
     const normalizedSearch = String(debouncedQuery || '')
       .trim()
@@ -335,12 +491,14 @@ export default function useAdminRequestsController({
     quickFilter,
     referenceDate,
     requestTab,
+    postgresServerPaging,
   ]);
 
   useEffect(() => {
     const shouldLoadSelectedRequest = Boolean(
       enabled &&
         prerequisitesReady &&
+        !postgresServerPaging &&
         selectedRequestId &&
         !requestsRef.current.some(
           (request) => request.id === selectedRequestId
@@ -383,7 +541,7 @@ export default function useAdminRequestsController({
     return () => {
       cancelled = true;
     };
-  }, [enabled, prerequisitesReady, selectedRequestId]);
+  }, [enabled, postgresServerPaging, prerequisitesReady, selectedRequestId]);
 
   useEffect(() => {
     setPage(1);
@@ -412,6 +570,8 @@ export default function useAdminRequestsController({
       setTabCountsReady(false);
       return undefined;
     }
+
+    if (postgresServerPaging) return undefined;
 
     if (isFirestoreCapacityCoolingDown()) {
       setTabCounts(normalizedFallbackCounts);
@@ -522,7 +682,7 @@ export default function useAdminRequestsController({
     return () => {
       cancelled = true;
     };
-  }, [enabled, fallbackTabCounts, mutationVersion, prerequisitesReady]);
+  }, [enabled, fallbackTabCounts, mutationVersion, postgresServerPaging, prerequisitesReady]);
 
 
   useEffect(() => {
@@ -629,6 +789,7 @@ export default function useAdminRequestsController({
     const queryFilteredRequests = normalizedQuery
       ? quickFilteredRequests.filter((request) =>
           [
+            request.id,
             request.assetNo,
             request.assetCategory,
             request.requesterName,
@@ -667,18 +828,22 @@ export default function useAdminRequestsController({
   const searchMode = Boolean(String(query || '').trim());
   const currentTabCountAvailable =
     typeof tabCounts[requestTab] === 'number';
-  const totalPages = searchMode
-    ? Math.max(1, Math.ceil(filteredRequests.length / pageSize))
-    : currentTabCountAvailable
-      ? Math.max(1, Math.ceil(totalCount / pageSize))
-      : Math.max(1, page + (hasNextPage ? 1 : 0));
+  const totalPages = postgresServerPaging
+    ? Math.max(1, Math.ceil(totalCount / pageSize))
+    : searchMode
+      ? Math.max(1, Math.ceil(filteredRequests.length / pageSize))
+      : currentTabCountAvailable
+        ? Math.max(1, Math.ceil(totalCount / pageSize))
+        : Math.max(1, page + (hasNextPage ? 1 : 0));
   const safePage = Math.min(page, totalPages);
-  const paginatedRequests = searchMode
-    ? filteredRequests.slice(
-        (safePage - 1) * pageSize,
-        safePage * pageSize
-      )
-    : filteredRequests;
+  const paginatedRequests = postgresServerPaging
+    ? filteredRequests
+    : searchMode
+      ? filteredRequests.slice(
+          (safePage - 1) * pageSize,
+          safePage * pageSize
+        )
+      : filteredRequests;
   const selectedRequest = selectedRequestId
     ? requests.find((request) => request.id === selectedRequestId) || null
     : null;

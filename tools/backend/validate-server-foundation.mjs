@@ -24,6 +24,9 @@ const files = [
   'server/src/rentals/rental-request-write-repository.mjs',
   'server/src/rentals/rental-request-write-service.mjs',
   'server/src/firestore/firestore-rental-request-write.mjs',
+  'server/src/firestore/firestore-admin-rental-requests.mjs',
+  'server/src/rentals/admin-rental-request-repository.mjs',
+  'server/src/rentals/admin-rental-request-service.mjs',
   'server/src/app.mjs',
   'server/src/index.mjs',
   'server/scripts/check-config.mjs',
@@ -38,6 +41,7 @@ const files = [
   'tools/backend/smoke-rental-restriction-shadow.mjs',
   'tools/backend/smoke-rental-request-shadow.mjs',
   'tools/backend/smoke-rental-request-authoritative-write.mjs',
+  'tools/backend/smoke-admin-rental-request-cutover.mjs',
 ];
 
 for (const file of files) {
@@ -97,6 +101,7 @@ for (const marker of [
 
 
 const phase16Migration = readFileSync('server/migrations/008_phase16_rental_request_authoritative_write.sql', 'utf8');
+const phase17Migration = readFileSync('server/migrations/009_phase17_admin_rental_request_cutover.sql', 'utf8');
 for (const marker of [
   'CREATE TABLE IF NOT EXISTS app_rental_requests',
   'CREATE TABLE IF NOT EXISTS app_rental_request_items',
@@ -106,6 +111,17 @@ for (const marker of [
   "'firestoreMirror', 'required-before-postgresql-commit'",
 ]) {
   if (!phase16Migration.includes(marker)) throw new Error(`Phase 16 rental request migration marker is missing: ${marker}`);
+}
+
+for (const marker of [
+  'ALTER COLUMN app_user_id DROP NOT NULL',
+  'ADD COLUMN IF NOT EXISTS admin_memo',
+  'ADD COLUMN IF NOT EXISTS user_action_request JSONB',
+  'app_rental_requests_status_created_idx',
+  "'readAuthority', 'postgresql'",
+  "'statusWriteAuthority', 'postgresql'",
+]) {
+  if (!phase17Migration.includes(marker)) throw new Error(`Phase 17 admin rental request migration marker is missing: ${marker}`);
 }
 
 const app = readFileSync('server/src/app.mjs', 'utf8');
@@ -127,6 +143,9 @@ for (const marker of [
   "url.pathname === '/api/users/me/rental-requests'",
   "url.pathname === '/api/users/me/legacy/rental-request-shadows/sync'",
   "url.pathname === '/api/users/me/legacy/rental-request-shadows/compare'",
+  "url.pathname === '/api/admin/rental-requests/bootstrap'",
+  "url.pathname === '/api/admin/rental-requests'",
+  "url.pathname === '/api/admin/rental-dashboard'",
   "source: 'postgresql-shadow'",
   'authoritative: false',
   "'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'",
@@ -283,9 +302,22 @@ for (const marker of [':commit', 'currentDocument: { exists: false }', 'currentD
   if (!rentalRequestWriteClient.includes(marker)) throw new Error(`Phase 16 Firestore compatibility mirror marker is missing: ${marker}`);
 }
 
+const adminRentalRepository = readFileSync('server/src/rentals/admin-rental-request-repository.mjs', 'utf8');
+for (const marker of ['app_rental_requests', 'pg_advisory_xact_lock', 'allowNonOverlappingSameAssetRequests', 'relatedRequestUpdates', "source_mode = 'postgresql-authoritative-admin'"]) {
+  if (!adminRentalRepository.includes(marker)) throw new Error(`Phase 17 admin rental repository marker is missing: ${marker}`);
+}
+const adminRentalService = readFileSync('server/src/rentals/admin-rental-request-service.mjs', 'utf8');
+for (const marker of ['verifyAdmin', 'listAllRentalRequests', 'findBlockingReservation', 'getPublicConfig', 'commitStatusChange', "authority: 'postgresql'"]) {
+  if (!adminRentalService.includes(marker)) throw new Error(`Phase 17 admin rental service marker is missing: ${marker}`);
+}
+const adminRentalFirestore = readFileSync('server/src/firestore/firestore-admin-rental-requests.mjs', 'utf8');
+for (const marker of ["adminAccounts/", ':runQuery', ':commit', 'Authorization: `Bearer ${token}`', 'currentDocument']) {
+  if (!adminRentalFirestore.includes(marker)) throw new Error(`Phase 17 admin Firestore compatibility marker is missing: ${marker}`);
+}
+
 const configTemplate = readFileSync('docs/github-education/HEROKU_CONFIG_VARS_TEMPLATE.txt', 'utf8');
 for (const variable of ['CLERK_JWT_KEY=', 'CLERK_AUTHORIZED_PARTIES=', 'CLERK_SECRET_KEY=sk_test_', 'CLERK_API_TIMEOUT_MS=8000', 'FIREBASE_PROJECT_ID=laptop-system-mk']) {
   if (!configTemplate.includes(variable)) throw new Error(`Phase 6 config template is missing ${variable}`);
 }
 
-console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request shadow/parity + phase16 authoritative write invariants)`);
+console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request shadow/parity + phase16 authoritative write + phase17 admin rental-request cutover invariants)`);

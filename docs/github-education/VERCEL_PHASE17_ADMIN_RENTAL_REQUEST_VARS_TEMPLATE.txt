@@ -1,0 +1,12 @@
+Phase 17 Vercel Production Environment variables for the dedicated mkrental Staging project
+
+VITE_ADMIN_RENTAL_REQUEST_POSTGRES_READ_ENABLED=true
+VITE_ADMIN_RENTAL_REQUEST_POSTGRES_WRITE_ENABLED=true
+
+Keep the Phase 14-16 variables enabled as previously validated.
+Do not add backend secrets such as DATABASE_URL, CLERK_SECRET_KEY, CLERK_JWT_KEY, or Firebase service-account private keys to VITE_* variables.
+
+After saving these build-time variables, create a new Production deployment for the mkrental Vercel project.
+
+Explicit Phase 17 browser opt-in:
+?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWriteThrough=on&restrictionRead=postgres&restrictionWatcher=off&rentalRequestRead=postgres&rentalRequestWatcher=off&rentalRequestWrite=postgres&adminRequestRead=postgres&adminRequestWrite=postgres

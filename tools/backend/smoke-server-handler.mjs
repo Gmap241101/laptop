@@ -214,6 +214,45 @@ const rentalRequestWriteService = {
   },
 };
 
+const adminRentalRequestService = {
+  async bootstrap(firebaseIdentity) {
+    if (firebaseIdentity.uid !== 'firebase_uid_smoke') throw new Error('Unexpected admin bootstrap identity.');
+    return { admin: { uid: firebaseIdentity.uid }, synchronized: 1, sourceCount: 1 };
+  },
+  async list(firebaseIdentity, options) {
+    if (firebaseIdentity.uid !== 'firebase_uid_smoke') throw new Error('Unexpected admin list identity.');
+    return {
+      admin: { uid: firebaseIdentity.uid }, referenceDate: options.referenceDate || '2026-08-08',
+      page: Number(options.page || 1), pageSize: Number(options.pageSize || 10), totalCount: 1,
+      counts: { pending: 1, rental: 0, closed: 0, returned: 0 },
+      requests: [{
+        id: 'REQ-Phase17HandlerSmoke001', requesterUid: 'firebase_uid_smoke', requesterEmail: 'smoke@example.com',
+        requesterName: 'Smoke User', requesterTeam: 'QA', laptopId: 'ASSET-SMOKE-1', assetCategory: '노트북',
+        assetNo: 'NB-SMOKE', startDate: '2026-08-10', dueDate: '2026-08-14', purpose: 'Admin handler smoke', status: '신청중',
+      }],
+    };
+  },
+  async getDashboard(firebaseIdentity, referenceDate) {
+    if (firebaseIdentity.uid !== 'firebase_uid_smoke') throw new Error('Unexpected admin dashboard identity.');
+    return { admin: { uid: firebaseIdentity.uid }, referenceDate: referenceDate || '2026-08-08', counts: { pending: 1, rental: 0, closed: 0, returned: 0 } };
+  },
+  async changeStatus(firebaseIdentity, input) {
+    if (firebaseIdentity.uid !== 'firebase_uid_smoke' || input.requestId !== 'REQ-Phase17HandlerSmoke001' || input.nextStatus !== '대여중') {
+      throw new Error('Unexpected admin status input.');
+    }
+    return {
+      admin: { uid: firebaseIdentity.uid }, authority: 'postgresql', firestoreMirror: 'synced', restrictionUpdated: false,
+      request: {
+        id: input.requestId, requesterUid: 'firebase_uid_smoke', requesterEmail: 'smoke@example.com', requesterName: 'Smoke User', requesterTeam: 'QA',
+        laptopId: 'ASSET-SMOKE-1', assetCategory: '노트북', assetNo: 'NB-SMOKE', startDate: '2026-08-10', dueDate: '2026-08-14',
+        purpose: 'Admin handler smoke', status: input.nextStatus,
+      },
+      availability: { id: input.requestId, laptopId: 'ASSET-SMOKE-1', startDate: '2026-08-10', dueDate: '2026-08-14', status: input.nextStatus },
+      asset: { id: 'ASSET-SMOKE-1', status: input.nextStatus, currentRequestId: input.requestId, reservations: [] },
+    };
+  },
+};
+
 const server = createServer(
   createRequestHandler({
     config,
@@ -224,6 +263,7 @@ const server = createServer(
     firebaseLinkService,
     memberShadowService,
     rentalRequestWriteService,
+    adminRentalRequestService,
   }),
 );
 
@@ -440,6 +480,37 @@ if (
   throw new Error('Phase 16 rental request create HTTP response is invalid.');
 }
 
+const adminBootstrap = await fetch(`${baseUrl}/api/admin/rental-requests/bootstrap`, {
+  method: 'POST',
+  headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+});
+if (adminBootstrap.status !== 200 || (await adminBootstrap.json()).adminRentalRequestBootstrap?.synchronized !== 1) {
+  throw new Error('Phase 17 admin rental request bootstrap HTTP response is invalid.');
+}
+const adminList = await fetch(`${baseUrl}/api/admin/rental-requests?tab=pending&page=1&pageSize=10&referenceDate=2026-08-08`, {
+  headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+});
+const adminListBody = await adminList.json();
+if (adminList.status !== 200 || adminListBody.adminRentalRequests?.source !== 'postgresql' || adminListBody.adminRentalRequests?.totalCount !== 1) {
+  throw new Error('Phase 17 admin rental request list HTTP response is invalid.');
+}
+const adminDashboard = await fetch(`${baseUrl}/api/admin/rental-dashboard?referenceDate=2026-08-08`, {
+  headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+});
+const adminDashboardBody = await adminDashboard.json();
+if (adminDashboard.status !== 200 || adminDashboardBody.adminRentalDashboard?.source !== 'postgresql' || adminDashboardBody.adminRentalDashboard?.counts?.pending !== 1) {
+  throw new Error('Phase 17 admin rental dashboard HTTP response is invalid.');
+}
+const adminStatus = await fetch(`${baseUrl}/api/admin/rental-requests/REQ-Phase17HandlerSmoke001/status`, {
+  method: 'POST',
+  headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+  body: JSON.stringify({ status: '대여중' }),
+});
+const adminStatusBody = await adminStatus.json();
+if (adminStatus.status !== 200 || adminStatusBody.adminRentalRequestMutation?.authority !== 'postgresql' || adminStatusBody.adminRentalRequestMutation?.firestoreMirror !== 'synced') {
+  throw new Error('Phase 17 admin rental status HTTP response is invalid.');
+}
+
 const invalidFirebase = await fetch(`${baseUrl}/api/users/me/legacy/firebase`, {
   method: 'POST',
   headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer wrong-token' },
@@ -450,4 +521,4 @@ const missing = await fetch(`${baseUrl}/missing`);
 if (missing.status !== 404) throw new Error(`/missing returned ${missing.status}`);
 
 await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, Phase 16 rental-request POST, CORS, 404)');
+console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, Phase 16 rental-request POST, Phase 17 admin bootstrap/list/dashboard/status, CORS, 404)');

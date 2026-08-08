@@ -198,6 +198,70 @@ export const createRentalRequestRepository = (pool) => {
                updated_at = NOW()`,
             [shadowId, request.laptopId, request.assetCategory, request.assetNo],
           );
+
+          const canonicalResult = await client.query(
+            `INSERT INTO app_rental_requests (
+               request_id, app_user_id, firebase_uid, requester_email, requester_name,
+               requester_team, start_date, due_date, purpose, status, requested_at_text,
+               source_mode, idempotency_key, firestore_mirror_status, admin_memo,
+               extension_count, last_extension_approved_date, next_extension_request_date,
+               extension_history, user_action_request, returned_at, overdue_penalty_pending,
+               overdue_penalty_batch_id, source_created_at, source_updated_at, source_synced_at,
+               created_at, updated_at
+             ) VALUES (
+               $1,$2,$3,$4,$5,$6,$7::date,$8::date,$9,$10,$11,
+               'firestore-user-sync','legacy:' || $1,'legacy-source',$12,$13,$14,$15,
+               $16::jsonb,$17::jsonb,$18,$19,$20,$21,$22,$23,
+               COALESCE($21,NOW()),COALESCE($22,NOW())
+             )
+             ON CONFLICT (request_id) DO UPDATE SET
+               app_user_id = COALESCE(app_rental_requests.app_user_id, EXCLUDED.app_user_id),
+               firebase_uid = EXCLUDED.firebase_uid, requester_email = EXCLUDED.requester_email,
+               requester_name = EXCLUDED.requester_name, requester_team = EXCLUDED.requester_team,
+               start_date = EXCLUDED.start_date, due_date = EXCLUDED.due_date, purpose = EXCLUDED.purpose,
+               status = EXCLUDED.status, requested_at_text = EXCLUDED.requested_at_text,
+               admin_memo = EXCLUDED.admin_memo, extension_count = EXCLUDED.extension_count,
+               last_extension_approved_date = EXCLUDED.last_extension_approved_date,
+               next_extension_request_date = EXCLUDED.next_extension_request_date,
+               extension_history = EXCLUDED.extension_history, user_action_request = EXCLUDED.user_action_request,
+               returned_at = EXCLUDED.returned_at, overdue_penalty_pending = EXCLUDED.overdue_penalty_pending,
+               overdue_penalty_batch_id = EXCLUDED.overdue_penalty_batch_id, source_created_at = EXCLUDED.source_created_at,
+               source_updated_at = EXCLUDED.source_updated_at, source_synced_at = EXCLUDED.source_synced_at,
+               firestore_mirror_status = 'legacy-source', updated_at = NOW()
+             RETURNING id`,
+            [
+              request.id, appUserId, request.requesterUid, request.requesterEmail, request.requesterName,
+              request.requesterTeam, request.startDate, request.dueDate, request.purpose, request.status,
+              request.requestedAt, request.adminMemo, request.extensionCount, request.lastExtensionApprovedDate,
+              request.nextExtensionRequestDate, JSON.stringify(request.extensionHistory || []),
+              request.userActionRequest == null ? null : JSON.stringify(request.userActionRequest),
+              request.returnedAt, request.overduePenaltyPending, request.overduePenaltyBatchId,
+              request.createdAt, request.updatedAt, request.syncedAt,
+            ],
+          );
+
+          const canonicalId = canonicalResult.rows[0]?.id;
+          if (canonicalId && request.laptopId) {
+            await client.query(
+              `INSERT INTO app_rental_request_items (rental_request_id, line_number, laptop_id, asset_category, asset_no)
+               VALUES ($1,1,$2,$3,$4)
+               ON CONFLICT (rental_request_id) DO UPDATE SET
+                 laptop_id = EXCLUDED.laptop_id, asset_category = EXCLUDED.asset_category,
+                 asset_no = EXCLUDED.asset_no, updated_at = NOW()`,
+              [canonicalId, request.laptopId, request.assetCategory, request.assetNo],
+            );
+            await client.query(
+              `INSERT INTO app_rental_asset_reservation_guards (
+                 request_id, rental_request_id, laptop_id, start_date, due_date, status, active, source_mode, synced_at
+               ) VALUES ($1,$2,$3,$4::date,$5::date,$6,$7,'firestore-user-sync',NOW())
+               ON CONFLICT (request_id) DO UPDATE SET
+                 rental_request_id = EXCLUDED.rental_request_id, laptop_id = EXCLUDED.laptop_id,
+                 start_date = EXCLUDED.start_date, due_date = EXCLUDED.due_date, status = EXCLUDED.status,
+                 active = EXCLUDED.active, source_mode = EXCLUDED.source_mode, synced_at = NOW(), updated_at = NOW()`,
+              [request.id, canonicalId, request.laptopId, request.startDate, request.dueDate, request.status,
+               ['신청중','대여중','보류'].includes(request.status)],
+            );
+          }
         }
 
         if (sourceIds.length > 0) {
