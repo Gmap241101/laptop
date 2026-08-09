@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-const trim = (value) => String(value ?? '').trim();
+const trim = (value) => String(value ?? '').normalize('NFKC').trim();
 const lower = (value) => trim(value).toLocaleLowerCase('ko-KR');
 const serviceError = (code, message, status = 400, details = null) => {
   const error = new Error(message);

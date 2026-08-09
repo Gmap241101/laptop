@@ -270,6 +270,7 @@ export default function useUserMyPageAccountController({
           memberWriteSource: response?.memberProfileWrite?.authority || 'postgresql',
           memberFirestoreMirror: response?.memberProfileWrite?.firestoreMirror || 'synced',
           memberMutationId: response?.memberProfileWrite?.mutationId || '',
+          operation: 'user-profile-edit',
           restrictionWriteRequested: memberAuthorityConfig.restrictionRequested,
           error: '',
         });

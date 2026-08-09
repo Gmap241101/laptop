@@ -1,0 +1,23 @@
+# Phase 22 - Account Recovery PostgreSQL Read + Administrator Clerk Authentication Cutover
+# Vercel project: mkrental
+# Environment: Production (this Vercel project is used as Staging/Test)
+
+VITE_ACCOUNT_RECOVERY_POSTGRES_READ_ENABLED=true
+VITE_ADMIN_CLERK_AUTH_ENABLED=true
+
+# Keep every Phase 9-21 staging variable already configured.
+# Phase 22 remains explicit Staging opt-in through query/session latches:
+#   accountRecovery=postgres
+#   adminAuth=clerk
+# Rollback latches:
+#   accountRecovery=firestore
+#   adminAuth=firebase
+#
+# Recommended user validation URL:
+# https://mkrental.vercel.app/?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWrite=postgres&restrictionRead=postgres&restrictionWatcher=off&restrictionWrite=postgres&rentalRequestRead=postgres&rentalRequestWatcher=off&rentalRequestWrite=postgres&rentalRequestActionWrite=postgres&assetRead=postgres&accountRecovery=postgres
+#
+# Recommended administrator validation URL:
+# https://mkrental.vercel.app/admin?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWrite=postgres&restrictionRead=postgres&restrictionWatcher=off&restrictionWrite=postgres&rentalRequestRead=postgres&rentalRequestWatcher=off&rentalRequestWrite=postgres&adminRequestRead=postgres&adminRequestWrite=postgres&rentalRequestActionWrite=postgres&assetRead=postgres&assetWrite=postgres&adminIdentity=postgres&adminAuth=clerk
+#
+# VITE_* values are build-time. Redeploy after adding/changing them.
+# NEVER expose DATABASE_URL, CLERK_SECRET_KEY, CLERK_JWT_KEY, or Firebase service-account private keys through VITE_*.

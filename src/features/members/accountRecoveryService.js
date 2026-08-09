@@ -1,5 +1,6 @@
 import { doc, getDoc } from 'firebase/firestore';
 
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 import {
   ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
 } from '../../firebase.js';
@@ -14,6 +15,10 @@ import {
   normalizeMemberName,
   normalizeMemberTeam,
 } from '../../utils/memberPolicy.js';
+import {
+  publishAccountAuthObservation,
+  readAccountAuthCutoverConfig,
+} from '../auth/accountAuthCutover.js';
 
 export const createDefaultAccountRecoveryForm = (initialValues = {}) => ({
   name: String(initialValues.name || ''),
@@ -98,6 +103,36 @@ export const findAccountRecoveryEmail = async ({
   team,
   phone,
 }) => {
+  const cutover = readAccountAuthCutoverConfig();
+  if (cutover.accountRecoveryRequested) {
+    try {
+      const payload = await clerkStagingClient.findAccountRecoveryEmail({ name, team, phone });
+      const result = payload?.accountRecovery || {};
+      publishAccountAuthObservation({
+        accountRecoveryRequested: true,
+        accountRecoverySource: 'postgresql',
+        accountRecoveryFallback: false,
+        accountRecoveryError: '',
+      });
+      return {
+        found: Boolean(result.found),
+        maskedEmail: result.found ? String(result.maskedEmail || '') : '',
+        source: 'postgresql',
+      };
+    } catch (error) {
+      console.warn('PostgreSQL account recovery lookup failed; using Firestore compatibility fallback.', {
+        code: error?.code,
+        status: error?.status,
+      });
+      publishAccountAuthObservation({
+        accountRecoveryRequested: true,
+        accountRecoverySource: 'firestore-fallback',
+        accountRecoveryFallback: true,
+        accountRecoveryError: error?.code || error?.message || 'account-recovery-postgresql-failed',
+      });
+    }
+  }
+
   const recoveryKey = await createAccountRecoveryKey({ team, name, phone });
   const recoverySnapshot = await getDoc(
     doc(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF, recoveryKey)
@@ -112,9 +147,19 @@ export const findAccountRecoveryEmail = async ({
       maskedEmail
   );
 
+  if (!cutover.accountRecoveryRequested) {
+    publishAccountAuthObservation({
+      accountRecoveryRequested: false,
+      accountRecoverySource: 'firestore',
+      accountRecoveryFallback: false,
+      accountRecoveryError: '',
+    });
+  }
+
   return {
     found,
     maskedEmail: found ? maskedEmail : '',
+    source: cutover.accountRecoveryRequested ? 'firestore-fallback' : 'firestore',
   };
 };
 
@@ -124,6 +169,37 @@ export const verifyPasswordResetIdentity = async ({
   team,
   phone,
 }) => {
+  const cutover = readAccountAuthCutoverConfig();
+  if (cutover.accountRecoveryRequested) {
+    try {
+      const payload = await clerkStagingClient.verifyPasswordResetIdentity({ email, name, team, phone });
+      publishAccountAuthObservation({
+        accountRecoveryRequested: true,
+        accountRecoverySource: 'postgresql',
+        accountRecoveryFallback: false,
+        accountRecoveryOperation: 'password-reset-identity-verify',
+        accountRecoveryError: '',
+      });
+      return {
+        verified: Boolean(payload?.accountRecovery?.verified),
+        verifierMissing: false,
+        source: 'postgresql',
+      };
+    } catch (error) {
+      console.warn('PostgreSQL password reset verification failed; using Firestore compatibility fallback.', {
+        code: error?.code,
+        status: error?.status,
+      });
+      publishAccountAuthObservation({
+        accountRecoveryRequested: true,
+        accountRecoverySource: 'firestore-fallback',
+        accountRecoveryFallback: true,
+        accountRecoveryOperation: 'password-reset-identity-verify',
+        accountRecoveryError: error?.code || error?.message || 'password-reset-postgresql-failed',
+      });
+    }
+  }
+
   const recoveryKey = await createAccountRecoveryKey({ team, name, phone });
   const emailVerifier = await createAccountRecoveryEmailVerifier({
     email,
@@ -142,6 +218,7 @@ export const verifyPasswordResetIdentity = async ({
     return {
       verified: false,
       verifierMissing: false,
+      source: cutover.accountRecoveryRequested ? 'firestore-fallback' : 'firestore',
     };
   }
 
@@ -151,11 +228,23 @@ export const verifyPasswordResetIdentity = async ({
     return {
       verified: false,
       verifierMissing: true,
+      source: cutover.accountRecoveryRequested ? 'firestore-fallback' : 'firestore',
     };
+  }
+
+  if (!cutover.accountRecoveryRequested) {
+    publishAccountAuthObservation({
+      accountRecoveryRequested: false,
+      accountRecoverySource: 'firestore',
+      accountRecoveryFallback: false,
+      accountRecoveryOperation: 'password-reset-identity-verify',
+      accountRecoveryError: '',
+    });
   }
 
   return {
     verified: storedEmailVerifier === emailVerifier,
     verifierMissing: false,
+    source: cutover.accountRecoveryRequested ? 'firestore-fallback' : 'firestore',
   };
 };

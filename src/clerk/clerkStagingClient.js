@@ -111,6 +111,128 @@ const requestWithSession = async ({ clerk, apiBaseUrl, fetchImpl, path, method =
   return { response, payload: await parseJsonResponse(response) };
 };
 
+const requestPublicJson = async ({ apiBaseUrl, fetchImpl, path, body }) => {
+  const response = await fetchImpl(`${apiBaseUrl}${path}`, {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    cache: 'no-store',
+    body: JSON.stringify(body || {}),
+  });
+  return { response, payload: await parseJsonResponse(response) };
+};
+
+const requestWithFirebaseAuthorization = async ({ apiBaseUrl, fetchImpl, path, firebaseIdToken, body }) => {
+  const token = trim(firebaseIdToken);
+  if (!token) throw new Error('Firebase administrator sign-in is required for this compatibility operation.');
+  const response = await fetchImpl(`${apiBaseUrl}${path}`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'X-Firebase-Authorization': `Bearer ${token}`,
+    },
+    cache: 'no-store',
+    body: JSON.stringify(body || {}),
+  });
+  return { response, payload: await parseJsonResponse(response) };
+};
+
+export const requestAccountRecoveryEmail = async ({ apiBaseUrl, fetchImpl, identity }) => {
+  const { response, payload } = await requestPublicJson({
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/account-recovery/email',
+    body: identity,
+  });
+  if (!response.ok) {
+    const error = new Error(`PostgreSQL account recovery lookup failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (payload?.accountRecovery?.source !== 'postgresql') throw new Error('Backend returned an invalid account recovery response.');
+  return payload;
+};
+
+export const requestPasswordResetVerification = async ({ apiBaseUrl, fetchImpl, identity }) => {
+  const { response, payload } = await requestPublicJson({
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/account-recovery/password-reset/verify',
+    body: identity,
+  });
+  if (!response.ok) {
+    const error = new Error(`PostgreSQL password reset identity verification failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (payload?.accountRecovery?.source !== 'postgresql') throw new Error('Backend returned an invalid password reset verification response.');
+  return payload;
+};
+
+export const requestAdminClerkSession = async ({ clerk, apiBaseUrl, fetchImpl }) => {
+  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: '/api/admin/auth/session' });
+  if (!response.ok) {
+    const error = new Error(`Backend administrator Clerk session verification failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (!payload?.authenticated || !payload?.authorized || payload?.adminAuthentication?.authority !== 'clerk') {
+    throw new Error('Backend returned an invalid administrator Clerk session response.');
+  }
+  return payload;
+};
+
+export const requestAdminClerkMigration = async ({ apiBaseUrl, fetchImpl, firebaseIdToken, password }) => {
+  const { response, payload } = await requestWithFirebaseAuthorization({
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/admin/auth/migrate',
+    firebaseIdToken,
+    body: { password },
+  });
+  if (!response.ok) {
+    const error = new Error(`Administrator Clerk migration failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (!payload?.authenticated || !payload?.authorized || payload?.adminAuthentication?.authority !== 'clerk') {
+    throw new Error('Backend returned an invalid administrator Clerk migration response.');
+  }
+  return payload;
+};
+
+export const requestAdminClerkProvision = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, targetFirebaseUid, password }) => {
+  const token = trim(firebaseIdToken);
+  const target = trim(targetFirebaseUid);
+  if (!token || !target) throw new Error('Administrator compatibility identity and target UID are required.');
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: `/api/admin/identity-registry/${encodeURIComponent(target)}/provision`,
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Firebase-Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({ password }),
+  });
+  if (!response.ok) {
+    const error = new Error(`Administrator Clerk provision failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (!payload?.authenticated || !payload?.authorized || !payload?.adminAuthentication?.provisioned) {
+    throw new Error('Backend returned an invalid administrator Clerk provision response.');
+  }
+  return payload;
+};
+
 export const requestAuthenticatedSession = async ({ clerk, apiBaseUrl, fetchImpl }) => {
   const { response, payload } = await requestWithSession({
     clerk,
@@ -846,6 +968,61 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
       const clerk = await initialize();
       await clerk.signOut();
     },
+    async signInWithPassword(identifier, password) {
+      const email = trim(identifier).toLowerCase();
+      if (!email || typeof password !== 'string' || !password) {
+        const error = new Error('Clerk administrator email and password are required.');
+        error.code = 'admin_clerk_credentials_required';
+        throw error;
+      }
+      const clerk = await initialize();
+      if (!clerk?.client?.signIn || typeof clerk.client.signIn.create !== 'function') {
+        const error = new Error('ClerkJS password sign-in API is not available.');
+        error.code = 'admin_clerk_signin_unavailable';
+        throw error;
+      }
+      if (clerk.session) await clerk.signOut();
+      try {
+        const signIn = await clerk.client.signIn.create({
+          strategy: 'password',
+          identifier: email,
+          password,
+        });
+        if (signIn?.status !== 'complete' || !signIn?.createdSessionId) {
+          const error = new Error(`Clerk administrator sign-in requires unsupported additional verification (${signIn?.status || 'unknown'}).`);
+          error.code = signIn?.status === 'needs_second_factor'
+            ? 'admin_clerk_second_factor_required'
+            : 'admin_clerk_signin_incomplete';
+          throw error;
+        }
+        await clerk.setActive({ session: signIn.createdSessionId });
+        return Object.freeze({
+          clerkUserId: clerk.user?.id || '',
+          email: clerk.user?.primaryEmailAddress?.emailAddress || email,
+          sessionId: clerk.session?.id || signIn.createdSessionId,
+        });
+      } catch (error) {
+        clerk.client?.resetSignIn?.();
+        throw error;
+      }
+    },
+    async getAdminClerkSession() {
+      const clerk = await initialize();
+      return requestAdminClerkSession({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
+    },
+    async migrateAdminToClerk(firebaseIdToken, password) {
+      return requestAdminClerkMigration({ apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, password });
+    },
+    async provisionAdminClerkIdentity(firebaseIdToken, targetFirebaseUid, password) {
+      const clerk = await initialize();
+      return requestAdminClerkProvision({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, targetFirebaseUid, password });
+    },
+    async findAccountRecoveryEmail(identity) {
+      return requestAccountRecoveryEmail({ apiBaseUrl: config.apiBaseUrl, fetchImpl, identity });
+    },
+    async verifyPasswordResetIdentity(identity) {
+      return requestPasswordResetVerification({ apiBaseUrl: config.apiBaseUrl, fetchImpl, identity });
+    },
     async verifyBackendSession() {
       const clerk = await initialize();
       return requestAuthenticatedSession({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
@@ -1041,4 +1218,11 @@ export const clerkStagingClient =
         config: Object.freeze({ enabled: false, mode: 'server' }),
         isDiagnosticsRequested: () => false,
         initialize: async () => null,
+        signOut: async () => {},
+        signInWithPassword: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        getAdminClerkSession: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        migrateAdminToClerk: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        provisionAdminClerkIdentity: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        findAccountRecoveryEmail: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        verifyPasswordResetIdentity: async () => { throw new Error('Clerk browser client is unavailable.'); },
       });

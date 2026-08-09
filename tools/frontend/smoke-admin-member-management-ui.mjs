@@ -54,8 +54,8 @@ assert(editActions.includes('MEMBER_IDENTITY_CLAIMS_COLLECTION_REF'), 'Admin mem
 assert(editActions.includes('ACCOUNT_RECOVERY_KEYS_COLLECTION_REF'), 'Admin member edit must maintain recovery keys.');
 assert(editActions.includes("reason: 'admin-member-profile-edit'"), 'Admin member edit must invoke PostgreSQL write-through.');
 assert(statusActions.includes('requested: Boolean(memberWriteThroughConfig.enabled)'), 'Admin status changes must write through in enabled staging mode.');
-assert(diagnostics.includes("maxHeight: 'calc(100vh - 32px)'"), 'Diagnostics panel must cap viewport height.');
+assert(diagnostics.includes("top: '184px'") && diagnostics.includes("maxHeight: 'calc(100vh - 200px)'"), 'Diagnostics panel must start below toast area and cap viewport height.');
 assert(diagnostics.includes("overflowY: 'auto'"), 'Diagnostics panel must have an internal vertical scrollbar.');
-assert(/Clerk Staging Test · Phase (13|14|15|16|17|18|19|20|21)/.test(diagnostics), 'Diagnostics must retain a recognized staging phase label after later phases.');
+assert(/Clerk Staging Test · Phase (13|14|15|16|17|18|19|20|21|22)/.test(diagnostics), 'Diagnostics must retain a recognized staging phase label after later phases.');
 
 console.log('[phase13-admin-member-ui] PASS');

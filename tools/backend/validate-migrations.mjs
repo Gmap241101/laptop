@@ -12,6 +12,7 @@ const phase18 = readFileSync('server/migrations/010_phase18_admin_rental_mutatio
 const phase19 = readFileSync('server/migrations/011_phase19_user_action_lifecycle.sql', 'utf8');
 const phase20 = readFileSync('server/migrations/012_phase20_asset_domain_cutover.sql', 'utf8');
 const phase21 = readFileSync('server/migrations/013_phase21_member_restriction_admin_identity_authority.sql', 'utf8');
+const phase22 = readFileSync('server/migrations/014_phase22_account_recovery_admin_clerk_auth.sql', 'utf8');
 
 if (!/value\s+JSONB\s+NOT\s+NULL/i.test(phase2)) {
   throw new Error('app_runtime_metadata.value must remain JSONB NOT NULL.');
@@ -148,4 +149,17 @@ for (const marker of [
   if (!phase21.includes(marker)) throw new Error(`Phase 21 member/restriction/admin identity migration marker is missing: ${marker}`);
 }
 
-console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion + Phase 19 user-action lifecycle + Phase 20 asset-domain + Phase 21 member/restriction/admin identity authority are type-safe)');
+for (const marker of [
+  'ADD COLUMN IF NOT EXISTS auth_authority_mode',
+  'ADD COLUMN IF NOT EXISTS clerk_linked_at TIMESTAMPTZ',
+  'app_admin_identity_registry_clerk_user_uidx',
+  'app_member_accounts_active_recovery_key_uidx',
+  "'phase', 22",
+  "'account_recovery_read', 'postgresql-preferred-staging-opt-in'",
+  "'admin_authentication', 'clerk-authoritative-firebase-compatibility-session'",
+  "'admin_provisioning', 'existing-admin-only-clerk-plus-firebase-compatibility'",
+]) {
+  if (!phase22.includes(marker)) throw new Error(`Phase 22 account recovery/admin Clerk auth migration marker is missing: ${marker}`);
+}
+
+console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion + Phase 19 user-action lifecycle + Phase 20 asset-domain + Phase 21 member/restriction/admin identity authority + Phase 22 account recovery/admin Clerk auth are type-safe)');

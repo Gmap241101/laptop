@@ -234,6 +234,15 @@ export const createRequestHandler = ({
     async changeStatusAdmin() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
     async bootstrapAdminRegistry() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
   },
+  accountRecoveryService = {
+    async findEmail() { const error = new Error('Account recovery service is not configured.'); error.code = 'account_recovery_not_configured'; throw error; },
+    async verifyPasswordReset() { const error = new Error('Account recovery service is not configured.'); error.code = 'account_recovery_not_configured'; throw error; },
+  },
+  adminClerkAuthService = {
+    async getCurrent() { const error = new Error('Admin Clerk auth service is not configured.'); error.code = 'admin_clerk_auth_not_configured'; throw error; },
+    async migrateCurrent() { const error = new Error('Admin Clerk auth service is not configured.'); error.code = 'admin_clerk_auth_not_configured'; throw error; },
+    async provisionTarget() { const error = new Error('Admin Clerk auth service is not configured.'); error.code = 'admin_clerk_auth_not_configured'; throw error; },
+  },
   rentalRestrictionService = {
     async getCurrentByFirebaseIdentity() { const error = new Error('Rental restriction service is not configured.'); error.code = 'rental_restriction_not_configured'; throw error; },
     async readCurrentSourceByFirebaseIdentity() { const error = new Error('Rental restriction service is not configured.'); error.code = 'rental_restriction_not_configured'; throw error; },
@@ -308,6 +317,21 @@ export const createRequestHandler = ({
     typeof memberAuthorityService.bootstrapAdminRegistry !== 'function'
   ) {
     throw new TypeError('memberAuthorityService Phase 21 methods are required.');
+  }
+  if (
+    !accountRecoveryService ||
+    typeof accountRecoveryService.findEmail !== 'function' ||
+    typeof accountRecoveryService.verifyPasswordReset !== 'function'
+  ) {
+    throw new TypeError('accountRecoveryService Phase 22 methods are required.');
+  }
+  if (
+    !adminClerkAuthService ||
+    typeof adminClerkAuthService.getCurrent !== 'function' ||
+    typeof adminClerkAuthService.migrateCurrent !== 'function' ||
+    typeof adminClerkAuthService.provisionTarget !== 'function'
+  ) {
+    throw new TypeError('adminClerkAuthService Phase 22 methods are required.');
   }
   if (
     !rentalRestrictionService ||
@@ -433,6 +457,11 @@ export const createRequestHandler = ({
           adminMemberProfileAuthority: '/api/admin/members/:uid/profile',
           adminMemberStatusAuthority: '/api/admin/members/:uid/status',
           adminIdentityRegistryBootstrap: '/api/admin/identity-registry/bootstrap',
+          accountRecoveryEmail: '/api/account-recovery/email',
+          accountRecoveryPasswordResetVerify: '/api/account-recovery/password-reset/verify',
+          adminClerkSession: '/api/admin/auth/session',
+          adminClerkMigration: '/api/admin/auth/migrate',
+          adminClerkProvision: '/api/admin/identity-registry/:uid/provision',
           rentalRestrictionCandidate: '/api/legacy/rental-restriction-candidate',
           rentalRestrictionFallback: '/api/legacy/rental-restriction-firestore-fallback',
           rentalRestrictionWriteThrough: '/api/legacy/rental-restriction-shadow/write-through',
@@ -515,6 +544,148 @@ export const createRequestHandler = ({
           },
           headers,
         );
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/account-recovery/email') {
+      let body;
+      try {
+        body = await readJsonBody(request);
+        const result = await accountRecoveryService.findEmail(body || {});
+        writeJson(response, 200, {
+          ...basePayload,
+          accountRecovery: {
+            source: result.source || 'postgresql',
+            found: Boolean(result.found),
+            maskedEmail: result.found ? String(result.maskedEmail || '') : '',
+          },
+        }, headers);
+      } catch (error) {
+        console.warn('[account-recovery] email lookup failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'account_recovery_unavailable' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/account-recovery/password-reset/verify') {
+      let body;
+      try {
+        body = await readJsonBody(request);
+        const result = await accountRecoveryService.verifyPasswordReset(body || {});
+        writeJson(response, 200, {
+          ...basePayload,
+          accountRecovery: {
+            source: result.source || 'postgresql',
+            verified: Boolean(result.verified),
+          },
+        }, headers);
+      } catch (error) {
+        console.warn('[account-recovery] password reset verification failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'account_recovery_unavailable' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/admin/auth/session') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      try {
+        const result = await adminClerkAuthService.getCurrent({ clerkUserId: auth.userId });
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          adminAuthentication: {
+            authority: result.authority,
+            firebaseUid: result.admin.firebaseUid,
+            adminLoginId: result.admin.adminLoginId,
+            authEmail: result.admin.authEmail,
+            adminRole: result.admin.adminRole,
+            clerkUserId: result.admin.clerkUserId,
+            clerkLinkState: result.admin.clerkLinkState,
+            authAuthorityMode: result.admin.authAuthorityMode,
+          },
+        }, headers);
+      } catch (error) {
+        console.warn('[admin-auth] Clerk administrator session rejected', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, {
+          ...basePayload,
+          authenticated: true,
+          authorized: false,
+          error: error?.code || 'admin_clerk_auth_unavailable',
+        }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/admin/auth/migrate') {
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      let body;
+      try {
+        body = await readJsonBody(request);
+        const result = await adminClerkAuthService.migrateCurrent({
+          firebaseIdentity,
+          password: String(body?.password || ''),
+        });
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          adminAuthentication: {
+            authority: result.authority,
+            migration: result.migration,
+            firebaseUid: result.admin.firebaseUid,
+            adminLoginId: result.admin.adminLoginId,
+            authEmail: result.admin.authEmail,
+            adminRole: result.admin.adminRole,
+            clerkUserId: result.admin.clerkUserId,
+            clerkLinkState: result.admin.clerkLinkState,
+            authAuthorityMode: result.admin.authAuthorityMode,
+          },
+        }, headers);
+      } catch (error) {
+        console.warn('[admin-auth] Firebase administrator migration failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'admin_clerk_migration_failed' }, headers);
+      }
+      return;
+    }
+
+    const adminClerkProvisionMatch = url.pathname.match(/^\/api\/admin\/identity-registry\/([^/]+)\/provision$/);
+    if (request.method === 'POST' && adminClerkProvisionMatch) {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      let body;
+      try {
+        body = await readJsonBody(request);
+        const result = await adminClerkAuthService.provisionTarget({
+          actorClerkUserId: auth.userId,
+          firebaseIdentity,
+          targetFirebaseUid: decodeURIComponent(adminClerkProvisionMatch[1]),
+          password: String(body?.password || ''),
+        });
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          adminAuthentication: {
+            authority: result.authority,
+            provisioned: Boolean(result.provisioned),
+            firebaseUid: result.admin.firebaseUid,
+            adminLoginId: result.admin.adminLoginId,
+            authEmail: result.admin.authEmail,
+            adminRole: result.admin.adminRole,
+            clerkUserId: result.admin.clerkUserId,
+            clerkLinkState: result.admin.clerkLinkState,
+            authAuthorityMode: result.admin.authAuthorityMode,
+          },
+        }, headers);
+      } catch (error) {
+        console.warn('[admin-auth] administrator provision failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'admin_clerk_provision_failed' }, headers);
       }
       return;
     }

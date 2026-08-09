@@ -5,7 +5,7 @@ const allowedOrigin = 'https://staging.example.vercel.app';
 const config = {
   serviceName: 'rental-api',
   appEnv: 'test',
-  serviceVersion: 'phase21-smoke',
+  serviceVersion: 'phase22-smoke',
   corsAllowedOrigins: [allowedOrigin],
 };
 
@@ -29,6 +29,7 @@ const authenticateFirebaseRequest = async (request) => {
     email: 'smoke@example.com',
     emailVerified: false,
     signInProvider: 'password',
+    authTime: Math.floor(Date.now() / 1000),
     idToken: 'firebase-smoke-token',
   };
 };
@@ -189,6 +190,32 @@ const memberAuthorityService = {
   async bootstrapAdminRegistry({ firebaseIdentity }) {
     if (firebaseIdentity.uid !== 'firebase_uid_smoke') throw new Error('Unexpected Phase 21 admin registry identity.');
     return { admin: { uid: firebaseIdentity.uid }, source: 'firestore-bootstrap', target: 'postgresql-admin-registry', count: 2, registry: [] };
+  },
+};
+
+const accountRecoveryService = {
+  async findEmail(input) {
+    if (input.name !== 'Smoke User' || input.team !== 'QA' || input.phone !== '010-0000-0000') throw new Error('Unexpected Phase 22 account recovery lookup.');
+    return { source: 'postgresql', found: true, maskedEmail: 's***@example.com' };
+  },
+  async verifyPasswordReset(input) {
+    if (input.email !== 'smoke@example.com') throw new Error('Unexpected Phase 22 password reset verification.');
+    return { source: 'postgresql', verified: true };
+  },
+};
+
+const adminClerkAuthService = {
+  async getCurrent({ clerkUserId }) {
+    if (clerkUserId !== 'user_smoke') throw new Error('Unexpected Phase 22 Clerk administrator.');
+    return { authority: 'clerk', admin: { firebaseUid: 'firebase_uid_smoke', adminLoginId: 'smoke-admin', authEmail: 'smoke@example.com', adminRole: 'owner', clerkUserId: 'user_smoke', clerkLinkState: 'linked', authAuthorityMode: 'clerk-authoritative-firebase-compatibility' } };
+  },
+  async migrateCurrent({ firebaseIdentity, password }) {
+    if (firebaseIdentity.uid !== 'firebase_uid_smoke' || password !== 'legacy6') throw new Error('Unexpected Phase 22 admin migration input.');
+    return { authority: 'clerk', migration: 'firebase-admin-to-clerk', admin: { firebaseUid: firebaseIdentity.uid, adminLoginId: 'smoke-admin', authEmail: 'smoke@example.com', adminRole: 'owner', clerkUserId: 'user_smoke', clerkLinkState: 'linked', authAuthorityMode: 'clerk-authoritative-firebase-compatibility' } };
+  },
+  async provisionTarget({ actorClerkUserId, firebaseIdentity, targetFirebaseUid, password }) {
+    if (actorClerkUserId !== 'user_smoke' || firebaseIdentity.uid !== 'firebase_uid_smoke' || targetFirebaseUid !== 'firebase_admin_target' || password !== 'newpass88') throw new Error('Unexpected Phase 22 admin provision input.');
+    return { authority: 'clerk', provisioned: true, admin: { firebaseUid: targetFirebaseUid, adminLoginId: 'target-admin', authEmail: 'target@example.com', adminRole: 'admin', clerkUserId: 'clerk_target', clerkLinkState: 'linked', authAuthorityMode: 'clerk-authoritative-firebase-compatibility' } };
   },
 };
 
@@ -356,6 +383,8 @@ const server = createServer(
     firebaseLinkService,
     memberShadowService,
     memberAuthorityService,
+    accountRecoveryService,
+    adminClerkAuthService,
     rentalRequestWriteService,
     rentalRequestUserActionService,
     adminRentalRequestService,
@@ -725,6 +754,34 @@ if (adminIdentityRegistry.status !== 200 || adminIdentityRegistryBody.adminIdent
   throw new Error('Phase 21 admin identity registry HTTP response is invalid.');
 }
 
+const accountRecoveryEmail = await fetch(baseUrl + '/api/account-recovery/email', {
+  method: 'POST', headers: { Origin: allowedOrigin, 'Content-Type': 'application/json' },
+  body: JSON.stringify({ name: 'Smoke User', team: 'QA', phone: '010-0000-0000' }),
+});
+const accountRecoveryEmailBody = await accountRecoveryEmail.json();
+if (accountRecoveryEmail.status !== 200 || accountRecoveryEmailBody.accountRecovery?.source !== 'postgresql' || accountRecoveryEmailBody.accountRecovery?.maskedEmail !== 's***@example.com') throw new Error('Phase 22 account recovery email HTTP response is invalid.');
+const accountRecoveryVerify = await fetch(baseUrl + '/api/account-recovery/password-reset/verify', {
+  method: 'POST', headers: { Origin: allowedOrigin, 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email: 'smoke@example.com', name: 'Smoke User', team: 'QA', phone: '010-0000-0000' }),
+});
+const accountRecoveryVerifyBody = await accountRecoveryVerify.json();
+if (accountRecoveryVerify.status !== 200 || accountRecoveryVerifyBody.accountRecovery?.source !== 'postgresql' || accountRecoveryVerifyBody.accountRecovery?.verified !== true) throw new Error('Phase 22 password reset verification HTTP response is invalid.');
+const adminClerkSession = await fetch(baseUrl + '/api/admin/auth/session', { headers: authHeaders });
+const adminClerkSessionBody = await adminClerkSession.json();
+if (adminClerkSession.status !== 200 || adminClerkSessionBody.adminAuthentication?.authority !== 'clerk' || adminClerkSessionBody.adminAuthentication?.clerkLinkState !== 'linked') throw new Error('Phase 22 administrator Clerk session HTTP response is invalid.');
+const adminClerkMigration = await fetch(baseUrl + '/api/admin/auth/migrate', {
+  method: 'POST', headers: { Origin: allowedOrigin, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+  body: JSON.stringify({ password: 'legacy6' }),
+});
+const adminClerkMigrationBody = await adminClerkMigration.json();
+if (adminClerkMigration.status !== 200 || adminClerkMigrationBody.adminAuthentication?.migration !== 'firebase-admin-to-clerk' || adminClerkMigrationBody.adminAuthentication?.authority !== 'clerk') throw new Error('Phase 22 administrator migration HTTP response is invalid.');
+const adminClerkProvision = await fetch(baseUrl + '/api/admin/identity-registry/firebase_admin_target/provision', {
+  method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+  body: JSON.stringify({ password: 'newpass88' }),
+});
+const adminClerkProvisionBody = await adminClerkProvision.json();
+if (adminClerkProvision.status !== 200 || adminClerkProvisionBody.adminAuthentication?.provisioned !== true || adminClerkProvisionBody.adminAuthentication?.firebaseUid !== 'firebase_admin_target') throw new Error('Phase 22 administrator provision HTTP response is invalid.');
+
 const invalidFirebase = await fetch(`${baseUrl}/api/users/me/legacy/firebase`, {
   method: 'POST',
   headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer wrong-token' },
@@ -735,4 +792,4 @@ const missing = await fetch(`${baseUrl}/missing`);
 if (missing.status !== 404) throw new Error(`/missing returned ${missing.status}`);
 
 await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, Phase 16 rental-request POST, Phase 17 admin bootstrap/list/dashboard/status + Phase 18 sync/events/edit/memo/restore + Phase 19 user edit/cancel/extend/admin-review + Phase 20 asset catalog/bootstrap/CRUD/bulk/categories + Phase 21 member profile/status authority/admin registry, CORS, 404)');
+console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, Phase 16 rental-request POST, Phase 17 admin bootstrap/list/dashboard/status + Phase 18 sync/events/edit/memo/restore + Phase 19 user edit/cancel/extend/admin-review + Phase 20 asset catalog/bootstrap/CRUD/bulk/categories + Phase 21 member profile/status authority/admin registry + Phase 22 account recovery/admin Clerk session/migration/provision, CORS, 404)');

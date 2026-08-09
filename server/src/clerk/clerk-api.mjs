@@ -55,6 +55,8 @@ export const normalizeClerkBackendUser = (user) => {
     imageUrl: typeof (user?.image_url ?? user?.imageUrl) === 'string'
       ? (user.image_url ?? user.imageUrl).trim() || null
       : null,
+    publicMetadata: user?.public_metadata || user?.publicMetadata || {},
+    privateMetadata: user?.private_metadata || user?.privateMetadata || {},
     clerkCreatedAt: readTimestamp(user?.created_at ?? user?.createdAt),
     clerkUpdatedAt: readTimestamp(user?.updated_at ?? user?.updatedAt),
   });
@@ -67,55 +69,132 @@ export const createClerkBackendClient = ({ secretKey, apiUrl = DEFAULT_CLERK_API
 
   const baseUrl = apiUrl.replace(/\/+$/, '');
 
+  const requestJson = async ({ path, method = 'GET', body = undefined }) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    timeout.unref?.();
+
+    let response;
+    try {
+      response = await fetchImpl(`${baseUrl}${path}`, {
+        method,
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${secretKey}`,
+          ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        cache: 'no-store',
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        throw createClerkApiError('clerk_api_timeout', 'Clerk Backend API request timed out.');
+      }
+      const wrapped = createClerkApiError('clerk_api_unavailable', 'Clerk Backend API request failed.');
+      wrapped.cause = error;
+      throw wrapped;
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    if (!response.ok) {
+      let details = null;
+      try { details = await response.clone().json(); } catch { /* ignore */ }
+      if (response.status === 404) {
+        throw createClerkApiError('clerk_user_not_found', 'Clerk user was not found.', 404);
+      }
+      const error = createClerkApiError('clerk_api_error', `Clerk Backend API returned HTTP ${response.status}.`, response.status);
+      error.details = details;
+      throw error;
+    }
+
+    if (response.status === 204) return null;
+    try {
+      return await response.json();
+    } catch (error) {
+      const wrapped = createClerkApiError('invalid_clerk_response', 'Clerk Backend API returned invalid JSON.');
+      wrapped.cause = error;
+      throw wrapped;
+    }
+  };
+
   return Object.freeze({
     async getUser(userId) {
       if (typeof userId !== 'string' || !userId.trim()) {
         throw createClerkApiError('invalid_user_id', 'A Clerk user ID is required.');
       }
+      return normalizeClerkBackendUser(await requestJson({ path: `/users/${encodeURIComponent(userId.trim())}` }));
+    },
 
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), timeoutMs);
-      timeout.unref?.();
+    async findUserByEmail(email) {
+      const normalized = typeof email === 'string' ? email.trim().toLowerCase() : '';
+      if (!normalized) throw createClerkApiError('invalid_email', 'An email address is required.');
+      const params = new URLSearchParams();
+      params.append('email_address', normalized);
+      params.set('limit', '10');
+      const body = await requestJson({ path: `/users?${params.toString()}` });
+      const users = Array.isArray(body) ? body : Array.isArray(body?.data) ? body.data : [];
+      const exact = users.find((item) => readPrimaryEmail(item).email?.toLowerCase() === normalized) || null;
+      return exact ? normalizeClerkBackendUser(exact) : null;
+    },
 
-      let response;
-      try {
-        response = await fetchImpl(`${baseUrl}/users/${encodeURIComponent(userId.trim())}`, {
-          method: 'GET',
-          headers: {
-            Accept: 'application/json',
-            Authorization: `Bearer ${secretKey}`,
-          },
-          cache: 'no-store',
-          signal: controller.signal,
-        });
-      } catch (error) {
-        if (error?.name === 'AbortError') {
-          throw createClerkApiError('clerk_api_timeout', 'Clerk Backend API request timed out.');
-        }
-        const wrapped = createClerkApiError('clerk_api_unavailable', 'Clerk Backend API request failed.');
-        wrapped.cause = error;
-        throw wrapped;
-      } finally {
-        clearTimeout(timeout);
+    async createUser({
+      email,
+      password,
+      firstName = '',
+      publicMetadata = {},
+      privateMetadata = {},
+      externalId = '',
+      skipPasswordChecks = false,
+    }) {
+      const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+      if (!normalizedEmail || typeof password !== 'string' || !password) {
+        throw createClerkApiError('invalid_create_user', 'Email and password are required to create a Clerk user.');
       }
+      const body = {
+        email_address: [normalizedEmail],
+        password,
+        ...(firstName ? { first_name: firstName } : {}),
+        ...(externalId ? { external_id: externalId } : {}),
+        public_metadata: publicMetadata,
+        private_metadata: privateMetadata,
+        ...(skipPasswordChecks ? { skip_password_checks: true } : {}),
+      };
+      return normalizeClerkBackendUser(await requestJson({ path: '/users', method: 'POST', body }));
+    },
 
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw createClerkApiError('clerk_user_not_found', 'Clerk user was not found.', 404);
-        }
-        throw createClerkApiError('clerk_api_error', `Clerk Backend API returned HTTP ${response.status}.`, response.status);
+    async updateUser(userId, updates = {}) {
+      if (typeof userId !== 'string' || !userId.trim()) {
+        throw createClerkApiError('invalid_user_id', 'A Clerk user ID is required.');
       }
+      return normalizeClerkBackendUser(await requestJson({
+        path: `/users/${encodeURIComponent(userId.trim())}`,
+        method: 'PATCH',
+        body: updates,
+      }));
+    },
 
-      let body;
-      try {
-        body = await response.json();
-      } catch (error) {
-        const wrapped = createClerkApiError('invalid_clerk_response', 'Clerk Backend API returned invalid JSON.');
-        wrapped.cause = error;
-        throw wrapped;
+    async updateUserMetadata(userId, { publicMetadata = {}, privateMetadata = {} } = {}) {
+      if (typeof userId !== 'string' || !userId.trim()) {
+        throw createClerkApiError('invalid_user_id', 'A Clerk user ID is required.');
       }
+      return normalizeClerkBackendUser(await requestJson({
+        path: `/users/${encodeURIComponent(userId.trim())}/metadata`,
+        method: 'PATCH',
+        body: {
+          public_metadata: publicMetadata,
+          private_metadata: privateMetadata,
+        },
+      }));
+    },
 
-      return normalizeClerkBackendUser(body);
+    async deleteUser(userId) {
+      if (typeof userId !== 'string' || !userId.trim()) {
+        throw createClerkApiError('invalid_user_id', 'A Clerk user ID is required.');
+      }
+      const body = await requestJson({ path: `/users/${encodeURIComponent(userId.trim())}`, method: 'DELETE' });
+      return body ? normalizeClerkBackendUser(body) : null;
     },
   });
 };

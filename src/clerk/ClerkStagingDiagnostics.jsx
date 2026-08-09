@@ -58,15 +58,21 @@ import {
   readMemberAuthorityCutoverConfig,
   subscribeMemberAuthorityObservation,
 } from '../features/members/memberAuthorityCutover.js';
+import {
+  getLatestAccountAuthObservation,
+  readAccountAuthCutoverConfig,
+  subscribeAccountAuthObservation,
+} from '../features/auth/accountAuthCutover.js';
 import { clerkStagingClient } from './clerkStagingClient.js';
 
 const panelStyle = {
   position: 'fixed',
   right: '16px',
+  top: '184px',
   bottom: '16px',
   zIndex: 99999,
   width: 'min(380px, calc(100vw - 32px))',
-  maxHeight: 'calc(100vh - 32px)',
+  maxHeight: 'calc(100vh - 200px)',
   overflowY: 'auto',
   overscrollBehavior: 'contain',
   scrollbarGutter: 'stable',
@@ -108,6 +114,7 @@ export default function ClerkStagingDiagnostics() {
   const rentalRequestUserActionConfig = useMemo(() => readRentalRequestUserActionCutoverConfig(), []);
   const assetDomainCutoverConfig = useMemo(() => readAssetDomainCutoverConfig(), []);
   const memberAuthorityConfig = useMemo(() => readMemberAuthorityCutoverConfig(), []);
+  const accountAuthConfig = useMemo(() => readAccountAuthCutoverConfig(), []);
   const [state, setState] = useState({
     phase: requested ? 'loading' : 'hidden',
     signedIn: false,
@@ -234,6 +241,20 @@ export default function ClerkStagingDiagnostics() {
     adminIdentityRegistryCount: null,
     adminIdentityRegistryError: null,
     memberAuthorityError: null,
+    accountRecoveryRequested: accountAuthConfig.accountRecoveryRequested,
+    accountRecoverySource: accountAuthConfig.accountRecoveryRequested ? 'awaiting-recovery-action' : null,
+    accountRecoveryFallback: false,
+    accountRecoveryOperation: null,
+    accountRecoveryError: null,
+    adminClerkAuthRequested: accountAuthConfig.adminClerkAuthRequested,
+    adminAuthSource: accountAuthConfig.adminClerkAuthRequested ? 'awaiting-admin-login' : null,
+    adminFirebaseCompatibility: null,
+    adminClerkMigration: null,
+    adminClerkUserId: null,
+    adminProvisionOperation: null,
+    adminProvisionTargetUid: null,
+    adminProvisionClerkUserId: null,
+    adminAuthError: null,
     error: null,
   });
 
@@ -602,6 +623,41 @@ export default function ClerkStagingDiagnostics() {
     return subscribeMemberAuthorityObservation(applyObservation);
   }, [requested]);
 
+  useEffect(() => {
+    if (!requested) return undefined;
+    const applyObservation = (observation) => {
+      setState((current) => ({
+        ...current,
+        accountRecoveryRequested: observation && Object.prototype.hasOwnProperty.call(observation, 'accountRecoveryRequested')
+          ? Boolean(observation.accountRecoveryRequested)
+          : current.accountRecoveryRequested,
+        accountRecoverySource: observation?.accountRecoverySource || current.accountRecoverySource,
+        accountRecoveryFallback: observation && Object.prototype.hasOwnProperty.call(observation, 'accountRecoveryFallback')
+          ? Boolean(observation.accountRecoveryFallback)
+          : current.accountRecoveryFallback,
+        accountRecoveryOperation: observation?.accountRecoveryOperation || current.accountRecoveryOperation,
+        accountRecoveryError: observation && Object.prototype.hasOwnProperty.call(observation, 'accountRecoveryError')
+          ? observation.accountRecoveryError || null
+          : current.accountRecoveryError,
+        adminClerkAuthRequested: observation && Object.prototype.hasOwnProperty.call(observation, 'adminClerkAuthRequested')
+          ? Boolean(observation.adminClerkAuthRequested)
+          : current.adminClerkAuthRequested,
+        adminAuthSource: observation?.adminAuthSource || current.adminAuthSource,
+        adminFirebaseCompatibility: observation?.adminFirebaseCompatibility || current.adminFirebaseCompatibility,
+        adminClerkMigration: observation?.adminClerkMigration || current.adminClerkMigration,
+        adminClerkUserId: observation?.adminClerkUserId || current.adminClerkUserId,
+        adminProvisionOperation: observation?.adminProvisionOperation || current.adminProvisionOperation,
+        adminProvisionTargetUid: observation?.adminProvisionTargetUid || current.adminProvisionTargetUid,
+        adminProvisionClerkUserId: observation?.adminProvisionClerkUserId || current.adminProvisionClerkUserId,
+        adminAuthError: observation && Object.prototype.hasOwnProperty.call(observation, 'adminAuthError')
+          ? observation.adminAuthError || null
+          : current.adminAuthError,
+      }));
+    };
+    applyObservation(getLatestAccountAuthObservation());
+    return subscribeAccountAuthObservation(applyObservation);
+  }, [requested]);
+
   if (!requested) return null;
 
   const run = async (operation) => {
@@ -795,7 +851,7 @@ export default function ClerkStagingDiagnostics() {
 
   return (
     <aside style={panelStyle} aria-label="Clerk staging diagnostics">
-      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 21</div>
+      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 22</div>
       <div>SDK: {state.phase === 'loading' ? 'loading' : state.phase}</div>
       <div>Signed in: {state.signedIn ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Clerk user: {state.userId || '-'}</div>
@@ -972,6 +1028,22 @@ export default function ClerkStagingDiagnostics() {
       <div>Admin identity registry count: {state.adminIdentityRegistryCount === null ? '-' : state.adminIdentityRegistryCount}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Admin identity registry error: {state.adminIdentityRegistryError || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Member authority error: {state.memberAuthorityError || '-'}</div>
+
+      <div style={{ marginTop: '6px', fontWeight: 700 }}>Phase 22 account recovery + admin Clerk authority</div>
+      <div>Account recovery PostgreSQL requested: {state.accountRecoveryRequested ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Account recovery active source: {state.accountRecoverySource || '-'}</div>
+      <div>Account recovery Firestore fallback: {state.accountRecoveryFallback ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Account recovery operation: {state.accountRecoveryOperation || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Account recovery error: {state.accountRecoveryError || '-'}</div>
+      <div>Admin Clerk authority requested: {state.adminClerkAuthRequested ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Admin auth source: {state.adminAuthSource || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Admin Firebase compatibility: {state.adminFirebaseCompatibility || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Admin Clerk migration: {state.adminClerkMigration || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Admin Clerk user: {state.adminClerkUserId || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Admin provision operation: {state.adminProvisionOperation || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Admin provision target: {state.adminProvisionTargetUid || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Admin provision Clerk user: {state.adminProvisionClerkUserId || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Admin auth error: {state.adminAuthError || '-'}</div>
 
       {state.error ? (
         <div role="alert" style={{ marginTop: '8px', color: '#b91c1c', overflowWrap: 'anywhere' }}>

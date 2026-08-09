@@ -51,6 +51,9 @@ export const normalizeAdminAccounts = function(adminAccounts) {
       authEmail: account.authEmail || account.email || '',
       authProvider: account.authProvider || '',
       authLinkedAt: account.authLinkedAt || '',
+      clerkUserId: account.clerkUserId || '',
+      clerkLinkState: account.clerkLinkState || '',
+      authAuthorityMode: account.authAuthorityMode || '',
       passwordHash: account.passwordHash || '',
       passwordSalt: account.passwordSalt || '',
       passwordHashAlgorithm:

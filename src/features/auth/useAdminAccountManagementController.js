@@ -23,6 +23,10 @@ import {
 } from '../../firebase.js';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 import { publishMemberAuthorityObservation, readMemberAuthorityCutoverConfig } from '../members/memberAuthorityCutover.js';
+import {
+  publishAccountAuthObservation,
+  readAccountAuthCutoverConfig,
+} from './accountAuthCutover.js';
 
 export const ADMIN_CUSTOM_OPTION_VALUE = '__ADMIN_CUSTOM_INPUT__';
 export const ADMIN_ACCOUNT_PAGE_SIZE = 10;
@@ -111,6 +115,8 @@ export default function useAdminAccountManagementController({
   triggerConfirm,
   triggerToast,
 }) {
+  const adminClerkAuthRequested = readAccountAuthCutoverConfig().adminClerkAuthRequested;
+
   useEffect(() => {
     if (!authenticatedAdminAccount) {
       setAdminMyProfileForm(createDefaultAdminAccountEditForm());
@@ -142,7 +148,7 @@ export default function useAdminAccountManagementController({
 
   useEffect(() => {
     const config = readMemberAuthorityCutoverConfig();
-    if (!config.adminRegistryRequested) return undefined;
+    if (!config.adminRegistryRequested && !adminClerkAuthRequested) return undefined;
     if (!authenticatedAdminAccount?.id || !firebaseAuthUser || typeof firebaseAuthUser.getIdToken !== 'function') return undefined;
     let cancelled = false;
     const run = async () => {
@@ -172,11 +178,11 @@ export default function useAdminAccountManagementController({
     };
     void run();
     return () => { cancelled = true; };
-  }, [authenticatedAdminAccount?.id, firebaseAuthUser?.uid]);
+  }, [authenticatedAdminAccount?.id, firebaseAuthUser?.uid, adminClerkAuthRequested]);
 
   const syncAdminIdentityRegistryIfRequested = async () => {
     const config = readMemberAuthorityCutoverConfig();
-    if (!config.adminRegistryRequested || !firebaseAuthUser || typeof firebaseAuthUser.getIdToken !== 'function') return;
+    if ((!config.adminRegistryRequested && !adminClerkAuthRequested) || !firebaseAuthUser || typeof firebaseAuthUser.getIdToken !== 'function') return;
     try {
       const firebaseIdToken = await firebaseAuthUser.getIdToken();
       const payload = await clerkStagingClient.bootstrapAdminIdentityRegistry(firebaseIdToken);
@@ -253,8 +259,9 @@ export default function useAdminAccountManagementController({
       return;
     }
 
-    if (password.length < 6) {
-      triggerToast('초기 비밀번호는 6자 이상으로 입력해 주세요.', 'error');
+    const minimumAdminPasswordLength = adminClerkAuthRequested ? 8 : 6;
+    if (password.length < minimumAdminPasswordLength) {
+      triggerToast(`초기 비밀번호는 ${minimumAdminPasswordLength}자 이상으로 입력해 주세요.`, 'error');
       return;
     }
 
@@ -303,6 +310,7 @@ export default function useAdminAccountManagementController({
     }
 
     let createdAdminUser = null;
+    let createdAdminDocument = false;
 
     try {
       const nowText = new Date().toLocaleString('ko-KR');
@@ -347,7 +355,40 @@ export default function useAdminAccountManagementController({
         ...nextAdminAccount,
         syncedAt: serverTimestamp(),
       });
+      createdAdminDocument = true;
       await syncAdminIdentityRegistryIfRequested();
+
+      if (adminClerkAuthRequested) {
+        if (!firebaseAuthUser || typeof firebaseAuthUser.getIdToken !== 'function') {
+          throw new Error('admin-clerk-actor-firebase-session-missing');
+        }
+        const firebaseIdToken = await firebaseAuthUser.getIdToken();
+        const provisionPayload = await clerkStagingClient.provisionAdminClerkIdentity(
+          firebaseIdToken,
+          credential.user.uid,
+          password
+        );
+        const authority = provisionPayload?.adminAuthentication || {};
+        nextAdminAccount.authProvider = 'clerk+firebase-compatibility';
+        nextAdminAccount.clerkUserId = authority.clerkUserId || '';
+        nextAdminAccount.clerkLinkState = authority.clerkLinkState || 'linked';
+        nextAdminAccount.authAuthorityMode = authority.authAuthorityMode || 'clerk-authoritative-firebase-compatibility';
+        await setDoc(doc(db, 'adminAccounts', credential.user.uid), {
+          authProvider: nextAdminAccount.authProvider,
+          clerkUserId: nextAdminAccount.clerkUserId,
+          clerkLinkState: nextAdminAccount.clerkLinkState,
+          authAuthorityMode: nextAdminAccount.authAuthorityMode,
+          syncedAt: serverTimestamp(),
+        }, { merge: true });
+        publishAccountAuthObservation({
+          adminClerkAuthRequested: true,
+          adminAuthSource: 'clerk',
+          adminProvisionOperation: 'admin-create',
+          adminProvisionTargetUid: credential.user.uid,
+          adminProvisionClerkUserId: nextAdminAccount.clerkUserId,
+          adminAuthError: '',
+        });
+      }
 
       await signOut(adminAccountCreationAuth).catch((error) => {
         console.error('Secondary admin auth sign-out error:', error);
@@ -364,10 +405,18 @@ export default function useAdminAccountManagementController({
       setAdminAccountPage(1);
 
       triggerToast(
-        `[${adminLoginId}] Firebase Auth 관리자 계정이 등록되었습니다.`,
+        adminClerkAuthRequested
+          ? `[${adminLoginId}] Clerk 관리자 계정과 Firebase 호환 계정이 등록되었습니다.`
+          : `[${adminLoginId}] Firebase Auth 관리자 계정이 등록되었습니다.`,
         'success'
       );
     } catch (error) {
+      if (createdAdminDocument && createdAdminUser?.uid) {
+        await deleteDoc(doc(db, 'adminAccounts', createdAdminUser.uid)).catch((rollbackError) => {
+          console.error('Admin document rollback error:', rollbackError);
+        });
+        await syncAdminIdentityRegistryIfRequested().catch(() => {});
+      }
       if (createdAdminUser) {
         await deleteUser(createdAdminUser).catch((rollbackError) => {
           console.error('Admin Auth rollback error:', rollbackError);
@@ -376,8 +425,21 @@ export default function useAdminAccountManagementController({
 
       await signOut(adminAccountCreationAuth).catch(() => {});
 
-      console.error('Admin Firebase Auth account creation error:', error);
-      triggerToast(getAdminFirebaseAuthErrorMessage(error), 'error');
+      console.error('Admin account creation error:', error);
+      if (adminClerkAuthRequested) {
+        publishAccountAuthObservation({
+          adminClerkAuthRequested: true,
+          adminAuthSource: 'failed',
+          adminProvisionOperation: 'admin-create',
+          adminAuthError: error?.code || error?.message || 'admin-clerk-provision-failed',
+        });
+      }
+      const clerkMessage = error?.code === 'admin_clerk_password_too_short'
+        ? 'Clerk 관리자 초기 비밀번호는 8자 이상이어야 합니다.'
+        : error?.code === 'admin-clerk-actor-firebase-session-missing'
+          ? '현재 관리자 Firebase 호환 세션을 확인할 수 없습니다. 다시 로그인한 뒤 등록해 주세요.'
+          : '';
+      triggerToast(clerkMessage || getAdminFirebaseAuthErrorMessage(error), 'error');
     }
   };
 
@@ -415,7 +477,12 @@ export default function useAdminAccountManagementController({
 
     try {
       await sendPasswordResetEmail(firebaseAuth, email);
-      triggerToast(`[${account.adminLoginId}] 관리자에게 비밀번호 재설정 메일을 발송했습니다.`, 'success');
+      triggerToast(
+        adminClerkAuthRequested
+          ? `[${account.adminLoginId}] Firebase 호환 비밀번호 재설정 메일을 발송했습니다. 변경 후 첫 로그인에서 Clerk 비밀번호가 동기화됩니다.`
+          : `[${account.adminLoginId}] 관리자에게 비밀번호 재설정 메일을 발송했습니다.`,
+        'success'
+      );
     } catch (error) {
       console.error('Admin password reset email error:', error);
       triggerToast(getAdminFirebaseAuthErrorMessage(error), 'error');
@@ -480,8 +547,9 @@ export default function useAdminAccountManagementController({
     }
 
     if (shouldChangePassword) {
-      if (newPassword.length < 6) {
-        triggerToast('새 비밀번호는 6자 이상으로 입력해 주세요.', 'error');
+      const minimumAdminPasswordLength = adminClerkAuthRequested ? 8 : 6;
+      if (newPassword.length < minimumAdminPasswordLength) {
+        triggerToast(`새 비밀번호는 ${minimumAdminPasswordLength}자 이상으로 입력해 주세요.`, 'error');
         return;
       }
 
@@ -586,6 +654,35 @@ export default function useAdminAccountManagementController({
       );
       await syncAdminIdentityRegistryIfRequested();
 
+      if (adminClerkAuthRequested && shouldChangePassword) {
+        const firebaseIdToken = await firebaseAuthUser.getIdToken();
+        const provisionPayload = await clerkStagingClient.provisionAdminClerkIdentity(
+          firebaseIdToken,
+          account.id,
+          newPassword
+        );
+        const authority = provisionPayload?.adminAuthentication || {};
+        nextAdminAccount.authProvider = 'clerk+firebase-compatibility';
+        nextAdminAccount.clerkUserId = authority.clerkUserId || account.clerkUserId || '';
+        nextAdminAccount.clerkLinkState = authority.clerkLinkState || 'linked';
+        nextAdminAccount.authAuthorityMode = authority.authAuthorityMode || 'clerk-authoritative-firebase-compatibility';
+        await setDoc(doc(db, 'adminAccounts', account.id), {
+          authProvider: nextAdminAccount.authProvider,
+          clerkUserId: nextAdminAccount.clerkUserId,
+          clerkLinkState: nextAdminAccount.clerkLinkState,
+          authAuthorityMode: nextAdminAccount.authAuthorityMode,
+          syncedAt: serverTimestamp(),
+        }, { merge: true });
+        publishAccountAuthObservation({
+          adminClerkAuthRequested: true,
+          adminAuthSource: 'clerk',
+          adminProvisionOperation: 'admin-password-change',
+          adminProvisionTargetUid: account.id,
+          adminProvisionClerkUserId: nextAdminAccount.clerkUserId,
+          adminAuthError: '',
+        });
+      }
+
       setAdminAccounts((prev) =>
         (prev || []).map((item) =>
           item.id === account.id ? nextAdminAccount : item
@@ -651,7 +748,9 @@ export default function useAdminAccountManagementController({
 
     triggerConfirm(
       '관리자 ID 삭제',
-      `[${account.adminLoginId}] 관리자 권한을 삭제합니다. Firebase Auth 계정 자체는 Spark 무료/클라이언트 환경에서는 삭제하지 않고, 이 시스템의 관리자 권한만 제거됩니다.`,
+      adminClerkAuthRequested
+        ? `[${account.adminLoginId}] 관리자 권한을 삭제합니다. PostgreSQL registry는 retired 처리되어 연결된 Clerk 계정으로도 관리자 접근할 수 없게 됩니다. Firebase Auth 호환 계정 자체는 삭제하지 않습니다.`
+        : `[${account.adminLoginId}] 관리자 권한을 삭제합니다. Firebase Auth 계정 자체는 Spark 무료/클라이언트 환경에서는 삭제하지 않고, 이 시스템의 관리자 권한만 제거됩니다.`,
       async () => {
         try {
           await deleteDoc(doc(db, 'adminAccounts', account.id));

@@ -29,6 +29,10 @@ const files = [
   'server/src/rentals/admin-rental-request-service.mjs',
   'server/src/members/member-authority-repository.mjs',
   'server/src/members/member-authority-service.mjs',
+  'server/src/accounts/account-recovery-repository.mjs',
+  'server/src/accounts/account-recovery-service.mjs',
+  'server/src/auth/admin-identity-repository.mjs',
+  'server/src/auth/admin-clerk-auth-service.mjs',
   'server/src/firestore/firestore-members.mjs',
   'server/src/app.mjs',
   'server/src/index.mjs',
@@ -387,9 +391,41 @@ for (const marker of ['VITE_ASSET_POSTGRES_READ_ENABLED', 'VITE_ASSET_POSTGRES_W
   if (!assetCutover.includes(marker)) throw new Error(`Phase 20 frontend asset cutover marker is missing: ${marker}`);
 }
 
+
+const phase22Migration = readFileSync('server/migrations/014_phase22_account_recovery_admin_clerk_auth.sql', 'utf8');
+for (const marker of [
+  'app_admin_identity_registry_clerk_user_uidx',
+  'app_member_accounts_active_recovery_key_uidx',
+  "'account_recovery_read', 'postgresql-preferred-staging-opt-in'",
+  "'admin_authentication', 'clerk-authoritative-firebase-compatibility-session'",
+]) {
+  if (!phase22Migration.includes(marker)) throw new Error(`Phase 22 migration marker is missing: ${marker}`);
+}
+
+const accountRecoveryRepository = readFileSync('server/src/accounts/account-recovery-repository.mjs', 'utf8');
+for (const marker of ['app_member_accounts', 'recovery_key = $1', "status <> 'retired'"]) {
+  if (!accountRecoveryRepository.includes(marker)) throw new Error(`Phase 22 account recovery repository marker is missing: ${marker}`);
+}
+const accountRecoveryService = readFileSync('server/src/accounts/account-recovery-service.mjs', 'utf8');
+for (const marker of ['findEmail(input)', 'verifyPasswordReset(input)', "source: 'postgresql'", "join(\'\\u001f\')"]) {
+  if (!accountRecoveryService.includes(marker)) throw new Error(`Phase 22 account recovery service marker is missing: ${marker}`);
+}
+const adminClerkAuthService = readFileSync('server/src/auth/admin-clerk-auth-service.mjs', 'utf8');
+for (const marker of ['getCurrent({ clerkUserId })', 'migrateCurrent({ firebaseIdentity, password })', 'provisionTarget({ actorClerkUserId, firebaseIdentity, targetFirebaseUid, password })', "authority: 'clerk'", 'admin_owner_required', 'skipPasswordChecks: migration']) {
+  if (!adminClerkAuthService.includes(marker)) throw new Error(`Phase 22 admin Clerk auth service marker is missing: ${marker}`);
+}
+const adminIdentityRepository = readFileSync('server/src/auth/admin-identity-repository.mjs', 'utf8');
+for (const marker of ['findByFirebaseUid', 'findByClerkUserId', 'linkClerkIdentity', 'markVerifiedLogin', "auth_authority_mode = 'clerk-authoritative-firebase-compatibility'"]) {
+  if (!adminIdentityRepository.includes(marker)) throw new Error(`Phase 22 admin identity repository marker is missing: ${marker}`);
+}
+const accountAuthCutover = readFileSync('src/features/auth/accountAuthCutover.js', 'utf8');
+for (const marker of ['VITE_ACCOUNT_RECOVERY_POSTGRES_READ_ENABLED', 'VITE_ADMIN_CLERK_AUTH_ENABLED', "get('accountRecovery') === 'postgres'", "get('adminAuth') === 'clerk'", 'rental:account-auth-cutover']) {
+  if (!accountAuthCutover.includes(marker)) throw new Error(`Phase 22 frontend account/auth cutover marker is missing: ${marker}`);
+}
+
 const configTemplate = readFileSync('docs/github-education/HEROKU_CONFIG_VARS_TEMPLATE.txt', 'utf8');
 for (const variable of ['CLERK_JWT_KEY=', 'CLERK_AUTHORIZED_PARTIES=', 'CLERK_SECRET_KEY=sk_test_', 'CLERK_API_TIMEOUT_MS=8000', 'FIREBASE_PROJECT_ID=laptop-system-mk']) {
   if (!configTemplate.includes(variable)) throw new Error(`Phase 6 config template is missing ${variable}`);
 }
 
-console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request shadow/parity + phase16 authoritative write + phase17 admin rental-request cutover + phase18 mutation/audit completion + phase19 user-action lifecycle + phase20 asset-domain + phase21 member/restriction/admin identity authority invariants)`);
+console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request shadow/parity + phase16 authoritative write + phase17 admin rental-request cutover + phase18 mutation/audit completion + phase19 user-action lifecycle + phase20 asset-domain + phase21 member/restriction/admin identity authority + phase22 account recovery/admin Clerk auth invariants)`);

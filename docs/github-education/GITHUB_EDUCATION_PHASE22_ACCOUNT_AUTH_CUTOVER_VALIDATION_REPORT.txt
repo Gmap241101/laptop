@@ -1,0 +1,66 @@
+Phase 22 validation targets
+===========================
+
+Migration 014 static contract
+PostgreSQL member recovery-key lookup
+Email lookup PostgreSQL-preferred / Firestore fallback contract
+Password-reset identity PostgreSQL-preferred / Firestore fallback contract
+Administrator active Clerk/PostgreSQL registry authority
+Existing Firebase administrator Clerk migration
+Existing-admin-only administrator Clerk provisioning
+Owner-only owner-administrator provisioning rule
+New administrator minimum 8-character Clerk password contract
+Firebase administrator compatibility session retention
+Dedicated Clerk user metadata endpoint contract
+Self-profile diagnostic operation = user-profile-edit
+Diagnostic panel lowered below toast area
+React Hook audit
+Application flow audit
+Firestore strict audit
+Full Phase 1-21 regression
+Package guard / ZIP integrity
+
+Expected staged browser evidence
+================================
+
+Account recovery:
+Account recovery requested = yes
+Account recovery source = postgresql
+Account recovery fallback = no
+Account recovery error = -
+
+Administrator login after migration/link:
+Admin Clerk auth requested = yes
+Admin auth source = clerk
+Admin Clerk migration = existing OR firebase-admin-to-clerk
+Admin Clerk user = user_...
+Admin auth error = -
+
+Administrator provision/password synchronization:
+Admin provision operation = admin-create OR admin-password-change
+Admin provision Clerk user = user_...
+Admin auth error = -
+
+Member self profile diagnostic:
+Last member operation = user-profile-edit
+
+Diagnostic panel:
+The fixed panel starts below the top toast region and remains vertically bounded by the viewport.
+
+Automated implementation result
+===============================
+Migration static check: PASS
+Server foundation validation: PASS
+Phase 22 backend smoke: PASS
+Phase 22 frontend smoke: PASS
+Phase 22 HTTP endpoint handler smoke: PASS
+Full verify:phase22: PASS (exit 0 before final packaging refresh)
+React Hook audit: PASS (161 source files)
+Application flow audit: PASS (124 contracts / 11 user routes / 20 administrator tabs)
+Firestore strict audit: PASS (131 calls; onSnapshot 35; getDocs 50; getDoc 28; getCountFromServer 18; approved risk 52; warnings 0; errors 0)
+Phase 22 recovery-key parity: PASS (backend SHA-256 key matches frontend NFKC normalization contract)
+Phase 22 admin migration recent-auth boundary: PASS (older than five minutes rejected)
+Build staging prebuild: PASS
+Vite bundle in ChatGPT environment: NOT RUNNABLE (vite: not found, exit 127; root node_modules unavailable)
+Actual Staging browser validation: PENDING
+Final Phase status: candidate

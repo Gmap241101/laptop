@@ -81,7 +81,10 @@
     "verify:phase20": "npm run verify:phase19 && npm run server:asset-domain:smoke && npm run frontend:asset-domain:smoke",
     "server:member-authority:smoke": "node tools/backend/smoke-member-restriction-authority.mjs",
     "frontend:member-authority:smoke": "node tools/frontend/smoke-member-restriction-authority.mjs",
-    "verify:phase21": "npm run verify:phase20 && npm run server:member-authority:smoke && npm run frontend:member-authority:smoke"
+    "verify:phase21": "npm run verify:phase20 && npm run server:member-authority:smoke && npm run frontend:member-authority:smoke",
+    "server:account-auth:smoke": "node tools/backend/smoke-account-recovery-admin-clerk-auth.mjs",
+    "frontend:account-auth:smoke": "node tools/frontend/smoke-account-recovery-admin-clerk-auth.mjs",
+    "verify:phase22": "npm run verify:phase21 && npm run server:account-auth:smoke && npm run frontend:account-auth:smoke"
   },
   "dependencies": {
     "firebase": "^10.14.1",

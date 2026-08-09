@@ -87,6 +87,12 @@ export const createFirestoreMemberAuthorityClient = ({ projectId, timeoutMs = DE
       return Object.freeze({ uid, fields, updateTime: document.updateTime || null });
     },
 
+    async getAdminAccount({ firebaseUid, firebaseIdToken }) {
+      const uid = trim(firebaseUid);
+      if (!uid) return null;
+      return getDocument(`adminAccounts/${encodeURIComponent(uid)}`, firebaseIdToken, 'firestore_member_admin_target');
+    },
+
     async getUserAccount({ firebaseUid, firebaseIdToken }) {
       return getDocument(`userAccounts/${encodeURIComponent(trim(firebaseUid))}`, firebaseIdToken, 'firestore_member_user');
     },
