@@ -376,7 +376,7 @@ for (const marker of ['getPublicCatalog', 'bootstrap(firebaseIdentity)', 'create
   if (!assetService.includes(marker)) throw new Error(`Phase 20 asset service marker is missing: ${marker}`);
 }
 const assetFirestore = readFileSync('server/src/firestore/firestore-assets.mjs', 'utf8');
-for (const marker of ['rentalAssets', 'rentalAssetNumbers', 'publicAssetCatalog', 'mirrorCreate', 'mirrorEdit', 'mirrorDelete', 'mirrorBulkCreate', 'mirrorCategories']) {
+for (const marker of ['rentalAssets', 'rentalAssetNumbers', "documentName('publicCatalog/main')", 'mirrorCreate', 'mirrorEdit', 'mirrorDelete', 'mirrorBulkCreate', 'mirrorCategories']) {
   if (!assetFirestore.includes(marker)) throw new Error(`Phase 20 asset Firestore compatibility marker is missing: ${marker}`);
 }
 const assetCutover = readFileSync('src/features/assets/assetDomainCutover.js', 'utf8');

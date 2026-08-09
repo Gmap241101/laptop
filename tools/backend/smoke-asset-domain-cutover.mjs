@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createAssetService } from '../../server/src/assets/asset-service.mjs';
+import { createFirestoreAssetClient } from '../../server/src/firestore/firestore-assets.mjs';
 
 const identity = { uid: 'admin-firebase', idToken: 'firebase-admin-token' };
 const baseCatalog = {
@@ -78,6 +79,37 @@ const [migration, repoSource, serviceSource, firestoreSource, appSource] = await
 for (const marker of ['app_asset_categories', 'app_rental_assets', 'app_asset_catalog_syncs']) assert.ok(migration.includes(marker), marker);
 for (const marker of ['app_rental_asset_reservation_guards', 'pg_advisory_xact_lock', 'createAuthoritative', 'bulkCreateAuthoritative', 'saveCategoriesAuthoritative']) assert.ok(repoSource.includes(marker), marker);
 for (const marker of ['getPublicCatalog', 'bootstrap(firebaseIdentity)', "authority: 'postgresql'", "firestoreMirror: 'synced'"]) assert.ok(serviceSource.includes(marker), marker);
-for (const marker of ['rentalAssetNumbers', 'publicAssetCatalog', 'assetCategories', 'mirrorBulkCreate', 'mirrorCategories']) assert.ok(firestoreSource.includes(marker), marker);
+for (const marker of ['rentalAssetNumbers', "documentName('publicCatalog/main')", 'assetCategories', 'mirrorBulkCreate', 'mirrorCategories']) assert.ok(firestoreSource.includes(marker), marker);
+assert.ok(!firestoreSource.includes("documentName('publicAssetCatalog/main')"), 'server mirror must not use the invalid publicAssetCatalog path');
 for (const marker of ['/api/assets/catalog', '/api/admin/assets/bootstrap', '/api/admin/assets/bulk', '/api/admin/assets/categories']) assert.ok(appSource.includes(marker), marker);
+
+const firestoreRequests = [];
+const firestoreMirrorClient = createFirestoreAssetClient({
+  projectId: 'phase20-test',
+  fetchImpl: async (url, options = {}) => {
+    firestoreRequests.push({ url: String(url), options });
+    if (String(url).includes('/adminAccounts/')) {
+      return new Response(JSON.stringify({
+        name: 'projects/phase20-test/databases/(default)/documents/adminAccounts/admin-firebase',
+        fields: {
+          id: { stringValue: 'admin-firebase' },
+          authUid: { stringValue: 'admin-firebase' },
+          userName: { stringValue: '관리자' },
+          adminRole: { stringValue: 'admin' },
+        },
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (String(url).endsWith(':commit')) return new Response(JSON.stringify({ writeResults: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  },
+});
+await firestoreMirrorClient.mirrorCreate({
+  asset: baseCatalog.assets[0], catalog: baseCatalog, admin: { uid: 'admin-firebase' }, firebaseIdToken: 'firebase-admin-token',
+});
+const mirrorCommit = firestoreRequests.find((entry) => entry.url.endsWith(':commit'));
+assert.ok(mirrorCommit, 'asset mirror commit request must be issued');
+const mirrorBody = JSON.parse(mirrorCommit.options.body);
+const mirrorNames = mirrorBody.writes.map((write) => write?.update?.name || write?.delete || '');
+assert.ok(mirrorNames.some((name) => name.endsWith('/documents/publicCatalog/main')), 'asset mirror must update publicCatalog/main');
+assert.ok(!mirrorNames.some((name) => name.includes('/documents/publicAssetCatalog/')), 'asset mirror must never write publicAssetCatalog/*');
 console.log('[asset-domain-cutover-backend-smoke] PASS (bootstrap/catalog, CRUD, bulk, categories, PG reservation guard, Firestore compatibility mirror)');

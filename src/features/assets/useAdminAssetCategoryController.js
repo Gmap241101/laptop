@@ -310,6 +310,12 @@ export default function useAdminAssetCategoryController({
         return true;
       } catch (error) {
         console.error('PostgreSQL asset category save error:', error);
+        publishAssetDomainCutoverObservation({
+          readRequested: assetCutoverConfig.readRequested, writeRequested: true,
+          activeSource: 'postgresql', writeSource: 'postgresql-authoritative', firestoreMirror: 'failed',
+          assetWatcherDisabled: assetCutoverConfig.readRequested, availabilityWatcherDisabled: assetCutoverConfig.readRequested,
+          firestoreFallbackReads: 0, error: error?.code || error?.message || 'asset-category-write-failed',
+        });
         if (error?.code === 'active-rental-category-rename') {
           triggerToast(`진행 중 예약이 있는 자산${error?.assetNo ? ` [${error.assetNo}]` : ''}이 포함되어 카테고리명을 변경할 수 없습니다.`, 'error');
           return false;

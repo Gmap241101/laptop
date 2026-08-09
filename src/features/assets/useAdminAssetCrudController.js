@@ -80,6 +80,17 @@ export default function useAdminAssetCrudController({
 
   const showPostgresAssetError = (error, fallbackMessage) => {
     const code = error?.code || '';
+    publishAssetDomainCutoverObservation({
+      readRequested: assetCutoverConfig.readRequested,
+      writeRequested: assetCutoverConfig.writeRequested,
+      activeSource: 'postgresql',
+      writeSource: 'postgresql-authoritative',
+      firestoreMirror: 'failed',
+      assetWatcherDisabled: assetCutoverConfig.readRequested,
+      availabilityWatcherDisabled: assetCutoverConfig.readRequested,
+      firestoreFallbackReads: 0,
+      error: code || error?.message || 'asset-write-failed',
+    });
     if (code === 'duplicate-asset-number') { triggerToast('동일한 자산관리번호가 이미 등록되어 있습니다.', 'error'); return; }
     if (code === 'asset-category-not-found') { triggerToast('선택한 자산 카테고리가 최신 카테고리 목록에 없습니다.', 'error'); return; }
     if (code === 'active-rental-identity-change') { triggerToast('현재 진행 중인 신청이 있어 자산 카테고리 또는 자산관리번호를 변경할 수 없습니다.', 'error'); return; }

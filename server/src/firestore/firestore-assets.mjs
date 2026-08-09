@@ -91,7 +91,7 @@ export const createFirestoreAssetClient = ({ projectId, timeoutMs = DEFAULT_TIME
 
   const catalogWrite = (catalog, updatedByUid) => ({
     update: {
-      name: documentName('publicAssetCatalog/main'),
+      name: documentName('publicCatalog/main'),
       fields: encodeFields({
         schemaVersion: 2,
         assets: sortCatalogAssets(catalog.assets),

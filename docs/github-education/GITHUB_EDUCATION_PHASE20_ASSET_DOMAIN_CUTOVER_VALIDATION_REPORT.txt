@@ -55,3 +55,11 @@ Runtime UI stability hotfix validation
 - React Hook audit after hotfix: PASS (159 source files)
 - Application flow audit after hotfix: PASS (124 contracts; 11 user routes; 20 administrator tabs)
 - Firestore strict audit after hotfix: PASS (131 total calls; 0 unapproved warnings/errors)
+
+PHASE 20 RUNTIME HOTFIX 2
+- Root cause: server Firestore asset mirror wrote publicAssetCatalog/main instead of the actual publicCatalog/main document allowed by Firestore Rules.
+- Fix: compatibility catalog writes now target publicCatalog/main.
+- Regression: backend smoke inspects the real REST commit body and requires /documents/publicCatalog/main while rejecting /documents/publicAssetCatalog/*.
+- Diagnostics: asset CRUD/category failures now publish firestoreMirror=failed and the backend error code.
+- Migration: none.
+- App.jsx: unchanged.

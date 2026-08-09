@@ -14,7 +14,7 @@ Included:
 - dashboard asset metrics PostgreSQL overlay
 - opt-in removal of `rentalAssets` and `rentalAvailability` realtime watchers
 - one-time Firestore fallback only if PostgreSQL catalog/bootstrap fails
-- Firestore compatibility mirrors for `rentalAssets`, `rentalAssetNumbers`, `publicAssetCatalog/main`, and `rentalSystem/publicConfig.assetCategories`
+- Firestore compatibility mirrors for `rentalAssets`, `rentalAssetNumbers`, `publicCatalog/main`, and `rentalSystem/publicConfig.assetCategories`
 
 ## PostgreSQL migration
 `012_phase20_asset_domain_cutover.sql` creates:
@@ -59,3 +59,11 @@ Fix:
 - frontend Phase 20 smoke now rejects both regression patterns
 
 No PostgreSQL schema, migration, API contract, Firestore Rules/index, App.jsx, or npm dependency change was required for this hotfix.
+
+## Phase 20 runtime hotfix 2 — Firestore compatibility catalog path
+
+Runtime verification after the UI-stability fix showed that PostgreSQL asset reads were healthy while create/edit/category mutations rolled back at the Firestore compatibility-mirror stage. The server mirror used the non-existent legacy path `publicCatalog/main`; the deployed client and Firestore Rules use `publicCatalog/main`.
+
+The mirror now writes `publicCatalog/main`. Asset CRUD and category write failures also publish the backend error code into the Phase 20 diagnostic observation so a failed compatibility commit is visible instead of leaving the write fields as `-`.
+
+No schema migration, Firestore Rules change, dependency change, or `src/App.jsx` change is required for this hotfix.

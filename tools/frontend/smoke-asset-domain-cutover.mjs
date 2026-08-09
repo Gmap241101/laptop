@@ -27,8 +27,9 @@ const [subscription, crud, categories, bulk, catalogCompat, dashboard, client, d
   read('src/clerk/ClerkStagingDiagnostics.jsx'),
 ]);
 for (const marker of ['readAssetDomainCutoverConfig', 'bootstrapAdminAssets', 'getAssetCatalog', 'firestore-one-time-fallback', 'mk_asset_postgres_bootstrap:', 'assetWatcherDisabled', 'availabilityWatcherDisabled']) assert.ok(subscription.includes(marker), marker);
-for (const marker of ['createAdminAsset', 'editAdminAsset', 'deleteAdminAsset', "writeSource: 'postgresql-authoritative'"]) assert.ok(crud.includes(marker), marker);
+for (const marker of ['createAdminAsset', 'editAdminAsset', 'deleteAdminAsset', "writeSource: 'postgresql-authoritative'", "firestoreMirror: 'failed'"]) assert.ok(crud.includes(marker), marker);
 assert.ok(categories.includes('saveAdminAssetCategories'));
+assert.ok(categories.includes("firestoreMirror: 'failed'"), 'category PostgreSQL write failures must publish diagnostics');
 
 assert.ok(subscription.includes('splitAssetCategoriesRef'), 'asset catalog fallback must use a ref for current categories');
 assert.ok(!subscription.includes('    splitPublicConfig?.assetCategories,\n    userTab,'), 'asset catalog effect must not depend on the categories array it updates');
