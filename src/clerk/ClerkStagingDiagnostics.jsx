@@ -251,6 +251,9 @@ export default function ClerkStagingDiagnostics() {
     adminFirebaseCompatibility: null,
     adminClerkMigration: null,
     adminClerkUserId: null,
+    adminClientTrustStatus: null,
+    adminClientTrustStrategy: null,
+    adminClientTrustDestination: null,
     adminProvisionOperation: null,
     adminProvisionTargetUid: null,
     adminProvisionClerkUserId: null,
@@ -646,6 +649,9 @@ export default function ClerkStagingDiagnostics() {
         adminFirebaseCompatibility: observation?.adminFirebaseCompatibility || current.adminFirebaseCompatibility,
         adminClerkMigration: observation?.adminClerkMigration || current.adminClerkMigration,
         adminClerkUserId: observation?.adminClerkUserId || current.adminClerkUserId,
+        adminClientTrustStatus: observation?.adminClientTrustStatus || current.adminClientTrustStatus,
+        adminClientTrustStrategy: observation?.adminClientTrustStrategy || current.adminClientTrustStrategy,
+        adminClientTrustDestination: observation?.adminClientTrustDestination || current.adminClientTrustDestination,
         adminProvisionOperation: observation?.adminProvisionOperation || current.adminProvisionOperation,
         adminProvisionTargetUid: observation?.adminProvisionTargetUid || current.adminProvisionTargetUid,
         adminProvisionClerkUserId: observation?.adminProvisionClerkUserId || current.adminProvisionClerkUserId,
@@ -1040,6 +1046,9 @@ export default function ClerkStagingDiagnostics() {
       <div style={{ overflowWrap: 'anywhere' }}>Admin Firebase compatibility: {state.adminFirebaseCompatibility || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Admin Clerk migration: {state.adminClerkMigration || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Admin Clerk user: {state.adminClerkUserId || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Admin Client Trust: {state.adminClientTrustStatus || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Admin Client Trust strategy: {state.adminClientTrustStrategy || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Admin Client Trust destination: {state.adminClientTrustDestination || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Admin provision operation: {state.adminProvisionOperation || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Admin provision target: {state.adminProvisionTargetUid || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Admin provision Clerk user: {state.adminProvisionClerkUserId || '-'}</div>

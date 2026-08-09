@@ -15,6 +15,11 @@ const USER_AUTH_SESSION_KEY = 'mk_laptop_user_auth_session';
 export const createDefaultAdminAuthForm = () => ({
   adminLoginId: '',
   password: '',
+  clientTrustCode: '',
+  clientTrustRequired: false,
+  clientTrustStrategy: '',
+  clientTrustDestination: '',
+  clientTrustMigration: '',
 });
 
 const createEmptyAuthSession = (identityKey) => ({

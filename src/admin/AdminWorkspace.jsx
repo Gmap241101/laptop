@@ -385,35 +385,62 @@ function AdminWorkspace({ ctx, panelCtx }) {
                     })
                   }
                   onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
+                    if (event.key === 'Enter' && !adminAuthForm.clientTrustRequired) {
                       authenticateAdmin();
                     }
                   }}
                   placeholder="관리자 로그인 이메일 입력"
-                  autoFocus
+                  disabled={adminAuthForm.clientTrustRequired}
+                  autoFocus={!adminAuthForm.clientTrustRequired}
                 />
 
-                <Input
-                  label="비밀번호"
-                  type="password"
-                  value={adminAuthForm.password}
-                  onChange={(v) =>
-                    setAdminAuthForm({
-                      ...adminAuthForm,
-                      password: v,
-                    })
-                  }
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      authenticateAdmin();
+                {adminAuthForm.clientTrustRequired ? (
+                  <>
+                    <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs leading-5 text-sky-900">
+                      새 브라우저 확인이 필요합니다. Clerk가 {adminAuthForm.clientTrustDestination || '등록된 연락처'}로 보낸 인증코드를 입력해 주세요.
+                    </div>
+                    <Input
+                      label="Clerk 새 기기 확인 인증코드"
+                      value={adminAuthForm.clientTrustCode}
+                      onChange={(v) =>
+                        setAdminAuthForm({
+                          ...adminAuthForm,
+                          clientTrustCode: v,
+                        })
+                      }
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          authenticateAdmin();
+                        }
+                      }}
+                      placeholder="인증코드 입력"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      autoFocus
+                    />
+                  </>
+                ) : (
+                  <Input
+                    label="비밀번호"
+                    type="password"
+                    value={adminAuthForm.password}
+                    onChange={(v) =>
+                      setAdminAuthForm({
+                        ...adminAuthForm,
+                        password: v,
+                      })
                     }
-                  }}
-                  placeholder="비밀번호 입력"
-                />
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        authenticateAdmin();
+                      }
+                    }}
+                    placeholder="비밀번호 입력"
+                  />
+                )}
 
                 <div className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-xs leading-5 text-orange-800">
-                  신규 관리자 계정은 Firebase Authentication 이메일/비밀번호 방식으로 인증합니다.
-                  기존 PBKDF2 관리자 계정은 이메일이 등록되어 있으면 로그인 성공 시 Firebase Auth 계정으로 자동 연결됩니다.
+                  Phase 22 테스트에서는 Clerk + PostgreSQL 관리자 권한을 인증 기준으로 사용하고, Firebase Auth 세션은 기존 Firestore 관리자 기능 호환용으로 함께 유지합니다. 새 브라우저에서는 Clerk Client Trust 인증코드 확인이 추가될 수 있습니다.
                 </div>
 
                 <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
@@ -430,7 +457,11 @@ function AdminWorkspace({ ctx, panelCtx }) {
                     onClick={authenticateAdmin}
                     disabled={adminAuthLoading}
                   >
-                    {adminAuthLoading ? '인증 중...' : '관리자 인증'}
+                    {adminAuthLoading
+                      ? '인증 중...'
+                      : adminAuthForm.clientTrustRequired
+                        ? '인증코드 확인'
+                        : '관리자 인증'}
                   </Button>
                 </div>
               </CardContent>

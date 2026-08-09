@@ -909,6 +909,88 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
   const decodeBase64 = (value) => windowRef.atob(value);
   const config = readClerkStagingConfig(env, decodeBase64);
   let initializePromise = null;
+  let pendingAdminClientTrust = null;
+
+  const createAdminClientTrustError = (code, message) => {
+    const error = new Error(message);
+    error.code = code;
+    return error;
+  };
+
+  const selectAdminClientTrustFactor = (signIn) => {
+    const factors = Array.isArray(signIn?.supportedSecondFactors)
+      ? signIn.supportedSecondFactors
+      : [];
+    return factors.find((factor) => factor?.strategy === 'email_code')
+      || factors.find((factor) => factor?.strategy === 'phone_code')
+      || factors.find((factor) => factor?.strategy === 'email_link')
+      || null;
+  };
+
+  const sendAdminClientTrustChallenge = async (signIn, factor) => {
+    if (!signIn || signIn.status !== 'needs_client_trust' || !factor?.strategy) {
+      throw createAdminClientTrustError(
+        'admin_clerk_client_trust_unavailable',
+        'Clerk administrator Client Trust challenge is unavailable.'
+      );
+    }
+
+    if (factor.strategy === 'email_code') {
+      if (typeof signIn.mfa?.sendEmailCode === 'function') {
+        await signIn.mfa.sendEmailCode();
+      } else if (typeof signIn.prepareSecondFactor === 'function') {
+        await signIn.prepareSecondFactor({
+          strategy: 'email_code',
+          emailAddressId: factor.emailAddressId,
+        });
+      } else {
+        throw createAdminClientTrustError(
+          'admin_clerk_client_trust_unavailable',
+          'ClerkJS does not expose an email Client Trust challenge API.'
+        );
+      }
+      return;
+    }
+
+    if (factor.strategy === 'phone_code') {
+      if (typeof signIn.mfa?.sendPhoneCode === 'function') {
+        await signIn.mfa.sendPhoneCode();
+      } else if (typeof signIn.prepareSecondFactor === 'function') {
+        await signIn.prepareSecondFactor({
+          strategy: 'phone_code',
+          phoneNumberId: factor.phoneNumberId,
+        });
+      } else {
+        throw createAdminClientTrustError(
+          'admin_clerk_client_trust_unavailable',
+          'ClerkJS does not expose a phone Client Trust challenge API.'
+        );
+      }
+      return;
+    }
+
+    throw createAdminClientTrustError(
+      'admin_clerk_client_trust_link_unsupported',
+      'Clerk administrator Client Trust is configured for an email-link challenge, which this administrator login screen does not support.'
+    );
+  };
+
+  const finalizeAdminClerkSignIn = async (clerk, signIn, fallbackEmail = '') => {
+    if (signIn?.status !== 'complete' || !signIn?.createdSessionId) {
+      throw createAdminClientTrustError(
+        'admin_clerk_signin_incomplete',
+        `Clerk administrator sign-in is incomplete (${signIn?.status || 'unknown'}).`
+      );
+    }
+    await clerk.setActive({ session: signIn.createdSessionId });
+    pendingAdminClientTrust = null;
+    return Object.freeze({
+      status: 'complete',
+      clerkUserId: clerk.user?.id || '',
+      email: clerk.user?.primaryEmailAddress?.emailAddress || fallbackEmail,
+      sessionId: clerk.session?.id || signIn.createdSessionId,
+    });
+  };
 
   const initialize = async () => {
     if (!config.enabled) return null;
@@ -982,29 +1064,113 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
         throw error;
       }
       if (clerk.session) await clerk.signOut();
+      pendingAdminClientTrust = null;
       try {
         const signIn = await clerk.client.signIn.create({
           strategy: 'password',
           identifier: email,
           password,
         });
-        if (signIn?.status !== 'complete' || !signIn?.createdSessionId) {
-          const error = new Error(`Clerk administrator sign-in requires unsupported additional verification (${signIn?.status || 'unknown'}).`);
-          error.code = signIn?.status === 'needs_second_factor'
-            ? 'admin_clerk_second_factor_required'
-            : 'admin_clerk_signin_incomplete';
-          throw error;
+        if (signIn?.status === 'needs_client_trust') {
+          const factor = selectAdminClientTrustFactor(signIn);
+          if (!factor) {
+            throw createAdminClientTrustError(
+              'admin_clerk_client_trust_factor_missing',
+              'Clerk administrator sign-in requires Client Trust but did not return a supported verification factor.'
+            );
+          }
+          await sendAdminClientTrustChallenge(signIn, factor);
+          pendingAdminClientTrust = {
+            signIn,
+            factor,
+            strategy: factor.strategy,
+            destination: factor.safeIdentifier || email,
+            email,
+          };
+          return Object.freeze({
+            status: 'needs_client_trust',
+            clientTrustStrategy: factor.strategy,
+            clientTrustDestination: factor.safeIdentifier || email,
+          });
         }
-        await clerk.setActive({ session: signIn.createdSessionId });
-        return Object.freeze({
-          clerkUserId: clerk.user?.id || '',
-          email: clerk.user?.primaryEmailAddress?.emailAddress || email,
-          sessionId: clerk.session?.id || signIn.createdSessionId,
-        });
+        if (signIn?.status === 'needs_second_factor') {
+          throw createAdminClientTrustError(
+            'admin_clerk_second_factor_required',
+            'Clerk administrator sign-in requires configured multi-factor authentication.'
+          );
+        }
+        return finalizeAdminClerkSignIn(clerk, signIn, email);
       } catch (error) {
+        pendingAdminClientTrust = null;
         clerk.client?.resetSignIn?.();
         throw error;
       }
+    },
+    async verifyAdminClientTrust(code) {
+      const verificationCode = trim(code);
+      if (!verificationCode) {
+        throw createAdminClientTrustError(
+          'admin_clerk_client_trust_code_required',
+          'Clerk administrator Client Trust verification code is required.'
+        );
+      }
+      const clerk = await initialize();
+      const pending = pendingAdminClientTrust;
+      const signIn = pending?.signIn;
+      if (!pending || !signIn || signIn.status !== 'needs_client_trust') {
+        throw createAdminClientTrustError(
+          'admin_clerk_client_trust_expired',
+          'Clerk administrator Client Trust challenge is no longer active. Sign in again.'
+        );
+      }
+
+      let result = signIn;
+      if (pending.strategy === 'email_code') {
+        if (typeof signIn.mfa?.verifyEmailCode === 'function') {
+          await signIn.mfa.verifyEmailCode({ code: verificationCode });
+        } else if (typeof signIn.attemptSecondFactor === 'function') {
+          result = await signIn.attemptSecondFactor({ strategy: 'email_code', code: verificationCode });
+        } else {
+          throw createAdminClientTrustError(
+            'admin_clerk_client_trust_unavailable',
+            'ClerkJS does not expose an email Client Trust verification API.'
+          );
+        }
+      } else if (pending.strategy === 'phone_code') {
+        if (typeof signIn.mfa?.verifyPhoneCode === 'function') {
+          await signIn.mfa.verifyPhoneCode({ code: verificationCode });
+        } else if (typeof signIn.attemptSecondFactor === 'function') {
+          result = await signIn.attemptSecondFactor({ strategy: 'phone_code', code: verificationCode });
+        } else {
+          throw createAdminClientTrustError(
+            'admin_clerk_client_trust_unavailable',
+            'ClerkJS does not expose a phone Client Trust verification API.'
+          );
+        }
+      } else {
+        throw createAdminClientTrustError(
+          'admin_clerk_client_trust_strategy_unsupported',
+          `Unsupported Clerk administrator Client Trust strategy (${pending.strategy || 'unknown'}).`
+        );
+      }
+
+      const completed = result?.status === 'complete' ? result : signIn;
+      return finalizeAdminClerkSignIn(clerk, completed, pending.email);
+    },
+    async resendAdminClientTrust() {
+      const pending = pendingAdminClientTrust;
+      if (!pending?.signIn || pending.signIn.status !== 'needs_client_trust') {
+        throw createAdminClientTrustError(
+          'admin_clerk_client_trust_expired',
+          'Clerk administrator Client Trust challenge is no longer active. Sign in again.'
+        );
+      }
+      await sendAdminClientTrustChallenge(pending.signIn, pending.factor);
+      return Object.freeze({
+        status: 'needs_client_trust',
+        clientTrustStrategy: pending.strategy,
+        clientTrustDestination: pending.destination,
+      });
     },
     async getAdminClerkSession() {
       const clerk = await initialize();
@@ -1220,6 +1386,8 @@ export const clerkStagingClient =
         initialize: async () => null,
         signOut: async () => {},
         signInWithPassword: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        verifyAdminClientTrust: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        resendAdminClientTrust: async () => { throw new Error('Clerk browser client is unavailable.'); },
         getAdminClerkSession: async () => { throw new Error('Clerk browser client is unavailable.'); },
         migrateAdminToClerk: async () => { throw new Error('Clerk browser client is unavailable.'); },
         provisionAdminClerkIdentity: async () => { throw new Error('Clerk browser client is unavailable.'); },

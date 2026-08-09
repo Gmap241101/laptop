@@ -83,3 +83,35 @@ Production `gh-pages`, Production DNS and Production Clerk remain untouched.
 ## Administrator migration security boundary
 
 The bootstrap migration endpoint does not accept an arbitrary old Firebase administrator token. The verified Firebase ID token must contain a recent authentication time within five minutes. This matches the intended login flow, where the administrator has just completed Firebase password authentication before the Clerk migration/link is attempted. The normal post-migration administrator session then requires the Clerk session plus the active PostgreSQL registry link.
+
+## Client Trust browser hotfix after first Phase 22 validation
+
+The first real administrator browser validation returned:
+
+```text
+admin_clerk_signin_incomplete
+needs_client_trust
+```
+
+The password authentication itself had reached Clerk's new-device Client Trust boundary. The original Phase 22 custom administrator flow treated every non-`complete` result other than user MFA as a terminal sign-in failure.
+
+The Phase 22 hotfix changes only that custom-flow boundary:
+
+- `needs_client_trust` is retained as an in-progress sign-in rather than converted to `admin_clerk_signin_incomplete`;
+- an `email_code` factor is preferred, with `phone_code` supported as a secondary option;
+- Clerk sends the verification code and the administrator form changes from password input to one-time-code input;
+- the same pending Clerk sign-in is verified and then activated;
+- only after the Clerk session is active does the existing `/api/admin/auth/session` PostgreSQL registry check complete administrator authentication;
+- Firebase remains signed in only as the Phase 22 Firestore compatibility identity;
+- retryable invalid-code failures remain on the verification-code screen;
+- Client Trust is not disabled or bypassed.
+
+New diagnostics:
+
+```text
+Admin Client Trust
+Admin Client Trust strategy
+Admin Client Trust destination
+```
+
+The full Phase 22 user and administrator validation URLs are maintained in `PHASE22_MANUAL_PLATFORM_ACTIONS.md` and must be supplied in full for browser validation.

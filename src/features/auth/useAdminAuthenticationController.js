@@ -434,17 +434,185 @@ export default function useAdminAuthenticationController({
     adminAuthAbsoluteExpiresAt,
   ]);
 
+  const loadAdminAccountForFirebaseUser = async (firebaseUser) => {
+    const adminAccountDocRef = doc(db, 'adminAccounts', firebaseUser.uid);
+    const adminAccountSnapshot = await getDoc(adminAccountDocRef);
+
+    if (!adminAccountSnapshot.exists()) {
+      const error = new Error('Firebase Auth login succeeded but the administrator account is not registered.');
+      error.code = 'admin_permission_missing';
+      throw error;
+    }
+
+    const matchedAdminAccount = normalizeAdminAccounts([
+      {
+        ...adminAccountSnapshot.data(),
+        id: adminAccountSnapshot.id,
+      },
+    ])[0];
+
+    const hasValidAdminUidStructure =
+      Boolean(matchedAdminAccount) &&
+      adminAccountSnapshot.id === firebaseUser.uid &&
+      matchedAdminAccount.id === firebaseUser.uid &&
+      matchedAdminAccount.authUid === firebaseUser.uid;
+
+    if (!hasValidAdminUidStructure) {
+      const error = new Error('admin-auth-uid-mismatch');
+      error.code = 'admin_auth_uid_mismatch';
+      throw error;
+    }
+
+    if (
+      matchedAdminAccount.lockUntil &&
+      matchedAdminAccount.lockUntil > Date.now()
+    ) {
+      const error = new Error('Administrator account is locked.');
+      error.code = 'admin_account_locked';
+      error.remainingMinutes = Math.ceil(
+        (matchedAdminAccount.lockUntil - Date.now()) / 60000
+      );
+      throw error;
+    }
+
+    return { adminAccountDocRef, matchedAdminAccount };
+  };
+
+  const finalizeAdminAuthentication = async ({
+    firebaseUser,
+    adminAccountDocRef,
+    matchedAdminAccount,
+    adminClerkAuthority = null,
+    adminClerkMigration = 'not-requested',
+  }) => {
+    if (adminClerkAuthRequested) {
+      setAdminClerkSessionVerified(true);
+      publishAccountAuthObservation({
+        adminClerkAuthRequested: true,
+        adminAuthSource: 'clerk',
+        adminFirebaseCompatibility: 'signed-in',
+        adminClerkMigration,
+        adminClerkUserId: adminClerkAuthority?.clerkUserId || '',
+        adminClientTrustStatus: 'verified',
+        adminClientTrustStrategy: adminAuthForm.clientTrustStrategy || '',
+        adminAuthError: '',
+      });
+    }
+
+    const nowText = new Date().toLocaleString('ko-KR');
+    const nextAdminAccount = {
+      ...matchedAdminAccount,
+      id: firebaseUser.uid,
+      authUid: firebaseUser.uid,
+      authEmail:
+        firebaseUser.email ||
+        matchedAdminAccount.authEmail ||
+        '',
+      authProvider: adminClerkAuthRequested
+        ? 'clerk+firebase-compatibility'
+        : 'firebase-auth',
+      ...(adminClerkAuthority
+        ? {
+            clerkUserId: adminClerkAuthority.clerkUserId || '',
+            clerkLinkState: adminClerkAuthority.clerkLinkState || 'linked',
+            authAuthorityMode: adminClerkAuthority.authAuthorityMode || 'clerk-authoritative-firebase-compatibility',
+          }
+        : {}),
+      lastLoginAt: nowText,
+      updatedAt: nowText,
+    };
+
+    await setDoc(
+      adminAccountDocRef,
+      {
+        ...nextAdminAccount,
+        syncedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    setCurrentAuthAdminAccount(nextAdminAccount);
+    setCurrentAuthRoleErrorMessage('');
+    setCurrentAuthRoleReady(true);
+
+    setAdminAccounts((previousAccounts) => [
+      nextAdminAccount,
+      ...(previousAccounts || []).filter(
+        (account) => account.id !== nextAdminAccount.id
+      ),
+    ]);
+
+    const securitySettingsSnapshot = await getDoc(
+      SYSTEM_ADMIN_SETTINGS_DOC_REF
+    ).catch(() => null);
+    const loginSecuritySettings = normalizeSystemAdminSettings(
+      securitySettingsSnapshot?.exists()
+        ? securitySettingsSnapshot.data()
+        : systemAdminSettings
+    );
+    await configureFirebaseAuthPersistence(
+      firebaseAuth,
+      loginSecuritySettings.adminLogoutOnBrowserClose
+    );
+
+    setAdminAuthenticatedSession(
+      nextAdminAccount.id,
+      loginSecuritySettings
+    );
+    setAdminAuthForm(createDefaultAdminAuthForm());
+    setAdminTab('dashboard');
+
+    triggerToast(
+      adminClerkAuthRequested
+        ? `[${nextAdminAccount.adminLoginId}] Clerk 관리자 인증이 완료되었습니다.`
+        : `[${nextAdminAccount.adminLoginId}] 관리자 인증이 완료되었습니다.`,
+      'success'
+    );
+  };
+
+  const beginAdminClientTrust = ({ signInResult, migration }) => {
+    setAdminAuthForm((current) => ({
+      ...current,
+      password: '',
+      clientTrustCode: '',
+      clientTrustRequired: true,
+      clientTrustStrategy: signInResult?.clientTrustStrategy || '',
+      clientTrustDestination: signInResult?.clientTrustDestination || current.adminLoginId,
+      clientTrustMigration: migration || 'existing',
+    }));
+    publishAccountAuthObservation({
+      adminClerkAuthRequested: true,
+      adminAuthSource: 'client-trust-required',
+      adminFirebaseCompatibility: 'signed-in',
+      adminClerkMigration: migration || 'existing',
+      adminClientTrustStatus: 'code-sent',
+      adminClientTrustStrategy: signInResult?.clientTrustStrategy || '',
+      adminClientTrustDestination: signInResult?.clientTrustDestination || '',
+      adminAuthError: '',
+    });
+    triggerToast(
+      `Clerk 새 기기 확인을 위해 ${signInResult?.clientTrustDestination || '등록된 연락처'}로 인증코드를 전송했습니다.`,
+      'success'
+    );
+  };
+
   const authenticateAdmin = async () => {
     const adminEmail = adminAuthForm.adminLoginId.trim();
     const password = adminAuthForm.password;
+    const isClientTrustVerification = Boolean(adminAuthForm.clientTrustRequired);
 
     if (!adminEmail) {
       triggerToast('관리자 로그인 이메일을 입력해 주세요.', 'error');
       return;
     }
 
-    if (!password) {
+    if (!isClientTrustVerification && !password) {
       triggerToast('비밀번호를 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (isClientTrustVerification && !adminAuthForm.clientTrustCode.trim()) {
+      triggerToast('Clerk 새 기기 확인 인증코드를 입력해 주세요.', 'error');
       return;
     }
 
@@ -453,6 +621,97 @@ export default function useAdminAuthenticationController({
 
     setAdminAuthLoading(true);
     if (adminClerkAuthRequested) setAdminClerkSessionVerified(false);
+
+    if (isClientTrustVerification) {
+      try {
+        if (!adminClerkAuthRequested) {
+          const error = new Error('Clerk administrator authority is not enabled for this session.');
+          error.code = 'admin_clerk_client_trust_not_requested';
+          throw error;
+        }
+
+        const firebaseUser = firebaseAuth.currentUser;
+        if (!firebaseUser) {
+          const error = new Error('Firebase administrator compatibility session expired during Clerk Client Trust verification.');
+          error.code = 'admin_clerk_client_trust_firebase_session_missing';
+          throw error;
+        }
+        if ((firebaseUser.email || '').trim().toLowerCase() !== adminEmail.toLowerCase()) {
+          const error = new Error('Firebase administrator compatibility identity changed during Clerk Client Trust verification.');
+          error.code = 'admin_clerk_client_trust_identity_changed';
+          throw error;
+        }
+
+        const { adminAccountDocRef, matchedAdminAccount } =
+          await loadAdminAccountForFirebaseUser(firebaseUser);
+
+        await clerkStagingClient.verifyAdminClientTrust(
+          adminAuthForm.clientTrustCode
+        );
+        clerkSignedIn = true;
+
+        const verifiedPayload = await clerkStagingClient.getAdminClerkSession();
+        const adminClerkAuthority = verifiedPayload?.adminAuthentication;
+        if (adminClerkAuthority?.firebaseUid !== firebaseUser.uid) {
+          const error = new Error('admin-clerk-session-identity-mismatch');
+          error.code = 'admin_clerk_session_identity_mismatch';
+          throw error;
+        }
+
+        await finalizeAdminAuthentication({
+          firebaseUser,
+          adminAccountDocRef,
+          matchedAdminAccount,
+          adminClerkAuthority,
+          adminClerkMigration: adminAuthForm.clientTrustMigration || 'existing',
+        });
+      } catch (error) {
+        const clerkErrorCode =
+          error?.errors?.[0]?.code ||
+          error?.code ||
+          error?.message ||
+          'admin-clerk-client-trust-verification-failed';
+        const retryableCode = [
+          'form_code_incorrect',
+          'form_code_invalid',
+          'verification_failed',
+        ].includes(clerkErrorCode);
+
+        console.error('Admin Clerk Client Trust verification error:', error);
+        publishAccountAuthObservation({
+          adminClerkAuthRequested: true,
+          adminAuthSource: retryableCode ? 'client-trust-required' : 'failed',
+          adminFirebaseCompatibility: firebaseAuth.currentUser ? 'signed-in' : 'signed-out',
+          adminClerkMigration: adminAuthForm.clientTrustMigration || '',
+          adminClientTrustStatus: retryableCode ? 'code-retry' : 'failed',
+          adminClientTrustStrategy: adminAuthForm.clientTrustStrategy || '',
+          adminClientTrustDestination: adminAuthForm.clientTrustDestination || '',
+          adminAuthError: clerkErrorCode,
+        });
+
+        if (!retryableCode) {
+          if (clerkSignedIn) {
+            await clerkStagingClient.signOut().catch(() => {});
+          }
+          if (firebaseAuth.currentUser) {
+            await signOut(firebaseAuth).catch(() => {});
+          }
+          setAdminAuthForm(createDefaultAdminAuthForm());
+          clearAdminAuthenticatedSession();
+          setCurrentAuthAdminAccount(null);
+        }
+
+        const message = retryableCode
+          ? 'Clerk 인증코드가 올바르지 않습니다. 받은 코드를 다시 확인해 주세요.'
+          : error?.code === 'admin_clerk_client_trust_expired'
+            ? 'Clerk 새 기기 확인이 만료되었습니다. 관리자 이메일과 비밀번호로 다시 로그인해 주세요.'
+            : 'Clerk 새 기기 확인을 완료하지 못했습니다. 관리자 로그인을 다시 시도해 주세요.';
+        triggerToast(message, 'error');
+      } finally {
+        setAdminAuthLoading(false);
+      }
+      return;
+    }
 
     try {
       const initialSecuritySettings = normalizeSystemAdminSettings(
@@ -469,64 +728,10 @@ export default function useAdminAuthenticationController({
         adminEmail,
         password
       );
-
       signedInAdminUser = credential.user;
 
-      const adminAccountDocRef = doc(
-        db,
-        'adminAccounts',
-        credential.user.uid
-      );
-
-      const adminAccountSnapshot = await getDoc(adminAccountDocRef);
-
-      if (!adminAccountSnapshot.exists()) {
-        await signOut(firebaseAuth);
-        signedInAdminUser = null;
-
-        triggerToast(
-          'Firebase Auth 로그인은 성공했지만 등록된 관리자 권한이 없습니다.',
-          'error'
-        );
-
-        return;
-      }
-
-      const matchedAdminAccount = normalizeAdminAccounts([
-        {
-          ...adminAccountSnapshot.data(),
-          id: adminAccountSnapshot.id,
-        },
-      ])[0];
-
-      const hasValidAdminUidStructure =
-        Boolean(matchedAdminAccount) &&
-        adminAccountSnapshot.id === credential.user.uid &&
-        matchedAdminAccount.id === credential.user.uid &&
-        matchedAdminAccount.authUid === credential.user.uid;
-
-      if (!hasValidAdminUidStructure) {
-        throw new Error('admin-auth-uid-mismatch');
-      }
-
-      if (
-        matchedAdminAccount.lockUntil &&
-        matchedAdminAccount.lockUntil > Date.now()
-      ) {
-        const remainingMinutes = Math.ceil(
-          (matchedAdminAccount.lockUntil - Date.now()) / 60000
-        );
-
-        await signOut(firebaseAuth);
-        signedInAdminUser = null;
-
-        triggerToast(
-          `관리자 계정이 잠금 상태입니다. 약 ${remainingMinutes}분 후 다시 시도해 주세요.`,
-          'error'
-        );
-
-        return;
-      }
+      const { adminAccountDocRef, matchedAdminAccount } =
+        await loadAdminAccountForFirebaseUser(credential.user);
 
       let adminClerkAuthority = null;
       let adminClerkMigration = 'not-requested';
@@ -534,11 +739,21 @@ export default function useAdminAuthenticationController({
       if (adminClerkAuthRequested) {
         let existingClerkAuthority = null;
         try {
-          await clerkStagingClient.signInWithPassword(adminEmail, password);
+          const signInResult = await clerkStagingClient.signInWithPassword(
+            adminEmail,
+            password
+          );
+          if (signInResult?.status === 'needs_client_trust') {
+            beginAdminClientTrust({ signInResult, migration: 'existing' });
+            signedInAdminUser = null;
+            return;
+          }
           clerkSignedIn = true;
           const existingPayload = await clerkStagingClient.getAdminClerkSession();
           if (existingPayload?.adminAuthentication?.firebaseUid !== credential.user.uid) {
-            throw new Error('admin-clerk-session-identity-mismatch');
+            const error = new Error('admin-clerk-session-identity-mismatch');
+            error.code = 'admin_clerk_session_identity_mismatch';
+            throw error;
           }
           existingClerkAuthority = existingPayload.adminAuthentication;
           adminClerkMigration = 'existing';
@@ -553,98 +768,38 @@ export default function useAdminAuthenticationController({
             password
           );
           adminClerkMigration = migrationPayload?.adminAuthentication?.migration || 'firebase-admin-to-clerk';
-          await clerkStagingClient.signInWithPassword(adminEmail, password);
+          const migratedSignInResult = await clerkStagingClient.signInWithPassword(
+            adminEmail,
+            password
+          );
+          if (migratedSignInResult?.status === 'needs_client_trust') {
+            beginAdminClientTrust({
+              signInResult: migratedSignInResult,
+              migration: adminClerkMigration,
+            });
+            signedInAdminUser = null;
+            return;
+          }
           clerkSignedIn = true;
           const verifiedPayload = await clerkStagingClient.getAdminClerkSession();
           if (verifiedPayload?.adminAuthentication?.firebaseUid !== credential.user.uid) {
-            throw new Error('admin-clerk-session-identity-mismatch');
+            const error = new Error('admin-clerk-session-identity-mismatch');
+            error.code = 'admin_clerk_session_identity_mismatch';
+            throw error;
           }
           existingClerkAuthority = verifiedPayload.adminAuthentication;
         }
         adminClerkAuthority = existingClerkAuthority;
-        setAdminClerkSessionVerified(true);
-        publishAccountAuthObservation({
-          adminClerkAuthRequested: true,
-          adminAuthSource: 'clerk',
-          adminFirebaseCompatibility: 'signed-in',
-          adminClerkMigration,
-          adminClerkUserId: adminClerkAuthority?.clerkUserId || '',
-          adminAuthError: '',
-        });
       }
 
-      const nowText = new Date().toLocaleString('ko-KR');
-
-      const nextAdminAccount = {
-        ...matchedAdminAccount,
-        id: credential.user.uid,
-        authUid: credential.user.uid,
-        authEmail:
-          credential.user.email ||
-          matchedAdminAccount.authEmail ||
-          '',
-        authProvider: adminClerkAuthRequested
-          ? 'clerk+firebase-compatibility'
-          : 'firebase-auth',
-        ...(adminClerkAuthority
-          ? {
-              clerkUserId: adminClerkAuthority.clerkUserId || '',
-              clerkLinkState: adminClerkAuthority.clerkLinkState || 'linked',
-              authAuthorityMode: adminClerkAuthority.authAuthorityMode || 'clerk-authoritative-firebase-compatibility',
-            }
-          : {}),
-        lastLoginAt: nowText,
-        updatedAt: nowText,
-      };
-
-      await setDoc(
+      await finalizeAdminAuthentication({
+        firebaseUser: credential.user,
         adminAccountDocRef,
-        {
-          ...nextAdminAccount,
-          syncedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      setCurrentAuthAdminAccount(nextAdminAccount);
-      setCurrentAuthRoleErrorMessage('');
-      setCurrentAuthRoleReady(true);
-
-      setAdminAccounts((previousAccounts) => [
-        nextAdminAccount,
-        ...(previousAccounts || []).filter(
-          (account) => account.id !== nextAdminAccount.id
-        ),
-      ]);
-
-      const securitySettingsSnapshot = await getDoc(
-        SYSTEM_ADMIN_SETTINGS_DOC_REF
-      ).catch(() => null);
-      const loginSecuritySettings = normalizeSystemAdminSettings(
-        securitySettingsSnapshot?.exists()
-          ? securitySettingsSnapshot.data()
-          : systemAdminSettings
-      );
-      await configureFirebaseAuthPersistence(
-        firebaseAuth,
-        loginSecuritySettings.adminLogoutOnBrowserClose
-      );
-
-      setAdminAuthenticatedSession(
-        nextAdminAccount.id,
-        loginSecuritySettings
-      );
-      setAdminAuthForm(createDefaultAdminAuthForm());
-      setAdminTab('dashboard');
-
+        matchedAdminAccount,
+        adminClerkAuthority,
+        adminClerkMigration,
+      });
       signedInAdminUser = null;
-
-      triggerToast(
-        adminClerkAuthRequested
-          ? `[${nextAdminAccount.adminLoginId}] Clerk 관리자 인증이 완료되었습니다.`
-          : `[${nextAdminAccount.adminLoginId}] 관리자 인증이 완료되었습니다.`,
-        'success'
-      );
     } catch (error) {
       let firebaseAuthCleanupFailed = false;
       let clerkCleanupFailed = false;
@@ -679,17 +834,28 @@ export default function useAdminAuthenticationController({
           adminClerkAuthRequested: true,
           adminAuthSource: 'failed',
           adminFirebaseCompatibility: firebaseAuth.currentUser ? 'signed-in' : 'signed-out',
-          adminAuthError: error?.code || error?.message || 'admin-clerk-authentication-failed',
+          adminClientTrustStatus: '',
+          adminAuthError:
+            error?.errors?.[0]?.code ||
+            error?.code ||
+            error?.message ||
+            'admin-clerk-authentication-failed',
         });
       }
 
       const clerkMessage = error?.code === 'admin_registry_not_ready'
         ? 'PostgreSQL 관리자 identity registry가 준비되지 않았습니다. Phase 21 registry 동기화 상태를 확인해 주세요.'
         : error?.code === 'admin_clerk_second_factor_required'
-          ? '현재 관리자 로그인 화면은 Clerk 2차 인증을 지원하지 않습니다. Clerk Development 인스턴스의 관리자 계정 2차 인증 설정을 확인해 주세요.'
-          : error?.code === 'admin_clerk_password_too_short'
-            ? 'Clerk 관리자 신규 비밀번호는 8자 이상이어야 합니다.'
-            : '';
+          ? '현재 관리자 로그인 화면은 사용자 설정 MFA를 아직 지원하지 않습니다. Clerk 관리자 계정의 MFA 설정을 확인해 주세요.'
+          : error?.code === 'admin_clerk_client_trust_link_unsupported'
+            ? 'Clerk Client Trust가 이메일 링크 방식으로 설정되어 있습니다. Development 인스턴스에서 이메일 인증코드 방식을 활성화해 주세요.'
+            : error?.code === 'admin_clerk_password_too_short'
+              ? 'Clerk 관리자 신규 비밀번호는 8자 이상이어야 합니다.'
+              : error?.code === 'admin_permission_missing'
+                ? 'Firebase Auth 로그인은 성공했지만 등록된 관리자 권한이 없습니다.'
+                : error?.code === 'admin_account_locked'
+                  ? `관리자 계정이 잠금 상태입니다. 약 ${error.remainingMinutes || 1}분 후 다시 시도해 주세요.`
+                  : '';
       const baseErrorMessage = clerkMessage || getAdminFirebaseAuthErrorMessage(error);
       const cleanupMessage = firebaseAuthCleanupFailed || clerkCleanupFailed
         ? ' 인증 정리에도 실패했습니다. 페이지를 새로고침한 뒤 로그인 상태를 확인해 주세요.'

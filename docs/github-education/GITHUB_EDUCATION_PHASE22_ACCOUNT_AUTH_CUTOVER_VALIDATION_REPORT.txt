@@ -64,3 +64,25 @@ Build staging prebuild: PASS
 Vite bundle in ChatGPT environment: NOT RUNNABLE (vite: not found, exit 127; root node_modules unavailable)
 Actual Staging browser validation: PENDING
 Final Phase status: candidate
+
+PHASE 22 CLIENT TRUST HOTFIX VALIDATION
+---------------------------------------
+Observed real-browser failure before hotfix:
+  admin_clerk_signin_incomplete / needs_client_trust
+
+Hotfix contract:
+  - needs_client_trust is a supported in-progress administrator sign-in state
+  - email_code Client Trust challenge supported
+  - phone_code Client Trust challenge supported
+  - verification continues the same Clerk sign-in
+  - successful verification activates Clerk session before PostgreSQL registry verification
+  - Firebase compatibility administrator session remains signed in during the challenge
+  - invalid verification code does not grant administrator access
+  - diagnostics expose Client Trust state/strategy/destination
+  - Client Trust is not disabled
+
+Full user validation URL:
+https://mkrental.vercel.app/?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWrite=postgres&restrictionRead=postgres&restrictionWatcher=off&restrictionWrite=postgres&rentalRequestRead=postgres&rentalRequestWatcher=off&rentalRequestWrite=postgres&rentalRequestActionWrite=postgres&assetRead=postgres&accountRecovery=postgres
+
+Full administrator validation URL:
+https://mkrental.vercel.app/admin?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWrite=postgres&restrictionRead=postgres&restrictionWatcher=off&restrictionWrite=postgres&rentalRequestRead=postgres&rentalRequestWatcher=off&rentalRequestWrite=postgres&adminRequestRead=postgres&adminRequestWrite=postgres&rentalRequestActionWrite=postgres&assetRead=postgres&assetWrite=postgres&adminIdentity=postgres&adminAuth=clerk
