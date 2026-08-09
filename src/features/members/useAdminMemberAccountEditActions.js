@@ -43,6 +43,8 @@ import {
   readMemberProfileWriteThroughConfig,
   syncMemberProfileWriteThroughBestEffort,
 } from './memberProfileWriteThrough.js';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { publishMemberAuthorityObservation, readMemberAuthorityCutoverConfig } from './memberAuthorityCutover.js';
 
 const createAdminMemberEditError = (code, message) => {
   const error = new Error(message);
@@ -120,201 +122,229 @@ export default function useAdminMemberAccountEditActions({
         const nextMaskedEmail = maskEmailAddress(email);
         let savedProfile = null;
 
-        await runTransaction(db, async (transaction) => {
-          const configSnapshot = await transaction.get(PUBLIC_CONFIG_DOC_REF);
-          const userRef = doc(db, USER_ACCOUNTS_COLLECTION_NAME, targetUid);
-          const userSnapshot = await transaction.get(userRef);
-
-          if (!userSnapshot.exists()) {
-            throw createAdminMemberEditError(
-              'admin/member-edit-account-missing',
-              '대상 회원 계정을 찾을 수 없습니다.'
-            );
-          }
-
-          const currentAccount = userSnapshot.data();
-          const currentEmail = String(currentAccount.email || email || '').trim().toLowerCase();
-          const previousIdentityKey =
-            currentAccount.identityKey ||
-            (currentAccount.name && currentAccount.team
-              ? await createMemberIdentityKey(currentAccount.team, currentAccount.name)
-              : '');
-          const previousRecoveryKey = String(currentAccount.recoveryKey || '');
-
-          const nextClaimRef = doc(MEMBER_IDENTITY_CLAIMS_COLLECTION_REF, nextIdentityKey);
-          const nextRecoveryRef = doc(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF, nextRecoveryKey);
-          const nextClaimSnapshot = await transaction.get(nextClaimRef);
-          const previousClaimRef =
-            previousIdentityKey && previousIdentityKey !== nextIdentityKey
-              ? doc(MEMBER_IDENTITY_CLAIMS_COLLECTION_REF, previousIdentityKey)
-              : null;
-          const previousClaimSnapshot = previousClaimRef
-            ? await transaction.get(previousClaimRef)
-            : null;
-          const previousRecoveryRef =
-            previousRecoveryKey && previousRecoveryKey !== nextRecoveryKey
-              ? doc(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF, previousRecoveryKey)
-              : null;
-
-          const latestSettings = normalizeRentalPolicySettings({
-            ...initialData.settings,
-            ...(configSnapshot.exists() ? configSnapshot.data()?.settings || {} : {}),
-          });
-          const policyEnabled = isRegisteredMemberSignupRequired(latestSettings);
-          const directoryVersion = getSafeMemberDirectoryVersion(latestSettings);
-          let directoryData = null;
-
-          if (policyEnabled) {
-            const directoryRef = doc(MEMBER_DIRECTORY_KEYS_COLLECTION_REF, nextIdentityKey);
-            const directorySnapshot = await transaction.get(directoryRef);
-            directoryData = directorySnapshot.exists() ? directorySnapshot.data() : null;
-
-            if (
-              !directoryData ||
-              directoryData.enabled === false ||
-              normalizeMemberName(directoryData.name || '') !== name ||
-              normalizeMemberTeam(directoryData.team || '') !== team
-            ) {
-              throw createAdminMemberEditError(
-                'admin/member-edit-directory-mismatch',
-                '등록 명부 정책과 일치하는 이름·부서 조합이 아닙니다. 회원가입 정책의 등록 명부를 먼저 확인해 주세요.'
-              );
-            }
-          }
-
-          const nextClaimData = nextClaimSnapshot.exists() ? nextClaimSnapshot.data() : {};
-          const nextClaimCurrentUid = getClaimCurrentUid(nextClaimData);
-          const nextClaimFormerUids = getClaimFormerUids(nextClaimData);
-
-          if (
-            nextClaimSnapshot.exists() &&
-            (nextClaimData.conflict === true ||
-              (nextClaimCurrentUid && nextClaimCurrentUid !== targetUid) ||
-              (!nextClaimCurrentUid &&
-                getClaimStatus(nextClaimData) === 'released' &&
-                nextClaimFormerUids.length > 0 &&
-                !nextClaimFormerUids.includes(targetUid)))
-          ) {
-            throw createAdminMemberEditError(
-              'admin/member-edit-identity-conflict',
-              '같은 이름·부서 조합을 사용하는 다른 회원 계정이 있어 수정할 수 없습니다.'
-            );
-          }
-
-          const shouldRestoreDirectoryMismatch =
-            currentAccount.status === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
-            currentAccount.profileRequiredReason === PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
-          const nextStatus = shouldRestoreDirectoryMismatch
-            ? getRestorableUserProfileStatus(currentAccount.statusBeforeProfileRequired)
-            : currentAccount.status || USER_PROFILE_STATUS.PENDING;
-
-          transaction.set(nextClaimRef, {
-            identityKey: nextIdentityKey,
-            uid: targetUid,
-            currentUid: targetUid,
-            status: 'active',
-            name,
-            team,
-            conflict: false,
-            conflictingUids: [],
-            formerUids: nextClaimFormerUids,
-            directoryMemberId:
-              policyEnabled && directoryData
-                ? directoryData.directoryMemberId || ''
-                : nextClaimData.directoryMemberId || '',
-            restrictionSnapshot: nextClaimData.restrictionSnapshot || {},
-            createdAt: nextClaimSnapshot.exists()
-              ? nextClaimData.createdAt || serverTimestamp()
-              : serverTimestamp(),
-            releasedAt: '',
-            updatedAt: serverTimestamp(),
-          });
-
-          if (
-            previousClaimRef &&
-            previousClaimSnapshot?.exists() &&
-            getClaimCurrentUid(previousClaimSnapshot.data()) === targetUid
-          ) {
-            const previousClaimData = previousClaimSnapshot.data();
-            transaction.set(
-              previousClaimRef,
-              {
-                ...previousClaimData,
-                uid: '',
-                currentUid: '',
-                status: 'released',
-                formerUids: Array.from(
-                  new Set([...getClaimFormerUids(previousClaimData), targetUid])
-                ),
-                releasedAt: serverTimestamp(),
-                updatedAt: serverTimestamp(),
-              },
-              { merge: true }
-            );
-          }
-
-          transaction.update(userRef, {
-            email: currentEmail,
-            maskedEmail: maskEmailAddress(currentEmail) || nextMaskedEmail,
+        const memberAuthorityConfig = readMemberAuthorityCutoverConfig();
+        if (memberAuthorityConfig.memberRequested) {
+          const firebaseIdToken = await adminUser.getIdToken();
+          const response = await clerkStagingClient.writeAdminMemberProfile(firebaseIdToken, targetUid, {
             name,
             team,
             phone,
-            status: nextStatus,
-            identityKey: nextIdentityKey,
-            recoveryKey: nextRecoveryKey,
-            directoryMemberId:
-              policyEnabled && directoryData ? directoryData.directoryMemberId || '' : '',
-            directoryVerifiedVersion: policyEnabled ? directoryVersion : 0,
-            directoryVerifiedAt: policyEnabled ? serverTimestamp() : '',
-            profileRequiredReason: shouldRestoreDirectoryMismatch
-              ? ''
-              : currentAccount.profileRequiredReason || '',
-            profileRequiredAt: shouldRestoreDirectoryMismatch
-              ? ''
-              : currentAccount.profileRequiredAt || '',
-            statusBeforeProfileRequired: shouldRestoreDirectoryMismatch
-              ? ''
-              : currentAccount.statusBeforeProfileRequired || '',
-            updatedAt: serverTimestamp(),
+            email,
           });
-
-          transaction.set(nextRecoveryRef, {
-            recoveryKey: nextRecoveryKey,
-            maskedEmail: maskEmailAddress(currentEmail) || nextMaskedEmail,
-            emailVerifier: nextRecoveryEmailVerifier,
-            accountStatus: nextStatus,
-            enabled: nextStatus !== USER_PROFILE_STATUS.RETIRED,
-            updatedAt: serverTimestamp(),
-          });
-
-          if (previousRecoveryRef) {
-            transaction.delete(previousRecoveryRef);
-          }
-
-          savedProfile = {
-            ...currentAccount,
+          savedProfile = response?.adminMemberProfileWrite?.profile || {
+            ...account,
             uid: targetUid,
-            email: currentEmail,
-            maskedEmail: maskEmailAddress(currentEmail) || nextMaskedEmail,
+            email,
             name,
             team,
             phone,
-            status: nextStatus,
-            identityKey: nextIdentityKey,
-            recoveryKey: nextRecoveryKey,
           };
-        });
+          publishMemberAuthorityObservation({
+            memberWriteRequested: true,
+            memberWriteSource: response?.adminMemberProfileWrite?.authority || 'postgresql',
+            memberFirestoreMirror: response?.adminMemberProfileWrite?.firestoreMirror || 'synced',
+            memberMutationId: response?.adminMemberProfileWrite?.mutationId || '',
+            restrictionWriteRequested: memberAuthorityConfig.restrictionRequested,
+            operation: 'admin-member-profile-edit',
+            error: '',
+          });
+        } else {
+                  await runTransaction(db, async (transaction) => {
+                    const configSnapshot = await transaction.get(PUBLIC_CONFIG_DOC_REF);
+                    const userRef = doc(db, USER_ACCOUNTS_COLLECTION_NAME, targetUid);
+                    const userSnapshot = await transaction.get(userRef);
 
-        const writeThroughConfig = readMemberProfileWriteThroughConfig();
-        await syncMemberProfileWriteThroughBestEffort({
-          firebaseUser: adminUser,
-          firebaseUid: targetUid,
-          reason: 'admin-member-profile-edit',
-          config: {
-            ...writeThroughConfig,
-            requested: Boolean(writeThroughConfig.enabled),
-          },
-        });
+                    if (!userSnapshot.exists()) {
+                      throw createAdminMemberEditError(
+                        'admin/member-edit-account-missing',
+                        '대상 회원 계정을 찾을 수 없습니다.'
+                      );
+                    }
+
+                    const currentAccount = userSnapshot.data();
+                    const currentEmail = String(currentAccount.email || email || '').trim().toLowerCase();
+                    const previousIdentityKey =
+                      currentAccount.identityKey ||
+                      (currentAccount.name && currentAccount.team
+                        ? await createMemberIdentityKey(currentAccount.team, currentAccount.name)
+                        : '');
+                    const previousRecoveryKey = String(currentAccount.recoveryKey || '');
+
+                    const nextClaimRef = doc(MEMBER_IDENTITY_CLAIMS_COLLECTION_REF, nextIdentityKey);
+                    const nextRecoveryRef = doc(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF, nextRecoveryKey);
+                    const nextClaimSnapshot = await transaction.get(nextClaimRef);
+                    const previousClaimRef =
+                      previousIdentityKey && previousIdentityKey !== nextIdentityKey
+                        ? doc(MEMBER_IDENTITY_CLAIMS_COLLECTION_REF, previousIdentityKey)
+                        : null;
+                    const previousClaimSnapshot = previousClaimRef
+                      ? await transaction.get(previousClaimRef)
+                      : null;
+                    const previousRecoveryRef =
+                      previousRecoveryKey && previousRecoveryKey !== nextRecoveryKey
+                        ? doc(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF, previousRecoveryKey)
+                        : null;
+
+                    const latestSettings = normalizeRentalPolicySettings({
+                      ...initialData.settings,
+                      ...(configSnapshot.exists() ? configSnapshot.data()?.settings || {} : {}),
+                    });
+                    const policyEnabled = isRegisteredMemberSignupRequired(latestSettings);
+                    const directoryVersion = getSafeMemberDirectoryVersion(latestSettings);
+                    let directoryData = null;
+
+                    if (policyEnabled) {
+                      const directoryRef = doc(MEMBER_DIRECTORY_KEYS_COLLECTION_REF, nextIdentityKey);
+                      const directorySnapshot = await transaction.get(directoryRef);
+                      directoryData = directorySnapshot.exists() ? directorySnapshot.data() : null;
+
+                      if (
+                        !directoryData ||
+                        directoryData.enabled === false ||
+                        normalizeMemberName(directoryData.name || '') !== name ||
+                        normalizeMemberTeam(directoryData.team || '') !== team
+                      ) {
+                        throw createAdminMemberEditError(
+                          'admin/member-edit-directory-mismatch',
+                          '등록 명부 정책과 일치하는 이름·부서 조합이 아닙니다. 회원가입 정책의 등록 명부를 먼저 확인해 주세요.'
+                        );
+                      }
+                    }
+
+                    const nextClaimData = nextClaimSnapshot.exists() ? nextClaimSnapshot.data() : {};
+                    const nextClaimCurrentUid = getClaimCurrentUid(nextClaimData);
+                    const nextClaimFormerUids = getClaimFormerUids(nextClaimData);
+
+                    if (
+                      nextClaimSnapshot.exists() &&
+                      (nextClaimData.conflict === true ||
+                        (nextClaimCurrentUid && nextClaimCurrentUid !== targetUid) ||
+                        (!nextClaimCurrentUid &&
+                          getClaimStatus(nextClaimData) === 'released' &&
+                          nextClaimFormerUids.length > 0 &&
+                          !nextClaimFormerUids.includes(targetUid)))
+                    ) {
+                      throw createAdminMemberEditError(
+                        'admin/member-edit-identity-conflict',
+                        '같은 이름·부서 조합을 사용하는 다른 회원 계정이 있어 수정할 수 없습니다.'
+                      );
+                    }
+
+                    const shouldRestoreDirectoryMismatch =
+                      currentAccount.status === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
+                      currentAccount.profileRequiredReason === PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
+                    const nextStatus = shouldRestoreDirectoryMismatch
+                      ? getRestorableUserProfileStatus(currentAccount.statusBeforeProfileRequired)
+                      : currentAccount.status || USER_PROFILE_STATUS.PENDING;
+
+                    transaction.set(nextClaimRef, {
+                      identityKey: nextIdentityKey,
+                      uid: targetUid,
+                      currentUid: targetUid,
+                      status: 'active',
+                      name,
+                      team,
+                      conflict: false,
+                      conflictingUids: [],
+                      formerUids: nextClaimFormerUids,
+                      directoryMemberId:
+                        policyEnabled && directoryData
+                          ? directoryData.directoryMemberId || ''
+                          : nextClaimData.directoryMemberId || '',
+                      restrictionSnapshot: nextClaimData.restrictionSnapshot || {},
+                      createdAt: nextClaimSnapshot.exists()
+                        ? nextClaimData.createdAt || serverTimestamp()
+                        : serverTimestamp(),
+                      releasedAt: '',
+                      updatedAt: serverTimestamp(),
+                    });
+
+                    if (
+                      previousClaimRef &&
+                      previousClaimSnapshot?.exists() &&
+                      getClaimCurrentUid(previousClaimSnapshot.data()) === targetUid
+                    ) {
+                      const previousClaimData = previousClaimSnapshot.data();
+                      transaction.set(
+                        previousClaimRef,
+                        {
+                          ...previousClaimData,
+                          uid: '',
+                          currentUid: '',
+                          status: 'released',
+                          formerUids: Array.from(
+                            new Set([...getClaimFormerUids(previousClaimData), targetUid])
+                          ),
+                          releasedAt: serverTimestamp(),
+                          updatedAt: serverTimestamp(),
+                        },
+                        { merge: true }
+                      );
+                    }
+
+                    transaction.update(userRef, {
+                      email: currentEmail,
+                      maskedEmail: maskEmailAddress(currentEmail) || nextMaskedEmail,
+                      name,
+                      team,
+                      phone,
+                      status: nextStatus,
+                      identityKey: nextIdentityKey,
+                      recoveryKey: nextRecoveryKey,
+                      directoryMemberId:
+                        policyEnabled && directoryData ? directoryData.directoryMemberId || '' : '',
+                      directoryVerifiedVersion: policyEnabled ? directoryVersion : 0,
+                      directoryVerifiedAt: policyEnabled ? serverTimestamp() : '',
+                      profileRequiredReason: shouldRestoreDirectoryMismatch
+                        ? ''
+                        : currentAccount.profileRequiredReason || '',
+                      profileRequiredAt: shouldRestoreDirectoryMismatch
+                        ? ''
+                        : currentAccount.profileRequiredAt || '',
+                      statusBeforeProfileRequired: shouldRestoreDirectoryMismatch
+                        ? ''
+                        : currentAccount.statusBeforeProfileRequired || '',
+                      updatedAt: serverTimestamp(),
+                    });
+
+                    transaction.set(nextRecoveryRef, {
+                      recoveryKey: nextRecoveryKey,
+                      maskedEmail: maskEmailAddress(currentEmail) || nextMaskedEmail,
+                      emailVerifier: nextRecoveryEmailVerifier,
+                      accountStatus: nextStatus,
+                      enabled: nextStatus !== USER_PROFILE_STATUS.RETIRED,
+                      updatedAt: serverTimestamp(),
+                    });
+
+                    if (previousRecoveryRef) {
+                      transaction.delete(previousRecoveryRef);
+                    }
+
+                    savedProfile = {
+                      ...currentAccount,
+                      uid: targetUid,
+                      email: currentEmail,
+                      maskedEmail: maskEmailAddress(currentEmail) || nextMaskedEmail,
+                      name,
+                      team,
+                      phone,
+                      status: nextStatus,
+                      identityKey: nextIdentityKey,
+                      recoveryKey: nextRecoveryKey,
+                    };
+                  });
+
+                  const writeThroughConfig = readMemberProfileWriteThroughConfig();
+                  await syncMemberProfileWriteThroughBestEffort({
+                    firebaseUser: adminUser,
+                    firebaseUid: targetUid,
+                    reason: 'admin-member-profile-edit',
+                    config: {
+                      ...writeThroughConfig,
+                      requested: Boolean(writeThroughConfig.enabled),
+                    },
+                  });
+        }
 
         triggerToast?.(`${name} 회원정보를 수정했습니다.`, 'success');
         return savedProfile;

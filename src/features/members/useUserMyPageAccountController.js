@@ -59,6 +59,8 @@ import {
 import {
   syncMemberProfileWriteThroughBestEffort,
 } from './memberProfileWriteThrough.js';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { publishMemberAuthorityObservation, readMemberAuthorityCutoverConfig } from './memberAuthorityCutover.js';
 
 export const createDefaultUserProfileForm = () => ({
   name: '',
@@ -254,206 +256,225 @@ export default function useUserMyPageAccountController({
           : '');
       const previousRecoveryKey = String(userProfile?.recoveryKey || '');
 
-      await runTransaction(db, async (transaction) => {
-        const configSnapshot = await transaction.get(PUBLIC_CONFIG_DOC_REF);
-        const userRef = doc(
-          db,
-          USER_ACCOUNTS_COLLECTION_NAME,
-          firebaseAuthUser.uid
-        );
-        const userSnapshot = await transaction.get(userRef);
-        const nextClaimRef = doc(
-          MEMBER_IDENTITY_CLAIMS_COLLECTION_REF,
-          nextIdentityKey
-        );
-        const nextRecoveryRef = doc(
-          ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
-          nextRecoveryKey
-        );
-        const nextClaimSnapshot = await transaction.get(nextClaimRef);
-        const previousClaimRef =
-          previousIdentityKey && previousIdentityKey !== nextIdentityKey
-            ? doc(
-                MEMBER_IDENTITY_CLAIMS_COLLECTION_REF,
-                previousIdentityKey
-              )
-            : null;
-        const previousClaimSnapshot = previousClaimRef
-          ? await transaction.get(previousClaimRef)
-          : null;
-        const previousRecoveryRef =
-          previousRecoveryKey && previousRecoveryKey !== nextRecoveryKey
-            ? doc(
-                ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
-                previousRecoveryKey
-              )
-            : null;
-
-        if (!userSnapshot.exists()) {
-          throw createMemberPolicyError('member/account-not-ready');
-        }
-
-        const latestSettings = normalizeRentalPolicySettings({
-          ...initialSettings,
-          ...(configSnapshot.exists()
-            ? configSnapshot.data()?.settings || {}
-            : {}),
-        });
-        const policyEnabled = isRegisteredMemberSignupRequired(
-          latestSettings
-        );
-        const directoryVersion = getSafeMemberDirectoryVersion(
-          latestSettings
-        );
-        let directoryData = null;
-
-        if (policyEnabled) {
-          const directoryRef = doc(
-            MEMBER_DIRECTORY_KEYS_COLLECTION_REF,
-            nextIdentityKey
-          );
-          const directorySnapshot = await transaction.get(directoryRef);
-          directoryData = directorySnapshot.exists()
-            ? directorySnapshot.data()
-            : null;
-
-          if (
-            !directoryData ||
-            directoryData.enabled === false ||
-            normalizeMemberName(directoryData.name || '') !== name ||
-            normalizeMemberTeam(directoryData.team || '') !== team
-          ) {
-            throw createMemberPolicyError('member/directory-mismatch');
-          }
-        }
-
-        const nextClaimData = nextClaimSnapshot.exists()
-          ? nextClaimSnapshot.data()
-          : {};
-        const nextClaimCurrentUid = getClaimCurrentUid(nextClaimData);
-        const nextClaimFormerUids = getClaimFormerUids(nextClaimData);
-
-        if (
-          nextClaimSnapshot.exists() &&
-          (nextClaimData.conflict === true ||
-            (nextClaimCurrentUid && nextClaimCurrentUid !== firebaseAuthUser.uid) ||
-            (!nextClaimCurrentUid &&
-              getClaimStatus(nextClaimData) === 'released' &&
-              nextClaimFormerUids.length > 0 &&
-              !nextClaimFormerUids.includes(firebaseAuthUser.uid)))
-        ) {
-          throw createMemberPolicyError('member/identity-already-claimed');
-        }
-
-        const currentAccount = userSnapshot.data();
-        const shouldRestoreDirectoryMismatch =
-          currentAccount.status === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
-          currentAccount.profileRequiredReason ===
-            PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
-        const nextStatus = shouldRestoreDirectoryMismatch
-          ? getRestorableUserProfileStatus(
-              currentAccount.statusBeforeProfileRequired
-            )
-          : currentAccount.status || USER_PROFILE_STATUS.PENDING;
-
-        transaction.set(nextClaimRef, {
-          identityKey: nextIdentityKey,
-          uid: firebaseAuthUser.uid,
-          currentUid: firebaseAuthUser.uid,
-          status: 'active',
-          name,
-          team,
-          conflict: false,
-          conflictingUids: [],
-          formerUids: nextClaimFormerUids,
-          directoryMemberId:
-            policyEnabled && directoryData
-              ? directoryData.directoryMemberId || ''
-              : nextClaimData.directoryMemberId || '',
-          restrictionSnapshot: nextClaimData.restrictionSnapshot || {},
-          createdAt: nextClaimSnapshot.exists()
-            ? nextClaimData.createdAt || serverTimestamp()
-            : serverTimestamp(),
-          releasedAt: '',
-          updatedAt: serverTimestamp(),
-        });
-
-        if (
-          previousClaimRef &&
-          previousClaimSnapshot?.exists() &&
-          getClaimCurrentUid(previousClaimSnapshot.data()) === firebaseAuthUser.uid
-        ) {
-          const previousClaimData = previousClaimSnapshot.data();
-          transaction.set(
-            previousClaimRef,
-            {
-              ...previousClaimData,
-              uid: '',
-              currentUid: '',
-              status: 'released',
-              formerUids: Array.from(
-                new Set([
-                  ...getClaimFormerUids(previousClaimData),
-                  firebaseAuthUser.uid,
-                ])
-              ),
-              releasedAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-            },
-            { merge: true }
-          );
-        }
-
-        transaction.update(userRef, {
-          email: firebaseAuthUser.email || currentAccount.email || '',
-          maskedEmail: nextMaskedEmail,
+      const memberAuthorityConfig = readMemberAuthorityCutoverConfig();
+      if (memberAuthorityConfig.memberRequested) {
+        const firebaseIdToken = await firebaseAuthUser.getIdToken();
+        const response = await clerkStagingClient.writeMemberProfile(firebaseIdToken, {
           name,
           team,
           phone,
-          status: nextStatus,
-          identityKey: nextIdentityKey,
-          recoveryKey: nextRecoveryKey,
-          directoryMemberId:
-            policyEnabled && directoryData
-              ? directoryData.directoryMemberId || ''
-              : '',
-          directoryVerifiedVersion: policyEnabled
-            ? directoryVersion
-            : 0,
-          directoryVerifiedAt: policyEnabled
-            ? serverTimestamp()
-            : '',
-          profileRequiredReason: shouldRestoreDirectoryMismatch
-            ? ''
-            : currentAccount.profileRequiredReason || '',
-          profileRequiredAt: shouldRestoreDirectoryMismatch
-            ? ''
-            : currentAccount.profileRequiredAt || '',
-          statusBeforeProfileRequired: shouldRestoreDirectoryMismatch
-            ? ''
-            : currentAccount.statusBeforeProfileRequired || '',
-          updatedAt: serverTimestamp(),
+          email: firebaseAuthUser.email || userProfile?.email || '',
         });
-
-        transaction.set(nextRecoveryRef, {
-          recoveryKey: nextRecoveryKey,
-          maskedEmail: nextMaskedEmail,
-          emailVerifier: nextRecoveryEmailVerifier,
-          accountStatus: nextStatus,
-          enabled: true,
-          updatedAt: serverTimestamp(),
+        publishMemberAuthorityObservation({
+          memberWriteRequested: true,
+          memberWriteSource: response?.memberProfileWrite?.authority || 'postgresql',
+          memberFirestoreMirror: response?.memberProfileWrite?.firestoreMirror || 'synced',
+          memberMutationId: response?.memberProfileWrite?.mutationId || '',
+          restrictionWriteRequested: memberAuthorityConfig.restrictionRequested,
+          error: '',
         });
+      } else {
+              await runTransaction(db, async (transaction) => {
+                const configSnapshot = await transaction.get(PUBLIC_CONFIG_DOC_REF);
+                const userRef = doc(
+                  db,
+                  USER_ACCOUNTS_COLLECTION_NAME,
+                  firebaseAuthUser.uid
+                );
+                const userSnapshot = await transaction.get(userRef);
+                const nextClaimRef = doc(
+                  MEMBER_IDENTITY_CLAIMS_COLLECTION_REF,
+                  nextIdentityKey
+                );
+                const nextRecoveryRef = doc(
+                  ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
+                  nextRecoveryKey
+                );
+                const nextClaimSnapshot = await transaction.get(nextClaimRef);
+                const previousClaimRef =
+                  previousIdentityKey && previousIdentityKey !== nextIdentityKey
+                    ? doc(
+                        MEMBER_IDENTITY_CLAIMS_COLLECTION_REF,
+                        previousIdentityKey
+                      )
+                    : null;
+                const previousClaimSnapshot = previousClaimRef
+                  ? await transaction.get(previousClaimRef)
+                  : null;
+                const previousRecoveryRef =
+                  previousRecoveryKey && previousRecoveryKey !== nextRecoveryKey
+                    ? doc(
+                        ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
+                        previousRecoveryKey
+                      )
+                    : null;
 
-        if (previousRecoveryRef) {
-          transaction.delete(previousRecoveryRef);
-        }
-      });
+                if (!userSnapshot.exists()) {
+                  throw createMemberPolicyError('member/account-not-ready');
+                }
 
-      await syncMemberProfileWriteThroughBestEffort({
-        firebaseUser: firebaseAuthUser,
-        firebaseUid: firebaseAuthUser.uid,
-        reason: 'user-profile-save',
-      });
+                const latestSettings = normalizeRentalPolicySettings({
+                  ...initialSettings,
+                  ...(configSnapshot.exists()
+                    ? configSnapshot.data()?.settings || {}
+                    : {}),
+                });
+                const policyEnabled = isRegisteredMemberSignupRequired(
+                  latestSettings
+                );
+                const directoryVersion = getSafeMemberDirectoryVersion(
+                  latestSettings
+                );
+                let directoryData = null;
+
+                if (policyEnabled) {
+                  const directoryRef = doc(
+                    MEMBER_DIRECTORY_KEYS_COLLECTION_REF,
+                    nextIdentityKey
+                  );
+                  const directorySnapshot = await transaction.get(directoryRef);
+                  directoryData = directorySnapshot.exists()
+                    ? directorySnapshot.data()
+                    : null;
+
+                  if (
+                    !directoryData ||
+                    directoryData.enabled === false ||
+                    normalizeMemberName(directoryData.name || '') !== name ||
+                    normalizeMemberTeam(directoryData.team || '') !== team
+                  ) {
+                    throw createMemberPolicyError('member/directory-mismatch');
+                  }
+                }
+
+                const nextClaimData = nextClaimSnapshot.exists()
+                  ? nextClaimSnapshot.data()
+                  : {};
+                const nextClaimCurrentUid = getClaimCurrentUid(nextClaimData);
+                const nextClaimFormerUids = getClaimFormerUids(nextClaimData);
+
+                if (
+                  nextClaimSnapshot.exists() &&
+                  (nextClaimData.conflict === true ||
+                    (nextClaimCurrentUid && nextClaimCurrentUid !== firebaseAuthUser.uid) ||
+                    (!nextClaimCurrentUid &&
+                      getClaimStatus(nextClaimData) === 'released' &&
+                      nextClaimFormerUids.length > 0 &&
+                      !nextClaimFormerUids.includes(firebaseAuthUser.uid)))
+                ) {
+                  throw createMemberPolicyError('member/identity-already-claimed');
+                }
+
+                const currentAccount = userSnapshot.data();
+                const shouldRestoreDirectoryMismatch =
+                  currentAccount.status === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
+                  currentAccount.profileRequiredReason ===
+                    PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
+                const nextStatus = shouldRestoreDirectoryMismatch
+                  ? getRestorableUserProfileStatus(
+                      currentAccount.statusBeforeProfileRequired
+                    )
+                  : currentAccount.status || USER_PROFILE_STATUS.PENDING;
+
+                transaction.set(nextClaimRef, {
+                  identityKey: nextIdentityKey,
+                  uid: firebaseAuthUser.uid,
+                  currentUid: firebaseAuthUser.uid,
+                  status: 'active',
+                  name,
+                  team,
+                  conflict: false,
+                  conflictingUids: [],
+                  formerUids: nextClaimFormerUids,
+                  directoryMemberId:
+                    policyEnabled && directoryData
+                      ? directoryData.directoryMemberId || ''
+                      : nextClaimData.directoryMemberId || '',
+                  restrictionSnapshot: nextClaimData.restrictionSnapshot || {},
+                  createdAt: nextClaimSnapshot.exists()
+                    ? nextClaimData.createdAt || serverTimestamp()
+                    : serverTimestamp(),
+                  releasedAt: '',
+                  updatedAt: serverTimestamp(),
+                });
+
+                if (
+                  previousClaimRef &&
+                  previousClaimSnapshot?.exists() &&
+                  getClaimCurrentUid(previousClaimSnapshot.data()) === firebaseAuthUser.uid
+                ) {
+                  const previousClaimData = previousClaimSnapshot.data();
+                  transaction.set(
+                    previousClaimRef,
+                    {
+                      ...previousClaimData,
+                      uid: '',
+                      currentUid: '',
+                      status: 'released',
+                      formerUids: Array.from(
+                        new Set([
+                          ...getClaimFormerUids(previousClaimData),
+                          firebaseAuthUser.uid,
+                        ])
+                      ),
+                      releasedAt: serverTimestamp(),
+                      updatedAt: serverTimestamp(),
+                    },
+                    { merge: true }
+                  );
+                }
+
+                transaction.update(userRef, {
+                  email: firebaseAuthUser.email || currentAccount.email || '',
+                  maskedEmail: nextMaskedEmail,
+                  name,
+                  team,
+                  phone,
+                  status: nextStatus,
+                  identityKey: nextIdentityKey,
+                  recoveryKey: nextRecoveryKey,
+                  directoryMemberId:
+                    policyEnabled && directoryData
+                      ? directoryData.directoryMemberId || ''
+                      : '',
+                  directoryVerifiedVersion: policyEnabled
+                    ? directoryVersion
+                    : 0,
+                  directoryVerifiedAt: policyEnabled
+                    ? serverTimestamp()
+                    : '',
+                  profileRequiredReason: shouldRestoreDirectoryMismatch
+                    ? ''
+                    : currentAccount.profileRequiredReason || '',
+                  profileRequiredAt: shouldRestoreDirectoryMismatch
+                    ? ''
+                    : currentAccount.profileRequiredAt || '',
+                  statusBeforeProfileRequired: shouldRestoreDirectoryMismatch
+                    ? ''
+                    : currentAccount.statusBeforeProfileRequired || '',
+                  updatedAt: serverTimestamp(),
+                });
+
+                transaction.set(nextRecoveryRef, {
+                  recoveryKey: nextRecoveryKey,
+                  maskedEmail: nextMaskedEmail,
+                  emailVerifier: nextRecoveryEmailVerifier,
+                  accountStatus: nextStatus,
+                  enabled: true,
+                  updatedAt: serverTimestamp(),
+                });
+
+                if (previousRecoveryRef) {
+                  transaction.delete(previousRecoveryRef);
+                }
+              });
+
+              await syncMemberProfileWriteThroughBestEffort({
+                firebaseUser: firebaseAuthUser,
+                firebaseUid: firebaseAuthUser.uid,
+                reason: 'user-profile-save',
+              });
+      }
 
       await updateProfile(firebaseAuthUser, {
         displayName: name,

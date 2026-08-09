@@ -507,6 +507,61 @@ export const requestAdminRentalRequestStatusChange = async ({ clerk, apiBaseUrl,
   return payload;
 };
 
+
+
+export const requestMemberProfileAuthorityWrite = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, profile }) => {
+  const token = trim(firebaseIdToken);
+  if (!token) throw new Error('Firebase sign-in is required before changing the PostgreSQL member profile.');
+  const { response, payload } = await requestWithSession({
+    clerk, apiBaseUrl, fetchImpl, path: '/api/users/me/member-profile', method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Firebase-Authorization': `Bearer ${token}` },
+    body: JSON.stringify(profile || {}),
+  });
+  if (!response.ok) {
+    const error = new Error(`PostgreSQL member profile write failed with HTTP ${response.status}.`);
+    error.status = response.status; error.code = payload?.error || null; throw error;
+  }
+  if (!payload?.authenticated || payload?.memberProfileWrite?.authority !== 'postgresql' || payload?.memberProfileWrite?.firestoreMirror !== 'synced') {
+    throw new Error('Backend returned an invalid PostgreSQL member profile write response.');
+  }
+  return payload;
+};
+
+export const requestAdminMemberProfileAuthorityWrite = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, firebaseUid, profile }) => {
+  const token = trim(firebaseIdToken); const uid = trim(firebaseUid);
+  if (!token || !uid) throw new Error('Firebase admin sign-in and member UID are required.');
+  const { response, payload } = await requestWithSession({
+    clerk, apiBaseUrl, fetchImpl, path: `/api/admin/members/${encodeURIComponent(uid)}/profile`, method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Firebase-Authorization': `Bearer ${token}` },
+    body: JSON.stringify(profile || {}),
+  });
+  if (!response.ok) { const error = new Error(`Admin PostgreSQL member profile write failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
+  if (!payload?.authenticated || !payload?.authorized || payload?.adminMemberProfileWrite?.authority !== 'postgresql') throw new Error('Backend returned an invalid admin member profile write response.');
+  return payload;
+};
+
+export const requestAdminMemberStatusAuthorityWrite = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, firebaseUid, status }) => {
+  const token = trim(firebaseIdToken); const uid = trim(firebaseUid);
+  if (!token || !uid) throw new Error('Firebase admin sign-in and member UID are required.');
+  const { response, payload } = await requestWithSession({
+    clerk, apiBaseUrl, fetchImpl, path: `/api/admin/members/${encodeURIComponent(uid)}/status`, method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Firebase-Authorization': `Bearer ${token}` },
+    body: JSON.stringify({ status }),
+  });
+  if (!response.ok) { const error = new Error(`Admin PostgreSQL member status write failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
+  if (!payload?.authenticated || !payload?.authorized || payload?.adminMemberStatusWrite?.authority !== 'postgresql') throw new Error('Backend returned an invalid admin member status write response.');
+  return payload;
+};
+
+export const requestAdminIdentityRegistryBootstrap = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken }) => {
+  const token = trim(firebaseIdToken);
+  if (!token) throw new Error('Firebase admin sign-in is required before synchronizing the PostgreSQL admin identity registry.');
+  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: '/api/admin/identity-registry/bootstrap', method: 'POST', headers: { 'X-Firebase-Authorization': `Bearer ${token}` } });
+  if (!response.ok) { const error = new Error(`Admin identity registry bootstrap failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
+  if (!payload?.authenticated || !payload?.authorized || payload?.adminIdentityRegistry?.target !== 'postgresql-admin-registry') throw new Error('Backend returned an invalid admin identity registry response.');
+  return payload;
+};
+
 export const requestAssetCatalog = async ({ apiBaseUrl, fetchImpl }) => {
   const response = await fetchImpl(`${apiBaseUrl}/api/assets/catalog`, {
     method: 'GET', headers: { Accept: 'application/json' }, cache: 'no-store',
@@ -841,6 +896,22 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
         fetchImpl,
         firebaseIdToken,
       });
+    },
+    async writeMemberProfile(firebaseIdToken, profile) {
+      const clerk = await initialize();
+      return requestMemberProfileAuthorityWrite({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, profile });
+    },
+    async writeAdminMemberProfile(firebaseIdToken, firebaseUid, profile) {
+      const clerk = await initialize();
+      return requestAdminMemberProfileAuthorityWrite({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, firebaseUid, profile });
+    },
+    async writeAdminMemberStatus(firebaseIdToken, firebaseUid, status) {
+      const clerk = await initialize();
+      return requestAdminMemberStatusAuthorityWrite({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, firebaseUid, status });
+    },
+    async bootstrapAdminIdentityRegistry(firebaseIdToken) {
+      const clerk = await initialize();
+      return requestAdminIdentityRegistryBootstrap({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken });
     },
     async bootstrapAdminRentalRequests(firebaseIdToken) {
       const clerk = await initialize();

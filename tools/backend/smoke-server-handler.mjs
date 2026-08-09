@@ -5,7 +5,7 @@ const allowedOrigin = 'https://staging.example.vercel.app';
 const config = {
   serviceName: 'rental-api',
   appEnv: 'test',
-  serviceVersion: 'phase11-smoke',
+  serviceVersion: 'phase21-smoke',
   corsAllowedOrigins: [allowedOrigin],
 };
 
@@ -172,6 +172,26 @@ const memberShadowService = {
   },
 };
 
+
+const memberAuthorityService = {
+  async editSelf({ clerkUserId, firebaseIdentity, input }) {
+    if (clerkUserId !== 'user_smoke' || firebaseIdentity.uid !== 'firebase_uid_smoke') throw new Error('Unexpected Phase 21 self member authority identity.');
+    return { authority: 'postgresql', firestoreMirror: 'synced', mutationId: 'member-self-smoke', profile: { uid: firebaseIdentity.uid, email: 'smoke@example.com', name: input.name, team: input.team, phone: input.phone, status: 'active' } };
+  },
+  async editAdmin({ firebaseIdentity, targetUid, input }) {
+    if (firebaseIdentity.uid !== 'firebase_uid_smoke' || targetUid !== 'member-target') throw new Error('Unexpected Phase 21 admin member profile identity.');
+    return { admin: { uid: firebaseIdentity.uid, role: 'owner' }, authority: 'postgresql', firestoreMirror: 'synced', mutationId: 'member-admin-smoke', profile: { uid: targetUid, email: 'target@example.com', name: input.name, team: input.team, phone: input.phone, status: 'active' } };
+  },
+  async changeStatusAdmin({ firebaseIdentity, targetUid, nextStatus }) {
+    if (firebaseIdentity.uid !== 'firebase_uid_smoke' || targetUid !== 'member-target' || nextStatus !== 'blocked') throw new Error('Unexpected Phase 21 admin member status input.');
+    return { admin: { uid: firebaseIdentity.uid, role: 'owner' }, authority: 'postgresql', firestoreMirror: 'synced', restrictionAuthority: 'unchanged', mutationId: 'member-status-smoke', profile: { uid: targetUid, status: nextStatus } };
+  },
+  async bootstrapAdminRegistry({ firebaseIdentity }) {
+    if (firebaseIdentity.uid !== 'firebase_uid_smoke') throw new Error('Unexpected Phase 21 admin registry identity.');
+    return { admin: { uid: firebaseIdentity.uid }, source: 'firestore-bootstrap', target: 'postgresql-admin-registry', count: 2, registry: [] };
+  },
+};
+
 const rentalRequestWriteService = {
   async createCurrent(userId, firebaseIdentity, input) {
     if (userId !== 'user_smoke' || firebaseIdentity.uid !== 'firebase_uid_smoke') {
@@ -335,6 +355,7 @@ const server = createServer(
     userIdentityService,
     firebaseLinkService,
     memberShadowService,
+    memberAuthorityService,
     rentalRequestWriteService,
     rentalRequestUserActionService,
     adminRentalRequestService,
@@ -671,6 +692,39 @@ if (assetCategories.status !== 200 || (await assetCategories.json()).adminAssetM
 const assetDelete = await fetch(`${baseUrl}/api/admin/assets/ASSET-SMOKE-1/delete`, { method: 'POST', headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' } });
 if (assetDelete.status !== 200 || (await assetDelete.json()).adminAssetMutation?.operation !== 'delete') throw new Error('Phase 20 admin asset delete HTTP response is invalid.');
 
+
+const memberProfileWrite = await fetch(`${baseUrl}/api/users/me/member-profile`, {
+  method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+  body: JSON.stringify({ name: 'Smoke User', team: 'QA', phone: '010-0000-0000' }),
+});
+const memberProfileWriteBody = await memberProfileWrite.json();
+if (memberProfileWrite.status !== 200 || memberProfileWriteBody.memberProfileWrite?.authority !== 'postgresql' || memberProfileWriteBody.memberProfileWrite?.firestoreMirror !== 'synced') {
+  throw new Error('Phase 21 self member profile authority HTTP response is invalid.');
+}
+const adminMemberProfileWrite = await fetch(`${baseUrl}/api/admin/members/member-target/profile`, {
+  method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+  body: JSON.stringify({ name: 'Target User', team: 'Ops', phone: '010-1111-2222' }),
+});
+const adminMemberProfileWriteBody = await adminMemberProfileWrite.json();
+if (adminMemberProfileWrite.status !== 200 || adminMemberProfileWriteBody.adminMemberProfileWrite?.authority !== 'postgresql') {
+  throw new Error('Phase 21 admin member profile authority HTTP response is invalid.');
+}
+const adminMemberStatusWrite = await fetch(`${baseUrl}/api/admin/members/member-target/status`, {
+  method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+  body: JSON.stringify({ status: 'blocked' }),
+});
+const adminMemberStatusWriteBody = await adminMemberStatusWrite.json();
+if (adminMemberStatusWrite.status !== 200 || adminMemberStatusWriteBody.adminMemberStatusWrite?.profile?.status !== 'blocked') {
+  throw new Error('Phase 21 admin member status authority HTTP response is invalid.');
+}
+const adminIdentityRegistry = await fetch(`${baseUrl}/api/admin/identity-registry/bootstrap`, {
+  method: 'POST', headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+});
+const adminIdentityRegistryBody = await adminIdentityRegistry.json();
+if (adminIdentityRegistry.status !== 200 || adminIdentityRegistryBody.adminIdentityRegistry?.target !== 'postgresql-admin-registry' || adminIdentityRegistryBody.adminIdentityRegistry?.count !== 2) {
+  throw new Error('Phase 21 admin identity registry HTTP response is invalid.');
+}
+
 const invalidFirebase = await fetch(`${baseUrl}/api/users/me/legacy/firebase`, {
   method: 'POST',
   headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer wrong-token' },
@@ -681,4 +735,4 @@ const missing = await fetch(`${baseUrl}/missing`);
 if (missing.status !== 404) throw new Error(`/missing returned ${missing.status}`);
 
 await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, Phase 16 rental-request POST, Phase 17 admin bootstrap/list/dashboard/status + Phase 18 sync/events/edit/memo/restore + Phase 19 user edit/cancel/extend/admin-review + Phase 20 asset catalog/bootstrap/CRUD/bulk/categories, CORS, 404)');
+console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, Phase 16 rental-request POST, Phase 17 admin bootstrap/list/dashboard/status + Phase 18 sync/events/edit/memo/restore + Phase 19 user edit/cancel/extend/admin-review + Phase 20 asset catalog/bootstrap/CRUD/bulk/categories + Phase 21 member profile/status authority/admin registry, CORS, 404)');

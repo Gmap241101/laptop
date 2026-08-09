@@ -78,7 +78,10 @@
     "verify:phase19": "npm run verify:phase18 && npm run server:rental-request-user-action:smoke && npm run frontend:rental-request-user-action:smoke",
     "server:asset-domain:smoke": "node tools/backend/smoke-asset-domain-cutover.mjs",
     "frontend:asset-domain:smoke": "node tools/frontend/smoke-asset-domain-cutover.mjs",
-    "verify:phase20": "npm run verify:phase19 && npm run server:asset-domain:smoke && npm run frontend:asset-domain:smoke"
+    "verify:phase20": "npm run verify:phase19 && npm run server:asset-domain:smoke && npm run frontend:asset-domain:smoke",
+    "server:member-authority:smoke": "node tools/backend/smoke-member-restriction-authority.mjs",
+    "frontend:member-authority:smoke": "node tools/frontend/smoke-member-restriction-authority.mjs",
+    "verify:phase21": "npm run verify:phase20 && npm run server:member-authority:smoke && npm run frontend:member-authority:smoke"
   },
   "dependencies": {
     "firebase": "^10.14.1",

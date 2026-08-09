@@ -21,6 +21,10 @@ const mapRow = (row) => {
     identityKey: row.identity_key || '',
     recoveryKey: row.recovery_key || '',
     previousAccountUids: Array.isArray(row.previous_account_uids) ? row.previous_account_uids : [],
+    authorityMode: row.authority_mode || 'firestore-shadow',
+    mirrorState: row.mirror_state || 'synced',
+    lastMutationId: row.last_mutation_id || '',
+    authoritativeUpdatedAt: row.authoritative_updated_at || null,
     sourceCreatedAt: row.source_created_at,
     sourceUpdatedAt: row.source_updated_at,
     sourceHash: row.source_hash,
@@ -36,6 +40,7 @@ const selectColumns = `app_user_id, firebase_uid, source_collection, source_docu
                        profile_required_reason, rejoined_account,
                        terms_consent_revision, terms_consent_policy_version,
                        identity_key, recovery_key, previous_account_uids,
+                       authority_mode, mirror_state, last_mutation_id, authoritative_updated_at,
                        source_created_at, source_updated_at, source_hash,
                        synced_at, created_at, updated_at`;
 

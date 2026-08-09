@@ -21,6 +21,8 @@ import {
   db,
   firebaseAuth,
 } from '../../firebase.js';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { publishMemberAuthorityObservation, readMemberAuthorityCutoverConfig } from '../members/memberAuthorityCutover.js';
 
 export const ADMIN_CUSTOM_OPTION_VALUE = '__ADMIN_CUSTOM_INPUT__';
 export const ADMIN_ACCOUNT_PAGE_SIZE = 10;
@@ -137,6 +139,65 @@ export default function useAdminAccountManagementController({
     authenticatedAdminAccount?.phone,
     setAdminMyProfileForm,
   ]);
+
+  useEffect(() => {
+    const config = readMemberAuthorityCutoverConfig();
+    if (!config.adminRegistryRequested) return undefined;
+    if (!authenticatedAdminAccount?.id || !firebaseAuthUser || typeof firebaseAuthUser.getIdToken !== 'function') return undefined;
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const firebaseIdToken = await firebaseAuthUser.getIdToken();
+        const payload = await clerkStagingClient.bootstrapAdminIdentityRegistry(firebaseIdToken);
+        if (cancelled) return;
+        publishMemberAuthorityObservation({
+          memberWriteRequested: config.memberRequested,
+          restrictionWriteRequested: config.restrictionRequested,
+          adminRegistryRequested: true,
+          adminRegistrySource: payload?.adminIdentityRegistry?.target || 'postgresql-admin-registry',
+          adminRegistryCount: Number(payload?.adminIdentityRegistry?.count || 0),
+          adminRegistryError: '',
+        });
+      } catch (error) {
+        if (cancelled) return;
+        publishMemberAuthorityObservation({
+          memberWriteRequested: config.memberRequested,
+          restrictionWriteRequested: config.restrictionRequested,
+          adminRegistryRequested: true,
+          adminRegistrySource: 'failed',
+          adminRegistryCount: 0,
+          adminRegistryError: error?.code || error?.message || 'admin-identity-registry-failed',
+        });
+      }
+    };
+    void run();
+    return () => { cancelled = true; };
+  }, [authenticatedAdminAccount?.id, firebaseAuthUser?.uid]);
+
+  const syncAdminIdentityRegistryIfRequested = async () => {
+    const config = readMemberAuthorityCutoverConfig();
+    if (!config.adminRegistryRequested || !firebaseAuthUser || typeof firebaseAuthUser.getIdToken !== 'function') return;
+    try {
+      const firebaseIdToken = await firebaseAuthUser.getIdToken();
+      const payload = await clerkStagingClient.bootstrapAdminIdentityRegistry(firebaseIdToken);
+      publishMemberAuthorityObservation({
+        memberWriteRequested: config.memberRequested,
+        restrictionWriteRequested: config.restrictionRequested,
+        adminRegistryRequested: true,
+        adminRegistrySource: payload?.adminIdentityRegistry?.target || 'postgresql-admin-registry',
+        adminRegistryCount: Number(payload?.adminIdentityRegistry?.count || 0),
+        adminRegistryError: '',
+      });
+    } catch (error) {
+      console.warn('Admin identity registry synchronization failed.', { code: error?.code, status: error?.status });
+      publishMemberAuthorityObservation({
+        adminRegistryRequested: true,
+        adminRegistrySource: 'failed',
+        adminRegistryCount: 0,
+        adminRegistryError: error?.code || error?.message || 'admin-identity-registry-failed',
+      });
+    }
+  };
 
   const selectedAdminOrganizationName =
     adminAccountForm.organizationName === ADMIN_CUSTOM_OPTION_VALUE
@@ -286,6 +347,7 @@ export default function useAdminAccountManagementController({
         ...nextAdminAccount,
         syncedAt: serverTimestamp(),
       });
+      await syncAdminIdentityRegistryIfRequested();
 
       await signOut(adminAccountCreationAuth).catch((error) => {
         console.error('Secondary admin auth sign-out error:', error);
@@ -522,6 +584,7 @@ export default function useAdminAccountManagementController({
         },
         { merge: true }
       );
+      await syncAdminIdentityRegistryIfRequested();
 
       setAdminAccounts((prev) =>
         (prev || []).map((item) =>
@@ -592,6 +655,7 @@ export default function useAdminAccountManagementController({
       async () => {
         try {
           await deleteDoc(doc(db, 'adminAccounts', account.id));
+          await syncAdminIdentityRegistryIfRequested();
 
           setAdminAccounts((prev) =>
             (prev || []).filter((item) => item.id !== account.id)

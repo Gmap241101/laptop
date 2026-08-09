@@ -214,7 +214,7 @@ const representativeReservation = (reservations, laptopId, referenceDate) => {
     || null;
 };
 
-export const createAdminRentalRequestService = ({ repository, firestoreClient }) => {
+export const createAdminRentalRequestService = ({ repository, firestoreClient, restrictionAuthorityRepository = null }) => {
   if (!repository || typeof repository.list !== 'function' || typeof repository.upsertImportedRequests !== 'function') {
     throw new TypeError('Admin rental request repository is required.');
   }
@@ -667,10 +667,19 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient })
           firebaseIdToken: firebaseIdentity.idToken,
         }),
       });
+      if (restrictionFields?.uid && restrictionAuthorityRepository) {
+        const linkAppUserId = null;
+        await restrictionAuthorityRepository.upsertRestrictionAuthoritative({
+          firebaseUid: restrictionFields.uid,
+          appUserId: linkAppUserId,
+          restriction: restrictionFields,
+        });
+      }
       return Object.freeze({
         admin,
         authority: 'postgresql',
         firestoreMirror: 'synced',
+        restrictionAuthority: restrictionFields?.uid ? 'postgresql-authoritative' : 'unchanged',
         operation: 'user-action-review',
         actionType,
         approved: Boolean(approved),
@@ -792,10 +801,18 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient })
         },
       });
 
+      if (returnResult.restrictionFields?.uid && restrictionAuthorityRepository) {
+        await restrictionAuthorityRepository.upsertRestrictionAuthoritative({
+          firebaseUid: returnResult.restrictionFields.uid,
+          appUserId: null,
+          restriction: returnResult.restrictionFields,
+        });
+      }
       return Object.freeze({
         admin,
         authority: 'postgresql',
         firestoreMirror: 'synced',
+        restrictionAuthority: returnResult.restrictionFields?.uid ? 'postgresql-authoritative' : 'unchanged',
         request: committed,
         availability: BLOCKING.has(status) ? nextAvailability : null,
         asset: nextAsset,

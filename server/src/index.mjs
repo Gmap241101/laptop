@@ -27,6 +27,9 @@ import { createRentalRequestUserActionService } from './rentals/rental-request-u
 import { createAdminRentalRequestRepository } from './rentals/admin-rental-request-repository.mjs';
 import { createAdminRentalRequestService } from './rentals/admin-rental-request-service.mjs';
 import { createFirestoreAssetClient } from './firestore/firestore-assets.mjs';
+import { createFirestoreMemberAuthorityClient } from './firestore/firestore-members.mjs';
+import { createMemberAuthorityRepository } from './members/member-authority-repository.mjs';
+import { createMemberAuthorityService } from './members/member-authority-service.mjs';
 import { createAssetRepository } from './assets/asset-repository.mjs';
 import { createAssetService } from './assets/asset-service.mjs';
 
@@ -69,6 +72,20 @@ const memberShadowService = createMemberShadowService({
   memberShadowRepository,
   firestoreUserAccountClient,
 });
+
+const firestoreMemberAuthorityClient = config.firebaseProjectId
+  ? createFirestoreMemberAuthorityClient({ projectId: config.firebaseProjectId, timeoutMs: config.firestoreRestTimeoutMs })
+  : null;
+const memberAuthorityRepository = createMemberAuthorityRepository(pool);
+const memberAuthorityService = firestoreMemberAuthorityClient
+  ? createMemberAuthorityService({
+      repository: memberAuthorityRepository,
+      firebaseLinkRepository,
+      userRepository,
+      firestoreClient: firestoreMemberAuthorityClient,
+    })
+  : null;
+
 const rentalRestrictionRepository = createRentalRestrictionRepository(pool);
 const firestoreRentalRestrictionClient = config.firebaseProjectId
   ? createFirestoreRentalRestrictionClient({
@@ -181,6 +198,7 @@ const firestoreAdminRentalRequestsClient = config.firebaseProjectId
 const adminRentalRequestService = createAdminRentalRequestService({
   repository: adminRentalRequestRepository,
   firestoreClient: firestoreAdminRentalRequestsClient,
+  restrictionAuthorityRepository: memberAuthorityRepository,
 });
 const assetRepository = createAssetRepository(pool);
 const firestoreAssetClient = config.firebaseProjectId
@@ -213,12 +231,14 @@ const server = createServer(
     userIdentityService,
     firebaseLinkService,
     memberShadowService,
+    memberAuthorityService,
     rentalRestrictionService,
     rentalRequestService,
     rentalRequestWriteService,
     rentalRequestUserActionService,
     adminRentalRequestService,
     assetService,
+    memberAuthorityRepository,
   }),
 );
 
@@ -238,6 +258,8 @@ server.listen(config.port, '0.0.0.0', () => {
     rentalRequestWrite: config.firebaseProjectId ? 'postgresql-authoritative-firestore-compatibility-mirror' : 'disabled',
     rentalRequestUserActions: config.firebaseProjectId ? 'postgresql-authoritative-user-actions-firestore-compatibility-mirror' : 'disabled',
     adminRentalRequests: config.firebaseProjectId ? 'postgresql-read-admin-mutations-audit-firestore-compatibility-mirror' : 'disabled',
+    memberAuthority: config.firebaseProjectId ? 'postgresql-authoritative-firestore-compatibility-mirror' : 'disabled',
+    adminIdentityRegistry: config.firebaseProjectId ? 'postgresql-registry-preparation' : 'disabled',
     assetDomain: config.firebaseProjectId ? 'postgresql-read-write-firestore-compatibility-mirror' : 'disabled',
   });
 });

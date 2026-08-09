@@ -27,6 +27,9 @@ const files = [
   'server/src/firestore/firestore-admin-rental-requests.mjs',
   'server/src/rentals/admin-rental-request-repository.mjs',
   'server/src/rentals/admin-rental-request-service.mjs',
+  'server/src/members/member-authority-repository.mjs',
+  'server/src/members/member-authority-service.mjs',
+  'server/src/firestore/firestore-members.mjs',
   'server/src/app.mjs',
   'server/src/index.mjs',
   'server/scripts/check-config.mjs',
@@ -389,4 +392,4 @@ for (const variable of ['CLERK_JWT_KEY=', 'CLERK_AUTHORIZED_PARTIES=', 'CLERK_SE
   if (!configTemplate.includes(variable)) throw new Error(`Phase 6 config template is missing ${variable}`);
 }
 
-console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request shadow/parity + phase16 authoritative write + phase17 admin rental-request cutover + phase18 mutation/audit completion + phase19 user-action lifecycle + phase20 asset-domain invariants)`);
+console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request shadow/parity + phase16 authoritative write + phase17 admin rental-request cutover + phase18 mutation/audit completion + phase19 user-action lifecycle + phase20 asset-domain + phase21 member/restriction/admin identity authority invariants)`);

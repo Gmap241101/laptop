@@ -34,6 +34,8 @@ import {
   syncMemberProfileWriteThroughBestEffort,
 } from './memberProfileWriteThrough.js';
 import { syncRentalRestrictionWriteThroughBestEffort } from '../requests/rentalRestrictionReadCutover.js';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { publishMemberAuthorityObservation, readMemberAuthorityCutoverConfig } from './memberAuthorityCutover.js';
 
 const VALID_USER_ACCOUNT_STATUSES = new Set([
   USER_PROFILE_STATUS.PENDING,
@@ -110,73 +112,93 @@ export default function useAdminMemberAccountStatusActions({
       setAdminUserAccountSavingUid(userUid);
 
       try {
-        const batch = writeBatch(db);
-        batch.set(
-          doc(db, USER_ACCOUNTS_COLLECTION_NAME, userUid),
-          {
-            status: nextStatus,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-
-        if (account.recoveryKey) {
-          batch.set(
-            doc(
-              ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
-              account.recoveryKey
-            ),
-            {
-              accountStatus: nextStatus,
-              updatedAt: serverTimestamp(),
-            },
-            { merge: true }
-          );
-        }
-
-        const inheritedRestriction = account.inheritedRestriction || {};
-        const inheritedRestrictionStillActive = Boolean(
-          nextStatus === USER_PROFILE_STATUS.ACTIVE &&
-            account.rejoinedAccount &&
-            (inheritedRestriction.manualBlock === true ||
-              inheritedRestriction.indefinite === true ||
-              inheritedRestriction.restrictionStatus === 'active' ||
-              (inheritedRestriction.activePenalty === true &&
-                String(inheritedRestriction.eligibleFromDate || '') > today()))
-        );
-
-        if (inheritedRestrictionStillActive) {
-          batch.set(
-            doc(RENTAL_RESTRICTIONS_COLLECTION_REF, userUid),
-            {
-              ...inheritedRestriction,
-              uid: userUid,
-              inheritedFromPreviousAccount: true,
-              updatedAt: serverTimestamp(),
-            },
-            { merge: true }
-          );
-        }
-
-        await batch.commit();
-
-        const memberWriteThroughConfig = readMemberProfileWriteThroughConfig();
-        await syncMemberProfileWriteThroughBestEffort({
-          firebaseUser: firebaseAuth.currentUser,
-          firebaseUid: userUid,
-          reason: 'admin-member-status-change',
-          config: {
-            ...memberWriteThroughConfig,
-            requested: Boolean(memberWriteThroughConfig.enabled),
-          },
-        });
-
-        if (inheritedRestrictionStillActive) {
-          await syncRentalRestrictionWriteThroughBestEffort({
-            firebaseUser: firebaseAuth.currentUser,
-            firebaseUid: userUid,
-            reason: 'admin-member-inherited-restriction',
+        const memberAuthorityConfig = readMemberAuthorityCutoverConfig();
+        if (memberAuthorityConfig.memberRequested) {
+          const adminUser = firebaseAuth.currentUser;
+          if (!adminUser || typeof adminUser.getIdToken !== 'function') {
+            throw new Error('Firebase 관리자 세션을 확인할 수 없습니다.');
+          }
+          const firebaseIdToken = await adminUser.getIdToken();
+          const response = await clerkStagingClient.writeAdminMemberStatus(firebaseIdToken, userUid, nextStatus);
+          publishMemberAuthorityObservation({
+            memberWriteRequested: true,
+            memberWriteSource: response?.adminMemberStatusWrite?.authority || 'postgresql',
+            memberFirestoreMirror: response?.adminMemberStatusWrite?.firestoreMirror || 'synced',
+            memberMutationId: response?.adminMemberStatusWrite?.mutationId || '',
+            restrictionWriteRequested: memberAuthorityConfig.restrictionRequested,
+            restrictionWriteSource: response?.adminMemberStatusWrite?.restrictionAuthority || 'unchanged',
+            operation: 'admin-member-status-change',
+            error: '',
           });
+        } else {
+                  const batch = writeBatch(db);
+                  batch.set(
+                    doc(db, USER_ACCOUNTS_COLLECTION_NAME, userUid),
+                    {
+                      status: nextStatus,
+                      updatedAt: serverTimestamp(),
+                    },
+                    { merge: true }
+                  );
+
+                  if (account.recoveryKey) {
+                    batch.set(
+                      doc(
+                        ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
+                        account.recoveryKey
+                      ),
+                      {
+                        accountStatus: nextStatus,
+                        updatedAt: serverTimestamp(),
+                      },
+                      { merge: true }
+                    );
+                  }
+
+                  const inheritedRestriction = account.inheritedRestriction || {};
+                  const inheritedRestrictionStillActive = Boolean(
+                    nextStatus === USER_PROFILE_STATUS.ACTIVE &&
+                      account.rejoinedAccount &&
+                      (inheritedRestriction.manualBlock === true ||
+                        inheritedRestriction.indefinite === true ||
+                        inheritedRestriction.restrictionStatus === 'active' ||
+                        (inheritedRestriction.activePenalty === true &&
+                          String(inheritedRestriction.eligibleFromDate || '') > today()))
+                  );
+
+                  if (inheritedRestrictionStillActive) {
+                    batch.set(
+                      doc(RENTAL_RESTRICTIONS_COLLECTION_REF, userUid),
+                      {
+                        ...inheritedRestriction,
+                        uid: userUid,
+                        inheritedFromPreviousAccount: true,
+                        updatedAt: serverTimestamp(),
+                      },
+                      { merge: true }
+                    );
+                  }
+
+                  await batch.commit();
+
+                  const memberWriteThroughConfig = readMemberProfileWriteThroughConfig();
+                  await syncMemberProfileWriteThroughBestEffort({
+                    firebaseUser: firebaseAuth.currentUser,
+                    firebaseUid: userUid,
+                    reason: 'admin-member-status-change',
+                    config: {
+                      ...memberWriteThroughConfig,
+                      requested: Boolean(memberWriteThroughConfig.enabled),
+                    },
+                  });
+
+                  if (inheritedRestrictionStillActive) {
+                    await syncRentalRestrictionWriteThroughBestEffort({
+                      firebaseUser: firebaseAuth.currentUser,
+                      firebaseUid: userUid,
+                      reason: 'admin-member-inherited-restriction',
+                    });
+                  }
         }
 
         triggerToastRef.current(

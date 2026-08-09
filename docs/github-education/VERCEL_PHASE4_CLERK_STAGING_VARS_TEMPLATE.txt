@@ -111,3 +111,12 @@ VITE_ASSET_POSTGRES_WRITE_ENABLED=true
 # Recommended admin diagnostic URL:
 #   https://mkrental.vercel.app/admin?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWriteThrough=on&restrictionRead=postgres&restrictionWatcher=off&rentalRequestRead=postgres&rentalRequestWatcher=off&rentalRequestWrite=postgres&adminRequestRead=postgres&adminRequestWrite=postgres&rentalRequestActionWrite=postgres&assetRead=postgres&assetWrite=postgres
 # Configure in the mkrental Vercel project's Production environment and redeploy.
+# Phase 21: member/restriction authoritative writes + administrator identity registry preparation (Staging opt-in)
+VITE_MEMBER_PROFILE_POSTGRES_WRITE_ENABLED=true
+VITE_RENTAL_RESTRICTION_POSTGRES_WRITE_ENABLED=true
+VITE_ADMIN_IDENTITY_REGISTRY_ENABLED=true
+# Requires explicit query/session latches:
+#   ?memberWrite=postgres&restrictionWrite=postgres&adminIdentity=postgres
+# Administrator authentication remains Firebase Auth/adminAccounts in Phase 21; this registry only prepares the later Clerk admin-auth migration.
+# Configure in the mkrental Vercel project's Production environment and redeploy.
+

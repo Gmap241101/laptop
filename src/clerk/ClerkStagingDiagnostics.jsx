@@ -53,6 +53,11 @@ import {
   readAssetDomainCutoverConfig,
   subscribeAssetDomainCutoverObservation,
 } from '../features/assets/assetDomainCutover.js';
+import {
+  getLatestMemberAuthorityObservation,
+  readMemberAuthorityCutoverConfig,
+  subscribeMemberAuthorityObservation,
+} from '../features/members/memberAuthorityCutover.js';
 import { clerkStagingClient } from './clerkStagingClient.js';
 
 const panelStyle = {
@@ -102,6 +107,7 @@ export default function ClerkStagingDiagnostics() {
   const adminRentalRequestCutoverConfig = useMemo(() => readAdminRentalRequestCutoverConfig(), []);
   const rentalRequestUserActionConfig = useMemo(() => readRentalRequestUserActionCutoverConfig(), []);
   const assetDomainCutoverConfig = useMemo(() => readAssetDomainCutoverConfig(), []);
+  const memberAuthorityConfig = useMemo(() => readMemberAuthorityCutoverConfig(), []);
   const [state, setState] = useState({
     phase: requested ? 'loading' : 'hidden',
     signedIn: false,
@@ -216,6 +222,18 @@ export default function ClerkStagingDiagnostics() {
     assetWriteSource: null,
     assetFirestoreMirror: null,
     assetError: null,
+    memberAuthorityWriteRequested: memberAuthorityConfig.memberRequested,
+    memberAuthorityWriteSource: null,
+    memberAuthorityMirror: null,
+    memberAuthorityMutationId: null,
+    memberAuthorityOperation: null,
+    restrictionAuthorityWriteRequested: memberAuthorityConfig.restrictionRequested,
+    restrictionAuthorityWriteSource: null,
+    adminIdentityRegistryRequested: memberAuthorityConfig.adminRegistryRequested,
+    adminIdentityRegistrySource: null,
+    adminIdentityRegistryCount: null,
+    adminIdentityRegistryError: null,
+    memberAuthorityError: null,
     error: null,
   });
 
@@ -553,6 +571,37 @@ export default function ClerkStagingDiagnostics() {
     return subscribeAssetDomainCutoverObservation(applyObservation);
   }, [requested]);
 
+  useEffect(() => {
+    if (!requested) return undefined;
+    const applyObservation = (observation) => {
+      setState((current) => ({
+        ...current,
+        memberAuthorityWriteRequested: observation && Object.prototype.hasOwnProperty.call(observation, 'memberWriteRequested')
+          ? Boolean(observation.memberWriteRequested)
+          : current.memberAuthorityWriteRequested,
+        memberAuthorityWriteSource: observation?.memberWriteSource || current.memberAuthorityWriteSource,
+        memberAuthorityMirror: observation?.memberFirestoreMirror || current.memberAuthorityMirror,
+        memberAuthorityMutationId: observation?.memberMutationId || current.memberAuthorityMutationId,
+        memberAuthorityOperation: observation?.operation || current.memberAuthorityOperation,
+        restrictionAuthorityWriteRequested: observation && Object.prototype.hasOwnProperty.call(observation, 'restrictionWriteRequested')
+          ? Boolean(observation.restrictionWriteRequested)
+          : current.restrictionAuthorityWriteRequested,
+        restrictionAuthorityWriteSource: observation?.restrictionWriteSource || current.restrictionAuthorityWriteSource,
+        adminIdentityRegistryRequested: observation && Object.prototype.hasOwnProperty.call(observation, 'adminRegistryRequested')
+          ? Boolean(observation.adminRegistryRequested)
+          : current.adminIdentityRegistryRequested,
+        adminIdentityRegistrySource: observation?.adminRegistrySource || current.adminIdentityRegistrySource,
+        adminIdentityRegistryCount: observation && Object.prototype.hasOwnProperty.call(observation, 'adminRegistryCount')
+          ? observation.adminRegistryCount
+          : current.adminIdentityRegistryCount,
+        adminIdentityRegistryError: observation?.adminRegistryError || '',
+        memberAuthorityError: observation?.error || '',
+      }));
+    };
+    applyObservation(getLatestMemberAuthorityObservation());
+    return subscribeMemberAuthorityObservation(applyObservation);
+  }, [requested]);
+
   if (!requested) return null;
 
   const run = async (operation) => {
@@ -746,7 +795,7 @@ export default function ClerkStagingDiagnostics() {
 
   return (
     <aside style={panelStyle} aria-label="Clerk staging diagnostics">
-      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 20</div>
+      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 21</div>
       <div>SDK: {state.phase === 'loading' ? 'loading' : state.phase}</div>
       <div>Signed in: {state.signedIn ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Clerk user: {state.userId || '-'}</div>
@@ -909,6 +958,20 @@ export default function ClerkStagingDiagnostics() {
       <div style={{ overflowWrap: 'anywhere' }}>Last asset write source: {state.assetWriteSource || '-'}</div>
       <div>Asset Firestore compatibility mirror: {state.assetFirestoreMirror || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Asset cutover error: {state.assetError || '-'}</div>
+
+      <div style={{ marginTop: '6px', fontWeight: 700 }}>Phase 21 member / restriction authority + admin identity preparation</div>
+      <div>Member authoritative write requested: {state.memberAuthorityWriteRequested ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Last member write source: {state.memberAuthorityWriteSource || '-'}</div>
+      <div>Member Firestore compatibility mirror: {state.memberAuthorityMirror || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Last member operation: {state.memberAuthorityOperation || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Member mutation ID: {state.memberAuthorityMutationId || '-'}</div>
+      <div>Restriction authoritative write requested: {state.restrictionAuthorityWriteRequested ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Restriction authoritative source: {state.restrictionAuthorityWriteSource || '-'}</div>
+      <div>Admin identity registry requested: {state.adminIdentityRegistryRequested ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Admin identity registry source: {state.adminIdentityRegistrySource || '-'}</div>
+      <div>Admin identity registry count: {state.adminIdentityRegistryCount === null ? '-' : state.adminIdentityRegistryCount}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Admin identity registry error: {state.adminIdentityRegistryError || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Member authority error: {state.memberAuthorityError || '-'}</div>
 
       {state.error ? (
         <div role="alert" style={{ marginTop: '8px', color: '#b91c1c', overflowWrap: 'anywhere' }}>

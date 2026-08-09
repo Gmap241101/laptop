@@ -107,6 +107,10 @@ const sanitizeMemberShadow = (shadow) => ({
   identityKey: shadow.identityKey,
   recoveryKey: shadow.recoveryKey,
   previousAccountUids: shadow.previousAccountUids,
+  authorityMode: shadow.authorityMode || 'firestore-shadow',
+  mirrorState: shadow.mirrorState || 'synced',
+  lastMutationId: shadow.lastMutationId || '',
+  authoritativeUpdatedAt: shadow.authoritativeUpdatedAt || null,
   sourceHash: shadow.sourceHash,
   sourceCreatedAt: shadow.sourceCreatedAt,
   sourceUpdatedAt: shadow.sourceUpdatedAt,
@@ -130,6 +134,10 @@ const sanitizeRentalRestrictionShadow = (shadow) => ({
   restriction: shadow.exists ? shadow.restriction : null,
   sourceHash: shadow.sourceHash,
   sourceUpdatedAt: shadow.sourceUpdatedAt,
+  authorityMode: shadow.authorityMode || 'firestore-shadow',
+  mirrorState: shadow.mirrorState || 'synced',
+  lastMutationId: shadow.lastMutationId || '',
+  authoritativeUpdatedAt: shadow.authoritativeUpdatedAt || null,
   syncedAt: shadow.syncedAt,
 });
 
@@ -187,7 +195,7 @@ const sanitizeAssetCatalog = (catalog = {}) => ({
 
 const sanitizeMemberProfileReadCandidate = (shadow) => ({
   source: 'postgresql-shadow',
-  authoritative: false,
+  authoritative: shadow.authorityMode === 'postgresql-authoritative',
   firebaseUid: shadow.firebaseUid,
   profile: {
     uid: shadow.uid,
@@ -220,6 +228,12 @@ export const createRequestHandler = ({
   userIdentityService,
   firebaseLinkService,
   memberShadowService,
+  memberAuthorityService = {
+    async editSelf() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
+    async editAdmin() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
+    async changeStatusAdmin() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
+    async bootstrapAdminRegistry() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
+  },
   rentalRestrictionService = {
     async getCurrentByFirebaseIdentity() { const error = new Error('Rental restriction service is not configured.'); error.code = 'rental_restriction_not_configured'; throw error; },
     async readCurrentSourceByFirebaseIdentity() { const error = new Error('Rental restriction service is not configured.'); error.code = 'rental_restriction_not_configured'; throw error; },
@@ -285,6 +299,15 @@ export const createRequestHandler = ({
     typeof memberShadowService.compareCurrent !== 'function'
   ) {
     throw new TypeError('memberShadowService getCurrent/getCurrentByFirebaseIdentity/readCurrentSourceByFirebaseIdentity/syncLinkedFirebaseUid/syncCurrent/compareCurrent methods are required.');
+  }
+  if (
+    !memberAuthorityService ||
+    typeof memberAuthorityService.editSelf !== 'function' ||
+    typeof memberAuthorityService.editAdmin !== 'function' ||
+    typeof memberAuthorityService.changeStatusAdmin !== 'function' ||
+    typeof memberAuthorityService.bootstrapAdminRegistry !== 'function'
+  ) {
+    throw new TypeError('memberAuthorityService Phase 21 methods are required.');
   }
   if (
     !rentalRestrictionService ||
@@ -406,6 +429,10 @@ export const createRequestHandler = ({
           memberProfileCutoverCandidate: '/api/legacy/member-profile-cutover-candidate',
           memberProfileFirestoreFallback: '/api/legacy/member-profile-firestore-fallback',
           memberProfileWriteThrough: '/api/legacy/member-shadow/write-through',
+          memberProfileAuthority: '/api/users/me/member-profile',
+          adminMemberProfileAuthority: '/api/admin/members/:uid/profile',
+          adminMemberStatusAuthority: '/api/admin/members/:uid/status',
+          adminIdentityRegistryBootstrap: '/api/admin/identity-registry/bootstrap',
           rentalRestrictionCandidate: '/api/legacy/rental-restriction-candidate',
           rentalRestrictionFallback: '/api/legacy/rental-restriction-firestore-fallback',
           rentalRestrictionWriteThrough: '/api/legacy/rental-restriction-shadow/write-through',
@@ -1303,6 +1330,75 @@ export const createRequestHandler = ({
           return;
         }
         writeJson(response, 503, { ...basePayload, authenticated: true, error: error?.code || 'rental_restriction_write_through_unavailable' }, headers);
+      }
+      return;
+    }
+
+
+    if (request.method === 'POST' && url.pathname === '/api/users/me/member-profile') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      let body;
+      try { body = await readJsonBody(request); } catch (error) { writeJson(response, error.status || 400, { ...basePayload, authenticated: true, error: error.code || 'invalid_json_body' }, headers); return; }
+      try {
+        const result = await memberAuthorityService.editSelf({ clerkUserId: auth.userId, firebaseIdentity, input: body });
+        writeJson(response, 200, { ...basePayload, authenticated: true, memberProfileWrite: result }, headers);
+      } catch (error) {
+        console.error('[phase21] member profile authoritative write failed', { requestId, code: error?.code });
+        writeJson(response, error?.status || 409, { ...basePayload, authenticated: true, error: error?.code || 'member_profile_authority_failed' }, headers);
+      }
+      return;
+    }
+
+    const adminMemberProfileMatch = request.method === 'POST' ? url.pathname.match(/^\/api\/admin\/members\/([^/]+)\/profile$/) : null;
+    if (adminMemberProfileMatch) {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      let body;
+      try { body = await readJsonBody(request); } catch (error) { writeJson(response, error.status || 400, { ...basePayload, authenticated: true, error: error.code || 'invalid_json_body' }, headers); return; }
+      try {
+        const result = await memberAuthorityService.editAdmin({ firebaseIdentity, targetUid: decodeURIComponent(adminMemberProfileMatch[1]), input: body });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, adminMemberProfileWrite: result }, headers);
+      } catch (error) {
+        console.error('[phase21] admin member profile authoritative write failed', { requestId, code: error?.code });
+        writeJson(response, error?.status || 409, { ...basePayload, authenticated: true, error: error?.code || 'admin_member_profile_authority_failed' }, headers);
+      }
+      return;
+    }
+
+    const adminMemberStatusMatch = request.method === 'POST' ? url.pathname.match(/^\/api\/admin\/members\/([^/]+)\/status$/) : null;
+    if (adminMemberStatusMatch) {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      let body;
+      try { body = await readJsonBody(request); } catch (error) { writeJson(response, error.status || 400, { ...basePayload, authenticated: true, error: error.code || 'invalid_json_body' }, headers); return; }
+      try {
+        const result = await memberAuthorityService.changeStatusAdmin({ firebaseIdentity, targetUid: decodeURIComponent(adminMemberStatusMatch[1]), nextStatus: body?.status });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, adminMemberStatusWrite: result }, headers);
+      } catch (error) {
+        console.error('[phase21] admin member status authoritative write failed', { requestId, code: error?.code });
+        writeJson(response, error?.status || 409, { ...basePayload, authenticated: true, error: error?.code || 'admin_member_status_authority_failed' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/admin/identity-registry/bootstrap') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      try {
+        const result = await memberAuthorityService.bootstrapAdminRegistry({ firebaseIdentity });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, adminIdentityRegistry: result }, headers);
+      } catch (error) {
+        console.error('[phase21] admin identity registry bootstrap failed', { requestId, code: error?.code });
+        writeJson(response, error?.status || 409, { ...basePayload, authenticated: true, error: error?.code || 'admin_identity_registry_failed' }, headers);
       }
       return;
     }

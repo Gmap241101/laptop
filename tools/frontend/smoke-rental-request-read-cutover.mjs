@@ -220,7 +220,7 @@ const diagnosticsSource = await readFile(
   new URL('../../src/clerk/ClerkStagingDiagnostics.jsx', import.meta.url),
   'utf8',
 );
-assert.match(diagnosticsSource, /Clerk Staging Test · Phase (15|16|17|18|19|20)/);
+assert.match(diagnosticsSource, /Clerk Staging Test · Phase (15|16|17|18|19|20|21)/);
 assert.match(diagnosticsSource, /Phase 15 rental request read cutover/);
 assert.match(diagnosticsSource, /Rental request active source/);
 assert.match(diagnosticsSource, /Rental shadow source refreshes this load/);

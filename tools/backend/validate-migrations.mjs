@@ -11,6 +11,7 @@ const phase17 = readFileSync('server/migrations/009_phase17_admin_rental_request
 const phase18 = readFileSync('server/migrations/010_phase18_admin_rental_mutation_completion.sql', 'utf8');
 const phase19 = readFileSync('server/migrations/011_phase19_user_action_lifecycle.sql', 'utf8');
 const phase20 = readFileSync('server/migrations/012_phase20_asset_domain_cutover.sql', 'utf8');
+const phase21 = readFileSync('server/migrations/013_phase21_member_restriction_admin_identity_authority.sql', 'utf8');
 
 if (!/value\s+JSONB\s+NOT\s+NULL/i.test(phase2)) {
   throw new Error('app_runtime_metadata.value must remain JSONB NOT NULL.');
@@ -133,4 +134,18 @@ for (const marker of [
   if (!phase20.includes(marker)) throw new Error(`Phase 20 asset domain migration marker is missing: ${marker}`);
 }
 
-console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion + Phase 19 user-action lifecycle + Phase 20 asset-domain cutover are type-safe)');
+
+for (const marker of [
+  'CREATE TABLE IF NOT EXISTS app_member_accounts',
+  'CREATE TABLE IF NOT EXISTS app_member_profile_events',
+  'CREATE TABLE IF NOT EXISTS app_admin_identity_registry',
+  'authority_mode TEXT NOT NULL DEFAULT',
+  "'phase', 21",
+  "'member_profile_write', 'postgresql-authoritative-firestore-mirror'",
+  "'rental_restriction_write', 'postgresql-authoritative-firestore-mirror'",
+  "'admin_authentication', 'firebase-auth-compatibility-retained'",
+]) {
+  if (!phase21.includes(marker)) throw new Error(`Phase 21 member/restriction/admin identity migration marker is missing: ${marker}`);
+}
+
+console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion + Phase 19 user-action lifecycle + Phase 20 asset-domain + Phase 21 member/restriction/admin identity authority are type-safe)');
