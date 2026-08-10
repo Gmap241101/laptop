@@ -304,6 +304,7 @@ export default function useAdminAuthenticationController({
     if (!firebaseReady) return;
     if (!firebaseAuthReady) return;
     if (!adminAccountsReady) return;
+    if (!currentAuthRoleReady) return;
     if (adminLogoutInProgressRef.current) return;
 
     const authenticatedAccount =
@@ -343,6 +344,8 @@ export default function useAdminAuthenticationController({
     firebaseAuthUser,
     adminAccountsReady,
     adminAccounts,
+    currentAuthRoleReady,
+    currentAuthAdminAccount,
   ]);
 
   useEffect(() => {

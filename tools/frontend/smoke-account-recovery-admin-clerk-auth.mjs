@@ -52,6 +52,18 @@ for (const marker of [
   'adminClerkAuthRequested',
 ]) assert.ok(adminAuthSource.includes(marker), `missing Phase 22 admin login marker: ${marker}`);
 
+const adminSessionInvalidationStart = adminAuthSource.indexOf('if (!authenticatedAdminId) return;');
+const adminSessionInvalidationEnd = adminAuthSource.indexOf('const hasFirebaseAuthMismatch', adminSessionInvalidationStart);
+const adminSessionInvalidationBlock = adminAuthSource.slice(adminSessionInvalidationStart, adminSessionInvalidationEnd);
+assert.ok(
+  adminSessionInvalidationBlock.includes('if (!currentAuthRoleReady) return;'),
+  'admin app session invalidation must wait for the current Firebase administrator role lookup to finish'
+);
+assert.ok(
+  adminAuthSource.includes('currentAuthAdminAccount,\n  ]);'),
+  'admin app session invalidation effect must react to the resolved current administrator account'
+);
+
 const adminManagementSource = readFileSync('src/features/auth/useAdminAccountManagementController.js', 'utf8');
 for (const marker of [
   'clerkStagingClient.provisionAdminClerkIdentity',

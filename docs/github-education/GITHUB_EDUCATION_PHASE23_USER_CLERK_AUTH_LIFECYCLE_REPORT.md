@@ -51,3 +51,11 @@ No Firebase Admin service account or Rules bypass is introduced.
 ## Production protection
 
 This phase is for gh-pages-3, mkrental Vercel staging/test, Heroku staging, and Clerk Development only. gh-pages, the production site, production DNS, and production Clerk are not part of this phase.
+
+## 2026-08-10 administrator session race hotfix
+
+Actual Phase 23 staging validation exposed a frontend-only administrator session race after successful Clerk Client Trust verification. Clerk and Firebase both remained signed in, but the administrator login card returned because the local administrator app session could be invalidated while the Firebase `adminAccounts/{uid}` role lookup was still transiently unresolved.
+
+The invalidation effect now waits for `currentAuthRoleReady` before treating a missing `currentAuthAdminAccount` as an invalid administrator session, and it reacts to the resolved current administrator account. This preserves the existing Clerk + PostgreSQL administrator authority and Firebase compatibility credential while preventing a transient role-loading `null` from clearing a freshly established administrator app session.
+
+No backend API, migration, Firestore path, Clerk policy, environment variable, or Production setting changed in this hotfix.

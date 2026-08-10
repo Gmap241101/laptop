@@ -47,3 +47,16 @@ Local build result:
 - Vite bundle: not executed because root node_modules is unavailable in the working environment
 - final local build exit: 127 (vite: not found)
 - authoritative bundle validation remains Vercel staging deployment
+
+2026-08-10 administrator session race hotfix validation:
+- observed staging symptom: Clerk signed in=yes and Firebase signed in=yes, but Admin auth source returned to awaiting-admin-login and the administrator login card reappeared
+- root cause: local admin-session invalidation could run before current Firebase administrator role lookup completed
+- fix: require currentAuthRoleReady before missing-account / UID mismatch / lock invalidation and subscribe the effect to currentAuthAdminAccount
+- Phase 22 frontend account/auth smoke extended with the role-ready race guard contract: PASS
+- npm run verify:phase23 after hotfix: PASS / exit 0
+- React source files: 162
+- Application contracts: 124; user routes: 11; administrator tabs: 20
+- Firestore total calls: 131; warnings: 0; errors: 0
+- build:staging prebuild audits: PASS; final exit 127 only because local vite executable is unavailable
+- backend/API/migration/environment changes: none
+- actual browser revalidation after hotfix: pending
