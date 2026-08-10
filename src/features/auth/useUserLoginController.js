@@ -32,6 +32,12 @@ import {
 } from '../../utils/systemSettings.js';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 import {
+  beginUserAuthTransition,
+  bindUserAuthTransitionIdentity,
+  clearUserAuthTransition,
+  completeUserAuthTransition,
+} from './authSessionService.js';
+import {
   publishUserAccountLifecycleObservation,
   readUserAccountLifecycleCutoverConfig,
 } from './userAccountLifecycleCutover.js';
@@ -127,6 +133,7 @@ export default function useUserLoginController({
     let clerkSignOutFailed = false;
 
     setUserAuthLoading(true);
+    clearUserAuthTransition();
 
     try {
       if (lifecycleConfig.userAuthRequested) {
@@ -343,6 +350,12 @@ export default function useUserLoginController({
 
     setUserAuthLoading(true);
 
+    if (lifecycleConfig.userAuthRequested && !isClientTrustVerification) {
+      beginUserAuthTransition({ email });
+    } else if (lifecycleConfig.userAuthRequested && firebaseAuth.currentUser?.uid) {
+      bindUserAuthTransitionIdentity(firebaseAuth.currentUser.uid);
+    }
+
     if (isClientTrustVerification) {
       try {
         if (!lifecycleConfig.userAuthRequested) {
@@ -389,10 +402,15 @@ export default function useUserLoginController({
           error: '',
         });
 
-        await finalizeUserAuthentication({
+        const finalizationResult = await finalizeUserAuthentication({
           firebaseUser,
           effectiveUserSessionPolicy,
         });
+        if (lifecycleConfig.userAuthRequested && finalizationResult?.retainedSession) {
+          completeUserAuthTransition(firebaseUser.uid);
+        } else {
+          clearUserAuthTransition();
+        }
       } catch (error) {
         const clerkErrorCode =
           error?.errors?.[0]?.code || error?.code || error?.message || 'user-clerk-client-trust-failed';
@@ -415,6 +433,7 @@ export default function useUserLoginController({
           clearUserAuthenticatedSession();
           clearAdminAuthenticatedSession();
           setUserAuthForm(createDefaultUserAuthForm());
+          clearUserAuthTransition();
         }
         triggerToast(
           retryableCode
@@ -446,6 +465,9 @@ export default function useUserLoginController({
         password
       );
       signedInUserForRoleCheck = credential.user;
+      if (lifecycleConfig.userAuthRequested) {
+        bindUserAuthTransitionIdentity(credential.user.uid);
+      }
 
       const adminAccountSnapshot = await getDoc(
         doc(db, 'adminAccounts', credential.user.uid)
@@ -519,10 +541,15 @@ export default function useUserLoginController({
         });
       }
 
-      await finalizeUserAuthentication({
+      const finalizationResult = await finalizeUserAuthentication({
         firebaseUser: credential.user,
         effectiveUserSessionPolicy,
       });
+      if (lifecycleConfig.userAuthRequested && finalizationResult?.retainedSession) {
+        completeUserAuthTransition(credential.user.uid);
+      } else {
+        clearUserAuthTransition();
+      }
       signedInUserForRoleCheck = null;
     } catch (error) {
       let firebaseAuthCleanupFailed = false;
@@ -550,6 +577,7 @@ export default function useUserLoginController({
 
       clearUserAuthenticatedSession();
       clearAdminAuthenticatedSession();
+      clearUserAuthTransition();
       console.error('User auth error:', error);
       if (lifecycleConfig.userAuthRequested) {
         publishUserAccountLifecycleObservation({

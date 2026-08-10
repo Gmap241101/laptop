@@ -38,6 +38,8 @@ import {
   subscribeRentalRestrictionWriteThroughObservation,
 } from '../requests/rentalRestrictionReadCutover.js';
 import { createDefaultUserProfileForm } from '../members/useUserMyPageAccountController.js';
+import { readUserAuthTransition } from './authSessionService.js';
+
 
 export const normalizeAdminAccounts = function(adminAccounts) {
   if (!Array.isArray(adminAccounts)) return [];
@@ -215,7 +217,10 @@ export default function useAuthIdentityPolicySubscriptionController({
 
         setFirebaseAuthUser(user);
         if (!user) {
-          clearUserAuthenticatedSession();
+          const authTransition = readUserAuthTransition();
+          if (!authTransition) {
+            clearUserAuthenticatedSession();
+          }
         }
         setFirebaseAuthReady(true);
       },

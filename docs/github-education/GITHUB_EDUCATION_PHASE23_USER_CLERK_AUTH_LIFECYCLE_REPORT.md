@@ -80,3 +80,12 @@ The user session controller now re-reads the persisted application session befor
 Administrator staging diagnostics also briefly showed normal-user-only legacy member errors (`member_shadow_not_found` and `The application Firestore member profile has not been observed yet.`). Those conditions are expected for an administrator identity with no normal-user member shadow. The diagnostic client now treats a 404 `member_shadow_not_found` comparison as not-applicable, the parity action quietly no-ops when no application member profile has been observed, and the member comparison/parity controls stay disabled until their prerequisite observations exist. This changes diagnostic presentation only; administrator Clerk/PostgreSQL/Firebase authority is unchanged.
 
 No backend API, PostgreSQL migration, Firestore Rules/index, authentication policy, environment variable, npm dependency, or Production configuration changed in this hotfix.
+
+
+## 2026-08-10 user auth transition null-state hotfix
+
+- Added an explicit `mk_laptop_user_auth_transition` session marker for the Phase 23 Firebase compatibility -> Clerk -> PostgreSQL login transaction.
+- Firebase `onAuthStateChanged(null)` no longer deletes the application user session while that bounded login transaction is active.
+- The transition is bound to the Firebase UID, remains pending across Clerk Client Trust verification, and becomes completed only after application account finalization retains a user session.
+- The user session controller may restore a completed transition only for the same Firebase UID; normal policy-version, idle-timeout, absolute-timeout, inactive-member, and logout checks remain unchanged.
+- Failed/non-retryable authentication and explicit logout clear the transition marker.

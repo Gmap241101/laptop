@@ -10,7 +10,9 @@ import {
 import { normalizeUserSessionPolicy } from '../../utils/systemSettings.js';
 import {
   clearUserAuthSession,
+  clearUserAuthTransition,
   readUserAuthSession,
+  readUserAuthTransition,
   saveUserAuthSession,
 } from './authSessionService.js';
 import { readUserAccountLifecycleCutoverConfig } from './userAccountLifecycleCutover.js';
@@ -59,6 +61,7 @@ export const useUserAuthenticationSessionState = ({ userSessionPolicy }) => {
 
   const clearUserAuthenticatedSession = useCallback(() => {
     clearUserAuthSession();
+    clearUserAuthTransition();
     setUserAuthSessionUid('');
     setUserAuthSessionExpiresAt(0);
     setUserAuthSessionAbsoluteExpiresAt(0);
@@ -193,10 +196,27 @@ export default function useUserAuthenticationSessionController({
       }
 
       const lifecycleConfig = readUserAccountLifecycleCutoverConfig();
-      const isPendingLoginCompatibilitySession =
+      const authTransition = readUserAuthTransition();
+      const transitionMatchesUser = Boolean(
         lifecycleConfig.userAuthRequested &&
-        typeof window !== 'undefined' &&
-        window.location.pathname.replace(/\/+$/, '') === '/login';
+        authTransition?.userId === firebaseAuthUser.uid
+      );
+
+      if (transitionMatchesUser && authTransition.status === 'completed') {
+        setUserAuthenticatedSession(firebaseAuthUser.uid, userSessionPolicy);
+        return undefined;
+      }
+
+      const isPendingLoginCompatibilitySession = Boolean(
+        lifecycleConfig.userAuthRequested &&
+        (
+          (transitionMatchesUser && authTransition.status === 'pending') ||
+          (
+            typeof window !== 'undefined' &&
+            window.location.pathname.replace(/\/+$/, '') === '/login'
+          )
+        )
+      );
 
       if (isPendingLoginCompatibilitySession) {
         return undefined;

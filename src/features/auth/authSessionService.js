@@ -11,6 +11,9 @@ import {
 
 const ADMIN_AUTH_SESSION_KEY = 'mk_laptop_admin_auth_session';
 const USER_AUTH_SESSION_KEY = 'mk_laptop_user_auth_session';
+const USER_AUTH_TRANSITION_KEY = 'mk_laptop_user_auth_transition';
+const USER_AUTH_TRANSITION_PENDING_MS = 15 * 60 * 1000;
+const USER_AUTH_TRANSITION_COMPLETED_MS = 15 * 1000;
 
 export const createDefaultAdminAuthForm = () => ({
   adminLoginId: '',
@@ -89,6 +92,75 @@ const readStoredAuthSession = (storageKey, identityKey) => {
   });
 
   return selected || emptySession;
+};
+
+
+const readStoredUserAuthTransition = () => {
+  if (typeof window === 'undefined') return null;
+  const raw = window.sessionStorage.getItem(USER_AUTH_TRANSITION_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Number(parsed?.expiresAt || 0) || Number(parsed.expiresAt) <= Date.now()) {
+      window.sessionStorage.removeItem(USER_AUTH_TRANSITION_KEY);
+      return null;
+    }
+    return parsed;
+  } catch {
+    window.sessionStorage.removeItem(USER_AUTH_TRANSITION_KEY);
+    return null;
+  }
+};
+
+export const beginUserAuthTransition = ({ email = '', userId = '' } = {}) => {
+  if (typeof window === 'undefined') return null;
+  const now = Date.now();
+  const transition = {
+    status: 'pending',
+    email: String(email || '').trim().toLowerCase(),
+    userId: String(userId || '').trim(),
+    startedAt: now,
+    expiresAt: now + USER_AUTH_TRANSITION_PENDING_MS,
+  };
+  window.sessionStorage.setItem(USER_AUTH_TRANSITION_KEY, JSON.stringify(transition));
+  return transition;
+};
+
+export const bindUserAuthTransitionIdentity = (userId) => {
+  if (typeof window === 'undefined') return null;
+  const current = readStoredUserAuthTransition();
+  const now = Date.now();
+  const transition = {
+    ...(current || {}),
+    status: 'pending',
+    userId: String(userId || '').trim(),
+    startedAt: Number(current?.startedAt || now),
+    expiresAt: now + USER_AUTH_TRANSITION_PENDING_MS,
+  };
+  window.sessionStorage.setItem(USER_AUTH_TRANSITION_KEY, JSON.stringify(transition));
+  return transition;
+};
+
+export const completeUserAuthTransition = (userId) => {
+  if (typeof window === 'undefined') return null;
+  const current = readStoredUserAuthTransition();
+  const now = Date.now();
+  const transition = {
+    ...(current || {}),
+    status: 'completed',
+    userId: String(userId || current?.userId || '').trim(),
+    completedAt: now,
+    expiresAt: now + USER_AUTH_TRANSITION_COMPLETED_MS,
+  };
+  window.sessionStorage.setItem(USER_AUTH_TRANSITION_KEY, JSON.stringify(transition));
+  return transition;
+};
+
+export const readUserAuthTransition = () => readStoredUserAuthTransition();
+
+export const clearUserAuthTransition = () => {
+  if (typeof window === 'undefined') return;
+  window.sessionStorage.removeItem(USER_AUTH_TRANSITION_KEY);
 };
 
 const writeStoredAuthSession = (storageKey, session, logoutOnBrowserClose) => {

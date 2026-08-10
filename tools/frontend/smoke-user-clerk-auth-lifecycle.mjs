@@ -35,10 +35,13 @@ for (const marker of [
 ]) assert.ok(clientSource.includes(marker), `missing Phase 23 Clerk client marker: ${marker}`);
 
 const loginSource = readFileSync('src/features/auth/useUserLoginController.js', 'utf8');
+const identityPolicySource = readFileSync('src/features/auth/useAuthIdentityPolicySubscriptionController.js', 'utf8');
+const authSessionServiceSource = readFileSync('src/features/auth/authSessionService.js', 'utf8');
 for (const marker of [
   'readUserAccountLifecycleCutoverConfig', 'migrateUserToClerk', 'signInUserWithPassword',
   "userAuthSource: 'clerk'", "userClientTrustStatus: 'verified'", 'clientTrustRequired: true',
   'getUserClerkSession', 'user_clerk_session_identity_mismatch',
+  'beginUserAuthTransition', 'bindUserAuthTransitionIdentity', 'completeUserAuthTransition',
 ]) assert.ok(loginSource.includes(marker), `missing Phase 23 user login marker: ${marker}`);
 
 const userSessionSource = readFileSync('src/features/auth/useUserAuthenticationSessionController.js', 'utf8');
@@ -49,12 +52,31 @@ for (const marker of [
   'const persistedSession = readUserAuthSession();',
   'persistedSession.userId === firebaseAuthUser.uid',
   'setUserAuthenticatedSession(',
+  'const authTransition = readUserAuthTransition();',
+  "authTransition.status === 'completed'",
+  "authTransition.status === 'pending'",
 ]) {
   assert.ok(
     userSessionSource.includes(marker),
     `user session expiry must preserve the Firebase compatibility session only while the Phase 23 Clerk login is pending on /login: ${marker}`
   );
 }
+
+
+for (const marker of [
+  "const USER_AUTH_TRANSITION_KEY = 'mk_laptop_user_auth_transition';",
+  'beginUserAuthTransition',
+  'bindUserAuthTransitionIdentity',
+  'completeUserAuthTransition',
+  'readUserAuthTransition',
+  'clearUserAuthTransition',
+]) assert.ok(authSessionServiceSource.includes(marker), `missing explicit user auth transition marker: ${marker}`);
+
+for (const marker of [
+  'const authTransition = readUserAuthTransition();',
+  'if (!authTransition)',
+  'clearUserAuthenticatedSession();',
+]) assert.ok(identityPolicySource.includes(marker), `Firebase auth null-state handling must preserve the user session while the Phase 23 login transaction is active: ${marker}`);
 
 const panelSource = readFileSync('src/user/UserAuthPanel.jsx', 'utf8');
 for (const marker of ['Clerk 새 기기 확인 인증코드', '인증코드 확인', 'clientTrustRequired', 'one-time-code']) {
