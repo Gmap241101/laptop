@@ -172,6 +172,26 @@ export default function useUserAuthenticationSessionController({
       !userAuthSessionUid ||
       userAuthSessionUid !== firebaseAuthUser.uid
     ) {
+      const persistedSession = readUserAuthSession();
+      if (persistedSession.userId === firebaseAuthUser.uid) {
+        if (
+          persistedSession.policyVersion !==
+          normalizedPolicy.userSecurityPolicyVersion
+        ) {
+          void expireCurrentUserSession(
+            '사용자 보안 설정이 변경되어 다시 로그인이 필요합니다.'
+          );
+          return undefined;
+        }
+
+        setUserAuthenticatedSession(
+          firebaseAuthUser.uid,
+          userSessionPolicy,
+          persistedSession
+        );
+        return undefined;
+      }
+
       const lifecycleConfig = readUserAccountLifecycleCutoverConfig();
       const isPendingLoginCompatibilitySession =
         lifecycleConfig.userAuthRequested &&
@@ -240,6 +260,7 @@ export default function useUserAuthenticationSessionController({
     userProfile?.status,
     userProfile?.uid,
     userProfileReady,
+    setUserAuthenticatedSession,
     userSessionPolicy,
     userSessionPolicyReady,
     withdrawalLoading,

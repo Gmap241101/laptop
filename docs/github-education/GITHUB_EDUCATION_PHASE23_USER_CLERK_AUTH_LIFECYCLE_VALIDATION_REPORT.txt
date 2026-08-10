@@ -73,3 +73,18 @@ Local build result:
 - npm run verify:phase23 after both fixes: PASS / exit 0
 - backend/API/migration/environment/Firestore Rules changes: none
 - actual browser revalidation after this hotfix: pending
+
+2026-08-10 persisted user-session recovery + administrator diagnostic-noise hotfix validation:
+- observed user symptom: `로그인 세션 정보를 확인할 수 없어 다시 로그인이 필요합니다.` could still appear after successful Clerk/Firebase authentication because navigation had already left /login before React user-session state caught up with the synchronously persisted app session
+- user root cause: session-expiry validation trusted transient React `userAuthSessionUid` state without first checking the valid `mk_laptop_user_auth_session` already persisted in browser storage
+- user fix: re-read persisted user session; if UID matches and security policy version is current, re-apply it to React session state before any expiry action; stale policy versions still force reauthentication
+- administrator diagnostic symptom: normal-user-only member shadow/parity errors could briefly appear for an authenticated administrator
+- diagnostic fix: `member_shadow_not_found` comparison is treated as not-applicable; missing Firestore member observation no longer becomes a panel error; compare/parity buttons require their member prerequisites
+- Phase 23 frontend user lifecycle smoke extended with persisted-session recovery and diagnostic no-noise contracts: PASS
+- Phase 22 frontend account/auth smoke: PASS
+- npm run verify:phase23 after hotfix: PASS / exit 0
+- React source files: 162
+- Application contracts: 124; user routes: 11; administrator tabs: 20
+- Firestore total calls: 131; warnings: 0; errors: 0
+- backend/API/migration/environment/Firestore Rules/npm dependency changes: none
+- actual browser revalidation after this hotfix: pending

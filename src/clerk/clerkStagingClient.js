@@ -561,6 +561,7 @@ export const requestMemberShadowComparison = async ({ clerk, apiBaseUrl, fetchIm
     headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
   });
 
+  if (response.status === 404 && payload?.error === 'member_shadow_not_found') return null;
   if (!response.ok) {
     const code = payload?.error ? ` (${payload.error})` : '';
     const error = new Error(`Legacy member shadow comparison failed with HTTP ${response.status}${code}.`);

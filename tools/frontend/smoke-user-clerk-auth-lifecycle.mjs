@@ -46,6 +46,9 @@ for (const marker of [
   'readUserAccountLifecycleCutoverConfig',
   'lifecycleConfig.userAuthRequested',
   "window.location.pathname.replace(/\\/+$/, '') === '/login'",
+  'const persistedSession = readUserAuthSession();',
+  'persistedSession.userId === firebaseAuthUser.uid',
+  'setUserAuthenticatedSession(',
 ]) {
   assert.ok(
     userSessionSource.includes(marker),
@@ -80,6 +83,18 @@ const diagnosticsSource = readFileSync('src/clerk/ClerkStagingDiagnostics.jsx', 
 for (const marker of [
   'Clerk Staging Test · Phase 23', "top: '184px'", 'Phase 23 user Clerk authentication + account lifecycle authority',
   'User Clerk authority requested:', 'Password authority source:', 'Withdrawal authority:',
+  'disabled={!state.firebaseSignedIn || !state.memberShadowFirebaseUid}',
+  'disabled={state.firestoreWatcherDisabled || !state.appReadProfile}',
 ]) assert.ok(diagnosticsSource.includes(marker), `missing Phase 23 diagnostics marker: ${marker}`);
+assert.ok(
+  !diagnosticsSource.includes("throw new Error('The application Firestore member profile has not been observed yet.')"),
+  'diagnostics must not surface a transient missing member-profile observation as an error'
+);
+
+const stagingClientSource = readFileSync('src/clerk/clerkStagingClient.js', 'utf8');
+assert.ok(
+  stagingClientSource.includes("response.status === 404 && payload?.error === 'member_shadow_not_found'"),
+  'legacy member shadow comparison must treat member_shadow_not_found as not-applicable instead of a diagnostic error'
+);
 
 console.log('[frontend-user-clerk-lifecycle-smoke] PASS (opt-in/rollback latches, user Clerk login + Client Trust, signup provision, password authority rollback, withdrawal authority, diagnostics)');

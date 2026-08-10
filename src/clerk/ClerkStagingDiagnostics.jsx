@@ -849,6 +849,15 @@ export default function ClerkStagingDiagnostics() {
       if (!firebaseUser) throw new Error('기존 Firebase 로그인이 필요합니다. 먼저 홈페이지 계정으로 로그인해 주세요.');
       const firebaseIdToken = await firebaseUser.getIdToken(true);
       const payload = await clerkStagingClient.compareMemberShadow(firebaseIdToken);
+      if (!payload) {
+        setState((current) => ({
+          ...current,
+          memberShadowEquivalent: null,
+          memberShadowChangedFields: [],
+          error: null,
+        }));
+        return;
+      }
       setState((current) => ({
         ...current,
         memberShadowEquivalent: Boolean(payload.comparison.equivalent),
@@ -861,7 +870,8 @@ export default function ClerkStagingDiagnostics() {
     run(async () => {
       const observation = getLatestMemberProfileReadObservation();
       if (!observation?.profile) {
-        throw new Error('The application Firestore member profile has not been observed yet.');
+        setState((current) => ({ ...current, error: null }));
+        return;
       }
       const payload = await clerkStagingClient.getMemberProfileReadCandidate();
       if (!payload?.readCandidate?.profile) {
@@ -1183,12 +1193,17 @@ export default function ClerkStagingDiagnostics() {
             <button
               type="button"
               style={buttonStyle}
-              disabled={!state.firebaseSignedIn || !state.legacyFirebaseUid}
+              disabled={!state.firebaseSignedIn || !state.memberShadowFirebaseUid}
               onClick={compareMemberShadow}
             >
               회원 Shadow 비교
             </button>
-            <button type="button" style={buttonStyle} disabled={state.firestoreWatcherDisabled} onClick={verifyMemberReadParity}>
+            <button
+              type="button"
+              style={buttonStyle}
+              disabled={state.firestoreWatcherDisabled || !state.appReadProfile}
+              onClick={verifyMemberReadParity}
+            >
               {'\uc571 \uc77d\uae30 \ubcd1\ud589\uac80\uc99d'}
             </button>
             <button
