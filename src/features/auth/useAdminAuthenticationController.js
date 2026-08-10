@@ -564,6 +564,9 @@ export default function useAdminAuthenticationController({
     );
     setAdminAuthForm(createDefaultAdminAuthForm());
     setAdminTab('dashboard');
+    replaceAppPath('admin');
+    setView('admin');
+    setIsCommunityMenuOpen(false);
 
     triggerToast(
       adminClerkAuthRequested

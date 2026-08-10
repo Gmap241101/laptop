@@ -64,6 +64,17 @@ assert.ok(
   'admin app session invalidation effect must react to the resolved current administrator account'
 );
 
+for (const marker of [
+  "replaceAppPath('admin');",
+  "setView('admin');",
+  "setAdminTab('dashboard');",
+]) {
+  assert.ok(
+    adminAuthSource.includes(marker),
+    `successful administrator authentication must explicitly commit the /admin route and administrator view: ${marker}`
+  );
+}
+
 const adminManagementSource = readFileSync('src/features/auth/useAdminAccountManagementController.js', 'utf8');
 for (const marker of [
   'clerkStagingClient.provisionAdminClerkIdentity',

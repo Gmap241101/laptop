@@ -60,3 +60,16 @@ Local build result:
 - build:staging prebuild audits: PASS; final exit 127 only because local vite executable is unavailable
 - backend/API/migration/environment changes: none
 - actual browser revalidation after hotfix: pending
+
+2026-08-10 user pending-login session + administrator post-login route hotfix validation:
+- observed normal-user symptom: Firebase compatibility authentication was created during Phase 23 login / Client Trust, but before the application user session was committed the legacy session-expiry effect displayed `로그인 세션 정보를 확인할 수 없어 다시 로그인이 필요합니다.` and forced reauthentication
+- observed administrator symptom: Clerk + Firebase + PostgreSQL administrator authority succeeded, but the SPA could land on the normal-user home; browser Back revealed the authenticated /admin workspace
+- user root cause: missing local user session was treated as invalid even while the Phase 23 Clerk login was intentionally incomplete on /login
+- user fix: preserve that intermediate compatibility session only when userAuth=clerk is requested and pathname is /login; all non-login / non-Phase23 missing-session invalidation remains unchanged
+- administrator root cause: final administrator authentication saved authority/session state without explicitly committing the SPA path/view to /admin
+- administrator fix: successful finalization now commits setAdminTab('dashboard'), replaceAppPath('admin'), setView('admin'), and closes the community menu
+- Phase 23 user lifecycle smoke extended with the pending /login compatibility-session contract: PASS
+- Phase 22 administrator account/auth smoke extended with the explicit /admin route/view completion contract: PASS
+- npm run verify:phase23 after both fixes: PASS / exit 0
+- backend/API/migration/environment/Firestore Rules changes: none
+- actual browser revalidation after this hotfix: pending

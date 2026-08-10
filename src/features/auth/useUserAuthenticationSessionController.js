@@ -13,6 +13,7 @@ import {
   readUserAuthSession,
   saveUserAuthSession,
 } from './authSessionService.js';
+import { readUserAccountLifecycleCutoverConfig } from './userAccountLifecycleCutover.js';
 import { createDefaultUserAuthForm } from './useUserLoginController.js';
 
 export const useUserAuthenticationSessionState = ({ userSessionPolicy }) => {
@@ -171,6 +172,16 @@ export default function useUserAuthenticationSessionController({
       !userAuthSessionUid ||
       userAuthSessionUid !== firebaseAuthUser.uid
     ) {
+      const lifecycleConfig = readUserAccountLifecycleCutoverConfig();
+      const isPendingLoginCompatibilitySession =
+        lifecycleConfig.userAuthRequested &&
+        typeof window !== 'undefined' &&
+        window.location.pathname.replace(/\/+$/, '') === '/login';
+
+      if (isPendingLoginCompatibilitySession) {
+        return undefined;
+      }
+
       void expireCurrentUserSession(
         '로그인 세션 정보를 확인할 수 없어 다시 로그인이 필요합니다.'
       );

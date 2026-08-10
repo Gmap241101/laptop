@@ -41,6 +41,18 @@ for (const marker of [
   'getUserClerkSession', 'user_clerk_session_identity_mismatch',
 ]) assert.ok(loginSource.includes(marker), `missing Phase 23 user login marker: ${marker}`);
 
+const userSessionSource = readFileSync('src/features/auth/useUserAuthenticationSessionController.js', 'utf8');
+for (const marker of [
+  'readUserAccountLifecycleCutoverConfig',
+  'lifecycleConfig.userAuthRequested',
+  "window.location.pathname.replace(/\\/+$/, '') === '/login'",
+]) {
+  assert.ok(
+    userSessionSource.includes(marker),
+    `user session expiry must preserve the Firebase compatibility session only while the Phase 23 Clerk login is pending on /login: ${marker}`
+  );
+}
+
 const panelSource = readFileSync('src/user/UserAuthPanel.jsx', 'utf8');
 for (const marker of ['Clerk 새 기기 확인 인증코드', '인증코드 확인', 'clientTrustRequired', 'one-time-code']) {
   assert.ok(panelSource.includes(marker), `missing Phase 23 user Client Trust UI marker: ${marker}`);

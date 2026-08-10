@@ -59,3 +59,14 @@ Actual Phase 23 staging validation exposed a frontend-only administrator session
 The invalidation effect now waits for `currentAuthRoleReady` before treating a missing `currentAuthAdminAccount` as an invalid administrator session, and it reacts to the resolved current administrator account. This preserves the existing Clerk + PostgreSQL administrator authority and Firebase compatibility credential while preventing a transient role-loading `null` from clearing a freshly established administrator app session.
 
 No backend API, migration, Firestore path, Clerk policy, environment variable, or Production setting changed in this hotfix.
+
+## 2026-08-10 user pending-login session + administrator post-login route hotfix
+
+Actual staging revalidation exposed two additional frontend-only routing/session races:
+
+1. During a Phase 23 normal-user Clerk Client Trust flow, Firebase compatibility authentication can exist before the application user session is committed. The legacy session-expiry effect interpreted that intentional intermediate `/login` state as a missing app session and signed the Firebase user out with the message `로그인 세션 정보를 확인할 수 없어 다시 로그인이 필요합니다.`
+2. Successful administrator authentication committed the Clerk/Firebase/PostgreSQL authority and local administrator session but did not explicitly commit the SPA route/view to `/admin`. If another route update occurred during the authentication transition, the administrator could land on the normal-user home even though administrator authentication had succeeded; browser Back exposed the already-authenticated administrator workspace.
+
+The normal-user session-expiry effect now preserves a missing local app session only when Phase 23 Clerk user authority is requested and the browser is still on `/login`, which is the expected Client Trust / login-completion boundary. Legacy Firebase-only behavior outside that boundary is unchanged. Once navigation leaves `/login`, a missing or mismatched app session is still invalidated normally.
+
+The administrator finalization path now explicitly commits `dashboard`, `/admin`, and `view='admin'` immediately after the authenticated administrator session is saved. No Clerk, PostgreSQL, Firebase, backend, migration, Rules, environment-variable, or Production authority policy is relaxed by this hotfix.
