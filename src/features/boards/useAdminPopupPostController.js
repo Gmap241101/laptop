@@ -10,6 +10,7 @@ import {
   POPUP_POSTS_COLLECTION_REF,
   db,
 } from '../../firebase.js';
+import { syncSiteContentDomainFromFirestore, SITE_CONTENT_DOMAINS } from '../content/siteContentCutover.js';
 import {
   isRichTextEmpty,
   legacyTextToRichHtml,
@@ -236,6 +237,7 @@ export default function useAdminPopupPostController({
       });
 
       await batch.commit();
+      await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.POPUP });
 
       triggerToast(
         `팝업을 ${isEditing ? '수정' : '등록'}했습니다.`,
@@ -268,6 +270,7 @@ export default function useAdminPopupPostController({
         enabled: !Boolean(post.enabled),
         updatedAt: serverTimestamp(),
       });
+      await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.POPUP });
       triggerToast(
         `팝업을 ${post.enabled ? '사용안함' : '사용함'}으로 변경했습니다.`,
         'success'
@@ -320,6 +323,7 @@ export default function useAdminPopupPostController({
         });
       });
       await batch.commit();
+      await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.POPUP });
     } catch (error) {
       console.error('Popup order update error:', error);
       triggerToast('팝업 순서 변경에 실패했습니다.', 'error');
@@ -354,6 +358,7 @@ export default function useAdminPopupPostController({
             });
           });
           await batch.commit();
+      await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.POPUP });
           if (popupPostDialog?.postId === post.id) {
             setPopupPostDialog(null);
             setPopupPostForm(createDefaultPopupPostForm());

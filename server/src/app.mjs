@@ -290,6 +290,10 @@ export const createRequestHandler = ({
     async bulkCreate() { const error = new Error('Asset service is not configured.'); error.code = 'asset_service_not_configured'; throw error; },
     async saveCategories() { const error = new Error('Asset service is not configured.'); error.code = 'asset_service_not_configured'; throw error; },
   },
+  siteContentService = {
+    async getDomain() { const error = new Error('Site content service is not configured.'); error.code = 'site_content_not_configured'; throw error; },
+    async syncDomain() { const error = new Error('Site content service is not configured.'); error.code = 'site_content_not_configured'; throw error; },
+  },
 }) => {
   if (typeof databaseCheck !== 'function') {
     throw new TypeError('databaseCheck must be a function.');
@@ -390,6 +394,11 @@ export const createRequestHandler = ({
     || typeof assetService.bulkCreate !== 'function'
     || typeof assetService.saveCategories !== 'function') {
     throw new TypeError('assetService Phase 20 methods are required.');
+  }
+  if (!siteContentService
+    || typeof siteContentService.getDomain !== 'function'
+    || typeof siteContentService.syncDomain !== 'function') {
+    throw new TypeError('siteContentService Phase 24 methods are required.');
   }
 
 
@@ -494,6 +503,8 @@ export const createRequestHandler = ({
           adminAssets: '/api/admin/assets',
           adminAssetBulk: '/api/admin/assets/bulk',
           adminAssetCategories: '/api/admin/assets/categories',
+          siteContent: '/api/site-content/:domain',
+          adminSiteContentSync: '/api/admin/site-content/:domain/sync',
         },
         headers,
       );
@@ -717,6 +728,46 @@ export const createRequestHandler = ({
       } catch (error) {
         console.warn('[user-auth] withdrawal finalization failed', { requestId, code: error?.code, name: error?.name });
         writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'user_withdrawal_finalize_failed' }, headers);
+      }
+      return;
+    }
+
+    const siteContentReadMatch = url.pathname.match(/^\/api\/site-content\/([^/]+)$/);
+    if (request.method === 'GET' && siteContentReadMatch) {
+      try {
+        const content = await siteContentService.getDomain(decodeURIComponent(siteContentReadMatch[1]));
+        writeJson(response, 200, { ...basePayload, siteContent: content }, headers);
+      } catch (error) {
+        console.warn('[site-content] PostgreSQL content read failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'site_content_read_failed' }, headers);
+      }
+      return;
+    }
+
+    const adminSiteContentSyncMatch = url.pathname.match(/^\/api\/admin\/site-content\/([^/]+)\/sync$/);
+    if (request.method === 'POST' && adminSiteContentSyncMatch) {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      try {
+        const adminAuth = await adminClerkAuthService.getCurrent({ clerkUserId: auth.userId });
+        if (adminAuth.admin.firebaseUid !== firebaseIdentity.uid) {
+          const mismatch = new Error('Firebase administrator compatibility identity does not match the Clerk registry.');
+          mismatch.code = 'site_content_admin_identity_mismatch';
+          mismatch.status = 409;
+          throw mismatch;
+        }
+        const body = await readJsonBody(request, { maxBytes: 512 * 1024 });
+        const content = await siteContentService.syncDomain({
+          domain: decodeURIComponent(adminSiteContentSyncMatch[1]),
+          documents: body?.documents,
+          actorClerkUserId: auth.userId,
+        });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, siteContent: content }, headers);
+      } catch (error) {
+        console.warn('[site-content] PostgreSQL content sync failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'site_content_sync_failed' }, headers);
       }
       return;
     }

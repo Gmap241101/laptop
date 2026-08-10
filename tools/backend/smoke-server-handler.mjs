@@ -324,6 +324,36 @@ const assetService = {
   async saveCategories(firebaseIdentity) { return { admin: { uid: firebaseIdentity.uid }, authority: 'postgresql', firestoreMirror: 'synced', catalog: assetCatalogSmoke }; },
 };
 
+const siteContentService = {
+  async getDomain(domain) {
+    if (domain !== 'home') throw new Error('Unexpected Phase 24 site-content read domain.');
+    return {
+      source: 'postgresql',
+      domain,
+      synchronized: true,
+      documentCount: 2,
+      documents: [
+        { documentKey: 'homePage/config', payload: { heroTitle: 'Smoke Home' }, enabled: true, sortOrder: 0 },
+        { documentKey: 'homeBanners/banner-smoke', payload: { title: 'Smoke Banner' }, enabled: true, sortOrder: 1 },
+      ],
+      sync: { sourceMode: 'firestore-write-through', sourceHash: 'phase24-smoke', documentCount: 2, syncedAt: '2026-08-10T00:00:00.000Z' },
+    };
+  },
+  async syncDomain({ domain, documents, actorClerkUserId }) {
+    if (domain !== 'home' || actorClerkUserId !== 'user_smoke' || !Array.isArray(documents) || documents.length !== 1) {
+      throw new Error('Unexpected Phase 24 site-content sync input.');
+    }
+    return {
+      source: 'postgresql',
+      domain,
+      synchronized: true,
+      documentCount: documents.length,
+      documents,
+      sync: { sourceMode: 'firestore-write-through', sourceHash: 'phase24-sync-smoke', documentCount: documents.length, syncedAt: '2026-08-10T00:00:01.000Z' },
+    };
+  },
+};
+
 const adminRentalRequestService = {
   async bootstrap(firebaseIdentity) {
     if (firebaseIdentity.uid !== 'firebase_uid_smoke') throw new Error('Unexpected admin bootstrap identity.');
@@ -417,6 +447,7 @@ const server = createServer(
     rentalRequestUserActionService,
     adminRentalRequestService,
     assetService,
+    siteContentService,
   }),
 );
 
@@ -843,6 +874,21 @@ const userWithdrawalFinalize = await fetch(baseUrl + '/api/users/me/withdrawal/f
 const userWithdrawalFinalizeBody = await userWithdrawalFinalize.json();
 if (userWithdrawalFinalize.status !== 200 || userWithdrawalFinalizeBody.withdrawal?.authority !== 'postgresql' || userWithdrawalFinalizeBody.withdrawal?.withdrawn !== true || userWithdrawalFinalizeBody.withdrawal?.clerkDeleted !== true) throw new Error('Phase 23 user withdrawal finalization HTTP response is invalid.');
 
+const siteContentRead = await fetch(baseUrl + '/api/site-content/home', { headers: { Origin: allowedOrigin } });
+const siteContentReadBody = await siteContentRead.json();
+if (siteContentRead.status !== 200 || siteContentReadBody.siteContent?.source !== 'postgresql' || siteContentReadBody.siteContent?.domain !== 'home' || siteContentReadBody.siteContent?.documentCount !== 2) {
+  throw new Error('Phase 24 site-content public read HTTP response is invalid.');
+}
+const siteContentSync = await fetch(baseUrl + '/api/admin/site-content/home/sync', {
+  method: 'POST',
+  headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+  body: JSON.stringify({ documents: [{ documentKey: 'homePage/config', payload: { heroTitle: 'Updated Smoke Home' }, enabled: true, sortOrder: 0 }] }),
+});
+const siteContentSyncBody = await siteContentSync.json();
+if (siteContentSync.status !== 200 || siteContentSyncBody.authorized !== true || siteContentSyncBody.siteContent?.source !== 'postgresql' || siteContentSyncBody.siteContent?.documentCount !== 1) {
+  throw new Error('Phase 24 administrator site-content sync HTTP response is invalid.');
+}
+
 const invalidFirebase = await fetch(`${baseUrl}/api/users/me/legacy/firebase`, {
   method: 'POST',
   headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer wrong-token' },
@@ -853,4 +899,4 @@ const missing = await fetch(`${baseUrl}/missing`);
 if (missing.status !== 404) throw new Error(`/missing returned ${missing.status}`);
 
 await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, Phase 16 rental-request POST, Phase 17 admin bootstrap/list/dashboard/status + Phase 18 sync/events/edit/memo/restore + Phase 19 user edit/cancel/extend/admin-review + Phase 20 asset catalog/bootstrap/CRUD/bulk/categories + Phase 21 member profile/status authority/admin registry + Phase 22 account recovery/admin Clerk session/migration/provision + Phase 23 user Clerk session/migration/provision/password/withdrawal authority, CORS, 404)');
+console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, Phase 16 rental-request POST, Phase 17 admin bootstrap/list/dashboard/status + Phase 18 sync/events/edit/memo/restore + Phase 19 user edit/cancel/extend/admin-review + Phase 20 asset catalog/bootstrap/CRUD/bulk/categories + Phase 21 member profile/status authority/admin registry + Phase 22 account recovery/admin Clerk session/migration/provision + Phase 23 user Clerk session/migration/provision/password/withdrawal authority + Phase 24 site-content public read/admin sync, CORS, 404)');

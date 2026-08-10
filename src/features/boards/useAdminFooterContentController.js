@@ -13,6 +13,7 @@ import {
   SITE_FOOTER_CONFIG_DOC_REF,
   db,
 } from '../../firebase.js';
+import { syncSiteContentDomainFromFirestore, SITE_CONTENT_DOMAINS } from '../content/siteContentCutover.js';
 import {
   isRichTextEmpty,
   legacyTextToRichHtml,
@@ -172,6 +173,7 @@ export default function useAdminFooterContentController({
         },
         { merge: true }
       );
+      await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.FOOTER });
 
       triggerToast('푸터 공통 정보를 저장했습니다.', 'success');
       return true;
@@ -393,6 +395,7 @@ export default function useAdminFooterContentController({
         createdAt: editingPage?.createdAt || serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+      await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.FOOTER });
 
       triggerToast(
         `푸터 메뉴 페이지를 ${isEditing ? '수정' : '등록'}했습니다.`,
@@ -427,6 +430,7 @@ export default function useAdminFooterContentController({
         enabled: !Boolean(page.enabled),
         updatedAt: serverTimestamp(),
       });
+      await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.FOOTER });
       triggerToast(
         `푸터 메뉴 페이지를 ${
           page.enabled ? '사용안함' : '사용함'
@@ -479,6 +483,7 @@ export default function useAdminFooterContentController({
 
     try {
       await batch.commit();
+      await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.FOOTER });
     } catch (error) {
       console.error('Footer page move error:', error);
       triggerToast('푸터 메뉴 순서 변경에 실패했습니다.', 'error');
@@ -503,6 +508,7 @@ export default function useAdminFooterContentController({
         setFooterPageDeletingId(page.id);
         try {
           await deleteDoc(doc(FOOTER_PAGES_COLLECTION_REF, page.id));
+          await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.FOOTER });
           if (selectedFooterPageId === page.id) {
             setSelectedFooterPageId('');
           }

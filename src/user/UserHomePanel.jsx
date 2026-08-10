@@ -9,12 +9,17 @@ import {
   PackageOpen,
   XCircle,
 } from 'lucide-react';
-import { getDoc, getDocs, query, where } from 'firebase/firestore';
+import { getDoc, getDocs, limit, query, where } from 'firebase/firestore';
 
 import {
   HOME_BANNERS_COLLECTION_REF,
   HOME_PAGE_CONFIG_DOC_REF,
 } from '../firebase.js';
+import {
+  readSiteContentCutoverConfig,
+  requestSiteContentDomain,
+  SITE_CONTENT_DOMAINS,
+} from '../features/content/siteContentCutover.js';
 
 const PROMOTION_LAYOUTS = {
   '2x1': { rows: 1, slots: 2, aspectClass: 'aspect-square' },
@@ -121,20 +126,26 @@ export default function UserHomePanel({ ctx }) {
     let cancelled = false;
 
     const loadHomeBanners = async () => {
+      const cutover = readSiteContentCutoverConfig();
       try {
-        const enabledQuery = query(
-          HOME_BANNERS_COLLECTION_REF,
-          where('enabled', '==', true)
-        );
+        if (cutover.readRequested) {
+          try {
+            const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.HOME, config: cutover });
+            if (cancelled) return;
+            setBanners(content.documents
+              .filter((item) => item.key.startsWith('homeBanners/') && item.payload?.enabled !== false)
+              .map((item) => ({ ...item.payload, id: item.payload?.id || item.key.split('/').pop() })));
+            setBannersReady(true);
+            setBannerLoadError('');
+            return;
+          } catch (postgresError) {
+            console.warn('PostgreSQL home banner read fallback:', postgresError);
+          }
+        }
+        const enabledQuery = query(HOME_BANNERS_COLLECTION_REF, where('enabled', '==', true), limit(50));
         const snapshot = await getDocs(enabledQuery);
         if (cancelled) return;
-
-        setBanners(
-          snapshot.docs.map((item) => ({
-            id: item.id,
-            ...item.data(),
-          }))
-        );
+        setBanners(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
         setBannersReady(true);
         setBannerLoadError('');
       } catch (error) {
@@ -146,29 +157,37 @@ export default function UserHomePanel({ ctx }) {
     };
 
     void loadHomeBanners();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
     let cancelled = false;
 
+    const applyConfig = (data = {}) => {
+      setHomeConfig({
+        heroIntervalSeconds: [5, 7, 10].includes(Number(data.heroIntervalSeconds)) ? Number(data.heroIntervalSeconds) : 7,
+        promotionLayout: PROMOTION_LAYOUTS[data.promotionLayout] ? data.promotionLayout : '2x1',
+      });
+    };
+
     const loadHomeConfig = async () => {
+      const cutover = readSiteContentCutoverConfig();
       try {
+        if (cutover.readRequested) {
+          try {
+            const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.HOME, config: cutover });
+            const document = content.documents.find((item) => item.key === 'homePage/config');
+            if (!document?.payload) throw new Error('PostgreSQL home page config is missing.');
+            if (cancelled) return;
+            applyConfig(document.payload);
+            return;
+          } catch (postgresError) {
+            console.warn('PostgreSQL home config read fallback:', postgresError);
+          }
+        }
         const snapshot = await getDoc(HOME_PAGE_CONFIG_DOC_REF);
         if (cancelled) return;
-
-        const data = snapshot.exists() ? snapshot.data() : {};
-        setHomeConfig({
-          heroIntervalSeconds: [5, 7, 10].includes(Number(data.heroIntervalSeconds))
-            ? Number(data.heroIntervalSeconds)
-            : 7,
-          promotionLayout: PROMOTION_LAYOUTS[data.promotionLayout]
-            ? data.promotionLayout
-            : '2x1',
-        });
+        applyConfig(snapshot.exists() ? snapshot.data() : {});
       } catch (error) {
         if (cancelled) return;
         console.error('User home config load error:', error);
@@ -176,10 +195,7 @@ export default function UserHomePanel({ ctx }) {
     };
 
     void loadHomeConfig();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {

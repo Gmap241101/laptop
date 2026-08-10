@@ -87,7 +87,10 @@
     "verify:phase22": "npm run verify:phase21 && npm run server:account-auth:smoke && npm run frontend:account-auth:smoke",
     "server:user-clerk-lifecycle:smoke": "node tools/backend/smoke-user-clerk-auth-lifecycle.mjs",
     "frontend:user-clerk-lifecycle:smoke": "node tools/frontend/smoke-user-clerk-auth-lifecycle.mjs",
-    "verify:phase23": "npm run verify:phase22 && npm run server:user-clerk-lifecycle:smoke && npm run frontend:user-clerk-lifecycle:smoke"
+    "verify:phase23": "npm run verify:phase22 && npm run server:user-clerk-lifecycle:smoke && npm run frontend:user-clerk-lifecycle:smoke",
+    "server:site-content:smoke": "node tools/backend/smoke-site-content-read-cutover.mjs",
+    "frontend:site-content:smoke": "node tools/frontend/smoke-site-content-read-cutover.mjs",
+    "verify:phase24": "npm run verify:phase23 && npm run server:site-content:smoke && npm run frontend:site-content:smoke"
   },
   "dependencies": {
     "firebase": "^10.14.1",

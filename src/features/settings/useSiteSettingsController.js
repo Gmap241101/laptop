@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
-import { onSnapshot } from 'firebase/firestore';
+import { getDoc, onSnapshot } from 'firebase/firestore';
 import { SITE_SETTINGS_DOC_REF } from '../../firebase.js';
 import {
   DEFAULT_SITE_SETTINGS,
   normalizeSiteSettings,
 } from '../../utils/systemSettings.js';
+import {
+  readSiteContentCutoverConfig,
+  requestSiteContentDomain,
+  SITE_CONTENT_DOMAINS,
+} from '../content/siteContentCutover.js';
 
 const applySiteDocumentPresentation = (siteSettings) => {
   if (typeof document === 'undefined') {
@@ -53,24 +58,51 @@ export default function useSiteSettingsController() {
 
   useEffect(() => {
     setSiteSettingsReady(false);
+    const cutover = readSiteContentCutoverConfig();
+
+    if (cutover.readRequested) {
+      let cancelled = false;
+      const load = async () => {
+        try {
+          const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.SITE_SETTINGS, config: cutover });
+          const document = content?.documents?.find((item) => item.key === 'siteSettings/config');
+          if (!document?.payload) throw Object.assign(new Error('PostgreSQL site settings document is missing.'), { code: 'site_settings_postgres_missing' });
+          if (cancelled) return;
+          setSiteSettings(normalizeSiteSettings(document.payload));
+          setSiteSettingsLoadErrorMessage('');
+          setSiteSettingsReady(true);
+          return;
+        } catch (postgresError) {
+          try {
+            const snapshot = await getDoc(SITE_SETTINGS_DOC_REF);
+            if (cancelled) return;
+            setSiteSettings(normalizeSiteSettings(snapshot.exists() ? snapshot.data() : DEFAULT_SITE_SETTINGS));
+            setSiteSettingsLoadErrorMessage('');
+            setSiteSettingsReady(true);
+          } catch (firestoreError) {
+            if (cancelled) return;
+            console.error('Site settings PostgreSQL + Firestore fallback error:', postgresError, firestoreError);
+            setSiteSettings(DEFAULT_SITE_SETTINGS);
+            setSiteSettingsLoadErrorMessage('사이트 공통 설정을 불러오지 못했습니다. 기본 설정으로 표시합니다.');
+            setSiteSettingsReady(true);
+          }
+        }
+      };
+      void load();
+      return () => { cancelled = true; };
+    }
 
     const unsubscribe = onSnapshot(
       SITE_SETTINGS_DOC_REF,
       (snapshot) => {
-        setSiteSettings(
-          normalizeSiteSettings(
-            snapshot.exists() ? snapshot.data() : DEFAULT_SITE_SETTINGS
-          )
-        );
+        setSiteSettings(normalizeSiteSettings(snapshot.exists() ? snapshot.data() : DEFAULT_SITE_SETTINGS));
         setSiteSettingsLoadErrorMessage('');
         setSiteSettingsReady(true);
       },
       (error) => {
         console.error('Site settings sync error:', error);
         setSiteSettings(DEFAULT_SITE_SETTINGS);
-        setSiteSettingsLoadErrorMessage(
-          '사이트 공통 설정을 불러오지 못했습니다. 기본 설정으로 표시합니다.'
-        );
+        setSiteSettingsLoadErrorMessage('사이트 공통 설정을 불러오지 못했습니다. 기본 설정으로 표시합니다.');
         setSiteSettingsReady(true);
       }
     );

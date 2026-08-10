@@ -25,6 +25,7 @@ import {
   HOME_PAGE_CONFIG_DOC_REF,
   db,
 } from '../firebase.js';
+import { syncSiteContentDomainFromFirestore, SITE_CONTENT_DOMAINS } from '../features/content/siteContentCutover.js';
 
 const PLACEMENT_CONFIG = {
   hero: {
@@ -349,6 +350,7 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
         updatedByUid: authenticatedAdminId || '',
         updatedByName: authenticatedAdminAccount?.userName || authenticatedAdminAccount?.adminLoginId || '관리자',
       }, { merge: true });
+      await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.HOME });
       configBaselineRef.current = JSON.stringify(configDraft);
       triggerToast('초기화면 표시 설정을 저장했습니다.', 'success');
     } catch (error) {
@@ -462,6 +464,7 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
       });
 
       await batch.commit();
+      await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.HOME });
       triggerToast(`${panelConfig.itemLabel}를 ${form.id ? '수정' : '등록'}했습니다.`, 'success');
       setEditing(false);
       const next = createForm(placement);
@@ -483,6 +486,7 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
         enabled: !Boolean(banner.enabled),
         updatedAt: serverTimestamp(),
       });
+      await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.HOME });
       triggerToast(`${panelConfig.itemLabel}를 ${banner.enabled ? '사용안함' : '사용함'}으로 변경했습니다.`, 'success');
     } catch (error) {
       console.error('Home banner toggle error:', error);
@@ -511,6 +515,7 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
         });
       });
       await batch.commit();
+      await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.HOME });
     } catch (error) {
       console.error('Home banner order error:', error);
       triggerToast('배너 순서 변경에 실패했습니다.', 'error');
@@ -536,6 +541,7 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
             });
           });
           await batch.commit();
+          await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.HOME });
           if (form.id === banner.id) setEditing(false);
           triggerToast(`${panelConfig.itemLabel}를 삭제했습니다.`, 'success');
         } catch (error) {

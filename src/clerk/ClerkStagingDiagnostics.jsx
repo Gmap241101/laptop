@@ -72,6 +72,12 @@ import {
   readUserAuthSessionTrace,
   subscribeUserAuthSessionTrace,
 } from '../features/auth/authSessionService.js';
+import {
+  getLatestSiteContentObservation,
+  readSiteContentCutoverConfig,
+  subscribeSiteContentObservation,
+  syncAllSiteContentDomainsFromFirestore,
+} from '../features/content/siteContentCutover.js';
 import { clerkStagingClient } from './clerkStagingClient.js';
 
 const panelStyle = {
@@ -125,6 +131,7 @@ export default function ClerkStagingDiagnostics() {
   const memberAuthorityConfig = useMemo(() => readMemberAuthorityCutoverConfig(), []);
   const accountAuthConfig = useMemo(() => readAccountAuthCutoverConfig(), []);
   const userLifecycleConfig = useMemo(() => readUserAccountLifecycleCutoverConfig(), []);
+  const siteContentConfig = useMemo(() => readSiteContentCutoverConfig(), []);
   const [state, setState] = useState({
     phase: requested ? 'loading' : 'hidden',
     signedIn: false,
@@ -287,6 +294,14 @@ export default function ClerkStagingDiagnostics() {
     withdrawalFirebaseCleanup: null,
     userLifecycleError: null,
     userSessionTrace: readUserAuthSessionTrace(),
+    siteContentReadRequested: siteContentConfig.readRequested,
+    siteContentWriteRequested: siteContentConfig.writeThroughRequested,
+    siteContentReadSource: siteContentConfig.readRequested ? 'awaiting-content-view' : null,
+    siteContentLastDomain: null,
+    siteContentDocumentCount: null,
+    siteContentPostgresSync: null,
+    siteContentSyncAt: null,
+    siteContentError: null,
     error: null,
   });
 
@@ -742,6 +757,33 @@ export default function ClerkStagingDiagnostics() {
     return subscribeUserAccountLifecycleObservation(applyObservation);
   }, [requested]);
 
+  useEffect(() => {
+    if (!requested) return undefined;
+    const applyObservation = (observation) => {
+      setState((current) => ({
+        ...current,
+        siteContentReadRequested: observation && Object.prototype.hasOwnProperty.call(observation, 'readRequested')
+          ? Boolean(observation.readRequested)
+          : current.siteContentReadRequested,
+        siteContentWriteRequested: observation && Object.prototype.hasOwnProperty.call(observation, 'writeThroughRequested')
+          ? Boolean(observation.writeThroughRequested)
+          : current.siteContentWriteRequested,
+        siteContentReadSource: observation?.readSource || current.siteContentReadSource,
+        siteContentLastDomain: observation?.domain || current.siteContentLastDomain,
+        siteContentDocumentCount: observation && Object.prototype.hasOwnProperty.call(observation, 'documentCount')
+          ? observation.documentCount
+          : current.siteContentDocumentCount,
+        siteContentPostgresSync: observation?.postgresSync || current.siteContentPostgresSync,
+        siteContentSyncAt: observation?.syncAt || current.siteContentSyncAt,
+        siteContentError: observation && Object.prototype.hasOwnProperty.call(observation, 'error')
+          ? observation.error || null
+          : current.siteContentError,
+      }));
+    };
+    applyObservation(getLatestSiteContentObservation());
+    return subscribeSiteContentObservation(applyObservation);
+  }, [requested]);
+
   if (!requested) return null;
 
   const run = async (operation) => {
@@ -945,7 +987,7 @@ export default function ClerkStagingDiagnostics() {
 
   return (
     <aside style={panelStyle} aria-label="Clerk staging diagnostics">
-      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 23</div>
+      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 24</div>
       <div>SDK: {state.phase === 'loading' ? 'loading' : state.phase}</div>
       <div>Signed in: {state.signedIn ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Clerk user: {state.userId || '-'}</div>
@@ -1175,6 +1217,16 @@ export default function ClerkStagingDiagnostics() {
           : '-'}
       </div>
 
+      <div style={{ marginTop: '6px', fontWeight: 700 }}>Phase 24 site shell content PostgreSQL read + write-through</div>
+      <div>Site content PostgreSQL requested: {state.siteContentReadRequested ? 'yes' : 'no'}</div>
+      <div>Site content write-through requested: {state.siteContentWriteRequested ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Site content active source: {state.siteContentReadSource || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Site content last domain: {state.siteContentLastDomain || '-'}</div>
+      <div>Site content document count: {state.siteContentDocumentCount ?? '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Site content PostgreSQL sync: {state.siteContentPostgresSync || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Site content synced at: {state.siteContentSyncAt || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Site content error: {state.siteContentError || '-'}</div>
+
       {state.error ? (
         <div role="alert" style={{ marginTop: '8px', color: '#b91c1c', overflowWrap: 'anywhere' }}>
           {state.error}
@@ -1247,6 +1299,14 @@ export default function ClerkStagingDiagnostics() {
               onClick={syncAndVerifyRentalRequestParity}
             >
               {'대여신청 Shadow 동기화·병행검증'}
+            </button>
+            <button
+              type="button"
+              style={buttonStyle}
+              disabled={!state.firebaseSignedIn || !state.siteContentWriteRequested}
+              onClick={() => run(() => syncAllSiteContentDomainsFromFirestore({ config: siteContentConfig }))}
+            >
+              Site content 전체 동기화
             </button>
             <button type="button" style={buttonStyle} onClick={() => run(() => clerkStagingClient.signOut())}>
               Clerk 로그아웃

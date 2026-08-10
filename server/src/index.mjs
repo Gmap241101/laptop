@@ -38,6 +38,8 @@ import { createAdminIdentityRepository } from './auth/admin-identity-repository.
 import { createAdminClerkAuthService } from './auth/admin-clerk-auth-service.mjs';
 import { createUserClerkAuthRepository } from './auth/user-clerk-auth-repository.mjs';
 import { createUserClerkAuthService } from './auth/user-clerk-auth-service.mjs';
+import { createSiteContentRepository } from './content/site-content-repository.mjs';
+import { createSiteContentService } from './content/site-content-service.mjs';
 
 const config = readServerConfig();
 const authenticateRequest = createClerkSessionAuthenticator(config);
@@ -89,6 +91,8 @@ const firestoreMemberAuthorityClient = config.firebaseProjectId
   : null;
 const memberAuthorityRepository = createMemberAuthorityRepository(pool);
 const userClerkAuthRepository = createUserClerkAuthRepository(pool);
+const siteContentRepository = createSiteContentRepository(pool);
+const siteContentService = createSiteContentService({ repository: siteContentRepository });
 const userClerkAuthService = firestoreMemberAuthorityClient
   ? createUserClerkAuthService({
       repository: userClerkAuthRepository,
@@ -269,6 +273,7 @@ const server = createServer(
     rentalRequestUserActionService,
     adminRentalRequestService,
     assetService,
+    siteContentService,
     memberAuthorityRepository,
   }),
 );
@@ -295,6 +300,7 @@ server.listen(config.port, '0.0.0.0', () => {
     userClerkAuthentication: config.firebaseProjectId ? 'clerk-authoritative-firebase-compatibility' : 'disabled',
     adminAuthentication: config.firebaseProjectId ? 'clerk-authoritative-firebase-compatibility-session' : 'disabled',
     assetDomain: config.firebaseProjectId ? 'postgresql-read-write-firestore-compatibility-mirror' : 'disabled',
+    siteContent: 'postgresql-preferred-firestore-write-through',
   });
 });
 

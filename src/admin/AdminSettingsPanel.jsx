@@ -36,6 +36,7 @@ import {
   isValidHexColor,
   normalizeSiteSettings,
 } from '../utils/systemSettings.js';
+import { syncSiteContentDomainFromFirestore, SITE_CONTENT_DOMAINS } from '../features/content/siteContentCutover.js';
 import {
   RESTORE_CONFIRM_TEXT,
   RESTORE_MODE,
@@ -417,6 +418,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
         },
         { merge: true }
       );
+      await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.SITE_SETTINGS });
       await writeAuditLog({
         action: sectionMeta.action,
         section: sectionMeta.section,

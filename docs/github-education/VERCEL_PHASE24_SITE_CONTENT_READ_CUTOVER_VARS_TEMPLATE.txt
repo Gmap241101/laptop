@@ -1,0 +1,23 @@
+# Phase 24 - Site Content PostgreSQL Preferred Read + Firestore Write-through
+# Vercel project: mkrental
+# Environment: Production (this Vercel project is used as Staging/Test)
+
+VITE_SITE_CONTENT_POSTGRES_READ_ENABLED=true
+VITE_SITE_CONTENT_WRITE_THROUGH_ENABLED=true
+
+# Keep all previously enabled Phase 9-23 staging variables.
+# Phase 24 query/session latches:
+#   siteContent=postgres
+#   siteContentWrite=postgres
+# Rollback:
+#   siteContent=firestore
+#   siteContentWrite=firestore
+#
+# Full user validation URL:
+# https://mkrental.vercel.app/?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWrite=postgres&restrictionRead=postgres&restrictionWatcher=off&restrictionWrite=postgres&rentalRequestRead=postgres&rentalRequestWatcher=off&rentalRequestWrite=postgres&rentalRequestActionWrite=postgres&assetRead=postgres&accountRecovery=postgres&userAuth=clerk&userLifecycle=clerk&siteContent=postgres
+#
+# Full administrator validation URL:
+# https://mkrental.vercel.app/admin?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWrite=postgres&restrictionRead=postgres&restrictionWatcher=off&restrictionWrite=postgres&rentalRequestRead=postgres&rentalRequestWatcher=off&rentalRequestWrite=postgres&adminRequestRead=postgres&adminRequestWrite=postgres&rentalRequestActionWrite=postgres&assetRead=postgres&assetWrite=postgres&adminIdentity=postgres&adminAuth=clerk&siteContent=postgres&siteContentWrite=postgres
+#
+# VITE_* values are build-time. Redeploy after changing them.
+# Never expose DATABASE_URL, CLERK_SECRET_KEY, CLERK_JWT_KEY, or Firebase service-account private keys through VITE_*.

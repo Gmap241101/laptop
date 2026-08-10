@@ -440,9 +440,26 @@ for (const marker of ['VITE_USER_CLERK_AUTH_ENABLED', 'VITE_USER_CLERK_LIFECYCLE
   if (!userLifecycleCutover.includes(marker)) throw new Error(`Phase 23 frontend user lifecycle cutover marker is missing: ${marker}`);
 }
 
+const phase24Migration = readFileSync('server/migrations/016_phase24_site_content_read_cutover.sql', 'utf8');
+for (const marker of ['app_site_content_documents', 'app_site_content_syncs', "'public_read', 'postgresql-preferred-staging-opt-in'", "'admin_write', 'firestore-authoritative-postgresql-write-through'"]) {
+  if (!phase24Migration.includes(marker)) throw new Error(`Phase 24 migration marker is missing: ${marker}`);
+}
+const siteContentRepository = readFileSync('server/src/content/site-content-repository.mjs', 'utf8');
+for (const marker of ['getDomain(domain)', 'replaceDomain({ domain, documents', 'app_site_content_documents', 'app_site_content_syncs']) {
+  if (!siteContentRepository.includes(marker)) throw new Error(`Phase 24 site content repository marker is missing: ${marker}`);
+}
+const siteContentService = readFileSync('server/src/content/site-content-service.mjs', 'utf8');
+for (const marker of ["'site-settings'", "'home'", "'popup'", "'footer'", 'syncDomain({ domain: domainValue, documents']) {
+  if (!siteContentService.includes(marker)) throw new Error(`Phase 24 site content service marker is missing: ${marker}`);
+}
+const siteContentCutover = readFileSync('src/features/content/siteContentCutover.js', 'utf8');
+for (const marker of ['VITE_SITE_CONTENT_POSTGRES_READ_ENABLED', 'VITE_SITE_CONTENT_WRITE_THROUGH_ENABLED', "get('siteContent') === 'postgres'", "get('siteContentWrite') === 'postgres'", '/api/site-content/', '/api/admin/site-content/']) {
+  if (!siteContentCutover.includes(marker)) throw new Error(`Phase 24 frontend site content marker is missing: ${marker}`);
+}
+
 const configTemplate = readFileSync('docs/github-education/HEROKU_CONFIG_VARS_TEMPLATE.txt', 'utf8');
 for (const variable of ['CLERK_JWT_KEY=', 'CLERK_AUTHORIZED_PARTIES=', 'CLERK_SECRET_KEY=sk_test_', 'CLERK_API_TIMEOUT_MS=8000', 'FIREBASE_PROJECT_ID=laptop-system-mk']) {
   if (!configTemplate.includes(variable)) throw new Error(`Phase 6 config template is missing ${variable}`);
 }
 
-console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request shadow/parity + phase16 authoritative write + phase17 admin rental-request cutover + phase18 mutation/audit completion + phase19 user-action lifecycle + phase20 asset-domain + phase21 member/restriction/admin identity authority + phase22 account recovery/admin Clerk auth + phase23 user Clerk authentication/lifecycle invariants)`);
+console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request shadow/parity + phase16 authoritative write + phase17 admin rental-request cutover + phase18 mutation/audit completion + phase19 user-action lifecycle + phase20 asset-domain + phase21 member/restriction/admin identity authority + phase22 account recovery/admin Clerk auth + phase23 user Clerk authentication/lifecycle + phase24 site content invariants)`);

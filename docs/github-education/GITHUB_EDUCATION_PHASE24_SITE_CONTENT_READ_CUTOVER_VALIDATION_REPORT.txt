@@ -1,0 +1,45 @@
+Phase 24 validation report — Site Content PostgreSQL Read Cutover
+
+Baseline:
+  Phase 23 PASS
+  SHA-256 248090ccc77b6e74fdae64ce1bd4cc6e2b16d4c727c0e0953e4fb365915c6c0f
+
+Implemented:
+  - Migration 016
+  - PostgreSQL site content repository/service
+  - Public GET /api/site-content/:domain
+  - Admin POST /api/admin/site-content/:domain/sync
+  - PostgreSQL preferred read for site settings/home/popup/footer
+  - Firestore authoritative admin writes with PostgreSQL write-through
+  - Phase 24 diagnostics + full-domain bootstrap sync
+
+Excluded intentionally:
+  - rentalSystem/publicConfig
+  - signup terms/privacy consent transaction
+  - notices/FAQ
+
+Automated validation:
+  React Hook audit: PASS
+  Application flow audit: PASS
+  Firestore strict audit: PASS
+  Backend Phase 24 smoke: PASS
+  Frontend Phase 24 smoke: PASS
+  Backend HTTP smoke with Phase 24 GET/POST: PASS
+  Full Phase 1-24 regression: PASS (verify:phase24 exit 0 after Phase 24 docs and HTTP smoke were added)
+
+Static Firestore audit:
+  source files 163
+  calls 134
+  onSnapshot 35
+  getDocs 51
+  getDoc 30
+  getCountFromServer 18
+  warnings 0
+  errors 0
+
+Build environment:
+  Prebuild React/Application/Firestore audits: PASS.
+  `npm run build:staging`: exit 127 only at `vite: not found` because the ChatGPT workspace has no root node_modules/Vite binary. Vercel must perform the real Vite bundle.
+
+Final candidate status:
+  Automated implementation complete; actual mkrental browser validation pending.

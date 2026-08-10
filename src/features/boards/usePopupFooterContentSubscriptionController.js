@@ -32,6 +32,11 @@ import {
   createDefaultFooterConfigDraft,
   sanitizeFooterCommonHtml,
 } from './useAdminFooterContentController.js';
+import {
+  readSiteContentCutoverConfig,
+  requestSiteContentDomain,
+  SITE_CONTENT_DOMAINS,
+} from '../content/siteContentCutover.js';
 
 const POPUP_DISMISSED_SESSION_KEY =
   'rentalSystemDismissedPopupVersions';
@@ -249,18 +254,42 @@ export default function usePopupFooterContentSubscriptionController({
 
     if (shouldLoadUserPopup) {
       let cancelled = false;
+      const cutover = readSiteContentCutoverConfig();
 
-      void getDocs(popupSource)
-        .then((snapshot) => {
+      const load = async () => {
+        if (cutover.readRequested) {
+          try {
+            const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.POPUP, config: cutover });
+            if (cancelled) return;
+            const remotePosts = content.documents
+              .filter((item) => item.key.startsWith('popupPosts/') && item.payload?.enabled !== false)
+              .map((item) => ({ ...item.payload, id: item.payload?.id || item.key.split('/').pop() }))
+              .sort((first, second) => {
+                const firstOrder = Number(first.sortOrder);
+                const secondOrder = Number(second.sortOrder);
+                const firstHasOrder = Number.isFinite(firstOrder) && firstOrder > 0;
+                const secondHasOrder = Number.isFinite(secondOrder) && secondOrder > 0;
+                if (firstHasOrder && secondHasOrder && firstOrder !== secondOrder) return firstOrder - secondOrder;
+                if (firstHasOrder !== secondHasOrder) return firstHasOrder ? -1 : 1;
+                return getPopupDateMillis(second.createdAt) - getPopupDateMillis(first.createdAt);
+              });
+            setPopupPosts(remotePosts);
+            setPopupPostsLoadErrorMessage('');
+            setPopupPostsReady(true);
+            return;
+          } catch (postgresError) {
+            console.warn('PostgreSQL popup read fallback:', postgresError);
+          }
+        }
+        try {
+          const snapshot = await getDocs(popupSource);
           if (!cancelled) applyPopupSnapshot(snapshot);
-        })
-        .catch((error) => {
+        } catch (error) {
           if (!cancelled) handlePopupLoadError(error);
-        });
-
-      return () => {
-        cancelled = true;
+        }
       };
+      void load();
+      return () => { cancelled = true; };
     }
 
     return onSnapshot(
@@ -339,18 +368,41 @@ export default function usePopupFooterContentSubscriptionController({
 
     if (shouldLoadUserFooter) {
       let cancelled = false;
-
-      void getDoc(SITE_FOOTER_CONFIG_DOC_REF)
-        .then((snapshot) => {
+      const cutover = readSiteContentCutoverConfig();
+      const load = async () => {
+        if (cutover.readRequested) {
+          try {
+            const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.FOOTER, config: cutover });
+            const document = content.documents.find((item) => item.key === 'siteFooter/config');
+            if (!document?.payload) throw new Error('PostgreSQL footer config is missing.');
+            if (cancelled) return;
+            const remoteData = document.payload;
+            const nextConfig = {
+              enabled: remoteData.enabled !== false,
+              content: remoteData.content || '',
+              contentText: remoteData.contentText || remoteData.content || '',
+              contentHtml: sanitizeFooterCommonHtml(remoteData.contentHtml || legacyTextToRichHtml(remoteData.contentText || remoteData.content || '')),
+              contentFormat: remoteData.contentFormat || 'rich-html-v1',
+              updatedAt: remoteData.updatedAt || null,
+            };
+            setFooterConfig(nextConfig);
+            setFooterConfigDraft({ enabled: nextConfig.enabled, contentHtml: nextConfig.contentHtml });
+            setFooterConfigLoadErrorMessage('');
+            setFooterConfigReady(true);
+            return;
+          } catch (postgresError) {
+            console.warn('PostgreSQL footer config read fallback:', postgresError);
+          }
+        }
+        try {
+          const snapshot = await getDoc(SITE_FOOTER_CONFIG_DOC_REF);
           if (!cancelled) applyFooterConfigSnapshot(snapshot);
-        })
-        .catch((error) => {
+        } catch (error) {
           if (!cancelled) handleFooterConfigError(error);
-        });
-
-      return () => {
-        cancelled = true;
+        }
       };
+      void load();
+      return () => { cancelled = true; };
     }
 
     return onSnapshot(
@@ -434,18 +486,39 @@ export default function usePopupFooterContentSubscriptionController({
 
     if (shouldLoadUserFooter) {
       let cancelled = false;
-
-      void getDocs(footerPagesSource)
-        .then((snapshot) => {
+      const cutover = readSiteContentCutoverConfig();
+      const load = async () => {
+        if (cutover.readRequested) {
+          try {
+            const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.FOOTER, config: cutover });
+            if (cancelled) return;
+            const remotePages = content.documents
+              .filter((item) => item.key.startsWith('footerPages/') && item.payload?.enabled !== false)
+              .map((item) => ({ ...item.payload, id: item.payload?.id || item.key.split('/').pop() }))
+              .sort((first, second) => {
+                const orderDifference = (Number(first.sortOrder) || 0) - (Number(second.sortOrder) || 0);
+                if (orderDifference !== 0) return orderDifference;
+                const createdDifference = getFirestoreTimestampMillis(first.createdAt) - getFirestoreTimestampMillis(second.createdAt);
+                if (createdDifference !== 0) return createdDifference;
+                return String(first.id || '').localeCompare(String(second.id || ''));
+              });
+            setFooterPages(remotePages);
+            setFooterPagesLoadErrorMessage('');
+            setFooterPagesReady(true);
+            return;
+          } catch (postgresError) {
+            console.warn('PostgreSQL footer pages read fallback:', postgresError);
+          }
+        }
+        try {
+          const snapshot = await getDocs(footerPagesSource);
           if (!cancelled) applyFooterPagesSnapshot(snapshot);
-        })
-        .catch((error) => {
+        } catch (error) {
           if (!cancelled) handleFooterPagesError(error);
-        });
-
-      return () => {
-        cancelled = true;
+        }
       };
+      void load();
+      return () => { cancelled = true; };
     }
 
     return onSnapshot(
