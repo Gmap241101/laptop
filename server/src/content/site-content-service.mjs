@@ -1,4 +1,4 @@
-const ALLOWED_DOMAINS = new Set(['site-settings', 'home', 'popup', 'footer']);
+const ALLOWED_DOMAINS = new Set(['site-settings', 'home', 'popup', 'footer', 'rental-config', 'terms']);
 const errorWith = (code, message, status) => Object.assign(new Error(message), { code, status });
 const normalizeDomain = (value) => String(value || '').trim().toLowerCase();
 

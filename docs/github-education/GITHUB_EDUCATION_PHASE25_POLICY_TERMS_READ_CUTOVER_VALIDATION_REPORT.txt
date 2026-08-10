@@ -1,0 +1,16 @@
+Phase 25 validation contract
+
+Expected automated checks:
+- Migration 017 static markers
+- rental-config and terms backend content-domain smoke
+- publicConfig PostgreSQL preferred read + Firestore one-time fallback
+- signup terms PostgreSQL preferred read + Firestore fallback
+- administrator terms Firestore write + PostgreSQL write-through
+- administrator post-login /admin route stabilization
+- Phase 1-24 regression preservation
+- React hook audit
+- Application flow audit
+- Firestore strict audit
+- Package guard + ZIP SHA verification
+
+Actual staging validation remains required before Phase 25 can become PASS baseline.

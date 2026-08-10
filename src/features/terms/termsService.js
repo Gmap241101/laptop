@@ -16,6 +16,12 @@ import {
   getTermsConsentStateId,
   normalizeTermsPolicy,
 } from './termsConstants.js';
+import {
+  POLICY_CONTENT_DOMAINS,
+  getPolicyContentDocument,
+  readPolicyContentCutoverConfig,
+  requestPolicyContentDomain,
+} from '../content/policyContentCutover.js';
 
 export async function createTermsContentHash(value = '') {
   const normalized = String(value || '').replace(/\r\n/g, '\n').trim();
@@ -37,6 +43,26 @@ export async function createTermsContentHash(value = '') {
 }
 
 export async function loadSignupTermsPolicy() {
+  const config = readPolicyContentCutoverConfig();
+  if (config.readRequested) {
+    try {
+      const domainResult = await requestPolicyContentDomain({
+        domain: POLICY_CONTENT_DOMAINS.TERMS,
+        config,
+        useCache: false,
+      });
+      const policyDocument = getPolicyContentDocument(
+        domainResult,
+        'signupTermsPolicy/current'
+      );
+      if (policyDocument?.payload) {
+        return normalizeTermsPolicy(policyDocument.payload);
+      }
+    } catch (error) {
+      console.error('PostgreSQL signup terms policy read error:', error);
+    }
+  }
+
   const snapshot = await getDoc(SIGNUP_TERMS_POLICY_DOC_REF);
   return normalizeTermsPolicy(snapshot.exists() ? snapshot.data() : {});
 }

@@ -90,7 +90,10 @@
     "verify:phase23": "npm run verify:phase22 && npm run server:user-clerk-lifecycle:smoke && npm run frontend:user-clerk-lifecycle:smoke",
     "server:site-content:smoke": "node tools/backend/smoke-site-content-read-cutover.mjs",
     "frontend:site-content:smoke": "node tools/frontend/smoke-site-content-read-cutover.mjs",
-    "verify:phase24": "npm run verify:phase23 && npm run server:site-content:smoke && npm run frontend:site-content:smoke"
+    "verify:phase24": "npm run verify:phase23 && npm run server:site-content:smoke && npm run frontend:site-content:smoke",
+    "server:policy-content:smoke": "node tools/backend/smoke-policy-terms-read-cutover.mjs",
+    "frontend:policy-content:smoke": "node tools/frontend/smoke-policy-terms-read-cutover.mjs",
+    "verify:phase25": "npm run verify:phase24 && npm run server:policy-content:smoke && npm run frontend:policy-content:smoke"
   },
   "dependencies": {
     "firebase": "^10.14.1",

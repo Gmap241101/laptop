@@ -9,6 +9,8 @@ import {
   createEmptyTermsSubmission,
   normalizeTermsPolicy,
 } from '../features/terms/termsConstants.js';
+import { loadSignupTermsPolicy } from '../features/terms/termsService.js';
+import { readPolicyContentCutoverConfig } from '../features/content/policyContentCutover.js';
 
 const buildSubmission = (policy, viewedById, acceptedById) => {
   const activeTerms = policy.activeTerms || [];
@@ -52,22 +54,39 @@ export default function UserSignupTermsSection({ onChange }) {
   const [dialogMode, setDialogMode] = useState('single');
 
   useEffect(() => {
+    const config = readPolicyContentCutoverConfig();
+    let active = true;
+
+    const applyPolicy = (nextPolicy) => {
+      if (!active) return;
+      setPolicy(nextPolicy);
+      setViewedById({});
+      setAcceptedById({});
+      setReady(true);
+      setErrorMessage(
+        nextPolicy.enabled && nextPolicy.activeTerms.length === 0
+          ? '회원가입 약관이 활성화되어 있지만 등록된 사용 약관이 없습니다. 관리자에게 문의해 주세요.'
+          : ''
+      );
+    };
+
+    if (config.readRequested) {
+      void loadSignupTermsPolicy()
+        .then(applyPolicy)
+        .catch((error) => {
+          if (!active) return;
+          console.error('Signup terms policy read error:', error);
+          setReady(true);
+          setErrorMessage('회원가입 약관을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
+        });
+      return () => { active = false; };
+    }
+
     const unsubscribe = onSnapshot(
       SIGNUP_TERMS_POLICY_DOC_REF,
-      (snapshot) => {
-        const nextPolicy = normalizeTermsPolicy(
-          snapshot.exists() ? snapshot.data() : {}
-        );
-        setPolicy(nextPolicy);
-        setViewedById({});
-        setAcceptedById({});
-        setReady(true);
-        setErrorMessage(
-          nextPolicy.enabled && nextPolicy.activeTerms.length === 0
-            ? '회원가입 약관이 활성화되어 있지만 등록된 사용 약관이 없습니다. 관리자에게 문의해 주세요.'
-            : ''
-        );
-      },
+      (snapshot) => applyPolicy(
+        normalizeTermsPolicy(snapshot.exists() ? snapshot.data() : {})
+      ),
       (error) => {
         console.error('Signup terms policy read error:', error);
         setReady(true);
@@ -75,7 +94,10 @@ export default function UserSignupTermsSection({ onChange }) {
       }
     );
 
-    return unsubscribe;
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
 
   const submission = useMemo(() => {

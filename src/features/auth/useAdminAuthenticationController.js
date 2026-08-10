@@ -168,6 +168,28 @@ export default function useAdminAuthenticationController({
     hasMatchingAdminFirebaseAuth &&
     (!adminClerkAuthRequested || adminClerkSessionVerified);
 
+  const stabilizeAdminPostLoginRoute = useCallback(() => {
+    const applyAdminRoute = () => {
+      replaceAppPath('admin');
+      setAdminTab('dashboard');
+      setView('admin');
+      setIsCommunityMenuOpen(false);
+    };
+
+    applyAdminRoute();
+
+    if (typeof window !== 'undefined') {
+      if (typeof window.queueMicrotask === 'function') {
+        window.queueMicrotask(applyAdminRoute);
+      }
+      window.requestAnimationFrame?.(() => {
+        window.requestAnimationFrame?.(applyAdminRoute);
+      });
+      window.setTimeout(applyAdminRoute, 150);
+      window.setTimeout(applyAdminRoute, 600);
+    }
+  }, [setAdminTab, setIsCommunityMenuOpen, setView]);
+
   useEffect(() => {
     if (!adminClerkAuthRequested) {
       setAdminClerkSessionVerified(true);
@@ -563,10 +585,7 @@ export default function useAdminAuthenticationController({
       loginSecuritySettings
     );
     setAdminAuthForm(createDefaultAdminAuthForm());
-    setAdminTab('dashboard');
-    replaceAppPath('admin');
-    setView('admin');
-    setIsCommunityMenuOpen(false);
+    stabilizeAdminPostLoginRoute();
 
     triggerToast(
       adminClerkAuthRequested

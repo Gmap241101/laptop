@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getDocs, onSnapshot, query as firestoreQuery, where } from 'firebase/firestore';
+import { getDoc, getDocs, onSnapshot, query as firestoreQuery, where } from 'firebase/firestore';
 
 import {
   PUBLIC_ASSET_CATALOG_DOC_REF,
@@ -31,6 +31,14 @@ import {
   publishAssetDomainCutoverObservation,
   readAssetDomainCutoverConfig,
 } from '../assets/assetDomainCutover.js';
+import {
+  POLICY_CONTENT_DOMAINS,
+  getPolicyContentDocument,
+  publishPolicyContentObservation,
+  readPolicyContentCutoverConfig,
+  requestPolicyContentDomain,
+  syncPolicyContentDomainFromFirestore,
+} from '../content/policyContentCutover.js';
 
 const createDefaultSplitSourceReady = () => ({
   config: false,
@@ -511,74 +519,126 @@ export default function useRentalDataSubscriptionController({
       config: false,
     }));
 
+    const policyContentConfig = readPolicyContentCutoverConfig();
+    const assetCutoverConfig = readAssetDomainCutoverConfig();
+    let active = true;
+
+    const applyConfigData = (configData, source) => {
+      if (!active) return;
+      setSplitPublicConfig((previous) =>
+        assetCutoverConfig.readRequested && Array.isArray(previous?.assetCategories)
+          ? { ...configData, assetCategories: previous.assetCategories }
+          : configData
+      );
+      setSplitStorageVersion(Number(configData.storageVersion || 0));
+      setSplitSourceErrors((previous) => ({ ...previous, config: '' }));
+      setSplitSourceReady((previous) => ({ ...previous, config: true }));
+      publishPolicyContentObservation({
+        readRequested: policyContentConfig.readRequested,
+        domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
+        readSource: source,
+        documentCount: 1,
+        error: null,
+      });
+    };
+
+    const applyMissingConfig = (message, error = null) => {
+      if (!active) return;
+      if (error) console.error('Public config sync error:', error);
+      setSplitPublicConfig(null);
+      setSplitStorageVersion(0);
+      setSplitSourceErrors((previous) => ({ ...previous, config: message }));
+      setSplitSourceReady((previous) => ({ ...previous, config: true }));
+      setFirebaseReady(true);
+      setToast({ message, type: 'error' });
+    };
+
+    if (policyContentConfig.readRequested && view !== 'admin') {
+      void requestPolicyContentDomain({
+        domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
+        config: policyContentConfig,
+        useCache: false,
+      })
+        .then((domainResult) => {
+          const document = getPolicyContentDocument(
+            domainResult,
+            'rentalSystem/publicConfig'
+          );
+          if (!document?.payload) {
+            throw Object.assign(new Error('PostgreSQL public config document is unavailable.'), { code: 'policy_content_public_config_missing' });
+          }
+          applyConfigData(document.payload, 'postgresql');
+        })
+        .catch(async (error) => {
+          publishPolicyContentObservation({
+            readRequested: true,
+            domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
+            readSource: 'firestore-one-time-fallback',
+            error: error?.code || 'policy_content_read_failed',
+          });
+          try {
+            const snapshot = await getDoc(PUBLIC_CONFIG_DOC_REF);
+            if (!snapshot.exists()) {
+              applyMissingConfig('Firestore 공개 설정 문서가 없습니다. rentalSystem/publicConfig 마이그레이션 상태를 확인해 주세요.');
+              return;
+            }
+            applyConfigData(snapshot.data(), 'firestore-one-time-fallback');
+          } catch (fallbackError) {
+            applyMissingConfig(
+              '공개 설정을 불러오지 못했습니다. PostgreSQL과 Firestore fallback 상태를 확인해 주세요.',
+              fallbackError
+            );
+          }
+        });
+
+      return () => { active = false; };
+    }
+
     const unsubscribe = onSnapshot(
       PUBLIC_CONFIG_DOC_REF,
       (snapshot) => {
         if (!snapshot.exists()) {
-          const message =
-            'Firestore 공개 설정 문서가 없습니다. rentalSystem/publicConfig 마이그레이션 상태를 확인해 주세요.';
-
-          setSplitPublicConfig(null);
-          setSplitStorageVersion(0);
-          setSplitSourceErrors((previous) => ({
-            ...previous,
-            config: message,
-          }));
-          setSplitSourceReady((previous) => ({
-            ...previous,
-            config: true,
-          }));
-          setFirebaseReady(true);
-          setToast({ message, type: 'error' });
+          applyMissingConfig(
+            'Firestore 공개 설정 문서가 없습니다. rentalSystem/publicConfig 마이그레이션 상태를 확인해 주세요.'
+          );
           return;
         }
 
-        const configData = snapshot.data();
-        const assetCutoverConfig = readAssetDomainCutoverConfig();
-
-        setSplitPublicConfig((previous) =>
-          assetCutoverConfig.readRequested && Array.isArray(previous?.assetCategories)
-            ? { ...configData, assetCategories: previous.assetCategories }
-            : configData
-        );
-        setSplitStorageVersion(Number(configData.storageVersion || 0));
-        setSplitSourceErrors((previous) => ({
-          ...previous,
-          config: '',
-        }));
-        setSplitSourceReady((previous) => ({
-          ...previous,
-          config: true,
-        }));
+        applyConfigData(snapshot.data(), 'firestore-onSnapshot');
+        if (
+          policyContentConfig.writeThroughRequested &&
+          view === 'admin' &&
+          currentAuthAdminAccount?.id
+        ) {
+          void syncPolicyContentDomainFromFirestore({
+            domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
+            config: policyContentConfig,
+          }).catch((error) => {
+            console.error('Public config PostgreSQL write-through error:', error);
+          });
+        }
       },
       (error) => {
-        const message =
-          'Firestore 공개 설정을 불러오지 못했습니다. rentalSystem/publicConfig 읽기 권한을 확인해 주세요.';
-
-        console.error('Public config sync error:', error);
-        setSplitPublicConfig(null);
-        setSplitStorageVersion(0);
-        setSplitSourceErrors((previous) => ({
-          ...previous,
-          config: message,
-        }));
-        setSplitSourceReady((previous) => ({
-          ...previous,
-          config: true,
-        }));
-        setFirebaseReady(true);
-        setToast({ message, type: 'error' });
+        applyMissingConfig(
+          'Firestore 공개 설정을 불러오지 못했습니다. rentalSystem/publicConfig 읽기 권한을 확인해 주세요.',
+          error
+        );
       }
     );
 
-    return unsubscribe;
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, [
+    currentAuthAdminAccount?.id,
     setFirebaseReady,
     setSplitPublicConfig,
     setSplitSourceErrors,
     setSplitSourceReady,
     setSplitStorageVersion,
     setToast,
+    view,
   ]);
 
   useEffect(() => {

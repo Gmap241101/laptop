@@ -21,6 +21,11 @@ import {
   normalizeTermsSettings,
 } from '../terms/termsConstants.js';
 import {
+  POLICY_CONTENT_DOMAINS,
+  readPolicyContentCutoverConfig,
+  syncPolicyContentDomainFromFirestore,
+} from '../content/policyContentCutover.js';
+import {
   getSafeMemberDirectoryVersion,
 } from './memberAccountPolicy.js';
 
@@ -237,6 +242,16 @@ export default function useAdminSignupPolicyActions({
           { merge: true }
         );
       });
+
+      const policyContentConfig = readPolicyContentCutoverConfig();
+      if (policyContentConfig.writeThroughRequested) {
+        await syncPolicyContentDomainFromFirestore({
+          domain: POLICY_CONTENT_DOMAINS.TERMS,
+          config: policyContentConfig,
+        }).catch((error) => {
+          console.error('Signup policy terms PostgreSQL write-through error:', error);
+        });
+      }
 
       let restoredDirectoryMismatchCount = 0;
       let restoreWarning = '';

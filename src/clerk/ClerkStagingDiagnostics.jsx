@@ -78,6 +78,12 @@ import {
   subscribeSiteContentObservation,
   syncAllSiteContentDomainsFromFirestore,
 } from '../features/content/siteContentCutover.js';
+import {
+  getLatestPolicyContentObservation,
+  readPolicyContentCutoverConfig,
+  subscribePolicyContentObservation,
+  syncAllPolicyContentDomainsFromFirestore,
+} from '../features/content/policyContentCutover.js';
 import { clerkStagingClient } from './clerkStagingClient.js';
 
 const panelStyle = {
@@ -132,6 +138,7 @@ export default function ClerkStagingDiagnostics() {
   const accountAuthConfig = useMemo(() => readAccountAuthCutoverConfig(), []);
   const userLifecycleConfig = useMemo(() => readUserAccountLifecycleCutoverConfig(), []);
   const siteContentConfig = useMemo(() => readSiteContentCutoverConfig(), []);
+  const policyContentConfig = useMemo(() => readPolicyContentCutoverConfig(), []);
   const [state, setState] = useState({
     phase: requested ? 'loading' : 'hidden',
     signedIn: false,
@@ -302,6 +309,14 @@ export default function ClerkStagingDiagnostics() {
     siteContentPostgresSync: null,
     siteContentSyncAt: null,
     siteContentError: null,
+    policyContentReadRequested: policyContentConfig.readRequested,
+    policyContentWriteRequested: policyContentConfig.writeThroughRequested,
+    policyContentReadSource: policyContentConfig.readRequested ? 'awaiting-policy-view' : null,
+    policyContentLastDomain: null,
+    policyContentDocumentCount: null,
+    policyContentPostgresSync: null,
+    policyContentSyncAt: null,
+    policyContentError: null,
     error: null,
   });
 
@@ -784,6 +799,33 @@ export default function ClerkStagingDiagnostics() {
     return subscribeSiteContentObservation(applyObservation);
   }, [requested]);
 
+  useEffect(() => {
+    if (!requested) return undefined;
+    const applyObservation = (observation) => {
+      setState((current) => ({
+        ...current,
+        policyContentReadRequested: observation && Object.prototype.hasOwnProperty.call(observation, 'readRequested')
+          ? Boolean(observation.readRequested)
+          : current.policyContentReadRequested,
+        policyContentWriteRequested: observation && Object.prototype.hasOwnProperty.call(observation, 'writeThroughRequested')
+          ? Boolean(observation.writeThroughRequested)
+          : current.policyContentWriteRequested,
+        policyContentReadSource: observation?.readSource || current.policyContentReadSource,
+        policyContentLastDomain: observation?.domain || current.policyContentLastDomain,
+        policyContentDocumentCount: observation && Object.prototype.hasOwnProperty.call(observation, 'documentCount')
+          ? observation.documentCount
+          : current.policyContentDocumentCount,
+        policyContentPostgresSync: observation?.postgresSync || current.policyContentPostgresSync,
+        policyContentSyncAt: observation?.syncAt || current.policyContentSyncAt,
+        policyContentError: observation && Object.prototype.hasOwnProperty.call(observation, 'error')
+          ? observation.error || null
+          : current.policyContentError,
+      }));
+    };
+    applyObservation(getLatestPolicyContentObservation());
+    return subscribePolicyContentObservation(applyObservation);
+  }, [requested]);
+
   if (!requested) return null;
 
   const run = async (operation) => {
@@ -987,7 +1029,7 @@ export default function ClerkStagingDiagnostics() {
 
   return (
     <aside style={panelStyle} aria-label="Clerk staging diagnostics">
-      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 24</div>
+      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 25</div>
       <div>SDK: {state.phase === 'loading' ? 'loading' : state.phase}</div>
       <div>Signed in: {state.signedIn ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Clerk user: {state.userId || '-'}</div>
@@ -1227,6 +1269,16 @@ export default function ClerkStagingDiagnostics() {
       <div style={{ overflowWrap: 'anywhere' }}>Site content synced at: {state.siteContentSyncAt || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Site content error: {state.siteContentError || '-'}</div>
 
+      <div style={{ marginTop: '6px', fontWeight: 700 }}>Phase 25 rental policy + terms PostgreSQL read + write-through</div>
+      <div>Policy content PostgreSQL requested: {state.policyContentReadRequested ? 'yes' : 'no'}</div>
+      <div>Policy content write-through requested: {state.policyContentWriteRequested ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Policy content active source: {state.policyContentReadSource || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Policy content last domain: {state.policyContentLastDomain || '-'}</div>
+      <div>Policy content document count: {state.policyContentDocumentCount ?? '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Policy content PostgreSQL sync: {state.policyContentPostgresSync || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Policy content synced at: {state.policyContentSyncAt || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Policy content error: {state.policyContentError || '-'}</div>
+
       {state.error ? (
         <div role="alert" style={{ marginTop: '8px', color: '#b91c1c', overflowWrap: 'anywhere' }}>
           {state.error}
@@ -1307,6 +1359,14 @@ export default function ClerkStagingDiagnostics() {
               onClick={() => run(() => syncAllSiteContentDomainsFromFirestore({ config: siteContentConfig }))}
             >
               Site content 전체 동기화
+            </button>
+            <button
+              type="button"
+              style={buttonStyle}
+              disabled={!state.firebaseSignedIn || !state.policyContentWriteRequested}
+              onClick={() => run(() => syncAllPolicyContentDomainsFromFirestore({ config: policyContentConfig }))}
+            >
+              Policy content 전체 동기화
             </button>
             <button type="button" style={buttonStyle} onClick={() => run(() => clerkStagingClient.signOut())}>
               Clerk 로그아웃

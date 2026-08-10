@@ -32,7 +32,7 @@ for (const file of [
   assert.ok(source.includes('syncSiteContentDomainFromFirestore'), `missing Phase 24 write-through in ${file}`);
 }
 const diagnostics = readFileSync('src/clerk/ClerkStagingDiagnostics.jsx', 'utf8');
-for (const marker of ['Clerk Staging Test · Phase 24', 'Phase 24 site shell content PostgreSQL read + write-through', 'Site content 전체 동기화', "top: '184px'"]) assert.ok(diagnostics.includes(marker), `missing Phase 24 diagnostics marker: ${marker}`);
+for (const marker of ['Clerk Staging Test · Phase 25', 'Phase 24 site shell content PostgreSQL read + write-through', 'Site content 전체 동기화', "top: '184px'"]) assert.ok(diagnostics.includes(marker), `missing Phase 24 diagnostics marker: ${marker}`);
 const app = readFileSync('src/App.jsx', 'utf8');
 assert.ok(!app.includes('siteContentCutover'), 'Phase 24 must not push site content cutover logic back into App.jsx.');
 console.log('[site-content-frontend-smoke] PASS (site settings/home/popup/footer PostgreSQL preferred reads + admin Firestore write-through + diagnostics)');

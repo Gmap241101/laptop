@@ -36,6 +36,11 @@ import {
 } from '../features/terms/termsConstants.js';
 import { createTermsContentHash } from '../features/terms/termsService.js';
 import {
+  POLICY_CONTENT_DOMAINS,
+  readPolicyContentCutoverConfig,
+  syncPolicyContentDomainFromFirestore,
+} from '../features/content/policyContentCutover.js';
+import {
   isRichTextEmpty,
   richTextHtmlToText,
   sanitizeRichTextHtml,
@@ -85,6 +90,18 @@ const formatDateParts = (value) => {
 };
 
 export default function AdminSignupTermsManager({ Button, triggerConfirm, triggerToast }) {
+  const syncTermsPostgresBestEffort = async () => {
+    const config = readPolicyContentCutoverConfig();
+    if (!config.writeThroughRequested) return;
+    try {
+      await syncPolicyContentDomainFromFirestore({
+        domain: POLICY_CONTENT_DOMAINS.TERMS,
+        config,
+      });
+    } catch (error) {
+      console.error('Signup terms PostgreSQL write-through error:', error);
+    }
+  };
   const [terms, setTerms] = useState([]);
   const [ready, setReady] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -302,6 +319,7 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
         );
       });
 
+      await syncTermsPostgresBestEffort();
       setDialogOpen(false);
       setForm(createEmptyForm());
       triggerToast(form.id ? '이용약관의 새 버전을 저장했습니다.' : '이용약관을 등록했습니다.', 'success');
@@ -368,6 +386,7 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
           updatedAt: serverTimestamp(),
         }, { merge: true });
       });
+      await syncTermsPostgresBestEffort();
       triggerToast(enabled ? '약관을 사용으로 전환했습니다.' : '약관을 사용하지 않도록 변경했습니다.', 'success');
     } catch (error) {
       console.error('Signup term enabled update error:', error);
@@ -410,6 +429,7 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
           updatedAt: serverTimestamp(),
         }, { merge: true });
       });
+      await syncTermsPostgresBestEffort();
       triggerToast('약관을 보관했습니다.', 'success');
     } catch (error) {
       console.error('Signup term archive error:', error);
@@ -460,6 +480,7 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
         updatedAt: serverTimestamp(),
       }, { merge: true });
       await batch.commit();
+      await syncTermsPostgresBestEffort();
     } catch (error) {
       console.error('Signup term order update error:', error);
       triggerToast('약관 순서 변경에 실패했습니다.', 'error');

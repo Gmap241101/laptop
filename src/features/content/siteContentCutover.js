@@ -1,5 +1,6 @@
 import {
   FAQ_BOARD_CONFIG_DOC_REF,
+  PUBLIC_CONFIG_DOC_REF,
   FAQ_CATEGORIES_COLLECTION_REF,
   FAQ_POSTS_COLLECTION_REF,
   FOOTER_PAGES_COLLECTION_REF,
@@ -14,7 +15,7 @@ import {
   SITE_SETTINGS_DOC_REF,
   firebaseAuth,
 } from '../../firebase.js';
-import { getDoc, getDocs } from 'firebase/firestore';
+import { getDoc, getDocs, limit, query as firestoreQuery } from 'firebase/firestore';
 
 const READ_SESSION_KEY = 'mk_site_content_postgres_read';
 const WRITE_SESSION_KEY = 'mk_site_content_postgres_write_through';
@@ -120,7 +121,7 @@ export const subscribeSiteContentObservation = (listener) => {
   return () => window.removeEventListener(EVENT_NAME, handler);
 };
 
-export const requestSiteContentDomain = async ({ domain, fetchImpl = fetch, config = readSiteContentCutoverConfig(), useCache = true } = {}) => {
+export const requestSiteContentDomain = async ({ domain, fetchImpl = fetch, config = readSiteContentCutoverConfig(), useCache = true, observationPublisher = publishSiteContentObservation } = {}) => {
   if (!config.readRequested) return null;
   if (!config.apiBaseUrl) throw Object.assign(new Error('VITE_API_URL is required for Phase 24 site content read cutover.'), { code: 'site_content_api_missing' });
   if (useCache && domainCache.has(domain)) return domainCache.get(domain);
@@ -144,12 +145,12 @@ export const requestSiteContentDomain = async ({ domain, fetchImpl = fetch, conf
       ...content,
       documents: content.documents.map((item) => Object.freeze({ ...item, payload: reviveValue(item.payload || {}) })),
     });
-    publishSiteContentObservation({ readRequested: true, domain, readSource: 'postgresql', documentCount: result.documents.length, syncAt: result.syncedAt || null, error: null });
+    observationPublisher?.({ readRequested: true, domain, readSource: 'postgresql', documentCount: result.documents.length, syncAt: result.syncedAt || null, error: null });
     return result;
   })();
   if (useCache) domainCache.set(domain, promise);
   try { return await promise; }
-  catch (error) { if (useCache) domainCache.delete(domain); publishSiteContentObservation({ readRequested: true, domain, readSource: 'firestore-fallback', error: error?.code || 'site_content_read_failed' }); throw error; }
+  catch (error) { if (useCache) domainCache.delete(domain); observationPublisher?.({ readRequested: true, domain, readSource: 'firestore-fallback', error: error?.code || 'site_content_read_failed' }); throw error; }
 };
 
 const getClerkToken = async () => {
@@ -165,8 +166,11 @@ const readDocument = async (ref, key) => {
   const data = snapshot.data();
   return [{ key, payload: serializeValue(data), enabled: typeof data.enabled === 'boolean' ? data.enabled : null, sortOrder: Number.isFinite(Number(data.sortOrder)) ? Number(data.sortOrder) : null, sourceUpdatedAt: data.updatedAt?.toDate?.()?.toISOString?.() || null }];
 };
-const readCollection = async (ref, prefix) => {
-  const snapshot = await getDocs(ref);
+const readCollection = async (ref, prefix, maxDocuments = null) => {
+  const source = Number.isFinite(Number(maxDocuments))
+    ? firestoreQuery(ref, limit(Math.max(1, Math.trunc(Number(maxDocuments)))))
+    : ref;
+  const snapshot = await getDocs(source);
   return snapshot.docs.map((item) => {
     const data = item.data();
     return { key: `${prefix}/${item.id}`, payload: serializeValue({ id: item.id, ...data }), enabled: typeof data.enabled === 'boolean' ? data.enabled : null, sortOrder: Number.isFinite(Number(data.sortOrder)) ? Number(data.sortOrder) : null, sourceUpdatedAt: data.updatedAt?.toDate?.()?.toISOString?.() || null };
@@ -184,10 +188,15 @@ const readDomainFromFirestore = async (domain) => {
     ...(await readDocument(SITE_FOOTER_CONFIG_DOC_REF, 'siteFooter/config')),
     ...(await readCollection(FOOTER_PAGES_COLLECTION_REF, 'footerPages')),
   ];
-  throw Object.assign(new Error('Unsupported Phase 24 site content domain.'), { code: 'site_content_domain_invalid' });
+  if (domain === 'rental-config') return readDocument(PUBLIC_CONFIG_DOC_REF, 'rentalSystem/publicConfig');
+  if (domain === 'terms') return [
+    ...(await readDocument(SIGNUP_TERMS_POLICY_DOC_REF, 'signupTermsPolicy/current')),
+    ...(await readCollection(SIGNUP_TERMS_COLLECTION_REF, 'signupTerms', 100)),
+  ];
+  throw Object.assign(new Error('Unsupported site content domain.'), { code: 'site_content_domain_invalid' });
 };
 
-export const syncSiteContentDomainFromFirestore = async ({ domain, fetchImpl = fetch, config = readSiteContentCutoverConfig() } = {}) => {
+export const syncSiteContentDomainFromFirestore = async ({ domain, fetchImpl = fetch, config = readSiteContentCutoverConfig(), observationPublisher = publishSiteContentObservation } = {}) => {
   if (!config.writeThroughRequested) return Object.freeze({ skipped: true });
   if (!config.apiBaseUrl) throw Object.assign(new Error('VITE_API_URL is required for site content write-through.'), { code: 'site_content_api_missing' });
   const firebaseUser = firebaseAuth.currentUser;
@@ -212,11 +221,11 @@ export const syncSiteContentDomainFromFirestore = async ({ domain, fetchImpl = f
     const error = new Error(`PostgreSQL site content write-through failed with HTTP ${response.status}.`);
     error.status = response.status;
     error.code = payload?.error || 'site_content_write_through_failed';
-    publishSiteContentObservation({ writeThroughRequested: true, domain, writeSource: 'firestore', postgresSync: 'failed', error: error.code });
+    observationPublisher?.({ writeThroughRequested: true, domain, writeSource: 'firestore', postgresSync: 'failed', error: error.code });
     throw error;
   }
   clearSiteContentDomainCache(domain);
-  publishSiteContentObservation({ writeThroughRequested: true, domain, writeSource: 'firestore', postgresSync: 'synced', documentCount: payload?.siteContent?.documentCount ?? documents.length, syncAt: payload?.siteContent?.syncedAt || null, error: null });
+  observationPublisher?.({ writeThroughRequested: true, domain, writeSource: 'firestore', postgresSync: 'synced', documentCount: payload?.siteContent?.documentCount ?? documents.length, syncAt: payload?.siteContent?.syncedAt || null, error: null });
   return payload?.siteContent || null;
 };
 
@@ -242,6 +251,7 @@ export const PHASE24_EXCLUDED_CONTENT_REFS = Object.freeze([
   NOTICE_BOARD_CONFIG_DOC_REF,
   NOTICE_POSTS_COLLECTION_REF,
   FAQ_BOARD_CONFIG_DOC_REF,
+  PUBLIC_CONFIG_DOC_REF,
   FAQ_CATEGORIES_COLLECTION_REF,
   FAQ_POSTS_COLLECTION_REF,
   SIGNUP_TERMS_POLICY_DOC_REF,

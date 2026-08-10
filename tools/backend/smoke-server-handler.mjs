@@ -326,22 +326,27 @@ const assetService = {
 
 const siteContentService = {
   async getDomain(domain) {
-    if (domain !== 'home') throw new Error('Unexpected Phase 24 site-content read domain.');
+    if (!['home', 'rental-config', 'terms'].includes(domain)) throw new Error('Unexpected site-content read domain.');
+    const documents = domain === 'home'
+      ? [
+          { documentKey: 'homePage/config', payload: { heroTitle: 'Smoke Home' }, enabled: true, sortOrder: 0 },
+          { documentKey: 'homeBanners/banner-smoke', payload: { title: 'Smoke Banner' }, enabled: true, sortOrder: 1 },
+        ]
+      : domain === 'rental-config'
+        ? [{ documentKey: 'rentalSystem/publicConfig', payload: { settings: { maxRentalDays: 7 } }, enabled: true, sortOrder: 0 }]
+        : [{ documentKey: 'signupTermsPolicy/current', payload: { enabled: true, revision: 1, activeTerms: [] }, enabled: true, sortOrder: 0 }];
     return {
       source: 'postgresql',
       domain,
       synchronized: true,
-      documentCount: 2,
-      documents: [
-        { documentKey: 'homePage/config', payload: { heroTitle: 'Smoke Home' }, enabled: true, sortOrder: 0 },
-        { documentKey: 'homeBanners/banner-smoke', payload: { title: 'Smoke Banner' }, enabled: true, sortOrder: 1 },
-      ],
-      sync: { sourceMode: 'firestore-write-through', sourceHash: 'phase24-smoke', documentCount: 2, syncedAt: '2026-08-10T00:00:00.000Z' },
+      documentCount: documents.length,
+      documents,
+      sync: { sourceMode: 'firestore-write-through', sourceHash: 'content-smoke', documentCount: documents.length, syncedAt: '2026-08-10T00:00:00.000Z' },
     };
   },
   async syncDomain({ domain, documents, actorClerkUserId }) {
-    if (domain !== 'home' || actorClerkUserId !== 'user_smoke' || !Array.isArray(documents) || documents.length !== 1) {
-      throw new Error('Unexpected Phase 24 site-content sync input.');
+    if (!['home', 'rental-config', 'terms'].includes(domain) || actorClerkUserId !== 'user_smoke' || !Array.isArray(documents) || documents.length !== 1) {
+      throw new Error('Unexpected site-content sync input.');
     }
     return {
       source: 'postgresql',
@@ -349,7 +354,7 @@ const siteContentService = {
       synchronized: true,
       documentCount: documents.length,
       documents,
-      sync: { sourceMode: 'firestore-write-through', sourceHash: 'phase24-sync-smoke', documentCount: documents.length, syncedAt: '2026-08-10T00:00:01.000Z' },
+      sync: { sourceMode: 'firestore-write-through', sourceHash: 'content-sync-smoke', documentCount: documents.length, syncedAt: '2026-08-10T00:00:01.000Z' },
     };
   },
 };
@@ -888,6 +893,20 @@ const siteContentSyncBody = await siteContentSync.json();
 if (siteContentSync.status !== 200 || siteContentSyncBody.authorized !== true || siteContentSyncBody.siteContent?.source !== 'postgresql' || siteContentSyncBody.siteContent?.documentCount !== 1) {
   throw new Error('Phase 24 administrator site-content sync HTTP response is invalid.');
 }
+const policyContentRead = await fetch(baseUrl + '/api/site-content/rental-config', { headers: { Origin: allowedOrigin } });
+const policyContentReadBody = await policyContentRead.json();
+if (policyContentRead.status !== 200 || policyContentReadBody.siteContent?.domain !== 'rental-config' || policyContentReadBody.siteContent?.source !== 'postgresql') {
+  throw new Error('Phase 25 rental-config PostgreSQL read HTTP response is invalid.');
+}
+const termsContentSync = await fetch(baseUrl + '/api/admin/site-content/terms/sync', {
+  method: 'POST',
+  headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+  body: JSON.stringify({ documents: [{ documentKey: 'signupTermsPolicy/current', payload: { enabled: true, revision: 1, activeTerms: [] }, enabled: true, sortOrder: 0 }] }),
+});
+const termsContentSyncBody = await termsContentSync.json();
+if (termsContentSync.status !== 200 || termsContentSyncBody.authorized !== true || termsContentSyncBody.siteContent?.domain !== 'terms') {
+  throw new Error('Phase 25 terms PostgreSQL sync HTTP response is invalid.');
+}
 
 const invalidFirebase = await fetch(`${baseUrl}/api/users/me/legacy/firebase`, {
   method: 'POST',
@@ -899,4 +918,4 @@ const missing = await fetch(`${baseUrl}/missing`);
 if (missing.status !== 404) throw new Error(`/missing returned ${missing.status}`);
 
 await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, Phase 16 rental-request POST, Phase 17 admin bootstrap/list/dashboard/status + Phase 18 sync/events/edit/memo/restore + Phase 19 user edit/cancel/extend/admin-review + Phase 20 asset catalog/bootstrap/CRUD/bulk/categories + Phase 21 member profile/status authority/admin registry + Phase 22 account recovery/admin Clerk session/migration/provision + Phase 23 user Clerk session/migration/provision/password/withdrawal authority + Phase 24 site-content public read/admin sync, CORS, 404)');
+console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, Phase 16 rental-request POST, Phase 17 admin bootstrap/list/dashboard/status + Phase 18 sync/events/edit/memo/restore + Phase 19 user edit/cancel/extend/admin-review + Phase 20 asset catalog/bootstrap/CRUD/bulk/categories + Phase 21 member profile/status authority/admin registry + Phase 22 account recovery/admin Clerk session/migration/provision + Phase 23 user Clerk session/migration/provision/password/withdrawal authority + Phase 24 site-content + Phase 25 rental-config/terms read/sync, CORS, 404)');
