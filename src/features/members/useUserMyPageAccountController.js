@@ -61,6 +61,10 @@ import {
 } from './memberProfileWriteThrough.js';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 import { publishMemberAuthorityObservation, readMemberAuthorityCutoverConfig } from './memberAuthorityCutover.js';
+import {
+  publishUserAccountLifecycleObservation,
+  readUserAccountLifecycleCutoverConfig,
+} from '../auth/userAccountLifecycleCutover.js';
 
 export const createDefaultUserProfileForm = () => ({
   name: '',
@@ -543,11 +547,16 @@ export default function useUserMyPageAccountController({
       authEmail,
       withdrawalPassword
     );
+    const lifecycleConfig = readUserAccountLifecycleCutoverConfig();
     let rollbackState = null;
+    let withdrawalAuthorityFinalized = false;
 
     setWithdrawalLoading(true);
 
     try {
+      if (lifecycleConfig.userLifecycleRequested) {
+        await clerkStagingClient.verifyUserPassword(withdrawalPassword);
+      }
       await reauthenticateWithCredential(firebaseAuthUser, credential);
 
       const currentIdentityKey =
@@ -685,7 +694,46 @@ export default function useUserMyPageAccountController({
         reason: 'user-membership-withdrawal',
       });
 
-      await deleteUser(firebaseAuthUser);
+      let clerkDeleted = false;
+      let clerkCleanupError = '';
+      if (lifecycleConfig.userLifecycleRequested) {
+        const firebaseIdToken = await firebaseAuthUser.getIdToken();
+        const finalizePayload = await clerkStagingClient.finalizeUserWithdrawal(
+          firebaseIdToken,
+          withdrawalPassword
+        );
+        withdrawalAuthorityFinalized = Boolean(finalizePayload?.withdrawal?.withdrawn);
+        clerkDeleted = Boolean(finalizePayload?.withdrawal?.clerkDeleted);
+        clerkCleanupError = finalizePayload?.withdrawal?.clerkCleanupError || '';
+        if (!withdrawalAuthorityFinalized) {
+          const error = new Error('PostgreSQL withdrawal authority was not finalized.');
+          error.code = 'user_withdrawal_authority_not_finalized';
+          throw error;
+        }
+      }
+
+      let firebaseCleanup = 'not-requested';
+      try {
+        await deleteUser(firebaseAuthUser);
+        firebaseCleanup = 'deleted';
+      } catch (firebaseDeleteError) {
+        if (!withdrawalAuthorityFinalized) throw firebaseDeleteError;
+        firebaseCleanup = 'delete-failed';
+        console.error('Firebase compatibility user deletion deferred after authoritative withdrawal:', firebaseDeleteError);
+      }
+
+      if (lifecycleConfig.userLifecycleRequested) {
+        await clerkStagingClient.signOut().catch(() => {});
+        publishUserAccountLifecycleObservation({
+          userAuthRequested: lifecycleConfig.userAuthRequested,
+          userLifecycleRequested: true,
+          withdrawalAuthority: 'postgresql',
+          withdrawalClerkDeleted: clerkDeleted ? 'yes' : 'deferred',
+          withdrawalClerkCleanupError: clerkCleanupError,
+          withdrawalFirebaseCleanup: firebaseCleanup,
+          error: '',
+        });
+      }
 
       setWithdrawalDialogOpen(false);
       setWithdrawalPassword('');
@@ -695,7 +743,7 @@ export default function useUserMyPageAccountController({
     } catch (error) {
       console.error('Membership withdrawal error:', error);
 
-      if (rollbackState && firebaseAuth.currentUser) {
+      if (rollbackState && firebaseAuth.currentUser && !withdrawalAuthorityFinalized) {
         try {
           await runTransaction(db, async (transaction) => {
             transaction.set(
@@ -740,6 +788,17 @@ export default function useUserMyPageAccountController({
         } catch (rollbackError) {
           console.error('Membership withdrawal rollback error:', rollbackError);
         }
+      }
+
+      if (lifecycleConfig.userLifecycleRequested) {
+        publishUserAccountLifecycleObservation({
+          userAuthRequested: lifecycleConfig.userAuthRequested,
+          userLifecycleRequested: true,
+          withdrawalAuthority: withdrawalAuthorityFinalized ? 'postgresql' : 'failed',
+          withdrawalClerkDeleted: '-',
+          withdrawalFirebaseCleanup: '-',
+          error: error?.code || error?.errors?.[0]?.code || 'user-withdrawal-failed',
+        });
       }
 
       triggerToast(

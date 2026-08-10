@@ -13,6 +13,7 @@ const phase19 = readFileSync('server/migrations/011_phase19_user_action_lifecycl
 const phase20 = readFileSync('server/migrations/012_phase20_asset_domain_cutover.sql', 'utf8');
 const phase21 = readFileSync('server/migrations/013_phase21_member_restriction_admin_identity_authority.sql', 'utf8');
 const phase22 = readFileSync('server/migrations/014_phase22_account_recovery_admin_clerk_auth.sql', 'utf8');
+const phase23 = readFileSync('server/migrations/015_phase23_user_clerk_auth_lifecycle.sql', 'utf8');
 
 if (!/value\s+JSONB\s+NOT\s+NULL/i.test(phase2)) {
   throw new Error('app_runtime_metadata.value must remain JSONB NOT NULL.');
@@ -162,4 +163,17 @@ for (const marker of [
   if (!phase22.includes(marker)) throw new Error(`Phase 22 account recovery/admin Clerk auth migration marker is missing: ${marker}`);
 }
 
-console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion + Phase 19 user-action lifecycle + Phase 20 asset-domain + Phase 21 member/restriction/admin identity authority + Phase 22 account recovery/admin Clerk auth are type-safe)');
+for (const marker of [
+  'ADD COLUMN IF NOT EXISTS auth_authority_mode TEXT NOT NULL',
+  'ADD COLUMN IF NOT EXISTS lifecycle_authority_mode TEXT NOT NULL',
+  'ADD COLUMN IF NOT EXISTS clerk_account_state TEXT NOT NULL',
+  'app_member_accounts_auth_authority_idx',
+  "'phase', 23",
+  "'user_authentication', 'clerk-authoritative-firebase-compatibility-session'",
+  "'password_change', 'clerk-authoritative-firebase-compatibility-mirror'",
+  "'withdrawal', 'postgresql-member-state-clerk-account-retirement-firebase-cleanup'",
+]) {
+  if (!phase23.includes(marker)) throw new Error(`Phase 23 user Clerk auth/lifecycle migration marker is missing: ${marker}`);
+}
+
+console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion + Phase 19 user-action lifecycle + Phase 20 asset-domain + Phase 21 member/restriction/admin identity authority + Phase 22 account recovery/admin Clerk auth + Phase 23 user Clerk auth/lifecycle are type-safe)');

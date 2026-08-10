@@ -171,6 +171,136 @@ export const requestPasswordResetVerification = async ({ apiBaseUrl, fetchImpl, 
   return payload;
 };
 
+export const requestUserClerkSession = async ({ clerk, apiBaseUrl, fetchImpl }) => {
+  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: '/api/users/auth/session' });
+  if (!response.ok) {
+    const error = new Error(`Backend user Clerk session verification failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (!payload?.authenticated || !payload?.authorized || payload?.userAuthentication?.authority !== 'clerk') {
+    throw new Error('Backend returned an invalid user Clerk session response.');
+  }
+  return payload;
+};
+
+export const requestUserClerkMigration = async ({ apiBaseUrl, fetchImpl, firebaseIdToken, password }) => {
+  const { response, payload } = await requestWithFirebaseAuthorization({
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/users/auth/migrate',
+    firebaseIdToken,
+    body: { password },
+  });
+  if (!response.ok) {
+    const error = new Error(`User Clerk migration failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (!payload?.authenticated || !payload?.authorized || payload?.userAuthentication?.authority !== 'clerk') {
+    throw new Error('Backend returned an invalid user Clerk migration response.');
+  }
+  return payload;
+};
+
+export const requestUserClerkProvision = async ({ apiBaseUrl, fetchImpl, firebaseIdToken, password }) => {
+  const { response, payload } = await requestWithFirebaseAuthorization({
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/users/auth/provision',
+    firebaseIdToken,
+    body: { password },
+  });
+  if (!response.ok) {
+    const error = new Error(`User Clerk provision failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (!payload?.authenticated || !payload?.authorized || payload?.userAuthentication?.authority !== 'clerk') {
+    throw new Error('Backend returned an invalid user Clerk provision response.');
+  }
+  return payload;
+};
+
+export const requestUserPasswordVerification = async ({ clerk, apiBaseUrl, fetchImpl, password }) => {
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/users/me/password/verify',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+  });
+  if (!response.ok) {
+    const error = new Error(`User Clerk password verification failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (!payload?.passwordVerification?.verified || payload?.passwordVerification?.authority !== 'clerk') {
+    throw new Error('Backend returned an invalid user password verification response.');
+  }
+  return payload;
+};
+
+export const requestUserPasswordChange = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, currentPassword, newPassword }) => {
+  const token = trim(firebaseIdToken);
+  if (!token) throw new Error('Firebase user compatibility identity is required for password synchronization.');
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/users/me/password/change',
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Firebase-Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+  if (!response.ok) {
+    const error = new Error(`User Clerk password change failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (!payload?.passwordChange?.changed || payload?.passwordChange?.authority !== 'clerk') {
+    throw new Error('Backend returned an invalid user password change response.');
+  }
+  return payload;
+};
+
+export const requestUserWithdrawalFinalize = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, password }) => {
+  const token = trim(firebaseIdToken);
+  if (!token) throw new Error('Firebase user compatibility identity is required for withdrawal finalization.');
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/users/me/withdrawal/finalize',
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Firebase-Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({ password }),
+  });
+  if (!response.ok) {
+    const error = new Error(`User withdrawal authority finalization failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (!payload?.withdrawal?.withdrawn || payload?.withdrawal?.authority !== 'postgresql') {
+    throw new Error('Backend returned an invalid user withdrawal finalization response.');
+  }
+  return payload;
+};
+
 export const requestAdminClerkSession = async ({ clerk, apiBaseUrl, fetchImpl }) => {
   const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: '/api/admin/auth/session' });
   if (!response.ok) {
@@ -1106,6 +1236,15 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
         throw error;
       }
     },
+    async signInUserWithPassword(identifier, password) {
+      return this.signInWithPassword(identifier, password);
+    },
+    async verifyUserClientTrust(code) {
+      return this.verifyAdminClientTrust(code);
+    },
+    async resendUserClientTrust() {
+      return this.resendAdminClientTrust();
+    },
     async verifyAdminClientTrust(code) {
       const verificationCode = trim(code);
       if (!verificationCode) {
@@ -1171,6 +1310,28 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
         clientTrustStrategy: pending.strategy,
         clientTrustDestination: pending.destination,
       });
+    },
+    async getUserClerkSession() {
+      const clerk = await initialize();
+      return requestUserClerkSession({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
+    },
+    async migrateUserToClerk(firebaseIdToken, password) {
+      return requestUserClerkMigration({ apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, password });
+    },
+    async provisionUserClerkIdentity(firebaseIdToken, password) {
+      return requestUserClerkProvision({ apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, password });
+    },
+    async verifyUserPassword(password) {
+      const clerk = await initialize();
+      return requestUserPasswordVerification({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, password });
+    },
+    async changeUserPassword(firebaseIdToken, currentPassword, newPassword) {
+      const clerk = await initialize();
+      return requestUserPasswordChange({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, currentPassword, newPassword });
+    },
+    async finalizeUserWithdrawal(firebaseIdToken, password) {
+      const clerk = await initialize();
+      return requestUserWithdrawalFinalize({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, password });
     },
     async getAdminClerkSession() {
       const clerk = await initialize();
@@ -1386,8 +1547,17 @@ export const clerkStagingClient =
         initialize: async () => null,
         signOut: async () => {},
         signInWithPassword: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        signInUserWithPassword: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        verifyUserClientTrust: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        resendUserClientTrust: async () => { throw new Error('Clerk browser client is unavailable.'); },
         verifyAdminClientTrust: async () => { throw new Error('Clerk browser client is unavailable.'); },
         resendAdminClientTrust: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        getUserClerkSession: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        migrateUserToClerk: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        provisionUserClerkIdentity: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        verifyUserPassword: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        changeUserPassword: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        finalizeUserWithdrawal: async () => { throw new Error('Clerk browser client is unavailable.'); },
         getAdminClerkSession: async () => { throw new Error('Clerk browser client is unavailable.'); },
         migrateAdminToClerk: async () => { throw new Error('Clerk browser client is unavailable.'); },
         provisionAdminClerkIdentity: async () => { throw new Error('Clerk browser client is unavailable.'); },

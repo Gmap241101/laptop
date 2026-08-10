@@ -36,6 +36,8 @@ import { createAccountRecoveryRepository } from './accounts/account-recovery-rep
 import { createAccountRecoveryService } from './accounts/account-recovery-service.mjs';
 import { createAdminIdentityRepository } from './auth/admin-identity-repository.mjs';
 import { createAdminClerkAuthService } from './auth/admin-clerk-auth-service.mjs';
+import { createUserClerkAuthRepository } from './auth/user-clerk-auth-repository.mjs';
+import { createUserClerkAuthService } from './auth/user-clerk-auth-service.mjs';
 
 const config = readServerConfig();
 const authenticateRequest = createClerkSessionAuthenticator(config);
@@ -51,6 +53,7 @@ const clerkClient = config.clerkSecretKey
       async createUser() { const error = new Error('Clerk Backend API is not configured.'); error.code = 'clerk_backend_not_configured'; throw error; },
       async updateUser() { const error = new Error('Clerk Backend API is not configured.'); error.code = 'clerk_backend_not_configured'; throw error; },
       async updateUserMetadata() { const error = new Error('Clerk Backend API is not configured.'); error.code = 'clerk_backend_not_configured'; throw error; },
+      async verifyPassword() { const error = new Error('Clerk Backend API is not configured.'); error.code = 'clerk_backend_not_configured'; throw error; },
       async deleteUser() { const error = new Error('Clerk Backend API is not configured.'); error.code = 'clerk_backend_not_configured'; throw error; },
     };
 const pool = getPool();
@@ -85,6 +88,16 @@ const firestoreMemberAuthorityClient = config.firebaseProjectId
   ? createFirestoreMemberAuthorityClient({ projectId: config.firebaseProjectId, timeoutMs: config.firestoreRestTimeoutMs })
   : null;
 const memberAuthorityRepository = createMemberAuthorityRepository(pool);
+const userClerkAuthRepository = createUserClerkAuthRepository(pool);
+const userClerkAuthService = firestoreMemberAuthorityClient
+  ? createUserClerkAuthService({
+      repository: userClerkAuthRepository,
+      clerkClient,
+      userRepository,
+      firebaseLinkRepository,
+      firestoreClient: firestoreMemberAuthorityClient,
+    })
+  : null;
 const adminClerkAuthService = firestoreMemberAuthorityClient
   ? createAdminClerkAuthService({
       repository: adminIdentityRepository,
@@ -249,6 +262,7 @@ const server = createServer(
     memberAuthorityService,
     accountRecoveryService,
     adminClerkAuthService,
+    userClerkAuthService,
     rentalRestrictionService,
     rentalRequestService,
     rentalRequestWriteService,
@@ -278,6 +292,7 @@ server.listen(config.port, '0.0.0.0', () => {
     memberAuthority: config.firebaseProjectId ? 'postgresql-authoritative-firestore-compatibility-mirror' : 'disabled',
     adminIdentityRegistry: config.firebaseProjectId ? 'postgresql-clerk-authority-firebase-compatibility' : 'disabled',
     accountRecovery: 'postgresql-preferred',
+    userClerkAuthentication: config.firebaseProjectId ? 'clerk-authoritative-firebase-compatibility' : 'disabled',
     adminAuthentication: config.firebaseProjectId ? 'clerk-authoritative-firebase-compatibility-session' : 'disabled',
     assetDomain: config.firebaseProjectId ? 'postgresql-read-write-firestore-compatibility-mirror' : 'disabled',
   });

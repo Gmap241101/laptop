@@ -11,7 +11,7 @@ VITE_CLERK_PUBLISHABLE_KEY=pk_test_REPLACE_ME
 # Backend runtime (Heroku Config Vars)
 APP_ENV=staging
 SERVICE_NAME=rental-api
-SERVICE_VERSION=phase22
+SERVICE_VERSION=phase23
 # PORT is local-only. Do not set PORT manually in Heroku.
 
 # PostgreSQL connection. Heroku Postgres manages DATABASE_URL automatically.
@@ -57,7 +57,7 @@ FIRESTORE_REST_TIMEOUT_MS=8000
 
 # Phase 17: no new backend secret is required.
 # After deploying the Phase 17 server source, set the diagnostic version marker to:
-# SERVICE_VERSION=phase22
+# SERVICE_VERSION=phase23
 # Migration 009 is applied by the existing Procfile release phase.
 # Admin rental-request bootstrap/status mirror continues to use the verified caller Firebase ID token through Security Rules.
 
@@ -66,15 +66,23 @@ FIRESTORE_REST_TIMEOUT_MS=8000
 # No new backend secret is required. Migration 012 creates the normalized asset/category catalog.
 # Existing FIREBASE_PROJECT_ID/FIRESTORE_REST_TIMEOUT_MS are reused for administrator bootstrap
 # and Firestore compatibility mirrors under the current Firebase administrator token.
-# Recommended diagnostic version marker: SERVICE_VERSION=phase22
+# Recommended diagnostic version marker: SERVICE_VERSION=phase23
 # Phase 21: member/restriction authoritative write + administrator identity registry preparation.
 # No new backend secret is required. Migration 013 is executed by the existing Procfile release phase.
 # Existing Firebase ID tokens remain the compatibility-mirror/admin authorization credential for this phase.
-# Recommended diagnostic version marker: SERVICE_VERSION=phase22
+# Recommended diagnostic version marker: SERVICE_VERSION=phase23
 
 
 # Phase 22: PostgreSQL-preferred account recovery + Clerk-authoritative administrator authentication.
 # No new backend secret is required. Migration 014 is executed by the existing Procfile release phase.
 # Existing CLERK_SECRET_KEY drives administrator Clerk create/update/link operations.
 # Existing Firebase ID tokens remain a compatibility credential for Firestore administrator proof during staged cutover.
-# Recommended diagnostic version marker: SERVICE_VERSION=phase22
+# Recommended diagnostic version marker: SERVICE_VERSION=phase23
+
+
+# Phase 23: user Clerk authentication + account lifecycle authority.
+# No new backend secret is required. Migration 015 is executed by the existing Procfile release phase.
+# Existing CLERK_SECRET_KEY is reused for user create/verify/update/delete operations.
+# Existing Firebase ID tokens remain compatibility credentials while Firestore Rules, reset delivery,
+# and legacy lifecycle documents are still present during the staged cutover.
+# Recommended diagnostic version marker: SERVICE_VERSION=phase23

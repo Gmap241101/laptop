@@ -5,7 +5,7 @@ const allowedOrigin = 'https://staging.example.vercel.app';
 const config = {
   serviceName: 'rental-api',
   appEnv: 'test',
-  serviceVersion: 'phase22-smoke',
+  serviceVersion: 'phase23-smoke',
   corsAllowedOrigins: [allowedOrigin],
 };
 
@@ -219,6 +219,33 @@ const adminClerkAuthService = {
   },
 };
 
+const userClerkAuthService = {
+  async getCurrent({ clerkUserId }) {
+    if (clerkUserId !== 'user_smoke') throw new Error('Unexpected Phase 23 Clerk user.');
+    return { authority: 'clerk', account: { firebaseUid: 'firebase_uid_smoke', memberStatus: 'active', authAuthorityMode: 'clerk-authoritative', lifecycleAuthorityMode: 'clerk-auth-firestore-profile-compatibility' }, clerkUser: { clerkUserId: 'user_smoke' } };
+  },
+  async migrateCurrent({ firebaseIdentity, password }) {
+    if (firebaseIdentity.uid !== 'firebase_uid_smoke' || password !== 'legacy888') throw new Error('Unexpected Phase 23 user migration input.');
+    return { authority: 'clerk', migration: 'firebase-user-to-clerk', account: { firebaseUid: firebaseIdentity.uid, memberStatus: 'active' }, clerkUser: { clerkUserId: 'user_smoke' } };
+  },
+  async provisionCurrent({ firebaseIdentity, password }) {
+    if (firebaseIdentity.uid !== 'firebase_uid_smoke' || password !== 'newpass88') throw new Error('Unexpected Phase 23 user provision input.');
+    return { authority: 'clerk', provisioned: true, account: { firebaseUid: firebaseIdentity.uid, memberStatus: 'active' }, clerkUser: { clerkUserId: 'user_smoke' } };
+  },
+  async verifyPassword({ clerkUserId, password }) {
+    if (clerkUserId !== 'user_smoke' || password !== 'legacy888') throw new Error('Unexpected Phase 23 user password verification input.');
+    return { authority: 'clerk', verified: true, account: { firebaseUid: 'firebase_uid_smoke' } };
+  },
+  async changePassword({ clerkUserId, firebaseIdentity, currentPassword, newPassword }) {
+    if (clerkUserId !== 'user_smoke' || firebaseIdentity.uid !== 'firebase_uid_smoke' || currentPassword !== 'legacy888' || newPassword !== 'newpass88') throw new Error('Unexpected Phase 23 user password change input.');
+    return { authority: 'clerk', changed: true, account: { firebaseUid: firebaseIdentity.uid } };
+  },
+  async finalizeWithdrawal({ clerkUserId, firebaseIdentity, password }) {
+    if (clerkUserId !== 'user_smoke' || firebaseIdentity.uid !== 'firebase_uid_smoke' || password !== 'newpass88') throw new Error('Unexpected Phase 23 withdrawal finalize input.');
+    return { authority: 'postgresql', withdrawn: true, clerkDeleted: true, clerkCleanupError: '', account: { firebaseUid: firebaseIdentity.uid } };
+  },
+};
+
 const rentalRequestWriteService = {
   async createCurrent(userId, firebaseIdentity, input) {
     if (userId !== 'user_smoke' || firebaseIdentity.uid !== 'firebase_uid_smoke') {
@@ -385,6 +412,7 @@ const server = createServer(
     memberAuthorityService,
     accountRecoveryService,
     adminClerkAuthService,
+    userClerkAuthService,
     rentalRequestWriteService,
     rentalRequestUserActionService,
     adminRentalRequestService,
@@ -782,6 +810,39 @@ const adminClerkProvision = await fetch(baseUrl + '/api/admin/identity-registry/
 const adminClerkProvisionBody = await adminClerkProvision.json();
 if (adminClerkProvision.status !== 200 || adminClerkProvisionBody.adminAuthentication?.provisioned !== true || adminClerkProvisionBody.adminAuthentication?.firebaseUid !== 'firebase_admin_target') throw new Error('Phase 22 administrator provision HTTP response is invalid.');
 
+const userClerkSession = await fetch(baseUrl + '/api/users/auth/session', { headers: authHeaders });
+const userClerkSessionBody = await userClerkSession.json();
+if (userClerkSession.status !== 200 || userClerkSessionBody.userAuthentication?.authority !== 'clerk' || userClerkSessionBody.userAuthentication?.firebaseUid !== 'firebase_uid_smoke') throw new Error('Phase 23 user Clerk session HTTP response is invalid.');
+const userClerkMigration = await fetch(baseUrl + '/api/users/auth/migrate', {
+  method: 'POST', headers: { Origin: allowedOrigin, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+  body: JSON.stringify({ password: 'legacy888' }),
+});
+const userClerkMigrationBody = await userClerkMigration.json();
+if (userClerkMigration.status !== 200 || userClerkMigrationBody.userAuthentication?.migration !== 'firebase-user-to-clerk') throw new Error('Phase 23 user Clerk migration HTTP response is invalid.');
+const userClerkProvision = await fetch(baseUrl + '/api/users/auth/provision', {
+  method: 'POST', headers: { Origin: allowedOrigin, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+  body: JSON.stringify({ password: 'newpass88' }),
+});
+const userClerkProvisionBody = await userClerkProvision.json();
+if (userClerkProvision.status !== 200 || userClerkProvisionBody.userAuthentication?.provisioned !== true) throw new Error('Phase 23 user Clerk provision HTTP response is invalid.');
+const userPasswordVerify = await fetch(baseUrl + '/api/users/me/password/verify', {
+  method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ password: 'legacy888' }),
+});
+const userPasswordVerifyBody = await userPasswordVerify.json();
+if (userPasswordVerify.status !== 200 || userPasswordVerifyBody.passwordVerification?.authority !== 'clerk' || userPasswordVerifyBody.passwordVerification?.verified !== true) throw new Error('Phase 23 user password verification HTTP response is invalid.');
+const userPasswordChange = await fetch(baseUrl + '/api/users/me/password/change', {
+  method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+  body: JSON.stringify({ currentPassword: 'legacy888', newPassword: 'newpass88' }),
+});
+const userPasswordChangeBody = await userPasswordChange.json();
+if (userPasswordChange.status !== 200 || userPasswordChangeBody.passwordChange?.authority !== 'clerk' || userPasswordChangeBody.passwordChange?.changed !== true) throw new Error('Phase 23 user password change HTTP response is invalid.');
+const userWithdrawalFinalize = await fetch(baseUrl + '/api/users/me/withdrawal/finalize', {
+  method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+  body: JSON.stringify({ password: 'newpass88' }),
+});
+const userWithdrawalFinalizeBody = await userWithdrawalFinalize.json();
+if (userWithdrawalFinalize.status !== 200 || userWithdrawalFinalizeBody.withdrawal?.authority !== 'postgresql' || userWithdrawalFinalizeBody.withdrawal?.withdrawn !== true || userWithdrawalFinalizeBody.withdrawal?.clerkDeleted !== true) throw new Error('Phase 23 user withdrawal finalization HTTP response is invalid.');
+
 const invalidFirebase = await fetch(`${baseUrl}/api/users/me/legacy/firebase`, {
   method: 'POST',
   headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer wrong-token' },
@@ -792,4 +853,4 @@ const missing = await fetch(`${baseUrl}/missing`);
 if (missing.status !== 404) throw new Error(`/missing returned ${missing.status}`);
 
 await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, Phase 16 rental-request POST, Phase 17 admin bootstrap/list/dashboard/status + Phase 18 sync/events/edit/memo/restore + Phase 19 user edit/cancel/extend/admin-review + Phase 20 asset catalog/bootstrap/CRUD/bulk/categories + Phase 21 member profile/status authority/admin registry + Phase 22 account recovery/admin Clerk session/migration/provision, CORS, 404)');
+console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, Phase 16 rental-request POST, Phase 17 admin bootstrap/list/dashboard/status + Phase 18 sync/events/edit/memo/restore + Phase 19 user edit/cancel/extend/admin-review + Phase 20 asset catalog/bootstrap/CRUD/bulk/categories + Phase 21 member profile/status authority/admin registry + Phase 22 account recovery/admin Clerk session/migration/provision + Phase 23 user Clerk session/migration/provision/password/withdrawal authority, CORS, 404)');

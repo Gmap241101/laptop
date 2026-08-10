@@ -189,6 +189,24 @@ export const createClerkBackendClient = ({ secretKey, apiUrl = DEFAULT_CLERK_API
       }));
     },
 
+    async verifyPassword(userId, password) {
+      if (typeof userId !== 'string' || !userId.trim()) {
+        throw createClerkApiError('invalid_user_id', 'A Clerk user ID is required.');
+      }
+      if (typeof password !== 'string' || !password) {
+        throw createClerkApiError('invalid_password', 'A password is required.');
+      }
+      const body = await requestJson({
+        path: `/users/${encodeURIComponent(userId.trim())}/verify_password`,
+        method: 'POST',
+        body: { password },
+      });
+      if (body?.verified !== true) {
+        throw createClerkApiError('clerk_password_verification_failed', 'Clerk did not verify the supplied password.', 401);
+      }
+      return Object.freeze({ verified: true });
+    },
+
     async deleteUser(userId) {
       if (typeof userId !== 'string' || !userId.trim()) {
         throw createClerkApiError('invalid_user_id', 'A Clerk user ID is required.');

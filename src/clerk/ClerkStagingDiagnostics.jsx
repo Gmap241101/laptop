@@ -63,6 +63,11 @@ import {
   readAccountAuthCutoverConfig,
   subscribeAccountAuthObservation,
 } from '../features/auth/accountAuthCutover.js';
+import {
+  getLatestUserAccountLifecycleObservation,
+  readUserAccountLifecycleCutoverConfig,
+  subscribeUserAccountLifecycleObservation,
+} from '../features/auth/userAccountLifecycleCutover.js';
 import { clerkStagingClient } from './clerkStagingClient.js';
 
 const panelStyle = {
@@ -115,6 +120,7 @@ export default function ClerkStagingDiagnostics() {
   const assetDomainCutoverConfig = useMemo(() => readAssetDomainCutoverConfig(), []);
   const memberAuthorityConfig = useMemo(() => readMemberAuthorityCutoverConfig(), []);
   const accountAuthConfig = useMemo(() => readAccountAuthCutoverConfig(), []);
+  const userLifecycleConfig = useMemo(() => readUserAccountLifecycleCutoverConfig(), []);
   const [state, setState] = useState({
     phase: requested ? 'loading' : 'hidden',
     signedIn: false,
@@ -258,6 +264,24 @@ export default function ClerkStagingDiagnostics() {
     adminProvisionTargetUid: null,
     adminProvisionClerkUserId: null,
     adminAuthError: null,
+    userClerkAuthRequested: userLifecycleConfig.userAuthRequested,
+    userLifecycleRequested: userLifecycleConfig.userLifecycleRequested,
+    userAuthSource: userLifecycleConfig.userAuthRequested ? 'awaiting-user-login' : null,
+    userFirebaseCompatibility: null,
+    userClerkMigration: null,
+    userClerkUserId: null,
+    userClientTrustStatus: null,
+    userClientTrustStrategy: null,
+    userClientTrustDestination: null,
+    signupClerkProvision: null,
+    passwordVerificationSource: null,
+    passwordAuthoritySource: null,
+    passwordFirebaseCompatibility: null,
+    withdrawalAuthority: null,
+    withdrawalClerkDeleted: null,
+    withdrawalClerkCleanupError: null,
+    withdrawalFirebaseCleanup: null,
+    userLifecycleError: null,
     error: null,
   });
 
@@ -664,6 +688,43 @@ export default function ClerkStagingDiagnostics() {
     return subscribeAccountAuthObservation(applyObservation);
   }, [requested]);
 
+  useEffect(() => {
+    if (!requested) return undefined;
+    const applyObservation = (observation) => {
+      setState((current) => ({
+        ...current,
+        userClerkAuthRequested: observation && Object.prototype.hasOwnProperty.call(observation, 'userAuthRequested')
+          ? Boolean(observation.userAuthRequested)
+          : current.userClerkAuthRequested,
+        userLifecycleRequested: observation && Object.prototype.hasOwnProperty.call(observation, 'userLifecycleRequested')
+          ? Boolean(observation.userLifecycleRequested)
+          : current.userLifecycleRequested,
+        userAuthSource: observation?.userAuthSource || current.userAuthSource,
+        userFirebaseCompatibility: observation?.userFirebaseCompatibility || current.userFirebaseCompatibility,
+        userClerkMigration: observation?.userClerkMigration || current.userClerkMigration,
+        userClerkUserId: observation?.userClerkUser || current.userClerkUserId,
+        userClientTrustStatus: observation?.userClientTrustStatus || current.userClientTrustStatus,
+        userClientTrustStrategy: observation?.userClientTrustStrategy || current.userClientTrustStrategy,
+        userClientTrustDestination: observation?.userClientTrustDestination || current.userClientTrustDestination,
+        signupClerkProvision: observation?.signupClerkProvision || current.signupClerkProvision,
+        passwordVerificationSource: observation?.passwordVerificationSource || current.passwordVerificationSource,
+        passwordAuthoritySource: observation?.passwordAuthoritySource || current.passwordAuthoritySource,
+        passwordFirebaseCompatibility: observation?.passwordFirebaseCompatibility || current.passwordFirebaseCompatibility,
+        withdrawalAuthority: observation?.withdrawalAuthority || current.withdrawalAuthority,
+        withdrawalClerkDeleted: observation?.withdrawalClerkDeleted || current.withdrawalClerkDeleted,
+        withdrawalClerkCleanupError: observation && Object.prototype.hasOwnProperty.call(observation, 'withdrawalClerkCleanupError')
+          ? observation.withdrawalClerkCleanupError || null
+          : current.withdrawalClerkCleanupError,
+        withdrawalFirebaseCleanup: observation?.withdrawalFirebaseCleanup || current.withdrawalFirebaseCleanup,
+        userLifecycleError: observation && Object.prototype.hasOwnProperty.call(observation, 'error')
+          ? observation.error || null
+          : current.userLifecycleError,
+      }));
+    };
+    applyObservation(getLatestUserAccountLifecycleObservation());
+    return subscribeUserAccountLifecycleObservation(applyObservation);
+  }, [requested]);
+
   if (!requested) return null;
 
   const run = async (operation) => {
@@ -857,7 +918,7 @@ export default function ClerkStagingDiagnostics() {
 
   return (
     <aside style={panelStyle} aria-label="Clerk staging diagnostics">
-      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 22</div>
+      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 23</div>
       <div>SDK: {state.phase === 'loading' ? 'loading' : state.phase}</div>
       <div>Signed in: {state.signedIn ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Clerk user: {state.userId || '-'}</div>
@@ -1053,6 +1114,26 @@ export default function ClerkStagingDiagnostics() {
       <div style={{ overflowWrap: 'anywhere' }}>Admin provision target: {state.adminProvisionTargetUid || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Admin provision Clerk user: {state.adminProvisionClerkUserId || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Admin auth error: {state.adminAuthError || '-'}</div>
+
+      <div style={{ marginTop: '6px', fontWeight: 700 }}>Phase 23 user Clerk authentication + account lifecycle authority</div>
+      <div>User Clerk authority requested: {state.userClerkAuthRequested ? 'yes' : 'no'}</div>
+      <div>User lifecycle authority requested: {state.userLifecycleRequested ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>User auth source: {state.userAuthSource || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>User Firebase compatibility: {state.userFirebaseCompatibility || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>User Clerk migration: {state.userClerkMigration || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>User Clerk user: {state.userClerkUserId || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>User Client Trust: {state.userClientTrustStatus || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>User Client Trust strategy: {state.userClientTrustStrategy || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>User Client Trust destination: {state.userClientTrustDestination || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Signup Clerk provision: {state.signupClerkProvision || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Password verification source: {state.passwordVerificationSource || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Password authority source: {state.passwordAuthoritySource || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Password Firebase compatibility: {state.passwordFirebaseCompatibility || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Withdrawal authority: {state.withdrawalAuthority || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Withdrawal Clerk deleted: {state.withdrawalClerkDeleted || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Withdrawal Clerk cleanup error: {state.withdrawalClerkCleanupError || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Withdrawal Firebase cleanup: {state.withdrawalFirebaseCleanup || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>User lifecycle error: {state.userLifecycleError || '-'}</div>
 
       {state.error ? (
         <div role="alert" style={{ marginTop: '8px', color: '#b91c1c', overflowWrap: 'anywhere' }}>

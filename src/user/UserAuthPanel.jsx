@@ -368,98 +368,116 @@ export default function UserAuthPanel({ ctx }) {
                   </div>
                 ) : null}
 
-                <Input
-                  label="이메일"
-                  value={userAuthForm.email}
-                  onChange={(value) => setUserAuthForm({ ...userAuthForm, email: value })}
-                  placeholder="example@company.com"
-                  type="email"
-                  autoComplete="email"
-                />
-
-                {isSignupMode && (
+                {!isSignupMode && userAuthForm.clientTrustRequired ? (
                   <>
+                    <div className="rounded-2xl border border-sky-200 bg-sky-50 px-5 py-4 text-sm leading-6 text-sky-800">
+                      새 브라우저 확인이 필요합니다. Clerk가 <span className="font-bold">{userAuthForm.clientTrustDestination || userAuthForm.email}</span>로 보낸 인증코드를 입력해 주세요.
+                    </div>
                     <Input
-                      label="성명"
-                      value={userAuthForm.name}
-                      onChange={(value) =>
-                        setUserAuthForm({
-                          ...userAuthForm,
-                          name: sanitizeMemberNameInput(value).slice(0, 30),
-                        })
-                      }
-                      placeholder="공백 없이 성명을 입력하세요"
-                      autoComplete="name"
-                      maxLength={30}
-                    />
-
-                    {directorySignupRequired ? (
-                      <label className="block">
-                        <span className="mb-1.5 block text-xs font-semibold tracking-wide text-slate-600">부서 / 팀</span>
-                        <select
-                          value={userAuthForm.team}
-                          onChange={(event) => setUserAuthForm({ ...userAuthForm, team: event.target.value })}
-                          className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none transition mk-form-focus"
-                        >
-                          <option value="">부서 / 팀을 선택해 주세요</option>
-                          {(data.teams || []).map((team) => (
-                            <option key={team} value={team}>{team}</option>
-                          ))}
-                        </select>
-                      </label>
-                    ) : (
-                      <Input
-                        label="부서 / 팀"
-                        value={userAuthForm.team}
-                        onChange={(value) => setUserAuthForm({ ...userAuthForm, team: value })}
-                        placeholder="소속 부서 또는 팀명을 입력하세요"
-                        maxLength={80}
-                      />
-                    )}
-
-                    <DomesticPhoneInput
-                      prefix={userAuthForm.phonePrefix}
-                      middle={userAuthForm.phoneMiddle}
-                      last={userAuthForm.phoneLast}
-                      disabled={userAuthLoading}
-                      onChange={(phoneParts) =>
-                        setUserAuthForm({
-                          ...userAuthForm,
-                          phonePrefix: phoneParts.prefix,
-                          phoneMiddle: phoneParts.middle,
-                          phoneLast: phoneParts.last,
-                        })
-                      }
+                      label="Clerk 새 기기 확인 인증코드"
+                      value={userAuthForm.clientTrustCode || ''}
+                      onChange={(value) => setUserAuthForm({ ...userAuthForm, clientTrustCode: value })}
+                      placeholder="인증코드 입력"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
                     />
                   </>
-                )}
-
-                <Input
-                  label="비밀번호"
-                  value={userAuthForm.password}
-                  onChange={(value) => setUserAuthForm({ ...userAuthForm, password: value })}
-                  placeholder={isSignupMode ? '8자 이상, 영문+숫자 포함' : '비밀번호 입력'}
-                  type="password"
-                  autoComplete={isSignupMode ? 'new-password' : 'current-password'}
-                />
-
-                {isSignupMode && (
+                ) : (
                   <>
                     <Input
-                      label="비밀번호 확인"
-                      value={userAuthForm.passwordConfirm}
-                      onChange={(value) => setUserAuthForm({ ...userAuthForm, passwordConfirm: value })}
-                      placeholder="비밀번호를 한 번 더 입력"
-                      type="password"
-                      autoComplete="new-password"
-                      aria-invalid={signupPasswordMismatch || undefined}
+                      label="이메일"
+                      value={userAuthForm.email}
+                      onChange={(value) => setUserAuthForm({ ...userAuthForm, email: value })}
+                      placeholder="example@company.com"
+                      type="email"
+                      autoComplete="email"
                     />
 
-                    {signupPasswordMismatch ? (
-                      <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-700">
-                        입력하신 비밀번호가 일치하지 않습니다.
-                      </div>
-                    ) : null}
+                    {isSignupMode && (
+                      <>
+                        <Input
+                          label="성명"
+                          value={userAuthForm.name}
+                          onChange={(value) =>
+                            setUserAuthForm({
+                              ...userAuthForm,
+                              name: sanitizeMemberNameInput(value).slice(0, 30),
+                            })
+                          }
+                          placeholder="공백 없이 성명을 입력하세요"
+                          autoComplete="name"
+                          maxLength={30}
+                        />
+
+                        {directorySignupRequired ? (
+                          <label className="block">
+                            <span className="mb-1.5 block text-xs font-semibold tracking-wide text-slate-600">부서 / 팀</span>
+                            <select
+                              value={userAuthForm.team}
+                              onChange={(event) => setUserAuthForm({ ...userAuthForm, team: event.target.value })}
+                              className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none transition mk-form-focus"
+                            >
+                              <option value="">부서 / 팀을 선택해 주세요</option>
+                              {(data.teams || []).map((team) => (
+                                <option key={team} value={team}>{team}</option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : (
+                          <Input
+                            label="부서 / 팀"
+                            value={userAuthForm.team}
+                            onChange={(value) => setUserAuthForm({ ...userAuthForm, team: value })}
+                            placeholder="소속 부서 또는 팀명을 입력하세요"
+                            maxLength={80}
+                          />
+                        )}
+
+                        <DomesticPhoneInput
+                          prefix={userAuthForm.phonePrefix}
+                          middle={userAuthForm.phoneMiddle}
+                          last={userAuthForm.phoneLast}
+                          disabled={userAuthLoading}
+                          onChange={(phoneParts) =>
+                            setUserAuthForm({
+                              ...userAuthForm,
+                              phonePrefix: phoneParts.prefix,
+                              phoneMiddle: phoneParts.middle,
+                              phoneLast: phoneParts.last,
+                            })
+                          }
+                        />
+                      </>
+                    )}
+
+                    <Input
+                      label="비밀번호"
+                      value={userAuthForm.password}
+                      onChange={(value) => setUserAuthForm({ ...userAuthForm, password: value })}
+                      placeholder={isSignupMode ? '8자 이상, 영문+숫자 포함' : '비밀번호 입력'}
+                      type="password"
+                      autoComplete={isSignupMode ? 'new-password' : 'current-password'}
+                    />
+
+                    {isSignupMode && (
+                      <>
+                        <Input
+                          label="비밀번호 확인"
+                          value={userAuthForm.passwordConfirm}
+                          onChange={(value) => setUserAuthForm({ ...userAuthForm, passwordConfirm: value })}
+                          placeholder="비밀번호를 한 번 더 입력"
+                          type="password"
+                          autoComplete="new-password"
+                          aria-invalid={signupPasswordMismatch || undefined}
+                        />
+
+                        {signupPasswordMismatch ? (
+                          <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-700">
+                            입력하신 비밀번호가 일치하지 않습니다.
+                          </div>
+                        ) : null}
+                      </>
+                    )}
                   </>
                 )}
 
@@ -473,7 +491,9 @@ export default function UserAuthPanel({ ctx }) {
                       : ''}
                   {isSignupMode
                     ? '비밀번호는 8자 이상이며 영문과 숫자를 포함해야 합니다.'
-                    : '가입한 이메일과 비밀번호를 입력해 주세요.'}
+                    : userAuthForm.clientTrustRequired
+                      ? '인증코드는 현재 Clerk 로그인 시도에만 사용됩니다.'
+                      : '가입한 이메일과 비밀번호를 입력해 주세요.'}
                 </div>
 
                 {isSignupMode ? (
@@ -492,7 +512,7 @@ export default function UserAuthPanel({ ctx }) {
                   </div>
                 ) : (
                   <Button type="submit" variant="primary" disabled={userAuthLoading || !firebaseAuthReady} className="w-full justify-center py-3">
-                    {userAuthLoading ? '처리 중...' : '로그인'}
+                    {userAuthLoading ? '처리 중...' : userAuthForm.clientTrustRequired ? '인증코드 확인' : '로그인'}
                   </Button>
                 )}
 

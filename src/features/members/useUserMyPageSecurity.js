@@ -1,18 +1,25 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   EmailAuthProvider,
   reauthenticateWithCredential,
   updatePassword,
 } from 'firebase/auth';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import {
+  publishUserAccountLifecycleObservation,
+  readUserAccountLifecycleCutoverConfig,
+} from '../auth/userAccountLifecycleCutover.js';
 import { isValidMemberPassword } from '../../utils/memberPolicy.js';
 
 const getVerificationErrorMessage = (error) => {
-  const code = String(error?.code || '');
+  const code = String(error?.code || error?.errors?.[0]?.code || '');
 
   if (
     code === 'auth/wrong-password' ||
     code === 'auth/invalid-credential' ||
-    code === 'auth/invalid-login-credentials'
+    code === 'auth/invalid-login-credentials' ||
+    code === 'clerk_password_verification_failed' ||
+    code === 'form_password_incorrect'
   ) {
     return '현재 비밀번호가 올바르지 않습니다.';
   }
@@ -44,6 +51,7 @@ export default function useUserMyPageSecurity({
   const [newPasswordConfirm, setNewPasswordConfirm] = useState('');
   const [passwordChanging, setPasswordChanging] = useState(false);
   const [passwordErrorMessage, setPasswordErrorMessage] = useState('');
+  const verifiedPasswordRef = useRef('');
 
   const currentUid = String(firebaseAuthUser?.uid || '');
   const isVerified = Boolean(currentUid && verifiedUid === currentUid);
@@ -64,6 +72,7 @@ export default function useUserMyPageSecurity({
     setNewPasswordConfirm('');
     setPasswordChanging(false);
     setPasswordErrorMessage('');
+    verifiedPasswordRef.current = '';
   }, [currentUid]);
 
   const verifyCurrentPassword = useCallback(
@@ -82,21 +91,47 @@ export default function useUserMyPageSecurity({
         return;
       }
 
+      const lifecycleConfig = readUserAccountLifecycleCutoverConfig();
       setVerificationLoading(true);
       setVerificationErrorMessage('');
 
       try {
+        if (lifecycleConfig.userLifecycleRequested) {
+          await clerkStagingClient.verifyUserPassword(currentPassword);
+        }
+
         const credential = EmailAuthProvider.credential(
           firebaseAuthUser.email,
           currentPassword
         );
-
         await reauthenticateWithCredential(firebaseAuthUser, credential);
+
+        verifiedPasswordRef.current = currentPassword;
         setVerifiedUid(firebaseAuthUser.uid);
         setCurrentPassword('');
+        if (lifecycleConfig.userLifecycleRequested) {
+          publishUserAccountLifecycleObservation({
+            userAuthRequested: lifecycleConfig.userAuthRequested,
+            userLifecycleRequested: true,
+            passwordVerificationSource: 'clerk',
+            passwordFirebaseCompatibility: 'verified',
+            error: '',
+          });
+        }
       } catch (error) {
+        verifiedPasswordRef.current = '';
+        setVerifiedUid('');
         setVerificationErrorMessage(getVerificationErrorMessage(error));
         setCurrentPassword('');
+        if (lifecycleConfig.userLifecycleRequested) {
+          publishUserAccountLifecycleObservation({
+            userAuthRequested: lifecycleConfig.userAuthRequested,
+            userLifecycleRequested: true,
+            passwordVerificationSource: 'failed',
+            passwordFirebaseCompatibility: 'unknown',
+            error: error?.code || error?.errors?.[0]?.code || 'user-password-verification-failed',
+          });
+        }
       } finally {
         setVerificationLoading(false);
       }
@@ -107,10 +142,11 @@ export default function useUserMyPageSecurity({
     async (event) => {
       event?.preventDefault?.();
 
-      if (!firebaseAuthUser?.uid || !isVerified) {
+      if (!firebaseAuthUser?.uid || !isVerified || !verifiedPasswordRef.current) {
         setVerificationErrorMessage(
           '본인 확인 시간이 만료되었습니다. 현재 비밀번호를 다시 확인해 주세요.'
         );
+        verifiedPasswordRef.current = '';
         setVerifiedUid('');
         return;
       }
@@ -127,22 +163,76 @@ export default function useUserMyPageSecurity({
         return;
       }
 
+      const lifecycleConfig = readUserAccountLifecycleCutoverConfig();
+      const verifiedCurrentPassword = verifiedPasswordRef.current;
+      let firebasePasswordChanged = false;
+      let firebaseRollbackFailed = false;
+
       setPasswordChanging(true);
       setPasswordErrorMessage('');
 
       try {
         await updatePassword(firebaseAuthUser, newPassword);
+        firebasePasswordChanged = true;
+
+        if (lifecycleConfig.userLifecycleRequested) {
+          try {
+            const firebaseIdToken = await firebaseAuthUser.getIdToken();
+            await clerkStagingClient.changeUserPassword(
+              firebaseIdToken,
+              verifiedCurrentPassword,
+              newPassword
+            );
+          } catch (authorityError) {
+            try {
+              await updatePassword(firebaseAuthUser, verifiedCurrentPassword);
+              firebasePasswordChanged = false;
+            } catch (rollbackError) {
+              firebaseRollbackFailed = true;
+              console.error('Firebase password rollback error:', rollbackError);
+            }
+            throw authorityError;
+          }
+          publishUserAccountLifecycleObservation({
+            userAuthRequested: lifecycleConfig.userAuthRequested,
+            userLifecycleRequested: true,
+            passwordAuthoritySource: 'clerk',
+            passwordFirebaseCompatibility: 'synced',
+            error: '',
+          });
+        }
+
+        verifiedPasswordRef.current = '';
+        setVerifiedUid('');
         setNewPassword('');
         setNewPasswordConfirm('');
         triggerToast?.('비밀번호가 변경되었습니다.', 'success');
       } catch (error) {
+        if (lifecycleConfig.userLifecycleRequested) {
+          publishUserAccountLifecycleObservation({
+            userAuthRequested: lifecycleConfig.userAuthRequested,
+            userLifecycleRequested: true,
+            passwordAuthoritySource: 'failed',
+            passwordFirebaseCompatibility: firebaseRollbackFailed
+              ? 'rollback-failed'
+              : firebasePasswordChanged
+                ? 'changed-unconfirmed'
+                : 'rolled-back',
+            error: error?.code || error?.errors?.[0]?.code || 'user-password-change-failed',
+          });
+        }
         const message = getVerificationErrorMessage(error);
 
         if (error?.code === 'auth/requires-recent-login') {
+          verifiedPasswordRef.current = '';
           setVerifiedUid('');
           setVerificationErrorMessage(message);
         } else {
-          setPasswordErrorMessage(message);
+          setPasswordErrorMessage(
+            firebaseRollbackFailed
+              ? 'Clerk 비밀번호 변경에 실패했고 Firebase 비밀번호 원복도 실패했습니다. 로그아웃 후 비밀번호 상태를 확인해 주세요.'
+              : message
+          );
         }
       } finally {
         setPasswordChanging(false);

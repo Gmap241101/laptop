@@ -1,0 +1,26 @@
+# Phase 23 - User Clerk Authentication + Account Lifecycle Authority
+# Vercel project: mkrental
+# Environment: Production (this Vercel project is used as Staging/Test)
+
+VITE_USER_CLERK_AUTH_ENABLED=true
+VITE_USER_CLERK_LIFECYCLE_ENABLED=true
+
+# Keep all previously enabled Phase 9-22 staging variables, including:
+VITE_ACCOUNT_RECOVERY_POSTGRES_READ_ENABLED=true
+VITE_ADMIN_CLERK_AUTH_ENABLED=true
+
+# Phase 23 user opt-in/session latches:
+#   userAuth=clerk
+#   userLifecycle=clerk
+# Rollback latches:
+#   userAuth=firebase
+#   userLifecycle=firebase
+#
+# Full recommended user validation URL:
+# https://mkrental.vercel.app/?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWrite=postgres&restrictionRead=postgres&restrictionWatcher=off&restrictionWrite=postgres&rentalRequestRead=postgres&rentalRequestWatcher=off&rentalRequestWrite=postgres&rentalRequestActionWrite=postgres&assetRead=postgres&accountRecovery=postgres&userAuth=clerk&userLifecycle=clerk
+#
+# Full recommended administrator validation URL:
+# https://mkrental.vercel.app/admin?clerkTest=1&memberRead=postgres&memberWatcher=off&memberWrite=postgres&restrictionRead=postgres&restrictionWatcher=off&restrictionWrite=postgres&rentalRequestRead=postgres&rentalRequestWatcher=off&rentalRequestWrite=postgres&adminRequestRead=postgres&adminRequestWrite=postgres&rentalRequestActionWrite=postgres&assetRead=postgres&assetWrite=postgres&adminIdentity=postgres&adminAuth=clerk
+#
+# VITE_* values are build-time. Redeploy after adding or changing them.
+# Never expose DATABASE_URL, CLERK_SECRET_KEY, CLERK_JWT_KEY, or Firebase service-account private keys through VITE_*.

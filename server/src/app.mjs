@@ -243,6 +243,14 @@ export const createRequestHandler = ({
     async migrateCurrent() { const error = new Error('Admin Clerk auth service is not configured.'); error.code = 'admin_clerk_auth_not_configured'; throw error; },
     async provisionTarget() { const error = new Error('Admin Clerk auth service is not configured.'); error.code = 'admin_clerk_auth_not_configured'; throw error; },
   },
+  userClerkAuthService = {
+    async getCurrent() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
+    async migrateCurrent() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
+    async provisionCurrent() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
+    async verifyPassword() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
+    async changePassword() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
+    async finalizeWithdrawal() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
+  },
   rentalRestrictionService = {
     async getCurrentByFirebaseIdentity() { const error = new Error('Rental restriction service is not configured.'); error.code = 'rental_restriction_not_configured'; throw error; },
     async readCurrentSourceByFirebaseIdentity() { const error = new Error('Rental restriction service is not configured.'); error.code = 'rental_restriction_not_configured'; throw error; },
@@ -583,6 +591,132 @@ export const createRequestHandler = ({
       } catch (error) {
         console.warn('[account-recovery] password reset verification failed', { requestId, code: error?.code, name: error?.name });
         writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'account_recovery_unavailable' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/users/auth/session') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      try {
+        const result = await userClerkAuthService.getCurrent({ clerkUserId: auth.userId });
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          userAuthentication: {
+            authority: result.authority,
+            clerkUserId: result.clerkUser?.clerkUserId || auth.userId,
+            firebaseUid: result.account?.firebaseUid || '',
+            memberStatus: result.account?.memberStatus || '',
+            authAuthorityMode: result.account?.authAuthorityMode || '',
+            lifecycleAuthorityMode: result.account?.lifecycleAuthorityMode || '',
+          },
+        }, headers);
+      } catch (error) {
+        console.warn('[user-auth] Clerk user session rejected', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: false, error: error?.code || 'user_clerk_auth_unavailable' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/users/auth/migrate') {
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      try {
+        const body = await readJsonBody(request);
+        const result = await userClerkAuthService.migrateCurrent({ firebaseIdentity, password: String(body?.password || '') });
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          userAuthentication: {
+            authority: result.authority,
+            migration: result.migration,
+            clerkUserId: result.clerkUser?.clerkUserId || '',
+            firebaseUid: result.account?.firebaseUid || firebaseIdentity.uid,
+            memberStatus: result.account?.memberStatus || '',
+          },
+        }, headers);
+      } catch (error) {
+        console.warn('[user-auth] Firebase user migration failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'user_clerk_migration_failed' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/users/auth/provision') {
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      try {
+        const body = await readJsonBody(request);
+        const result = await userClerkAuthService.provisionCurrent({ firebaseIdentity, password: String(body?.password || '') });
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          userAuthentication: {
+            authority: result.authority,
+            provisioned: Boolean(result.provisioned),
+            clerkUserId: result.clerkUser?.clerkUserId || '',
+            firebaseUid: result.account?.firebaseUid || firebaseIdentity.uid,
+            memberStatus: result.account?.memberStatus || '',
+          },
+        }, headers);
+      } catch (error) {
+        console.warn('[user-auth] signup Clerk provision failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'user_clerk_provision_failed' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/users/me/password/verify') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      try {
+        const body = await readJsonBody(request);
+        const result = await userClerkAuthService.verifyPassword({ clerkUserId: auth.userId, password: String(body?.password || '') });
+        writeJson(response, 200, { ...basePayload, authenticated: true, passwordVerification: { authority: result.authority, verified: Boolean(result.verified) } }, headers);
+      } catch (error) {
+        console.warn('[user-auth] password verification failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 401, { ...basePayload, authenticated: true, error: error?.code || 'user_password_verification_failed' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/users/me/password/change') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      try {
+        const body = await readJsonBody(request);
+        const result = await userClerkAuthService.changePassword({
+          clerkUserId: auth.userId,
+          firebaseIdentity,
+          currentPassword: String(body?.currentPassword || ''),
+          newPassword: String(body?.newPassword || ''),
+        });
+        writeJson(response, 200, { ...basePayload, authenticated: true, passwordChange: { authority: result.authority, changed: Boolean(result.changed), firebaseUid: result.account?.firebaseUid || '' } }, headers);
+      } catch (error) {
+        console.warn('[user-auth] password authority change failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'user_password_change_failed' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/users/me/withdrawal/finalize') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      try {
+        const body = await readJsonBody(request);
+        const result = await userClerkAuthService.finalizeWithdrawal({ clerkUserId: auth.userId, firebaseIdentity, password: String(body?.password || '') });
+        writeJson(response, 200, { ...basePayload, authenticated: true, withdrawal: { authority: result.authority, withdrawn: Boolean(result.withdrawn), clerkDeleted: Boolean(result.clerkDeleted), clerkCleanupError: result.clerkCleanupError || '', firebaseUid: result.account?.firebaseUid || firebaseIdentity.uid } }, headers);
+      } catch (error) {
+        console.warn('[user-auth] withdrawal finalization failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'user_withdrawal_finalize_failed' }, headers);
       }
       return;
     }

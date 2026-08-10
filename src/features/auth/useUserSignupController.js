@@ -66,6 +66,11 @@ import {
   createDefaultUserAuthForm,
 } from './useUserLoginController.js';
 import { resolveEffectiveUserSessionPolicy } from './userSessionPolicyService.js';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import {
+  publishUserAccountLifecycleObservation,
+  readUserAccountLifecycleCutoverConfig,
+} from './userAccountLifecycleCutover.js';
 
 const DEFAULT_TERMS_SUBMISSION = Object.freeze({
   ready: false,
@@ -239,9 +244,11 @@ export default function useUserSignupController({
     }
 
     let createdSignupUser = null;
+    let signupFirestoreCommitted = false;
     let effectiveUserSessionPolicy = normalizeUserSessionPolicy(
       userSessionPolicy
     );
+    const lifecycleConfig = readUserAccountLifecycleCutoverConfig();
 
     setUserAuthLoading(true);
 
@@ -579,16 +586,139 @@ export default function useUserSignupController({
         });
       });
 
+      signupFirestoreCommitted = true;
+      createdSignupUser = null;
+
+      let clerkProvisioned = !lifecycleConfig.userLifecycleRequested;
+      if (lifecycleConfig.userLifecycleRequested) {
+        try {
+          const firebaseIdToken = await credential.user.getIdToken();
+          const provisionPayload = await clerkStagingClient.provisionUserClerkIdentity(
+            firebaseIdToken,
+            password
+          );
+          clerkProvisioned = Boolean(provisionPayload?.userAuthentication?.provisioned);
+          publishUserAccountLifecycleObservation({
+            userAuthRequested: lifecycleConfig.userAuthRequested,
+            userLifecycleRequested: true,
+            signupClerkProvision: clerkProvisioned ? 'provisioned' : 'invalid-response',
+            userClerkUser: provisionPayload?.userAuthentication?.clerkUserId || '',
+            error: clerkProvisioned ? '' : 'user-clerk-provision-invalid-response',
+          });
+        } catch (provisionError) {
+          clerkProvisioned = false;
+          console.error('User signup Clerk provision error:', provisionError);
+          publishUserAccountLifecycleObservation({
+            userAuthRequested: lifecycleConfig.userAuthRequested,
+            userLifecycleRequested: true,
+            signupClerkProvision: 'failed',
+            error: provisionError?.code || provisionError?.message || 'user-clerk-provision-failed',
+          });
+        }
+      }
+
       await signOut(userSignupAuth).catch((logoutError) => {
         console.error('Signup secondary auth sign-out error:', logoutError);
       });
 
       if (createdAccountStatus === USER_PROFILE_STATUS.ACTIVE) {
+        if (lifecycleConfig.userAuthRequested && !clerkProvisioned) {
+          clearUserAuthenticatedSession();
+          setUserAuthForm(createDefaultUserAuthForm());
+          clearUserLoginReturnTarget();
+          showUserAccountStatus('signupAutoApprovedComplete');
+          triggerToast(
+            '회원가입은 완료됐지만 Clerk 계정 연결을 완료하지 못했습니다. 로그인 화면에서 다시 로그인하면 자동 연결을 재시도합니다.',
+            'error'
+          );
+          return;
+        }
+
         const primaryCredential = await signInWithEmailAndPassword(
           firebaseAuth,
           email,
           password
         );
+
+        if (lifecycleConfig.userAuthRequested) {
+          try {
+            const signInResult = await clerkStagingClient.signInUserWithPassword(email, password);
+            if (signInResult?.status === 'needs_client_trust') {
+              setUserAuthForm({
+                ...createDefaultUserAuthForm(),
+                email,
+                clientTrustCode: '',
+                clientTrustRequired: true,
+                clientTrustStrategy: signInResult.clientTrustStrategy || '',
+                clientTrustDestination: signInResult.clientTrustDestination || email,
+                clientTrustMigration: 'signup-provisioned',
+              });
+              clearUserAuthenticatedSession();
+              clearUserLoginReturnTarget();
+              replaceAppPath('user', 'login');
+              setView('user');
+              setUserTab('login');
+              setIsCommunityMenuOpen(false);
+              publishUserAccountLifecycleObservation({
+                userAuthRequested: true,
+                userLifecycleRequested: lifecycleConfig.userLifecycleRequested,
+                userAuthSource: 'client-trust-required',
+                userFirebaseCompatibility: 'signed-in',
+                userClerkMigration: 'signup-provisioned',
+                signupClerkProvision: 'provisioned',
+                userClientTrustStatus: 'code-sent',
+                userClientTrustStrategy: signInResult.clientTrustStrategy || '',
+                userClientTrustDestination: signInResult.clientTrustDestination || '',
+                error: '',
+              });
+              triggerToast(
+                `회원가입이 완료되었습니다. Clerk 새 기기 확인을 위해 ${signInResult.clientTrustDestination || '등록된 연락처'}로 보낸 인증코드를 입력해 주세요.`,
+                'success'
+              );
+              return;
+            }
+
+            const sessionPayload = await clerkStagingClient.getUserClerkSession();
+            const authority = sessionPayload?.userAuthentication;
+            if (authority?.firebaseUid !== primaryCredential.user.uid) {
+              const identityError = new Error('Clerk and Firebase signup identities do not match.');
+              identityError.code = 'user_clerk_session_identity_mismatch';
+              throw identityError;
+            }
+            publishUserAccountLifecycleObservation({
+              userAuthRequested: true,
+              userLifecycleRequested: lifecycleConfig.userLifecycleRequested,
+              userAuthSource: 'clerk',
+              userFirebaseCompatibility: 'signed-in',
+              userClerkMigration: 'signup-provisioned',
+              userClerkUser: authority?.clerkUserId || '',
+              signupClerkProvision: 'provisioned',
+              userClientTrustStatus: 'not-required',
+              error: '',
+            });
+          } catch (signInError) {
+            console.error('User signup Clerk sign-in error:', signInError);
+            await clerkStagingClient.signOut().catch(() => {});
+            await signOut(firebaseAuth).catch(() => {});
+            clearUserAuthenticatedSession();
+            setUserAuthForm(createDefaultUserAuthForm());
+            clearUserLoginReturnTarget();
+            showUserAccountStatus('signupAutoApprovedComplete');
+            publishUserAccountLifecycleObservation({
+              userAuthRequested: true,
+              userLifecycleRequested: lifecycleConfig.userLifecycleRequested,
+              userAuthSource: 'failed',
+              userFirebaseCompatibility: 'signed-out',
+              signupClerkProvision: 'provisioned',
+              error: signInError?.code || signInError?.message || 'user-clerk-signin-after-signup-failed',
+            });
+            triggerToast(
+              '회원가입과 Clerk 계정 생성은 완료됐지만 자동 로그인을 완료하지 못했습니다. 로그인 화면에서 다시 로그인해 주세요.',
+              'error'
+            );
+            return;
+          }
+        }
 
         setUserAuthenticatedSession(
           primaryCredential.user.uid,
@@ -598,7 +728,6 @@ export default function useUserSignupController({
         clearUserAuthenticatedSession();
       }
 
-      createdSignupUser = null;
       setUserAuthForm(createDefaultUserAuthForm());
       clearUserLoginReturnTarget();
 
@@ -618,6 +747,7 @@ export default function useUserSignupController({
       }));
 
       if (
+        !signupFirestoreCommitted &&
         createdSignupUser &&
         userSignupAuth.currentUser?.uid === createdSignupUser.uid
       ) {
@@ -645,7 +775,9 @@ export default function useUserSignupController({
 
       const baseErrorMessage = signupRollbackFailed
         ? '회원 프로필 저장과 생성된 인증 계정 정리에 실패했습니다. Firebase Authentication과 userAccounts 컬렉션을 확인해 주세요.'
-        : getUserAuthErrorMessage(error);
+        : signupFirestoreCommitted
+          ? '회원가입 데이터는 저장됐지만 후속 인증 연결을 완료하지 못했습니다. 로그인 화면에서 다시 로그인해 주세요.'
+          : getUserAuthErrorMessage(error);
 
       triggerToast(
         firebaseAuthCleanupFailed
@@ -668,6 +800,9 @@ export default function useUserSignupController({
     setUserAuthenticatedSession,
     setUserAuthForm,
     setUserAuthLoading,
+    setIsCommunityMenuOpen,
+    setUserTab,
+    setView,
     showUserAccountStatus,
     siteSettings,
     triggerToast,
