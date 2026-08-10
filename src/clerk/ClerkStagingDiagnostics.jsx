@@ -306,6 +306,8 @@ export default function ClerkStagingDiagnostics() {
     siteContentReadSource: siteContentConfig.readRequested ? 'awaiting-content-view' : null,
     siteContentLastDomain: null,
     siteContentDocumentCount: null,
+    siteContentPostgresDocumentCount: null,
+    siteContentFirestoreDocumentCount: null,
     siteContentPostgresSync: null,
     siteContentSyncAt: null,
     siteContentError: null,
@@ -788,6 +790,12 @@ export default function ClerkStagingDiagnostics() {
         siteContentDocumentCount: observation && Object.prototype.hasOwnProperty.call(observation, 'documentCount')
           ? observation.documentCount
           : current.siteContentDocumentCount,
+        siteContentPostgresDocumentCount: observation && Object.prototype.hasOwnProperty.call(observation, 'postgresDocumentCount')
+          ? observation.postgresDocumentCount
+          : current.siteContentPostgresDocumentCount,
+        siteContentFirestoreDocumentCount: observation && Object.prototype.hasOwnProperty.call(observation, 'firestoreDocumentCount')
+          ? observation.firestoreDocumentCount
+          : current.siteContentFirestoreDocumentCount,
         siteContentPostgresSync: observation?.postgresSync || current.siteContentPostgresSync,
         siteContentSyncAt: observation?.syncAt || current.siteContentSyncAt,
         siteContentError: observation && Object.prototype.hasOwnProperty.call(observation, 'error')
@@ -1265,6 +1273,8 @@ export default function ClerkStagingDiagnostics() {
       <div style={{ overflowWrap: 'anywhere' }}>Site content active source: {state.siteContentReadSource || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Site content last domain: {state.siteContentLastDomain || '-'}</div>
       <div>Site content document count: {state.siteContentDocumentCount ?? '-'}</div>
+      <div>Site content PostgreSQL enabled count: {state.siteContentPostgresDocumentCount ?? '-'}</div>
+      <div>Site content Firestore server enabled count: {state.siteContentFirestoreDocumentCount ?? '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Site content PostgreSQL sync: {state.siteContentPostgresSync || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Site content synced at: {state.siteContentSyncAt || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Site content error: {state.siteContentError || '-'}</div>

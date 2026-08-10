@@ -13,6 +13,8 @@ const TARGET_CALLS = new Set([
   'onSnapshot',
   'getDocs',
   'getDoc',
+  'getDocsFromServer',
+  'getDocFromServer',
   'getCountFromServer',
 ]);
 const SOURCE_EXTENSIONS = new Set(['.js', '.jsx', '.mjs']);
@@ -217,13 +219,18 @@ const resolveExpression = ({ expression, source, masked, beforeIndex, symbols, s
 const findCalls = (filePath, symbols) => {
   const source = readFileSync(filePath, 'utf8');
   const masked = maskNonCode(source);
-  const pattern = /\b(onSnapshot|getDocs|getDoc|getCountFromServer)\s*\(/g;
+  const pattern = /\b(onSnapshot|getDocsFromServer|getDocFromServer|getDocs|getDoc|getCountFromServer)\s*\(/g;
   const calls = [];
   let match;
   while ((match = pattern.exec(masked))) {
-    const callName = match[1];
-    if (!TARGET_CALLS.has(callName)) continue;
-    const openIndex = masked.indexOf('(', match.index + callName.length);
+    const rawCallName = match[1];
+    if (!TARGET_CALLS.has(rawCallName)) continue;
+    const callName = rawCallName === 'getDocsFromServer'
+      ? 'getDocs'
+      : rawCallName === 'getDocFromServer'
+        ? 'getDoc'
+        : rawCallName;
+    const openIndex = masked.indexOf('(', match.index + rawCallName.length);
     const closeIndex = findMatching(masked, openIndex);
     if (closeIndex < 0) continue;
     const args = splitTopLevelArgs(source, masked, openIndex + 1, closeIndex);
@@ -402,7 +409,8 @@ const unapproved = findings.filter((item) => !item.approved && ['warning', 'erro
 const unapprovedErrors = unapproved.filter((item) => item.severity === 'error');
 const unapprovedWarnings = unapproved.filter((item) => item.severity === 'warning');
 const approved = findings.filter((item) => item.approved);
-const countsByCall = Object.fromEntries([...TARGET_CALLS].map((name) => [name, findings.filter((item) => item.call === name).length]));
+const REPORT_CALLS = ['onSnapshot', 'getDocs', 'getDoc', 'getCountFromServer'];
+const countsByCall = Object.fromEntries(REPORT_CALLS.map((name) => [name, findings.filter((item) => item.call === name).length]));
 const countsByRule = {};
 for (const item of findings) countsByRule[item.rule] = (countsByRule[item.rule] || 0) + 1;
 

@@ -9,7 +9,7 @@ import {
   PackageOpen,
   XCircle,
 } from 'lucide-react';
-import { getDoc, getDocs, limit, query, where } from 'firebase/firestore';
+import { getDoc, getDocs, getDocsFromServer, limit, query, where } from 'firebase/firestore';
 
 import {
   HOME_BANNERS_COLLECTION_REF,
@@ -17,6 +17,7 @@ import {
 } from '../firebase.js';
 import {
   readSiteContentCutoverConfig,
+  publishSiteContentObservation,
   requestSiteContentDomain,
   SITE_CONTENT_DOMAINS,
 } from '../features/content/siteContentCutover.js';
@@ -131,10 +132,38 @@ export default function UserHomePanel({ ctx }) {
         if (cutover.readRequested) {
           try {
             const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.HOME, config: cutover });
-            if (cancelled) return;
-            setBanners(content.documents
+            const postgresBanners = content.documents
               .filter((item) => item.key.startsWith('homeBanners/') && item.payload?.enabled !== false)
-              .map((item) => ({ ...item.payload, id: item.payload?.id || item.key.split('/').pop() })));
+              .map((item) => ({ ...item.payload, id: item.payload?.id || item.key.split('/').pop() }));
+            const enabledQuery = query(HOME_BANNERS_COLLECTION_REF, where('enabled', '==', true), limit(50));
+            const firestoreSnapshot = await getDocsFromServer(enabledQuery);
+            const firestoreBanners = firestoreSnapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+            const postgresSignature = postgresBanners
+              .map((item) => `${String(item.id || '')}:${getMillis(item.updatedAt)}`)
+              .sort()
+              .join('|');
+            const firestoreSignature = firestoreBanners
+              .map((item) => `${String(item.id || '')}:${getMillis(item.updatedAt)}`)
+              .sort()
+              .join('|');
+            if (postgresSignature !== firestoreSignature) {
+              if (cancelled) return;
+              publishSiteContentObservation({
+                readRequested: true,
+                domain: SITE_CONTENT_DOMAINS.HOME,
+                readSource: 'firestore-parity-fallback',
+                documentCount: content.documents.length,
+                postgresDocumentCount: postgresBanners.length,
+                firestoreDocumentCount: firestoreBanners.length,
+                error: 'site_content_home_parity_mismatch',
+              });
+              setBanners(firestoreBanners);
+              setBannersReady(true);
+              setBannerLoadError('');
+              return;
+            }
+            if (cancelled) return;
+            setBanners(postgresBanners);
             setBannersReady(true);
             setBannerLoadError('');
             return;

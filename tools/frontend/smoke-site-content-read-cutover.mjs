@@ -14,14 +14,17 @@ for (const marker of [
   '/api/site-content/',
   '/api/admin/site-content/',
   'syncAllSiteContentDomainsFromFirestore',
+  'getDocFromServer',
+  'getDocsFromServer',
+  'site_content_sync_count_mismatch',
 ]) assert.ok(cutover.includes(marker), `missing Phase 24 cutover marker: ${marker}`);
 
 const siteSettings = readFileSync('src/features/settings/useSiteSettingsController.js', 'utf8');
 for (const marker of ['requestSiteContentDomain', 'SITE_CONTENT_DOMAINS.SITE_SETTINGS', 'getDoc(SITE_SETTINGS_DOC_REF)']) assert.ok(siteSettings.includes(marker), `missing site settings cutover marker: ${marker}`);
 const home = readFileSync('src/user/UserHomePanel.jsx', 'utf8');
-for (const marker of ['SITE_CONTENT_DOMAINS.HOME', "item.key.startsWith('homeBanners/')", "item.key === 'homePage/config'", 'PostgreSQL home banner read fallback']) assert.ok(home.includes(marker), `missing home content cutover marker: ${marker}`);
+for (const marker of ['SITE_CONTENT_DOMAINS.HOME', "item.key.startsWith('homeBanners/')", "item.key === 'homePage/config'", 'PostgreSQL home banner read fallback', 'getDocsFromServer', 'site_content_home_parity_mismatch', 'firestore-parity-fallback']) assert.ok(home.includes(marker), `missing home content cutover marker: ${marker}`);
 const popupFooter = readFileSync('src/features/boards/usePopupFooterContentSubscriptionController.js', 'utf8');
-for (const marker of ['SITE_CONTENT_DOMAINS.POPUP', 'SITE_CONTENT_DOMAINS.FOOTER', "item.key.startsWith('popupPosts/')", "item.key.startsWith('footerPages/')", "item.key === 'siteFooter/config'"]) assert.ok(popupFooter.includes(marker), `missing popup/footer cutover marker: ${marker}`);
+for (const marker of ['SITE_CONTENT_DOMAINS.POPUP', 'SITE_CONTENT_DOMAINS.FOOTER', "item.key.startsWith('popupPosts/')", "item.key.startsWith('footerPages/')", "item.key === 'siteFooter/config'", 'getDocsFromServer', 'site_content_popup_parity_mismatch']) assert.ok(popupFooter.includes(marker), `missing popup/footer cutover marker: ${marker}`);
 for (const file of [
   'src/admin/AdminSettingsPanel.jsx',
   'src/admin/AdminHomeBannerPanel.jsx',
@@ -32,7 +35,7 @@ for (const file of [
   assert.ok(source.includes('syncSiteContentDomainFromFirestore'), `missing Phase 24 write-through in ${file}`);
 }
 const diagnostics = readFileSync('src/clerk/ClerkStagingDiagnostics.jsx', 'utf8');
-for (const marker of ['Clerk Staging Test · Phase 25', 'Phase 24 site shell content PostgreSQL read + write-through', 'Site content 전체 동기화', "top: '184px'"]) assert.ok(diagnostics.includes(marker), `missing Phase 24 diagnostics marker: ${marker}`);
+for (const marker of ['Clerk Staging Test · Phase 25', 'Phase 24 site shell content PostgreSQL read + write-through', 'Site content 전체 동기화', 'Site content PostgreSQL enabled count', 'Site content Firestore server enabled count', "top: '184px'"]) assert.ok(diagnostics.includes(marker), `missing Phase 24 diagnostics marker: ${marker}`);
 const app = readFileSync('src/App.jsx', 'utf8');
 assert.ok(!app.includes('siteContentCutover'), 'Phase 24 must not push site content cutover logic back into App.jsx.');
 console.log('[site-content-frontend-smoke] PASS (site settings/home/popup/footer PostgreSQL preferred reads + admin Firestore write-through + diagnostics)');

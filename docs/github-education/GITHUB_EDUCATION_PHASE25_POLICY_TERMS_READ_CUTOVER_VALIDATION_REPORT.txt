@@ -14,3 +14,14 @@ Expected automated checks:
 - Package guard + ZIP SHA verification
 
 Actual staging validation remains required before Phase 25 can become PASS baseline.
+
+Phase 25 visual content synchronization hotfix candidate
+- Staging issue observed: user popup/main visual/promotion/quick-link content missing while PostgreSQL site-content read was active.
+- Observed user home PostgreSQL document count: 2.
+- Administrator site/policy writes and `/admin` routing: actual staging PASS before hotfix.
+- Hotfix: administrator site-content bootstrap/write-through now forces Firestore server snapshots (`getDocFromServer` / `getDocsFromServer`).
+- Hotfix: PostgreSQL sync response document count must equal the Firestore server snapshot count.
+- Hotfix: user home/popup staging reads compare enabled ID + updatedAt signatures and use one-time Firestore server fallback on mismatch.
+- Diagnostics: PostgreSQL and Firestore server document counts are shown separately.
+- Firestore audit: server-only get functions are now counted in the existing getDoc/getDocs totals.
+- Actual browser revalidation is required before Phase 25 can become PASS baseline.

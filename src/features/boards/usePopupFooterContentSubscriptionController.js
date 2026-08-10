@@ -8,6 +8,8 @@ import {
 import {
   getDoc,
   getDocs,
+  getDocsFromServer,
+  limit,
   onSnapshot,
   query as firestoreQuery,
   where,
@@ -34,6 +36,7 @@ import {
 } from './useAdminFooterContentController.js';
 import {
   readSiteContentCutoverConfig,
+  publishSiteContentObservation,
   requestSiteContentDomain,
   SITE_CONTENT_DOMAINS,
 } from '../content/siteContentCutover.js';
@@ -200,7 +203,8 @@ export default function usePopupFooterContentSubscriptionController({
       ? POPUP_POSTS_COLLECTION_REF
       : firestoreQuery(
           POPUP_POSTS_COLLECTION_REF,
-          where('enabled', '==', true)
+          where('enabled', '==', true),
+          limit(50)
         );
 
     const applyPopupSnapshot = (snapshot) => {
@@ -260,19 +264,41 @@ export default function usePopupFooterContentSubscriptionController({
         if (cutover.readRequested) {
           try {
             const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.POPUP, config: cutover });
-            if (cancelled) return;
-            const remotePosts = content.documents
+            const postgresPosts = content.documents
               .filter((item) => item.key.startsWith('popupPosts/') && item.payload?.enabled !== false)
-              .map((item) => ({ ...item.payload, id: item.payload?.id || item.key.split('/').pop() }))
-              .sort((first, second) => {
-                const firstOrder = Number(first.sortOrder);
-                const secondOrder = Number(second.sortOrder);
-                const firstHasOrder = Number.isFinite(firstOrder) && firstOrder > 0;
-                const secondHasOrder = Number.isFinite(secondOrder) && secondOrder > 0;
-                if (firstHasOrder && secondHasOrder && firstOrder !== secondOrder) return firstOrder - secondOrder;
-                if (firstHasOrder !== secondHasOrder) return firstHasOrder ? -1 : 1;
-                return getPopupDateMillis(second.createdAt) - getPopupDateMillis(first.createdAt);
+              .map((item) => ({ ...item.payload, id: item.payload?.id || item.key.split('/').pop() }));
+            const firestoreSnapshot = await getDocsFromServer(popupSource);
+            const firestorePosts = firestoreSnapshot.docs.map((popupDoc) => ({ ...popupDoc.data(), id: popupDoc.id }));
+            const postgresSignature = postgresPosts
+              .map((item) => `${String(item.id || '')}:${getPopupDateMillis(item.updatedAt)}`)
+              .sort()
+              .join('|');
+            const firestoreSignature = firestorePosts
+              .map((item) => `${String(item.id || '')}:${getPopupDateMillis(item.updatedAt)}`)
+              .sort()
+              .join('|');
+            const sourcePosts = postgresSignature === firestoreSignature ? postgresPosts : firestorePosts;
+            if (postgresSignature !== firestoreSignature) {
+              publishSiteContentObservation({
+                readRequested: true,
+                domain: SITE_CONTENT_DOMAINS.POPUP,
+                readSource: 'firestore-parity-fallback',
+                documentCount: content.documents.length,
+                postgresDocumentCount: postgresPosts.length,
+                firestoreDocumentCount: firestorePosts.length,
+                error: 'site_content_popup_parity_mismatch',
               });
+            }
+            if (cancelled) return;
+            const remotePosts = sourcePosts.sort((first, second) => {
+              const firstOrder = Number(first.sortOrder);
+              const secondOrder = Number(second.sortOrder);
+              const firstHasOrder = Number.isFinite(firstOrder) && firstOrder > 0;
+              const secondHasOrder = Number.isFinite(secondOrder) && secondOrder > 0;
+              if (firstHasOrder && secondHasOrder && firstOrder !== secondOrder) return firstOrder - secondOrder;
+              if (firstHasOrder !== secondHasOrder) return firstHasOrder ? -1 : 1;
+              return getPopupDateMillis(second.createdAt) - getPopupDateMillis(first.createdAt);
+            });
             setPopupPosts(remotePosts);
             setPopupPostsLoadErrorMessage('');
             setPopupPostsReady(true);

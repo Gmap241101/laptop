@@ -15,7 +15,7 @@ import {
   SITE_SETTINGS_DOC_REF,
   firebaseAuth,
 } from '../../firebase.js';
-import { getDoc, getDocs, limit, query as firestoreQuery } from 'firebase/firestore';
+import { getDocFromServer, getDocsFromServer, limit, query as firestoreQuery } from 'firebase/firestore';
 
 const READ_SESSION_KEY = 'mk_site_content_postgres_read';
 const WRITE_SESSION_KEY = 'mk_site_content_postgres_write_through';
@@ -161,7 +161,7 @@ const getClerkToken = async () => {
 };
 
 const readDocument = async (ref, key) => {
-  const snapshot = await getDoc(ref);
+  const snapshot = await getDocFromServer(ref);
   if (!snapshot.exists()) return [];
   const data = snapshot.data();
   return [{ key, payload: serializeValue(data), enabled: typeof data.enabled === 'boolean' ? data.enabled : null, sortOrder: Number.isFinite(Number(data.sortOrder)) ? Number(data.sortOrder) : null, sourceUpdatedAt: data.updatedAt?.toDate?.()?.toISOString?.() || null }];
@@ -170,7 +170,7 @@ const readCollection = async (ref, prefix, maxDocuments = null) => {
   const source = Number.isFinite(Number(maxDocuments))
     ? firestoreQuery(ref, limit(Math.max(1, Math.trunc(Number(maxDocuments)))))
     : ref;
-  const snapshot = await getDocs(source);
+  const snapshot = await getDocsFromServer(source);
   return snapshot.docs.map((item) => {
     const data = item.data();
     return { key: `${prefix}/${item.id}`, payload: serializeValue({ id: item.id, ...data }), enabled: typeof data.enabled === 'boolean' ? data.enabled : null, sortOrder: Number.isFinite(Number(data.sortOrder)) ? Number(data.sortOrder) : null, sourceUpdatedAt: data.updatedAt?.toDate?.()?.toISOString?.() || null };
@@ -224,8 +224,36 @@ export const syncSiteContentDomainFromFirestore = async ({ domain, fetchImpl = f
     observationPublisher?.({ writeThroughRequested: true, domain, writeSource: 'firestore', postgresSync: 'failed', error: error.code });
     throw error;
   }
+  const postgresDocumentCount = Number(payload?.siteContent?.documentCount ?? -1);
+  if (postgresDocumentCount !== documents.length) {
+    const error = Object.assign(new Error('PostgreSQL site content sync document count mismatch.'), {
+      code: 'site_content_sync_count_mismatch',
+      firestoreDocumentCount: documents.length,
+      postgresDocumentCount,
+    });
+    observationPublisher?.({
+      writeThroughRequested: true,
+      domain,
+      writeSource: 'firestore-server',
+      postgresSync: 'failed',
+      firestoreDocumentCount: documents.length,
+      postgresDocumentCount,
+      error: error.code,
+    });
+    throw error;
+  }
   clearSiteContentDomainCache(domain);
-  observationPublisher?.({ writeThroughRequested: true, domain, writeSource: 'firestore', postgresSync: 'synced', documentCount: payload?.siteContent?.documentCount ?? documents.length, syncAt: payload?.siteContent?.syncedAt || null, error: null });
+  observationPublisher?.({
+    writeThroughRequested: true,
+    domain,
+    writeSource: 'firestore-server',
+    postgresSync: 'synced',
+    documentCount: postgresDocumentCount,
+    firestoreDocumentCount: documents.length,
+    postgresDocumentCount,
+    syncAt: payload?.siteContent?.syncedAt || null,
+    error: null,
+  });
   return payload?.siteContent || null;
 };
 
