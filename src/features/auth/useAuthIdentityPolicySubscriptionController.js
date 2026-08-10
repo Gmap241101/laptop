@@ -219,7 +219,7 @@ export default function useAuthIdentityPolicySubscriptionController({
         if (!user) {
           const authTransition = readUserAuthTransition();
           if (!authTransition) {
-            clearUserAuthenticatedSession();
+            clearUserAuthenticatedSession('firebase-auth-signed-out');
           }
         }
         setFirebaseAuthReady(true);
@@ -233,7 +233,9 @@ export default function useAuthIdentityPolicySubscriptionController({
         setCurrentAuthRoleReady(true);
 
         setFirebaseAuthUser(null);
-        clearUserAuthenticatedSession();
+        clearUserAuthenticatedSession('firebase-auth-state-error', {
+          clearTransition: true,
+        });
         setFirebaseAuthReady(true);
       }
     );

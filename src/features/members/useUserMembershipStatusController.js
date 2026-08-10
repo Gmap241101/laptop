@@ -437,7 +437,9 @@ export default function useUserMembershipStatusController({
     const logoutInactiveUser = async () => {
       try {
         showUserAccountStatus(statusPageType);
-        clearUserAuthenticatedSession();
+        clearUserAuthenticatedSession('inactive-member-status', {
+          clearTransition: true,
+        });
         await signOut(firebaseAuth);
 
         clearUserLoginReturnTarget();

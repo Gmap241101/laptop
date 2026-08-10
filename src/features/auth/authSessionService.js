@@ -12,8 +12,11 @@ import {
 const ADMIN_AUTH_SESSION_KEY = 'mk_laptop_admin_auth_session';
 const USER_AUTH_SESSION_KEY = 'mk_laptop_user_auth_session';
 const USER_AUTH_TRANSITION_KEY = 'mk_laptop_user_auth_transition';
+const USER_AUTH_SESSION_TRACE_KEY = 'mk_laptop_user_auth_session_trace';
+const USER_AUTH_SESSION_TRACE_EVENT = 'rental:user-auth-session-trace';
 const USER_AUTH_TRANSITION_PENDING_MS = 15 * 60 * 1000;
 const USER_AUTH_TRANSITION_COMPLETED_MS = 15 * 1000;
+const USER_AUTH_SESSION_TRACE_LIMIT = 12;
 
 export const createDefaultAdminAuthForm = () => ({
   adminLoginId: '',
@@ -38,6 +41,57 @@ const clearStoredAuthSession = (storageKey) => {
   if (typeof window === 'undefined') return;
   window.sessionStorage.removeItem(storageKey);
   window.localStorage.removeItem(storageKey);
+};
+
+const appendUserAuthSessionTrace = (event, detail = {}) => {
+  if (typeof window === 'undefined') return [];
+  if (String(import.meta.env?.VITE_CLERK_STAGING_ENABLED || '').toLowerCase() !== 'true') {
+    return [];
+  }
+  const entry = {
+    event: String(event || 'unknown'),
+    reason: String(detail?.reason || ''),
+    userId: String(detail?.userId || ''),
+    route: window.location?.pathname || '',
+    observedAt: new Date().toISOString(),
+  };
+  let current = [];
+  try {
+    current = JSON.parse(
+      window.localStorage.getItem(USER_AUTH_SESSION_TRACE_KEY) || '[]'
+    );
+    if (!Array.isArray(current)) current = [];
+  } catch {
+    current = [];
+  }
+  const next = [...current, entry].slice(-USER_AUTH_SESSION_TRACE_LIMIT);
+  window.localStorage.setItem(USER_AUTH_SESSION_TRACE_KEY, JSON.stringify(next));
+  window.dispatchEvent(new CustomEvent(USER_AUTH_SESSION_TRACE_EVENT, { detail: entry }));
+  return next;
+};
+
+export const readUserAuthSessionTrace = () => {
+  if (typeof window === 'undefined') return [];
+  if (String(import.meta.env?.VITE_CLERK_STAGING_ENABLED || '').toLowerCase() !== 'true') {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(USER_AUTH_SESSION_TRACE_KEY) || '[]'
+    );
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+export const subscribeUserAuthSessionTrace = (listener) => {
+  if (typeof window === 'undefined' || typeof listener !== 'function') {
+    return () => {};
+  }
+  const handler = () => listener(readUserAuthSessionTrace());
+  window.addEventListener(USER_AUTH_SESSION_TRACE_EVENT, handler);
+  return () => window.removeEventListener(USER_AUTH_SESSION_TRACE_EVENT, handler);
 };
 
 const readStoredAuthSession = (storageKey, identityKey) => {
@@ -123,6 +177,7 @@ export const beginUserAuthTransition = ({ email = '', userId = '' } = {}) => {
     expiresAt: now + USER_AUTH_TRANSITION_PENDING_MS,
   };
   window.sessionStorage.setItem(USER_AUTH_TRANSITION_KEY, JSON.stringify(transition));
+  appendUserAuthSessionTrace('transition-begin', { userId: transition.userId });
   return transition;
 };
 
@@ -138,6 +193,7 @@ export const bindUserAuthTransitionIdentity = (userId) => {
     expiresAt: now + USER_AUTH_TRANSITION_PENDING_MS,
   };
   window.sessionStorage.setItem(USER_AUTH_TRANSITION_KEY, JSON.stringify(transition));
+  appendUserAuthSessionTrace('transition-bind', { userId: transition.userId });
   return transition;
 };
 
@@ -153,13 +209,19 @@ export const completeUserAuthTransition = (userId) => {
     expiresAt: now + USER_AUTH_TRANSITION_COMPLETED_MS,
   };
   window.sessionStorage.setItem(USER_AUTH_TRANSITION_KEY, JSON.stringify(transition));
+  appendUserAuthSessionTrace('transition-complete', { userId: transition.userId });
   return transition;
 };
 
 export const readUserAuthTransition = () => readStoredUserAuthTransition();
 
-export const clearUserAuthTransition = () => {
+export const clearUserAuthTransition = (reason = 'explicit-clear') => {
   if (typeof window === 'undefined') return;
+  const current = readStoredUserAuthTransition();
+  appendUserAuthSessionTrace('transition-clear', {
+    reason,
+    userId: current?.userId || '',
+  });
   window.sessionStorage.removeItem(USER_AUTH_TRANSITION_KEY);
 };
 
@@ -275,9 +337,15 @@ export const saveUserAuthSession = (
     nextSession,
     normalized.userLogoutOnBrowserClose
   );
+  appendUserAuthSessionTrace('session-save', { userId });
   return nextSession;
 };
 
-export const clearUserAuthSession = () => {
+export const clearUserAuthSession = (reason = 'unspecified') => {
+  const current = readUserAuthSession();
+  appendUserAuthSessionTrace('session-clear', {
+    reason,
+    userId: current.userId || '',
+  });
   clearStoredAuthSession(USER_AUTH_SESSION_KEY);
 };

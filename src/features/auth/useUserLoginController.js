@@ -146,7 +146,7 @@ export default function useUserLoginController({
       }
       await signOut(firebaseAuth);
       clearUserLoginReturnTarget();
-      clearUserAuthenticatedSession();
+      clearUserAuthenticatedSession('user-logout', { clearTransition: true });
       clearAdminAuthenticatedSession();
       setUserAuthForm(createDefaultUserAuthForm());
 
@@ -274,7 +274,9 @@ export default function useUserLoginController({
             : 'loginRetired';
 
       showUserAccountStatus(statusPageType);
-      clearUserAuthenticatedSession();
+      clearUserAuthenticatedSession('inactive-login-status', {
+        clearTransition: true,
+      });
       await clerkStagingClient.signOut().catch(() => {});
       await signOut(firebaseAuth).catch((logoutError) => {
         console.error('Inactive login sign-out error:', logoutError);
@@ -430,7 +432,9 @@ export default function useUserLoginController({
         if (!retryableCode) {
           if (clerkSignedIn) await clerkStagingClient.signOut().catch(() => {});
           if (firebaseAuth.currentUser) await signOut(firebaseAuth).catch(() => {});
-          clearUserAuthenticatedSession();
+          clearUserAuthenticatedSession('client-trust-failed', {
+            clearTransition: true,
+          });
           clearAdminAuthenticatedSession();
           setUserAuthForm(createDefaultUserAuthForm());
           clearUserAuthTransition();
@@ -575,7 +579,9 @@ export default function useUserLoginController({
         }
       }
 
-      clearUserAuthenticatedSession();
+      clearUserAuthenticatedSession('user-login-failed', {
+        clearTransition: true,
+      });
       clearAdminAuthenticatedSession();
       clearUserAuthTransition();
       console.error('User auth error:', error);

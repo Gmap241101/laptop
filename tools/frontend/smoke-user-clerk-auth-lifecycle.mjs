@@ -75,8 +75,22 @@ for (const marker of [
 for (const marker of [
   'const authTransition = readUserAuthTransition();',
   'if (!authTransition)',
-  'clearUserAuthenticatedSession();',
+  "clearUserAuthenticatedSession('firebase-auth-signed-out');",
 ]) assert.ok(identityPolicySource.includes(marker), `Firebase auth null-state handling must preserve the user session while the Phase 23 login transaction is active: ${marker}`);
+
+for (const marker of [
+  "reason = 'unspecified'",
+  'clearUserAuthSession(reason);',
+  'if (clearTransition)',
+  'clearUserAuthTransition(reason);',
+]) assert.ok(userSessionSource.includes(marker), `user session clearing must not destroy the Phase 23 login transition unless the caller explicitly requests it: ${marker}`);
+
+for (const marker of [
+  "const USER_AUTH_SESSION_TRACE_KEY = 'mk_laptop_user_auth_session_trace';",
+  'readUserAuthSessionTrace',
+  'subscribeUserAuthSessionTrace',
+  "appendUserAuthSessionTrace('session-clear'",
+]) assert.ok(authSessionServiceSource.includes(marker), `missing user session trace contract: ${marker}`);
 
 const panelSource = readFileSync('src/user/UserAuthPanel.jsx', 'utf8');
 for (const marker of ['Clerk 새 기기 확인 인증코드', '인증코드 확인', 'clientTrustRequired', 'one-time-code']) {
@@ -105,6 +119,7 @@ const diagnosticsSource = readFileSync('src/clerk/ClerkStagingDiagnostics.jsx', 
 for (const marker of [
   'Clerk Staging Test · Phase 23', "top: '184px'", 'Phase 23 user Clerk authentication + account lifecycle authority',
   'User Clerk authority requested:', 'Password authority source:', 'Withdrawal authority:',
+  'User session last event:', 'User session trace:',
   'disabled={!state.firebaseSignedIn || !state.memberShadowFirebaseUid}',
   'disabled={state.firestoreWatcherDisabled || !state.appReadProfile}',
 ]) assert.ok(diagnosticsSource.includes(marker), `missing Phase 23 diagnostics marker: ${marker}`);

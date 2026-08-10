@@ -68,6 +68,10 @@ import {
   readUserAccountLifecycleCutoverConfig,
   subscribeUserAccountLifecycleObservation,
 } from '../features/auth/userAccountLifecycleCutover.js';
+import {
+  readUserAuthSessionTrace,
+  subscribeUserAuthSessionTrace,
+} from '../features/auth/authSessionService.js';
 import { clerkStagingClient } from './clerkStagingClient.js';
 
 const panelStyle = {
@@ -282,6 +286,7 @@ export default function ClerkStagingDiagnostics() {
     withdrawalClerkCleanupError: null,
     withdrawalFirebaseCleanup: null,
     userLifecycleError: null,
+    userSessionTrace: readUserAuthSessionTrace(),
     error: null,
   });
 
@@ -335,6 +340,18 @@ export default function ClerkStagingDiagnostics() {
       active = false;
       if (typeof unsubscribe === 'function') unsubscribe();
     };
+  }, [requested]);
+
+  useEffect(() => {
+    if (!requested) return undefined;
+    const applyTrace = (trace) => {
+      setState((current) => ({
+        ...current,
+        userSessionTrace: Array.isArray(trace) ? trace : [],
+      }));
+    };
+    applyTrace(readUserAuthSessionTrace());
+    return subscribeUserAuthSessionTrace(applyTrace);
   }, [requested]);
 
   useEffect(() => {
@@ -1144,6 +1161,19 @@ export default function ClerkStagingDiagnostics() {
       <div style={{ overflowWrap: 'anywhere' }}>Withdrawal Clerk cleanup error: {state.withdrawalClerkCleanupError || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Withdrawal Firebase cleanup: {state.withdrawalFirebaseCleanup || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>User lifecycle error: {state.userLifecycleError || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>
+        User session last event: {state.userSessionTrace.length
+          ? `${state.userSessionTrace[state.userSessionTrace.length - 1].event}${state.userSessionTrace[state.userSessionTrace.length - 1].reason ? ` / ${state.userSessionTrace[state.userSessionTrace.length - 1].reason}` : ''}`
+          : '-'}
+      </div>
+      <div style={{ overflowWrap: 'anywhere' }}>
+        User session trace: {state.userSessionTrace.length
+          ? state.userSessionTrace
+              .slice(-6)
+              .map((entry) => `${entry.event}${entry.reason ? `:${entry.reason}` : ''}@${entry.route || '/'}`)
+              .join(' > ')
+          : '-'}
+      </div>
 
       {state.error ? (
         <div role="alert" style={{ marginTop: '8px', color: '#b91c1c', overflowWrap: 'anywhere' }}>

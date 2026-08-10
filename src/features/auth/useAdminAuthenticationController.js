@@ -727,7 +727,9 @@ export default function useAdminAuthenticationController({
         firebaseAuth,
         initialSecuritySettings.adminLogoutOnBrowserClose
       );
-      clearUserAuthenticatedSession();
+      clearUserAuthenticatedSession('admin-login-switch', {
+        clearTransition: true,
+      });
 
       const credential = await signInWithEmailAndPassword(
         firebaseAuth,

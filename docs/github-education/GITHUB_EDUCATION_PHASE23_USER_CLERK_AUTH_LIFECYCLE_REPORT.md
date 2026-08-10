@@ -89,3 +89,7 @@ No backend API, PostgreSQL migration, Firestore Rules/index, authentication poli
 - The transition is bound to the Firebase UID, remains pending across Clerk Client Trust verification, and becomes completed only after application account finalization retains a user session.
 - The user session controller may restore a completed transition only for the same Firebase UID; normal policy-version, idle-timeout, absolute-timeout, inactive-member, and logout checks remain unchanged.
 - Failed/non-retryable authentication and explicit logout clear the transition marker.
+
+## 2026-08-10 — User session/transition decoupling hotfix
+
+The repeated normal-user session toast exposed a structural coupling in the Phase 23 transition guard: clearing the ordinary app session also cleared the bounded Clerk-login transition. The session and transition lifecycles are now independent by default. Confirmed terminal operations explicitly clear both, while incidental session cleanup can no longer erase an in-progress Phase 23 transition. A bounded tab-local session trace is also surfaced in Clerk staging diagnostics to identify the exact session-clear reason if another runtime path invalidates the session.

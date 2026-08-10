@@ -59,9 +59,14 @@ export const useUserAuthenticationSessionState = ({ userSessionPolicy }) => {
     [applyUserAuthenticatedSession, userSessionPolicy]
   );
 
-  const clearUserAuthenticatedSession = useCallback(() => {
-    clearUserAuthSession();
-    clearUserAuthTransition();
+  const clearUserAuthenticatedSession = useCallback((
+    reason = 'unspecified',
+    { clearTransition = false } = {}
+  ) => {
+    clearUserAuthSession(reason);
+    if (clearTransition) {
+      clearUserAuthTransition(reason);
+    }
     setUserAuthSessionUid('');
     setUserAuthSessionExpiresAt(0);
     setUserAuthSessionAbsoluteExpiresAt(0);
@@ -124,7 +129,7 @@ export default function useUserAuthenticationSessionController({
       } catch (error) {
         console.error('Expired user Firebase Auth logout error:', error);
       } finally {
-        clearUserAuthenticatedSession();
+        clearUserAuthenticatedSession('session-expired', { clearTransition: true });
         clearUserLoginReturnTarget();
         setUserAuthForm(createDefaultUserAuthForm());
         replaceAppPath('user', 'login');

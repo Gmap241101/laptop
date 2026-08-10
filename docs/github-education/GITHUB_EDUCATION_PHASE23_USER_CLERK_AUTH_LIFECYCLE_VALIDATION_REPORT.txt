@@ -97,3 +97,18 @@ Local build result:
 - The transition is bound to the Firebase UID, remains pending across Clerk Client Trust verification, and becomes completed only after application account finalization retains a user session.
 - The user session controller may restore a completed transition only for the same Firebase UID; normal policy-version, idle-timeout, absolute-timeout, inactive-member, and logout checks remain unchanged.
 - Failed/non-retryable authentication and explicit logout clear the transition marker.
+
+## 2026-08-10 user session/transition decoupling + runtime trace hotfix
+
+- Repeated browser symptom remained: `로그인 세션 정보를 확인할 수 없어 다시 로그인이 필요합니다.`
+- Root structural defect confirmed in source: `clearUserAuthenticatedSession()` always cleared both `mk_laptop_user_auth_session` and `mk_laptop_user_auth_transition`, so any unrelated session cleanup during the multi-step Firebase -> Clerk -> PostgreSQL login transaction destroyed the very transition guard intended to protect that flow.
+- Fix: normal application-session clearing no longer clears the Phase 23 auth transition by default. Transition clearing is now explicit and reserved for confirmed terminal actions such as user logout, inactive-member logout, admin-role switch, authentication failure, and session expiry.
+- Added tab-local `mk_laptop_user_auth_session_trace` with bounded session-save/session-clear/transition-begin/bind/complete/clear events.
+- Clerk staging diagnostics now shows `User session last event` and a compact `User session trace`, so any remaining runtime invalidation identifies the actual clearing reason instead of requiring race-condition inference.
+- Phase 23 user lifecycle smoke updated for decoupled transition lifetime + trace contract: PASS.
+- npm run verify:phase23: PASS / exit 0.
+- React source files: 162; application contracts: 124; user routes: 11; administrator tabs: 20.
+- Firestore total calls: 131; warnings: 0; errors: 0.
+- build:staging prebuild audits: PASS; final exit 127 only because local vite executable is unavailable.
+- backend/API/migration/environment/Firestore Rules/npm dependency changes: none.
+- actual browser revalidation after this hotfix: pending.
