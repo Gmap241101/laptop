@@ -278,6 +278,17 @@ export const createAdminRentalRequestRepository = (pool) => {
       return mapRow(result.rows[0]);
     },
 
+    async markMirrorRetired(requestId) {
+      await pool.query(
+        `UPDATE app_rental_requests
+            SET firestore_mirror_status='retired', firestore_mirror_error='', firestore_mirrored_at=NULL,
+                source_updated_at=NOW(), source_synced_at=NOW(), updated_at=NOW()
+          WHERE request_id=$1`,
+        [requestId],
+      );
+      return this.getByRequestId(requestId);
+    },
+
     async getCounts(referenceDate) {
       const result = await pool.query(
         `SELECT

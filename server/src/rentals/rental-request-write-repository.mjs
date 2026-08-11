@@ -182,11 +182,10 @@ export const createRentalRequestWriteRepository = (pool) => {
 
         const overdueResult = await client.query(
           `SELECT COUNT(*)::bigint AS overdue_count
-             FROM app_user_rental_request_shadows
+             FROM app_rental_requests
             WHERE app_user_id = $1
               AND status = '대여중'
-              AND due_date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
-              AND due_date < $2`,
+              AND due_date < $2::date`,
           [appUserId, referenceDate],
         );
         const overdueCount = Number(overdueResult.rows[0]?.overdue_count || 0);
@@ -277,28 +276,30 @@ export const createRentalRequestWriteRepository = (pool) => {
         );
         const preparedRequest = mapRequest(preparedResult.rows[0]);
         const mirrorResult = await beforeCommit(preparedRequest);
+        const mirrorRetired = Boolean(mirrorResult?.retired);
+        const mirrorStatus = mirrorRetired ? 'retired' : 'synced';
 
         await client.query(
           `UPDATE app_rental_requests
-              SET firestore_mirror_status = 'synced',
+              SET firestore_mirror_status = $2,
                   firestore_mirror_error = '',
-                  firestore_mirrored_at = COALESCE($2::timestamptz, NOW()),
+                  firestore_mirrored_at = CASE WHEN $2='synced' THEN COALESCE($3::timestamptz, NOW()) ELSE NULL END,
                   updated_at = NOW()
             WHERE id = $1`,
-          [internalId, mirrorResult?.commitTime || null],
+          [internalId, mirrorStatus, mirrorResult?.commitTime || null],
         );
         await client.query(
           `INSERT INTO app_rental_request_events (
-             rental_request_id, event_type, actor_app_user_id, actor_firebase_uid, event_payload
-           ) VALUES ($1,'firestore-mirror-synced',$2,$3,$4::jsonb)`,
-          [internalId, appUserId, firebaseUid, JSON.stringify({ commitTime: mirrorResult?.commitTime || null })],
+             rental_request_id, event_type, actor_app_user_id, actor_firebase_uid, event_payload, source_mode
+           ) VALUES ($1,$2,$3,$4,$5::jsonb,'postgresql-authoritative')`,
+          [internalId, mirrorRetired ? 'firestore-mirror-retired' : 'firestore-mirror-synced', appUserId, firebaseUid, JSON.stringify({ commitTime: mirrorResult?.commitTime || null })],
         );
 
         await client.query('COMMIT');
         const finalRequest = Object.freeze({
           ...preparedRequest,
-          firestoreMirrorStatus: 'synced',
-          firestoreMirroredAt: mirrorResult?.commitTime || null,
+          firestoreMirrorStatus: mirrorStatus,
+          firestoreMirroredAt: mirrorRetired ? null : (mirrorResult?.commitTime || null),
         });
         return Object.freeze({ request: finalRequest, reused: false, mirrorResult });
       } catch (error) {

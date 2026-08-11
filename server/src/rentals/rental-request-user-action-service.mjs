@@ -44,6 +44,8 @@ export const createRentalRequestUserActionService = ({
   rentalRequestService,
   repository,
   firestoreClient,
+  postgresSource = null,
+  writeMirrorEnabled = true,
 }) => {
   if (!userRepository || typeof userRepository.findByClerkUserId !== 'function') throw new TypeError('userRepository is required.');
   if (!firebaseLinkRepository || typeof firebaseLinkRepository.findByAppUserId !== 'function') throw new TypeError('firebaseLinkRepository is required.');
@@ -52,6 +54,8 @@ export const createRentalRequestUserActionService = ({
   if (!rentalRequestService || typeof rentalRequestService.syncCurrent !== 'function') throw new TypeError('rentalRequestService is required.');
   if (!repository || typeof repository.countCurrentOverdue !== 'function' || typeof repository.editAuthoritative !== 'function' || typeof repository.cancelAuthoritative !== 'function' || typeof repository.submitManualExtension !== 'function' || typeof repository.autoExtendAuthoritative !== 'function') throw new TypeError('rental request user action repository is required.');
   if (!firestoreClient || typeof firestoreClient.getRentalRequest !== 'function' || typeof firestoreClient.getRentalAsset !== 'function' || typeof firestoreClient.getPublicConfig !== 'function') throw new TypeError('Firestore rental request user action client is required.');
+  if (!writeMirrorEnabled && (!postgresSource || typeof postgresSource.getRentalRequest !== 'function' || typeof postgresSource.getRentalAsset !== 'function' || typeof postgresSource.getPublicConfig !== 'function')) throw new TypeError('postgresSource is required when Firestore rental request write mirror is retired.');
+  const sourceClient = writeMirrorEnabled ? firestoreClient : postgresSource;
 
   const resolveContext = async (clerkUserId, firebaseIdentity) => {
     const appUser = await userRepository.findByClerkUserId(clerkUserId);
@@ -69,14 +73,14 @@ export const createRentalRequestUserActionService = ({
 
   const readSource = async (firebaseIdentity, requestId) => {
     const [requestDoc, publicConfig] = await Promise.all([
-      firestoreClient.getRentalRequest({ requestId, firebaseIdToken: firebaseIdentity.idToken }),
-      firestoreClient.getPublicConfig({ firebaseIdToken: firebaseIdentity.idToken }),
+      sourceClient.getRentalRequest({ requestId, firebaseIdToken: firebaseIdentity.idToken }),
+      sourceClient.getPublicConfig({ firebaseIdToken: firebaseIdentity.idToken }),
     ]);
     if (!requestDoc) throw serviceError('rental_request_not_found', 'Rental request was not found.', 404);
     if (!publicConfig) throw serviceError('rental_request_public_config_not_found', 'Rental configuration was not found.', 503);
     const request = sourceRequest(requestDoc);
     if (!request?.laptopId) throw serviceError('rental_request_asset_missing', 'Rental request has no asset identity.', 409);
-    const assetDoc = await firestoreClient.getRentalAsset({ assetId: request.laptopId, firebaseIdToken: firebaseIdentity.idToken });
+    const assetDoc = await sourceClient.getRentalAsset({ assetId: request.laptopId, firebaseIdToken: firebaseIdentity.idToken });
     if (!assetDoc) throw serviceError('rental_asset_not_found', 'Rental asset was not found.', 404);
     const asset = Object.freeze({ id: requestIdFromDocument(assetDoc) || trim(request.laptopId), ...(assetDoc.fields || {}) });
     const settings = publicConfig.fields?.settings && typeof publicConfig.fields.settings === 'object' ? publicConfig.fields.settings : {};
@@ -88,9 +92,11 @@ export const createRentalRequestUserActionService = ({
   };
 
   const refreshShadow = async (clerkUserId, firebaseIdentity) => {
+    if (!writeMirrorEnabled) return true;
     const result = await rentalRequestService.syncCurrent(clerkUserId, firebaseIdentity);
     return Boolean(result?.syncState || result?.requests);
   };
+  const mirrorStatus = writeMirrorEnabled ? 'synced' : 'retired';
 
   return Object.freeze({
     async editCurrent(clerkUserId, firebaseIdentity, { requestId, startDate, dueDate, purpose = '' } = {}) {
@@ -117,17 +123,18 @@ export const createRentalRequestUserActionService = ({
         dueDate: period.dueDate,
         purpose: trim(purpose),
         allowNonOverlappingSameAssetRequests: Boolean(source.settings.allowNonOverlappingSameAssetRequests ?? false),
-        beforeCommit: () => firestoreClient.commitUserRequestEdit({
+        firestoreMirrorStatus: mirrorStatus,
+        beforeCommit: writeMirrorEnabled ? () => firestoreClient.commitUserRequestEdit({
           request: nextRequest,
           availability,
           asset,
           requestUpdateTime: source.requestDoc.updateTime,
           assetUpdateTime: source.assetDoc.updateTime,
           firebaseIdToken: firebaseIdentity.idToken,
-        }),
+        }) : undefined,
       });
       await refreshShadow(clerkUserId, firebaseIdentity);
-      return Object.freeze({ authority: 'postgresql', operation: 'edit', firestoreMirror: 'synced', shadowSynchronized: true, request, availability, asset });
+      return Object.freeze({ authority: 'postgresql', transactionSource: writeMirrorEnabled ? 'firestore-compatibility-source' : 'postgresql', operation: 'edit', firestoreMirror: mirrorStatus, shadowSynchronized: true, request, availability, asset });
     },
 
     async cancelCurrent(clerkUserId, firebaseIdentity, { requestId } = {}) {
@@ -144,16 +151,16 @@ export const createRentalRequestUserActionService = ({
         appUserId: context.appUser.id,
         firebaseUid: context.link.firebaseUid,
         requestId: id,
-        beforeCommit: ({ currentRequest }) => firestoreClient.commitUserRequestCancel({
+        beforeCommit: writeMirrorEnabled ? ({ currentRequest }) => firestoreClient.commitUserRequestCancel({
           request: currentRequest,
           asset,
           requestUpdateTime: source.requestDoc.updateTime,
           assetUpdateTime: source.assetDoc.updateTime,
           firebaseIdToken: firebaseIdentity.idToken,
-        }),
+        }) : undefined,
       });
       await refreshShadow(clerkUserId, firebaseIdentity);
-      return Object.freeze({ authority: 'postgresql', operation: 'cancel', firestoreMirror: 'synced', shadowSynchronized: true, deleted: true, request: result.request, asset });
+      return Object.freeze({ authority: 'postgresql', transactionSource: writeMirrorEnabled ? 'firestore-compatibility-source' : 'postgresql', operation: 'cancel', firestoreMirror: mirrorStatus, shadowSynchronized: true, deleted: true, request: result.request, asset });
     },
 
     async extendCurrent(clerkUserId, firebaseIdentity, { requestId } = {}) {
@@ -162,7 +169,9 @@ export const createRentalRequestUserActionService = ({
       const context = await resolveContext(clerkUserId, firebaseIdentity);
       const [source, restrictionSync] = await Promise.all([
         readSource(firebaseIdentity, id),
-        rentalRestrictionService.syncLinkedFirebaseUid(firebaseIdentity, context.link.firebaseUid),
+        writeMirrorEnabled
+          ? rentalRestrictionService.syncLinkedFirebaseUid(firebaseIdentity, context.link.firebaseUid)
+          : rentalRestrictionService.getCurrentByFirebaseIdentity(firebaseIdentity),
       ]);
       verifyOwner(source.request, context);
       await rentalRequestService.syncCurrent(clerkUserId, firebaseIdentity);
@@ -171,7 +180,9 @@ export const createRentalRequestUserActionService = ({
       const [overdueCount] = await Promise.all([
         repository.countCurrentOverdue(context.appUser.id, koreaToday()),
       ]);
-      const restriction = restrictionSync?.shadow?.exists ? restrictionSync.shadow.restriction : null;
+      const restriction = writeMirrorEnabled
+        ? (restrictionSync?.shadow?.exists ? restrictionSync.shadow.restriction : null)
+        : (restrictionSync?.exists ? restrictionSync.restriction : null);
       if (activeRestrictionBlocked({ restriction, settings, overdueCount })) throw serviceError('rental_extension_restriction_blocked', 'Rental restriction blocks extension requests.', 403);
       const period = buildExtensionPeriod({ request: source.request, settings });
       const conflict = findExtensionConflict({ reservations: source.asset.reservations || [], requestId: id, laptopId: source.asset.id, startDate: period.extensionStartDate, dueDate: period.extensionDueDate });
@@ -194,14 +205,15 @@ export const createRentalRequestUserActionService = ({
           firebaseUid: context.link.firebaseUid,
           requestId: id,
           actionRequest,
-          beforeCommit: () => firestoreClient.commitUserExtension({
+          firestoreMirrorStatus: mirrorStatus,
+          beforeCommit: writeMirrorEnabled ? () => firestoreClient.commitUserExtension({
             request: nextRequest,
             requestUpdateTime: source.requestDoc.updateTime,
             firebaseIdToken: firebaseIdentity.idToken,
-          }),
+          }) : undefined,
         });
         await refreshShadow(clerkUserId, firebaseIdentity);
-        return Object.freeze({ authority: 'postgresql', operation: 'extend', approvalMode: 'manual', firestoreMirror: 'synced', shadowSynchronized: true, request });
+        return Object.freeze({ authority: 'postgresql', transactionSource: writeMirrorEnabled ? 'firestore-compatibility-source' : 'postgresql', operation: 'extend', approvalMode: 'manual', firestoreMirror: mirrorStatus, shadowSynchronized: true, request });
       }
       const approvalDate = koreaToday();
       const nextExtensionRequestDate = (() => {
@@ -244,14 +256,15 @@ export const createRentalRequestUserActionService = ({
         nextExtensionRequestDate,
         extensionHistory,
         actionRequest,
-        beforeCommit: () => firestoreClient.commitUserExtension({
+        firestoreMirrorStatus: mirrorStatus,
+        beforeCommit: writeMirrorEnabled ? () => firestoreClient.commitUserExtension({
           request: nextRequest, availability, asset, autoApproved: true,
           requestUpdateTime: source.requestDoc.updateTime, assetUpdateTime: source.assetDoc.updateTime,
           firebaseIdToken: firebaseIdentity.idToken,
-        }),
+        }) : undefined,
       });
       await refreshShadow(clerkUserId, firebaseIdentity);
-      return Object.freeze({ authority: 'postgresql', operation: 'extend', approvalMode: 'auto', firestoreMirror: 'synced', shadowSynchronized: true, request, availability, asset });
+      return Object.freeze({ authority: 'postgresql', transactionSource: writeMirrorEnabled ? 'firestore-compatibility-source' : 'postgresql', operation: 'extend', approvalMode: 'auto', firestoreMirror: mirrorStatus, shadowSynchronized: true, request, availability, asset });
     },
   });
 };

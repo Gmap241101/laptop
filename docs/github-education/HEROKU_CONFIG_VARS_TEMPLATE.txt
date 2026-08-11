@@ -11,7 +11,7 @@ VITE_CLERK_PUBLISHABLE_KEY=pk_test_REPLACE_ME
 # Backend runtime (Heroku Config Vars)
 APP_ENV=staging
 SERVICE_NAME=rental-api
-SERVICE_VERSION=phase28
+SERVICE_VERSION=phase29
 # PORT is local-only. Do not set PORT manually in Heroku.
 
 # PostgreSQL connection. Heroku Postgres manages DATABASE_URL automatically.
@@ -102,3 +102,9 @@ FIRESTORE_REST_TIMEOUT_MS=8000
 # Backend authority flag. Keep Firebase Auth/admin identity verification enabled.
 FIRESTORE_ASSET_BOARD_WRITE_MIRROR_DISABLED=true
 # Recommended diagnostic version marker: SERVICE_VERSION=phase28
+
+
+# Phase 29: rental transaction PostgreSQL authority + rental-request Firestore write mirror retirement.
+# Keep Firebase administrator compatibility identity and legacy bootstrap/sync available for rollback.
+FIRESTORE_RENTAL_REQUEST_WRITE_MIRROR_DISABLED=true
+# Recommended diagnostic version marker: SERVICE_VERSION=phase29

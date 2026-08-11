@@ -1,0 +1,4 @@
+# Phase 29 new Vercel staging/test variable
+VITE_FIRESTORE_RENTAL_REQUEST_WRITE_MIRROR_DISABLED=true
+
+# Keep all existing Phase 9-28 variables unchanged.

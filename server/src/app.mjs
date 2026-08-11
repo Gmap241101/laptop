@@ -439,7 +439,12 @@ export const createRequestHandler = ({
     version: config.serviceVersion,
     compatibility: {
       assetBoardWriteMirrorDisabled: Boolean(config.assetBoardWriteMirrorDisabled),
-      retiredWriteMirrorDomains: config.assetBoardWriteMirrorDisabled ? ['assets', 'notice', 'faq'] : [],
+      retiredWriteMirrorDomains: [
+        ...(config.assetBoardWriteMirrorDisabled ? ['assets', 'notice', 'faq'] : []),
+        ...(config.rentalRequestWriteMirrorDisabled ? ['rental-requests'] : []),
+      ],
+      rentalRequestWriteMirrorDisabled: Boolean(config.rentalRequestWriteMirrorDisabled),
+      rentalTransactionSource: config.rentalRequestWriteMirrorDisabled ? 'postgresql' : 'firestore-compatibility-source',
     },
   };
 

@@ -26,6 +26,7 @@ import { createRentalRequestUserActionRepository } from './rentals/rental-reques
 import { createRentalRequestUserActionService } from './rentals/rental-request-user-action-service.mjs';
 import { createAdminRentalRequestRepository } from './rentals/admin-rental-request-repository.mjs';
 import { createAdminRentalRequestService } from './rentals/admin-rental-request-service.mjs';
+import { createRentalPostgresqlSource } from './rentals/rental-postgresql-source.mjs';
 import { createFirestoreAssetClient } from './firestore/firestore-assets.mjs';
 import { createFirestoreMemberAuthorityClient } from './firestore/firestore-members.mjs';
 import { createMemberAuthorityRepository } from './members/member-authority-repository.mjs';
@@ -96,6 +97,7 @@ const memberAuthorityRepository = createMemberAuthorityRepository(pool);
 const userClerkAuthRepository = createUserClerkAuthRepository(pool);
 const siteContentRepository = createSiteContentRepository(pool);
 const siteContentService = createSiteContentService({ repository: siteContentRepository });
+const assetRepository = createAssetRepository(pool);
 const boardRepository = createBoardRepository(pool);
 const firestoreBoardClient = config.firebaseProjectId
   ? createFirestoreBoardClient({ projectId: config.firebaseProjectId, timeoutMs: config.firestoreRestTimeoutMs })
@@ -151,6 +153,13 @@ const rentalRestrictionService = createRentalRestrictionService({
   firestoreRentalRestrictionClient,
 });
 const rentalRequestRepository = createRentalRequestRepository(pool);
+const adminRentalRequestRepository = createAdminRentalRequestRepository(pool);
+const rentalPostgresqlSource = createRentalPostgresqlSource({
+  assetRepository,
+  siteContentRepository,
+  adminRentalRequestRepository,
+  rentalRestrictionRepository,
+});
 const firestoreRentalRequestsClient = config.firebaseProjectId
   ? createFirestoreRentalRequestsClient({
       projectId: config.firebaseProjectId,
@@ -169,6 +178,7 @@ const rentalRequestService = createRentalRequestService({
   memberShadowRepository,
   rentalRequestRepository,
   firestoreRentalRequestsClient,
+  useAuthoritativeSource: config.rentalRequestWriteMirrorDisabled,
 });
 const rentalRequestWriteRepository = createRentalRequestWriteRepository(pool);
 const firestoreRentalRequestWriteClient = config.firebaseProjectId
@@ -221,6 +231,8 @@ const rentalRequestWriteService = createRentalRequestWriteService({
   rentalRequestService,
   rentalRequestWriteRepository,
   firestoreRentalRequestWriteClient,
+  postgresSource: rentalPostgresqlSource,
+  writeMirrorEnabled: !config.rentalRequestWriteMirrorDisabled,
 });
 const rentalRequestUserActionRepository = createRentalRequestUserActionRepository(pool);
 const rentalRequestUserActionService = createRentalRequestUserActionService({
@@ -231,8 +243,9 @@ const rentalRequestUserActionService = createRentalRequestUserActionService({
   rentalRequestService,
   repository: rentalRequestUserActionRepository,
   firestoreClient: firestoreRentalRequestWriteClient,
+  postgresSource: rentalPostgresqlSource,
+  writeMirrorEnabled: !config.rentalRequestWriteMirrorDisabled,
 });
-const adminRentalRequestRepository = createAdminRentalRequestRepository(pool);
 const firestoreAdminRentalRequestsClient = config.firebaseProjectId
   ? createFirestoreAdminRentalRequestsClient({
       projectId: config.firebaseProjectId,
@@ -245,8 +258,9 @@ const adminRentalRequestService = createAdminRentalRequestService({
   repository: adminRentalRequestRepository,
   firestoreClient: firestoreAdminRentalRequestsClient,
   restrictionAuthorityRepository: memberAuthorityRepository,
+  postgresSource: rentalPostgresqlSource,
+  writeMirrorEnabled: !config.rentalRequestWriteMirrorDisabled,
 });
-const assetRepository = createAssetRepository(pool);
 const firestoreAssetClient = config.firebaseProjectId
   ? createFirestoreAssetClient({ projectId: config.firebaseProjectId, timeoutMs: config.firestoreRestTimeoutMs })
   : {
@@ -310,9 +324,9 @@ server.listen(config.port, '0.0.0.0', () => {
     firestoreMemberShadow: config.firebaseProjectId ? 'user-token-security-rules' : 'disabled',
     rentalRestrictionShadow: config.firebaseProjectId ? 'postgresql-user-token-security-rules' : 'disabled',
     rentalRequestShadow: config.firebaseProjectId ? 'normalized-postgresql-user-token-security-rules' : 'disabled',
-    rentalRequestWrite: config.firebaseProjectId ? 'postgresql-authoritative-firestore-compatibility-mirror' : 'disabled',
-    rentalRequestUserActions: config.firebaseProjectId ? 'postgresql-authoritative-user-actions-firestore-compatibility-mirror' : 'disabled',
-    adminRentalRequests: config.firebaseProjectId ? 'postgresql-read-admin-mutations-audit-firestore-compatibility-mirror' : 'disabled',
+    rentalRequestWrite: config.firebaseProjectId ? (config.rentalRequestWriteMirrorDisabled ? 'postgresql-authoritative-firestore-write-mirror-retired' : 'postgresql-authoritative-firestore-compatibility-mirror') : 'disabled',
+    rentalRequestUserActions: config.firebaseProjectId ? (config.rentalRequestWriteMirrorDisabled ? 'postgresql-authoritative-user-actions-firestore-write-mirror-retired' : 'postgresql-authoritative-user-actions-firestore-compatibility-mirror') : 'disabled',
+    adminRentalRequests: config.firebaseProjectId ? (config.rentalRequestWriteMirrorDisabled ? 'postgresql-authoritative-admin-mutations-firestore-write-mirror-retired' : 'postgresql-read-admin-mutations-audit-firestore-compatibility-mirror') : 'disabled',
     memberAuthority: config.firebaseProjectId ? 'postgresql-authoritative-firestore-compatibility-mirror' : 'disabled',
     adminIdentityRegistry: config.firebaseProjectId ? 'postgresql-clerk-authority-firebase-compatibility' : 'disabled',
     accountRecovery: 'postgresql-preferred',
@@ -326,6 +340,7 @@ server.listen(config.port, '0.0.0.0', () => {
       ? (config.assetBoardWriteMirrorDisabled ? 'postgresql-authoritative-firestore-write-mirror-retired' : 'postgresql-authoritative-firestore-compatibility-mirror')
       : 'disabled',
     phase28WriteMirrorRetirement: config.assetBoardWriteMirrorDisabled ? 'assets-and-boards' : 'disabled',
+    phase29RentalTransactionAuthority: config.rentalRequestWriteMirrorDisabled ? 'postgresql-source-and-write-mirror-retired' : 'disabled',
   });
 });
 

@@ -99,6 +99,10 @@ import {
   readFirestoreWriteMirrorRetirementConfig,
   requestFirestoreWriteMirrorRetirementStatus,
 } from '../features/compatibility/firestoreWriteMirrorRetirement.js';
+import {
+  readRentalRequestWriteMirrorRetirementConfig,
+  requestRentalRequestWriteMirrorRetirementStatus,
+} from '../features/compatibility/rentalRequestWriteMirrorRetirement.js';
 import { clerkStagingClient } from './clerkStagingClient.js';
 
 const panelStyle = {
@@ -157,6 +161,7 @@ export default function ClerkStagingDiagnostics() {
   const boardContentConfig = useMemo(() => readBoardContentCutoverConfig(), []);
   const legacyReadFallbackConfig = useMemo(() => readLegacyFirestoreReadFallbackConfig(), []);
   const writeMirrorRetirementConfig = useMemo(() => readFirestoreWriteMirrorRetirementConfig(), []);
+  const rentalWriteMirrorRetirementConfig = useMemo(() => readRentalRequestWriteMirrorRetirementConfig(), []);
   const [state, setState] = useState({
     phase: requested ? 'loading' : 'hidden',
     signedIn: false,
@@ -358,6 +363,10 @@ export default function ClerkStagingDiagnostics() {
     writeMirrorRetirementBackendApplied: false,
     writeMirrorRetirementDomains: [],
     writeMirrorRetirementError: null,
+    rentalWriteMirrorRetirementRequested: rentalWriteMirrorRetirementConfig.enabled,
+    rentalWriteMirrorRetirementBackendApplied: false,
+    rentalTransactionSource: null,
+    rentalWriteMirrorRetirementError: null,
     error: null,
   });
 
@@ -947,6 +956,23 @@ export default function ClerkStagingDiagnostics() {
     return () => { active = false; };
   }, [requested, writeMirrorRetirementConfig]);
 
+  useEffect(() => {
+    if (!requested) return undefined;
+    let active = true;
+    requestRentalRequestWriteMirrorRetirementStatus({ config: rentalWriteMirrorRetirementConfig })
+      .then((status) => {
+        if (!active) return;
+        setState((current) => ({
+          ...current,
+          rentalWriteMirrorRetirementRequested: Boolean(status.requested),
+          rentalWriteMirrorRetirementBackendApplied: Boolean(status.backendApplied),
+          rentalTransactionSource: status.transactionSource || null,
+          rentalWriteMirrorRetirementError: status.error || null,
+        }));
+      });
+    return () => { active = false; };
+  }, [requested, rentalWriteMirrorRetirementConfig]);
+
   if (!requested) return null;
 
   const run = async (operation) => {
@@ -1150,7 +1176,7 @@ export default function ClerkStagingDiagnostics() {
 
   return (
     <aside style={panelStyle} aria-label="Clerk staging diagnostics">
-      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 28</div>
+      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 29</div>
       <div>SDK: {state.phase === 'loading' ? 'loading' : state.phase}</div>
       <div>Signed in: {state.signedIn ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Clerk user: {state.userId || '-'}</div>
@@ -1433,6 +1459,17 @@ export default function ClerkStagingDiagnostics() {
       <div style={{ overflowWrap: 'anywhere' }}>Board Firestore compatibility mirror: {state.boardContentFirestoreMirror || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Write mirror retirement error: {state.writeMirrorRetirementError || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Preserved write mirrors: member / restriction / rental requests / site shell / policy-terms transactions</div>
+
+
+      <div style={{ marginTop: '6px', fontWeight: 700 }}>Phase 29 rental transaction PostgreSQL authority + Firestore write mirror retirement</div>
+      <div>Rental write mirror retirement requested: {state.rentalWriteMirrorRetirementRequested ? 'yes' : 'no'}</div>
+      <div>Rental backend retirement applied: {state.rentalWriteMirrorRetirementBackendApplied ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Rental transaction source: {state.rentalTransactionSource || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Rental request create mirror: {state.rentalRequestWriteMirror || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Rental user-action mirror: {state.rentalRequestUserActionMirror || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Admin rental mirror: {state.adminRentalRequestWriteMirror || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Rental mirror retirement error: {state.rentalWriteMirrorRetirementError || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Preserved write mirrors: member / restriction / site shell / policy-terms transactions</div>
 
       {state.error ? (
         <div role="alert" style={{ marginTop: '8px', color: '#b91c1c', overflowWrap: 'anywhere' }}>

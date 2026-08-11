@@ -1,0 +1,35 @@
+Phase 29 validation report
+==========================
+Baseline: Phase 28 actual staging PASS
+Scope: rental transaction PostgreSQL source + rental-request Firestore write mirror retirement
+
+Implemented contracts
+- PostgreSQL rental public-config source
+- PostgreSQL asset source
+- PostgreSQL canonical rental-request source
+- PostgreSQL rental-restriction source
+- user create/edit/cancel/extend use PostgreSQL transaction source when enabled
+- administrator rental mutations use PostgreSQL transaction source when enabled
+- rental-request Firestore write mirror reports retired when enabled
+- rental-induced restriction updates can persist mirror_state=retired
+- Firebase administrator identity verification preserved
+- legacy bootstrap/sync preserved for rollback compatibility
+
+Automated validation
+- backend Phase 29 smoke: PASS
+- frontend Phase 29 smoke: PASS
+- server HTTP health smoke: PASS
+- migration static validation: PASS
+- server foundation validation: PASS
+- React hook audit: PASS
+- application flow audit: PASS
+- Firestore strict audit: PASS (137 calls, 0 warnings, 0 errors)
+
+Final full Phase 1-29 regression and package integrity are recorded by the generated package metadata and completion report.
+
+Final verification
+- npm run verify:phase29: PASS (exit 0)
+- React source files: 168
+- Application contracts: 124; user routes: 11; admin tabs: 20
+- Firestore strict: 137 calls; warnings 0; errors 0
+- npm run build:staging: prebuild PASS; final Vite step unavailable in assistant environment (`vite: not found`, exit 127)

@@ -180,21 +180,21 @@ export const createMemberAuthorityRepository = (pool) => {
       });
     },
 
-    async upsertRestrictionAuthoritative({ firebaseUid, appUserId = null, restriction, mutationId = '' }) {
+    async upsertRestrictionAuthoritative({ firebaseUid, appUserId = null, restriction, mutationId = '', mirrorState = 'synced' }) {
       const payload = restriction || {};
       const result = await pool.query(
         `INSERT INTO app_user_rental_restriction_shadows (
            firebase_uid, app_user_id, restriction_exists, restriction_payload, source_document_path,
            source_updated_at, source_hash, synced_at, authority_mode, mirror_state, last_mutation_id, authoritative_updated_at
-         ) VALUES ($1,$2,true,$3::jsonb,$4,NOW(),$5,NOW(),'postgresql-authoritative','synced',$6,NOW())
+         ) VALUES ($1,$2,true,$3::jsonb,$4,NOW(),$5,NOW(),'postgresql-authoritative',$7,$6,NOW())
          ON CONFLICT (firebase_uid) DO UPDATE SET
            app_user_id=COALESCE(EXCLUDED.app_user_id,app_user_rental_restriction_shadows.app_user_id),
            restriction_exists=true, restriction_payload=EXCLUDED.restriction_payload,
            source_document_path=EXCLUDED.source_document_path, source_updated_at=NOW(), source_hash=EXCLUDED.source_hash,
-           synced_at=NOW(), authority_mode='postgresql-authoritative', mirror_state='synced',
+           synced_at=NOW(), authority_mode='postgresql-authoritative', mirror_state=EXCLUDED.mirror_state,
            last_mutation_id=EXCLUDED.last_mutation_id, authoritative_updated_at=NOW(), updated_at=NOW()
          RETURNING firebase_uid, app_user_id, restriction_payload, authority_mode, mirror_state, synced_at`,
-        [firebaseUid, appUserId, JSON.stringify(payload), `rentalRestrictions/${firebaseUid}`, hashPayload(payload), mutationId || randomUUID()],
+        [firebaseUid, appUserId, JSON.stringify(payload), `rentalRestrictions/${firebaseUid}`, hashPayload(payload), mutationId || randomUUID(), mirrorState],
       );
       return result.rows[0];
     },

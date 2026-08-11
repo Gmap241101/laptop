@@ -88,11 +88,13 @@ export const createRentalRequestService = ({
   memberShadowRepository,
   rentalRequestRepository,
   firestoreRentalRequestsClient,
+  useAuthoritativeSource = false,
 }) => {
   if (!userRepository || typeof userRepository.findByClerkUserId !== 'function') throw new TypeError('userRepository is required.');
   if (!firebaseLinkRepository || typeof firebaseLinkRepository.findByAppUserId !== 'function') throw new TypeError('firebaseLinkRepository is required.');
   if (!memberShadowRepository || typeof memberShadowRepository.findByAppUserId !== 'function') throw new TypeError('memberShadowRepository is required.');
   if (!rentalRequestRepository || typeof rentalRequestRepository.listByAppUserId !== 'function' || typeof rentalRequestRepository.replaceForAppUser !== 'function' || typeof rentalRequestRepository.getSyncState !== 'function') throw new TypeError('rentalRequestRepository is required.');
+  if (useAuthoritativeSource && typeof rentalRequestRepository.listAuthoritativeByAppUserId !== 'function') throw new TypeError('rentalRequestRepository.listAuthoritativeByAppUserId is required when PostgreSQL authoritative read is enabled.');
   if (!firestoreRentalRequestsClient || typeof firestoreRentalRequestsClient.listOwnRentalRequests !== 'function') throw new TypeError('firestoreRentalRequestsClient is required.');
 
   const context = async (clerkUserId) => {
@@ -133,6 +135,22 @@ export const createRentalRequestService = ({
   return Object.freeze({
     async getCurrent(clerkUserId) {
       const { appUser, firebaseLink } = await context(clerkUserId);
+      if (useAuthoritativeSource) {
+        const requests = await rentalRequestRepository.listAuthoritativeByAppUserId(appUser.id);
+        return Object.freeze({
+          appUser,
+          firebaseLink,
+          syncState: Object.freeze({
+            appUserId: String(appUser.id),
+            firebaseUid: firebaseLink.firebaseUid,
+            sourceRequestCount: requests.length,
+            sourceHash: 'postgresql-authoritative',
+            syncedAt: requests[0]?.updatedAt || null,
+            sourceMode: 'postgresql-authoritative',
+          }),
+          requests: sortRequests(requests),
+        });
+      }
       const syncState = await rentalRequestRepository.getSyncState(appUser.id);
       if (!syncState) throw serviceError('rental_request_shadow_not_synced', 'Rental request shadow has not been synchronized yet.');
       const requests = await rentalRequestRepository.listByAppUserId(appUser.id);

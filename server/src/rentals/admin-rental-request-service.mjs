@@ -214,13 +214,21 @@ const representativeReservation = (reservations, laptopId, referenceDate) => {
     || null;
 };
 
-export const createAdminRentalRequestService = ({ repository, firestoreClient, restrictionAuthorityRepository = null }) => {
+export const createAdminRentalRequestService = ({ repository, firestoreClient, restrictionAuthorityRepository = null, postgresSource = null, writeMirrorEnabled = true }) => {
   if (!repository || typeof repository.list !== 'function' || typeof repository.upsertImportedRequests !== 'function') {
     throw new TypeError('Admin rental request repository is required.');
   }
   if (!firestoreClient || typeof firestoreClient.verifyAdmin !== 'function') {
     throw new TypeError('Firestore admin rental request client is required.');
   }
+  if (!writeMirrorEnabled && (!postgresSource || typeof postgresSource.getRentalRequest !== 'function' || typeof postgresSource.getRentalAsset !== 'function' || typeof postgresSource.getPublicConfig !== 'function' || typeof postgresSource.getRentalRestriction !== 'function')) {
+    throw new TypeError('postgresSource is required when Firestore rental request write mirror is retired.');
+  }
+  const mutationSourceClient = writeMirrorEnabled ? firestoreClient : postgresSource;
+  const mirrorStatus = writeMirrorEnabled ? 'synced' : 'retired';
+  const finalizeMirror = async (requestId) => {
+    if (!writeMirrorEnabled && typeof repository.markMirrorRetired === 'function') await repository.markMirrorRetired(requestId);
+  };
 
   const verify = async (firebaseIdentity) => {
     if (!firebaseIdentity?.uid || !firebaseIdentity?.idToken) {
@@ -312,13 +320,13 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient, r
       const admin = await verify(firebaseIdentity);
       const id = trim(requestId);
       if (!id) throw serviceError('admin_rental_request_id_missing', 'Rental request ID is required.', 400);
-      const sourceDoc = await firestoreClient.getRentalRequest({ requestId: id, firebaseIdToken: firebaseIdentity.idToken });
+      const sourceDoc = await mutationSourceClient.getRentalRequest({ requestId: id, firebaseIdToken: firebaseIdentity.idToken });
       if (!sourceDoc) throw serviceError('rental_request_not_found', 'Rental request was not found.', 404);
       const sourceRequest = normalizeRequestDocument(sourceDoc);
-      await repository.upsertImportedRequests([sourceRequest]);
-      const assetDoc = await firestoreClient.getRentalAsset({ assetId: sourceRequest.laptopId, firebaseIdToken: firebaseIdentity.idToken });
+      if (writeMirrorEnabled) await repository.upsertImportedRequests([sourceRequest]);
+      const assetDoc = await mutationSourceClient.getRentalAsset({ assetId: sourceRequest.laptopId, firebaseIdToken: firebaseIdentity.idToken });
       if (!assetDoc) throw serviceError('rental_asset_not_found', 'Rental asset was not found.', 404);
-      const publicConfig = await firestoreClient.getPublicConfig({ firebaseIdToken: firebaseIdentity.idToken });
+      const publicConfig = await mutationSourceClient.getPublicConfig({ firebaseIdToken: firebaseIdentity.idToken });
       const settings = publicConfig?.fields?.settings || {};
       const requestedDueDate = trim(form.dueDate);
       const nextRequest = Object.freeze({
@@ -374,7 +382,7 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient, r
         },
         auditActor: admin,
         allowNonOverlappingSameAssetRequests: Boolean(settings.allowNonOverlappingSameAssetRequests ?? false),
-        beforeCommit: async ({ currentRequest, nextRequest: canonicalNext }) => {
+        beforeCommit: writeMirrorEnabled ? async ({ currentRequest, nextRequest: canonicalNext }) => {
           await firestoreClient.commitRequestEdit({
             request: canonicalNext,
             previousRequest: currentRequest,
@@ -386,12 +394,14 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient, r
             detail,
             firebaseIdToken: firebaseIdentity.idToken,
           });
-        },
+        } : undefined,
       });
+      await finalizeMirror(id);
       return Object.freeze({
         admin,
         authority: 'postgresql',
-        firestoreMirror: 'synced',
+        transactionSource: writeMirrorEnabled ? 'firestore-compatibility-source' : 'postgresql',
+        firestoreMirror: mirrorStatus,
         request: committed,
         availability: nextAvailability,
         asset: nextAsset,
@@ -402,15 +412,15 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient, r
     async saveMemo(firebaseIdentity, { requestId, memo = '' }) {
       const admin = await verify(firebaseIdentity);
       const id = trim(requestId);
-      const sourceDoc = await firestoreClient.getRentalRequest({ requestId: id, firebaseIdToken: firebaseIdentity.idToken });
+      const sourceDoc = await mutationSourceClient.getRentalRequest({ requestId: id, firebaseIdToken: firebaseIdentity.idToken });
       if (!sourceDoc) throw serviceError('rental_request_not_found', 'Rental request was not found.', 404);
       const sourceRequest = normalizeRequestDocument(sourceDoc);
-      await repository.upsertImportedRequests([sourceRequest]);
+      if (writeMirrorEnabled) await repository.upsertImportedRequests([sourceRequest]);
       const result = await repository.saveMemo({
         requestId: id,
         memo: String(memo ?? ''),
         auditActor: admin,
-        beforeCommit: async ({ currentRequest, nextRequest }) => {
+        beforeCommit: writeMirrorEnabled ? async ({ currentRequest, nextRequest }) => {
           await firestoreClient.commitMemo({
             requestId: id,
             previousRequest: currentRequest,
@@ -419,9 +429,10 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient, r
             auditActor: admin,
             firebaseIdToken: firebaseIdentity.idToken,
           });
-        },
+        } : undefined,
       });
-      return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: result.changed ? 'synced' : 'not-needed', ...result });
+      if (result.changed) await finalizeMirror(id);
+      return Object.freeze({ admin, authority: 'postgresql', transactionSource: writeMirrorEnabled ? 'firestore-compatibility-source' : 'postgresql', firestoreMirror: result.changed ? mirrorStatus : 'not-needed', ...result });
     },
 
     async restoreStatus(firebaseIdentity, { requestId, nextStatus, restoreReason }) {
@@ -431,13 +442,13 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient, r
       const reason = trim(restoreReason);
       if (!id || !status) throw serviceError('admin_rental_restore_input_missing', 'Request ID and restore status are required.', 400);
       if (!reason) throw serviceError('restore_reason_missing', 'Restore reason is required.', 400);
-      const sourceDoc = await firestoreClient.getRentalRequest({ requestId: id, firebaseIdToken: firebaseIdentity.idToken });
+      const sourceDoc = await mutationSourceClient.getRentalRequest({ requestId: id, firebaseIdToken: firebaseIdentity.idToken });
       if (!sourceDoc) throw serviceError('rental_request_not_found', 'Rental request was not found.', 404);
       const sourceRequest = normalizeRequestDocument(sourceDoc);
-      await repository.upsertImportedRequests([sourceRequest]);
-      const assetDoc = await firestoreClient.getRentalAsset({ assetId: sourceRequest.laptopId, firebaseIdToken: firebaseIdentity.idToken });
+      if (writeMirrorEnabled) await repository.upsertImportedRequests([sourceRequest]);
+      const assetDoc = await mutationSourceClient.getRentalAsset({ assetId: sourceRequest.laptopId, firebaseIdToken: firebaseIdentity.idToken });
       if (!assetDoc) throw serviceError('rental_asset_not_found', 'Rental asset was not found.', 404);
-      const publicConfig = await firestoreClient.getPublicConfig({ firebaseIdToken: firebaseIdentity.idToken });
+      const publicConfig = await mutationSourceClient.getPublicConfig({ firebaseIdToken: firebaseIdentity.idToken });
       const settings = publicConfig?.fields?.settings || {};
       const assetFields = assetDoc.fields || {};
       const existingReservations = normalizeAssetReservationsForWrite(assetFields.reservations || [])
@@ -470,7 +481,7 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient, r
         eventType: 'status-restored',
         eventPayload: { detail: `상태 복구 사유: ${reason}` },
         clearUserActionRequest: true,
-        beforeCommit: async ({ currentRequest, nextRequest }) => {
+        beforeCommit: writeMirrorEnabled ? async ({ currentRequest, nextRequest }) => {
           await firestoreClient.commitStatusRestore({
             request: nextRequest,
             previousRequest: currentRequest,
@@ -482,29 +493,30 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient, r
             restoreReason: reason,
             firebaseIdToken: firebaseIdentity.idToken,
           });
-        },
+        } : undefined,
       });
-      return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'synced', request: committed, availability: nextAvailability, asset: nextAsset });
+      await finalizeMirror(id);
+      return Object.freeze({ admin, authority: 'postgresql', transactionSource: writeMirrorEnabled ? 'firestore-compatibility-source' : 'postgresql', firestoreMirror: mirrorStatus, request: committed, availability: nextAvailability, asset: nextAsset });
     },
 
     async reviewUserAction(firebaseIdentity, { requestId, approved = false }) {
       const admin = await verify(firebaseIdentity);
       const id = trim(requestId);
       if (!id) throw serviceError('admin_rental_request_id_missing', 'Rental request ID is required.', 400);
-      const sourceDoc = await firestoreClient.getRentalRequest({ requestId: id, firebaseIdToken: firebaseIdentity.idToken });
+      const sourceDoc = await mutationSourceClient.getRentalRequest({ requestId: id, firebaseIdToken: firebaseIdentity.idToken });
       if (!sourceDoc) throw serviceError('rental_request_not_found', 'Rental request was not found.', 404);
       const sourceRequest = normalizeRequestDocument(sourceDoc);
-      await repository.upsertImportedRequests([sourceRequest]);
+      if (writeMirrorEnabled) await repository.upsertImportedRequests([sourceRequest]);
       const action = sourceRequest.userActionRequest;
       if (!action || action.status !== 'pending') throw serviceError('user_action_request_not_pending', 'No pending user action exists.', 409);
       const actionType = trim(action.type);
       if (!['change', 'cancel', 'extend', 'return'].includes(actionType)) throw serviceError('invalid_user_action_request_type', 'User action type is invalid.', 400);
 
       const [assetDoc, publicConfig, restrictionDoc] = await Promise.all([
-        firestoreClient.getRentalAsset({ assetId: sourceRequest.laptopId, firebaseIdToken: firebaseIdentity.idToken }),
-        firestoreClient.getPublicConfig({ firebaseIdToken: firebaseIdentity.idToken }),
+        mutationSourceClient.getRentalAsset({ assetId: sourceRequest.laptopId, firebaseIdToken: firebaseIdentity.idToken }),
+        mutationSourceClient.getPublicConfig({ firebaseIdToken: firebaseIdentity.idToken }),
         actionType === 'return' && sourceRequest.requesterUid
-          ? firestoreClient.getRentalRestriction({ firebaseUid: sourceRequest.requesterUid, firebaseIdToken: firebaseIdentity.idToken })
+          ? mutationSourceClient.getRentalRestriction({ firebaseUid: sourceRequest.requesterUid, firebaseIdToken: firebaseIdentity.idToken })
           : Promise.resolve(null),
       ]);
       if (!assetDoc) throw serviceError('rental_asset_not_found', 'Rental asset was not found.', 404);
@@ -648,7 +660,7 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient, r
             ? `대여 연장 신청 ${approved ? '승인' : '불허'} · ${trim(action.extensionStartDate) || '-'} ~ ${trim(action.dueDate) || '-'}`
             : `${actionType} ${approved ? '승인' : '불허'} · 요청 사유: ${trim(action.reason) || '-'}`,
         },
-        beforeCommit: ({ currentRequest, nextRequest: canonicalNext }) => firestoreClient.commitUserActionReview({
+        beforeCommit: writeMirrorEnabled ? ({ currentRequest, nextRequest: canonicalNext }) => firestoreClient.commitUserActionReview({
           request: canonicalNext,
           previousRequest: currentRequest,
           availability: nextAvailability,
@@ -665,20 +677,23 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient, r
           relatedRequestUpdates,
           touchAsset: Boolean(approved && touchAsset),
           firebaseIdToken: firebaseIdentity.idToken,
-        }),
+        }) : undefined,
       });
+      await finalizeMirror(id);
       if (restrictionFields?.uid && restrictionAuthorityRepository) {
         const linkAppUserId = null;
         await restrictionAuthorityRepository.upsertRestrictionAuthoritative({
           firebaseUid: restrictionFields.uid,
           appUserId: linkAppUserId,
           restriction: restrictionFields,
+          mirrorState: mirrorStatus,
         });
       }
       return Object.freeze({
         admin,
         authority: 'postgresql',
-        firestoreMirror: 'synced',
+        transactionSource: writeMirrorEnabled ? 'firestore-compatibility-source' : 'postgresql',
+        firestoreMirror: mirrorStatus,
         restrictionAuthority: restrictionFields?.uid ? 'postgresql-authoritative' : 'unchanged',
         operation: 'user-action-review',
         actionType,
@@ -696,16 +711,16 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient, r
       const status = trim(nextStatus);
       if (!id || !status) throw serviceError('admin_rental_status_input_missing', 'Request ID and next status are required.', 400);
 
-      const sourceDoc = await firestoreClient.getRentalRequest({ requestId: id, firebaseIdToken: firebaseIdentity.idToken });
+      const sourceDoc = await mutationSourceClient.getRentalRequest({ requestId: id, firebaseIdToken: firebaseIdentity.idToken });
       if (!sourceDoc) throw serviceError('rental_request_not_found', 'Rental request was not found.', 404);
       const sourceRequest = normalizeRequestDocument(sourceDoc);
-      await repository.upsertImportedRequests([sourceRequest]);
+      if (writeMirrorEnabled) await repository.upsertImportedRequests([sourceRequest]);
 
-      const assetDoc = await firestoreClient.getRentalAsset({ assetId: sourceRequest.laptopId, firebaseIdToken: firebaseIdentity.idToken });
+      const assetDoc = await mutationSourceClient.getRentalAsset({ assetId: sourceRequest.laptopId, firebaseIdToken: firebaseIdentity.idToken });
       if (!assetDoc) throw serviceError('rental_asset_not_found', 'Rental asset was not found.', 404);
-      const publicConfig = await firestoreClient.getPublicConfig({ firebaseIdToken: firebaseIdentity.idToken });
+      const publicConfig = await mutationSourceClient.getPublicConfig({ firebaseIdToken: firebaseIdentity.idToken });
       const restrictionDoc = status === '반납완료' && sourceRequest.requesterUid
-        ? await firestoreClient.getRentalRestriction({ firebaseUid: sourceRequest.requesterUid, firebaseIdToken: firebaseIdentity.idToken })
+        ? await mutationSourceClient.getRentalRestriction({ firebaseUid: sourceRequest.requesterUid, firebaseIdToken: firebaseIdentity.idToken })
         : null;
 
       const referenceDate = koreaToday();
@@ -783,7 +798,7 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient, r
         returnFields: returnResult.requestFields,
         allowNonOverlappingSameAssetRequests: Boolean(settings.allowNonOverlappingSameAssetRequests ?? false),
         relatedRequestUpdates,
-        beforeCommit: async ({ currentRequest, nextRequest }) => {
+        beforeCommit: writeMirrorEnabled ? async ({ currentRequest, nextRequest }) => {
           await firestoreClient.commitStatusChange({
             request: nextRequest,
             previousRequest: currentRequest,
@@ -798,20 +813,23 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient, r
             relatedRequestUpdates,
             firebaseIdToken: firebaseIdentity.idToken,
           });
-        },
+        } : undefined,
       });
+      await finalizeMirror(id);
 
       if (returnResult.restrictionFields?.uid && restrictionAuthorityRepository) {
         await restrictionAuthorityRepository.upsertRestrictionAuthoritative({
           firebaseUid: returnResult.restrictionFields.uid,
           appUserId: null,
           restriction: returnResult.restrictionFields,
+          mirrorState: mirrorStatus,
         });
       }
       return Object.freeze({
         admin,
         authority: 'postgresql',
-        firestoreMirror: 'synced',
+        transactionSource: writeMirrorEnabled ? 'firestore-compatibility-source' : 'postgresql',
+        firestoreMirror: mirrorStatus,
         restrictionAuthority: returnResult.restrictionFields?.uid ? 'postgresql-authoritative' : 'unchanged',
         request: committed,
         availability: BLOCKING.has(status) ? nextAvailability : null,
