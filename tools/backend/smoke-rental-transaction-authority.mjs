@@ -4,6 +4,35 @@ import { createRentalRequestWriteService } from '../../server/src/rentals/rental
 import { createRentalRequestService } from '../../server/src/rentals/rental-request-service.mjs';
 import { createRentalRequestUserActionService } from '../../server/src/rentals/rental-request-user-action-service.mjs';
 import { createAdminRentalRequestService } from '../../server/src/rentals/admin-rental-request-service.mjs';
+import { createAdminRentalRequestRepository } from '../../server/src/rentals/admin-rental-request-repository.mjs';
+
+
+const assertAllParametersAreTypedAndReferenced = (sql, values) => {
+  const references = [...String(sql).matchAll(/\$(\d+)/g)].map((match) => Number(match[1]));
+  const uniqueReferences = new Set(references);
+  for (let index = 1; index <= values.length; index += 1) {
+    assert.ok(uniqueReferences.has(index), `SQL parameter $${index} must be referenced when ${values.length} values are bound.`);
+  }
+  const maxReference = references.length ? Math.max(...references) : 0;
+  assert.equal(maxReference, values.length, `SQL placeholder count must match bound values. SQL=${sql}`);
+};
+let adminListSqlChecks = 0;
+const adminListPool = {
+  async query(sql, values = []) {
+    if (String(sql).includes('COUNT(*)::bigint AS count')) return { rows: [{ count: 0 }] };
+    if (String(sql).includes('FROM app_rental_requests request') && String(sql).includes('LIMIT')) {
+      assertAllParametersAreTypedAndReferenced(sql, values);
+      adminListSqlChecks += 1;
+      return { rows: [] };
+    }
+    throw new Error(`Unexpected Phase 29 admin list smoke query: ${sql}`);
+  },
+  async connect() { throw new Error('connect() must not be used by list smoke'); },
+};
+const adminListRepository = createAdminRentalRequestRepository(adminListPool);
+await adminListRepository.list({ tab: 'pending', quickFilter: 'all', query: '', page: 1, pageSize: 10, referenceDate: '2026-08-11' });
+await adminListRepository.list({ tab: 'rental', quickFilter: 'all', query: '', page: 1, pageSize: 10, referenceDate: '2026-08-11' });
+assert.equal(adminListSqlChecks, 2, 'pending and rental PostgreSQL admin list queries must both bind valid contiguous parameters');
 
 const firebaseIdentity = { uid: 'firebase-user', email: 'user@example.com', idToken: 'firebase-token' };
 let firestoreReads = 0;

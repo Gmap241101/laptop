@@ -43,7 +43,7 @@ const [controller, mutation, diagnostics, dashboard, guard, app, client] = await
 ]);
 for (const marker of [
   'bootstrapAdminRentalRequests', 'getAdminRentalRequests', "readSource: 'postgresql'",
-  "readSource: 'firestore-fallback'", "firestoreWatcher: 'disabled'", 'postgresBootstrapRef.current = false', 'setPostgresFallbackActive(false)',
+  "'firestore-fallback'", "firestoreWatcher: 'disabled'", 'postgresBootstrapRef.current = false', 'setPostgresFallbackActive(false)',
 ]) assert.ok(controller.includes(marker), `Missing Phase 17 admin read marker: ${marker}`);
 for (const marker of [
   'changeAdminRentalRequestStatus', "writeSource: 'postgresql-authoritative'", 'firestoreMirror',

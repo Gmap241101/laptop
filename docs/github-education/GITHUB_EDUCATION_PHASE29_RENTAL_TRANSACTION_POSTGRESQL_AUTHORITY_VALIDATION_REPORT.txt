@@ -58,3 +58,12 @@ Third staging administrator status persistence hotfix additions
 - administrator user-action review skips targeted legacy Firestore sync when Phase 29 retirement is enabled: PASS
 - npm run verify:phase29 after persistence hotfix: PASS (exit 0)
 - build:staging prebuild audits PASS; Vite unavailable in assistant environment (`vite: not found`, exit 127)
+
+Fourth staging list/routing hotfix additions
+- observed admin list error SQLSTATE 42P18: traced to an unreferenced referenceDate bind parameter on non-rental tabs
+- admin repository now binds referenceDate only when the rental-tab ORDER BY references it: PASS
+- backend smoke executes pending + rental admin list queries and asserts every bound PostgreSQL parameter is referenced contiguously: PASS
+- Phase 29 admin PostgreSQL read failure no longer activates stale Firestore request fallback: PASS
+- Phase 29 admin Firestore watcher remains disabled on PostgreSQL list error: PASS
+- administrator post-login route guard persists until the first explicit user interaction after authenticated /admin stabilization: PASS
+- previous fixed-duration route stabilization remains as an immediate compatibility layer, with the new state-driven route guard covering later auth/role races

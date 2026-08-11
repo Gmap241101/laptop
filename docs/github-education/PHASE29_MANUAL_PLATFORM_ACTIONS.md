@@ -87,3 +87,14 @@ FIRESTORE_RENTAL_REQUEST_WRITE_MIRROR_DISABLED=true
 ```
 
 Redeploy both the Phase 29 backend and frontend. In Phase 29 authoritative mode, administrator page entry and targeted sync must no longer import `rentalRequests` from Firestore. After deployment, change a test request to `대여중`, `보류`, or `불허`, leave the request-management screen, reopen it, and verify the changed PostgreSQL status remains persistent.
+
+## Administrator list/routing hotfix redeploy
+No new migration or environment variable is introduced by this hotfix. Keep migrations 020/021 and the existing Phase 29 flags.
+
+Redeploy both Heroku and Vercel because the hotfix changes the PostgreSQL administrator list repository and frontend administrator routing/fallback behavior.
+
+After redeploy verify:
+1. administrator login lands directly on `/admin` and remains there;
+2. pending/rental/closed/returned administrator tabs use PostgreSQL and `Admin cutover error` is `-`;
+3. approve/hold/deny a request, leave the request-management tab, re-enter, and confirm the changed status remains in the correct tab;
+4. Phase 29 must not show `Admin rental request active source: firestore-fallback`.

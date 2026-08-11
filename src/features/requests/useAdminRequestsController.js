@@ -336,14 +336,26 @@ export default function useAdminRequestsController({
       } catch (error) {
         if (cancelled) return;
         console.error('PostgreSQL admin rental request read error:', error);
+        const retirementEnabled = rentalWriteMirrorRetirementConfig.enabled;
         publishAdminRentalRequestCutoverObservation({
           readRequested: true,
-          readSource: 'firestore-fallback',
-          firestoreWatcher: 'active',
+          readSource: retirementEnabled ? 'unavailable' : 'firestore-fallback',
+          firestoreWatcher: retirementEnabled ? 'disabled' : 'active',
           bootstrapCount: null,
           totalCount: null,
           error: error?.code || error?.message || 'admin-rental-request-read-failed',
         });
+        if (retirementEnabled) {
+          setPostgresFallbackActive(false);
+          setRequests([]);
+          setHasNextPage(false);
+          setTotalCount(0);
+          setLoadErrorMessage(
+            'PostgreSQL 관리자 대여신청 조회에 실패했습니다. Phase 29에서는 오래된 Firestore 신청 목록으로 fallback하지 않습니다.'
+          );
+          setReady(true);
+          return;
+        }
         setPostgresFallbackActive(true);
         setLoadErrorMessage(
           'PostgreSQL 관리자 대여신청 조회에 실패해 기존 Firestore 조회로 전환했습니다.'

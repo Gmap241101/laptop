@@ -246,8 +246,11 @@ export const createAdminRentalRequestRepository = (pool) => {
         filter.values,
       );
       const values = [...filter.values];
-      values.push(referenceDate);
-      const referenceParam = `$${values.length}`;
+      let referenceParam = null;
+      if (tab === 'rental') {
+        values.push(referenceDate);
+        referenceParam = `$${values.length}`;
+      }
       values.push(pageSize);
       const limitParam = `$${values.length}`;
       values.push(Math.max(0, (page - 1) * pageSize));

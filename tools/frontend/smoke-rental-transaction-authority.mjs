@@ -47,6 +47,22 @@ const adminBootstrapGate = adminRequestsController.indexOf('if (rentalWriteMirro
 const adminBootstrapCall = adminRequestsController.indexOf('clerkStagingClient.bootstrapAdminRentalRequests', adminBootstrapGate);
 assert.ok(adminBootstrapGate >= 0 && adminBootstrapCall > adminBootstrapGate, 'Phase 29 admin list load must gate legacy Firestore bootstrap behind retirement-disabled branch.');
 
+for (const marker of [
+  "readSource: retirementEnabled ? 'unavailable' : 'firestore-fallback'",
+  "firestoreWatcher: retirementEnabled ? 'disabled' : 'active'",
+  'setPostgresFallbackActive(false)',
+  'Phase 29에서는 오래된 Firestore 신청 목록으로 fallback하지 않습니다.',
+]) assert.ok(adminRequestsController.includes(marker), `Phase 29 admin PostgreSQL read failure must not expose stale Firestore state: ${marker}`);
+
+const adminAuthController = readFileSync('src/features/auth/useAdminAuthenticationController.js', 'utf8');
+for (const marker of [
+  'adminPostLoginRouteGuardActive',
+  'setAdminPostLoginRouteGuardActive(true)',
+  "const events = ['pointerdown', 'keydown', 'touchstart'];",
+  'stabilizeAdminPostLoginRoute();',
+  "normalizedPath === '/admin' && view === 'admin'",
+]) assert.ok(adminAuthController.includes(marker), `administrator post-login route guard marker missing: ${marker}`);
+
 const adminUserActionController = readFileSync('src/features/requests/useAdminUserActionReviewController.js', 'utf8');
 for (const marker of [
   'readRentalRequestWriteMirrorRetirementConfig',

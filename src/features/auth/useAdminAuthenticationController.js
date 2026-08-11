@@ -144,6 +144,7 @@ export default function useAdminAuthenticationController({
   const [adminClerkSessionVerified, setAdminClerkSessionVerified] = useState(
     () => !adminClerkAuthRequested
   );
+  const [adminPostLoginRouteGuardActive, setAdminPostLoginRouteGuardActive] = useState(false);
 
   const authenticatedAdminAccount =
     registeredAdminAccounts.find(
@@ -189,6 +190,46 @@ export default function useAdminAuthenticationController({
       window.setTimeout(applyAdminRoute, 600);
     }
   }, [setAdminTab, setIsCommunityMenuOpen, setView]);
+
+  useEffect(() => {
+    if (!adminPostLoginRouteGuardActive || !authenticatedAdminId) return undefined;
+
+    const normalizedPath =
+      typeof window === 'undefined'
+        ? '/admin'
+        : window.location.pathname.replace(/\/+$/, '') || '/';
+    const routeIsAdmin = normalizedPath === '/admin' && view === 'admin';
+
+    if (!routeIsAdmin) {
+      stabilizeAdminPostLoginRoute();
+      return undefined;
+    }
+
+    if (!isAdminAuthenticated || typeof window === 'undefined') return undefined;
+
+    const releaseRouteGuard = () => {
+      setAdminPostLoginRouteGuardActive(false);
+    };
+    const events = ['pointerdown', 'keydown', 'touchstart'];
+    events.forEach((eventName) =>
+      window.addEventListener(eventName, releaseRouteGuard, { once: true, passive: true })
+    );
+
+    return () => {
+      events.forEach((eventName) =>
+        window.removeEventListener(eventName, releaseRouteGuard)
+      );
+    };
+  }, [
+    adminPostLoginRouteGuardActive,
+    authenticatedAdminId,
+    currentAuthAdminAccount?.id,
+    currentAuthRoleReady,
+    adminClerkSessionVerified,
+    isAdminAuthenticated,
+    stabilizeAdminPostLoginRoute,
+    view,
+  ]);
 
   useEffect(() => {
     if (!adminClerkAuthRequested) {
@@ -585,6 +626,7 @@ export default function useAdminAuthenticationController({
       loginSecuritySettings
     );
     setAdminAuthForm(createDefaultAdminAuthForm());
+    setAdminPostLoginRouteGuardActive(true);
     stabilizeAdminPostLoginRoute();
 
     triggerToast(
@@ -903,6 +945,7 @@ export default function useAdminAuthenticationController({
 
     adminLogoutInProgressRef.current = true;
     setAdminLogoutInProgress(true);
+    setAdminPostLoginRouteGuardActive(false);
 
     const adminAccountForLogout =
       authenticatedAdminAccount || currentAuthAdminAccount;
