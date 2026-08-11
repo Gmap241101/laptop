@@ -107,6 +107,10 @@ import {
   readMemberStatusRestrictionWriteMirrorRetirementConfig,
   requestMemberStatusRestrictionWriteMirrorRetirementStatus,
 } from '../features/compatibility/memberStatusRestrictionWriteMirrorRetirement.js';
+import {
+  readMemberProfileIdentityAuthorityConfig,
+  requestMemberProfileIdentityAuthorityStatus,
+} from '../features/compatibility/memberProfileIdentityAuthority.js';
 import { clerkStagingClient } from './clerkStagingClient.js';
 
 const panelStyle = {
@@ -167,6 +171,7 @@ export default function ClerkStagingDiagnostics() {
   const writeMirrorRetirementConfig = useMemo(() => readFirestoreWriteMirrorRetirementConfig(), []);
   const rentalWriteMirrorRetirementConfig = useMemo(() => readRentalRequestWriteMirrorRetirementConfig(), []);
   const memberStatusRestrictionRetirementConfig = useMemo(() => readMemberStatusRestrictionWriteMirrorRetirementConfig(), []);
+  const memberProfileIdentityAuthorityConfig = useMemo(() => readMemberProfileIdentityAuthorityConfig(), []);
   const [state, setState] = useState({
     phase: requested ? 'loading' : 'hidden',
     signedIn: false,
@@ -379,6 +384,11 @@ export default function ClerkStagingDiagnostics() {
     memberStatusRestrictionSource: null,
     memberStatusRestrictionRetiredDomains: [],
     memberStatusRestrictionRetirementError: null,
+    memberProfileIdentityAuthorityRequested: memberProfileIdentityAuthorityConfig.requested,
+    memberProfileIdentityAuthorityBackendApplied: false,
+    memberProfileIdentitySource: null,
+    memberProfileIdentityRetiredDomains: [],
+    memberProfileIdentityAuthorityError: null,
     error: null,
   });
 
@@ -1008,6 +1018,24 @@ export default function ClerkStagingDiagnostics() {
     return () => { active = false; };
   }, [requested, memberStatusRestrictionRetirementConfig]);
 
+  useEffect(() => {
+    if (!requested) return undefined;
+    let active = true;
+    requestMemberProfileIdentityAuthorityStatus({ config: memberProfileIdentityAuthorityConfig })
+      .then((status) => {
+        if (!active) return;
+        setState((current) => ({
+          ...current,
+          memberProfileIdentityAuthorityRequested: Boolean(status.requested),
+          memberProfileIdentityAuthorityBackendApplied: Boolean(status.backendApplied),
+          memberProfileIdentitySource: status.identitySource || status.source || null,
+          memberProfileIdentityRetiredDomains: Array.isArray(status.retiredDomains) ? status.retiredDomains : [],
+          memberProfileIdentityAuthorityError: status.error || null,
+        }));
+      });
+    return () => { active = false; };
+  }, [requested, memberProfileIdentityAuthorityConfig]);
+
   if (!requested) return null;
 
   const run = async (operation) => {
@@ -1211,7 +1239,7 @@ export default function ClerkStagingDiagnostics() {
 
   return (
     <aside style={panelStyle} aria-label="Clerk staging diagnostics">
-      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 30</div>
+      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 31</div>
       <div>SDK: {state.phase === 'loading' ? 'loading' : state.phase}</div>
       <div>Signed in: {state.signedIn ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Clerk user: {state.userId || '-'}</div>
@@ -1518,6 +1546,15 @@ export default function ClerkStagingDiagnostics() {
       <div style={{ overflowWrap: 'anywhere' }}>Last restriction authority: {state.memberAuthorityOperation === 'admin-member-status-change' ? (state.restrictionAuthorityWriteSource || '-') : '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Phase 30 retirement error: {state.memberStatusRestrictionRetirementError || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Preserved compatibility: member profile edit mirror / rejoined inherited-restriction snapshot fallback / site shell / policy-terms / account recovery</div>
+
+      <div style={{ marginTop: '6px', fontWeight: 700 }}>Phase 31 member profile identity / recovery PostgreSQL authority + Firestore write mirror retirement</div>
+      <div>Member profile identity authority requested: {state.memberProfileIdentityAuthorityRequested ? 'yes' : 'no'}</div>
+      <div>Member profile identity backend applied: {state.memberProfileIdentityAuthorityBackendApplied ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Member identity source: {state.memberProfileIdentitySource || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Phase 31 retired domains: {state.memberProfileIdentityRetiredDomains.length ? state.memberProfileIdentityRetiredDomains.filter((domain) => ['member-profile','member-identity','account-recovery-key'].includes(domain)).join(' / ') : '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Last profile edit mirror: {['user-profile-edit','admin-profile-edit'].includes(state.memberAuthorityOperation) ? (state.memberAuthorityMirror || '-') : '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Phase 31 authority error: {state.memberProfileIdentityAuthorityError || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Preserved compatibility: Firebase auth session / signup bootstrap / password reset delivery / terms consent / site shell</div>
 
       {state.error ? (
         <div role="alert" style={{ marginTop: '8px', color: '#b91c1c', overflowWrap: 'anywhere' }}>

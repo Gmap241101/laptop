@@ -123,6 +123,14 @@ export const createFirestoreMemberAuthorityClient = ({ projectId, timeoutMs = DE
       if (!key) return null;
       return getDocument(`memberDirectoryKeys/${encodeURIComponent(key)}`, firebaseIdToken, 'firestore_member_directory');
     },
+    async listDirectoryMembers({ firebaseIdToken }) {
+      const payload = await requestJson({
+        url: `${baseUrl}:runQuery`, method: 'POST', firebaseIdToken, codePrefix: 'firestore_member_directory_list',
+        body: { structuredQuery: { from: [{ collectionId: 'memberDirectoryKeys' }] } },
+      });
+      if (!Array.isArray(payload)) throw createError('firestore_member_directory_list_invalid', 'Firestore member directory list response is invalid.', 503);
+      return payload.map((entry) => entry?.document).filter(Boolean).map(decodeFirestoreDocument);
+    },
     async getRentalRestriction({ firebaseUid, firebaseIdToken }) {
       const uid = trim(firebaseUid);
       if (!uid) return null;

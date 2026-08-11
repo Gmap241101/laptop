@@ -5,10 +5,11 @@ const allowedOrigin = 'https://staging.example.vercel.app';
 const config = {
   serviceName: 'rental-api',
   appEnv: 'test',
-  serviceVersion: 'phase30-smoke',
+  serviceVersion: 'phase31-smoke',
   assetBoardWriteMirrorDisabled: true,
   rentalRequestWriteMirrorDisabled: true,
   memberStatusRestrictionWriteMirrorDisabled: true,
+  memberProfileWriteMirrorDisabled: true,
   corsAllowedOrigins: [allowedOrigin],
 };
 
@@ -184,15 +185,19 @@ const memberAuthorityService = {
   },
   async editSelf({ clerkUserId, firebaseIdentity, input }) {
     if (clerkUserId !== 'user_smoke' || firebaseIdentity.uid !== 'firebase_uid_smoke') throw new Error('Unexpected Phase 21 self member authority identity.');
-    return { authority: 'postgresql', firestoreMirror: 'synced', mutationId: 'member-self-smoke', profile: { uid: firebaseIdentity.uid, email: 'smoke@example.com', name: input.name, team: input.team, phone: input.phone, status: 'active' } };
+    return { authority: 'postgresql', source: 'postgresql-authoritative', firestoreMirror: 'retired', identitySource: 'postgresql', recoverySource: 'postgresql', mutationId: 'member-self-smoke', profile: { uid: firebaseIdentity.uid, email: 'smoke@example.com', name: input.name, team: input.team, phone: input.phone, status: 'active' } };
   },
   async editAdmin({ firebaseIdentity, targetUid, input }) {
     if (firebaseIdentity.uid !== 'firebase_uid_smoke' || targetUid !== 'member-target') throw new Error('Unexpected Phase 21 admin member profile identity.');
-    return { admin: { uid: firebaseIdentity.uid, role: 'owner' }, authority: 'postgresql', firestoreMirror: 'synced', mutationId: 'member-admin-smoke', profile: { uid: targetUid, email: 'target@example.com', name: input.name, team: input.team, phone: input.phone, status: 'active' } };
+    return { admin: { uid: firebaseIdentity.uid, role: 'owner' }, authority: 'postgresql', source: 'postgresql-authoritative', firestoreMirror: 'retired', identitySource: 'postgresql', recoverySource: 'postgresql', mutationId: 'member-admin-smoke', profile: { uid: targetUid, email: 'target@example.com', name: input.name, team: input.team, phone: input.phone, status: 'active' } };
   },
   async changeStatusAdmin({ firebaseIdentity, targetUid, nextStatus }) {
     if (firebaseIdentity.uid !== 'firebase_uid_smoke' || targetUid !== 'member-target' || nextStatus !== 'blocked') throw new Error('Unexpected Phase 21 admin member status input.');
-    return { admin: { uid: firebaseIdentity.uid, role: 'owner' }, authority: 'postgresql', firestoreMirror: 'synced', restrictionAuthority: 'unchanged', mutationId: 'member-status-smoke', profile: { uid: targetUid, status: nextStatus } };
+    return { admin: { uid: firebaseIdentity.uid, role: 'owner' }, authority: 'postgresql', firestoreMirror: 'retired', restrictionAuthority: 'unchanged', mutationId: 'member-status-smoke', profile: { uid: targetUid, status: nextStatus } };
+  },
+  async syncMemberDirectoryAdmin({ firebaseIdentity }) {
+    if (firebaseIdentity.uid !== 'firebase_uid_smoke') throw new Error('Unexpected Phase 31 member directory sync identity.');
+    return { admin: { uid: firebaseIdentity.uid, role: 'owner' }, source: 'firestore-admin-sync-compatibility', target: 'postgresql-member-directory', count: 2, version: 7 };
   },
   async bootstrapAdminRegistry({ firebaseIdentity }) {
     if (firebaseIdentity.uid !== 'firebase_uid_smoke') throw new Error('Unexpected Phase 21 admin registry identity.');
@@ -501,7 +506,10 @@ if (readyBody.compatibility?.rentalRequestWriteMirrorDisabled !== true) throw ne
 if (readyBody.compatibility?.rentalTransactionSource !== 'postgresql') throw new Error('/health Phase 29 rental transaction source payload is invalid.');
 if (readyBody.compatibility?.memberStatusRestrictionWriteMirrorDisabled !== true) throw new Error('/health Phase 30 member status/restriction mirror retirement payload is invalid.');
 if (readyBody.compatibility?.memberStatusSource !== 'postgresql') throw new Error('/health Phase 30 member status source payload is invalid.');
-if (!Array.isArray(readyBody.compatibility?.retiredWriteMirrorDomains) || !readyBody.compatibility.retiredWriteMirrorDomains.includes('assets') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('notice') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('faq') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('rental-requests') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('member-status') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('rental-restriction-status')) throw new Error('/health Phase 29 retired domain list is invalid.');
+if (readyBody.compatibility?.memberProfileWriteMirrorDisabled !== true) throw new Error('/health Phase 31 member profile mirror retirement payload is invalid.');
+if (readyBody.compatibility?.memberProfileSource !== 'postgresql') throw new Error('/health Phase 31 member profile source payload is invalid.');
+if (readyBody.compatibility?.memberIdentitySource !== 'postgresql') throw new Error('/health Phase 31 member identity source payload is invalid.');
+if (!Array.isArray(readyBody.compatibility?.retiredWriteMirrorDomains) || !readyBody.compatibility.retiredWriteMirrorDomains.includes('assets') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('notice') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('faq') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('rental-requests') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('member-status') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('rental-restriction-status') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('member-profile') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('member-identity') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('account-recovery-key')) throw new Error('/health Phase 31 retired domain list is invalid.');
 if (ready.headers.get('access-control-allow-origin') !== allowedOrigin) {
   throw new Error('Allowed CORS origin was not reflected.');
 }
@@ -821,7 +829,7 @@ const memberProfileWrite = await fetch(`${baseUrl}/api/users/me/member-profile`,
   body: JSON.stringify({ name: 'Smoke User', team: 'QA', phone: '010-0000-0000' }),
 });
 const memberProfileWriteBody = await memberProfileWrite.json();
-if (memberProfileWrite.status !== 200 || memberProfileWriteBody.memberProfileWrite?.authority !== 'postgresql' || memberProfileWriteBody.memberProfileWrite?.firestoreMirror !== 'synced') {
+if (memberProfileWrite.status !== 200 || memberProfileWriteBody.memberProfileWrite?.authority !== 'postgresql' || memberProfileWriteBody.memberProfileWrite?.firestoreMirror !== 'retired') {
   throw new Error('Phase 21 self member profile authority HTTP response is invalid.');
 }
 const adminMembersRead = await fetch(`${baseUrl}/api/admin/members?status=all&page=1&pageSize=10&q=target`, {
@@ -837,7 +845,7 @@ const adminMemberProfileWrite = await fetch(`${baseUrl}/api/admin/members/member
   body: JSON.stringify({ name: 'Target User', team: 'Ops', phone: '010-1111-2222' }),
 });
 const adminMemberProfileWriteBody = await adminMemberProfileWrite.json();
-if (adminMemberProfileWrite.status !== 200 || adminMemberProfileWriteBody.adminMemberProfileWrite?.authority !== 'postgresql') {
+if (adminMemberProfileWrite.status !== 200 || adminMemberProfileWriteBody.adminMemberProfileWrite?.authority !== 'postgresql' || adminMemberProfileWriteBody.adminMemberProfileWrite?.firestoreMirror !== 'retired') {
   throw new Error('Phase 21 admin member profile authority HTTP response is invalid.');
 }
 const adminMemberStatusWrite = await fetch(`${baseUrl}/api/admin/members/member-target/status`, {

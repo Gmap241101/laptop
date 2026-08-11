@@ -4,6 +4,11 @@ import {
   useRef,
 } from 'react';
 
+import { firebaseAuth } from '../../firebase.js';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { readMemberProfileIdentityAuthorityConfig } from '../compatibility/memberProfileIdentityAuthority.js';
+import { syncSiteContentDomainFromFirestore } from '../content/siteContentCutover.js';
+
 let memberDirectorySaveServicePromise = null;
 
 const loadMemberDirectorySaveService = () => {
@@ -59,6 +64,15 @@ export default function useAdminMemberDirectorySaveActions({
         tempBorrowers,
         tempTeams,
       });
+
+      const profileAuthorityConfig = readMemberProfileIdentityAuthorityConfig();
+      if (profileAuthorityConfig.requested) {
+        const adminUser = firebaseAuth.currentUser;
+        if (!adminUser) throw new Error('Firebase 관리자 compatibility 세션이 필요합니다.');
+        await syncSiteContentDomainFromFirestore({ domain: 'rental-config' });
+        const firebaseIdToken = await adminUser.getIdToken();
+        await clerkStagingClient.syncAdminMemberDirectory(firebaseIdToken);
+      }
 
       setData((previousData) => ({
         ...previousData,

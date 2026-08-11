@@ -1,0 +1,108 @@
+GitHub Education Phase 31 - Member Profile Identity / Recovery PostgreSQL Authority Validation
+============================================================================================
+
+Previous confirmed baseline
+---------------------------
+rental-system-github-education-phase30-persistent-admin-route-intent-hotfix-20260811_deployment_package.zip
+SHA-256: 0971fd890b6ddbdf6fda41932d93dacf57470a13e59e27793b8c5ad7a43ae07a
+Phase 30: actual Staging/browser PASS.
+
+Phase 31 scope
+--------------
+- Member profile edit source: PostgreSQL authoritative.
+- Active member identity conflict source: PostgreSQL.
+- Member directory validation source: PostgreSQL member-directory table.
+- Account recovery key for normal profile edits: PostgreSQL member account.
+- Member profile Firestore write mirror: retired when the Phase 31 backend flag is enabled.
+- Transitional administrator member-directory Firestore source remains and is synchronized into PostgreSQL.
+- Firebase Auth compatibility, signup bootstrap, Firebase reset delivery, terms consent, and site-shell compatibility are preserved.
+
+Migration
+---------
+023_phase31_member_profile_identity_recovery_authority.sql
+- Creates app_member_directory_entries.
+- Adds Phase 31 runtime metadata contract.
+- Additive only; no destructive removal of legacy Firebase/Firestore data.
+
+Automated validation
+--------------------
+Command: TERM=xterm npm run verify:phase31
+Result: PASS / exit code 0
+
+Phase 31 backend smoke:
+PASS - PostgreSQL profile/identity/recovery authority, directory bootstrap/sync, Firestore profile mirror retired.
+
+Phase 31 frontend smoke:
+PASS - Phase 31 flag/health, retired mirror response, directory sync, user/admin profile authority, diagnostics.
+
+React hook audit:
+PASS - 170 source files.
+
+Application flow audit:
+PASS - 124 contracts, 11 user routes, 20 administrator tabs.
+
+Firestore strict audit:
+PASS
+- Source files: 170
+- Total calls: 138
+- onSnapshot: 35
+- getDocs/server equivalents: 54
+- getDoc/server equivalents: 31
+- getCountFromServer: 18
+- Approved risk findings: 47
+- Unapproved warnings: 0
+- Unapproved errors: 0
+
+Build validation
+----------------
+Command: TERM=xterm npm run build:staging
+Prebuild results:
+- React audit: PASS
+- Application audit: PASS
+- Firestore strict audit: PASS
+- Clerk local staging config: DISABLED in the assistant environment
+Final build command result: vite: not found / exit code 127
+This is the existing local environment limitation caused by the unavailable root node_modules/Vite executable, not a newly detected Phase 31 source/prebuild failure. Vercel staging must perform the real bundle build.
+
+App.jsx
+-------
+Lines: 2,131
+Bytes: 66,062
+SHA-256: 5defec9c4b9148fb94ffee346c5832d0a550ff3d64c15bb9c72420e24e51c946
+Result: unchanged from the confirmed Phase 30 baseline.
+
+Expected final package delta versus Phase 30 baseline
+-----------------------------------------------------
+Source files: 773 -> 781
+New files: 8
+Changed files: 32
+Deleted files: 0
+Cumulative removed-file list remains 65 entries.
+
+Staging configuration
+---------------------
+Heroku new/changed values:
+SERVICE_VERSION=phase31
+FIRESTORE_MEMBER_PROFILE_WRITE_MIRROR_DISABLED=true
+
+Keep:
+FIRESTORE_ASSET_BOARD_WRITE_MIRROR_DISABLED=true
+FIRESTORE_RENTAL_REQUEST_WRITE_MIRROR_DISABLED=true
+FIRESTORE_MEMBER_STATUS_RESTRICTION_WRITE_MIRROR_DISABLED=true
+
+Vercel new value:
+VITE_MEMBER_PROFILE_IDENTITY_POSTGRES_AUTHORITY_ENABLED=true
+
+Expected health contract
+------------------------
+memberProfileWriteMirrorDisabled: true
+memberProfileSource: postgresql
+memberIdentitySource: postgresql
+retiredWriteMirrorDomains contains:
+- member-profile
+- member-identity
+- account-recovery-key
+
+Actual Staging/browser status
+-----------------------------
+Not yet validated. Phase 31 remains a candidate until user/admin browser tests confirm profile edit persistence, retired Firestore profile mirror, directory synchronization, and prior Phase 30 regressions remain healthy.

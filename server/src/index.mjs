@@ -135,7 +135,9 @@ const memberAuthorityService = firestoreMemberAuthorityClient
       userRepository,
       firestoreClient: firestoreMemberAuthorityClient,
       rentalRestrictionRepository,
+      siteContentRepository,
       writeMirrorEnabled: !config.memberStatusRestrictionWriteMirrorDisabled,
+      profileWriteMirrorEnabled: !config.memberProfileWriteMirrorDisabled,
     })
   : null;
 
@@ -331,7 +333,7 @@ server.listen(config.port, '0.0.0.0', () => {
     rentalRequestWrite: config.firebaseProjectId ? (config.rentalRequestWriteMirrorDisabled ? 'postgresql-authoritative-firestore-write-mirror-retired' : 'postgresql-authoritative-firestore-compatibility-mirror') : 'disabled',
     rentalRequestUserActions: config.firebaseProjectId ? (config.rentalRequestWriteMirrorDisabled ? 'postgresql-authoritative-user-actions-firestore-write-mirror-retired' : 'postgresql-authoritative-user-actions-firestore-compatibility-mirror') : 'disabled',
     adminRentalRequests: config.firebaseProjectId ? (config.rentalRequestWriteMirrorDisabled ? 'postgresql-authoritative-admin-mutations-firestore-write-mirror-retired' : 'postgresql-read-admin-mutations-audit-firestore-compatibility-mirror') : 'disabled',
-    memberAuthority: config.firebaseProjectId ? (config.memberStatusRestrictionWriteMirrorDisabled ? 'postgresql-member-status-restriction-authority-firestore-write-mirror-retired-profile-edit-mirror-preserved' : 'postgresql-authoritative-firestore-compatibility-mirror') : 'disabled',
+    memberAuthority: config.firebaseProjectId ? (config.memberProfileWriteMirrorDisabled ? 'postgresql-member-profile-identity-recovery-authority-firestore-profile-mirror-retired' : (config.memberStatusRestrictionWriteMirrorDisabled ? 'postgresql-member-status-restriction-authority-firestore-write-mirror-retired-profile-edit-mirror-preserved' : 'postgresql-authoritative-firestore-compatibility-mirror')) : 'disabled',
     adminIdentityRegistry: config.firebaseProjectId ? 'postgresql-clerk-authority-firebase-compatibility' : 'disabled',
     accountRecovery: 'postgresql-preferred',
     userClerkAuthentication: config.firebaseProjectId ? 'clerk-authoritative-firebase-compatibility' : 'disabled',

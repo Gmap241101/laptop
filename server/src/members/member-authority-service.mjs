@@ -64,6 +64,8 @@ export const createMemberAuthorityService = ({
   firestoreClient,
   rentalRestrictionRepository = null,
   writeMirrorEnabled = true,
+  profileWriteMirrorEnabled = true,
+  siteContentRepository = null,
 }) => {
   if (!repository || typeof repository.mutateProfile !== 'function') throw new TypeError('Member authority repository is required.');
   if (!firebaseLinkRepository || typeof firebaseLinkRepository.findByFirebaseUid !== 'function') throw new TypeError('firebaseLinkRepository is required.');
@@ -73,6 +75,9 @@ export const createMemberAuthorityService = ({
   if (!writeMirrorEnabled && typeof repository.countBlockingRentalRequestsForUids !== 'function') throw new TypeError('PostgreSQL rental-request guard is required when member status authority is enabled.');
   if (!writeMirrorEnabled && (typeof repository.getFullBootstrapState !== 'function' || typeof repository.bootstrapMemberAccounts !== 'function')) throw new TypeError('PostgreSQL member full-bootstrap repository contract is required when member status authority is enabled.');
   if (!writeMirrorEnabled && typeof firestoreClient.listUserAccounts !== 'function') throw new TypeError('Firestore userAccounts bootstrap reader is required when member status authority is enabled.');
+  if (!profileWriteMirrorEnabled && (!siteContentRepository || typeof siteContentRepository.getDomain !== 'function')) throw new TypeError('PostgreSQL site content repository is required when member profile authority is enabled.');
+  if (!profileWriteMirrorEnabled && (typeof repository.findActiveIdentityOwner !== 'function' || typeof repository.findDirectoryEntryByIdentityKey !== 'function' || typeof repository.getDirectoryBootstrapState !== 'function' || typeof repository.replaceDirectoryEntries !== 'function')) throw new TypeError('PostgreSQL member identity/directory repository contract is required when member profile authority is enabled.');
+  if (!profileWriteMirrorEnabled && typeof firestoreClient.listDirectoryMembers !== 'function') throw new TypeError('Firestore member directory bootstrap reader is required when member profile authority is enabled.');
 
   const resolveTarget = async (firebaseUid) => {
     const link = await firebaseLinkRepository.findByFirebaseUid(firebaseUid);
@@ -105,7 +110,79 @@ export const createMemberAuthorityService = ({
     return { appUser, link };
   };
 
+  const ensureDirectoryBootstrap = async ({ firebaseIdentity, version = 0 } = {}) => {
+    if (profileWriteMirrorEnabled) return null;
+    const state = await repository.getDirectoryBootstrapState();
+    if (state?.completed === true && Number(state.version || 0) >= Number(version || 0)) return state;
+    const documents = await firestoreClient.listDirectoryMembers({ firebaseIdToken: firebaseIdentity.idToken });
+    const entries = documents.map((document, index) => {
+      const fields = document?.fields || {};
+      const identityKeyValue = trim(fields.identityKey || document?.name?.split('/').at(-1));
+      return {
+        identityKey: identityKeyValue,
+        directoryMemberId: trim(fields.directoryMemberId),
+        name: trim(fields.name).replace(/\s+/g, ''),
+        team: trim(fields.team).replace(/\s+/g, ' '),
+        sortOrder: Number.isFinite(Number(fields.sortOrder)) ? Math.trunc(Number(fields.sortOrder)) : index,
+        enabled: fields.enabled !== false,
+        sourceUpdatedAt: document?.updateTime || null,
+      };
+    }).filter((entry) => entry.identityKey);
+    return repository.replaceDirectoryEntries(entries, { source: 'firestore-memberDirectoryKeys-bootstrap', version });
+  };
+
+  const getPostgresqlMemberPolicySettings = async () => {
+    const domain = await siteContentRepository.getDomain('rental-config');
+    const item = domain?.documents?.find((entry) => entry.key === 'rentalSystem/publicConfig');
+    if (!item) throw serviceError('member_policy_postgresql_missing', 'PostgreSQL member policy configuration has not been synchronized.', 503);
+    return item?.payload?.settings && typeof item.payload.settings === 'object' ? item.payload.settings : {};
+  };
+
   const buildProfileContext = async ({ firebaseIdentity, targetUid, input }) => {
+    if (!profileWriteMirrorEnabled) {
+      const current = await repository.findByFirebaseUid(targetUid);
+      if (!current) throw serviceError('member_account_not_synchronized', 'PostgreSQL member account must be synchronized before profile authority can be used.', 409);
+      const name = trim(input?.name).replace(/\s+/g, '');
+      const team = trim(input?.team).replace(/\s+/g, ' ');
+      const phone = trim(input?.phone);
+      if (!validName(name)) throw serviceError('member_invalid_name', 'Member name is invalid.', 400);
+      if (!team) throw serviceError('member_invalid_team', 'Member team is required.', 400);
+      if (!validPhone(phone)) throw serviceError('member_invalid_phone', 'Member phone number is invalid.', 400);
+      const email = trim(current.email || input?.email).toLowerCase();
+      const nextIdentityKey = identityKey(team, name);
+      const nextRecoveryKey = recoveryKey({ team, name, phone });
+      const owner = await repository.findActiveIdentityOwner(nextIdentityKey, targetUid);
+      if (owner) throw serviceError('member_identity_conflict', 'Another member account already owns the requested name/team identity.', 409);
+      const settings = await getPostgresqlMemberPolicySettings();
+      const directoryRequired = Boolean(settings.requireRegisteredMemberForSignup);
+      const directoryVersion = Math.max(0, Number(settings.memberDirectoryVersion || 0));
+      let directory = null;
+      if (directoryRequired) {
+        await ensureDirectoryBootstrap({ firebaseIdentity, version: directoryVersion });
+        directory = await repository.findDirectoryEntryByIdentityKey(nextIdentityKey);
+        if (!directory || directory.enabled === false || trim(directory.name).replace(/\s+/g, '') !== name || trim(directory.team).replace(/\s+/g, ' ') !== team) {
+          throw serviceError('member_directory_mismatch', 'Registered member directory does not match the requested member profile.', 409);
+        }
+      }
+      const restoreDirectoryMismatch = current.status === 'profileRequired' && current.profileRequiredReason === 'directoryMismatch';
+      const nextStatus = restoreDirectoryMismatch ? 'active' : (trim(current.status) || 'pending');
+      const nextProfile = {
+        ...profileFromAccount(current, targetUid),
+        email,
+        maskedEmail: maskEmail(email),
+        name,
+        team,
+        phone,
+        status: nextStatus,
+        identityKey: nextIdentityKey,
+        recoveryKey: nextRecoveryKey,
+        directoryMemberId: directoryRequired && directory ? trim(directory.directoryMemberId) : '',
+        directoryVerifiedVersion: directoryRequired ? directoryVersion : 0,
+        profileRequiredReason: restoreDirectoryMismatch ? '' : trim(current.profileRequiredReason),
+      };
+      return { currentDoc: null, current, nextProfile, nextClaim: null, nextClaimExists: false, previousClaim: null, previousClaimUpdateTime: '', nextRecovery: null, previousRecoveryKey: trim(current.recoveryKey) };
+    }
+
     const currentDoc = await firestoreClient.getUserAccount({ firebaseUid: targetUid, firebaseIdToken: firebaseIdentity.idToken });
     if (!currentDoc) throw serviceError('member_account_not_found', 'Member account was not found.', 404);
     const current = currentDoc.fields || {};
@@ -216,7 +293,8 @@ export const createMemberAuthorityService = ({
         action: 'user-profile-edit',
         beforeProfile,
         nextProfile: context.nextProfile,
-        beforeMirror: () => firestoreClient.commitProfileEdit({
+        mirrorState: profileWriteMirrorEnabled ? 'synced' : 'retired',
+        beforeMirror: profileWriteMirrorEnabled ? () => firestoreClient.commitProfileEdit({
           targetUid,
           currentAccount: context.current,
           currentAccountUpdateTime: context.currentDoc.updateTime,
@@ -228,9 +306,9 @@ export const createMemberAuthorityService = ({
           nextRecovery: context.nextRecovery,
           previousRecoveryKey: context.previousRecoveryKey,
           firebaseIdToken: firebaseIdentity.idToken,
-        }),
+        }) : null,
       });
-      return Object.freeze({ authority: 'postgresql', firestoreMirror: 'synced', mutationId: result.mutationId, profile: context.nextProfile });
+      return Object.freeze({ authority: 'postgresql', source: profileWriteMirrorEnabled ? 'firestore-compatibility' : 'postgresql-authoritative', firestoreMirror: profileWriteMirrorEnabled ? 'synced' : 'retired', identitySource: profileWriteMirrorEnabled ? 'firestore-compatibility' : 'postgresql', recoverySource: 'postgresql', mutationId: result.mutationId, profile: context.nextProfile });
     },
 
     async editAdmin({ firebaseIdentity, targetUid, input }) {
@@ -249,7 +327,8 @@ export const createMemberAuthorityService = ({
         action: 'admin-profile-edit',
         beforeProfile,
         nextProfile: context.nextProfile,
-        beforeMirror: () => firestoreClient.commitProfileEdit({
+        mirrorState: profileWriteMirrorEnabled ? 'synced' : 'retired',
+        beforeMirror: profileWriteMirrorEnabled ? () => firestoreClient.commitProfileEdit({
           targetUid: target,
           currentAccount: context.current,
           currentAccountUpdateTime: context.currentDoc.updateTime,
@@ -261,9 +340,9 @@ export const createMemberAuthorityService = ({
           nextRecovery: context.nextRecovery,
           previousRecoveryKey: context.previousRecoveryKey,
           firebaseIdToken: firebaseIdentity.idToken,
-        }),
+        }) : null,
       });
-      return Object.freeze({ admin: { uid: admin.uid, role: trim(admin.fields?.adminRole || 'admin') }, authority: 'postgresql', firestoreMirror: 'synced', mutationId: result.mutationId, profile: context.nextProfile });
+      return Object.freeze({ admin: { uid: admin.uid, role: trim(admin.fields?.adminRole || 'admin') }, authority: 'postgresql', source: profileWriteMirrorEnabled ? 'firestore-compatibility' : 'postgresql-authoritative', firestoreMirror: profileWriteMirrorEnabled ? 'synced' : 'retired', identitySource: profileWriteMirrorEnabled ? 'firestore-compatibility' : 'postgresql', recoverySource: 'postgresql', mutationId: result.mutationId, profile: context.nextProfile });
     },
 
     async changeStatusAdmin({ firebaseIdentity, targetUid, nextStatus }) {
@@ -336,6 +415,27 @@ export const createMemberAuthorityService = ({
         mutationId: result.mutationId,
         profile: nextProfile,
       });
+    },
+
+    async syncMemberDirectoryAdmin({ firebaseIdentity }) {
+      const admin = await firestoreClient.verifyAdmin({ firebaseUid: firebaseIdentity.uid, firebaseIdToken: firebaseIdentity.idToken });
+      const settings = profileWriteMirrorEnabled ? {} : await getPostgresqlMemberPolicySettings();
+      const version = Math.max(0, Number(settings.memberDirectoryVersion || 0));
+      const documents = await firestoreClient.listDirectoryMembers({ firebaseIdToken: firebaseIdentity.idToken });
+      const entries = documents.map((document, index) => {
+        const fields = document?.fields || {};
+        return {
+          identityKey: trim(fields.identityKey || document?.name?.split('/').at(-1)),
+          directoryMemberId: trim(fields.directoryMemberId),
+          name: trim(fields.name).replace(/\s+/g, ''),
+          team: trim(fields.team).replace(/\s+/g, ' '),
+          sortOrder: Number.isFinite(Number(fields.sortOrder)) ? Math.trunc(Number(fields.sortOrder)) : index,
+          enabled: fields.enabled !== false,
+          sourceUpdatedAt: document?.updateTime || null,
+        };
+      }).filter((entry) => entry.identityKey);
+      const state = await repository.replaceDirectoryEntries(entries, { source: 'firestore-admin-directory-sync', version });
+      return Object.freeze({ admin: { uid: admin.uid, role: trim(admin.fields?.adminRole || 'admin') }, source: 'firestore-admin-sync', target: 'postgresql-member-directory', ...state });
     },
 
     async bootstrapAdminRegistry({ firebaseIdentity }) {

@@ -21,6 +21,7 @@ const phase28 = readFileSync('server/migrations/019_phase28_asset_board_write_mi
 const phase29 = readFileSync('server/migrations/020_phase29_rental_transaction_postgresql_authority.sql', 'utf8');
 const phase29ConstraintHotfix = readFileSync('server/migrations/021_phase29_rental_mirror_status_retired_constraint.sql', 'utf8');
 const phase30 = readFileSync('server/migrations/022_phase30_member_status_restriction_write_mirror_retirement.sql', 'utf8');
+const phase31 = readFileSync('server/migrations/023_phase31_member_profile_identity_recovery_authority.sql', 'utf8');
 
 if (!/value\s+JSONB\s+NOT\s+NULL/i.test(phase2)) {
   throw new Error('app_runtime_metadata.value must remain JSONB NOT NULL.');
@@ -280,4 +281,16 @@ for (const marker of [
   if (!phase30.includes(marker)) throw new Error(`Phase 30 member status/restriction retirement marker is missing: ${marker}`);
 }
 
-console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion + Phase 19 user-action lifecycle + Phase 20 asset-domain + Phase 21 member/restriction/admin identity authority + Phase 22 account recovery/admin Clerk auth + Phase 23 user Clerk auth/lifecycle + Phase 24 site content + Phase 25 policy/terms + Phase 26 notice/FAQ board authority + Phase 28 asset/board write mirror retirement + Phase 29 rental transaction PostgreSQL authority + runtime constraint hotfix + Phase 30 member status/restriction mirror retirement are type-safe)');
+for (const marker of [
+  'CREATE TABLE IF NOT EXISTS app_member_directory_entries',
+  'app_member_directory_entries_enabled_order_idx',
+  "'phase', 31",
+  "'member_profile_source', 'postgresql-authoritative'",
+  "'member_identity_source', 'postgresql-active-identity-key-unique-index'",
+  "'account_recovery_key_source', 'postgresql-member-account'",
+  "'member_profile_firestore_write_mirror', 'retired-staging-opt-in'",
+]) {
+  if (!phase31.includes(marker)) throw new Error(`Phase 31 member profile identity/recovery authority marker is missing: ${marker}`);
+}
+
+console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion + Phase 19 user-action lifecycle + Phase 20 asset-domain + Phase 21 member/restriction/admin identity authority + Phase 22 account recovery/admin Clerk auth + Phase 23 user Clerk auth/lifecycle + Phase 24 site content + Phase 25 policy/terms + Phase 26 notice/FAQ board authority + Phase 28 asset/board write mirror retirement + Phase 29 rental transaction PostgreSQL authority + runtime constraint hotfix + Phase 30 member status/restriction mirror retirement + Phase 31 member profile identity/recovery authority are type-safe)');

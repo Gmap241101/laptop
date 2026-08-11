@@ -173,6 +173,96 @@ export const createMemberAuthorityRepository = (pool) => {
       });
     },
 
+    async getDirectoryBootstrapState() {
+      const result = await pool.query(
+        `SELECT value FROM app_runtime_metadata WHERE key = 'phase31_member_directory_bootstrap' LIMIT 1`,
+      );
+      const value = result.rows[0]?.value;
+      return value && typeof value === 'object' ? value : null;
+    },
+
+    async replaceDirectoryEntries(entries = [], { source = 'firestore-bootstrap', version = 0 } = {}) {
+      const normalized = (Array.isArray(entries) ? entries : []).map((entry, index) => ({
+        identityKey: String(entry?.identityKey || '').trim(),
+        directoryMemberId: String(entry?.directoryMemberId || '').trim(),
+        name: String(entry?.name || '').normalize('NFKC').trim(),
+        team: String(entry?.team || '').normalize('NFKC').trim().replace(/\s+/g, ' '),
+        sortOrder: Number.isFinite(Number(entry?.sortOrder)) ? Math.trunc(Number(entry.sortOrder)) : index,
+        enabled: entry?.enabled !== false,
+        sourceUpdatedAt: entry?.sourceUpdatedAt || null,
+      })).filter((entry) => entry.identityKey);
+      return withTransaction(async (client) => {
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['phase31-member-directory']);
+        await client.query(`DELETE FROM app_member_directory_entries`);
+        for (const entry of normalized) {
+          await client.query(
+            `INSERT INTO app_member_directory_entries (
+               identity_key,directory_member_id,name,team,sort_order,enabled,source_updated_at,synced_at,updated_at
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7::timestamptz,NOW(),NOW())`,
+            [entry.identityKey, entry.directoryMemberId, entry.name, entry.team, entry.sortOrder, entry.enabled, entry.sourceUpdatedAt],
+          );
+        }
+        const state = {
+          completed: true,
+          source,
+          target: 'postgresql',
+          version: Math.max(0, Number(version || 0)),
+          documentCount: normalized.length,
+          completedAt: new Date().toISOString(),
+        };
+        await client.query(
+          `INSERT INTO app_runtime_metadata (key,value,updated_at)
+           VALUES ('phase31_member_directory_bootstrap',$1::jsonb,NOW())
+           ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()`,
+          [JSON.stringify(state)],
+        );
+        return Object.freeze(state);
+      });
+    },
+
+    async findDirectoryEntryByIdentityKey(identityKey) {
+      const result = await pool.query(
+        `SELECT identity_key,directory_member_id,name,team,sort_order,enabled,source_updated_at,synced_at
+           FROM app_member_directory_entries
+          WHERE identity_key=$1
+          LIMIT 1`,
+        [String(identityKey || '').trim()],
+      );
+      const row = result.rows[0];
+      return row ? Object.freeze({
+        identityKey: row.identity_key,
+        directoryMemberId: row.directory_member_id || '',
+        name: row.name || '',
+        team: row.team || '',
+        sortOrder: Number(row.sort_order || 0),
+        enabled: row.enabled !== false,
+        sourceUpdatedAt: row.source_updated_at || null,
+        syncedAt: row.synced_at || null,
+      }) : null;
+    },
+
+    async findActiveIdentityOwner(identityKey, excludeFirebaseUid = '') {
+      const key = String(identityKey || '').trim();
+      if (!key) return null;
+      const result = await pool.query(
+        `SELECT firebase_uid,status,name,team,identity_key
+           FROM app_member_accounts
+          WHERE identity_key=$1
+            AND status <> 'retired'
+            AND ($2='' OR firebase_uid <> $2)
+          ORDER BY authoritative_updated_at DESC NULLS LAST, updated_at DESC
+          LIMIT 1`,
+        [key, String(excludeFirebaseUid || '').trim()],
+      );
+      return result.rows[0] ? Object.freeze({
+        firebaseUid: result.rows[0].firebase_uid,
+        status: result.rows[0].status || '',
+        name: result.rows[0].name || '',
+        team: result.rows[0].team || '',
+        identityKey: result.rows[0].identity_key || '',
+      }) : null;
+    },
+
     async listMembers({ status = 'all', search = '', page = 1, pageSize = 10 } = {}) {
       const normalizedStatus = String(status || 'all').trim();
       const normalizedSearch = String(search || '').trim().toLowerCase();
@@ -250,7 +340,7 @@ export const createMemberAuthorityRepository = (pool) => {
       return Number(result.rows[0]?.count || 0);
     },
 
-    async mutateProfile({ appUserId, firebaseUid, actorFirebaseUid, actorType, action, beforeProfile, nextProfile, beforeMirror }) {
+    async mutateProfile({ appUserId, firebaseUid, actorFirebaseUid, actorType, action, beforeProfile, nextProfile, beforeMirror = null, mirrorState = 'synced' }) {
       return withTransaction(async (client) => {
         await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`member:${firebaseUid}`]);
         const mutationId = randomUUID();
@@ -304,16 +394,17 @@ export const createMemberAuthorityRepository = (pool) => {
             [appUserId, firebaseUid, firebaseUid, nextProfile.email || '', nextProfile.maskedEmail || '', nextProfile.name || '', nextProfile.team || '', nextProfile.phone || '', nextProfile.status || '', nextProfile.directoryMemberId || '', Number(nextProfile.directoryVerifiedVersion || 0), nextProfile.profileRequiredReason || '', Boolean(nextProfile.rejoinedAccount), Number(nextProfile.termsConsentRevision || 0), Number(nextProfile.termsConsentPolicyVersion || 0), nextProfile.identityKey || '', nextProfile.recoveryKey || '', JSON.stringify(nextProfile.previousAccountUids || []), sourceHash, mutationId],
           );
         }
-        await beforeMirror({ client, mutationId, canonical: updated.rows[0] });
-        await client.query(`UPDATE app_member_accounts SET mirror_state='synced', synced_at=NOW(), updated_at=NOW() WHERE firebase_uid=$1 AND last_mutation_id=$2`, [firebaseUid, mutationId]);
+        if (typeof beforeMirror === 'function') await beforeMirror({ client, mutationId, canonical: updated.rows[0] });
+        const finalMirrorState = mirrorState === 'retired' ? 'retired' : 'synced';
+        await client.query(`UPDATE app_member_accounts SET mirror_state=$3, synced_at=NOW(), updated_at=NOW() WHERE firebase_uid=$1 AND last_mutation_id=$2`, [firebaseUid, mutationId, finalMirrorState]);
         if (appUserId) await client.query(
-          `UPDATE app_user_member_shadows SET mirror_state='synced', synced_at=NOW(), updated_at=NOW()
+          `UPDATE app_user_member_shadows SET mirror_state=$3, synced_at=NOW(), updated_at=NOW()
             WHERE app_user_id=$1 AND last_mutation_id=$2`,
-          [appUserId, mutationId],
+          [appUserId, mutationId, finalMirrorState],
         );
         await client.query(
-          `UPDATE app_member_profile_events SET firestore_mirror_state='synced', completed_at=NOW() WHERE id=$1::uuid`,
-          [mutationId],
+          `UPDATE app_member_profile_events SET firestore_mirror_state=$2, completed_at=NOW() WHERE id=$1::uuid`,
+          [mutationId, finalMirrorState],
         );
         return { mutationId, sourceHash };
       });

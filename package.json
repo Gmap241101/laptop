@@ -107,7 +107,10 @@
     "verify:phase29": "npm run verify:phase28 && npm run server:rental-transaction-authority:smoke && npm run frontend:rental-transaction-authority:smoke",
     "server:member-status-retirement:smoke": "node tools/backend/smoke-member-status-restriction-retirement.mjs",
     "frontend:member-status-retirement:smoke": "node tools/frontend/smoke-member-status-restriction-retirement.mjs",
-    "verify:phase30": "npm run verify:phase29 && npm run server:member-status-retirement:smoke && npm run frontend:member-status-retirement:smoke"
+    "verify:phase30": "npm run verify:phase29 && npm run server:member-status-retirement:smoke && npm run frontend:member-status-retirement:smoke",
+    "server:member-profile-identity:smoke": "node tools/backend/smoke-member-profile-identity-authority.mjs",
+    "frontend:member-profile-identity:smoke": "node tools/frontend/smoke-member-profile-identity-authority.mjs",
+    "verify:phase31": "npm run verify:phase30 && npm run server:member-profile-identity:smoke && npm run frontend:member-profile-identity:smoke"
   },
   "dependencies": {
     "firebase": "^10.14.1",

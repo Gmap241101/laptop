@@ -774,7 +774,7 @@ export const requestMemberProfileAuthorityWrite = async ({ clerk, apiBaseUrl, fe
     const error = new Error(`PostgreSQL member profile write failed with HTTP ${response.status}.`);
     error.status = response.status; error.code = payload?.error || null; throw error;
   }
-  if (!payload?.authenticated || payload?.memberProfileWrite?.authority !== 'postgresql' || payload?.memberProfileWrite?.firestoreMirror !== 'synced') {
+  if (!payload?.authenticated || payload?.memberProfileWrite?.authority !== 'postgresql' || !['synced','retired'].includes(payload?.memberProfileWrite?.firestoreMirror)) {
     throw new Error('Backend returned an invalid PostgreSQL member profile write response.');
   }
   return payload;
@@ -818,6 +818,18 @@ export const requestAdminMemberProfileAuthorityWrite = async ({ clerk, apiBaseUr
   });
   if (!response.ok) { const error = new Error(`Admin PostgreSQL member profile write failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
   if (!payload?.authenticated || !payload?.authorized || payload?.adminMemberProfileWrite?.authority !== 'postgresql') throw new Error('Backend returned an invalid admin member profile write response.');
+  return payload;
+};
+
+export const requestAdminMemberDirectoryPostgresqlSync = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken }) => {
+  const token = trim(firebaseIdToken);
+  if (!token) throw new Error('Firebase admin sign-in is required before synchronizing the PostgreSQL member directory.');
+  const { response, payload } = await requestWithSession({
+    clerk, apiBaseUrl, fetchImpl, path: '/api/admin/member-directory/sync', method: 'POST',
+    headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
+  });
+  if (!response.ok) { const error = new Error(`Admin PostgreSQL member directory sync failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
+  if (!payload?.authenticated || !payload?.authorized || payload?.memberDirectorySync?.target !== 'postgresql-member-directory') throw new Error('Backend returned an invalid member directory synchronization response.');
   return payload;
 };
 
@@ -1446,6 +1458,10 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async writeAdminMemberStatus(firebaseIdToken, firebaseUid, status) {
       const clerk = await initialize();
       return requestAdminMemberStatusAuthorityWrite({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, firebaseUid, status });
+    },
+    async syncAdminMemberDirectory(firebaseIdToken) {
+      const clerk = await initialize();
+      return requestAdminMemberDirectoryPostgresqlSync({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken });
     },
     async bootstrapAdminIdentityRegistry(firebaseIdToken) {
       const clerk = await initialize();

@@ -92,7 +92,7 @@ for (const marker of [
 
 const diagnostics = readFileSync('src/clerk/ClerkStagingDiagnostics.jsx', 'utf8');
 for (const marker of [
-  'Clerk Staging Test · Phase 30',
+  'Clerk Staging Test · Phase 31',
   'Phase 29 rental transaction PostgreSQL authority + Firestore write mirror retirement',
   'Rental write mirror retirement requested',
   'Rental backend retirement applied',

@@ -235,6 +235,7 @@ export const createRequestHandler = ({
     async editSelf() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
     async editAdmin() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
     async changeStatusAdmin() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
+    async syncMemberDirectoryAdmin() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
     async bootstrapAdminRegistry() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
   },
   accountRecoveryService = {
@@ -351,6 +352,9 @@ export const createRequestHandler = ({
   if (config.memberStatusRestrictionWriteMirrorDisabled && typeof memberAuthorityService.listAdminMembers !== 'function') {
     throw new TypeError('memberAuthorityService Phase 30 listAdminMembers method is required when member status authority is enabled.');
   }
+  if (config.memberProfileWriteMirrorDisabled && typeof memberAuthorityService.syncMemberDirectoryAdmin !== 'function') {
+    throw new TypeError('memberAuthorityService Phase 31 syncMemberDirectoryAdmin method is required when member profile identity authority is enabled.');
+  }
   if (
     !accountRecoveryService ||
     typeof accountRecoveryService.findEmail !== 'function' ||
@@ -449,11 +453,15 @@ export const createRequestHandler = ({
         ...(config.assetBoardWriteMirrorDisabled ? ['assets', 'notice', 'faq'] : []),
         ...(config.rentalRequestWriteMirrorDisabled ? ['rental-requests'] : []),
         ...(config.memberStatusRestrictionWriteMirrorDisabled ? ['member-status', 'rental-restriction-status'] : []),
+        ...(config.memberProfileWriteMirrorDisabled ? ['member-profile', 'member-identity', 'account-recovery-key'] : []),
       ],
       rentalRequestWriteMirrorDisabled: Boolean(config.rentalRequestWriteMirrorDisabled),
       rentalTransactionSource: config.rentalRequestWriteMirrorDisabled ? 'postgresql' : 'firestore-compatibility-source',
       memberStatusRestrictionWriteMirrorDisabled: Boolean(config.memberStatusRestrictionWriteMirrorDisabled),
       memberStatusSource: config.memberStatusRestrictionWriteMirrorDisabled ? 'postgresql' : 'firestore-compatibility-source',
+      memberProfileWriteMirrorDisabled: Boolean(config.memberProfileWriteMirrorDisabled),
+      memberProfileSource: config.memberProfileWriteMirrorDisabled ? 'postgresql' : 'firestore-compatibility-source',
+      memberIdentitySource: config.memberProfileWriteMirrorDisabled ? 'postgresql' : 'firestore-compatibility-source',
     },
   };
 
@@ -1985,6 +1993,21 @@ export const createRequestHandler = ({
       return;
     }
 
+
+    if (request.method === 'POST' && url.pathname === '/api/admin/member-directory/sync') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      try {
+        const result = await memberAuthorityService.syncMemberDirectoryAdmin({ firebaseIdentity });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, memberDirectorySync: result }, headers);
+      } catch (error) {
+        console.error('[phase31] member directory PostgreSQL synchronization failed', { requestId, code: error?.code });
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'member_directory_postgresql_sync_failed' }, headers);
+      }
+      return;
+    }
 
     if (request.method === 'POST' && url.pathname === '/api/users/me/member-profile') {
       const auth = await authenticate(request, response, headers, requestId);
