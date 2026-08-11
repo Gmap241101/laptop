@@ -96,8 +96,8 @@ export const requestMemberProfileCutoverCandidate = async ({ firebaseUser, apiBa
     error.code = payload?.error || 'member_read_cutover_candidate_failed';
     throw error;
   }
-  if (payload?.readCandidate?.source !== 'postgresql-shadow' || !payload?.readCandidate?.profile?.uid) {
-    throw new Error('Backend returned an invalid Phase 9 member read candidate.');
+  if (!['postgresql-shadow', 'postgresql-authoritative'].includes(payload?.readCandidate?.source) || !payload?.readCandidate?.profile?.uid) {
+    throw new Error('Backend returned an invalid PostgreSQL member read candidate.');
   }
   return Object.freeze({
     ...payload.readCandidate,
@@ -148,7 +148,7 @@ export const loadMemberProfileWithoutFirestoreWatcher = async ({
     const candidate = await loadPostgresCandidate();
     if (!candidate?.profile) throw new Error('PostgreSQL member profile candidate is empty.');
     return Object.freeze({
-      source: 'postgresql-shadow',
+      source: candidate.source || 'postgresql-shadow',
       profile: candidate.profile,
       equivalent: null,
       changedFields: [],
@@ -190,7 +190,7 @@ export const chooseMemberProfileReadSource = ({ firestoreProfile, postgresProfil
   if (!comparison.equivalent) {
     return Object.freeze({ source: 'firestore-onSnapshot', profile: firestoreProfile, equivalent: false, changedFields: comparison.changedFields, fallbackReason: 'profile-mismatch' });
   }
-  return Object.freeze({ source: 'postgresql-shadow', profile: postgresProfile, equivalent: true, changedFields: [], fallbackReason: '' });
+  return Object.freeze({ source: 'postgresql-authoritative', profile: postgresProfile, equivalent: true, changedFields: [], fallbackReason: '' });
 };
 
 let latest = null;

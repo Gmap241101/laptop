@@ -84,7 +84,7 @@ const selected = chooseMemberProfileReadSource({
   postgresProfile: { ...firestoreProfile },
   requested: true,
 });
-assert.equal(selected.source, 'postgresql-shadow');
+assert.equal(selected.source, 'postgresql-authoritative');
 assert.equal(selected.equivalent, true);
 assert.equal(selected.fallbackReason, '');
 
@@ -114,7 +114,7 @@ const candidate = await requestMemberProfileCutoverCandidate({
       ok: true,
       status: 200,
       async json() {
-        return { readCandidate: { source: 'postgresql-shadow', profile: firestoreProfile } };
+        return { readCandidate: { source: 'postgresql-authoritative', profile: firestoreProfile } };
       },
     };
   },

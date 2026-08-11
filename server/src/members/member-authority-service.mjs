@@ -257,6 +257,25 @@ export const createMemberAuthorityService = ({
   };
 
   return Object.freeze({
+    async getCurrentByFirebaseIdentity({ firebaseIdentity } = {}) {
+      const firebaseUid = trim(firebaseIdentity?.uid);
+      if (!firebaseUid) throw serviceError('firebase_identity_missing', 'Verified Firebase identity is required.', 401);
+      const profile = await repository.findByFirebaseUid(firebaseUid);
+      if (!profile) throw serviceError('member_account_not_synchronized', 'PostgreSQL member account was not found.', 404);
+      const tokenEmail = trim(firebaseIdentity?.email).toLowerCase();
+      const profileEmail = trim(profile.email).toLowerCase();
+      if (tokenEmail && profileEmail && tokenEmail !== profileEmail) {
+        throw serviceError('member_source_email_mismatch', 'Firebase identity email does not match the PostgreSQL member account.', 409);
+      }
+      return Object.freeze({
+        source: 'postgresql-authoritative',
+        authority: 'postgresql',
+        profile: profileFromAccount(profile, firebaseUid),
+        updatedAt: profile.updatedAt || null,
+        syncedAt: profile.syncedAt || null,
+      });
+    },
+
     async listAdminMembers({ firebaseIdentity, status = 'all', search = '', page = 1, pageSize = 10 } = {}) {
       const admin = await firestoreClient.verifyAdmin({ firebaseUid: firebaseIdentity.uid, firebaseIdToken: firebaseIdentity.idToken });
       const normalizedStatus = trim(status) || 'all';

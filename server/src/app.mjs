@@ -196,31 +196,31 @@ const sanitizeAssetCatalog = (catalog = {}) => ({
   sync: catalog.sync || null,
 });
 
-const sanitizeMemberProfileReadCandidate = (shadow) => ({
-  source: 'postgresql-shadow',
-  authoritative: shadow.authorityMode === 'postgresql-authoritative',
-  firebaseUid: shadow.firebaseUid,
+const sanitizeMemberProfileReadCandidate = (profile, { source = 'postgresql-shadow', authoritative = null } = {}) => ({
+  source,
+  authoritative: authoritative == null ? profile.authorityMode === 'postgresql-authoritative' : Boolean(authoritative),
+  firebaseUid: profile.firebaseUid || profile.uid,
   profile: {
-    uid: shadow.uid,
-    email: shadow.email,
-    maskedEmail: shadow.maskedEmail,
-    name: shadow.name,
-    team: shadow.team,
-    phone: shadow.phone,
-    status: shadow.status,
-    directoryMemberId: shadow.directoryMemberId,
-    directoryVerifiedVersion: shadow.directoryVerifiedVersion,
-    profileRequiredReason: shadow.profileRequiredReason,
-    rejoinedAccount: shadow.rejoinedAccount,
-    termsConsentRevision: shadow.termsConsentRevision,
-    termsConsentPolicyVersion: shadow.termsConsentPolicyVersion,
-    identityKey: shadow.identityKey,
-    recoveryKey: shadow.recoveryKey,
-    previousAccountUids: shadow.previousAccountUids,
+    uid: profile.uid || profile.firebaseUid,
+    email: profile.email,
+    maskedEmail: profile.maskedEmail,
+    name: profile.name,
+    team: profile.team,
+    phone: profile.phone,
+    status: profile.status,
+    directoryMemberId: profile.directoryMemberId,
+    directoryVerifiedVersion: profile.directoryVerifiedVersion,
+    profileRequiredReason: profile.profileRequiredReason,
+    rejoinedAccount: profile.rejoinedAccount,
+    termsConsentRevision: profile.termsConsentRevision,
+    termsConsentPolicyVersion: profile.termsConsentPolicyVersion,
+    identityKey: profile.identityKey,
+    recoveryKey: profile.recoveryKey,
+    previousAccountUids: profile.previousAccountUids,
   },
-  sourceHash: shadow.sourceHash,
-  sourceUpdatedAt: shadow.sourceUpdatedAt,
-  shadowSyncedAt: shadow.syncedAt,
+  sourceHash: profile.sourceHash || '',
+  sourceUpdatedAt: profile.sourceUpdatedAt || profile.updatedAt || null,
+  shadowSyncedAt: profile.syncedAt || null,
 });
 
 export const createRequestHandler = ({
@@ -232,6 +232,7 @@ export const createRequestHandler = ({
   firebaseLinkService,
   memberShadowService,
   memberAuthorityService = {
+    async getCurrentByFirebaseIdentity() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
     async editSelf() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
     async editAdmin() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
     async changeStatusAdmin() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
@@ -358,8 +359,11 @@ export const createRequestHandler = ({
   if (config.memberStatusRestrictionWriteMirrorDisabled && typeof memberAuthorityService.listAdminMembers !== 'function') {
     throw new TypeError('memberAuthorityService Phase 30 listAdminMembers method is required when member status authority is enabled.');
   }
-  if (config.memberProfileWriteMirrorDisabled && typeof memberAuthorityService.syncMemberDirectoryAdmin !== 'function') {
-    throw new TypeError('memberAuthorityService Phase 31 syncMemberDirectoryAdmin method is required when member profile identity authority is enabled.');
+  if (config.memberProfileWriteMirrorDisabled && (
+    typeof memberAuthorityService.syncMemberDirectoryAdmin !== 'function' ||
+    typeof memberAuthorityService.getCurrentByFirebaseIdentity !== 'function'
+  )) {
+    throw new TypeError('memberAuthorityService Phase 31 canonical profile read/syncMemberDirectoryAdmin methods are required when member profile identity authority is enabled.');
   }
   if (
     !accountRecoveryService ||
@@ -462,7 +466,7 @@ export const createRequestHandler = ({
     service: config.serviceName,
     environment: config.appEnv,
     version: config.serviceVersion,
-    runtimeRevision: 'phase32-auth-session-source-truth-20260811-2026',
+    runtimeRevision: 'phase32-canonical-member-profile-read-20260811-2054',
     compatibility: {
       assetBoardWriteMirrorDisabled: Boolean(config.assetBoardWriteMirrorDisabled),
       retiredWriteMirrorDomains: [
@@ -2169,6 +2173,25 @@ export const createRequestHandler = ({
       if (!firebaseIdentity) return;
 
       try {
+        if (config.memberProfileWriteMirrorDisabled) {
+          const canonical = await memberAuthorityService.getCurrentByFirebaseIdentity({ firebaseIdentity });
+          writeJson(
+            response,
+            200,
+            {
+              ...basePayload,
+              authenticated: true,
+              authentication: 'firebase-id-token',
+              readCandidate: sanitizeMemberProfileReadCandidate(canonical.profile, {
+                source: canonical.source || 'postgresql-authoritative',
+                authoritative: true,
+              }),
+            },
+            headers,
+          );
+          return;
+        }
+
         const shadow = await memberShadowService.getCurrentByFirebaseIdentity(firebaseIdentity);
         if (!shadow) {
           writeJson(

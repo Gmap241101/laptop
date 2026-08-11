@@ -399,7 +399,7 @@ Phase 32 remains a candidate until these actual Staging browser tests pass.
 PHASE 32 POSTGRESQL SESSION GATE / FIRESTORE STATUS BYPASS HOTFIX
 ===============================================================
 Date: 2026-08-11
-Runtime revision: phase32-auth-session-source-truth-20260811-2026
+Runtime revision: phase32-canonical-member-profile-read-20260811-2054
 
 Actual Staging finding after approval-status/rental-read hotfix
 -------------------------------------------------------------
@@ -446,7 +446,7 @@ Deployment fingerprint
 ----------------------
 To distinguish this revision from earlier Phase 32 packages that all reported `SERVICE_VERSION=phase32`, the backend root/health payload now includes:
 
-runtimeRevision = phase32-auth-session-source-truth-20260811-2026
+runtimeRevision = phase32-canonical-member-profile-read-20260811-2054
 
 The Clerk Staging diagnostics panel also displays the same runtime revision string. After deployment, both surfaces must show this exact value before browser behavior is evaluated.
 
@@ -490,7 +490,7 @@ This revision changes both frontend and backend runtime code.
 Required Staging retest
 -----------------------
 First verify deployment identity:
-1. open the Heroku Staging root and confirm `runtimeRevision` is exactly `phase32-auth-session-source-truth-20260811-2026`;
+1. open the Heroku Staging root and confirm `runtimeRevision` is exactly `phase32-canonical-member-profile-read-20260811-2054`;
 2. open the Staging diagnostics panel and confirm `Runtime revision` shows the same string.
 
 Then test an already-approved new Phase 32 account:
@@ -508,3 +508,49 @@ Then test an existing converted account:
 4. confirm a PostgreSQL list or valid empty list appears without the legacy-fallback-disabled toast.
 
 Phase 32 remains a candidate until these actual browser tests pass.
+
+
+Canonical member-profile read hotfix - 2026-08-11
+=================================================
+Observed regression
+-------------------
+A newly created Phase 32 member remained signed in after approval, but My Page omitted team/phone and Rental rejected the applicant profile. Admin member view/edit displayed team/phone correctly. This proves canonical PostgreSQL account data exists and isolates the defect to the user read path.
+
+Root cause
+----------
+User member profile refresh still called the Phase 9 `/api/legacy/member-profile-cutover-candidate` implementation backed by `app_user_member_shadows`. Admin member management already reads `app_member_accounts`. Therefore an incomplete/stale historical shadow could override complete Phase 32 canonical profile data in the user UI.
+
+Fix
+---
+- Phase 31 member authority service now exposes a Firebase-identity-scoped canonical profile read from `app_member_accounts`.
+- When the Phase 31 profile mirror retirement flag is active, `/api/legacy/member-profile-cutover-candidate` uses that canonical read and reports `postgresql-authoritative`.
+- The frontend member-profile cutover parser accepts `postgresql-authoritative` and preserves the returned source instead of hardcoding `postgresql-shadow`.
+- Legacy Firestore fallback and member-profile Firestore watcher retirement remain unchanged.
+- Admin member reads/writes, signup writes, Rules/indexes, migrations, and dependencies are unchanged.
+
+Regression coverage
+-------------------
+The server handler smoke deliberately supplies different team/phone values in the legacy shadow and the canonical member profile. The Firebase-authenticated user cutover endpoint must return the canonical values and `authoritative=true`. Frontend member-profile cutover smoke accepts the authoritative source.
+
+Deployment fingerprint
+----------------------
+runtimeRevision = phase32-canonical-member-profile-read-20260811-2054
+
+Validation
+----------
+`TERM=xterm npm run verify:phase32`: PASS / exit 0.
+React audit: PASS (171 files).
+Application flow audit: PASS (124 contracts; 11 user routes; 20 admin tabs).
+Firestore strict audit: PASS (138 calls; warnings 0; errors 0).
+No new migration.
+`npm run build:staging`: prebuild PASS; final Vite step unavailable in assistant workspace (`vite: not found`, exit 127).
+
+Required Staging check
+----------------------
+1. Confirm Heroku root `runtimeRevision=phase32-canonical-member-profile-read-20260811-2054`.
+2. Confirm the Vercel diagnostics panel shows the same revision.
+3. Login with the same approved new Phase 32 account.
+4. My Page must show name, team, and phone from PostgreSQL.
+5. Rental must accept the approved member profile and no longer show the missing member-information message.
+6. My Rental Requests must continue to return a PostgreSQL list or valid empty list.
+7. Verify a converted member has no regression.

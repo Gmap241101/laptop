@@ -180,6 +180,33 @@ const memberShadowService = {
 
 
 const memberAuthorityService = {
+  async getCurrentByFirebaseIdentity({ firebaseIdentity }) {
+    if (firebaseIdentity.uid !== 'firebase_uid_smoke') throw new Error('Unexpected Phase 31 canonical member profile identity.');
+    return {
+      source: 'postgresql-authoritative',
+      authority: 'postgresql',
+      profile: {
+        uid: 'firebase_uid_smoke',
+        email: 'smoke@example.com',
+        maskedEmail: 's***@example.com',
+        name: 'Smoke User',
+        team: 'Canonical QA',
+        phone: '010-9999-8888',
+        status: 'active',
+        directoryMemberId: 'directory-smoke',
+        directoryVerifiedVersion: 8,
+        profileRequiredReason: '',
+        rejoinedAccount: false,
+        termsConsentRevision: 5,
+        termsConsentPolicyVersion: 5,
+        identityKey: 'identity_smoke',
+        recoveryKey: 'recovery_smoke',
+        previousAccountUids: ['firebase_uid_old'],
+      },
+      updatedAt: new Date('2026-08-11T11:54:00.000Z'),
+      syncedAt: new Date('2026-08-11T11:54:00.000Z'),
+    };
+  },
   async listAdminMembers({ firebaseIdentity, status, search, page, pageSize }) {
     if (firebaseIdentity.uid !== 'firebase_uid_smoke') throw new Error('Unexpected Phase 30 admin member read identity.');
     return { admin: { uid: firebaseIdentity.uid, role: 'owner' }, source: 'postgresql', accounts: [{ uid: 'member-target', email: 'target@example.com', name: 'Target', team: 'QA', phone: '010-1111-2222', status: status === 'all' ? 'active' : status }], page, pageSize, totalCount: 1, hasNextPage: false, statusCounts: { pending: 0, active: 1, profileRequired: 0, blocked: 0, retired: 0 }, search };
@@ -665,6 +692,10 @@ if (firebaseCutoverCandidate.status !== 200) {
 const firebaseCutoverBody = await firebaseCutoverCandidate.json();
 if (
   firebaseCutoverBody.authentication !== 'firebase-id-token' ||
+  firebaseCutoverBody.readCandidate?.source !== 'postgresql-authoritative' ||
+  firebaseCutoverBody.readCandidate?.authoritative !== true ||
+  firebaseCutoverBody.readCandidate?.profile?.team !== 'Canonical QA' ||
+  firebaseCutoverBody.readCandidate?.profile?.phone !== '010-9999-8888' ||
   firebaseCutoverBody.readCandidate?.profile?.identityKey !== 'identity_smoke' ||
   firebaseCutoverBody.readCandidate?.profile?.recoveryKey !== 'recovery_smoke' ||
   firebaseCutoverBody.readCandidate?.profile?.previousAccountUids?.[0] !== 'firebase_uid_old'

@@ -397,7 +397,7 @@ The previous approval-status hotfix did not fully remove the legacy authorizatio
 This package intentionally exposes a deployment fingerprint:
 
 ```text
-phase32-auth-session-source-truth-20260811-2026
+phase32-canonical-member-profile-read-20260811-2054
 ```
 
 After Heroku deployment, open the Staging backend root:
@@ -409,13 +409,13 @@ https://notebook-rental-api-staging-01-8302cb90b98c.herokuapp.com/
 The JSON must contain:
 
 ```text
-"runtimeRevision":"phase32-auth-session-source-truth-20260811-2026"
+"runtimeRevision":"phase32-canonical-member-profile-read-20260811-2054"
 ```
 
 After Vercel deployment, open the Phase 32 diagnostics panel. It must display:
 
 ```text
-Runtime revision: phase32-auth-session-source-truth-20260811-2026
+Runtime revision: phase32-canonical-member-profile-read-20260811-2054
 ```
 
 If either value differs or is absent, do **not** evaluate the functional test yet: that surface is not running this revision.
@@ -515,3 +515,38 @@ Firebase Rules/indexes
 ```
 
 Phase 33 remains blocked until this Phase 32 revision passes the actual Staging browser checks.
+
+
+## 2026-08-11 canonical member profile read hotfix
+
+### Symptom
+After the Phase 32 session-gate revision, login remains stable. However, a newly created non-converted member can still see only email/name in My Page and Rental can report that applicant member information is unavailable, while Admin member view/edit correctly shows team and phone.
+
+### Root cause
+The Admin member view is already backed by canonical `app_member_accounts`, but the user member profile cutover path remained on the historical Phase 9 `app_user_member_shadows` read model. Phase 32 signup writes the complete profile to `app_member_accounts`, so a stale or incomplete shadow can make the user UI omit team/phone even though canonical PostgreSQL data is correct.
+
+### Fix
+When `FIRESTORE_MEMBER_PROFILE_WRITE_MIRROR_DISABLED=true`, `GET /api/legacy/member-profile-cutover-candidate` now reads the current Firebase-linked member directly through Phase 31 member profile authority and returns `source=postgresql-authoritative`. The frontend member profile cutover accepts both historical `postgresql-shadow` and current `postgresql-authoritative` candidates and preserves the actual source in observations/state. Firestore fallback stays disabled.
+
+### Deployment fingerprint
+Both Heroku root JSON and the Clerk diagnostics panel must show:
+
+```text
+phase32-canonical-member-profile-read-20260811-2054
+```
+
+### Required retest
+Use the same approved new account; no account recreation is required.
+
+```text
+login
+-> My Page: name/team/phone are all populated
+-> Rental: applicant profile is accepted
+-> My Rental Requests: PostgreSQL list or empty list
+-> remain signed in
+```
+
+Also verify one converted account still shows the same profile data as before.
+
+### Platform actions
+Backend and frontend runtime contracts changed, so redeploy both Heroku Staging and Vercel Staging from the same full package. No new migration, environment variable, Firebase Rules/index, Clerk setting, DNS, or Production change is required.

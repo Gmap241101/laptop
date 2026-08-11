@@ -449,7 +449,7 @@ export default function useAuthIdentityPolicySubscriptionController({
           });
           commitResolvedProfile({
             profile: candidate.profile,
-            source: 'postgresql-shadow',
+            source: candidate.source || 'postgresql-shadow',
             equivalent: true,
             changedFields: [],
             fallbackReason: '',

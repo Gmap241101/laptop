@@ -141,7 +141,7 @@ assert.ok(!recovery.includes('startUserPasswordReset'), 'Phase 32 must not creat
 assert.ok(!userAuthPanel.includes('passwordResetCodeStage'), 'password reset UI must remain the compatibility flow in Phase 32');
 for (const marker of ['requestAccountLifecycleSignup', 'requestUserTermsConsentBootstrap', 'bootstrapUserTermsConsent', '/api/users/me/terms-consent/bootstrap']) assert.ok(client.includes(marker), marker);
 assert.ok(!client.includes('reset_password_email_code'), 'Clerk-only password reset must not be enabled while Firebase password compatibility remains');
-for (const marker of ['Clerk Staging Test · Phase 32', 'Phase 32 signup + terms consent PostgreSQL account lifecycle authority', 'Terms consent legacy bootstrap:', 'Password reset delivery:', 'phase32-auth-session-source-truth-20260811-2026', 'Runtime revision:', "top: '184px'"]) assert.ok(diagnostics.includes(marker), marker);
+for (const marker of ['Clerk Staging Test · Phase 32', 'Phase 32 signup + terms consent PostgreSQL account lifecycle authority', 'Terms consent legacy bootstrap:', 'Password reset delivery:', 'phase32-canonical-member-profile-read-20260811-2054', 'Runtime revision:', "top: '184px'"]) assert.ok(diagnostics.includes(marker), marker);
 for (const source of [signup, termsPanel, termsCompliance]) assert.ok(!source.includes('backendApplied: true'), 'Phase 32 operation observations must not hardcode backend authority');
 assert.ok(cutover.includes('readAccountLifecycleAuthorityFromPayload'));
 assert.ok(cutover.includes("passwordResetDelivery === 'firebase-auth-compatibility-preserved'"));
