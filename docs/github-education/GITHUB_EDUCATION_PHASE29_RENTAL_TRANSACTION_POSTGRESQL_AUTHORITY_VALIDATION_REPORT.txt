@@ -33,3 +33,10 @@ Final verification
 - Application contracts: 124; user routes: 11; admin tabs: 20
 - Firestore strict: 137 calls; warnings 0; errors 0
 - npm run build:staging: prebuild PASS; final Vite step unavailable in assistant environment (`vite: not found`, exit 127)
+
+Staging hotfix validation additions
+- observed failed migration error 42703 was traced to metadata_key/metadata_value mismatch: FIXED
+- migration 020 now targets app_runtime_metadata(key, value, updated_at): PASS
+- static validator rejects metadata_key/metadata_value in migration 020: PASS
+- frontend detects requested=yes/backendApplied=no as backend-rental-retirement-not-applied: PASS
+- Phase 29 remains candidate until migration 020 applies and backend health reports PostgreSQL retirement applied

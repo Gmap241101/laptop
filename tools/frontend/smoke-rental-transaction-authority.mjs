@@ -1,10 +1,22 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { readRentalRequestWriteMirrorRetirementConfig } from '../../src/features/compatibility/rentalRequestWriteMirrorRetirement.js';
+import { readRentalRequestWriteMirrorRetirementConfig, requestRentalRequestWriteMirrorRetirementStatus } from '../../src/features/compatibility/rentalRequestWriteMirrorRetirement.js';
 
 const config = readRentalRequestWriteMirrorRetirementConfig({ env: { VITE_CLERK_STAGING_ENABLED: 'true', VITE_FIRESTORE_RENTAL_REQUEST_WRITE_MIRROR_DISABLED: 'true', VITE_API_URL: 'https://api.example.test' } });
 assert.equal(config.enabled, true);
 assert.equal(config.apiBaseUrl, 'https://api.example.test');
+const mismatchStatus = await requestRentalRequestWriteMirrorRetirementStatus({
+  config,
+  fetchImpl: async () => ({ ok: true, json: async () => ({ compatibility: { rentalRequestWriteMirrorDisabled: false, rentalTransactionSource: 'firestore-compatibility-source', retiredWriteMirrorDomains: ['assets','notice','faq'] } }) }),
+});
+assert.equal(mismatchStatus.backendApplied, false);
+assert.equal(mismatchStatus.error, 'backend-rental-retirement-not-applied');
+const appliedStatus = await requestRentalRequestWriteMirrorRetirementStatus({
+  config,
+  fetchImpl: async () => ({ ok: true, json: async () => ({ compatibility: { rentalRequestWriteMirrorDisabled: true, rentalTransactionSource: 'postgresql', retiredWriteMirrorDomains: ['assets','notice','faq','rental-requests'] } }) }),
+});
+assert.equal(appliedStatus.backendApplied, true);
+assert.equal(appliedStatus.error, null);
 const diagnostics = readFileSync('src/clerk/ClerkStagingDiagnostics.jsx', 'utf8');
 for (const marker of [
   'Clerk Staging Test · Phase 29',

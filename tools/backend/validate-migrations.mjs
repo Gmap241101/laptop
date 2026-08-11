@@ -229,6 +229,16 @@ for (const marker of [
   if (!phase28.includes(marker)) throw new Error(`Phase 28 asset/board write mirror retirement marker is missing: ${marker}`);
 }
 
+if (!/INSERT\s+INTO\s+app_runtime_metadata\s*\(\s*key\s*,\s*value\s*,\s*updated_at\s*\)/is.test(phase29)) {
+  throw new Error('Phase 29 migration must use app_runtime_metadata(key, value, updated_at).');
+}
+if (/metadata_key|metadata_value/i.test(phase29)) {
+  throw new Error('Phase 29 migration must not reference nonexistent metadata_key/metadata_value columns.');
+}
+if (!/ON\s+CONFLICT\s*\(\s*key\s*\)\s+DO\s+UPDATE\s+SET\s+value\s*=\s*EXCLUDED\.value/is.test(phase29)) {
+  throw new Error('Phase 29 migration must upsert app_runtime_metadata using key/value columns.');
+}
+
 for (const marker of [
   "'phase', 29",
   "'rentalTransactionSource', 'postgresql-authoritative'",

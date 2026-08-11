@@ -1,4 +1,4 @@
-INSERT INTO app_runtime_metadata (metadata_key, metadata_value, updated_at)
+INSERT INTO app_runtime_metadata (key, value, updated_at)
 VALUES (
   'phase29_rental_transaction_postgresql_authority',
   jsonb_build_object(
@@ -10,4 +10,4 @@ VALUES (
   ),
   NOW()
 )
-ON CONFLICT (metadata_key) DO UPDATE SET metadata_value=EXCLUDED.metadata_value, updated_at=NOW();
+ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW();

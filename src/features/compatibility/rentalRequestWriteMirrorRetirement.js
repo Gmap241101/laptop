@@ -24,12 +24,16 @@ export const requestRentalRequestWriteMirrorRetirementStatus = async ({
     const response = await fetchImpl(`${config.apiBaseUrl}/health`, { headers: { Accept: 'application/json' }, cache: 'no-store' });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) return Object.freeze({ requested: config.enabled, backendApplied: false, transactionSource: '', retiredDomains: [], error: payload?.error || `http-${response.status}` });
+    const backendApplied = Boolean(payload?.compatibility?.rentalRequestWriteMirrorDisabled);
+    const transactionSource = trim(payload?.compatibility?.rentalTransactionSource);
     return Object.freeze({
       requested: config.enabled,
-      backendApplied: Boolean(payload?.compatibility?.rentalRequestWriteMirrorDisabled),
-      transactionSource: trim(payload?.compatibility?.rentalTransactionSource),
+      backendApplied,
+      transactionSource,
       retiredDomains: Array.isArray(payload?.compatibility?.retiredWriteMirrorDomains) ? payload.compatibility.retiredWriteMirrorDomains : [],
-      error: null,
+      error: config.enabled && (!backendApplied || transactionSource !== 'postgresql')
+        ? 'backend-rental-retirement-not-applied'
+        : null,
     });
   } catch (error) {
     return Object.freeze({ requested: config.enabled, backendApplied: false, transactionSource: '', retiredDomains: [], error: error?.code || error?.message || 'status-unavailable' });
