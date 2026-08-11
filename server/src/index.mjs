@@ -131,6 +131,7 @@ const accountLifecycleService = createAccountLifecycleService({
   siteContentRepository,
   userAuthRepository: userClerkAuthRepository,
   firestoreClient: firestoreMemberAuthorityClient,
+  authorityEnabled: config.accountLifecycleCompatibilityDisabled,
 });
 const adminClerkAuthService = firestoreMemberAuthorityClient
   ? createAdminClerkAuthService({

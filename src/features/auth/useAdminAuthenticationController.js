@@ -269,6 +269,8 @@ export default function useAdminAuthenticationController({
       } catch (error) {
         if (cancelled) return;
         setAdminClerkSessionVerified(false);
+        clearAdminRouteIntent();
+        setAdminPostLoginRouteGuardActive(false);
         clearAdminAuthenticatedSession();
         publishAccountAuthObservation({
           adminClerkAuthRequested: true,
@@ -328,6 +330,8 @@ export default function useAdminAuthenticationController({
         firebaseSignOutFailed = true;
         console.error('Expired admin authentication logout error:', error);
       } finally {
+        clearAdminRouteIntent();
+        setAdminPostLoginRouteGuardActive(false);
         clearAdminAuthenticatedSession();
         setAdminAuthForm(createDefaultAdminAuthForm());
 
@@ -400,6 +404,8 @@ export default function useAdminAuthenticationController({
         });
         setAdminClerkSessionVerified(false);
       }
+      clearAdminRouteIntent();
+      setAdminPostLoginRouteGuardActive(false);
       clearAdminAuthenticatedSession();
     }
   }, [
@@ -437,6 +443,8 @@ export default function useAdminAuthenticationController({
           } catch (error) {
             console.error('Admin policy change logout error:', error);
           } finally {
+            clearAdminRouteIntent();
+            setAdminPostLoginRouteGuardActive(false);
             clearAdminAuthenticatedSession();
             setAdminAuthForm(createDefaultAdminAuthForm());
             adminLogoutInProgressRef.current = false;
@@ -767,6 +775,8 @@ export default function useAdminAuthenticationController({
             await signOut(firebaseAuth).catch(() => {});
           }
           setAdminAuthForm(createDefaultAdminAuthForm());
+          clearAdminRouteIntent();
+          setAdminPostLoginRouteGuardActive(false);
           clearAdminAuthenticatedSession();
           setCurrentAuthAdminAccount(null);
         }
@@ -897,6 +907,8 @@ export default function useAdminAuthenticationController({
       }
 
       setAdminClerkSessionVerified(!adminClerkAuthRequested);
+      clearAdminRouteIntent();
+      setAdminPostLoginRouteGuardActive(false);
       clearAdminAuthenticatedSession();
       setCurrentAuthAdminAccount(null);
 
@@ -979,6 +991,8 @@ export default function useAdminAuthenticationController({
     } finally {
       setAdminClerkSessionVerified(!adminClerkAuthRequested);
       clearUserLoginReturnTarget();
+      clearAdminRouteIntent();
+      setAdminPostLoginRouteGuardActive(false);
       clearAdminAuthenticatedSession();
       setAdminAuthForm(createDefaultAdminAuthForm());
 

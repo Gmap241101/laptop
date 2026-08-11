@@ -148,19 +148,115 @@ then redeploy. Query `accountLifecycle=firebase` also clears the frontend latch 
 ## Protected production resources
 Do not change Production Clerk, `gh-pages`, production DNS, or `https://notebook.recruit.kro.kr` during Phase 32.
 
-## Admin diagnostics health retry hotfix
+## Phase 32 authority source-of-truth + administrator route hotfix
 
-No new Heroku Config Var, Vercel environment variable, migration, Clerk setting, Firebase Rule, Firestore index, or secret is required.
+The previous diagnostics-only health retry did not resolve the actual Staging discrepancy. This follow-up changes both backend runtime enforcement and frontend routing/diagnostics.
 
-This follow-up changes frontend diagnostics only. Redeploy the Vercel Staging frontend with the latest full Phase 32 package. Heroku does not require redeployment if the already validated Phase 32 backend is currently running with `FIRESTORE_ACCOUNT_LIFECYCLE_COMPATIBILITY_DISABLED=true`.
+### Why this hotfix requires both deployments
 
-After redeploy, open the Phase 32 administrator test URL. The global account lifecycle section should settle on:
+The previous backend exposed the Phase 32 PostgreSQL signup/terms endpoints even when:
 
-- Account lifecycle authority requested: yes
-- Account lifecycle backend applied: yes
-- Signup profile source: postgresql
-- Terms consent source: postgresql
-- Password reset delivery: firebase-auth-compatibility-preserved
-- Phase 32 authority error: -
+```text
+FIRESTORE_ACCOUNT_LIFECYCLE_COMPATIBILITY_DISABLED=false
+```
 
-If all retry attempts still return the older compatibility contract, the panel correctly remains FAIL and the Heroku Phase 32 config/deployment must be checked.
+while `/health` correctly reported the flag as disabled. User terms/signup code could also publish `backendApplied: true` from an operation path without deriving it from the backend compatibility contract. That allowed user diagnostics and administrator diagnostics to disagree.
+
+The hotfix now enforces one authority chain:
+
+```text
+Heroku Config Var
+-> server config
+-> accountLifecycleService authorityEnabled
+-> Phase 32 API availability
+-> API compatibility payload
+-> frontend observation
+-> diagnostics
+```
+
+When the Heroku authority flag is false, Phase 32 PostgreSQL signup/terms methods now fail closed with:
+
+```text
+account_lifecycle_authority_disabled
+HTTP 503
+```
+
+They no longer execute PostgreSQL account-lifecycle mutations under a backend contract that says the authority is disabled.
+
+### Heroku Staging action — REQUIRED
+
+Confirm:
+
+```text
+FIRESTORE_ACCOUNT_LIFECYCLE_COMPATIBILITY_DISABLED=true
+SERVICE_VERSION=phase32
+```
+
+Then redeploy/restart the Heroku Staging backend with this hotfix source. No new migration is required; migration `024_phase32_account_lifecycle_postgresql_authority.sql` remains unchanged.
+
+After deployment, `/health` must report:
+
+```text
+accountLifecycleCompatibilityDisabled: true
+signupProfileSource: postgresql
+termsConsentSource: postgresql
+passwordResetDelivery: firebase-auth-compatibility-preserved
+```
+
+### Vercel Staging action — REQUIRED
+
+Confirm:
+
+```text
+VITE_ACCOUNT_LIFECYCLE_POSTGRES_AUTHORITY_ENABLED=true
+```
+
+Deploy the same hotfix package to the `gh-pages-3` staging source / `mkrental.vercel.app` project.
+
+The frontend now derives `backendApplied`, signup source, terms source, and password-reset delivery from the backend `compatibility` payload instead of hardcoding successful authority observations.
+
+### Administrator route persistence contract
+
+The persistent session key remains:
+
+```text
+mk_laptop_admin_route_intent=1
+```
+
+While it is present:
+
+- generic user-route `pushState` / `replaceState` writers are forced to `/admin`;
+- browser `popstate` that resolves to a user route is restored to `/admin`;
+- asynchronous user controllers cannot replace the admin pathname during the authenticated admin route intent;
+- explicit administrator-to-user navigation clears the intent first;
+- administrator logout/session invalidation clears the intent.
+
+Validate after deployment:
+
+```text
+/admin?... -> administrator login -> /admin
+wait at least 10 seconds -> /admin
+open multiple administrator menus -> /admin
+repeat logout/login 2-3 times -> /admin
+```
+
+Only an explicit user-screen transition or administrator logout/session loss should release the route intent.
+
+### Expected Phase 32 diagnostics after both deployments
+
+```text
+Account lifecycle authority requested: yes
+Account lifecycle backend applied: yes
+Signup profile source: postgresql
+Signup Firestore bootstrap: retired (after an actual Phase 32 signup operation) or - before one
+Terms consent source: postgresql
+Terms consent Firestore mirror: retired (after a terms operation) or - before one
+Password reset delivery: firebase-auth-compatibility-preserved
+Phase 32 authority error: -
+```
+
+If `/health` still reports the disabled compatibility contract, do not treat the frontend as PASS. Re-check the Heroku Staging Config Var and deployed backend revision.
+
+### No changes required
+
+No new Clerk setting, Firebase Rule, Firestore index, DNS change, Production resource change, npm dependency, or PostgreSQL migration is required for this hotfix.

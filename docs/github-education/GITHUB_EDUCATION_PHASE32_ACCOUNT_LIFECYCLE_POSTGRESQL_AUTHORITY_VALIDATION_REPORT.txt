@@ -131,3 +131,88 @@ Hotfix validation:
 - TERM=xterm npm run build:staging: React/Application/Firestore prebuild PASS; Clerk local staging config DISABLED; vite executable unavailable in this workspace, final exit 127.
 
 Runtime authority behavior was not modified by this diagnostic-only hotfix.
+
+PHASE 32 AUTHORITY SOURCE-OF-TRUTH + ADMIN ROUTE HOTFIX
+==========================================================
+Date: 2026-08-11
+
+Root cause A - user/admin diagnostics split-brain
+------------------------------------------------
+- /health correctly derived Phase 32 authority from FIRESTORE_ACCOUNT_LIFECYCLE_COMPATIBILITY_DISABLED.
+- accountLifecycleService previously did not receive or enforce that flag, so PostgreSQL signup/terms endpoints could still run while /health said authority disabled.
+- user signup/terms/compliance observations also hardcoded backendApplied=true and PostgreSQL sources instead of deriving them from the backend compatibility payload.
+- This made "user backend applied=yes" compatible with "administrator backend applied=no" and therefore the user-side value was not proof of backend authority.
+
+Source fix A
+------------
+- accountLifecycleService now accepts authorityEnabled and rejects all Phase 32 lifecycle methods with account_lifecycle_authority_disabled / HTTP 503 when false.
+- server/src/index.mjs wires authorityEnabled from config.accountLifecycleCompatibilityDisabled.
+- frontend accountLifecycleAuthority exports a compatibility-payload parser shared by health and operation observations.
+- signup/terms/compliance successful observations derive authority fields from the actual API compatibility payload.
+- failed operations no longer overwrite backendApplied/source fields with hardcoded PostgreSQL success values.
+
+Root cause B - administrator route could be overwritten
+-------------------------------------------------------
+- persistent administrator route intent existed, but multiple independent user-route writers could still call pushAppPath/replaceAppPath and set user view during asynchronous auth/member/terms transitions.
+- the administrator controller later attempted to restore /admin, leaving a race and visible regression opportunity.
+
+Source fix B
+------------
+- appRoutes now rejects user pathname writes while mk_laptop_admin_route_intent is active and preserves /admin.
+- useAppNavigationController blocks implicit user-tab navigation while the intent is active.
+- popstate cannot switch an active administrator intent to a user route.
+- explicit administrator-to-user navigation clears the intent before user navigation.
+- administrator authentication invalidation paths explicitly clear the intent and route guard.
+
+Targeted validation
+-------------------
+- account-lifecycle backend smoke: PASS, including disabled-authority fail-closed coverage.
+- account-lifecycle frontend smoke: PASS, including payload-derived authority and runtime route-writer guard coverage.
+- rental transaction/admin-route regression smoke: PASS.
+- React hook audit: PASS (171 source files).
+- Application flow audit: PASS (124 contracts, 11 user routes, 20 administrator tabs).
+- Firestore strict audit: PASS (138 calls, warnings 0, errors 0).
+- Backend foundation validation: PASS.
+- Migration static validation: PASS; no new migration.
+
+Deployment impact
+-----------------
+- Heroku Staging backend redeploy REQUIRED for accountLifecycleService authority enforcement.
+- Vercel Staging frontend redeploy REQUIRED for payload-derived diagnostics and route protection.
+- Confirm FIRESTORE_ACCOUNT_LIFECYCLE_COMPATIBILITY_DISABLED=true on Heroku Staging.
+- Confirm VITE_ACCOUNT_LIFECYCLE_POSTGRES_AUTHORITY_ENABLED=true on Vercel Staging.
+- No Production promotion in this Phase.
+
+Actual browser status
+---------------------
+Still candidate until user verifies both blockers in Staging:
+1. Administrator diagnostics settle on backend applied=yes / signup source=postgresql / terms source=postgresql / error=-.
+2. Administrator login remains /admin for at least 10 seconds, across administrator menu navigation and repeated logout/login cycles.
+3. User Phase 32 terms/signup/recovery behavior remains healthy and Firebase password reset compatibility remains preserved.
+
+FINAL SOURCE-OF-TRUTH HOTFIX AUTOMATED VALIDATION
+=================================================
+Command: TERM=xterm npm run verify:phase32
+Result: PASS / exit code 0
+
+Final Phase 32-specific results:
+- Backend account lifecycle smoke: PASS (authority flag fail-closed + PostgreSQL lifecycle authority).
+- Frontend account lifecycle smoke: PASS (API compatibility payload-derived authority + persistent admin route writer guard).
+- Phase 29 administrator route regression smoke: PASS.
+- React hook audit: PASS (171 source files).
+- Application flow audit: PASS (124 contracts, 11 user routes, 20 administrator tabs).
+- Firestore strict audit: PASS (138 calls; warnings 0; errors 0).
+- Backend foundation validation: PASS.
+- Migration static validation: PASS.
+- Package guard before final ZIP: PASS (791 manifest entries; protected 0; missing 0; duplicates 0; unlisted 0).
+
+Build command: TERM=xterm npm run build:staging
+Build result in assistant workspace: exit 127 because root Vite executable is unavailable.
+Prebuild completed before that limitation:
+- React hook audit: PASS.
+- Application flow audit: PASS.
+- Firestore strict audit: PASS.
+- Clerk local staging config: DISABLED in this workspace.
+
+No new npm dependency, migration, Firebase Rule, Firestore index, or App.jsx modification was introduced by this hotfix.
+Actual Staging/browser PASS is still pending deployment and user verification; Phase 31 remains the confirmed baseline until then.

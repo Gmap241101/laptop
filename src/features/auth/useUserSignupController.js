@@ -74,6 +74,7 @@ import {
 import {
   publishAccountLifecycleAuthorityObservation,
   readAccountLifecycleAuthorityConfig,
+  readAccountLifecycleAuthorityFromPayload,
 } from './accountLifecycleAuthority.js';
 
 const DEFAULT_TERMS_SUBMISSION = Object.freeze({
@@ -345,11 +346,8 @@ export default function useUserSignupController({
         signupFirestoreCommitted = true;
         createdSignupUser = null;
         publishAccountLifecycleAuthorityObservation({
-          requested: true,
-          backendApplied: true,
-          signupSource: 'postgresql',
-          signupFirestoreBootstrap: 'retired',
-          termsConsentSource: 'postgresql',
+          ...readAccountLifecycleAuthorityFromPayload(signupPayload, { requested: true }),
+          signupFirestoreBootstrap: signupPayload?.signupLifecycle?.firestoreBootstrap || 'retired',
           error: null,
         });
       } else {
@@ -805,9 +803,6 @@ export default function useUserSignupController({
       if (accountLifecycleConfig.requested) {
         publishAccountLifecycleAuthorityObservation({
           requested: true,
-          backendApplied: true,
-          signupSource: 'postgresql',
-          signupFirestoreBootstrap: 'retired',
           error: error?.code || error?.message || 'phase32-signup-failed',
         });
       }

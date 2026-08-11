@@ -6,6 +6,7 @@ import { firebaseAuth, SIGNUP_TERMS_POLICY_DOC_REF } from '../../firebase.js';
 import {
   publishAccountLifecycleAuthorityObservation,
   readAccountLifecycleAuthorityConfig,
+  readAccountLifecycleAuthorityFromPayload,
 } from '../auth/accountLifecycleAuthority.js';
 import {
   isTermsConsentRequiredForAccount,
@@ -78,10 +79,8 @@ export default function useUserTermsCompliance({
         setReady(true);
         setErrorMessage('');
         publishAccountLifecycleAuthorityObservation({
-          requested: true,
-          backendApplied: true,
-          termsConsentSource: 'postgresql',
-          termsConsentMirror: 'retired',
+          ...readAccountLifecycleAuthorityFromPayload(payload, { requested: true }),
+          termsConsentMirror: payload?.termsConsent?.firestoreMirror || 'retired',
           termsConsentBootstrap: legacyBootstrap,
           error: null,
         });
@@ -92,9 +91,6 @@ export default function useUserTermsCompliance({
         setErrorMessage('약관 적용 상태를 PostgreSQL에서 확인하지 못했습니다.');
         publishAccountLifecycleAuthorityObservation({
           requested: true,
-          backendApplied: true,
-          termsConsentSource: 'postgresql',
-          termsConsentMirror: 'retired',
           error: error?.code || error?.message || 'terms-compliance-postgres-unavailable',
         });
       }

@@ -34,6 +34,7 @@ import { clerkStagingClient } from '../clerk/clerkStagingClient.js';
 import {
   publishAccountLifecycleAuthorityObservation,
   readAccountLifecycleAuthorityConfig,
+  readAccountLifecycleAuthorityFromPayload,
 } from '../features/auth/accountLifecycleAuthority.js';
 
 const createDecisionState = (policy, states) => Object.fromEntries(
@@ -92,10 +93,8 @@ export default function UserTermsConsentPanel({
         nextLogs = Array.isArray(payload?.termsConsent?.logs) ? payload.termsConsent.logs : [];
         setTermsConsentRevision(Math.max(0, Number(payload?.termsConsent?.termsConsentRevision) || 0));
         publishAccountLifecycleAuthorityObservation({
-          requested: true,
-          backendApplied: true,
-          termsConsentSource: 'postgresql',
-          termsConsentMirror: 'retired',
+          ...readAccountLifecycleAuthorityFromPayload(payload, { requested: true }),
+          termsConsentMirror: payload?.termsConsent?.firestoreMirror || 'retired',
           termsConsentBootstrap: payload?.termsConsent?.legacyBootstrap || 'not-required',
           error: null,
         });
@@ -180,16 +179,14 @@ export default function UserTermsConsentPanel({
           decision: decisions[term.id]?.decision || '',
           viewedAtMs: Number(decisions[term.id]?.viewedAtMs || 0),
         }));
-        await clerkStagingClient.saveUserTermsConsent({
+        const payload = await clerkStagingClient.saveUserTermsConsent({
           policyRevision: policy.revision,
           decisions: submittedDecisions,
           source: consentRequired ? TERMS_CONSENT_SOURCE.RECONSENT : TERMS_CONSENT_SOURCE.MY_PAGE,
         });
         publishAccountLifecycleAuthorityObservation({
-          requested: true,
-          backendApplied: true,
-          termsConsentSource: 'postgresql',
-          termsConsentMirror: 'retired',
+          ...readAccountLifecycleAuthorityFromPayload(payload, { requested: true }),
+          termsConsentMirror: payload?.termsConsent?.firestoreMirror || 'retired',
           error: null,
         });
       } else {
@@ -300,9 +297,6 @@ export default function UserTermsConsentPanel({
       if (readAccountLifecycleAuthorityConfig().requested) {
         publishAccountLifecycleAuthorityObservation({
           requested: true,
-          backendApplied: true,
-          termsConsentSource: 'postgresql',
-          termsConsentMirror: 'retired',
           error: error?.code || error?.message || 'terms-consent-save-failed',
         });
       }

@@ -55,7 +55,32 @@ const firestoreClient = {
     } }];
   },
 };
-const service = createAccountLifecycleService({ repository, siteContentRepository, userAuthRepository, firestoreClient });
+const disabledService = createAccountLifecycleService({
+  repository,
+  siteContentRepository,
+  userAuthRepository,
+  firestoreClient,
+  authorityEnabled: false,
+});
+for (const invoke of [
+  () => disabledService.signup({ firebaseIdentity: { uid: firebaseUid, idToken: 'firebase-token-32', email: 'member@example.com' }, input: {} }),
+  () => disabledService.getTerms({ clerkUserId }),
+  () => disabledService.bootstrapTerms({ clerkUserId, firebaseIdentity: { uid: firebaseUid, idToken: 'firebase-token-32' } }),
+  () => disabledService.saveTerms({ clerkUserId, input: {} }),
+]) {
+  await assert.rejects(invoke, (error) => error?.code === 'account_lifecycle_authority_disabled' && error?.status === 503);
+}
+assert.equal(signupArgs, null, 'disabled Phase 32 authority must fail before PostgreSQL signup mutation');
+assert.equal(importedArgs, null, 'disabled Phase 32 authority must fail before legacy terms import');
+assert.equal(savedArgs, null, 'disabled Phase 32 authority must fail before terms mutation');
+
+const service = createAccountLifecycleService({
+  repository,
+  siteContentRepository,
+  userAuthRepository,
+  firestoreClient,
+  authorityEnabled: true,
+});
 const termsSubmission = {
   policyRevision: 5,
   decisions: [
@@ -143,11 +168,12 @@ const [migration, repoSource, serviceSource, appSource, envSource, indexSource, 
 ]);
 for (const marker of ['CREATE TABLE IF NOT EXISTS app_user_term_consent_states', 'CREATE TABLE IF NOT EXISTS app_user_term_consent_logs', 'terms_consent_bootstrap_completed_at', "'phase', 32", "'password_reset_delivery', 'firebase-auth-compatibility-preserved'"]) assert.ok(migration.includes(marker), marker);
 for (const marker of ['createSignupAccount', 'importConsents', 'saveConsents', 'terms_consent_bootstrap_completed_at', 'terms_consent_revision, terms_consent_policy_version', 'GREATEST(terms_consent_revision, $2)', "mirror_state='retired'"]) assert.ok(repoSource.includes(marker), marker);
-for (const marker of ['bootstrapTerms', 'listUserTermConsentStates', 'legacy-firestore:', "firestoreBootstrap: 'retired'"]) assert.ok(serviceSource.includes(marker), marker);
+for (const marker of ['authorityEnabled = false', 'assertAuthorityEnabled', 'account_lifecycle_authority_disabled', 'bootstrapTerms', 'listUserTermConsentStates', 'legacy-firestore:', "firestoreBootstrap: 'retired'"]) assert.ok(serviceSource.includes(marker), marker);
 for (const marker of ["'/api/users/signup/bootstrap'", "'/api/users/me/terms-consent/bootstrap'", 'accountLifecycleCompatibilityDisabled', "passwordResetDelivery: 'firebase-auth-compatibility-preserved'"]) assert.ok(appSource.includes(marker), marker);
 assert.ok(envSource.includes('FIRESTORE_ACCOUNT_LIFECYCLE_COMPATIBILITY_DISABLED'));
 assert.ok(indexSource.includes('firestoreClient: firestoreMemberAuthorityClient'));
+assert.ok(indexSource.includes('authorityEnabled: config.accountLifecycleCompatibilityDisabled'));
 assert.ok(firestoreSource.includes('listUserTermConsentStates'));
 assert.ok(firestoreSource.includes('listUserTermConsentLogs'));
 for (const marker of ['readProvisionUser', 'memberRepository.findByFirebaseUid', 'if (!accountLifecycleCompatibilityDisabled)']) assert.ok(authServiceSource.includes(marker), marker);
-console.log('[account-lifecycle-authority-backend-smoke] PASS (PostgreSQL signup/terms authority, one-time trusted terms import, PG Clerk provision source, Firebase reset preserved)');
+console.log('[account-lifecycle-authority-backend-smoke] PASS (backend flag gates Phase 32 service, PostgreSQL signup/terms authority, one-time trusted terms import, PG Clerk provision source, Firebase reset preserved)');

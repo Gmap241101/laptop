@@ -107,12 +107,22 @@ const normalizeLegacyConsent = (document, { log = false } = {}) => {
   });
 };
 
-export const createAccountLifecycleService = ({ repository, siteContentRepository, userAuthRepository, firestoreClient = null }) => {
+export const createAccountLifecycleService = ({ repository, siteContentRepository, userAuthRepository, firestoreClient = null, authorityEnabled = false }) => {
   if (!repository || typeof repository.createSignupAccount !== 'function' || typeof repository.getConsentSnapshot !== 'function' || typeof repository.importConsents !== 'function' || typeof repository.saveConsents !== 'function') {
     throw new TypeError('Account lifecycle repository is required.');
   }
   if (!siteContentRepository || typeof siteContentRepository.getDomain !== 'function') throw new TypeError('Site content repository is required.');
   if (!userAuthRepository || typeof userAuthRepository.findByClerkUserId !== 'function') throw new TypeError('User auth repository is required.');
+
+  const assertAuthorityEnabled = () => {
+    if (!authorityEnabled) {
+      throw serviceError(
+        'account_lifecycle_authority_disabled',
+        'PostgreSQL account lifecycle authority is disabled by backend configuration.',
+        503,
+      );
+    }
+  };
 
   const loadPolicyContext = async () => {
     const [rentalConfigDomain, termsDomain] = await Promise.all([
@@ -133,6 +143,7 @@ export const createAccountLifecycleService = ({ repository, siteContentRepositor
 
   return Object.freeze({
     async signup({ firebaseIdentity, input = {} }) {
+      assertAuthorityEnabled();
       const firebaseUid = trim(firebaseIdentity?.uid);
       const email = lower(input.email || firebaseIdentity?.email);
       const name = normalizeName(input.name);
@@ -176,6 +187,7 @@ export const createAccountLifecycleService = ({ repository, siteContentRepositor
     },
 
     async getTerms({ clerkUserId }) {
+      assertAuthorityEnabled();
       const firebaseUid = await resolveFirebaseUid(clerkUserId);
       const { policy } = await loadPolicyContext();
       const snapshot = await repository.getConsentSnapshot(firebaseUid);
@@ -183,6 +195,7 @@ export const createAccountLifecycleService = ({ repository, siteContentRepositor
     },
 
     async bootstrapTerms({ clerkUserId, firebaseIdentity }) {
+      assertAuthorityEnabled();
       const firebaseUid = await resolveFirebaseUid(clerkUserId);
       if (!firebaseIdentity?.uid || !firebaseIdentity?.idToken || trim(firebaseIdentity.uid) !== firebaseUid) {
         throw serviceError('terms_firebase_identity_mismatch', 'Firebase compatibility identity does not match the Clerk member.', 409);
@@ -207,6 +220,7 @@ export const createAccountLifecycleService = ({ repository, siteContentRepositor
     },
 
     async saveTerms({ clerkUserId, input = {} }) {
+      assertAuthorityEnabled();
       const firebaseUid = await resolveFirebaseUid(clerkUserId);
       const { policy } = await loadPolicyContext();
       const decisions = validateTerms({ policy, submission: input, source: trim(input.source) || 'myPage' });

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { readAccountLifecycleAuthorityConfig, requestAccountLifecycleAuthorityStatus } from '../../src/features/auth/accountLifecycleAuthority.js';
+import { readAccountLifecycleAuthorityConfig, readAccountLifecycleAuthorityFromPayload, requestAccountLifecycleAuthorityStatus } from '../../src/features/auth/accountLifecycleAuthority.js';
+import { clearAdminRouteIntent, pushAppPath, replaceAppPath, writeAdminRouteIntent } from '../../src/routing/appRoutes.js';
 
 const storage = new Map();
 const config = readAccountLifecycleAuthorityConfig({
@@ -74,6 +75,46 @@ assert.equal(persistentCalls, 3);
 assert.equal(persistentMismatch.backendApplied, false);
 assert.equal(persistentMismatch.error, 'backend-account-lifecycle-authority-not-applied');
 
+const payloadAuthority = readAccountLifecycleAuthorityFromPayload({ compatibility: {
+  accountLifecycleCompatibilityDisabled: true,
+  signupProfileSource: 'postgresql',
+  termsConsentSource: 'postgresql',
+  passwordResetDelivery: 'firebase-auth-compatibility-preserved',
+} }, { requested: true });
+assert.deepEqual(payloadAuthority, {
+  requested: true,
+  backendApplied: true,
+  signupSource: 'postgresql',
+  termsConsentSource: 'postgresql',
+  passwordResetDelivery: 'firebase-auth-compatibility-preserved',
+});
+
+const originalWindow = globalThis.window;
+const routeStorage = new Map();
+const routeWindow = {
+  location: { pathname: '/admin' },
+  sessionStorage: {
+    getItem(key) { return routeStorage.get(key) || null; },
+    setItem(key, value) { routeStorage.set(key, value); },
+    removeItem(key) { routeStorage.delete(key); },
+  },
+  history: {
+    pushState(_state, _title, path) { routeWindow.location.pathname = path; },
+    replaceState(_state, _title, path) { routeWindow.location.pathname = path; },
+  },
+};
+globalThis.window = routeWindow;
+writeAdminRouteIntent();
+pushAppPath('user', 'home');
+assert.equal(routeWindow.location.pathname, '/admin', 'admin route intent must block user pushState writers');
+replaceAppPath('user', 'mypage');
+assert.equal(routeWindow.location.pathname, '/admin', 'admin route intent must block user replaceState writers');
+clearAdminRouteIntent();
+replaceAppPath('user', 'mypage');
+assert.equal(routeWindow.location.pathname, '/mypage', 'explicitly cleared admin route intent must allow user navigation');
+if (originalWindow === undefined) delete globalThis.window;
+else globalThis.window = originalWindow;
+
 const read = async (path) => readFile(new URL(`../../${path}`, import.meta.url), 'utf8');
 const [signup, termsPanel, termsCompliance, userWorkspace, recovery, userAuthPanel, client, diagnostics, cutover] = await Promise.all([
   read('src/features/auth/useUserSignupController.js'),
@@ -86,12 +127,12 @@ const [signup, termsPanel, termsCompliance, userWorkspace, recovery, userAuthPan
   read('src/clerk/ClerkStagingDiagnostics.jsx'),
   read('src/features/auth/accountLifecycleAuthority.js'),
 ]);
-for (const marker of ['readAccountLifecycleAuthorityConfig', 'accountLifecycleConfig.requested', 'bootstrapUserSignup', "signupSource: 'postgresql'", "signupFirestoreBootstrap: 'retired'"]) assert.ok(signup.includes(marker), marker);
+for (const marker of ['readAccountLifecycleAuthorityConfig', 'readAccountLifecycleAuthorityFromPayload', 'accountLifecycleConfig.requested', 'bootstrapUserSignup', 'signupPayload?.signupLifecycle?.firestoreBootstrap']) assert.ok(signup.includes(marker), marker);
 assert.ok(signup.includes('createUserWithEmailAndPassword'), 'Firebase Auth compatibility identity must remain during Phase 32');
 assert.ok(signup.includes('runTransaction(userSignupDb'), 'legacy signup rollback path must remain available when Phase 32 is disabled');
-for (const marker of ['getUserTermsConsent', 'bootstrapUserTermsConsent', 'saveUserTermsConsent', "termsConsentSource: 'postgresql'", "termsConsentMirror: 'retired'"]) assert.ok(termsPanel.includes(marker), marker);
+for (const marker of ['getUserTermsConsent', 'bootstrapUserTermsConsent', 'saveUserTermsConsent', 'readAccountLifecycleAuthorityFromPayload', 'payload?.termsConsent?.firestoreMirror']) assert.ok(termsPanel.includes(marker), marker);
 assert.ok(termsPanel.includes('loadUserTermConsentStates'), 'legacy terms path must remain for rollback');
-for (const marker of ['readAccountLifecycleAuthorityConfig', 'getUserTermsConsent', 'bootstrapUserTermsConsent', "termsConsentSource: 'postgresql'"]) assert.ok(termsCompliance.includes(marker), `terms compliance ${marker}`);
+for (const marker of ['readAccountLifecycleAuthorityConfig', 'readAccountLifecycleAuthorityFromPayload', 'getUserTermsConsent', 'bootstrapUserTermsConsent']) assert.ok(termsCompliance.includes(marker), `terms compliance ${marker}`);
 assert.ok(termsCompliance.includes('SIGNUP_TERMS_POLICY_DOC_REF'), 'legacy Firestore policy watcher must remain only for rollback');
 assert.ok(userWorkspace.includes('termsComplianceRefreshKey'), 'terms gate must refresh PostgreSQL compliance after save');
 assert.ok(userWorkspace.includes('onCompleted={() => setTermsComplianceRefreshKey'), 'terms completion must release the gate by re-reading PostgreSQL state');
@@ -101,6 +142,8 @@ assert.ok(!userAuthPanel.includes('passwordResetCodeStage'), 'password reset UI 
 for (const marker of ['requestAccountLifecycleSignup', 'requestUserTermsConsentBootstrap', 'bootstrapUserTermsConsent', '/api/users/me/terms-consent/bootstrap']) assert.ok(client.includes(marker), marker);
 assert.ok(!client.includes('reset_password_email_code'), 'Clerk-only password reset must not be enabled while Firebase password compatibility remains');
 for (const marker of ['Clerk Staging Test · Phase 32', 'Phase 32 signup + terms consent PostgreSQL account lifecycle authority', 'Terms consent legacy bootstrap:', 'Password reset delivery:', "top: '184px'"]) assert.ok(diagnostics.includes(marker), marker);
+for (const source of [signup, termsPanel, termsCompliance]) assert.ok(!source.includes('backendApplied: true'), 'Phase 32 operation observations must not hardcode backend authority');
+assert.ok(cutover.includes('readAccountLifecycleAuthorityFromPayload'));
 assert.ok(cutover.includes("passwordResetDelivery === 'firebase-auth-compatibility-preserved'"));
 for (const marker of ['phase32Diagnostic', 'attempts = 3', 'sleepImpl', "searchParams.set('_ts'"]) assert.ok(cutover.includes(marker), `diagnostic retry ${marker}`);
-console.log('[account-lifecycle-authority-frontend-smoke] PASS (Phase 32 signup/terms cutover, one-time terms bootstrap, Firebase reset preservation, diagnostics)');
+console.log('[account-lifecycle-authority-frontend-smoke] PASS (payload-derived Phase 32 authority, fail-safe admin route intent, signup/terms cutover, Firebase reset preservation, diagnostics)');

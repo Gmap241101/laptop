@@ -81,7 +81,8 @@ for (const marker of [
 ]) assert.ok(appRoutes.includes(marker), `administrator route intent helper missing: ${marker}`);
 
 const appNavigationController = readFileSync('src/routing/useAppNavigationController.js', 'utf8');
-assert.ok(appNavigationController.includes("if (view === 'admin') {\n      clearAdminRouteIntent();"), 'explicit administrator-to-user navigation must clear persistent route intent');
+assert.ok(appNavigationController.includes("if (readAdminRouteIntent()) {\n      clearAdminRouteIntent();"), 'explicit administrator-to-user navigation must clear persistent route intent');
+assert.ok(appNavigationController.includes("if (readAdminRouteIntent() && nextRouteState.view !== 'admin')"), 'browser history must preserve persistent administrator route intent');
 
 const adminUserActionController = readFileSync('src/features/requests/useAdminUserActionReviewController.js', 'utf8');
 for (const marker of [

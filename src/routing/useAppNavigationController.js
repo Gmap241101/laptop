@@ -15,6 +15,7 @@ import {
   getRouteStateFromPath,
   normalizeUserLoginReturnTarget,
   pushAppPath,
+  readAdminRouteIntent,
   readUserAccountStatusView,
   readUserLoginReturnTarget,
   replaceAppPath,
@@ -101,6 +102,13 @@ export default function useAppNavigationController({
           ? String(noticePostId || '').trim()
           : '';
       const updatePath = replace ? replaceAppPath : pushAppPath;
+
+      if (readAdminRouteIntent()) {
+        replaceAppPath('admin');
+        setView('admin');
+        setIsCommunityMenuOpen(false);
+        return;
+      }
 
       updatePath('user', normalizedUserTab, normalizedRouteId);
       setView('user');
@@ -280,7 +288,7 @@ export default function useAppNavigationController({
   }, [pendingProtectedUserTabRef, userTab]);
 
   const goToUserHome = useCallback(() => {
-    if (view === 'admin') {
+    if (readAdminRouteIntent()) {
       clearAdminRouteIntent();
     }
     clearPendingAndAuthReturnTarget();
@@ -310,7 +318,7 @@ export default function useAppNavigationController({
   }, [clearPendingAndAuthReturnTarget, navigateToUserReturnTarget]);
 
   const goToUserMypage = useCallback(() => {
-    if (view === 'admin' && isAdminAuthenticated) {
+    if (readAdminRouteIntent()) {
       clearAdminRouteIntent();
     }
 
@@ -387,6 +395,13 @@ export default function useAppNavigationController({
       const nextRouteState = getRouteStateFromPath();
 
       pendingProtectedUserTabRef.current = '';
+
+      if (readAdminRouteIntent() && nextRouteState.view !== 'admin') {
+        replaceAppPath('admin');
+        setView('admin');
+        setIsCommunityMenuOpen(false);
+        return;
+      }
 
       if (
         nextRouteState.redirectTo &&

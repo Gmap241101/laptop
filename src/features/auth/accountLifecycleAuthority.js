@@ -40,6 +40,17 @@ export const subscribeAccountLifecycleAuthorityObservation = (listener) => {
   return () => window.removeEventListener(EVENT_NAME, handler);
 };
 
+export const readAccountLifecycleAuthorityFromPayload = (payload, { requested = true } = {}) => {
+  const compatibility = payload?.compatibility || {};
+  return Object.freeze({
+    requested: Boolean(requested),
+    backendApplied: Boolean(compatibility.accountLifecycleCompatibilityDisabled),
+    signupSource: trim(compatibility.signupProfileSource),
+    termsConsentSource: trim(compatibility.termsConsentSource),
+    passwordResetDelivery: trim(compatibility.passwordResetDelivery),
+  });
+};
+
 
 export const requestAccountLifecycleAuthorityStatus = async ({
   fetchImpl = fetch,
@@ -61,21 +72,14 @@ export const requestAccountLifecycleAuthorityStatus = async ({
       diagnosticUrl.searchParams.set('_ts', String(Date.now()));
       const response = await fetchImpl(diagnosticUrl.toString(), { headers: { Accept: 'application/json' }, cache: 'no-store' });
       const payload = await response.json().catch(() => ({}));
-      const backendApplied = Boolean(payload?.compatibility?.accountLifecycleCompatibilityDisabled);
-      const signupSource = trim(payload?.compatibility?.signupProfileSource);
-      const termsConsentSource = trim(payload?.compatibility?.termsConsentSource);
-      const passwordResetDelivery = trim(payload?.compatibility?.passwordResetDelivery);
+      const authority = readAccountLifecycleAuthorityFromPayload(payload, { requested: config.requested });
       const applied = response.ok
-        && backendApplied
-        && signupSource === 'postgresql'
-        && termsConsentSource === 'postgresql'
-        && passwordResetDelivery === 'firebase-auth-compatibility-preserved';
+        && authority.backendApplied
+        && authority.signupSource === 'postgresql'
+        && authority.termsConsentSource === 'postgresql'
+        && authority.passwordResetDelivery === 'firebase-auth-compatibility-preserved';
       lastResult = Object.freeze({
-        requested: config.requested,
-        backendApplied,
-        signupSource,
-        termsConsentSource,
-        passwordResetDelivery,
+        ...authority,
         error: config.requested && !applied ? 'backend-account-lifecycle-authority-not-applied' : null,
       });
       if (!config.requested || applied) return lastResult;

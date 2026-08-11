@@ -270,7 +270,7 @@ export const pushAppPath = (nextView, nextUserTab = 'home', routeId = '') => {
   if (typeof window === 'undefined') return;
 
   const nextPath = getAppPath(
-    nextView,
+    nextView !== 'admin' && readAdminRouteIntent() ? 'admin' : nextView,
     nextUserTab,
     routeId
   );
@@ -288,7 +288,7 @@ export const replaceAppPath = (
   if (typeof window === 'undefined') return;
 
   const nextPath = getAppPath(
-    nextView,
+    nextView !== 'admin' && readAdminRouteIntent() ? 'admin' : nextView,
     nextUserTab,
     routeId
   );
