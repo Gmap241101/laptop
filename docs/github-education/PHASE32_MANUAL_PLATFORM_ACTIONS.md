@@ -147,3 +147,20 @@ then redeploy. Query `accountLifecycle=firebase` also clears the frontend latch 
 
 ## Protected production resources
 Do not change Production Clerk, `gh-pages`, production DNS, or `https://notebook.recruit.kro.kr` during Phase 32.
+
+## Admin diagnostics health retry hotfix
+
+No new Heroku Config Var, Vercel environment variable, migration, Clerk setting, Firebase Rule, Firestore index, or secret is required.
+
+This follow-up changes frontend diagnostics only. Redeploy the Vercel Staging frontend with the latest full Phase 32 package. Heroku does not require redeployment if the already validated Phase 32 backend is currently running with `FIRESTORE_ACCOUNT_LIFECYCLE_COMPATIBILITY_DISABLED=true`.
+
+After redeploy, open the Phase 32 administrator test URL. The global account lifecycle section should settle on:
+
+- Account lifecycle authority requested: yes
+- Account lifecycle backend applied: yes
+- Signup profile source: postgresql
+- Terms consent source: postgresql
+- Password reset delivery: firebase-auth-compatibility-preserved
+- Phase 32 authority error: -
+
+If all retry attempts still return the older compatibility contract, the panel correctly remains FAIL and the Heroku Phase 32 config/deployment must be checked.

@@ -26,6 +26,54 @@ assert.equal(status.termsConsentSource, 'postgresql');
 assert.equal(status.passwordResetDelivery, 'firebase-auth-compatibility-preserved');
 assert.equal(status.error, null);
 
+let transientCalls = 0;
+const transientStatus = await requestAccountLifecycleAuthorityStatus({
+  config,
+  attempts: 3,
+  sleepImpl: async () => {},
+  fetchImpl: async () => {
+    transientCalls += 1;
+    if (transientCalls < 3) {
+      return new Response(JSON.stringify({ compatibility: {
+        accountLifecycleCompatibilityDisabled: false,
+        signupProfileSource: 'firestore-compatibility-source',
+        termsConsentSource: 'firestore',
+        passwordResetDelivery: 'firebase-auth-compatibility-preserved',
+      } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    return new Response(JSON.stringify({ compatibility: {
+      accountLifecycleCompatibilityDisabled: true,
+      signupProfileSource: 'postgresql',
+      termsConsentSource: 'postgresql',
+      passwordResetDelivery: 'firebase-auth-compatibility-preserved',
+    } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  },
+});
+assert.equal(transientCalls, 3);
+assert.equal(transientStatus.backendApplied, true);
+assert.equal(transientStatus.signupSource, 'postgresql');
+assert.equal(transientStatus.termsConsentSource, 'postgresql');
+assert.equal(transientStatus.error, null);
+
+let persistentCalls = 0;
+const persistentMismatch = await requestAccountLifecycleAuthorityStatus({
+  config,
+  attempts: 3,
+  sleepImpl: async () => {},
+  fetchImpl: async () => {
+    persistentCalls += 1;
+    return new Response(JSON.stringify({ compatibility: {
+      accountLifecycleCompatibilityDisabled: false,
+      signupProfileSource: 'firestore-compatibility-source',
+      termsConsentSource: 'firestore',
+      passwordResetDelivery: 'firebase-auth-compatibility-preserved',
+    } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  },
+});
+assert.equal(persistentCalls, 3);
+assert.equal(persistentMismatch.backendApplied, false);
+assert.equal(persistentMismatch.error, 'backend-account-lifecycle-authority-not-applied');
+
 const read = async (path) => readFile(new URL(`../../${path}`, import.meta.url), 'utf8');
 const [signup, termsPanel, termsCompliance, userWorkspace, recovery, userAuthPanel, client, diagnostics, cutover] = await Promise.all([
   read('src/features/auth/useUserSignupController.js'),
@@ -53,5 +101,6 @@ assert.ok(!userAuthPanel.includes('passwordResetCodeStage'), 'password reset UI 
 for (const marker of ['requestAccountLifecycleSignup', 'requestUserTermsConsentBootstrap', 'bootstrapUserTermsConsent', '/api/users/me/terms-consent/bootstrap']) assert.ok(client.includes(marker), marker);
 assert.ok(!client.includes('reset_password_email_code'), 'Clerk-only password reset must not be enabled while Firebase password compatibility remains');
 for (const marker of ['Clerk Staging Test · Phase 32', 'Phase 32 signup + terms consent PostgreSQL account lifecycle authority', 'Terms consent legacy bootstrap:', 'Password reset delivery:', "top: '184px'"]) assert.ok(diagnostics.includes(marker), marker);
-assert.ok(cutover.includes("passwordResetDelivery !== 'firebase-auth-compatibility-preserved'"));
+assert.ok(cutover.includes("passwordResetDelivery === 'firebase-auth-compatibility-preserved'"));
+for (const marker of ['phase32Diagnostic', 'attempts = 3', 'sleepImpl', "searchParams.set('_ts'"]) assert.ok(cutover.includes(marker), `diagnostic retry ${marker}`);
 console.log('[account-lifecycle-authority-frontend-smoke] PASS (Phase 32 signup/terms cutover, one-time terms bootstrap, Firebase reset preservation, diagnostics)');

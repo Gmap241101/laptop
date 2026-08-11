@@ -41,24 +41,52 @@ export const subscribeAccountLifecycleAuthorityObservation = (listener) => {
 };
 
 
-export const requestAccountLifecycleAuthorityStatus = async ({ fetchImpl = fetch, config = readAccountLifecycleAuthorityConfig() } = {}) => {
+export const requestAccountLifecycleAuthorityStatus = async ({
+  fetchImpl = fetch,
+  config = readAccountLifecycleAuthorityConfig(),
+  sleepImpl = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+  attempts = 3,
+} = {}) => {
   if (!config.apiBaseUrl) return Object.freeze({ requested: config.requested, backendApplied: false, signupSource: '', termsConsentSource: '', passwordResetDelivery: '', error: 'api-base-url-missing' });
-  try {
-    const response = await fetchImpl(`${config.apiBaseUrl}/health`, { headers: { Accept: 'application/json' }, cache: 'no-store' });
-    const payload = await response.json().catch(() => ({}));
-    const backendApplied = Boolean(payload?.compatibility?.accountLifecycleCompatibilityDisabled);
-    const signupSource = trim(payload?.compatibility?.signupProfileSource);
-    const termsConsentSource = trim(payload?.compatibility?.termsConsentSource);
-    const passwordResetDelivery = trim(payload?.compatibility?.passwordResetDelivery);
-    return Object.freeze({
-      requested: config.requested,
-      backendApplied,
-      signupSource,
-      termsConsentSource,
-      passwordResetDelivery,
-      error: config.requested && (!backendApplied || signupSource !== 'postgresql' || termsConsentSource !== 'postgresql' || passwordResetDelivery !== 'firebase-auth-compatibility-preserved') ? 'backend-account-lifecycle-authority-not-applied' : null,
-    });
-  } catch (error) {
-    return Object.freeze({ requested: config.requested, backendApplied: false, signupSource: '', termsConsentSource: '', passwordResetDelivery: '', error: error?.code || error?.message || 'status-unavailable' });
+
+  const maxAttempts = Math.max(1, Number(attempts) || 1);
+  let lastResult = null;
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const diagnosticUrl = new URL(`${config.apiBaseUrl}/health`);
+      diagnosticUrl.searchParams.set('phase32Diagnostic', '1');
+      diagnosticUrl.searchParams.set('attempt', String(attempt));
+      diagnosticUrl.searchParams.set('_ts', String(Date.now()));
+      const response = await fetchImpl(diagnosticUrl.toString(), { headers: { Accept: 'application/json' }, cache: 'no-store' });
+      const payload = await response.json().catch(() => ({}));
+      const backendApplied = Boolean(payload?.compatibility?.accountLifecycleCompatibilityDisabled);
+      const signupSource = trim(payload?.compatibility?.signupProfileSource);
+      const termsConsentSource = trim(payload?.compatibility?.termsConsentSource);
+      const passwordResetDelivery = trim(payload?.compatibility?.passwordResetDelivery);
+      const applied = response.ok
+        && backendApplied
+        && signupSource === 'postgresql'
+        && termsConsentSource === 'postgresql'
+        && passwordResetDelivery === 'firebase-auth-compatibility-preserved';
+      lastResult = Object.freeze({
+        requested: config.requested,
+        backendApplied,
+        signupSource,
+        termsConsentSource,
+        passwordResetDelivery,
+        error: config.requested && !applied ? 'backend-account-lifecycle-authority-not-applied' : null,
+      });
+      if (!config.requested || applied) return lastResult;
+    } catch (error) {
+      lastError = error;
+      lastResult = Object.freeze({ requested: config.requested, backendApplied: false, signupSource: '', termsConsentSource: '', passwordResetDelivery: '', error: error?.code || error?.message || 'status-unavailable' });
+    }
+
+    if (attempt < maxAttempts) await sleepImpl(attempt === 1 ? 250 : 750);
   }
+
+  if (lastResult) return lastResult;
+  return Object.freeze({ requested: config.requested, backendApplied: false, signupSource: '', termsConsentSource: '', passwordResetDelivery: '', error: lastError?.code || lastError?.message || 'status-unavailable' });
 };

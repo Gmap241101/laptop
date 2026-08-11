@@ -110,3 +110,24 @@ passwordResetDelivery: firebase-auth-compatibility-preserved
 Actual Staging/browser status
 -----------------------------
 Not yet validated. Phase 32 remains a candidate until user/admin browser tests confirm signup PostgreSQL bootstrap, existing/new terms consent persistence and one-time migration, protected-route consent gating, password-reset compatibility regression, and all prior Phase 31 regressions remain healthy.
+
+PHASE 32 ADMIN DIAGNOSTICS HEALTH RETRY HOTFIX
+==============================================
+Date: 2026-08-11
+
+Observed Staging condition:
+- User mode Phase 32 authority: backend applied=yes, terms source=postgresql, mirror=retired, error=-.
+- Administrator diagnostics could show a transient older /health compatibility payload: backend applied=no, signup source=firestore-compatibility-source, terms source=firestore.
+
+Hotfix validation:
+- Phase 32 status probe uses cache-busting /health requests.
+- Requested authority mismatch retries up to 3 attempts (250ms, then 750ms).
+- Simulated stale responses on attempts 1-2 followed by the current Phase 32 response on attempt 3: PASS.
+- Simulated persistent backend-disabled responses for all 3 attempts: PASS; diagnostic remains backend-account-lifecycle-authority-not-applied.
+- TERM=xterm npm run verify:phase32: PASS / exit 0.
+- React hook audit: PASS (171 source files).
+- Application flow audit: PASS (124 contracts, 11 user routes, 20 administrator tabs).
+- Firestore strict audit: PASS (138 calls, warnings 0, errors 0).
+- TERM=xterm npm run build:staging: React/Application/Firestore prebuild PASS; Clerk local staging config DISABLED; vite executable unavailable in this workspace, final exit 127.
+
+Runtime authority behavior was not modified by this diagnostic-only hotfix.

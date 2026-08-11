@@ -124,3 +124,11 @@ Phase 32 authority error
 ```
 
 Expected runtime authority is PostgreSQL for signup/terms, with Firebase password-reset delivery explicitly preserved.
+
+## Phase 32 admin diagnostics health retry hotfix (2026-08-11)
+
+Actual Staging validation showed the Phase 32 account lifecycle authority working in user mode while a fresh administrator diagnostics panel could transiently report the older backend compatibility contract (`backend applied: no`, signup source `firestore-compatibility-source`, terms source `firestore`). The Phase 32 runtime authority itself was not changed.
+
+The frontend status probe now treats the `/health` contract as a deployment-state diagnostic and retries a requested Phase 32 mismatch up to three times with cache-busting query parameters. A matching PostgreSQL authority response returns immediately. A persistent mismatch after all attempts still reports `backend-account-lifecycle-authority-not-applied`; the retry does not force a PASS.
+
+No account lifecycle API, PostgreSQL schema, signup logic, terms authority, password reset delivery, Firebase compatibility session, or administrator route behavior was changed by this hotfix.
