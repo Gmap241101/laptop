@@ -114,24 +114,36 @@ assert.equal(editMirrorStatus, 'retired');
 
 let adminVerifyCalls = 0;
 let adminImportCalls = 0;
+let adminLegacyBootstrapReads = 0;
 let retiredCalls = 0;
 const adminFirestoreClient = {
   async verifyAdmin() { adminVerifyCalls += 1; return { uid: 'firebase-admin', role: 'admin', fields: { adminRole: 'admin' } }; },
   getRentalRequest: forbidden, getRentalAsset: forbidden, getPublicConfig: forbidden, getRentalRestriction: forbidden,
   commitRequestEdit: forbiddenMirror, commitMemo: forbiddenMirror, commitStatusRestore: forbiddenMirror, commitUserActionReview: forbiddenMirror, commitStatusChange: forbiddenMirror,
-  async listAllRentalRequests() { return []; }, async listAllRentalRequestLogs() { return []; }, async listRentalRequestLogs() { return []; },
+  async listAllRentalRequests() { adminLegacyBootstrapReads += 1; throw new Error('Phase 29 admin bootstrap must not import Firestore rental requests.'); }, async listAllRentalRequestLogs() { adminLegacyBootstrapReads += 1; throw new Error('Phase 29 admin bootstrap must not import Firestore rental logs.'); }, async listRentalRequestLogs() { adminLegacyBootstrapReads += 1; throw new Error('Phase 29 targeted admin sync must not import Firestore rental logs.'); },
 };
 const adminRepository = {
   async list() { return { requests: [], totalCount: 0 }; }, async getCounts() { return {}; },
+  async getByRequestId(requestId) { return { id: requestId, status: '신청중', requesterUid: 'firebase-user', laptopId: 'NB-1' }; },
   async upsertImportedRequests() { adminImportCalls += 1; return 1; }, async upsertImportedEvents() { return 0; }, async listEvents() { return []; },
   async editRequest({ requestId, updates, beforeCommit }) { assert.equal(beforeCommit, undefined); return { id: requestId, requesterUid: 'firebase-user', requesterName: '테스트', requesterTeam: '테스트팀', laptopId: 'NB-1', assetCategory: '노트북', assetNo: 'A-001', startDate: updates.startDate, dueDate: updates.dueDate, purpose: updates.purpose, status: '신청중', adminMemo: updates.adminMemo }; },
   async markMirrorRetired() { retiredCalls += 1; },
 };
 const adminService = createAdminRentalRequestService({ repository: adminRepository, firestoreClient: adminFirestoreClient, postgresSource, writeMirrorEnabled: false });
 const adminEdited = await adminService.editRequest({ uid: 'firebase-admin', idToken: 'admin-token' }, { requestId: 'REQ-TEST0001', form: { startDate: '2026-08-20', dueDate: '2026-08-21', purpose: '관리자 수정', adminMemo: '' } });
+const adminBootstrap = await adminService.bootstrap({ uid: 'firebase-admin', idToken: 'admin-token' });
+assert.equal(adminBootstrap.skipped, true);
+assert.equal(adminBootstrap.source, 'postgresql-authoritative');
+assert.equal(adminBootstrap.synchronized, 0);
+const adminSync = await adminService.syncRequest({ uid: 'firebase-admin', idToken: 'admin-token' }, 'REQ-TEST0001');
+assert.equal(adminSync.skipped, true);
+assert.equal(adminSync.source, 'postgresql-authoritative');
+assert.equal(adminSync.request.id, 'REQ-TEST0001');
+assert.equal(adminLegacyBootstrapReads, 0, 'Phase 29 admin bootstrap/targeted sync must not read Firestore rental data');
+
 assert.equal(adminEdited.firestoreMirror, 'retired');
 assert.equal(adminEdited.transactionSource, 'postgresql');
-assert.equal(adminVerifyCalls, 1, 'Firebase administrator identity verification must remain');
+assert.equal(adminVerifyCalls, 3, 'Firebase administrator identity verification must remain for edit/bootstrap/sync');
 assert.equal(adminImportCalls, 0, 'PostgreSQL mutation source must not be re-imported as Firestore source');
 assert.equal(retiredCalls, 1);
 assert.equal(firestoreReads, 0);

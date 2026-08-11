@@ -50,3 +50,14 @@ A second staging validation exposed two runtime defects after migration 020 and 
 - The user rental-request screen still called the legacy `syncRentalRequestShadow()` path on initial load even when Phase 29 authoritative mode was enabled. This could re-read Firestore after the read fallback had already been retired. The Phase 29 path now calls the PostgreSQL authoritative candidate directly, and the backend legacy sync endpoint also bypasses Firestore import while authoritative mode is enabled.
 
 Because migration 020 is already applied in staging, this schema correction is intentionally delivered as migration 021 rather than rewriting migration 020.
+
+## Phase 29 administrator status persistence hotfix
+A third staging validation exposed a stale-source overwrite after administrator status changes. Direct PostgreSQL status mutation succeeded and the frontend showed the success toast, but reopening the administrator rental-request view could call the legacy Firestore bootstrap again. Because the Phase 29 Firestore rental-request write mirror is retired, Firestore still contained the old status and the bootstrap overwrote the canonical PostgreSQL row with that stale value.
+
+Phase 29 authoritative mode now enforces the following boundary:
+- administrator rental list entry does not call the Firestore-to-PostgreSQL bootstrap when rental-request mirror retirement is enabled;
+- the backend administrator bootstrap endpoint becomes a PostgreSQL-authoritative no-op in retirement mode instead of importing Firestore rental data;
+- the backend targeted administrator sync endpoint returns the current PostgreSQL request in retirement mode and performs no Firestore import;
+- administrator user-action review no longer calls the targeted legacy sync when Phase 29 retirement is enabled.
+
+Legacy bootstrap/sync remains available when the Phase 29 retirement flag is disabled for rollback and migration recovery. This prevents a successful PostgreSQL status change (`대여중`, `보류`, `불허`, restore, etc.) from being reverted by stale Firestore data on the next administrator page entry.

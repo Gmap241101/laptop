@@ -48,3 +48,13 @@ Second staging runtime hotfix additions
 - backend syncCurrent authoritative mode bypasses Firestore source import: PASS
 - backend smoke asserts Phase 29 authoritative get/sync Firestore rental source reads = 0: PASS
 - Phase 29 remains candidate until migration 021 applies and admin/user rental operations succeed with retired mirror state
+
+Third staging administrator status persistence hotfix additions
+- observed: approve/hold/deny toast succeeded but reopening administrator rental requests restored the previous status
+- root cause: Phase 29 administrator page-entry bootstrap still imported stale Firestore rentalRequests after the Firestore write mirror had been retired
+- frontend administrator list load skips bootstrapAdminRentalRequests when Phase 29 mirror retirement is enabled: PASS
+- backend administrator bootstrap returns PostgreSQL-authoritative skipped/no-op and performs Firestore rental reads = 0 in retirement mode: PASS
+- backend targeted syncRequest returns current PostgreSQL canonical request and performs Firestore rental reads = 0 in retirement mode: PASS
+- administrator user-action review skips targeted legacy Firestore sync when Phase 29 retirement is enabled: PASS
+- npm run verify:phase29 after persistence hotfix: PASS (exit 0)
+- build:staging prebuild audits PASS; Vite unavailable in assistant environment (`vite: not found`, exit 127)

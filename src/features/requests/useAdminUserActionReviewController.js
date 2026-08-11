@@ -51,6 +51,7 @@ import {
   publishAdminRentalRequestCutoverObservation,
   readAdminRentalRequestCutoverConfig,
 } from './adminRentalRequestCutover.js';
+import { readRentalRequestWriteMirrorRetirementConfig } from '../compatibility/rentalRequestWriteMirrorRetirement.js';
 
 export const useAdminUserActionReviewState = () => {
   const [
@@ -962,7 +963,8 @@ export default function useAdminUserActionReviewController({
       }
 
       const adminCutoverConfig = readAdminRentalRequestCutoverConfig();
-      if (adminCutoverConfig.readRequested) {
+      const rentalWriteMirrorRetirementConfig = readRentalRequestWriteMirrorRetirementConfig();
+      if (adminCutoverConfig.readRequested && !rentalWriteMirrorRetirementConfig.enabled) {
         try {
           const firebaseUser = firebaseAuth.currentUser;
           if (!firebaseUser) throw new Error('admin-firebase-sign-in-required');

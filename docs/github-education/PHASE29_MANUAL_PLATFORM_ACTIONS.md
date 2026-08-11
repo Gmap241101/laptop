@@ -74,3 +74,16 @@ Expected result:
 ```
 
 This migration permits `firestore_mirror_status=retired`. It is required before testing admin status/device saves or user rental mutations with the Phase 29 mirror-retirement flag enabled.
+
+## Third runtime hotfix: administrator status persistence
+If an administrator status change shows a success toast but the old status returns after leaving and reopening **기기 대여 신청관리**, deploy the Phase 29 administrator status persistence hotfix.
+
+No new migration or environment variable is required. Keep:
+
+```text
+SERVICE_VERSION=phase29
+FIRESTORE_ASSET_BOARD_WRITE_MIRROR_DISABLED=true
+FIRESTORE_RENTAL_REQUEST_WRITE_MIRROR_DISABLED=true
+```
+
+Redeploy both the Phase 29 backend and frontend. In Phase 29 authoritative mode, administrator page entry and targeted sync must no longer import `rentalRequests` from Firestore. After deployment, change a test request to `대여중`, `보류`, or `불허`, leave the request-management screen, reopen it, and verify the changed PostgreSQL status remains persistent.

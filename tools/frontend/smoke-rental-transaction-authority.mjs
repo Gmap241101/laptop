@@ -37,6 +37,23 @@ const syncBranch = rentalDataController.indexOf('clerkStagingClient.syncRentalRe
 const getBranch = rentalDataController.indexOf('clerkStagingClient.getRentalRequestReadCandidate()', enabledBranch);
 assert.ok(enabledBranch >= 0 && getBranch > enabledBranch && syncBranch > getBranch, 'Phase 29 enabled branch must select PostgreSQL candidate before any legacy shadow sync branch.');
 
+const adminRequestsController = readFileSync('src/features/requests/useAdminRequestsController.js', 'utf8');
+for (const marker of [
+  'readRentalRequestWriteMirrorRetirementConfig',
+  'if (rentalWriteMirrorRetirementConfig.enabled)',
+  'bootstrapCount = 0',
+]) assert.ok(adminRequestsController.includes(marker), marker);
+const adminBootstrapGate = adminRequestsController.indexOf('if (rentalWriteMirrorRetirementConfig.enabled)');
+const adminBootstrapCall = adminRequestsController.indexOf('clerkStagingClient.bootstrapAdminRentalRequests', adminBootstrapGate);
+assert.ok(adminBootstrapGate >= 0 && adminBootstrapCall > adminBootstrapGate, 'Phase 29 admin list load must gate legacy Firestore bootstrap behind retirement-disabled branch.');
+
+const adminUserActionController = readFileSync('src/features/requests/useAdminUserActionReviewController.js', 'utf8');
+for (const marker of [
+  'readRentalRequestWriteMirrorRetirementConfig',
+  'adminCutoverConfig.readRequested && !rentalWriteMirrorRetirementConfig.enabled',
+  'clerkStagingClient.syncAdminRentalRequest',
+]) assert.ok(adminUserActionController.includes(marker), marker);
+
 const diagnostics = readFileSync('src/clerk/ClerkStagingDiagnostics.jsx', 'utf8');
 for (const marker of [
   'Clerk Staging Test · Phase 29',

@@ -40,6 +40,7 @@ import {
   publishAdminRentalRequestCutoverObservation,
   readAdminRentalRequestCutoverConfig,
 } from './adminRentalRequestCutover.js';
+import { readRentalRequestWriteMirrorRetirementConfig } from '../compatibility/rentalRequestWriteMirrorRetirement.js';
 
 const DEFAULT_PAGE_SIZE = 10;
 
@@ -111,6 +112,10 @@ export default function useAdminRequestsController({
   const postgresBootstrapRef = useRef(false);
   const [postgresFallbackActive, setPostgresFallbackActive] = useState(false);
   const adminCutoverConfig = useMemo(() => readAdminRentalRequestCutoverConfig(), []);
+  const rentalWriteMirrorRetirementConfig = useMemo(
+    () => readRentalRequestWriteMirrorRetirementConfig(),
+    []
+  );
   const postgresServerPaging = Boolean(
     adminCutoverConfig.readRequested && !postgresFallbackActive
   );
@@ -261,8 +266,12 @@ export default function useAdminRequestsController({
         const firebaseIdToken = await firebaseUser.getIdToken();
         let bootstrapCount = null;
         if (!postgresBootstrapRef.current) {
-          const bootstrapPayload = await clerkStagingClient.bootstrapAdminRentalRequests(firebaseIdToken);
-          bootstrapCount = Number(bootstrapPayload?.adminRentalRequestBootstrap?.synchronized || 0);
+          if (rentalWriteMirrorRetirementConfig.enabled) {
+            bootstrapCount = 0;
+          } else {
+            const bootstrapPayload = await clerkStagingClient.bootstrapAdminRentalRequests(firebaseIdToken);
+            bootstrapCount = Number(bootstrapPayload?.adminRentalRequestBootstrap?.synchronized || 0);
+          }
           postgresBootstrapRef.current = true;
         }
         const payload = await clerkStagingClient.getAdminRentalRequests(firebaseIdToken, {
@@ -355,6 +364,7 @@ export default function useAdminRequestsController({
     pageSize,
     postgresServerPaging,
     prerequisitesReady,
+    rentalWriteMirrorRetirementConfig.enabled,
     quickFilter,
     referenceDate,
     requestTab,

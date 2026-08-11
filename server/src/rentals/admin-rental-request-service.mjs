@@ -279,6 +279,17 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient, r
 
   return Object.freeze({
     async bootstrap(firebaseIdentity) {
+      const admin = await verify(firebaseIdentity);
+      if (!writeMirrorEnabled) {
+        return Object.freeze({
+          admin,
+          synchronized: 0,
+          sourceCount: 0,
+          eventCount: 0,
+          skipped: true,
+          source: 'postgresql-authoritative',
+        });
+      }
       return bootstrap(firebaseIdentity);
     },
 
@@ -306,7 +317,21 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient, r
 
     async syncRequest(firebaseIdentity, requestId) {
       const admin = await verify(firebaseIdentity);
-      const synchronized = await syncOne(firebaseIdentity, requestId, { includeEvents: true });
+      const id = trim(requestId);
+      if (!id) throw serviceError('admin_rental_request_id_missing', 'Rental request ID is required.', 400);
+      if (!writeMirrorEnabled) {
+        const request = await repository.getByRequestId(id);
+        if (!request) throw serviceError('rental_request_not_found', 'Rental request was not found.', 404);
+        return Object.freeze({
+          admin,
+          synchronized: 0,
+          eventCount: 0,
+          request,
+          skipped: true,
+          source: 'postgresql-authoritative',
+        });
+      }
+      const synchronized = await syncOne(firebaseIdentity, id, { includeEvents: true });
       return Object.freeze({ admin, synchronized: 1, eventCount: synchronized.eventCount, request: synchronized.request });
     },
 
