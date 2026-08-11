@@ -19,6 +19,9 @@ for (const marker of [
   'site_content_sync_count_mismatch',
 ]) assert.ok(cutover.includes(marker), `missing Phase 24 cutover marker: ${marker}`);
 
+assert.ok(cutover.includes("clerkStagingClient.initialize()"), 'site-content write-through must initialize ClerkJS before requesting a token');
+assert.ok(!cutover.includes('globalThis.Clerk?.session'), 'site-content write-through must not read a not-yet-hydrated global Clerk session');
+
 
 for (const marker of [
   '|| authorityEnabled',
@@ -26,7 +29,7 @@ for (const marker of [
   '(authorityEnabled && !queryRollback && !queryWriteRollback)',
 ]) assert.ok(cutover.includes(marker), `Phase 33 public authority must force site-content write-through: ${marker}`);
 const adminAuthoritySync = readFileSync('src/features/content/useAdminPublicContentSynchronizationController.js', 'utf8');
-for (const marker of ['syncAllSiteContentDomainsFromFirestore', 'syncAllPolicyContentDomainsFromFirestore', 'mk_phase33_public_content_authority_repair_20260811_2355']) {
+for (const marker of ['syncAllSiteContentDomainsFromFirestore', 'syncAllPolicyContentDomainsFromFirestore', 'mk_phase33_public_content_authority_repair_20260812_0015']) {
   assert.ok(adminAuthoritySync.includes(marker), `missing Phase 33 content reconciliation marker: ${marker}`);
 }
 

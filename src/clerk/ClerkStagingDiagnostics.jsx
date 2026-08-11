@@ -126,7 +126,7 @@ import { clerkStagingClient } from './clerkStagingClient.js';
 
 const PHASE32_RUNTIME_REVISION = 'phase32-new-member-runtime-authority-20260811-2108';
 const PHASE33_RUNTIME_REVISION = 'phase33-user-clerk-content-authority-20260811-2210';
-const PHASE33_FRONTEND_HOTFIX_REVISION = 'phase33-public-content-write-through-hotfix-20260811-2355';
+const PHASE33_FRONTEND_HOTFIX_REVISION = 'phase33-clerk-session-hydration-hotfix-20260812-0015';
 
 const panelStyle = {
   position: 'fixed',

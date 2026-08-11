@@ -248,7 +248,7 @@ Expected diagnostics markers after Vercel redeploy:
 ```text
 Clerk Staging Test · Phase 33
 Runtime revision: phase33-user-clerk-content-authority-20260811-2210
-Frontend hotfix revision: phase33-public-content-write-through-hotfix-20260811-2355
+Frontend hotfix revision: phase33-clerk-session-hydration-hotfix-20260812-0015
 ```
 
 For this hotfix:
@@ -265,4 +265,63 @@ Production change: none
 ```
 
 After the Vercel redeploy, reopen the administrator diagnostics URL first. The normal administrator UI and the Phase 33 diagnostics panel must both render. Only then continue the staged Phase 33 content synchronization and authority-flag validation described above.
-\n\n## Public content write-through authority hotfix — 2026-08-12 00:01 KST\n\nIf administrator home/banner/popup/footer lists are correct but the user home is missing the main visual, promotion banners, quick-link banners or popups, this is a Firestore-admin / PostgreSQL-public synchronization split, not a public-read source-selection problem.\n\nWith this hotfix and these Phase 33 flags enabled:\n\n```text\nVITE_SITE_CONTENT_POSTGRES_AUTHORITY_ENABLED=true\nVITE_POLICY_CONTENT_POSTGRES_AUTHORITY_ENABLED=true\n```\n\nadministrator write-through is now mandatory automatically. `siteContentWrite=postgres` and `policyContentWrite=postgres` are no longer required for normal administrator saves.\n\nOn the first authenticated `/admin` session after this hotfix is deployed, the frontend automatically performs one reconciliation per browser session:\n\n```text\nsite-settings\nhome (homePage/config + every homeBanners document)\npopup\nfooter\nrental-config\nterms\n\nFirestore administrator source\n→ PostgreSQL public authority\n```\n\nThis repairs content that was missed before the authority cutover. Existing per-save domain synchronization remains active for later edits.\n\nExpected frontend marker:\n\n```text\nFrontend hotfix revision: phase33-public-content-write-through-hotfix-20260811-2355\n```\n\nDeployment for this hotfix:\n\n```text\nVercel Staging redeploy: required\nHeroku Staging redeploy: not required for this hotfix\nPostgreSQL migration: none\nNew environment variables: none\nFirebase Rules/index: unchanged\nClerk: unchanged\nProduction: unchanged\n```\n\nAfter Vercel redeploy:\n\n1. Open `/admin` and complete administrator authentication.\n2. Keep the page open until no PostgreSQL synchronization error toast appears. The first authenticated admin session performs the full repair automatically.\n3. Open the user plain URL in a fresh/reloaded tab.\n4. Confirm main visual, promotion banners, quick-link banners and published popups are visible.\n5. Edit one home banner and one popup in the administrator UI **without relying on the long test URL**, save them, then reload the user home and confirm the changes appear.\n6. Confirm footer/site settings and rental policy/terms still load from PostgreSQL.\n\nIf automatic reconciliation reports an error, do not re-enable silent user Firestore fallback. Keep public PostgreSQL authority enabled and report the exact synchronization error code so the Firestore-to-PostgreSQL bridge can be fixed directly.\n
+\n\n## Public content write-through authority hotfix — 2026-08-12 00:01 KST\n\nIf administrator home/banner/popup/footer lists are correct but the user home is missing the main visual, promotion banners, quick-link banners or popups, this is a Firestore-admin / PostgreSQL-public synchronization split, not a public-read source-selection problem.\n\nWith this hotfix and these Phase 33 flags enabled:\n\n```text\nVITE_SITE_CONTENT_POSTGRES_AUTHORITY_ENABLED=true\nVITE_POLICY_CONTENT_POSTGRES_AUTHORITY_ENABLED=true\n```\n\nadministrator write-through is now mandatory automatically. `siteContentWrite=postgres` and `policyContentWrite=postgres` are no longer required for normal administrator saves.\n\nOn the first authenticated `/admin` session after this hotfix is deployed, the frontend automatically performs one reconciliation per browser session:\n\n```text\nsite-settings\nhome (homePage/config + every homeBanners document)\npopup\nfooter\nrental-config\nterms\n\nFirestore administrator source\n→ PostgreSQL public authority\n```\n\nThis repairs content that was missed before the authority cutover. Existing per-save domain synchronization remains active for later edits.\n\nExpected frontend marker:\n\n```text\nFrontend hotfix revision: phase33-clerk-session-hydration-hotfix-20260812-0015\n```\n\nDeployment for this hotfix:\n\n```text\nVercel Staging redeploy: required\nHeroku Staging redeploy: not required for this hotfix\nPostgreSQL migration: none\nNew environment variables: none\nFirebase Rules/index: unchanged\nClerk: unchanged\nProduction: unchanged\n```\n\nAfter Vercel redeploy:\n\n1. Open `/admin` and complete administrator authentication.\n2. Keep the page open until no PostgreSQL synchronization error toast appears. The first authenticated admin session performs the full repair automatically.\n3. Open the user plain URL in a fresh/reloaded tab.\n4. Confirm main visual, promotion banners, quick-link banners and published popups are visible.\n5. Edit one home banner and one popup in the administrator UI **without relying on the long test URL**, save them, then reload the user home and confirm the changes appear.\n6. Confirm footer/site settings and rental policy/terms still load from PostgreSQL.\n\nIf automatic reconciliation reports an error, do not re-enable silent user Firestore fallback. Keep public PostgreSQL authority enabled and report the exact synchronization error code so the Firestore-to-PostgreSQL bridge can be fixed directly.\n
+
+## Clerk session hydration synchronization hotfix — 2026-08-12 00:15 KST
+
+Observed Staging error:
+
+```text
+공개 콘텐츠 PostgreSQL 동기화에 실패했습니다.
+오류 코드: site_content_clerk_session_missing
+```
+
+The administrator diagnostics can already show a valid Clerk administrator authority and a Firebase administrator compatibility session while the automatic content-repair effect has fired earlier from a restored local admin session. The previous write-through code read `globalThis.Clerk.session` directly and did not initialize/hydrate ClerkJS first. A refresh could therefore race ClerkJS hydration, fail the one-shot repair, and leave PostgreSQL public content incomplete.
+
+This hotfix changes the token contract for administrator content writes:
+
+```text
+clerkStagingClient.initialize()
+→ ClerkJS load + session hydration
+→ active Clerk session token
+→ Firebase administrator compatibility token
+→ Firestore server read
+→ PostgreSQL synchronization
+```
+
+The same direct-global Clerk token race was removed from notice/FAQ administrator PostgreSQL writes as a preventive correction.
+
+The automatic repair session key was bumped to:
+
+```text
+mk_phase33_public_content_authority_repair_20260812_0015
+```
+
+Therefore a browser session that failed the previous `2355` repair will perform a fresh full reconciliation after this frontend is deployed.
+
+Expected frontend marker:
+
+```text
+Frontend hotfix revision: phase33-clerk-session-hydration-hotfix-20260812-0015
+```
+
+Deployment:
+
+```text
+Vercel Staging redeploy: required
+Heroku Staging redeploy: not required
+PostgreSQL migration: none
+New environment variables: none
+Firebase Rules/index: unchanged
+Clerk configuration: unchanged
+Production: unchanged
+```
+
+After deployment:
+
+1. Open `https://mkrental.vercel.app/admin` and complete/restore administrator login.
+2. Confirm the new frontend hotfix revision.
+3. Do not manually re-enable Firestore fallback.
+4. Wait for the first-session reconciliation. There must be no `site_content_clerk_session_missing` toast.
+5. Reload `https://mkrental.vercel.app/` and confirm the main visual, promotion banners, quick-link banners, popup and footer.
+6. Edit and save one home banner and one popup from the plain administrator URL, then reload the user home and confirm both edits appear.

@@ -1,4 +1,5 @@
 import { firebaseAuth } from '../../firebase.js';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 
 const READ_SESSION_KEY = 'mk_board_content_postgres_read';
 const WRITE_SESSION_KEY = 'mk_board_content_postgres_write';
@@ -145,7 +146,8 @@ export const requestFaqBoard = async ({ search = '', page = 1, pageSize = 10, ca
 };
 
 const getAdminTokens = async () => {
-  const clerkToken = await globalThis.Clerk?.session?.getToken?.();
+  const clerk = await clerkStagingClient.initialize();
+  const clerkToken = await clerk?.session?.getToken?.();
   if (!clerkToken) throw Object.assign(new Error('Clerk administrator session is required.'), { code: 'board_clerk_session_missing' });
   const firebaseUser = firebaseAuth.currentUser;
   if (!firebaseUser) throw Object.assign(new Error('Firebase administrator compatibility session is required.'), { code: 'board_firebase_session_missing' });

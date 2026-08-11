@@ -16,6 +16,7 @@ import {
   firebaseAuth,
 } from '../../firebase.js';
 import { getDocFromServer, getDocsFromServer, limit, query as firestoreQuery } from 'firebase/firestore';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 
 const READ_SESSION_KEY = 'mk_site_content_postgres_read';
 const WRITE_SESSION_KEY = 'mk_site_content_postgres_write_through';
@@ -177,7 +178,7 @@ export const requestSiteContentDomain = async ({ domain, fetchImpl = fetch, conf
 };
 
 const getClerkToken = async () => {
-  const clerk = globalThis.Clerk;
+  const clerk = await clerkStagingClient.initialize();
   const token = await clerk?.session?.getToken?.();
   if (!token) throw Object.assign(new Error('Clerk administrator session is required for site content write-through.'), { code: 'site_content_clerk_session_missing' });
   return token;
