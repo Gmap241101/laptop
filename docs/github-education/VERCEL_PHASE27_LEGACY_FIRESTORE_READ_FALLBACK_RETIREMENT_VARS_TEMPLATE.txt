@@ -1,0 +1,3 @@
+# Phase 27 — Vercel staging/test build-time variable
+# Keep every Phase 9–26 variable already configured.
+VITE_LEGACY_FIRESTORE_READ_FALLBACK_DISABLED=true

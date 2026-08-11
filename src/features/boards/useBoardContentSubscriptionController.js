@@ -42,6 +42,11 @@ import {
   requestNoticePost,
   subscribeBoardContentRefresh,
 } from './boardContentCutover.js';
+import {
+  isLegacyFirestoreReadFallbackAllowed,
+  readLegacyFirestoreReadFallbackConfig,
+  recordLegacyFirestoreReadFallbackBlocked,
+} from '../compatibility/legacyFirestoreReadFallbackCutover.js';
 
 const FIRESTORE_PINNED_POST_LIMIT = 20;
 
@@ -287,6 +292,8 @@ export default function useBoardContentSubscriptionController({
 
   const boardCutoverConfig = readBoardContentCutoverConfig();
   const boardReadRequested = boardCutoverConfig.readRequested;
+  const legacyFallbackConfig = readLegacyFirestoreReadFallbackConfig();
+  const legacyFallbackAllowed = isLegacyFirestoreReadFallbackAllowed(legacyFallbackConfig);
   const [noticePostgresFallback, setNoticePostgresFallback] = useState(false);
   const [faqPostgresFallback, setFaqPostgresFallback] = useState(false);
   const [boardRefreshVersion, setBoardRefreshVersion] = useState(0);
@@ -344,6 +351,21 @@ export default function useBoardContentSubscriptionController({
     }).catch((error) => {
       if (cancelled) return;
       console.error('Phase 26 notice PostgreSQL read failed:', error);
+      if (!legacyFallbackAllowed) {
+        recordLegacyFirestoreReadFallbackBlocked('notice-board', error?.code || 'notice_board_postgres_unavailable');
+        const message = '공지사항을 PostgreSQL에서 불러오지 못했습니다. legacy Firestore fallback은 비활성화되어 있습니다.';
+        publishBoardContentObservation({
+          readRequested: true,
+          readSource: 'unavailable',
+          boardType: 'notice',
+          operation: shouldLoadUserHomeNotice ? 'home-read' : 'list-read',
+          error: error?.code || 'notice_board_postgres_unavailable',
+        });
+        setNoticePostsLoadErrorMessage(message);
+        setNoticePostsReady(true);
+        setNoticePostgresFallback(false);
+        return;
+      }
       publishBoardContentObservation({
         readRequested: true,
         readSource: 'firestore-fallback',
@@ -367,6 +389,7 @@ export default function useBoardContentSubscriptionController({
     noticePage,
     adminNoticePage,
     noticeBoardConfig.postsPerPage,
+    legacyFallbackAllowed,
   ]);
 
   useEffect(() => {
@@ -411,6 +434,22 @@ export default function useBoardContentSubscriptionController({
     }).catch((error) => {
       if (cancelled) return;
       console.error('Phase 26 FAQ PostgreSQL read failed:', error);
+      if (!legacyFallbackAllowed) {
+        recordLegacyFirestoreReadFallbackBlocked('faq-board', error?.code || 'faq_board_postgres_unavailable');
+        const message = 'FAQ를 PostgreSQL에서 불러오지 못했습니다. legacy Firestore fallback은 비활성화되어 있습니다.';
+        publishBoardContentObservation({
+          readRequested: true,
+          readSource: 'unavailable',
+          boardType: 'faq',
+          operation: 'list-read',
+          error: error?.code || 'faq_board_postgres_unavailable',
+        });
+        setFaqPostsLoadErrorMessage(message);
+        setFaqPostsReady(true);
+        setFaqCategoriesReady(true);
+        setFaqPostgresFallback(false);
+        return;
+      }
       publishBoardContentObservation({
         readRequested: true,
         readSource: 'firestore-fallback',
@@ -435,6 +474,7 @@ export default function useBoardContentSubscriptionController({
     faqPage,
     adminFaqPage,
     faqBoardConfig.postsPerPage,
+    legacyFallbackAllowed,
   ]);
 
   useEffect(() => {
@@ -805,6 +845,18 @@ export default function useBoardContentSubscriptionController({
         .catch((error) => {
           if (cancelled) return;
           console.error('Selected notice PostgreSQL read error:', error);
+          if (!legacyFallbackAllowed) {
+            recordLegacyFirestoreReadFallbackBlocked('notice-detail', error?.code || 'notice_detail_postgres_unavailable');
+            publishBoardContentObservation({
+              readRequested: true,
+              readSource: 'unavailable',
+              boardType: 'notice',
+              operation: 'detail-read',
+              error: error?.code || 'notice_detail_postgres_unavailable',
+            });
+            setNoticePostsLoadErrorMessage('공지사항 상세를 PostgreSQL에서 불러오지 못했습니다. legacy Firestore fallback은 비활성화되어 있습니다.');
+            return;
+          }
           publishBoardContentObservation({
             readRequested: true,
             readSource: 'firestore-fallback',
@@ -839,6 +891,7 @@ export default function useBoardContentSubscriptionController({
     view,
     boardReadRequested,
     noticePostgresFallback,
+    legacyFallbackAllowed,
   ]);
 
   useEffect(() => {

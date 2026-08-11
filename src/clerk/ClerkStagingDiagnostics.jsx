@@ -90,6 +90,11 @@ import {
   readBoardContentCutoverConfig,
   subscribeBoardContentObservation,
 } from '../features/boards/boardContentCutover.js';
+import {
+  getLatestLegacyFirestoreReadFallbackObservation,
+  readLegacyFirestoreReadFallbackConfig,
+  subscribeLegacyFirestoreReadFallbackObservation,
+} from '../features/compatibility/legacyFirestoreReadFallbackCutover.js';
 import { clerkStagingClient } from './clerkStagingClient.js';
 
 const panelStyle = {
@@ -146,6 +151,7 @@ export default function ClerkStagingDiagnostics() {
   const siteContentConfig = useMemo(() => readSiteContentCutoverConfig(), []);
   const policyContentConfig = useMemo(() => readPolicyContentCutoverConfig(), []);
   const boardContentConfig = useMemo(() => readBoardContentCutoverConfig(), []);
+  const legacyReadFallbackConfig = useMemo(() => readLegacyFirestoreReadFallbackConfig(), []);
   const [state, setState] = useState({
     phase: requested ? 'loading' : 'hidden',
     signedIn: false,
@@ -338,6 +344,11 @@ export default function ClerkStagingDiagnostics() {
     boardContentFirestoreMirror: null,
     boardContentSyncAt: null,
     boardContentError: null,
+    legacyReadFallbackRetirementRequested: legacyReadFallbackConfig.requested,
+    legacyReadFallbackAllowed: !legacyReadFallbackConfig.requested,
+    legacyReadFallbackBlockedCount: 0,
+    legacyReadFallbackLastDomain: null,
+    legacyReadFallbackLastReason: null,
     error: null,
   });
 
@@ -888,6 +899,28 @@ export default function ClerkStagingDiagnostics() {
     return subscribeBoardContentObservation(applyObservation);
   }, [requested]);
 
+  useEffect(() => {
+    if (!requested) return undefined;
+    const applyObservation = (observation) => {
+      setState((current) => ({
+        ...current,
+        legacyReadFallbackRetirementRequested: observation && Object.prototype.hasOwnProperty.call(observation, 'requested')
+          ? Boolean(observation.requested)
+          : current.legacyReadFallbackRetirementRequested,
+        legacyReadFallbackAllowed: observation && Object.prototype.hasOwnProperty.call(observation, 'fallbackAllowed')
+          ? Boolean(observation.fallbackAllowed)
+          : current.legacyReadFallbackAllowed,
+        legacyReadFallbackBlockedCount: observation && Object.prototype.hasOwnProperty.call(observation, 'blockedCount')
+          ? Number(observation.blockedCount || 0)
+          : current.legacyReadFallbackBlockedCount,
+        legacyReadFallbackLastDomain: observation?.lastBlockedDomain || current.legacyReadFallbackLastDomain,
+        legacyReadFallbackLastReason: observation?.lastBlockedReason || current.legacyReadFallbackLastReason,
+      }));
+    };
+    applyObservation(getLatestLegacyFirestoreReadFallbackObservation());
+    return subscribeLegacyFirestoreReadFallbackObservation(applyObservation);
+  }, [requested]);
+
   if (!requested) return null;
 
   const run = async (operation) => {
@@ -1091,7 +1124,7 @@ export default function ClerkStagingDiagnostics() {
 
   return (
     <aside style={panelStyle} aria-label="Clerk staging diagnostics">
-      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 26</div>
+      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 27</div>
       <div>SDK: {state.phase === 'loading' ? 'loading' : state.phase}</div>
       <div>Signed in: {state.signedIn ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Clerk user: {state.userId || '-'}</div>
@@ -1356,6 +1389,15 @@ export default function ClerkStagingDiagnostics() {
       <div style={{ overflowWrap: 'anywhere' }}>Board Firestore compatibility mirror: {state.boardContentFirestoreMirror || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Board synced at: {state.boardContentSyncAt || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Board error: {state.boardContentError || '-'}</div>
+
+      <div style={{ marginTop: '6px', fontWeight: 700 }}>Phase 27 validated-domain legacy Firestore read fallback retirement</div>
+      <div>Legacy Firestore read fallback retirement requested: {state.legacyReadFallbackRetirementRequested ? 'yes' : 'no'}</div>
+      <div>Legacy Firestore read fallback allowed: {state.legacyReadFallbackAllowed ? 'yes' : 'no'}</div>
+      <div>Blocked fallback attempts: {state.legacyReadFallbackBlockedCount}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Last blocked fallback domain: {state.legacyReadFallbackLastDomain || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Last blocked fallback reason: {state.legacyReadFallbackLastReason || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Retired read domains: member-profile / rental-restriction / rental-requests / assets / notice / faq</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Preserved compatibility: site-shell parity fallback / policy transaction reads / account recovery / write mirrors</div>
 
       {state.error ? (
         <div role="alert" style={{ marginTop: '8px', color: '#b91c1c', overflowWrap: 'anywhere' }}>

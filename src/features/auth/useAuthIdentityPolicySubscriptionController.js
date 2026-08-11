@@ -39,6 +39,11 @@ import {
 } from '../requests/rentalRestrictionReadCutover.js';
 import { createDefaultUserProfileForm } from '../members/useUserMyPageAccountController.js';
 import { readUserAuthTransition } from './authSessionService.js';
+import {
+  isLegacyFirestoreReadFallbackAllowed,
+  readLegacyFirestoreReadFallbackConfig,
+  recordLegacyFirestoreReadFallbackBlocked,
+} from '../compatibility/legacyFirestoreReadFallbackCutover.js';
 
 
 export const normalizeAdminAccounts = function(adminAccounts) {
@@ -354,6 +359,8 @@ export default function useAuthIdentityPolicySubscriptionController({
     let postgresCandidateError = '';
     let lastCommittedProfileKey = null;
     const cutoverConfig = readMemberProfileCutoverConfig();
+    const legacyFallbackConfig = readLegacyFirestoreReadFallbackConfig();
+    const legacyFallbackAllowed = isLegacyFirestoreReadFallbackAllowed(legacyFallbackConfig);
 
     const commitResolvedProfile = ({
       profile,
@@ -469,6 +476,22 @@ export default function useAuthIdentityPolicySubscriptionController({
             );
             return;
           }
+          if (!legacyFallbackAllowed) {
+            recordLegacyFirestoreReadFallbackBlocked('member-profile', error?.code || 'member-profile-postgres-unavailable');
+            commitResolvedProfile({
+              profile: null,
+              source: 'unavailable',
+              equivalent: null,
+              changedFields: [],
+              fallbackReason: error?.code || 'member-profile-postgres-unavailable',
+              firestoreFallbackReads: 0,
+            });
+            triggerToastRef.current?.(
+              '회원 정보를 PostgreSQL에서 불러오지 못했습니다. legacy Firestore fallback은 비활성화되어 있습니다.',
+              'error'
+            );
+            return;
+          }
           console.warn('PostgreSQL member profile refresh failed; keeping the last known profile.', {
             code: error?.code,
             status: error?.status,
@@ -478,7 +501,7 @@ export default function useAuthIdentityPolicySubscriptionController({
         }
       };
 
-      void refreshPostgresProfile({ allowFirestoreFallback: true });
+      void refreshPostgresProfile({ allowFirestoreFallback: legacyFallbackAllowed });
 
       const postgresRefreshTimer = setInterval(() => {
         void refreshPostgresProfile();
@@ -608,6 +631,8 @@ export default function useAuthIdentityPolicySubscriptionController({
 
     setCurrentUserRestrictionReady(false);
     const restrictionCutoverConfig = readRentalRestrictionCutoverConfig();
+    const legacyFallbackConfig = readLegacyFirestoreReadFallbackConfig();
+    const legacyFallbackAllowed = isLegacyFirestoreReadFallbackAllowed(legacyFallbackConfig);
 
     if (restrictionCutoverConfig.requested) {
       let active = true;
@@ -678,6 +703,24 @@ export default function useAuthIdentityPolicySubscriptionController({
               'error'
             );
           } else {
+            if (!legacyFallbackAllowed) {
+              recordLegacyFirestoreReadFallbackBlocked('rental-restriction', error?.code || 'rental-restriction-postgres-unavailable');
+              setCurrentUserRestriction(null);
+              setCurrentUserRestrictionReady(true);
+              publishRentalRestrictionCutoverObservation({
+                requested: true,
+                activeSource: 'unavailable',
+                firestoreWatcherDisabled: true,
+                firestoreFallbackReads: 0,
+                fallbackReason: error?.code || 'rental-restriction-postgres-unavailable',
+                firebaseUid: firebaseAuthUser.uid,
+              });
+              triggerToastRef.current?.(
+                '대여 제한 상태를 PostgreSQL에서 불러오지 못했습니다. legacy Firestore fallback은 비활성화되어 있습니다.',
+                'error'
+              );
+              return;
+            }
             console.warn('PostgreSQL rental restriction refresh failed; keeping the last known restriction.', {
               code: error?.code,
               status: error?.status,
@@ -688,7 +731,7 @@ export default function useAuthIdentityPolicySubscriptionController({
         }
       };
 
-      void refreshRestriction({ allowFirestoreFallback: true });
+      void refreshRestriction({ allowFirestoreFallback: legacyFallbackAllowed });
       const refreshTimer = setInterval(() => void refreshRestriction(), 15000);
       const unsubscribeWriteThrough = subscribeRentalRestrictionWriteThroughObservation((observation) => {
         if (observation?.status === 'synced' && observation?.firebaseUid === firebaseAuthUser.uid) {

@@ -1,0 +1,40 @@
+Phase 27 Legacy Firestore Read Fallback Retirement — Validation
+
+Implemented scope:
+- member profile legacy read fallback retirement
+- rental restriction legacy read fallback retirement
+- rental request legacy read fallback retirement
+- asset catalog/availability legacy read fallback retirement
+- notice/FAQ legacy read fallback retirement
+- explicit rollback latch
+- diagnostic blocked-fallback counters
+
+Preserved:
+- site-shell parity fallback
+- account recovery fallback
+- policy transaction reads
+- Firestore write mirrors
+- Firebase Auth / UID bridge
+
+Required staging result when enabled:
+Legacy Firestore read fallback retirement requested: yes
+Legacy Firestore read fallback allowed: no
+Blocked fallback attempts: 0 during normal operation
+Last blocked fallback domain: -
+Last blocked fallback reason: -
+
+Final automated verification:
+- verify:phase27: PASS (exit 0)
+- React source files: 166
+- Application contracts: 124
+- User routes: 11
+- Administrator tabs: 20
+- Firestore total calls: 137
+- onSnapshot: 35
+- getDocs/server equivalents: 53
+- getDoc/server equivalents: 31
+- getCountFromServer: 18
+- Firestore warnings: 0
+- Firestore errors: 0
+- build:staging prebuild: PASS
+- Vite bundle: not executed locally because `vite` is unavailable in the assistant runtime (exit 127)

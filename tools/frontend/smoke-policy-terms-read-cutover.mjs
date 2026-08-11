@@ -32,7 +32,7 @@ for (const marker of ['stabilizeAdminPostLoginRoute', "window.setTimeout(applyAd
   assert.ok(adminAuth.includes(marker), `missing admin post-login route stabilization marker: ${marker}`);
 }
 const diagnostics = readFileSync('src/clerk/ClerkStagingDiagnostics.jsx', 'utf8');
-for (const marker of ['Clerk Staging Test · Phase 26', 'Phase 25 rental policy + terms PostgreSQL read + write-through', 'Policy content 전체 동기화', "top: '184px'"]) {
+for (const marker of ['Clerk Staging Test · Phase 27', 'Phase 25 rental policy + terms PostgreSQL read + write-through', 'Policy content 전체 동기화', "top: '184px'"]) {
   assert.ok(diagnostics.includes(marker), `missing Phase 25 diagnostics marker: ${marker}`);
 }
 const app = readFileSync('src/App.jsx', 'utf8');

@@ -168,12 +168,13 @@ export const chooseRentalRequestReadSource = ({
 export const loadRentalRequestsWithoutFirestoreWatcher = async ({
   loadPostgresCandidate,
   loadFirestoreFallback,
+  allowFirestoreFallback = true,
 }) => {
-  if (
-    typeof loadPostgresCandidate !== 'function' ||
-    typeof loadFirestoreFallback !== 'function'
-  ) {
-    throw new TypeError('Phase 15 rental request loaders are required.');
+  if (typeof loadPostgresCandidate !== 'function') {
+    throw new TypeError('Phase 15 PostgreSQL rental request loader is required.');
+  }
+  if (allowFirestoreFallback && typeof loadFirestoreFallback !== 'function') {
+    throw new TypeError('Phase 15 Firestore fallback loader is required when fallback is enabled.');
   }
 
   try {
@@ -195,6 +196,13 @@ export const loadRentalRequestsWithoutFirestoreWatcher = async ({
       sourceRefreshes: Number(candidate.sourceRefreshes) || 0,
     });
   } catch (candidateError) {
+    if (!allowFirestoreFallback) {
+      const error = new Error('PostgreSQL rental requests are unavailable and legacy Firestore fallback is disabled.');
+      error.code = candidateError?.code || 'rental-request-postgres-unavailable';
+      error.candidateCode = candidateError?.code || 'rental-request-candidate-unavailable';
+      error.firestoreFallbackReads = 0;
+      throw error;
+    }
     try {
       const fallback = await loadFirestoreFallback();
       const fallbackRequests = Array.isArray(fallback?.requests)

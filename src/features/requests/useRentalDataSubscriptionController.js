@@ -39,6 +39,11 @@ import {
   requestPolicyContentDomain,
   syncPolicyContentDomainFromFirestore,
 } from '../content/policyContentCutover.js';
+import {
+  isLegacyFirestoreReadFallbackAllowed,
+  readLegacyFirestoreReadFallbackConfig,
+  recordLegacyFirestoreReadFallbackBlocked,
+} from '../compatibility/legacyFirestoreReadFallbackCutover.js';
 
 const createDefaultSplitSourceReady = () => ({
   config: false,
@@ -208,6 +213,8 @@ export function useOwnRentalRequestsSubscriptionController({
 
     let disposed = false;
     const cutoverConfig = readRentalRequestCutoverConfig();
+    const legacyFallbackConfig = readLegacyFirestoreReadFallbackConfig();
+    const legacyFallbackAllowed = isLegacyFirestoreReadFallbackAllowed(legacyFallbackConfig);
 
     const mergeRequestLists = (requestLists) => {
       const requestMap = new Map();
@@ -284,6 +291,7 @@ export function useOwnRentalRequestsSubscriptionController({
         loadPostgresCandidate: () =>
           loadPostgresCandidate({ refreshSource: true }),
         loadFirestoreFallback: loadFirestoreOnce,
+        allowFirestoreFallback: legacyFallbackAllowed,
       })
         .then((result) => {
           if (disposed) return;
@@ -306,9 +314,13 @@ export function useOwnRentalRequestsSubscriptionController({
         })
         .catch((error) => {
           if (disposed) return;
-          console.error('Rental request PostgreSQL read and one-time Firestore fallback both failed:', error);
-          const message =
-            '나의 대여신청 내역을 불러오지 못했습니다. PostgreSQL 및 Firestore 연결 상태를 확인해 주세요.';
+          if (!legacyFallbackAllowed) {
+            recordLegacyFirestoreReadFallbackBlocked('rental-requests', error?.code || 'rental-request-postgres-unavailable');
+          }
+          console.error('Rental request authoritative read failed:', error);
+          const message = legacyFallbackAllowed
+            ? '나의 대여신청 내역을 불러오지 못했습니다. PostgreSQL 및 Firestore 연결 상태를 확인해 주세요.'
+            : '나의 대여신청 내역을 PostgreSQL에서 불러오지 못했습니다. legacy Firestore fallback은 비활성화되어 있습니다.';
           setRentalRequests([]);
           setRentalRequestsLoadErrorMessage(message);
           setRentalRequestsReady(true);
@@ -321,7 +333,7 @@ export function useOwnRentalRequestsSubscriptionController({
             changedFields: [],
             fallbackReason: error?.code || 'rental-request-read-unavailable',
             firestoreWatcherDisabled: true,
-            firestoreFallbackReads: Number(error?.firestoreFallbackReads) || 1,
+            firestoreFallbackReads: legacyFallbackAllowed ? (Number(error?.firestoreFallbackReads) || 1) : 0,
             shadowSyncedAt: '',
             sourceRefreshes: 0,
           });
@@ -521,6 +533,8 @@ export default function useRentalDataSubscriptionController({
 
     const policyContentConfig = readPolicyContentCutoverConfig();
     const assetCutoverConfig = readAssetDomainCutoverConfig();
+    const legacyFallbackConfig = readLegacyFirestoreReadFallbackConfig();
+    const legacyFallbackAllowed = isLegacyFirestoreReadFallbackAllowed(legacyFallbackConfig);
     let active = true;
 
     const applyConfigData = (configData, source) => {
@@ -761,7 +775,35 @@ export default function useRentalDataSubscriptionController({
           if (!payload?.assetCatalog) payload = await clerkStagingClient.getAssetCatalog();
           applyCatalogPayload(payload.assetCatalog, 'postgresql', 0, bootstrapped);
         } catch (error) {
-          await loadOneTimeFirestoreFallback(error?.code || error?.message || 'postgresql-asset-read-failed');
+          if (legacyFallbackAllowed) {
+            await loadOneTimeFirestoreFallback(error?.code || error?.message || 'postgresql-asset-read-failed');
+            return;
+          }
+          recordLegacyFirestoreReadFallbackBlocked('assets', error?.code || error?.message || 'postgresql-asset-read-failed');
+          if (cancelled) return;
+          const message = '대여 자산 및 예약 현황을 PostgreSQL에서 불러오지 못했습니다. legacy Firestore fallback은 비활성화되어 있습니다.';
+          setPublicCatalogAssets([]);
+          setPublicCatalogAssetsReady(true);
+          setSplitRentalAssets([]);
+          setSplitRentalAvailability([]);
+          setSplitSourceErrors((previous) => ({ ...previous, assets: message, availability: message }));
+          setSplitSourceReady((previous) => ({ ...previous, assets: true, availability: true }));
+          setFirebaseReady(true);
+          setToast({ message, type: 'error' });
+          publishAssetDomainCutoverObservation({
+            readRequested: assetCutoverConfig.readRequested,
+            writeRequested: assetCutoverConfig.writeRequested,
+            activeSource: 'unavailable',
+            assetWatcherDisabled: true,
+            availabilityWatcherDisabled: true,
+            assetCount: 0,
+            categoryCount: 0,
+            availabilityCount: 0,
+            firestoreFallbackReads: 0,
+            bootstrapped: false,
+            syncAt: '',
+            error: error?.code || 'asset-postgres-read-unavailable',
+          });
         }
       })();
 

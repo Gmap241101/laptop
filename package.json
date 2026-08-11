@@ -96,7 +96,9 @@
     "verify:phase25": "npm run verify:phase24 && npm run server:policy-content:smoke && npm run frontend:policy-content:smoke",
     "server:board-authority:smoke": "node tools/backend/smoke-board-authority.mjs",
     "frontend:board-authority:smoke": "node tools/frontend/smoke-board-authority.mjs",
-    "verify:phase26": "npm run verify:phase25 && npm run server:board-authority:smoke && npm run frontend:board-authority:smoke"
+    "verify:phase26": "npm run verify:phase25 && npm run server:board-authority:smoke && npm run frontend:board-authority:smoke",
+    "frontend:legacy-read-retirement:smoke": "node tools/frontend/smoke-legacy-firestore-read-fallback-retirement.mjs",
+    "verify:phase27": "npm run verify:phase26 && npm run frontend:legacy-read-retirement:smoke"
   },
   "dependencies": {
     "firebase": "^10.14.1",
