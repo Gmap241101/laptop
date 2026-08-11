@@ -317,3 +317,73 @@ legacy Firestore fallback: remains disabled
 ```
 
 Do not enable Firestore fallback to make this test pass.
+
+## Approval-status and authoritative rental-read hotfix
+
+A second Staging regression showed two remaining legacy gates after the new-signup read-model fix.
+
+### Required deployments
+
+This hotfix changes both runtime surfaces:
+
+```text
+Heroku Staging backend: redeploy REQUIRED
+Vercel Staging frontend: redeploy REQUIRED
+PostgreSQL migration: none
+new Heroku/Vercel env: none
+```
+
+Keep the existing Phase 32 flags, including:
+
+```text
+FIRESTORE_ACCOUNT_LIFECYCLE_COMPATIBILITY_DISABLED=true
+VITE_ACCOUNT_LIFECYCLE_POSTGRES_AUTHORITY_ENABLED=true
+VITE_FIRESTORE_RENTAL_REQUEST_WRITE_MIRROR_DISABLED=true
+```
+
+### Why newly approved accounts were immediately logged out
+
+Administrator approval has been PostgreSQL-authoritative since Phase 30, so Firestore `userAccounts.status` can intentionally remain `pending`. The user login finalizer must therefore use the `memberStatus` returned by `/api/users/auth/session` (PostgreSQL/Clerk authority) instead of the stale Firestore status.
+
+Expected after approval:
+
+```text
+PostgreSQL member status: active
+Clerk session verification: active
+Firebase compatibility session: preserved
+login session: remains signed in
+```
+
+Do not restore the Firestore member-status mirror to fix this.
+
+### Why converted users could fail My Rental Requests
+
+The PostgreSQL authoritative rental endpoint must read `app_rental_requests` without requiring the legacy `app_user_member_shadows` row first. Legacy member shadow remains required only for compatibility Firestore sync/compare paths.
+
+Do not re-enable rental-request Firestore fallback or legacy shadow sync.
+
+### Retest sequence
+
+Existing converted account:
+
+```text
+login
+-> My Rental Requests
+-> PostgreSQL candidate succeeds
+-> no legacy Firestore fallback error
+```
+
+New Phase 32 account:
+
+```text
+signup pending
+-> administrator approval
+-> PostgreSQL member status active
+-> user login
+-> wait 30+ seconds
+-> navigate rental / My Page / My Rental Requests
+-> session remains signed in
+-> logout/login repeat
+```
+
+The full frontend must be redeployed for the approval-status fix; a backend-only restart is not sufficient for this revision.

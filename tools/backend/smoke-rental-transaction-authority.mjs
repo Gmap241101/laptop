@@ -85,10 +85,16 @@ const authoritativeReadRepository = {
     return [{ id: 'REQ-TEST0001', requesterUid: 'firebase-user', updatedAt: '2026-08-11T00:00:00.000Z' }];
   },
 };
+let authoritativeMemberShadowReads = 0;
 const authoritativeReadService = createRentalRequestService({
   userRepository,
   firebaseLinkRepository,
-  memberShadowRepository,
+  memberShadowRepository: {
+    async findByAppUserId() {
+      authoritativeMemberShadowReads += 1;
+      throw new Error('Legacy member shadow must not gate PostgreSQL authoritative rental reads.');
+    },
+  },
   rentalRequestRepository: authoritativeReadRepository,
   firestoreRentalRequestsClient: {
     async listOwnRentalRequests() { legacySourceReads += 1; throw new Error('Firestore rental read source must be bypassed in Phase 29.'); },
@@ -100,6 +106,7 @@ assert.equal(authoritativeCurrent.requests.length, 1);
 const authoritativeSyncBypass = await authoritativeReadService.syncCurrent('clerk-user', firebaseIdentity);
 assert.equal(authoritativeSyncBypass.requests.length, 1);
 assert.equal(authoritativeListCalls, 2);
+assert.equal(authoritativeMemberShadowReads, 0, 'Phase 29 PostgreSQL authoritative rental reads must not require the legacy member shadow.');
 assert.equal(legacySourceReads, 0, 'Phase 29 authoritative get/sync paths must not read Firestore');
 
 let postgresAssetReads = 0;

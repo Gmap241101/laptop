@@ -44,6 +44,13 @@ for (const marker of [
   'beginUserAuthTransition', 'bindUserAuthTransitionIdentity', 'completeUserAuthTransition',
 ]) assert.ok(loginSource.includes(marker), `missing Phase 23 user login marker: ${marker}`);
 
+for (const marker of [
+  "authoritativeMemberStatus = ''",
+  "const postgresMemberStatus = String(authoritativeMemberStatus || '').trim();",
+  'lifecycleConfig.userAuthRequested && postgresMemberStatus',
+  "authoritativeMemberStatus = authority?.memberStatus || '';",
+]) assert.ok(loginSource.includes(marker), `PostgreSQL member status must override stale Firestore approval status during Clerk-authoritative login: ${marker}`);
+
 const userSessionSource = readFileSync('src/features/auth/useUserAuthenticationSessionController.js', 'utf8');
 for (const marker of [
   'readUserAccountLifecycleCutoverConfig',

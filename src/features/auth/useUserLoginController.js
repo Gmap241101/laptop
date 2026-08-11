@@ -189,6 +189,7 @@ export default function useUserLoginController({
   const finalizeUserAuthentication = useCallback(async ({
     firebaseUser,
     effectiveUserSessionPolicy,
+    authoritativeMemberStatus = '',
   }) => {
     const userAccountSnapshot = await getDoc(
       doc(db, USER_ACCOUNTS_COLLECTION_NAME, firebaseUser.uid)
@@ -201,7 +202,11 @@ export default function useUserLoginController({
     }
 
     const signedInAccount = userAccountSnapshot.data();
-    let signedInUserStatus = signedInAccount.status || '';
+    const lifecycleConfig = readUserAccountLifecycleCutoverConfig();
+    const postgresMemberStatus = String(authoritativeMemberStatus || '').trim();
+    let signedInUserStatus = lifecycleConfig.userAuthRequested && postgresMemberStatus
+      ? postgresMemberStatus
+      : signedInAccount.status || '';
 
     if (
       [
@@ -349,6 +354,7 @@ export default function useUserLoginController({
     let signedInUserForRoleCheck = null;
     let clerkSignedIn = false;
     let effectiveUserSessionPolicy = null;
+    let authoritativeMemberStatus = '';
 
     setUserAuthLoading(true);
 
@@ -407,6 +413,7 @@ export default function useUserLoginController({
         const finalizationResult = await finalizeUserAuthentication({
           firebaseUser,
           effectiveUserSessionPolicy,
+          authoritativeMemberStatus: authority?.memberStatus || '',
         });
         if (lifecycleConfig.userAuthRequested && finalizationResult?.retainedSession) {
           completeUserAuthTransition(firebaseUser.uid);
@@ -528,6 +535,7 @@ export default function useUserLoginController({
         clerkSignedIn = true;
         const verifiedPayload = await clerkStagingClient.getUserClerkSession();
         const authority = verifiedPayload?.userAuthentication;
+        authoritativeMemberStatus = authority?.memberStatus || '';
         if (authority?.firebaseUid !== credential.user.uid) {
           const error = new Error('Clerk and Firebase user identities do not match.');
           error.code = 'user_clerk_session_identity_mismatch';
@@ -548,6 +556,9 @@ export default function useUserLoginController({
       const finalizationResult = await finalizeUserAuthentication({
         firebaseUser: credential.user,
         effectiveUserSessionPolicy,
+        authoritativeMemberStatus: lifecycleConfig.userAuthRequested
+          ? authoritativeMemberStatus
+          : '',
       });
       if (lifecycleConfig.userAuthRequested && finalizationResult?.retainedSession) {
         completeUserAuthTransition(credential.user.uid);

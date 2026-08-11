@@ -97,11 +97,12 @@ export const createRentalRequestService = ({
   if (useAuthoritativeSource && typeof rentalRequestRepository.listAuthoritativeByAppUserId !== 'function') throw new TypeError('rentalRequestRepository.listAuthoritativeByAppUserId is required when PostgreSQL authoritative read is enabled.');
   if (!firestoreRentalRequestsClient || typeof firestoreRentalRequestsClient.listOwnRentalRequests !== 'function') throw new TypeError('firestoreRentalRequestsClient is required.');
 
-  const context = async (clerkUserId) => {
+  const context = async (clerkUserId, { requireMemberShadow = true } = {}) => {
     const appUser = await userRepository.findByClerkUserId(clerkUserId);
     if (!appUser) throw serviceError('profile_not_synced', 'Application user identity is not synchronized.');
     const firebaseLink = await firebaseLinkRepository.findByAppUserId(appUser.id);
     if (!firebaseLink) throw serviceError('legacy_link_not_found', 'Firebase legacy identity has not been linked.');
+    if (!requireMemberShadow) return { appUser, firebaseLink, memberShadow: null };
     const memberShadow = await memberShadowRepository.findByAppUserId(appUser.id);
     if (!memberShadow) throw serviceError('member_shadow_not_found', 'Member profile shadow has not been synchronized.');
     return { appUser, firebaseLink, memberShadow };
@@ -151,7 +152,9 @@ export const createRentalRequestService = ({
 
   return Object.freeze({
     async getCurrent(clerkUserId) {
-      const { appUser, firebaseLink } = await context(clerkUserId);
+      const { appUser, firebaseLink } = await context(clerkUserId, {
+        requireMemberShadow: !useAuthoritativeSource,
+      });
       if (useAuthoritativeSource) {
         return readAuthoritativeCurrent(appUser, firebaseLink);
       }
@@ -162,7 +165,9 @@ export const createRentalRequestService = ({
     },
 
     async syncCurrent(clerkUserId, firebaseIdentity) {
-      const { appUser, firebaseLink, memberShadow } = await context(clerkUserId);
+      const { appUser, firebaseLink, memberShadow } = await context(clerkUserId, {
+        requireMemberShadow: !useAuthoritativeSource,
+      });
       if (useAuthoritativeSource) {
         return readAuthoritativeCurrent(appUser, firebaseLink);
       }

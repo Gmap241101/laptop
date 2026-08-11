@@ -307,3 +307,91 @@ For the already-created failing test account:
 6. create one additional disposable signup and repeat approval/login to validate the provisioning-time path.
 
 Phase 32 remains FAIL/candidate until these actual browser tests pass.
+
+PHASE 32 APPROVAL STATUS + AUTHORITATIVE RENTAL READ HOTFIX
+=========================================================
+Date: 2026-08-11
+
+Actual Staging findings after the new-signup read-model hotfix
+-------------------------------------------------------------
+1. Existing converted accounts can sign in, but the user rental-history screen reports that PostgreSQL rental requests are unavailable while legacy Firestore fallback is disabled.
+2. Brand-new Phase 32 accounts can initially authenticate, but after an administrator changes the member status from pending to active, a subsequent login briefly succeeds and is immediately signed out.
+
+Root cause A - stale Firestore approval status during Clerk-authoritative login
+-------------------------------------------------------------------------------
+Phase 30 retired the Firestore member-status write mirror. Administrator approval therefore changes app_member_accounts.status in PostgreSQL but intentionally leaves the compatibility Firestore userAccounts.status unchanged.
+
+useUserLoginController finalized an otherwise successful Clerk login by rereading Firestore userAccounts and using that stale status as the session authorization decision. A newly approved account could therefore have:
+- PostgreSQL / Clerk session memberStatus = active;
+- Firestore compatibility status = pending.
+
+The finalizer interpreted the stale pending value as inactive and immediately signed out both Clerk and Firebase compatibility sessions.
+
+Fix:
+- Clerk session userAuthentication.memberStatus is now passed into finalizeUserAuthentication.
+- When the Phase 23/32 Clerk user-auth cutover is requested and a PostgreSQL memberStatus is present, that authoritative status is used for active/pending/blocked/retired login decisions.
+- Firestore userAccounts remains available only for compatibility profile/directory fields still needed by the transitional flow; it no longer overrides PostgreSQL approval status.
+- Client Trust verification and ordinary password login use the same authoritative member-status contract.
+
+Root cause B - authoritative rental read retained a legacy member-shadow gate
+-----------------------------------------------------------------------------
+Phase 29 rental-request reads already use canonical app_rental_requests when the rental write mirror retirement flag is active. However createRentalRequestService.getCurrent()/syncCurrent() still entered context() that always required app_user_member_shadows before reaching the canonical query.
+
+That legacy shadow is not required to identify or query a Clerk-authenticated user's canonical PostgreSQL rental requests. Converted accounts with an incomplete/retired legacy member-shadow state could therefore receive member_shadow_not_found before app_rental_requests was queried. With Phase 27 Firestore fallback disabled, the frontend correctly surfaced this as PostgreSQL rental-history unavailable.
+
+Fix:
+- PostgreSQL authoritative rental get/sync paths now require the application user and Firebase identity link, but do not require app_user_member_shadows.
+- Legacy member-shadow validation remains in place only for legacy Firestore source/sync/compare paths where previousAccountUids/email are actually needed.
+- No Firestore rental read fallback or shadow resynchronization was re-enabled.
+
+Targeted automated regression coverage
+--------------------------------------
+- Phase 29 backend rental-transaction smoke now supplies a memberShadowRepository that throws if read and asserts zero member-shadow reads during authoritative get/sync.
+- Phase 23 frontend user-Clerk lifecycle smoke asserts that PostgreSQL/Clerk memberStatus is wired into final login authorization and takes precedence over stale compatibility Firestore status.
+
+Full validation
+---------------
+Command: TERM=xterm npm run verify:phase32
+Result: PASS / exit code 0.
+
+Key results:
+- Phase 1-32 cumulative regression chain: PASS.
+- Phase 29 authoritative rental read regression smoke: PASS.
+- Phase 23 user Clerk lifecycle frontend smoke: PASS.
+- React hook audit: PASS (171 source files).
+- Application flow audit: PASS (124 contracts; 11 user routes; 20 administrator tabs).
+- Firestore strict audit: PASS (138 calls; warnings 0; errors 0).
+- Backend foundation and migration static validation: PASS.
+
+Build: TERM=xterm npm run build:staging
+- React prebuild audits: PASS.
+- Clerk local config: DISABLED in assistant workspace.
+- Final Vite bundle: not executed because vite executable is unavailable in this workspace (exit 127).
+
+Deployment impact
+-----------------
+This hotfix changes both backend and frontend runtime files.
+- Heroku Staging backend redeploy: REQUIRED.
+- Vercel Staging frontend redeploy: REQUIRED.
+- New PostgreSQL migration: NONE.
+- New environment variable: NONE.
+- Firebase Rules/index changes: NONE.
+- Clerk setting changes: NONE.
+- Production resources: DO NOT CHANGE.
+
+Required browser retest
+-----------------------
+Existing converted account:
+1. sign in;
+2. open My Rental Requests;
+3. verify PostgreSQL authoritative rental history loads (including an empty list as a valid result) with no legacy fallback error.
+
+New Phase 32 account:
+1. create signup and leave pending;
+2. approve in administrator member management (PostgreSQL status -> active);
+3. sign in again;
+4. verify the Clerk/Firebase compatibility session remains signed in for at least 30 seconds and during navigation;
+5. verify My Page, rental restriction and My Rental Requests all load from PostgreSQL;
+6. logout/login one more time and confirm the same result.
+
+Phase 32 remains a candidate until these actual Staging browser tests pass.
