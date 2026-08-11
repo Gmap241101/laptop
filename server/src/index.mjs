@@ -123,6 +123,7 @@ const userClerkAuthService = firestoreMemberAuthorityClient
       rentalRestrictionRepository,
       writeMirrorEnabled: !config.memberStatusRestrictionWriteMirrorDisabled,
       memberRepository: memberAuthorityRepository,
+      adminIdentityRepository,
       accountLifecycleCompatibilityDisabled: config.accountLifecycleCompatibilityDisabled,
     })
   : null;

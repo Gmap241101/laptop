@@ -1,3 +1,5 @@
+import { readAccountLifecycleAuthorityConfig } from './accountLifecycleAuthority.js';
+
 const USER_AUTH_SESSION_KEY = 'mk_user_clerk_auth_authority';
 const USER_LIFECYCLE_SESSION_KEY = 'mk_user_clerk_lifecycle_authority';
 const EVENT_NAME = 'rental:user-account-lifecycle-cutover';
@@ -27,11 +29,13 @@ export const readUserAccountLifecycleCutoverConfig = ({
     sessionLifecycle = storage?.getItem?.(USER_LIFECYCLE_SESSION_KEY) === '1';
   } catch { /* ignored */ }
 
+  const accountLifecycleRequested = readAccountLifecycleAuthorityConfig({ env, location, storage }).requested;
   return Object.freeze({
     userAuthEnabled: authEnabled,
     userLifecycleEnabled: lifecycleEnabled,
-    userAuthRequested: Boolean(authEnabled && (queryAuth || sessionAuth)),
-    userLifecycleRequested: Boolean(lifecycleEnabled && (queryLifecycle || sessionLifecycle)),
+    userAuthRequested: Boolean(authEnabled && (queryAuth || sessionAuth || accountLifecycleRequested)),
+    userLifecycleRequested: Boolean(lifecycleEnabled && (queryLifecycle || sessionLifecycle || accountLifecycleRequested)),
+    forcedByAccountLifecycle: Boolean(accountLifecycleRequested),
   });
 };
 

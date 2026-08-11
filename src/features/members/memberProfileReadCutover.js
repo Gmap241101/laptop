@@ -1,3 +1,4 @@
+import { readAccountLifecycleAuthorityConfig } from '../auth/accountLifecycleAuthority.js';
 import { compareMemberProfileReads, normalizeMemberProfileRead } from './memberProfileReadObservation.js';
 
 const EVENT_NAME = 'rental:member-profile-read-cutover';
@@ -52,17 +53,19 @@ export const readMemberProfileCutoverConfig = ({
     sessionWatcherDisabled = false;
   }
 
-  const requested = Boolean(enabled && (queryRequested || sessionRequested));
+  const accountLifecycleRequested = readAccountLifecycleAuthorityConfig({ env, location, storage }).requested;
+  const requested = Boolean(enabled && (queryRequested || sessionRequested || accountLifecycleRequested));
   const firestoreWatcherDisabled = Boolean(
     requested &&
     firestoreWatcherDisableEnabled &&
-    (queryWatcherDisabled || sessionWatcherDisabled)
+    (queryWatcherDisabled || sessionWatcherDisabled || accountLifecycleRequested)
   );
   return Object.freeze({
     enabled,
     requested,
     queryRequested,
     sessionRequested,
+    forcedByAccountLifecycle: Boolean(enabled && accountLifecycleRequested),
     firestoreWatcherDisableEnabled,
     firestoreWatcherDisabled,
     queryWatcherDisabled,

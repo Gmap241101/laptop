@@ -39,6 +39,7 @@ import {
 } from '../requests/rentalRestrictionReadCutover.js';
 import { createDefaultUserProfileForm } from '../members/useUserMyPageAccountController.js';
 import { readUserAuthTransition } from './authSessionService.js';
+import { readAccountLifecycleAuthorityConfig } from './accountLifecycleAuthority.js';
 import {
   isLegacyFirestoreReadFallbackAllowed,
   readLegacyFirestoreReadFallbackConfig,
@@ -259,9 +260,18 @@ export default function useAuthIdentityPolicySubscriptionController({
     }
 
     const currentAuthUid = firebaseAuthUser.uid;
+    const accountLifecycleConfig = readAccountLifecycleAuthorityConfig();
 
     setCurrentAuthAdminAccount(null);
     setCurrentAuthRoleErrorMessage('');
+
+    // Phase 32 general-user role authority is Clerk/PostgreSQL. Native signup users
+    // do not require Firestore adminAccounts/{uid} read permission to prove they are not admins.
+    if (view !== 'admin' && !authenticatedAdminId && accountLifecycleConfig.requested) {
+      setCurrentAuthRoleReady(true);
+      return undefined;
+    }
+
     setCurrentAuthRoleReady(false);
 
     const unsubscribe = onSnapshot(
@@ -321,7 +331,7 @@ export default function useAuthIdentityPolicySubscriptionController({
     );
 
     return unsubscribe;
-  }, [firebaseAuthReady, firebaseAuthUser?.uid]);
+  }, [authenticatedAdminId, firebaseAuthReady, firebaseAuthUser?.uid, view]);
 
   useEffect(() => {
     if (!hasFirebaseAuthSession) {
@@ -678,7 +688,7 @@ export default function useAuthIdentityPolicySubscriptionController({
           setCurrentUserRestrictionReady(true);
           publishRentalRestrictionCutoverObservation({
             requested: true,
-            activeSource: 'postgresql-shadow',
+            activeSource: candidate.source || 'postgresql-shadow',
             firestoreWatcherDisabled: true,
             firestoreFallbackReads: 0,
             fallbackReason: '',

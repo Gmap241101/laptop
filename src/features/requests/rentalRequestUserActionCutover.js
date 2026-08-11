@@ -1,3 +1,5 @@
+import { readAccountLifecycleAuthorityConfig } from '../auth/accountLifecycleAuthority.js';
+
 const WRITE_SESSION_KEY = 'mk_rental_request_user_action_postgres_write_test';
 const EVENT_NAME = 'rental:rental-request-user-action-cutover';
 const trim = (value) => (typeof value === 'string' ? value.trim() : String(value ?? '').trim());
@@ -20,9 +22,11 @@ export const readRentalRequestUserActionCutoverConfig = ({
   } catch {
     sessionRequested = false;
   }
+  const accountLifecycleRequested = readAccountLifecycleAuthorityConfig({ env, location, storage }).requested;
   return Object.freeze({
     enabled: writeEnabled,
-    requested: Boolean(writeEnabled && (queryRequested || sessionRequested)),
+    requested: Boolean(writeEnabled && (queryRequested || sessionRequested || accountLifecycleRequested)),
+    forcedByAccountLifecycle: Boolean(writeEnabled && accountLifecycleRequested),
     queryRequested,
     sessionRequested,
   });

@@ -25,7 +25,7 @@ const [userController, adminReview, client, diagnostics, serverApp, repo, firest
 for (const marker of [
   'readRentalRequestUserActionCutoverConfig', 'extendRentalRequest', 'cancelRentalRequest', 'editRentalRequest',
   "source: 'postgresql-authoritative'", 'updatePostgresUserActionState',
-  '조기 반납 요청 기능은 제공하지 않습니다.',
+  '조기 반납 요청 기능은 제공하지 않습니다.', 'currentUserRestrictionReady', 'rentalRequestsReady', 'currentUserRentalRestrictionStatus',
 ]) assert.ok(userController.includes(marker), `Missing Phase 19 user lifecycle marker: ${marker}`);
 for (const marker of ['reviewAdminRentalUserAction', "operation: 'user-action-review'", "writeSource: 'postgresql-authoritative'"]) {
   assert.ok(adminReview.includes(marker), `Missing Phase 19 admin review marker: ${marker}`);

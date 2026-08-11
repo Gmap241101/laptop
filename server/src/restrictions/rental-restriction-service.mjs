@@ -55,7 +55,26 @@ export const createRentalRestrictionService = ({ firebaseLinkRepository, rentalR
     async getCurrentByFirebaseIdentity(firebaseIdentity) {
       const firebaseUid = normalizeText(firebaseIdentity?.uid);
       if (!firebaseUid) throw serviceError('firebase_identity_missing', 'Verified Firebase identity is required.');
-      return rentalRestrictionRepository.findByFirebaseUid(firebaseUid);
+      const { link } = await verifyIdentity(firebaseIdentity, firebaseUid);
+      const current = await rentalRestrictionRepository.findByFirebaseUid(firebaseUid);
+      if (current) return current;
+      if (!link?.appUserId) return null;
+      return Object.freeze({
+        firebaseUid,
+        appUserId: String(link.appUserId),
+        exists: false,
+        restriction: null,
+        sourceDocumentPath: `postgresql/app_member_accounts/${firebaseUid}/rental-restriction-none`,
+        sourceUpdatedAt: null,
+        sourceHash: hashPayload(null),
+        authorityMode: 'postgresql-authoritative',
+        mirrorState: 'retired',
+        lastMutationId: '',
+        authoritativeUpdatedAt: null,
+        syncedAt: null,
+        createdAt: null,
+        updatedAt: null,
+      });
     },
 
     async readCurrentSourceByFirebaseIdentity(firebaseIdentity) {

@@ -119,7 +119,7 @@ import {
 } from '../features/auth/accountLifecycleAuthority.js';
 import { clerkStagingClient } from './clerkStagingClient.js';
 
-const PHASE32_RUNTIME_REVISION = 'phase32-canonical-member-profile-read-20260811-2054';
+const PHASE32_RUNTIME_REVISION = 'phase32-new-member-runtime-authority-20260811-2108';
 
 const panelStyle = {
   position: 'fixed',

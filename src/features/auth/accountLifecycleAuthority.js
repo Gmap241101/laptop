@@ -16,14 +16,35 @@ export const readAccountLifecycleAuthorityConfig = ({
   const staging = bool(env?.VITE_CLERK_STAGING_ENABLED);
   const enabled = staging && bool(env?.VITE_ACCOUNT_LIFECYCLE_POSTGRES_AUTHORITY_ENABLED);
   const params = location ? new URLSearchParams(location.search || '') : new URLSearchParams();
-  const requested = enabled && params.get('accountLifecycle') === 'postgres';
+  const queryMode = trim(params.get('accountLifecycle')).toLowerCase();
+  const queryRequested = Boolean(enabled && queryMode === 'postgres');
+  const queryRollback = Boolean(enabled && queryMode === 'firebase');
+  let sessionMode = '';
+
   try {
-    if (params.get('accountLifecycle') === 'firebase') storage?.removeItem?.(SESSION_KEY);
-    else if (requested) storage?.setItem?.(SESSION_KEY, '1');
-    return Object.freeze({ enabled, requested: Boolean(enabled && (requested || storage?.getItem?.(SESSION_KEY) === '1')), apiBaseUrl: normalizeApiBaseUrl(env?.VITE_API_URL) });
+    if (queryRollback) storage?.setItem?.(SESSION_KEY, 'firebase');
+    else if (queryRequested) storage?.setItem?.(SESSION_KEY, 'postgres');
+    sessionMode = trim(storage?.getItem?.(SESSION_KEY)).toLowerCase();
+    if (sessionMode === '1') sessionMode = 'postgres'; // backward-compatible latch
   } catch {
-    return Object.freeze({ enabled, requested, apiBaseUrl: normalizeApiBaseUrl(env?.VITE_API_URL) });
+    sessionMode = '';
   }
+
+  const rollbackRequested = Boolean(enabled && (queryRollback || sessionMode === 'firebase'));
+  // Once the Phase 32 frontend flag is enabled, PostgreSQL account lifecycle is the
+  // default runtime authority. A deliberate ?accountLifecycle=firebase opt-out is
+  // retained only for rollback testing inside the current browser session.
+  const requested = Boolean(enabled && !rollbackRequested);
+
+  return Object.freeze({
+    enabled,
+    requested,
+    queryRequested,
+    queryRollback,
+    sessionRequested: sessionMode === 'postgres',
+    rollbackRequested,
+    apiBaseUrl: normalizeApiBaseUrl(env?.VITE_API_URL),
+  });
 };
 
 let latestObservation = null;

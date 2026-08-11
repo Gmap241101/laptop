@@ -1,3 +1,5 @@
+import { readAccountLifecycleAuthorityConfig } from '../auth/accountLifecycleAuthority.js';
+
 const WRITE_SESSION_KEY = 'mk_rental_request_postgres_write_test';
 const trim = (value) => (typeof value === 'string' ? value.trim() : String(value ?? '').trim());
 const bool = (value) => trim(value).toLowerCase() === 'true';
@@ -25,9 +27,12 @@ export const readRentalRequestWriteCutoverConfig = ({
     sessionRequested = false;
   }
 
+  const accountLifecycleRequested = readAccountLifecycleAuthorityConfig({ env, location, storage }).requested;
+
   return Object.freeze({
     enabled,
-    requested: Boolean(enabled && (queryRequested || sessionRequested)),
+    requested: Boolean(enabled && (queryRequested || sessionRequested || accountLifecycleRequested)),
+    forcedByAccountLifecycle: Boolean(enabled && accountLifecycleRequested),
     queryRequested,
     sessionRequested,
   });

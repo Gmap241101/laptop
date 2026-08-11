@@ -1,3 +1,5 @@
+import { readAccountLifecycleAuthorityConfig } from '../auth/accountLifecycleAuthority.js';
+
 const SESSION_KEY = 'mk_legacy_firestore_read_fallback_disabled';
 const EVENT_NAME = 'rental:legacy-firestore-read-fallback';
 const trim = (value) => (typeof value === 'string' ? value.trim() : String(value ?? '').trim());
@@ -19,9 +21,11 @@ export const readLegacyFirestoreReadFallbackConfig = ({
   } catch {
     sessionDisabled = false;
   }
+  const accountLifecycleRequested = readAccountLifecycleAuthorityConfig({ env, location, storage }).requested;
   return Object.freeze({
     enabled,
-    requested: Boolean(enabled && (queryDisabled || sessionDisabled)),
+    requested: Boolean(enabled && (queryDisabled || sessionDisabled || accountLifecycleRequested)),
+    forcedByAccountLifecycle: Boolean(enabled && accountLifecycleRequested),
     queryDisabled,
     sessionDisabled,
   });

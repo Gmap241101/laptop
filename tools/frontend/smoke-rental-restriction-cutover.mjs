@@ -52,11 +52,14 @@ const candidate = await requestRentalRestrictionCandidate({
   fetchImpl: async (url, options) => {
     candidateUrl = url;
     assert.equal(options.headers['X-Firebase-Authorization'], 'Bearer token');
-    return { ok: true, status: 200, async json() { return { restrictionCandidate: { source: 'postgresql-shadow', exists: true, restriction: { uid: 'user_a' } } }; } };
+    return { ok: true, status: 200, async json() { return { restrictionCandidate: { source: 'postgresql-authoritative', authoritative: true, exists: false, restriction: null } }; } };
   },
 });
 assert.equal(candidateUrl, 'https://api.example.test/api/legacy/rental-restriction-candidate');
-assert.equal(candidate.restriction.uid, 'user_a');
+assert.equal(candidate.source, 'postgresql-authoritative');
+assert.equal(candidate.authoritative, true);
+assert.equal(candidate.exists, false);
+assert.equal(candidate.restriction, null);
 
 let writeUrl = '';
 const write = await syncRentalRestrictionWriteThroughBestEffort({

@@ -61,6 +61,8 @@ export default function useUserRentalRequestController({
   currentAuthAdminAccount,
   currentAuthRoleErrorMessage,
   currentAuthRoleReady,
+  currentUserRentalRestrictionStatus,
+  currentUserRestrictionReady,
   dataRequests,
   dataSettings,
   firebaseAuthReady,
@@ -73,6 +75,7 @@ export default function useUserRentalRequestController({
   loadFreshRentalRestrictionStatus,
   requestSubmitInProgressRef,
   requestSubmitLoading,
+  rentalRequestsReady,
   selectedLaptop,
   setData,
   setForm,
@@ -187,37 +190,56 @@ export default function useUserRentalRequestController({
       return;
     }
 
-    try {
-      const latestRestrictionStatus =
-        await loadFreshRentalRestrictionStatus(firebaseAuthUser.uid);
-
-      if (latestRestrictionStatus.blocked) {
+    const writeCutoverConfig = readRentalRequestWriteCutoverConfig();
+    if (writeCutoverConfig.requested) {
+      if (!rentalRequestsReady || !currentUserRestrictionReady) {
         triggerToast(
-          latestRestrictionStatus.message ||
+          '최신 연체 및 대여 제한 상태를 확인하는 중입니다. 잠시 후 다시 시도해 주세요.',
+          'error'
+        );
+        return;
+      }
+      if (currentUserRentalRestrictionStatus?.blocked) {
+        triggerToast(
+          currentUserRentalRestrictionStatus.message ||
             '현재 대여 제한 상태이므로 신규 대여를 신청할 수 없습니다.',
           'error'
         );
         return;
       }
-    } catch (error) {
-      console.error('Rental restriction preflight error:', error);
+    } else {
+      try {
+        const latestRestrictionStatus =
+          await loadFreshRentalRestrictionStatus(firebaseAuthUser.uid);
 
-      if (isFirestoreResourceExhaustedError(error)) {
-        markFirestoreCapacityExhausted(error);
+        if (latestRestrictionStatus.blocked) {
+          triggerToast(
+            latestRestrictionStatus.message ||
+              '현재 대여 제한 상태이므로 신규 대여를 신청할 수 없습니다.',
+            'error'
+          );
+          return;
+        }
+      } catch (error) {
+        console.error('Rental restriction preflight error:', error);
+
+        if (isFirestoreResourceExhaustedError(error)) {
+          markFirestoreCapacityExhausted(error);
+          triggerToast(
+            getFirestoreResourceExhaustedMessage({
+              operation: '대여 신청 전 제한 상태 확인',
+            }),
+            'error'
+          );
+          return;
+        }
+
         triggerToast(
-          getFirestoreResourceExhaustedMessage({
-            operation: '대여 신청 전 제한 상태 확인',
-          }),
+          '최신 연체 및 대여 제한 상태를 확인하지 못해 신청을 중단했습니다. 잠시 후 다시 시도해 주세요.',
           'error'
         );
         return;
       }
-
-      triggerToast(
-        '최신 연체 및 대여 제한 상태를 확인하지 못해 신청을 중단했습니다. 잠시 후 다시 시도해 주세요.',
-        'error'
-      );
-      return;
     }
 
     if (!selectedLaptop) {
@@ -355,8 +377,6 @@ export default function useUserRentalRequestController({
       extensionHistory: [],
       requestedAt,
     };
-    const writeCutoverConfig = readRentalRequestWriteCutoverConfig();
-
     let committedRequest = null;
     let committedAsset = null;
     let committedAvailabilityRequest = null;

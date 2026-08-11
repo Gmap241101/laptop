@@ -857,6 +857,35 @@ export const requestMemberProfileAuthorityWrite = async ({ clerk, apiBaseUrl, fe
   return payload;
 };
 
+export const requestMemberDirectoryAuthorityVerification = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken }) => {
+  const token = trim(firebaseIdToken);
+  if (!token) throw new Error('Firebase sign-in is required before verifying the PostgreSQL member directory.');
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/users/me/member-directory/verify',
+    method: 'POST',
+    headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const error = new Error(`PostgreSQL member directory verification failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    error.details = payload?.details || null;
+    throw error;
+  }
+  if (
+    !payload?.authenticated ||
+    payload?.memberDirectoryVerification?.authority !== 'postgresql' ||
+    payload?.memberDirectoryVerification?.source !== 'postgresql-authoritative' ||
+    payload?.memberDirectoryVerification?.firestoreMirror !== 'retired'
+  ) {
+    throw new Error('Backend returned an invalid PostgreSQL member directory verification response.');
+  }
+  return payload;
+};
+
 export const requestAdminMembersPostgresql = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, options = {} }) => {
   const token = trim(firebaseIdToken);
   if (!token) throw new Error('Firebase admin sign-in is required before reading PostgreSQL members.');
@@ -1538,6 +1567,10 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async writeMemberProfile(firebaseIdToken, profile) {
       const clerk = await initialize();
       return requestMemberProfileAuthorityWrite({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, profile });
+    },
+    async verifyMemberDirectory(firebaseIdToken) {
+      const clerk = await initialize();
+      return requestMemberDirectoryAuthorityVerification({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken });
     },
     async getAdminMembers(firebaseIdToken, options = {}) {
       const clerk = await initialize();

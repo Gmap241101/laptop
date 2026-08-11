@@ -1,3 +1,4 @@
+import { readAccountLifecycleAuthorityConfig } from '../auth/accountLifecycleAuthority.js';
 import {
   compareRentalRequestReads,
   normalizeRentalRequestRead,
@@ -59,11 +60,12 @@ export const readRentalRequestCutoverConfig = ({
     sessionWatcherDisabled = false;
   }
 
-  const requested = Boolean(enabled && (queryRequested || sessionRequested));
+  const accountLifecycleRequested = readAccountLifecycleAuthorityConfig({ env, location, storage }).requested;
+  const requested = Boolean(enabled && (queryRequested || sessionRequested || accountLifecycleRequested));
   const firestoreWatcherDisabled = Boolean(
     requested &&
       firestoreWatcherDisableEnabled &&
-      (queryWatcherDisabled || sessionWatcherDisabled),
+      (queryWatcherDisabled || sessionWatcherDisabled || accountLifecycleRequested),
   );
 
   return Object.freeze({
@@ -71,6 +73,7 @@ export const readRentalRequestCutoverConfig = ({
     requested,
     queryRequested,
     sessionRequested,
+    forcedByAccountLifecycle: Boolean(enabled && accountLifecycleRequested),
     firestoreWatcherDisableEnabled,
     firestoreWatcherDisabled,
     queryWatcherDisabled,

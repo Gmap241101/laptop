@@ -49,5 +49,11 @@ const identityB = { uid: 'user_b', idToken: 'token' };
 const syncedB = await service.syncLinkedFirebaseUid(identityB, 'user_b');
 assert.equal(syncedB.shadow.exists, false);
 assert.equal(syncedB.shadow.restriction, null);
+stored.delete('user_b');
+const absentB = await service.getCurrentByFirebaseIdentity(identityB);
+assert.equal(absentB.exists, false);
+assert.equal(absentB.restriction, null);
+assert.equal(absentB.authorityMode, 'postgresql-authoritative');
+assert.equal(absentB.mirrorState, 'retired');
 
 console.log('[rental-restriction-shadow-smoke] PASS (Firestore restriction source -> PostgreSQL shadow, including absent restriction state)');

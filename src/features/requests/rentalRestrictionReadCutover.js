@@ -1,3 +1,5 @@
+import { readAccountLifecycleAuthorityConfig } from '../auth/accountLifecycleAuthority.js';
+
 const EVENT_NAME = 'rental:rental-restriction-read-cutover';
 const WRITE_EVENT_NAME = 'rental:rental-restriction-write-through';
 const SESSION_KEY = 'mk_rental_restriction_postgres_read_test';
@@ -32,9 +34,11 @@ export const readRentalRestrictionCutoverConfig = ({
   } catch {
     sessionRequested = false;
   }
+  const accountLifecycleRequested = readAccountLifecycleAuthorityConfig({ env, location, storage }).requested;
   return Object.freeze({
     enabled,
-    requested: Boolean(enabled && (queryRequested || sessionRequested)),
+    requested: Boolean(enabled && (queryRequested || sessionRequested || accountLifecycleRequested)),
+    forcedByAccountLifecycle: Boolean(enabled && accountLifecycleRequested),
     queryRequested,
     sessionRequested,
     apiBaseUrl: normalizeApiBaseUrl(env?.VITE_API_URL),
@@ -63,7 +67,10 @@ const firebaseRequest = async ({ firebaseUser, apiBaseUrl, path, method = 'GET',
 
 export const requestRentalRestrictionCandidate = async ({ firebaseUser, apiBaseUrl, fetchImpl = fetch }) => {
   const payload = await firebaseRequest({ firebaseUser, apiBaseUrl, path: '/api/legacy/rental-restriction-candidate', fetchImpl });
-  if (payload?.restrictionCandidate?.source !== 'postgresql-shadow') throw new Error('Invalid PostgreSQL rental restriction candidate.');
+  const source = trim(payload?.restrictionCandidate?.source);
+  if (!['postgresql-shadow', 'postgresql-authoritative'].includes(source)) {
+    throw new Error('Invalid PostgreSQL rental restriction candidate.');
+  }
   return Object.freeze(payload.restrictionCandidate);
 };
 
@@ -78,7 +85,7 @@ export const loadRentalRestrictionWithoutFirestoreWatcher = async ({ loadCandida
     const candidate = await loadCandidate();
     return Object.freeze({
       restriction: candidate.exists ? candidate.restriction : null,
-      source: 'postgresql-shadow',
+      source: candidate.source || 'postgresql-shadow',
       firestoreFallbackReads: 0,
       fallbackReason: '',
     });

@@ -466,7 +466,7 @@ export const createRequestHandler = ({
     service: config.serviceName,
     environment: config.appEnv,
     version: config.serviceVersion,
-    runtimeRevision: 'phase32-canonical-member-profile-read-20260811-2054',
+    runtimeRevision: 'phase32-new-member-runtime-authority-20260811-2108',
     compatibility: {
       assetBoardWriteMirrorDisabled: Boolean(config.assetBoardWriteMirrorDisabled),
       retiredWriteMirrorDomains: [
@@ -1992,7 +1992,11 @@ export const createRequestHandler = ({
           ...basePayload,
           authenticated: true,
           authentication: 'firebase-id-token',
-          restrictionCandidate: { source: 'postgresql-shadow', authoritative: false, ...sanitizeRentalRestrictionShadow(shadow) },
+          restrictionCandidate: {
+            source: shadow?.authorityMode === 'postgresql-authoritative' ? 'postgresql-authoritative' : 'postgresql-shadow',
+            authoritative: shadow?.authorityMode === 'postgresql-authoritative',
+            ...sanitizeRentalRestrictionShadow(shadow),
+          },
         }, headers);
       } catch (error) {
         console.error('[restriction-read] PostgreSQL candidate lookup failed', { requestId, code: error?.code, name: error?.name });
@@ -2113,6 +2117,36 @@ export const createRequestHandler = ({
       } catch (error) {
         console.error('[phase21] member profile authoritative write failed', { requestId, code: error?.code });
         writeJson(response, error?.status || 409, { ...basePayload, authenticated: true, error: error?.code || 'member_profile_authority_failed' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/users/me/member-directory/verify') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      try {
+        const result = await memberAuthorityService.verifySelfDirectory({
+          clerkUserId: auth.userId,
+          firebaseIdentity,
+        });
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          memberDirectoryVerification: result,
+        }, headers);
+      } catch (error) {
+        console.error('[phase32] member directory PostgreSQL verification failed', {
+          requestId,
+          code: error?.code,
+        });
+        writeJson(response, error?.status || 409, {
+          ...basePayload,
+          authenticated: true,
+          error: error?.code || 'member_directory_postgresql_verification_failed',
+          details: error?.details || null,
+        }, headers);
       }
       return;
     }

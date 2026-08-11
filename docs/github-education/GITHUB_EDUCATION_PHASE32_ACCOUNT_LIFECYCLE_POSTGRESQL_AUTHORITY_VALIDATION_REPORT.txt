@@ -554,3 +554,103 @@ Required Staging check
 5. Rental must accept the approved member profile and no longer show the missing member-information message.
 6. My Rental Requests must continue to return a PostgreSQL list or valid empty list.
 7. Verify a converted member has no regression.
+
+PHASE 32 NATIVE-MEMBER RUNTIME AUTHORITY HOTFIX
+================================================
+Date: 2026-08-11
+Runtime revision: phase32-new-member-runtime-authority-20260811-2108
+
+Actual Staging findings
+-----------------------
+After prior Phase 32 fixes, login and canonical profile display were healthy, but PostgreSQL-only native signup accounts still exposed two legacy-runtime failures:
+1. rental application could execute a Firestore latest-overdue/restriction preflight and abort when Firestore data/permission was unavailable;
+2. member withdrawal / role resolution could require Firestore `userAccounts/{uid}` and `adminAccounts/{uid}` access even though the native account lifecycle bootstrap had intentionally retired those Firestore dependencies.
+
+Structural root cause
+---------------------
+Phase 32 account lifecycle authority and older per-domain cutovers were independently latched in query/session state. A native account could therefore be created with PostgreSQL-only signup authority while a fresh tab/session later resolved rental/member/user-lifecycle behavior back to a legacy Firestore code path. That state is not a valid authority combination.
+
+Runtime authority fix
+---------------------
+- `VITE_ACCOUNT_LIFECYCLE_POSTGRES_AUTHORITY_ENABLED=true` now makes Phase 32 frontend authority default-on; no validation query string is required for normal runtime.
+- explicit `accountLifecycle=firebase` remains a per-session rollback test switch; `accountLifecycle=postgres` restores the PostgreSQL session.
+- Phase 32 account lifecycle forces dependent PostgreSQL cutovers for user Clerk auth/lifecycle, member/profile, rental restriction, rental request read/write/user actions, and legacy read-fallback retirement.
+- general-user role resolution no longer subscribes to Firestore `adminAccounts/{uid}` in the Phase 32 user view.
+
+Rental safety fix
+-----------------
+- PostgreSQL rental create and extension paths do not execute the legacy Firestore fresh-restriction preflight.
+- frontend waits for PostgreSQL rental/restriction readiness and blocks from the current PostgreSQL-derived restriction state.
+- the final PostgreSQL transaction still validates current overdue, penalty, restriction and asset conflicts.
+- a valid linked member with no restriction row is returned as PostgreSQL-authoritative `exists=false`, not a missing/unavailable source.
+
+Withdrawal safety fix
+---------------------
+- Phase 32 withdrawal is PostgreSQL-authoritative and no longer requires frontend Firestore transactions over member/recovery/identity/rental documents.
+- the backend transaction locks/checks active rentals, pending user-action requests, pending overdue penalty and active/manual/indefinite/loss-damage/incident restrictions before retiring the member.
+- compatibility Clerk/Firebase cleanup occurs after PostgreSQL commit and can be deferred without reverting canonical retirement.
+
+Rejoin safety fix
+-----------------
+- Phase 32 rejoin inheritance copies the previous PostgreSQL restriction snapshot into the current PostgreSQL-authoritative restriction row.
+- runtime materialization links `app_user_id` to both unrestricted and restricted rows while preserving a true restriction payload.
+
+Member-directory policy edge fix
+--------------------------------
+- general-user directory revalidation no longer uses a Firestore transaction when PostgreSQL member authority is active.
+- new `POST /api/users/me/member-directory/verify` verifies canonical `app_member_accounts` against PostgreSQL policy + PostgreSQL member-directory entries only.
+- an out-of-date PostgreSQL directory bootstrap fails closed as `member_directory_postgresql_stale` instead of silently reading Firestore with a general-user token.
+- verified directory mismatch/duplicate identity updates the canonical member state through PostgreSQL with Firestore mirror retired.
+
+Automated validation
+--------------------
+Command: TERM=xterm npm run verify:phase32
+Result: PASS / exit 0
+
+Coverage includes:
+- Phase 1-32 cumulative regression chain: PASS.
+- Phase 32 account-lifecycle backend/frontend smokes: PASS.
+- PostgreSQL missing-restriction => unrestricted contract: PASS.
+- Phase 32 PostgreSQL withdrawal with no Firestore user-account read: PASS.
+- withdrawal blocker/static transaction contracts: PASS.
+- PostgreSQL rental create/extension preflight contracts: PASS.
+- Phase 32 dependent-cutover default authority and explicit rollback: PASS.
+- general-user `adminAccounts/{uid}` Firestore role-read bypass: PASS.
+- rejoin restriction inheritance/materialization contract: PASS.
+- PostgreSQL-only user directory verification: PASS.
+- stale PostgreSQL directory version fail-closed: PASS.
+- directory mismatch => canonical profileRequired status: PASS.
+- React hook audit: PASS (171 source files).
+- Application flow audit: PASS (124 contracts, 11 user routes, 20 administrator tabs).
+- Firestore strict audit: PASS (138 calls, unapproved warnings 0, errors 0).
+- Backend foundation validation: PASS.
+- Migration static validation: PASS; no new migration.
+
+Build validation
+----------------
+Command: TERM=xterm npm run build:staging
+- React hook audit: PASS.
+- Application flow audit: PASS.
+- Firestore strict audit: PASS.
+- local Clerk staging config: DISABLED in assistant workspace.
+- final Vite invocation: `vite: not found`, exit 127 because root Vite executable is unavailable in this workspace.
+This environment limitation is not a source/prebuild failure; actual bundle validation is performed by Vercel Staging deployment.
+
+Deployment impact
+-----------------
+- Heroku Staging redeploy: REQUIRED.
+- Vercel Staging redeploy: REQUIRED.
+- New PostgreSQL migration: none.
+- npm dependency change: none.
+- Firestore Rules/index change: none.
+- Firebase Console change: none.
+- Clerk configuration change: none.
+- Production resources: unchanged/protected.
+
+Actual PASS status
+------------------
+Phase 31 remains the last confirmed Staging/browser baseline. This Phase 32 native-member runtime authority package is an automated-validation PASS candidate until the complete native-member and migrated-member browser matrix is verified on Staging.
+
+Additional login-role hardening
+-------------------------------
+The final exhaustive scan found one more general-user Firestore role check in `useUserLoginController`: `adminAccounts/{uid}` was read before the Clerk user flow. Although current Staging Rules allowed the tested login, it remained an unnecessary native-member Firestore permission dependency. Phase 32 now skips that browser read and preserves the administrator/user separation through PostgreSQL `app_admin_identity_registry` checks in the user Clerk auth service (Firebase UID during provision/migration, Clerk user ID during established sessions). Non-retired administrator matches fail as `user_account_is_admin`.

@@ -54,6 +54,9 @@ for (const marker of [
   "activeWriteSource: 'postgresql-authoritative'",
   "activeWriteSource: 'firestore-transaction'",
   'runTransaction(db',
+  'currentUserRestrictionReady',
+  'rentalRequestsReady',
+  'currentUserRentalRestrictionStatus',
 ]) {
   assert.ok(controllerSource.includes(marker), `Missing Phase 16 controller marker: ${marker}`);
 }

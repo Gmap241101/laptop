@@ -75,10 +75,12 @@ export const useUserRequestHistoryActionState = () => {
 
 export default function useUserRequestHistoryActionController({
   currentUserRentalRestrictionStatus,
+  currentUserRestrictionReady,
   currentUserRequests,
   dataSettings,
   firebaseAuthUser,
   loadFreshRentalRestrictionStatus,
+  rentalRequestsReady,
   setData,
   setRentalRequests,
   setUserActionDialog,
@@ -179,24 +181,34 @@ export default function useUserRequestHistoryActionController({
       return;
     }
 
-    let latestRestrictionStatus = null;
+    let latestRestrictionStatus = currentUserRentalRestrictionStatus || null;
 
-    try {
-      latestRestrictionStatus =
-        await loadFreshRentalRestrictionStatus(
-          firebaseAuthUser.uid
+    if (userActionCutoverConfig.requested) {
+      if (!rentalRequestsReady || !currentUserRestrictionReady) {
+        triggerToast(
+          '대여 제한 상태를 확인하는 중입니다. 잠시 후 다시 시도해 주세요.',
+          'error'
         );
-    } catch (error) {
-      console.error(
-        'Rental extension restriction preflight error:',
-        error
-      );
+        return;
+      }
+    } else {
+      try {
+        latestRestrictionStatus =
+          await loadFreshRentalRestrictionStatus(
+            firebaseAuthUser.uid
+          );
+      } catch (error) {
+        console.error(
+          'Rental extension restriction preflight error:',
+          error
+        );
 
-      triggerToast(
-        '대여 제한 상태를 확인하지 못해 연장 신청을 중단했습니다. 잠시 후 다시 시도해 주세요.',
-        'error'
-      );
-      return;
+        triggerToast(
+          '대여 제한 상태를 확인하지 못해 연장 신청을 중단했습니다. 잠시 후 다시 시도해 주세요.',
+          'error'
+        );
+        return;
+      }
     }
 
     if (latestRestrictionStatus?.blocked) {

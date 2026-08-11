@@ -1,4 +1,27 @@
 const trim = (value) => String(value ?? '').trim();
+const repositoryError = (code, message, status = 409) => {
+  const error = new Error(message);
+  error.name = 'UserClerkAuthRepositoryError';
+  error.code = code;
+  error.status = status;
+  return error;
+};
+const koreaToday = () => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(new Date());
+const isBlockingRestriction = (restriction = {}) => {
+  const incidentStatus = trim(restriction.incidentStatus).toLowerCase();
+  const eligibleFromDate = trim(restriction.eligibleFromDate);
+  return Boolean(
+    restriction.manualBlock === true ||
+    restriction.indefinite === true ||
+    trim(restriction.restrictionStatus).toLowerCase() === 'active' ||
+    restriction.lossDamagePending === true ||
+    ['pending', 'open', 'unresolved'].includes(incidentStatus) ||
+    Number(restriction.pendingTotalOverdueDays || 0) > 0 ||
+    (restriction.activePenalty === true && eligibleFromDate && koreaToday() < eligibleFromDate)
+  );
+};
 
 const mapRow = (row) => {
   if (!row) return null;
@@ -97,8 +120,7 @@ const materializePostgresqlRuntimeReadModels = async (pool, { appUserId, firebas
      ON CONFLICT (firebase_uid) DO UPDATE SET
        app_user_id=COALESCE(app_user_rental_restriction_shadows.app_user_id,EXCLUDED.app_user_id),
        updated_at=NOW()
-     WHERE app_user_rental_restriction_shadows.restriction_exists=false
-       AND app_user_rental_restriction_shadows.authority_mode='postgresql-authoritative'`,
+     WHERE app_user_rental_restriction_shadows.authority_mode='postgresql-authoritative'`,
     [uid, appUserId],
   );
 };
@@ -210,6 +232,101 @@ export const createUserClerkAuthRepository = (pool) => {
         [trim(firebaseUid)],
       );
       return this.findByFirebaseUid(firebaseUid);
+    },
+
+    async finalizePostgresqlWithdrawal({ firebaseUid }) {
+      const uid = trim(firebaseUid);
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const memberResult = await client.query(
+          `SELECT firebase_uid, app_user_id, status, identity_key, previous_account_uids
+             FROM app_member_accounts
+            WHERE firebase_uid=$1
+            FOR UPDATE`,
+          [uid],
+        );
+        const member = memberResult.rows[0];
+        if (!member) throw repositoryError('user_withdrawal_member_not_found', 'PostgreSQL member account was not found.', 404);
+        if (member.status === 'retired') {
+          await client.query('COMMIT');
+          return this.findByFirebaseUid(uid);
+        }
+        if (!member.app_user_id) throw repositoryError('user_withdrawal_identity_not_linked', 'PostgreSQL member identity is not linked.', 409);
+
+        const blockingResult = await client.query(
+          `SELECT
+             COUNT(*) FILTER (WHERE status IN ('신청중','보류','대여중'))::bigint AS active_count,
+             COUNT(*) FILTER (WHERE user_action_request->>'status' = 'pending')::bigint AS pending_action_count,
+             COUNT(*) FILTER (WHERE overdue_penalty_pending = TRUE)::bigint AS overdue_penalty_pending_count
+             FROM app_rental_requests
+            WHERE app_user_id=$1`,
+          [member.app_user_id],
+        );
+        const blockers = blockingResult.rows[0] || {};
+        if (Number(blockers.active_count || 0) > 0) {
+          throw repositoryError('user_withdrawal_active_rental_blocked', 'Active rental requests block membership withdrawal.', 409);
+        }
+        if (Number(blockers.pending_action_count || 0) > 0) {
+          throw repositoryError('user_withdrawal_pending_action_blocked', 'Pending rental user actions block membership withdrawal.', 409);
+        }
+        if (Number(blockers.overdue_penalty_pending_count || 0) > 0) {
+          throw repositoryError('user_withdrawal_overdue_penalty_pending', 'Pending overdue penalty processing blocks membership withdrawal.', 409);
+        }
+
+        const restrictionResult = await client.query(
+          `SELECT restriction_exists, restriction_payload
+             FROM app_user_rental_restriction_shadows
+            WHERE firebase_uid=$1
+            FOR UPDATE`,
+          [uid],
+        );
+        const restrictionRow = restrictionResult.rows[0];
+        const restriction = restrictionRow?.restriction_exists ? (restrictionRow.restriction_payload || {}) : {};
+        if (isBlockingRestriction(restriction)) {
+          throw repositoryError('user_withdrawal_restriction_blocked', 'Active rental restriction blocks membership withdrawal.', 409);
+        }
+
+        const previousAccountUids = Array.isArray(member.previous_account_uids)
+          ? member.previous_account_uids.map(trim).filter(Boolean)
+          : [];
+        const nextPreviousAccountUids = Array.from(new Set([...previousAccountUids, uid]));
+
+        await client.query(
+          `UPDATE app_member_accounts
+              SET email='', masked_email='', name='탈퇴회원', team='', phone='', status='retired',
+                  directory_member_id='', directory_verified_version=0, profile_required_reason='',
+                  recovery_key='', previous_account_uids=$2::jsonb,
+                  lifecycle_authority_mode='postgresql-authoritative', mirror_state='retired',
+                  withdrawn_at=COALESCE(withdrawn_at,NOW()), authoritative_updated_at=NOW(),
+                  source_updated_at=NOW(), synced_at=NOW(), updated_at=NOW()
+            WHERE firebase_uid=$1`,
+          [uid, JSON.stringify(nextPreviousAccountUids)],
+        );
+        await client.query(
+          `UPDATE app_user_member_shadows
+              SET email='', masked_email='', name='탈퇴회원', team='', phone='', status='retired',
+                  directory_member_id='', directory_verified_version=0, profile_required_reason='',
+                  recovery_key='', previous_account_uids=$2::jsonb,
+                  authority_mode='postgresql-authoritative', mirror_state='retired',
+                  authoritative_updated_at=NOW(), source_updated_at=NOW(), synced_at=NOW(), updated_at=NOW()
+            WHERE firebase_uid=$1`,
+          [uid, JSON.stringify(nextPreviousAccountUids)],
+        );
+        await client.query(
+          `UPDATE app_user_rental_restriction_shadows
+              SET authority_mode='postgresql-authoritative', mirror_state='retired', updated_at=NOW()
+            WHERE firebase_uid=$1`,
+          [uid],
+        );
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+      return this.findByFirebaseUid(uid);
     },
 
     async syncRetiredMember({ firebaseUid, account = {} }) {

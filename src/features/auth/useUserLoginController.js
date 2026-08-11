@@ -495,13 +495,15 @@ export default function useUserLoginController({
         bindUserAuthTransitionIdentity(credential.user.uid);
       }
 
-      const adminAccountSnapshot = await getDoc(
-        doc(db, 'adminAccounts', credential.user.uid)
-      );
-      if (adminAccountSnapshot.exists()) {
-        const error = new Error('Administrator account cannot use user login.');
-        error.code = 'user_account_is_admin';
-        throw error;
+      if (!lifecycleConfig.userAuthRequested) {
+        const adminAccountSnapshot = await getDoc(
+          doc(db, 'adminAccounts', credential.user.uid)
+        );
+        if (adminAccountSnapshot.exists()) {
+          const error = new Error('Administrator account cannot use user login.');
+          error.code = 'user_account_is_admin';
+          throw error;
+        }
       }
 
       let migration = 'not-requested';

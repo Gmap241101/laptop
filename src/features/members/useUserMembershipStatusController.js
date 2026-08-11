@@ -44,6 +44,7 @@ import {
 import { syncMemberProfileWriteThroughBestEffort } from './memberProfileWriteThrough.js';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 import { readUserAccountLifecycleCutoverConfig } from '../auth/userAccountLifecycleCutover.js';
+import { readMemberAuthorityCutoverConfig } from './memberAuthorityCutover.js';
 
 export const useUserMembershipStatusState = () => {
   const [
@@ -97,6 +98,25 @@ export default function useUserMembershipStatusController({
     async ({ authUser, account, force = false }) => {
       if (!authUser?.uid || !account) {
         throw createMemberPolicyError('member/account-not-ready');
+      }
+
+      const memberAuthorityConfig = readMemberAuthorityCutoverConfig();
+      if (memberAuthorityConfig.memberRequested) {
+        const firebaseIdToken = await authUser.getIdToken();
+        const response = await clerkStagingClient.verifyMemberDirectory(firebaseIdToken);
+        const verification = response?.memberDirectoryVerification || {};
+        return {
+          status: verification?.profile?.status || account.status || '',
+          policyEnabled: Boolean(verification.policyEnabled),
+          verified: Boolean(verification.verified),
+          reason: verification.reason || '',
+          changed: Boolean(verification.changed),
+          restored:
+            Boolean(verification.changed) &&
+            verification?.profile?.status === USER_PROFILE_STATUS.ACTIVE &&
+            account.status === USER_PROFILE_STATUS.PROFILE_REQUIRED,
+          authority: 'postgresql',
+        };
       }
 
       const normalizedName = normalizeMemberName(account.name || '');

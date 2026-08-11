@@ -1,3 +1,5 @@
+import { readAccountLifecycleAuthorityConfig } from '../auth/accountLifecycleAuthority.js';
+
 const MEMBER_SESSION_KEY = 'mk_member_postgres_write_authority';
 const RESTRICTION_SESSION_KEY = 'mk_restriction_postgres_write_authority';
 const ADMIN_REGISTRY_SESSION_KEY = 'mk_admin_identity_registry_test';
@@ -23,10 +25,12 @@ export const readMemberAuthorityCutoverConfig = ({ env = import.meta.env, locati
     sessionRestriction = storage?.getItem?.(RESTRICTION_SESSION_KEY) === '1';
     sessionAdminRegistry = storage?.getItem?.(ADMIN_REGISTRY_SESSION_KEY) === '1';
   } catch { /* ignored */ }
+  const accountLifecycleRequested = readAccountLifecycleAuthorityConfig({ env, location, storage }).requested;
   return Object.freeze({
     memberEnabled, restrictionEnabled, adminRegistryEnabled,
-    memberRequested: Boolean(memberEnabled && (queryMember || sessionMember)),
-    restrictionRequested: Boolean(restrictionEnabled && (queryRestriction || sessionRestriction)),
+    memberRequested: Boolean(memberEnabled && (queryMember || sessionMember || accountLifecycleRequested)),
+    restrictionRequested: Boolean(restrictionEnabled && (queryRestriction || sessionRestriction || accountLifecycleRequested)),
+    forcedByAccountLifecycle: Boolean(accountLifecycleRequested),
     adminRegistryRequested: Boolean(adminRegistryEnabled && (queryAdminRegistry || sessionAdminRegistry)),
   });
 };

@@ -276,6 +276,153 @@ export const createMemberAuthorityService = ({
       });
     },
 
+    async verifySelfDirectory({ clerkUserId, firebaseIdentity } = {}) {
+      const { appUser, link } = await verifySelf({ clerkUserId, firebaseIdentity });
+      const targetUid = trim(link.firebaseUid);
+      const current = await repository.findByFirebaseUid(targetUid);
+      if (!current) {
+        throw serviceError(
+          'member_account_not_synchronized',
+          'PostgreSQL member account was not found.',
+          404
+        );
+      }
+
+      if (profileWriteMirrorEnabled) {
+        throw serviceError(
+          'member_directory_postgresql_authority_disabled',
+          'PostgreSQL member directory verification authority is not enabled.',
+          409
+        );
+      }
+
+      const settings = await getPostgresqlMemberPolicySettings();
+      const directoryRequired = Boolean(settings.requireRegisteredMemberForSignup);
+      const directoryVersion = Math.max(0, Number(settings.memberDirectoryVersion || 0));
+      const beforeProfile = profileFromAccount(current, targetUid);
+      const normalizedName = trim(current.name).replace(/\s+/g, '');
+      const normalizedTeam = trim(current.team).replace(/\s+/g, ' ');
+      const currentIdentityKey = trim(current.identityKey) || identityKey(normalizedTeam, normalizedName);
+      let nextProfile = { ...beforeProfile, identityKey: currentIdentityKey };
+      let verified = true;
+      let reason = '';
+
+      if (!directoryRequired) {
+        if (
+          trim(current.status) === 'profileRequired' &&
+          trim(current.profileRequiredReason) === 'directoryMismatch'
+        ) {
+          nextProfile = {
+            ...nextProfile,
+            status: 'active',
+            directoryMemberId: '',
+            directoryVerifiedVersion: 0,
+            profileRequiredReason: '',
+          };
+        } else {
+          nextProfile = {
+            ...nextProfile,
+            directoryMemberId: '',
+            directoryVerifiedVersion: 0,
+          };
+        }
+      } else {
+        const directoryState = await repository.getDirectoryBootstrapState();
+        if (
+          directoryState?.completed !== true ||
+          Number(directoryState?.version || 0) < directoryVersion
+        ) {
+          throw serviceError(
+            'member_directory_postgresql_stale',
+            'PostgreSQL member directory is not synchronized to the current policy version.',
+            503,
+            {
+              requiredVersion: directoryVersion,
+              synchronizedVersion: Number(directoryState?.version || 0),
+            }
+          );
+        }
+
+        const [directory, owner] = await Promise.all([
+          repository.findDirectoryEntryByIdentityKey(currentIdentityKey),
+          repository.findActiveIdentityOwner(currentIdentityKey, targetUid),
+        ]);
+        const directoryMatches = Boolean(
+          directory &&
+          directory.enabled !== false &&
+          trim(directory.name).replace(/\s+/g, '') === normalizedName &&
+          trim(directory.team).replace(/\s+/g, ' ') === normalizedTeam
+        );
+
+        if (owner) {
+          verified = false;
+          reason = 'duplicateIdentity';
+        } else if (!directoryMatches) {
+          verified = false;
+          reason = 'directoryMismatch';
+        }
+
+        if (verified) {
+          nextProfile = {
+            ...nextProfile,
+            status:
+              trim(current.status) === 'profileRequired' &&
+              ['directoryMismatch', 'duplicateIdentity'].includes(trim(current.profileRequiredReason))
+                ? 'active'
+                : trim(current.status),
+            directoryMemberId: trim(directory.directoryMemberId),
+            directoryVerifiedVersion: directoryVersion,
+            profileRequiredReason: '',
+          };
+        } else {
+          nextProfile = {
+            ...nextProfile,
+            status: 'profileRequired',
+            directoryMemberId: directoryMatches ? trim(directory.directoryMemberId) : '',
+            directoryVerifiedVersion: 0,
+            profileRequiredReason: reason,
+          };
+        }
+      }
+
+      const changed = [
+        'status',
+        'directoryMemberId',
+        'directoryVerifiedVersion',
+        'profileRequiredReason',
+        'identityKey',
+      ].some((key) => String(beforeProfile[key] ?? '') !== String(nextProfile[key] ?? ''));
+
+      let mutationId = '';
+      if (changed) {
+        const result = await repository.mutateProfile({
+          appUserId: appUser.id,
+          firebaseUid: targetUid,
+          actorFirebaseUid: firebaseIdentity.uid,
+          actorType: 'user',
+          action: 'user-directory-membership-verify',
+          beforeProfile,
+          nextProfile,
+          mirrorState: 'retired',
+          beforeMirror: null,
+        });
+        mutationId = result.mutationId;
+      }
+
+      return Object.freeze({
+        authority: 'postgresql',
+        source: 'postgresql-authoritative',
+        firestoreMirror: 'retired',
+        policyEnabled: directoryRequired,
+        directoryVersion,
+        verified,
+        reason,
+        changed,
+        mutationId,
+        profile: nextProfile,
+      });
+    },
+
     async listAdminMembers({ firebaseIdentity, status = 'all', search = '', page = 1, pageSize = 10 } = {}) {
       const admin = await firestoreClient.verifyAdmin({ firebaseUid: firebaseIdentity.uid, firebaseIdToken: firebaseIdentity.idToken });
       const normalizedStatus = trim(status) || 'all';

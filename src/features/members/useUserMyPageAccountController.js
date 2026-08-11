@@ -537,17 +537,13 @@ export default function useUserMyPageAccountController({
     }
 
     const authEmail = normalizeEmailAddress(firebaseAuthUser.email || '');
-
     if (!authEmail) {
       triggerToast('재인증할 로그인 이메일을 확인할 수 없습니다.', 'error');
       return;
     }
 
-    const credential = EmailAuthProvider.credential(
-      authEmail,
-      withdrawalPassword
-    );
     const lifecycleConfig = readUserAccountLifecycleCutoverConfig();
+    const credential = EmailAuthProvider.credential(authEmail, withdrawalPassword);
     let rollbackState = null;
     let withdrawalAuthorityFinalized = false;
 
@@ -555,8 +551,56 @@ export default function useUserMyPageAccountController({
 
     try {
       if (lifecycleConfig.userLifecycleRequested) {
-        await clerkStagingClient.verifyUserPassword(withdrawalPassword);
+        const firebaseIdToken = await firebaseAuthUser.getIdToken();
+        const finalizePayload = await clerkStagingClient.finalizeUserWithdrawal(
+          firebaseIdToken,
+          withdrawalPassword
+        );
+        withdrawalAuthorityFinalized = Boolean(finalizePayload?.withdrawal?.withdrawn);
+        const clerkDeleted = Boolean(finalizePayload?.withdrawal?.clerkDeleted);
+        const clerkCleanupError = finalizePayload?.withdrawal?.clerkCleanupError || '';
+        if (!withdrawalAuthorityFinalized) {
+          const error = new Error('PostgreSQL withdrawal authority was not finalized.');
+          error.code = 'user_withdrawal_authority_not_finalized';
+          throw error;
+        }
+
+        let firebaseCleanup = 'deferred';
+        try {
+          if (firebaseAuth.currentUser) {
+            await reauthenticateWithCredential(firebaseAuth.currentUser, credential);
+            await deleteUser(firebaseAuth.currentUser);
+            firebaseCleanup = 'deleted';
+          } else {
+            firebaseCleanup = 'already-signed-out';
+          }
+        } catch (firebaseCleanupError) {
+          firebaseCleanup = 'delete-deferred';
+          console.warn(
+            'Firebase compatibility cleanup deferred after PostgreSQL withdrawal authority was committed:',
+            firebaseCleanupError
+          );
+        }
+
+        await clerkStagingClient.signOut().catch(() => {});
+        publishUserAccountLifecycleObservation({
+          userAuthRequested: lifecycleConfig.userAuthRequested,
+          userLifecycleRequested: true,
+          withdrawalAuthority: 'postgresql',
+          withdrawalClerkDeleted: clerkDeleted ? 'yes' : 'deferred',
+          withdrawalClerkCleanupError: clerkCleanupError,
+          withdrawalFirebaseCleanup: firebaseCleanup,
+          error: '',
+        });
+
+        setWithdrawalDialogOpen(false);
+        setWithdrawalPassword('');
+        clearUserLoginReturnTarget();
+        clearAdminAuthenticatedSession();
+        showUserAccountStatus('withdrawalComplete');
+        return;
       }
+
       await reauthenticateWithCredential(firebaseAuthUser, credential);
 
       const currentIdentityKey =
@@ -668,7 +712,6 @@ export default function useUserMyPageAccountController({
             recoveryKey: '',
             directoryMemberId: '',
             directoryVerifiedVersion: 0,
-            directoryVerifiedAt: '',
             formerIdentityKey: currentIdentityKey,
             formerDirectoryMemberId: currentAccount.directoryMemberId || '',
             previousAccountUids: formerUids.filter(
@@ -694,47 +737,7 @@ export default function useUserMyPageAccountController({
         reason: 'user-membership-withdrawal',
       });
 
-      let clerkDeleted = false;
-      let clerkCleanupError = '';
-      if (lifecycleConfig.userLifecycleRequested) {
-        const firebaseIdToken = await firebaseAuthUser.getIdToken();
-        const finalizePayload = await clerkStagingClient.finalizeUserWithdrawal(
-          firebaseIdToken,
-          withdrawalPassword
-        );
-        withdrawalAuthorityFinalized = Boolean(finalizePayload?.withdrawal?.withdrawn);
-        clerkDeleted = Boolean(finalizePayload?.withdrawal?.clerkDeleted);
-        clerkCleanupError = finalizePayload?.withdrawal?.clerkCleanupError || '';
-        if (!withdrawalAuthorityFinalized) {
-          const error = new Error('PostgreSQL withdrawal authority was not finalized.');
-          error.code = 'user_withdrawal_authority_not_finalized';
-          throw error;
-        }
-      }
-
-      let firebaseCleanup = 'not-requested';
-      try {
-        await deleteUser(firebaseAuthUser);
-        firebaseCleanup = 'deleted';
-      } catch (firebaseDeleteError) {
-        if (!withdrawalAuthorityFinalized) throw firebaseDeleteError;
-        firebaseCleanup = 'delete-failed';
-        console.error('Firebase compatibility user deletion deferred after authoritative withdrawal:', firebaseDeleteError);
-      }
-
-      if (lifecycleConfig.userLifecycleRequested) {
-        await clerkStagingClient.signOut().catch(() => {});
-        publishUserAccountLifecycleObservation({
-          userAuthRequested: lifecycleConfig.userAuthRequested,
-          userLifecycleRequested: true,
-          withdrawalAuthority: 'postgresql',
-          withdrawalClerkDeleted: clerkDeleted ? 'yes' : 'deferred',
-          withdrawalClerkCleanupError: clerkCleanupError,
-          withdrawalFirebaseCleanup: firebaseCleanup,
-          error: '',
-        });
-      }
-
+      await deleteUser(firebaseAuthUser);
       setWithdrawalDialogOpen(false);
       setWithdrawalPassword('');
       clearUserLoginReturnTarget();
@@ -801,11 +804,21 @@ export default function useUserMyPageAccountController({
         });
       }
 
+      const withdrawalErrorMessages = {
+        user_withdrawal_active_rental_blocked:
+          '진행 중인 신청 또는 대여가 있어 회원 탈퇴를 진행할 수 없습니다.',
+        user_withdrawal_pending_action_blocked:
+          '검토 중인 대여 변경·취소·연장 요청이 있어 회원 탈퇴를 진행할 수 없습니다.',
+        user_withdrawal_overdue_penalty_pending:
+          '연체 패널티 처리가 완료되지 않아 회원 탈퇴를 진행할 수 없습니다.',
+        user_withdrawal_restriction_blocked:
+          '현재 대여 제한 또는 미처리된 분실·파손 조치가 있어 회원 탈퇴를 진행할 수 없습니다.',
+      };
       triggerToast(
-        error?.code === 'auth/wrong-password' ||
-          error?.code === 'auth/invalid-credential'
+        withdrawalErrorMessages[error?.code] ||
+        (error?.code === 'auth/wrong-password' || error?.code === 'auth/invalid-credential'
           ? '현재 비밀번호가 올바르지 않습니다.'
-          : getUserAuthErrorMessage(error),
+          : getUserAuthErrorMessage(error)),
         'error'
       );
     } finally {

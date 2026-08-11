@@ -226,6 +226,46 @@ export const createAccountLifecycleRepository = (pool) => {
             directoryVerifiedVersion, rejoinedAccount, termsConsentRevision, termsConsentPolicyVersion,
             identityKey, recoveryKey, JSON.stringify(previousAccountUids), randomUUID()],
         );
+        if (rejoinedAccount && Array.isArray(previousAccountUids) && previousAccountUids.length > 0) {
+          const inheritedRestrictionResult = await client.query(
+            `SELECT firebase_uid, restriction_payload
+               FROM app_user_rental_restriction_shadows
+              WHERE firebase_uid = ANY($1::text[])
+                AND restriction_exists = TRUE
+              ORDER BY authoritative_updated_at DESC NULLS LAST, updated_at DESC
+              LIMIT 1`,
+            [previousAccountUids],
+          );
+          const inheritedRow = inheritedRestrictionResult.rows[0];
+          if (inheritedRow) {
+            const inheritedRestriction = {
+              ...(inheritedRow.restriction_payload || {}),
+              uid: firebaseUid,
+              inheritedFromPreviousAccount: true,
+              inheritedFromFirebaseUid: inheritedRow.firebase_uid,
+            };
+            await client.query(
+              `INSERT INTO app_user_rental_restriction_shadows (
+                 firebase_uid, app_user_id, restriction_exists, restriction_payload,
+                 source_document_path, source_updated_at, source_hash, synced_at,
+                 authority_mode, mirror_state, last_mutation_id, authoritative_updated_at
+               ) VALUES ($1,NULL,true,$2::jsonb,$3,NOW(),$4,NOW(),
+                         'postgresql-authoritative','retired','',NOW())
+               ON CONFLICT (firebase_uid) DO UPDATE SET
+                 restriction_exists=TRUE, restriction_payload=EXCLUDED.restriction_payload,
+                 source_document_path=EXCLUDED.source_document_path, source_updated_at=NOW(),
+                 source_hash=EXCLUDED.source_hash, synced_at=NOW(),
+                 authority_mode='postgresql-authoritative', mirror_state='retired',
+                 authoritative_updated_at=NOW(), updated_at=NOW()`,
+              [
+                firebaseUid,
+                JSON.stringify(inheritedRestriction),
+                `postgresql/app_user_rental_restriction_shadows/${inheritedRow.firebase_uid}/rejoin-inheritance`,
+                `postgresql-authoritative:inherited:${inheritedRow.firebase_uid}:${firebaseUid}`,
+              ],
+            );
+          }
+        }
         for (const decision of decisions) await insertConsent(client, firebaseUid, decision, '');
         const result = await client.query(
           `SELECT firebase_uid, email, masked_email, name, team, phone, status, identity_key, recovery_key,

@@ -13,6 +13,8 @@ const createCalls = [];
 const updateCalls = [];
 const verifyCalls = [];
 let deleteShouldFail = false;
+let postgresqlWithdrawalCalls = 0;
+let phase32FirestoreUserReads = 0;
 
 const mapAccount = (uid) => accounts.get(uid) || null;
 const repository = {
@@ -35,6 +37,7 @@ const repository = {
   },
   async markVerifiedLogin({ firebaseUid }) { const current = mapAccount(firebaseUid); const next = { ...current, authAuthorityMode: 'clerk-authoritative', clerkLastVerifiedAt: 'now' }; accounts.set(firebaseUid, next); return next; },
   async markPasswordAuthority({ firebaseUid }) { const current = mapAccount(firebaseUid); const next = { ...current, passwordAuthorityUpdatedAt: 'now' }; accounts.set(firebaseUid, next); return next; },
+  async finalizePostgresqlWithdrawal({ firebaseUid }) { postgresqlWithdrawalCalls += 1; const current = mapAccount(firebaseUid); const next = { ...current, memberStatus: 'retired', lifecycleAuthorityMode: 'postgresql-authoritative' }; accounts.set(firebaseUid, next); return next; },
   async syncRetiredMember({ firebaseUid }) { const current = mapAccount(firebaseUid); const next = { ...current, memberStatus: 'retired', lifecycleAuthorityMode: 'postgresql-authoritative' }; accounts.set(firebaseUid, next); return next; },
   async markClerkRetired({ firebaseUid, deleted }) { const current = mapAccount(firebaseUid); const next = { ...current, authAuthorityMode: 'clerk-retired', lifecycleAuthorityMode: 'postgresql-authoritative', clerkAccountState: deleted ? 'deleted' : 'delete-pending', memberStatus: 'retired' }; accounts.set(firebaseUid, next); return next; },
 };
@@ -90,6 +93,34 @@ const provisioned = await service.provisionCurrent({ firebaseIdentity: { uid: 'f
 assert.equal(provisioned.provisioned, true);
 assert.equal(createCalls.at(-1).skipPasswordChecks, false, 'new signup Clerk provisioning must enforce Clerk password checks');
 assert.equal(provisioned.account.memberStatus, 'pending');
+
+const phase32Service = createUserClerkAuthService({
+  repository, clerkClient, userRepository, firebaseLinkRepository,
+  firestoreClient: {
+    async getAdminAccount() { return null; },
+    async getUserAccount() { phase32FirestoreUserReads += 1; throw new Error('Phase 32 withdrawal must not read Firestore userAccounts'); },
+  },
+  memberRepository: {
+    async findByFirebaseUid(uid) {
+      return { firebaseUid: uid, email: 'new@example.com', name: '신규회원', team: '채용대행팀', phone: '010-1234-5678', status: 'active' };
+    },
+  },
+  adminIdentityRepository: {
+    async findByFirebaseUid() { return null; },
+    async findByClerkUserId() { return null; },
+  },
+  accountLifecycleCompatibilityDisabled: true,
+});
+const phase32Withdrawn = await phase32Service.finalizeWithdrawal({
+  clerkUserId: provisioned.clerkUser.clerkUserId,
+  firebaseIdentity: { uid: 'firebase-new', idToken: 'token2' },
+  password: 'newpass99',
+});
+assert.equal(phase32Withdrawn.authority, 'postgresql');
+assert.equal(phase32Withdrawn.withdrawn, true);
+assert.equal(postgresqlWithdrawalCalls, 1);
+assert.equal(phase32FirestoreUserReads, 0, 'Phase 32 withdrawal authority must not require Firestore userAccounts');
+assert.equal(phase32Withdrawn.account.memberStatus, 'retired');
 
 firestoreAccounts.set('firebase-user', { ...firestoreAccounts.get('firebase-user'), fields: { ...firestoreAccounts.get('firebase-user').fields, status: 'retired', email: '', name: '탈퇴회원', team: '', phone: '', identityKey: '', recoveryKey: '' } });
 deleteShouldFail = true;

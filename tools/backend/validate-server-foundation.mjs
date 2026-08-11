@@ -193,8 +193,8 @@ for (const marker of [
   "url.pathname === '/api/admin/assets'",
   "url.pathname === '/api/admin/assets/bulk'",
   "url.pathname === '/api/admin/assets/categories'",
-  "source: 'postgresql-shadow'",
-  'authoritative: false',
+  "shadow?.authorityMode === 'postgresql-authoritative' ? 'postgresql-authoritative' : 'postgresql-shadow'",
+  "authoritative: shadow?.authorityMode === 'postgresql-authoritative'",
   "'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'",
   'X-Firebase-Authorization',
   "'WWW-Authenticate': 'Bearer'",
@@ -590,7 +590,7 @@ for (const marker of ["syncSiteContentDomainFromFirestore({ domain: 'rental-conf
 }
 
 const accountLifecycleCutoverSource = readFileSync('src/features/auth/accountLifecycleAuthority.js', 'utf8');
-for (const marker of ['VITE_ACCOUNT_LIFECYCLE_POSTGRES_AUTHORITY_ENABLED', "get('accountLifecycle') === 'postgres'", 'accountLifecycleCompatibilityDisabled', "firebase-auth-compatibility-preserved"]) {
+for (const marker of ['VITE_ACCOUNT_LIFECYCLE_POSTGRES_AUTHORITY_ENABLED', "queryMode === 'postgres'", "queryMode === 'firebase'", 'rollbackRequested', 'accountLifecycleCompatibilityDisabled', "firebase-auth-compatibility-preserved"]) {
   if (!accountLifecycleCutoverSource.includes(marker)) throw new Error(`Phase 32 frontend account lifecycle marker is missing: ${marker}`);
 }
 const accountLifecycleRepositorySource = readFileSync('server/src/accounts/account-lifecycle-repository.mjs', 'utf8');

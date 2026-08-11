@@ -141,13 +141,18 @@ const clerkClient = {
 const userRepository = { async upsertFromClerk() { return { id: 32, clerkUserId }; } };
 const firebaseLinkRepository = { async link() { return { appUserId: 32, firebaseUid }; } };
 const authFirestoreClient = {
-  async getAdminAccount() { return null; },
+  async getAdminAccount() { phase32AdminFirestoreReads += 1; throw new Error('Phase 32 provision must not read Firestore adminAccounts.'); },
   async getUserAccount() { firestoreUserAccountReads += 1; throw new Error('Phase 32 provision must not read Firestore userAccounts.'); },
 };
 const memberRepository = { async findByFirebaseUid(uid) { return { firebaseUid: uid, email: 'member@example.com', name: '홍길동', team: '채용대행팀', phone: '010-1234-5678', status: 'active' }; } };
+let phase32AdminFirestoreReads = 0;
+const adminIdentityRepository = {
+  async findByFirebaseUid() { return null; },
+  async findByClerkUserId() { return null; },
+};
 const userClerkAuthService = createUserClerkAuthService({
   repository: authRepository, clerkClient, userRepository, firebaseLinkRepository, firestoreClient: authFirestoreClient,
-  memberRepository, accountLifecycleCompatibilityDisabled: true,
+  memberRepository, adminIdentityRepository, accountLifecycleCompatibilityDisabled: true,
 });
 const provision = await userClerkAuthService.provisionCurrent({ firebaseIdentity: {
   uid: firebaseUid, idToken: 'firebase-token-32', email: 'member@example.com', authTime: Math.floor(Date.now() / 1000),
@@ -155,6 +160,7 @@ const provision = await userClerkAuthService.provisionCurrent({ firebaseIdentity
 assert.equal(provision.provisioned, true);
 assert.equal(firestoreUserAccountReads, 0);
 assert.equal(compatibilitySyncCalls, 0);
+assert.equal(phase32AdminFirestoreReads, 0);
 
 const runtimeReadModelQueries = [];
 const runtimeReadModelPool = {
@@ -197,12 +203,12 @@ for (const { sql } of memberReadModelQueries) {
 for (const { sql } of restrictionReadModelQueries) {
   assert.ok(sql.includes('restriction_exists, restriction_payload'));
   assert.ok(sql.includes("false, '{}'::jsonb"));
-  assert.ok(sql.includes("app_user_rental_restriction_shadows.restriction_exists=false"));
   assert.ok(sql.includes("app_user_rental_restriction_shadows.authority_mode='postgresql-authoritative'"));
+  assert.ok(!sql.includes("app_user_rental_restriction_shadows.restriction_exists=false"), 'rejoined authoritative restriction rows must also receive app_user_id without payload overwrite');
 }
 
 const read = async (path) => readFile(new URL(`../../${path}`, import.meta.url), 'utf8');
-const [migration, repoSource, serviceSource, appSource, envSource, indexSource, firestoreSource, authServiceSource, authRepoSource] = await Promise.all([
+const [migration, repoSource, serviceSource, appSource, envSource, indexSource, firestoreSource, authServiceSource, authRepoSource, memberAuthorityServiceSource] = await Promise.all([
   read('server/migrations/024_phase32_account_lifecycle_postgresql_authority.sql'),
   read('server/src/accounts/account-lifecycle-repository.mjs'),
   read('server/src/accounts/account-lifecycle-service.mjs'),
@@ -212,16 +218,19 @@ const [migration, repoSource, serviceSource, appSource, envSource, indexSource, 
   read('server/src/firestore/firestore-members.mjs'),
   read('server/src/auth/user-clerk-auth-service.mjs'),
   read('server/src/auth/user-clerk-auth-repository.mjs'),
+  read('server/src/members/member-authority-service.mjs'),
 ]);
 for (const marker of ['CREATE TABLE IF NOT EXISTS app_user_term_consent_states', 'CREATE TABLE IF NOT EXISTS app_user_term_consent_logs', 'terms_consent_bootstrap_completed_at', "'phase', 32", "'password_reset_delivery', 'firebase-auth-compatibility-preserved'"]) assert.ok(migration.includes(marker), marker);
-for (const marker of ['createSignupAccount', 'importConsents', 'saveConsents', 'terms_consent_bootstrap_completed_at', 'terms_consent_revision, terms_consent_policy_version', 'GREATEST(terms_consent_revision, $2)', "mirror_state='retired'"]) assert.ok(repoSource.includes(marker), marker);
+for (const marker of ['createSignupAccount', 'importConsents', 'saveConsents', 'terms_consent_bootstrap_completed_at', 'terms_consent_revision, terms_consent_policy_version', 'GREATEST(terms_consent_revision, $2)', "mirror_state='retired'", 'inheritedFromPreviousAccount', 'rejoin-inheritance']) assert.ok(repoSource.includes(marker), marker);
 for (const marker of ['authorityEnabled = false', 'assertAuthorityEnabled', 'account_lifecycle_authority_disabled', 'bootstrapTerms', 'listUserTermConsentStates', 'legacy-firestore:', "firestoreBootstrap: 'retired'"]) assert.ok(serviceSource.includes(marker), marker);
-for (const marker of ["'/api/users/signup/bootstrap'", "'/api/users/me/terms-consent/bootstrap'", 'accountLifecycleCompatibilityDisabled', "passwordResetDelivery: 'firebase-auth-compatibility-preserved'", "runtimeRevision: 'phase32-canonical-member-profile-read-20260811-2054'"]) assert.ok(appSource.includes(marker), marker);
+for (const marker of ["'/api/users/signup/bootstrap'", "'/api/users/me/terms-consent/bootstrap'", 'accountLifecycleCompatibilityDisabled', "passwordResetDelivery: 'firebase-auth-compatibility-preserved'", "runtimeRevision: 'phase32-new-member-runtime-authority-20260811-2108'"]) assert.ok(appSource.includes(marker), marker);
 assert.ok(envSource.includes('FIRESTORE_ACCOUNT_LIFECYCLE_COMPATIBILITY_DISABLED'));
 assert.ok(indexSource.includes('firestoreClient: firestoreMemberAuthorityClient'));
 assert.ok(indexSource.includes('authorityEnabled: config.accountLifecycleCompatibilityDisabled'));
 assert.ok(firestoreSource.includes('listUserTermConsentStates'));
 assert.ok(firestoreSource.includes('listUserTermConsentLogs'));
-for (const marker of ['readProvisionUser', 'memberRepository.findByFirebaseUid', 'if (!accountLifecycleCompatibilityDisabled)']) assert.ok(authServiceSource.includes(marker), marker);
-for (const marker of ['materializePostgresqlRuntimeReadModels', 'app_user_member_shadows', 'app_user_rental_restriction_shadows', "m.lifecycle_authority_mode='postgresql-authoritative'", 'm.terms_consent_bootstrap_completed_at IS NOT NULL']) assert.ok(authRepoSource.includes(marker), marker);
+for (const marker of ['readProvisionUser', 'memberRepository.findByFirebaseUid', 'if (!accountLifecycleCompatibilityDisabled)', 'finalizePostgresqlWithdrawal']) assert.ok(authServiceSource.includes(marker), marker);
+for (const marker of ['materializePostgresqlRuntimeReadModels', 'app_user_member_shadows', 'app_user_rental_restriction_shadows', "m.lifecycle_authority_mode='postgresql-authoritative'", 'm.terms_consent_bootstrap_completed_at IS NOT NULL', 'finalizePostgresqlWithdrawal', 'user_withdrawal_active_rental_blocked', 'user_withdrawal_restriction_blocked']) assert.ok(authRepoSource.includes(marker), marker);
+for (const marker of ['verifySelfDirectory', 'member_directory_postgresql_stale', "action: 'user-directory-membership-verify'", "mirrorState: 'retired'"]) assert.ok(memberAuthorityServiceSource.includes(marker), marker);
+for (const marker of ["'/api/users/me/member-directory/verify'", 'memberDirectoryVerification']) assert.ok(appSource.includes(marker), marker);
 console.log('[account-lifecycle-authority-backend-smoke] PASS (backend flag gates Phase 32 service, PostgreSQL signup/terms authority, PG-only signup read-model self-heal, one-time trusted terms import, Firebase reset preserved)');

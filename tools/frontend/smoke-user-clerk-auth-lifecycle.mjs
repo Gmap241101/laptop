@@ -42,6 +42,8 @@ for (const marker of [
   "userAuthSource: 'clerk'", "userClientTrustStatus: 'verified'", 'clientTrustRequired: true',
   'getUserClerkSession', 'user_clerk_session_identity_mismatch',
   'beginUserAuthTransition', 'bindUserAuthTransitionIdentity', 'completeUserAuthTransition',
+  'if (!lifecycleConfig.userAuthRequested)',
+  "doc(db, 'adminAccounts', credential.user.uid)",
 ]) assert.ok(loginSource.includes(marker), `missing Phase 23 user login marker: ${marker}`);
 
 for (const marker of [
@@ -136,8 +138,9 @@ for (const marker of [
 
 const withdrawalSource = readFileSync('src/features/members/useUserMyPageAccountController.js', 'utf8');
 for (const marker of [
-  'verifyUserPassword(withdrawalPassword)', 'finalizeUserWithdrawal(', 'withdrawalAuthorityFinalized',
+  'lifecycleConfig.userLifecycleRequested', 'finalizeUserWithdrawal(', 'withdrawalAuthorityFinalized',
   "withdrawalAuthority: 'postgresql'", "withdrawalFirebaseCleanup: firebaseCleanup", '!withdrawalAuthorityFinalized',
+  'user_withdrawal_active_rental_blocked', 'user_withdrawal_restriction_blocked',
 ]) assert.ok(withdrawalSource.includes(marker), `missing Phase 23 withdrawal authority marker: ${marker}`);
 
 const diagnosticsSource = readFileSync('src/clerk/ClerkStagingDiagnostics.jsx', 'utf8');

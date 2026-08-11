@@ -72,6 +72,49 @@ assert.equal(firestoreClaimReads, 0);
 assert.equal(firestoreProfileCommits, 0);
 assert.equal(firestoreDirectoryListReads, 0, 'completed directory bootstrap must not reread Firestore');
 
+const directoryVerification = await service.verifySelfDirectory({
+  clerkUserId: 'clerk-user-phase31',
+  firebaseIdentity: firebaseUser,
+});
+assert.equal(directoryVerification.authority, 'postgresql');
+assert.equal(directoryVerification.source, 'postgresql-authoritative');
+assert.equal(directoryVerification.firestoreMirror, 'retired');
+assert.equal(directoryVerification.verified, true);
+assert.equal(directoryVerification.profile.status, 'active');
+assert.equal(directoryVerification.profile.directoryMemberId, 'dir-201');
+assert.equal(directoryVerification.profile.directoryVerifiedVersion, 7);
+assert.equal(lastMutation.action, 'user-directory-membership-verify');
+assert.equal(firestoreAccountReads, 0, 'PostgreSQL directory verification must not read Firestore userAccounts');
+assert.equal(firestoreDirectoryListReads, 0, 'PostgreSQL directory verification must not bootstrap Firestore from a general-user token');
+
+const staleDirectoryService = createMemberAuthorityService({
+  repository: { ...repository, async getDirectoryBootstrapState() { return { completed: true, version: 6 }; } },
+  firebaseLinkRepository, userRepository, firestoreClient, rentalRestrictionRepository, siteContentRepository,
+  writeMirrorEnabled: false, profileWriteMirrorEnabled: false,
+});
+await assert.rejects(
+  () => staleDirectoryService.verifySelfDirectory({ clerkUserId: 'clerk-user-phase31', firebaseIdentity: firebaseUser }),
+  (error) => error?.code === 'member_directory_postgresql_stale' && error?.status === 503,
+);
+
+const mismatchDirectoryService = createMemberAuthorityService({
+  repository: {
+    ...repository,
+    async findDirectoryEntryByIdentityKey() { return null; },
+    async findActiveIdentityOwner() { return null; },
+  },
+  firebaseLinkRepository, userRepository, firestoreClient, rentalRestrictionRepository, siteContentRepository,
+  writeMirrorEnabled: false, profileWriteMirrorEnabled: false,
+});
+const mismatchVerification = await mismatchDirectoryService.verifySelfDirectory({
+  clerkUserId: 'clerk-user-phase31',
+  firebaseIdentity: firebaseUser,
+});
+assert.equal(mismatchVerification.verified, false);
+assert.equal(mismatchVerification.reason, 'directoryMismatch');
+assert.equal(mismatchVerification.profile.status, 'profileRequired');
+assert.equal(lastMutation.nextProfile.profileRequiredReason, 'directoryMismatch');
+
 const admin = await service.editAdmin({ firebaseIdentity: firebaseAdmin, targetUid: member.firebaseUid, input: { name: '홍길동', team: '채용대행팀', phone: '010-5555-6666', email: member.email } });
 assert.equal(admin.firestoreMirror, 'retired');
 assert.equal(admin.identitySource, 'postgresql');
