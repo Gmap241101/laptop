@@ -31,6 +31,7 @@ import {
 } from './domain/rentalPolicy.js';
 import { useDashboardSummary } from './hooks/useDashboardSummary.js';
 import useSiteSettingsController from './features/settings/useSiteSettingsController.js';
+import useAdminPublicContentSynchronizationController from './features/content/useAdminPublicContentSynchronizationController.js';
 import { selectAppReadiness } from './selectors/appReadinessSelectors.js';
 import useBoardContentSubscriptionController, {
   getSafeFaqPostsPerPage,
@@ -896,6 +897,13 @@ function App() {
     systemAdminSettingsReady,
     triggerToast,
     userTab,
+    view,
+  });
+
+  useAdminPublicContentSynchronizationController({
+    firebaseAuthUser,
+    isAdminAuthenticated,
+    triggerToast,
     view,
   });
 

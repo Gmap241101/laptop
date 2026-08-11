@@ -52,11 +52,18 @@ export const readSiteContentCutoverConfig = ({
   const readEnabled = staging && (
     bool(env?.VITE_SITE_CONTENT_POSTGRES_READ_ENABLED) || authorityEnabled
   );
-  const writeThroughEnabled = staging && bool(env?.VITE_SITE_CONTENT_WRITE_THROUGH_ENABLED);
+  // Phase 33 public PostgreSQL authority and administrator Firestore editing must move
+  // together. Once public authority is enabled, every administrator site-content
+  // save is required to write through to PostgreSQL even when a legacy query/session
+  // latch is absent. This prevents Firestore-admin / PostgreSQL-public split brain.
+  const writeThroughEnabled = staging && (
+    bool(env?.VITE_SITE_CONTENT_WRITE_THROUGH_ENABLED) || authorityEnabled
+  );
   const params = location ? new URLSearchParams(location.search || '') : new URLSearchParams();
   const queryRead = readEnabled && params.get('siteContent') === 'postgres';
   const queryRollback = authorityEnabled && params.get('siteContent') === 'firestore';
   const queryWrite = writeThroughEnabled && params.get('siteContentWrite') === 'postgres';
+  const queryWriteRollback = authorityEnabled && params.get('siteContentWrite') === 'firestore';
   let sessionRead = false;
   let sessionWrite = false;
   try {
@@ -80,7 +87,13 @@ export const readSiteContentCutoverConfig = ({
       (authorityEnabled && !queryRollback) ||
       (readEnabled && (queryRead || sessionRead))
     ),
-    writeThroughRequested: Boolean(writeThroughEnabled && (queryWrite || sessionWrite)),
+    writeThroughRequested: Boolean(
+      writeThroughEnabled && (
+        (authorityEnabled && !queryRollback && !queryWriteRollback) ||
+        queryWrite ||
+        sessionWrite
+      )
+    ),
     apiBaseUrl: normalizeApiBaseUrl(env?.VITE_API_URL),
   });
 };

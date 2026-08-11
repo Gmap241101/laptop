@@ -36,11 +36,17 @@ export const readPolicyContentCutoverConfig = ({
   const readEnabled = staging && (
     bool(env?.VITE_POLICY_CONTENT_POSTGRES_READ_ENABLED) || authorityEnabled
   );
-  const writeThroughEnabled = staging && bool(env?.VITE_POLICY_CONTENT_WRITE_THROUGH_ENABLED);
+  // Phase 33 public PostgreSQL authority requires administrator policy edits to
+  // write through as well. Do not let a missing legacy query/session latch leave
+  // Firestore management ahead of the PostgreSQL public source.
+  const writeThroughEnabled = staging && (
+    bool(env?.VITE_POLICY_CONTENT_WRITE_THROUGH_ENABLED) || authorityEnabled
+  );
   const params = location ? new URLSearchParams(location.search || '') : new URLSearchParams();
   const queryRead = readEnabled && params.get('policyContent') === 'postgres';
   const queryRollback = authorityEnabled && params.get('policyContent') === 'firestore';
   const queryWrite = writeThroughEnabled && params.get('policyContentWrite') === 'postgres';
+  const queryWriteRollback = authorityEnabled && params.get('policyContentWrite') === 'firestore';
   let sessionRead = false;
   let sessionWrite = false;
   try {
@@ -64,7 +70,13 @@ export const readPolicyContentCutoverConfig = ({
       (authorityEnabled && !queryRollback) ||
       (readEnabled && (queryRead || sessionRead))
     ),
-    writeThroughRequested: Boolean(writeThroughEnabled && (queryWrite || sessionWrite)),
+    writeThroughRequested: Boolean(
+      writeThroughEnabled && (
+        (authorityEnabled && !queryRollback && !queryWriteRollback) ||
+        queryWrite ||
+        sessionWrite
+      )
+    ),
     apiBaseUrl: normalizeApiBaseUrl(env?.VITE_API_URL),
   });
 };

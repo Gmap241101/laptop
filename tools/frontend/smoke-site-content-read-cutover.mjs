@@ -19,6 +19,17 @@ for (const marker of [
   'site_content_sync_count_mismatch',
 ]) assert.ok(cutover.includes(marker), `missing Phase 24 cutover marker: ${marker}`);
 
+
+for (const marker of [
+  '|| authorityEnabled',
+  'queryWriteRollback',
+  '(authorityEnabled && !queryRollback && !queryWriteRollback)',
+]) assert.ok(cutover.includes(marker), `Phase 33 public authority must force site-content write-through: ${marker}`);
+const adminAuthoritySync = readFileSync('src/features/content/useAdminPublicContentSynchronizationController.js', 'utf8');
+for (const marker of ['syncAllSiteContentDomainsFromFirestore', 'syncAllPolicyContentDomainsFromFirestore', 'mk_phase33_public_content_authority_repair_20260811_2355']) {
+  assert.ok(adminAuthoritySync.includes(marker), `missing Phase 33 content reconciliation marker: ${marker}`);
+}
+
 const siteSettings = readFileSync('src/features/settings/useSiteSettingsController.js', 'utf8');
 for (const marker of ['requestSiteContentDomain', 'SITE_CONTENT_DOMAINS.SITE_SETTINGS', 'getDoc(SITE_SETTINGS_DOC_REF)']) assert.ok(siteSettings.includes(marker), `missing site settings cutover marker: ${marker}`);
 const home = readFileSync('src/user/UserHomePanel.jsx', 'utf8');

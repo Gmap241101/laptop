@@ -3,11 +3,31 @@ import { readFile } from 'node:fs/promises';
 import { createRentalRequestUserActionService } from '../../server/src/rentals/rental-request-user-action-service.mjs';
 
 const identity = { uid: 'firebase-user', email: 'user@example.com', idToken: 'firebase-token' };
+const addDays = (dateText, days) => {
+  const date = new Date(`${dateText}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+};
+const koreaToday = () => new Date(Date.now() + (9 * 60 * 60 * 1000)).toISOString().slice(0, 10);
+const nextWeekday = (dateText) => {
+  let value = dateText;
+  for (let index = 0; index < 7; index += 1) {
+    const day = new Date(`${value}T00:00:00.000Z`).getUTCDay();
+    if (day !== 0 && day !== 6) return value;
+    value = addDays(value, 1);
+  }
+  return value;
+};
+const referenceToday = koreaToday();
+const editStartDate = nextWeekday(addDays(referenceToday, 1));
+const editDueDate = nextWeekday(addDays(editStartDate, 2));
+const rentedStartDate = addDays(referenceToday, -10);
+const rentedDueDate = nextWeekday(addDays(referenceToday, 10));
 const baseRequest = {
   id: 'REQ-P19', requesterUid: identity.uid, requesterEmail: identity.email,
   requesterName: 'Tester', requesterTeam: 'QA', team: 'QA', borrower: 'Tester',
   laptopId: 'asset-1', assetCategory: '노트북', assetNo: 'A-1',
-  startDate: '2026-08-10', dueDate: '2026-08-12', purpose: 'phase19', status: '신청중',
+  startDate: editStartDate, dueDate: editDueDate, purpose: 'phase19', status: '신청중',
   extensionCount: 0, extensionHistory: [], userActionRequest: null,
 };
 const docFor = (request) => ({
@@ -76,7 +96,7 @@ const baseSettings = {
 
 {
   const h = createHarness({ request: baseRequest, settings: baseSettings });
-  const result = await h.service.editCurrent('clerk-user', identity, { requestId: baseRequest.id, startDate: '2026-08-11', dueDate: '2026-08-13', purpose: 'edited' });
+  const result = await h.service.editCurrent('clerk-user', identity, { requestId: baseRequest.id, startDate: editStartDate, dueDate: editDueDate, purpose: 'edited' });
   assert.equal(result.authority, 'postgresql'); assert.equal(result.operation, 'edit'); assert.equal(result.firestoreMirror, 'synced');
   assert.equal(h.mirrorCalls.at(-1)[0], 'edit'); assert.equal(h.mirrorCalls.at(-1)[1].firebaseIdToken, 'firebase-token');
 }
@@ -86,19 +106,19 @@ const baseSettings = {
   assert.equal(result.deleted, true); assert.equal(result.operation, 'cancel'); assert.equal(h.mirrorCalls.at(-1)[0], 'cancel');
 }
 {
-  const rented = { ...baseRequest, status: '대여중', startDate: '2026-08-01', dueDate: '2026-08-20' };
+  const rented = { ...baseRequest, status: '대여중', startDate: rentedStartDate, dueDate: rentedDueDate };
   const h = createHarness({ request: rented, settings: baseSettings });
   const result = await h.service.extendCurrent('clerk-user', identity, { requestId: rented.id });
   assert.equal(result.approvalMode, 'manual'); assert.equal(result.request.userActionRequest.status, 'pending'); assert.equal(h.mirrorCalls.at(-1)[0], 'extend');
 }
 {
-  const rented = { ...baseRequest, status: '대여중', startDate: '2026-08-01', dueDate: '2026-08-20' };
+  const rented = { ...baseRequest, status: '대여중', startDate: rentedStartDate, dueDate: rentedDueDate };
   const h = createHarness({ request: rented, settings: { ...baseSettings, rentalExtensionApprovalMode: 'auto' } });
   const result = await h.service.extendCurrent('clerk-user', identity, { requestId: rented.id });
   assert.equal(result.approvalMode, 'auto'); assert.equal(result.request.userActionRequest.status, 'approved'); assert.ok(result.availability); assert.ok(result.asset); assert.equal(h.mirrorCalls.at(-1)[1].autoApproved, true);
 }
 {
-  const rented = { ...baseRequest, status: '대여중', startDate: '2026-08-01', dueDate: '2026-08-20' };
+  const rented = { ...baseRequest, status: '대여중', startDate: rentedStartDate, dueDate: rentedDueDate };
   const h = createHarness({ request: rented, settings: baseSettings, overdueCount: 1 });
   await assert.rejects(() => h.service.extendCurrent('clerk-user', identity, { requestId: rented.id }), (error) => error.code === 'rental_extension_restriction_blocked');
 }
