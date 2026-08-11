@@ -96,6 +96,20 @@ export const createFirestoreMemberAuthorityClient = ({ projectId, timeoutMs = DE
     async getUserAccount({ firebaseUid, firebaseIdToken }) {
       return getDocument(`userAccounts/${encodeURIComponent(trim(firebaseUid))}`, firebaseIdToken, 'firestore_member_user');
     },
+    async listUserAccounts({ firebaseIdToken }) {
+      const payload = await requestJson({
+        url: `${baseUrl}:runQuery`,
+        method: 'POST',
+        firebaseIdToken,
+        codePrefix: 'firestore_member_user_list',
+        body: { structuredQuery: { from: [{ collectionId: 'userAccounts' }] } },
+      });
+      if (!Array.isArray(payload)) throw createError('firestore_member_user_list_invalid', 'Firestore userAccounts list response is invalid.', 503);
+      return payload
+        .map((entry) => entry?.document)
+        .filter(Boolean)
+        .map(decodeFirestoreDocument);
+    },
     async getPublicConfig({ firebaseIdToken }) {
       return getDocument('rentalSystem/publicConfig', firebaseIdToken, 'firestore_member_public_config');
     },

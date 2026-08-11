@@ -27,11 +27,25 @@ Phase 30 dedicated assertions
 - successful status mutation triggers PostgreSQL list refresh: PASS
 - backend flag mismatch produces explicit diagnostics: PASS
 
+
+Phase 30 Staging hotfix regressions
+- authoritative rental candidate (`postgresql-authoritative`) accepted by frontend client: PASS
+- user rental read no longer rejects a valid Phase 29/30 PostgreSQL authoritative payload: PASS
+- footer enabled-page PostgreSQL/Firestore server parity guard: PASS
+- footer parity query bounded with limit(100): PASS
+- first Phase 30 admin-member list can bootstrap the complete legacy Firestore userAccounts set: PASS
+- completed member bootstrap is persisted in app_runtime_metadata and is not repeated: PASS
+- PostgreSQL-authoritative member rows are protected from bootstrap overwrite: PASS
+- server index wires memberStatusRestrictionWriteMirrorDisabled into memberAuthorityService: PASS
+- server index wires rentalRestrictionRepository into memberAuthorityService: PASS
+- targeted frontend/backend hotfix smokes: PASS
+- full npm run verify:phase30 after hotfix: PASS / exit 0
+
 Full regression
 - npm run verify:phase30: PASS / exit 0
 - React hook audit: PASS (169 source files)
 - Application flow audit: PASS (124 contracts / 11 user routes / 20 administrator tabs)
-- Firestore strict audit: PASS (137 calls / 35 onSnapshot / 53 getDocs / 31 getDoc / 18 getCountFromServer / warnings 0 / errors 0)
+- Firestore strict audit: PASS (138 calls / 35 onSnapshot / 54 getDocs / 31 getDoc / 18 getCountFromServer / warnings 0 / errors 0)
 
 Build
 - npm run build:staging prebuild audits: PASS

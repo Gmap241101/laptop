@@ -468,7 +468,8 @@ export default function usePopupFooterContentSubscriptionController({
       ? FOOTER_PAGES_COLLECTION_REF
       : firestoreQuery(
           FOOTER_PAGES_COLLECTION_REF,
-          where('enabled', '==', true)
+          where('enabled', '==', true),
+          limit(100)
         );
 
     const applyFooterPagesSnapshot = (snapshot) => {
@@ -517,17 +518,38 @@ export default function usePopupFooterContentSubscriptionController({
         if (cutover.readRequested) {
           try {
             const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.FOOTER, config: cutover });
-            if (cancelled) return;
-            const remotePages = content.documents
+            const postgresPages = content.documents
               .filter((item) => item.key.startsWith('footerPages/') && item.payload?.enabled !== false)
-              .map((item) => ({ ...item.payload, id: item.payload?.id || item.key.split('/').pop() }))
-              .sort((first, second) => {
-                const orderDifference = (Number(first.sortOrder) || 0) - (Number(second.sortOrder) || 0);
-                if (orderDifference !== 0) return orderDifference;
-                const createdDifference = getFirestoreTimestampMillis(first.createdAt) - getFirestoreTimestampMillis(second.createdAt);
-                if (createdDifference !== 0) return createdDifference;
-                return String(first.id || '').localeCompare(String(second.id || ''));
+              .map((item) => ({ ...item.payload, id: item.payload?.id || item.key.split('/').pop() }));
+            const firestoreSnapshot = await getDocsFromServer(footerPagesSource);
+            const firestorePages = firestoreSnapshot.docs.map((pageDoc) => ({ ...pageDoc.data(), id: pageDoc.id }));
+            const signatureFor = (pages) => pages
+              .map((item) => `${String(item.id || '')}:${getFirestoreTimestampMillis(item.updatedAt)}`)
+              .sort()
+              .join('|');
+            const postgresSignature = signatureFor(postgresPages);
+            const firestoreSignature = signatureFor(firestorePages);
+            const parityMatched = postgresSignature === firestoreSignature;
+            const sourcePages = parityMatched ? postgresPages : firestorePages;
+            if (!parityMatched) {
+              publishSiteContentObservation({
+                readRequested: true,
+                domain: SITE_CONTENT_DOMAINS.FOOTER,
+                readSource: 'firestore-parity-fallback',
+                documentCount: content.documents.length,
+                postgresDocumentCount: postgresPages.length,
+                firestoreDocumentCount: firestorePages.length,
+                error: 'site_content_footer_parity_mismatch',
               });
+            }
+            if (cancelled) return;
+            const remotePages = sourcePages.sort((first, second) => {
+              const orderDifference = (Number(first.sortOrder) || 0) - (Number(second.sortOrder) || 0);
+              if (orderDifference !== 0) return orderDifference;
+              const createdDifference = getFirestoreTimestampMillis(first.createdAt) - getFirestoreTimestampMillis(second.createdAt);
+              if (createdDifference !== 0) return createdDifference;
+              return String(first.id || '').localeCompare(String(second.id || ''));
+            });
             setFooterPages(remotePages);
             setFooterPagesLoadErrorMessage('');
             setFooterPagesReady(true);

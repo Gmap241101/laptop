@@ -973,7 +973,8 @@ export const requestRentalRequestReadCandidate = async ({ clerk, apiBaseUrl, fet
     error.code = payload?.error || null;
     throw error;
   }
-  if (!payload?.authenticated || payload?.rentalRequestCandidate?.source !== 'postgresql-shadow' || !Array.isArray(payload?.rentalRequestCandidate?.requests)) {
+  const candidateSource = String(payload?.rentalRequestCandidate?.source || '');
+  if (!payload?.authenticated || !['postgresql-shadow', 'postgresql-authoritative'].includes(candidateSource) || !Array.isArray(payload?.rentalRequestCandidate?.requests)) {
     throw new Error('Backend returned an invalid rental request read candidate response.');
   }
   return payload;

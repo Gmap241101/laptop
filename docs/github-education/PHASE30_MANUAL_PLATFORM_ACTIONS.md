@@ -117,3 +117,15 @@ Then redeploy both. Migration 022 is metadata-only and does not need to be rolle
 
 ## Protected production resources
 Do not change Production Clerk, `gh-pages`, production DNS, or `https://notebook.recruit.kro.kr` during this phase.
+
+## Phase 30 Staging hotfix actions
+This hotfix supersedes the first Phase 30 candidate after browser validation found three migration-boundary defects.
+
+- No new environment variable is required.
+- No new migration is added; migration 022 remains the latest Phase 30 migration.
+- Redeploy Heroku because `server/src/index.mjs`, member authority, and Firestore bootstrap reader changed.
+- Redeploy Vercel because the rental read client and footer parity read changed.
+- On the first administrator visit to **회원 계정 관리** after the hotfix, the backend performs a one-time administrator-authorized Firestore `userAccounts` full bootstrap into `app_member_accounts` if `phase30_member_accounts_full_bootstrap` is not already marked complete. Later list reads stay PostgreSQL-only.
+- User rental history must report `postgresql-authoritative` and no blocked fallback.
+- If PostgreSQL footer pages are incomplete, the user footer must temporarily report `site_content_footer_parity_mismatch` and display the full Firestore-server page set rather than a partial PostgreSQL set.
+- Administrator member status mutations must report Firestore mirror `retired`, not `synced`, when the Phase 30 backend flag is enabled.

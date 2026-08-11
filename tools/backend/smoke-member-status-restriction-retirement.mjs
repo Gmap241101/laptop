@@ -39,6 +39,8 @@ const repository = {
     return { source: 'postgresql', accounts: [member], page, pageSize, totalCount: 11, hasNextPage: false };
   },
   async getStatusCounts() { return { pending: 1, active: 11, profileRequired: 2, blocked: 3, retired: 4 }; },
+  async getFullBootstrapState() { return { completed: true, sourceCount: 11, totalCount: 11 }; },
+  async bootstrapMemberAccounts() { throw new Error('completed bootstrap must not run again'); },
   async countBlockingRentalRequestsForUids() { return 0; },
   async mutateStatus(args) {
     lastStatusMutation = args;
@@ -64,6 +66,7 @@ const firestoreClient = {
     return { uid: firebaseUid, fields: { adminRole: 'owner' } };
   },
   async getUserAccount() { firestoreAccountReads += 1; throw new Error('normal Phase 30 status authority must not read Firestore member source'); },
+  async listUserAccounts() { throw new Error('completed full-member bootstrap must not read Firestore again'); },
   async commitStatusChange() { firestoreStatusCommits += 1; throw new Error('Phase 30 status authority must not mirror to Firestore'); },
 };
 
@@ -81,6 +84,40 @@ assert.equal(listed.source, 'postgresql');
 assert.equal(listed.totalCount, 11);
 assert.equal(listed.accounts[0].uid, member.uid);
 assert.equal(listed.statusCounts.active, 11);
+
+let bootstrapCalls = 0;
+const bootstrapRepository = {
+  ...repository,
+  async getFullBootstrapState() { return null; },
+  async bootstrapMemberAccounts(accounts) {
+    bootstrapCalls += 1;
+    assert.equal(accounts.length, 2);
+    assert.equal(accounts[0].firebaseUid, member.firebaseUid);
+    assert.equal(accounts[1].firebaseUid, 'firebase-member-retired');
+    return { completed: true, source: 'firestore-userAccounts', sourceCount: 2, upsertedCount: 2, totalCount: 2 };
+  },
+};
+const bootstrapFirestoreClient = {
+  ...firestoreClient,
+  async listUserAccounts({ firebaseIdToken }) {
+    assert.equal(firebaseIdToken, firebaseAdmin.idToken);
+    return [
+      { name: `projects/test/databases/(default)/documents/userAccounts/${member.firebaseUid}`, updateTime: '2026-08-11T00:00:00.000Z', fields: { ...member, uid: member.firebaseUid } },
+      { name: 'projects/test/databases/(default)/documents/userAccounts/firebase-member-retired', updateTime: '2026-08-10T00:00:00.000Z', fields: { uid: 'firebase-member-retired', email: '', name: '탈퇴회원', team: '', phone: '', status: 'retired' } },
+    ];
+  },
+};
+const bootstrapService = createMemberAuthorityService({
+  repository: bootstrapRepository,
+  firebaseLinkRepository,
+  userRepository,
+  firestoreClient: bootstrapFirestoreClient,
+  rentalRestrictionRepository,
+  writeMirrorEnabled: false,
+});
+const bootstrappedList = await bootstrapService.listAdminMembers({ firebaseIdentity: firebaseAdmin, status: 'active', search: '홍길동', page: 2, pageSize: 10 });
+assert.equal(bootstrapCalls, 1, 'Phase 30 must bootstrap the complete legacy userAccounts set exactly once when bootstrap state is absent.');
+assert.equal(bootstrappedList.bootstrap?.sourceCount, 2);
 
 const changed = await service.changeStatusAdmin({ firebaseIdentity: firebaseAdmin, targetUid: member.firebaseUid, nextStatus: 'blocked' });
 assert.equal(changed.authority, 'postgresql');
@@ -143,16 +180,21 @@ const blockingQuery = queries.find(({ sql }) => sql.includes('FROM app_rental_re
 assert.ok(blockingQuery, 'rejoined member active-request guard must query PostgreSQL rentals');
 assert.deepEqual(blockingQuery.values[0], [member.uid, 'firebase-member-old']);
 
-const [migration, serviceSource, repoSource, appSource, envSource] = await Promise.all([
+const [migration, serviceSource, repoSource, appSource, envSource, indexSource, firestoreMemberSource] = await Promise.all([
   readFile(new URL('../../server/migrations/022_phase30_member_status_restriction_write_mirror_retirement.sql', import.meta.url), 'utf8'),
   readFile(new URL('../../server/src/members/member-authority-service.mjs', import.meta.url), 'utf8'),
   readFile(new URL('../../server/src/members/member-authority-repository.mjs', import.meta.url), 'utf8'),
   readFile(new URL('../../server/src/app.mjs', import.meta.url), 'utf8'),
   readFile(new URL('../../server/src/config/env.mjs', import.meta.url), 'utf8'),
+  readFile(new URL('../../server/src/index.mjs', import.meta.url), 'utf8'),
+  readFile(new URL('../../server/src/firestore/firestore-members.mjs', import.meta.url), 'utf8'),
 ]);
 for (const marker of ["'phase', 30", "'member_status_source', 'postgresql-authoritative'", "'member_profile_edit_mirror', 'preserved-until-identity-directory-cutover'"]) assert.ok(migration.includes(marker), marker);
-for (const marker of ['listAdminMembers', 'writeMirrorEnabled', "source: writeMirrorEnabled ? 'firestore-compatibility' : 'postgresql-authoritative'", "firestoreMirror: writeMirrorEnabled ? 'synced' : 'retired'"]) assert.ok(serviceSource.includes(marker), marker);
-for (const marker of ['listMembers', 'getStatusCounts', 'countBlockingRentalRequestsForUids', "status IN ('신청중','보류','대여중')", "mirrorState === 'retired' ? 'retired' : 'synced'"]) assert.ok(repoSource.includes(marker), marker);
+for (const marker of ['listAdminMembers', 'ensureFullMemberBootstrap', 'listUserAccounts', 'bootstrapMemberAccounts', 'writeMirrorEnabled', "source: writeMirrorEnabled ? 'firestore-compatibility' : 'postgresql-authoritative'", "firestoreMirror: writeMirrorEnabled ? 'synced' : 'retired'"]) assert.ok(serviceSource.includes(marker), marker);
+for (const marker of ['listMembers', 'getStatusCounts', 'getFullBootstrapState', 'bootstrapMemberAccounts', 'phase30_member_accounts_full_bootstrap', 'countBlockingRentalRequestsForUids', "status IN ('신청중','보류','대여중')", "mirrorState === 'retired' ? 'retired' : 'synced'"]) assert.ok(repoSource.includes(marker), marker);
 assert.ok(appSource.includes("'/api/admin/members'"), 'Phase 30 admin member API must be exposed');
 assert.ok(envSource.includes('FIRESTORE_MEMBER_STATUS_RESTRICTION_WRITE_MIRROR_DISABLED'), 'Phase 30 backend flag must exist');
+assert.ok(indexSource.includes('writeMirrorEnabled: !config.memberStatusRestrictionWriteMirrorDisabled'), 'Phase 30 server must wire the retirement flag into memberAuthorityService.');
+assert.ok(indexSource.includes('rentalRestrictionRepository'), 'Phase 30 server must wire PostgreSQL restriction repository into memberAuthorityService.');
+assert.ok(firestoreMemberSource.includes('listUserAccounts'), 'Phase 30 full-member bootstrap requires Firestore userAccounts list reader.');
 console.log('[member-status-restriction-retirement-backend-smoke] PASS (PostgreSQL admin member read/status authority, rejoined active-rental guard, no Firestore status mirror, pagination SQL, Phase 30 contracts)');

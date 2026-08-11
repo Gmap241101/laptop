@@ -85,6 +85,94 @@ export const createMemberAuthorityRepository = (pool) => {
     },
 
 
+    async getFullBootstrapState() {
+      const result = await pool.query(
+        `SELECT value FROM app_runtime_metadata WHERE key = 'phase30_member_accounts_full_bootstrap' LIMIT 1`,
+      );
+      const value = result.rows[0]?.value;
+      return value && typeof value === 'object' ? value : null;
+    },
+
+    async bootstrapMemberAccounts(accounts = []) {
+      const sourceAccounts = Array.isArray(accounts) ? accounts : [];
+      return withTransaction(async (client) => {
+        let upsertedCount = 0;
+        for (const account of sourceAccounts) {
+          const firebaseUid = String(account?.firebaseUid || account?.uid || '').trim();
+          if (!firebaseUid) continue;
+          const linkResult = await client.query(
+            `SELECT app_user_id FROM app_user_firebase_links WHERE firebase_uid=$1 LIMIT 1`,
+            [firebaseUid],
+          );
+          const appUserId = linkResult.rows[0]?.app_user_id || null;
+          const sourceHash = hashPayload(memberProjection({ ...account, uid: firebaseUid }));
+          const result = await client.query(
+            `INSERT INTO app_member_accounts (
+               firebase_uid, app_user_id, email, masked_email, name, team, phone, status,
+               directory_member_id, directory_verified_version, profile_required_reason,
+               rejoined_account, terms_consent_revision, terms_consent_policy_version,
+               identity_key, recovery_key, previous_account_uids, source_hash,
+               authority_mode, mirror_state, source_updated_at, synced_at
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18,
+                       'firestore-bootstrap','synced',$19::timestamptz,NOW())
+             ON CONFLICT (firebase_uid) DO UPDATE SET
+               app_user_id=COALESCE(app_member_accounts.app_user_id,EXCLUDED.app_user_id),
+               email=EXCLUDED.email, masked_email=EXCLUDED.masked_email, name=EXCLUDED.name,
+               team=EXCLUDED.team, phone=EXCLUDED.phone, status=EXCLUDED.status,
+               directory_member_id=EXCLUDED.directory_member_id,
+               directory_verified_version=EXCLUDED.directory_verified_version,
+               profile_required_reason=EXCLUDED.profile_required_reason,
+               rejoined_account=EXCLUDED.rejoined_account,
+               terms_consent_revision=EXCLUDED.terms_consent_revision,
+               terms_consent_policy_version=EXCLUDED.terms_consent_policy_version,
+               identity_key=EXCLUDED.identity_key, recovery_key=EXCLUDED.recovery_key,
+               previous_account_uids=EXCLUDED.previous_account_uids,
+               source_hash=EXCLUDED.source_hash, source_updated_at=EXCLUDED.source_updated_at,
+               synced_at=NOW(), updated_at=NOW()
+             WHERE app_member_accounts.authority_mode <> 'postgresql-authoritative'
+             RETURNING firebase_uid`,
+            [
+              firebaseUid, appUserId, account?.email || '', account?.maskedEmail || '',
+              account?.name || '', account?.team || '', account?.phone || '', account?.status || '',
+              account?.directoryMemberId || '', Number(account?.directoryVerifiedVersion || 0),
+              account?.profileRequiredReason || '', Boolean(account?.rejoinedAccount),
+              Number(account?.termsConsentRevision || 0), Number(account?.termsConsentPolicyVersion || 0),
+              account?.identityKey || '', account?.recoveryKey || '',
+              JSON.stringify(Array.isArray(account?.previousAccountUids) ? account.previousAccountUids : []),
+              sourceHash, account?.sourceUpdatedAt || null,
+            ],
+          );
+          if (result.rows.length) upsertedCount += 1;
+        }
+        const totalResult = await client.query(`SELECT COUNT(*)::bigint AS count FROM app_member_accounts`);
+        const totalCount = Number(totalResult.rows[0]?.count || 0);
+        if (totalCount < sourceAccounts.length) {
+          const error = new Error('PostgreSQL member bootstrap did not retain the full Firestore userAccounts set.');
+          error.code = 'member_full_bootstrap_incomplete';
+          error.sourceCount = sourceAccounts.length;
+          error.totalCount = totalCount;
+          throw error;
+        }
+        const completedAt = new Date().toISOString();
+        const state = {
+          completed: true,
+          source: 'firestore-userAccounts',
+          target: 'postgresql',
+          sourceCount: sourceAccounts.length,
+          upsertedCount,
+          totalCount,
+          completedAt,
+        };
+        await client.query(
+          `INSERT INTO app_runtime_metadata (key,value,updated_at)
+           VALUES ('phase30_member_accounts_full_bootstrap',$1::jsonb,NOW())
+           ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()`,
+          [JSON.stringify(state)],
+        );
+        return Object.freeze(state);
+      });
+    },
+
     async listMembers({ status = 'all', search = '', page = 1, pageSize = 10 } = {}) {
       const normalizedStatus = String(status || 'all').trim();
       const normalizedSearch = String(search || '').trim().toLowerCase();

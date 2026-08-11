@@ -134,6 +134,8 @@ const memberAuthorityService = firestoreMemberAuthorityClient
       firebaseLinkRepository,
       userRepository,
       firestoreClient: firestoreMemberAuthorityClient,
+      rentalRestrictionRepository,
+      writeMirrorEnabled: !config.memberStatusRestrictionWriteMirrorDisabled,
     })
   : null;
 

@@ -24,7 +24,7 @@ for (const marker of ['requestSiteContentDomain', 'SITE_CONTENT_DOMAINS.SITE_SET
 const home = readFileSync('src/user/UserHomePanel.jsx', 'utf8');
 for (const marker of ['SITE_CONTENT_DOMAINS.HOME', "item.key.startsWith('homeBanners/')", "item.key === 'homePage/config'", 'PostgreSQL home banner read fallback', 'getDocsFromServer', 'site_content_home_parity_mismatch', 'firestore-parity-fallback']) assert.ok(home.includes(marker), `missing home content cutover marker: ${marker}`);
 const popupFooter = readFileSync('src/features/boards/usePopupFooterContentSubscriptionController.js', 'utf8');
-for (const marker of ['SITE_CONTENT_DOMAINS.POPUP', 'SITE_CONTENT_DOMAINS.FOOTER', "item.key.startsWith('popupPosts/')", "item.key.startsWith('footerPages/')", "item.key === 'siteFooter/config'", 'getDocsFromServer', 'site_content_popup_parity_mismatch']) assert.ok(popupFooter.includes(marker), `missing popup/footer cutover marker: ${marker}`);
+for (const marker of ['SITE_CONTENT_DOMAINS.POPUP', 'SITE_CONTENT_DOMAINS.FOOTER', "item.key.startsWith('popupPosts/')", "item.key.startsWith('footerPages/')", "item.key === 'siteFooter/config'", 'getDocsFromServer', 'site_content_popup_parity_mismatch', 'site_content_footer_parity_mismatch']) assert.ok(popupFooter.includes(marker), `missing popup/footer cutover marker: ${marker}`);
 for (const file of [
   'src/admin/AdminSettingsPanel.jsx',
   'src/admin/AdminHomeBannerPanel.jsx',

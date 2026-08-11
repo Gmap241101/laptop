@@ -26,6 +26,12 @@ for (const marker of [
   "source: candidate.source || 'postgresql-shadow'",
 ]) assert.ok(rentalReadCutover.includes(marker), marker);
 
+const clerkClientSource = readFileSync('src/clerk/clerkStagingClient.js', 'utf8');
+for (const marker of [
+  "const candidateSource = String(payload?.rentalRequestCandidate?.source || '')",
+  "['postgresql-shadow', 'postgresql-authoritative'].includes(candidateSource)",
+]) assert.ok(clerkClientSource.includes(marker), `authoritative rental candidate client contract missing: ${marker}`);
+
 const rentalDataController = readFileSync('src/features/requests/useRentalDataSubscriptionController.js', 'utf8');
 for (const marker of [
   'readRentalRequestWriteMirrorRetirementConfig',

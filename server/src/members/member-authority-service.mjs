@@ -71,10 +71,30 @@ export const createMemberAuthorityService = ({
   if (!firestoreClient || typeof firestoreClient.getUserAccount !== 'function') throw new TypeError('Firestore member authority client is required.');
   if (!writeMirrorEnabled && (!rentalRestrictionRepository || typeof rentalRestrictionRepository.findByFirebaseUid !== 'function')) throw new TypeError('Rental restriction repository is required when member/restriction Firestore write mirror is retired.');
   if (!writeMirrorEnabled && typeof repository.countBlockingRentalRequestsForUids !== 'function') throw new TypeError('PostgreSQL rental-request guard is required when member status authority is enabled.');
+  if (!writeMirrorEnabled && (typeof repository.getFullBootstrapState !== 'function' || typeof repository.bootstrapMemberAccounts !== 'function')) throw new TypeError('PostgreSQL member full-bootstrap repository contract is required when member status authority is enabled.');
+  if (!writeMirrorEnabled && typeof firestoreClient.listUserAccounts !== 'function') throw new TypeError('Firestore userAccounts bootstrap reader is required when member status authority is enabled.');
 
   const resolveTarget = async (firebaseUid) => {
     const link = await firebaseLinkRepository.findByFirebaseUid(firebaseUid);
     return { link, appUserId: link?.appUserId || null };
+  };
+
+  const ensureFullMemberBootstrap = async ({ firebaseIdentity }) => {
+    if (writeMirrorEnabled) return null;
+    const existingState = await repository.getFullBootstrapState();
+    if (existingState?.completed === true) return existingState;
+    const documents = await firestoreClient.listUserAccounts({ firebaseIdToken: firebaseIdentity.idToken });
+    const accounts = documents.map((document) => {
+      const fields = document?.fields || {};
+      const documentUid = trim(document?.name?.split('/').at(-1));
+      const firebaseUid = trim(fields.uid || fields.firebaseUid || documentUid);
+      return {
+        ...profileFromAccount(fields, firebaseUid),
+        firebaseUid,
+        sourceUpdatedAt: document?.updateTime || null,
+      };
+    }).filter((account) => account.firebaseUid);
+    return repository.bootstrapMemberAccounts(accounts);
   };
 
   const verifySelf = async ({ clerkUserId, firebaseIdentity }) => {
@@ -169,6 +189,7 @@ export const createMemberAuthorityService = ({
       if (typeof repository.listMembers !== 'function' || typeof repository.getStatusCounts !== 'function') {
         throw serviceError('member_admin_postgresql_read_unavailable', 'PostgreSQL member directory read is not configured.', 503);
       }
+      const bootstrap = await ensureFullMemberBootstrap({ firebaseIdentity });
       const [list, counts] = await Promise.all([
         repository.listMembers({ status: normalizedStatus, search: trim(search), page, pageSize }),
         repository.getStatusCounts(),
@@ -178,6 +199,7 @@ export const createMemberAuthorityService = ({
         source: 'postgresql',
         ...list,
         statusCounts: counts,
+        bootstrap: bootstrap || null,
       });
     },
 

@@ -50,3 +50,31 @@ VITE_FIRESTORE_MEMBER_STATUS_RESTRICTION_WRITE_MIRROR_DISABLED=true
 
 ## Diagnostics
 The Phase 30 diagnostic section reports backend activation, PostgreSQL member-status source, administrator member-list source/count, retired domains, latest member-status mirror state and restriction authority.
+
+## Staging hotfix after first Phase 30 browser validation
+The first Staging validation exposed three migration-boundary defects. They are corrected in the Phase 30 hotfix package and do not expand the intended authority scope.
+
+### 1. User rental-history authoritative response contract
+The Phase 29 backend correctly returns `rentalRequestCandidate.source=postgresql-authoritative`, but `clerkStagingClient` still accepted only the older `postgresql-shadow` source value. The browser therefore rejected a valid PostgreSQL response and surfaced `rental-request-postgres-unavailable` while legacy Firestore fallback was disabled.
+
+The client now accepts both `postgresql-shadow` and `postgresql-authoritative`; Phase 29/30 runtime uses the authoritative value.
+
+### 2. Footer-page parity guard
+The user footer previously trusted the PostgreSQL footer domain without comparing enabled `footerPages/*` against the Firestore server source. An incomplete legacy site-content sync could therefore display only a subset of configured footer entries.
+
+The footer page read now performs the same transitional server-parity protection already used for home banners and popup posts. It compares enabled page IDs plus `updatedAt`. When PostgreSQL is incomplete or stale, the current page load uses the Firestore server set and reports `site_content_footer_parity_mismatch` / `firestore-parity-fallback`. The query is bounded with `limit(100)`.
+
+### 3. Complete legacy member bootstrap + Phase 30 service wiring
+`app_member_accounts` was initially populated from PostgreSQL member shadows, which only covered accounts that had already passed through prior shadow/Clerk flows. Existing Firestore `userAccounts` that had never linked to Clerk were therefore absent from the Phase 30 administrator list.
+
+When the Phase 30 retirement backend is enabled, the first administrator member-list read now:
+1. verifies the Firebase administrator identity;
+2. checks `app_runtime_metadata.phase30_member_accounts_full_bootstrap`;
+3. if not completed, reads the full legacy `userAccounts` collection once using the administrator Firebase token;
+4. inserts/refreshes non-authoritative rows in `app_member_accounts` while preserving existing `postgresql-authoritative` rows;
+5. records the completed bootstrap state in `app_runtime_metadata` within the same PostgreSQL transaction;
+6. serves the administrator list from PostgreSQL.
+
+Subsequent administrator list reads do not repeat the Firestore full-list bootstrap.
+
+The first Staging validation also revealed that `server/src/index.mjs` had not passed `memberStatusRestrictionWriteMirrorDisabled` or `rentalRestrictionRepository` into `createMemberAuthorityService()`. Health diagnostics could therefore report the Phase 30 flag as enabled while the service still used its default compatibility-mirror mode. The server wiring now passes both dependencies explicitly, so successful administrator status mutations report `firestoreMirror=retired` when the Phase 30 backend flag is enabled.
