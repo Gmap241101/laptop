@@ -19,8 +19,27 @@ const assertAllParametersAreTypedAndReferenced = (sql, values) => {
 let adminListSqlChecks = 0;
 const adminListPool = {
   async query(sql, values = []) {
-    if (String(sql).includes('COUNT(*)::bigint AS count')) return { rows: [{ count: 0 }] };
-    if (String(sql).includes('FROM app_rental_requests request') && String(sql).includes('LIMIT')) {
+    const text = String(sql);
+    if (text.includes('COUNT(*)::bigint AS count')) return { rows: [{ count: 0 }] };
+    if (text.includes('COUNT(*) FILTER') && text.includes('FROM app_rental_requests request')) {
+      assertAllParametersAreTypedAndReferenced(sql, values);
+      for (const marker of [
+        'request.status',
+        'request.start_date',
+        'request.due_date',
+        'request.user_action_request',
+        'item.laptop_id',
+        'request.firebase_uid',
+        'request.requester_email',
+        'request.requester_name',
+        'request.requester_team',
+        'request.source_created_at',
+        'request.created_at',
+      ]) assert.ok(text.includes(marker), `Phase 29 admin count query must qualify ${marker}`);
+      assert.ok(!text.includes('COALESCE(source_created_at, created_at)'), 'Phase 29 admin count query must not leave created_at ambiguous across joined tables');
+      return { rows: [{}] };
+    }
+    if (text.includes('FROM app_rental_requests request') && text.includes('LIMIT')) {
       assertAllParametersAreTypedAndReferenced(sql, values);
       adminListSqlChecks += 1;
       return { rows: [] };
@@ -33,6 +52,7 @@ const adminListRepository = createAdminRentalRequestRepository(adminListPool);
 await adminListRepository.list({ tab: 'pending', quickFilter: 'all', query: '', page: 1, pageSize: 10, referenceDate: '2026-08-11' });
 await adminListRepository.list({ tab: 'rental', quickFilter: 'all', query: '', page: 1, pageSize: 10, referenceDate: '2026-08-11' });
 assert.equal(adminListSqlChecks, 2, 'pending and rental PostgreSQL admin list queries must both bind valid contiguous parameters');
+await adminListRepository.getCounts('2026-08-11');
 
 const firebaseIdentity = { uid: 'firebase-user', email: 'user@example.com', idToken: 'firebase-token' };
 let firestoreReads = 0;

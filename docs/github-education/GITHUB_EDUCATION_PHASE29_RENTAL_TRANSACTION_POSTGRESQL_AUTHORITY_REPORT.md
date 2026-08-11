@@ -69,3 +69,11 @@ A fourth staging validation exposed two independent regressions:
 - Administrator post-login routing was still vulnerable to an asynchronous auth/role race after the previous fixed-duration stabilization timers expired. A dedicated post-login route guard now keeps `/admin` + administrator view committed until administrator authentication is fully established and the administrator performs the first explicit pointer/keyboard/touch interaction. The guard is released before an intentional user navigation click proceeds, so it blocks automatic races without preventing later deliberate navigation to the user site.
 
 Phase 29 remains a staging candidate until administrator pending/rental/closed/returned list reads remain PostgreSQL-backed, approve/hold/deny changes remain visible after re-entry, and administrator login lands directly on `/admin` without an automatic user-home redirect.
+
+## Phase 29 administrator count-query ambiguous-column hotfix
+
+- Staging then exposed SQLSTATE `42702` while loading the administrator rental-request view. The list query itself was no longer failing with `42P18`; the failure occurred in the immediately-following `getCounts()` query used to populate administrator tab/quick-filter counts.
+- `getCounts()` joins `app_rental_requests request` with `app_rental_request_items item`. Both tables contain `created_at`, but the oldest-request calculation used `COALESCE(source_created_at, created_at)` without table qualification, making `created_at` ambiguous to PostgreSQL.
+- The count query now explicitly qualifies every request/item reference (`request.status`, `request.start_date`, `request.due_date`, `request.user_action_request`, `item.laptop_id`, requester identity columns, and `request.source_created_at/request.created_at`). This removes the `42702` ambiguity and makes the join contract explicit.
+- Phase 29 continues to prohibit stale Firestore administrator-list fallback, so any future PostgreSQL list/count failure remains visible instead of silently showing obsolete Firestore state.
+- Administrator post-login routing is unchanged by this hotfix because current Staging verification confirmed direct administrator dashboard routing is working.

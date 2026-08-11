@@ -98,3 +98,7 @@ After redeploy verify:
 2. pending/rental/closed/returned administrator tabs use PostgreSQL and `Admin cutover error` is `-`;
 3. approve/hold/deny a request, leave the request-management tab, re-enter, and confirm the changed status remains in the correct tab;
 4. Phase 29 must not show `Admin rental request active source: firestore-fallback`.
+
+## Administrator 42702 hotfix retest
+
+After deploying this hotfix, open **기기 대여 신청관리** before performing a mutation. The required diagnostic state is `Admin rental request active source: postgresql` and `Admin cutover error: -`. SQLSTATE `42702` or `firestore-fallback`/`unavailable` is a Phase 29 failure. Then verify approval/hold/deny moves the request into the correct tab and remains there after leaving and re-entering the page. No new environment variable or migration is required for this hotfix.

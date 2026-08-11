@@ -67,3 +67,10 @@ Fourth staging list/routing hotfix additions
 - Phase 29 admin Firestore watcher remains disabled on PostgreSQL list error: PASS
 - administrator post-login route guard persists until the first explicit user interaction after authenticated /admin stabilization: PASS
 - previous fixed-duration route stabilization remains as an immediate compatibility layer, with the new state-driven route guard covering later auth/role races
+
+Phase 29 administrator count-query ambiguous-column hotfix validation
+- observed Staging SQLSTATE 42702: traced to unqualified created_at in getCounts() JOIN query
+- getCounts request/item columns explicitly alias-qualified: PASS
+- smoke asserts request.status/start_date/due_date/user_action_request/requester identity/source_created_at/created_at and item.laptop_id qualification: PASS
+- stale Firestore admin-list fallback remains disabled under Phase 29 retirement: PASS
+- administrator post-login route code unchanged; user-reported direct dashboard routing retained

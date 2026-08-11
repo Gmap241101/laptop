@@ -295,24 +295,24 @@ export const createAdminRentalRequestRepository = (pool) => {
     async getCounts(referenceDate) {
       const result = await pool.query(
         `SELECT
-           COUNT(*) FILTER (WHERE status IN ('신청중','보류'))::bigint AS pending,
-           COUNT(*) FILTER (WHERE status = '대여중')::bigint AS rental,
-           COUNT(*) FILTER (WHERE status IN ('불허','사용자취소'))::bigint AS closed,
-           COUNT(*) FILTER (WHERE status = '반납완료')::bigint AS returned,
-           COUNT(*) FILTER (WHERE status = '신청중')::bigint AS requested,
-           COUNT(*) FILTER (WHERE status = '보류')::bigint AS on_hold,
-           COUNT(*) FILTER (WHERE status = '대여중' AND start_date <= $1::date AND due_date < $1::date)::bigint AS overdue,
-           COUNT(*) FILTER (WHERE status = '대여중' AND due_date = $1::date)::bigint AS due_today,
-           COUNT(*) FILTER (WHERE status = '대여중' AND start_date = $1::date)::bigint AS start_today,
-           COUNT(*) FILTER (WHERE user_action_request->>'status' = 'pending')::bigint AS pending_user_action,
-           COUNT(DISTINCT laptop_id) FILTER (WHERE status = '대여중' AND start_date > $1::date)::bigint AS unique_reserved_assets,
-           COUNT(DISTINCT laptop_id) FILTER (WHERE status = '대여중' AND start_date <= $1::date)::bigint AS unique_active_assets,
-           COUNT(DISTINCT laptop_id) FILTER (WHERE status = '대여중' AND start_date <= $1::date AND due_date < $1::date)::bigint AS unique_overdue_assets,
-           COUNT(DISTINCT COALESCE(NULLIF(firebase_uid,''), NULLIF(requester_email,''), requester_name || '|' || requester_team))
-             FILTER (WHERE status = '대여중' AND start_date <= $1::date AND due_date < $1::date)::bigint AS unique_overdue_users,
-           COALESCE(MAX(($1::date - due_date)) FILTER (WHERE status = '대여중' AND start_date <= $1::date AND due_date < $1::date), 0)::bigint AS longest_overdue_days,
-           COALESCE(MAX(FLOOR(EXTRACT(EPOCH FROM (NOW() - COALESCE(source_created_at, created_at))) / 86400))
-             FILTER (WHERE status = '신청중'), 0)::bigint AS oldest_requested_days
+           COUNT(*) FILTER (WHERE request.status IN ('신청중','보류'))::bigint AS pending,
+           COUNT(*) FILTER (WHERE request.status = '대여중')::bigint AS rental,
+           COUNT(*) FILTER (WHERE request.status IN ('불허','사용자취소'))::bigint AS closed,
+           COUNT(*) FILTER (WHERE request.status = '반납완료')::bigint AS returned,
+           COUNT(*) FILTER (WHERE request.status = '신청중')::bigint AS requested,
+           COUNT(*) FILTER (WHERE request.status = '보류')::bigint AS on_hold,
+           COUNT(*) FILTER (WHERE request.status = '대여중' AND request.start_date <= $1::date AND request.due_date < $1::date)::bigint AS overdue,
+           COUNT(*) FILTER (WHERE request.status = '대여중' AND request.due_date = $1::date)::bigint AS due_today,
+           COUNT(*) FILTER (WHERE request.status = '대여중' AND request.start_date = $1::date)::bigint AS start_today,
+           COUNT(*) FILTER (WHERE request.user_action_request->>'status' = 'pending')::bigint AS pending_user_action,
+           COUNT(DISTINCT item.laptop_id) FILTER (WHERE request.status = '대여중' AND request.start_date > $1::date)::bigint AS unique_reserved_assets,
+           COUNT(DISTINCT item.laptop_id) FILTER (WHERE request.status = '대여중' AND request.start_date <= $1::date)::bigint AS unique_active_assets,
+           COUNT(DISTINCT item.laptop_id) FILTER (WHERE request.status = '대여중' AND request.start_date <= $1::date AND request.due_date < $1::date)::bigint AS unique_overdue_assets,
+           COUNT(DISTINCT COALESCE(NULLIF(request.firebase_uid,''), NULLIF(request.requester_email,''), request.requester_name || '|' || request.requester_team))
+             FILTER (WHERE request.status = '대여중' AND request.start_date <= $1::date AND request.due_date < $1::date)::bigint AS unique_overdue_users,
+           COALESCE(MAX(($1::date - request.due_date)) FILTER (WHERE request.status = '대여중' AND request.start_date <= $1::date AND request.due_date < $1::date), 0)::bigint AS longest_overdue_days,
+           COALESCE(MAX(FLOOR(EXTRACT(EPOCH FROM (NOW() - COALESCE(request.source_created_at, request.created_at))) / 86400))
+             FILTER (WHERE request.status = '신청중'), 0)::bigint AS oldest_requested_days
          FROM app_rental_requests request
          LEFT JOIN app_rental_request_items item ON item.rental_request_id = request.id`,
         [referenceDate],
