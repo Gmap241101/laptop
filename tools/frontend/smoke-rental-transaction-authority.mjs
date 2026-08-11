@@ -63,11 +63,25 @@ for (const marker of [
 const adminAuthController = readFileSync('src/features/auth/useAdminAuthenticationController.js', 'utf8');
 for (const marker of [
   'adminPostLoginRouteGuardActive',
+  'readAdminRouteIntent',
+  'writeAdminRouteIntent();',
   'setAdminPostLoginRouteGuardActive(true)',
-  "const events = ['pointerdown', 'keydown', 'touchstart'];",
+  'readAdminAuthSession().adminId',
   'stabilizeAdminPostLoginRoute();',
   "normalizedPath === '/admin' && view === 'admin'",
-]) assert.ok(adminAuthController.includes(marker), `administrator post-login route guard marker missing: ${marker}`);
+]) assert.ok(adminAuthController.includes(marker), `administrator persistent post-login route guard marker missing: ${marker}`);
+assert.ok(!adminAuthController.includes("const events = ['pointerdown', 'keydown', 'touchstart'];"), 'administrator route intent must not be released by generic user interaction');
+
+const appRoutes = readFileSync('src/routing/appRoutes.js', 'utf8');
+for (const marker of [
+  'ADMIN_ROUTE_INTENT_SESSION_KEY',
+  'readAdminRouteIntent',
+  'writeAdminRouteIntent',
+  'clearAdminRouteIntent',
+]) assert.ok(appRoutes.includes(marker), `administrator route intent helper missing: ${marker}`);
+
+const appNavigationController = readFileSync('src/routing/useAppNavigationController.js', 'utf8');
+assert.ok(appNavigationController.includes("if (view === 'admin') {\n      clearAdminRouteIntent();"), 'explicit administrator-to-user navigation must clear persistent route intent');
 
 const adminUserActionController = readFileSync('src/features/requests/useAdminUserActionReviewController.js', 'utf8');
 for (const marker of [

@@ -78,3 +78,10 @@ When the Phase 30 retirement backend is enabled, the first administrator member-
 Subsequent administrator list reads do not repeat the Firestore full-list bootstrap.
 
 The first Staging validation also revealed that `server/src/index.mjs` had not passed `memberStatusRestrictionWriteMirrorDisabled` or `rentalRestrictionRepository` into `createMemberAuthorityService()`. Health diagnostics could therefore report the Phase 30 flag as enabled while the service still used its default compatibility-mirror mode. The server wiring now passes both dependencies explicitly, so successful administrator status mutations report `firestoreMirror=retired` when the Phase 30 backend flag is enabled.
+
+## Administrator post-login route persistence follow-up
+A later Phase 30 browser validation confirmed the Phase 30 data cutovers but reproduced the administrator post-login route race: administrator authentication succeeded, but the shell could later return to the user home view.
+
+The previous guard was transient. It became active after administrator authentication but released on the first generic `pointerdown`, `keydown`, or `touchstart`. That meant a later asynchronous Clerk/Firebase role/state reconciliation could still overwrite the route after the guard had been released.
+
+The follow-up hotfix replaces that transient release model with a persistent administrator-route intent stored in `sessionStorage` (`mk_laptop_admin_route_intent`). Administrator authentication writes the intent and the controller continues to enforce `/admin` + administrator view while a persisted administrator session exists. Generic user interaction no longer releases the guard. The intent is cleared only on explicit administrator-to-user navigation or administrator logout/session invalidation. The existing immediate/microtask/animation-frame/150ms/600ms stabilization remains as an initial fast-path, while the persistent intent is the long-lived authority protecting against later asynchronous route races.

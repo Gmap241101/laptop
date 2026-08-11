@@ -53,3 +53,12 @@ Build
 - Vite bundle: not executed because root `vite` executable is unavailable (`vite: not found`, exit 127). This is the existing local environment limitation, not a Phase 30 source validation failure.
 
 Package integrity results are recorded in the final delivery report after the finalized manifest/ZIP verification.
+
+Phase 30 administrator route persistence follow-up
+- administrator route intent stored in sessionStorage after successful admin authentication: PASS
+- route intent survives generic pointer/keyboard/touch interaction: PASS
+- persisted admin-auth session can continue enforcing /admin after controller rerender/remount: PASS
+- explicit administrator -> user home/My Page navigation clears route intent: PASS
+- administrator logout clears route intent: PASS
+- existing immediate/microtask/RAF/150ms/600ms route stabilization retained: PASS
+- frontend rental-transaction authority smoke updated to reject generic-interaction release regression: PASS

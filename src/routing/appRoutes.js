@@ -18,6 +18,24 @@ export const USER_LOGIN_RETURN_TARGET_SESSION_KEY =
 export const USER_ACCOUNT_STATUS_SESSION_KEY =
   'mk_laptop_user_account_status';
 
+export const ADMIN_ROUTE_INTENT_SESSION_KEY =
+  'mk_laptop_admin_route_intent';
+
+export const readAdminRouteIntent = () => {
+  if (typeof window === 'undefined') return false;
+  return window.sessionStorage.getItem(ADMIN_ROUTE_INTENT_SESSION_KEY) === '1';
+};
+
+export const writeAdminRouteIntent = () => {
+  if (typeof window === 'undefined') return;
+  window.sessionStorage.setItem(ADMIN_ROUTE_INTENT_SESSION_KEY, '1');
+};
+
+export const clearAdminRouteIntent = () => {
+  if (typeof window === 'undefined') return;
+  window.sessionStorage.removeItem(ADMIN_ROUTE_INTENT_SESSION_KEY);
+};
+
 export const readUserAccountStatusView = () => {
   if (typeof window === 'undefined') return { type: 'loginRetired' };
 

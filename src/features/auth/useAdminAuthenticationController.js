@@ -17,8 +17,11 @@ import {
 } from '../../firebase.js';
 import {
   PROTECTED_USER_TABS,
+  clearAdminRouteIntent,
   clearUserLoginReturnTarget,
+  readAdminRouteIntent,
   replaceAppPath,
+  writeAdminRouteIntent,
 } from '../../routing/appRoutes.js';
 import { normalizeSystemAdminSettings } from '../../utils/systemSettings.js';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
@@ -144,7 +147,9 @@ export default function useAdminAuthenticationController({
   const [adminClerkSessionVerified, setAdminClerkSessionVerified] = useState(
     () => !adminClerkAuthRequested
   );
-  const [adminPostLoginRouteGuardActive, setAdminPostLoginRouteGuardActive] = useState(false);
+  const [adminPostLoginRouteGuardActive, setAdminPostLoginRouteGuardActive] = useState(
+    readAdminRouteIntent
+  );
 
   const authenticatedAdminAccount =
     registeredAdminAccounts.find(
@@ -192,7 +197,19 @@ export default function useAdminAuthenticationController({
   }, [setAdminTab, setIsCommunityMenuOpen, setView]);
 
   useEffect(() => {
-    if (!adminPostLoginRouteGuardActive || !authenticatedAdminId) return undefined;
+    if (!adminPostLoginRouteGuardActive) return undefined;
+
+    if (!readAdminRouteIntent()) {
+      setAdminPostLoginRouteGuardActive(false);
+      return undefined;
+    }
+
+    const persistedAdminId = readAdminAuthSession().adminId;
+    if (!authenticatedAdminId && !persistedAdminId) {
+      clearAdminRouteIntent();
+      setAdminPostLoginRouteGuardActive(false);
+      return undefined;
+    }
 
     const normalizedPath =
       typeof window === 'undefined'
@@ -202,24 +219,9 @@ export default function useAdminAuthenticationController({
 
     if (!routeIsAdmin) {
       stabilizeAdminPostLoginRoute();
-      return undefined;
     }
 
-    if (!isAdminAuthenticated || typeof window === 'undefined') return undefined;
-
-    const releaseRouteGuard = () => {
-      setAdminPostLoginRouteGuardActive(false);
-    };
-    const events = ['pointerdown', 'keydown', 'touchstart'];
-    events.forEach((eventName) =>
-      window.addEventListener(eventName, releaseRouteGuard, { once: true, passive: true })
-    );
-
-    return () => {
-      events.forEach((eventName) =>
-        window.removeEventListener(eventName, releaseRouteGuard)
-      );
-    };
+    return undefined;
   }, [
     adminPostLoginRouteGuardActive,
     authenticatedAdminId,
@@ -626,6 +628,7 @@ export default function useAdminAuthenticationController({
       loginSecuritySettings
     );
     setAdminAuthForm(createDefaultAdminAuthForm());
+    writeAdminRouteIntent();
     setAdminPostLoginRouteGuardActive(true);
     stabilizeAdminPostLoginRoute();
 
@@ -945,6 +948,7 @@ export default function useAdminAuthenticationController({
 
     adminLogoutInProgressRef.current = true;
     setAdminLogoutInProgress(true);
+    clearAdminRouteIntent();
     setAdminPostLoginRouteGuardActive(false);
 
     const adminAccountForLogout =

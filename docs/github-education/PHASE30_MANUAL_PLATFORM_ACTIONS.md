@@ -129,3 +129,8 @@ This hotfix supersedes the first Phase 30 candidate after browser validation fou
 - User rental history must report `postgresql-authoritative` and no blocked fallback.
 - If PostgreSQL footer pages are incomplete, the user footer must temporarily report `site_content_footer_parity_mismatch` and display the full Firestore-server page set rather than a partial PostgreSQL set.
 - Administrator member status mutations must report Firestore mirror `retired`, not `synced`, when the Phase 30 backend flag is enabled.
+
+## Administrator route persistence hotfix validation
+No additional environment variable, migration, Clerk setting, Firebase rule, or backend deployment is required specifically for this route-only follow-up. Vercel/frontend redeployment is required because the administrator authentication/navigation source changed.
+
+After administrator authentication, do not click any navigation item for several seconds. The browser must remain on `/admin` and the administrator dashboard must remain visible even while Clerk/Firebase role state settles. Normal mouse/keyboard interaction inside the administrator dashboard must not release this protection. Use the explicit **사용자 화면으로 이동** or administrator My Page action when intentionally leaving administrator mode; those actions clear the persistent admin-route intent. Administrator logout also clears it.

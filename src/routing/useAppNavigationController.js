@@ -7,6 +7,7 @@ import {
 } from '../features/members/memberAccountPolicy.js';
 import {
   PROTECTED_USER_TABS,
+  clearAdminRouteIntent,
   clearUserLoginReturnTarget,
   getInitialFooterPageIdFromPath,
   getInitialUserTabFromPath,
@@ -266,6 +267,7 @@ export default function useAppNavigationController({
       pendingProtectedUserTabRef,
       triggerToast,
       userProfile,
+      view,
     ]
   );
 
@@ -278,13 +280,16 @@ export default function useAppNavigationController({
   }, [pendingProtectedUserTabRef, userTab]);
 
   const goToUserHome = useCallback(() => {
+    if (view === 'admin') {
+      clearAdminRouteIntent();
+    }
     clearPendingAndAuthReturnTarget();
     navigateToUserReturnTarget({
       userTab: 'home',
       routeId: '',
       noticePostId: '',
     });
-  }, [clearPendingAndAuthReturnTarget, navigateToUserReturnTarget]);
+  }, [clearPendingAndAuthReturnTarget, navigateToUserReturnTarget, view]);
 
   const goToUserNotice = useCallback(() => {
     clearPendingAndAuthReturnTarget();
@@ -305,6 +310,10 @@ export default function useAppNavigationController({
   }, [clearPendingAndAuthReturnTarget, navigateToUserReturnTarget]);
 
   const goToUserMypage = useCallback(() => {
+    if (view === 'admin' && isAdminAuthenticated) {
+      clearAdminRouteIntent();
+    }
+
     if (currentAuthAdminAccount && !isAdminAuthenticated) {
       navigateToAdminHome();
       triggerToast(
@@ -324,6 +333,7 @@ export default function useAppNavigationController({
     navigateToAdminHome,
     navigateToUserTab,
     triggerToast,
+    view,
   ]);
 
   const openFooterPage = useCallback(
