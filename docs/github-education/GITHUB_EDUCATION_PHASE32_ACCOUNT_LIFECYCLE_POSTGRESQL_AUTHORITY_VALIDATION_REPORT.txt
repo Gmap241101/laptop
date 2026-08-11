@@ -1,0 +1,112 @@
+GitHub Education Phase 32 - Signup / Terms Consent PostgreSQL Account Lifecycle Authority Validation
+=================================================================================================
+
+Previous confirmed baseline
+---------------------------
+rental-system-github-education-phase31-member-profile-identity-recovery-authority-20260811_deployment_package.zip
+SHA-256: daa4f37bf32afaabf0e933824e1c6e3537480c87ec9e7c26236623854ab43649
+Phase 31: actual Staging/browser PASS.
+
+Phase 32 scope
+--------------
+- Signup member/profile bootstrap: PostgreSQL authoritative.
+- Signup Firestore userAccounts/identity/recovery/consent data bootstrap: retired when Phase 32 is enabled.
+- Firebase Auth signup identity/session: preserved as compatibility identity.
+- Clerk signup provisioning member source: PostgreSQL.
+- Terms policy/state/log reads and writes: PostgreSQL authoritative.
+- Existing terms consent: one-time trusted Firestore server import into PostgreSQL, then PostgreSQL-only runtime reads.
+- Protected-route terms compliance: PostgreSQL endpoint; legacy Firestore policy watcher only in rollback mode.
+- Terms save Firestore mirror: retired.
+- Account-recovery identity: existing PostgreSQL authority preserved.
+- Password reset delivery: Firebase Auth compatibility preserved deliberately until Firebase Auth compatibility is retired as a whole.
+- Site-shell parity fallback: preserved.
+
+Migration
+---------
+024_phase32_account_lifecycle_postgresql_authority.sql
+- Adds terms consent completion/bootstrap timestamps to app_member_accounts.
+- Creates app_user_term_consent_states.
+- Creates app_user_term_consent_logs.
+- Adds the Phase 32 runtime metadata contract.
+- Additive only; no destructive removal of legacy Firebase/Firestore data.
+
+Automated validation
+--------------------
+Command: TERM=xterm npm run verify:phase32
+Result: PASS / exit code 0
+
+Phase 32 backend smoke:
+PASS - PostgreSQL signup/terms authority, one-time trusted consent import, PostgreSQL Clerk provision source, Firebase password-reset preservation.
+
+Phase 32 frontend smoke:
+PASS - Phase 32 opt-in/health, PostgreSQL signup/terms paths, PostgreSQL protected-route terms compliance, post-save gate refresh, Firebase reset preservation, diagnostics.
+
+React hook audit:
+PASS - 171 source files.
+
+Application flow audit:
+PASS - 124 contracts, 11 user routes, 20 administrator tabs.
+
+Firestore strict audit:
+PASS
+- Source files: 171
+- Total calls: 138
+- onSnapshot: 35
+- getDocs/server equivalents: 54
+- getDoc/server equivalents: 31
+- getCountFromServer: 18
+- Approved risk findings: 47
+- Unapproved warnings: 0
+- Unapproved errors: 0
+
+Build validation
+----------------
+Command: TERM=xterm npm run build:staging
+Prebuild results:
+- React audit: PASS
+- Application audit: PASS
+- Firestore strict audit: PASS
+- Clerk local staging config: DISABLED in the assistant environment
+Final build command result: vite: not found / exit code 127
+This is the existing local environment limitation caused by unavailable root node_modules/Vite, not a newly detected Phase 32 source/prebuild failure. Vercel staging must perform the real bundle build.
+
+App.jsx
+-------
+Lines: 2,131
+Bytes: 66,062
+SHA-256: 5defec9c4b9148fb94ffee346c5832d0a550ff3d64c15bb9c72420e24e51c946
+Result: unchanged from the confirmed Phase 31 baseline.
+
+Final package delta versus Phase 31 baseline
+--------------------------------------------
+Source files: 781 -> 791
+New files: 10
+Changed files: 35
+Deleted files: 0
+Cumulative removed-file list remains 65 entries.
+
+Staging configuration
+---------------------
+Heroku new/changed values:
+SERVICE_VERSION=phase32
+FIRESTORE_ACCOUNT_LIFECYCLE_COMPATIBILITY_DISABLED=true
+
+Keep:
+FIRESTORE_ASSET_BOARD_WRITE_MIRROR_DISABLED=true
+FIRESTORE_RENTAL_REQUEST_WRITE_MIRROR_DISABLED=true
+FIRESTORE_MEMBER_STATUS_RESTRICTION_WRITE_MIRROR_DISABLED=true
+FIRESTORE_MEMBER_PROFILE_WRITE_MIRROR_DISABLED=true
+
+Vercel new value:
+VITE_ACCOUNT_LIFECYCLE_POSTGRES_AUTHORITY_ENABLED=true
+
+Expected health contract
+------------------------
+accountLifecycleCompatibilityDisabled: true
+signupProfileSource: postgresql
+termsConsentSource: postgresql
+passwordResetDelivery: firebase-auth-compatibility-preserved
+
+Actual Staging/browser status
+-----------------------------
+Not yet validated. Phase 32 remains a candidate until user/admin browser tests confirm signup PostgreSQL bootstrap, existing/new terms consent persistence and one-time migration, protected-route consent gating, password-reset compatibility regression, and all prior Phase 31 regressions remain healthy.

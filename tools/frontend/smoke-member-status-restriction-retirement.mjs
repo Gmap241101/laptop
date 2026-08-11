@@ -51,6 +51,6 @@ for (const marker of ['phase30Config.enabled', 'clerkStagingClient.getAdminMembe
 for (const marker of ['onStatusChanged', 'onStatusChangedRef.current?.', 'writeAdminMemberStatus', 'readMemberStatusRestrictionWriteMirrorRetirementConfig', '!phase30Retirement.enabled', 'rejoined_member_active_requests']) assert.ok(statusActions.includes(marker), marker);
 for (const marker of ['onStatusChanged: refreshAdminUserAccounts', 'new Date(account.createdAt)']) assert.ok(panel.includes(marker), marker);
 for (const marker of ['requestAdminMembersPostgresql', 'getAdminMembers', '/api/admin/members']) assert.ok(client.includes(marker), marker);
-for (const marker of ['Clerk Staging Test · Phase 31', 'Phase 30 member status / rental restriction PostgreSQL authority + Firestore write mirror retirement', 'Admin member list source:', 'Phase 30 retirement error:', "top: '184px'"]) assert.ok(diagnostics.includes(marker), marker);
+for (const marker of ['Clerk Staging Test · Phase 32', 'Phase 30 member status / rental restriction PostgreSQL authority + Firestore write mirror retirement', 'Admin member list source:', 'Phase 30 retirement error:', "top: '184px'"]) assert.ok(diagnostics.includes(marker), marker);
 assert.ok(service.includes("firestoreMirror: writeMirrorEnabled ? 'synced' : 'retired'"), 'backend status write must report retired mirror');
 console.log('[member-status-restriction-retirement-frontend-smoke] PASS (flag/health contract, PostgreSQL admin member list, server pagination, PostgreSQL rejoined guard routing, refresh-after-status, diagnostics)');

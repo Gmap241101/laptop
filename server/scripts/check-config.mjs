@@ -42,7 +42,8 @@ try {
   console.log(`FIRESTORE_ASSET_BOARD_WRITE_MIRROR_DISABLED=${config.assetBoardWriteMirrorDisabled}`);
   console.log(`FIRESTORE_RENTAL_REQUEST_WRITE_MIRROR_DISABLED=${config.rentalRequestWriteMirrorDisabled}`);
   console.log(`FIRESTORE_MEMBER_STATUS_RESTRICTION_WRITE_MIRROR_DISABLED=${config.memberStatusRestrictionWriteMirrorDisabled}`);
-console.log(`FIRESTORE_MEMBER_PROFILE_WRITE_MIRROR_DISABLED=${config.memberProfileWriteMirrorDisabled}`);
+  console.log(`FIRESTORE_MEMBER_PROFILE_WRITE_MIRROR_DISABLED=${config.memberProfileWriteMirrorDisabled}`);
+  console.log(`FIRESTORE_ACCOUNT_LIFECYCLE_COMPATIBILITY_DISABLED=${config.accountLifecycleCompatibilityDisabled}`);
 } catch (error) {
   console.error(`[config] invalid server configuration: ${error.message}`);
   process.exit(1);

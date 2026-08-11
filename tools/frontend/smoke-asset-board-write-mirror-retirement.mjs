@@ -13,7 +13,7 @@ assert.deepEqual([...config.retiredDomains], ['assets', 'notice', 'faq']);
 
 const diagnostics = readFileSync('src/clerk/ClerkStagingDiagnostics.jsx', 'utf8');
 for (const marker of [
-  'Clerk Staging Test · Phase 31',
+  'Clerk Staging Test · Phase 32',
   'Phase 28 asset / board Firestore write mirror retirement',
   'Write mirror retirement requested',
   'Backend retirement applied',

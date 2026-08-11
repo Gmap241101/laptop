@@ -35,6 +35,8 @@ import { createAssetRepository } from './assets/asset-repository.mjs';
 import { createAssetService } from './assets/asset-service.mjs';
 import { createAccountRecoveryRepository } from './accounts/account-recovery-repository.mjs';
 import { createAccountRecoveryService } from './accounts/account-recovery-service.mjs';
+import { createAccountLifecycleRepository } from './accounts/account-lifecycle-repository.mjs';
+import { createAccountLifecycleService } from './accounts/account-lifecycle-service.mjs';
 import { createAdminIdentityRepository } from './auth/admin-identity-repository.mjs';
 import { createAdminClerkAuthService } from './auth/admin-clerk-auth-service.mjs';
 import { createUserClerkAuthRepository } from './auth/user-clerk-auth-repository.mjs';
@@ -66,6 +68,7 @@ const pool = getPool();
 const userRepository = createUserRepository(pool);
 const accountRecoveryRepository = createAccountRecoveryRepository(pool);
 const accountRecoveryService = createAccountRecoveryService({ repository: accountRecoveryRepository });
+const accountLifecycleRepository = createAccountLifecycleRepository(pool);
 const adminIdentityRepository = createAdminIdentityRepository(pool);
 const userIdentityService = createUserIdentityService({ clerkClient, userRepository });
 const firebaseLinkRepository = createFirebaseLinkRepository(pool);
@@ -119,8 +122,16 @@ const userClerkAuthService = firestoreMemberAuthorityClient
       firestoreClient: firestoreMemberAuthorityClient,
       rentalRestrictionRepository,
       writeMirrorEnabled: !config.memberStatusRestrictionWriteMirrorDisabled,
+      memberRepository: memberAuthorityRepository,
+      accountLifecycleCompatibilityDisabled: config.accountLifecycleCompatibilityDisabled,
     })
   : null;
+const accountLifecycleService = createAccountLifecycleService({
+  repository: accountLifecycleRepository,
+  siteContentRepository,
+  userAuthRepository: userClerkAuthRepository,
+  firestoreClient: firestoreMemberAuthorityClient,
+});
 const adminClerkAuthService = firestoreMemberAuthorityClient
   ? createAdminClerkAuthService({
       repository: adminIdentityRepository,
@@ -303,6 +314,7 @@ const server = createServer(
     memberShadowService,
     memberAuthorityService,
     accountRecoveryService,
+    accountLifecycleService,
     adminClerkAuthService,
     userClerkAuthService,
     rentalRestrictionService,
@@ -348,6 +360,7 @@ server.listen(config.port, '0.0.0.0', () => {
     phase28WriteMirrorRetirement: config.assetBoardWriteMirrorDisabled ? 'assets-and-boards' : 'disabled',
     phase29RentalTransactionAuthority: config.rentalRequestWriteMirrorDisabled ? 'postgresql-source-and-write-mirror-retired' : 'disabled',
     phase30MemberStatusRestrictionAuthority: config.memberStatusRestrictionWriteMirrorDisabled ? 'postgresql-source-and-write-mirror-retired' : 'disabled',
+    phase32AccountLifecycleAuthority: config.accountLifecycleCompatibilityDisabled ? 'postgresql-signup-consent-firebase-reset-preserved' : 'disabled',
   });
 });
 

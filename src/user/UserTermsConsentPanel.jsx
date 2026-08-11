@@ -30,6 +30,11 @@ import {
   loadUserTermConsentStates,
 } from '../features/terms/termsService.js';
 import { syncMemberProfileWriteThroughBestEffort } from '../features/members/memberProfileWriteThrough.js';
+import { clerkStagingClient } from '../clerk/clerkStagingClient.js';
+import {
+  publishAccountLifecycleAuthorityObservation,
+  readAccountLifecycleAuthorityConfig,
+} from '../features/auth/accountLifecycleAuthority.js';
 
 const createDecisionState = (policy, states) => Object.fromEntries(
   policy.activeTerms.map((term) => {
@@ -58,6 +63,7 @@ export default function UserTermsConsentPanel({
   const [states, setStates] = useState({});
   const [decisions, setDecisions] = useState({});
   const [logs, setLogs] = useState([]);
+  const [termsConsentRevision, setTermsConsentRevision] = useState(() => Math.max(0, Number(account?.termsConsentRevision) || 0));
   const [ready, setReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -69,11 +75,38 @@ export default function UserTermsConsentPanel({
     if (!uid) return;
     setReady(false);
     try {
-      const nextPolicy = await loadSignupTermsPolicy();
-      const [nextStates, nextLogs] = await Promise.all([
-        loadUserTermConsentStates(uid, nextPolicy),
-        loadUserTermConsentLogs(uid),
-      ]);
+      const lifecycleConfig = readAccountLifecycleAuthorityConfig();
+      let nextPolicy;
+      let nextStates;
+      let nextLogs;
+      if (lifecycleConfig.requested) {
+        let payload = await clerkStagingClient.getUserTermsConsent();
+        if (payload?.termsConsent?.bootstrapRequired) {
+          const firebaseUser = firebaseAuth.currentUser;
+          if (!firebaseUser) throw new Error('terms-consent-firebase-compatibility-required');
+          const firebaseIdToken = await firebaseUser.getIdToken();
+          payload = await clerkStagingClient.bootstrapUserTermsConsent(firebaseIdToken);
+        }
+        nextPolicy = normalizeTermsPolicy(payload?.termsConsent?.policy || {});
+        nextStates = payload?.termsConsent?.states || {};
+        nextLogs = Array.isArray(payload?.termsConsent?.logs) ? payload.termsConsent.logs : [];
+        setTermsConsentRevision(Math.max(0, Number(payload?.termsConsent?.termsConsentRevision) || 0));
+        publishAccountLifecycleAuthorityObservation({
+          requested: true,
+          backendApplied: true,
+          termsConsentSource: 'postgresql',
+          termsConsentMirror: 'retired',
+          termsConsentBootstrap: payload?.termsConsent?.legacyBootstrap || 'not-required',
+          error: null,
+        });
+      } else {
+        nextPolicy = await loadSignupTermsPolicy();
+        setTermsConsentRevision(Math.max(0, Number(account?.termsConsentRevision) || 0));
+        [nextStates, nextLogs] = await Promise.all([
+          loadUserTermConsentStates(uid, nextPolicy),
+          loadUserTermConsentLogs(uid),
+        ]);
+      }
       setPolicy(nextPolicy);
       setStates(nextStates);
       setDecisions(createDecisionState(nextPolicy, nextStates));
@@ -85,13 +118,16 @@ export default function UserTermsConsentPanel({
     } finally {
       setReady(true);
     }
-  }, [uid]);
+  }, [account?.termsConsentRevision, uid]);
 
   useEffect(() => {
     void loadData();
   }, [loadData]);
 
-  const consentRequired = isTermsConsentRequiredForAccount({ policy, account });
+  const consentRequired = isTermsConsentRequiredForAccount({
+    policy,
+    account: { ...(account || {}), termsConsentRevision },
+  });
   const dialogTerms = policy.activeTerms.filter((term) => dialogTermIds.includes(term.id));
 
   const confirmViewed = () => {
@@ -134,6 +170,29 @@ export default function UserTermsConsentPanel({
 
     setSaving(true);
     try {
+      const lifecycleConfig = readAccountLifecycleAuthorityConfig();
+      if (lifecycleConfig.requested) {
+        const submittedDecisions = policy.activeTerms.map((term) => ({
+          termId: term.id,
+          termVersion: term.version,
+          termVersionId: term.versionId || '',
+          contentHash: term.contentHash || '',
+          decision: decisions[term.id]?.decision || '',
+          viewedAtMs: Number(decisions[term.id]?.viewedAtMs || 0),
+        }));
+        await clerkStagingClient.saveUserTermsConsent({
+          policyRevision: policy.revision,
+          decisions: submittedDecisions,
+          source: consentRequired ? TERMS_CONSENT_SOURCE.RECONSENT : TERMS_CONSENT_SOURCE.MY_PAGE,
+        });
+        publishAccountLifecycleAuthorityObservation({
+          requested: true,
+          backendApplied: true,
+          termsConsentSource: 'postgresql',
+          termsConsentMirror: 'retired',
+          error: null,
+        });
+      } else {
       await runTransaction(db, async (transaction) => {
         const [policySnapshot, accountSnapshot] = await Promise.all([
           transaction.get(SIGNUP_TERMS_POLICY_DOC_REF),
@@ -232,11 +291,21 @@ export default function UserTermsConsentPanel({
         firebaseUid: uid,
         reason: 'user-terms-consent-save',
       });
+      }
 
       triggerToast('약관 동의 정보가 저장되었습니다.', 'success');
       await loadData();
       onCompleted?.();
     } catch (error) {
+      if (readAccountLifecycleAuthorityConfig().requested) {
+        publishAccountLifecycleAuthorityObservation({
+          requested: true,
+          backendApplied: true,
+          termsConsentSource: 'postgresql',
+          termsConsentMirror: 'retired',
+          error: error?.code || error?.message || 'terms-consent-save-failed',
+        });
+      }
       console.error('User terms consent save error:', error);
       triggerToast(
         error?.code === 'terms/policy-changed'

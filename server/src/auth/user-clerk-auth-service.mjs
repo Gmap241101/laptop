@@ -15,7 +15,7 @@ const privateMetadata = (firebaseUid) => ({
   rentalSystemUserIdentity: 'postgresql',
 });
 
-export const createUserClerkAuthService = ({ repository, clerkClient, userRepository, firebaseLinkRepository, firestoreClient }) => {
+export const createUserClerkAuthService = ({ repository, clerkClient, userRepository, firebaseLinkRepository, firestoreClient, memberRepository = null, accountLifecycleCompatibilityDisabled = false }) => {
   if (!repository || typeof repository.findByClerkUserId !== 'function') throw new TypeError('User Clerk auth repository is required.');
   if (!clerkClient || typeof clerkClient.getUser !== 'function' || typeof clerkClient.findUserByEmail !== 'function' || typeof clerkClient.createUser !== 'function' || typeof clerkClient.updateUser !== 'function' || typeof clerkClient.updateUserMetadata !== 'function' || typeof clerkClient.verifyPassword !== 'function' || typeof clerkClient.deleteUser !== 'function') throw new TypeError('Clerk Backend API lifecycle methods are required.');
   if (!userRepository || typeof userRepository.upsertFromClerk !== 'function') throw new TypeError('User repository is required.');
@@ -40,9 +40,23 @@ export const createUserClerkAuthService = ({ repository, clerkClient, userReposi
     return { uid, fields: document.fields || {} };
   };
 
+  const readProvisionUser = async (firebaseIdentity) => {
+    if (!accountLifecycleCompatibilityDisabled) return readFirebaseUser(firebaseIdentity);
+    const uid = trim(firebaseIdentity?.uid);
+    if (!uid || !firebaseIdentity?.idToken) throw serviceError('user_firebase_identity_missing', 'Verified Firebase identity is required.', 401);
+    const admin = await firestoreClient.getAdminAccount({ firebaseUid: uid, firebaseIdToken: firebaseIdentity.idToken });
+    if (admin) throw serviceError('user_account_is_admin', 'Administrator accounts cannot use the general-user Clerk flow.', 403);
+    if (!memberRepository || typeof memberRepository.findByFirebaseUid !== 'function') {
+      throw serviceError('user_member_postgresql_source_unavailable', 'PostgreSQL member source is unavailable.', 503);
+    }
+    const account = await memberRepository.findByFirebaseUid(uid);
+    if (!account) throw serviceError('user_account_not_found', 'PostgreSQL member account was not found.', 404);
+    return { uid, fields: account };
+  };
+
   const ensureClerkUser = async ({ firebaseIdentity, password, migration }) => {
     if (typeof password !== 'string' || password.length < 8) throw serviceError('user_clerk_password_too_short', 'Clerk user passwords must be at least 8 characters.', 400);
-    const source = await readFirebaseUser(firebaseIdentity);
+    const source = await readProvisionUser(firebaseIdentity);
     if (trim(source.fields.status) === 'retired') throw serviceError('user_account_retired', 'Retired accounts cannot be migrated to Clerk.', 403);
     const email = lower(firebaseIdentity.email || source.fields.email);
     if (!email) throw serviceError('user_email_missing', 'User email is required for Clerk migration.', 409);
@@ -74,7 +88,9 @@ export const createUserClerkAuthService = ({ repository, clerkClient, userReposi
 
     const appUser = await userRepository.upsertFromClerk(clerkUser);
     await firebaseLinkRepository.link(appUser.id, firebaseIdentity);
-    await repository.syncMemberFromCompatibility({ appUserId: appUser.id, firebaseUid: source.uid, profile: source.fields });
+    if (!accountLifecycleCompatibilityDisabled) {
+      await repository.syncMemberFromCompatibility({ appUserId: appUser.id, firebaseUid: source.uid, profile: source.fields });
+    }
     const linked = await repository.linkAuthority({ appUserId: appUser.id, firebaseUid: source.uid });
     if (!linked) throw serviceError('user_member_authority_not_ready', 'PostgreSQL member account must be synchronized before Clerk authority can be linked.', 409);
     return { source, clerkUser, appUser, account: await repository.findByFirebaseUid(source.uid) };

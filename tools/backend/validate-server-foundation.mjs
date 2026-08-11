@@ -504,6 +504,7 @@ const phase29Migration = readFileSync('server/migrations/020_phase29_rental_tran
 const phase29ConstraintHotfix = readFileSync('server/migrations/021_phase29_rental_mirror_status_retired_constraint.sql', 'utf8');
 const phase30Migration = readFileSync('server/migrations/022_phase30_member_status_restriction_write_mirror_retirement.sql', 'utf8');
 const phase31Migration = readFileSync('server/migrations/023_phase31_member_profile_identity_recovery_authority.sql', 'utf8');
+const phase32Migration = readFileSync('server/migrations/024_phase32_account_lifecycle_postgresql_authority.sql', 'utf8');
 for (const marker of ["'phase', 29", "'rentalTransactionSource', 'postgresql-authoritative'", "'rentalRequestFirestoreWriteMirror', 'retired-staging-opt-in'", "'rental-request-user-actions'"]) {
   if (!phase29Migration.includes(marker)) throw new Error(`Phase 29 migration marker is missing: ${marker}`);
 }
@@ -517,6 +518,9 @@ for (const marker of ["'phase', 30", "'member_status_source', 'postgresql-author
 for (const marker of ['CREATE TABLE IF NOT EXISTS app_member_directory_entries', "'phase', 31", "'member_profile_source', 'postgresql-authoritative'", "'member_profile_firestore_write_mirror', 'retired-staging-opt-in'"]) {
   if (!phase31Migration.includes(marker)) throw new Error(`Phase 31 migration marker is missing: ${marker}`);
 }
+for (const marker of ['CREATE TABLE IF NOT EXISTS app_user_term_consent_states', 'CREATE TABLE IF NOT EXISTS app_user_term_consent_logs', 'terms_consent_bootstrap_completed_at', "'phase', 32", "'signup_firestore_documents', 'retired-staging-opt-in'", "'password_reset_delivery', 'firebase-auth-compatibility-preserved'"]) {
+  if (!phase32Migration.includes(marker)) throw new Error(`Phase 32 migration marker is missing: ${marker}`);
+}
 const serverEnvSource = readFileSync('server/src/config/env.mjs', 'utf8');
 for (const marker of ['FIRESTORE_ASSET_BOARD_WRITE_MIRROR_DISABLED', 'assetBoardWriteMirrorDisabled']) {
   if (!serverEnvSource.includes(marker)) throw new Error(`Phase 28 server config marker is missing: ${marker}`);
@@ -529,6 +533,9 @@ for (const marker of ['FIRESTORE_MEMBER_STATUS_RESTRICTION_WRITE_MIRROR_DISABLED
 }
 for (const marker of ['FIRESTORE_MEMBER_PROFILE_WRITE_MIRROR_DISABLED', 'memberProfileWriteMirrorDisabled']) {
   if (!serverEnvSource.includes(marker)) throw new Error(`Phase 31 server config marker is missing: ${marker}`);
+}
+for (const marker of ['FIRESTORE_ACCOUNT_LIFECYCLE_COMPATIBILITY_DISABLED', 'accountLifecycleCompatibilityDisabled']) {
+  if (!serverEnvSource.includes(marker)) throw new Error(`Phase 32 server config marker is missing: ${marker}`);
 }
 for (const marker of ['writeMirrorEnabled', "mirrorStatus = mirrorEnabled ? 'synced' : 'retired'", 'postgresql-only']) {
   if (!boardService.includes(marker)) throw new Error(`Phase 28 board mirror retirement marker is missing: ${marker}`);
@@ -582,9 +589,29 @@ for (const marker of ["syncSiteContentDomainFromFirestore({ domain: 'rental-conf
   if (!directorySaveActionsSource.includes(marker)) throw new Error(`Phase 31 admin member directory sync marker is missing: ${marker}`);
 }
 
+const accountLifecycleCutoverSource = readFileSync('src/features/auth/accountLifecycleAuthority.js', 'utf8');
+for (const marker of ['VITE_ACCOUNT_LIFECYCLE_POSTGRES_AUTHORITY_ENABLED', "get('accountLifecycle') === 'postgres'", 'accountLifecycleCompatibilityDisabled', "firebase-auth-compatibility-preserved"]) {
+  if (!accountLifecycleCutoverSource.includes(marker)) throw new Error(`Phase 32 frontend account lifecycle marker is missing: ${marker}`);
+}
+const accountLifecycleRepositorySource = readFileSync('server/src/accounts/account-lifecycle-repository.mjs', 'utf8');
+for (const marker of ['createSignupAccount', 'getConsentSnapshot', 'importConsents', 'saveConsents', 'terms_consent_bootstrap_completed_at']) {
+  if (!accountLifecycleRepositorySource.includes(marker)) throw new Error(`Phase 32 account lifecycle repository marker is missing: ${marker}`);
+}
+const accountLifecycleServiceSource = readFileSync('server/src/accounts/account-lifecycle-service.mjs', 'utf8');
+for (const marker of ['bootstrapTerms', 'legacy-firestore:', "firestoreBootstrap: 'retired'", "firestoreMirror: 'retired'"]) {
+  if (!accountLifecycleServiceSource.includes(marker)) throw new Error(`Phase 32 account lifecycle service marker is missing: ${marker}`);
+}
+const accountLifecycleClientSource = readFileSync('src/clerk/clerkStagingClient.js', 'utf8');
+for (const marker of ['/api/users/signup/bootstrap', '/api/users/me/terms-consent/bootstrap', 'bootstrapUserTermsConsent']) {
+  if (!accountLifecycleClientSource.includes(marker)) throw new Error(`Phase 32 client account lifecycle marker is missing: ${marker}`);
+}
+for (const marker of ["url.pathname === '/api/users/signup/bootstrap'", "url.pathname === '/api/users/me/terms-consent'", "url.pathname === '/api/users/me/terms-consent/bootstrap'", "passwordResetDelivery: 'firebase-auth-compatibility-preserved'"]) {
+  if (!app.includes(marker)) throw new Error(`Phase 32 server account lifecycle route marker is missing: ${marker}`);
+}
+
 const configTemplate = readFileSync('docs/github-education/HEROKU_CONFIG_VARS_TEMPLATE.txt', 'utf8');
 for (const variable of ['CLERK_JWT_KEY=', 'CLERK_AUTHORIZED_PARTIES=', 'CLERK_SECRET_KEY=sk_test_', 'CLERK_API_TIMEOUT_MS=8000', 'FIREBASE_PROJECT_ID=laptop-system-mk']) {
   if (!configTemplate.includes(variable)) throw new Error(`Phase 6 config template is missing ${variable}`);
 }
 
-console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request shadow/parity + phase16 authoritative write + phase17 admin rental-request cutover + phase18 mutation/audit completion + phase19 user-action lifecycle + phase20 asset-domain + phase21 member/restriction/admin identity authority + phase22 account recovery/admin Clerk auth + phase23 user Clerk authentication/lifecycle + phase24 site content + phase25 policy/terms + phase26 notice/FAQ board authority + phase28 asset/board write mirror retirement + phase29 rental transaction PostgreSQL authority + runtime hotfix invariants + phase30 member status/restriction authority retirement + phase31 member profile identity/recovery authority)`);
+console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request shadow/parity + phase16 authoritative write + phase17 admin rental-request cutover + phase18 mutation/audit completion + phase19 user-action lifecycle + phase20 asset-domain + phase21 member/restriction/admin identity authority + phase22 account recovery/admin Clerk auth + phase23 user Clerk authentication/lifecycle + phase24 site content + phase25 policy/terms + phase26 notice/FAQ board authority + phase28 asset/board write mirror retirement + phase29 rental transaction PostgreSQL authority + runtime hotfix invariants + phase30 member status/restriction authority retirement + phase31 member profile identity/recovery authority + phase32 account lifecycle PostgreSQL authority)`);

@@ -171,6 +171,83 @@ export const requestPasswordResetVerification = async ({ apiBaseUrl, fetchImpl, 
   return payload;
 };
 
+export const requestAccountLifecycleSignup = async ({ apiBaseUrl, fetchImpl, firebaseIdToken, input }) => {
+  const { response, payload } = await requestWithFirebaseAuthorization({
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/users/signup/bootstrap',
+    firebaseIdToken,
+    body: input || {},
+  });
+  if (!response.ok) {
+    const error = new Error(`PostgreSQL account lifecycle signup failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (payload?.signupLifecycle?.source !== 'postgresql' || payload?.signupLifecycle?.firestoreBootstrap !== 'retired') {
+    throw new Error('Backend returned an invalid PostgreSQL signup lifecycle response.');
+  }
+  return payload;
+};
+
+export const requestUserTermsConsent = async ({ clerk, apiBaseUrl, fetchImpl }) => {
+  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: '/api/users/me/terms-consent' });
+  if (!response.ok) {
+    const error = new Error(`PostgreSQL terms consent read failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (payload?.termsConsent?.source !== 'postgresql') throw new Error('Backend returned an invalid PostgreSQL terms consent response.');
+  return payload;
+};
+
+export const requestUserTermsConsentBootstrap = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken }) => {
+  const token = trim(firebaseIdToken);
+  if (!token) throw new Error('Firebase compatibility sign-in is required for the one-time terms consent bootstrap.');
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/users/me/terms-consent/bootstrap',
+    method: 'POST',
+    headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const error = new Error(`Terms consent legacy bootstrap failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (payload?.termsConsent?.source !== 'postgresql' || payload?.termsConsent?.bootstrapRequired === true) {
+    throw new Error('Backend returned an invalid PostgreSQL terms consent bootstrap response.');
+  }
+  return payload;
+};
+
+export const requestUserTermsConsentSave = async ({ clerk, apiBaseUrl, fetchImpl, input }) => {
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/users/me/terms-consent',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input || {}),
+  });
+  if (!response.ok) {
+    const error = new Error(`PostgreSQL terms consent save failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (payload?.termsConsent?.source !== 'postgresql' || payload?.termsConsent?.firestoreMirror !== 'retired') {
+    throw new Error('Backend returned an invalid PostgreSQL terms consent save response.');
+  }
+  return payload;
+};
+
 export const requestUserClerkSession = async ({ clerk, apiBaseUrl, fetchImpl }) => {
   const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: '/api/users/auth/session' });
   if (!response.ok) {
@@ -1392,6 +1469,21 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async verifyPasswordResetIdentity(identity) {
       return requestPasswordResetVerification({ apiBaseUrl: config.apiBaseUrl, fetchImpl, identity });
     },
+    async bootstrapUserSignup(firebaseIdToken, input) {
+      return requestAccountLifecycleSignup({ apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, input });
+    },
+    async getUserTermsConsent() {
+      const clerk = await initialize();
+      return requestUserTermsConsent({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
+    },
+    async bootstrapUserTermsConsent(firebaseIdToken) {
+      const clerk = await initialize();
+      return requestUserTermsConsentBootstrap({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken });
+    },
+    async saveUserTermsConsent(input) {
+      const clerk = await initialize();
+      return requestUserTermsConsentSave({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, input });
+    },
     async verifyBackendSession() {
       const clerk = await initialize();
       return requestAuthenticatedSession({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
@@ -1598,6 +1690,10 @@ export const clerkStagingClient =
         signOut: async () => {},
         signInWithPassword: async () => { throw new Error('Clerk browser client is unavailable.'); },
         signInUserWithPassword: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        bootstrapUserSignup: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        getUserTermsConsent: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        bootstrapUserTermsConsent: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        saveUserTermsConsent: async () => { throw new Error('Clerk browser client is unavailable.'); },
         verifyUserClientTrust: async () => { throw new Error('Clerk browser client is unavailable.'); },
         resendUserClientTrust: async () => { throw new Error('Clerk browser client is unavailable.'); },
         verifyAdminClientTrust: async () => { throw new Error('Clerk browser client is unavailable.'); },

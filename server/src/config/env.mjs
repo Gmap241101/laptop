@@ -199,6 +199,7 @@ export const readServerConfig = () => {
     rentalRequestWriteMirrorDisabled: readBoolean('FIRESTORE_RENTAL_REQUEST_WRITE_MIRROR_DISABLED', false),
     memberStatusRestrictionWriteMirrorDisabled: readBoolean('FIRESTORE_MEMBER_STATUS_RESTRICTION_WRITE_MIRROR_DISABLED', false),
     memberProfileWriteMirrorDisabled: readBoolean('FIRESTORE_MEMBER_PROFILE_WRITE_MIRROR_DISABLED', false),
+    accountLifecycleCompatibilityDisabled: readBoolean('FIRESTORE_ACCOUNT_LIFECYCLE_COMPATIBILITY_DISABLED', false),
   });
 };
 

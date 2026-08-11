@@ -120,3 +120,9 @@ FIRESTORE_MEMBER_STATUS_RESTRICTION_WRITE_MIRROR_DISABLED=true
 # Normal user/admin profile edits no longer use Firestore userAccounts/identity claims/recovery keys as runtime source/mirror.
 FIRESTORE_MEMBER_PROFILE_WRITE_MIRROR_DISABLED=true
 # Recommended diagnostic version marker: SERVICE_VERSION=phase31
+
+
+# Phase 32: signup profile/bootstrap + terms consent PostgreSQL account lifecycle authority.
+# Firebase Auth account creation/session and password-reset delivery remain as compatibility until final Firebase Auth retirement.
+FIRESTORE_ACCOUNT_LIFECYCLE_COMPATIBILITY_DISABLED=true
+# Recommended diagnostic version marker: SERVICE_VERSION=phase32

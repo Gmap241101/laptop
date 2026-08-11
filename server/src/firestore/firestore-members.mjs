@@ -110,6 +110,44 @@ export const createFirestoreMemberAuthorityClient = ({ projectId, timeoutMs = DE
         .filter(Boolean)
         .map(decodeFirestoreDocument);
     },
+    async listUserTermConsentStates({ firebaseUid, firebaseIdToken }) {
+      const uid = trim(firebaseUid);
+      if (!uid) return [];
+      const payload = await requestJson({
+        url: `${baseUrl}:runQuery`,
+        method: 'POST',
+        firebaseIdToken,
+        codePrefix: 'firestore_member_terms_state_list',
+        body: {
+          structuredQuery: {
+            from: [{ collectionId: 'userTermConsentStates' }],
+            where: { fieldFilter: { field: { fieldPath: 'uid' }, op: 'EQUAL', value: { stringValue: uid } } },
+            limit: 500,
+          },
+        },
+      });
+      if (!Array.isArray(payload)) throw createError('firestore_member_terms_state_list_invalid', 'Firestore terms state list response is invalid.', 503);
+      return payload.map((entry) => entry?.document).filter(Boolean).map(decodeFirestoreDocument);
+    },
+    async listUserTermConsentLogs({ firebaseUid, firebaseIdToken }) {
+      const uid = trim(firebaseUid);
+      if (!uid) return [];
+      const payload = await requestJson({
+        url: `${baseUrl}:runQuery`,
+        method: 'POST',
+        firebaseIdToken,
+        codePrefix: 'firestore_member_terms_log_list',
+        body: {
+          structuredQuery: {
+            from: [{ collectionId: 'userTermConsentLogs' }],
+            where: { fieldFilter: { field: { fieldPath: 'uid' }, op: 'EQUAL', value: { stringValue: uid } } },
+            limit: 500,
+          },
+        },
+      });
+      if (!Array.isArray(payload)) throw createError('firestore_member_terms_log_list_invalid', 'Firestore terms log list response is invalid.', 503);
+      return payload.map((entry) => entry?.document).filter(Boolean).map(decodeFirestoreDocument);
+    },
     async getPublicConfig({ firebaseIdToken }) {
       return getDocument('rentalSystem/publicConfig', firebaseIdToken, 'firestore_member_public_config');
     },

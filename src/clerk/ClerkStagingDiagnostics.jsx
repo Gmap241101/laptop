@@ -111,6 +111,12 @@ import {
   readMemberProfileIdentityAuthorityConfig,
   requestMemberProfileIdentityAuthorityStatus,
 } from '../features/compatibility/memberProfileIdentityAuthority.js';
+import {
+  getLatestAccountLifecycleAuthorityObservation,
+  readAccountLifecycleAuthorityConfig,
+  requestAccountLifecycleAuthorityStatus,
+  subscribeAccountLifecycleAuthorityObservation,
+} from '../features/auth/accountLifecycleAuthority.js';
 import { clerkStagingClient } from './clerkStagingClient.js';
 
 const panelStyle = {
@@ -172,6 +178,7 @@ export default function ClerkStagingDiagnostics() {
   const rentalWriteMirrorRetirementConfig = useMemo(() => readRentalRequestWriteMirrorRetirementConfig(), []);
   const memberStatusRestrictionRetirementConfig = useMemo(() => readMemberStatusRestrictionWriteMirrorRetirementConfig(), []);
   const memberProfileIdentityAuthorityConfig = useMemo(() => readMemberProfileIdentityAuthorityConfig(), []);
+  const accountLifecycleAuthorityConfig = useMemo(() => readAccountLifecycleAuthorityConfig(), []);
   const [state, setState] = useState({
     phase: requested ? 'loading' : 'hidden',
     signedIn: false,
@@ -389,6 +396,17 @@ export default function ClerkStagingDiagnostics() {
     memberProfileIdentitySource: null,
     memberProfileIdentityRetiredDomains: [],
     memberProfileIdentityAuthorityError: null,
+    accountLifecycleAuthorityRequested: accountLifecycleAuthorityConfig.requested,
+    accountLifecycleAuthorityBackendApplied: false,
+    accountLifecycleSignupSource: null,
+    accountLifecycleSignupFirestoreBootstrap: null,
+    accountLifecycleTermsConsentSource: null,
+    accountLifecycleTermsConsentMirror: null,
+    accountLifecycleTermsConsentBootstrap: null,
+    accountLifecyclePasswordResetDelivery: null,
+    accountLifecyclePasswordResetStatus: null,
+    accountLifecycleRecoverySource: null,
+    accountLifecycleAuthorityError: null,
     error: null,
   });
 
@@ -1020,6 +1038,29 @@ export default function ClerkStagingDiagnostics() {
 
   useEffect(() => {
     if (!requested) return undefined;
+    const applyObservation = (observation) => {
+      if (!observation) return;
+      setState((current) => ({
+        ...current,
+        accountLifecycleAuthorityRequested: observation && Object.prototype.hasOwnProperty.call(observation, 'requested') ? Boolean(observation.requested) : current.accountLifecycleAuthorityRequested,
+        accountLifecycleAuthorityBackendApplied: observation && Object.prototype.hasOwnProperty.call(observation, 'backendApplied') ? Boolean(observation.backendApplied) : current.accountLifecycleAuthorityBackendApplied,
+        accountLifecycleSignupSource: observation?.signupSource || current.accountLifecycleSignupSource,
+        accountLifecycleSignupFirestoreBootstrap: observation?.signupFirestoreBootstrap || current.accountLifecycleSignupFirestoreBootstrap,
+        accountLifecycleTermsConsentSource: observation?.termsConsentSource || current.accountLifecycleTermsConsentSource,
+        accountLifecycleTermsConsentMirror: observation?.termsConsentMirror || current.accountLifecycleTermsConsentMirror,
+        accountLifecycleTermsConsentBootstrap: observation?.termsConsentBootstrap || current.accountLifecycleTermsConsentBootstrap,
+        accountLifecyclePasswordResetDelivery: observation?.passwordResetDelivery || current.accountLifecyclePasswordResetDelivery,
+        accountLifecyclePasswordResetStatus: observation?.passwordResetStatus || current.accountLifecyclePasswordResetStatus,
+        accountLifecycleRecoverySource: observation?.accountRecoverySource || current.accountLifecycleRecoverySource,
+        accountLifecycleAuthorityError: observation?.error || '',
+      }));
+    };
+    applyObservation(getLatestAccountLifecycleAuthorityObservation());
+    return subscribeAccountLifecycleAuthorityObservation(applyObservation);
+  }, [requested]);
+
+  useEffect(() => {
+    if (!requested) return undefined;
     let active = true;
     requestMemberProfileIdentityAuthorityStatus({ config: memberProfileIdentityAuthorityConfig })
       .then((status) => {
@@ -1035,6 +1076,25 @@ export default function ClerkStagingDiagnostics() {
       });
     return () => { active = false; };
   }, [requested, memberProfileIdentityAuthorityConfig]);
+
+  useEffect(() => {
+    if (!requested) return undefined;
+    let active = true;
+    requestAccountLifecycleAuthorityStatus({ config: accountLifecycleAuthorityConfig })
+      .then((status) => {
+        if (!active) return;
+        setState((current) => ({
+          ...current,
+          accountLifecycleAuthorityRequested: Boolean(status.requested),
+          accountLifecycleAuthorityBackendApplied: Boolean(status.backendApplied),
+          accountLifecycleSignupSource: status.signupSource || current.accountLifecycleSignupSource,
+          accountLifecycleTermsConsentSource: status.termsConsentSource || current.accountLifecycleTermsConsentSource,
+          accountLifecyclePasswordResetDelivery: status.passwordResetDelivery || current.accountLifecyclePasswordResetDelivery,
+          accountLifecycleAuthorityError: status.error || null,
+        }));
+      });
+    return () => { active = false; };
+  }, [requested, accountLifecycleAuthorityConfig]);
 
   if (!requested) return null;
 
@@ -1239,7 +1299,7 @@ export default function ClerkStagingDiagnostics() {
 
   return (
     <aside style={panelStyle} aria-label="Clerk staging diagnostics">
-      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 31</div>
+      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 32</div>
       <div>SDK: {state.phase === 'loading' ? 'loading' : state.phase}</div>
       <div>Signed in: {state.signedIn ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Clerk user: {state.userId || '-'}</div>
@@ -1555,6 +1615,20 @@ export default function ClerkStagingDiagnostics() {
       <div style={{ overflowWrap: 'anywhere' }}>Last profile edit mirror: {['user-profile-edit','admin-profile-edit'].includes(state.memberAuthorityOperation) ? (state.memberAuthorityMirror || '-') : '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Phase 31 authority error: {state.memberProfileIdentityAuthorityError || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Preserved compatibility: Firebase auth session / signup bootstrap / password reset delivery / terms consent / site shell</div>
+
+      <div style={{ marginTop: '6px', fontWeight: 700 }}>Phase 32 signup + terms consent PostgreSQL account lifecycle authority</div>
+      <div>Account lifecycle authority requested: {state.accountLifecycleAuthorityRequested ? 'yes' : 'no'}</div>
+      <div>Account lifecycle backend applied: {state.accountLifecycleAuthorityBackendApplied ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Signup profile source: {state.accountLifecycleSignupSource || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Signup Firestore bootstrap: {state.accountLifecycleSignupFirestoreBootstrap || (state.accountLifecycleAuthorityBackendApplied ? 'retired' : '-')}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Terms consent source: {state.accountLifecycleTermsConsentSource || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Terms consent Firestore mirror: {state.accountLifecycleTermsConsentMirror || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Terms consent legacy bootstrap: {state.accountLifecycleTermsConsentBootstrap || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Account recovery source: {state.accountLifecycleRecoverySource || (state.accountLifecycleAuthorityBackendApplied ? 'postgresql' : '-')}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Password reset delivery: {state.accountLifecyclePasswordResetDelivery || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Password reset status: {state.accountLifecyclePasswordResetStatus || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Phase 32 authority error: {state.accountLifecycleAuthorityError || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Preserved compatibility: Firebase auth session / Firebase UID bridge / site-shell parity fallback</div>
 
       {state.error ? (
         <div role="alert" style={{ marginTop: '8px', color: '#b91c1c', overflowWrap: 'anywhere' }}>

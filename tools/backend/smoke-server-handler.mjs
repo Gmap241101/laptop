@@ -5,11 +5,12 @@ const allowedOrigin = 'https://staging.example.vercel.app';
 const config = {
   serviceName: 'rental-api',
   appEnv: 'test',
-  serviceVersion: 'phase31-smoke',
+  serviceVersion: 'phase32-smoke',
   assetBoardWriteMirrorDisabled: true,
   rentalRequestWriteMirrorDisabled: true,
   memberStatusRestrictionWriteMirrorDisabled: true,
   memberProfileWriteMirrorDisabled: true,
+  accountLifecycleCompatibilityDisabled: true,
   corsAllowedOrigins: [allowedOrigin],
 };
 
@@ -213,6 +214,25 @@ const accountRecoveryService = {
   async verifyPasswordReset(input) {
     if (input.email !== 'smoke@example.com') throw new Error('Unexpected Phase 22 password reset verification.');
     return { source: 'postgresql', verified: true };
+  },
+};
+
+const accountLifecycleService = {
+  async signup({ firebaseIdentity, input }) {
+    if (firebaseIdentity.uid !== 'firebase_uid_smoke' || input.email !== 'smoke@example.com') throw new Error('Unexpected Phase 32 signup lifecycle input.');
+    return { source: 'postgresql', authority: 'postgresql', firestoreBootstrap: 'retired', status: 'active' };
+  },
+  async getTerms({ clerkUserId }) {
+    if (clerkUserId !== 'user_smoke') throw new Error('Unexpected Phase 32 terms read user.');
+    return { source: 'postgresql', policy: { enabled: true, revision: 5, activeTerms: [] }, states: {}, logs: [], bootstrapCompleted: false, bootstrapRequired: true };
+  },
+  async bootstrapTerms({ clerkUserId, firebaseIdentity }) {
+    if (clerkUserId !== 'user_smoke' || firebaseIdentity.uid !== 'firebase_uid_smoke') throw new Error('Unexpected Phase 32 terms bootstrap identity.');
+    return { source: 'postgresql', policy: { enabled: true, revision: 5, activeTerms: [] }, states: {}, logs: [], bootstrapCompleted: true, bootstrapRequired: false, legacyBootstrap: 'imported' };
+  },
+  async saveTerms({ clerkUserId, input }) {
+    if (clerkUserId !== 'user_smoke' || Number(input.policyRevision) !== 5) throw new Error('Unexpected Phase 32 terms save input.');
+    return { source: 'postgresql', authority: 'postgresql', firestoreMirror: 'retired', policy: { enabled: true, revision: 5, activeTerms: [] }, states: {}, logs: [], bootstrapCompleted: true, bootstrapRequired: false };
   },
 };
 
@@ -474,6 +494,7 @@ const server = createServer(
     memberShadowService,
     memberAuthorityService,
     accountRecoveryService,
+    accountLifecycleService,
     adminClerkAuthService,
     userClerkAuthService,
     rentalRequestWriteService,
@@ -509,6 +530,10 @@ if (readyBody.compatibility?.memberStatusSource !== 'postgresql') throw new Erro
 if (readyBody.compatibility?.memberProfileWriteMirrorDisabled !== true) throw new Error('/health Phase 31 member profile mirror retirement payload is invalid.');
 if (readyBody.compatibility?.memberProfileSource !== 'postgresql') throw new Error('/health Phase 31 member profile source payload is invalid.');
 if (readyBody.compatibility?.memberIdentitySource !== 'postgresql') throw new Error('/health Phase 31 member identity source payload is invalid.');
+if (readyBody.compatibility?.accountLifecycleCompatibilityDisabled !== true) throw new Error('/health Phase 32 account lifecycle authority payload is invalid.');
+if (readyBody.compatibility?.signupProfileSource !== 'postgresql') throw new Error('/health Phase 32 signup profile source payload is invalid.');
+if (readyBody.compatibility?.termsConsentSource !== 'postgresql') throw new Error('/health Phase 32 terms consent source payload is invalid.');
+if (readyBody.compatibility?.passwordResetDelivery !== 'firebase-auth-compatibility-preserved') throw new Error('/health Phase 32 password reset compatibility payload is invalid.');
 if (!Array.isArray(readyBody.compatibility?.retiredWriteMirrorDomains) || !readyBody.compatibility.retiredWriteMirrorDomains.includes('assets') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('notice') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('faq') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('rental-requests') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('member-status') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('rental-restriction-status') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('member-profile') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('member-identity') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('account-recovery-key')) throw new Error('/health Phase 31 retired domain list is invalid.');
 if (ready.headers.get('access-control-allow-origin') !== allowedOrigin) {
   throw new Error('Allowed CORS origin was not reflected.');
@@ -519,6 +544,24 @@ const session = await fetch(`${baseUrl}/api/auth/session`, { headers: authHeader
 if (session.status !== 200) throw new Error(`/api/auth/session returned ${session.status}`);
 const sessionBody = await session.json();
 if (sessionBody.session?.userId !== 'user_smoke') throw new Error('Auth session payload is invalid.');
+
+const phase32Signup = await fetch(`${baseUrl}/api/users/signup/bootstrap`, {
+  method: 'POST',
+  headers: { Origin: allowedOrigin, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+  body: JSON.stringify({ email: 'smoke@example.com' }),
+});
+if (phase32Signup.status !== 200 || (await phase32Signup.json()).signupLifecycle?.firestoreBootstrap !== 'retired') throw new Error('Phase 32 signup lifecycle HTTP response is invalid.');
+const phase32Terms = await fetch(`${baseUrl}/api/users/me/terms-consent`, { headers: authHeaders });
+if (phase32Terms.status !== 200 || (await phase32Terms.json()).termsConsent?.bootstrapRequired !== true) throw new Error('Phase 32 terms read HTTP response is invalid.');
+const phase32TermsBootstrap = await fetch(`${baseUrl}/api/users/me/terms-consent/bootstrap`, {
+  method: 'POST',
+  headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+});
+if (phase32TermsBootstrap.status !== 200 || (await phase32TermsBootstrap.json()).termsConsent?.legacyBootstrap !== 'imported') throw new Error('Phase 32 terms bootstrap HTTP response is invalid.');
+const phase32TermsSave = await fetch(`${baseUrl}/api/users/me/terms-consent`, {
+  method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ policyRevision: 5, decisions: [] }),
+});
+if (phase32TermsSave.status !== 200 || (await phase32TermsSave.json()).termsConsent?.firestoreMirror !== 'retired') throw new Error('Phase 32 terms save HTTP response is invalid.');
 
 const beforeSync = await fetch(`${baseUrl}/api/users/me`, { headers: authHeaders });
 if (beforeSync.status !== 404) throw new Error(`/api/users/me before sync returned ${beforeSync.status}`);
@@ -989,4 +1032,4 @@ const missing = await fetch(`${baseUrl}/missing`);
 if (missing.status !== 404) throw new Error(`/missing returned ${missing.status}`);
 
 await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, Phase 16 rental-request POST, Phase 17 admin bootstrap/list/dashboard/status + Phase 18 sync/events/edit/memo/restore + Phase 19 user edit/cancel/extend/admin-review + Phase 20 asset catalog/bootstrap/CRUD/bulk/categories + Phase 21 member profile/status authority/admin registry + Phase 22 account recovery/admin Clerk session/migration/provision + Phase 23 user Clerk session/migration/provision/password/withdrawal authority + Phase 24 site-content + Phase 25 rental-config/terms read/sync + Phase 26 notice/FAQ public/admin authority + Phase 28 asset/board + Phase 29 rental-request + Phase 30 member-status/restriction write-mirror retirement health contracts, CORS, 404)');
+console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, Phase 16 rental-request POST, Phase 17 admin bootstrap/list/dashboard/status + Phase 18 sync/events/edit/memo/restore + Phase 19 user edit/cancel/extend/admin-review + Phase 20 asset catalog/bootstrap/CRUD/bulk/categories + Phase 21 member profile/status authority/admin registry + Phase 22 account recovery/admin Clerk session/migration/provision + Phase 23 user Clerk session/migration/provision/password/withdrawal authority + Phase 24 site-content + Phase 25 rental-config/terms read/sync + Phase 26 notice/FAQ public/admin authority + Phase 28 asset/board + Phase 29 rental-request + Phase 30 member-status/restriction + Phase 31 member-profile + Phase 32 signup/terms lifecycle authority health/routes, CORS, 404)');

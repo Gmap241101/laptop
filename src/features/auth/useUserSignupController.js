@@ -71,6 +71,10 @@ import {
   publishUserAccountLifecycleObservation,
   readUserAccountLifecycleCutoverConfig,
 } from './userAccountLifecycleCutover.js';
+import {
+  publishAccountLifecycleAuthorityObservation,
+  readAccountLifecycleAuthorityConfig,
+} from './accountLifecycleAuthority.js';
 
 const DEFAULT_TERMS_SUBMISSION = Object.freeze({
   ready: false,
@@ -249,6 +253,7 @@ export default function useUserSignupController({
       userSessionPolicy
     );
     const lifecycleConfig = readUserAccountLifecycleCutoverConfig();
+    const accountLifecycleConfig = readAccountLifecycleAuthorityConfig();
 
     setUserAuthLoading(true);
 
@@ -269,7 +274,7 @@ export default function useUserSignupController({
         await signOut(userSignupAuth);
       }
 
-      if (!dataSettings.memberIdentityClaimsReady) {
+      if (!accountLifecycleConfig.requested && !dataSettings.memberIdentityClaimsReady) {
         throw createMemberPolicyError('member/identity-index-not-ready');
       }
 
@@ -286,7 +291,7 @@ export default function useUserSignupController({
         dataSettings
       );
 
-      if (initialPolicyEnabled) {
+      if (!accountLifecycleConfig.requested && initialPolicyEnabled) {
         if ((dataTeams || []).length === 0) {
           throw createMemberPolicyError('member/directory-not-ready');
         }
@@ -323,271 +328,297 @@ export default function useUserSignupController({
       let createdAccountStatus = USER_PROFILE_STATUS.PENDING;
       let createdAccountRejoined = false;
 
-      const signupPublicConfigRef = doc(
-        userSignupDb,
-        'rentalSystem',
-        'publicConfig'
-      );
-      const signupClaimRef = doc(
-        userSignupDb,
-        'memberIdentityClaims',
-        identityKey
-      );
-      const signupRecoveryRef = doc(
-        userSignupDb,
-        'accountRecoveryKeys',
-        recoveryKey
-      );
-      const signupUserAccountRef = doc(
-        userSignupDb,
-        USER_ACCOUNTS_COLLECTION_NAME,
-        credential.user.uid
-      );
-      const signupTermsPolicyRef = doc(
-        userSignupDb,
-        'signupTermsPolicy',
-        'current'
-      );
-      const submittedTermsById = new Map(
-        (Array.isArray(signupTermsSubmission.decisions)
-          ? signupTermsSubmission.decisions
-          : []
-        ).map((decision) => [String(decision.termId || ''), decision])
-      );
-      const signupConsentRefs = new Map(
-        [...submittedTermsById.keys()].map((termId) => [
-          termId,
-          {
-            stateRef: doc(
-              userSignupDb,
-              'userTermConsentStates',
-              `${credential.user.uid}__${termId}`
-            ),
-            logRef: doc(collection(userSignupDb, 'userTermConsentLogs')),
-          },
-        ])
-      );
-
-      await runTransaction(userSignupDb, async (transaction) => {
-        const [configSnapshot, termsPolicySnapshot] = await Promise.all([
-          transaction.get(signupPublicConfigRef),
-          transaction.get(signupTermsPolicyRef),
-        ]);
-        const claimRef = signupClaimRef;
-        const recoveryRef = signupRecoveryRef;
-        const claimSnapshot = await transaction.get(claimRef);
-        const latestSettings = normalizeRentalPolicySettings({
-          ...initialSettings,
-          ...(configSnapshot.exists()
-            ? configSnapshot.data()?.settings || {}
-            : {}),
-        });
-        const latestPolicyEnabled = isRegisteredMemberSignupRequired(
-          latestSettings
-        );
-        const latestTermsSettings = normalizeTermsSettings(latestSettings);
-        const latestTermsPolicy = normalizeTermsPolicy(
-          termsPolicySnapshot.exists() ? termsPolicySnapshot.data() : {}
-        );
-        const termsEnabled =
-          latestTermsSettings.signupTermsEnabled && latestTermsPolicy.enabled;
-        const activeTerms = termsEnabled ? latestTermsPolicy.activeTerms : [];
-
-        if (termsEnabled) {
-          if (
-            !signupTermsSubmission.ready ||
-            Number(signupTermsSubmission.policyRevision || 0) !==
-              latestTermsPolicy.revision ||
-            submittedTermsById.size !== activeTerms.length
-          ) {
-            throw createMemberPolicyError('terms/policy-changed');
-          }
-
-          activeTerms.forEach((term) => {
-            const decision = submittedTermsById.get(term.id);
-            const exactVersion =
-              Number(decision?.termVersion || 0) === Number(term.version || 0);
-            const exactVersionId =
-              String(decision?.termVersionId || '') ===
-              String(term.versionId || '');
-            const exactHash =
-              String(decision?.contentHash || '') ===
-              String(term.contentHash || '');
-            const accepted = decision?.decision === TERMS_DECISION.ACCEPTED;
-            const viewed = Number(decision?.viewedAtMs || 0) > 0;
-
-            if (!decision || !exactVersion || !exactVersionId || !exactHash) {
-              throw createMemberPolicyError('terms/policy-changed');
-            }
-
-            if (term.required && (!accepted || !viewed)) {
-              throw createMemberPolicyError('terms/required-not-accepted');
-            }
-
-            if (!term.required && accepted && !viewed) {
-              throw createMemberPolicyError('terms/decision-required');
-            }
-          });
-        }
-
-        if (!latestSettings.memberIdentityClaimsReady) {
-          throw createMemberPolicyError('member/identity-index-not-ready');
-        }
-
-        const directoryVersion = getSafeMemberDirectoryVersion(
-          latestSettings
-        );
-        let directoryData = null;
-
-        if (latestPolicyEnabled) {
-          const directoryRef = doc(
-            userSignupDb,
-            'memberDirectoryKeys',
-            identityKey
-          );
-          const directorySnapshot = await transaction.get(directoryRef);
-          directoryData = directorySnapshot.exists()
-            ? directorySnapshot.data()
-            : null;
-
-          if (
-            !directoryData ||
-            directoryData.enabled === false ||
-            normalizeMemberName(directoryData.name || '') !== name ||
-            normalizeMemberTeam(directoryData.team || '') !== team
-          ) {
-            throw createMemberPolicyError('member/directory-mismatch');
-          }
-        }
-
-        const claimData = claimSnapshot.exists()
-          ? claimSnapshot.data()
-          : {};
-        const claimCurrentUid = getClaimCurrentUid(claimData);
-        const claimFormerUids = getClaimFormerUids(claimData);
-        const claimStatus = getClaimStatus(claimData);
-        const isReleasedClaim =
-          claimSnapshot.exists() &&
-          claimStatus === 'released' &&
-          !claimCurrentUid;
-
-        if (
-          claimSnapshot.exists() &&
-          (claimData.conflict === true ||
-            (claimCurrentUid && claimCurrentUid !== credential.user.uid) ||
-            (!isReleasedClaim &&
-              !claimCurrentUid &&
-              claimStatus !== 'released'))
-        ) {
-          throw createMemberPolicyError('member/identity-already-claimed');
-        }
-
-        createdAccountRejoined =
-          isReleasedClaim || claimFormerUids.length > 0;
-        createdAccountStatus =
-          isAutoApproveNewMembersEnabled(latestSettings) &&
-          !createdAccountRejoined
-            ? USER_PROFILE_STATUS.ACTIVE
-            : USER_PROFILE_STATUS.PENDING;
-
-        transaction.set(claimRef, {
-          identityKey,
-          uid: credential.user.uid,
-          currentUid: credential.user.uid,
-          status: 'active',
-          name,
-          team,
-          conflict: false,
-          conflictingUids: [],
-          formerUids: claimFormerUids,
-          directoryMemberId:
-            latestPolicyEnabled && directoryData
-              ? directoryData.directoryMemberId || ''
-              : claimData.directoryMemberId || '',
-          restrictionSnapshot: claimData.restrictionSnapshot || {},
-          createdAt: claimSnapshot.exists()
-            ? claimData.createdAt || serverTimestamp()
-            : serverTimestamp(),
-          releasedAt: '',
-          updatedAt: serverTimestamp(),
-        });
-
-        transaction.set(signupUserAccountRef, {
-          uid: credential.user.uid,
-          email: credential.user.email || email,
-          maskedEmail,
+      if (accountLifecycleConfig.requested) {
+        const firebaseIdToken = await credential.user.getIdToken();
+        const signupPayload = await clerkStagingClient.bootstrapUserSignup(firebaseIdToken, {
+          email,
           name,
           team,
           phone,
-          status: createdAccountStatus,
-          identityKey,
-          recoveryKey,
-          directoryMemberId:
-            latestPolicyEnabled && directoryData
-              ? directoryData.directoryMemberId || ''
-              : '',
-          directoryVerifiedVersion: latestPolicyEnabled ? directoryVersion : 0,
-          directoryVerifiedAt: latestPolicyEnabled ? serverTimestamp() : '',
-          profileRequiredReason: '',
-          profileRequiredAt: '',
-          statusBeforeProfileRequired: '',
-          rejoinedAccount: createdAccountRejoined,
-          previousAccountUids: claimFormerUids,
-          inheritedRestriction: claimData.restrictionSnapshot || {},
-          termsConsentRevision: termsEnabled ? latestTermsPolicy.revision : 0,
-          termsConsentCompletedAt: termsEnabled ? serverTimestamp() : '',
-          termsConsentPolicyVersion: termsEnabled
-            ? latestTermsPolicy.revision
-            : 0,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
+          terms: {
+            policyRevision: Number(signupTermsSubmission.policyRevision || 0),
+            requiredRevision: Number(signupTermsSubmission.requiredRevision || 0),
+            decisions: Array.isArray(signupTermsSubmission.decisions) ? signupTermsSubmission.decisions : [],
+          },
         });
+        createdAccountStatus = signupPayload?.signupLifecycle?.status || USER_PROFILE_STATUS.PENDING;
+        signupFirestoreCommitted = true;
+        createdSignupUser = null;
+        publishAccountLifecycleAuthorityObservation({
+          requested: true,
+          backendApplied: true,
+          signupSource: 'postgresql',
+          signupFirestoreBootstrap: 'retired',
+          termsConsentSource: 'postgresql',
+          error: null,
+        });
+      } else {
+        const signupPublicConfigRef = doc(
+          userSignupDb,
+          'rentalSystem',
+          'publicConfig'
+        );
+        const signupClaimRef = doc(
+          userSignupDb,
+          'memberIdentityClaims',
+          identityKey
+        );
+        const signupRecoveryRef = doc(
+          userSignupDb,
+          'accountRecoveryKeys',
+          recoveryKey
+        );
+        const signupUserAccountRef = doc(
+          userSignupDb,
+          USER_ACCOUNTS_COLLECTION_NAME,
+          credential.user.uid
+        );
+        const signupTermsPolicyRef = doc(
+          userSignupDb,
+          'signupTermsPolicy',
+          'current'
+        );
+        const submittedTermsById = new Map(
+          (Array.isArray(signupTermsSubmission.decisions)
+            ? signupTermsSubmission.decisions
+            : []
+          ).map((decision) => [String(decision.termId || ''), decision])
+        );
+        const signupConsentRefs = new Map(
+          [...submittedTermsById.keys()].map((termId) => [
+            termId,
+            {
+              stateRef: doc(
+                userSignupDb,
+                'userTermConsentStates',
+                `${credential.user.uid}__${termId}`
+              ),
+              logRef: doc(collection(userSignupDb, 'userTermConsentLogs')),
+            },
+          ])
+        );
 
-        if (termsEnabled) {
-          activeTerms.forEach((term) => {
-            const decision = submittedTermsById.get(term.id);
-            const refs = signupConsentRefs.get(term.id);
-            const decisionValue =
-              decision.decision === TERMS_DECISION.ACCEPTED
-                ? TERMS_DECISION.ACCEPTED
-                : TERMS_DECISION.DECLINED;
-            const consentPayload = {
-              uid: credential.user.uid,
-              termId: term.id,
-              termVersion: term.version,
-              termVersionId: term.versionId || '',
-              policyRevision: latestTermsPolicy.revision,
-              decision: decisionValue,
-              requiredSnapshot: Boolean(term.required),
-              titleSnapshot: term.title,
-              contentHash: term.contentHash,
-              viewedAtMs: Number(decision.viewedAtMs || 0),
-              decidedAt: serverTimestamp(),
-              source: TERMS_CONSENT_SOURCE.SIGNUP,
-              updatedAt: serverTimestamp(),
-            };
-
-            transaction.set(refs.stateRef, consentPayload);
-            transaction.set(refs.logRef, {
-              ...consentPayload,
-              previousDecision: '',
-              createdAt: serverTimestamp(),
-            });
+        await runTransaction(userSignupDb, async (transaction) => {
+          const [configSnapshot, termsPolicySnapshot] = await Promise.all([
+            transaction.get(signupPublicConfigRef),
+            transaction.get(signupTermsPolicyRef),
+          ]);
+          const claimRef = signupClaimRef;
+          const recoveryRef = signupRecoveryRef;
+          const claimSnapshot = await transaction.get(claimRef);
+          const latestSettings = normalizeRentalPolicySettings({
+            ...initialSettings,
+            ...(configSnapshot.exists()
+              ? configSnapshot.data()?.settings || {}
+              : {}),
           });
-        }
+          const latestPolicyEnabled = isRegisteredMemberSignupRequired(
+            latestSettings
+          );
+          const latestTermsSettings = normalizeTermsSettings(latestSettings);
+          const latestTermsPolicy = normalizeTermsPolicy(
+            termsPolicySnapshot.exists() ? termsPolicySnapshot.data() : {}
+          );
+          const termsEnabled =
+            latestTermsSettings.signupTermsEnabled && latestTermsPolicy.enabled;
+          const activeTerms = termsEnabled ? latestTermsPolicy.activeTerms : [];
 
-        transaction.set(recoveryRef, {
-          recoveryKey,
-          maskedEmail,
-          emailVerifier: recoveryEmailVerifier,
-          accountStatus: createdAccountStatus,
-          enabled: true,
-          updatedAt: serverTimestamp(),
+          if (termsEnabled) {
+            if (
+              !signupTermsSubmission.ready ||
+              Number(signupTermsSubmission.policyRevision || 0) !==
+                latestTermsPolicy.revision ||
+              submittedTermsById.size !== activeTerms.length
+            ) {
+              throw createMemberPolicyError('terms/policy-changed');
+            }
+
+            activeTerms.forEach((term) => {
+              const decision = submittedTermsById.get(term.id);
+              const exactVersion =
+                Number(decision?.termVersion || 0) === Number(term.version || 0);
+              const exactVersionId =
+                String(decision?.termVersionId || '') ===
+                String(term.versionId || '');
+              const exactHash =
+                String(decision?.contentHash || '') ===
+                String(term.contentHash || '');
+              const accepted = decision?.decision === TERMS_DECISION.ACCEPTED;
+              const viewed = Number(decision?.viewedAtMs || 0) > 0;
+
+              if (!decision || !exactVersion || !exactVersionId || !exactHash) {
+                throw createMemberPolicyError('terms/policy-changed');
+              }
+
+              if (term.required && (!accepted || !viewed)) {
+                throw createMemberPolicyError('terms/required-not-accepted');
+              }
+
+              if (!term.required && accepted && !viewed) {
+                throw createMemberPolicyError('terms/decision-required');
+              }
+            });
+          }
+
+          if (!latestSettings.memberIdentityClaimsReady) {
+            throw createMemberPolicyError('member/identity-index-not-ready');
+          }
+
+          const directoryVersion = getSafeMemberDirectoryVersion(
+            latestSettings
+          );
+          let directoryData = null;
+
+          if (latestPolicyEnabled) {
+            const directoryRef = doc(
+              userSignupDb,
+              'memberDirectoryKeys',
+              identityKey
+            );
+            const directorySnapshot = await transaction.get(directoryRef);
+            directoryData = directorySnapshot.exists()
+              ? directorySnapshot.data()
+              : null;
+
+            if (
+              !directoryData ||
+              directoryData.enabled === false ||
+              normalizeMemberName(directoryData.name || '') !== name ||
+              normalizeMemberTeam(directoryData.team || '') !== team
+            ) {
+              throw createMemberPolicyError('member/directory-mismatch');
+            }
+          }
+
+          const claimData = claimSnapshot.exists()
+            ? claimSnapshot.data()
+            : {};
+          const claimCurrentUid = getClaimCurrentUid(claimData);
+          const claimFormerUids = getClaimFormerUids(claimData);
+          const claimStatus = getClaimStatus(claimData);
+          const isReleasedClaim =
+            claimSnapshot.exists() &&
+            claimStatus === 'released' &&
+            !claimCurrentUid;
+
+          if (
+            claimSnapshot.exists() &&
+            (claimData.conflict === true ||
+              (claimCurrentUid && claimCurrentUid !== credential.user.uid) ||
+              (!isReleasedClaim &&
+                !claimCurrentUid &&
+                claimStatus !== 'released'))
+          ) {
+            throw createMemberPolicyError('member/identity-already-claimed');
+          }
+
+          createdAccountRejoined =
+            isReleasedClaim || claimFormerUids.length > 0;
+          createdAccountStatus =
+            isAutoApproveNewMembersEnabled(latestSettings) &&
+            !createdAccountRejoined
+              ? USER_PROFILE_STATUS.ACTIVE
+              : USER_PROFILE_STATUS.PENDING;
+
+          transaction.set(claimRef, {
+            identityKey,
+            uid: credential.user.uid,
+            currentUid: credential.user.uid,
+            status: 'active',
+            name,
+            team,
+            conflict: false,
+            conflictingUids: [],
+            formerUids: claimFormerUids,
+            directoryMemberId:
+              latestPolicyEnabled && directoryData
+                ? directoryData.directoryMemberId || ''
+                : claimData.directoryMemberId || '',
+            restrictionSnapshot: claimData.restrictionSnapshot || {},
+            createdAt: claimSnapshot.exists()
+              ? claimData.createdAt || serverTimestamp()
+              : serverTimestamp(),
+            releasedAt: '',
+            updatedAt: serverTimestamp(),
+          });
+
+          transaction.set(signupUserAccountRef, {
+            uid: credential.user.uid,
+            email: credential.user.email || email,
+            maskedEmail,
+            name,
+            team,
+            phone,
+            status: createdAccountStatus,
+            identityKey,
+            recoveryKey,
+            directoryMemberId:
+              latestPolicyEnabled && directoryData
+                ? directoryData.directoryMemberId || ''
+                : '',
+            directoryVerifiedVersion: latestPolicyEnabled ? directoryVersion : 0,
+            directoryVerifiedAt: latestPolicyEnabled ? serverTimestamp() : '',
+            profileRequiredReason: '',
+            profileRequiredAt: '',
+            statusBeforeProfileRequired: '',
+            rejoinedAccount: createdAccountRejoined,
+            previousAccountUids: claimFormerUids,
+            inheritedRestriction: claimData.restrictionSnapshot || {},
+            termsConsentRevision: termsEnabled ? latestTermsPolicy.revision : 0,
+            termsConsentCompletedAt: termsEnabled ? serverTimestamp() : '',
+            termsConsentPolicyVersion: termsEnabled
+              ? latestTermsPolicy.revision
+              : 0,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+
+          if (termsEnabled) {
+            activeTerms.forEach((term) => {
+              const decision = submittedTermsById.get(term.id);
+              const refs = signupConsentRefs.get(term.id);
+              const decisionValue =
+                decision.decision === TERMS_DECISION.ACCEPTED
+                  ? TERMS_DECISION.ACCEPTED
+                  : TERMS_DECISION.DECLINED;
+              const consentPayload = {
+                uid: credential.user.uid,
+                termId: term.id,
+                termVersion: term.version,
+                termVersionId: term.versionId || '',
+                policyRevision: latestTermsPolicy.revision,
+                decision: decisionValue,
+                requiredSnapshot: Boolean(term.required),
+                titleSnapshot: term.title,
+                contentHash: term.contentHash,
+                viewedAtMs: Number(decision.viewedAtMs || 0),
+                decidedAt: serverTimestamp(),
+                source: TERMS_CONSENT_SOURCE.SIGNUP,
+                updatedAt: serverTimestamp(),
+              };
+
+              transaction.set(refs.stateRef, consentPayload);
+              transaction.set(refs.logRef, {
+                ...consentPayload,
+                previousDecision: '',
+                createdAt: serverTimestamp(),
+              });
+            });
+          }
+
+          transaction.set(recoveryRef, {
+            recoveryKey,
+            maskedEmail,
+            emailVerifier: recoveryEmailVerifier,
+            accountStatus: createdAccountStatus,
+            enabled: true,
+            updatedAt: serverTimestamp(),
+          });
         });
-      });
 
-      signupFirestoreCommitted = true;
-      createdSignupUser = null;
+        signupFirestoreCommitted = true;
+        createdSignupUser = null;
+      }
 
       let clerkProvisioned = !lifecycleConfig.userLifecycleRequested;
       if (lifecycleConfig.userLifecycleRequested) {
@@ -771,6 +802,15 @@ export default function useUserSignupController({
 
       clearUserAuthenticatedSession();
       clearAdminAuthenticatedSession();
+      if (accountLifecycleConfig.requested) {
+        publishAccountLifecycleAuthorityObservation({
+          requested: true,
+          backendApplied: true,
+          signupSource: 'postgresql',
+          signupFirestoreBootstrap: 'retired',
+          error: error?.code || error?.message || 'phase32-signup-failed',
+        });
+      }
       console.error('User auth error:', error);
 
       const baseErrorMessage = signupRollbackFailed

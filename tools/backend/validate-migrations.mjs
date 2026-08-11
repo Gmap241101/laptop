@@ -22,6 +22,7 @@ const phase29 = readFileSync('server/migrations/020_phase29_rental_transaction_p
 const phase29ConstraintHotfix = readFileSync('server/migrations/021_phase29_rental_mirror_status_retired_constraint.sql', 'utf8');
 const phase30 = readFileSync('server/migrations/022_phase30_member_status_restriction_write_mirror_retirement.sql', 'utf8');
 const phase31 = readFileSync('server/migrations/023_phase31_member_profile_identity_recovery_authority.sql', 'utf8');
+const phase32 = readFileSync('server/migrations/024_phase32_account_lifecycle_postgresql_authority.sql', 'utf8');
 
 if (!/value\s+JSONB\s+NOT\s+NULL/i.test(phase2)) {
   throw new Error('app_runtime_metadata.value must remain JSONB NOT NULL.');
@@ -293,4 +294,22 @@ for (const marker of [
   if (!phase31.includes(marker)) throw new Error(`Phase 31 member profile identity/recovery authority marker is missing: ${marker}`);
 }
 
-console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion + Phase 19 user-action lifecycle + Phase 20 asset-domain + Phase 21 member/restriction/admin identity authority + Phase 22 account recovery/admin Clerk auth + Phase 23 user Clerk auth/lifecycle + Phase 24 site content + Phase 25 policy/terms + Phase 26 notice/FAQ board authority + Phase 28 asset/board write mirror retirement + Phase 29 rental transaction PostgreSQL authority + runtime constraint hotfix + Phase 30 member status/restriction mirror retirement + Phase 31 member profile identity/recovery authority are type-safe)');
+
+for (const marker of [
+  'ADD COLUMN IF NOT EXISTS terms_consent_bootstrap_completed_at TIMESTAMPTZ',
+  'CREATE TABLE IF NOT EXISTS app_user_term_consent_states',
+  'CREATE TABLE IF NOT EXISTS app_user_term_consent_logs',
+  "'phase', 32",
+  "'signup_profile_bootstrap', 'postgresql-authoritative-firebase-auth-compatibility-identity'",
+  "'signup_firestore_documents', 'retired-staging-opt-in'",
+  "'terms_consent_state_log', 'postgresql-authoritative'",
+  "'terms_consent_legacy_bootstrap', 'one-time-firestore-server-import'",
+  "'password_reset_delivery', 'firebase-auth-compatibility-preserved'",
+]) {
+  if (!phase32.includes(marker)) throw new Error(`Phase 32 account lifecycle authority marker is missing: ${marker}`);
+}
+if (/clerk-reset-password-email-code/i.test(phase32)) {
+  throw new Error('Phase 32 must preserve Firebase Auth password reset delivery until Firebase Auth compatibility is retired.');
+}
+
+console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion + Phase 19 user-action lifecycle + Phase 20 asset-domain + Phase 21 member/restriction/admin identity authority + Phase 22 account recovery/admin Clerk auth + Phase 23 user Clerk auth/lifecycle + Phase 24 site content + Phase 25 policy/terms + Phase 26 notice/FAQ board authority + Phase 28 asset/board write mirror retirement + Phase 29 rental transaction PostgreSQL authority + runtime constraint hotfix + Phase 30 member status/restriction mirror retirement + Phase 31 member profile identity/recovery authority + Phase 32 account lifecycle PostgreSQL authority are type-safe)');

@@ -242,6 +242,12 @@ export const createRequestHandler = ({
     async findEmail() { const error = new Error('Account recovery service is not configured.'); error.code = 'account_recovery_not_configured'; throw error; },
     async verifyPasswordReset() { const error = new Error('Account recovery service is not configured.'); error.code = 'account_recovery_not_configured'; throw error; },
   },
+  accountLifecycleService = {
+    async signup() { const error = new Error('Account lifecycle service is not configured.'); error.code = 'account_lifecycle_not_configured'; throw error; },
+    async getTerms() { const error = new Error('Account lifecycle service is not configured.'); error.code = 'account_lifecycle_not_configured'; throw error; },
+    async bootstrapTerms() { const error = new Error('Account lifecycle service is not configured.'); error.code = 'account_lifecycle_not_configured'; throw error; },
+    async saveTerms() { const error = new Error('Account lifecycle service is not configured.'); error.code = 'account_lifecycle_not_configured'; throw error; },
+  },
   adminClerkAuthService = {
     async getCurrent() { const error = new Error('Admin Clerk auth service is not configured.'); error.code = 'admin_clerk_auth_not_configured'; throw error; },
     async migrateCurrent() { const error = new Error('Admin Clerk auth service is not configured.'); error.code = 'admin_clerk_auth_not_configured'; throw error; },
@@ -362,6 +368,15 @@ export const createRequestHandler = ({
   ) {
     throw new TypeError('accountRecoveryService Phase 22 methods are required.');
   }
+  if (config.accountLifecycleCompatibilityDisabled && (
+    !accountLifecycleService ||
+    typeof accountLifecycleService.signup !== 'function' ||
+    typeof accountLifecycleService.getTerms !== 'function' ||
+    typeof accountLifecycleService.bootstrapTerms !== 'function' ||
+    typeof accountLifecycleService.saveTerms !== 'function'
+  )) {
+    throw new TypeError('accountLifecycleService Phase 32 methods are required when account lifecycle authority is enabled.');
+  }
   if (
     !adminClerkAuthService ||
     typeof adminClerkAuthService.getCurrent !== 'function' ||
@@ -462,6 +477,10 @@ export const createRequestHandler = ({
       memberProfileWriteMirrorDisabled: Boolean(config.memberProfileWriteMirrorDisabled),
       memberProfileSource: config.memberProfileWriteMirrorDisabled ? 'postgresql' : 'firestore-compatibility-source',
       memberIdentitySource: config.memberProfileWriteMirrorDisabled ? 'postgresql' : 'firestore-compatibility-source',
+      accountLifecycleCompatibilityDisabled: Boolean(config.accountLifecycleCompatibilityDisabled),
+      signupProfileSource: config.accountLifecycleCompatibilityDisabled ? 'postgresql' : 'firestore-compatibility-source',
+      termsConsentSource: config.accountLifecycleCompatibilityDisabled ? 'postgresql' : 'firestore',
+      passwordResetDelivery: 'firebase-auth-compatibility-preserved',
     },
   };
 
@@ -552,6 +571,9 @@ export const createRequestHandler = ({
           adminIdentityRegistryBootstrap: '/api/admin/identity-registry/bootstrap',
           accountRecoveryEmail: '/api/account-recovery/email',
           accountRecoveryPasswordResetVerify: '/api/account-recovery/password-reset/verify',
+          accountLifecycleSignup: '/api/users/signup/bootstrap',
+          userTermsConsent: '/api/users/me/terms-consent',
+          userTermsConsentBootstrap: '/api/users/me/terms-consent/bootstrap',
           adminClerkSession: '/api/admin/auth/session',
           adminClerkMigration: '/api/admin/auth/migrate',
           adminClerkProvision: '/api/admin/identity-registry/:uid/provision',
@@ -685,6 +707,70 @@ export const createRequestHandler = ({
       } catch (error) {
         console.warn('[account-recovery] password reset verification failed', { requestId, code: error?.code, name: error?.name });
         writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'account_recovery_unavailable' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/users/signup/bootstrap') {
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      try {
+        const body = await readJsonBody(request);
+        const result = await accountLifecycleService.signup({ firebaseIdentity, input: body || {} });
+        writeJson(response, 200, {
+          ...basePayload,
+          signupLifecycle: {
+            source: result.source || 'postgresql',
+            authority: result.authority || 'postgresql',
+            firestoreBootstrap: result.firestoreBootstrap || 'retired',
+            status: result.status || '',
+          },
+        }, headers);
+      } catch (error) {
+        console.warn('[account-lifecycle] PostgreSQL signup bootstrap failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'account_lifecycle_signup_failed' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/users/me/terms-consent') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      try {
+        const result = await accountLifecycleService.getTerms({ clerkUserId: auth.userId });
+        writeJson(response, 200, { ...basePayload, termsConsent: result }, headers);
+      } catch (error) {
+        console.warn('[account-lifecycle] terms consent read failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'terms_consent_read_failed' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/users/me/terms-consent/bootstrap') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      try {
+        const result = await accountLifecycleService.bootstrapTerms({ clerkUserId: auth.userId, firebaseIdentity });
+        writeJson(response, 200, { ...basePayload, termsConsent: result }, headers);
+      } catch (error) {
+        console.warn('[account-lifecycle] terms consent bootstrap failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'terms_consent_bootstrap_failed' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/users/me/terms-consent') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      try {
+        const body = await readJsonBody(request);
+        const result = await accountLifecycleService.saveTerms({ clerkUserId: auth.userId, input: body || {} });
+        writeJson(response, 200, { ...basePayload, termsConsent: result }, headers);
+      } catch (error) {
+        console.warn('[account-lifecycle] terms consent save failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'terms_consent_save_failed' }, headers);
       }
       return;
     }

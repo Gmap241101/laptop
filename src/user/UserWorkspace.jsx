@@ -1,4 +1,4 @@
-import { lazy, memo, Suspense, useEffect, useMemo } from 'react';
+import { lazy, memo, Suspense, useEffect, useMemo, useState } from 'react';
 import DevRenderProfiler from '../performance/DevRenderProfiler.jsx';
 import { PROTECTED_USER_TABS } from '../routing/appRoutes.js';
 import UserHomePanel from './UserHomePanel.jsx';
@@ -67,9 +67,11 @@ function UserWorkspace({ ctx, panelCtx }) {
     [panelCtx]
   );
   const isProtectedUserTab = PROTECTED_USER_TABS.has(userTab);
+  const [termsComplianceRefreshKey, setTermsComplianceRefreshKey] = useState(0);
   const termsCompliance = useUserTermsCompliance({
     account: userProfile,
     enabled: isProtectedUserTab && hasFirebaseAuthSession,
+    refreshKey: termsComplianceRefreshKey,
   });
 
   useEffect(() => {
@@ -187,6 +189,7 @@ function UserWorkspace({ ctx, panelCtx }) {
           Button={Button}
           triggerToast={triggerToast}
           mode="gate"
+          onCompleted={() => setTermsComplianceRefreshKey((current) => current + 1)}
         />
       </div>,
       { lazyPanel: false }
