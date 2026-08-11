@@ -157,3 +157,40 @@ Package guard force-failure validation:
 - Inject nonexistent source path into manifest -> exit 1 / PASS.
 - Restore manifest -> PASS.
 - Source checksum verification -> 798 / 798 OK.
+
+Phase 33 administrator diagnostics render hotfix — 2026-08-11 23:20 KST
+-----------------------------------------------------------------------
+Observed Staging symptom:
+- Opening the administrator Clerk diagnostics URL rendered the application-level fallback screen: "화면을 불러오는 중 오류가 발생했습니다."
+
+Confirmed root cause:
+- ClerkStagingDiagnostics renamed the current revision constant to PHASE33_RUNTIME_REVISION.
+- The preserved Phase 32 diagnostics section still rendered PHASE32_RUNTIME_REVISION, but that constant definition had been removed.
+- With clerkTest=1, diagnostics rendering synchronously raised ReferenceError: PHASE32_RUNTIME_REVISION is not defined.
+- Because App and ClerkStagingDiagnostics shared one RootErrorBoundary, this diagnostics-only exception replaced the entire application UI.
+
+Hotfix:
+1. Restore PHASE32_RUNTIME_REVISION = phase32-new-member-runtime-authority-20260811-2108 for the historical Phase 32 section.
+2. Preserve Phase 33 backend/runtime revision = phase33-user-clerk-content-authority-20260811-2210.
+3. Add frontend hotfix revision = phase33-admin-diagnostics-render-hotfix-20260811-2320.
+4. Add DiagnosticsErrorBoundary so a future diagnostics-only render exception cannot replace the application UI.
+5. Add passwordResetStage to the user auth context slice. App already supplied this state, but the slice omitted it, which would prevent the Clerk password-reset code stage from reaching UserAuthPanel.
+6. Extend Phase 33 frontend smoke to require the Phase 32 revision definition, diagnostics isolation boundary, frontend hotfix revision, and password-reset stage context contract.
+
+Direct render reproduction:
+- Before hotfix: ReferenceError: PHASE32_RUNTIME_REVISION is not defined.
+- After hotfix: ClerkStagingDiagnostics render completes and returns the diagnostics aside.
+
+Post-hotfix validation:
+- npm run frontend:phase33:smoke: PASS.
+- npm run verify:phase33: PASS / exit 0.
+- React audit: PASS (172 source files).
+- Application audit: PASS (124 contracts, 11 user routes, 20 administrator tabs).
+- Firestore strict audit: PASS (138 calls, 0 unapproved warnings, 0 unapproved errors).
+- npm run build:staging: prebuild PASS; Vite executable unavailable in assistant workspace / exit 127.
+
+Deployment impact:
+- Frontend-only runtime hotfix.
+- Vercel Staging redeploy required.
+- Heroku redeploy not required for this hotfix.
+- No migration, dependency, Firebase Rules, Firestore index, Clerk configuration, DNS, or Production changes.

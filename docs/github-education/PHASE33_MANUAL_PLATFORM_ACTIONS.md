@@ -226,3 +226,42 @@ https://notebook.recruit.kro.kr
 ```
 
 Production promotion remains a separate user-approved operation after final Staging cleanup.
+
+## Administrator diagnostics render hotfix — 2026-08-11 23:20 KST
+
+If the administrator test URL shows the full-page message `화면을 불러오는 중 오류가 발생했습니다.`, deploy the Phase 33 diagnostics-render hotfix before continuing Phase 33 validation.
+
+Confirmed cause:
+
+```text
+ClerkStagingDiagnostics
+→ Phase 32 section referenced PHASE32_RUNTIME_REVISION
+→ constant definition was removed during Phase 33 rename
+→ ReferenceError during diagnostics render
+→ shared RootErrorBoundary replaced the whole application UI
+```
+
+The hotfix restores the Phase 32 constant and isolates the diagnostics panel with its own error boundary. It also fixes the Phase 33 Clerk password-reset context slice so `passwordResetStage` reaches `UserAuthPanel`.
+
+Expected diagnostics markers after Vercel redeploy:
+
+```text
+Clerk Staging Test · Phase 33
+Runtime revision: phase33-user-clerk-content-authority-20260811-2210
+Frontend hotfix revision: phase33-admin-diagnostics-render-hotfix-20260811-2320
+```
+
+For this hotfix:
+
+```text
+Vercel Staging redeploy: required
+Heroku Staging redeploy: not required
+PostgreSQL migration: none
+New environment variables: none
+Clerk change: none
+Firebase Console change: none
+Firestore Rules/index change: none
+Production change: none
+```
+
+After the Vercel redeploy, reopen the administrator diagnostics URL first. The normal administrator UI and the Phase 33 diagnostics panel must both render. Only then continue the staged Phase 33 content synchronization and authority-flag validation described above.

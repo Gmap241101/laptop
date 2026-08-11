@@ -77,6 +77,27 @@ class RootErrorBoundary extends React.Component {
   }
 }
 
+
+class DiagnosticsErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('Diagnostics render error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.error) return null;
+    return this.props.children;
+  }
+}
+
 const rootElement = document.getElementById('root');
 
 if (!rootElement) {
@@ -87,7 +108,9 @@ ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
     <RootErrorBoundary>
       <App />
-      <ClerkStagingDiagnostics />
     </RootErrorBoundary>
+    <DiagnosticsErrorBoundary>
+      <ClerkStagingDiagnostics />
+    </DiagnosticsErrorBoundary>
   </React.StrictMode>
 );

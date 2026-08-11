@@ -39,7 +39,7 @@ const read = (path) => readFile(new URL(`../../${path}`, import.meta.url), 'utf8
 const [
   login, signup, authRuntime, session, myPageSecurity, myPageAccount, recovery, recoveryService,
   client, termsCompliance, termsPanel, home, popupFooter, siteSettings, rentalData, termsService,
-  diagnostics, app, siteCutover, policyCutover,
+  diagnostics, app, main, contextSlices, siteCutover, policyCutover,
 ] = await Promise.all([
   read('src/features/auth/useUserLoginController.js'),
   read('src/features/auth/useUserSignupController.js'),
@@ -59,6 +59,8 @@ const [
   read('src/features/terms/termsService.js'),
   read('src/clerk/ClerkStagingDiagnostics.jsx'),
   read('src/App.jsx'),
+  read('src/main.jsx'),
+  read('src/context/appContextSlices.js'),
   read('src/features/content/siteContentCutover.js'),
   read('src/features/content/policyContentCutover.js'),
 ]);
@@ -79,7 +81,12 @@ assert.ok(recoveryService.includes('readUserFirebaseAuthRetirementConfig'));
 for (const marker of ['reset_password_email_code', 'optionalFirebaseAuthorizationHeader', 'signupUserNative']) assert.ok(client.includes(marker), `client ${marker}`);
 for (const source of [termsCompliance, termsPanel]) assert.ok(source.includes('terms_consent_postgresql_bootstrap_required'), 'terms bootstrap must fail closed after user Firebase retirement');
 for (const source of [home, popupFooter, siteSettings, rentalData, termsService]) assert.ok(source.includes('authorityRequested'), 'public content must honor PostgreSQL authority without silent Firestore fallback');
-for (const marker of ['Clerk Staging Test · Phase 33', 'Phase 33 user Clerk-only auth + public content PostgreSQL authority', 'phase33-user-clerk-content-authority-20260811-2210', "top: '184px'"]) assert.ok(diagnostics.includes(marker), `diagnostics ${marker}`);
+for (const marker of ['Clerk Staging Test · Phase 33', 'Phase 33 user Clerk-only auth + public content PostgreSQL authority', 'phase33-user-clerk-content-authority-20260811-2210', 'phase33-admin-diagnostics-render-hotfix-20260811-2320', 'Frontend hotfix revision:', "top: '184px'"]) assert.ok(diagnostics.includes(marker), `diagnostics ${marker}`);
+assert.ok(diagnostics.includes("const PHASE32_RUNTIME_REVISION = 'phase32-new-member-runtime-authority-20260811-2108';"), 'Phase 32 diagnostics revision constant must remain defined');
+assert.equal((diagnostics.match(/PHASE32_RUNTIME_REVISION/g) || []).length, 2, 'Phase 32 diagnostics revision must have one definition and one render reference');
+assert.ok(main.includes('class DiagnosticsErrorBoundary extends React.Component'), 'diagnostics must have an isolated error boundary');
+assert.ok(main.includes('<DiagnosticsErrorBoundary>\n      <ClerkStagingDiagnostics />\n    </DiagnosticsErrorBoundary>'), 'diagnostics error boundary must not wrap App');
+assert.ok(contextSlices.includes('passwordResetForm passwordResetLoading passwordResetStage passwordResetVerificationResult'), 'password reset stage must be included in user auth context');
 assert.ok(app.includes('passwordResetStage'));
 assert.ok((app.match(/setFirebaseAuthUser,/g) || []).length >= 4, 'App must pass the synthetic user setter to Phase 33 auth controllers');
 

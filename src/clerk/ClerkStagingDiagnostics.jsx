@@ -124,7 +124,9 @@ import {
 } from '../features/auth/userFirebaseAuthRetirement.js';
 import { clerkStagingClient } from './clerkStagingClient.js';
 
+const PHASE32_RUNTIME_REVISION = 'phase32-new-member-runtime-authority-20260811-2108';
 const PHASE33_RUNTIME_REVISION = 'phase33-user-clerk-content-authority-20260811-2210';
+const PHASE33_FRONTEND_HOTFIX_REVISION = 'phase33-admin-diagnostics-render-hotfix-20260811-2320';
 
 const panelStyle = {
   position: 'fixed',
@@ -1670,6 +1672,7 @@ export default function ClerkStagingDiagnostics() {
 
       <div style={{ marginTop: '6px', fontWeight: 700 }}>Phase 33 user Clerk-only auth + public content PostgreSQL authority</div>
       <div>Runtime revision: {PHASE33_RUNTIME_REVISION}</div>
+      <div>Frontend hotfix revision: {PHASE33_FRONTEND_HOTFIX_REVISION}</div>
       <div>User Firebase Auth retirement requested: {state.userFirebaseRetirementRequested ? 'yes' : 'no'}</div>
       <div>User Firebase Auth backend retirement applied: {state.userFirebaseRetirementBackendApplied ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>User authentication source: {state.userFirebaseRuntimeSource || '-'}</div>
