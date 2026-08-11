@@ -14,10 +14,13 @@ import {
   getUserAccountStatusLabel,
 } from '../features/members/memberAccountPolicy.js';
 
-const formatCreatedAt = (account) =>
-  typeof account?.createdAt?.toDate === 'function'
-    ? account.createdAt.toDate().toLocaleString('ko-KR')
-    : '-';
+const formatCreatedAt = (account) => {
+  if (typeof account?.createdAt?.toDate === 'function') {
+    return account.createdAt.toDate().toLocaleString('ko-KR');
+  }
+  const parsed = account?.createdAt ? new Date(account.createdAt) : null;
+  return parsed && !Number.isNaN(parsed.getTime()) ? parsed.toLocaleString('ko-KR') : '-';
+};
 
 const compactActionButtonClass = '!gap-1 !rounded-lg !px-2 !py-1 !text-[10px]';
 
@@ -71,6 +74,7 @@ export default function AdminMemberAccountsPanel({ ctx }) {
     isAdminAuthenticated,
     triggerConfirm,
     triggerToast,
+    onStatusChanged: refreshAdminUserAccounts,
   });
 
   const {

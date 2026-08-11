@@ -71,7 +71,7 @@ for (const marker of [
 
 const diagnostics = readFileSync('src/clerk/ClerkStagingDiagnostics.jsx', 'utf8');
 for (const marker of [
-  'Clerk Staging Test · Phase 29',
+  'Clerk Staging Test · Phase 30',
   'Phase 27 validated-domain legacy Firestore read fallback retirement',
   'Legacy Firestore read fallback retirement requested',
   'Retired read domains: member-profile / rental-restriction / rental-requests / assets / notice / faq',

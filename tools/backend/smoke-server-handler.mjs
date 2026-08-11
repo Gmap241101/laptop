@@ -5,9 +5,10 @@ const allowedOrigin = 'https://staging.example.vercel.app';
 const config = {
   serviceName: 'rental-api',
   appEnv: 'test',
-  serviceVersion: 'phase29-smoke',
+  serviceVersion: 'phase30-smoke',
   assetBoardWriteMirrorDisabled: true,
   rentalRequestWriteMirrorDisabled: true,
+  memberStatusRestrictionWriteMirrorDisabled: true,
   corsAllowedOrigins: [allowedOrigin],
 };
 
@@ -177,6 +178,10 @@ const memberShadowService = {
 
 
 const memberAuthorityService = {
+  async listAdminMembers({ firebaseIdentity, status, search, page, pageSize }) {
+    if (firebaseIdentity.uid !== 'firebase_uid_smoke') throw new Error('Unexpected Phase 30 admin member read identity.');
+    return { admin: { uid: firebaseIdentity.uid, role: 'owner' }, source: 'postgresql', accounts: [{ uid: 'member-target', email: 'target@example.com', name: 'Target', team: 'QA', phone: '010-1111-2222', status: status === 'all' ? 'active' : status }], page, pageSize, totalCount: 1, hasNextPage: false, statusCounts: { pending: 0, active: 1, profileRequired: 0, blocked: 0, retired: 0 }, search };
+  },
   async editSelf({ clerkUserId, firebaseIdentity, input }) {
     if (clerkUserId !== 'user_smoke' || firebaseIdentity.uid !== 'firebase_uid_smoke') throw new Error('Unexpected Phase 21 self member authority identity.');
     return { authority: 'postgresql', firestoreMirror: 'synced', mutationId: 'member-self-smoke', profile: { uid: firebaseIdentity.uid, email: 'smoke@example.com', name: input.name, team: input.team, phone: input.phone, status: 'active' } };
@@ -494,7 +499,9 @@ if (readyBody.database?.status !== 'ok') throw new Error('/health database paylo
 if (readyBody.compatibility?.assetBoardWriteMirrorDisabled !== true) throw new Error('/health Phase 28 write-mirror retirement payload is invalid.');
 if (readyBody.compatibility?.rentalRequestWriteMirrorDisabled !== true) throw new Error('/health Phase 29 rental-request mirror retirement payload is invalid.');
 if (readyBody.compatibility?.rentalTransactionSource !== 'postgresql') throw new Error('/health Phase 29 rental transaction source payload is invalid.');
-if (!Array.isArray(readyBody.compatibility?.retiredWriteMirrorDomains) || !readyBody.compatibility.retiredWriteMirrorDomains.includes('assets') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('notice') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('faq') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('rental-requests')) throw new Error('/health Phase 29 retired domain list is invalid.');
+if (readyBody.compatibility?.memberStatusRestrictionWriteMirrorDisabled !== true) throw new Error('/health Phase 30 member status/restriction mirror retirement payload is invalid.');
+if (readyBody.compatibility?.memberStatusSource !== 'postgresql') throw new Error('/health Phase 30 member status source payload is invalid.');
+if (!Array.isArray(readyBody.compatibility?.retiredWriteMirrorDomains) || !readyBody.compatibility.retiredWriteMirrorDomains.includes('assets') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('notice') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('faq') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('rental-requests') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('member-status') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('rental-restriction-status')) throw new Error('/health Phase 29 retired domain list is invalid.');
 if (ready.headers.get('access-control-allow-origin') !== allowedOrigin) {
   throw new Error('Allowed CORS origin was not reflected.');
 }
@@ -817,6 +824,14 @@ const memberProfileWriteBody = await memberProfileWrite.json();
 if (memberProfileWrite.status !== 200 || memberProfileWriteBody.memberProfileWrite?.authority !== 'postgresql' || memberProfileWriteBody.memberProfileWrite?.firestoreMirror !== 'synced') {
   throw new Error('Phase 21 self member profile authority HTTP response is invalid.');
 }
+const adminMembersRead = await fetch(`${baseUrl}/api/admin/members?status=all&page=1&pageSize=10&q=target`, {
+  headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
+});
+const adminMembersReadBody = await adminMembersRead.json();
+if (adminMembersRead.status !== 200 || adminMembersReadBody.adminMembers?.source !== 'postgresql' || !Array.isArray(adminMembersReadBody.adminMembers?.accounts) || adminMembersReadBody.adminMembers?.totalCount !== 1) {
+  throw new Error('Phase 30 admin member PostgreSQL read HTTP response is invalid.');
+}
+
 const adminMemberProfileWrite = await fetch(`${baseUrl}/api/admin/members/member-target/profile`, {
   method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' },
   body: JSON.stringify({ name: 'Target User', team: 'Ops', phone: '010-1111-2222' }),
@@ -966,4 +981,4 @@ const missing = await fetch(`${baseUrl}/missing`);
 if (missing.status !== 404) throw new Error(`/missing returned ${missing.status}`);
 
 await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, Phase 16 rental-request POST, Phase 17 admin bootstrap/list/dashboard/status + Phase 18 sync/events/edit/memo/restore + Phase 19 user edit/cancel/extend/admin-review + Phase 20 asset catalog/bootstrap/CRUD/bulk/categories + Phase 21 member profile/status authority/admin registry + Phase 22 account recovery/admin Clerk session/migration/provision + Phase 23 user Clerk session/migration/provision/password/withdrawal authority + Phase 24 site-content + Phase 25 rental-config/terms read/sync + Phase 26 notice/FAQ public/admin authority + Phase 28 asset/board + Phase 29 rental-request write-mirror retirement health contracts, CORS, 404)');
+console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, Phase 16 rental-request POST, Phase 17 admin bootstrap/list/dashboard/status + Phase 18 sync/events/edit/memo/restore + Phase 19 user edit/cancel/extend/admin-review + Phase 20 asset catalog/bootstrap/CRUD/bulk/categories + Phase 21 member profile/status authority/admin registry + Phase 22 account recovery/admin Clerk session/migration/provision + Phase 23 user Clerk session/migration/provision/password/withdrawal authority + Phase 24 site-content + Phase 25 rental-config/terms read/sync + Phase 26 notice/FAQ public/admin authority + Phase 28 asset/board + Phase 29 rental-request + Phase 30 member-status/restriction write-mirror retirement health contracts, CORS, 404)');

@@ -38,7 +38,7 @@ for (const marker of ['writeAdminMemberProfile', 'memberAuthorityConfig.memberRe
 for (const marker of ['writeAdminMemberStatus', 'memberAuthorityConfig.memberRequested', 'writeBatch']) assert.ok(adminStatus.includes(marker), marker);
 for (const marker of ['bootstrapAdminIdentityRegistry', 'adminRegistryRequested', 'syncAdminIdentityRegistryIfRequested', 'createUserWithEmailAndPassword']) assert.ok(adminAccounts.includes(marker), marker);
 for (const marker of ['writeMemberProfile', 'writeAdminMemberProfile', 'writeAdminMemberStatus', 'bootstrapAdminIdentityRegistry']) assert.ok(client.includes(marker), marker);
-assert.match(diagnostics, /Clerk Staging Test · Phase (21|22|23|24|25|26|27|28|29)/);
+assert.match(diagnostics, /Clerk Staging Test · Phase (21|22|23|24|25|26|27|28|29|30)/);
 assert.match(diagnostics, /Phase 21 member \/ restriction authority \+ admin identity preparation/);
 for (const label of ['Member authoritative write requested:', 'Restriction authoritative write requested:', 'Admin identity registry requested:', 'Member Firestore compatibility mirror:']) assert.ok(diagnostics.includes(label), label);
 assert.ok(adminRentalService.includes('upsertRestrictionAuthoritative'), 'PostgreSQL rental restriction authority must be updated after admin rental writes');

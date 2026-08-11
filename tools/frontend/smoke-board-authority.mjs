@@ -35,7 +35,7 @@ for (const marker of ['saveBoardConfig', 'saveFaqBoardCategory', 'deleteFaqBoard
   assert.ok(adminSettings.includes(marker), `missing Phase 26 admin settings marker: ${marker}`);
 }
 const diagnostics = readFileSync('src/clerk/ClerkStagingDiagnostics.jsx', 'utf8');
-for (const marker of ['Clerk Staging Test · Phase 29', 'Phase 26 notice / FAQ PostgreSQL read + CRUD authority', 'Notice / FAQ PostgreSQL bootstrap', "top: '184px'"]) {
+for (const marker of ['Clerk Staging Test · Phase 30', 'Phase 26 notice / FAQ PostgreSQL read + CRUD authority', 'Notice / FAQ PostgreSQL bootstrap', "top: '184px'"]) {
   assert.ok(diagnostics.includes(marker), `missing Phase 26 diagnostics marker: ${marker}`);
 }
 const app = readFileSync('src/App.jsx', 'utf8');

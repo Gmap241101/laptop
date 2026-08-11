@@ -103,6 +103,10 @@ import {
   readRentalRequestWriteMirrorRetirementConfig,
   requestRentalRequestWriteMirrorRetirementStatus,
 } from '../features/compatibility/rentalRequestWriteMirrorRetirement.js';
+import {
+  readMemberStatusRestrictionWriteMirrorRetirementConfig,
+  requestMemberStatusRestrictionWriteMirrorRetirementStatus,
+} from '../features/compatibility/memberStatusRestrictionWriteMirrorRetirement.js';
 import { clerkStagingClient } from './clerkStagingClient.js';
 
 const panelStyle = {
@@ -162,6 +166,7 @@ export default function ClerkStagingDiagnostics() {
   const legacyReadFallbackConfig = useMemo(() => readLegacyFirestoreReadFallbackConfig(), []);
   const writeMirrorRetirementConfig = useMemo(() => readFirestoreWriteMirrorRetirementConfig(), []);
   const rentalWriteMirrorRetirementConfig = useMemo(() => readRentalRequestWriteMirrorRetirementConfig(), []);
+  const memberStatusRestrictionRetirementConfig = useMemo(() => readMemberStatusRestrictionWriteMirrorRetirementConfig(), []);
   const [state, setState] = useState({
     phase: requested ? 'loading' : 'hidden',
     signedIn: false,
@@ -281,6 +286,8 @@ export default function ClerkStagingDiagnostics() {
     memberAuthorityMirror: null,
     memberAuthorityMutationId: null,
     memberAuthorityOperation: null,
+    adminMemberReadSource: null,
+    adminMemberReadCount: null,
     restrictionAuthorityWriteRequested: memberAuthorityConfig.restrictionRequested,
     restrictionAuthorityWriteSource: null,
     adminIdentityRegistryRequested: memberAuthorityConfig.adminRegistryRequested,
@@ -367,6 +374,11 @@ export default function ClerkStagingDiagnostics() {
     rentalWriteMirrorRetirementBackendApplied: false,
     rentalTransactionSource: null,
     rentalWriteMirrorRetirementError: null,
+    memberStatusRestrictionRetirementRequested: memberStatusRestrictionRetirementConfig.enabled,
+    memberStatusRestrictionRetirementBackendApplied: false,
+    memberStatusRestrictionSource: null,
+    memberStatusRestrictionRetiredDomains: [],
+    memberStatusRestrictionRetirementError: null,
     error: null,
   });
 
@@ -728,6 +740,10 @@ export default function ClerkStagingDiagnostics() {
         memberAuthorityMirror: observation?.memberFirestoreMirror || current.memberAuthorityMirror,
         memberAuthorityMutationId: observation?.memberMutationId || current.memberAuthorityMutationId,
         memberAuthorityOperation: observation?.operation || current.memberAuthorityOperation,
+        adminMemberReadSource: observation?.adminMemberReadSource || current.adminMemberReadSource,
+        adminMemberReadCount: observation && Object.prototype.hasOwnProperty.call(observation, 'adminMemberReadCount')
+          ? Number(observation.adminMemberReadCount || 0)
+          : current.adminMemberReadCount,
         restrictionAuthorityWriteRequested: observation && Object.prototype.hasOwnProperty.call(observation, 'restrictionWriteRequested')
           ? Boolean(observation.restrictionWriteRequested)
           : current.restrictionAuthorityWriteRequested,
@@ -973,6 +989,25 @@ export default function ClerkStagingDiagnostics() {
     return () => { active = false; };
   }, [requested, rentalWriteMirrorRetirementConfig]);
 
+
+  useEffect(() => {
+    if (!requested) return undefined;
+    let active = true;
+    requestMemberStatusRestrictionWriteMirrorRetirementStatus({ config: memberStatusRestrictionRetirementConfig })
+      .then((status) => {
+        if (!active) return;
+        setState((current) => ({
+          ...current,
+          memberStatusRestrictionRetirementRequested: Boolean(status.requested),
+          memberStatusRestrictionRetirementBackendApplied: Boolean(status.backendApplied),
+          memberStatusRestrictionSource: status.source || null,
+          memberStatusRestrictionRetiredDomains: Array.isArray(status.retiredDomains) ? status.retiredDomains : [],
+          memberStatusRestrictionRetirementError: status.error || null,
+        }));
+      });
+    return () => { active = false; };
+  }, [requested, memberStatusRestrictionRetirementConfig]);
+
   if (!requested) return null;
 
   const run = async (operation) => {
@@ -1176,7 +1211,7 @@ export default function ClerkStagingDiagnostics() {
 
   return (
     <aside style={panelStyle} aria-label="Clerk staging diagnostics">
-      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 29</div>
+      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 30</div>
       <div>SDK: {state.phase === 'loading' ? 'loading' : state.phase}</div>
       <div>Signed in: {state.signedIn ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Clerk user: {state.userId || '-'}</div>
@@ -1470,6 +1505,19 @@ export default function ClerkStagingDiagnostics() {
       <div style={{ overflowWrap: 'anywhere' }}>Admin rental mirror: {state.adminRentalRequestWriteMirror || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Rental mirror retirement error: {state.rentalWriteMirrorRetirementError || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Preserved write mirrors: member / restriction / site shell / policy-terms transactions</div>
+
+
+      <div style={{ marginTop: '6px', fontWeight: 700 }}>Phase 30 member status / rental restriction PostgreSQL authority + Firestore write mirror retirement</div>
+      <div>Member status/restriction retirement requested: {state.memberStatusRestrictionRetirementRequested ? 'yes' : 'no'}</div>
+      <div>Member status/restriction backend applied: {state.memberStatusRestrictionRetirementBackendApplied ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Member status source: {state.memberStatusRestrictionSource || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Admin member list source: {state.adminMemberReadSource || '-'}</div>
+      <div>Admin member list count: {state.adminMemberReadCount ?? '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Phase 30 retired domains: {state.memberStatusRestrictionRetiredDomains.length ? state.memberStatusRestrictionRetiredDomains.filter((domain) => domain === 'member-status' || domain === 'rental-restriction-status').join(' / ') : '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Last member status mirror: {state.memberAuthorityOperation === 'admin-member-status-change' ? (state.memberAuthorityMirror || '-') : '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Last restriction authority: {state.memberAuthorityOperation === 'admin-member-status-change' ? (state.restrictionAuthorityWriteSource || '-') : '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Phase 30 retirement error: {state.memberStatusRestrictionRetirementError || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Preserved compatibility: member profile edit mirror / rejoined inherited-restriction snapshot fallback / site shell / policy-terms / account recovery</div>
 
       {state.error ? (
         <div role="alert" style={{ marginTop: '8px', color: '#b91c1c', overflowWrap: 'anywhere' }}>

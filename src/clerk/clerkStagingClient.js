@@ -780,6 +780,34 @@ export const requestMemberProfileAuthorityWrite = async ({ clerk, apiBaseUrl, fe
   return payload;
 };
 
+export const requestAdminMembersPostgresql = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, options = {} }) => {
+  const token = trim(firebaseIdToken);
+  if (!token) throw new Error('Firebase admin sign-in is required before reading PostgreSQL members.');
+  const params = new URLSearchParams();
+  ['status', 'q', 'page', 'pageSize'].forEach((key) => {
+    const value = options?.[key];
+    if (value !== undefined && value !== null && String(value) !== '') params.set(key, String(value));
+  });
+  const query = params.toString();
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: `/api/admin/members${query ? `?${query}` : ''}`,
+    headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const error = new Error(`Admin PostgreSQL member read failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (!payload?.authenticated || !payload?.authorized || payload?.adminMembers?.source !== 'postgresql' || !Array.isArray(payload?.adminMembers?.accounts)) {
+    throw new Error('Backend returned an invalid admin PostgreSQL member response.');
+  }
+  return payload;
+};
+
 export const requestAdminMemberProfileAuthorityWrite = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, firebaseUid, profile }) => {
   const token = trim(firebaseIdToken); const uid = trim(firebaseUid);
   if (!token || !uid) throw new Error('Firebase admin sign-in and member UID are required.');
@@ -1405,6 +1433,10 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async writeMemberProfile(firebaseIdToken, profile) {
       const clerk = await initialize();
       return requestMemberProfileAuthorityWrite({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, profile });
+    },
+    async getAdminMembers(firebaseIdToken, options = {}) {
+      const clerk = await initialize();
+      return requestAdminMembersPostgresql({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, options });
     },
     async writeAdminMemberProfile(firebaseIdToken, firebaseUid, profile) {
       const clerk = await initialize();

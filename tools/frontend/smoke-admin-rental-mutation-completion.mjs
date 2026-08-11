@@ -34,7 +34,7 @@ for (const marker of [
   'saveAdminRentalRequestMemo', 'restoreAdminRentalRequestStatus',
 ]) assert.ok(client.includes(marker), `Missing Phase 18 Clerk client method: ${marker}`);
 
-assert.match(diagnostics, /Clerk Staging Test · Phase (18|19|20|21|22|23|24|25|26|27|28|29)/);
+assert.match(diagnostics, /Clerk Staging Test · Phase (18|19|20|21|22|23|24|25|26|27|28|29|30)/);
 assert.match(diagnostics, /Phase 18 admin rental request PostgreSQL mutation completion/);
 assert.match(diagnostics, /Admin processing history source:/);
 const adminPanel = await read('src/admin/AdminRequestsPanel.jsx');

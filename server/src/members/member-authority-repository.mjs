@@ -7,6 +7,34 @@ const stableValue = (value) => {
 };
 export const hashPayload = (value) => createHash('sha256').update(JSON.stringify(stableValue(value))).digest('hex');
 
+
+const mapMemberAccountRow = (row) => row ? Object.freeze({
+  appUserId: row.app_user_id ? String(row.app_user_id) : '',
+  firebaseUid: row.firebase_uid || '',
+  uid: row.firebase_uid || row.uid || '',
+  email: row.email || '',
+  maskedEmail: row.masked_email || '',
+  name: row.name || '',
+  team: row.team || '',
+  phone: row.phone || '',
+  status: row.status || '',
+  directoryMemberId: row.directory_member_id || '',
+  directoryVerifiedVersion: Number(row.directory_verified_version || 0),
+  profileRequiredReason: row.profile_required_reason || '',
+  rejoinedAccount: Boolean(row.rejoined_account),
+  termsConsentRevision: Number(row.terms_consent_revision || 0),
+  termsConsentPolicyVersion: Number(row.terms_consent_policy_version || 0),
+  identityKey: row.identity_key || '',
+  recoveryKey: row.recovery_key || '',
+  previousAccountUids: Array.isArray(row.previous_account_uids) ? row.previous_account_uids : [],
+  authorityMode: row.authority_mode || '',
+  mirrorState: row.mirror_state || '',
+  lastMutationId: row.last_mutation_id || '',
+  syncedAt: row.synced_at || null,
+  createdAt: row.created_at || null,
+  updatedAt: row.updated_at || null,
+}) : null;
+
 const memberProjection = (profile = {}) => ({
   uid: profile.uid || profile.firebaseUid || '',
   email: profile.email || '',
@@ -49,11 +77,89 @@ export const createMemberAuthorityRepository = (pool) => {
                 directory_member_id, directory_verified_version, profile_required_reason,
                 rejoined_account, terms_consent_revision, terms_consent_policy_version,
                 identity_key, recovery_key, previous_account_uids, source_hash,
-                authority_mode, mirror_state, last_mutation_id, synced_at, updated_at
+                authority_mode, mirror_state, last_mutation_id, synced_at, created_at, updated_at
            FROM app_member_accounts WHERE firebase_uid = $1`,
         [firebaseUid],
       );
-      return result.rows[0] || null;
+      return mapMemberAccountRow(result.rows[0]);
+    },
+
+
+    async listMembers({ status = 'all', search = '', page = 1, pageSize = 10 } = {}) {
+      const normalizedStatus = String(status || 'all').trim();
+      const normalizedSearch = String(search || '').trim().toLowerCase();
+      const safePage = Math.max(1, Number(page) || 1);
+      const safePageSize = Math.min(100, Math.max(1, Number(pageSize) || 10));
+      const conditions = [];
+      const values = [];
+      if (normalizedStatus && normalizedStatus !== 'all') {
+        values.push(normalizedStatus);
+        conditions.push(`status = $${values.length}`);
+      }
+      if (normalizedSearch) {
+        values.push(`%${normalizedSearch}%`);
+        const ref = `$${values.length}`;
+        conditions.push(`(lower(name) LIKE ${ref} OR lower(email) LIKE ${ref} OR lower(team) LIKE ${ref} OR lower(phone) LIKE ${ref} OR lower(firebase_uid) LIKE ${ref})`);
+      }
+      const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+      const countResult = await pool.query(`SELECT COUNT(*)::bigint AS count FROM app_member_accounts ${whereClause}`, values);
+      const totalCount = Number(countResult.rows[0]?.count || 0);
+      const offset = (safePage - 1) * safePageSize;
+      const queryValues = [...values, safePageSize + 1, offset];
+      const limitRef = `$${values.length + 1}`;
+      const offsetRef = `$${values.length + 2}`;
+      const result = await pool.query(
+        `SELECT app_user_id, firebase_uid, firebase_uid AS uid, email, masked_email, name, team, phone, status,
+                directory_member_id, directory_verified_version, profile_required_reason,
+                rejoined_account, terms_consent_revision, terms_consent_policy_version,
+                identity_key, recovery_key, previous_account_uids, source_hash,
+                authority_mode, mirror_state, last_mutation_id, synced_at, created_at, updated_at
+           FROM app_member_accounts
+           ${whereClause}
+          ORDER BY COALESCE(authoritative_updated_at, updated_at, created_at) DESC, firebase_uid
+          LIMIT ${limitRef} OFFSET ${offsetRef}`,
+        queryValues,
+      );
+      const rows = result.rows.map(mapMemberAccountRow);
+      return Object.freeze({
+        source: 'postgresql',
+        accounts: rows.slice(0, safePageSize),
+        page: safePage,
+        pageSize: safePageSize,
+        totalCount,
+        hasNextPage: rows.length > safePageSize,
+      });
+    },
+
+    async getStatusCounts() {
+      const result = await pool.query(
+        `SELECT status, COUNT(*)::bigint AS count
+           FROM app_member_accounts
+          GROUP BY status`,
+      );
+      const counts = { pending: 0, active: 0, profileRequired: 0, blocked: 0, retired: 0 };
+      for (const row of result.rows) {
+        const count = Number(row.count || 0);
+        if (row.status === 'pending') counts.pending = count;
+        else if (row.status === 'active') counts.active = count;
+        else if (row.status === 'profileRequired') counts.profileRequired = count;
+        else if (row.status === 'blocked') counts.blocked = count;
+        else if (row.status === 'retired') counts.retired = count;
+      }
+      return Object.freeze(counts);
+    },
+
+    async countBlockingRentalRequestsForUids(firebaseUids = []) {
+      const uids = Array.from(new Set((Array.isArray(firebaseUids) ? firebaseUids : []).map((value) => String(value || '').trim()).filter(Boolean)));
+      if (!uids.length) return 0;
+      const result = await pool.query(
+        `SELECT COUNT(*)::bigint AS count
+           FROM app_rental_requests
+          WHERE firebase_uid = ANY($1::text[])
+            AND status IN ('신청중','보류','대여중')`,
+        [uids],
+      );
+      return Number(result.rows[0]?.count || 0);
     },
 
     async mutateProfile({ appUserId, firebaseUid, actorFirebaseUid, actorType, action, beforeProfile, nextProfile, beforeMirror }) {
@@ -125,7 +231,7 @@ export const createMemberAuthorityRepository = (pool) => {
       });
     },
 
-    async mutateStatus({ appUserId, firebaseUid, actorFirebaseUid, nextStatus, beforeProfile, nextProfile, nextRestriction = null, beforeMirror }) {
+    async mutateStatus({ appUserId, firebaseUid, actorFirebaseUid, nextStatus, beforeProfile, nextProfile, nextRestriction = null, beforeMirror = null, mirrorState = 'synced' }) {
       return withTransaction(async (client) => {
         await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`member:${firebaseUid}`]);
         const mutationId = randomUUID();
@@ -163,19 +269,20 @@ export const createMemberAuthorityRepository = (pool) => {
             [firebaseUid, appUserId, JSON.stringify(nextRestriction), `rentalRestrictions/${firebaseUid}`, hashPayload(nextRestriction), mutationId],
           );
         }
-        await beforeMirror({ client, mutationId });
-        await client.query(`UPDATE app_member_accounts SET mirror_state='synced', synced_at=NOW(), updated_at=NOW() WHERE firebase_uid=$1 AND last_mutation_id=$2`, [firebaseUid, mutationId]);
+        if (typeof beforeMirror === 'function') await beforeMirror({ client, mutationId });
+        const finalMirrorState = mirrorState === 'retired' ? 'retired' : 'synced';
+        await client.query(`UPDATE app_member_accounts SET mirror_state=$3, synced_at=NOW(), updated_at=NOW() WHERE firebase_uid=$1 AND last_mutation_id=$2`, [firebaseUid, mutationId, finalMirrorState]);
         if (appUserId) await client.query(
-          `UPDATE app_user_member_shadows SET mirror_state='synced', synced_at=NOW(), updated_at=NOW() WHERE app_user_id=$1 AND last_mutation_id=$2`,
-          [appUserId, mutationId],
+          `UPDATE app_user_member_shadows SET mirror_state=$3, synced_at=NOW(), updated_at=NOW() WHERE app_user_id=$1 AND last_mutation_id=$2`,
+          [appUserId, mutationId, finalMirrorState],
         );
         if (nextRestriction) {
           await client.query(
-            `UPDATE app_user_rental_restriction_shadows SET mirror_state='synced', synced_at=NOW(), updated_at=NOW() WHERE firebase_uid=$1 AND last_mutation_id=$2`,
-            [firebaseUid, mutationId],
+            `UPDATE app_user_rental_restriction_shadows SET mirror_state=$3, synced_at=NOW(), updated_at=NOW() WHERE firebase_uid=$1 AND last_mutation_id=$2`,
+            [firebaseUid, mutationId, finalMirrorState],
           );
         }
-        await client.query(`UPDATE app_member_profile_events SET firestore_mirror_state='synced', completed_at=NOW() WHERE id=$1::uuid`, [mutationId]);
+        await client.query(`UPDATE app_member_profile_events SET firestore_mirror_state=$2, completed_at=NOW() WHERE id=$1::uuid`, [mutationId, finalMirrorState]);
         return { mutationId, sourceHash };
       });
     },

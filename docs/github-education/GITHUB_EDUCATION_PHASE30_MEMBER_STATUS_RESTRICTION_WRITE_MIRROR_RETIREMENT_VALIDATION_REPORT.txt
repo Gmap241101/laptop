@@ -1,0 +1,41 @@
+Phase 30 validation report
+==========================
+
+Scope
+- Administrator member list/search/filter/page/count: PostgreSQL.
+- Administrator member-status mutation current source: PostgreSQL.
+- Status-related inherited rental restriction: PostgreSQL authority.
+- Firestore status/restriction write mirrors: retired when Phase 30 backend flag is enabled.
+- Member profile edit compatibility mirror: preserved.
+
+Targeted validation
+- migration static validator: PASS
+- server foundation validator: PASS
+- server handler health/admin-members contract: PASS
+- Phase 21 member authority regression smoke: PASS
+- administrator member UI regression smoke: PASS
+- Phase 30 backend smoke: PASS
+- Phase 30 frontend smoke: PASS
+
+Phase 30 dedicated assertions
+- normal administrator status mutation performs zero Firestore member-source reads: PASS
+- normal administrator status mutation performs zero Firestore status mirror commits: PASS
+- mutation reports source=postgresql-authoritative and firestoreMirror=retired: PASS
+- administrator member list reports source=postgresql: PASS
+- PostgreSQL search/page placeholders are contiguous and bound: PASS
+- browser server-side pagination is not double-sliced: PASS
+- successful status mutation triggers PostgreSQL list refresh: PASS
+- backend flag mismatch produces explicit diagnostics: PASS
+
+Full regression
+- npm run verify:phase30: PASS / exit 0
+- React hook audit: PASS (169 source files)
+- Application flow audit: PASS (124 contracts / 11 user routes / 20 administrator tabs)
+- Firestore strict audit: PASS (137 calls / 35 onSnapshot / 53 getDocs / 31 getDoc / 18 getCountFromServer / warnings 0 / errors 0)
+
+Build
+- npm run build:staging prebuild audits: PASS
+- Clerk local staging config check: DISABLED in assistant environment
+- Vite bundle: not executed because root `vite` executable is unavailable (`vite: not found`, exit 127). This is the existing local environment limitation, not a Phase 30 source validation failure.
+
+Package integrity results are recorded in the final delivery report after the finalized manifest/ZIP verification.

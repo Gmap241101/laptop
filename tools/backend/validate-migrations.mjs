@@ -20,6 +20,7 @@ const phase26 = readFileSync('server/migrations/018_phase26_notice_faq_board_aut
 const phase28 = readFileSync('server/migrations/019_phase28_asset_board_write_mirror_retirement.sql', 'utf8');
 const phase29 = readFileSync('server/migrations/020_phase29_rental_transaction_postgresql_authority.sql', 'utf8');
 const phase29ConstraintHotfix = readFileSync('server/migrations/021_phase29_rental_mirror_status_retired_constraint.sql', 'utf8');
+const phase30 = readFileSync('server/migrations/022_phase30_member_status_restriction_write_mirror_retirement.sql', 'utf8');
 
 if (!/value\s+JSONB\s+NOT\s+NULL/i.test(phase2)) {
   throw new Error('app_runtime_metadata.value must remain JSONB NOT NULL.');
@@ -266,4 +267,17 @@ for (const marker of [
   if (!phase29ConstraintHotfix.includes(marker)) throw new Error(`Phase 29 runtime hotfix marker is missing: ${marker}`);
 }
 
-console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion + Phase 19 user-action lifecycle + Phase 20 asset-domain + Phase 21 member/restriction/admin identity authority + Phase 22 account recovery/admin Clerk auth + Phase 23 user Clerk auth/lifecycle + Phase 24 site content + Phase 25 policy/terms + Phase 26 notice/FAQ board authority + Phase 28 asset/board write mirror retirement + Phase 29 rental transaction PostgreSQL authority + runtime constraint hotfix are type-safe)');
+
+for (const marker of [
+  "'phase', 30",
+  "'member_status_source', 'postgresql-authoritative'",
+  "'member_status_firestore_write_mirror', 'retired-staging-opt-in'",
+  "'rental_restriction_status_source', 'postgresql-authoritative'",
+  "'rental_restriction_firestore_write_mirror', 'retired-staging-opt-in'",
+  "'member_profile_edit_mirror', 'preserved-until-identity-directory-cutover'",
+  "'firebase_admin_identity', 'preserved'",
+]) {
+  if (!phase30.includes(marker)) throw new Error(`Phase 30 member status/restriction retirement marker is missing: ${marker}`);
+}
+
+console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion + Phase 19 user-action lifecycle + Phase 20 asset-domain + Phase 21 member/restriction/admin identity authority + Phase 22 account recovery/admin Clerk auth + Phase 23 user Clerk auth/lifecycle + Phase 24 site content + Phase 25 policy/terms + Phase 26 notice/FAQ board authority + Phase 28 asset/board write mirror retirement + Phase 29 rental transaction PostgreSQL authority + runtime constraint hotfix + Phase 30 member status/restriction mirror retirement are type-safe)');

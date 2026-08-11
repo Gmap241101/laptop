@@ -348,6 +348,9 @@ export const createRequestHandler = ({
   ) {
     throw new TypeError('memberAuthorityService Phase 21 methods are required.');
   }
+  if (config.memberStatusRestrictionWriteMirrorDisabled && typeof memberAuthorityService.listAdminMembers !== 'function') {
+    throw new TypeError('memberAuthorityService Phase 30 listAdminMembers method is required when member status authority is enabled.');
+  }
   if (
     !accountRecoveryService ||
     typeof accountRecoveryService.findEmail !== 'function' ||
@@ -445,9 +448,12 @@ export const createRequestHandler = ({
       retiredWriteMirrorDomains: [
         ...(config.assetBoardWriteMirrorDisabled ? ['assets', 'notice', 'faq'] : []),
         ...(config.rentalRequestWriteMirrorDisabled ? ['rental-requests'] : []),
+        ...(config.memberStatusRestrictionWriteMirrorDisabled ? ['member-status', 'rental-restriction-status'] : []),
       ],
       rentalRequestWriteMirrorDisabled: Boolean(config.rentalRequestWriteMirrorDisabled),
       rentalTransactionSource: config.rentalRequestWriteMirrorDisabled ? 'postgresql' : 'firestore-compatibility-source',
+      memberStatusRestrictionWriteMirrorDisabled: Boolean(config.memberStatusRestrictionWriteMirrorDisabled),
+      memberStatusSource: config.memberStatusRestrictionWriteMirrorDisabled ? 'postgresql' : 'firestore-compatibility-source',
     },
   };
 
@@ -532,6 +538,7 @@ export const createRequestHandler = ({
           memberProfileFirestoreFallback: '/api/legacy/member-profile-firestore-fallback',
           memberProfileWriteThrough: '/api/legacy/member-shadow/write-through',
           memberProfileAuthority: '/api/users/me/member-profile',
+          adminMembers: '/api/admin/members',
           adminMemberProfileAuthority: '/api/admin/members/:uid/profile',
           adminMemberStatusAuthority: '/api/admin/members/:uid/status',
           adminIdentityRegistryBootstrap: '/api/admin/identity-registry/bootstrap',
@@ -1952,6 +1959,28 @@ export const createRequestHandler = ({
           return;
         }
         writeJson(response, 503, { ...basePayload, authenticated: true, error: error?.code || 'rental_restriction_write_through_unavailable' }, headers);
+      }
+      return;
+    }
+
+
+    if (request.method === 'GET' && url.pathname === '/api/admin/members') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return;
+      try {
+        const result = await memberAuthorityService.listAdminMembers({
+          firebaseIdentity,
+          status: url.searchParams.get('status') || 'all',
+          search: url.searchParams.get('q') || '',
+          page: Math.max(1, Number.parseInt(url.searchParams.get('page') || '1', 10) || 1),
+          pageSize: Math.min(100, Math.max(1, Number.parseInt(url.searchParams.get('pageSize') || '10', 10) || 10)),
+        });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, adminMembers: result }, headers);
+      } catch (error) {
+        console.error('[phase30] admin member PostgreSQL read failed', { requestId, code: error?.code });
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'admin_member_postgresql_read_failed' }, headers);
       }
       return;
     }

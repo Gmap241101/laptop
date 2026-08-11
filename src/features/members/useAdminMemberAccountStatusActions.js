@@ -36,6 +36,7 @@ import {
 import { syncRentalRestrictionWriteThroughBestEffort } from '../requests/rentalRestrictionReadCutover.js';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 import { publishMemberAuthorityObservation, readMemberAuthorityCutoverConfig } from './memberAuthorityCutover.js';
+import { readMemberStatusRestrictionWriteMirrorRetirementConfig } from '../compatibility/memberStatusRestrictionWriteMirrorRetirement.js';
 
 const VALID_USER_ACCOUNT_STATUSES = new Set([
   USER_PROFILE_STATUS.PENDING,
@@ -49,9 +50,11 @@ export default function useAdminMemberAccountStatusActions({
   isAdminAuthenticated,
   triggerConfirm,
   triggerToast,
+  onStatusChanged,
 }) {
   const triggerConfirmRef = useRef(triggerConfirm);
   const triggerToastRef = useRef(triggerToast);
+  const onStatusChangedRef = useRef(onStatusChanged);
   const [adminUserAccountSavingUid, setAdminUserAccountSavingUid] =
     useState('');
 
@@ -62,6 +65,10 @@ export default function useAdminMemberAccountStatusActions({
   useEffect(() => {
     triggerToastRef.current = triggerToast;
   }, [triggerToast]);
+
+  useEffect(() => {
+    onStatusChangedRef.current = onStatusChanged;
+  }, [onStatusChanged]);
 
   const updateUserAccountStatus = useCallback(
     async (account, nextStatus) => {
@@ -83,7 +90,9 @@ export default function useAdminMemberAccountStatusActions({
         return;
       }
 
+      const phase30Retirement = readMemberStatusRestrictionWriteMirrorRetirementConfig();
       if (
+        !phase30Retirement.enabled &&
         nextStatus === USER_PROFILE_STATUS.ACTIVE &&
         account.rejoinedAccount
       ) {
@@ -207,15 +216,23 @@ export default function useAdminMemberAccountStatusActions({
           )} 상태로 변경했습니다.`,
           'success'
         );
+        onStatusChangedRef.current?.({ uid: userUid, status: nextStatus });
       } catch (error) {
         console.error('User account status update error:', error);
 
-        triggerToastRef.current(
-          `회원 상태 변경에 실패했습니다. 오류 코드: ${
-            error?.code || error?.message || 'unknown-error'
-          }`,
-          'error'
-        );
+        if (error?.code === 'rejoined_member_active_requests') {
+          triggerToastRef.current(
+            '이전 계정에 진행 중인 신청 또는 대여가 남아 있어 가입을 승인할 수 없습니다. 기존 신청을 먼저 정리해 주세요.',
+            'error'
+          );
+        } else {
+          triggerToastRef.current(
+            `회원 상태 변경에 실패했습니다. 오류 코드: ${
+              error?.code || error?.message || 'unknown-error'
+            }`,
+            'error'
+          );
+        }
       } finally {
         setAdminUserAccountSavingUid('');
       }

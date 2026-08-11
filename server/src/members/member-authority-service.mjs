@@ -62,11 +62,15 @@ export const createMemberAuthorityService = ({
   firebaseLinkRepository,
   userRepository,
   firestoreClient,
+  rentalRestrictionRepository = null,
+  writeMirrorEnabled = true,
 }) => {
   if (!repository || typeof repository.mutateProfile !== 'function') throw new TypeError('Member authority repository is required.');
   if (!firebaseLinkRepository || typeof firebaseLinkRepository.findByFirebaseUid !== 'function') throw new TypeError('firebaseLinkRepository is required.');
   if (!userRepository || typeof userRepository.findByClerkUserId !== 'function') throw new TypeError('userRepository is required.');
   if (!firestoreClient || typeof firestoreClient.getUserAccount !== 'function') throw new TypeError('Firestore member authority client is required.');
+  if (!writeMirrorEnabled && (!rentalRestrictionRepository || typeof rentalRestrictionRepository.findByFirebaseUid !== 'function')) throw new TypeError('Rental restriction repository is required when member/restriction Firestore write mirror is retired.');
+  if (!writeMirrorEnabled && typeof repository.countBlockingRentalRequestsForUids !== 'function') throw new TypeError('PostgreSQL rental-request guard is required when member status authority is enabled.');
 
   const resolveTarget = async (firebaseUid) => {
     const link = await firebaseLinkRepository.findByFirebaseUid(firebaseUid);
@@ -156,6 +160,27 @@ export const createMemberAuthorityService = ({
   };
 
   return Object.freeze({
+    async listAdminMembers({ firebaseIdentity, status = 'all', search = '', page = 1, pageSize = 10 } = {}) {
+      const admin = await firestoreClient.verifyAdmin({ firebaseUid: firebaseIdentity.uid, firebaseIdToken: firebaseIdentity.idToken });
+      const normalizedStatus = trim(status) || 'all';
+      if (!['all','active','pending','blocked','retired','profileRequired'].includes(normalizedStatus)) {
+        throw serviceError('member_status_filter_invalid', 'Unsupported member status filter.', 400);
+      }
+      if (typeof repository.listMembers !== 'function' || typeof repository.getStatusCounts !== 'function') {
+        throw serviceError('member_admin_postgresql_read_unavailable', 'PostgreSQL member directory read is not configured.', 503);
+      }
+      const [list, counts] = await Promise.all([
+        repository.listMembers({ status: normalizedStatus, search: trim(search), page, pageSize }),
+        repository.getStatusCounts(),
+      ]);
+      return Object.freeze({
+        admin: { uid: admin.uid, role: trim(admin.fields?.adminRole || 'admin') },
+        source: 'postgresql',
+        ...list,
+        statusCounts: counts,
+      });
+    },
+
     async editSelf({ clerkUserId, firebaseIdentity, input }) {
       const { appUser, link } = await verifySelf({ clerkUserId, firebaseIdentity });
       const targetUid = trim(link.firebaseUid);
@@ -224,13 +249,41 @@ export const createMemberAuthorityService = ({
       const target = trim(targetUid);
       const status = trim(nextStatus);
       if (!['active','pending','blocked','retired','profileRequired'].includes(status)) throw serviceError('member_status_invalid', 'Unsupported member status.', 400);
-      const currentDoc = await firestoreClient.getUserAccount({ firebaseUid: target, firebaseIdToken: firebaseIdentity.idToken });
-      if (!currentDoc) throw serviceError('member_account_not_found', 'Member account was not found.', 404);
-      const current = currentDoc.fields || {};
+      let current = null;
+      let currentDoc = null;
+      if (writeMirrorEnabled) {
+        currentDoc = await firestoreClient.getUserAccount({ firebaseUid: target, firebaseIdToken: firebaseIdentity.idToken });
+        if (!currentDoc) throw serviceError('member_account_not_found', 'Member account was not found.', 404);
+        current = currentDoc.fields || {};
+      } else {
+        current = await repository.findByFirebaseUid(target);
+        if (!current) throw serviceError('member_account_not_synchronized', 'PostgreSQL member account must be synchronized before status authority can be used.', 409);
+      }
       const { appUserId } = await resolveTarget(target);
       const beforeProfile = profileFromAccount(current, target);
       const nextProfile = { ...beforeProfile, status };
-      const inherited = current.inheritedRestriction && typeof current.inheritedRestriction === 'object' ? current.inheritedRestriction : {};
+      if (!writeMirrorEnabled && status === 'active' && current.rejoinedAccount) {
+        const linkedUids = Array.from(new Set([target, ...(Array.isArray(current.previousAccountUids) ? current.previousAccountUids : [])].map(trim).filter(Boolean)));
+        const blockingRequests = await repository.countBlockingRentalRequestsForUids(linkedUids);
+        if (blockingRequests > 0) {
+          throw serviceError('rejoined_member_active_requests', 'Previous account still has active rental requests.', 409, { count: blockingRequests });
+        }
+      }
+      let inherited = {};
+      if (!writeMirrorEnabled) {
+        const restrictionShadow = await rentalRestrictionRepository.findByFirebaseUid(target);
+        inherited = restrictionShadow?.exists && restrictionShadow.restriction ? restrictionShadow.restriction : {};
+        if (status === 'active' && current.rejoinedAccount && !restrictionShadow?.exists) {
+          // Transitional exception: rejoined-account inheritance was never persisted in app_member_accounts.
+          // Read the immutable compatibility snapshot only when no PostgreSQL restriction snapshot exists.
+          currentDoc = await firestoreClient.getUserAccount({ firebaseUid: target, firebaseIdToken: firebaseIdentity.idToken });
+          inherited = currentDoc?.fields?.inheritedRestriction && typeof currentDoc.fields.inheritedRestriction === 'object'
+            ? currentDoc.fields.inheritedRestriction
+            : {};
+        }
+      } else {
+        inherited = current.inheritedRestriction && typeof current.inheritedRestriction === 'object' ? current.inheritedRestriction : {};
+      }
       const inheritedActive = Boolean(status === 'active' && current.rejoinedAccount && (
         inherited.manualBlock === true || inherited.indefinite === true || inherited.restrictionStatus === 'active' || (inherited.activePenalty === true && trim(inherited.eligibleFromDate) > new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()))
       ));
@@ -243,15 +296,24 @@ export const createMemberAuthorityService = ({
         beforeProfile,
         nextProfile,
         nextRestriction,
-        beforeMirror: () => firestoreClient.commitStatusChange({
+        mirrorState: writeMirrorEnabled ? 'synced' : 'retired',
+        beforeMirror: writeMirrorEnabled ? () => firestoreClient.commitStatusChange({
           targetUid: target,
           nextStatus: status,
           recoveryKey: trim(current.recoveryKey),
           inheritedRestriction: nextRestriction,
           firebaseIdToken: firebaseIdentity.idToken,
-        }),
+        }) : null,
       });
-      return Object.freeze({ admin: { uid: admin.uid, role: trim(admin.fields?.adminRole || 'admin') }, authority: 'postgresql', firestoreMirror: 'synced', restrictionAuthority: nextRestriction ? 'postgresql' : 'unchanged', mutationId: result.mutationId, profile: nextProfile });
+      return Object.freeze({
+        admin: { uid: admin.uid, role: trim(admin.fields?.adminRole || 'admin') },
+        authority: 'postgresql',
+        source: writeMirrorEnabled ? 'firestore-compatibility' : 'postgresql-authoritative',
+        firestoreMirror: writeMirrorEnabled ? 'synced' : 'retired',
+        restrictionAuthority: nextRestriction ? 'postgresql' : 'unchanged',
+        mutationId: result.mutationId,
+        profile: nextProfile,
+      });
     },
 
     async bootstrapAdminRegistry({ firebaseIdentity }) {

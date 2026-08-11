@@ -94,6 +94,7 @@ const firestoreMemberAuthorityClient = config.firebaseProjectId
   ? createFirestoreMemberAuthorityClient({ projectId: config.firebaseProjectId, timeoutMs: config.firestoreRestTimeoutMs })
   : null;
 const memberAuthorityRepository = createMemberAuthorityRepository(pool);
+const rentalRestrictionRepository = createRentalRestrictionRepository(pool);
 const userClerkAuthRepository = createUserClerkAuthRepository(pool);
 const siteContentRepository = createSiteContentRepository(pool);
 const siteContentService = createSiteContentService({ repository: siteContentRepository });
@@ -116,6 +117,8 @@ const userClerkAuthService = firestoreMemberAuthorityClient
       userRepository,
       firebaseLinkRepository,
       firestoreClient: firestoreMemberAuthorityClient,
+      rentalRestrictionRepository,
+      writeMirrorEnabled: !config.memberStatusRestrictionWriteMirrorDisabled,
     })
   : null;
 const adminClerkAuthService = firestoreMemberAuthorityClient
@@ -134,7 +137,6 @@ const memberAuthorityService = firestoreMemberAuthorityClient
     })
   : null;
 
-const rentalRestrictionRepository = createRentalRestrictionRepository(pool);
 const firestoreRentalRestrictionClient = config.firebaseProjectId
   ? createFirestoreRentalRestrictionClient({
       projectId: config.firebaseProjectId,
@@ -327,7 +329,7 @@ server.listen(config.port, '0.0.0.0', () => {
     rentalRequestWrite: config.firebaseProjectId ? (config.rentalRequestWriteMirrorDisabled ? 'postgresql-authoritative-firestore-write-mirror-retired' : 'postgresql-authoritative-firestore-compatibility-mirror') : 'disabled',
     rentalRequestUserActions: config.firebaseProjectId ? (config.rentalRequestWriteMirrorDisabled ? 'postgresql-authoritative-user-actions-firestore-write-mirror-retired' : 'postgresql-authoritative-user-actions-firestore-compatibility-mirror') : 'disabled',
     adminRentalRequests: config.firebaseProjectId ? (config.rentalRequestWriteMirrorDisabled ? 'postgresql-authoritative-admin-mutations-firestore-write-mirror-retired' : 'postgresql-read-admin-mutations-audit-firestore-compatibility-mirror') : 'disabled',
-    memberAuthority: config.firebaseProjectId ? 'postgresql-authoritative-firestore-compatibility-mirror' : 'disabled',
+    memberAuthority: config.firebaseProjectId ? (config.memberStatusRestrictionWriteMirrorDisabled ? 'postgresql-member-status-restriction-authority-firestore-write-mirror-retired-profile-edit-mirror-preserved' : 'postgresql-authoritative-firestore-compatibility-mirror') : 'disabled',
     adminIdentityRegistry: config.firebaseProjectId ? 'postgresql-clerk-authority-firebase-compatibility' : 'disabled',
     accountRecovery: 'postgresql-preferred',
     userClerkAuthentication: config.firebaseProjectId ? 'clerk-authoritative-firebase-compatibility' : 'disabled',
@@ -341,6 +343,7 @@ server.listen(config.port, '0.0.0.0', () => {
       : 'disabled',
     phase28WriteMirrorRetirement: config.assetBoardWriteMirrorDisabled ? 'assets-and-boards' : 'disabled',
     phase29RentalTransactionAuthority: config.rentalRequestWriteMirrorDisabled ? 'postgresql-source-and-write-mirror-retired' : 'disabled',
+    phase30MemberStatusRestrictionAuthority: config.memberStatusRestrictionWriteMirrorDisabled ? 'postgresql-source-and-write-mirror-retired' : 'disabled',
   });
 });
 

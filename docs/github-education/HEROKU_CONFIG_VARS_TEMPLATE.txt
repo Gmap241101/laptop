@@ -108,3 +108,9 @@ FIRESTORE_ASSET_BOARD_WRITE_MIRROR_DISABLED=true
 # Keep Firebase administrator compatibility identity and legacy bootstrap/sync available for rollback.
 FIRESTORE_RENTAL_REQUEST_WRITE_MIRROR_DISABLED=true
 # Recommended diagnostic version marker: SERVICE_VERSION=phase29
+
+# Phase 30: administrator member-status + status-related rental-restriction PostgreSQL authority.
+# Retires Firestore write mirrors only for administrator member status changes and the inherited
+# restriction written by that status transaction. Member profile edit mirrors remain enabled.
+FIRESTORE_MEMBER_STATUS_RESTRICTION_WRITE_MIRROR_DISABLED=true
+# Recommended diagnostic version marker: SERVICE_VERSION=phase30

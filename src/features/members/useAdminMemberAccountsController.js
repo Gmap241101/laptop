@@ -10,7 +10,12 @@ import {
 } from 'firebase/firestore';
 
 import { USER_PROFILE_STATUS } from '../../constants/memberConstants.js';
-import { USER_ACCOUNTS_COLLECTION_REF } from '../../firebase.js';
+import { USER_ACCOUNTS_COLLECTION_REF, firebaseAuth } from '../../firebase.js';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import {
+  readMemberStatusRestrictionWriteMirrorRetirementConfig,
+} from '../compatibility/memberStatusRestrictionWriteMirrorRetirement.js';
+import { publishMemberAuthorityObservation } from './memberAuthorityCutover.js';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue.js';
 import {
   DEFAULT_PROGRESSIVE_SEARCH_BATCH_SIZE,
@@ -71,6 +76,7 @@ export default function useAdminMemberAccountsController({
   triggerToast,
 }) {
   const navigationRequestId = Number(navigationRequest?.requestId || 0);
+  const phase30Config = useMemo(() => readMemberStatusRestrictionWriteMirrorRetirementConfig(), []);
   const initialNavigationRequestIdRef = useRef(null);
 
   if (initialNavigationRequestIdRef.current === null) {
@@ -158,7 +164,7 @@ export default function useAdminMemberAccountsController({
   }, [navigationRequest, navigationRequestId]);
 
   useEffect(() => {
-    if (!enabled) return undefined;
+    if (!enabled || phase30Config.enabled) return undefined;
 
     let cancelled = false;
 
@@ -229,7 +235,7 @@ export default function useAdminMemberAccountsController({
     return () => {
       cancelled = true;
     };
-  }, [enabled]);
+  }, [enabled, phase30Config.enabled]);
 
   useEffect(() => {
     setPage(1);
@@ -256,6 +262,52 @@ export default function useAdminMemberAccountsController({
 
     setReady(false);
     setLoadErrorMessage('');
+
+    if (phase30Config.enabled) {
+      let cancelled = false;
+      const adminUser = firebaseAuth.currentUser;
+      if (!adminUser || typeof adminUser.getIdToken !== 'function') {
+        const message = 'PostgreSQL 회원 계정 목록을 불러오려면 Firebase 관리자 호환 세션이 필요합니다.';
+        setAccounts([]);
+        setHasNextPage(false);
+        setTotalCount(0);
+        setReady(true);
+        setLoadErrorMessage(message);
+        publishMemberAuthorityObservation({ adminMemberReadSource: 'unavailable', adminMemberReadCount: 0, error: 'admin-member-firebase-identity-missing' });
+        return undefined;
+      }
+      void adminUser.getIdToken()
+        .then((firebaseIdToken) => clerkStagingClient.getAdminMembers(firebaseIdToken, {
+          status: statusFilter,
+          q: String(debouncedQuery || '').trim(),
+          page,
+          pageSize,
+        }))
+        .then((payload) => {
+          if (cancelled) return;
+          const result = payload?.adminMembers || {};
+          setAccounts(Array.isArray(result.accounts) ? result.accounts : []);
+          setHasNextPage(Boolean(result.hasNextPage));
+          setTotalCount(Number(result.totalCount || 0));
+          setStatusCounts(result.statusCounts || { pending: 0, active: 0, profileRequired: 0, blocked: 0, retired: 0 });
+          setReady(true);
+          setLoadErrorMessage('');
+          publishMemberAuthorityObservation({ adminMemberReadSource: 'postgresql', adminMemberReadCount: Number(result.totalCount || 0), error: '' });
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          const message = '회원 계정 목록을 PostgreSQL에서 불러오지 못했습니다. Phase 30에서는 오래된 Firestore 회원 목록으로 fallback하지 않습니다.';
+          console.error('Admin PostgreSQL member accounts read error:', error);
+          setAccounts([]);
+          setHasNextPage(false);
+          setTotalCount(0);
+          setReady(true);
+          setLoadErrorMessage(message);
+          publishMemberAuthorityObservation({ adminMemberReadSource: 'unavailable', adminMemberReadCount: 0, error: error?.code || 'admin_member_postgresql_read_failed' });
+          triggerToastRef.current(message, 'error');
+        });
+      return () => { cancelled = true; };
+    }
 
     const normalizedSearch = String(debouncedQuery || '')
       .trim()
@@ -411,6 +463,7 @@ export default function useAdminMemberAccountsController({
     debouncedQuery,
     enabled,
     page,
+    phase30Config.enabled,
     pageSize,
     prerequisitesReady,
     refreshRevision,
@@ -458,10 +511,11 @@ export default function useAdminMemberAccountsController({
     });
   }, [managedAccounts, query, statusFilter]);
 
+  const serverPaged = phase30Config.enabled;
   const totalPages = Math.max(
     1,
     Math.ceil(
-      (searchMode ? matchedManagedAccounts.length : totalCount) /
+      (serverPaged ? totalCount : searchMode ? matchedManagedAccounts.length : totalCount) /
         pageSize
     )
   );
@@ -469,14 +523,16 @@ export default function useAdminMemberAccountsController({
   const safePage = Math.min(page, totalPages);
 
   const filteredAccounts = useMemo(
-    () =>
-      searchMode
+    () => {
+      if (serverPaged) return matchedManagedAccounts;
+      return searchMode
         ? matchedManagedAccounts.slice(
             (safePage - 1) * pageSize,
             safePage * pageSize
           )
-        : matchedManagedAccounts,
-    [matchedManagedAccounts, pageSize, safePage, searchMode]
+        : matchedManagedAccounts;
+    },
+    [matchedManagedAccounts, pageSize, safePage, searchMode, serverPaged]
   );
 
   const refreshAdminUserAccounts = () => {
@@ -484,7 +540,7 @@ export default function useAdminMemberAccountsController({
     setRefreshRevision((revision) => revision + 1);
   };
 
-  const resultCount = searchMode ? matchedManagedAccounts.length : totalCount;
+  const resultCount = serverPaged ? totalCount : searchMode ? matchedManagedAccounts.length : totalCount;
 
   return {
     adminUserAccountHasNextPage: hasNextPage,

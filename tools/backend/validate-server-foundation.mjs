@@ -502,11 +502,16 @@ for (const marker of ["'phase', 28", "'firestoreWriteMirror', 'retired-staging-o
 }
 const phase29Migration = readFileSync('server/migrations/020_phase29_rental_transaction_postgresql_authority.sql', 'utf8');
 const phase29ConstraintHotfix = readFileSync('server/migrations/021_phase29_rental_mirror_status_retired_constraint.sql', 'utf8');
+const phase30Migration = readFileSync('server/migrations/022_phase30_member_status_restriction_write_mirror_retirement.sql', 'utf8');
 for (const marker of ["'phase', 29", "'rentalTransactionSource', 'postgresql-authoritative'", "'rentalRequestFirestoreWriteMirror', 'retired-staging-opt-in'", "'rental-request-user-actions'"]) {
   if (!phase29Migration.includes(marker)) throw new Error(`Phase 29 migration marker is missing: ${marker}`);
 }
 for (const marker of ['app_rental_requests_mirror_status', "'retired'", "'authoritativeReadLegacySyncBypass', true"]) {
   if (!phase29ConstraintHotfix.includes(marker)) throw new Error(`Phase 29 runtime constraint hotfix marker is missing: ${marker}`);
+}
+
+for (const marker of ["'phase', 30", "'member_status_source', 'postgresql-authoritative'", "'rental_restriction_firestore_write_mirror', 'retired-staging-opt-in'", "'member_profile_edit_mirror', 'preserved-until-identity-directory-cutover'"]) {
+  if (!phase30Migration.includes(marker)) throw new Error(`Phase 30 migration marker is missing: ${marker}`);
 }
 const serverEnvSource = readFileSync('server/src/config/env.mjs', 'utf8');
 for (const marker of ['FIRESTORE_ASSET_BOARD_WRITE_MIRROR_DISABLED', 'assetBoardWriteMirrorDisabled']) {
@@ -514,6 +519,9 @@ for (const marker of ['FIRESTORE_ASSET_BOARD_WRITE_MIRROR_DISABLED', 'assetBoard
 }
 for (const marker of ['FIRESTORE_RENTAL_REQUEST_WRITE_MIRROR_DISABLED', 'rentalRequestWriteMirrorDisabled']) {
   if (!serverEnvSource.includes(marker)) throw new Error(`Phase 29 server config marker is missing: ${marker}`);
+}
+for (const marker of ['FIRESTORE_MEMBER_STATUS_RESTRICTION_WRITE_MIRROR_DISABLED', 'memberStatusRestrictionWriteMirrorDisabled']) {
+  if (!serverEnvSource.includes(marker)) throw new Error(`Phase 30 server config marker is missing: ${marker}`);
 }
 for (const marker of ['writeMirrorEnabled', "mirrorStatus = mirrorEnabled ? 'synced' : 'retired'", 'postgresql-only']) {
   if (!boardService.includes(marker)) throw new Error(`Phase 28 board mirror retirement marker is missing: ${marker}`);
@@ -535,9 +543,26 @@ for (const marker of ['VITE_FIRESTORE_RENTAL_REQUEST_WRITE_MIRROR_DISABLED', '/h
   if (!rentalWriteMirrorCutover.includes(marker)) throw new Error(`Phase 29 frontend rental mirror retirement marker is missing: ${marker}`);
 }
 
+const memberStatusRestrictionCutover = readFileSync('src/features/compatibility/memberStatusRestrictionWriteMirrorRetirement.js', 'utf8');
+for (const marker of ['VITE_FIRESTORE_MEMBER_STATUS_RESTRICTION_WRITE_MIRROR_DISABLED', '/health', 'memberStatusRestrictionWriteMirrorDisabled', 'memberStatusSource']) {
+  if (!memberStatusRestrictionCutover.includes(marker)) throw new Error(`Phase 30 frontend member status/restriction retirement marker is missing: ${marker}`);
+}
+const memberAuthorityRepositorySource = readFileSync('server/src/members/member-authority-repository.mjs', 'utf8');
+for (const marker of ['async listMembers', 'async getStatusCounts', "mirrorState === 'retired'", 'mapMemberAccountRow']) {
+  if (!memberAuthorityRepositorySource.includes(marker)) throw new Error(`Phase 30 member repository marker is missing: ${marker}`);
+}
+const memberAuthorityServiceSource = readFileSync('server/src/members/member-authority-service.mjs', 'utf8');
+for (const marker of ['async listAdminMembers', "source: writeMirrorEnabled ? 'firestore-compatibility' : 'postgresql-authoritative'", "firestoreMirror: writeMirrorEnabled ? 'synced' : 'retired'", 'rentalRestrictionRepository.findByFirebaseUid']) {
+  if (!memberAuthorityServiceSource.includes(marker)) throw new Error(`Phase 30 member service marker is missing: ${marker}`);
+}
+const adminMemberAccountsControllerSource = readFileSync('src/features/members/useAdminMemberAccountsController.js', 'utf8');
+for (const marker of ['phase30Config.enabled', 'clerkStagingClient.getAdminMembers', "adminMemberReadSource: 'postgresql'", 'Phase 30에서는 오래된 Firestore 회원 목록으로 fallback하지 않습니다.']) {
+  if (!adminMemberAccountsControllerSource.includes(marker)) throw new Error(`Phase 30 admin member read marker is missing: ${marker}`);
+}
+
 const configTemplate = readFileSync('docs/github-education/HEROKU_CONFIG_VARS_TEMPLATE.txt', 'utf8');
 for (const variable of ['CLERK_JWT_KEY=', 'CLERK_AUTHORIZED_PARTIES=', 'CLERK_SECRET_KEY=sk_test_', 'CLERK_API_TIMEOUT_MS=8000', 'FIREBASE_PROJECT_ID=laptop-system-mk']) {
   if (!configTemplate.includes(variable)) throw new Error(`Phase 6 config template is missing ${variable}`);
 }
 
-console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request shadow/parity + phase16 authoritative write + phase17 admin rental-request cutover + phase18 mutation/audit completion + phase19 user-action lifecycle + phase20 asset-domain + phase21 member/restriction/admin identity authority + phase22 account recovery/admin Clerk auth + phase23 user Clerk authentication/lifecycle + phase24 site content + phase25 policy/terms + phase26 notice/FAQ board authority + phase28 asset/board write mirror retirement + phase29 rental transaction PostgreSQL authority + runtime hotfix invariants)`);
+console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request shadow/parity + phase16 authoritative write + phase17 admin rental-request cutover + phase18 mutation/audit completion + phase19 user-action lifecycle + phase20 asset-domain + phase21 member/restriction/admin identity authority + phase22 account recovery/admin Clerk auth + phase23 user Clerk authentication/lifecycle + phase24 site content + phase25 policy/terms + phase26 notice/FAQ board authority + phase28 asset/board write mirror retirement + phase29 rental transaction PostgreSQL authority + runtime hotfix invariants + phase30 member status/restriction authority retirement)`);

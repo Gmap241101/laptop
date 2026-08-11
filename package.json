@@ -104,7 +104,10 @@
     "verify:phase28": "npm run verify:phase27 && npm run server:write-mirror-retirement:smoke && npm run frontend:write-mirror-retirement:smoke",
     "server:rental-transaction-authority:smoke": "node tools/backend/smoke-rental-transaction-authority.mjs",
     "frontend:rental-transaction-authority:smoke": "node tools/frontend/smoke-rental-transaction-authority.mjs",
-    "verify:phase29": "npm run verify:phase28 && npm run server:rental-transaction-authority:smoke && npm run frontend:rental-transaction-authority:smoke"
+    "verify:phase29": "npm run verify:phase28 && npm run server:rental-transaction-authority:smoke && npm run frontend:rental-transaction-authority:smoke",
+    "server:member-status-retirement:smoke": "node tools/backend/smoke-member-status-restriction-retirement.mjs",
+    "frontend:member-status-retirement:smoke": "node tools/frontend/smoke-member-status-restriction-retirement.mjs",
+    "verify:phase30": "npm run verify:phase29 && npm run server:member-status-retirement:smoke && npm run frontend:member-status-retirement:smoke"
   },
   "dependencies": {
     "firebase": "^10.14.1",
