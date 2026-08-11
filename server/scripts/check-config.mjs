@@ -39,6 +39,7 @@ try {
   console.log(`FIREBASE_PROJECT_ID=${config.firebaseProjectId || 'not-configured'}`);
   console.log(`FIREBASE_CERT_TIMEOUT_MS=${config.firebaseCertTimeoutMs}`);
   console.log(`FIRESTORE_REST_TIMEOUT_MS=${config.firestoreRestTimeoutMs}`);
+  console.log(`FIRESTORE_ASSET_BOARD_WRITE_MIRROR_DISABLED=${config.assetBoardWriteMirrorDisabled}`);
 } catch (error) {
   console.error(`[config] invalid server configuration: ${error.message}`);
   process.exit(1);

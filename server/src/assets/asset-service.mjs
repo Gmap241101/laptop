@@ -104,8 +104,11 @@ const mapRepositoryError = (error) => {
   });
 };
 
-export const createAssetService = ({ repository, firestoreClient }) => {
+export const createAssetService = ({ repository, firestoreClient, writeMirrorEnabled = true }) => {
   if (!repository || !firestoreClient) throw new TypeError('Asset repository and Firestore client are required.');
+  const mirrorEnabled = Boolean(writeMirrorEnabled);
+  const mirrorStatus = mirrorEnabled ? 'synced' : 'retired';
+  const noMirror = async () => Object.freeze({ retired: true, source: 'postgresql-only' });
 
   const verifyAdmin = async (firebaseIdentity) => firestoreClient.verifyAdmin({
     firebaseUid: firebaseIdentity.uid,
@@ -147,36 +150,46 @@ export const createAssetService = ({ repository, firestoreClient }) => {
       try {
         const result = await repository.createAuthoritative({
           asset, referenceDate: koreaToday(),
-          beforeCommit: ({ asset: committedAsset, catalog }) => firestoreClient.mirrorCreate({ asset: committedAsset, catalog, admin, firebaseIdToken: firebaseIdentity.idToken }),
+          beforeCommit: mirrorEnabled
+            ? ({ asset: committedAsset, catalog }) => firestoreClient.mirrorCreate({ asset: committedAsset, catalog, admin, firebaseIdToken: firebaseIdentity.idToken })
+            : noMirror,
         });
-        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'synced', asset: result.asset, catalog: sanitizeCatalog(result.catalog) });
+        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: mirrorStatus, asset: result.asset, catalog: sanitizeCatalog(result.catalog) });
       } catch (error) { return mapRepositoryError(error); }
     },
 
     async edit(firebaseIdentity, assetId, input) {
       const admin = await verifyAdmin(firebaseIdentity);
       const patch = baseAssetPayload(input);
-      const source = await firestoreClient.getAsset({ assetId, firebaseIdToken: firebaseIdentity.idToken });
-      if (!source) throw serviceError('laptop-not-found', 'Asset was not found in Firestore compatibility storage.', 404);
+      const source = mirrorEnabled
+        ? await firestoreClient.getAsset({ assetId, firebaseIdToken: firebaseIdentity.idToken })
+        : null;
+      if (mirrorEnabled && !source) throw serviceError('laptop-not-found', 'Asset was not found in Firestore compatibility storage.', 404);
       try {
         const result = await repository.editAuthoritative({
           assetId: trim(assetId), patch, referenceDate: koreaToday(),
-          beforeCommit: ({ previousAsset, asset, catalog }) => firestoreClient.mirrorEdit({ previousAsset, asset, catalog, assetUpdateTime: source.updateTime, admin, firebaseIdToken: firebaseIdentity.idToken }),
+          beforeCommit: mirrorEnabled
+            ? ({ previousAsset, asset, catalog }) => firestoreClient.mirrorEdit({ previousAsset, asset, catalog, assetUpdateTime: source.updateTime, admin, firebaseIdToken: firebaseIdentity.idToken })
+            : noMirror,
         });
-        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'synced', asset: result.asset, catalog: sanitizeCatalog(result.catalog) });
+        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: mirrorStatus, asset: result.asset, catalog: sanitizeCatalog(result.catalog) });
       } catch (error) { return mapRepositoryError(error); }
     },
 
     async delete(firebaseIdentity, assetId) {
       const admin = await verifyAdmin(firebaseIdentity);
-      const source = await firestoreClient.getAsset({ assetId, firebaseIdToken: firebaseIdentity.idToken });
-      if (!source) throw serviceError('laptop-not-found', 'Asset was not found in Firestore compatibility storage.', 404);
+      const source = mirrorEnabled
+        ? await firestoreClient.getAsset({ assetId, firebaseIdToken: firebaseIdentity.idToken })
+        : null;
+      if (mirrorEnabled && !source) throw serviceError('laptop-not-found', 'Asset was not found in Firestore compatibility storage.', 404);
       try {
         const result = await repository.deleteAuthoritative({
           assetId: trim(assetId), referenceDate: koreaToday(),
-          beforeCommit: ({ previousAsset, catalog }) => firestoreClient.mirrorDelete({ previousAsset, catalog, assetUpdateTime: source.updateTime, admin, firebaseIdToken: firebaseIdentity.idToken }),
+          beforeCommit: mirrorEnabled
+            ? ({ previousAsset, catalog }) => firestoreClient.mirrorDelete({ previousAsset, catalog, assetUpdateTime: source.updateTime, admin, firebaseIdToken: firebaseIdentity.idToken })
+            : noMirror,
         });
-        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'synced', deletedAsset: result.deletedAsset, catalog: sanitizeCatalog(result.catalog) });
+        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: mirrorStatus, deletedAsset: result.deletedAsset, catalog: sanitizeCatalog(result.catalog) });
       } catch (error) { return mapRepositoryError(error); }
     },
 
@@ -187,9 +200,11 @@ export const createAssetService = ({ repository, firestoreClient }) => {
       try {
         const result = await repository.bulkCreateAuthoritative({
           assets: drafts, referenceDate: koreaToday(),
-          beforeCommit: ({ assets, catalog }) => firestoreClient.mirrorBulkCreate({ assets, catalog, admin, firebaseIdToken: firebaseIdentity.idToken }),
+          beforeCommit: mirrorEnabled
+            ? ({ assets, catalog }) => firestoreClient.mirrorBulkCreate({ assets, catalog, admin, firebaseIdToken: firebaseIdentity.idToken })
+            : noMirror,
         });
-        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'synced', assets: result.assets, duplicateAssetNumbers: result.duplicateAssetNumbers, invalidCategories: result.invalidCategories, catalog: sanitizeCatalog(result.catalog) });
+        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: mirrorStatus, assets: result.assets, duplicateAssetNumbers: result.duplicateAssetNumbers, invalidCategories: result.invalidCategories, catalog: sanitizeCatalog(result.catalog) });
       } catch (error) { return mapRepositoryError(error); }
     },
 
@@ -200,9 +215,11 @@ export const createAssetService = ({ repository, firestoreClient }) => {
       try {
         const result = await repository.saveCategoriesAuthoritative({
           categories, renameMap: input?.renameMap || {}, referenceDate: koreaToday(),
-          beforeCommit: ({ catalog }) => firestoreClient.mirrorCategories({ catalog, admin, firebaseIdToken: firebaseIdentity.idToken }),
+          beforeCommit: mirrorEnabled
+            ? ({ catalog }) => firestoreClient.mirrorCategories({ catalog, admin, firebaseIdToken: firebaseIdentity.idToken })
+            : noMirror,
         });
-        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'synced', catalog: sanitizeCatalog(result.catalog) });
+        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: mirrorStatus, catalog: sanitizeCatalog(result.catalog) });
       } catch (error) { return mapRepositoryError(error); }
     },
   });

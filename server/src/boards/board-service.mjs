@@ -99,8 +99,11 @@ const mapRepositoryError = (error) => {
   throw serviceError(mapped[0], mapped[1], mapped[2], { postCount: Number(error?.postCount || 0) });
 };
 
-export const createBoardService = ({ repository, firestoreClient }) => {
+export const createBoardService = ({ repository, firestoreClient, writeMirrorEnabled = true }) => {
   if (!repository || !firestoreClient) throw new TypeError('Board repository and Firestore client are required.');
+  const mirrorEnabled = Boolean(writeMirrorEnabled);
+  const mirrorStatus = mirrorEnabled ? 'synced' : 'retired';
+  const noMirror = async () => Object.freeze({ retired: true, source: 'postgresql-only' });
 
   const verifyAdmin = (firebaseIdentity) => firestoreClient.verifyAdmin({
     firebaseUid: firebaseIdentity.uid,
@@ -151,31 +154,39 @@ export const createBoardService = ({ repository, firestoreClient }) => {
       const id = trim(input?.id) || `notice-${randomUUID().replaceAll('-', '')}`;
       const isEditing = Boolean(trim(input?.id));
       const post = normalizePostInput('notice', input, { id, isEditing, actorClerkUserId });
-      const source = isEditing ? await firestoreClient.getNoticePost({ postId: id, firebaseIdToken: firebaseIdentity.idToken }) : null;
-      if (isEditing && !source) throw serviceError('notice_post_not_found', 'Notice post was not found in Firestore compatibility storage.', 404);
+      const source = mirrorEnabled && isEditing
+        ? await firestoreClient.getNoticePost({ postId: id, firebaseIdToken: firebaseIdentity.idToken })
+        : null;
+      if (mirrorEnabled && isEditing && !source) throw serviceError('notice_post_not_found', 'Notice post was not found in Firestore compatibility storage.', 404);
       try {
         const result = await repository.saveNoticePostAuthoritative({
           post,
-          beforeCommit: ({ post: next }) => firestoreClient.mirrorNoticeSave({
-            post: next,
-            sourceUpdateTime: source?.updateTime || '',
-            firebaseIdToken: firebaseIdentity.idToken,
-          }),
+          beforeCommit: mirrorEnabled
+            ? ({ post: next }) => firestoreClient.mirrorNoticeSave({
+                post: next,
+                sourceUpdateTime: source?.updateTime || '',
+                firebaseIdToken: firebaseIdentity.idToken,
+              })
+            : noMirror,
         });
-        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'synced', post: result.post });
+        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: mirrorStatus, post: result.post });
       } catch (error) { return mapRepositoryError(error); }
     },
 
     async deleteNotice(firebaseIdentity, postId) {
       const admin = await verifyAdmin(firebaseIdentity);
-      const source = await firestoreClient.getNoticePost({ postId, firebaseIdToken: firebaseIdentity.idToken });
-      if (!source) throw serviceError('notice_post_not_found', 'Notice post was not found in Firestore compatibility storage.', 404);
+      const source = mirrorEnabled
+        ? await firestoreClient.getNoticePost({ postId, firebaseIdToken: firebaseIdentity.idToken })
+        : null;
+      if (mirrorEnabled && !source) throw serviceError('notice_post_not_found', 'Notice post was not found in Firestore compatibility storage.', 404);
       try {
         const result = await repository.deleteNoticePostAuthoritative({
           postId,
-          beforeCommit: () => firestoreClient.mirrorNoticeDelete({ postId, sourceUpdateTime: source.updateTime || '', firebaseIdToken: firebaseIdentity.idToken }),
+          beforeCommit: mirrorEnabled
+            ? () => firestoreClient.mirrorNoticeDelete({ postId, sourceUpdateTime: source.updateTime || '', firebaseIdToken: firebaseIdentity.idToken })
+            : noMirror,
         });
-        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'synced', deletedPost: result.deletedPost });
+        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: mirrorStatus, deletedPost: result.deletedPost });
       } catch (error) { return mapRepositoryError(error); }
     },
 
@@ -184,31 +195,39 @@ export const createBoardService = ({ repository, firestoreClient }) => {
       const id = trim(input?.id) || `faq-${randomUUID().replaceAll('-', '')}`;
       const isEditing = Boolean(trim(input?.id));
       const post = normalizePostInput('faq', input, { id, isEditing, actorClerkUserId });
-      const source = isEditing ? await firestoreClient.getFaqPost({ postId: id, firebaseIdToken: firebaseIdentity.idToken }) : null;
-      if (isEditing && !source) throw serviceError('faq_post_not_found', 'FAQ post was not found in Firestore compatibility storage.', 404);
+      const source = mirrorEnabled && isEditing
+        ? await firestoreClient.getFaqPost({ postId: id, firebaseIdToken: firebaseIdentity.idToken })
+        : null;
+      if (mirrorEnabled && isEditing && !source) throw serviceError('faq_post_not_found', 'FAQ post was not found in Firestore compatibility storage.', 404);
       try {
         const result = await repository.saveFaqPostAuthoritative({
           post,
-          beforeCommit: ({ post: next }) => firestoreClient.mirrorFaqSave({
-            post: next,
-            sourceUpdateTime: source?.updateTime || '',
-            firebaseIdToken: firebaseIdentity.idToken,
-          }),
+          beforeCommit: mirrorEnabled
+            ? ({ post: next }) => firestoreClient.mirrorFaqSave({
+                post: next,
+                sourceUpdateTime: source?.updateTime || '',
+                firebaseIdToken: firebaseIdentity.idToken,
+              })
+            : noMirror,
         });
-        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'synced', post: result.post });
+        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: mirrorStatus, post: result.post });
       } catch (error) { return mapRepositoryError(error); }
     },
 
     async deleteFaq(firebaseIdentity, postId) {
       const admin = await verifyAdmin(firebaseIdentity);
-      const source = await firestoreClient.getFaqPost({ postId, firebaseIdToken: firebaseIdentity.idToken });
-      if (!source) throw serviceError('faq_post_not_found', 'FAQ post was not found in Firestore compatibility storage.', 404);
+      const source = mirrorEnabled
+        ? await firestoreClient.getFaqPost({ postId, firebaseIdToken: firebaseIdentity.idToken })
+        : null;
+      if (mirrorEnabled && !source) throw serviceError('faq_post_not_found', 'FAQ post was not found in Firestore compatibility storage.', 404);
       try {
         const result = await repository.deleteFaqPostAuthoritative({
           postId,
-          beforeCommit: () => firestoreClient.mirrorFaqDelete({ postId, sourceUpdateTime: source.updateTime || '', firebaseIdToken: firebaseIdentity.idToken }),
+          beforeCommit: mirrorEnabled
+            ? () => firestoreClient.mirrorFaqDelete({ postId, sourceUpdateTime: source.updateTime || '', firebaseIdToken: firebaseIdentity.idToken })
+            : noMirror,
         });
-        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'synced', deletedPost: result.deletedPost });
+        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: mirrorStatus, deletedPost: result.deletedPost });
       } catch (error) { return mapRepositoryError(error); }
     },
 
@@ -221,9 +240,11 @@ export const createBoardService = ({ repository, firestoreClient }) => {
         const result = await repository.saveConfigAuthoritative({
           boardType: normalizedType,
           postsPerPage: safePageSize,
-          beforeCommit: ({ config }) => firestoreClient.mirrorBoardConfig({ boardType: normalizedType, postsPerPage: config.postsPerPage, firebaseIdToken: firebaseIdentity.idToken }),
+          beforeCommit: mirrorEnabled
+            ? ({ config }) => firestoreClient.mirrorBoardConfig({ boardType: normalizedType, postsPerPage: config.postsPerPage, firebaseIdToken: firebaseIdentity.idToken })
+            : noMirror,
         });
-        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'synced', config: result.config });
+        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: mirrorStatus, config: result.config });
       } catch (error) { return mapRepositoryError(error); }
     },
 
@@ -233,28 +254,36 @@ export const createBoardService = ({ repository, firestoreClient }) => {
       if (!name) throw serviceError('faq_category_name_required', 'FAQ category name is required.', 400);
       const id = trim(input?.id) || `faqcat-${randomUUID().replaceAll('-', '')}`;
       const isEditing = Boolean(trim(input?.id));
-      const source = isEditing ? await firestoreClient.getFaqCategory({ categoryId: id, firebaseIdToken: firebaseIdentity.idToken }) : null;
-      if (isEditing && !source) throw serviceError('faq_category_not_found', 'FAQ category was not found in Firestore compatibility storage.', 404);
+      const source = mirrorEnabled && isEditing
+        ? await firestoreClient.getFaqCategory({ categoryId: id, firebaseIdToken: firebaseIdentity.idToken })
+        : null;
+      if (mirrorEnabled && isEditing && !source) throw serviceError('faq_category_not_found', 'FAQ category was not found in Firestore compatibility storage.', 404);
       const category = Object.freeze({ id, name, isEditing, actorClerkUserId: trim(actorClerkUserId) });
       try {
         const result = await repository.saveFaqCategoryAuthoritative({
           category,
-          beforeCommit: ({ category: next }) => firestoreClient.mirrorFaqCategorySave({ category: next, sourceUpdateTime: source?.updateTime || '', firebaseIdToken: firebaseIdentity.idToken }),
+          beforeCommit: mirrorEnabled
+            ? ({ category: next }) => firestoreClient.mirrorFaqCategorySave({ category: next, sourceUpdateTime: source?.updateTime || '', firebaseIdToken: firebaseIdentity.idToken })
+            : noMirror,
         });
-        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'synced', category: result.category });
+        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: mirrorStatus, category: result.category });
       } catch (error) { return mapRepositoryError(error); }
     },
 
     async deleteFaqCategory(firebaseIdentity, categoryId) {
       const admin = await verifyAdmin(firebaseIdentity);
-      const source = await firestoreClient.getFaqCategory({ categoryId, firebaseIdToken: firebaseIdentity.idToken });
-      if (!source) throw serviceError('faq_category_not_found', 'FAQ category was not found in Firestore compatibility storage.', 404);
+      const source = mirrorEnabled
+        ? await firestoreClient.getFaqCategory({ categoryId, firebaseIdToken: firebaseIdentity.idToken })
+        : null;
+      if (mirrorEnabled && !source) throw serviceError('faq_category_not_found', 'FAQ category was not found in Firestore compatibility storage.', 404);
       try {
         const result = await repository.deleteFaqCategoryAuthoritative({
           categoryId,
-          beforeCommit: () => firestoreClient.mirrorFaqCategoryDelete({ categoryId, sourceUpdateTime: source.updateTime || '', firebaseIdToken: firebaseIdentity.idToken }),
+          beforeCommit: mirrorEnabled
+            ? () => firestoreClient.mirrorFaqCategoryDelete({ categoryId, sourceUpdateTime: source.updateTime || '', firebaseIdToken: firebaseIdentity.idToken })
+            : noMirror,
         });
-        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'synced', deletedCategory: result.deletedCategory });
+        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: mirrorStatus, deletedCategory: result.deletedCategory });
       } catch (error) { return mapRepositoryError(error); }
     },
   });

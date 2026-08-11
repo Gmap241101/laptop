@@ -78,7 +78,7 @@ const [migration, repoSource, serviceSource, firestoreSource, appSource] = await
 ]);
 for (const marker of ['app_asset_categories', 'app_rental_assets', 'app_asset_catalog_syncs']) assert.ok(migration.includes(marker), marker);
 for (const marker of ['app_rental_asset_reservation_guards', 'pg_advisory_xact_lock', 'createAuthoritative', 'bulkCreateAuthoritative', 'saveCategoriesAuthoritative']) assert.ok(repoSource.includes(marker), marker);
-for (const marker of ['getPublicCatalog', 'bootstrap(firebaseIdentity)', "authority: 'postgresql'", "firestoreMirror: 'synced'"]) assert.ok(serviceSource.includes(marker), marker);
+for (const marker of ['getPublicCatalog', 'bootstrap(firebaseIdentity)', "authority: 'postgresql'", 'mirrorStatus']) assert.ok(serviceSource.includes(marker), marker);
 for (const marker of ['rentalAssetNumbers', "documentName('publicCatalog/main')", 'assetCategories', 'mirrorBulkCreate', 'mirrorCategories']) assert.ok(firestoreSource.includes(marker), marker);
 assert.ok(!firestoreSource.includes("documentName('publicAssetCatalog/main')"), 'server mirror must not use the invalid publicAssetCatalog path');
 for (const marker of ['/api/assets/catalog', '/api/admin/assets/bootstrap', '/api/admin/assets/bulk', '/api/admin/assets/categories']) assert.ok(appSource.includes(marker), marker);

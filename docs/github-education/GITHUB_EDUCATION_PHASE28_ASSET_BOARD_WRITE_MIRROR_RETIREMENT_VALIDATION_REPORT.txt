@@ -1,0 +1,64 @@
+Phase 28 validation target
+==========================
+
+Expected backend:
+- SERVICE_VERSION=phase28
+- FIRESTORE_ASSET_BOARD_WRITE_MIRROR_DISABLED=true
+- /health compatibility.assetBoardWriteMirrorDisabled=true
+- /health compatibility.retiredWriteMirrorDomains includes assets, notice, faq
+
+Expected diagnostics:
+- Clerk Staging Test · Phase 28
+- Write mirror retirement requested: yes
+- Backend retirement applied: yes
+- Retired write mirror domains: assets / notice / faq
+
+Expected asset mutation after create/edit/delete/category/bulk action:
+- Asset write source: postgresql-authoritative
+- Asset Firestore compatibility mirror: retired
+- Asset cutover error: -
+
+Expected notice/FAQ mutation:
+- Board write source: postgresql
+- Board Firestore compatibility mirror: retired
+- Board error: -
+
+Preserved:
+- member/restriction/rental-request write mirrors
+- site-shell parity/write-through
+- policy/terms Firestore transaction reads/writes
+- Firebase Auth compatibility identity
+
+Automated validation completed
+==============================
+verify:phase28: PASS (exit 0)
+React source files: 167
+Application contracts: 124
+User routes: 11
+Administrator tabs: 20
+Firestore strict: PASS
+Firestore calls: 137
+onSnapshot: 35
+getDocs/server equivalents: 53
+getDoc/server equivalents: 31
+getCountFromServer: 18
+warnings: 0
+errors: 0
+
+Phase 28 backend smoke:
+- mirror-disabled asset create/edit/delete/bulk/categories return firestoreMirror=retired
+- no asset Firestore source-read prerequisite while retirement is enabled
+- no asset Firestore mirror call while retirement is enabled
+- notice/FAQ/config/category mutations return firestoreMirror=retired
+- no board Firestore source-read prerequisite while retirement is enabled
+- no board Firestore mirror call while retirement is enabled
+- Firebase administrator identity verification remains required
+
+Regression:
+- Phase 20 default asset compatibility mirror smoke PASS
+- Phase 26 default notice/FAQ compatibility mirror smoke PASS
+
+Build staging:
+- React/Application/Firestore prebuild audits PASS
+- Clerk local config check DISABLED
+- vite executable unavailable in assistant root environment; exit 127

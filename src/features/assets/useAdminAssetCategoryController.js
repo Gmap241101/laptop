@@ -301,12 +301,12 @@ export default function useAdminAssetCategoryController({
         setDraggingAssetCategoryIndex(null);
         publishAssetDomainCutoverObservation({
           readRequested: assetCutoverConfig.readRequested, writeRequested: true,
-          activeSource: 'postgresql', writeSource: 'postgresql-authoritative', firestoreMirror: 'synced',
+          activeSource: 'postgresql', writeSource: 'postgresql-authoritative', firestoreMirror: payload?.adminAssetMutation?.firestoreMirror || 'synced',
           assetWatcherDisabled: assetCutoverConfig.readRequested, availabilityWatcherDisabled: assetCutoverConfig.readRequested,
           assetCount: catalog?.assets?.length || 0, categoryCount: catalog?.categories?.length || 0,
           availabilityCount: catalog?.availability?.length || 0, firestoreFallbackReads: 0, error: '',
         });
-        triggerToast('자산 카테고리 변경사항이 PostgreSQL과 호환 저장소에 성공적으로 반영되었습니다.', 'success');
+        triggerToast(payload?.adminAssetMutation?.firestoreMirror === 'retired' ? '자산 카테고리 변경사항이 PostgreSQL에 성공적으로 반영되었습니다.' : '자산 카테고리 변경사항이 PostgreSQL과 호환 저장소에 성공적으로 반영되었습니다.', 'success');
         return true;
       } catch (error) {
         console.error('PostgreSQL asset category save error:', error);

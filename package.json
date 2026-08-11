@@ -98,7 +98,10 @@
     "frontend:board-authority:smoke": "node tools/frontend/smoke-board-authority.mjs",
     "verify:phase26": "npm run verify:phase25 && npm run server:board-authority:smoke && npm run frontend:board-authority:smoke",
     "frontend:legacy-read-retirement:smoke": "node tools/frontend/smoke-legacy-firestore-read-fallback-retirement.mjs",
-    "verify:phase27": "npm run verify:phase26 && npm run frontend:legacy-read-retirement:smoke"
+    "verify:phase27": "npm run verify:phase26 && npm run frontend:legacy-read-retirement:smoke",
+    "server:write-mirror-retirement:smoke": "node tools/backend/smoke-asset-board-write-mirror-retirement.mjs",
+    "frontend:write-mirror-retirement:smoke": "node tools/frontend/smoke-asset-board-write-mirror-retirement.mjs",
+    "verify:phase28": "npm run verify:phase27 && npm run server:write-mirror-retirement:smoke && npm run frontend:write-mirror-retirement:smoke"
   },
   "dependencies": {
     "firebase": "^10.14.1",

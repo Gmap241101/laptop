@@ -195,6 +195,7 @@ export const readServerConfig = () => {
       min: 1000,
       max: 30000,
     }),
+    assetBoardWriteMirrorDisabled: readBoolean('FIRESTORE_ASSET_BOARD_WRITE_MIRROR_DISABLED', false),
   });
 };
 

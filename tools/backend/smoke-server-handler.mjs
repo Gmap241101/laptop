@@ -5,7 +5,8 @@ const allowedOrigin = 'https://staging.example.vercel.app';
 const config = {
   serviceName: 'rental-api',
   appEnv: 'test',
-  serviceVersion: 'phase26-smoke',
+  serviceVersion: 'phase28-smoke',
+  assetBoardWriteMirrorDisabled: true,
   corsAllowedOrigins: [allowedOrigin],
 };
 
@@ -489,6 +490,8 @@ const ready = await fetch(`${baseUrl}/health`, {
 if (ready.status !== 200) throw new Error(`/health returned ${ready.status}`);
 const readyBody = await ready.json();
 if (readyBody.database?.status !== 'ok') throw new Error('/health database payload is invalid.');
+if (readyBody.compatibility?.assetBoardWriteMirrorDisabled !== true) throw new Error('/health Phase 28 write-mirror retirement payload is invalid.');
+if (!Array.isArray(readyBody.compatibility?.retiredWriteMirrorDomains) || !readyBody.compatibility.retiredWriteMirrorDomains.includes('assets') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('notice') || !readyBody.compatibility.retiredWriteMirrorDomains.includes('faq')) throw new Error('/health Phase 28 retired domain list is invalid.');
 if (ready.headers.get('access-control-allow-origin') !== allowedOrigin) {
   throw new Error('Allowed CORS origin was not reflected.');
 }
@@ -960,4 +963,4 @@ const missing = await fetch(`${baseUrl}/missing`);
 if (missing.status !== 404) throw new Error(`/missing returned ${missing.status}`);
 
 await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, Phase 16 rental-request POST, Phase 17 admin bootstrap/list/dashboard/status + Phase 18 sync/events/edit/memo/restore + Phase 19 user edit/cancel/extend/admin-review + Phase 20 asset catalog/bootstrap/CRUD/bulk/categories + Phase 21 member profile/status authority/admin registry + Phase 22 account recovery/admin Clerk session/migration/provision + Phase 23 user Clerk session/migration/provision/password/withdrawal authority + Phase 24 site-content + Phase 25 rental-config/terms read/sync + Phase 26 notice/FAQ public/admin authority, CORS, 404)');
+console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, Phase 16 rental-request POST, Phase 17 admin bootstrap/list/dashboard/status + Phase 18 sync/events/edit/memo/restore + Phase 19 user edit/cancel/extend/admin-review + Phase 20 asset catalog/bootstrap/CRUD/bulk/categories + Phase 21 member profile/status authority/admin registry + Phase 22 account recovery/admin Clerk session/migration/provision + Phase 23 user Clerk session/migration/provision/password/withdrawal authority + Phase 24 site-content + Phase 25 rental-config/terms read/sync + Phase 26 notice/FAQ public/admin authority + Phase 28 write-mirror retirement health contract, CORS, 404)');

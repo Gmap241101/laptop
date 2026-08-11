@@ -437,6 +437,10 @@ export const createRequestHandler = ({
     service: config.serviceName,
     environment: config.appEnv,
     version: config.serviceVersion,
+    compatibility: {
+      assetBoardWriteMirrorDisabled: Boolean(config.assetBoardWriteMirrorDisabled),
+      retiredWriteMirrorDomains: config.assetBoardWriteMirrorDisabled ? ['assets', 'notice', 'faq'] : [],
+    },
   };
 
   const authenticate = async (request, response, headers, requestId) => {

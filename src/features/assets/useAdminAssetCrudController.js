@@ -61,7 +61,7 @@ export default function useAdminAssetCrudController({
 }) {
   const assetCutoverConfig = readAssetDomainCutoverConfig();
 
-  const applyPostgresCatalog = (catalog) => {
+  const applyPostgresCatalog = (catalog, firestoreMirror = 'synced') => {
     if (!catalog) return;
     setData((prev) => ({
       ...prev,
@@ -71,7 +71,7 @@ export default function useAdminAssetCrudController({
     }));
     publishAssetDomainCutoverObservation({
       readRequested: assetCutoverConfig.readRequested, writeRequested: assetCutoverConfig.writeRequested,
-      activeSource: 'postgresql', writeSource: 'postgresql-authoritative', firestoreMirror: 'synced',
+      activeSource: 'postgresql', writeSource: 'postgresql-authoritative', firestoreMirror,
       assetWatcherDisabled: assetCutoverConfig.readRequested, availabilityWatcherDisabled: assetCutoverConfig.readRequested,
       assetCount: catalog.assets?.length || 0, categoryCount: catalog.categories?.length || 0, availabilityCount: catalog.availability?.length || 0,
       firestoreFallbackReads: 0, error: '',
@@ -177,7 +177,7 @@ export default function useAdminAssetCrudController({
           }
         );
         const mutation = payload?.adminAssetMutation;
-        applyPostgresCatalog(mutation?.catalog);
+        applyPostgresCatalog(mutation?.catalog, mutation?.firestoreMirror || 'synced');
         setNewLaptop(null);
         triggerToast(`자산 ${newAssetNo}이(가) 신규 등록되었습니다.`, 'success');
       } catch (error) {
@@ -430,7 +430,7 @@ export default function useAdminAssetCrudController({
             const firebaseUser = firebaseAuth.currentUser;
             if (!firebaseUser) throw new Error('firebase-admin-session-missing');
             const payload = await clerkStagingClient.deleteAdminAsset(await firebaseUser.getIdToken(), id);
-            applyPostgresCatalog(payload?.adminAssetMutation?.catalog);
+            applyPostgresCatalog(payload?.adminAssetMutation?.catalog, payload?.adminAssetMutation?.firestoreMirror || 'synced');
             if (selectedLaptopId === id) setSelectedLaptopId(null);
             if (editLaptop?.id === id) setEditLaptop(null);
             triggerToast(`자산 ${assetNo}이(가) 성공적으로 삭제되었습니다.`, 'success');
@@ -679,7 +679,7 @@ export default function useAdminAssetCrudController({
           editingLaptopId,
           { ...editedLaptopDraft, baseStatus: editedLaptopDraft.status === STATUS.UNAVAILABLE ? STATUS.UNAVAILABLE : STATUS.AVAILABLE }
         );
-        applyPostgresCatalog(payload?.adminAssetMutation?.catalog);
+        applyPostgresCatalog(payload?.adminAssetMutation?.catalog, payload?.adminAssetMutation?.firestoreMirror || 'synced');
         setEditLaptop(null);
         triggerToast('자산 상세 정보가 성공적으로 반영되었습니다.', 'success');
       } catch (error) {

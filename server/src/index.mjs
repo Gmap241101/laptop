@@ -102,7 +102,11 @@ const firestoreBoardClient = config.firebaseProjectId
   : {
       async verifyAdmin() { const error = new Error('Firestore board compatibility bridge is not configured.'); error.code = 'firestore_board_not_configured'; throw error; },
     };
-const boardService = createBoardService({ repository: boardRepository, firestoreClient: firestoreBoardClient });
+const boardService = createBoardService({
+  repository: boardRepository,
+  firestoreClient: firestoreBoardClient,
+  writeMirrorEnabled: !config.assetBoardWriteMirrorDisabled,
+});
 const userClerkAuthService = firestoreMemberAuthorityClient
   ? createUserClerkAuthService({
       repository: userClerkAuthRepository,
@@ -248,7 +252,11 @@ const firestoreAssetClient = config.firebaseProjectId
   : {
       async verifyAdmin() { const error = new Error('Firestore asset bridge is not configured.'); error.code = 'firestore_asset_not_configured'; throw error; },
     };
-const assetService = createAssetService({ repository: assetRepository, firestoreClient: firestoreAssetClient });
+const assetService = createAssetService({
+  repository: assetRepository,
+  firestoreClient: firestoreAssetClient,
+  writeMirrorEnabled: !config.assetBoardWriteMirrorDisabled,
+});
 const verifyFirebaseIdToken = config.firebaseProjectId
   ? createFirebaseIdTokenVerifier({
       projectId: config.firebaseProjectId,
@@ -310,9 +318,14 @@ server.listen(config.port, '0.0.0.0', () => {
     accountRecovery: 'postgresql-preferred',
     userClerkAuthentication: config.firebaseProjectId ? 'clerk-authoritative-firebase-compatibility' : 'disabled',
     adminAuthentication: config.firebaseProjectId ? 'clerk-authoritative-firebase-compatibility-session' : 'disabled',
-    assetDomain: config.firebaseProjectId ? 'postgresql-read-write-firestore-compatibility-mirror' : 'disabled',
+    assetDomain: config.firebaseProjectId
+      ? (config.assetBoardWriteMirrorDisabled ? 'postgresql-authoritative-firestore-write-mirror-retired' : 'postgresql-read-write-firestore-compatibility-mirror')
+      : 'disabled',
     siteContent: 'postgresql-preferred-firestore-write-through',
-    noticeFaqBoards: config.firebaseProjectId ? 'postgresql-authoritative-firestore-compatibility-mirror' : 'disabled',
+    noticeFaqBoards: config.firebaseProjectId
+      ? (config.assetBoardWriteMirrorDisabled ? 'postgresql-authoritative-firestore-write-mirror-retired' : 'postgresql-authoritative-firestore-compatibility-mirror')
+      : 'disabled',
+    phase28WriteMirrorRetirement: config.assetBoardWriteMirrorDisabled ? 'assets-and-boards' : 'disabled',
   });
 });
 

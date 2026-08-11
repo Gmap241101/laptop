@@ -343,7 +343,8 @@ export const createBoardRepository = (pool) => Object.freeze({
       const nextResult = await client.query(`SELECT * FROM app_board_posts WHERE post_id=$1`, [post.id]);
       const next = mapPost(nextResult.rows[0]);
       const mirror = await beforeCommit({ previous, post: next });
-      await client.query(`UPDATE app_board_posts SET mirror_state='synced',synced_at=NOW() WHERE post_id=$1`, [post.id]);
+      const mirrorState = mirror?.retired ? 'retired' : 'synced';
+      await client.query(`UPDATE app_board_posts SET mirror_state=$2,synced_at=NOW() WHERE post_id=$1`, [post.id, mirrorState]);
       await refreshSyncCounts(client, post.actorClerkUserId || '');
       await client.query('COMMIT');
       return { post: next, previous, mirror };
@@ -399,7 +400,8 @@ export const createBoardRepository = (pool) => Object.freeze({
       const nextResult = await client.query(`SELECT * FROM app_board_posts WHERE post_id=$1`, [post.id]);
       const next = mapPost(nextResult.rows[0]);
       const mirror = await beforeCommit({ previous, post: next });
-      await client.query(`UPDATE app_board_posts SET mirror_state='synced',synced_at=NOW() WHERE post_id=$1`, [post.id]);
+      const mirrorState = mirror?.retired ? 'retired' : 'synced';
+      await client.query(`UPDATE app_board_posts SET mirror_state=$2,synced_at=NOW() WHERE post_id=$1`, [post.id, mirrorState]);
       await refreshSyncCounts(client, post.actorClerkUserId || '');
       await client.query('COMMIT');
       return { post: next, previous, mirror };

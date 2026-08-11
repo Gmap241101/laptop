@@ -495,9 +495,30 @@ for (const marker of ['VITE_BOARD_CONTENT_POSTGRES_READ_ENABLED', 'VITE_BOARD_CO
   if (!boardCutover.includes(marker)) throw new Error(`Phase 26 frontend board cutover marker is missing: ${marker}`);
 }
 
+
+const phase28Migration = readFileSync('server/migrations/019_phase28_asset_board_write_mirror_retirement.sql', 'utf8');
+for (const marker of ["'phase', 28", "'firestoreWriteMirror', 'retired-staging-opt-in'", "'memberRentalWriteMirrors', 'preserved'"]) {
+  if (!phase28Migration.includes(marker)) throw new Error(`Phase 28 migration marker is missing: ${marker}`);
+}
+const serverEnvSource = readFileSync('server/src/config/env.mjs', 'utf8');
+for (const marker of ['FIRESTORE_ASSET_BOARD_WRITE_MIRROR_DISABLED', 'assetBoardWriteMirrorDisabled']) {
+  if (!serverEnvSource.includes(marker)) throw new Error(`Phase 28 server config marker is missing: ${marker}`);
+}
+for (const marker of ['writeMirrorEnabled', "mirrorStatus = mirrorEnabled ? 'synced' : 'retired'", 'postgresql-only']) {
+  if (!boardService.includes(marker)) throw new Error(`Phase 28 board mirror retirement marker is missing: ${marker}`);
+}
+const assetServiceSource = readFileSync('server/src/assets/asset-service.mjs', 'utf8');
+for (const marker of ['writeMirrorEnabled', "mirrorStatus = mirrorEnabled ? 'synced' : 'retired'", 'postgresql-only']) {
+  if (!assetServiceSource.includes(marker)) throw new Error(`Phase 28 asset mirror retirement marker is missing: ${marker}`);
+}
+const writeMirrorCutover = readFileSync('src/features/compatibility/firestoreWriteMirrorRetirement.js', 'utf8');
+for (const marker of ['VITE_FIRESTORE_ASSET_BOARD_WRITE_MIRROR_DISABLED', '/health', 'assetBoardWriteMirrorDisabled']) {
+  if (!writeMirrorCutover.includes(marker)) throw new Error(`Phase 28 frontend write mirror retirement marker is missing: ${marker}`);
+}
+
 const configTemplate = readFileSync('docs/github-education/HEROKU_CONFIG_VARS_TEMPLATE.txt', 'utf8');
 for (const variable of ['CLERK_JWT_KEY=', 'CLERK_AUTHORIZED_PARTIES=', 'CLERK_SECRET_KEY=sk_test_', 'CLERK_API_TIMEOUT_MS=8000', 'FIREBASE_PROJECT_ID=laptop-system-mk']) {
   if (!configTemplate.includes(variable)) throw new Error(`Phase 6 config template is missing ${variable}`);
 }
 
-console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request shadow/parity + phase16 authoritative write + phase17 admin rental-request cutover + phase18 mutation/audit completion + phase19 user-action lifecycle + phase20 asset-domain + phase21 member/restriction/admin identity authority + phase22 account recovery/admin Clerk auth + phase23 user Clerk authentication/lifecycle + phase24 site content + phase25 policy/terms + phase26 notice/FAQ board authority invariants)`);
+console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request shadow/parity + phase16 authoritative write + phase17 admin rental-request cutover + phase18 mutation/audit completion + phase19 user-action lifecycle + phase20 asset-domain + phase21 member/restriction/admin identity authority + phase22 account recovery/admin Clerk auth + phase23 user Clerk authentication/lifecycle + phase24 site content + phase25 policy/terms + phase26 notice/FAQ board authority + phase28 asset/board write mirror retirement invariants)`);

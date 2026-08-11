@@ -45,21 +45,21 @@ for (const marker of [
   "recordLegacyFirestoreReadFallbackBlocked('member-profile'",
   "recordLegacyFirestoreReadFallbackBlocked('rental-restriction'",
   'legacyFallbackAllowed',
-]) assert.ok(auth.includes(marker), `missing Phase 27 auth fallback-retirement marker: ${marker}`);
+]) assert.ok(auth.includes(marker), `missing Phase 28 auth fallback-retirement marker: ${marker}`);
 
 const rental = readFileSync('src/features/requests/useRentalDataSubscriptionController.js', 'utf8');
 for (const marker of [
   'allowFirestoreFallback: legacyFallbackAllowed',
   "recordLegacyFirestoreReadFallbackBlocked('rental-requests'",
   "recordLegacyFirestoreReadFallbackBlocked('assets'",
-]) assert.ok(rental.includes(marker), `missing Phase 27 rental fallback-retirement marker: ${marker}`);
+]) assert.ok(rental.includes(marker), `missing Phase 28 rental fallback-retirement marker: ${marker}`);
 
 const requestCutover = readFileSync('src/features/requests/rentalRequestReadCutover.js', 'utf8');
 for (const marker of [
   'allowFirestoreFallback = true',
   'legacy Firestore fallback is disabled',
   'firestoreFallbackReads = 0',
-]) assert.ok(requestCutover.includes(marker), `missing Phase 27 request loader marker: ${marker}`);
+]) assert.ok(requestCutover.includes(marker), `missing Phase 28 request loader marker: ${marker}`);
 
 const boards = readFileSync('src/features/boards/useBoardContentSubscriptionController.js', 'utf8');
 for (const marker of [
@@ -67,22 +67,22 @@ for (const marker of [
   "recordLegacyFirestoreReadFallbackBlocked('faq-board'",
   "recordLegacyFirestoreReadFallbackBlocked('notice-detail'",
   'legacyFallbackAllowed',
-]) assert.ok(boards.includes(marker), `missing Phase 27 board fallback-retirement marker: ${marker}`);
+]) assert.ok(boards.includes(marker), `missing Phase 28 board fallback-retirement marker: ${marker}`);
 
 const diagnostics = readFileSync('src/clerk/ClerkStagingDiagnostics.jsx', 'utf8');
 for (const marker of [
-  'Clerk Staging Test · Phase 27',
+  'Clerk Staging Test · Phase 28',
   'Phase 27 validated-domain legacy Firestore read fallback retirement',
   'Legacy Firestore read fallback retirement requested',
   'Retired read domains: member-profile / rental-restriction / rental-requests / assets / notice / faq',
   "top: '184px'",
-]) assert.ok(diagnostics.includes(marker), `missing Phase 27 diagnostics marker: ${marker}`);
+]) assert.ok(diagnostics.includes(marker), `missing Phase 28 diagnostics marker: ${marker}`);
 
 const siteContent = readFileSync('src/features/content/siteContentCutover.js', 'utf8');
-assert.ok(!siteContent.includes('legacyFirestoreReadFallbackCutover'), 'Phase 27 must preserve site-shell parity fallback.');
+assert.ok(!siteContent.includes('legacyFirestoreReadFallbackCutover'), 'Phase 28 must preserve site-shell parity fallback.');
 const accountRecovery = readFileSync('src/features/members/accountRecoveryService.js', 'utf8');
-assert.ok(!accountRecovery.includes('legacyFirestoreReadFallbackCutover'), 'Phase 27 must preserve account-recovery fallback.');
+assert.ok(!accountRecovery.includes('legacyFirestoreReadFallbackCutover'), 'Phase 28 must preserve account-recovery fallback.');
 const app = readFileSync('src/App.jsx', 'utf8');
-assert.ok(!app.includes('legacyFirestoreReadFallbackCutover'), 'Phase 27 must not push compatibility cleanup logic back into App.jsx.');
+assert.ok(!app.includes('legacyFirestoreReadFallbackCutover'), 'Phase 28 must not push compatibility cleanup logic back into App.jsx.');
 
 console.log('[legacy-firestore-read-fallback-retirement-frontend-smoke] PASS (validated domains retire read fallback; site-shell/account-recovery/write mirrors preserved; rollback latch works)');

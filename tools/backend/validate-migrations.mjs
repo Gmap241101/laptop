@@ -17,6 +17,7 @@ const phase23 = readFileSync('server/migrations/015_phase23_user_clerk_auth_life
 const phase24 = readFileSync('server/migrations/016_phase24_site_content_read_cutover.sql', 'utf8');
 const phase25 = readFileSync('server/migrations/017_phase25_policy_terms_read_cutover.sql', 'utf8');
 const phase26 = readFileSync('server/migrations/018_phase26_notice_faq_board_authority.sql', 'utf8');
+const phase28 = readFileSync('server/migrations/019_phase28_asset_board_write_mirror_retirement.sql', 'utf8');
 
 if (!/value\s+JSONB\s+NOT\s+NULL/i.test(phase2)) {
   throw new Error('app_runtime_metadata.value must remain JSONB NOT NULL.');
@@ -216,4 +217,15 @@ for (const marker of [
   if (!phase26.includes(marker)) throw new Error(`Phase 26 notice/FAQ board migration marker is missing: ${marker}`);
 }
 
-console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion + Phase 19 user-action lifecycle + Phase 20 asset-domain + Phase 21 member/restriction/admin identity authority + Phase 22 account recovery/admin Clerk auth + Phase 23 user Clerk auth/lifecycle + Phase 24 site content + Phase 25 policy/terms + Phase 26 notice/FAQ board authority are type-safe)');
+
+for (const marker of [
+  "'phase', 28",
+  "jsonb_build_array('assets','notice','faq')",
+  "'firestoreWriteMirror', 'retired-staging-opt-in'",
+  "'firebaseAdminCompatibilityIdentity', 'preserved'",
+  "'memberRentalWriteMirrors', 'preserved'",
+]) {
+  if (!phase28.includes(marker)) throw new Error(`Phase 28 asset/board write mirror retirement marker is missing: ${marker}`);
+}
+
+console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion + Phase 19 user-action lifecycle + Phase 20 asset-domain + Phase 21 member/restriction/admin identity authority + Phase 22 account recovery/admin Clerk auth + Phase 23 user Clerk auth/lifecycle + Phase 24 site content + Phase 25 policy/terms + Phase 26 notice/FAQ board authority + Phase 28 asset/board write mirror retirement are type-safe)');

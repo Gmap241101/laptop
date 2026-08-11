@@ -92,7 +92,7 @@ export default function useAssetBulkUpload({
           setShowUploadPanel(false);
           publishAssetDomainCutoverObservation({
             readRequested: assetCutoverConfig.readRequested, writeRequested: true,
-            activeSource: 'postgresql', writeSource: 'postgresql-authoritative', firestoreMirror: 'synced',
+            activeSource: 'postgresql', writeSource: 'postgresql-authoritative', firestoreMirror: mutation?.firestoreMirror || 'synced',
             assetWatcherDisabled: assetCutoverConfig.readRequested, availabilityWatcherDisabled: assetCutoverConfig.readRequested,
             assetCount: catalog?.assets?.length || 0, categoryCount: catalog?.categories?.length || 0,
             availabilityCount: catalog?.availability?.length || 0, firestoreFallbackReads: 0, error: '',
