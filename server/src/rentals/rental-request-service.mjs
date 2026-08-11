@@ -132,24 +132,28 @@ export const createRentalRequestService = ({
     return Object.freeze({ requests, requesterUids, requesterEmail, sourceHash: collectionHash(requests) });
   };
 
+  const readAuthoritativeCurrent = async (appUser, firebaseLink) => {
+    const requests = await rentalRequestRepository.listAuthoritativeByAppUserId(appUser.id);
+    return Object.freeze({
+      appUser,
+      firebaseLink,
+      syncState: Object.freeze({
+        appUserId: String(appUser.id),
+        firebaseUid: firebaseLink.firebaseUid,
+        sourceRequestCount: requests.length,
+        sourceHash: 'postgresql-authoritative',
+        syncedAt: requests[0]?.updatedAt || null,
+        sourceMode: 'postgresql-authoritative',
+      }),
+      requests: sortRequests(requests),
+    });
+  };
+
   return Object.freeze({
     async getCurrent(clerkUserId) {
       const { appUser, firebaseLink } = await context(clerkUserId);
       if (useAuthoritativeSource) {
-        const requests = await rentalRequestRepository.listAuthoritativeByAppUserId(appUser.id);
-        return Object.freeze({
-          appUser,
-          firebaseLink,
-          syncState: Object.freeze({
-            appUserId: String(appUser.id),
-            firebaseUid: firebaseLink.firebaseUid,
-            sourceRequestCount: requests.length,
-            sourceHash: 'postgresql-authoritative',
-            syncedAt: requests[0]?.updatedAt || null,
-            sourceMode: 'postgresql-authoritative',
-          }),
-          requests: sortRequests(requests),
-        });
+        return readAuthoritativeCurrent(appUser, firebaseLink);
       }
       const syncState = await rentalRequestRepository.getSyncState(appUser.id);
       if (!syncState) throw serviceError('rental_request_shadow_not_synced', 'Rental request shadow has not been synchronized yet.');
@@ -159,6 +163,9 @@ export const createRentalRequestService = ({
 
     async syncCurrent(clerkUserId, firebaseIdentity) {
       const { appUser, firebaseLink, memberShadow } = await context(clerkUserId);
+      if (useAuthoritativeSource) {
+        return readAuthoritativeCurrent(appUser, firebaseLink);
+      }
       const source = await readSource({ firebaseIdentity, firebaseLink, memberShadow });
       const syncState = await rentalRequestRepository.replaceForAppUser({
         appUserId: appUser.id,

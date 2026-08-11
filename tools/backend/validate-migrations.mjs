@@ -19,6 +19,7 @@ const phase25 = readFileSync('server/migrations/017_phase25_policy_terms_read_cu
 const phase26 = readFileSync('server/migrations/018_phase26_notice_faq_board_authority.sql', 'utf8');
 const phase28 = readFileSync('server/migrations/019_phase28_asset_board_write_mirror_retirement.sql', 'utf8');
 const phase29 = readFileSync('server/migrations/020_phase29_rental_transaction_postgresql_authority.sql', 'utf8');
+const phase29ConstraintHotfix = readFileSync('server/migrations/021_phase29_rental_mirror_status_retired_constraint.sql', 'utf8');
 
 if (!/value\s+JSONB\s+NOT\s+NULL/i.test(phase2)) {
   throw new Error('app_runtime_metadata.value must remain JSONB NOT NULL.');
@@ -250,4 +251,19 @@ for (const marker of [
   if (!phase29.includes(marker)) throw new Error(`Phase 29 rental transaction PostgreSQL authority marker is missing: ${marker}`);
 }
 
-console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion + Phase 19 user-action lifecycle + Phase 20 asset-domain + Phase 21 member/restriction/admin identity authority + Phase 22 account recovery/admin Clerk auth + Phase 23 user Clerk auth/lifecycle + Phase 24 site content + Phase 25 policy/terms + Phase 26 notice/FAQ board authority + Phase 28 asset/board write mirror retirement + Phase 29 rental transaction PostgreSQL authority are type-safe)');
+
+if (!/DROP\s+CONSTRAINT\s+app_rental_requests_mirror_status/is.test(phase29ConstraintHotfix)) {
+  throw new Error('Phase 29 constraint hotfix must replace app_rental_requests_mirror_status.');
+}
+if (!/firestore_mirror_status\s+IN\s*\([^)]*'retired'/is.test(phase29ConstraintHotfix)) {
+  throw new Error("Phase 29 constraint hotfix must allow firestore_mirror_status='retired'.");
+}
+for (const marker of [
+  "'phase29_rental_mirror_status_retired_constraint'",
+  "'firestoreMirrorStatusRetired', true",
+  "'authoritativeReadLegacySyncBypass', true",
+]) {
+  if (!phase29ConstraintHotfix.includes(marker)) throw new Error(`Phase 29 runtime hotfix marker is missing: ${marker}`);
+}
+
+console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion + Phase 19 user-action lifecycle + Phase 20 asset-domain + Phase 21 member/restriction/admin identity authority + Phase 22 account recovery/admin Clerk auth + Phase 23 user Clerk auth/lifecycle + Phase 24 site content + Phase 25 policy/terms + Phase 26 notice/FAQ board authority + Phase 28 asset/board write mirror retirement + Phase 29 rental transaction PostgreSQL authority + runtime constraint hotfix are type-safe)');

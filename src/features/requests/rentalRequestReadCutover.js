@@ -88,9 +88,11 @@ const normalizeCandidateRequests = (requests) =>
     .filter(Boolean);
 
 export const readRentalRequestCandidatePayload = (payload) => {
+  const source = trim(payload?.rentalRequestCandidate?.source);
+  const supportedSource = ['postgresql-shadow', 'postgresql-authoritative'].includes(source);
   if (
     !payload?.authenticated ||
-    payload?.rentalRequestCandidate?.source !== 'postgresql-shadow' ||
+    !supportedSource ||
     !Array.isArray(payload?.rentalRequestCandidate?.requests)
   ) {
     const error = new Error('Backend returned an invalid rental request read candidate.');
@@ -99,8 +101,8 @@ export const readRentalRequestCandidatePayload = (payload) => {
   }
 
   return Object.freeze({
-    source: 'postgresql-shadow',
-    authoritative: false,
+    source,
+    authoritative: source === 'postgresql-authoritative' || Boolean(payload.rentalRequestCandidate.authoritative),
     requests: normalizeCandidateRequests(payload.rentalRequestCandidate.requests),
     count: Number(payload.rentalRequestCandidate.count) || 0,
     sourceHash: trim(payload.rentalRequestCandidate.sourceHash),
@@ -185,7 +187,7 @@ export const loadRentalRequestsWithoutFirestoreWatcher = async ({
       throw error;
     }
     return Object.freeze({
-      source: 'postgresql-shadow',
+      source: candidate.source || 'postgresql-shadow',
       requests: normalizeCandidateRequests(candidate.requests),
       equivalent: Number(candidate.sourceRefreshes) > 0 ? true : null,
       changedRequestIds: [],

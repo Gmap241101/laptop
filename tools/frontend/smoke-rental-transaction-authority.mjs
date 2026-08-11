@@ -17,6 +17,26 @@ const appliedStatus = await requestRentalRequestWriteMirrorRetirementStatus({
 });
 assert.equal(appliedStatus.backendApplied, true);
 assert.equal(appliedStatus.error, null);
+
+
+const rentalReadCutover = readFileSync('src/features/requests/rentalRequestReadCutover.js', 'utf8');
+for (const marker of [
+  "['postgresql-shadow', 'postgresql-authoritative']",
+  "source === 'postgresql-authoritative'",
+  "source: candidate.source || 'postgresql-shadow'",
+]) assert.ok(rentalReadCutover.includes(marker), marker);
+
+const rentalDataController = readFileSync('src/features/requests/useRentalDataSubscriptionController.js', 'utf8');
+for (const marker of [
+  'readRentalRequestWriteMirrorRetirementConfig',
+  'rentalWriteMirrorRetirementConfig.enabled',
+  'clerkStagingClient.getRentalRequestReadCandidate()',
+]) assert.ok(rentalDataController.includes(marker), marker);
+const enabledBranch = rentalDataController.indexOf('if (rentalWriteMirrorRetirementConfig.enabled)');
+const syncBranch = rentalDataController.indexOf('clerkStagingClient.syncRentalRequestShadow', enabledBranch);
+const getBranch = rentalDataController.indexOf('clerkStagingClient.getRentalRequestReadCandidate()', enabledBranch);
+assert.ok(enabledBranch >= 0 && getBranch > enabledBranch && syncBranch > getBranch, 'Phase 29 enabled branch must select PostgreSQL candidate before any legacy shadow sync branch.');
+
 const diagnostics = readFileSync('src/clerk/ClerkStagingDiagnostics.jsx', 'utf8');
 for (const marker of [
   'Clerk Staging Test · Phase 29',
@@ -29,4 +49,4 @@ for (const marker of [
 ]) assert.ok(diagnostics.includes(marker), marker);
 const app = readFileSync('src/App.jsx', 'utf8');
 assert.ok(!app.includes('rentalRequestWriteMirrorRetirement'), 'Phase 29 compatibility logic must remain outside App.jsx');
-console.log('[rental-transaction-authority-frontend-smoke] PASS (Phase 29 opt-in + diagnostics contracts)');
+console.log('[rental-transaction-authority-frontend-smoke] PASS (Phase 29 opt-in + authoritative rental read bypass + diagnostics contracts)');

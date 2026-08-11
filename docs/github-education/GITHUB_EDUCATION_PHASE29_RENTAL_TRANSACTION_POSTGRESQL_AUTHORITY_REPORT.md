@@ -43,3 +43,10 @@ Staging validation exposed two deployment blockers before Phase 29 could be acce
 - A frontend Phase 29 request with a backend that has not enabled `FIRESTORE_RENTAL_REQUEST_WRITE_MIRROR_DISABLED=true` is now surfaced as `backend-rental-retirement-not-applied` instead of showing a blank retirement error.
 
 Migration 020 failed inside the migration runner transaction and was not inserted into `schema_migrations`, so correcting the unapplied migration is safe for the observed staging database. Do not proceed to Phase 30 until migration 020 applies successfully and `/health` reports `rentalRequestWriteMirrorDisabled: true` with `rentalTransactionSource: postgresql`.
+
+## Phase 29 runtime constraint/read hotfix
+A second staging validation exposed two runtime defects after migration 020 and the backend retirement flag were successfully enabled:
+- PostgreSQL rejected `firestore_mirror_status='retired'` with SQLSTATE `23514` because the original Phase 16 `app_rental_requests_mirror_status` CHECK constraint allowed only `pending`, `synced`, `failed`, and `legacy-source`. Migration 021 replaces that constraint and explicitly allows `retired`.
+- The user rental-request screen still called the legacy `syncRentalRequestShadow()` path on initial load even when Phase 29 authoritative mode was enabled. This could re-read Firestore after the read fallback had already been retired. The Phase 29 path now calls the PostgreSQL authoritative candidate directly, and the backend legacy sync endpoint also bypasses Firestore import while authoritative mode is enabled.
+
+Because migration 020 is already applied in staging, this schema correction is intentionally delivered as migration 021 rather than rewriting migration 020.

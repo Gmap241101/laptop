@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRentalRequestWriteService } from '../../server/src/rentals/rental-request-write-service.mjs';
+import { createRentalRequestService } from '../../server/src/rentals/rental-request-service.mjs';
 import { createRentalRequestUserActionService } from '../../server/src/rentals/rental-request-user-action-service.mjs';
 import { createAdminRentalRequestService } from '../../server/src/rentals/admin-rental-request-service.mjs';
 
@@ -23,6 +24,35 @@ const rentalRequestService = {
   async getCurrent() { return { requests: [] }; },
   async syncCurrent() { throw new Error('Firestore rental request source sync must be skipped'); },
 };
+
+let authoritativeListCalls = 0;
+let legacySourceReads = 0;
+const authoritativeReadRepository = {
+  async listByAppUserId() { throw new Error('Legacy shadow list must not be used in Phase 29 authoritative read.'); },
+  async replaceForAppUser() { throw new Error('Legacy Firestore shadow replace must not be used in Phase 29 authoritative read.'); },
+  async getSyncState() { throw new Error('Legacy shadow sync state must not be required in Phase 29 authoritative read.'); },
+  async listAuthoritativeByAppUserId() {
+    authoritativeListCalls += 1;
+    return [{ id: 'REQ-TEST0001', requesterUid: 'firebase-user', updatedAt: '2026-08-11T00:00:00.000Z' }];
+  },
+};
+const authoritativeReadService = createRentalRequestService({
+  userRepository,
+  firebaseLinkRepository,
+  memberShadowRepository,
+  rentalRequestRepository: authoritativeReadRepository,
+  firestoreRentalRequestsClient: {
+    async listOwnRentalRequests() { legacySourceReads += 1; throw new Error('Firestore rental read source must be bypassed in Phase 29.'); },
+  },
+  useAuthoritativeSource: true,
+});
+const authoritativeCurrent = await authoritativeReadService.getCurrent('clerk-user');
+assert.equal(authoritativeCurrent.requests.length, 1);
+const authoritativeSyncBypass = await authoritativeReadService.syncCurrent('clerk-user', firebaseIdentity);
+assert.equal(authoritativeSyncBypass.requests.length, 1);
+assert.equal(authoritativeListCalls, 2);
+assert.equal(legacySourceReads, 0, 'Phase 29 authoritative get/sync paths must not read Firestore');
+
 let postgresAssetReads = 0;
 const postgresSource = {
   async getPublicConfig() { return { name: 'postgresql/rentalSystem/publicConfig', fields: { settings: { allowNonOverlappingSameAssetRequests: true, maxRentalDays: 30 } } }; },
@@ -110,7 +140,9 @@ assert.equal(firestoreMirrors, 0);
 const envSource = readFileSync('server/src/config/env.mjs', 'utf8');
 const indexSource = readFileSync('server/src/index.mjs', 'utf8');
 const migration = readFileSync('server/migrations/020_phase29_rental_transaction_postgresql_authority.sql', 'utf8');
+const constraintHotfix = readFileSync('server/migrations/021_phase29_rental_mirror_status_retired_constraint.sql', 'utf8');
 for (const marker of ['FIRESTORE_RENTAL_REQUEST_WRITE_MIRROR_DISABLED', 'rentalRequestWriteMirrorDisabled']) assert.ok(envSource.includes(marker), marker);
 for (const marker of ['createRentalPostgresqlSource', 'writeMirrorEnabled: !config.rentalRequestWriteMirrorDisabled', 'useAuthoritativeSource: config.rentalRequestWriteMirrorDisabled']) assert.ok(indexSource.includes(marker), marker);
 for (const marker of ["'phase', 29", "'rentalTransactionSource', 'postgresql-authoritative'", "'rentalRequestFirestoreWriteMirror', 'retired-staging-opt-in'"]) assert.ok(migration.includes(marker), marker);
-console.log('[rental-transaction-authority-backend-smoke] PASS (PostgreSQL transaction source + rental request Firestore write mirror retirement while Firebase admin identity remains)');
+for (const marker of ['app_rental_requests_mirror_status', "'retired'", "'authoritativeReadLegacySyncBypass', true"]) assert.ok(constraintHotfix.includes(marker), marker);
+console.log('[rental-transaction-authority-backend-smoke] PASS (PostgreSQL transaction source + mirror retirement + retired-status constraint + authoritative read sync bypass)');

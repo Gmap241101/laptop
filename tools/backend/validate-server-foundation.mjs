@@ -501,8 +501,12 @@ for (const marker of ["'phase', 28", "'firestoreWriteMirror', 'retired-staging-o
   if (!phase28Migration.includes(marker)) throw new Error(`Phase 28 migration marker is missing: ${marker}`);
 }
 const phase29Migration = readFileSync('server/migrations/020_phase29_rental_transaction_postgresql_authority.sql', 'utf8');
+const phase29ConstraintHotfix = readFileSync('server/migrations/021_phase29_rental_mirror_status_retired_constraint.sql', 'utf8');
 for (const marker of ["'phase', 29", "'rentalTransactionSource', 'postgresql-authoritative'", "'rentalRequestFirestoreWriteMirror', 'retired-staging-opt-in'", "'rental-request-user-actions'"]) {
   if (!phase29Migration.includes(marker)) throw new Error(`Phase 29 migration marker is missing: ${marker}`);
+}
+for (const marker of ['app_rental_requests_mirror_status', "'retired'", "'authoritativeReadLegacySyncBypass', true"]) {
+  if (!phase29ConstraintHotfix.includes(marker)) throw new Error(`Phase 29 runtime constraint hotfix marker is missing: ${marker}`);
 }
 const serverEnvSource = readFileSync('server/src/config/env.mjs', 'utf8');
 for (const marker of ['FIRESTORE_ASSET_BOARD_WRITE_MIRROR_DISABLED', 'assetBoardWriteMirrorDisabled']) {
@@ -536,4 +540,4 @@ for (const variable of ['CLERK_JWT_KEY=', 'CLERK_AUTHORIZED_PARTIES=', 'CLERK_SE
   if (!configTemplate.includes(variable)) throw new Error(`Phase 6 config template is missing ${variable}`);
 }
 
-console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request shadow/parity + phase16 authoritative write + phase17 admin rental-request cutover + phase18 mutation/audit completion + phase19 user-action lifecycle + phase20 asset-domain + phase21 member/restriction/admin identity authority + phase22 account recovery/admin Clerk auth + phase23 user Clerk authentication/lifecycle + phase24 site content + phase25 policy/terms + phase26 notice/FAQ board authority + phase28 asset/board write mirror retirement + phase29 rental transaction PostgreSQL authority invariants)`);
+console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request shadow/parity + phase16 authoritative write + phase17 admin rental-request cutover + phase18 mutation/audit completion + phase19 user-action lifecycle + phase20 asset-domain + phase21 member/restriction/admin identity authority + phase22 account recovery/admin Clerk auth + phase23 user Clerk authentication/lifecycle + phase24 site content + phase25 policy/terms + phase26 notice/FAQ board authority + phase28 asset/board write mirror retirement + phase29 rental transaction PostgreSQL authority + runtime hotfix invariants)`);

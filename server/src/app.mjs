@@ -173,14 +173,17 @@ const sanitizeRentalRequest = (request) => ({
   updatedAt: request.updatedAt,
 });
 
-const sanitizeRentalRequestCandidate = ({ requests, syncState }) => ({
-  source: 'postgresql-shadow',
-  authoritative: false,
-  requests: requests.map(sanitizeRentalRequest),
-  count: requests.length,
-  sourceHash: syncState.sourceHash,
-  shadowSyncedAt: syncState.syncedAt,
-});
+const sanitizeRentalRequestCandidate = ({ requests, syncState }) => {
+  const authoritative = syncState?.sourceMode === 'postgresql-authoritative';
+  return {
+    source: authoritative ? 'postgresql-authoritative' : 'postgresql-shadow',
+    authoritative,
+    requests: requests.map(sanitizeRentalRequest),
+    count: requests.length,
+    sourceHash: syncState.sourceHash,
+    shadowSyncedAt: syncState.syncedAt,
+  };
+};
 
 const sanitizeAssetCatalog = (catalog = {}) => ({
   source: catalog.source || 'postgresql',

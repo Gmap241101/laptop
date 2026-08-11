@@ -58,3 +58,19 @@ rentalRequestWriteMirrorDisabled: true
 rentalTransactionSource: postgresql
 retiredWriteMirrorDomains: assets / notice / faq / rental-requests
 ```
+
+## Second runtime hotfix requirement
+After migration 020 is already applied, deploy the Phase 29 runtime hotfix package. The release phase must apply:
+
+```text
+021_phase29_rental_mirror_status_retired_constraint.sql
+```
+
+Expected result:
+
+```text
+[migration] applying: 021_phase29_rental_mirror_status_retired_constraint.sql
+[migration] complete; newly applied=1
+```
+
+This migration permits `firestore_mirror_status=retired`. It is required before testing admin status/device saves or user rental mutations with the Phase 29 mirror-retirement flag enabled.

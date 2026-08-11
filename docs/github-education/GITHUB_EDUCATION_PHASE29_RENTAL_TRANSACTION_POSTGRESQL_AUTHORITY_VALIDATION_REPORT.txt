@@ -40,3 +40,11 @@ Staging hotfix validation additions
 - static validator rejects metadata_key/metadata_value in migration 020: PASS
 - frontend detects requested=yes/backendApplied=no as backend-rental-retirement-not-applied: PASS
 - Phase 29 remains candidate until migration 020 applies and backend health reports PostgreSQL retirement applied
+
+Second staging runtime hotfix additions
+- observed PostgreSQL SQLSTATE 23514 on admin rental mutation: traced to app_rental_requests_mirror_status CHECK excluding retired
+- migration 021 replaces app_rental_requests_mirror_status and allows retired: PASS
+- Phase 29 user rental read no longer executes syncRentalRequestShadow on initial authoritative load: PASS
+- backend syncCurrent authoritative mode bypasses Firestore source import: PASS
+- backend smoke asserts Phase 29 authoritative get/sync Firestore rental source reads = 0: PASS
+- Phase 29 remains candidate until migration 021 applies and admin/user rental operations succeed with retired mirror state

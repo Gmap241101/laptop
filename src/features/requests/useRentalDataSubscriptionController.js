@@ -44,6 +44,9 @@ import {
   readLegacyFirestoreReadFallbackConfig,
   recordLegacyFirestoreReadFallbackBlocked,
 } from '../compatibility/legacyFirestoreReadFallbackCutover.js';
+import {
+  readRentalRequestWriteMirrorRetirementConfig,
+} from '../compatibility/rentalRequestWriteMirrorRetirement.js';
 
 const createDefaultSplitSourceReady = () => ({
   config: false,
@@ -215,6 +218,7 @@ export function useOwnRentalRequestsSubscriptionController({
     const cutoverConfig = readRentalRequestCutoverConfig();
     const legacyFallbackConfig = readLegacyFirestoreReadFallbackConfig();
     const legacyFallbackAllowed = isLegacyFirestoreReadFallbackAllowed(legacyFallbackConfig);
+    const rentalWriteMirrorRetirementConfig = readRentalRequestWriteMirrorRetirementConfig();
 
     const mergeRequestLists = (requestLists) => {
       const requestMap = new Map();
@@ -233,7 +237,9 @@ export function useOwnRentalRequestsSubscriptionController({
       let payload = null;
       let sourceRefreshes = 0;
 
-      if (refreshSource) {
+      if (rentalWriteMirrorRetirementConfig.enabled) {
+        payload = await clerkStagingClient.getRentalRequestReadCandidate();
+      } else if (refreshSource) {
         const firebaseIdToken = await firebaseAuthUser.getIdToken();
         payload = await clerkStagingClient.syncRentalRequestShadow(firebaseIdToken);
         sourceRefreshes = 1;
