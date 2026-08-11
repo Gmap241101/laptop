@@ -40,6 +40,15 @@ const getMillis = (value) => {
 
 const isActiveBanner = (banner, now) => {
   if (!banner?.enabled) return false;
+  const authoritativeVisibility = banner?.__publicVisibility;
+  if (authoritativeVisibility && Number.isFinite(Number(authoritativeVisibility.startMillis))) {
+    const start = Number(authoritativeVisibility.startMillis);
+    const end = Number(authoritativeVisibility.endMillis || 0);
+    const indefinite = authoritativeVisibility.isIndefinite === true;
+    if (!start || now < start) return false;
+    if (!indefinite && (!end || now > end)) return false;
+    return authoritativeVisibility.enabled !== false;
+  }
   const start = getMillis(banner.startAt);
   const end = banner.isIndefinite ? 0 : getMillis(banner.endAt);
   if (!start || now < start) return false;
@@ -135,8 +144,14 @@ export default function UserHomePanel({ ctx }) {
           try {
             const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.HOME, config: cutover });
             const postgresBanners = content.documents
-              .filter((item) => item.key.startsWith('homeBanners/') && item.payload?.enabled !== false)
-              .map((item) => ({ ...item.payload, id: item.payload?.id || item.key.split('/').pop() }));
+              .filter((item) => item.key.startsWith('homeBanners/') && item.enabled !== false && item.payload?.enabled !== false)
+              .map((item) => ({
+                ...item.payload,
+                id: item.payload?.id || item.key.split('/').pop(),
+                enabled: typeof item.enabled === 'boolean' ? item.enabled : item.payload?.enabled !== false,
+                sortOrder: Number.isFinite(Number(item.sortOrder)) ? Number(item.sortOrder) : item.payload?.sortOrder,
+                __publicVisibility: item.publicVisibility || null,
+              }));
             if (cutover.authorityRequested) {
               if (cancelled) return;
               const activePostgresBanners = postgresBanners.filter((banner) => isActiveBanner(banner, Date.now()));

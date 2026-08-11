@@ -273,3 +273,36 @@ Passive diagnostics added with the cache-invalidation hotfix:
 - User home publishes PostgreSQL raw banner count and active hero/promotion/quick-link counts after every automatic read.
 - User popup loader publishes PostgreSQL popup count and currently active popup count.
 - These values appear automatically in the Phase 24 diagnostics section and require no test-panel action button.
+
+======================================================================
+2026-08-12 Phase 33 public content visibility authority hotfix
+======================================================================
+Observed staging regression:
+- administrator Firestore -> PostgreSQL synchronization completed successfully
+- administrator diagnostics reported PostgreSQL sync = synced
+- public home still did not render main visual / promotion / quick-link / popup content
+
+Root-cause boundary fixed:
+- all affected public objects are time-governed content while footer content is not
+- Phase 33 public reads were making final start/end visibility decisions in the browser from revived PostgreSQL JSON payload values
+- the runtime boundary accepted only a narrow timestamp object shape and duplicated visibility semantics between Firestore/admin and PostgreSQL/public paths
+
+Hotfix contract:
+- server/src/content/site-content-service.mjs now projects publicVisibility for homeBanners/* and popupPosts/* from PostgreSQL documents
+- backend timestamp normalization accepts serialized marker/millis, Firestore seconds/nanoseconds, underscore seconds/nanoseconds, ISO string and numeric epoch representations
+- PostgreSQL row enabled/sortOrder metadata is projected back into payload as the canonical public metadata
+- UserHomePanel and popup runtime consume server-projected visibility epoch values and continue recomputing start/end transitions locally from those epoch values
+- no Firestore public fallback is restored
+- no test-panel button is required for normal operation
+
+Backend visibility revision:
+phase33-public-content-visibility-hotfix-20260812-0105
+
+Validation:
+- verify:phase33 PASS
+- site-content backend smoke validates five timestamp representations and ended state
+- site-content frontend smoke validates publicVisibility consumption and PostgreSQL row metadata precedence
+- React audit PASS (174 source files)
+- Application audit PASS (124 contracts / 11 user routes / 20 administrator tabs)
+- Firestore strict audit PASS (138 calls / warnings 0 / errors 0)
+- build:staging prebuild PASS; final Vite bundle not run in assistant environment because vite executable is unavailable (exit 127)

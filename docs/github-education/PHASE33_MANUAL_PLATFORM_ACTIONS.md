@@ -401,3 +401,22 @@ Popup posts from PostgreSQL / active: <raw> / <active>
 ```
 
 These are populated by normal user-page PostgreSQL reads. If raw counts are nonzero but active counts are zero, inspect the enabled/start/end schedule in the administrator UI rather than re-running synchronization buttons.
+
+## 2026-08-12 public content visibility authority hotfix
+
+Apply the full deployment package containing revision:
+
+```text
+phase33-public-content-visibility-hotfix-20260812-0105
+```
+
+This hotfix changes both backend and frontend runtime. Redeploy Heroku Staging and Vercel Staging. No PostgreSQL migration, Firebase Rules/index change, Clerk setting change, or new environment variable is required.
+
+After deployment, do not press any diagnostics synchronization button. Normal runtime must work without it.
+
+1. Open the Heroku Staging root response and confirm:
+   `publicContentVisibilityRevision = phase33-public-content-visibility-hotfix-20260812-0105`.
+2. Open `/admin` normally and confirm administrator site-content saves still succeed.
+3. Open the plain public `/` URL in a fresh tab. Main visual, promotion banners, quick-link banners and active popups must render according to the same enabled/start/end state shown by the administrator editor.
+4. Change one active home banner and one active popup in the administrator UI, save them, return to the public tab, and confirm the changes without using test-panel buttons.
+5. The public path must remain PostgreSQL-authoritative; do not re-enable Firestore parity fallback.

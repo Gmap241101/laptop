@@ -469,6 +469,7 @@ export const createRequestHandler = ({
     environment: config.appEnv,
     version: config.serviceVersion,
     runtimeRevision: 'phase33-user-clerk-content-authority-20260811-2210',
+    publicContentVisibilityRevision: 'phase33-public-content-visibility-hotfix-20260812-0105',
     compatibility: {
       assetBoardWriteMirrorDisabled: Boolean(config.assetBoardWriteMirrorDisabled),
       retiredWriteMirrorDomains: [

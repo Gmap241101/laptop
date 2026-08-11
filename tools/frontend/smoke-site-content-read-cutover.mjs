@@ -70,4 +70,8 @@ assert.ok(!app.includes('siteContentCutover'), 'Phase 24 must not push site cont
 assert.ok(home.includes('homeActiveHeroCount'), 'user home must publish passive PostgreSQL banner activity diagnostics');
 assert.ok(popupFooter.includes('popupActiveCount'), 'user popup loader must publish passive PostgreSQL popup activity diagnostics');
 assert.ok(diagnostics.includes('Home active hero / promotion / quick-link'), 'diagnostics must show passive home rendering counts without test buttons');
+
+for (const marker of ['publicVisibility', '__publicVisibility', 'item.enabled !== false']) {
+  assert.ok(home.includes(marker) || popupFooter.includes(marker) || cutover.includes(marker), `missing Phase 33 public visibility marker: ${marker}`);
+}
 console.log('[site-content-frontend-smoke] PASS (site settings/home/popup/footer PostgreSQL preferred reads + admin Firestore write-through + diagnostics)');

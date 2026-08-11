@@ -24,6 +24,7 @@ const EVENT_NAME = 'rental:site-content-cutover';
 const INVALIDATION_EVENT_NAME = 'rental:site-content-invalidated';
 const INVALIDATION_STORAGE_KEY = 'mk_site_content_invalidated_v2';
 const DOMAIN_CACHE_TTL_MS = 5_000;
+export const PHASE33_PUBLIC_CONTENT_VISIBILITY_REVISION = 'phase33-public-content-visibility-hotfix-20260812-0105';
 const trim = (value) => (typeof value === 'string' ? value.trim() : String(value ?? '').trim());
 const bool = (value) => trim(value).toLowerCase() === 'true';
 
@@ -209,7 +210,13 @@ export const requestSiteContentDomain = async ({ domain, fetchImpl = fetch, conf
     }
     const result = Object.freeze({
       ...content,
-      documents: content.documents.map((item) => Object.freeze({ ...item, payload: reviveValue(item.payload || {}) })),
+      documents: content.documents.map((item) => Object.freeze({
+        ...item,
+        payload: reviveValue(item.payload || {}),
+        publicVisibility: item?.publicVisibility && typeof item.publicVisibility === 'object'
+          ? Object.freeze({ ...item.publicVisibility })
+          : null,
+      })),
     });
     observationPublisher?.({ readRequested: true, domain, readSource: 'postgresql', documentCount: result.documents.length, syncAt: result.syncedAt || null, error: null });
     return result;

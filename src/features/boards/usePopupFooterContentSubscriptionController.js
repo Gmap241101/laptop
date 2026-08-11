@@ -272,8 +272,14 @@ export default function usePopupFooterContentSubscriptionController({
           try {
             const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.POPUP, config: cutover });
             const postgresPosts = content.documents
-              .filter((item) => item.key.startsWith('popupPosts/') && item.payload?.enabled !== false)
-              .map((item) => ({ ...item.payload, id: item.payload?.id || item.key.split('/').pop() }));
+              .filter((item) => item.key.startsWith('popupPosts/') && item.enabled !== false && item.payload?.enabled !== false)
+              .map((item) => ({
+                ...item.payload,
+                id: item.payload?.id || item.key.split('/').pop(),
+                enabled: typeof item.enabled === 'boolean' ? item.enabled : item.payload?.enabled !== false,
+                sortOrder: Number.isFinite(Number(item.sortOrder)) ? Number(item.sortOrder) : item.payload?.sortOrder,
+                __publicVisibility: item.publicVisibility || null,
+              }));
             let sourcePosts = postgresPosts;
             if (!cutover.authorityRequested) {
               const firestoreSnapshot = await getDocsFromServer(popupSource);

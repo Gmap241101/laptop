@@ -56,16 +56,24 @@ export const getPopupDisplayStatus = (
 ) => {
   if (!post.enabled) return { key: 'disabled', label: '사용안함' };
 
-  const startMillis = getPopupDateMillis(post.startAt);
-  const endMillis = post.isIndefinite
+  const authoritativeVisibility = post?.__publicVisibility;
+  const startMillis = authoritativeVisibility && Number.isFinite(Number(authoritativeVisibility.startMillis))
+    ? Number(authoritativeVisibility.startMillis)
+    : getPopupDateMillis(post.startAt);
+  const isIndefinite = authoritativeVisibility
+    ? authoritativeVisibility.isIndefinite === true
+    : post.isIndefinite === true;
+  const endMillis = isIndefinite
     ? 0
-    : getPopupDateMillis(post.endAt);
+    : authoritativeVisibility && Number.isFinite(Number(authoritativeVisibility.endMillis))
+      ? Number(authoritativeVisibility.endMillis)
+      : getPopupDateMillis(post.endAt);
 
   if (!startMillis || nowMillis < startMillis) {
     return { key: 'scheduled', label: '노출예정' };
   }
 
-  if (!post.isIndefinite && (!endMillis || nowMillis > endMillis)) {
+  if (!isIndefinite && (!endMillis || nowMillis > endMillis)) {
     return { key: 'ended', label: '노출종료' };
   }
 
