@@ -9,7 +9,7 @@ import {
   syncAllSiteContentDomainsFromFirestore,
 } from './siteContentCutover.js';
 
-const REPAIR_SESSION_KEY = 'mk_phase33_public_content_authority_repair_20260812_0015';
+const REPAIR_SESSION_KEY = 'mk_phase33_public_content_authority_repair_20260812_0045';
 
 const hasRepairCompleted = () => {
   try {

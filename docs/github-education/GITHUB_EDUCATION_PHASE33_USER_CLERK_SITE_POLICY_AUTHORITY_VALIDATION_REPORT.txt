@@ -229,3 +229,47 @@ Deployment impact:
 - Vercel Staging redeploy required.
 - Heroku redeploy not required.
 - No SQL migration, dependency, Firebase Rules/index, Clerk configuration or Production change.
+
+Phase 33 public content cache invalidation/read-back hotfix — 2026-08-12 00:45 KST
+-------------------------------------------------------------------------------
+Observed Staging state after the Clerk hydration hotfix:
+- Administrator diagnostics reported Site content last domain = all.
+- PostgreSQL sync = synced, site content error = none.
+- Administrator Firestore lists remained populated and editable.
+- The public user home still did not show main visual, promotion banners, quick-link banners or published popups.
+- The operator had already used the diagnostics synchronization controls repeatedly; manual button use was therefore not the missing step.
+
+Confirmed remaining structural defect:
+- requestSiteContentDomain kept a module-level Promise cache with no expiration.
+- A user tab that had previously read an empty/incomplete PostgreSQL home/popup/footer domain could reuse that response for the lifetime of the SPA.
+- Successful administrator Firestore -> PostgreSQL synchronization cleared only the cache in the administrator JavaScript realm. It did not invalidate another already-open user tab.
+- PostgreSQL authority also removed Firestore onSnapshot realtime invalidation from the public path, but no replacement focus/cross-tab refresh contract had been added.
+- The sync success check compared only document count. A same-count payload/key mismatch could therefore still be reported as synced.
+
+Hotfix:
+1. PostgreSQL site-content cache is now bounded to a 5-second TTL instead of an unbounded SPA-lifetime Promise cache.
+2. Successful administrator domain sync publishes rental:site-content-invalidated and a localStorage broadcast so same-tab and other same-origin tabs discard stale content immediately.
+3. User home, popup/footer and site-settings controllers subscribe to the invalidation and automatically re-read PostgreSQL on invalidation, window focus, pageshow, and return-to-visible events.
+4. Administrator full-repair session key is bumped to mk_phase33_public_content_authority_repair_20260812_0045 so the current Firestore -> PostgreSQL reconciliation runs again after deployment without manual diagnostics buttons.
+5. Site-content sync now compares canonical document key + payload + enabled + sortOrder + sourceUpdatedAt after PostgreSQL write-back. A mismatch fails with site_content_sync_payload_mismatch rather than incorrectly reporting synced.
+6. Frontend hotfix revision is phase33-public-content-cache-invalidation-hotfix-20260812-0045.
+7. Public Firestore fallback remains retired under Phase 33 authority. This fix restores freshness/invalidation without reintroducing Firestore as the user source.
+
+Validation:
+- Full npm run verify:phase33: PASS / exit 0.
+- React hook audit: PASS (174 source files).
+- Application flow audit: PASS (124 contracts, 11 user routes, 20 administrator tabs).
+- Firestore strict audit: PASS (138 calls, 0 unapproved warnings, 0 unapproved errors).
+- Phase 33 frontend smoke: PASS.
+- Site-content frontend smoke: PASS.
+- build:staging prebuild: PASS; Vite executable unavailable in assistant workspace / exit 127.
+
+Deployment impact:
+- Frontend-only hotfix; Vercel Staging redeploy required.
+- Heroku redeploy, SQL migration, Firebase Rules/index, Clerk settings, dependency changes and Production changes are not required.
+- No diagnostics synchronization button is required for normal operation. Opening/authenticating the administrator page triggers the one-time repair automatically, and public tabs refresh automatically when invalidated/focused.
+
+Passive diagnostics added with the cache-invalidation hotfix:
+- User home publishes PostgreSQL raw banner count and active hero/promotion/quick-link counts after every automatic read.
+- User popup loader publishes PostgreSQL popup count and currently active popup count.
+- These values appear automatically in the Phase 24 diagnostics section and require no test-panel action button.

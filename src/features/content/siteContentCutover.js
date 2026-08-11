@@ -21,6 +21,9 @@ import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 const READ_SESSION_KEY = 'mk_site_content_postgres_read';
 const WRITE_SESSION_KEY = 'mk_site_content_postgres_write_through';
 const EVENT_NAME = 'rental:site-content-cutover';
+const INVALIDATION_EVENT_NAME = 'rental:site-content-invalidated';
+const INVALIDATION_STORAGE_KEY = 'mk_site_content_invalidated_v2';
+const DOMAIN_CACHE_TTL_MS = 5_000;
 const trim = (value) => (typeof value === 'string' ? value.trim() : String(value ?? '').trim());
 const bool = (value) => trim(value).toLowerCase() === 'true';
 
@@ -131,6 +134,42 @@ export const clearSiteContentDomainCache = (domain) => {
   else domainCache.clear();
 };
 
+export const publishSiteContentInvalidation = (domain = 'all') => {
+  clearSiteContentDomainCache(domain === 'all' ? null : domain);
+  if (typeof window === 'undefined') return;
+  const detail = Object.freeze({
+    domain: trim(domain) || 'all',
+    invalidatedAt: Date.now(),
+    nonce: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  });
+  window.dispatchEvent(new CustomEvent(INVALIDATION_EVENT_NAME, { detail }));
+  try {
+    window.localStorage?.setItem?.(INVALIDATION_STORAGE_KEY, JSON.stringify(detail));
+  } catch {
+    // Cross-tab invalidation is best-effort; the same-tab CustomEvent already fired.
+  }
+};
+
+export const subscribeSiteContentInvalidation = (listener) => {
+  if (typeof window === 'undefined' || typeof listener !== 'function') return () => {};
+  const onLocal = (event) => listener(event.detail || { domain: 'all', invalidatedAt: Date.now() });
+  const onStorage = (event) => {
+    if (event.key !== INVALIDATION_STORAGE_KEY || !event.newValue) return;
+    try {
+      const detail = JSON.parse(event.newValue);
+      listener(detail && typeof detail === 'object' ? detail : { domain: 'all', invalidatedAt: Date.now() });
+    } catch {
+      listener({ domain: 'all', invalidatedAt: Date.now() });
+    }
+  };
+  window.addEventListener(INVALIDATION_EVENT_NAME, onLocal);
+  window.addEventListener('storage', onStorage);
+  return () => {
+    window.removeEventListener(INVALIDATION_EVENT_NAME, onLocal);
+    window.removeEventListener('storage', onStorage);
+  };
+};
+
 let latestObservation = null;
 export const publishSiteContentObservation = (detail = {}) => {
   latestObservation = Object.freeze({ ...detail, observedAt: new Date().toISOString() });
@@ -148,7 +187,10 @@ export const subscribeSiteContentObservation = (listener) => {
 export const requestSiteContentDomain = async ({ domain, fetchImpl = fetch, config = readSiteContentCutoverConfig(), useCache = true, observationPublisher = publishSiteContentObservation } = {}) => {
   if (!config.readRequested) return null;
   if (!config.apiBaseUrl) throw Object.assign(new Error('VITE_API_URL is required for Phase 24 site content read cutover.'), { code: 'site_content_api_missing' });
-  if (useCache && domainCache.has(domain)) return domainCache.get(domain);
+  const nowMillis = Date.now();
+  const cached = useCache ? domainCache.get(domain) : null;
+  if (cached?.promise && cached.expiresAt > nowMillis) return cached.promise;
+  if (cached) domainCache.delete(domain);
   const promise = (async () => {
     const response = await fetchImpl(`${config.apiBaseUrl}/api/site-content/${encodeURIComponent(domain)}`, {
       method: 'GET', headers: { Accept: 'application/json' }, cache: 'no-store',
@@ -172,7 +214,7 @@ export const requestSiteContentDomain = async ({ domain, fetchImpl = fetch, conf
     observationPublisher?.({ readRequested: true, domain, readSource: 'postgresql', documentCount: result.documents.length, syncAt: result.syncedAt || null, error: null });
     return result;
   })();
-  if (useCache) domainCache.set(domain, promise);
+  if (useCache) domainCache.set(domain, { promise, expiresAt: nowMillis + DOMAIN_CACHE_TTL_MS });
   try { return await promise; }
   catch (error) { if (useCache) domainCache.delete(domain); observationPublisher?.({ readRequested: true, domain, readSource: 'firestore-fallback', error: error?.code || 'site_content_read_failed' }); throw error; }
 };
@@ -220,6 +262,26 @@ const readDomainFromFirestore = async (domain) => {
   throw Object.assign(new Error('Unsupported site content domain.'), { code: 'site_content_domain_invalid' });
 };
 
+const stableForSyncComparison = (value) => {
+  if (Array.isArray(value)) return value.map(stableForSyncComparison);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stableForSyncComparison(value[key])]));
+};
+
+const normalizeSyncDocumentForComparison = (item = {}) => ({
+  key: trim(item.key),
+  payload: stableForSyncComparison(item.payload || {}),
+  enabled: typeof item.enabled === 'boolean' ? item.enabled : null,
+  sortOrder: Number.isFinite(Number(item.sortOrder)) ? Math.trunc(Number(item.sortOrder)) : null,
+  sourceUpdatedAt: item.sourceUpdatedAt || null,
+});
+
+const siteContentSyncSignature = (documents = []) => JSON.stringify(
+  (Array.isArray(documents) ? documents : [])
+    .map(normalizeSyncDocumentForComparison)
+    .sort((first, second) => first.key.localeCompare(second.key))
+);
+
 export const syncSiteContentDomainFromFirestore = async ({ domain, fetchImpl = fetch, config = readSiteContentCutoverConfig(), observationPublisher = publishSiteContentObservation } = {}) => {
   if (!config.writeThroughRequested) return Object.freeze({ skipped: true });
   if (!config.apiBaseUrl) throw Object.assign(new Error('VITE_API_URL is required for site content write-through.'), { code: 'site_content_api_missing' });
@@ -266,7 +328,24 @@ export const syncSiteContentDomainFromFirestore = async ({ domain, fetchImpl = f
     });
     throw error;
   }
-  clearSiteContentDomainCache(domain);
+  const sourceSignature = siteContentSyncSignature(documents);
+  const postgresSignature = siteContentSyncSignature(payload?.siteContent?.documents || []);
+  if (sourceSignature !== postgresSignature) {
+    const error = Object.assign(new Error('PostgreSQL site content sync payload mismatch.'), {
+      code: 'site_content_sync_payload_mismatch',
+    });
+    observationPublisher?.({
+      writeThroughRequested: true,
+      domain,
+      writeSource: 'firestore-server',
+      postgresSync: 'failed',
+      firestoreDocumentCount: documents.length,
+      postgresDocumentCount,
+      error: error.code,
+    });
+    throw error;
+  }
+  publishSiteContentInvalidation(domain);
   observationPublisher?.({
     writeThroughRequested: true,
     domain,

@@ -28,6 +28,7 @@ import {
 } from '../../utils/appUtils.js';
 import {
   getPopupDateMillis,
+  getPopupDisplayStatus,
   getPopupVersionKey,
 } from '../../utils/popupUtils.js';
 import {
@@ -40,12 +41,17 @@ import {
   requestSiteContentDomain,
   SITE_CONTENT_DOMAINS,
 } from '../content/siteContentCutover.js';
+import useSiteContentRefreshRevision from '../content/useSiteContentRefreshRevision.js';
 
 const POPUP_DISMISSED_SESSION_KEY =
   'rentalSystemDismissedPopupVersions';
 const POPUP_DISMISSED_LOCAL_KEY =
   'rentalSystemDismissedPopupVersionsUntil';
 const POPUP_DISMISS_SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+const USER_SITE_CONTENT_REFRESH_DOMAINS = Object.freeze([
+  SITE_CONTENT_DOMAINS.POPUP,
+  SITE_CONTENT_DOMAINS.FOOTER,
+]);
 
 const readDismissedPopupSessionVersions = () => {
   if (typeof window === 'undefined') return [];
@@ -173,6 +179,7 @@ export default function usePopupFooterContentSubscriptionController({
   view,
 }) {
   const triggerToastRef = useRef(triggerToast);
+  const siteContentRefreshRevision = useSiteContentRefreshRevision(USER_SITE_CONTENT_REFRESH_DOMAINS);
 
   useEffect(() => {
     triggerToastRef.current = triggerToast;
@@ -302,6 +309,17 @@ export default function usePopupFooterContentSubscriptionController({
               if (firstHasOrder !== secondHasOrder) return firstHasOrder ? -1 : 1;
               return getPopupDateMillis(second.createdAt) - getPopupDateMillis(first.createdAt);
             });
+            if (cutover.authorityRequested) {
+              publishSiteContentObservation({
+                readRequested: true,
+                domain: SITE_CONTENT_DOMAINS.POPUP,
+                readSource: 'postgresql',
+                documentCount: content.documents.length,
+                popupPostCount: remotePosts.length,
+                popupActiveCount: remotePosts.filter((post) => getPopupDisplayStatus(post, Date.now()).key === 'active').length,
+                error: null,
+              });
+            }
             setPopupPosts(remotePosts);
             setPopupPostsLoadErrorMessage('');
             setPopupPostsReady(true);
@@ -343,6 +361,7 @@ export default function usePopupFooterContentSubscriptionController({
     setPopupPostsLoadErrorMessage,
     setPopupPostsReady,
     userTab,
+    siteContentRefreshRevision,
     view,
   ]);
 
@@ -463,6 +482,7 @@ export default function usePopupFooterContentSubscriptionController({
     setFooterConfigDraft,
     setFooterConfigLoadErrorMessage,
     setFooterConfigReady,
+    siteContentRefreshRevision,
     view,
   ]);
 
@@ -612,6 +632,7 @@ export default function usePopupFooterContentSubscriptionController({
     setFooterPages,
     setFooterPagesLoadErrorMessage,
     setFooterPagesReady,
+    siteContentRefreshRevision,
     view,
   ]);
 

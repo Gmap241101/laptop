@@ -10,6 +10,7 @@ import {
   requestSiteContentDomain,
   SITE_CONTENT_DOMAINS,
 } from '../content/siteContentCutover.js';
+import useSiteContentRefreshRevision from '../content/useSiteContentRefreshRevision.js';
 
 const applySiteDocumentPresentation = (siteSettings) => {
   if (typeof document === 'undefined') {
@@ -50,6 +51,8 @@ export default function useSiteSettingsController() {
   const [siteSettingsReady, setSiteSettingsReady] = useState(false);
   const [siteSettingsLoadErrorMessage, setSiteSettingsLoadErrorMessage] =
     useState('');
+
+  const siteContentRefreshRevision = useSiteContentRefreshRevision(SITE_CONTENT_DOMAINS.SITE_SETTINGS);
 
   const normalizedSiteSettings = useMemo(
     () => normalizeSiteSettings(siteSettings),
@@ -116,7 +119,7 @@ export default function useSiteSettingsController() {
     );
 
     return unsubscribe;
-  }, []);
+  }, [siteContentRefreshRevision]);
 
   useEffect(() => {
     applySiteDocumentPresentation(normalizedSiteSettings);

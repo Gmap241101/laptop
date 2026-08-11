@@ -21,6 +21,7 @@ import {
   requestSiteContentDomain,
   SITE_CONTENT_DOMAINS,
 } from '../features/content/siteContentCutover.js';
+import useSiteContentRefreshRevision from '../features/content/useSiteContentRefreshRevision.js';
 
 const PROMOTION_LAYOUTS = {
   '2x1': { rows: 1, slots: 2, aspectClass: 'aspect-square' },
@@ -122,6 +123,7 @@ export default function UserHomePanel({ ctx }) {
   const [heroPaused, setHeroPaused] = useState(false);
   const [documentHidden, setDocumentHidden] = useState(false);
   const touchStartXRef = useRef(null);
+  const siteContentRefreshRevision = useSiteContentRefreshRevision(SITE_CONTENT_DOMAINS.HOME);
 
   useEffect(() => {
     let cancelled = false;
@@ -137,6 +139,18 @@ export default function UserHomePanel({ ctx }) {
               .map((item) => ({ ...item.payload, id: item.payload?.id || item.key.split('/').pop() }));
             if (cutover.authorityRequested) {
               if (cancelled) return;
+              const activePostgresBanners = postgresBanners.filter((banner) => isActiveBanner(banner, Date.now()));
+              publishSiteContentObservation({
+                readRequested: true,
+                domain: SITE_CONTENT_DOMAINS.HOME,
+                readSource: 'postgresql',
+                documentCount: content.documents.length,
+                homeBannerCount: postgresBanners.length,
+                homeActiveHeroCount: activePostgresBanners.filter((banner) => banner.placement === 'hero').length,
+                homeActivePromotionCount: activePostgresBanners.filter((banner) => banner.placement === 'promotion').length,
+                homeActiveQuickLinkCount: activePostgresBanners.filter((banner) => banner.placement === 'quickLink').length,
+                error: null,
+              });
               setBanners(postgresBanners);
               setBannersReady(true);
               setBannerLoadError('');
@@ -195,7 +209,7 @@ export default function UserHomePanel({ ctx }) {
 
     void loadHomeBanners();
     return () => { cancelled = true; };
-  }, []);
+  }, [siteContentRefreshRevision]);
 
   useEffect(() => {
     let cancelled = false;
@@ -234,7 +248,7 @@ export default function UserHomePanel({ ctx }) {
 
     void loadHomeConfig();
     return () => { cancelled = true; };
-  }, []);
+  }, [siteContentRefreshRevision]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 30_000);

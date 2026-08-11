@@ -325,3 +325,79 @@ After deployment:
 4. Wait for the first-session reconciliation. There must be no `site_content_clerk_session_missing` toast.
 5. Reload `https://mkrental.vercel.app/` and confirm the main visual, promotion banners, quick-link banners, popup and footer.
 6. Edit and save one home banner and one popup from the plain administrator URL, then reload the user home and confirm both edits appear.
+
+## Public content cache invalidation/read-back hotfix — 2026-08-12 00:45 KST
+
+Manual diagnostics synchronization buttons are **not** part of the normal Phase 33 runtime contract. If PostgreSQL synchronization reports success, user content must refresh without an operator repeatedly pressing test-panel buttons.
+
+This hotfix fixes the remaining public-content freshness split:
+
+```text
+Administrator Firestore save
+→ Clerk/Firebase administrator authenticated PostgreSQL write-through
+→ full payload/key read-back verification
+→ PostgreSQL domain cache invalidation
+→ same-tab CustomEvent + cross-tab localStorage broadcast
+→ user home/popup/footer/site-settings automatic PostgreSQL re-read
+```
+
+The previous module cache had no expiration. It is now limited to 5 seconds, and successful writes explicitly invalidate it.
+
+User public content also refreshes on:
+
+```text
+window focus
+pageshow
+visibility hidden → visible
+```
+
+The full administrator repair key is now:
+
+```text
+mk_phase33_public_content_authority_repair_20260812_0045
+```
+
+Expected frontend revision:
+
+```text
+Frontend hotfix revision: phase33-public-content-cache-invalidation-hotfix-20260812-0045
+```
+
+New strict synchronization failure code:
+
+```text
+site_content_sync_payload_mismatch
+```
+
+This means PostgreSQL returned the same document count but not the same canonical keys/payload/metadata as the Firestore server source. It must be fixed at the bridge; do not enable silent public Firestore fallback.
+
+Deployment:
+
+```text
+Vercel Staging: redeploy required
+Heroku Staging: no redeploy required for this hotfix
+Migration: none
+New environment variables: none
+Firebase Rules/index: unchanged
+Clerk configuration: unchanged
+Production: unchanged
+```
+
+Post-deployment validation requires no diagnostics action buttons:
+
+1. Open `https://mkrental.vercel.app/admin` and authenticate normally.
+2. Wait for the automatic first-session reconciliation; no synchronization error toast should appear.
+3. Open or focus `https://mkrental.vercel.app/` in another tab. Main visual, promotion banners, quick-link banners, popup and footer must refresh automatically.
+4. Save one home banner and one popup from plain `/admin`.
+5. Focus the user tab again. The saved content must appear without a hard reload and without pressing a diagnostics button.
+6. A full reload must also show the same PostgreSQL content.
+
+Passive diagnostics (no button required) now also show:
+
+```text
+Home banners from PostgreSQL: <raw count>
+Home active hero / promotion / quick-link: <hero> / <promotion> / <quick-link>
+Popup posts from PostgreSQL / active: <raw> / <active>
+```
+
+These are populated by normal user-page PostgreSQL reads. If raw counts are nonzero but active counts are zero, inspect the enabled/start/end schedule in the administrator UI rather than re-running synchronization buttons.

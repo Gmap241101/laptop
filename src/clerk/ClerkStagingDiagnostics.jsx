@@ -126,7 +126,7 @@ import { clerkStagingClient } from './clerkStagingClient.js';
 
 const PHASE32_RUNTIME_REVISION = 'phase32-new-member-runtime-authority-20260811-2108';
 const PHASE33_RUNTIME_REVISION = 'phase33-user-clerk-content-authority-20260811-2210';
-const PHASE33_FRONTEND_HOTFIX_REVISION = 'phase33-clerk-session-hydration-hotfix-20260812-0015';
+const PHASE33_FRONTEND_HOTFIX_REVISION = 'phase33-public-content-cache-invalidation-hotfix-20260812-0045';
 
 const panelStyle = {
   position: 'fixed',
@@ -360,6 +360,12 @@ export default function ClerkStagingDiagnostics() {
     siteContentDocumentCount: null,
     siteContentPostgresDocumentCount: null,
     siteContentFirestoreDocumentCount: null,
+    siteContentHomeBannerCount: null,
+    siteContentHomeActiveHeroCount: null,
+    siteContentHomeActivePromotionCount: null,
+    siteContentHomeActiveQuickLinkCount: null,
+    siteContentPopupPostCount: null,
+    siteContentPopupActiveCount: null,
     siteContentPostgresSync: null,
     siteContentSyncAt: null,
     siteContentError: null,
@@ -923,6 +929,24 @@ export default function ClerkStagingDiagnostics() {
         siteContentFirestoreDocumentCount: observation && Object.prototype.hasOwnProperty.call(observation, 'firestoreDocumentCount')
           ? observation.firestoreDocumentCount
           : current.siteContentFirestoreDocumentCount,
+        siteContentHomeBannerCount: observation && Object.prototype.hasOwnProperty.call(observation, 'homeBannerCount')
+          ? observation.homeBannerCount
+          : current.siteContentHomeBannerCount,
+        siteContentHomeActiveHeroCount: observation && Object.prototype.hasOwnProperty.call(observation, 'homeActiveHeroCount')
+          ? observation.homeActiveHeroCount
+          : current.siteContentHomeActiveHeroCount,
+        siteContentHomeActivePromotionCount: observation && Object.prototype.hasOwnProperty.call(observation, 'homeActivePromotionCount')
+          ? observation.homeActivePromotionCount
+          : current.siteContentHomeActivePromotionCount,
+        siteContentHomeActiveQuickLinkCount: observation && Object.prototype.hasOwnProperty.call(observation, 'homeActiveQuickLinkCount')
+          ? observation.homeActiveQuickLinkCount
+          : current.siteContentHomeActiveQuickLinkCount,
+        siteContentPopupPostCount: observation && Object.prototype.hasOwnProperty.call(observation, 'popupPostCount')
+          ? observation.popupPostCount
+          : current.siteContentPopupPostCount,
+        siteContentPopupActiveCount: observation && Object.prototype.hasOwnProperty.call(observation, 'popupActiveCount')
+          ? observation.popupActiveCount
+          : current.siteContentPopupActiveCount,
         siteContentPostgresSync: observation?.postgresSync || current.siteContentPostgresSync,
         siteContentSyncAt: observation?.syncAt || current.siteContentSyncAt,
         siteContentError: observation && Object.prototype.hasOwnProperty.call(observation, 'error')
@@ -1576,6 +1600,9 @@ export default function ClerkStagingDiagnostics() {
       <div>Site content document count: {state.siteContentDocumentCount ?? '-'}</div>
       <div>Site content PostgreSQL enabled count: {state.siteContentPostgresDocumentCount ?? '-'}</div>
       <div>Site content Firestore server enabled count: {state.siteContentFirestoreDocumentCount ?? '-'}</div>
+      <div>Home banners from PostgreSQL: {state.siteContentHomeBannerCount ?? '-'}</div>
+      <div>Home active hero / promotion / quick-link: {state.siteContentHomeActiveHeroCount ?? '-'} / {state.siteContentHomeActivePromotionCount ?? '-'} / {state.siteContentHomeActiveQuickLinkCount ?? '-'}</div>
+      <div>Popup posts from PostgreSQL / active: {state.siteContentPopupPostCount ?? '-'} / {state.siteContentPopupActiveCount ?? '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Site content PostgreSQL sync: {state.siteContentPostgresSync || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Site content synced at: {state.siteContentSyncAt || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Site content error: {state.siteContentError || '-'}</div>
