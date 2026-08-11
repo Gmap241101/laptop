@@ -49,6 +49,10 @@ const files = [
   'tools/backend/smoke-rental-request-shadow.mjs',
   'tools/backend/smoke-rental-request-authoritative-write.mjs',
   'tools/backend/smoke-admin-rental-request-cutover.mjs',
+  'server/src/boards/board-repository.mjs',
+  'server/src/boards/board-service.mjs',
+  'server/src/firestore/firestore-boards.mjs',
+  'tools/backend/smoke-board-authority.mjs',
 ];
 
 for (const file of files) {
@@ -469,9 +473,31 @@ for (const marker of ["'rental-config'", "'terms'"]) {
   if (!siteContentService.includes(marker)) throw new Error(`Phase 25 site content service domain is missing: ${marker}`);
 }
 
+
+const phase26Migration = readFileSync('server/migrations/018_phase26_notice_faq_board_authority.sql', 'utf8');
+for (const marker of ['app_board_configs', 'app_faq_categories', 'app_board_posts', 'app_board_syncs', "'phase', 26", "'adminWriteAuthority', 'postgresql-authoritative'"]) {
+  if (!phase26Migration.includes(marker)) throw new Error(`Phase 26 migration marker is missing: ${marker}`);
+}
+const boardRepository = readFileSync('server/src/boards/board-repository.mjs', 'utf8');
+for (const marker of ['listNotice', 'listFaq', 'incrementNoticeView', 'saveNoticePostAuthoritative', 'saveFaqPostAuthoritative', 'saveFaqCategoryAuthoritative', 'deleteFaqCategoryAuthoritative']) {
+  if (!boardRepository.includes(marker)) throw new Error(`Phase 26 board repository marker is missing: ${marker}`);
+}
+const boardService = readFileSync('server/src/boards/board-service.mjs', 'utf8');
+for (const marker of ['bootstrap', 'saveNotice', 'deleteNotice', 'saveFaq', 'deleteFaq', 'saveConfig', 'saveFaqCategory', 'deleteFaqCategory']) {
+  if (!boardService.includes(marker)) throw new Error(`Phase 26 board service marker is missing: ${marker}`);
+}
+const boardFirestore = readFileSync('server/src/firestore/firestore-boards.mjs', 'utf8');
+for (const marker of ['readBootstrap', 'mirrorNoticeSave', 'mirrorNoticeDelete', 'mirrorFaqSave', 'mirrorFaqDelete', 'mirrorBoardConfig', 'mirrorFaqCategorySave', 'mirrorFaqCategoryDelete']) {
+  if (!boardFirestore.includes(marker)) throw new Error(`Phase 26 board Firestore compatibility marker is missing: ${marker}`);
+}
+const boardCutover = readFileSync('src/features/boards/boardContentCutover.js', 'utf8');
+for (const marker of ['VITE_BOARD_CONTENT_POSTGRES_READ_ENABLED', 'VITE_BOARD_CONTENT_POSTGRES_WRITE_ENABLED', "params.get('boardContent') === 'postgres'", "params.get('boardWrite') === 'postgres'"]) {
+  if (!boardCutover.includes(marker)) throw new Error(`Phase 26 frontend board cutover marker is missing: ${marker}`);
+}
+
 const configTemplate = readFileSync('docs/github-education/HEROKU_CONFIG_VARS_TEMPLATE.txt', 'utf8');
 for (const variable of ['CLERK_JWT_KEY=', 'CLERK_AUTHORIZED_PARTIES=', 'CLERK_SECRET_KEY=sk_test_', 'CLERK_API_TIMEOUT_MS=8000', 'FIREBASE_PROJECT_ID=laptop-system-mk']) {
   if (!configTemplate.includes(variable)) throw new Error(`Phase 6 config template is missing ${variable}`);
 }
 
-console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request shadow/parity + phase16 authoritative write + phase17 admin rental-request cutover + phase18 mutation/audit completion + phase19 user-action lifecycle + phase20 asset-domain + phase21 member/restriction/admin identity authority + phase22 account recovery/admin Clerk auth + phase23 user Clerk authentication/lifecycle + phase24 site content + phase25 policy/terms invariants)`);
+console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request shadow/parity + phase16 authoritative write + phase17 admin rental-request cutover + phase18 mutation/audit completion + phase19 user-action lifecycle + phase20 asset-domain + phase21 member/restriction/admin identity authority + phase22 account recovery/admin Clerk auth + phase23 user Clerk authentication/lifecycle + phase24 site content + phase25 policy/terms + phase26 notice/FAQ board authority invariants)`);

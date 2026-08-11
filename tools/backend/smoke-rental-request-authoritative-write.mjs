@@ -153,8 +153,8 @@ const result = await service.createCurrent(
     requestId: 'REQ-Phase16Smoke001',
     idempotencyKey: 'REQ-Phase16Smoke001',
     laptopId: 'ASSET-1',
-    startDate: '2026-08-10',
-    dueDate: '2026-08-14',
+    startDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+    dueDate: new Date(Date.now() + 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
     purpose: 'Phase 16 smoke',
     requesterName: 'UNTRUSTED NAME',
   },
@@ -175,7 +175,12 @@ await assert.rejects(
   () => service.createCurrent(
     'clerk-user',
     { uid: 'wrong-user', email: 'member@example.test', idToken: 'firebase-token' },
-    { requestId: 'REQ-Phase16Smoke002', laptopId: 'ASSET-1', startDate: '2026-08-10', dueDate: '2026-08-14' },
+    {
+      requestId: 'REQ-Phase16Smoke002',
+      laptopId: 'ASSET-1',
+      startDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+      dueDate: new Date(Date.now() + 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+    },
   ),
   (error) => error.code === 'legacy_link_token_mismatch',
 );

@@ -294,6 +294,21 @@ export const createRequestHandler = ({
     async getDomain() { const error = new Error('Site content service is not configured.'); error.code = 'site_content_not_configured'; throw error; },
     async syncDomain() { const error = new Error('Site content service is not configured.'); error.code = 'site_content_not_configured'; throw error; },
   },
+  boardService = {
+    async getStatus() { const error = new Error('Board service is not configured.'); error.code = 'board_service_not_configured'; throw error; },
+    async listNotice() { const error = new Error('Board service is not configured.'); error.code = 'board_service_not_configured'; throw error; },
+    async getNotice() { const error = new Error('Board service is not configured.'); error.code = 'board_service_not_configured'; throw error; },
+    async incrementNoticeView() { const error = new Error('Board service is not configured.'); error.code = 'board_service_not_configured'; throw error; },
+    async listFaq() { const error = new Error('Board service is not configured.'); error.code = 'board_service_not_configured'; throw error; },
+    async bootstrap() { const error = new Error('Board service is not configured.'); error.code = 'board_service_not_configured'; throw error; },
+    async saveNotice() { const error = new Error('Board service is not configured.'); error.code = 'board_service_not_configured'; throw error; },
+    async deleteNotice() { const error = new Error('Board service is not configured.'); error.code = 'board_service_not_configured'; throw error; },
+    async saveFaq() { const error = new Error('Board service is not configured.'); error.code = 'board_service_not_configured'; throw error; },
+    async deleteFaq() { const error = new Error('Board service is not configured.'); error.code = 'board_service_not_configured'; throw error; },
+    async saveConfig() { const error = new Error('Board service is not configured.'); error.code = 'board_service_not_configured'; throw error; },
+    async saveFaqCategory() { const error = new Error('Board service is not configured.'); error.code = 'board_service_not_configured'; throw error; },
+    async deleteFaqCategory() { const error = new Error('Board service is not configured.'); error.code = 'board_service_not_configured'; throw error; },
+  },
 }) => {
   if (typeof databaseCheck !== 'function') {
     throw new TypeError('databaseCheck must be a function.');
@@ -400,6 +415,22 @@ export const createRequestHandler = ({
     || typeof siteContentService.syncDomain !== 'function') {
     throw new TypeError('siteContentService Phase 24 methods are required.');
   }
+  if (!boardService
+    || typeof boardService.getStatus !== 'function'
+    || typeof boardService.listNotice !== 'function'
+    || typeof boardService.getNotice !== 'function'
+    || typeof boardService.incrementNoticeView !== 'function'
+    || typeof boardService.listFaq !== 'function'
+    || typeof boardService.bootstrap !== 'function'
+    || typeof boardService.saveNotice !== 'function'
+    || typeof boardService.deleteNotice !== 'function'
+    || typeof boardService.saveFaq !== 'function'
+    || typeof boardService.deleteFaq !== 'function'
+    || typeof boardService.saveConfig !== 'function'
+    || typeof boardService.saveFaqCategory !== 'function'
+    || typeof boardService.deleteFaqCategory !== 'function') {
+    throw new TypeError('boardService Phase 26 methods are required.');
+  }
 
 
   const basePayload = {
@@ -435,6 +466,24 @@ export const createRequestHandler = ({
       } else {
         writeJson(response, 401, { ...basePayload, authenticated: true, error: 'legacy_firebase_unauthorized' }, headers);
       }
+      return null;
+    }
+  };
+
+  const authenticateAdminAuthority = async (request, response, headers, requestId) => {
+    const auth = await authenticate(request, response, headers, requestId);
+    if (!auth) return null;
+    const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+    if (!firebaseIdentity) return null;
+    try {
+      const adminAuth = await adminClerkAuthService.getCurrent({ clerkUserId: auth.userId });
+      if (adminAuth.admin.firebaseUid !== firebaseIdentity.uid) {
+        writeJson(response, 409, { ...basePayload, authenticated: true, error: 'admin_identity_mismatch' }, headers);
+        return null;
+      }
+      return Object.freeze({ auth, firebaseIdentity, adminAuth });
+    } catch (error) {
+      writeJson(response, error?.status || 403, { ...basePayload, authenticated: true, error: error?.code || 'admin_authority_required' }, headers);
       return null;
     }
   };
@@ -505,6 +554,13 @@ export const createRequestHandler = ({
           adminAssetCategories: '/api/admin/assets/categories',
           siteContent: '/api/site-content/:domain',
           adminSiteContentSync: '/api/admin/site-content/:domain/sync',
+          noticeBoard: '/api/boards/notice',
+          noticePost: '/api/boards/notice/:id',
+          noticeView: '/api/boards/notice/:id/view',
+          faqBoard: '/api/boards/faq',
+          adminBoardBootstrap: '/api/admin/boards/bootstrap',
+          adminNoticeBoard: '/api/admin/boards/notice/*',
+          adminFaqBoard: '/api/admin/boards/faq/*',
         },
         headers,
       );
@@ -768,6 +824,204 @@ export const createRequestHandler = ({
       } catch (error) {
         console.warn('[site-content] PostgreSQL content sync failed', { requestId, code: error?.code, name: error?.name });
         writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'site_content_sync_failed' }, headers);
+      }
+      return;
+    }
+
+
+    if (request.method === 'GET' && url.pathname === '/api/boards/status') {
+      try {
+        const status = await boardService.getStatus();
+        if (!status) {
+          writeJson(response, 404, { ...basePayload, error: 'board_not_bootstrapped' }, headers);
+        } else {
+          writeJson(response, 200, { ...basePayload, boardStatus: status }, headers);
+        }
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'board_status_unavailable' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/boards/notice') {
+      try {
+        const home = url.searchParams.get('home') === '1';
+        const result = await boardService.listNotice({
+          search: home ? '' : url.searchParams.get('search') || '',
+          page: home ? 1 : url.searchParams.get('page') || '1',
+          pageSize: home ? 6 : url.searchParams.get('pageSize') || '10',
+          pinnedLimit: home ? 6 : 20,
+        });
+        writeJson(response, 200, { ...basePayload, board: result }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'notice_board_unavailable' }, headers);
+      }
+      return;
+    }
+
+    const noticePostReadMatch = request.method === 'GET' ? url.pathname.match(/^\/api\/boards\/notice\/([^/]+)$/) : null;
+    if (noticePostReadMatch) {
+      try {
+        const post = await boardService.getNotice(decodeURIComponent(noticePostReadMatch[1]));
+        writeJson(response, 200, { ...basePayload, boardPost: post }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'notice_post_unavailable' }, headers);
+      }
+      return;
+    }
+
+    const noticeViewMatch = request.method === 'POST' ? url.pathname.match(/^\/api\/boards\/notice\/([^/]+)\/view$/) : null;
+    if (noticeViewMatch) {
+      try {
+        const viewCount = await boardService.incrementNoticeView(decodeURIComponent(noticeViewMatch[1]));
+        writeJson(response, 200, { ...basePayload, noticeView: { authority: 'postgresql', viewCount } }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'notice_view_unavailable' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/boards/faq') {
+      try {
+        const result = await boardService.listFaq({
+          search: url.searchParams.get('search') || '',
+          page: url.searchParams.get('page') || '1',
+          pageSize: url.searchParams.get('pageSize') || '10',
+          categoryId: url.searchParams.get('categoryId') || '',
+          searchWithinCategory: url.searchParams.get('searchWithinCategory') === '1',
+          pinnedLimit: 20,
+        });
+        writeJson(response, 200, { ...basePayload, board: result }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'faq_board_unavailable' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/admin/boards/bootstrap') {
+      const admin = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!admin) return;
+      try {
+        const result = await boardService.bootstrap(admin.firebaseIdentity, admin.auth.userId);
+        writeJson(response, 200, {
+          ...basePayload, authenticated: true, authorized: true,
+          adminBoardBootstrap: {
+            target: 'postgresql',
+            noticeCount: result.noticeCount,
+            faqCount: result.faqCount,
+            faqCategoryCount: result.faqCategoryCount,
+            status: result.status,
+          },
+        }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'admin_board_bootstrap_unavailable' }, headers);
+      }
+      return;
+    }
+
+    const adminBoardConfigMatch = request.method === 'POST' ? url.pathname.match(/^\/api\/admin\/boards\/(notice|faq)\/config$/) : null;
+    if (adminBoardConfigMatch) {
+      const admin = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!admin) return;
+      let body;
+      try { body = await readJsonBody(request); }
+      catch (error) { writeJson(response, error?.status || 400, { ...basePayload, authenticated: true, error: error?.code || 'invalid_json_body' }, headers); return; }
+      try {
+        const result = await boardService.saveConfig(admin.firebaseIdentity, adminBoardConfigMatch[1], body?.postsPerPage);
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true,
+          adminBoardMutation: { authority: result.authority, operation: 'config', boardType: adminBoardConfigMatch[1], firestoreMirror: result.firestoreMirror, config: result.config } }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'admin_board_config_unavailable' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/admin/boards/notice/posts') {
+      const admin = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!admin) return;
+      let body;
+      try { body = await readJsonBody(request, { maxBytes: 256 * 1024 }); }
+      catch (error) { writeJson(response, error?.status || 400, { ...basePayload, authenticated: true, error: error?.code || 'invalid_json_body' }, headers); return; }
+      try {
+        const result = await boardService.saveNotice(admin.firebaseIdentity, admin.auth.userId, body?.post || body || {});
+        writeJson(response, body?.post?.id || body?.id ? 200 : 201, { ...basePayload, authenticated: true, authorized: true,
+          adminBoardMutation: { authority: result.authority, operation: body?.post?.id || body?.id ? 'edit' : 'create', boardType: 'notice', firestoreMirror: result.firestoreMirror, post: result.post } }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'admin_notice_save_unavailable' }, headers);
+      }
+      return;
+    }
+
+    const adminNoticeDeleteMatch = request.method === 'POST' ? url.pathname.match(/^\/api\/admin\/boards\/notice\/posts\/([^/]+)\/delete$/) : null;
+    if (adminNoticeDeleteMatch) {
+      const admin = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!admin) return;
+      try {
+        const result = await boardService.deleteNotice(admin.firebaseIdentity, decodeURIComponent(adminNoticeDeleteMatch[1]));
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true,
+          adminBoardMutation: { authority: result.authority, operation: 'delete', boardType: 'notice', firestoreMirror: result.firestoreMirror, deletedPost: result.deletedPost } }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'admin_notice_delete_unavailable' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/admin/boards/faq/posts') {
+      const admin = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!admin) return;
+      let body;
+      try { body = await readJsonBody(request, { maxBytes: 256 * 1024 }); }
+      catch (error) { writeJson(response, error?.status || 400, { ...basePayload, authenticated: true, error: error?.code || 'invalid_json_body' }, headers); return; }
+      try {
+        const result = await boardService.saveFaq(admin.firebaseIdentity, admin.auth.userId, body?.post || body || {});
+        writeJson(response, body?.post?.id || body?.id ? 200 : 201, { ...basePayload, authenticated: true, authorized: true,
+          adminBoardMutation: { authority: result.authority, operation: body?.post?.id || body?.id ? 'edit' : 'create', boardType: 'faq', firestoreMirror: result.firestoreMirror, post: result.post } }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'admin_faq_save_unavailable' }, headers);
+      }
+      return;
+    }
+
+    const adminFaqDeleteMatch = request.method === 'POST' ? url.pathname.match(/^\/api\/admin\/boards\/faq\/posts\/([^/]+)\/delete$/) : null;
+    if (adminFaqDeleteMatch) {
+      const admin = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!admin) return;
+      try {
+        const result = await boardService.deleteFaq(admin.firebaseIdentity, decodeURIComponent(adminFaqDeleteMatch[1]));
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true,
+          adminBoardMutation: { authority: result.authority, operation: 'delete', boardType: 'faq', firestoreMirror: result.firestoreMirror, deletedPost: result.deletedPost } }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'admin_faq_delete_unavailable' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/admin/boards/faq/categories') {
+      const admin = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!admin) return;
+      let body;
+      try { body = await readJsonBody(request); }
+      catch (error) { writeJson(response, error?.status || 400, { ...basePayload, authenticated: true, error: error?.code || 'invalid_json_body' }, headers); return; }
+      try {
+        const result = await boardService.saveFaqCategory(admin.firebaseIdentity, admin.auth.userId, body?.category || body || {});
+        writeJson(response, body?.category?.id || body?.id ? 200 : 201, { ...basePayload, authenticated: true, authorized: true,
+          adminBoardMutation: { authority: result.authority, operation: body?.category?.id || body?.id ? 'category-edit' : 'category-create', boardType: 'faq', firestoreMirror: result.firestoreMirror, category: result.category } }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'admin_faq_category_save_unavailable' }, headers);
+      }
+      return;
+    }
+
+    const adminFaqCategoryDeleteMatch = request.method === 'POST' ? url.pathname.match(/^\/api\/admin\/boards\/faq\/categories\/([^/]+)\/delete$/) : null;
+    if (adminFaqCategoryDeleteMatch) {
+      const admin = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!admin) return;
+      try {
+        const result = await boardService.deleteFaqCategory(admin.firebaseIdentity, decodeURIComponent(adminFaqCategoryDeleteMatch[1]));
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true,
+          adminBoardMutation: { authority: result.authority, operation: 'category-delete', boardType: 'faq', firestoreMirror: result.firestoreMirror, deletedCategory: result.deletedCategory } }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'admin_faq_category_delete_unavailable', postCount: Number(error?.postCount || 0) }, headers);
       }
       return;
     }

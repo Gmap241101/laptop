@@ -33,6 +33,15 @@ import {
 } from '../../constants/appConstants.js';
 import { richTextHtmlToText } from '../../utils/richTextCore.js';
 import useBoardProgressiveSearch from './useBoardProgressiveSearch.js';
+import {
+  incrementNoticePostView,
+  publishBoardContentObservation,
+  readBoardContentCutoverConfig,
+  requestFaqBoard,
+  requestNoticeBoard,
+  requestNoticePost,
+  subscribeBoardContentRefresh,
+} from './boardContentCutover.js';
 
 const FIRESTORE_PINNED_POST_LIMIT = 20;
 
@@ -276,15 +285,165 @@ export default function useBoardContentSubscriptionController({
     triggerToastRef.current = triggerToast;
   }, [triggerToast]);
 
+  const boardCutoverConfig = readBoardContentCutoverConfig();
+  const boardReadRequested = boardCutoverConfig.readRequested;
+  const [noticePostgresFallback, setNoticePostgresFallback] = useState(false);
+  const [faqPostgresFallback, setFaqPostgresFallback] = useState(false);
+  const [boardRefreshVersion, setBoardRefreshVersion] = useState(0);
+
+  useEffect(() => subscribeBoardContentRefresh(() => {
+    setNoticePostgresFallback(false);
+    setFaqPostgresFallback(false);
+    setBoardRefreshVersion((current) => current + 1);
+  }), []);
+
   const showToast = useCallback((message, type = 'success') => {
     triggerToastRef.current?.(message, type);
   }, []);
+
+  useEffect(() => {
+    if (!boardReadRequested) return undefined;
+    const shouldLoadUserNotice = view === 'user' && userTab === 'notice';
+    const shouldLoadUserHomeNotice = view === 'user' && userTab === 'home';
+    const shouldLoadAdminNotice = isAdminAuthenticated && view === 'admin' && adminTab === 'noticePosts';
+    if (!shouldLoadUserNotice && !shouldLoadUserHomeNotice && !shouldLoadAdminNotice) return undefined;
+
+    const search = shouldLoadUserHomeNotice
+      ? ''
+      : shouldLoadAdminNotice
+        ? debouncedAdminNoticeQuery
+        : debouncedUserNoticeQuery;
+    const searchMode = Boolean(String(search || '').trim());
+    const postsPerPage = shouldLoadUserHomeNotice ? 6 : getSafeNoticePostsPerPage(noticeBoardConfig.postsPerPage);
+    const activePage = shouldLoadUserHomeNotice ? 1 : shouldLoadAdminNotice ? adminNoticePage : noticePage;
+    const requestPage = searchMode ? 1 : activePage;
+    const requestPageSize = searchMode ? Math.min(500, activePage * postsPerPage) : postsPerPage;
+    let cancelled = false;
+    setNoticePostsReady(false);
+    setNoticePostsLoadErrorMessage('');
+
+    void requestNoticeBoard({
+      search,
+      page: requestPage,
+      pageSize: requestPageSize,
+      home: shouldLoadUserHomeNotice,
+    }).then((board) => {
+      if (cancelled) return;
+      const safePostsPerPage = getSafeNoticePostsPerPage(board?.config?.postsPerPage);
+      setNoticeBoardConfig({ postsPerPage: safePostsPerPage });
+      setNoticePostsPerPageInput(safePostsPerPage);
+      setNoticeBoardConfigReady(true);
+      setNoticeBoardConfigLoadErrorMessage('');
+      setNoticePinnedPosts(board?.pinnedPosts || []);
+      setNoticeRegularPagePosts(board?.regularPosts || []);
+      setNoticeRegularTotalCount(Number(board?.totalRegularCount || 0));
+      setNoticeHasNextPage(Boolean(board?.hasNextPage));
+      setNoticePostsLoadErrorMessage('');
+      setNoticePostsReady(true);
+      setNoticePostgresFallback(false);
+    }).catch((error) => {
+      if (cancelled) return;
+      console.error('Phase 26 notice PostgreSQL read failed:', error);
+      publishBoardContentObservation({
+        readRequested: true,
+        readSource: 'firestore-fallback',
+        boardType: 'notice',
+        operation: shouldLoadUserHomeNotice ? 'home-read' : 'list-read',
+        error: error?.code || 'notice_board_postgres_unavailable',
+      });
+      setNoticePostgresFallback(true);
+    });
+
+    return () => { cancelled = true; };
+  }, [
+    boardReadRequested,
+    boardRefreshVersion,
+    isAdminAuthenticated,
+    view,
+    userTab,
+    adminTab,
+    debouncedUserNoticeQuery,
+    debouncedAdminNoticeQuery,
+    noticePage,
+    adminNoticePage,
+    noticeBoardConfig.postsPerPage,
+  ]);
+
+  useEffect(() => {
+    if (!boardReadRequested) return undefined;
+    const shouldLoadUserFaq = view === 'user' && userTab === 'faq';
+    const shouldLoadAdminFaq = isAdminAuthenticated && view === 'admin' && adminTab === 'faqPosts';
+    if (!shouldLoadUserFaq && !shouldLoadAdminFaq) return undefined;
+
+    const search = debouncedFaqQuery;
+    const searchMode = Boolean(String(search || '').trim());
+    const postsPerPage = getSafeFaqPostsPerPage(faqBoardConfig.postsPerPage);
+    const activePage = shouldLoadAdminFaq ? adminFaqPage : faqPage;
+    const requestPage = searchMode ? 1 : activePage;
+    const requestPageSize = searchMode ? Math.min(500, activePage * postsPerPage) : postsPerPage;
+    let cancelled = false;
+    setFaqPostsReady(false);
+    setFaqPostsLoadErrorMessage('');
+
+    void requestFaqBoard({
+      search,
+      page: requestPage,
+      pageSize: requestPageSize,
+      categoryId: shouldLoadUserFaq ? activeFaqCategoryId : 'all',
+      searchWithinCategory: shouldLoadUserFaq ? faqSearchWithinCategory : false,
+    }).then((board) => {
+      if (cancelled) return;
+      const safePostsPerPage = getSafeFaqPostsPerPage(board?.config?.postsPerPage);
+      setFaqBoardConfig({ postsPerPage: safePostsPerPage });
+      setFaqPostsPerPageInput(safePostsPerPage);
+      setFaqBoardConfigReady(true);
+      setFaqBoardConfigLoadErrorMessage('');
+      setFaqCategories(board?.categories || []);
+      setFaqCategoriesReady(true);
+      setFaqCategoriesLoadErrorMessage('');
+      setFaqPinnedPosts(board?.pinnedPosts || []);
+      setFaqRegularPagePosts(board?.regularPosts || []);
+      setFaqRegularTotalCount(Number(board?.totalRegularCount || 0));
+      setFaqHasNextPage(Boolean(board?.hasNextPage));
+      setFaqPostsLoadErrorMessage('');
+      setFaqPostsReady(true);
+      setFaqPostgresFallback(false);
+    }).catch((error) => {
+      if (cancelled) return;
+      console.error('Phase 26 FAQ PostgreSQL read failed:', error);
+      publishBoardContentObservation({
+        readRequested: true,
+        readSource: 'firestore-fallback',
+        boardType: 'faq',
+        operation: 'list-read',
+        error: error?.code || 'faq_board_postgres_unavailable',
+      });
+      setFaqPostgresFallback(true);
+    });
+
+    return () => { cancelled = true; };
+  }, [
+    boardReadRequested,
+    boardRefreshVersion,
+    isAdminAuthenticated,
+    view,
+    userTab,
+    adminTab,
+    activeFaqCategoryId,
+    faqSearchWithinCategory,
+    debouncedFaqQuery,
+    faqPage,
+    adminFaqPage,
+    faqBoardConfig.postsPerPage,
+  ]);
 
   useEffect(() => {
     const shouldLoadUserNotice = view === 'user' && userTab === 'notice';
     const shouldLoadAdminNotice =
       isAdminAuthenticated && view === 'admin' && adminTab === 'noticePosts';
     const shouldLoadNotice = shouldLoadUserNotice || shouldLoadAdminNotice;
+
+    if (shouldLoadNotice && boardReadRequested && !noticePostgresFallback) return undefined;
 
     if (!shouldLoadNotice) {
       setNoticeBoardConfigReady(true);
@@ -321,7 +480,14 @@ export default function useBoardContentSubscriptionController({
         setNoticeBoardConfigReady(true);
       }
     );
-  }, [isAdminAuthenticated, view, userTab, adminTab]);
+  }, [
+    isAdminAuthenticated,
+    view,
+    userTab,
+    adminTab,
+    boardReadRequested,
+    noticePostgresFallback,
+  ]);
 
   const shouldRunAdminNoticeSearch =
     isAdminAuthenticated && view === 'admin' && adminTab === 'noticePosts';
@@ -336,7 +502,8 @@ export default function useBoardContentSubscriptionController({
     ? adminNoticePage
     : noticePage;
   const noticeProgressiveSearchEnabled = Boolean(
-    (shouldRunAdminNoticeSearch || shouldRunUserNoticeSearch) &&
+    (!boardReadRequested || noticePostgresFallback) &&
+      (shouldRunAdminNoticeSearch || shouldRunUserNoticeSearch) &&
       String(activeNoticeSearchQuery || '').trim()
   );
 
@@ -370,6 +537,7 @@ export default function useBoardContentSubscriptionController({
       isAdminAuthenticated && view === 'admin' && adminTab === 'noticePosts';
     const shouldLoadNotice =
       shouldLoadUserNotice || shouldLoadUserHomeNotice || shouldLoadAdminNotice;
+    if (shouldLoadNotice && boardReadRequested && !noticePostgresFallback) return undefined;
     const activeSearchQuery = shouldLoadUserHomeNotice
       ? ''
       : shouldLoadAdminNotice
@@ -450,6 +618,8 @@ export default function useBoardContentSubscriptionController({
     noticePage,
     adminNoticePage,
     noticeBoardConfig.postsPerPage,
+    boardReadRequested,
+    noticePostgresFallback,
     showToast,
   ]);
 
@@ -460,6 +630,7 @@ export default function useBoardContentSubscriptionController({
       isAdminAuthenticated && view === 'admin' && adminTab === 'noticePosts';
     const shouldLoadNotice =
       shouldLoadUserNotice || shouldLoadUserHomeNotice || shouldLoadAdminNotice;
+    if (shouldLoadNotice && boardReadRequested && !noticePostgresFallback) return undefined;
     const activeSearchQuery = shouldLoadUserHomeNotice
       ? ''
       : shouldLoadAdminNotice
@@ -591,6 +762,8 @@ export default function useBoardContentSubscriptionController({
     noticeBoardConfig.postsPerPage,
     debouncedUserNoticeQuery,
     debouncedAdminNoticeQuery,
+    boardReadRequested,
+    noticePostgresFallback,
     showToast,
   ]);
 
@@ -623,17 +796,37 @@ export default function useBoardContentSubscriptionController({
 
     let cancelled = false;
 
-    void getDoc(doc(NOTICE_POSTS_COLLECTION_REF, selectedNoticePostId))
-      .then((snapshot) => {
-        if (cancelled || !snapshot.exists()) return;
-        setSelectedNoticePostOverride({
-          ...snapshot.data(),
-          id: snapshot.id,
+    if (boardReadRequested && !noticePostgresFallback) {
+      void requestNoticePost(selectedNoticePostId)
+        .then((post) => {
+          if (cancelled || !post?.id) return;
+          setSelectedNoticePostOverride(post);
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          console.error('Selected notice PostgreSQL read error:', error);
+          publishBoardContentObservation({
+            readRequested: true,
+            readSource: 'firestore-fallback',
+            boardType: 'notice',
+            operation: 'detail-read',
+            error: error?.code || 'notice_detail_postgres_unavailable',
+          });
+          setNoticePostgresFallback(true);
         });
-      })
-      .catch((error) => {
-        console.error('Selected notice post read error:', error);
-      });
+    } else {
+      void getDoc(doc(NOTICE_POSTS_COLLECTION_REF, selectedNoticePostId))
+        .then((snapshot) => {
+          if (cancelled || !snapshot.exists()) return;
+          setSelectedNoticePostOverride({
+            ...snapshot.data(),
+            id: snapshot.id,
+          });
+        })
+        .catch((error) => {
+          console.error('Selected notice post read error:', error);
+        });
+    }
 
     return () => {
       cancelled = true;
@@ -644,6 +837,8 @@ export default function useBoardContentSubscriptionController({
     selectedNoticePostOverride,
     userTab,
     view,
+    boardReadRequested,
+    noticePostgresFallback,
   ]);
 
   useEffect(() => {
@@ -660,6 +855,8 @@ export default function useBoardContentSubscriptionController({
     const shouldLoadAdminFaq =
       isAdminAuthenticated && view === 'admin' && adminTab === 'faqPosts';
     const shouldLoadFaq = shouldLoadUserFaq || shouldLoadAdminFaq;
+
+    if (shouldLoadFaq && boardReadRequested && !faqPostgresFallback) return undefined;
 
     if (!shouldLoadFaq) {
       setFaqCategoriesReady(true);
@@ -702,13 +899,23 @@ export default function useBoardContentSubscriptionController({
         showToast(message, 'error');
       }
     );
-  }, [isAdminAuthenticated, view, userTab, adminTab, showToast]);
+  }, [
+    isAdminAuthenticated,
+    view,
+    userTab,
+    adminTab,
+    boardReadRequested,
+    faqPostgresFallback,
+    showToast,
+  ]);
 
   useEffect(() => {
     const shouldLoadUserFaq = view === 'user' && userTab === 'faq';
     const shouldLoadAdminFaq =
       isAdminAuthenticated && view === 'admin' && adminTab === 'faqPosts';
     const shouldLoadFaq = shouldLoadUserFaq || shouldLoadAdminFaq;
+
+    if (shouldLoadFaq && boardReadRequested && !faqPostgresFallback) return undefined;
 
     if (!shouldLoadFaq) {
       setFaqBoardConfigReady(true);
@@ -742,7 +949,14 @@ export default function useBoardContentSubscriptionController({
         setFaqBoardConfigReady(true);
       }
     );
-  }, [isAdminAuthenticated, view, userTab, adminTab]);
+  }, [
+    isAdminAuthenticated,
+    view,
+    userTab,
+    adminTab,
+    boardReadRequested,
+    faqPostgresFallback,
+  ]);
 
   const shouldRunAdminFaqSearch =
     isAdminAuthenticated && view === 'admin' && adminTab === 'faqPosts';
@@ -760,7 +974,8 @@ export default function useBoardContentSubscriptionController({
     ? adminFaqPage
     : faqPage;
   const faqProgressiveSearchEnabled = Boolean(
-    (shouldRunAdminFaqSearch || shouldRunUserFaqSearch) &&
+    (!boardReadRequested || faqPostgresFallback) &&
+      (shouldRunAdminFaqSearch || shouldRunUserFaqSearch) &&
       String(debouncedFaqQuery || '').trim()
   );
 
@@ -794,6 +1009,7 @@ export default function useBoardContentSubscriptionController({
     const shouldLoadAdminFaq =
       isAdminAuthenticated && view === 'admin' && adminTab === 'faqPosts';
     const shouldLoadFaq = shouldLoadUserFaq || shouldLoadAdminFaq;
+    if (shouldLoadFaq && boardReadRequested && !faqPostgresFallback) return undefined;
     const searchMode = Boolean(String(debouncedFaqQuery || '').trim());
     const shouldLimitToActiveCategory =
       shouldLoadUserFaq &&
@@ -856,6 +1072,8 @@ export default function useBoardContentSubscriptionController({
     faqPage,
     adminFaqPage,
     faqBoardConfig.postsPerPage,
+    boardReadRequested,
+    faqPostgresFallback,
     showToast,
   ]);
 
@@ -864,6 +1082,7 @@ export default function useBoardContentSubscriptionController({
     const shouldLoadAdminFaq =
       isAdminAuthenticated && view === 'admin' && adminTab === 'faqPosts';
     const shouldLoadFaq = shouldLoadUserFaq || shouldLoadAdminFaq;
+    if (shouldLoadFaq && boardReadRequested && !faqPostgresFallback) return undefined;
     const searchMode = Boolean(String(debouncedFaqQuery || '').trim());
 
     if (!shouldLoadFaq || searchMode) return undefined;
@@ -969,6 +1188,8 @@ export default function useBoardContentSubscriptionController({
     adminFaqPage,
     faqBoardConfig.postsPerPage,
     debouncedFaqQuery,
+    boardReadRequested,
+    faqPostgresFallback,
     showToast,
   ]);
 
@@ -998,6 +1219,27 @@ export default function useBoardContentSubscriptionController({
 
       setSelectedNoticePostId(post.id);
 
+      if (boardReadRequested && !noticePostgresFallback) {
+        try {
+          const nextViewCount = await incrementNoticePostView(post.id);
+          setSelectedNoticePostOverride((current) =>
+            current?.id === post.id
+              ? { ...current, viewCount: nextViewCount }
+              : current
+          );
+        } catch (error) {
+          console.error('Notice PostgreSQL view count update error:', error);
+          publishBoardContentObservation({
+            readRequested: true,
+            readSource: 'postgresql',
+            writeSource: 'postgresql',
+            boardType: 'notice',
+            operation: 'view-count',
+            error: error?.code || 'notice_view_postgres_failed',
+          });
+        }
+      }
+
       try {
         await runTransaction(db, async (transaction) => {
           const postDocRef = doc(NOTICE_POSTS_COLLECTION_REF, post.id);
@@ -1011,10 +1253,15 @@ export default function useBoardContentSubscriptionController({
           });
         });
       } catch (error) {
-        console.error('Notice post view count update error:', error);
+        console.error('Notice Firestore compatibility view count update error:', error);
       }
     },
-    [setSelectedNoticePostId]
+    [
+      boardReadRequested,
+      noticePostgresFallback,
+      setSelectedNoticePostId,
+      setSelectedNoticePostOverride,
+    ]
   );
 
   const closeNoticePost = useCallback(() => {

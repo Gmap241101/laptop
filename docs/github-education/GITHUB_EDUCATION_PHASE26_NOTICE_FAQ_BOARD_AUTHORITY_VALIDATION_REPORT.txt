@@ -1,0 +1,51 @@
+Phase 26 Notice / FAQ Board Authority — Validation
+===================================================
+
+Implementation status: candidate pending actual staging/browser validation
+
+Static/automated coverage:
+- Migration 018 schema/runtime metadata contract
+- PostgreSQL notice/FAQ repository and service
+- Firestore board bootstrap/mirror client
+- Public notice list/detail/view-count API
+- Public FAQ list API
+- Administrator board bootstrap
+- Administrator notice/FAQ CRUD API
+- Board page-size config API
+- FAQ category authority API
+- Frontend read opt-in/fallback
+- Frontend admin PostgreSQL write authority
+- Notice PostgreSQL view count + Firestore compatibility transaction
+- Phase 26 diagnostics/bootstrap control
+- Existing Phase 1–25 regression chain
+
+Actual staging validation required:
+1. Heroku migration 018 newly applied=1 and health version phase26.
+2. Vercel Phase 26 variables + redeploy.
+3. Administrator login and Notice / FAQ PostgreSQL bootstrap.
+4. Notice/FAQ list/search/pagination/category behavior.
+5. Administrator notice/FAQ create/edit/delete, page-size settings, FAQ categories.
+6. User notice detail and view-count behavior.
+7. Diagnostics: PostgreSQL read/write authority, Firestore mirror synced, error '-'.
+
+Automated result
+----------------
+verify:phase26: PASS (exit 0)
+React source files: 165
+Application contracts: 124
+User routes: 11
+Administrator tabs: 20
+Firestore strict total calls: 137
+onSnapshot: 35
+getDocs/server-only equivalents: 53
+getDoc/server-only equivalents: 31
+getCountFromServer: 18
+Warnings: 0
+Errors: 0
+
+Build staging:
+- React audit PASS
+- Application audit PASS
+- Firestore strict PASS
+- Clerk staging config DISABLED in local environment
+- Vite executable unavailable in assistant root environment: exit 127 (`vite: not found`)

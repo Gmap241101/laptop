@@ -1,0 +1,6 @@
+# Phase 26 — Vercel staging/test (mkrental) build-time variables
+# Apply to the Vercel environment used by https://mkrental.vercel.app and redeploy.
+# Keep every existing Phase 9–25 variable unchanged.
+
+VITE_BOARD_CONTENT_POSTGRES_READ_ENABLED=true
+VITE_BOARD_CONTENT_POSTGRES_WRITE_ENABLED=true

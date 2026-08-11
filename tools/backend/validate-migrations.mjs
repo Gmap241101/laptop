@@ -16,6 +16,7 @@ const phase22 = readFileSync('server/migrations/014_phase22_account_recovery_adm
 const phase23 = readFileSync('server/migrations/015_phase23_user_clerk_auth_lifecycle.sql', 'utf8');
 const phase24 = readFileSync('server/migrations/016_phase24_site_content_read_cutover.sql', 'utf8');
 const phase25 = readFileSync('server/migrations/017_phase25_policy_terms_read_cutover.sql', 'utf8');
+const phase26 = readFileSync('server/migrations/018_phase26_notice_faq_board_authority.sql', 'utf8');
 
 if (!/value\s+JSONB\s+NOT\s+NULL/i.test(phase2)) {
   throw new Error('app_runtime_metadata.value must remain JSONB NOT NULL.');
@@ -200,4 +201,19 @@ for (const marker of [
   if (!phase25.includes(marker)) throw new Error(`Phase 25 policy/terms migration marker is missing: ${marker}`);
 }
 
-console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion + Phase 19 user-action lifecycle + Phase 20 asset-domain + Phase 21 member/restriction/admin identity authority + Phase 22 account recovery/admin Clerk auth + Phase 23 user Clerk auth/lifecycle + Phase 24 site content + Phase 25 policy/terms read/write-through are type-safe)');
+
+for (const marker of [
+  'CREATE TABLE IF NOT EXISTS app_board_configs',
+  'CREATE TABLE IF NOT EXISTS app_faq_categories',
+  'CREATE TABLE IF NOT EXISTS app_board_posts',
+  'CREATE TABLE IF NOT EXISTS app_board_syncs',
+  "'phase', 26",
+  "'publicReadAuthority', 'postgresql-preferred-staging-opt-in'",
+  "'adminWriteAuthority', 'postgresql-authoritative'",
+  "'firestoreCompatibilityMirror', true",
+  "'noticeViewCountAuthority', 'postgresql-with-client-firestore-compatibility-mirror'",
+]) {
+  if (!phase26.includes(marker)) throw new Error(`Phase 26 notice/FAQ board migration marker is missing: ${marker}`);
+}
+
+console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion + Phase 19 user-action lifecycle + Phase 20 asset-domain + Phase 21 member/restriction/admin identity authority + Phase 22 account recovery/admin Clerk auth + Phase 23 user Clerk auth/lifecycle + Phase 24 site content + Phase 25 policy/terms + Phase 26 notice/FAQ board authority are type-safe)');

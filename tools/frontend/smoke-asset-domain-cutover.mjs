@@ -40,7 +40,7 @@ assert.ok(bulk.includes('bulkCreateAdminAssets'));
 assert.ok(catalogCompat.includes('readAssetDomainCutoverConfig'));
 for (const marker of ['getAssetCatalog', "assetMetricSource: 'postgresql-phase20'"]) assert.ok(dashboard.includes(marker), marker);
 for (const marker of ['requestAssetCatalog', 'bootstrapAdminAssets', 'createAdminAsset', 'editAdminAsset', 'deleteAdminAsset', 'bulkCreateAdminAssets', 'saveAdminAssetCategories']) assert.ok(client.includes(marker), marker);
-assert.match(diagnostics, /Clerk Staging Test · Phase (21|22|23|24|25)/);
+assert.match(diagnostics, /Clerk Staging Test · Phase (21|22|23|24|25|26)/);
 assert.match(diagnostics, /Phase 20 asset domain PostgreSQL cutover/);
 assert.match(diagnostics, /rentalAssets watcher:/);
 assert.match(diagnostics, /rentalAvailability watcher:/);

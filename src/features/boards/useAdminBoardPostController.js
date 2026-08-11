@@ -16,6 +16,13 @@ import {
   richTextHtmlToText,
   sanitizeRichTextHtml,
 } from '../../utils/richTextCore.js';
+import {
+  deleteFaqBoardPost,
+  deleteNoticeBoardPost,
+  readBoardContentCutoverConfig,
+  saveFaqBoardPost,
+  saveNoticeBoardPost,
+} from './boardContentCutover.js';
 
 const createDefaultNoticePostForm = () => ({
   title: '',
@@ -100,6 +107,7 @@ export default function useAdminBoardPostController({
   triggerConfirm,
   triggerToast,
 }) {
+  const boardWriteRequested = readBoardContentCutoverConfig().writeRequested;
   const openNoticePostDialog = (post = null) => {
     if (!isAdminAuthenticated) {
       triggerToast(
@@ -195,20 +203,34 @@ export default function useAdminBoardPostController({
     setNoticePostSaving(true);
 
     try {
-      await setDoc(postDocRef, {
-        id: postDocRef.id,
-        title,
-        content: contentText,
-        contentText,
-        contentHtml,
-        contentFormat: 'rich-html-v1',
-        isPinned: Boolean(noticePostForm.isPinned),
-        authorUid: editingPost?.authorUid || auditActor.uid,
-        authorName: editingPost?.authorName || auditActor.name,
-        viewCount: Number(editingPost?.viewCount) || 0,
-        createdAt: editingPost?.createdAt || serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      if (boardWriteRequested) {
+        await saveNoticeBoardPost({
+          ...(isEditing ? { id: editingPost.id } : {}),
+          title,
+          content: contentText,
+          contentText,
+          contentHtml,
+          contentFormat: 'rich-html-v1',
+          isPinned: Boolean(noticePostForm.isPinned),
+          authorUid: editingPost?.authorUid || auditActor.uid,
+          authorName: editingPost?.authorName || auditActor.name,
+        });
+      } else {
+        await setDoc(postDocRef, {
+          id: postDocRef.id,
+          title,
+          content: contentText,
+          contentText,
+          contentHtml,
+          contentFormat: 'rich-html-v1',
+          isPinned: Boolean(noticePostForm.isPinned),
+          authorUid: editingPost?.authorUid || auditActor.uid,
+          authorName: editingPost?.authorName || auditActor.name,
+          viewCount: Number(editingPost?.viewCount) || 0,
+          createdAt: editingPost?.createdAt || serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
 
       triggerToast(
         `공지사항을 ${
@@ -253,9 +275,13 @@ export default function useAdminBoardPostController({
         setNoticePostDeletingId(post.id);
 
         try {
-          await deleteDoc(
-            doc(NOTICE_POSTS_COLLECTION_REF, post.id)
-          );
+          if (boardWriteRequested) {
+            await deleteNoticeBoardPost(post.id);
+          } else {
+            await deleteDoc(
+              doc(NOTICE_POSTS_COLLECTION_REF, post.id)
+            );
+          }
 
           if (selectedNoticePostId === post.id) {
             setSelectedNoticePostId('');
@@ -392,20 +418,35 @@ export default function useAdminBoardPostController({
     setFaqPostSaving(true);
 
     try {
-      await setDoc(postDocRef, {
-        id: postDocRef.id,
-        categoryId,
-        title,
-        content: contentText,
-        contentText,
-        contentHtml,
-        contentFormat: 'rich-html-v1',
-        isPinned: Boolean(faqPostForm.isPinned),
-        authorUid: editingPost?.authorUid || auditActor.uid,
-        authorName: editingPost?.authorName || auditActor.name,
-        createdAt: editingPost?.createdAt || serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      if (boardWriteRequested) {
+        await saveFaqBoardPost({
+          ...(isEditing ? { id: editingPost.id } : {}),
+          categoryId,
+          title,
+          content: contentText,
+          contentText,
+          contentHtml,
+          contentFormat: 'rich-html-v1',
+          isPinned: Boolean(faqPostForm.isPinned),
+          authorUid: editingPost?.authorUid || auditActor.uid,
+          authorName: editingPost?.authorName || auditActor.name,
+        });
+      } else {
+        await setDoc(postDocRef, {
+          id: postDocRef.id,
+          categoryId,
+          title,
+          content: contentText,
+          contentText,
+          contentHtml,
+          contentFormat: 'rich-html-v1',
+          isPinned: Boolean(faqPostForm.isPinned),
+          authorUid: editingPost?.authorUid || auditActor.uid,
+          authorName: editingPost?.authorName || auditActor.name,
+          createdAt: editingPost?.createdAt || serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
 
       triggerToast(
         `FAQ를 ${
@@ -450,9 +491,13 @@ export default function useAdminBoardPostController({
         setFaqPostDeletingId(post.id);
 
         try {
-          await deleteDoc(
-            doc(FAQ_POSTS_COLLECTION_REF, post.id)
-          );
+          if (boardWriteRequested) {
+            await deleteFaqBoardPost(post.id);
+          } else {
+            await deleteDoc(
+              doc(FAQ_POSTS_COLLECTION_REF, post.id)
+            );
+          }
 
           if (expandedFaqPostId === post.id) {
             setExpandedFaqPostId('');

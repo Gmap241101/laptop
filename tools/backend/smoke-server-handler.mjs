@@ -5,7 +5,7 @@ const allowedOrigin = 'https://staging.example.vercel.app';
 const config = {
   serviceName: 'rental-api',
   appEnv: 'test',
-  serviceVersion: 'phase23-smoke',
+  serviceVersion: 'phase26-smoke',
   corsAllowedOrigins: [allowedOrigin],
 };
 
@@ -435,6 +435,22 @@ const adminRentalRequestService = {
   },
 };
 
+const boardService = {
+  async getStatus() { return { source: 'postgresql', synchronized: true, noticeCount: 1, faqCount: 1, faqCategoryCount: 1, syncedAt: '2026-08-11T00:00:00.000Z' }; },
+  async listNotice(options) { return { source: 'postgresql', config: { postsPerPage: 10 }, pinnedPosts: [], regularPosts: [{ id: 'NOTICE-SMOKE-1', title: 'Smoke Notice', contentText: 'Body', isPinned: false, viewCount: 1 }], totalRegularCount: 1, hasNextPage: false, syncedAt: '2026-08-11T00:00:00.000Z', options }; },
+  async getNotice(postId) { return { id: postId, title: 'Smoke Notice', contentText: 'Body', isPinned: false, viewCount: 1 }; },
+  async incrementNoticeView(postId) { if (postId !== 'NOTICE-SMOKE-1') throw new Error('Unexpected notice view ID.'); return 2; },
+  async listFaq(options) { return { source: 'postgresql', config: { postsPerPage: 10 }, categories: [{ id: 'FAQ-CAT-1', name: 'General', order: 1 }], pinnedPosts: [], regularPosts: [{ id: 'FAQ-SMOKE-1', categoryId: 'FAQ-CAT-1', title: 'Smoke FAQ', contentText: 'Answer', isPinned: false }], totalRegularCount: 1, hasNextPage: false, syncedAt: '2026-08-11T00:00:00.000Z', options }; },
+  async bootstrap(firebaseIdentity, actorClerkUserId) { if (firebaseIdentity.uid !== 'firebase_uid_smoke' || actorClerkUserId !== 'user_smoke') throw new Error('Unexpected board bootstrap identity.'); return { noticeCount: 1, faqCount: 1, faqCategoryCount: 1, status: { source: 'postgresql', synchronized: true, syncedAt: '2026-08-11T00:00:00.000Z' } }; },
+  async saveNotice(firebaseIdentity, actorClerkUserId, post) { return { authority: 'postgresql', firestoreMirror: 'synced', post: { id: post.id || 'NOTICE-NEW', ...post, actorClerkUserId } }; },
+  async deleteNotice(firebaseIdentity, postId) { return { authority: 'postgresql', firestoreMirror: 'synced', deletedPost: { id: postId } }; },
+  async saveFaq(firebaseIdentity, actorClerkUserId, post) { return { authority: 'postgresql', firestoreMirror: 'synced', post: { id: post.id || 'FAQ-NEW', ...post, actorClerkUserId } }; },
+  async deleteFaq(firebaseIdentity, postId) { return { authority: 'postgresql', firestoreMirror: 'synced', deletedPost: { id: postId } }; },
+  async saveConfig(firebaseIdentity, boardType, postsPerPage) { return { authority: 'postgresql', firestoreMirror: 'synced', config: { boardType, postsPerPage: Number(postsPerPage) } }; },
+  async saveFaqCategory(firebaseIdentity, actorClerkUserId, category) { return { authority: 'postgresql', firestoreMirror: 'synced', category: { id: category.id || 'FAQ-CAT-NEW', name: category.name, order: 2, actorClerkUserId } }; },
+  async deleteFaqCategory(firebaseIdentity, categoryId) { return { authority: 'postgresql', firestoreMirror: 'synced', deletedCategory: { id: categoryId } }; },
+};
+
 const server = createServer(
   createRequestHandler({
     config,
@@ -453,6 +469,7 @@ const server = createServer(
     adminRentalRequestService,
     assetService,
     siteContentService,
+    boardService,
   }),
 );
 
@@ -908,6 +925,31 @@ if (termsContentSync.status !== 200 || termsContentSyncBody.authorized !== true 
   throw new Error('Phase 25 terms PostgreSQL sync HTTP response is invalid.');
 }
 
+
+const boardStatus = await fetch(baseUrl + '/api/boards/status', { headers: { Origin: allowedOrigin } });
+if (boardStatus.status !== 200 || (await boardStatus.json()).boardStatus?.source !== 'postgresql') throw new Error('Phase 26 board status HTTP response is invalid.');
+const noticeBoard = await fetch(baseUrl + '/api/boards/notice?page=1&pageSize=10', { headers: { Origin: allowedOrigin } });
+const noticeBoardBody = await noticeBoard.json();
+if (noticeBoard.status !== 200 || noticeBoardBody.board?.source !== 'postgresql' || noticeBoardBody.board?.regularPosts?.[0]?.id !== 'NOTICE-SMOKE-1') throw new Error('Phase 26 notice list HTTP response is invalid.');
+const noticeDetail = await fetch(baseUrl + '/api/boards/notice/NOTICE-SMOKE-1', { headers: { Origin: allowedOrigin } });
+if (noticeDetail.status !== 200 || (await noticeDetail.json()).boardPost?.id !== 'NOTICE-SMOKE-1') throw new Error('Phase 26 notice detail HTTP response is invalid.');
+const noticeView = await fetch(baseUrl + '/api/boards/notice/NOTICE-SMOKE-1/view', { method: 'POST', headers: { Origin: allowedOrigin } });
+if (noticeView.status !== 200 || (await noticeView.json()).noticeView?.viewCount !== 2) throw new Error('Phase 26 notice view-count HTTP response is invalid.');
+const faqBoard = await fetch(baseUrl + '/api/boards/faq?page=1&pageSize=10&categoryId=all', { headers: { Origin: allowedOrigin } });
+const faqBoardBody = await faqBoard.json();
+if (faqBoard.status !== 200 || faqBoardBody.board?.source !== 'postgresql' || faqBoardBody.board?.categories?.length !== 1) throw new Error('Phase 26 FAQ list HTTP response is invalid.');
+const boardBootstrap = await fetch(baseUrl + '/api/admin/boards/bootstrap', { method: 'POST', headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' } });
+if (boardBootstrap.status !== 200 || (await boardBootstrap.json()).adminBoardBootstrap?.noticeCount !== 1) throw new Error('Phase 26 board bootstrap HTTP response is invalid.');
+const boardNoticeSave = await fetch(baseUrl + '/api/admin/boards/notice/posts', { method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' }, body: JSON.stringify({ post: { title: 'New notice', contentText: 'Body', authorUid: 'firebase_uid_smoke', authorName: 'Smoke Admin' } }) });
+const boardNoticeSaveBody = await boardNoticeSave.json();
+if (boardNoticeSave.status !== 201 || boardNoticeSaveBody.adminBoardMutation?.authority !== 'postgresql' || boardNoticeSaveBody.adminBoardMutation?.firestoreMirror !== 'synced') throw new Error('Phase 26 notice authoritative save HTTP response is invalid.');
+const boardFaqSave = await fetch(baseUrl + '/api/admin/boards/faq/posts', { method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' }, body: JSON.stringify({ post: { categoryId: 'FAQ-CAT-1', title: 'New FAQ', contentText: 'Answer', authorUid: 'firebase_uid_smoke', authorName: 'Smoke Admin' } }) });
+if (boardFaqSave.status !== 201 || (await boardFaqSave.json()).adminBoardMutation?.authority !== 'postgresql') throw new Error('Phase 26 FAQ authoritative save HTTP response is invalid.');
+const boardConfigSave = await fetch(baseUrl + '/api/admin/boards/notice/config', { method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' }, body: JSON.stringify({ postsPerPage: 20 }) });
+if (boardConfigSave.status !== 200 || (await boardConfigSave.json()).adminBoardMutation?.operation !== 'config') throw new Error('Phase 26 board config HTTP response is invalid.');
+const boardCategorySave = await fetch(baseUrl + '/api/admin/boards/faq/categories', { method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Firebase-Authorization': 'Bearer firebase-smoke-token' }, body: JSON.stringify({ category: { name: 'More' } }) });
+if (boardCategorySave.status !== 201 || (await boardCategorySave.json()).adminBoardMutation?.operation !== 'category-create') throw new Error('Phase 26 FAQ category HTTP response is invalid.');
+
 const invalidFirebase = await fetch(`${baseUrl}/api/users/me/legacy/firebase`, {
   method: 'POST',
   headers: { ...authHeaders, 'X-Firebase-Authorization': 'Bearer wrong-token' },
@@ -918,4 +960,4 @@ const missing = await fetch(`${baseUrl}/missing`);
 if (missing.status !== 404) throw new Error(`/missing returned ${missing.status}`);
 
 await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, Phase 16 rental-request POST, Phase 17 admin bootstrap/list/dashboard/status + Phase 18 sync/events/edit/memo/restore + Phase 19 user edit/cancel/extend/admin-review + Phase 20 asset catalog/bootstrap/CRUD/bulk/categories + Phase 21 member profile/status authority/admin registry + Phase 22 account recovery/admin Clerk session/migration/provision + Phase 23 user Clerk session/migration/provision/password/withdrawal authority + Phase 24 site-content + Phase 25 rental-config/terms read/sync, CORS, 404)');
+console.log('[server-smoke] PASS (/health, Clerk auth, identity GET/POST, Firebase legacy link, member shadow sync/compare, Phase 9 PostgreSQL cutover candidate, Phase 10 one-time Firestore fallback, Phase 11 member write-through, Phase 16 rental-request POST, Phase 17 admin bootstrap/list/dashboard/status + Phase 18 sync/events/edit/memo/restore + Phase 19 user edit/cancel/extend/admin-review + Phase 20 asset catalog/bootstrap/CRUD/bulk/categories + Phase 21 member profile/status authority/admin registry + Phase 22 account recovery/admin Clerk session/migration/provision + Phase 23 user Clerk session/migration/provision/password/withdrawal authority + Phase 24 site-content + Phase 25 rental-config/terms read/sync + Phase 26 notice/FAQ public/admin authority, CORS, 404)');

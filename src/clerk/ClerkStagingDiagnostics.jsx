@@ -84,6 +84,12 @@ import {
   subscribePolicyContentObservation,
   syncAllPolicyContentDomainsFromFirestore,
 } from '../features/content/policyContentCutover.js';
+import {
+  bootstrapBoardContent,
+  getLatestBoardContentObservation,
+  readBoardContentCutoverConfig,
+  subscribeBoardContentObservation,
+} from '../features/boards/boardContentCutover.js';
 import { clerkStagingClient } from './clerkStagingClient.js';
 
 const panelStyle = {
@@ -139,6 +145,7 @@ export default function ClerkStagingDiagnostics() {
   const userLifecycleConfig = useMemo(() => readUserAccountLifecycleCutoverConfig(), []);
   const siteContentConfig = useMemo(() => readSiteContentCutoverConfig(), []);
   const policyContentConfig = useMemo(() => readPolicyContentCutoverConfig(), []);
+  const boardContentConfig = useMemo(() => readBoardContentCutoverConfig(), []);
   const [state, setState] = useState({
     phase: requested ? 'loading' : 'hidden',
     signedIn: false,
@@ -319,6 +326,18 @@ export default function ClerkStagingDiagnostics() {
     policyContentPostgresSync: null,
     policyContentSyncAt: null,
     policyContentError: null,
+    boardContentReadRequested: boardContentConfig.readRequested,
+    boardContentWriteRequested: boardContentConfig.writeRequested,
+    boardContentReadSource: boardContentConfig.readRequested ? 'awaiting-board-view' : null,
+    boardContentWriteSource: null,
+    boardContentLastBoard: null,
+    boardContentOperation: null,
+    boardContentItemCount: null,
+    boardContentTotalCount: null,
+    boardContentCategoryCount: null,
+    boardContentFirestoreMirror: null,
+    boardContentSyncAt: null,
+    boardContentError: null,
     error: null,
   });
 
@@ -834,6 +853,41 @@ export default function ClerkStagingDiagnostics() {
     return subscribePolicyContentObservation(applyObservation);
   }, [requested]);
 
+  useEffect(() => {
+    if (!requested) return undefined;
+    const applyObservation = (observation) => {
+      setState((current) => ({
+        ...current,
+        boardContentReadRequested: observation && Object.prototype.hasOwnProperty.call(observation, 'readRequested')
+          ? Boolean(observation.readRequested)
+          : current.boardContentReadRequested,
+        boardContentWriteRequested: observation && Object.prototype.hasOwnProperty.call(observation, 'writeRequested')
+          ? Boolean(observation.writeRequested)
+          : current.boardContentWriteRequested,
+        boardContentReadSource: observation?.readSource || current.boardContentReadSource,
+        boardContentWriteSource: observation?.writeSource || current.boardContentWriteSource,
+        boardContentLastBoard: observation?.boardType || current.boardContentLastBoard,
+        boardContentOperation: observation?.operation || current.boardContentOperation,
+        boardContentItemCount: observation && Object.prototype.hasOwnProperty.call(observation, 'itemCount')
+          ? observation.itemCount
+          : current.boardContentItemCount,
+        boardContentTotalCount: observation && Object.prototype.hasOwnProperty.call(observation, 'totalCount')
+          ? observation.totalCount
+          : current.boardContentTotalCount,
+        boardContentCategoryCount: observation && Object.prototype.hasOwnProperty.call(observation, 'categoryCount')
+          ? observation.categoryCount
+          : current.boardContentCategoryCount,
+        boardContentFirestoreMirror: observation?.firestoreMirror || current.boardContentFirestoreMirror,
+        boardContentSyncAt: observation?.syncAt || current.boardContentSyncAt,
+        boardContentError: observation && Object.prototype.hasOwnProperty.call(observation, 'error')
+          ? observation.error || null
+          : current.boardContentError,
+      }));
+    };
+    applyObservation(getLatestBoardContentObservation());
+    return subscribeBoardContentObservation(applyObservation);
+  }, [requested]);
+
   if (!requested) return null;
 
   const run = async (operation) => {
@@ -1037,7 +1091,7 @@ export default function ClerkStagingDiagnostics() {
 
   return (
     <aside style={panelStyle} aria-label="Clerk staging diagnostics">
-      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 25</div>
+      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 26</div>
       <div>SDK: {state.phase === 'loading' ? 'loading' : state.phase}</div>
       <div>Signed in: {state.signedIn ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Clerk user: {state.userId || '-'}</div>
@@ -1289,6 +1343,20 @@ export default function ClerkStagingDiagnostics() {
       <div style={{ overflowWrap: 'anywhere' }}>Policy content synced at: {state.policyContentSyncAt || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Policy content error: {state.policyContentError || '-'}</div>
 
+      <div style={{ marginTop: '6px', fontWeight: 700 }}>Phase 26 notice / FAQ PostgreSQL read + CRUD authority</div>
+      <div>Board PostgreSQL read requested: {state.boardContentReadRequested ? 'yes' : 'no'}</div>
+      <div>Board PostgreSQL write requested: {state.boardContentWriteRequested ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Board active read source: {state.boardContentReadSource || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Board write source: {state.boardContentWriteSource || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Board last type: {state.boardContentLastBoard || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Board last operation: {state.boardContentOperation || '-'}</div>
+      <div>Board item count: {state.boardContentItemCount ?? '-'}</div>
+      <div>Board total regular count: {state.boardContentTotalCount ?? '-'}</div>
+      <div>FAQ category count: {state.boardContentCategoryCount ?? '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Board Firestore compatibility mirror: {state.boardContentFirestoreMirror || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Board synced at: {state.boardContentSyncAt || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Board error: {state.boardContentError || '-'}</div>
+
       {state.error ? (
         <div role="alert" style={{ marginTop: '8px', color: '#b91c1c', overflowWrap: 'anywhere' }}>
           {state.error}
@@ -1377,6 +1445,14 @@ export default function ClerkStagingDiagnostics() {
               onClick={() => run(() => syncAllPolicyContentDomainsFromFirestore({ config: policyContentConfig }))}
             >
               Policy content 전체 동기화
+            </button>
+            <button
+              type="button"
+              style={buttonStyle}
+              disabled={!state.firebaseSignedIn || !state.boardContentWriteRequested}
+              onClick={() => run(() => bootstrapBoardContent())}
+            >
+              Notice / FAQ PostgreSQL bootstrap
             </button>
             <button type="button" style={buttonStyle} onClick={() => run(() => clerkStagingClient.signOut())}>
               Clerk 로그아웃

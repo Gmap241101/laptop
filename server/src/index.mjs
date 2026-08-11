@@ -40,6 +40,9 @@ import { createUserClerkAuthRepository } from './auth/user-clerk-auth-repository
 import { createUserClerkAuthService } from './auth/user-clerk-auth-service.mjs';
 import { createSiteContentRepository } from './content/site-content-repository.mjs';
 import { createSiteContentService } from './content/site-content-service.mjs';
+import { createBoardRepository } from './boards/board-repository.mjs';
+import { createBoardService } from './boards/board-service.mjs';
+import { createFirestoreBoardClient } from './firestore/firestore-boards.mjs';
 
 const config = readServerConfig();
 const authenticateRequest = createClerkSessionAuthenticator(config);
@@ -93,6 +96,13 @@ const memberAuthorityRepository = createMemberAuthorityRepository(pool);
 const userClerkAuthRepository = createUserClerkAuthRepository(pool);
 const siteContentRepository = createSiteContentRepository(pool);
 const siteContentService = createSiteContentService({ repository: siteContentRepository });
+const boardRepository = createBoardRepository(pool);
+const firestoreBoardClient = config.firebaseProjectId
+  ? createFirestoreBoardClient({ projectId: config.firebaseProjectId, timeoutMs: config.firestoreRestTimeoutMs })
+  : {
+      async verifyAdmin() { const error = new Error('Firestore board compatibility bridge is not configured.'); error.code = 'firestore_board_not_configured'; throw error; },
+    };
+const boardService = createBoardService({ repository: boardRepository, firestoreClient: firestoreBoardClient });
 const userClerkAuthService = firestoreMemberAuthorityClient
   ? createUserClerkAuthService({
       repository: userClerkAuthRepository,
@@ -274,6 +284,7 @@ const server = createServer(
     adminRentalRequestService,
     assetService,
     siteContentService,
+    boardService,
     memberAuthorityRepository,
   }),
 );
@@ -301,6 +312,7 @@ server.listen(config.port, '0.0.0.0', () => {
     adminAuthentication: config.firebaseProjectId ? 'clerk-authoritative-firebase-compatibility-session' : 'disabled',
     assetDomain: config.firebaseProjectId ? 'postgresql-read-write-firestore-compatibility-mirror' : 'disabled',
     siteContent: 'postgresql-preferred-firestore-write-through',
+    noticeFaqBoards: config.firebaseProjectId ? 'postgresql-authoritative-firestore-compatibility-mirror' : 'disabled',
   });
 });
 

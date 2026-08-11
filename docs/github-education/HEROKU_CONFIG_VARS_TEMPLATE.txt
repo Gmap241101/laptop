@@ -90,3 +90,7 @@ FIRESTORE_REST_TIMEOUT_MS=8000
 # Phase 25: rental public config + signup terms PostgreSQL preferred reads with Firestore transaction authority preserved.
 # No new backend secret is required. Migration 017 records the runtime contract.
 # Recommended diagnostic version marker: SERVICE_VERSION=phase25
+
+# Phase 26: notice/FAQ PostgreSQL read + PostgreSQL-authoritative admin CRUD with Firestore compatibility mirror.
+# No new backend secret is required. Migration 018 runs in the existing Procfile release phase.
+# Recommended diagnostic version marker: SERVICE_VERSION=phase26

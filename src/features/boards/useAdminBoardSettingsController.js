@@ -19,6 +19,12 @@ import {
   DEFAULT_FAQ_POSTS_PER_PAGE,
   DEFAULT_NOTICE_POSTS_PER_PAGE,
 } from '../../constants/appConstants.js';
+import {
+  deleteFaqBoardCategory,
+  readBoardContentCutoverConfig,
+  saveBoardConfig,
+  saveFaqBoardCategory,
+} from './boardContentCutover.js';
 
 export const useAdminBoardSettingsState = () => {
   const [noticeBoardConfigSaving, setNoticeBoardConfigSaving] = useState(false);
@@ -95,6 +101,7 @@ export default function useAdminBoardSettingsController({
   triggerConfirm,
   triggerToast,
 }) {
+  const boardWriteRequested = readBoardContentCutoverConfig().writeRequested;
   const noticeBoardSettingsDirty =
     noticeBoardConfigReady &&
     getSafeNoticePostsPerPage(noticePostsPerPageInput) !==
@@ -133,10 +140,14 @@ export default function useAdminBoardSettingsController({
     setNoticeBoardConfigSaving(true);
 
     try {
-      await setDoc(NOTICE_BOARD_CONFIG_DOC_REF, {
-        postsPerPage,
-        updatedAt: serverTimestamp(),
-      });
+      if (boardWriteRequested) {
+        await saveBoardConfig('notice', postsPerPage);
+      } else {
+        await setDoc(NOTICE_BOARD_CONFIG_DOC_REF, {
+          postsPerPage,
+          updatedAt: serverTimestamp(),
+        });
+      }
 
       setNoticeBoardConfig((prev) => ({ ...prev, postsPerPage }));
       setNoticePostsPerPageInput(postsPerPage);
@@ -179,10 +190,14 @@ export default function useAdminBoardSettingsController({
     setFaqBoardConfigSaving(true);
 
     try {
-      await setDoc(FAQ_BOARD_CONFIG_DOC_REF, {
-        postsPerPage,
-        updatedAt: serverTimestamp(),
-      });
+      if (boardWriteRequested) {
+        await saveBoardConfig('faq', postsPerPage);
+      } else {
+        await setDoc(FAQ_BOARD_CONFIG_DOC_REF, {
+          postsPerPage,
+          updatedAt: serverTimestamp(),
+        });
+      }
 
       setFaqBoardConfig((prev) => ({ ...prev, postsPerPage }));
       setFaqPostsPerPageInput(postsPerPage);
@@ -251,13 +266,17 @@ export default function useAdminBoardSettingsController({
     setFaqCategorySavingId('new');
 
     try {
-      await setDoc(categoryDocRef, {
-        id: categoryDocRef.id,
-        name: categoryName,
-        order: nextOrder,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      if (boardWriteRequested) {
+        await saveFaqBoardCategory({ name: categoryName });
+      } else {
+        await setDoc(categoryDocRef, {
+          id: categoryDocRef.id,
+          name: categoryName,
+          order: nextOrder,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
 
       setNewFaqCategoryName('');
 
@@ -315,14 +334,18 @@ export default function useAdminBoardSettingsController({
     setFaqCategorySavingId(category.id);
 
     try {
-      await setDoc(
-        doc(FAQ_CATEGORIES_COLLECTION_REF, category.id),
-        {
-          name: nextCategoryName,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      if (boardWriteRequested) {
+        await saveFaqBoardCategory({ id: category.id, name: nextCategoryName });
+      } else {
+        await setDoc(
+          doc(FAQ_CATEGORIES_COLLECTION_REF, category.id),
+          {
+            name: nextCategoryName,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
 
       setEditingFaqCategoryId('');
       setEditingFaqCategoryName('');
@@ -351,31 +374,33 @@ export default function useAdminBoardSettingsController({
       return;
     }
 
-    let categoryPostCount = 0;
+    if (!boardWriteRequested) {
+      let categoryPostCount = 0;
 
-    try {
-      const countSnapshot = await getCountFromServer(
-        firestoreQuery(
-          FAQ_POSTS_COLLECTION_REF,
-          where('categoryId', '==', category.id)
-        )
-      );
-      categoryPostCount = countSnapshot.data().count;
-    } catch (error) {
-      console.error('FAQ category usage count error:', error);
-      triggerToast(
-        'FAQ 카테고리 사용 여부를 확인하지 못해 삭제를 중단했습니다.',
-        'error'
-      );
-      return;
-    }
+      try {
+        const countSnapshot = await getCountFromServer(
+          firestoreQuery(
+            FAQ_POSTS_COLLECTION_REF,
+            where('categoryId', '==', category.id)
+          )
+        );
+        categoryPostCount = countSnapshot.data().count;
+      } catch (error) {
+        console.error('FAQ category usage count error:', error);
+        triggerToast(
+          'FAQ 카테고리 사용 여부를 확인하지 못해 삭제를 중단했습니다.',
+          'error'
+        );
+        return;
+      }
 
-    if (categoryPostCount > 0) {
-      triggerToast(
-        `[${category.name}] 카테고리를 사용하는 FAQ가 ${categoryPostCount}건 있어 삭제할 수 없습니다.`,
-        'error'
-      );
-      return;
+      if (categoryPostCount > 0) {
+        triggerToast(
+          `[${category.name}] 카테고리를 사용하는 FAQ가 ${categoryPostCount}건 있어 삭제할 수 없습니다.`,
+          'error'
+        );
+        return;
+      }
     }
 
     triggerConfirm(
@@ -385,9 +410,13 @@ export default function useAdminBoardSettingsController({
         setFaqCategoryDeletingId(category.id);
 
         try {
-          await deleteDoc(
-            doc(FAQ_CATEGORIES_COLLECTION_REF, category.id)
-          );
+          if (boardWriteRequested) {
+            await deleteFaqBoardCategory(category.id);
+          } else {
+            await deleteDoc(
+              doc(FAQ_CATEGORIES_COLLECTION_REF, category.id)
+            );
+          }
 
           if (activeFaqCategoryId === category.id) {
             setActiveFaqCategoryId('all');
@@ -410,6 +439,14 @@ export default function useAdminBoardSettingsController({
           triggerToast('FAQ 카테고리를 삭제했습니다.', 'success');
         } catch (error) {
           console.error('FAQ category delete error:', error);
+
+          if (error?.code === 'faq_category_in_use') {
+            triggerToast(
+              `[${category.name}] 카테고리를 사용하는 FAQ가 ${Number(error?.postCount || 0)}건 있어 삭제할 수 없습니다.`,
+              'error'
+            );
+            return;
+          }
 
           triggerToast(
             `FAQ 카테고리 삭제에 실패했습니다. 오류 코드: ${

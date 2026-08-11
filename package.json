@@ -93,7 +93,10 @@
     "verify:phase24": "npm run verify:phase23 && npm run server:site-content:smoke && npm run frontend:site-content:smoke",
     "server:policy-content:smoke": "node tools/backend/smoke-policy-terms-read-cutover.mjs",
     "frontend:policy-content:smoke": "node tools/frontend/smoke-policy-terms-read-cutover.mjs",
-    "verify:phase25": "npm run verify:phase24 && npm run server:policy-content:smoke && npm run frontend:policy-content:smoke"
+    "verify:phase25": "npm run verify:phase24 && npm run server:policy-content:smoke && npm run frontend:policy-content:smoke",
+    "server:board-authority:smoke": "node tools/backend/smoke-board-authority.mjs",
+    "frontend:board-authority:smoke": "node tools/frontend/smoke-board-authority.mjs",
+    "verify:phase26": "npm run verify:phase25 && npm run server:board-authority:smoke && npm run frontend:board-authority:smoke"
   },
   "dependencies": {
     "firebase": "^10.14.1",
