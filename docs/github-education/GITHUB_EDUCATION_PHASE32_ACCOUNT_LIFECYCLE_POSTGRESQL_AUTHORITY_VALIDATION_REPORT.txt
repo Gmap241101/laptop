@@ -216,3 +216,94 @@ Prebuild completed before that limitation:
 
 No new npm dependency, migration, Firebase Rule, Firestore index, or App.jsx modification was introduced by this hotfix.
 Actual Staging/browser PASS is still pending deployment and user verification; Phase 31 remains the confirmed baseline until then.
+
+PHASE 32 NEW-SIGNUP POSTGRESQL RUNTIME READ-MODEL HOTFIX
+========================================================
+Date: 2026-08-11
+
+Actual Staging finding after source-of-truth hotfix
+---------------------------------------------------
+Phase 32 diagnostics are now correct in the tested user path:
+- Account lifecycle authority requested: yes
+- Account lifecycle backend applied: yes
+- Signup profile source: postgresql
+- Signup Firestore bootstrap: retired
+- Terms consent source: postgresql
+- Account recovery source: postgresql
+- Phase 32 authority error: -
+
+However, a newly registered user that was approved by an administrator failed immediately after login with:
+- rental restriction PostgreSQL read unavailable while legacy Firestore fallback is disabled;
+- member profile PostgreSQL read unavailable while legacy Firestore fallback is disabled.
+
+Root cause
+----------
+Phase 32 signup correctly creates the canonical member in app_member_accounts and retires Firestore signup bootstrap.
+The existing user runtime reads still consume the PostgreSQL read-model tables introduced in earlier phases:
+- app_user_member_shadows for /api/users/me/member-profile-candidate;
+- app_user_rental_restriction_shadows for /api/legacy/rental-restriction-candidate.
+
+Legacy users already had those rows because earlier Firestore bootstrap/synchronization paths created them. A Phase 32 PostgreSQL-only signup intentionally creates no Firestore userAccounts/rentalRestrictions documents, so no legacy bootstrap path exists to create the two PostgreSQL read-model rows. The result was a 404 candidate read with Firestore fallback correctly blocked by Phase 27.
+
+Source fix
+----------
+server/src/auth/user-clerk-auth-repository.mjs now materializes the required PostgreSQL runtime read models when:
+1. a Phase 32 signup is linked to its Clerk/app_user_id during provision; and
+2. an existing already-provisioned Phase 32 signup completes a verified Clerk login.
+
+The second path is a self-heal for accounts created before this hotfix.
+
+Safety boundary
+---------------
+The materialization is restricted to accounts satisfying both:
+- lifecycle_authority_mode='postgresql-authoritative';
+- terms_consent_bootstrap_completed_at IS NOT NULL.
+
+This targets Phase 32 PostgreSQL account-lifecycle accounts and avoids converting arbitrary legacy members into default no-restriction accounts.
+
+Member read model:
+- source_collection = app_member_accounts;
+- authority_mode = postgresql-authoritative;
+- mirror_state = retired;
+- current profile/status/identity/terms fields are copied from canonical app_member_accounts.
+
+Rental restriction read model:
+- a missing row for an eligible Phase 32 signup is initialized as restriction_exists=false;
+- authority_mode = postgresql-authoritative;
+- mirror_state = retired;
+- an existing restriction_exists=true row is never overwritten;
+- existing legacy/member restriction data is therefore not reset to an unrestricted state.
+
+No Firestore re-enable
+----------------------
+This hotfix does not restore Firestore signup bootstrap, member profile fallback, or rental restriction fallback. It creates/repairs the required PostgreSQL read models from the PostgreSQL canonical account only.
+
+Targeted automated validation
+-----------------------------
+- Phase 32 account lifecycle backend smoke: PASS, including provision + verified-login read-model self-heal assertions.
+- Phase 23 user Clerk lifecycle smoke: PASS.
+- Phase 31 member profile identity authority backend/frontend smoke: PASS.
+- Phase 30 member/restriction authority backend/frontend smoke: PASS.
+- React hook audit: PASS (171 source files).
+- Application flow audit: PASS (124 contracts, 11 user routes, 20 administrator tabs).
+- Firestore strict audit: PASS (138 calls, warnings 0, errors 0).
+- Backend foundation validation: PASS.
+- Migration static validation: PASS; no new migration.
+
+Deployment impact
+-----------------
+- Heroku Staging backend redeploy: REQUIRED.
+- Vercel Staging functional redeploy: NOT REQUIRED because runtime frontend source is unchanged by this hotfix.
+- No new Config Var, migration, Clerk setting, Firebase Rule, Firestore index, npm dependency, DNS change, or Production resource change.
+
+Required Staging retest
+-----------------------
+For the already-created failing test account:
+1. deploy/restart the Heroku Staging backend;
+2. log out and log back in (or reload through the normal Clerk session validation path);
+3. verify My Page profile loads from PostgreSQL;
+4. verify rental restriction state loads from PostgreSQL without a legacy fallback error;
+5. verify approved member status is reflected correctly;
+6. create one additional disposable signup and repeat approval/login to validate the provisioning-time path.
+
+Phase 32 remains FAIL/candidate until these actual browser tests pass.

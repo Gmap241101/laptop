@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createAccountLifecycleService } from '../../server/src/accounts/account-lifecycle-service.mjs';
 import { createUserClerkAuthService } from '../../server/src/auth/user-clerk-auth-service.mjs';
+import { createUserClerkAuthRepository } from '../../server/src/auth/user-clerk-auth-repository.mjs';
 
 const firebaseUid = 'firebase-phase32-user';
 const clerkUserId = 'clerk-phase32-user';
@@ -155,8 +156,53 @@ assert.equal(provision.provisioned, true);
 assert.equal(firestoreUserAccountReads, 0);
 assert.equal(compatibilitySyncCalls, 0);
 
+const runtimeReadModelQueries = [];
+const runtimeReadModelPool = {
+  async query(sql, params = []) {
+    runtimeReadModelQueries.push({ sql, params });
+    if (sql.includes('UPDATE app_member_accounts') && sql.includes('RETURNING firebase_uid')) {
+      return { rows: [{ firebase_uid: firebaseUid }] };
+    }
+    if (sql.includes('UPDATE app_member_accounts') && sql.includes('RETURNING app_user_id, firebase_uid')) {
+      return { rows: [{ app_user_id: 32, firebase_uid: firebaseUid }] };
+    }
+    if (sql.includes('INSERT INTO app_user_member_shadows')) return { rows: [] };
+    if (sql.includes('INSERT INTO app_user_rental_restriction_shadows')) return { rows: [] };
+    if (sql.includes('FROM app_user_identities u') && sql.includes('WHERE l.firebase_uid = $1')) {
+      return { rows: [{
+        app_user_id: 32, clerk_user_id: clerkUserId, primary_email: 'member@example.com',
+        firebase_uid: firebaseUid, firebase_email: 'member@example.com', member_status: 'active',
+        auth_authority_mode: 'clerk-authoritative', lifecycle_authority_mode: 'postgresql-authoritative',
+        clerk_account_state: 'active', clerk_linked_at: null, clerk_last_verified_at: null,
+        password_authority_updated_at: null, withdrawn_at: null,
+      }] };
+    }
+    throw new Error(`unexpected runtime read-model SQL: ${sql}`);
+  },
+};
+const runtimeReadModelRepository = createUserClerkAuthRepository(runtimeReadModelPool);
+assert.equal(await runtimeReadModelRepository.linkAuthority({ appUserId: 32, firebaseUid }), true);
+await runtimeReadModelRepository.markVerifiedLogin({ firebaseUid });
+const memberReadModelQueries = runtimeReadModelQueries.filter(({ sql }) => sql.includes('INSERT INTO app_user_member_shadows'));
+const restrictionReadModelQueries = runtimeReadModelQueries.filter(({ sql }) => sql.includes('INSERT INTO app_user_rental_restriction_shadows'));
+assert.equal(memberReadModelQueries.length, 2, 'signup provision and first verified login must both self-heal the PostgreSQL member read model');
+assert.equal(restrictionReadModelQueries.length, 2, 'signup provision and first verified login must both self-heal the PostgreSQL default restriction read model');
+for (const { sql } of memberReadModelQueries) {
+  assert.ok(sql.includes("m.lifecycle_authority_mode='postgresql-authoritative'"));
+  assert.ok(sql.includes('m.terms_consent_bootstrap_completed_at IS NOT NULL'));
+  assert.ok(sql.includes("source_collection=EXCLUDED.source_collection"));
+  assert.ok(sql.includes("authority_mode='postgresql-authoritative'"));
+  assert.ok(sql.includes("mirror_state='retired'"));
+}
+for (const { sql } of restrictionReadModelQueries) {
+  assert.ok(sql.includes('restriction_exists, restriction_payload'));
+  assert.ok(sql.includes("false, '{}'::jsonb"));
+  assert.ok(sql.includes("app_user_rental_restriction_shadows.restriction_exists=false"));
+  assert.ok(sql.includes("app_user_rental_restriction_shadows.authority_mode='postgresql-authoritative'"));
+}
+
 const read = async (path) => readFile(new URL(`../../${path}`, import.meta.url), 'utf8');
-const [migration, repoSource, serviceSource, appSource, envSource, indexSource, firestoreSource, authServiceSource] = await Promise.all([
+const [migration, repoSource, serviceSource, appSource, envSource, indexSource, firestoreSource, authServiceSource, authRepoSource] = await Promise.all([
   read('server/migrations/024_phase32_account_lifecycle_postgresql_authority.sql'),
   read('server/src/accounts/account-lifecycle-repository.mjs'),
   read('server/src/accounts/account-lifecycle-service.mjs'),
@@ -165,6 +211,7 @@ const [migration, repoSource, serviceSource, appSource, envSource, indexSource, 
   read('server/src/index.mjs'),
   read('server/src/firestore/firestore-members.mjs'),
   read('server/src/auth/user-clerk-auth-service.mjs'),
+  read('server/src/auth/user-clerk-auth-repository.mjs'),
 ]);
 for (const marker of ['CREATE TABLE IF NOT EXISTS app_user_term_consent_states', 'CREATE TABLE IF NOT EXISTS app_user_term_consent_logs', 'terms_consent_bootstrap_completed_at', "'phase', 32", "'password_reset_delivery', 'firebase-auth-compatibility-preserved'"]) assert.ok(migration.includes(marker), marker);
 for (const marker of ['createSignupAccount', 'importConsents', 'saveConsents', 'terms_consent_bootstrap_completed_at', 'terms_consent_revision, terms_consent_policy_version', 'GREATEST(terms_consent_revision, $2)', "mirror_state='retired'"]) assert.ok(repoSource.includes(marker), marker);
@@ -176,4 +223,5 @@ assert.ok(indexSource.includes('authorityEnabled: config.accountLifecycleCompati
 assert.ok(firestoreSource.includes('listUserTermConsentStates'));
 assert.ok(firestoreSource.includes('listUserTermConsentLogs'));
 for (const marker of ['readProvisionUser', 'memberRepository.findByFirebaseUid', 'if (!accountLifecycleCompatibilityDisabled)']) assert.ok(authServiceSource.includes(marker), marker);
-console.log('[account-lifecycle-authority-backend-smoke] PASS (backend flag gates Phase 32 service, PostgreSQL signup/terms authority, one-time trusted terms import, PG Clerk provision source, Firebase reset preserved)');
+for (const marker of ['materializePostgresqlRuntimeReadModels', 'app_user_member_shadows', 'app_user_rental_restriction_shadows', "m.lifecycle_authority_mode='postgresql-authoritative'", 'm.terms_consent_bootstrap_completed_at IS NOT NULL']) assert.ok(authRepoSource.includes(marker), marker);
+console.log('[account-lifecycle-authority-backend-smoke] PASS (backend flag gates Phase 32 service, PostgreSQL signup/terms authority, PG-only signup read-model self-heal, one-time trusted terms import, Firebase reset preserved)');

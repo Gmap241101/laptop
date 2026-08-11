@@ -260,3 +260,60 @@ If `/health` still reports the disabled compatibility contract, do not treat the
 ### No changes required
 
 No new Clerk setting, Firebase Rule, Firestore index, DNS change, Production resource change, npm dependency, or PostgreSQL migration is required for this hotfix.
+
+## New-signup PostgreSQL runtime read-model hotfix
+
+After the authority source-of-truth hotfix, a real new-user signup exposed a separate PostgreSQL initialization gap. The canonical signup row existed in `app_member_accounts`, but earlier user runtime endpoints still read `app_user_member_shadows` and `app_user_rental_restriction_shadows`. Because Phase 32 correctly retires Firestore signup bootstrap, those PostgreSQL read-model rows were never created for a brand-new account.
+
+### Heroku Staging action — REQUIRED
+
+Deploy/restart the backend from this hotfix package. No new environment variable or migration is required.
+
+Keep:
+
+```text
+FIRESTORE_ACCOUNT_LIFECYCLE_COMPATIBILITY_DISABLED=true
+SERVICE_VERSION=phase32
+```
+
+### Vercel Staging action
+
+No frontend runtime file changed in this hotfix, so a Vercel redeploy is not functionally required. If the normal deployment workflow republishes `gh-pages-3` anyway, that is acceptable; no new Vercel environment value is required.
+
+### Existing failed test account self-heal
+
+The account that already failed before this hotfix does **not** need to be recreated. After the Heroku backend is deployed:
+
+1. Log the user out.
+2. Log the same approved account back in.
+3. The verified Clerk session path will materialize the missing PostgreSQL member read model and default no-restriction read model from `app_member_accounts`.
+4. Open My Page and confirm the profile loads.
+5. Open a user page that evaluates rental restrictions and confirm the legacy fallback error no longer appears.
+
+### Safety rule
+
+The default `restriction_exists=false` row is created only for PostgreSQL account-lifecycle accounts (`lifecycle_authority_mode=postgresql-authoritative` plus completed Phase 32 terms bootstrap). Existing `restriction_exists=true` rows are never overwritten. Do not manually delete or reset restriction rows as part of this hotfix.
+
+### Fresh signup regression test
+
+Create one disposable staging user after backend deployment:
+
+```text
+signup
+-> PostgreSQL app_member_accounts
+-> Clerk provision/link
+-> PostgreSQL member read-model materialization
+-> PostgreSQL default no-restriction read-model materialization
+-> administrator approval
+-> user login
+```
+
+Expected after login:
+
+```text
+member profile read: PostgreSQL success
+rental restriction read: PostgreSQL success (exists=false when no restriction applies)
+legacy Firestore fallback: remains disabled
+```
+
+Do not enable Firestore fallback to make this test pass.
