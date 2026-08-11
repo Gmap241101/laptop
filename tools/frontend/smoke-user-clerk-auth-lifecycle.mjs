@@ -46,10 +46,28 @@ for (const marker of [
 
 for (const marker of [
   "authoritativeMemberStatus = ''",
+  "authoritativeMemberStatusSource = ''",
+  "authoritativeMemberProfileSource = ''",
   "const postgresMemberStatus = String(authoritativeMemberStatus || '').trim();",
-  'lifecycleConfig.userAuthRequested && postgresMemberStatus',
+  'const postgresStatusAuthoritative = Boolean(',
+  "String(authoritativeMemberStatusSource || '').trim() === 'postgresql'",
+  "String(authoritativeMemberProfileSource || '').trim() === 'postgresql'",
+  'if (!postgresStatusAuthoritative)',
   "authoritativeMemberStatus = authority?.memberStatus || '';",
-]) assert.ok(loginSource.includes(marker), `PostgreSQL member status must override stale Firestore approval status during Clerk-authoritative login: ${marker}`);
+  'verifiedPayload?.compatibility?.memberStatusSource',
+  'verifiedPayload?.compatibility?.memberProfileSource',
+]) assert.ok(loginSource.includes(marker), `PostgreSQL member status must bypass stale Firestore approval/directory status during Clerk-authoritative login: ${marker}`);
+
+const membershipSource = readFileSync('src/features/members/useUserMembershipStatusController.js', 'utf8');
+for (const marker of [
+  'hasEstablishedUserSession',
+  'readUserAccountLifecycleCutoverConfig',
+  'clerkStagingClient.getUserClerkSession()',
+  'sessionPayload?.compatibility?.memberStatusSource',
+  'sessionPayload?.userAuthentication?.memberStatus',
+  "postgresStatusSource === 'postgresql'",
+  'await clerkStagingClient.signOut()',
+]) assert.ok(membershipSource.includes(marker), `inactive-member watcher must confirm PostgreSQL status before post-login logout: ${marker}`);
 
 const userSessionSource = readFileSync('src/features/auth/useUserAuthenticationSessionController.js', 'utf8');
 for (const marker of [

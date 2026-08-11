@@ -462,6 +462,7 @@ export const createRequestHandler = ({
     service: config.serviceName,
     environment: config.appEnv,
     version: config.serviceVersion,
+    runtimeRevision: 'phase32-auth-session-source-truth-20260811-2026',
     compatibility: {
       assetBoardWriteMirrorDisabled: Boolean(config.assetBoardWriteMirrorDisabled),
       retiredWriteMirrorDomains: [

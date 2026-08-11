@@ -190,65 +190,77 @@ export default function useUserLoginController({
     firebaseUser,
     effectiveUserSessionPolicy,
     authoritativeMemberStatus = '',
+    authoritativeMemberStatusSource = '',
+    authoritativeMemberProfileSource = '',
   }) => {
-    const userAccountSnapshot = await getDoc(
-      doc(db, USER_ACCOUNTS_COLLECTION_NAME, firebaseUser.uid)
-    );
-
-    if (!userAccountSnapshot.exists()) {
-      const error = new Error('Registered member profile was not found.');
-      error.code = 'user_account_not_found';
-      throw error;
-    }
-
-    const signedInAccount = userAccountSnapshot.data();
     const lifecycleConfig = readUserAccountLifecycleCutoverConfig();
     const postgresMemberStatus = String(authoritativeMemberStatus || '').trim();
-    let signedInUserStatus = lifecycleConfig.userAuthRequested && postgresMemberStatus
-      ? postgresMemberStatus
-      : signedInAccount.status || '';
+    const postgresStatusAuthoritative = Boolean(
+      lifecycleConfig.userAuthRequested &&
+      postgresMemberStatus &&
+      String(authoritativeMemberStatusSource || '').trim() === 'postgresql' &&
+      String(authoritativeMemberProfileSource || '').trim() === 'postgresql'
+    );
 
-    if (
-      [
-        USER_PROFILE_STATUS.ACTIVE,
-        USER_PROFILE_STATUS.PROFILE_REQUIRED,
-      ].includes(signedInUserStatus)
-    ) {
-      const policyEnabled = isRegisteredMemberSignupRequired(dataSettings);
-      const directoryVersion = getSafeMemberDirectoryVersion(dataSettings);
-      const isDirectoryMismatchProfile =
-        signedInUserStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
-        signedInAccount.profileRequiredReason ===
-          PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
-      const needsDirectoryVerification =
-        isDirectoryMismatchProfile ||
-        (policyEnabled &&
-          signedInUserStatus === USER_PROFILE_STATUS.ACTIVE &&
-          Number(signedInAccount.directoryVerifiedVersion || 0) !==
-            directoryVersion);
+    let signedInAccount = null;
+    let signedInUserStatus = postgresStatusAuthoritative ? postgresMemberStatus : '';
 
-      if (needsDirectoryVerification) {
-        const serviceMode = normalizeSiteSettings(siteSettings).serviceMode;
-        const isPolicyDisabledRestore =
-          !policyEnabled &&
+    if (!postgresStatusAuthoritative) {
+      const userAccountSnapshot = await getDoc(
+        doc(db, USER_ACCOUNTS_COLLECTION_NAME, firebaseUser.uid)
+      );
+
+      if (!userAccountSnapshot.exists()) {
+        const error = new Error('Registered member profile was not found.');
+        error.code = 'user_account_not_found';
+        throw error;
+      }
+
+      signedInAccount = userAccountSnapshot.data();
+      signedInUserStatus = signedInAccount.status || '';
+
+      if (
+        [
+          USER_PROFILE_STATUS.ACTIVE,
+          USER_PROFILE_STATUS.PROFILE_REQUIRED,
+        ].includes(signedInUserStatus)
+      ) {
+        const policyEnabled = isRegisteredMemberSignupRequired(dataSettings);
+        const directoryVersion = getSafeMemberDirectoryVersion(dataSettings);
+        const isDirectoryMismatchProfile =
           signedInUserStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
           signedInAccount.profileRequiredReason ===
             PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
+        const needsDirectoryVerification =
+          isDirectoryMismatchProfile ||
+          (policyEnabled &&
+            signedInUserStatus === USER_PROFILE_STATUS.ACTIVE &&
+            Number(signedInAccount.directoryVerifiedVersion || 0) !==
+              directoryVersion);
 
-        if (serviceMode === SERVICE_MODE.NORMAL || isPolicyDisabledRestore) {
-          try {
-            const verificationResult = await verifyUserDirectoryMembership({
-              authUser: firebaseUser,
-              account: signedInAccount,
-            });
-            signedInUserStatus = verificationResult.status;
-          } catch (verificationError) {
-            if (verificationError?.code === 'permission-denied') {
-              throw createMemberPolicyError(
-                'member/directory-status-sync-permission-denied'
-              );
+        if (needsDirectoryVerification) {
+          const serviceMode = normalizeSiteSettings(siteSettings).serviceMode;
+          const isPolicyDisabledRestore =
+            !policyEnabled &&
+            signedInUserStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
+            signedInAccount.profileRequiredReason ===
+              PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
+
+          if (serviceMode === SERVICE_MODE.NORMAL || isPolicyDisabledRestore) {
+            try {
+              const verificationResult = await verifyUserDirectoryMembership({
+                authUser: firebaseUser,
+                account: signedInAccount,
+              });
+              signedInUserStatus = verificationResult.status;
+            } catch (verificationError) {
+              if (verificationError?.code === 'permission-denied') {
+                throw createMemberPolicyError(
+                  'member/directory-status-sync-permission-denied'
+                );
+              }
+              throw verificationError;
             }
-            throw verificationError;
           }
         }
       }
@@ -355,6 +367,7 @@ export default function useUserLoginController({
     let clerkSignedIn = false;
     let effectiveUserSessionPolicy = null;
     let authoritativeMemberStatus = '';
+    let verifiedPayload = null;
 
     setUserAuthLoading(true);
 
@@ -414,6 +427,8 @@ export default function useUserLoginController({
           firebaseUser,
           effectiveUserSessionPolicy,
           authoritativeMemberStatus: authority?.memberStatus || '',
+          authoritativeMemberStatusSource: verifiedPayload?.compatibility?.memberStatusSource || '',
+          authoritativeMemberProfileSource: verifiedPayload?.compatibility?.memberProfileSource || '',
         });
         if (lifecycleConfig.userAuthRequested && finalizationResult?.retainedSession) {
           completeUserAuthTransition(firebaseUser.uid);
@@ -533,7 +548,7 @@ export default function useUserLoginController({
         }
 
         clerkSignedIn = true;
-        const verifiedPayload = await clerkStagingClient.getUserClerkSession();
+        verifiedPayload = await clerkStagingClient.getUserClerkSession();
         const authority = verifiedPayload?.userAuthentication;
         authoritativeMemberStatus = authority?.memberStatus || '';
         if (authority?.firebaseUid !== credential.user.uid) {
@@ -558,6 +573,12 @@ export default function useUserLoginController({
         effectiveUserSessionPolicy,
         authoritativeMemberStatus: lifecycleConfig.userAuthRequested
           ? authoritativeMemberStatus
+          : '',
+        authoritativeMemberStatusSource: lifecycleConfig.userAuthRequested
+          ? verifiedPayload?.compatibility?.memberStatusSource || ''
+          : '',
+        authoritativeMemberProfileSource: lifecycleConfig.userAuthRequested
+          ? verifiedPayload?.compatibility?.memberProfileSource || ''
           : '',
       });
       if (lifecycleConfig.userAuthRequested && finalizationResult?.retainedSession) {

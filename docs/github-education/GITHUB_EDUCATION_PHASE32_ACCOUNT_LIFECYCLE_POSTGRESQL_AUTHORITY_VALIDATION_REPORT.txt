@@ -395,3 +395,116 @@ New Phase 32 account:
 6. logout/login one more time and confirm the same result.
 
 Phase 32 remains a candidate until these actual Staging browser tests pass.
+
+PHASE 32 POSTGRESQL SESSION GATE / FIRESTORE STATUS BYPASS HOTFIX
+===============================================================
+Date: 2026-08-11
+Runtime revision: phase32-auth-session-source-truth-20260811-2026
+
+Actual Staging finding after approval-status/rental-read hotfix
+-------------------------------------------------------------
+The user redeployed both Heroku Staging and Vercel Staging, but the two reported symptoms remained unchanged:
+1. an existing converted account still received the generic PostgreSQL My Rental Requests failure while legacy Firestore fallback was disabled;
+2. a brand-new account approved by an administrator still briefly signed in and then lost the user session.
+
+The public Heroku root response confirmed that the deployed service was Phase 32 and the expected PostgreSQL/retirement flags were active. Therefore this revision treats the failure as an execution-path problem rather than a failed deployment or disabled feature flag.
+
+Root cause A - PostgreSQL status was still followed by mandatory Firestore account finalization
+----------------------------------------------------------------------------------------------
+The previous hotfix passed PostgreSQL memberStatus into finalizeUserAuthentication, but finalizeUserAuthentication still always fetched Firestore userAccounts and retained the legacy directory/status verification branch. Phase 30 intentionally retired the Firestore member-status mirror, and Phase 32 intentionally retired Firestore signup bootstrap. Therefore a newly approved PostgreSQL account can legitimately have stale `pending` compatibility status or no Phase 32 Firestore signup account row suitable for authorization.
+
+A successful Clerk/PostgreSQL session could consequently be followed by a legacy Firestore decision and then immediate sign-out.
+
+Fix:
+- the user session response now supplies both the per-user PostgreSQL memberStatus and the backend member-status/profile source contract to login finalization;
+- when Clerk user authority is requested and both member status/profile sources are PostgreSQL, login finalization treats PostgreSQL memberStatus as authoritative and completely skips Firestore userAccounts approval/directory-status re-evaluation;
+- the compatibility Firestore finalization path remains only for rollback/non-cutover sessions;
+- ordinary password login and Clerk Client Trust completion use the same source-of-truth gate.
+
+Root cause B - post-login membership watcher could still sign out from a stale profile state
+------------------------------------------------------------------------------------------
+After login finalization, useUserMembershipStatusController watches userProfile.status. During transitional refresh, that profile can still temporarily contain a stale pending/blocked/retired status. Previously the watcher immediately cleared the local user session and Firebase compatibility session from that value.
+
+Fix:
+- the inactive-member watcher now waits until the local authenticated user session is actually established;
+- before any inactive-status logout in Clerk-authoritative mode, it calls `/api/users/auth/session` and confirms the canonical PostgreSQL memberStatus;
+- PostgreSQL active/profileRequired overrides a stale local profile and suppresses false logout;
+- a genuinely inactive PostgreSQL status still clears the local session and signs out both Clerk and Firebase compatibility sessions;
+- if canonical PostgreSQL status cannot be verified, the watcher does not destroy an otherwise established session from a stale local value; it surfaces an error for diagnosis instead.
+
+Root cause C - My Rental Requests could start before Clerk/local user session establishment
+------------------------------------------------------------------------------------------
+The rental subscription controller was triggered by Firebase Auth and member-profile readiness. Firebase compatibility login completes earlier than Clerk session establishment in the Phase 23/32 flow. The PostgreSQL rental API client requires a Clerk bearer token, so My Rental Requests could call `getRentalRequestReadCandidate()` during the short interval where Firebase/profile were ready but `clerk.session` / local user auth session was not yet established. This produced the same generic PostgreSQL-unavailable toast and did not necessarily retry when the Clerk session later became ready.
+
+Fix:
+- the rental read controller now receives `userAuthSessionUid`;
+- in Clerk-authoritative mode it does not initiate a PostgreSQL rental read until `userAuthSessionUid === firebaseAuthUser.uid`;
+- `userAuthSessionUid` is an effect dependency, so the authoritative read automatically retries when login finalization establishes the local session;
+- no Firestore fallback or legacy rental shadow synchronization is re-enabled.
+
+Deployment fingerprint
+----------------------
+To distinguish this revision from earlier Phase 32 packages that all reported `SERVICE_VERSION=phase32`, the backend root/health payload now includes:
+
+runtimeRevision = phase32-auth-session-source-truth-20260811-2026
+
+The Clerk Staging diagnostics panel also displays the same runtime revision string. After deployment, both surfaces must show this exact value before browser behavior is evaluated.
+
+Targeted regression coverage
+----------------------------
+- frontend user-Clerk lifecycle smoke asserts PostgreSQL memberStatus/profile source gating and Firestore authorization bypass markers;
+- the same smoke asserts the inactive-member watcher confirms `/api/users/auth/session` PostgreSQL status before post-login logout and signs out Clerk for genuine inactive status;
+- rental-request read cutover smoke asserts Clerk/local session readiness gating and App.jsx wiring of `userAuthSessionUid`;
+- Phase 32 backend smoke asserts the runtime revision marker is present in the backend payload contract.
+
+Full validation
+---------------
+Command: TERM=xterm npm run verify:phase32
+Result: PASS / exit code 0.
+
+Key results:
+- Phase 1-32 cumulative regression chain: PASS.
+- React hook audit: PASS (171 source files).
+- Application flow audit: PASS (124 contracts; 11 user routes; 20 administrator tabs).
+- Firestore strict audit: PASS (138 calls; warnings 0; errors 0).
+- Backend foundation validation: PASS.
+- Migration static validation: PASS.
+- No new PostgreSQL migration.
+
+Build: TERM=xterm npm run build:staging
+- React prebuild audits: PASS.
+- Clerk local config: DISABLED in assistant workspace.
+- Final Vite bundle: not executed because the Vite executable is unavailable in this workspace (`vite: not found`, exit 127).
+
+Deployment impact
+-----------------
+This revision changes both frontend and backend runtime code.
+- Heroku Staging redeploy: REQUIRED.
+- Vercel Staging redeploy: REQUIRED.
+- New PostgreSQL migration: NONE.
+- New environment variable: NONE.
+- Firebase Rules/index change: NONE.
+- Clerk configuration change: NONE.
+- Production resource change: PROHIBITED until explicit user approval.
+
+Required Staging retest
+-----------------------
+First verify deployment identity:
+1. open the Heroku Staging root and confirm `runtimeRevision` is exactly `phase32-auth-session-source-truth-20260811-2026`;
+2. open the Staging diagnostics panel and confirm `Runtime revision` shows the same string.
+
+Then test an already-approved new Phase 32 account:
+1. logout completely;
+2. login again;
+3. wait at least 30-60 seconds without input;
+4. navigate Rental -> My Page -> My Rental Requests -> another user menu;
+5. confirm the user remains signed in and PostgreSQL member/restriction/request reads succeed;
+6. logout/login once more and repeat.
+
+Then test an existing converted account:
+1. login;
+2. wait for the user session to establish;
+3. open My Rental Requests;
+4. confirm a PostgreSQL list or valid empty list appears without the legacy-fallback-disabled toast.
+
+Phase 32 remains a candidate until these actual browser tests pass.

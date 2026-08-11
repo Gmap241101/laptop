@@ -42,6 +42,8 @@ import {
   isRegisteredMemberSignupRequired,
 } from './memberAccountPolicy.js';
 import { syncMemberProfileWriteThroughBestEffort } from './memberProfileWriteThrough.js';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { readUserAccountLifecycleCutoverConfig } from '../auth/userAccountLifecycleCutover.js';
 
 export const useUserMembershipStatusState = () => {
   const [
@@ -71,6 +73,7 @@ export default function useUserMembershipStatusController({
   currentAuthRoleReady,
   dataSettings,
   firebaseAuthUser,
+  hasEstablishedUserSession,
   initialSettings,
   profileRequiredRedirectRef,
   setIsCommunityMenuOpen,
@@ -373,6 +376,7 @@ export default function useUserMembershipStatusController({
       !userProfileReady ||
       !userProfile ||
       userProfile.uid !== firebaseAuthUser.uid ||
+      !hasEstablishedUserSession ||
       userAuthLoading ||
       withdrawalLoading
     ) {
@@ -427,18 +431,40 @@ export default function useUserMembershipStatusController({
 
     userStatusLogoutInProgressRef.current = true;
 
-    const statusPageType =
-      currentStatus === USER_PROFILE_STATUS.PENDING
-        ? 'loginPending'
-        : currentStatus === USER_PROFILE_STATUS.BLOCKED
-          ? 'loginBlocked'
-          : 'loginRetired';
-
     const logoutInactiveUser = async () => {
       try {
+        let confirmedStatus = currentStatus;
+        const lifecycleConfig = readUserAccountLifecycleCutoverConfig();
+        if (lifecycleConfig.userAuthRequested) {
+          const sessionPayload = await clerkStagingClient.getUserClerkSession();
+          const postgresStatusSource = String(sessionPayload?.compatibility?.memberStatusSource || '').trim();
+          const postgresStatus = String(sessionPayload?.userAuthentication?.memberStatus || '').trim();
+          if (postgresStatusSource === 'postgresql' && postgresStatus) {
+            confirmedStatus = postgresStatus;
+          }
+        }
+
+        if (
+          [USER_PROFILE_STATUS.ACTIVE, USER_PROFILE_STATUS.PROFILE_REQUIRED].includes(
+            confirmedStatus
+          )
+        ) {
+          return;
+        }
+
+        const statusPageType =
+          confirmedStatus === USER_PROFILE_STATUS.PENDING
+            ? 'loginPending'
+            : confirmedStatus === USER_PROFILE_STATUS.BLOCKED
+              ? 'loginBlocked'
+              : 'loginRetired';
+
         showUserAccountStatus(statusPageType);
         clearUserAuthenticatedSession('inactive-member-status', {
           clearTransition: true,
+        });
+        await clerkStagingClient.signOut().catch((logoutError) => {
+          console.error('Inactive user Clerk logout error:', logoutError);
         });
         await signOut(firebaseAuth);
 
@@ -446,10 +472,9 @@ export default function useUserMembershipStatusController({
         clearAdminAuthenticatedSession();
         setUserAuthForm(createDefaultUserAuthForm());
       } catch (error) {
-        console.error('Inactive user automatic logout error:', error);
-
+        console.error('Inactive user PostgreSQL status verification/logout error:', error);
         triggerToast(
-          '회원 상태 변경은 확인했지만 자동 로그아웃에 실패했습니다. 페이지를 새로고침해 주세요.',
+          'PostgreSQL 회원 상태를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.',
           'error'
         );
       } finally {
@@ -466,6 +491,7 @@ export default function useUserMembershipStatusController({
     currentAuthAdminAccount,
     currentAuthRoleReady,
     firebaseAuthUser,
+    hasEstablishedUserSession,
     profileRequiredRedirectRef,
     setIsCommunityMenuOpen,
     setUserAuthForm,

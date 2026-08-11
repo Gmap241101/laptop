@@ -1036,6 +1036,7 @@ function App() {
     setRentalRequestsLoadErrorMessage,
     setRentalRequestsReady,
     triggerToast,
+    userAuthSessionUid,
     userProfile,
     userProfileReady,
   });
@@ -1324,6 +1325,7 @@ function App() {
       currentAuthRoleReady,
       dataSettings: data.settings,
       firebaseAuthUser,
+      hasEstablishedUserSession,
       initialSettings: initialData.settings,
       profileRequiredRedirectRef,
       setIsCommunityMenuOpen,

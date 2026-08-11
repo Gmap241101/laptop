@@ -47,6 +47,7 @@ import {
 import {
   readRentalRequestWriteMirrorRetirementConfig,
 } from '../compatibility/rentalRequestWriteMirrorRetirement.js';
+import { readUserAccountLifecycleCutoverConfig } from '../auth/userAccountLifecycleCutover.js';
 
 const createDefaultSplitSourceReady = () => ({
   config: false,
@@ -119,6 +120,7 @@ export function useOwnRentalRequestsSubscriptionController({
   setRentalRequestsLoadErrorMessage,
   setRentalRequestsReady,
   triggerToast,
+  userAuthSessionUid,
   userProfile,
   userProfileReady,
 }) {
@@ -147,8 +149,14 @@ export function useOwnRentalRequestsSubscriptionController({
       return undefined;
     }
 
+    const lifecycleConfig = readUserAccountLifecycleCutoverConfig();
+    const clerkUserSessionReady = Boolean(
+      !lifecycleConfig.userAuthRequested ||
+      (firebaseAuthUser?.uid && userAuthSessionUid === firebaseAuthUser.uid)
+    );
     const canReadOwnRentalRequests = Boolean(
       firebaseAuthUser &&
+        clerkUserSessionReady &&
         !currentAuthRoleErrorMessage &&
         [
           USER_PROFILE_STATUS.ACTIVE,
@@ -160,6 +168,13 @@ export function useOwnRentalRequestsSubscriptionController({
       setRentalRequests([]);
       setRentalRequestsLoadErrorMessage('');
       setRentalRequestsReady(true);
+      return undefined;
+    }
+
+    if (firebaseAuthUser && !clerkUserSessionReady) {
+      setRentalRequests([]);
+      setRentalRequestsLoadErrorMessage('');
+      setRentalRequestsReady(false);
       return undefined;
     }
 
@@ -483,6 +498,7 @@ export function useOwnRentalRequestsSubscriptionController({
     setRentalRequestsReady,
     userProfile?.email,
     previousAccountUidsKey,
+    userAuthSessionUid,
     userProfile?.status,
     userProfileReady,
   ]);

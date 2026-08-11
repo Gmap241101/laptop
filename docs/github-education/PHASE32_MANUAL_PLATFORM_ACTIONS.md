@@ -387,3 +387,131 @@ signup pending
 ```
 
 The full frontend must be redeployed for the approval-status fix; a backend-only restart is not sufficient for this revision.
+
+## PostgreSQL session-gate / Firestore status-bypass hotfix
+
+The previous approval-status hotfix did not fully remove the legacy authorization path. A real redeploy still reproduced both the newly-approved-user immediate logout and the converted-user My Rental Requests error. The deeper execution-path fix in this revision must be deployed to **both** runtime surfaces.
+
+### Runtime revision check — REQUIRED BEFORE FUNCTIONAL TESTING
+
+This package intentionally exposes a deployment fingerprint:
+
+```text
+phase32-auth-session-source-truth-20260811-2026
+```
+
+After Heroku deployment, open the Staging backend root:
+
+```text
+https://notebook-rental-api-staging-01-8302cb90b98c.herokuapp.com/
+```
+
+The JSON must contain:
+
+```text
+"runtimeRevision":"phase32-auth-session-source-truth-20260811-2026"
+```
+
+After Vercel deployment, open the Phase 32 diagnostics panel. It must display:
+
+```text
+Runtime revision: phase32-auth-session-source-truth-20260811-2026
+```
+
+If either value differs or is absent, do **not** evaluate the functional test yet: that surface is not running this revision.
+
+### Heroku Staging — REQUIRED
+
+Redeploy the backend from this full package. Keep existing Phase 32 configuration, including:
+
+```text
+SERVICE_VERSION=phase32
+FIRESTORE_ACCOUNT_LIFECYCLE_COMPATIBILITY_DISABLED=true
+FIRESTORE_MEMBER_STATUS_RESTRICTION_WRITE_MIRROR_DISABLED=true
+FIRESTORE_MEMBER_PROFILE_WRITE_MIRROR_DISABLED=true
+FIRESTORE_RENTAL_REQUEST_WRITE_MIRROR_DISABLED=true
+```
+
+No new migration or Config Var is introduced.
+
+### Vercel Staging — REQUIRED
+
+Redeploy `gh-pages-3` to `https://mkrental.vercel.app` from this same full package. Keep the existing Phase 32 cutover flags. No new Vercel environment variable is introduced.
+
+### Why the new approved account could still be logged out
+
+PostgreSQL approval was authoritative, but the login finalizer still performed a mandatory Firestore `userAccounts` authorization/directory-status pass after the Clerk/PostgreSQL session returned. In Phase 32 that Firestore row can be stale (`pending`) or absent as an authority row because signup bootstrap and member-status mirror are retired.
+
+This revision makes PostgreSQL member status final whenever the Clerk session contract confirms PostgreSQL member-status/profile sources. Firestore remains only on rollback/compatibility paths and cannot override the PostgreSQL approval decision.
+
+A post-login membership watcher also now verifies canonical PostgreSQL status before destroying a session from a stale local profile status.
+
+### Why My Rental Requests could still fail
+
+The page could begin its PostgreSQL read after Firebase compatibility auth/profile readiness but **before Clerk/local user-session establishment**. Because the PostgreSQL API requires a Clerk bearer token, that race produced the generic PostgreSQL unavailable error.
+
+This revision gates the rental read until:
+
+```text
+userAuthSessionUid == firebaseAuthUser.uid
+```
+
+and automatically reruns the effect when the session uid is established.
+
+Do not enable Firestore rental fallback to compensate for this race.
+
+### Required browser test — newly approved Phase 32 account
+
+Use the same account that previously logged out immediately; do not recreate it first.
+
+```text
+logout
+-> login
+-> remain idle 30-60 seconds
+-> Rental
+-> My Page
+-> My Rental Requests
+-> another user menu
+-> remain signed in
+-> logout/login again
+```
+
+Expected:
+
+```text
+PostgreSQL member status: active
+Clerk session: retained
+Firebase Auth compatibility session: retained
+member profile: PostgreSQL
+rental restriction: PostgreSQL
+My Rental Requests: PostgreSQL authoritative (list or valid empty list)
+legacy Firestore fallback: disabled
+```
+
+### Required browser test — existing converted account
+
+```text
+login
+-> wait until login finalization completes
+-> My Rental Requests
+```
+
+Expected: the request starts only after the established user session is present, and returns the PostgreSQL list or an empty list without a fallback-disabled error.
+
+### Pending account expectation
+
+A still-pending account must not gain access to protected rental functions. Only the canonical PostgreSQL approval status should control the transition to active user access. Do not restore Firestore member-status writes for pending/active synchronization.
+
+### No platform changes outside Staging
+
+Do not change:
+
+```text
+gh-pages
+Production Clerk
+Production DNS
+https://notebook.recruit.kro.kr
+Firebase Rules/indexes
+```
+
+Phase 33 remains blocked until this Phase 32 revision passes the actual Staging browser checks.

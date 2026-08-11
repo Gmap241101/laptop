@@ -119,6 +119,8 @@ import {
 } from '../features/auth/accountLifecycleAuthority.js';
 import { clerkStagingClient } from './clerkStagingClient.js';
 
+const PHASE32_RUNTIME_REVISION = 'phase32-auth-session-source-truth-20260811-2026';
+
 const panelStyle = {
   position: 'fixed',
   right: '16px',
@@ -1617,6 +1619,7 @@ export default function ClerkStagingDiagnostics() {
       <div style={{ overflowWrap: 'anywhere' }}>Preserved compatibility: Firebase auth session / signup bootstrap / password reset delivery / terms consent / site shell</div>
 
       <div style={{ marginTop: '6px', fontWeight: 700 }}>Phase 32 signup + terms consent PostgreSQL account lifecycle authority</div>
+      <div>Runtime revision: {PHASE32_RUNTIME_REVISION}</div>
       <div>Account lifecycle authority requested: {state.accountLifecycleAuthorityRequested ? 'yes' : 'no'}</div>
       <div>Account lifecycle backend applied: {state.accountLifecycleAuthorityBackendApplied ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Signup profile source: {state.accountLifecycleSignupSource || '-'}</div>
