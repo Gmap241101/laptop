@@ -55,7 +55,12 @@ export const createAccountRecoveryService = ({ repository }) => {
         result?.account?.email &&
         result.account.email.toLowerCase() === result.identity.email,
       );
-      return Object.freeze({ source: 'postgresql', verified });
+      return Object.freeze({
+        source: 'postgresql',
+        verified,
+        firebaseUid: verified ? String(result.account.firebaseUid || '') : '',
+        email: verified ? String(result.account.email || result.identity.email || '').toLowerCase() : '',
+      });
     },
   });
 };

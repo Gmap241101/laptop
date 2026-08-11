@@ -8,6 +8,7 @@ import {
   readAccountLifecycleAuthorityConfig,
   readAccountLifecycleAuthorityFromPayload,
 } from '../auth/accountLifecycleAuthority.js';
+import { readUserFirebaseAuthRetirementConfig } from '../auth/userFirebaseAuthRetirement.js';
 import {
   isTermsConsentRequiredForAccount,
   normalizeTermsPolicy,
@@ -61,6 +62,11 @@ export default function useUserTermsCompliance({
         let payload = await clerkStagingClient.getUserTermsConsent();
         let legacyBootstrap = 'not-required';
         if (payload?.termsConsent?.bootstrapRequired) {
+          if (readUserFirebaseAuthRetirementConfig().requested) {
+            const error = new Error('PostgreSQL terms consent bootstrap is required before Firebase user auth retirement.');
+            error.code = 'terms_consent_postgresql_bootstrap_required';
+            throw error;
+          }
           const firebaseUser = firebaseAuth.currentUser;
           if (!firebaseUser) {
             throw new Error('terms-consent-firebase-compatibility-required');

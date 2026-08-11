@@ -42,6 +42,11 @@ import {
   readUserAccountLifecycleCutoverConfig,
 } from './userAccountLifecycleCutover.js';
 import { resolveEffectiveUserSessionPolicy } from './userSessionPolicyService.js';
+import {
+  createClerkPostgresqlUserPrincipal,
+  publishUserFirebaseAuthRetirementObservation,
+  readUserFirebaseAuthRetirementConfig,
+} from './userFirebaseAuthRetirement.js';
 
 export const createDefaultUserAuthForm = () => ({
   email: '',
@@ -86,6 +91,7 @@ export default function useUserLoginController({
   setSelectedFooterPageId,
   setSelectedNoticePostId,
   setUserAuthenticatedSession,
+  setFirebaseAuthUser,
   siteSettings,
   setUserAuthForm,
   setUserAuthLoading,
@@ -130,6 +136,7 @@ export default function useUserLoginController({
 
     const shouldLeaveProtectedPage = PROTECTED_USER_TABS.has(userTab);
     const lifecycleConfig = readUserAccountLifecycleCutoverConfig();
+    const firebaseRetirement = readUserFirebaseAuthRetirementConfig();
     let clerkSignOutFailed = false;
 
     setUserAuthLoading(true);
@@ -144,7 +151,13 @@ export default function useUserLoginController({
           console.error('User Clerk logout error:', error);
         }
       }
-      await signOut(firebaseAuth);
+      if (firebaseRetirement.requested) {
+        if (firebaseAuth.currentUser) await signOut(firebaseAuth).catch(() => {});
+        setFirebaseAuthUser(null);
+        publishUserFirebaseAuthRetirementObservation({ requested: true, userFirebaseCompatibility: 'retired', session: 'signed-out', error: '' });
+      } else {
+        await signOut(firebaseAuth);
+      }
       clearUserLoginReturnTarget();
       clearUserAuthenticatedSession('user-logout', { clearTransition: true });
       clearAdminAuthenticatedSession();
@@ -161,7 +174,7 @@ export default function useUserLoginController({
 
       triggerToast(
         clerkSignOutFailed
-          ? 'Firebase 로그아웃은 완료됐지만 Clerk 세션 정리에 실패했습니다. 페이지를 새로고침해 로그인 상태를 확인해 주세요.'
+          ? (firebaseRetirement.requested ? 'Clerk 로그아웃을 완료하지 못했습니다. 페이지를 새로고침해 로그인 상태를 확인해 주세요.' : 'Firebase 로그아웃은 완료됐지만 Clerk 세션 정리에 실패했습니다. 페이지를 새로고침해 로그인 상태를 확인해 주세요.')
           : '로그아웃되었습니다.',
         clerkSignOutFailed ? 'error' : 'success'
       );
@@ -178,6 +191,7 @@ export default function useUserLoginController({
     setIsCommunityMenuOpen,
     setSelectedFooterPageId,
     setSelectedNoticePostId,
+    setFirebaseAuthUser,
     setUserAuthForm,
     setUserAuthLoading,
     setUserTab,
@@ -295,6 +309,7 @@ export default function useUserLoginController({
         clearTransition: true,
       });
       await clerkStagingClient.signOut().catch(() => {});
+      if (readUserFirebaseAuthRetirementConfig().requested) setFirebaseAuthUser(null);
       await signOut(firebaseAuth).catch((logoutError) => {
         console.error('Inactive login sign-out error:', logoutError);
       });
@@ -326,6 +341,7 @@ export default function useUserLoginController({
     navigateToUserReturnTarget,
     setIsCommunityMenuOpen,
     setUserAuthenticatedSession,
+    setFirebaseAuthUser,
     setUserAuthForm,
     setUserTab,
     setView,
@@ -339,6 +355,7 @@ export default function useUserLoginController({
     event.preventDefault();
 
     const lifecycleConfig = readUserAccountLifecycleCutoverConfig();
+    const firebaseRetirement = readUserFirebaseAuthRetirementConfig();
     const email = normalizeEmailAddress(userAuthForm.email);
     const password = userAuthForm.password;
     const isClientTrustVerification = Boolean(userAuthForm.clientTrustRequired);
@@ -375,6 +392,113 @@ export default function useUserLoginController({
       beginUserAuthTransition({ email });
     } else if (lifecycleConfig.userAuthRequested && firebaseAuth.currentUser?.uid) {
       bindUserAuthTransitionIdentity(firebaseAuth.currentUser.uid);
+    }
+
+    if (firebaseRetirement.requested) {
+      try {
+        effectiveUserSessionPolicy = await resolveEffectiveUserSessionPolicy({
+          policy: userSessionPolicy,
+          policyReady: userSessionPolicyReady,
+        });
+        clearAdminAuthenticatedSession();
+
+        let signInResult = null;
+        if (isClientTrustVerification) {
+          await clerkStagingClient.verifyUserClientTrust(userAuthForm.clientTrustCode);
+          clerkSignedIn = true;
+        } else {
+          signInResult = await clerkStagingClient.signInUserWithPassword(email, password);
+          if (signInResult?.status === 'needs_client_trust') {
+            setUserAuthForm((current) => ({
+              ...current,
+              password: '',
+              clientTrustCode: '',
+              clientTrustRequired: true,
+              clientTrustStrategy: signInResult.clientTrustStrategy || '',
+              clientTrustDestination: signInResult.clientTrustDestination || email,
+              clientTrustMigration: 'phase33-clerk-postgresql',
+            }));
+            publishUserAccountLifecycleObservation({
+              userAuthRequested: true,
+              userLifecycleRequested: lifecycleConfig.userLifecycleRequested,
+              userAuthSource: 'client-trust-required',
+              userFirebaseCompatibility: 'retired',
+              userClerkMigration: 'phase33-clerk-postgresql',
+              userClientTrustStatus: 'code-sent',
+              userClientTrustStrategy: signInResult.clientTrustStrategy || '',
+              userClientTrustDestination: signInResult.clientTrustDestination || '',
+              error: '',
+            });
+            publishUserFirebaseAuthRetirementObservation({ requested: true, userFirebaseCompatibility: 'retired', session: 'client-trust-required', error: '' });
+            triggerToast(`Clerk 새 기기 확인을 위해 ${signInResult.clientTrustDestination || '등록된 연락처'}로 인증코드를 전송했습니다.`, 'success');
+            return;
+          }
+          clerkSignedIn = true;
+        }
+
+        verifiedPayload = await clerkStagingClient.getUserClerkSession();
+        const authority = verifiedPayload?.userAuthentication || {};
+        const principal = createClerkPostgresqlUserPrincipal({
+          uid: authority.legacyMemberKey || authority.firebaseUid,
+          email: authority.email || email,
+          displayName: authority.displayName || '',
+        });
+        if (!principal) {
+          const error = new Error('PostgreSQL compatibility member key is missing from the Clerk session.');
+          error.code = 'user_legacy_member_key_missing';
+          throw error;
+        }
+        setFirebaseAuthUser(principal);
+        bindUserAuthTransitionIdentity(principal.uid);
+        publishUserAccountLifecycleObservation({
+          userAuthRequested: true,
+          userLifecycleRequested: lifecycleConfig.userLifecycleRequested,
+          userAuthSource: 'clerk',
+          userFirebaseCompatibility: 'retired',
+          userClerkMigration: isClientTrustVerification ? (userAuthForm.clientTrustMigration || 'phase33-clerk-postgresql') : 'existing',
+          userClerkUser: authority.clerkUserId || '',
+          userClientTrustStatus: isClientTrustVerification ? 'verified' : 'not-required',
+          userClientTrustStrategy: userAuthForm.clientTrustStrategy || '',
+          userClientTrustDestination: userAuthForm.clientTrustDestination || '',
+          error: '',
+        });
+        publishUserFirebaseAuthRetirementObservation({ requested: true, userFirebaseCompatibility: 'retired', session: 'signed-in', legacyMemberKeySource: authority.legacyMemberKeySource || 'postgresql-compatibility-key', error: '' });
+
+        const finalizationResult = await finalizeUserAuthentication({
+          firebaseUser: principal,
+          effectiveUserSessionPolicy,
+          authoritativeMemberStatus: authority.memberStatus || '',
+          authoritativeMemberStatusSource: verifiedPayload?.compatibility?.memberStatusSource || 'postgresql',
+          authoritativeMemberProfileSource: verifiedPayload?.compatibility?.memberProfileSource || 'postgresql',
+        });
+        if (finalizationResult?.retainedSession) completeUserAuthTransition(principal.uid);
+        else clearUserAuthTransition();
+      } catch (error) {
+        const code = error?.errors?.[0]?.code || error?.code || error?.message || 'user-clerk-authentication-failed';
+        const retryableCode = isClientTrustVerification && ['form_code_incorrect', 'form_code_invalid', 'verification_failed'].includes(code);
+        if (!retryableCode) {
+          if (clerkSignedIn) await clerkStagingClient.signOut().catch(() => {});
+          setFirebaseAuthUser(null);
+          clearUserAuthenticatedSession('user-login-failed', { clearTransition: true });
+          clearAdminAuthenticatedSession();
+          setUserAuthForm(createDefaultUserAuthForm());
+          clearUserAuthTransition();
+        }
+        publishUserFirebaseAuthRetirementObservation({ requested: true, userFirebaseCompatibility: 'retired', session: retryableCode ? 'client-trust-required' : 'failed', error: code });
+        const message = code === 'user_account_is_admin'
+          ? '관리자 계정은 사용자 로그인 화면이 아니라 관리자 모드에서 로그인해 주세요.'
+          : code === 'user_account_retired'
+            ? '탈퇴 처리된 계정입니다. 재가입 절차를 이용해 주세요.'
+            : code === 'form_identifier_not_found'
+              ? 'Clerk 전환이 완료되지 않은 기존 계정입니다. 비밀번호 재설정에서 본인 정보를 확인한 뒤 새 비밀번호를 설정해 주세요.'
+              : retryableCode
+                ? 'Clerk 인증코드가 올바르지 않습니다. 받은 코드를 다시 확인해 주세요.'
+                : getUserAuthErrorMessage(error);
+        triggerToast(message, 'error');
+      } finally {
+        setUserAuthLoading(false);
+      }
+      return;
     }
 
     if (isClientTrustVerification) {
@@ -658,6 +782,7 @@ export default function useUserLoginController({
     configureFirebaseAuthPersistence,
     finalizeUserAuthentication,
     getUserAuthErrorMessage,
+    setFirebaseAuthUser,
     setUserAuthForm,
     setUserAuthLoading,
     triggerToast,

@@ -9,6 +9,7 @@ import {
   publishUserAccountLifecycleObservation,
   readUserAccountLifecycleCutoverConfig,
 } from '../auth/userAccountLifecycleCutover.js';
+import { readUserFirebaseAuthRetirementConfig } from '../auth/userFirebaseAuthRetirement.js';
 import { isValidMemberPassword } from '../../utils/memberPolicy.js';
 
 const getVerificationErrorMessage = (error) => {
@@ -92,6 +93,7 @@ export default function useUserMyPageSecurity({
       }
 
       const lifecycleConfig = readUserAccountLifecycleCutoverConfig();
+      const firebaseRetirement = readUserFirebaseAuthRetirementConfig();
       setVerificationLoading(true);
       setVerificationErrorMessage('');
 
@@ -100,11 +102,13 @@ export default function useUserMyPageSecurity({
           await clerkStagingClient.verifyUserPassword(currentPassword);
         }
 
-        const credential = EmailAuthProvider.credential(
-          firebaseAuthUser.email,
-          currentPassword
-        );
-        await reauthenticateWithCredential(firebaseAuthUser, credential);
+        if (!firebaseRetirement.requested) {
+          const credential = EmailAuthProvider.credential(
+            firebaseAuthUser.email,
+            currentPassword
+          );
+          await reauthenticateWithCredential(firebaseAuthUser, credential);
+        }
 
         verifiedPasswordRef.current = currentPassword;
         setVerifiedUid(firebaseAuthUser.uid);
@@ -114,7 +118,9 @@ export default function useUserMyPageSecurity({
             userAuthRequested: lifecycleConfig.userAuthRequested,
             userLifecycleRequested: true,
             passwordVerificationSource: 'clerk',
-            passwordFirebaseCompatibility: 'verified',
+            passwordFirebaseCompatibility: firebaseRetirement.requested
+              ? 'retired'
+              : 'verified',
             error: '',
           });
         }
@@ -164,6 +170,7 @@ export default function useUserMyPageSecurity({
       }
 
       const lifecycleConfig = readUserAccountLifecycleCutoverConfig();
+      const firebaseRetirement = readUserFirebaseAuthRetirementConfig();
       const verifiedCurrentPassword = verifiedPasswordRef.current;
       let firebasePasswordChanged = false;
       let firebaseRollbackFailed = false;
@@ -172,34 +179,49 @@ export default function useUserMyPageSecurity({
       setPasswordErrorMessage('');
 
       try {
-        await updatePassword(firebaseAuthUser, newPassword);
-        firebasePasswordChanged = true;
-
-        if (lifecycleConfig.userLifecycleRequested) {
-          try {
-            const firebaseIdToken = await firebaseAuthUser.getIdToken();
-            await clerkStagingClient.changeUserPassword(
-              firebaseIdToken,
-              verifiedCurrentPassword,
-              newPassword
-            );
-          } catch (authorityError) {
-            try {
-              await updatePassword(firebaseAuthUser, verifiedCurrentPassword);
-              firebasePasswordChanged = false;
-            } catch (rollbackError) {
-              firebaseRollbackFailed = true;
-              console.error('Firebase password rollback error:', rollbackError);
-            }
-            throw authorityError;
-          }
+        if (firebaseRetirement.requested) {
+          await clerkStagingClient.changeUserPassword(
+            '',
+            verifiedCurrentPassword,
+            newPassword
+          );
           publishUserAccountLifecycleObservation({
             userAuthRequested: lifecycleConfig.userAuthRequested,
             userLifecycleRequested: true,
             passwordAuthoritySource: 'clerk',
-            passwordFirebaseCompatibility: 'synced',
+            passwordFirebaseCompatibility: 'retired',
             error: '',
           });
+        } else {
+          await updatePassword(firebaseAuthUser, newPassword);
+          firebasePasswordChanged = true;
+
+          if (lifecycleConfig.userLifecycleRequested) {
+            try {
+              const firebaseIdToken = await firebaseAuthUser.getIdToken();
+              await clerkStagingClient.changeUserPassword(
+                firebaseIdToken,
+                verifiedCurrentPassword,
+                newPassword
+              );
+            } catch (authorityError) {
+              try {
+                await updatePassword(firebaseAuthUser, verifiedCurrentPassword);
+                firebasePasswordChanged = false;
+              } catch (rollbackError) {
+                firebaseRollbackFailed = true;
+                console.error('Firebase password rollback error:', rollbackError);
+              }
+              throw authorityError;
+            }
+            publishUserAccountLifecycleObservation({
+              userAuthRequested: lifecycleConfig.userAuthRequested,
+              userLifecycleRequested: true,
+              passwordAuthoritySource: 'clerk',
+              passwordFirebaseCompatibility: 'synced',
+              error: '',
+            });
+          }
         }
 
         verifiedPasswordRef.current = '';
@@ -213,11 +235,13 @@ export default function useUserMyPageSecurity({
             userAuthRequested: lifecycleConfig.userAuthRequested,
             userLifecycleRequested: true,
             passwordAuthoritySource: 'failed',
-            passwordFirebaseCompatibility: firebaseRollbackFailed
-              ? 'rollback-failed'
-              : firebasePasswordChanged
-                ? 'changed-unconfirmed'
-                : 'rolled-back',
+            passwordFirebaseCompatibility: firebaseRetirement.requested
+              ? 'retired'
+              : firebaseRollbackFailed
+                ? 'rollback-failed'
+                : firebasePasswordChanged
+                  ? 'changed-unconfirmed'
+                  : 'rolled-back',
             error: error?.code || error?.errors?.[0]?.code || 'user-password-change-failed',
           });
         }

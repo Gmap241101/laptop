@@ -66,6 +66,7 @@ export const createMemberAuthorityService = ({
   writeMirrorEnabled = true,
   profileWriteMirrorEnabled = true,
   siteContentRepository = null,
+  userFirebaseAuthCompatibilityDisabled = false,
 }) => {
   if (!repository || typeof repository.mutateProfile !== 'function') throw new TypeError('Member authority repository is required.');
   if (!firebaseLinkRepository || typeof firebaseLinkRepository.findByFirebaseUid !== 'function') throw new TypeError('firebaseLinkRepository is required.');
@@ -105,8 +106,12 @@ export const createMemberAuthorityService = ({
   const verifySelf = async ({ clerkUserId, firebaseIdentity }) => {
     const appUser = await userRepository.findByClerkUserId(clerkUserId);
     if (!appUser) throw serviceError('profile_not_synced', 'PostgreSQL user profile must be synchronized first.', 409);
-    const link = await firebaseLinkRepository.findByFirebaseUid(trim(firebaseIdentity?.uid));
-    if (!link || String(link.appUserId) !== String(appUser.id)) throw serviceError('legacy_link_token_mismatch', 'The current Firebase session does not match the linked Clerk user.', 409);
+    const requestedUid = trim(firebaseIdentity?.uid);
+    const link = userFirebaseAuthCompatibilityDisabled
+      ? await firebaseLinkRepository.findByAppUserId(appUser.id)
+      : await firebaseLinkRepository.findByFirebaseUid(requestedUid);
+    if (!link || String(link.appUserId) !== String(appUser.id)) throw serviceError('legacy_link_token_mismatch', 'The current user authority does not match the linked Clerk user.', 409);
+    if (!userFirebaseAuthCompatibilityDisabled && requestedUid && trim(link.firebaseUid) !== requestedUid) throw serviceError('legacy_link_token_mismatch', 'The current Firebase session does not match the linked Clerk user.', 409);
     return { appUser, link };
   };
 
@@ -114,6 +119,9 @@ export const createMemberAuthorityService = ({
     if (profileWriteMirrorEnabled) return null;
     const state = await repository.getDirectoryBootstrapState();
     if (state?.completed === true && Number(state.version || 0) >= Number(version || 0)) return state;
+    if (userFirebaseAuthCompatibilityDisabled || !firebaseIdentity?.idToken) {
+      throw serviceError('member_directory_postgresql_stale', 'PostgreSQL member directory must be synchronized by an administrator before member verification.', 503);
+    }
     const documents = await firestoreClient.listDirectoryMembers({ firebaseIdToken: firebaseIdentity.idToken });
     const entries = documents.map((document, index) => {
       const fields = document?.fields || {};
@@ -587,7 +595,10 @@ export const createMemberAuthorityService = ({
       const admin = await firestoreClient.verifyAdmin({ firebaseUid: firebaseIdentity.uid, firebaseIdToken: firebaseIdentity.idToken });
       const settings = profileWriteMirrorEnabled ? {} : await getPostgresqlMemberPolicySettings();
       const version = Math.max(0, Number(settings.memberDirectoryVersion || 0));
-      const documents = await firestoreClient.listDirectoryMembers({ firebaseIdToken: firebaseIdentity.idToken });
+      if (userFirebaseAuthCompatibilityDisabled || !firebaseIdentity?.idToken) {
+      throw serviceError('member_directory_postgresql_stale', 'PostgreSQL member directory must be synchronized by an administrator before member verification.', 503);
+    }
+    const documents = await firestoreClient.listDirectoryMembers({ firebaseIdToken: firebaseIdentity.idToken });
       const entries = documents.map((document, index) => {
         const fields = document?.fields || {};
         return {

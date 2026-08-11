@@ -113,20 +113,6 @@ const boardService = createBoardService({
   firestoreClient: firestoreBoardClient,
   writeMirrorEnabled: !config.assetBoardWriteMirrorDisabled,
 });
-const userClerkAuthService = firestoreMemberAuthorityClient
-  ? createUserClerkAuthService({
-      repository: userClerkAuthRepository,
-      clerkClient,
-      userRepository,
-      firebaseLinkRepository,
-      firestoreClient: firestoreMemberAuthorityClient,
-      rentalRestrictionRepository,
-      writeMirrorEnabled: !config.memberStatusRestrictionWriteMirrorDisabled,
-      memberRepository: memberAuthorityRepository,
-      adminIdentityRepository,
-      accountLifecycleCompatibilityDisabled: config.accountLifecycleCompatibilityDisabled,
-    })
-  : null;
 const accountLifecycleService = createAccountLifecycleService({
   repository: accountLifecycleRepository,
   siteContentRepository,
@@ -134,6 +120,20 @@ const accountLifecycleService = createAccountLifecycleService({
   firestoreClient: firestoreMemberAuthorityClient,
   authorityEnabled: config.accountLifecycleCompatibilityDisabled,
 });
+const userClerkAuthService = firestoreMemberAuthorityClient
+  ? createUserClerkAuthService({
+      repository: userClerkAuthRepository,
+      clerkClient,
+      userRepository,
+      firebaseLinkRepository,
+      firestoreClient: firestoreMemberAuthorityClient,
+      memberRepository: memberAuthorityRepository,
+      adminIdentityRepository,
+      accountLifecycleService,
+      accountLifecycleCompatibilityDisabled: config.accountLifecycleCompatibilityDisabled,
+      userFirebaseAuthCompatibilityDisabled: config.userFirebaseAuthCompatibilityDisabled,
+    })
+  : null;
 const adminClerkAuthService = firestoreMemberAuthorityClient
   ? createAdminClerkAuthService({
       repository: adminIdentityRepository,
@@ -151,6 +151,7 @@ const memberAuthorityService = firestoreMemberAuthorityClient
       siteContentRepository,
       writeMirrorEnabled: !config.memberStatusRestrictionWriteMirrorDisabled,
       profileWriteMirrorEnabled: !config.memberProfileWriteMirrorDisabled,
+      userFirebaseAuthCompatibilityDisabled: config.userFirebaseAuthCompatibilityDisabled,
     })
   : null;
 
@@ -170,6 +171,7 @@ const rentalRestrictionService = createRentalRestrictionService({
   firebaseLinkRepository,
   rentalRestrictionRepository,
   firestoreRentalRestrictionClient,
+  firebaseCompatibilityRequired: !config.userFirebaseAuthCompatibilityDisabled,
 });
 const rentalRequestRepository = createRentalRequestRepository(pool);
 const adminRentalRequestRepository = createAdminRentalRequestRepository(pool);

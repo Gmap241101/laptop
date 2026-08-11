@@ -1,0 +1,159 @@
+GitHub Education Phase 33 - User Clerk-only Authentication + Public Content PostgreSQL Authority Validation
+========================================================================================================
+
+Confirmed previous baseline
+---------------------------
+rental-system-github-education-phase32-new-member-runtime-authority-hotfix-20260811_2141_deployment_package.zip
+SHA-256: c249a1b7f6587e94af0b5d0ab45c0c69004ed80b36675312eb3e00c9306f333e
+Phase 32 actual Staging/browser result: PASS.
+
+Phase 33 scope
+--------------
+- Retire normal-user Firebase Authentication compatibility session when explicitly enabled.
+- Keep administrator Firebase compatibility for transitional Firestore settings/policy management.
+- Native signup: PostgreSQL account lifecycle + Clerk identity; no Firebase Auth account required.
+- Existing converted user login: Clerk + PostgreSQL member authority; no Firebase session required.
+- User password verify/change: Clerk-only.
+- Password reset delivery: Clerk reset_password_email_code after PostgreSQL identity verification.
+- User withdrawal: PostgreSQL authority + Clerk cleanup; no Firebase Auth deletion prerequisite.
+- User profile/directory/restriction/rental mutations: Clerk bearer + PostgreSQL authority; no Firebase token prerequisite in retired mode.
+- Public site-shell reads: PostgreSQL authority after explicit content authority enablement.
+- Public policy/terms reads: PostgreSQL authority after explicit content authority enablement.
+- Firestore public parity fallback: retired in public authority mode.
+- Administrator Firestore compatibility: preserved for Phase 34 cleanup.
+
+Runtime revision
+----------------
+phase33-user-clerk-content-authority-20260811-2210
+
+Database
+--------
+No new migration.
+No destructive schema change.
+Existing firebase_uid-named compatibility keys remain until Phase 34 schema cleanup.
+Native Phase 33 users receive a PostgreSQL compatibility key of the form clerk-native:<sha256(normalized-email)>.
+
+New/changed configuration
+-------------------------
+Heroku Staging:
+FIREBASE_USER_AUTH_COMPATIBILITY_DISABLED=true
+SERVICE_VERSION=phase33
+
+Vercel Staging:
+VITE_USER_FIREBASE_AUTH_COMPATIBILITY_DISABLED=true
+VITE_SITE_CONTENT_POSTGRES_AUTHORITY_ENABLED=true
+VITE_POLICY_CONTENT_POSTGRES_AUTHORITY_ENABLED=true
+
+The public content authority flags must only be enabled after administrator-driven PostgreSQL content synchronization is verified.
+
+Safe rollout
+------------
+1. Deploy Phase 33 backend/frontend code with the three new authority/retirement flags disabled.
+2. Keep administrator Firebase compatibility active.
+3. Use administrator transitional sync controls to synchronize site settings/home/popup/footer and rental policy/terms to PostgreSQL.
+4. Verify PostgreSQL content parity/completeness.
+5. Set FIREBASE_USER_AUTH_COMPATIBILITY_DISABLED=true on Heroku and redeploy/restart.
+6. Set VITE_USER_FIREBASE_AUTH_COMPATIBILITY_DISABLED=true, VITE_SITE_CONTENT_POSTGRES_AUTHORITY_ENABLED=true, VITE_POLICY_CONTENT_POSTGRES_AUTHORITY_ENABLED=true on Vercel and redeploy.
+7. Verify user and administrator diagnostics/runtime revision, then execute the full browser regression matrix.
+
+Automated validation
+--------------------
+Final command and package results are recorded after running TERM=xterm npm run verify:phase33 and packaging. This file is part of the source contract and is updated by the Phase 33 packaging workflow.
+
+Build environment note
+----------------------
+The assistant workspace historically has no root Vite executable. `npm run build:staging` is expected to pass React/Application/Firestore prebuild audits and then may end with `vite: not found` / exit 127. Actual bundle validation must be performed by Vercel Staging.
+
+Critical browser validation
+---------------------------
+User, plain URL (no cutover query required):
+- Runtime revision = phase33-user-clerk-content-authority-20260811-2210.
+- User Firebase retirement requested=yes and backend applied=yes.
+- User auth source=clerk-postgresql.
+- Firebase signed in=no for normal users.
+- Legacy member key source=postgresql-compatibility-key.
+- Password reset delivery=clerk-email-code.
+- Existing converted account login/profile/restriction/rental history/create/edit/cancel/extend all work.
+- New native account signup/approval/login/profile/restriction/rental all work without Firebase Auth.
+- My Page password verify/change works without Firebase reauthentication.
+- Account recovery sends Clerk code and accepts code + new password.
+- Withdrawal blocker and successful withdrawal paths work without Firestore/Firebase permission errors.
+- Site home/popup/footer and rental policy/terms read from PostgreSQL with no Firestore parity fallback.
+
+Administrator:
+- Runtime revision matches Phase 33.
+- Administrator Clerk login remains persistently on /admin.
+- Administrator Firebase compatibility may remain signed-in and is expected in Phase 33.
+- Member/rental/asset/board administration remains PostgreSQL authority.
+- Settings/policy transitional Firestore management + PostgreSQL write-through remains healthy.
+
+Production
+----------
+No Production promotion in Phase 33. Do not change gh-pages, Production Clerk, production DNS, or notebook.recruit.kro.kr.
+
+Final automated validation
+--------------------------
+Command: TERM=xterm npm run verify:phase33
+Result: PASS / exit code 0
+
+Phase 33 backend smoke:
+PASS - native Clerk signup/recovery, zero normal-user Firestore reads in tested Phase 33 authority paths, PostgreSQL user mutation authentication, runtime contract.
+
+Phase 33 frontend smoke:
+PASS - Clerk-only normal-user runtime, Clerk email-code password reset, PostgreSQL-only public content authority, explicit rollback switches, diagnostics.
+
+React hook audit:
+PASS - 172 source files.
+
+Application flow audit:
+PASS - 124 contracts, 11 user routes, 20 administrator tabs.
+
+Firestore strict audit:
+PASS
+- Source files: 172
+- Total calls: 138
+- onSnapshot: 35
+- getDocs/server equivalents: 54
+- getDoc/server equivalents: 31
+- getCountFromServer: 18
+- Approved risk findings: 47
+- Unapproved warnings: 0
+- Unapproved errors: 0
+
+Build validation
+----------------
+Command: TERM=xterm npm run build:staging
+Result:
+- React audit: PASS
+- Application audit: PASS
+- Firestore strict audit: PASS
+- Clerk local staging config: DISABLED in assistant workspace
+- Final Vite build: vite executable unavailable / exit 127
+This is the established workspace dependency limitation, not a Phase 33 source/prebuild failure. Vercel Staging must perform the actual bundle build.
+
+Actual Staging status
+---------------------
+Phase 32 is the confirmed PASS baseline. Phase 33 remains a candidate until the staged two-step content synchronization/cutover is completed and user/admin browser validation confirms the Phase 33 diagnostics and functionality.
+
+Final source/package metadata before ZIP
+----------------------------------------
+PACKAGE_FILES: 798
+PACKAGE_SHA256SUMS: 798
+REMOVED_FILES: 65
+Cumulative REMOVED_FILES SHA-256: 55e77ce751c0e15706c5202202212c54aa0d87b711c2fe15daf741186223d6b5
+
+Delta from confirmed Phase 32 baseline:
+- Source files: 791 -> 798
+- New files: 7
+- Changed files: 59
+- Deleted files: 0
+
+App.jsx:
+- Previous Phase 32 baseline: 2,138 lines / 66,275 bytes / SHA-256 57de0fa15f4606ad8e0475917059a71ec310b5426ecf143c1d43529b74b0be23
+- Phase 33 candidate: 2,142 lines / 66,396 bytes / SHA-256 b7e482b5668555e972fa69c4d2f8b951e7945d340970068dc20d39247b8aa0f7
+
+Package guard force-failure validation:
+- Inject protected .env.example into manifest -> exit 1 / PASS.
+- Inject nonexistent source path into manifest -> exit 1 / PASS.
+- Restore manifest -> PASS.
+- Source checksum verification -> 798 / 798 OK.

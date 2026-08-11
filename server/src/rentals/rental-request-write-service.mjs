@@ -52,7 +52,7 @@ export const createRentalRequestWriteService = ({
     const memberShadow = await memberShadowRepository.findByAppUserId(appUser.id);
     if (!memberShadow) throw serviceError('member_shadow_not_found', 'Member profile shadow has not been synchronized.', 404);
     const tokenUid = normalizeText(firebaseIdentity?.uid);
-    if (!tokenUid || !firebaseIdentity?.idToken) throw serviceError('firebase_identity_missing', 'Verified Firebase identity is required.', 401);
+    if (!tokenUid || (writeMirrorEnabled && !firebaseIdentity?.idToken)) throw serviceError('firebase_identity_missing', 'Verified Firebase identity is required.', 401);
     if (tokenUid !== firebaseLink.firebaseUid) throw serviceError('legacy_link_token_mismatch', 'Firebase token does not match the linked legacy identity.', 409);
     const tokenEmail = normalizeEmail(firebaseIdentity?.email);
     const linkedEmail = normalizeEmail(firebaseLink.firebaseEmail);

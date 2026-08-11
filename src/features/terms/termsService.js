@@ -60,6 +60,7 @@ export async function loadSignupTermsPolicy() {
       }
     } catch (error) {
       console.error('PostgreSQL signup terms policy read error:', error);
+      if (config.authorityRequested) throw error;
     }
   }
 

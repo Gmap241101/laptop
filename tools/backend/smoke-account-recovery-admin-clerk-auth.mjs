@@ -26,11 +26,11 @@ const expectedRecoveryKey = createHash('sha256').update(getAccountRecoverySource
 assert.equal(capturedRecoveryKey, expectedRecoveryKey, 'PostgreSQL recovery key generation must match the frontend NFKC recovery-key contract');
 assert.deepEqual(
   await accountRecovery.verifyPasswordReset({ name: '홍길동', team: '채용대행팀', phone: '010-1234-5678', email: 'member@example.com' }),
-  { source: 'postgresql', verified: true },
+  { source: 'postgresql', verified: true, firebaseUid: '', email: 'member@example.com' },
 );
 assert.deepEqual(
   await accountRecovery.verifyPasswordReset({ name: '홍길동', team: '채용대행팀', phone: '010-1234-5678', email: 'wrong@example.com' }),
-  { source: 'postgresql', verified: false },
+  { source: 'postgresql', verified: false, firebaseUid: '', email: '' },
 );
 assert.deepEqual(
   await accountRecovery.findEmail({ name: 'x', team: '', phone: 'invalid' }),

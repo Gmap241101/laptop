@@ -64,7 +64,7 @@ export const createRentalRequestUserActionService = ({
     if (!link) throw serviceError('legacy_link_not_found', 'Firebase legacy identity is not linked.', 404);
     const member = await memberShadowRepository.findByAppUserId(appUser.id);
     if (!member) throw serviceError('member_shadow_not_found', 'Member shadow is not synchronized.', 404);
-    if (!firebaseIdentity?.uid || !firebaseIdentity?.idToken) throw serviceError('firebase_identity_missing', 'Verified Firebase identity is required.', 401);
+    if (!firebaseIdentity?.uid || (writeMirrorEnabled && !firebaseIdentity?.idToken)) throw serviceError('firebase_identity_missing', 'Verified Firebase identity is required.', 401);
     if (firebaseIdentity.uid !== link.firebaseUid) throw serviceError('legacy_link_token_mismatch', 'Firebase token does not match linked identity.', 409);
     if (lower(firebaseIdentity.email) && lower(link.firebaseEmail) && lower(firebaseIdentity.email) !== lower(link.firebaseEmail)) throw serviceError('firebase_link_email_mismatch', 'Firebase token email does not match linked identity.', 409);
     if (trim(member.status) !== 'active') throw serviceError('rental_request_member_inactive', 'Only active members can change rental requests.', 403);

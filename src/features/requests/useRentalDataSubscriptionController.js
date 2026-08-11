@@ -606,6 +606,19 @@ export default function useRentalDataSubscriptionController({
           applyConfigData(document.payload, 'postgresql');
         })
         .catch(async (error) => {
+          if (policyContentConfig.authorityRequested) {
+            publishPolicyContentObservation({
+              readRequested: true,
+              domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
+              readSource: 'postgresql-authoritative',
+              error: error?.code || 'policy_content_read_failed',
+            });
+            applyMissingConfig(
+              '공개 설정을 PostgreSQL에서 불러오지 못했습니다. 관리자 동기화 상태를 확인해 주세요.',
+              error
+            );
+            return;
+          }
           publishPolicyContentObservation({
             readRequested: true,
             domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,

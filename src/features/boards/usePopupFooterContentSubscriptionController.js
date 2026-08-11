@@ -267,27 +267,30 @@ export default function usePopupFooterContentSubscriptionController({
             const postgresPosts = content.documents
               .filter((item) => item.key.startsWith('popupPosts/') && item.payload?.enabled !== false)
               .map((item) => ({ ...item.payload, id: item.payload?.id || item.key.split('/').pop() }));
-            const firestoreSnapshot = await getDocsFromServer(popupSource);
-            const firestorePosts = firestoreSnapshot.docs.map((popupDoc) => ({ ...popupDoc.data(), id: popupDoc.id }));
-            const postgresSignature = postgresPosts
-              .map((item) => `${String(item.id || '')}:${getPopupDateMillis(item.updatedAt)}`)
-              .sort()
-              .join('|');
-            const firestoreSignature = firestorePosts
-              .map((item) => `${String(item.id || '')}:${getPopupDateMillis(item.updatedAt)}`)
-              .sort()
-              .join('|');
-            const sourcePosts = postgresSignature === firestoreSignature ? postgresPosts : firestorePosts;
-            if (postgresSignature !== firestoreSignature) {
-              publishSiteContentObservation({
-                readRequested: true,
-                domain: SITE_CONTENT_DOMAINS.POPUP,
-                readSource: 'firestore-parity-fallback',
-                documentCount: content.documents.length,
-                postgresDocumentCount: postgresPosts.length,
-                firestoreDocumentCount: firestorePosts.length,
-                error: 'site_content_popup_parity_mismatch',
-              });
+            let sourcePosts = postgresPosts;
+            if (!cutover.authorityRequested) {
+              const firestoreSnapshot = await getDocsFromServer(popupSource);
+              const firestorePosts = firestoreSnapshot.docs.map((popupDoc) => ({ ...popupDoc.data(), id: popupDoc.id }));
+              const postgresSignature = postgresPosts
+                .map((item) => `${String(item.id || '')}:${getPopupDateMillis(item.updatedAt)}`)
+                .sort()
+                .join('|');
+              const firestoreSignature = firestorePosts
+                .map((item) => `${String(item.id || '')}:${getPopupDateMillis(item.updatedAt)}`)
+                .sort()
+                .join('|');
+              sourcePosts = postgresSignature === firestoreSignature ? postgresPosts : firestorePosts;
+              if (postgresSignature !== firestoreSignature) {
+                publishSiteContentObservation({
+                  readRequested: true,
+                  domain: SITE_CONTENT_DOMAINS.POPUP,
+                  readSource: 'firestore-parity-fallback',
+                  documentCount: content.documents.length,
+                  postgresDocumentCount: postgresPosts.length,
+                  firestoreDocumentCount: firestorePosts.length,
+                  error: 'site_content_popup_parity_mismatch',
+                });
+              }
             }
             if (cancelled) return;
             const remotePosts = sourcePosts.sort((first, second) => {
@@ -304,6 +307,15 @@ export default function usePopupFooterContentSubscriptionController({
             setPopupPostsReady(true);
             return;
           } catch (postgresError) {
+            if (cutover.authorityRequested) {
+              if (!cancelled) {
+                console.error('PostgreSQL popup authority read error:', postgresError);
+                setPopupPosts([]);
+                setPopupPostsLoadErrorMessage('팝업을 PostgreSQL에서 불러오지 못했습니다.');
+                setPopupPostsReady(true);
+              }
+              return;
+            }
             console.warn('PostgreSQL popup read fallback:', postgresError);
           }
         }
@@ -417,6 +429,14 @@ export default function usePopupFooterContentSubscriptionController({
             setFooterConfigReady(true);
             return;
           } catch (postgresError) {
+            if (cutover.authorityRequested) {
+              if (!cancelled) {
+                console.error('PostgreSQL footer config authority read error:', postgresError);
+                setFooterConfigLoadErrorMessage('푸터 설정을 PostgreSQL에서 불러오지 못했습니다.');
+                setFooterConfigReady(true);
+              }
+              return;
+            }
             console.warn('PostgreSQL footer config read fallback:', postgresError);
           }
         }
@@ -521,26 +541,29 @@ export default function usePopupFooterContentSubscriptionController({
             const postgresPages = content.documents
               .filter((item) => item.key.startsWith('footerPages/') && item.payload?.enabled !== false)
               .map((item) => ({ ...item.payload, id: item.payload?.id || item.key.split('/').pop() }));
-            const firestoreSnapshot = await getDocsFromServer(footerPagesSource);
-            const firestorePages = firestoreSnapshot.docs.map((pageDoc) => ({ ...pageDoc.data(), id: pageDoc.id }));
-            const signatureFor = (pages) => pages
-              .map((item) => `${String(item.id || '')}:${getFirestoreTimestampMillis(item.updatedAt)}`)
-              .sort()
-              .join('|');
-            const postgresSignature = signatureFor(postgresPages);
-            const firestoreSignature = signatureFor(firestorePages);
-            const parityMatched = postgresSignature === firestoreSignature;
-            const sourcePages = parityMatched ? postgresPages : firestorePages;
-            if (!parityMatched) {
-              publishSiteContentObservation({
-                readRequested: true,
-                domain: SITE_CONTENT_DOMAINS.FOOTER,
-                readSource: 'firestore-parity-fallback',
-                documentCount: content.documents.length,
-                postgresDocumentCount: postgresPages.length,
-                firestoreDocumentCount: firestorePages.length,
-                error: 'site_content_footer_parity_mismatch',
-              });
+            let sourcePages = postgresPages;
+            if (!cutover.authorityRequested) {
+              const firestoreSnapshot = await getDocsFromServer(footerPagesSource);
+              const firestorePages = firestoreSnapshot.docs.map((pageDoc) => ({ ...pageDoc.data(), id: pageDoc.id }));
+              const signatureFor = (pages) => pages
+                .map((item) => `${String(item.id || '')}:${getFirestoreTimestampMillis(item.updatedAt)}`)
+                .sort()
+                .join('|');
+              const postgresSignature = signatureFor(postgresPages);
+              const firestoreSignature = signatureFor(firestorePages);
+              const parityMatched = postgresSignature === firestoreSignature;
+              sourcePages = parityMatched ? postgresPages : firestorePages;
+              if (!parityMatched) {
+                publishSiteContentObservation({
+                  readRequested: true,
+                  domain: SITE_CONTENT_DOMAINS.FOOTER,
+                  readSource: 'firestore-parity-fallback',
+                  documentCount: content.documents.length,
+                  postgresDocumentCount: postgresPages.length,
+                  firestoreDocumentCount: firestorePages.length,
+                  error: 'site_content_footer_parity_mismatch',
+                });
+              }
             }
             if (cancelled) return;
             const remotePages = sourcePages.sort((first, second) => {
@@ -555,6 +578,15 @@ export default function usePopupFooterContentSubscriptionController({
             setFooterPagesReady(true);
             return;
           } catch (postgresError) {
+            if (cutover.authorityRequested) {
+              if (!cancelled) {
+                console.error('PostgreSQL footer pages authority read error:', postgresError);
+                setFooterPages([]);
+                setFooterPagesLoadErrorMessage('푸터 메뉴를 PostgreSQL에서 불러오지 못했습니다.');
+                setFooterPagesReady(true);
+              }
+              return;
+            }
             console.warn('PostgreSQL footer pages read fallback:', postgresError);
           }
         }

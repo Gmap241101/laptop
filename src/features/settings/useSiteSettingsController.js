@@ -73,6 +73,14 @@ export default function useSiteSettingsController() {
           setSiteSettingsReady(true);
           return;
         } catch (postgresError) {
+          if (cutover.authorityRequested) {
+            if (cancelled) return;
+            console.error('Site settings PostgreSQL authority error:', postgresError);
+            setSiteSettings(DEFAULT_SITE_SETTINGS);
+            setSiteSettingsLoadErrorMessage('사이트 공통 설정을 PostgreSQL에서 불러오지 못했습니다.');
+            setSiteSettingsReady(true);
+            return;
+          }
           try {
             const snapshot = await getDoc(SITE_SETTINGS_DOC_REF);
             if (cancelled) return;

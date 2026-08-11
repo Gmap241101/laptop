@@ -113,7 +113,10 @@
     "verify:phase31": "npm run verify:phase30 && npm run server:member-profile-identity:smoke && npm run frontend:member-profile-identity:smoke",
     "server:account-lifecycle:smoke": "node tools/backend/smoke-account-lifecycle-authority.mjs",
     "frontend:account-lifecycle:smoke": "node tools/frontend/smoke-account-lifecycle-authority.mjs",
-    "verify:phase32": "npm run verify:phase31 && npm run server:account-lifecycle:smoke && npm run frontend:account-lifecycle:smoke"
+    "verify:phase32": "npm run verify:phase31 && npm run server:account-lifecycle:smoke && npm run frontend:account-lifecycle:smoke",
+    "server:phase33:smoke": "node tools/backend/smoke-phase33-user-clerk-content-authority.mjs",
+    "frontend:phase33:smoke": "node tools/frontend/smoke-phase33-user-clerk-content-authority.mjs",
+    "verify:phase33": "npm run verify:phase32 && npm run server:phase33:smoke && npm run frontend:phase33:smoke"
   },
   "dependencies": {
     "firebase": "^10.14.1",

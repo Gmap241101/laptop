@@ -1,5 +1,8 @@
+import { createHash, randomBytes } from 'node:crypto';
+
 const trim = (value) => String(value ?? '').trim();
 const lower = (value) => trim(value).toLowerCase();
+const sha256 = (value) => createHash('sha256').update(String(value || '')).digest('hex');
 
 const serviceError = (code, message, status = 400) => {
   const error = new Error(message);
@@ -10,12 +13,32 @@ const serviceError = (code, message, status = 400) => {
 };
 
 const publicMetadata = () => ({ rentalSystemRole: 'user' });
-const privateMetadata = (firebaseUid) => ({
-  rentalSystemFirebaseUid: firebaseUid,
+const privateMetadata = (legacyMemberKey) => ({
+  rentalSystemFirebaseUid: legacyMemberKey,
+  rentalSystemLegacyMemberKey: legacyMemberKey,
   rentalSystemUserIdentity: 'postgresql',
 });
+const nativeLegacyMemberKey = (email) => `clerk-native:${sha256(lower(email))}`;
+const compatibilityIdentity = ({ uid, email, provider = 'clerk-postgresql' }) => Object.freeze({
+  uid: trim(uid),
+  email: lower(email),
+  emailVerified: true,
+  signInProvider: provider,
+  idToken: '',
+});
 
-export const createUserClerkAuthService = ({ repository, clerkClient, userRepository, firebaseLinkRepository, firestoreClient, memberRepository = null, adminIdentityRepository = null, accountLifecycleCompatibilityDisabled = false }) => {
+export const createUserClerkAuthService = ({
+  repository,
+  clerkClient,
+  userRepository,
+  firebaseLinkRepository,
+  firestoreClient,
+  memberRepository = null,
+  adminIdentityRepository = null,
+  accountLifecycleService = null,
+  accountLifecycleCompatibilityDisabled = false,
+  userFirebaseAuthCompatibilityDisabled = false,
+}) => {
   if (!repository || typeof repository.findByClerkUserId !== 'function') throw new TypeError('User Clerk auth repository is required.');
   if (!clerkClient || typeof clerkClient.getUser !== 'function' || typeof clerkClient.findUserByEmail !== 'function' || typeof clerkClient.createUser !== 'function' || typeof clerkClient.updateUser !== 'function' || typeof clerkClient.updateUserMetadata !== 'function' || typeof clerkClient.verifyPassword !== 'function' || typeof clerkClient.deleteUser !== 'function') throw new TypeError('Clerk Backend API lifecycle methods are required.');
   if (!userRepository || typeof userRepository.upsertFromClerk !== 'function') throw new TypeError('User repository is required.');
@@ -23,6 +46,9 @@ export const createUserClerkAuthService = ({ repository, clerkClient, userReposi
   if (!firestoreClient || typeof firestoreClient.getUserAccount !== 'function' || typeof firestoreClient.getAdminAccount !== 'function') throw new TypeError('Firestore member compatibility client is required.');
   if (accountLifecycleCompatibilityDisabled && (!adminIdentityRepository || typeof adminIdentityRepository.findByFirebaseUid !== 'function' || typeof adminIdentityRepository.findByClerkUserId !== 'function')) {
     throw new TypeError('PostgreSQL administrator identity repository is required when Phase 32 account lifecycle authority is enabled.');
+  }
+  if (userFirebaseAuthCompatibilityDisabled && (!accountLifecycleService || typeof accountLifecycleService.signup !== 'function')) {
+    throw new TypeError('PostgreSQL account lifecycle service is required when user Firebase Auth compatibility is retired.');
   }
 
   const ensureRecentFirebaseAuthentication = (firebaseIdentity) => {
@@ -57,6 +83,18 @@ export const createUserClerkAuthService = ({ repository, clerkClient, userReposi
     return { uid, fields: account };
   };
 
+  const linkClerkAuthority = async ({ clerkUser, legacyMemberKey, email, provider }) => {
+    const appUser = await userRepository.upsertFromClerk(clerkUser);
+    await firebaseLinkRepository.link(appUser.id, compatibilityIdentity({
+      uid: legacyMemberKey,
+      email,
+      provider,
+    }));
+    const linked = await repository.linkAuthority({ appUserId: appUser.id, firebaseUid: legacyMemberKey });
+    if (!linked) throw serviceError('user_member_authority_not_ready', 'PostgreSQL member account must exist before Clerk authority can be linked.', 409);
+    return { appUser, account: await repository.findByFirebaseUid(legacyMemberKey) };
+  };
+
   const ensureClerkUser = async ({ firebaseIdentity, password, migration }) => {
     if (typeof password !== 'string' || password.length < 8) throw serviceError('user_clerk_password_too_short', 'Clerk user passwords must be at least 8 characters.', 400);
     const source = await readProvisionUser(firebaseIdentity);
@@ -77,8 +115,8 @@ export const createUserClerkAuthService = ({ repository, clerkClient, userReposi
         skipPasswordChecks: Boolean(migration),
       });
     } else {
-      const linkedFirebaseUid = trim(clerkUser.privateMetadata?.rentalSystemFirebaseUid);
-      if (linkedFirebaseUid && linkedFirebaseUid !== source.uid) throw serviceError('user_clerk_link_conflict', 'Clerk user is already linked to a different Firebase account.', 409);
+      const linkedFirebaseUid = trim(clerkUser.privateMetadata?.rentalSystemFirebaseUid || clerkUser.privateMetadata?.rentalSystemLegacyMemberKey);
+      if (linkedFirebaseUid && linkedFirebaseUid !== source.uid) throw serviceError('user_clerk_link_conflict', 'Clerk user is already linked to a different member identity.', 409);
       clerkUser = await clerkClient.updateUser(clerkUser.clerkUserId, {
         password,
         ...(migration ? { skip_password_checks: true } : {}),
@@ -118,6 +156,120 @@ export const createUserClerkAuthService = ({ repository, clerkClient, userReposi
   return Object.freeze({
     getCurrent: ({ clerkUserId }) => getCurrent(clerkUserId),
 
+    async signupNative({ input = {}, password }) {
+      if (!userFirebaseAuthCompatibilityDisabled) {
+        throw serviceError('user_native_signup_not_enabled', 'Native Clerk signup is not enabled.', 409);
+      }
+      const email = lower(input.email);
+      if (!email) throw serviceError('user_email_missing', 'Signup email is required.', 400);
+      if (typeof password !== 'string' || password.length < 8) throw serviceError('user_clerk_password_too_short', 'Clerk user passwords must be at least 8 characters.', 400);
+      if (await clerkClient.findUserByEmail(email)) {
+        throw serviceError('member_email_already_registered', 'Email address is already registered.', 409);
+      }
+
+      const legacyMemberKey = nativeLegacyMemberKey(email);
+      let clerkUser = null;
+      let signupCommitted = false;
+      try {
+        const signup = await accountLifecycleService.signup({
+          firebaseIdentity: { uid: legacyMemberKey, email, idToken: 'clerk-native-signup' },
+          input: { ...input, email },
+        });
+        signupCommitted = true;
+
+        clerkUser = await clerkClient.createUser({
+          email,
+          password,
+          firstName: trim(input.name) || '사용자',
+          publicMetadata: publicMetadata(),
+          privateMetadata: privateMetadata(legacyMemberKey),
+          externalId: `rental-user:${legacyMemberKey}`,
+          skipPasswordChecks: false,
+        });
+        const linked = await linkClerkAuthority({
+          clerkUser,
+          legacyMemberKey,
+          email,
+          provider: 'clerk-native',
+        });
+        return Object.freeze({
+          authority: 'clerk',
+          source: 'postgresql',
+          status: signup.status || linked.account?.memberStatus || '',
+          legacyMemberKey,
+          clerkUser,
+          account: linked.account,
+          firebaseAuthCompatibility: 'retired',
+        });
+      } catch (error) {
+        if (clerkUser?.clerkUserId) {
+          await clerkClient.deleteUser(clerkUser.clerkUserId).catch(() => {});
+        }
+        if (signupCommitted && typeof accountLifecycleService.rollbackUnlinkedSignup === 'function') {
+          await accountLifecycleService.rollbackUnlinkedSignup({ firebaseUid: legacyMemberKey }).catch(() => {});
+        }
+        throw error;
+      }
+    },
+
+    async ensureRecoveryClerkIdentity({ firebaseUid, email }) {
+      const uid = trim(firebaseUid);
+      const normalizedEmail = lower(email);
+      if (!uid || !normalizedEmail) throw serviceError('account_recovery_identity_missing', 'Recovery member identity is incomplete.', 400);
+      if (!memberRepository || typeof memberRepository.findByFirebaseUid !== 'function') {
+        throw serviceError('user_member_postgresql_source_unavailable', 'PostgreSQL member source is unavailable.', 503);
+      }
+      const admin = accountLifecycleCompatibilityDisabled
+        ? await adminIdentityRepository.findByFirebaseUid(uid)
+        : null;
+      if (admin && trim(admin.status) !== 'retired') throw serviceError('user_account_is_admin', 'Administrator accounts cannot use the general-user recovery flow.', 403);
+      const member = await memberRepository.findByFirebaseUid(uid);
+      if (!member || trim(member.status) === 'retired') throw serviceError('user_account_not_found', 'Active PostgreSQL member account was not found.', 404);
+      if (lower(member.email) !== normalizedEmail) throw serviceError('user_email_mismatch', 'Recovery email does not match the PostgreSQL member account.', 409);
+
+      let clerkUser = await clerkClient.findUserByEmail(normalizedEmail);
+      let created = false;
+      try {
+        if (!clerkUser) {
+          clerkUser = await clerkClient.createUser({
+            email: normalizedEmail,
+            password: `${randomBytes(24).toString('base64url')}A1`,
+            firstName: trim(member.name) || '사용자',
+            publicMetadata: publicMetadata(),
+            privateMetadata: privateMetadata(uid),
+            externalId: `rental-user:${uid}`,
+            skipPasswordChecks: false,
+          });
+          created = true;
+        } else {
+          const linkedKey = trim(clerkUser.privateMetadata?.rentalSystemFirebaseUid || clerkUser.privateMetadata?.rentalSystemLegacyMemberKey);
+          if (linkedKey && linkedKey !== uid) throw serviceError('user_clerk_link_conflict', 'Clerk user is linked to a different member identity.', 409);
+          clerkUser = await clerkClient.updateUserMetadata(clerkUser.clerkUserId, {
+            publicMetadata: publicMetadata(),
+            privateMetadata: privateMetadata(uid),
+          });
+        }
+        const linked = await linkClerkAuthority({
+          clerkUser,
+          legacyMemberKey: uid,
+          email: normalizedEmail,
+          provider: 'clerk-recovery',
+        });
+        return Object.freeze({
+          authority: 'clerk',
+          ready: true,
+          created,
+          clerkUserId: clerkUser.clerkUserId,
+          account: linked.account,
+        });
+      } catch (error) {
+        if (created && clerkUser?.clerkUserId) {
+          await clerkClient.deleteUser(clerkUser.clerkUserId).catch(() => {});
+        }
+        throw error;
+      }
+    },
+
     async migrateCurrent({ firebaseIdentity, password }) {
       ensureRecentFirebaseAuthentication(firebaseIdentity);
       const result = await ensureClerkUser({ firebaseIdentity, password, migration: true });
@@ -137,9 +289,11 @@ export const createUserClerkAuthService = ({ repository, clerkClient, userReposi
       return Object.freeze({ authority: 'clerk', verified: true, account: current.account });
     },
 
-    async changePassword({ clerkUserId, firebaseIdentity, currentPassword, newPassword }) {
+    async changePassword({ clerkUserId, firebaseIdentity = null, currentPassword, newPassword }) {
       const current = await getCurrent(clerkUserId);
-      if (current.account.firebaseUid !== trim(firebaseIdentity?.uid)) throw serviceError('user_firebase_identity_mismatch', 'Firebase compatibility identity does not match Clerk user.', 409);
+      if (!userFirebaseAuthCompatibilityDisabled && current.account.firebaseUid !== trim(firebaseIdentity?.uid)) {
+        throw serviceError('user_firebase_identity_mismatch', 'Firebase compatibility identity does not match Clerk user.', 409);
+      }
       if (typeof newPassword !== 'string' || newPassword.length < 8) throw serviceError('user_clerk_password_too_short', 'New Clerk password must be at least 8 characters.', 400);
       await clerkClient.verifyPassword(clerkUserId, currentPassword);
       await clerkClient.updateUser(clerkUserId, { password: newPassword });
@@ -147,9 +301,11 @@ export const createUserClerkAuthService = ({ repository, clerkClient, userReposi
       return Object.freeze({ authority: 'clerk', changed: true, account });
     },
 
-    async finalizeWithdrawal({ clerkUserId, firebaseIdentity, password }) {
+    async finalizeWithdrawal({ clerkUserId, firebaseIdentity = null, password }) {
       const current = await getCurrent(clerkUserId);
-      if (current.account.firebaseUid !== trim(firebaseIdentity?.uid)) throw serviceError('user_firebase_identity_mismatch', 'Firebase compatibility identity does not match Clerk user.', 409);
+      if (!userFirebaseAuthCompatibilityDisabled && current.account.firebaseUid !== trim(firebaseIdentity?.uid)) {
+        throw serviceError('user_firebase_identity_mismatch', 'Firebase compatibility identity does not match Clerk user.', 409);
+      }
       await clerkClient.verifyPassword(clerkUserId, password);
       if (accountLifecycleCompatibilityDisabled) {
         if (typeof repository.finalizePostgresqlWithdrawal !== 'function') {
@@ -168,7 +324,7 @@ export const createUserClerkAuthService = ({ repository, clerkClient, userReposi
         clerkDeleted = true;
       } catch (error) {
         clerkCleanupError = error?.code || error?.message || 'clerk_user_delete_failed';
-        console.warn('[user-auth] Clerk user deletion deferred after PostgreSQL withdrawal authority was committed', { clerkUserId, firebaseUid: current.account.firebaseUid, clerkCleanupError });
+        console.warn('[user-auth] Clerk user deletion deferred after PostgreSQL withdrawal authority was committed', { clerkUserId, legacyMemberKey: current.account.firebaseUid, clerkCleanupError });
       }
       const account = await repository.markClerkRetired({ firebaseUid: current.account.firebaseUid, deleted: clerkDeleted });
       return Object.freeze({ authority: 'postgresql', withdrawn: true, clerkDeleted, clerkCleanupError, account });

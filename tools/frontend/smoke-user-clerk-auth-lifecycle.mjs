@@ -145,7 +145,7 @@ for (const marker of [
 
 const diagnosticsSource = readFileSync('src/clerk/ClerkStagingDiagnostics.jsx', 'utf8');
 for (const marker of [
-  'Clerk Staging Test · Phase 32', "top: '184px'", 'Phase 23 user Clerk authentication + account lifecycle authority',
+  'Clerk Staging Test · Phase 33', "top: '184px'", 'Phase 23 user Clerk authentication + account lifecycle authority',
   'User Clerk authority requested:', 'Password authority source:', 'Withdrawal authority:',
   'User session last event:', 'User session trace:',
   'disabled={!state.firebaseSignedIn || !state.memberShadowFirebaseUid}',

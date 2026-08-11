@@ -1,4 +1,6 @@
 import { readAccountLifecycleAuthorityConfig } from '../auth/accountLifecycleAuthority.js';
+import { readUserFirebaseAuthRetirementConfig } from '../auth/userFirebaseAuthRetirement.js';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 
 const EVENT_NAME = 'rental:rental-restriction-read-cutover';
 const WRITE_EVENT_NAME = 'rental:rental-restriction-write-through';
@@ -65,8 +67,32 @@ const firebaseRequest = async ({ firebaseUser, apiBaseUrl, path, method = 'GET',
   return payload;
 };
 
+
+const userAuthorityRequest = async ({ firebaseUser, apiBaseUrl, path, method = 'GET', fetchImpl = fetch }) => {
+  const retirement = readUserFirebaseAuthRetirementConfig();
+  if (!retirement.requested) return firebaseRequest({ firebaseUser, apiBaseUrl, path, method, fetchImpl });
+  if (!apiBaseUrl) throw new Error('VITE_API_URL is required.');
+  const clerk = await clerkStagingClient.initialize();
+  const token = await clerk?.session?.getToken?.();
+  if (!token) throw new Error('Clerk sign-in is required.');
+  const response = await fetchImpl(`${apiBaseUrl}${path}`, {
+    method,
+    headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  });
+  let payload = null;
+  try { payload = await response.json(); } catch { payload = null; }
+  if (!response.ok) {
+    const error = new Error(`Rental restriction request failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || 'rental_restriction_request_failed';
+    throw error;
+  }
+  return payload;
+};
+
 export const requestRentalRestrictionCandidate = async ({ firebaseUser, apiBaseUrl, fetchImpl = fetch }) => {
-  const payload = await firebaseRequest({ firebaseUser, apiBaseUrl, path: '/api/legacy/rental-restriction-candidate', fetchImpl });
+  const payload = await userAuthorityRequest({ firebaseUser, apiBaseUrl, path: '/api/legacy/rental-restriction-candidate', fetchImpl });
   const source = trim(payload?.restrictionCandidate?.source);
   if (!['postgresql-shadow', 'postgresql-authoritative'].includes(source)) {
     throw new Error('Invalid PostgreSQL rental restriction candidate.');
@@ -90,6 +116,7 @@ export const loadRentalRestrictionWithoutFirestoreWatcher = async ({ loadCandida
       fallbackReason: '',
     });
   } catch (candidateError) {
+    if (readUserFirebaseAuthRetirementConfig().requested) throw candidateError;
     const fallback = await loadFallback();
     return Object.freeze({
       restriction: fallback.exists ? fallback.restriction : null,

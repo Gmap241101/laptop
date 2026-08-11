@@ -200,6 +200,7 @@ export const readServerConfig = () => {
     memberStatusRestrictionWriteMirrorDisabled: readBoolean('FIRESTORE_MEMBER_STATUS_RESTRICTION_WRITE_MIRROR_DISABLED', false),
     memberProfileWriteMirrorDisabled: readBoolean('FIRESTORE_MEMBER_PROFILE_WRITE_MIRROR_DISABLED', false),
     accountLifecycleCompatibilityDisabled: readBoolean('FIRESTORE_ACCOUNT_LIFECYCLE_COMPATIBILITY_DISABLED', false),
+    userFirebaseAuthCompatibilityDisabled: readBoolean('FIREBASE_USER_AUTH_COMPATIBILITY_DISABLED', false),
   });
 };
 

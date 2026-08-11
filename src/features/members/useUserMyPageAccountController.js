@@ -65,6 +65,7 @@ import {
   publishUserAccountLifecycleObservation,
   readUserAccountLifecycleCutoverConfig,
 } from '../auth/userAccountLifecycleCutover.js';
+import { readUserFirebaseAuthRetirementConfig } from '../auth/userFirebaseAuthRetirement.js';
 
 export const createDefaultUserProfileForm = () => ({
   name: '',
@@ -242,6 +243,7 @@ export default function useUserMyPageAccountController({
     setUserProfileSaving(true);
 
     try {
+      const firebaseRetirement = readUserFirebaseAuthRetirementConfig();
       const nextIdentityKey = await createMemberIdentityKey(team, name);
       const nextRecoveryKey = await createAccountRecoveryKey({ team, name, phone });
       const nextRecoveryEmailVerifier = await createAccountRecoveryEmailVerifier({
@@ -481,9 +483,11 @@ export default function useUserMyPageAccountController({
               });
       }
 
-      await updateProfile(firebaseAuthUser, {
-        displayName: name,
-      });
+      if (!firebaseRetirement.requested) {
+        await updateProfile(firebaseAuthUser, {
+          displayName: name,
+        });
+      }
 
       setUserProfileForm((previousForm) => ({
         ...previousForm,
@@ -543,7 +547,10 @@ export default function useUserMyPageAccountController({
     }
 
     const lifecycleConfig = readUserAccountLifecycleCutoverConfig();
-    const credential = EmailAuthProvider.credential(authEmail, withdrawalPassword);
+    const firebaseRetirement = readUserFirebaseAuthRetirementConfig();
+    const credential = firebaseRetirement.requested
+      ? null
+      : EmailAuthProvider.credential(authEmail, withdrawalPassword);
     let rollbackState = null;
     let withdrawalAuthorityFinalized = false;
 
@@ -551,7 +558,9 @@ export default function useUserMyPageAccountController({
 
     try {
       if (lifecycleConfig.userLifecycleRequested) {
-        const firebaseIdToken = await firebaseAuthUser.getIdToken();
+        const firebaseIdToken = firebaseRetirement.requested
+          ? ''
+          : await firebaseAuthUser.getIdToken();
         const finalizePayload = await clerkStagingClient.finalizeUserWithdrawal(
           firebaseIdToken,
           withdrawalPassword
@@ -565,21 +574,23 @@ export default function useUserMyPageAccountController({
           throw error;
         }
 
-        let firebaseCleanup = 'deferred';
-        try {
-          if (firebaseAuth.currentUser) {
-            await reauthenticateWithCredential(firebaseAuth.currentUser, credential);
-            await deleteUser(firebaseAuth.currentUser);
-            firebaseCleanup = 'deleted';
-          } else {
-            firebaseCleanup = 'already-signed-out';
+        let firebaseCleanup = firebaseRetirement.requested ? 'retired' : 'deferred';
+        if (!firebaseRetirement.requested) {
+          try {
+            if (firebaseAuth.currentUser) {
+              await reauthenticateWithCredential(firebaseAuth.currentUser, credential);
+              await deleteUser(firebaseAuth.currentUser);
+              firebaseCleanup = 'deleted';
+            } else {
+              firebaseCleanup = 'already-signed-out';
+            }
+          } catch (firebaseCleanupError) {
+            firebaseCleanup = 'delete-deferred';
+            console.warn(
+              'Firebase compatibility cleanup deferred after PostgreSQL withdrawal authority was committed:',
+              firebaseCleanupError
+            );
           }
-        } catch (firebaseCleanupError) {
-          firebaseCleanup = 'delete-deferred';
-          console.warn(
-            'Firebase compatibility cleanup deferred after PostgreSQL withdrawal authority was committed:',
-            firebaseCleanupError
-          );
         }
 
         await clerkStagingClient.signOut().catch(() => {});

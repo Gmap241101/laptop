@@ -186,6 +186,13 @@ export const createAccountLifecycleService = ({ repository, siteContentRepositor
       return Object.freeze({ source: 'postgresql', authority: 'postgresql', firestoreBootstrap: 'retired', status, account: row });
     },
 
+
+    async rollbackUnlinkedSignup({ firebaseUid }) {
+      assertAuthorityEnabled();
+      if (typeof repository.rollbackUnlinkedSignup !== 'function') return false;
+      return repository.rollbackUnlinkedSignup({ firebaseUid: trim(firebaseUid) });
+    },
+
     async getTerms({ clerkUserId }) {
       assertAuthorityEnabled();
       const firebaseUid = await resolveFirebaseUid(clerkUserId);

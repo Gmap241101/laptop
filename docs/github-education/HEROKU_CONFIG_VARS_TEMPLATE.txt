@@ -126,3 +126,10 @@ FIRESTORE_MEMBER_PROFILE_WRITE_MIRROR_DISABLED=true
 # Firebase Auth account creation/session and password-reset delivery remain as compatibility until final Firebase Auth retirement.
 FIRESTORE_ACCOUNT_LIFECYCLE_COMPATIBILITY_DISABLED=true
 # Recommended diagnostic version marker: SERVICE_VERSION=phase32
+
+# Phase 33: general-user Firebase Auth compatibility retirement.
+# General-user authentication/password authority becomes Clerk + PostgreSQL.
+# Administrator Firebase compatibility remains preserved through Phase 33 for transitional admin Firestore management.
+FIREBASE_USER_AUTH_COMPATIBILITY_DISABLED=true
+# Keep FIRESTORE_ACCOUNT_LIFECYCLE_COMPATIBILITY_DISABLED=true from Phase 32.
+# Recommended diagnostic version marker: SERVICE_VERSION=phase33

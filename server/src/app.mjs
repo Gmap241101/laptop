@@ -255,6 +255,8 @@ export const createRequestHandler = ({
     async provisionTarget() { const error = new Error('Admin Clerk auth service is not configured.'); error.code = 'admin_clerk_auth_not_configured'; throw error; },
   },
   userClerkAuthService = {
+    async signupNative() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
+    async ensureRecoveryClerkIdentity() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
     async getCurrent() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
     async migrateCurrent() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
     async provisionCurrent() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
@@ -466,7 +468,7 @@ export const createRequestHandler = ({
     service: config.serviceName,
     environment: config.appEnv,
     version: config.serviceVersion,
-    runtimeRevision: 'phase32-new-member-runtime-authority-20260811-2108',
+    runtimeRevision: 'phase33-user-clerk-content-authority-20260811-2210',
     compatibility: {
       assetBoardWriteMirrorDisabled: Boolean(config.assetBoardWriteMirrorDisabled),
       retiredWriteMirrorDomains: [
@@ -485,7 +487,11 @@ export const createRequestHandler = ({
       accountLifecycleCompatibilityDisabled: Boolean(config.accountLifecycleCompatibilityDisabled),
       signupProfileSource: config.accountLifecycleCompatibilityDisabled ? 'postgresql' : 'firestore-compatibility-source',
       termsConsentSource: config.accountLifecycleCompatibilityDisabled ? 'postgresql' : 'firestore',
-      passwordResetDelivery: 'firebase-auth-compatibility-preserved',
+      userFirebaseAuthCompatibilityDisabled: Boolean(config.userFirebaseAuthCompatibilityDisabled),
+      userAuthenticationSource: config.userFirebaseAuthCompatibilityDisabled ? 'clerk-postgresql' : 'firebase-clerk-compatibility',
+      userLegacyMemberKeySource: config.userFirebaseAuthCompatibilityDisabled ? 'postgresql-compatibility-key' : 'firebase-uid',
+      passwordResetDelivery: config.userFirebaseAuthCompatibilityDisabled ? 'clerk-email-code' : 'firebase-auth-compatibility-preserved',
+      adminFirebaseAuthCompatibility: 'preserved',
     },
   };
 
@@ -516,6 +522,40 @@ export const createRequestHandler = ({
       } else {
         writeJson(response, 401, { ...basePayload, authenticated: true, error: 'legacy_firebase_unauthorized' }, headers);
       }
+      return null;
+    }
+  };
+
+  const authenticateUserAuthority = async (request, response, headers, requestId) => {
+    const auth = await authenticate(request, response, headers, requestId);
+    if (!auth) return null;
+    if (!config.userFirebaseAuthCompatibilityDisabled) {
+      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return null;
+      return Object.freeze({ auth, firebaseIdentity, userAuth: null });
+    }
+    try {
+      const userAuth = await userClerkAuthService.getCurrent({ clerkUserId: auth.userId });
+      const account = userAuth?.account || {};
+      const clerkUser = userAuth?.clerkUser || {};
+      const firebaseIdentity = Object.freeze({
+        uid: String(account.firebaseUid || ''),
+        email: String(account.firebaseEmail || account.primaryEmail || clerkUser.primaryEmail || ''),
+        emailVerified: true,
+        signInProvider: 'clerk-postgresql',
+        idToken: '',
+        source: 'clerk-postgresql',
+      });
+      if (!firebaseIdentity.uid) {
+        const error = new Error('PostgreSQL compatibility member key is missing.');
+        error.code = 'user_legacy_member_key_missing';
+        error.status = 409;
+        throw error;
+      }
+      return Object.freeze({ auth, firebaseIdentity, userAuth });
+    } catch (error) {
+      console.warn('[user-auth] PostgreSQL user authority rejected', { requestId, code: error?.code, name: error?.name });
+      writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: false, error: error?.code || 'user_authority_unavailable' }, headers);
       return null;
     }
   };
@@ -577,6 +617,7 @@ export const createRequestHandler = ({
           accountRecoveryEmail: '/api/account-recovery/email',
           accountRecoveryPasswordResetVerify: '/api/account-recovery/password-reset/verify',
           accountLifecycleSignup: '/api/users/signup/bootstrap',
+          accountLifecycleNativeSignup: '/api/users/signup/clerk',
           userTermsConsent: '/api/users/me/terms-consent',
           userTermsConsentBootstrap: '/api/users/me/terms-consent/bootstrap',
           adminClerkSession: '/api/admin/auth/session',
@@ -702,16 +743,53 @@ export const createRequestHandler = ({
       try {
         body = await readJsonBody(request);
         const result = await accountRecoveryService.verifyPasswordReset(body || {});
+        let recoveryClerk = null;
+        if (result.verified && config.userFirebaseAuthCompatibilityDisabled) {
+          recoveryClerk = await userClerkAuthService.ensureRecoveryClerkIdentity({
+            firebaseUid: result.firebaseUid,
+            email: result.email,
+          });
+        }
         writeJson(response, 200, {
           ...basePayload,
           accountRecovery: {
             source: result.source || 'postgresql',
             verified: Boolean(result.verified),
+            passwordResetDelivery: config.userFirebaseAuthCompatibilityDisabled ? 'clerk-email-code' : 'firebase-auth-compatibility-preserved',
+            clerkReady: config.userFirebaseAuthCompatibilityDisabled ? Boolean(recoveryClerk?.ready) : false,
           },
         }, headers);
       } catch (error) {
         console.warn('[account-recovery] password reset verification failed', { requestId, code: error?.code, name: error?.name });
         writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'account_recovery_unavailable' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/users/signup/clerk') {
+      if (!config.userFirebaseAuthCompatibilityDisabled) {
+        writeJson(response, 409, { ...basePayload, error: 'user_native_signup_not_enabled' }, headers);
+        return;
+      }
+      try {
+        const body = await readJsonBody(request);
+        const { password = '', ...input } = body || {};
+        const result = await userClerkAuthService.signupNative({ input, password: String(password) });
+        writeJson(response, 201, {
+          ...basePayload,
+          signupLifecycle: {
+            source: 'postgresql',
+            authority: 'clerk-postgresql',
+            firestoreBootstrap: 'retired',
+            firebaseAuthCompatibility: 'retired',
+            legacyMemberKeySource: 'postgresql-compatibility-key',
+            status: result.signup?.status || result.account?.memberStatus || '',
+            clerkUserId: result.clerkUser?.clerkUserId || '',
+          },
+        }, headers);
+      } catch (error) {
+        console.warn('[user-auth] native Clerk/PostgreSQL signup failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'user_native_signup_failed' }, headers);
       }
       return;
     }
@@ -793,6 +871,11 @@ export const createRequestHandler = ({
             authority: result.authority,
             clerkUserId: result.clerkUser?.clerkUserId || auth.userId,
             firebaseUid: result.account?.firebaseUid || '',
+            legacyMemberKey: result.account?.firebaseUid || '',
+            legacyMemberKeySource: config.userFirebaseAuthCompatibilityDisabled ? 'postgresql-compatibility-key' : 'firebase-uid',
+            email: result.account?.firebaseEmail || result.account?.primaryEmail || result.clerkUser?.primaryEmail || '',
+            displayName: result.clerkUser?.displayName || '',
+            firebaseAuthCompatibility: config.userFirebaseAuthCompatibilityDisabled ? 'retired' : 'signed-in-required',
             memberStatus: result.account?.memberStatus || '',
             authAuthorityMode: result.account?.authAuthorityMode || '',
             lifecycleAuthorityMode: result.account?.lifecycleAuthorityMode || '',
@@ -870,10 +953,9 @@ export const createRequestHandler = ({
     }
 
     if (request.method === 'POST' && url.pathname === '/api/users/me/password/change') {
-      const auth = await authenticate(request, response, headers, requestId);
-      if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
-      if (!firebaseIdentity) return;
+      const userAuthority = await authenticateUserAuthority(request, response, headers, requestId);
+      if (!userAuthority) return;
+      const { auth, firebaseIdentity } = userAuthority;
       try {
         const body = await readJsonBody(request);
         const result = await userClerkAuthService.changePassword({
@@ -891,10 +973,9 @@ export const createRequestHandler = ({
     }
 
     if (request.method === 'POST' && url.pathname === '/api/users/me/withdrawal/finalize') {
-      const auth = await authenticate(request, response, headers, requestId);
-      if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
-      if (!firebaseIdentity) return;
+      const userAuthority = await authenticateUserAuthority(request, response, headers, requestId);
+      if (!userAuthority) return;
+      const { auth, firebaseIdentity } = userAuthority;
       try {
         const body = await readJsonBody(request);
         const result = await userClerkAuthService.finalizeWithdrawal({ clerkUserId: auth.userId, firebaseIdentity, password: String(body?.password || '') });
@@ -1817,10 +1898,9 @@ export const createRequestHandler = ({
       ? url.pathname.match(/^\/api\/users\/me\/rental-requests\/([^/]+)\/(edit|cancel|extend)$/)
       : null;
     if (userRentalActionMatch) {
-      const auth = await authenticate(request, response, headers, requestId);
-      if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
-      if (!firebaseIdentity) return;
+      const userAuthority = await authenticateUserAuthority(request, response, headers, requestId);
+      if (!userAuthority) return;
+      const { auth, firebaseIdentity } = userAuthority;
       let body = {};
       try {
         body = await readJsonBody(request);
@@ -1868,10 +1948,9 @@ export const createRequestHandler = ({
     }
 
     if (request.method === 'POST' && url.pathname === '/api/users/me/rental-requests') {
-      const auth = await authenticate(request, response, headers, requestId);
-      if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
-      if (!firebaseIdentity) return;
+      const userAuthority = await authenticateUserAuthority(request, response, headers, requestId);
+      if (!userAuthority) return;
+      const { auth, firebaseIdentity } = userAuthority;
       let body;
       try {
         body = await readJsonBody(request);
@@ -1980,7 +2059,12 @@ export const createRequestHandler = ({
     }
 
     if (request.method === 'GET' && url.pathname === '/api/legacy/rental-restriction-candidate') {
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const userAuthority = config.userFirebaseAuthCompatibilityDisabled
+        ? await authenticateUserAuthority(request, response, headers, requestId)
+        : null;
+      const firebaseIdentity = userAuthority?.firebaseIdentity || (!config.userFirebaseAuthCompatibilityDisabled
+        ? await authenticateFirebase(request, response, headers, requestId)
+        : null);
       if (!firebaseIdentity) return;
       try {
         const shadow = await rentalRestrictionService.getCurrentByFirebaseIdentity(firebaseIdentity);
@@ -1991,7 +2075,7 @@ export const createRequestHandler = ({
         writeJson(response, 200, {
           ...basePayload,
           authenticated: true,
-          authentication: 'firebase-id-token',
+          authentication: config.userFirebaseAuthCompatibilityDisabled ? 'clerk-postgresql' : 'firebase-id-token',
           restrictionCandidate: {
             source: shadow?.authorityMode === 'postgresql-authoritative' ? 'postgresql-authoritative' : 'postgresql-shadow',
             authoritative: shadow?.authorityMode === 'postgresql-authoritative',
@@ -2105,10 +2189,9 @@ export const createRequestHandler = ({
     }
 
     if (request.method === 'POST' && url.pathname === '/api/users/me/member-profile') {
-      const auth = await authenticate(request, response, headers, requestId);
-      if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
-      if (!firebaseIdentity) return;
+      const userAuthority = await authenticateUserAuthority(request, response, headers, requestId);
+      if (!userAuthority) return;
+      const { auth, firebaseIdentity } = userAuthority;
       let body;
       try { body = await readJsonBody(request); } catch (error) { writeJson(response, error.status || 400, { ...basePayload, authenticated: true, error: error.code || 'invalid_json_body' }, headers); return; }
       try {
@@ -2122,10 +2205,9 @@ export const createRequestHandler = ({
     }
 
     if (request.method === 'POST' && url.pathname === '/api/users/me/member-directory/verify') {
-      const auth = await authenticate(request, response, headers, requestId);
-      if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
-      if (!firebaseIdentity) return;
+      const userAuthority = await authenticateUserAuthority(request, response, headers, requestId);
+      if (!userAuthority) return;
+      const { auth, firebaseIdentity } = userAuthority;
       try {
         const result = await memberAuthorityService.verifySelfDirectory({
           clerkUserId: auth.userId,
@@ -2203,7 +2285,12 @@ export const createRequestHandler = ({
     }
 
     if (request.method === 'GET' && url.pathname === '/api/legacy/member-profile-cutover-candidate') {
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const userAuthority = config.userFirebaseAuthCompatibilityDisabled
+        ? await authenticateUserAuthority(request, response, headers, requestId)
+        : null;
+      const firebaseIdentity = userAuthority?.firebaseIdentity || (!config.userFirebaseAuthCompatibilityDisabled
+        ? await authenticateFirebase(request, response, headers, requestId)
+        : null);
       if (!firebaseIdentity) return;
 
       try {
@@ -2215,7 +2302,7 @@ export const createRequestHandler = ({
             {
               ...basePayload,
               authenticated: true,
-              authentication: 'firebase-id-token',
+              authentication: config.userFirebaseAuthCompatibilityDisabled ? 'clerk-postgresql' : 'firebase-id-token',
               readCandidate: sanitizeMemberProfileReadCandidate(canonical.profile, {
                 source: canonical.source || 'postgresql-authoritative',
                 authoritative: true,

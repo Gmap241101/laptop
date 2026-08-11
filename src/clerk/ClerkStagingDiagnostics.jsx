@@ -117,9 +117,14 @@ import {
   requestAccountLifecycleAuthorityStatus,
   subscribeAccountLifecycleAuthorityObservation,
 } from '../features/auth/accountLifecycleAuthority.js';
+import {
+  getLatestUserFirebaseAuthRetirementObservation,
+  readUserFirebaseAuthRetirementConfig,
+  subscribeUserFirebaseAuthRetirementObservation,
+} from '../features/auth/userFirebaseAuthRetirement.js';
 import { clerkStagingClient } from './clerkStagingClient.js';
 
-const PHASE32_RUNTIME_REVISION = 'phase32-new-member-runtime-authority-20260811-2108';
+const PHASE33_RUNTIME_REVISION = 'phase33-user-clerk-content-authority-20260811-2210';
 
 const panelStyle = {
   position: 'fixed',
@@ -181,6 +186,7 @@ export default function ClerkStagingDiagnostics() {
   const memberStatusRestrictionRetirementConfig = useMemo(() => readMemberStatusRestrictionWriteMirrorRetirementConfig(), []);
   const memberProfileIdentityAuthorityConfig = useMemo(() => readMemberProfileIdentityAuthorityConfig(), []);
   const accountLifecycleAuthorityConfig = useMemo(() => readAccountLifecycleAuthorityConfig(), []);
+  const userFirebaseRetirementConfig = useMemo(() => readUserFirebaseAuthRetirementConfig(), []);
   const [state, setState] = useState({
     phase: requested ? 'loading' : 'hidden',
     signedIn: false,
@@ -409,6 +415,14 @@ export default function ClerkStagingDiagnostics() {
     accountLifecyclePasswordResetStatus: null,
     accountLifecycleRecoverySource: null,
     accountLifecycleAuthorityError: null,
+    userFirebaseRetirementRequested: userFirebaseRetirementConfig.requested,
+    userFirebaseRetirementBackendApplied: false,
+    userFirebaseRuntimeSource: null,
+    userLegacyMemberKeySource: null,
+    phase33PasswordResetDelivery: null,
+    phase33SiteContentAuthorityRequested: Boolean(siteContentConfig.authorityRequested),
+    phase33PolicyContentAuthorityRequested: Boolean(policyContentConfig.authorityRequested),
+    phase33Error: null,
     error: null,
   });
 
@@ -558,6 +572,23 @@ export default function ClerkStagingDiagnostics() {
     };
     applyObservation(getLatestRentalRestrictionCutoverObservation());
     return subscribeRentalRestrictionCutoverObservation(applyObservation);
+  }, [requested]);
+
+  useEffect(() => {
+    if (!requested) return undefined;
+    const applyObservation = (observation) => {
+      if (!observation) return;
+      setState((current) => ({
+        ...current,
+        userFirebaseRetirementRequested: Object.prototype.hasOwnProperty.call(observation, 'requested')
+          ? Boolean(observation.requested)
+          : current.userFirebaseRetirementRequested,
+        userFirebaseRuntimeSource: observation?.userAuthSource || observation?.source || current.userFirebaseRuntimeSource,
+        phase33Error: observation?.error || '',
+      }));
+    };
+    applyObservation(getLatestUserFirebaseAuthRetirementObservation());
+    return subscribeUserFirebaseAuthRetirementObservation(applyObservation);
   }, [requested]);
 
   useEffect(() => {
@@ -1092,6 +1123,10 @@ export default function ClerkStagingDiagnostics() {
           accountLifecycleSignupSource: status.signupSource || current.accountLifecycleSignupSource,
           accountLifecycleTermsConsentSource: status.termsConsentSource || current.accountLifecycleTermsConsentSource,
           accountLifecyclePasswordResetDelivery: status.passwordResetDelivery || current.accountLifecyclePasswordResetDelivery,
+          userFirebaseRetirementBackendApplied: Boolean(status.userFirebaseAuthCompatibilityDisabled),
+          userFirebaseRuntimeSource: status.userAuthenticationSource || current.userFirebaseRuntimeSource,
+          userLegacyMemberKeySource: status.userLegacyMemberKeySource || current.userLegacyMemberKeySource,
+          phase33PasswordResetDelivery: status.passwordResetDelivery || current.phase33PasswordResetDelivery,
           accountLifecycleAuthorityError: status.error || null,
         }));
       });
@@ -1301,7 +1336,7 @@ export default function ClerkStagingDiagnostics() {
 
   return (
     <aside style={panelStyle} aria-label="Clerk staging diagnostics">
-      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 32</div>
+      <div style={{ fontWeight: 800, marginBottom: '8px' }}>Clerk Staging Test · Phase 33</div>
       <div>SDK: {state.phase === 'loading' ? 'loading' : state.phase}</div>
       <div>Signed in: {state.signedIn ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Clerk user: {state.userId || '-'}</div>
@@ -1632,6 +1667,20 @@ export default function ClerkStagingDiagnostics() {
       <div style={{ overflowWrap: 'anywhere' }}>Password reset status: {state.accountLifecyclePasswordResetStatus || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Phase 32 authority error: {state.accountLifecycleAuthorityError || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Preserved compatibility: Firebase auth session / Firebase UID bridge / site-shell parity fallback</div>
+
+      <div style={{ marginTop: '6px', fontWeight: 700 }}>Phase 33 user Clerk-only auth + public content PostgreSQL authority</div>
+      <div>Runtime revision: {PHASE33_RUNTIME_REVISION}</div>
+      <div>User Firebase Auth retirement requested: {state.userFirebaseRetirementRequested ? 'yes' : 'no'}</div>
+      <div>User Firebase Auth backend retirement applied: {state.userFirebaseRetirementBackendApplied ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>User authentication source: {state.userFirebaseRuntimeSource || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Legacy member key source: {state.userLegacyMemberKeySource || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Password reset delivery: {state.phase33PasswordResetDelivery || '-'}</div>
+      <div>Public site content PostgreSQL authority requested: {state.phase33SiteContentAuthorityRequested ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Public site content active source: {state.siteContentReadSource || '-'}</div>
+      <div>Public policy content PostgreSQL authority requested: {state.phase33PolicyContentAuthorityRequested ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Public policy content active source: {state.policyContentReadSource || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Phase 33 authority error: {state.phase33Error || '-'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Preserved admin compatibility: Firebase admin session / Firestore admin settings-policy management until Phase 34</div>
 
       {state.error ? (
         <div role="alert" style={{ marginTop: '8px', color: '#b91c1c', overflowWrap: 'anywhere' }}>

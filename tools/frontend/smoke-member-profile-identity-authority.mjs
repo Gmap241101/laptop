@@ -36,5 +36,5 @@ for (const marker of ['requestAdminMemberDirectoryPostgresqlSync', '/api/admin/m
 for (const marker of ["syncSiteContentDomainFromFirestore({ domain: 'rental-config' })", 'syncAdminMemberDirectory', 'readMemberProfileIdentityAuthorityConfig']) assert.ok(directorySave.includes(marker), marker);
 assert.ok(userProfile.includes('clerkStagingClient.writeMemberProfile'), 'user profile edit must use backend member authority');
 assert.ok(adminProfile.includes('clerkStagingClient.writeAdminMemberProfile'), 'admin profile edit must use backend member authority');
-for (const marker of ['Clerk Staging Test · Phase 32', 'Phase 31 member profile identity / recovery PostgreSQL authority + Firestore write mirror retirement', 'Member identity source:', 'Last profile edit mirror:', "top: '184px'"]) assert.ok(diagnostics.includes(marker), marker);
+for (const marker of ['Clerk Staging Test · Phase 33', 'Phase 31 member profile identity / recovery PostgreSQL authority + Firestore write mirror retirement', 'Member identity source:', 'Last profile edit mirror:', "top: '184px'"]) assert.ok(diagnostics.includes(marker), marker);
 console.log('[member-profile-identity-authority-frontend-smoke] PASS (Phase 31 flag/health, retired mirror response, directory sync, user/admin profile authority, diagnostics)');

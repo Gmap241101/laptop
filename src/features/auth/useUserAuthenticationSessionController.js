@@ -17,6 +17,8 @@ import {
 } from './authSessionService.js';
 import { readUserAccountLifecycleCutoverConfig } from './userAccountLifecycleCutover.js';
 import { createDefaultUserAuthForm } from './useUserLoginController.js';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { readUserFirebaseAuthRetirementConfig } from './userFirebaseAuthRetirement.js';
 
 export const useUserAuthenticationSessionState = ({ userSessionPolicy }) => {
   const [userAuthSessionUid, setUserAuthSessionUid] = useState(
@@ -95,6 +97,7 @@ export default function useUserAuthenticationSessionController({
   setSelectedFooterPageId,
   setSelectedNoticePostId,
   setUserAuthenticatedSession,
+  setFirebaseAuthUser,
   setUserAuthForm,
   setUserTab,
   setView,
@@ -123,11 +126,16 @@ export default function useUserAuthenticationSessionController({
       userSessionLogoutInProgressRef.current = true;
 
       try {
-        if (firebaseAuth.currentUser) {
+        const firebaseRetirement = readUserFirebaseAuthRetirementConfig();
+        if (firebaseRetirement.requested) {
+          await clerkStagingClient.signOut().catch((error) => console.error('Expired user Clerk logout error:', error));
+          if (firebaseAuth.currentUser) await signOut(firebaseAuth).catch(() => {});
+          setFirebaseAuthUser(null);
+        } else if (firebaseAuth.currentUser) {
           await signOut(firebaseAuth);
         }
       } catch (error) {
-        console.error('Expired user Firebase Auth logout error:', error);
+        console.error('Expired user authentication logout error:', error);
       } finally {
         clearUserAuthenticatedSession('session-expired', { clearTransition: true });
         clearUserLoginReturnTarget();
@@ -147,6 +155,7 @@ export default function useUserAuthenticationSessionController({
       setIsCommunityMenuOpen,
       setSelectedFooterPageId,
       setSelectedNoticePostId,
+      setFirebaseAuthUser,
       setUserAuthForm,
       setUserTab,
       setView,

@@ -279,6 +279,33 @@ export const createAccountLifecycleRepository = (pool) => {
       });
     },
 
+
+    async rollbackUnlinkedSignup({ firebaseUid }) {
+      const uid = String(firebaseUid || '').trim();
+      if (!uid) return false;
+      return withTransaction(async (client) => {
+        const account = await client.query(
+          `SELECT firebase_uid, app_user_id, lifecycle_authority_mode
+             FROM app_member_accounts
+            WHERE firebase_uid=$1
+            FOR UPDATE`,
+          [uid],
+        );
+        const row = account.rows[0];
+        if (!row || row.app_user_id || row.lifecycle_authority_mode !== 'postgresql-authoritative') {
+          return false;
+        }
+        await client.query(`DELETE FROM app_user_term_consent_logs WHERE firebase_uid=$1`, [uid]);
+        await client.query(`DELETE FROM app_user_term_consent_states WHERE firebase_uid=$1`, [uid]);
+        await client.query(`DELETE FROM app_user_rental_restriction_shadows WHERE firebase_uid=$1 AND app_user_id IS NULL`, [uid]);
+        const deleted = await client.query(
+          `DELETE FROM app_member_accounts WHERE firebase_uid=$1 AND app_user_id IS NULL RETURNING firebase_uid`,
+          [uid],
+        );
+        return deleted.rowCount > 0;
+      });
+    },
+
     async getConsentSnapshot(firebaseUid) {
       return readConsentSnapshot(pool, firebaseUid);
     },

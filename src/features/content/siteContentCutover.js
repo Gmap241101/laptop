@@ -48,10 +48,14 @@ export const readSiteContentCutoverConfig = ({
   storage = globalThis.sessionStorage,
 } = {}) => {
   const staging = bool(env?.VITE_CLERK_STAGING_ENABLED);
-  const readEnabled = staging && bool(env?.VITE_SITE_CONTENT_POSTGRES_READ_ENABLED);
+  const authorityEnabled = staging && bool(env?.VITE_SITE_CONTENT_POSTGRES_AUTHORITY_ENABLED);
+  const readEnabled = staging && (
+    bool(env?.VITE_SITE_CONTENT_POSTGRES_READ_ENABLED) || authorityEnabled
+  );
   const writeThroughEnabled = staging && bool(env?.VITE_SITE_CONTENT_WRITE_THROUGH_ENABLED);
   const params = location ? new URLSearchParams(location.search || '') : new URLSearchParams();
   const queryRead = readEnabled && params.get('siteContent') === 'postgres';
+  const queryRollback = authorityEnabled && params.get('siteContent') === 'firestore';
   const queryWrite = writeThroughEnabled && params.get('siteContentWrite') === 'postgres';
   let sessionRead = false;
   let sessionWrite = false;
@@ -67,9 +71,15 @@ export const readSiteContentCutoverConfig = ({
     sessionWrite = false;
   }
   return Object.freeze({
+    authorityEnabled,
+    authorityRequested: Boolean(authorityEnabled && !queryRollback),
+    fallbackAllowed: !authorityEnabled || queryRollback,
     readEnabled,
     writeThroughEnabled,
-    readRequested: Boolean(readEnabled && (queryRead || sessionRead)),
+    readRequested: Boolean(
+      (authorityEnabled && !queryRollback) ||
+      (readEnabled && (queryRead || sessionRead))
+    ),
     writeThroughRequested: Boolean(writeThroughEnabled && (queryWrite || sessionWrite)),
     apiBaseUrl: normalizeApiBaseUrl(env?.VITE_API_URL),
   });

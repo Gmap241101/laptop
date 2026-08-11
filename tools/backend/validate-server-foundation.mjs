@@ -436,7 +436,7 @@ for (const marker of ['findByClerkUserId', 'syncMemberFromCompatibility', 'linkA
   if (!userClerkAuthRepository.includes(marker)) throw new Error(`Phase 23 user Clerk repository marker is missing: ${marker}`);
 }
 const userClerkAuthService = readFileSync('server/src/auth/user-clerk-auth-service.mjs', 'utf8');
-for (const marker of ['migrateCurrent({ firebaseIdentity, password })', 'provisionCurrent({ firebaseIdentity, password })', 'verifyPassword({ clerkUserId, password })', 'changePassword({ clerkUserId, firebaseIdentity, currentPassword, newPassword })', 'finalizeWithdrawal({ clerkUserId, firebaseIdentity, password })', "authority: 'postgresql'"]) {
+for (const marker of ['migrateCurrent({ firebaseIdentity, password })', 'provisionCurrent({ firebaseIdentity, password })', 'verifyPassword({ clerkUserId, password })', 'changePassword({ clerkUserId, firebaseIdentity = null, currentPassword, newPassword })', 'finalizeWithdrawal({ clerkUserId, firebaseIdentity = null, password })', "authority: 'postgresql'"]) {
   if (!userClerkAuthService.includes(marker)) throw new Error(`Phase 23 user Clerk service marker is missing: ${marker}`);
 }
 const userLifecycleCutover = readFileSync('src/features/auth/userAccountLifecycleCutover.js', 'utf8');
@@ -605,8 +605,19 @@ const accountLifecycleClientSource = readFileSync('src/clerk/clerkStagingClient.
 for (const marker of ['/api/users/signup/bootstrap', '/api/users/me/terms-consent/bootstrap', 'bootstrapUserTermsConsent']) {
   if (!accountLifecycleClientSource.includes(marker)) throw new Error(`Phase 32 client account lifecycle marker is missing: ${marker}`);
 }
-for (const marker of ["url.pathname === '/api/users/signup/bootstrap'", "url.pathname === '/api/users/me/terms-consent'", "url.pathname === '/api/users/me/terms-consent/bootstrap'", "passwordResetDelivery: 'firebase-auth-compatibility-preserved'"]) {
+for (const marker of ["url.pathname === '/api/users/signup/bootstrap'", "url.pathname === '/api/users/me/terms-consent'", "url.pathname === '/api/users/me/terms-consent/bootstrap'", "'firebase-auth-compatibility-preserved'", "'clerk-email-code'"]) {
   if (!app.includes(marker)) throw new Error(`Phase 32 server account lifecycle route marker is missing: ${marker}`);
+}
+
+const userFirebaseRetirementSource = readFileSync('src/features/auth/userFirebaseAuthRetirement.js', 'utf8');
+for (const marker of ['VITE_USER_FIREBASE_AUTH_COMPATIBILITY_DISABLED', 'clerk-postgresql', 'rental:user-firebase-auth-retirement']) {
+  if (!userFirebaseRetirementSource.includes(marker)) throw new Error(`Phase 33 user Firebase retirement marker is missing: ${marker}`);
+}
+for (const marker of ['FIREBASE_USER_AUTH_COMPATIBILITY_DISABLED', 'userFirebaseAuthCompatibilityDisabled']) {
+  if (!serverEnvSource.includes(marker)) throw new Error(`Phase 33 backend config marker is missing: ${marker}`);
+}
+for (const marker of ["url.pathname === '/api/users/signup/clerk'", 'authenticateUserAuthority', "runtimeRevision: 'phase33-user-clerk-content-authority-20260811-2210'"]) {
+  if (!app.includes(marker)) throw new Error(`Phase 33 server authority marker is missing: ${marker}`);
 }
 
 const configTemplate = readFileSync('docs/github-education/HEROKU_CONFIG_VARS_TEMPLATE.txt', 'utf8');
@@ -614,4 +625,4 @@ for (const variable of ['CLERK_JWT_KEY=', 'CLERK_AUTHORIZED_PARTIES=', 'CLERK_SE
   if (!configTemplate.includes(variable)) throw new Error(`Phase 6 config template is missing ${variable}`);
 }
 
-console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request shadow/parity + phase16 authoritative write + phase17 admin rental-request cutover + phase18 mutation/audit completion + phase19 user-action lifecycle + phase20 asset-domain + phase21 member/restriction/admin identity authority + phase22 account recovery/admin Clerk auth + phase23 user Clerk authentication/lifecycle + phase24 site content + phase25 policy/terms + phase26 notice/FAQ board authority + phase28 asset/board write mirror retirement + phase29 rental transaction PostgreSQL authority + runtime hotfix invariants + phase30 member status/restriction authority retirement + phase31 member profile identity/recovery authority + phase32 account lifecycle PostgreSQL authority)`);
+console.log(`[server-check] PASS (${files.length} JavaScript files + Procfile + phase2/phase5/phase6/phase7/phase9/phase12/phase14 migrations + phase8 parallel-read + phase9 cutover + phase10 watcher-disable + phase11 write-through + phase12 restriction shadow + phase14 rental-request shadow/parity + phase16 authoritative write + phase17 admin rental-request cutover + phase18 mutation/audit completion + phase19 user-action lifecycle + phase20 asset-domain + phase21 member/restriction/admin identity authority + phase22 account recovery/admin Clerk auth + phase23 user Clerk authentication/lifecycle + phase24 site content + phase25 policy/terms + phase26 notice/FAQ board authority + phase28 asset/board write mirror retirement + phase29 rental transaction PostgreSQL authority + runtime hotfix invariants + phase30 member status/restriction authority retirement + phase31 member profile identity/recovery authority + phase32 account lifecycle PostgreSQL authority + phase33 user Clerk-only/public content authority)`);

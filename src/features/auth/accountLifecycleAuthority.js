@@ -69,6 +69,9 @@ export const readAccountLifecycleAuthorityFromPayload = (payload, { requested = 
     signupSource: trim(compatibility.signupProfileSource),
     termsConsentSource: trim(compatibility.termsConsentSource),
     passwordResetDelivery: trim(compatibility.passwordResetDelivery),
+    userFirebaseAuthCompatibilityDisabled: Boolean(compatibility.userFirebaseAuthCompatibilityDisabled),
+    userAuthenticationSource: trim(compatibility.userAuthenticationSource),
+    userLegacyMemberKeySource: trim(compatibility.userLegacyMemberKeySource),
   });
 };
 
@@ -79,7 +82,7 @@ export const requestAccountLifecycleAuthorityStatus = async ({
   sleepImpl = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
   attempts = 3,
 } = {}) => {
-  if (!config.apiBaseUrl) return Object.freeze({ requested: config.requested, backendApplied: false, signupSource: '', termsConsentSource: '', passwordResetDelivery: '', error: 'api-base-url-missing' });
+  if (!config.apiBaseUrl) return Object.freeze({ requested: config.requested, backendApplied: false, signupSource: '', termsConsentSource: '', passwordResetDelivery: '', userFirebaseAuthCompatibilityDisabled: false, userAuthenticationSource: '', userLegacyMemberKeySource: '', error: 'api-base-url-missing' });
 
   const maxAttempts = Math.max(1, Number(attempts) || 1);
   let lastResult = null;
@@ -98,7 +101,7 @@ export const requestAccountLifecycleAuthorityStatus = async ({
         && authority.backendApplied
         && authority.signupSource === 'postgresql'
         && authority.termsConsentSource === 'postgresql'
-        && authority.passwordResetDelivery === 'firebase-auth-compatibility-preserved';
+        && ['firebase-auth-compatibility-preserved', 'clerk-email-code'].includes(authority.passwordResetDelivery);
       lastResult = Object.freeze({
         ...authority,
         error: config.requested && !applied ? 'backend-account-lifecycle-authority-not-applied' : null,
@@ -106,12 +109,12 @@ export const requestAccountLifecycleAuthorityStatus = async ({
       if (!config.requested || applied) return lastResult;
     } catch (error) {
       lastError = error;
-      lastResult = Object.freeze({ requested: config.requested, backendApplied: false, signupSource: '', termsConsentSource: '', passwordResetDelivery: '', error: error?.code || error?.message || 'status-unavailable' });
+      lastResult = Object.freeze({ requested: config.requested, backendApplied: false, signupSource: '', termsConsentSource: '', passwordResetDelivery: '', userFirebaseAuthCompatibilityDisabled: false, userAuthenticationSource: '', userLegacyMemberKeySource: '', error: error?.code || error?.message || 'status-unavailable' });
     }
 
     if (attempt < maxAttempts) await sleepImpl(attempt === 1 ? 250 : 750);
   }
 
   if (lastResult) return lastResult;
-  return Object.freeze({ requested: config.requested, backendApplied: false, signupSource: '', termsConsentSource: '', passwordResetDelivery: '', error: lastError?.code || lastError?.message || 'status-unavailable' });
+  return Object.freeze({ requested: config.requested, backendApplied: false, signupSource: '', termsConsentSource: '', passwordResetDelivery: '', userFirebaseAuthCompatibilityDisabled: false, userAuthenticationSource: '', userLegacyMemberKeySource: '', error: lastError?.code || lastError?.message || 'status-unavailable' });
 };

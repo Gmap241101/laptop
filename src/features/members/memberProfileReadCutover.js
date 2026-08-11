@@ -1,4 +1,6 @@
 import { readAccountLifecycleAuthorityConfig } from '../auth/accountLifecycleAuthority.js';
+import { readUserFirebaseAuthRetirementConfig } from '../auth/userFirebaseAuthRetirement.js';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 import { compareMemberProfileReads, normalizeMemberProfileRead } from './memberProfileReadObservation.js';
 
 const EVENT_NAME = 'rental:member-profile-read-cutover';
@@ -78,17 +80,24 @@ export const shouldUseMemberProfileFirestoreWatcher = (config) =>
   !Boolean(config?.firestoreWatcherDisabled);
 
 export const requestMemberProfileCutoverCandidate = async ({ firebaseUser, apiBaseUrl, fetchImpl = fetch }) => {
-  if (!firebaseUser || typeof firebaseUser.getIdToken !== 'function') {
-    throw new Error('Firebase sign-in is required for the Phase 9 member read cutover.');
-  }
   if (!apiBaseUrl) throw new Error('VITE_API_URL is required for the Phase 9 member read cutover.');
-  const firebaseIdToken = await firebaseUser.getIdToken();
+  const userFirebaseRetirement = readUserFirebaseAuthRetirementConfig();
+  let headers = { Accept: 'application/json' };
+  if (userFirebaseRetirement.requested) {
+    const clerk = await clerkStagingClient.initialize();
+    const token = await clerk?.session?.getToken?.();
+    if (!token) throw new Error('Clerk sign-in is required for the PostgreSQL member read cutover.');
+    headers = { ...headers, Authorization: `Bearer ${token}` };
+  } else {
+    if (!firebaseUser || typeof firebaseUser.getIdToken !== 'function') {
+      throw new Error('Firebase sign-in is required for the Phase 9 member read cutover.');
+    }
+    const firebaseIdToken = await firebaseUser.getIdToken();
+    headers = { ...headers, 'X-Firebase-Authorization': `Bearer ${firebaseIdToken}` };
+  }
   const response = await fetchImpl(`${apiBaseUrl}/api/legacy/member-profile-cutover-candidate`, {
     method: 'GET',
-    headers: {
-      Accept: 'application/json',
-      'X-Firebase-Authorization': `Bearer ${firebaseIdToken}`,
-    },
+    headers,
     cache: 'no-store',
   });
   let payload = null;

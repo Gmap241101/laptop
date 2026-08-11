@@ -31,14 +31,14 @@ const normalizeSource = ({ document, firebaseUid }) => {
   });
 };
 
-export const createRentalRestrictionService = ({ firebaseLinkRepository, rentalRestrictionRepository, firestoreRentalRestrictionClient }) => {
+export const createRentalRestrictionService = ({ firebaseLinkRepository, rentalRestrictionRepository, firestoreRentalRestrictionClient, firebaseCompatibilityRequired = true }) => {
   if (!firebaseLinkRepository || typeof firebaseLinkRepository.findByFirebaseUid !== 'function') throw new TypeError('firebaseLinkRepository is required.');
   if (!rentalRestrictionRepository || typeof rentalRestrictionRepository.findByFirebaseUid !== 'function' || typeof rentalRestrictionRepository.upsert !== 'function') throw new TypeError('rentalRestrictionRepository is required.');
   if (!firestoreRentalRestrictionClient || typeof firestoreRentalRestrictionClient.getRentalRestriction !== 'function') throw new TypeError('firestoreRentalRestrictionClient is required.');
 
   const verifyIdentity = async (firebaseIdentity, firebaseUid) => {
     const actorUid = normalizeText(firebaseIdentity?.uid);
-    if (!actorUid || !firebaseIdentity?.idToken) throw serviceError('firebase_identity_missing', 'Verified Firebase identity is required.');
+    if (!actorUid || (firebaseCompatibilityRequired && !firebaseIdentity?.idToken)) throw serviceError('firebase_identity_missing', 'Verified Firebase identity is required.');
     const link = await firebaseLinkRepository.findByFirebaseUid(firebaseUid);
     return { actorUid, link };
   };

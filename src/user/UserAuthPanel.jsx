@@ -27,6 +27,7 @@ export default function UserAuthPanel({ ctx }) {
     logoutUser,
     passwordResetForm,
     passwordResetLoading,
+    passwordResetStage,
     passwordResetVerificationResult,
     resetAccountRecoverySearch,
     setAccountRecoveryForm,
@@ -234,70 +235,81 @@ export default function UserAuthPanel({ ctx }) {
           </form>
         ) : isPasswordResetMode ? (
           <form className="space-y-4" onSubmit={submitPasswordReset}>
-            <Input
-              label="가입 이메일"
-              value={passwordResetForm.email}
-              onChange={(value) => {
-                updatePasswordResetForm({
-                  ...passwordResetForm,
-                  email: value,
-                });
-              }}
-              placeholder="example@company.com"
-              type="email"
-              autoComplete="email"
-            />
-
-            <Input
-              label="성명"
-              value={passwordResetForm.name}
-              onChange={(value) =>
-                updatePasswordResetForm({
-                  ...passwordResetForm,
-                  name: sanitizeMemberNameInput(value).slice(0, 30),
-                })
-              }
-              placeholder="공백 없이 성명을 입력하세요"
-              maxLength={30}
-            />
-
-            <Input
-              label="부서 / 팀"
-              value={passwordResetForm.team}
-              onChange={(value) =>
-                updatePasswordResetForm({
-                  ...passwordResetForm,
-                  team: value,
-                })
-              }
-              placeholder="가입할 때 입력한 부서 또는 팀명"
-              list="password-reset-team-options"
-              maxLength={80}
-            />
-            <datalist id="password-reset-team-options">
-              {(data.teams || []).map((team) => (
-                <option key={team} value={team} />
-              ))}
-            </datalist>
-
-            <DomesticPhoneInput
-              prefix={passwordResetForm.phonePrefix}
-              middle={passwordResetForm.phoneMiddle}
-              last={passwordResetForm.phoneLast}
-              disabled={passwordResetLoading}
-              onChange={(phoneParts) =>
-                updatePasswordResetForm({
-                  ...passwordResetForm,
-                  phonePrefix: phoneParts.prefix,
-                  phoneMiddle: phoneParts.middle,
-                  phoneLast: phoneParts.last,
-                })
-              }
-            />
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-xs leading-5 text-slate-600">
-              가입 이메일, 성명, 부서 / 팀, 연락처가 모두 일치하는 경우에만 비밀번호 재설정 메일을 발송합니다.
-            </div>
+            {passwordResetStage === 'code' ? (
+              <>
+                <Input
+                  label="가입 이메일"
+                  value={passwordResetForm.email}
+                  onChange={() => {}}
+                  type="email"
+                  autoComplete="email"
+                  disabled
+                />
+                <Input
+                  label="Clerk 비밀번호 재설정 인증코드"
+                  value={passwordResetForm.resetCode || ''}
+                  onChange={(value) => updatePasswordResetForm({ ...passwordResetForm, resetCode: value })}
+                  placeholder="이메일로 받은 인증코드"
+                  autoComplete="one-time-code"
+                />
+                <Input
+                  label="새 비밀번호"
+                  value={passwordResetForm.newPassword || ''}
+                  onChange={(value) => updatePasswordResetForm({ ...passwordResetForm, newPassword: value })}
+                  type="password"
+                  autoComplete="new-password"
+                />
+                <Input
+                  label="새 비밀번호 확인"
+                  value={passwordResetForm.newPasswordConfirm || ''}
+                  onChange={(value) => updatePasswordResetForm({ ...passwordResetForm, newPasswordConfirm: value })}
+                  type="password"
+                  autoComplete="new-password"
+                />
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-xs leading-5 text-slate-600">
+                  PostgreSQL 회원정보 확인을 통과한 계정에 대해 Clerk가 가입 이메일로 보낸 인증코드와 새 비밀번호를 입력해 주세요.
+                </div>
+              </>
+            ) : (
+              <>
+                <Input
+                  label="가입 이메일"
+                  value={passwordResetForm.email}
+                  onChange={(value) => updatePasswordResetForm({ ...passwordResetForm, email: value })}
+                  placeholder="example@company.com"
+                  type="email"
+                  autoComplete="email"
+                />
+                <Input
+                  label="성명"
+                  value={passwordResetForm.name}
+                  onChange={(value) => updatePasswordResetForm({ ...passwordResetForm, name: sanitizeMemberNameInput(value).slice(0, 30) })}
+                  placeholder="공백 없이 성명을 입력하세요"
+                  maxLength={30}
+                />
+                <Input
+                  label="부서 / 팀"
+                  value={passwordResetForm.team}
+                  onChange={(value) => updatePasswordResetForm({ ...passwordResetForm, team: value })}
+                  placeholder="가입할 때 입력한 부서 또는 팀명"
+                  list="password-reset-team-options"
+                  maxLength={80}
+                />
+                <datalist id="password-reset-team-options">
+                  {(data.teams || []).map((team) => (<option key={team} value={team} />))}
+                </datalist>
+                <DomesticPhoneInput
+                  prefix={passwordResetForm.phonePrefix}
+                  middle={passwordResetForm.phoneMiddle}
+                  last={passwordResetForm.phoneLast}
+                  disabled={passwordResetLoading}
+                  onChange={(phoneParts) => updatePasswordResetForm({ ...passwordResetForm, phonePrefix: phoneParts.prefix, phoneMiddle: phoneParts.middle, phoneLast: phoneParts.last })}
+                />
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-xs leading-5 text-slate-600">
+                  가입 이메일, 성명, 부서 / 팀, 연락처가 모두 일치하는 경우에만 비밀번호 재설정을 진행합니다.
+                </div>
+              </>
+            )}
 
             {passwordResetVerificationResult ? (
               <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-800">
@@ -310,7 +322,7 @@ export default function UserAuthPanel({ ctx }) {
                 취소
               </Button>
               <Button type="submit" variant="primary" disabled={passwordResetLoading || !firebaseAuthReady} className="w-full justify-center py-3">
-                {passwordResetLoading ? '확인 중...' : '재설정 메일 보내기'}
+                {passwordResetLoading ? '확인 중...' : passwordResetStage === 'code' ? '비밀번호 변경' : '재설정 코드 보내기'}
               </Button>
             </div>
           </form>

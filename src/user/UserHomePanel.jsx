@@ -135,6 +135,13 @@ export default function UserHomePanel({ ctx }) {
             const postgresBanners = content.documents
               .filter((item) => item.key.startsWith('homeBanners/') && item.payload?.enabled !== false)
               .map((item) => ({ ...item.payload, id: item.payload?.id || item.key.split('/').pop() }));
+            if (cutover.authorityRequested) {
+              if (cancelled) return;
+              setBanners(postgresBanners);
+              setBannersReady(true);
+              setBannerLoadError('');
+              return;
+            }
             const enabledQuery = query(HOME_BANNERS_COLLECTION_REF, where('enabled', '==', true), limit(50));
             const firestoreSnapshot = await getDocsFromServer(enabledQuery);
             const firestoreBanners = firestoreSnapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
@@ -168,6 +175,7 @@ export default function UserHomePanel({ ctx }) {
             setBannerLoadError('');
             return;
           } catch (postgresError) {
+            if (cutover.authorityRequested) throw postgresError;
             console.warn('PostgreSQL home banner read fallback:', postgresError);
           }
         }
@@ -211,6 +219,7 @@ export default function UserHomePanel({ ctx }) {
             applyConfig(document.payload);
             return;
           } catch (postgresError) {
+            if (cutover.authorityRequested) throw postgresError;
             console.warn('PostgreSQL home config read fallback:', postgresError);
           }
         }

@@ -121,6 +121,30 @@ const requestPublicJson = async ({ apiBaseUrl, fetchImpl, path, body }) => {
   return { response, payload: await parseJsonResponse(response) };
 };
 
+const optionalFirebaseAuthorizationHeader = (firebaseIdToken) => {
+  const token = trim(firebaseIdToken);
+  return token ? { 'X-Firebase-Authorization': `Bearer ${token}` } : {};
+};
+
+export const requestNativeUserSignup = async ({ apiBaseUrl, fetchImpl, password, input }) => {
+  const { response, payload } = await requestPublicJson({
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/users/signup/clerk',
+    body: { ...(input || {}), password },
+  });
+  if (!response.ok) {
+    const error = new Error(`Native Clerk/PostgreSQL signup failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (payload?.signupLifecycle?.source !== 'postgresql' || payload?.signupLifecycle?.firebaseAuthCompatibility !== 'retired') {
+    throw new Error('Backend returned an invalid native Clerk/PostgreSQL signup response.');
+  }
+  return payload;
+};
+
 const requestWithFirebaseAuthorization = async ({ apiBaseUrl, fetchImpl, path, firebaseIdToken, body }) => {
   const token = trim(firebaseIdToken);
   if (!token) throw new Error('Firebase administrator sign-in is required for this compatibility operation.');
@@ -129,7 +153,7 @@ const requestWithFirebaseAuthorization = async ({ apiBaseUrl, fetchImpl, path, f
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
-      'X-Firebase-Authorization': `Bearer ${token}`,
+      ...optionalFirebaseAuthorizationHeader(token),
     },
     cache: 'no-store',
     body: JSON.stringify(body || {}),
@@ -326,7 +350,6 @@ export const requestUserPasswordVerification = async ({ clerk, apiBaseUrl, fetch
 
 export const requestUserPasswordChange = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, currentPassword, newPassword }) => {
   const token = trim(firebaseIdToken);
-  if (!token) throw new Error('Firebase user compatibility identity is required for password synchronization.');
   const { response, payload } = await requestWithSession({
     clerk,
     apiBaseUrl,
@@ -335,7 +358,7 @@ export const requestUserPasswordChange = async ({ clerk, apiBaseUrl, fetchImpl, 
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Firebase-Authorization': `Bearer ${token}`,
+      ...optionalFirebaseAuthorizationHeader(token),
     },
     body: JSON.stringify({ currentPassword, newPassword }),
   });
@@ -353,7 +376,6 @@ export const requestUserPasswordChange = async ({ clerk, apiBaseUrl, fetchImpl, 
 
 export const requestUserWithdrawalFinalize = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, password }) => {
   const token = trim(firebaseIdToken);
-  if (!token) throw new Error('Firebase user compatibility identity is required for withdrawal finalization.');
   const { response, payload } = await requestWithSession({
     clerk,
     apiBaseUrl,
@@ -362,7 +384,7 @@ export const requestUserWithdrawalFinalize = async ({ clerk, apiBaseUrl, fetchIm
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Firebase-Authorization': `Bearer ${token}`,
+      ...optionalFirebaseAuthorizationHeader(token),
     },
     body: JSON.stringify({ password }),
   });
@@ -841,10 +863,9 @@ export const requestAdminRentalRequestStatusChange = async ({ clerk, apiBaseUrl,
 
 export const requestMemberProfileAuthorityWrite = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, profile }) => {
   const token = trim(firebaseIdToken);
-  if (!token) throw new Error('Firebase sign-in is required before changing the PostgreSQL member profile.');
   const { response, payload } = await requestWithSession({
     clerk, apiBaseUrl, fetchImpl, path: '/api/users/me/member-profile', method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Firebase-Authorization': `Bearer ${token}` },
+    headers: { 'Content-Type': 'application/json', ...optionalFirebaseAuthorizationHeader(token) },
     body: JSON.stringify(profile || {}),
   });
   if (!response.ok) {
@@ -859,14 +880,13 @@ export const requestMemberProfileAuthorityWrite = async ({ clerk, apiBaseUrl, fe
 
 export const requestMemberDirectoryAuthorityVerification = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken }) => {
   const token = trim(firebaseIdToken);
-  if (!token) throw new Error('Firebase sign-in is required before verifying the PostgreSQL member directory.');
   const { response, payload } = await requestWithSession({
     clerk,
     apiBaseUrl,
     fetchImpl,
     path: '/api/users/me/member-directory/verify',
     method: 'POST',
-    headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
+    headers: optionalFirebaseAuthorizationHeader(token),
   });
   if (!response.ok) {
     const error = new Error(`PostgreSQL member directory verification failed with HTTP ${response.status}.`);
@@ -1011,7 +1031,6 @@ export const requestAdminAssetCategories = (args) => requestAdminAssetMutation({
 
 export const requestRentalRequestCreate = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, request }) => {
   const token = trim(firebaseIdToken);
-  if (!token) throw new Error('Firebase sign-in is required before creating a PostgreSQL rental request.');
   const { response, payload } = await requestWithSession({
     clerk,
     apiBaseUrl,
@@ -1020,7 +1039,7 @@ export const requestRentalRequestCreate = async ({ clerk, apiBaseUrl, fetchImpl,
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Firebase-Authorization': `Bearer ${token}`,
+      ...optionalFirebaseAuthorizationHeader(token),
     },
     body: JSON.stringify(request || {}),
   });
@@ -1046,13 +1065,12 @@ export const requestRentalRequestCreate = async ({ clerk, apiBaseUrl, fetchImpl,
 const requestRentalRequestUserAction = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, requestId, action, body = {} }) => {
   const token = trim(firebaseIdToken);
   const id = trim(requestId);
-  if (!token) throw new Error('Firebase sign-in is required before changing a PostgreSQL rental request.');
   if (!id) throw new Error('Rental request ID is required.');
   const { response, payload } = await requestWithSession({
     clerk, apiBaseUrl, fetchImpl,
     path: `/api/users/me/rental-requests/${encodeURIComponent(id)}/${action}`,
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Firebase-Authorization': `Bearer ${token}` },
+    headers: { 'Content-Type': 'application/json', ...optionalFirebaseAuthorizationHeader(token) },
     body: JSON.stringify(body || {}),
   });
   if (!response.ok) {
@@ -1188,6 +1206,7 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
   const config = readClerkStagingConfig(env, decodeBase64);
   let initializePromise = null;
   let pendingAdminClientTrust = null;
+  let pendingUserPasswordReset = null;
 
   const createAdminClientTrustError = (code, message) => {
     const error = new Error(message);
@@ -1459,6 +1478,53 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
         clientTrustDestination: pending.destination,
       });
     },
+    async signupUserNative(password, input) {
+      return requestNativeUserSignup({ apiBaseUrl: config.apiBaseUrl, fetchImpl, password, input });
+    },
+    async startUserPasswordReset(identifier) {
+      const email = trim(identifier).toLowerCase();
+      if (!email) throw new Error('Password reset email is required.');
+      const clerk = await initialize();
+      if (!clerk?.client?.signIn || typeof clerk.client.signIn.create !== 'function') throw new Error('Clerk password reset API is unavailable.');
+      if (clerk.session) await clerk.signOut();
+      pendingUserPasswordReset = null;
+      clerk.client?.resetSignIn?.();
+      const signIn = await clerk.client.signIn.create({ strategy: 'reset_password_email_code', identifier: email });
+      pendingUserPasswordReset = { signIn, email };
+      return Object.freeze({ status: signIn?.status || 'needs_first_factor', email });
+    },
+    async completeUserPasswordReset({ code, password }) {
+      const verificationCode = trim(code);
+      if (!verificationCode || typeof password !== 'string' || !password) throw new Error('Password reset code and new password are required.');
+      const clerk = await initialize();
+      const pending = pendingUserPasswordReset;
+      if (!pending?.signIn || typeof pending.signIn.attemptFirstFactor !== 'function') {
+        const error = new Error('Clerk password reset challenge expired.');
+        error.code = 'user_password_reset_challenge_expired';
+        throw error;
+      }
+      try {
+        const result = await pending.signIn.attemptFirstFactor({
+          strategy: 'reset_password_email_code',
+          code: verificationCode,
+          password,
+        });
+        if (result?.status !== 'complete') {
+          const error = new Error(`Clerk password reset is incomplete (${result?.status || 'unknown'}).`);
+          error.code = result?.status === 'needs_second_factor' ? 'user_password_reset_second_factor_required' : 'user_password_reset_incomplete';
+          throw error;
+        }
+        if (clerk.session) await clerk.signOut().catch(() => {});
+        pendingUserPasswordReset = null;
+        clerk.client?.resetSignIn?.();
+        return Object.freeze({ changed: true, status: 'complete', email: pending.email });
+      } catch (error) {
+        if (error?.code !== 'form_code_incorrect') {
+          // keep the active challenge for code retry unless Clerk reset it.
+        }
+        throw error;
+      }
+    },
     async getUserClerkSession() {
       const clerk = await initialize();
       return requestUserClerkSession({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
@@ -1724,6 +1790,9 @@ export const clerkStagingClient =
         signInWithPassword: async () => { throw new Error('Clerk browser client is unavailable.'); },
         signInUserWithPassword: async () => { throw new Error('Clerk browser client is unavailable.'); },
         bootstrapUserSignup: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        signupUserNative: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        startUserPasswordReset: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        completeUserPasswordReset: async () => { throw new Error('Clerk browser client is unavailable.'); },
         getUserTermsConsent: async () => { throw new Error('Clerk browser client is unavailable.'); },
         bootstrapUserTermsConsent: async () => { throw new Error('Clerk browser client is unavailable.'); },
         saveUserTermsConsent: async () => { throw new Error('Clerk browser client is unavailable.'); },

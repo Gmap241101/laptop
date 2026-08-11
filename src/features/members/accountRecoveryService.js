@@ -15,6 +15,7 @@ import {
   normalizeMemberName,
   normalizeMemberTeam,
 } from '../../utils/memberPolicy.js';
+import { readUserFirebaseAuthRetirementConfig } from '../auth/userFirebaseAuthRetirement.js';
 import {
   publishAccountAuthObservation,
   readAccountAuthCutoverConfig,
@@ -26,6 +27,9 @@ export const createDefaultAccountRecoveryForm = (initialValues = {}) => ({
   phonePrefix: String(initialValues.phonePrefix || '010'),
   phoneMiddle: String(initialValues.phoneMiddle || ''),
   phoneLast: String(initialValues.phoneLast || ''),
+  resetCode: String(initialValues.resetCode || ''),
+  newPassword: String(initialValues.newPassword || ''),
+  newPasswordConfirm: String(initialValues.newPasswordConfirm || ''),
 });
 
 export const createDefaultPasswordResetForm = (initialValues = {}) => ({
@@ -120,6 +124,7 @@ export const findAccountRecoveryEmail = async ({
         source: 'postgresql',
       };
     } catch (error) {
+      if (readUserFirebaseAuthRetirementConfig().requested) throw error;
       console.warn('PostgreSQL account recovery lookup failed; using Firestore compatibility fallback.', {
         code: error?.code,
         status: error?.status,
@@ -184,8 +189,11 @@ export const verifyPasswordResetIdentity = async ({
         verified: Boolean(payload?.accountRecovery?.verified),
         verifierMissing: false,
         source: 'postgresql',
+        passwordResetDelivery: String(payload?.accountRecovery?.passwordResetDelivery || ''),
+        clerkReady: Boolean(payload?.accountRecovery?.clerkReady),
       };
     } catch (error) {
+      if (readUserFirebaseAuthRetirementConfig().requested) throw error;
       console.warn('PostgreSQL password reset verification failed; using Firestore compatibility fallback.', {
         code: error?.code,
         status: error?.status,

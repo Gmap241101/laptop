@@ -40,6 +40,12 @@ import {
 import { createDefaultUserProfileForm } from '../members/useUserMyPageAccountController.js';
 import { readUserAuthTransition } from './authSessionService.js';
 import { readAccountLifecycleAuthorityConfig } from './accountLifecycleAuthority.js';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import {
+  createClerkPostgresqlUserPrincipal,
+  publishUserFirebaseAuthRetirementObservation,
+  readUserFirebaseAuthRetirementConfig,
+} from './userFirebaseAuthRetirement.js';
 import {
   isLegacyFirestoreReadFallbackAllowed,
   readLegacyFirestoreReadFallbackConfig,
@@ -206,6 +212,42 @@ export default function useAuthIdentityPolicySubscriptionController({
   }, [triggerToast]);
 
   useEffect(() => {
+    const firebaseRetirement = readUserFirebaseAuthRetirementConfig();
+    if (firebaseRetirement.requested && view !== 'admin' && !authenticatedAdminId) {
+      let active = true;
+      setFirebaseAuthReady(false);
+      void (async () => {
+        try {
+          await clerkStagingClient.initialize();
+          const sessionPayload = await clerkStagingClient.getUserClerkSession();
+          if (!active) return;
+          const authority = sessionPayload?.userAuthentication || {};
+          const principal = createClerkPostgresqlUserPrincipal({
+            uid: authority.legacyMemberKey || authority.firebaseUid,
+            email: authority.email || '',
+            displayName: authority.displayName || '',
+          });
+          setFirebaseAuthUser(principal);
+          if (!principal && !readUserAuthTransition()) {
+            clearUserAuthenticatedSession('clerk-postgresql-signed-out');
+          }
+          publishUserFirebaseAuthRetirementObservation({ requested: true, userFirebaseCompatibility: 'retired', session: principal ? 'signed-in' : 'signed-out', error: '' });
+        } catch (error) {
+          if (!active) return;
+          const unauthorized = [401, 403].includes(Number(error?.status || 0));
+          setFirebaseAuthUser(null);
+          if (!readUserAuthTransition()) {
+            clearUserAuthenticatedSession(unauthorized ? 'clerk-postgresql-signed-out' : 'clerk-postgresql-session-error', { clearTransition: unauthorized });
+          }
+          publishUserFirebaseAuthRetirementObservation({ requested: true, userFirebaseCompatibility: 'retired', session: unauthorized ? 'signed-out' : 'error', error: error?.code || error?.message || 'clerk-postgresql-session-unavailable' });
+          if (!unauthorized) console.warn('Clerk/PostgreSQL user session bootstrap failed:', error);
+        } finally {
+          if (active) setFirebaseAuthReady(true);
+        }
+      })();
+      return () => { active = false; };
+    }
+
     const unsubscribe = onAuthStateChanged(
       firebaseAuth,
       (user) => {
@@ -247,7 +289,7 @@ export default function useAuthIdentityPolicySubscriptionController({
     );
 
     return unsubscribe;
-  }, [clearUserAuthenticatedSession]);
+  }, [authenticatedAdminId, clearUserAuthenticatedSession, setFirebaseAuthReady, setFirebaseAuthUser, view]);
 
   useEffect(() => {
     if (!firebaseAuthReady) return;

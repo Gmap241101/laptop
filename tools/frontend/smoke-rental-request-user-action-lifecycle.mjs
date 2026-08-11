@@ -36,7 +36,7 @@ for (const marker of ['requestRentalRequestUserEdit', 'requestRentalRequestUserC
 for (const marker of ['/rental-requests/:id/edit', '/rental-requests/:id/cancel', '/rental-requests/:id/extend', '/user-action-review']) {
   assert.ok(serverApp.includes(marker), `Missing Phase 19 API marker: ${marker}`);
 }
-assert.match(diagnostics, /Clerk Staging Test · Phase (19|20|21|22|23|24|25|26|27|28|29|30|31|32)/);
+assert.match(diagnostics, /Clerk Staging Test · Phase (19|20|21|22|23|24|25|26|27|28|29|30|31|32|33)/);
 assert.match(diagnostics, /Phase 19 rental request user action lifecycle/);
 assert.match(diagnostics, /User action write source:/);
 assert.match(repo, /countCurrentOverdue/);
