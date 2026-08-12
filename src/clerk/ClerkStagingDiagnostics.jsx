@@ -122,6 +122,7 @@ import {
   readUserFirebaseAuthRetirementConfig,
   subscribeUserFirebaseAuthRetirementObservation,
 } from '../features/auth/userFirebaseAuthRetirement.js';
+import { readFirebaseRuntimeRetirementConfig } from '../features/auth/firebaseRuntimeRetirement.js';
 import { clerkStagingClient } from './clerkStagingClient.js';
 
 const PHASE32_RUNTIME_REVISION = 'phase32-new-member-runtime-authority-20260811-2108';
@@ -199,7 +200,8 @@ export default function ClerkStagingDiagnostics() {
     postgresUserId: null,
     primaryEmail: null,
     primaryEmailVerified: false,
-    firebaseSignedIn: Boolean(firebaseAuth.currentUser),
+    firebaseSignedIn: readFirebaseRuntimeRetirementConfig().requested ? false : Boolean(firebaseAuth.currentUser),
+    firebaseRuntimeRetired: readFirebaseRuntimeRetirementConfig().requested,
     firebaseUserId: firebaseAuth.currentUser?.uid || null,
     legacyFirebaseUid: null,
     legacyFirebaseEmail: null,
@@ -502,6 +504,10 @@ export default function ClerkStagingDiagnostics() {
 
   useEffect(() => {
     if (!requested) return undefined;
+    if (readFirebaseRuntimeRetirementConfig().requested) {
+      setState((current) => ({ ...current, firebaseSignedIn: false, firebaseUserId: null, firebaseRuntimeRetired: true }));
+      return undefined;
+    }
     return onAuthStateChanged(firebaseAuth, (user) => {
       setState((current) => ({
         ...current,
@@ -1373,6 +1379,7 @@ export default function ClerkStagingDiagnostics() {
       <div style={{ overflowWrap: 'anywhere' }}>Email: {state.primaryEmail || '-'}</div>
       <div>Email verified: {state.primaryEmail ? (state.primaryEmailVerified ? 'yes' : 'no') : '-'}</div>
       <div>Firebase signed in: {state.firebaseSignedIn ? 'yes' : 'no'}</div>
+      <div>Firebase runtime: {state.firebaseRuntimeRetired ? 'retired' : 'compatibility'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Firebase user: {state.firebaseUserId || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Linked Firebase: {state.legacyFirebaseUid || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Legacy email: {state.legacyFirebaseEmail || '-'}</div>

@@ -1,4 +1,5 @@
 import { firebaseAuth } from '../../firebase.js';
+import { readFirebaseRuntimeRetirementConfig } from '../auth/firebaseRuntimeRetirement.js';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 
 const READ_SESSION_KEY = 'mk_board_content_postgres_read';
@@ -26,8 +27,9 @@ export const readBoardContentCutoverConfig = ({
   storage = globalThis.sessionStorage,
 } = {}) => {
   const staging = bool(env?.VITE_CLERK_STAGING_ENABLED);
-  const readEnabled = staging && bool(env?.VITE_BOARD_CONTENT_POSTGRES_READ_ENABLED);
-  const writeEnabled = staging && bool(env?.VITE_BOARD_CONTENT_POSTGRES_WRITE_ENABLED);
+  const firebaseRuntimeRetired = readFirebaseRuntimeRetirementConfig({ env, location }).requested;
+  const readEnabled = staging && (bool(env?.VITE_BOARD_CONTENT_POSTGRES_READ_ENABLED) || firebaseRuntimeRetired);
+  const writeEnabled = staging && (bool(env?.VITE_BOARD_CONTENT_POSTGRES_WRITE_ENABLED) || firebaseRuntimeRetired);
   const params = location ? new URLSearchParams(location.search || '') : new URLSearchParams();
   const queryRead = readEnabled && params.get('boardContent') === 'postgres';
   const queryWrite = writeEnabled && params.get('boardWrite') === 'postgres';
@@ -47,8 +49,8 @@ export const readBoardContentCutoverConfig = ({
   return Object.freeze({
     readEnabled,
     writeEnabled,
-    readRequested: Boolean(readEnabled && (queryRead || sessionRead)),
-    writeRequested: Boolean(writeEnabled && (queryWrite || sessionWrite)),
+    readRequested: Boolean(firebaseRuntimeRetired || (readEnabled && (queryRead || sessionRead))),
+    writeRequested: Boolean(firebaseRuntimeRetired || (writeEnabled && (queryWrite || sessionWrite))),
     apiBaseUrl: normalizeApiBaseUrl(env?.VITE_API_URL),
   });
 };
@@ -149,6 +151,7 @@ const getAdminTokens = async () => {
   const clerk = await clerkStagingClient.initialize();
   const clerkToken = await clerk?.session?.getToken?.();
   if (!clerkToken) throw Object.assign(new Error('Clerk administrator session is required.'), { code: 'board_clerk_session_missing' });
+  if (readFirebaseRuntimeRetirementConfig().requested) return { clerkToken, firebaseIdToken: '' };
   const firebaseUser = firebaseAuth.currentUser;
   if (!firebaseUser) throw Object.assign(new Error('Firebase administrator compatibility session is required.'), { code: 'board_firebase_session_missing' });
   return { clerkToken, firebaseIdToken: await firebaseUser.getIdToken() };
@@ -165,7 +168,7 @@ const adminRequest = async (path, body = {}, { fetchImpl = fetch } = {}) => {
       Accept: 'application/json',
       'Content-Type': 'application/json',
       Authorization: `Bearer ${clerkToken}`,
-      'X-Firebase-Authorization': `Bearer ${firebaseIdToken}`,
+      ...(firebaseIdToken ? { 'X-Firebase-Authorization': `Bearer ${firebaseIdToken}` } : {}),
     },
     cache: 'no-store',
     body: JSON.stringify(body),

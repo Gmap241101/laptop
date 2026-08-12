@@ -1,4 +1,5 @@
 import { readAccountLifecycleAuthorityConfig } from '../auth/accountLifecycleAuthority.js';
+import { readFirebaseRuntimeRetirementConfig } from '../auth/firebaseRuntimeRetirement.js';
 
 const SESSION_KEY = 'mk_legacy_firestore_read_fallback_disabled';
 const EVENT_NAME = 'rental:legacy-firestore-read-fallback';
@@ -10,7 +11,10 @@ export const readLegacyFirestoreReadFallbackConfig = ({
   location = globalThis.location,
   storage = globalThis.sessionStorage,
 } = {}) => {
-  const enabled = bool(env?.VITE_CLERK_STAGING_ENABLED) && bool(env?.VITE_LEGACY_FIRESTORE_READ_FALLBACK_DISABLED);
+  const enabled = bool(env?.VITE_CLERK_STAGING_ENABLED) && (
+    bool(env?.VITE_LEGACY_FIRESTORE_READ_FALLBACK_DISABLED) ||
+    readFirebaseRuntimeRetirementConfig({ env, location }).requested
+  );
   const params = location ? new URLSearchParams(location.search || '') : new URLSearchParams();
   const queryDisabled = Boolean(enabled && params.get('legacyReadFallback') === 'off');
   let sessionDisabled = false;

@@ -14,7 +14,10 @@ export const readAccountLifecycleAuthorityConfig = ({
   storage = globalThis.sessionStorage,
 } = {}) => {
   const staging = bool(env?.VITE_CLERK_STAGING_ENABLED);
-  const enabled = staging && bool(env?.VITE_ACCOUNT_LIFECYCLE_POSTGRES_AUTHORITY_ENABLED);
+  const enabled = staging && (
+    bool(env?.VITE_ACCOUNT_LIFECYCLE_POSTGRES_AUTHORITY_ENABLED) ||
+    readFirebaseRuntimeRetirementConfig({ env, location }).requested
+  );
   const params = location ? new URLSearchParams(location.search || '') : new URLSearchParams();
   const queryMode = trim(params.get('accountLifecycle')).toLowerCase();
   const queryRequested = Boolean(enabled && queryMode === 'postgres');
@@ -118,3 +121,4 @@ export const requestAccountLifecycleAuthorityStatus = async ({
   if (lastResult) return lastResult;
   return Object.freeze({ requested: config.requested, backendApplied: false, signupSource: '', termsConsentSource: '', passwordResetDelivery: '', userFirebaseAuthCompatibilityDisabled: false, userAuthenticationSource: '', userLegacyMemberKeySource: '', error: lastError?.code || lastError?.message || 'status-unavailable' });
 };
+import { readFirebaseRuntimeRetirementConfig } from './firebaseRuntimeRetirement.js';

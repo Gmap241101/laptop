@@ -56,6 +56,7 @@ import useAdminDataMaintenanceController, {
   getAdminDisplayName,
   getAdminRole,
 } from '../features/settings/useAdminDataMaintenanceController.js';
+import { readFirebaseRuntimeRetirementConfig } from '../features/auth/firebaseRuntimeRetirement.js';
 const DATA_MANAGEMENT_TABS = [
   [SYSTEM_MANAGEMENT_TAB.DATA, Database, '점검·백업·복원'],
   [SYSTEM_MANAGEMENT_TAB.RESET, Trash2, '데이터 초기화'],
@@ -208,6 +209,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
   const [siteSaving, setSiteSaving] = useState(false);
   const [auditLogs, setAuditLogs] = useState([]);
   const [auditReady, setAuditReady] = useState(false);
+  const firebaseRuntimeRetired = readFirebaseRuntimeRetirementConfig().requested;
   const isOwner = getAdminRole(authenticatedAdminAccount) === 'owner';
   const editableSiteFields = getEditableSiteSettingFields(mode);
   const normalizedSavedSiteSettings = normalizeSiteSettings(siteSettings);
@@ -254,6 +256,11 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
       setAuditReady(false);
       return undefined;
     }
+    if (firebaseRuntimeRetired) {
+      setAuditLogs([]);
+      setAuditReady(true);
+      return undefined;
+    }
 
     const auditQuery = query(
       SYSTEM_AUDIT_LOGS_COLLECTION_REF,
@@ -273,9 +280,10 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
     );
 
     return unsubscribeAudit;
-  }, [authenticatedAdminAccount?.id, mode]);
+  }, [authenticatedAdminAccount?.id, firebaseRuntimeRetired, mode]);
 
   const writeAuditLog = async ({ action, section, beforeValues = null, afterValues = null, summary = '' }) => {
+    if (firebaseRuntimeRetired) return Object.freeze({ skipped: true, source: 'firebase-runtime-retired' });
     await addDoc(SYSTEM_AUDIT_LOGS_COLLECTION_REF, {
       action,
       section,
@@ -448,7 +456,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
       triggerToast(sectionMeta.successMessage, 'success');
     } catch (error) {
       console.error('Site settings save error:', error);
-      triggerToast('설정 저장에 실패했습니다. Firestore 권한을 확인해 주세요.', 'error');
+      triggerToast(firebaseRuntimeRetired ? 'PostgreSQL 설정 저장에 실패했습니다.' : '설정 저장에 실패했습니다. Firestore 권한을 확인해 주세요.', 'error');
     } finally {
       setSiteSaving(false);
     }

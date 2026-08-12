@@ -27,6 +27,7 @@ import {
   publishAccountAuthObservation,
   readAccountAuthCutoverConfig,
 } from './accountAuthCutover.js';
+import { readFirebaseRuntimeRetirementConfig } from './firebaseRuntimeRetirement.js';
 
 export const ADMIN_CUSTOM_OPTION_VALUE = '__ADMIN_CUSTOM_INPUT__';
 export const ADMIN_ACCOUNT_PAGE_SIZE = 10;
@@ -116,6 +117,12 @@ export default function useAdminAccountManagementController({
   triggerToast,
 }) {
   const adminClerkAuthRequested = readAccountAuthCutoverConfig().adminClerkAuthRequested;
+  const firebaseRuntimeRetired = readFirebaseRuntimeRetirementConfig().requested;
+  const blockLegacyAdminAccountMutation = () => {
+    if (!firebaseRuntimeRetired) return false;
+    triggerToast('Firebase 기반 관리자 계정 등록·수정 기능은 중단되었습니다. 현재 Clerk/PostgreSQL 관리자 세션은 계속 사용할 수 있습니다.', 'info');
+    return true;
+  };
 
   useEffect(() => {
     if (!authenticatedAdminAccount) {
@@ -236,6 +243,7 @@ export default function useAdminAccountManagementController({
   );
 
   const registerAdminAccount = async () => {
+    if (blockLegacyAdminAccountMutation()) return;
     const adminLoginId = adminAccountForm.adminLoginId.trim();
     const password = adminAccountForm.password;
     const organizationName = selectedAdminOrganizationName;
@@ -463,6 +471,7 @@ export default function useAdminAccountManagementController({
   };
 
   const sendAdminAccountPasswordResetEmail = async (account) => {
+    if (blockLegacyAdminAccountMutation()) return;
     const email = String(account.authEmail || account.email || '').trim();
 
     if (!account.authUid) {
@@ -490,6 +499,7 @@ export default function useAdminAccountManagementController({
   };
 
   const saveAdminAccountEdit = async (account) => {
+    if (blockLegacyAdminAccountMutation()) return;
     const adminLoginId = adminAccountEditForm.adminLoginId.trim();
     const organizationName = adminAccountEditForm.organizationName.trim();
     const userName = adminAccountEditForm.userName.trim();
@@ -717,6 +727,7 @@ export default function useAdminAccountManagementController({
   };
 
   const deleteAdminAccount = (account) => {
+    if (blockLegacyAdminAccountMutation()) return;
     if ((registeredAdminAccounts || []).length <= 1) {
       triggerToast('마지막 관리자 ID는 삭제할 수 없습니다.', 'error');
       return;
@@ -780,6 +791,7 @@ export default function useAdminAccountManagementController({
   };
 
   const toggleAdminAccountLock = (account) => {
+    if (blockLegacyAdminAccountMutation()) return;
     if ((authenticatedAdminAccount?.adminRole || 'owner') !== 'owner') {
       triggerToast('최고 관리자만 관리자 계정을 잠그거나 해제할 수 있습니다.', 'error');
       return;
@@ -833,6 +845,7 @@ export default function useAdminAccountManagementController({
   };
 
   const saveMyAdminProfile = async () => {
+    if (blockLegacyAdminAccountMutation()) return;
     if (!authenticatedAdminAccount) {
       triggerToast('관리자 인증 후 내 정보를 수정할 수 있습니다.', 'error');
       return;

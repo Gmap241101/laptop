@@ -29,6 +29,7 @@ import {
   publishAccountAuthObservation,
   readAccountAuthCutoverConfig,
 } from './accountAuthCutover.js';
+import { readFirebaseRuntimeRetirementConfig } from './firebaseRuntimeRetirement.js';
 import {
   clearAdminAuthSession,
   configureFirebaseAuthPersistence,
@@ -144,6 +145,7 @@ export default function useAdminAuthenticationController({
 }) {
   const registeredAdminAccounts = adminAccounts || [];
   const adminClerkAuthRequested = readAccountAuthCutoverConfig().adminClerkAuthRequested;
+  const firebaseRuntimeRetired = readFirebaseRuntimeRetirementConfig().requested;
   const [adminClerkSessionVerified, setAdminClerkSessionVerified] = useState(
     () => !adminClerkAuthRequested
   );
@@ -162,17 +164,46 @@ export default function useAdminAuthenticationController({
     );
 
   const hasMatchingAdminFirebaseAuth =
-    Boolean(authenticatedAdminAccount?.authUid) &&
-    firebaseAuthReady &&
-    currentAuthRoleReady &&
-    firebaseAuth.currentUser?.uid === authenticatedAdminAccount.authUid &&
-    currentAuthAdminAccount?.id === authenticatedAdminAccount.id;
+    firebaseRuntimeRetired
+      ? Boolean(authenticatedAdminAccount) && currentAuthAdminAccount?.id === authenticatedAdminAccount.id
+      : Boolean(authenticatedAdminAccount?.authUid) &&
+        firebaseAuthReady &&
+        currentAuthRoleReady &&
+        firebaseAuth.currentUser?.uid === authenticatedAdminAccount.authUid &&
+        currentAuthAdminAccount?.id === authenticatedAdminAccount.id;
 
   const isAdminAuthenticated =
     Boolean(authenticatedAdminAccount) &&
     !adminLogoutInProgress &&
     hasMatchingAdminFirebaseAuth &&
     (!adminClerkAuthRequested || adminClerkSessionVerified);
+
+  const applyClerkAdminAuthority = useCallback((authority = {}) => {
+    const adminId = String(authority.firebaseUid || authority.adminId || authority.clerkUserId || '').trim();
+    if (!adminId) throw Object.assign(new Error('PostgreSQL administrator registry identifier is missing.'), { code: 'admin_registry_id_missing' });
+    const nextAccount = normalizeAdminAccounts([{
+      id: adminId,
+      authUid: adminId,
+      adminLoginId: authority.adminLoginId || authority.authEmail || '',
+      authEmail: authority.authEmail || '',
+      email: authority.authEmail || '',
+      adminRole: authority.adminRole || 'admin',
+      clerkUserId: authority.clerkUserId || '',
+      clerkLinkState: authority.clerkLinkState || 'linked',
+      authProvider: 'clerk',
+      authAuthorityMode: 'clerk-postgresql',
+      lastLoginAt: new Date().toLocaleString('ko-KR'),
+      updatedAt: new Date().toISOString(),
+    }])[0];
+    setCurrentAuthAdminAccount(nextAccount);
+    setCurrentAuthRoleErrorMessage('');
+    setCurrentAuthRoleReady(true);
+    setAdminAccounts((previousAccounts) => [
+      nextAccount,
+      ...(previousAccounts || []).filter((account) => account.id !== nextAccount.id),
+    ]);
+    return nextAccount;
+  }, [normalizeAdminAccounts, setAdminAccounts, setCurrentAuthAdminAccount, setCurrentAuthRoleErrorMessage, setCurrentAuthRoleReady]);
 
   const stabilizeAdminPostLoginRoute = useCallback(() => {
     const applyAdminRoute = () => {
@@ -238,7 +269,7 @@ export default function useAdminAuthenticationController({
       setAdminClerkSessionVerified(true);
       return undefined;
     }
-    if (!authenticatedAdminId || !firebaseAuthReady || !currentAuthRoleReady) {
+    if (!authenticatedAdminId || (!firebaseRuntimeRetired && (!firebaseAuthReady || !currentAuthRoleReady))) {
       setAdminClerkSessionVerified(false);
       return undefined;
     }
@@ -252,16 +283,17 @@ export default function useAdminAuthenticationController({
         if (
           authority?.authority !== 'clerk' ||
           authority?.firebaseUid !== authenticatedAdminId ||
-          firebaseAuth.currentUser?.uid !== authenticatedAdminId
+          (!firebaseRuntimeRetired && firebaseAuth.currentUser?.uid !== authenticatedAdminId)
         ) {
           throw new Error('admin-clerk-session-identity-mismatch');
         }
         if (!cancelled) {
+          if (firebaseRuntimeRetired) applyClerkAdminAuthority(authority);
           setAdminClerkSessionVerified(true);
           publishAccountAuthObservation({
             adminClerkAuthRequested: true,
             adminAuthSource: 'clerk',
-            adminFirebaseCompatibility: 'signed-in',
+            adminFirebaseCompatibility: firebaseRuntimeRetired ? 'retired' : 'signed-in',
             adminClerkUserId: authority.clerkUserId || '',
             adminAuthError: '',
           });
@@ -284,16 +316,18 @@ export default function useAdminAuthenticationController({
     return () => { cancelled = true; };
   }, [
     adminClerkAuthRequested,
+    firebaseRuntimeRetired,
     authenticatedAdminId,
     firebaseAuthReady,
     currentAuthRoleReady,
     firebaseAuthUser?.uid,
     clearAdminAuthenticatedSession,
+    applyClerkAdminAuthority,
   ]);
 
   useEffect(() => {
     if (!authenticatedAdminId) return undefined;
-    if (!firebaseAuthReady) return undefined;
+    if (!firebaseRuntimeRetired && !firebaseAuthReady) return undefined;
     if (!adminAccountsReady) return undefined;
 
     const expireAdminSession = async () => {
@@ -312,7 +346,7 @@ export default function useAdminAuthenticationController({
             : null
         );
 
-      const shouldSignOutFirebaseAdmin =
+      const shouldSignOutFirebaseAdmin = !firebaseRuntimeRetired &&
         Boolean(expiringAdminAccount?.authUid) &&
         firebaseAuth.currentUser?.uid === expiringAdminAccount.authUid;
 
@@ -364,14 +398,15 @@ export default function useAdminAuthenticationController({
     authenticatedAdminId,
     adminAuthExpiresAt,
     firebaseAuthReady,
+    firebaseRuntimeRetired,
     adminAccountsReady,
     adminAccounts,
   ]);
 
   useEffect(() => {
     if (!authenticatedAdminId) return;
-    if (!firebaseReady) return;
-    if (!firebaseAuthReady) return;
+    if (!firebaseRuntimeRetired && !firebaseReady) return;
+    if (!firebaseRuntimeRetired && !firebaseAuthReady) return;
     if (!adminAccountsReady) return;
     if (!currentAuthRoleReady) return;
     if (adminLogoutInProgressRef.current) return;
@@ -386,7 +421,7 @@ export default function useAdminAuthenticationController({
           : null
       );
 
-    const hasFirebaseAuthMismatch =
+    const hasFirebaseAuthMismatch = !firebaseRuntimeRetired &&
       Boolean(authenticatedAccount?.authUid) &&
       firebaseAuth.currentUser?.uid !== authenticatedAccount.authUid;
     const hasActiveAdminLock =
@@ -412,6 +447,7 @@ export default function useAdminAuthenticationController({
     authenticatedAdminId,
     firebaseReady,
     firebaseAuthReady,
+    firebaseRuntimeRetired,
     firebaseAuthUser,
     adminAccountsReady,
     adminAccounts,
@@ -433,7 +469,7 @@ export default function useAdminAuthenticationController({
         setAdminLogoutInProgress(true);
         void (async () => {
           try {
-            if (firebaseAuth.currentUser) {
+            if (!firebaseRuntimeRetired && firebaseAuth.currentUser) {
               await signOut(firebaseAuth);
             }
             if (adminClerkAuthRequested) {
@@ -508,6 +544,7 @@ export default function useAdminAuthenticationController({
     systemAdminSettingsReady,
     adminAuthPolicyVersion,
     adminAuthAbsoluteExpiresAt,
+    firebaseRuntimeRetired,
   ]);
 
   const loadAdminAccountForFirebaseUser = async (firebaseUser) => {
@@ -661,7 +698,7 @@ export default function useAdminAuthenticationController({
     publishAccountAuthObservation({
       adminClerkAuthRequested: true,
       adminAuthSource: 'client-trust-required',
-      adminFirebaseCompatibility: 'signed-in',
+      adminFirebaseCompatibility: firebaseRuntimeRetired ? 'retired' : 'signed-in',
       adminClerkMigration: migration || 'existing',
       adminClientTrustStatus: 'code-sent',
       adminClientTrustStrategy: signInResult?.clientTrustStrategy || '',
@@ -699,6 +736,59 @@ export default function useAdminAuthenticationController({
 
     setAdminAuthLoading(true);
     if (adminClerkAuthRequested) setAdminClerkSessionVerified(false);
+
+    if (firebaseRuntimeRetired) {
+      try {
+        clearUserAuthenticatedSession('admin-login-switch', { clearTransition: true });
+        if (isClientTrustVerification) {
+          await clerkStagingClient.verifyAdminClientTrust(adminAuthForm.clientTrustCode);
+        } else {
+          const signInResult = await clerkStagingClient.signInWithPassword(adminEmail, password);
+          if (signInResult?.status === 'needs_client_trust') {
+            beginAdminClientTrust({ signInResult, migration: 'clerk-only' });
+            return;
+          }
+        }
+        const verifiedPayload = await clerkStagingClient.getAdminClerkSession();
+        const authority = verifiedPayload?.adminAuthentication;
+        if (authority?.authority !== 'clerk') {
+          throw Object.assign(new Error('Clerk administrator authority is unavailable.'), { code: 'admin_clerk_not_authorized' });
+        }
+        const nextAdminAccount = applyClerkAdminAuthority(authority);
+        setAdminClerkSessionVerified(true);
+        setAdminAuthenticatedSession(nextAdminAccount.id, normalizeSystemAdminSettings(systemAdminSettings));
+        setAdminAuthForm(createDefaultAdminAuthForm());
+        writeAdminRouteIntent();
+        setAdminPostLoginRouteGuardActive(true);
+        stabilizeAdminPostLoginRoute();
+        publishAccountAuthObservation({
+          adminClerkAuthRequested: true,
+          adminAuthSource: 'clerk',
+          adminFirebaseCompatibility: 'retired',
+          adminClerkMigration: 'clerk-only',
+          adminClerkUserId: authority.clerkUserId || '',
+          adminClientTrustStatus: 'verified',
+          adminAuthError: '',
+        });
+        triggerToast(`[${nextAdminAccount.adminLoginId}] Clerk 관리자 인증이 완료되었습니다.`, 'success');
+      } catch (error) {
+        const code = error?.errors?.[0]?.code || error?.code || error?.message || 'admin-clerk-authentication-failed';
+        const retryable = ['form_code_incorrect', 'form_code_invalid', 'verification_failed'].includes(code);
+        if (!retryable) {
+          await clerkStagingClient.signOut().catch(() => {});
+          setAdminAuthForm(createDefaultAdminAuthForm());
+          clearAdminRouteIntent();
+          setAdminPostLoginRouteGuardActive(false);
+          clearAdminAuthenticatedSession();
+          setCurrentAuthAdminAccount(null);
+        }
+        publishAccountAuthObservation({ adminClerkAuthRequested: true, adminAuthSource: retryable ? 'client-trust-required' : 'failed', adminFirebaseCompatibility: 'retired', adminAuthError: code });
+        triggerToast(retryable ? 'Clerk 인증코드를 다시 확인해 주세요.' : 'Clerk 관리자 인증에 실패했습니다.', 'error');
+      } finally {
+        setAdminAuthLoading(false);
+      }
+      return;
+    }
 
     if (isClientTrustVerification) {
       try {
@@ -966,7 +1056,7 @@ export default function useAdminAuthenticationController({
     const adminAccountForLogout =
       authenticatedAdminAccount || currentAuthAdminAccount;
 
-    const shouldSignOutFirebaseAdmin =
+    const shouldSignOutFirebaseAdmin = !firebaseRuntimeRetired &&
       Boolean(adminAccountForLogout?.authUid) &&
       firebaseAuth.currentUser?.uid === adminAccountForLogout.authUid;
 

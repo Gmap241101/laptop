@@ -80,6 +80,10 @@ export const createMemberAuthorityService = ({
   if (!profileWriteMirrorEnabled && (typeof repository.findActiveIdentityOwner !== 'function' || typeof repository.findDirectoryEntryByIdentityKey !== 'function' || typeof repository.getDirectoryBootstrapState !== 'function' || typeof repository.replaceDirectoryEntries !== 'function')) throw new TypeError('PostgreSQL member identity/directory repository contract is required when member profile authority is enabled.');
   if (!profileWriteMirrorEnabled && typeof firestoreClient.listDirectoryMembers !== 'function') throw new TypeError('Firestore member directory bootstrap reader is required when member profile authority is enabled.');
 
+  const verifyAdmin = (firebaseIdentity) => firebaseIdentity?.source === 'clerk-postgresql'
+    ? Promise.resolve(Object.freeze({ uid: firebaseIdentity.uid, role: 'admin', source: 'postgresql-admin-registry' }))
+    : firestoreClient.verifyAdmin({ firebaseUid: firebaseIdentity.uid, firebaseIdToken: firebaseIdentity.idToken });
+
   const resolveTarget = async (firebaseUid) => {
     const link = await firebaseLinkRepository.findByFirebaseUid(firebaseUid);
     return { link, appUserId: link?.appUserId || null };
@@ -432,7 +436,7 @@ export const createMemberAuthorityService = ({
     },
 
     async listAdminMembers({ firebaseIdentity, status = 'all', search = '', page = 1, pageSize = 10 } = {}) {
-      const admin = await firestoreClient.verifyAdmin({ firebaseUid: firebaseIdentity.uid, firebaseIdToken: firebaseIdentity.idToken });
+      const admin = await verifyAdmin(firebaseIdentity);
       const normalizedStatus = trim(status) || 'all';
       if (!['all','active','pending','blocked','retired','profileRequired'].includes(normalizedStatus)) {
         throw serviceError('member_status_filter_invalid', 'Unsupported member status filter.', 400);
@@ -486,7 +490,7 @@ export const createMemberAuthorityService = ({
     },
 
     async editAdmin({ firebaseIdentity, targetUid, input }) {
-      const admin = await firestoreClient.verifyAdmin({ firebaseUid: firebaseIdentity.uid, firebaseIdToken: firebaseIdentity.idToken });
+      const admin = await verifyAdmin(firebaseIdentity);
       const target = trim(targetUid);
       if (!target) throw serviceError('member_target_uid_missing', 'Target member UID is required.', 400);
       const { appUserId } = await resolveTarget(target);
@@ -520,7 +524,7 @@ export const createMemberAuthorityService = ({
     },
 
     async changeStatusAdmin({ firebaseIdentity, targetUid, nextStatus }) {
-      const admin = await firestoreClient.verifyAdmin({ firebaseUid: firebaseIdentity.uid, firebaseIdToken: firebaseIdentity.idToken });
+      const admin = await verifyAdmin(firebaseIdentity);
       const target = trim(targetUid);
       const status = trim(nextStatus);
       if (!['active','pending','blocked','retired','profileRequired'].includes(status)) throw serviceError('member_status_invalid', 'Unsupported member status.', 400);
@@ -592,7 +596,20 @@ export const createMemberAuthorityService = ({
     },
 
     async syncMemberDirectoryAdmin({ firebaseIdentity }) {
-      const admin = await firestoreClient.verifyAdmin({ firebaseUid: firebaseIdentity.uid, firebaseIdToken: firebaseIdentity.idToken });
+      const admin = await verifyAdmin(firebaseIdentity);
+      if (firebaseIdentity?.source === 'clerk-postgresql') {
+        const state = await repository.getDirectoryBootstrapState();
+        if (!state?.completed) {
+          throw serviceError('member_directory_postgresql_missing', 'PostgreSQL member directory has not been initialized.', 409);
+        }
+        return Object.freeze({
+          admin: { uid: admin.uid, role: trim(admin.fields?.adminRole || admin.role || 'admin') },
+          source: 'postgresql-existing',
+          target: 'postgresql-member-directory',
+          skipped: true,
+          ...state,
+        });
+      }
       const settings = profileWriteMirrorEnabled ? {} : await getPostgresqlMemberPolicySettings();
       const version = Math.max(0, Number(settings.memberDirectoryVersion || 0));
       if (userFirebaseAuthCompatibilityDisabled || !firebaseIdentity?.idToken) {
@@ -616,7 +633,16 @@ export const createMemberAuthorityService = ({
     },
 
     async bootstrapAdminRegistry({ firebaseIdentity }) {
-      const admin = await firestoreClient.verifyAdmin({ firebaseUid: firebaseIdentity.uid, firebaseIdToken: firebaseIdentity.idToken });
+      const admin = await verifyAdmin(firebaseIdentity);
+      if (firebaseIdentity?.source === 'clerk-postgresql') {
+        return Object.freeze({
+          admin: { uid: admin.uid },
+          source: 'postgresql-existing',
+          target: 'postgresql-admin-registry',
+          count: 1,
+          skipped: true,
+        });
+      }
       const docs = await firestoreClient.listAdminAccounts({ firebaseIdToken: firebaseIdentity.idToken });
       const admins = docs.map((doc) => {
         const fields = doc.fields || {};

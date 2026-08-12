@@ -1,5 +1,6 @@
 import { readAccountLifecycleAuthorityConfig } from '../auth/accountLifecycleAuthority.js';
 import { readUserFirebaseAuthRetirementConfig } from '../auth/userFirebaseAuthRetirement.js';
+import { readFirebaseRuntimeRetirementConfig } from '../auth/firebaseRuntimeRetirement.js';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 import { compareMemberProfileReads, normalizeMemberProfileRead } from './memberProfileReadObservation.js';
 
@@ -27,8 +28,9 @@ export const readMemberProfileCutoverConfig = ({
   storage = globalThis.sessionStorage,
 } = {}) => {
   const stagingBridgeEnabled = bool(env?.VITE_CLERK_STAGING_ENABLED);
-  const postgresReadEnabled = bool(env?.VITE_MEMBER_PROFILE_POSTGRES_READ_ENABLED);
-  const firestoreWatcherDisableEnabled = bool(env?.VITE_MEMBER_PROFILE_FIRESTORE_WATCHER_DISABLED);
+  const firebaseRuntimeRetired = readFirebaseRuntimeRetirementConfig({ env, location }).requested;
+  const postgresReadEnabled = bool(env?.VITE_MEMBER_PROFILE_POSTGRES_READ_ENABLED) || firebaseRuntimeRetired;
+  const firestoreWatcherDisableEnabled = bool(env?.VITE_MEMBER_PROFILE_FIRESTORE_WATCHER_DISABLED) || firebaseRuntimeRetired;
   const params = location ? new URLSearchParams(location.search || '') : new URLSearchParams();
   const enabled = stagingBridgeEnabled && postgresReadEnabled;
   const queryRequested = Boolean(enabled && location && params.get('memberRead') === 'postgres');

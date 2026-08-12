@@ -4,6 +4,7 @@ import {
   requestSiteContentDomain,
   syncSiteContentDomainFromFirestore,
 } from './siteContentCutover.js';
+import { readFirebaseRuntimeRetirementConfig } from '../auth/firebaseRuntimeRetirement.js';
 
 const READ_SESSION_KEY = 'mk_policy_content_postgres_read';
 const WRITE_SESSION_KEY = 'mk_policy_content_postgres_write_through';
@@ -35,7 +36,8 @@ export const readPolicyContentCutoverConfig = ({
 } = {}) => {
   const adminContentConfig = readSiteContentCutoverConfig({ env, location, storage });
   const staging = bool(env?.VITE_CLERK_STAGING_ENABLED);
-  const authorityEnabled = staging && bool(env?.VITE_POLICY_CONTENT_POSTGRES_AUTHORITY_ENABLED);
+  const firebaseRuntimeRetired = readFirebaseRuntimeRetirementConfig({ env, location }).requested;
+  const authorityEnabled = staging && (bool(env?.VITE_POLICY_CONTENT_POSTGRES_AUTHORITY_ENABLED) || firebaseRuntimeRetired);
   const readEnabled = staging && (
     bool(env?.VITE_POLICY_CONTENT_POSTGRES_READ_ENABLED) || authorityEnabled
   );

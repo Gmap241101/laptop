@@ -119,7 +119,9 @@
     "verify:phase33": "npm run verify:phase32 && npm run server:phase33:smoke && npm run frontend:phase33:smoke",
     "server:phase34:smoke": "node tools/backend/smoke-phase34-admin-content-authority.mjs",
     "frontend:phase34:smoke": "node tools/frontend/smoke-phase34-admin-content-authority.mjs",
-    "verify:phase34": "npm run verify:phase33 && npm run server:phase34:smoke && npm run frontend:phase34:smoke"
+    "server:phase34:firebase-retirement:smoke": "node tools/backend/smoke-phase34-firebase-runtime-retirement.mjs",
+    "frontend:phase34:firebase-retirement:smoke": "node tools/frontend/smoke-phase34-firebase-runtime-retirement.mjs",
+    "verify:phase34": "npm run verify:phase33 && npm run server:phase34:smoke && npm run frontend:phase34:smoke && npm run server:phase34:firebase-retirement:smoke && npm run frontend:phase34:firebase-retirement:smoke"
   },
   "dependencies": {
     "firebase": "^10.14.1",

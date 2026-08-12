@@ -10,8 +10,9 @@ export const readAdminRentalRequestCutoverConfig = ({
   storage = globalThis.sessionStorage,
 } = {}) => {
   const stagingEnabled = bool(env?.VITE_CLERK_STAGING_ENABLED);
-  const readEnabled = stagingEnabled && bool(env?.VITE_ADMIN_RENTAL_REQUEST_POSTGRES_READ_ENABLED);
-  const writeEnabled = stagingEnabled && bool(env?.VITE_ADMIN_RENTAL_REQUEST_POSTGRES_WRITE_ENABLED);
+  const firebaseRuntimeRetired = readFirebaseRuntimeRetirementConfig({ env, location }).requested;
+  const readEnabled = stagingEnabled && (bool(env?.VITE_ADMIN_RENTAL_REQUEST_POSTGRES_READ_ENABLED) || firebaseRuntimeRetired);
+  const writeEnabled = stagingEnabled && (bool(env?.VITE_ADMIN_RENTAL_REQUEST_POSTGRES_WRITE_ENABLED) || firebaseRuntimeRetired);
   const params = location ? new URLSearchParams(location.search || '') : new URLSearchParams();
   const queryRead = Boolean(readEnabled && params.get('adminRequestRead') === 'postgres');
   const queryWrite = Boolean(writeEnabled && params.get('adminRequestWrite') === 'postgres');
@@ -31,8 +32,8 @@ export const readAdminRentalRequestCutoverConfig = ({
   return Object.freeze({
     readEnabled,
     writeEnabled,
-    readRequested: Boolean(readEnabled && (queryRead || sessionRead)),
-    writeRequested: Boolean(writeEnabled && (queryWrite || sessionWrite)),
+    readRequested: Boolean(firebaseRuntimeRetired || (readEnabled && (queryRead || sessionRead))),
+    writeRequested: Boolean(firebaseRuntimeRetired || (writeEnabled && (queryWrite || sessionWrite))),
     queryRead,
     queryWrite,
     sessionRead,
@@ -55,3 +56,4 @@ export const subscribeAdminRentalRequestCutoverObservation = (listener) => {
   window.addEventListener(EVENT_NAME, handler);
   return () => window.removeEventListener(EVENT_NAME, handler);
 };
+import { readFirebaseRuntimeRetirementConfig } from '../auth/firebaseRuntimeRetirement.js';

@@ -18,6 +18,7 @@ export const readAccountAuthCutoverConfig = ({
   // so a plain /admin session must not remain Firebase-only while either authority
   // is active. This requirement is independent of the legacy adminAuth query latch.
   const adminClerkAuthorityRequired = staging && (
+    bool(env?.VITE_FIREBASE_RUNTIME_DISABLED) ||
     bool(env?.VITE_SITE_CONTENT_POSTGRES_AUTHORITY_ENABLED) ||
     bool(env?.VITE_POLICY_CONTENT_POSTGRES_AUTHORITY_ENABLED)
   );

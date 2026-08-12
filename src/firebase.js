@@ -1,8 +1,8 @@
 import { getApp, getApps, initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import {
-  collection,
-  doc,
+  collection as firestoreCollection,
+  doc as firestoreDoc,
   getFirestore,
   initializeFirestore,
 } from 'firebase/firestore';
@@ -17,35 +17,75 @@ export const firebaseConfig = {
   appId: "1:978421108190:web:6bc9af49a57471ae2a614f"
 };
 
-const existingDefaultFirebaseApp = getApps().some(
+const firebaseRuntimeDisabled =
+  String(import.meta.env?.VITE_CLERK_STAGING_ENABLED || '').toLowerCase() === 'true' &&
+  String(import.meta.env?.VITE_FIREBASE_RUNTIME_DISABLED || '').toLowerCase() === 'true' &&
+  (typeof location === 'undefined' || new URLSearchParams(location.search || '').get('firebaseRuntime') !== 'compatibility');
+
+const createRetiredAuth = (name) => {
+  const auth = { name, _currentUser: null, __mkFirebaseRuntimeRetired: true };
+  Object.defineProperty(auth, 'currentUser', { enumerable: true, get: () => auth._currentUser });
+  return auth;
+};
+
+const retiredDb = Object.freeze({
+  __mkFirebaseRuntimeRetired: true,
+  type: 'firestore-retired',
+});
+
+const collection = (database, ...segments) => firebaseRuntimeDisabled
+  ? Object.freeze({ __mkFirebaseRuntimeRetired: true, type: 'collection', path: segments.join('/') })
+  : firestoreCollection(database, ...segments);
+
+const doc = (database, ...segments) => firebaseRuntimeDisabled
+  ? Object.freeze({ __mkFirebaseRuntimeRetired: true, type: 'document', path: segments.join('/') })
+  : firestoreDoc(database, ...segments);
+
+const existingDefaultFirebaseApp = !firebaseRuntimeDisabled && getApps().some(
   (app) => app.name === '[DEFAULT]'
 );
 
-export const firebaseApp = existingDefaultFirebaseApp
-  ? getApp()
-  : initializeApp(firebaseConfig);
+export const firebaseApp = firebaseRuntimeDisabled
+  ? null
+  : existingDefaultFirebaseApp
+    ? getApp()
+    : initializeApp(firebaseConfig);
 
-export const adminAccountCreationApp = getApps().some(
+export const adminAccountCreationApp = firebaseRuntimeDisabled
+  ? null
+  : getApps().some(
   (app) => app.name === 'adminAccountCreation'
-)
-  ? getApp('adminAccountCreation')
-  : initializeApp(firebaseConfig, 'adminAccountCreation');
+  )
+    ? getApp('adminAccountCreation')
+    : initializeApp(firebaseConfig, 'adminAccountCreation');
 
-export const userSignupApp = getApps().some(
+export const userSignupApp = firebaseRuntimeDisabled
+  ? null
+  : getApps().some(
   (app) => app.name === 'userSignup'
-)
-  ? getApp('userSignup')
-  : initializeApp(firebaseConfig, 'userSignup');
+  )
+    ? getApp('userSignup')
+    : initializeApp(firebaseConfig, 'userSignup');
 
-export const db = existingDefaultFirebaseApp
-  ? getFirestore(firebaseApp)
-  : initializeFirestore(firebaseApp, {
-      localCache: createFirestoreLocalCache(),
-    });
-export const firebaseAuth = getAuth(firebaseApp);
-export const adminAccountCreationAuth = getAuth(adminAccountCreationApp);
-export const userSignupAuth = getAuth(userSignupApp);
-export const userSignupDb = getFirestore(userSignupApp);
+export const db = firebaseRuntimeDisabled
+  ? retiredDb
+  : existingDefaultFirebaseApp
+    ? getFirestore(firebaseApp)
+    : initializeFirestore(firebaseApp, {
+        localCache: createFirestoreLocalCache(),
+      });
+export const firebaseAuth = firebaseRuntimeDisabled ? createRetiredAuth('default-retired') : getAuth(firebaseApp);
+// Phase 34 transition bridge: existing PostgreSQL-authoritative controllers still
+// read firebaseAuth.currentUser as an identity container. Under Firebase runtime
+// retirement this stores a Clerk/PostgreSQL principal locally; it never signs in
+// to Firebase or produces a Firebase token.
+export const setFirebaseRuntimePrincipal = (principal) => {
+  firebaseAuth._currentUser = principal || null;
+  return firebaseAuth._currentUser;
+};
+export const adminAccountCreationAuth = firebaseRuntimeDisabled ? createRetiredAuth('admin-retired') : getAuth(adminAccountCreationApp);
+export const userSignupAuth = firebaseRuntimeDisabled ? createRetiredAuth('signup-retired') : getAuth(userSignupApp);
+export const userSignupDb = firebaseRuntimeDisabled ? retiredDb : getFirestore(userSignupApp);
 
 export const ADMIN_ACCOUNTS_COLLECTION_REF = collection(
   db,

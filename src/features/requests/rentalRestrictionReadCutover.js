@@ -1,5 +1,6 @@
 import { readAccountLifecycleAuthorityConfig } from '../auth/accountLifecycleAuthority.js';
 import { readUserFirebaseAuthRetirementConfig } from '../auth/userFirebaseAuthRetirement.js';
+import { readFirebaseRuntimeRetirementConfig } from '../auth/firebaseRuntimeRetirement.js';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 
 const EVENT_NAME = 'rental:rental-restriction-read-cutover';
@@ -25,7 +26,10 @@ export const readRentalRestrictionCutoverConfig = ({
   location = globalThis.location,
   storage = globalThis.sessionStorage,
 } = {}) => {
-  const enabled = bool(env?.VITE_CLERK_STAGING_ENABLED) && bool(env?.VITE_RENTAL_RESTRICTION_POSTGRES_READ_ENABLED);
+  const enabled = bool(env?.VITE_CLERK_STAGING_ENABLED) && (
+    bool(env?.VITE_RENTAL_RESTRICTION_POSTGRES_READ_ENABLED) ||
+    readFirebaseRuntimeRetirementConfig({ env, location }).requested
+  );
   const params = location ? new URLSearchParams(location.search || '') : new URLSearchParams();
   const queryRequested = Boolean(enabled && params.get('restrictionRead') === 'postgres' && params.get('restrictionWatcher') === 'off');
   let sessionRequested = false;

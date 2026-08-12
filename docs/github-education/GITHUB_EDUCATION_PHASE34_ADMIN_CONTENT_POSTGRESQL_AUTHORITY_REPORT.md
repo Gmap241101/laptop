@@ -1,44 +1,35 @@
-# GitHub Education Phase 34 - Administrator Public Content PostgreSQL Authority
+# Phase 34 — Firebase normal-runtime retirement candidate
 
 ## Outcome
 
-Phase 34 removes Firestore from the active administrator edit path for public site content and policy content. When the new staging flag is enabled, administrator reads and full-domain replacements use PostgreSQL through the authenticated backend API.
+The Staging runtime now has one frontend/backend retirement switch:
 
-Covered domains:
+```text
+VITE_FIREBASE_RUNTIME_DISABLED=true
+FIREBASE_RUNTIME_DISABLED=true
+```
 
-- site settings
-- home configuration and all home banners
-- popup posts
-- footer configuration and footer pages
-- rental/public configuration, including rental policy and holidays
-- signup terms policy and signup terms
+With both enabled, the normal architecture is `browser → Clerk session → Heroku API → PostgreSQL`. The frontend does not initialize Firebase apps, Auth, or Firestore; the API client removes Firebase authorization headers; the backend does not configure a Firebase project or token verifier and forces all Firestore write mirrors off.
 
-The backend route `PUT /api/admin/site-content/:domain` requires the Clerk administrator session and replaces one PostgreSQL domain transactionally. It does not require a Firebase ID token.
+The global flag also activates the existing PostgreSQL authorities for users, account lifecycle, profiles, restrictions, rental requests, assets, boards, site content, policy content, and administrator content. Firestore bootstrap buttons return the existing PostgreSQL state instead of reading Firestore.
 
 ## Safety boundary
 
-The transition is separately gated by:
+Phase 32 and Phase 33 PASS behavior remains the protected baseline. Production, DNS, GitHub Pages deployment configuration, Firebase Rules, and indexes are unchanged. The explicit Staging rollback is documented in `PHASE34_MANUAL_PLATFORM_ACTIONS.md`.
 
-```text
-VITE_ADMIN_CONTENT_POSTGRES_AUTHORITY_ENABLED=true
-```
+## Static hosting clarification
 
-Until that flag is enabled, the Phase 33 Firestore compatibility path remains available. With the flag enabled, the Phase 33 Firestore-to-PostgreSQL repair controller is suppressed so an older Firestore snapshot cannot overwrite newer PostgreSQL administrator edits.
+A page being served by GitHub Pages does not identify its database. GitHub Pages can serve the JavaScript application while that application reads current content from the Heroku PostgreSQL API. Authority is established by the actual network destination and backend response, not by the hostname that served the HTML.
 
-The deliberate session rollback is:
+## Remaining operational replacement
 
-```text
-?adminContent=firestore
-```
+Two Firebase-specific browser tools are intentionally blocked in retirement mode so they cannot reconnect silently:
 
-Production GitHub Pages, production DNS, and production Firebase configuration are outside Phase 34 scope and must not be changed during staging validation.
+- Firebase administrator-account create/edit/delete/reset UI
+- Firestore browser backup/restore/reset/integrity UI
 
-## Remaining Firebase retirement work
+Existing Clerk/PostgreSQL administrator authentication remains active. If these management capabilities are required, replace them with server-side Clerk/PostgreSQL endpoints before final feature-complete retirement approval.
 
-Phase 34 retires Firebase only for the administrator public-content/settings-policy surface listed above. Other administrator operational domains may still use Firebase compatibility and are handled by later retirement phases. Legacy fallback code is retained for controlled rollback; it is inactive while Phase 34 authority is requested.
+## Database
 
-## Database and deployment
-
-No SQL migration is required. Phase 34 reuses `app_site_content_documents` and `app_site_content_syncs`.
-
-Deploy both backend and frontend. Enable the new Vercel staging flag only after both deployments are live.
+No new SQL migration is required for this candidate. It uses the PostgreSQL schemas already established through Phase 33.

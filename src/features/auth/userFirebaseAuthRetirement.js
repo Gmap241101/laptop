@@ -1,4 +1,5 @@
 import { readAccountLifecycleAuthorityConfig } from './accountLifecycleAuthority.js';
+import { readFirebaseRuntimeRetirementConfig } from './firebaseRuntimeRetirement.js';
 
 const SESSION_KEY = 'mk_user_firebase_auth_compatibility';
 const EVENT_NAME = 'rental:user-firebase-auth-retirement';
@@ -11,7 +12,10 @@ export const readUserFirebaseAuthRetirementConfig = ({
   storage = globalThis.sessionStorage,
 } = {}) => {
   const staging = bool(env?.VITE_CLERK_STAGING_ENABLED);
-  const enabled = staging && bool(env?.VITE_USER_FIREBASE_AUTH_COMPATIBILITY_DISABLED);
+  const enabled = staging && (
+    bool(env?.VITE_USER_FIREBASE_AUTH_COMPATIBILITY_DISABLED) ||
+    readFirebaseRuntimeRetirementConfig({ env, location }).requested
+  );
   const accountLifecycleRequested = readAccountLifecycleAuthorityConfig({ env, location, storage }).requested;
   const params = location ? new URLSearchParams(location.search || '') : new URLSearchParams();
   const queryMode = trim(params.get('userFirebaseAuth')).toLowerCase();

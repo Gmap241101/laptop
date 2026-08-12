@@ -234,6 +234,9 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient, r
     if (!firebaseIdentity?.uid || !firebaseIdentity?.idToken) {
       throw serviceError('admin_firebase_identity_missing', 'Verified Firebase admin identity is required.', 401);
     }
+    if (firebaseIdentity?.source === 'clerk-postgresql') {
+      return Object.freeze({ uid: firebaseIdentity.uid, role: 'admin', source: 'postgresql-admin-registry' });
+    }
     return firestoreClient.verifyAdmin({
       firebaseUid: firebaseIdentity.uid,
       firebaseIdToken: firebaseIdentity.idToken,

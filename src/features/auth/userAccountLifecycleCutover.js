@@ -1,4 +1,5 @@
 import { readAccountLifecycleAuthorityConfig } from './accountLifecycleAuthority.js';
+import { readFirebaseRuntimeRetirementConfig } from './firebaseRuntimeRetirement.js';
 
 const USER_AUTH_SESSION_KEY = 'mk_user_clerk_auth_authority';
 const USER_LIFECYCLE_SESSION_KEY = 'mk_user_clerk_lifecycle_authority';
@@ -12,8 +13,9 @@ export const readUserAccountLifecycleCutoverConfig = ({
   storage = globalThis.sessionStorage,
 } = {}) => {
   const staging = bool(env?.VITE_CLERK_STAGING_ENABLED);
-  const authEnabled = staging && bool(env?.VITE_USER_CLERK_AUTH_ENABLED);
-  const lifecycleEnabled = staging && bool(env?.VITE_USER_CLERK_LIFECYCLE_ENABLED);
+  const firebaseRuntimeRetired = readFirebaseRuntimeRetirementConfig({ env, location }).requested;
+  const authEnabled = staging && (bool(env?.VITE_USER_CLERK_AUTH_ENABLED) || firebaseRuntimeRetired);
+  const lifecycleEnabled = staging && (bool(env?.VITE_USER_CLERK_LIFECYCLE_ENABLED) || firebaseRuntimeRetired);
   const params = location ? new URLSearchParams(location.search || '') : new URLSearchParams();
   const queryAuth = authEnabled && params.get('userAuth') === 'clerk';
   const queryLifecycle = lifecycleEnabled && params.get('userLifecycle') === 'clerk';

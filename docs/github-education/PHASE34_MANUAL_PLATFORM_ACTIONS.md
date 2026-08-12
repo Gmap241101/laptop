@@ -1,58 +1,47 @@
-# Phase 34 manual platform actions
+# Phase 34 manual platform actions — Firebase normal-runtime retirement
 
-## Deployment order
+## Scope and deployment order
 
-1. Keep the Phase 32 and Phase 33 PASS variables unchanged.
-2. Deploy the full package to Heroku Staging.
-3. Deploy the same full package to Vercel Staging with the new flag initially `false`.
-4. Confirm the backend root contains:
+This is a Staging-only deployment. Preserve the Phase 32 and Phase 33 PASS baseline and do not change Production, DNS, GitHub Pages settings, Firebase Rules, or Firebase indexes.
 
-```text
-adminContentAuthorityRevision: phase34-admin-content-postgresql-authority-20260812-1200
-```
+1. Deploy this full package to Heroku Staging.
+2. Set `FIREBASE_RUNTIME_DISABLED=true` on Heroku Staging and redeploy.
+3. Deploy the same full package to the Staging frontend.
+4. Set `VITE_FIREBASE_RUNTIME_DISABLED=true` and keep `VITE_CLERK_STAGING_ENABLED=true`, then redeploy.
+5. Keep all Phase 32/33 PostgreSQL authority variables unchanged. The new global flag also forces those authorities on if an individual variable is accidentally omitted.
 
-5. Set the Vercel Staging variable below and redeploy:
+The backend may retain `FIREBASE_PROJECT_ID` as an ignored rollback value, but it is not read while `FIREBASE_RUNTIME_DISABLED=true`.
 
-```text
-VITE_ADMIN_CONTENT_POSTGRES_AUTHORITY_ENABLED=true
-```
+## Runtime validation
 
-No PostgreSQL migration, Firebase Rules change, Firebase index change, Clerk configuration change, production deployment, GitHub Pages deployment, or DNS change is required.
+Use the normal Staging administrator and user URLs, not a diagnostic-only path.
 
-## Staging validation
+1. Confirm the backend root/health compatibility payload reports `firebaseRuntime: retired`.
+2. Sign in as an administrator with Clerk; confirm no Firebase administrator session is requested.
+3. Save site settings, home banners, popup, footer, rental policy, signup terms, notices/FAQ, assets, member state, and a rental-request mutation.
+4. Reload and confirm PostgreSQL persistence and the complete user-facing display.
+5. Sign in as a normal user with Clerk and confirm profile, terms, request creation/edit/cancel/extension and withdrawal flows.
+6. In a fresh private window, confirm the public home, banners, popup, footer, policies, notices/FAQ, and asset catalog.
+7. In browser Network, filter for `firebase`, `firestore`, `googleapis`, `identitytoolkit`, and `securetoken`. The normal flow must have zero requests to those services.
+8. Confirm backend requests use only `Authorization: Bearer <Clerk session>` and do not include `X-Firebase-Authorization`.
 
-Sign in to the normal administrator URL and verify:
+GitHub Pages or another static frontend host displaying current content does not prove Firestore is the database. The decisive check is the Network panel plus the Heroku/PostgreSQL authority response: the static page can display data fetched from the Heroku PostgreSQL API.
 
-1. Diagnostics shows `Administrator content PostgreSQL authority requested: yes`.
-2. Save site settings.
-3. Create/edit/delete or reorder one home banner.
-4. Create/edit one popup.
-5. Edit footer common content and one footer page.
-6. Save rental policy and holidays.
-7. Create/edit/enable/archive/reorder a signup term and save the signup-terms policy.
-8. Reload the administrator page and confirm every saved value remains.
-9. Open the Staging user URL in a fresh tab and confirm the same public content/policy values.
-10. Confirm there is no Firestore synchronization toast and no `site_content_clerk_session_missing` error.
+## Deliberately retired legacy tools
 
-The browser Network panel should show administrator mutations as:
-
-```text
-PUT /api/admin/site-content/<domain>
-Authorization: Bearer <Clerk session>
-```
-
-There should be no Firebase authorization header on this Phase 34 endpoint.
+The old browser-side Firebase backup/restore/reset tools and Firebase administrator-account CRUD are blocked while Firebase runtime retirement is active. They must not silently reconnect to Firebase. Existing Clerk/PostgreSQL administrator sign-in remains available. Treat replacement of these two management surfaces with server-side PostgreSQL tools as follow-up work before declaring feature-complete retirement if those tools are required operationally.
 
 ## Rollback
 
-For a short browser-session test only, use `?adminContent=firestore`. For an environment rollback, set:
+Rollback Staging only:
 
 ```text
-VITE_ADMIN_CONTENT_POSTGRES_AUTHORITY_ENABLED=false
+FIREBASE_RUNTIME_DISABLED=false
+VITE_FIREBASE_RUNTIME_DISABLED=false
 ```
 
-and redeploy Vercel Staging. Do not run the old Firestore repair after PostgreSQL-only edits unless Firestore has first been deliberately reconciled, because it can replace the newer PostgreSQL domain.
+Redeploy backend and frontend together. A one-browser diagnostic rollback is available with `?firebaseRuntime=compatibility`, but it must not be used as the normal runtime.
 
 ## PASS rule
 
-Phase 34 remains a deployment candidate until all administrator and user checks above pass on the normal Staging URLs. Phase 32 and Phase 33 PASS remain the protected baseline throughout.
+This package is a deployment candidate. Mark Phase 34 PASS only after all normal Staging flows above pass with zero Firebase network calls and the disabled legacy management-tool decision is accepted or replaced. Phase 32 and Phase 33 remain PASS regardless of this candidate result.

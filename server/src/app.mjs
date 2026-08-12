@@ -499,7 +499,8 @@ export const createRequestHandler = ({
       userAuthenticationSource: config.userFirebaseAuthCompatibilityDisabled ? 'clerk-postgresql' : 'firebase-clerk-compatibility',
       userLegacyMemberKeySource: config.userFirebaseAuthCompatibilityDisabled ? 'postgresql-compatibility-key' : 'firebase-uid',
       passwordResetDelivery: config.userFirebaseAuthCompatibilityDisabled ? 'clerk-email-code' : 'firebase-auth-compatibility-preserved',
-      adminFirebaseAuthCompatibility: 'preserved',
+      adminFirebaseAuthCompatibility: config.firebaseRuntimeDisabled ? 'retired' : 'preserved',
+      firebaseRuntime: config.firebaseRuntimeDisabled ? 'retired' : 'compatibility',
     },
   };
 
@@ -518,6 +519,42 @@ export const createRequestHandler = ({
 
 
   const authenticateFirebase = async (request, response, headers, requestId) => {
+    if (config.firebaseRuntimeDisabled) {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return null;
+      try {
+        const adminAuth = await adminClerkAuthService.getCurrent({ clerkUserId: auth.userId });
+        return Object.freeze({
+          uid: String(adminAuth.admin.firebaseUid || adminAuth.admin.id || ''),
+          email: String(adminAuth.admin.authEmail || ''),
+          emailVerified: true,
+          signInProvider: 'clerk-postgresql-admin',
+          authTime: Number(auth.issuedAt || 0),
+          idToken: '',
+          source: 'clerk-postgresql',
+          clerkUserId: auth.userId,
+        });
+      } catch (adminError) {
+        try {
+          const userAuth = await userClerkAuthService.getCurrent({ clerkUserId: auth.userId });
+          const account = userAuth?.account || {};
+          return Object.freeze({
+            uid: String(account.firebaseUid || account.legacyMemberKey || ''),
+            email: String(account.firebaseEmail || account.primaryEmail || ''),
+            emailVerified: true,
+            signInProvider: 'clerk-postgresql',
+            authTime: Number(auth.issuedAt || 0),
+            idToken: '',
+            source: 'clerk-postgresql',
+            clerkUserId: auth.userId,
+          });
+        } catch (userError) {
+          console.warn('[auth] Clerk/PostgreSQL compatibility identity rejected', { requestId, adminCode: adminError?.code, userCode: userError?.code });
+          writeJson(response, userError?.status || adminError?.status || 403, { ...basePayload, authenticated: true, error: 'postgresql_identity_unauthorized' }, headers);
+          return null;
+        }
+      }
+    }
     try {
       return await authenticateFirebaseRequest(request);
     } catch (error) {
@@ -571,11 +608,22 @@ export const createRequestHandler = ({
   const authenticateAdminAuthority = async (request, response, headers, requestId) => {
     const auth = await authenticate(request, response, headers, requestId);
     if (!auth) return null;
-    const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
-    if (!firebaseIdentity) return null;
     try {
       const adminAuth = await adminClerkAuthService.getCurrent({ clerkUserId: auth.userId });
-      if (adminAuth.admin.firebaseUid !== firebaseIdentity.uid) {
+      const firebaseIdentity = config.firebaseRuntimeDisabled
+        ? Object.freeze({
+            uid: String(adminAuth.admin.firebaseUid || adminAuth.admin.id || ''),
+            email: String(adminAuth.admin.authEmail || ''),
+            emailVerified: true,
+            signInProvider: 'clerk-postgresql-admin',
+            authTime: Number(auth.issuedAt || 0),
+            idToken: '',
+            source: 'clerk-postgresql',
+            clerkUserId: auth.userId,
+          })
+        : await authenticateFirebase(request, response, headers, requestId);
+      if (!firebaseIdentity) return null;
+      if (!config.firebaseRuntimeDisabled && adminAuth.admin.firebaseUid !== firebaseIdentity.uid) {
         writeJson(response, 409, { ...basePayload, authenticated: true, error: 'admin_identity_mismatch' }, headers);
         return null;
       }

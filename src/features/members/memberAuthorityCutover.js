@@ -1,4 +1,5 @@
 import { readAccountLifecycleAuthorityConfig } from '../auth/accountLifecycleAuthority.js';
+import { readFirebaseRuntimeRetirementConfig } from '../auth/firebaseRuntimeRetirement.js';
 
 const MEMBER_SESSION_KEY = 'mk_member_postgres_write_authority';
 const RESTRICTION_SESSION_KEY = 'mk_restriction_postgres_write_authority';
@@ -9,9 +10,10 @@ const bool = (value) => trim(value).toLowerCase() === 'true';
 
 export const readMemberAuthorityCutoverConfig = ({ env = import.meta.env, location = globalThis.location, storage = globalThis.sessionStorage } = {}) => {
   const staging = bool(env?.VITE_CLERK_STAGING_ENABLED);
-  const memberEnabled = staging && bool(env?.VITE_MEMBER_PROFILE_POSTGRES_WRITE_ENABLED);
-  const restrictionEnabled = staging && bool(env?.VITE_RENTAL_RESTRICTION_POSTGRES_WRITE_ENABLED);
-  const adminRegistryEnabled = staging && bool(env?.VITE_ADMIN_IDENTITY_REGISTRY_ENABLED);
+  const firebaseRuntimeRetired = readFirebaseRuntimeRetirementConfig({ env, location }).requested;
+  const memberEnabled = staging && (bool(env?.VITE_MEMBER_PROFILE_POSTGRES_WRITE_ENABLED) || firebaseRuntimeRetired);
+  const restrictionEnabled = staging && (bool(env?.VITE_RENTAL_RESTRICTION_POSTGRES_WRITE_ENABLED) || firebaseRuntimeRetired);
+  const adminRegistryEnabled = staging && (bool(env?.VITE_ADMIN_IDENTITY_REGISTRY_ENABLED) || firebaseRuntimeRetired);
   const params = location ? new URLSearchParams(location.search || '') : new URLSearchParams();
   const queryMember = memberEnabled && params.get('memberWrite') === 'postgres';
   const queryRestriction = restrictionEnabled && params.get('restrictionWrite') === 'postgres';
@@ -31,7 +33,7 @@ export const readMemberAuthorityCutoverConfig = ({ env = import.meta.env, locati
     memberRequested: Boolean(memberEnabled && (queryMember || sessionMember || accountLifecycleRequested)),
     restrictionRequested: Boolean(restrictionEnabled && (queryRestriction || sessionRestriction || accountLifecycleRequested)),
     forcedByAccountLifecycle: Boolean(accountLifecycleRequested),
-    adminRegistryRequested: Boolean(adminRegistryEnabled && (queryAdminRegistry || sessionAdminRegistry)),
+    adminRegistryRequested: Boolean(firebaseRuntimeRetired || (adminRegistryEnabled && (queryAdminRegistry || sessionAdminRegistry))),
   });
 };
 

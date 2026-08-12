@@ -110,10 +110,9 @@ export const createAssetService = ({ repository, firestoreClient, writeMirrorEna
   const mirrorStatus = mirrorEnabled ? 'synced' : 'retired';
   const noMirror = async () => Object.freeze({ retired: true, source: 'postgresql-only' });
 
-  const verifyAdmin = async (firebaseIdentity) => firestoreClient.verifyAdmin({
-    firebaseUid: firebaseIdentity.uid,
-    firebaseIdToken: firebaseIdentity.idToken,
-  });
+  const verifyAdmin = async (firebaseIdentity) => firebaseIdentity?.source === 'clerk-postgresql'
+    ? Object.freeze({ uid: firebaseIdentity.uid, role: 'admin', source: 'postgresql-admin-registry' })
+    : firestoreClient.verifyAdmin({ firebaseUid: firebaseIdentity.uid, firebaseIdToken: firebaseIdentity.idToken });
 
   const getCatalog = async () => {
     const catalog = await repository.getCatalog(koreaToday());
@@ -128,6 +127,16 @@ export const createAssetService = ({ repository, firestoreClient, writeMirrorEna
 
     async bootstrap(firebaseIdentity) {
       const admin = await verifyAdmin(firebaseIdentity);
+      if (firebaseIdentity?.source === 'clerk-postgresql') {
+        const catalog = await getCatalog();
+        return Object.freeze({
+          admin,
+          target: 'postgresql',
+          source: 'postgresql-existing',
+          skipped: true,
+          catalog,
+        });
+      }
       const [assetDocuments, configDocument] = await Promise.all([
         firestoreClient.listAllAssets({ firebaseIdToken: firebaseIdentity.idToken }),
         firestoreClient.getPublicConfig({ firebaseIdToken: firebaseIdentity.idToken }),

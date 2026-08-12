@@ -127,10 +127,10 @@ const readClerkSecretKey = (appEnv) => {
 };
 
 
-const readFirebaseProjectId = (appEnv) => {
+const readFirebaseProjectId = (appEnv, firebaseRuntimeDisabled = false) => {
   const raw = process.env.FIREBASE_PROJECT_ID?.trim();
   if (raw) return raw;
-  if (appEnv === 'local' || appEnv === 'development' || appEnv === 'test') return null;
+  if (firebaseRuntimeDisabled || appEnv === 'local' || appEnv === 'development' || appEnv === 'test') return null;
   throw new Error('FIREBASE_PROJECT_ID is required outside local development in Phase 6.');
 };
 
@@ -153,6 +153,7 @@ export const readServerConfig = () => {
   const clerkAuthorizedParties = clerkJwtKey
     ? readOrigins('CLERK_AUTHORIZED_PARTIES', appEnv, true)
     : [];
+  const firebaseRuntimeDisabled = readBoolean('FIREBASE_RUNTIME_DISABLED', false);
 
   return Object.freeze({
     appEnv,
@@ -186,7 +187,8 @@ export const readServerConfig = () => {
       min: 1000,
       max: 30000,
     }),
-    firebaseProjectId: readFirebaseProjectId(appEnv),
+    firebaseRuntimeDisabled,
+    firebaseProjectId: readFirebaseProjectId(appEnv, firebaseRuntimeDisabled),
     firebaseCertTimeoutMs: readInteger('FIREBASE_CERT_TIMEOUT_MS', DEFAULT_FIREBASE_CERT_TIMEOUT_MS, {
       min: 1000,
       max: 30000,
@@ -195,12 +197,12 @@ export const readServerConfig = () => {
       min: 1000,
       max: 30000,
     }),
-    assetBoardWriteMirrorDisabled: readBoolean('FIRESTORE_ASSET_BOARD_WRITE_MIRROR_DISABLED', false),
-    rentalRequestWriteMirrorDisabled: readBoolean('FIRESTORE_RENTAL_REQUEST_WRITE_MIRROR_DISABLED', false),
-    memberStatusRestrictionWriteMirrorDisabled: readBoolean('FIRESTORE_MEMBER_STATUS_RESTRICTION_WRITE_MIRROR_DISABLED', false),
-    memberProfileWriteMirrorDisabled: readBoolean('FIRESTORE_MEMBER_PROFILE_WRITE_MIRROR_DISABLED', false),
-    accountLifecycleCompatibilityDisabled: readBoolean('FIRESTORE_ACCOUNT_LIFECYCLE_COMPATIBILITY_DISABLED', false),
-    userFirebaseAuthCompatibilityDisabled: readBoolean('FIREBASE_USER_AUTH_COMPATIBILITY_DISABLED', false),
+    assetBoardWriteMirrorDisabled: firebaseRuntimeDisabled || readBoolean('FIRESTORE_ASSET_BOARD_WRITE_MIRROR_DISABLED', false),
+    rentalRequestWriteMirrorDisabled: firebaseRuntimeDisabled || readBoolean('FIRESTORE_RENTAL_REQUEST_WRITE_MIRROR_DISABLED', false),
+    memberStatusRestrictionWriteMirrorDisabled: firebaseRuntimeDisabled || readBoolean('FIRESTORE_MEMBER_STATUS_RESTRICTION_WRITE_MIRROR_DISABLED', false),
+    memberProfileWriteMirrorDisabled: firebaseRuntimeDisabled || readBoolean('FIRESTORE_MEMBER_PROFILE_WRITE_MIRROR_DISABLED', false),
+    accountLifecycleCompatibilityDisabled: firebaseRuntimeDisabled || readBoolean('FIRESTORE_ACCOUNT_LIFECYCLE_COMPATIBILITY_DISABLED', false),
+    userFirebaseAuthCompatibilityDisabled: firebaseRuntimeDisabled || readBoolean('FIREBASE_USER_AUTH_COMPATIBILITY_DISABLED', false),
   });
 };
 

@@ -1,4 +1,5 @@
 import { readAccountLifecycleAuthorityConfig } from '../auth/accountLifecycleAuthority.js';
+import { readFirebaseRuntimeRetirementConfig } from '../auth/firebaseRuntimeRetirement.js';
 import {
   compareRentalRequestReads,
   normalizeRentalRequestRead,
@@ -28,10 +29,11 @@ export const readRentalRequestCutoverConfig = ({
   storage = globalThis.sessionStorage,
 } = {}) => {
   const stagingBridgeEnabled = bool(env?.VITE_CLERK_STAGING_ENABLED);
-  const postgresReadEnabled = bool(env?.VITE_RENTAL_REQUEST_POSTGRES_READ_ENABLED);
+  const firebaseRuntimeRetired = readFirebaseRuntimeRetirementConfig({ env, location }).requested;
+  const postgresReadEnabled = bool(env?.VITE_RENTAL_REQUEST_POSTGRES_READ_ENABLED) || firebaseRuntimeRetired;
   const firestoreWatcherDisableEnabled = bool(
     env?.VITE_RENTAL_REQUEST_FIRESTORE_WATCHER_DISABLED,
-  );
+  ) || firebaseRuntimeRetired;
   const params = location ? new URLSearchParams(location.search || '') : new URLSearchParams();
   const enabled = stagingBridgeEnabled && postgresReadEnabled;
   const queryRequested = Boolean(

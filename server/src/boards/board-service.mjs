@@ -105,13 +105,21 @@ export const createBoardService = ({ repository, firestoreClient, writeMirrorEna
   const mirrorStatus = mirrorEnabled ? 'synced' : 'retired';
   const noMirror = async () => Object.freeze({ retired: true, source: 'postgresql-only' });
 
-  const verifyAdmin = (firebaseIdentity) => firestoreClient.verifyAdmin({
-    firebaseUid: firebaseIdentity.uid,
-    firebaseIdToken: firebaseIdentity.idToken,
-  });
+  const verifyAdmin = (firebaseIdentity) => firebaseIdentity?.source === 'clerk-postgresql'
+    ? Promise.resolve(Object.freeze({ uid: firebaseIdentity.uid, role: 'admin', source: 'postgresql-admin-registry' }))
+    : firestoreClient.verifyAdmin({ firebaseUid: firebaseIdentity.uid, firebaseIdToken: firebaseIdentity.idToken });
 
   const bootstrap = async (firebaseIdentity, actorClerkUserId = '') => {
     const admin = await verifyAdmin(firebaseIdentity);
+    if (firebaseIdentity?.source === 'clerk-postgresql') {
+      return Object.freeze({
+        admin,
+        target: 'postgresql',
+        source: 'postgresql-existing',
+        skipped: true,
+        status: await repository.getStatus(),
+      });
+    }
     const source = await firestoreClient.readBootstrap({ firebaseIdToken: firebaseIdentity.idToken });
     const faqCategories = (source.faqCategories || []).map(normalizeFirestoreCategory).filter(Boolean);
     const categoryIds = new Set(faqCategories.map((item) => item.id));

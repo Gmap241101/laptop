@@ -66,6 +66,16 @@ const clerkClient = config.clerkSecretKey
       async deleteUser() { const error = new Error('Clerk Backend API is not configured.'); error.code = 'clerk_backend_not_configured'; throw error; },
     };
 const pool = getPool();
+const retiredFirestoreClient = new Proxy({}, {
+  get(_target, property) {
+    return async () => {
+      const error = new Error(`Firestore runtime method ${String(property)} is retired.`);
+      error.code = 'firebase_runtime_retired';
+      error.status = 410;
+      throw error;
+    };
+  },
+});
 const userRepository = createUserRepository(pool);
 const accountRecoveryRepository = createAccountRecoveryRepository(pool);
 const accountRecoveryService = createAccountRecoveryService({ repository: accountRecoveryRepository });
@@ -96,7 +106,7 @@ const memberShadowService = createMemberShadowService({
 
 const firestoreMemberAuthorityClient = config.firebaseProjectId
   ? createFirestoreMemberAuthorityClient({ projectId: config.firebaseProjectId, timeoutMs: config.firestoreRestTimeoutMs })
-  : null;
+  : retiredFirestoreClient;
 const memberAuthorityRepository = createMemberAuthorityRepository(pool);
 const rentalRestrictionRepository = createRentalRestrictionRepository(pool);
 const userClerkAuthRepository = createUserClerkAuthRepository(pool);
@@ -124,8 +134,7 @@ const accountLifecycleService = createAccountLifecycleService({
   firestoreClient: firestoreMemberAuthorityClient,
   authorityEnabled: config.accountLifecycleCompatibilityDisabled,
 });
-const userClerkAuthService = firestoreMemberAuthorityClient
-  ? createUserClerkAuthService({
+const userClerkAuthService = createUserClerkAuthService({
       repository: userClerkAuthRepository,
       clerkClient,
       userRepository,
@@ -136,17 +145,13 @@ const userClerkAuthService = firestoreMemberAuthorityClient
       accountLifecycleService,
       accountLifecycleCompatibilityDisabled: config.accountLifecycleCompatibilityDisabled,
       userFirebaseAuthCompatibilityDisabled: config.userFirebaseAuthCompatibilityDisabled,
-    })
-  : null;
-const adminClerkAuthService = firestoreMemberAuthorityClient
-  ? createAdminClerkAuthService({
+    });
+const adminClerkAuthService = createAdminClerkAuthService({
       repository: adminIdentityRepository,
       clerkClient,
       firestoreClient: firestoreMemberAuthorityClient,
-    })
-  : null;
-const memberAuthorityService = firestoreMemberAuthorityClient
-  ? createMemberAuthorityService({
+    });
+const memberAuthorityService = createMemberAuthorityService({
       repository: memberAuthorityRepository,
       firebaseLinkRepository,
       userRepository,
@@ -156,8 +161,7 @@ const memberAuthorityService = firestoreMemberAuthorityClient
       writeMirrorEnabled: !config.memberStatusRestrictionWriteMirrorDisabled,
       profileWriteMirrorEnabled: !config.memberProfileWriteMirrorDisabled,
       userFirebaseAuthCompatibilityDisabled: config.userFirebaseAuthCompatibilityDisabled,
-    })
-  : null;
+    });
 
 const firestoreRentalRestrictionClient = config.firebaseProjectId
   ? createFirestoreRentalRestrictionClient({
@@ -346,6 +350,7 @@ server.listen(config.port, '0.0.0.0', () => {
     databaseConfigured: true,
     clerkJwtVerification: 'RS256-public-key',
     clerkBackendApi: config.clerkSecretKey ? 'configured' : 'disabled',
+    firebaseRuntime: config.firebaseRuntimeDisabled ? 'retired' : 'compatibility',
     userIdentityStore: 'postgresql',
     firebaseIdentityBridge: config.firebaseProjectId ? 'configured' : 'disabled',
     firestoreMemberShadow: config.firebaseProjectId ? 'user-token-security-rules' : 'disabled',
@@ -362,7 +367,7 @@ server.listen(config.port, '0.0.0.0', () => {
     assetDomain: config.firebaseProjectId
       ? (config.assetBoardWriteMirrorDisabled ? 'postgresql-authoritative-firestore-write-mirror-retired' : 'postgresql-read-write-firestore-compatibility-mirror')
       : 'disabled',
-    siteContent: 'postgresql-preferred-firestore-write-through',
+    siteContent: config.firebaseRuntimeDisabled ? 'postgresql-authoritative' : 'postgresql-preferred-firestore-write-through',
     noticeFaqBoards: config.firebaseProjectId
       ? (config.assetBoardWriteMirrorDisabled ? 'postgresql-authoritative-firestore-write-mirror-retired' : 'postgresql-authoritative-firestore-compatibility-mirror')
       : 'disabled',

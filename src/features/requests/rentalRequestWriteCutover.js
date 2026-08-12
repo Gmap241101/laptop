@@ -1,4 +1,5 @@
 import { readAccountLifecycleAuthorityConfig } from '../auth/accountLifecycleAuthority.js';
+import { readFirebaseRuntimeRetirementConfig } from '../auth/firebaseRuntimeRetirement.js';
 
 const WRITE_SESSION_KEY = 'mk_rental_request_postgres_write_test';
 const trim = (value) => (typeof value === 'string' ? value.trim() : String(value ?? '').trim());
@@ -10,7 +11,7 @@ export const readRentalRequestWriteCutoverConfig = ({
   storage = globalThis.sessionStorage,
 } = {}) => {
   const stagingBridgeEnabled = bool(env?.VITE_CLERK_STAGING_ENABLED);
-  const postgresWriteEnabled = bool(env?.VITE_RENTAL_REQUEST_POSTGRES_WRITE_ENABLED);
+  const postgresWriteEnabled = bool(env?.VITE_RENTAL_REQUEST_POSTGRES_WRITE_ENABLED) || readFirebaseRuntimeRetirementConfig({ env, location }).requested;
   const params = location ? new URLSearchParams(location.search || '') : new URLSearchParams();
   const enabled = stagingBridgeEnabled && postgresWriteEnabled;
   const queryRequested = Boolean(enabled && params.get('rentalRequestWrite') === 'postgres');

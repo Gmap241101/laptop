@@ -54,7 +54,9 @@ export const readSiteContentCutoverConfig = ({
   storage = globalThis.sessionStorage,
 } = {}) => {
   const staging = bool(env?.VITE_CLERK_STAGING_ENABLED);
-  const adminAuthorityEnabled = staging && bool(env?.VITE_ADMIN_CONTENT_POSTGRES_AUTHORITY_ENABLED);
+  const adminAuthorityEnabled = staging && (
+    bool(env?.VITE_ADMIN_CONTENT_POSTGRES_AUTHORITY_ENABLED) || bool(env?.VITE_FIREBASE_RUNTIME_DISABLED)
+  );
   const authorityEnabled = staging && bool(env?.VITE_SITE_CONTENT_POSTGRES_AUTHORITY_ENABLED);
   const readEnabled = staging && (
     bool(env?.VITE_SITE_CONTENT_POSTGRES_READ_ENABLED) || authorityEnabled

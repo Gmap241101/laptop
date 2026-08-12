@@ -4,6 +4,7 @@ const CLERK_JS_MAJOR = '6';
 const trim = (value) => (typeof value === 'string' ? value.trim() : '');
 
 const normalizeBoolean = (value) => trim(value).toLowerCase() === 'true';
+const firebaseRuntimeRetired = () => normalizeBoolean(import.meta.env?.VITE_FIREBASE_RUNTIME_DISABLED);
 
 const normalizeApiBaseUrl = (value) => {
   const raw = trim(value);
@@ -98,12 +99,14 @@ const getSessionToken = async (clerk) => {
 
 const requestWithSession = async ({ clerk, apiBaseUrl, fetchImpl, path, method = 'GET', headers = {}, body }) => {
   const token = await getSessionToken(clerk);
+  const authorityHeaders = { ...headers };
+  if (firebaseRuntimeRetired()) delete authorityHeaders['X-Firebase-Authorization'];
   const response = await fetchImpl(`${apiBaseUrl}${path}`, {
     method,
     headers: {
       Accept: 'application/json',
       Authorization: `Bearer ${token}`,
-      ...headers,
+      ...authorityHeaders,
     },
     cache: 'no-store',
     ...(body === undefined ? {} : { body }),
@@ -122,6 +125,7 @@ const requestPublicJson = async ({ apiBaseUrl, fetchImpl, path, body }) => {
 };
 
 const optionalFirebaseAuthorizationHeader = (firebaseIdToken) => {
+  if (firebaseRuntimeRetired()) return {};
   const token = trim(firebaseIdToken);
   return token ? { 'X-Firebase-Authorization': `Bearer ${token}` } : {};
 };
@@ -676,7 +680,7 @@ export const requestMemberShadowComparison = async ({ clerk, apiBaseUrl, fetchIm
 
 export const requestAdminRentalRequestBootstrap = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken }) => {
   const token = trim(firebaseIdToken);
-  if (!token) throw new Error('Firebase admin sign-in is required before synchronizing admin rental requests.');
+  if (!token && !firebaseRuntimeRetired()) throw new Error('Firebase admin sign-in is required before synchronizing admin rental requests.');
   const { response, payload } = await requestWithSession({
     clerk,
     apiBaseUrl,
@@ -699,7 +703,7 @@ export const requestAdminRentalRequestBootstrap = async ({ clerk, apiBaseUrl, fe
 
 export const requestAdminRentalRequests = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, options = {} }) => {
   const token = trim(firebaseIdToken);
-  if (!token) throw new Error('Firebase admin sign-in is required before reading PostgreSQL rental requests.');
+  if (!token && !firebaseRuntimeRetired()) throw new Error('Firebase admin sign-in is required before reading PostgreSQL rental requests.');
   const params = new URLSearchParams();
   ['tab', 'quickFilter', 'query', 'page', 'pageSize', 'referenceDate'].forEach((key) => {
     const value = options?.[key];
@@ -727,7 +731,7 @@ export const requestAdminRentalRequests = async ({ clerk, apiBaseUrl, fetchImpl,
 
 export const requestAdminRentalDashboard = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, referenceDate = '' }) => {
   const token = trim(firebaseIdToken);
-  if (!token) throw new Error('Firebase admin sign-in is required before reading the PostgreSQL rental dashboard.');
+  if (!token && !firebaseRuntimeRetired()) throw new Error('Firebase admin sign-in is required before reading the PostgreSQL rental dashboard.');
   const query = referenceDate ? `?referenceDate=${encodeURIComponent(referenceDate)}` : '';
   const { response, payload } = await requestWithSession({
     clerk,
@@ -751,7 +755,7 @@ export const requestAdminRentalDashboard = async ({ clerk, apiBaseUrl, fetchImpl
 const requestAdminRentalRequestMutationAction = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, requestId, action, body = {} }) => {
   const token = trim(firebaseIdToken);
   const id = trim(requestId);
-  if (!token) throw new Error('Firebase admin sign-in is required before changing a PostgreSQL rental request.');
+  if (!token && !firebaseRuntimeRetired()) throw new Error('Firebase admin sign-in is required before changing a PostgreSQL rental request.');
   if (!id) throw new Error('Rental request ID is required.');
   const { response, payload } = await requestWithSession({
     clerk,
@@ -783,7 +787,7 @@ const requestAdminRentalRequestMutationAction = async ({ clerk, apiBaseUrl, fetc
 export const requestAdminRentalRequestSync = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, requestId }) => {
   const token = trim(firebaseIdToken);
   const id = trim(requestId);
-  if (!token || !id) throw new Error('Firebase admin sign-in and rental request ID are required.');
+  if ((!token && !firebaseRuntimeRetired()) || !id) throw new Error('Firebase admin sign-in and rental request ID are required.');
   const { response, payload } = await requestWithSession({
     clerk, apiBaseUrl, fetchImpl,
     path: `/api/admin/rental-requests/${encodeURIComponent(id)}/sync`,
@@ -805,7 +809,7 @@ export const requestAdminRentalRequestSync = async ({ clerk, apiBaseUrl, fetchIm
 export const requestAdminRentalRequestEvents = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, requestId }) => {
   const token = trim(firebaseIdToken);
   const id = trim(requestId);
-  if (!token || !id) throw new Error('Firebase admin sign-in and rental request ID are required.');
+  if ((!token && !firebaseRuntimeRetired()) || !id) throw new Error('Firebase admin sign-in and rental request ID are required.');
   const { response, payload } = await requestWithSession({
     clerk, apiBaseUrl, fetchImpl,
     path: `/api/admin/rental-requests/${encodeURIComponent(id)}/events`,
@@ -830,7 +834,7 @@ export const requestAdminRentalRequestRestore = async (args) => requestAdminRent
 export const requestAdminRentalRequestStatusChange = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, requestId, status }) => {
   const token = trim(firebaseIdToken);
   const id = trim(requestId);
-  if (!token) throw new Error('Firebase admin sign-in is required before changing a PostgreSQL rental request.');
+  if (!token && !firebaseRuntimeRetired()) throw new Error('Firebase admin sign-in is required before changing a PostgreSQL rental request.');
   if (!id) throw new Error('Rental request ID is required.');
   const { response, payload } = await requestWithSession({
     clerk,
@@ -908,7 +912,7 @@ export const requestMemberDirectoryAuthorityVerification = async ({ clerk, apiBa
 
 export const requestAdminMembersPostgresql = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, options = {} }) => {
   const token = trim(firebaseIdToken);
-  if (!token) throw new Error('Firebase admin sign-in is required before reading PostgreSQL members.');
+  if (!token && !firebaseRuntimeRetired()) throw new Error('Firebase admin sign-in is required before reading PostgreSQL members.');
   const params = new URLSearchParams();
   ['status', 'q', 'page', 'pageSize'].forEach((key) => {
     const value = options?.[key];
@@ -936,7 +940,7 @@ export const requestAdminMembersPostgresql = async ({ clerk, apiBaseUrl, fetchIm
 
 export const requestAdminMemberProfileAuthorityWrite = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, firebaseUid, profile }) => {
   const token = trim(firebaseIdToken); const uid = trim(firebaseUid);
-  if (!token || !uid) throw new Error('Firebase admin sign-in and member UID are required.');
+  if ((!token && !firebaseRuntimeRetired()) || !uid) throw new Error('Firebase admin sign-in and member UID are required.');
   const { response, payload } = await requestWithSession({
     clerk, apiBaseUrl, fetchImpl, path: `/api/admin/members/${encodeURIComponent(uid)}/profile`, method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Firebase-Authorization': `Bearer ${token}` },
@@ -949,7 +953,7 @@ export const requestAdminMemberProfileAuthorityWrite = async ({ clerk, apiBaseUr
 
 export const requestAdminMemberDirectoryPostgresqlSync = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken }) => {
   const token = trim(firebaseIdToken);
-  if (!token) throw new Error('Firebase admin sign-in is required before synchronizing the PostgreSQL member directory.');
+  if (!token && !firebaseRuntimeRetired()) throw new Error('Firebase admin sign-in is required before synchronizing the PostgreSQL member directory.');
   const { response, payload } = await requestWithSession({
     clerk, apiBaseUrl, fetchImpl, path: '/api/admin/member-directory/sync', method: 'POST',
     headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
@@ -961,7 +965,7 @@ export const requestAdminMemberDirectoryPostgresqlSync = async ({ clerk, apiBase
 
 export const requestAdminMemberStatusAuthorityWrite = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, firebaseUid, status }) => {
   const token = trim(firebaseIdToken); const uid = trim(firebaseUid);
-  if (!token || !uid) throw new Error('Firebase admin sign-in and member UID are required.');
+  if ((!token && !firebaseRuntimeRetired()) || !uid) throw new Error('Firebase admin sign-in and member UID are required.');
   const { response, payload } = await requestWithSession({
     clerk, apiBaseUrl, fetchImpl, path: `/api/admin/members/${encodeURIComponent(uid)}/status`, method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Firebase-Authorization': `Bearer ${token}` },
@@ -974,7 +978,7 @@ export const requestAdminMemberStatusAuthorityWrite = async ({ clerk, apiBaseUrl
 
 export const requestAdminIdentityRegistryBootstrap = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken }) => {
   const token = trim(firebaseIdToken);
-  if (!token) throw new Error('Firebase admin sign-in is required before synchronizing the PostgreSQL admin identity registry.');
+  if (!token && !firebaseRuntimeRetired()) throw new Error('Firebase admin sign-in is required before synchronizing the PostgreSQL admin identity registry.');
   const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: '/api/admin/identity-registry/bootstrap', method: 'POST', headers: { 'X-Firebase-Authorization': `Bearer ${token}` } });
   if (!response.ok) { const error = new Error(`Admin identity registry bootstrap failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
   if (!payload?.authenticated || !payload?.authorized || payload?.adminIdentityRegistry?.target !== 'postgresql-admin-registry') throw new Error('Backend returned an invalid admin identity registry response.');
@@ -1000,7 +1004,7 @@ export const requestAssetCatalog = async ({ apiBaseUrl, fetchImpl }) => {
 
 export const requestAdminAssetBootstrap = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken }) => {
   const token = trim(firebaseIdToken);
-  if (!token) throw new Error('Firebase admin sign-in is required before synchronizing PostgreSQL assets.');
+  if (!token && !firebaseRuntimeRetired()) throw new Error('Firebase admin sign-in is required before synchronizing PostgreSQL assets.');
   const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: '/api/admin/assets/bootstrap', method: 'POST', headers: { 'X-Firebase-Authorization': `Bearer ${token}` } });
   if (!response.ok) {
     const error = new Error(`Admin asset bootstrap failed with HTTP ${response.status}.`); error.status = response.status; error.code = payload?.error || null; throw error;
@@ -1011,7 +1015,7 @@ export const requestAdminAssetBootstrap = async ({ clerk, apiBaseUrl, fetchImpl,
 
 const requestAdminAssetMutation = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, path, body = {}, expectedOperation }) => {
   const token = trim(firebaseIdToken);
-  if (!token) throw new Error('Firebase admin sign-in is required before changing PostgreSQL assets.');
+  if (!token && !firebaseRuntimeRetired()) throw new Error('Firebase admin sign-in is required before changing PostgreSQL assets.');
   const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path, method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Firebase-Authorization': `Bearer ${token}` }, body: JSON.stringify(body) });
   if (!response.ok) {
     const error = new Error(`Admin PostgreSQL asset ${expectedOperation} failed with HTTP ${response.status}.`);

@@ -1,34 +1,32 @@
-GitHub Education Phase 34 - Administrator Public Content PostgreSQL Authority Validation
+Phase 34 Firebase normal-runtime retirement validation
 Date: 2026-08-12 KST
 
 STATUS
-Deployment candidate. Local automated validation is PASS; actual Staging browser validation is pending.
+Deployment candidate. Local automated validation PASS; actual Staging zero-Firebase-network validation pending.
 
 PROTECTED BASELINE
-- Phase 32: PASS and unchanged
-- Phase 33: actual Staging PASS and unchanged
-- Production gh-pages/DNS/Firebase: unchanged
+- Phase 32: PASS
+- Phase 33: actual Staging PASS
+- Production/gh-pages/DNS/Firebase configuration: unchanged
 
-IMPLEMENTED CONTRACT
-- Clerk-authenticated PUT /api/admin/site-content/:domain
-- PostgreSQL full-domain transaction source mode: postgresql-admin-direct
-- Separate VITE_ADMIN_CONTENT_POSTGRES_AUTHORITY_ENABLED gate
-- Per-session rollback: adminContent=firestore
-- Phase 33 Firestore repair suppressed under Phase 34 authority
-- Direct administrator PostgreSQL reads/writes for site settings, home, popup, footer, rental config, holidays, signup policy, and signup terms
-- No Firebase ID token required by the direct administrator content endpoint
-- No SQL migration
+IMPLEMENTED
+- Frontend Firebase app/Auth/Firestore initialization suppressed under the global flag
+- Clerk-only administrator and user session principals
+- X-Firebase-Authorization stripped from backend requests
+- Backend Firebase project/token verifier disabled
+- All backend Firestore write-mirror switches forced retired
+- Existing PostgreSQL cutovers forced by the global flag
+- Firestore bootstrap paths converted to PostgreSQL-existing responses
+- Firebase audit/maintenance and administrator-account mutations blocked
+- Explicit Staging rollback switch retained
 
 LOCAL VALIDATION
-- Full Phase 1 through Phase 34 verification: PASS (85 scripts)
-- backend Phase 34 smoke: PASS
-- frontend Phase 34 smoke: PASS
-- backend HTTP smoke including direct PUT: PASS
 - React hook audit: PASS
-- application flow contracts: PASS
-- strict Firestore access audit: PASS
-- Phase 33 regression smoke: PASS
-- Package guard: PASS (807 manifest entries; protected 0; missing 0; duplicates 0; unlisted 0)
+- server foundation: PASS
+- backend HTTP smoke: PASS
+- Phase 33 regression frontend smoke: PASS
+- Phase 34 administrator content frontend/backend smoke: PASS
+- Phase 34 Firebase runtime retirement frontend/backend smoke: PASS
 
 STAGING PASS REQUIREMENT
-Follow PHASE34_MANUAL_PLATFORM_ACTIONS.md on the normal Staging URLs. Do not mark Phase 34 PASS before reload persistence, user visibility, and absence of Firestore synchronization errors are confirmed.
+Follow PHASE34_MANUAL_PLATFORM_ACTIONS.md. Do not mark Phase 34 PASS until normal administrator/user/public flows pass with zero Firebase network requests and the disabled legacy management-tool decision is accepted or replaced.

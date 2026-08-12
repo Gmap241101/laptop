@@ -60,6 +60,7 @@ import {
   createPublicAssetCatalogPayload,
   rebuildPublicAssetCatalogFromServer,
 } from '../../services/publicAssetCatalogWriteThrough.js';
+import { readFirebaseRuntimeRetirementConfig } from '../auth/firebaseRuntimeRetirement.js';
 
 export const RESET_SCOPE_META = {
   [SYSTEM_RESET_SCOPE.ASSETS]: {
@@ -269,11 +270,22 @@ export default function useAdminDataMaintenanceController({
   const [restoreConfirmText, setRestoreConfirmText] = useState('');
   const [latestRestoreJob, setLatestRestoreJob] = useState(null);
   const [restoreResult, setRestoreResult] = useState(null);
+  const firebaseRuntimeRetired = readFirebaseRuntimeRetirementConfig().requested;
+  const blockRetiredFirebaseMaintenance = () => {
+    if (!firebaseRuntimeRetired) return false;
+    triggerToast('Firebase 기반 백업·복원·초기화 기능은 중단되었습니다. PostgreSQL 전용 관리 기능으로 교체될 예정입니다.', 'info');
+    return true;
+  };
 
   const isOwner = getAdminRole(authenticatedAdminAccount) === 'owner';
 
   useEffect(() => {
     if (!authenticatedAdminAccount || mode !== SYSTEM_MANAGEMENT_TAB.DATA) {
+      setLatestResetJob(null);
+      setLatestRestoreJob(null);
+      return undefined;
+    }
+    if (firebaseRuntimeRetired) {
       setLatestResetJob(null);
       setLatestRestoreJob(null);
       return undefined;
@@ -324,9 +336,11 @@ export default function useAdminDataMaintenanceController({
     authenticatedAdminAccount?.id,
     authenticatedAdminAccount?.adminRole,
     isOwner,
+    firebaseRuntimeRetired,
     mode,
   ]);
   const runIntegrityCheck = async () => {
+    if (blockRetiredFirebaseMaintenance()) return;
     setIntegrityLoading(true);
     try {
       const [
@@ -563,6 +577,7 @@ export default function useAdminDataMaintenanceController({
   };
 
   const downloadBackup = async (options = {}) => {
+    if (blockRetiredFirebaseMaintenance()) return;
     setBackupLoading(true);
     try {
       const payload = await createBackupPayload({
@@ -668,6 +683,7 @@ export default function useAdminDataMaintenanceController({
   };
 
   const analyzeRestore = async () => {
+    if (blockRetiredFirebaseMaintenance()) return;
     if (!restorePayload || !restoreValidation?.valid) {
       triggerToast('먼저 유효한 백업 파일을 선택해 주세요.', 'error');
       return;
@@ -877,6 +893,7 @@ export default function useAdminDataMaintenanceController({
   };
 
   const executeRestore = async ({ resumeJob = null } = {}) => {
+    if (blockRetiredFirebaseMaintenance()) return;
     if (!restorePayload || !restoreValidation?.valid || !restoreAnalysis) {
       triggerToast('백업 파일 선택과 충돌 검사를 먼저 완료해 주세요.', 'error');
       return;
@@ -1220,6 +1237,7 @@ export default function useAdminDataMaintenanceController({
   };
 
   const scanResetTargets = async () => {
+    if (blockRetiredFirebaseMaintenance()) return;
     if (!isOwner) {
       triggerToast('최고 관리자만 데이터 초기화를 실행할 수 있습니다.', 'error');
       return;
@@ -1246,6 +1264,7 @@ export default function useAdminDataMaintenanceController({
   };
 
   const downloadResetBackup = async () => {
+    if (blockRetiredFirebaseMaintenance()) return;
     const succeeded = await downloadBackup({
       includeOperations: true,
       includeMembers: true,
@@ -1278,6 +1297,7 @@ export default function useAdminDataMaintenanceController({
   };
 
   const executeReset = async ({ resumeJob = null } = {}) => {
+    if (blockRetiredFirebaseMaintenance()) return;
     if (!isOwner) {
       triggerToast('최고 관리자만 데이터 초기화를 실행할 수 있습니다.', 'error');
       return;

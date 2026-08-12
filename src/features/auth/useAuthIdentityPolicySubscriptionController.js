@@ -10,6 +10,7 @@ import {
   USER_SESSION_POLICY_DOC_REF,
   db,
   firebaseAuth,
+  setFirebaseRuntimePrincipal,
 } from '../../firebase.js';
 import { parseDomesticPhoneNumber } from '../../utils/memberPolicy.js';
 import {
@@ -46,6 +47,7 @@ import {
   publishUserFirebaseAuthRetirementObservation,
   readUserFirebaseAuthRetirementConfig,
 } from './userFirebaseAuthRetirement.js';
+import { readFirebaseRuntimeRetirementConfig } from './firebaseRuntimeRetirement.js';
 import {
   isLegacyFirestoreReadFallbackAllowed,
   readLegacyFirestoreReadFallbackConfig,
@@ -213,12 +215,43 @@ export default function useAuthIdentityPolicySubscriptionController({
 
   useEffect(() => {
     const firebaseRetirement = readUserFirebaseAuthRetirementConfig();
-    if (firebaseRetirement.requested && view !== 'admin' && !authenticatedAdminId) {
+    const firebaseRuntime = readFirebaseRuntimeRetirementConfig();
+    if (firebaseRuntime.requested || (firebaseRetirement.requested && view !== 'admin' && !authenticatedAdminId)) {
       let active = true;
       setFirebaseAuthReady(false);
       void (async () => {
         try {
           await clerkStagingClient.initialize();
+          if (firebaseRuntime.requested && (view === 'admin' || authenticatedAdminId)) {
+            const sessionPayload = await clerkStagingClient.getAdminClerkSession();
+            if (!active) return;
+            const authority = sessionPayload?.adminAuthentication || {};
+            const adminId = String(authority.firebaseUid || authority.clerkUserId || '').trim();
+            if (!adminId) throw Object.assign(new Error('Administrator PostgreSQL registry identifier is missing.'), { code: 'admin_registry_id_missing' });
+            const account = normalizeAdminAccounts([{
+              id: adminId,
+              authUid: adminId,
+              adminLoginId: authority.adminLoginId || authority.authEmail || '',
+              authEmail: authority.authEmail || '',
+              email: authority.authEmail || '',
+              adminRole: authority.adminRole || 'admin',
+              clerkUserId: authority.clerkUserId || '',
+              clerkLinkState: authority.clerkLinkState || 'linked',
+              authProvider: 'clerk',
+              authAuthorityMode: 'clerk-postgresql',
+            }])[0];
+            const principal = createClerkPostgresqlUserPrincipal({ uid: adminId, email: authority.authEmail || '', displayName: authority.adminLoginId || '' });
+            setFirebaseRuntimePrincipal(principal);
+            setFirebaseAuthUser(principal);
+            setCurrentAuthAdminAccount(account);
+            setAdminAccounts([account]);
+            setAdminAccountsRemoteHasData(true);
+            setAdminAccountsLoadErrorMessage('');
+            setAdminAccountsReady(true);
+            setCurrentAuthRoleErrorMessage('');
+            setCurrentAuthRoleReady(true);
+            return;
+          }
           const sessionPayload = await clerkStagingClient.getUserClerkSession();
           if (!active) return;
           const authority = sessionPayload?.userAuthentication || {};
@@ -227,15 +260,23 @@ export default function useAuthIdentityPolicySubscriptionController({
             email: authority.email || '',
             displayName: authority.displayName || '',
           });
+          setFirebaseRuntimePrincipal(principal);
           setFirebaseAuthUser(principal);
           if (!principal && !readUserAuthTransition()) {
             clearUserAuthenticatedSession('clerk-postgresql-signed-out');
           }
-          publishUserFirebaseAuthRetirementObservation({ requested: true, userFirebaseCompatibility: 'retired', session: principal ? 'signed-in' : 'signed-out', error: '' });
+          publishUserFirebaseAuthRetirementObservation({ requested: true, userFirebaseCompatibility: 'retired', firebaseRuntime: 'retired', session: principal ? 'signed-in' : 'signed-out', error: '' });
         } catch (error) {
           if (!active) return;
           const unauthorized = [401, 403].includes(Number(error?.status || 0));
           setFirebaseAuthUser(null);
+          setFirebaseRuntimePrincipal(null);
+          if (view === 'admin' || authenticatedAdminId) {
+            setCurrentAuthAdminAccount(null);
+            setAdminAccounts([]);
+            setAdminAccountsReady(true);
+            setCurrentAuthRoleReady(true);
+          }
           if (!readUserAuthTransition()) {
             clearUserAuthenticatedSession(unauthorized ? 'clerk-postgresql-signed-out' : 'clerk-postgresql-session-error', { clearTransition: unauthorized });
           }
@@ -293,6 +334,12 @@ export default function useAuthIdentityPolicySubscriptionController({
 
   useEffect(() => {
     if (!firebaseAuthReady) return;
+
+    if (readFirebaseRuntimeRetirementConfig().requested) {
+      setCurrentAuthRoleErrorMessage('');
+      setCurrentAuthRoleReady(true);
+      return undefined;
+    }
 
     if (!firebaseAuthUser) {
       setCurrentAuthAdminAccount(null);
@@ -844,6 +891,12 @@ export default function useAuthIdentityPolicySubscriptionController({
   ]);
 
   useEffect(() => {
+    if (readFirebaseRuntimeRetirementConfig().requested) {
+      setUserSessionPolicy(DEFAULT_USER_SESSION_POLICY);
+      setUserSessionPolicyLoadErrorMessage('');
+      setUserSessionPolicyReady(true);
+      return undefined;
+    }
     const shouldSubscribeForActiveUser = Boolean(
       firebaseAuthUser &&
       currentAuthRoleReady &&
@@ -901,6 +954,12 @@ export default function useAuthIdentityPolicySubscriptionController({
   ]);
 
   useEffect(() => {
+    if (readFirebaseRuntimeRetirementConfig().requested) {
+      setSystemAdminSettings(DEFAULT_SYSTEM_ADMIN_SETTINGS);
+      setSystemAdminSettingsLoadErrorMessage('');
+      setSystemAdminSettingsReady(true);
+      return undefined;
+    }
     const canReadSystemAdminSettings = Boolean(
       firebaseAuthUser &&
       currentAuthRoleReady &&
@@ -945,6 +1004,14 @@ export default function useAuthIdentityPolicySubscriptionController({
   ]);
 
   useEffect(() => {
+    if (readFirebaseRuntimeRetirementConfig().requested) {
+      const hasAdminSession = Boolean(authenticatedAdminId) && Boolean(currentAuthAdminAccount?.id);
+      setAdminAccounts(hasAdminSession && currentAuthAdminAccount ? [currentAuthAdminAccount] : []);
+      setAdminAccountsRemoteHasData(hasAdminSession);
+      setAdminAccountsLoadErrorMessage('');
+      setAdminAccountsReady(true);
+      return undefined;
+    }
     if (!firebaseAuthReady || !currentAuthRoleReady) {
       setAdminAccountsReady(false);
       return undefined;
