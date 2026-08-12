@@ -43,7 +43,7 @@ for (const marker of [
   '(authorityEnabled && !queryRollback && !queryWriteRollback)',
 ]) assert.ok(cutover.includes(marker), `Phase 33 public authority must force site-content write-through: ${marker}`);
 const adminAuthoritySync = readFileSync('src/features/content/useAdminPublicContentSynchronizationController.js', 'utf8');
-for (const marker of ['syncAllSiteContentDomainsFromFirestore', 'syncAllPolicyContentDomainsFromFirestore', 'mk_phase33_public_content_authority_repair_20260812_0117']) {
+for (const marker of ['syncAllSiteContentDomainsFromFirestore', 'syncAllPolicyContentDomainsFromFirestore', 'mk_phase33_public_content_authority_repair_20260812_1104']) {
   assert.ok(adminAuthoritySync.includes(marker), `missing Phase 33 content reconciliation marker: ${marker}`);
 }
 

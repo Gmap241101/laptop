@@ -525,3 +525,41 @@ Frontend hotfix revision: phase33-public-content-full-server-sync-hotfix-2026081
 11. User diagnostics `Home banners from PostgreSQL` and `Home active hero / promotion / quick-link` must match the administrator records and their current enabled/schedule state.
 
 If a full-domain synchronization fails after this hotfix, use the exact new error code. Do not manually re-enable the public Firestore parity fallback; PostgreSQL remains the Phase 33 public authority.
+
+## Plain administrator Clerk authority coupling hotfix — 2026-08-12 11:04 KST
+
+The `0128` package still allowed a plain `/admin` session to remain Firebase-only unless
+`?adminAuth=clerk` or the legacy session latch had previously enabled Clerk administrator
+authentication. Phase 33 site/policy authority simultaneously forced PostgreSQL
+write-through for every administrator save. The save could therefore commit to Firestore
+and then fail before the backend request with `site_content_clerk_session_missing`.
+
+This hotfix makes Clerk administrator authentication mandatory whenever either of these
+Phase 33 authorities is enabled:
+
+```text
+VITE_SITE_CONTENT_POSTGRES_AUTHORITY_ENABLED=true
+VITE_POLICY_CONTENT_POSTGRES_AUTHORITY_ENABLED=true
+```
+
+No query string or diagnostics button is required. A restored Firebase-only administrator
+app session is not accepted as fully authenticated under those authority flags; the normal
+administrator login completes both Clerk and Firebase compatibility authentication before
+the automatic repair or a content save can run.
+
+Expected frontend marker:
+
+```text
+Frontend hotfix revision: phase33-admin-clerk-authority-coupling-hotfix-20260812-1104
+```
+
+The backend full-domain synchronization revision remains:
+
+```text
+publicContentSyncRevision = phase33-public-content-full-server-sync-hotfix-20260812-0117
+```
+
+Deployment impact: Vercel Staging redeploy is required. Heroku Staging does not need a
+second redeploy when the `0117` backend from the `0128` package is already active. There
+are no environment-variable, migration, dependency, Clerk Console, Firebase Rules/index,
+Production, DNS, or `gh-pages` changes.

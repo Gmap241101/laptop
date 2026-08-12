@@ -12,6 +12,15 @@ export const readAccountAuthCutoverConfig = ({
   const staging = bool(env?.VITE_CLERK_STAGING_ENABLED);
   const accountRecoveryEnabled = staging && bool(env?.VITE_ACCOUNT_RECOVERY_POSTGRES_READ_ENABLED);
   const adminClerkAuthEnabled = staging && bool(env?.VITE_ADMIN_CLERK_AUTH_ENABLED);
+  // Phase 33 public content authority makes every administrator site/policy save
+  // perform an authenticated PostgreSQL write-through. Those backend routes require
+  // both the Clerk administrator principal and the Firebase compatibility identity,
+  // so a plain /admin session must not remain Firebase-only while either authority
+  // is active. This requirement is independent of the legacy adminAuth query latch.
+  const adminClerkAuthorityRequired = staging && (
+    bool(env?.VITE_SITE_CONTENT_POSTGRES_AUTHORITY_ENABLED) ||
+    bool(env?.VITE_POLICY_CONTENT_POSTGRES_AUTHORITY_ENABLED)
+  );
   const params = location ? new URLSearchParams(location.search || '') : new URLSearchParams();
   const queryAccountRecovery = accountRecoveryEnabled && params.get('accountRecovery') === 'postgres';
   const queryAdminClerk = adminClerkAuthEnabled && params.get('adminAuth') === 'clerk';
@@ -32,8 +41,12 @@ export const readAccountAuthCutoverConfig = ({
   return Object.freeze({
     accountRecoveryEnabled,
     adminClerkAuthEnabled,
+    adminClerkAuthorityRequired,
     accountRecoveryRequested: Boolean(accountRecoveryEnabled && (queryAccountRecovery || sessionAccountRecovery)),
-    adminClerkAuthRequested: Boolean(adminClerkAuthEnabled && (queryAdminClerk || sessionAdminClerk)),
+    adminClerkAuthRequested: Boolean(
+      adminClerkAuthorityRequired ||
+      (adminClerkAuthEnabled && (queryAdminClerk || sessionAdminClerk))
+    ),
   });
 };
 

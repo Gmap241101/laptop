@@ -360,3 +360,35 @@ Deployment impact:
 - No new environment variable.
 - No Production / DNS / `gh-pages` change.
 - Diagnostics synchronization buttons are not required for normal operation.
+
+Phase 33 plain administrator Clerk authority coupling hotfix — 2026-08-12 11:04 KST
+-----------------------------------------------------------------------------------
+Observed execution path in the 0128 full package:
+1. Phase 33 site/policy PostgreSQL authority implied administrator write-through.
+2. readAccountAuthCutoverConfig still enabled Clerk administrator authentication only
+   through ?adminAuth=clerk or its legacy browser-session latch.
+3. A plain /admin Firebase administrator session could therefore satisfy
+   isAdminAuthenticated without an active Clerk session.
+4. Automatic repair and every site/policy save called siteContentCutover.getClerkToken.
+5. clerkStagingClient.initialize() guaranteed only that ClerkJS was loaded; it did not
+   create an authenticated session.
+6. siteContentCutover generated site_content_clerk_session_missing locally before any
+   request reached Heroku. Firestore had already committed in per-save paths, leaving
+   PostgreSQL stale and the public user view incomplete.
+
+Correction:
+- VITE_SITE_CONTENT_POSTGRES_AUTHORITY_ENABLED or
+  VITE_POLICY_CONTENT_POSTGRES_AUTHORITY_ENABLED now makes
+  adminClerkAuthorityRequired=true and adminClerkAuthRequested=true.
+- The requirement does not depend on VITE_ADMIN_CLERK_AUTH_ENABLED, a query parameter,
+  or a pre-existing browser latch because the backend write route itself requires Clerk.
+- adminAuth=firebase cannot create a Firebase-only administrator while either public
+  PostgreSQL authority remains active.
+- Existing backend dual-principal verification remains unchanged: Clerk administrator
+  registry identity must equal the Firebase compatibility identity.
+- Automatic repair key is bumped to
+  mk_phase33_public_content_authority_repair_20260812_1104.
+- Frontend hotfix revision is
+  phase33-admin-clerk-authority-coupling-hotfix-20260812-1104.
+- Phase 32 PASS runtime behavior and the 0117 backend full-domain source/count contract
+  remain unchanged.

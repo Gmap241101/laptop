@@ -31,6 +31,34 @@ const disabled = readAccountAuthCutoverConfig({ env: { ...enabledEnv, VITE_CLERK
 assert.equal(disabled.accountRecoveryRequested, false);
 assert.equal(disabled.adminClerkAuthRequested, false);
 
+const phase33AuthorityEnv = {
+  VITE_CLERK_STAGING_ENABLED: 'true',
+  VITE_ADMIN_CLERK_AUTH_ENABLED: 'false',
+  VITE_SITE_CONTENT_POSTGRES_AUTHORITY_ENABLED: 'true',
+  VITE_POLICY_CONTENT_POSTGRES_AUTHORITY_ENABLED: 'true',
+};
+const phase33PlainAdmin = readAccountAuthCutoverConfig({
+  env: phase33AuthorityEnv,
+  location: { search: '' },
+  storage: createStorage(),
+});
+assert.equal(phase33PlainAdmin.adminClerkAuthorityRequired, true);
+assert.equal(
+  phase33PlainAdmin.adminClerkAuthRequested,
+  true,
+  'Phase 33 public authority must require Clerk administrator authentication on plain /admin',
+);
+const phase33AdminRollbackQuery = readAccountAuthCutoverConfig({
+  env: phase33AuthorityEnv,
+  location: { search: '?adminAuth=firebase' },
+  storage: createStorage(),
+});
+assert.equal(
+  phase33AdminRollbackQuery.adminClerkAuthRequested,
+  true,
+  'adminAuth=firebase must not create a Firebase-only administrator while PostgreSQL public authority requires Clerk write-through',
+);
+
 const accountRecoverySource = readFileSync('src/features/members/accountRecoveryService.js', 'utf8');
 for (const marker of [
   'clerkStagingClient.findAccountRecoveryEmail',
@@ -51,6 +79,10 @@ for (const marker of [
   "adminAuthSource: 'client-trust-required'",
   'adminClerkAuthRequested',
 ]) assert.ok(adminAuthSource.includes(marker), `missing Phase 22 admin login marker: ${marker}`);
+assert.ok(
+  adminAuthSource.includes('(!adminClerkAuthRequested || adminClerkSessionVerified)'),
+  'administrator UI and automatic content repair must remain gated on the verified Clerk session when authority requires it',
+);
 
 const adminSessionInvalidationStart = adminAuthSource.indexOf('if (!authenticatedAdminId) return;');
 const adminSessionInvalidationEnd = adminAuthSource.indexOf('const hasFirebaseAuthMismatch', adminSessionInvalidationStart);
@@ -201,4 +233,4 @@ for (const legacy of [false, true]) {
 const myPage = readFileSync('src/features/members/useUserMyPageAccountController.js', 'utf8');
 assert.ok(myPage.includes("operation: 'user-profile-edit'"), 'self-profile member authority diagnostic operation must be explicit');
 
-console.log('[frontend-account-auth-smoke] PASS (staging opt-in/rollback + PostgreSQL recovery fallback + Clerk admin authority + Client Trust email-code verification + diagnostics contracts)');
+console.log('[frontend-account-auth-smoke] PASS (staging opt-in/rollback + Phase 33 plain-admin Clerk authority coupling + PostgreSQL recovery fallback + Clerk admin authority + Client Trust email-code verification + diagnostics contracts)');

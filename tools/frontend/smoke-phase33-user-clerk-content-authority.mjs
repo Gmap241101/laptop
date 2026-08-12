@@ -4,6 +4,7 @@ import {
   createClerkPostgresqlUserPrincipal,
   readUserFirebaseAuthRetirementConfig,
 } from '../../src/features/auth/userFirebaseAuthRetirement.js';
+import { readAccountAuthCutoverConfig } from '../../src/features/auth/accountAuthCutover.js';
 
 const createStorage = () => {
   const data = new Map();
@@ -28,6 +29,13 @@ assert.equal(retirement.rollbackRequested, false);
 const rollback = readUserFirebaseAuthRetirementConfig({ env, location: { search: '?userFirebaseAuth=firebase' }, storage });
 assert.equal(rollback.requested, false);
 assert.equal(rollback.rollbackRequested, true);
+const plainAdminAuthority = readAccountAuthCutoverConfig({
+  env,
+  location: { search: '' },
+  storage: createStorage(),
+});
+assert.equal(plainAdminAuthority.adminClerkAuthorityRequired, true);
+assert.equal(plainAdminAuthority.adminClerkAuthRequested, true);
 
 const principal = createClerkPostgresqlUserPrincipal({ uid: 'clerk-native:test', email: 'User@Example.com', displayName: '사용자' });
 assert.equal(principal.uid, 'clerk-native:test');
@@ -83,7 +91,7 @@ assert.ok(recoveryService.includes('readUserFirebaseAuthRetirementConfig'));
 for (const marker of ['reset_password_email_code', 'optionalFirebaseAuthorizationHeader', 'signupUserNative']) assert.ok(client.includes(marker), `client ${marker}`);
 for (const source of [termsCompliance, termsPanel]) assert.ok(source.includes('terms_consent_postgresql_bootstrap_required'), 'terms bootstrap must fail closed after user Firebase retirement');
 for (const source of [home, popupFooter, siteSettings, rentalData, termsService]) assert.ok(source.includes('authorityRequested'), 'public content must honor PostgreSQL authority without silent Firestore fallback');
-for (const marker of ['Clerk Staging Test · Phase 33', 'Phase 33 user Clerk-only auth + public content PostgreSQL authority', 'phase33-user-clerk-content-authority-20260811-2210', 'phase33-public-content-full-server-sync-hotfix-20260812-0117', 'Frontend hotfix revision:', "top: '184px'"]) assert.ok(diagnostics.includes(marker), `diagnostics ${marker}`);
+for (const marker of ['Clerk Staging Test · Phase 33', 'Phase 33 user Clerk-only auth + public content PostgreSQL authority', 'phase33-user-clerk-content-authority-20260811-2210', 'phase33-admin-clerk-authority-coupling-hotfix-20260812-1104', 'Frontend hotfix revision:', "top: '184px'"]) assert.ok(diagnostics.includes(marker), `diagnostics ${marker}`);
 assert.ok(diagnostics.includes("const PHASE32_RUNTIME_REVISION = 'phase32-new-member-runtime-authority-20260811-2108';"), 'Phase 32 diagnostics revision constant must remain defined');
 assert.equal((diagnostics.match(/PHASE32_RUNTIME_REVISION/g) || []).length, 2, 'Phase 32 diagnostics revision must have one definition and one render reference');
 assert.ok(main.includes('class DiagnosticsErrorBoundary extends React.Component'), 'diagnostics must have an isolated error boundary');
@@ -105,8 +113,9 @@ for (const marker of [
   'syncAllPolicyContentDomainsFromFirestore',
   'siteConfig.authorityRequested && siteConfig.writeThroughRequested',
   'policyConfig.authorityRequested && policyConfig.writeThroughRequested',
-  'mk_phase33_public_content_authority_repair_20260812_0117',
+  'mk_phase33_public_content_authority_repair_20260812_1104',
 ]) assert.ok(adminContentSync.includes(marker), `admin public content synchronization ${marker}`);
+assert.ok(siteCutover.includes('phase33-public-content-full-server-sync-hotfix-20260812-0117'), 'backend full-domain synchronization revision must remain unchanged');
 assert.ok(app.includes('useAdminPublicContentSynchronizationController'), 'App must run Phase 33 administrator content reconciliation');
 
 for (const marker of ['DOMAIN_CACHE_TTL_MS = 5_000', 'publishSiteContentInvalidation', 'firestore-server-backend-full-domain']) {
