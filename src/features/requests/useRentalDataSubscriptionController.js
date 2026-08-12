@@ -614,8 +614,9 @@ export default function useRentalDataSubscriptionController({
           readSource: 'postgresql-authoritative',
           error: error?.code || 'policy_content_read_failed',
         });
+        const errorCode = error?.code || error?.name || 'policy_content_read_failed';
         applyMissingConfig(
-          '공개 설정을 PostgreSQL에서 불러오지 못했습니다. Phase 34 canonical 설정 초기화 상태를 확인해 주세요.',
+          `공개 설정을 PostgreSQL에서 불러오지 못했습니다. 오류 코드: ${errorCode}`,
           error
         );
       });

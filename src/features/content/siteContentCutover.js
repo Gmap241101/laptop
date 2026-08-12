@@ -126,7 +126,7 @@ export const requestSiteContentDomain = async ({ domain, fetchImpl = fetch, conf
       ...content,
       documents: content.documents.map((item) => Object.freeze({
         ...item,
-        payload: reviveValue(item.payload || {}),
+        payload: item?.payload && typeof item.payload === 'object' ? item.payload : {},
         publicVisibility: item?.publicVisibility && typeof item.publicVisibility === 'object'
           ? Object.freeze({ ...item.publicVisibility })
           : null,

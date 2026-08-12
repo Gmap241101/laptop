@@ -115,3 +115,7 @@ The generated policy is built only from PostgreSQL state: asset categories, memb
 - Administrator asset create/edit/delete/category-save no longer depend on `firebaseAuth.currentUser` or a Firebase ID token.
 - The backend asset service is PostgreSQL-only and has no Firestore mirror client/bootstrap branch.
 - Validate normal asset CRUD, category save, and bulk upload after deployment.
+
+## Phase 34 PostgreSQL payload mapping hotfix (2026-08-12)
+
+If migration 026 and the Phase 34 backend are already applied but both user/admin UI show `공개 설정을 PostgreSQL에서 불러오지 못했습니다`, deploy the frontend mapping hotfix. The prior 1612 frontend called the removed Firestore-era `reviveValue()` helper after a successful `/api/site-content/:domain` response, causing a browser ReferenceError. No additional SQL migration is required for this hotfix. Heroku may stay on the current Phase 34 backend; Vercel must be redeployed with the new frontend. Diagnostics must show `Frontend mapping revision: phase34-postgresql-payload-mapping-hotfix-20260812-1635`.

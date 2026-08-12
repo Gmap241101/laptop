@@ -107,3 +107,14 @@ Validation:
 - server:asset-domain:smoke PASS.
 - frontend:asset-domain:smoke PASS.
 - verify:phase34 includes both asset-domain smokes.
+
+[2026-08-12 Phase 34 PostgreSQL payload mapping hotfix]
+Baseline candidate: rental-system-github-education-phase34-rental-config-postgresql-bootstrap-hotfix-20260812_1612_deployment_package.zip
+Root cause of public-config failure after migration 026: src/features/content/siteContentCutover.js called removed legacy helper reviveValue() while mapping every successful PostgreSQL site-content response. The backend could return HTTP 200 with rentalSystem/publicConfig, but the frontend threw ReferenceError before the controller could consume the payload.
+Fix:
+- Remove reviveValue() from the Phase 34 PostgreSQL JSON mapping path.
+- Preserve backend JSON payload directly; Firestore timestamp revival is retired.
+- Surface the actual frontend error code/name in the public-config toast instead of always blaming canonical bootstrap state.
+- Execute a real mocked HTTP 200 requestSiteContentDomain() mapping path in frontend:site-content:smoke, including nested rental-config payload assertions and an explicit ban on reviveValue().
+- Add frontend mapping revision phase34-postgresql-payload-mapping-hotfix-20260812-1635 to staging diagnostics.
+Validation: npm run verify:phase34 PASS; site-content frontend runtime mapping smoke PASS; external Firebase runtime references 0. build:staging prebuild PASS, bundle unavailable in assistant workspace because vite executable is not installed.

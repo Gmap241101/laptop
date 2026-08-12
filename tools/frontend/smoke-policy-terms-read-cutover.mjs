@@ -18,7 +18,7 @@ for (const marker of [
   'requestPolicyContentDomain',
   'POLICY_CONTENT_DOMAINS.RENTAL_CONFIG',
   "'rentalSystem/publicConfig'",
-  'Phase 34 canonical 설정 초기화 상태',
+  '오류 코드: ${errorCode}',
 ]) assert.ok(rentalData.includes(marker), `publicConfig PostgreSQL marker missing: ${marker}`);
 
 const termsService = readFileSync('src/features/terms/termsService.js', 'utf8');
