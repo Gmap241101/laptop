@@ -85,12 +85,13 @@ export const useDashboardSummary = ({
     setDashboardSummaryLoadErrorMessage('');
     try {
       const referenceDate = today();
-      const [dashboardPayload, pendingPayload, pendingRequestsPayload, rentalRequestsPayload, assetPayload] = await Promise.all([
+      const [dashboardPayload, pendingPayload, pendingRequestsPayload, rentalRequestsPayload, assetPayload, systemDataPayload] = await Promise.all([
         clerkStagingClient.getAdminRentalDashboard('', referenceDate),
         clerkStagingClient.getAdminMembers('', { status: 'pending', page: 1, pageSize: DASHBOARD_SUMMARY_PENDING_ACCOUNT_LIMIT }),
         clerkStagingClient.getAdminRentalRequests('', { tab: 'pending', page: 1, pageSize: DASHBOARD_ACTIVE_REQUEST_LIMIT, referenceDate }),
         clerkStagingClient.getAdminRentalRequests('', { tab: 'rental', page: 1, pageSize: DASHBOARD_ACTIVE_REQUEST_LIMIT, referenceDate }),
         clerkStagingClient.getAssetCatalog(),
+        clerkStagingClient.getAdminSystemDataOverview(),
       ]);
 
       const counts = dashboardPayload?.adminRentalDashboard?.counts || {};
@@ -99,6 +100,8 @@ export const useDashboardSummary = ({
       const rentalRequests = rentalRequestsPayload?.adminRentalRequests?.requests || [];
       const catalog = assetPayload?.assetCatalog || {};
       const assetMetrics = catalog?.metrics || {};
+      const integrity = systemDataPayload?.systemDataOverview?.integrity || {};
+      const assetReference = integrity?.assetReference || {};
       const next = {
         ...emptySummary(),
         businessDate: dashboardPayload?.adminRentalDashboard?.referenceDate || referenceDate,
@@ -129,7 +132,13 @@ export const useDashboardSummary = ({
           closed: Number(counts.closed || 0),
           returned: Number(counts.returned || 0),
         },
-        dataIssueCounts: {},
+        dataIssueCounts: {
+          missingAsset: Number(assetReference.missingRequestCount || 0),
+          orphanedAvailability: Number(assetReference.missingReservationCount || 0),
+          missingDate: 0,
+          invalidPeriod: 0,
+          missingRequester: 0,
+        },
         sourceStats: {
           authority: 'postgresql',
           rentalRequestMetricSource: 'postgresql',
@@ -137,6 +146,9 @@ export const useDashboardSummary = ({
           assetMetricSource: 'postgresql',
           assetCatalogCount: Number(assetMetrics.totalAssetCount || 0),
           assetAvailabilityCount: Array.isArray(catalog?.availability) ? catalog.availability.length : 0,
+          dataIntegritySource: 'postgresql',
+          assetReferenceRecoverableCount: Number(assetReference.recoverableRequestCount || 0),
+          assetReferenceUnrecoverableCount: Number(assetReference.unrecoverableRequestCount || 0),
         },
       };
       applySummary(next);

@@ -262,6 +262,12 @@ export const createRequestHandler = ({
     async get() { const error = new Error('System configuration service is not configured.'); error.code = 'system_config_not_configured'; throw error; },
     async put() { const error = new Error('System configuration service is not configured.'); error.code = 'system_config_not_configured'; throw error; },
   },
+  systemDataService = {
+    async getOverview() { const error = new Error('System data service is not configured.'); error.code = 'system_data_not_configured'; throw error; },
+    async checkIntegrity() { const error = new Error('System data service is not configured.'); error.code = 'system_data_not_configured'; throw error; },
+    async repairAssetReferences() { const error = new Error('System data service is not configured.'); error.code = 'system_data_not_configured'; throw error; },
+    async exportSnapshot() { const error = new Error('System data service is not configured.'); error.code = 'system_data_not_configured'; throw error; },
+  },
   userClerkAuthService = {
     async signupNative() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
     async ensureRecoveryClerkIdentity() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
@@ -403,6 +409,9 @@ export const createRequestHandler = ({
   if (!systemConfigService || typeof systemConfigService.get !== 'function' || typeof systemConfigService.put !== 'function') {
     throw new TypeError('PostgreSQL system configuration service methods are required.');
   }
+  if (!systemDataService || typeof systemDataService.getOverview !== 'function' || typeof systemDataService.checkIntegrity !== 'function' || typeof systemDataService.repairAssetReferences !== 'function' || typeof systemDataService.exportSnapshot !== 'function') {
+    throw new TypeError('PostgreSQL system data management service methods are required.');
+  }
   if (
     !rentalRestrictionService ||
     typeof rentalRestrictionService.getCurrentByFirebaseIdentity !== 'function' ||
@@ -486,6 +495,7 @@ export const createRequestHandler = ({
     adminContentAuthorityRevision: 'phase34-admin-content-postgresql-authority-20260812-1200',
     phase34RuntimeRevision: 'phase34-firebase-free-runtime-authority-20260812-1500',
     phase34PolicyBootstrapRevision: 'phase34-rental-config-postgresql-bootstrap-hotfix-20260812-1545',
+    phase34SystemDataRevision: 'phase34-postgresql-data-management-asset-integrity-20260812-1700',
     compatibility: {
       assetBoardWriteMirrorDisabled: Boolean(config.assetBoardWriteMirrorDisabled),
       retiredWriteMirrorDomains: [
@@ -707,6 +717,10 @@ export const createRequestHandler = ({
           adminBoardBootstrap: '/api/admin/boards/bootstrap',
           adminNoticeBoard: '/api/admin/boards/notice/*',
           adminFaqBoard: '/api/admin/boards/faq/*',
+          adminSystemDataOverview: '/api/admin/system-data/overview',
+          adminSystemDataIntegrity: '/api/admin/system-data/integrity',
+          adminSystemDataAssetRepair: '/api/admin/system-data/repair-asset-references',
+          adminSystemDataExport: '/api/admin/system-data/export',
         },
         headers,
       );
@@ -1430,6 +1444,53 @@ export const createRequestHandler = ({
         writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, systemConfiguration: result }, headers);
       } catch (error) {
         writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'system_config_write_failed' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/admin/system-data/overview') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      try {
+        const result = await systemDataService.getOverview(authority.adminAuth?.admin);
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, systemDataOverview: result }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: false, error: error?.code || 'system_data_overview_failed' }, headers);
+      }
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/admin/system-data/integrity') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      try {
+        const result = await systemDataService.checkIntegrity(authority.adminAuth?.admin);
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, systemDataIntegrity: result }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: false, error: error?.code || 'system_data_integrity_failed' }, headers);
+      }
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/admin/system-data/repair-asset-references') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      try {
+        const result = await systemDataService.repairAssetReferences(authority.adminAuth?.admin);
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, systemDataRepair: result }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: false, error: error?.code || 'system_data_repair_failed' }, headers);
+      }
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/admin/system-data/export') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      let body = {};
+      try { body = await readJsonBody(request); } catch (error) { writeJson(response, error.status || 400, { ...basePayload, authenticated: true, error: error.code || 'invalid_json_body' }, headers); return; }
+      try {
+        const result = await systemDataService.exportSnapshot(authority.adminAuth?.admin, body || {});
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, systemDataExport: result }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: false, error: error?.code || 'system_data_export_failed' }, headers);
       }
       return;
     }

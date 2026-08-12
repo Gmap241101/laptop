@@ -25,6 +25,7 @@ const phase31 = readFileSync('server/migrations/023_phase31_member_profile_ident
 const phase32 = readFileSync('server/migrations/024_phase32_account_lifecycle_postgresql_authority.sql', 'utf8');
 const phase34 = readFileSync('server/migrations/025_phase34_hard_firebase_retirement.sql', 'utf8');
 const phase34RentalConfigBootstrap = readFileSync('server/migrations/026_phase34_rental_config_postgresql_bootstrap.sql', 'utf8');
+const phase34AssetReferenceReconciliation = readFileSync('server/migrations/027_phase34_asset_reference_reconciliation.sql', 'utf8');
 
 if (!/value\s+JSONB\s+NOT\s+NULL/i.test(phase2)) {
   throw new Error('app_runtime_metadata.value must remain JSONB NOT NULL.');
@@ -347,4 +348,21 @@ for (const marker of [
 if (/FROM\s+firestore|firebase.*api|identitytoolkit|securetoken/i.test(phase34RentalConfigBootstrap)) {
   throw new Error('Phase 34 rental-config bootstrap must remain PostgreSQL-only.');
 }
-console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion + Phase 19 user-action lifecycle + Phase 20 asset-domain + Phase 21 member/restriction/admin identity authority + Phase 22 account recovery/admin Clerk auth + Phase 23 user Clerk auth/lifecycle + Phase 24 site content + Phase 25 policy/terms + Phase 26 notice/FAQ board authority + Phase 28 asset/board write mirror retirement + Phase 29 rental transaction PostgreSQL authority + runtime constraint hotfix + Phase 30 member status/restriction mirror retirement + Phase 31 member profile identity/recovery authority + Phase 32 account lifecycle PostgreSQL authority + Phase 34 hard Firebase retirement + PostgreSQL rental-config bootstrap are type-safe)');
+
+for (const marker of [
+  'app_rental_request_items',
+  'app_rental_asset_reservation_guards',
+  'asset_no_normalized=lower(trim(item.asset_no))',
+  "source_mode='postgresql-reference-repaired'",
+  'app_asset_catalog_syncs',
+  "'phase34_asset_reference_reconciliation'",
+]) {
+  if (!phase34AssetReferenceReconciliation.includes(marker)) {
+    throw new Error(`Phase 34 asset reference reconciliation marker is missing: ${marker}`);
+  }
+}
+if (/DELETE\s+FROM\s+app_rental_assets|TRUNCATE|DROP\s+TABLE/i.test(phase34AssetReferenceReconciliation)) {
+  throw new Error('Phase 34 asset reference reconciliation must be non-destructive to the asset catalog.');
+}
+
+console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion + Phase 19 user-action lifecycle + Phase 20 asset-domain + Phase 21 member/restriction/admin identity authority + Phase 22 account recovery/admin Clerk auth + Phase 23 user Clerk auth/lifecycle + Phase 24 site content + Phase 25 policy/terms + Phase 26 notice/FAQ board authority + Phase 28 asset/board write mirror retirement + Phase 29 rental transaction PostgreSQL authority + runtime constraint hotfix + Phase 30 member status/restriction mirror retirement + Phase 31 member profile identity/recovery authority + Phase 32 account lifecycle PostgreSQL authority + Phase 34 hard Firebase retirement + PostgreSQL rental-config bootstrap + asset reference reconciliation are type-safe)');

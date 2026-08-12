@@ -39,6 +39,8 @@ import { createBoardRepository } from './boards/board-repository.mjs';
 import { createBoardService } from './boards/board-service.mjs';
 import { createSystemConfigRepository } from './settings/system-config-repository.mjs';
 import { createSystemConfigService } from './settings/system-config-service.mjs';
+import { createSystemDataRepository } from './settings/system-data-repository.mjs';
+import { createSystemDataService } from './settings/system-data-service.mjs';
 
 const config = readServerConfig();
 const authenticateRequest = createClerkSessionAuthenticator(config);
@@ -79,6 +81,8 @@ const userClerkAuthRepository = createUserClerkAuthRepository(pool);
 const siteContentRepository = createSiteContentRepository(pool);
 const systemConfigRepository = createSystemConfigRepository(pool);
 const systemConfigService = createSystemConfigService({ repository: systemConfigRepository });
+const systemDataRepository = createSystemDataRepository(pool);
+const systemDataService = createSystemDataService({ repository: systemDataRepository });
 const siteContentService = createSiteContentService({ repository: siteContentRepository });
 const assetRepository = createAssetRepository(pool);
 const boardRepository = createBoardRepository(pool);
@@ -192,6 +196,7 @@ const server = createServer(
     boardService,
     memberAuthorityRepository,
     systemConfigService,
+    systemDataService,
   }),
 );
 

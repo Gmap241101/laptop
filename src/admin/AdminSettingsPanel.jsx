@@ -41,8 +41,8 @@ import useAdminDataMaintenanceController, {
   getAdminRole,
 } from '../features/settings/useAdminDataMaintenanceController.js';
 const DATA_MANAGEMENT_TABS = [
-  [SYSTEM_MANAGEMENT_TAB.DATA, Database, '점검·백업·복원'],
-  [SYSTEM_MANAGEMENT_TAB.RESET, Trash2, '데이터 초기화'],
+  [SYSTEM_MANAGEMENT_TAB.DATA, Database, '상태·무결성'],
+  [SYSTEM_MANAGEMENT_TAB.RESET, Download, '백업·내보내기'],
 ];
 
 const SYSTEM_INFORMATION_TABS = [
@@ -122,6 +122,14 @@ const formatTimestampValue = (value) => {
   if (typeof value === 'string') return value;
   return new Date(value).toLocaleString('ko-KR');
 };
+const formatByteSize = (value) => {
+  const bytes = Number(value || 0);
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 ** 3) return `${(bytes / (1024 ** 2)).toFixed(1)} MB`;
+  return `${(bytes / (1024 ** 3)).toFixed(2)} GB`;
+};
 function ToggleSwitch({ checked, disabled = false, onChange, label, description = '' }) {
   return (
     <div className="flex items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-4">
@@ -168,6 +176,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
     Input,
     Select,
     authenticatedAdminAccount,
+    authenticatedAdminId,
     finalizeSplitStorageMigration,
     isSplitStorageReady,
     siteSettings,
@@ -241,6 +250,12 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
 
   const {
     analyzeRestore,
+    overview,
+    overviewLoading,
+    overviewError,
+    refreshOverview,
+    repairAssetReferences,
+    repairLoading,
     backupIncludeMembers,
     backupIncludeOperations,
     backupIncludePersonalData,
@@ -609,49 +624,113 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
 
   const renderDataTab = () => (
     <div className="space-y-5">
-      <SectionCard title="PostgreSQL 저장소" description="Phase 34부터 운영 데이터는 PostgreSQL을 단일 권위 저장소로 사용합니다.">
-        <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-          <CheckCircle2 className="mt-0.5 text-emerald-600" size={18} />
-          <div>
-            <div className="text-sm font-bold text-emerald-900">PostgreSQL 단일 저장소 전환 완료</div>
-            <p className="mt-1 text-xs leading-5 text-emerald-800">회원, 대여, 자산, 게시판, 사이트 콘텐츠, 정책 및 시스템 설정은 PostgreSQL authority를 사용합니다. 과거 브라우저 저장소 전환 기능은 종료되었습니다.</p>
+      <SectionCard title="PostgreSQL 저장소 현황" description="현재 운영 DB의 실제 row 수와 schema 상태를 서버에서 직접 조회합니다.">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+            <CheckCircle2 className="mt-0.5 text-emerald-600" size={18} />
+            <div>
+              <div className="text-sm font-bold text-emerald-900">PostgreSQL 단일 authority</div>
+              <p className="mt-1 text-xs leading-5 text-emerald-800">회원·대여·자산·게시판·사이트 콘텐츠·정책·시스템 설정을 PostgreSQL에서 직접 관리합니다.</p>
+            </div>
           </div>
+          <Button type="button" variant="outline" disabled={overviewLoading} onClick={() => refreshOverview({ silent: false })}>
+            <RefreshCw size={14} className={overviewLoading ? 'animate-spin' : ''} />
+            {overviewLoading ? '새로고침 중' : 'DB 현황 새로고침'}
+          </Button>
+        </div>
+        {overviewError ? <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-800">DB 현황 조회 오류: {overviewError}</div> : null}
+        {overview ? (
+          <>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              {[
+                ['자산', overview.integrity?.counts?.assets ?? 0],
+                ['자산 카테고리', overview.integrity?.counts?.assetCategories ?? 0],
+                ['대여 신청', overview.integrity?.counts?.rentalRequests ?? 0],
+                ['회원', overview.integrity?.counts?.members ?? 0],
+                ['사이트 콘텐츠', overview.integrity?.counts?.siteContentDocuments ?? 0],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-xs text-slate-500">{label}</div>
+                  <div className="mt-1 text-2xl font-black text-slate-900">{value}</div>
+                </div>
+              ))}
+            </div>
+            <dl className="mt-4 grid gap-3 text-xs md:grid-cols-2">
+              <div className="flex justify-between gap-4 rounded-xl border border-slate-200 px-3 py-2.5"><dt className="text-slate-500">데이터베이스</dt><dd className="font-bold text-slate-800">{overview.database?.name || '-'}</dd></div>
+              <div className="flex justify-between gap-4 rounded-xl border border-slate-200 px-3 py-2.5"><dt className="text-slate-500">DB 크기</dt><dd className="font-bold text-slate-800">{formatByteSize(overview.database?.bytes)}</dd></div>
+              <div className="flex justify-between gap-4 rounded-xl border border-slate-200 px-3 py-2.5"><dt className="text-slate-500">최신 migration</dt><dd className="max-w-[70%] break-all text-right font-bold text-slate-800">{overview.database?.latestMigration || '-'}</dd></div>
+              <div className="flex justify-between gap-4 rounded-xl border border-slate-200 px-3 py-2.5"><dt className="text-slate-500">DB 기준 시각</dt><dd className="font-bold text-slate-800">{formatTimestampValue(overview.database?.time)}</dd></div>
+            </dl>
+          </>
+        ) : null}
+      </SectionCard>
+
+      <SectionCard title="자산 등록 상태" description="대여신청과 예약이 PostgreSQL 자산 기본키를 정확히 참조하는지 자산관리번호까지 교차검증합니다.">
+        {integrityResult ? (
+          <div className="grid gap-3 md:grid-cols-4">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="text-xs text-slate-500">등록 자산</div><div className="mt-1 text-2xl font-black">{integrityResult.counts?.assets ?? 0}</div></div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="text-xs text-slate-500">자산 ID 불일치 신청</div><div className="mt-1 text-2xl font-black text-amber-700">{integrityResult.assetReference?.missingRequestCount ?? 0}</div></div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="text-xs text-slate-500">자동 복구 가능</div><div className="mt-1 text-2xl font-black text-sky-700">{integrityResult.assetReference?.recoverableRequestCount ?? 0}</div></div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="text-xs text-slate-500">수동 확인 필요</div><div className="mt-1 text-2xl font-black text-rose-700">{integrityResult.assetReference?.unrecoverableRequestCount ?? 0}</div></div>
+          </div>
+        ) : <div className="text-xs text-slate-500">무결성 점검을 실행하면 실제 PostgreSQL 자산 참조 상태가 표시됩니다.</div>}
+        {integrityResult?.assetCatalog ? (
+          <div className={`mt-4 rounded-2xl border p-4 text-xs ${integrityResult.assetCatalog.metadataMatches ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+            카탈로그 메타데이터: 자산 {integrityResult.assetCatalog.metadataAssetCount ?? '-'} / 실제 {integrityResult.assetCatalog.actualAssetCount ?? '-'}, 카테고리 {integrityResult.assetCatalog.metadataCategoryCount ?? '-'} / 실제 {integrityResult.assetCatalog.actualCategoryCount ?? '-'}
+          </div>
+        ) : null}
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
+          <Button type="button" variant="outline" disabled={integrityLoading} onClick={runIntegrityCheck}><RefreshCw size={14} className={integrityLoading ? 'animate-spin' : ''} />{integrityLoading ? '점검 중' : 'SQL 무결성 점검'}</Button>
+          {isOwner && Number(integrityResult?.assetReference?.recoverableRequestCount || 0) > 0 ? (
+            <Button type="button" disabled={repairLoading} onClick={repairAssetReferences}><Database size={14} />{repairLoading ? '복구 중' : '자산 참조 자동 복구'}</Button>
+          ) : null}
         </div>
       </SectionCard>
 
-      <SectionCard title="시스템 데이터 점검" description="PostgreSQL의 참조 불일치와 누락 데이터를 확인합니다.">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-xs leading-5 text-slate-500">자산, 신청, 예약 상태, 회원, 복구키, 대여 제한의 무결성을 검사합니다.</div>
-          <Button type="button" variant="outline" disabled={integrityLoading} onClick={runIntegrityCheck}><RefreshCw size={14} className={integrityLoading ? 'animate-spin' : ''} />{integrityLoading ? '점검 중' : '시스템 데이터 점검'}</Button>
-        </div>
+      <SectionCard title="시스템 데이터 점검" description="PostgreSQL FK만으로 확인할 수 없는 역사적 식별키·예약 참조·카탈로그 메타데이터를 추가 검사합니다.">
         {integrityResult ? (
-          <div className="mt-5 space-y-3">
+          <div className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="text-xs text-slate-500">오류</div><div className="mt-1 text-2xl font-black text-rose-600">{integrityResult.errors}</div></div>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="text-xs text-slate-500">주의</div><div className="mt-1 text-2xl font-black text-amber-600">{integrityResult.warnings}</div></div>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="text-xs text-slate-500">검사 시각</div><div className="mt-1 text-sm font-bold text-slate-900">{integrityResult.checkedAtText}</div></div>
             </div>
-            {integrityResult.issues.length > 0 ? (
-              <div className="max-h-80 space-y-2 overflow-auto rounded-2xl border border-slate-200 p-3">
+            {integrityResult.issues?.length > 0 ? (
+              <div className="max-h-96 space-y-2 overflow-auto rounded-2xl border border-slate-200 p-3">
                 {integrityResult.issues.map((issue, index) => (
-                  <div key={`${issue.code}-${index}`} className={`rounded-xl border px-3 py-2 text-xs ${issue.level === 'error' ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>{issue.message}</div>
+                  <div key={`${issue.code}-${index}`} className={`rounded-xl border px-3 py-2 text-xs ${issue.level === 'error' ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                    <div className="font-bold">{issue.message}</div>
+                    <div className="mt-1 opacity-70">{issue.code}</div>
+                  </div>
                 ))}
               </div>
-            ) : <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-800">현재 확인된 데이터 이상이 없습니다.</div>}
+            ) : <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-800">현재 확인된 PostgreSQL 데이터 이상이 없습니다.</div>}
           </div>
-        ) : null}
-      </SectionCard>
-
-      <SectionCard title="백업·복원 정책" description="브라우저에서 직접 데이터베이스를 덤프하거나 초기화하는 기능은 Phase 34에서 제거되었습니다.">
-        <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-xs leading-5 text-sky-800">운영 백업·복원은 PostgreSQL 관리 계층에서 수행해야 합니다. 관리자 웹 화면은 운영 데이터베이스의 임의 전체 삭제나 클라이언트 기반 복원을 실행하지 않습니다.</div>
+        ) : (
+          <div className="flex justify-end"><Button type="button" variant="outline" disabled={integrityLoading} onClick={runIntegrityCheck}><RefreshCw size={14} />시스템 데이터 점검</Button></div>
+        )}
       </SectionCard>
     </div>
   );
 
   const renderResetTab = () => (
     <div className="space-y-5">
-      <SectionCard title="운영 데이터 초기화" description="클라이언트 기반 전체 데이터 초기화 기능은 Phase 34에서 제거되었습니다.">
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-800">운영 PostgreSQL 데이터의 삭제·복원은 배포 및 데이터베이스 관리 절차를 통해 별도로 수행해야 합니다. 관리자 웹 화면에서는 전체 데이터 삭제를 실행하지 않습니다.</div>
+      <SectionCard title="PostgreSQL 운영 데이터 백업" description="서버가 현재 PostgreSQL authority 데이터를 JSON 스냅샷으로 생성합니다. 브라우저 캐시나 Firebase 데이터는 사용하지 않습니다.">
+        <div className="space-y-3">
+          <ToggleSwitch checked={backupIncludeOperations} onChange={setBackupIncludeOperations} label="대여 운영 데이터 포함" description="대여신청, 신청 자산, 예약 guard, 처리 이벤트를 포함합니다." />
+          <ToggleSwitch checked={backupIncludeMembers} onChange={setBackupIncludeMembers} label="회원 데이터 포함" description="회원 계정, 부서·사용자 명부, 대여 제한, 약관 동의 상태를 포함합니다." />
+          <ToggleSwitch checked={backupIncludePersonalData} onChange={setBackupIncludePersonalData} label="개인정보 원문 포함" description="끄면 대여·회원 백업의 이메일·성명·연락처·과거 식별키 계열 필드를 마스킹합니다." />
+        </div>
+        {!isOwner ? (
+          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800">PostgreSQL 전체 백업 내보내기는 최고 관리자만 실행할 수 있습니다.</div>
+        ) : null}
+        <div className="mt-4 flex justify-end">
+          <Button type="button" disabled={!isOwner || backupLoading} onClick={downloadBackup}><Download size={14} />{backupLoading ? '백업 생성 중' : 'PostgreSQL 백업 JSON 다운로드'}</Button>
+        </div>
+      </SectionCard>
+
+      <SectionCard title="복원·초기화 정책" description="운영 DB 전체 덮어쓰기나 삭제는 웹 브라우저에서 실행하지 않습니다.">
+        <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-xs leading-5 text-sky-800">백업 생성과 무결성 복구는 관리자 화면에서 수행할 수 있습니다. 전체 PostgreSQL 복원·초기화는 migration/FK/감사 이력까지 영향을 주므로 배포 절차의 서버측 복원 작업으로 분리합니다.</div>
       </SectionCard>
     </div>
   );
@@ -728,7 +807,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
     if (mode === SETTINGS_MODE.DATA) {
       return {
         title: '데이터 관리',
-        description: 'PostgreSQL 데이터 건전성 점검과 운영 데이터 관리 정책을 확인합니다.',
+        description: 'PostgreSQL 실데이터 현황, 무결성, 자산 참조 복구와 백업을 관리합니다.',
       };
     }
     if (mode === SETTINGS_MODE.INFO) {

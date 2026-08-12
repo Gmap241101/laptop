@@ -1041,6 +1041,34 @@ export const requestSystemConfigurationWrite = async ({ clerk, apiBaseUrl, fetch
   return payload;
 };
 
+export const requestAdminSystemDataOverview = async ({ clerk, apiBaseUrl, fetchImpl }) => {
+  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: '/api/admin/system-data/overview', method: 'GET' });
+  if (!response.ok) { const error = new Error(`System data overview failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
+  if (!payload?.authenticated || !payload?.authorized || payload?.systemDataOverview?.authority !== 'postgresql') throw new Error('Backend returned an invalid PostgreSQL system data overview.');
+  return payload;
+};
+
+export const requestAdminSystemDataIntegrity = async ({ clerk, apiBaseUrl, fetchImpl }) => {
+  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: '/api/admin/system-data/integrity', method: 'POST' });
+  if (!response.ok) { const error = new Error(`System data integrity check failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
+  if (!payload?.authenticated || !payload?.authorized || payload?.systemDataIntegrity?.authority !== 'postgresql') throw new Error('Backend returned an invalid PostgreSQL integrity result.');
+  return payload;
+};
+
+export const requestAdminSystemDataAssetRepair = async ({ clerk, apiBaseUrl, fetchImpl }) => {
+  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: '/api/admin/system-data/repair-asset-references', method: 'POST' });
+  if (!response.ok) { const error = new Error(`System data asset repair failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
+  if (!payload?.authenticated || !payload?.authorized || payload?.systemDataRepair?.authority !== 'postgresql') throw new Error('Backend returned an invalid PostgreSQL asset repair result.');
+  return payload;
+};
+
+export const requestAdminSystemDataExport = async ({ clerk, apiBaseUrl, fetchImpl, options = {} }) => {
+  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: '/api/admin/system-data/export', method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(options || {}) });
+  if (!response.ok) { const error = new Error(`System data export failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
+  if (!payload?.authenticated || !payload?.authorized || payload?.systemDataExport?.authority !== 'postgresql') throw new Error('Backend returned an invalid PostgreSQL export payload.');
+  return payload;
+};
+
 export const requestAssetCatalog = async ({ apiBaseUrl, fetchImpl }) => {
   const response = await fetchImpl(`${apiBaseUrl}/api/assets/catalog`, {
     method: 'GET', headers: { Accept: 'application/json' }, cache: 'no-store',
@@ -1768,6 +1796,22 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async saveAdminSystemConfiguration(key, payload) {
       const clerk = await initialize();
       return requestSystemConfigurationWrite({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, key, payload });
+    },
+    async getAdminSystemDataOverview() {
+      const clerk = await initialize();
+      return requestAdminSystemDataOverview({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
+    },
+    async runAdminSystemDataIntegrity() {
+      const clerk = await initialize();
+      return requestAdminSystemDataIntegrity({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
+    },
+    async repairAdminSystemDataAssetReferences() {
+      const clerk = await initialize();
+      return requestAdminSystemDataAssetRepair({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
+    },
+    async exportAdminSystemData(options = {}) {
+      const clerk = await initialize();
+      return requestAdminSystemDataExport({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, options });
     },
     async getAssetCatalog() {
       return requestAssetCatalog({ apiBaseUrl: config.apiBaseUrl, fetchImpl });
