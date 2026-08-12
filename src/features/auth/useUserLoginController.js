@@ -1,12 +1,12 @@
 import { useCallback, useState } from 'react';
-import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { signInWithEmailAndPassword, signOut } from '../../platform/retiredLegacyDataCompat.js';
+import { doc, getDoc } from '../../platform/retiredLegacyDataCompat.js';
 
 import {
   USER_ACCOUNTS_COLLECTION_NAME,
   db,
   firebaseAuth,
-} from '../../firebase.js';
+} from '../../platform/appDataRefs.js';
 import {
   PROFILE_REQUIRED_REASON,
   USER_PROFILE_STATUS,

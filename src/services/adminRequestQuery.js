@@ -1,4 +1,4 @@
-import { orderBy, where } from 'firebase/firestore';
+import { orderBy, where } from '../platform/retiredLegacyDataCompat.js';
 import {
   ADMIN_REQUEST_QUICK_FILTER,
   ADMIN_REQUEST_TAB,

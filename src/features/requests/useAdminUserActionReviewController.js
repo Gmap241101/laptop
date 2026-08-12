@@ -3,7 +3,7 @@ import {
   doc,
   runTransaction,
   serverTimestamp,
-} from 'firebase/firestore';
+} from '../../platform/retiredLegacyDataCompat.js';
 
 import {
   PUBLIC_CONFIG_DOC_REF,
@@ -14,7 +14,7 @@ import {
   RENTAL_RESTRICTIONS_COLLECTION_REF,
   db,
   firebaseAuth,
-} from '../../firebase.js';
+} from '../../platform/appDataRefs.js';
 import {
   RENTAL_BLOCKING_REQUEST_STATUSES,
   RENTAL_EXTENSION_APPROVAL_MODE,

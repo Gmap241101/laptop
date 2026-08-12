@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getDoc, getDocs, onSnapshot, query as firestoreQuery, where } from 'firebase/firestore';
+import { getDoc, getDocs, onSnapshot, query as firestoreQuery, where } from '../../platform/retiredLegacyDataCompat.js';
 
 import {
   PUBLIC_ASSET_CATALOG_DOC_REF,
@@ -8,7 +8,7 @@ import {
   RENTAL_AVAILABILITY_COLLECTION_REF,
   RENTAL_BORROWERS_COLLECTION_REF,
   RENTAL_REQUESTS_COLLECTION_REF,
-} from '../../firebase.js';
+} from '../../platform/appDataRefs.js';
 import { publishRentalRequestReadObservation } from './rentalRequestReadParity.js';
 import {
   chooseRentalRequestReadSource,
@@ -37,7 +37,6 @@ import {
   publishPolicyContentObservation,
   readPolicyContentCutoverConfig,
   requestPolicyContentDomain,
-  syncPolicyContentDomainFromFirestore,
 } from '../content/policyContentCutover.js';
 import {
   isLegacyFirestoreReadFallbackAllowed,
@@ -654,18 +653,6 @@ export default function useRentalDataSubscriptionController({
         }
 
         applyConfigData(snapshot.data(), 'firestore-onSnapshot');
-        if (
-          policyContentConfig.writeThroughRequested &&
-          view === 'admin' &&
-          currentAuthAdminAccount?.id
-        ) {
-          void syncPolicyContentDomainFromFirestore({
-            domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
-            config: policyContentConfig,
-          }).catch((error) => {
-            console.error('Public config PostgreSQL write-through error:', error);
-          });
-        }
       },
       (error) => {
         applyMissingConfig(
@@ -794,10 +781,8 @@ export default function useRentalDataSubscriptionController({
           let payload = null;
           let bootstrapped = false;
           if (shouldLoadAdminAssets) {
-            const firebaseUser = (await import('../../firebase.js')).firebaseAuth.currentUser;
-            if (!firebaseUser) throw new Error('firebase-admin-session-missing');
-            const firebaseIdToken = await firebaseUser.getIdToken();
-            const sessionKey = `mk_asset_postgres_bootstrap:${firebaseUser.uid}`;
+            const firebaseIdToken = '';
+            const sessionKey = 'mk_asset_postgres_bootstrap:clerk-postgresql-admin';
             let shouldBootstrap = true;
             try { shouldBootstrap = globalThis.sessionStorage?.getItem?.(sessionKey) !== '1'; } catch { /* no-op */ }
             if (shouldBootstrap) {

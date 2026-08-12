@@ -1,14 +1,4 @@
-# Phase 34 Staging frontend — Firebase normal-runtime retirement
-VITE_CLERK_STAGING_ENABLED=true
-VITE_FIREBASE_RUNTIME_DISABLED=true
-VITE_ADMIN_CONTENT_POSTGRES_AUTHORITY_ENABLED=true
-
-# Preserve the Phase 32/33 PASS variables. The global flag also forces these
-# authorities at runtime, but keeping the explicit values makes rollback clear.
-VITE_USER_FIREBASE_AUTH_COMPATIBILITY_DISABLED=true
-VITE_SITE_CONTENT_POSTGRES_AUTHORITY_ENABLED=true
-VITE_POLICY_CONTENT_POSTGRES_AUTHORITY_ENABLED=true
-VITE_ACCOUNT_LIFECYCLE_POSTGRES_AUTHORITY_ENABLED=true
-
-# Deliberate browser-session diagnostic rollback only:
-# ?firebaseRuntime=compatibility
+# Phase 34 Firebase-free runtime
+# No VITE_FIREBASE_* / VITE_FIRESTORE_* runtime variable is required by the hard-retired source.
+# Keep VITE_API_URL, VITE_CLERK_PUBLISHABLE_KEY and VITE_CLERK_STAGING_ENABLED for Staging.
+# Legacy Phase cutover variables may be removed after Staging validation because Phase 34 hard-wires PostgreSQL/Clerk authority.

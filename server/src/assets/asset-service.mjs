@@ -104,15 +104,17 @@ const mapRepositoryError = (error) => {
   });
 };
 
-export const createAssetService = ({ repository, firestoreClient, writeMirrorEnabled = true }) => {
-  if (!repository || !firestoreClient) throw new TypeError('Asset repository and Firestore client are required.');
+export const createAssetService = ({ repository, firestoreClient = null, writeMirrorEnabled = true }) => {
+  if (!repository) throw new TypeError('Asset repository is required.');
   const mirrorEnabled = Boolean(writeMirrorEnabled);
+  if (mirrorEnabled && !firestoreClient) throw new TypeError('Legacy asset mirror client is required only when the retired mirror is explicitly enabled.');
   const mirrorStatus = mirrorEnabled ? 'synced' : 'retired';
   const noMirror = async () => Object.freeze({ retired: true, source: 'postgresql-only' });
 
-  const verifyAdmin = async (firebaseIdentity) => firebaseIdentity?.source === 'clerk-postgresql'
-    ? Object.freeze({ uid: firebaseIdentity.uid, role: 'admin', source: 'postgresql-admin-registry' })
-    : firestoreClient.verifyAdmin({ firebaseUid: firebaseIdentity.uid, firebaseIdToken: firebaseIdentity.idToken });
+  const verifyAdmin = async (identity) => {
+    if (identity?.source !== 'clerk-postgresql') throw serviceError('admin_postgresql_identity_required', 'Clerk/PostgreSQL administrator identity is required.', 401);
+    return Object.freeze({ uid: identity.uid, role: 'admin', source: 'postgresql-admin-registry' });
+  };
 
   const getCatalog = async () => {
     const catalog = await repository.getCatalog(koreaToday());

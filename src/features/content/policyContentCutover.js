@@ -2,12 +2,8 @@ import {
   readSiteContentCutoverConfig,
   replaceSiteContentDomainInPostgresql,
   requestSiteContentDomain,
-  syncSiteContentDomainFromFirestore,
 } from './siteContentCutover.js';
-import { readFirebaseRuntimeRetirementConfig } from '../auth/firebaseRuntimeRetirement.js';
 
-const READ_SESSION_KEY = 'mk_policy_content_postgres_read';
-const WRITE_SESSION_KEY = 'mk_policy_content_postgres_write_through';
 const EVENT_NAME = 'rental:policy-content-cutover';
 const trim = (value) => (typeof value === 'string' ? value.trim() : String(value ?? '').trim());
 const bool = (value) => trim(value).toLowerCase() === 'true';
@@ -29,62 +25,21 @@ export const POLICY_CONTENT_DOMAINS = Object.freeze({
   TERMS: 'terms',
 });
 
-export const readPolicyContentCutoverConfig = ({
-  env = import.meta.env,
-  location = globalThis.location,
-  storage = globalThis.sessionStorage,
-} = {}) => {
-  const adminContentConfig = readSiteContentCutoverConfig({ env, location, storage });
-  const staging = bool(env?.VITE_CLERK_STAGING_ENABLED);
-  const firebaseRuntimeRetired = readFirebaseRuntimeRetirementConfig({ env, location }).requested;
-  const authorityEnabled = staging && (bool(env?.VITE_POLICY_CONTENT_POSTGRES_AUTHORITY_ENABLED) || firebaseRuntimeRetired);
-  const readEnabled = staging && (
-    bool(env?.VITE_POLICY_CONTENT_POSTGRES_READ_ENABLED) || authorityEnabled
-  );
-  // Phase 33 public PostgreSQL authority requires administrator policy edits to
-  // write through as well. Do not let a missing legacy query/session latch leave
-  // Firestore management ahead of the PostgreSQL public source.
-  const writeThroughEnabled = staging && (
-    bool(env?.VITE_POLICY_CONTENT_WRITE_THROUGH_ENABLED) || authorityEnabled
-  );
-  const params = location ? new URLSearchParams(location.search || '') : new URLSearchParams();
-  const queryRead = readEnabled && params.get('policyContent') === 'postgres';
-  const queryRollback = authorityEnabled && params.get('policyContent') === 'firestore';
-  const queryWrite = writeThroughEnabled && params.get('policyContentWrite') === 'postgres';
-  const queryWriteRollback = authorityEnabled && params.get('policyContentWrite') === 'firestore';
-  let sessionRead = false;
-  let sessionWrite = false;
-  try {
-    if (params.get('policyContent') === 'firestore') storage?.removeItem?.(READ_SESSION_KEY);
-    else if (queryRead) storage?.setItem?.(READ_SESSION_KEY, '1');
-    if (params.get('policyContentWrite') === 'firestore') storage?.removeItem?.(WRITE_SESSION_KEY);
-    else if (queryWrite) storage?.setItem?.(WRITE_SESSION_KEY, '1');
-    sessionRead = storage?.getItem?.(READ_SESSION_KEY) === '1';
-    sessionWrite = storage?.getItem?.(WRITE_SESSION_KEY) === '1';
-  } catch {
-    sessionRead = false;
-    sessionWrite = false;
-  }
+export const readPolicyContentCutoverConfig = ({ env = import.meta.env } = {}) => {
+  const adminContentConfig = readSiteContentCutoverConfig({ env });
+  const apiBaseUrl = normalizeApiBaseUrl(env?.VITE_API_URL);
+  const authorityEnabled = Boolean(apiBaseUrl);
   return Object.freeze({
     authorityEnabled,
-    authorityRequested: Boolean(authorityEnabled && !queryRollback),
+    authorityRequested: authorityEnabled,
     adminAuthorityEnabled: adminContentConfig.adminAuthorityEnabled,
     adminAuthorityRequested: adminContentConfig.adminAuthorityRequested,
-    fallbackAllowed: !authorityEnabled || queryRollback,
-    readEnabled,
-    writeThroughEnabled,
-    readRequested: Boolean(
-      (authorityEnabled && !queryRollback) ||
-      (readEnabled && (queryRead || sessionRead))
-    ),
-    writeThroughRequested: Boolean(
-      writeThroughEnabled && (
-        (authorityEnabled && !queryRollback && !queryWriteRollback) ||
-        queryWrite ||
-        sessionWrite
-      )
-    ),
-    apiBaseUrl: normalizeApiBaseUrl(env?.VITE_API_URL),
+    fallbackAllowed: false,
+    readEnabled: authorityEnabled,
+    writeThroughEnabled: authorityEnabled,
+    readRequested: authorityEnabled,
+    writeThroughRequested: authorityEnabled,
+    apiBaseUrl,
   });
 };
 
@@ -132,33 +87,3 @@ export const replacePolicyContentDomainInPostgresql = async ({
   config,
   observationPublisher: publishPolicyContentObservation,
 });
-
-export const syncPolicyContentDomainFromFirestore = async ({
-  domain,
-  fetchImpl = fetch,
-  config = readPolicyContentCutoverConfig(),
-} = {}) => syncSiteContentDomainFromFirestore({
-  domain,
-  fetchImpl,
-  config,
-  observationPublisher: publishPolicyContentObservation,
-});
-
-export const syncAllPolicyContentDomainsFromFirestore = async ({
-  config = readPolicyContentCutoverConfig(),
-} = {}) => {
-  const results = [];
-  for (const domain of Object.values(POLICY_CONTENT_DOMAINS)) {
-    results.push(await syncPolicyContentDomainFromFirestore({ domain, config }));
-  }
-  publishPolicyContentObservation({
-    readRequested: config.readRequested,
-    writeThroughRequested: config.writeThroughRequested,
-    domain: 'all',
-    writeSource: 'firestore-server-backend',
-    postgresSync: 'synced',
-    synchronizedDomains: Object.values(POLICY_CONTENT_DOMAINS),
-    error: null,
-  });
-  return results;
-};

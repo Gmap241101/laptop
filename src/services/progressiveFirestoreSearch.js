@@ -3,7 +3,7 @@ import {
   limit as firestoreLimit,
   query as firestoreQuery,
   startAfter,
-} from 'firebase/firestore';
+} from '../platform/retiredLegacyDataCompat.js';
 
 export const DEFAULT_PROGRESSIVE_SEARCH_BATCH_SIZE = 100;
 

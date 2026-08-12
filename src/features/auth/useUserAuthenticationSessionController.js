@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { signOut } from 'firebase/auth';
+import { signOut } from '../../platform/retiredLegacyDataCompat.js';
 
 import { USER_PROFILE_STATUS } from '../../constants/memberConstants.js';
-import { firebaseAuth } from '../../firebase.js';
+import { firebaseAuth } from '../../platform/appDataRefs.js';
 import {
   clearUserLoginReturnTarget,
   replaceAppPath,

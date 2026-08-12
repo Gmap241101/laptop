@@ -672,7 +672,7 @@ export default function AdminDashboardPanel({ ctx }) {
             <div>
               <div className="font-bold">
                 {dashboardSummaryLoadErrorMessage.includes('사용량 한도')
-                  ? 'Firestore 사용량 한도에 도달했습니다.'
+                  ? '관리자 대시보드 데이터를 PostgreSQL에서 불러오지 못했습니다.'
                   : '대시보드 요약을 갱신하지 못했습니다.'}
               </div>
               <div className="mt-1">{dashboardSummaryLoadErrorMessage}</div>

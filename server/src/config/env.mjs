@@ -127,12 +127,6 @@ const readClerkSecretKey = (appEnv) => {
 };
 
 
-const readFirebaseProjectId = (appEnv, firebaseRuntimeDisabled = false) => {
-  const raw = process.env.FIREBASE_PROJECT_ID?.trim();
-  if (raw) return raw;
-  if (firebaseRuntimeDisabled || appEnv === 'local' || appEnv === 'development' || appEnv === 'test') return null;
-  throw new Error('FIREBASE_PROJECT_ID is required outside local development in Phase 6.');
-};
 
 const readClerkApiUrl = () => {
   const raw = (process.env.CLERK_API_URL || DEFAULT_CLERK_API_URL).trim();
@@ -153,7 +147,8 @@ export const readServerConfig = () => {
   const clerkAuthorizedParties = clerkJwtKey
     ? readOrigins('CLERK_AUTHORIZED_PARTIES', appEnv, true)
     : [];
-  const firebaseRuntimeDisabled = readBoolean('FIREBASE_RUNTIME_DISABLED', false);
+  // Phase 34 hard retirement: Firebase is no longer a runtime dependency.
+  const firebaseRuntimeDisabled = true;
 
   return Object.freeze({
     appEnv,
@@ -188,15 +183,6 @@ export const readServerConfig = () => {
       max: 30000,
     }),
     firebaseRuntimeDisabled,
-    firebaseProjectId: readFirebaseProjectId(appEnv, firebaseRuntimeDisabled),
-    firebaseCertTimeoutMs: readInteger('FIREBASE_CERT_TIMEOUT_MS', DEFAULT_FIREBASE_CERT_TIMEOUT_MS, {
-      min: 1000,
-      max: 30000,
-    }),
-    firestoreRestTimeoutMs: readInteger('FIRESTORE_REST_TIMEOUT_MS', DEFAULT_FIRESTORE_REST_TIMEOUT_MS, {
-      min: 1000,
-      max: 30000,
-    }),
     assetBoardWriteMirrorDisabled: firebaseRuntimeDisabled || readBoolean('FIRESTORE_ASSET_BOARD_WRITE_MIRROR_DISABLED', false),
     rentalRequestWriteMirrorDisabled: firebaseRuntimeDisabled || readBoolean('FIRESTORE_RENTAL_REQUEST_WRITE_MIRROR_DISABLED', false),
     memberStatusRestrictionWriteMirrorDisabled: firebaseRuntimeDisabled || readBoolean('FIRESTORE_MEMBER_STATUS_RESTRICTION_WRITE_MIRROR_DISABLED', false),

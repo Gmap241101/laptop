@@ -32,7 +32,7 @@ export const createUserClerkAuthService = ({
   clerkClient,
   userRepository,
   firebaseLinkRepository,
-  firestoreClient,
+  firestoreClient = null,
   memberRepository = null,
   adminIdentityRepository = null,
   accountLifecycleService = null,
@@ -43,7 +43,7 @@ export const createUserClerkAuthService = ({
   if (!clerkClient || typeof clerkClient.getUser !== 'function' || typeof clerkClient.findUserByEmail !== 'function' || typeof clerkClient.createUser !== 'function' || typeof clerkClient.updateUser !== 'function' || typeof clerkClient.updateUserMetadata !== 'function' || typeof clerkClient.verifyPassword !== 'function' || typeof clerkClient.deleteUser !== 'function') throw new TypeError('Clerk Backend API lifecycle methods are required.');
   if (!userRepository || typeof userRepository.upsertFromClerk !== 'function') throw new TypeError('User repository is required.');
   if (!firebaseLinkRepository || typeof firebaseLinkRepository.link !== 'function') throw new TypeError('Firebase link repository is required.');
-  if (!firestoreClient || typeof firestoreClient.getUserAccount !== 'function' || typeof firestoreClient.getAdminAccount !== 'function') throw new TypeError('Firestore member compatibility client is required.');
+  if (!accountLifecycleCompatibilityDisabled && (!firestoreClient || typeof firestoreClient.getUserAccount !== 'function' || typeof firestoreClient.getAdminAccount !== 'function')) throw new TypeError('Legacy member migration client is required only while account lifecycle compatibility is enabled.');
   if (accountLifecycleCompatibilityDisabled && (!adminIdentityRepository || typeof adminIdentityRepository.findByFirebaseUid !== 'function' || typeof adminIdentityRepository.findByClerkUserId !== 'function')) {
     throw new TypeError('PostgreSQL administrator identity repository is required when Phase 32 account lifecycle authority is enabled.');
   }
@@ -60,6 +60,7 @@ export const createUserClerkAuthService = ({
   };
 
   const readFirebaseUser = async (firebaseIdentity) => {
+    if (accountLifecycleCompatibilityDisabled || userFirebaseAuthCompatibilityDisabled) throw serviceError('legacy_user_migration_retired', 'Legacy Firebase user migration is retired.', 410);
     const uid = trim(firebaseIdentity?.uid);
     if (!uid || !firebaseIdentity?.idToken) throw serviceError('user_firebase_identity_missing', 'Verified Firebase identity is required.', 401);
     const admin = await firestoreClient.getAdminAccount({ firebaseUid: uid, firebaseIdToken: firebaseIdentity.idToken });

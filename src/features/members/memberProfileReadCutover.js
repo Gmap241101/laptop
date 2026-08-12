@@ -81,74 +81,23 @@ export const readMemberProfileCutoverConfig = ({
 export const shouldUseMemberProfileFirestoreWatcher = (config) =>
   !Boolean(config?.firestoreWatcherDisabled);
 
-export const requestMemberProfileCutoverCandidate = async ({ firebaseUser, apiBaseUrl, fetchImpl = fetch }) => {
-  if (!apiBaseUrl) throw new Error('VITE_API_URL is required for the Phase 9 member read cutover.');
-  const userFirebaseRetirement = readUserFirebaseAuthRetirementConfig();
-  let headers = { Accept: 'application/json' };
-  if (userFirebaseRetirement.requested) {
-    const clerk = await clerkStagingClient.initialize();
-    const token = await clerk?.session?.getToken?.();
-    if (!token) throw new Error('Clerk sign-in is required for the PostgreSQL member read cutover.');
-    headers = { ...headers, Authorization: `Bearer ${token}` };
-  } else {
-    if (!firebaseUser || typeof firebaseUser.getIdToken !== 'function') {
-      throw new Error('Firebase sign-in is required for the Phase 9 member read cutover.');
-    }
-    const firebaseIdToken = await firebaseUser.getIdToken();
-    headers = { ...headers, 'X-Firebase-Authorization': `Bearer ${firebaseIdToken}` };
-  }
-  const response = await fetchImpl(`${apiBaseUrl}/api/legacy/member-profile-cutover-candidate`, {
-    method: 'GET',
-    headers,
-    cache: 'no-store',
-  });
-  let payload = null;
-  try { payload = await response.json(); } catch { payload = null; }
-  if (!response.ok) {
-    const error = new Error(`PostgreSQL member cutover candidate failed with HTTP ${response.status}.`);
-    error.status = response.status;
-    error.code = payload?.error || 'member_read_cutover_candidate_failed';
-    throw error;
-  }
-  if (!['postgresql-shadow', 'postgresql-authoritative'].includes(payload?.readCandidate?.source) || !payload?.readCandidate?.profile?.uid) {
-    throw new Error('Backend returned an invalid PostgreSQL member read candidate.');
-  }
-  return Object.freeze({
-    ...payload.readCandidate,
-    profile: normalizeMemberProfileRead(payload.readCandidate.profile),
-  });
+export const requestMemberProfileCutoverCandidate = async ({ apiBaseUrl, fetchImpl = fetch }) => {
+  if (!apiBaseUrl) throw new Error('VITE_API_URL is required for the PostgreSQL member read cutover.');
+  const clerk = await clerkStagingClient.initialize();
+  const token = await clerk?.session?.getToken?.();
+  if (!token) throw new Error('Clerk sign-in is required for the PostgreSQL member read cutover.');
+  const response = await fetchImpl(`${apiBaseUrl}/api/legacy/member-profile-cutover-candidate`, { method: 'GET', headers: { Accept: 'application/json', Authorization: `Bearer ${token}` }, cache: 'no-store' });
+  let payload = null; try { payload = await response.json(); } catch { payload = null; }
+  if (!response.ok) { const error = new Error(`PostgreSQL member cutover candidate failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||'member_read_cutover_candidate_failed'; throw error; }
+  if (!['postgresql-shadow','postgresql-authoritative'].includes(payload?.readCandidate?.source) || !payload?.readCandidate?.profile?.uid) throw new Error('Backend returned an invalid PostgreSQL member read candidate.');
+  return Object.freeze({ ...payload.readCandidate, profile: normalizeMemberProfileRead(payload.readCandidate.profile) });
 };
 
-
-export const requestMemberProfileFirestoreFallback = async ({ firebaseUser, apiBaseUrl, fetchImpl = fetch }) => {
-  if (!firebaseUser || typeof firebaseUser.getIdToken !== 'function') {
-    throw new Error('Firebase sign-in is required for the Phase 10 one-time Firestore fallback.');
-  }
-  if (!apiBaseUrl) throw new Error('VITE_API_URL is required for the Phase 10 one-time Firestore fallback.');
-  const firebaseIdToken = await firebaseUser.getIdToken();
-  const response = await fetchImpl(`${apiBaseUrl}/api/legacy/member-profile-firestore-fallback`, {
-    method: 'GET',
-    headers: {
-      Accept: 'application/json',
-      'X-Firebase-Authorization': `Bearer ${firebaseIdToken}`,
-    },
-    cache: 'no-store',
-  });
-  let payload = null;
-  try { payload = await response.json(); } catch { payload = null; }
-  if (!response.ok) {
-    const error = new Error(`One-time Firestore member fallback failed with HTTP ${response.status}.`);
-    error.status = response.status;
-    error.code = payload?.error || 'member_profile_firestore_fallback_failed';
-    throw error;
-  }
-  if (payload?.readFallback?.source !== 'firestore-one-time-fallback' || !payload?.readFallback?.profile?.uid) {
-    throw new Error('Backend returned an invalid Phase 10 Firestore fallback profile.');
-  }
-  return Object.freeze({
-    ...payload.readFallback,
-    profile: normalizeMemberProfileRead(payload.readFallback.profile),
-  });
+export const requestMemberProfileFirestoreFallback = async () => {
+  const error = new Error('Firestore member fallback was removed in Phase 34.');
+  error.code = 'firebase_runtime_removed';
+  error.status = 410;
+  throw error;
 };
 
 export const loadMemberProfileWithoutFirestoreWatcher = async ({

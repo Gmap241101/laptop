@@ -1,20 +1,7 @@
 import { useState } from 'react';
 import {
-  doc,
-  serverTimestamp,
-  updateDoc,
-  writeBatch,
-} from 'firebase/firestore';
-
-import {
-  POPUP_POSTS_COLLECTION_REF,
-  db,
-} from '../../firebase.js';
-import {
   createSiteContentDocumentId,
-  readSiteContentCutoverConfig,
   replaceSiteContentDomainInPostgresql,
-  syncSiteContentDomainFromFirestore,
   SITE_CONTENT_DOMAINS,
 } from '../content/siteContentCutover.js';
 import {
@@ -207,14 +194,10 @@ export default function useAdminPopupPostController({
       return;
     }
 
-    const popupDocRef = isEditing
-      ? doc(POPUP_POSTS_COLLECTION_REF, editingPost.id)
-      : doc(POPUP_POSTS_COLLECTION_REF);
 
     setPopupPostSaving(true);
 
     try {
-      if (readSiteContentCutoverConfig().adminAuthorityRequested) {
         const popupId = editingPost?.id || createSiteContentDocumentId();
         const updatedAt = new Date();
         const orderedPosts = isEditing ? [...popupPosts] : [...popupPosts, { id: popupId }];
@@ -244,54 +227,6 @@ export default function useAdminPopupPostController({
         setPopupPostDialog(null);
         setPopupPostForm(createDefaultPopupPostForm());
         return;
-      }
-      const orderedPosts = isEditing
-        ? [...popupPosts]
-        : [...popupPosts, { id: popupDocRef.id }];
-      const batch = writeBatch(db);
-
-      orderedPosts.forEach((post, index) => {
-        const sortOrder = index + 1;
-        if (post.id === popupDocRef.id) {
-          batch.set(popupDocRef, {
-            id: popupDocRef.id,
-            enabled: Boolean(popupPostForm.enabled),
-            sortOrder,
-            title,
-            subtitle,
-            content: contentText,
-            contentText,
-            contentHtml,
-            contentFormat: 'rich-html-v1',
-            targetPages,
-            startAt,
-            endAt: isIndefinite ? null : endAt,
-            isIndefinite,
-            authorUid: editingPost?.authorUid || auditActor.uid,
-            authorName: editingPost?.authorName || auditActor.name,
-            createdAt: editingPost?.createdAt || serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-          return;
-        }
-
-        if (Number(post.sortOrder) !== sortOrder) {
-          batch.update(doc(POPUP_POSTS_COLLECTION_REF, post.id), {
-            sortOrder,
-            updatedAt: serverTimestamp(),
-          });
-        }
-      });
-
-      await batch.commit();
-      await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.POPUP });
-
-      triggerToast(
-        `팝업을 ${isEditing ? '수정' : '등록'}했습니다.`,
-        'success'
-      );
-      setPopupPostDialog(null);
-      setPopupPostForm(createDefaultPopupPostForm());
     } catch (error) {
       console.error('Popup post save error:', error);
       triggerToast(
@@ -313,22 +248,11 @@ export default function useAdminPopupPostController({
 
     setPopupPostToggleSavingId(post.id);
     try {
-      if (readSiteContentCutoverConfig().adminAuthorityRequested) {
         await replacePopupDomain(popupPosts.map((item) => item.id === post.id
           ? { ...item, enabled: !Boolean(item.enabled), updatedAt: new Date() }
           : item));
         triggerToast('팝업 상태를 PostgreSQL에서 변경했습니다.', 'success');
         return;
-      }
-      await updateDoc(doc(POPUP_POSTS_COLLECTION_REF, post.id), {
-        enabled: !Boolean(post.enabled),
-        updatedAt: serverTimestamp(),
-      });
-      await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.POPUP });
-      triggerToast(
-        `팝업을 ${post.enabled ? '사용안함' : '사용함'}으로 변경했습니다.`,
-        'success'
-      );
     } catch (error) {
       console.error('Popup enabled toggle error:', error);
       triggerToast(
@@ -367,21 +291,8 @@ export default function useAdminPopupPostController({
     ];
 
     try {
-      if (readSiteContentCutoverConfig().adminAuthorityRequested) {
         await replacePopupDomain(reordered.map((post, index) => ({ ...post, sortOrder: index + 1, updatedAt: new Date() })));
         return;
-      }
-      const batch = writeBatch(db);
-      reordered.forEach((post, index) => {
-        const sortOrder = index + 1;
-        if (Number(post.sortOrder) === sortOrder) return;
-        batch.update(doc(POPUP_POSTS_COLLECTION_REF, post.id), {
-          sortOrder,
-          updatedAt: serverTimestamp(),
-        });
-      });
-      await batch.commit();
-      await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.POPUP });
     } catch (error) {
       console.error('Popup order update error:', error);
       triggerToast('팝업 순서 변경에 실패했습니다.', 'error');
@@ -402,7 +313,6 @@ export default function useAdminPopupPostController({
       async () => {
         setPopupPostDeletingId(post.id);
         try {
-          if (readSiteContentCutoverConfig().adminAuthorityRequested) {
             const remainingPosts = popupPosts.filter((item) => item.id !== post.id)
               .map((item, index) => ({ ...item, sortOrder: index + 1, updatedAt: new Date() }));
             await replacePopupDomain(remainingPosts);
@@ -412,27 +322,6 @@ export default function useAdminPopupPostController({
             }
             triggerToast('팝업을 PostgreSQL에서 삭제했습니다.', 'success');
             return;
-          }
-          const remainingPosts = popupPosts.filter(
-            (item) => item.id !== post.id
-          );
-          const batch = writeBatch(db);
-          batch.delete(doc(POPUP_POSTS_COLLECTION_REF, post.id));
-          remainingPosts.forEach((item, index) => {
-            const sortOrder = index + 1;
-            if (Number(item.sortOrder) === sortOrder) return;
-            batch.update(doc(POPUP_POSTS_COLLECTION_REF, item.id), {
-              sortOrder,
-              updatedAt: serverTimestamp(),
-            });
-          });
-          await batch.commit();
-      await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.POPUP });
-          if (popupPostDialog?.postId === post.id) {
-            setPopupPostDialog(null);
-            setPopupPostForm(createDefaultPopupPostForm());
-          }
-          triggerToast('팝업을 삭제했습니다.', 'success');
         } catch (error) {
           console.error('Popup post delete error:', error);
           triggerToast(

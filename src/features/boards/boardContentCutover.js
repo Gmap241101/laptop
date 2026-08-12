@@ -1,4 +1,4 @@
-import { firebaseAuth } from '../../firebase.js';
+import { firebaseAuth } from '../../platform/appDataRefs.js';
 import { readFirebaseRuntimeRetirementConfig } from '../auth/firebaseRuntimeRetirement.js';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 
@@ -151,24 +151,20 @@ const getAdminTokens = async () => {
   const clerk = await clerkStagingClient.initialize();
   const clerkToken = await clerk?.session?.getToken?.();
   if (!clerkToken) throw Object.assign(new Error('Clerk administrator session is required.'), { code: 'board_clerk_session_missing' });
-  if (readFirebaseRuntimeRetirementConfig().requested) return { clerkToken, firebaseIdToken: '' };
-  const firebaseUser = firebaseAuth.currentUser;
-  if (!firebaseUser) throw Object.assign(new Error('Firebase administrator compatibility session is required.'), { code: 'board_firebase_session_missing' });
-  return { clerkToken, firebaseIdToken: await firebaseUser.getIdToken() };
+  return { clerkToken };
 };
 
 const adminRequest = async (path, body = {}, { fetchImpl = fetch } = {}) => {
   const config = readBoardContentCutoverConfig();
   if (!config.writeRequested) return null;
   requireApi(config);
-  const { clerkToken, firebaseIdToken } = await getAdminTokens();
+  const { clerkToken } = await getAdminTokens();
   const response = await fetchImpl(`${config.apiBaseUrl}${path}`, {
     method: 'POST',
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
       Authorization: `Bearer ${clerkToken}`,
-      ...(firebaseIdToken ? { 'X-Firebase-Authorization': `Bearer ${firebaseIdToken}` } : {}),
     },
     cache: 'no-store',
     body: JSON.stringify(body),

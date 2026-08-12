@@ -2,7 +2,7 @@ import {
   browserLocalPersistence,
   browserSessionPersistence,
   setPersistence,
-} from 'firebase/auth';
+} from '../../platform/retiredLegacyDataCompat.js';
 
 import {
   normalizeSystemAdminSettings,

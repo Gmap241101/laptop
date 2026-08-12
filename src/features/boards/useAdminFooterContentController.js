@@ -1,23 +1,7 @@
 import { useState } from 'react';
 import {
-  deleteDoc,
-  doc,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-  writeBatch,
-} from 'firebase/firestore';
-
-import {
-  FOOTER_PAGES_COLLECTION_REF,
-  SITE_FOOTER_CONFIG_DOC_REF,
-  db,
-} from '../../firebase.js';
-import {
   createSiteContentDocumentId,
-  readSiteContentCutoverConfig,
   replaceSiteContentDomainInPostgresql,
-  syncSiteContentDomainFromFirestore,
   SITE_CONTENT_DOMAINS,
 } from '../content/siteContentCutover.js';
 import {
@@ -194,7 +178,6 @@ export default function useAdminFooterContentController({
 
     setFooterConfigSaving(true);
     try {
-      if (readSiteContentCutoverConfig().adminAuthorityRequested) {
         await replaceFooterDomain({
           config: {
             ...footerConfigDraft,
@@ -204,25 +187,6 @@ export default function useAdminFooterContentController({
         });
         triggerToast('푸터 공통 정보를 PostgreSQL에 저장했습니다.', 'success');
         return true;
-      }
-      await setDoc(
-        SITE_FOOTER_CONFIG_DOC_REF,
-        {
-          enabled: Boolean(footerConfigDraft.enabled),
-          content: contentText,
-          contentText,
-          contentHtml,
-          contentFormat: 'rich-html-v1',
-          updatedByUid: auditActor.uid,
-          updatedByName: auditActor.name,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-      await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.FOOTER });
-
-      triggerToast('푸터 공통 정보를 저장했습니다.', 'success');
-      return true;
     } catch (error) {
       console.error('Footer config save error:', error);
       triggerToast(
@@ -404,9 +368,6 @@ export default function useAdminFooterContentController({
       return;
     }
 
-    const pageDocRef = isEditing
-      ? doc(FOOTER_PAGES_COLLECTION_REF, editingPage.id)
-      : doc(FOOTER_PAGES_COLLECTION_REF);
     const nextSortOrder = isEditing
       ? Number(editingPage.sortOrder) || footerPages.length
       : footerPages.reduce(
@@ -417,7 +378,6 @@ export default function useAdminFooterContentController({
 
     setFooterPageSaving(true);
     try {
-      if (readSiteContentCutoverConfig().adminAuthorityRequested) {
         const pageId = editingPage?.id || createSiteContentDocumentId();
         const updatedAt = new Date();
         const nextPage = {
@@ -448,38 +408,6 @@ export default function useAdminFooterContentController({
         triggerToast('푸터 페이지를 PostgreSQL에 저장했습니다.', 'success');
         resetFooterPageDialog();
         return;
-      }
-      await setDoc(pageDocRef, {
-        id: pageDocRef.id,
-        enabled: Boolean(footerPageForm.enabled),
-        title,
-        titleDisplayType,
-        titleImageUrl: safeTitleImageUrl,
-        pageType,
-        linkUrl:
-          pageType === FOOTER_PAGE_TYPE_LINK ? safeLinkUrl : '',
-        openInNewTab:
-          pageType === FOOTER_PAGE_TYPE_LINK
-            ? Boolean(footerPageForm.openInNewTab)
-            : false,
-        isTitleBold: Boolean(footerPageForm.isTitleBold),
-        sortOrder: nextSortOrder,
-        content: contentText,
-        contentText,
-        contentHtml,
-        contentFormat: 'rich-html-v1',
-        authorUid: editingPage?.authorUid || auditActor.uid,
-        authorName: editingPage?.authorName || auditActor.name,
-        createdAt: editingPage?.createdAt || serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-      await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.FOOTER });
-
-      triggerToast(
-        `푸터 메뉴 페이지를 ${isEditing ? '수정' : '등록'}했습니다.`,
-        'success'
-      );
-      resetFooterPageDialog();
     } catch (error) {
       console.error('Footer page save error:', error);
       triggerToast(
@@ -504,7 +432,6 @@ export default function useAdminFooterContentController({
 
     setFooterPageToggleSavingId(page.id);
     try {
-      if (readSiteContentCutoverConfig().adminAuthorityRequested) {
         await replaceFooterDomain({
           pages: footerPages.map((item) => item.id === page.id
             ? { ...item, enabled: !Boolean(item.enabled), updatedAt: new Date() }
@@ -512,18 +439,6 @@ export default function useAdminFooterContentController({
         });
         triggerToast('푸터 페이지 상태를 PostgreSQL에서 변경했습니다.', 'success');
         return;
-      }
-      await updateDoc(doc(FOOTER_PAGES_COLLECTION_REF, page.id), {
-        enabled: !Boolean(page.enabled),
-        updatedAt: serverTimestamp(),
-      });
-      await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.FOOTER });
-      triggerToast(
-        `푸터 메뉴 페이지를 ${
-          page.enabled ? '사용안함' : '사용함'
-        }으로 변경했습니다.`,
-        'success'
-      );
     } catch (error) {
       console.error('Footer page enabled toggle error:', error);
       triggerToast(
@@ -556,27 +471,12 @@ export default function useAdminFooterContentController({
       return;
     }
 
-    const currentPage = footerPages[currentIndex];
-    const adjacentPage = footerPages[nextIndex];
-    const batch = writeBatch(db);
-    batch.update(doc(FOOTER_PAGES_COLLECTION_REF, currentPage.id), {
-      sortOrder: nextIndex + 1,
-      updatedAt: serverTimestamp(),
-    });
-    batch.update(doc(FOOTER_PAGES_COLLECTION_REF, adjacentPage.id), {
-      sortOrder: currentIndex + 1,
-      updatedAt: serverTimestamp(),
-    });
 
     try {
-      if (readSiteContentCutoverConfig().adminAuthorityRequested) {
         const reordered = [...footerPages];
         [reordered[currentIndex], reordered[nextIndex]] = [reordered[nextIndex], reordered[currentIndex]];
         await replaceFooterDomain({ pages: reordered.map((page, index) => ({ ...page, sortOrder: index + 1, updatedAt: new Date() })) });
         return;
-      }
-      await batch.commit();
-      await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.FOOTER });
     } catch (error) {
       console.error('Footer page move error:', error);
       triggerToast('푸터 메뉴 순서 변경에 실패했습니다.', 'error');
@@ -600,7 +500,6 @@ export default function useAdminFooterContentController({
       async () => {
         setFooterPageDeletingId(page.id);
         try {
-          if (readSiteContentCutoverConfig().adminAuthorityRequested) {
             await replaceFooterDomain({
               pages: footerPages.filter((item) => item.id !== page.id)
                 .map((item, index) => ({ ...item, sortOrder: index + 1, updatedAt: new Date() })),
@@ -609,16 +508,6 @@ export default function useAdminFooterContentController({
             if (footerPageDialog?.pageId === page.id) resetFooterPageDialog();
             triggerToast('푸터 페이지를 PostgreSQL에서 삭제했습니다.', 'success');
             return;
-          }
-          await deleteDoc(doc(FOOTER_PAGES_COLLECTION_REF, page.id));
-          await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.FOOTER });
-          if (selectedFooterPageId === page.id) {
-            setSelectedFooterPageId('');
-          }
-          if (footerPageDialog?.pageId === page.id) {
-            resetFooterPageDialog();
-          }
-          triggerToast('푸터 메뉴 페이지를 삭제했습니다.', 'success');
         } catch (error) {
           console.error('Footer page delete error:', error);
           triggerToast('푸터 메뉴 페이지 삭제에 실패했습니다.', 'error');

@@ -44,7 +44,7 @@ const buildCorsHeaders = (request, allowedOrigins) => {
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET,POST,PUT,OPTIONS',
-    'Access-Control-Allow-Headers': 'Authorization,Content-Type,X-Request-Id,X-Firebase-Authorization',
+    'Access-Control-Allow-Headers': 'Authorization,Content-Type,X-Request-Id',
     'Access-Control-Max-Age': '600',
     Vary: 'Origin',
   };
@@ -227,7 +227,6 @@ export const createRequestHandler = ({
   config,
   databaseCheck,
   authenticateRequest,
-  authenticateFirebaseRequest,
   userIdentityService,
   firebaseLinkService,
   memberShadowService,
@@ -251,8 +250,17 @@ export const createRequestHandler = ({
   },
   adminClerkAuthService = {
     async getCurrent() { const error = new Error('Admin Clerk auth service is not configured.'); error.code = 'admin_clerk_auth_not_configured'; throw error; },
-    async migrateCurrent() { const error = new Error('Admin Clerk auth service is not configured.'); error.code = 'admin_clerk_auth_not_configured'; throw error; },
-    async provisionTarget() { const error = new Error('Admin Clerk auth service is not configured.'); error.code = 'admin_clerk_auth_not_configured'; throw error; },
+    async list() { const error = new Error('Admin Clerk auth service is not configured.'); error.code = 'admin_clerk_auth_not_configured'; throw error; },
+    async create() { const error = new Error('Admin Clerk auth service is not configured.'); error.code = 'admin_clerk_auth_not_configured'; throw error; },
+    async update() { const error = new Error('Admin Clerk auth service is not configured.'); error.code = 'admin_clerk_auth_not_configured'; throw error; },
+    async setLock() { const error = new Error('Admin Clerk auth service is not configured.'); error.code = 'admin_clerk_auth_not_configured'; throw error; },
+    async retire() { const error = new Error('Admin Clerk auth service is not configured.'); error.code = 'admin_clerk_auth_not_configured'; throw error; },
+    async migrateCurrent() { const error = new Error('Admin migration is retired.'); error.code = 'admin_migration_retired'; error.status = 410; throw error; },
+    async provisionTarget() { const error = new Error('Admin legacy provisioning is retired.'); error.code = 'admin_provision_retired'; error.status = 410; throw error; },
+  },
+  systemConfigService = {
+    async get() { const error = new Error('System configuration service is not configured.'); error.code = 'system_config_not_configured'; throw error; },
+    async put() { const error = new Error('System configuration service is not configured.'); error.code = 'system_config_not_configured'; throw error; },
   },
   userClerkAuthService = {
     async signupNative() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
@@ -308,9 +316,6 @@ export const createRequestHandler = ({
     async syncDomain() { const error = new Error('Site content service is not configured.'); error.code = 'site_content_not_configured'; throw error; },
     async replaceAdminDomain() { const error = new Error('Site content service is not configured.'); error.code = 'site_content_not_configured'; throw error; },
   },
-  firestoreSiteContentClient = {
-    async readDomain() { const error = new Error('Firestore site-content source is not configured.'); error.code = 'firestore_site_content_not_configured'; throw error; },
-  },
   boardService = {
     async getStatus() { const error = new Error('Board service is not configured.'); error.code = 'board_service_not_configured'; throw error; },
     async listNotice() { const error = new Error('Board service is not configured.'); error.code = 'board_service_not_configured'; throw error; },
@@ -332,9 +337,6 @@ export const createRequestHandler = ({
   }
   if (typeof authenticateRequest !== 'function') {
     throw new TypeError('authenticateRequest must be a function.');
-  }
-  if (typeof authenticateFirebaseRequest !== 'function') {
-    throw new TypeError('authenticateFirebaseRequest must be a function.');
   }
   if (!userIdentityService || typeof userIdentityService.getCurrent !== 'function' || typeof userIdentityService.syncCurrent !== 'function') {
     throw new TypeError('userIdentityService getCurrent/syncCurrent methods are required.');
@@ -390,10 +392,16 @@ export const createRequestHandler = ({
   if (
     !adminClerkAuthService ||
     typeof adminClerkAuthService.getCurrent !== 'function' ||
-    typeof adminClerkAuthService.migrateCurrent !== 'function' ||
-    typeof adminClerkAuthService.provisionTarget !== 'function'
+    typeof adminClerkAuthService.list !== 'function' ||
+    typeof adminClerkAuthService.create !== 'function' ||
+    typeof adminClerkAuthService.update !== 'function' ||
+    typeof adminClerkAuthService.setLock !== 'function' ||
+    typeof adminClerkAuthService.retire !== 'function'
   ) {
-    throw new TypeError('adminClerkAuthService Phase 22 methods are required.');
+    throw new TypeError('Clerk/PostgreSQL administrator lifecycle methods are required.');
+  }
+  if (!systemConfigService || typeof systemConfigService.get !== 'function' || typeof systemConfigService.put !== 'function') {
+    throw new TypeError('PostgreSQL system configuration service methods are required.');
   }
   if (
     !rentalRestrictionService ||
@@ -477,6 +485,7 @@ export const createRequestHandler = ({
     publicContentVisibilityRevision: 'phase33-public-content-visibility-hotfix-20260812-0105',
     publicContentSyncRevision: 'phase33-public-content-full-server-sync-hotfix-20260812-0117',
     adminContentAuthorityRevision: 'phase34-admin-content-postgresql-authority-20260812-1200',
+    phase34RuntimeRevision: 'phase34-firebase-free-runtime-authority-20260812-1500',
     compatibility: {
       assetBoardWriteMirrorDisabled: Boolean(config.assetBoardWriteMirrorDisabled),
       retiredWriteMirrorDomains: [
@@ -496,11 +505,11 @@ export const createRequestHandler = ({
       signupProfileSource: config.accountLifecycleCompatibilityDisabled ? 'postgresql' : 'firestore-compatibility-source',
       termsConsentSource: config.accountLifecycleCompatibilityDisabled ? 'postgresql' : 'firestore',
       userFirebaseAuthCompatibilityDisabled: Boolean(config.userFirebaseAuthCompatibilityDisabled),
-      userAuthenticationSource: config.userFirebaseAuthCompatibilityDisabled ? 'clerk-postgresql' : 'firebase-clerk-compatibility',
-      userLegacyMemberKeySource: config.userFirebaseAuthCompatibilityDisabled ? 'postgresql-compatibility-key' : 'firebase-uid',
-      passwordResetDelivery: config.userFirebaseAuthCompatibilityDisabled ? 'clerk-email-code' : 'firebase-auth-compatibility-preserved',
-      adminFirebaseAuthCompatibility: config.firebaseRuntimeDisabled ? 'retired' : 'preserved',
-      firebaseRuntime: config.firebaseRuntimeDisabled ? 'retired' : 'compatibility',
+      userAuthenticationSource: 'clerk-postgresql',
+      userLegacyMemberKeySource: 'postgresql-compatibility-key',
+      passwordResetDelivery: 'clerk-email-code',
+      adminFirebaseAuthCompatibility: 'retired',
+      firebaseRuntime: 'retired',
     },
   };
 
@@ -518,56 +527,40 @@ export const createRequestHandler = ({
   };
 
 
-  const authenticateFirebase = async (request, response, headers, requestId) => {
-    if (config.firebaseRuntimeDisabled) {
-      const auth = await authenticate(request, response, headers, requestId);
-      if (!auth) return null;
+  const authenticateCompatibilityIdentity = async (request, response, headers, requestId) => {
+    const auth = await authenticate(request, response, headers, requestId);
+    if (!auth) return null;
+    try {
+      const adminAuth = await adminClerkAuthService.getCurrent({ clerkUserId: auth.userId });
+      return Object.freeze({
+        uid: String(adminAuth.admin.firebaseUid || adminAuth.admin.id || ''),
+        email: String(adminAuth.admin.authEmail || ''),
+        emailVerified: true,
+        signInProvider: 'clerk-postgresql-admin',
+        authTime: Number(auth.issuedAt || 0),
+        idToken: '',
+        source: 'clerk-postgresql',
+        clerkUserId: auth.userId,
+      });
+    } catch (adminError) {
       try {
-        const adminAuth = await adminClerkAuthService.getCurrent({ clerkUserId: auth.userId });
+        const userAuth = await userClerkAuthService.getCurrent({ clerkUserId: auth.userId });
+        const account = userAuth?.account || {};
         return Object.freeze({
-          uid: String(adminAuth.admin.firebaseUid || adminAuth.admin.id || ''),
-          email: String(adminAuth.admin.authEmail || ''),
+          uid: String(account.firebaseUid || account.legacyMemberKey || ''),
+          email: String(account.firebaseEmail || account.primaryEmail || ''),
           emailVerified: true,
-          signInProvider: 'clerk-postgresql-admin',
+          signInProvider: 'clerk-postgresql',
           authTime: Number(auth.issuedAt || 0),
           idToken: '',
           source: 'clerk-postgresql',
           clerkUserId: auth.userId,
         });
-      } catch (adminError) {
-        try {
-          const userAuth = await userClerkAuthService.getCurrent({ clerkUserId: auth.userId });
-          const account = userAuth?.account || {};
-          return Object.freeze({
-            uid: String(account.firebaseUid || account.legacyMemberKey || ''),
-            email: String(account.firebaseEmail || account.primaryEmail || ''),
-            emailVerified: true,
-            signInProvider: 'clerk-postgresql',
-            authTime: Number(auth.issuedAt || 0),
-            idToken: '',
-            source: 'clerk-postgresql',
-            clerkUserId: auth.userId,
-          });
-        } catch (userError) {
-          console.warn('[auth] Clerk/PostgreSQL compatibility identity rejected', { requestId, adminCode: adminError?.code, userCode: userError?.code });
-          writeJson(response, userError?.status || adminError?.status || 403, { ...basePayload, authenticated: true, error: 'postgresql_identity_unauthorized' }, headers);
-          return null;
-        }
+      } catch (userError) {
+        console.warn('[auth] Clerk/PostgreSQL compatibility identity rejected', { requestId, adminCode: adminError?.code, userCode: userError?.code });
+        writeJson(response, userError?.status || adminError?.status || 403, { ...basePayload, authenticated: true, error: 'postgresql_identity_unauthorized' }, headers);
+        return null;
       }
-    }
-    try {
-      return await authenticateFirebaseRequest(request);
-    } catch (error) {
-      console.warn('[auth] Firebase session rejected', {
-        requestId,
-        code: error?.code || 'firebase_authentication_failed',
-      });
-      if (['firebase_certificates_unavailable', 'firebase_certificates_invalid'].includes(error?.code)) {
-        writeJson(response, 503, { ...basePayload, error: 'legacy_firebase_verification_unavailable' }, headers);
-      } else {
-        writeJson(response, 401, { ...basePayload, authenticated: true, error: 'legacy_firebase_unauthorized' }, headers);
-      }
-      return null;
     }
   };
 
@@ -575,7 +568,7 @@ export const createRequestHandler = ({
     const auth = await authenticate(request, response, headers, requestId);
     if (!auth) return null;
     if (!config.userFirebaseAuthCompatibilityDisabled) {
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return null;
       return Object.freeze({ auth, firebaseIdentity, userAuth: null });
     }
@@ -621,7 +614,7 @@ export const createRequestHandler = ({
             source: 'clerk-postgresql',
             clerkUserId: auth.userId,
           })
-        : await authenticateFirebase(request, response, headers, requestId);
+        : await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return null;
       if (!config.firebaseRuntimeDisabled && adminAuth.admin.firebaseUid !== firebaseIdentity.uid) {
         writeJson(response, 409, { ...basePayload, authenticated: true, error: 'admin_identity_mismatch' }, headers);
@@ -812,7 +805,7 @@ export const createRequestHandler = ({
           accountRecovery: {
             source: result.source || 'postgresql',
             verified: Boolean(result.verified),
-            passwordResetDelivery: config.userFirebaseAuthCompatibilityDisabled ? 'clerk-email-code' : 'firebase-auth-compatibility-preserved',
+            passwordResetDelivery: 'clerk-email-code',
             clerkReady: config.userFirebaseAuthCompatibilityDisabled ? Boolean(recoveryClerk?.ready) : false,
           },
         }, headers);
@@ -852,7 +845,7 @@ export const createRequestHandler = ({
     }
 
     if (request.method === 'POST' && url.pathname === '/api/users/signup/bootstrap') {
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
       try {
         const body = await readJsonBody(request);
@@ -889,7 +882,7 @@ export const createRequestHandler = ({
     if (request.method === 'POST' && url.pathname === '/api/users/me/terms-consent/bootstrap') {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
       try {
         const result = await accountLifecycleService.bootstrapTerms({ clerkUserId: auth.userId, firebaseIdentity });
@@ -897,6 +890,20 @@ export const createRequestHandler = ({
       } catch (error) {
         console.warn('[account-lifecycle] terms consent bootstrap failed', { requestId, code: error?.code, name: error?.name });
         writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'terms_consent_bootstrap_failed' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'GET' && /^\/api\/admin\/members\/[^/]+\/terms-consent$/.test(url.pathname)) {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      const memberKey = decodeURIComponent(url.pathname.split('/')[4] || '');
+      try {
+        const result = await accountLifecycleService.getTermsByMemberKey({ memberKey });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, termsConsent: result }, headers);
+      } catch (error) {
+        console.warn('[phase34] admin member terms consent read failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: true, error: error?.code || 'admin_member_terms_consent_read_failed' }, headers);
       }
       return;
     }
@@ -946,7 +953,7 @@ export const createRequestHandler = ({
     }
 
     if (request.method === 'POST' && url.pathname === '/api/users/auth/migrate') {
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
       try {
         const body = await readJsonBody(request);
@@ -971,7 +978,7 @@ export const createRequestHandler = ({
     }
 
     if (request.method === 'POST' && url.pathname === '/api/users/auth/provision') {
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
       try {
         const body = await readJsonBody(request);
@@ -1060,43 +1067,12 @@ export const createRequestHandler = ({
     if (request.method === 'POST' && adminSiteContentSyncMatch) {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
-      if (!firebaseIdentity) return;
-      try {
-        const adminAuth = await adminClerkAuthService.getCurrent({ clerkUserId: auth.userId });
-        if (adminAuth.admin.firebaseUid !== firebaseIdentity.uid) {
-          const mismatch = new Error('Firebase administrator compatibility identity does not match the Clerk registry.');
-          mismatch.code = 'site_content_admin_identity_mismatch';
-          mismatch.status = 409;
-          throw mismatch;
-        }
-        const domain = decodeURIComponent(adminSiteContentSyncMatch[1]);
-        // Phase 33 complete-source repair: never trust a browser snapshot as the
-        // PostgreSQL replacement source. Read the full Firestore server source
-        // in the backend with the verified administrator Firebase token.
-        const sourceDocuments = await firestoreSiteContentClient.readDomain({
-          domain,
-          firebaseIdToken: firebaseIdentity.idToken,
-        });
-        const content = await siteContentService.syncDomain({
-          domain,
-          documents: sourceDocuments,
-          actorClerkUserId: auth.userId,
-        });
-        writeJson(response, 200, {
-          ...basePayload,
-          authenticated: true,
-          authorized: true,
-          siteContent: content,
-          siteContentSource: {
-            mode: 'firestore-server-backend-full-domain',
-            documentCount: sourceDocuments.length,
-          },
-        }, headers);
-      } catch (error) {
-        console.warn('[site-content] PostgreSQL content sync failed', { requestId, code: error?.code, name: error?.name });
-        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'site_content_sync_failed' }, headers);
-      }
+      writeJson(response, 410, {
+        ...basePayload,
+        authenticated: true,
+        error: 'firebase_site_content_sync_retired',
+        replacement: '/api/admin/site-content/:domain PUT',
+      }, headers);
       return;
     }
 
@@ -1356,8 +1332,109 @@ export const createRequestHandler = ({
       return;
     }
 
+    if (request.method === 'GET' && url.pathname === '/api/admin/accounts') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      try {
+        const result = await adminClerkAuthService.list({ actorClerkUserId: authority.auth.userId });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, adminAccounts: result }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: false, error: error?.code || 'admin_accounts_read_failed' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/admin/accounts') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      let body;
+      try { body = await readJsonBody(request); } catch (error) { writeJson(response, error.status || 400, { ...basePayload, authenticated: true, error: error.code || 'invalid_json_body' }, headers); return; }
+      try {
+        const result = await adminClerkAuthService.create({ actorClerkUserId: authority.auth.userId, input: body });
+        writeJson(response, 201, { ...basePayload, authenticated: true, authorized: true, adminAccountMutation: { operation: 'create', ...result } }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: false, error: error?.code || 'admin_account_create_failed' }, headers);
+      }
+      return;
+    }
+
+    const adminAccountMutationMatch = url.pathname.match(/^\/api\/admin\/accounts\/([^/]+)$/);
+    if (adminAccountMutationMatch && request.method === 'PUT') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      let body;
+      try { body = await readJsonBody(request); } catch (error) { writeJson(response, error.status || 400, { ...basePayload, authenticated: true, error: error.code || 'invalid_json_body' }, headers); return; }
+      try {
+        const result = await adminClerkAuthService.update({ actorClerkUserId: authority.auth.userId, targetKey: decodeURIComponent(adminAccountMutationMatch[1]), input: body });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, adminAccountMutation: { operation: 'update', ...result } }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: false, error: error?.code || 'admin_account_update_failed' }, headers);
+      }
+      return;
+    }
+    if (adminAccountMutationMatch && request.method === 'DELETE') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      try {
+        const result = await adminClerkAuthService.retire({ actorClerkUserId: authority.auth.userId, targetKey: decodeURIComponent(adminAccountMutationMatch[1]) });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, adminAccountMutation: { operation: 'delete', ...result } }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: false, error: error?.code || 'admin_account_delete_failed' }, headers);
+      }
+      return;
+    }
+    const adminAccountLockMatch = url.pathname.match(/^\/api\/admin\/accounts\/([^/]+)\/lock$/);
+    if (adminAccountLockMatch && request.method === 'POST') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      let body;
+      try { body = await readJsonBody(request); } catch (error) { writeJson(response, error.status || 400, { ...basePayload, authenticated: true, error: error.code || 'invalid_json_body' }, headers); return; }
+      try {
+        const result = await adminClerkAuthService.setLock({ actorClerkUserId: authority.auth.userId, targetKey: decodeURIComponent(adminAccountLockMatch[1]), locked: Boolean(body?.locked) });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, adminAccountMutation: { operation: body?.locked ? 'lock' : 'unlock', ...result } }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: false, error: error?.code || 'admin_account_lock_failed' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/system-config/user-session-policy') {
+      try {
+        const result = await systemConfigService.get('user-session-policy');
+        writeJson(response, 200, { ...basePayload, systemConfiguration: result }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'system_config_read_failed' }, headers);
+      }
+      return;
+    }
+    const adminSystemConfigMatch = url.pathname.match(/^\/api\/admin\/system-config\/(admin-security|user-session-policy)$/);
+    if (adminSystemConfigMatch && request.method === 'GET') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      try {
+        const result = await systemConfigService.get(adminSystemConfigMatch[1]);
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, systemConfiguration: result }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'system_config_read_failed' }, headers);
+      }
+      return;
+    }
+    if (adminSystemConfigMatch && request.method === 'PUT') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      let body;
+      try { body = await readJsonBody(request); } catch (error) { writeJson(response, error.status || 400, { ...basePayload, authenticated: true, error: error.code || 'invalid_json_body' }, headers); return; }
+      try {
+        const result = await systemConfigService.put({ key: adminSystemConfigMatch[1], payload: body?.payload || body || {}, actorClerkUserId: authority.auth.userId });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, systemConfiguration: result }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'system_config_write_failed' }, headers);
+      }
+      return;
+    }
+
     if (request.method === 'POST' && url.pathname === '/api/admin/auth/migrate') {
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
       let body;
       try {
@@ -1393,7 +1470,7 @@ export const createRequestHandler = ({
     if (request.method === 'POST' && adminClerkProvisionMatch) {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
       let body;
       try {
@@ -1560,7 +1637,7 @@ export const createRequestHandler = ({
     if (request.method === 'POST' && url.pathname === '/api/users/me/legacy/firebase') {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
 
       try {
@@ -1611,7 +1688,7 @@ export const createRequestHandler = ({
     if (request.method === 'POST' && url.pathname === '/api/admin/assets/bootstrap') {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
       try {
         const result = await assetService.bootstrap(firebaseIdentity);
@@ -1626,7 +1703,7 @@ export const createRequestHandler = ({
     if (request.method === 'POST' && url.pathname === '/api/admin/assets') {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
       let body;
       try { body = await readJsonBody(request); }
@@ -1644,7 +1721,7 @@ export const createRequestHandler = ({
     if (request.method === 'POST' && url.pathname === '/api/admin/assets/bulk') {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
       let body;
       try { body = await readJsonBody(request, { maxBytes: 1024 * 1024 }); }
@@ -1662,7 +1739,7 @@ export const createRequestHandler = ({
     if (request.method === 'POST' && url.pathname === '/api/admin/assets/categories') {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
       let body;
       try { body = await readJsonBody(request); }
@@ -1683,7 +1760,7 @@ export const createRequestHandler = ({
     if (adminAssetActionMatch) {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
       let body = {};
       if (adminAssetActionMatch[2] === 'edit') {
@@ -1707,7 +1784,7 @@ export const createRequestHandler = ({
     if (request.method === 'POST' && url.pathname === '/api/admin/rental-requests/bootstrap') {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
       try {
         const result = await adminRentalRequestService.bootstrap(firebaseIdentity);
@@ -1735,7 +1812,7 @@ export const createRequestHandler = ({
     if (request.method === 'GET' && url.pathname === '/api/admin/rental-requests') {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
       try {
         const result = await adminRentalRequestService.list(firebaseIdentity, {
@@ -1771,7 +1848,7 @@ export const createRequestHandler = ({
     if (request.method === 'GET' && url.pathname === '/api/admin/rental-dashboard') {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
       try {
         const result = await adminRentalRequestService.getDashboard(
@@ -1803,7 +1880,7 @@ export const createRequestHandler = ({
       if (isGet || isPost) {
         const auth = await authenticate(request, response, headers, requestId);
         if (!auth) return;
-        const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+        const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
         if (!firebaseIdentity) return;
         const rentalRequestId = decodeURIComponent(adminRequestActionMatch[1]);
         let body = {};
@@ -1900,7 +1977,7 @@ export const createRequestHandler = ({
     if (adminUserActionReviewMatch) {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
       let body;
       try {
@@ -1948,7 +2025,7 @@ export const createRequestHandler = ({
     if (adminStatusMatch) {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
       let body;
       try {
@@ -2111,7 +2188,7 @@ export const createRequestHandler = ({
     if (request.method === 'POST' && url.pathname === '/api/users/me/legacy/rental-request-shadows/sync') {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
       try {
         const result = await rentalRequestService.syncCurrent(auth.userId, firebaseIdentity);
@@ -2136,7 +2213,7 @@ export const createRequestHandler = ({
     if (request.method === 'POST' && url.pathname === '/api/users/me/legacy/rental-request-shadows/compare') {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
       try {
         const comparison = await rentalRequestService.compareCurrent(auth.userId, firebaseIdentity);
@@ -2162,7 +2239,7 @@ export const createRequestHandler = ({
         ? await authenticateUserAuthority(request, response, headers, requestId)
         : null;
       const firebaseIdentity = userAuthority?.firebaseIdentity || (!config.userFirebaseAuthCompatibilityDisabled
-        ? await authenticateFirebase(request, response, headers, requestId)
+        ? await authenticateCompatibilityIdentity(request, response, headers, requestId)
         : null);
       if (!firebaseIdentity) return;
       try {
@@ -2174,7 +2251,7 @@ export const createRequestHandler = ({
         writeJson(response, 200, {
           ...basePayload,
           authenticated: true,
-          authentication: config.userFirebaseAuthCompatibilityDisabled ? 'clerk-postgresql' : 'firebase-id-token',
+          authentication: config.userFirebaseAuthCompatibilityDisabled ? 'clerk-postgresql' : 'retired',
           restrictionCandidate: {
             source: shadow?.authorityMode === 'postgresql-authoritative' ? 'postgresql-authoritative' : 'postgresql-shadow',
             authoritative: shadow?.authorityMode === 'postgresql-authoritative',
@@ -2189,7 +2266,7 @@ export const createRequestHandler = ({
     }
 
     if (request.method === 'GET' && url.pathname === '/api/legacy/rental-restriction-firestore-fallback') {
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
       try {
         const result = await rentalRestrictionService.syncLinkedFirebaseUid(firebaseIdentity, firebaseIdentity.uid);
@@ -2197,7 +2274,7 @@ export const createRequestHandler = ({
         writeJson(response, 200, {
           ...basePayload,
           authenticated: true,
-          authentication: 'firebase-id-token',
+          authentication: 'retired',
           restrictionFallback: {
             source: 'firestore-one-time-fallback',
             authoritative: true,
@@ -2218,7 +2295,7 @@ export const createRequestHandler = ({
     }
 
     if (request.method === 'POST' && url.pathname === '/api/legacy/rental-restriction-shadow/write-through') {
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
       const targetFirebaseUid = String(url.searchParams.get('firebaseUid') || '').trim();
       try {
@@ -2226,7 +2303,7 @@ export const createRequestHandler = ({
         writeJson(response, 200, {
           ...basePayload,
           authenticated: true,
-          authentication: 'firebase-id-token',
+          authentication: 'retired',
           restrictionWriteThrough: {
             status: result.status,
             firebaseUid: result.firebaseUid,
@@ -2253,7 +2330,7 @@ export const createRequestHandler = ({
     if (request.method === 'GET' && url.pathname === '/api/admin/members') {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
       try {
         const result = await memberAuthorityService.listAdminMembers({
@@ -2275,10 +2352,16 @@ export const createRequestHandler = ({
     if (request.method === 'POST' && url.pathname === '/api/admin/member-directory/sync') {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
+      let body;
+      try { body = await readJsonBody(request); } catch (error) { writeJson(response, error.status || 400, { ...basePayload, authenticated: true, error: error.code || 'invalid_json_body' }, headers); return; }
       try {
-        const result = await memberAuthorityService.syncMemberDirectoryAdmin({ firebaseIdentity });
+        const result = await memberAuthorityService.syncMemberDirectoryAdmin({
+          firebaseIdentity,
+          entries: Array.isArray(body?.entries) ? body.entries : [],
+          version: Number(body?.version || 0),
+        });
         writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, memberDirectorySync: result }, headers);
       } catch (error) {
         console.error('[phase31] member directory PostgreSQL synchronization failed', { requestId, code: error?.code });
@@ -2336,7 +2419,7 @@ export const createRequestHandler = ({
     if (adminMemberProfileMatch) {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
       let body;
       try { body = await readJsonBody(request); } catch (error) { writeJson(response, error.status || 400, { ...basePayload, authenticated: true, error: error.code || 'invalid_json_body' }, headers); return; }
@@ -2354,7 +2437,7 @@ export const createRequestHandler = ({
     if (adminMemberStatusMatch) {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
       let body;
       try { body = await readJsonBody(request); } catch (error) { writeJson(response, error.status || 400, { ...basePayload, authenticated: true, error: error.code || 'invalid_json_body' }, headers); return; }
@@ -2371,7 +2454,7 @@ export const createRequestHandler = ({
     if (request.method === 'POST' && url.pathname === '/api/admin/identity-registry/bootstrap') {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
       try {
         const result = await memberAuthorityService.bootstrapAdminRegistry({ firebaseIdentity });
@@ -2388,7 +2471,7 @@ export const createRequestHandler = ({
         ? await authenticateUserAuthority(request, response, headers, requestId)
         : null;
       const firebaseIdentity = userAuthority?.firebaseIdentity || (!config.userFirebaseAuthCompatibilityDisabled
-        ? await authenticateFirebase(request, response, headers, requestId)
+        ? await authenticateCompatibilityIdentity(request, response, headers, requestId)
         : null);
       if (!firebaseIdentity) return;
 
@@ -2401,7 +2484,7 @@ export const createRequestHandler = ({
             {
               ...basePayload,
               authenticated: true,
-              authentication: config.userFirebaseAuthCompatibilityDisabled ? 'clerk-postgresql' : 'firebase-id-token',
+              authentication: config.userFirebaseAuthCompatibilityDisabled ? 'clerk-postgresql' : 'retired',
               readCandidate: sanitizeMemberProfileReadCandidate(canonical.profile, {
                 source: canonical.source || 'postgresql-authoritative',
                 authoritative: true,
@@ -2428,7 +2511,7 @@ export const createRequestHandler = ({
           {
             ...basePayload,
             authenticated: true,
-            authentication: 'firebase-id-token',
+            authentication: 'retired',
             readCandidate: sanitizeMemberProfileReadCandidate(shadow),
           },
           headers,
@@ -2446,7 +2529,7 @@ export const createRequestHandler = ({
     }
 
     if (request.method === 'GET' && url.pathname === '/api/legacy/member-profile-firestore-fallback') {
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
 
       try {
@@ -2457,7 +2540,7 @@ export const createRequestHandler = ({
           {
             ...basePayload,
             authenticated: true,
-            authentication: 'firebase-id-token',
+            authentication: 'retired',
             readFallback: {
               source: 'firestore-one-time-fallback',
               authoritative: true,
@@ -2503,7 +2586,7 @@ export const createRequestHandler = ({
     }
 
     if (request.method === 'POST' && url.pathname === '/api/legacy/member-shadow/write-through') {
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
 
       const targetFirebaseUid = String(url.searchParams.get('firebaseUid') || '').trim();
@@ -2516,7 +2599,7 @@ export const createRequestHandler = ({
           {
             ...basePayload,
             authenticated: true,
-            authentication: 'firebase-id-token',
+            authentication: 'retired',
             writeThrough: {
               status: result.status,
               reason: result.reason || '',
@@ -2627,7 +2710,7 @@ export const createRequestHandler = ({
     if (request.method === 'POST' && url.pathname === '/api/users/me/legacy/member-shadow/sync') {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
 
       try {
@@ -2675,7 +2758,7 @@ export const createRequestHandler = ({
     if (request.method === 'POST' && url.pathname === '/api/users/me/legacy/member-shadow/compare') {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
-      const firebaseIdentity = await authenticateFirebase(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
       if (!firebaseIdentity) return;
 
       try {

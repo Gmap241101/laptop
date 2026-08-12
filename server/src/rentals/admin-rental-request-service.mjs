@@ -218,8 +218,8 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient, r
   if (!repository || typeof repository.list !== 'function' || typeof repository.upsertImportedRequests !== 'function') {
     throw new TypeError('Admin rental request repository is required.');
   }
-  if (!firestoreClient || typeof firestoreClient.verifyAdmin !== 'function') {
-    throw new TypeError('Firestore admin rental request client is required.');
+  if (writeMirrorEnabled && (!firestoreClient || typeof firestoreClient.verifyAdmin !== 'function')) {
+    throw new TypeError('Legacy admin rental mirror client is required only when the retired mirror is enabled.');
   }
   if (!writeMirrorEnabled && (!postgresSource || typeof postgresSource.getRentalRequest !== 'function' || typeof postgresSource.getRentalAsset !== 'function' || typeof postgresSource.getPublicConfig !== 'function' || typeof postgresSource.getRentalRestriction !== 'function')) {
     throw new TypeError('postgresSource is required when Firestore rental request write mirror is retired.');
@@ -230,17 +230,11 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient, r
     if (!writeMirrorEnabled && typeof repository.markMirrorRetired === 'function') await repository.markMirrorRetired(requestId);
   };
 
-  const verify = async (firebaseIdentity) => {
-    if (!firebaseIdentity?.uid || !firebaseIdentity?.idToken) {
-      throw serviceError('admin_firebase_identity_missing', 'Verified Firebase admin identity is required.', 401);
+  const verify = async (identity) => {
+    if (identity?.source !== 'clerk-postgresql') {
+      throw serviceError('admin_postgresql_identity_required', 'Clerk/PostgreSQL administrator identity is required.', 401);
     }
-    if (firebaseIdentity?.source === 'clerk-postgresql') {
-      return Object.freeze({ uid: firebaseIdentity.uid, role: 'admin', source: 'postgresql-admin-registry' });
-    }
-    return firestoreClient.verifyAdmin({
-      firebaseUid: firebaseIdentity.uid,
-      firebaseIdToken: firebaseIdentity.idToken,
-    });
+    return Object.freeze({ uid: identity.uid, role: 'admin', source: 'postgresql-admin-registry' });
   };
 
   const syncOne = async (firebaseIdentity, requestId, { includeEvents = true } = {}) => {

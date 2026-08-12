@@ -51,49 +51,7 @@ export const readRentalRestrictionCutoverConfig = ({
   });
 };
 
-const firebaseRequest = async ({ firebaseUser, apiBaseUrl, path, method = 'GET', fetchImpl = fetch }) => {
-  if (!firebaseUser || typeof firebaseUser.getIdToken !== 'function') throw new Error('Firebase sign-in is required.');
-  if (!apiBaseUrl) throw new Error('VITE_API_URL is required.');
-  const token = await firebaseUser.getIdToken();
-  const response = await fetchImpl(`${apiBaseUrl}${path}`, {
-    method,
-    headers: { Accept: 'application/json', 'X-Firebase-Authorization': `Bearer ${token}` },
-    cache: 'no-store',
-  });
-  let payload = null;
-  try { payload = await response.json(); } catch { payload = null; }
-  if (!response.ok) {
-    const error = new Error(`Rental restriction request failed with HTTP ${response.status}.`);
-    error.status = response.status;
-    error.code = payload?.error || 'rental_restriction_request_failed';
-    throw error;
-  }
-  return payload;
-};
-
-
-const userAuthorityRequest = async ({ firebaseUser, apiBaseUrl, path, method = 'GET', fetchImpl = fetch }) => {
-  const retirement = readUserFirebaseAuthRetirementConfig();
-  if (!retirement.requested) return firebaseRequest({ firebaseUser, apiBaseUrl, path, method, fetchImpl });
-  if (!apiBaseUrl) throw new Error('VITE_API_URL is required.');
-  const clerk = await clerkStagingClient.initialize();
-  const token = await clerk?.session?.getToken?.();
-  if (!token) throw new Error('Clerk sign-in is required.');
-  const response = await fetchImpl(`${apiBaseUrl}${path}`, {
-    method,
-    headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
-    cache: 'no-store',
-  });
-  let payload = null;
-  try { payload = await response.json(); } catch { payload = null; }
-  if (!response.ok) {
-    const error = new Error(`Rental restriction request failed with HTTP ${response.status}.`);
-    error.status = response.status;
-    error.code = payload?.error || 'rental_restriction_request_failed';
-    throw error;
-  }
-  return payload;
-};
+const firebaseRequest = async () => { const error = new Error('Legacy Firebase restriction request was removed in Phase 34.'); error.code='firebase_runtime_removed'; error.status=410; throw error; };
 
 export const requestRentalRestrictionCandidate = async ({ firebaseUser, apiBaseUrl, fetchImpl = fetch }) => {
   const payload = await userAuthorityRequest({ firebaseUser, apiBaseUrl, path: '/api/legacy/rental-restriction-candidate', fetchImpl });

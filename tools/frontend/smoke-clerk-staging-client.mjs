@@ -216,7 +216,7 @@ const firebaseLinkPayload = await requestFirebaseLegacyLink({
   firebaseIdToken: 'firebase-id-token-that-must-not-be-logged',
 });
 assert.equal(firebaseLinkPayload.firebaseLink.firebaseUid, 'firebase_uid_test');
-assert.equal(calls.at(-1).options.headers['X-Firebase-Authorization'], 'Bearer firebase-id-token-that-must-not-be-logged');
+assert.equal(calls.at(-1).options.headers['X-Firebase-Authorization'], undefined);
 
 const firebaseLinkStatus = await requestFirebaseLegacyLinkStatus({
   clerk: fakeSessionClerk,
@@ -233,7 +233,7 @@ const shadowSyncPayload = await requestMemberShadowSync({
   firebaseIdToken: 'firebase-id-token-that-must-not-be-logged',
 });
 assert.equal(shadowSyncPayload.memberShadow.firebaseUid, 'firebase_uid_test');
-assert.equal(calls.at(-1).options.headers['X-Firebase-Authorization'], 'Bearer firebase-id-token-that-must-not-be-logged');
+assert.equal(calls.at(-1).options.headers['X-Firebase-Authorization'], undefined);
 
 const shadowStatusPayload = await requestMemberShadowStatus({
   clerk: fakeSessionClerk,
@@ -412,7 +412,6 @@ assert.equal((await client.getMemberShadow()).memberShadow.name, 'Browser User')
 assert.equal((await client.getMemberProfileReadCandidate()).readCandidate.profile.uid, 'firebase_uid_browser');
 assert.equal((await client.compareMemberShadow('firebase-browser-token')).comparison.equivalent, true);
 assert.ok(browserCalls.every((call) => call.options.headers.Authorization === 'Bearer browser-session-token'));
-const firebaseBrowserCall = browserCalls.find((call) => call.options.headers['X-Firebase-Authorization']);
-assert.equal(firebaseBrowserCall.options.headers['X-Firebase-Authorization'], 'Bearer firebase-browser-token');
+assert.equal(browserCalls.some((call) => call.options.headers['X-Firebase-Authorization']), false);
 
-console.log('[clerk-frontend-smoke] PASS (config, CDN loader, Clerk bearer auth, Phase 5 identity, Phase 6 Firebase link, Phase 7 member shadow, Phase 8 PostgreSQL read candidate)');
+console.log('[clerk-frontend-smoke] PASS (config, CDN loader, Clerk bearer auth, PostgreSQL compatibility-key endpoints, no Firebase authorization header)');

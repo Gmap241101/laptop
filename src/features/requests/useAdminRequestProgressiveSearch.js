@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 
-import { RENTAL_REQUESTS_COLLECTION_REF } from '../../firebase.js';
+import { RENTAL_REQUESTS_COLLECTION_REF } from '../../platform/appDataRefs.js';
 import { getAdminRequestServerConstraints } from '../../services/adminRequestQuery.js';
 import {
   DEFAULT_PROGRESSIVE_SEARCH_BATCH_SIZE,

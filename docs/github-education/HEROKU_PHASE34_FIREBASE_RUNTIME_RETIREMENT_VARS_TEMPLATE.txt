@@ -1,13 +1,4 @@
-# Phase 34 Heroku Staging — Firebase normal-runtime retirement
-FIREBASE_RUNTIME_DISABLED=true
-
-# Existing Phase 28-33 variables may remain. The global flag forces all
-# Firebase mirrors and Firebase identity compatibility off.
-FIRESTORE_ASSET_BOARD_WRITE_MIRROR_DISABLED=true
-FIRESTORE_RENTAL_REQUEST_WRITE_MIRROR_DISABLED=true
-FIRESTORE_MEMBER_STATUS_RESTRICTION_WRITE_MIRROR_DISABLED=true
-FIRESTORE_MEMBER_PROFILE_WRITE_MIRROR_DISABLED=true
-FIRESTORE_ACCOUNT_LIFECYCLE_COMPATIBILITY_DISABLED=true
-FIREBASE_USER_AUTH_COMPATIBILITY_DISABLED=true
-
-# FIREBASE_PROJECT_ID is ignored while FIREBASE_RUNTIME_DISABLED=true.
+# Phase 34 Firebase-free runtime
+# No Firebase runtime Config Vars are required.
+# After deployment validation, remove obsolete FIREBASE_* and FIRESTORE_* compatibility variables from Staging.
+# Keep DATABASE_URL, DATABASE_SSL_MODE, CLERK_SECRET_KEY, CLERK_JWT_KEY, CLERK_AUTHORIZED_PARTIES, APP_ENV and SERVICE_* variables.

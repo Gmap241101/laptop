@@ -1,13 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  doc,
-  onSnapshot,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-  writeBatch,
-} from 'firebase/firestore';
-import {
   ArrowDown,
   ArrowUp,
   Edit3,
@@ -26,9 +18,7 @@ import {
   requestSiteContentDomain,
   SITE_CONTENT_DOMAINS,
   subscribeSiteContentInvalidation,
-  syncSiteContentDomainFromFirestore,
 } from '../features/content/siteContentCutover.js';
-import { HOME_BANNERS_COLLECTION_REF, HOME_PAGE_CONFIG_DOC_REF, db } from '../firebase.js';
 
 const PLACEMENT_CONFIG = {
   hero: {
@@ -255,102 +245,62 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
 
   useEffect(() => {
     const cutover = readSiteContentCutoverConfig();
-    if (cutover.adminAuthorityRequested) {
-      let cancelled = false;
-      const load = async () => {
-        try {
-          const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.HOME, config: cutover, useCache: false });
-          if (cancelled) return;
-          setAllBanners(content.documents
-            .filter((item) => item.key.startsWith('homeBanners/'))
-            .map((item) => ({
-              ...item.payload,
-              id: item.payload?.id || item.key.split('/').pop(),
-              enabled: typeof item.enabled === 'boolean' ? item.enabled : item.payload?.enabled !== false,
-              sortOrder: Number.isFinite(Number(item.sortOrder)) ? Number(item.sortOrder) : item.payload?.sortOrder,
-            })));
-          setBannersReady(true);
-          setLoadError('');
-        } catch (error) {
-          if (cancelled) return;
-          console.error('PostgreSQL home banners load error:', error);
-          setBannersReady(true);
-          setLoadError('Home banners could not be loaded from PostgreSQL.');
-        }
-      };
-      void load();
-      const unsubscribe = subscribeSiteContentInvalidation((detail) => {
-        if (detail?.domain === SITE_CONTENT_DOMAINS.HOME || detail?.domain === 'all') void load();
-      });
-      return () => { cancelled = true; unsubscribe(); };
-    }
-    const unsubscribe = onSnapshot(
-      HOME_BANNERS_COLLECTION_REF,
-      (snapshot) => {
-        setAllBanners(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.HOME, config: cutover, useCache: false });
+        if (cancelled) return;
+        setAllBanners(content.documents
+          .filter((item) => item.key.startsWith('homeBanners/'))
+          .map((item) => ({
+            ...item.payload,
+            id: item.payload?.id || item.key.split('/').pop(),
+            enabled: typeof item.enabled === 'boolean' ? item.enabled : item.payload?.enabled !== false,
+            sortOrder: Number.isFinite(Number(item.sortOrder)) ? Number(item.sortOrder) : item.payload?.sortOrder,
+          })));
         setBannersReady(true);
         setLoadError('');
-      },
-      (error) => {
-        console.error('Home banners load error:', error);
+      } catch (error) {
+        if (cancelled) return;
+        console.error('PostgreSQL home banners load error:', error);
         setBannersReady(true);
-        setLoadError('초기화면 배너를 불러오지 못했습니다. Firestore Rules를 확인해 주세요.');
+        setLoadError('초기화면 배너를 PostgreSQL에서 불러오지 못했습니다.');
       }
-    );
-    return unsubscribe;
+    };
+    void load();
+    const unsubscribe = subscribeSiteContentInvalidation((detail) => {
+      if (detail?.domain === SITE_CONTENT_DOMAINS.HOME || detail?.domain === 'all') void load();
+    });
+    return () => { cancelled = true; unsubscribe(); };
   }, []);
 
   useEffect(() => {
     const cutover = readSiteContentCutoverConfig();
-    if (cutover.adminAuthorityRequested) {
-      let cancelled = false;
-      const load = async () => {
-        try {
-          const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.HOME, config: cutover, useCache: false });
-          const data = content.documents.find((item) => item.key === 'homePage/config')?.payload || {};
-          if (cancelled) return;
-          const next = {
-            heroIntervalSeconds: [5, 7, 10].includes(Number(data.heroIntervalSeconds)) ? Number(data.heroIntervalSeconds) : 7,
-            promotionLayout: PROMOTION_LAYOUTS[data.promotionLayout] ? data.promotionLayout : '2x1',
-          };
-          setConfigDraft(next);
-          configBaselineRef.current = JSON.stringify(next);
-          setConfigReady(true);
-        } catch (error) {
-          if (!cancelled) {
-            console.error('PostgreSQL home config load error:', error);
-            setConfigReady(true);
-          }
-        }
-      };
-      void load();
-      const unsubscribe = subscribeSiteContentInvalidation((detail) => {
-        if (detail?.domain === SITE_CONTENT_DOMAINS.HOME || detail?.domain === 'all') void load();
-      });
-      return () => { cancelled = true; unsubscribe(); };
-    }
-    const unsubscribe = onSnapshot(
-      HOME_PAGE_CONFIG_DOC_REF,
-      (snapshot) => {
-        const data = snapshot.exists() ? snapshot.data() : {};
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.HOME, config: cutover, useCache: false });
+        const data = content.documents.find((item) => item.key === 'homePage/config')?.payload || {};
+        if (cancelled) return;
         const next = {
-          heroIntervalSeconds: [5, 7, 10].includes(Number(data.heroIntervalSeconds))
-            ? Number(data.heroIntervalSeconds)
-            : 7,
-          promotionLayout: PROMOTION_LAYOUTS[data.promotionLayout]
-            ? data.promotionLayout
-            : '2x1',
+          heroIntervalSeconds: [5, 7, 10].includes(Number(data.heroIntervalSeconds)) ? Number(data.heroIntervalSeconds) : 7,
+          promotionLayout: PROMOTION_LAYOUTS[data.promotionLayout] ? data.promotionLayout : '2x1',
         };
         setConfigDraft(next);
         configBaselineRef.current = JSON.stringify(next);
         setConfigReady(true);
-      },
-      (error) => {
-        console.error('Home page config load error:', error);
-        setConfigReady(true);
+      } catch (error) {
+        if (!cancelled) {
+          console.error('PostgreSQL home config load error:', error);
+          setConfigReady(true);
+        }
       }
-    );
-    return unsubscribe;
+    };
+    void load();
+    const unsubscribe = subscribeSiteContentInvalidation((detail) => {
+      if (detail?.domain === SITE_CONTENT_DOMAINS.HOME || detail?.domain === 'all') void load();
+    });
+    return () => { cancelled = true; unsubscribe(); };
   }, []);
 
   useEffect(() => {
@@ -429,20 +379,7 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
     }
     setConfigSaving(true);
     try {
-      if (readSiteContentCutoverConfig().adminAuthorityRequested) {
-        await replaceHomeDomain({ config: configDraft });
-      } else {
-        await setDoc(HOME_PAGE_CONFIG_DOC_REF, {
-        heroIntervalSeconds: Number(configDraft.heroIntervalSeconds) || 7,
-        promotionLayout: PROMOTION_LAYOUTS[configDraft.promotionLayout]
-          ? configDraft.promotionLayout
-          : '2x1',
-        updatedAt: serverTimestamp(),
-        updatedByUid: authenticatedAdminId || '',
-        updatedByName: authenticatedAdminAccount?.userName || authenticatedAdminAccount?.adminLoginId || '관리자',
-      }, { merge: true });
-        await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.HOME });
-      }
+      await replaceHomeDomain({ config: configDraft });
       configBaselineRef.current = JSON.stringify(configDraft);
       triggerToast('초기화면 표시 설정을 저장했습니다.', 'success');
     } catch (error) {
@@ -509,7 +446,6 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
 
     setSaving(true);
     try {
-      if (readSiteContentCutoverConfig().adminAuthorityRequested) {
         const targetId = form.id || createSiteContentDocumentId();
         const existing = form.id ? banners.find((banner) => banner.id === form.id) : null;
         const orderedBanners = form.id && banners.some((banner) => banner.id === form.id)
@@ -548,60 +484,6 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
         setForm(next);
         formBaselineRef.current = JSON.stringify(next);
         return;
-      }
-      const targetRef = form.id
-        ? doc(HOME_BANNERS_COLLECTION_REF, form.id)
-        : doc(HOME_BANNERS_COLLECTION_REF);
-      const existing = form.id ? banners.find((banner) => banner.id === form.id) : null;
-      const orderedBanners = form.id && banners.some((banner) => banner.id === form.id)
-        ? [...banners]
-        : [...banners, { id: targetRef.id }];
-      const batch = writeBatch(db);
-
-      orderedBanners.forEach((banner, index) => {
-        const sortOrder = index + 1;
-        if (banner.id === targetRef.id) {
-          batch.set(targetRef, {
-            id: targetRef.id,
-            placement,
-            enabled: Boolean(form.enabled),
-            sortOrder,
-            title,
-            subtitle: placement === 'hero' ? subtitle : '',
-            altText,
-            imageUrl,
-            mobileImageUrl: placement === 'quickLink' ? '' : mobileImageUrl,
-            imagePosition: form.imagePosition || 'center',
-            imageFit,
-            linkType,
-            linkValue: linkType === 'none' ? '' : linkValue,
-            openInNewTab: linkType === 'none' ? false : Boolean(form.openInNewTab),
-            startAt,
-            endAt: form.isIndefinite ? null : endAt,
-            isIndefinite: Boolean(form.isIndefinite),
-            authorUid: existing?.authorUid || authenticatedAdminId || '',
-            authorName: existing?.authorName || authenticatedAdminAccount?.userName || authenticatedAdminAccount?.adminLoginId || '관리자',
-            createdAt: existing?.createdAt || serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-          return;
-        }
-
-        if (Number(banner.sortOrder) !== sortOrder) {
-          batch.update(doc(HOME_BANNERS_COLLECTION_REF, banner.id), {
-            sortOrder,
-            updatedAt: serverTimestamp(),
-          });
-        }
-      });
-
-      await batch.commit();
-      await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.HOME });
-      triggerToast(`${panelConfig.itemLabel}를 ${form.id ? '수정' : '등록'}했습니다.`, 'success');
-      setEditing(false);
-      const next = createForm(placement);
-      setForm(next);
-      formBaselineRef.current = JSON.stringify(next);
     } catch (error) {
       console.error('Home banner save error:', error);
       triggerToast(`${panelConfig.itemLabel} 저장에 실패했습니다. 오류 코드: ${error?.code || error?.message || 'unknown-error'}`, 'error');
@@ -614,7 +496,6 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
     if (!banner?.id) return;
     setToggleSavingId(banner.id);
     try {
-      if (readSiteContentCutoverConfig().adminAuthorityRequested) {
         await replaceHomeDomain({
           banners: allBanners.map((item) => item.id === banner.id
             ? { ...item, enabled: !Boolean(item.enabled), updatedAt: new Date() }
@@ -622,13 +503,6 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
         });
         triggerToast(`${panelConfig.itemLabel} PostgreSQL 상태 변경 완료`, 'success');
         return;
-      }
-      await updateDoc(doc(HOME_BANNERS_COLLECTION_REF, banner.id), {
-        enabled: !Boolean(banner.enabled),
-        updatedAt: serverTimestamp(),
-      });
-      await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.HOME });
-      triggerToast(`${panelConfig.itemLabel}를 ${banner.enabled ? '사용안함' : '사용함'}으로 변경했습니다.`, 'success');
     } catch (error) {
       console.error('Home banner toggle error:', error);
       triggerToast('사용 여부 변경에 실패했습니다.', 'error');
@@ -646,22 +520,9 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
     [reordered[currentIndex], reordered[nextIndex]] = [reordered[nextIndex], reordered[currentIndex]];
 
     try {
-      if (readSiteContentCutoverConfig().adminAuthorityRequested) {
         const reorderedWithOrder = reordered.map((banner, index) => ({ ...banner, sortOrder: index + 1, updatedAt: new Date() }));
         await replaceHomeDomain({ banners: allBanners.filter((banner) => banner.placement !== placement).concat(reorderedWithOrder) });
         return;
-      }
-      const batch = writeBatch(db);
-      reordered.forEach((banner, index) => {
-        const sortOrder = index + 1;
-        if (Number(banner.sortOrder) === sortOrder) return;
-        batch.update(doc(HOME_BANNERS_COLLECTION_REF, banner.id), {
-          sortOrder,
-          updatedAt: serverTimestamp(),
-        });
-      });
-      await batch.commit();
-      await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.HOME });
     } catch (error) {
       console.error('Home banner order error:', error);
       triggerToast('배너 순서 변경에 실패했습니다.', 'error');
@@ -675,29 +536,12 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
       async () => {
         setDeletingId(banner.id);
         try {
-          if (readSiteContentCutoverConfig().adminAuthorityRequested) {
             const remaining = banners.filter((item) => item.id !== banner.id)
               .map((item, index) => ({ ...item, sortOrder: index + 1, updatedAt: new Date() }));
             await replaceHomeDomain({ banners: allBanners.filter((item) => item.placement !== placement).concat(remaining) });
             if (form.id === banner.id) setEditing(false);
             triggerToast(`${panelConfig.itemLabel} PostgreSQL 삭제 완료`, 'success');
             return;
-          }
-          const remaining = banners.filter((item) => item.id !== banner.id);
-          const batch = writeBatch(db);
-          batch.delete(doc(HOME_BANNERS_COLLECTION_REF, banner.id));
-          remaining.forEach((item, index) => {
-            const sortOrder = index + 1;
-            if (Number(item.sortOrder) === sortOrder) return;
-            batch.update(doc(HOME_BANNERS_COLLECTION_REF, item.id), {
-              sortOrder,
-              updatedAt: serverTimestamp(),
-            });
-          });
-          await batch.commit();
-          await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.HOME });
-          if (form.id === banner.id) setEditing(false);
-          triggerToast(`${panelConfig.itemLabel}를 삭제했습니다.`, 'success');
         } catch (error) {
           console.error('Home banner delete error:', error);
           triggerToast(`${panelConfig.itemLabel} 삭제에 실패했습니다.`, 'error');

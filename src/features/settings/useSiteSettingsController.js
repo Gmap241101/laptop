@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getDoc, onSnapshot } from 'firebase/firestore';
-import { SITE_SETTINGS_DOC_REF } from '../../firebase.js';
 import {
   DEFAULT_SITE_SETTINGS,
   normalizeSiteSettings,
@@ -61,64 +59,29 @@ export default function useSiteSettingsController() {
 
   useEffect(() => {
     setSiteSettingsReady(false);
+    let cancelled = false;
     const cutover = readSiteContentCutoverConfig();
 
-    if (cutover.readRequested) {
-      let cancelled = false;
-      const load = async () => {
-        try {
-          const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.SITE_SETTINGS, config: cutover });
-          const document = content?.documents?.find((item) => item.key === 'siteSettings/config');
-          if (!document?.payload) throw Object.assign(new Error('PostgreSQL site settings document is missing.'), { code: 'site_settings_postgres_missing' });
-          if (cancelled) return;
-          setSiteSettings(normalizeSiteSettings(document.payload));
-          setSiteSettingsLoadErrorMessage('');
-          setSiteSettingsReady(true);
-          return;
-        } catch (postgresError) {
-          if (cutover.authorityRequested) {
-            if (cancelled) return;
-            console.error('Site settings PostgreSQL authority error:', postgresError);
-            setSiteSettings(DEFAULT_SITE_SETTINGS);
-            setSiteSettingsLoadErrorMessage('사이트 공통 설정을 PostgreSQL에서 불러오지 못했습니다.');
-            setSiteSettingsReady(true);
-            return;
-          }
-          try {
-            const snapshot = await getDoc(SITE_SETTINGS_DOC_REF);
-            if (cancelled) return;
-            setSiteSettings(normalizeSiteSettings(snapshot.exists() ? snapshot.data() : DEFAULT_SITE_SETTINGS));
-            setSiteSettingsLoadErrorMessage('');
-            setSiteSettingsReady(true);
-          } catch (firestoreError) {
-            if (cancelled) return;
-            console.error('Site settings PostgreSQL + Firestore fallback error:', postgresError, firestoreError);
-            setSiteSettings(DEFAULT_SITE_SETTINGS);
-            setSiteSettingsLoadErrorMessage('사이트 공통 설정을 불러오지 못했습니다. 기본 설정으로 표시합니다.');
-            setSiteSettingsReady(true);
-          }
-        }
-      };
-      void load();
-      return () => { cancelled = true; };
-    }
-
-    const unsubscribe = onSnapshot(
-      SITE_SETTINGS_DOC_REF,
-      (snapshot) => {
-        setSiteSettings(normalizeSiteSettings(snapshot.exists() ? snapshot.data() : DEFAULT_SITE_SETTINGS));
+    const load = async () => {
+      try {
+        const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.SITE_SETTINGS, config: cutover });
+        const siteDocument = content?.documents?.find((item) => item.key === 'siteSettings/config');
+        if (!siteDocument?.payload) throw Object.assign(new Error('PostgreSQL site settings document is missing.'), { code: 'site_settings_postgres_missing' });
+        if (cancelled) return;
+        setSiteSettings(normalizeSiteSettings(siteDocument.payload));
         setSiteSettingsLoadErrorMessage('');
         setSiteSettingsReady(true);
-      },
-      (error) => {
-        console.error('Site settings sync error:', error);
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Site settings PostgreSQL authority error:', error);
         setSiteSettings(DEFAULT_SITE_SETTINGS);
-        setSiteSettingsLoadErrorMessage('사이트 공통 설정을 불러오지 못했습니다. 기본 설정으로 표시합니다.');
+        setSiteSettingsLoadErrorMessage('사이트 공통 설정을 PostgreSQL에서 불러오지 못했습니다.');
         setSiteSettingsReady(true);
       }
-    );
+    };
 
-    return unsubscribe;
+    void load();
+    return () => { cancelled = true; };
   }, [siteContentRefreshRevision]);
 
   useEffect(() => {

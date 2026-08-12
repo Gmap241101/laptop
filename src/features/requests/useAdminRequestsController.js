@@ -8,12 +8,12 @@ import {
   query as firestoreQuery,
   startAfter,
   where,
-} from 'firebase/firestore';
+} from '../../platform/retiredLegacyDataCompat.js';
 
 import {
   RENTAL_REQUESTS_COLLECTION_REF,
   firebaseAuth,
-} from '../../firebase.js';
+} from '../../platform/appDataRefs.js';
 import {
   ADMIN_REQUEST_QUICK_FILTER,
   ADMIN_REQUEST_TAB,

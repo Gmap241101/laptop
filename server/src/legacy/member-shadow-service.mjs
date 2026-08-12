@@ -112,7 +112,6 @@ export const createMemberShadowService = ({
   userRepository,
   firebaseLinkRepository,
   memberShadowRepository,
-  firestoreUserAccountClient,
 }) => {
   if (!userRepository || typeof userRepository.findByClerkUserId !== 'function') {
     throw new TypeError('userRepository.findByClerkUserId() is required.');
@@ -127,9 +126,6 @@ export const createMemberShadowService = ({
   if (!memberShadowRepository || typeof memberShadowRepository.findByAppUserId !== 'function' || typeof memberShadowRepository.upsert !== 'function') {
     throw new TypeError('memberShadowRepository find/upsert methods are required.');
   }
-  if (!firestoreUserAccountClient || typeof firestoreUserAccountClient.getUserAccount !== 'function') {
-    throw new TypeError('firestoreUserAccountClient.getUserAccount() is required.');
-  }
 
   const context = async (clerkUserId) => {
     const appUser = await userRepository.findByClerkUserId(clerkUserId);
@@ -139,29 +135,19 @@ export const createMemberShadowService = ({
     return { appUser, firebaseLink };
   };
 
-  const verifyFirebaseContext = ({ firebaseIdentity, firebaseLink }) => {
-    if (!firebaseIdentity?.uid || firebaseIdentity.uid !== firebaseLink.firebaseUid) {
-      throw serviceError('legacy_link_token_mismatch', 'The current Firebase session does not match the linked legacy identity.');
+  const readPostgresqlCompatibilitySource = async ({ appUser, firebaseLink }) => {
+    const shadow = await memberShadowRepository.findByAppUserId(appUser.id);
+    if (!shadow) throw serviceError('member_shadow_not_found', 'PostgreSQL compatibility member snapshot does not exist.');
+    if (normalizeText(shadow.uid || shadow.firebaseUid) && normalizeText(shadow.uid || shadow.firebaseUid) !== normalizeText(firebaseLink.firebaseUid)) {
+      throw serviceError('member_source_uid_mismatch', 'PostgreSQL compatibility member key does not match the linked user.');
     }
-    if (!firebaseIdentity.idToken) {
-      throw serviceError('firebase_id_token_missing', 'The verified Firebase request did not retain its ID token.');
-    }
-  };
-
-  const readSource = async ({ appUser, firebaseLink, firebaseIdentity }) => {
-    verifyFirebaseContext({ firebaseIdentity, firebaseLink });
-    const document = await firestoreUserAccountClient.getUserAccount({
-      firebaseUid: firebaseLink.firebaseUid,
-      firebaseIdToken: firebaseIdentity.idToken,
+    return Object.freeze({
+      ...shadow,
+      uid: normalizeText(shadow.uid || shadow.firebaseUid || firebaseLink.firebaseUid),
+      sourceDocumentPath: `postgresql/app_user_member_profile_shadows/${appUser.id}`,
+      sourceUpdatedAt: shadow.sourceUpdatedAt || shadow.updatedAt || shadow.syncedAt || null,
+      sourceHash: shadow.sourceHash || hashPayload(comparableShadow(shadow)),
     });
-    if (!document) throw serviceError('member_source_not_found', 'Firestore userAccounts document does not exist.');
-    const source = normalizeMemberSource({ document, firebaseUid: firebaseLink.firebaseUid });
-    const sourceEmail = normalizeEmail(source.email);
-    const appEmail = normalizeEmail(appUser.primaryEmail);
-    if (sourceEmail && appEmail && sourceEmail !== appEmail) {
-      throw serviceError('member_source_email_mismatch', 'Firestore member email does not match the linked Clerk/PostgreSQL profile.');
-    }
-    return source;
   };
 
   return Object.freeze({
@@ -183,107 +169,44 @@ export const createMemberShadowService = ({
       return memberShadowRepository.findByAppUserId(firebaseLink.appUserId);
     },
 
-    async readCurrentSourceByFirebaseIdentity(firebaseIdentity) {
-      const firebaseUid = normalizeText(firebaseIdentity?.uid);
-      if (!firebaseUid) throw serviceError('firebase_identity_missing', 'Verified Firebase identity is required.');
-      const firebaseLink = await firebaseLinkRepository.findByFirebaseUid(firebaseUid);
-      if (!firebaseLink) throw serviceError('legacy_link_not_found', 'Firebase legacy identity has not been linked.');
-      const tokenEmail = normalizeEmail(firebaseIdentity?.email);
-      const linkedEmail = normalizeEmail(firebaseLink.firebaseEmail);
-      if (tokenEmail && linkedEmail && tokenEmail !== linkedEmail) {
-        throw serviceError('firebase_link_email_mismatch', 'Firebase token email does not match the linked identity.');
-      }
-      if (!firebaseIdentity.idToken) {
-        throw serviceError('firebase_id_token_missing', 'The verified Firebase request did not retain its ID token.');
-      }
-      const document = await firestoreUserAccountClient.getUserAccount({
-        firebaseUid,
-        firebaseIdToken: firebaseIdentity.idToken,
-      });
-      if (!document) throw serviceError('member_source_not_found', 'Firestore userAccounts document does not exist.');
-      const source = normalizeMemberSource({ document, firebaseUid });
-      const sourceEmail = normalizeEmail(source.email);
-      if (sourceEmail && linkedEmail && sourceEmail !== linkedEmail) {
-        throw serviceError('member_source_email_mismatch', 'Firestore member email does not match the linked Firebase identity.');
-      }
-      return source;
+    async readCurrentSourceByFirebaseIdentity(identity) {
+      const memberKey = normalizeText(identity?.uid);
+      if (!memberKey) throw serviceError('member_identity_missing', 'Linked PostgreSQL member key is required.');
+      const firebaseLink = await firebaseLinkRepository.findByFirebaseUid(memberKey);
+      if (!firebaseLink) throw serviceError('legacy_link_not_found', 'PostgreSQL compatibility identity link was not found.');
+      const appUser = { id: firebaseLink.appUserId };
+      return readPostgresqlCompatibilitySource({ appUser, firebaseLink });
     },
 
-    async syncLinkedFirebaseUid(firebaseIdentity, targetFirebaseUid = '') {
-      const actorUid = normalizeText(firebaseIdentity?.uid);
-      const firebaseUid = normalizeText(targetFirebaseUid) || actorUid;
-      if (!actorUid || !firebaseUid) {
-        throw serviceError('firebase_identity_missing', 'Verified Firebase identity and target UID are required.');
-      }
-      if (!firebaseIdentity.idToken) {
-        throw serviceError('firebase_id_token_missing', 'The verified Firebase request did not retain its ID token.');
-      }
-
-      const document = await firestoreUserAccountClient.getUserAccount({
-        firebaseUid,
-        firebaseIdToken: firebaseIdentity.idToken,
-      });
-      if (!document) {
-        return Object.freeze({
-          status: 'skipped',
-          reason: 'member_source_not_found',
-          firebaseUid,
-          actorUid,
-          shadow: null,
-        });
-      }
-
-      const firebaseLink = await firebaseLinkRepository.findByFirebaseUid(firebaseUid);
-      if (!firebaseLink) {
-        return Object.freeze({
-          status: 'skipped',
-          reason: 'legacy_link_not_found',
-          firebaseUid,
-          actorUid,
-          shadow: null,
-        });
-      }
-
-      const source = normalizeMemberSource({ document, firebaseUid });
-      const sourceEmail = normalizeEmail(source.email);
-      const linkedEmail = normalizeEmail(firebaseLink.firebaseEmail);
-      if (sourceEmail && linkedEmail && sourceEmail !== linkedEmail) {
-        throw serviceError('member_source_email_mismatch', 'Firestore member email does not match the linked Firebase identity.');
-      }
-
-      const shadow = await memberShadowRepository.upsert(firebaseLink.appUserId, firebaseUid, source);
-      return Object.freeze({
-        status: 'synced',
-        reason: '',
-        firebaseUid,
-        actorUid,
-        appUserId: firebaseLink.appUserId,
-        shadow,
-      });
+    async syncLinkedFirebaseUid(identity, targetFirebaseUid = '') {
+      const actorUid = normalizeText(identity?.uid);
+      const memberKey = normalizeText(targetFirebaseUid) || actorUid;
+      if (!memberKey) throw serviceError('member_identity_missing', 'Linked PostgreSQL member key is required.');
+      const firebaseLink = await firebaseLinkRepository.findByFirebaseUid(memberKey);
+      if (!firebaseLink) return Object.freeze({ status: 'skipped', reason: 'legacy_link_not_found', firebaseUid: memberKey, actorUid, shadow: null });
+      const shadow = await memberShadowRepository.findByAppUserId(firebaseLink.appUserId);
+      return Object.freeze({ status: 'retired', reason: 'postgresql-authoritative', firebaseUid: memberKey, actorUid, appUserId: firebaseLink.appUserId, shadow });
     },
 
-    async syncCurrent(clerkUserId, firebaseIdentity) {
-      const { appUser, firebaseLink } = await context(clerkUserId);
-      const source = await readSource({ appUser, firebaseLink, firebaseIdentity });
-      return memberShadowRepository.upsert(appUser.id, firebaseLink.firebaseUid, source);
-    },
-
-    async compareCurrent(clerkUserId, firebaseIdentity) {
-      const { appUser, firebaseLink } = await context(clerkUserId);
+    async syncCurrent(clerkUserId) {
+      const { appUser } = await context(clerkUserId);
       const shadow = await memberShadowRepository.findByAppUserId(appUser.id);
-      if (!shadow) throw serviceError('member_shadow_not_found', 'Member shadow has not been synchronized yet.');
-      const source = await readSource({ appUser, firebaseLink, firebaseIdentity });
-      const differences = changedFields(shadow, source);
-      if (shadow.sourceHash !== source.sourceHash && differences.length === 0) {
-        differences.push('sourcePayload');
-      }
+      if (!shadow) throw serviceError('member_shadow_not_found', 'PostgreSQL compatibility member snapshot does not exist.');
+      return shadow;
+    },
+
+    async compareCurrent(clerkUserId) {
+      const { appUser } = await context(clerkUserId);
+      const shadow = await memberShadowRepository.findByAppUserId(appUser.id);
+      if (!shadow) throw serviceError('member_shadow_not_found', 'PostgreSQL compatibility member snapshot does not exist.');
       return Object.freeze({
-        equivalent: shadow.sourceHash === source.sourceHash && differences.length === 0,
-        sourceHash: source.sourceHash,
-        shadowHash: shadow.sourceHash,
-        changedFields: differences,
-        sourceUpdatedAt: source.sourceUpdatedAt,
-        shadowSyncedAt: shadow.syncedAt,
+        equivalent: true,
+        sourceHash: shadow.sourceHash || '',
+        shadowHash: shadow.sourceHash || '',
+        changedFields: [],
+        sourceUpdatedAt: shadow.sourceUpdatedAt || shadow.updatedAt || null,
+        shadowSyncedAt: shadow.syncedAt || null,
+        source: 'postgresql-authoritative',
       });
     },
   });

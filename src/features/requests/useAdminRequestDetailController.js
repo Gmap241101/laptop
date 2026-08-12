@@ -5,9 +5,9 @@ import {
   orderBy,
   query as firestoreQuery,
   where,
-} from 'firebase/firestore';
+} from '../../platform/retiredLegacyDataCompat.js';
 
-import { RENTAL_REQUEST_LOGS_COLLECTION_REF, firebaseAuth } from '../../firebase.js';
+import { RENTAL_REQUEST_LOGS_COLLECTION_REF, firebaseAuth } from '../../platform/appDataRefs.js';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 import {
   publishAdminRentalRequestCutoverObservation,

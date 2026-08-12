@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getDocs, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { getDocs, serverTimestamp, writeBatch } from '../../platform/retiredLegacyDataCompat.js';
 
 import {
   PUBLIC_ASSET_CATALOG_DOC_REF,
@@ -7,7 +7,7 @@ import {
   RENTAL_ASSETS_COLLECTION_REF,
   db,
   firebaseAuth,
-} from '../../firebase.js';
+} from '../../platform/appDataRefs.js';
 import { normalizeAssetReservations } from '../../services/publicAssetCatalog.js';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 import { publishAssetDomainCutoverObservation, readAssetDomainCutoverConfig } from './assetDomainCutover.js';

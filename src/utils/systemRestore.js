@@ -1,4 +1,4 @@
-import { Timestamp } from 'firebase/firestore';
+import { Timestamp } from '../platform/retiredLegacyDataCompat.js';
 
 export const BACKUP_FORMAT_VERSION = 2;
 export const RESTORE_CONFIRM_TEXT = '백업 데이터 복원';

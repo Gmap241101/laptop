@@ -3,12 +3,6 @@ import { createRequestHandler } from './app.mjs';
 import { createClerkSessionAuthenticator } from './auth/clerk-session.mjs';
 import { createClerkBackendClient } from './clerk/clerk-api.mjs';
 import { readServerConfig } from './config/env.mjs';
-import { createFirebaseIdTokenVerifier, extractFirebaseBearerToken } from './firebase/firebase-id-token.mjs';
-import { createFirestoreUserAccountClient } from './firestore/firestore-user-account.mjs';
-import { createFirestoreRentalRestrictionClient } from './firestore/firestore-rental-restriction.mjs';
-import { createFirestoreRentalRequestsClient } from './firestore/firestore-rental-requests.mjs';
-import { createFirestoreRentalRequestWriteClient } from './firestore/firestore-rental-request-write.mjs';
-import { createFirestoreAdminRentalRequestsClient } from './firestore/firestore-admin-rental-requests.mjs';
 import { checkDatabase, closePool, getPool } from './db/pool.mjs';
 import { createUserRepository } from './users/user-repository.mjs';
 import { createUserIdentityService } from './users/user-service.mjs';
@@ -27,8 +21,6 @@ import { createRentalRequestUserActionService } from './rentals/rental-request-u
 import { createAdminRentalRequestRepository } from './rentals/admin-rental-request-repository.mjs';
 import { createAdminRentalRequestService } from './rentals/admin-rental-request-service.mjs';
 import { createRentalPostgresqlSource } from './rentals/rental-postgresql-source.mjs';
-import { createFirestoreAssetClient } from './firestore/firestore-assets.mjs';
-import { createFirestoreMemberAuthorityClient } from './firestore/firestore-members.mjs';
 import { createMemberAuthorityRepository } from './members/member-authority-repository.mjs';
 import { createMemberAuthorityService } from './members/member-authority-service.mjs';
 import { createAssetRepository } from './assets/asset-repository.mjs';
@@ -45,8 +37,8 @@ import { createSiteContentRepository } from './content/site-content-repository.m
 import { createSiteContentService } from './content/site-content-service.mjs';
 import { createBoardRepository } from './boards/board-repository.mjs';
 import { createBoardService } from './boards/board-service.mjs';
-import { createFirestoreBoardClient } from './firestore/firestore-boards.mjs';
-import { createFirestoreSiteContentClient } from './firestore/firestore-site-content.mjs';
+import { createSystemConfigRepository } from './settings/system-config-repository.mjs';
+import { createSystemConfigService } from './settings/system-config-service.mjs';
 
 const config = readServerConfig();
 const authenticateRequest = createClerkSessionAuthenticator(config);
@@ -66,16 +58,6 @@ const clerkClient = config.clerkSecretKey
       async deleteUser() { const error = new Error('Clerk Backend API is not configured.'); error.code = 'clerk_backend_not_configured'; throw error; },
     };
 const pool = getPool();
-const retiredFirestoreClient = new Proxy({}, {
-  get(_target, property) {
-    return async () => {
-      const error = new Error(`Firestore runtime method ${String(property)} is retired.`);
-      error.code = 'firebase_runtime_retired';
-      error.status = 410;
-      throw error;
-    };
-  },
-});
 const userRepository = createUserRepository(pool);
 const accountRecoveryRepository = createAccountRecoveryRepository(pool);
 const accountRecoveryService = createAccountRecoveryService({ repository: accountRecoveryRepository });
@@ -85,53 +67,29 @@ const userIdentityService = createUserIdentityService({ clerkClient, userReposit
 const firebaseLinkRepository = createFirebaseLinkRepository(pool);
 const firebaseLinkService = createFirebaseLinkService({ userRepository, firebaseLinkRepository });
 const memberShadowRepository = createMemberShadowRepository(pool);
-const firestoreUserAccountClient = config.firebaseProjectId
-  ? createFirestoreUserAccountClient({
-      projectId: config.firebaseProjectId,
-      timeoutMs: config.firestoreRestTimeoutMs,
-    })
-  : {
-      async getUserAccount() {
-        const error = new Error('Firestore legacy member read is not configured.');
-        error.code = 'firestore_user_account_not_configured';
-        throw error;
-      },
-    };
 const memberShadowService = createMemberShadowService({
   userRepository,
   firebaseLinkRepository,
   memberShadowRepository,
-  firestoreUserAccountClient,
 });
 
-const firestoreMemberAuthorityClient = config.firebaseProjectId
-  ? createFirestoreMemberAuthorityClient({ projectId: config.firebaseProjectId, timeoutMs: config.firestoreRestTimeoutMs })
-  : retiredFirestoreClient;
 const memberAuthorityRepository = createMemberAuthorityRepository(pool);
 const rentalRestrictionRepository = createRentalRestrictionRepository(pool);
 const userClerkAuthRepository = createUserClerkAuthRepository(pool);
 const siteContentRepository = createSiteContentRepository(pool);
+const systemConfigRepository = createSystemConfigRepository(pool);
+const systemConfigService = createSystemConfigService({ repository: systemConfigRepository });
 const siteContentService = createSiteContentService({ repository: siteContentRepository });
-const firestoreSiteContentClient = config.firebaseProjectId
-  ? createFirestoreSiteContentClient({ projectId: config.firebaseProjectId, timeoutMs: config.firestoreRestTimeoutMs })
-  : null;
 const assetRepository = createAssetRepository(pool);
 const boardRepository = createBoardRepository(pool);
-const firestoreBoardClient = config.firebaseProjectId
-  ? createFirestoreBoardClient({ projectId: config.firebaseProjectId, timeoutMs: config.firestoreRestTimeoutMs })
-  : {
-      async verifyAdmin() { const error = new Error('Firestore board compatibility bridge is not configured.'); error.code = 'firestore_board_not_configured'; throw error; },
-    };
 const boardService = createBoardService({
   repository: boardRepository,
-  firestoreClient: firestoreBoardClient,
   writeMirrorEnabled: !config.assetBoardWriteMirrorDisabled,
 });
 const accountLifecycleService = createAccountLifecycleService({
   repository: accountLifecycleRepository,
   siteContentRepository,
   userAuthRepository: userClerkAuthRepository,
-  firestoreClient: firestoreMemberAuthorityClient,
   authorityEnabled: config.accountLifecycleCompatibilityDisabled,
 });
 const userClerkAuthService = createUserClerkAuthService({
@@ -139,8 +97,7 @@ const userClerkAuthService = createUserClerkAuthService({
       clerkClient,
       userRepository,
       firebaseLinkRepository,
-      firestoreClient: firestoreMemberAuthorityClient,
-      memberRepository: memberAuthorityRepository,
+          memberRepository: memberAuthorityRepository,
       adminIdentityRepository,
       accountLifecycleService,
       accountLifecycleCompatibilityDisabled: config.accountLifecycleCompatibilityDisabled,
@@ -149,36 +106,21 @@ const userClerkAuthService = createUserClerkAuthService({
 const adminClerkAuthService = createAdminClerkAuthService({
       repository: adminIdentityRepository,
       clerkClient,
-      firestoreClient: firestoreMemberAuthorityClient,
     });
 const memberAuthorityService = createMemberAuthorityService({
       repository: memberAuthorityRepository,
       firebaseLinkRepository,
       userRepository,
-      firestoreClient: firestoreMemberAuthorityClient,
-      rentalRestrictionRepository,
+          rentalRestrictionRepository,
       siteContentRepository,
       writeMirrorEnabled: !config.memberStatusRestrictionWriteMirrorDisabled,
       profileWriteMirrorEnabled: !config.memberProfileWriteMirrorDisabled,
       userFirebaseAuthCompatibilityDisabled: config.userFirebaseAuthCompatibilityDisabled,
     });
 
-const firestoreRentalRestrictionClient = config.firebaseProjectId
-  ? createFirestoreRentalRestrictionClient({
-      projectId: config.firebaseProjectId,
-      timeoutMs: config.firestoreRestTimeoutMs,
-    })
-  : {
-      async getRentalRestriction() {
-        const error = new Error('Firestore rental restriction read is not configured.');
-        error.code = 'firestore_rental_restriction_not_configured';
-        throw error;
-      },
-    };
 const rentalRestrictionService = createRentalRestrictionService({
   firebaseLinkRepository,
   rentalRestrictionRepository,
-  firestoreRentalRestrictionClient,
   firebaseCompatibilityRequired: !config.userFirebaseAuthCompatibilityDisabled,
 });
 const rentalRequestRepository = createRentalRequestRepository(pool);
@@ -189,69 +131,14 @@ const rentalPostgresqlSource = createRentalPostgresqlSource({
   adminRentalRequestRepository,
   rentalRestrictionRepository,
 });
-const firestoreRentalRequestsClient = config.firebaseProjectId
-  ? createFirestoreRentalRequestsClient({
-      projectId: config.firebaseProjectId,
-      timeoutMs: config.firestoreRestTimeoutMs,
-    })
-  : {
-      async listOwnRentalRequests() {
-        const error = new Error('Firestore rental request read is not configured.');
-        error.code = 'firestore_rental_requests_not_configured';
-        throw error;
-      },
-    };
 const rentalRequestService = createRentalRequestService({
   userRepository,
   firebaseLinkRepository,
   memberShadowRepository,
   rentalRequestRepository,
-  firestoreRentalRequestsClient,
   useAuthoritativeSource: config.rentalRequestWriteMirrorDisabled,
 });
 const rentalRequestWriteRepository = createRentalRequestWriteRepository(pool);
-const firestoreRentalRequestWriteClient = config.firebaseProjectId
-  ? createFirestoreRentalRequestWriteClient({
-      projectId: config.firebaseProjectId,
-      timeoutMs: config.firestoreRestTimeoutMs,
-    })
-  : {
-      async getPublicConfig() {
-        const error = new Error('Firestore rental request write compatibility bridge is not configured.');
-        error.code = 'firestore_rental_request_write_not_configured';
-        throw error;
-      },
-      async getRentalAsset() {
-        const error = new Error('Firestore rental request write compatibility bridge is not configured.');
-        error.code = 'firestore_rental_request_write_not_configured';
-        throw error;
-      },
-      async getRentalRequest() {
-        const error = new Error('Firestore rental request user action bridge is not configured.');
-        error.code = 'firestore_rental_request_write_not_configured';
-        throw error;
-      },
-      async commitUserRequestEdit() {
-        const error = new Error('Firestore rental request user action bridge is not configured.');
-        error.code = 'firestore_rental_request_write_not_configured';
-        throw error;
-      },
-      async commitUserRequestCancel() {
-        const error = new Error('Firestore rental request user action bridge is not configured.');
-        error.code = 'firestore_rental_request_write_not_configured';
-        throw error;
-      },
-      async commitUserExtension() {
-        const error = new Error('Firestore rental request user action bridge is not configured.');
-        error.code = 'firestore_rental_request_write_not_configured';
-        throw error;
-      },
-      async commitRentalRequestCreate() {
-        const error = new Error('Firestore rental request write compatibility bridge is not configured.');
-        error.code = 'firestore_rental_request_write_not_configured';
-        throw error;
-      },
-    };
 const rentalRequestWriteService = createRentalRequestWriteService({
   userRepository,
   firebaseLinkRepository,
@@ -259,7 +146,6 @@ const rentalRequestWriteService = createRentalRequestWriteService({
   rentalRestrictionService,
   rentalRequestService,
   rentalRequestWriteRepository,
-  firestoreRentalRequestWriteClient,
   postgresSource: rentalPostgresqlSource,
   writeMirrorEnabled: !config.rentalRequestWriteMirrorDisabled,
 });
@@ -271,56 +157,24 @@ const rentalRequestUserActionService = createRentalRequestUserActionService({
   rentalRestrictionService,
   rentalRequestService,
   repository: rentalRequestUserActionRepository,
-  firestoreClient: firestoreRentalRequestWriteClient,
   postgresSource: rentalPostgresqlSource,
   writeMirrorEnabled: !config.rentalRequestWriteMirrorDisabled,
 });
-const firestoreAdminRentalRequestsClient = config.firebaseProjectId
-  ? createFirestoreAdminRentalRequestsClient({
-      projectId: config.firebaseProjectId,
-      timeoutMs: config.firestoreRestTimeoutMs,
-    })
-  : {
-      async verifyAdmin() { const error = new Error('Firestore admin rental request bridge is not configured.'); error.code = 'firestore_admin_rental_request_not_configured'; throw error; },
-    };
 const adminRentalRequestService = createAdminRentalRequestService({
   repository: adminRentalRequestRepository,
-  firestoreClient: firestoreAdminRentalRequestsClient,
   restrictionAuthorityRepository: memberAuthorityRepository,
   postgresSource: rentalPostgresqlSource,
   writeMirrorEnabled: !config.rentalRequestWriteMirrorDisabled,
 });
-const firestoreAssetClient = config.firebaseProjectId
-  ? createFirestoreAssetClient({ projectId: config.firebaseProjectId, timeoutMs: config.firestoreRestTimeoutMs })
-  : {
-      async verifyAdmin() { const error = new Error('Firestore asset bridge is not configured.'); error.code = 'firestore_asset_not_configured'; throw error; },
-    };
 const assetService = createAssetService({
   repository: assetRepository,
-  firestoreClient: firestoreAssetClient,
   writeMirrorEnabled: !config.assetBoardWriteMirrorDisabled,
 });
-const verifyFirebaseIdToken = config.firebaseProjectId
-  ? createFirebaseIdTokenVerifier({
-      projectId: config.firebaseProjectId,
-      timeoutMs: config.firebaseCertTimeoutMs,
-    })
-  : async () => {
-      const error = new Error('Firebase ID token verification is not configured.');
-      error.code = 'firebase_verification_not_configured';
-      throw error;
-    };
-const authenticateFirebaseRequest = async (request) => {
-  const idToken = extractFirebaseBearerToken(request);
-  const identity = await verifyFirebaseIdToken(idToken);
-  return Object.freeze({ ...identity, idToken });
-};
 const server = createServer(
   createRequestHandler({
     config,
     databaseCheck: checkDatabase,
     authenticateRequest,
-    authenticateFirebaseRequest,
     userIdentityService,
     firebaseLinkService,
     memberShadowService,
@@ -336,9 +190,9 @@ const server = createServer(
     adminRentalRequestService,
     assetService,
     siteContentService,
-    firestoreSiteContentClient,
     boardService,
     memberAuthorityRepository,
+    systemConfigService,
   }),
 );
 
@@ -352,25 +206,21 @@ server.listen(config.port, '0.0.0.0', () => {
     clerkBackendApi: config.clerkSecretKey ? 'configured' : 'disabled',
     firebaseRuntime: config.firebaseRuntimeDisabled ? 'retired' : 'compatibility',
     userIdentityStore: 'postgresql',
-    firebaseIdentityBridge: config.firebaseProjectId ? 'configured' : 'disabled',
-    firestoreMemberShadow: config.firebaseProjectId ? 'user-token-security-rules' : 'disabled',
-    rentalRestrictionShadow: config.firebaseProjectId ? 'postgresql-user-token-security-rules' : 'disabled',
-    rentalRequestShadow: config.firebaseProjectId ? 'normalized-postgresql-user-token-security-rules' : 'disabled',
-    rentalRequestWrite: config.firebaseProjectId ? (config.rentalRequestWriteMirrorDisabled ? 'postgresql-authoritative-firestore-write-mirror-retired' : 'postgresql-authoritative-firestore-compatibility-mirror') : 'disabled',
-    rentalRequestUserActions: config.firebaseProjectId ? (config.rentalRequestWriteMirrorDisabled ? 'postgresql-authoritative-user-actions-firestore-write-mirror-retired' : 'postgresql-authoritative-user-actions-firestore-compatibility-mirror') : 'disabled',
-    adminRentalRequests: config.firebaseProjectId ? (config.rentalRequestWriteMirrorDisabled ? 'postgresql-authoritative-admin-mutations-firestore-write-mirror-retired' : 'postgresql-read-admin-mutations-audit-firestore-compatibility-mirror') : 'disabled',
-    memberAuthority: config.firebaseProjectId ? (config.memberProfileWriteMirrorDisabled ? 'postgresql-member-profile-identity-recovery-authority-firestore-profile-mirror-retired' : (config.memberStatusRestrictionWriteMirrorDisabled ? 'postgresql-member-status-restriction-authority-firestore-write-mirror-retired-profile-edit-mirror-preserved' : 'postgresql-authoritative-firestore-compatibility-mirror')) : 'disabled',
-    adminIdentityRegistry: config.firebaseProjectId ? 'postgresql-clerk-authority-firebase-compatibility' : 'disabled',
+    firebaseIdentityBridge: 'retired',
+    firestoreMemberShadow: 'retired',
+    rentalRestrictionShadow: 'retired',
+    rentalRequestShadow: 'retired',
+    rentalRequestWrite: 'postgresql-authoritative',
+    rentalRequestUserActions: 'postgresql-authoritative',
+    adminRentalRequests: 'postgresql-authoritative',
+    memberAuthority: 'postgresql-authoritative',
+    adminIdentityRegistry: 'postgresql-clerk-authority',
     accountRecovery: 'postgresql-preferred',
-    userClerkAuthentication: config.firebaseProjectId ? 'clerk-authoritative-firebase-compatibility' : 'disabled',
-    adminAuthentication: config.firebaseProjectId ? 'clerk-authoritative-firebase-compatibility-session' : 'disabled',
-    assetDomain: config.firebaseProjectId
-      ? (config.assetBoardWriteMirrorDisabled ? 'postgresql-authoritative-firestore-write-mirror-retired' : 'postgresql-read-write-firestore-compatibility-mirror')
-      : 'disabled',
+    userClerkAuthentication: 'clerk-postgresql',
+    adminAuthentication: 'clerk-postgresql',
+    assetDomain: 'postgresql-authoritative',
     siteContent: config.firebaseRuntimeDisabled ? 'postgresql-authoritative' : 'postgresql-preferred-firestore-write-through',
-    noticeFaqBoards: config.firebaseProjectId
-      ? (config.assetBoardWriteMirrorDisabled ? 'postgresql-authoritative-firestore-write-mirror-retired' : 'postgresql-authoritative-firestore-compatibility-mirror')
-      : 'disabled',
+    noticeFaqBoards: 'postgresql-authoritative',
     phase28WriteMirrorRetirement: config.assetBoardWriteMirrorDisabled ? 'assets-and-boards' : 'disabled',
     phase29RentalTransactionAuthority: config.rentalRequestWriteMirrorDisabled ? 'postgresql-source-and-write-mirror-retired' : 'disabled',
     phase30MemberStatusRestrictionAuthority: config.memberStatusRestrictionWriteMirrorDisabled ? 'postgresql-source-and-write-mirror-retired' : 'disabled',

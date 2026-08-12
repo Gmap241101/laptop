@@ -2,14 +2,14 @@ import {
   doc,
   serverTimestamp,
   writeBatch,
-} from 'firebase/firestore';
+} from '../../platform/retiredLegacyDataCompat.js';
 
 import {
   ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
   MEMBER_IDENTITY_CLAIMS_COLLECTION_REF,
   USER_ACCOUNTS_COLLECTION_NAME,
   db,
-} from '../../firebase.js';
+} from '../../platform/appDataRefs.js';
 import {
   USER_PROFILE_STATUS,
 } from '../../constants/memberConstants.js';

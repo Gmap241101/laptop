@@ -1,9 +1,9 @@
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc } from '../../platform/retiredLegacyDataCompat.js';
 
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 import {
   ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
-} from '../../firebase.js';
+} from '../../platform/appDataRefs.js';
 import {
   buildDomesticPhoneNumber,
   createAccountRecoveryEmailVerifier,

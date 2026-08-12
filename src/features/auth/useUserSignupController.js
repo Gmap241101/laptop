@@ -7,14 +7,14 @@ import {
   signInWithEmailAndPassword,
   signOut,
   updateProfile,
-} from 'firebase/auth';
+} from '../../platform/retiredLegacyDataCompat.js';
 import {
   collection,
   doc,
   getDoc,
   runTransaction,
   serverTimestamp,
-} from 'firebase/firestore';
+} from '../../platform/retiredLegacyDataCompat.js';
 
 import {
   MEMBER_DIRECTORY_KEYS_COLLECTION_REF,
@@ -22,7 +22,7 @@ import {
   firebaseAuth,
   userSignupAuth,
   userSignupDb,
-} from '../../firebase.js';
+} from '../../platform/appDataRefs.js';
 import { USER_PROFILE_STATUS } from '../../constants/memberConstants.js';
 import {
   TERMS_CONSENT_SOURCE,

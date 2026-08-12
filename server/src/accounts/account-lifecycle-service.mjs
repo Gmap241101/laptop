@@ -82,32 +82,7 @@ const validateTerms = ({ policy, submission, source }) => {
   });
 };
 
-const firestoreDocumentId = (document) => trim(document?.name).split('/').filter(Boolean).at(-1) || '';
-const normalizeLegacyConsent = (document, { log = false } = {}) => {
-  const fields = document?.fields || {};
-  const decision = trim(fields.decision);
-  const termId = trim(fields.termId);
-  if (!termId || !['accepted', 'declined'].includes(decision)) return null;
-  return Object.freeze({
-    ...(log ? { id: firestoreDocumentId(document) || `legacy-${sha256(`${termId}:${fields.createdAt || fields.updatedAt || Date.now()}`).slice(0, 32)}` } : {}),
-    termId,
-    termVersion: Math.max(1, Number(fields.termVersion || 1)),
-    termVersionId: trim(fields.termVersionId),
-    policyRevision: Math.max(0, Number(fields.policyRevision || 0)),
-    decision,
-    previousDecision: ['accepted', 'declined'].includes(trim(fields.previousDecision)) ? trim(fields.previousDecision) : '',
-    requiredSnapshot: Boolean(fields.requiredSnapshot),
-    titleSnapshot: trim(fields.titleSnapshot),
-    contentHash: trim(fields.contentHash),
-    viewedAtMs: Math.max(0, Number(fields.viewedAtMs || 0)),
-    decidedAt: fields.decidedAt || fields.updatedAt || fields.createdAt || null,
-    createdAt: fields.createdAt || fields.decidedAt || fields.updatedAt || null,
-    updatedAt: fields.updatedAt || fields.decidedAt || fields.createdAt || null,
-    source: `legacy-firestore:${trim(fields.source) || 'terms-consent'}`,
-  });
-};
-
-export const createAccountLifecycleService = ({ repository, siteContentRepository, userAuthRepository, firestoreClient = null, authorityEnabled = false }) => {
+export const createAccountLifecycleService = ({ repository, siteContentRepository, userAuthRepository, authorityEnabled = false }) => {
   if (!repository || typeof repository.createSignupAccount !== 'function' || typeof repository.getConsentSnapshot !== 'function' || typeof repository.importConsents !== 'function' || typeof repository.saveConsents !== 'function') {
     throw new TypeError('Account lifecycle repository is required.');
   }
@@ -201,29 +176,34 @@ export const createAccountLifecycleService = ({ repository, siteContentRepositor
       return Object.freeze({ source: 'postgresql', policy, ...snapshot, bootstrapRequired: !snapshot.bootstrapCompleted });
     },
 
-    async bootstrapTerms({ clerkUserId, firebaseIdentity }) {
+    async getTermsByMemberKey({ memberKey }) {
+      assertAuthorityEnabled();
+      const key = trim(memberKey);
+      if (!key) throw serviceError('terms_member_key_missing', 'Member key is required.', 400);
+      const { policy } = await loadPolicyContext();
+      const snapshot = await repository.getConsentSnapshot(key);
+      return Object.freeze({ source: 'postgresql', policy, ...snapshot, bootstrapRequired: !snapshot.bootstrapCompleted });
+    },
+
+    async bootstrapTerms({ clerkUserId }) {
       assertAuthorityEnabled();
       const firebaseUid = await resolveFirebaseUid(clerkUserId);
-      if (!firebaseIdentity?.uid || !firebaseIdentity?.idToken || trim(firebaseIdentity.uid) !== firebaseUid) {
-        throw serviceError('terms_firebase_identity_mismatch', 'Firebase compatibility identity does not match the Clerk member.', 409);
-      }
       const current = await repository.getConsentSnapshot(firebaseUid);
-      if (current.bootstrapCompleted) {
-        const { policy } = await loadPolicyContext();
-        return Object.freeze({ source: 'postgresql', policy, ...current, bootstrapRequired: false, legacyBootstrap: 'already-complete' });
-      }
-      if (!firestoreClient || typeof firestoreClient.listUserTermConsentStates !== 'function' || typeof firestoreClient.listUserTermConsentLogs !== 'function') {
-        throw serviceError('terms_legacy_bootstrap_unavailable', 'Legacy terms consent bootstrap is unavailable.', 503);
-      }
-      const [stateDocuments, logDocuments] = await Promise.all([
-        firestoreClient.listUserTermConsentStates({ firebaseUid, firebaseIdToken: firebaseIdentity.idToken }),
-        firestoreClient.listUserTermConsentLogs({ firebaseUid, firebaseIdToken: firebaseIdentity.idToken }),
-      ]);
-      const states = stateDocuments.map((document) => normalizeLegacyConsent(document)).filter(Boolean);
-      const logs = logDocuments.map((document) => normalizeLegacyConsent(document, { log: true })).filter(Boolean);
-      const snapshot = await repository.importConsents({ firebaseUid, states, logs });
       const { policy } = await loadPolicyContext();
-      return Object.freeze({ source: 'postgresql', policy, ...snapshot, bootstrapRequired: false, legacyBootstrap: 'imported' });
+      if (!current.bootstrapCompleted) {
+        throw serviceError(
+          'terms_consent_postgresql_bootstrap_required',
+          'Terms consent data has not been migrated to PostgreSQL.',
+          409,
+        );
+      }
+      return Object.freeze({
+        source: 'postgresql',
+        policy,
+        ...current,
+        bootstrapRequired: false,
+        legacyBootstrap: 'retired',
+      });
     },
 
     async saveTerms({ clerkUserId, input = {} }) {

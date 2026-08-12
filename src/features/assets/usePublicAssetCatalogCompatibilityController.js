@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 
-import { firebaseAuth } from '../../firebase.js';
+import { firebaseAuth } from '../../platform/appDataRefs.js';
 import { readAssetDomainCutoverConfig } from './assetDomainCutover.js';
 import {
   ensurePublicAssetCatalogWriteThrough,

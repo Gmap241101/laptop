@@ -17,7 +17,7 @@ import {
   runTransaction,
   startAfter,
   where,
-} from 'firebase/firestore';
+} from '../../platform/retiredLegacyDataCompat.js';
 
 import {
   FAQ_BOARD_CONFIG_DOC_REF,
@@ -26,7 +26,7 @@ import {
   NOTICE_BOARD_CONFIG_DOC_REF,
   NOTICE_POSTS_COLLECTION_REF,
   db,
-} from '../../firebase.js';
+} from '../../platform/appDataRefs.js';
 import {
   DEFAULT_FAQ_POSTS_PER_PAGE,
   DEFAULT_NOTICE_POSTS_PER_PAGE,

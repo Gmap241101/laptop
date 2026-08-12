@@ -4,10 +4,14 @@ import {
   useRef,
 } from 'react';
 
-import { firebaseAuth } from '../../firebase.js';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
-import { readMemberProfileIdentityAuthorityConfig } from '../compatibility/memberProfileIdentityAuthority.js';
-import { syncSiteContentDomainFromFirestore } from '../content/siteContentCutover.js';
+import {
+  POLICY_CONTENT_DOMAINS,
+  getPolicyContentDocument,
+  readPolicyContentCutoverConfig,
+  replacePolicyContentDomainInPostgresql,
+  requestPolicyContentDomain,
+} from '../content/policyContentCutover.js';
 
 let memberDirectorySaveServicePromise = null;
 
@@ -20,7 +24,6 @@ const loadMemberDirectorySaveService = () => {
       throw error;
     });
   }
-
   return memberDirectorySaveServicePromise;
 };
 
@@ -41,20 +44,10 @@ export default function useAdminMemberDirectorySaveActions({
   }, [triggerToast]);
 
   const saveTempPeopleChanges = useCallback(async () => {
-    if (!isSplitStorageReady) {
-      triggerToastRef.current(
-        'Firestore 분리 저장소 최종 전환이 완료되지 않아 부서·사용자 정보를 저장할 수 없습니다.',
-        'error'
-      );
-      return false;
-    }
-
     try {
+      const { saveMemberDirectory } = await loadMemberDirectorySaveService();
       const {
-        saveMemberDirectory,
-      } = await loadMemberDirectorySaveService();
-
-      const {
+        directoryEntries,
         nextBorrowers,
         nextSettings,
         nextTeams,
@@ -65,14 +58,42 @@ export default function useAdminMemberDirectorySaveActions({
         tempTeams,
       });
 
-      const profileAuthorityConfig = readMemberProfileIdentityAuthorityConfig();
-      if (profileAuthorityConfig.requested) {
-        const adminUser = firebaseAuth.currentUser;
-        if (!adminUser) throw new Error('Firebase 관리자 compatibility 세션이 필요합니다.');
-        await syncSiteContentDomainFromFirestore({ domain: 'rental-config' });
-        const firebaseIdToken = await adminUser.getIdToken();
-        await clerkStagingClient.syncAdminMemberDirectory(firebaseIdToken);
+      const policyConfig = readPolicyContentCutoverConfig();
+      if (!policyConfig.adminAuthorityRequested) {
+        const error = new Error('PostgreSQL member-directory authority is unavailable.');
+        error.code = 'member_directory_postgresql_authority_unavailable';
+        throw error;
       }
+
+      const rentalDomain = await requestPolicyContentDomain({
+        domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
+        config: policyConfig,
+        useCache: false,
+      });
+      const publicConfigDocument = getPolicyContentDocument(
+        rentalDomain,
+        'rentalSystem/publicConfig'
+      );
+      const publicConfig = publicConfigDocument?.payload || {};
+
+      await clerkStagingClient.syncAdminMemberDirectory({
+        entries: directoryEntries,
+        version: nextSettings.memberDirectoryVersion,
+      });
+
+      await replacePolicyContentDomainInPostgresql({
+        domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
+        config: policyConfig,
+        documents: [{
+          key: 'rentalSystem/publicConfig',
+          payload: {
+            ...publicConfig,
+            teams: nextTeams,
+            settings: nextSettings,
+            updatedAt: new Date(),
+          },
+        }],
+      });
 
       setData((previousData) => ({
         ...previousData,
@@ -80,35 +101,27 @@ export default function useAdminMemberDirectorySaveActions({
         borrowers: nextBorrowers,
         settings: nextSettings,
       }));
-      replaceTempPeopleDraft({
-        nextTeams,
-        nextBorrowers,
-      });
+      replaceTempPeopleDraft({ nextTeams, nextBorrowers });
 
       triggerToastRef.current(
-        '부서·사용자 명부가 저장되었습니다. 명부 버전이 변경되어 기존 회원은 다음 로그인 시 순차적으로 재검증됩니다.',
+        '부서·사용자 명부가 PostgreSQL에 저장되었습니다. 명부 버전이 변경되어 기존 회원은 다음 로그인 시 순차적으로 재검증됩니다.',
         'success'
       );
-
       return true;
     } catch (error) {
-      if (
-        error?.name === 'MemberDirectoryValidationError' &&
-        error?.userMessage
-      ) {
+      if (error?.name === 'MemberDirectoryValidationError' && error?.userMessage) {
         triggerToastRef.current(error.userMessage, 'error');
         return false;
       }
-
       console.error('People data save error:', error);
       triggerToastRef.current(
-        '부서·사용자 저장에 실패했습니다. 기존 데이터는 유지됩니다.',
+        '부서·사용자 PostgreSQL 저장에 실패했습니다. 기존 데이터는 유지됩니다.',
         'error'
       );
       return false;
     }
   }, [
-      currentBorrowers,
+    currentBorrowers,
     isSplitStorageReady,
     replaceTempPeopleDraft,
     setData,
@@ -117,7 +130,5 @@ export default function useAdminMemberDirectorySaveActions({
     tempTeams,
   ]);
 
-  return {
-    saveTempPeopleChanges,
-  };
+  return { saveTempPeopleChanges };
 }

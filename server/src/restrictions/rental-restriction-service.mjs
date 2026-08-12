@@ -34,7 +34,7 @@ const normalizeSource = ({ document, firebaseUid }) => {
 export const createRentalRestrictionService = ({ firebaseLinkRepository, rentalRestrictionRepository, firestoreRentalRestrictionClient, firebaseCompatibilityRequired = true }) => {
   if (!firebaseLinkRepository || typeof firebaseLinkRepository.findByFirebaseUid !== 'function') throw new TypeError('firebaseLinkRepository is required.');
   if (!rentalRestrictionRepository || typeof rentalRestrictionRepository.findByFirebaseUid !== 'function' || typeof rentalRestrictionRepository.upsert !== 'function') throw new TypeError('rentalRestrictionRepository is required.');
-  if (!firestoreRentalRestrictionClient || typeof firestoreRentalRestrictionClient.getRentalRestriction !== 'function') throw new TypeError('firestoreRentalRestrictionClient is required.');
+  if (firebaseCompatibilityRequired && (!firestoreRentalRestrictionClient || typeof firestoreRentalRestrictionClient.getRentalRestriction !== 'function')) throw new TypeError('Legacy rental restriction source client is required only when compatibility mode is enabled.');
 
   const verifyIdentity = async (firebaseIdentity, firebaseUid) => {
     const actorUid = normalizeText(firebaseIdentity?.uid);
@@ -44,6 +44,7 @@ export const createRentalRestrictionService = ({ firebaseLinkRepository, rentalR
   };
 
   const readSource = async (firebaseIdentity, firebaseUid) => {
+    if (!firebaseCompatibilityRequired) throw serviceError('legacy_restriction_source_retired', 'Legacy rental restriction source is retired.');
     const document = await firestoreRentalRestrictionClient.getRentalRestriction({
       firebaseUid,
       firebaseIdToken: firebaseIdentity.idToken,

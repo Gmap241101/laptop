@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { doc, runTransaction, serverTimestamp } from 'firebase/firestore';
+import { doc, runTransaction, serverTimestamp } from '../../platform/retiredLegacyDataCompat.js';
 
 import {
   PUBLIC_CONFIG_DOC_REF,
@@ -7,7 +7,7 @@ import {
   RENTAL_ASSETS_COLLECTION_REF,
   db,
   firebaseAuth,
-} from '../../firebase.js';
+} from '../../platform/appDataRefs.js';
 import { STATUS } from '../../constants/appConstants.js';
 import {
   findSameAssetBlockingRequest,

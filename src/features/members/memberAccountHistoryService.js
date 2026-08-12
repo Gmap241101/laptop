@@ -2,11 +2,11 @@ import {
   getDocs,
   query as firestoreQuery,
   where,
-} from 'firebase/firestore';
+} from '../../platform/retiredLegacyDataCompat.js';
 
 import {
   RENTAL_REQUESTS_COLLECTION_REF,
-} from '../../firebase.js';
+} from '../../platform/appDataRefs.js';
 import {
   STATUS,
 } from '../../constants/appConstants.js';

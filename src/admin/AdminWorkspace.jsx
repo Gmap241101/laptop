@@ -280,7 +280,7 @@ function AdminWorkspace({ ctx, panelCtx }) {
                   관리자 데이터를 확인하는 중입니다.
                 </h2>
                 <p className="mx-auto mt-2 max-w-sm text-xs leading-5 text-slate-500">
-                  Firebase 원격 DB 기준으로 관리자 ID 등록 상태를 확인한 뒤 관리자 인증 화면을 표시합니다.
+                  PostgreSQL 관리자 레지스트리와 Clerk 인증 상태를 확인한 뒤 관리자 인증 화면을 표시합니다.
                 </p>
               </CardContent>
             </Card>
@@ -313,7 +313,7 @@ function AdminWorkspace({ ctx, panelCtx }) {
                 </div>
 
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-xs leading-5 text-slate-600">
-                  Firestore 보안 규칙에서 <span className="font-semibold text-slate-900">adminAccounts/{`{uid}`}</span> 컬렉션의 읽기/쓰기 권한이 허용되어 있는지 확인해 주세요.
+                  PostgreSQL 관리자 레지스트리와 Clerk 관리자 권한 상태를 확인해 주세요.
                   기존 관리자 ID 데이터 보호를 위해, 전용 관리자 ID 문서가 정상 연결되기 전에는 관리자 화면을 열지 않습니다.
                 </div>
 
@@ -440,7 +440,7 @@ function AdminWorkspace({ ctx, panelCtx }) {
                 )}
 
                 <div className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-xs leading-5 text-orange-800">
-                  Phase 22 테스트에서는 Clerk + PostgreSQL 관리자 권한을 인증 기준으로 사용하고, Firebase Auth 세션은 기존 Firestore 관리자 기능 호환용으로 함께 유지합니다. 새 브라우저에서는 Clerk Client Trust 인증코드 확인이 추가될 수 있습니다.
+                  Phase 34에서는 Clerk + PostgreSQL 관리자 권한만 인증 기준으로 사용합니다. 새 브라우저에서는 Clerk Client Trust 인증코드 확인이 추가될 수 있습니다.
                 </div>
 
                 <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">

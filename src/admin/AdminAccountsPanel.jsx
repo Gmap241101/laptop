@@ -38,8 +38,7 @@ export default function AdminAccountsPanel({ ctx }) {
                       />
 
                       <div className="rounded-2xl border border-orange-200 bg-orange-50/50 p-4 text-xs leading-5 text-orange-800">
-                        신규 관리자 계정은 관리자모드에서 생성하되, 비밀번호 검증은 Firebase Authentication 이메일/비밀번호 방식으로 처리합니다.
-                        기존 PBKDF2 관리자 계정은 이메일이 등록되어 있으면 로그인 성공 시 Firebase Auth 계정으로 자동 연결됩니다.
+                        신규 관리자 계정은 관리자모드에서 생성하며 인증은 Clerk, 권한과 상태는 PostgreSQL 관리자 레지스트리에서 관리합니다.
                       </div>
 
                       <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
@@ -73,7 +72,7 @@ export default function AdminAccountsPanel({ ctx }) {
                                 password: v,
                               })
                             }
-                            placeholder="Firebase Auth 초기 비밀번호 입력"
+                            placeholder="Clerk 초기 비밀번호 입력"
                           />
 
                           <Select
@@ -273,7 +272,7 @@ export default function AdminAccountsPanel({ ctx }) {
                                             disabled={Boolean(account.authUid)}
                                             placeholder={
                                               account.authUid
-                                                ? 'Firebase Auth 연결 계정은 이메일 변경 불가'
+                                                ? '인증 계정 이메일은 이 화면에서 변경 불가'
                                                 : '관리자 로그인 이메일 입력'
                                             }
                                           />
@@ -342,7 +341,7 @@ export default function AdminAccountsPanel({ ctx }) {
                                             disabled={Boolean(account.authUid) && !isCurrentAdminAccount}
                                             placeholder={
                                               account.authUid && !isCurrentAdminAccount
-                                                ? '다른 Firebase Auth 계정은 직접 지정 불가'
+                                                ? '다른 인증 계정은 직접 지정 불가'
                                                 : '변경할 때만 입력'
                                             }
                                           />
@@ -369,7 +368,7 @@ export default function AdminAccountsPanel({ ctx }) {
                                         {account.authUid && (
                                           <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] leading-5 text-slate-500">
                                             <p>
-                                              Firebase Auth 연결 계정의 로그인 이메일은 클라이언트 관리자 화면에서 직접 변경하지 않습니다.
+                                              Clerk 로그인 이메일은 이 관리자 화면에서 직접 변경하지 않습니다.
                                               {isCurrentAdminAccount
                                                 ? ' 현재 로그인 중인 본인 계정은 새 비밀번호를 직접 변경할 수 있습니다.'
                                                 : ' 다른 관리자 계정의 비밀번호는 직접 지정할 수 없으며, 재설정 메일 발송으로 변경합니다.'}
@@ -426,7 +425,7 @@ export default function AdminAccountsPanel({ ctx }) {
                                               {account.adminLoginId}
                                             </span>
                                             <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-                                              {account.authUid ? 'Firebase Auth 연결' : '기존 해시 계정'}
+                                              {account.clerkUserId ? 'Clerk 연결' : 'PostgreSQL 관리자'}
                                             </span>
                                             <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
                                               (account.adminRole || 'owner') === 'owner'

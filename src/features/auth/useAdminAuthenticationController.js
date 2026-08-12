@@ -2,19 +2,19 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   signInWithEmailAndPassword,
   signOut,
-} from 'firebase/auth';
+} from '../../platform/retiredLegacyDataCompat.js';
 import {
   doc,
   getDoc,
   serverTimestamp,
   setDoc,
-} from 'firebase/firestore';
+} from '../../platform/retiredLegacyDataCompat.js';
 
 import {
   SYSTEM_ADMIN_SETTINGS_DOC_REF,
   db,
   firebaseAuth,
-} from '../../firebase.js';
+} from '../../platform/appDataRefs.js';
 import {
   PROTECTED_USER_TABS,
   clearAdminRouteIntent,
@@ -118,7 +118,7 @@ export default function useAdminAuthenticationController({
   firebaseAuthReady,
   firebaseAuthUser,
   firebaseReady,
-  getAdminFirebaseAuthErrorMessage,
+  getAdminAuthErrorMessage,
   normalizeAdminAccounts,
   setAdminAccounts,
   setAdminAuthenticatedSession,
@@ -1030,7 +1030,7 @@ export default function useAdminAuthenticationController({
                 : error?.code === 'admin_account_locked'
                   ? `관리자 계정이 잠금 상태입니다. 약 ${error.remainingMinutes || 1}분 후 다시 시도해 주세요.`
                   : '';
-      const baseErrorMessage = clerkMessage || getAdminFirebaseAuthErrorMessage(error);
+      const baseErrorMessage = clerkMessage || getAdminAuthErrorMessage(error);
       const cleanupMessage = firebaseAuthCleanupFailed || clerkCleanupFailed
         ? ' 인증 정리에도 실패했습니다. 페이지를 새로고침한 뒤 로그인 상태를 확인해 주세요.'
         : '';

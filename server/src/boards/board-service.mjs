@@ -99,15 +99,17 @@ const mapRepositoryError = (error) => {
   throw serviceError(mapped[0], mapped[1], mapped[2], { postCount: Number(error?.postCount || 0) });
 };
 
-export const createBoardService = ({ repository, firestoreClient, writeMirrorEnabled = true }) => {
-  if (!repository || !firestoreClient) throw new TypeError('Board repository and Firestore client are required.');
+export const createBoardService = ({ repository, firestoreClient = null, writeMirrorEnabled = true }) => {
+  if (!repository) throw new TypeError('Board repository is required.');
   const mirrorEnabled = Boolean(writeMirrorEnabled);
+  if (mirrorEnabled && !firestoreClient) throw new TypeError('Legacy board mirror client is required only when the retired mirror is explicitly enabled.');
   const mirrorStatus = mirrorEnabled ? 'synced' : 'retired';
   const noMirror = async () => Object.freeze({ retired: true, source: 'postgresql-only' });
 
-  const verifyAdmin = (firebaseIdentity) => firebaseIdentity?.source === 'clerk-postgresql'
-    ? Promise.resolve(Object.freeze({ uid: firebaseIdentity.uid, role: 'admin', source: 'postgresql-admin-registry' }))
-    : firestoreClient.verifyAdmin({ firebaseUid: firebaseIdentity.uid, firebaseIdToken: firebaseIdentity.idToken });
+  const verifyAdmin = async (identity) => {
+    if (identity?.source !== 'clerk-postgresql') throw serviceError('admin_postgresql_identity_required', 'Clerk/PostgreSQL administrator identity is required.', 401);
+    return Object.freeze({ uid: identity.uid, role: 'admin', source: 'postgresql-admin-registry' });
+  };
 
   const bootstrap = async (firebaseIdentity, actorClerkUserId = '') => {
     const admin = await verifyAdmin(firebaseIdentity);

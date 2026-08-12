@@ -10,43 +10,17 @@ const normalizeApiBaseUrl = (value) => {
 
 export const readAccountLifecycleAuthorityConfig = ({
   env = import.meta.env,
-  location = globalThis.location,
-  storage = globalThis.sessionStorage,
 } = {}) => {
-  const staging = bool(env?.VITE_CLERK_STAGING_ENABLED);
-  const enabled = staging && (
-    bool(env?.VITE_ACCOUNT_LIFECYCLE_POSTGRES_AUTHORITY_ENABLED) ||
-    readFirebaseRuntimeRetirementConfig({ env, location }).requested
-  );
-  const params = location ? new URLSearchParams(location.search || '') : new URLSearchParams();
-  const queryMode = trim(params.get('accountLifecycle')).toLowerCase();
-  const queryRequested = Boolean(enabled && queryMode === 'postgres');
-  const queryRollback = Boolean(enabled && queryMode === 'firebase');
-  let sessionMode = '';
-
-  try {
-    if (queryRollback) storage?.setItem?.(SESSION_KEY, 'firebase');
-    else if (queryRequested) storage?.setItem?.(SESSION_KEY, 'postgres');
-    sessionMode = trim(storage?.getItem?.(SESSION_KEY)).toLowerCase();
-    if (sessionMode === '1') sessionMode = 'postgres'; // backward-compatible latch
-  } catch {
-    sessionMode = '';
-  }
-
-  const rollbackRequested = Boolean(enabled && (queryRollback || sessionMode === 'firebase'));
-  // Once the Phase 32 frontend flag is enabled, PostgreSQL account lifecycle is the
-  // default runtime authority. A deliberate ?accountLifecycle=firebase opt-out is
-  // retained only for rollback testing inside the current browser session.
-  const requested = Boolean(enabled && !rollbackRequested);
-
+  const apiBaseUrl = normalizeApiBaseUrl(env?.VITE_API_URL);
+  const enabled = Boolean(apiBaseUrl);
   return Object.freeze({
     enabled,
-    requested,
-    queryRequested,
-    queryRollback,
-    sessionRequested: sessionMode === 'postgres',
-    rollbackRequested,
-    apiBaseUrl: normalizeApiBaseUrl(env?.VITE_API_URL),
+    requested: enabled,
+    queryRequested: false,
+    queryRollback: false,
+    sessionRequested: false,
+    rollbackRequested: false,
+    apiBaseUrl,
   });
 };
 
@@ -121,4 +95,3 @@ export const requestAccountLifecycleAuthorityStatus = async ({
   if (lastResult) return lastResult;
   return Object.freeze({ requested: config.requested, backendApplied: false, signupSource: '', termsConsentSource: '', passwordResetDelivery: '', userFirebaseAuthCompatibilityDisabled: false, userAuthenticationSource: '', userLegacyMemberKeySource: '', error: lastError?.code || lastError?.message || 'status-unavailable' });
 };
-import { readFirebaseRuntimeRetirementConfig } from './firebaseRuntimeRetirement.js';

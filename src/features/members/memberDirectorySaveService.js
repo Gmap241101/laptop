@@ -1,34 +1,10 @@
 import {
-  doc,
-  getDocs,
-  serverTimestamp,
-  setDoc,
-} from 'firebase/firestore';
-
-import {
-  ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
-  MEMBER_DIRECTORY_KEYS_COLLECTION_REF,
-  MEMBER_IDENTITY_CLAIMS_COLLECTION_REF,
-  PUBLIC_CONFIG_DOC_REF,
-  RENTAL_BORROWERS_COLLECTION_REF,
-  USER_ACCOUNTS_COLLECTION_REF,
-  firebaseAuth,
-} from '../../firebase.js';
-import {
   createMemberIdentityKey,
   isValidMemberName,
   normalizeMemberName,
   normalizeMemberTeam,
 } from '../../utils/memberPolicy.js';
-import {
-  buildMemberAccountIndexEntries,
-  buildMemberAccountIndexOperations,
-  commitFirestoreOperations,
-} from './memberAccountIndexService.js';
-import {
-  getSafeMemberDirectoryVersion,
-} from './memberAccountPolicy.js';
-import { syncMemberProfilesWriteThroughBestEffort } from './memberProfileWriteThrough.js';
+import { getSafeMemberDirectoryVersion } from './memberAccountPolicy.js';
 
 export class MemberDirectoryValidationError extends Error {
   constructor(message) {
@@ -38,8 +14,12 @@ export class MemberDirectoryValidationError extends Error {
   }
 }
 
-const createBorrowerDocumentId = () =>
-  `BORROWER-${doc(RENTAL_BORROWERS_COLLECTION_REF).id}`;
+const randomId = () => {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+};
+
+const createBorrowerDocumentId = () => `BORROWER-${randomId()}`;
 
 const findDuplicateByNormalizedValue = (values = []) =>
   values.find(
@@ -60,7 +40,6 @@ export const normalizeMemberDirectoryDraft = ({
     .filter(Boolean);
 
   const duplicatedTeam = findDuplicateByNormalizedValue(nextTeams);
-
   if (duplicatedTeam) {
     throw new MemberDirectoryValidationError(
       `[${duplicatedTeam}] 부서명이 중복되어 저장할 수 없습니다.`
@@ -84,7 +63,6 @@ export const normalizeMemberDirectoryDraft = ({
   const invalidBorrower = nextBorrowers.find(
     (borrower) => !isValidMemberName(borrower.name)
   );
-
   if (invalidBorrower) {
     throw new MemberDirectoryValidationError(
       `[${invalidBorrower.team}] ${invalidBorrower.name} 사용자명은 공백 없이 한글 또는 영문 2~30자로 입력해 주세요.`
@@ -101,170 +79,41 @@ export const normalizeMemberDirectoryDraft = ({
             normalizeMemberName(borrower.name).toLocaleLowerCase('ko-KR')
       ) !== index
   );
-
   if (duplicatedBorrower) {
     throw new MemberDirectoryValidationError(
       `[${duplicatedBorrower.team}] ${duplicatedBorrower.name} 사용자명이 중복되어 저장할 수 없습니다.`
     );
   }
 
-  return {
-    nextTeams,
-    nextBorrowers,
-  };
+  return { nextTeams, nextBorrowers };
 };
 
 export const saveMemberDirectory = async ({
-  currentBorrowers = [],
   settings = {},
   tempBorrowers = [],
   tempTeams = [],
 } = {}) => {
-  const {
-    nextTeams,
-    nextBorrowers,
-  } = normalizeMemberDirectoryDraft({
+  const { nextTeams, nextBorrowers } = normalizeMemberDirectoryDraft({
     tempTeams,
     tempBorrowers,
   });
 
   const directoryEntries = await Promise.all(
     nextBorrowers.map(async (borrower) => ({
-      ...borrower,
-      identityKey: await createMemberIdentityKey(
-        borrower.team,
-        borrower.name
-      ),
+      identityKey: await createMemberIdentityKey(borrower.team, borrower.name),
+      directoryMemberId: borrower.id,
+      name: borrower.name,
+      team: borrower.team,
+      sortOrder: borrower.sortOrder,
+      enabled: true,
     }))
   );
-
-  const [
-    currentUserAccountsSnapshot,
-    currentDirectorySnapshot,
-    currentClaimsSnapshot,
-    currentRecoverySnapshot,
-  ] = await Promise.all([
-    getDocs(USER_ACCOUNTS_COLLECTION_REF),
-    getDocs(MEMBER_DIRECTORY_KEYS_COLLECTION_REF),
-    getDocs(MEMBER_IDENTITY_CLAIMS_COLLECTION_REF),
-    getDocs(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF),
-  ]);
-
-  const accountEntries = await buildMemberAccountIndexEntries(
-    currentUserAccountsSnapshot.docs.map((accountDocument) => ({
-      ...accountDocument.data(),
-      uid: accountDocument.data().uid || accountDocument.id,
-    }))
-  );
-
-  const currentBorrowerDocuments = currentBorrowers
-    .filter((borrower) => borrower?.id)
-    .map((borrower) => ({
-      id: borrower.id,
-      ref: doc(RENTAL_BORROWERS_COLLECTION_REF, borrower.id),
-    }));
-
-  const nextBorrowerIdSet = new Set(
-    nextBorrowers.map((borrower) => borrower.id)
-  );
-  const nextDirectoryKeySet = new Set(
-    directoryEntries.map((entry) => entry.identityKey)
-  );
-
-  const borrowerOperations = [
-    ...nextBorrowers.map((borrower) => ({
-      type: 'set',
-      ref: doc(RENTAL_BORROWERS_COLLECTION_REF, borrower.id),
-      data: {
-        ...borrower,
-        updatedAt: serverTimestamp(),
-      },
-    })),
-    ...currentBorrowerDocuments
-      .filter(
-        (borrowerDocument) =>
-          !nextBorrowerIdSet.has(borrowerDocument.id)
-      )
-      .map((borrowerDocument) => ({
-        type: 'delete',
-        ref: borrowerDocument.ref,
-      })),
-  ];
-
-  const directoryOperations = [
-    ...directoryEntries.map((entry) => ({
-      type: 'set',
-      ref: doc(
-        MEMBER_DIRECTORY_KEYS_COLLECTION_REF,
-        entry.identityKey
-      ),
-      data: {
-        identityKey: entry.identityKey,
-        directoryMemberId: entry.id,
-        name: entry.name,
-        team: entry.team,
-        sortOrder: entry.sortOrder,
-        enabled: true,
-        updatedAt: serverTimestamp(),
-      },
-    })),
-    ...currentDirectorySnapshot.docs
-      .filter(
-        (directoryDocument) =>
-          !nextDirectoryKeySet.has(directoryDocument.id)
-      )
-      .map((directoryDocument) => ({
-        type: 'delete',
-        ref: directoryDocument.ref,
-      })),
-  ];
-
-  const {
-    accountMetadataOperations,
-    claimOperations,
-    recoveryOperations,
-  } = buildMemberAccountIndexOperations({
-    accountEntries,
-    currentClaimDocuments: currentClaimsSnapshot.docs,
-    currentRecoveryDocuments: currentRecoverySnapshot.docs,
-  });
-
-  await commitFirestoreOperations([
-    ...borrowerOperations,
-    ...directoryOperations,
-    ...claimOperations,
-    ...recoveryOperations,
-    ...accountMetadataOperations,
-  ]);
-
-  await syncMemberProfilesWriteThroughBestEffort({
-    firebaseUser: firebaseAuth.currentUser,
-    firebaseUids: accountMetadataOperations
-      .filter((operation) => operation?.ref?.parent?.id === 'userAccounts')
-      .map((operation) => operation.ref.id),
-    reason: 'admin-member-directory-save',
-  });
 
   const nextSettings = {
     ...settings,
-    memberDirectoryVersion:
-      getSafeMemberDirectoryVersion(settings) + 1,
+    memberDirectoryVersion: getSafeMemberDirectoryVersion(settings) + 1,
     memberIdentityClaimsReady: true,
   };
 
-  await setDoc(
-    PUBLIC_CONFIG_DOC_REF,
-    {
-      teams: nextTeams,
-      settings: nextSettings,
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
-
-  return {
-    nextBorrowers,
-    nextSettings,
-    nextTeams,
-  };
+  return { directoryEntries, nextBorrowers, nextSettings, nextTeams };
 };

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { onAuthStateChanged } from '../../platform/retiredLegacyDataCompat.js';
+import { doc, onSnapshot } from '../../platform/retiredLegacyDataCompat.js';
 
 import {
   ADMIN_ACCOUNTS_COLLECTION_REF,
@@ -11,7 +11,7 @@ import {
   db,
   firebaseAuth,
   setFirebaseRuntimePrincipal,
-} from '../../firebase.js';
+} from '../../platform/appDataRefs.js';
 import { parseDomesticPhoneNumber } from '../../utils/memberPolicy.js';
 import {
   DEFAULT_SYSTEM_ADMIN_SETTINGS,
@@ -891,239 +891,87 @@ export default function useAuthIdentityPolicySubscriptionController({
   ]);
 
   useEffect(() => {
-    if (readFirebaseRuntimeRetirementConfig().requested) {
-      setUserSessionPolicy(DEFAULT_USER_SESSION_POLICY);
-      setUserSessionPolicyLoadErrorMessage('');
-      setUserSessionPolicyReady(true);
-      return undefined;
-    }
-    const shouldSubscribeForActiveUser = Boolean(
-      firebaseAuthUser &&
-      currentAuthRoleReady &&
-      !currentAuthRoleErrorMessage &&
-      !currentAuthAdminAccount &&
-      !authenticatedAdminId
-    );
-    const shouldSubscribeForAdminSecurity = Boolean(
-      firebaseAuthUser &&
-      currentAuthRoleReady &&
-      (currentAuthAdminAccount || authenticatedAdminId) &&
-      view === 'admin' &&
-      adminTab === 'accountSecurity'
-    );
-    const shouldSubscribeUserSessionPolicy =
-      shouldSubscribeForActiveUser || shouldSubscribeForAdminSecurity;
-
-    if (!shouldSubscribeUserSessionPolicy) {
+    let cancelled = false;
+    const run = async () => {
       setUserSessionPolicyReady(false);
-      setUserSessionPolicyLoadErrorMessage('');
-      return undefined;
-    }
-
-    setUserSessionPolicyReady(false);
-    const unsubscribe = onSnapshot(
-      USER_SESSION_POLICY_DOC_REF,
-      (snapshot) => {
-        setUserSessionPolicy(
-          normalizeUserSessionPolicy(
-            snapshot.exists() ? snapshot.data() : DEFAULT_USER_SESSION_POLICY
-          )
-        );
+      try {
+        const payload = await clerkStagingClient.getUserSessionPolicyPostgresql();
+        if (cancelled) return;
+        setUserSessionPolicy(normalizeUserSessionPolicy(payload?.systemConfiguration?.payload || DEFAULT_USER_SESSION_POLICY));
         setUserSessionPolicyLoadErrorMessage('');
-        setUserSessionPolicyReady(true);
-      },
-      (error) => {
-        console.error('User session policy sync error:', error);
+      } catch (error) {
+        if (cancelled) return;
+        console.error('PostgreSQL user session policy read error:', error);
         setUserSessionPolicy(DEFAULT_USER_SESSION_POLICY);
-        setUserSessionPolicyLoadErrorMessage(
-          '사용자 세션 정책을 불러오지 못해 기본값을 사용합니다.'
-        );
-        setUserSessionPolicyReady(true);
+        setUserSessionPolicyLoadErrorMessage('사용자 세션 정책을 PostgreSQL에서 불러오지 못해 기본값을 사용합니다.');
+      } finally {
+        if (!cancelled) setUserSessionPolicyReady(true);
       }
-    );
-
-    return unsubscribe;
-  }, [
-    firebaseAuthUser?.uid,
-    currentAuthRoleReady,
-    currentAuthRoleErrorMessage,
-    currentAuthAdminAccount?.id,
-    authenticatedAdminId,
-    view,
-    adminTab,
-  ]);
+    };
+    void run();
+    return () => { cancelled = true; };
+  }, [authenticatedAdminId, currentAuthAdminAccount?.id, view, adminTab]);
 
   useEffect(() => {
-    if (readFirebaseRuntimeRetirementConfig().requested) {
-      setSystemAdminSettings(DEFAULT_SYSTEM_ADMIN_SETTINGS);
-      setSystemAdminSettingsLoadErrorMessage('');
-      setSystemAdminSettingsReady(true);
-      return undefined;
-    }
-    const canReadSystemAdminSettings = Boolean(
-      firebaseAuthUser &&
-      currentAuthRoleReady &&
-      (currentAuthAdminAccount || authenticatedAdminId)
-    );
-
-    if (!canReadSystemAdminSettings) {
+    const hasAdminSession = Boolean(authenticatedAdminId) && Boolean(currentAuthAdminAccount?.id);
+    if (!hasAdminSession) {
       setSystemAdminSettings(DEFAULT_SYSTEM_ADMIN_SETTINGS);
       setSystemAdminSettingsReady(true);
       setSystemAdminSettingsLoadErrorMessage('');
       return undefined;
     }
-
-    setSystemAdminSettingsReady(false);
-    const unsubscribe = onSnapshot(
-      SYSTEM_ADMIN_SETTINGS_DOC_REF,
-      (snapshot) => {
-        setSystemAdminSettings(
-          normalizeSystemAdminSettings(
-            snapshot.exists() ? snapshot.data() : DEFAULT_SYSTEM_ADMIN_SETTINGS
-          )
-        );
+    let cancelled = false;
+    const run = async () => {
+      setSystemAdminSettingsReady(false);
+      try {
+        const payload = await clerkStagingClient.getAdminSystemConfiguration('admin-security');
+        if (cancelled) return;
+        setSystemAdminSettings(normalizeSystemAdminSettings(payload?.systemConfiguration?.payload || DEFAULT_SYSTEM_ADMIN_SETTINGS));
         setSystemAdminSettingsLoadErrorMessage('');
-        setSystemAdminSettingsReady(true);
-      },
-      (error) => {
-        console.error('System admin settings sync error:', error);
+      } catch (error) {
+        if (cancelled) return;
+        console.error('PostgreSQL administrator security settings read error:', error);
         setSystemAdminSettings(DEFAULT_SYSTEM_ADMIN_SETTINGS);
-        setSystemAdminSettingsLoadErrorMessage(
-          '관리자 시스템 설정을 불러오지 못했습니다.'
-        );
-        setSystemAdminSettingsReady(true);
+        setSystemAdminSettingsLoadErrorMessage('관리자 시스템 설정을 PostgreSQL에서 불러오지 못했습니다.');
+      } finally {
+        if (!cancelled) setSystemAdminSettingsReady(true);
       }
-    );
-
-    return unsubscribe;
-  }, [
-    firebaseAuthUser?.uid,
-    currentAuthRoleReady,
-    currentAuthAdminAccount?.id,
-    authenticatedAdminId,
-  ]);
+    };
+    void run();
+    return () => { cancelled = true; };
+  }, [authenticatedAdminId, currentAuthAdminAccount?.id]);
 
   useEffect(() => {
-    if (readFirebaseRuntimeRetirementConfig().requested) {
-      const hasAdminSession = Boolean(authenticatedAdminId) && Boolean(currentAuthAdminAccount?.id);
-      setAdminAccounts(hasAdminSession && currentAuthAdminAccount ? [currentAuthAdminAccount] : []);
-      setAdminAccountsRemoteHasData(hasAdminSession);
+    const hasAdminSession = Boolean(authenticatedAdminId) && Boolean(currentAuthAdminAccount?.id);
+    if (!hasAdminSession) {
+      setAdminAccounts([]);
+      setAdminAccountsRemoteHasData(false);
       setAdminAccountsLoadErrorMessage('');
       setAdminAccountsReady(true);
       return undefined;
     }
-    if (!firebaseAuthReady || !currentAuthRoleReady) {
+    let cancelled = false;
+    const run = async () => {
       setAdminAccountsReady(false);
-      return undefined;
-    }
-
-    const hasAdminSession =
-      Boolean(authenticatedAdminId) &&
-      Boolean(currentAuthAdminAccount?.id);
-
-    const shouldLoadAdminAccounts =
-      hasAdminSession &&
-      view === 'admin' &&
-      adminTab === 'adminAccounts';
-
-    if (!shouldLoadAdminAccounts) {
-      allowAdminAccountsWriteRef.current = false;
-      setAdminAccounts(
-        hasAdminSession && currentAuthAdminAccount
-          ? [currentAuthAdminAccount]
-          : []
-      );
-      setAdminAccountsRemoteHasData(hasAdminSession);
-      setAdminAccountsReady(true);
-      setAdminAccountsLoadErrorMessage('');
-      return undefined;
-    }
-
-    setAdminAccountsReady(false);
-
-    const unsubscribe = onSnapshot(
-      ADMIN_ACCOUNTS_COLLECTION_REF,
-      (snapshot) => {
-        try {
-          if (snapshot.empty) {
-            const message =
-              '최상위 adminAccounts 컬렉션에 관리자 문서가 없습니다. 기존 관리자 데이터를 UID 문서로 이전했는지 확인해 주세요.';
-
-            allowAdminAccountsWriteRef.current = false;
-            setAdminAccountsRemoteHasData(false);
-            adminAccountsLastSyncedRef.current = {};
-            adminAccountsApplyingRemoteRef.current = true;
-            setAdminAccounts([]);
-            setAdminAccountsLoadErrorMessage(message);
-            setAdminAccountsReady(true);
-            return;
-          }
-
-          const remoteAdminAccounts = normalizeAdminAccounts(
-            snapshot.docs.map((adminDoc) => ({
-              ...adminDoc.data(),
-              id: adminDoc.id,
-            }))
-          );
-
-          const remoteSyncMap = Object.fromEntries(
-            remoteAdminAccounts.map((account) => [
-              account.id,
-              JSON.stringify(account),
-            ])
-          );
-
-          allowAdminAccountsWriteRef.current = true;
-          setAdminAccountsRemoteHasData(true);
-          setAdminAccountsLoadErrorMessage('');
-          adminAccountsLastSyncedRef.current = remoteSyncMap;
-          adminAccountsApplyingRemoteRef.current = true;
-          setAdminAccounts(remoteAdminAccounts);
-          setAdminAccountsReady(true);
-        } catch (error) {
-          const message =
-            '관리자 ID 컬렉션 동기화 처리 중 오류가 발생했습니다.';
-
-          console.error(
-            'Admin accounts collection snapshot handling error:',
-            error
-          );
-
-          allowAdminAccountsWriteRef.current = false;
-          setAdminAccountsRemoteHasData(false);
-          setAdminAccountsLoadErrorMessage(message);
-          setAdminAccountsReady(true);
-          setToast({
-            message,
-            type: 'error',
-          });
-        }
-      },
-      (error) => {
-        const message =
-          '관리자 ID 컬렉션 연결 또는 권한 오류가 발생했습니다.';
-
-        console.error('Admin accounts collection sync error:', error);
-        allowAdminAccountsWriteRef.current = false;
+      try {
+        const payload = await clerkStagingClient.getAdminAccountsPostgresql();
+        if (cancelled) return;
+        setAdminAccounts(normalizeAdminAccounts(payload?.adminAccounts?.accounts || []));
+        setAdminAccountsRemoteHasData(true);
+        setAdminAccountsLoadErrorMessage('');
+      } catch (error) {
+        if (cancelled) return;
+        console.error('PostgreSQL administrator accounts read error:', error);
+        setAdminAccounts(currentAuthAdminAccount ? [currentAuthAdminAccount] : []);
         setAdminAccountsRemoteHasData(false);
-        setAdminAccountsLoadErrorMessage(message);
-        setAdminAccountsReady(true);
-        setToast({
-          message,
-          type: 'error',
-        });
+        setAdminAccountsLoadErrorMessage('관리자 ID 목록을 PostgreSQL에서 불러오지 못했습니다.');
+      } finally {
+        if (!cancelled) setAdminAccountsReady(true);
       }
-    );
-
-    return unsubscribe;
-  }, [
-    firebaseAuthReady,
-    currentAuthRoleReady,
-    authenticatedAdminId,
-    currentAuthAdminAccount?.id,
-    view,
-    adminTab,
-  ]);
+    };
+    void run();
+    return () => { cancelled = true; };
+  }, [authenticatedAdminId, currentAuthAdminAccount?.id, view, adminTab]);
 
 
 

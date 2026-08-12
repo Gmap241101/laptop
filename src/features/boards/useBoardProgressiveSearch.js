@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { orderBy, where } from 'firebase/firestore';
+import { orderBy, where } from '../../platform/retiredLegacyDataCompat.js';
 
 import {
   DEFAULT_PROGRESSIVE_SEARCH_BATCH_SIZE,

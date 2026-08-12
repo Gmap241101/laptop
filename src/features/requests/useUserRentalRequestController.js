@@ -1,12 +1,12 @@
 import { useRef, useState } from 'react';
-import { doc, runTransaction, serverTimestamp } from 'firebase/firestore';
+import { doc, runTransaction, serverTimestamp } from '../../platform/retiredLegacyDataCompat.js';
 
 import {
   RENTAL_ASSETS_COLLECTION_REF,
   RENTAL_AVAILABILITY_COLLECTION_REF,
   RENTAL_REQUESTS_COLLECTION_REF,
   db,
-} from '../../firebase.js';
+} from '../../platform/appDataRefs.js';
 import { STATUS } from '../../constants/appConstants.js';
 import { USER_PROFILE_STATUS } from '../../constants/memberConstants.js';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';

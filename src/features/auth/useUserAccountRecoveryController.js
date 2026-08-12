@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
-import { sendPasswordResetEmail } from 'firebase/auth';
+import { sendPasswordResetEmail } from '../../platform/retiredLegacyDataCompat.js';
 
-import { firebaseAuth } from '../../firebase.js';
+import { firebaseAuth } from '../../platform/appDataRefs.js';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 import { isValidMemberPassword } from '../../utils/memberPolicy.js';
 import { readUserFirebaseAuthRetirementConfig } from './userFirebaseAuthRetirement.js';

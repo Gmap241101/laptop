@@ -15,21 +15,6 @@ import {
   Upload,
 } from 'lucide-react';
 import {
-  addDoc,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-  setDoc,
-} from 'firebase/firestore';
-
-import {
-  SITE_SETTINGS_DOC_REF,
-  SYSTEM_AUDIT_LOGS_COLLECTION_REF,
-  firebaseConfig,
-} from '../firebase.js';
-import {
   DEFAULT_SITE_SETTINGS,
   SERVICE_MODE,
   SYSTEM_MANAGEMENT_TAB,
@@ -39,7 +24,6 @@ import {
 import {
   readSiteContentCutoverConfig,
   replaceSiteContentDomainInPostgresql,
-  syncSiteContentDomainFromFirestore,
   SITE_CONTENT_DOMAINS,
 } from '../features/content/siteContentCutover.js';
 import {
@@ -56,7 +40,6 @@ import useAdminDataMaintenanceController, {
   getAdminDisplayName,
   getAdminRole,
 } from '../features/settings/useAdminDataMaintenanceController.js';
-import { readFirebaseRuntimeRetirementConfig } from '../features/auth/firebaseRuntimeRetirement.js';
 const DATA_MANAGEMENT_TABS = [
   [SYSTEM_MANAGEMENT_TAB.DATA, Database, '점검·백업·복원'],
   [SYSTEM_MANAGEMENT_TAB.RESET, Trash2, '데이터 초기화'],
@@ -209,7 +192,6 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
   const [siteSaving, setSiteSaving] = useState(false);
   const [auditLogs, setAuditLogs] = useState([]);
   const [auditReady, setAuditReady] = useState(false);
-  const firebaseRuntimeRetired = readFirebaseRuntimeRetirementConfig().requested;
   const isOwner = getAdminRole(authenticatedAdminAccount) === 'owner';
   const editableSiteFields = getEditableSiteSettingFields(mode);
   const normalizedSavedSiteSettings = normalizeSiteSettings(siteSettings);
@@ -251,51 +233,11 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
   }, [mode, siteDirty]);
 
   useEffect(() => {
-    if (!authenticatedAdminAccount || mode !== SETTINGS_MODE.INFO) {
-      setAuditLogs([]);
-      setAuditReady(false);
-      return undefined;
-    }
-    if (firebaseRuntimeRetired) {
-      setAuditLogs([]);
-      setAuditReady(true);
-      return undefined;
-    }
+    setAuditLogs([]);
+    setAuditReady(true);
+  }, [authenticatedAdminAccount?.id, mode]);
 
-    const auditQuery = query(
-      SYSTEM_AUDIT_LOGS_COLLECTION_REF,
-      orderBy('createdAt', 'desc'),
-      limit(50)
-    );
-    const unsubscribeAudit = onSnapshot(
-      auditQuery,
-      (snapshot) => {
-        setAuditLogs(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
-        setAuditReady(true);
-      },
-      (error) => {
-        console.error('System audit log load error:', error);
-        setAuditReady(true);
-      }
-    );
-
-    return unsubscribeAudit;
-  }, [authenticatedAdminAccount?.id, firebaseRuntimeRetired, mode]);
-
-  const writeAuditLog = async ({ action, section, beforeValues = null, afterValues = null, summary = '' }) => {
-    if (firebaseRuntimeRetired) return Object.freeze({ skipped: true, source: 'firebase-runtime-retired' });
-    await addDoc(SYSTEM_AUDIT_LOGS_COLLECTION_REF, {
-      action,
-      section,
-      summary,
-      beforeValues: beforeValues ? cloneForAudit(beforeValues) : null,
-      afterValues: afterValues ? cloneForAudit(afterValues) : null,
-      adminUid: authenticatedAdminAccount?.id || '',
-      adminName: getAdminDisplayName(authenticatedAdminAccount),
-      adminEmail: authenticatedAdminAccount?.authEmail || authenticatedAdminAccount?.email || '',
-      createdAt: serverTimestamp(),
-    });
-  };
+  const writeAuditLog = async () => Object.freeze({ skipped: true, source: 'postgresql-runtime' });
 
   const {
     analyzeRestore,
@@ -421,31 +363,17 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
     const sectionMeta = getSiteSettingsSectionMeta();
 
     try {
-      if (readSiteContentCutoverConfig().adminAuthorityRequested) {
-        const nextSettings = {
-          ...normalizeSiteSettings(siteSettings),
-          ...afterValues,
-          updatedAt: new Date(),
-          updatedBy: authenticatedAdminAccount?.id || '',
-          updatedByName: getAdminDisplayName(authenticatedAdminAccount),
-        };
-        await replaceSiteContentDomainInPostgresql({
-          domain: SITE_CONTENT_DOMAINS.SITE_SETTINGS,
-          documents: [{ key: 'siteSettings/config', payload: nextSettings }],
-        });
-      } else {
-      await setDoc(
-        SITE_SETTINGS_DOC_REF,
-        {
-          ...afterValues,
-          updatedAt: serverTimestamp(),
-          updatedBy: authenticatedAdminAccount?.id || '',
-          updatedByName: getAdminDisplayName(authenticatedAdminAccount),
-        },
-        { merge: true }
-      );
-      await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.SITE_SETTINGS });
-      }
+      const nextSettings = {
+        ...normalizeSiteSettings(siteSettings),
+        ...afterValues,
+        updatedAt: new Date(),
+        updatedBy: authenticatedAdminAccount?.id || '',
+        updatedByName: getAdminDisplayName(authenticatedAdminAccount),
+      };
+      await replaceSiteContentDomainInPostgresql({
+        domain: SITE_CONTENT_DOMAINS.SITE_SETTINGS,
+        documents: [{ key: 'siteSettings/config', payload: nextSettings }],
+      });
       await writeAuditLog({
         action: sectionMeta.action,
         section: sectionMeta.section,
@@ -456,7 +384,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
       triggerToast(sectionMeta.successMessage, 'success');
     } catch (error) {
       console.error('Site settings save error:', error);
-      triggerToast(firebaseRuntimeRetired ? 'PostgreSQL 설정 저장에 실패했습니다.' : '설정 저장에 실패했습니다. Firestore 권한을 확인해 주세요.', 'error');
+      triggerToast('PostgreSQL 설정 저장에 실패했습니다.', 'error');
     } finally {
       setSiteSaving(false);
     }
@@ -644,7 +572,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
         ) : null}
       </SectionCard>
 
-      <SectionCard title="기능별 접수" description="정상 운영 중에도 특정 사용자 요청만 일시 중지할 수 있습니다. 화면과 Firestore Rules에 함께 적용됩니다.">
+      <SectionCard title="기능별 접수" description="정상 운영 중에도 특정 사용자 요청만 일시 중지할 수 있습니다. PostgreSQL 정책과 사용자 화면에 함께 적용됩니다.">
         <div className="grid gap-3 md:grid-cols-2">
           <ToggleSwitch checked={siteDraft.allowNewRentalRequests} onChange={(value) => setSiteDraft({ ...siteDraft, allowNewRentalRequests: value })} label="신규 대여신청 접수" />
           <ToggleSwitch checked={siteDraft.allowNewMemberSignup} onChange={(value) => setSiteDraft({ ...siteDraft, allowNewMemberSignup: value })} label="신규 회원가입 접수" />
@@ -681,31 +609,19 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
 
   const renderDataTab = () => (
     <div className="space-y-5">
-      <SectionCard title="Firestore 저장 구조" description="기존 분리 저장소 전환 상태와 데이터 스키마를 확인합니다.">
-        {isSplitStorageReady ? (
-          <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-            <CheckCircle2 className="mt-0.5 text-emerald-600" size={18} />
-            <div>
-              <div className="text-sm font-bold text-emerald-900">Firestore 분리 저장소 전환 완료</div>
-              <p className="mt-1 text-xs leading-5 text-emerald-800">현재 서비스는 분리된 자산·예약·회원 컬렉션을 직접 사용합니다. 데이터 스키마 버전은 {systemAdminSettings?.schemaVersion || 1}입니다.</p>
-            </div>
+      <SectionCard title="PostgreSQL 저장소" description="Phase 34부터 운영 데이터는 PostgreSQL을 단일 권위 저장소로 사용합니다.">
+        <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+          <CheckCircle2 className="mt-0.5 text-emerald-600" size={18} />
+          <div>
+            <div className="text-sm font-bold text-emerald-900">PostgreSQL 단일 저장소 전환 완료</div>
+            <p className="mt-1 text-xs leading-5 text-emerald-800">회원, 대여, 자산, 게시판, 사이트 콘텐츠, 정책 및 시스템 설정은 PostgreSQL authority를 사용합니다. 과거 브라우저 저장소 전환 기능은 종료되었습니다.</p>
           </div>
-        ) : (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-            <div className="text-sm font-bold text-amber-900">분리 저장소 최종 전환 필요</div>
-            <p className="mt-1 text-xs leading-5 text-amber-800">전환 전에 서비스를 중지하고 기존 데이터 백업을 확보해 주세요.</p>
-            <div className="mt-4 flex justify-end">
-              <Button variant="outline" disabled={splitStorageFinalizeLoading} onClick={() => triggerConfirm('Firestore 분리 저장소 최종 전환', '신규 컬렉션 데이터를 검증하고 예약 잠금 및 자산관리번호 레지스트리를 생성합니다. 계속하시겠습니까?', finalizeSplitStorageMigration)}>
-                <Save size={14} />{splitStorageFinalizeLoading ? '최종 전환 중' : '분리 저장소 최종 전환'}
-              </Button>
-            </div>
-          </div>
-        )}
+        </div>
       </SectionCard>
 
-      <SectionCard title="시스템 데이터 점검" description="자동 복구하지 않고 참조 불일치와 누락 데이터를 먼저 확인합니다.">
+      <SectionCard title="시스템 데이터 점검" description="PostgreSQL의 참조 불일치와 누락 데이터를 확인합니다.">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-xs leading-5 text-slate-500">자산, 신청, 예약 잠금, 회원 인덱스, 복구키, 대여 제한을 검사합니다.</div>
+          <div className="text-xs leading-5 text-slate-500">자산, 신청, 예약 상태, 회원, 복구키, 대여 제한의 무결성을 검사합니다.</div>
           <Button type="button" variant="outline" disabled={integrityLoading} onClick={runIntegrityCheck}><RefreshCw size={14} className={integrityLoading ? 'animate-spin' : ''} />{integrityLoading ? '점검 중' : '시스템 데이터 점검'}</Button>
         </div>
         {integrityResult ? (
@@ -726,218 +642,16 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
         ) : null}
       </SectionCard>
 
-      <SectionCard title="수동 백업" description="애플리케이션 전용 JSON 파일을 관리자 PC에 내려받습니다. 동일한 형식의 파일은 아래 복원 기능에서 사용할 수 있습니다.">
-        <div className="space-y-3">
-          <ToggleSwitch checked={backupIncludeOperations} onChange={setBackupIncludeOperations} label="자산·대여 운영 데이터 포함" />
-          <ToggleSwitch checked={backupIncludeMembers} onChange={setBackupIncludeMembers} label="회원 계정 메타데이터 포함" />
-          <ToggleSwitch checked={backupIncludePersonalData} disabled={!backupIncludeMembers} onChange={setBackupIncludePersonalData} label="회원 개인정보 포함" description="이메일·연락처·식별키가 포함될 수 있습니다. 안전한 위치에 보관해 주세요." />
-          <div className="flex justify-end">
-            <Button type="button" disabled={backupLoading} onClick={() => downloadBackup()}><Download size={14} />{backupLoading ? '백업 생성 중' : '백업 다운로드'}</Button>
-          </div>
-        </div>
-      </SectionCard>
-
-      <SectionCard title="JSON 백업 복원" description="백업 파일을 검사한 뒤 선택한 영역만 복원합니다. 관리자 ID, 관리자 Firebase Auth 계정과 초기화·감사 로그는 복원 대상에 포함되지 않습니다.">
-        <div className="space-y-5">
-          <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="text-sm font-bold text-slate-900">{restoreFileName || '선택된 백업 파일이 없습니다.'}</div>
-              <p className="mt-1 text-xs leading-5 text-slate-500">현재 시스템이 생성한 rental-system-backup-*.json 파일을 선택해 주세요.</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100">
-                <Upload size={14} />백업 파일 선택
-                <input type="file" accept="application/json,.json" className="hidden" disabled={restoreRunning || restoreAnalyzeLoading} onChange={handleRestoreFile} />
-              </label>
-              {restorePayload ? <Button type="button" variant="ghost" disabled={restoreRunning} onClick={clearRestoreState}>선택 해제</Button> : null}
-            </div>
-          </div>
-
-          {restoreValidation ? (
-            <div className="space-y-3">
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="rounded-2xl border border-slate-200 bg-white p-4"><div className="text-[11px] text-slate-500">백업 생성일</div><div className="mt-1 text-xs font-bold text-slate-900">{restoreValidation.metadata?.exportedAtKorea || restoreValidation.metadata?.exportedAt || '확인 불가'}</div></div>
-                <div className="rounded-2xl border border-slate-200 bg-white p-4"><div className="text-[11px] text-slate-500">백업 프로젝트</div><div className={`mt-1 break-all text-xs font-bold ${restoreValidation.projectMismatch ? 'text-rose-700' : 'text-slate-900'}`}>{restoreValidation.metadata?.firebaseProjectId || '기록 없음'}</div></div>
-                <div className="rounded-2xl border border-slate-200 bg-white p-4"><div className="text-[11px] text-slate-500">스키마</div><div className="mt-1 text-xs font-bold text-slate-900">v{restoreValidation.metadata?.schemaVersion || 1} → 현재 v{systemAdminSettings?.schemaVersion || 1}</div></div>
-                <div className="rounded-2xl border border-slate-200 bg-white p-4"><div className="text-[11px] text-slate-500">개인정보</div><div className="mt-1 text-xs font-bold text-slate-900">{restoreValidation.metadata?.includePersonalData ? '포함' : '제외'}</div></div>
-              </div>
-              {restoreValidation.errors.map((message) => <div key={message} className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">{message}</div>)}
-              {restoreValidation.warnings.map((message) => <div key={message} className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">{message}</div>)}
-            </div>
-          ) : null}
-
-          {restoreValidation?.valid ? (
-            <>
-              <div>
-                <div className="mb-2 text-sm font-black text-slate-900">복원 영역</div>
-                <div className="grid gap-3 md:grid-cols-2">
-                  {Object.entries(RESTORE_SCOPE_META).map(([scope, meta]) => {
-                    const available = restoreValidation.availableScopes.includes(scope);
-                    const disabled = !available || (meta.ownerOnly && !isOwner) || restoreRunning;
-                    const checked = selectedRestoreScopes.includes(scope);
-                    return (
-                      <label key={scope} className={`flex items-start gap-3 rounded-2xl border p-4 ${disabled ? 'cursor-not-allowed bg-slate-50 opacity-55' : 'cursor-pointer'} ${checked ? 'border-orange-300 bg-orange-50' : 'border-slate-200 bg-white'}`}>
-                        <input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => {
-                          setSelectedRestoreScopes((current) => event.target.checked ? [...current, scope] : current.filter((item) => item !== scope));
-                          setRestoreAnalysis(null);
-                          setRestoreResult(null);
-                        }} className="mt-1 h-4 w-4 accent-[var(--mk-orange)]" />
-                        <span><span className="block text-sm font-bold text-slate-900">{meta.label}</span><span className="mt-1 block text-xs leading-5 text-slate-500">{meta.description}</span>{!available ? <span className="mt-1 block text-[11px] font-semibold text-slate-400">이 백업에는 해당 데이터가 없습니다.</span> : null}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <Select label="복원 방식" value={restoreMode} disabled={restoreRunning} onChange={(value) => { setRestoreMode(value); setRestoreAnalysis(null); }}>
-                  <option value={RESTORE_MODE.ADD_MISSING}>없는 문서만 추가</option>
-                  <option value={RESTORE_MODE.MERGE}>기존 문서와 필드 병합</option>
-                  <option value={RESTORE_MODE.OVERWRITE}>같은 ID 문서 덮어쓰기</option>
-                  <option value={RESTORE_MODE.REPLACE} disabled={!isOwner}>선택 영역을 비우고 백업 상태로 복원</option>
-                </Select>
-                <div className="flex items-end justify-end">
-                  <Button type="button" variant="outline" disabled={restoreAnalyzeLoading || restoreRunning || selectedRestoreScopes.length === 0} onClick={analyzeRestore}><FileSearch size={14} className={restoreAnalyzeLoading ? 'animate-spin' : ''} />{restoreAnalyzeLoading ? '검사 중' : '백업·현재 데이터 충돌 검사'}</Button>
-                </div>
-              </div>
-
-              {restoreValidation.projectMismatch ? (
-                <div className="space-y-3 rounded-2xl border border-rose-300 bg-rose-50 p-4">
-                  <div className="text-sm font-black text-rose-900">Firebase 프로젝트 ID 불일치</div>
-                  {!isOwner ? <p className="text-xs leading-5 text-rose-800">타 프로젝트 백업은 최고 관리자만 강제 복원할 수 있습니다.</p> : (
-                    <>
-                      <ToggleSwitch checked={forceProjectMismatch} disabled={restoreRunning} onChange={(value) => { setForceProjectMismatch(value); setRestoreAnalysis(null); }} label="타 프로젝트 백업 강제 복원" description="백업의 프로젝트 ID가 달라도 현재 프로젝트에 기록합니다. Firebase Auth 계정과 외부 참조는 자동 이전되지 않습니다." />
-                      {forceProjectMismatch ? <Input label={`현재 프로젝트 ID를 입력: ${firebaseConfig.projectId}`} value={forceProjectConfirm} onChange={setForceProjectConfirm} disabled={restoreRunning} /> : null}
-                    </>
-                  )}
-                </div>
-              ) : null}
-
-              {restoreAnalysis ? (
-                <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <div className="rounded-xl border border-slate-200 bg-white p-3"><div className="text-[11px] text-slate-500">백업 문서</div><div className="mt-1 text-xl font-black text-slate-900">{restoreAnalysis.plan.totalDocuments}</div></div>
-                    <div className="rounded-xl border border-slate-200 bg-white p-3"><div className="text-[11px] text-slate-500">현재와 ID 중복</div><div className="mt-1 text-xl font-black text-amber-700">{restoreAnalysis.existingCount}</div></div>
-                    <div className="rounded-xl border border-slate-200 bg-white p-3"><div className="text-[11px] text-slate-500">백업에 없는 현재 문서</div><div className="mt-1 text-xl font-black text-rose-700">{restoreAnalysis.currentExtraCount}</div></div>
-                  </div>
-                  <div className="max-h-72 overflow-auto rounded-xl border border-slate-200 bg-white">
-                    {restoreAnalysis.collectionResults.map((item) => <div key={item.name} className="grid grid-cols-[minmax(120px,1fr)_repeat(4,70px)] gap-2 border-b border-slate-100 px-3 py-2 text-[11px]"><span className="font-bold text-slate-700">{item.name}</span><span>백업 {item.backup}</span><span>현재 {item.current}</span><span>중복 {item.overlap}</span><span>추가 {item.extras}</span></div>)}
-                  </div>
-                  {restoreAnalysis.blockingIssues?.map((message) => <div key={message} className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-800">{message}</div>)}
-                  {restoreAnalysis.warnings.map((message) => <div key={message} className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">{message}</div>)}
-                </div>
-              ) : null}
-
-              {latestRestoreJob && ['running', 'failed'].includes(latestRestoreJob.status) ? (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                  <div className="text-sm font-bold text-amber-900">중단된 복원 작업이 있습니다.</div>
-                  <p className="mt-1 text-xs leading-5 text-amber-800">{latestRestoreJob.fileName || '백업 파일'} · 단계 {latestRestoreJob.currentStep || '확인 불가'}. 같은 파일을 선택하면 완료된 단계를 건너뛰고 이어서 실행합니다.</p>
-                </div>
-              ) : null}
-
-              <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs leading-5 text-sky-800">복원 실행 직전에 현재 Firestore 상태를 개인정보 포함 JSON으로 자동 다운로드하며, 복원 완료 후에도 점검 모드를 유지합니다.</div>
-                <Input label="현재 관리자 비밀번호" type="password" value={restorePassword} onChange={setRestorePassword} disabled={restoreRunning} />
-                <Input label={`확인 문구: ${RESTORE_CONFIRM_TEXT}`} value={restoreConfirmText} onChange={setRestoreConfirmText} disabled={restoreRunning} />
-                {restoreProgress ? <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">{restoreProgress.step}: {restoreProgress.completed} / {restoreProgress.total}</div> : null}
-                <div className="flex flex-wrap justify-end gap-2">
-                  {latestRestoreJob && ['running', 'failed'].includes(latestRestoreJob.status) ? <Button type="button" variant="outline" disabled={restoreRunning || !restoreAnalysis || restoreAnalysis.blockingIssues?.length > 0 || latestRestoreJob.fileHash !== restoreFileHash || !restorePassword || restoreConfirmText !== RESTORE_CONFIRM_TEXT} onClick={() => triggerConfirm('중단된 백업 복원 계속하기', '같은 백업 파일로 완료되지 않은 단계부터 복원을 계속합니다.', () => executeRestore({ resumeJob: latestRestoreJob }))}><Play size={14} />복원 계속하기</Button> : null}
-                  <Button type="button" disabled={restoreRunning || !restoreAnalysis || restoreAnalysis.blockingIssues?.length > 0 || !restorePassword || restoreConfirmText !== RESTORE_CONFIRM_TEXT || (restoreValidation.projectMismatch && (!isOwner || !forceProjectMismatch || forceProjectConfirm !== firebaseConfig.projectId))} onClick={() => triggerConfirm('JSON 백업 복원', '현재 상태를 자동 백업한 뒤 선택한 Firestore 데이터를 복원합니다. 복원 중에는 서비스가 점검 모드로 전환됩니다.', () => executeRestore())}><Upload size={14} />{restoreRunning ? '복원 진행 중' : '복원 실행'}</Button>
-                </div>
-              </div>
-
-              {restoreResult ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-800">백업 복원이 완료되었습니다. 데이터 점검 결과를 확인한 후 서비스 운영 탭에서 정상 운영으로 전환해 주세요.</div> : null}
-            </>
-          ) : null}
-        </div>
+      <SectionCard title="백업·복원 정책" description="브라우저에서 직접 데이터베이스를 덤프하거나 초기화하는 기능은 Phase 34에서 제거되었습니다.">
+        <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-xs leading-5 text-sky-800">운영 백업·복원은 PostgreSQL 관리 계층에서 수행해야 합니다. 관리자 웹 화면은 운영 데이터베이스의 임의 전체 삭제나 클라이언트 기반 복원을 실행하지 않습니다.</div>
       </SectionCard>
     </div>
   );
 
   const renderResetTab = () => (
     <div className="space-y-5">
-      <div className="rounded-2xl border border-rose-300 bg-rose-50 p-5">
-        <div className="flex items-start gap-3">
-          <ShieldAlert className="mt-0.5 shrink-0 text-rose-600" size={20} />
-          <div>
-            <div className="text-base font-black text-rose-900">되돌릴 수 없는 위험 작업</div>
-            <p className="mt-1 text-xs leading-5 text-rose-800">관리자 ID, 관리자 Firebase Auth 계정, 초기화 감사 로그는 삭제하지 않습니다. Firestore 일반회원 문서를 삭제해도 Firebase Authentication 계정은 남으므로 UID 목록과 로컬 Admin SDK 스크립트를 함께 내려받습니다.</p>
-          </div>
-        </div>
-      </div>
-
-      {!isOwner ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800">최고 관리자만 데이터 초기화를 실행할 수 있습니다.</div>
-      ) : null}
-
-      {latestResetJob && ['running', 'failed'].includes(latestResetJob.status) ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-          <div className="text-sm font-bold text-amber-900">중단된 초기화 작업이 있습니다.</div>
-          <p className="mt-1 text-xs text-amber-800">작업 ID {latestResetJob.id} · 현재 단계 {latestResetJob.currentStep || '확인 불가'}</p>
-          {latestResetJob.errorMessage ? (
-            <p className="mt-1 break-words text-xs leading-5 text-rose-700">중단 원인: {latestResetJob.errorMessage}</p>
-          ) : null}
-          <div className="mt-3 flex justify-end">
-            <Button type="button" variant="outline" disabled={resetRunning || !isOwner} onClick={() => executeReset({ resumeJob: latestResetJob })}><Play size={14} />중단된 초기화 계속하기</Button>
-          </div>
-        </div>
-      ) : null}
-
-      <SectionCard title="초기화 범위" description="테스트 데이터 초기화 프리셋은 자산·일반회원·대여내역만 선택하고 사이트 콘텐츠와 정책은 유지합니다.">
-        <div className="mb-4 flex flex-wrap gap-2">
-          <Button type="button" variant="outline" onClick={() => { setSelectedResetScopes(TEST_DATA_PRESET); setResetCounts(null); setResetBackupReady(false); }}>테스트 데이터 초기화 선택</Button>
-          <Button type="button" variant="dangerOutline" onClick={() => { setSelectedResetScopes(FULL_RESET_PRESET); setResetCounts(null); setResetBackupReady(false); }}>공장 초기화 범위 선택</Button>
-          <Button type="button" variant="ghost" onClick={() => { setSelectedResetScopes([]); setResetCounts(null); setResetBackupReady(false); }}>선택 해제</Button>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2">
-          {Object.entries(RESET_SCOPE_META).map(([scope, meta]) => {
-            const checked = selectedResetScopes.includes(scope);
-            return (
-              <label key={scope} className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-4 ${checked ? 'border-orange-300 bg-orange-50' : 'border-slate-200 bg-white'}`}>
-                <input type="checkbox" checked={checked} onChange={(event) => {
-                  setSelectedResetScopes((current) => event.target.checked ? [...current, scope] : current.filter((item) => item !== scope));
-                  setResetCounts(null);
-                  setResetBackupReady(false);
-                }} className="mt-1 h-4 w-4 accent-[var(--mk-orange)]" />
-                <span><span className="block text-sm font-bold text-slate-900">{meta.label}</span><span className="mt-1 block text-xs leading-5 text-slate-500">{meta.description}</span></span>
-              </label>
-            );
-          })}
-        </div>
-        <div className="mt-4 flex justify-end">
-          <Button type="button" variant="outline" disabled={selectedResetScopes.length === 0 || resetScanLoading || !isOwner} onClick={scanResetTargets}><RefreshCw size={14} className={resetScanLoading ? 'animate-spin' : ''} />{resetScanLoading ? '확인 중' : '초기화 대상 확인'}</Button>
-        </div>
-      </SectionCard>
-
-      {resetCounts ? (
-        <SectionCard title="삭제 대상 문서" description="표시된 수는 Firestore 문서 수이며 삭제 과정에서 다시 확인됩니다.">
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {Object.entries(resetCounts).map(([name, count]) => (
-              <div key={name} className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs"><span className="font-semibold text-slate-700">{name}</span><span className="font-black text-slate-900">{count}건</span></div>
-            ))}
-          </div>
-        </SectionCard>
-      ) : null}
-
-      <SectionCard title="초기화 실행 확인" description="백업, 관리자 재인증, 확인 문구 입력을 모두 완료해야 실행할 수 있습니다.">
-        <div className="space-y-4">
-          <div className={`rounded-2xl border p-4 ${resetBackupReady ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-xs leading-5 text-slate-700">{resetBackupReady ? '초기화 전 개인정보 포함 백업 파일을 생성했습니다.' : '초기화 전 개인정보 포함 전체 백업 파일을 먼저 생성해야 합니다.'}</div>
-              <Button type="button" variant="outline" disabled={backupLoading || resetRunning || !isOwner} onClick={downloadResetBackup}><Download size={14} />초기화 전 백업</Button>
-            </div>
-          </div>
-          <Input label="현재 관리자 비밀번호" type="password" value={resetPassword} onChange={setResetPassword} disabled={resetRunning || !isOwner} />
-          <Input label={`확인 문구: ${RESET_CONFIRM_TEXT}`} value={resetConfirmText} onChange={setResetConfirmText} disabled={resetRunning || !isOwner} />
-          {resetProgress ? (
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-700">{resetProgress.step}: {resetProgress.completed} / {resetProgress.total}</div>
-          ) : null}
-          <div className="flex justify-end">
-            <Button type="button" variant="danger" disabled={!isOwner || resetRunning || !resetCounts || !resetBackupReady || resetConfirmText !== RESET_CONFIRM_TEXT || !resetPassword} onClick={() => triggerConfirm('데이터 초기화', '선택한 Firestore 데이터를 삭제하고 서비스를 점검 모드로 전환합니다. 관리자 ID는 유지되며 이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?', () => executeReset())}>
-              <Trash2 size={14} />{resetRunning ? '초기화 진행 중' : '초기화 실행'}
-            </Button>
-          </div>
-        </div>
+      <SectionCard title="운영 데이터 초기화" description="클라이언트 기반 전체 데이터 초기화 기능은 Phase 34에서 제거되었습니다.">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-800">운영 PostgreSQL 데이터의 삭제·복원은 배포 및 데이터베이스 관리 절차를 통해 별도로 수행해야 합니다. 관리자 웹 화면에서는 전체 데이터 삭제를 실행하지 않습니다.</div>
       </SectionCard>
     </div>
   );
@@ -947,7 +661,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
       <SectionCard title="애플리케이션" description="현재 브라우저에서 확인 가능한 읽기 전용 정보입니다.">
         <dl className="space-y-3 text-xs">
           {[
-            ['애플리케이션 버전', 'site-system-menu-split-v1'],
+            ['애플리케이션 버전', 'phase34-firebase-free-runtime'],
             ['데이터 스키마 버전', systemAdminSettings?.schemaVersion || 1],
             ['현재 접속 주소', window.location.href],
             ['실행 모드', import.meta.env.MODE || 'production'],
@@ -956,22 +670,20 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
           ].map(([label, value]) => <div key={label} className="flex gap-4 border-b border-slate-100 pb-3"><dt className="w-32 shrink-0 font-semibold text-slate-500">{label}</dt><dd className="min-w-0 break-all font-bold text-slate-800">{String(value)}</dd></div>)}
         </dl>
       </SectionCard>
-      <SectionCard title="Firebase 연결" description="비밀키나 인증 토큰은 표시하지 않습니다.">
+      <SectionCard title="플랫폼 authority" description="Phase 34 정상 runtime의 인증·데이터 저장 계층입니다.">
         <dl className="space-y-3 text-xs">
           {[
-            ['프로젝트 ID', firebaseConfig.projectId],
-            ['Auth 도메인', firebaseConfig.authDomain],
-            ['현재 관리자 UID', authenticatedAdminAccount?.id || '확인 불가'],
+            ['인증', 'Clerk'],
+            ['운영 데이터', 'PostgreSQL'],
+            ['현재 관리자', authenticatedAdminAccount?.id || authenticatedAdminId || '확인 불가'],
             ['관리자 권한', getAdminRole(authenticatedAdminAccount) === 'owner' ? '최고 관리자' : '일반 관리자'],
-            ['공개 설정', siteSettingsReady && !siteSettingsLoadErrorMessage ? '정상' : siteSettingsLoadErrorMessage || '로딩 중'],
-            ['관리자 시스템 설정', systemAdminSettingsReady && !systemAdminSettingsLoadErrorMessage ? '정상' : systemAdminSettingsLoadErrorMessage || '로딩 중'],
-            ['최근 백업', formatTimestampValue(systemAdminSettings?.lastBackupGeneratedAt)],
-            ['최근 복원', formatTimestampValue(systemAdminSettings?.lastRestoreCompletedAt)],
+            ['공개 설정', siteSettingsReady && !siteSettingsLoadErrorMessage ? 'PostgreSQL 정상' : siteSettingsLoadErrorMessage || '로딩 중'],
+            ['시스템 설정', systemAdminSettingsReady && !systemAdminSettingsLoadErrorMessage ? 'PostgreSQL 정상' : systemAdminSettingsLoadErrorMessage || '로딩 중'],
           ].map(([label, value]) => <div key={label} className="flex gap-4 border-b border-slate-100 pb-3"><dt className="w-32 shrink-0 font-semibold text-slate-500">{label}</dt><dd className="min-w-0 break-all font-bold text-slate-800">{String(value)}</dd></div>)}
         </dl>
       </SectionCard>
-      <SectionCard title="Firebase 사용량 안내" description="클라이언트에서는 Spark 실제 사용량과 잔여 한도를 정확하게 조회할 수 없습니다." className="lg:col-span-2">
-        <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-xs leading-5 text-sky-800">현재 화면의 문서 수나 수동 점검 읽기량은 표시할 수 있지만 Firebase Console의 실제 과금·사용량과 동일하지 않습니다. 정확한 읽기·쓰기 사용량은 Firebase Console에서 확인해 주세요.</div>
+      <SectionCard title="외부 Firebase runtime" description="Phase 34에서 애플리케이션 runtime dependency가 제거되었습니다." className="lg:col-span-2">
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-xs leading-5 text-emerald-800">웹 클라이언트와 backend는 Firebase SDK, Firestore API, Firebase Authentication API를 호출하지 않습니다. 기존 PostgreSQL 컬럼의 역사적 식별키 이름은 데이터 호환성을 위해 별도 schema cleanup 전까지 유지됩니다.</div>
       </SectionCard>
     </div>
   );
@@ -1016,13 +728,13 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
     if (mode === SETTINGS_MODE.DATA) {
       return {
         title: '데이터 관리',
-        description: '데이터 건전성 점검, JSON 백업·복원과 위험 초기화 작업을 관리합니다.',
+        description: 'PostgreSQL 데이터 건전성 점검과 운영 데이터 관리 정책을 확인합니다.',
       };
     }
     if (mode === SETTINGS_MODE.INFO) {
       return {
         title: '시스템 정보·로그',
-        description: '애플리케이션과 Firebase 연결정보, 시스템 설정 변경 이력을 확인합니다.',
+        description: '애플리케이션 authority와 시스템 설정 변경 이력을 확인합니다.',
       };
     }
     return {

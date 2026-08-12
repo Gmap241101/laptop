@@ -3,7 +3,7 @@ import {
   EmailAuthProvider,
   reauthenticateWithCredential,
   updatePassword,
-} from 'firebase/auth';
+} from '../../platform/retiredLegacyDataCompat.js';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 import {
   publishUserAccountLifecycleObservation,

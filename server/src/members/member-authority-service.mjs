@@ -61,7 +61,7 @@ export const createMemberAuthorityService = ({
   repository,
   firebaseLinkRepository,
   userRepository,
-  firestoreClient,
+  firestoreClient = null,
   rentalRestrictionRepository = null,
   writeMirrorEnabled = true,
   profileWriteMirrorEnabled = true,
@@ -71,40 +71,28 @@ export const createMemberAuthorityService = ({
   if (!repository || typeof repository.mutateProfile !== 'function') throw new TypeError('Member authority repository is required.');
   if (!firebaseLinkRepository || typeof firebaseLinkRepository.findByFirebaseUid !== 'function') throw new TypeError('firebaseLinkRepository is required.');
   if (!userRepository || typeof userRepository.findByClerkUserId !== 'function') throw new TypeError('userRepository is required.');
-  if (!firestoreClient || typeof firestoreClient.getUserAccount !== 'function') throw new TypeError('Firestore member authority client is required.');
   if (!writeMirrorEnabled && (!rentalRestrictionRepository || typeof rentalRestrictionRepository.findByFirebaseUid !== 'function')) throw new TypeError('Rental restriction repository is required when member/restriction Firestore write mirror is retired.');
   if (!writeMirrorEnabled && typeof repository.countBlockingRentalRequestsForUids !== 'function') throw new TypeError('PostgreSQL rental-request guard is required when member status authority is enabled.');
   if (!writeMirrorEnabled && (typeof repository.getFullBootstrapState !== 'function' || typeof repository.bootstrapMemberAccounts !== 'function')) throw new TypeError('PostgreSQL member full-bootstrap repository contract is required when member status authority is enabled.');
-  if (!writeMirrorEnabled && typeof firestoreClient.listUserAccounts !== 'function') throw new TypeError('Firestore userAccounts bootstrap reader is required when member status authority is enabled.');
   if (!profileWriteMirrorEnabled && (!siteContentRepository || typeof siteContentRepository.getDomain !== 'function')) throw new TypeError('PostgreSQL site content repository is required when member profile authority is enabled.');
   if (!profileWriteMirrorEnabled && (typeof repository.findActiveIdentityOwner !== 'function' || typeof repository.findDirectoryEntryByIdentityKey !== 'function' || typeof repository.getDirectoryBootstrapState !== 'function' || typeof repository.replaceDirectoryEntries !== 'function')) throw new TypeError('PostgreSQL member identity/directory repository contract is required when member profile authority is enabled.');
-  if (!profileWriteMirrorEnabled && typeof firestoreClient.listDirectoryMembers !== 'function') throw new TypeError('Firestore member directory bootstrap reader is required when member profile authority is enabled.');
 
-  const verifyAdmin = (firebaseIdentity) => firebaseIdentity?.source === 'clerk-postgresql'
-    ? Promise.resolve(Object.freeze({ uid: firebaseIdentity.uid, role: 'admin', source: 'postgresql-admin-registry' }))
-    : firestoreClient.verifyAdmin({ firebaseUid: firebaseIdentity.uid, firebaseIdToken: firebaseIdentity.idToken });
+  const verifyAdmin = async (identity) => {
+    if (identity?.source !== 'clerk-postgresql') throw serviceError('admin_postgresql_identity_required', 'Clerk/PostgreSQL administrator identity is required.', 401);
+    return Object.freeze({ uid: identity.uid, role: 'admin', source: 'postgresql-admin-registry' });
+  };
 
   const resolveTarget = async (firebaseUid) => {
     const link = await firebaseLinkRepository.findByFirebaseUid(firebaseUid);
     return { link, appUserId: link?.appUserId || null };
   };
 
-  const ensureFullMemberBootstrap = async ({ firebaseIdentity }) => {
+  const ensureFullMemberBootstrap = async () => {
     if (writeMirrorEnabled) return null;
     const existingState = await repository.getFullBootstrapState();
-    if (existingState?.completed === true) return existingState;
-    const documents = await firestoreClient.listUserAccounts({ firebaseIdToken: firebaseIdentity.idToken });
-    const accounts = documents.map((document) => {
-      const fields = document?.fields || {};
-      const documentUid = trim(document?.name?.split('/').at(-1));
-      const firebaseUid = trim(fields.uid || fields.firebaseUid || documentUid);
-      return {
-        ...profileFromAccount(fields, firebaseUid),
-        firebaseUid,
-        sourceUpdatedAt: document?.updateTime || null,
-      };
-    }).filter((account) => account.firebaseUid);
-    return repository.bootstrapMemberAccounts(accounts);
+    return existingState?.completed === true
+      ? existingState
+      : Object.freeze({ completed: true, source: 'postgresql-authoritative', target: 'postgresql', skipped: true });
   };
 
   const verifySelf = async ({ clerkUserId, firebaseIdentity }) => {
@@ -119,28 +107,11 @@ export const createMemberAuthorityService = ({
     return { appUser, link };
   };
 
-  const ensureDirectoryBootstrap = async ({ firebaseIdentity, version = 0 } = {}) => {
+  const ensureDirectoryBootstrap = async ({ version = 0 } = {}) => {
     if (profileWriteMirrorEnabled) return null;
     const state = await repository.getDirectoryBootstrapState();
     if (state?.completed === true && Number(state.version || 0) >= Number(version || 0)) return state;
-    if (userFirebaseAuthCompatibilityDisabled || !firebaseIdentity?.idToken) {
-      throw serviceError('member_directory_postgresql_stale', 'PostgreSQL member directory must be synchronized by an administrator before member verification.', 503);
-    }
-    const documents = await firestoreClient.listDirectoryMembers({ firebaseIdToken: firebaseIdentity.idToken });
-    const entries = documents.map((document, index) => {
-      const fields = document?.fields || {};
-      const identityKeyValue = trim(fields.identityKey || document?.name?.split('/').at(-1));
-      return {
-        identityKey: identityKeyValue,
-        directoryMemberId: trim(fields.directoryMemberId),
-        name: trim(fields.name).replace(/\s+/g, ''),
-        team: trim(fields.team).replace(/\s+/g, ' '),
-        sortOrder: Number.isFinite(Number(fields.sortOrder)) ? Math.trunc(Number(fields.sortOrder)) : index,
-        enabled: fields.enabled !== false,
-        sourceUpdatedAt: document?.updateTime || null,
-      };
-    }).filter((entry) => entry.identityKey);
-    return repository.replaceDirectoryEntries(entries, { source: 'firestore-memberDirectoryKeys-bootstrap', version });
+    throw serviceError('member_directory_postgresql_stale', 'PostgreSQL member directory must be synchronized by an administrator before member verification.', 503, { requiredVersion: Number(version || 0), synchronizedVersion: Number(state?.version || 0) });
   };
 
   const getPostgresqlMemberPolicySettings = async () => {
@@ -552,14 +523,6 @@ export const createMemberAuthorityService = ({
       if (!writeMirrorEnabled) {
         const restrictionShadow = await rentalRestrictionRepository.findByFirebaseUid(target);
         inherited = restrictionShadow?.exists && restrictionShadow.restriction ? restrictionShadow.restriction : {};
-        if (status === 'active' && current.rejoinedAccount && !restrictionShadow?.exists) {
-          // Transitional exception: rejoined-account inheritance was never persisted in app_member_accounts.
-          // Read the immutable compatibility snapshot only when no PostgreSQL restriction snapshot exists.
-          currentDoc = await firestoreClient.getUserAccount({ firebaseUid: target, firebaseIdToken: firebaseIdentity.idToken });
-          inherited = currentDoc?.fields?.inheritedRestriction && typeof currentDoc.fields.inheritedRestriction === 'object'
-            ? currentDoc.fields.inheritedRestriction
-            : {};
-        }
       } else {
         inherited = current.inheritedRestriction && typeof current.inheritedRestriction === 'object' ? current.inheritedRestriction : {};
       }
@@ -595,9 +558,10 @@ export const createMemberAuthorityService = ({
       });
     },
 
-    async syncMemberDirectoryAdmin({ firebaseIdentity }) {
+    async syncMemberDirectoryAdmin({ firebaseIdentity, entries = [], version = 0 }) {
       const admin = await verifyAdmin(firebaseIdentity);
-      if (firebaseIdentity?.source === 'clerk-postgresql') {
+      const normalizedEntries = Array.isArray(entries) ? entries : [];
+      if (normalizedEntries.length === 0) {
         const state = await repository.getDirectoryBootstrapState();
         if (!state?.completed) {
           throw serviceError('member_directory_postgresql_missing', 'PostgreSQL member directory has not been initialized.', 409);
@@ -610,26 +574,17 @@ export const createMemberAuthorityService = ({
           ...state,
         });
       }
-      const settings = profileWriteMirrorEnabled ? {} : await getPostgresqlMemberPolicySettings();
-      const version = Math.max(0, Number(settings.memberDirectoryVersion || 0));
-      if (userFirebaseAuthCompatibilityDisabled || !firebaseIdentity?.idToken) {
-      throw serviceError('member_directory_postgresql_stale', 'PostgreSQL member directory must be synchronized by an administrator before member verification.', 503);
-    }
-    const documents = await firestoreClient.listDirectoryMembers({ firebaseIdToken: firebaseIdentity.idToken });
-      const entries = documents.map((document, index) => {
-        const fields = document?.fields || {};
-        return {
-          identityKey: trim(fields.identityKey || document?.name?.split('/').at(-1)),
-          directoryMemberId: trim(fields.directoryMemberId),
-          name: trim(fields.name).replace(/\s+/g, ''),
-          team: trim(fields.team).replace(/\s+/g, ' '),
-          sortOrder: Number.isFinite(Number(fields.sortOrder)) ? Math.trunc(Number(fields.sortOrder)) : index,
-          enabled: fields.enabled !== false,
-          sourceUpdatedAt: document?.updateTime || null,
-        };
-      }).filter((entry) => entry.identityKey);
-      const state = await repository.replaceDirectoryEntries(entries, { source: 'firestore-admin-directory-sync', version });
-      return Object.freeze({ admin: { uid: admin.uid, role: trim(admin.fields?.adminRole || 'admin') }, source: 'firestore-admin-sync', target: 'postgresql-member-directory', ...state });
+      const state = await repository.replaceDirectoryEntries(normalizedEntries, {
+        source: 'postgresql-admin-direct',
+        version: Math.max(0, Number(version || 0)),
+      });
+      return Object.freeze({
+        admin: { uid: admin.uid, role: trim(admin.fields?.adminRole || admin.role || 'admin') },
+        source: 'postgresql-admin-direct',
+        target: 'postgresql-member-directory',
+        skipped: false,
+        ...state,
+      });
     },
 
     async bootstrapAdminRegistry({ firebaseIdentity }) {
@@ -643,22 +598,7 @@ export const createMemberAuthorityService = ({
           skipped: true,
         });
       }
-      const docs = await firestoreClient.listAdminAccounts({ firebaseIdToken: firebaseIdentity.idToken });
-      const admins = docs.map((doc) => {
-        const fields = doc.fields || {};
-        return {
-          firebaseUid: trim(fields.authUid || fields.id || doc.name.split('/').at(-1)),
-          adminLoginId: trim(fields.adminLoginId),
-          authEmail: trim(fields.authEmail || fields.email).toLowerCase(),
-          organizationName: trim(fields.organizationName),
-          userName: trim(fields.userName),
-          phone: trim(fields.phone),
-          adminRole: trim(fields.adminRole || 'admin'),
-          sourceUpdatedAt: doc.updateTime || null,
-        };
-      }).filter((item) => item.firebaseUid);
-      const registry = await repository.syncAdminRegistry(admins);
-      return Object.freeze({ admin: { uid: admin.uid }, source: 'firestore-bootstrap', target: 'postgresql-admin-registry', count: registry.length, registry });
+      throw serviceError('legacy_admin_registry_bootstrap_retired', 'Legacy administrator registry bootstrap is retired; PostgreSQL is authoritative.', 410);
     },
   });
 };

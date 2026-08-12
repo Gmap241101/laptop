@@ -4,12 +4,12 @@ import {
   doc,
   serverTimestamp,
   setDoc,
-} from 'firebase/firestore';
+} from '../../platform/retiredLegacyDataCompat.js';
 
 import {
   FAQ_POSTS_COLLECTION_REF,
   NOTICE_POSTS_COLLECTION_REF,
-} from '../../firebase.js';
+} from '../../platform/appDataRefs.js';
 import {
   isRichTextEmpty,
   legacyTextToRichHtml,

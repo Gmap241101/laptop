@@ -11,7 +11,7 @@ import useGlobalUiController, {
   useGlobalUiState,
 } from './ui/useGlobalUiController.js';
 
-import { firebaseAuth } from './firebase.js';
+import { firebaseAuth } from './platform/appDataRefs.js';
 
 
 
@@ -205,7 +205,7 @@ const getUserAuthErrorMessage = (error) => {
   }
 
   if (errorCode === 'auth/password-does-not-meet-requirements') {
-    return '비밀번호가 Firebase Authentication의 비밀번호 정책을 충족하지 않습니다. 대문자, 숫자, 특수문자 등 설정된 정책을 확인해 주세요.';
+    return '비밀번호가 현재 인증 정책을 충족하지 않습니다. 대문자, 숫자, 특수문자 등 설정된 정책을 확인해 주세요.';
   }
 
   if (errorCode === 'auth/user-not-found' || errorCode === 'auth/wrong-password') {
@@ -217,15 +217,15 @@ const getUserAuthErrorMessage = (error) => {
   }
 
   if (errorCode === 'auth/operation-not-allowed') {
-    return 'Firebase Authentication에서 Email/Password 로그인 제공자가 아직 사용 설정되어 있지 않습니다. Firebase Console의 Authentication > Sign-in method에서 Email/Password를 사용 설정해 주세요.';
+    return '현재 인증 서비스에서 이메일/비밀번호 로그인이 허용되지 않습니다. Clerk 인증 설정을 확인해 주세요.';
   }
 
   if (errorCode === 'auth/network-request-failed') {
-    return 'Firebase Authentication 서버에 연결하지 못했습니다. 네트워크 상태를 확인해 주세요.';
+    return '인증 서버에 연결하지 못했습니다. 네트워크 상태와 Clerk 설정을 확인해 주세요.';
   }
 
   if (errorCode === 'auth/unauthorized-domain') {
-    return '현재 접속한 도메인이 Firebase Authentication 승인 도메인에 등록되어 있지 않습니다. Firebase Console의 Authentication 설정에서 Authorized domains를 확인해 주세요.';
+    return '현재 접속한 도메인이 인증 허용 범위에 포함되어 있지 않습니다. Clerk Authorized Parties/도메인 설정을 확인해 주세요.';
   }
 
   if (errorCode === 'auth/too-many-requests') {
@@ -237,33 +237,33 @@ const getUserAuthErrorMessage = (error) => {
   }
 
   if (errorCode === 'member/directory-status-sync-permission-denied') {
-    return '회원가입 명부 정책 변경에 따른 회원 상태 동기화 권한이 거부되었습니다. 최신 Firestore Rules를 게시한 뒤 다시 로그인해 주세요.';
+    return '회원가입 명부 정책 변경에 따른 회원 상태 동기화 권한이 거부되었습니다. PostgreSQL 회원 정책과 Clerk 세션을 확인한 뒤 다시 로그인해 주세요.';
   }
 
   if (errorCode === 'permission-denied') {
-    return '회원 정보 또는 로그인 역할 확인 권한이 거부되었습니다. Firestore Rules의 userAccounts/{uid} 및 adminAccounts/{uid} 규칙과 게시 여부를 확인해 주세요.';
+    return '회원 정보 또는 로그인 역할 확인 권한이 거부되었습니다. PostgreSQL 회원 상태와 Clerk 세션 권한을 확인해 주세요.';
   }
 
   if (errorCode === 'unavailable') {
-    return 'Firestore 서버에 일시적으로 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.';
+    return 'PostgreSQL API에 일시적으로 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.';
   }
 
   return `사용자 인증 처리 중 오류가 발생했습니다. 오류 코드: ${errorCode || 'unknown'} ${errorMessage ? ` / ${errorMessage}` : ''}`;
 };
 
-const getAdminFirebaseAuthErrorMessage = (error) => {
+const getAdminAuthErrorMessage = (error) => {
   const errorCode = error?.code || '';
 
   if (error?.message === 'admin-auth-uid-mismatch') {
-    return 'Firebase Auth 계정 UID와 관리자 등록 정보가 일치하지 않습니다. 관리자 ID 관리 정보를 확인해 주세요.';
+    return 'Clerk 계정과 PostgreSQL 관리자 등록 정보가 일치하지 않습니다. 관리자 ID 관리 정보를 확인해 주세요.';
   }
 
   if (errorCode === 'auth/email-already-in-use') {
-    return '이미 Firebase Authentication에 등록된 이메일입니다. 다른 이메일을 사용하거나 기존 Auth 계정 연결 상태를 확인해 주세요.';
+    return '이미 Clerk에 등록된 이메일입니다. 다른 이메일을 사용하거나 기존 관리자 계정 연결 상태를 확인해 주세요.';
   }
 
   if (errorCode === 'auth/operation-not-allowed') {
-    return 'Firebase Authentication에서 Email/Password 제공자가 사용 설정되어 있지 않습니다. Authentication > Sign-in method에서 Email/Password를 사용 설정해 주세요.';
+    return 'Clerk에서 이메일/비밀번호 인증이 사용 가능하도록 설정되어 있는지 확인해 주세요.';
   }
 
   if (errorCode === 'auth/invalid-email') {
@@ -275,7 +275,7 @@ const getAdminFirebaseAuthErrorMessage = (error) => {
   }
 
   if (errorCode === 'auth/password-does-not-meet-requirements') {
-    return '관리자 비밀번호가 Firebase Authentication의 비밀번호 정책을 충족하지 않습니다.';
+    return '관리자 비밀번호가 현재 Clerk 인증 정책을 충족하지 않습니다.';
   }
 
   if (
@@ -287,11 +287,11 @@ const getAdminFirebaseAuthErrorMessage = (error) => {
   }
 
   if (errorCode === 'auth/network-request-failed') {
-    return 'Firebase Authentication 서버에 연결하지 못했습니다. 네트워크 상태를 확인해 주세요.';
+    return '인증 서버에 연결하지 못했습니다. 네트워크 상태와 Clerk 설정을 확인해 주세요.';
   }
 
   if (errorCode === 'auth/unauthorized-domain') {
-    return '현재 접속한 도메인이 Firebase Authentication 승인 도메인에 등록되어 있지 않습니다.';
+    return '현재 접속한 도메인이 Clerk의 허용 도메인/Authorized Parties 설정에 포함되어 있지 않습니다.';
   }
 
   if (errorCode === 'auth/too-many-requests') {
@@ -303,7 +303,7 @@ const getAdminFirebaseAuthErrorMessage = (error) => {
   }
 
   if (errorCode === 'permission-denied') {
-    return '관리자 계정 조회 또는 저장 권한이 거부되었습니다. Firestore Rules의 adminAccounts/{uid} 규칙을 확인해 주세요.';
+    return '관리자 계정 조회 또는 저장 권한이 거부되었습니다. PostgreSQL 관리자 레지스트리와 Clerk 권한을 확인해 주세요.';
   }
 
   return getUserAuthErrorMessage(error).replace('사용자 인증', '관리자 인증');
@@ -874,7 +874,7 @@ function App() {
     firebaseAuthReady,
     firebaseAuthUser,
     firebaseReady,
-    getAdminFirebaseAuthErrorMessage,
+    getAdminAuthErrorMessage,
     normalizeAdminAccounts,
     setAdminAccounts,
     setAdminAuthenticatedSession,
@@ -1512,7 +1512,7 @@ function App() {
     dataBorrowers: data.borrowers,
     editingAdminAccountId,
     firebaseAuthUser,
-    getAdminFirebaseAuthErrorMessage,
+    getAdminAuthErrorMessage,
     registeredAdminAccounts,
     setAdminAccountEditForm,
     setAdminAccountForm,

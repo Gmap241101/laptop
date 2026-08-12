@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { onSnapshot } from 'firebase/firestore';
+import { onSnapshot } from '../../platform/retiredLegacyDataCompat.js';
 
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
-import { firebaseAuth, SIGNUP_TERMS_POLICY_DOC_REF } from '../../firebase.js';
+import { firebaseAuth, SIGNUP_TERMS_POLICY_DOC_REF } from '../../platform/appDataRefs.js';
 import {
   publishAccountLifecycleAuthorityObservation,
   readAccountLifecycleAuthorityConfig,

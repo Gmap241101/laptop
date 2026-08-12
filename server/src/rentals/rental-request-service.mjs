@@ -95,7 +95,7 @@ export const createRentalRequestService = ({
   if (!memberShadowRepository || typeof memberShadowRepository.findByAppUserId !== 'function') throw new TypeError('memberShadowRepository is required.');
   if (!rentalRequestRepository || typeof rentalRequestRepository.listByAppUserId !== 'function' || typeof rentalRequestRepository.replaceForAppUser !== 'function' || typeof rentalRequestRepository.getSyncState !== 'function') throw new TypeError('rentalRequestRepository is required.');
   if (useAuthoritativeSource && typeof rentalRequestRepository.listAuthoritativeByAppUserId !== 'function') throw new TypeError('rentalRequestRepository.listAuthoritativeByAppUserId is required when PostgreSQL authoritative read is enabled.');
-  if (!firestoreRentalRequestsClient || typeof firestoreRentalRequestsClient.listOwnRentalRequests !== 'function') throw new TypeError('firestoreRentalRequestsClient is required.');
+  if (!useAuthoritativeSource && (!firestoreRentalRequestsClient || typeof firestoreRentalRequestsClient.listOwnRentalRequests !== 'function')) throw new TypeError('Legacy rental request source client is required only when PostgreSQL authoritative read is disabled.');
 
   const context = async (clerkUserId, { requireMemberShadow = true } = {}) => {
     const appUser = await userRepository.findByClerkUserId(clerkUserId);
@@ -183,6 +183,21 @@ export const createRentalRequestService = ({
     },
 
     async compareCurrent(clerkUserId, firebaseIdentity) {
+      if (useAuthoritativeSource) {
+        const { appUser, firebaseLink } = await context(clerkUserId, { requireMemberShadow: false });
+        const current = await readAuthoritativeCurrent(appUser, firebaseLink);
+        return Object.freeze({
+          equivalent: true,
+          sourceCount: current.requests.length,
+          shadowCount: current.requests.length,
+          sourceHash: 'postgresql-authoritative',
+          shadowHash: 'postgresql-authoritative',
+          syncHash: 'postgresql-authoritative',
+          changedRequestIds: [],
+          syncedAt: current.syncState.syncedAt,
+          source: 'postgresql-authoritative',
+        });
+      }
       const { appUser, firebaseLink, memberShadow } = await context(clerkUserId);
       const syncState = await rentalRequestRepository.getSyncState(appUser.id);
       if (!syncState) throw serviceError('rental_request_shadow_not_synced', 'Rental request shadow has not been synchronized yet.');

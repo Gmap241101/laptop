@@ -1,36 +1,79 @@
-Phase 34 Firebase normal-runtime retirement validation
+Phase 34 Firebase-free runtime authority validation
 Date: 2026-08-12 KST
+Runtime revision: phase34-firebase-free-runtime-authority-20260812-1500
 
 STATUS
-Deployment candidate. Local automated validation PASS; actual Staging zero-Firebase-network validation pending.
+Deployment candidate. Automated source/runtime/package validation PASS. Actual Staging browser validation pending.
 
-PROTECTED BASELINE
-- Phase 32: PASS
-- Phase 33: actual Staging PASS
-- Production/gh-pages/DNS/Firebase configuration: unchanged
+SOURCE BASELINE
+rental-system-github-education-phase34-runtime-freeze-settings-cors-hotfix-20260812_1338_deployment_package.zip
+Baseline SHA-256: f269055a6a6ad5d6672f19c6fb3fd60c77a6e685b18774ec9a951da47683589a
 
 IMPLEMENTED
-- Frontend uses structurally valid Firebase SDK references with Firestore network disabled and Auth persistence disabled
-- Clerk-only administrator and user session principals
-- X-Firebase-Authorization stripped from backend requests
-- Backend Firebase project/token verifier disabled
-- All backend Firestore write-mirror switches forced retired
-- Existing PostgreSQL cutovers forced by the global flag
-- Firestore bootstrap paths converted to PostgreSQL-existing responses
-- Firebase audit/maintenance and administrator-account mutations blocked
-- Explicit Staging rollback switch retained
+- Firebase Web SDK dependency removed from package.json/package-lock.json.
+- src/firebase.js and Firebase platform files removed.
+- Backend Firebase token verifier and Firestore network clients removed.
+- External Firebase/Firestore runtime audit = 0 references.
+- X-Firebase-Authorization runtime contract removed; CORS allows Clerk Authorization/Content-Type/X-Request-Id only.
+- Administrator dashboard is PostgreSQL-only.
+- Administrator account CRUD is Clerk + PostgreSQL.
+- Administrator and user session-security configuration is PostgreSQL.
+- Administrator member-directory and policy saves are PostgreSQL-only.
+- Public/admin content authority is PostgreSQL-only.
+- Browser Firestore backup/restore/reset and split-storage migration runtime are retired.
+- Legacy Firestore synchronization controls are removed from Phase 34 diagnostics/runtime.
+- Backend services no longer receive a retired Firestore proxy.
+- Legacy source/bootstrap endpoints fail closed or return PostgreSQL authoritative state without external Firebase network access.
 
-LOCAL VALIDATION
-- React hook audit: PASS
-- server foundation: PASS
-- backend HTTP smoke: PASS
-- Phase 33 regression frontend smoke: PASS
-- Phase 34 administrator content frontend/backend smoke: PASS
-- Phase 34 Firebase runtime retirement frontend/backend smoke: PASS
-- Browser CORS preflight permits authenticated PUT administrator content mutations
-- Production Vite Staging build: PASS (1,939 modules)
-- Firebase SDK reference construction uses real Firestore instances; `_freezeSettings` placeholder crash removed
-- Clerk/PostgreSQL compatibility principal writes the real `firebaseAuth.currentUser` property
+DATABASE
+New migration: 025_phase34_hard_firebase_retirement.sql
+- app_system_configuration
+- admin-security configuration
+- user-session-policy configuration
+- app_admin_identity_registry lock_until / lock_reason / retired_at
+- phase34_hard_firebase_retirement runtime metadata
+Previously applied migrations are not modified.
+
+HISTORICAL COMPATIBILITY KEYS
+PostgreSQL schema names such as firebase_uid and app_user_firebase_links are retained only as historical compatibility-key relationships/FKs. They are not external Firebase runtime dependencies. Destructive schema rename/drop is deferred until a separately validated data migration because it is not required to remove Firebase runtime use.
+
+AUTOMATED VALIDATION
+- Migration 025 static contract: PASS
+- Server foundation: PASS (43 JavaScript files; Clerk/PostgreSQL runtime; Firebase/Firestore network runtime removed)
+- Current HTTP server smoke: PASS (Clerk/PostgreSQL; no Firebase authorization header)
+- Clerk JWT verification smoke: PASS
+- Clerk frontend client smoke: PASS (no X-Firebase-Authorization)
+- Phase 34 backend smoke: PASS
+- Phase 34 frontend smoke: PASS
+- Phase 34 hard-removal backend smoke: PASS
+- Phase 34 hard-removal frontend smoke: PASS
+- React hook audit: PASS (174 source files)
+- Application flow audit: PASS (124 contracts / 11 user routes / 20 administrator tabs)
+- External Firebase/Firestore runtime strict audit: PASS (217 files checked / 0 external runtime references)
+- Source graph analysis: PASS
+- Package guard: PASS (800 source entries; protected=0; missing=0; duplicate=0; unlisted=0)
+- Manifest source checksum verification: PASS (800/800)
+- Package force-fail .env.example: PASS (exit 1)
+- Package force-fail nonexistent source: PASS (exit 1)
+
+BUILD
+npm run build:staging:
+- React audit PASS
+- Application audit PASS
+- External Firebase/Firestore audit PASS
+- Clerk local config check DISABLED in assistant environment
+- vite: not found
+- exit 127
+This is an execution-environment limitation after all prebuild validation passes; actual Vite bundling must be confirmed by Vercel Staging.
+
+PACKAGE EXPECTATION
+- PACKAGE_FILES: 800
+- PACKAGE_SHA256SUMS: 800
+- REMOVED_FILES: 83
+- Expected ZIP file entries: 803 (800 source + 3 package-meta)
+- ZIP root metadata: 0
+- package-meta files: 3
+- protected paths: 0
 
 STAGING PASS REQUIREMENT
-Follow PHASE34_MANUAL_PLATFORM_ACTIONS.md. Do not mark Phase 34 PASS until normal administrator/user/public flows pass with zero Firebase network requests and the disabled legacy management-tool decision is accepted or replaced.
+Deploy backend/frontend and migration 025 to Staging and validate normal administrator/user/public flows. Browser Network must show zero requests to Firebase/Firestore/IdentityToolkit/SecureToken endpoints during the complete test matrix. Do not delete the Firebase project until the user separately approves after Staging validation.

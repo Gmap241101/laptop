@@ -7,14 +7,14 @@ import {
   serverTimestamp,
   setDoc,
   where,
-} from 'firebase/firestore';
+} from '../../platform/retiredLegacyDataCompat.js';
 
 import {
   FAQ_BOARD_CONFIG_DOC_REF,
   FAQ_CATEGORIES_COLLECTION_REF,
   FAQ_POSTS_COLLECTION_REF,
   NOTICE_BOARD_CONFIG_DOC_REF,
-} from '../../firebase.js';
+} from '../../platform/appDataRefs.js';
 import {
   DEFAULT_FAQ_POSTS_PER_PAGE,
   DEFAULT_NOTICE_POSTS_PER_PAGE,

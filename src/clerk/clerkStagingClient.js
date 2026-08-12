@@ -4,7 +4,7 @@ const CLERK_JS_MAJOR = '6';
 const trim = (value) => (typeof value === 'string' ? value.trim() : '');
 
 const normalizeBoolean = (value) => trim(value).toLowerCase() === 'true';
-const firebaseRuntimeRetired = () => normalizeBoolean(import.meta.env?.VITE_FIREBASE_RUNTIME_DISABLED);
+const firebaseRuntimeRetired = () => true;
 
 const normalizeApiBaseUrl = (value) => {
   const raw = trim(value);
@@ -100,7 +100,6 @@ const getSessionToken = async (clerk) => {
 const requestWithSession = async ({ clerk, apiBaseUrl, fetchImpl, path, method = 'GET', headers = {}, body }) => {
   const token = await getSessionToken(clerk);
   const authorityHeaders = { ...headers };
-  if (firebaseRuntimeRetired()) delete authorityHeaders['X-Firebase-Authorization'];
   const response = await fetchImpl(`${apiBaseUrl}${path}`, {
     method,
     headers: {
@@ -124,11 +123,7 @@ const requestPublicJson = async ({ apiBaseUrl, fetchImpl, path, body }) => {
   return { response, payload: await parseJsonResponse(response) };
 };
 
-const optionalFirebaseAuthorizationHeader = (firebaseIdToken) => {
-  if (firebaseRuntimeRetired()) return {};
-  const token = trim(firebaseIdToken);
-  return token ? { 'X-Firebase-Authorization': `Bearer ${token}` } : {};
-};
+const optionalFirebaseAuthorizationHeader = () => ({});
 
 export const requestNativeUserSignup = async ({ apiBaseUrl, fetchImpl, password, input }) => {
   const { response, payload } = await requestPublicJson({
@@ -149,20 +144,11 @@ export const requestNativeUserSignup = async ({ apiBaseUrl, fetchImpl, password,
   return payload;
 };
 
-const requestWithFirebaseAuthorization = async ({ apiBaseUrl, fetchImpl, path, firebaseIdToken, body }) => {
-  const token = trim(firebaseIdToken);
-  if (!token) throw new Error('Firebase administrator sign-in is required for this compatibility operation.');
-  const response = await fetchImpl(`${apiBaseUrl}${path}`, {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      ...optionalFirebaseAuthorizationHeader(token),
-    },
-    cache: 'no-store',
-    body: JSON.stringify(body || {}),
-  });
-  return { response, payload: await parseJsonResponse(response) };
+const requestWithFirebaseAuthorization = async () => {
+  const error = new Error('Firebase authorization bridge has been removed.');
+  error.code = 'firebase_runtime_removed';
+  error.status = 410;
+  throw error;
 };
 
 export const requestAccountRecoveryEmail = async ({ apiBaseUrl, fetchImpl, identity }) => {
@@ -240,7 +226,7 @@ export const requestUserTermsConsentBootstrap = async ({ clerk, apiBaseUrl, fetc
     fetchImpl,
     path: '/api/users/me/terms-consent/bootstrap',
     method: 'POST',
-    headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
+    headers: { },
   });
   if (!response.ok) {
     const error = new Error(`Terms consent legacy bootstrap failed with HTTP ${response.status}.`);
@@ -450,7 +436,6 @@ export const requestAdminClerkProvision = async ({ clerk, apiBaseUrl, fetchImpl,
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Firebase-Authorization': `Bearer ${token}`,
     },
     body: JSON.stringify({ password }),
   });
@@ -538,7 +523,7 @@ export const requestFirebaseLegacyLink = async ({ clerk, apiBaseUrl, fetchImpl, 
     fetchImpl,
     path: '/api/users/me/legacy/firebase',
     method: 'POST',
-    headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
+    headers: { },
   });
 
   if (!response.ok) {
@@ -635,7 +620,7 @@ export const requestMemberShadowSync = async ({ clerk, apiBaseUrl, fetchImpl, fi
     fetchImpl,
     path: '/api/users/me/legacy/member-shadow/sync',
     method: 'POST',
-    headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
+    headers: { },
   });
 
   if (!response.ok) {
@@ -661,7 +646,7 @@ export const requestMemberShadowComparison = async ({ clerk, apiBaseUrl, fetchIm
     fetchImpl,
     path: '/api/users/me/legacy/member-shadow/compare',
     method: 'POST',
-    headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
+    headers: { },
   });
 
   if (response.status === 404 && payload?.error === 'member_shadow_not_found') return null;
@@ -687,7 +672,7 @@ export const requestAdminRentalRequestBootstrap = async ({ clerk, apiBaseUrl, fe
     fetchImpl,
     path: '/api/admin/rental-requests/bootstrap',
     method: 'POST',
-    headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
+    headers: { },
   });
   if (!response.ok) {
     const error = new Error(`Admin rental request bootstrap failed with HTTP ${response.status}.`);
@@ -715,7 +700,7 @@ export const requestAdminRentalRequests = async ({ clerk, apiBaseUrl, fetchImpl,
     apiBaseUrl,
     fetchImpl,
     path: `/api/admin/rental-requests${query ? `?${query}` : ''}`,
-    headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
+    headers: { },
   });
   if (!response.ok) {
     const error = new Error(`Admin PostgreSQL rental request read failed with HTTP ${response.status}.`);
@@ -738,7 +723,7 @@ export const requestAdminRentalDashboard = async ({ clerk, apiBaseUrl, fetchImpl
     apiBaseUrl,
     fetchImpl,
     path: `/api/admin/rental-dashboard${query}`,
-    headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
+    headers: { },
   });
   if (!response.ok) {
     const error = new Error(`Admin PostgreSQL rental dashboard read failed with HTTP ${response.status}.`);
@@ -765,7 +750,6 @@ const requestAdminRentalRequestMutationAction = async ({ clerk, apiBaseUrl, fetc
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Firebase-Authorization': `Bearer ${token}`,
     },
     body: JSON.stringify(body || {}),
   });
@@ -792,7 +776,7 @@ export const requestAdminRentalRequestSync = async ({ clerk, apiBaseUrl, fetchIm
     clerk, apiBaseUrl, fetchImpl,
     path: `/api/admin/rental-requests/${encodeURIComponent(id)}/sync`,
     method: 'POST',
-    headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
+    headers: { },
   });
   if (!response.ok) {
     const error = new Error(`Admin rental request targeted sync failed with HTTP ${response.status}.`);
@@ -813,7 +797,7 @@ export const requestAdminRentalRequestEvents = async ({ clerk, apiBaseUrl, fetch
   const { response, payload } = await requestWithSession({
     clerk, apiBaseUrl, fetchImpl,
     path: `/api/admin/rental-requests/${encodeURIComponent(id)}/events`,
-    headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
+    headers: { },
   });
   if (!response.ok) {
     const error = new Error(`Admin rental request event read failed with HTTP ${response.status}.`);
@@ -844,7 +828,6 @@ export const requestAdminRentalRequestStatusChange = async ({ clerk, apiBaseUrl,
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Firebase-Authorization': `Bearer ${token}`,
     },
     body: JSON.stringify({ status }),
   });
@@ -924,7 +907,7 @@ export const requestAdminMembersPostgresql = async ({ clerk, apiBaseUrl, fetchIm
     apiBaseUrl,
     fetchImpl,
     path: `/api/admin/members${query ? `?${query}` : ''}`,
-    headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
+    headers: { },
   });
   if (!response.ok) {
     const error = new Error(`Admin PostgreSQL member read failed with HTTP ${response.status}.`);
@@ -943,7 +926,7 @@ export const requestAdminMemberProfileAuthorityWrite = async ({ clerk, apiBaseUr
   if ((!token && !firebaseRuntimeRetired()) || !uid) throw new Error('Firebase admin sign-in and member UID are required.');
   const { response, payload } = await requestWithSession({
     clerk, apiBaseUrl, fetchImpl, path: `/api/admin/members/${encodeURIComponent(uid)}/profile`, method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Firebase-Authorization': `Bearer ${token}` },
+    headers: { 'Content-Type': 'application/json', },
     body: JSON.stringify(profile || {}),
   });
   if (!response.ok) { const error = new Error(`Admin PostgreSQL member profile write failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
@@ -951,12 +934,33 @@ export const requestAdminMemberProfileAuthorityWrite = async ({ clerk, apiBaseUr
   return payload;
 };
 
-export const requestAdminMemberDirectoryPostgresqlSync = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken }) => {
-  const token = trim(firebaseIdToken);
-  if (!token && !firebaseRuntimeRetired()) throw new Error('Firebase admin sign-in is required before synchronizing the PostgreSQL member directory.');
+export const requestAdminMemberTermsConsent = async ({ clerk, apiBaseUrl, fetchImpl, memberKey }) => {
+  const key = trim(memberKey);
+  if (!key) throw new Error('Member key is required.');
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: `/api/admin/members/${encodeURIComponent(key)}/terms-consent`,
+    method: 'GET',
+  });
+  if (!response.ok) {
+    const error = new Error(`Admin PostgreSQL member terms read failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (!payload?.authenticated || !payload?.authorized || payload?.termsConsent?.source !== 'postgresql') {
+    throw new Error('Backend returned an invalid admin member terms consent payload.');
+  }
+  return payload;
+};
+
+export const requestAdminMemberDirectoryPostgresqlSync = async ({ clerk, apiBaseUrl, fetchImpl, entries = [], version = 0 }) => {
   const { response, payload } = await requestWithSession({
     clerk, apiBaseUrl, fetchImpl, path: '/api/admin/member-directory/sync', method: 'POST',
-    headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entries, version }),
   });
   if (!response.ok) { const error = new Error(`Admin PostgreSQL member directory sync failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
   if (!payload?.authenticated || !payload?.authorized || payload?.memberDirectorySync?.target !== 'postgresql-member-directory') throw new Error('Backend returned an invalid member directory synchronization response.');
@@ -968,7 +972,7 @@ export const requestAdminMemberStatusAuthorityWrite = async ({ clerk, apiBaseUrl
   if ((!token && !firebaseRuntimeRetired()) || !uid) throw new Error('Firebase admin sign-in and member UID are required.');
   const { response, payload } = await requestWithSession({
     clerk, apiBaseUrl, fetchImpl, path: `/api/admin/members/${encodeURIComponent(uid)}/status`, method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Firebase-Authorization': `Bearer ${token}` },
+    headers: { 'Content-Type': 'application/json', },
     body: JSON.stringify({ status }),
   });
   if (!response.ok) { const error = new Error(`Admin PostgreSQL member status write failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
@@ -979,9 +983,45 @@ export const requestAdminMemberStatusAuthorityWrite = async ({ clerk, apiBaseUrl
 export const requestAdminIdentityRegistryBootstrap = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken }) => {
   const token = trim(firebaseIdToken);
   if (!token && !firebaseRuntimeRetired()) throw new Error('Firebase admin sign-in is required before synchronizing the PostgreSQL admin identity registry.');
-  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: '/api/admin/identity-registry/bootstrap', method: 'POST', headers: { 'X-Firebase-Authorization': `Bearer ${token}` } });
+  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: '/api/admin/identity-registry/bootstrap', method: 'POST', headers: { } });
   if (!response.ok) { const error = new Error(`Admin identity registry bootstrap failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
   if (!payload?.authenticated || !payload?.authorized || payload?.adminIdentityRegistry?.target !== 'postgresql-admin-registry') throw new Error('Backend returned an invalid admin identity registry response.');
+  return payload;
+};
+
+export const requestAdminAccountsPostgresql = async ({ clerk, apiBaseUrl, fetchImpl }) => {
+  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: '/api/admin/accounts', method: 'GET' });
+  if (!response.ok) { const error = new Error(`Administrator accounts read failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
+  if (!payload?.authenticated || !payload?.authorized || payload?.adminAccounts?.source !== 'postgresql' || !Array.isArray(payload?.adminAccounts?.accounts)) throw new Error('Backend returned an invalid administrator accounts payload.');
+  return payload;
+};
+
+const requestAdminAccountMutation = async ({ clerk, apiBaseUrl, fetchImpl, method, path, body, expectedOperation }) => {
+  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path, method, headers: body ? { 'Content-Type': 'application/json' } : {}, ...(body ? { body: JSON.stringify(body) } : {}) });
+  if (!response.ok) { const error = new Error(`Administrator account mutation failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
+  if (!payload?.authenticated || !payload?.authorized || payload?.adminAccountMutation?.operation !== expectedOperation || !payload?.adminAccountMutation?.account) throw new Error('Backend returned an invalid administrator account mutation payload.');
+  return payload;
+};
+
+export const requestSystemConfiguration = async ({ clerk = null, apiBaseUrl, fetchImpl, key, admin = false }) => {
+  const path = admin ? `/api/admin/system-config/${encodeURIComponent(key)}` : `/api/system-config/${encodeURIComponent(key)}`;
+  if (admin) {
+    const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path, method: 'GET' });
+    if (!response.ok) { const error = new Error(`System configuration read failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
+    if (payload?.systemConfiguration?.source !== 'postgresql') throw new Error('Backend returned an invalid system configuration payload.');
+    return payload;
+  }
+  const response = await fetchImpl(`${apiBaseUrl}${path}`, { method: 'GET', headers: { Accept: 'application/json' }, cache: 'no-store' });
+  const payload = await parseJsonResponse(response);
+  if (!response.ok) { const error = new Error(`System configuration read failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
+  if (payload?.systemConfiguration?.source !== 'postgresql') throw new Error('Backend returned an invalid system configuration payload.');
+  return payload;
+};
+
+export const requestSystemConfigurationWrite = async ({ clerk, apiBaseUrl, fetchImpl, key, payload: configPayload }) => {
+  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: `/api/admin/system-config/${encodeURIComponent(key)}`, method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload: configPayload || {} }) });
+  if (!response.ok) { const error = new Error(`System configuration write failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
+  if (!payload?.authenticated || !payload?.authorized || payload?.systemConfiguration?.source !== 'postgresql') throw new Error('Backend returned an invalid system configuration write payload.');
   return payload;
 };
 
@@ -1005,7 +1045,7 @@ export const requestAssetCatalog = async ({ apiBaseUrl, fetchImpl }) => {
 export const requestAdminAssetBootstrap = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken }) => {
   const token = trim(firebaseIdToken);
   if (!token && !firebaseRuntimeRetired()) throw new Error('Firebase admin sign-in is required before synchronizing PostgreSQL assets.');
-  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: '/api/admin/assets/bootstrap', method: 'POST', headers: { 'X-Firebase-Authorization': `Bearer ${token}` } });
+  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: '/api/admin/assets/bootstrap', method: 'POST', headers: { } });
   if (!response.ok) {
     const error = new Error(`Admin asset bootstrap failed with HTTP ${response.status}.`); error.status = response.status; error.code = payload?.error || null; throw error;
   }
@@ -1016,7 +1056,7 @@ export const requestAdminAssetBootstrap = async ({ clerk, apiBaseUrl, fetchImpl,
 const requestAdminAssetMutation = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, path, body = {}, expectedOperation }) => {
   const token = trim(firebaseIdToken);
   if (!token && !firebaseRuntimeRetired()) throw new Error('Firebase admin sign-in is required before changing PostgreSQL assets.');
-  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path, method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Firebase-Authorization': `Bearer ${token}` }, body: JSON.stringify(body) });
+  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path, method: 'POST', headers: { 'Content-Type': 'application/json', }, body: JSON.stringify(body) });
   if (!response.ok) {
     const error = new Error(`Admin PostgreSQL asset ${expectedOperation} failed with HTTP ${response.status}.`);
     error.status = response.status; error.code = payload?.error || null; error.assetNo = payload?.assetNo || ''; error.category = payload?.category || ''; error.blockingRequest = payload?.blockingRequest || null;
@@ -1129,7 +1169,7 @@ export const requestRentalRequestShadowSync = async ({ clerk, apiBaseUrl, fetchI
     fetchImpl,
     path: '/api/users/me/legacy/rental-request-shadows/sync',
     method: 'POST',
-    headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
+    headers: { },
   });
   if (!response.ok) {
     const code = payload?.error ? ` (${payload.error})` : '';
@@ -1153,7 +1193,7 @@ export const requestRentalRequestShadowComparison = async ({ clerk, apiBaseUrl, 
     fetchImpl,
     path: '/api/users/me/legacy/rental-request-shadows/compare',
     method: 'POST',
-    headers: { 'X-Firebase-Authorization': `Bearer ${token}` },
+    headers: { },
   });
   if (!response.ok) {
     const code = payload?.error ? ` (${payload.error})` : '';
@@ -1654,9 +1694,13 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
       const clerk = await initialize();
       return requestAdminMemberStatusAuthorityWrite({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, firebaseUid, status });
     },
-    async syncAdminMemberDirectory(firebaseIdToken) {
+    async syncAdminMemberDirectory({ entries = [], version = 0 } = {}) {
       const clerk = await initialize();
-      return requestAdminMemberDirectoryPostgresqlSync({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken });
+      return requestAdminMemberDirectoryPostgresqlSync({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, entries, version });
+    },
+    async getAdminMemberTermsConsent(memberKey) {
+      const clerk = await initialize();
+      return requestAdminMemberTermsConsent({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, memberKey });
     },
     async bootstrapAdminIdentityRegistry(firebaseIdToken) {
       const clerk = await initialize();
@@ -1673,6 +1717,37 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async getAdminRentalDashboard(firebaseIdToken, referenceDate) {
       const clerk = await initialize();
       return requestAdminRentalDashboard({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, referenceDate });
+    },
+    async getAdminAccountsPostgresql() {
+      const clerk = await initialize();
+      return requestAdminAccountsPostgresql({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
+    },
+    async createAdminAccountPostgresql(input) {
+      const clerk = await initialize();
+      return requestAdminAccountMutation({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, method: 'POST', path: '/api/admin/accounts', body: input, expectedOperation: 'create' });
+    },
+    async updateAdminAccountPostgresql(key, input) {
+      const clerk = await initialize();
+      return requestAdminAccountMutation({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, method: 'PUT', path: `/api/admin/accounts/${encodeURIComponent(key)}`, body: input, expectedOperation: 'update' });
+    },
+    async setAdminAccountLockPostgresql(key, locked) {
+      const clerk = await initialize();
+      return requestAdminAccountMutation({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, method: 'POST', path: `/api/admin/accounts/${encodeURIComponent(key)}/lock`, body: { locked }, expectedOperation: locked ? 'lock' : 'unlock' });
+    },
+    async deleteAdminAccountPostgresql(key) {
+      const clerk = await initialize();
+      return requestAdminAccountMutation({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, method: 'DELETE', path: `/api/admin/accounts/${encodeURIComponent(key)}`, expectedOperation: 'delete' });
+    },
+    async getUserSessionPolicyPostgresql() {
+      return requestSystemConfiguration({ apiBaseUrl: config.apiBaseUrl, fetchImpl, key: 'user-session-policy', admin: false });
+    },
+    async getAdminSystemConfiguration(key) {
+      const clerk = await initialize();
+      return requestSystemConfiguration({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, key, admin: true });
+    },
+    async saveAdminSystemConfiguration(key, payload) {
+      const clerk = await initialize();
+      return requestSystemConfigurationWrite({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, key, payload });
     },
     async getAssetCatalog() {
       return requestAssetCatalog({ apiBaseUrl: config.apiBaseUrl, fetchImpl });

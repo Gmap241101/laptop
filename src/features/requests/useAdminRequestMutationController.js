@@ -6,7 +6,7 @@ import {
   runTransaction,
   serverTimestamp,
   where,
-} from 'firebase/firestore';
+} from '../../platform/retiredLegacyDataCompat.js';
 
 import {
   RENTAL_REQUEST_LOGS_COLLECTION_REF,
@@ -14,7 +14,7 @@ import {
   RENTAL_RESTRICTIONS_COLLECTION_REF,
   db,
   firebaseAuth,
-} from '../../firebase.js';
+} from '../../platform/appDataRefs.js';
 import {
   RENTAL_REQUEST_AUDIT_ACTION,
   STATUS,

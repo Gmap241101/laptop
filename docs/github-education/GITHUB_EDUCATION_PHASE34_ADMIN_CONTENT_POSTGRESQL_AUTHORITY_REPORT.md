@@ -1,35 +1,58 @@
-# Phase 34 — Firebase normal-runtime retirement candidate
+# Phase 34 — Firebase-free runtime authority
 
 ## Outcome
 
-The Staging runtime now has one frontend/backend retirement switch:
+Phase 34 removes Firebase as an application runtime provider. The supported Staging architecture is now:
 
 ```text
-VITE_FIREBASE_RUNTIME_DISABLED=true
-FIREBASE_RUNTIME_DISABLED=true
+Browser
+  → Clerk session
+  → Heroku API
+  → PostgreSQL
 ```
 
-With both enabled, the normal architecture is `browser → Clerk session → Heroku API → PostgreSQL`. The frontend retains structurally valid Firebase SDK objects only so legacy modules can construct references safely, but disables Firestore networking and Firebase Auth persistence; the API client removes Firebase authorization headers; the backend does not configure a Firebase project or token verifier and forces all Firestore write mirrors off.
+The frontend no longer imports the Firebase Web SDK. The backend no longer contains Firebase token-verification or Firestore REST clients. Normal user/admin/public flows do not have a Firebase/Firestore network path.
 
-The global flag also activates the existing PostgreSQL authorities for users, account lifecycle, profiles, restrictions, rental requests, assets, boards, site content, policy content, and administrator content. Firestore bootstrap buttons return the existing PostgreSQL state instead of reading Firestore.
+## PostgreSQL/Clerk authority
+
+- Administrator dashboard: PostgreSQL rental/member/asset APIs
+- Administrator accounts: Clerk + `app_admin_identity_registry`
+- Administrator/user security settings: `app_system_configuration`
+- Members/profile/status/directory/recovery: PostgreSQL
+- Rental restrictions/requests/actions/admin processing: PostgreSQL
+- Assets/categories/availability: PostgreSQL
+- Notice/FAQ: PostgreSQL
+- Site shell/home/popup/footer: PostgreSQL
+- Rental policy/signup terms/consent: PostgreSQL
+- User/admin authentication and password lifecycle: Clerk
+
+## Removed runtime components
+
+- `firebase` npm package and `@firebase/*` dependency tree
+- `src/firebase.js`
+- Firebase project/bootstrap files used by the application runtime
+- Firestore Rules/index files from the deployment source
+- server Firebase ID-token verifier
+- server Firestore REST/client modules
+- administrator dashboard Firestore summary subscription
+- browser Firestore backup/restore/reset runtime
+- Firestore-to-PostgreSQL runtime synchronization controls
+- Firebase administrator-account runtime CRUD
+
+## Historical database names
+
+Existing PostgreSQL columns/tables created in earlier migration phases still contain historical names such as `firebase_uid` and `app_user_firebase_links`. They now store/relate the existing legacy member key only. No request is made to Firebase with those values. Renaming these database columns is intentionally deferred because it would require a separate production data migration across existing foreign-key and history relationships.
+
+## Migration
+
+`025_phase34_hard_firebase_retirement.sql` adds:
+
+- `app_system_configuration`
+- administrator lock/retirement fields
+- Phase 34 runtime metadata
+
+No previously applied migration is modified.
 
 ## Safety boundary
 
-Phase 32 and Phase 33 PASS behavior remains the protected baseline. Production, DNS, GitHub Pages deployment configuration, Firebase Rules, and indexes are unchanged. The explicit Staging rollback is documented in `PHASE34_MANUAL_PLATFORM_ACTIONS.md`.
-
-## Static hosting clarification
-
-A page being served by GitHub Pages does not identify its database. GitHub Pages can serve the JavaScript application while that application reads current content from the Heroku PostgreSQL API. Authority is established by the actual network destination and backend response, not by the hostname that served the HTML.
-
-## Remaining operational replacement
-
-Two Firebase-specific browser tools are intentionally blocked in retirement mode so they cannot reconnect silently:
-
-- Firebase administrator-account create/edit/delete/reset UI
-- Firestore browser backup/restore/reset/integrity UI
-
-Existing Clerk/PostgreSQL administrator authentication remains active. If these management capabilities are required, replace them with server-side Clerk/PostgreSQL endpoints before final feature-complete retirement approval.
-
-## Database
-
-No new SQL migration is required for this candidate. It uses the PostgreSQL schemas already established through Phase 33.
+This is Staging-only until browser validation passes. Production branch, Production Clerk, DNS and the current Firebase project are not deleted or changed by the source package. The Firebase project may be kept temporarily as an offline rollback archive; the deployed application does not depend on it.

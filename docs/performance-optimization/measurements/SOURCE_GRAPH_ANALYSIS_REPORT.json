@@ -1,47 +1,71 @@
 {
-  "generatedAt": "2026-08-01T17:09:54.673Z",
-  "initialModuleCount": 87,
-  "initialSourceBytes": 879450,
+  "generatedAt": "2026-08-12T06:21:26.786Z",
+  "initialModuleCount": 111,
+  "initialSourceBytes": 1233315,
   "files": [
     {
-      "file": "src/App.jsx",
-      "bytes": 66036
+      "file": "src/clerk/clerkStagingClient.js",
+      "bytes": 85449
     },
     {
-      "file": "src/features/requests/useUserRequestHistoryActionController.js",
-      "bytes": 31997
+      "file": "src/App.jsx",
+      "bytes": 66421
     },
     {
       "file": "src/features/boards/useBoardContentSubscriptionController.js",
-      "bytes": 31736
+      "bytes": 43237
     },
     {
-      "file": "src/features/requests/useAdminUserActionReviewController.js",
-      "bytes": 26395
+      "file": "src/features/auth/useAdminAuthenticationController.js",
+      "bytes": 39953
     },
     {
-      "file": "src/features/auth/useAdminAccountManagementController.js",
-      "bytes": 24976
-    },
-    {
-      "file": "src/user/UserHomePanel.jsx",
-      "bytes": 24413
-    },
-    {
-      "file": "src/features/assets/useAdminAssetCrudController.js",
-      "bytes": 23378
+      "file": "src/features/requests/useUserRequestHistoryActionController.js",
+      "bytes": 39386
     },
     {
       "file": "src/features/requests/useRentalDataSubscriptionController.js",
-      "bytes": 22794
+      "bytes": 39266
+    },
+    {
+      "file": "src/features/auth/useAuthIdentityPolicySubscriptionController.js",
+      "bytes": 36463
+    },
+    {
+      "file": "src/features/auth/useUserSignupController.js",
+      "bytes": 33780
+    },
+    {
+      "file": "src/features/requests/useAdminUserActionReviewController.js",
+      "bytes": 31935
+    },
+    {
+      "file": "src/features/auth/useUserLoginController.js",
+      "bytes": 31934
     },
     {
       "file": "src/features/members/useUserMyPageAccountController.js",
-      "bytes": 22785
+      "bytes": 30257
+    },
+    {
+      "file": "src/user/UserHomePanel.jsx",
+      "bytes": 29684
+    },
+    {
+      "file": "src/features/assets/useAdminAssetCrudController.js",
+      "bytes": 29249
+    },
+    {
+      "file": "src/features/requests/useAdminRequestMutationController.js",
+      "bytes": 28059
+    },
+    {
+      "file": "src/features/boards/usePopupFooterContentSubscriptionController.js",
+      "bytes": 26720
     },
     {
       "file": "src/features/settings/useAdminSystemSettingsController.js",
-      "bytes": 22555
+      "bytes": 23179
     },
     {
       "file": "src/utils/richTextCore.js",
@@ -52,72 +76,64 @@
       "bytes": 21872
     },
     {
-      "file": "src/features/auth/useUserSignupController.js",
-      "bytes": 20971
+      "file": "src/features/requests/useUserRentalRequestController.js",
+      "bytes": 20382
     },
     {
-      "file": "src/features/requests/useAdminRequestMutationController.js",
-      "bytes": 20182
-    },
-    {
-      "file": "src/features/auth/useAuthIdentityPolicySubscriptionController.js",
-      "bytes": 19798
+      "file": "src/features/members/useUserMembershipStatusController.js",
+      "bytes": 20278
     },
     {
       "file": "src/components/CommonUI.jsx",
       "bytes": 18375
     },
     {
-      "file": "src/features/auth/useAdminAuthenticationController.js",
-      "bytes": 17554
-    },
-    {
       "file": "src/context/appContextSlices.js",
-      "bytes": 17495
-    },
-    {
-      "file": "src/features/members/useUserMembershipStatusController.js",
-      "bytes": 17434
+      "bytes": 17514
     },
     {
       "file": "src/shell/AppShell.jsx",
       "bytes": 17045
     },
     {
-      "file": "src/user/UserTermsConsentPanel.jsx",
-      "bytes": 16826
-    },
-    {
-      "file": "src/features/boards/usePopupFooterContentSubscriptionController.js",
-      "bytes": 15859
-    },
-    {
-      "file": "src/features/requests/useUserRentalRequestController.js",
-      "bytes": 15859
+      "file": "src/features/assets/useAdminAssetCategoryController.js",
+      "bytes": 16333
     },
     {
       "file": "src/features/boards/useAdminFooterContentController.js",
-      "bytes": 15384
+      "bytes": 16159
+    },
+    {
+      "file": "src/user/UserTermsConsentPanel.jsx",
+      "bytes": 14715
+    },
+    {
+      "file": "src/features/boards/useAdminBoardPostController.js",
+      "bytes": 14220
     },
     {
       "file": "src/routing/useAppNavigationController.js",
-      "bytes": 13398
+      "bytes": 13971
+    },
+    {
+      "file": "src/features/boards/useAdminBoardSettingsController.js",
+      "bytes": 12986
     },
     {
       "file": "src/admin/useAdminNavigationController.js",
       "bytes": 12924
     },
     {
-      "file": "src/features/boards/useAdminBoardPostController.js",
-      "bytes": 12665
+      "file": "src/features/auth/useAdminAccountManagementController.js",
+      "bytes": 12883
     },
     {
       "file": "src/features/requests/useRentalDerivedSelectors.js",
       "bytes": 12650
     },
     {
-      "file": "src/features/assets/useAdminAssetCategoryController.js",
-      "bytes": 12564
+      "file": "src/features/boards/boardContentCutover.js",
+      "bytes": 12131
     },
     {
       "file": "src/index.css",
@@ -128,56 +144,68 @@
       "bytes": 11743
     },
     {
-      "file": "src/features/boards/useAdminBoardSettingsController.js",
-      "bytes": 11700
+      "file": "src/features/auth/useUserAuthenticationSessionController.js",
+      "bytes": 11625
     },
     {
-      "file": "src/features/auth/useUserLoginController.js",
-      "bytes": 11452
+      "file": "src/features/auth/authSessionService.js",
+      "bytes": 10760
     },
     {
       "file": "src/features/boards/useAdminPopupPostController.js",
-      "bytes": 11116
+      "bytes": 10599
     },
     {
-      "file": "src/hooks/useDashboardSummary.js",
-      "bytes": 10071
+      "file": "src/features/content/siteContentCutover.js",
+      "bytes": 9746
     },
     {
-      "file": "src/features/settings/useAdminSplitStorageMigrationController.js",
-      "bytes": 9525
+      "file": "src/features/requests/rentalRequestReadCutover.js",
+      "bytes": 9632
+    },
+    {
+      "file": "src/features/auth/useUserAccountRecoveryController.js",
+      "bytes": 9417
     },
     {
       "file": "src/features/boards/useBoardDerivedSelectors.js",
       "bytes": 9273
     },
     {
-      "file": "src/features/auth/useUserAuthenticationSessionController.js",
-      "bytes": 9143
-    },
-    {
       "file": "src/utils/overduePolicy.js",
       "bytes": 8697
     },
     {
-      "file": "src/features/members/memberAccountIndexService.js",
-      "bytes": 7724
+      "file": "src/features/members/memberProfileReadCutover.js",
+      "bytes": 8406
+    },
+    {
+      "file": "src/hooks/useDashboardSummary.js",
+      "bytes": 8291
+    },
+    {
+      "file": "src/features/members/accountRecoveryService.js",
+      "bytes": 8006
+    },
+    {
+      "file": "src/features/requests/rentalRestrictionReadCutover.js",
+      "bytes": 7819
     },
     {
       "file": "src/user/UserWorkspace.jsx",
-      "bytes": 7553
+      "bytes": 7772
+    },
+    {
+      "file": "src/features/requests/rentalRequestReadParity.js",
+      "bytes": 7445
     },
     {
       "file": "src/services/appDataCompatibilityService.js",
       "bytes": 7285
     },
     {
-      "file": "src/features/auth/useUserAccountRecoveryController.js",
-      "bytes": 6276
-    },
-    {
       "file": "src/routing/appRoutes.js",
-      "bytes": 6053
+      "bytes": 6757
     },
     {
       "file": "src/performance/DevRenderProfiler.jsx",
@@ -188,12 +216,20 @@
       "bytes": 5830
     },
     {
-      "file": "src/features/auth/authSessionService.js",
-      "bytes": 5593
+      "file": "src/platform/retiredLegacyDataCompat.js",
+      "bytes": 5748
+    },
+    {
+      "file": "src/clerk/ClerkStagingDiagnostics.jsx",
+      "bytes": 5720
     },
     {
       "file": "src/components/RichTextContent.jsx",
       "bytes": 5215
+    },
+    {
+      "file": "src/features/auth/accountLifecycleAuthority.js",
+      "bytes": 5131
     },
     {
       "file": "src/utils/memberPolicy.js",
@@ -208,28 +244,44 @@
       "bytes": 4950
     },
     {
-      "file": "src/firebase.js",
-      "bytes": 4828
+      "file": "src/features/boards/useBoardProgressiveSearch.js",
+      "bytes": 4645
     },
     {
-      "file": "src/features/boards/useBoardProgressiveSearch.js",
-      "bytes": 4622
+      "file": "src/features/members/memberProfileWriteThrough.js",
+      "bytes": 4615
+    },
+    {
+      "file": "src/features/terms/useUserTermsCompliance.js",
+      "bytes": 4608
+    },
+    {
+      "file": "src/components/TermsVersionDialog.jsx",
+      "bytes": 4560
     },
     {
       "file": "src/shell/AppBlockingStateScreen.jsx",
       "bytes": 4483
     },
     {
-      "file": "src/components/TermsVersionDialog.jsx",
-      "bytes": 4060
-    },
-    {
-      "file": "src/features/members/accountRecoveryService.js",
-      "bytes": 4013
+      "file": "src/platform/appDataRefs.js",
+      "bytes": 4040
     },
     {
       "file": "src/features/terms/termsConstants.js",
       "bytes": 3935
+    },
+    {
+      "file": "src/features/members/memberAuthorityCutover.js",
+      "bytes": 3931
+    },
+    {
+      "file": "src/features/members/memberProfileReadObservation.js",
+      "bytes": 3699
+    },
+    {
+      "file": "src/features/settings/useSiteSettingsController.js",
+      "bytes": 3668
     },
     {
       "file": "src/constants/appConstants.js",
@@ -244,52 +296,84 @@
       "bytes": 3205
     },
     {
+      "file": "src/features/auth/userFirebaseAuthRetirement.js",
+      "bytes": 3193
+    },
+    {
+      "file": "src/features/auth/userAccountLifecycleCutover.js",
+      "bytes": 3190
+    },
+    {
       "file": "src/utils/appUtils.js",
       "bytes": 3149
+    },
+    {
+      "file": "src/features/compatibility/legacyFirestoreReadFallbackCutover.js",
+      "bytes": 3124
     },
     {
       "file": "src/ui/useGlobalUiController.js",
       "bytes": 3110
     },
     {
-      "file": "src/features/settings/useSiteSettingsController.js",
-      "bytes": 3018
+      "file": "src/features/requests/adminRentalRequestCutover.js",
+      "bytes": 3036
     },
     {
       "file": "src/services/progressiveFirestoreSearch.js",
-      "bytes": 2997
+      "bytes": 3017
+    },
+    {
+      "file": "src/features/auth/accountAuthCutover.js",
+      "bytes": 2972
+    },
+    {
+      "file": "src/features/content/policyContentCutover.js",
+      "bytes": 2966
     },
     {
       "file": "src/selectors/appReadinessSelectors.js",
       "bytes": 2964
     },
     {
+      "file": "src/main.jsx",
+      "bytes": 2952
+    },
+    {
       "file": "src/admin/useAdminWorkspaceBridgeController.js",
       "bytes": 2914
+    },
+    {
+      "file": "src/features/assets/assetDomainCutover.js",
+      "bytes": 2912
     },
     {
       "file": "src/utils/firestoreCapacity.js",
       "bytes": 2689
     },
     {
+      "file": "src/features/requests/rentalRequestWriteCutover.js",
+      "bytes": 2641
+    },
+    {
+      "file": "src/features/requests/rentalRequestUserActionCutover.js",
+      "bytes": 2609
+    },
+    {
+      "file": "src/features/assets/usePublicAssetCatalogCompatibilityController.js",
+      "bytes": 2541
+    },
+    {
+      "file": "src/utils/popupUtils.js",
+      "bytes": 2461
+    },
+    {
       "file": "src/features/members/memberAccountPolicy.js",
       "bytes": 2442
     },
     {
-      "file": "src/features/terms/termsService.js",
-      "bytes": 2427
-    },
-    {
-      "file": "src/main.jsx",
-      "bytes": 2370
-    },
-    {
-      "file": "src/features/assets/usePublicAssetCatalogCompatibilityController.js",
-      "bytes": 2241
-    },
-    {
-      "file": "src/utils/popupUtils.js",
-      "bytes": 1990
+      "file": "src/features/compatibility/rentalRequestWriteMirrorRetirement.js",
+      "bytes": 2281
     },
     {
       "file": "src/services/publicAssetCatalogWriteThroughLoader.js",
@@ -297,19 +381,23 @@
     },
     {
       "file": "src/features/requests/rentalRestrictionService.js",
-      "bytes": 1863
+      "bytes": 1898
     },
     {
       "file": "src/components/RentalStatusBoard.jsx",
       "bytes": 1843
     },
     {
+      "file": "src/features/terms/termsService.js",
+      "bytes": 1636
+    },
+    {
       "file": "src/hooks/useResponsiveAssetGridColumns.js",
       "bytes": 1558
     },
     {
-      "file": "src/features/terms/useUserTermsCompliance.js",
-      "bytes": 1415
+      "file": "src/features/content/useSiteContentRefreshRevision.js",
+      "bytes": 1458
     },
     {
       "file": "src/context/appDynamicContextValues.js",
@@ -317,23 +405,19 @@
     },
     {
       "file": "src/features/requests/useSelectedRentalAssetAvailabilityGuard.js",
-      "bytes": 1230
+      "bytes": 1304
+    },
+    {
+      "file": "src/features/settings/useAdminSplitStorageMigrationController.js",
+      "bytes": 1264
     },
     {
       "file": "src/features/assets/useAssetCatalogViewController.js",
       "bytes": 1203
     },
     {
-      "file": "src/config/firestoreCachePolicy.js",
-      "bytes": 641
-    },
-    {
       "file": "src/features/auth/adminAuditActorService.js",
       "bytes": 628
-    },
-    {
-      "file": "src/features/auth/userSessionPolicyService.js",
-      "bytes": 554
     },
     {
       "file": "src/hooks/useDebouncedValue.js",
@@ -344,12 +428,24 @@
       "bytes": 367
     },
     {
+      "file": "src/features/auth/firebaseRuntimeRetirement.js",
+      "bytes": 314
+    },
+    {
       "file": "src/dialogs/appDialogsLoader.js",
       "bytes": 298
     },
     {
       "file": "src/constants/memberConstants.js",
       "bytes": 296
+    },
+    {
+      "file": "src/features/content/useAdminPublicContentSynchronizationController.js",
+      "bytes": 255
+    },
+    {
+      "file": "src/features/auth/userSessionPolicyService.js",
+      "bytes": 186
     }
   ],
   "dynamicEntries": [
@@ -357,7 +453,6 @@
     "src/dialogs/AppDialogs.jsx",
     "src/features/requests/adminRequestMutationService.js",
     "src/performance/DevPerformancePanel.jsx",
-    "src/services/dashboardSummaryService.js",
     "src/services/publicAssetCatalogWriteThrough.js",
     "src/user/UserAccountStatusPanel.jsx",
     "src/user/UserAuthPanel.jsx",

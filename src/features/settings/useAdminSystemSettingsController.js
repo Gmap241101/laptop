@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { serverTimestamp, updateDoc } from 'firebase/firestore';
-
 import { OVERDUE_PENALTY_MODE } from '../../constants/appConstants.js';
 import {
   DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY,
@@ -16,7 +14,6 @@ import {
   normalizeRentalPolicySettings,
   serializeHolidayListForFirestore,
 } from '../../domain/rentalPolicy.js';
-import { PUBLIC_CONFIG_DOC_REF } from '../../firebase.js';
 import {
   POLICY_CONTENT_DOMAINS,
   readPolicyContentCutoverConfig,
@@ -641,16 +638,9 @@ export default function useAdminSystemSettingsController({
         normalizedPolicySettings[key],
       ])
     );
-    const firestorePolicyUpdates = Object.fromEntries(
-      RENTAL_POLICY_SETTING_KEYS.map((key) => [
-        `settings.${key}`,
-        normalizedPolicySettings[key],
-      ])
-    );
 
     try {
       const policyContentConfig = readPolicyContentCutoverConfig();
-      if (policyContentConfig.adminAuthorityRequested) {
         await replacePolicyContentDomainInPostgresql({
           domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
           config: policyContentConfig,
@@ -663,12 +653,6 @@ export default function useAdminSystemSettingsController({
             },
           }],
         });
-      } else {
-        await updateDoc(PUBLIC_CONFIG_DOC_REF, {
-          ...firestorePolicyUpdates,
-          updatedAt: serverTimestamp(),
-        });
-      }
 
       const nextSettings = {
         ...dataSettings,
@@ -704,7 +688,7 @@ export default function useAdminSystemSettingsController({
   const saveHolidaySettings = async () => {
     if (!isSplitStorageReady) {
       triggerToast(
-        'Firestore 분리 저장소 최종 전환이 완료되지 않아 휴일을 저장할 수 없습니다.',
+        'PostgreSQL 설정 저장소가 준비되지 않아 휴일을 저장할 수 없습니다.',
         'error'
       );
       return false;
@@ -716,7 +700,6 @@ export default function useAdminSystemSettingsController({
 
     try {
       const policyContentConfig = readPolicyContentCutoverConfig();
-      if (policyContentConfig.adminAuthorityRequested) {
         await replacePolicyContentDomainInPostgresql({
           domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
           config: policyContentConfig,
@@ -729,12 +712,6 @@ export default function useAdminSystemSettingsController({
             },
           }],
         });
-      } else {
-        await updateDoc(PUBLIC_CONFIG_DOC_REF, {
-          'settings.holidays': nextHolidays,
-          updatedAt: serverTimestamp(),
-        });
-      }
 
       const normalizedHolidays = normalizeHolidayList(nextHolidays);
 

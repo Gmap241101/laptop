@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { doc, runTransaction, serverTimestamp } from 'firebase/firestore';
+import { doc, runTransaction, serverTimestamp } from '../../platform/retiredLegacyDataCompat.js';
 
 import {
   PUBLIC_CONFIG_DOC_REF,
@@ -7,7 +7,7 @@ import {
   RENTAL_AVAILABILITY_COLLECTION_REF,
   RENTAL_REQUESTS_COLLECTION_REF,
   db,
-} from '../../firebase.js';
+} from '../../platform/appDataRefs.js';
 import {
   RENTAL_EXTENSION_APPROVAL_MODE,
   STATUS,

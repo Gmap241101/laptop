@@ -4,13 +4,13 @@ import {
   runTransaction,
   serverTimestamp,
   setDoc,
-} from 'firebase/firestore';
+} from '../platform/retiredLegacyDataCompat.js';
 
 import {
   PUBLIC_ASSET_CATALOG_DOC_REF,
   RENTAL_ASSETS_COLLECTION_REF,
   db,
-} from '../firebase.js';
+} from '../platform/appDataRefs.js';
 import {
   PUBLIC_ASSET_CATALOG_MAX_ASSETS,
   PUBLIC_ASSET_CATALOG_MAX_BYTES,

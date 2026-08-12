@@ -2,7 +2,7 @@ import {
   doc,
   runTransaction,
   serverTimestamp,
-} from 'firebase/firestore';
+} from '../../platform/retiredLegacyDataCompat.js';
 
 import {
   RENTAL_ASSETS_COLLECTION_REF,
@@ -12,7 +12,7 @@ import {
   RENTAL_REQUESTS_COLLECTION_REF,
   RENTAL_RESTRICTIONS_COLLECTION_REF,
   db,
-} from '../../firebase.js';
+} from '../../platform/appDataRefs.js';
 import {
   RENTAL_BLOCKING_REQUEST_STATUSES,
   RENTAL_REQUEST_AUDIT_ACTION,

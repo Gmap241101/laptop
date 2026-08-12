@@ -5,18 +5,7 @@ import {
   Save,
   ShieldCheck,
 } from 'lucide-react';
-import {
-  doc,
-  serverTimestamp,
-  writeBatch,
-} from 'firebase/firestore';
-
-import {
-  SYSTEM_ADMIN_SETTINGS_DOC_REF,
-  SYSTEM_AUDIT_LOGS_COLLECTION_REF,
-  USER_SESSION_POLICY_DOC_REF,
-  db,
-} from '../firebase.js';
+import { clerkStagingClient } from '../clerk/clerkStagingClient.js';
 import {
   normalizeSystemAdminSettings,
   normalizeUserSessionPolicy,
@@ -222,67 +211,17 @@ export default function AdminAccountSecurityPanel({ ctx }) {
 
     setSaving(true);
     try {
-      const batch = writeBatch(db);
-      if (changedAdmin) {
-        batch.set(
-          SYSTEM_ADMIN_SETTINGS_DOC_REF,
-          {
-            adminLogoutOnBrowserClose:
-              nextAdminPolicy.adminLogoutOnBrowserClose,
-            adminIdleTimeoutMinutes:
-              nextAdminPolicy.adminIdleTimeoutMinutes,
-            adminAbsoluteTimeoutHours:
-              nextAdminPolicy.adminAbsoluteTimeoutHours,
-            adminSecurityPolicyVersion:
-              nextAdminPolicy.adminSecurityPolicyVersion,
-            updatedAt: serverTimestamp(),
-            updatedBy: authenticatedAdminAccount?.id || '',
-          },
-          { merge: true }
-        );
-      }
-      if (changedUser) {
-        batch.set(
-          USER_SESSION_POLICY_DOC_REF,
-          {
-            ...nextUserPolicy,
-            updatedAt: serverTimestamp(),
-            updatedBy: authenticatedAdminAccount?.id || '',
-          },
-          { merge: true }
-        );
-      }
-
-      batch.set(doc(SYSTEM_AUDIT_LOGS_COLLECTION_REF), {
-        action: 'account-security-policy-update',
-        section: '계정 보안 설정',
-        beforeValues: {
-          adminSession: normalizedAdmin,
-          userSession: normalizedUser,
-        },
-        afterValues: {
-          adminSession: nextAdminPolicy,
-          userSession: nextUserPolicy,
-        },
-        summary: [
-          changedAdmin ? '관리자 세션 정책 변경' : '',
-          changedUser ? '사용자 세션 정책 변경' : '',
-        ]
-          .filter(Boolean)
-          .join(', '),
-        adminUid: authenticatedAdminAccount?.id || '',
-        adminName: getAdminDisplayName(authenticatedAdminAccount),
-        createdAt: serverTimestamp(),
-      });
-
-      await batch.commit();
+      const writes = [];
+      if (changedAdmin) writes.push(clerkStagingClient.saveAdminSystemConfiguration('admin-security', nextAdminPolicy));
+      if (changedUser) writes.push(clerkStagingClient.saveAdminSystemConfiguration('user-session-policy', nextUserPolicy));
+      await Promise.all(writes);
       triggerToast(
-        '계정 보안 설정이 저장되었습니다. 변경된 대상의 기존 로그인 세션은 다시 로그인이 필요합니다.',
+        '계정 보안 설정이 PostgreSQL에 저장되었습니다. 변경된 대상의 기존 로그인 세션은 다시 로그인이 필요합니다.',
         'success'
       );
     } catch (error) {
-      console.error('Account security settings save error:', error);
-      triggerToast('계정 보안 설정 저장에 실패했습니다.', 'error');
+      console.error('PostgreSQL account security settings save error:', error);
+      triggerToast('계정 보안 설정을 PostgreSQL에 저장하지 못했습니다.', 'error');
     } finally {
       setSaving(false);
     }
@@ -325,7 +264,7 @@ export default function AdminAccountSecurityPanel({ ctx }) {
           >
             <SettingRow
               title="브라우저·탭 종료 시 로그아웃"
-              description="브라우저 탭이나 창을 닫으면 Firebase 인증과 관리자 애플리케이션 세션을 유지하지 않습니다."
+              description="브라우저 탭이나 창을 닫으면 Clerk 관리자 세션과 애플리케이션 세션을 유지하지 않습니다."
               control={
                 <ToggleSwitch
                   label="관리자 브라우저 종료 시 로그아웃"
@@ -464,7 +403,7 @@ export default function AdminAccountSecurityPanel({ ctx }) {
               <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-600" size={18} />
               <div>
                 <div className="text-sm font-bold text-emerald-900">
-                  Firebase Authentication 자동 공격 보호 사용
+                  Clerk 인증 보호 사용
                 </div>
                 <p className="mt-1 text-xs leading-5 text-emerald-800">
                   클라이언트가 자체적으로 실패 횟수를 기록하는 계정 잠금은 사용하지 않습니다. 로그인 오류 통합 표시와 비밀번호 재설정 계정 존재 은폐는 앱에 적용되어 있습니다.
@@ -474,7 +413,7 @@ export default function AdminAccountSecurityPanel({ ctx }) {
             <div className="mt-3 flex items-start gap-3 rounded-2xl border border-sky-200 bg-sky-50 p-4">
               <Info className="mt-0.5 shrink-0 text-sky-600" size={18} />
               <p className="text-xs leading-5 text-sky-800">
-                Firebase 서버 비밀번호 정책과 공식 이메일 열거 방지의 실제 활성 상태는 웹 클라이언트에서 신뢰성 있게 조회할 수 없습니다. Firebase Console에서 별도로 확인해야 합니다.
+                인증 정책과 공격 방어 설정은 Clerk의 서버 정책을 따릅니다. 애플리케이션 세션 시간과 잠금 정책은 PostgreSQL 시스템 설정에서 관리합니다.
               </p>
             </div>
           </section>

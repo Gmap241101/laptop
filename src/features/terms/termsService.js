@@ -1,27 +1,10 @@
 import {
-  doc,
-  getDoc,
-  getDocs,
-  limit,
-  query,
-  where,
-} from 'firebase/firestore';
-
-import {
-  SIGNUP_TERMS_POLICY_DOC_REF,
-  USER_TERM_CONSENT_LOGS_COLLECTION_REF,
-  USER_TERM_CONSENT_STATES_COLLECTION_REF,
-} from '../../firebase.js';
-import {
-  getTermsConsentStateId,
-  normalizeTermsPolicy,
-} from './termsConstants.js';
-import {
   POLICY_CONTENT_DOMAINS,
   getPolicyContentDocument,
   readPolicyContentCutoverConfig,
   requestPolicyContentDomain,
 } from '../content/policyContentCutover.js';
+import { normalizeTermsPolicy } from './termsConstants.js';
 
 export async function createTermsContentHash(value = '') {
   const normalized = String(value || '').replace(/\r\n/g, '\n').trim();
@@ -44,67 +27,22 @@ export async function createTermsContentHash(value = '') {
 
 export async function loadSignupTermsPolicy() {
   const config = readPolicyContentCutoverConfig();
-  if (config.readRequested) {
-    try {
-      const domainResult = await requestPolicyContentDomain({
-        domain: POLICY_CONTENT_DOMAINS.TERMS,
-        config,
-        useCache: false,
-      });
-      const policyDocument = getPolicyContentDocument(
-        domainResult,
-        'signupTermsPolicy/current'
-      );
-      if (policyDocument?.payload) {
-        return normalizeTermsPolicy(policyDocument.payload);
-      }
-    } catch (error) {
-      console.error('PostgreSQL signup terms policy read error:', error);
-      if (config.authorityRequested) throw error;
-    }
-  }
-
-  const snapshot = await getDoc(SIGNUP_TERMS_POLICY_DOC_REF);
-  return normalizeTermsPolicy(snapshot.exists() ? snapshot.data() : {});
-}
-
-export async function loadUserTermConsentStates(uid, policy) {
-  const normalizedPolicy = normalizeTermsPolicy(policy);
-  const pairs = await Promise.all(
-    normalizedPolicy.activeTerms.map(async (term) => {
-      const stateSnapshot = await getDoc(
-        doc(
-          USER_TERM_CONSENT_STATES_COLLECTION_REF,
-          getTermsConsentStateId(uid, term.id)
-        )
-      );
-      return [term.id, stateSnapshot.exists() ? stateSnapshot.data() : null];
-    })
+  const domainResult = await requestPolicyContentDomain({
+    domain: POLICY_CONTENT_DOMAINS.TERMS,
+    config,
+    useCache: false,
+  });
+  const policyDocument = getPolicyContentDocument(
+    domainResult,
+    'signupTermsPolicy/current'
   );
-
-  return Object.fromEntries(pairs);
-}
-
-export async function loadUserTermConsentLogs(uid) {
-  const snapshot = await getDocs(
-    query(
-      USER_TERM_CONSENT_LOGS_COLLECTION_REF,
-      where('uid', '==', uid),
-      limit(500)
-    )
-  );
-
-  return snapshot.docs
-    .map((item) => ({ id: item.id, ...item.data() }))
-    .sort((a, b) => {
-      const aMillis = a.createdAt?.toMillis?.() || Number(a.createdAtMs) || 0;
-      const bMillis = b.createdAt?.toMillis?.() || Number(b.createdAtMs) || 0;
-      return bMillis - aMillis;
-    });
+  return normalizeTermsPolicy(policyDocument?.payload || {});
 }
 
 export function formatTermsTimestamp(value) {
-  const date = value?.toDate?.() || (value ? new Date(value) : null);
+  const millis = Number(value?.millis || value?.milliseconds || 0);
+  const date = value?.toDate?.()
+    || (millis > 0 ? new Date(millis) : value ? new Date(value) : null);
   if (!date || Number.isNaN(date.getTime())) return '-';
   return date.toLocaleString('ko-KR');
 }

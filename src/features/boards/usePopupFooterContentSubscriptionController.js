@@ -13,13 +13,13 @@ import {
   onSnapshot,
   query as firestoreQuery,
   where,
-} from 'firebase/firestore';
+} from '../../platform/retiredLegacyDataCompat.js';
 
 import {
   FOOTER_PAGES_COLLECTION_REF,
   POPUP_POSTS_COLLECTION_REF,
   SITE_FOOTER_CONFIG_DOC_REF,
-} from '../../firebase.js';
+} from '../../platform/appDataRefs.js';
 import {
   legacyTextToRichHtml,
 } from '../../utils/richTextCore.js';

@@ -50,63 +50,7 @@ export const readMemberProfileWriteThroughConfig = ({
   });
 };
 
-export const requestMemberProfileWriteThrough = async ({
-  firebaseUser,
-  firebaseUid = '',
-  apiBaseUrl,
-  fetchImpl = fetch,
-}) => {
-  if (!firebaseUser || typeof firebaseUser.getIdToken !== 'function') {
-    throw new Error('Firebase sign-in is required for member profile write-through.');
-  }
-  if (!apiBaseUrl) throw new Error('VITE_API_URL is required for member profile write-through.');
-
-  const firebaseIdToken = await firebaseUser.getIdToken();
-  const targetUid = trim(firebaseUid) || trim(firebaseUser.uid);
-  const query = targetUid ? `?firebaseUid=${encodeURIComponent(targetUid)}` : '';
-  const response = await fetchImpl(`${apiBaseUrl}/api/legacy/member-shadow/write-through${query}`, {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'X-Firebase-Authorization': `Bearer ${firebaseIdToken}`,
-    },
-    cache: 'no-store',
-  });
-
-  let payload = null;
-  try { payload = await response.json(); } catch { payload = null; }
-  if (!response.ok) {
-    const error = new Error(`Member profile write-through failed with HTTP ${response.status}.`);
-    error.status = response.status;
-    error.code = payload?.error || 'member_write_through_failed';
-    throw error;
-  }
-  if (!payload?.writeThrough?.status || !payload?.writeThrough?.firebaseUid) {
-    throw new Error('Backend returned an invalid member profile write-through response.');
-  }
-  return Object.freeze(payload.writeThrough);
-};
-
-let latestObservation = null;
-let counters = { attempted: 0, synced: 0, skipped: 0, failed: 0 };
-
-const publishObservation = (detail) => {
-  counters = {
-    attempted: counters.attempted + (detail.attempted ? 1 : 0),
-    synced: counters.synced + (detail.status === 'synced' ? 1 : 0),
-    skipped: counters.skipped + (detail.status === 'skipped' ? 1 : 0),
-    failed: counters.failed + (detail.status === 'failed' ? 1 : 0),
-  };
-  latestObservation = Object.freeze({
-    ...detail,
-    counters: Object.freeze({ ...counters }),
-    observedAt: new Date().toISOString(),
-  });
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: latestObservation }));
-  }
-  return latestObservation;
-};
+export const requestMemberProfileWriteThrough = async () => { const error = new Error('Legacy Firebase member write-through was removed in Phase 34.'); error.code='firebase_runtime_removed'; error.status=410; throw error; };
 
 export const syncMemberProfileWriteThroughBestEffort = async ({
   firebaseUser,

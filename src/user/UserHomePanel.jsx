@@ -9,12 +9,12 @@ import {
   PackageOpen,
   XCircle,
 } from 'lucide-react';
-import { getDoc, getDocs, getDocsFromServer, limit, query, where } from 'firebase/firestore';
+import { getDoc, getDocs, getDocsFromServer, limit, query, where } from '../platform/retiredLegacyDataCompat.js';
 
 import {
   HOME_BANNERS_COLLECTION_REF,
   HOME_PAGE_CONFIG_DOC_REF,
-} from '../firebase.js';
+} from '../platform/appDataRefs.js';
 import {
   readSiteContentCutoverConfig,
   publishSiteContentObservation,

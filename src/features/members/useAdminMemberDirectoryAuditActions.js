@@ -11,7 +11,7 @@ import {
   serverTimestamp,
   setDoc,
   where,
-} from 'firebase/firestore';
+} from '../../platform/retiredLegacyDataCompat.js';
 
 import {
   ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
@@ -21,7 +21,7 @@ import {
   USER_ACCOUNTS_COLLECTION_REF,
   db,
   firebaseAuth,
-} from '../../firebase.js';
+} from '../../platform/appDataRefs.js';
 import {
   PROFILE_REQUIRED_REASON,
   USER_PROFILE_STATUS,

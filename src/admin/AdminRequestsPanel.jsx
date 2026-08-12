@@ -279,7 +279,7 @@ export default function AdminRequestsPanel({ ctx }) {
                       {adminRequestTabCountsReady &&
                         adminRequestTabCountCapacityLimited && (
                           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
-                            Firestore 사용량 한도에 도달해 탭 전체 건수의 실시간 집계를 중단했습니다. 숫자가 표시된 탭은 마지막 대시보드 요약값이며, '-'는 현재 목록을 기준으로 확인해 주세요.
+                            PostgreSQL 집계 조회에 실패해 일부 탭 전체 건수를 표시하지 못했습니다. 숫자가 표시된 탭은 마지막 정상 집계값이며, '-'는 현재 목록을 기준으로 확인해 주세요.
                           </div>
                         )}
 

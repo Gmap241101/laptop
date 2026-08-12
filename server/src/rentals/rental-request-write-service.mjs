@@ -40,7 +40,7 @@ export const createRentalRequestWriteService = ({
   if (!rentalRestrictionService || typeof rentalRestrictionService.syncLinkedFirebaseUid !== 'function') throw new TypeError('rentalRestrictionService is required.');
   if (!rentalRequestService || typeof rentalRequestService.syncCurrent !== 'function') throw new TypeError('rentalRequestService is required.');
   if (!rentalRequestWriteRepository || typeof rentalRequestWriteRepository.createAuthoritative !== 'function') throw new TypeError('rentalRequestWriteRepository is required.');
-  if (!firestoreRentalRequestWriteClient || typeof firestoreRentalRequestWriteClient.getPublicConfig !== 'function' || typeof firestoreRentalRequestWriteClient.getRentalAsset !== 'function' || typeof firestoreRentalRequestWriteClient.commitRentalRequestCreate !== 'function') throw new TypeError('firestoreRentalRequestWriteClient is required.');
+  if (writeMirrorEnabled && (!firestoreRentalRequestWriteClient || typeof firestoreRentalRequestWriteClient.getPublicConfig !== 'function' || typeof firestoreRentalRequestWriteClient.getRentalAsset !== 'function' || typeof firestoreRentalRequestWriteClient.commitRentalRequestCreate !== 'function')) throw new TypeError('Legacy rental request mirror client is required only when the retired write mirror is enabled.');
   if (!writeMirrorEnabled && (!postgresSource || typeof postgresSource.getPublicConfig !== 'function' || typeof postgresSource.getRentalAsset !== 'function')) throw new TypeError('postgresSource is required when Firestore rental request write mirror is retired.');
   const sourceClient = writeMirrorEnabled ? firestoreRentalRequestWriteClient : postgresSource;
 

@@ -4,13 +4,13 @@ import {
   getDocs,
   query as firestoreQuery,
   where,
-} from 'firebase/firestore';
+} from '../../platform/retiredLegacyDataCompat.js';
 
 import {
   PUBLIC_CONFIG_DOC_REF,
   RENTAL_REQUESTS_COLLECTION_REF,
   RENTAL_RESTRICTIONS_COLLECTION_REF,
-} from '../../firebase.js';
+} from '../../platform/appDataRefs.js';
 import { normalizeRentalPolicySettings } from '../../domain/rentalPolicy.js';
 import { today } from '../../utils/appUtils.js';
 import { getRentalRestrictionStatus } from '../../utils/overduePolicy.js';

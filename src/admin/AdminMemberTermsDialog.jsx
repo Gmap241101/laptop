@@ -6,12 +6,8 @@ import TermsVersionDialog from '../components/TermsVersionDialog.jsx';
 import {
   TERMS_DECISION,
 } from '../features/terms/termsConstants.js';
-import {
-  formatTermsTimestamp,
-  loadSignupTermsPolicy,
-  loadUserTermConsentLogs,
-  loadUserTermConsentStates,
-} from '../features/terms/termsService.js';
+import { formatTermsTimestamp } from '../features/terms/termsService.js';
+import { clerkStagingClient } from '../clerk/clerkStagingClient.js';
 
 export default function AdminMemberTermsDialog({ account, onClose }) {
   const [policy, setPolicy] = useState(null);
@@ -25,15 +21,12 @@ export default function AdminMemberTermsDialog({ account, onClose }) {
     let disposed = false;
     const load = async () => {
       try {
-        const nextPolicy = await loadSignupTermsPolicy();
-        const [nextStates, nextLogs] = await Promise.all([
-          loadUserTermConsentStates(account.uid, nextPolicy),
-          loadUserTermConsentLogs(account.uid),
-        ]);
+        const payload = await clerkStagingClient.getAdminMemberTermsConsent(account.uid);
+        const termsConsent = payload?.termsConsent || {};
         if (disposed) return;
-        setPolicy(nextPolicy);
-        setStates(nextStates);
-        setLogs(nextLogs);
+        setPolicy(termsConsent.policy || null);
+        setStates(termsConsent.states || {});
+        setLogs(Array.isArray(termsConsent.logs) ? termsConsent.logs : []);
       } catch (error) {
         console.error('Admin member terms read error:', error);
         if (!disposed) setErrorMessage('회원의 약관 동의 내역을 불러오지 못했습니다.');

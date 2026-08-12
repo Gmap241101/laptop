@@ -121,10 +121,11 @@
     "frontend:phase34:smoke": "node tools/frontend/smoke-phase34-admin-content-authority.mjs",
     "server:phase34:firebase-retirement:smoke": "node tools/backend/smoke-phase34-firebase-runtime-retirement.mjs",
     "frontend:phase34:firebase-retirement:smoke": "node tools/frontend/smoke-phase34-firebase-runtime-retirement.mjs",
-    "verify:phase34": "npm run verify:phase33 && npm run server:phase34:smoke && npm run frontend:phase34:smoke && npm run server:phase34:firebase-retirement:smoke && npm run frontend:phase34:firebase-retirement:smoke"
+    "verify:phase34": "npm run server:migrations:static-check && npm run server:check && npm run server:phase34:smoke && npm run frontend:phase34:smoke && npm run server:phase34:hard-removal:smoke && npm run frontend:phase34:hard-removal:smoke && npm run audit:react-hooks && npm run audit:app-flows && npm run audit:firestore:strict && npm run package:guard",
+    "server:phase34:hard-removal:smoke": "node tools/backend/smoke-phase34-hard-firebase-removal.mjs",
+    "frontend:phase34:hard-removal:smoke": "node tools/frontend/smoke-phase34-hard-firebase-removal.mjs"
   },
   "dependencies": {
-    "firebase": "^10.14.1",
     "framer-motion": "^11.0.0",
     "lucide-react": "^0.300.0",
     "react": "^18.2.0",

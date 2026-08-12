@@ -4,7 +4,7 @@ import {
   getDoc,
   runTransaction,
   serverTimestamp,
-} from 'firebase/firestore';
+} from '../../platform/retiredLegacyDataCompat.js';
 
 import {
   PUBLIC_CONFIG_DOC_REF,
@@ -12,7 +12,7 @@ import {
   RENTAL_ASSETS_COLLECTION_REF,
   db,
   firebaseAuth,
-} from '../../firebase.js';
+} from '../../platform/appDataRefs.js';
 import {
   getPublicAssetCatalogWriteErrorMessage,
   writePublicAssetCatalogMutationInTransaction,

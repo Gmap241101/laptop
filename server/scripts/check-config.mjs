@@ -1,7 +1,6 @@
 import { createClerkSessionAuthenticator } from '../src/auth/clerk-session.mjs';
 import { createClerkBackendClient } from '../src/clerk/clerk-api.mjs';
 import { readServerConfig, shouldUseDatabaseSsl } from '../src/config/env.mjs';
-import { createFirebaseIdTokenVerifier } from '../src/firebase/firebase-id-token.mjs';
 
 try {
   const config = readServerConfig();
@@ -12,12 +11,6 @@ try {
       secretKey: config.clerkSecretKey,
       apiUrl: config.clerkApiUrl,
       timeoutMs: config.clerkApiTimeoutMs,
-    });
-  }
-  if (config.firebaseProjectId) {
-    createFirebaseIdTokenVerifier({
-      projectId: config.firebaseProjectId,
-      timeoutMs: config.firebaseCertTimeoutMs,
     });
   }
 
@@ -36,10 +29,9 @@ try {
   console.log(`CLERK_SECRET_KEY=${config.clerkSecretKey ? 'configured' : 'not-configured'}`);
   console.log(`CLERK_API_URL=${config.clerkApiUrl}`);
   console.log(`CLERK_API_TIMEOUT_MS=${config.clerkApiTimeoutMs}`);
-  console.log(`FIREBASE_PROJECT_ID=${config.firebaseProjectId || 'not-configured'}`);
-  console.log(`FIREBASE_CERT_TIMEOUT_MS=${config.firebaseCertTimeoutMs}`);
-  console.log(`FIRESTORE_REST_TIMEOUT_MS=${config.firestoreRestTimeoutMs}`);
-  console.log(`FIRESTORE_ASSET_BOARD_WRITE_MIRROR_DISABLED=${config.assetBoardWriteMirrorDisabled}`);
+  console.log('FIREBASE_RUNTIME=removed');
+  console.log('FIREBASE_RUNTIME=removed');
+  console.log(`POSTGRES_ASSET_BOARD_AUTHORITY=${config.assetBoardWriteMirrorDisabled}`);
   console.log(`FIRESTORE_RENTAL_REQUEST_WRITE_MIRROR_DISABLED=${config.rentalRequestWriteMirrorDisabled}`);
   console.log(`FIRESTORE_MEMBER_STATUS_RESTRICTION_WRITE_MIRROR_DISABLED=${config.memberStatusRestrictionWriteMirrorDisabled}`);
   console.log(`FIRESTORE_MEMBER_PROFILE_WRITE_MIRROR_DISABLED=${config.memberProfileWriteMirrorDisabled}`);
