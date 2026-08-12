@@ -634,6 +634,21 @@ if (!preflight.headers.get('access-control-allow-methods')?.includes('POST')) {
   throw new Error('POST is missing from CORS allow methods.');
 }
 
+const adminContentPutPreflight = await fetch(`${baseUrl}/api/admin/site-content/popup`, {
+  method: 'OPTIONS',
+  headers: {
+    Origin: allowedOrigin,
+    'Access-Control-Request-Method': 'PUT',
+    'Access-Control-Request-Headers': 'authorization,content-type',
+  },
+});
+if (adminContentPutPreflight.status !== 204) {
+  throw new Error(`Administrator content PUT preflight returned ${adminContentPutPreflight.status}`);
+}
+if (!adminContentPutPreflight.headers.get('access-control-allow-methods')?.includes('PUT')) {
+  throw new Error('PUT is missing from CORS allow methods.');
+}
+
 const sync = await fetch(`${baseUrl}/api/users/me/sync`, { method: 'POST', headers: authHeaders });
 if (sync.status !== 200) throw new Error(`/api/users/me/sync returned ${sync.status}`);
 const syncBody = await sync.json();
