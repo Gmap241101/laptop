@@ -13,6 +13,7 @@ import {
   getInitialUserTabFromPath,
   getInitialViewFromPath,
   getRouteStateFromPath,
+  navigateToUserAppSurface,
   normalizeUserLoginReturnTarget,
   pushAppPath,
   readAdminRouteIntent,
@@ -53,6 +54,7 @@ export const useAppNavigationState = () => {
 };
 
 export default function useAppNavigationController({
+  runtimeSurface,
   adminLogoutInProgress,
   communityMenuRef,
   currentAuthAdminAccount,
@@ -288,16 +290,20 @@ export default function useAppNavigationController({
   }, [pendingProtectedUserTabRef, userTab]);
 
   const goToUserHome = useCallback(() => {
+    clearPendingAndAuthReturnTarget();
+    if (runtimeSurface === 'admin') {
+      navigateToUserAppSurface('home');
+      return;
+    }
     if (readAdminRouteIntent()) {
       clearAdminRouteIntent();
     }
-    clearPendingAndAuthReturnTarget();
     navigateToUserReturnTarget({
       userTab: 'home',
       routeId: '',
       noticePostId: '',
     });
-  }, [clearPendingAndAuthReturnTarget, navigateToUserReturnTarget, view]);
+  }, [clearPendingAndAuthReturnTarget, navigateToUserReturnTarget, runtimeSurface]);
 
   const goToUserNotice = useCallback(() => {
     clearPendingAndAuthReturnTarget();
@@ -396,7 +402,18 @@ export default function useAppNavigationController({
 
       pendingProtectedUserTabRef.current = '';
 
-      if (readAdminRouteIntent() && nextRouteState.view !== 'admin') {
+      if (runtimeSurface === 'admin' && nextRouteState.view !== 'admin') {
+        replaceAppPath('admin');
+        setView('admin');
+        setIsCommunityMenuOpen(false);
+        return;
+      }
+      if (runtimeSurface === 'user' && nextRouteState.view === 'admin') {
+        navigateToUserAppSurface('home', '', { replace: true });
+        return;
+      }
+
+      if (readAdminRouteIntent() && runtimeSurface === 'admin' && nextRouteState.view !== 'admin') {
         replaceAppPath('admin');
         setView('admin');
         setIsCommunityMenuOpen(false);
@@ -433,6 +450,7 @@ export default function useAppNavigationController({
     };
   }, [
     pendingProtectedUserTabRef,
+    runtimeSurface,
     setIsCommunityMenuOpen,
     setSelectedFooterPageId,
     setUserTab,

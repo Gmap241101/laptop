@@ -6,6 +6,7 @@ import { readPolicyContentCutoverConfig } from '../features/content/policyConten
 
 const PHASE34_ADMIN_NAVIGATION_HOLIDAY_REVISION = 'phase34-admin-navigation-holiday-hotfix-20260812-1810';
 const PHASE34_SETTINGS_REPOSITORY_MEMBER_REVISION = 'phase34-settings-repository-member-createdat-hotfix-20260812-1835';
+const PHASE34_ADMIN_SURFACE_ISOLATION_REVISION = 'phase34-admin-surface-isolation-hotfix-20260812-2122';
 const PHASE34_RUNTIME_REVISION = 'phase34-firebase-free-runtime-authority-20260812-1500';
 const PHASE34_POLICY_BOOTSTRAP_REVISION = 'phase34-rental-config-postgresql-bootstrap-hotfix-20260812-1545';
 const PHASE34_FRONTEND_MAPPING_REVISION = 'phase34-postgresql-payload-mapping-hotfix-20260812-1635';
@@ -47,7 +48,7 @@ const valueOrDash = (value) => {
   return normalized || '-';
 };
 
-export default function ClerkStagingDiagnostics() {
+export default function ClerkStagingDiagnostics({ runtimeSurface = 'user' }) {
   const enabled = useMemo(() => {
     if (typeof window === 'undefined') return false;
     const params = new URLSearchParams(window.location.search || '');
@@ -102,6 +103,8 @@ export default function ClerkStagingDiagnostics() {
       <div>Runtime regression hotfix revision: {PHASE34_RUNTIME_REGRESSION_REVISION}</div>
               <div>Admin navigation / holiday hotfix revision: {PHASE34_ADMIN_NAVIGATION_HOLIDAY_REVISION}</div>
               <div>Settings repository / member createdAt hotfix revision: {PHASE34_SETTINGS_REPOSITORY_MEMBER_REVISION}</div>
+      <div>Admin surface isolation revision: {PHASE34_ADMIN_SURFACE_ISOLATION_REVISION}</div>
+      <div>Document surface: {runtimeSurface}</div>
       <div>Backend regression revision: {valueOrDash(state.backend?.phase34RuntimeRegressionRevision)}</div>
       <div>Backend policy bootstrap revision: {valueOrDash(state.backend?.phase34PolicyBootstrapRevision)}</div>
       <div>SDK: {state.clerkReady ? 'ready' : state.loading ? 'loading' : 'unavailable'}</div>

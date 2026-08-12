@@ -310,7 +310,7 @@ const getAdminAuthErrorMessage = (error) => {
 };
 
 
-function App() {
+function App({ runtimeSurface = 'user' }) {
   const [data, setData] = useState(initialData);
   const {
     normalizedSiteSettings,
@@ -705,6 +705,7 @@ function App() {
     setAdminLogoutInProgress,
   } = useAdminAuthenticationState({
     systemAdminSettings,
+    runtimeSurface,
   });
   const {
     clearUserAuthenticatedSession,
@@ -817,6 +818,7 @@ function App() {
   });
 
   useAuthIdentityPolicySubscriptionController({
+    runtimeSurface,
     adminTab,
     authenticatedAdminId,
     clearAdminAuthenticatedSession,
@@ -859,6 +861,7 @@ function App() {
     isAdminAuthenticated,
     logoutAdmin,
   } = useAdminAuthenticationController({
+    runtimeSurface,
     adminAccounts,
     adminAccountsReady,
     adminAuthAbsoluteExpiresAt,
@@ -971,6 +974,7 @@ function App() {
     saveCurrentUserLoginReturnTarget,
     showUserAccountStatus,
   } = useAppNavigationController({
+    runtimeSurface,
     adminLogoutInProgress,
     communityMenuRef,
     currentAuthAdminAccount,
@@ -1296,6 +1300,7 @@ function App() {
 
   const { hasEstablishedUserSession } =
     useUserAuthenticationSessionController({
+      runtimeSurface,
       authenticatedAdminId,
       clearUserAuthenticatedSession,
       currentAuthAdminAccount,
@@ -1326,6 +1331,7 @@ function App() {
 
   const { verifyUserDirectoryMembership } =
     useUserMembershipStatusController({
+      runtimeSurface,
       authenticatedAdminId,
       clearAdminAuthenticatedSession,
       clearUserAuthenticatedSession,

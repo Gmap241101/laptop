@@ -40,21 +40,21 @@ import {
 
 export { createDefaultAdminAuthForm } from './authSessionService.js';
 
-export const useAdminAuthenticationState = ({ systemAdminSettings }) => {
+export const useAdminAuthenticationState = ({ systemAdminSettings, runtimeSurface = 'user' }) => {
   const [adminAuthForm, setAdminAuthForm] = useState(createDefaultAdminAuthForm);
   const [adminAuthLoading, setAdminAuthLoading] = useState(false);
   const [adminLogoutInProgress, setAdminLogoutInProgress] = useState(false);
   const [authenticatedAdminId, setAuthenticatedAdminId] = useState(
-    () => readAdminAuthSession().adminId
+    () => (runtimeSurface === 'admin' ? readAdminAuthSession().adminId : '')
   );
   const [adminAuthExpiresAt, setAdminAuthExpiresAt] = useState(
-    () => readAdminAuthSession().expiresAt
+    () => (runtimeSurface === 'admin' ? readAdminAuthSession().expiresAt : 0)
   );
   const [adminAuthAbsoluteExpiresAt, setAdminAuthAbsoluteExpiresAt] = useState(
-    () => readAdminAuthSession().absoluteExpiresAt
+    () => (runtimeSurface === 'admin' ? readAdminAuthSession().absoluteExpiresAt : 0)
   );
   const [adminAuthPolicyVersion, setAdminAuthPolicyVersion] = useState(
-    () => readAdminAuthSession().policyVersion
+    () => (runtimeSurface === 'admin' ? readAdminAuthSession().policyVersion : 0)
   );
   const adminLogoutInProgressRef = useRef(false);
 
@@ -102,6 +102,7 @@ export const useAdminAuthenticationState = ({ systemAdminSettings }) => {
 };
 
 export default function useAdminAuthenticationController({
+  runtimeSurface = 'user',
   adminAccounts,
   adminAccountsReady,
   adminAuthAbsoluteExpiresAt,
@@ -228,6 +229,7 @@ export default function useAdminAuthenticationController({
   }, [setAdminTab, setIsCommunityMenuOpen, setView]);
 
   useEffect(() => {
+    if (runtimeSurface !== 'admin') return undefined;
     if (!adminPostLoginRouteGuardActive) return undefined;
 
     if (!readAdminRouteIntent()) {
@@ -246,7 +248,7 @@ export default function useAdminAuthenticationController({
       typeof window === 'undefined'
         ? '/admin'
         : window.location.pathname.replace(/\/+$/, '') || '/';
-    const routeIsAdmin = normalizedPath === '/admin' && view === 'admin';
+    const routeIsAdmin = ['/admin', '/admin/index.html'].includes(normalizedPath) && view === 'admin';
 
     if (!routeIsAdmin) {
       stabilizeAdminPostLoginRoute();
@@ -262,9 +264,11 @@ export default function useAdminAuthenticationController({
     isAdminAuthenticated,
     stabilizeAdminPostLoginRoute,
     view,
+    runtimeSurface,
   ]);
 
   useEffect(() => {
+    if (runtimeSurface !== 'admin') return undefined;
     if (!adminClerkAuthRequested) {
       setAdminClerkSessionVerified(true);
       return undefined;
@@ -323,9 +327,11 @@ export default function useAdminAuthenticationController({
     firebaseAuthUser?.uid,
     clearAdminAuthenticatedSession,
     applyClerkAdminAuthority,
+    runtimeSurface,
   ]);
 
   useEffect(() => {
+    if (runtimeSurface !== 'admin') return undefined;
     if (!authenticatedAdminId) return undefined;
     if (!firebaseRuntimeRetired && !firebaseAuthReady) return undefined;
     if (!adminAccountsReady) return undefined;
@@ -401,9 +407,11 @@ export default function useAdminAuthenticationController({
     firebaseRuntimeRetired,
     adminAccountsReady,
     adminAccounts,
+    runtimeSurface,
   ]);
 
   useEffect(() => {
+    if (runtimeSurface !== 'admin') return undefined;
     if (!authenticatedAdminId) return;
     if (!firebaseRuntimeRetired && !firebaseReady) return;
     if (!firebaseRuntimeRetired && !firebaseAuthReady) return;
@@ -453,9 +461,11 @@ export default function useAdminAuthenticationController({
     adminAccounts,
     currentAuthRoleReady,
     currentAuthAdminAccount,
+    runtimeSurface,
   ]);
 
   useEffect(() => {
+    if (runtimeSurface !== 'admin') return undefined;
     if (!authenticatedAdminId || !isAdminAuthenticated) return undefined;
 
     const normalizedSecurity = normalizeSystemAdminSettings(systemAdminSettings);
@@ -545,6 +555,7 @@ export default function useAdminAuthenticationController({
     adminAuthPolicyVersion,
     adminAuthAbsoluteExpiresAt,
     firebaseRuntimeRetired,
+    runtimeSurface,
   ]);
 
   const loadAdminAccountForFirebaseUser = async (firebaseUser) => {
@@ -712,6 +723,7 @@ export default function useAdminAuthenticationController({
   };
 
   const authenticateAdmin = async () => {
+    if (runtimeSurface !== 'admin') return;
     const adminEmail = adminAuthForm.adminLoginId.trim();
     const password = adminAuthForm.password;
     const isClientTrustVerification = Boolean(adminAuthForm.clientTrustRequired);

@@ -1,3 +1,10 @@
+import {
+  APP_SURFACE,
+  getCurrentAppSurface,
+  navigateToAdminSurface,
+  navigateToUserSurface,
+} from '../runtime/appSurface.js';
+
 export const USER_ROUTE_PATHS = {
   home: '',
   rental: '/rental',
@@ -184,7 +191,7 @@ export const getRouteStateFromPath = () => {
     return { view: 'user', userTab: 'home' };
   }
 
-  if (pathname === '/admin') {
+  if (pathname === '/admin' || pathname === '/admin/index.html') {
     return { view: 'admin', userTab: 'home' };
   }
 
@@ -269,12 +276,19 @@ export const getAppPath = (
 export const pushAppPath = (nextView, nextUserTab = 'home', routeId = '') => {
   if (typeof window === 'undefined') return;
 
-  const nextPath = getAppPath(
-    nextView !== 'admin' && readAdminRouteIntent() ? 'admin' : nextView,
-    nextUserTab,
-    routeId
-  );
+  const currentSurface = getCurrentAppSurface();
+  if (currentSurface === APP_SURFACE.ADMIN && nextView !== 'admin') {
+    // Background user lifecycle effects must never move the dedicated admin
+    // document into the user application. Explicit cross-surface navigation
+    // uses navigateToUserAppSurface().
+    return;
+  }
+  if (currentSurface === APP_SURFACE.USER && nextView === 'admin') {
+    navigateToAdminSurface();
+    return;
+  }
 
+  const nextPath = getAppPath(nextView, nextUserTab, routeId);
   if (window.location.pathname !== nextPath) {
     window.history.pushState(null, '', nextPath);
   }
@@ -287,17 +301,32 @@ export const replaceAppPath = (
 ) => {
   if (typeof window === 'undefined') return;
 
-  const nextPath = getAppPath(
-    nextView !== 'admin' && readAdminRouteIntent() ? 'admin' : nextView,
-    nextUserTab,
-    routeId
-  );
-
-  if (window.location.pathname !== nextPath) {
-    window.history.replaceState(
-      null,
-      '',
-      nextPath
-    );
+  const currentSurface = getCurrentAppSurface();
+  if (currentSurface === APP_SURFACE.ADMIN && nextView !== 'admin') {
+    return;
   }
+  if (currentSurface === APP_SURFACE.USER && nextView === 'admin') {
+    navigateToAdminSurface({ replace: true });
+    return;
+  }
+
+  const nextPath = getAppPath(nextView, nextUserTab, routeId);
+  if (window.location.pathname !== nextPath) {
+    window.history.replaceState(null, '', nextPath);
+  }
+};
+
+export const navigateToUserAppSurface = (
+  nextUserTab = 'home',
+  routeId = '',
+  { replace = false } = {}
+) => {
+  clearAdminRouteIntent();
+  const path = getAppPath('user', nextUserTab, routeId);
+  navigateToUserSurface({ path, replace });
+};
+
+export const navigateToAdminAppSurface = ({ replace = false } = {}) => {
+  writeAdminRouteIntent();
+  navigateToAdminSurface({ replace });
 };

@@ -167,6 +167,7 @@ export const useAuthIdentityPolicySubscriptionState = () => {
 };
 
 export default function useAuthIdentityPolicySubscriptionController({
+  runtimeSurface = 'user',
   authenticatedAdminId,
   clearAdminAuthenticatedSession,
   clearUserAuthenticatedSession,
@@ -215,13 +216,13 @@ export default function useAuthIdentityPolicySubscriptionController({
   useEffect(() => {
     const firebaseRetirement = readUserFirebaseAuthRetirementConfig();
     const firebaseRuntime = readFirebaseRuntimeRetirementConfig();
-    if (firebaseRuntime.requested || (firebaseRetirement.requested && view !== 'admin' && !authenticatedAdminId)) {
+    if (firebaseRuntime.requested || (firebaseRetirement.requested && runtimeSurface === 'user')) {
       let active = true;
       setFirebaseAuthReady(false);
       void (async () => {
         try {
           await clerkStagingClient.initialize();
-          if (firebaseRuntime.requested && (view === 'admin' || authenticatedAdminId)) {
+          if (firebaseRuntime.requested && runtimeSurface === 'admin') {
             const sessionPayload = await clerkStagingClient.getAdminClerkSession();
             if (!active) return;
             const authority = sessionPayload?.adminAuthentication || {};
@@ -270,13 +271,13 @@ export default function useAuthIdentityPolicySubscriptionController({
           const unauthorized = [401, 403].includes(Number(error?.status || 0));
           setFirebaseAuthUser(null);
           setFirebaseRuntimePrincipal(null);
-          if (view === 'admin' || authenticatedAdminId) {
+          if (runtimeSurface === 'admin') {
             setCurrentAuthAdminAccount(null);
             setAdminAccounts([]);
             setAdminAccountsReady(true);
             setCurrentAuthRoleReady(true);
           }
-          if (!readUserAuthTransition()) {
+          if (runtimeSurface === 'user' && !readUserAuthTransition()) {
             clearUserAuthenticatedSession(unauthorized ? 'clerk-postgresql-signed-out' : 'clerk-postgresql-session-error', { clearTransition: unauthorized });
           }
           publishUserFirebaseAuthRetirementObservation({ requested: true, userFirebaseCompatibility: 'retired', session: unauthorized ? 'signed-out' : 'error', error: error?.code || error?.message || 'clerk-postgresql-session-unavailable' });
@@ -329,7 +330,7 @@ export default function useAuthIdentityPolicySubscriptionController({
     );
 
     return unsubscribe;
-  }, [authenticatedAdminId, clearUserAuthenticatedSession, setFirebaseAuthReady, setFirebaseAuthUser, view]);
+  }, [authenticatedAdminId, clearUserAuthenticatedSession, runtimeSurface, setFirebaseAuthReady, setFirebaseAuthUser]);
 
   useEffect(() => {
     if (!firebaseAuthReady) return;
@@ -355,7 +356,7 @@ export default function useAuthIdentityPolicySubscriptionController({
 
     // Phase 32 general-user role authority is Clerk/PostgreSQL. Native signup users
     // do not require Firestore adminAccounts/{uid} read permission to prove they are not admins.
-    if (view !== 'admin' && !authenticatedAdminId && accountLifecycleConfig.requested) {
+    if (runtimeSurface === 'user' && !authenticatedAdminId && accountLifecycleConfig.requested) {
       setCurrentAuthRoleReady(true);
       return undefined;
     }
@@ -419,9 +420,15 @@ export default function useAuthIdentityPolicySubscriptionController({
     );
 
     return unsubscribe;
-  }, [authenticatedAdminId, firebaseAuthReady, firebaseAuthUser?.uid, view]);
+  }, [authenticatedAdminId, firebaseAuthReady, firebaseAuthUser?.uid, runtimeSurface]);
 
   useEffect(() => {
+    if (runtimeSurface !== 'user') {
+      setUserProfile(null);
+      setUserProfileReady(true);
+      setUserProfileForm(createDefaultUserProfileForm());
+      return undefined;
+    }
     if (!hasFirebaseAuthSession) {
       setUserProfile(null);
       setUserProfileReady(true);
@@ -712,9 +719,15 @@ export default function useAuthIdentityPolicySubscriptionController({
     currentAuthRoleErrorMessage,
     currentAuthAdminAccount?.id,
     authenticatedAdminId,
+    runtimeSurface,
   ]);
 
   useEffect(() => {
+    if (runtimeSurface !== 'user') {
+      setCurrentUserRestriction(null);
+      setCurrentUserRestrictionReady(true);
+      return undefined;
+    }
     if (
       !firebaseAuthUser ||
       !currentAuthRoleReady ||
@@ -887,9 +900,16 @@ export default function useAuthIdentityPolicySubscriptionController({
     currentAuthRoleErrorMessage,
     currentAuthAdminAccount,
     authenticatedAdminId,
+    runtimeSurface,
   ]);
 
   useEffect(() => {
+    if (runtimeSurface !== 'user') {
+      setUserSessionPolicy(DEFAULT_USER_SESSION_POLICY);
+      setUserSessionPolicyReady(true);
+      setUserSessionPolicyLoadErrorMessage('');
+      return undefined;
+    }
     let cancelled = false;
     const run = async () => {
       setUserSessionPolicyReady(false);
@@ -909,9 +929,15 @@ export default function useAuthIdentityPolicySubscriptionController({
     };
     void run();
     return () => { cancelled = true; };
-  }, []);
+  }, [runtimeSurface]);
 
   useEffect(() => {
+    if (runtimeSurface !== 'admin') {
+      setSystemAdminSettings(DEFAULT_SYSTEM_ADMIN_SETTINGS);
+      setSystemAdminSettingsReady(true);
+      setSystemAdminSettingsLoadErrorMessage('');
+      return undefined;
+    }
     const hasAdminSession = Boolean(authenticatedAdminId) && Boolean(currentAuthAdminAccount?.id);
     if (!hasAdminSession) {
       setSystemAdminSettings(DEFAULT_SYSTEM_ADMIN_SETTINGS);
@@ -938,9 +964,16 @@ export default function useAuthIdentityPolicySubscriptionController({
     };
     void run();
     return () => { cancelled = true; };
-  }, [authenticatedAdminId, currentAuthAdminAccount?.id]);
+  }, [authenticatedAdminId, currentAuthAdminAccount?.id, runtimeSurface]);
 
   useEffect(() => {
+    if (runtimeSurface !== 'admin') {
+      setAdminAccounts([]);
+      setAdminAccountsRemoteHasData(false);
+      setAdminAccountsLoadErrorMessage('');
+      setAdminAccountsReady(true);
+      return undefined;
+    }
     const hasAdminSession = Boolean(authenticatedAdminId) && Boolean(currentAuthAdminAccount?.id);
     if (!hasAdminSession) {
       setAdminAccounts([]);
@@ -970,7 +1003,7 @@ export default function useAuthIdentityPolicySubscriptionController({
     };
     void run();
     return () => { cancelled = true; };
-  }, [authenticatedAdminId, currentAuthAdminAccount?.id]);
+  }, [authenticatedAdminId, currentAuthAdminAccount?.id, runtimeSurface]);
 
 
 

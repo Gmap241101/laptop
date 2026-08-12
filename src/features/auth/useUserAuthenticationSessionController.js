@@ -87,6 +87,7 @@ export const useUserAuthenticationSessionState = ({ userSessionPolicy }) => {
 };
 
 export default function useUserAuthenticationSessionController({
+  runtimeSurface = 'user',
   authenticatedAdminId,
   clearUserAuthenticatedSession,
   currentAuthAdminAccount,
@@ -114,7 +115,7 @@ export default function useUserAuthenticationSessionController({
   userSessionPolicyReady,
   withdrawalLoading,
 }) {
-  const hasEstablishedUserSession = Boolean(
+  const hasEstablishedUserSession = runtimeSurface === 'user' && Boolean(
     firebaseAuthUser?.uid &&
       userAuthSessionUid === firebaseAuthUser.uid &&
       userAuthSessionExpiresAt > Date.now()
@@ -122,6 +123,7 @@ export default function useUserAuthenticationSessionController({
 
   const expireCurrentUserSession = useCallback(
     async (message) => {
+      if (runtimeSurface !== 'user') return;
       if (userSessionLogoutInProgressRef.current) return;
       userSessionLogoutInProgressRef.current = true;
 
@@ -161,10 +163,12 @@ export default function useUserAuthenticationSessionController({
       setView,
       triggerToast,
       userSessionLogoutInProgressRef,
+      runtimeSurface,
     ]
   );
 
   useEffect(() => {
+    if (runtimeSurface !== 'user') return undefined;
     if (
       !firebaseAuthUser ||
       !currentAuthRoleReady ||
@@ -298,9 +302,11 @@ export default function useUserAuthenticationSessionController({
     userSessionPolicy,
     userSessionPolicyReady,
     withdrawalLoading,
+    runtimeSurface,
   ]);
 
   useEffect(() => {
+    if (runtimeSurface !== 'user') return undefined;
     if (
       !firebaseAuthUser ||
       !currentAuthRoleReady ||
@@ -371,6 +377,7 @@ export default function useUserAuthenticationSessionController({
     userProfileReady,
     userSessionPolicy,
     userSessionPolicyReady,
+    runtimeSurface,
   ]);
 
   return {

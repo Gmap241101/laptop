@@ -65,6 +65,7 @@ export const useUserMembershipStatusState = () => {
 };
 
 export default function useUserMembershipStatusController({
+  runtimeSurface = 'user',
   authenticatedAdminId,
   clearAdminAuthenticatedSession,
   clearUserAuthenticatedSession,
@@ -388,6 +389,7 @@ export default function useUserMembershipStatusController({
   );
 
   useEffect(() => {
+    if (runtimeSurface !== 'user') return undefined;
     if (
       !firebaseAuthUser ||
       !currentAuthRoleReady ||
@@ -525,9 +527,11 @@ export default function useUserMembershipStatusController({
     userStatusLogoutInProgressRef,
     userTab,
     withdrawalLoading,
+    runtimeSurface,
   ]);
 
   useEffect(() => {
+    if (runtimeSurface !== 'user') return undefined;
     if (
       !firebaseAuthUser ||
       !currentAuthRoleReady ||
@@ -626,6 +630,7 @@ export default function useUserMembershipStatusController({
     userProfile,
     userProfileReady,
     verifyUserDirectoryMembership,
+    runtimeSurface,
   ]);
 
   return {
