@@ -111,7 +111,22 @@ export const createSiteContentService = ({ repository }) => Object.freeze({
     if (!Array.isArray(documents) || documents.length > 250) {
       throw errorWith('site_content_documents_invalid', 'Site content sync requires an array of at most 250 documents.', 400);
     }
-    const result = await repository.replaceDomain({ domain, documents, actorClerkUserId });
+    const result = await repository.replaceDomain({ domain, documents, actorClerkUserId, sourceMode: 'firestore-write-through' });
+    return projectPublicDomain(result);
+  },
+
+  async replaceAdminDomain({ domain: domainValue, documents, actorClerkUserId }) {
+    const domain = normalizeDomain(domainValue);
+    if (!ALLOWED_DOMAINS.has(domain)) throw errorWith('site_content_domain_invalid', 'Unsupported site content domain.', 400);
+    if (!Array.isArray(documents) || documents.length > 250) {
+      throw errorWith('site_content_documents_invalid', 'Administrator content replacement requires an array of at most 250 documents.', 400);
+    }
+    const result = await repository.replaceDomain({
+      domain,
+      documents,
+      actorClerkUserId,
+      sourceMode: 'postgresql-admin-direct',
+    });
     return projectPublicDomain(result);
   },
 });

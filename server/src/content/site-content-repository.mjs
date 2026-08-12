@@ -46,7 +46,7 @@ export const createSiteContentRepository = (pool) => Object.freeze({
     });
   },
 
-  async replaceDomain({ domain, documents, actorClerkUserId = '' }) {
+  async replaceDomain({ domain, documents, actorClerkUserId = '', sourceMode = 'firestore-write-through' }) {
     const normalizedDocuments = (Array.isArray(documents) ? documents : []).map((item) => ({
       key: String(item?.key || '').trim(),
       payload: item?.payload && typeof item.payload === 'object' ? item.payload : {},
@@ -59,26 +59,27 @@ export const createSiteContentRepository = (pool) => Object.freeze({
     try {
       await client.query('BEGIN');
       await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`phase24-site-content:${domain}`]);
+      const normalizedSourceMode = String(sourceMode || '').trim() || 'postgresql-admin-direct';
       await client.query(`DELETE FROM app_site_content_documents WHERE domain = $1`, [domain]);
       for (const item of normalizedDocuments) {
         await client.query(
           `INSERT INTO app_site_content_documents
              (domain, document_key, payload, enabled, sort_order, source_mode, source_updated_at, synced_at, updated_at)
-           VALUES ($1,$2,$3::jsonb,$4,$5,'firestore-write-through',$6::timestamptz,NOW(),NOW())`,
-          [domain, item.key, JSON.stringify(item.payload), item.enabled, item.sortOrder, item.sourceUpdatedAt],
+           VALUES ($1,$2,$3::jsonb,$4,$5,$6,$7::timestamptz,NOW(),NOW())`,
+          [domain, item.key, JSON.stringify(item.payload), item.enabled, item.sortOrder, normalizedSourceMode, item.sourceUpdatedAt],
         );
       }
       await client.query(
         `INSERT INTO app_site_content_syncs
            (domain, source_hash, document_count, source_mode, last_actor_clerk_user_id, synced_at, updated_at)
-         VALUES ($1,$2,$3,'firestore-write-through',$4,NOW(),NOW())
+         VALUES ($1,$2,$3,$4,$5,NOW(),NOW())
          ON CONFLICT (domain) DO UPDATE SET
            source_hash=EXCLUDED.source_hash,
            document_count=EXCLUDED.document_count,
            source_mode=EXCLUDED.source_mode,
            last_actor_clerk_user_id=EXCLUDED.last_actor_clerk_user_id,
            synced_at=NOW(), updated_at=NOW()`,
-        [domain, sourceHash, normalizedDocuments.length, String(actorClerkUserId || '')],
+        [domain, sourceHash, normalizedDocuments.length, normalizedSourceMode, String(actorClerkUserId || '')],
       );
       await client.query('COMMIT');
       return this.getDomain(domain);

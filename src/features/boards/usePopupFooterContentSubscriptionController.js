@@ -263,16 +263,19 @@ export default function usePopupFooterContentSubscriptionController({
       }
     };
 
-    if (shouldLoadUserPopup) {
+    const popupCutover = readSiteContentCutoverConfig();
+    if (shouldLoadAdminPopup ? popupCutover.adminAuthorityRequested : popupCutover.readRequested) {
       let cancelled = false;
-      const cutover = readSiteContentCutoverConfig();
+      const cutover = popupCutover;
 
       const load = async () => {
-        if (cutover.readRequested) {
+        if (shouldLoadAdminPopup ? cutover.adminAuthorityRequested : cutover.readRequested) {
           try {
             const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.POPUP, config: cutover });
             const postgresPosts = content.documents
-              .filter((item) => item.key.startsWith('popupPosts/') && item.enabled !== false && item.payload?.enabled !== false)
+              .filter((item) => item.key.startsWith('popupPosts/') && (
+                shouldLoadAdminPopup || (item.enabled !== false && item.payload?.enabled !== false)
+              ))
               .map((item) => ({
                 ...item.payload,
                 id: item.payload?.id || item.key.split('/').pop(),
@@ -281,7 +284,7 @@ export default function usePopupFooterContentSubscriptionController({
                 __publicVisibility: item.publicVisibility || null,
               }));
             let sourcePosts = postgresPosts;
-            if (!cutover.authorityRequested) {
+            if (!(shouldLoadAdminPopup ? cutover.adminAuthorityRequested : cutover.authorityRequested)) {
               const firestoreSnapshot = await getDocsFromServer(popupSource);
               const firestorePosts = firestoreSnapshot.docs.map((popupDoc) => ({ ...popupDoc.data(), id: popupDoc.id }));
               const postgresSignature = postgresPosts
@@ -315,7 +318,7 @@ export default function usePopupFooterContentSubscriptionController({
               if (firstHasOrder !== secondHasOrder) return firstHasOrder ? -1 : 1;
               return getPopupDateMillis(second.createdAt) - getPopupDateMillis(first.createdAt);
             });
-            if (cutover.authorityRequested) {
+            if (shouldLoadAdminPopup ? cutover.adminAuthorityRequested : cutover.authorityRequested) {
               publishSiteContentObservation({
                 readRequested: true,
                 domain: SITE_CONTENT_DOMAINS.POPUP,
@@ -331,7 +334,7 @@ export default function usePopupFooterContentSubscriptionController({
             setPopupPostsReady(true);
             return;
           } catch (postgresError) {
-            if (cutover.authorityRequested) {
+            if (shouldLoadAdminPopup ? cutover.adminAuthorityRequested : cutover.authorityRequested) {
               if (!cancelled) {
                 console.error('PostgreSQL popup authority read error:', postgresError);
                 setPopupPosts([]);
@@ -429,11 +432,12 @@ export default function usePopupFooterContentSubscriptionController({
       }
     };
 
-    if (shouldLoadUserFooter) {
+    const footerConfigCutover = readSiteContentCutoverConfig();
+    if (shouldLoadAdminFooter ? footerConfigCutover.adminAuthorityRequested : footerConfigCutover.readRequested) {
       let cancelled = false;
-      const cutover = readSiteContentCutoverConfig();
+      const cutover = footerConfigCutover;
       const load = async () => {
-        if (cutover.readRequested) {
+        if (shouldLoadAdminFooter ? cutover.adminAuthorityRequested : cutover.readRequested) {
           try {
             const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.FOOTER, config: cutover });
             const document = content.documents.find((item) => item.key === 'siteFooter/config');
@@ -454,7 +458,7 @@ export default function usePopupFooterContentSubscriptionController({
             setFooterConfigReady(true);
             return;
           } catch (postgresError) {
-            if (cutover.authorityRequested) {
+            if (shouldLoadAdminFooter ? cutover.adminAuthorityRequested : cutover.authorityRequested) {
               if (!cancelled) {
                 console.error('PostgreSQL footer config authority read error:', postgresError);
                 setFooterConfigLoadErrorMessage('푸터 설정을 PostgreSQL에서 불러오지 못했습니다.');
@@ -557,18 +561,21 @@ export default function usePopupFooterContentSubscriptionController({
       }
     };
 
-    if (shouldLoadUserFooter) {
+    const footerPagesCutover = readSiteContentCutoverConfig();
+    if (shouldLoadAdminFooter ? footerPagesCutover.adminAuthorityRequested : footerPagesCutover.readRequested) {
       let cancelled = false;
-      const cutover = readSiteContentCutoverConfig();
+      const cutover = footerPagesCutover;
       const load = async () => {
-        if (cutover.readRequested) {
+        if (shouldLoadAdminFooter ? cutover.adminAuthorityRequested : cutover.readRequested) {
           try {
             const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.FOOTER, config: cutover });
             const postgresPages = content.documents
-              .filter((item) => item.key.startsWith('footerPages/') && item.payload?.enabled !== false)
+              .filter((item) => item.key.startsWith('footerPages/') && (
+                shouldLoadAdminFooter || item.payload?.enabled !== false
+              ))
               .map((item) => ({ ...item.payload, id: item.payload?.id || item.key.split('/').pop() }));
             let sourcePages = postgresPages;
-            if (!cutover.authorityRequested) {
+            if (!(shouldLoadAdminFooter ? cutover.adminAuthorityRequested : cutover.authorityRequested)) {
               const firestoreSnapshot = await getDocsFromServer(footerPagesSource);
               const firestorePages = firestoreSnapshot.docs.map((pageDoc) => ({ ...pageDoc.data(), id: pageDoc.id }));
               const signatureFor = (pages) => pages
@@ -604,7 +611,7 @@ export default function usePopupFooterContentSubscriptionController({
             setFooterPagesReady(true);
             return;
           } catch (postgresError) {
-            if (cutover.authorityRequested) {
+            if (shouldLoadAdminFooter ? cutover.adminAuthorityRequested : cutover.authorityRequested) {
               if (!cancelled) {
                 console.error('PostgreSQL footer pages authority read error:', postgresError);
                 setFooterPages([]);

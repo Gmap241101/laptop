@@ -13,7 +13,13 @@ import {
   SITE_FOOTER_CONFIG_DOC_REF,
   db,
 } from '../../firebase.js';
-import { syncSiteContentDomainFromFirestore, SITE_CONTENT_DOMAINS } from '../content/siteContentCutover.js';
+import {
+  createSiteContentDocumentId,
+  readSiteContentCutoverConfig,
+  replaceSiteContentDomainInPostgresql,
+  syncSiteContentDomainFromFirestore,
+  SITE_CONTENT_DOMAINS,
+} from '../content/siteContentCutover.js';
 import {
   isRichTextEmpty,
   legacyTextToRichHtml,
@@ -134,6 +140,35 @@ export default function useAdminFooterContentController({
   triggerConfirm,
   triggerToast,
 }) {
+  const replaceFooterDomain = async ({ config = footerConfigDraft, pages = footerPages } = {}) => {
+    const contentHtml = sanitizeFooterCommonHtml(config.contentHtml || '');
+    const contentText = richTextHtmlToText(contentHtml);
+    return replaceSiteContentDomainInPostgresql({
+      domain: SITE_CONTENT_DOMAINS.FOOTER,
+      documents: [
+        {
+          key: 'siteFooter/config',
+          payload: {
+            ...config,
+            enabled: config.enabled !== false,
+            content: contentText,
+            contentText,
+            contentHtml,
+            contentFormat: 'rich-html-v1',
+            updatedAt: new Date(),
+          },
+          enabled: config.enabled !== false,
+        },
+        ...pages.map((page) => ({
+          key: `footerPages/${page.id}`,
+          payload: { ...page, id: page.id },
+          enabled: page.enabled !== false,
+          sortOrder: page.sortOrder,
+        })),
+      ],
+    });
+  };
+
   const saveFooterConfig = async () => {
     if (!isAdminAuthenticated) {
       triggerToast(
@@ -159,6 +194,17 @@ export default function useAdminFooterContentController({
 
     setFooterConfigSaving(true);
     try {
+      if (readSiteContentCutoverConfig().adminAuthorityRequested) {
+        await replaceFooterDomain({
+          config: {
+            ...footerConfigDraft,
+            updatedByUid: auditActor.uid,
+            updatedByName: auditActor.name,
+          },
+        });
+        triggerToast('푸터 공통 정보를 PostgreSQL에 저장했습니다.', 'success');
+        return true;
+      }
       await setDoc(
         SITE_FOOTER_CONFIG_DOC_REF,
         {
@@ -371,6 +417,38 @@ export default function useAdminFooterContentController({
 
     setFooterPageSaving(true);
     try {
+      if (readSiteContentCutoverConfig().adminAuthorityRequested) {
+        const pageId = editingPage?.id || createSiteContentDocumentId();
+        const updatedAt = new Date();
+        const nextPage = {
+          id: pageId,
+          enabled: Boolean(footerPageForm.enabled),
+          title,
+          titleDisplayType,
+          titleImageUrl: safeTitleImageUrl,
+          pageType,
+          linkUrl: pageType === FOOTER_PAGE_TYPE_LINK ? safeLinkUrl : '',
+          openInNewTab: pageType === FOOTER_PAGE_TYPE_LINK ? Boolean(footerPageForm.openInNewTab) : false,
+          isTitleBold: Boolean(footerPageForm.isTitleBold),
+          sortOrder: nextSortOrder,
+          content: contentText,
+          contentText,
+          contentHtml,
+          contentFormat: 'rich-html-v1',
+          authorUid: editingPage?.authorUid || auditActor.uid,
+          authorName: editingPage?.authorName || auditActor.name,
+          createdAt: editingPage?.createdAt || updatedAt,
+          updatedAt,
+        };
+        await replaceFooterDomain({
+          pages: isEditing
+            ? footerPages.map((page) => page.id === pageId ? nextPage : page)
+            : [...footerPages, nextPage],
+        });
+        triggerToast('푸터 페이지를 PostgreSQL에 저장했습니다.', 'success');
+        resetFooterPageDialog();
+        return;
+      }
       await setDoc(pageDocRef, {
         id: pageDocRef.id,
         enabled: Boolean(footerPageForm.enabled),
@@ -426,6 +504,15 @@ export default function useAdminFooterContentController({
 
     setFooterPageToggleSavingId(page.id);
     try {
+      if (readSiteContentCutoverConfig().adminAuthorityRequested) {
+        await replaceFooterDomain({
+          pages: footerPages.map((item) => item.id === page.id
+            ? { ...item, enabled: !Boolean(item.enabled), updatedAt: new Date() }
+            : item),
+        });
+        triggerToast('푸터 페이지 상태를 PostgreSQL에서 변경했습니다.', 'success');
+        return;
+      }
       await updateDoc(doc(FOOTER_PAGES_COLLECTION_REF, page.id), {
         enabled: !Boolean(page.enabled),
         updatedAt: serverTimestamp(),
@@ -482,6 +569,12 @@ export default function useAdminFooterContentController({
     });
 
     try {
+      if (readSiteContentCutoverConfig().adminAuthorityRequested) {
+        const reordered = [...footerPages];
+        [reordered[currentIndex], reordered[nextIndex]] = [reordered[nextIndex], reordered[currentIndex]];
+        await replaceFooterDomain({ pages: reordered.map((page, index) => ({ ...page, sortOrder: index + 1, updatedAt: new Date() })) });
+        return;
+      }
       await batch.commit();
       await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.FOOTER });
     } catch (error) {
@@ -507,6 +600,16 @@ export default function useAdminFooterContentController({
       async () => {
         setFooterPageDeletingId(page.id);
         try {
+          if (readSiteContentCutoverConfig().adminAuthorityRequested) {
+            await replaceFooterDomain({
+              pages: footerPages.filter((item) => item.id !== page.id)
+                .map((item, index) => ({ ...item, sortOrder: index + 1, updatedAt: new Date() })),
+            });
+            if (selectedFooterPageId === page.id) setSelectedFooterPageId('');
+            if (footerPageDialog?.pageId === page.id) resetFooterPageDialog();
+            triggerToast('푸터 페이지를 PostgreSQL에서 삭제했습니다.', 'success');
+            return;
+          }
           await deleteDoc(doc(FOOTER_PAGES_COLLECTION_REF, page.id));
           await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.FOOTER });
           if (selectedFooterPageId === page.id) {

@@ -306,6 +306,7 @@ export const createRequestHandler = ({
   siteContentService = {
     async getDomain() { const error = new Error('Site content service is not configured.'); error.code = 'site_content_not_configured'; throw error; },
     async syncDomain() { const error = new Error('Site content service is not configured.'); error.code = 'site_content_not_configured'; throw error; },
+    async replaceAdminDomain() { const error = new Error('Site content service is not configured.'); error.code = 'site_content_not_configured'; throw error; },
   },
   firestoreSiteContentClient = {
     async readDomain() { const error = new Error('Firestore site-content source is not configured.'); error.code = 'firestore_site_content_not_configured'; throw error; },
@@ -446,7 +447,8 @@ export const createRequestHandler = ({
   }
   if (!siteContentService
     || typeof siteContentService.getDomain !== 'function'
-    || typeof siteContentService.syncDomain !== 'function') {
+    || typeof siteContentService.syncDomain !== 'function'
+    || typeof siteContentService.replaceAdminDomain !== 'function') {
     throw new TypeError('siteContentService Phase 24 methods are required.');
   }
   if (!boardService
@@ -474,6 +476,7 @@ export const createRequestHandler = ({
     runtimeRevision: 'phase33-user-clerk-content-authority-20260811-2210',
     publicContentVisibilityRevision: 'phase33-public-content-visibility-hotfix-20260812-0105',
     publicContentSyncRevision: 'phase33-public-content-full-server-sync-hotfix-20260812-0117',
+    adminContentAuthorityRevision: 'phase34-admin-content-postgresql-authority-20260812-1200',
     compatibility: {
       assetBoardWriteMirrorDisabled: Boolean(config.assetBoardWriteMirrorDisabled),
       retiredWriteMirrorDomains: [
@@ -654,6 +657,7 @@ export const createRequestHandler = ({
           adminAssetCategories: '/api/admin/assets/categories',
           siteContent: '/api/site-content/:domain',
           adminSiteContentSync: '/api/admin/site-content/:domain/sync',
+          adminSiteContentDirect: '/api/admin/site-content/:domain',
           noticeBoard: '/api/boards/notice',
           noticePost: '/api/boards/notice/:id',
           noticeView: '/api/boards/notice/:id/view',
@@ -1044,6 +1048,32 @@ export const createRequestHandler = ({
       } catch (error) {
         console.warn('[site-content] PostgreSQL content sync failed', { requestId, code: error?.code, name: error?.name });
         writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'site_content_sync_failed' }, headers);
+      }
+      return;
+    }
+
+    const adminSiteContentDirectMatch = url.pathname.match(/^\/api\/admin\/site-content\/([^/]+)$/);
+    if (request.method === 'PUT' && adminSiteContentDirectMatch) {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      try {
+        const adminAuth = await adminClerkAuthService.getCurrent({ clerkUserId: auth.userId });
+        const body = await readJsonBody(request);
+        const content = await siteContentService.replaceAdminDomain({
+          domain: decodeURIComponent(adminSiteContentDirectMatch[1]),
+          documents: body?.documents,
+          actorClerkUserId: adminAuth.admin.clerkUserId || auth.userId,
+        });
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          siteContent: content,
+          siteContentMutation: { authority: 'postgresql', sourceMode: 'postgresql-admin-direct' },
+        }, headers);
+      } catch (error) {
+        console.warn('[site-content] PostgreSQL administrator direct replacement failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'site_content_admin_replace_failed' }, headers);
       }
       return;
     }

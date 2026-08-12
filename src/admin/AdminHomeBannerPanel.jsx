@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  doc,
+  onSnapshot,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+  writeBatch,
+} from 'firebase/firestore';
+import {
   ArrowDown,
   ArrowUp,
   Edit3,
@@ -12,20 +20,15 @@ import {
   X,
 } from 'lucide-react';
 import {
-  doc,
-  onSnapshot,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-  writeBatch,
-} from 'firebase/firestore';
-
-import {
-  HOME_BANNERS_COLLECTION_REF,
-  HOME_PAGE_CONFIG_DOC_REF,
-  db,
-} from '../firebase.js';
-import { syncSiteContentDomainFromFirestore, SITE_CONTENT_DOMAINS } from '../features/content/siteContentCutover.js';
+  createSiteContentDocumentId,
+  readSiteContentCutoverConfig,
+  replaceSiteContentDomainInPostgresql,
+  requestSiteContentDomain,
+  SITE_CONTENT_DOMAINS,
+  subscribeSiteContentInvalidation,
+  syncSiteContentDomainFromFirestore,
+} from '../features/content/siteContentCutover.js';
+import { HOME_BANNERS_COLLECTION_REF, HOME_PAGE_CONFIG_DOC_REF, db } from '../firebase.js';
 
 const PLACEMENT_CONFIG = {
   hero: {
@@ -223,7 +226,64 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
   const [previewFailed, setPreviewFailed] = useState(false);
   const [now, setNow] = useState(Date.now());
 
+  const replaceHomeDomain = async ({ banners = allBanners, config = configDraft } = {}) => {
+    const updatedAt = new Date();
+    await replaceSiteContentDomainInPostgresql({
+      domain: SITE_CONTENT_DOMAINS.HOME,
+      documents: [
+        {
+          key: 'homePage/config',
+          payload: {
+            heroIntervalSeconds: Number(config.heroIntervalSeconds) || 7,
+            promotionLayout: PROMOTION_LAYOUTS[config.promotionLayout] ? config.promotionLayout : '2x1',
+            updatedAt,
+            updatedByUid: authenticatedAdminId || '',
+            updatedByName: authenticatedAdminAccount?.userName || authenticatedAdminAccount?.adminLoginId || 'administrator',
+          },
+        },
+        ...banners.map((banner) => ({
+          key: `homeBanners/${banner.id}`,
+          payload: { ...banner, id: banner.id },
+          enabled: banner.enabled !== false,
+          sortOrder: banner.sortOrder,
+        })),
+      ],
+    });
+    setAllBanners(banners);
+    setConfigDraft(config);
+  };
+
   useEffect(() => {
+    const cutover = readSiteContentCutoverConfig();
+    if (cutover.adminAuthorityRequested) {
+      let cancelled = false;
+      const load = async () => {
+        try {
+          const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.HOME, config: cutover, useCache: false });
+          if (cancelled) return;
+          setAllBanners(content.documents
+            .filter((item) => item.key.startsWith('homeBanners/'))
+            .map((item) => ({
+              ...item.payload,
+              id: item.payload?.id || item.key.split('/').pop(),
+              enabled: typeof item.enabled === 'boolean' ? item.enabled : item.payload?.enabled !== false,
+              sortOrder: Number.isFinite(Number(item.sortOrder)) ? Number(item.sortOrder) : item.payload?.sortOrder,
+            })));
+          setBannersReady(true);
+          setLoadError('');
+        } catch (error) {
+          if (cancelled) return;
+          console.error('PostgreSQL home banners load error:', error);
+          setBannersReady(true);
+          setLoadError('Home banners could not be loaded from PostgreSQL.');
+        }
+      };
+      void load();
+      const unsubscribe = subscribeSiteContentInvalidation((detail) => {
+        if (detail?.domain === SITE_CONTENT_DOMAINS.HOME || detail?.domain === 'all') void load();
+      });
+      return () => { cancelled = true; unsubscribe(); };
+    }
     const unsubscribe = onSnapshot(
       HOME_BANNERS_COLLECTION_REF,
       (snapshot) => {
@@ -241,6 +301,34 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
   }, []);
 
   useEffect(() => {
+    const cutover = readSiteContentCutoverConfig();
+    if (cutover.adminAuthorityRequested) {
+      let cancelled = false;
+      const load = async () => {
+        try {
+          const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.HOME, config: cutover, useCache: false });
+          const data = content.documents.find((item) => item.key === 'homePage/config')?.payload || {};
+          if (cancelled) return;
+          const next = {
+            heroIntervalSeconds: [5, 7, 10].includes(Number(data.heroIntervalSeconds)) ? Number(data.heroIntervalSeconds) : 7,
+            promotionLayout: PROMOTION_LAYOUTS[data.promotionLayout] ? data.promotionLayout : '2x1',
+          };
+          setConfigDraft(next);
+          configBaselineRef.current = JSON.stringify(next);
+          setConfigReady(true);
+        } catch (error) {
+          if (!cancelled) {
+            console.error('PostgreSQL home config load error:', error);
+            setConfigReady(true);
+          }
+        }
+      };
+      void load();
+      const unsubscribe = subscribeSiteContentInvalidation((detail) => {
+        if (detail?.domain === SITE_CONTENT_DOMAINS.HOME || detail?.domain === 'all') void load();
+      });
+      return () => { cancelled = true; unsubscribe(); };
+    }
     const unsubscribe = onSnapshot(
       HOME_PAGE_CONFIG_DOC_REF,
       (snapshot) => {
@@ -341,7 +429,10 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
     }
     setConfigSaving(true);
     try {
-      await setDoc(HOME_PAGE_CONFIG_DOC_REF, {
+      if (readSiteContentCutoverConfig().adminAuthorityRequested) {
+        await replaceHomeDomain({ config: configDraft });
+      } else {
+        await setDoc(HOME_PAGE_CONFIG_DOC_REF, {
         heroIntervalSeconds: Number(configDraft.heroIntervalSeconds) || 7,
         promotionLayout: PROMOTION_LAYOUTS[configDraft.promotionLayout]
           ? configDraft.promotionLayout
@@ -350,7 +441,8 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
         updatedByUid: authenticatedAdminId || '',
         updatedByName: authenticatedAdminAccount?.userName || authenticatedAdminAccount?.adminLoginId || '관리자',
       }, { merge: true });
-      await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.HOME });
+        await syncSiteContentDomainFromFirestore({ domain: SITE_CONTENT_DOMAINS.HOME });
+      }
       configBaselineRef.current = JSON.stringify(configDraft);
       triggerToast('초기화면 표시 설정을 저장했습니다.', 'success');
     } catch (error) {
@@ -417,6 +509,46 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
 
     setSaving(true);
     try {
+      if (readSiteContentCutoverConfig().adminAuthorityRequested) {
+        const targetId = form.id || createSiteContentDocumentId();
+        const existing = form.id ? banners.find((banner) => banner.id === form.id) : null;
+        const orderedBanners = form.id && banners.some((banner) => banner.id === form.id)
+          ? [...banners]
+          : [...banners, { id: targetId }];
+        const updatedAt = new Date();
+        const nextPlacementBanners = orderedBanners.map((banner, index) => banner.id === targetId
+          ? {
+              id: targetId,
+              placement,
+              enabled: Boolean(form.enabled),
+              sortOrder: index + 1,
+              title,
+              subtitle: placement === 'hero' ? subtitle : '',
+              altText,
+              imageUrl,
+              mobileImageUrl: placement === 'quickLink' ? '' : mobileImageUrl,
+              imagePosition: form.imagePosition || 'center',
+              imageFit,
+              linkType,
+              linkValue: linkType === 'none' ? '' : linkValue,
+              openInNewTab: linkType === 'none' ? false : Boolean(form.openInNewTab),
+              startAt,
+              endAt: form.isIndefinite ? null : endAt,
+              isIndefinite: Boolean(form.isIndefinite),
+              authorUid: existing?.authorUid || authenticatedAdminId || '',
+              authorName: existing?.authorName || authenticatedAdminAccount?.userName || authenticatedAdminAccount?.adminLoginId || 'administrator',
+              createdAt: existing?.createdAt || updatedAt,
+              updatedAt,
+            }
+          : { ...banner, sortOrder: index + 1, updatedAt });
+        await replaceHomeDomain({ banners: allBanners.filter((banner) => banner.placement !== placement).concat(nextPlacementBanners) });
+        triggerToast(`${panelConfig.itemLabel} PostgreSQL 저장 완료`, 'success');
+        setEditing(false);
+        const next = createForm(placement);
+        setForm(next);
+        formBaselineRef.current = JSON.stringify(next);
+        return;
+      }
       const targetRef = form.id
         ? doc(HOME_BANNERS_COLLECTION_REF, form.id)
         : doc(HOME_BANNERS_COLLECTION_REF);
@@ -482,6 +614,15 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
     if (!banner?.id) return;
     setToggleSavingId(banner.id);
     try {
+      if (readSiteContentCutoverConfig().adminAuthorityRequested) {
+        await replaceHomeDomain({
+          banners: allBanners.map((item) => item.id === banner.id
+            ? { ...item, enabled: !Boolean(item.enabled), updatedAt: new Date() }
+            : item),
+        });
+        triggerToast(`${panelConfig.itemLabel} PostgreSQL 상태 변경 완료`, 'success');
+        return;
+      }
       await updateDoc(doc(HOME_BANNERS_COLLECTION_REF, banner.id), {
         enabled: !Boolean(banner.enabled),
         updatedAt: serverTimestamp(),
@@ -505,6 +646,11 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
     [reordered[currentIndex], reordered[nextIndex]] = [reordered[nextIndex], reordered[currentIndex]];
 
     try {
+      if (readSiteContentCutoverConfig().adminAuthorityRequested) {
+        const reorderedWithOrder = reordered.map((banner, index) => ({ ...banner, sortOrder: index + 1, updatedAt: new Date() }));
+        await replaceHomeDomain({ banners: allBanners.filter((banner) => banner.placement !== placement).concat(reorderedWithOrder) });
+        return;
+      }
       const batch = writeBatch(db);
       reordered.forEach((banner, index) => {
         const sortOrder = index + 1;
@@ -529,6 +675,14 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
       async () => {
         setDeletingId(banner.id);
         try {
+          if (readSiteContentCutoverConfig().adminAuthorityRequested) {
+            const remaining = banners.filter((item) => item.id !== banner.id)
+              .map((item, index) => ({ ...item, sortOrder: index + 1, updatedAt: new Date() }));
+            await replaceHomeDomain({ banners: allBanners.filter((item) => item.placement !== placement).concat(remaining) });
+            if (form.id === banner.id) setEditing(false);
+            triggerToast(`${panelConfig.itemLabel} PostgreSQL 삭제 완료`, 'success');
+            return;
+          }
           const remaining = banners.filter((item) => item.id !== banner.id);
           const batch = writeBatch(db);
           batch.delete(doc(HOME_BANNERS_COLLECTION_REF, banner.id));

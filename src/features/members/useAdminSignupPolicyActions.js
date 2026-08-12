@@ -21,8 +21,11 @@ import {
   normalizeTermsSettings,
 } from '../terms/termsConstants.js';
 import {
+  getPolicyContentDocument,
   POLICY_CONTENT_DOMAINS,
   readPolicyContentCutoverConfig,
+  replacePolicyContentDomainInPostgresql,
+  requestPolicyContentDomain,
   syncPolicyContentDomainFromFirestore,
 } from '../content/policyContentCutover.js';
 import {
@@ -151,8 +154,75 @@ export default function useAdminSignupPolicyActions({
 
     try {
       let nextSettings = null;
+      const policyContentConfig = readPolicyContentCutoverConfig();
 
-      await runTransaction(db, async (transaction) => {
+      if (policyContentConfig.adminAuthorityRequested) {
+        const [rentalDomain, termsDomain] = await Promise.all([
+          requestPolicyContentDomain({ domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG, config: policyContentConfig, useCache: false }),
+          requestPolicyContentDomain({ domain: POLICY_CONTENT_DOMAINS.TERMS, config: policyContentConfig, useCache: false }),
+        ]);
+        const publicConfigDocument = getPolicyContentDocument(rentalDomain, 'rentalSystem/publicConfig');
+        const termsPolicyDocument = getPolicyContentDocument(termsDomain, 'signupTermsPolicy/current');
+        const publicConfig = publicConfigDocument?.payload || {};
+        const currentSettings = { ...(publicConfig.settings || settings) };
+        const termsPolicy = normalizeTermsPolicy(termsPolicyDocument?.payload || {});
+        if (tempSignupTermsEnabled && termsPolicy.activeTerms.length === 0) {
+          const error = new Error('terms/no-active-terms');
+          error.code = 'terms/no-active-terms';
+          throw error;
+        }
+        const currentTermsSettings = normalizeTermsSettings(currentSettings);
+        const enablingTerms = !currentTermsSettings.signupTermsEnabled && tempSignupTermsEnabled;
+        let policyRevision = Math.max(termsPolicy.revision, Number(currentSettings.signupTermsPolicyRevision) || 0);
+        if (enablingTerms && policyRevision === 0) policyRevision = 1;
+        let initialRevision = Math.max(termsPolicy.initialRevision, Number(currentSettings.signupTermsInitialRevision) || 0);
+        let requiredRevision = Math.max(termsPolicy.requiredRevision, Number(currentSettings.signupTermsRequiredRevision) || 0);
+        if (enablingTerms) {
+          initialRevision = policyRevision;
+          requiredRevision = policyRevision;
+        }
+        nextSettings = {
+          ...currentSettings,
+          requireRegisteredMemberForSignup: nextRequireRegistered,
+          autoApproveNewMembers: nextAutoApprove,
+          memberDirectoryVersion: nextDirectoryVersion,
+          signupTermsEnabled: Boolean(tempSignupTermsEnabled),
+          signupTermsRequireReconsentOnChange: Boolean(tempSignupTermsRequireReconsentOnChange),
+          signupTermsApplyToExistingMembers: Boolean(tempSignupTermsApplyToExistingMembers),
+          signupTermsPolicyRevision: policyRevision,
+          signupTermsRequiredRevision: requiredRevision,
+          signupTermsInitialRevision: initialRevision,
+        };
+        const nextTermsPolicy = {
+          ...termsPolicy,
+          enabled: Boolean(tempSignupTermsEnabled),
+          requireReconsentOnChange: Boolean(tempSignupTermsRequireReconsentOnChange),
+          applyToExistingMembers: Boolean(tempSignupTermsApplyToExistingMembers),
+          revision: policyRevision,
+          requiredRevision,
+          initialRevision,
+          updatedAt: new Date(),
+          updatedBy: 'clerk-admin',
+        };
+        await replacePolicyContentDomainInPostgresql({
+          domain: POLICY_CONTENT_DOMAINS.TERMS,
+          config: policyContentConfig,
+          documents: [
+            { key: 'signupTermsPolicy/current', payload: nextTermsPolicy, enabled: nextTermsPolicy.enabled },
+            ...termsDomain.documents
+              .filter((item) => item.key !== 'signupTermsPolicy/current')
+              .map((item) => ({ key: item.key, payload: item.payload, enabled: item.enabled, sortOrder: item.sortOrder })),
+          ],
+        });
+        await replacePolicyContentDomainInPostgresql({
+          domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
+          config: policyContentConfig,
+          documents: [{
+            key: 'rentalSystem/publicConfig',
+            payload: { ...publicConfig, settings: nextSettings, updatedAt: new Date() },
+          }],
+        });
+      } else await runTransaction(db, async (transaction) => {
         const [publicConfigSnapshot, termsPolicySnapshot] = await Promise.all([
           transaction.get(PUBLIC_CONFIG_DOC_REF),
           transaction.get(SIGNUP_TERMS_POLICY_DOC_REF),
@@ -243,8 +313,7 @@ export default function useAdminSignupPolicyActions({
         );
       });
 
-      const policyContentConfig = readPolicyContentCutoverConfig();
-      if (policyContentConfig.writeThroughRequested) {
+      if (!policyContentConfig.adminAuthorityRequested && policyContentConfig.writeThroughRequested) {
         await syncPolicyContentDomainFromFirestore({
           domain: POLICY_CONTENT_DOMAINS.TERMS,
           config: policyContentConfig,

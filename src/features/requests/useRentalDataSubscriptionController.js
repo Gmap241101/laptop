@@ -589,7 +589,7 @@ export default function useRentalDataSubscriptionController({
       setToast({ message, type: 'error' });
     };
 
-    if (policyContentConfig.readRequested && view !== 'admin') {
+    if (policyContentConfig.readRequested && (view !== 'admin' || policyContentConfig.adminAuthorityRequested)) {
       void requestPolicyContentDomain({
         domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
         config: policyContentConfig,
@@ -606,7 +606,7 @@ export default function useRentalDataSubscriptionController({
           applyConfigData(document.payload, 'postgresql');
         })
         .catch(async (error) => {
-          if (policyContentConfig.authorityRequested) {
+          if (view === 'admin' ? policyContentConfig.adminAuthorityRequested : policyContentConfig.authorityRequested) {
             publishPolicyContentObservation({
               readRequested: true,
               domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,

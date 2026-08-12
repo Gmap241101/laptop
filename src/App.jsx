@@ -776,6 +776,7 @@ function App() {
   } = useAdminSystemSettingsState({
     adminTab,
     dataSettings: data.settings,
+    publicConfig: splitPublicConfig,
   });
 
   const footerConfigDirty =

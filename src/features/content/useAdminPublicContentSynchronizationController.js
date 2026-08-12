@@ -41,6 +41,10 @@ export default function useAdminPublicContentSynchronizationController({
 
     const siteConfig = readSiteContentCutoverConfig();
     const policyConfig = readPolicyContentCutoverConfig();
+    // Phase 34 makes PostgreSQL the administrator content authority. The Phase 33
+    // Firestore repair must never run in that mode because it would overwrite newer
+    // PostgreSQL edits with the legacy Firestore snapshot.
+    if (siteConfig.adminAuthorityRequested || policyConfig.adminAuthorityRequested) return undefined;
     const shouldSyncSite = Boolean(siteConfig.authorityRequested && siteConfig.writeThroughRequested);
     const shouldSyncPolicy = Boolean(policyConfig.authorityRequested && policyConfig.writeThroughRequested);
     if (!shouldSyncSite && !shouldSyncPolicy) return undefined;

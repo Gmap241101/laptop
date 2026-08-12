@@ -392,3 +392,21 @@ Correction:
   phase33-admin-clerk-authority-coupling-hotfix-20260812-1104.
 - Phase 32 PASS runtime behavior and the 0117 backend full-domain source/count contract
   remain unchanged.
+
+Actual Staging acceptance — 2026-08-12 KST
+------------------------------------------
+User-confirmed result after deploying the administrator Clerk authority coupling hotfix:
+- site_content_clerk_session_missing no longer occurs.
+- Administrator content saves complete successfully.
+- The complete active public content set is visible on the user screen.
+
+Decision:
+- Phase 32 remains the confirmed PASS baseline.
+- Phase 33 is promoted from candidate to actual Staging PASS.
+- This PASS covers normal-user Clerk/PostgreSQL authority and PostgreSQL-authoritative
+  public reads with transitional administrator Firestore editing/write-through.
+- It does not mean all Firebase/Firestore dependencies are retired. Administrator
+  settings, home/banner, popup, footer and policy management deliberately remain
+  Firestore-backed compatibility paths until the next cleanup phase.
+- Phase 34 may now begin with removal of those administrator Firestore CRUD/onSnapshot
+  paths and direct PostgreSQL administrator writes.

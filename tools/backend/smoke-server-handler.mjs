@@ -427,6 +427,20 @@ const siteContentService = {
       sync: { sourceMode: 'firestore-write-through', sourceHash: 'content-sync-smoke', documentCount: documents.length, syncedAt: '2026-08-10T00:00:01.000Z' },
     };
   },
+  async replaceAdminDomain({ domain, documents, actorClerkUserId }) {
+    if (domain !== 'home' || actorClerkUserId !== 'user_smoke' || !Array.isArray(documents) || documents.length !== 2) {
+      throw new Error('Unexpected direct PostgreSQL administrator content input.');
+    }
+    return {
+      source: 'postgresql',
+      domain,
+      authoritative: true,
+      sourceMode: 'postgresql-admin-direct',
+      documentCount: documents.length,
+      documents,
+      syncedAt: '2026-08-12T03:00:00.000Z',
+    };
+  },
 };
 
 const adminRentalRequestService = {
@@ -1024,6 +1038,21 @@ const siteContentSync = await fetch(baseUrl + '/api/admin/site-content/home/sync
 const siteContentSyncBody = await siteContentSync.json();
 if (siteContentSync.status !== 200 || siteContentSyncBody.authorized !== true || siteContentSyncBody.siteContent?.source !== 'postgresql' || siteContentSyncBody.siteContent?.documentCount !== 1 || siteContentSyncBody.siteContentSource?.mode !== 'firestore-server-backend-full-domain' || siteContentSyncBody.siteContentSource?.documentCount !== 1) {
   throw new Error('Phase 24 administrator site-content sync HTTP response is invalid.');
+}
+const siteContentDirect = await fetch(baseUrl + '/api/admin/site-content/home', {
+  method: 'PUT',
+  headers: { ...authHeaders, 'Content-Type': 'application/json' },
+  body: JSON.stringify({ documents: [
+    { key: 'homePage/config', payload: { heroTitle: 'Phase 34 Home' }, enabled: true, sortOrder: 0 },
+    { key: 'homeBanners/phase34', payload: { title: 'Phase 34 Banner' }, enabled: true, sortOrder: 1 },
+  ] }),
+});
+const siteContentDirectBody = await siteContentDirect.json();
+if (siteContentDirect.status !== 200 || siteContentDirectBody.authorized !== true ||
+  siteContentDirectBody.siteContentMutation?.authority !== 'postgresql' ||
+  siteContentDirectBody.siteContentMutation?.sourceMode !== 'postgresql-admin-direct' ||
+  siteContentDirectBody.siteContent?.documentCount !== 2) {
+  throw new Error('Phase 34 administrator direct PostgreSQL content replacement HTTP response is invalid.');
 }
 const policyContentRead = await fetch(baseUrl + '/api/site-content/rental-config', { headers: { Origin: allowedOrigin } });
 const policyContentReadBody = await policyContentRead.json();

@@ -18,6 +18,11 @@ import {
 } from '../../domain/rentalPolicy.js';
 import { PUBLIC_CONFIG_DOC_REF } from '../../firebase.js';
 import {
+  POLICY_CONTENT_DOMAINS,
+  readPolicyContentCutoverConfig,
+  replacePolicyContentDomainInPostgresql,
+} from '../content/policyContentCutover.js';
+import {
   formatDateWithKoreanWeekday,
   getKoreaNow,
   today,
@@ -169,6 +174,7 @@ export const useAdminSystemSettingsState = ({ adminTab, dataSettings }) => {
 
 export default function useAdminSystemSettingsController({
   dataSettings,
+  publicConfig,
   holidayImportConflictModal,
   holidayImportYear,
   isSplitStorageReady,
@@ -643,10 +649,26 @@ export default function useAdminSystemSettingsController({
     );
 
     try {
-      await updateDoc(PUBLIC_CONFIG_DOC_REF, {
-        ...firestorePolicyUpdates,
-        updatedAt: serverTimestamp(),
-      });
+      const policyContentConfig = readPolicyContentCutoverConfig();
+      if (policyContentConfig.adminAuthorityRequested) {
+        await replacePolicyContentDomainInPostgresql({
+          domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
+          config: policyContentConfig,
+          documents: [{
+            key: 'rentalSystem/publicConfig',
+            payload: {
+              ...(publicConfig || {}),
+              settings: { ...(publicConfig?.settings || dataSettings), ...policyValues },
+              updatedAt: new Date(),
+            },
+          }],
+        });
+      } else {
+        await updateDoc(PUBLIC_CONFIG_DOC_REF, {
+          ...firestorePolicyUpdates,
+          updatedAt: serverTimestamp(),
+        });
+      }
 
       const nextSettings = {
         ...dataSettings,
@@ -693,10 +715,26 @@ export default function useAdminSystemSettingsController({
     );
 
     try {
-      await updateDoc(PUBLIC_CONFIG_DOC_REF, {
-        'settings.holidays': nextHolidays,
-        updatedAt: serverTimestamp(),
-      });
+      const policyContentConfig = readPolicyContentCutoverConfig();
+      if (policyContentConfig.adminAuthorityRequested) {
+        await replacePolicyContentDomainInPostgresql({
+          domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
+          config: policyContentConfig,
+          documents: [{
+            key: 'rentalSystem/publicConfig',
+            payload: {
+              ...(publicConfig || {}),
+              settings: { ...(publicConfig?.settings || dataSettings), holidays: nextHolidays },
+              updatedAt: new Date(),
+            },
+          }],
+        });
+      } else {
+        await updateDoc(PUBLIC_CONFIG_DOC_REF, {
+          'settings.holidays': nextHolidays,
+          updatedAt: serverTimestamp(),
+        });
+      }
 
       const normalizedHolidays = normalizeHolidayList(nextHolidays);
 

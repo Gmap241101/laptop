@@ -127,6 +127,7 @@ import { clerkStagingClient } from './clerkStagingClient.js';
 const PHASE32_RUNTIME_REVISION = 'phase32-new-member-runtime-authority-20260811-2108';
 const PHASE33_RUNTIME_REVISION = 'phase33-user-clerk-content-authority-20260811-2210';
 const PHASE33_FRONTEND_HOTFIX_REVISION = 'phase33-admin-clerk-authority-coupling-hotfix-20260812-1104';
+const PHASE34_ADMIN_CONTENT_AUTHORITY_REVISION = 'phase34-admin-content-postgresql-authority-20260812-1200';
 
 const panelStyle = {
   position: 'fixed',
@@ -430,6 +431,7 @@ export default function ClerkStagingDiagnostics() {
     phase33PasswordResetDelivery: null,
     phase33SiteContentAuthorityRequested: Boolean(siteContentConfig.authorityRequested),
     phase33PolicyContentAuthorityRequested: Boolean(policyContentConfig.authorityRequested),
+    phase34AdminContentAuthorityRequested: Boolean(siteContentConfig.adminAuthorityRequested),
     phase33Error: null,
     error: null,
   });
@@ -1710,7 +1712,11 @@ export default function ClerkStagingDiagnostics() {
       <div>Public policy content PostgreSQL authority requested: {state.phase33PolicyContentAuthorityRequested ? 'yes' : 'no'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Public policy content active source: {state.policyContentReadSource || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Phase 33 authority error: {state.phase33Error || '-'}</div>
-      <div style={{ overflowWrap: 'anywhere' }}>Preserved admin compatibility: Firebase admin session / Firestore admin settings-policy management until Phase 34</div>
+      <div style={{ marginTop: '6px', fontWeight: 700 }}>Phase 34 administrator public-content PostgreSQL authority</div>
+      <div>Authority revision: {PHASE34_ADMIN_CONTENT_AUTHORITY_REVISION}</div>
+      <div>Administrator content PostgreSQL authority requested: {state.phase34AdminContentAuthorityRequested ? 'yes' : 'no'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Mutation source: {state.phase34AdminContentAuthorityRequested ? 'postgresql-admin-direct' : 'firestore-compatibility'}</div>
+      <div style={{ overflowWrap: 'anywhere' }}>Phase 33 Firestore repair: {state.phase34AdminContentAuthorityRequested ? 'disabled (overwrite protection)' : 'compatibility mode'}</div>
 
       {state.error ? (
         <div role="alert" style={{ marginTop: '8px', color: '#b91c1c', overflowWrap: 'anywhere' }}>

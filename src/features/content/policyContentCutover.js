@@ -1,4 +1,6 @@
 import {
+  readSiteContentCutoverConfig,
+  replaceSiteContentDomainInPostgresql,
   requestSiteContentDomain,
   syncSiteContentDomainFromFirestore,
 } from './siteContentCutover.js';
@@ -31,6 +33,7 @@ export const readPolicyContentCutoverConfig = ({
   location = globalThis.location,
   storage = globalThis.sessionStorage,
 } = {}) => {
+  const adminContentConfig = readSiteContentCutoverConfig({ env, location, storage });
   const staging = bool(env?.VITE_CLERK_STAGING_ENABLED);
   const authorityEnabled = staging && bool(env?.VITE_POLICY_CONTENT_POSTGRES_AUTHORITY_ENABLED);
   const readEnabled = staging && (
@@ -63,6 +66,8 @@ export const readPolicyContentCutoverConfig = ({
   return Object.freeze({
     authorityEnabled,
     authorityRequested: Boolean(authorityEnabled && !queryRollback),
+    adminAuthorityEnabled: adminContentConfig.adminAuthorityEnabled,
+    adminAuthorityRequested: adminContentConfig.adminAuthorityRequested,
     fallbackAllowed: !authorityEnabled || queryRollback,
     readEnabled,
     writeThroughEnabled,
@@ -112,6 +117,19 @@ export const requestPolicyContentDomain = async ({
 
 export const getPolicyContentDocument = (domainResult, key) =>
   (domainResult?.documents || []).find((item) => item.key === key) || null;
+
+export const replacePolicyContentDomainInPostgresql = async ({
+  domain,
+  documents,
+  fetchImpl = fetch,
+  config = readPolicyContentCutoverConfig(),
+} = {}) => replaceSiteContentDomainInPostgresql({
+  domain,
+  documents,
+  fetchImpl,
+  config,
+  observationPublisher: publishPolicyContentObservation,
+});
 
 export const syncPolicyContentDomainFromFirestore = async ({
   domain,

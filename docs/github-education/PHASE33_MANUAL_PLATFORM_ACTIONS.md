@@ -563,3 +563,20 @@ Deployment impact: Vercel Staging redeploy is required. Heroku Staging does not 
 second redeploy when the `0117` backend from the `0128` package is already active. There
 are no environment-variable, migration, dependency, Clerk Console, Firebase Rules/index,
 Production, DNS, or `gh-pages` changes.
+
+## Phase 33 actual Staging PASS — 2026-08-12 KST
+
+The deployed hotfix was confirmed in the real Staging browser environment:
+
+```text
+site_content_clerk_session_missing: resolved
+administrator content save: PASS
+complete public content visibility: PASS
+```
+
+Phase 33 is therefore an actual Staging PASS. Its intended boundary remains important:
+public site/policy reads are PostgreSQL-authoritative, but transitional administrator
+content editors still write Firestore first and synchronize the complete domain into
+PostgreSQL. Full Firebase/Firestore retirement is not claimed by this phase. Phase 34
+is authorized to replace the remaining administrator Firestore CRUD/onSnapshot paths
+with direct PostgreSQL administration and then retire the compatibility bridge.

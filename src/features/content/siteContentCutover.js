@@ -19,6 +19,7 @@ import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 
 const READ_SESSION_KEY = 'mk_site_content_postgres_read';
 const WRITE_SESSION_KEY = 'mk_site_content_postgres_write_through';
+const ADMIN_AUTHORITY_SESSION_KEY = 'mk_admin_content_postgres_authority';
 const EVENT_NAME = 'rental:site-content-cutover';
 const INVALIDATION_EVENT_NAME = 'rental:site-content-invalidated';
 const INVALIDATION_STORAGE_KEY = 'mk_site_content_invalidated_v2';
@@ -53,6 +54,7 @@ export const readSiteContentCutoverConfig = ({
   storage = globalThis.sessionStorage,
 } = {}) => {
   const staging = bool(env?.VITE_CLERK_STAGING_ENABLED);
+  const adminAuthorityEnabled = staging && bool(env?.VITE_ADMIN_CONTENT_POSTGRES_AUTHORITY_ENABLED);
   const authorityEnabled = staging && bool(env?.VITE_SITE_CONTENT_POSTGRES_AUTHORITY_ENABLED);
   const readEnabled = staging && (
     bool(env?.VITE_SITE_CONTENT_POSTGRES_READ_ENABLED) || authorityEnabled
@@ -62,29 +64,42 @@ export const readSiteContentCutoverConfig = ({
   // save is required to write through to PostgreSQL even when a legacy query/session
   // latch is absent. This prevents Firestore-admin / PostgreSQL-public split brain.
   const writeThroughEnabled = staging && (
-    bool(env?.VITE_SITE_CONTENT_WRITE_THROUGH_ENABLED) || authorityEnabled
+    bool(env?.VITE_SITE_CONTENT_WRITE_THROUGH_ENABLED) || authorityEnabled || adminAuthorityEnabled
   );
   const params = location ? new URLSearchParams(location.search || '') : new URLSearchParams();
   const queryRead = readEnabled && params.get('siteContent') === 'postgres';
   const queryRollback = authorityEnabled && params.get('siteContent') === 'firestore';
   const queryWrite = writeThroughEnabled && params.get('siteContentWrite') === 'postgres';
   const queryWriteRollback = authorityEnabled && params.get('siteContentWrite') === 'firestore';
+  const queryAdminAuthority = adminAuthorityEnabled && params.get('adminContent') === 'postgres';
+  const queryAdminRollback = adminAuthorityEnabled && params.get('adminContent') === 'firestore';
   let sessionRead = false;
   let sessionWrite = false;
+  let sessionAdminAuthority = false;
   try {
     if (params.get('siteContent') === 'firestore') storage?.removeItem?.(READ_SESSION_KEY);
     else if (queryRead) storage?.setItem?.(READ_SESSION_KEY, '1');
     if (params.get('siteContentWrite') === 'firestore') storage?.removeItem?.(WRITE_SESSION_KEY);
     else if (queryWrite) storage?.setItem?.(WRITE_SESSION_KEY, '1');
+    if (params.get('adminContent') === 'firestore') storage?.removeItem?.(ADMIN_AUTHORITY_SESSION_KEY);
+    else if (queryAdminAuthority) storage?.setItem?.(ADMIN_AUTHORITY_SESSION_KEY, '1');
     sessionRead = storage?.getItem?.(READ_SESSION_KEY) === '1';
     sessionWrite = storage?.getItem?.(WRITE_SESSION_KEY) === '1';
+    sessionAdminAuthority = storage?.getItem?.(ADMIN_AUTHORITY_SESSION_KEY) === '1';
   } catch {
     sessionRead = false;
     sessionWrite = false;
+    sessionAdminAuthority = false;
   }
   return Object.freeze({
     authorityEnabled,
     authorityRequested: Boolean(authorityEnabled && !queryRollback),
+    adminAuthorityEnabled,
+    adminAuthorityRequested: Boolean(
+      adminAuthorityEnabled && !queryAdminRollback && (
+        queryAdminAuthority || sessionAdminAuthority || params.get('adminContent') === null
+      )
+    ),
     fallbackAllowed: !authorityEnabled || queryRollback,
     readEnabled,
     writeThroughEnabled,
@@ -113,6 +128,20 @@ const serializeValue = (value) => {
   }
   return value;
 };
+
+export const createSiteContentDocumentId = () => {
+  const cryptoRef = globalThis.crypto;
+  if (typeof cryptoRef?.randomUUID === 'function') return cryptoRef.randomUUID().replaceAll('-', '');
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 14)}`;
+};
+
+export const createSiteContentDomainDocument = ({ key, payload = {}, enabled = null, sortOrder = null } = {}) => ({
+  key: trim(key),
+  payload: serializeValue(payload && typeof payload === 'object' ? payload : {}),
+  enabled: typeof enabled === 'boolean' ? enabled : null,
+  sortOrder: Number.isFinite(Number(sortOrder)) ? Math.trunc(Number(sortOrder)) : null,
+  sourceUpdatedAt: new Date().toISOString(),
+});
 
 const reviveValue = (value) => {
   if (!value || typeof value !== 'object') return value;
@@ -231,6 +260,67 @@ const getClerkToken = async ({ forceRefresh = false } = {}) => {
   const token = await clerk?.session?.getToken?.(forceRefresh ? { skipCache: true } : undefined);
   if (!token) throw Object.assign(new Error('Clerk administrator session is required for site content write-through.'), { code: 'site_content_clerk_session_missing' });
   return token;
+};
+
+export const replaceSiteContentDomainInPostgresql = async ({
+  domain,
+  documents,
+  fetchImpl = fetch,
+  config = readSiteContentCutoverConfig(),
+  observationPublisher = publishSiteContentObservation,
+} = {}) => {
+  if (!config.adminAuthorityRequested) return Object.freeze({ skipped: true });
+  if (!config.apiBaseUrl) throw Object.assign(new Error('VITE_API_URL is required for PostgreSQL administrator content writes.'), { code: 'site_content_api_missing' });
+  const normalizedDocuments = (Array.isArray(documents) ? documents : [])
+    .map((document) => createSiteContentDomainDocument(document))
+    .filter((document) => document.key);
+
+  const performReplace = async (forceRefresh = false) => {
+    const clerkToken = await getClerkToken({ forceRefresh });
+    const response = await fetchImpl(`${config.apiBaseUrl}/api/admin/site-content/${encodeURIComponent(domain)}`, {
+      method: 'PUT',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${clerkToken}`,
+      },
+      cache: 'no-store',
+      body: JSON.stringify({ documents: normalizedDocuments }),
+    });
+    let payload = null;
+    try { payload = await response.json(); } catch { payload = null; }
+    return { response, payload };
+  };
+
+  let result = await performReplace(false);
+  if (result.response.status === 401 && result.payload?.error === 'unauthorized') {
+    result = await performReplace(true);
+  }
+  const { response, payload } = result;
+  if (!response.ok) {
+    const error = new Error(`PostgreSQL administrator content write failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || 'site_content_admin_replace_failed';
+    observationPublisher?.({ writeThroughRequested: true, domain, writeSource: 'postgresql-admin-direct', postgresSync: 'failed', error: error.code });
+    throw error;
+  }
+  if (payload?.siteContentMutation?.authority !== 'postgresql' || payload?.siteContentMutation?.sourceMode !== 'postgresql-admin-direct') {
+    throw Object.assign(new Error('Backend did not confirm PostgreSQL administrator content authority.'), { code: 'site_content_admin_authority_invalid' });
+  }
+  const content = payload?.siteContent;
+  if (content?.source !== 'postgresql' || Number(content.documentCount) !== normalizedDocuments.length) {
+    throw Object.assign(new Error('PostgreSQL administrator content replacement count mismatch.'), { code: 'site_content_admin_count_mismatch' });
+  }
+  publishSiteContentInvalidation(domain);
+  observationPublisher?.({
+    writeThroughRequested: true,
+    domain,
+    writeSource: 'postgresql-admin-direct',
+    postgresSync: 'authoritative',
+    postgresDocumentCount: Number(content.documentCount),
+    error: null,
+  });
+  return content;
 };
 
 export const syncSiteContentDomainFromFirestore = async ({ domain, fetchImpl = fetch, config = readSiteContentCutoverConfig(), observationPublisher = publishSiteContentObservation } = {}) => {

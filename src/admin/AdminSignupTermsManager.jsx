@@ -38,8 +38,14 @@ import { createTermsContentHash } from '../features/terms/termsService.js';
 import {
   POLICY_CONTENT_DOMAINS,
   readPolicyContentCutoverConfig,
+  replacePolicyContentDomainInPostgresql,
+  requestPolicyContentDomain,
   syncPolicyContentDomainFromFirestore,
 } from '../features/content/policyContentCutover.js';
+import {
+  createSiteContentDocumentId,
+  subscribeSiteContentInvalidation,
+} from '../features/content/siteContentCutover.js';
 import {
   isRichTextEmpty,
   richTextHtmlToText,
@@ -68,6 +74,16 @@ const normalizeTermDocument = (snapshot) => ({
     : 0,
 });
 
+const normalizeTermPayload = (payload = {}, id = '') => ({
+  ...payload,
+  id: String(payload.id || id),
+  required: Boolean(payload.required),
+  enabled: payload.enabled !== false,
+  archived: Boolean(payload.archived),
+  currentVersion: Math.max(1, Number(payload.currentVersion) || 1),
+  displayOrder: Number.isFinite(Number(payload.displayOrder)) ? Number(payload.displayOrder) : 0,
+});
+
 const toActiveTermSnapshot = (term) => ({
   id: term.id,
   title: term.title,
@@ -81,7 +97,7 @@ const toActiveTermSnapshot = (term) => ({
 });
 
 const formatDateParts = (value) => {
-  const date = value?.toDate?.();
+  const date = value?.toDate?.() || (value instanceof Date ? value : null);
   if (!date) return { date: '-', time: '' };
   return {
     date: date.toLocaleDateString('ko-KR'),
@@ -103,6 +119,7 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
     }
   };
   const [terms, setTerms] = useState([]);
+  const [termsPolicy, setTermsPolicy] = useState(() => normalizeTermsPolicy({}));
   const [ready, setReady] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [query, setQuery] = useState('');
@@ -113,6 +130,42 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
   const [actionId, setActionId] = useState('');
 
   useEffect(() => {
+    const config = readPolicyContentCutoverConfig();
+    if (config.adminAuthorityRequested) {
+      let cancelled = false;
+      const load = async () => {
+        try {
+          const content = await requestPolicyContentDomain({
+            domain: POLICY_CONTENT_DOMAINS.TERMS,
+            config,
+            useCache: false,
+          });
+          if (cancelled) return;
+          const policyDocument = content.documents.find((item) => item.key === 'signupTermsPolicy/current');
+          const nextTerms = content.documents
+            .filter((item) => item.key.startsWith('signupTerms/'))
+            .map((item) => normalizeTermPayload(item.payload, item.key.split('/').pop()))
+            .sort((a, b) => a.displayOrder - b.displayOrder || a.title.localeCompare(b.title, 'ko'));
+          setTerms(nextTerms);
+          setTermsPolicy(normalizeTermsPolicy(policyDocument?.payload || {}));
+          setReady(true);
+          setErrorMessage('');
+        } catch (error) {
+          if (cancelled) return;
+          console.error('Signup terms PostgreSQL admin list error:', error);
+          setReady(true);
+          setErrorMessage('이용약관 목록을 PostgreSQL에서 불러오지 못했습니다.');
+        }
+      };
+      void load();
+      const unsubscribe = subscribeSiteContentInvalidation((detail) => {
+        if (detail?.domain === POLICY_CONTENT_DOMAINS.TERMS || detail?.domain === 'all') void load();
+      });
+      return () => {
+        cancelled = true;
+        unsubscribe();
+      };
+    }
     const unsubscribe = onSnapshot(
       firestoreQuery(SIGNUP_TERMS_COLLECTION_REF, limit(100)),
       (snapshot) => {
@@ -132,6 +185,39 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
     );
     return unsubscribe;
   }, []);
+
+  const replaceTermsDomain = async ({ nextTerms, nextPolicy }) => {
+    const normalizedPolicy = normalizeTermsPolicy(nextPolicy);
+    await replacePolicyContentDomainInPostgresql({
+      domain: POLICY_CONTENT_DOMAINS.TERMS,
+      config: readPolicyContentCutoverConfig(),
+      documents: [
+        { key: 'signupTermsPolicy/current', payload: normalizedPolicy, enabled: normalizedPolicy.enabled },
+        ...nextTerms.map((term) => ({
+          key: `signupTerms/${term.id}`,
+          payload: term,
+          enabled: term.enabled !== false && !term.archived,
+          sortOrder: term.displayOrder,
+        })),
+      ],
+    });
+    setTerms(nextTerms.slice().sort((a, b) => a.displayOrder - b.displayOrder || a.title.localeCompare(b.title, 'ko')));
+    setTermsPolicy(normalizedPolicy);
+  };
+
+  const createNextPolicy = ({ nextTerms, revisionIncrement = 1, requireReconsent = false }) => {
+    const revision = termsPolicy.revision + revisionIncrement;
+    return normalizeTermsPolicy({
+      ...termsPolicy,
+      revision,
+      requiredRevision: requireReconsent && termsPolicy.enabled
+        ? revision
+        : termsPolicy.requiredRevision,
+      activeTerms: nextTerms
+        .filter((term) => term.enabled && !term.archived)
+        .map(toActiveTermSnapshot),
+    });
+  };
 
   const filteredTerms = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -187,6 +273,46 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
       const contentHash = await createTermsContentHash(
         `${title}\n${form.required ? 'required' : 'optional'}\n${contentHtml}`
       );
+      if (readPolicyContentCutoverConfig().adminAuthorityRequested) {
+        const id = form.id || createSiteContentDocumentId();
+        const previous = terms.find((term) => term.id === id) || null;
+        const semanticChanged = !previous || previous.title !== title ||
+          Boolean(previous.required) !== Boolean(form.required) || previous.contentHash !== contentHash;
+        const wasActive = Boolean(previous?.enabled) && !previous?.archived;
+        const willBeActive = Boolean(form.enabled);
+        const activePolicyChanged = (wasActive || willBeActive) && (semanticChanged || wasActive !== willBeActive);
+        const now = new Date();
+        const nextTerm = normalizeTermPayload({
+          ...previous,
+          id,
+          title,
+          required: Boolean(form.required),
+          enabled: willBeActive,
+          archived: false,
+          displayOrder: Number.isFinite(Number(form.displayOrder)) ? Number(form.displayOrder) : terms.length,
+          currentVersion: semanticChanged ? Math.max(0, Number(previous?.currentVersion) || 0) + 1 : previous?.currentVersion,
+          currentVersionId: semanticChanged ? createSiteContentDocumentId() : previous?.currentVersionId || '',
+          contentHtml,
+          contentText,
+          contentHash,
+          changeNote: form.changeNote.trim(),
+          createdAt: previous?.createdAt || now,
+          createdBy: previous?.createdBy || 'clerk-admin',
+          updatedAt: now,
+          updatedBy: 'clerk-admin',
+        }, id);
+        const nextTerms = [...terms.filter((term) => term.id !== id), nextTerm];
+        const nextPolicy = createNextPolicy({
+          nextTerms,
+          revisionIncrement: activePolicyChanged ? 1 : 0,
+          requireReconsent: Boolean(form.requireReconsent) && activePolicyChanged,
+        });
+        await replaceTermsDomain({ nextTerms, nextPolicy });
+        setDialogOpen(false);
+        setForm(createEmptyForm());
+        triggerToast(form.id ? '이용약관의 새 버전을 저장했습니다.' : '이용약관을 등록했습니다.', 'success');
+        return;
+      }
       const termRef = form.id
         ? doc(SIGNUP_TERMS_COLLECTION_REF, form.id)
         : doc(SIGNUP_TERMS_COLLECTION_REF);
@@ -342,6 +468,21 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
 
     setActionId(term.id);
     try {
+      if (readPolicyContentCutoverConfig().adminAuthorityRequested) {
+        const now = new Date();
+        const nextTerms = terms.map((item) => item.id === term.id
+          ? normalizeTermPayload({ ...item, enabled, archived: false, updatedAt: now, updatedBy: 'clerk-admin' }, item.id)
+          : item);
+        await replaceTermsDomain({
+          nextTerms,
+          nextPolicy: createNextPolicy({
+            nextTerms,
+            requireReconsent: enabled && termsPolicy.requireReconsentOnChange,
+          }),
+        });
+        triggerToast(enabled ? '약관을 사용으로 전환했습니다.' : '약관을 사용하지 않도록 변경했습니다.', 'success');
+        return;
+      }
       const adminUid = firebaseAuth.currentUser?.uid || '';
       await runTransaction(db, async (transaction) => {
         const [termSnapshot, policySnapshot, publicConfigSnapshot] = await Promise.all([
@@ -399,6 +540,15 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
   const executeArchiveTerm = async (term) => {
     setActionId(term.id);
     try {
+      if (readPolicyContentCutoverConfig().adminAuthorityRequested) {
+        const now = new Date();
+        const nextTerms = terms.map((item) => item.id === term.id
+          ? normalizeTermPayload({ ...item, enabled: false, archived: true, updatedAt: now, updatedBy: 'clerk-admin' }, item.id)
+          : item);
+        await replaceTermsDomain({ nextTerms, nextPolicy: createNextPolicy({ nextTerms }) });
+        triggerToast('약관을 보관했습니다.', 'success');
+        return;
+      }
       const adminUid = firebaseAuth.currentUser?.uid || '';
       await runTransaction(db, async (transaction) => {
         const [policySnapshot, publicConfigSnapshot] = await Promise.all([
@@ -458,6 +608,18 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
     const target = terms[targetIndex];
     setActionId(termId);
     try {
+      if (readPolicyContentCutoverConfig().adminAuthorityRequested) {
+        const nextTerms = terms.map((item) => item.id === current.id
+          ? { ...item, displayOrder: target.displayOrder, updatedAt: new Date() }
+          : item.id === target.id
+            ? { ...item, displayOrder: current.displayOrder, updatedAt: new Date() }
+            : item);
+        await replaceTermsDomain({
+          nextTerms,
+          nextPolicy: createNextPolicy({ nextTerms, revisionIncrement: 0 }),
+        });
+        return;
+      }
       const policySnapshot = await getDoc(SIGNUP_TERMS_POLICY_DOC_REF);
       const policy = normalizeTermsPolicy(policySnapshot.exists() ? policySnapshot.data() : {});
       const batch = writeBatch(db);
