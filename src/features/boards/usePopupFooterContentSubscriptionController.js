@@ -6,21 +6,6 @@ import {
   useState,
 } from 'react';
 import {
-  getDoc,
-  getDocs,
-  getDocsFromServer,
-  limit,
-  onSnapshot,
-  query as firestoreQuery,
-  where,
-} from '../../platform/retiredLegacyDataCompat.js';
-
-import {
-  FOOTER_PAGES_COLLECTION_REF,
-  POPUP_POSTS_COLLECTION_REF,
-  SITE_FOOTER_CONFIG_DOC_REF,
-} from '../../platform/appDataRefs.js';
-import {
   legacyTextToRichHtml,
 } from '../../utils/richTextCore.js';
 import {
@@ -36,7 +21,6 @@ import {
   sanitizeFooterCommonHtml,
 } from './useAdminFooterContentController.js';
 import {
-  readSiteContentCutoverConfig,
   publishSiteContentObservation,
   requestSiteContentDomain,
   SITE_CONTENT_DOMAINS,
@@ -190,10 +174,7 @@ export default function usePopupFooterContentSubscriptionController({
       isAdminAuthenticated && view === 'admin' && adminTab === 'popupPosts';
     const shouldLoadUserPopup =
       view === 'user' &&
-      (
-        userTab === 'home' ||
-        (userTab === 'rental' && Boolean(firebaseAuthUser))
-      );
+      (userTab === 'home' || (userTab === 'rental' && Boolean(firebaseAuthUser)));
     const shouldLoadPopup = shouldLoadAdminPopup || shouldLoadUserPopup;
 
     if (!shouldLoadPopup) {
@@ -205,163 +186,60 @@ export default function usePopupFooterContentSubscriptionController({
 
     setPopupPostsReady(false);
     setPopupPostsLoadErrorMessage('');
+    let cancelled = false;
 
-    const popupSource = shouldLoadAdminPopup
-      ? POPUP_POSTS_COLLECTION_REF
-      : firestoreQuery(
-          POPUP_POSTS_COLLECTION_REF,
-          where('enabled', '==', true),
-          limit(50)
-        );
-
-    const applyPopupSnapshot = (snapshot) => {
-      const remotePosts = snapshot.docs
-        .map((popupDoc) => ({
-          ...popupDoc.data(),
-          id: popupDoc.id,
-        }))
-        .sort((first, second) => {
-          const firstOrder = Number(first.sortOrder);
-          const secondOrder = Number(second.sortOrder);
-          const firstHasOrder = Number.isFinite(firstOrder) && firstOrder > 0;
-          const secondHasOrder =
-            Number.isFinite(secondOrder) && secondOrder > 0;
-
-          if (
-            firstHasOrder &&
-            secondHasOrder &&
-            firstOrder !== secondOrder
-          ) {
-            return firstOrder - secondOrder;
-          }
-          if (firstHasOrder !== secondHasOrder) {
-            return firstHasOrder ? -1 : 1;
-          }
-
-          return (
-            getPopupDateMillis(second.createdAt) -
-            getPopupDateMillis(first.createdAt)
-          );
+    const load = async () => {
+      try {
+        const content = await requestSiteContentDomain({
+          domain: SITE_CONTENT_DOMAINS.POPUP,
+          useCache: false,
         });
-
-      setPopupPosts(remotePosts);
-      setPopupPostsLoadErrorMessage('');
-      setPopupPostsReady(true);
-    };
-
-    const handlePopupLoadError = (error) => {
-      const message =
-        '팝업을 불러오지 못했습니다. Firestore Rules의 popupPosts 읽기 권한을 확인해 주세요.';
-
-      console.error('Popup posts load error:', error);
-      setPopupPosts([]);
-      setPopupPostsLoadErrorMessage(message);
-      setPopupPostsReady(true);
-
-      if (shouldLoadAdminPopup) {
-        triggerToastRef.current?.(message, 'error');
+        const remotePosts = content.documents
+          .filter((item) => item.key.startsWith('popupPosts/') && (
+            shouldLoadAdminPopup || (item.enabled !== false && item.payload?.enabled !== false)
+          ))
+          .map((item) => ({
+            ...item.payload,
+            id: item.payload?.id || item.key.split('/').pop(),
+            enabled: typeof item.enabled === 'boolean' ? item.enabled : item.payload?.enabled !== false,
+            sortOrder: Number.isFinite(Number(item.sortOrder)) ? Number(item.sortOrder) : item.payload?.sortOrder,
+            __publicVisibility: item.publicVisibility || null,
+          }))
+          .sort((first, second) => {
+            const firstOrder = Number(first.sortOrder);
+            const secondOrder = Number(second.sortOrder);
+            const firstHasOrder = Number.isFinite(firstOrder) && firstOrder > 0;
+            const secondHasOrder = Number.isFinite(secondOrder) && secondOrder > 0;
+            if (firstHasOrder && secondHasOrder && firstOrder !== secondOrder) return firstOrder - secondOrder;
+            if (firstHasOrder !== secondHasOrder) return firstHasOrder ? -1 : 1;
+            return getPopupDateMillis(second.createdAt) - getPopupDateMillis(first.createdAt);
+          });
+        if (cancelled) return;
+        publishSiteContentObservation({
+          readRequested: true,
+          domain: SITE_CONTENT_DOMAINS.POPUP,
+          readSource: 'postgresql',
+          documentCount: content.documents.length,
+          popupPostCount: remotePosts.length,
+          popupActiveCount: remotePosts.filter((post) => getPopupDisplayStatus(post, Date.now()).key === 'active').length,
+          error: null,
+        });
+        setPopupPosts(remotePosts);
+        setPopupPostsLoadErrorMessage('');
+        setPopupPostsReady(true);
+      } catch (error) {
+        if (cancelled) return;
+        const message = '팝업을 PostgreSQL에서 불러오지 못했습니다.';
+        console.error('PostgreSQL popup authority read error:', error);
+        setPopupPosts([]);
+        setPopupPostsLoadErrorMessage(message);
+        setPopupPostsReady(true);
+        if (shouldLoadAdminPopup) triggerToastRef.current?.(message, 'error');
       }
     };
 
-    const popupCutover = readSiteContentCutoverConfig();
-    if (shouldLoadAdminPopup ? popupCutover.adminAuthorityRequested : popupCutover.readRequested) {
-      let cancelled = false;
-      const cutover = popupCutover;
-
-      const load = async () => {
-        if (shouldLoadAdminPopup ? cutover.adminAuthorityRequested : cutover.readRequested) {
-          try {
-            const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.POPUP, config: cutover });
-            const postgresPosts = content.documents
-              .filter((item) => item.key.startsWith('popupPosts/') && (
-                shouldLoadAdminPopup || (item.enabled !== false && item.payload?.enabled !== false)
-              ))
-              .map((item) => ({
-                ...item.payload,
-                id: item.payload?.id || item.key.split('/').pop(),
-                enabled: typeof item.enabled === 'boolean' ? item.enabled : item.payload?.enabled !== false,
-                sortOrder: Number.isFinite(Number(item.sortOrder)) ? Number(item.sortOrder) : item.payload?.sortOrder,
-                __publicVisibility: item.publicVisibility || null,
-              }));
-            let sourcePosts = postgresPosts;
-            if (!(shouldLoadAdminPopup ? cutover.adminAuthorityRequested : cutover.authorityRequested)) {
-              const firestoreSnapshot = await getDocsFromServer(popupSource);
-              const firestorePosts = firestoreSnapshot.docs.map((popupDoc) => ({ ...popupDoc.data(), id: popupDoc.id }));
-              const postgresSignature = postgresPosts
-                .map((item) => `${String(item.id || '')}:${getPopupDateMillis(item.updatedAt)}`)
-                .sort()
-                .join('|');
-              const firestoreSignature = firestorePosts
-                .map((item) => `${String(item.id || '')}:${getPopupDateMillis(item.updatedAt)}`)
-                .sort()
-                .join('|');
-              sourcePosts = postgresSignature === firestoreSignature ? postgresPosts : firestorePosts;
-              if (postgresSignature !== firestoreSignature) {
-                publishSiteContentObservation({
-                  readRequested: true,
-                  domain: SITE_CONTENT_DOMAINS.POPUP,
-                  readSource: 'firestore-parity-fallback',
-                  documentCount: content.documents.length,
-                  postgresDocumentCount: postgresPosts.length,
-                  firestoreDocumentCount: firestorePosts.length,
-                  error: 'site_content_popup_parity_mismatch',
-                });
-              }
-            }
-            if (cancelled) return;
-            const remotePosts = sourcePosts.sort((first, second) => {
-              const firstOrder = Number(first.sortOrder);
-              const secondOrder = Number(second.sortOrder);
-              const firstHasOrder = Number.isFinite(firstOrder) && firstOrder > 0;
-              const secondHasOrder = Number.isFinite(secondOrder) && secondOrder > 0;
-              if (firstHasOrder && secondHasOrder && firstOrder !== secondOrder) return firstOrder - secondOrder;
-              if (firstHasOrder !== secondHasOrder) return firstHasOrder ? -1 : 1;
-              return getPopupDateMillis(second.createdAt) - getPopupDateMillis(first.createdAt);
-            });
-            if (shouldLoadAdminPopup ? cutover.adminAuthorityRequested : cutover.authorityRequested) {
-              publishSiteContentObservation({
-                readRequested: true,
-                domain: SITE_CONTENT_DOMAINS.POPUP,
-                readSource: 'postgresql',
-                documentCount: content.documents.length,
-                popupPostCount: remotePosts.length,
-                popupActiveCount: remotePosts.filter((post) => getPopupDisplayStatus(post, Date.now()).key === 'active').length,
-                error: null,
-              });
-            }
-            setPopupPosts(remotePosts);
-            setPopupPostsLoadErrorMessage('');
-            setPopupPostsReady(true);
-            return;
-          } catch (postgresError) {
-            if (shouldLoadAdminPopup ? cutover.adminAuthorityRequested : cutover.authorityRequested) {
-              if (!cancelled) {
-                console.error('PostgreSQL popup authority read error:', postgresError);
-                setPopupPosts([]);
-                setPopupPostsLoadErrorMessage('팝업을 PostgreSQL에서 불러오지 못했습니다.');
-                setPopupPostsReady(true);
-              }
-              return;
-            }
-            console.warn('PostgreSQL popup read fallback:', postgresError);
-          }
-        }
-        try {
-          const snapshot = await getDocs(popupSource);
-          if (!cancelled) applyPopupSnapshot(snapshot);
-        } catch (error) {
-          if (!cancelled) handlePopupLoadError(error);
-        }
-      };
-      void load();
-      return () => { cancelled = true; };
-    }
-
-    return onSnapshot(
-      popupSource,
-      applyPopupSnapshot,
-      handlePopupLoadError
-    );
+    void load();
+    return () => { cancelled = true; };
   }, [
     adminTab,
     firebaseAuthUser?.uid,
@@ -375,12 +253,9 @@ export default function usePopupFooterContentSubscriptionController({
   ]);
 
   useEffect(() => {
-    const shouldLoadUserFooter = view === 'user';
     const shouldLoadAdminFooter =
-      isAdminAuthenticated &&
-      view === 'admin' &&
-      adminTab === 'footerManagement';
-    const shouldLoadFooter = shouldLoadUserFooter || shouldLoadAdminFooter;
+      isAdminAuthenticated && view === 'admin' && adminTab === 'footerManagement';
+    const shouldLoadFooter = view === 'user' || shouldLoadAdminFooter;
 
     if (!shouldLoadFooter) {
       const defaultFooterConfig = createDefaultFooterConfigDraft();
@@ -393,98 +268,46 @@ export default function usePopupFooterContentSubscriptionController({
 
     setFooterConfigReady(false);
     setFooterConfigLoadErrorMessage('');
+    let cancelled = false;
 
-    const applyFooterConfigSnapshot = (snapshot) => {
-      const remoteData = snapshot.exists() ? snapshot.data() : {};
-      const nextConfig = {
-        enabled: snapshot.exists() ? remoteData.enabled !== false : true,
-        content: remoteData.content || '',
-        contentText: remoteData.contentText || remoteData.content || '',
-        contentHtml: sanitizeFooterCommonHtml(
-          remoteData.contentHtml ||
-            legacyTextToRichHtml(
-              remoteData.contentText || remoteData.content || ''
-            )
-        ),
-        contentFormat: remoteData.contentFormat || 'rich-html-v1',
-        updatedAt: remoteData.updatedAt || null,
-      };
-
-      setFooterConfig(nextConfig);
-      setFooterConfigDraft({
-        enabled: nextConfig.enabled,
-        contentHtml: nextConfig.contentHtml,
-      });
-      setFooterConfigLoadErrorMessage('');
-      setFooterConfigReady(true);
-    };
-
-    const handleFooterConfigError = (error) => {
-      const message =
-        '푸터 공통 정보를 불러오지 못했습니다. Firestore Rules의 siteFooter 읽기 권한을 확인해 주세요.';
-      console.error('Footer config load error:', error);
-      setFooterConfig(createDefaultFooterConfigDraft());
-      setFooterConfigDraft(createDefaultFooterConfigDraft());
-      setFooterConfigLoadErrorMessage(message);
-      setFooterConfigReady(true);
-      if (shouldLoadAdminFooter) {
-        triggerToastRef.current?.(message, 'error');
+    const load = async () => {
+      try {
+        const content = await requestSiteContentDomain({
+          domain: SITE_CONTENT_DOMAINS.FOOTER,
+          useCache: false,
+        });
+        const document = content.documents.find((item) => item.key === 'siteFooter/config');
+        if (!document?.payload) throw Object.assign(new Error('PostgreSQL footer config is missing.'), { code: 'footer_config_postgres_missing' });
+        if (cancelled) return;
+        const remoteData = document.payload;
+        const nextConfig = {
+          enabled: remoteData.enabled !== false,
+          content: remoteData.content || '',
+          contentText: remoteData.contentText || remoteData.content || '',
+          contentHtml: sanitizeFooterCommonHtml(
+            remoteData.contentHtml || legacyTextToRichHtml(remoteData.contentText || remoteData.content || '')
+          ),
+          contentFormat: remoteData.contentFormat || 'rich-html-v1',
+          updatedAt: remoteData.updatedAt || null,
+        };
+        setFooterConfig(nextConfig);
+        setFooterConfigDraft({ enabled: nextConfig.enabled, contentHtml: nextConfig.contentHtml });
+        setFooterConfigLoadErrorMessage('');
+        setFooterConfigReady(true);
+      } catch (error) {
+        if (cancelled) return;
+        const message = '푸터 설정을 PostgreSQL에서 불러오지 못했습니다.';
+        console.error('PostgreSQL footer config authority read error:', error);
+        setFooterConfig(createDefaultFooterConfigDraft());
+        setFooterConfigDraft(createDefaultFooterConfigDraft());
+        setFooterConfigLoadErrorMessage(message);
+        setFooterConfigReady(true);
+        if (shouldLoadAdminFooter) triggerToastRef.current?.(message, 'error');
       }
     };
 
-    const footerConfigCutover = readSiteContentCutoverConfig();
-    if (shouldLoadAdminFooter ? footerConfigCutover.adminAuthorityRequested : footerConfigCutover.readRequested) {
-      let cancelled = false;
-      const cutover = footerConfigCutover;
-      const load = async () => {
-        if (shouldLoadAdminFooter ? cutover.adminAuthorityRequested : cutover.readRequested) {
-          try {
-            const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.FOOTER, config: cutover });
-            const document = content.documents.find((item) => item.key === 'siteFooter/config');
-            if (!document?.payload) throw new Error('PostgreSQL footer config is missing.');
-            if (cancelled) return;
-            const remoteData = document.payload;
-            const nextConfig = {
-              enabled: remoteData.enabled !== false,
-              content: remoteData.content || '',
-              contentText: remoteData.contentText || remoteData.content || '',
-              contentHtml: sanitizeFooterCommonHtml(remoteData.contentHtml || legacyTextToRichHtml(remoteData.contentText || remoteData.content || '')),
-              contentFormat: remoteData.contentFormat || 'rich-html-v1',
-              updatedAt: remoteData.updatedAt || null,
-            };
-            setFooterConfig(nextConfig);
-            setFooterConfigDraft({ enabled: nextConfig.enabled, contentHtml: nextConfig.contentHtml });
-            setFooterConfigLoadErrorMessage('');
-            setFooterConfigReady(true);
-            return;
-          } catch (postgresError) {
-            if (shouldLoadAdminFooter ? cutover.adminAuthorityRequested : cutover.authorityRequested) {
-              if (!cancelled) {
-                console.error('PostgreSQL footer config authority read error:', postgresError);
-                setFooterConfigLoadErrorMessage('푸터 설정을 PostgreSQL에서 불러오지 못했습니다.');
-                setFooterConfigReady(true);
-              }
-              return;
-            }
-            console.warn('PostgreSQL footer config read fallback:', postgresError);
-          }
-        }
-        try {
-          const snapshot = await getDoc(SITE_FOOTER_CONFIG_DOC_REF);
-          if (!cancelled) applyFooterConfigSnapshot(snapshot);
-        } catch (error) {
-          if (!cancelled) handleFooterConfigError(error);
-        }
-      };
-      void load();
-      return () => { cancelled = true; };
-    }
-
-    return onSnapshot(
-      SITE_FOOTER_CONFIG_DOC_REF,
-      applyFooterConfigSnapshot,
-      handleFooterConfigError
-    );
+    void load();
+    return () => { cancelled = true; };
   }, [
     adminTab,
     isAdminAuthenticated,
@@ -497,12 +320,9 @@ export default function usePopupFooterContentSubscriptionController({
   ]);
 
   useEffect(() => {
-    const shouldLoadUserFooter = view === 'user';
     const shouldLoadAdminFooter =
-      isAdminAuthenticated &&
-      view === 'admin' &&
-      adminTab === 'footerManagement';
-    const shouldLoadFooter = shouldLoadUserFooter || shouldLoadAdminFooter;
+      isAdminAuthenticated && view === 'admin' && adminTab === 'footerManagement';
+    const shouldLoadFooter = view === 'user' || shouldLoadAdminFooter;
 
     if (!shouldLoadFooter) {
       setFooterPages([]);
@@ -513,132 +333,46 @@ export default function usePopupFooterContentSubscriptionController({
 
     setFooterPagesReady(false);
     setFooterPagesLoadErrorMessage('');
+    let cancelled = false;
 
-    const footerPagesSource = shouldLoadAdminFooter
-      ? FOOTER_PAGES_COLLECTION_REF
-      : firestoreQuery(
-          FOOTER_PAGES_COLLECTION_REF,
-          where('enabled', '==', true),
-          limit(100)
-        );
-
-    const applyFooterPagesSnapshot = (snapshot) => {
-      const remotePages = snapshot.docs
-        .map((pageDoc) => ({
-          ...pageDoc.data(),
-          id: pageDoc.id,
-        }))
-        .sort((first, second) => {
-          const orderDifference =
-            (Number(first.sortOrder) || 0) -
-            (Number(second.sortOrder) || 0);
-          if (orderDifference !== 0) return orderDifference;
-
-          const createdDifference =
-            getFirestoreTimestampMillis(first.createdAt) -
-            getFirestoreTimestampMillis(second.createdAt);
-          if (createdDifference !== 0) return createdDifference;
-
-          return String(first.id || '').localeCompare(
-            String(second.id || '')
-          );
+    const load = async () => {
+      try {
+        const content = await requestSiteContentDomain({
+          domain: SITE_CONTENT_DOMAINS.FOOTER,
+          useCache: false,
         });
-
-      setFooterPages(remotePages);
-      setFooterPagesLoadErrorMessage('');
-      setFooterPagesReady(true);
-    };
-
-    const handleFooterPagesError = (error) => {
-      const message =
-        '푸터 메뉴 페이지를 불러오지 못했습니다. Firestore Rules의 footerPages 읽기 권한을 확인해 주세요.';
-      console.error('Footer pages load error:', error);
-      setFooterPages([]);
-      setFooterPagesLoadErrorMessage(message);
-      setFooterPagesReady(true);
-      if (shouldLoadAdminFooter) {
-        triggerToastRef.current?.(message, 'error');
+        const remotePages = content.documents
+          .filter((item) => item.key.startsWith('footerPages/') && (
+            shouldLoadAdminFooter || item.payload?.enabled !== false
+          ))
+          .map((item) => ({
+            ...item.payload,
+            id: item.payload?.id || item.key.split('/').pop(),
+          }))
+          .sort((first, second) => {
+            const orderDifference = (Number(first.sortOrder) || 0) - (Number(second.sortOrder) || 0);
+            if (orderDifference !== 0) return orderDifference;
+            const createdDifference = getFirestoreTimestampMillis(first.createdAt) - getFirestoreTimestampMillis(second.createdAt);
+            if (createdDifference !== 0) return createdDifference;
+            return String(first.id || '').localeCompare(String(second.id || ''));
+          });
+        if (cancelled) return;
+        setFooterPages(remotePages);
+        setFooterPagesLoadErrorMessage('');
+        setFooterPagesReady(true);
+      } catch (error) {
+        if (cancelled) return;
+        const message = '푸터 메뉴를 PostgreSQL에서 불러오지 못했습니다.';
+        console.error('PostgreSQL footer pages authority read error:', error);
+        setFooterPages([]);
+        setFooterPagesLoadErrorMessage(message);
+        setFooterPagesReady(true);
+        if (shouldLoadAdminFooter) triggerToastRef.current?.(message, 'error');
       }
     };
 
-    const footerPagesCutover = readSiteContentCutoverConfig();
-    if (shouldLoadAdminFooter ? footerPagesCutover.adminAuthorityRequested : footerPagesCutover.readRequested) {
-      let cancelled = false;
-      const cutover = footerPagesCutover;
-      const load = async () => {
-        if (shouldLoadAdminFooter ? cutover.adminAuthorityRequested : cutover.readRequested) {
-          try {
-            const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.FOOTER, config: cutover });
-            const postgresPages = content.documents
-              .filter((item) => item.key.startsWith('footerPages/') && (
-                shouldLoadAdminFooter || item.payload?.enabled !== false
-              ))
-              .map((item) => ({ ...item.payload, id: item.payload?.id || item.key.split('/').pop() }));
-            let sourcePages = postgresPages;
-            if (!(shouldLoadAdminFooter ? cutover.adminAuthorityRequested : cutover.authorityRequested)) {
-              const firestoreSnapshot = await getDocsFromServer(footerPagesSource);
-              const firestorePages = firestoreSnapshot.docs.map((pageDoc) => ({ ...pageDoc.data(), id: pageDoc.id }));
-              const signatureFor = (pages) => pages
-                .map((item) => `${String(item.id || '')}:${getFirestoreTimestampMillis(item.updatedAt)}`)
-                .sort()
-                .join('|');
-              const postgresSignature = signatureFor(postgresPages);
-              const firestoreSignature = signatureFor(firestorePages);
-              const parityMatched = postgresSignature === firestoreSignature;
-              sourcePages = parityMatched ? postgresPages : firestorePages;
-              if (!parityMatched) {
-                publishSiteContentObservation({
-                  readRequested: true,
-                  domain: SITE_CONTENT_DOMAINS.FOOTER,
-                  readSource: 'firestore-parity-fallback',
-                  documentCount: content.documents.length,
-                  postgresDocumentCount: postgresPages.length,
-                  firestoreDocumentCount: firestorePages.length,
-                  error: 'site_content_footer_parity_mismatch',
-                });
-              }
-            }
-            if (cancelled) return;
-            const remotePages = sourcePages.sort((first, second) => {
-              const orderDifference = (Number(first.sortOrder) || 0) - (Number(second.sortOrder) || 0);
-              if (orderDifference !== 0) return orderDifference;
-              const createdDifference = getFirestoreTimestampMillis(first.createdAt) - getFirestoreTimestampMillis(second.createdAt);
-              if (createdDifference !== 0) return createdDifference;
-              return String(first.id || '').localeCompare(String(second.id || ''));
-            });
-            setFooterPages(remotePages);
-            setFooterPagesLoadErrorMessage('');
-            setFooterPagesReady(true);
-            return;
-          } catch (postgresError) {
-            if (shouldLoadAdminFooter ? cutover.adminAuthorityRequested : cutover.authorityRequested) {
-              if (!cancelled) {
-                console.error('PostgreSQL footer pages authority read error:', postgresError);
-                setFooterPages([]);
-                setFooterPagesLoadErrorMessage('푸터 메뉴를 PostgreSQL에서 불러오지 못했습니다.');
-                setFooterPagesReady(true);
-              }
-              return;
-            }
-            console.warn('PostgreSQL footer pages read fallback:', postgresError);
-          }
-        }
-        try {
-          const snapshot = await getDocs(footerPagesSource);
-          if (!cancelled) applyFooterPagesSnapshot(snapshot);
-        } catch (error) {
-          if (!cancelled) handleFooterPagesError(error);
-        }
-      };
-      void load();
-      return () => { cancelled = true; };
-    }
-
-    return onSnapshot(
-      footerPagesSource,
-      applyFooterPagesSnapshot,
-      handleFooterPagesError
-    );
+    void load();
+    return () => { cancelled = true; };
   }, [
     adminTab,
     isAdminAuthenticated,

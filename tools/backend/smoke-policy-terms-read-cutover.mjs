@@ -5,23 +5,35 @@ import { createSiteContentService } from '../../server/src/content/site-content-
 const stored = new Map();
 const repository = {
   async getDomain(domain) { return stored.get(domain) || null; },
-  async replaceDomain({ domain, documents, actorClerkUserId }) {
-    const value = { domain, source: 'postgresql', synchronized: true, authoritative: false, sourceMode: 'firestore-write-through', documentCount: documents.length, documents, actorClerkUserId };
+  async getRentalConfigBootstrapContext() {
+    return { assetCategories: ['노트북'], teams: ['개발팀'], memberDirectoryVersion: 2, memberDirectoryEntryCount: 1, termsPolicy: {} };
+  },
+  async replaceDomain({ domain, documents, actorClerkUserId, sourceMode = 'postgresql-admin-direct' }) {
+    const value = { domain, source: 'postgresql', authoritative: true, synchronized: true, sourceMode, documentCount: documents.length, documents, actorClerkUserId };
     stored.set(domain, value);
     return value;
   },
 };
 const service = createSiteContentService({ repository });
-for (const domain of ['rental-config', 'terms']) {
-  const synced = await service.syncDomain({ domain, documents: [{ key: `${domain}/doc`, payload: { ok: true } }], actorClerkUserId: 'user_admin' });
-  assert.equal(synced.source, 'postgresql');
-  assert.equal((await service.getDomain(domain)).documentCount, 1);
+
+const rentalConfig = await service.getDomain('rental-config');
+assert.equal(rentalConfig.source, 'postgresql');
+assert.equal(rentalConfig.documents[0].key, 'rentalSystem/publicConfig');
+assert.equal(rentalConfig.sourceMode, 'postgresql-self-heal');
+
+const terms = await service.replaceAdminDomain({
+  domain: 'terms',
+  documents: [{ key: 'signupTermsPolicy/current', payload: { enabled: true, revision: 2 } }],
+  actorClerkUserId: 'user_admin',
+});
+assert.equal(terms.source, 'postgresql');
+assert.equal(terms.sourceMode, 'postgresql-admin-direct');
+assert.equal((await service.getDomain('terms')).documentCount, 1);
+
+const migration = readFileSync('server/migrations/026_phase34_rental_config_postgresql_bootstrap.sql', 'utf8');
+for (const marker of ["'rental-config'", "'rentalSystem/publicConfig'", "'postgresql-self-heal'", 'phase34_rental_config_postgresql_bootstrap']) {
+  assert.ok(migration.includes(marker), `missing Phase 34 rental-config migration marker: ${marker}`);
 }
-let invalid = null;
-try { await service.syncDomain({ domain: 'notice', documents: [] }); } catch (error) { invalid = error; }
-assert.equal(invalid?.code, 'site_content_domain_invalid');
-const migration = readFileSync('server/migrations/017_phase25_policy_terms_read_cutover.sql', 'utf8');
-for (const marker of ["'phase', 25", "'transaction_authority', 'firestore-preserved'", "'terms_consent_state', 'firestore-authoritative'", "'admin_post_login_route', 'stabilized'"]) {
-  assert.ok(migration.includes(marker), `missing Phase 25 migration marker: ${marker}`);
-}
-console.log('[policy-terms-backend-smoke] PASS (rental-config/terms PostgreSQL sync domains + Firestore transaction authority preservation)');
+assert.equal(migration.includes('firestore.googleapis.com'), false);
+
+console.log('[policy-terms-backend-smoke] PASS (Phase 34 PostgreSQL rental-config self-heal + terms authority)');

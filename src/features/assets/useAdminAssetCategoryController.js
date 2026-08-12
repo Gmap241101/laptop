@@ -278,10 +278,8 @@ export default function useAdminAssetCategoryController({
 
     if (assetCutoverConfig.writeRequested) {
       try {
-        const firebaseUser = firebaseAuth.currentUser;
-        if (!firebaseUser) throw new Error('firebase-admin-session-missing');
         const payload = await clerkStagingClient.saveAdminAssetCategories(
-          await firebaseUser.getIdToken(),
+          '',
           nextAssetCategories,
           tempAssetCategoryRenameMap
         );

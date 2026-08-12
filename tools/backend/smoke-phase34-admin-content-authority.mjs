@@ -35,7 +35,7 @@ const [app, repositorySource, serviceSource] = await Promise.all([
 for (const marker of ["request.method === 'PUT'", 'adminSiteContentDirectMatch', 'adminClerkAuthService.getCurrent', 'replaceAdminDomain', "authority: 'postgresql'", "sourceMode: 'postgresql-admin-direct'"]) {
   assert.ok(app.includes(marker), `backend direct authority marker: ${marker}`);
 }
-assert.ok(repositorySource.includes('sourceMode = \'firestore-write-through\''));
+assert.ok(repositorySource.includes("sourceMode = 'postgresql-admin-direct'"));
 assert.ok(repositorySource.includes('normalizedSourceMode'));
 assert.ok(serviceSource.includes("sourceMode: 'postgresql-admin-direct'"));
 console.log('[phase34-admin-content-authority-backend-smoke] PASS (Clerk-admin direct PostgreSQL full-domain replacement)');

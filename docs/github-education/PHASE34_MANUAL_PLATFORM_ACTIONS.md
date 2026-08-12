@@ -16,7 +16,7 @@ Do not modify `gh-pages`, Production Clerk, DNS, or `https://notebook.recruit.kr
 
 1. Deploy the Phase 34 full source package to the Staging source branch/worktree.
 2. Deploy Heroku Staging backend.
-3. Run PostgreSQL migrations and confirm migration `025_phase34_hard_firebase_retirement.sql` succeeds.
+3. Run PostgreSQL migrations and confirm migration `025_phase34_hard_firebase_retirement.sql` is already applied and migration `026_phase34_rental_config_postgresql_bootstrap.sql` succeeds.
 4. Confirm Heroku root/health reports Phase 34 runtime authority and `firebaseRuntime: retired`.
 5. Deploy Vercel Staging frontend from `gh-pages-3`.
 6. Confirm the diagnostics runtime revision is `phase34-firebase-free-runtime-authority-20260812-1500`.
@@ -83,3 +83,35 @@ No Firebase Console action is required to deploy this package. Do not delete the
 ## PASS rule
 
 Phase 34 becomes the confirmed baseline only after the complete Staging matrix passes with zero Firebase runtime network requests. Production promotion remains a separate, explicitly approved step.
+
+## Phase 34 rental-config PostgreSQL canonical bootstrap hotfix (2026-08-12 16:00 KST)
+
+### Why this hotfix is required
+Phase 34 removed the legacy Firebase/Firestore bootstrap path, but migration 025 did not guarantee that the PostgreSQL site-content domain `rental-config` contained the canonical `rentalSystem/publicConfig` document. A Staging database that had not previously synchronized that domain therefore returned `site_content_not_synchronized`/missing-document semantics to the public frontend.
+
+### Backend/data fix
+- Apply `server/migrations/026_phase34_rental_config_postgresql_bootstrap.sql`.
+- The migration creates the canonical PostgreSQL document only when it is missing and refreshes `app_site_content_syncs` to `source_mode=postgresql-self-heal`.
+- The public site-content repository also performs the same PostgreSQL-only self-heal at read time if the sync row or canonical document is missing. This prevents a single missing migration/data row from taking the site down.
+- No Firebase/Firestore fallback is used.
+
+### Canonical bootstrap sources
+The generated policy is built only from PostgreSQL state: asset categories, member-directory teams/version/count, and the existing PostgreSQL terms policy. Operational policy defaults are conservative (admin approval enabled; member-directory signup restriction enabled when the PostgreSQL directory contains members).
+
+### Required Staging order
+1. Deploy the new package to the Staging source branch.
+2. Deploy Heroku Staging; the release command must apply migration 026.
+3. Confirm the root JSON shows `phase34PolicyBootstrapRevision=phase34-rental-config-postgresql-bootstrap-hotfix-20260812-1545`.
+4. Confirm `GET /api/site-content/rental-config` returns `source=postgresql` and includes document key `rentalSystem/publicConfig`.
+5. Deploy/redeploy Vercel Staging.
+6. Open the plain user URL. No diagnostics/bootstrap button should be required.
+
+### Expected behavior
+- The message `공개 설정을 PostgreSQL에서 불러오지 못했습니다` must no longer appear when the canonical row was previously missing.
+- Home banners, popup/footer and signup terms use PostgreSQL-only reads; their Firestore parity/fallback code was removed from these runtime paths.
+- Administrator asset bulk upload no longer requires a Firebase administrator session or Firebase ID token.
+
+### Asset authority hardening in this hotfix
+- Administrator asset create/edit/delete/category-save no longer depend on `firebaseAuth.currentUser` or a Firebase ID token.
+- The backend asset service is PostgreSQL-only and has no Firestore mirror client/bootstrap branch.
+- Validate normal asset CRUD, category save, and bulk upload after deployment.

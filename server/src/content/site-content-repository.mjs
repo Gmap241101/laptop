@@ -1,3 +1,4 @@
+import { createRentalConfigBootstrapDocument } from './rental-config-bootstrap.mjs';
 import { createHash } from 'node:crypto';
 
 const stable = (value) => {
@@ -17,6 +18,36 @@ const mapRow = (row) => ({
 });
 
 export const createSiteContentRepository = (pool) => Object.freeze({
+
+  async getRentalConfigBootstrapContext() {
+    const [categoryResult, teamResult, directoryStateResult, directoryCountResult, termsPolicyResult] = await Promise.all([
+      pool.query(`SELECT name FROM app_asset_categories ORDER BY sort_order, id`),
+      pool.query(`
+        SELECT team
+          FROM (
+            SELECT DISTINCT trim(team) AS team
+              FROM app_member_directory_entries
+             WHERE enabled = TRUE AND trim(team) <> ''
+            UNION
+            SELECT DISTINCT trim(team) AS team
+              FROM app_member_accounts
+             WHERE status <> 'retired' AND trim(team) <> ''
+          ) source
+         ORDER BY team
+      `),
+      pool.query(`SELECT value FROM app_runtime_metadata WHERE key='phase31_member_directory_bootstrap' LIMIT 1`),
+      pool.query(`SELECT COUNT(*)::bigint AS count FROM app_member_directory_entries WHERE enabled=TRUE`),
+      pool.query(`SELECT payload FROM app_site_content_documents WHERE domain='terms' AND document_key='signupTermsPolicy/current' LIMIT 1`),
+    ]);
+    return Object.freeze({
+      assetCategories: categoryResult.rows.map((row) => row.name).filter(Boolean),
+      teams: teamResult.rows.map((row) => row.team).filter(Boolean),
+      memberDirectoryVersion: Number(directoryStateResult.rows[0]?.value?.version || 0),
+      memberDirectoryEntryCount: Number(directoryCountResult.rows[0]?.count || 0),
+      termsPolicy: termsPolicyResult.rows[0]?.payload || {},
+    });
+  },
+
   async getDomain(domain) {
     const syncResult = await pool.query(
       `SELECT domain, source_hash, document_count, source_mode, synced_at
@@ -24,7 +55,16 @@ export const createSiteContentRepository = (pool) => Object.freeze({
         WHERE domain = $1`,
       [domain],
     );
-    if (syncResult.rowCount === 0) return null;
+    if (syncResult.rowCount === 0) {
+      if (domain !== 'rental-config') return null;
+      const context = await this.getRentalConfigBootstrapContext();
+      return this.replaceDomain({
+        domain,
+        documents: [createRentalConfigBootstrapDocument(context)],
+        actorClerkUserId: 'phase34-rental-config-repository-self-heal',
+        sourceMode: 'postgresql-self-heal',
+      });
+    }
     const docsResult = await pool.query(
       `SELECT document_key, payload, enabled, sort_order, source_updated_at, synced_at
          FROM app_site_content_documents
@@ -32,11 +72,20 @@ export const createSiteContentRepository = (pool) => Object.freeze({
         ORDER BY sort_order NULLS LAST, document_key`,
       [domain],
     );
+    if (domain === 'rental-config' && !docsResult.rows.some((row) => row.document_key === 'rentalSystem/publicConfig')) {
+      const context = await this.getRentalConfigBootstrapContext();
+      return this.replaceDomain({
+        domain,
+        documents: [createRentalConfigBootstrapDocument(context)],
+        actorClerkUserId: 'phase34-rental-config-repository-self-heal',
+        sourceMode: 'postgresql-self-heal',
+      });
+    }
     const sync = syncResult.rows[0];
     return Object.freeze({
       domain,
       source: 'postgresql',
-      authoritative: false,
+      authoritative: true,
       synchronized: true,
       sourceMode: sync.source_mode,
       sourceHash: sync.source_hash,
@@ -46,7 +95,7 @@ export const createSiteContentRepository = (pool) => Object.freeze({
     });
   },
 
-  async replaceDomain({ domain, documents, actorClerkUserId = '', sourceMode = 'firestore-write-through' }) {
+  async replaceDomain({ domain, documents, actorClerkUserId = '', sourceMode = 'postgresql-admin-direct' }) {
     const normalizedDocuments = (Array.isArray(documents) ? documents : []).map((item) => ({
       key: String(item?.key || '').trim(),
       payload: item?.payload && typeof item.payload === 'object' ? item.payload : {},

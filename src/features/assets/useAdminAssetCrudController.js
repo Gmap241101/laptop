@@ -165,10 +165,8 @@ export default function useAdminAssetCrudController({
 
     if (assetCutoverConfig.writeRequested) {
       try {
-        const firebaseUser = firebaseAuth.currentUser;
-        if (!firebaseUser) throw new Error('firebase-admin-session-missing');
         const payload = await clerkStagingClient.createAdminAsset(
-          await firebaseUser.getIdToken(),
+          '',
           {
             ...newLaptop,
             assetNo: newAssetNo,
@@ -427,9 +425,7 @@ export default function useAdminAssetCrudController({
       async () => {
         if (assetCutoverConfig.writeRequested) {
           try {
-            const firebaseUser = firebaseAuth.currentUser;
-            if (!firebaseUser) throw new Error('firebase-admin-session-missing');
-            const payload = await clerkStagingClient.deleteAdminAsset(await firebaseUser.getIdToken(), id);
+            const payload = await clerkStagingClient.deleteAdminAsset('', id);
             applyPostgresCatalog(payload?.adminAssetMutation?.catalog, payload?.adminAssetMutation?.firestoreMirror || 'synced');
             if (selectedLaptopId === id) setSelectedLaptopId(null);
             if (editLaptop?.id === id) setEditLaptop(null);
@@ -672,10 +668,8 @@ export default function useAdminAssetCrudController({
 
     if (assetCutoverConfig.writeRequested) {
       try {
-        const firebaseUser = firebaseAuth.currentUser;
-        if (!firebaseUser) throw new Error('firebase-admin-session-missing');
         const payload = await clerkStagingClient.editAdminAsset(
-          await firebaseUser.getIdToken(),
+          '',
           editingLaptopId,
           { ...editedLaptopDraft, baseStatus: editedLaptopDraft.status === STATUS.UNAVAILABLE ? STATUS.UNAVAILABLE : STATUS.AVAILABLE }
         );

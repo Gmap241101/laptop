@@ -9,14 +9,7 @@ import {
   PackageOpen,
   XCircle,
 } from 'lucide-react';
-import { getDoc, getDocs, getDocsFromServer, limit, query, where } from '../platform/retiredLegacyDataCompat.js';
-
 import {
-  HOME_BANNERS_COLLECTION_REF,
-  HOME_PAGE_CONFIG_DOC_REF,
-} from '../platform/appDataRefs.js';
-import {
-  readSiteContentCutoverConfig,
   publishSiteContentObservation,
   requestSiteContentDomain,
   SITE_CONTENT_DOMAINS,
@@ -137,131 +130,58 @@ export default function UserHomePanel({ ctx }) {
   useEffect(() => {
     let cancelled = false;
 
-    const loadHomeBanners = async () => {
-      const cutover = readSiteContentCutoverConfig();
+    const loadHomeContent = async () => {
       try {
-        if (cutover.readRequested) {
-          try {
-            const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.HOME, config: cutover });
-            const postgresBanners = content.documents
-              .filter((item) => item.key.startsWith('homeBanners/') && item.enabled !== false && item.payload?.enabled !== false)
-              .map((item) => ({
-                ...item.payload,
-                id: item.payload?.id || item.key.split('/').pop(),
-                enabled: typeof item.enabled === 'boolean' ? item.enabled : item.payload?.enabled !== false,
-                sortOrder: Number.isFinite(Number(item.sortOrder)) ? Number(item.sortOrder) : item.payload?.sortOrder,
-                __publicVisibility: item.publicVisibility || null,
-              }));
-            if (cutover.authorityRequested) {
-              if (cancelled) return;
-              const activePostgresBanners = postgresBanners.filter((banner) => isActiveBanner(banner, Date.now()));
-              publishSiteContentObservation({
-                readRequested: true,
-                domain: SITE_CONTENT_DOMAINS.HOME,
-                readSource: 'postgresql',
-                documentCount: content.documents.length,
-                homeBannerCount: postgresBanners.length,
-                homeActiveHeroCount: activePostgresBanners.filter((banner) => banner.placement === 'hero').length,
-                homeActivePromotionCount: activePostgresBanners.filter((banner) => banner.placement === 'promotion').length,
-                homeActiveQuickLinkCount: activePostgresBanners.filter((banner) => banner.placement === 'quickLink').length,
-                error: null,
-              });
-              setBanners(postgresBanners);
-              setBannersReady(true);
-              setBannerLoadError('');
-              return;
-            }
-            const enabledQuery = query(HOME_BANNERS_COLLECTION_REF, where('enabled', '==', true), limit(50));
-            const firestoreSnapshot = await getDocsFromServer(enabledQuery);
-            const firestoreBanners = firestoreSnapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
-            const postgresSignature = postgresBanners
-              .map((item) => `${String(item.id || '')}:${getMillis(item.updatedAt)}`)
-              .sort()
-              .join('|');
-            const firestoreSignature = firestoreBanners
-              .map((item) => `${String(item.id || '')}:${getMillis(item.updatedAt)}`)
-              .sort()
-              .join('|');
-            if (postgresSignature !== firestoreSignature) {
-              if (cancelled) return;
-              publishSiteContentObservation({
-                readRequested: true,
-                domain: SITE_CONTENT_DOMAINS.HOME,
-                readSource: 'firestore-parity-fallback',
-                documentCount: content.documents.length,
-                postgresDocumentCount: postgresBanners.length,
-                firestoreDocumentCount: firestoreBanners.length,
-                error: 'site_content_home_parity_mismatch',
-              });
-              setBanners(firestoreBanners);
-              setBannersReady(true);
-              setBannerLoadError('');
-              return;
-            }
-            if (cancelled) return;
-            setBanners(postgresBanners);
-            setBannersReady(true);
-            setBannerLoadError('');
-            return;
-          } catch (postgresError) {
-            if (cutover.authorityRequested) throw postgresError;
-            console.warn('PostgreSQL home banner read fallback:', postgresError);
-          }
-        }
-        const enabledQuery = query(HOME_BANNERS_COLLECTION_REF, where('enabled', '==', true), limit(50));
-        const snapshot = await getDocs(enabledQuery);
+        const content = await requestSiteContentDomain({
+          domain: SITE_CONTENT_DOMAINS.HOME,
+          useCache: false,
+        });
+        const postgresBanners = content.documents
+          .filter((item) => item.key.startsWith('homeBanners/') && item.enabled !== false && item.payload?.enabled !== false)
+          .map((item) => ({
+            ...item.payload,
+            id: item.payload?.id || item.key.split('/').pop(),
+            enabled: typeof item.enabled === 'boolean' ? item.enabled : item.payload?.enabled !== false,
+            sortOrder: Number.isFinite(Number(item.sortOrder)) ? Number(item.sortOrder) : item.payload?.sortOrder,
+            __publicVisibility: item.publicVisibility || null,
+          }));
+        const configDocument = content.documents.find((item) => item.key === 'homePage/config');
+
         if (cancelled) return;
-        setBanners(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+        const activePostgresBanners = postgresBanners.filter((banner) => isActiveBanner(banner, Date.now()));
+        publishSiteContentObservation({
+          readRequested: true,
+          domain: SITE_CONTENT_DOMAINS.HOME,
+          readSource: 'postgresql',
+          documentCount: content.documents.length,
+          homeBannerCount: postgresBanners.length,
+          homeActiveHeroCount: activePostgresBanners.filter((banner) => banner.placement === 'hero').length,
+          homeActivePromotionCount: activePostgresBanners.filter((banner) => banner.placement === 'promotion').length,
+          homeActiveQuickLinkCount: activePostgresBanners.filter((banner) => banner.placement === 'quickLink').length,
+          error: null,
+        });
+        setBanners(postgresBanners);
         setBannersReady(true);
         setBannerLoadError('');
+        setHomeConfig({
+          heroIntervalSeconds: [5, 7, 10].includes(Number(configDocument?.payload?.heroIntervalSeconds))
+            ? Number(configDocument.payload.heroIntervalSeconds)
+            : 7,
+          promotionLayout: PROMOTION_LAYOUTS[configDocument?.payload?.promotionLayout]
+            ? configDocument.payload.promotionLayout
+            : '2x1',
+        });
       } catch (error) {
         if (cancelled) return;
-        console.error('User home banners load error:', error);
+        console.error('User home PostgreSQL content load error:', error);
+        setBanners([]);
         setBannersReady(true);
-        setBannerLoadError('초기화면 배너를 불러오지 못했습니다.');
+        setBannerLoadError('초기화면 배너를 PostgreSQL에서 불러오지 못했습니다.');
+        setHomeConfig({ heroIntervalSeconds: 7, promotionLayout: '2x1' });
       }
     };
 
-    void loadHomeBanners();
-    return () => { cancelled = true; };
-  }, [siteContentRefreshRevision]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const applyConfig = (data = {}) => {
-      setHomeConfig({
-        heroIntervalSeconds: [5, 7, 10].includes(Number(data.heroIntervalSeconds)) ? Number(data.heroIntervalSeconds) : 7,
-        promotionLayout: PROMOTION_LAYOUTS[data.promotionLayout] ? data.promotionLayout : '2x1',
-      });
-    };
-
-    const loadHomeConfig = async () => {
-      const cutover = readSiteContentCutoverConfig();
-      try {
-        if (cutover.readRequested) {
-          try {
-            const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.HOME, config: cutover });
-            const document = content.documents.find((item) => item.key === 'homePage/config');
-            if (!document?.payload) throw new Error('PostgreSQL home page config is missing.');
-            if (cancelled) return;
-            applyConfig(document.payload);
-            return;
-          } catch (postgresError) {
-            if (cutover.authorityRequested) throw postgresError;
-            console.warn('PostgreSQL home config read fallback:', postgresError);
-          }
-        }
-        const snapshot = await getDoc(HOME_PAGE_CONFIG_DOC_REF);
-        if (cancelled) return;
-        applyConfig(snapshot.exists() ? snapshot.data() : {});
-      } catch (error) {
-        if (cancelled) return;
-        console.error('User home config load error:', error);
-      }
-    };
-
-    void loadHomeConfig();
+    void loadHomeContent();
     return () => { cancelled = true; };
   }, [siteContentRefreshRevision]);
 

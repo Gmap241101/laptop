@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getDoc, getDocs, onSnapshot, query as firestoreQuery, where } from '../../platform/retiredLegacyDataCompat.js';
+import { getDocs, onSnapshot, query as firestoreQuery, where } from '../../platform/retiredLegacyDataCompat.js';
 
 import {
   PUBLIC_ASSET_CATALOG_DOC_REF,
-  PUBLIC_CONFIG_DOC_REF,
   RENTAL_ASSETS_COLLECTION_REF,
   RENTAL_AVAILABILITY_COLLECTION_REF,
-  RENTAL_BORROWERS_COLLECTION_REF,
   RENTAL_REQUESTS_COLLECTION_REF,
 } from '../../platform/appDataRefs.js';
 import { publishRentalRequestReadObservation } from './rentalRequestReadParity.js';
@@ -230,9 +228,9 @@ export function useOwnRentalRequestsSubscriptionController({
 
     let disposed = false;
     const cutoverConfig = readRentalRequestCutoverConfig();
+    const rentalWriteMirrorRetirementConfig = readRentalRequestWriteMirrorRetirementConfig();
     const legacyFallbackConfig = readLegacyFirestoreReadFallbackConfig();
     const legacyFallbackAllowed = isLegacyFirestoreReadFallbackAllowed(legacyFallbackConfig);
-    const rentalWriteMirrorRetirementConfig = readRentalRequestWriteMirrorRetirementConfig();
 
     const mergeRequestLists = (requestLists) => {
       const requestMap = new Map();
@@ -554,8 +552,6 @@ export default function useRentalDataSubscriptionController({
 
     const policyContentConfig = readPolicyContentCutoverConfig();
     const assetCutoverConfig = readAssetDomainCutoverConfig();
-    const legacyFallbackConfig = readLegacyFirestoreReadFallbackConfig();
-    const legacyFallbackAllowed = isLegacyFirestoreReadFallbackAllowed(legacyFallbackConfig);
     let active = true;
 
     const applyConfigData = (configData, source) => {
@@ -588,84 +584,43 @@ export default function useRentalDataSubscriptionController({
       setToast({ message, type: 'error' });
     };
 
-    if (policyContentConfig.readRequested && (view !== 'admin' || policyContentConfig.adminAuthorityRequested)) {
-      void requestPolicyContentDomain({
-        domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
-        config: policyContentConfig,
-        useCache: false,
-      })
-        .then((domainResult) => {
-          const document = getPolicyContentDocument(
-            domainResult,
-            'rentalSystem/publicConfig'
-          );
-          if (!document?.payload) {
-            throw Object.assign(new Error('PostgreSQL public config document is unavailable.'), { code: 'policy_content_public_config_missing' });
-          }
-          applyConfigData(document.payload, 'postgresql');
-        })
-        .catch(async (error) => {
-          if (view === 'admin' ? policyContentConfig.adminAuthorityRequested : policyContentConfig.authorityRequested) {
-            publishPolicyContentObservation({
-              readRequested: true,
-              domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
-              readSource: 'postgresql-authoritative',
-              error: error?.code || 'policy_content_read_failed',
-            });
-            applyMissingConfig(
-              '공개 설정을 PostgreSQL에서 불러오지 못했습니다. 관리자 동기화 상태를 확인해 주세요.',
-              error
-            );
-            return;
-          }
-          publishPolicyContentObservation({
-            readRequested: true,
-            domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
-            readSource: 'firestore-one-time-fallback',
-            error: error?.code || 'policy_content_read_failed',
-          });
-          try {
-            const snapshot = await getDoc(PUBLIC_CONFIG_DOC_REF);
-            if (!snapshot.exists()) {
-              applyMissingConfig('Firestore 공개 설정 문서가 없습니다. rentalSystem/publicConfig 마이그레이션 상태를 확인해 주세요.');
-              return;
-            }
-            applyConfigData(snapshot.data(), 'firestore-one-time-fallback');
-          } catch (fallbackError) {
-            applyMissingConfig(
-              '공개 설정을 불러오지 못했습니다. PostgreSQL과 Firestore fallback 상태를 확인해 주세요.',
-              fallbackError
-            );
-          }
-        });
-
+    if (!policyContentConfig.readRequested) {
+      applyMissingConfig('PostgreSQL 공개 설정 API가 구성되지 않았습니다. VITE_API_URL 설정을 확인해 주세요.');
       return () => { active = false; };
     }
 
-    const unsubscribe = onSnapshot(
-      PUBLIC_CONFIG_DOC_REF,
-      (snapshot) => {
-        if (!snapshot.exists()) {
-          applyMissingConfig(
-            'Firestore 공개 설정 문서가 없습니다. rentalSystem/publicConfig 마이그레이션 상태를 확인해 주세요.'
+    void requestPolicyContentDomain({
+      domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
+      config: policyContentConfig,
+      useCache: false,
+    })
+      .then((domainResult) => {
+        const document = getPolicyContentDocument(
+          domainResult,
+          'rentalSystem/publicConfig'
+        );
+        if (!document?.payload) {
+          throw Object.assign(
+            new Error('PostgreSQL canonical public config document is unavailable.'),
+            { code: 'policy_content_public_config_missing' }
           );
-          return;
         }
-
-        applyConfigData(snapshot.data(), 'firestore-onSnapshot');
-      },
-      (error) => {
+        applyConfigData(document.payload, 'postgresql');
+      })
+      .catch((error) => {
+        publishPolicyContentObservation({
+          readRequested: true,
+          domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
+          readSource: 'postgresql-authoritative',
+          error: error?.code || 'policy_content_read_failed',
+        });
         applyMissingConfig(
-          'Firestore 공개 설정을 불러오지 못했습니다. rentalSystem/publicConfig 읽기 권한을 확인해 주세요.',
+          '공개 설정을 PostgreSQL에서 불러오지 못했습니다. Phase 34 canonical 설정 초기화 상태를 확인해 주세요.',
           error
         );
-      }
-    );
+      });
 
-    return () => {
-      active = false;
-      unsubscribe();
-    };
+    return () => { active = false; };
   }, [
     currentAuthAdminAccount?.id,
     setFirebaseReady,
@@ -697,6 +652,7 @@ export default function useRentalDataSubscriptionController({
     }
 
     const assetCutoverConfig = readAssetDomainCutoverConfig();
+    const legacyFallbackAllowed = false;
     let cancelled = false;
     const unsubscribers = [];
     setFirebaseReady(false);
@@ -949,68 +905,48 @@ export default function useRentalDataSubscriptionController({
 
     if (!shouldLoadRentalBorrowers) {
       setSplitRentalBorrowers([]);
-      setSplitSourceErrors((previous) => ({
-        ...previous,
-        borrowers: '',
-      }));
-      setSplitSourceReady((previous) => ({
-        ...previous,
-        borrowers: true,
-      }));
+      setSplitSourceErrors((previous) => ({ ...previous, borrowers: '' }));
+      setSplitSourceReady((previous) => ({ ...previous, borrowers: true }));
       return undefined;
     }
 
-    setSplitSourceReady((previous) => ({
-      ...previous,
-      borrowers: false,
-    }));
+    let cancelled = false;
+    setSplitSourceReady((previous) => ({ ...previous, borrowers: false }));
+    setSplitSourceErrors((previous) => ({ ...previous, borrowers: '' }));
 
-    const unsubscribe = onSnapshot(
-      RENTAL_BORROWERS_COLLECTION_REF,
-  RENTAL_REQUESTS_COLLECTION_REF,
-      (snapshot) => {
-        const borrowers = snapshot.docs
-          .map((borrowerDocument, index) => ({
-            ...borrowerDocument.data(),
-            id: borrowerDocument.id,
-            sortOrder: Number.isFinite(
-              Number(borrowerDocument.data().sortOrder)
-            )
-              ? Number(borrowerDocument.data().sortOrder)
+    void clerkStagingClient.getAdminMemberDirectory()
+      .then((payload) => {
+        if (cancelled) return;
+        const entries = Array.isArray(payload?.memberDirectory?.entries)
+          ? payload.memberDirectory.entries
+          : [];
+        const borrowers = entries
+          .filter((entry) => entry?.enabled !== false)
+          .map((entry, index) => ({
+            id: String(entry?.directoryMemberId || entry?.identityKey || `directory-${index}`),
+            name: String(entry?.name || ''),
+            team: String(entry?.team || ''),
+            sortOrder: Number.isFinite(Number(entry?.sortOrder))
+              ? Number(entry.sortOrder)
               : index,
           }))
           .sort((left, right) => left.sortOrder - right.sortOrder);
-
         setSplitRentalBorrowers(borrowers);
-        setSplitSourceErrors((previous) => ({
-          ...previous,
-          borrowers: '',
-        }));
-        setSplitSourceReady((previous) => ({
-          ...previous,
-          borrowers: true,
-        }));
-      },
-      (error) => {
-        const message =
-          '대여자 목록을 불러오지 못했습니다. rentalBorrowers 조회 권한을 확인해 주세요.';
-
-        console.error('Rental borrowers sync error:', error);
+        setSplitSourceErrors((previous) => ({ ...previous, borrowers: '' }));
+        setSplitSourceReady((previous) => ({ ...previous, borrowers: true }));
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        const message = '부서·사용자 명부를 PostgreSQL에서 불러오지 못했습니다.';
+        console.error('PostgreSQL member directory read error:', error);
         setSplitRentalBorrowers([]);
-        setSplitSourceErrors((previous) => ({
-          ...previous,
-          borrowers: message,
-        }));
-        setSplitSourceReady((previous) => ({
-          ...previous,
-          borrowers: true,
-        }));
+        setSplitSourceErrors((previous) => ({ ...previous, borrowers: message }));
+        setSplitSourceReady((previous) => ({ ...previous, borrowers: true }));
         setFirebaseReady(true);
         setToast({ message, type: 'error' });
-      }
-    );
+      });
 
-    return unsubscribe;
+    return () => { cancelled = true; };
   }, [
     adminTab,
     authenticatedAdminId,

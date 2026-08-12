@@ -39,7 +39,7 @@ PostgreSQL schema names such as firebase_uid and app_user_firebase_links are ret
 
 AUTOMATED VALIDATION
 - Migration 025 static contract: PASS
-- Server foundation: PASS (43 JavaScript files; Clerk/PostgreSQL runtime; Firebase/Firestore network runtime removed)
+- Server foundation: PASS (44 JavaScript files; Clerk/PostgreSQL runtime; Firebase/Firestore network runtime removed)
 - Current HTTP server smoke: PASS (Clerk/PostgreSQL; no Firebase authorization header)
 - Clerk JWT verification smoke: PASS
 - Clerk frontend client smoke: PASS (no X-Firebase-Authorization)
@@ -49,10 +49,10 @@ AUTOMATED VALIDATION
 - Phase 34 hard-removal frontend smoke: PASS
 - React hook audit: PASS (174 source files)
 - Application flow audit: PASS (124 contracts / 11 user routes / 20 administrator tabs)
-- External Firebase/Firestore runtime strict audit: PASS (217 files checked / 0 external runtime references)
+- External Firebase/Firestore runtime strict audit: PASS (218 files checked / 0 external runtime references)
 - Source graph analysis: PASS
-- Package guard: PASS (800 source entries; protected=0; missing=0; duplicate=0; unlisted=0)
-- Manifest source checksum verification: PASS (800/800)
+- Package guard: PASS (802 source entries; protected=0; missing=0; duplicate=0; unlisted=0)
+- Manifest source checksum verification: PASS (802/802)
 - Package force-fail .env.example: PASS (exit 1)
 - Package force-fail nonexistent source: PASS (exit 1)
 
@@ -67,13 +67,43 @@ npm run build:staging:
 This is an execution-environment limitation after all prebuild validation passes; actual Vite bundling must be confirmed by Vercel Staging.
 
 PACKAGE EXPECTATION
-- PACKAGE_FILES: 800
-- PACKAGE_SHA256SUMS: 800
+- PACKAGE_FILES: 802
+- PACKAGE_SHA256SUMS: 802
 - REMOVED_FILES: 83
-- Expected ZIP file entries: 803 (800 source + 3 package-meta)
+- Expected ZIP file entries: 805 (802 source + 3 package-meta)
 - ZIP root metadata: 0
 - package-meta files: 3
 - protected paths: 0
 
 STAGING PASS REQUIREMENT
 Deploy backend/frontend and migration 025 to Staging and validate normal administrator/user/public flows. Browser Network must show zero requests to Firebase/Firestore/IdentityToolkit/SecureToken endpoints during the complete test matrix. Do not delete the Firebase project until the user separately approves after Staging validation.
+
+[Phase34 rental-config PostgreSQL canonical bootstrap hotfix]
+Revision: phase34-rental-config-postgresql-bootstrap-hotfix-20260812-1545
+Cause: migration 025 retired Firebase bootstrap without guaranteeing rental-config/rentalSystem/publicConfig in PostgreSQL.
+Fix:
+- migration 026 creates the canonical rental-config document from PostgreSQL-only sources when missing;
+- site-content repository/service self-heals the same canonical document at read time;
+- site-settings/home/popup/footer/signup-terms public runtime paths are PostgreSQL-only with no Firestore parity/fallback;
+- administrator asset bulk upload uses Clerk/PostgreSQL and no Firebase ID token;
+- runtimeRevision now reports Phase 34 directly.
+Validation:
+- server:migrations:static-check PASS
+- server:site-content:smoke PASS
+- frontend:site-content:smoke PASS
+- server:policy-content:smoke PASS
+- frontend:policy-content:smoke PASS
+- server:phase34:smoke PASS
+- frontend:phase34:smoke PASS
+- server/frontend Phase34 hard-removal smoke PASS
+- React hook audit PASS (174 files)
+- application flow audit PASS (124 contracts; 11 user routes; 20 admin tabs)
+- external Firebase/Firestore runtime audit PASS (0 references)
+
+[Phase34 asset PostgreSQL-only active mutation hardening]
+- Admin asset create/edit/delete/category-save active paths no longer read firebaseAuth.currentUser or request a Firebase ID token.
+- Asset bulk upload remains Clerk/PostgreSQL-only.
+- Backend asset service no longer accepts/injects a Firestore mirror client and no longer contains Firestore bootstrap/mirror branches.
+- server:asset-domain:smoke PASS.
+- frontend:asset-domain:smoke PASS.
+- verify:phase34 includes both asset-domain smokes.

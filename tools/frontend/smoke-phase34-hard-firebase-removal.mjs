@@ -24,6 +24,25 @@ const config = readFileSync('src/features/auth/firebaseRuntimeRetirement.js', 'u
 assert.ok(config.includes("mode: 'removed'"));
 assert.ok(config.includes('requested: true'));
 
+
+const postgresOnlyRuntimeFiles = [
+  'src/user/UserHomePanel.jsx',
+  'src/user/UserSignupTermsSection.jsx',
+  'src/features/boards/usePopupFooterContentSubscriptionController.js',
+  'src/features/assets/useAssetBulkUpload.js',
+  'src/features/settings/useSiteSettingsController.js',
+  'src/features/terms/termsService.js',
+];
+for (const file of postgresOnlyRuntimeFiles) {
+  const source = readFileSync(file, 'utf8');
+  for (const forbidden of ['retiredLegacyDataCompat', 'appDataRefs', 'onSnapshot(', 'getDocsFromServer', 'X-Firebase-Authorization']) {
+    assert.equal(source.includes(forbidden), false, `${file} must not retain legacy Firebase/Firestore runtime marker: ${forbidden}`);
+  }
+}
+const bulkUpload = readFileSync('src/features/assets/useAssetBulkUpload.js', 'utf8');
+assert.ok(bulkUpload.includes("bulkCreateAdminAssets('', parsedCandidates)"), 'asset bulk upload must use Clerk/PostgreSQL without Firebase ID token');
+assert.equal(bulkUpload.includes('firebaseAuth'), false, 'asset bulk upload must not require a Firebase administrator session');
+
 const vite = readFileSync('vite.config.js', 'utf8');
 assert.equal(vite.includes('firebase/'), false, 'Vite configuration must not import Firebase');
 

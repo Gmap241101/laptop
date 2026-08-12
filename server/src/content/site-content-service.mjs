@@ -1,3 +1,4 @@
+import { createRentalConfigBootstrapDocument } from './rental-config-bootstrap.mjs';
 const ALLOWED_DOMAINS = new Set(['site-settings', 'home', 'popup', 'footer', 'rental-config', 'terms']);
 const errorWith = (code, message, status) => Object.assign(new Error(message), { code, status });
 const normalizeDomain = (value) => String(value || '').trim().toLowerCase();
@@ -100,18 +101,23 @@ export const createSiteContentService = ({ repository }) => Object.freeze({
   async getDomain(domainValue) {
     const domain = normalizeDomain(domainValue);
     if (!ALLOWED_DOMAINS.has(domain)) throw errorWith('site_content_domain_invalid', 'Unsupported site content domain.', 400);
-    const result = await repository.getDomain(domain);
-    if (!result) throw errorWith('site_content_not_synchronized', 'Site content has not been synchronized to PostgreSQL yet.', 404);
-    return projectPublicDomain(result);
-  },
-
-  async syncDomain({ domain: domainValue, documents, actorClerkUserId }) {
-    const domain = normalizeDomain(domainValue);
-    if (!ALLOWED_DOMAINS.has(domain)) throw errorWith('site_content_domain_invalid', 'Unsupported site content domain.', 400);
-    if (!Array.isArray(documents) || documents.length > 250) {
-      throw errorWith('site_content_documents_invalid', 'Site content sync requires an array of at most 250 documents.', 400);
+    let result = await repository.getDomain(domain);
+    if (domain === 'rental-config') {
+      const hasCanonicalDocument = Boolean(result?.documents?.some((document) => document?.key === 'rentalSystem/publicConfig'));
+      if (!result || !hasCanonicalDocument) {
+        if (typeof repository.getRentalConfigBootstrapContext !== 'function') {
+          throw errorWith('rental_config_bootstrap_unavailable', 'PostgreSQL rental configuration bootstrap is unavailable.', 503);
+        }
+        const context = await repository.getRentalConfigBootstrapContext();
+        result = await repository.replaceDomain({
+          domain,
+          documents: [createRentalConfigBootstrapDocument(context)],
+          actorClerkUserId: 'phase34-rental-config-self-heal',
+          sourceMode: 'postgresql-self-heal',
+        });
+      }
     }
-    const result = await repository.replaceDomain({ domain, documents, actorClerkUserId, sourceMode: 'firestore-write-through' });
+    if (!result) throw errorWith('site_content_not_synchronized', 'Site content has not been synchronized to PostgreSQL yet.', 404);
     return projectPublicDomain(result);
   },
 

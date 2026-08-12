@@ -429,6 +429,24 @@ export const createMemberAuthorityService = ({
       });
     },
 
+    async listAdminDirectory({ firebaseIdentity } = {}) {
+      const admin = await verifyAdmin(firebaseIdentity);
+      if (typeof repository.listDirectoryEntries !== 'function') {
+        throw serviceError('member_directory_postgresql_read_unavailable', 'PostgreSQL member directory read is not configured.', 503);
+      }
+      const [entries, state] = await Promise.all([
+        repository.listDirectoryEntries(),
+        repository.getDirectoryBootstrapState(),
+      ]);
+      return Object.freeze({
+        admin: { uid: admin.uid, role: trim(admin.fields?.adminRole || 'admin') },
+        source: 'postgresql',
+        target: 'postgresql-member-directory',
+        version: Math.max(0, Number(state?.version || 0)),
+        entries,
+      });
+    },
+
     async editSelf({ clerkUserId, firebaseIdentity, input }) {
       const { appUser, link } = await verifySelf({ clerkUserId, firebaseIdentity });
       const targetUid = trim(link.firebaseUid);

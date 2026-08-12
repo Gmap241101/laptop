@@ -24,6 +24,7 @@ const phase30 = readFileSync('server/migrations/022_phase30_member_status_restri
 const phase31 = readFileSync('server/migrations/023_phase31_member_profile_identity_recovery_authority.sql', 'utf8');
 const phase32 = readFileSync('server/migrations/024_phase32_account_lifecycle_postgresql_authority.sql', 'utf8');
 const phase34 = readFileSync('server/migrations/025_phase34_hard_firebase_retirement.sql', 'utf8');
+const phase34RentalConfigBootstrap = readFileSync('server/migrations/026_phase34_rental_config_postgresql_bootstrap.sql', 'utf8');
 
 if (!/value\s+JSONB\s+NOT\s+NULL/i.test(phase2)) {
   throw new Error('app_runtime_metadata.value must remain JSONB NOT NULL.');
@@ -330,4 +331,20 @@ for (const marker of [
 if (/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+firebase|CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+firestore/i.test(phase34)) {
   throw new Error('Phase 34 migration must not create new Firebase/Firestore runtime tables.');
 }
-console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion + Phase 19 user-action lifecycle + Phase 20 asset-domain + Phase 21 member/restriction/admin identity authority + Phase 22 account recovery/admin Clerk auth + Phase 23 user Clerk auth/lifecycle + Phase 24 site content + Phase 25 policy/terms + Phase 26 notice/FAQ board authority + Phase 28 asset/board write mirror retirement + Phase 29 rental transaction PostgreSQL authority + runtime constraint hotfix + Phase 30 member status/restriction mirror retirement + Phase 31 member profile identity/recovery authority + Phase 32 account lifecycle PostgreSQL authority + Phase 34 hard Firebase retirement are type-safe)');
+
+for (const marker of [
+  "'rental-config'",
+  "'rentalSystem/publicConfig'",
+  "'postgresql-self-heal'",
+  "'phase34_rental_config_postgresql_bootstrap'",
+  "'firebase_fallback', 'retired'",
+  "missing-rental-config-after-firebase-retirement",
+]) {
+  if (!phase34RentalConfigBootstrap.includes(marker)) {
+    throw new Error(`Phase 34 rental-config bootstrap marker is missing: ${marker}`);
+  }
+}
+if (/FROM\s+firestore|firebase.*api|identitytoolkit|securetoken/i.test(phase34RentalConfigBootstrap)) {
+  throw new Error('Phase 34 rental-config bootstrap must remain PostgreSQL-only.');
+}
+console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion + Phase 19 user-action lifecycle + Phase 20 asset-domain + Phase 21 member/restriction/admin identity authority + Phase 22 account recovery/admin Clerk auth + Phase 23 user Clerk auth/lifecycle + Phase 24 site content + Phase 25 policy/terms + Phase 26 notice/FAQ board authority + Phase 28 asset/board write mirror retirement + Phase 29 rental transaction PostgreSQL authority + runtime constraint hotfix + Phase 30 member status/restriction mirror retirement + Phase 31 member profile identity/recovery authority + Phase 32 account lifecycle PostgreSQL authority + Phase 34 hard Firebase retirement + PostgreSQL rental-config bootstrap are type-safe)');

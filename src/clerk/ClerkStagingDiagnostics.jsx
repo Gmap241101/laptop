@@ -5,6 +5,7 @@ import { readSiteContentCutoverConfig } from '../features/content/siteContentCut
 import { readPolicyContentCutoverConfig } from '../features/content/policyContentCutover.js';
 
 const PHASE34_RUNTIME_REVISION = 'phase34-firebase-free-runtime-authority-20260812-1500';
+const PHASE34_POLICY_BOOTSTRAP_REVISION = 'phase34-rental-config-postgresql-bootstrap-hotfix-20260812-1545';
 const trim = (value) => (typeof value === 'string' ? value.trim() : String(value ?? '').trim());
 
 const panelStyle = {
@@ -92,6 +93,8 @@ export default function ClerkStagingDiagnostics() {
         <button type="button" style={buttonStyle} onClick={() => void refresh()} disabled={state.loading}>새로고침</button>
       </div>
       <div style={{ marginTop: '10px' }}>Runtime revision: {PHASE34_RUNTIME_REVISION}</div>
+      <div>Policy bootstrap revision: {PHASE34_POLICY_BOOTSTRAP_REVISION}</div>
+      <div>Backend policy bootstrap revision: {valueOrDash(state.backend?.phase34PolicyBootstrapRevision)}</div>
       <div>SDK: {state.clerkReady ? 'ready' : state.loading ? 'loading' : 'unavailable'}</div>
       <div>Signed in: {yesNo(state.signedIn)}</div>
       <div>Clerk user: {valueOrDash(state.clerkUserId)}</div>

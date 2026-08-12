@@ -121,7 +121,7 @@
     "frontend:phase34:smoke": "node tools/frontend/smoke-phase34-admin-content-authority.mjs",
     "server:phase34:firebase-retirement:smoke": "node tools/backend/smoke-phase34-firebase-runtime-retirement.mjs",
     "frontend:phase34:firebase-retirement:smoke": "node tools/frontend/smoke-phase34-firebase-runtime-retirement.mjs",
-    "verify:phase34": "npm run server:migrations:static-check && npm run server:check && npm run server:phase34:smoke && npm run frontend:phase34:smoke && npm run server:phase34:hard-removal:smoke && npm run frontend:phase34:hard-removal:smoke && npm run audit:react-hooks && npm run audit:app-flows && npm run audit:firestore:strict && npm run package:guard",
+    "verify:phase34": "npm run server:migrations:static-check && npm run server:check && npm run server:smoke && npm run server:auth:smoke && npm run frontend:clerk:smoke && npm run server:site-content:smoke && npm run frontend:site-content:smoke && npm run server:policy-content:smoke && npm run frontend:policy-content:smoke && npm run server:asset-domain:smoke && npm run frontend:asset-domain:smoke && npm run server:phase34:smoke && npm run frontend:phase34:smoke && npm run server:phase34:hard-removal:smoke && npm run frontend:phase34:hard-removal:smoke && npm run audit:react-hooks && npm run audit:app-flows && npm run audit:firestore:strict && npm run package:guard",
     "server:phase34:hard-removal:smoke": "node tools/backend/smoke-phase34-hard-firebase-removal.mjs",
     "frontend:phase34:hard-removal:smoke": "node tools/frontend/smoke-phase34-hard-firebase-removal.mjs"
   },

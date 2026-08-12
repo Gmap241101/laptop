@@ -455,7 +455,6 @@ export const createRequestHandler = ({
   }
   if (!siteContentService
     || typeof siteContentService.getDomain !== 'function'
-    || typeof siteContentService.syncDomain !== 'function'
     || typeof siteContentService.replaceAdminDomain !== 'function') {
     throw new TypeError('siteContentService Phase 24 methods are required.');
   }
@@ -481,11 +480,12 @@ export const createRequestHandler = ({
     service: config.serviceName,
     environment: config.appEnv,
     version: config.serviceVersion,
-    runtimeRevision: 'phase33-user-clerk-content-authority-20260811-2210',
+    runtimeRevision: 'phase34-firebase-free-runtime-authority-20260812-1500',
     publicContentVisibilityRevision: 'phase33-public-content-visibility-hotfix-20260812-0105',
     publicContentSyncRevision: 'phase33-public-content-full-server-sync-hotfix-20260812-0117',
     adminContentAuthorityRevision: 'phase34-admin-content-postgresql-authority-20260812-1200',
     phase34RuntimeRevision: 'phase34-firebase-free-runtime-authority-20260812-1500',
+    phase34PolicyBootstrapRevision: 'phase34-rental-config-postgresql-bootstrap-hotfix-20260812-1545',
     compatibility: {
       assetBoardWriteMirrorDisabled: Boolean(config.assetBoardWriteMirrorDisabled),
       retiredWriteMirrorDomains: [
@@ -660,6 +660,7 @@ export const createRequestHandler = ({
           memberProfileWriteThrough: '/api/legacy/member-shadow/write-through',
           memberProfileAuthority: '/api/users/me/member-profile',
           adminMembers: '/api/admin/members',
+          adminMemberDirectory: '/api/admin/member-directory',
           adminMemberProfileAuthority: '/api/admin/members/:uid/profile',
           adminMemberStatusAuthority: '/api/admin/members/:uid/status',
           adminIdentityRegistryBootstrap: '/api/admin/identity-registry/bootstrap',
@@ -2349,22 +2350,33 @@ export const createRequestHandler = ({
     }
 
 
+    if (request.method === 'GET' && url.pathname === '/api/admin/member-directory') {
+      const admin = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!admin) return;
+      try {
+        const result = await memberAuthorityService.listAdminDirectory({ firebaseIdentity: admin.firebaseIdentity });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, memberDirectory: result }, headers);
+      } catch (error) {
+        console.error('[phase34] member directory PostgreSQL read failed', { requestId, code: error?.code });
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'member_directory_postgresql_read_failed' }, headers);
+      }
+      return;
+    }
+
     if (request.method === 'POST' && url.pathname === '/api/admin/member-directory/sync') {
-      const auth = await authenticate(request, response, headers, requestId);
-      if (!auth) return;
-      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
-      if (!firebaseIdentity) return;
+      const admin = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!admin) return;
       let body;
       try { body = await readJsonBody(request); } catch (error) { writeJson(response, error.status || 400, { ...basePayload, authenticated: true, error: error.code || 'invalid_json_body' }, headers); return; }
       try {
         const result = await memberAuthorityService.syncMemberDirectoryAdmin({
-          firebaseIdentity,
+          firebaseIdentity: admin.firebaseIdentity,
           entries: Array.isArray(body?.entries) ? body.entries : [],
           version: Number(body?.version || 0),
         });
         writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, memberDirectorySync: result }, headers);
       } catch (error) {
-        console.error('[phase31] member directory PostgreSQL synchronization failed', { requestId, code: error?.code });
+        console.error('[phase34] member directory PostgreSQL synchronization failed', { requestId, code: error?.code });
         writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'member_directory_postgresql_sync_failed' }, headers);
       }
       return;

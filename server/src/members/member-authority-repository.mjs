@@ -220,6 +220,24 @@ export const createMemberAuthorityRepository = (pool) => {
       });
     },
 
+    async listDirectoryEntries() {
+      const result = await pool.query(
+        `SELECT identity_key,directory_member_id,name,team,sort_order,enabled,source_updated_at,synced_at
+           FROM app_member_directory_entries
+          ORDER BY sort_order, name, team, identity_key`,
+      );
+      return Object.freeze(result.rows.map((row) => Object.freeze({
+        identityKey: row.identity_key || '',
+        directoryMemberId: row.directory_member_id || '',
+        name: row.name || '',
+        team: row.team || '',
+        sortOrder: Number(row.sort_order || 0),
+        enabled: row.enabled !== false,
+        sourceUpdatedAt: row.source_updated_at || null,
+        syncedAt: row.synced_at || null,
+      })));
+    },
+
     async findDirectoryEntryByIdentityKey(identityKey) {
       const result = await pool.query(
         `SELECT identity_key,directory_member_id,name,team,sort_order,enabled,source_updated_at,synced_at

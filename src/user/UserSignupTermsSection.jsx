@@ -1,16 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { onSnapshot } from '../platform/retiredLegacyDataCompat.js';
 import { Check, ChevronRight, FileText } from 'lucide-react';
 
 import TermsContentDialog from '../components/TermsContentDialog.jsx';
-import { SIGNUP_TERMS_POLICY_DOC_REF } from '../platform/appDataRefs.js';
 import {
   TERMS_DECISION,
   createEmptyTermsSubmission,
   normalizeTermsPolicy,
 } from '../features/terms/termsConstants.js';
 import { loadSignupTermsPolicy } from '../features/terms/termsService.js';
-import { readPolicyContentCutoverConfig } from '../features/content/policyContentCutover.js';
 
 const buildSubmission = (policy, viewedById, acceptedById) => {
   const activeTerms = policy.activeTerms || [];
@@ -54,7 +51,6 @@ export default function UserSignupTermsSection({ onChange }) {
   const [dialogMode, setDialogMode] = useState('single');
 
   useEffect(() => {
-    const config = readPolicyContentCutoverConfig();
     let active = true;
 
     const applyPolicy = (nextPolicy) => {
@@ -70,34 +66,16 @@ export default function UserSignupTermsSection({ onChange }) {
       );
     };
 
-    if (config.readRequested) {
-      void loadSignupTermsPolicy()
-        .then(applyPolicy)
-        .catch((error) => {
-          if (!active) return;
-          console.error('Signup terms policy read error:', error);
-          setReady(true);
-          setErrorMessage('회원가입 약관을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
-        });
-      return () => { active = false; };
-    }
-
-    const unsubscribe = onSnapshot(
-      SIGNUP_TERMS_POLICY_DOC_REF,
-      (snapshot) => applyPolicy(
-        normalizeTermsPolicy(snapshot.exists() ? snapshot.data() : {})
-      ),
-      (error) => {
-        console.error('Signup terms policy read error:', error);
+    void loadSignupTermsPolicy()
+      .then(applyPolicy)
+      .catch((error) => {
+        if (!active) return;
+        console.error('PostgreSQL signup terms policy read error:', error);
         setReady(true);
-        setErrorMessage('회원가입 약관을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
-      }
-    );
+        setErrorMessage('회원가입 약관을 PostgreSQL에서 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
+      });
 
-    return () => {
-      active = false;
-      unsubscribe();
-    };
+    return () => { active = false; };
   }, []);
 
   const submission = useMemo(() => {

@@ -168,7 +168,6 @@ const adminRentalRequestService = createAdminRentalRequestService({
 });
 const assetService = createAssetService({
   repository: assetRepository,
-  writeMirrorEnabled: !config.assetBoardWriteMirrorDisabled,
 });
 const server = createServer(
   createRequestHandler({
@@ -219,7 +218,7 @@ server.listen(config.port, '0.0.0.0', () => {
     userClerkAuthentication: 'clerk-postgresql',
     adminAuthentication: 'clerk-postgresql',
     assetDomain: 'postgresql-authoritative',
-    siteContent: config.firebaseRuntimeDisabled ? 'postgresql-authoritative' : 'postgresql-preferred-firestore-write-through',
+    siteContent: 'postgresql-authoritative',
     noticeFaqBoards: 'postgresql-authoritative',
     phase28WriteMirrorRetirement: config.assetBoardWriteMirrorDisabled ? 'assets-and-boards' : 'disabled',
     phase29RentalTransactionAuthority: config.rentalRequestWriteMirrorDisabled ? 'postgresql-source-and-write-mirror-retired' : 'disabled',

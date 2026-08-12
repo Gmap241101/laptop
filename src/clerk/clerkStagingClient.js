@@ -956,6 +956,22 @@ export const requestAdminMemberTermsConsent = async ({ clerk, apiBaseUrl, fetchI
   return payload;
 };
 
+export const requestAdminMemberDirectoryPostgresql = async ({ clerk, apiBaseUrl, fetchImpl }) => {
+  const { response, payload } = await requestWithSession({
+    clerk, apiBaseUrl, fetchImpl, path: '/api/admin/member-directory', method: 'GET',
+  });
+  if (!response.ok) {
+    const error = new Error(`Admin PostgreSQL member directory read failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (!payload?.authenticated || !payload?.authorized || payload?.memberDirectory?.source !== 'postgresql' || !Array.isArray(payload?.memberDirectory?.entries)) {
+    throw new Error('Backend returned an invalid PostgreSQL member directory payload.');
+  }
+  return payload;
+};
+
 export const requestAdminMemberDirectoryPostgresqlSync = async ({ clerk, apiBaseUrl, fetchImpl, entries = [], version = 0 }) => {
   const { response, payload } = await requestWithSession({
     clerk, apiBaseUrl, fetchImpl, path: '/api/admin/member-directory/sync', method: 'POST',
@@ -1693,6 +1709,10 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async writeAdminMemberStatus(firebaseIdToken, firebaseUid, status) {
       const clerk = await initialize();
       return requestAdminMemberStatusAuthorityWrite({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, firebaseUid, status });
+    },
+    async getAdminMemberDirectory() {
+      const clerk = await initialize();
+      return requestAdminMemberDirectoryPostgresql({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
     },
     async syncAdminMemberDirectory({ entries = [], version = 0 } = {}) {
       const clerk = await initialize();
