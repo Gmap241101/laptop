@@ -195,7 +195,7 @@ for (const marker of [
   "url.pathname === '/api/admin/assets/categories'",
   "shadow?.authorityMode === 'postgresql-authoritative' ? 'postgresql-authoritative' : 'postgresql-shadow'",
   "authoritative: shadow?.authorityMode === 'postgresql-authoritative'",
-  "'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'",
+  "'Access-Control-Allow-Methods': 'GET,POST,PUT,OPTIONS'",
   'X-Firebase-Authorization',
   "'WWW-Authenticate': 'Bearer'",
 ]) {

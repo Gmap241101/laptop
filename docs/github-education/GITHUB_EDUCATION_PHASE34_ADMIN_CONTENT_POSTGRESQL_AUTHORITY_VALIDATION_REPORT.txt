@@ -10,7 +10,7 @@ PROTECTED BASELINE
 - Production/gh-pages/DNS/Firebase configuration: unchanged
 
 IMPLEMENTED
-- Frontend Firebase app/Auth/Firestore initialization suppressed under the global flag
+- Frontend uses structurally valid Firebase SDK references with Firestore network disabled and Auth persistence disabled
 - Clerk-only administrator and user session principals
 - X-Firebase-Authorization stripped from backend requests
 - Backend Firebase project/token verifier disabled
@@ -28,6 +28,9 @@ LOCAL VALIDATION
 - Phase 34 administrator content frontend/backend smoke: PASS
 - Phase 34 Firebase runtime retirement frontend/backend smoke: PASS
 - Browser CORS preflight permits authenticated PUT administrator content mutations
+- Production Vite Staging build: PASS (1,939 modules)
+- Firebase SDK reference construction uses real Firestore instances; `_freezeSettings` placeholder crash removed
+- Clerk/PostgreSQL compatibility principal writes the real `firebaseAuth.currentUser` property
 
 STAGING PASS REQUIREMENT
 Follow PHASE34_MANUAL_PLATFORM_ACTIONS.md. Do not mark Phase 34 PASS until normal administrator/user/public flows pass with zero Firebase network requests and the disabled legacy management-tool decision is accepted or replaced.

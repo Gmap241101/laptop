@@ -17,14 +17,16 @@ const joined = sources.join('\n');
 for (const marker of [
   'VITE_FIREBASE_RUNTIME_DISABLED',
   "params.get('firebaseRuntime') === 'compatibility'",
-  '__mkFirebaseRuntimeRetired',
+  'firebaseRuntimeNetworkBarrier',
   "authAuthorityMode: 'clerk-postgresql'",
   "firebaseRuntime: 'retired'",
   'firebaseRuntimeRetired',
 ]) assert.ok(joined.includes(marker), `missing Firebase runtime retirement marker: ${marker}`);
 
-assert.ok(sources[0].includes('export const firebaseApp = firebaseRuntimeDisabled'), 'Firebase apps must not initialize in retired runtime.');
-assert.ok(sources[0].includes("type: 'firestore-retired'"), 'Retired Firestore placeholder must be local-only.');
+assert.ok(sources[0].includes('initializeAuth(app, { persistence: [] })'), 'Retired Firebase Auth must not hydrate a persisted Firebase session.');
+assert.ok(sources[0].includes('disableNetwork(db)'), 'Firestore network must be disabled with a structurally valid SDK instance.');
+assert.ok(sources[0].includes('firebaseAuth.currentUser = principal || null'), 'Clerk/PostgreSQL principal must use the real Firebase Auth compatibility property.');
+assert.ok(!sources[0].includes("type: 'firestore-retired'"), 'Invalid placeholder Firestore instances must not be used.');
 assert.ok(sources[4].includes("delete authorityHeaders['X-Firebase-Authorization']"), 'Clerk API client must strip Firebase authorization.');
 assert.ok(sources[5].includes('if (firebaseRuntimeRetired) return Object.freeze'), 'Firestore audit writes must be retired.');
 assert.ok(sources[6].includes('blockRetiredFirebaseMaintenance'), 'Firestore maintenance actions must be blocked.');
@@ -47,4 +49,4 @@ for (const source of cutovers) {
   assert.ok(source.includes('readFirebaseRuntimeRetirementConfig'), 'Every legacy cutover must inherit the global retirement flag.');
 }
 
-console.log('[phase34-firebase-runtime-retirement-frontend-smoke] PASS (no Firebase initialization, Clerk-only headers, global PostgreSQL cutovers, maintenance guards)');
+console.log('[phase34-firebase-runtime-retirement-frontend-smoke] PASS (valid offline Firebase SDK shell, Clerk-only headers/principal, global PostgreSQL cutovers, maintenance guards)');

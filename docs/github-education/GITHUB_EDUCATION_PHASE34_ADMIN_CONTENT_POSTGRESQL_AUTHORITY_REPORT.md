@@ -9,7 +9,7 @@ VITE_FIREBASE_RUNTIME_DISABLED=true
 FIREBASE_RUNTIME_DISABLED=true
 ```
 
-With both enabled, the normal architecture is `browser → Clerk session → Heroku API → PostgreSQL`. The frontend does not initialize Firebase apps, Auth, or Firestore; the API client removes Firebase authorization headers; the backend does not configure a Firebase project or token verifier and forces all Firestore write mirrors off.
+With both enabled, the normal architecture is `browser → Clerk session → Heroku API → PostgreSQL`. The frontend retains structurally valid Firebase SDK objects only so legacy modules can construct references safely, but disables Firestore networking and Firebase Auth persistence; the API client removes Firebase authorization headers; the backend does not configure a Firebase project or token verifier and forces all Firestore write mirrors off.
 
 The global flag also activates the existing PostgreSQL authorities for users, account lifecycle, profiles, restrictions, rental requests, assets, boards, site content, policy content, and administrator content. Firestore bootstrap buttons return the existing PostgreSQL state instead of reading Firestore.
 
