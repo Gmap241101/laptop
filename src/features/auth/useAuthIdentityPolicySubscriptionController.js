@@ -167,7 +167,6 @@ export const useAuthIdentityPolicySubscriptionState = () => {
 };
 
 export default function useAuthIdentityPolicySubscriptionController({
-  adminTab,
   authenticatedAdminId,
   clearAdminAuthenticatedSession,
   clearUserAuthenticatedSession,
@@ -910,7 +909,7 @@ export default function useAuthIdentityPolicySubscriptionController({
     };
     void run();
     return () => { cancelled = true; };
-  }, [authenticatedAdminId, currentAuthAdminAccount?.id, view, adminTab]);
+  }, []);
 
   useEffect(() => {
     const hasAdminSession = Boolean(authenticatedAdminId) && Boolean(currentAuthAdminAccount?.id);
@@ -971,7 +970,7 @@ export default function useAuthIdentityPolicySubscriptionController({
     };
     void run();
     return () => { cancelled = true; };
-  }, [authenticatedAdminId, currentAuthAdminAccount?.id, view, adminTab]);
+  }, [authenticatedAdminId, currentAuthAdminAccount?.id]);
 
 
 

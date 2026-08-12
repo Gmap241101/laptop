@@ -135,6 +135,54 @@ export const createSiteContentService = ({ repository }) => Object.freeze({
     });
     return projectPublicDomain(result);
   },
+
+  async patchRentalConfigSettings({ settingsPatch, actorClerkUserId }) {
+    if (!settingsPatch || typeof settingsPatch !== 'object' || Array.isArray(settingsPatch)) {
+      throw errorWith('rental_config_settings_invalid', 'Rental configuration settings patch must be an object.', 400);
+    }
+
+    let current = await repository.getDomain('rental-config');
+    const hasCanonicalDocument = Boolean(
+      current?.documents?.some((document) => document?.key === 'rentalSystem/publicConfig')
+    );
+    if (!current || !hasCanonicalDocument) {
+      if (typeof repository.getRentalConfigBootstrapContext !== 'function') {
+        throw errorWith('rental_config_bootstrap_unavailable', 'PostgreSQL rental configuration bootstrap is unavailable.', 503);
+      }
+      const context = await repository.getRentalConfigBootstrapContext();
+      current = await repository.replaceDomain({
+        domain: 'rental-config',
+        documents: [createRentalConfigBootstrapDocument(context)],
+        actorClerkUserId: 'phase34-rental-config-settings-self-heal',
+        sourceMode: 'postgresql-self-heal',
+      });
+    }
+
+    const documents = (current?.documents || []).map((document) => {
+      if (document?.key !== 'rentalSystem/publicConfig') return document;
+      const payload = document?.payload && typeof document.payload === 'object' ? document.payload : {};
+      const settings = payload?.settings && typeof payload.settings === 'object' ? payload.settings : {};
+      return {
+        key: document.key,
+        payload: {
+          ...payload,
+          settings: { ...settings, ...settingsPatch },
+          updatedAt: new Date().toISOString(),
+        },
+        enabled: document.enabled,
+        sortOrder: document.sortOrder,
+        sourceUpdatedAt: new Date().toISOString(),
+      };
+    });
+
+    const result = await repository.replaceDomain({
+      domain: 'rental-config',
+      documents,
+      actorClerkUserId,
+      sourceMode: 'postgresql-admin-settings-patch',
+    });
+    return projectPublicDomain(result);
+  },
 });
 
 export const __siteContentVisibilityTest = Object.freeze({ timestampMillis, projectTimedVisibility, projectPublicDomain });

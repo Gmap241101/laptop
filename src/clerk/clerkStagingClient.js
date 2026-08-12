@@ -1016,6 +1016,28 @@ const requestAdminAccountMutation = async ({ clerk, apiBaseUrl, fetchImpl, metho
   return payload;
 };
 
+export const requestAdminRentalConfigSettingsPatch = async ({ clerk, apiBaseUrl, fetchImpl, settings = {} }) => {
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/admin/site-content/rental-config/settings',
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ settings: settings || {} }),
+  });
+  if (!response.ok) {
+    const error = new Error(`Rental configuration settings write failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (!payload?.authenticated || !payload?.authorized || payload?.rentalConfigMutation?.authority !== 'postgresql' || payload?.rentalConfigMutation?.operation !== 'settings-patch') {
+    throw new Error('Backend returned an invalid PostgreSQL rental configuration settings response.');
+  }
+  return payload;
+};
+
 export const requestSystemConfiguration = async ({ clerk = null, apiBaseUrl, fetchImpl, key, admin = false }) => {
   const path = admin ? `/api/admin/system-config/${encodeURIComponent(key)}` : `/api/system-config/${encodeURIComponent(key)}`;
   if (admin) {
@@ -1817,6 +1839,10 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     },
     async getUserSessionPolicyPostgresql() {
       return requestSystemConfiguration({ apiBaseUrl: config.apiBaseUrl, fetchImpl, key: 'user-session-policy', admin: false });
+    },
+    async saveAdminRentalConfigSettings(settings = {}) {
+      const clerk = await initialize();
+      return requestAdminRentalConfigSettingsPatch({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, settings });
     },
     async getAdminSystemConfiguration(key) {
       const clerk = await initialize();

@@ -497,6 +497,7 @@ export const createRequestHandler = ({
     phase34PolicyBootstrapRevision: 'phase34-rental-config-postgresql-bootstrap-hotfix-20260812-1545',
     phase34SystemDataRevision: 'phase34-postgresql-data-management-asset-integrity-20260812-1700',
     phase34RuntimeRegressionRevision: 'phase34-rental-request-restriction-content-reset-hotfix-20260812-1740',
+    phase34AdminNavigationHolidayRevision: 'phase34-admin-navigation-holiday-hotfix-20260812-1810',
     compatibility: {
       assetBoardWriteMirrorDisabled: Boolean(config.assetBoardWriteMirrorDisabled),
       retiredWriteMirrorDomains: [
@@ -712,6 +713,7 @@ export const createRequestHandler = ({
           siteContent: '/api/site-content/:domain',
           adminSiteContentSync: '/api/admin/site-content/:domain/sync',
           adminSiteContentDirect: '/api/admin/site-content/:domain',
+          adminRentalConfigSettings: '/api/admin/site-content/rental-config/settings',
           noticeBoard: '/api/boards/notice',
           noticePost: '/api/boards/notice/:id',
           noticeView: '/api/boards/notice/:id/view',
@@ -1092,6 +1094,30 @@ export const createRequestHandler = ({
         error: 'firebase_site_content_sync_retired',
         replacement: '/api/admin/site-content/:domain PUT',
       }, headers);
+      return;
+    }
+
+    if (request.method === 'PATCH' && url.pathname === '/api/admin/site-content/rental-config/settings') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      try {
+        const adminAuth = await adminClerkAuthService.getCurrent({ clerkUserId: auth.userId });
+        const body = await readJsonBody(request);
+        const content = await siteContentService.patchRentalConfigSettings({
+          settingsPatch: body?.settings,
+          actorClerkUserId: adminAuth.admin.clerkUserId || auth.userId,
+        });
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          siteContent: content,
+          rentalConfigMutation: { authority: 'postgresql', operation: 'settings-patch' },
+        }, headers);
+      } catch (error) {
+        console.warn('[site-content] PostgreSQL rental configuration settings patch failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'rental_config_settings_patch_failed' }, headers);
+      }
       return;
     }
 

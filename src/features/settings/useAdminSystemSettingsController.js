@@ -14,11 +14,7 @@ import {
   normalizeRentalPolicySettings,
   serializeHolidayListForFirestore,
 } from '../../domain/rentalPolicy.js';
-import {
-  POLICY_CONTENT_DOMAINS,
-  readPolicyContentCutoverConfig,
-  replacePolicyContentDomainInPostgresql,
-} from '../content/policyContentCutover.js';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 import {
   formatDateWithKoreanWeekday,
   getKoreaNow,
@@ -640,19 +636,7 @@ export default function useAdminSystemSettingsController({
     );
 
     try {
-      const policyContentConfig = readPolicyContentCutoverConfig();
-        await replacePolicyContentDomainInPostgresql({
-          domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
-          config: policyContentConfig,
-          documents: [{
-            key: 'rentalSystem/publicConfig',
-            payload: {
-              ...(publicConfig || {}),
-              settings: { ...(publicConfig?.settings || dataSettings), ...policyValues },
-              updatedAt: new Date(),
-            },
-          }],
-        });
+      await clerkStagingClient.saveAdminRentalConfigSettings(policyValues);
 
       const nextSettings = {
         ...dataSettings,
@@ -699,19 +683,9 @@ export default function useAdminSystemSettingsController({
     );
 
     try {
-      const policyContentConfig = readPolicyContentCutoverConfig();
-        await replacePolicyContentDomainInPostgresql({
-          domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
-          config: policyContentConfig,
-          documents: [{
-            key: 'rentalSystem/publicConfig',
-            payload: {
-              ...(publicConfig || {}),
-              settings: { ...(publicConfig?.settings || dataSettings), holidays: nextHolidays },
-              updatedAt: new Date(),
-            },
-          }],
-        });
+      await clerkStagingClient.saveAdminRentalConfigSettings({
+        holidays: nextHolidays,
+      });
 
       const normalizedHolidays = normalizeHolidayList(nextHolidays);
 
@@ -737,8 +711,9 @@ export default function useAdminSystemSettingsController({
       return true;
     } catch (error) {
       console.error('Holiday settings save error:', error);
+      const errorCode = error?.code || error?.name || 'holiday_settings_save_failed';
       triggerToast(
-        '휴일 저장에 실패했습니다. 기존 설정은 유지됩니다.',
+        `휴일 저장에 실패했습니다. 기존 설정은 유지됩니다. 오류 코드: ${errorCode}`,
         'error'
       );
       return false;

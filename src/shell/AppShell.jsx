@@ -81,7 +81,7 @@ const AppShell = ({
   userTab,
   view,
 }) => {
-  const showFirebaseLoadingOverlay = !firebaseReady;
+  const showDataLoadingOverlay = view === 'user' && !firebaseReady;
   const headerSubtitle = getHeaderSubtitle(normalizedSiteSettings);
   const shouldMountUserPopupLayer =
     view === 'user' &&
@@ -94,7 +94,7 @@ const AppShell = ({
     <>
       <div
         className={`flex min-h-screen flex-col bg-slate-50 text-slate-900 font-sans antialiased transition duration-200 ${
-          showFirebaseLoadingOverlay
+          showDataLoadingOverlay
             ? 'pointer-events-none select-none blur-sm'
             : ''
         }`}
@@ -413,7 +413,7 @@ const AppShell = ({
         )}
       </div>
 
-      {showFirebaseLoadingOverlay && (
+      {showDataLoadingOverlay && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/10 px-6 font-sans text-slate-900 backdrop-blur-[2px]">
           <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white/95 p-6 text-center shadow-xl">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl mk-brand-gradient-tr text-white mk-brand-shadow-md">
@@ -432,7 +432,7 @@ const AppShell = ({
               데이터를 불러오는 중입니다.
             </h1>
             <p className="mt-2 text-xs leading-relaxed text-slate-500">
-              Firebase 원격 DB 기준으로 데이터를 불러오고 있습니다. 잠시만 기다려 주십시오.
+              PostgreSQL 운영 DB 기준으로 데이터를 불러오고 있습니다. 잠시만 기다려 주십시오.
             </p>
           </div>
         </div>
