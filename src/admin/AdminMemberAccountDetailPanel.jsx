@@ -3,14 +3,10 @@ import { FileCheck2, History, PencilLine } from 'lucide-react';
 
 import { loadMemberAccountHistorySummary } from '../features/members/memberAccountHistoryService.js';
 import {
+  formatUserAccountCreatedAt,
   getUserAccountStatusClassName,
   getUserAccountStatusLabel,
 } from '../features/members/memberAccountPolicy.js';
-
-const getCreatedAtText = (account) =>
-  typeof account?.createdAt?.toDate === 'function'
-    ? account.createdAt.toDate().toLocaleString('ko-KR')
-    : '-';
 
 export default function AdminMemberAccountDetailPanel({
   account,
@@ -68,7 +64,7 @@ export default function AdminMemberAccountDetailPanel({
           ['부서 / 팀', account.team || '-'],
           ['전화번호', account.phone || '-'],
           ['이메일', account.email || '-'],
-          ['가입일시', getCreatedAtText(account)],
+          ['가입일시', formatUserAccountCreatedAt(account)],
           ['현재 상태', getUserAccountStatusLabel(account.status || '')],
           ['UID', account.uid || '-'],
         ].map(([label, value]) => (

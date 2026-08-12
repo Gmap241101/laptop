@@ -17,9 +17,8 @@ const mapRow = (row) => ({
   syncedAt: row.synced_at,
 });
 
-export const createSiteContentRepository = (pool) => Object.freeze({
-
-  async getRentalConfigBootstrapContext() {
+export const createSiteContentRepository = (pool) => {
+  const getRentalConfigBootstrapContext = async () => {
     const [categoryResult, teamResult, directoryStateResult, directoryCountResult, termsPolicyResult] = await Promise.all([
       pool.query(`SELECT name FROM app_asset_categories ORDER BY sort_order, id`),
       pool.query(`
@@ -46,56 +45,11 @@ export const createSiteContentRepository = (pool) => Object.freeze({
       memberDirectoryEntryCount: Number(directoryCountResult.rows[0]?.count || 0),
       termsPolicy: termsPolicyResult.rows[0]?.payload || {},
     });
-  },
+  };
 
-  async getDomain(domain) {
-    const syncResult = await pool.query(
-      `SELECT domain, source_hash, document_count, source_mode, synced_at
-         FROM app_site_content_syncs
-        WHERE domain = $1`,
-      [domain],
-    );
-    if (syncResult.rowCount === 0) {
-      if (domain !== 'rental-config') return null;
-      const context = await this.getRentalConfigBootstrapContext();
-      return this.replaceDomain({
-        domain,
-        documents: [createRentalConfigBootstrapDocument(context)],
-        actorClerkUserId: 'phase34-rental-config-repository-self-heal',
-        sourceMode: 'postgresql-self-heal',
-      });
-    }
-    const docsResult = await pool.query(
-      `SELECT document_key, payload, enabled, sort_order, source_updated_at, synced_at
-         FROM app_site_content_documents
-        WHERE domain = $1
-        ORDER BY sort_order NULLS LAST, document_key`,
-      [domain],
-    );
-    if (domain === 'rental-config' && !docsResult.rows.some((row) => row.document_key === 'rentalSystem/publicConfig')) {
-      const context = await this.getRentalConfigBootstrapContext();
-      return this.replaceDomain({
-        domain,
-        documents: [createRentalConfigBootstrapDocument(context)],
-        actorClerkUserId: 'phase34-rental-config-repository-self-heal',
-        sourceMode: 'postgresql-self-heal',
-      });
-    }
-    const sync = syncResult.rows[0];
-    return Object.freeze({
-      domain,
-      source: 'postgresql',
-      authoritative: true,
-      synchronized: true,
-      sourceMode: sync.source_mode,
-      sourceHash: sync.source_hash,
-      syncedAt: sync.synced_at,
-      documentCount: Number(sync.document_count || 0),
-      documents: docsResult.rows.map(mapRow),
-    });
-  },
+  let getDomain;
 
-  async replaceDomain({ domain, documents, actorClerkUserId = '', sourceMode = 'postgresql-admin-direct' }) {
+  const replaceDomain = async ({ domain, documents, actorClerkUserId = '', sourceMode = 'postgresql-admin-direct' }) => {
     const normalizedDocuments = (Array.isArray(documents) ? documents : []).map((item) => ({
       key: String(item?.key || '').trim(),
       payload: item?.payload && typeof item.payload === 'object' ? item.payload : {},
@@ -131,12 +85,65 @@ export const createSiteContentRepository = (pool) => Object.freeze({
         [domain, sourceHash, normalizedDocuments.length, normalizedSourceMode, String(actorClerkUserId || '')],
       );
       await client.query('COMMIT');
-      return this.getDomain(domain);
+      return getDomain(domain);
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {});
       throw error;
     } finally {
       client.release();
     }
-  },
-});
+  };
+
+  getDomain = async (domain) => {
+    const syncResult = await pool.query(
+      `SELECT domain, source_hash, document_count, source_mode, synced_at
+         FROM app_site_content_syncs
+        WHERE domain = $1`,
+      [domain],
+    );
+    if (syncResult.rowCount === 0) {
+      if (domain !== 'rental-config') return null;
+      const context = await getRentalConfigBootstrapContext();
+      return replaceDomain({
+        domain,
+        documents: [createRentalConfigBootstrapDocument(context)],
+        actorClerkUserId: 'phase34-rental-config-repository-self-heal',
+        sourceMode: 'postgresql-self-heal',
+      });
+    }
+    const docsResult = await pool.query(
+      `SELECT document_key, payload, enabled, sort_order, source_updated_at, synced_at
+         FROM app_site_content_documents
+        WHERE domain = $1
+        ORDER BY sort_order NULLS LAST, document_key`,
+      [domain],
+    );
+    if (domain === 'rental-config' && !docsResult.rows.some((row) => row.document_key === 'rentalSystem/publicConfig')) {
+      const context = await getRentalConfigBootstrapContext();
+      return replaceDomain({
+        domain,
+        documents: [createRentalConfigBootstrapDocument(context)],
+        actorClerkUserId: 'phase34-rental-config-repository-self-heal',
+        sourceMode: 'postgresql-self-heal',
+      });
+    }
+    const sync = syncResult.rows[0];
+    return Object.freeze({
+      domain,
+      source: 'postgresql',
+      authoritative: true,
+      synchronized: true,
+      sourceMode: sync.source_mode,
+      sourceHash: sync.source_hash,
+      syncedAt: sync.synced_at,
+      documentCount: Number(sync.document_count || 0),
+      documents: docsResult.rows.map(mapRow),
+    });
+  };
+
+  return Object.freeze({
+    getRentalConfigBootstrapContext,
+    getDomain,
+    replaceDomain,
+  });
+};

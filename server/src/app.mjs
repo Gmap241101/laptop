@@ -498,6 +498,7 @@ export const createRequestHandler = ({
     phase34SystemDataRevision: 'phase34-postgresql-data-management-asset-integrity-20260812-1700',
     phase34RuntimeRegressionRevision: 'phase34-rental-request-restriction-content-reset-hotfix-20260812-1740',
     phase34AdminNavigationHolidayRevision: 'phase34-admin-navigation-holiday-hotfix-20260812-1810',
+    phase34SettingsRepositoryMemberRevision: 'phase34-settings-repository-member-createdat-hotfix-20260812-1835',
     compatibility: {
       assetBoardWriteMirrorDisabled: Boolean(config.assetBoardWriteMirrorDisabled),
       retiredWriteMirrorDomains: [

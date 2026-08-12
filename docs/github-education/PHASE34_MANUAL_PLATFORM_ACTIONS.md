@@ -144,3 +144,25 @@ Revision: `phase34-rental-request-restriction-content-reset-hotfix-20260812-1740
 - Member reset removes PostgreSQL member profile/consent state but does not delete Clerk identities.
 - Site settings are reseeded with a safe PostgreSQL default row; rental-config is recreated by the Phase 34 canonical self-heal.
 - Browser JSON restore remains intentionally separate because a safe PostgreSQL restore needs FK/schema-version validation.
+
+## 2026-08-12 Settings repository + member createdAt hotfix
+
+Revision: `phase34-settings-repository-member-createdat-hotfix-20260812-1835`
+
+### Root cause fixed
+- `server/src/content/site-content-repository.mjs` defined repository methods as arrow functions but called `this.getDomain()` / `this.getRentalConfigBootstrapContext()`. PostgreSQL writes could COMMIT successfully and then throw `TypeError` while building the API response. This affected holiday and rental-policy settings saves and could make a successful DB write appear as a failed save.
+- Administrator member profile edit responses omitted `createdAt`, and member detail/edit timestamp formatting only supported the old Firestore `toDate()` shape. After an edit, the selected member state could therefore lose the visible signup timestamp even though PostgreSQL still retained it.
+
+### Fix
+- Site-content repository now uses closure-bound `getDomain`, `replaceDomain`, and `getRentalConfigBootstrapContext` functions; no arrow-function `this` calls remain.
+- Rental policy failures now surface the actual error code/name.
+- PostgreSQL member profile projection preserves `createdAt` and `updatedAt`.
+- Administrator member list/detail/edit views share a PostgreSQL-compatible timestamp formatter that accepts both historical `toDate()` values and ISO/timestamp strings.
+- Administrator member edit state merges the server response into the previous account and explicitly preserves `createdAt`.
+
+### Required Staging check
+1. Heroku and Vercel both need redeployment because backend repository/member projection and frontend display logic changed.
+2. No new SQL migration is required; migration 027 remains latest.
+3. Save a rental policy change, then create/update/delete a holiday. No `TypeError` should appear and the values must remain after reload.
+4. Edit an existing member's name/team/phone. The detail panel must continue to show the original signup timestamp after the save and after reloading the member list.
+5. Confirm diagnostics/root JSON show `phase34SettingsRepositoryMemberRevision=phase34-settings-repository-member-createdat-hotfix-20260812-1835`.

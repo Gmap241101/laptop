@@ -661,8 +661,9 @@ export default function useAdminSystemSettingsController({
       return true;
     } catch (error) {
       console.error('Rental policy settings save error:', error);
+      const errorCode = error?.code || error?.name || 'rental_policy_settings_save_failed';
       triggerToast(
-        '대여 정책 저장에 실패했습니다. 기존 설정은 유지됩니다.',
+        `대여 정책 저장에 실패했습니다. 기존 설정은 유지됩니다. 오류 코드: ${errorCode}`,
         'error'
       );
       return false;

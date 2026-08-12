@@ -138,3 +138,29 @@ Regression validation added:
 - data-management UI contract requires backup/reset controls and PostgreSQL reset client calls.
 
 External Firebase/Firestore runtime remains removed. No Firebase SDK/network dependency was reintroduced.
+
+2026-08-12 Phase 34 settings repository + member createdAt hotfix
+=================================================================
+Revision: phase34-settings-repository-member-createdat-hotfix-20260812-1835
+Baseline candidate: rental-system-github-education-phase34-admin-navigation-holiday-postgresql-hotfix-20260812_1810_deployment_package.zip
+
+Root causes:
+1. PostgreSQL site-content repository arrow functions called this.getDomain()/this.getRentalConfigBootstrapContext(). The SQL transaction could COMMIT and then fail with TypeError while producing the response, making holiday/rental-policy saves report failure after persistence.
+2. PostgreSQL member profile projection and frontend edit-state replacement did not preserve createdAt; detail/edit formatters only handled Firestore toDate() timestamps.
+
+Fixes:
+- closure-bound site-content repository functions; banned this.getDomain/this.getRentalConfigBootstrapContext in the runtime regression smoke;
+- actual fake-pool replaceDomain transaction executes through COMMIT and read-back in server:phase34:runtime-regressions:smoke;
+- profileFromAccount now includes createdAt/updatedAt;
+- administrator edit state preserves createdAt when merging PostgreSQL profile response;
+- shared PostgreSQL-compatible member signup-time formatter is used in list/detail/edit views;
+- policy save toast now reports the actual error code/name.
+
+Validation:
+- npm run verify:phase34 PASS
+- server:phase34:runtime-regressions:smoke PASS including real repository transaction/read-back
+- frontend:phase34:runtime-regressions:smoke PASS including ISO createdAt rendering/state-preservation contract
+- React hook audit PASS (175 files)
+- application flow audit PASS (124 contracts; 11 user routes; 20 admin tabs)
+- external Firebase/Firestore runtime references: 0
+- build:staging prebuild PASS; Vite bundle unavailable in assistant workspace because vite executable is not installed

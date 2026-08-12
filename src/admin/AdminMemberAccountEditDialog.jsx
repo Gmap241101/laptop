@@ -8,14 +8,10 @@ import {
   parseDomesticPhoneNumber,
 } from '../utils/memberPolicy.js';
 import {
+  formatUserAccountCreatedAt,
   getUserAccountStatusClassName,
   getUserAccountStatusLabel,
 } from '../features/members/memberAccountPolicy.js';
-
-const getCreatedAtText = (account) =>
-  typeof account?.createdAt?.toDate === 'function'
-    ? account.createdAt.toDate().toLocaleString('ko-KR')
-    : '-';
 
 export default function AdminMemberAccountEditDialog({
   account,
@@ -77,7 +73,7 @@ export default function AdminMemberAccountEditDialog({
             </div>
             <div>
               <div className="text-[11px] font-semibold text-slate-400">가입일시</div>
-              <div className="mt-1 text-xs font-semibold text-slate-700">{getCreatedAtText(account)}</div>
+              <div className="mt-1 text-xs font-semibold text-slate-700">{formatUserAccountCreatedAt(account)}</div>
             </div>
             <div>
               <div className="text-[11px] font-semibold text-slate-400">현재 상태</div>

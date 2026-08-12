@@ -55,6 +55,8 @@ const profileFromAccount = (account = {}, firebaseUid = '') => ({
   identityKey: trim(account.identityKey),
   recoveryKey: trim(account.recoveryKey),
   previousAccountUids: Array.isArray(account.previousAccountUids) ? account.previousAccountUids : [],
+  createdAt: account.createdAt || null,
+  updatedAt: account.updatedAt || null,
 });
 
 export const createMemberAuthorityService = ({

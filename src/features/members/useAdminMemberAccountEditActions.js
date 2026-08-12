@@ -131,13 +131,18 @@ export default function useAdminMemberAccountEditActions({
             phone,
             email,
           });
-          savedProfile = response?.adminMemberProfileWrite?.profile || {
+          savedProfile = {
             ...account,
+            ...(response?.adminMemberProfileWrite?.profile || {}),
             uid: targetUid,
             email,
             name,
             team,
             phone,
+            createdAt:
+              response?.adminMemberProfileWrite?.profile?.createdAt ||
+              account?.createdAt ||
+              null,
           };
           publishMemberAuthorityObservation({
             memberWriteRequested: true,

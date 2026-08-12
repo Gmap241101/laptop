@@ -41,6 +41,18 @@ export const getRestorableUserProfileStatus = (status) =>
     ? status
     : USER_PROFILE_STATUS.ACTIVE;
 
+
+export const formatUserAccountCreatedAt = (account = {}, locale = 'ko-KR') => {
+  if (typeof account?.createdAt?.toDate === 'function') {
+    return account.createdAt.toDate().toLocaleString(locale);
+  }
+
+  const parsed = account?.createdAt ? new Date(account.createdAt) : null;
+  return parsed && !Number.isNaN(parsed.getTime())
+    ? parsed.toLocaleString(locale)
+    : '-';
+};
+
 export const getUserAccountStatusLabel = (status) => {
   if (status === USER_PROFILE_STATUS.PENDING) {
     return '승인 대기';

@@ -10,17 +10,10 @@ import useAdminMemberAccountsController, {
 import useAdminMemberAccountEditActions from '../features/members/useAdminMemberAccountEditActions.js';
 import useAdminMemberAccountStatusActions from '../features/members/useAdminMemberAccountStatusActions.js';
 import {
+  formatUserAccountCreatedAt,
   getUserAccountStatusClassName,
   getUserAccountStatusLabel,
 } from '../features/members/memberAccountPolicy.js';
-
-const formatCreatedAt = (account) => {
-  if (typeof account?.createdAt?.toDate === 'function') {
-    return account.createdAt.toDate().toLocaleString('ko-KR');
-  }
-  const parsed = account?.createdAt ? new Date(account.createdAt) : null;
-  return parsed && !Number.isNaN(parsed.getTime()) ? parsed.toLocaleString('ko-KR') : '-';
-};
 
 const compactActionButtonClass = '!gap-1 !rounded-lg !px-2 !py-1 !text-[10px]';
 
@@ -310,7 +303,7 @@ export default function AdminMemberAccountsPanel({ ctx }) {
                             {account.team || '-'}
                           </td>
                           <td className="px-3 py-2.5 text-center text-[11px] leading-4 text-slate-500">
-                            {formatCreatedAt(account)}
+                            {formatUserAccountCreatedAt(account)}
                           </td>
                           <td className="px-2 py-2.5">
                             {renderUseManagementActions(account, isSaving, true)}
@@ -361,7 +354,7 @@ export default function AdminMemberAccountsPanel({ ctx }) {
                             {getUserAccountStatusLabel(accountStatus)}
                           </span>
                         </div>
-                        <div className="mt-3 text-[11px] text-slate-500">가입일시 {formatCreatedAt(account)}</div>
+                        <div className="mt-3 text-[11px] text-slate-500">가입일시 {formatUserAccountCreatedAt(account)}</div>
                       </button>
 
                       <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-3">

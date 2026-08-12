@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import { createRentalRequestId, RENTAL_REQUEST_ID_PATTERN } from '../../src/features/requests/rentalRequestId.js';
 import { createSiteContentDomainDocument } from '../../src/features/content/siteContentCutover.js';
+import { formatUserAccountCreatedAt } from '../../src/features/members/memberAccountPolicy.js';
 import { requestAdminRentalConfigSettingsPatch, requestCurrentUserRentalRestriction } from '../../src/clerk/clerkStagingClient.js';
 import fs from 'node:fs';
 
@@ -82,6 +83,12 @@ assert.equal(patchRequest.url, 'https://api.example.test/api/admin/site-content/
 assert.equal(patchRequest.options.method, 'PATCH');
 assert.equal(patchRequest.options.headers.Authorization, 'Bearer clerk-test-token');
 assert.deepEqual(JSON.parse(patchRequest.options.body).settings.holidays, [{ date: '2026-08-15', enabled: true }]);
+
+
+const formattedCreatedAt = formatUserAccountCreatedAt({ createdAt: '2026-07-01T01:02:03.000Z' });
+assert.notEqual(formattedCreatedAt, '-', 'PostgreSQL ISO member signup timestamp must render in member detail/edit views');
+const memberEditSource = fs.readFileSync(new URL('../../src/features/members/useAdminMemberAccountEditActions.js', import.meta.url), 'utf8');
+assert.match(memberEditSource, /createdAt:[\s\S]*adminMemberProfileWrite\?\.profile\?\.createdAt[\s\S]*account\?\.createdAt/, 'administrator member edit state must preserve createdAt');
 
 const appShellSource = fs.readFileSync(new URL('../../src/shell/AppShell.jsx', import.meta.url), 'utf8');
 assert.equal(appShellSource.includes('Firebase 원격 DB 기준으로 데이터를 불러오고 있습니다.'), false, 'retired Firebase loading copy must not remain');
