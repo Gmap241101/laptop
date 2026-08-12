@@ -1,6 +1,46 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createSiteContentService, __siteContentVisibilityTest } from '../../server/src/content/site-content-service.mjs';
+import { createFirestoreSiteContentClient } from '../../server/src/firestore/firestore-site-content.mjs';
+
+
+const firestoreDocument = ({ path, fields, updateTime = '2026-08-12T00:00:00.000Z' }) => ({
+  document: {
+    name: `projects/laptop-system-mk/databases/(default)/documents/${path}`,
+    updateTime,
+    fields: Object.fromEntries(Object.entries(fields).map(([key, value]) => {
+      if (value === null) return [key, { nullValue: null }];
+      if (typeof value === 'boolean') return [key, { booleanValue: value }];
+      if (typeof value === 'number') return [key, { integerValue: String(value) }];
+      if (value instanceof Date) return [key, { timestampValue: value.toISOString() }];
+      return [key, { stringValue: String(value) }];
+    })),
+  },
+});
+const firestoreSiteClient = createFirestoreSiteContentClient({
+  projectId: 'laptop-system-mk',
+  fetchImpl: async (url, options = {}) => {
+    if (url.endsWith('/documents/homePage/config')) {
+      return new Response(JSON.stringify(firestoreDocument({ path: 'homePage/config', fields: { heroIntervalSeconds: 7, promotionLayout: '2x1' } }).document), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (url.endsWith('/documents:runQuery') && options.method === 'POST') {
+      const body = JSON.parse(options.body || '{}');
+      if (body?.structuredQuery?.from?.[0]?.collectionId === 'homeBanners') {
+        return new Response(JSON.stringify([
+          firestoreDocument({ path: 'homeBanners/hero-1', fields: { id: 'hero-1', placement: 'hero', enabled: true, sortOrder: 1, startAt: new Date('2026-08-11T00:00:00.000Z'), isIndefinite: true } }),
+          firestoreDocument({ path: 'homeBanners/quick-1', fields: { id: 'quick-1', placement: 'quickLink', enabled: true, sortOrder: 2, startAt: new Date('2026-08-11T00:00:00.000Z'), isIndefinite: true } }),
+          firestoreDocument({ path: 'homeBanners/quick-2', fields: { id: 'quick-2', placement: 'quickLink', enabled: true, sortOrder: 3, startAt: new Date('2026-08-11T00:00:00.000Z'), isIndefinite: true } }),
+        ]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+    }
+    return new Response('{}', { status: 404, headers: { 'Content-Type': 'application/json' } });
+  },
+});
+const fullHomeSource = await firestoreSiteClient.readDomain({ domain: 'home', firebaseIdToken: 'firebase-admin-token' });
+assert.equal(fullHomeSource.length, 4);
+assert.deepEqual(fullHomeSource.map((item) => item.key), ['homePage/config', 'homeBanners/hero-1', 'homeBanners/quick-1', 'homeBanners/quick-2']);
+assert.equal(fullHomeSource.filter((item) => item.payload.placement === 'quickLink').length, 2);
+assert.equal(fullHomeSource[1].payload.startAt, '2026-08-11T00:00:00.000Z');
 
 const stored = new Map();
 const repository = {
@@ -70,7 +110,9 @@ for (const marker of [
   'site_content_admin_identity_mismatch',
   'siteContentService.getDomain',
   'siteContentService.syncDomain',
+  'firestoreSiteContentClient.readDomain',
+  'firestore-server-backend-full-domain',
 ]) assert.ok(appSource.includes(marker), `missing Phase 24 handler marker: ${marker}`);
 const repositorySource = readFileSync('server/src/content/site-content-repository.mjs', 'utf8');
 for (const marker of ['pg_advisory_xact_lock', 'DELETE FROM app_site_content_documents', 'app_site_content_syncs', 'firestore-write-through']) assert.ok(repositorySource.includes(marker), `missing Phase 24 repository marker: ${marker}`);
-console.log('[site-content-backend-smoke] PASS (PostgreSQL content domain read/sync + admin identity boundary + replacement transaction contract)');
+console.log('[site-content-backend-smoke] PASS (backend Firestore full-domain server source + PostgreSQL replacement + visibility/admin identity contracts)');

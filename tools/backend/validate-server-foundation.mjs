@@ -452,12 +452,16 @@ const siteContentRepository = readFileSync('server/src/content/site-content-repo
 for (const marker of ['getDomain(domain)', 'replaceDomain({ domain, documents', 'app_site_content_documents', 'app_site_content_syncs']) {
   if (!siteContentRepository.includes(marker)) throw new Error(`Phase 24 site content repository marker is missing: ${marker}`);
 }
+const firestoreSiteContent = readFileSync('server/src/firestore/firestore-site-content.mjs', 'utf8');
+for (const marker of ['createFirestoreSiteContentClient', "readCollection('homeBanners'", "readCollection('popupPosts'", "readCollection('footerPages'", "readCollection('signupTerms'", 'decodeFirestoreDocument']) {
+  if (!firestoreSiteContent.includes(marker)) throw new Error(`Phase 33 full Firestore site-content source marker is missing: ${marker}`);
+}
 const siteContentService = readFileSync('server/src/content/site-content-service.mjs', 'utf8');
 for (const marker of ["'site-settings'", "'home'", "'popup'", "'footer'", 'syncDomain({ domain: domainValue, documents']) {
   if (!siteContentService.includes(marker)) throw new Error(`Phase 24 site content service marker is missing: ${marker}`);
 }
 const siteContentCutover = readFileSync('src/features/content/siteContentCutover.js', 'utf8');
-for (const marker of ['VITE_SITE_CONTENT_POSTGRES_READ_ENABLED', 'VITE_SITE_CONTENT_WRITE_THROUGH_ENABLED', "get('siteContent') === 'postgres'", "get('siteContentWrite') === 'postgres'", '/api/site-content/', '/api/admin/site-content/']) {
+for (const marker of ['VITE_SITE_CONTENT_POSTGRES_READ_ENABLED', 'VITE_SITE_CONTENT_WRITE_THROUGH_ENABLED', "get('siteContent') === 'postgres'", "get('siteContentWrite') === 'postgres'", '/api/site-content/', '/api/admin/site-content/', 'firestore-server-backend-full-domain', 'skipCache: true']) {
   if (!siteContentCutover.includes(marker)) throw new Error(`Phase 24 frontend site content marker is missing: ${marker}`);
 }
 

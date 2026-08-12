@@ -14,8 +14,10 @@ for (const marker of [
   '/api/site-content/',
   '/api/admin/site-content/',
   'syncAllSiteContentDomainsFromFirestore',
-  'getDocFromServer',
-  'getDocsFromServer',
+  'firestore-server-backend-full-domain',
+  'skipCache: true',
+  "result.response.status === 401 && result.payload?.error === 'unauthorized'",
+  'site_content_sync_source_invalid',
   'site_content_sync_count_mismatch',
 ]) assert.ok(cutover.includes(marker), `missing Phase 24 cutover marker: ${marker}`);
 
@@ -27,7 +29,7 @@ for (const marker of [
   'rental:site-content-invalidated',
   'mk_site_content_invalidated_v2',
   'publishSiteContentInvalidation(domain)',
-  'site_content_sync_payload_mismatch',
+  'firestore-server-backend-full-domain',
 ]) assert.ok(cutover.includes(marker), `missing Phase 33 mutable public-content cache/write verification marker: ${marker}`);
 const refreshHook = readFileSync('src/features/content/useSiteContentRefreshRevision.js', 'utf8');
 for (const marker of ['subscribeSiteContentInvalidation', "window.addEventListener('focus'", "window.addEventListener('pageshow'", "document.addEventListener('visibilitychange'"]) {
@@ -41,7 +43,7 @@ for (const marker of [
   '(authorityEnabled && !queryRollback && !queryWriteRollback)',
 ]) assert.ok(cutover.includes(marker), `Phase 33 public authority must force site-content write-through: ${marker}`);
 const adminAuthoritySync = readFileSync('src/features/content/useAdminPublicContentSynchronizationController.js', 'utf8');
-for (const marker of ['syncAllSiteContentDomainsFromFirestore', 'syncAllPolicyContentDomainsFromFirestore', 'mk_phase33_public_content_authority_repair_20260812_0045']) {
+for (const marker of ['syncAllSiteContentDomainsFromFirestore', 'syncAllPolicyContentDomainsFromFirestore', 'mk_phase33_public_content_authority_repair_20260812_0117']) {
   assert.ok(adminAuthoritySync.includes(marker), `missing Phase 33 content reconciliation marker: ${marker}`);
 }
 
@@ -64,7 +66,7 @@ for (const file of [
   assert.ok(source.includes('syncSiteContentDomainFromFirestore'), `missing Phase 24 write-through in ${file}`);
 }
 const diagnostics = readFileSync('src/clerk/ClerkStagingDiagnostics.jsx', 'utf8');
-for (const marker of ['Clerk Staging Test · Phase 33', 'Phase 24 site shell content PostgreSQL read + write-through', 'Site content 전체 동기화', 'Site content PostgreSQL enabled count', 'Site content Firestore server enabled count', "top: '184px'"]) assert.ok(diagnostics.includes(marker), `missing Phase 24 diagnostics marker: ${marker}`);
+for (const marker of ['Clerk Staging Test · Phase 33', 'Phase 24 site shell content PostgreSQL read + write-through', 'Site content 전체 동기화', 'Site content PostgreSQL document count', 'Site content Firestore server document count', "top: '184px'"]) assert.ok(diagnostics.includes(marker), `missing Phase 24 diagnostics marker: ${marker}`);
 const app = readFileSync('src/App.jsx', 'utf8');
 assert.ok(!app.includes('siteContentCutover'), 'Phase 24 must not push site content cutover logic back into App.jsx.');
 assert.ok(home.includes('homeActiveHeroCount'), 'user home must publish passive PostgreSQL banner activity diagnostics');

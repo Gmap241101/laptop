@@ -135,7 +135,7 @@ export const syncAllPolicyContentDomainsFromFirestore = async ({
     readRequested: config.readRequested,
     writeThroughRequested: config.writeThroughRequested,
     domain: 'all',
-    writeSource: 'firestore',
+    writeSource: 'firestore-server-backend',
     postgresSync: 'synced',
     synchronizedDomains: Object.values(POLICY_CONTENT_DOMAINS),
     error: null,

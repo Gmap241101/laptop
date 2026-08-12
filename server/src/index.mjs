@@ -46,6 +46,7 @@ import { createSiteContentService } from './content/site-content-service.mjs';
 import { createBoardRepository } from './boards/board-repository.mjs';
 import { createBoardService } from './boards/board-service.mjs';
 import { createFirestoreBoardClient } from './firestore/firestore-boards.mjs';
+import { createFirestoreSiteContentClient } from './firestore/firestore-site-content.mjs';
 
 const config = readServerConfig();
 const authenticateRequest = createClerkSessionAuthenticator(config);
@@ -101,6 +102,9 @@ const rentalRestrictionRepository = createRentalRestrictionRepository(pool);
 const userClerkAuthRepository = createUserClerkAuthRepository(pool);
 const siteContentRepository = createSiteContentRepository(pool);
 const siteContentService = createSiteContentService({ repository: siteContentRepository });
+const firestoreSiteContentClient = config.firebaseProjectId
+  ? createFirestoreSiteContentClient({ projectId: config.firebaseProjectId, timeoutMs: config.firestoreRestTimeoutMs })
+  : null;
 const assetRepository = createAssetRepository(pool);
 const boardRepository = createBoardRepository(pool);
 const firestoreBoardClient = config.firebaseProjectId
@@ -328,6 +332,7 @@ const server = createServer(
     adminRentalRequestService,
     assetService,
     siteContentService,
+    firestoreSiteContentClient,
     boardService,
     memberAuthorityRepository,
   }),

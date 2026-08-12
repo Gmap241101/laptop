@@ -383,6 +383,17 @@ const assetService = {
   async saveCategories(firebaseIdentity) { return { admin: { uid: firebaseIdentity.uid }, authority: 'postgresql', firestoreMirror: 'synced', catalog: assetCatalogSmoke }; },
 };
 
+
+const firestoreSiteContentClient = {
+  async readDomain({ domain, firebaseIdToken }) {
+    if (firebaseIdToken !== 'firebase-smoke-token') throw new Error('Unexpected Firebase site-content token.');
+    if (domain === 'home') return [{ key: 'homePage/config', payload: { heroTitle: 'Updated Smoke Home' }, enabled: true, sortOrder: 0, sourceUpdatedAt: '2026-08-10T00:00:00.000Z' }];
+    if (domain === 'terms') return [{ key: 'signupTermsPolicy/current', payload: { enabled: true, revision: 1, activeTerms: [] }, enabled: true, sortOrder: 0, sourceUpdatedAt: '2026-08-10T00:00:00.000Z' }];
+    if (domain === 'rental-config') return [{ key: 'rentalSystem/publicConfig', payload: { settings: { maxRentalDays: 7 } }, enabled: true, sortOrder: 0, sourceUpdatedAt: '2026-08-10T00:00:00.000Z' }];
+    throw new Error(`Unexpected Firestore site-content domain: ${domain}`);
+  },
+};
+
 const siteContentService = {
   async getDomain(domain) {
     if (!['home', 'rental-config', 'terms'].includes(domain)) throw new Error('Unexpected site-content read domain.');
@@ -529,6 +540,7 @@ const server = createServer(
     adminRentalRequestService,
     assetService,
     siteContentService,
+    firestoreSiteContentClient,
     boardService,
   }),
 );
@@ -1010,7 +1022,7 @@ const siteContentSync = await fetch(baseUrl + '/api/admin/site-content/home/sync
   body: JSON.stringify({ documents: [{ documentKey: 'homePage/config', payload: { heroTitle: 'Updated Smoke Home' }, enabled: true, sortOrder: 0 }] }),
 });
 const siteContentSyncBody = await siteContentSync.json();
-if (siteContentSync.status !== 200 || siteContentSyncBody.authorized !== true || siteContentSyncBody.siteContent?.source !== 'postgresql' || siteContentSyncBody.siteContent?.documentCount !== 1) {
+if (siteContentSync.status !== 200 || siteContentSyncBody.authorized !== true || siteContentSyncBody.siteContent?.source !== 'postgresql' || siteContentSyncBody.siteContent?.documentCount !== 1 || siteContentSyncBody.siteContentSource?.mode !== 'firestore-server-backend-full-domain' || siteContentSyncBody.siteContentSource?.documentCount !== 1) {
   throw new Error('Phase 24 administrator site-content sync HTTP response is invalid.');
 }
 const policyContentRead = await fetch(baseUrl + '/api/site-content/rental-config', { headers: { Origin: allowedOrigin } });
@@ -1024,7 +1036,7 @@ const termsContentSync = await fetch(baseUrl + '/api/admin/site-content/terms/sy
   body: JSON.stringify({ documents: [{ documentKey: 'signupTermsPolicy/current', payload: { enabled: true, revision: 1, activeTerms: [] }, enabled: true, sortOrder: 0 }] }),
 });
 const termsContentSyncBody = await termsContentSync.json();
-if (termsContentSync.status !== 200 || termsContentSyncBody.authorized !== true || termsContentSyncBody.siteContent?.domain !== 'terms') {
+if (termsContentSync.status !== 200 || termsContentSyncBody.authorized !== true || termsContentSyncBody.siteContent?.domain !== 'terms' || termsContentSyncBody.siteContentSource?.mode !== 'firestore-server-backend-full-domain') {
   throw new Error('Phase 25 terms PostgreSQL sync HTTP response is invalid.');
 }
 

@@ -307,6 +307,9 @@ export const createRequestHandler = ({
     async getDomain() { const error = new Error('Site content service is not configured.'); error.code = 'site_content_not_configured'; throw error; },
     async syncDomain() { const error = new Error('Site content service is not configured.'); error.code = 'site_content_not_configured'; throw error; },
   },
+  firestoreSiteContentClient = {
+    async readDomain() { const error = new Error('Firestore site-content source is not configured.'); error.code = 'firestore_site_content_not_configured'; throw error; },
+  },
   boardService = {
     async getStatus() { const error = new Error('Board service is not configured.'); error.code = 'board_service_not_configured'; throw error; },
     async listNotice() { const error = new Error('Board service is not configured.'); error.code = 'board_service_not_configured'; throw error; },
@@ -470,6 +473,7 @@ export const createRequestHandler = ({
     version: config.serviceVersion,
     runtimeRevision: 'phase33-user-clerk-content-authority-20260811-2210',
     publicContentVisibilityRevision: 'phase33-public-content-visibility-hotfix-20260812-0105',
+    publicContentSyncRevision: 'phase33-public-content-full-server-sync-hotfix-20260812-0117',
     compatibility: {
       assetBoardWriteMirrorDisabled: Boolean(config.assetBoardWriteMirrorDisabled),
       retiredWriteMirrorDomains: [
@@ -1014,13 +1018,29 @@ export const createRequestHandler = ({
           mismatch.status = 409;
           throw mismatch;
         }
-        const body = await readJsonBody(request, { maxBytes: 512 * 1024 });
+        const domain = decodeURIComponent(adminSiteContentSyncMatch[1]);
+        // Phase 33 complete-source repair: never trust a browser snapshot as the
+        // PostgreSQL replacement source. Read the full Firestore server source
+        // in the backend with the verified administrator Firebase token.
+        const sourceDocuments = await firestoreSiteContentClient.readDomain({
+          domain,
+          firebaseIdToken: firebaseIdentity.idToken,
+        });
         const content = await siteContentService.syncDomain({
-          domain: decodeURIComponent(adminSiteContentSyncMatch[1]),
-          documents: body?.documents,
+          domain,
+          documents: sourceDocuments,
           actorClerkUserId: auth.userId,
         });
-        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, siteContent: content }, headers);
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          siteContent: content,
+          siteContentSource: {
+            mode: 'firestore-server-backend-full-domain',
+            documentCount: sourceDocuments.length,
+          },
+        }, headers);
       } catch (error) {
         console.warn('[site-content] PostgreSQL content sync failed', { requestId, code: error?.code, name: error?.name });
         writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'site_content_sync_failed' }, headers);

@@ -126,7 +126,7 @@ import { clerkStagingClient } from './clerkStagingClient.js';
 
 const PHASE32_RUNTIME_REVISION = 'phase32-new-member-runtime-authority-20260811-2108';
 const PHASE33_RUNTIME_REVISION = 'phase33-user-clerk-content-authority-20260811-2210';
-const PHASE33_FRONTEND_HOTFIX_REVISION = 'phase33-public-content-visibility-hotfix-20260812-0105';
+const PHASE33_FRONTEND_HOTFIX_REVISION = 'phase33-public-content-full-server-sync-hotfix-20260812-0117';
 
 const panelStyle = {
   position: 'fixed',
@@ -1598,8 +1598,8 @@ export default function ClerkStagingDiagnostics() {
       <div style={{ overflowWrap: 'anywhere' }}>Site content active source: {state.siteContentReadSource || '-'}</div>
       <div style={{ overflowWrap: 'anywhere' }}>Site content last domain: {state.siteContentLastDomain || '-'}</div>
       <div>Site content document count: {state.siteContentDocumentCount ?? '-'}</div>
-      <div>Site content PostgreSQL enabled count: {state.siteContentPostgresDocumentCount ?? '-'}</div>
-      <div>Site content Firestore server enabled count: {state.siteContentFirestoreDocumentCount ?? '-'}</div>
+      <div>Site content PostgreSQL document count: {state.siteContentPostgresDocumentCount ?? '-'}</div>
+      <div>Site content Firestore server document count: {state.siteContentFirestoreDocumentCount ?? '-'}</div>
       <div>Home banners from PostgreSQL: {state.siteContentHomeBannerCount ?? '-'}</div>
       <div>Home active hero / promotion / quick-link: {state.siteContentHomeActiveHeroCount ?? '-'} / {state.siteContentHomeActivePromotionCount ?? '-'} / {state.siteContentHomeActiveQuickLinkCount ?? '-'}</div>
       <div>Popup posts from PostgreSQL / active: {state.siteContentPopupPostCount ?? '-'} / {state.siteContentPopupActiveCount ?? '-'}</div>

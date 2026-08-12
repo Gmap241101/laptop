@@ -306,3 +306,57 @@ Validation:
 - Application audit PASS (124 contracts / 11 user routes / 20 administrator tabs)
 - Firestore strict audit PASS (138 calls / warnings 0 / errors 0)
 - build:staging prebuild PASS; final Vite bundle not run in assistant environment because vite executable is unavailable (exit 127)
+
+======================================================================
+2026-08-12 Phase 33 public content complete server-source synchronization hotfix
+======================================================================
+Observed Staging regression:
+- Administrator Firestore-backed banner/content lists remained populated.
+- Public PostgreSQL reads still showed an incomplete visual set (for example only one quick-link banner).
+- Saving a main visual could commit to Firestore and then fail during PostgreSQL synchronization with `unauthorized`.
+- Repeated diagnostics synchronization buttons did not produce a durable fix.
+
+Historical recurrence and confirmed boundary:
+- The same class of defect first appeared during Phase 25: PostgreSQL `home` contained only a partial document set while Firestore held the full home visual configuration.
+- The Phase 25 hotfix moved browser bootstrap source reads to `getDocFromServer()` / `getDocsFromServer()` so cached Firestore snapshots could not seed an incomplete PostgreSQL copy.
+- Phase 33 still retained a browser-mediated bridge: after a Firestore administrator mutation, the browser read the full Firestore domain and uploaded that snapshot to `/api/admin/site-content/:domain/sync`.
+- A Clerk bearer failure after the Firestore commit therefore left Firestore newer than PostgreSQL. That split-brain explains both the `unauthorized` save error and a public user page that continues to show only the older partial PostgreSQL set.
+- The browser remained an unnecessary completeness/authentication boundary even after the Phase 25 server-snapshot fix.
+
+Hotfix contract:
+1. Add `server/src/firestore/firestore-site-content.mjs`.
+2. The backend sync route now ignores browser document payloads and reads the entire requested Firestore domain itself via Firestore REST using the verified administrator Firebase ID token.
+3. Supported full-domain sources are: site-settings, home (homePage/config + all homeBanners), popup (all popupPosts), footer (siteFooter/config + all footerPages), rental-config, and terms (policy + all signupTerms).
+4. The backend replaces the PostgreSQL domain transactionally from that server-source snapshot and returns `siteContentSource.mode=firestore-server-backend-full-domain` plus the full source document count.
+5. Frontend write-through accepts success only when the backend confirms this full-server-source mode and the PostgreSQL persisted count equals the Firestore server count.
+6. The frontend no longer reads Firestore documents/collections as the PostgreSQL replacement payload during site/policy synchronization.
+7. If the backend returns Clerk `401 unauthorized`, the frontend forces a fresh Clerk session JWT with `session.getToken({ skipCache: true })` and retries once. If Firebase authentication is the rejected credential, it forces a fresh Firebase ID token and retries once.
+8. Administrator auto-repair session key is bumped to `mk_phase33_public_content_authority_repair_20260812_0117`, so the complete backend-source reconciliation runs again after this deployment without any diagnostics-button action.
+9. Frontend hotfix revision: `phase33-public-content-full-server-sync-hotfix-20260812-0117`.
+10. Backend root exposes `publicContentSyncRevision=phase33-public-content-full-server-sync-hotfix-20260812-0117`.
+11. Public Firestore fallback remains retired. The fix repairs PostgreSQL authority rather than routing users back to Firestore.
+
+Additional diagnostics correction:
+- Phase 24 diagnostics labels now report PostgreSQL/Firestore **document count**, not "enabled count". The sync contract operates on the complete domain, including disabled/scheduled documents.
+- Successful home/popup synchronization publishes persisted banner/popup counts and active placement counts from the PostgreSQL response.
+
+Validation:
+- Full `npm run verify:phase33`: PASS / exit 0.
+- Backend site-content smoke: PASS; verifies backend Firestore full-domain source including multiple home banners / quick links.
+- Server HTTP smoke: PASS; admin site-content endpoint confirms `firestore-server-backend-full-domain` source mode/count.
+- Frontend site-content smoke: PASS; verifies forced fresh Clerk-token retry and full-server-source response contract.
+- Phase 33 frontend/backend smoke: PASS.
+- React hook audit: PASS (174 source files).
+- Application flow audit: PASS (124 contracts, 11 user routes, 20 administrator tabs).
+- Firestore strict audit: PASS (136 static calls, 0 unapproved warnings, 0 unapproved errors). The two browser Firestore server-read calls removed from siteContentCutover are now performed by the backend REST source client during administrator synchronization.
+- `npm run build:staging`: prebuild PASS; final Vite step unavailable in assistant workspace (`vite: not found`, exit 127).
+
+Deployment impact:
+- Backend and frontend runtime changed; redeploy Heroku Staging first, then Vercel Staging.
+- No SQL migration.
+- No dependency change.
+- No Firebase Rules/index change.
+- No Clerk console change.
+- No new environment variable.
+- No Production / DNS / `gh-pages` change.
+- Diagnostics synchronization buttons are not required for normal operation.

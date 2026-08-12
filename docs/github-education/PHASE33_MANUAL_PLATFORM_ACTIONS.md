@@ -420,3 +420,108 @@ After deployment, do not press any diagnostics synchronization button. Normal ru
 3. Open the plain public `/` URL in a fresh tab. Main visual, promotion banners, quick-link banners and active popups must render according to the same enabled/start/end state shown by the administrator editor.
 4. Change one active home banner and one active popup in the administrator UI, save them, return to the public tab, and confirm the changes without using test-panel buttons.
 5. The public path must remain PostgreSQL-authoritative; do not re-enable Firestore parity fallback.
+
+## 2026-08-12 complete Firestore server-source → PostgreSQL synchronization hotfix
+
+This hotfix addresses the recurrence where administrator Firestore lists are complete but the PostgreSQL public copy is partial, and a post-Firestore save synchronization can fail with:
+
+```text
+메인 비주얼 저장에 실패했습니다. 오류 코드: unauthorized
+```
+
+The historical Phase 25 fix forced Firestore server snapshots in the browser. Phase 33 now removes the browser as the PostgreSQL replacement-source boundary entirely.
+
+New synchronization path:
+
+```text
+Administrator Firestore mutation commits
+→ frontend requests domain synchronization
+→ Clerk administrator JWT verification
+→ Firebase administrator ID-token verification
+→ backend reads the complete Firestore domain through Firestore REST
+→ backend transactionally replaces the PostgreSQL domain
+→ backend returns Firestore source count + PostgreSQL persisted count
+→ counts must match
+→ public PostgreSQL cache invalidation / user refresh
+```
+
+The browser no longer supplies `homeBanners`, `popupPosts`, `footerPages`, site settings, rental config, or terms documents as the PostgreSQL replacement payload.
+
+### Authentication repair
+
+If the first synchronization request returns:
+
+```text
+401 / unauthorized
+```
+
+the frontend performs exactly one forced Clerk JWT refresh:
+
+```text
+session.getToken({ skipCache: true })
+```
+
+and retries. A rejected Firebase credential similarly gets one forced Firebase ID-token refresh. This retry happens inside the normal save/synchronization flow and does not require a diagnostics button.
+
+### Automatic full repair
+
+The repair key is now:
+
+```text
+mk_phase33_public_content_authority_repair_20260812_0117
+```
+
+After deploying this package, a normal administrator login automatically re-synchronizes:
+
+```text
+site-settings
+homePage/config + every homeBanners document
+all popupPosts
+siteFooter/config + every footerPages document
+rentalSystem/publicConfig
+signupTermsPolicy/current + every signupTerms document
+```
+
+Do **not** press diagnostics synchronization buttons for the validation below.
+
+### Deployment
+
+Both runtimes changed:
+
+```text
+1. Heroku Staging redeploy: required
+2. Vercel Staging redeploy: required
+3. PostgreSQL migration: none
+4. New environment variables: none
+5. Firebase Rules/index: unchanged
+6. Clerk configuration: unchanged
+7. Production / DNS / gh-pages: unchanged
+```
+
+Heroku root must show:
+
+```text
+publicContentSyncRevision = phase33-public-content-full-server-sync-hotfix-20260812-0117
+```
+
+Frontend diagnostics must show:
+
+```text
+Frontend hotfix revision: phase33-public-content-full-server-sync-hotfix-20260812-0117
+```
+
+### Staging validation without test-panel buttons
+
+1. Deploy Heroku, then Vercel.
+2. Open plain `https://mkrental.vercel.app/admin` and authenticate normally.
+3. Do not press `Site content 전체 동기화` or any other diagnostics synchronization button.
+4. Wait for the automatic repair to complete. There must be no `unauthorized`, `site_content_clerk_session_missing`, source-count mismatch, or source-invalid toast.
+5. Open `https://mkrental.vercel.app/` in a fresh user tab.
+6. Confirm all currently active main visuals, promotion banners, quick-link banners and popups are present. The quick-link set must no longer be a partial subset such as only one provider when more active records exist in the administrator list.
+7. In the administrator UI, edit/save one active main visual. The save itself must complete successfully.
+8. Edit/save one quick-link banner and one popup.
+9. Return to the user tab. The PostgreSQL public view must reflect each change without pressing a diagnostics button.
+10. In diagnostics, compare complete source/persisted counts. Labels are now `Firestore server document count` and `PostgreSQL document count`; they refer to all documents, not only enabled items.
+11. User diagnostics `Home banners from PostgreSQL` and `Home active hero / promotion / quick-link` must match the administrator records and their current enabled/schedule state.
+
+If a full-domain synchronization fails after this hotfix, use the exact new error code. Do not manually re-enable the public Firestore parity fallback; PostgreSQL remains the Phase 33 public authority.

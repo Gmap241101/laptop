@@ -15,7 +15,6 @@ import {
   SITE_SETTINGS_DOC_REF,
   firebaseAuth,
 } from '../../firebase.js';
-import { getDocFromServer, getDocsFromServer, limit, query as firestoreQuery } from 'firebase/firestore';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 
 const READ_SESSION_KEY = 'mk_site_content_postgres_read';
@@ -25,6 +24,7 @@ const INVALIDATION_EVENT_NAME = 'rental:site-content-invalidated';
 const INVALIDATION_STORAGE_KEY = 'mk_site_content_invalidated_v2';
 const DOMAIN_CACHE_TTL_MS = 5_000;
 export const PHASE33_PUBLIC_CONTENT_VISIBILITY_REVISION = 'phase33-public-content-visibility-hotfix-20260812-0105';
+export const PHASE33_PUBLIC_CONTENT_SYNC_REVISION = 'phase33-public-content-full-server-sync-hotfix-20260812-0117';
 const trim = (value) => (typeof value === 'string' ? value.trim() : String(value ?? '').trim());
 const bool = (value) => trim(value).toLowerCase() === 'true';
 
@@ -226,141 +226,110 @@ export const requestSiteContentDomain = async ({ domain, fetchImpl = fetch, conf
   catch (error) { if (useCache) domainCache.delete(domain); observationPublisher?.({ readRequested: true, domain, readSource: 'firestore-fallback', error: error?.code || 'site_content_read_failed' }); throw error; }
 };
 
-const getClerkToken = async () => {
+const getClerkToken = async ({ forceRefresh = false } = {}) => {
   const clerk = await clerkStagingClient.initialize();
-  const token = await clerk?.session?.getToken?.();
+  const token = await clerk?.session?.getToken?.(forceRefresh ? { skipCache: true } : undefined);
   if (!token) throw Object.assign(new Error('Clerk administrator session is required for site content write-through.'), { code: 'site_content_clerk_session_missing' });
   return token;
 };
-
-const readDocument = async (ref, key) => {
-  const snapshot = await getDocFromServer(ref);
-  if (!snapshot.exists()) return [];
-  const data = snapshot.data();
-  return [{ key, payload: serializeValue(data), enabled: typeof data.enabled === 'boolean' ? data.enabled : null, sortOrder: Number.isFinite(Number(data.sortOrder)) ? Number(data.sortOrder) : null, sourceUpdatedAt: data.updatedAt?.toDate?.()?.toISOString?.() || null }];
-};
-const readCollection = async (ref, prefix, maxDocuments = null) => {
-  const source = Number.isFinite(Number(maxDocuments))
-    ? firestoreQuery(ref, limit(Math.max(1, Math.trunc(Number(maxDocuments)))))
-    : ref;
-  const snapshot = await getDocsFromServer(source);
-  return snapshot.docs.map((item) => {
-    const data = item.data();
-    return { key: `${prefix}/${item.id}`, payload: serializeValue({ id: item.id, ...data }), enabled: typeof data.enabled === 'boolean' ? data.enabled : null, sortOrder: Number.isFinite(Number(data.sortOrder)) ? Number(data.sortOrder) : null, sourceUpdatedAt: data.updatedAt?.toDate?.()?.toISOString?.() || null };
-  });
-};
-
-const readDomainFromFirestore = async (domain) => {
-  if (domain === SITE_CONTENT_DOMAINS.SITE_SETTINGS) return readDocument(SITE_SETTINGS_DOC_REF, 'siteSettings/config');
-  if (domain === SITE_CONTENT_DOMAINS.HOME) return [
-    ...(await readDocument(HOME_PAGE_CONFIG_DOC_REF, 'homePage/config')),
-    ...(await readCollection(HOME_BANNERS_COLLECTION_REF, 'homeBanners')),
-  ];
-  if (domain === SITE_CONTENT_DOMAINS.POPUP) return readCollection(POPUP_POSTS_COLLECTION_REF, 'popupPosts');
-  if (domain === SITE_CONTENT_DOMAINS.FOOTER) return [
-    ...(await readDocument(SITE_FOOTER_CONFIG_DOC_REF, 'siteFooter/config')),
-    ...(await readCollection(FOOTER_PAGES_COLLECTION_REF, 'footerPages')),
-  ];
-  if (domain === 'rental-config') return readDocument(PUBLIC_CONFIG_DOC_REF, 'rentalSystem/publicConfig');
-  if (domain === 'terms') return [
-    ...(await readDocument(SIGNUP_TERMS_POLICY_DOC_REF, 'signupTermsPolicy/current')),
-    ...(await readCollection(SIGNUP_TERMS_COLLECTION_REF, 'signupTerms', 100)),
-  ];
-  throw Object.assign(new Error('Unsupported site content domain.'), { code: 'site_content_domain_invalid' });
-};
-
-const stableForSyncComparison = (value) => {
-  if (Array.isArray(value)) return value.map(stableForSyncComparison);
-  if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stableForSyncComparison(value[key])]));
-};
-
-const normalizeSyncDocumentForComparison = (item = {}) => ({
-  key: trim(item.key),
-  payload: stableForSyncComparison(item.payload || {}),
-  enabled: typeof item.enabled === 'boolean' ? item.enabled : null,
-  sortOrder: Number.isFinite(Number(item.sortOrder)) ? Math.trunc(Number(item.sortOrder)) : null,
-  sourceUpdatedAt: item.sourceUpdatedAt || null,
-});
-
-const siteContentSyncSignature = (documents = []) => JSON.stringify(
-  (Array.isArray(documents) ? documents : [])
-    .map(normalizeSyncDocumentForComparison)
-    .sort((first, second) => first.key.localeCompare(second.key))
-);
 
 export const syncSiteContentDomainFromFirestore = async ({ domain, fetchImpl = fetch, config = readSiteContentCutoverConfig(), observationPublisher = publishSiteContentObservation } = {}) => {
   if (!config.writeThroughRequested) return Object.freeze({ skipped: true });
   if (!config.apiBaseUrl) throw Object.assign(new Error('VITE_API_URL is required for site content write-through.'), { code: 'site_content_api_missing' });
   const firebaseUser = firebaseAuth.currentUser;
   if (!firebaseUser) throw Object.assign(new Error('Firebase administrator compatibility session is required for site content write-through.'), { code: 'site_content_firebase_session_missing' });
-  const [clerkToken, firebaseIdToken, documents] = await Promise.all([
-    getClerkToken(), firebaseUser.getIdToken(), readDomainFromFirestore(domain),
-  ]);
-  const response = await fetchImpl(`${config.apiBaseUrl}/api/admin/site-content/${encodeURIComponent(domain)}/sync`, {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${clerkToken}`,
-      'X-Firebase-Authorization': `Bearer ${firebaseIdToken}`,
-    },
-    cache: 'no-store',
-    body: JSON.stringify({ documents }),
-  });
-  let payload = null;
-  try { payload = await response.json(); } catch { payload = null; }
+
+  const performSync = async ({ forceClerkRefresh = false, forceFirebaseRefresh = false } = {}) => {
+    const [clerkToken, firebaseIdToken] = await Promise.all([
+      getClerkToken({ forceRefresh: forceClerkRefresh }),
+      firebaseUser.getIdToken(forceFirebaseRefresh),
+    ]);
+    const response = await fetchImpl(`${config.apiBaseUrl}/api/admin/site-content/${encodeURIComponent(domain)}/sync`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${clerkToken}`,
+        'X-Firebase-Authorization': `Bearer ${firebaseIdToken}`,
+      },
+      cache: 'no-store',
+      body: JSON.stringify({ sourceMode: 'firestore-server-backend-full-domain' }),
+    });
+    let payload = null;
+    try { payload = await response.json(); } catch { payload = null; }
+    return { response, payload };
+  };
+
+  let result = await performSync();
+  if (result.response.status === 401 && result.payload?.error === 'unauthorized') {
+    result = await performSync({ forceClerkRefresh: true });
+  } else if (result.response.status === 401 && result.payload?.error === 'legacy_firebase_unauthorized') {
+    result = await performSync({ forceFirebaseRefresh: true });
+  }
+
+  const { response, payload } = result;
   if (!response.ok) {
     const error = new Error(`PostgreSQL site content write-through failed with HTTP ${response.status}.`);
     error.status = response.status;
     error.code = payload?.error || 'site_content_write_through_failed';
-    observationPublisher?.({ writeThroughRequested: true, domain, writeSource: 'firestore', postgresSync: 'failed', error: error.code });
+    observationPublisher?.({ writeThroughRequested: true, domain, writeSource: 'firestore-server-backend', postgresSync: 'failed', error: error.code });
     throw error;
   }
+
+  const sourceDocumentCount = Number(payload?.siteContentSource?.documentCount ?? -1);
   const postgresDocumentCount = Number(payload?.siteContent?.documentCount ?? -1);
-  if (postgresDocumentCount !== documents.length) {
+  if (payload?.siteContentSource?.mode !== 'firestore-server-backend-full-domain' || sourceDocumentCount < 0) {
+    const error = Object.assign(new Error('Backend did not confirm a complete Firestore server source for site content sync.'), {
+      code: 'site_content_sync_source_invalid',
+    });
+    observationPublisher?.({ writeThroughRequested: true, domain, writeSource: 'firestore-server-backend', postgresSync: 'failed', error: error.code });
+    throw error;
+  }
+  if (postgresDocumentCount !== sourceDocumentCount) {
     const error = Object.assign(new Error('PostgreSQL site content sync document count mismatch.'), {
       code: 'site_content_sync_count_mismatch',
-      firestoreDocumentCount: documents.length,
+      firestoreDocumentCount: sourceDocumentCount,
       postgresDocumentCount,
     });
     observationPublisher?.({
       writeThroughRequested: true,
       domain,
-      writeSource: 'firestore-server',
+      writeSource: 'firestore-server-backend',
       postgresSync: 'failed',
-      firestoreDocumentCount: documents.length,
+      firestoreDocumentCount: sourceDocumentCount,
       postgresDocumentCount,
       error: error.code,
     });
     throw error;
   }
-  const sourceSignature = siteContentSyncSignature(documents);
-  const postgresSignature = siteContentSyncSignature(payload?.siteContent?.documents || []);
-  if (sourceSignature !== postgresSignature) {
-    const error = Object.assign(new Error('PostgreSQL site content sync payload mismatch.'), {
-      code: 'site_content_sync_payload_mismatch',
-    });
-    observationPublisher?.({
-      writeThroughRequested: true,
-      domain,
-      writeSource: 'firestore-server',
-      postgresSync: 'failed',
-      firestoreDocumentCount: documents.length,
-      postgresDocumentCount,
-      error: error.code,
-    });
-    throw error;
-  }
+
+  const persistedDocuments = Array.isArray(payload?.siteContent?.documents) ? payload.siteContent.documents : [];
+  const homeBanners = domain === SITE_CONTENT_DOMAINS.HOME
+    ? persistedDocuments.filter((item) => String(item?.key || '').startsWith('homeBanners/'))
+    : [];
+  const activeHomeBanners = homeBanners.filter((item) => item?.publicVisibility?.active === true);
+  const popupPosts = domain === SITE_CONTENT_DOMAINS.POPUP
+    ? persistedDocuments.filter((item) => String(item?.key || '').startsWith('popupPosts/'))
+    : [];
   publishSiteContentInvalidation(domain);
   observationPublisher?.({
     writeThroughRequested: true,
     domain,
-    writeSource: 'firestore-server',
+    writeSource: 'firestore-server-backend',
     postgresSync: 'synced',
     documentCount: postgresDocumentCount,
-    firestoreDocumentCount: documents.length,
+    firestoreDocumentCount: sourceDocumentCount,
     postgresDocumentCount,
+    ...(domain === SITE_CONTENT_DOMAINS.HOME ? {
+      homeBannerCount: homeBanners.length,
+      homeActiveHeroCount: activeHomeBanners.filter((item) => item?.payload?.placement === 'hero').length,
+      homeActivePromotionCount: activeHomeBanners.filter((item) => item?.payload?.placement === 'promotion').length,
+      homeActiveQuickLinkCount: activeHomeBanners.filter((item) => item?.payload?.placement === 'quickLink').length,
+    } : {}),
+    ...(domain === SITE_CONTENT_DOMAINS.POPUP ? {
+      popupPostCount: popupPosts.length,
+      popupActiveCount: popupPosts.filter((item) => item?.publicVisibility?.active === true).length,
+    } : {}),
     syncAt: payload?.siteContent?.syncedAt || null,
     error: null,
   });
@@ -376,7 +345,7 @@ export const syncAllSiteContentDomainsFromFirestore = async ({ config = readSite
     readRequested: config.readRequested,
     writeThroughRequested: config.writeThroughRequested,
     domain: 'all',
-    writeSource: 'firestore',
+    writeSource: 'firestore-server-backend',
     postgresSync: 'synced',
     synchronizedDomains: Object.values(SITE_CONTENT_DOMAINS),
     error: null,
