@@ -96,6 +96,9 @@ export default function AdminAccountSecurityPanel({ ctx }) {
     AdminPageHeader,
     Button,
     authenticatedAdminAccount,
+    rebaseAdminAuthenticatedSession,
+    setSystemAdminSettings,
+    setUserSessionPolicy,
     systemAdminSettings,
     systemAdminSettingsLoadErrorMessage,
     systemAdminSettingsReady,
@@ -211,12 +214,34 @@ export default function AdminAccountSecurityPanel({ ctx }) {
 
     setSaving(true);
     try {
-      const writes = [];
-      if (changedAdmin) writes.push(clerkStagingClient.saveAdminSystemConfiguration('admin-security', nextAdminPolicy));
-      if (changedUser) writes.push(clerkStagingClient.saveAdminSystemConfiguration('user-session-policy', nextUserPolicy));
-      await Promise.all(writes);
+      const [adminWriteResult, userWriteResult] = await Promise.all([
+        changedAdmin
+          ? clerkStagingClient.saveAdminSystemConfiguration('admin-security', nextAdminPolicy)
+          : Promise.resolve(null),
+        changedUser
+          ? clerkStagingClient.saveAdminSystemConfiguration('user-session-policy', nextUserPolicy)
+          : Promise.resolve(null),
+      ]);
+
+      if (changedAdmin) {
+        const savedAdminPolicy = normalizeSystemAdminSettings(
+          adminWriteResult?.systemConfiguration?.payload || nextAdminPolicy
+        );
+        rebaseAdminAuthenticatedSession(savedAdminPolicy);
+        setSystemAdminSettings(savedAdminPolicy);
+        setAdminDraft(savedAdminPolicy);
+      }
+
+      if (changedUser) {
+        const savedUserPolicy = normalizeUserSessionPolicy(
+          userWriteResult?.systemConfiguration?.payload || nextUserPolicy
+        );
+        setUserSessionPolicy(savedUserPolicy);
+        setUserDraft(savedUserPolicy);
+      }
+
       triggerToast(
-        '계정 보안 설정이 PostgreSQL에 저장되었습니다. 변경된 대상의 기존 로그인 세션은 다시 로그인이 필요합니다.',
+        '계정 보안 설정이 PostgreSQL에 저장되어 현재 화면에도 즉시 반영되었습니다. 다른 기존 로그인 세션에는 새 정책 버전이 적용됩니다.',
         'success'
       );
     } catch (error) {

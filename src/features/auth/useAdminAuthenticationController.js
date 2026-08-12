@@ -81,6 +81,46 @@ export const useAdminAuthenticationState = ({ systemAdminSettings, runtimeSurfac
     setAdminAuthPolicyVersion(0);
   }, []);
 
+  const rebaseAdminAuthenticatedSession = useCallback(
+    (securitySettingsOverride = null) => {
+      const currentSession = readAdminAuthSession();
+      if (!currentSession.adminId) return null;
+
+      const normalizedSecurity = normalizeSystemAdminSettings(
+        securitySettingsOverride || systemAdminSettings
+      );
+      const now = Date.now();
+      const absoluteDurationMs =
+        normalizedSecurity.adminAbsoluteTimeoutHours > 0
+          ? normalizedSecurity.adminAbsoluteTimeoutHours * 60 * 60 * 1000
+          : 0;
+      const currentAbsoluteExpiresAt = Number(
+        currentSession.absoluteExpiresAt || 0
+      );
+      const boundedPreviousSession = {
+        ...currentSession,
+        absoluteExpiresAt:
+          absoluteDurationMs === 0
+            ? 0
+            : currentAbsoluteExpiresAt > now
+              ? Math.min(currentAbsoluteExpiresAt, now + absoluteDurationMs)
+              : 0,
+      };
+      const nextSession = saveAdminAuthSession(
+        currentSession.adminId,
+        normalizedSecurity,
+        boundedPreviousSession
+      );
+
+      setAuthenticatedAdminId(nextSession.adminId);
+      setAdminAuthExpiresAt(nextSession.expiresAt);
+      setAdminAuthAbsoluteExpiresAt(nextSession.absoluteExpiresAt);
+      setAdminAuthPolicyVersion(nextSession.policyVersion);
+      return nextSession;
+    },
+    [systemAdminSettings]
+  );
+
   return {
     adminAuthAbsoluteExpiresAt,
     adminAuthExpiresAt,
@@ -91,6 +131,7 @@ export const useAdminAuthenticationState = ({ systemAdminSettings, runtimeSurfac
     adminLogoutInProgressRef,
     authenticatedAdminId,
     clearAdminAuthenticatedSession,
+    rebaseAdminAuthenticatedSession,
     setAdminAuthenticatedSession,
     setAdminAuthAbsoluteExpiresAt,
     setAdminAuthExpiresAt,

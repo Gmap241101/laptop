@@ -7,6 +7,7 @@ import RentalStatusBoard from '../components/RentalStatusBoard.jsx';
 import DevRenderProfiler from '../performance/DevRenderProfiler.jsx';
 import UserFooter from './UserFooter.jsx';
 import UserWorkspace from './UserWorkspace.jsx';
+import UserRuntimeErrorBoundary from './UserRuntimeErrorBoundary.jsx';
 import { getHeaderSubtitle } from '../utils/systemSettings.js';
 
 const UserDialogs = React.lazy(() => import('./UserDialogs.jsx'));
@@ -279,10 +280,15 @@ const UserShell = ({
           ) : null}
 
           <DevRenderProfiler id="UserWorkspace">
-            <UserWorkspace
-              ctx={contextGroups.user.shell}
-              panelCtx={contextGroups.user[userPanelContextKey]}
-            />
+            <UserRuntimeErrorBoundary
+              resetKey={`${userTab}:${firebaseAuthUser?.uid || firebaseAuthUser?.id || ''}`}
+              onRecover={goToAppHome}
+            >
+              <UserWorkspace
+                ctx={contextGroups.user.shell}
+                panelCtx={contextGroups.user[userPanelContextKey]}
+              />
+            </UserRuntimeErrorBoundary>
           </DevRenderProfiler>
         </main>
 

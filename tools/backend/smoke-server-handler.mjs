@@ -185,10 +185,21 @@ const siteDomains = new Map([
   ['popup', { source: 'postgresql', domain: 'popup', documents: [], count: 0 }],
   ['site-settings', { source: 'postgresql', domain: 'site-settings', documents: [{ key: 'siteSettings/config', payload: { siteName: 'Smoke' } }], count: 1 }],
 ]);
+let rentalConfigSettingsPatch = null;
 const siteContentService = {
   async getDomain(domain) { return siteDomains.get(domain) || { source: 'postgresql', domain, documents: [], count: 0 }; },
   async syncDomain(domain) { return { ...(siteDomains.get(domain) || { domain, documents: [], count: 0 }), source: 'postgresql', synchronized: true }; },
   async replaceAdminDomain({ domain, documents }) { const result = { source: 'postgresql', domain, documents: documents || [], count: (documents || []).length, synchronized: true }; siteDomains.set(domain, result); return result; },
+  async patchRentalConfigSettings({ settingsPatch }) {
+    rentalConfigSettingsPatch = settingsPatch || {};
+    return {
+      source: 'postgresql',
+      domain: 'rental-config',
+      documents: [{ key: 'rentalSystem/publicConfig', payload: { settings: rentalConfigSettingsPatch } }],
+      count: 1,
+      synchronized: true,
+    };
+  },
 };
 const boardService = {
   async getStatus() { return { source: 'postgresql', synchronized: true, noticeCount: 1, faqCount: 1, faqCategoryCount: 1 }; },
@@ -258,6 +269,28 @@ try {
   });
   if (preflight.status !== 204) throw new Error(`Administrator rental-config PATCH preflight returned ${preflight.status}`);
   if (!(preflight.headers.get('access-control-allow-methods') || '').includes('PATCH')) throw new Error('Administrator rental-config preflight does not allow PATCH.');
+
+  const largeHolidayList = Array.from({ length: 700 }, (_, index) => ({
+    date: `2027-${String((index % 12) + 1).padStart(2, '0')}-${String((index % 27) + 1).padStart(2, '0')}`,
+    name: `Smoke holiday ${index} ${'x'.repeat(72)}`,
+    type: 'holiday',
+    enabled: true,
+  }));
+  const largeHolidayBody = JSON.stringify({ settings: { holidays: largeHolidayList } });
+  if (Buffer.byteLength(largeHolidayBody, 'utf8') <= 32 * 1024) throw new Error('Large holiday smoke payload must exceed the former 32KB body limit.');
+  if (Buffer.byteLength(largeHolidayBody, 'utf8') >= 512 * 1024) throw new Error('Large holiday smoke payload must remain below the endpoint safety limit.');
+  const largeHolidaySave = await fetch(`${baseUrl}/api/admin/site-content/rental-config/settings`, {
+    method: 'PATCH',
+    headers: { ...authHeaders, 'Content-Type': 'application/json' },
+    body: largeHolidayBody,
+  });
+  if (largeHolidaySave.status !== 200) {
+    const failureBody = await largeHolidaySave.text();
+    throw new Error(`Large administrator holiday save returned ${largeHolidaySave.status}: ${failureBody}`);
+  }
+  const largeHolidaySaveBody = await largeHolidaySave.json();
+  if (largeHolidaySaveBody.rentalConfigMutation?.operation !== 'settings-patch') throw new Error('Large administrator holiday save did not use the PostgreSQL settings-patch authority.');
+  if (rentalConfigSettingsPatch?.holidays?.length !== largeHolidayList.length) throw new Error('Large administrator holiday payload was not delivered intact to the PostgreSQL settings service.');
 
   const session = await fetch(`${baseUrl}/api/auth/session`, { headers: authHeaders });
   if (session.status !== 200 || (await session.json()).session?.userId !== 'user_smoke') throw new Error('Clerk session endpoint failed.');

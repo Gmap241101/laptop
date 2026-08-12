@@ -1103,7 +1103,7 @@ export const createRequestHandler = ({
       if (!auth) return;
       try {
         const adminAuth = await adminClerkAuthService.getCurrent({ clerkUserId: auth.userId });
-        const body = await readJsonBody(request);
+        const body = await readJsonBody(request, { maxBytes: 512 * 1024 });
         const content = await siteContentService.patchRentalConfigSettings({
           settingsPatch: body?.settings,
           actorClerkUserId: adminAuth.admin.clerkUserId || auth.userId,

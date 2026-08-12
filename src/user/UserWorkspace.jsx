@@ -2,6 +2,7 @@ import { lazy, memo, Suspense, useEffect, useMemo, useState } from 'react';
 import DevRenderProfiler from '../performance/DevRenderProfiler.jsx';
 import { PROTECTED_USER_TABS } from '../routing/appRoutes.js';
 import UserHomePanel from './UserHomePanel.jsx';
+import UserRentalPanel from './UserRentalPanel.jsx';
 import useUserTermsCompliance from '../features/terms/useUserTermsCompliance.js';
 import UserTermsConsentPanel from './UserTermsConsentPanel.jsx';
 
@@ -13,10 +14,8 @@ const UserAccountStatusPanel = memo(
 const loadUserBoardPanel = () => import('./UserBoardPanel.jsx');
 const UserBoardPanel = memo(lazy(loadUserBoardPanel));
 const loadUserMyPagePanel = () => import('./UserMyPagePanel.jsx');
-const loadUserRentalPanel = () => import('./UserRentalPanel.jsx');
 const loadUserRequestHistoryPanel = () => import('./UserRequestHistoryPanel.jsx');
 const UserMyPagePanel = memo(lazy(loadUserMyPagePanel));
-const UserRentalPanel = memo(lazy(loadUserRentalPanel));
 const UserRequestHistoryPanel = memo(lazy(loadUserRequestHistoryPanel));
 const UserFooterPagePanel = memo(
   lazy(() => import('./UserFooterPagePanel.jsx'))
@@ -83,7 +82,6 @@ function UserWorkspace({ ctx, panelCtx }) {
       const loaders = [loadUserAuthPanel, loadUserBoardPanel];
       if (hasFirebaseAuthSession) {
         loaders.push(
-          loadUserRentalPanel,
           loadUserRequestHistoryPanel,
           loadUserMyPagePanel
         );
@@ -206,7 +204,8 @@ function UserWorkspace({ ctx, panelCtx }) {
   if (userTab === 'rental') {
     return renderProfiledPanel(
       'rental',
-      <UserRentalPanel ctx={panelCtx} />
+      <UserRentalPanel ctx={panelCtx} />,
+      { lazyPanel: false }
     );
   }
   if (userTab === 'mypage') {
