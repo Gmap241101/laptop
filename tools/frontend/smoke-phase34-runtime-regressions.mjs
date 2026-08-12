@@ -5,6 +5,8 @@ import { createSiteContentDomainDocument } from '../../src/features/content/site
 import { formatUserAccountCreatedAt } from '../../src/features/members/memberAccountPolicy.js';
 import { requestAdminRentalConfigSettingsPatch, requestCurrentUserRentalRestriction } from '../../src/clerk/clerkStagingClient.js';
 import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 for (let index = 0; index < 25; index += 1) {
   const requestId = createRentalRequestId();
@@ -63,6 +65,12 @@ const adminAccountEffectTail = identitySource.match(/setAdminAccountsReady\(fals
 assert.ok(adminAccountEffectTail, 'administrator registry refresh must depend on administrator identity and dedicated app surface only');
 assert.equal(adminAccountEffectTail.includes('adminTab'), false, 'administrator registry must not reload on every menu change');
 
+const adminIdentitySource = fs.readFileSync(new URL('../../src/features/auth/useAdminIdentityPolicyController.js', import.meta.url), 'utf8');
+assert.match(adminIdentitySource, /getAdminClerkSession\(\)/, 'dedicated administrator root must bootstrap from the administrator Clerk session');
+assert.match(adminIdentitySource, /getAdminSystemConfiguration\(\s*'admin-security'\s*\)/, 'dedicated administrator root must load PostgreSQL administrator security policy');
+assert.match(adminIdentitySource, /getAdminAccountsPostgresql\(\)/, 'dedicated administrator root must load the PostgreSQL administrator registry');
+assert.equal(adminIdentitySource.includes('useAuthIdentityPolicySubscriptionController'), false, 'administrator identity lifecycle must not reuse the mixed user identity controller');
+
 const adminAuthSource = fs.readFileSync(new URL('../../src/features/auth/useAdminAuthenticationController.js', import.meta.url), 'utf8');
 assert.match(
   adminAuthSource,
@@ -119,10 +127,15 @@ const adminHtml = fs.readFileSync(new URL('../../admin/index.html', import.meta.
 const vercelConfig = JSON.parse(fs.readFileSync(new URL('../../vercel.json', import.meta.url), 'utf8'));
 const userMainSource = fs.readFileSync(new URL('../../src/user-main.jsx', import.meta.url), 'utf8');
 const adminMainSource = fs.readFileSync(new URL('../../src/admin-main.jsx', import.meta.url), 'utf8');
+const renderUserRootSource = fs.readFileSync(new URL('../../src/bootstrap/renderUserRoot.jsx', import.meta.url), 'utf8');
+const renderAdminRootSource = fs.readFileSync(new URL('../../src/bootstrap/renderAdminRoot.jsx', import.meta.url), 'utf8');
+const userAppSource = fs.readFileSync(new URL('../../src/UserApp.jsx', import.meta.url), 'utf8');
+const userShellSource = fs.readFileSync(new URL('../../src/user/UserShell.jsx', import.meta.url), 'utf8');
+const adminAppSource = fs.readFileSync(new URL('../../src/admin/AdminApp.jsx', import.meta.url), 'utf8');
+const adminShellSource = fs.readFileSync(new URL('../../src/admin/AdminShell.jsx', import.meta.url), 'utf8');
 const appRoutesSource = fs.readFileSync(new URL('../../src/routing/appRoutes.js', import.meta.url), 'utf8');
 const userSessionSource = fs.readFileSync(new URL('../../src/features/auth/useUserAuthenticationSessionController.js', import.meta.url), 'utf8');
 const membershipSource = fs.readFileSync(new URL('../../src/features/members/useUserMembershipStatusController.js', import.meta.url), 'utf8');
-const appSource = fs.readFileSync(new URL('../../src/App.jsx', import.meta.url), 'utf8');
 
 assert.match(userHtml, /src="\/src\/user-main\.jsx"/, 'user root must have a dedicated entrypoint');
 assert.match(adminHtml, /src="\/src\/admin-main\.jsx"/, 'administrator root must have a dedicated entrypoint');
@@ -132,15 +145,89 @@ assert.equal(vercelConfig.rewrites?.[0]?.source, '/admin', 'Vercel must resolve 
 assert.equal(vercelConfig.rewrites?.[0]?.destination, '/admin/index.html');
 assert.match(userMainSource, /clearAdminRouteIntent\(\)/, 'user document must clear stale administrator route intent');
 assert.match(adminMainSource, /writeAdminRouteIntent\(\)/, 'administrator document must establish administrator route intent before React mounts');
+assert.match(userMainSource, /renderUserRoot/, 'user entrypoint must mount the dedicated user root');
+assert.match(adminMainSource, /renderAdminRoot/, 'administrator entrypoint must mount the dedicated administrator root');
+assert.equal(userMainSource.includes('renderAdminRoot'), false, 'user entrypoint must not import the administrator root');
+assert.equal(adminMainSource.includes('renderUserRoot'), false, 'administrator entrypoint must not import the user root');
+assert.match(renderUserRootSource, /import UserApp from '\.\.\/UserApp\.jsx'/, 'user document must mount UserApp directly');
+assert.equal(renderUserRootSource.includes('../App.jsx'), false, 'user document must not mount the legacy shared App root');
+assert.match(renderAdminRootSource, /import AdminApp from '\.\.\/admin\/AdminApp\.jsx'/, 'administrator document must mount AdminApp directly');
+assert.equal(renderAdminRootSource.includes('../App.jsx'), false, 'administrator document must not mount the legacy shared App root');
+assert.match(userAppSource, /from '\.\/user\/UserShell\.jsx'/, 'UserApp must render the user-only shell');
+assert.match(userAppSource, /from '\.\/user\/useUserContextAssembler\.js'/, 'UserApp must use a user-only context assembler');
+assert.equal(userAppSource.includes("from './admin/"), false, 'UserApp must not import administrator source modules');
+assert.match(adminAppSource, /from '\.\/AdminShell\.jsx'/, 'AdminApp must render the administrator-only shell');
+assert.equal(adminAppSource.includes('../user/'), false, 'AdminApp must not import user source modules');
+assert.equal(userShellSource.includes('AdminWorkspace'), false, 'user shell must not contain the administrator workspace');
+assert.equal(/(?:import\s+[^;]*|import\s*\()[\s\S]*?AppDialogs\.jsx/.test(userShellSource), false, 'user shell must not import mixed administrator dialogs');
+assert.match(userShellSource, /UserDialogs/, 'user shell must mount user-only dialogs');
+assert.equal(adminShellSource.includes('UserWorkspace'), false, 'administrator shell must not contain the user workspace');
+assert.equal(adminShellSource.includes('UserFooter'), false, 'administrator shell must not contain the user footer');
+assert.equal(adminShellSource.includes('UserPopupLayer'), false, 'administrator shell must not contain the user popup layer');
 assert.match(appRoutesSource, /currentSurface === APP_SURFACE\.ADMIN && nextView !== 'admin'/, 'background user navigation must be blocked inside the administrator document');
 assert.match(appRoutesSource, /currentSurface === APP_SURFACE\.USER && nextView === 'admin'/, 'user-to-admin navigation must perform a cross-document navigation');
 assert.match(userSessionSource, /runtimeSurface !== 'user'/, 'user session lifecycle effects must be disabled on the administrator document');
 assert.match(membershipSource, /runtimeSurface !== 'user'/, 'user membership lifecycle effects must be disabled on the administrator document');
 assert.match(identitySource, /runtimeSurface === 'admin'/, 'identity bootstrap must use the administrator Clerk session only on the administrator document');
 assert.match(identitySource, /runtimeSurface === 'user'/, 'identity bootstrap must use the user Clerk session only on the user document');
-assert.match(appSource, /function App\(\{ runtimeSurface = 'user' \}\)/, 'App must receive a fixed document surface from the entrypoint');
-assert.match(appSource, /useUserAuthenticationSessionController\(\{[\s\S]*?runtimeSurface,/, 'App must pass the document surface to the user session controller');
-assert.match(appSource, /useAdminAuthenticationController\(\{[\s\S]*?runtimeSurface,/, 'App must pass the document surface to the administrator authentication controller');
-assert.match(appShellSource, /React\.lazy\(\(\) => import\('\.\.\/admin\/AdminWorkspace\.jsx'\)\)/, 'administrator workspace UI must remain lazy and absent from the initial user UI render path');
+
+const sourceRoot = fileURLToPath(new URL('../../src/', import.meta.url));
+const resolveLocalImport = (fromFile, specifier) => {
+  if (!specifier.startsWith('.')) return null;
+  const basePath = path.resolve(path.dirname(fromFile), specifier);
+  const candidates = [
+    basePath,
+    `${basePath}.js`,
+    `${basePath}.jsx`,
+    `${basePath}.mjs`,
+    path.join(basePath, 'index.js'),
+    path.join(basePath, 'index.jsx'),
+  ];
+  return candidates.find((candidate) => {
+    try {
+      return fs.statSync(candidate).isFile();
+    } catch {
+      return false;
+    }
+  }) || null;
+};
+
+const collectLocalImportGraph = (entryFile) => {
+  const pending = [entryFile];
+  const visited = new Set();
+  const importPattern = /(?:from\s+|import\s*\(\s*)['"]([^'"]+)['"]/g;
+  while (pending.length > 0) {
+    const currentFile = pending.pop();
+    if (!currentFile || visited.has(currentFile)) continue;
+    visited.add(currentFile);
+    const source = fs.readFileSync(currentFile, 'utf8');
+    let match;
+    while ((match = importPattern.exec(source))) {
+      const resolved = resolveLocalImport(currentFile, match[1]);
+      if (resolved && !visited.has(resolved)) pending.push(resolved);
+    }
+  }
+  return [...visited].map((file) => path.relative(sourceRoot, file).replaceAll('\\', '/'));
+};
+
+const userImportGraph = collectLocalImportGraph(fileURLToPath(new URL('../../src/user-main.jsx', import.meta.url)));
+const adminImportGraph = collectLocalImportGraph(fileURLToPath(new URL('../../src/admin-main.jsx', import.meta.url)));
+const userForbiddenImports = userImportGraph.filter((file) =>
+  file === 'App.jsx' ||
+  file === 'shell/AppShell.jsx' ||
+  file.startsWith('admin/') ||
+  /(^|\/)useAdmin[A-Z][^/]*\.(?:js|jsx)$/.test(file)
+);
+const adminForbiddenImports = adminImportGraph.filter((file) =>
+  file === 'App.jsx' ||
+  file === 'UserApp.jsx' ||
+  file === 'shell/AppShell.jsx' ||
+  file.startsWith('user/') ||
+  /(^|\/)useUser(?:Login|Signup|AuthenticationSession|MembershipStatus|MyPageAccount|RentalRequest|RequestHistoryAction|AccountRecovery)Controller\.(?:js|jsx)$/.test(file)
+);
+assert.deepEqual(userForbiddenImports, [], `user import graph must not reach administrator application/controller modules: ${userForbiddenImports.join(', ')}`);
+assert.deepEqual(adminForbiddenImports, [], `administrator import graph must not reach user application/lifecycle modules: ${adminForbiddenImports.join(', ')}`);
+assert.ok(userImportGraph.includes('UserApp.jsx'), 'user import graph must include UserApp');
+assert.ok(adminImportGraph.includes('admin/AdminApp.jsx'), 'administrator import graph must include AdminApp');
 
 console.log('[phase34-runtime-regressions-frontend-smoke] PASS');

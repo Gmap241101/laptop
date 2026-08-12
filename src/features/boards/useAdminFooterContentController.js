@@ -8,8 +8,16 @@ import {
   isRichTextEmpty,
   legacyTextToRichHtml,
   richTextHtmlToText,
-  sanitizeRichTextHtml,
 } from '../../utils/richTextCore.js';
+import {
+  createDefaultFooterConfigDraft,
+  sanitizeFooterCommonHtml,
+} from './footerContentShared.js';
+
+export {
+  createDefaultFooterConfigDraft,
+  sanitizeFooterCommonHtml,
+} from './footerContentShared.js';
 
 export const FOOTER_PAGE_TYPE_CONTENT = 'content';
 export const FOOTER_PAGE_TYPE_LINK = 'link';
@@ -41,11 +49,6 @@ export const getSafeFooterLinkUrl = (value = '') => {
   }
 };
 
-export const createDefaultFooterConfigDraft = () => ({
-  enabled: true,
-  contentHtml: '',
-});
-
 export const createDefaultFooterPageForm = () => ({
   enabled: true,
   title: '',
@@ -57,21 +60,6 @@ export const createDefaultFooterPageForm = () => ({
   isTitleBold: false,
   contentHtml: '',
 });
-
-export const sanitizeFooterCommonHtml = (html = '') => {
-  const sanitized = sanitizeRichTextHtml(html);
-  if (typeof document === 'undefined') return sanitized;
-
-  const container = document.createElement('div');
-  container.innerHTML = sanitized;
-  container
-    .querySelectorAll('iframe, video, [data-video-provider]')
-    .forEach((node) => {
-      const wrapper = node.closest?.('[data-video-provider]');
-      (wrapper || node).remove();
-    });
-  return sanitizeRichTextHtml(container.innerHTML);
-};
 
 export const useAdminFooterContentState = () => {
   const [footerConfigDraft, setFooterConfigDraft] = useState(

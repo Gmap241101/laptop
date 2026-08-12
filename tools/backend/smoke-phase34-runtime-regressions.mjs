@@ -85,6 +85,7 @@ assert.deepEqual(canonical.payload.settings.holidays, [{ date: '2026-08-15', ena
 
 const appSource = fs.readFileSync(new URL('../../server/src/app.mjs', import.meta.url), 'utf8');
 assert.match(appSource, /PATCH' && url\.pathname === '\/api\/admin\/site-content\/rental-config\/settings'/);
+assert.match(appSource, /'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS'/, 'browser CORS preflight must allow PATCH for administrator rental-config writes');
 assert.match(appSource, /phase34AdminNavigationHolidayRevision/);
 
 

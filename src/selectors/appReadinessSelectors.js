@@ -3,7 +3,7 @@ import {
   getSafeMemberDirectoryVersion,
   isRegisteredMemberSignupRequired,
 } from '../features/members/memberAccountPolicy.js';
-import { SPLIT_STORAGE_VERSION } from '../features/settings/useAdminSplitStorageMigrationController.js';
+import { SPLIT_STORAGE_VERSION } from '../features/settings/splitStorageConstants.js';
 
 export const selectAppReadiness = ({
   adminAccountsLoadErrorMessage,

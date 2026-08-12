@@ -1,8 +1,5 @@
 import { useState } from 'react';
-
-// Historical schema marker retained because readiness selectors still compare against it.
-// The migration action itself is retired: Phase 34 uses PostgreSQL authoritative storage only.
-export const SPLIT_STORAGE_VERSION = 2;
+export { SPLIT_STORAGE_VERSION } from './splitStorageConstants.js';
 
 export const useAdminSplitStorageMigrationState = () => {
   const [splitStorageFinalizeLoading, setSplitStorageFinalizeLoading] = useState(false);

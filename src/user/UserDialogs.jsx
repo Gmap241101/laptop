@@ -1,0 +1,411 @@
+export default function UserDialogs({ ctx }) {
+  const {
+    AlertCircle,
+    AnimatePresence,
+    Button,
+    CheckCircle2,
+    DateInputWithWeekday,
+    USER_REQUEST_ACTION,
+    X,
+    activeUserActionRentalRequest,
+    closeUserActionDialog,
+    confirmModal,
+    data,
+    formatDateWithKoreanWeekday,
+    getAdjustedRentalDueDate,
+    getMaxRentalDueDate,
+    getRentalDueDateAdjustmentReason,
+    getRentalExtensionApprovalMode,
+    getRentalExtensionPeriod,
+    getUserRequestActionLabel,
+    motion,
+    setConfirmModal,
+    setToast,
+    setUserActionForm,
+    submitUserActionRequest,
+    toast,
+    today,
+    triggerToast,
+    userActionDialog,
+    userActionForm,
+    userActionSaving,
+  } = ctx;
+
+  const extensionPreview =
+    userActionDialog?.type === USER_REQUEST_ACTION.EXTEND &&
+    activeUserActionRentalRequest
+      ? getRentalExtensionPeriod(activeUserActionRentalRequest, data.settings)
+      : null;
+  const extensionApprovalMode = getRentalExtensionApprovalMode(data.settings);
+
+  return (
+    <>
+      {userActionDialog && activeUserActionRentalRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  {getUserRequestActionLabel(userActionDialog.type)}
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  {activeUserActionRentalRequest.assetNo} ·{' '}
+                  {activeUserActionRentalRequest.startDate} ~{' '}
+                  {activeUserActionRentalRequest.dueDate}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeUserActionDialog}
+                disabled={userActionSaving}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              {userActionDialog.type === USER_REQUEST_ACTION.CHANGE && (
+                <>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="text-[11px] font-semibold text-slate-500">신청자</div>
+                    <div className="mt-1 text-sm font-bold text-slate-900">
+                      {activeUserActionRentalRequest.requesterTeam ||
+                        activeUserActionRentalRequest.team ||
+                        '-'}
+                      {' · '}
+                      {activeUserActionRentalRequest.requesterName ||
+                        activeUserActionRentalRequest.borrower ||
+                        '-'}
+                    </div>
+                    <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                      신청자와 기기는 변경할 수 없습니다. 일정과 대여 목적만 즉시 수정됩니다.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <DateInputWithWeekday
+                      label="변경할 대여 시작일"
+                      value={userActionForm.startDate}
+                      min={today()}
+                      onChange={(value) => {
+                        setUserActionForm((prev) => {
+                          const maxDueDate = getMaxRentalDueDate(
+                            value,
+                            data.settings
+                          );
+                          const candidateDueDate =
+                            prev.dueDate < value
+                              ? value
+                              : prev.dueDate;
+                          const adjustedDueDate = getAdjustedRentalDueDate(
+                            candidateDueDate,
+                            data.settings
+                          );
+
+                          return {
+                            ...prev,
+                            startDate: value,
+                            dueDate:
+                              adjustedDueDate > maxDueDate
+                                ? maxDueDate
+                                : adjustedDueDate,
+                          };
+                        });
+                      }}
+                    />
+
+                    <DateInputWithWeekday
+                      label="변경할 반납 예정일"
+                      value={userActionForm.dueDate}
+                      min={userActionForm.startDate}
+                      max={getMaxRentalDueDate(
+                        userActionForm.startDate,
+                        data.settings
+                      )}
+                      onChange={(value) => {
+                        const maxDueDate = getMaxRentalDueDate(
+                          userActionForm.startDate,
+                          data.settings
+                        );
+                        const adjustedDueDate = getAdjustedRentalDueDate(
+                          value,
+                          data.settings
+                        );
+                        const finalDueDate =
+                          adjustedDueDate > maxDueDate
+                            ? maxDueDate
+                            : adjustedDueDate;
+
+                        if (finalDueDate !== value) {
+                          const reason = getRentalDueDateAdjustmentReason(
+                            value,
+                            data.settings
+                          );
+
+                          triggerToast(
+                            adjustedDueDate > maxDueDate
+                              ? `최대 허용 반납 예정일인 ${formatDateWithKoreanWeekday(maxDueDate)}로 조정되었습니다.`
+                              : `선택한 반납 예정일이 ${reason || '휴무일'}이므로 다음 영업일인 ${formatDateWithKoreanWeekday(finalDueDate)}로 자동 조정되었습니다.`,
+                            'success'
+                          );
+                        }
+
+                        setUserActionForm((prev) => ({
+                          ...prev,
+                          dueDate: finalDueDate,
+                        }));
+                      }}
+                    />
+                  </div>
+
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                      변경할 대여 목적
+                    </span>
+                    <textarea
+                      value={userActionForm.purpose}
+                      onChange={(event) =>
+                        setUserActionForm((prev) => ({
+                          ...prev,
+                          purpose: event.target.value,
+                        }))
+                      }
+                      className="h-24 w-full rounded-xl border border-slate-200 p-3 text-xs outline-none mk-form-ring-focus"
+                    />
+                  </label>
+
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-800">
+                    저장 시 같은 기기의 기존 신청·예약·대여 일정과 다시 비교합니다. 일정이 겹치면 수정되지 않습니다.
+                  </div>
+                </>
+              )}
+
+              {userActionDialog.type === USER_REQUEST_ACTION.CANCEL && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm leading-6 text-rose-800">
+                  <div className="font-bold">대여 신청을 취소하시겠습니까?</div>
+                  <div className="mt-1 text-xs">
+                    취소한 신청은 복구할 수 없으며 사용자 신청내역과 관리자 신청관리에서 모두 삭제됩니다.
+                  </div>
+                </div>
+              )}
+
+              {userActionDialog.type === USER_REQUEST_ACTION.EXTEND &&
+                extensionPreview && (
+                  <div className="space-y-3">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-700">
+                      <div className="font-bold text-slate-900">
+                        대여 기간을 연장 신청하시겠습니까?
+                      </div>
+                      <div className="mt-2 text-xs">
+                        기존 반납 예정일: {activeUserActionRentalRequest.dueDate}
+                      </div>
+                      <div className="text-xs">
+                        연장 기간: {extensionPreview.extensionStartDate} ~{' '}
+                        {extensionPreview.extensionDueDate}
+                      </div>
+                      <div className="text-xs">
+                        연장 일수: {extensionPreview.extensionDays}일(달력 기준)
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-800">
+                      {extensionApprovalMode === 'auto'
+                        ? '현재 설정은 자동 승인 방식이므로 확인하면 즉시 연장됩니다.'
+                        : '신청 후 관리자 승인이 완료되어야 반납 예정일이 변경됩니다.'}
+                    </div>
+                  </div>
+                )}
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={userActionSaving}
+                onClick={closeUserActionDialog}
+              >
+                {userActionDialog.type === USER_REQUEST_ACTION.CANCEL
+                  ? '돌아가기'
+                  : '취소'}
+              </Button>
+
+              <Button
+                type="button"
+                variant={
+                  userActionDialog.type === USER_REQUEST_ACTION.CANCEL
+                    ? 'danger'
+                    : 'primary'
+                }
+                disabled={userActionSaving}
+                onClick={submitUserActionRequest}
+              >
+                {userActionSaving
+                  ? '처리 중...'
+                  : userActionDialog.type === USER_REQUEST_ACTION.CHANGE
+                    ? '수정 저장'
+                    : userActionDialog.type === USER_REQUEST_ACTION.CANCEL
+                      ? '신청 취소'
+                      : '연장 신청'}
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+      {/* --- 모던 Custom Toast (iframe 환경 완벽 최적화) --- */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            className={`fixed top-6 right-6 z-50 flex items-center gap-3 rounded-2xl px-4.5 py-3.5 shadow-xl border text-xs font-semibold ${
+              toast.type === 'error'
+                ? 'bg-rose-50 text-rose-800 border-rose-200 shadow-rose-100/40'
+                : 'bg-emerald-50 text-emerald-800 border-emerald-200 shadow-emerald-100/40'
+            }`}
+          >
+            {toast.type === 'error' ? (
+              <AlertCircle className="text-rose-600" size={18} />
+            ) : (
+              <CheckCircle2 className="text-emerald-600" size={18} />
+            )}
+            <span>{toast.message}</span>
+            <button onClick={() => setToast(null)} className="ml-2 text-slate-400 hover:text-slate-700">
+              <X size={15} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* --- 모던 Custom Confirm Modal (iframe 차단 방지) --- */}
+      {confirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+          >
+            <h3 className="text-base font-bold text-slate-900">
+              {confirmModal.title}
+            </h3>
+            <p className="mt-2 whitespace-pre-line text-xs leading-relaxed text-slate-600">
+              {confirmModal.message}
+            </p>
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button
+                variant="outline"
+                disabled={confirmModal.isProcessing}
+                onClick={() => setConfirmModal(null)}
+                className="rounded-xl px-4 py-2"
+              >
+                {confirmModal.cancelLabel || '취소'}
+              </Button>
+
+              {confirmModal.secondaryLabel && confirmModal.onSecondary && (
+                <Button
+                  variant={confirmModal.secondaryVariant || 'outline'}
+                  disabled={confirmModal.isProcessing}
+                  onClick={async () => {
+                    setConfirmModal((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            isProcessing: true,
+                          }
+                        : prev
+                    );
+
+                    try {
+                      const result = await confirmModal.onSecondary();
+
+                      if (result === false) {
+                        setConfirmModal((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                isProcessing: false,
+                              }
+                            : prev
+                        );
+                        return;
+                      }
+
+                      setConfirmModal(null);
+                    } catch (error) {
+                      console.error('Secondary confirm action error:', error);
+                      setConfirmModal((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              isProcessing: false,
+                            }
+                          : prev
+                      );
+                    }
+                  }}
+                  className="rounded-xl px-4 py-2"
+                >
+                  {confirmModal.secondaryLabel}
+                </Button>
+              )}
+
+              <Button
+                variant={confirmModal.variant || 'danger'}
+                disabled={confirmModal.isProcessing}
+                onClick={async () => {
+                  setConfirmModal((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          isProcessing: true,
+                        }
+                      : prev
+                  );
+
+                  try {
+                    const result = await confirmModal.onConfirm?.();
+
+                    if (result === false) {
+                      setConfirmModal((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              isProcessing: false,
+                            }
+                          : prev
+                      );
+                      return;
+                    }
+
+                    setConfirmModal(null);
+                  } catch (error) {
+                    console.error('Confirm action error:', error);
+                    setConfirmModal((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            isProcessing: false,
+                          }
+                        : prev
+                    );
+                  }
+                }}
+                className="rounded-xl px-4 py-2"
+              >
+                {confirmModal.isProcessing
+                  ? confirmModal.confirmLoadingLabel || '처리 중...'
+                  : confirmModal.confirmLabel || '확인 및 실행'}
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </>
+  );
+}

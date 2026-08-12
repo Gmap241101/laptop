@@ -20,7 +20,7 @@ for (const marker of [
   "source: 'clerk-postgresql'",
   "firebaseRuntime: config.firebaseRuntimeDisabled ? 'retired'",
   'config.firebaseRuntimeDisabled',
-  "'Access-Control-Allow-Methods': 'GET,POST,PUT,OPTIONS'",
+  "'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS'",
 ]) assert.ok(appSource.includes(marker) || indexSource.includes(marker), `server runtime marker: ${marker}`);
 
 for (const source of [assetSource, boardSource, memberSource]) {

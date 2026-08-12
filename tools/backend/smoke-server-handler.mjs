@@ -252,11 +252,12 @@ try {
   const allowedHeaders = ready.headers.get('access-control-allow-headers') || '';
   if (!allowedHeaders.includes('Authorization') || allowedHeaders.includes('X-Firebase-Authorization')) throw new Error('Phase 34 CORS headers are invalid.');
 
-  const preflight = await fetch(`${baseUrl}/api/admin/accounts`, {
+  const preflight = await fetch(`${baseUrl}/api/admin/site-content/rental-config/settings`, {
     method: 'OPTIONS',
-    headers: { Origin: allowedOrigin, 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'authorization,content-type' },
+    headers: { Origin: allowedOrigin, 'Access-Control-Request-Method': 'PATCH', 'Access-Control-Request-Headers': 'authorization,content-type' },
   });
-  if (preflight.status !== 204) throw new Error(`Admin preflight returned ${preflight.status}`);
+  if (preflight.status !== 204) throw new Error(`Administrator rental-config PATCH preflight returned ${preflight.status}`);
+  if (!(preflight.headers.get('access-control-allow-methods') || '').includes('PATCH')) throw new Error('Administrator rental-config preflight does not allow PATCH.');
 
   const session = await fetch(`${baseUrl}/api/auth/session`, { headers: authHeaders });
   if (session.status !== 200 || (await session.json()).session?.userId !== 'user_smoke') throw new Error('Clerk session endpoint failed.');

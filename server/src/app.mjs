@@ -43,7 +43,7 @@ const buildCorsHeaders = (request, allowedOrigins) => {
 
   return {
     'Access-Control-Allow-Origin': origin,
-    'Access-Control-Allow-Methods': 'GET,POST,PUT,OPTIONS',
+    'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Authorization,Content-Type,X-Request-Id',
     'Access-Control-Max-Age': '600',
     Vary: 'Origin',

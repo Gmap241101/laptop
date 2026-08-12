@@ -1,6 +1,5 @@
-import { renderAppRoot } from './bootstrap/renderAppRoot.jsx';
-import { APP_SURFACE } from './runtime/appSurface.js';
+import { renderAdminRoot } from './bootstrap/renderAdminRoot.jsx';
 import { writeAdminRouteIntent } from './routing/appRoutes.js';
 
 writeAdminRouteIntent();
-renderAppRoot({ runtimeSurface: APP_SURFACE.ADMIN });
+renderAdminRoot();

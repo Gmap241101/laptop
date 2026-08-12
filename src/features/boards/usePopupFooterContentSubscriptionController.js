@@ -19,7 +19,7 @@ import {
 import {
   createDefaultFooterConfigDraft,
   sanitizeFooterCommonHtml,
-} from './useAdminFooterContentController.js';
+} from './footerContentShared.js';
 import {
   publishSiteContentObservation,
   requestSiteContentDomain,

@@ -120,13 +120,16 @@ const preflight = await fetch(`${baseUrl}/api/auth/session`, {
   method: 'OPTIONS',
   headers: {
     Origin: allowedOrigin,
-    'Access-Control-Request-Method': 'GET',
+    'Access-Control-Request-Method': 'PATCH',
     'Access-Control-Request-Headers': 'authorization',
   },
 });
 if (preflight.status !== 204) throw new Error(`Auth CORS preflight returned ${preflight.status}`);
 if (preflight.headers.get('access-control-allow-origin') !== allowedOrigin) {
   throw new Error('Auth CORS preflight did not return the allowed origin.');
+}
+if (!(preflight.headers.get('access-control-allow-methods') || '').includes('PATCH')) {
+  throw new Error('Auth CORS preflight does not allow PATCH.');
 }
 
 await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
