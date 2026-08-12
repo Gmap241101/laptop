@@ -128,6 +128,7 @@ const vercelConfig = JSON.parse(fs.readFileSync(new URL('../../vercel.json', imp
 const userMainSource = fs.readFileSync(new URL('../../src/user-main.jsx', import.meta.url), 'utf8');
 const adminMainSource = fs.readFileSync(new URL('../../src/admin-main.jsx', import.meta.url), 'utf8');
 const renderUserRootSource = fs.readFileSync(new URL('../../src/bootstrap/renderUserRoot.jsx', import.meta.url), 'utf8');
+const renderAppRootSource = fs.readFileSync(new URL('../../src/bootstrap/renderAppRoot.jsx', import.meta.url), 'utf8');
 const renderAdminRootSource = fs.readFileSync(new URL('../../src/bootstrap/renderAdminRoot.jsx', import.meta.url), 'utf8');
 const userAppSource = fs.readFileSync(new URL('../../src/UserApp.jsx', import.meta.url), 'utf8');
 const userShellSource = fs.readFileSync(new URL('../../src/user/UserShell.jsx', import.meta.url), 'utf8');
@@ -149,24 +150,24 @@ assert.equal(vercelConfig.rewrites?.[0]?.source, '/admin', 'Vercel must resolve 
 assert.equal(vercelConfig.rewrites?.[0]?.destination, '/admin/index.html');
 assert.match(userMainSource, /clearAdminRouteIntent\(\)/, 'user document must clear stale administrator route intent');
 assert.match(adminMainSource, /writeAdminRouteIntent\(\)/, 'administrator document must establish administrator route intent before React mounts');
-assert.match(userMainSource, /renderUserRoot/, 'user entrypoint must mount the dedicated user root');
+assert.match(userMainSource, /renderAppRoot/, 'user entrypoint must use the proven shared user runtime root while the administrator document remains physically isolated');
+assert.match(userMainSource, /APP_SURFACE\.USER/, 'user entrypoint must pin the shared runtime to the user surface');
 assert.match(adminMainSource, /renderAdminRoot/, 'administrator entrypoint must mount the dedicated administrator root');
 assert.equal(userMainSource.includes('renderAdminRoot'), false, 'user entrypoint must not import the administrator root');
-assert.equal(adminMainSource.includes('renderUserRoot'), false, 'administrator entrypoint must not import the user root');
-assert.match(renderUserRootSource, /import UserApp from '\.\.\/UserApp\.jsx'/, 'user document must mount UserApp directly');
-assert.match(renderUserRootSource, /UserRuntimeErrorBoundary/, 'user document root must prevent an uncaught user runtime failure from collapsing to an all-white page');
-assert.equal(renderUserRootSource.includes('../App.jsx'), false, 'user document must not mount the legacy shared App root');
+assert.equal(adminMainSource.includes('renderAppRoot'), false, 'administrator entrypoint must not import the shared user runtime root');
+assert.match(renderAppRootSource, /import App from '\.\.\/App\.jsx'/, 'user recovery path must mount the previously validated App root');
+assert.match(renderAppRootSource, /class RootErrorBoundary/, 'user recovery root must retain a top-level render error boundary');
+assert.equal(userMainSource.includes('renderUserRoot'), false, 'user entrypoint must not mount the regressed UserApp/UserShell runtime during recovery');
 assert.match(renderAdminRootSource, /import AdminApp from '\.\.\/admin\/AdminApp\.jsx'/, 'administrator document must mount AdminApp directly');
 assert.equal(renderAdminRootSource.includes('../App.jsx'), false, 'administrator document must not mount the legacy shared App root');
-assert.match(userAppSource, /from '\.\/user\/UserShell\.jsx'/, 'UserApp must render the user-only shell');
-assert.match(userAppSource, /from '\.\/user\/useUserContextAssembler\.js'/, 'UserApp must use a user-only context assembler');
-assert.equal(userAppSource.includes("from './admin/"), false, 'UserApp must not import administrator source modules');
+assert.match(userAppSource, /from '\.\/user\/UserShell\.jsx'/, 'isolated UserApp source remains available for later reintroduction only after its runtime regression is resolved');
+assert.match(userAppSource, /from '\.\/user\/useUserContextAssembler\.js'/, 'isolated UserApp source must keep its user-only context assembler while it is quarantined from the active entrypoint');
 assert.match(adminAppSource, /from '\.\/AdminShell\.jsx'/, 'AdminApp must render the administrator-only shell');
 assert.equal(adminAppSource.includes('../user/'), false, 'AdminApp must not import user source modules');
 assert.equal(userShellSource.includes('AdminWorkspace'), false, 'user shell must not contain the administrator workspace');
 assert.equal(/(?:import\s+[^;]*|import\s*\()[\s\S]*?AppDialogs\.jsx/.test(userShellSource), false, 'user shell must not import mixed administrator dialogs');
 assert.match(userShellSource, /UserDialogs/, 'user shell must mount user-only dialogs');
-assert.match(userShellSource, /UserRuntimeErrorBoundary/, 'user workspace must be protected by a user-only runtime error boundary');
+assert.match(userShellSource, /UserRuntimeErrorBoundary/, 'quarantined UserShell keeps its panel boundary for future isolated-runtime validation');
 assert.match(userRuntimeErrorBoundarySource, /componentDidCatch\(error, errorInfo\)/, 'user runtime error boundary must catch protected-panel render failures instead of allowing an all-white root');
 assert.match(userWorkspaceSource, /import UserRentalPanel from '\.\/UserRentalPanel\.jsx'/, 'post-login rental screen must be eagerly linked into the user application bundle');
 assert.equal(userWorkspaceSource.includes("import('./UserRentalPanel.jsx')"), false, 'post-login rental transition must not depend on a lazy chunk request');
@@ -228,10 +229,8 @@ const collectLocalImportGraph = (entryFile) => {
 const userImportGraph = collectLocalImportGraph(fileURLToPath(new URL('../../src/user-main.jsx', import.meta.url)));
 const adminImportGraph = collectLocalImportGraph(fileURLToPath(new URL('../../src/admin-main.jsx', import.meta.url)));
 const userForbiddenImports = userImportGraph.filter((file) =>
-  file === 'App.jsx' ||
-  file === 'shell/AppShell.jsx' ||
-  file.startsWith('admin/') ||
-  /(^|\/)useAdmin[A-Z][^/]*\.(?:js|jsx)$/.test(file)
+  file === 'admin/AdminApp.jsx' ||
+  file === 'admin/AdminShell.jsx'
 );
 const adminForbiddenImports = adminImportGraph.filter((file) =>
   file === 'App.jsx' ||
@@ -240,9 +239,11 @@ const adminForbiddenImports = adminImportGraph.filter((file) =>
   file.startsWith('user/') ||
   /(^|\/)useUser(?:Login|Signup|AuthenticationSession|MembershipStatus|MyPageAccount|RentalRequest|RequestHistoryAction|AccountRecovery)Controller\.(?:js|jsx)$/.test(file)
 );
-assert.deepEqual(userForbiddenImports, [], `user import graph must not reach administrator application/controller modules: ${userForbiddenImports.join(', ')}`);
+assert.deepEqual(userForbiddenImports, [], `user recovery import graph must not reach the physically separated administrator application root/shell: ${userForbiddenImports.join(', ')}`);
 assert.deepEqual(adminForbiddenImports, [], `administrator import graph must not reach user application/lifecycle modules: ${adminForbiddenImports.join(', ')}`);
-assert.ok(userImportGraph.includes('UserApp.jsx'), 'user import graph must include UserApp');
+assert.ok(userImportGraph.includes('App.jsx'), 'user recovery import graph must include the previously validated App root');
+assert.ok(userImportGraph.includes('shell/AppShell.jsx'), 'user recovery import graph must include the previously validated AppShell');
+assert.equal(userImportGraph.includes('UserApp.jsx'), false, 'regressed isolated UserApp must be quarantined from the active user entrypoint');
 assert.ok(adminImportGraph.includes('admin/AdminApp.jsx'), 'administrator import graph must include AdminApp');
 
 console.log('[phase34-runtime-regressions-frontend-smoke] PASS');
