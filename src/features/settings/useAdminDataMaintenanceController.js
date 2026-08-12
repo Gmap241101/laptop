@@ -23,6 +23,7 @@ export const getAdminDisplayName = (account) => account?.userName || account?.ad
 export const getAdminRole = (account) => account?.adminRole || 'owner';
 
 const retiredOperation = async () => Object.freeze({ retired: true, source: 'postgresql-operations' });
+const RESET_PROGRESS_IDLE = null;
 const formatCheckedAt = (value) => value ? new Date(value).toLocaleString('ko-KR') : '기록 없음';
 
 export default function useAdminDataMaintenanceController({ authenticatedAdminAccount, mode, triggerToast }) {
@@ -36,6 +37,14 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
   const [integrityResult, setIntegrityResult] = useState(null);
   const [repairLoading, setRepairLoading] = useState(false);
   const [backupLoading, setBackupLoading] = useState(false);
+  const [selectedResetScopes, setSelectedResetScopesState] = useState(TEST_DATA_PRESET);
+  const [resetCounts, setResetCounts] = useState(null);
+  const [resetScanLoading, setResetScanLoading] = useState(false);
+  const [resetRunning, setResetRunning] = useState(false);
+  const [resetProgress, setResetProgress] = useState(RESET_PROGRESS_IDLE);
+  const [resetConfirmText, setResetConfirmText] = useState('');
+  const [resetBackupReady, setResetBackupReady] = useState(false);
+  const [latestResetJob, setLatestResetJob] = useState(null);
 
   const refreshOverview = useCallback(async ({ silent = false } = {}) => {
     if (!authenticatedAdminAccount?.id) return null;
@@ -116,13 +125,13 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
     }
   }, [refreshOverview, triggerToast]);
 
-  const downloadBackup = useCallback(async () => {
+  const downloadSnapshot = useCallback(async ({ includeOperations, includeMembers, includePersonalData, forReset = false } = {}) => {
     setBackupLoading(true);
     try {
       const payload = await clerkStagingClient.exportAdminSystemData({
-        includeOperations: backupIncludeOperations,
-        includeMembers: backupIncludeMembers,
-        includePersonalData: backupIncludeMembers && backupIncludePersonalData,
+        includeOperations,
+        includeMembers,
+        includePersonalData,
       });
       const snapshot = payload?.systemDataExport;
       if (!snapshot) throw new Error('system_data_export_payload_missing');
@@ -131,21 +140,115 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
       const anchor = document.createElement('a');
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
       anchor.href = url;
-      anchor.download = `rental-system-postgresql-backup-${stamp}.json`;
+      anchor.download = `${forReset ? 'rental-system-postgresql-pre-reset-backup' : 'rental-system-postgresql-backup'}-${stamp}.json`;
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
       URL.revokeObjectURL(url);
-      triggerToast?.('PostgreSQL 운영 데이터 백업 파일을 생성했습니다.', 'success');
+      if (forReset) setResetBackupReady(true);
+      triggerToast?.(forReset ? '초기화 전 PostgreSQL 전체 백업 파일을 생성했습니다.' : 'PostgreSQL 운영 데이터 백업 파일을 생성했습니다.', 'success');
       return snapshot;
     } catch (error) {
       const code = error?.code || error?.message || 'system_data_export_failed';
+      if (forReset) setResetBackupReady(false);
       triggerToast?.(`PostgreSQL 백업 생성에 실패했습니다. 오류 코드: ${code}`, 'error');
       return null;
     } finally {
       setBackupLoading(false);
     }
-  }, [backupIncludeMembers, backupIncludeOperations, backupIncludePersonalData, triggerToast]);
+  }, [triggerToast]);
+
+  const downloadBackup = useCallback(() => downloadSnapshot({
+    includeOperations: backupIncludeOperations,
+    includeMembers: backupIncludeMembers,
+    includePersonalData: backupIncludeMembers && backupIncludePersonalData,
+  }), [backupIncludeMembers, backupIncludeOperations, backupIncludePersonalData, downloadSnapshot]);
+
+  const downloadResetBackup = useCallback(() => downloadSnapshot({
+    includeOperations: true,
+    includeMembers: true,
+    includePersonalData: true,
+    forReset: true,
+  }), [downloadSnapshot]);
+
+  const setSelectedResetScopes = useCallback((nextValue) => {
+    setSelectedResetScopesState((current) => {
+      const raw = typeof nextValue === 'function' ? nextValue(current) : nextValue;
+      const next = [...new Set((Array.isArray(raw) ? raw : []).filter((scope) => RESET_SCOPE_META[scope]))];
+      return next;
+    });
+    setResetCounts(null);
+    setResetBackupReady(false);
+    setResetProgress(RESET_PROGRESS_IDLE);
+  }, []);
+
+  const scanResetTargets = useCallback(async () => {
+    if (selectedResetScopes.length === 0) {
+      triggerToast?.('초기화 범위를 하나 이상 선택해 주세요.', 'error');
+      return null;
+    }
+    setResetScanLoading(true);
+    setResetProgress({ step: '초기화 대상 확인', completed: 0, total: 1 });
+    try {
+      const payload = await clerkStagingClient.scanAdminSystemDataReset(selectedResetScopes);
+      const result = payload?.systemDataResetScan;
+      if (!result || result.authority !== 'postgresql') throw new Error('system_data_reset_scan_payload_missing');
+      setResetCounts(result);
+      setResetProgress({ step: '초기화 대상 확인 완료', completed: 1, total: 1 });
+      triggerToast?.('PostgreSQL 초기화 대상을 확인했습니다.', 'success');
+      return result;
+    } catch (error) {
+      const code = error?.code || error?.message || 'system_data_reset_scan_failed';
+      setResetCounts(null);
+      setResetProgress(RESET_PROGRESS_IDLE);
+      triggerToast?.(`초기화 대상 확인에 실패했습니다. 오류 코드: ${code}`, 'error');
+      return null;
+    } finally {
+      setResetScanLoading(false);
+    }
+  }, [selectedResetScopes, triggerToast]);
+
+  const executeReset = useCallback(async () => {
+    if (!resetCounts) {
+      triggerToast?.('초기화 대상 확인을 먼저 실행해 주세요.', 'error');
+      return null;
+    }
+    if (!resetBackupReady) {
+      triggerToast?.('초기화 전 PostgreSQL 전체 백업을 먼저 생성해 주세요.', 'error');
+      return null;
+    }
+    if (resetConfirmText !== RESET_CONFIRM_TEXT) {
+      triggerToast?.('초기화 확인 문구가 일치하지 않습니다.', 'error');
+      return null;
+    }
+    setResetRunning(true);
+    setResetProgress({ step: 'PostgreSQL 초기화 실행', completed: 0, total: 1 });
+    try {
+      const payload = await clerkStagingClient.resetAdminSystemData({
+        scopes: selectedResetScopes,
+        confirmText: resetConfirmText,
+        backupConfirmed: true,
+      });
+      const result = payload?.systemDataReset;
+      if (!result || result.authority !== 'postgresql') throw new Error('system_data_reset_payload_missing');
+      setLatestResetJob({ id: `postgresql-reset-${Date.now()}`, status: 'completed', currentStep: '완료', ...result });
+      setResetCounts(result.after || null);
+      setResetProgress({ step: 'PostgreSQL 초기화 완료', completed: 1, total: 1 });
+      setResetConfirmText('');
+      setResetBackupReady(false);
+      await refreshOverview({ silent: true });
+      triggerToast?.('선택한 PostgreSQL 데이터를 초기화했습니다.', 'success');
+      return result;
+    } catch (error) {
+      const code = error?.code || error?.message || 'system_data_reset_failed';
+      setLatestResetJob({ id: `postgresql-reset-${Date.now()}`, status: 'failed', currentStep: '실행', errorMessage: code });
+      setResetProgress(RESET_PROGRESS_IDLE);
+      triggerToast?.(`PostgreSQL 데이터 초기화에 실패했습니다. 오류 코드: ${code}`, 'error');
+      return null;
+    } finally {
+      setResetRunning(false);
+    }
+  }, [refreshOverview, resetBackupReady, resetConfirmText, resetCounts, selectedResetScopes, triggerToast]);
 
   return {
     overview,
@@ -165,24 +268,23 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
     setBackupIncludeMembers,
     setBackupIncludeOperations,
     setBackupIncludePersonalData,
-    // Destructive browser restore/reset is intentionally not reintroduced.
     analyzeRestore: retiredOperation,
     clearRestoreState: () => {},
-    downloadResetBackup: downloadBackup,
-    executeReset: retiredOperation,
+    downloadResetBackup,
+    executeReset,
     executeRestore: retiredOperation,
     forceProjectConfirm: '',
     forceProjectMismatch: false,
     handleRestoreFile: retiredOperation,
-    latestResetJob: null,
+    latestResetJob,
     latestRestoreJob: null,
-    resetBackupReady: false,
-    resetConfirmText: '',
-    resetCounts: null,
+    resetBackupReady,
+    resetConfirmText,
+    resetCounts,
     resetPassword: '',
-    resetProgress: null,
-    resetRunning: false,
-    resetScanLoading: false,
+    resetProgress,
+    resetRunning,
+    resetScanLoading,
     restoreAnalysis: null,
     restoreAnalyzeLoading: false,
     restoreConfirmText: '',
@@ -195,21 +297,21 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
     restoreResult: null,
     restoreRunning: false,
     restoreValidation: null,
-    scanResetTargets: retiredOperation,
-    selectedResetScopes: TEST_DATA_PRESET,
+    scanResetTargets,
+    selectedResetScopes,
     selectedRestoreScopes: [],
     setForceProjectConfirm: () => {},
     setForceProjectMismatch: () => {},
-    setResetBackupReady: () => {},
-    setResetConfirmText: () => {},
-    setResetCounts: () => {},
+    setResetBackupReady,
+    setResetConfirmText,
+    setResetCounts,
     setResetPassword: () => {},
     setRestoreAnalysis: () => {},
     setRestoreConfirmText: () => {},
     setRestoreMode: () => {},
     setRestorePassword: () => {},
     setRestoreResult: () => {},
-    setSelectedResetScopes: () => {},
+    setSelectedResetScopes,
     setSelectedRestoreScopes: () => {},
   };
 }

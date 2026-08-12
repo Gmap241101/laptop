@@ -42,7 +42,7 @@ import useAdminDataMaintenanceController, {
 } from '../features/settings/useAdminDataMaintenanceController.js';
 const DATA_MANAGEMENT_TABS = [
   [SYSTEM_MANAGEMENT_TAB.DATA, Database, '상태·무결성'],
-  [SYSTEM_MANAGEMENT_TAB.RESET, Download, '백업·내보내기'],
+  [SYSTEM_MANAGEMENT_TAB.RESET, Download, '백업·초기화'],
 ];
 
 const SYSTEM_INFORMATION_TABS = [
@@ -715,7 +715,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
 
   const renderResetTab = () => (
     <div className="space-y-5">
-      <SectionCard title="PostgreSQL 운영 데이터 백업" description="서버가 현재 PostgreSQL authority 데이터를 JSON 스냅샷으로 생성합니다. 브라우저 캐시나 Firebase 데이터는 사용하지 않습니다.">
+      <SectionCard title="PostgreSQL 운영 데이터 백업" description="서버가 현재 PostgreSQL authority 데이터를 JSON 스냅샷으로 생성합니다. 초기화 전에는 별도의 전체 백업을 반드시 생성해야 합니다.">
         <div className="space-y-3">
           <ToggleSwitch checked={backupIncludeOperations} onChange={setBackupIncludeOperations} label="대여 운영 데이터 포함" description="대여신청, 신청 자산, 예약 guard, 처리 이벤트를 포함합니다." />
           <ToggleSwitch checked={backupIncludeMembers} onChange={setBackupIncludeMembers} label="회원 데이터 포함" description="회원 계정, 부서·사용자 명부, 대여 제한, 약관 동의 상태를 포함합니다." />
@@ -729,8 +729,92 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
         </div>
       </SectionCard>
 
-      <SectionCard title="복원·초기화 정책" description="운영 DB 전체 덮어쓰기나 삭제는 웹 브라우저에서 실행하지 않습니다.">
-        <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-xs leading-5 text-sky-800">백업 생성과 무결성 복구는 관리자 화면에서 수행할 수 있습니다. 전체 PostgreSQL 복원·초기화는 migration/FK/감사 이력까지 영향을 주므로 배포 절차의 서버측 복원 작업으로 분리합니다.</div>
+      <div className="rounded-2xl border border-rose-300 bg-rose-50 p-5">
+        <div className="flex items-start gap-3">
+          <ShieldAlert className="mt-0.5 shrink-0 text-rose-600" size={20} />
+          <div>
+            <div className="text-base font-black text-rose-900">PostgreSQL 데이터 초기화</div>
+            <p className="mt-1 text-xs leading-5 text-rose-800">선택한 운영 데이터를 PostgreSQL에서 실제 삭제합니다. schema migration, 관리자 계정/권한 registry, Clerk 인증 계정은 삭제하지 않습니다. 일반회원 범위를 선택하면 PostgreSQL 회원 프로필·동의 상태는 초기화되지만 Clerk 로그인 identity 자체는 유지됩니다.</p>
+          </div>
+        </div>
+      </div>
+
+      {!isOwner ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800">최고 관리자만 데이터 초기화를 실행할 수 있습니다.</div>
+      ) : null}
+
+      <SectionCard title="초기화 범위" description="테스트 데이터 프리셋은 자산·회원·신청/대여 데이터만 선택합니다. 전체 초기화 프리셋은 명부·콘텐츠·사이트 설정까지 포함합니다.">
+        <div className="mb-4 flex flex-wrap gap-2">
+          <Button type="button" variant="outline" disabled={resetRunning} onClick={() => setSelectedResetScopes(TEST_DATA_PRESET)}>테스트 데이터 선택</Button>
+          <Button type="button" variant="dangerOutline" disabled={resetRunning} onClick={() => setSelectedResetScopes(FULL_RESET_PRESET)}>전체 초기화 범위 선택</Button>
+          <Button type="button" variant="ghost" disabled={resetRunning} onClick={() => setSelectedResetScopes([])}>선택 해제</Button>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          {Object.entries(RESET_SCOPE_META).map(([scope, meta]) => {
+            const checked = selectedResetScopes.includes(scope);
+            return (
+              <label key={scope} className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-4 ${checked ? 'border-orange-300 bg-orange-50' : 'border-slate-200 bg-white'}`}>
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={resetRunning || !isOwner}
+                  onChange={(event) => setSelectedResetScopes((current) => event.target.checked ? [...current, scope] : current.filter((item) => item !== scope))}
+                  className="mt-1 h-4 w-4 accent-[var(--mk-orange)]"
+                />
+                <span><span className="block text-sm font-bold text-slate-900">{meta.label}</span><span className="mt-1 block text-xs leading-5 text-slate-500">{meta.description}</span></span>
+              </label>
+            );
+          })}
+        </div>
+        <div className="mt-4 flex justify-end">
+          <Button type="button" variant="outline" disabled={!isOwner || selectedResetScopes.length === 0 || resetScanLoading || resetRunning} onClick={scanResetTargets}>
+            <RefreshCw size={14} className={resetScanLoading ? 'animate-spin' : ''} />{resetScanLoading ? '확인 중' : '초기화 대상 확인'}
+          </Button>
+        </div>
+      </SectionCard>
+
+      {resetCounts ? (
+        <SectionCard title="초기화 대상 SQL 레코드" description="PostgreSQL 서버가 선택 범위를 직접 집계한 값입니다. 실제 초기화 직전 전체 백업을 별도로 생성해야 합니다.">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {resetCounts.scopes?.map((scope) => (
+              <div key={scope} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center justify-between gap-3"><span className="text-sm font-black text-slate-900">{RESET_SCOPE_META[scope]?.label || scope}</span><span className="text-lg font-black text-rose-600">{resetCounts.counts?.[scope] || 0}건</span></div>
+                <div className="mt-3 space-y-1 text-[11px] text-slate-500">
+                  {Object.entries(resetCounts.details?.[scope] || {}).map(([name, count]) => <div key={name} className="flex items-center justify-between gap-2"><span>{name}</span><span className="font-bold text-slate-700">{count}건</span></div>)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      ) : null}
+
+      <SectionCard title="초기화 실행 확인" description="초기화 대상 확인 → 개인정보 포함 전체 백업 → 확인 문구 입력을 모두 완료해야 실행할 수 있습니다.">
+        <div className="space-y-4">
+          <div className={`rounded-2xl border p-4 ${resetBackupReady ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-xs leading-5 text-slate-700">{resetBackupReady ? '초기화 전 개인정보 포함 전체 PostgreSQL 백업을 생성했습니다.' : '초기화 전 대여·회원·개인정보를 포함한 전체 PostgreSQL 백업을 먼저 생성해야 합니다.'}</div>
+              <Button type="button" variant="outline" disabled={backupLoading || resetRunning || !isOwner} onClick={downloadResetBackup}><Download size={14} />{backupLoading ? '백업 생성 중' : '초기화 전 전체 백업'}</Button>
+            </div>
+          </div>
+          <Input label={`확인 문구: ${RESET_CONFIRM_TEXT}`} value={resetConfirmText} onChange={setResetConfirmText} disabled={resetRunning || !isOwner} />
+          {resetProgress ? (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-700">{resetProgress.step}: {resetProgress.completed} / {resetProgress.total}</div>
+          ) : null}
+          {latestResetJob?.status === 'failed' ? (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-800">최근 초기화 실패: {latestResetJob.errorMessage || '원인 확인 필요'}</div>
+          ) : null}
+          <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-xs leading-5 text-sky-800">초기화 후 사이트 기본 설정은 안전한 PostgreSQL 기본 row로 재생성되고, 대여 정책은 Phase 34 canonical self-heal로 재생성됩니다. 전체 백업 JSON의 브라우저 직접 복원은 FK/migration 검증이 필요하므로 계속 서버 운영 절차로 분리합니다.</div>
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="danger"
+              disabled={!isOwner || resetRunning || !resetCounts || !resetBackupReady || resetConfirmText !== RESET_CONFIRM_TEXT || selectedResetScopes.length === 0}
+              onClick={() => triggerConfirm('PostgreSQL 데이터 초기화', '선택한 PostgreSQL 운영 데이터를 실제 삭제합니다. schema migration, 관리자 registry와 Clerk 인증 계정은 유지됩니다. 이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?', () => executeReset())}
+            >
+              <Trash2 size={14} />{resetRunning ? '초기화 진행 중' : '선택 데이터 초기화'}
+            </Button>
+          </div>
+        </div>
       </SectionCard>
     </div>
   );
@@ -807,7 +891,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
     if (mode === SETTINGS_MODE.DATA) {
       return {
         title: '데이터 관리',
-        description: 'PostgreSQL 실데이터 현황, 무결성, 자산 참조 복구와 백업을 관리합니다.',
+        description: 'PostgreSQL 실데이터 현황, 무결성, 자산 참조 복구, 백업과 초기화를 관리합니다.',
       };
     }
     if (mode === SETTINGS_MODE.INFO) {

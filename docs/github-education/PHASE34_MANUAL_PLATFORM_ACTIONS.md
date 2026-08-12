@@ -119,3 +119,28 @@ The generated policy is built only from PostgreSQL state: asset categories, memb
 ## Phase 34 PostgreSQL payload mapping hotfix (2026-08-12)
 
 If migration 026 and the Phase 34 backend are already applied but both user/admin UI show `공개 설정을 PostgreSQL에서 불러오지 못했습니다`, deploy the frontend mapping hotfix. The prior 1612 frontend called the removed Firestore-era `reviveValue()` helper after a successful `/api/site-content/:domain` response, causing a browser ReferenceError. No additional SQL migration is required for this hotfix. Heroku may stay on the current Phase 34 backend; Vercel must be redeployed with the new frontend. Diagnostics must show `Frontend mapping revision: phase34-postgresql-payload-mapping-hotfix-20260812-1635`.
+
+## 2026-08-12 Runtime regression + PostgreSQL reset restoration hotfix
+
+Revision: `phase34-rental-request-restriction-content-reset-hotfix-20260812-1740`
+
+### Deployment
+- Deploy the full package to Heroku Staging first because the backend adds the current-user rental-restriction authority endpoint and PostgreSQL reset API behavior.
+- Migration 027 remains the newest migration; this hotfix adds no migration. If 027 is already applied, release should report it as already applied.
+- Redeploy Vercel Staging after the Heroku revision is live.
+- No Firebase configuration or Firebase service is required.
+
+### Required browser checks
+1. Existing converted member: login, confirm no rental-restriction error, create a rental request, verify no `rental_request_id_invalid`.
+2. Newly created member: repeat the same rental-restriction and rental-request tests.
+3. Administrator > Home screen: create a hero, promotion and quick-link banner; confirm no `createSiteContentDomainDocument is not defined`.
+4. Administrator > Popup/Footer: create a popup and footer menu page; confirm PostgreSQL persistence and public rendering.
+5. Administrator > System > Data management > Backup/Reset: Owner selects scopes, scans target counts, creates the mandatory full backup, enters `테스트 데이터 전체 초기화`, confirms and runs the selected PostgreSQL reset. Do this only with disposable Staging data.
+
+### Reset safety contract
+- Schema migrations are preserved.
+- Administrator account/role registry is preserved.
+- Clerk authentication identities are preserved.
+- Member reset removes PostgreSQL member profile/consent state but does not delete Clerk identities.
+- Site settings are reseeded with a safe PostgreSQL default row; rental-config is recreated by the Phase 34 canonical self-heal.
+- Browser JSON restore remains intentionally separate because a safe PostgreSQL restore needs FK/schema-version validation.

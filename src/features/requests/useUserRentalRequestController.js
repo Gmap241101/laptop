@@ -1,12 +1,4 @@
 import { useRef, useState } from 'react';
-import { doc, runTransaction, serverTimestamp } from '../../platform/retiredLegacyDataCompat.js';
-
-import {
-  RENTAL_ASSETS_COLLECTION_REF,
-  RENTAL_AVAILABILITY_COLLECTION_REF,
-  RENTAL_REQUESTS_COLLECTION_REF,
-  db,
-} from '../../platform/appDataRefs.js';
 import { STATUS } from '../../constants/appConstants.js';
 import { USER_PROFILE_STATUS } from '../../constants/memberConstants.js';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
@@ -20,25 +12,14 @@ import {
   getSafeMaxRentalDays,
   isRentalDueBusinessDay,
 } from '../../domain/rentalPolicy.js';
-import {
-  normalizeAssetReservations,
-  toRentalAvailabilityRequest,
-} from '../../services/publicAssetCatalog.js';
+import { toRentalAvailabilityRequest } from '../../services/publicAssetCatalog.js';
 import {
   formatDateWithKoreanWeekday,
   today,
 } from '../../utils/appUtils.js';
 import { getServiceBlockReason } from '../../utils/systemSettings.js';
-import {
-  publishRentalRequestWriteObservation,
-  readRentalRequestWriteCutoverConfig,
-} from './rentalRequestWriteCutover.js';
-import {
-  getFirestoreResourceExhaustedMessage,
-  isFirestoreCapacityCoolingDown,
-  isFirestoreResourceExhaustedError,
-  markFirestoreCapacityExhausted,
-} from '../../utils/firestoreCapacity.js';
+import { publishRentalRequestWriteObservation } from './rentalRequestWriteCutover.js';
+import { createRentalRequestId } from './rentalRequestId.js';
 
 export const useUserRentalRequestState = (dataSettings) => {
   const [requestSubmitLoading, setRequestSubmitLoading] = useState(false);
@@ -103,7 +84,7 @@ export default function useUserRentalRequestController({
 
     if (!isSplitStorageReady) {
       triggerToast(
-        'Firestore 분리 저장소 최종 전환이 완료되지 않아 대여신청을 제출할 수 없습니다. 관리자에게 문의해 주세요.',
+        'PostgreSQL 대여 저장소 준비가 완료되지 않아 대여신청을 제출할 수 없습니다. 관리자에게 문의해 주세요.',
         'error'
       );
       return;
@@ -180,18 +161,7 @@ export default function useUserRentalRequestController({
       return;
     }
 
-    if (isFirestoreCapacityCoolingDown()) {
-      triggerToast(
-        getFirestoreResourceExhaustedMessage({
-          operation: '대여 신청 저장',
-        }),
-        'error'
-      );
-      return;
-    }
-
-    const writeCutoverConfig = readRentalRequestWriteCutoverConfig();
-    if (writeCutoverConfig.requested) {
+    {
       if (!rentalRequestsReady || !currentUserRestrictionReady) {
         triggerToast(
           '최신 연체 및 대여 제한 상태를 확인하는 중입니다. 잠시 후 다시 시도해 주세요.',
@@ -203,39 +173,6 @@ export default function useUserRentalRequestController({
         triggerToast(
           currentUserRentalRestrictionStatus.message ||
             '현재 대여 제한 상태이므로 신규 대여를 신청할 수 없습니다.',
-          'error'
-        );
-        return;
-      }
-    } else {
-      try {
-        const latestRestrictionStatus =
-          await loadFreshRentalRestrictionStatus(firebaseAuthUser.uid);
-
-        if (latestRestrictionStatus.blocked) {
-          triggerToast(
-            latestRestrictionStatus.message ||
-              '현재 대여 제한 상태이므로 신규 대여를 신청할 수 없습니다.',
-            'error'
-          );
-          return;
-        }
-      } catch (error) {
-        console.error('Rental restriction preflight error:', error);
-
-        if (isFirestoreResourceExhaustedError(error)) {
-          markFirestoreCapacityExhausted(error);
-          triggerToast(
-            getFirestoreResourceExhaustedMessage({
-              operation: '대여 신청 전 제한 상태 확인',
-            }),
-            'error'
-          );
-          return;
-        }
-
-        triggerToast(
-          '최신 연체 및 대여 제한 상태를 확인하지 못해 신청을 중단했습니다. 잠시 후 다시 시도해 주세요.',
           'error'
         );
         return;
@@ -343,16 +280,7 @@ export default function useUserRentalRequestController({
       return;
     }
 
-    const requestId = `REQ-${doc(RENTAL_REQUESTS_COLLECTION_REF).id}`;
-    const requestDocRef = doc(db, 'rentalRequests', requestId);
-    const availabilityDocRef = doc(
-      RENTAL_AVAILABILITY_COLLECTION_REF,
-      requestId
-    );
-    const assetDocRef = doc(
-      RENTAL_ASSETS_COLLECTION_REF,
-      selectedLaptop.id
-    );
+    const requestId = createRentalRequestId();
     const requestedAt = new Date().toLocaleString('ko-KR');
 
     const nextRequest = {
@@ -385,125 +313,43 @@ export default function useUserRentalRequestController({
     setRequestSubmitLoading(true);
 
     try {
-      if (writeCutoverConfig.requested) {
-        const firebaseIdToken = await firebaseAuthUser.getIdToken();
-        const payload = await clerkStagingClient.createRentalRequest(
-          firebaseIdToken,
-          {
-            requestId,
-            idempotencyKey: requestId,
-            laptopId: selectedLaptop.id,
-            startDate: form.startDate,
-            dueDate: form.dueDate,
-            purpose: form.purpose,
-          }
-        );
-        const backendWrite = payload?.rentalRequestWrite || {};
-        committedRequest = {
-          ...nextRequest,
-          ...(backendWrite.request || {}),
-          id: backendWrite.request?.id || requestId,
-        };
-        committedAvailabilityRequest = {
-          ...(backendWrite.availability || toRentalAvailabilityRequest(committedRequest)),
-          id: backendWrite.availability?.id || requestId,
-        };
-        const storedReservations = Array.isArray(selectedLaptop.reservations)
-          ? selectedLaptop.reservations
-          : [];
-        committedAsset = {
-          ...selectedLaptop,
-          reservations: [
-            ...storedReservations.filter((reservation) => reservation?.id !== requestId),
-            committedAvailabilityRequest,
-          ],
-        };
-        publishRentalRequestWriteObservation({
-          requested: true,
-          activeWriteSource: 'postgresql-authoritative',
-          requestId,
-          firestoreMirror: backendWrite.firestoreMirror || '-',
-          shadowSynchronized: Boolean(backendWrite.shadowSynchronized),
-          reused: Boolean(payload?.reused),
-          error: '',
-        });
-      } else {
-        await runTransaction(db, async (transaction) => {
-        const assetSnapshot = await transaction.get(assetDocRef);
-
-        if (!assetSnapshot.exists()) {
-          throw new Error('selected-laptop-not-found');
-        }
-
-        const latestAsset = {
-          ...assetSnapshot.data(),
-          id: assetSnapshot.id,
-        };
-        const storedReservations = Array.isArray(latestAsset.reservations)
-          ? latestAsset.reservations
-          : [];
-        const latestReservations = normalizeAssetReservations(
-          storedReservations
-        );
-        const latestAvailability = getLaptopRentalAvailability(
-          latestAsset,
-          latestReservations,
-          dataSettings,
-          form.startDate,
-          form.dueDate
-        );
-
-        if (latestAvailability.blocked) {
-          const conflictError = new Error('rental-conflict');
-          conflictError.availability = latestAvailability;
-          throw conflictError;
-        }
-
-        const nextCommittedRequest = {
-          ...nextRequest,
-          laptopId: latestAsset.id,
-          assetCategory: latestAsset.category || '노트북',
-          assetNo: latestAsset.assetNo,
-        };
-        const availabilityRequest = toRentalAvailabilityRequest(
-          nextCommittedRequest
-        );
-        const nextReservations = [
-          ...storedReservations,
-          availabilityRequest,
-        ];
-
-        transaction.set(requestDocRef, {
-          ...nextCommittedRequest,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-        transaction.set(availabilityDocRef, {
-          ...availabilityRequest,
-          updatedAt: serverTimestamp(),
-        });
-        transaction.update(assetDocRef, {
-          reservations: nextReservations,
-          updatedAt: serverTimestamp(),
-        });
-
-        committedRequest = nextCommittedRequest;
-        committedAvailabilityRequest = availabilityRequest;
-        committedAsset = {
-          ...latestAsset,
-          reservations: nextReservations,
-        };
-        });
-        publishRentalRequestWriteObservation({
-          requested: false,
-          activeWriteSource: 'firestore-transaction',
-          requestId,
-          firestoreMirror: 'native-firestore',
-          shadowSynchronized: false,
-          reused: false,
-          error: '',
-        });
-      }
+      const payload = await clerkStagingClient.createRentalRequest({
+        requestId,
+        idempotencyKey: requestId,
+        laptopId: selectedLaptop.id,
+        startDate: form.startDate,
+        dueDate: form.dueDate,
+        purpose: form.purpose,
+      });
+      const backendWrite = payload?.rentalRequestWrite || {};
+      committedRequest = {
+        ...nextRequest,
+        ...(backendWrite.request || {}),
+        id: backendWrite.request?.id || requestId,
+      };
+      committedAvailabilityRequest = {
+        ...(backendWrite.availability || toRentalAvailabilityRequest(committedRequest)),
+        id: backendWrite.availability?.id || requestId,
+      };
+      const storedReservations = Array.isArray(selectedLaptop.reservations)
+        ? selectedLaptop.reservations
+        : [];
+      committedAsset = {
+        ...selectedLaptop,
+        reservations: [
+          ...storedReservations.filter((reservation) => reservation?.id !== requestId),
+          committedAvailabilityRequest,
+        ],
+      };
+      publishRentalRequestWriteObservation({
+        requested: true,
+        activeWriteSource: 'postgresql-authoritative',
+        requestId,
+        firestoreMirror: backendWrite.firestoreMirror || 'retired',
+        shadowSynchronized: Boolean(backendWrite.shadowSynchronized),
+        reused: Boolean(payload?.reused),
+        error: '',
+      });
 
       if (
         !committedRequest ||
@@ -541,19 +387,17 @@ export default function useUserRentalRequestController({
       );
     } catch (error) {
       console.error('Rental request create error:', error);
-      if (writeCutoverConfig.requested) {
-        publishRentalRequestWriteObservation({
-          requested: true,
-          activeWriteSource: 'postgresql-authoritative',
-          requestId,
-          firestoreMirror: '-',
-          shadowSynchronized: false,
-          reused: false,
-          error: error?.code || error?.message || 'rental-request-create-failed',
-        });
-      }
+      publishRentalRequestWriteObservation({
+        requested: true,
+        activeWriteSource: 'postgresql-authoritative',
+        requestId,
+        firestoreMirror: 'retired',
+        shadowSynchronized: false,
+        reused: false,
+        error: error?.code || error?.message || 'rental-request-create-failed',
+      });
 
-      if (error?.code === 'rental_request_asset_conflict' || error?.code === 'firestore_rental_asset_write_conflict') {
+      if (error?.code === 'rental_request_asset_conflict') {
         const blockingRequest = error?.blockingRequest;
         triggerToast(
           blockingRequest?.startDate && blockingRequest?.dueDate
@@ -582,21 +426,13 @@ export default function useUserRentalRequestController({
           '선택한 기기 정보를 찾을 수 없습니다. 목록을 새로고침한 뒤 다시 시도해 주세요.',
           'error'
         );
-      } else if (isFirestoreResourceExhaustedError(error)) {
-        markFirestoreCapacityExhausted(error);
-        triggerToast(
-          getFirestoreResourceExhaustedMessage({
-            operation: '대여 신청 저장',
-          }),
-          'error'
-        );
       } else {
-        const firebaseErrorCode = error?.code || 'unknown-error';
-        const firebaseErrorMessage = error?.message || '오류 메시지 없음';
+        const errorCode = error?.code || 'unknown-error';
+        const errorMessage = error?.message || '오류 메시지 없음';
 
         console.error('Rental request create error details:', {
-          code: firebaseErrorCode,
-          message: firebaseErrorMessage,
+          code: errorCode,
+          message: errorMessage,
           requesterUid: firebaseAuthUser?.uid || '',
           requestId,
           assetId: selectedLaptop?.id || '',
@@ -604,7 +440,7 @@ export default function useUserRentalRequestController({
         });
 
         triggerToast(
-          `대여 신청 저장에 실패했습니다. 오류 코드: ${firebaseErrorCode}`,
+          `대여 신청 저장에 실패했습니다. 오류 코드: ${errorCode}`,
           'error'
         );
       }

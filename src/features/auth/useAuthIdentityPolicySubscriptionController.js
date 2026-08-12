@@ -815,7 +815,7 @@ export default function useAuthIdentityPolicySubscriptionController({
                 firebaseUid: firebaseAuthUser.uid,
               });
               triggerToastRef.current?.(
-                '대여 제한 상태를 PostgreSQL에서 불러오지 못했습니다. legacy Firestore fallback은 비활성화되어 있습니다.',
+                `대여 제한 상태를 PostgreSQL에서 불러오지 못했습니다. 오류 코드: ${error?.code || error?.message || 'rental_restriction_postgresql_unavailable'}`,
                 'error'
               );
               return;

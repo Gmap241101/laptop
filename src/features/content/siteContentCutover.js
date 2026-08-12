@@ -63,6 +63,21 @@ export const subscribeSiteContentObservation = (listener) => {
 
 export const createSiteContentDocumentId = () => randomId();
 
+export const createSiteContentDomainDocument = (document = {}) => {
+  const key = trim(document?.key);
+  const payload = document?.payload && typeof document.payload === 'object'
+    ? document.payload
+    : {};
+  const enabled = typeof document?.enabled === 'boolean'
+    ? document.enabled
+    : (typeof payload?.enabled === 'boolean' ? payload.enabled : null);
+  const sortOrder = Number.isFinite(Number(document?.sortOrder))
+    ? Math.trunc(Number(document.sortOrder))
+    : (Number.isFinite(Number(payload?.sortOrder)) ? Math.trunc(Number(payload.sortOrder)) : null);
+  const sourceUpdatedAt = document?.sourceUpdatedAt || null;
+  return Object.freeze({ key, payload, enabled, sortOrder, sourceUpdatedAt });
+};
+
 const invalidateDomainCache = (domain = 'all') => {
   if (domain === 'all') domainCache.clear();
   else domainCache.delete(domain);

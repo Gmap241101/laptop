@@ -1,7 +1,7 @@
 import { readAccountLifecycleAuthorityConfig } from '../auth/accountLifecycleAuthority.js';
 import { readUserFirebaseAuthRetirementConfig } from '../auth/userFirebaseAuthRetirement.js';
 import { readFirebaseRuntimeRetirementConfig } from '../auth/firebaseRuntimeRetirement.js';
-import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { clerkStagingClient, requestCurrentUserRentalRestriction } from '../../clerk/clerkStagingClient.js';
 
 const EVENT_NAME = 'rental:rental-restriction-read-cutover';
 const WRITE_EVENT_NAME = 'rental:rental-restriction-write-through';
@@ -53,13 +53,21 @@ export const readRentalRestrictionCutoverConfig = ({
 
 const firebaseRequest = async () => { const error = new Error('Legacy Firebase restriction request was removed in Phase 34.'); error.code='firebase_runtime_removed'; error.status=410; throw error; };
 
-export const requestRentalRestrictionCandidate = async ({ firebaseUser, apiBaseUrl, fetchImpl = fetch }) => {
-  const payload = await userAuthorityRequest({ firebaseUser, apiBaseUrl, path: '/api/legacy/rental-restriction-candidate', fetchImpl });
-  const source = trim(payload?.restrictionCandidate?.source);
-  if (!['postgresql-shadow', 'postgresql-authoritative'].includes(source)) {
-    throw new Error('Invalid PostgreSQL rental restriction candidate.');
+export const requestRentalRestrictionCandidate = async ({ apiBaseUrl, fetchImpl = fetch }) => {
+  const clerk = await clerkStagingClient.initialize();
+  if (!clerk?.session) {
+    const error = new Error('Clerk user session is required before reading PostgreSQL rental restriction state.');
+    error.code = 'rental_restriction_clerk_session_missing';
+    throw error;
   }
-  return Object.freeze(payload.restrictionCandidate);
+  const payload = await requestCurrentUserRentalRestriction({ clerk, apiBaseUrl, fetchImpl });
+  const candidate = payload?.rentalRestriction;
+  if (candidate?.source !== 'postgresql-authoritative') {
+    const error = new Error('Invalid PostgreSQL rental restriction authority response.');
+    error.code = 'rental_restriction_payload_invalid';
+    throw error;
+  }
+  return Object.freeze(candidate);
 };
 
 export const requestRentalRestrictionFallback = async ({ firebaseUser, apiBaseUrl, fetchImpl = fetch }) => {

@@ -8,6 +8,8 @@ const repository = {
   async checkIntegrity() { calls.push('integrity'); return { authority: 'postgresql', errors: 0, warnings: 0 }; },
   async repairAssetReferences() { calls.push('repair'); return { authority: 'postgresql', repairedRequestCount: 2 }; },
   async exportSnapshot() { calls.push('export'); return { authority: 'postgresql', format: 'mk-rental-postgresql-backup-v1' }; },
+  async getResetCounts(scopes) { calls.push(`reset-scan:${scopes.join(',')}`); return { authority: 'postgresql', scopes, counts: Object.fromEntries(scopes.map((scope) => [scope, 1])), details: {} }; },
+  async resetScopes({ scopes, actorClerkUserId }) { calls.push(`reset:${scopes.join(',')}:${actorClerkUserId}`); return { authority: 'postgresql', scopes, before: { counts: {} }, after: { counts: {} } }; },
 };
 const service = createSystemDataService({ repository });
 const owner = { id: 'admin:test', clerkUserId: 'user_test', adminRole: 'owner' };
@@ -18,6 +20,11 @@ assert.equal((await service.repairAssetReferences(owner)).repairedRequestCount, 
 await assert.rejects(() => service.repairAssetReferences(admin), (error) => error?.code === 'admin_owner_required');
 assert.equal((await service.exportSnapshot(owner)).format, 'mk-rental-postgresql-backup-v1');
 await assert.rejects(() => service.exportSnapshot(admin), (error) => error?.code === 'admin_owner_required');
+assert.equal((await service.getResetCounts(owner, ['assets', 'rentals'])).authority, 'postgresql');
+await assert.rejects(() => service.getResetCounts(admin, ['assets']), (error) => error?.code === 'admin_owner_required');
+await assert.rejects(() => service.resetScopes(owner, { scopes: ['assets'], confirmText: 'wrong', backupConfirmed: true }), (error) => error?.code === 'system_data_reset_confirmation_invalid');
+await assert.rejects(() => service.resetScopes(owner, { scopes: ['assets'], confirmText: '테스트 데이터 전체 초기화', backupConfirmed: false }), (error) => error?.code === 'system_data_reset_backup_required');
+assert.equal((await service.resetScopes(owner, { scopes: ['assets'], confirmText: '테스트 데이터 전체 초기화', backupConfirmed: true })).authority, 'postgresql');
 
 const migration = await readFile(new URL('../../server/migrations/027_phase34_asset_reference_reconciliation.sql', import.meta.url), 'utf8');
 for (const required of [
@@ -35,6 +42,9 @@ for (const required of [
   'unrecoverableRequestCount',
   'repairAssetReferences',
   'exportSnapshot',
+  'getResetCounts',
+  'resetScopes',
+  'phase34_last_system_data_reset',
   'pg_database_size',
 ]) assert.ok(repositorySource.includes(required), `repository missing ${required}`);
 
@@ -44,6 +54,8 @@ for (const route of [
   '/api/admin/system-data/integrity',
   '/api/admin/system-data/repair-asset-references',
   '/api/admin/system-data/export',
+  '/api/admin/system-data/reset/scan',
+  '/api/admin/system-data/reset',
 ]) assert.ok(appSource.includes(route), `app route missing ${route}`);
 
 console.log('[phase34-system-data-backend-smoke] PASS', { calls });

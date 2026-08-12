@@ -118,3 +118,23 @@ Fix:
 - Execute a real mocked HTTP 200 requestSiteContentDomain() mapping path in frontend:site-content:smoke, including nested rental-config payload assertions and an explicit ban on reviveValue().
 - Add frontend mapping revision phase34-postgresql-payload-mapping-hotfix-20260812-1635 to staging diagnostics.
 Validation: npm run verify:phase34 PASS; site-content frontend runtime mapping smoke PASS; external Firebase runtime references 0. build:staging prebuild PASS, bundle unavailable in assistant workspace because vite executable is not installed.
+
+2026-08-12 Phase 34 runtime regression + PostgreSQL reset restoration hotfix
+=======================================================================
+Revision: phase34-rental-request-restriction-content-reset-hotfix-20260812-1740
+Baseline: rental-system-github-education-phase34-postgresql-data-management-asset-integrity-20260812_1708_deployment_package.zip
+
+Fixed runtime regressions found by Staging browser testing:
+1. New rental request ID generation no longer depends on the retired Firestore doc() ID helper. A pure PostgreSQL request ID generator produces REQ- identifiers that satisfy the backend /^REQ-[A-Za-z0-9_-]{8,80}$/ contract.
+2. Current-user rental restriction reads use a dedicated Clerk-authenticated GET /api/users/me/rental-restriction endpoint. Existing and native Clerk/PostgreSQL users resolve their app_user_id and read the PostgreSQL restriction shadow directly; a missing row means no active restriction instead of invoking a retired Firestore fallback.
+3. createSiteContentDomainDocument is restored as a real Phase 34 PostgreSQL document-normalization helper. Home hero, promotion, quick-link, popup and footer-page create/edit operations can call replaceSiteContentDomainInPostgresql without a ReferenceError.
+4. System > Data Management restores PostgreSQL data initialization. Owner-only reset supports scoped preview, mandatory full backup, exact confirmation phrase and transaction-based deletion while preserving schema migrations, administrator registry and Clerk authentication identities.
+
+Regression validation added:
+- 25 generated rental request IDs are executed against the backend ID regexp contract.
+- PostgreSQL current-user restriction HTTP response is executed through the frontend request mapper with a mock Clerk bearer session.
+- site-content create normalization helper is executed directly.
+- system-data reset service validates Owner authority, reset scope, confirmation text and mandatory backup.
+- data-management UI contract requires backup/reset controls and PostgreSQL reset client calls.
+
+External Firebase/Firestore runtime remains removed. No Firebase SDK/network dependency was reintroduced.

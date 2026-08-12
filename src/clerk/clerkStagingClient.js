@@ -346,10 +346,7 @@ export const requestUserPasswordChange = async ({ clerk, apiBaseUrl, fetchImpl, 
     fetchImpl,
     path: '/api/users/me/password/change',
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...optionalFirebaseAuthorizationHeader(token),
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ currentPassword, newPassword }),
   });
   if (!response.ok) {
@@ -1062,6 +1059,20 @@ export const requestAdminSystemDataAssetRepair = async ({ clerk, apiBaseUrl, fet
   return payload;
 };
 
+export const requestAdminSystemDataResetScan = async ({ clerk, apiBaseUrl, fetchImpl, scopes = [] }) => {
+  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: '/api/admin/system-data/reset/scan', method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scopes }) });
+  if (!response.ok) { const error = new Error(`System data reset scan failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
+  if (!payload?.authenticated || !payload?.authorized || payload?.systemDataResetScan?.authority !== 'postgresql') throw new Error('Backend returned an invalid PostgreSQL reset scan payload.');
+  return payload;
+};
+
+export const requestAdminSystemDataReset = async ({ clerk, apiBaseUrl, fetchImpl, scopes = [], confirmText = '', backupConfirmed = false }) => {
+  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: '/api/admin/system-data/reset', method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scopes, confirmText, backupConfirmed }) });
+  if (!response.ok) { const error = new Error(`System data reset failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
+  if (!payload?.authenticated || !payload?.authorized || payload?.systemDataReset?.authority !== 'postgresql') throw new Error('Backend returned an invalid PostgreSQL reset result.');
+  return payload;
+};
+
 export const requestAdminSystemDataExport = async ({ clerk, apiBaseUrl, fetchImpl, options = {} }) => {
   const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: '/api/admin/system-data/export', method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(options || {}) });
   if (!response.ok) { const error = new Error(`System data export failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
@@ -1117,18 +1128,36 @@ export const requestAdminAssetDelete = (args) => requestAdminAssetMutation({ ...
 export const requestAdminAssetBulkCreate = (args) => requestAdminAssetMutation({ ...args, path: '/api/admin/assets/bulk', body: { assets: args.assets || [] }, expectedOperation: 'bulk-create' });
 export const requestAdminAssetCategories = (args) => requestAdminAssetMutation({ ...args, path: '/api/admin/assets/categories', body: { categories: args.categories || [], renameMap: args.renameMap || {} }, expectedOperation: 'categories' });
 
-export const requestRentalRequestCreate = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, request }) => {
-  const token = trim(firebaseIdToken);
+export const requestCurrentUserRentalRestriction = async ({ clerk, apiBaseUrl, fetchImpl }) => {
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/users/me/rental-restriction',
+    method: 'GET',
+  });
+  if (!response.ok) {
+    const error = new Error(`PostgreSQL rental restriction read failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || 'rental_restriction_postgresql_unavailable';
+    throw error;
+  }
+  if (!payload?.authenticated || !payload?.authorized || payload?.rentalRestriction?.source !== 'postgresql-authoritative') {
+    const error = new Error('Backend returned an invalid PostgreSQL rental restriction response.');
+    error.code = 'rental_restriction_payload_invalid';
+    throw error;
+  }
+  return payload;
+};
+
+export const requestRentalRequestCreate = async ({ clerk, apiBaseUrl, fetchImpl, request }) => {
   const { response, payload } = await requestWithSession({
     clerk,
     apiBaseUrl,
     fetchImpl,
     path: '/api/users/me/rental-requests',
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...optionalFirebaseAuthorizationHeader(token),
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request || {}),
   });
   if (!response.ok) {
@@ -1813,6 +1842,14 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
       const clerk = await initialize();
       return requestAdminSystemDataExport({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, options });
     },
+    async scanAdminSystemDataReset(scopes = []) {
+      const clerk = await initialize();
+      return requestAdminSystemDataResetScan({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, scopes });
+    },
+    async resetAdminSystemData({ scopes = [], confirmText = '', backupConfirmed = false } = {}) {
+      const clerk = await initialize();
+      return requestAdminSystemDataReset({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, scopes, confirmText, backupConfirmed });
+    },
     async getAssetCatalog() {
       return requestAssetCatalog({ apiBaseUrl: config.apiBaseUrl, fetchImpl });
     },
@@ -1864,13 +1901,16 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
       const clerk = await initialize();
       return requestAdminRentalRequestStatusChange({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, requestId, status });
     },
-    async createRentalRequest(firebaseIdToken, request) {
+    async getCurrentUserRentalRestriction() {
+      const clerk = await initialize();
+      return requestCurrentUserRentalRestriction({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
+    },
+    async createRentalRequest(request) {
       const clerk = await initialize();
       return requestRentalRequestCreate({
         clerk,
         apiBaseUrl: config.apiBaseUrl,
         fetchImpl,
-        firebaseIdToken,
         request,
       });
     },

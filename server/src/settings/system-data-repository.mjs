@@ -2,6 +2,9 @@ const trim = (value) => String(value ?? '').trim();
 
 const count = (row, key) => Number(row?.[key] || 0);
 
+const RESET_SCOPES = new Set(['assets', 'members', 'rentals', 'organization', 'content', 'settings']);
+const normalizeScopes = (scopes) => [...new Set((Array.isArray(scopes) ? scopes : []).map((value) => trim(value).toLowerCase()).filter((value) => RESET_SCOPES.has(value)))];
+
 const mapIssue = (row, code, level, message) => ({
   code,
   level,
@@ -276,6 +279,98 @@ export const createSystemDataRepository = (pool) => {
       } finally {
         client.release();
       }
+    },
+
+    async getResetCounts(scopes = []) {
+      const selected = normalizeScopes(scopes);
+      const result = await pool.query(`
+        SELECT
+          (SELECT COUNT(*) FROM app_rental_assets)::int AS assets,
+          (SELECT COUNT(*) FROM app_asset_categories)::int AS asset_categories,
+          (SELECT COUNT(*) FROM app_member_accounts)::int AS member_accounts,
+          (SELECT COUNT(*) FROM app_user_member_shadows)::int AS member_shadows,
+          (SELECT COUNT(*) FROM app_user_term_consent_states)::int AS term_states,
+          (SELECT COUNT(*) FROM app_user_term_consent_logs)::int AS term_logs,
+          (SELECT COUNT(*) FROM app_rental_requests)::int AS rental_requests,
+          (SELECT COUNT(*) FROM app_rental_asset_reservation_guards)::int AS reservation_guards,
+          (SELECT COUNT(*) FROM app_user_rental_request_shadows)::int AS rental_shadows,
+          (SELECT COUNT(*) FROM app_user_rental_restriction_shadows)::int AS restrictions,
+          (SELECT COUNT(*) FROM app_member_directory_entries)::int AS directory_entries,
+          (SELECT COUNT(*) FROM app_board_posts)::int AS board_posts,
+          (SELECT COUNT(*) FROM app_faq_categories)::int AS faq_categories,
+          (SELECT COUNT(*) FROM app_site_content_documents WHERE domain IN ('home','popup','footer','terms'))::int AS content_documents,
+          (SELECT COUNT(*) FROM app_site_content_documents WHERE domain IN ('site-settings','rental-config'))::int AS setting_documents,
+          (SELECT COUNT(*) FROM app_system_configuration)::int AS system_configurations
+      `);
+      const row = result.rows[0] || {};
+      const details = {
+        assets: { assets: count(row, 'assets'), assetCategories: count(row, 'asset_categories') },
+        members: { memberAccounts: count(row, 'member_accounts'), memberShadows: count(row, 'member_shadows'), termStates: count(row, 'term_states'), termLogs: count(row, 'term_logs') },
+        rentals: { rentalRequests: count(row, 'rental_requests'), reservationGuards: count(row, 'reservation_guards'), rentalShadows: count(row, 'rental_shadows'), restrictions: count(row, 'restrictions') },
+        organization: { directoryEntries: count(row, 'directory_entries') },
+        content: { boardPosts: count(row, 'board_posts'), faqCategories: count(row, 'faq_categories'), siteContentDocuments: count(row, 'content_documents') },
+        settings: { siteSettingDocuments: count(row, 'setting_documents'), systemConfigurations: count(row, 'system_configurations') },
+      };
+      const totals = Object.fromEntries(Object.entries(details).map(([scope, values]) => [scope, Object.values(values).reduce((sum, value) => sum + Number(value || 0), 0)]));
+      return Object.freeze({ authority: 'postgresql', scopes: selected, counts: Object.freeze(totals), details: Object.freeze(details), scannedAt: new Date().toISOString() });
+    },
+
+    async resetScopes({ scopes = [], actorClerkUserId = '' } = {}) {
+      const selected = normalizeScopes(scopes);
+      const before = await this.getResetCounts(selected);
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query("SELECT pg_advisory_xact_lock(hashtext('phase34-system-data-reset'))");
+        if (selected.includes('rentals')) {
+          await client.query('DELETE FROM app_rental_asset_reservation_guards');
+          await client.query('DELETE FROM app_rental_requests');
+          await client.query('DELETE FROM app_user_rental_request_shadows');
+          await client.query('DELETE FROM app_user_rental_request_shadow_syncs');
+          await client.query('DELETE FROM app_user_rental_restriction_shadows');
+        }
+        if (selected.includes('assets')) {
+          await client.query('DELETE FROM app_rental_assets');
+          await client.query('DELETE FROM app_asset_categories');
+          await client.query('DELETE FROM app_asset_catalog_syncs');
+          await client.query(`INSERT INTO app_asset_catalog_syncs (scope, source_asset_count, source_category_count, source_hash, source_mode, synced_at, updated_at) VALUES ('main',0,0,'postgresql-reset','postgresql-reset',NOW(),NOW()) ON CONFLICT (scope) DO UPDATE SET source_asset_count=0, source_category_count=0, source_hash='postgresql-reset', source_mode='postgresql-reset', synced_at=NOW(), updated_at=NOW()`);
+        }
+        if (selected.includes('members')) {
+          await client.query('DELETE FROM app_user_term_consent_logs');
+          await client.query('DELETE FROM app_user_term_consent_states');
+          await client.query('DELETE FROM app_member_profile_events');
+          await client.query('DELETE FROM app_user_member_shadows');
+          await client.query('DELETE FROM app_member_accounts');
+        }
+        if (selected.includes('organization')) {
+          await client.query('DELETE FROM app_member_directory_entries');
+        }
+        if (selected.includes('content')) {
+          await client.query('DELETE FROM app_board_posts');
+          await client.query('DELETE FROM app_faq_categories');
+          await client.query('DELETE FROM app_board_syncs');
+          await client.query("DELETE FROM app_site_content_documents WHERE domain IN ('home','popup','footer','terms')");
+          await client.query("DELETE FROM app_site_content_syncs WHERE domain IN ('home','popup','footer','terms')");
+          await client.query(`INSERT INTO app_site_content_documents (domain, document_key, payload, enabled, sort_order, source_mode, synced_at, updated_at) VALUES ('terms','signupTermsPolicy/current','{"enabled":false,"requireReconsentOnChange":true,"applyToExistingMembers":false,"revision":0,"requiredRevision":0,"initialRevision":0,"activeTerms":[]}'::jsonb,false,NULL,'postgresql-reset',NOW(),NOW())`);
+          await client.query(`INSERT INTO app_site_content_syncs (domain, source_hash, document_count, source_mode, last_actor_clerk_user_id, synced_at, updated_at) VALUES ('terms','postgresql-reset',1,'postgresql-reset',$1,NOW(),NOW()) ON CONFLICT (domain) DO UPDATE SET source_hash='postgresql-reset', document_count=1, source_mode='postgresql-reset', last_actor_clerk_user_id=EXCLUDED.last_actor_clerk_user_id, synced_at=NOW(), updated_at=NOW()`, [trim(actorClerkUserId)]);
+        }
+        if (selected.includes('settings')) {
+          await client.query("DELETE FROM app_site_content_documents WHERE domain IN ('site-settings','rental-config')");
+          await client.query("DELETE FROM app_site_content_syncs WHERE domain IN ('site-settings','rental-config')");
+          await client.query(`INSERT INTO app_site_content_documents (domain, document_key, payload, enabled, sort_order, source_mode, synced_at, updated_at) VALUES ('site-settings','siteSettings/config','{}'::jsonb,true,NULL,'postgresql-reset',NOW(),NOW())`);
+          await client.query(`INSERT INTO app_site_content_syncs (domain, source_hash, document_count, source_mode, last_actor_clerk_user_id, synced_at, updated_at) VALUES ('site-settings','postgresql-reset',1,'postgresql-reset',$1,NOW(),NOW()) ON CONFLICT (domain) DO UPDATE SET source_hash='postgresql-reset', document_count=1, source_mode='postgresql-reset', last_actor_clerk_user_id=EXCLUDED.last_actor_clerk_user_id, synced_at=NOW(), updated_at=NOW()`, [trim(actorClerkUserId)]);
+          await client.query('DELETE FROM app_system_configuration');
+        }
+        await client.query(`INSERT INTO app_runtime_metadata (key, value, updated_at) VALUES ('phase34_last_system_data_reset',$1::jsonb,NOW()) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()`, [JSON.stringify({ actorClerkUserId: trim(actorClerkUserId), scopes: selected, resetAt: new Date().toISOString() })]);
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw error;
+      } finally {
+        client.release();
+      }
+      const after = await this.getResetCounts(selected);
+      return Object.freeze({ authority: 'postgresql', scopes: selected, before, after, completedAt: new Date().toISOString() });
     },
 
     async exportSnapshot({ includeOperations = true, includeMembers = false, includePersonalData = false } = {}) {

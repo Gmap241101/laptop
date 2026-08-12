@@ -33,7 +33,7 @@ const normalizeSource = ({ document, firebaseUid }) => {
 
 export const createRentalRestrictionService = ({ firebaseLinkRepository, rentalRestrictionRepository, firestoreRentalRestrictionClient, firebaseCompatibilityRequired = true }) => {
   if (!firebaseLinkRepository || typeof firebaseLinkRepository.findByFirebaseUid !== 'function') throw new TypeError('firebaseLinkRepository is required.');
-  if (!rentalRestrictionRepository || typeof rentalRestrictionRepository.findByFirebaseUid !== 'function' || typeof rentalRestrictionRepository.upsert !== 'function') throw new TypeError('rentalRestrictionRepository is required.');
+  if (!rentalRestrictionRepository || typeof rentalRestrictionRepository.findByFirebaseUid !== 'function' || typeof rentalRestrictionRepository.findByAppUserId !== 'function' || typeof rentalRestrictionRepository.upsert !== 'function') throw new TypeError('rentalRestrictionRepository is required.');
   if (firebaseCompatibilityRequired && (!firestoreRentalRestrictionClient || typeof firestoreRentalRestrictionClient.getRentalRestriction !== 'function')) throw new TypeError('Legacy rental restriction source client is required only when compatibility mode is enabled.');
 
   const verifyIdentity = async (firebaseIdentity, firebaseUid) => {
@@ -53,6 +53,30 @@ export const createRentalRestrictionService = ({ firebaseLinkRepository, rentalR
   };
 
   return Object.freeze({
+    async getCurrentForAppUser({ appUserId, legacyMemberKey = '' } = {}) {
+      const normalizedAppUserId = normalizeText(appUserId);
+      if (!normalizedAppUserId) throw serviceError('app_user_identity_missing', 'PostgreSQL application user identity is required.');
+      const current = await rentalRestrictionRepository.findByAppUserId(normalizedAppUserId);
+      if (current) return current;
+      const compatibilityKey = normalizeText(legacyMemberKey);
+      return Object.freeze({
+        firebaseUid: compatibilityKey,
+        appUserId: normalizedAppUserId,
+        exists: false,
+        restriction: null,
+        sourceDocumentPath: `postgresql/app_users/${normalizedAppUserId}/rental-restriction-none`,
+        sourceUpdatedAt: null,
+        sourceHash: hashPayload(null),
+        authorityMode: 'postgresql-authoritative',
+        mirrorState: 'retired',
+        lastMutationId: '',
+        authoritativeUpdatedAt: null,
+        syncedAt: null,
+        createdAt: null,
+        updatedAt: null,
+      });
+    },
+
     async getCurrentByFirebaseIdentity(firebaseIdentity) {
       const firebaseUid = normalizeText(firebaseIdentity?.uid);
       if (!firebaseUid) throw serviceError('firebase_identity_missing', 'Verified Firebase identity is required.');

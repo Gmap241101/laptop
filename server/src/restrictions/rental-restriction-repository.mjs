@@ -34,6 +34,14 @@ export const createRentalRestrictionRepository = (pool) => {
       return mapRow(result.rows[0]);
     },
 
+    async findByAppUserId(appUserId) {
+      const result = await pool.query(
+        `SELECT ${SELECT_COLUMNS} FROM app_user_rental_restriction_shadows WHERE app_user_id = $1 ORDER BY updated_at DESC LIMIT 1`,
+        [appUserId],
+      );
+      return mapRow(result.rows[0]);
+    },
+
     async upsert({ firebaseUid, appUserId = null, exists, restriction, sourceDocumentPath = '', sourceUpdatedAt = null, sourceHash }) {
       const result = await pool.query(
         `INSERT INTO app_user_rental_restriction_shadows (

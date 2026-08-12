@@ -7,6 +7,7 @@ import { readPolicyContentCutoverConfig } from '../features/content/policyConten
 const PHASE34_RUNTIME_REVISION = 'phase34-firebase-free-runtime-authority-20260812-1500';
 const PHASE34_POLICY_BOOTSTRAP_REVISION = 'phase34-rental-config-postgresql-bootstrap-hotfix-20260812-1545';
 const PHASE34_FRONTEND_MAPPING_REVISION = 'phase34-postgresql-payload-mapping-hotfix-20260812-1635';
+const PHASE34_RUNTIME_REGRESSION_REVISION = 'phase34-rental-request-restriction-content-reset-hotfix-20260812-1740';
 const trim = (value) => (typeof value === 'string' ? value.trim() : String(value ?? '').trim());
 
 const panelStyle = {
@@ -96,6 +97,8 @@ export default function ClerkStagingDiagnostics() {
       <div style={{ marginTop: '10px' }}>Runtime revision: {PHASE34_RUNTIME_REVISION}</div>
       <div>Policy bootstrap revision: {PHASE34_POLICY_BOOTSTRAP_REVISION}</div>
       <div>Frontend mapping revision: {PHASE34_FRONTEND_MAPPING_REVISION}</div>
+      <div>Runtime regression hotfix revision: {PHASE34_RUNTIME_REGRESSION_REVISION}</div>
+      <div>Backend regression revision: {valueOrDash(state.backend?.phase34RuntimeRegressionRevision)}</div>
       <div>Backend policy bootstrap revision: {valueOrDash(state.backend?.phase34PolicyBootstrapRevision)}</div>
       <div>SDK: {state.clerkReady ? 'ready' : state.loading ? 'loading' : 'unavailable'}</div>
       <div>Signed in: {yesNo(state.signedIn)}</div>

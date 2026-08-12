@@ -496,6 +496,7 @@ export const createRequestHandler = ({
     phase34RuntimeRevision: 'phase34-firebase-free-runtime-authority-20260812-1500',
     phase34PolicyBootstrapRevision: 'phase34-rental-config-postgresql-bootstrap-hotfix-20260812-1545',
     phase34SystemDataRevision: 'phase34-postgresql-data-management-asset-integrity-20260812-1700',
+    phase34RuntimeRegressionRevision: 'phase34-rental-request-restriction-content-reset-hotfix-20260812-1740',
     compatibility: {
       assetBoardWriteMirrorDisabled: Boolean(config.assetBoardWriteMirrorDisabled),
       retiredWriteMirrorDomains: [
@@ -683,6 +684,7 @@ export const createRequestHandler = ({
           adminClerkSession: '/api/admin/auth/session',
           adminClerkMigration: '/api/admin/auth/migrate',
           adminClerkProvision: '/api/admin/identity-registry/:uid/provision',
+          rentalRestrictionCurrent: '/api/users/me/rental-restriction',
           rentalRestrictionCandidate: '/api/legacy/rental-restriction-candidate',
           rentalRestrictionFallback: '/api/legacy/rental-restriction-firestore-fallback',
           rentalRestrictionWriteThrough: '/api/legacy/rental-restriction-shadow/write-through',
@@ -721,6 +723,8 @@ export const createRequestHandler = ({
           adminSystemDataIntegrity: '/api/admin/system-data/integrity',
           adminSystemDataAssetRepair: '/api/admin/system-data/repair-asset-references',
           adminSystemDataExport: '/api/admin/system-data/export',
+          adminSystemDataResetScan: '/api/admin/system-data/reset/scan',
+          adminSystemDataReset: '/api/admin/system-data/reset',
         },
         headers,
       );
@@ -1481,6 +1485,33 @@ export const createRequestHandler = ({
       }
       return;
     }
+    if (request.method === 'POST' && url.pathname === '/api/admin/system-data/reset/scan') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      let body = {};
+      try { body = await readJsonBody(request); } catch (error) { writeJson(response, error.status || 400, { ...basePayload, authenticated: true, error: error.code || 'invalid_json_body' }, headers); return; }
+      try {
+        const result = await systemDataService.getResetCounts(authority.adminAuth?.admin, body?.scopes || []);
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, systemDataResetScan: result }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: false, error: error?.code || 'system_data_reset_scan_failed' }, headers);
+      }
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/admin/system-data/reset') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      let body = {};
+      try { body = await readJsonBody(request); } catch (error) { writeJson(response, error.status || 400, { ...basePayload, authenticated: true, error: error.code || 'invalid_json_body' }, headers); return; }
+      try {
+        const result = await systemDataService.resetScopes(authority.adminAuth?.admin, body || {});
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, systemDataReset: result }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: false, error: error?.code || 'system_data_reset_failed' }, headers);
+      }
+      return;
+    }
+
     if (request.method === 'POST' && url.pathname === '/api/admin/system-data/export') {
       const authority = await authenticateAdminAuthority(request, response, headers, requestId);
       if (!authority) return;
@@ -2292,6 +2323,32 @@ export const createRequestHandler = ({
           : error?.status === 401 ? 401
           : 503;
         writeJson(response, statusCode, { ...basePayload, authenticated: true, error: errorCode }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/users/me/rental-restriction') {
+      const userAuthority = await authenticateUserAuthority(request, response, headers, requestId);
+      if (!userAuthority) return;
+      try {
+        const account = userAuthority.userAuth?.account || {};
+        const shadow = await rentalRestrictionService.getCurrentForAppUser({
+          appUserId: account.appUserId,
+          legacyMemberKey: account.firebaseUid || '',
+        });
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          rentalRestriction: {
+            source: 'postgresql-authoritative',
+            authoritative: true,
+            ...sanitizeRentalRestrictionShadow(shadow),
+          },
+        }, headers);
+      } catch (error) {
+        console.error('[restriction-read] PostgreSQL authority lookup failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: false, error: error?.code || 'rental_restriction_postgresql_unavailable' }, headers);
       }
       return;
     }
