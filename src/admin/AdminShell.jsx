@@ -1,28 +1,15 @@
 import React from 'react';
 import { Laptop } from 'lucide-react';
 
-import { Button, Card, CardContent } from '../components/CommonUI.jsx';
+import { Button } from '../components/CommonUI.jsx';
 import RentalStatusBoard from '../components/RentalStatusBoard.jsx';
 import DevRenderProfiler from '../performance/DevRenderProfiler.jsx';
 import { getHeaderSubtitle } from '../utils/systemSettings.js';
+import AdminWorkspace from './AdminWorkspace.jsx';
+import AdminDialogs from './AdminDialogs.jsx';
 
-const AdminWorkspace = React.lazy(() => import('./AdminWorkspace.jsx'));
-const AdminDialogs = React.lazy(() => import('./AdminDialogs.jsx'));
 const DevPerformancePanel = React.lazy(() =>
   import('../performance/DevPerformancePanel.jsx')
-);
-
-const AdminWorkspaceFallback = () => (
-  <Card className="mx-auto max-w-xl border-slate-200 bg-white shadow-sm">
-    <CardContent className="p-8 text-center">
-      <div className="text-sm font-bold text-slate-700">
-        관리자 화면을 불러오는 중입니다.
-      </div>
-      <div className="mt-2 text-xs text-slate-500">
-        관리자 전용 모듈을 불러오고 있습니다.
-      </div>
-    </CardContent>
-  </Card>
 );
 
 const AdminShell = ({
@@ -131,22 +118,18 @@ const AdminShell = ({
           </DevRenderProfiler>
         ) : null}
 
-        <React.Suspense fallback={<AdminWorkspaceFallback />}>
-          <DevRenderProfiler id="AdminWorkspace">
-            <AdminWorkspace
-              ctx={contextGroups.admin.shell}
-              panelCtx={contextGroups.admin[adminPanelContextKey]}
-            />
-          </DevRenderProfiler>
-        </React.Suspense>
+        <DevRenderProfiler id="AdminWorkspace">
+          <AdminWorkspace
+            ctx={contextGroups.admin.shell}
+            panelCtx={contextGroups.admin[adminPanelContextKey]}
+          />
+        </DevRenderProfiler>
       </main>
 
       {shouldRenderAdminDialogs ? (
-        <React.Suspense fallback={null}>
-          <DevRenderProfiler id="Admin:Dialogs">
-            <AdminDialogs ctx={contextGroups.app.dialogs} />
-          </DevRenderProfiler>
-        </React.Suspense>
+        <DevRenderProfiler id="Admin:Dialogs">
+          <AdminDialogs ctx={contextGroups.app.dialogs} />
+        </DevRenderProfiler>
       ) : null}
 
       {import.meta.env.DEV ? (

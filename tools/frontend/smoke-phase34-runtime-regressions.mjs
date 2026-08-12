@@ -120,6 +120,11 @@ assert.equal(appShellSource.includes('Firebase 원격 DB 기준으로 데이터�
 assert.equal(appShellSource.includes('PostgreSQL 운영 DB 기준으로 데이터를 불러오고 있습니다.'), true);
 const rentalDataSource = fs.readFileSync(new URL('../../src/features/requests/useRentalDataSubscriptionController.js', import.meta.url), 'utf8');
 assert.equal(rentalDataSource.includes('firestore-one-time-fallback'), false, 'asset runtime must not retain Firestore fallback source labels');
+assert.match(
+  rentalDataSource,
+  /import\s*\{[\s\S]*?isLegacyFirestoreReadFallbackAllowed,[\s\S]*?readLegacyFirestoreReadFallbackConfig,[\s\S]*?recordLegacyFirestoreReadFallbackBlocked,[\s\S]*?\}\s*from '\.\.\/compatibility\/legacyFirestoreReadFallbackCutover\.js'/,
+  'user rental runtime must import every legacy-read fallback helper it invokes so authenticated rental rendering cannot fail with ReferenceError'
+);
 
 
 const userHtml = fs.readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
@@ -135,6 +140,7 @@ const userShellSource = fs.readFileSync(new URL('../../src/user/UserShell.jsx', 
 const userWorkspaceSource = fs.readFileSync(new URL('../../src/user/UserWorkspace.jsx', import.meta.url), 'utf8');
 const userRuntimeErrorBoundarySource = fs.readFileSync(new URL('../../src/user/UserRuntimeErrorBoundary.jsx', import.meta.url), 'utf8');
 const adminAppSource = fs.readFileSync(new URL('../../src/admin/AdminApp.jsx', import.meta.url), 'utf8');
+const adminWorkspaceSource = fs.readFileSync(new URL('../../src/admin/AdminWorkspace.jsx', import.meta.url), 'utf8');
 const adminAccountSecuritySource = fs.readFileSync(new URL('../../src/admin/AdminAccountSecurityPanel.jsx', import.meta.url), 'utf8');
 const contextSliceSource = fs.readFileSync(new URL('../../src/context/appContextSlices.js', import.meta.url), 'utf8');
 const adminShellSource = fs.readFileSync(new URL('../../src/admin/AdminShell.jsx', import.meta.url), 'utf8');
@@ -174,6 +180,10 @@ assert.equal(userWorkspaceSource.includes("import('./UserRentalPanel.jsx')"), fa
 assert.equal(adminShellSource.includes('UserWorkspace'), false, 'administrator shell must not contain the user workspace');
 assert.equal(adminShellSource.includes('UserFooter'), false, 'administrator shell must not contain the user footer');
 assert.equal(adminShellSource.includes('UserPopupLayer'), false, 'administrator shell must not contain the user popup layer');
+assert.equal(adminShellSource.includes("React.lazy(() => import('./AdminWorkspace.jsx'))"), false, 'administrator workspace must be eagerly linked into the separate admin document');
+assert.equal(adminShellSource.includes("React.lazy(() => import('./AdminDialogs.jsx'))"), false, 'administrator dialogs must be eagerly linked into the separate admin document');
+assert.equal(adminWorkspaceSource.includes('lazy(() => import('), false, 'administrator tab panels must be eagerly linked so first menu clicks do not display a code-loading placeholder');
+assert.equal(adminWorkspaceSource.includes('관리 메뉴를 불러오는 중입니다.'), false, 'administrator menu must not render the first-load panel placeholder');
 assert.match(contextSliceSource, /accountSecurity:[^\n]*rebaseAdminAuthenticatedSession[^\n]*setSystemAdminSettings[^\n]*setUserSessionPolicy/, 'account-security panel context must receive authoritative policy state setters and current-session rebasing');
 assert.match(adminAppSource, /setSystemAdminSettings,[\s\S]*setUserSessionPolicy,[\s\S]*rebaseAdminAuthenticatedSession,[\s\S]*userSessionPolicy,/, 'administrator root must expose policy setters to the account-security panel');
 assert.match(adminAccountSecuritySource, /adminWriteResult\?\.systemConfiguration\?\.payload/, 'administrator security save must consume the authoritative PostgreSQL response payload');

@@ -30,6 +30,8 @@ import {
   requestPolicyContentDomain,
 } from '../content/policyContentCutover.js';
 import {
+  isLegacyFirestoreReadFallbackAllowed,
+  readLegacyFirestoreReadFallbackConfig,
   recordLegacyFirestoreReadFallbackBlocked,
 } from '../compatibility/legacyFirestoreReadFallbackCutover.js';
 import {

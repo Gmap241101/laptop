@@ -1,24 +1,41 @@
-import { lazy, memo, Suspense } from 'react';
+import { memo } from 'react';
 import { Activity, CalendarDays, ChevronDown, Database, Info, Menu, Paintbrush } from 'lucide-react';
 import DevRenderProfiler from '../performance/DevRenderProfiler.jsx';
+import AdminDashboardPanelView from './AdminDashboardPanel.jsx';
+import AdminRequestsPanelView from './AdminRequestsPanel.jsx';
+import AdminAssetsPanelView from './AdminAssetsPanel.jsx';
+import AdminAssetCategoriesPanelView from './AdminAssetCategoriesPanel.jsx';
+import AdminOrganizationPanelView from './AdminOrganizationPanel.jsx';
+import AdminSignupPolicyPanelView from './AdminSignupPolicyPanel.jsx';
+import AdminNoticePanelView from './AdminNoticePanel.jsx';
+import AdminPopupPanelView from './AdminPopupPanel.jsx';
+import AdminFaqPanelView from './AdminFaqPanel.jsx';
+import AdminFooterPanelView from './AdminFooterPanel.jsx';
+import AdminMemberAccountsPanelView from './AdminMemberAccountsPanel.jsx';
+import AdminAccountsPanelView from './AdminAccountsPanel.jsx';
+import AdminSettingsPanelView from './AdminSettingsPanel.jsx';
+import AdminAccountSecurityPanelView from './AdminAccountSecurityPanel.jsx';
+import AdminExtensionSettingsPanelView from './AdminExtensionSettingsPanel.jsx';
+import AdminHolidayManagementPanelView from './AdminHolidayManagementPanel.jsx';
+import AdminHomeManagementPanelView from './AdminHomeManagementPanel.jsx';
 
-const AdminDashboardPanel = memo(lazy(() => import('./AdminDashboardPanel.jsx')));
-const AdminRequestsPanel = memo(lazy(() => import('./AdminRequestsPanel.jsx')));
-const AdminAssetsPanel = memo(lazy(() => import('./AdminAssetsPanel.jsx')));
-const AdminAssetCategoriesPanel = memo(lazy(() => import('./AdminAssetCategoriesPanel.jsx')));
-const AdminOrganizationPanel = memo(lazy(() => import('./AdminOrganizationPanel.jsx')));
-const AdminSignupPolicyPanel = memo(lazy(() => import('./AdminSignupPolicyPanel.jsx')));
-const AdminNoticePanel = memo(lazy(() => import('./AdminNoticePanel.jsx')));
-const AdminPopupPanel = memo(lazy(() => import('./AdminPopupPanel.jsx')));
-const AdminFaqPanel = memo(lazy(() => import('./AdminFaqPanel.jsx')));
-const AdminFooterPanel = memo(lazy(() => import('./AdminFooterPanel.jsx')));
-const AdminMemberAccountsPanel = memo(lazy(() => import('./AdminMemberAccountsPanel.jsx')));
-const AdminAccountsPanel = memo(lazy(() => import('./AdminAccountsPanel.jsx')));
-const AdminSettingsPanel = memo(lazy(() => import('./AdminSettingsPanel.jsx')));
-const AdminAccountSecurityPanel = memo(lazy(() => import('./AdminAccountSecurityPanel.jsx')));
-const AdminExtensionSettingsPanel = memo(lazy(() => import('./AdminExtensionSettingsPanel.jsx')));
-const AdminHolidayManagementPanel = memo(lazy(() => import('./AdminHolidayManagementPanel.jsx')));
-const AdminHomeManagementPanel = memo(lazy(() => import('./AdminHomeManagementPanel.jsx')));
+const AdminDashboardPanel = memo(AdminDashboardPanelView);
+const AdminRequestsPanel = memo(AdminRequestsPanelView);
+const AdminAssetsPanel = memo(AdminAssetsPanelView);
+const AdminAssetCategoriesPanel = memo(AdminAssetCategoriesPanelView);
+const AdminOrganizationPanel = memo(AdminOrganizationPanelView);
+const AdminSignupPolicyPanel = memo(AdminSignupPolicyPanelView);
+const AdminNoticePanel = memo(AdminNoticePanelView);
+const AdminPopupPanel = memo(AdminPopupPanelView);
+const AdminFaqPanel = memo(AdminFaqPanelView);
+const AdminFooterPanel = memo(AdminFooterPanelView);
+const AdminMemberAccountsPanel = memo(AdminMemberAccountsPanelView);
+const AdminAccountsPanel = memo(AdminAccountsPanelView);
+const AdminSettingsPanel = memo(AdminSettingsPanelView);
+const AdminAccountSecurityPanel = memo(AdminAccountSecurityPanelView);
+const AdminExtensionSettingsPanel = memo(AdminExtensionSettingsPanelView);
+const AdminHolidayManagementPanel = memo(AdminHolidayManagementPanelView);
+const AdminHomeManagementPanel = memo(AdminHomeManagementPanelView);
 
 const ADMIN_MENU_GROUP_STATE_KEY = 'mk_laptop_admin_menu_groups';
 
@@ -547,17 +564,6 @@ function AdminWorkspace({ ctx, panelCtx }) {
               <Card className="min-w-0">
                 <CardContent className="min-w-0 p-6">
                   <DevRenderProfiler id={`AdminPanel:${adminTab}`}>
-                    <Suspense
-                      fallback={(
-                        <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 px-6 text-center">
-                          <div>
-                            <div className="text-sm font-bold text-slate-700">관리 메뉴를 불러오는 중입니다.</div>
-                            <div className="mt-2 text-xs text-slate-500">선택한 관리 기능의 코드를 처음 한 번만 불러옵니다.</div>
-                          </div>
-                        </div>
-                      )}
-                    >
-                  
                   {/* 대시보드 탭 */}
                   {adminTab === 'dashboard' && (
                     <AdminDashboardPanel ctx={panelCtx} />
@@ -662,7 +668,6 @@ function AdminWorkspace({ ctx, panelCtx }) {
                   {adminTab === 'extensionSettings' && (
                     <AdminExtensionSettingsPanel ctx={panelCtx} />
                   )}
-                    </Suspense>
                   </DevRenderProfiler>
                 </CardContent>
               </Card>
