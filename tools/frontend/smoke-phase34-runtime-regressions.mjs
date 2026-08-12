@@ -63,6 +63,23 @@ const adminAccountEffectTail = identitySource.match(/setAdminAccountsReady\(fals
 assert.ok(adminAccountEffectTail, 'administrator registry refresh must depend on administrator identity and dedicated app surface only');
 assert.equal(adminAccountEffectTail.includes('adminTab'), false, 'administrator registry must not reload on every menu change');
 
+const adminAuthSource = fs.readFileSync(new URL('../../src/features/auth/useAdminAuthenticationController.js', import.meta.url), 'utf8');
+assert.match(
+  adminAuthSource,
+  /const loginSecuritySettings = await loadAuthoritativeAdminSecuritySettings\(\);[\s\S]*?setAdminAuthenticatedSession\(nextAdminAccount\.id, loginSecuritySettings\)/,
+  'Clerk-only administrator login must persist the PostgreSQL admin-security policy snapshot instead of the pre-login default policy'
+);
+assert.equal(
+  adminAuthSource.includes('setAdminAuthenticatedSession(nextAdminAccount.id, normalizeSystemAdminSettings(systemAdminSettings))'),
+  false,
+  'administrator login must not persist a default/pre-hydration security policy snapshot'
+);
+assert.match(
+  adminAuthSource,
+  /const authoritativeSecurity = await loadAuthoritativeAdminSecuritySettings\(\);[\s\S]*?confirmedPolicyMismatch =[\s\S]*?adminAuthPolicyVersion !== authoritativeSecurity\.adminSecurityPolicyVersion/,
+  'administrator policy mismatch logout must be confirmed against PostgreSQL before invalidating the Clerk session'
+);
+
 let patchRequest = null;
 const patchPayload = await requestAdminRentalConfigSettingsPatch({
   clerk,

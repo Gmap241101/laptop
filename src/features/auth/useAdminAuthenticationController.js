@@ -154,6 +154,17 @@ export default function useAdminAuthenticationController({
     readAdminRouteIntent
   );
 
+  const loadAuthoritativeAdminSecuritySettings = useCallback(async () => {
+    const payload = await clerkStagingClient.getAdminSystemConfiguration('admin-security');
+    const rawSettings = payload?.systemConfiguration?.payload;
+    if (!rawSettings || typeof rawSettings !== 'object' || Array.isArray(rawSettings)) {
+      const error = new Error('PostgreSQL administrator security configuration is unavailable.');
+      error.code = 'admin_security_configuration_unavailable';
+      throw error;
+    }
+    return normalizeSystemAdminSettings(rawSettings);
+  }, []);
+
   const authenticatedAdminAccount =
     registeredAdminAccounts.find(
       (account) => account.id === authenticatedAdminId
@@ -476,9 +487,20 @@ export default function useAdminAuthenticationController({
     ) {
       if (!adminLogoutInProgressRef.current) {
         adminLogoutInProgressRef.current = true;
-        setAdminLogoutInProgress(true);
         void (async () => {
+          let confirmedPolicyMismatch = true;
           try {
+            if (firebaseRuntimeRetired && adminClerkAuthRequested) {
+              const authoritativeSecurity = await loadAuthoritativeAdminSecuritySettings();
+              confirmedPolicyMismatch =
+                adminAuthPolicyVersion !== authoritativeSecurity.adminSecurityPolicyVersion;
+            }
+
+            if (!confirmedPolicyMismatch) {
+              return;
+            }
+
+            setAdminLogoutInProgress(true);
             if (!firebaseRuntimeRetired && firebaseAuth.currentUser) {
               await signOut(firebaseAuth);
             }
@@ -487,18 +509,20 @@ export default function useAdminAuthenticationController({
               setAdminClerkSessionVerified(false);
             }
           } catch (error) {
-            console.error('Admin policy change logout error:', error);
+            console.error('Admin policy change verification/logout error:', error);
           } finally {
-            clearAdminRouteIntent();
-            setAdminPostLoginRouteGuardActive(false);
-            clearAdminAuthenticatedSession();
-            setAdminAuthForm(createDefaultAdminAuthForm());
+            if (confirmedPolicyMismatch) {
+              clearAdminRouteIntent();
+              setAdminPostLoginRouteGuardActive(false);
+              clearAdminAuthenticatedSession();
+              setAdminAuthForm(createDefaultAdminAuthForm());
+              triggerToast(
+                '관리자 보안 설정이 변경되어 다시 로그인이 필요합니다.',
+                'error'
+              );
+            }
             adminLogoutInProgressRef.current = false;
             setAdminLogoutInProgress(false);
-            triggerToast(
-              '관리자 보안 설정이 변경되어 다시 로그인이 필요합니다.',
-              'error'
-            );
           }
         })();
       }
@@ -553,6 +577,7 @@ export default function useAdminAuthenticationController({
     systemAdminSettings,
     systemAdminSettingsReady,
     adminAuthPolicyVersion,
+    loadAuthoritativeAdminSecuritySettings,
     adminAuthAbsoluteExpiresAt,
     firebaseRuntimeRetired,
     runtimeSurface,
@@ -767,8 +792,9 @@ export default function useAdminAuthenticationController({
           throw Object.assign(new Error('Clerk administrator authority is unavailable.'), { code: 'admin_clerk_not_authorized' });
         }
         const nextAdminAccount = applyClerkAdminAuthority(authority);
+        const loginSecuritySettings = await loadAuthoritativeAdminSecuritySettings();
         setAdminClerkSessionVerified(true);
-        setAdminAuthenticatedSession(nextAdminAccount.id, normalizeSystemAdminSettings(systemAdminSettings));
+        setAdminAuthenticatedSession(nextAdminAccount.id, loginSecuritySettings);
         setAdminAuthForm(createDefaultAdminAuthForm());
         writeAdminRouteIntent();
         setAdminPostLoginRouteGuardActive(true);
