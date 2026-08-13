@@ -18,8 +18,8 @@ import {
 import { createTermsContentHash } from '../features/terms/termsService.js';
 import {
   POLICY_CONTENT_DOMAINS,
+  patchPolicyContentDomainInPostgresql,
   readPolicyContentCutoverConfig,
-  replacePolicyContentDomainInPostgresql,
   requestPolicyContentDomain,
 } from '../features/content/policyContentCutover.js';
 import {
@@ -139,22 +139,56 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
     };
   }, []);
 
-  const replaceTermsDomain = async ({ nextTerms, nextPolicy, nextVersions = termVersions }) => {
+  const createTermsDomainDocuments = ({ sourceTerms, sourcePolicy, sourceVersions }) => {
+    const normalizedPolicy = normalizeTermsPolicy(sourcePolicy);
+    return [
+      { key: 'signupTermsPolicy/current', payload: normalizedPolicy, enabled: normalizedPolicy.enabled },
+      ...sourceTerms.map((term) => ({
+        key: `signupTerms/${term.id}`,
+        payload: term,
+        enabled: term.enabled !== false && !term.archived,
+        sortOrder: term.displayOrder,
+      })),
+      ...sourceVersions,
+    ];
+  };
+
+  const getDocumentFingerprint = (document) => JSON.stringify({
+    key: document.key,
+    payload: document.payload || {},
+    enabled: typeof document.enabled === 'boolean' ? document.enabled : null,
+    sortOrder: Number.isFinite(Number(document.sortOrder)) ? Number(document.sortOrder) : null,
+  });
+
+  const patchTermsDomain = async ({ nextTerms, nextPolicy, nextVersions = termVersions }) => {
     const normalizedPolicy = normalizeTermsPolicy(nextPolicy);
-    await replacePolicyContentDomainInPostgresql({
-      domain: POLICY_CONTENT_DOMAINS.TERMS,
-      config: readPolicyContentCutoverConfig(),
-      documents: [
-        { key: 'signupTermsPolicy/current', payload: normalizedPolicy, enabled: normalizedPolicy.enabled },
-        ...nextTerms.map((term) => ({
-          key: `signupTerms/${term.id}`,
-          payload: term,
-          enabled: term.enabled !== false && !term.archived,
-          sortOrder: term.displayOrder,
-        })),
-        ...nextVersions,
-      ],
+    const currentDocuments = createTermsDomainDocuments({
+      sourceTerms: terms,
+      sourcePolicy: termsPolicy,
+      sourceVersions: termVersions,
     });
+    const nextDocuments = createTermsDomainDocuments({
+      sourceTerms: nextTerms,
+      sourcePolicy: normalizedPolicy,
+      sourceVersions: nextVersions,
+    });
+    const currentByKey = new Map(currentDocuments.map((document) => [document.key, document]));
+    const nextByKey = new Map(nextDocuments.map((document) => [document.key, document]));
+    const upserts = nextDocuments.filter((document) =>
+      getDocumentFingerprint(currentByKey.get(document.key) || {}) !== getDocumentFingerprint(document)
+    );
+    const deletes = currentDocuments
+      .map((document) => document.key)
+      .filter((key) => !nextByKey.has(key));
+
+    if (upserts.length > 0 || deletes.length > 0) {
+      await patchPolicyContentDomainInPostgresql({
+        domain: POLICY_CONTENT_DOMAINS.TERMS,
+        config: readPolicyContentCutoverConfig(),
+        upserts,
+        deletes,
+      });
+    }
     setTerms(nextTerms.slice().sort((a, b) => a.displayOrder - b.displayOrder || a.title.localeCompare(b.title, 'ko')));
     setTermVersions(nextVersions);
     setTermsPolicy(normalizedPolicy);
@@ -284,7 +318,7 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
               },
             ]
           : termVersions;
-        await replaceTermsDomain({ nextTerms, nextPolicy, nextVersions });
+        await patchTermsDomain({ nextTerms, nextPolicy, nextVersions });
         setDialogOpen(false);
         setForm(createEmptyForm());
         triggerToast(form.id ? '이용약관의 새 버전을 저장했습니다.' : '이용약관을 등록했습니다.', 'success');
@@ -311,7 +345,7 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
         const nextTerms = terms.map((item) => item.id === term.id
           ? normalizeTermPayload({ ...item, enabled, archived: false, updatedAt: now, updatedBy: 'clerk-admin' }, item.id)
           : item);
-        await replaceTermsDomain({
+        await patchTermsDomain({
           nextTerms,
           nextPolicy: createNextPolicy({
             nextTerms,
@@ -334,7 +368,7 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
         const nextTerms = terms.map((item) => item.id === term.id
           ? normalizeTermPayload({ ...item, enabled: false, archived: true, updatedAt: now, updatedBy: 'clerk-admin' }, item.id)
           : item);
-        await replaceTermsDomain({ nextTerms, nextPolicy: createNextPolicy({ nextTerms }) });
+        await patchTermsDomain({ nextTerms, nextPolicy: createNextPolicy({ nextTerms }) });
         triggerToast('약관을 보관했습니다.', 'success');
         return;    } catch (error) {
       console.error('Signup term archive error:', error);
@@ -368,7 +402,7 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
           : item.id === target.id
             ? { ...item, displayOrder: current.displayOrder, updatedAt: new Date() }
             : item);
-        await replaceTermsDomain({
+        await patchTermsDomain({
           nextTerms,
           nextPolicy: createNextPolicy({ nextTerms, revisionIncrement: 0 }),
         });
@@ -482,7 +516,7 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
 
       {dialogOpen ? (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/55 p-4">
-          <div className="max-h-[94vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+          <div className="max-h-[94vh] w-full max-w-4xl overflow-y-auto mk-modal-scroll-shell rounded-2xl bg-white p-6 shadow-2xl">
             <div className="mb-5">
               <h3 className="text-lg font-black text-slate-900">{form.id ? '이용약관 수정' : '이용약관 등록'}</h3>
               <p className="mt-1 text-xs text-slate-500">제목, 본문 또는 필수·선택 구분을 변경하면 기존 버전을 보존하고 새 버전을 생성합니다.</p>
@@ -536,7 +570,7 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
 
       {previewTerm ? (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/55 p-4">
-          <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+          <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto mk-modal-scroll-shell rounded-2xl bg-white p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
               <div>
                 <div className="text-xs font-bold text-orange-600">{previewTerm.required ? '필수' : '선택'} · 버전 {previewTerm.currentVersion}</div>

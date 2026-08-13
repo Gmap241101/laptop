@@ -7,6 +7,7 @@ for (const marker of [
   "TERMS: 'terms'",
   'requestSiteContentDomain',
   'replaceSiteContentDomainInPostgresql',
+  'patchSiteContentDomainInPostgresql',
   'fallbackAllowed: false',
 ]) assert.ok(cutover.includes(marker), `missing Phase 34 policy authority marker: ${marker}`);
 for (const forbidden of ['FromFirestore', 'X-Firebase-Authorization']) {
@@ -30,7 +31,8 @@ for (const forbidden of ['getDoc(', 'onSnapshot(', 'retiredLegacyDataCompat']) {
 }
 
 const adminTerms = readFileSync('src/admin/AdminSignupTermsManager.jsx', 'utf8');
-assert.ok(adminTerms.includes('replacePolicyContentDomainInPostgresql'));
+assert.ok(adminTerms.includes('patchPolicyContentDomainInPostgresql'));
+assert.equal(adminTerms.includes('replacePolicyContentDomainInPostgresql'), false, 'signup terms admin writes must not resend the full terms domain');
 const signupPolicy = readFileSync('src/features/members/useAdminSignupPolicyActions.js', 'utf8');
 assert.ok(signupPolicy.includes('saveAdminSignupPolicy'));
 assert.equal(signupPolicy.includes('replacePolicyContentDomainInPostgresql'), false);

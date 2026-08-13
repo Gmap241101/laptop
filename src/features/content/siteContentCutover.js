@@ -162,6 +162,71 @@ const getClerkToken = async ({ forceRefresh = false } = {}) => {
   return token;
 };
 
+export const patchSiteContentDomainInPostgresql = async ({
+  domain,
+  upserts = [],
+  deletes = [],
+  fetchImpl = fetch,
+  config = readSiteContentCutoverConfig(),
+  observationPublisher = publishSiteContentObservation,
+} = {}) => {
+  if (!config.adminAuthorityRequested) return Object.freeze({ skipped: true });
+  if (!config.apiBaseUrl) throw Object.assign(new Error('VITE_API_URL is required for PostgreSQL administrator content patches.'), { code: 'site_content_api_missing' });
+  const normalizedUpserts = (Array.isArray(upserts) ? upserts : [])
+    .map((document) => createSiteContentDomainDocument(document))
+    .filter((document) => document.key);
+  const normalizedDeletes = [...new Set((Array.isArray(deletes) ? deletes : [])
+    .map((key) => trim(key))
+    .filter(Boolean))];
+
+  const performPatch = async (forceRefresh = false) => {
+    const clerkToken = await getClerkToken({ forceRefresh });
+    const response = await fetchImpl(`${config.apiBaseUrl}/api/admin/site-content/${encodeURIComponent(domain)}`, {
+      method: 'PATCH',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${clerkToken}`,
+      },
+      cache: 'no-store',
+      body: JSON.stringify({ upserts: normalizedUpserts, deletes: normalizedDeletes }),
+    });
+    let payload = null;
+    try { payload = await response.json(); } catch { payload = null; }
+    return { response, payload };
+  };
+
+  let result = await performPatch(false);
+  if (result.response.status === 401 && result.payload?.error === 'unauthorized') {
+    result = await performPatch(true);
+  }
+  const { response, payload } = result;
+  if (!response.ok) {
+    const error = new Error(`PostgreSQL administrator content patch failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || 'site_content_admin_patch_failed';
+    observationPublisher?.({ writeThroughRequested: true, domain, writeSource: 'postgresql-admin-patch', postgresSync: 'failed', error: error.code });
+    throw error;
+  }
+  if (payload?.siteContentMutation?.authority !== 'postgresql' || payload?.siteContentMutation?.sourceMode !== 'postgresql-admin-patch') {
+    throw Object.assign(new Error('Backend did not confirm PostgreSQL administrator partial content authority.'), { code: 'site_content_admin_patch_authority_invalid' });
+  }
+  const content = payload?.siteContent;
+  if (content?.source !== 'postgresql' || !Array.isArray(content?.documents)) {
+    throw Object.assign(new Error('PostgreSQL administrator content patch returned an invalid domain payload.'), { code: 'site_content_admin_patch_payload_invalid' });
+  }
+  publishSiteContentInvalidation(domain);
+  observationPublisher?.({
+    writeThroughRequested: true,
+    domain,
+    writeSource: 'postgresql-admin-patch',
+    postgresSync: 'authoritative',
+    postgresDocumentCount: Number(content.documentCount || content.documents.length),
+    error: null,
+  });
+  return content;
+};
+
 export const replaceSiteContentDomainInPostgresql = async ({
   domain,
   documents,

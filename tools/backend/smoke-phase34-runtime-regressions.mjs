@@ -290,5 +290,9 @@ assert.match(memberServiceSource, /restoreDirectoryMismatchAdmin/, 'member autho
 const siteServiceSource = fs.readFileSync(new URL('../../server/src/content/site-content-service.mjs', import.meta.url), 'utf8');
 assert.match(siteServiceSource, /patchSignupPolicy/, 'site-content service must patch signup policy server-side');
 assert.equal(siteServiceSource.includes("readJsonBody(request)"), false, 'site-content service must not depend on browser request-body parsing');
+assert.match(siteServiceSource, /patchAdminDomain/, 'site-content service must support partial PostgreSQL document mutation for large rich-content domains');
+assert.match(repositorySource, /patchDomainDocuments/, 'site-content repository must patch changed documents without deleting and reinserting the complete domain');
+assert.match(repositorySource, /ON CONFLICT \(domain, document_key\) DO UPDATE SET/, 'partial content mutation must upsert individual PostgreSQL content documents atomically');
+assert.match(memberPolicyAppSource, /request\.method === 'PATCH' && adminSiteContentDirectMatch[\s\S]*domain === 'terms' \? 2 \* 1024 \* 1024/, 'terms partial writes must have a dedicated body safety limit above the obsolete 32KB generic limit');
 
 console.log('[phase34-runtime-regressions-backend-smoke] PASS');

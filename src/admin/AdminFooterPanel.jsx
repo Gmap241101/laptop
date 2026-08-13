@@ -163,7 +163,7 @@ export default function AdminFooterPanel({ ctx }) {
           aria-modal="true"
           aria-label={footerPageDialog.mode === 'edit' ? '푸터 메뉴 페이지 수정' : '푸터 메뉴 페이지 등록'}
         >
-          <section className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-orange-200 bg-white shadow-2xl">
+          <section className="max-h-[92vh] w-full max-w-5xl overflow-y-auto mk-modal-scroll-shell rounded-2xl border border-orange-200 bg-white shadow-2xl">
           <div className="flex items-start justify-between gap-4 border-b border-orange-100 bg-orange-50 px-5 py-4">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">

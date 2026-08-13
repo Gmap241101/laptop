@@ -1,5 +1,6 @@
 import {
   readSiteContentCutoverConfig,
+  patchSiteContentDomainInPostgresql,
   replaceSiteContentDomainInPostgresql,
   requestSiteContentDomain,
 } from './siteContentCutover.js';
@@ -74,6 +75,21 @@ export const requestPolicyContentDomain = async ({
 
 export const getPolicyContentDocument = (domainResult, key) =>
   (domainResult?.documents || []).find((item) => item.key === key) || null;
+
+export const patchPolicyContentDomainInPostgresql = async ({
+  domain,
+  upserts = [],
+  deletes = [],
+  fetchImpl = fetch,
+  config = readPolicyContentCutoverConfig(),
+} = {}) => patchSiteContentDomainInPostgresql({
+  domain,
+  upserts,
+  deletes,
+  fetchImpl,
+  config,
+  observationPublisher: publishPolicyContentObservation,
+});
 
 export const replacePolicyContentDomainInPostgresql = async ({
   domain,

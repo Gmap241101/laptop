@@ -680,7 +680,7 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
           aria-modal="true"
           aria-label={`${panelConfig.itemLabel} ${form.id ? '수정' : '등록'}`}
         >
-          <section className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-orange-200 bg-white shadow-2xl">
+          <section className="max-h-[92vh] w-full max-w-5xl overflow-y-auto mk-modal-scroll-shell rounded-2xl border border-orange-200 bg-white shadow-2xl">
           <div className="flex items-center justify-between border-b border-orange-100 bg-orange-50 px-5 py-4">
             <div>
               <h3 className="text-sm font-bold text-slate-900">{form.id ? `${panelConfig.itemLabel} 수정` : `${panelConfig.itemLabel} 등록`}</h3>

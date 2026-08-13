@@ -282,9 +282,11 @@ export function RichTextEditor({
   label = '본문',
   placeholder = '내용을 입력해 주세요.',
   minHeight = 300,
+  maxHeight = null,
   disabled = false,
   allowVideos = true,
 }) {
+  const resolvedMaxHeight = maxHeight ?? minHeight;
   const editorRef = useRef(null);
   const savedRangeRef = useRef(null);
   const lastEmittedHtmlRef = useRef('');
@@ -1882,8 +1884,8 @@ export function RichTextEditor({
               disabled={disabled}
               spellCheck={false}
               aria-label={`${label} HTML 태그 편집`}
-              className="w-full resize-y bg-slate-950 px-4 py-3 font-mono text-xs leading-6 text-slate-100 outline-none disabled:cursor-not-allowed disabled:opacity-60"
-              style={{ minHeight }}
+              className="mk-rich-text-scroll w-full resize-none overflow-y-auto overscroll-contain bg-slate-950 px-4 py-3 font-mono text-xs leading-6 text-slate-100 outline-none disabled:cursor-not-allowed disabled:opacity-60"
+              style={{ minHeight, maxHeight: resolvedMaxHeight }}
               placeholder="HTML 태그를 입력해 주세요. 저장 시 허용되지 않은 태그와 속성은 자동으로 제거됩니다."
             />
           ) : (
@@ -1902,8 +1904,8 @@ export function RichTextEditor({
                 onMouseUp={saveSelection}
                 onClick={handleEditorClick}
                 onDoubleClick={handleEditorDoubleClick}
-                style={{ minHeight }}
-                className="rich-text-editor-area w-full overflow-y-auto px-4 py-3 text-sm leading-7 text-slate-700 outline-none"
+                style={{ minHeight, maxHeight: resolvedMaxHeight }}
+                className="rich-text-editor-area mk-rich-text-scroll w-full overflow-y-auto overscroll-contain px-4 py-3 text-sm leading-7 text-slate-700 outline-none"
               />
             </>
           )}

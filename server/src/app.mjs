@@ -1184,6 +1184,37 @@ export const createRequestHandler = ({
     }
 
     const adminSiteContentDirectMatch = url.pathname.match(/^\/api\/admin\/site-content\/([^/]+)$/);
+    if (request.method === 'PATCH' && adminSiteContentDirectMatch) {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      const domain = decodeURIComponent(adminSiteContentDirectMatch[1]);
+      let body;
+      try {
+        body = await readJsonBody(request, { maxBytes: domain === 'terms' ? 2 * 1024 * 1024 : 256 * 1024 });
+      } catch (error) {
+        writeJson(response, error?.status || 400, { ...basePayload, authenticated: true, error: error?.code || 'invalid_json_body' }, headers);
+        return;
+      }
+      try {
+        const content = await siteContentService.patchAdminDomain({
+          domain,
+          upserts: body?.upserts,
+          deletes: body?.deletes,
+          actorClerkUserId: authority.auth.userId,
+        });
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          siteContent: content,
+          siteContentMutation: { authority: 'postgresql', sourceMode: 'postgresql-admin-patch' },
+        }, headers);
+      } catch (error) {
+        console.warn('[site-content] PostgreSQL administrator partial mutation failed', { requestId, domain, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'site_content_admin_patch_failed' }, headers);
+      }
+      return;
+    }
     if (request.method === 'PUT' && adminSiteContentDirectMatch) {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;

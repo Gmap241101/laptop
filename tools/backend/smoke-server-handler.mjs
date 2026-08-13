@@ -193,10 +193,22 @@ const siteDomains = new Map([
 ]);
 let rentalConfigSettingsPatch = null;
 let signupPolicyPatch = null;
+let partialContentPatch = null;
 const siteContentService = {
   async getDomain(domain) { return siteDomains.get(domain) || { source: 'postgresql', domain, documents: [], count: 0 }; },
   async syncDomain(domain) { return { ...(siteDomains.get(domain) || { domain, documents: [], count: 0 }), source: 'postgresql', synchronized: true }; },
   async replaceAdminDomain({ domain, documents }) { const result = { source: 'postgresql', domain, documents: documents || [], count: (documents || []).length, synchronized: true }; siteDomains.set(domain, result); return result; },
+  async patchAdminDomain({ domain, upserts, deletes }) {
+    partialContentPatch = { domain, upserts: upserts || [], deletes: deletes || [] };
+    const existing = siteDomains.get(domain) || { source: 'postgresql', domain, documents: [], count: 0 };
+    const byKey = new Map((existing.documents || []).map((document) => [document.key, document]));
+    for (const key of deletes || []) byKey.delete(key);
+    for (const document of upserts || []) byKey.set(document.key, document);
+    const documents = [...byKey.values()];
+    const result = { source: 'postgresql', domain, documents, documentCount: documents.length, count: documents.length, synchronized: true };
+    siteDomains.set(domain, result);
+    return result;
+  },
   async patchRentalConfigSettings({ settingsPatch }) {
     rentalConfigSettingsPatch = settingsPatch || {};
     return {
@@ -372,6 +384,29 @@ try {
   if (members.status !== 200 || (await members.json()).adminMembers?.source !== 'postgresql') throw new Error('PostgreSQL administrator members endpoint failed.');
   const assets = await fetch(`${baseUrl}/api/assets/catalog`, { headers: { Origin: allowedOrigin } });
   if (assets.status !== 200 || (await assets.json()).assetCatalog?.source !== 'postgresql') throw new Error('PostgreSQL asset catalog failed.');
+
+  const largeTermHtml = `<p>${'Large terms body '.repeat(4500)}</p>`;
+  const largeTermsPatchBody = JSON.stringify({
+    upserts: [{
+      key: 'signupTerms/terms-smoke-large',
+      payload: { id: 'terms-smoke-large', title: 'Large terms', contentHtml: largeTermHtml, enabled: true },
+      enabled: true,
+      sortOrder: 0,
+    }],
+    deletes: [],
+  });
+  if (Buffer.byteLength(largeTermsPatchBody, 'utf8') <= 32 * 1024) throw new Error('Large terms patch smoke payload must exceed the former 32KB generic body limit.');
+  if (Buffer.byteLength(largeTermsPatchBody, 'utf8') >= 2 * 1024 * 1024) throw new Error('Large terms patch smoke payload must remain below the dedicated safety limit.');
+  const largeTermsPatch = await fetch(`${baseUrl}/api/admin/site-content/terms`, {
+    method: 'PATCH', headers: { ...authHeaders, 'Content-Type': 'application/json' }, body: largeTermsPatchBody,
+  });
+  if (largeTermsPatch.status !== 200) {
+    const failureBody = await largeTermsPatch.text();
+    throw new Error(`Large PostgreSQL terms patch returned ${largeTermsPatch.status}: ${failureBody}`);
+  }
+  const largeTermsPatchPayload = await largeTermsPatch.json();
+  if (largeTermsPatchPayload.siteContentMutation?.sourceMode !== 'postgresql-admin-patch') throw new Error('Large terms mutation did not use PostgreSQL partial patch authority.');
+  if (partialContentPatch?.domain !== 'terms' || partialContentPatch?.upserts?.length !== 1) throw new Error('Large terms patch did not reach the PostgreSQL partial content service.');
 
   const replaceContent = await fetch(`${baseUrl}/api/admin/site-content/home`, {
     method: 'PUT', headers: { ...authHeaders, 'Content-Type': 'application/json' },

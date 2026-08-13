@@ -545,3 +545,37 @@ body {
 .home-quick-ticker:focus-within .home-quick-ticker-animate {
   animation-play-state: paused;
 }
+
+/* Modal/editor scroll behavior: keep rounded modal shells visually intact while
+   long rich-text content scrolls inside the editor instead of stretching the modal. */
+.mk-modal-scroll-shell {
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.mk-modal-scroll-shell::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.mk-rich-text-scroll {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  overscroll-behavior: contain;
+}
+
+.mk-rich-text-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+
+.mk-rich-text-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mk-rich-text-scroll::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: rgba(100, 116, 139, 0.38);
+  background-clip: padding-box;
+}

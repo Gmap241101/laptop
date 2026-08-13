@@ -371,4 +371,38 @@ assert.equal(adminSettingsSource.includes('phase34-firebase-free-runtime'), fals
 assert.equal(adminSettingsSource.includes('title="\uc678\ubd80 Firebase runtime"'), false, 'system info must not render obsolete provider status cards');
 assert.equal(userMyPageSource.includes('Firebase Auth \ub85c\uadf8\uc778 \uc774\uba54\uc77c'), false, 'my-page login email labels must use current Clerk naming');
 assert.equal(packageSource.includes('audit:firestore'), false, 'current package scripts must use external-runtime audit naming');
+
+const signupTermsManagerSource = fs.readFileSync(new URL('../../src/admin/AdminSignupTermsManager.jsx', import.meta.url), 'utf8');
+const richTextEditorSource = fs.readFileSync(new URL('../../src/components/RichTextEditor.jsx', import.meta.url), 'utf8');
+const adminDialogsSource = fs.readFileSync(new URL('../../src/admin/AdminDialogs.jsx', import.meta.url), 'utf8');
+const userDialogsSource = fs.readFileSync(new URL('../../src/user/UserDialogs.jsx', import.meta.url), 'utf8');
+const appDialogsSource = fs.readFileSync(new URL('../../src/dialogs/AppDialogs.jsx', import.meta.url), 'utf8');
+const modalScrollFiles = [
+  '../../src/admin/AdminDialogs.jsx',
+  '../../src/admin/AdminFooterPanel.jsx',
+  '../../src/admin/AdminHomeBannerPanel.jsx',
+  '../../src/admin/AdminMemberAccountEditDialog.jsx',
+  '../../src/admin/AdminMemberTermsDialog.jsx',
+  '../../src/admin/AdminRequestDialogs.jsx',
+  '../../src/admin/AdminSignupTermsManager.jsx',
+  '../../src/dialogs/AppDialogs.jsx',
+  '../../src/user/UserDialogs.jsx',
+];
+
+assert.match(signupTermsManagerSource, /patchPolicyContentDomainInPostgresql/, 'signup terms manager must save changed terms through the PostgreSQL partial content endpoint');
+assert.equal(signupTermsManagerSource.includes('replacePolicyContentDomainInPostgresql'), false, 'signup terms edits must not resend the complete terms domain and historical version set');
+assert.match(richTextEditorSource, /const resolvedMaxHeight = maxHeight \?\? minHeight;/, 'rich text editor must constrain the visual/source editor to an internal scroll height');
+assert.equal((richTextEditorSource.match(/maxHeight: resolvedMaxHeight/g) || []).length, 2, 'both source-mode and visual rich-text bodies must use the same internal max height');
+assert.match(richTextEditorSource, /mk-rich-text-scroll[^"]*overflow-y-auto/, 'rich text editor bodies must scroll internally instead of growing the surrounding modal');
+for (const [name, source] of [['admin', adminDialogsSource], ['user', userDialogsSource], ['compatibility', appDialogsSource]]) {
+  assert.match(source, /fixed top-6 right-6 z-\[220\]/, `${name} toast must render above every modal/backdrop layer`);
+}
+for (const relativePath of modalScrollFiles) {
+  const modalSource = fs.readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+  assert.equal(/overflow-y-auto rounded-2xl/.test(modalSource), false, `${relativePath} must not expose a native outer modal scrollbar against the rounded shell`);
+  if (/overflow-y-auto/.test(modalSource)) {
+    assert.match(modalSource, /mk-modal-scroll-shell/, `${relativePath} scrollable modal shells must preserve rounded corners while retaining wheel/touch scrolling`);
+  }
+}
+
 console.log('[phase34-runtime-regressions-frontend-smoke] PASS');
