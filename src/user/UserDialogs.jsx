@@ -1,3 +1,4 @@
+import ModalPortal from '../components/ModalPortal.jsx';
 export default function UserDialogs({ ctx }) {
   const {
     AlertCircle,
@@ -41,7 +42,7 @@ export default function UserDialogs({ ctx }) {
   return (
     <>
       {userActionDialog && activeUserActionRentalRequest && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+        <ModalPortal className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -255,7 +256,7 @@ export default function UserDialogs({ ctx }) {
               </Button>
             </div>
           </motion.div>
-        </div>
+        </ModalPortal>
       )}
       {/* --- 모던 Custom Toast (iframe 환경 완벽 최적화) --- */}
       <AnimatePresence>
@@ -285,7 +286,7 @@ export default function UserDialogs({ ctx }) {
 
       {/* --- 모던 Custom Confirm Modal (iframe 차단 방지) --- */}
       {confirmModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+        <ModalPortal className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -404,7 +405,7 @@ export default function UserDialogs({ ctx }) {
               </Button>
             </div>
           </motion.div>
-        </div>
+        </ModalPortal>
       )}
     </>
   );

@@ -8,6 +8,7 @@ import {
   getPopupVersionKey,
 } from '../utils/popupUtils.js';
 import { isRichTextEmpty, legacyTextToRichHtml } from '../utils/richTextCore.js';
+import ModalPortal from '../components/ModalPortal.jsx';
 
 export default function UserPopupLayer({ ctx }) {
   const {
@@ -162,7 +163,7 @@ export default function UserPopupLayer({ ctx }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/55 px-3 py-5 backdrop-blur-sm sm:px-6">
+    <ModalPortal className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/55 px-3 py-5 backdrop-blur-sm sm:px-6">
       <div
         role="dialog"
         aria-modal="true"
@@ -267,6 +268,6 @@ export default function UserPopupLayer({ ctx }) {
           </div>
         </div>
       </div>
-    </div>
+    </ModalPortal>
   );
 }

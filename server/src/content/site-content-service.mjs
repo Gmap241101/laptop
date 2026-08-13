@@ -136,7 +136,7 @@ export const createSiteContentService = ({ repository }) => Object.freeze({
     return projectPublicDomain(result);
   },
 
-  async patchAdminDomain({ domain: domainValue, upserts, deletes, actorClerkUserId }) {
+  async patchAdminDomain({ domain: domainValue, upserts, deletes, addressClaims, actorClerkUserId }) {
     const domain = normalizeDomain(domainValue);
     if (!ALLOWED_DOMAINS.has(domain)) throw errorWith('site_content_domain_invalid', 'Unsupported site content domain.', 400);
     if (typeof repository.patchDomainDocuments !== 'function') {
@@ -144,13 +144,15 @@ export const createSiteContentService = ({ repository }) => Object.freeze({
     }
     const normalizedUpserts = Array.isArray(upserts) ? upserts : [];
     const normalizedDeletes = Array.isArray(deletes) ? deletes : [];
-    if (normalizedUpserts.length > 50 || normalizedDeletes.length > 50) {
+    const normalizedAddressClaims = Array.isArray(addressClaims) ? addressClaims : [];
+    if (normalizedUpserts.length > 50 || normalizedDeletes.length > 50 || normalizedAddressClaims.length > 50) {
       throw errorWith('site_content_patch_documents_invalid', 'Administrator content patch accepts at most 50 upserts and 50 deletes.', 400);
     }
     const result = await repository.patchDomainDocuments({
       domain,
       upserts: normalizedUpserts,
       deletes: normalizedDeletes,
+      addressClaims: normalizedAddressClaims,
       actorClerkUserId,
       sourceMode: 'postgresql-admin-patch',
     });

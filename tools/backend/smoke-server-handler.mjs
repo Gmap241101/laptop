@@ -408,6 +408,28 @@ try {
   if (largeTermsPatchPayload.siteContentMutation?.sourceMode !== 'postgresql-admin-patch') throw new Error('Large terms mutation did not use PostgreSQL partial patch authority.');
   if (partialContentPatch?.domain !== 'terms' || partialContentPatch?.upserts?.length !== 1) throw new Error('Large terms patch did not reach the PostgreSQL partial content service.');
 
+  const largeFooterHtml = `<p>${'Large footer common body '.repeat(4500)}</p>`;
+  const largeFooterPatchBody = JSON.stringify({
+    upserts: [{
+      key: 'siteFooter/config',
+      payload: { enabled: true, contentHtml: largeFooterHtml, contentFormat: 'rich-html-v1' },
+      enabled: true,
+    }],
+    deletes: [],
+  });
+  if (Buffer.byteLength(largeFooterPatchBody, 'utf8') <= 32 * 1024) throw new Error('Large footer patch smoke payload must exceed the former 32KB generic body limit.');
+  if (Buffer.byteLength(largeFooterPatchBody, 'utf8') >= 2 * 1024 * 1024) throw new Error('Large footer patch smoke payload must remain below the dedicated safety limit.');
+  const largeFooterPatch = await fetch(`${baseUrl}/api/admin/site-content/footer`, {
+    method: 'PATCH', headers: { ...authHeaders, 'Content-Type': 'application/json' }, body: largeFooterPatchBody,
+  });
+  if (largeFooterPatch.status !== 200) {
+    const failureBody = await largeFooterPatch.text();
+    throw new Error(`Large PostgreSQL footer patch returned ${largeFooterPatch.status}: ${failureBody}`);
+  }
+  const largeFooterPatchPayload = await largeFooterPatch.json();
+  if (largeFooterPatchPayload.siteContentMutation?.sourceMode !== 'postgresql-admin-patch') throw new Error('Large footer mutation did not use PostgreSQL partial patch authority.');
+  if (partialContentPatch?.domain !== 'footer' || partialContentPatch?.upserts?.length !== 1 || partialContentPatch.upserts[0]?.key !== 'siteFooter/config') throw new Error('Large footer patch did not reach the PostgreSQL partial content service as a config-only mutation.');
+
   const replaceContent = await fetch(`${baseUrl}/api/admin/site-content/home`, {
     method: 'PUT', headers: { ...authHeaders, 'Content-Type': 'application/json' },
     body: JSON.stringify({ documents: [{ key: 'homePage/config', payload: { enabled: true, title: 'Updated' } }] }),

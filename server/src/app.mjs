@@ -1190,7 +1190,7 @@ export const createRequestHandler = ({
       const domain = decodeURIComponent(adminSiteContentDirectMatch[1]);
       let body;
       try {
-        body = await readJsonBody(request, { maxBytes: domain === 'terms' ? 2 * 1024 * 1024 : 256 * 1024 });
+        body = await readJsonBody(request, { maxBytes: ['terms', 'footer'].includes(domain) ? 2 * 1024 * 1024 : 256 * 1024 });
       } catch (error) {
         writeJson(response, error?.status || 400, { ...basePayload, authenticated: true, error: error?.code || 'invalid_json_body' }, headers);
         return;
@@ -1200,6 +1200,7 @@ export const createRequestHandler = ({
           domain,
           upserts: body?.upserts,
           deletes: body?.deletes,
+          addressClaims: body?.addressClaims,
           actorClerkUserId: authority.auth.userId,
         });
         writeJson(response, 200, {

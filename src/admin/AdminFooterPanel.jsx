@@ -9,6 +9,10 @@ import {
   X,
 } from 'lucide-react';
 import { RichTextEditor } from '../components/RichTextEditor.jsx';
+import ModalPortal from '../components/ModalPortal.jsx';
+
+const normalizeFooterAddressId = (value = '') =>
+  String(value || '').trim().toLowerCase().replace(/^\/+|\/+$/g, '');
 
 const isSafeHttpImageUrl = (value = '') => {
   try {
@@ -56,6 +60,10 @@ export default function AdminFooterPanel({ ctx }) {
   const footerPageDirty = Boolean(
     footerPageDialog && JSON.stringify(footerPageForm) !== footerPageDialog.initialForm
   );
+  const normalizedFooterAddressId = normalizeFooterAddressId(footerPageForm.addressId);
+  const footerContentPath = normalizedFooterAddressId
+    ? `/info/${encodeURIComponent(normalizedFooterAddressId)}`
+    : '';
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -157,7 +165,7 @@ export default function AdminFooterPanel({ ctx }) {
       </section>
 
       {footerPageDialog && (
-        <div
+        <ModalPortal
           className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 px-4 py-6 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
@@ -398,15 +406,35 @@ export default function AdminFooterPanel({ ctx }) {
                       />
                     </label>
                   ) : footerPageForm.pageType === 'content' ? (
-                    <label className="block text-[11px] font-semibold text-slate-400">
-                      연결 대상
-                      <input
-                        value=""
-                        disabled
-                        placeholder="아래 본문 편집기에 상세 내용을 입력합니다."
-                        className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 text-xs outline-none"
-                      />
-                    </label>
+                    <div className="space-y-2">
+                      <label className="block text-[11px] font-semibold text-slate-600">
+                        페이지 주소 ID
+                        <div className="mt-2 flex overflow-hidden rounded-xl border border-slate-200 bg-white mk-form-focus-within">
+                          <span className="flex h-10 items-center border-r border-slate-200 bg-slate-50 px-3 text-xs text-slate-500">/info/</span>
+                          <input
+                            value={footerPageForm.addressId || ''}
+                            onChange={(event) =>
+                              setFooterPageForm((prev) => ({ ...prev, addressId: event.target.value }))
+                            }
+                            placeholder="privacy-policy"
+                            autoCapitalize="none"
+                            autoCorrect="off"
+                            spellCheck={false}
+                            disabled={footerPageSaving}
+                            className="h-10 min-w-0 flex-1 bg-white px-3 text-xs outline-none disabled:bg-slate-100"
+                          />
+                        </div>
+                      </label>
+                      <p className="text-[10px] leading-4 text-slate-500">
+                        영문 소문자, 숫자, 하이픈(-)만 사용할 수 있으며 다른 푸터 페이지와 중복될 수 없습니다.
+                        {footerContentPath ? ` 저장 후 주소: ${footerContentPath}` : ''}
+                      </p>
+                      {footerPageDialog?.mode === 'edit' && !footerPageForm.addressId && (
+                        <p className="text-[10px] font-medium leading-4 text-orange-600">
+                          기존 페이지입니다. 이번 수정 저장부터 새 주소 ID를 지정해야 하며 이후 /info/&lt;주소ID&gt;가 기본 주소가 됩니다.
+                        </p>
+                      )}
+                    </div>
                   ) : (
                     <label className="block text-[11px] font-semibold text-slate-400">
                       연결 대상
@@ -461,7 +489,7 @@ export default function AdminFooterPanel({ ctx }) {
               </Button>
             </div>
           </section>
-        </div>
+        </ModalPortal>
       )}
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">

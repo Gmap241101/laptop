@@ -99,6 +99,51 @@ assert.match(
 );
 assert.match(appSource, /phase34AdminNavigationHolidayRevision/);
 
+const siteContentRepositorySource = fs.readFileSync(new URL('../../server/src/content/site-content-repository.mjs', import.meta.url), 'utf8');
+const siteContentServiceSource = fs.readFileSync(new URL('../../server/src/content/site-content-service.mjs', import.meta.url), 'utf8');
+assert.match(siteContentRepositorySource, /payload->>'addressId'/, 'PostgreSQL footer patches must inspect persisted public address IDs under the domain advisory lock');
+assert.match(siteContentRepositorySource, /footer_page_address_conflict/, 'PostgreSQL must reject duplicate footer address IDs instead of overwriting another page');
+assert.match(siteContentServiceSource, /addressClaims/, 'site-content service must pass footer address claims into the transactional repository patch');
+assert.match(appSource, /addressClaims: body\?\.addressClaims/, 'administrator site-content PATCH must pass footer address uniqueness claims from the authenticated request');
+
+const footerAddressConflictPool = {
+  async connect() {
+    return {
+      async query(sql) {
+        const text = String(sql);
+        if (text === 'BEGIN' || text === 'ROLLBACK' || text.includes('pg_advisory_xact_lock')) {
+          return { rowCount: 0, rows: [] };
+        }
+        if (text.includes("payload->>'addressId'")) {
+          return {
+            rowCount: 1,
+            rows: [{ document_key: 'footerPages/internal-existing', address_id: 'privacy-policy' }],
+          };
+        }
+        throw new Error(`Unexpected SQL during footer address conflict smoke: ${text}`);
+      },
+      release() {},
+    };
+  },
+  async query() {
+    throw new Error('pool.query should not run after an address conflict');
+  },
+};
+const footerAddressConflictRepository = createSiteContentRepository(footerAddressConflictPool);
+await assert.rejects(
+  () => footerAddressConflictRepository.patchDomainDocuments({
+    domain: 'footer',
+    upserts: [{
+      key: 'footerPages/internal-new',
+      payload: { id: 'internal-new', pageType: 'content', addressId: 'privacy-policy' },
+    }],
+    addressClaims: [{ documentKey: 'footerPages/internal-new', addressId: 'privacy-policy' }],
+    actorClerkUserId: 'admin-smoke',
+  }),
+  (error) => error?.code === 'footer_page_address_conflict' && error?.status === 409,
+  'duplicate footer address IDs must be rejected transactionally before another page can be overwritten',
+);
+
 const assetRepositorySource = fs.readFileSync(new URL('../../server/src/assets/asset-repository.mjs', import.meta.url), 'utf8');
 assert.match(assetRepositorySource, /const refreshCatalogMetadata = async/, 'PostgreSQL asset mutations must keep asset catalog metadata current');
 assert.ok((assetRepositorySource.match(/await refreshCatalogMetadata\(client\);/g) || []).length >= 5, 'create/edit/delete/bulk/category mutations must refresh catalog metadata transactionally');
@@ -293,6 +338,6 @@ assert.equal(siteServiceSource.includes("readJsonBody(request)"), false, 'site-c
 assert.match(siteServiceSource, /patchAdminDomain/, 'site-content service must support partial PostgreSQL document mutation for large rich-content domains');
 assert.match(repositorySource, /patchDomainDocuments/, 'site-content repository must patch changed documents without deleting and reinserting the complete domain');
 assert.match(repositorySource, /ON CONFLICT \(domain, document_key\) DO UPDATE SET/, 'partial content mutation must upsert individual PostgreSQL content documents atomically');
-assert.match(memberPolicyAppSource, /request\.method === 'PATCH' && adminSiteContentDirectMatch[\s\S]*domain === 'terms' \? 2 \* 1024 \* 1024/, 'terms partial writes must have a dedicated body safety limit above the obsolete 32KB generic limit');
+assert.match(memberPolicyAppSource, /request\.method === 'PATCH' && adminSiteContentDirectMatch[\s\S]*\['terms', 'footer'\]\.includes\(domain\) \? 2 \* 1024 \* 1024/, 'terms/footer rich-content partial writes must have a dedicated body safety limit above the obsolete 32KB generic limit');
 
 console.log('[phase34-runtime-regressions-backend-smoke] PASS');

@@ -8,6 +8,7 @@ import {
   RotateCcw,
   Search,
 } from 'lucide-react';
+import ModalPortal from '../components/ModalPortal.jsx';
 
 import RichTextContent from '../components/RichTextContent.jsx';
 import { RichTextEditor } from '../components/RichTextEditor.jsx';
@@ -515,7 +516,7 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
       )}
 
       {dialogOpen ? (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/55 p-4">
+        <ModalPortal className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/55 p-4">
           <div className="max-h-[94vh] w-full max-w-4xl overflow-y-auto mk-modal-scroll-shell rounded-2xl bg-white p-6 shadow-2xl">
             <div className="mb-5">
               <h3 className="text-lg font-black text-slate-900">{form.id ? '이용약관 수정' : '이용약관 등록'}</h3>
@@ -565,11 +566,11 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
               <Button type="button" variant="primary" disabled={saving} onClick={saveTerm}>{saving ? '저장 중...' : '저장'}</Button>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {previewTerm ? (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/55 p-4">
+        <ModalPortal className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/55 p-4">
           <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto mk-modal-scroll-shell rounded-2xl bg-white p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
               <div>
@@ -580,7 +581,7 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
             </div>
             <RichTextContent html={previewTerm.contentHtml} text={previewTerm.contentText} className="mt-5 text-sm leading-7 text-slate-700" />
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
     </div>
   );

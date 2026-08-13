@@ -9,6 +9,7 @@ import {
   RotateCcw,
   X,
 } from 'lucide-react';
+import ModalPortal from '../components/ModalPortal.jsx';
 
 const MONTH_OPTIONS = Array.from({ length: 12 }, (_, index) => index + 1);
 const WEEKDAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
@@ -806,7 +807,7 @@ export default function AdminHolidayManagementPanel({ ctx }) {
       </div>
 
       {holidayImportConflictModal && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[1px]">
+        <ModalPortal className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[1px]">
           <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
             <h3 className="text-base font-bold text-slate-900">
               중복 휴일 확인
@@ -860,7 +861,7 @@ export default function AdminHolidayManagementPanel({ ctx }) {
               </Button>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       )}
     </div>
   );

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
+import ModalPortal from './ModalPortal.jsx';
 
 import {
   POLICY_CONTENT_DOMAINS,
@@ -56,7 +57,7 @@ export default function TermsVersionDialog({ log, onClose, showVersion = true })
   if (!log) return null;
 
   return (
-    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-slate-950/55 p-4" role="dialog" aria-modal="true" aria-label="동의 당시 약관 내용">
+    <ModalPortal className="fixed inset-0 z-[130] flex items-center justify-center bg-slate-950/55 p-4" role="dialog" aria-modal="true" aria-label="동의 당시 약관 내용">
       <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
           <div>
@@ -81,6 +82,6 @@ export default function TermsVersionDialog({ log, onClose, showVersion = true })
           <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50">닫기</button>
         </div>
       </div>
-    </div>
+    </ModalPortal>
   );
 }

@@ -166,6 +166,7 @@ export const patchSiteContentDomainInPostgresql = async ({
   domain,
   upserts = [],
   deletes = [],
+  addressClaims = [],
   fetchImpl = fetch,
   config = readSiteContentCutoverConfig(),
   observationPublisher = publishSiteContentObservation,
@@ -178,6 +179,12 @@ export const patchSiteContentDomainInPostgresql = async ({
   const normalizedDeletes = [...new Set((Array.isArray(deletes) ? deletes : [])
     .map((key) => trim(key))
     .filter(Boolean))];
+  const normalizedAddressClaims = (Array.isArray(addressClaims) ? addressClaims : [])
+    .map((claim) => ({
+      documentKey: trim(claim?.documentKey),
+      addressId: trim(claim?.addressId).toLowerCase(),
+    }))
+    .filter((claim) => claim.documentKey && claim.addressId);
 
   const performPatch = async (forceRefresh = false) => {
     const clerkToken = await getClerkToken({ forceRefresh });
@@ -189,7 +196,7 @@ export const patchSiteContentDomainInPostgresql = async ({
         Authorization: `Bearer ${clerkToken}`,
       },
       cache: 'no-store',
-      body: JSON.stringify({ upserts: normalizedUpserts, deletes: normalizedDeletes }),
+      body: JSON.stringify({ upserts: normalizedUpserts, deletes: normalizedDeletes, addressClaims: normalizedAddressClaims }),
     });
     let payload = null;
     try { payload = await response.json(); } catch { payload = null; }

@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { X } from 'lucide-react';
+import ModalPortal from '../components/ModalPortal.jsx';
 
 import {
   Button,
@@ -32,7 +33,7 @@ export default function AdminRequestDialogs({
   return (
     <>
       {adminRequestEditDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+        <ModalPortal className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -190,11 +191,11 @@ export default function AdminRequestDialogs({
               </Button>
             </div>
           </motion.div>
-        </div>
+        </ModalPortal>
       )}
 
       {adminRequestRestoreDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+        <ModalPortal className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -281,7 +282,7 @@ export default function AdminRequestDialogs({
               </Button>
             </div>
           </motion.div>
-        </div>
+        </ModalPortal>
       )}
     </>
   );

@@ -79,10 +79,12 @@ export default function UserFooter({ ctx }) {
               const isDisplayOnly = pageType === 'none';
               const safeLinkUrl = isLinkPage ? getSafeExternalFooterUrl(page.linkUrl) : '';
               const isImageTitle = page.titleDisplayType === 'image';
+              const publicAddressId = String(page.addressId || '').trim();
+              const legacyRouteId = publicAddressId ? '' : String(page.id || '').trim();
               const selected =
                 pageType === 'content' &&
                 userTab === 'footerPage' &&
-                selectedFooterPageId === page.id;
+                selectedFooterPageId === (publicAddressId || legacyRouteId);
               const className = `inline-flex min-h-6 items-center break-keep transition ${
                 isDisplayOnly ? 'cursor-default' : 'hover:text-orange-600'
               } ${
@@ -119,7 +121,7 @@ export default function UserFooter({ ctx }) {
                 <button
                   key={page.id}
                   type="button"
-                  onClick={() => openFooterPage(page.id)}
+                  onClick={() => openFooterPage(page.addressId || page.id)}
                   className={className}
                 >
                   <FooterMenuLabel page={page} />

@@ -19,6 +19,7 @@ import {
   SITE_CONTENT_DOMAINS,
   subscribeSiteContentInvalidation,
 } from '../features/content/siteContentCutover.js';
+import ModalPortal from '../components/ModalPortal.jsx';
 
 const PLACEMENT_CONFIG = {
   hero: {
@@ -674,7 +675,7 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
       )}
 
       {editing && (
-        <div
+        <ModalPortal
           className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 px-4 py-6 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
@@ -916,7 +917,7 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
             </div>
           </div>
           </section>
-        </div>
+        </ModalPortal>
       )}
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">

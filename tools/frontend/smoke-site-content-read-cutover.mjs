@@ -56,12 +56,18 @@ for (const file of [
   'src/admin/AdminSettingsPanel.jsx',
   'src/admin/AdminHomeBannerPanel.jsx',
   'src/features/boards/useAdminPopupPostController.js',
-  'src/features/boards/useAdminFooterContentController.js',
 ]) {
   const source = readFileSync(file, 'utf8');
   assert.ok(source.includes('replaceSiteContentDomainInPostgresql'), `PostgreSQL admin content write missing: ${file}`);
   assert.equal(source.includes('syncSiteContentDomainFromFirestore'), false, `legacy Firestore sync must be removed: ${file}`);
 }
+
+const footerAdmin = readFileSync('src/features/boards/useAdminFooterContentController.js', 'utf8');
+assert.ok(footerAdmin.includes('patchSiteContentDomainInPostgresql'), 'footer administration must use PostgreSQL document-level partial writes');
+assert.equal(footerAdmin.includes('replaceSiteContentDomainInPostgresql'), false, 'footer administration must not resend every rich-content page for ordinary mutations');
+assert.equal(footerAdmin.includes('syncSiteContentDomainFromFirestore'), false, 'legacy Firestore sync must remain removed from footer administration');
+assert.ok(footerAdmin.includes('addressClaims'), 'footer content-page writes must submit public address uniqueness claims');
+assert.ok(footerAdmin.includes('normalizeFooterPageAddressId'), 'footer address IDs must be normalized client-side before PostgreSQL writes');
 
 const signupTerms = readFileSync('src/user/UserSignupTermsSection.jsx', 'utf8');
 assert.ok(signupTerms.includes('loadSignupTermsPolicy'), 'signup terms must load from PostgreSQL policy service');

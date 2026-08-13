@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FileCheck2, X } from 'lucide-react';
+import ModalPortal from '../components/ModalPortal.jsx';
 
 import TermsVersionDialog from '../components/TermsVersionDialog.jsx';
 
@@ -41,7 +42,7 @@ export default function AdminMemberTermsDialog({ account, onClose }) {
   }, [account.uid]);
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/55 p-4">
+    <ModalPortal className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/55 p-4">
       <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto mk-modal-scroll-shell rounded-2xl bg-white shadow-2xl">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
           <div>
@@ -119,6 +120,6 @@ export default function AdminMemberTermsDialog({ account, onClose }) {
         </div>
       </div>
       <TermsVersionDialog log={historyLog} onClose={() => setHistoryLog(null)} />
-    </div>
+    </ModalPortal>
   );
 }

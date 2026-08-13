@@ -98,6 +98,7 @@ export const createSiteContentRepository = (pool) => {
     domain,
     upserts = [],
     deletes = [],
+    addressClaims = [],
     actorClerkUserId = '',
     sourceMode = 'postgresql-admin-patch',
   }) => {
@@ -111,11 +112,48 @@ export const createSiteContentRepository = (pool) => {
     const normalizedDeletes = [...new Set((Array.isArray(deletes) ? deletes : [])
       .map((key) => String(key || '').trim())
       .filter(Boolean))];
+    const normalizedAddressClaims = (Array.isArray(addressClaims) ? addressClaims : [])
+      .map((claim) => ({
+        documentKey: String(claim?.documentKey || '').trim(),
+        addressId: String(claim?.addressId || '').trim().toLowerCase(),
+      }))
+      .filter((claim) => claim.documentKey && claim.addressId);
     const normalizedSourceMode = String(sourceMode || '').trim() || 'postgresql-admin-patch';
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
       await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`phase24-site-content:${domain}`]);
+      if (domain === 'footer' && normalizedAddressClaims.length > 0) {
+        const footerRows = await client.query(
+          `SELECT document_key, payload->>'addressId' AS address_id
+             FROM app_site_content_documents
+            WHERE domain = 'footer'
+              AND document_key LIKE 'footerPages/%'`,
+        );
+        const claimedInPatch = new Map();
+        for (const claim of normalizedAddressClaims) {
+          const previousClaim = claimedInPatch.get(claim.addressId);
+          if (previousClaim && previousClaim !== claim.documentKey) {
+            throw Object.assign(new Error('Footer page address ID is duplicated in this mutation.'), {
+              code: 'footer_page_address_conflict',
+              status: 409,
+            });
+          }
+          claimedInPatch.set(claim.addressId, claim.documentKey);
+          const conflict = footerRows.rows.find((row) => {
+            if (String(row.document_key || '') === claim.documentKey) return false;
+            const storedAddressId = String(row.address_id || '').trim().toLowerCase();
+            const storedInternalId = String(row.document_key || '').split('/').pop()?.trim().toLowerCase() || '';
+            return storedAddressId === claim.addressId || storedInternalId === claim.addressId;
+          });
+          if (conflict) {
+            throw Object.assign(new Error('Footer page address ID is already in use.'), {
+              code: 'footer_page_address_conflict',
+              status: 409,
+            });
+          }
+        }
+      }
       if (normalizedDeletes.length > 0) {
         await client.query(
           `DELETE FROM app_site_content_documents WHERE domain = $1 AND document_key = ANY($2::text[])`,

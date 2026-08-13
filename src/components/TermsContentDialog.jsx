@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
+import ModalPortal from './ModalPortal.jsx';
 
 import RichTextContent from './RichTextContent.jsx';
 
@@ -60,7 +61,7 @@ export default function TermsContentDialog({
     showAgreement && agreementChecked ? agreedConfirmLabel : confirmLabel;
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/55 p-4" role="dialog" aria-modal="true" aria-label={title}>
+    <ModalPortal className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/55 p-4" role="dialog" aria-modal="true" aria-label={title}>
       <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
           <div>
@@ -129,6 +130,6 @@ export default function TermsContentDialog({
           </div>
         </div>
       </div>
-    </div>
+    </ModalPortal>
   );
 }

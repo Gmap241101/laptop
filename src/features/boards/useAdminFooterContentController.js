@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import {
   createSiteContentDocumentId,
-  replaceSiteContentDomainInPostgresql,
+  patchSiteContentDomainInPostgresql,
   SITE_CONTENT_DOMAINS,
 } from '../content/siteContentCutover.js';
 import {
   isRichTextEmpty,
   legacyTextToRichHtml,
   richTextHtmlToText,
+  sanitizeRichTextHtml,
 } from '../../utils/richTextCore.js';
 import {
   createDefaultFooterConfigDraft,
@@ -49,8 +50,20 @@ export const getSafeFooterLinkUrl = (value = '') => {
   }
 };
 
+export const normalizeFooterPageAddressId = (value = '') =>
+  String(value || '').trim().toLowerCase().replace(/^\/+|\/+$/g, '');
+
+export const isValidFooterPageAddressId = (value = '') => {
+  const normalized = normalizeFooterPageAddressId(value);
+  return /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(normalized);
+};
+
+export const getFooterPageRouteId = (page = {}) =>
+  normalizeFooterPageAddressId(page?.addressId) || String(page?.id || '').trim();
+
 export const createDefaultFooterPageForm = () => ({
   enabled: true,
+  addressId: '',
   title: '',
   titleDisplayType: FOOTER_TITLE_DISPLAY_TEXT,
   titleImageUrl: '',
@@ -112,34 +125,39 @@ export default function useAdminFooterContentController({
   triggerConfirm,
   triggerToast,
 }) {
-  const replaceFooterDomain = async ({ config = footerConfigDraft, pages = footerPages } = {}) => {
+  const patchFooterDomain = async ({ upserts = [], deletes = [], addressClaims = [] } = {}) =>
+    patchSiteContentDomainInPostgresql({
+      domain: SITE_CONTENT_DOMAINS.FOOTER,
+      upserts,
+      deletes,
+      addressClaims,
+    });
+
+  const createFooterConfigDocument = (config = footerConfigDraft) => {
     const contentHtml = sanitizeFooterCommonHtml(config.contentHtml || '');
     const contentText = richTextHtmlToText(contentHtml);
-    return replaceSiteContentDomainInPostgresql({
-      domain: SITE_CONTENT_DOMAINS.FOOTER,
-      documents: [
-        {
-          key: 'siteFooter/config',
-          payload: {
-            ...config,
-            enabled: config.enabled !== false,
-            content: contentText,
-            contentText,
-            contentHtml,
-            contentFormat: 'rich-html-v1',
-            updatedAt: new Date(),
-          },
-          enabled: config.enabled !== false,
-        },
-        ...pages.map((page) => ({
-          key: `footerPages/${page.id}`,
-          payload: { ...page, id: page.id },
-          enabled: page.enabled !== false,
-          sortOrder: page.sortOrder,
-        })),
-      ],
-    });
+    return {
+      key: 'siteFooter/config',
+      payload: {
+        ...config,
+        enabled: config.enabled !== false,
+        content: contentText,
+        contentText,
+        contentHtml,
+        contentFormat: 'rich-html-v1',
+        updatedAt: new Date(),
+      },
+      enabled: config.enabled !== false,
+    };
   };
+
+  const createFooterPageDocument = (page) => ({
+    key: `footerPages/${page.id}`,
+    payload: { ...page, id: page.id },
+    enabled: page.enabled !== false,
+    sortOrder: page.sortOrder,
+  });
+
 
   const saveFooterConfig = async () => {
     if (!isAdminAuthenticated) {
@@ -159,19 +177,16 @@ export default function useAdminFooterContentController({
       return false;
     }
 
-    const contentHtml = sanitizeFooterCommonHtml(
-      footerConfigDraft.contentHtml || ''
-    );
-    const contentText = richTextHtmlToText(contentHtml);
-
     setFooterConfigSaving(true);
     try {
-        await replaceFooterDomain({
-          config: {
-            ...footerConfigDraft,
-            updatedByUid: auditActor.uid,
-            updatedByName: auditActor.name,
-          },
+        await patchFooterDomain({
+          upserts: [
+            createFooterConfigDocument({
+              ...footerConfigDraft,
+              updatedByUid: auditActor.uid,
+              updatedByName: auditActor.name,
+            }),
+          ],
         });
         triggerToast('푸터 공통 정보를 PostgreSQL에 저장했습니다.', 'success');
         return true;
@@ -203,6 +218,7 @@ export default function useAdminFooterContentController({
       String(page?.linkUrl || '').trim() === '#';
     const nextForm = {
       enabled: page ? page.enabled !== false : true,
+      addressId: String(page?.addressId || ''),
       title: page?.title || '',
       titleDisplayType: getNormalizedFooterTitleDisplayType(
         page?.titleDisplayType
@@ -293,6 +309,7 @@ export default function useAdminFooterContentController({
       footerPageForm.contentHtml || ''
     );
     const contentText = richTextHtmlToText(contentHtml);
+    const addressId = normalizeFooterPageAddressId(footerPageForm.addressId);
 
     if (!title) {
       triggerToast(
@@ -320,6 +337,35 @@ export default function useAdminFooterContentController({
         '이미지 주소는 http:// 또는 https://로 시작하는 전체 주소여야 합니다.',
         'error'
       );
+      return;
+    }
+
+    if (pageType === FOOTER_PAGE_TYPE_CONTENT && !addressId) {
+      triggerToast('페이지 주소 ID를 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (
+      pageType === FOOTER_PAGE_TYPE_CONTENT &&
+      !isValidFooterPageAddressId(addressId)
+    ) {
+      triggerToast(
+        '주소 ID는 영문 소문자, 숫자, 하이픈(-)만 사용하고 영문/숫자로 시작하고 끝나야 합니다. (최대 64자)',
+        'error'
+      );
+      return;
+    }
+
+    if (
+      pageType === FOOTER_PAGE_TYPE_CONTENT &&
+      footerPages.some((page) => {
+        if (page.id === footerPageDialog?.pageId) return false;
+        const existingAddressId = normalizeFooterPageAddressId(page.addressId);
+        const existingInternalId = String(page.id || '').trim().toLowerCase();
+        return existingAddressId === addressId || existingInternalId === addressId;
+      })
+    ) {
+      triggerToast('이미 사용 중인 푸터 페이지 주소 ID입니다.', 'error');
       return;
     }
 
@@ -370,6 +416,7 @@ export default function useAdminFooterContentController({
         const updatedAt = new Date();
         const nextPage = {
           id: pageId,
+          addressId: pageType === FOOTER_PAGE_TYPE_CONTENT ? addressId : String(editingPage?.addressId || ''),
           enabled: Boolean(footerPageForm.enabled),
           title,
           titleDisplayType,
@@ -388,10 +435,11 @@ export default function useAdminFooterContentController({
           createdAt: editingPage?.createdAt || updatedAt,
           updatedAt,
         };
-        await replaceFooterDomain({
-          pages: isEditing
-            ? footerPages.map((page) => page.id === pageId ? nextPage : page)
-            : [...footerPages, nextPage],
+        await patchFooterDomain({
+          upserts: [createFooterPageDocument(nextPage)],
+          addressClaims: pageType === FOOTER_PAGE_TYPE_CONTENT
+            ? [{ documentKey: `footerPages/${pageId}`, addressId }]
+            : [],
         });
         triggerToast('푸터 페이지를 PostgreSQL에 저장했습니다.', 'success');
         resetFooterPageDialog();
@@ -399,9 +447,11 @@ export default function useAdminFooterContentController({
     } catch (error) {
       console.error('Footer page save error:', error);
       triggerToast(
-        `푸터 메뉴 페이지 저장에 실패했습니다. 오류 코드: ${
-          error?.code || error?.message || 'unknown-error'
-        }`,
+        error?.code === 'footer_page_address_conflict'
+          ? '이미 다른 푸터 페이지에서 사용 중인 주소 ID입니다.'
+          : `푸터 메뉴 페이지 저장에 실패했습니다. 오류 코드: ${
+              error?.code || error?.message || 'unknown-error'
+            }`,
         'error'
       );
     } finally {
@@ -420,10 +470,14 @@ export default function useAdminFooterContentController({
 
     setFooterPageToggleSavingId(page.id);
     try {
-        await replaceFooterDomain({
-          pages: footerPages.map((item) => item.id === page.id
-            ? { ...item, enabled: !Boolean(item.enabled), updatedAt: new Date() }
-            : item),
+        await patchFooterDomain({
+          upserts: [
+            createFooterPageDocument({
+              ...page,
+              enabled: !Boolean(page.enabled),
+              updatedAt: new Date(),
+            }),
+          ],
         });
         triggerToast('푸터 페이지 상태를 PostgreSQL에서 변경했습니다.', 'success');
         return;
@@ -463,7 +517,22 @@ export default function useAdminFooterContentController({
     try {
         const reordered = [...footerPages];
         [reordered[currentIndex], reordered[nextIndex]] = [reordered[nextIndex], reordered[currentIndex]];
-        await replaceFooterDomain({ pages: reordered.map((page, index) => ({ ...page, sortOrder: index + 1, updatedAt: new Date() })) });
+        const currentPage = reordered[currentIndex];
+        const movedPage = reordered[nextIndex];
+        await patchFooterDomain({
+          upserts: [
+            createFooterPageDocument({
+              ...currentPage,
+              sortOrder: currentIndex + 1,
+              updatedAt: new Date(),
+            }),
+            createFooterPageDocument({
+              ...movedPage,
+              sortOrder: nextIndex + 1,
+              updatedAt: new Date(),
+            }),
+          ],
+        });
         return;
     } catch (error) {
       console.error('Footer page move error:', error);
@@ -488,9 +557,8 @@ export default function useAdminFooterContentController({
       async () => {
         setFooterPageDeletingId(page.id);
         try {
-            await replaceFooterDomain({
-              pages: footerPages.filter((item) => item.id !== page.id)
-                .map((item, index) => ({ ...item, sortOrder: index + 1, updatedAt: new Date() })),
+            await patchFooterDomain({
+              deletes: [`footerPages/${page.id}`],
             });
             if (selectedFooterPageId === page.id) setSelectedFooterPageId('');
             if (footerPageDialog?.pageId === page.id) resetFooterPageDialog();

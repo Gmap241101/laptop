@@ -377,16 +377,26 @@ const richTextEditorSource = fs.readFileSync(new URL('../../src/components/RichT
 const adminDialogsSource = fs.readFileSync(new URL('../../src/admin/AdminDialogs.jsx', import.meta.url), 'utf8');
 const userDialogsSource = fs.readFileSync(new URL('../../src/user/UserDialogs.jsx', import.meta.url), 'utf8');
 const appDialogsSource = fs.readFileSync(new URL('../../src/dialogs/AppDialogs.jsx', import.meta.url), 'utf8');
+const modalPortalSource = fs.readFileSync(new URL('../../src/components/ModalPortal.jsx', import.meta.url), 'utf8');
+const footerControllerSource = fs.readFileSync(new URL('../../src/features/boards/useAdminFooterContentController.js', import.meta.url), 'utf8');
+const footerPanelSource = fs.readFileSync(new URL('../../src/admin/AdminFooterPanel.jsx', import.meta.url), 'utf8');
+const siteContentCutoverSource = fs.readFileSync(new URL('../../src/features/content/siteContentCutover.js', import.meta.url), 'utf8');
+const userFooterSource = fs.readFileSync(new URL('../../src/user/UserFooter.jsx', import.meta.url), 'utf8');
+const popupFooterControllerSource = fs.readFileSync(new URL('../../src/features/boards/usePopupFooterContentSubscriptionController.js', import.meta.url), 'utf8');
 const modalScrollFiles = [
   '../../src/admin/AdminDialogs.jsx',
   '../../src/admin/AdminFooterPanel.jsx',
   '../../src/admin/AdminHomeBannerPanel.jsx',
+  '../../src/admin/AdminHolidayManagementPanel.jsx',
   '../../src/admin/AdminMemberAccountEditDialog.jsx',
   '../../src/admin/AdminMemberTermsDialog.jsx',
   '../../src/admin/AdminRequestDialogs.jsx',
   '../../src/admin/AdminSignupTermsManager.jsx',
+  '../../src/components/TermsContentDialog.jsx',
+  '../../src/components/TermsVersionDialog.jsx',
   '../../src/dialogs/AppDialogs.jsx',
   '../../src/user/UserDialogs.jsx',
+  '../../src/user/UserPopupLayer.jsx',
 ];
 
 assert.match(signupTermsManagerSource, /patchPolicyContentDomainInPostgresql/, 'signup terms manager must save changed terms through the PostgreSQL partial content endpoint');
@@ -397,11 +407,39 @@ assert.match(richTextEditorSource, /mk-rich-text-scroll[^"]*overflow-y-auto/, 'r
 for (const [name, source] of [['admin', adminDialogsSource], ['user', userDialogsSource], ['compatibility', appDialogsSource]]) {
   assert.match(source, /fixed top-6 right-6 z-\[220\]/, `${name} toast must render above every modal/backdrop layer`);
 }
+assert.match(modalPortalSource, /createPortal\(backdrop, document\.body\)/, 'popup modals must portal to document.body so viewport backdrops are not clipped by panel/card ancestors');
+assert.match(modalPortalSource, /documentElement\.style\.overflow = 'hidden'/, 'modal portal must lock root document scrolling while a popup is open');
+assert.match(modalPortalSource, /body\.style\.overflow = 'hidden'/, 'modal portal must lock body scrolling while a popup is open');
+assert.match(modalPortalSource, /modalScrollLockCount/, 'modal scroll lock must support nested popup/confirm layers without unlocking the document early');
+assert.match(footerControllerSource, /patchSiteContentDomainInPostgresql/, 'footer management must use PostgreSQL document-level patches');
+assert.equal(footerControllerSource.includes('replaceSiteContentDomainInPostgresql'), false, 'footer management must not resend the complete footer domain on ordinary saves');
+assert.match(footerControllerSource, /sanitizeRichTextHtml/, 'footer page dialog normalization must import the rich-text sanitizer instead of throwing before the dialog opens');
+assert.match(footerControllerSource, /addressId: String\(page\?\.addressId \|\| ''\)/, 'legacy footer pages must require an explicit address ID on their next content-page edit');
+assert.match(siteContentCutoverSource, /addressClaims/, 'site-content PostgreSQL partial patches must carry footer address uniqueness claims');
+assert.match(userFooterSource, /openFooterPage\(page\.addressId \|\| page\.id\)/, 'footer navigation must prefer the administrator-defined public address ID');
+assert.match(userFooterSource, /const legacyRouteId = publicAddressId \? '' : String\(page\.id \|\| ''\)\.trim\(\)/, 'converted footer pages must stop treating the old internal ID as their active public route');
+assert.match(popupFooterControllerSource, /page\.addressId/, 'footer route resolution must resolve PostgreSQL pages by public address ID before legacy internal ID');
+assert.match(popupFooterControllerSource, /!String\(page\.addressId \|\| ''\)\.trim\(\) && page\.id === selectedFooterPageId/, 'legacy internal-ID routing must remain only for footer pages that have not yet been converted to an administrator address ID');
+assert.match(footerControllerSource, /upserts:\s*\[\s*createFooterConfigDocument/, 'footer common-info save must patch only the config document');
+assert.match(footerControllerSource, /deletes:\s*\[`footerPages\/\$\{page\.id\}`\]/, 'footer page deletion must delete only the targeted PostgreSQL content document');
+assert.match(footerControllerSource, /normalizeFooterPageAddressId/, 'footer content pages must normalize an administrator-defined public address ID');
+assert.match(footerControllerSource, /isValidFooterPageAddressId/, 'footer content page address IDs must be validated before PostgreSQL writes');
+assert.match(footerControllerSource, /addressClaims:/, 'footer content writes must send authoritative address uniqueness claims to PostgreSQL');
+assert.match(siteContentCutoverSource, /globalThis\.crypto\?\.randomUUID\?\.\(\)/, 'site-content ids must be generated independently of any retired external datastore');
+assert.match(appRoutesSource, /`\/info\/\$\{encodeURIComponent\(routeId\)\}`/, 'footer content pages must use the administrator-defined /info/:id canonical route');
+assert.match(appRoutesSource, /pathname\.startsWith\('\/info\/'\)/, 'footer content routes must resolve under the isolated /info/:id namespace');
+assert.doesNotMatch(appRoutesSource, /pathname\.startsWith\('\/footer\/'\)/, 'the superseded /footer/:id candidate route must not remain active');
+assert.ok(footerPanelSource.includes('페이지 주소 ID'), 'footer content editor must expose the administrator-defined address ID field');
+assert.ok(footerPanelSource.includes('/info/'), 'footer content editor must preview the /info/<addressId> canonical URL');
+assert.ok(!footerPanelSource.includes('/footer/'), 'footer content editor must not advertise the superseded /footer/<addressId> route');
+assert.ok(footerPanelSource.includes('다른 푸터 페이지와 중복될 수 없습니다.'), 'footer editor must explain address uniqueness');
 for (const relativePath of modalScrollFiles) {
   const modalSource = fs.readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+  assert.match(modalSource, /ModalPortal/, `${relativePath} popup layers must portal to document.body for full viewport backdrop coverage`);
+  assert.equal(/<div[^>]*className="fixed inset-0/.test(modalSource), false, `${relativePath} must not render popup backdrops directly inside panel/card DOM ancestry`);
   assert.equal(/overflow-y-auto rounded-2xl/.test(modalSource), false, `${relativePath} must not expose a native outer modal scrollbar against the rounded shell`);
   if (/overflow-y-auto/.test(modalSource)) {
-    assert.match(modalSource, /mk-modal-scroll-shell/, `${relativePath} scrollable modal shells must preserve rounded corners while retaining wheel/touch scrolling`);
+    assert.match(modalSource, /mk-modal-scroll-shell|overflow-hidden/, `${relativePath} scrollable modal shells must preserve rounded corners while retaining wheel/touch scrolling`);
   }
 }
 

@@ -407,7 +407,9 @@ export default function usePopupFooterContentSubscriptionController({
     () =>
       selectedFooterPageId
         ? footerPages.find(
-            (page) => page.id === selectedFooterPageId
+            (page) => String(page.addressId || '').trim() === selectedFooterPageId
+          ) || footerPages.find(
+            (page) => !String(page.addressId || '').trim() && page.id === selectedFooterPageId
           ) || null
         : null,
     [footerPages, selectedFooterPageId]
