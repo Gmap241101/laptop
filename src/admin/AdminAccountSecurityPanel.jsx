@@ -241,12 +241,12 @@ export default function AdminAccountSecurityPanel({ ctx }) {
       }
 
       triggerToast(
-        '계정 보안 설정이 PostgreSQL에 저장되어 현재 화면에도 즉시 반영되었습니다. 다른 기존 로그인 세션에는 새 정책 버전이 적용됩니다.',
+        '계정 보안 설정 DB 저장 성공. 현재 화면에도 즉시 반영되었으며 다른 기존 로그인 세션에는 새 정책 버전이 적용됩니다.',
         'success'
       );
     } catch (error) {
       console.error('PostgreSQL account security settings save error:', error);
-      triggerToast('계정 보안 설정을 PostgreSQL에 저장하지 못했습니다.', 'error');
+      triggerToast(`계정 보안 설정을 PostgreSQL에 저장하지 못했습니다. 오류 코드: ${error?.code || error?.name || 'account_security_settings_save_failed'}`, 'error');
     } finally {
       setSaving(false);
     }

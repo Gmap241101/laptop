@@ -88,12 +88,13 @@ const memberShadowService = {
   async syncCurrent() { return memberShadowProfile; },
   async compareCurrent() { return { equivalent: true, changedFields: [], source: memberShadowProfile, shadow: memberShadowProfile }; },
 };
+let memberDirectorySyncInput = null;
 const memberAuthorityService = {
   async getCurrentByFirebaseIdentity() { return { ...memberShadowProfile, source: 'postgresql-authoritative' }; },
   async editSelf() { return { authority: 'postgresql', member: memberShadowProfile }; },
   async editAdmin() { return { authority: 'postgresql', member: memberShadowProfile }; },
   async changeStatusAdmin() { return { authority: 'postgresql', member: memberShadowProfile }; },
-  async syncMemberDirectoryAdmin() { return { authority: 'postgresql', count: 1, version: 1 }; },
+  async syncMemberDirectoryAdmin(input) { memberDirectorySyncInput = input; return { authority: 'postgresql', count: 1, version: 1 }; },
   async auditMemberDirectoryAdmin() { return { authority: 'postgresql', source: 'postgresql-authoritative', audit: { total: 1, normal: 1, profileRequired: 0, duplicates: 0, missing: 0, failed: 0, directoryVersion: 1 } }; },
   async restoreDirectoryMismatchAdmin() { return { authority: 'postgresql', source: 'postgresql-authoritative', restoredCount: 1, failed: 0 }; },
   async bootstrapAdminRegistry() { return { authority: 'postgresql', count: 1 }; },
@@ -132,9 +133,16 @@ const systemConfig = new Map([
   ['admin-security', { sessionTimeoutMinutes: 60 }],
   ['user-session-policy', { sessionTimeoutMinutes: 120 }],
 ]);
+const systemAuditLogs = [];
 const systemConfigService = {
   async get(key) { return { source: 'postgresql', key, payload: systemConfig.get(key) || {} }; },
   async put({ key, payload }) { systemConfig.set(key, payload); return { source: 'postgresql', key, payload }; },
+  async listAudit({ limit = 50 } = {}) { return { source: 'postgresql', logs: systemAuditLogs.slice(0, Number(limit) || 50) }; },
+  async appendAudit({ input = {}, actorClerkUserId = '', admin = null } = {}) {
+    const entry = { id: `AUDIT-${systemAuditLogs.length + 1}`, ...input, adminUid: actorClerkUserId, adminName: admin?.userName || 'Smoke Admin', createdAt: new Date().toISOString() };
+    systemAuditLogs.unshift(entry);
+    return { source: 'postgresql', entry };
+  },
 };
 const userClerkAuthService = {
   async signupNative({ input }) { return { signup: { status: 'pending' }, account: { ...userAccount, memberStatus: 'pending', primaryEmail: input?.email || userAccount.primaryEmail }, clerkUser: { clerkUserId: 'clerk_native_smoke' } }; },
@@ -362,6 +370,27 @@ try {
   const directoryRestoreBody = await directoryRestore.json();
   if (directoryRestore.status !== 200 || directoryRestoreBody.memberDirectoryRestore?.authority !== 'postgresql' || directoryRestoreBody.memberDirectoryRestore?.restoredCount !== 1) throw new Error('PostgreSQL member directory restore failed.');
 
+  const largeDirectoryEntries = Array.from({ length: 220 }, (_, index) => ({
+    id: `directory-smoke-${index + 1}`,
+    name: `대용량 명부 사용자 ${index + 1}`,
+    team: `부서-${index % 12}`,
+    phone: `010${String(index).padStart(8, '0')}`,
+    email: `directory-smoke-${index + 1}@example.com`,
+    note: 'member-directory-body-limit-smoke-'.repeat(8),
+    enabled: true,
+  }));
+  const largeDirectoryBody = JSON.stringify({ entries: largeDirectoryEntries, version: 2, teams: ['부서-0', '부서-1'], settings: { memberDirectoryVersion: 2, requireRegisteredMemberForSignup: true } });
+  if (Buffer.byteLength(largeDirectoryBody, 'utf8') <= 32 * 1024) throw new Error('Large member-directory smoke payload must exceed the former 32KB generic body limit.');
+  if (Buffer.byteLength(largeDirectoryBody, 'utf8') >= 2 * 1024 * 1024) throw new Error('Large member-directory smoke payload must remain below the dedicated 2MB safety limit.');
+  const directorySync = await fetch(`${baseUrl}/api/admin/member-directory/sync`, {
+    method: 'POST',
+    headers: { ...authHeaders, 'Content-Type': 'application/json' },
+    body: largeDirectoryBody,
+  });
+  const directorySyncBody = await directorySync.json();
+  if (directorySync.status !== 200 || directorySyncBody.memberDirectorySync?.authority !== 'postgresql') throw new Error('Large PostgreSQL member directory synchronization failed.');
+  if (!Array.isArray(memberDirectorySyncInput?.teams) || memberDirectorySyncInput.teams[0] !== '부서-0' || Number(memberDirectorySyncInput?.settings?.memberDirectoryVersion || 0) !== 2) throw new Error('Member-directory synchronization did not forward organization configuration into the authoritative server mutation.');
+
   const accounts = await fetch(`${baseUrl}/api/admin/accounts`, { headers: authHeaders });
   if (accounts.status !== 200 || (await accounts.json()).adminAccounts?.totalCount !== 1) throw new Error('PostgreSQL administrator account list failed.');
   const createAdmin = await fetch(`${baseUrl}/api/admin/accounts`, { method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ adminLoginId: 'new-admin', authEmail: 'new@example.com', adminRole: 'admin' }) });
@@ -377,6 +406,17 @@ try {
   if (userPolicy.status !== 200 || (await userPolicy.json()).systemConfiguration?.source !== 'postgresql') throw new Error('Public PostgreSQL session policy failed.');
   const adminPolicySave = await fetch(`${baseUrl}/api/admin/system-config/admin-security`, { method: 'PUT', headers: { ...authHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ payload: { sessionTimeoutMinutes: 30 } }) });
   if (adminPolicySave.status !== 200 || (await adminPolicySave.json()).systemConfiguration?.payload?.sessionTimeoutMinutes !== 30) throw new Error('Administrator PostgreSQL security setting save failed.');
+
+  const systemAuditWrite = await fetch(`${baseUrl}/api/admin/system-settings-audit`, {
+    method: 'POST',
+    headers: { ...authHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ audit: { action: 'smoke-setting-update', section: 'Smoke Settings', summary: 'Audit history smoke write', beforeValues: { enabled: false }, afterValues: { enabled: true } } }),
+  });
+  const systemAuditWriteBody = await systemAuditWrite.json();
+  if (systemAuditWrite.status !== 200 || systemAuditWriteBody.systemSettingsAuditMutation?.source !== 'postgresql' || !systemAuditWriteBody.systemSettingsAuditMutation?.entry?.id) throw new Error('Administrator system settings audit write failed.');
+  const systemAuditRead = await fetch(`${baseUrl}/api/admin/system-settings-audit?limit=50`, { headers: authHeaders });
+  const systemAuditReadBody = await systemAuditRead.json();
+  if (systemAuditRead.status !== 200 || systemAuditReadBody.systemSettingsAudit?.source !== 'postgresql' || systemAuditReadBody.systemSettingsAudit?.logs?.[0]?.action !== 'smoke-setting-update') throw new Error('Administrator system settings audit read failed.');
 
   const dashboard = await fetch(`${baseUrl}/api/admin/rental-dashboard`, { headers: authHeaders });
   if (dashboard.status !== 200 || (await dashboard.json()).adminRentalDashboard?.source !== 'postgresql') throw new Error('PostgreSQL administrator dashboard failed.');

@@ -482,7 +482,7 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
             }
           : { ...banner, sortOrder: index + 1, updatedAt });
         await replaceHomeDomain({ banners: allBanners.filter((banner) => banner.placement !== placement).concat(nextPlacementBanners) });
-        triggerToast(`${panelConfig.itemLabel} PostgreSQL 저장 완료`, 'success');
+        triggerToast(`${panelConfig.itemLabel} DB 저장 성공`, 'success');
         setEditing(false);
         const next = createForm(placement);
         setForm(next);
@@ -505,11 +505,11 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
             ? { ...item, enabled: !Boolean(item.enabled), updatedAt: new Date() }
             : item),
         });
-        triggerToast(`${panelConfig.itemLabel} PostgreSQL 상태 변경 완료`, 'success');
+        triggerToast(`${panelConfig.itemLabel} DB 상태 변경 성공`, 'success');
         return;
     } catch (error) {
       console.error('Home banner toggle error:', error);
-      triggerToast('사용 여부 변경에 실패했습니다.', 'error');
+      triggerToast(`사용 여부 변경에 실패했습니다. 오류 코드: ${error?.code || error?.name || 'home_banner_toggle_failed'}`, 'error');
     } finally {
       setToggleSavingId('');
     }
@@ -529,7 +529,7 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
         return;
     } catch (error) {
       console.error('Home banner order error:', error);
-      triggerToast('배너 순서 변경에 실패했습니다.', 'error');
+      triggerToast(`배너 순서 변경에 실패했습니다. 오류 코드: ${error?.code || error?.name || 'home_banner_order_failed'}`, 'error');
     }
   };
 
@@ -544,11 +544,11 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
               .map((item, index) => ({ ...item, sortOrder: index + 1, updatedAt: new Date() }));
             await replaceHomeDomain({ banners: allBanners.filter((item) => item.placement !== placement).concat(remaining) });
             if (form.id === banner.id) setEditing(false);
-            triggerToast(`${panelConfig.itemLabel} PostgreSQL 삭제 완료`, 'success');
+            triggerToast(`${panelConfig.itemLabel} DB 삭제 성공`, 'success');
             return;
         } catch (error) {
           console.error('Home banner delete error:', error);
-          triggerToast(`${panelConfig.itemLabel} 삭제에 실패했습니다.`, 'error');
+          triggerToast(`${panelConfig.itemLabel} 삭제에 실패했습니다. 오류 코드: ${error?.code || error?.name || 'home_banner_delete_failed'}`, 'error');
         } finally {
           setDeletingId('');
         }

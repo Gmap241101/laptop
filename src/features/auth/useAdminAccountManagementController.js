@@ -77,7 +77,7 @@ export default function useAdminAccountManagementController({
       setAdminAccounts((prev) => [account, ...(prev || []).filter((item) => item.id !== account.id)]);
       setAdminAccountForm(createDefaultAdminAccountForm()); setAdminAccountPage(1);
       publishAccountAuthObservation({ adminClerkAuthRequested: true, adminAuthSource: 'clerk-postgresql', adminProvisionOperation: 'admin-create', adminProvisionTargetUid: account.id, adminProvisionClerkUserId: account.clerkUserId, adminAuthError: '' });
-      triggerToast(`[${account.adminLoginId}] Clerk/PostgreSQL 관리자 계정이 등록되었습니다.`, 'success');
+      triggerToast(`[${account.adminLoginId}] Clerk 계정/DB 등록 성공`, 'success');
     } catch (error) { console.error('Admin account create error:', error); triggerToast(adminErrorMessage(error), 'error'); }
   };
 
@@ -98,7 +98,7 @@ export default function useAdminAccountManagementController({
       setAdminAccounts((prev) => (prev || []).map((item) => item.id === account.id ? updated : item));
       if (currentAuthAdminAccount?.id === account.id) setCurrentAuthAdminAccount(updated);
       cancelEditAdminAccount();
-      triggerToast(`[${updated.adminLoginId}] 관리자 정보가 Clerk/PostgreSQL에 저장되었습니다.`, 'success');
+      triggerToast(`[${updated.adminLoginId}] 관리자 정보 Clerk/DB 저장 성공`, 'success');
     } catch (error) { console.error('Admin account update error:', error); triggerToast(adminErrorMessage(error), 'error'); }
   };
 
@@ -125,7 +125,7 @@ export default function useAdminAccountManagementController({
       if (nextPassword && nextPassword !== (adminMyProfileForm.newPasswordConfirm || '')) { triggerToast('새 비밀번호 확인이 일치하지 않습니다.', 'error'); return; }
       const payload = await clerkStagingClient.updateAdminAccountPostgresql(authenticatedAdminAccount.id, { adminLoginId: adminMyProfileForm.adminLoginId.trim(), organizationName: adminMyProfileForm.organizationName.trim(), userName: adminMyProfileForm.userName.trim(), phone: adminMyProfileForm.phone.trim(), adminRole: authenticatedAdminAccount.adminRole || 'admin', ...(nextPassword ? { newPassword: nextPassword } : {}) });
       const updated = payload?.adminAccountMutation?.account;
-      setCurrentAuthAdminAccount(updated); setAdminAccounts((prev) => (prev || []).map((item) => item.id === updated.id ? updated : item)); setAdminMyProfileForm((prev) => ({ ...prev, newPassword: '', newPasswordConfirm: '' })); triggerToast('관리자 내 정보가 Clerk/PostgreSQL에 저장되었습니다.', 'success');
+      setCurrentAuthAdminAccount(updated); setAdminAccounts((prev) => (prev || []).map((item) => item.id === updated.id ? updated : item)); setAdminMyProfileForm((prev) => ({ ...prev, newPassword: '', newPasswordConfirm: '' })); triggerToast('관리자 내 정보 Clerk/DB 저장 성공', 'success');
     } catch (error) { console.error('Admin profile update error:', error); triggerToast(adminErrorMessage(error), 'error'); }
     finally { setAdminMyProfileSaving(false); }
   };

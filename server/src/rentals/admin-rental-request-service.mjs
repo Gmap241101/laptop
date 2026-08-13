@@ -300,7 +300,8 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient, r
       const quickFilter = trim(options.quickFilter || 'all');
       const query = trim(options.query);
       const canUseTabCountAsTotal = quickFilter === 'all' && !query;
-      const listPromise = repository.list({
+      const needsTabCounts = includeCounts || canUseTabCountAsTotal;
+      const result = await repository.list({
         tab,
         quickFilter,
         query,
@@ -308,11 +309,9 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient, r
         pageSize,
         referenceDate,
         includeTotalCount: !canUseTabCountAsTotal,
+        includeTabCounts: needsTabCounts,
       });
-      const countsPromise = includeCounts || canUseTabCountAsTotal
-        ? repository.getTabCounts()
-        : Promise.resolve(null);
-      const [result, counts] = await Promise.all([listPromise, countsPromise]);
+      const counts = needsTabCounts ? result.tabCounts : null;
       const totalCount = canUseTabCountAsTotal
         ? Number(counts?.[tab] || 0)
         : Number(result.totalCount || 0);

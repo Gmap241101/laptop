@@ -76,7 +76,7 @@ export default function useAssetBulkUpload({
         if ((mutation?.invalidCategories || []).length) skipped.push(`카테고리 불일치 ${mutation.invalidCategories.length}건 제외`);
         if ((mutation?.duplicateAssetNumbers || []).length) skipped.push(`중복 자산관리번호 ${mutation.duplicateAssetNumbers.length}건 제외`);
         triggerToast(
-          `총 ${createdAssets.length}대의 기기를 PostgreSQL 데이터베이스로 일괄 추가 등록했습니다.${skipped.length ? ` (${skipped.join(', ')})` : ''}`,
+          `DB 저장 성공: 총 ${createdAssets.length}대의 기기를 일괄 추가 등록했습니다.${skipped.length ? ` (${skipped.join(', ')})` : ''}`,
           'success'
         );
       } catch (error) {
@@ -84,7 +84,7 @@ export default function useAssetBulkUpload({
         if (error?.code === 'asset-bulk-no-valid-assets') {
           triggerToast('업로드할 수 있는 유효한 자산이 없습니다. 카테고리와 중복 자산관리번호를 확인해 주세요.', 'error');
         } else {
-          triggerToast('엑셀/CSV 자산 등록에 실패했습니다. 기존 자산 목록은 변경되지 않았습니다.', 'error');
+          triggerToast(`엑셀/CSV 자산 등록에 실패했습니다. 기존 자산 목록은 변경되지 않았습니다. 오류 코드: ${error?.code || error?.name || 'asset_bulk_upload_failed'}`, 'error');
         }
       }
     },

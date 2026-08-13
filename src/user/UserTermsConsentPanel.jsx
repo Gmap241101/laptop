@@ -164,8 +164,8 @@ export default function UserTermsConsentPanel({
       console.error('User terms consent save error:', error);
       triggerToast(
         error?.code === 'terms/policy-changed'
-          ? '약관이 변경되었습니다. 최신 내용을 다시 확인해 주세요.'
-          : '약관 동의 정보 저장에 실패했습니다.',
+          ? '약관이 변경되었습니다. 최신 내용을 다시 확인해 주세요. 오류 코드: terms/policy-changed'
+          : `약관 동의 정보 저장에 실패했습니다. 오류 코드: ${error?.code || error?.name || 'terms_consent_save_failed'}`,
         'error'
       );
       await loadData();

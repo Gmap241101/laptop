@@ -5,6 +5,10 @@ const trim = (value) => (typeof value === 'string' ? value.trim() : '');
 
 const normalizeBoolean = (value) => trim(value).toLowerCase() === 'true';
 const firebaseRuntimeRetired = () => true;
+const ADMIN_RENTAL_REQUEST_CACHE_TTL_MS = 5000;
+const adminRentalRequestReadCache = new Map();
+
+const clearAdminRentalRequestReadCache = () => adminRentalRequestReadCache.clear();
 
 const normalizeApiBaseUrl = (value) => {
   const raw = trim(value);
@@ -693,23 +697,44 @@ export const requestAdminRentalRequests = async ({ clerk, apiBaseUrl, fetchImpl,
   });
   if (options?.includeCounts === false) params.set('includeCounts', 'false');
   const query = params.toString();
-  const { response, payload } = await requestWithSession({
-    clerk,
-    apiBaseUrl,
-    fetchImpl,
-    path: `/api/admin/rental-requests${query ? `?${query}` : ''}`,
-    headers: { },
-  });
-  if (!response.ok) {
-    const error = new Error(`Admin PostgreSQL rental request read failed with HTTP ${response.status}.`);
-    error.status = response.status;
-    error.code = payload?.error || null;
-    throw error;
-  }
-  if (!payload?.authenticated || !payload?.authorized || payload?.adminRentalRequests?.source !== 'postgresql' || !Array.isArray(payload?.adminRentalRequests?.requests)) {
-    throw new Error('Backend returned an invalid admin rental request response.');
-  }
-  return payload;
+  const path = `/api/admin/rental-requests${query ? `?${query}` : ''}`;
+  const cacheKey = path;
+  const now = Date.now();
+  const cached = adminRentalRequestReadCache.get(cacheKey);
+  if (cached?.promise && (cached.pending || cached.expiresAt > now)) return cached.promise;
+
+  const entry = { pending: true, expiresAt: 0, promise: null };
+  entry.promise = (async () => {
+    const { response, payload } = await requestWithSession({
+      clerk,
+      apiBaseUrl,
+      fetchImpl,
+      path,
+      headers: { },
+    });
+    if (!response.ok) {
+      const error = new Error(`Admin PostgreSQL rental request read failed with HTTP ${response.status}.`);
+      error.status = response.status;
+      error.code = payload?.error || null;
+      throw error;
+    }
+    if (!payload?.authenticated || !payload?.authorized || payload?.adminRentalRequests?.source !== 'postgresql' || !Array.isArray(payload?.adminRentalRequests?.requests)) {
+      throw new Error('Backend returned an invalid admin rental request response.');
+    }
+    return payload;
+  })()
+    .then((payload) => {
+      entry.pending = false;
+      entry.expiresAt = Date.now() + ADMIN_RENTAL_REQUEST_CACHE_TTL_MS;
+      return payload;
+    })
+    .catch((error) => {
+      adminRentalRequestReadCache.delete(cacheKey);
+      throw error;
+    });
+
+  adminRentalRequestReadCache.set(cacheKey, entry);
+  return entry.promise;
 };
 
 export const requestAdminRentalDashboard = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, referenceDate = '' }) => {
@@ -763,6 +788,7 @@ const requestAdminRentalRequestMutationAction = async ({ clerk, apiBaseUrl, fetc
   if (!payload?.authenticated || !payload?.authorized || payload?.adminRentalRequestMutation?.authority !== 'postgresql' || !payload?.adminRentalRequestMutation?.request?.id) {
     throw new Error(`Backend returned an invalid admin rental request ${action} response.`);
   }
+  clearAdminRentalRequestReadCache();
   return payload;
 };
 
@@ -785,6 +811,7 @@ export const requestAdminRentalRequestSync = async ({ clerk, apiBaseUrl, fetchIm
   if (!payload?.authenticated || !payload?.authorized || payload?.adminRentalRequestSync?.target !== 'postgresql') {
     throw new Error('Backend returned an invalid targeted admin rental request sync response.');
   }
+  clearAdminRentalRequestReadCache();
   return payload;
 };
 
@@ -841,6 +868,7 @@ export const requestAdminRentalRequestStatusChange = async ({ clerk, apiBaseUrl,
   if (!payload?.authenticated || !payload?.authorized || payload?.adminRentalRequestMutation?.authority !== 'postgresql' || !payload?.adminRentalRequestMutation?.request?.id) {
     throw new Error('Backend returned an invalid admin rental request mutation response.');
   }
+  clearAdminRentalRequestReadCache();
   return payload;
 };
 
@@ -970,11 +998,11 @@ export const requestAdminMemberDirectoryPostgresql = async ({ clerk, apiBaseUrl,
   return payload;
 };
 
-export const requestAdminMemberDirectoryPostgresqlSync = async ({ clerk, apiBaseUrl, fetchImpl, entries = [], version = 0 }) => {
+export const requestAdminMemberDirectoryPostgresqlSync = async ({ clerk, apiBaseUrl, fetchImpl, entries = [], version = 0, teams = [], settings = {} }) => {
   const { response, payload } = await requestWithSession({
     clerk, apiBaseUrl, fetchImpl, path: '/api/admin/member-directory/sync', method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ entries, version }),
+    body: JSON.stringify({ entries, version, teams, settings }),
   });
   if (!response.ok) { const error = new Error(`Admin PostgreSQL member directory sync failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
   if (!payload?.authenticated || !payload?.authorized || payload?.memberDirectorySync?.target !== 'postgresql-member-directory') throw new Error('Backend returned an invalid member directory synchronization response.');
@@ -1068,6 +1096,49 @@ export const requestAdminRentalConfigSettingsPatch = async ({ clerk, apiBaseUrl,
   }
   if (!payload?.authenticated || !payload?.authorized || payload?.rentalConfigMutation?.authority !== 'postgresql' || payload?.rentalConfigMutation?.operation !== 'settings-patch') {
     throw new Error('Backend returned an invalid PostgreSQL rental configuration settings response.');
+  }
+  return payload;
+};
+
+export const requestAdminSystemSettingsAudit = async ({ clerk, apiBaseUrl, fetchImpl, limit = 50 }) => {
+  const safeLimit = Math.max(1, Math.min(200, Math.trunc(Number(limit) || 50)));
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: `/api/admin/system-settings-audit?limit=${safeLimit}`,
+    method: 'GET',
+  });
+  if (!response.ok) {
+    const error = new Error(`System settings audit read failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (!payload?.authenticated || !payload?.authorized || payload?.systemSettingsAudit?.source !== 'postgresql' || !Array.isArray(payload?.systemSettingsAudit?.logs)) {
+    throw Object.assign(new Error('Backend returned an invalid system settings audit payload.'), { code: 'system_settings_audit_payload_invalid' });
+  }
+  return payload;
+};
+
+export const requestAdminSystemSettingsAuditWrite = async ({ clerk, apiBaseUrl, fetchImpl, audit = {} }) => {
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/admin/system-settings-audit',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ audit }),
+  });
+  if (!response.ok) {
+    const error = new Error(`System settings audit write failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (!payload?.authenticated || !payload?.authorized || payload?.systemSettingsAuditMutation?.source !== 'postgresql' || !payload?.systemSettingsAuditMutation?.entry?.id) {
+    throw Object.assign(new Error('Backend returned an invalid system settings audit mutation payload.'), { code: 'system_settings_audit_mutation_payload_invalid' });
   }
   return payload;
 };
@@ -1834,9 +1905,9 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
       const clerk = await initialize();
       return requestAdminMemberDirectoryPostgresql({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
     },
-    async syncAdminMemberDirectory({ entries = [], version = 0 } = {}) {
+    async syncAdminMemberDirectory({ entries = [], version = 0, teams = [], settings = {} } = {}) {
       const clerk = await initialize();
-      return requestAdminMemberDirectoryPostgresqlSync({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, entries, version });
+      return requestAdminMemberDirectoryPostgresqlSync({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, entries, version, teams, settings });
     },
     async auditAdminMemberDirectory() {
       const clerk = await initialize();
@@ -1896,6 +1967,14 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async saveAdminSignupPolicy(policy = {}) {
       const clerk = await initialize();
       return requestAdminSignupPolicyPatch({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, policy });
+    },
+    async getAdminSystemSettingsAudit(limit = 50) {
+      const clerk = await initialize();
+      return requestAdminSystemSettingsAudit({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, limit });
+    },
+    async appendAdminSystemSettingsAudit(audit = {}) {
+      const clerk = await initialize();
+      return requestAdminSystemSettingsAuditWrite({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, audit });
     },
     async getAdminSystemConfiguration(key) {
       const clerk = await initialize();

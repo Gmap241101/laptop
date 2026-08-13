@@ -152,18 +152,22 @@ assert.match(systemDataRepositorySource, /async reconcileAssetCatalogMetadata/, 
 assert.match(appSource, /\/api\/admin\/system-data\/reconcile-asset-catalog-metadata/, 'catalog metadata reconciliation endpoint must be exposed to administrator data management');
 
 const adminRentalRepositorySource = fs.readFileSync(new URL('../../server/src/rentals/admin-rental-request-repository.mjs', import.meta.url), 'utf8');
-assert.match(adminRentalRepositorySource, /async getTabCounts\(\)/, 'administrator rental-request management must use a lightweight four-tab count query instead of the heavy dashboard aggregate');
+assert.match(adminRentalRepositorySource, /includeTabCounts = false/, 'administrator rental-request page reads must support folding lightweight tab counts into the page query only when needed');
+assert.match(adminRentalRepositorySource, /WITH page_rows AS \([\s\S]*tab_counts AS \([\s\S]*LEFT JOIN page_rows ON TRUE/, 'administrator rental-request first page and tab counts must resolve in one PostgreSQL round trip');
 assert.match(adminRentalRepositorySource, /includeTotalCount = true/, 'administrator rental-request page reads must support skipping a redundant total-count query when tab counts already provide the total');
 assert.match(adminRentalRepositorySource, /trim\(query\) \? 'LEFT JOIN app_rental_request_items/, 'administrator request count SQL must avoid the request-item join when search text does not require it');
 const adminRentalServiceSource = fs.readFileSync(new URL('../../server/src/rentals/admin-rental-request-service.mjs', import.meta.url), 'utf8');
 assert.match(adminRentalServiceSource, /const includeCounts = options\.includeCounts !== false;/, 'dashboard previews must be able to skip duplicate rental tab-count aggregation');
 assert.match(adminRentalServiceSource, /const canUseTabCountAsTotal = quickFilter === 'all' && !query;/, 'default administrator request browsing must derive totalCount from lightweight tab counts');
-assert.match(adminRentalServiceSource, /repository\.getTabCounts\(\)/, 'administrator request management must not run the heavyweight dashboard count query');
+assert.match(adminRentalServiceSource, /includeTabCounts: needsTabCounts/, 'administrator request management must request page rows and tab counts through one repository read');
+assert.equal(adminRentalServiceSource.includes('repository.getTabCounts()'), false, 'administrator request management must not open a second PostgreSQL query just for tab counts');
 assert.match(appSource, /GET' && url\.pathname === '\/api\/admin\/rental-requests'[\s\S]*authenticateAdminAuthority\(request, response, headers, requestId\)[\s\S]*adminRentalRequestService\.list\(authority\.firebaseIdentity/, 'administrator request reads must authenticate Clerk/PostgreSQL authority once');
 assert.match(appSource, /GET' && url\.pathname === '\/api\/admin\/rental-dashboard'[\s\S]*authenticateAdminAuthority\(request, response, headers, requestId\)[\s\S]*authority\.firebaseIdentity/, 'dashboard count reads must use direct Clerk/PostgreSQL administrator authority');
 const adminAuthServiceSource = fs.readFileSync(new URL('../../server/src/auth/admin-clerk-auth-service.mjs', import.meta.url), 'utf8');
 assert.match(adminAuthServiceSource, /async authorizeCurrent\(\{ clerkUserId \}\)[\s\S]*requireActor\(clerkUserId\)[\s\S]*authority: 'clerk-postgresql-session'/, 'authenticated administrator API reads must authorize from the verified Clerk JWT plus PostgreSQL registry without a remote Clerk Backend API lookup');
 assert.match(appSource, /const adminAuth = await adminClerkAuthService\.authorizeCurrent\(\{ clerkUserId: auth\.userId \}\);/, 'administrator API authority must use the lightweight PostgreSQL registry path');
+const databasePoolSource = fs.readFileSync(new URL('../../server/src/db/pool.mjs', import.meta.url), 'utf8');
+assert.match(databasePoolSource, /max: config\.dbPoolMax,[\s\S]*min: 1,[\s\S]*idleTimeoutMillis: config\.dbIdleTimeoutMs/, 'PostgreSQL pool must retain one warm idle connection so separate administrator first-use reads do not repeatedly pay a database connection handshake');
 
 
 
@@ -172,29 +176,20 @@ const boardPool = {
   async query(sql, params = []) {
     const text = String(sql);
     boardSqlCalls.push({ text, params });
-    if (text.includes('WITH sync_meta AS')) {
+    if (text.includes('WITH board_meta AS')) {
+      const boardType = text.includes("config.board_type='faq'") ? 'faq' : 'notice';
       return {
         rowCount: 1,
         rows: [{
           board_synced_at: '2026-08-13T01:00:00.000Z',
-          config_row: {
-            board_type: params?.[0] || 'faq',
-            posts_per_page: 10,
-            source_mode: 'postgresql-authoritative',
-            synced_at: '2026-08-13T01:00:00.000Z',
-            updated_at: '2026-08-13T01:00:00.000Z',
-          },
-          categories: text.includes('app_faq_categories')
+          config_posts_per_page: 10,
+          config_source_mode: 'postgresql-authoritative',
+          config_synced_at: '2026-08-13T01:00:00.000Z',
+          config_updated_at: '2026-08-13T01:00:00.000Z',
+          effective_page_size: 10,
+          categories: boardType === 'faq'
             ? [{ category_id: 'general', name: '일반', sort_order: 0, source_mode: 'postgresql-authoritative' }]
             : undefined,
-        }],
-      };
-    }
-    if (text.includes('WITH filtered AS')) {
-      const boardType = params?.[0] || '';
-      return {
-        rowCount: 1,
-        rows: [{
           pinned_posts: [],
           regular_posts: [{
             post_id: `${boardType}-1`,
@@ -222,12 +217,14 @@ const boardPool = {
 };
 const boardRepository = createBoardRepository(boardPool);
 const noticeQueryStart = boardSqlCalls.length;
-const noticeBoard = await boardRepository.listNotice({ page: 1, pageSize: 10 });
-assert.equal(boardSqlCalls.length - noticeQueryStart, 2, 'notice list entry must use two PostgreSQL round trips instead of the migration-era five-query sequence');
+const noticeBoard = await boardRepository.listNotice({ page: 1 });
+assert.equal(boardSqlCalls.length - noticeQueryStart, 1, 'notice list entry must resolve configuration, pinned rows, page rows, and total count in one PostgreSQL round trip');
+assert.equal(noticeBoard.pageSize, 10, 'notice list without a client pageSize must use the authoritative PostgreSQL board configuration');
 assert.equal(noticeBoard.regularPosts[0]?.id, 'notice-1');
 const faqQueryStart = boardSqlCalls.length;
-const faqBoard = await boardRepository.listFaq({ page: 1, pageSize: 10, categoryId: 'all' });
-assert.equal(boardSqlCalls.length - faqQueryStart, 2, 'FAQ list entry must use two PostgreSQL round trips instead of the migration-era six-query sequence');
+const faqBoard = await boardRepository.listFaq({ page: 1, categoryId: 'all' });
+assert.equal(boardSqlCalls.length - faqQueryStart, 1, 'FAQ list entry must resolve configuration, categories, page rows, and total count in one PostgreSQL round trip');
+assert.equal(faqBoard.pageSize, 10, 'FAQ list without a client pageSize must use the authoritative PostgreSQL board configuration');
 assert.equal(faqBoard.categories[0]?.id, 'general');
 assert.equal(faqBoard.regularPosts[0]?.id, 'faq-1');
 const boardRepositorySource = fs.readFileSync(new URL('../../server/src/boards/board-repository.mjs', import.meta.url), 'utf8');
@@ -237,8 +234,10 @@ const listNoticeBlock = boardRepositorySource.slice(listNoticeStart, listNoticeE
 const listFaqStart = boardRepositorySource.indexOf('async listFaq(');
 const listFaqEnd = boardRepositorySource.indexOf('async saveNoticePostAuthoritative', listFaqStart);
 const listFaqBlock = boardRepositorySource.slice(listFaqStart, listFaqEnd);
-assert.equal(listNoticeBlock.includes('pool.connect()'), false, 'public notice list reads must not hold a dedicated client across sequential metadata/count/page queries');
-assert.equal(listFaqBlock.includes('pool.connect()'), false, 'public FAQ list reads must not hold a dedicated client across sequential metadata/category/count/page queries');
+assert.equal(listNoticeBlock.includes('pool.connect()'), false, 'public notice list reads must not hold a dedicated PostgreSQL client');
+assert.equal(listFaqBlock.includes('pool.connect()'), false, 'public FAQ list reads must not hold a dedicated PostgreSQL client');
+assert.equal((listNoticeBlock.match(/await pool\.query\(/g) || []).length, 1, 'notice list must use exactly one PostgreSQL query');
+assert.equal((listFaqBlock.match(/await pool\.query\(/g) || []).length, 1, 'FAQ list must use exactly one PostgreSQL query');
 assert.match(listNoticeBlock, /jsonb_agg\(to_jsonb\(pinned_posts\)/, 'notice list must aggregate pinned/page rows in one PostgreSQL statement');
 assert.match(listFaqBlock, /jsonb_agg\(to_jsonb\(regular_posts\)/, 'FAQ list must aggregate page rows in one PostgreSQL statement');
 
@@ -348,7 +347,12 @@ const memberPolicyAppSource = fs.readFileSync(new URL('../../server/src/app.mjs'
 assert.match(memberPolicyAppSource, /\/api\/admin\/member-signup-policy/, 'server must expose a dedicated PostgreSQL signup-policy endpoint');
 assert.match(memberPolicyAppSource, /\/api\/admin\/member-directory\/audit/, 'server must expose a PostgreSQL member-directory audit endpoint');
 assert.match(memberPolicyAppSource, /\/api\/admin\/member-directory\/restore-mismatches/, 'server must expose a PostgreSQL member-directory restore endpoint');
+assert.match(memberPolicyAppSource, /request\.method === 'POST' && url\.pathname === '\/api\/admin\/member-directory\/sync'[\s\S]*readJsonBody\(request, \{ maxBytes: 2 \* 1024 \* 1024 \}\)/, 'administrator member-directory synchronization must accept large authoritative directory payloads above the obsolete 32KB generic body limit');
 const memberServiceSource = fs.readFileSync(new URL('../../server/src/members/member-authority-service.mjs', import.meta.url), 'utf8');
+const memberRepositorySource = fs.readFileSync(new URL('../../server/src/members/member-authority-repository.mjs', import.meta.url), 'utf8');
+assert.match(memberServiceSource, /replaceDirectoryEntries\(normalizedEntries, \{[\s\S]*teams,[\s\S]*settings,[\s\S]*actorClerkUserId: admin\.uid/, 'member-directory synchronization must forward organization config into the same PostgreSQL transaction');
+assert.match(memberRepositorySource, /phase31-member-directory[\s\S]*phase24-site-content:rental-config[\s\S]*UPDATE app_site_content_documents[\s\S]*rentalSystem\/publicConfig[\s\S]*app_site_content_syncs/, 'member-directory and public organization config writes must share one PostgreSQL transaction and refresh site-content metadata');
+assert.match(memberRepositorySource, /organizationConfigUpdated: shouldUpdateOrganizationConfig/, 'member-directory synchronization must report whether the public organization config joined the transaction');
 assert.match(memberServiceSource, /auditMemberDirectoryAdmin/, 'member authority service must own the PostgreSQL directory audit');
 assert.match(memberServiceSource, /restoreDirectoryMismatchAdmin/, 'member authority service must own PostgreSQL mismatch restoration');
 const siteServiceSource = fs.readFileSync(new URL('../../server/src/content/site-content-service.mjs', import.meta.url), 'utf8');
@@ -358,5 +362,15 @@ assert.match(siteServiceSource, /patchAdminDomain/, 'site-content service must s
 assert.match(repositorySource, /patchDomainDocuments/, 'site-content repository must patch changed documents without deleting and reinserting the complete domain');
 assert.match(repositorySource, /ON CONFLICT \(domain, document_key\) DO UPDATE SET/, 'partial content mutation must upsert individual PostgreSQL content documents atomically');
 assert.match(memberPolicyAppSource, /request\.method === 'PATCH' && adminSiteContentDirectMatch[\s\S]*\['terms', 'footer'\]\.includes\(domain\) \? 2 \* 1024 \* 1024/, 'terms/footer rich-content partial writes must have a dedicated body safety limit above the obsolete 32KB generic limit');
+
+const systemConfigRepositorySource = fs.readFileSync(new URL('../../server/src/settings/system-config-repository.mjs', import.meta.url), 'utf8');
+const systemConfigServiceSource = fs.readFileSync(new URL('../../server/src/settings/system-config-service.mjs', import.meta.url), 'utf8');
+assert.match(memberPolicyAppSource, /request\.method === 'GET' && url\.pathname === '\/api\/admin\/system-settings-audit'/, 'server must expose an authenticated PostgreSQL system-settings audit read endpoint');
+assert.match(memberPolicyAppSource, /request\.method === 'POST' && url\.pathname === '\/api\/admin\/system-settings-audit'/, 'server must expose an authenticated PostgreSQL system-settings audit append endpoint');
+assert.match(systemConfigRepositorySource, /async listAudit\(/, 'system configuration repository must read persisted audit entries');
+assert.match(systemConfigRepositorySource, /async appendAudit\(/, 'system configuration repository must append persisted audit entries');
+assert.match(systemConfigRepositorySource, /pg_advisory_xact_lock\(hashtext\(\$1\)\)/, 'system settings audit appends must be serialized under a PostgreSQL advisory transaction lock');
+assert.match(systemConfigServiceSource, /const AUDIT_KEY = 'system-settings-audit'/, 'system settings audit history must use a dedicated PostgreSQL configuration record');
+assert.match(systemConfigServiceSource, /randomUUID\(\)/, 'system settings audit entries must receive stable unique identifiers');
 
 console.log('[phase34-runtime-regressions-backend-smoke] PASS');

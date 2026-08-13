@@ -236,7 +236,7 @@ export const createAdminRentalRequestRepository = (pool) => {
       }
     },
 
-    async list({ tab = 'pending', quickFilter = 'all', query = '', page = 1, pageSize = 10, referenceDate, includeTotalCount = true }) {
+    async list({ tab = 'pending', quickFilter = 'all', query = '', page = 1, pageSize = 10, referenceDate, includeTotalCount = true, includeTabCounts = false }) {
       const filter = buildTabWhere({ tab, quickFilter, referenceDate, query });
       const values = [...filter.values];
       let referenceParam = null;
@@ -248,28 +248,58 @@ export const createAdminRentalRequestRepository = (pool) => {
       const limitParam = `$${values.length}`;
       values.push(Math.max(0, (page - 1) * pageSize));
       const offsetParam = `$${values.length}`;
-      const rowsPromise = pool.query(
-        `SELECT ${SELECT}
-           FROM app_rental_requests request
-           LEFT JOIN app_rental_request_items item ON item.rental_request_id = request.id
-           ${filter.clause}
-           ${orderForTab(tab, referenceParam)}
-           LIMIT ${limitParam} OFFSET ${offsetParam}`,
+      const totalCountCte = includeTotalCount
+        ? `SELECT COUNT(*)::bigint AS count
+             FROM app_rental_requests request
+             ${trim(query) ? 'LEFT JOIN app_rental_request_items item ON item.rental_request_id = request.id' : ''}
+             ${filter.clause}`
+        : 'SELECT NULL::bigint AS count';
+      const tabCountsCte = includeTabCounts
+        ? `SELECT
+             COUNT(*) FILTER (WHERE status IN ('신청중','보류'))::bigint AS pending,
+             COUNT(*) FILTER (WHERE status = '대여중')::bigint AS rental,
+             COUNT(*) FILTER (WHERE status IN ('불허','사용자취소'))::bigint AS closed,
+             COUNT(*) FILTER (WHERE status = '반납완료')::bigint AS returned
+           FROM app_rental_requests`
+        : `SELECT NULL::bigint AS pending, NULL::bigint AS rental,
+                  NULL::bigint AS closed, NULL::bigint AS returned`;
+      const rows = await pool.query(
+        `WITH page_rows AS (
+           SELECT ${SELECT}
+             FROM app_rental_requests request
+             LEFT JOIN app_rental_request_items item ON item.rental_request_id = request.id
+             ${filter.clause}
+             ${orderForTab(tab, referenceParam)}
+             LIMIT ${limitParam} OFFSET ${offsetParam}
+         ), filtered_total AS (
+           ${totalCountCte}
+         ), tab_counts AS (
+           ${tabCountsCte}
+         )
+         SELECT
+           page_rows.*,
+           filtered_total.count AS filtered_total_count,
+           tab_counts.pending AS tab_count_pending,
+           tab_counts.rental AS tab_count_rental,
+           tab_counts.closed AS tab_count_closed,
+           tab_counts.returned AS tab_count_returned
+         FROM filtered_total
+         CROSS JOIN tab_counts
+         LEFT JOIN page_rows ON TRUE`,
         values,
       );
-      const countPromise = includeTotalCount
-        ? pool.query(
-            `SELECT COUNT(*)::bigint AS count
-               FROM app_rental_requests request
-               ${trim(query) ? 'LEFT JOIN app_rental_request_items item ON item.rental_request_id = request.id' : ''}
-               ${filter.clause}`,
-            filter.values,
-          )
-        : Promise.resolve(null);
-      const [rows, countResult] = await Promise.all([rowsPromise, countPromise]);
+      const summaryRow = rows.rows[0] || {};
       return Object.freeze({
-        requests: rows.rows.map(mapRow),
-        totalCount: countResult ? Number(countResult.rows[0]?.count || 0) : null,
+        requests: rows.rows.filter((row) => row.request_id).map(mapRow),
+        totalCount: includeTotalCount ? Number(summaryRow.filtered_total_count || 0) : null,
+        tabCounts: includeTabCounts
+          ? Object.freeze({
+              pending: Number(summaryRow.tab_count_pending || 0),
+              rental: Number(summaryRow.tab_count_rental || 0),
+              closed: Number(summaryRow.tab_count_closed || 0),
+              returned: Number(summaryRow.tab_count_returned || 0),
+            })
+          : null,
       });
     },
 

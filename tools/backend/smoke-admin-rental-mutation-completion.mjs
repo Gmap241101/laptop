@@ -53,7 +53,7 @@ const repository = {
     return events.length;
   },
   async listEvents() { return this.events; },
-  async list() { return { requests: [this.request], totalCount: 1 }; },
+  async list() { return { requests: [this.request], totalCount: 1, tabCounts: { pending: 1, rental: 0, closed: 0, returned: 0 } }; },
   async getTabCounts() { return { pending: 1, rental: 0, closed: 0, returned: 0 }; },
   async getCounts() { return { pending: 1, rental: 0, closed: 0, returned: 0 }; },
   async hasOtherCurrentOverdue() { return false; },

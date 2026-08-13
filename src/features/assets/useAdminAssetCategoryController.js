@@ -304,7 +304,7 @@ export default function useAdminAssetCategoryController({
           assetCount: catalog?.assets?.length || 0, categoryCount: catalog?.categories?.length || 0,
           availabilityCount: catalog?.availability?.length || 0, firestoreFallbackReads: 0, error: '',
         });
-        triggerToast(payload?.adminAssetMutation?.firestoreMirror === 'retired' ? '자산 카테고리 변경사항이 PostgreSQL에 성공적으로 반영되었습니다.' : '자산 카테고리 변경사항이 PostgreSQL과 호환 저장소에 성공적으로 반영되었습니다.', 'success');
+        triggerToast(payload?.adminAssetMutation?.firestoreMirror === 'retired' ? '자산 카테고리 DB 저장 성공.' : '자산 카테고리 DB 저장 성공. 호환 저장소에도 반영되었습니다.', 'success');
         return true;
       } catch (error) {
         console.error('PostgreSQL asset category save error:', error);
@@ -322,7 +322,7 @@ export default function useAdminAssetCategoryController({
           triggerToast(`카테고리${error?.category ? ` [${error.category}]` : ''}를 사용하는 최신 자산이 있어 삭제할 수 없습니다.`, 'error');
           return false;
         }
-        triggerToast('자산 카테고리 저장에 실패했습니다. 기존 카테고리와 자산 정보는 유지됩니다.', 'error');
+        triggerToast(`자산 카테고리 저장에 실패했습니다. 기존 카테고리와 자산 정보는 유지됩니다. 오류 코드: ${error?.code || error?.name || 'asset_category_save_failed'}`, 'error');
         return false;
       }
     }
@@ -447,7 +447,7 @@ export default function useAdminAssetCategoryController({
 
       if (error?.message === 'active-rental-category-rename') {
         triggerToast(
-          `진행 중 예약이 있는 자산 [${error.assetNo}]이(가) 포함되어 카테고리명을 변경할 수 없습니다. 해당 신청을 먼저 완료해 주세요.`,
+          `진행 중 예약이 있는 자산 [${error.assetNo}]이(가) 포함되어 카테고리명을 변경할 수 없습니다. 해당 신청을 먼저 완료해 주세요. 오류 코드: ${error?.code || error?.message || 'active-rental-category-rename'}`,
           'error'
         );
         return false;
@@ -455,7 +455,7 @@ export default function useAdminAssetCategoryController({
 
       if (error?.message === 'asset-category-still-in-use') {
         triggerToast(
-          `카테고리 [${error.category}]를 사용하는 최신 자산이 있어 삭제할 수 없습니다.`,
+          `카테고리 [${error.category}]를 사용하는 최신 자산이 있어 삭제할 수 없습니다. 오류 코드: ${error?.code || error?.message || 'asset-category-still-in-use'}`,
           'error'
         );
         return false;
@@ -465,12 +465,12 @@ export default function useAdminAssetCategoryController({
         await getPublicAssetCatalogWriteErrorMessage(error);
 
       if (catalogErrorMessage) {
-        triggerToast(catalogErrorMessage, 'error');
+        triggerToast(`${catalogErrorMessage} 오류 코드: ${error?.code || error?.name || error?.message || 'public_asset_catalog_write_failed'}`, 'error');
         return false;
       }
 
       triggerToast(
-        '자산 카테고리 저장에 실패했습니다. 기존 카테고리와 자산 정보는 유지됩니다.',
+        `자산 카테고리 저장에 실패했습니다. 기존 카테고리와 자산 정보는 유지됩니다. 오류 코드: ${error?.code || error?.name || 'asset_category_save_failed'}`,
         'error'
       );
 

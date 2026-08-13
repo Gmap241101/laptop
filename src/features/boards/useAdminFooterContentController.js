@@ -188,7 +188,7 @@ export default function useAdminFooterContentController({
             }),
           ],
         });
-        triggerToast('푸터 공통 정보를 PostgreSQL에 저장했습니다.', 'success');
+        triggerToast('푸터 공통 정보 DB 저장 성공', 'success');
         return true;
     } catch (error) {
       console.error('Footer config save error:', error);
@@ -441,14 +441,14 @@ export default function useAdminFooterContentController({
             ? [{ documentKey: `footerPages/${pageId}`, addressId }]
             : [],
         });
-        triggerToast('푸터 페이지를 PostgreSQL에 저장했습니다.', 'success');
+        triggerToast('푸터 페이지 DB 저장 성공', 'success');
         resetFooterPageDialog();
         return;
     } catch (error) {
       console.error('Footer page save error:', error);
       triggerToast(
         error?.code === 'footer_page_address_conflict'
-          ? '이미 다른 푸터 페이지에서 사용 중인 주소 ID입니다.'
+          ? '이미 다른 푸터 페이지에서 사용 중인 주소 ID입니다. 오류 코드: footer_page_address_conflict'
           : `푸터 메뉴 페이지 저장에 실패했습니다. 오류 코드: ${
               error?.code || error?.message || 'unknown-error'
             }`,
@@ -479,12 +479,12 @@ export default function useAdminFooterContentController({
             }),
           ],
         });
-        triggerToast('푸터 페이지 상태를 PostgreSQL에서 변경했습니다.', 'success');
+        triggerToast('푸터 페이지 DB 상태 변경 성공', 'success');
         return;
     } catch (error) {
       console.error('Footer page enabled toggle error:', error);
       triggerToast(
-        '푸터 메뉴 페이지 사용 여부 변경에 실패했습니다.',
+        `푸터 메뉴 페이지 사용 여부 변경에 실패했습니다. 오류 코드: ${error?.code || error?.name || 'footer_page_toggle_failed'}`,
         'error'
       );
     } finally {
@@ -536,7 +536,7 @@ export default function useAdminFooterContentController({
         return;
     } catch (error) {
       console.error('Footer page move error:', error);
-      triggerToast('푸터 메뉴 순서 변경에 실패했습니다.', 'error');
+      triggerToast(`푸터 메뉴 순서 변경에 실패했습니다. 오류 코드: ${error?.code || error?.name || 'footer_page_order_failed'}`, 'error');
     }
   };
 
@@ -562,11 +562,11 @@ export default function useAdminFooterContentController({
             });
             if (selectedFooterPageId === page.id) setSelectedFooterPageId('');
             if (footerPageDialog?.pageId === page.id) resetFooterPageDialog();
-            triggerToast('푸터 페이지를 PostgreSQL에서 삭제했습니다.', 'success');
+            triggerToast('푸터 페이지 DB 삭제 성공', 'success');
             return;
         } catch (error) {
           console.error('Footer page delete error:', error);
-          triggerToast('푸터 메뉴 페이지 삭제에 실패했습니다.', 'error');
+          triggerToast(`푸터 메뉴 페이지 삭제에 실패했습니다. 오류 코드: ${error?.code || error?.name || 'footer_page_delete_failed'}`, 'error');
         } finally {
           setFooterPageDeletingId('');
         }

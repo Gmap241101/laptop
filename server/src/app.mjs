@@ -264,6 +264,8 @@ export const createRequestHandler = ({
   systemConfigService = {
     async get() { const error = new Error('System configuration service is not configured.'); error.code = 'system_config_not_configured'; throw error; },
     async put() { const error = new Error('System configuration service is not configured.'); error.code = 'system_config_not_configured'; throw error; },
+    async listAudit() { const error = new Error('System configuration service is not configured.'); error.code = 'system_config_not_configured'; throw error; },
+    async appendAudit() { const error = new Error('System configuration service is not configured.'); error.code = 'system_config_not_configured'; throw error; },
   },
   systemDataService = {
     async getOverview() { const error = new Error('System data service is not configured.'); error.code = 'system_data_not_configured'; throw error; },
@@ -415,7 +417,7 @@ export const createRequestHandler = ({
   ) {
     throw new TypeError('Clerk/PostgreSQL administrator lifecycle methods are required.');
   }
-  if (!systemConfigService || typeof systemConfigService.get !== 'function' || typeof systemConfigService.put !== 'function') {
+  if (!systemConfigService || typeof systemConfigService.get !== 'function' || typeof systemConfigService.put !== 'function' || typeof systemConfigService.listAudit !== 'function' || typeof systemConfigService.appendAudit !== 'function') {
     throw new TypeError('PostgreSQL system configuration service methods are required.');
   }
   if (!systemDataService || typeof systemDataService.getOverview !== 'function' || typeof systemDataService.checkIntegrity !== 'function' || typeof systemDataService.repairAssetReferences !== 'function' || typeof systemDataService.reconcileAssetCatalogMetadata !== 'function' || typeof systemDataService.exportSnapshot !== 'function') {
@@ -1262,7 +1264,7 @@ export const createRequestHandler = ({
         const result = await boardService.listNotice({
           search: home ? '' : url.searchParams.get('search') || '',
           page: home ? 1 : url.searchParams.get('page') || '1',
-          pageSize: home ? 6 : url.searchParams.get('pageSize') || '10',
+          pageSize: home ? 6 : url.searchParams.get('pageSize') || undefined,
           pinnedLimit: home ? 6 : 20,
         });
         writeJson(response, 200, { ...basePayload, board: result }, headers);
@@ -1299,7 +1301,7 @@ export const createRequestHandler = ({
         const result = await boardService.listFaq({
           search: url.searchParams.get('search') || '',
           page: url.searchParams.get('page') || '1',
-          pageSize: url.searchParams.get('pageSize') || '10',
+          pageSize: url.searchParams.get('pageSize') || undefined,
           categoryId: url.searchParams.get('categoryId') || '',
           searchWithinCategory: url.searchParams.get('searchWithinCategory') === '1',
           pinnedLimit: 20,
@@ -1568,6 +1570,41 @@ export const createRequestHandler = ({
         writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, systemConfiguration: result }, headers);
       } catch (error) {
         writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'system_config_write_failed' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/admin/system-settings-audit') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      try {
+        const result = await systemConfigService.listAudit({ limit: url.searchParams.get('limit') || 50 });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, systemSettingsAudit: result }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: true, error: error?.code || 'system_settings_audit_read_failed' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/admin/system-settings-audit') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      let body = {};
+      try {
+        body = await readJsonBody(request, { maxBytes: 256 * 1024 });
+      } catch (error) {
+        writeJson(response, error.status || 400, { ...basePayload, authenticated: true, authorized: true, error: error.code || 'invalid_json_body' }, headers);
+        return;
+      }
+      try {
+        const result = await systemConfigService.appendAudit({
+          input: body?.audit || body || {},
+          actorClerkUserId: authority.auth.userId,
+          admin: authority.adminAuth?.admin || null,
+        });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, systemSettingsAuditMutation: result }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: true, error: error?.code || 'system_settings_audit_write_failed' }, headers);
       }
       return;
     }
@@ -2042,7 +2079,7 @@ export const createRequestHandler = ({
           quickFilter: url.searchParams.get('quickFilter') || 'all',
           query: url.searchParams.get('query') || '',
           page: url.searchParams.get('page') || '1',
-          pageSize: url.searchParams.get('pageSize') || '10',
+          pageSize: url.searchParams.get('pageSize') || undefined,
           referenceDate: url.searchParams.get('referenceDate') || '',
           includeCounts: url.searchParams.get('includeCounts') !== 'false',
         });
@@ -2637,12 +2674,14 @@ export const createRequestHandler = ({
       const admin = await authenticateAdminAuthority(request, response, headers, requestId);
       if (!admin) return;
       let body;
-      try { body = await readJsonBody(request); } catch (error) { writeJson(response, error.status || 400, { ...basePayload, authenticated: true, error: error.code || 'invalid_json_body' }, headers); return; }
+      try { body = await readJsonBody(request, { maxBytes: 2 * 1024 * 1024 }); } catch (error) { writeJson(response, error.status || 400, { ...basePayload, authenticated: true, error: error.code || 'invalid_json_body' }, headers); return; }
       try {
         const result = await memberAuthorityService.syncMemberDirectoryAdmin({
           firebaseIdentity: admin.firebaseIdentity,
           entries: Array.isArray(body?.entries) ? body.entries : [],
           version: Number(body?.version || 0),
+          teams: Object.prototype.hasOwnProperty.call(body || {}, 'teams') && Array.isArray(body?.teams) ? body.teams : null,
+          settings: Object.prototype.hasOwnProperty.call(body || {}, 'settings') && body?.settings && typeof body.settings === 'object' && !Array.isArray(body.settings) ? body.settings : null,
         });
         writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, memberDirectorySync: result }, headers);
       } catch (error) {

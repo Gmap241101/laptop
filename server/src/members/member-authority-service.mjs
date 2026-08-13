@@ -578,10 +578,11 @@ export const createMemberAuthorityService = ({
       });
     },
 
-    async syncMemberDirectoryAdmin({ firebaseIdentity, entries = [], version = 0 }) {
+    async syncMemberDirectoryAdmin({ firebaseIdentity, entries = [], version = 0, teams = null, settings = null }) {
       const admin = await verifyAdmin(firebaseIdentity);
       const normalizedEntries = Array.isArray(entries) ? entries : [];
-      if (normalizedEntries.length === 0) {
+      const organizationConfigRequested = Array.isArray(teams) && settings && typeof settings === 'object' && !Array.isArray(settings);
+      if (normalizedEntries.length === 0 && !organizationConfigRequested) {
         const state = await repository.getDirectoryBootstrapState();
         if (!state?.completed) {
           throw serviceError('member_directory_postgresql_missing', 'PostgreSQL member directory has not been initialized.', 409);
@@ -597,6 +598,9 @@ export const createMemberAuthorityService = ({
       const state = await repository.replaceDirectoryEntries(normalizedEntries, {
         source: 'postgresql-admin-direct',
         version: Math.max(0, Number(version || 0)),
+        teams,
+        settings,
+        actorClerkUserId: admin.uid,
       });
       return Object.freeze({
         admin: { uid: admin.uid, role: trim(admin.fields?.adminRole || admin.role || 'admin') },

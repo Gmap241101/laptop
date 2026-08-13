@@ -31,6 +31,7 @@ import {
   RESTORE_MODE,
   RESTORE_SCOPE_META,
 } from '../utils/systemRestore.js';
+import { clerkStagingClient } from '../clerk/clerkStagingClient.js';
 import useAdminDataMaintenanceController, {
   FULL_RESET_PRESET,
   RESET_CONFIRM_TEXT,
@@ -204,6 +205,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
   const [siteSaving, setSiteSaving] = useState(false);
   const [auditLogs, setAuditLogs] = useState([]);
   const [auditReady, setAuditReady] = useState(false);
+  const [auditLoadErrorMessage, setAuditLoadErrorMessage] = useState('');
   const isOwner = getAdminRole(authenticatedAdminAccount) === 'owner';
   const editableSiteFields = getEditableSiteSettingFields(mode);
   const normalizedSavedSiteSettings = normalizeSiteSettings(siteSettings);
@@ -245,11 +247,42 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
   }, [mode, siteDirty]);
 
   useEffect(() => {
-    setAuditLogs([]);
-    setAuditReady(true);
-  }, [authenticatedAdminAccount?.id, mode]);
+    if (mode !== SETTINGS_MODE.INFO || activeTab !== SYSTEM_MANAGEMENT_TAB.AUDIT) return undefined;
 
-  const writeAuditLog = async () => Object.freeze({ skipped: true, source: 'postgresql-runtime' });
+    let cancelled = false;
+    setAuditReady(false);
+    setAuditLoadErrorMessage('');
+
+    void clerkStagingClient.getAdminSystemSettingsAudit(50)
+      .then((payload) => {
+        if (cancelled) return;
+        setAuditLogs(payload?.systemSettingsAudit?.logs || []);
+        setAuditLoadErrorMessage('');
+        setAuditReady(true);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error('System settings audit load error:', error);
+        setAuditLogs([]);
+        setAuditLoadErrorMessage(
+          `시스템 설정 변경 이력을 불러오지 못했습니다. 오류 코드: ${error?.code || error?.name || 'system_settings_audit_read_failed'}`
+        );
+        setAuditReady(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticatedAdminAccount?.id, activeTab, mode]);
+
+  const writeAuditLog = async (audit) => {
+    const payload = await clerkStagingClient.appendAdminSystemSettingsAudit(audit);
+    const entry = payload?.systemSettingsAuditMutation?.entry || null;
+    if (entry?.id) {
+      setAuditLogs((current) => [entry, ...current.filter((item) => item?.id !== entry.id)].slice(0, 50));
+    }
+    return entry;
+  };
 
   const {
     analyzeRestore,
@@ -394,17 +427,34 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
         domain: SITE_CONTENT_DOMAINS.SITE_SETTINGS,
         documents: [{ key: 'siteSettings/config', payload: nextSettings }],
       });
-      await writeAuditLog({
-        action: sectionMeta.action,
-        section: sectionMeta.section,
-        beforeValues,
-        afterValues,
-        summary: sectionMeta.summary,
-      });
-      triggerToast(sectionMeta.successMessage, 'success');
+      let auditWriteError = null;
+      try {
+        await writeAuditLog({
+          action: sectionMeta.action,
+          section: sectionMeta.section,
+          beforeValues,
+          afterValues,
+          summary: sectionMeta.summary,
+        });
+      } catch (error) {
+        auditWriteError = error;
+        console.error('System settings audit write error:', error);
+      }
+
+      if (auditWriteError) {
+        triggerToast(
+          `설정 DB 저장은 완료되었지만 변경 이력 기록에 실패했습니다. 오류 코드: ${auditWriteError?.code || auditWriteError?.name || 'system_settings_audit_write_failed'}`,
+          'error'
+        );
+      } else {
+        triggerToast(sectionMeta.successMessage, 'success');
+      }
     } catch (error) {
       console.error('Site settings save error:', error);
-      triggerToast('PostgreSQL 설정 저장에 실패했습니다.', 'error');
+      triggerToast(
+        `PostgreSQL 설정 저장에 실패했습니다. 오류 코드: ${error?.code || error?.name || 'site_settings_save_failed'}`,
+        'error'
+      );
     } finally {
       setSiteSaving(false);
     }
@@ -902,7 +952,9 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
 
   const renderAuditTab = () => (
     <SectionCard title="시스템 설정 변경 이력" description="최근 50건을 표시하며 변경 이력은 관리자 화면에서 수정하거나 삭제할 수 없습니다.">
-      {!auditReady ? <div className="py-12 text-center text-xs text-slate-400">변경 이력을 불러오는 중입니다.</div> : auditLogs.length === 0 ? <div className="py-12 text-center text-xs text-slate-400">기록된 시스템 변경 이력이 없습니다.</div> : (
+      {!auditReady ? <div className="py-12 text-center text-xs text-slate-400">변경 이력을 불러오는 중입니다.</div> : auditLoadErrorMessage ? (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs font-semibold leading-5 text-rose-700">{auditLoadErrorMessage}</div>
+      ) : auditLogs.length === 0 ? <div className="py-12 text-center text-xs text-slate-400">기록된 시스템 변경 이력이 없습니다.</div> : (
         <div className="space-y-2">
           {auditLogs.map((log) => (
             <div key={log.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">

@@ -5,13 +5,7 @@ import {
 } from 'react';
 
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
-import {
-  POLICY_CONTENT_DOMAINS,
-  getPolicyContentDocument,
-  readPolicyContentCutoverConfig,
-  replacePolicyContentDomainInPostgresql,
-  requestPolicyContentDomain,
-} from '../content/policyContentCutover.js';
+import { readPolicyContentCutoverConfig } from '../content/policyContentCutover.js';
 
 let memberDirectorySaveServicePromise = null;
 
@@ -65,34 +59,11 @@ export default function useAdminMemberDirectorySaveActions({
         throw error;
       }
 
-      const rentalDomain = await requestPolicyContentDomain({
-        domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
-        config: policyConfig,
-        useCache: false,
-      });
-      const publicConfigDocument = getPolicyContentDocument(
-        rentalDomain,
-        'rentalSystem/publicConfig'
-      );
-      const publicConfig = publicConfigDocument?.payload || {};
-
       await clerkStagingClient.syncAdminMemberDirectory({
         entries: directoryEntries,
         version: nextSettings.memberDirectoryVersion,
-      });
-
-      await replacePolicyContentDomainInPostgresql({
-        domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
-        config: policyConfig,
-        documents: [{
-          key: 'rentalSystem/publicConfig',
-          payload: {
-            ...publicConfig,
-            teams: nextTeams,
-            settings: nextSettings,
-            updatedAt: new Date(),
-          },
-        }],
+        teams: nextTeams,
+        settings: nextSettings,
       });
 
       setData((previousData) => ({
@@ -104,7 +75,7 @@ export default function useAdminMemberDirectorySaveActions({
       replaceTempPeopleDraft({ nextTeams, nextBorrowers });
 
       triggerToastRef.current(
-        '부서·사용자 명부가 PostgreSQL에 저장되었습니다. 명부 버전이 변경되어 기존 회원은 다음 로그인 시 순차적으로 재검증됩니다.',
+        '부서·사용자 명부 DB 저장 성공. 명부 버전이 변경되어 기존 회원은 다음 로그인 시 순차적으로 재검증됩니다.',
         'success'
       );
       return true;
@@ -115,7 +86,7 @@ export default function useAdminMemberDirectorySaveActions({
       }
       console.error('People data save error:', error);
       triggerToastRef.current(
-        '부서·사용자 PostgreSQL 저장에 실패했습니다. 기존 데이터는 유지됩니다.',
+        `부서·사용자 PostgreSQL 저장에 실패했습니다. 기존 데이터는 유지됩니다. 오류 코드: ${error?.code || error?.name || 'member_directory_save_failed'}`,
         'error'
       );
       return false;

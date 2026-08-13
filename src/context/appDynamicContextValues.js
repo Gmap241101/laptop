@@ -13,12 +13,12 @@ export const createAppDynamicContextValues = (sourceValues = {}) => {
   return {
     ...dynamicValues,
     adminRequestsPrerequisitesReady:
-      sourceValues.firebaseAuthReady &&
+      Boolean(sourceValues.isAdminAuthenticated) &&
       sourceValues.currentAuthRoleReady &&
-      !sourceValues.currentAuthRoleErrorMessage &&
-      Boolean(sourceValues.firebaseAuthUser?.uid),
+      !sourceValues.currentAuthRoleErrorMessage,
     memberAccountsPrerequisitesReady:
-      sourceValues.firebaseAuthReady && sourceValues.currentAuthRoleReady,
+      Boolean(sourceValues.isAdminAuthenticated) &&
+      sourceValues.currentAuthRoleReady,
     memberDirectoryBorrowers: sourceValues.data.borrowers,
     memberDirectorySettings: sourceValues.data.settings,
     memberDirectoryTeams: sourceValues.data.teams,

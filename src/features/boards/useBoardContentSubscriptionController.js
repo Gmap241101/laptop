@@ -324,7 +324,11 @@ export default function useBoardContentSubscriptionController({
     const postsPerPage = shouldLoadUserHomeNotice ? 6 : getSafeNoticePostsPerPage(noticeBoardConfig.postsPerPage);
     const activePage = shouldLoadUserHomeNotice ? 1 : shouldLoadAdminNotice ? adminNoticePage : noticePage;
     const requestPage = searchMode ? 1 : activePage;
-    const requestPageSize = searchMode ? Math.min(500, activePage * postsPerPage) : postsPerPage;
+    const requestPageSize = searchMode
+      ? Math.min(500, activePage * postsPerPage)
+      : shouldLoadUserHomeNotice
+        ? 6
+        : undefined;
     let cancelled = false;
     setNoticePostsReady(false);
     setNoticePostsLoadErrorMessage('');
@@ -334,6 +338,7 @@ export default function useBoardContentSubscriptionController({
       page: requestPage,
       pageSize: requestPageSize,
       home: shouldLoadUserHomeNotice,
+      useCache: true,
     }).then((board) => {
       if (cancelled) return;
       const safePostsPerPage = getSafeNoticePostsPerPage(board?.config?.postsPerPage);
@@ -388,7 +393,6 @@ export default function useBoardContentSubscriptionController({
     debouncedAdminNoticeQuery,
     noticePage,
     adminNoticePage,
-    noticeBoardConfig.postsPerPage,
     legacyFallbackAllowed,
   ]);
 
@@ -403,7 +407,9 @@ export default function useBoardContentSubscriptionController({
     const postsPerPage = getSafeFaqPostsPerPage(faqBoardConfig.postsPerPage);
     const activePage = shouldLoadAdminFaq ? adminFaqPage : faqPage;
     const requestPage = searchMode ? 1 : activePage;
-    const requestPageSize = searchMode ? Math.min(500, activePage * postsPerPage) : postsPerPage;
+    const requestPageSize = searchMode
+      ? Math.min(500, activePage * postsPerPage)
+      : undefined;
     let cancelled = false;
     setFaqPostsReady(false);
     setFaqPostsLoadErrorMessage('');
@@ -414,6 +420,7 @@ export default function useBoardContentSubscriptionController({
       pageSize: requestPageSize,
       categoryId: shouldLoadUserFaq ? activeFaqCategoryId : 'all',
       searchWithinCategory: shouldLoadUserFaq ? faqSearchWithinCategory : false,
+      useCache: true,
     }).then((board) => {
       if (cancelled) return;
       const safePostsPerPage = getSafeFaqPostsPerPage(board?.config?.postsPerPage);
@@ -473,7 +480,6 @@ export default function useBoardContentSubscriptionController({
     debouncedFaqQuery,
     faqPage,
     adminFaqPage,
-    faqBoardConfig.postsPerPage,
     legacyFallbackAllowed,
   ]);
 

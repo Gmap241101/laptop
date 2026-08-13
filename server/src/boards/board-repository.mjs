@@ -212,66 +212,76 @@ export const createBoardRepository = (pool) => Object.freeze({
     });
   },
 
-  async listNotice({ search = '', page = 1, pageSize = 10, pinnedLimit = 20 } = {}) {
+  async listNotice({ search = '', page = 1, pageSize = null, pinnedLimit = 20 } = {}) {
     const safePage = normalizePage(page);
     const safePinnedLimit = Math.max(1, Math.min(20, Math.trunc(Number(pinnedLimit) || 20)));
     const normalizedSearch = trim(search);
-    const searchPart = searchClause(normalizedSearch, 2);
-    const values = ['notice', ...searchPart.values];
-    const requestedPageSize = Math.trunc(Number(pageSize));
     const maximumPageSize = normalizedSearch ? 500 : 50;
+    const requestedPageSize = Math.trunc(Number(pageSize));
     const safeRequestedPageSize = Number.isFinite(requestedPageSize) && requestedPageSize >= 5 && requestedPageSize <= maximumPageSize
       ? requestedPageSize
       : null;
-
-    const metadataResult = await pool.query(
-      `WITH sync_meta AS (
-         SELECT synced_at
-           FROM app_board_syncs
-          WHERE scope='all'
-       ), board_config AS (
-         SELECT board_type, posts_per_page, source_mode, synced_at, updated_at
-           FROM app_board_configs
-          WHERE board_type=$1
-       )
-       SELECT
-         (SELECT synced_at FROM sync_meta) AS board_synced_at,
-         (SELECT row_to_json(board_config) FROM board_config) AS config_row`,
-      ['notice'],
-    );
-    const metadata = metadataResult.rows[0] || {};
-    if (!metadata.board_synced_at) {
-      throw repositoryError('board_not_bootstrapped', 'Board domain has not been bootstrapped to PostgreSQL.');
-    }
-    const config = mapConfig(metadata.config_row, 'notice', 10);
-    const safePageSize = safeRequestedPageSize || normalizePageSize(pageSize, config.postsPerPage, maximumPageSize);
-    const offset = (safePage - 1) * safePageSize;
+    const searchPattern = normalizedSearch ? `%${lower(normalizedSearch)}%` : null;
 
     const result = await pool.query(
-      `WITH filtered AS (
+      `WITH board_meta AS (
+         SELECT
+           sync.synced_at AS board_synced_at,
+           config.posts_per_page,
+           config.source_mode,
+           config.synced_at AS config_synced_at,
+           config.updated_at AS config_updated_at,
+           CASE
+             WHEN $1::int IS NOT NULL AND $1::int BETWEEN 5 AND $5::int THEN $1::int
+             ELSE COALESCE(NULLIF(config.posts_per_page, 0), 10)
+           END AS effective_page_size
+         FROM app_board_syncs sync
+         LEFT JOIN app_board_configs config ON config.board_type='notice'
+         WHERE sync.scope='all'
+       ), filtered AS (
          SELECT *
            FROM app_board_posts
-          WHERE board_type=$1${searchPart.sql}
+          WHERE board_type='notice'
+            AND ($3::text IS NULL OR lower(title) LIKE $3 OR lower(content_text) LIKE $3)
        ), pinned_posts AS (
          SELECT *
            FROM filtered
           WHERE is_pinned=TRUE
           ORDER BY created_at DESC, post_id
-          LIMIT ${safePinnedLimit}
+          LIMIT $4::int
        ), regular_posts AS (
          SELECT *
            FROM filtered
           WHERE is_pinned=FALSE
           ORDER BY created_at DESC, post_id
-          LIMIT ${safePageSize} OFFSET ${offset}
+          LIMIT (SELECT effective_page_size FROM board_meta)
+          OFFSET (($2::int - 1) * (SELECT effective_page_size FROM board_meta))
        )
        SELECT
+         meta.board_synced_at,
+         meta.posts_per_page AS config_posts_per_page,
+         meta.source_mode AS config_source_mode,
+         meta.config_synced_at,
+         meta.config_updated_at,
+         meta.effective_page_size,
          COALESCE((SELECT jsonb_agg(to_jsonb(pinned_posts) ORDER BY created_at DESC, post_id) FROM pinned_posts), '[]'::jsonb) AS pinned_posts,
          COALESCE((SELECT jsonb_agg(to_jsonb(regular_posts) ORDER BY created_at DESC, post_id) FROM regular_posts), '[]'::jsonb) AS regular_posts,
-         (SELECT COUNT(*)::int FROM filtered WHERE is_pinned=FALSE) AS total_regular_count`,
-      values,
+         (SELECT COUNT(*)::int FROM filtered WHERE is_pinned=FALSE) AS total_regular_count
+       FROM board_meta meta`,
+      [safeRequestedPageSize, safePage, searchPattern, safePinnedLimit, maximumPageSize],
     );
-    const row = result.rows[0] || {};
+    const row = result.rows[0];
+    if (!row?.board_synced_at) {
+      throw repositoryError('board_not_bootstrapped', 'Board domain has not been bootstrapped to PostgreSQL.');
+    }
+    const config = mapConfig({
+      posts_per_page: row.config_posts_per_page,
+      source_mode: row.config_source_mode,
+      synced_at: row.config_synced_at,
+      updated_at: row.config_updated_at,
+    }, 'notice', 10);
+    const safePageSize = normalizePageSize(row.effective_page_size, config.postsPerPage, maximumPageSize);
+    const offset = (safePage - 1) * safePageSize;
     const pinnedRows = Array.isArray(row.pinned_posts) ? row.pinned_posts : [];
     const regularRows = Array.isArray(row.regular_posts) ? row.regular_posts : [];
     const totalCount = Number(row.total_regular_count || 0);
@@ -280,7 +290,7 @@ export const createBoardRepository = (pool) => Object.freeze({
       pinnedPosts: pinnedRows.map(mapPost), regularPosts: regularRows.map(mapPost),
       totalRegularCount: totalCount, page: safePage, pageSize: safePageSize,
       hasNextPage: offset + regularRows.length < totalCount,
-      syncedAt: metadata.board_synced_at || null,
+      syncedAt: row.board_synced_at || null,
     });
   },
 
@@ -302,85 +312,103 @@ export const createBoardRepository = (pool) => Object.freeze({
     return Number(result.rows[0].view_count || 0);
   },
 
-  async listFaq({ search = '', page = 1, pageSize = 10, categoryId = '', searchWithinCategory = false, pinnedLimit = 20 } = {}) {
+  async listFaq({ search = '', page = 1, pageSize = null, categoryId = '', searchWithinCategory = false, pinnedLimit = 20 } = {}) {
     const safePage = normalizePage(page);
     const safePinnedLimit = Math.max(1, Math.min(20, Math.trunc(Number(pinnedLimit) || 20)));
     const normalizedCategory = trim(categoryId);
     const normalizedSearch = trim(search);
     const maximumPageSize = normalizedSearch ? 500 : 50;
+    const requestedPageSize = Math.trunc(Number(pageSize));
+    const safeRequestedPageSize = Number.isFinite(requestedPageSize) && requestedPageSize >= 5 && requestedPageSize <= maximumPageSize
+      ? requestedPageSize
+      : null;
+    const searchPattern = normalizedSearch ? `%${lower(normalizedSearch)}%` : null;
 
-    const metadataResult = await pool.query(
-      `WITH sync_meta AS (
-         SELECT synced_at
-           FROM app_board_syncs
-          WHERE scope='all'
-       ), board_config AS (
-         SELECT board_type, posts_per_page, source_mode, synced_at, updated_at
-           FROM app_board_configs
-          WHERE board_type='faq'
-       )
-       SELECT
-         (SELECT synced_at FROM sync_meta) AS board_synced_at,
-         (SELECT row_to_json(board_config) FROM board_config) AS config_row,
-         COALESCE((
-           SELECT jsonb_agg(to_jsonb(category_rows) ORDER BY sort_order, lower(name), category_id)
-             FROM (
-               SELECT * FROM app_faq_categories ORDER BY sort_order, lower(name), category_id
-             ) AS category_rows
-         ), '[]'::jsonb) AS categories`,
-    );
-    const metadata = metadataResult.rows[0] || {};
-    if (!metadata.board_synced_at) {
-      throw repositoryError('board_not_bootstrapped', 'Board domain has not been bootstrapped to PostgreSQL.');
-    }
-    const config = mapConfig(metadata.config_row, 'faq', 10);
-    const safePageSize = normalizePageSize(pageSize, config.postsPerPage, maximumPageSize);
-    const shouldFilterCategory = Boolean(normalizedCategory && normalizedCategory !== 'all' && (!normalizedSearch || searchWithinCategory));
-    const values = ['faq'];
-    let whereSql = `board_type=$1`;
-    if (shouldFilterCategory) {
-      values.push(normalizedCategory);
-      whereSql += ` AND category_id=$${values.length}`;
-    }
-    if (normalizedSearch) {
-      values.push(`%${lower(normalizedSearch)}%`);
-      whereSql += ` AND (lower(title) LIKE $${values.length} OR lower(content_text) LIKE $${values.length})`;
-    }
-    const offset = (safePage - 1) * safePageSize;
     const result = await pool.query(
-      `WITH filtered AS (
-         SELECT * FROM app_board_posts WHERE ${whereSql}
+      `WITH board_meta AS (
+         SELECT
+           sync.synced_at AS board_synced_at,
+           config.posts_per_page,
+           config.source_mode,
+           config.synced_at AS config_synced_at,
+           config.updated_at AS config_updated_at,
+           CASE
+             WHEN $1::int IS NOT NULL AND $1::int BETWEEN 5 AND $7::int THEN $1::int
+             ELSE COALESCE(NULLIF(config.posts_per_page, 0), 10)
+           END AS effective_page_size
+         FROM app_board_syncs sync
+         LEFT JOIN app_board_configs config ON config.board_type='faq'
+         WHERE sync.scope='all'
+       ), filtered AS (
+         SELECT *
+           FROM app_board_posts
+          WHERE board_type='faq'
+            AND (
+              $3::text='' OR $3::text='all'
+              OR ($4::text IS NOT NULL AND NOT $5::boolean)
+              OR category_id=$3
+            )
+            AND ($4::text IS NULL OR lower(title) LIKE $4 OR lower(content_text) LIKE $4)
        ), pinned_posts AS (
          SELECT *
            FROM filtered
           WHERE is_pinned=TRUE
           ORDER BY created_at DESC, post_id
-          LIMIT ${safePinnedLimit}
+          LIMIT $6::int
        ), regular_posts AS (
          SELECT *
            FROM filtered
           WHERE is_pinned=FALSE
           ORDER BY created_at DESC, post_id
-          LIMIT ${safePageSize} OFFSET ${offset}
+          LIMIT (SELECT effective_page_size FROM board_meta)
+          OFFSET (($2::int - 1) * (SELECT effective_page_size FROM board_meta))
+       ), categories AS (
+         SELECT COALESCE(
+           jsonb_agg(to_jsonb(category_rows) ORDER BY sort_order, lower(name), category_id),
+           '[]'::jsonb
+         ) AS rows
+         FROM (
+           SELECT * FROM app_faq_categories ORDER BY sort_order, lower(name), category_id
+         ) AS category_rows
        )
        SELECT
+         meta.board_synced_at,
+         meta.posts_per_page AS config_posts_per_page,
+         meta.source_mode AS config_source_mode,
+         meta.config_synced_at,
+         meta.config_updated_at,
+         meta.effective_page_size,
+         categories.rows AS categories,
          COALESCE((SELECT jsonb_agg(to_jsonb(pinned_posts) ORDER BY created_at DESC, post_id) FROM pinned_posts), '[]'::jsonb) AS pinned_posts,
          COALESCE((SELECT jsonb_agg(to_jsonb(regular_posts) ORDER BY created_at DESC, post_id) FROM regular_posts), '[]'::jsonb) AS regular_posts,
-         (SELECT COUNT(*)::int FROM filtered WHERE is_pinned=FALSE) AS total_regular_count`,
-      values,
+         (SELECT COUNT(*)::int FROM filtered WHERE is_pinned=FALSE) AS total_regular_count
+       FROM board_meta meta
+       CROSS JOIN categories`,
+      [safeRequestedPageSize, safePage, normalizedCategory, searchPattern, Boolean(searchWithinCategory), safePinnedLimit, maximumPageSize],
     );
-    const row = result.rows[0] || {};
+    const row = result.rows[0];
+    if (!row?.board_synced_at) {
+      throw repositoryError('board_not_bootstrapped', 'Board domain has not been bootstrapped to PostgreSQL.');
+    }
+    const config = mapConfig({
+      posts_per_page: row.config_posts_per_page,
+      source_mode: row.config_source_mode,
+      synced_at: row.config_synced_at,
+      updated_at: row.config_updated_at,
+    }, 'faq', 10);
+    const safePageSize = normalizePageSize(row.effective_page_size, config.postsPerPage, maximumPageSize);
+    const offset = (safePage - 1) * safePageSize;
     const pinnedRows = Array.isArray(row.pinned_posts) ? row.pinned_posts : [];
     const regularRows = Array.isArray(row.regular_posts) ? row.regular_posts : [];
+    const categoryRows = Array.isArray(row.categories) ? row.categories : [];
     const totalCount = Number(row.total_regular_count || 0);
-    const categoryRows = Array.isArray(metadata.categories) ? metadata.categories : [];
     return Object.freeze({
       source: 'postgresql', authoritative: true, boardType: 'faq', config,
       categories: categoryRows.map(mapCategory),
       pinnedPosts: pinnedRows.map(mapPost), regularPosts: regularRows.map(mapPost),
       totalRegularCount: totalCount, page: safePage, pageSize: safePageSize,
       hasNextPage: offset + regularRows.length < totalCount,
-      syncedAt: metadata.board_synced_at || null,
+      syncedAt: row.board_synced_at || null,
     });
   },
 

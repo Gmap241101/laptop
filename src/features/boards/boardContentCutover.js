@@ -5,6 +5,8 @@ const READ_SESSION_KEY = 'mk_board_content_postgres_read';
 const WRITE_SESSION_KEY = 'mk_board_content_postgres_write';
 const OBSERVATION_EVENT = 'rental:board-content-cutover';
 const REFRESH_EVENT = 'rental:board-content-refresh';
+const BOARD_READ_CACHE_TTL_MS = 5000;
+const boardReadCache = new Map();
 const trim = (value) => (typeof value === 'string' ? value.trim() : String(value ?? '').trim());
 const bool = (value) => trim(value).toLowerCase() === 'true';
 
@@ -69,6 +71,10 @@ export const subscribeBoardContentObservation = (listener) => {
 };
 
 export const publishBoardContentRefresh = (detail = {}) => {
+  const boardType = trim(detail?.boardType || 'all');
+  for (const key of boardReadCache.keys()) {
+    if (boardType === 'all' || key.startsWith(`${boardType}|`)) boardReadCache.delete(key);
+  }
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(REFRESH_EVENT, { detail: { ...detail, refreshedAt: Date.now() } }));
 };
 export const subscribeBoardContentRefresh = (listener) => {
@@ -84,6 +90,28 @@ const requireApi = (config) => {
 
 const readJson = async (response) => {
   try { return await response.json(); } catch { return null; }
+};
+
+const withBoardReadCache = async ({ key, useCache = true, loader }) => {
+  if (!useCache) return loader();
+  const now = Date.now();
+  const cached = boardReadCache.get(key);
+  if (cached?.promise && (cached.pending || cached.expiresAt > now)) return cached.promise;
+
+  const entry = { pending: true, expiresAt: 0, promise: null };
+  entry.promise = Promise.resolve()
+    .then(loader)
+    .then((value) => {
+      entry.pending = false;
+      entry.expiresAt = Date.now() + BOARD_READ_CACHE_TTL_MS;
+      return value;
+    })
+    .catch((error) => {
+      boardReadCache.delete(key);
+      throw error;
+    });
+  boardReadCache.set(key, entry);
+  return entry.promise;
 };
 
 const publicRequest = async (path, { method = 'GET', fetchImpl = fetch } = {}) => {
@@ -104,19 +132,26 @@ const publicRequest = async (path, { method = 'GET', fetchImpl = fetch } = {}) =
   return payload;
 };
 
-export const requestNoticeBoard = async ({ search = '', page = 1, pageSize = 10, home = false, fetchImpl = fetch } = {}) => {
+export const requestNoticeBoard = async ({ search = '', page = 1, pageSize = null, home = false, useCache = true, fetchImpl = fetch } = {}) => {
   const params = new URLSearchParams();
   if (home) params.set('home', '1');
   else {
     if (trim(search)) params.set('search', trim(search));
     params.set('page', String(page));
-    params.set('pageSize', String(pageSize));
+    if (Number(pageSize) > 0) params.set('pageSize', String(pageSize));
   }
-  const payload = await publicRequest(`/api/boards/notice?${params.toString()}`, { fetchImpl });
-  const board = payload?.board;
-  if (board?.source !== 'postgresql') throw Object.assign(new Error('Invalid notice board payload.'), { code: 'notice_board_payload_invalid' });
-  publishBoardContentObservation({ readRequested: true, readSource: 'postgresql', boardType: 'notice', operation: home ? 'home-read' : 'list-read', totalCount: board.totalRegularCount, itemCount: (board.pinnedPosts?.length || 0) + (board.regularPosts?.length || 0), syncAt: board.syncedAt || null, error: null });
-  return board;
+  const path = `/api/boards/notice?${params.toString()}`;
+  return withBoardReadCache({
+    key: `notice|${path}`,
+    useCache: useCache && fetchImpl === fetch,
+    loader: async () => {
+      const payload = await publicRequest(path, { fetchImpl });
+      const board = payload?.board;
+      if (board?.source !== 'postgresql') throw Object.assign(new Error('Invalid notice board payload.'), { code: 'notice_board_payload_invalid' });
+      publishBoardContentObservation({ readRequested: true, readSource: 'postgresql', boardType: 'notice', operation: home ? 'home-read' : 'list-read', totalCount: board.totalRegularCount, itemCount: (board.pinnedPosts?.length || 0) + (board.regularPosts?.length || 0), syncAt: board.syncedAt || null, error: null });
+      return board;
+    },
+  });
 };
 
 export const requestNoticePost = async (postId, { fetchImpl = fetch } = {}) => {
@@ -132,18 +167,25 @@ export const incrementNoticePostView = async (postId, { fetchImpl = fetch } = {}
   return Number(payload?.noticeView?.viewCount || 0);
 };
 
-export const requestFaqBoard = async ({ search = '', page = 1, pageSize = 10, categoryId = 'all', searchWithinCategory = false, fetchImpl = fetch } = {}) => {
+export const requestFaqBoard = async ({ search = '', page = 1, pageSize = null, categoryId = 'all', searchWithinCategory = false, useCache = true, fetchImpl = fetch } = {}) => {
   const params = new URLSearchParams();
   if (trim(search)) params.set('search', trim(search));
   params.set('page', String(page));
-  params.set('pageSize', String(pageSize));
+  if (Number(pageSize) > 0) params.set('pageSize', String(pageSize));
   if (trim(categoryId)) params.set('categoryId', trim(categoryId));
   if (searchWithinCategory) params.set('searchWithinCategory', '1');
-  const payload = await publicRequest(`/api/boards/faq?${params.toString()}`, { fetchImpl });
-  const board = payload?.board;
-  if (board?.source !== 'postgresql') throw Object.assign(new Error('Invalid FAQ board payload.'), { code: 'faq_board_payload_invalid' });
-  publishBoardContentObservation({ readRequested: true, readSource: 'postgresql', boardType: 'faq', operation: 'list-read', totalCount: board.totalRegularCount, itemCount: (board.pinnedPosts?.length || 0) + (board.regularPosts?.length || 0), categoryCount: board.categories?.length || 0, syncAt: board.syncedAt || null, error: null });
-  return board;
+  const path = `/api/boards/faq?${params.toString()}`;
+  return withBoardReadCache({
+    key: `faq|${path}`,
+    useCache: useCache && fetchImpl === fetch,
+    loader: async () => {
+      const payload = await publicRequest(path, { fetchImpl });
+      const board = payload?.board;
+      if (board?.source !== 'postgresql') throw Object.assign(new Error('Invalid FAQ board payload.'), { code: 'faq_board_payload_invalid' });
+      publishBoardContentObservation({ readRequested: true, readSource: 'postgresql', boardType: 'faq', operation: 'list-read', totalCount: board.totalRegularCount, itemCount: (board.pinnedPosts?.length || 0) + (board.regularPosts?.length || 0), categoryCount: board.categories?.length || 0, syncAt: board.syncedAt || null, error: null });
+      return board;
+    },
+  });
 };
 
 const getAdminTokens = async () => {

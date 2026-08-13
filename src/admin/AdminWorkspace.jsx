@@ -2,18 +2,24 @@ import { lazy, memo, Suspense } from 'react';
 import { Activity, CalendarDays, ChevronDown, Database, Info, Menu, Paintbrush } from 'lucide-react';
 import DevRenderProfiler from '../performance/DevRenderProfiler.jsx';
 import { requestSiteContentDomain, SITE_CONTENT_DOMAINS } from '../features/content/siteContentCutover.js';
+import { requestFaqBoard, requestNoticeBoard } from '../features/boards/boardContentCutover.js';
+import { clerkStagingClient } from '../clerk/clerkStagingClient.js';
+import { today } from '../utils/appUtils.js';
 import AdminDashboardPanelView from './AdminDashboardPanel.jsx';
 
 const AdminDashboardPanel = memo(AdminDashboardPanelView);
-const AdminRequestsPanel = memo(lazy(() => import('./AdminRequestsPanel.jsx')));
+const loadAdminRequestsPanel = () => import('./AdminRequestsPanel.jsx');
+const AdminRequestsPanel = memo(lazy(loadAdminRequestsPanel));
 const AdminAssetsPanel = memo(lazy(() => import('./AdminAssetsPanel.jsx')));
 const AdminAssetCategoriesPanel = memo(lazy(() => import('./AdminAssetCategoriesPanel.jsx')));
 const AdminOrganizationPanel = memo(lazy(() => import('./AdminOrganizationPanel.jsx')));
 const AdminSignupPolicyPanel = memo(lazy(() => import('./AdminSignupPolicyPanel.jsx')));
-const AdminNoticePanel = memo(lazy(() => import('./AdminNoticePanel.jsx')));
+const loadAdminNoticePanel = () => import('./AdminNoticePanel.jsx');
+const AdminNoticePanel = memo(lazy(loadAdminNoticePanel));
 const loadAdminPopupPanel = () => import('./AdminPopupPanel.jsx');
 const AdminPopupPanel = memo(lazy(loadAdminPopupPanel));
-const AdminFaqPanel = memo(lazy(() => import('./AdminFaqPanel.jsx')));
+const loadAdminFaqPanel = () => import('./AdminFaqPanel.jsx');
+const AdminFaqPanel = memo(lazy(loadAdminFaqPanel));
 const loadAdminFooterPanel = () => import('./AdminFooterPanel.jsx');
 const AdminFooterPanel = memo(lazy(loadAdminFooterPanel));
 const AdminMemberAccountsPanel = memo(lazy(() => import('./AdminMemberAccountsPanel.jsx')));
@@ -25,18 +31,46 @@ const AdminHolidayManagementPanel = memo(lazy(() => import('./AdminHolidayManage
 const loadAdminHomeManagementPanel = () => import('./AdminHomeManagementPanel.jsx');
 const AdminHomeManagementPanel = memo(lazy(loadAdminHomeManagementPanel));
 
-const ADMIN_SITE_PANEL_INTENT_LOADERS = Object.freeze({
-  homeManagement: Object.freeze({ loadModule: loadAdminHomeManagementPanel, domain: SITE_CONTENT_DOMAINS.HOME }),
-  popupPosts: Object.freeze({ loadModule: loadAdminPopupPanel, domain: SITE_CONTENT_DOMAINS.POPUP }),
-  footerManagement: Object.freeze({ loadModule: loadAdminFooterPanel, domain: SITE_CONTENT_DOMAINS.FOOTER }),
+const ADMIN_PANEL_INTENT_LOADERS = Object.freeze({
+  requests: Object.freeze({
+    loadModule: loadAdminRequestsPanel,
+    preloadData: () => clerkStagingClient.getAdminRentalRequests('', {
+      tab: 'pending',
+      quickFilter: 'all',
+      query: '',
+      page: 1,
+      pageSize: 10,
+      referenceDate: today(),
+    }),
+  }),
+  noticePosts: Object.freeze({
+    loadModule: loadAdminNoticePanel,
+    preloadData: () => requestNoticeBoard({ page: 1, useCache: true }),
+  }),
+  faqPosts: Object.freeze({
+    loadModule: loadAdminFaqPanel,
+    preloadData: () => requestFaqBoard({ page: 1, categoryId: 'all', useCache: true }),
+  }),
+  homeManagement: Object.freeze({
+    loadModule: loadAdminHomeManagementPanel,
+    preloadData: () => requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.HOME, useCache: true }),
+  }),
+  popupPosts: Object.freeze({
+    loadModule: loadAdminPopupPanel,
+    preloadData: () => requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.POPUP, useCache: true }),
+  }),
+  footerManagement: Object.freeze({
+    loadModule: loadAdminFooterPanel,
+    preloadData: () => requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.FOOTER, useCache: true }),
+  }),
 });
 
-const preloadAdminSitePanelOnIntent = (adminTab) => {
-  const loader = ADMIN_SITE_PANEL_INTENT_LOADERS[adminTab];
+const preloadAdminPanelOnIntent = (adminTab) => {
+  const loader = ADMIN_PANEL_INTENT_LOADERS[adminTab];
   if (!loader) return;
 
   void loader.loadModule();
-  void requestSiteContentDomain({ domain: loader.domain, useCache: true }).catch(() => {});
+  void loader.preloadData?.().catch(() => {});
 };
 
 const ADMIN_MENU_GROUP_STATE_KEY = 'mk_laptop_admin_menu_groups';
@@ -263,6 +297,9 @@ function AdminWorkspace({ ctx, panelCtx }) {
       <Button
         key={key}
         variant={isActive ? 'primary' : 'ghost'}
+        onPointerEnter={() => preloadAdminPanelOnIntent(key)}
+        onPointerDown={() => preloadAdminPanelOnIntent(key)}
+        onFocus={() => preloadAdminPanelOnIntent(key)}
         onClick={() => {
           if (isActive) {
             scrollAdminPageToTop();
@@ -270,7 +307,7 @@ function AdminWorkspace({ ctx, panelCtx }) {
           }
 
           handleAdminTabChange(key, {
-            onCommitted: () => preloadAdminSitePanelOnIntent(key),
+            onCommitted: () => preloadAdminPanelOnIntent(key),
           });
         }}
         className={`relative h-9 w-full justify-start !py-0 text-left ${

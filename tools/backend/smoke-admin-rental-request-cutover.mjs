@@ -30,7 +30,7 @@ const firestoreClient = {
 const repository = {
   imported: [],
   async upsertImportedRequests(requests) { this.imported.push(...requests); return requests.length; },
-  async list() { return { requests: [{ id: 'REQ-P17-1' }], totalCount: 1 }; },
+  async list() { return { requests: [{ id: 'REQ-P17-1' }], totalCount: 1, tabCounts: { pending: 1, rental: 0, closed: 0, returned: 0 } }; },
   async getTabCounts() { return { pending: 1, rental: 0, closed: 0, returned: 0 }; },
   async getCounts() { return { pending: 1, rental: 0, closed: 0, returned: 0 }; },
   async hasOtherCurrentOverdue() { return false; },

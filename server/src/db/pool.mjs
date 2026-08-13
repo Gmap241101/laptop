@@ -12,6 +12,7 @@ const createPool = () => {
     connectionString: config.databaseUrl,
     ssl: useSsl ? { rejectUnauthorized: false } : false,
     max: config.dbPoolMax,
+    min: 1,
     connectionTimeoutMillis: config.dbConnectionTimeoutMs,
     idleTimeoutMillis: config.dbIdleTimeoutMs,
     application_name: `${config.serviceName}-${config.appEnv}`,

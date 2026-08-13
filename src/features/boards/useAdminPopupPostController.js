@@ -241,7 +241,7 @@ export default function useAdminPopupPostController({
             }
           : { ...post, sortOrder: index + 1, updatedAt });
         await replacePopupDomain(nextPosts);
-        triggerToast('팝업을 PostgreSQL에 저장했습니다.', 'success');
+        triggerToast('팝업 DB 저장 성공', 'success');
         setPopupPostDialog(null);
         setPopupPostForm(createDefaultPopupPostForm());
         return;
@@ -269,7 +269,7 @@ export default function useAdminPopupPostController({
         await replacePopupDomain(popupPosts.map((item) => item.id === post.id
           ? { ...item, enabled: !Boolean(item.enabled), updatedAt: new Date() }
           : item));
-        triggerToast('팝업 상태를 PostgreSQL에서 변경했습니다.', 'success');
+        triggerToast('팝업 DB 상태 변경 성공', 'success');
         return;
     } catch (error) {
       console.error('Popup enabled toggle error:', error);
@@ -313,7 +313,7 @@ export default function useAdminPopupPostController({
         return;
     } catch (error) {
       console.error('Popup order update error:', error);
-      triggerToast('팝업 순서 변경에 실패했습니다.', 'error');
+      triggerToast(`팝업 순서 변경에 실패했습니다. 오류 코드: ${error?.code || error?.name || 'popup_order_update_failed'}`, 'error');
     }
   };
 
@@ -338,7 +338,7 @@ export default function useAdminPopupPostController({
               setPopupPostDialog(null);
               setPopupPostForm(createDefaultPopupPostForm());
             }
-            triggerToast('팝업을 PostgreSQL에서 삭제했습니다.', 'success');
+            triggerToast('팝업 DB 삭제 성공', 'success');
             return;
         } catch (error) {
           console.error('Popup post delete error:', error);

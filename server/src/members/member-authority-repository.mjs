@@ -181,7 +181,13 @@ export const createMemberAuthorityRepository = (pool) => {
       return value && typeof value === 'object' ? value : null;
     },
 
-    async replaceDirectoryEntries(entries = [], { source = 'firestore-bootstrap', version = 0 } = {}) {
+    async replaceDirectoryEntries(entries = [], {
+      source = 'firestore-bootstrap',
+      version = 0,
+      teams = null,
+      settings = null,
+      actorClerkUserId = '',
+    } = {}) {
       const normalized = (Array.isArray(entries) ? entries : []).map((entry, index) => ({
         identityKey: String(entry?.identityKey || '').trim(),
         directoryMemberId: String(entry?.directoryMemberId || '').trim(),
@@ -191,8 +197,15 @@ export const createMemberAuthorityRepository = (pool) => {
         enabled: entry?.enabled !== false,
         sourceUpdatedAt: entry?.sourceUpdatedAt || null,
       })).filter((entry) => entry.identityKey);
+      const shouldUpdateOrganizationConfig = Array.isArray(teams) && settings && typeof settings === 'object' && !Array.isArray(settings);
+      const normalizedTeams = shouldUpdateOrganizationConfig
+        ? teams.map((team) => String(team || '').normalize('NFKC').trim()).filter(Boolean)
+        : [];
       return withTransaction(async (client) => {
         await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['phase31-member-directory']);
+        if (shouldUpdateOrganizationConfig) {
+          await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['phase24-site-content:rental-config']);
+        }
         await client.query(`DELETE FROM app_member_directory_entries`);
         for (const entry of normalized) {
           await client.query(
@@ -216,7 +229,69 @@ export const createMemberAuthorityRepository = (pool) => {
            ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()`,
           [JSON.stringify(state)],
         );
-        return Object.freeze(state);
+
+        if (shouldUpdateOrganizationConfig) {
+          const configResult = await client.query(
+            `SELECT payload
+               FROM app_site_content_documents
+              WHERE domain='rental-config' AND document_key='rentalSystem/publicConfig'
+              FOR UPDATE`,
+          );
+          const currentPayload = configResult.rows[0]?.payload;
+          if (!currentPayload || typeof currentPayload !== 'object') {
+            const error = new Error('PostgreSQL rental public configuration is missing.');
+            error.code = 'member_directory_rental_config_missing';
+            error.status = 409;
+            throw error;
+          }
+          const currentSettings = currentPayload?.settings && typeof currentPayload.settings === 'object' && !Array.isArray(currentPayload.settings)
+            ? currentPayload.settings
+            : {};
+          const nextPublicConfig = {
+            ...currentPayload,
+            teams: normalizedTeams,
+            settings: { ...currentSettings, ...settings },
+            updatedAt: new Date().toISOString(),
+          };
+          await client.query(
+            `UPDATE app_site_content_documents
+                SET payload=$1::jsonb,
+                    source_mode='postgresql-admin-member-directory',
+                    synced_at=NOW(),
+                    updated_at=NOW()
+              WHERE domain='rental-config' AND document_key='rentalSystem/publicConfig'`,
+            [JSON.stringify(nextPublicConfig)],
+          );
+          const docsResult = await client.query(
+            `SELECT document_key, payload, enabled, sort_order, source_updated_at
+               FROM app_site_content_documents
+              WHERE domain='rental-config'
+              ORDER BY sort_order NULLS LAST, document_key`,
+          );
+          const normalizedDocuments = docsResult.rows.map((row) => ({
+            key: row.document_key,
+            payload: row.payload || {},
+            enabled: row.enabled,
+            sortOrder: row.sort_order,
+            sourceUpdatedAt: row.source_updated_at,
+          }));
+          const sourceHash = hashPayload(normalizedDocuments);
+          await client.query(
+            `INSERT INTO app_site_content_syncs
+               (domain, source_hash, document_count, source_mode, last_actor_clerk_user_id, synced_at, updated_at)
+             VALUES ('rental-config',$1,$2,'postgresql-admin-member-directory',$3,NOW(),NOW())
+             ON CONFLICT (domain) DO UPDATE SET
+               source_hash=EXCLUDED.source_hash,
+               document_count=EXCLUDED.document_count,
+               source_mode=EXCLUDED.source_mode,
+               last_actor_clerk_user_id=EXCLUDED.last_actor_clerk_user_id,
+               synced_at=NOW(),
+               updated_at=NOW()`,
+            [sourceHash, normalizedDocuments.length, String(actorClerkUserId || '')],
+          );
+        }
+
+        return Object.freeze({ ...state, organizationConfigUpdated: shouldUpdateOrganizationConfig });
       });
     },
 

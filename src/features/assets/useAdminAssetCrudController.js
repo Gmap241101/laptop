@@ -91,13 +91,13 @@ export default function useAdminAssetCrudController({
       firestoreFallbackReads: 0,
       error: code || error?.message || 'asset-write-failed',
     });
-    if (code === 'duplicate-asset-number') { triggerToast('동일한 자산관리번호가 이미 등록되어 있습니다.', 'error'); return; }
-    if (code === 'asset-category-not-found') { triggerToast('선택한 자산 카테고리가 최신 카테고리 목록에 없습니다.', 'error'); return; }
-    if (code === 'active-rental-identity-change') { triggerToast('현재 진행 중인 신청이 있어 자산 카테고리 또는 자산관리번호를 변경할 수 없습니다.', 'error'); return; }
-    if (code === 'active-rental-exists') { triggerToast('현재 진행 중인 신청이 있어 자산을 삭제할 수 없습니다.', 'error'); return; }
-    if (code === 'laptop-not-found') { triggerToast('자산이 이미 삭제되었거나 최신 자산 목록에서 찾을 수 없습니다.', 'error'); return; }
-    if (code === 'public-catalog-asset-limit-exceeded') { triggerToast('공개 자산 카탈로그의 최대 등록 수를 초과했습니다.', 'error'); return; }
-    triggerToast(fallbackMessage, 'error');
+    if (code === 'duplicate-asset-number') { triggerToast(`동일한 자산관리번호가 이미 등록되어 있습니다. 오류 코드: ${code}`, 'error'); return; }
+    if (code === 'asset-category-not-found') { triggerToast(`선택한 자산 카테고리가 최신 카테고리 목록에 없습니다. 오류 코드: ${code}`, 'error'); return; }
+    if (code === 'active-rental-identity-change') { triggerToast(`현재 진행 중인 신청이 있어 자산 카테고리 또는 자산관리번호를 변경할 수 없습니다. 오류 코드: ${code}`, 'error'); return; }
+    if (code === 'active-rental-exists') { triggerToast(`현재 진행 중인 신청이 있어 자산을 삭제할 수 없습니다. 오류 코드: ${code}`, 'error'); return; }
+    if (code === 'laptop-not-found') { triggerToast(`자산이 이미 삭제되었거나 최신 자산 목록에서 찾을 수 없습니다. 오류 코드: ${code}`, 'error'); return; }
+    if (code === 'public-catalog-asset-limit-exceeded') { triggerToast(`공개 자산 카탈로그의 최대 등록 수를 초과했습니다. 오류 코드: ${code}`, 'error'); return; }
+    triggerToast(`${fallbackMessage} 오류 코드: ${code || error?.name || 'asset_write_failed'}`, 'error');
   };
 
   const handleAddLaptopClick = () => {
@@ -358,7 +358,7 @@ export default function useAdminAssetCrudController({
           newAssetNo;
 
         triggerToast(
-          `자산관리번호 [${duplicatedAssetNo}]은(는) 이미 등록되어 있어 신규 자산으로 추가할 수 없습니다.`,
+          `자산관리번호 [${duplicatedAssetNo}]은(는) 이미 등록되어 있어 신규 자산으로 추가할 수 없습니다. 오류 코드: ${error?.code || error?.message || 'duplicate-asset-number'}`,
           'error'
         );
         return;
@@ -369,7 +369,7 @@ export default function useAdminAssetCrudController({
         'asset-category-not-found'
       ) {
         triggerToast(
-          '선택한 자산 카테고리가 최신 카테고리 목록에 없습니다. 신규 등록 패널을 닫고 다시 열어 주세요.',
+          `선택한 자산 카테고리가 최신 카테고리 목록에 없습니다. 신규 등록 패널을 닫고 다시 열어 주세요. 오류 코드: ${error?.code || error?.message || 'asset-category-not-found'}`,
           'error'
         );
         return;
@@ -379,12 +379,12 @@ export default function useAdminAssetCrudController({
         await getPublicAssetCatalogWriteErrorMessage(error);
 
       if (catalogErrorMessage) {
-        triggerToast(catalogErrorMessage, 'error');
+        triggerToast(`${catalogErrorMessage} 오류 코드: ${error?.code || error?.name || error?.message || 'public_asset_catalog_write_failed'}`, 'error');
         return;
       }
 
       triggerToast(
-        '신규 자산 등록에 실패했습니다. 입력 내용은 유지됩니다. Firestore 권한과 네트워크 상태를 확인해 주세요.',
+        `신규 자산 등록에 실패했습니다. 입력 내용은 유지됩니다. Firestore 권한과 네트워크 상태를 확인해 주세요. 오류 코드: ${error?.code || error?.name || error?.message || 'asset_create_failed'}`,
         'error'
       );
     }
@@ -578,7 +578,7 @@ export default function useAdminAssetCrudController({
               );
 
             triggerToast(
-              `삭제 확인 중 자산 ${assetNo}에 새로운 [${blockingStatus}] 신청이 확인되어 삭제를 중단했습니다. 해당 신청을 먼저 처리해 주세요.`,
+              `삭제 확인 중 자산 ${assetNo}에 새로운 [${blockingStatus}] 신청이 확인되어 삭제를 중단했습니다. 해당 신청을 먼저 처리해 주세요. 오류 코드: ${error?.code || error?.message || 'active-rental-exists'}`,
               'error'
             );
             return;
@@ -589,7 +589,7 @@ export default function useAdminAssetCrudController({
             'laptop-not-found'
           ) {
             triggerToast(
-              `자산 ${assetNo}은(는) 이미 삭제되었거나 최신 자산 목록에서 찾을 수 없습니다.`,
+              `자산 ${assetNo}은(는) 이미 삭제되었거나 최신 자산 목록에서 찾을 수 없습니다. 오류 코드: ${error?.code || error?.message || 'laptop-not-found'}`,
               'error'
             );
             return;
@@ -599,12 +599,12 @@ export default function useAdminAssetCrudController({
             await getPublicAssetCatalogWriteErrorMessage(error);
 
           if (catalogErrorMessage) {
-            triggerToast(catalogErrorMessage, 'error');
+            triggerToast(`${catalogErrorMessage} 오류 코드: ${error?.code || error?.name || error?.message || 'public_asset_catalog_write_failed'}`, 'error');
             return;
           }
 
           triggerToast(
-            `자산 ${assetNo} 삭제에 실패했습니다. 자산 목록과 Firestore 권한 및 네트워크 상태를 확인해 주세요.`,
+            `자산 ${assetNo} 삭제에 실패했습니다. 자산 목록과 Firestore 권한 및 네트워크 상태를 확인해 주세요. 오류 코드: ${error?.code || error?.name || error?.message || 'asset_delete_failed'}`,
             'error'
           );
         }
@@ -1006,7 +1006,7 @@ export default function useAdminAssetCrudController({
         'laptop-not-found'
       ) {
         triggerToast(
-          '수정하려는 자산이 이미 삭제되었거나 최신 자산 목록에서 찾을 수 없습니다.',
+          `수정하려는 자산이 이미 삭제되었거나 최신 자산 목록에서 찾을 수 없습니다. 오류 코드: ${error?.code || error?.message || 'laptop-not-found'}`,
           'error'
         );
         setEditLaptop(null);
@@ -1017,12 +1017,12 @@ export default function useAdminAssetCrudController({
         await getPublicAssetCatalogWriteErrorMessage(error);
 
       if (catalogErrorMessage) {
-        triggerToast(catalogErrorMessage, 'error');
+        triggerToast(`${catalogErrorMessage} 오류 코드: ${error?.code || error?.name || error?.message || 'public_asset_catalog_write_failed'}`, 'error');
         return;
       }
 
       triggerToast(
-        '자산 정보 저장에 실패했습니다. 기존 자산 정보는 변경되지 않았습니다. Firestore 권한과 네트워크 상태를 확인해 주세요.',
+        `자산 정보 저장에 실패했습니다. 기존 자산 정보는 변경되지 않았습니다. Firestore 권한과 네트워크 상태를 확인해 주세요. 오류 코드: ${error?.code || error?.name || error?.message || 'asset_save_failed'}`,
         'error'
       );
     }

@@ -224,6 +224,8 @@ const userHomeSource = fs.readFileSync(new URL('../../src/user/UserHomePanel.jsx
 const userRuntimeErrorBoundarySource = fs.readFileSync(new URL('../../src/user/UserRuntimeErrorBoundary.jsx', import.meta.url), 'utf8');
 const adminAppSource = fs.readFileSync(new URL('../../src/admin/AdminApp.jsx', import.meta.url), 'utf8');
 const adminWorkspaceSource = fs.readFileSync(new URL('../../src/admin/AdminWorkspace.jsx', import.meta.url), 'utf8');
+const adminContextAssemblerSource = fs.readFileSync(new URL('../../src/admin/useAdminContextAssembler.js', import.meta.url), 'utf8');
+const appDynamicContextValuesSource = fs.readFileSync(new URL('../../src/context/appDynamicContextValues.js', import.meta.url), 'utf8');
 const adminAccountSecuritySource = fs.readFileSync(new URL('../../src/admin/AdminAccountSecurityPanel.jsx', import.meta.url), 'utf8');
 const contextSliceSource = fs.readFileSync(new URL('../../src/context/appContextSlices.js', import.meta.url), 'utf8');
 const adminShellSource = fs.readFileSync(new URL('../../src/admin/AdminShell.jsx', import.meta.url), 'utf8');
@@ -280,11 +282,21 @@ assert.equal(adminShellSource.includes('UserPopupLayer'), false, 'administrator 
 assert.equal(adminShellSource.includes("React.lazy(() => import('./AdminWorkspace.jsx'))"), false, 'administrator workspace shell must remain eagerly linked so the admin layout appears immediately');
 assert.equal(adminShellSource.includes("React.lazy(() => import('./AdminDialogs.jsx'))"), false, 'administrator dialogs must remain eagerly linked into the separate admin document');
 assert.match(adminWorkspaceSource, /import AdminDashboardPanelView from '\.\/AdminDashboardPanel\.jsx'/, 'administrator dashboard must be eagerly linked for immediate post-login rendering');
-assert.match(adminWorkspaceSource, /const AdminRequestsPanel = memo\(lazy\(\(\) => import\('\.\/AdminRequestsPanel\.jsx'\)\)\)/, 'administrator subpanels must remain lazy-loaded on first use');
+assert.match(adminWorkspaceSource, /const loadAdminRequestsPanel = \(\) => import\('\.\/AdminRequestsPanel\.jsx'\);[\s\S]*const AdminRequestsPanel = memo\(lazy\(loadAdminRequestsPanel\)\);/, 'administrator request panel must remain lazy-loaded while exposing an explicit intent loader');
 assert.match(adminWorkspaceSource, /<Suspense fallback=\{null\}>/, 'administrator lazy panels must use a silent Suspense boundary');
-assert.match(adminWorkspaceSource, /ADMIN_SITE_PANEL_INTENT_LOADERS/, 'site-management panels must start module and data loading from explicit administrator click intent');
-assert.match(adminWorkspaceSource, /onCommitted: \(\) => preloadAdminSitePanelOnIntent\(key\)/, 'site-management intent preload must run only after the requested tab change is committed');
-assert.match(adminWorkspaceSource, /requestSiteContentDomain\(\{ domain: loader\.domain, useCache: true \}\)/, 'site-management click intent must prefetch the matching PostgreSQL domain while its lazy chunk loads');
+assert.match(adminWorkspaceSource, /ADMIN_PANEL_INTENT_LOADERS/, 'slow first-use administrator panels must expose explicit module/data intent loaders');
+assert.match(adminWorkspaceSource, /onCommitted: \(\) => preloadAdminPanelOnIntent\(key\)/, 'administrator intent preload must also run when the requested tab change is committed');
+assert.match(adminWorkspaceSource, /onPointerEnter=\{\(\) => preloadAdminPanelOnIntent\(key\)\}/, 'desktop pointer intent must start first-use module/data loading before the click transition');
+assert.match(adminWorkspaceSource, /onPointerDown=\{\(\) => preloadAdminPanelOnIntent\(key\)\}/, 'touch and immediate pointer clicks must start first-use module/data loading before the tab commit');
+assert.match(adminWorkspaceSource, /onFocus=\{\(\) => preloadAdminPanelOnIntent\(key\)\}/, 'keyboard focus intent must start first-use module/data loading before the click transition');
+assert.match(adminWorkspaceSource, /requestSiteContentDomain\(\{ domain: SITE_CONTENT_DOMAINS\.HOME, useCache: true \}\)/, 'home-management intent must prefetch its PostgreSQL domain while its lazy chunk loads');
+assert.match(adminWorkspaceSource, /requestNoticeBoard\(\{ page: 1, useCache: true \}\)/, 'notice-management intent must prefetch the first authoritative board response');
+assert.match(adminWorkspaceSource, /requestFaqBoard\(\{ page: 1, categoryId: 'all', useCache: true \}\)/, 'FAQ-management intent must prefetch the first authoritative board response');
+assert.match(adminWorkspaceSource, /getAdminRentalRequests\('', \{[\s\S]*tab: 'pending'[\s\S]*page: 1[\s\S]*pageSize: 10/, 'rental-request intent must prefetch the default first administrator page');
+assert.match(adminContextAssemblerSource, /adminRequestsPrerequisitesReady:\s*Boolean\(sourceValues\.isAdminAuthenticated\)[\s\S]*sourceValues\.currentAuthRoleReady[\s\S]*!sourceValues\.currentAuthRoleErrorMessage/, 'administrator rental-request readiness must use Clerk/PostgreSQL administrator authority');
+assert.doesNotMatch(adminContextAssemblerSource, /adminRequestsPrerequisitesReady:[\s\S]{0,220}(?:firebaseAuthReady|firebaseAuthUser)/, 'administrator rental-request readiness must not wait for retired Firebase authentication state');
+assert.match(appDynamicContextValuesSource, /adminRequestsPrerequisitesReady:\s*Boolean\(sourceValues\.isAdminAuthenticated\)[\s\S]*sourceValues\.currentAuthRoleReady[\s\S]*!sourceValues\.currentAuthRoleErrorMessage/, 'legacy context assembly must preserve the Clerk/PostgreSQL administrator readiness contract');
+assert.doesNotMatch(appDynamicContextValuesSource, /adminRequestsPrerequisitesReady:[\s\S]{0,220}(?:firebaseAuthReady|firebaseAuthUser)/, 'legacy context assembly must not reintroduce the retired Firebase administrator readiness gate');
 assert.equal(adminWorkspaceSource.includes('관리 메뉴를 불러오는 중입니다.'), false, 'administrator menu must never render the old first-load explanatory placeholder');
 assert.equal(adminWorkspaceSource.includes('선택한 관리 기능의 코드를 처음 한 번만 불러옵니다.'), false, 'administrator menu must not expose code-loading copy');
 assert.match(adminNavigationSource, /startTransition\(\(\) => \{[\s\S]*setAdminTab\(nextTab\);[\s\S]*\}\);/, 'administrator tab commits must use a transition so the previous panel stays visible while a first-use chunk downloads');
@@ -302,6 +314,37 @@ assert.match(identitySource, /runtimeSurface === 'admin'/, 'identity bootstrap m
 assert.match(identitySource, /runtimeSurface === 'user'/, 'identity bootstrap must use the user Clerk session only on the user document');
 
 const sourceRoot = fileURLToPath(new URL('../../src/', import.meta.url));
+const collectSourceFiles = (directory) => fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+  const entryPath = path.join(directory, entry.name);
+  if (entry.isDirectory()) return collectSourceFiles(entryPath);
+  return /\.(?:js|jsx)$/.test(entry.name) ? [entryPath] : [];
+});
+const sourceFileTexts = collectSourceFiles(sourceRoot).map((file) => ({
+  file,
+  source: fs.readFileSync(file, 'utf8'),
+}));
+const forbiddenPostgresqlSuccessWording = sourceFileTexts.flatMap(({ file, source }) => {
+  const matches = source.match(/PostgreSQL 저장 성공/g) || [];
+  return matches.map(() => path.relative(sourceRoot, file).replaceAll('\\', '/'));
+});
+assert.deepEqual(forbiddenPostgresqlSuccessWording, [], 'successful save toasts must use DB 저장 성공 instead of PostgreSQL 저장 성공');
+const saveFailurePhrases = ['저장에 실패했습니다.', '저장하지 못했습니다.', '등록에 실패했습니다.', '수정에 실패했습니다.', '삭제에 실패했습니다.'];
+const saveFailureCodeViolations = [];
+for (const { file, source } of sourceFileTexts) {
+  for (const phrase of saveFailurePhrases) {
+    let offset = 0;
+    while ((offset = source.indexOf(phrase, offset)) >= 0) {
+      const before = source.slice(Math.max(0, offset - 120), offset);
+      const after = source.slice(offset, Math.min(source.length, offset + 600));
+      const delegatedPostgresAssetError = /showPostgresAssetError\([^)]*$/.test(before);
+      if (!after.includes('오류 코드:') && !delegatedPostgresAssetError) {
+        saveFailureCodeViolations.push(`${path.relative(sourceRoot, file).replaceAll('\\', '/')}:${source.slice(0, offset).split('\n').length}:${phrase}`);
+      }
+      offset += phrase.length;
+    }
+  }
+}
+assert.deepEqual(saveFailureCodeViolations, [], `save/register/edit/delete failure toasts must expose an error code: ${saveFailureCodeViolations.join(', ')}`);
 const resolveLocalImport = (fromFile, specifier) => {
   if (!specifier.startsWith('.')) return null;
   const basePath = path.resolve(path.dirname(fromFile), specifier);
@@ -365,6 +408,7 @@ assert.ok(adminImportGraph.includes('admin/AdminApp.jsx'), 'administrator import
 
 const diagnosticsSource = fs.readFileSync(new URL('../../src/clerk/ClerkStagingDiagnostics.jsx', import.meta.url), 'utf8');
 const adminSettingsSource = fs.readFileSync(new URL('../../src/admin/AdminSettingsPanel.jsx', import.meta.url), 'utf8');
+const memberDirectorySaveActionsSource = fs.readFileSync(new URL('../../src/features/members/useAdminMemberDirectorySaveActions.js', import.meta.url), 'utf8');
 const userMyPageSource = fs.readFileSync(new URL('../../src/user/UserMyPagePanel.jsx', import.meta.url), 'utf8');
 const packageSource = fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8');
 assert.equal(diagnosticsSource.includes('Firebase runtime:'), false, 'staging diagnostics must not expose retired-provider runtime tags');
@@ -372,6 +416,15 @@ assert.equal(diagnosticsSource.includes('External Firebase SDK/network'), false,
 assert.equal(diagnosticsSource.includes('Legacy Firestore sync controls'), false, 'staging diagnostics must not expose retired-provider sync tags');
 assert.equal(adminSettingsSource.includes('phase34-firebase-free-runtime'), false, 'system info version tag must use current Clerk/PostgreSQL authority naming');
 assert.equal(adminSettingsSource.includes('title="\uc678\ubd80 Firebase runtime"'), false, 'system info must not render obsolete provider status cards');
+assert.match(adminSettingsSource, /getAdminSystemSettingsAudit\(50\)/, 'system settings history must load from the administrator PostgreSQL audit API');
+assert.match(adminSettingsSource, /appendAdminSystemSettingsAudit\(audit\)/, 'system settings saves must append PostgreSQL audit entries instead of using the old skipped stub');
+assert.equal(adminSettingsSource.includes("Object.freeze({ skipped: true, source: 'postgresql-runtime' })"), false, 'system settings history must not remain a no-op stub');
+assert.match(memberDirectorySaveActionsSource, /syncAdminMemberDirectory\(\{[\s\S]*entries: directoryEntries[\s\S]*version: nextSettings\.memberDirectoryVersion[\s\S]*teams: nextTeams[\s\S]*settings: nextSettings/, 'department/user saves must synchronize the directory and organization configuration through one authoritative PostgreSQL mutation');
+assert.equal(memberDirectorySaveActionsSource.includes('patchPolicyContentDomainInPostgresql'), false, 'department/user saves must not perform a second browser-side rental-config write after directory synchronization');
+assert.equal(memberDirectorySaveActionsSource.includes('requestPolicyContentDomain'), false, 'department/user saves must not require a browser-side rental-config read before synchronization');
+assert.equal(memberDirectorySaveActionsSource.includes('replacePolicyContentDomainInPostgresql'), false, 'department/user saves must not replace the complete rental-config domain');
+assert.match(memberDirectorySaveActionsSource, /부서·사용자 명부 DB 저장 성공/, 'successful department/user saves must use the DB success wording');
+assert.match(memberDirectorySaveActionsSource, /부서·사용자 PostgreSQL 저장에 실패했습니다\.[\s\S]*오류 코드:/, 'failed department/user saves must retain PostgreSQL failure wording and expose an error code');
 assert.equal(userMyPageSource.includes('Firebase Auth \ub85c\uadf8\uc778 \uc774\uba54\uc77c'), false, 'my-page login email labels must use current Clerk naming');
 assert.equal(packageSource.includes('audit:firestore'), false, 'current package scripts must use external-runtime audit naming');
 

@@ -352,7 +352,7 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
         triggerToast(form.id ? '이용약관의 새 버전을 저장했습니다.' : '이용약관을 등록했습니다.', 'success');
         return;    } catch (error) {
       console.error('Signup term save error:', error);
-      triggerToast('이용약관 저장에 실패했습니다.', 'error');
+      triggerToast(`이용약관 저장에 실패했습니다. 오류 코드: ${error?.code || error?.name || 'signup_term_save_failed'}`, 'error');
     } finally {
       setSaving(false);
     }
@@ -383,7 +383,7 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
         triggerToast(enabled ? '약관을 사용으로 전환했습니다.' : '약관을 사용하지 않도록 변경했습니다.', 'success');
         return;    } catch (error) {
       console.error('Signup term enabled update error:', error);
-      triggerToast('약관 사용 상태 변경에 실패했습니다.', 'error');
+      triggerToast(`약관 사용 상태 변경에 실패했습니다. 오류 코드: ${error?.code || error?.name || 'signup_term_toggle_failed'}`, 'error');
     } finally {
       setActionId('');
     }
@@ -400,7 +400,7 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
         triggerToast('약관을 보관했습니다.', 'success');
         return;    } catch (error) {
       console.error('Signup term archive error:', error);
-      triggerToast('약관 보관에 실패했습니다.', 'error');
+      triggerToast(`약관 보관에 실패했습니다. 오류 코드: ${error?.code || error?.name || 'signup_term_archive_failed'}`, 'error');
     } finally {
       setActionId('');
     }
@@ -436,7 +436,7 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
         });
         return;    } catch (error) {
       console.error('Signup term order update error:', error);
-      triggerToast('약관 순서 변경에 실패했습니다.', 'error');
+      triggerToast(`약관 순서 변경에 실패했습니다. 오류 코드: ${error?.code || error?.name || 'signup_term_order_failed'}`, 'error');
     } finally {
       setActionId('');
     }

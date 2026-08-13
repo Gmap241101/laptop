@@ -356,7 +356,7 @@ export default function useAdminMemberAccountEditActions({
       } catch (error) {
         console.error('Admin member profile edit error:', error);
         triggerToast?.(
-          error?.message || '회원정보 수정에 실패했습니다.',
+          `${error?.message || '회원정보 수정에 실패했습니다.'} 오류 코드: ${error?.code || error?.name || 'admin_member_profile_edit_failed'}`,
           'error'
         );
         throw error;
