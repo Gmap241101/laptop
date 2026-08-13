@@ -238,13 +238,6 @@ export const createAdminRentalRequestRepository = (pool) => {
 
     async list({ tab = 'pending', quickFilter = 'all', query = '', page = 1, pageSize = 10, referenceDate }) {
       const filter = buildTabWhere({ tab, quickFilter, referenceDate, query });
-      const count = await pool.query(
-        `SELECT COUNT(*)::bigint AS count
-           FROM app_rental_requests request
-           LEFT JOIN app_rental_request_items item ON item.rental_request_id = request.id
-           ${filter.clause}`,
-        filter.values,
-      );
       const values = [...filter.values];
       let referenceParam = null;
       if (tab === 'rental') {
@@ -255,15 +248,24 @@ export const createAdminRentalRequestRepository = (pool) => {
       const limitParam = `$${values.length}`;
       values.push(Math.max(0, (page - 1) * pageSize));
       const offsetParam = `$${values.length}`;
-      const rows = await pool.query(
-        `SELECT ${SELECT}
-           FROM app_rental_requests request
-           LEFT JOIN app_rental_request_items item ON item.rental_request_id = request.id
-           ${filter.clause}
-           ${orderForTab(tab, referenceParam)}
-           LIMIT ${limitParam} OFFSET ${offsetParam}`,
-        values,
-      );
+      const [count, rows] = await Promise.all([
+        pool.query(
+          `SELECT COUNT(*)::bigint AS count
+             FROM app_rental_requests request
+             LEFT JOIN app_rental_request_items item ON item.rental_request_id = request.id
+             ${filter.clause}`,
+          filter.values,
+        ),
+        pool.query(
+          `SELECT ${SELECT}
+             FROM app_rental_requests request
+             LEFT JOIN app_rental_request_items item ON item.rental_request_id = request.id
+             ${filter.clause}
+             ${orderForTab(tab, referenceParam)}
+             LIMIT ${limitParam} OFFSET ${offsetParam}`,
+          values,
+        ),
+      ]);
       return Object.freeze({
         requests: rows.rows.map(mapRow),
         totalCount: Number(count.rows[0]?.count || 0),

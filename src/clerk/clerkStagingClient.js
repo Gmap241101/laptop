@@ -691,6 +691,7 @@ export const requestAdminRentalRequests = async ({ clerk, apiBaseUrl, fetchImpl,
     const value = options?.[key];
     if (value !== undefined && value !== null && String(value) !== '') params.set(key, String(value));
   });
+  if (options?.includeCounts === false) params.set('includeCounts', 'false');
   const query = params.toString();
   const { response, payload } = await requestWithSession({
     clerk,

@@ -142,10 +142,14 @@ assert.match(dashboardSummarySource, /document\.visibilityState === 'hidden'[\s\
 assert.match(dashboardSummarySource, /subscribeAdminRentalRequestCutoverObservation\(refreshAfterMutation\)/, 'administrator rental-request writes must immediately invalidate the dashboard summary');
 assert.match(dashboardSummarySource, /subscribeAssetDomainCutoverObservation\(refreshAfterMutation\)/, 'asset writes must immediately invalidate the dashboard summary');
 assert.match(dashboardSummarySource, /subscribeMemberAuthorityObservation\(refreshAfterMutation\)/, 'member writes must immediately invalidate the dashboard summary');
+assert.match(dashboardSummarySource, /const dashboardPayload = await clerkStagingClient\.getAdminRentalDashboard\('', referenceDate\);[\s\S]*applySummary\(core\);[\s\S]*Promise\.allSettled/, 'dashboard critical rental counts must render before slower supplemental PostgreSQL reads finish');
+assert.match(dashboardSummarySource, /includeCounts: false/, 'dashboard request previews must not recalculate rental tab counts already returned by the dashboard endpoint');
+assert.match(dashboardSummarySource, /getAdminSystemDataOverview\(\)[\s\S]*dataIntegritySource: 'postgresql-background'/, 'system integrity diagnostics must refresh in the background instead of blocking dashboard readiness');
 
 const adminRequestsSource = fs.readFileSync(new URL('../../src/features/requests/useAdminRequestsController.js', import.meta.url), 'utf8');
 assert.equal(/setInterval\([^\n]*refreshPostgresRequests/.test(adminRequestsSource), false, 'administrator rental-request list must not poll PostgreSQL while the window remains open');
 assert.match(adminRequestsSource, /refreshPostgresRequests\(\);[\s\S]*window\.addEventListener\('blur', markWindowAway\);[\s\S]*window\.addEventListener\('focus', refreshAfterWindowReturn\)/, 'administrator rental-request list must refresh on entry and actual window return');
+assert.match(adminRequestsSource, /let firebaseIdToken = '';[\s\S]*if \(!rentalWriteMirrorRetirementConfig\.enabled\) \{[\s\S]*firebaseAuth\.currentUser/, 'Phase 34 PostgreSQL administrator request reads must not require a retired Firebase principal');
 assert.equal(/setInterval\([^\n]*refreshPostgresRequests/.test(rentalDataSource), false, 'signed-in user rental requests must not poll PostgreSQL while the window remains open');
 assert.equal(/setInterval\([^\n]*refreshPostgresCatalog/.test(rentalDataSource), false, 'rental asset and availability status must not poll PostgreSQL while the window remains open');
 assert.match(rentalDataSource, /refreshPostgresRequests\(\);[\s\S]*window\.addEventListener\('blur', markWindowAway\);[\s\S]*window\.addEventListener\('focus', refreshAfterWindowReturn\)/, 'signed-in user rental requests must refresh on entry and actual window return');
@@ -224,10 +228,10 @@ assert.match(userNavigationSource, /startTransition\(\(\) => \{[\s\S]*setView\('
 assert.match(userShellSource, /const showDataLoadingOverlay = userTab !== 'home' && !firebaseReady;/, 'initial home rendering must not be blurred behind the rental-data readiness overlay');
 assert.match(userHomeSource, /loading=\{index === 0 \? 'eager' : 'lazy'\}/, 'only the first hero image should be eager; later hero images must be lazy');
 assert.match(userHomeSource, /fetchPriority=\{index === 0 \? 'high' : 'auto'\}/, 'the first hero image should receive high fetch priority');
-assert.match(userHomeSource, /const shouldReservePromotionColumn = !bannersReady \|\| promotionBanners\.length > 0;/, 'home layout must reserve the desktop promotion column before PostgreSQL home-content hydration completes');
-assert.match(userHomeSource, /promotionRenderSlots = bannersReady[\s\S]*PROMOTION_LAYOUTS\['2x1'\]\.slots/, 'home layout must render deterministic promotion placeholders before banner metadata arrives');
+assert.match(userHomeSource, /const hasPromotionBanners = bannersReady && promotionBanners\.length > 0;/, 'promotion layout must resolve from authoritative active banner metadata');
+assert.match(userHomeSource, /!bannersReady \? \([\s\S]*초기화면 콘텐츠 배치 확인 중[\s\S]*\) : \([\s\S]*hasPromotionBanners \? 'lg:grid-cols-2' : 'grid-cols-1'/, 'notice/promotion row must wait for banner-presence resolution so the rendered notice never changes width');
+assert.match(userHomeSource, /\{hasPromotionBanners && \([\s\S]*promotionSlots\.map/, 'promotion column must not render when there are no active promotion banners');
 assert.match(userHomeSource, /loading=\{index < 2 \? 'eager' : 'lazy'\}[\s\S]*fetchPriority=\{index < 2 \? 'high' : 'auto'\}/, 'the first visible promotion row must receive eager/high image priority while lower promotion rows remain lazy');
-assert.match(userHomeSource, /shouldReservePromotionColumn \? 'lg:grid-cols-2' : 'grid-cols-1'/, 'notice width must not expand to a full desktop row before promotion banners finish loading');
 assert.match(userHomeSource, /loading="lazy" decoding="async"/, 'below-the-fold quick-link images must use lazy asynchronous decoding');
 assert.equal(adminShellSource.includes('UserWorkspace'), false, 'administrator shell must not contain the user workspace');
 assert.equal(adminShellSource.includes('UserFooter'), false, 'administrator shell must not contain the user footer');

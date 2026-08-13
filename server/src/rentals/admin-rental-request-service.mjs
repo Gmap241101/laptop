@@ -295,7 +295,8 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient, r
       const referenceDate = DATE_RE.test(trim(options.referenceDate)) ? trim(options.referenceDate) : koreaToday();
       const page = Math.max(1, Math.trunc(Number(options.page || 1)));
       const pageSize = Math.min(100, Math.max(1, Math.trunc(Number(options.pageSize || 10))));
-      const result = await repository.list({
+      const includeCounts = options.includeCounts !== false;
+      const listPromise = repository.list({
         tab: trim(options.tab || 'pending'),
         quickFilter: trim(options.quickFilter || 'all'),
         query: trim(options.query),
@@ -303,7 +304,10 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient, r
         pageSize,
         referenceDate,
       });
-      const counts = await repository.getCounts(referenceDate);
+      const [result, counts] = await Promise.all([
+        listPromise,
+        includeCounts ? repository.getCounts(referenceDate) : Promise.resolve(null),
+      ]);
       return Object.freeze({ admin, referenceDate, page, pageSize, ...result, counts });
     },
 

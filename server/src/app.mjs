@@ -1930,18 +1930,17 @@ export const createRequestHandler = ({
     }
 
     if (request.method === 'GET' && url.pathname === '/api/admin/rental-requests') {
-      const auth = await authenticate(request, response, headers, requestId);
-      if (!auth) return;
-      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
-      if (!firebaseIdentity) return;
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
       try {
-        const result = await adminRentalRequestService.list(firebaseIdentity, {
+        const result = await adminRentalRequestService.list(authority.firebaseIdentity, {
           tab: url.searchParams.get('tab') || 'pending',
           quickFilter: url.searchParams.get('quickFilter') || 'all',
           query: url.searchParams.get('query') || '',
           page: url.searchParams.get('page') || '1',
           pageSize: url.searchParams.get('pageSize') || '10',
           referenceDate: url.searchParams.get('referenceDate') || '',
+          includeCounts: url.searchParams.get('includeCounts') !== 'false',
         });
         writeJson(response, 200, {
           ...basePayload,
@@ -1966,13 +1965,11 @@ export const createRequestHandler = ({
     }
 
     if (request.method === 'GET' && url.pathname === '/api/admin/rental-dashboard') {
-      const auth = await authenticate(request, response, headers, requestId);
-      if (!auth) return;
-      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
-      if (!firebaseIdentity) return;
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
       try {
         const result = await adminRentalRequestService.getDashboard(
-          firebaseIdentity,
+          authority.firebaseIdentity,
           url.searchParams.get('referenceDate') || undefined,
         );
         writeJson(response, 200, {
@@ -2474,13 +2471,11 @@ export const createRequestHandler = ({
 
 
     if (request.method === 'GET' && url.pathname === '/api/admin/members') {
-      const auth = await authenticate(request, response, headers, requestId);
-      if (!auth) return;
-      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
-      if (!firebaseIdentity) return;
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
       try {
         const result = await memberAuthorityService.listAdminMembers({
-          firebaseIdentity,
+          firebaseIdentity: authority.firebaseIdentity,
           status: url.searchParams.get('status') || 'all',
           search: url.searchParams.get('q') || '',
           page: Math.max(1, Number.parseInt(url.searchParams.get('page') || '1', 10) || 1),

@@ -1,3 +1,5 @@
+import { readFirebaseRuntimeRetirementConfig } from '../auth/firebaseRuntimeRetirement.js';
+
 const trim = (value) => (typeof value === 'string' ? value.trim() : String(value ?? '').trim());
 const bool = (value) => trim(value).toLowerCase() === 'true';
 const normalizeApiBaseUrl = (value) => {
@@ -10,10 +12,13 @@ const normalizeApiBaseUrl = (value) => {
   } catch { return ''; }
 };
 
-export const readRentalRequestWriteMirrorRetirementConfig = ({ env = import.meta.env } = {}) => Object.freeze({
-  enabled: bool(env?.VITE_CLERK_STAGING_ENABLED) && bool(env?.VITE_FIRESTORE_RENTAL_REQUEST_WRITE_MIRROR_DISABLED),
-  apiBaseUrl: normalizeApiBaseUrl(env?.VITE_API_URL),
-});
+export const readRentalRequestWriteMirrorRetirementConfig = ({ env = import.meta.env, location = globalThis.location } = {}) => {
+  const firebaseRuntimeRetired = readFirebaseRuntimeRetirementConfig({ env, location }).requested;
+  return Object.freeze({
+    enabled: firebaseRuntimeRetired || (bool(env?.VITE_CLERK_STAGING_ENABLED) && bool(env?.VITE_FIRESTORE_RENTAL_REQUEST_WRITE_MIRROR_DISABLED)),
+    apiBaseUrl: normalizeApiBaseUrl(env?.VITE_API_URL),
+  });
+};
 
 export const requestRentalRequestWriteMirrorRetirementStatus = async ({
   fetchImpl = fetch,

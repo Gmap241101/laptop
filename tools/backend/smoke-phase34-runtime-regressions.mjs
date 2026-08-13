@@ -99,6 +99,14 @@ assert.match(
 );
 assert.match(appSource, /phase34AdminNavigationHolidayRevision/);
 
+const adminRentalRepositorySource = fs.readFileSync(new URL('../../server/src/rentals/admin-rental-request-repository.mjs', import.meta.url), 'utf8');
+assert.match(adminRentalRepositorySource, /const \[count, rows\] = await Promise\.all\(\[/, 'administrator rental request count/page SQL must run concurrently');
+const adminRentalServiceSource = fs.readFileSync(new URL('../../server/src/rentals/admin-rental-request-service.mjs', import.meta.url), 'utf8');
+assert.match(adminRentalServiceSource, /const includeCounts = options\.includeCounts !== false;/, 'dashboard previews must be able to skip duplicate rental tab-count aggregation');
+assert.match(adminRentalServiceSource, /includeCounts \? repository\.getCounts\(referenceDate\) : Promise\.resolve\(null\)/, 'administrator request service must skip counts when the caller already has dashboard counts');
+assert.match(appSource, /GET' && url\.pathname === '\/api\/admin\/rental-requests'[\s\S]*authenticateAdminAuthority\(request, response, headers, requestId\)[\s\S]*adminRentalRequestService\.list\(authority\.firebaseIdentity/, 'administrator request reads must authenticate Clerk/PostgreSQL authority once');
+assert.match(appSource, /GET' && url\.pathname === '\/api\/admin\/rental-dashboard'[\s\S]*authenticateAdminAuthority\(request, response, headers, requestId\)[\s\S]*authority\.firebaseIdentity/, 'dashboard count reads must use direct Clerk/PostgreSQL administrator authority');
+
 
 
 const boardSqlCalls = [];

@@ -257,13 +257,16 @@ export default function useAdminRequestsController({
 
     const loadPostgresRequests = async () => {
       try {
-        const firebaseUser = firebaseAuth.currentUser;
-        if (!firebaseUser) {
-          const error = new Error('Firebase admin sign-in is required.');
-          error.code = 'admin_firebase_sign_in_required';
-          throw error;
+        let firebaseIdToken = '';
+        if (!rentalWriteMirrorRetirementConfig.enabled) {
+          const firebaseUser = firebaseAuth.currentUser;
+          if (!firebaseUser) {
+            const error = new Error('Firebase admin sign-in is required.');
+            error.code = 'admin_firebase_sign_in_required';
+            throw error;
+          }
+          firebaseIdToken = await firebaseUser.getIdToken();
         }
-        const firebaseIdToken = await firebaseUser.getIdToken();
         let bootstrapCount = null;
         if (!postgresBootstrapRef.current) {
           if (rentalWriteMirrorRetirementConfig.enabled) {

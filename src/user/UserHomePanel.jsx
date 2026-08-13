@@ -354,10 +354,7 @@ export default function UserHomePanel({ ctx }) {
     { length: promotionConfig.slots },
     (_, index) => visiblePromotionBanners[index] || null
   );
-  const shouldReservePromotionColumn = !bannersReady || promotionBanners.length > 0;
-  const promotionRenderSlots = bannersReady
-    ? promotionSlots
-    : Array.from({ length: PROMOTION_LAYOUTS['2x1'].slots }, () => null);
+  const hasPromotionBanners = bannersReady && promotionBanners.length > 0;
 
   const summaryItems = [
     [Boxes, '보유 자산', stats?.total || 0, 'text-slate-700 bg-slate-100'],
@@ -485,59 +482,65 @@ export default function UserHomePanel({ ctx }) {
         </div>
       </section>
 
-      <section className={`grid items-stretch gap-5 ${shouldReservePromotionColumn ? 'lg:grid-cols-2' : 'grid-cols-1'}`}>
-        <div className="flex min-h-[300px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-            <h2 className="text-base font-black text-slate-900">공지사항</h2>
-            <button type="button" onClick={goToUserNotice} className="text-xs font-bold text-slate-500 transition hover:text-orange-600">+ 더보기</button>
-          </div>
-          <div className="flex-1 px-5 py-2">
-            {!noticePostsReady ? (
-              <div className="flex h-full min-h-[220px] items-center justify-center text-xs text-slate-400">공지사항을 불러오는 중입니다.</div>
-            ) : noticePostsLoadErrorMessage ? (
-              <div className="my-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">{noticePostsLoadErrorMessage}</div>
-            ) : homeNotices.length === 0 ? (
-              <div className="flex h-full min-h-[220px] items-center justify-center text-xs text-slate-400">등록된 공지사항이 없습니다.</div>
-            ) : (
-              <div className="divide-y divide-slate-100">
-                {homeNotices.map((post) => (
-                  <button key={post.id} type="button" onClick={() => openHomeNotice(post)} className="flex w-full items-center gap-4 py-3 text-left transition hover:text-orange-600">
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{post.title}</span>
-                    <span className="shrink-0 text-[11px] text-slate-400">{formatFirestoreDate(post.createdAt)}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {shouldReservePromotionColumn && (
-          <div className={`${!bannersReady ? 'hidden lg:grid' : 'grid'} h-full min-h-[300px] grid-cols-2 gap-2 sm:gap-3`} aria-busy={!bannersReady ? 'true' : undefined}>
-            {promotionRenderSlots.map((banner, index) => (
-              banner ? (
-                <div key={banner.id} className={`${promotionConfig.aspectClass} min-h-0 overflow-hidden rounded-2xl bg-slate-100 shadow-sm`}>
-                  {renderClickableBanner(
-                    banner,
-                    <ResponsiveBannerImage
-                      banner={banner}
-                      loading={index < 2 ? 'eager' : 'lazy'}
-                      fetchPriority={index < 2 ? 'high' : 'auto'}
-                      className="transition duration-300 hover:scale-[1.02]"
-                    />,
-                    'block h-full w-full overflow-hidden rounded-2xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2'
-                  )}
-                </div>
+      {!bannersReady ? (
+        <section className="min-h-[300px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" aria-busy="true" aria-label="초기화면 콘텐츠 배치 확인 중">
+          <div className="h-full min-h-[300px] animate-pulse bg-slate-50" aria-hidden="true" />
+        </section>
+      ) : (
+        <section className={`grid items-stretch gap-5 ${hasPromotionBanners ? 'lg:grid-cols-2' : 'grid-cols-1'}`}>
+          <div className="flex min-h-[300px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <h2 className="text-base font-black text-slate-900">공지사항</h2>
+              <button type="button" onClick={goToUserNotice} className="text-xs font-bold text-slate-500 transition hover:text-orange-600">+ 더보기</button>
+            </div>
+            <div className="flex-1 px-5 py-2">
+              {!noticePostsReady ? (
+                <div className="flex h-full min-h-[220px] items-center justify-center text-xs text-slate-400">공지사항을 불러오는 중입니다.</div>
+              ) : noticePostsLoadErrorMessage ? (
+                <div className="my-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">{noticePostsLoadErrorMessage}</div>
+              ) : homeNotices.length === 0 ? (
+                <div className="flex h-full min-h-[220px] items-center justify-center text-xs text-slate-400">등록된 공지사항이 없습니다.</div>
               ) : (
-                <div
-                  key={`empty-${index}`}
-                  aria-hidden="true"
-                  className={`${bannersReady ? promotionConfig.aspectClass : PROMOTION_LAYOUTS['2x1'].aspectClass} rounded-2xl bg-slate-100`}
-                />
-              )
-            ))}
+                <div className="divide-y divide-slate-100">
+                  {homeNotices.map((post) => (
+                    <button key={post.id} type="button" onClick={() => openHomeNotice(post)} className="flex w-full items-center gap-4 py-3 text-left transition hover:text-orange-600">
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium">{post.title}</span>
+                      <span className="shrink-0 text-[11px] text-slate-400">{formatFirestoreDate(post.createdAt)}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        )}
-      </section>
+
+          {hasPromotionBanners && (
+            <div className="grid h-full min-h-[300px] grid-cols-2 gap-2 sm:gap-3">
+              {promotionSlots.map((banner, index) => (
+                banner ? (
+                  <div key={banner.id} className={`${promotionConfig.aspectClass} min-h-0 overflow-hidden rounded-2xl bg-slate-100 shadow-sm`}>
+                    {renderClickableBanner(
+                      banner,
+                      <ResponsiveBannerImage
+                        banner={banner}
+                        loading={index < 2 ? 'eager' : 'lazy'}
+                        fetchPriority={index < 2 ? 'high' : 'auto'}
+                        className="transition duration-300 hover:scale-[1.02]"
+                      />,
+                      'block h-full w-full overflow-hidden rounded-2xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2'
+                    )}
+                  </div>
+                ) : (
+                  <div
+                    key={`empty-${index}`}
+                    aria-hidden="true"
+                    className={`${promotionConfig.aspectClass} rounded-2xl bg-slate-100`}
+                  />
+                )
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {quickLinkBanners.length > 0 && (
         <section className="home-quick-ticker rounded-2xl border border-slate-200 bg-white shadow-sm" aria-label="바로가기 배너">
