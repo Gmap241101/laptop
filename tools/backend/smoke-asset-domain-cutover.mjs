@@ -99,4 +99,4 @@ for (const forbidden of ['firestoreClient', 'mirrorCreate', 'mirrorEdit', 'mirro
 for (const marker of ['/api/assets/catalog', '/api/admin/assets/bootstrap', '/api/admin/assets/bulk', '/api/admin/assets/categories']) assert.ok(appSource.includes(marker), marker);
 assert.ok(indexSource.includes('createAssetService({\n  repository: assetRepository,\n})'), 'asset service wiring must be PostgreSQL-only');
 
-console.log('[asset-domain-cutover-backend-smoke] PASS (PostgreSQL-only bootstrap/catalog/CRUD/bulk/categories; no Firebase/Firestore asset service client)');
+console.log('[asset-domain-cutover-backend-smoke] PASS (PostgreSQL-only bootstrap/catalog/CRUD/bulk/categories; no retired-provider asset service client)');

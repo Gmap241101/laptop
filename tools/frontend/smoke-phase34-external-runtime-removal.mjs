@@ -46,4 +46,4 @@ assert.equal(bulkUpload.includes('firebaseAuth'), false, 'asset bulk upload must
 const vite = readFileSync('vite.config.js', 'utf8');
 assert.equal(vite.includes('firebase/'), false, 'Vite configuration must not import Firebase');
 
-console.log('[phase34-hard-firebase-removal-frontend-smoke] PASS (Firebase SDK removed, dashboard PostgreSQL-only, Clerk headers only)');
+console.log('[phase34-external-runtime-removal-frontend-smoke] PASS (retired external SDK removed, dashboard PostgreSQL-only, Clerk headers only)');

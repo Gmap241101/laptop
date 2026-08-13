@@ -58,6 +58,7 @@ for (const marker of ['requestAssetCatalog', 'bootstrapAdminAssets', 'createAdmi
 assert.ok(hardRetirement.includes("mode: 'removed'") && hardRetirement.includes('requested: true'), 'Phase 34 hard retirement must be unconditional');
 assert.match(diagnostics, /Clerk Staging Test · Phase 34/);
 assert.match(diagnostics, /Asset source: postgresql/);
-assert.match(diagnostics, /External Firebase SDK\/network: removed/);
+assert.match(diagnostics, /Phase 34 runtime authority/);
+assert.doesNotMatch(diagnostics, /External Firebase SDK\/network|Legacy Firestore sync controls|Firebase runtime:/);
 
-console.log('[asset-domain-cutover-frontend-smoke] PASS (Phase34 forced PostgreSQL authority, no Firebase-session gate on active asset mutations, PG dashboard/catalog)');
+console.log('[asset-domain-cutover-frontend-smoke] PASS (Phase34 forced PostgreSQL authority, no retired-provider session gate on active asset mutations, PG dashboard/catalog)');

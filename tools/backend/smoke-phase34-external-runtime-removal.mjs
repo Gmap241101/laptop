@@ -14,4 +14,4 @@ assert.ok(index.includes("adminAuthentication: 'clerk-postgresql'"));
 assert.ok(index.includes('createSystemConfigService'));
 assert.ok(app.includes("'/api/admin/accounts'"));
 assert.ok(app.includes("'/api/system-config/user-session-policy'"));
-console.log('[phase34-hard-firebase-removal-backend-smoke] PASS (external Firebase runtime removed; admin/settings authority is Clerk/PostgreSQL)');
+console.log('[phase34-external-runtime-removal-backend-smoke] PASS (retired external runtime removed; admin/settings authority is Clerk/PostgreSQL)');

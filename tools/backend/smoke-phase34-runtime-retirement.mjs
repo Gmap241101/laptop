@@ -28,4 +28,4 @@ for (const source of [assetSource, boardSource, memberSource]) {
   assert.ok(source.includes("source: 'postgresql-existing'") || source.includes("source: 'postgresql-admin-registry'"));
 }
 
-console.log('[phase34-firebase-runtime-retirement-backend-smoke] PASS (single retirement flag disables Firebase config/mirrors and bootstrap fallbacks)');
+console.log('[phase34-runtime-retirement-backend-smoke] PASS (single retirement flag disables Firebase config/mirrors and bootstrap fallbacks)');

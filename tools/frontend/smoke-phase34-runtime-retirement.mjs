@@ -49,4 +49,4 @@ for (const source of cutovers) {
   assert.ok(source.includes('readFirebaseRuntimeRetirementConfig'), 'Every legacy cutover must inherit the global retirement flag.');
 }
 
-console.log('[phase34-firebase-runtime-retirement-frontend-smoke] PASS (valid offline Firebase SDK shell, Clerk-only headers/principal, global PostgreSQL cutovers, maintenance guards)');
+console.log('[phase34-runtime-retirement-frontend-smoke] PASS (valid offline Firebase SDK shell, Clerk-only headers/principal, global PostgreSQL cutovers, maintenance guards)');

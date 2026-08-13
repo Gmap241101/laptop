@@ -32,6 +32,7 @@ for (const forbidden of ['getDoc(', 'onSnapshot(', 'retiredLegacyDataCompat']) {
 const adminTerms = readFileSync('src/admin/AdminSignupTermsManager.jsx', 'utf8');
 assert.ok(adminTerms.includes('replacePolicyContentDomainInPostgresql'));
 const signupPolicy = readFileSync('src/features/members/useAdminSignupPolicyActions.js', 'utf8');
-assert.ok(signupPolicy.includes('replacePolicyContentDomainInPostgresql'));
+assert.ok(signupPolicy.includes('saveAdminSignupPolicy'));
+assert.equal(signupPolicy.includes('replacePolicyContentDomainInPostgresql'), false);
 
 console.log('[policy-terms-frontend-smoke] PASS (Phase 34 PostgreSQL-only rental-config + terms authority)');

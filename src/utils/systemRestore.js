@@ -48,7 +48,7 @@ export const RESTORE_SCOPE_META = {
   },
   [SYSTEM_RESTORE_SCOPE.MEMBERS]: {
     label: '회원 계정·인덱스',
-    description: '일반회원 문서, 부서·성명 점유, 이메일 찾기 인덱스와 약관 동의 상태·이력을 복원합니다. Firebase Authentication 계정은 별도입니다.',
+    description: '일반회원 문서, 부서·성명 점유, 이메일 찾기 인덱스와 약관 동의 상태·이력을 복원합니다. Clerk 인증 계정은 별도입니다.',
     documentKeys: [],
     collections: ['userAccounts', 'memberIdentityClaims', 'accountRecoveryKeys', 'userTermConsentStates', 'userTermConsentLogs'],
     requiresPersonalData: true,
@@ -227,7 +227,7 @@ export const validateBackupPayload = ({
   if (!isPlainObject(payload?.collections)) errors.push('백업 collections가 없습니다.');
 
   const metadata = payload?.metadata || {};
-  const backupProjectId = String(metadata.firebaseProjectId || '').trim();
+  const backupProjectId = String(metadata.projectId || metadata.firebaseProjectId || '').trim();
   const backupFormatVersion = Number(metadata.backupFormatVersion || 1);
   const backupSchemaVersion = Number(metadata.schemaVersion || 1);
   const projectMismatch = Boolean(backupProjectId && backupProjectId !== currentProjectId);
@@ -241,7 +241,7 @@ export const validateBackupPayload = ({
   } else if (backupFormatVersion < BACKUP_FORMAT_VERSION) {
     warnings.push(`이전 백업 형식 v${backupFormatVersion}입니다. 기존 Timestamp 형식을 호환 변환합니다.`);
   }
-  if (!backupProjectId) warnings.push('백업 파일에 Firebase 프로젝트 ID가 없습니다.');
+  if (!backupProjectId) warnings.push('백업 파일에 프로젝트 식별자가 없습니다.');
   if (projectMismatch) {
     warnings.push(
       isOwner

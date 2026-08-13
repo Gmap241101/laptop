@@ -183,6 +183,162 @@ export const createSiteContentService = ({ repository }) => Object.freeze({
     });
     return projectPublicDomain(result);
   },
+
+  async patchSignupPolicy({ policyPatch, actorClerkUserId }) {
+    if (!policyPatch || typeof policyPatch !== 'object' || Array.isArray(policyPatch)) {
+      throw errorWith('signup_policy_invalid', 'Signup policy patch must be an object.', 400);
+    }
+
+    let [rentalConfig, terms] = await Promise.all([
+      repository.getDomain('rental-config'),
+      repository.getDomain('terms'),
+    ]);
+    const hasCanonicalDocument = Boolean(
+      rentalConfig?.documents?.some((document) => document?.key === 'rentalSystem/publicConfig')
+    );
+    if (!rentalConfig || !hasCanonicalDocument) {
+      if (typeof repository.getRentalConfigBootstrapContext !== 'function') {
+        throw errorWith('rental_config_bootstrap_unavailable', 'PostgreSQL rental configuration bootstrap is unavailable.', 503);
+      }
+      const context = await repository.getRentalConfigBootstrapContext();
+      rentalConfig = await repository.replaceDomain({
+        domain: 'rental-config',
+        documents: [createRentalConfigBootstrapDocument(context)],
+        actorClerkUserId: 'phase34-signup-policy-self-heal',
+        sourceMode: 'postgresql-self-heal',
+      });
+    }
+    if (!terms) {
+      throw errorWith('signup_terms_postgresql_missing', 'PostgreSQL signup terms configuration is unavailable.', 503);
+    }
+
+    const publicConfigDocument = rentalConfig.documents.find((document) => document?.key === 'rentalSystem/publicConfig');
+    const termsPolicyDocument = terms.documents.find((document) => document?.key === 'signupTermsPolicy/current');
+    const publicPayload = publicConfigDocument?.payload && typeof publicConfigDocument.payload === 'object'
+      ? publicConfigDocument.payload
+      : {};
+    const currentSettings = publicPayload?.settings && typeof publicPayload.settings === 'object'
+      ? publicPayload.settings
+      : {};
+    const currentTermsPolicy = termsPolicyDocument?.payload && typeof termsPolicyDocument.payload === 'object'
+      ? termsPolicyDocument.payload
+      : {};
+
+    const nextRequireRegistered = Boolean(policyPatch.requireRegisteredMemberForSignup);
+    const nextAutoApprove = nextRequireRegistered && Boolean(policyPatch.autoApproveNewMembers);
+    const nextTermsEnabled = Boolean(policyPatch.signupTermsEnabled);
+    const nextRequireReconsent = policyPatch.signupTermsRequireReconsentOnChange !== false;
+    const nextApplyToExisting = Boolean(policyPatch.signupTermsApplyToExistingMembers);
+    const activeTerms = Array.isArray(currentTermsPolicy.activeTerms) ? currentTermsPolicy.activeTerms : [];
+    if (nextTermsEnabled && activeTerms.length === 0) {
+      throw errorWith('terms/no-active-terms', 'At least one active signup term is required before enabling terms.', 409);
+    }
+
+    const policyEnabledChanged = nextRequireRegistered !== Boolean(currentSettings.requireRegisteredMemberForSignup);
+    const nextDirectoryVersion = policyEnabledChanged
+      ? Math.max(0, Number(currentSettings.memberDirectoryVersion || 0)) + 1
+      : Math.max(0, Number(currentSettings.memberDirectoryVersion || 0));
+    const currentTermsEnabled = Boolean(currentSettings.signupTermsEnabled);
+    const enablingTerms = !currentTermsEnabled && nextTermsEnabled;
+    let revision = Math.max(
+      0,
+      Number(currentTermsPolicy.revision || 0),
+      Number(currentSettings.signupTermsPolicyRevision || 0),
+    );
+    if (enablingTerms && revision === 0) revision = 1;
+    let initialRevision = Math.max(
+      0,
+      Number(currentTermsPolicy.initialRevision || 0),
+      Number(currentSettings.signupTermsInitialRevision || 0),
+    );
+    let requiredRevision = Math.max(
+      0,
+      Number(currentTermsPolicy.requiredRevision || 0),
+      Number(currentSettings.signupTermsRequiredRevision || 0),
+    );
+    if (enablingTerms) {
+      initialRevision = revision;
+      requiredRevision = revision;
+    }
+
+    const nextSettings = {
+      ...currentSettings,
+      requireRegisteredMemberForSignup: nextRequireRegistered,
+      autoApproveNewMembers: nextAutoApprove,
+      memberDirectoryVersion: nextDirectoryVersion,
+      signupTermsEnabled: nextTermsEnabled,
+      signupTermsRequireReconsentOnChange: nextRequireReconsent,
+      signupTermsApplyToExistingMembers: nextApplyToExisting,
+      signupTermsPolicyRevision: revision,
+      signupTermsRequiredRevision: requiredRevision,
+      signupTermsInitialRevision: initialRevision,
+    };
+    const nextTermsPolicy = {
+      ...currentTermsPolicy,
+      enabled: nextTermsEnabled,
+      requireReconsentOnChange: nextRequireReconsent,
+      applyToExistingMembers: nextApplyToExisting,
+      revision,
+      requiredRevision,
+      initialRevision,
+      activeTerms,
+      updatedAt: new Date().toISOString(),
+      updatedBy: String(actorClerkUserId || 'clerk-admin'),
+    };
+
+    const nextTermsDocuments = terms.documents.map((document) => document?.key === 'signupTermsPolicy/current'
+      ? {
+          key: document.key,
+          payload: nextTermsPolicy,
+          enabled: nextTermsEnabled,
+          sortOrder: document.sortOrder,
+          sourceUpdatedAt: new Date().toISOString(),
+        }
+      : document
+    );
+    if (!termsPolicyDocument) {
+      nextTermsDocuments.unshift({
+        key: 'signupTermsPolicy/current',
+        payload: nextTermsPolicy,
+        enabled: nextTermsEnabled,
+        sortOrder: null,
+        sourceUpdatedAt: new Date().toISOString(),
+      });
+    }
+
+    await repository.replaceDomain({
+      domain: 'terms',
+      documents: nextTermsDocuments,
+      actorClerkUserId,
+      sourceMode: 'postgresql-admin-signup-policy',
+    });
+
+    const nextRentalDocuments = rentalConfig.documents.map((document) => document?.key === 'rentalSystem/publicConfig'
+      ? {
+          key: document.key,
+          payload: { ...publicPayload, settings: nextSettings, updatedAt: new Date().toISOString() },
+          enabled: document.enabled,
+          sortOrder: document.sortOrder,
+          sourceUpdatedAt: new Date().toISOString(),
+        }
+      : document
+    );
+    const nextRentalConfig = await repository.replaceDomain({
+      domain: 'rental-config',
+      documents: nextRentalDocuments,
+      actorClerkUserId,
+      sourceMode: 'postgresql-admin-signup-policy',
+    });
+
+    return Object.freeze({
+      authority: 'postgresql',
+      operation: 'signup-policy-patch',
+      settings: nextSettings,
+      termsPolicy: nextTermsPolicy,
+      rentalConfig: projectPublicDomain(nextRentalConfig),
+    });
+  },
+
 });
 
 export const __siteContentVisibilityTest = Object.freeze({ timestampMillis, projectTimedVisibility, projectPublicDomain });

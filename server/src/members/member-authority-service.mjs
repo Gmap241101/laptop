@@ -607,6 +607,213 @@ export const createMemberAuthorityService = ({
       });
     },
 
+
+    async restoreDirectoryMismatchAdmin({ firebaseIdentity } = {}) {
+      const admin = await verifyAdmin(firebaseIdentity);
+      if (typeof repository.listMembersForDirectoryAudit !== 'function') {
+        throw serviceError('member_directory_postgresql_audit_unavailable', 'PostgreSQL member directory audit repository is unavailable.', 503);
+      }
+      if (profileWriteMirrorEnabled) {
+        throw serviceError('member_directory_postgresql_authority_disabled', 'PostgreSQL member directory authority is not enabled.', 409);
+      }
+      const accounts = await repository.listMembersForDirectoryAudit();
+      const targets = accounts.filter((account) =>
+        trim(account.status) === 'profileRequired' && trim(account.profileRequiredReason) === 'directoryMismatch'
+      );
+      let restoredCount = 0;
+      let failed = 0;
+      for (const account of targets) {
+        try {
+          const beforeProfile = profileFromAccount(account, account.firebaseUid || account.uid);
+          const nextProfile = {
+            ...beforeProfile,
+            status: 'active',
+            directoryMemberId: '',
+            directoryVerifiedVersion: 0,
+            profileRequiredReason: '',
+          };
+          await repository.mutateProfile({
+            appUserId: account.appUserId || null,
+            firebaseUid: account.firebaseUid || account.uid,
+            actorFirebaseUid: admin.uid,
+            actorType: 'admin',
+            action: 'admin-directory-policy-restore',
+            beforeProfile,
+            nextProfile,
+            mirrorState: 'retired',
+            beforeMirror: null,
+          });
+          restoredCount += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      return Object.freeze({
+        authority: 'postgresql',
+        source: 'postgresql-authoritative',
+        restoredCount,
+        failed,
+      });
+    },
+
+    async auditMemberDirectoryAdmin({ firebaseIdentity } = {}) {
+      const admin = await verifyAdmin(firebaseIdentity);
+      if (typeof repository.listMembersForDirectoryAudit !== 'function' || typeof repository.listDirectoryEntries !== 'function') {
+        throw serviceError('member_directory_postgresql_audit_unavailable', 'PostgreSQL member directory audit repository is unavailable.', 503);
+      }
+      if (profileWriteMirrorEnabled) {
+        throw serviceError('member_directory_postgresql_authority_disabled', 'PostgreSQL member directory authority is not enabled.', 409);
+      }
+      const settings = await getPostgresqlMemberPolicySettings();
+      if (!Boolean(settings.requireRegisteredMemberForSignup)) {
+        throw serviceError('member_directory_policy_disabled', 'Registered-member signup policy must be enabled before running the directory audit.', 409);
+      }
+      const directoryVersion = Math.max(0, Number(settings.memberDirectoryVersion || 0));
+      const [accounts, directoryEntries, directoryState] = await Promise.all([
+        repository.listMembersForDirectoryAudit(),
+        repository.listDirectoryEntries(),
+        repository.getDirectoryBootstrapState(),
+      ]);
+      if (directoryState?.completed !== true || Number(directoryState?.version || 0) < directoryVersion) {
+        throw serviceError('member_directory_postgresql_stale', 'PostgreSQL member directory is not synchronized to the current policy version.', 503, {
+          requiredVersion: directoryVersion,
+          synchronizedVersion: Number(directoryState?.version || 0),
+        });
+      }
+
+      const directoryByIdentityKey = new Map(
+        directoryEntries
+          .filter((entry) => entry?.enabled !== false && trim(entry?.identityKey))
+          .map((entry) => [trim(entry.identityKey), entry])
+      );
+      const auditableStatuses = new Set(['pending', 'active', 'profileRequired']);
+      const auditableAccounts = accounts.filter((account) => auditableStatuses.has(trim(account.status)));
+      const groups = new Map();
+      const prepared = auditableAccounts.map((account) => {
+        const normalizedName = trim(account.name).replace(/\s+/g, '');
+        const normalizedTeam = trim(account.team).replace(/\s+/g, ' ');
+        const computedIdentityKey = normalizedName && normalizedTeam ? identityKey(normalizedTeam, normalizedName) : '';
+        if (computedIdentityKey) {
+          const group = groups.get(computedIdentityKey) || [];
+          group.push(account);
+          groups.set(computedIdentityKey, group);
+        }
+        return { account, normalizedName, normalizedTeam, computedIdentityKey };
+      });
+
+      let normal = 0;
+      let profileRequired = 0;
+      let missing = 0;
+      let duplicateAccounts = 0;
+      let failed = 0;
+      for (const group of groups.values()) {
+        if (group.length > 1) duplicateAccounts += group.length;
+      }
+
+      for (const item of prepared) {
+        const { account, normalizedName, normalizedTeam, computedIdentityKey } = item;
+        const group = computedIdentityKey ? (groups.get(computedIdentityKey) || []) : [];
+        const isDuplicate = group.length > 1;
+        const directory = computedIdentityKey ? directoryByIdentityKey.get(computedIdentityKey) : null;
+        const directoryMatches = Boolean(
+          directory &&
+          trim(directory.name).replace(/\s+/g, '') === normalizedName &&
+          trim(directory.team).replace(/\s+/g, ' ') === normalizedTeam
+        );
+        const beforeProfile = profileFromAccount(account, account.firebaseUid || account.uid);
+        let nextProfile;
+        if (!computedIdentityKey || !directoryMatches || isDuplicate) {
+          if (!computedIdentityKey || !directoryMatches) missing += 1;
+          profileRequired += 1;
+          nextProfile = {
+            ...beforeProfile,
+            status: 'profileRequired',
+            identityKey: isDuplicate ? trim(account.identityKey) : computedIdentityKey,
+            directoryMemberId: directoryMatches ? trim(directory.directoryMemberId) : '',
+            directoryVerifiedVersion: 0,
+            profileRequiredReason: isDuplicate ? 'duplicateIdentity' : 'directoryMismatch',
+          };
+        } else {
+          normal += 1;
+          const shouldRestore = trim(account.status) === 'profileRequired' && ['directoryMismatch', 'duplicateIdentity'].includes(trim(account.profileRequiredReason));
+          nextProfile = {
+            ...beforeProfile,
+            status: shouldRestore ? 'active' : trim(account.status),
+            identityKey: computedIdentityKey,
+            directoryMemberId: trim(directory.directoryMemberId),
+            directoryVerifiedVersion: directoryVersion,
+            profileRequiredReason: shouldRestore ? '' : trim(account.profileRequiredReason),
+          };
+        }
+        const changed = ['status','identityKey','directoryMemberId','directoryVerifiedVersion','profileRequiredReason']
+          .some((key) => String(beforeProfile[key] ?? '') !== String(nextProfile[key] ?? ''));
+        if (!changed) continue;
+        try {
+          await repository.mutateProfile({
+            appUserId: account.appUserId || null,
+            firebaseUid: account.firebaseUid || account.uid,
+            actorFirebaseUid: admin.uid,
+            actorType: 'admin',
+            action: 'admin-member-directory-audit',
+            beforeProfile,
+            nextProfile,
+            mirrorState: 'retired',
+            beforeMirror: null,
+          });
+        } catch (error) {
+          failed += 1;
+          if (directoryMatches && !isDuplicate) normal = Math.max(0, normal - 1);
+          else profileRequired = Math.max(0, profileRequired - 1);
+        }
+      }
+
+      const auditSummary = Object.freeze({
+        total: auditableAccounts.length,
+        normal,
+        profileRequired,
+        duplicates: duplicateAccounts,
+        missing,
+        failed,
+        directoryVersion,
+        completedAtText: new Intl.DateTimeFormat('ko-KR', { dateStyle: 'short', timeStyle: 'medium', timeZone: 'Asia/Seoul' }).format(new Date()),
+        completedBy: admin.uid,
+        completedAt: new Date().toISOString(),
+      });
+
+      if (siteContentRepository && typeof siteContentRepository.getDomain === 'function' && typeof siteContentRepository.replaceDomain === 'function') {
+        const current = await siteContentRepository.getDomain('rental-config');
+        const documents = (current?.documents || []).map((document) => {
+          if (document?.key !== 'rentalSystem/publicConfig') return document;
+          const payload = document?.payload && typeof document.payload === 'object' ? document.payload : {};
+          const currentSettings = payload?.settings && typeof payload.settings === 'object' ? payload.settings : {};
+          return {
+            key: document.key,
+            payload: {
+              ...payload,
+              memberDirectoryAudit: auditSummary,
+              settings: { ...currentSettings, memberIdentityClaimsReady: true },
+              updatedAt: new Date().toISOString(),
+            },
+            enabled: document.enabled,
+            sortOrder: document.sortOrder,
+            sourceUpdatedAt: new Date().toISOString(),
+          };
+        });
+        await siteContentRepository.replaceDomain({
+          domain: 'rental-config',
+          documents,
+          actorClerkUserId: admin.uid,
+          sourceMode: 'postgresql-admin-directory-audit',
+        });
+      }
+
+      return Object.freeze({
+        authority: 'postgresql',
+        source: 'postgresql-authoritative',
+        audit: auditSummary,
+      });
+    },
+
     async bootstrapAdminRegistry({ firebaseIdentity }) {
       const admin = await verifyAdmin(firebaseIdentity);
       if (firebaseIdentity?.source === 'clerk-postgresql') {

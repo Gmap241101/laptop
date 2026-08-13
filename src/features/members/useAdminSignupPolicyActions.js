@@ -6,24 +6,12 @@ import {
   useState,
 } from 'react';
 
-import {
-  normalizeTermsPolicy,
-  normalizeTermsSettings,
-} from '../terms/termsConstants.js';
-import {
-  getPolicyContentDocument,
-  POLICY_CONTENT_DOMAINS,
-  readPolicyContentCutoverConfig,
-  replacePolicyContentDomainInPostgresql,
-  requestPolicyContentDomain,
-} from '../content/policyContentCutover.js';
-import { getSafeMemberDirectoryVersion } from './memberAccountPolicy.js';
+import { normalizeTermsSettings } from '../terms/termsConstants.js';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { publishSiteContentInvalidation } from '../content/siteContentCutover.js';
 
 export default function useAdminSignupPolicyActions({
   isAdminAuthenticated,
-  isSplitStorageReady,
-  resetDirectoryMismatchRestoreAttempt,
-  restoreDirectoryMismatchAccountsAfterPolicyDisabled,
   setData,
   settings,
   triggerToast,
@@ -88,122 +76,52 @@ export default function useAdminSignupPolicyActions({
 
   const saveSignupPolicyChanges = useCallback(async () => {
     if (!isAdminAuthenticated) {
-      triggerToastRef.current('관리자 인증 후 회원가입 정책을 저장할 수 있습니다.', 'error');
+      triggerToastRef.current('\uad00\ub9ac\uc790 \uc778\uc99d \ud6c4 \ud68c\uc6d0\uac00\uc785 \uc815\ucc45\uc744 \uc800\uc7a5\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.', 'error');
       return false;
     }
 
     const nextRequireRegistered = Boolean(tempRequireRegisteredMemberForSignup);
     const nextAutoApprove = nextRequireRegistered && Boolean(tempAutoApproveNewMembers);
-    const policyEnabledChanged = nextRequireRegistered !== Boolean(settings.requireRegisteredMemberForSignup);
-    const nextDirectoryVersion = policyEnabledChanged
-      ? getSafeMemberDirectoryVersion(settings) + 1
-      : getSafeMemberDirectoryVersion(settings);
     setSignupPolicySaving(true);
 
     try {
-      const policyContentConfig = readPolicyContentCutoverConfig();
-      if (!policyContentConfig.adminAuthorityRequested) {
-        const error = new Error('PostgreSQL policy authority is unavailable.');
-        error.code = 'policy_postgresql_authority_unavailable';
-        throw error;
-      }
-
-      const [rentalDomain, termsDomain] = await Promise.all([
-        requestPolicyContentDomain({ domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG, config: policyContentConfig, useCache: false }),
-        requestPolicyContentDomain({ domain: POLICY_CONTENT_DOMAINS.TERMS, config: policyContentConfig, useCache: false }),
-      ]);
-      const publicConfigDocument = getPolicyContentDocument(rentalDomain, 'rentalSystem/publicConfig');
-      const termsPolicyDocument = getPolicyContentDocument(termsDomain, 'signupTermsPolicy/current');
-      const publicConfig = publicConfigDocument?.payload || {};
-      const currentSettings = { ...(publicConfig.settings || settings) };
-      const termsPolicy = normalizeTermsPolicy(termsPolicyDocument?.payload || {});
-
-      if (tempSignupTermsEnabled && termsPolicy.activeTerms.length === 0) {
-        const error = new Error('terms/no-active-terms');
-        error.code = 'terms/no-active-terms';
-        throw error;
-      }
-
-      const currentTermsSettings = normalizeTermsSettings(currentSettings);
-      const enablingTerms = !currentTermsSettings.signupTermsEnabled && tempSignupTermsEnabled;
-      let policyRevision = Math.max(termsPolicy.revision, Number(currentSettings.signupTermsPolicyRevision) || 0);
-      if (enablingTerms && policyRevision === 0) policyRevision = 1;
-      let initialRevision = Math.max(termsPolicy.initialRevision, Number(currentSettings.signupTermsInitialRevision) || 0);
-      let requiredRevision = Math.max(termsPolicy.requiredRevision, Number(currentSettings.signupTermsRequiredRevision) || 0);
-      if (enablingTerms) {
-        initialRevision = policyRevision;
-        requiredRevision = policyRevision;
-      }
-
-      const nextSettings = {
-        ...currentSettings,
+      const payload = await clerkStagingClient.saveAdminSignupPolicy({
         requireRegisteredMemberForSignup: nextRequireRegistered,
         autoApproveNewMembers: nextAutoApprove,
-        memberDirectoryVersion: nextDirectoryVersion,
         signupTermsEnabled: Boolean(tempSignupTermsEnabled),
         signupTermsRequireReconsentOnChange: Boolean(tempSignupTermsRequireReconsentOnChange),
         signupTermsApplyToExistingMembers: Boolean(tempSignupTermsApplyToExistingMembers),
-        signupTermsPolicyRevision: policyRevision,
-        signupTermsRequiredRevision: requiredRevision,
-        signupTermsInitialRevision: initialRevision,
-      };
-      const nextTermsPolicy = {
-        ...termsPolicy,
-        enabled: Boolean(tempSignupTermsEnabled),
-        requireReconsentOnChange: Boolean(tempSignupTermsRequireReconsentOnChange),
-        applyToExistingMembers: Boolean(tempSignupTermsApplyToExistingMembers),
-        revision: policyRevision,
-        requiredRevision,
-        initialRevision,
-        updatedAt: new Date(),
-        updatedBy: 'clerk-admin',
-      };
-
-      await replacePolicyContentDomainInPostgresql({
-        domain: POLICY_CONTENT_DOMAINS.TERMS,
-        config: policyContentConfig,
-        documents: [
-          { key: 'signupTermsPolicy/current', payload: nextTermsPolicy, enabled: nextTermsPolicy.enabled },
-          ...termsDomain.documents
-            .filter((item) => item.key !== 'signupTermsPolicy/current')
-            .map((item) => ({ key: item.key, payload: item.payload, enabled: item.enabled, sortOrder: item.sortOrder })),
-        ],
       });
-      await replacePolicyContentDomainInPostgresql({
-        domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
-        config: policyContentConfig,
-        documents: [{
-          key: 'rentalSystem/publicConfig',
-          payload: { ...publicConfig, settings: nextSettings, updatedAt: new Date() },
-        }],
-      });
-
-      let restoredDirectoryMismatchCount = 0;
-      let restoreWarning = '';
-      if (!nextRequireRegistered) {
-        try {
-          restoredDirectoryMismatchCount = await restoreDirectoryMismatchAccountsAfterPolicyDisabled();
-        } catch (restoreError) {
-          console.error('Directory mismatch account restoration error:', restoreError);
-          resetDirectoryMismatchRestoreAttempt();
-          restoreWarning = ' 정책은 해제되었지만 일부 회원 상태 자동 복원에 실패했습니다. PostgreSQL 회원 상태를 확인해 주세요.';
-        }
+      const mutation = payload?.signupPolicyMutation || {};
+      const nextSettings = mutation?.settings;
+      if (!nextSettings || typeof nextSettings !== 'object') {
+        const error = new Error('PostgreSQL signup policy response is missing authoritative settings.');
+        error.code = 'signup_policy_postgresql_response_missing';
+        throw error;
       }
 
       setData((previousData) => ({ ...previousData, settings: nextSettings }));
-      setTempRequireRegisteredMemberForSignup(nextRequireRegistered);
-      setTempAutoApproveNewMembers(nextAutoApprove);
+      setTempRequireRegisteredMemberForSignup(Boolean(nextSettings.requireRegisteredMemberForSignup));
+      setTempAutoApproveNewMembers(Boolean(nextSettings.autoApproveNewMembers));
+      setTempSignupTermsEnabled(Boolean(nextSettings.signupTermsEnabled));
+      setTempSignupTermsRequireReconsentOnChange(nextSettings.signupTermsRequireReconsentOnChange !== false);
+      setTempSignupTermsApplyToExistingMembers(Boolean(nextSettings.signupTermsApplyToExistingMembers));
+      publishSiteContentInvalidation('rental-config');
+      publishSiteContentInvalidation('terms');
+
+      const restoredCount = Number(mutation?.directoryRestore?.restoredCount || 0);
+      const restoreFailed = Number(mutation?.directoryRestore?.failed || 0);
       triggerToastRef.current(
-        `회원가입 정책이 PostgreSQL에 저장되었습니다.${restoredDirectoryMismatchCount > 0 ? ` 명부 불일치로 전환됐던 회원 ${restoredDirectoryMismatchCount}명의 상태를 복원했습니다.` : ''}${restoreWarning}`,
-        restoreWarning ? 'error' : 'success'
+        `\ud68c\uc6d0\uac00\uc785 \uc815\ucc45\uc774 PostgreSQL\uc5d0 \uc800\uc7a5\ub418\uc5c8\uc2b5\ub2c8\ub2e4.${restoredCount > 0 ? ` \uba85\ubd80 \ubd88\uc77c\uce58\ub85c \uc804\ud658\ub410\ub358 \ud68c\uc6d0 ${restoredCount}\uba85\uc758 \uc0c1\ud0dc\ub97c \ubcf5\uc6d0\ud588\uc2b5\ub2c8\ub2e4.` : ''}${restoreFailed > 0 ? ` \ubcf5\uc6d0 \uc2e4\ud328 ${restoreFailed}\uba85\uc740 \ud68c\uc6d0 \uc0c1\ud0dc\ub97c \ud655\uc778\ud574 \uc8fc\uc138\uc694.` : ''}`,
+        restoreFailed > 0 ? 'error' : 'success'
       );
       return true;
     } catch (error) {
       console.error('Signup policy save error:', error);
       triggerToastRef.current(
         error?.code === 'terms/no-active-terms'
-          ? '약관 기능을 사용하려면 이용약관 관리 탭에서 사용 중인 약관을 하나 이상 등록해 주세요.'
-          : '회원가입 정책 PostgreSQL 저장에 실패했습니다.',
+          ? '\uc57d\uad00 \uae30\ub2a5\uc744 \uc0ac\uc6a9\ud558\ub824\uba74 \uc774\uc6a9\uc57d\uad00 \uad00\ub9ac \ud0ed\uc5d0\uc11c \uc0ac\uc6a9 \uc911\uc778 \uc57d\uad00\uc744 \ud558\ub098 \uc774\uc0c1 \ub4f1\ub85d\ud574 \uc8fc\uc138\uc694.'
+          : `\ud68c\uc6d0\uac00\uc785 \uc815\ucc45 PostgreSQL \uc800\uc7a5\uc5d0 \uc2e4\ud328\ud588\uc2b5\ub2c8\ub2e4. \uc624\ub958 \ucf54\ub4dc: ${error?.code || error?.name || 'unknown'}`,
         'error'
       );
       return false;
@@ -212,11 +130,7 @@ export default function useAdminSignupPolicyActions({
     }
   }, [
     isAdminAuthenticated,
-    isSplitStorageReady,
-    resetDirectoryMismatchRestoreAttempt,
-    restoreDirectoryMismatchAccountsAfterPolicyDisabled,
     setData,
-    settings,
     tempAutoApproveNewMembers,
     tempRequireRegisteredMemberForSignup,
     tempSignupTermsApplyToExistingMembers,

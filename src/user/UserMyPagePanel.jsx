@@ -299,7 +299,7 @@ export default function UserMyPagePanel({ ctx }) {
                             })
                           }
                           disabled
-                          placeholder="Firebase Auth 로그인 이메일"
+                          placeholder="Clerk 로그인 이메일"
                         />
 
                         <Input
@@ -340,7 +340,7 @@ export default function UserMyPagePanel({ ctx }) {
                       </div>
 
                       <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[11px] leading-5 text-slate-500">
-                        Firebase Auth 로그인 이메일은 이 화면에서 변경하지 않습니다.
+                        Clerk 로그인 이메일은 이 화면에서 변경하지 않습니다.
                       </div>
 
                       <div className="mt-5 flex justify-end">

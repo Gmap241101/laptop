@@ -236,6 +236,8 @@ export const createRequestHandler = ({
     async editAdmin() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
     async changeStatusAdmin() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
     async syncMemberDirectoryAdmin() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
+    async auditMemberDirectoryAdmin() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
+    async restoreDirectoryMismatchAdmin() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
     async bootstrapAdminRegistry() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
   },
   accountRecoveryService = {
@@ -323,6 +325,8 @@ export const createRequestHandler = ({
     async getDomain() { const error = new Error('Site content service is not configured.'); error.code = 'site_content_not_configured'; throw error; },
     async syncDomain() { const error = new Error('Site content service is not configured.'); error.code = 'site_content_not_configured'; throw error; },
     async replaceAdminDomain() { const error = new Error('Site content service is not configured.'); error.code = 'site_content_not_configured'; throw error; },
+    async patchRentalConfigSettings() { const error = new Error('Site content service is not configured.'); error.code = 'site_content_not_configured'; throw error; },
+    async patchSignupPolicy() { const error = new Error('Site content service is not configured.'); error.code = 'site_content_not_configured'; throw error; },
   },
   boardService = {
     async getStatus() { const error = new Error('Board service is not configured.'); error.code = 'board_service_not_configured'; throw error; },
@@ -377,6 +381,8 @@ export const createRequestHandler = ({
   }
   if (config.memberProfileWriteMirrorDisabled && (
     typeof memberAuthorityService.syncMemberDirectoryAdmin !== 'function' ||
+    typeof memberAuthorityService.auditMemberDirectoryAdmin !== 'function' ||
+    typeof memberAuthorityService.restoreDirectoryMismatchAdmin !== 'function' ||
     typeof memberAuthorityService.getCurrentByFirebaseIdentity !== 'function'
   )) {
     throw new TypeError('memberAuthorityService Phase 31 canonical profile read/syncMemberDirectoryAdmin methods are required when member profile identity authority is enabled.');
@@ -492,16 +498,31 @@ export const createRequestHandler = ({
     service: config.serviceName,
     environment: config.appEnv,
     version: config.serviceVersion,
-    runtimeRevision: 'phase34-firebase-free-runtime-authority-20260812-1500',
+    runtimeRevision: 'phase34-clerk-postgresql-runtime-authority-20260813-1438',
     publicContentVisibilityRevision: 'phase33-public-content-visibility-hotfix-20260812-0105',
     publicContentSyncRevision: 'phase33-public-content-full-server-sync-hotfix-20260812-0117',
     adminContentAuthorityRevision: 'phase34-admin-content-postgresql-authority-20260812-1200',
-    phase34RuntimeRevision: 'phase34-firebase-free-runtime-authority-20260812-1500',
+    phase34RuntimeRevision: 'phase34-clerk-postgresql-runtime-authority-20260813-1438',
     phase34PolicyBootstrapRevision: 'phase34-rental-config-postgresql-bootstrap-hotfix-20260812-1545',
     phase34SystemDataRevision: 'phase34-postgresql-data-management-asset-integrity-20260812-1700',
     phase34RuntimeRegressionRevision: 'phase34-rental-request-restriction-content-reset-hotfix-20260812-1740',
     phase34AdminNavigationHolidayRevision: 'phase34-admin-navigation-holiday-hotfix-20260812-1810',
     phase34SettingsRepositoryMemberRevision: 'phase34-settings-repository-member-createdat-hotfix-20260812-1835',
+    authority: {
+      userAuthentication: 'clerk-postgresql',
+      adminAuthentication: 'clerk-postgresql',
+      memberProfile: 'postgresql',
+      memberStatus: 'postgresql',
+      rentalTransactions: 'postgresql',
+      signup: 'postgresql',
+      terms: 'postgresql',
+      passwordReset: 'clerk-email-code',
+      siteContent: 'postgresql',
+      policyContent: 'postgresql',
+      boardContent: 'postgresql',
+      assets: 'postgresql',
+      systemConfiguration: 'postgresql',
+    },
     compatibility: {
       assetBoardWriteMirrorDisabled: Boolean(config.assetBoardWriteMirrorDisabled),
       retiredWriteMirrorDomains: [
@@ -677,6 +698,9 @@ export const createRequestHandler = ({
           memberProfileAuthority: '/api/users/me/member-profile',
           adminMembers: '/api/admin/members',
           adminMemberDirectory: '/api/admin/member-directory',
+          adminMemberDirectoryAudit: '/api/admin/member-directory/audit',
+          adminMemberDirectoryRestore: '/api/admin/member-directory/restore-mismatches',
+          adminMemberSignupPolicy: '/api/admin/member-signup-policy',
           adminMemberProfileAuthority: '/api/admin/members/:uid/profile',
           adminMemberStatusAuthority: '/api/admin/members/:uid/status',
           adminIdentityRegistryBootstrap: '/api/admin/identity-registry/bootstrap',
@@ -1099,6 +1123,39 @@ export const createRequestHandler = ({
         error: 'firebase_site_content_sync_retired',
         replacement: '/api/admin/site-content/:domain PUT',
       }, headers);
+      return;
+    }
+
+    if (request.method === 'PATCH' && url.pathname === '/api/admin/member-signup-policy') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      let body;
+      try { body = await readJsonBody(request); } catch (error) { writeJson(response, error.status || 400, { ...basePayload, authenticated: true, error: error.code || 'invalid_json_body' }, headers); return; }
+      try {
+        const policy = await siteContentService.patchSignupPolicy({
+          policyPatch: body?.policy,
+          actorClerkUserId: authority.auth.userId,
+        });
+        let directoryRestore = { restoredCount: 0, failed: 0 };
+        if (!policy.settings.requireRegisteredMemberForSignup) {
+          directoryRestore = await memberAuthorityService.restoreDirectoryMismatchAdmin({ firebaseIdentity: authority.firebaseIdentity });
+        }
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          signupPolicyMutation: {
+            authority: 'postgresql',
+            operation: 'signup-policy-patch',
+            settings: policy.settings,
+            termsPolicy: policy.termsPolicy,
+            directoryRestore,
+          },
+        }, headers);
+      } catch (error) {
+        console.error('[phase34] PostgreSQL signup policy patch failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'signup_policy_postgresql_write_failed' }, headers);
+      }
       return;
     }
 
@@ -2514,6 +2571,32 @@ export const createRequestHandler = ({
       } catch (error) {
         console.error('[phase34] member directory PostgreSQL read failed', { requestId, code: error?.code });
         writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'member_directory_postgresql_read_failed' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/admin/member-directory/audit') {
+      const admin = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!admin) return;
+      try {
+        const result = await memberAuthorityService.auditMemberDirectoryAdmin({ firebaseIdentity: admin.firebaseIdentity });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, memberDirectoryAudit: result }, headers);
+      } catch (error) {
+        console.error('[phase34] PostgreSQL member directory audit failed', { requestId, code: error?.code });
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'member_directory_postgresql_audit_failed' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/admin/member-directory/restore-mismatches') {
+      const admin = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!admin) return;
+      try {
+        const result = await memberAuthorityService.restoreDirectoryMismatchAdmin({ firebaseIdentity: admin.firebaseIdentity });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, memberDirectoryRestore: result }, headers);
+      } catch (error) {
+        console.error('[phase34] PostgreSQL member directory restore failed', { requestId, code: error?.code });
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'member_directory_postgresql_restore_failed' }, headers);
       }
       return;
     }

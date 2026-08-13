@@ -414,4 +414,4 @@ assert.equal((await client.compareMemberShadow('firebase-browser-token')).compar
 assert.ok(browserCalls.every((call) => call.options.headers.Authorization === 'Bearer browser-session-token'));
 assert.equal(browserCalls.some((call) => call.options.headers['X-Firebase-Authorization']), false);
 
-console.log('[clerk-frontend-smoke] PASS (config, CDN loader, Clerk bearer auth, PostgreSQL compatibility-key endpoints, no Firebase authorization header)');
+console.log('[clerk-frontend-smoke] PASS (config, CDN loader, Clerk bearer auth, PostgreSQL compatibility-key endpoints, no retired-provider authorization header)');

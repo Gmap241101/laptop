@@ -7,7 +7,7 @@ import { readPolicyContentCutoverConfig } from '../features/content/policyConten
 const PHASE34_ADMIN_NAVIGATION_HOLIDAY_REVISION = 'phase34-admin-navigation-holiday-hotfix-20260812-1810';
 const PHASE34_SETTINGS_REPOSITORY_MEMBER_REVISION = 'phase34-settings-repository-member-createdat-hotfix-20260812-1835';
 const PHASE34_ADMIN_SURFACE_ISOLATION_REVISION = 'phase34-admin-surface-isolation-hotfix-20260812-2122';
-const PHASE34_RUNTIME_REVISION = 'phase34-firebase-free-runtime-authority-20260812-1500';
+const PHASE34_RUNTIME_REVISION = 'phase34-clerk-postgresql-runtime-authority-20260813-1438';
 const PHASE34_POLICY_BOOTSTRAP_REVISION = 'phase34-rental-config-postgresql-bootstrap-hotfix-20260812-1545';
 const PHASE34_FRONTEND_MAPPING_REVISION = 'phase34-postgresql-payload-mapping-hotfix-20260812-1635';
 const PHASE34_RUNTIME_REGRESSION_REVISION = 'phase34-rental-request-restriction-content-reset-hotfix-20260812-1740';
@@ -90,7 +90,7 @@ export default function ClerkStagingDiagnostics({ runtimeSurface = 'user' }) {
 
   if (!enabled) return null;
 
-  const compatibility = state.backend?.compatibility || {};
+  const authority = state.backend?.authority || {};
   return (
     <aside style={panelStyle} aria-label="Phase 34 staging diagnostics">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
@@ -114,22 +114,19 @@ export default function ClerkStagingDiagnostics({ runtimeSurface = 'user' }) {
       <div>Backend version: {valueOrDash(state.backend?.version)}</div>
       <div>Backend environment: {valueOrDash(state.backend?.environment)}</div>
       <div style={{ marginTop: '10px', fontWeight: 800 }}>Phase 34 runtime authority</div>
-      <div>Firebase runtime: {valueOrDash(compatibility.firebaseRuntime || 'retired')}</div>
-      <div>User authentication: {valueOrDash(compatibility.userAuthenticationSource || 'clerk-postgresql')}</div>
+      <div>User authentication: {valueOrDash(authority.userAuthentication || 'clerk-postgresql')}</div>
       <div>Admin authentication: clerk-postgresql</div>
-      <div>Member source: {valueOrDash(compatibility.memberProfileSource || 'postgresql')}</div>
-      <div>Member status source: {valueOrDash(compatibility.memberStatusSource || 'postgresql')}</div>
-      <div>Rental transaction source: {valueOrDash(compatibility.rentalTransactionSource || 'postgresql')}</div>
-      <div>Signup source: {valueOrDash(compatibility.signupProfileSource || 'postgresql')}</div>
-      <div>Terms source: {valueOrDash(compatibility.termsConsentSource || 'postgresql')}</div>
-      <div>Password reset: {valueOrDash(compatibility.passwordResetDelivery || 'clerk-email-code')}</div>
+      <div>Member source: {valueOrDash(authority.memberProfile || 'postgresql')}</div>
+      <div>Member status source: {valueOrDash(authority.memberStatus || 'postgresql')}</div>
+      <div>Rental transaction source: {valueOrDash(authority.rentalTransactions || 'postgresql')}</div>
+      <div>Signup source: {valueOrDash(authority.signup || 'postgresql')}</div>
+      <div>Terms source: {valueOrDash(authority.terms || 'postgresql')}</div>
+      <div>Password reset: {valueOrDash(authority.passwordReset || 'clerk-email-code')}</div>
       <div>Site content source: postgresql</div>
       <div>Policy content source: postgresql</div>
       <div>Board source: postgresql</div>
       <div>Asset source: postgresql</div>
       <div>System configuration: postgresql</div>
-      <div style={{ marginTop: '10px' }}>External Firebase SDK/network: removed</div>
-      <div>Legacy Firestore sync controls: removed</div>
       {state.error ? <div style={{ marginTop: '10px', color: '#b91c1c', fontWeight: 800 }}>Diagnostics error: {state.error}</div> : null}
     </aside>
   );

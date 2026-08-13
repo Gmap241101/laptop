@@ -981,6 +981,39 @@ export const requestAdminMemberDirectoryPostgresqlSync = async ({ clerk, apiBase
   return payload;
 };
 
+export const requestAdminMemberDirectoryAuditPostgresql = async ({ clerk, apiBaseUrl, fetchImpl }) => {
+  const { response, payload } = await requestWithSession({
+    clerk, apiBaseUrl, fetchImpl, path: '/api/admin/member-directory/audit', method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  if (!response.ok) { const error = new Error(`Admin PostgreSQL member directory audit failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
+  if (!payload?.authenticated || !payload?.authorized || payload?.memberDirectoryAudit?.authority !== 'postgresql' || !payload?.memberDirectoryAudit?.audit) throw new Error('Backend returned an invalid PostgreSQL member directory audit response.');
+  return payload;
+};
+
+export const requestAdminMemberDirectoryRestorePostgresql = async ({ clerk, apiBaseUrl, fetchImpl }) => {
+  const { response, payload } = await requestWithSession({
+    clerk, apiBaseUrl, fetchImpl, path: '/api/admin/member-directory/restore-mismatches', method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  if (!response.ok) { const error = new Error(`Admin PostgreSQL member directory restore failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
+  if (!payload?.authenticated || !payload?.authorized || payload?.memberDirectoryRestore?.authority !== 'postgresql') throw new Error('Backend returned an invalid PostgreSQL member directory restore response.');
+  return payload;
+};
+
+export const requestAdminSignupPolicyPatch = async ({ clerk, apiBaseUrl, fetchImpl, policy = {} }) => {
+  const { response, payload } = await requestWithSession({
+    clerk, apiBaseUrl, fetchImpl, path: '/api/admin/member-signup-policy', method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ policy: policy || {} }),
+  });
+  if (!response.ok) { const error = new Error(`Admin PostgreSQL signup policy write failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
+  if (!payload?.authenticated || !payload?.authorized || payload?.signupPolicyMutation?.authority !== 'postgresql' || payload?.signupPolicyMutation?.operation !== 'signup-policy-patch') throw new Error('Backend returned an invalid PostgreSQL signup policy response.');
+  return payload;
+};
+
 export const requestAdminMemberStatusAuthorityWrite = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, firebaseUid, status }) => {
   const token = trim(firebaseIdToken); const uid = trim(firebaseUid);
   if ((!token && !firebaseRuntimeRetired()) || !uid) throw new Error('Firebase admin sign-in and member UID are required.');
@@ -1805,6 +1838,14 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
       const clerk = await initialize();
       return requestAdminMemberDirectoryPostgresqlSync({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, entries, version });
     },
+    async auditAdminMemberDirectory() {
+      const clerk = await initialize();
+      return requestAdminMemberDirectoryAuditPostgresql({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
+    },
+    async restoreAdminMemberDirectoryMismatches() {
+      const clerk = await initialize();
+      return requestAdminMemberDirectoryRestorePostgresql({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
+    },
     async getAdminMemberTermsConsent(memberKey) {
       const clerk = await initialize();
       return requestAdminMemberTermsConsent({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, memberKey });
@@ -1851,6 +1892,10 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async saveAdminRentalConfigSettings(settings = {}) {
       const clerk = await initialize();
       return requestAdminRentalConfigSettingsPatch({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, settings });
+    },
+    async saveAdminSignupPolicy(policy = {}) {
+      const clerk = await initialize();
+      return requestAdminSignupPolicyPatch({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, policy });
     },
     async getAdminSystemConfiguration(key) {
       const clerk = await initialize();

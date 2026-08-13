@@ -94,6 +94,8 @@ const memberAuthorityService = {
   async editAdmin() { return { authority: 'postgresql', member: memberShadowProfile }; },
   async changeStatusAdmin() { return { authority: 'postgresql', member: memberShadowProfile }; },
   async syncMemberDirectoryAdmin() { return { authority: 'postgresql', count: 1, version: 1 }; },
+  async auditMemberDirectoryAdmin() { return { authority: 'postgresql', source: 'postgresql-authoritative', audit: { total: 1, normal: 1, profileRequired: 0, duplicates: 0, missing: 0, failed: 0, directoryVersion: 1 } }; },
+  async restoreDirectoryMismatchAdmin() { return { authority: 'postgresql', source: 'postgresql-authoritative', restoredCount: 1, failed: 0 }; },
   async bootstrapAdminRegistry() { return { authority: 'postgresql', count: 1 }; },
   async listAdminMembers() { return { source: 'postgresql', items: [{ ...memberShadowProfile, firebaseUid: 'member:smoke' }], totalCount: 1, counts: { active: 1 } }; },
 };
@@ -190,6 +192,7 @@ const siteDomains = new Map([
   ['site-settings', { source: 'postgresql', domain: 'site-settings', documents: [{ key: 'siteSettings/config', payload: { siteName: 'Smoke' } }], count: 1 }],
 ]);
 let rentalConfigSettingsPatch = null;
+let signupPolicyPatch = null;
 const siteContentService = {
   async getDomain(domain) { return siteDomains.get(domain) || { source: 'postgresql', domain, documents: [], count: 0 }; },
   async syncDomain(domain) { return { ...(siteDomains.get(domain) || { domain, documents: [], count: 0 }), source: 'postgresql', synchronized: true }; },
@@ -202,6 +205,15 @@ const siteContentService = {
       documents: [{ key: 'rentalSystem/publicConfig', payload: { settings: rentalConfigSettingsPatch } }],
       count: 1,
       synchronized: true,
+    };
+  },
+  async patchSignupPolicy({ policyPatch }) {
+    signupPolicyPatch = policyPatch || {};
+    return {
+      authority: 'postgresql',
+      operation: 'signup-policy-patch',
+      settings: { ...signupPolicyPatch, memberDirectoryVersion: 2 },
+      termsPolicy: { enabled: Boolean(signupPolicyPatch.signupTermsEnabled), activeTerms: [{ id: 't1', title: 'Terms' }] },
     };
   },
 };
@@ -258,11 +270,9 @@ try {
   if (ready.status !== 200) throw new Error(`/health returned ${ready.status}`);
   const health = await ready.json();
   if (health.database?.status !== 'ok') throw new Error('Database health is invalid.');
-  if (health.compatibility?.firebaseRuntime !== 'retired') throw new Error('Firebase runtime was not retired.');
-  if (health.compatibility?.adminFirebaseAuthCompatibility !== 'retired') throw new Error('Administrator Firebase compatibility was not retired.');
-  if (health.compatibility?.userAuthenticationSource !== 'clerk-postgresql') throw new Error('User authentication source is not Clerk/PostgreSQL.');
-  if (health.compatibility?.passwordResetDelivery !== 'clerk-email-code') throw new Error('Password reset delivery is not Clerk email code.');
-  if (health.phase34RuntimeRevision !== 'phase34-firebase-free-runtime-authority-20260812-1500') throw new Error('Phase 34 runtime revision is invalid.');
+  if (health.authority?.userAuthentication !== 'clerk-postgresql') throw new Error('User authentication authority is not Clerk/PostgreSQL.');
+  if (health.authority?.passwordReset !== 'clerk-email-code') throw new Error('Password reset delivery is not Clerk email code.');
+  if (health.phase34RuntimeRevision !== 'phase34-clerk-postgresql-runtime-authority-20260813-1438') throw new Error('Phase 34 runtime revision is invalid.');
   if (ready.headers.get('access-control-allow-origin') !== allowedOrigin) throw new Error('Allowed CORS origin was not reflected.');
   const allowedHeaders = ready.headers.get('access-control-allow-headers') || '';
   if (!allowedHeaders.includes('Authorization') || allowedHeaders.includes('X-Firebase-Authorization')) throw new Error('Phase 34 CORS headers are invalid.');
@@ -323,6 +333,23 @@ try {
   const adminSessionBody = await adminSession.json();
   if (adminSession.status !== 200 || adminSessionBody.adminAuthentication?.authority !== 'clerk-postgresql') throw new Error('Administrator Clerk/PostgreSQL session failed.');
 
+  const signupPolicy = await fetch(`${baseUrl}/api/admin/member-signup-policy`, {
+    method: 'PATCH',
+    headers: { ...authHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ policy: { requireRegisteredMemberForSignup: true, autoApproveNewMembers: true, signupTermsEnabled: true, signupTermsRequireReconsentOnChange: true, signupTermsApplyToExistingMembers: false } }),
+  });
+  const signupPolicyBody = await signupPolicy.json();
+  if (signupPolicy.status !== 200 || signupPolicyBody.signupPolicyMutation?.authority !== 'postgresql') throw new Error('PostgreSQL signup policy patch failed.');
+  if (signupPolicyPatch?.requireRegisteredMemberForSignup !== true) throw new Error('Signup policy payload did not reach the PostgreSQL policy service.');
+
+  const directoryAudit = await fetch(`${baseUrl}/api/admin/member-directory/audit`, { method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json' }, body: '{}' });
+  const directoryAuditBody = await directoryAudit.json();
+  if (directoryAudit.status !== 200 || directoryAuditBody.memberDirectoryAudit?.authority !== 'postgresql' || directoryAuditBody.memberDirectoryAudit?.audit?.normal !== 1) throw new Error('PostgreSQL member directory audit failed.');
+
+  const directoryRestore = await fetch(`${baseUrl}/api/admin/member-directory/restore-mismatches`, { method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json' }, body: '{}' });
+  const directoryRestoreBody = await directoryRestore.json();
+  if (directoryRestore.status !== 200 || directoryRestoreBody.memberDirectoryRestore?.authority !== 'postgresql' || directoryRestoreBody.memberDirectoryRestore?.restoredCount !== 1) throw new Error('PostgreSQL member directory restore failed.');
+
   const accounts = await fetch(`${baseUrl}/api/admin/accounts`, { headers: authHeaders });
   if (accounts.status !== 200 || (await accounts.json()).adminAccounts?.totalCount !== 1) throw new Error('PostgreSQL administrator account list failed.');
   const createAdmin = await fetch(`${baseUrl}/api/admin/accounts`, { method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ adminLoginId: 'new-admin', authEmail: 'new@example.com', adminRole: 'admin' }) });
@@ -358,7 +385,7 @@ try {
   const unauthenticatedAdmin = await fetch(`${baseUrl}/api/admin/accounts`, { headers: { Origin: allowedOrigin } });
   if (unauthenticatedAdmin.status !== 401) throw new Error('Unauthenticated administrator request was not rejected.');
 
-  console.log('[server-smoke] PASS (Phase 34 Clerk/PostgreSQL HTTP runtime; Firebase/Firestore authorization headers retired)');
+  console.log('[server-smoke] PASS (Phase 34 Clerk/PostgreSQL HTTP runtime; retired external authorization headers removed)');
 } finally {
   await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
 }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createRentalRequestId, RENTAL_REQUEST_ID_PATTERN } from '../../src/features/requests/rentalRequestId.js';
 import { createSiteContentDomainDocument } from '../../src/features/content/siteContentCutover.js';
 import { formatUserAccountCreatedAt } from '../../src/features/members/memberAccountPolicy.js';
-import { requestAdminRentalConfigSettingsPatch, requestCurrentUserRentalRestriction } from '../../src/clerk/clerkStagingClient.js';
+import { requestAdminMemberDirectoryAuditPostgresql, requestAdminMemberDirectoryRestorePostgresql, requestAdminRentalConfigSettingsPatch, requestAdminSignupPolicyPatch, requestCurrentUserRentalRestriction } from '../../src/clerk/clerkStagingClient.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -116,6 +116,39 @@ assert.equal(patchRequest.url, 'https://api.example.test/api/admin/site-content/
 assert.equal(patchRequest.options.method, 'PATCH');
 assert.equal(patchRequest.options.headers.Authorization, 'Bearer clerk-test-token');
 assert.deepEqual(JSON.parse(patchRequest.options.body).settings.holidays, [{ date: '2026-08-15', enabled: true }]);
+
+
+let memberApiRequests = [];
+const memberApiFetch = async (url, options = {}) => {
+  memberApiRequests.push({ url: String(url), options });
+  if (String(url).endsWith('/api/admin/member-signup-policy')) {
+    return new Response(JSON.stringify({ authenticated: true, authorized: true, signupPolicyMutation: { authority: 'postgresql', operation: 'signup-policy-patch', settings: { requireRegisteredMemberForSignup: true }, termsPolicy: {} } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+  if (String(url).endsWith('/api/admin/member-directory/audit')) {
+    return new Response(JSON.stringify({ authenticated: true, authorized: true, memberDirectoryAudit: { authority: 'postgresql', audit: { total: 1, normal: 1, profileRequired: 0, duplicates: 0, missing: 0, failed: 0 } } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+  return new Response(JSON.stringify({ authenticated: true, authorized: true, memberDirectoryRestore: { authority: 'postgresql', restoredCount: 0, failed: 0 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+};
+await requestAdminSignupPolicyPatch({ clerk, apiBaseUrl: 'https://api.example.test', fetchImpl: memberApiFetch, policy: { requireRegisteredMemberForSignup: true } });
+await requestAdminMemberDirectoryAuditPostgresql({ clerk, apiBaseUrl: 'https://api.example.test', fetchImpl: memberApiFetch });
+await requestAdminMemberDirectoryRestorePostgresql({ clerk, apiBaseUrl: 'https://api.example.test', fetchImpl: memberApiFetch });
+assert.deepEqual(memberApiRequests.map((item) => item.url), [
+  'https://api.example.test/api/admin/member-signup-policy',
+  'https://api.example.test/api/admin/member-directory/audit',
+  'https://api.example.test/api/admin/member-directory/restore-mismatches',
+]);
+assert.ok(memberApiRequests.every((item) => item.options.headers.Authorization === 'Bearer clerk-test-token'), 'member policy/audit requests must use Clerk bearer authorization');
+
+const memberDirectoryAuditSource = fs.readFileSync(new URL('../../src/features/members/useAdminMemberDirectoryAuditActions.js', import.meta.url), 'utf8');
+assert.equal(memberDirectoryAuditSource.includes('retiredLegacyDataCompat'), false, 'active administrator member-directory audit must not import the retired compatibility shell');
+assert.equal(/\bgetDocs\b|\bsetDoc\b|\bwriteBatch\b|commitFirestoreOperations|firebaseAuth\.currentUser/.test(memberDirectoryAuditSource), false, 'active administrator member-directory audit must not execute Firebase-shaped data operations');
+assert.match(memberDirectoryAuditSource, /auditAdminMemberDirectory\(\)/, 'full member-directory audit must use the Clerk/PostgreSQL API');
+assert.match(memberDirectoryAuditSource, /restoreAdminMemberDirectoryMismatches\(\)/, 'directory mismatch restore must use the Clerk/PostgreSQL API');
+
+const signupPolicySource = fs.readFileSync(new URL('../../src/features/members/useAdminSignupPolicyActions.js', import.meta.url), 'utf8');
+assert.equal(signupPolicySource.includes('replacePolicyContentDomainInPostgresql'), false, 'signup-policy save must not replace full site-content domains from the browser');
+assert.match(signupPolicySource, /saveAdminSignupPolicy\(/, 'signup-policy save must use the dedicated PostgreSQL endpoint');
+assert.match(signupPolicySource, /error\?\.code \|\| error\?\.name/, 'signup-policy failures must expose an actionable error code');
 
 
 const formattedCreatedAt = formatUserAccountCreatedAt({ createdAt: '2026-07-01T01:02:03.000Z' });
@@ -326,4 +359,16 @@ assert.equal(userImportGraph.includes('shell/AppShell.jsx'), false, 'user import
 assert.equal(userImportGraph.some((file) => file.startsWith('admin/')), false, 'user import graph must not contain administrator source modules');
 assert.ok(adminImportGraph.includes('admin/AdminApp.jsx'), 'administrator import graph must include AdminApp');
 
+
+const diagnosticsSource = fs.readFileSync(new URL('../../src/clerk/ClerkStagingDiagnostics.jsx', import.meta.url), 'utf8');
+const adminSettingsSource = fs.readFileSync(new URL('../../src/admin/AdminSettingsPanel.jsx', import.meta.url), 'utf8');
+const userMyPageSource = fs.readFileSync(new URL('../../src/user/UserMyPagePanel.jsx', import.meta.url), 'utf8');
+const packageSource = fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8');
+assert.equal(diagnosticsSource.includes('Firebase runtime:'), false, 'staging diagnostics must not expose retired-provider runtime tags');
+assert.equal(diagnosticsSource.includes('External Firebase SDK/network'), false, 'staging diagnostics must not expose retired-provider SDK tags');
+assert.equal(diagnosticsSource.includes('Legacy Firestore sync controls'), false, 'staging diagnostics must not expose retired-provider sync tags');
+assert.equal(adminSettingsSource.includes('phase34-firebase-free-runtime'), false, 'system info version tag must use current Clerk/PostgreSQL authority naming');
+assert.equal(adminSettingsSource.includes('title="\uc678\ubd80 Firebase runtime"'), false, 'system info must not render obsolete provider status cards');
+assert.equal(userMyPageSource.includes('Firebase Auth \ub85c\uadf8\uc778 \uc774\uba54\uc77c'), false, 'my-page login email labels must use current Clerk naming');
+assert.equal(packageSource.includes('audit:firestore'), false, 'current package scripts must use external-runtime audit naming');
 console.log('[phase34-runtime-regressions-frontend-smoke] PASS');

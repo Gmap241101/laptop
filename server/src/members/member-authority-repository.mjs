@@ -327,6 +327,20 @@ export const createMemberAuthorityRepository = (pool) => {
       });
     },
 
+
+    async listMembersForDirectoryAudit() {
+      const result = await pool.query(
+        `SELECT app_user_id, firebase_uid, firebase_uid AS uid, email, masked_email, name, team, phone, status,
+                directory_member_id, directory_verified_version, profile_required_reason,
+                rejoined_account, terms_consent_revision, terms_consent_policy_version,
+                identity_key, recovery_key, previous_account_uids, source_hash,
+                authority_mode, mirror_state, last_mutation_id, synced_at, created_at, updated_at
+           FROM app_member_accounts
+          ORDER BY COALESCE(authoritative_updated_at, updated_at, created_at) DESC, firebase_uid`,
+      );
+      return Object.freeze(result.rows.map(mapMemberAccountRow));
+    },
+
     async getStatusCounts() {
       const result = await pool.query(
         `SELECT status, COUNT(*)::bigint AS count

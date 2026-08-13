@@ -1,149 +1,32 @@
-# Rental API - Phase 6 Clerk/PostgreSQL/Firebase identity bridge
+# Rental API - Phase 34 current runtime
 
-이 폴더는 기존 React/Firebase 운영 기능과 분리된 Node.js + PostgreSQL backend다.
-Phase 6에서도 기존 Firebase 업무 기능은 그대로 유지한다. 새 backend는 Clerk identity를 PostgreSQL에 유지하고, 현재 로그인한 Firebase Authentication 계정을 서버에서 검증해 동일 사용자와 1:1로 연결한다.
+## Current authority
 
-## Runtime
+- Authentication: Clerk
+- Application data: PostgreSQL
+- Administrator registry and security policy: PostgreSQL
+- Rental requests, assets, members, boards, site content, policy content, and data-management operations: PostgreSQL
+- Runtime server entry: `server/src/index.mjs`
+- Main HTTP application: `server/src/app.mjs`
 
-- Node.js 22.x
-- npm 10.x
-- `pg` 8.22.0
-- Heroku Postgres `DATABASE_URL`
-- Clerk RS256 JWT public-key verification (Node.js built-in `crypto`)
+## Deployment
 
-## Endpoints
+Heroku runs the Node.js API with `DATABASE_URL` and Clerk server credentials. Vercel serves the separate user and administrator frontend documents.
 
-- `GET /` - 서비스 식별
-- `GET /health/live` - 프로세스 liveness, DB를 조회하지 않음
-- `GET /health` - PostgreSQL `SELECT`를 포함한 readiness
-- `GET /health/ready` - `/health`와 동일
-- `GET /api/auth/session` - `Authorization: Bearer <Clerk session token>`을 검증하는 보호 endpoint
+## Migrations
 
-`/api/auth/session`은 토큰 자체나 Clerk secret을 응답하지 않는다. 성공 시 `sub`, `sid`, `azp`, 시간 claim 중 진단에 필요한 값만 반환한다.
+Applied migrations are immutable. Add a new numbered migration for future schema changes instead of editing an already-applied migration. The current Phase 34 line expects migrations through 027.
 
-## Clerk configuration
+## Legacy compatibility
 
-Staging/production에서는 다음 값이 필수다.
+Historical database-key names and migration-era compatibility repositories can remain until a separately approved schema-cleanup phase. They are not an active network authority and must not be re-enabled as runtime fallbacks.
 
-- `CLERK_JWT_KEY`: Clerk Dashboard API Keys 페이지의 JWT public key (PEM)
-- `CLERK_AUTHORIZED_PARTIES`: 토큰 `azp` claim으로 허용할 정확한 frontend origin
-- `CLERK_CLOCK_SKEW_SECONDS`: 기본 5초
-- `CLERK_REJECT_PENDING_SESSION`: 기본 true
+## Validation
 
-Phase 3은 Clerk의 공식 수동 JWT 검증 절차에 맞춰 RS256 signature, `exp`, `nbf`, `azp`를 검증한다. `sts=pending` session도 기본 거부한다.
-
-## Local configuration
-
-`docs/github-education/HEROKU_CONFIG_VARS_TEMPLATE.txt`를 참고해 로컬/Heroku 값을 설정한다. 배포 패키지에는 `.env*` 파일을 포함하지 않으며 실제 `.env`도 Git에 커밋하지 않는다.
+Run:
 
 ```bash
-npm --prefix server ci
-node --env-file=.env server/src/index.mjs
+npm run verify:phase34
 ```
 
-## Heroku
-
-루트 `Procfile` 순서는 Phase 2와 동일하다.
-
-1. Release phase: `npm --prefix server run db:migrate`
-2. Web: `npm --prefix server start`
-
-Heroku 배포 전 `DATABASE_URL`, `CORS_ALLOWED_ORIGINS`, `CLERK_JWT_KEY`, `CLERK_AUTHORIZED_PARTIES`가 모두 설정돼 있어야 한다.
-
-## Phase 5: Clerk user identity persistence
-
-Phase 5 keeps Firebase authorization and all rental data flows unchanged, but adds a parallel PostgreSQL identity table for the authenticated Clerk user.
-
-Endpoints:
-- `GET /api/users/me`: returns the existing PostgreSQL identity for the authenticated Clerk user, or `404 profile_not_synced` before first sync.
-- `POST /api/users/me/sync`: verifies the Clerk session, fetches that exact user from Clerk Backend API using server-only `CLERK_SECRET_KEY`, then upserts the trusted profile into `app_user_identities` by unique `clerk_user_id`.
-
-The browser never supplies email/name fields for persistence. `CLERK_SECRET_KEY` must remain a Heroku-only secret and must never be prefixed with `VITE_`.
-
-Migration `002_phase5_clerk_user_identity.sql` creates `app_user_identities`. Phase 5 deliberately does not create roles or replace Firebase authorization.
-
-
-## Phase 6: legacy Firebase identity bridge
-
-Phase 6 adds a transition-only proof bridge between the new Clerk/PostgreSQL identity and the existing Firebase Authentication account.
-
-Endpoints:
-- `GET /api/users/me/legacy/firebase`: reads the Firebase account already linked to the authenticated Clerk/PostgreSQL user.
-- `POST /api/users/me/legacy/firebase`: requires both the normal Clerk `Authorization` bearer token and `X-Firebase-Authorization: Bearer <Firebase ID token>`.
-
-The backend does not trust a browser-supplied Firebase UID. It verifies the Firebase ID token as RS256, checks the Google signing key `kid`, `exp`, `iat`, `auth_time`, project `aud`, and `iss`, then uses the verified `sub` claim as the Firebase UID. Signing keys are cached according to the Google certificate endpoint `Cache-Control` max-age.
-
-Migration `003_phase6_firebase_identity_bridge.sql` creates `app_user_firebase_links` with both `app_user_id` and `firebase_uid` uniqueness so neither side can be linked to multiple identities. The existing PostgreSQL/Clerk email and verified Firebase-token email must match before a new link is accepted.
-
-Heroku Phase 6 configuration adds:
-- `FIREBASE_PROJECT_ID=laptop-system-mk`
-- `FIREBASE_CERT_TIMEOUT_MS=8000` is optional; 8000 ms is the default.
-
-No Firebase service-account private key is required for Phase 6. Existing Firebase Auth, Firestore rules, rental flows, and production authorization remain authoritative and unchanged.
-
-## Phase 7: Firestore userAccounts read-only shadow
-
-Phase 7 does not transfer authority away from Firestore. It reads only the currently linked user's own `userAccounts/{firebase_uid}` document through the Cloud Firestore REST API using that user's verified Firebase ID token. Because the REST request uses a Firebase Authentication ID token, the existing Firestore Security Rules remain the authorization boundary for the read.
-
-Endpoints:
-- `GET /api/users/me/legacy/member-shadow`: reads the last PostgreSQL shadow without contacting Firestore.
-- `POST /api/users/me/legacy/member-shadow/sync`: requires Clerk auth plus `X-Firebase-Authorization`, reads `userAccounts/{uid}` from Firestore, then upserts a PostgreSQL shadow.
-- `POST /api/users/me/legacy/member-shadow/compare`: requires both sessions, rereads Firestore without mutating the shadow, and reports whether the current source still matches the saved shadow.
-
-Migration `004_phase7_member_profile_shadow.sql` creates `app_user_member_shadows`. It stores only selected member-profile fields plus a deterministic SHA-256 hash of the decoded source for drift detection; the full Firestore document payload is not duplicated into PostgreSQL. `app_runtime_metadata` explicitly records Firestore as the authoritative source during Phase 7.
-
-No Firebase service-account credential is introduced. `FIREBASE_PROJECT_ID` from Phase 6 is reused. `FIRESTORE_REST_TIMEOUT_MS` is optional and defaults to 8000 ms.
-
-## Phase 8 member profile parallel-read candidate
-
-Phase 8 does not change the authoritative member-profile read path. The React application continues to consume the existing Firestore `userAccounts/{uid}` `onSnapshot()` result for all user-facing behavior.
-
-A new authenticated endpoint exposes the already-synchronized PostgreSQL shadow through a stable future read contract:
-
-- `GET /api/users/me/member-profile-candidate`
-
-The response declares `source=postgresql-shadow` and `authoritative=false`. No Firebase ID token is required for this endpoint because it reads PostgreSQL only after Clerk session authentication.
-
-When Clerk staging diagnostics are enabled and `?clerkTest=1` is present, the existing Firestore `onSnapshot()` callback publishes a browser-local sanitized observation. The Phase 8 diagnostics panel compares that exact application read result with the PostgreSQL read candidate. It does not perform another Firestore document read and it does not replace `userProfile` in the application.
-
-Phase 8 introduces no database migration, no new secret, and no new runtime dependency. It is a parity gate for a later staging-only read cutover.
-
-## Phase 9 member-profile opt-in read cutover
-
-Phase 9 adds a staging-only transition path for the current member profile. The existing Firebase Auth session remains the authentication source for this transition endpoint.
-
-- `GET /api/legacy/member-profile-cutover-candidate`
-  - Header: `X-Firebase-Authorization: Bearer <Firebase ID token>`
-  - Resolves the verified Firebase UID through `app_user_firebase_links`.
-  - Returns the linked `app_user_member_shadows` runtime profile.
-  - Does not query Firestore.
-- Migration `005_phase9_member_profile_runtime_contract.sql` adds `identity_key`, `recovery_key`, and `previous_account_uids` to the shadow so the existing React `userProfile` runtime contract remains compatible.
-- The browser cutover is gated by `VITE_MEMBER_PROFILE_POSTGRES_READ_ENABLED=true` and the explicit `?memberRead=postgres` query parameter.
-- Firestore `onSnapshot(userAccounts/{uid})` remains subscribed during Phase 9 as a guard. The PostgreSQL candidate becomes the active `userProfile` only when the candidate is field-equivalent to the live Firestore snapshot. Any mismatch or candidate failure immediately keeps/falls back to Firestore.
-- Because the Firestore guard remains subscribed, Phase 9 is a correctness cutover test, not yet a Firestore quota-reduction phase.
-
-## Phase 10 member-profile watcher disable
-`GET /api/legacy/member-profile-firestore-fallback` is an emergency one-time fallback used only when the dedicated staging member-profile PostgreSQL primary read fails. It requires a verified Firebase ID Token and does not create a realtime Firestore listener.
-
-## Phase 11 member-profile Firestore write-through
-
-Phase 11 keeps Firestore as the authoritative write source, but removes the freshness gap created by the Phase 10 `userAccounts/{uid}` realtime-watcher shutdown.
-
-- `POST /api/legacy/member-shadow/write-through?firebaseUid=<target UID>`
-  - Requires `X-Firebase-Authorization: Bearer <Firebase ID token>`.
-  - The backend never trusts profile fields from the browser. It rereads `userAccounts/{targetUid}` through Firestore REST using the actor's verified Firebase token, so the existing Firestore Security Rules remain the authorization boundary.
-  - If the target Firebase UID is linked to PostgreSQL, the trusted Firestore document is normalized and upserted into `app_user_member_shadows`.
-  - The Firestore target read is attempted before link lookup so Security Rules authorize the actor/target relationship before the API reveals whether that UID has a PostgreSQL link. If the authorized target has not yet been linked, the endpoint returns non-fatal `skipped / legacy_link_not_found`.
-  - An ordinary member cannot sync another member because Firestore REST must authorize the target document read. An authenticated administrator can sync a target account only when the existing Firestore Rules permit that administrator to read it.
-
-The React staging client activates this only when `VITE_MEMBER_PROFILE_WRITE_THROUGH_ENABLED=true` and the explicit Phase 11 test gate has been requested. Firestore writes remain successful even if the PostgreSQL write-through request fails; failures are surfaced through diagnostics instead of rolling back an already-committed Firestore mutation.
-
-Standard member-profile mutation paths covered in Phase 11 include user profile edits, terms-consent revision updates, automatic member-directory verification/status updates, administrator account-status changes, member-directory rebuild/audit writes, and withdrawal/rollback profile writes. New-account signup is intentionally not write-through synchronized before a Clerk/PostgreSQL identity link exists; the existing identity/link/shadow synchronization flow establishes that initial shadow later.
-
-With the Phase 10 watcher disabled, the active member profile is refreshed immediately after a successful write-through event for the current user and is also refreshed from PostgreSQL every 15 seconds. The periodic refresh does not read Firestore and skips React profile/form state updates when the PostgreSQL profile is unchanged, preventing unsaved My Page form input from being overwritten by a no-op poll.
-
-Phase 11 introduces no new database migration and no new npm dependency.
-
-## Phase 12 rental restriction shadow
-
-The staging API can shadow `rentalRestrictions/{uid}` into PostgreSQL and serve the current user's restriction without a client Firestore realtime listener. The source read and write-through sync use the caller's verified Firebase ID token, so existing Firestore Security Rules remain the authorization boundary. The first missing-shadow read may perform one Firestore REST read to seed PostgreSQL; steady-state reads use PostgreSQL. No new Heroku secret is required.
+The verification suite checks migrations, Clerk authentication, PostgreSQL domain flows, user/admin application contracts, external retired-provider runtime access, package integrity, data management, and current Phase 34 regressions.

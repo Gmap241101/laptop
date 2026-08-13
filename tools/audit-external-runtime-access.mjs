@@ -6,8 +6,8 @@ const ROOT = resolve(process.cwd());
 const SRC_ROOT = join(ROOT, 'src');
 const SERVER_ROOT = join(ROOT, 'server', 'src');
 const REPORT_ROOT = join(ROOT, '.performance-reports');
-const JSON_REPORT_PATH = join(REPORT_ROOT, 'firestore-access-audit.json');
-const TEXT_REPORT_PATH = join(REPORT_ROOT, 'firestore-access-audit.txt');
+const JSON_REPORT_PATH = join(REPORT_ROOT, 'external-runtime-access-audit.json');
+const TEXT_REPORT_PATH = join(REPORT_ROOT, 'external-runtime-access-audit.txt');
 const SOURCE_EXTENSIONS = new Set(['.js', '.jsx', '.mjs']);
 const quietMode = process.argv.includes('--quiet');
 
@@ -33,8 +33,12 @@ const forbidden = [
   { label: 'Firebase authorization header', regex: /X-Firebase-Authorization/gi },
 ];
 const violations = [];
+const compatibilityShellImporters = [];
 for (const file of files) {
   const source = readFileSync(file, 'utf8');
+  if (source.includes('retiredLegacyDataCompat')) {
+    compatibilityShellImporters.push(relative(ROOT, file).replaceAll('\\', '/'));
+  }
   for (const rule of forbidden) {
     rule.regex.lastIndex = 0;
     let match;
@@ -48,17 +52,20 @@ for (const file of files) {
 mkdirSync(REPORT_ROOT, { recursive: true });
 const report = {
   generatedAt: new Date().toISOString(),
-  mode: 'phase34-hard-retirement',
+  mode: 'phase34-external-runtime-retirement',
   filesChecked: files.length,
-  externalFirebaseRuntimeReferences: violations.length,
+  externalLegacyRuntimeReferences: violations.length,
+  retiredCompatibilityShellImporterCount: compatibilityShellImporters.length,
+  retiredCompatibilityShellImporters: compatibilityShellImporters,
   result: violations.length ? 'fail' : 'pass',
   violations,
 };
 writeFileSync(JSON_REPORT_PATH, `${JSON.stringify(report, null, 2)}\n`);
 const lines = [
-  'External Firebase/Firestore runtime audit',
+  'External retired-provider runtime audit',
   `Files checked: ${files.length}`,
-  `External Firebase runtime references: ${violations.length}`,
+  `External retired-provider runtime references: ${violations.length}`,
+  `Retired compatibility-shell importers (informational, no external network): ${compatibilityShellImporters.length}`,
   `Result: ${report.result.toUpperCase()}`,
 ];
 for (const item of violations) lines.push(`[${item.rule}] ${item.file}:${item.line} ${item.text}`);

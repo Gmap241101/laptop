@@ -876,7 +876,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
       <SectionCard title="애플리케이션" description="현재 브라우저에서 확인 가능한 읽기 전용 정보입니다.">
         <dl className="space-y-3 text-xs">
           {[
-            ['애플리케이션 버전', 'phase34-firebase-free-runtime'],
+            ['애플리케이션 버전', 'phase34-clerk-postgresql-runtime'],
             ['데이터 스키마 버전', systemAdminSettings?.schemaVersion || 1],
             ['현재 접속 주소', window.location.href],
             ['실행 모드', import.meta.env.MODE || 'production'],
@@ -896,9 +896,6 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
             ['시스템 설정', systemAdminSettingsReady && !systemAdminSettingsLoadErrorMessage ? 'PostgreSQL 정상' : systemAdminSettingsLoadErrorMessage || '로딩 중'],
           ].map(([label, value]) => <div key={label} className="flex gap-4 border-b border-slate-100 pb-3"><dt className="w-32 shrink-0 font-semibold text-slate-500">{label}</dt><dd className="min-w-0 break-all font-bold text-slate-800">{String(value)}</dd></div>)}
         </dl>
-      </SectionCard>
-      <SectionCard title="외부 Firebase runtime" description="Phase 34에서 애플리케이션 runtime dependency가 제거되었습니다." className="lg:col-span-2">
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-xs leading-5 text-emerald-800">웹 클라이언트와 backend는 Firebase SDK, Firestore API, Firebase Authentication API를 호출하지 않습니다. 기존 PostgreSQL 컬럼의 역사적 식별키 이름은 데이터 호환성을 위해 별도 schema cleanup 전까지 유지됩니다.</div>
       </SectionCard>
     </div>
   );

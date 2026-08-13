@@ -61,4 +61,4 @@ if (!config.includes('const firebaseRuntimeDisabled = true')) throw new Error('H
 const procfile = readFileSync('Procfile', 'utf8');
 if (!procfile.includes('release: npm --prefix server run db:migrate')) throw new Error('Release migration command missing.');
 if (!procfile.includes('web: npm --prefix server start')) throw new Error('Web process command missing.');
-console.log(`[server-check] PASS (${serverFiles.length} JavaScript files, Clerk/PostgreSQL runtime, Firebase/Firestore network runtime removed)`);
+console.log(`[server-check] PASS (${serverFiles.length} JavaScript files, Clerk/PostgreSQL runtime, retired external network runtime removed)`);

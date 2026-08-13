@@ -4,49 +4,16 @@ import {
   useRef,
   useState,
 } from 'react';
+import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 import {
-  doc,
-  getDocs,
-  query as firestoreQuery,
-  serverTimestamp,
-  setDoc,
-  where,
-} from '../../platform/retiredLegacyDataCompat.js';
-
-import {
-  ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
-  MEMBER_IDENTITY_CLAIMS_COLLECTION_REF,
-  PUBLIC_CONFIG_DOC_REF,
-  USER_ACCOUNTS_COLLECTION_NAME,
-  USER_ACCOUNTS_COLLECTION_REF,
-  db,
-  firebaseAuth,
-} from '../../platform/appDataRefs.js';
-import {
-  PROFILE_REQUIRED_REASON,
   USER_PROFILE_STATUS,
 } from '../../constants/memberConstants.js';
 import {
-  createMemberIdentityKey,
-  normalizeMemberName,
-  normalizeMemberTeam,
-} from '../../utils/memberPolicy.js';
-import {
-  buildMemberAccountIndexEntries,
-  buildMemberAccountIndexOperations,
-  commitFirestoreOperations,
-} from './memberAccountIndexService.js';
-import {
-  getRestorableUserProfileStatus,
   getSafeMemberDirectoryVersion,
   isRegisteredMemberSignupRequired,
 } from './memberAccountPolicy.js';
-import { syncMemberProfilesWriteThroughBestEffort } from './memberProfileWriteThrough.js';
 
 export default function useAdminMemberDirectoryAuditActions({
-  authenticatedAdminAccount,
-  authenticatedAdminId,
-  borrowers,
   isAdminAuthenticated,
   isSplitStorageReady,
   settings,
@@ -81,7 +48,7 @@ export default function useAdminMemberDirectoryAuditActions({
   }, []);
 
   const restoreDirectoryMismatchAccountsAfterPolicyDisabled = useCallback(
-    async (sourceAccounts = null) => {
+    async () => {
       if (directoryMismatchRestoreInProgressRef.current) {
         return 0;
       }
@@ -89,97 +56,14 @@ export default function useAdminMemberDirectoryAuditActions({
       directoryMismatchRestoreInProgressRef.current = true;
 
       try {
-        const accountDocuments = Array.isArray(sourceAccounts)
-          ? sourceAccounts
-              .filter((account) => account?.uid)
-              .map((account) => ({
-                ref: doc(
-                  db,
-                  USER_ACCOUNTS_COLLECTION_NAME,
-                  account.uid
-                ),
-                data: () => account,
-              }))
-          : (
-              await getDocs(
-                firestoreQuery(
-                  USER_ACCOUNTS_COLLECTION_REF,
-                  where(
-                    'status',
-                    '==',
-                    USER_PROFILE_STATUS.PROFILE_REQUIRED
-                  ),
-                  where(
-                    'profileRequiredReason',
-                    '==',
-                    PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH
-                  )
-                )
-              )
-            ).docs;
-        const restoreOperations = [];
-        const restoredUids = [];
-        let restoredCount = 0;
-
-        accountDocuments.forEach((accountDocument) => {
-          const account = accountDocument.data() || {};
-
-          if (
-            account.status !== USER_PROFILE_STATUS.PROFILE_REQUIRED ||
-            account.profileRequiredReason !==
-              PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH
-          ) {
-            return;
-          }
-
-          const restoredStatus = getRestorableUserProfileStatus(
-            account.statusBeforeProfileRequired
-          );
-
-          restoreOperations.push({
-            type: 'update',
-            ref: accountDocument.ref,
-            data: {
-              status: restoredStatus,
-              profileRequiredReason: '',
-              profileRequiredAt: '',
-              statusBeforeProfileRequired: '',
-              updatedAt: serverTimestamp(),
-            },
-          });
-
-          if (account.recoveryKey) {
-            restoreOperations.push({
-              type: 'set',
-              ref: doc(
-                ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
-                account.recoveryKey
-              ),
-              data: {
-                recoveryKey: account.recoveryKey,
-                maskedEmail: account.maskedEmail || '',
-                accountStatus: restoredStatus,
-                enabled: true,
-                updatedAt: serverTimestamp(),
-              },
-              options: { merge: true },
-            });
-          }
-
-          restoredUids.push(accountDocument.ref.id);
-          restoredCount += 1;
-        });
-
-        if (restoreOperations.length > 0) {
-          await commitFirestoreOperations(restoreOperations);
-          await syncMemberProfilesWriteThroughBestEffort({
-            firebaseUser: firebaseAuth.currentUser,
-            firebaseUids: restoredUids,
-            reason: 'admin-directory-policy-restore',
-          });
+        const payload = await clerkStagingClient.restoreAdminMemberDirectoryMismatches();
+        const result = payload?.memberDirectoryRestore || {};
+        if (Number(result.failed || 0) > 0) {
+          const error = new Error('PostgreSQL member directory restore completed with failures.');
+          error.code = 'member_directory_postgresql_restore_partial_failure';
+          throw error;
         }
-
-        return restoredCount;
+        return Number(result.restoredCount || 0);
       } finally {
         directoryMismatchRestoreInProgressRef.current = false;
       }
@@ -226,7 +110,7 @@ export default function useAdminMemberDirectoryAuditActions({
         );
         directoryMismatchRestoreAttemptKeyRef.current = '';
         triggerToastRef.current(
-          '등록 명부 불일치 회원의 자동 복원에 실패했습니다. 최신 Firestore Rules를 게시한 뒤 다시 확인해 주세요.',
+          '등록 명부 불일치 회원의 PostgreSQL 자동 복원에 실패했습니다. 회원 상태를 다시 확인해 주세요.',
           'error'
         );
       });
@@ -245,7 +129,7 @@ export default function useAdminMemberDirectoryAuditActions({
   const executeFullMemberDirectoryAudit = useCallback(async () => {
     if (!isAdminAuthenticated) {
       triggerToastRef.current(
-        '관리자 인증 후 전체 회원 검사를 실행할 수 있습니다.',
+        '\uad00\ub9ac\uc790 \uc778\uc99d \ud6c4 \uc804\uccb4 \ud68c\uc6d0 \uac80\uc0ac\ub97c \uc2e4\ud589\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.',
         'error'
       );
       return;
@@ -253,7 +137,7 @@ export default function useAdminMemberDirectoryAuditActions({
 
     if (!isRegisteredMemberSignupRequired(settings)) {
       triggerToastRef.current(
-        '회원가입 제한 정책을 저장한 뒤 전체 회원 검사를 실행해 주세요.',
+        '\ud68c\uc6d0\uac00\uc785 \uc81c\ud55c \uc815\ucc45\uc744 \uc800\uc7a5\ud55c \ub4a4 \uc804\uccb4 \ud68c\uc6d0 \uac80\uc0ac\ub97c \uc2e4\ud589\ud574 \uc8fc\uc138\uc694.',
         'error'
       );
       return;
@@ -263,257 +147,29 @@ export default function useAdminMemberDirectoryAuditActions({
     setMemberDirectoryAuditResult(null);
 
     try {
-      const directoryVersion = getSafeMemberDirectoryVersion(settings);
-      const directoryEntries = await Promise.all(
-        (borrowers || []).map(async (borrower) => ({
-          ...borrower,
-          name: normalizeMemberName(borrower.name || ''),
-          team: normalizeMemberTeam(borrower.team || ''),
-          identityKey: await createMemberIdentityKey(
-            borrower.team,
-            borrower.name
-          ),
-        }))
-      );
-      const directoryByIdentityKey = new Map(
-        directoryEntries.map((entry) => [entry.identityKey, entry])
-      );
-      const [
-        currentUserAccountsSnapshot,
-        currentClaimsSnapshot,
-        currentRecoverySnapshot,
-      ] = await Promise.all([
-        getDocs(USER_ACCOUNTS_COLLECTION_REF),
-        getDocs(MEMBER_IDENTITY_CLAIMS_COLLECTION_REF),
-        getDocs(ACCOUNT_RECOVERY_KEYS_COLLECTION_REF),
-      ]);
-      const accountEntries = await buildMemberAccountIndexEntries(
-        currentUserAccountsSnapshot.docs.map((accountDocument) => ({
-          ...accountDocument.data(),
-          uid: accountDocument.data().uid || accountDocument.id,
-        }))
-      );
-      const {
-        accountMetadataOperations,
-        claimOperations,
-        recoveryOperations,
-        groups: accountGroups,
-      } = buildMemberAccountIndexOperations({
-        accountEntries,
-        currentClaimDocuments: currentClaimsSnapshot.docs,
-        currentRecoveryDocuments: currentRecoverySnapshot.docs,
-      });
-      let duplicateAccounts = 0;
-
-      accountGroups.forEach((group) => {
-        const liveEntries = group.filter(
-          (entry) => entry.account.status !== USER_PROFILE_STATUS.RETIRED
-        );
-
-        if (liveEntries.length > 1) {
-          duplicateAccounts += liveEntries.length;
-        }
-      });
-
-      const auditableStatuses = new Set([
-        USER_PROFILE_STATUS.PENDING,
-        USER_PROFILE_STATUS.ACTIVE,
-        USER_PROFILE_STATUS.PROFILE_REQUIRED,
-      ]);
-      const auditableTotal = accountEntries.filter((entry) =>
-        auditableStatuses.has(entry.account.status || '')
-      ).length;
-      const accountOperations = [];
-      let normal = 0;
-      let profileRequired = 0;
-      let missing = 0;
-
-      accountEntries.forEach((entry) => {
-        const { account, identityKey, name, team } = entry;
-        const accountStatus = account.status || '';
-        const isAuditable = auditableStatuses.has(accountStatus);
-        const group = identityKey ? accountGroups.get(identityKey) || [] : [];
-        const isDuplicate =
-          group.filter(
-            (groupEntry) =>
-              groupEntry.account.status !== USER_PROFILE_STATUS.RETIRED
-          ).length > 1;
-        const directoryEntry = identityKey
-          ? directoryByIdentityKey.get(identityKey)
-          : null;
-        const directoryMatches = Boolean(
-          directoryEntry &&
-            directoryEntry.name === name &&
-            directoryEntry.team === team
-        );
-
-        if (!isAuditable) {
-          return;
-        }
-
-        if (!identityKey || !directoryMatches || isDuplicate) {
-          if (!identityKey || !directoryMatches) {
-            missing += 1;
-          }
-
-          profileRequired += 1;
-          const nextReason = isDuplicate
-            ? PROFILE_REQUIRED_REASON.DUPLICATE_IDENTITY
-            : PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
-          const previousStatus = [
-            USER_PROFILE_STATUS.PENDING,
-            USER_PROFILE_STATUS.ACTIVE,
-          ].includes(accountStatus)
-            ? accountStatus
-            : account.statusBeforeProfileRequired ||
-              USER_PROFILE_STATUS.PENDING;
-
-          accountOperations.push({
-            type: 'set',
-            ref: doc(db, USER_ACCOUNTS_COLLECTION_NAME, account.uid),
-            data: {
-              status: USER_PROFILE_STATUS.PROFILE_REQUIRED,
-              statusBeforeProfileRequired: previousStatus,
-              profileRequiredReason: nextReason,
-              profileRequiredAt: serverTimestamp(),
-              identityKey,
-              directoryMemberId: directoryMatches
-                ? directoryEntry.id || ''
-                : '',
-              directoryVerifiedVersion: 0,
-              directoryVerifiedAt: '',
-              updatedAt: serverTimestamp(),
-            },
-            options: { merge: true },
-            auditOutcome: 'profileRequired',
-          });
-          return;
-        }
-
-        normal += 1;
-        const shouldRestore =
-          accountStatus === USER_PROFILE_STATUS.PROFILE_REQUIRED &&
-          account.profileRequiredReason ===
-            PROFILE_REQUIRED_REASON.DIRECTORY_MISMATCH;
-        const nextStatus = shouldRestore
-          ? getRestorableUserProfileStatus(account.statusBeforeProfileRequired)
-          : accountStatus;
-
-        accountOperations.push({
-          type: 'set',
-          ref: doc(db, USER_ACCOUNTS_COLLECTION_NAME, account.uid),
-          data: {
-            status: nextStatus,
-            identityKey,
-            directoryMemberId: directoryEntry.id || '',
-            directoryVerifiedVersion: directoryVersion,
-            directoryVerifiedAt: serverTimestamp(),
-            profileRequiredReason: shouldRestore
-              ? ''
-              : account.profileRequiredReason || '',
-            profileRequiredAt: shouldRestore
-              ? ''
-              : account.profileRequiredAt || '',
-            statusBeforeProfileRequired: shouldRestore
-              ? ''
-              : account.statusBeforeProfileRequired || '',
-            updatedAt: serverTimestamp(),
-          },
-          options: { merge: true },
-          auditOutcome: 'normal',
-        });
-      });
-
-      await commitFirestoreOperations([
-        ...claimOperations,
-        ...recoveryOperations,
-        ...accountMetadataOperations,
-      ]);
-
-      await syncMemberProfilesWriteThroughBestEffort({
-        firebaseUser: firebaseAuth.currentUser,
-        firebaseUids: accountMetadataOperations
-          .filter((operation) => operation?.ref?.parent?.id === USER_ACCOUNTS_COLLECTION_NAME)
-          .map((operation) => operation.ref.id),
-        reason: 'admin-member-index-rebuild',
-      });
-
-      let failed = 0;
-      const updatedAccountUids = [];
-
-      for (const operation of accountOperations) {
-        try {
-          await setDoc(operation.ref, operation.data, operation.options);
-          updatedAccountUids.push(operation.ref.id);
-        } catch (accountError) {
-          failed += 1;
-
-          if (operation.auditOutcome === 'normal') {
-            normal = Math.max(0, normal - 1);
-          } else if (operation.auditOutcome === 'profileRequired') {
-            profileRequired = Math.max(0, profileRequired - 1);
-          }
-
-          console.error(
-            'Member directory audit account update error:',
-            accountError
-          );
-        }
+      const payload = await clerkStagingClient.auditAdminMemberDirectory();
+      const result = payload?.memberDirectoryAudit || {};
+      const auditSummary = result?.audit || null;
+      if (!auditSummary) {
+        const error = new Error('PostgreSQL member directory audit response is missing.');
+        error.code = 'member_directory_postgresql_audit_response_missing';
+        throw error;
       }
-
-      await syncMemberProfilesWriteThroughBestEffort({
-        firebaseUser: firebaseAuth.currentUser,
-        firebaseUids: updatedAccountUids,
-        reason: 'admin-member-directory-audit',
-      });
-
-      const auditSummary = {
-        total: auditableTotal,
-        normal,
-        profileRequired,
-        duplicates: duplicateAccounts,
-        missing,
-        failed,
-        directoryVersion,
-        completedAtText: new Date().toLocaleString('ko-KR'),
-        completedBy:
-          authenticatedAdminAccount?.email ||
-          authenticatedAdminAccount?.adminLoginId ||
-          authenticatedAdminId,
-        completedAt: serverTimestamp(),
-      };
-
-      await setDoc(
-        PUBLIC_CONFIG_DOC_REF,
-        {
-          memberDirectoryAudit: auditSummary,
-          settings: {
-            ...settings,
-            memberIdentityClaimsReady: true,
-          },
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-
       setMemberDirectoryAuditResult(auditSummary);
       triggerToastRef.current(
-        `전체 회원 명부 검사가 완료되었습니다. 정상 ${normal}명, 정보 수정 필요 ${profileRequired}명, 중복 ${duplicateAccounts}명, 실패 ${failed}명입니다.`,
-        profileRequired > 0 || failed > 0 ? 'error' : 'success'
+        `\uc804\uccb4 \ud68c\uc6d0 \uba85\ubd80 \uac80\uc0ac\uac00 \uc644\ub8cc\ub418\uc5c8\uc2b5\ub2c8\ub2e4. \uc815\uc0c1 ${Number(auditSummary.normal || 0)}\uba85, \uc815\ubcf4 \uc218\uc815 \ud544\uc694 ${Number(auditSummary.profileRequired || 0)}\uba85, \uc911\ubcf5 ${Number(auditSummary.duplicates || 0)}\uba85, \uc2e4\ud328 ${Number(auditSummary.failed || 0)}\uba85\uc785\ub2c8\ub2e4.`,
+        Number(auditSummary.profileRequired || 0) > 0 || Number(auditSummary.failed || 0) > 0 ? 'error' : 'success'
       );
     } catch (error) {
       console.error('Full member directory audit error:', error);
       triggerToastRef.current(
-        '전체 회원 명부 검사에 실패했습니다. 기존 회원 상태는 가능한 범위에서 유지됩니다.',
+        `\uc804\uccb4 \ud68c\uc6d0 \uba85\ubd80 \uac80\uc0ac\uc5d0 \uc2e4\ud328\ud588\uc2b5\ub2c8\ub2e4. \uae30\uc874 \ud68c\uc6d0 \uc0c1\ud0dc\ub294 \uac00\ub2a5\ud55c \ubc94\uc704\uc5d0\uc11c \uc720\uc9c0\ub429\ub2c8\ub2e4. \uc624\ub958 \ucf54\ub4dc: ${error?.code || error?.name || 'unknown'}`,
         'error'
       );
     } finally {
       setMemberDirectoryAuditLoading(false);
     }
   }, [
-    authenticatedAdminAccount,
-    authenticatedAdminId,
-    borrowers,
     isAdminAuthenticated,
     settings,
   ]);

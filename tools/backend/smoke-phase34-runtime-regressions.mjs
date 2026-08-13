@@ -279,4 +279,16 @@ const profileProjectionBlock = memberAuthoritySource.match(/const profileFromAcc
 assert.match(profileProjectionBlock, /createdAt:\s*account\.createdAt \|\| null/, 'PostgreSQL member edit response must preserve signup timestamp');
 assert.match(profileProjectionBlock, /updatedAt:\s*account\.updatedAt \|\| null/, 'PostgreSQL member edit response must preserve update timestamp');
 
+
+const memberPolicyAppSource = fs.readFileSync(new URL('../../server/src/app.mjs', import.meta.url), 'utf8');
+assert.match(memberPolicyAppSource, /\/api\/admin\/member-signup-policy/, 'server must expose a dedicated PostgreSQL signup-policy endpoint');
+assert.match(memberPolicyAppSource, /\/api\/admin\/member-directory\/audit/, 'server must expose a PostgreSQL member-directory audit endpoint');
+assert.match(memberPolicyAppSource, /\/api\/admin\/member-directory\/restore-mismatches/, 'server must expose a PostgreSQL member-directory restore endpoint');
+const memberServiceSource = fs.readFileSync(new URL('../../server/src/members/member-authority-service.mjs', import.meta.url), 'utf8');
+assert.match(memberServiceSource, /auditMemberDirectoryAdmin/, 'member authority service must own the PostgreSQL directory audit');
+assert.match(memberServiceSource, /restoreDirectoryMismatchAdmin/, 'member authority service must own PostgreSQL mismatch restoration');
+const siteServiceSource = fs.readFileSync(new URL('../../server/src/content/site-content-service.mjs', import.meta.url), 'utf8');
+assert.match(siteServiceSource, /patchSignupPolicy/, 'site-content service must patch signup policy server-side');
+assert.equal(siteServiceSource.includes("readJsonBody(request)"), false, 'site-content service must not depend on browser request-body parsing');
+
 console.log('[phase34-runtime-regressions-backend-smoke] PASS');

@@ -30,10 +30,10 @@ import {
   today,
 } from '../../utils/appUtils.js';
 import {
-  isFirestoreCapacityCoolingDown,
-  isFirestoreResourceExhaustedError,
-  markFirestoreCapacityExhausted,
-} from '../../utils/firestoreCapacity.js';
+  isDataCapacityCoolingDown,
+  isDataResourceExhaustedError,
+  markDataCapacityExhausted,
+} from '../../utils/dataCapacity.js';
 import useAdminRequestProgressiveSearch from './useAdminRequestProgressiveSearch.js';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 import {
@@ -632,7 +632,7 @@ export default function useAdminRequestsController({
 
     if (postgresServerPaging) return undefined;
 
-    if (isFirestoreCapacityCoolingDown()) {
+    if (isDataCapacityCoolingDown()) {
       setTabCounts(normalizedFallbackCounts);
       setTabCountErrors(
         Object.fromEntries(
@@ -715,8 +715,8 @@ export default function useAdminRequestsController({
           return;
         }
 
-        if (isFirestoreResourceExhaustedError(result.reason)) {
-          markFirestoreCapacityExhausted(result.reason);
+        if (isDataResourceExhaustedError(result.reason)) {
+          markDataCapacityExhausted(result.reason);
           capacityLimited = true;
 
           if (typeof normalizedFallbackCounts[key] === 'number') {
