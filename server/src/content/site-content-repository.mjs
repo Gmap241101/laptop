@@ -214,22 +214,27 @@ export const createSiteContentRepository = (pool) => {
   };
 
   getDomain = async (domain) => {
-    const [syncResult, docsResult] = await Promise.all([
-      pool.query(
-        `SELECT domain, source_hash, document_count, source_mode, synced_at
-           FROM app_site_content_syncs
-          WHERE domain = $1`,
-        [domain],
-      ),
-      pool.query(
-        `SELECT document_key, payload, enabled, sort_order, source_updated_at, synced_at
-           FROM app_site_content_documents
-          WHERE domain = $1
-          ORDER BY sort_order NULLS LAST, document_key`,
-        [domain],
-      ),
-    ]);
-    if (syncResult.rowCount === 0) {
+    const result = await pool.query(
+      `SELECT
+         sync.domain AS sync_domain,
+         sync.source_hash,
+         sync.document_count,
+         sync.source_mode,
+         sync.synced_at AS sync_synced_at,
+         document.document_key,
+         document.payload,
+         document.enabled,
+         document.sort_order,
+         document.source_updated_at,
+         document.synced_at AS document_synced_at
+       FROM app_site_content_syncs sync
+       LEFT JOIN app_site_content_documents document
+         ON document.domain = sync.domain
+      WHERE sync.domain = $1
+      ORDER BY document.sort_order NULLS LAST, document.document_key`,
+      [domain],
+    );
+    if (result.rowCount === 0) {
       if (domain !== 'rental-config') return null;
       const context = await getRentalConfigBootstrapContext();
       return replaceDomain({
@@ -239,7 +244,17 @@ export const createSiteContentRepository = (pool) => {
         sourceMode: 'postgresql-self-heal',
       });
     }
-    if (domain === 'rental-config' && !docsResult.rows.some((row) => row.document_key === 'rentalSystem/publicConfig')) {
+    const documentRows = result.rows
+      .filter((row) => row.document_key)
+      .map((row) => ({
+        document_key: row.document_key,
+        payload: row.payload,
+        enabled: row.enabled,
+        sort_order: row.sort_order,
+        source_updated_at: row.source_updated_at,
+        synced_at: row.document_synced_at,
+      }));
+    if (domain === 'rental-config' && !documentRows.some((row) => row.document_key === 'rentalSystem/publicConfig')) {
       const context = await getRentalConfigBootstrapContext();
       return replaceDomain({
         domain,
@@ -248,7 +263,7 @@ export const createSiteContentRepository = (pool) => {
         sourceMode: 'postgresql-self-heal',
       });
     }
-    const sync = syncResult.rows[0];
+    const sync = result.rows[0];
     return Object.freeze({
       domain,
       source: 'postgresql',
@@ -256,9 +271,9 @@ export const createSiteContentRepository = (pool) => {
       synchronized: true,
       sourceMode: sync.source_mode,
       sourceHash: sync.source_hash,
-      syncedAt: sync.synced_at,
+      syncedAt: sync.sync_synced_at,
       documentCount: Number(sync.document_count || 0),
-      documents: docsResult.rows.map(mapRow),
+      documents: documentRows.map(mapRow),
     });
   };
 

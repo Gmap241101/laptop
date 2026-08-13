@@ -282,6 +282,9 @@ assert.equal(adminShellSource.includes("React.lazy(() => import('./AdminDialogs.
 assert.match(adminWorkspaceSource, /import AdminDashboardPanelView from '\.\/AdminDashboardPanel\.jsx'/, 'administrator dashboard must be eagerly linked for immediate post-login rendering');
 assert.match(adminWorkspaceSource, /const AdminRequestsPanel = memo\(lazy\(\(\) => import\('\.\/AdminRequestsPanel\.jsx'\)\)\)/, 'administrator subpanels must remain lazy-loaded on first use');
 assert.match(adminWorkspaceSource, /<Suspense fallback=\{null\}>/, 'administrator lazy panels must use a silent Suspense boundary');
+assert.match(adminWorkspaceSource, /ADMIN_SITE_PANEL_INTENT_LOADERS/, 'site-management panels must start module and data loading from explicit administrator click intent');
+assert.match(adminWorkspaceSource, /onCommitted: \(\) => preloadAdminSitePanelOnIntent\(key\)/, 'site-management intent preload must run only after the requested tab change is committed');
+assert.match(adminWorkspaceSource, /requestSiteContentDomain\(\{ domain: loader\.domain, useCache: true \}\)/, 'site-management click intent must prefetch the matching PostgreSQL domain while its lazy chunk loads');
 assert.equal(adminWorkspaceSource.includes('관리 메뉴를 불러오는 중입니다.'), false, 'administrator menu must never render the old first-load explanatory placeholder');
 assert.equal(adminWorkspaceSource.includes('선택한 관리 기능의 코드를 처음 한 번만 불러옵니다.'), false, 'administrator menu must not expose code-loading copy');
 assert.match(adminNavigationSource, /startTransition\(\(\) => \{[\s\S]*setAdminTab\(nextTab\);[\s\S]*\}\);/, 'administrator tab commits must use a transition so the previous panel stays visible while a first-use chunk downloads');
@@ -385,6 +388,7 @@ const footerPanelSource = fs.readFileSync(new URL('../../src/admin/AdminFooterPa
 const homeBannerPanelSource = fs.readFileSync(new URL('../../src/admin/AdminHomeBannerPanel.jsx', import.meta.url), 'utf8');
 const homeManagementPanelSource = fs.readFileSync(new URL('../../src/admin/AdminHomeManagementPanel.jsx', import.meta.url), 'utf8');
 const siteContentCutoverSource = fs.readFileSync(new URL('../../src/features/content/siteContentCutover.js', import.meta.url), 'utf8');
+const siteContentRefreshRevisionSource = fs.readFileSync(new URL('../../src/features/content/useSiteContentRefreshRevision.js', import.meta.url), 'utf8');
 const userFooterSource = fs.readFileSync(new URL('../../src/user/UserFooter.jsx', import.meta.url), 'utf8');
 const popupFooterControllerSource = fs.readFileSync(new URL('../../src/features/boards/usePopupFooterContentSubscriptionController.js', import.meta.url), 'utf8');
 const modalScrollFiles = [
@@ -428,6 +432,10 @@ assert.equal(homeBannerPanelSource.includes("window.confirm('저장하지 않은
 assert.match(footerControllerSource, /sanitizeRichTextHtml/, 'footer page dialog normalization must import the rich-text sanitizer instead of throwing before the dialog opens');
 assert.match(footerControllerSource, /addressId: String\(page\?\.addressId \|\| ''\)/, 'legacy footer pages must require an explicit address ID on their next content-page edit');
 assert.match(siteContentCutoverSource, /addressClaims/, 'site-content PostgreSQL partial patches must carry footer address uniqueness claims');
+assert.match(siteContentCutoverSource, /cached\?\.promise && \(cached\.pending \|\| cached\.expiresAt > nowMillis\)/, 'site-content cache must always share an in-flight domain request even when a slow request exceeds the short resolved-result TTL');
+assert.match(siteContentCutoverSource, /cacheEntry\.expiresAt = Date\.now\(\) \+ DOMAIN_CACHE_TTL_MS/, 'site-content cache TTL must begin after a successful response instead of at request start');
+assert.match(siteContentRefreshRevisionSource, /window\.addEventListener\('blur', markAway\)/, 'site-content return refresh must record a real window-away state');
+assert.match(siteContentRefreshRevisionSource, /if \(!wasAway \|\| document\.visibilityState === 'hidden'\) return;/, 'site-content return refresh must not read PostgreSQL again on ordinary focus events without a prior away state');
 assert.match(userFooterSource, /openFooterPage\(page\.addressId \|\| page\.id\)/, 'footer navigation must prefer the administrator-defined public address ID');
 assert.match(userFooterSource, /const legacyRouteId = publicAddressId \? '' : String\(page\.id \|\| ''\)\.trim\(\)/, 'converted footer pages must stop treating the old internal ID as their active public route');
 assert.match(popupFooterControllerSource, /page\.addressId/, 'footer route resolution must resolve PostgreSQL pages by public address ID before legacy internal ID');
@@ -437,18 +445,21 @@ assert.match(footerControllerSource, /deletes:\s*\[`footerPages\/\$\{page\.id\}`
 assert.match(footerControllerSource, /normalizeFooterPageAddressId/, 'footer content pages must normalize an administrator-defined public address ID');
 assert.match(footerControllerSource, /isValidFooterPageAddressId/, 'footer content page address IDs must be validated before PostgreSQL writes');
 assert.match(footerControllerSource, /\[a-z0-9_-\]/, 'footer public address IDs must allow underscores in addition to lowercase letters, digits, and hyphens');
-assert.ok(footerPanelSource.includes('md:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]'), 'footer title and bold-title control must share one row on non-mobile viewports');
+assert.ok(footerPanelSource.includes('md:grid-cols-[minmax(0,4fr)_minmax(180px,1fr)]'), 'footer title and bold-title control must use the compact 4:1 row on non-mobile viewports');
 assert.ok(footerPanelSource.includes('border-t border-slate-100 pt-5 sm:flex-row sm:justify-end'), 'footer modal actions must retain the shared editor action-row styling inside the padded modal body');
 assert.ok(footerPanelSource.includes('max-h-[94vh] w-full max-w-5xl overflow-y-auto mk-modal-scroll-shell rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl'), 'footer editor modal must use the same neutral shell styling as the popup editor');
 assert.equal(footerPanelSource.includes('border-orange-200 bg-white'), false, 'footer editor modal chrome must not use the old orange/yellow shell styling');
 assert.equal(footerPanelSource.includes('border-orange-100 bg-orange-50'), false, 'footer editor modal header must not use the old orange/yellow header styling');
-assert.equal(footerPanelSource.includes('border-orange-300 bg-orange-50 ring-1 ring-orange-200'), false, 'footer editor modal option selection must use the shared neutral slate treatment instead of orange/yellow cards');
+assert.ok(footerPanelSource.includes('border-orange-300 bg-orange-50 ring-1 ring-orange-200'), 'footer title-display selection cards must retain a visible orange selected state inside the otherwise neutral modal shell');
 assert.equal(footerPanelSource.includes('text-orange-600 focus:ring-orange-500'), false, 'footer editor modal checkbox styling must not introduce a footer-only orange accent');
 assert.ok(homeBannerPanelSource.includes('max-h-[94vh] w-full max-w-5xl overflow-y-auto mk-modal-scroll-shell rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl'), 'home banner editor modal must use the same neutral shell styling as the popup editor');
 assert.equal(homeBannerPanelSource.includes('border-orange-100 bg-orange-50'), false, 'home banner editor modal header must not use the old orange/yellow header styling');
 assert.equal((popupFooterControllerSource.match(/requestSiteContentDomain\(\{[\s\S]*?domain: SITE_CONTENT_DOMAINS\.FOOTER[\s\S]*?\}\)/g) || []).length, 1, 'footer management must load config and pages from one footer-domain request');
 assert.match(popupFooterControllerSource, /popupLoadedRevisionRef/, 'popup management must retain successfully loaded data for the current site-content revision');
 assert.match(popupFooterControllerSource, /footerLoadedRevisionRef/, 'footer management must retain successfully loaded data for the current site-content revision');
+assert.match(popupFooterControllerSource, /popupRefreshRevision = useSiteContentRefreshRevision\(SITE_CONTENT_DOMAINS\.POPUP\)/, 'popup management must track only popup-domain refreshes');
+assert.match(popupFooterControllerSource, /footerRefreshRevision = useSiteContentRefreshRevision\(SITE_CONTENT_DOMAINS\.FOOTER\)/, 'footer management must track only footer-domain refreshes');
+assert.equal(popupFooterControllerSource.includes('USER_SITE_CONTENT_REFRESH_DOMAINS'), false, 'popup and footer mutations must not share one revision that invalidates the unrelated management screen');
 assert.match(popupFooterControllerSource, /if \(!shouldLoadPopup\) return undefined;/, 'popup management must not clear cached rows merely because another administrator tab is active');
 assert.match(popupFooterControllerSource, /if \(!shouldLoadFooter\) return undefined;/, 'footer management must not clear cached rows merely because another administrator tab is active');
 assert.equal((homeBannerPanelSource.match(/requestSiteContentDomain\(/g) || []).length, 1, 'home banner management must load banners and display config from one home-domain request');

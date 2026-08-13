@@ -32,11 +32,6 @@ const POPUP_DISMISSED_SESSION_KEY =
 const POPUP_DISMISSED_LOCAL_KEY =
   'rentalSystemDismissedPopupVersionsUntil';
 const POPUP_DISMISS_SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-const USER_SITE_CONTENT_REFRESH_DOMAINS = Object.freeze([
-  SITE_CONTENT_DOMAINS.POPUP,
-  SITE_CONTENT_DOMAINS.FOOTER,
-]);
-
 const readDismissedPopupSessionVersions = () => {
   if (typeof window === 'undefined') return [];
 
@@ -165,7 +160,8 @@ export default function usePopupFooterContentSubscriptionController({
   const triggerToastRef = useRef(triggerToast);
   const popupLoadedRevisionRef = useRef(-1);
   const footerLoadedRevisionRef = useRef(-1);
-  const siteContentRefreshRevision = useSiteContentRefreshRevision(USER_SITE_CONTENT_REFRESH_DOMAINS);
+  const popupRefreshRevision = useSiteContentRefreshRevision(SITE_CONTENT_DOMAINS.POPUP);
+  const footerRefreshRevision = useSiteContentRefreshRevision(SITE_CONTENT_DOMAINS.FOOTER);
 
   useEffect(() => {
     triggerToastRef.current = triggerToast;
@@ -180,7 +176,7 @@ export default function usePopupFooterContentSubscriptionController({
     const shouldLoadPopup = shouldLoadAdminPopup || shouldLoadUserPopup;
 
     if (!shouldLoadPopup) return undefined;
-    if (popupLoadedRevisionRef.current === siteContentRefreshRevision) return undefined;
+    if (popupLoadedRevisionRef.current === popupRefreshRevision) return undefined;
 
     const isInitialLoad = popupLoadedRevisionRef.current < 0;
     if (isInitialLoad) setPopupPostsReady(false);
@@ -191,7 +187,7 @@ export default function usePopupFooterContentSubscriptionController({
       try {
         const content = await requestSiteContentDomain({
           domain: SITE_CONTENT_DOMAINS.POPUP,
-          useCache: false,
+          useCache: true,
         });
         const remotePosts = content.documents
           .filter((item) => item.key.startsWith('popupPosts/') && (
@@ -214,7 +210,7 @@ export default function usePopupFooterContentSubscriptionController({
             return getPopupDateMillis(second.createdAt) - getPopupDateMillis(first.createdAt);
           });
         if (cancelled) return;
-        popupLoadedRevisionRef.current = siteContentRefreshRevision;
+        popupLoadedRevisionRef.current = popupRefreshRevision;
         publishSiteContentObservation({
           readRequested: true,
           domain: SITE_CONTENT_DOMAINS.POPUP,
@@ -248,7 +244,7 @@ export default function usePopupFooterContentSubscriptionController({
     setPopupPostsLoadErrorMessage,
     setPopupPostsReady,
     userTab,
-    siteContentRefreshRevision,
+    popupRefreshRevision,
     view,
   ]);
 
@@ -258,7 +254,7 @@ export default function usePopupFooterContentSubscriptionController({
     const shouldLoadFooter = view === 'user' || shouldLoadAdminFooter;
 
     if (!shouldLoadFooter) return undefined;
-    if (footerLoadedRevisionRef.current === siteContentRefreshRevision) return undefined;
+    if (footerLoadedRevisionRef.current === footerRefreshRevision) return undefined;
 
     const isInitialLoad = footerLoadedRevisionRef.current < 0;
     if (isInitialLoad) {
@@ -273,7 +269,7 @@ export default function usePopupFooterContentSubscriptionController({
       try {
         const content = await requestSiteContentDomain({
           domain: SITE_CONTENT_DOMAINS.FOOTER,
-          useCache: false,
+          useCache: true,
         });
         if (cancelled) return;
 
@@ -316,7 +312,7 @@ export default function usePopupFooterContentSubscriptionController({
             return String(first.id || '').localeCompare(String(second.id || ''));
           });
 
-        footerLoadedRevisionRef.current = siteContentRefreshRevision;
+        footerLoadedRevisionRef.current = footerRefreshRevision;
         setFooterPages(remotePages);
         setFooterPagesLoadErrorMessage('');
         setFooterConfigReady(true);
@@ -352,7 +348,7 @@ export default function usePopupFooterContentSubscriptionController({
     setFooterPages,
     setFooterPagesLoadErrorMessage,
     setFooterPagesReady,
-    siteContentRefreshRevision,
+    footerRefreshRevision,
     view,
   ]);
 

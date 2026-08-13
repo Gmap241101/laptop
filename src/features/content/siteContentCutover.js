@@ -119,8 +119,9 @@ export const requestSiteContentDomain = async ({ domain, fetchImpl = fetch, conf
   if (!config.apiBaseUrl) throw Object.assign(new Error('VITE_API_URL is required for Phase 24 site content read cutover.'), { code: 'site_content_api_missing' });
   const nowMillis = Date.now();
   const cached = useCache ? domainCache.get(domain) : null;
-  if (cached?.promise && cached.expiresAt > nowMillis) return cached.promise;
+  if (cached?.promise && (cached.pending || cached.expiresAt > nowMillis)) return cached.promise;
   if (cached) domainCache.delete(domain);
+  const cacheEntry = useCache ? { promise: null, pending: true, expiresAt: 0 } : null;
   const promise = (async () => {
     const response = await fetchImpl(`${config.apiBaseUrl}/api/site-content/${encodeURIComponent(domain)}`, {
       method: 'GET', headers: { Accept: 'application/json' }, cache: 'no-store',
@@ -150,9 +151,23 @@ export const requestSiteContentDomain = async ({ domain, fetchImpl = fetch, conf
     observationPublisher?.({ readRequested: true, domain, readSource: 'postgresql', documentCount: result.documents.length, syncAt: result.syncedAt || null, error: null });
     return result;
   })();
-  if (useCache) domainCache.set(domain, { promise, expiresAt: nowMillis + DOMAIN_CACHE_TTL_MS });
-  try { return await promise; }
-  catch (error) { if (useCache) domainCache.delete(domain); observationPublisher?.({ readRequested: true, domain, readSource: 'postgresql-error', error: error?.code || 'site_content_read_failed' }); throw error; }
+  if (cacheEntry) {
+    cacheEntry.promise = promise;
+    domainCache.set(domain, cacheEntry);
+  }
+  try {
+    const result = await promise;
+    if (cacheEntry && domainCache.get(domain) === cacheEntry) {
+      cacheEntry.pending = false;
+      cacheEntry.expiresAt = Date.now() + DOMAIN_CACHE_TTL_MS;
+    }
+    return result;
+  }
+  catch (error) {
+    if (cacheEntry && domainCache.get(domain) === cacheEntry) domainCache.delete(domain);
+    observationPublisher?.({ readRequested: true, domain, readSource: 'postgresql-error', error: error?.code || 'site_content_read_failed' });
+    throw error;
+  }
 };
 
 const getClerkToken = async ({ forceRefresh = false } = {}) => {

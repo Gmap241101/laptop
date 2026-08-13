@@ -234,7 +234,7 @@ export default function AdminFooterPanel({ ctx }) {
                   <label
                     className={`cursor-pointer rounded-xl border px-4 py-3 transition ${
                       !isImageTitle
-                        ? 'border-slate-400 bg-slate-50 ring-1 ring-slate-200'
+                        ? 'border-orange-300 bg-orange-50 ring-1 ring-orange-200'
                         : 'border-slate-200 bg-white hover:bg-slate-50'
                     }`}
                   >
@@ -258,7 +258,7 @@ export default function AdminFooterPanel({ ctx }) {
                   <label
                     className={`cursor-pointer rounded-xl border px-4 py-3 transition ${
                       isImageTitle
-                        ? 'border-slate-400 bg-slate-50 ring-1 ring-slate-200'
+                        ? 'border-orange-300 bg-orange-50 ring-1 ring-orange-200'
                         : 'border-slate-200 bg-white hover:bg-slate-50'
                     }`}
                   >
@@ -281,7 +281,7 @@ export default function AdminFooterPanel({ ctx }) {
                 </div>
               </div>
 
-              <div className="grid gap-3 md:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)] md:items-end">
+              <div className="grid gap-3 md:grid-cols-[minmax(0,4fr)_minmax(180px,1fr)] md:items-end">
                 <label className="block">
                   <span className="mb-1.5 block text-xs font-semibold text-slate-600">
                     {isImageTitle ? '대체 텍스트·상세 페이지 제목' : '제목'}

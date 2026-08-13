@@ -287,13 +287,30 @@ const fakePool = {
   },
   async query(sql, params = []) {
     const text = String(sql);
-    if (text.includes('FROM app_site_content_syncs')) {
-      return repositoryState.sync
-        ? { rowCount: 1, rows: [repositoryState.sync] }
-        : { rowCount: 0, rows: [] };
-    }
-    if (text.includes('FROM app_site_content_documents')) {
-      return { rowCount: repositoryState.documents.length, rows: repositoryState.documents };
+    if (text.includes('FROM app_site_content_syncs sync') && text.includes('LEFT JOIN app_site_content_documents document')) {
+      if (!repositoryState.sync) return { rowCount: 0, rows: [] };
+      if (repositoryState.documents.length === 0) {
+        return {
+          rowCount: 1,
+          rows: [{
+            ...repositoryState.sync,
+            sync_domain: repositoryState.sync.domain,
+            sync_synced_at: repositoryState.sync.synced_at,
+            document_key: null,
+            document_synced_at: null,
+          }],
+        };
+      }
+      return {
+        rowCount: repositoryState.documents.length,
+        rows: repositoryState.documents.map((document) => ({
+          ...repositoryState.sync,
+          ...document,
+          sync_domain: repositoryState.sync.domain,
+          sync_synced_at: repositoryState.sync.synced_at,
+          document_synced_at: document.synced_at,
+        })),
+      };
     }
     throw new Error(`Unexpected pool SQL in site content repository smoke: ${text}`);
   },
@@ -317,7 +334,8 @@ assert.equal(realReplaceResult.sourceMode, 'postgresql-admin-settings-patch');
 const repositorySource = fs.readFileSync(new URL('../../server/src/content/site-content-repository.mjs', import.meta.url), 'utf8');
 assert.equal(repositorySource.includes('this.getDomain('), false, 'site-content repository arrow functions must not call this.getDomain');
 assert.equal(repositorySource.includes('this.getRentalConfigBootstrapContext('), false, 'site-content repository arrow functions must not call this.getRentalConfigBootstrapContext');
-assert.match(repositorySource, /const \[syncResult, docsResult\] = await Promise\.all\(/, 'site-content domain reads must execute independent sync-metadata and document queries concurrently');
+assert.match(repositorySource, /LEFT JOIN app_site_content_documents document/, 'site-content domain reads must fetch sync metadata and documents in one PostgreSQL round-trip');
+assert.equal(repositorySource.includes('const [syncResult, docsResult] = await Promise.all('), false, 'site-content domain reads must not spend two pool queries on one domain response');
 
 
 const memberAuthoritySource = fs.readFileSync(new URL('../../server/src/members/member-authority-service.mjs', import.meta.url), 'utf8');

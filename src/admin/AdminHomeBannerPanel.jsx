@@ -253,7 +253,7 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
         const content = await requestSiteContentDomain({
           domain: SITE_CONTENT_DOMAINS.HOME,
           config: cutover,
-          useCache: false,
+          useCache: true,
         });
         if (cancelled) return;
 
