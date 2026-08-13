@@ -49,7 +49,7 @@ const UserShell = ({
   userPanelContextKey,
   userTab,
 }) => {
-  const showDataLoadingOverlay = !firebaseReady;
+  const showDataLoadingOverlay = userTab !== 'home' && !firebaseReady;
   const headerSubtitle = getHeaderSubtitle(normalizedSiteSettings);
   const shouldMountUserPopupLayer =
     Array.isArray(popupPosts) &&

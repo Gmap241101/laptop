@@ -1,41 +1,30 @@
-import { lazy, memo, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, memo, Suspense, useMemo, useState } from 'react';
 import DevRenderProfiler from '../performance/DevRenderProfiler.jsx';
 import { PROTECTED_USER_TABS } from '../routing/appRoutes.js';
 import UserHomePanel from './UserHomePanel.jsx';
-import UserRentalPanel from './UserRentalPanel.jsx';
 import useUserTermsCompliance from '../features/terms/useUserTermsCompliance.js';
-import UserTermsConsentPanel from './UserTermsConsentPanel.jsx';
 
-const loadUserAuthPanel = () => import('./UserAuthPanel.jsx');
-const UserAuthPanel = memo(lazy(loadUserAuthPanel));
+const UserAuthPanel = memo(lazy(() => import('./UserAuthPanel.jsx')));
 const UserAccountStatusPanel = memo(
   lazy(() => import('./UserAccountStatusPanel.jsx'))
 );
-const loadUserBoardPanel = () => import('./UserBoardPanel.jsx');
-const UserBoardPanel = memo(lazy(loadUserBoardPanel));
-const loadUserMyPagePanel = () => import('./UserMyPagePanel.jsx');
-const loadUserRequestHistoryPanel = () => import('./UserRequestHistoryPanel.jsx');
-const UserMyPagePanel = memo(lazy(loadUserMyPagePanel));
-const UserRequestHistoryPanel = memo(lazy(loadUserRequestHistoryPanel));
+const UserBoardPanel = memo(lazy(() => import('./UserBoardPanel.jsx')));
+const UserMyPagePanel = memo(lazy(() => import('./UserMyPagePanel.jsx')));
+const UserRentalPanel = memo(lazy(() => import('./UserRentalPanel.jsx')));
+const UserRequestHistoryPanel = memo(
+  lazy(() => import('./UserRequestHistoryPanel.jsx'))
+);
 const UserFooterPagePanel = memo(
   lazy(() => import('./UserFooterPagePanel.jsx'))
 );
-const MemoizedUserHomePanel = memo(UserHomePanel);
-
-const UserPanelLoading = () => (
-  <div className="rounded-2xl border border-slate-200 bg-white px-6 py-12 text-center shadow-sm">
-    <div className="text-sm font-bold text-slate-900">
-      화면을 불러오는 중입니다.
-    </div>
-    <p className="mt-2 text-xs text-slate-500">
-      잠시 후 요청한 화면이 표시됩니다.
-    </p>
-  </div>
+const UserTermsConsentPanel = memo(
+  lazy(() => import('./UserTermsConsentPanel.jsx'))
 );
+const MemoizedUserHomePanel = memo(UserHomePanel);
 
 const renderProfiledPanel = (id, panel, { lazyPanel = true } = {}) => {
   const content = lazyPanel ? (
-    <Suspense fallback={<UserPanelLoading />}>{panel}</Suspense>
+    <Suspense fallback={null}>{panel}</Suspense>
   ) : (
     panel
   );
@@ -72,45 +61,6 @@ function UserWorkspace({ ctx, panelCtx }) {
     enabled: isProtectedUserTab && hasFirebaseAuthSession,
     refreshKey: termsComplianceRefreshKey,
   });
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return undefined;
-    }
-
-    const preloadCurrentUserPanels = () => {
-      const loaders = [loadUserAuthPanel, loadUserBoardPanel];
-      if (hasFirebaseAuthSession) {
-        loaders.push(
-          loadUserRequestHistoryPanel,
-          loadUserMyPagePanel
-        );
-      }
-
-      void Promise.allSettled(loaders.map((loadPanel) => loadPanel()));
-    };
-
-    window.addEventListener('pointerdown', preloadCurrentUserPanels, {
-      once: true,
-      passive: true,
-    });
-
-    let idleRequestId = 0;
-    let timeoutId = 0;
-    if (typeof window.requestIdleCallback === 'function') {
-      idleRequestId = window.requestIdleCallback(preloadCurrentUserPanels, {
-        timeout: 1200,
-      });
-    } else {
-      timeoutId = window.setTimeout(preloadCurrentUserPanels, 250);
-    }
-
-    return () => {
-      window.removeEventListener('pointerdown', preloadCurrentUserPanels);
-      if (idleRequestId) window.cancelIdleCallback?.(idleRequestId);
-      if (timeoutId) window.clearTimeout(timeoutId);
-    };
-  }, [hasFirebaseAuthSession]);
 
   if (isProtectedUserTab && (!firebaseAuthReady || !currentAuthRoleReady)) {
     return (
@@ -189,8 +139,7 @@ function UserWorkspace({ ctx, panelCtx }) {
           mode="gate"
           onCompleted={() => setTermsComplianceRefreshKey((current) => current + 1)}
         />
-      </div>,
-      { lazyPanel: false }
+      </div>
     );
   }
 
@@ -204,8 +153,7 @@ function UserWorkspace({ ctx, panelCtx }) {
   if (userTab === 'rental') {
     return renderProfiledPanel(
       'rental',
-      <UserRentalPanel ctx={panelCtx} />,
-      { lazyPanel: false }
+      <UserRentalPanel ctx={panelCtx} />
     );
   }
   if (userTab === 'mypage') {

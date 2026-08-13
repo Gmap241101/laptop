@@ -76,7 +76,7 @@ const formatKoreaReferenceDate = () => {
   return `${value.year}.${value.month}.${value.day} 기준`;
 };
 
-function ResponsiveBannerImage({ banner, className = '' }) {
+function ResponsiveBannerImage({ banner, className = '', loading = 'lazy', fetchPriority = 'auto' }) {
   const imageFit = banner?.imageFit === 'contain' ? 'contain' : 'cover';
   return (
     <picture>
@@ -86,6 +86,9 @@ function ResponsiveBannerImage({ banner, className = '' }) {
       <img
         src={banner.imageUrl}
         alt={banner.altText || ''}
+        loading={loading}
+        decoding="async"
+        fetchPriority={fetchPriority}
         className={`h-full w-full ${className}`}
         style={{ objectFit: imageFit, objectPosition: banner.imagePosition || 'center' }}
       />
@@ -415,7 +418,11 @@ export default function UserHomePanel({ ctx }) {
                     banner,
                     <>
                       <div className="aspect-[4/3] sm:aspect-[16/7] lg:aspect-[3/1]">
-                        <ResponsiveBannerImage banner={banner} />
+                        <ResponsiveBannerImage
+                          banner={banner}
+                          loading={index === 0 ? 'eager' : 'lazy'}
+                          fetchPriority={index === 0 ? 'high' : 'auto'}
+                        />
                       </div>
                       <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent px-6 pb-12 pt-24 text-center text-white sm:pb-14 lg:pb-14">
                         {banner.title && <h2 className="text-2xl font-black leading-tight tracking-tight drop-shadow-[0_2px_5px_rgba(0,0,0,0.95)] sm:text-3xl lg:text-[40px]">{banner.title}</h2>}
@@ -530,7 +537,7 @@ export default function UserHomePanel({ ctx }) {
                 className="inline-flex h-[56px] items-center px-5 py-2 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-orange-500"
                 title={quickLinkBanners[0].title || quickLinkBanners[0].altText || '바로가기'}
               >
-                <img src={quickLinkBanners[0].imageUrl} alt={quickLinkBanners[0].altText || quickLinkBanners[0].title || ''} className="h-10 w-auto max-w-[240px]" style={{ objectFit: quickLinkBanners[0].imageFit === 'cover' ? 'cover' : 'contain' }} />
+                <img src={quickLinkBanners[0].imageUrl} alt={quickLinkBanners[0].altText || quickLinkBanners[0].title || ''} loading="lazy" decoding="async" className="h-10 w-auto max-w-[240px]" style={{ objectFit: quickLinkBanners[0].imageFit === 'cover' ? 'cover' : 'contain' }} />
               </a>
             </div>
           ) : (
@@ -552,7 +559,7 @@ export default function UserHomePanel({ ctx }) {
                         className="inline-flex h-[56px] shrink-0 items-center px-5 py-2 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-orange-500"
                         title={banner.title || banner.altText || '바로가기'}
                       >
-                        <img src={banner.imageUrl} alt={groupIndex > 0 ? '' : banner.altText || banner.title || ''} className="h-10 w-auto max-w-[240px]" style={{ objectFit: banner.imageFit === 'cover' ? 'cover' : 'contain' }} />
+                        <img src={banner.imageUrl} alt={groupIndex > 0 ? '' : banner.altText || banner.title || ''} loading="lazy" decoding="async" className="h-10 w-auto max-w-[240px]" style={{ objectFit: banner.imageFit === 'cover' ? 'cover' : 'contain' }} />
                       </a>
                     ))}
                   </div>

@@ -808,13 +808,34 @@ export default function useRentalDataSubscriptionController({
       refreshAfterWindowReturn();
     };
 
-    refreshPostgresCatalog();
+    let firstPaintFrameId = 0;
+    let secondPaintFrameId = 0;
+    const scheduleInitialCatalogRefresh = () => {
+      const shouldDeferUntilAfterFirstPaint =
+        view === 'user' &&
+        userTab === 'home' &&
+        typeof window !== 'undefined' &&
+        typeof window.requestAnimationFrame === 'function';
+
+      if (!shouldDeferUntilAfterFirstPaint) {
+        refreshPostgresCatalog();
+        return;
+      }
+
+      firstPaintFrameId = window.requestAnimationFrame(() => {
+        secondPaintFrameId = window.requestAnimationFrame(refreshPostgresCatalog);
+      });
+    };
+
+    scheduleInitialCatalogRefresh();
     window.addEventListener('blur', markWindowAway);
     window.addEventListener('focus', refreshAfterWindowReturn);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       cancelled = true;
+      if (firstPaintFrameId) window.cancelAnimationFrame?.(firstPaintFrameId);
+      if (secondPaintFrameId) window.cancelAnimationFrame?.(secondPaintFrameId);
       window.removeEventListener('blur', markWindowAway);
       window.removeEventListener('focus', refreshAfterWindowReturn);
       document.removeEventListener('visibilitychange', handleVisibilityChange);

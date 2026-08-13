@@ -149,7 +149,8 @@ assert.match(adminRequestsSource, /refreshPostgresRequests\(\);[\s\S]*window\.ad
 assert.equal(/setInterval\([^\n]*refreshPostgresRequests/.test(rentalDataSource), false, 'signed-in user rental requests must not poll PostgreSQL while the window remains open');
 assert.equal(/setInterval\([^\n]*refreshPostgresCatalog/.test(rentalDataSource), false, 'rental asset and availability status must not poll PostgreSQL while the window remains open');
 assert.match(rentalDataSource, /refreshPostgresRequests\(\);[\s\S]*window\.addEventListener\('blur', markWindowAway\);[\s\S]*window\.addEventListener\('focus', refreshAfterWindowReturn\)/, 'signed-in user rental requests must refresh on entry and actual window return');
-assert.match(rentalDataSource, /refreshPostgresCatalog\(\);[\s\S]*window\.addEventListener\('blur', markWindowAway\);[\s\S]*window\.addEventListener\('focus', refreshAfterWindowReturn\)/, 'rental asset and availability status must refresh on entry and actual window return');
+assert.match(rentalDataSource, /scheduleInitialCatalogRefresh\(\);[\s\S]*window\.addEventListener\('blur', markWindowAway\);[\s\S]*window\.addEventListener\('focus', refreshAfterWindowReturn\)/, 'rental asset and availability status must refresh once after initial scheduling and again only after actual window return');
+assert.match(rentalDataSource, /view === 'user'[\s\S]*userTab === 'home'[\s\S]*requestAnimationFrame[\s\S]*requestAnimationFrame\(refreshPostgresCatalog\)/, 'home asset/status fetch must be deferred until after the first paint instead of competing with initial rendering');
 
 const adminDashboardSource = fs.readFileSync(new URL('../../src/admin/AdminDashboardPanel.jsx', import.meta.url), 'utf8');
 assert.match(adminDashboardSource, /진입·복귀 동기화 ·/, 'dashboard control must describe entry/return synchronization instead of continuous polling');
@@ -173,6 +174,8 @@ const renderAdminRootSource = fs.readFileSync(new URL('../../src/bootstrap/rende
 const userAppSource = fs.readFileSync(new URL('../../src/UserApp.jsx', import.meta.url), 'utf8');
 const userShellSource = fs.readFileSync(new URL('../../src/user/UserShell.jsx', import.meta.url), 'utf8');
 const userWorkspaceSource = fs.readFileSync(new URL('../../src/user/UserWorkspace.jsx', import.meta.url), 'utf8');
+const userNavigationSource = fs.readFileSync(new URL('../../src/routing/useAppNavigationController.js', import.meta.url), 'utf8');
+const userHomeSource = fs.readFileSync(new URL('../../src/user/UserHomePanel.jsx', import.meta.url), 'utf8');
 const userRuntimeErrorBoundarySource = fs.readFileSync(new URL('../../src/user/UserRuntimeErrorBoundary.jsx', import.meta.url), 'utf8');
 const adminAppSource = fs.readFileSync(new URL('../../src/admin/AdminApp.jsx', import.meta.url), 'utf8');
 const adminWorkspaceSource = fs.readFileSync(new URL('../../src/admin/AdminWorkspace.jsx', import.meta.url), 'utf8');
@@ -210,8 +213,18 @@ assert.equal(/(?:import\s+[^;]*|import\s*\()[\s\S]*?AppDialogs\.jsx/.test(userSh
 assert.match(userShellSource, /UserDialogs/, 'user shell must mount user-only dialogs');
 assert.match(userShellSource, /UserRuntimeErrorBoundary/, 'quarantined UserShell keeps its panel boundary for future isolated-runtime validation');
 assert.match(userRuntimeErrorBoundarySource, /componentDidCatch\(error, errorInfo\)/, 'user runtime error boundary must catch protected-panel render failures instead of allowing an all-white root');
-assert.match(userWorkspaceSource, /import UserRentalPanel from '\.\/UserRentalPanel\.jsx'/, 'post-login rental screen must be eagerly linked into the user application bundle');
-assert.equal(userWorkspaceSource.includes("import('./UserRentalPanel.jsx')"), false, 'post-login rental transition must not depend on a lazy chunk request');
+assert.match(userWorkspaceSource, /import UserHomePanel from '\.\/UserHomePanel\.jsx'/, 'user home panel must remain eagerly linked for immediate first-page rendering');
+assert.match(userWorkspaceSource, /const UserRentalPanel = memo\(lazy\(\(\) => import\('\.\/UserRentalPanel\.jsx'\)\)\)/, 'rental panel must be lazy-loaded on first use like administrator subpanels');
+assert.match(userWorkspaceSource, /const UserAuthPanel = memo\(lazy\(\(\) => import\('\.\/UserAuthPanel\.jsx'\)\)\)/, 'authentication panel must remain lazy-loaded on first use');
+assert.match(userWorkspaceSource, /<Suspense fallback=\{null\}>/, 'user lazy panels must use a silent Suspense boundary');
+assert.equal(userWorkspaceSource.includes('화면을 불러오는 중입니다.'), false, 'user lazy navigation must not expose a first-load explanatory placeholder');
+assert.equal(userWorkspaceSource.includes('requestIdleCallback'), false, 'user home must not preload lazy panels during idle time and compete with the initial page');
+assert.equal(userWorkspaceSource.includes('preloadCurrentUserPanels'), false, 'user home must not eagerly preload first-use panel chunks');
+assert.match(userNavigationSource, /startTransition\(\(\) => \{[\s\S]*setView\('user'\);[\s\S]*setUserTab\(normalizedUserTab\);[\s\S]*\}\);/, 'user tab commits must use a transition so the previous panel remains visible while a first-use chunk downloads');
+assert.match(userShellSource, /const showDataLoadingOverlay = userTab !== 'home' && !firebaseReady;/, 'initial home rendering must not be blurred behind the rental-data readiness overlay');
+assert.match(userHomeSource, /loading=\{index === 0 \? 'eager' : 'lazy'\}/, 'only the first hero image should be eager; later hero images must be lazy');
+assert.match(userHomeSource, /fetchPriority=\{index === 0 \? 'high' : 'auto'\}/, 'the first hero image should receive high fetch priority');
+assert.match(userHomeSource, /loading="lazy" decoding="async"/, 'below-the-fold quick-link images must use lazy asynchronous decoding');
 assert.equal(adminShellSource.includes('UserWorkspace'), false, 'administrator shell must not contain the user workspace');
 assert.equal(adminShellSource.includes('UserFooter'), false, 'administrator shell must not contain the user footer');
 assert.equal(adminShellSource.includes('UserPopupLayer'), false, 'administrator shell must not contain the user popup layer');

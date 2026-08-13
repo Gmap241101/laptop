@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { startTransition, useCallback, useEffect, useRef, useState } from 'react';
 
 import { USER_PROFILE_STATUS } from '../constants/memberConstants.js';
 import {
@@ -113,16 +113,18 @@ export default function useAppNavigationController({
       }
 
       updatePath('user', normalizedUserTab, normalizedRouteId);
-      setView('user');
-      setUserTab(normalizedUserTab);
-      if (!preserveFooterSelection) {
-        setSelectedFooterPageId(normalizedRouteId);
-      }
-
-      if (!preserveNoticeSelection) {
-        setSelectedNoticePostId(normalizedNoticePostId);
-      }
       setIsCommunityMenuOpen(false);
+      startTransition(() => {
+        setView('user');
+        setUserTab(normalizedUserTab);
+        if (!preserveFooterSelection) {
+          setSelectedFooterPageId(normalizedRouteId);
+        }
+
+        if (!preserveNoticeSelection) {
+          setSelectedNoticePostId(normalizedNoticePostId);
+        }
+      });
 
       if (typeof window !== 'undefined' && scrollBehavior) {
         window.scrollTo({
