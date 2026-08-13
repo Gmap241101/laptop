@@ -58,14 +58,27 @@ export default function RichTextContent({ html = '', text = '', className = '' }
     const config = parseYouTubeConfig(iframe.getAttribute('src') || '');
     if (!config) return undefined;
 
-    const targetOrigin = 'https://www.youtube-nocookie.com';
+    let targetOrigin = '';
+    try {
+      targetOrigin = new URL(iframe.getAttribute('src') || '', window.location.href).origin;
+    } catch {
+      return undefined;
+    }
+    if (!/^https:\/\/(?:www\.)?youtube(?:-nocookie)?\.com$/i.test(targetOrigin)) {
+      return undefined;
+    }
+
     const iframeId = iframe.id || `youtube-player-${Math.random().toString(36).slice(2)}`;
     iframe.id = iframeId;
     let disposed = false;
+    let iframeLoaded = false;
     const retryTimers = [];
 
     const postPlayerMessage = (payload) => {
-      if (disposed || !iframe.contentWindow) return;
+      // A freshly inserted cross-origin iframe temporarily owns an about:blank document
+      // that inherits the parent origin. Posting with YouTube's targetOrigin before its
+      // load event therefore produces the DOMWindow target-origin warning.
+      if (disposed || !iframeLoaded || !iframe.contentWindow) return;
       iframe.contentWindow.postMessage(JSON.stringify(payload), targetOrigin);
     };
 
@@ -82,12 +95,14 @@ export default function RichTextContent({ html = '', text = '', className = '' }
     };
 
     const scheduleRetries = () => {
+      retryTimers.splice(0).forEach((timer) => window.clearTimeout(timer));
       [0, 250, 600, 1200, 2200, 4000].forEach((delay) => {
         retryTimers.push(window.setTimeout(sendPlayerCommands, delay));
       });
     };
 
     const handleLoad = () => {
+      iframeLoaded = true;
       scheduleRetries();
     };
 
@@ -110,13 +125,12 @@ export default function RichTextContent({ html = '', text = '', className = '' }
     };
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') sendPlayerCommands();
+      if (iframeLoaded && document.visibilityState === 'visible') sendPlayerCommands();
     };
 
     window.addEventListener('message', handleMessage);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     iframe.addEventListener('load', handleLoad);
-    scheduleRetries();
 
     return () => {
       disposed = true;

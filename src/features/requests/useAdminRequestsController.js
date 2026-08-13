@@ -364,9 +364,43 @@ export default function useAdminRequestsController({
       }
     };
 
-    void loadPostgresRequests();
+    let refreshInFlight = false;
+    let wasAwayFromWindow = false;
+    const refreshPostgresRequests = () => {
+      if (refreshInFlight || cancelled) return;
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      refreshInFlight = true;
+      void loadPostgresRequests().finally(() => {
+        refreshInFlight = false;
+      });
+    };
+    const markWindowAway = () => {
+      wasAwayFromWindow = true;
+    };
+    const refreshAfterWindowReturn = () => {
+      if (!wasAwayFromWindow) return;
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      wasAwayFromWindow = false;
+      refreshPostgresRequests();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        markWindowAway();
+        return;
+      }
+      refreshAfterWindowReturn();
+    };
+
+    refreshPostgresRequests();
+    window.addEventListener('blur', markWindowAway);
+    window.addEventListener('focus', refreshAfterWindowReturn);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
       cancelled = true;
+      window.removeEventListener('blur', markWindowAway);
+      window.removeEventListener('focus', refreshAfterWindowReturn);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [
     debouncedQuery,

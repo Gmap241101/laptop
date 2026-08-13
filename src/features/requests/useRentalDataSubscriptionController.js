@@ -298,61 +298,99 @@ export function useOwnRentalRequestsSubscriptionController({
     };
 
     if (!shouldUseRentalRequestFirestoreWatcher(cutoverConfig)) {
-      void loadRentalRequestsWithoutFirestoreWatcher({
-        loadPostgresCandidate: () =>
-          loadPostgresCandidate({ refreshSource: true }),
-        loadFirestoreFallback: loadFirestoreOnce,
-        allowFirestoreFallback: legacyFallbackAllowed,
-      })
-        .then((result) => {
-          if (disposed) return;
-          setRentalRequests(result.requests);
-          setRentalRequestsLoadErrorMessage('');
-          setRentalRequestsReady(true);
-          publishRentalRequestCutoverObservation({
-            requested: cutoverConfig.requested,
-            enabled: cutoverConfig.enabled,
-            activeSource: result.source,
-            equivalent: result.equivalent,
-            changedRequestIds: result.changedRequestIds,
-            changedFields: result.changedFields,
-            fallbackReason: result.fallbackReason,
-            firestoreWatcherDisabled: true,
-            firestoreFallbackReads: result.firestoreFallbackReads,
-            shadowSyncedAt: result.shadowSyncedAt,
-            sourceRefreshes: result.sourceRefreshes,
-          });
+      let refreshInFlight = false;
+      let initialLoadComplete = false;
+      let wasAwayFromWindow = false;
+      const refreshPostgresRequests = () => {
+        if (disposed || refreshInFlight) return;
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+        refreshInFlight = true;
+        void loadRentalRequestsWithoutFirestoreWatcher({
+          loadPostgresCandidate: () =>
+            loadPostgresCandidate({ refreshSource: true }),
+          loadFirestoreFallback: loadFirestoreOnce,
+          allowFirestoreFallback: legacyFallbackAllowed,
         })
-        .catch((error) => {
-          if (disposed) return;
-          if (!legacyFallbackAllowed) {
-            recordLegacyFirestoreReadFallbackBlocked('rental-requests', error?.code || 'rental-request-postgres-unavailable');
-          }
-          console.error('Rental request authoritative read failed:', error);
-          const message = legacyFallbackAllowed
-            ? '나의 대여신청 내역을 불러오지 못했습니다. PostgreSQL 및 Firestore 연결 상태를 확인해 주세요.'
-            : '나의 대여신청 내역을 PostgreSQL에서 불러오지 못했습니다. legacy Firestore fallback은 비활성화되어 있습니다.';
-          setRentalRequests([]);
-          setRentalRequestsLoadErrorMessage(message);
-          setRentalRequestsReady(true);
-          publishRentalRequestCutoverObservation({
-            requested: cutoverConfig.requested,
-            enabled: cutoverConfig.enabled,
-            activeSource: 'unavailable',
-            equivalent: null,
-            changedRequestIds: [],
-            changedFields: [],
-            fallbackReason: error?.code || 'rental-request-read-unavailable',
-            firestoreWatcherDisabled: true,
-            firestoreFallbackReads: legacyFallbackAllowed ? (Number(error?.firestoreFallbackReads) || 1) : 0,
-            shadowSyncedAt: '',
-            sourceRefreshes: 0,
+          .then((result) => {
+            if (disposed) return;
+            setRentalRequests(result.requests);
+            setRentalRequestsLoadErrorMessage('');
+            setRentalRequestsReady(true);
+            initialLoadComplete = true;
+            publishRentalRequestCutoverObservation({
+              requested: cutoverConfig.requested,
+              enabled: cutoverConfig.enabled,
+              activeSource: result.source,
+              equivalent: result.equivalent,
+              changedRequestIds: result.changedRequestIds,
+              changedFields: result.changedFields,
+              fallbackReason: result.fallbackReason,
+              firestoreWatcherDisabled: true,
+              firestoreFallbackReads: result.firestoreFallbackReads,
+              shadowSyncedAt: result.shadowSyncedAt,
+              sourceRefreshes: result.sourceRefreshes,
+            });
+          })
+          .catch((error) => {
+            if (disposed) return;
+            if (!legacyFallbackAllowed) {
+              recordLegacyFirestoreReadFallbackBlocked('rental-requests', error?.code || 'rental-request-postgres-unavailable');
+            }
+            console.error('Rental request authoritative read failed:', error);
+            const message = legacyFallbackAllowed
+              ? '나의 대여신청 내역을 불러오지 못했습니다. PostgreSQL 및 Firestore 연결 상태를 확인해 주세요.'
+              : '나의 대여신청 내역을 PostgreSQL에서 불러오지 못했습니다. legacy Firestore fallback은 비활성화되어 있습니다.';
+            if (!initialLoadComplete) {
+              setRentalRequests([]);
+              setRentalRequestsReady(true);
+              triggerToastRef.current?.(message, 'error');
+            }
+            setRentalRequestsLoadErrorMessage(message);
+            publishRentalRequestCutoverObservation({
+              requested: cutoverConfig.requested,
+              enabled: cutoverConfig.enabled,
+              activeSource: 'unavailable',
+              equivalent: null,
+              changedRequestIds: [],
+              changedFields: [],
+              fallbackReason: error?.code || 'rental-request-read-unavailable',
+              firestoreWatcherDisabled: true,
+              firestoreFallbackReads: legacyFallbackAllowed ? (Number(error?.firestoreFallbackReads) || 1) : 0,
+              shadowSyncedAt: '',
+              sourceRefreshes: 0,
+            });
+          })
+          .finally(() => {
+            refreshInFlight = false;
           });
-          triggerToastRef.current?.(message, 'error');
-        });
+      };
+      const markWindowAway = () => {
+        wasAwayFromWindow = true;
+      };
+      const refreshAfterWindowReturn = () => {
+        if (!wasAwayFromWindow) return;
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+        wasAwayFromWindow = false;
+        refreshPostgresRequests();
+      };
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'hidden') {
+          markWindowAway();
+          return;
+        }
+        refreshAfterWindowReturn();
+      };
+
+      refreshPostgresRequests();
+      window.addEventListener('blur', markWindowAway);
+      window.addEventListener('focus', refreshAfterWindowReturn);
+      document.addEventListener('visibilitychange', handleVisibilityChange);
 
       return () => {
         disposed = true;
+        window.removeEventListener('blur', markWindowAway);
+        window.removeEventListener('focus', refreshAfterWindowReturn);
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
       };
     }
 
@@ -694,54 +732,93 @@ export default function useRentalDataSubscriptionController({
       return () => { cancelled = true; };
     }
 
-    void (async () => {
-      try {
-        let payload = null;
-        let bootstrapped = false;
-        if (shouldLoadAdminAssets) {
-          const sessionKey = 'mk_asset_postgres_bootstrap:clerk-postgresql-admin';
-          let shouldBootstrap = true;
-          try { shouldBootstrap = globalThis.sessionStorage?.getItem?.(sessionKey) !== '1'; } catch { /* no-op */ }
-          if (shouldBootstrap) {
-            const bootstrapPayload = await clerkStagingClient.bootstrapAdminAssets('');
-            payload = { assetCatalog: bootstrapPayload?.adminAssetBootstrap?.catalog };
-            bootstrapped = true;
-            try { globalThis.sessionStorage?.setItem?.(sessionKey, '1'); } catch { /* no-op */ }
+    let refreshInFlight = false;
+    let initialLoadComplete = false;
+    let wasAwayFromWindow = false;
+    const refreshPostgresCatalog = () => {
+      if (cancelled || refreshInFlight) return;
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      refreshInFlight = true;
+      void (async () => {
+        try {
+          let payload = null;
+          let bootstrapped = false;
+          if (shouldLoadAdminAssets && !initialLoadComplete) {
+            const sessionKey = 'mk_asset_postgres_bootstrap:clerk-postgresql-admin';
+            let shouldBootstrap = true;
+            try { shouldBootstrap = globalThis.sessionStorage?.getItem?.(sessionKey) !== '1'; } catch { /* no-op */ }
+            if (shouldBootstrap) {
+              const bootstrapPayload = await clerkStagingClient.bootstrapAdminAssets('');
+              payload = { assetCatalog: bootstrapPayload?.adminAssetBootstrap?.catalog };
+              bootstrapped = true;
+              try { globalThis.sessionStorage?.setItem?.(sessionKey, '1'); } catch { /* no-op */ }
+            }
           }
+          if (!payload?.assetCatalog) payload = await clerkStagingClient.getAssetCatalog();
+          applyCatalogPayload(payload.assetCatalog, 'postgresql', bootstrapped);
+          initialLoadComplete = true;
+        } catch (error) {
+          recordLegacyFirestoreReadFallbackBlocked('assets', error?.code || error?.message || 'postgresql-asset-read-failed');
+          if (cancelled) return;
+          const errorCode = error?.code || error?.name || 'asset_postgresql_read_failed';
+          const message = `대여 자산 및 예약 현황을 PostgreSQL에서 불러오지 못했습니다. 오류 코드: ${errorCode}`;
+          if (!initialLoadComplete) {
+            setPublicCatalogAssets([]);
+            setPublicCatalogAssetsReady(true);
+            setSplitRentalAssets([]);
+            setSplitRentalAvailability([]);
+            setSplitSourceReady((previous) => ({ ...previous, assets: true, availability: true }));
+            setFirebaseReady(true);
+            setToast({ message, type: 'error' });
+          }
+          setSplitSourceErrors((previous) => ({ ...previous, assets: message, availability: message }));
+          publishAssetDomainCutoverObservation({
+            readRequested: assetCutoverConfig.readRequested,
+            writeRequested: assetCutoverConfig.writeRequested,
+            activeSource: 'unavailable',
+            assetWatcherDisabled: true,
+            availabilityWatcherDisabled: true,
+            assetCount: 0,
+            categoryCount: 0,
+            availabilityCount: 0,
+            firestoreFallbackReads: 0,
+            bootstrapped: false,
+            syncAt: '',
+            error: errorCode,
+          });
+        } finally {
+          refreshInFlight = false;
         }
-        if (!payload?.assetCatalog) payload = await clerkStagingClient.getAssetCatalog();
-        applyCatalogPayload(payload.assetCatalog, 'postgresql', bootstrapped);
-      } catch (error) {
-        recordLegacyFirestoreReadFallbackBlocked('assets', error?.code || error?.message || 'postgresql-asset-read-failed');
-        if (cancelled) return;
-        const errorCode = error?.code || error?.name || 'asset_postgresql_read_failed';
-        const message = `대여 자산 및 예약 현황을 PostgreSQL에서 불러오지 못했습니다. 오류 코드: ${errorCode}`;
-        setPublicCatalogAssets([]);
-        setPublicCatalogAssetsReady(true);
-        setSplitRentalAssets([]);
-        setSplitRentalAvailability([]);
-        setSplitSourceErrors((previous) => ({ ...previous, assets: message, availability: message }));
-        setSplitSourceReady((previous) => ({ ...previous, assets: true, availability: true }));
-        setFirebaseReady(true);
-        setToast({ message, type: 'error' });
-        publishAssetDomainCutoverObservation({
-          readRequested: assetCutoverConfig.readRequested,
-          writeRequested: assetCutoverConfig.writeRequested,
-          activeSource: 'unavailable',
-          assetWatcherDisabled: true,
-          availabilityWatcherDisabled: true,
-          assetCount: 0,
-          categoryCount: 0,
-          availabilityCount: 0,
-          firestoreFallbackReads: 0,
-          bootstrapped: false,
-          syncAt: '',
-          error: errorCode,
-        });
+      })();
+    };
+    const markWindowAway = () => {
+      wasAwayFromWindow = true;
+    };
+    const refreshAfterWindowReturn = () => {
+      if (!wasAwayFromWindow) return;
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      wasAwayFromWindow = false;
+      refreshPostgresCatalog();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        markWindowAway();
+        return;
       }
-    })();
+      refreshAfterWindowReturn();
+    };
 
-    return () => { cancelled = true; };
+    refreshPostgresCatalog();
+    window.addEventListener('blur', markWindowAway);
+    window.addEventListener('focus', refreshAfterWindowReturn);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('blur', markWindowAway);
+      window.removeEventListener('focus', refreshAfterWindowReturn);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [
     adminTab,
     authenticatedAdminId,

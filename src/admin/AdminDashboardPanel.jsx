@@ -659,7 +659,7 @@ export default function AdminDashboardPanel({ ctx }) {
                 className={dashboardSummaryRefreshing ? 'animate-spin' : ''}
                 aria-hidden="true"
               />
-              {dashboardSummaryRefreshing ? '갱신 중' : `요약 ${summaryUpdatedLabel}`}
+              {dashboardSummaryRefreshing ? '동기화 중' : `진입·복귀 동기화 · ${summaryUpdatedLabel}`}
             </button>
           </div>
         }

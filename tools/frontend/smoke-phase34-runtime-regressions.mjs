@@ -88,6 +88,14 @@ assert.match(
   'administrator policy mismatch logout must be confirmed against PostgreSQL before invalidating the Clerk session'
 );
 
+const adminClerkVerificationEffect = adminAuthSource.match(/useEffect\(\(\) => \{[\s\S]*?getAdminClerkSession\(\)[\s\S]*?return \(\) => \{ cancelled = true; \};[\s\S]*?\}, \[[\s\S]*?runtimeSurface,[\s\S]*?\]\);/)?.[0] || '';
+assert.ok(adminClerkVerificationEffect, 'administrator Clerk session verification effect must remain present');
+assert.equal(
+  adminClerkVerificationEffect.includes('let cancelled = false;\n    setAdminClerkSessionVerified(false);'),
+  false,
+  'an already verified interactive administrator login must not be forced back through the login page while the Clerk session is rechecked'
+);
+
 let patchRequest = null;
 const patchPayload = await requestAdminRentalConfigSettingsPatch({
   clerk,
@@ -126,6 +134,33 @@ assert.match(
   'user rental runtime must import every legacy-read fallback helper it invokes so authenticated rental rendering cannot fail with ReferenceError'
 );
 
+const dashboardSummarySource = fs.readFileSync(new URL('../../src/hooks/useDashboardSummary.js', import.meta.url), 'utf8');
+assert.equal(dashboardSummarySource.includes('DASHBOARD_SUMMARY_LIVE_REFRESH_INTERVAL_MS'), false, 'dashboard synchronization must not retain a timer interval');
+assert.equal(/setInterval\([^\n]*refreshDashboardSummary|setInterval\([^\n]*refreshIfVisible/.test(dashboardSummarySource), false, 'dashboard must not poll PostgreSQL while the administrator leaves the window open');
+assert.match(dashboardSummarySource, /refreshIfVisible\(\);[\s\S]*window\.addEventListener\('blur', markWindowAway\);[\s\S]*window\.addEventListener\('focus', refreshAfterWindowReturn\)/, 'dashboard must refresh once on entry and once after an actual window leave/return');
+assert.match(dashboardSummarySource, /document\.visibilityState === 'hidden'[\s\S]*markWindowAway\(\);[\s\S]*refreshAfterWindowReturn\(\)/, 'dashboard must treat hidden-to-visible restoration as a return event');
+assert.match(dashboardSummarySource, /subscribeAdminRentalRequestCutoverObservation\(refreshAfterMutation\)/, 'administrator rental-request writes must immediately invalidate the dashboard summary');
+assert.match(dashboardSummarySource, /subscribeAssetDomainCutoverObservation\(refreshAfterMutation\)/, 'asset writes must immediately invalidate the dashboard summary');
+assert.match(dashboardSummarySource, /subscribeMemberAuthorityObservation\(refreshAfterMutation\)/, 'member writes must immediately invalidate the dashboard summary');
+
+const adminRequestsSource = fs.readFileSync(new URL('../../src/features/requests/useAdminRequestsController.js', import.meta.url), 'utf8');
+assert.equal(/setInterval\([^\n]*refreshPostgresRequests/.test(adminRequestsSource), false, 'administrator rental-request list must not poll PostgreSQL while the window remains open');
+assert.match(adminRequestsSource, /refreshPostgresRequests\(\);[\s\S]*window\.addEventListener\('blur', markWindowAway\);[\s\S]*window\.addEventListener\('focus', refreshAfterWindowReturn\)/, 'administrator rental-request list must refresh on entry and actual window return');
+assert.equal(/setInterval\([^\n]*refreshPostgresRequests/.test(rentalDataSource), false, 'signed-in user rental requests must not poll PostgreSQL while the window remains open');
+assert.equal(/setInterval\([^\n]*refreshPostgresCatalog/.test(rentalDataSource), false, 'rental asset and availability status must not poll PostgreSQL while the window remains open');
+assert.match(rentalDataSource, /refreshPostgresRequests\(\);[\s\S]*window\.addEventListener\('blur', markWindowAway\);[\s\S]*window\.addEventListener\('focus', refreshAfterWindowReturn\)/, 'signed-in user rental requests must refresh on entry and actual window return');
+assert.match(rentalDataSource, /refreshPostgresCatalog\(\);[\s\S]*window\.addEventListener\('blur', markWindowAway\);[\s\S]*window\.addEventListener\('focus', refreshAfterWindowReturn\)/, 'rental asset and availability status must refresh on entry and actual window return');
+
+const adminDashboardSource = fs.readFileSync(new URL('../../src/admin/AdminDashboardPanel.jsx', import.meta.url), 'utf8');
+assert.match(adminDashboardSource, /진입·복귀 동기화 ·/, 'dashboard control must describe entry/return synchronization instead of continuous polling');
+
+const richTextContentSource = fs.readFileSync(new URL('../../src/components/RichTextContent.jsx', import.meta.url), 'utf8');
+assert.match(richTextContentSource, /targetOrigin = new URL\(iframe\.getAttribute\('src'\)/, 'YouTube postMessage target origin must be derived from the actual sanitized iframe URL');
+assert.match(richTextContentSource, /if \(disposed \|\| !iframeLoaded \|\| !iframe\.contentWindow\) return;/, 'YouTube player messages must wait until the cross-origin iframe has loaded');
+const youtubeListenerSetup = richTextContentSource.match(/window\.addEventListener\('message', handleMessage\);[\s\S]*?return \(\) => \{/)?.[0] || '';
+assert.ok(youtubeListenerSetup, 'YouTube listener lifecycle must remain present');
+assert.equal(/iframe\.addEventListener\('load', handleLoad\);\s*scheduleRetries\(\);/.test(youtubeListenerSetup), false, 'YouTube commands must not be posted immediately against the iframe about:blank document before the load event');
+
 
 const userHtml = fs.readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
 const adminHtml = fs.readFileSync(new URL('../../admin/index.html', import.meta.url), 'utf8');
@@ -144,6 +179,7 @@ const adminWorkspaceSource = fs.readFileSync(new URL('../../src/admin/AdminWorks
 const adminAccountSecuritySource = fs.readFileSync(new URL('../../src/admin/AdminAccountSecurityPanel.jsx', import.meta.url), 'utf8');
 const contextSliceSource = fs.readFileSync(new URL('../../src/context/appContextSlices.js', import.meta.url), 'utf8');
 const adminShellSource = fs.readFileSync(new URL('../../src/admin/AdminShell.jsx', import.meta.url), 'utf8');
+const adminNavigationSource = fs.readFileSync(new URL('../../src/admin/useAdminNavigationController.js', import.meta.url), 'utf8');
 const appRoutesSource = fs.readFileSync(new URL('../../src/routing/appRoutes.js', import.meta.url), 'utf8');
 const userSessionSource = fs.readFileSync(new URL('../../src/features/auth/useUserAuthenticationSessionController.js', import.meta.url), 'utf8');
 const membershipSource = fs.readFileSync(new URL('../../src/features/members/useUserMembershipStatusController.js', import.meta.url), 'utf8');
@@ -156,18 +192,17 @@ assert.equal(vercelConfig.rewrites?.[0]?.source, '/admin', 'Vercel must resolve 
 assert.equal(vercelConfig.rewrites?.[0]?.destination, '/admin/index.html');
 assert.match(userMainSource, /clearAdminRouteIntent\(\)/, 'user document must clear stale administrator route intent');
 assert.match(adminMainSource, /writeAdminRouteIntent\(\)/, 'administrator document must establish administrator route intent before React mounts');
-assert.match(userMainSource, /renderAppRoot/, 'user entrypoint must use the proven shared user runtime root while the administrator document remains physically isolated');
-assert.match(userMainSource, /APP_SURFACE\.USER/, 'user entrypoint must pin the shared runtime to the user surface');
+assert.match(userMainSource, /renderUserRoot/, 'user entrypoint must mount the dedicated user runtime root after the authenticated rental ReferenceError was resolved');
+assert.equal(userMainSource.includes('renderAppRoot'), false, 'user entrypoint must no longer fall back to the shared App/AppShell recovery runtime');
+assert.match(renderUserRootSource, /import UserApp from '\.\.\/UserApp\.jsx'/, 'user document must mount UserApp directly');
+assert.match(renderUserRootSource, /UserRuntimeErrorBoundary/, 'isolated user root must retain a top-level render error boundary');
 assert.match(adminMainSource, /renderAdminRoot/, 'administrator entrypoint must mount the dedicated administrator root');
 assert.equal(userMainSource.includes('renderAdminRoot'), false, 'user entrypoint must not import the administrator root');
-assert.equal(adminMainSource.includes('renderAppRoot'), false, 'administrator entrypoint must not import the shared user runtime root');
-assert.match(renderAppRootSource, /import App from '\.\.\/App\.jsx'/, 'user recovery path must mount the previously validated App root');
-assert.match(renderAppRootSource, /class RootErrorBoundary/, 'user recovery root must retain a top-level render error boundary');
-assert.equal(userMainSource.includes('renderUserRoot'), false, 'user entrypoint must not mount the regressed UserApp/UserShell runtime during recovery');
+assert.equal(adminMainSource.includes('renderUserRoot'), false, 'administrator entrypoint must not import the user root');
 assert.match(renderAdminRootSource, /import AdminApp from '\.\.\/admin\/AdminApp\.jsx'/, 'administrator document must mount AdminApp directly');
 assert.equal(renderAdminRootSource.includes('../App.jsx'), false, 'administrator document must not mount the legacy shared App root');
-assert.match(userAppSource, /from '\.\/user\/UserShell\.jsx'/, 'isolated UserApp source remains available for later reintroduction only after its runtime regression is resolved');
-assert.match(userAppSource, /from '\.\/user\/useUserContextAssembler\.js'/, 'isolated UserApp source must keep its user-only context assembler while it is quarantined from the active entrypoint');
+assert.match(userAppSource, /from '\.\/user\/UserShell\.jsx'/, 'isolated UserApp must render the dedicated user shell');
+assert.match(userAppSource, /from '\.\/user\/useUserContextAssembler\.js'/, 'isolated UserApp must use the user-only context assembler');
 assert.match(adminAppSource, /from '\.\/AdminShell\.jsx'/, 'AdminApp must render the administrator-only shell');
 assert.equal(adminAppSource.includes('../user/'), false, 'AdminApp must not import user source modules');
 assert.equal(userShellSource.includes('AdminWorkspace'), false, 'user shell must not contain the administrator workspace');
@@ -180,10 +215,14 @@ assert.equal(userWorkspaceSource.includes("import('./UserRentalPanel.jsx')"), fa
 assert.equal(adminShellSource.includes('UserWorkspace'), false, 'administrator shell must not contain the user workspace');
 assert.equal(adminShellSource.includes('UserFooter'), false, 'administrator shell must not contain the user footer');
 assert.equal(adminShellSource.includes('UserPopupLayer'), false, 'administrator shell must not contain the user popup layer');
-assert.equal(adminShellSource.includes("React.lazy(() => import('./AdminWorkspace.jsx'))"), false, 'administrator workspace must be eagerly linked into the separate admin document');
-assert.equal(adminShellSource.includes("React.lazy(() => import('./AdminDialogs.jsx'))"), false, 'administrator dialogs must be eagerly linked into the separate admin document');
-assert.equal(adminWorkspaceSource.includes('lazy(() => import('), false, 'administrator tab panels must be eagerly linked so first menu clicks do not display a code-loading placeholder');
-assert.equal(adminWorkspaceSource.includes('관리 메뉴를 불러오는 중입니다.'), false, 'administrator menu must not render the first-load panel placeholder');
+assert.equal(adminShellSource.includes("React.lazy(() => import('./AdminWorkspace.jsx'))"), false, 'administrator workspace shell must remain eagerly linked so the admin layout appears immediately');
+assert.equal(adminShellSource.includes("React.lazy(() => import('./AdminDialogs.jsx'))"), false, 'administrator dialogs must remain eagerly linked into the separate admin document');
+assert.match(adminWorkspaceSource, /import AdminDashboardPanelView from '\.\/AdminDashboardPanel\.jsx'/, 'administrator dashboard must be eagerly linked for immediate post-login rendering');
+assert.match(adminWorkspaceSource, /const AdminRequestsPanel = memo\(lazy\(\(\) => import\('\.\/AdminRequestsPanel\.jsx'\)\)\)/, 'administrator subpanels must remain lazy-loaded on first use');
+assert.match(adminWorkspaceSource, /<Suspense fallback=\{null\}>/, 'administrator lazy panels must use a silent Suspense boundary');
+assert.equal(adminWorkspaceSource.includes('관리 메뉴를 불러오는 중입니다.'), false, 'administrator menu must never render the old first-load explanatory placeholder');
+assert.equal(adminWorkspaceSource.includes('선택한 관리 기능의 코드를 처음 한 번만 불러옵니다.'), false, 'administrator menu must not expose code-loading copy');
+assert.match(adminNavigationSource, /startTransition\(\(\) => \{[\s\S]*setAdminTab\(nextTab\);[\s\S]*\}\);/, 'administrator tab commits must use a transition so the previous panel stays visible while a first-use chunk downloads');
 assert.match(contextSliceSource, /accountSecurity:[^\n]*rebaseAdminAuthenticatedSession[^\n]*setSystemAdminSettings[^\n]*setUserSessionPolicy/, 'account-security panel context must receive authoritative policy state setters and current-session rebasing');
 assert.match(adminAppSource, /setSystemAdminSettings,[\s\S]*setUserSessionPolicy,[\s\S]*rebaseAdminAuthenticatedSession,[\s\S]*userSessionPolicy,/, 'administrator root must expose policy setters to the account-security panel');
 assert.match(adminAccountSecuritySource, /adminWriteResult\?\.systemConfiguration\?\.payload/, 'administrator security save must consume the authoritative PostgreSQL response payload');
@@ -249,11 +288,13 @@ const adminForbiddenImports = adminImportGraph.filter((file) =>
   file.startsWith('user/') ||
   /(^|\/)useUser(?:Login|Signup|AuthenticationSession|MembershipStatus|MyPageAccount|RentalRequest|RequestHistoryAction|AccountRecovery)Controller\.(?:js|jsx)$/.test(file)
 );
-assert.deepEqual(userForbiddenImports, [], `user recovery import graph must not reach the physically separated administrator application root/shell: ${userForbiddenImports.join(', ')}`);
+assert.deepEqual(userForbiddenImports, [], `user import graph must not reach the physically separated administrator application root/shell: ${userForbiddenImports.join(', ')}`);
 assert.deepEqual(adminForbiddenImports, [], `administrator import graph must not reach user application/lifecycle modules: ${adminForbiddenImports.join(', ')}`);
-assert.ok(userImportGraph.includes('App.jsx'), 'user recovery import graph must include the previously validated App root');
-assert.ok(userImportGraph.includes('shell/AppShell.jsx'), 'user recovery import graph must include the previously validated AppShell');
-assert.equal(userImportGraph.includes('UserApp.jsx'), false, 'regressed isolated UserApp must be quarantined from the active user entrypoint');
+assert.ok(userImportGraph.includes('UserApp.jsx'), 'user import graph must include the dedicated UserApp root');
+assert.ok(userImportGraph.includes('user/UserShell.jsx'), 'user import graph must include the dedicated UserShell');
+assert.equal(userImportGraph.includes('App.jsx'), false, 'user import graph must not fall back to the shared legacy App root');
+assert.equal(userImportGraph.includes('shell/AppShell.jsx'), false, 'user import graph must not fall back to the shared legacy AppShell');
+assert.equal(userImportGraph.some((file) => file.startsWith('admin/')), false, 'user import graph must not contain administrator source modules');
 assert.ok(adminImportGraph.includes('admin/AdminApp.jsx'), 'administrator import graph must include AdminApp');
 
 console.log('[phase34-runtime-regressions-frontend-smoke] PASS');

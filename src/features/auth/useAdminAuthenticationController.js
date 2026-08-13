@@ -331,7 +331,9 @@ export default function useAdminAuthenticationController({
     }
 
     let cancelled = false;
-    setAdminClerkSessionVerified(false);
+    // Keep an already verified interactive login authenticated while the authoritative
+    // Clerk session is rechecked. Initial/restored sessions still start as unverified
+    // and remain behind the loading gate until this verification succeeds.
     const verify = async () => {
       try {
         const payload = await clerkStagingClient.getAdminClerkSession();

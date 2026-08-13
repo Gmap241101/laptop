@@ -2,9 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { today } from '../utils/appUtils.js';
 import { clerkStagingClient } from '../clerk/clerkStagingClient.js';
+import { subscribeAdminRentalRequestCutoverObservation } from '../features/requests/adminRentalRequestCutover.js';
+import { subscribeAssetDomainCutoverObservation } from '../features/assets/assetDomainCutover.js';
+import { subscribeMemberAuthorityObservation } from '../features/members/memberAuthorityCutover.js';
 
 const DASHBOARD_SUMMARY_CACHE_KEY = 'rental-system:admin-dashboard-summary-cache-v2-postgresql';
-const DASHBOARD_SUMMARY_ENTRY_REFRESH_AGE_MS = 60 * 60 * 1000;
 const DASHBOARD_SUMMARY_PENDING_ACCOUNT_LIMIT = 12;
 const DASHBOARD_ACTIVE_REQUEST_LIMIT = 100;
 
@@ -21,7 +23,6 @@ const writeCache = (summary) => {
   if (typeof window === 'undefined' || !summary) return;
   try { window.localStorage.setItem(DASHBOARD_SUMMARY_CACHE_KEY, JSON.stringify(summary)); } catch { /* ignore quota */ }
 };
-const generatedAtMillis = (summary) => Number(summary?.generatedAtClientMs || Date.parse(summary?.generatedAt || '') || 0);
 const emptySummary = () => ({
   schemaVersion: 3,
   authority: 'postgresql',
@@ -52,7 +53,6 @@ export const useDashboardSummary = ({
   currentAuthAdminAccountId,
   isAdminAuthenticated,
   view,
-  adminTab,
   triggerToast,
 }) => {
   const cachedRef = useRef(readCache());
@@ -174,12 +174,56 @@ export const useDashboardSummary = ({
       setDashboardSummary(summaryRef.current || cachedRef.current);
       setDashboardSummaryReady(Boolean(summaryRef.current || cachedRef.current));
       setDashboardSummaryLoadErrorMessage('');
-      return;
+      return undefined;
     }
-    const cached = summaryRef.current || cachedRef.current;
-    const stale = !cached || Date.now() - generatedAtMillis(cached) >= DASHBOARD_SUMMARY_ENTRY_REFRESH_AGE_MS;
-    if (adminTab === 'dashboard' || stale) void refreshDashboardSummary({ showToast: false });
-  }, [adminTab, readyForDashboard, refreshDashboardSummary]);
+
+    let wasAwayFromWindow = false;
+    const refreshIfVisible = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      void refreshDashboardSummary({ showToast: false });
+    };
+    const markWindowAway = () => {
+      wasAwayFromWindow = true;
+    };
+    const refreshAfterWindowReturn = () => {
+      if (!wasAwayFromWindow) return;
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      wasAwayFromWindow = false;
+      refreshIfVisible();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        markWindowAway();
+        return;
+      }
+      refreshAfterWindowReturn();
+    };
+    const refreshAfterMutation = (detail) => {
+      if (!detail || detail.error) return;
+      const isPostgresWrite =
+        detail.writeSource === 'postgresql-authoritative' ||
+        detail.memberWriteRequested === true ||
+        detail.restrictionWriteRequested === true;
+      if (isPostgresWrite) refreshIfVisible();
+    };
+
+    refreshIfVisible();
+    window.addEventListener('blur', markWindowAway);
+    window.addEventListener('focus', refreshAfterWindowReturn);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    const unsubscribeRequestWrites = subscribeAdminRentalRequestCutoverObservation(refreshAfterMutation);
+    const unsubscribeAssetWrites = subscribeAssetDomainCutoverObservation(refreshAfterMutation);
+    const unsubscribeMemberWrites = subscribeMemberAuthorityObservation(refreshAfterMutation);
+
+    return () => {
+      window.removeEventListener('blur', markWindowAway);
+      window.removeEventListener('focus', refreshAfterWindowReturn);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      unsubscribeRequestWrites();
+      unsubscribeAssetWrites();
+      unsubscribeMemberWrites();
+    };
+  }, [readyForDashboard, refreshDashboardSummary]);
 
   return {
     dashboardSummary,

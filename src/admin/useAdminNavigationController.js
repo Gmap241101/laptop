@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { startTransition, useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   ADMIN_REQUEST_QUICK_FILTER,
@@ -328,7 +328,9 @@ export default function useAdminNavigationController({
   const commitAdminTabChange = useCallback(
     ({ legacyMarkers, nextTab, onCommitted }) => {
       clearLegacyAdminUnsavedMarkers(legacyMarkers);
-      setAdminTab(nextTab);
+      startTransition(() => {
+        setAdminTab(nextTab);
+      });
       onCommitted?.();
     },
     [setAdminTab]
