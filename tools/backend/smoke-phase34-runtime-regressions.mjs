@@ -99,13 +99,26 @@ assert.match(
 );
 assert.match(appSource, /phase34AdminNavigationHolidayRevision/);
 
+const assetRepositorySource = fs.readFileSync(new URL('../../server/src/assets/asset-repository.mjs', import.meta.url), 'utf8');
+assert.match(assetRepositorySource, /const refreshCatalogMetadata = async/, 'PostgreSQL asset mutations must keep asset catalog metadata current');
+assert.ok((assetRepositorySource.match(/await refreshCatalogMetadata\(client\);/g) || []).length >= 5, 'create/edit/delete/bulk/category mutations must refresh catalog metadata transactionally');
+const systemDataRepositorySource = fs.readFileSync(new URL('../../server/src/settings/system-data-repository.mjs', import.meta.url), 'utf8');
+assert.match(systemDataRepositorySource, /async reconcileAssetCatalogMetadata/, 'data management must provide a dedicated safe catalog metadata reconciliation action');
+assert.match(appSource, /\/api\/admin\/system-data\/reconcile-asset-catalog-metadata/, 'catalog metadata reconciliation endpoint must be exposed to administrator data management');
+
 const adminRentalRepositorySource = fs.readFileSync(new URL('../../server/src/rentals/admin-rental-request-repository.mjs', import.meta.url), 'utf8');
-assert.match(adminRentalRepositorySource, /const \[count, rows\] = await Promise\.all\(\[/, 'administrator rental request count/page SQL must run concurrently');
+assert.match(adminRentalRepositorySource, /async getTabCounts\(\)/, 'administrator rental-request management must use a lightweight four-tab count query instead of the heavy dashboard aggregate');
+assert.match(adminRentalRepositorySource, /includeTotalCount = true/, 'administrator rental-request page reads must support skipping a redundant total-count query when tab counts already provide the total');
+assert.match(adminRentalRepositorySource, /trim\(query\) \? 'LEFT JOIN app_rental_request_items/, 'administrator request count SQL must avoid the request-item join when search text does not require it');
 const adminRentalServiceSource = fs.readFileSync(new URL('../../server/src/rentals/admin-rental-request-service.mjs', import.meta.url), 'utf8');
 assert.match(adminRentalServiceSource, /const includeCounts = options\.includeCounts !== false;/, 'dashboard previews must be able to skip duplicate rental tab-count aggregation');
-assert.match(adminRentalServiceSource, /includeCounts \? repository\.getCounts\(referenceDate\) : Promise\.resolve\(null\)/, 'administrator request service must skip counts when the caller already has dashboard counts');
+assert.match(adminRentalServiceSource, /const canUseTabCountAsTotal = quickFilter === 'all' && !query;/, 'default administrator request browsing must derive totalCount from lightweight tab counts');
+assert.match(adminRentalServiceSource, /repository\.getTabCounts\(\)/, 'administrator request management must not run the heavyweight dashboard count query');
 assert.match(appSource, /GET' && url\.pathname === '\/api\/admin\/rental-requests'[\s\S]*authenticateAdminAuthority\(request, response, headers, requestId\)[\s\S]*adminRentalRequestService\.list\(authority\.firebaseIdentity/, 'administrator request reads must authenticate Clerk/PostgreSQL authority once');
 assert.match(appSource, /GET' && url\.pathname === '\/api\/admin\/rental-dashboard'[\s\S]*authenticateAdminAuthority\(request, response, headers, requestId\)[\s\S]*authority\.firebaseIdentity/, 'dashboard count reads must use direct Clerk/PostgreSQL administrator authority');
+const adminAuthServiceSource = fs.readFileSync(new URL('../../server/src/auth/admin-clerk-auth-service.mjs', import.meta.url), 'utf8');
+assert.match(adminAuthServiceSource, /async authorizeCurrent\(\{ clerkUserId \}\)[\s\S]*requireActor\(clerkUserId\)[\s\S]*authority: 'clerk-postgresql-session'/, 'authenticated administrator API reads must authorize from the verified Clerk JWT plus PostgreSQL registry without a remote Clerk Backend API lookup');
+assert.match(appSource, /const adminAuth = await adminClerkAuthService\.authorizeCurrent\(\{ clerkUserId: auth\.userId \}\);/, 'administrator API authority must use the lightweight PostgreSQL registry path');
 
 
 

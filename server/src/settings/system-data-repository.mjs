@@ -20,6 +20,27 @@ export const createSystemDataRepository = (pool) => {
     throw new TypeError('A PostgreSQL pool with query()/connect() is required.');
   }
 
+  const writeAssetCatalogMetadata = async (queryable, sourceMode = 'postgresql-integrity-reconciled') => {
+    const actualCounts = await queryable.query(`
+      SELECT (SELECT COUNT(*) FROM app_rental_assets)::int AS assets,
+             (SELECT COUNT(*) FROM app_asset_categories)::int AS categories
+    `);
+    const assetCount = Number(actualCounts.rows[0]?.assets || 0);
+    const categoryCount = Number(actualCounts.rows[0]?.categories || 0);
+    await queryable.query(`
+      INSERT INTO app_asset_catalog_syncs (
+        scope, source_asset_count, source_category_count, source_hash, source_mode, synced_at, updated_at
+      ) VALUES ('main',$1,$2,'postgresql-authoritative',$3,NOW(),NOW())
+      ON CONFLICT (scope) DO UPDATE SET
+        source_asset_count=EXCLUDED.source_asset_count,
+        source_category_count=EXCLUDED.source_category_count,
+        source_hash=EXCLUDED.source_hash,
+        source_mode=EXCLUDED.source_mode,
+        synced_at=NOW(), updated_at=NOW()
+    `, [assetCount, categoryCount, sourceMode]);
+    return Object.freeze({ assetCount, categoryCount });
+  };
+
   const readIntegrity = async (queryable = pool) => {
     const [countsResult, missingAssetResult, reservationResult, mismatchResult, syncResult] = await Promise.all([
       queryable.query(`
@@ -106,6 +127,14 @@ export const createSystemDataRepository = (pool) => {
         'rental_request_asset_reference_missing',
         'error',
         `신청 ${trim(row.request_id)}이 등록되지 않은 자산 ID ${trim(row.laptop_id)}를 참조하며 자산관리번호 ${trim(row.asset_no) || '-'}로도 복구할 수 없습니다.`,
+      ));
+    }
+    for (const row of recoverableReservationRows.slice(0, 25)) {
+      issues.push(mapIssue(
+        row,
+        'reservation_asset_reference_recoverable',
+        'warning',
+        `예약 ${trim(row.request_id)}의 자산 ID ${trim(row.laptop_id)}는 현재 자산에 없지만 신청 자산관리번호 ${trim(row.asset_no)}로 ${trim(row.matched_asset_id)}에 연결할 수 있습니다.`,
       ));
     }
     for (const row of unrecoverableReservationRows.slice(0, 25)) {
@@ -235,21 +264,25 @@ export const createSystemDataRepository = (pool) => {
             [row.rental_request_id, row.next_laptop_id],
           );
         }
-        const actualCounts = await client.query(`
-          SELECT (SELECT COUNT(*) FROM app_rental_assets)::int AS assets,
-                 (SELECT COUNT(*) FROM app_asset_categories)::int AS categories
+        const recoverableReservationResult = await client.query(`
+          SELECT guard.rental_request_id, guard.request_id, guard.laptop_id AS previous_laptop_id, matched.asset_id AS next_laptop_id
+            FROM app_rental_asset_reservation_guards guard
+            LEFT JOIN app_rental_assets direct_asset ON direct_asset.asset_id=guard.laptop_id
+            JOIN app_rental_request_items item ON item.rental_request_id=guard.rental_request_id
+            JOIN app_rental_assets matched ON matched.asset_no_normalized=lower(trim(item.asset_no))
+           WHERE direct_asset.asset_id IS NULL
+           FOR UPDATE OF guard
         `);
-        await client.query(`
-          INSERT INTO app_asset_catalog_syncs (
-            scope, source_asset_count, source_category_count, source_hash, source_mode, synced_at, updated_at
-          ) VALUES ('main',$1,$2,'postgresql-authoritative','postgresql-authoritative',NOW(),NOW())
-          ON CONFLICT (scope) DO UPDATE SET
-            source_asset_count=EXCLUDED.source_asset_count,
-            source_category_count=EXCLUDED.source_category_count,
-            source_hash=EXCLUDED.source_hash,
-            source_mode=EXCLUDED.source_mode,
-            synced_at=NOW(), updated_at=NOW()
-        `, [Number(actualCounts.rows[0]?.assets || 0), Number(actualCounts.rows[0]?.categories || 0)]);
+        const reservationMappings = recoverableReservationResult.rows || [];
+        for (const row of reservationMappings) {
+          await client.query(
+            `UPDATE app_rental_asset_reservation_guards
+                SET laptop_id=$2, source_mode='postgresql-reference-repaired', synced_at=NOW(), updated_at=NOW()
+              WHERE rental_request_id=$1`,
+            [row.rental_request_id, row.next_laptop_id],
+          );
+        }
+        await writeAssetCatalogMetadata(client, 'postgresql-reference-repaired');
         await client.query(`
           INSERT INTO app_runtime_metadata (key, value, updated_at)
           VALUES ('phase34_asset_reference_repair', $1::jsonb, NOW())
@@ -257,6 +290,7 @@ export const createSystemDataRepository = (pool) => {
         `, [JSON.stringify({
           actorClerkUserId: trim(actorClerkUserId),
           repairedRequestCount: mappings.length,
+          repairedReservationCount: reservationMappings.length,
           repairedAt: new Date().toISOString(),
         })]);
         const after = await readIntegrity(client);
@@ -264,6 +298,7 @@ export const createSystemDataRepository = (pool) => {
         return Object.freeze({
           authority: 'postgresql',
           repairedRequestCount: mappings.length,
+          repairedReservationCount: reservationMappings.length,
           mappings: Object.freeze(mappings.slice(0, 100).map((row) => Object.freeze({
             requestId: trim(row.request_id),
             previousLaptopId: trim(row.previous_laptop_id),
@@ -272,6 +307,40 @@ export const createSystemDataRepository = (pool) => {
           before,
           after,
           repairedAt: new Date().toISOString(),
+        });
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+
+    async reconcileAssetCatalogMetadata({ actorClerkUserId = '' } = {}) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query("SELECT pg_advisory_xact_lock(hashtext('phase34-asset-catalog-metadata-reconcile'))");
+        const before = await readIntegrity(client);
+        const metadata = await writeAssetCatalogMetadata(client, 'postgresql-integrity-reconciled');
+        await client.query(`
+          INSERT INTO app_runtime_metadata (key, value, updated_at)
+          VALUES ('phase34_asset_catalog_metadata_reconcile', $1::jsonb, NOW())
+          ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()
+        `, [JSON.stringify({
+          actorClerkUserId: trim(actorClerkUserId),
+          assetCount: metadata.assetCount,
+          categoryCount: metadata.categoryCount,
+          reconciledAt: new Date().toISOString(),
+        })]);
+        const after = await readIntegrity(client);
+        await client.query('COMMIT');
+        return Object.freeze({
+          authority: 'postgresql',
+          metadata,
+          before,
+          after,
+          reconciledAt: new Date().toISOString(),
         });
       } catch (error) {
         await client.query('ROLLBACK');

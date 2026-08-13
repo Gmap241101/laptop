@@ -146,6 +146,14 @@ assert.match(dashboardSummarySource, /const dashboardPayload = await clerkStagin
 assert.match(dashboardSummarySource, /includeCounts: false/, 'dashboard request previews must not recalculate rental tab counts already returned by the dashboard endpoint');
 assert.match(dashboardSummarySource, /getAdminSystemDataOverview\(\)[\s\S]*dataIntegritySource: 'postgresql-background'/, 'system integrity diagnostics must refresh in the background instead of blocking dashboard readiness');
 
+const dataManagementPanelSource = fs.readFileSync(new URL('../../src/admin/AdminSettingsPanel.jsx', import.meta.url), 'utf8');
+assert.match(dataManagementPanelSource, /SYSTEM_MANAGEMENT_TAB\.FOLLOWUP[\s\S]*'후속 조치'/, 'data-management follow-up actions must have a dedicated submenu');
+assert.match(dataManagementPanelSource, /무결성 후속 조치/, 'data-management warnings must expose follow-up actions instead of ending at a passive warning');
+assert.match(dataManagementPanelSource, /메타데이터 재동기화/, 'asset catalog metadata mismatch must expose a safe reconciliation action');
+assert.match(dataManagementPanelSource, /기기 대여 신청 관리 열기/, 'non-auto-repairable rental-reference issues must provide a direct administrator follow-up navigation');
+const dataMaintenanceControllerSource = fs.readFileSync(new URL('../../src/features/settings/useAdminDataMaintenanceController.js', import.meta.url), 'utf8');
+assert.match(dataMaintenanceControllerSource, /reconcileAdminSystemDataAssetCatalogMetadata/, 'data-management controller must execute PostgreSQL catalog metadata reconciliation');
+
 const adminRequestsSource = fs.readFileSync(new URL('../../src/features/requests/useAdminRequestsController.js', import.meta.url), 'utf8');
 assert.equal(/setInterval\([^\n]*refreshPostgresRequests/.test(adminRequestsSource), false, 'administrator rental-request list must not poll PostgreSQL while the window remains open');
 assert.match(adminRequestsSource, /refreshPostgresRequests\(\);[\s\S]*window\.addEventListener\('blur', markWindowAway\);[\s\S]*window\.addEventListener\('focus', refreshAfterWindowReturn\)/, 'administrator rental-request list must refresh on entry and actual window return');

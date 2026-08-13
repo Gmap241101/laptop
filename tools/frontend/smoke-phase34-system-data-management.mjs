@@ -11,6 +11,9 @@ for (const text of [
   '자산 등록 상태',
   'SQL 무결성 점검',
   '자산 참조 자동 복구',
+  '후속 조치',
+  '무결성 후속 조치',
+  '메타데이터 재동기화',
   'PostgreSQL 백업 JSON 다운로드',
   'PostgreSQL 데이터 초기화',
   '초기화 대상 확인',
@@ -21,6 +24,7 @@ for (const method of [
   'getAdminSystemDataOverview',
   'runAdminSystemDataIntegrity',
   'repairAdminSystemDataAssetReferences',
+  'reconcileAdminSystemDataAssetCatalogMetadata',
   'exportAdminSystemData',
   'scanAdminSystemDataReset',
   'resetAdminSystemData',
@@ -29,11 +33,13 @@ for (const method of [
 assert.ok(controller.includes('clerkStagingClient.getAdminSystemDataOverview()'));
 assert.ok(controller.includes('clerkStagingClient.runAdminSystemDataIntegrity()'));
 assert.ok(controller.includes('clerkStagingClient.repairAdminSystemDataAssetReferences()'));
+assert.ok(controller.includes('clerkStagingClient.reconcileAdminSystemDataAssetCatalogMetadata()'));
 assert.ok(controller.includes('clerkStagingClient.exportAdminSystemData('));
 assert.ok(controller.includes('clerkStagingClient.scanAdminSystemDataReset(selectedResetScopes)'));
 assert.ok(controller.includes('clerkStagingClient.resetAdminSystemData({'));
 assert.ok(controller.includes('includePersonalData: true'));
 assert.ok(panel.includes('백업·초기화'));
+assert.ok(panel.includes('기기 대여 신청 관리 열기'));
 assert.ok(panel.includes('테스트 데이터 선택'));
 assert.ok(panel.includes('전체 초기화 범위 선택'));
 assert.ok(dashboard.includes('clerkStagingClient.getAdminSystemDataOverview()'));

@@ -76,6 +76,7 @@ export const SYSTEM_MANAGEMENT_TAB = {
   HOME: 'home',
   SERVICE: 'service',
   DATA: 'data',
+  FOLLOWUP: 'followup',
   RESET: 'reset',
   INFO: 'info',
   AUDIT: 'audit',

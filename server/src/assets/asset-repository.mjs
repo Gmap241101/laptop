@@ -119,6 +119,29 @@ const hasActiveReservation = async (client, assetId) => {
   return result.rows[0] || null;
 };
 
+const refreshCatalogMetadata = async (client, sourceMode = 'postgresql-authoritative-live') => {
+  const counts = await client.query(`
+    SELECT
+      (SELECT COUNT(*) FROM app_rental_assets)::int AS assets,
+      (SELECT COUNT(*) FROM app_asset_categories)::int AS categories
+  `);
+  const assetCount = Number(counts.rows[0]?.assets || 0);
+  const categoryCount = Number(counts.rows[0]?.categories || 0);
+  await client.query(
+    `INSERT INTO app_asset_catalog_syncs (
+       scope, source_asset_count, source_category_count, source_hash, source_mode, synced_at, updated_at
+     ) VALUES ('main',$1,$2,'postgresql-live',$3,NOW(),NOW())
+     ON CONFLICT (scope) DO UPDATE SET
+       source_asset_count=EXCLUDED.source_asset_count,
+       source_category_count=EXCLUDED.source_category_count,
+       source_hash=EXCLUDED.source_hash,
+       source_mode=EXCLUDED.source_mode,
+       synced_at=NOW(), updated_at=NOW()`,
+    [assetCount, categoryCount, sourceMode],
+  );
+  return Object.freeze({ assetCount, categoryCount });
+};
+
 export const createAssetRepository = (pool) => {
   if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') {
     throw new TypeError('A PostgreSQL pool with query()/connect() is required.');
@@ -219,6 +242,7 @@ export const createAssetRepository = (pool) => {
            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'postgresql-authoritative',NOW())`,
           [asset.id, category.id, trim(asset.assetNo), lower(asset.assetNo), trim(asset.serialNo), trim(asset.model), trim(asset.manufactureDate), trim(asset.photo), trim(asset.note), asset.baseStatus === '대여불가' ? '대여불가' : '대여가능'],
         );
+        await refreshCatalogMetadata(client);
         const catalog = await readCatalog(client, referenceDate);
         const mirrorResult = await beforeCommit({ asset: catalog.assets.find((item) => item.id === asset.id), catalog });
         await client.query('COMMIT');
@@ -257,6 +281,7 @@ export const createAssetRepository = (pool) => {
            WHERE asset_id=$1`,
           [assetId, category.id, nextAssetNo, lower(nextAssetNo), trim(patch.serialNo), trim(patch.model), trim(patch.manufactureDate), trim(patch.photo), trim(patch.note), patch.baseStatus === '대여불가' || patch.status === '대여불가' ? '대여불가' : '대여가능'],
         );
+        await refreshCatalogMetadata(client);
         const catalog = await readCatalog(client, referenceDate);
         const next = catalog.assets.find((item) => item.id === assetId);
         const mirrorResult = await beforeCommit({ previousAsset: current, asset: next, catalog });
@@ -284,6 +309,7 @@ export const createAssetRepository = (pool) => {
         const blocking = await hasActiveReservation(client, assetId);
         if (blocking) throw repositoryError('active_rental_exists', 'Active reservation blocks asset deletion.', { blockingRequest: blocking });
         await client.query(`DELETE FROM app_rental_assets WHERE asset_id=$1`, [assetId]);
+        await refreshCatalogMetadata(client);
         const catalog = await readCatalog(client, referenceDate);
         const mirrorResult = await beforeCommit({ previousAsset: current, catalog });
         await client.query('COMMIT');
@@ -327,6 +353,7 @@ export const createAssetRepository = (pool) => {
           accepted.push(asset.id);
         }
         if (accepted.length === 0) throw repositoryError('asset_bulk_no_valid_assets', 'No valid assets were available for bulk creation.', { duplicateAssetNumbers, invalidCategories });
+        await refreshCatalogMetadata(client);
         const catalog = await readCatalog(client, referenceDate);
         const createdAssets = catalog.assets.filter((asset) => accepted.includes(asset.id));
         const mirrorResult = await beforeCommit({ assets: createdAssets, catalog });
@@ -387,6 +414,7 @@ export const createAssetRepository = (pool) => {
              LIMIT 1`, [finalNormalized]);
         if (inUseRemoved.rows[0]) throw repositoryError('asset_category_still_in_use', 'Asset category is still in use.', { category: inUseRemoved.rows[0].name });
         await client.query(`DELETE FROM app_asset_categories WHERE NOT (normalized_name = ANY($1::text[]))`, [finalNormalized]);
+        await refreshCatalogMetadata(client);
         const catalog = await readCatalog(client, referenceDate);
         const mirrorResult = await beforeCommit({ catalog });
         await client.query('COMMIT');

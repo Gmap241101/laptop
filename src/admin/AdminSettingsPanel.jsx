@@ -42,6 +42,7 @@ import useAdminDataMaintenanceController, {
 } from '../features/settings/useAdminDataMaintenanceController.js';
 const DATA_MANAGEMENT_TABS = [
   [SYSTEM_MANAGEMENT_TAB.DATA, Database, '상태·무결성'],
+  [SYSTEM_MANAGEMENT_TAB.FOLLOWUP, ShieldAlert, '후속 조치'],
   [SYSTEM_MANAGEMENT_TAB.RESET, Download, '백업·초기화'],
 ];
 
@@ -178,6 +179,8 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
     authenticatedAdminAccount,
     authenticatedAdminId,
     finalizeSplitStorageMigration,
+    handleAdminTabChange,
+    openAdminRequests,
     isSplitStorageReady,
     siteSettings,
     siteSettingsLoadErrorMessage,
@@ -256,6 +259,8 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
     refreshOverview,
     repairAssetReferences,
     repairLoading,
+    reconcileAssetCatalogMetadata,
+    catalogMetadataReconcileLoading,
     backupIncludeMembers,
     backupIncludeOperations,
     backupIncludePersonalData,
@@ -681,9 +686,6 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
         ) : null}
         <div className="mt-4 flex flex-wrap justify-end gap-2">
           <Button type="button" variant="outline" disabled={integrityLoading} onClick={runIntegrityCheck}><RefreshCw size={14} className={integrityLoading ? 'animate-spin' : ''} />{integrityLoading ? '점검 중' : 'SQL 무결성 점검'}</Button>
-          {isOwner && Number(integrityResult?.assetReference?.recoverableRequestCount || 0) > 0 ? (
-            <Button type="button" disabled={repairLoading} onClick={repairAssetReferences}><Database size={14} />{repairLoading ? '복구 중' : '자산 참조 자동 복구'}</Button>
-          ) : null}
         </div>
       </SectionCard>
 
@@ -708,6 +710,56 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
           </div>
         ) : (
           <div className="flex justify-end"><Button type="button" variant="outline" disabled={integrityLoading} onClick={runIntegrityCheck}><RefreshCw size={14} />시스템 데이터 점검</Button></div>
+        )}
+      </SectionCard>
+
+
+    </div>
+  );
+
+
+  const renderFollowupTab = () => (
+    <div className="space-y-5">
+      <SectionCard title="무결성 후속 조치" description="점검에서 발견된 주의·오류를 관리자 화면에서 바로 처리합니다. 자동 복구는 PostgreSQL의 현재 실제 데이터를 기준으로 하며, 수동 확인이 필요한 항목은 관련 관리 화면으로 이동합니다.">
+        {!integrityResult ? (
+          <div className="text-xs text-slate-500">먼저 SQL 무결성 점검 또는 시스템 데이터 점검을 실행해 주세요.</div>
+        ) : Number(integrityResult.errors || 0) === 0 && Number(integrityResult.warnings || 0) === 0 ? (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-800">현재 후속 조치가 필요한 항목이 없습니다.</div>
+        ) : (
+          <div className="space-y-3">
+            {integrityResult.assetCatalog?.metadataMatches === false ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <div className="flex items-start gap-3">
+                  <ShieldAlert className="mt-0.5 shrink-0 text-amber-600" size={18} />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-black text-amber-900">자산 카탈로그 메타데이터 재동기화</div>
+                    <p className="mt-1 text-xs leading-5 text-amber-800">메타데이터는 자산 {integrityResult.assetCatalog.metadataAssetCount ?? '-'}개 / 카테고리 {integrityResult.assetCatalog.metadataCategoryCount ?? '-'}개로 기록되어 있지만 실제 PostgreSQL에는 자산 {integrityResult.assetCatalog.actualAssetCount ?? '-'}개 / 카테고리 {integrityResult.assetCatalog.actualCategoryCount ?? '-'}개가 있습니다. 실제 데이터를 삭제·변경하지 않고 메타데이터 카운트만 현재 값으로 맞춥니다.</p>
+                  </div>
+                </div>
+                <div className="mt-3 flex justify-end">
+                  <Button type="button" disabled={!isOwner || catalogMetadataReconcileLoading} onClick={reconcileAssetCatalogMetadata}><Database size={14} />{catalogMetadataReconcileLoading ? '동기화 중' : '메타데이터 재동기화'}</Button>
+                </div>
+                {!isOwner ? <div className="mt-2 text-right text-[11px] text-amber-700">이 조치는 최고 관리자만 실행할 수 있습니다.</div> : null}
+              </div>
+            ) : null}
+
+            {Number(integrityResult.assetReference?.recoverableRequestCount || 0) + Number(integrityResult.assetReference?.recoverableReservationCount || 0) > 0 ? (
+              <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
+                <div className="text-sm font-black text-sky-900">자산 참조 자동 복구</div>
+                <p className="mt-1 text-xs leading-5 text-sky-800">자산관리번호로 정확히 일치하는 PostgreSQL 자산이 확인된 참조만 안전하게 다시 연결합니다. 임의 추정이나 자산 삭제·재생성은 하지 않습니다.</p>
+                <div className="mt-3 flex justify-end"><Button type="button" disabled={!isOwner || repairLoading} onClick={repairAssetReferences}><Database size={14} />{repairLoading ? '복구 중' : '복구 가능한 참조 자동 복구'}</Button></div>
+                {!isOwner ? <div className="mt-2 text-right text-[11px] text-sky-700">이 조치는 최고 관리자만 실행할 수 있습니다.</div> : null}
+              </div>
+            ) : null}
+
+            {Number(integrityResult.assetReference?.unrecoverableRequestCount || 0) + Number(integrityResult.assetReference?.unrecoverableReservationCount || 0) + Number(integrityResult.assetReference?.requestReservationMismatchCount || 0) > 0 ? (
+              <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
+                <div className="text-sm font-black text-rose-900">수동 확인이 필요한 대여신청/예약 참조</div>
+                <p className="mt-1 text-xs leading-5 text-rose-800">자동으로 안전하게 연결할 수 없는 항목입니다. 기기 대여 신청 관리에서 신청 ID와 자산관리번호를 확인한 뒤 수정해야 합니다.</p>
+                <div className="mt-3 flex justify-end"><Button type="button" variant="outline" onClick={() => { if (typeof openAdminRequests === 'function') openAdminRequests(); else handleAdminTabChange?.('requests'); }}><FileSearch size={14} />기기 대여 신청 관리 열기</Button></div>
+              </div>
+            ) : null}
+          </div>
         )}
       </SectionCard>
     </div>
@@ -911,6 +963,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
     if (mode === SETTINGS_MODE.HOME) return renderHomeContentTab();
     if (mode === SETTINGS_MODE.SERVICE) return renderServiceTab();
     if (mode === SETTINGS_MODE.DATA) {
+      if (activeTab === SYSTEM_MANAGEMENT_TAB.FOLLOWUP) return renderFollowupTab();
       return activeTab === SYSTEM_MANAGEMENT_TAB.RESET
         ? renderResetTab()
         : renderDataTab();

@@ -236,7 +236,7 @@ export const createAdminRentalRequestRepository = (pool) => {
       }
     },
 
-    async list({ tab = 'pending', quickFilter = 'all', query = '', page = 1, pageSize = 10, referenceDate }) {
+    async list({ tab = 'pending', quickFilter = 'all', query = '', page = 1, pageSize = 10, referenceDate, includeTotalCount = true }) {
       const filter = buildTabWhere({ tab, quickFilter, referenceDate, query });
       const values = [...filter.values];
       let referenceParam = null;
@@ -248,27 +248,46 @@ export const createAdminRentalRequestRepository = (pool) => {
       const limitParam = `$${values.length}`;
       values.push(Math.max(0, (page - 1) * pageSize));
       const offsetParam = `$${values.length}`;
-      const [count, rows] = await Promise.all([
-        pool.query(
-          `SELECT COUNT(*)::bigint AS count
-             FROM app_rental_requests request
-             LEFT JOIN app_rental_request_items item ON item.rental_request_id = request.id
-             ${filter.clause}`,
-          filter.values,
-        ),
-        pool.query(
-          `SELECT ${SELECT}
-             FROM app_rental_requests request
-             LEFT JOIN app_rental_request_items item ON item.rental_request_id = request.id
-             ${filter.clause}
-             ${orderForTab(tab, referenceParam)}
-             LIMIT ${limitParam} OFFSET ${offsetParam}`,
-          values,
-        ),
-      ]);
+      const rowsPromise = pool.query(
+        `SELECT ${SELECT}
+           FROM app_rental_requests request
+           LEFT JOIN app_rental_request_items item ON item.rental_request_id = request.id
+           ${filter.clause}
+           ${orderForTab(tab, referenceParam)}
+           LIMIT ${limitParam} OFFSET ${offsetParam}`,
+        values,
+      );
+      const countPromise = includeTotalCount
+        ? pool.query(
+            `SELECT COUNT(*)::bigint AS count
+               FROM app_rental_requests request
+               ${trim(query) ? 'LEFT JOIN app_rental_request_items item ON item.rental_request_id = request.id' : ''}
+               ${filter.clause}`,
+            filter.values,
+          )
+        : Promise.resolve(null);
+      const [rows, countResult] = await Promise.all([rowsPromise, countPromise]);
       return Object.freeze({
         requests: rows.rows.map(mapRow),
-        totalCount: Number(count.rows[0]?.count || 0),
+        totalCount: countResult ? Number(countResult.rows[0]?.count || 0) : null,
+      });
+    },
+
+    async getTabCounts() {
+      const result = await pool.query(
+        `SELECT
+           COUNT(*) FILTER (WHERE status IN ('신청중','보류'))::bigint AS pending,
+           COUNT(*) FILTER (WHERE status = '대여중')::bigint AS rental,
+           COUNT(*) FILTER (WHERE status IN ('불허','사용자취소'))::bigint AS closed,
+           COUNT(*) FILTER (WHERE status = '반납완료')::bigint AS returned
+         FROM app_rental_requests`,
+      );
+      const row = result.rows[0] || {};
+      return Object.freeze({
+        pending: Number(row.pending || 0),
+        rental: Number(row.rental || 0),
+        closed: Number(row.closed || 0),
+        returned: Number(row.returned || 0),
       });
     },
 

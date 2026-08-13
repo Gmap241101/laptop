@@ -296,19 +296,27 @@ export const createAdminRentalRequestService = ({ repository, firestoreClient, r
       const page = Math.max(1, Math.trunc(Number(options.page || 1)));
       const pageSize = Math.min(100, Math.max(1, Math.trunc(Number(options.pageSize || 10))));
       const includeCounts = options.includeCounts !== false;
+      const tab = trim(options.tab || 'pending');
+      const quickFilter = trim(options.quickFilter || 'all');
+      const query = trim(options.query);
+      const canUseTabCountAsTotal = quickFilter === 'all' && !query;
       const listPromise = repository.list({
-        tab: trim(options.tab || 'pending'),
-        quickFilter: trim(options.quickFilter || 'all'),
-        query: trim(options.query),
+        tab,
+        quickFilter,
+        query,
         page,
         pageSize,
         referenceDate,
+        includeTotalCount: !canUseTabCountAsTotal,
       });
-      const [result, counts] = await Promise.all([
-        listPromise,
-        includeCounts ? repository.getCounts(referenceDate) : Promise.resolve(null),
-      ]);
-      return Object.freeze({ admin, referenceDate, page, pageSize, ...result, counts });
+      const countsPromise = includeCounts || canUseTabCountAsTotal
+        ? repository.getTabCounts()
+        : Promise.resolve(null);
+      const [result, counts] = await Promise.all([listPromise, countsPromise]);
+      const totalCount = canUseTabCountAsTotal
+        ? Number(counts?.[tab] || 0)
+        : Number(result.totalCount || 0);
+      return Object.freeze({ admin, referenceDate, page, pageSize, requests: result.requests, totalCount, counts });
     },
 
     async getDashboard(firebaseIdentity, referenceDate = koreaToday()) {

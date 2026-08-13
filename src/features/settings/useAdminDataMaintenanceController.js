@@ -36,6 +36,7 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
   const [integrityLoading, setIntegrityLoading] = useState(false);
   const [integrityResult, setIntegrityResult] = useState(null);
   const [repairLoading, setRepairLoading] = useState(false);
+  const [catalogMetadataReconcileLoading, setCatalogMetadataReconcileLoading] = useState(false);
   const [backupLoading, setBackupLoading] = useState(false);
   const [selectedResetScopes, setSelectedResetScopesState] = useState(TEST_DATA_PRESET);
   const [resetCounts, setResetCounts] = useState(null);
@@ -109,9 +110,10 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
       if (!result) throw new Error('system_data_repair_payload_missing');
       setIntegrityResult({ ...result.after, checkedAtText: formatCheckedAt(result.after?.checkedAt) });
       await refreshOverview({ silent: true });
+      const repairedTotal = Number(result.repairedRequestCount || 0) + Number(result.repairedReservationCount || 0);
       triggerToast?.(
-        result.repairedRequestCount > 0
-          ? `자산 참조 ${result.repairedRequestCount}건을 PostgreSQL 자산관리번호 기준으로 복구했습니다.`
+        repairedTotal > 0
+          ? `자산 참조 ${repairedTotal}건을 PostgreSQL 자산관리번호 기준으로 복구했습니다.`
           : '자동 복구 가능한 자산 참조 불일치가 없습니다.',
         'success'
       );
@@ -122,6 +124,28 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
       return null;
     } finally {
       setRepairLoading(false);
+    }
+  }, [refreshOverview, triggerToast]);
+
+  const reconcileAssetCatalogMetadata = useCallback(async () => {
+    setCatalogMetadataReconcileLoading(true);
+    try {
+      const payload = await clerkStagingClient.reconcileAdminSystemDataAssetCatalogMetadata();
+      const result = payload?.systemDataCatalogMetadataReconcile;
+      if (!result) throw new Error('system_data_catalog_metadata_reconcile_payload_missing');
+      setIntegrityResult({ ...result.after, checkedAtText: formatCheckedAt(result.after?.checkedAt) });
+      await refreshOverview({ silent: true });
+      triggerToast?.(
+        `자산 카탈로그 메타데이터를 실제 PostgreSQL 기준(자산 ${result.metadata?.assetCount ?? 0} / 카테고리 ${result.metadata?.categoryCount ?? 0})으로 동기화했습니다.`,
+        'success'
+      );
+      return result;
+    } catch (error) {
+      const code = error?.code || error?.message || 'system_data_catalog_metadata_reconcile_failed';
+      triggerToast?.(`자산 카탈로그 메타데이터 동기화에 실패했습니다. 오류 코드: ${code}`, 'error');
+      return null;
+    } finally {
+      setCatalogMetadataReconcileLoading(false);
     }
   }, [refreshOverview, triggerToast]);
 
@@ -257,6 +281,8 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
     refreshOverview,
     repairAssetReferences,
     repairLoading,
+    reconcileAssetCatalogMetadata,
+    catalogMetadataReconcileLoading,
     backupIncludeMembers,
     backupIncludeOperations,
     backupIncludePersonalData,

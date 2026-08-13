@@ -40,6 +40,10 @@ export const createSystemDataService = ({ repository }) => {
       const owner = requireOwner(admin);
       return repository.repairAssetReferences({ actorClerkUserId: owner.clerkUserId || '' });
     },
+    async reconcileAssetCatalogMetadata(admin) {
+      const owner = requireOwner(admin);
+      return repository.reconcileAssetCatalogMetadata({ actorClerkUserId: owner.clerkUserId || '' });
+    },
     async getResetCounts(admin, scopes = []) {
       requireOwner(admin);
       const selected = [...new Set((Array.isArray(scopes) ? scopes : []).map((value) => trim(value).toLowerCase()).filter((value) => RESET_SCOPES.has(value)))];

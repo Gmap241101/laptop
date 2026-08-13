@@ -250,6 +250,7 @@ export const createRequestHandler = ({
   },
   adminClerkAuthService = {
     async getCurrent() { const error = new Error('Admin Clerk auth service is not configured.'); error.code = 'admin_clerk_auth_not_configured'; throw error; },
+    async authorizeCurrent() { const error = new Error('Admin Clerk auth service is not configured.'); error.code = 'admin_clerk_auth_not_configured'; throw error; },
     async list() { const error = new Error('Admin Clerk auth service is not configured.'); error.code = 'admin_clerk_auth_not_configured'; throw error; },
     async create() { const error = new Error('Admin Clerk auth service is not configured.'); error.code = 'admin_clerk_auth_not_configured'; throw error; },
     async update() { const error = new Error('Admin Clerk auth service is not configured.'); error.code = 'admin_clerk_auth_not_configured'; throw error; },
@@ -266,6 +267,7 @@ export const createRequestHandler = ({
     async getOverview() { const error = new Error('System data service is not configured.'); error.code = 'system_data_not_configured'; throw error; },
     async checkIntegrity() { const error = new Error('System data service is not configured.'); error.code = 'system_data_not_configured'; throw error; },
     async repairAssetReferences() { const error = new Error('System data service is not configured.'); error.code = 'system_data_not_configured'; throw error; },
+    async reconcileAssetCatalogMetadata() { const error = new Error('System data service is not configured.'); error.code = 'system_data_not_configured'; throw error; },
     async exportSnapshot() { const error = new Error('System data service is not configured.'); error.code = 'system_data_not_configured'; throw error; },
   },
   userClerkAuthService = {
@@ -398,6 +400,7 @@ export const createRequestHandler = ({
   if (
     !adminClerkAuthService ||
     typeof adminClerkAuthService.getCurrent !== 'function' ||
+    typeof adminClerkAuthService.authorizeCurrent !== 'function' ||
     typeof adminClerkAuthService.list !== 'function' ||
     typeof adminClerkAuthService.create !== 'function' ||
     typeof adminClerkAuthService.update !== 'function' ||
@@ -409,7 +412,7 @@ export const createRequestHandler = ({
   if (!systemConfigService || typeof systemConfigService.get !== 'function' || typeof systemConfigService.put !== 'function') {
     throw new TypeError('PostgreSQL system configuration service methods are required.');
   }
-  if (!systemDataService || typeof systemDataService.getOverview !== 'function' || typeof systemDataService.checkIntegrity !== 'function' || typeof systemDataService.repairAssetReferences !== 'function' || typeof systemDataService.exportSnapshot !== 'function') {
+  if (!systemDataService || typeof systemDataService.getOverview !== 'function' || typeof systemDataService.checkIntegrity !== 'function' || typeof systemDataService.repairAssetReferences !== 'function' || typeof systemDataService.reconcileAssetCatalogMetadata !== 'function' || typeof systemDataService.exportSnapshot !== 'function') {
     throw new TypeError('PostgreSQL system data management service methods are required.');
   }
   if (
@@ -615,7 +618,7 @@ export const createRequestHandler = ({
     const auth = await authenticate(request, response, headers, requestId);
     if (!auth) return null;
     try {
-      const adminAuth = await adminClerkAuthService.getCurrent({ clerkUserId: auth.userId });
+      const adminAuth = await adminClerkAuthService.authorizeCurrent({ clerkUserId: auth.userId });
       const firebaseIdentity = config.firebaseRuntimeDisabled
         ? Object.freeze({
             uid: String(adminAuth.admin.firebaseUid || adminAuth.admin.id || ''),
@@ -724,6 +727,7 @@ export const createRequestHandler = ({
           adminFaqBoard: '/api/admin/boards/faq/*',
           adminSystemDataOverview: '/api/admin/system-data/overview',
           adminSystemDataIntegrity: '/api/admin/system-data/integrity',
+          adminSystemDataCatalogMetadataReconcile: '/api/admin/system-data/reconcile-asset-catalog-metadata',
           adminSystemDataAssetRepair: '/api/admin/system-data/repair-asset-references',
           adminSystemDataExport: '/api/admin/system-data/export',
           adminSystemDataResetScan: '/api/admin/system-data/reset/scan',
@@ -1509,6 +1513,17 @@ export const createRequestHandler = ({
         writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, systemDataRepair: result }, headers);
       } catch (error) {
         writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: false, error: error?.code || 'system_data_repair_failed' }, headers);
+      }
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/admin/system-data/reconcile-asset-catalog-metadata') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      try {
+        const result = await systemDataService.reconcileAssetCatalogMetadata(authority.adminAuth?.admin);
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, systemDataCatalogMetadataReconcile: result }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: false, error: error?.code || 'system_data_catalog_metadata_reconcile_failed' }, headers);
       }
       return;
     }

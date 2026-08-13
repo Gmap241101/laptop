@@ -23,6 +23,14 @@ export const createAdminClerkAuthService = ({ repository, clerkClient }) => {
   return Object.freeze({
     async migrateCurrent() { throw serviceError('admin_firebase_migration_retired', 'Firebase administrator migration is retired; use Clerk/PostgreSQL administrator management.', 410); },
     async provisionTarget() { throw serviceError('admin_firebase_provision_retired', 'Firebase administrator provisioning is retired; use Clerk/PostgreSQL administrator management.', 410); },
+    async authorizeCurrent({ clerkUserId }) {
+      const registry = await requireActor(clerkUserId);
+      return Object.freeze({
+        authority: 'clerk-postgresql-session',
+        admin: registry,
+        account: serialize(registry),
+      });
+    },
     async getCurrent({ clerkUserId }) {
       const registry = await requireActor(clerkUserId);
       const clerkUser = await clerkClient.getUser(clerkUserId);

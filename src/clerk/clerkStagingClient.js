@@ -1082,6 +1082,13 @@ export const requestAdminSystemDataAssetRepair = async ({ clerk, apiBaseUrl, fet
   return payload;
 };
 
+export const requestAdminSystemDataCatalogMetadataReconcile = async ({ clerk, apiBaseUrl, fetchImpl }) => {
+  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: '/api/admin/system-data/reconcile-asset-catalog-metadata', method: 'POST' });
+  if (!response.ok) { const error = new Error(`System data asset catalog metadata reconcile failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
+  if (!payload?.authenticated || !payload?.authorized || payload?.systemDataCatalogMetadataReconcile?.authority !== 'postgresql') throw new Error('Backend returned an invalid PostgreSQL asset catalog metadata reconcile result.');
+  return payload;
+};
+
 export const requestAdminSystemDataResetScan = async ({ clerk, apiBaseUrl, fetchImpl, scopes = [] }) => {
   const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: '/api/admin/system-data/reset/scan', method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scopes }) });
   if (!response.ok) { const error = new Error(`System data reset scan failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
@@ -1864,6 +1871,10 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async repairAdminSystemDataAssetReferences() {
       const clerk = await initialize();
       return requestAdminSystemDataAssetRepair({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
+    },
+    async reconcileAdminSystemDataAssetCatalogMetadata() {
+      const clerk = await initialize();
+      return requestAdminSystemDataCatalogMetadataReconcile({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
     },
     async exportAdminSystemData(options = {}) {
       const clerk = await initialize();

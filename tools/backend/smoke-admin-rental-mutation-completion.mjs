@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createAdminRentalRequestService } from '../../server/src/rentals/admin-rental-request-service.mjs';
 
-const identity = { uid: 'admin-uid', idToken: 'firebase-token' };
+const identity = { uid: 'admin-uid', idToken: 'firebase-token', source: 'clerk-postgresql' };
 const baseFields = {
   id: 'REQ-P18-1', requesterUid: 'user-uid', requesterEmail: 'user@example.com',
   requesterName: 'Tester', requesterTeam: 'QA', laptopId: 'asset-1', assetCategory: '노트북', assetNo: 'A-1',
@@ -54,6 +54,7 @@ const repository = {
   },
   async listEvents() { return this.events; },
   async list() { return { requests: [this.request], totalCount: 1 }; },
+  async getTabCounts() { return { pending: 1, rental: 0, closed: 0, returned: 0 }; },
   async getCounts() { return { pending: 1, rental: 0, closed: 0, returned: 0 }; },
   async hasOtherCurrentOverdue() { return false; },
   async editRequest(args) {

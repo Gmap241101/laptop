@@ -110,6 +110,10 @@ const accountLifecycleService = {
   async getTermsByMemberKey() { return { source: 'postgresql', memberKey: 'member:smoke', states: {}, logs: [] }; },
 };
 const adminClerkAuthService = {
+  async authorizeCurrent({ clerkUserId }) {
+    if (clerkUserId !== 'user_smoke') { const error = new Error('Admin not found.'); error.code = 'admin_not_found'; error.status = 404; throw error; }
+    return { authority: 'clerk-postgresql-session', admin: adminRecord };
+  },
   async getCurrent({ clerkUserId }) {
     if (clerkUserId !== 'user_smoke') { const error = new Error('Admin not found.'); error.code = 'admin_not_found'; error.status = 404; throw error; }
     return { authority: 'clerk-postgresql', admin: adminRecord };
