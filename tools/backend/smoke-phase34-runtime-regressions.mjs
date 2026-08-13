@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createRentalRestrictionService } from '../../server/src/restrictions/rental-restriction-service.mjs';
 import { createSiteContentService } from '../../server/src/content/site-content-service.mjs';
 import { createSiteContentRepository } from '../../server/src/content/site-content-repository.mjs';
+import { createBoardRepository } from '../../server/src/boards/board-repository.mjs';
 import fs from 'node:fs';
 
 const rentalRestrictionRepository = {
@@ -98,6 +99,82 @@ assert.match(
 );
 assert.match(appSource, /phase34AdminNavigationHolidayRevision/);
 
+
+
+const boardSqlCalls = [];
+const boardPool = {
+  async query(sql, params = []) {
+    const text = String(sql);
+    boardSqlCalls.push({ text, params });
+    if (text.includes('WITH sync_meta AS')) {
+      return {
+        rowCount: 1,
+        rows: [{
+          board_synced_at: '2026-08-13T01:00:00.000Z',
+          config_row: {
+            board_type: params?.[0] || 'faq',
+            posts_per_page: 10,
+            source_mode: 'postgresql-authoritative',
+            synced_at: '2026-08-13T01:00:00.000Z',
+            updated_at: '2026-08-13T01:00:00.000Z',
+          },
+          categories: text.includes('app_faq_categories')
+            ? [{ category_id: 'general', name: '일반', sort_order: 0, source_mode: 'postgresql-authoritative' }]
+            : undefined,
+        }],
+      };
+    }
+    if (text.includes('WITH filtered AS')) {
+      const boardType = params?.[0] || '';
+      return {
+        rowCount: 1,
+        rows: [{
+          pinned_posts: [],
+          regular_posts: [{
+            post_id: `${boardType}-1`,
+            board_type: boardType,
+            category_id: boardType === 'faq' ? 'general' : null,
+            title: `${boardType} smoke`,
+            content_text: 'body',
+            content_html: '<p>body</p>',
+            content_format: 'rich-html-v1',
+            is_pinned: false,
+            author_uid: '',
+            author_name: '관리자',
+            view_count: 0,
+            source_mode: 'postgresql-authoritative',
+            mirror_state: 'retired',
+            created_at: '2026-08-13T01:00:00.000Z',
+            updated_at: '2026-08-13T01:00:00.000Z',
+          }],
+          total_regular_count: 1,
+        }],
+      };
+    }
+    throw new Error(`Unexpected board SQL in Phase 34 regression smoke: ${text}`);
+  },
+};
+const boardRepository = createBoardRepository(boardPool);
+const noticeQueryStart = boardSqlCalls.length;
+const noticeBoard = await boardRepository.listNotice({ page: 1, pageSize: 10 });
+assert.equal(boardSqlCalls.length - noticeQueryStart, 2, 'notice list entry must use two PostgreSQL round trips instead of the migration-era five-query sequence');
+assert.equal(noticeBoard.regularPosts[0]?.id, 'notice-1');
+const faqQueryStart = boardSqlCalls.length;
+const faqBoard = await boardRepository.listFaq({ page: 1, pageSize: 10, categoryId: 'all' });
+assert.equal(boardSqlCalls.length - faqQueryStart, 2, 'FAQ list entry must use two PostgreSQL round trips instead of the migration-era six-query sequence');
+assert.equal(faqBoard.categories[0]?.id, 'general');
+assert.equal(faqBoard.regularPosts[0]?.id, 'faq-1');
+const boardRepositorySource = fs.readFileSync(new URL('../../server/src/boards/board-repository.mjs', import.meta.url), 'utf8');
+const listNoticeStart = boardRepositorySource.indexOf('async listNotice(');
+const listNoticeEnd = boardRepositorySource.indexOf('async getNoticePost', listNoticeStart);
+const listNoticeBlock = boardRepositorySource.slice(listNoticeStart, listNoticeEnd);
+const listFaqStart = boardRepositorySource.indexOf('async listFaq(');
+const listFaqEnd = boardRepositorySource.indexOf('async saveNoticePostAuthoritative', listFaqStart);
+const listFaqBlock = boardRepositorySource.slice(listFaqStart, listFaqEnd);
+assert.equal(listNoticeBlock.includes('pool.connect()'), false, 'public notice list reads must not hold a dedicated client across sequential metadata/count/page queries');
+assert.equal(listFaqBlock.includes('pool.connect()'), false, 'public FAQ list reads must not hold a dedicated client across sequential metadata/category/count/page queries');
+assert.match(listNoticeBlock, /jsonb_agg\(to_jsonb\(pinned_posts\)/, 'notice list must aggregate pinned/page rows in one PostgreSQL statement');
+assert.match(listFaqBlock, /jsonb_agg\(to_jsonb\(regular_posts\)/, 'FAQ list must aggregate page rows in one PostgreSQL statement');
 
 
 const repositoryState = {

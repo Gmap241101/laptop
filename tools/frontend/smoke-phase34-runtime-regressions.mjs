@@ -224,6 +224,10 @@ assert.match(userNavigationSource, /startTransition\(\(\) => \{[\s\S]*setView\('
 assert.match(userShellSource, /const showDataLoadingOverlay = userTab !== 'home' && !firebaseReady;/, 'initial home rendering must not be blurred behind the rental-data readiness overlay');
 assert.match(userHomeSource, /loading=\{index === 0 \? 'eager' : 'lazy'\}/, 'only the first hero image should be eager; later hero images must be lazy');
 assert.match(userHomeSource, /fetchPriority=\{index === 0 \? 'high' : 'auto'\}/, 'the first hero image should receive high fetch priority');
+assert.match(userHomeSource, /const shouldReservePromotionColumn = !bannersReady \|\| promotionBanners\.length > 0;/, 'home layout must reserve the desktop promotion column before PostgreSQL home-content hydration completes');
+assert.match(userHomeSource, /promotionRenderSlots = bannersReady[\s\S]*PROMOTION_LAYOUTS\['2x1'\]\.slots/, 'home layout must render deterministic promotion placeholders before banner metadata arrives');
+assert.match(userHomeSource, /loading=\{index < 2 \? 'eager' : 'lazy'\}[\s\S]*fetchPriority=\{index < 2 \? 'high' : 'auto'\}/, 'the first visible promotion row must receive eager/high image priority while lower promotion rows remain lazy');
+assert.match(userHomeSource, /shouldReservePromotionColumn \? 'lg:grid-cols-2' : 'grid-cols-1'/, 'notice width must not expand to a full desktop row before promotion banners finish loading');
 assert.match(userHomeSource, /loading="lazy" decoding="async"/, 'below-the-fold quick-link images must use lazy asynchronous decoding');
 assert.equal(adminShellSource.includes('UserWorkspace'), false, 'administrator shell must not contain the user workspace');
 assert.equal(adminShellSource.includes('UserFooter'), false, 'administrator shell must not contain the user footer');

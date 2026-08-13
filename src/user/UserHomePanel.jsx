@@ -354,6 +354,10 @@ export default function UserHomePanel({ ctx }) {
     { length: promotionConfig.slots },
     (_, index) => visiblePromotionBanners[index] || null
   );
+  const shouldReservePromotionColumn = !bannersReady || promotionBanners.length > 0;
+  const promotionRenderSlots = bannersReady
+    ? promotionSlots
+    : Array.from({ length: PROMOTION_LAYOUTS['2x1'].slots }, () => null);
 
   const summaryItems = [
     [Boxes, '보유 자산', stats?.total || 0, 'text-slate-700 bg-slate-100'],
@@ -481,7 +485,7 @@ export default function UserHomePanel({ ctx }) {
         </div>
       </section>
 
-      <section className={`grid items-stretch gap-5 ${promotionBanners.length > 0 ? 'lg:grid-cols-2' : 'grid-cols-1'}`}>
+      <section className={`grid items-stretch gap-5 ${shouldReservePromotionColumn ? 'lg:grid-cols-2' : 'grid-cols-1'}`}>
         <div className="flex min-h-[300px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
             <h2 className="text-base font-black text-slate-900">공지사항</h2>
@@ -507,19 +511,28 @@ export default function UserHomePanel({ ctx }) {
           </div>
         </div>
 
-        {promotionBanners.length > 0 && (
-          <div className="grid h-full grid-cols-2 gap-2 sm:gap-3">
-            {promotionSlots.map((banner, index) => (
+        {shouldReservePromotionColumn && (
+          <div className={`${!bannersReady ? 'hidden lg:grid' : 'grid'} h-full min-h-[300px] grid-cols-2 gap-2 sm:gap-3`} aria-busy={!bannersReady ? 'true' : undefined}>
+            {promotionRenderSlots.map((banner, index) => (
               banner ? (
                 <div key={banner.id} className={`${promotionConfig.aspectClass} min-h-0 overflow-hidden rounded-2xl bg-slate-100 shadow-sm`}>
                   {renderClickableBanner(
                     banner,
-                    <ResponsiveBannerImage banner={banner} className="transition duration-300 hover:scale-[1.02]" />,
+                    <ResponsiveBannerImage
+                      banner={banner}
+                      loading={index < 2 ? 'eager' : 'lazy'}
+                      fetchPriority={index < 2 ? 'high' : 'auto'}
+                      className="transition duration-300 hover:scale-[1.02]"
+                    />,
                     'block h-full w-full overflow-hidden rounded-2xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2'
                   )}
                 </div>
               ) : (
-                <div key={`empty-${index}`} aria-hidden="true" className={promotionConfig.aspectClass} />
+                <div
+                  key={`empty-${index}`}
+                  aria-hidden="true"
+                  className={`${bannersReady ? promotionConfig.aspectClass : PROMOTION_LAYOUTS['2x1'].aspectClass} rounded-2xl bg-slate-100`}
+                />
               )
             ))}
           </div>

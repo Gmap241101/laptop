@@ -1,4 +1,3 @@
-import { firebaseAuth } from '../../platform/appDataRefs.js';
 import { readFirebaseRuntimeRetirementConfig } from '../auth/firebaseRuntimeRetirement.js';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 
