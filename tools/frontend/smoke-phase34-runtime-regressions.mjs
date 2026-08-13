@@ -378,8 +378,12 @@ const adminDialogsSource = fs.readFileSync(new URL('../../src/admin/AdminDialogs
 const userDialogsSource = fs.readFileSync(new URL('../../src/user/UserDialogs.jsx', import.meta.url), 'utf8');
 const appDialogsSource = fs.readFileSync(new URL('../../src/dialogs/AppDialogs.jsx', import.meta.url), 'utf8');
 const modalPortalSource = fs.readFileSync(new URL('../../src/components/ModalPortal.jsx', import.meta.url), 'utf8');
+const boardPostControllerSource = fs.readFileSync(new URL('../../src/features/boards/useAdminBoardPostController.js', import.meta.url), 'utf8');
+const popupPostControllerSource = fs.readFileSync(new URL('../../src/features/boards/useAdminPopupPostController.js', import.meta.url), 'utf8');
 const footerControllerSource = fs.readFileSync(new URL('../../src/features/boards/useAdminFooterContentController.js', import.meta.url), 'utf8');
 const footerPanelSource = fs.readFileSync(new URL('../../src/admin/AdminFooterPanel.jsx', import.meta.url), 'utf8');
+const homeBannerPanelSource = fs.readFileSync(new URL('../../src/admin/AdminHomeBannerPanel.jsx', import.meta.url), 'utf8');
+const homeManagementPanelSource = fs.readFileSync(new URL('../../src/admin/AdminHomeManagementPanel.jsx', import.meta.url), 'utf8');
 const siteContentCutoverSource = fs.readFileSync(new URL('../../src/features/content/siteContentCutover.js', import.meta.url), 'utf8');
 const userFooterSource = fs.readFileSync(new URL('../../src/user/UserFooter.jsx', import.meta.url), 'utf8');
 const popupFooterControllerSource = fs.readFileSync(new URL('../../src/features/boards/usePopupFooterContentSubscriptionController.js', import.meta.url), 'utf8');
@@ -406,6 +410,7 @@ assert.equal((richTextEditorSource.match(/maxHeight: resolvedMaxHeight/g) || [])
 assert.match(richTextEditorSource, /mk-rich-text-scroll[^"]*overflow-y-auto/, 'rich text editor bodies must scroll internally instead of growing the surrounding modal');
 for (const [name, source] of [['admin', adminDialogsSource], ['user', userDialogsSource], ['compatibility', appDialogsSource]]) {
   assert.match(source, /fixed top-6 right-6 z-\[220\]/, `${name} toast must render above every modal/backdrop layer`);
+  assert.match(source, /confirmModal && \([\s\S]*?fixed inset-0 z-\[200\]/, `${name} confirm dialog must render above editor popup layers while remaining below toast`);
 }
 assert.match(modalPortalSource, /createPortal\(backdrop, document\.body\)/, 'popup modals must portal to document.body so viewport backdrops are not clipped by panel/card ancestors');
 assert.match(modalPortalSource, /documentElement\.style\.overflow = 'hidden'/, 'modal portal must lock root document scrolling while a popup is open');
@@ -413,6 +418,13 @@ assert.match(modalPortalSource, /body\.style\.overflow = 'hidden'/, 'modal porta
 assert.match(modalPortalSource, /modalScrollLockCount/, 'modal scroll lock must support nested popup/confirm layers without unlocking the document early');
 assert.match(footerControllerSource, /patchSiteContentDomainInPostgresql/, 'footer management must use PostgreSQL document-level patches');
 assert.equal(footerControllerSource.includes('replaceSiteContentDomainInPostgresql'), false, 'footer management must not resend the complete footer domain on ordinary saves');
+assert.match(footerControllerSource, /저장되지 않은 푸터 페이지 변경사항이 있습니다\. 저장하지 않고 닫으시겠습니까\?/, 'footer rich-text editor must confirm before discarding unsaved changes');
+assert.match(boardPostControllerSource, /저장되지 않은 공지사항 변경사항이 있습니다\. 저장하지 않고 닫으시겠습니까\?/, 'notice rich-text editor must confirm before discarding unsaved changes');
+assert.match(boardPostControllerSource, /저장되지 않은 FAQ 변경사항이 있습니다\. 저장하지 않고 닫으시겠습니까\?/, 'FAQ rich-text editor must confirm before discarding unsaved changes');
+assert.match(popupPostControllerSource, /저장되지 않은 팝업 변경사항이 있습니다\. 저장하지 않고 닫으시겠습니까\?/, 'popup rich-text editor must confirm before discarding unsaved changes');
+assert.match(signupTermsManagerSource, /저장되지 않은 이용약관 변경사항이 있습니다\. 저장하지 않고 닫으시겠습니까\?/, 'signup-terms rich-text editor must confirm before discarding unsaved changes');
+assert.match(homeBannerPanelSource, /저장되지 않은 배너 변경사항이 있습니다\. 저장하지 않고 닫으시겠습니까\?/, 'home banner editor must use the shared custom confirm layer before discarding unsaved changes');
+assert.equal(homeBannerPanelSource.includes("window.confirm('저장하지 않은 배너 변경사항을 취소하시겠습니까?')"), false, 'home banner editor must not fall back to the browser-native confirm dialog');
 assert.match(footerControllerSource, /sanitizeRichTextHtml/, 'footer page dialog normalization must import the rich-text sanitizer instead of throwing before the dialog opens');
 assert.match(footerControllerSource, /addressId: String\(page\?\.addressId \|\| ''\)/, 'legacy footer pages must require an explicit address ID on their next content-page edit');
 assert.match(siteContentCutoverSource, /addressClaims/, 'site-content PostgreSQL partial patches must carry footer address uniqueness claims');
@@ -424,6 +436,24 @@ assert.match(footerControllerSource, /upserts:\s*\[\s*createFooterConfigDocument
 assert.match(footerControllerSource, /deletes:\s*\[`footerPages\/\$\{page\.id\}`\]/, 'footer page deletion must delete only the targeted PostgreSQL content document');
 assert.match(footerControllerSource, /normalizeFooterPageAddressId/, 'footer content pages must normalize an administrator-defined public address ID');
 assert.match(footerControllerSource, /isValidFooterPageAddressId/, 'footer content page address IDs must be validated before PostgreSQL writes');
+assert.match(footerControllerSource, /\[a-z0-9_-\]/, 'footer public address IDs must allow underscores in addition to lowercase letters, digits, and hyphens');
+assert.ok(footerPanelSource.includes('md:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]'), 'footer title and bold-title control must share one row on non-mobile viewports');
+assert.ok(footerPanelSource.includes('border-t border-slate-100 pt-5 sm:flex-row sm:justify-end'), 'footer modal actions must retain the shared editor action-row styling inside the padded modal body');
+assert.ok(footerPanelSource.includes('max-h-[94vh] w-full max-w-5xl overflow-y-auto mk-modal-scroll-shell rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl'), 'footer editor modal must use the same neutral shell styling as the popup editor');
+assert.equal(footerPanelSource.includes('border-orange-200 bg-white'), false, 'footer editor modal chrome must not use the old orange/yellow shell styling');
+assert.equal(footerPanelSource.includes('border-orange-100 bg-orange-50'), false, 'footer editor modal header must not use the old orange/yellow header styling');
+assert.equal(footerPanelSource.includes('border-orange-300 bg-orange-50 ring-1 ring-orange-200'), false, 'footer editor modal option selection must use the shared neutral slate treatment instead of orange/yellow cards');
+assert.equal(footerPanelSource.includes('text-orange-600 focus:ring-orange-500'), false, 'footer editor modal checkbox styling must not introduce a footer-only orange accent');
+assert.ok(homeBannerPanelSource.includes('max-h-[94vh] w-full max-w-5xl overflow-y-auto mk-modal-scroll-shell rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl'), 'home banner editor modal must use the same neutral shell styling as the popup editor');
+assert.equal(homeBannerPanelSource.includes('border-orange-100 bg-orange-50'), false, 'home banner editor modal header must not use the old orange/yellow header styling');
+assert.equal((popupFooterControllerSource.match(/requestSiteContentDomain\(\{[\s\S]*?domain: SITE_CONTENT_DOMAINS\.FOOTER[\s\S]*?\}\)/g) || []).length, 1, 'footer management must load config and pages from one footer-domain request');
+assert.match(popupFooterControllerSource, /popupLoadedRevisionRef/, 'popup management must retain successfully loaded data for the current site-content revision');
+assert.match(popupFooterControllerSource, /footerLoadedRevisionRef/, 'footer management must retain successfully loaded data for the current site-content revision');
+assert.match(popupFooterControllerSource, /if \(!shouldLoadPopup\) return undefined;/, 'popup management must not clear cached rows merely because another administrator tab is active');
+assert.match(popupFooterControllerSource, /if \(!shouldLoadFooter\) return undefined;/, 'footer management must not clear cached rows merely because another administrator tab is active');
+assert.equal((homeBannerPanelSource.match(/requestSiteContentDomain\(/g) || []).length, 1, 'home banner management must load banners and display config from one home-domain request');
+assert.match(homeManagementPanelSource, /const activeBannerPlacement = \['hero', 'promotion', 'quickLink'\]\.includes\(activeTab\)/, 'home management must derive one active banner placement for all banner sub-tabs');
+assert.equal((homeManagementPanelSource.match(/<AdminHomeBannerPanel/g) || []).length, 1, 'home banner sub-tabs must reuse one panel instance instead of remounting three separate panel branches');
 assert.match(footerControllerSource, /addressClaims:/, 'footer content writes must send authoritative address uniqueness claims to PostgreSQL');
 assert.match(siteContentCutoverSource, /globalThis\.crypto\?\.randomUUID\?\.\(\)/, 'site-content ids must be generated independently of any retired external datastore');
 assert.match(appRoutesSource, /`\/info\/\$\{encodeURIComponent\(routeId\)\}`/, 'footer content pages must use the administrator-defined /info/:id canonical route');

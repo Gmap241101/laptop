@@ -247,56 +247,45 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
   useEffect(() => {
     const cutover = readSiteContentCutoverConfig();
     let cancelled = false;
+
     const load = async () => {
       try {
-        const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.HOME, config: cutover, useCache: false });
+        const content = await requestSiteContentDomain({
+          domain: SITE_CONTENT_DOMAINS.HOME,
+          config: cutover,
+          useCache: false,
+        });
         if (cancelled) return;
-        setAllBanners(content.documents
+
+        const nextBanners = content.documents
           .filter((item) => item.key.startsWith('homeBanners/'))
           .map((item) => ({
             ...item.payload,
             id: item.payload?.id || item.key.split('/').pop(),
             enabled: typeof item.enabled === 'boolean' ? item.enabled : item.payload?.enabled !== false,
             sortOrder: Number.isFinite(Number(item.sortOrder)) ? Number(item.sortOrder) : item.payload?.sortOrder,
-          })));
-        setBannersReady(true);
-        setLoadError('');
-      } catch (error) {
-        if (cancelled) return;
-        console.error('PostgreSQL home banners load error:', error);
-        setBannersReady(true);
-        setLoadError('초기화면 배너를 PostgreSQL에서 불러오지 못했습니다.');
-      }
-    };
-    void load();
-    const unsubscribe = subscribeSiteContentInvalidation((detail) => {
-      if (detail?.domain === SITE_CONTENT_DOMAINS.HOME || detail?.domain === 'all') void load();
-    });
-    return () => { cancelled = true; unsubscribe(); };
-  }, []);
-
-  useEffect(() => {
-    const cutover = readSiteContentCutoverConfig();
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const content = await requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.HOME, config: cutover, useCache: false });
+          }));
         const data = content.documents.find((item) => item.key === 'homePage/config')?.payload || {};
-        if (cancelled) return;
-        const next = {
+        const nextConfig = {
           heroIntervalSeconds: [5, 7, 10].includes(Number(data.heroIntervalSeconds)) ? Number(data.heroIntervalSeconds) : 7,
           promotionLayout: PROMOTION_LAYOUTS[data.promotionLayout] ? data.promotionLayout : '2x1',
         };
-        setConfigDraft(next);
-        configBaselineRef.current = JSON.stringify(next);
+
+        setAllBanners(nextBanners);
+        setConfigDraft(nextConfig);
+        configBaselineRef.current = JSON.stringify(nextConfig);
+        setBannersReady(true);
         setConfigReady(true);
+        setLoadError('');
       } catch (error) {
-        if (!cancelled) {
-          console.error('PostgreSQL home config load error:', error);
-          setConfigReady(true);
-        }
+        if (cancelled) return;
+        console.error('PostgreSQL home content load error:', error);
+        setBannersReady(true);
+        setConfigReady(true);
+        setLoadError('초기화면 배너를 PostgreSQL에서 불러오지 못했습니다.');
       }
     };
+
     void load();
     const unsubscribe = subscribeSiteContentInvalidation((detail) => {
       if (detail?.domain === SITE_CONTENT_DOMAINS.HOME || detail?.domain === 'all') void load();
@@ -365,12 +354,26 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
     setEditing(true);
   };
 
-  const closeEditor = () => {
-    if (formDirty && !window.confirm('저장하지 않은 배너 변경사항을 취소하시겠습니까?')) return;
+  const resetEditor = () => {
     setEditing(false);
     const next = createForm(placement);
     setForm(next);
     formBaselineRef.current = JSON.stringify(next);
+  };
+
+  const closeEditor = () => {
+    if (!formDirty) {
+      resetEditor();
+      return;
+    }
+
+    triggerConfirm(
+      '저장되지 않은 배너',
+      '저장되지 않은 배너 변경사항이 있습니다. 저장하지 않고 닫으시겠습니까?',
+      async () => {
+        resetEditor();
+      }
+    );
   };
 
   const saveConfig = async () => {
@@ -681,18 +684,18 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
           aria-modal="true"
           aria-label={`${panelConfig.itemLabel} ${form.id ? '수정' : '등록'}`}
         >
-          <section className="max-h-[92vh] w-full max-w-5xl overflow-y-auto mk-modal-scroll-shell rounded-2xl border border-orange-200 bg-white shadow-2xl">
-          <div className="flex items-center justify-between border-b border-orange-100 bg-orange-50 px-5 py-4">
+          <section className="max-h-[94vh] w-full max-w-5xl overflow-y-auto mk-modal-scroll-shell rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+          <div className="flex items-start justify-between gap-4">
             <div>
-              <h3 className="text-sm font-bold text-slate-900">{form.id ? `${panelConfig.itemLabel} 수정` : `${panelConfig.itemLabel} 등록`}</h3>
-              <p className="mt-1 text-[11px] text-slate-500">{recommendation} 권장 규격이 아니어도 등록할 수 있습니다.</p>
+              <h3 className="text-base font-bold text-slate-900">{form.id ? `${panelConfig.itemLabel} 수정` : `${panelConfig.itemLabel} 등록`}</h3>
+              <p className="mt-1 text-xs leading-5 text-slate-500">{recommendation} 권장 규격이 아니어도 등록할 수 있습니다.</p>
             </div>
-            <button type="button" onClick={closeEditor} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50" aria-label="편집 닫기">
+            <button type="button" onClick={closeEditor} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed" aria-label="편집 닫기">
               <X size={16} />
             </button>
           </div>
 
-          <div className="space-y-5 p-5">
+          <div className="mt-5 space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
               <div>
                 <div className="text-xs font-bold text-slate-800">사용 여부</div>

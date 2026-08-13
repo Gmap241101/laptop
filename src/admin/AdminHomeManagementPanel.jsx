@@ -20,6 +20,9 @@ const getInitialTab = () => {
 export default function AdminHomeManagementPanel({ ctx }) {
   const { AdminPageHeader } = ctx;
   const [activeTab, setActiveTab] = useState(getInitialTab);
+  const activeBannerPlacement = ['hero', 'promotion', 'quickLink'].includes(activeTab)
+    ? activeTab
+    : '';
 
   const changeTab = (nextTab) => {
     if (nextTab === activeTab) return;
@@ -79,9 +82,9 @@ export default function AdminHomeManagementPanel({ ctx }) {
       </div>
 
       {activeTab === 'basic' && <AdminSettingsPanel ctx={ctx} mode="home" embedded />}
-      {activeTab === 'hero' && <AdminHomeBannerPanel ctx={ctx} placement="hero" embedded />}
-      {activeTab === 'promotion' && <AdminHomeBannerPanel ctx={ctx} placement="promotion" embedded />}
-      {activeTab === 'quickLink' && <AdminHomeBannerPanel ctx={ctx} placement="quickLink" embedded />}
+      {activeBannerPlacement && (
+        <AdminHomeBannerPanel ctx={ctx} placement={activeBannerPlacement} embedded />
+      )}
     </div>
   );
 }

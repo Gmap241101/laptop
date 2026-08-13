@@ -214,12 +214,21 @@ export const createSiteContentRepository = (pool) => {
   };
 
   getDomain = async (domain) => {
-    const syncResult = await pool.query(
-      `SELECT domain, source_hash, document_count, source_mode, synced_at
-         FROM app_site_content_syncs
-        WHERE domain = $1`,
-      [domain],
-    );
+    const [syncResult, docsResult] = await Promise.all([
+      pool.query(
+        `SELECT domain, source_hash, document_count, source_mode, synced_at
+           FROM app_site_content_syncs
+          WHERE domain = $1`,
+        [domain],
+      ),
+      pool.query(
+        `SELECT document_key, payload, enabled, sort_order, source_updated_at, synced_at
+           FROM app_site_content_documents
+          WHERE domain = $1
+          ORDER BY sort_order NULLS LAST, document_key`,
+        [domain],
+      ),
+    ]);
     if (syncResult.rowCount === 0) {
       if (domain !== 'rental-config') return null;
       const context = await getRentalConfigBootstrapContext();
@@ -230,13 +239,6 @@ export const createSiteContentRepository = (pool) => {
         sourceMode: 'postgresql-self-heal',
       });
     }
-    const docsResult = await pool.query(
-      `SELECT document_key, payload, enabled, sort_order, source_updated_at, synced_at
-         FROM app_site_content_documents
-        WHERE domain = $1
-        ORDER BY sort_order NULLS LAST, document_key`,
-      [domain],
-    );
     if (domain === 'rental-config' && !docsResult.rows.some((row) => row.document_key === 'rentalSystem/publicConfig')) {
       const context = await getRentalConfigBootstrapContext();
       return replaceDomain({

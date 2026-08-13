@@ -163,6 +163,8 @@ export default function usePopupFooterContentSubscriptionController({
   view,
 }) {
   const triggerToastRef = useRef(triggerToast);
+  const popupLoadedRevisionRef = useRef(-1);
+  const footerLoadedRevisionRef = useRef(-1);
   const siteContentRefreshRevision = useSiteContentRefreshRevision(USER_SITE_CONTENT_REFRESH_DOMAINS);
 
   useEffect(() => {
@@ -177,14 +179,11 @@ export default function usePopupFooterContentSubscriptionController({
       (userTab === 'home' || (userTab === 'rental' && Boolean(firebaseAuthUser)));
     const shouldLoadPopup = shouldLoadAdminPopup || shouldLoadUserPopup;
 
-    if (!shouldLoadPopup) {
-      setPopupPosts([]);
-      setPopupPostsLoadErrorMessage('');
-      setPopupPostsReady(true);
-      return undefined;
-    }
+    if (!shouldLoadPopup) return undefined;
+    if (popupLoadedRevisionRef.current === siteContentRefreshRevision) return undefined;
 
-    setPopupPostsReady(false);
+    const isInitialLoad = popupLoadedRevisionRef.current < 0;
+    if (isInitialLoad) setPopupPostsReady(false);
     setPopupPostsLoadErrorMessage('');
     let cancelled = false;
 
@@ -215,6 +214,7 @@ export default function usePopupFooterContentSubscriptionController({
             return getPopupDateMillis(second.createdAt) - getPopupDateMillis(first.createdAt);
           });
         if (cancelled) return;
+        popupLoadedRevisionRef.current = siteContentRefreshRevision;
         publishSiteContentObservation({
           readRequested: true,
           domain: SITE_CONTENT_DOMAINS.POPUP,
@@ -231,7 +231,7 @@ export default function usePopupFooterContentSubscriptionController({
         if (cancelled) return;
         const message = '팝업을 PostgreSQL에서 불러오지 못했습니다.';
         console.error('PostgreSQL popup authority read error:', error);
-        setPopupPosts([]);
+        if (isInitialLoad) setPopupPosts([]);
         setPopupPostsLoadErrorMessage(message);
         setPopupPostsReady(true);
         if (shouldLoadAdminPopup) triggerToastRef.current?.(message, 'error');
@@ -257,81 +257,15 @@ export default function usePopupFooterContentSubscriptionController({
       isAdminAuthenticated && view === 'admin' && adminTab === 'footerManagement';
     const shouldLoadFooter = view === 'user' || shouldLoadAdminFooter;
 
-    if (!shouldLoadFooter) {
-      const defaultFooterConfig = createDefaultFooterConfigDraft();
-      setFooterConfig(defaultFooterConfig);
-      setFooterConfigDraft(defaultFooterConfig);
-      setFooterConfigLoadErrorMessage('');
-      setFooterConfigReady(true);
-      return undefined;
-    }
+    if (!shouldLoadFooter) return undefined;
+    if (footerLoadedRevisionRef.current === siteContentRefreshRevision) return undefined;
 
-    setFooterConfigReady(false);
+    const isInitialLoad = footerLoadedRevisionRef.current < 0;
+    if (isInitialLoad) {
+      setFooterConfigReady(false);
+      setFooterPagesReady(false);
+    }
     setFooterConfigLoadErrorMessage('');
-    let cancelled = false;
-
-    const load = async () => {
-      try {
-        const content = await requestSiteContentDomain({
-          domain: SITE_CONTENT_DOMAINS.FOOTER,
-          useCache: false,
-        });
-        const document = content.documents.find((item) => item.key === 'siteFooter/config');
-        if (!document?.payload) throw Object.assign(new Error('PostgreSQL footer config is missing.'), { code: 'footer_config_postgres_missing' });
-        if (cancelled) return;
-        const remoteData = document.payload;
-        const nextConfig = {
-          enabled: remoteData.enabled !== false,
-          content: remoteData.content || '',
-          contentText: remoteData.contentText || remoteData.content || '',
-          contentHtml: sanitizeFooterCommonHtml(
-            remoteData.contentHtml || legacyTextToRichHtml(remoteData.contentText || remoteData.content || '')
-          ),
-          contentFormat: remoteData.contentFormat || 'rich-html-v1',
-          updatedAt: remoteData.updatedAt || null,
-        };
-        setFooterConfig(nextConfig);
-        setFooterConfigDraft({ enabled: nextConfig.enabled, contentHtml: nextConfig.contentHtml });
-        setFooterConfigLoadErrorMessage('');
-        setFooterConfigReady(true);
-      } catch (error) {
-        if (cancelled) return;
-        const message = '푸터 설정을 PostgreSQL에서 불러오지 못했습니다.';
-        console.error('PostgreSQL footer config authority read error:', error);
-        setFooterConfig(createDefaultFooterConfigDraft());
-        setFooterConfigDraft(createDefaultFooterConfigDraft());
-        setFooterConfigLoadErrorMessage(message);
-        setFooterConfigReady(true);
-        if (shouldLoadAdminFooter) triggerToastRef.current?.(message, 'error');
-      }
-    };
-
-    void load();
-    return () => { cancelled = true; };
-  }, [
-    adminTab,
-    isAdminAuthenticated,
-    setFooterConfig,
-    setFooterConfigDraft,
-    setFooterConfigLoadErrorMessage,
-    setFooterConfigReady,
-    siteContentRefreshRevision,
-    view,
-  ]);
-
-  useEffect(() => {
-    const shouldLoadAdminFooter =
-      isAdminAuthenticated && view === 'admin' && adminTab === 'footerManagement';
-    const shouldLoadFooter = view === 'user' || shouldLoadAdminFooter;
-
-    if (!shouldLoadFooter) {
-      setFooterPages([]);
-      setFooterPagesLoadErrorMessage('');
-      setFooterPagesReady(true);
-      return undefined;
-    }
-
-    setFooterPagesReady(false);
     setFooterPagesLoadErrorMessage('');
     let cancelled = false;
 
@@ -341,6 +275,31 @@ export default function usePopupFooterContentSubscriptionController({
           domain: SITE_CONTENT_DOMAINS.FOOTER,
           useCache: false,
         });
+        if (cancelled) return;
+
+        const configDocument = content.documents.find((item) => item.key === 'siteFooter/config');
+        if (configDocument?.payload) {
+          const remoteData = configDocument.payload;
+          const nextConfig = {
+            enabled: remoteData.enabled !== false,
+            content: remoteData.content || '',
+            contentText: remoteData.contentText || remoteData.content || '',
+            contentHtml: sanitizeFooterCommonHtml(
+              remoteData.contentHtml || legacyTextToRichHtml(remoteData.contentText || remoteData.content || '')
+            ),
+            contentFormat: remoteData.contentFormat || 'rich-html-v1',
+            updatedAt: remoteData.updatedAt || null,
+          };
+          setFooterConfig(nextConfig);
+          setFooterConfigDraft({ enabled: nextConfig.enabled, contentHtml: nextConfig.contentHtml });
+          setFooterConfigLoadErrorMessage('');
+        } else {
+          const defaultFooterConfig = createDefaultFooterConfigDraft();
+          setFooterConfig(defaultFooterConfig);
+          setFooterConfigDraft(defaultFooterConfig);
+          setFooterConfigLoadErrorMessage('푸터 설정을 PostgreSQL에서 불러오지 못했습니다.');
+        }
+
         const remotePages = content.documents
           .filter((item) => item.key.startsWith('footerPages/') && (
             shouldLoadAdminFooter || item.payload?.enabled !== false
@@ -356,18 +315,28 @@ export default function usePopupFooterContentSubscriptionController({
             if (createdDifference !== 0) return createdDifference;
             return String(first.id || '').localeCompare(String(second.id || ''));
           });
-        if (cancelled) return;
+
+        footerLoadedRevisionRef.current = siteContentRefreshRevision;
         setFooterPages(remotePages);
         setFooterPagesLoadErrorMessage('');
+        setFooterConfigReady(true);
         setFooterPagesReady(true);
       } catch (error) {
         if (cancelled) return;
-        const message = '푸터 메뉴를 PostgreSQL에서 불러오지 못했습니다.';
-        console.error('PostgreSQL footer pages authority read error:', error);
-        setFooterPages([]);
-        setFooterPagesLoadErrorMessage(message);
+        const configMessage = '푸터 설정을 PostgreSQL에서 불러오지 못했습니다.';
+        const pagesMessage = '푸터 메뉴를 PostgreSQL에서 불러오지 못했습니다.';
+        console.error('PostgreSQL footer authority read error:', error);
+        if (isInitialLoad) {
+          const defaultFooterConfig = createDefaultFooterConfigDraft();
+          setFooterConfig(defaultFooterConfig);
+          setFooterConfigDraft(defaultFooterConfig);
+          setFooterPages([]);
+        }
+        setFooterConfigLoadErrorMessage(configMessage);
+        setFooterPagesLoadErrorMessage(pagesMessage);
+        setFooterConfigReady(true);
         setFooterPagesReady(true);
-        if (shouldLoadAdminFooter) triggerToastRef.current?.(message, 'error');
+        if (shouldLoadAdminFooter) triggerToastRef.current?.(pagesMessage, 'error');
       }
     };
 
@@ -376,6 +345,10 @@ export default function usePopupFooterContentSubscriptionController({
   }, [
     adminTab,
     isAdminAuthenticated,
+    setFooterConfig,
+    setFooterConfigDraft,
+    setFooterConfigLoadErrorMessage,
+    setFooterConfigReady,
     setFooterPages,
     setFooterPagesLoadErrorMessage,
     setFooterPagesReady,

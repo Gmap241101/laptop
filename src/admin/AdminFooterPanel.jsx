@@ -171,13 +171,13 @@ export default function AdminFooterPanel({ ctx }) {
           aria-modal="true"
           aria-label={footerPageDialog.mode === 'edit' ? '푸터 메뉴 페이지 수정' : '푸터 메뉴 페이지 등록'}
         >
-          <section className="max-h-[92vh] w-full max-w-5xl overflow-y-auto mk-modal-scroll-shell rounded-2xl border border-orange-200 bg-white shadow-2xl">
-          <div className="flex items-start justify-between gap-4 border-b border-orange-100 bg-orange-50 px-5 py-4">
+          <section className="max-h-[94vh] w-full max-w-5xl overflow-y-auto mk-modal-scroll-shell rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+          <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">
+                <h3 className="text-base font-bold text-slate-900">
                   {footerPageDialog.mode === 'edit' ? '푸터 메뉴 페이지 수정' : '푸터 메뉴 페이지 등록'}
                 </h3>
-                <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                <p className="mt-1 text-xs leading-5 text-slate-500">
                   배너 관리와 같은 입력 체계로 제목 표시, 연결 방식, 탭 열기와 상세 본문을 등록합니다.
                 </p>
               </div>
@@ -185,14 +185,14 @@ export default function AdminFooterPanel({ ctx }) {
                 type="button"
                 onClick={closeFooterPageDialog}
                 disabled={footerPageSaving}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed"
                 aria-label="닫기"
               >
                 <X size={18} />
               </button>
           </div>
 
-          <div className="space-y-5 p-5">
+          <div className="mt-5 space-y-5">
               <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                 <div>
                   <div className="text-xs font-semibold text-slate-700">사용 여부</div>
@@ -234,7 +234,7 @@ export default function AdminFooterPanel({ ctx }) {
                   <label
                     className={`cursor-pointer rounded-xl border px-4 py-3 transition ${
                       !isImageTitle
-                        ? 'border-orange-300 bg-orange-50 ring-1 ring-orange-200'
+                        ? 'border-slate-400 bg-slate-50 ring-1 ring-slate-200'
                         : 'border-slate-200 bg-white hover:bg-slate-50'
                     }`}
                   >
@@ -258,7 +258,7 @@ export default function AdminFooterPanel({ ctx }) {
                   <label
                     className={`cursor-pointer rounded-xl border px-4 py-3 transition ${
                       isImageTitle
-                        ? 'border-orange-300 bg-orange-50 ring-1 ring-orange-200'
+                        ? 'border-slate-400 bg-slate-50 ring-1 ring-slate-200'
                         : 'border-slate-200 bg-white hover:bg-slate-50'
                     }`}
                   >
@@ -281,36 +281,38 @@ export default function AdminFooterPanel({ ctx }) {
                 </div>
               </div>
 
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-semibold text-slate-600">
-                  {isImageTitle ? '대체 텍스트·상세 페이지 제목' : '제목'}
-                </span>
-                <input
-                  type="text"
-                  value={footerPageForm.title}
-                  onChange={(event) =>
-                    setFooterPageForm((prev) => ({ ...prev, title: event.target.value }))
-                  }
-                  placeholder={isImageTitle ? '예: 개인정보처리방침 로고' : '예: 개인정보처리방침'}
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none mk-form-focus"
-                />
-              </label>
+              <div className="grid gap-3 md:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)] md:items-end">
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                    {isImageTitle ? '대체 텍스트·상세 페이지 제목' : '제목'}
+                  </span>
+                  <input
+                    type="text"
+                    value={footerPageForm.title}
+                    onChange={(event) =>
+                      setFooterPageForm((prev) => ({ ...prev, title: event.target.value }))
+                    }
+                    placeholder={isImageTitle ? '예: 개인정보처리방침 로고' : '예: 개인정보처리방침'}
+                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none mk-form-focus"
+                  />
+                </label>
 
-              <label className={`flex items-center gap-2 text-xs font-semibold ${isImageTitle ? 'text-slate-400' : 'text-slate-700'}`}>
-                <input
-                  type="checkbox"
-                  checked={Boolean(footerPageForm.isTitleBold)}
-                  disabled={isImageTitle || footerPageSaving}
-                  onChange={(event) =>
-                    setFooterPageForm((prev) => ({ ...prev, isTitleBold: event.target.checked }))
-                  }
-                  className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500 disabled:cursor-not-allowed disabled:opacity-50"
-                />
-                제목 항상 굵게
-                {isImageTitle && (
-                  <span className="font-normal text-slate-400">(이미지 제목에는 적용되지 않음)</span>
-                )}
-              </label>
+                <label className={`flex min-h-10 items-center gap-2 text-xs font-semibold md:h-10 ${isImageTitle ? 'text-slate-400' : 'text-slate-700'}`}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(footerPageForm.isTitleBold)}
+                    disabled={isImageTitle || footerPageSaving}
+                    onChange={(event) =>
+                      setFooterPageForm((prev) => ({ ...prev, isTitleBold: event.target.checked }))
+                    }
+                    className="h-4 w-4 rounded border-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                  제목 항상 굵게
+                  {isImageTitle && (
+                    <span className="font-normal text-slate-400">(이미지 제목에는 적용되지 않음)</span>
+                  )}
+                </label>
+              </div>
 
               {isImageTitle && (
                 <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -426,11 +428,11 @@ export default function AdminFooterPanel({ ctx }) {
                         </div>
                       </label>
                       <p className="text-[10px] leading-4 text-slate-500">
-                        영문 소문자, 숫자, 하이픈(-)만 사용할 수 있으며 다른 푸터 페이지와 중복될 수 없습니다.
+                        영문 소문자, 숫자, 하이픈(-), 언더바(_)를 사용할 수 있으며 영문/숫자로 시작하고 끝나야 합니다. 다른 푸터 페이지와 중복될 수 없습니다.
                         {footerContentPath ? ` 저장 후 주소: ${footerContentPath}` : ''}
                       </p>
                       {footerPageDialog?.mode === 'edit' && !footerPageForm.addressId && (
-                        <p className="text-[10px] font-medium leading-4 text-orange-600">
+                        <p className="text-[10px] font-medium leading-4 text-slate-500">
                           기존 페이지입니다. 이번 수정 저장부터 새 주소 ID를 지정해야 하며 이후 /info/&lt;주소ID&gt;가 기본 주소가 됩니다.
                         </p>
                       )}
@@ -467,7 +469,6 @@ export default function AdminFooterPanel({ ctx }) {
                   사용자 푸터에는 제목 또는 제목 이미지만 표시되며 클릭 동작은 발생하지 않습니다.
                 </div>
               )}
-            </div>
 
             <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
               <Button
@@ -488,6 +489,7 @@ export default function AdminFooterPanel({ ctx }) {
                 {footerPageSaving ? '저장 중...' : footerPageDialog.mode === 'edit' ? '수정 저장' : '등록'}
               </Button>
             </div>
+          </div>
           </section>
         </ModalPortal>
       )}

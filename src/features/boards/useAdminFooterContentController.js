@@ -55,7 +55,7 @@ export const normalizeFooterPageAddressId = (value = '') =>
 
 export const isValidFooterPageAddressId = (value = '') => {
   const normalized = normalizeFooterPageAddressId(value);
-  return /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(normalized);
+  return /^[a-z0-9](?:[a-z0-9_-]{0,62}[a-z0-9])?$/.test(normalized);
 };
 
 export const getFooterPageRouteId = (page = {}) =>
@@ -350,7 +350,7 @@ export default function useAdminFooterContentController({
       !isValidFooterPageAddressId(addressId)
     ) {
       triggerToast(
-        '주소 ID는 영문 소문자, 숫자, 하이픈(-)만 사용하고 영문/숫자로 시작하고 끝나야 합니다. (최대 64자)',
+        '주소 ID는 영문 소문자, 숫자, 하이픈(-), 언더바(_)를 사용하고 영문/숫자로 시작하고 끝나야 합니다. (최대 64자)',
         'error'
       );
       return;

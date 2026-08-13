@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
   ArrowDown,
@@ -96,6 +96,7 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
   const [dialogOpen, setDialogOpen] = useState(false);
   const [previewTerm, setPreviewTerm] = useState(null);
   const [form, setForm] = useState(createEmptyForm);
+  const formBaselineRef = useRef('');
   const [saving, setSaving] = useState(false);
   const [actionId, setActionId] = useState('');
 
@@ -219,12 +220,14 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
   }, [query, terms]);
 
   const openCreate = () => {
-    setForm({ ...createEmptyForm(), displayOrder: terms.length });
+    const nextForm = { ...createEmptyForm(), displayOrder: terms.length };
+    setForm(nextForm);
+    formBaselineRef.current = JSON.stringify(nextForm);
     setDialogOpen(true);
   };
 
   const openEdit = (term) => {
-    setForm({
+    const nextForm = {
       id: term.id,
       title: term.title || '',
       required: Boolean(term.required),
@@ -233,8 +236,33 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
       changeNote: '',
       requireReconsent: true,
       displayOrder: term.displayOrder,
-    });
+    };
+    setForm(nextForm);
+    formBaselineRef.current = JSON.stringify(nextForm);
     setDialogOpen(true);
+  };
+
+  const resetTermDialog = () => {
+    setDialogOpen(false);
+    setForm(createEmptyForm());
+    formBaselineRef.current = '';
+  };
+
+  const closeTermDialog = () => {
+    if (saving || !dialogOpen) return;
+
+    if (JSON.stringify(form) === formBaselineRef.current) {
+      resetTermDialog();
+      return;
+    }
+
+    triggerConfirm(
+      '저장되지 않은 이용약관',
+      '저장되지 않은 이용약관 변경사항이 있습니다. 저장하지 않고 닫으시겠습니까?',
+      async () => {
+        resetTermDialog();
+      }
+    );
   };
 
   const saveTerm = async () => {
@@ -320,8 +348,7 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
             ]
           : termVersions;
         await patchTermsDomain({ nextTerms, nextPolicy, nextVersions });
-        setDialogOpen(false);
-        setForm(createEmptyForm());
+        resetTermDialog();
         triggerToast(form.id ? '이용약관의 새 버전을 저장했습니다.' : '이용약관을 등록했습니다.', 'success');
         return;    } catch (error) {
       console.error('Signup term save error:', error);
@@ -562,7 +589,7 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
             </label>
 
             <div className="mt-6 flex justify-end gap-2 border-t border-slate-100 pt-5">
-              <Button type="button" variant="outline" disabled={saving} onClick={() => setDialogOpen(false)}>취소</Button>
+              <Button type="button" variant="outline" disabled={saving} onClick={closeTermDialog}>취소</Button>
               <Button type="button" variant="primary" disabled={saving} onClick={saveTerm}>{saving ? '저장 중...' : '저장'}</Button>
             </div>
           </div>

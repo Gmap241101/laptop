@@ -117,12 +117,7 @@ export default function useAdminBoardPostController({
       return;
     }
 
-    setNoticePostDialog({
-      mode: post ? 'edit' : 'create',
-      postId: post?.id || '',
-    });
-
-    setNoticePostForm({
+    const nextForm = {
       title: post?.title || '',
       contentHtml: sanitizeRichTextHtml(
         post?.contentHtml ||
@@ -131,14 +126,36 @@ export default function useAdminBoardPostController({
           )
       ),
       isPinned: Boolean(post?.isPinned),
+    };
+
+    setNoticePostDialog({
+      mode: post ? 'edit' : 'create',
+      postId: post?.id || '',
+      initialForm: JSON.stringify(nextForm),
     });
+    setNoticePostForm(nextForm);
   };
 
   const closeNoticePostDialog = () => {
-    if (noticePostSaving) return;
+    if (noticePostSaving || !noticePostDialog) return;
 
-    setNoticePostDialog(null);
-    setNoticePostForm(createDefaultNoticePostForm());
+    const resetDialog = () => {
+      setNoticePostDialog(null);
+      setNoticePostForm(createDefaultNoticePostForm());
+    };
+
+    if (JSON.stringify(noticePostForm) === noticePostDialog.initialForm) {
+      resetDialog();
+      return;
+    }
+
+    triggerConfirm(
+      '저장되지 않은 공지사항',
+      '저장되지 않은 공지사항 변경사항이 있습니다. 저장하지 않고 닫으시겠습니까?',
+      async () => {
+        resetDialog();
+      }
+    );
   };
 
   const saveNoticePost = async () => {
@@ -328,12 +345,7 @@ export default function useAdminBoardPostController({
       return;
     }
 
-    setFaqPostDialog({
-      mode: post ? 'edit' : 'create',
-      postId: post?.id || '',
-    });
-
-    setFaqPostForm({
+    const nextForm = {
       categoryId: post?.categoryId || faqCategories[0]?.id || '',
       title: post?.title || '',
       contentHtml: sanitizeRichTextHtml(
@@ -343,14 +355,36 @@ export default function useAdminBoardPostController({
           )
       ),
       isPinned: Boolean(post?.isPinned),
+    };
+
+    setFaqPostDialog({
+      mode: post ? 'edit' : 'create',
+      postId: post?.id || '',
+      initialForm: JSON.stringify(nextForm),
     });
+    setFaqPostForm(nextForm);
   };
 
   const closeFaqPostDialog = () => {
-    if (faqPostSaving) return;
+    if (faqPostSaving || !faqPostDialog) return;
 
-    setFaqPostDialog(null);
-    setFaqPostForm(createDefaultFaqPostForm());
+    const resetDialog = () => {
+      setFaqPostDialog(null);
+      setFaqPostForm(createDefaultFaqPostForm());
+    };
+
+    if (JSON.stringify(faqPostForm) === faqPostDialog.initialForm) {
+      resetDialog();
+      return;
+    }
+
+    triggerConfirm(
+      '저장되지 않은 FAQ',
+      '저장되지 않은 FAQ 변경사항이 있습니다. 저장하지 않고 닫으시겠습니까?',
+      async () => {
+        resetDialog();
+      }
+    );
   };
 
   const saveFaqPost = async () => {

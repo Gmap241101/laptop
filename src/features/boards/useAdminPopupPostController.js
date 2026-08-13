@@ -80,12 +80,7 @@ export default function useAdminPopupPostController({
       return;
     }
 
-    setPopupPostDialog({
-      mode: post ? 'edit' : 'create',
-      postId: post?.id || '',
-    });
-
-    setPopupPostForm({
+    const nextForm = {
       enabled: post ? Boolean(post.enabled) : true,
       title: post?.title || '',
       subtitle: post?.subtitle || '',
@@ -104,13 +99,36 @@ export default function useAdminPopupPostController({
               ['home', 'rental'].includes(page)
             )
           : ['home'],
+    };
+
+    setPopupPostDialog({
+      mode: post ? 'edit' : 'create',
+      postId: post?.id || '',
+      initialForm: JSON.stringify(nextForm),
     });
+    setPopupPostForm(nextForm);
   };
 
   const closePopupPostDialog = () => {
-    if (popupPostSaving) return;
-    setPopupPostDialog(null);
-    setPopupPostForm(createDefaultPopupPostForm());
+    if (popupPostSaving || !popupPostDialog) return;
+
+    const resetDialog = () => {
+      setPopupPostDialog(null);
+      setPopupPostForm(createDefaultPopupPostForm());
+    };
+
+    if (JSON.stringify(popupPostForm) === popupPostDialog.initialForm) {
+      resetDialog();
+      return;
+    }
+
+    triggerConfirm(
+      '저장되지 않은 팝업',
+      '저장되지 않은 팝업 변경사항이 있습니다. 저장하지 않고 닫으시겠습니까?',
+      async () => {
+        resetDialog();
+      }
+    );
   };
 
   const savePopupPost = async () => {

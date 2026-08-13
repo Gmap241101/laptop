@@ -317,6 +317,7 @@ assert.equal(realReplaceResult.sourceMode, 'postgresql-admin-settings-patch');
 const repositorySource = fs.readFileSync(new URL('../../server/src/content/site-content-repository.mjs', import.meta.url), 'utf8');
 assert.equal(repositorySource.includes('this.getDomain('), false, 'site-content repository arrow functions must not call this.getDomain');
 assert.equal(repositorySource.includes('this.getRentalConfigBootstrapContext('), false, 'site-content repository arrow functions must not call this.getRentalConfigBootstrapContext');
+assert.match(repositorySource, /const \[syncResult, docsResult\] = await Promise\.all\(/, 'site-content domain reads must execute independent sync-metadata and document queries concurrently');
 
 
 const memberAuthoritySource = fs.readFileSync(new URL('../../server/src/members/member-authority-service.mjs', import.meta.url), 'utf8');
