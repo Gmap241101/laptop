@@ -137,7 +137,7 @@ export default function UserHomePanel({ ctx }) {
       try {
         const content = await requestSiteContentDomain({
           domain: SITE_CONTENT_DOMAINS.HOME,
-          useCache: false,
+          useCache: true,
         });
         const postgresBanners = content.documents
           .filter((item) => item.key.startsWith('homeBanners/') && item.enabled !== false && item.payload?.enabled !== false)

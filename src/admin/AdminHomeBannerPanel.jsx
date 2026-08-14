@@ -385,7 +385,7 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
     try {
       await replaceHomeDomain({ config: configDraft });
       configBaselineRef.current = JSON.stringify(configDraft);
-      triggerToast('초기화면 표시 설정을 저장했습니다.', 'success');
+      triggerToast('초기화면 표시 설정이 성공적으로 저장 및 반영되었습니다.', 'success');
     } catch (error) {
       console.error('Home page config save error:', error);
       triggerToast(`초기화면 설정 저장에 실패했습니다. 오류 코드: ${error?.code || error?.message || 'unknown-error'}`, 'error');
@@ -482,7 +482,7 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
             }
           : { ...banner, sortOrder: index + 1, updatedAt });
         await replaceHomeDomain({ banners: allBanners.filter((banner) => banner.placement !== placement).concat(nextPlacementBanners) });
-        triggerToast(`${panelConfig.itemLabel} DB 저장 성공`, 'success');
+        triggerToast(`${panelConfig.itemLabel} 변경사항이 성공적으로 저장 및 반영되었습니다.`, 'success');
         setEditing(false);
         const next = createForm(placement);
         setForm(next);
@@ -505,7 +505,7 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
             ? { ...item, enabled: !Boolean(item.enabled), updatedAt: new Date() }
             : item),
         });
-        triggerToast(`${panelConfig.itemLabel} DB 상태 변경 성공`, 'success');
+        triggerToast(`${panelConfig.itemLabel} 사용 상태가 성공적으로 저장 및 반영되었습니다.`, 'success');
         return;
     } catch (error) {
       console.error('Home banner toggle error:', error);
@@ -544,7 +544,7 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
               .map((item, index) => ({ ...item, sortOrder: index + 1, updatedAt: new Date() }));
             await replaceHomeDomain({ banners: allBanners.filter((item) => item.placement !== placement).concat(remaining) });
             if (form.id === banner.id) setEditing(false);
-            triggerToast(`${panelConfig.itemLabel} DB 삭제 성공`, 'success');
+            triggerToast(`${panelConfig.itemLabel} 삭제가 성공적으로 반영되었습니다.`, 'success');
             return;
         } catch (error) {
           console.error('Home banner delete error:', error);

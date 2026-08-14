@@ -94,7 +94,7 @@ const memberAuthorityService = {
   async editSelf() { return { authority: 'postgresql', member: memberShadowProfile }; },
   async editAdmin() { return { authority: 'postgresql', member: memberShadowProfile }; },
   async changeStatusAdmin() { return { authority: 'postgresql', member: memberShadowProfile }; },
-  async syncMemberDirectoryAdmin(input) { memberDirectorySyncInput = input; return { authority: 'postgresql', count: 1, version: 1 }; },
+  async syncMemberDirectoryAdmin(input) { memberDirectorySyncInput = input; return { authority: 'postgresql', target: 'postgresql-member-directory', count: 1, version: 1 }; },
   async auditMemberDirectoryAdmin() { return { authority: 'postgresql', source: 'postgresql-authoritative', audit: { total: 1, normal: 1, profileRequired: 0, duplicates: 0, missing: 0, failed: 0, directoryVersion: 1 } }; },
   async restoreDirectoryMismatchAdmin() { return { authority: 'postgresql', source: 'postgresql-authoritative', restoredCount: 1, failed: 0 }; },
   async bootstrapAdminRegistry() { return { authority: 'postgresql', count: 1 }; },
@@ -388,7 +388,7 @@ try {
     body: largeDirectoryBody,
   });
   const directorySyncBody = await directorySync.json();
-  if (directorySync.status !== 200 || directorySyncBody.memberDirectorySync?.authority !== 'postgresql') throw new Error('Large PostgreSQL member directory synchronization failed.');
+  if (directorySync.status !== 200 || directorySyncBody.memberDirectorySync?.authority !== 'postgresql' || directorySyncBody.memberDirectorySync?.target !== 'postgresql-member-directory') throw new Error('Large PostgreSQL member directory synchronization failed.');
   if (!Array.isArray(memberDirectorySyncInput?.teams) || memberDirectorySyncInput.teams[0] !== '부서-0' || Number(memberDirectorySyncInput?.settings?.memberDirectoryVersion || 0) !== 2) throw new Error('Member-directory synchronization did not forward organization configuration into the authoritative server mutation.');
 
   const accounts = await fetch(`${baseUrl}/api/admin/accounts`, { headers: authHeaders });

@@ -338,6 +338,8 @@ assert.equal(repositorySource.includes('const [syncResult, docsResult] = await P
 
 
 const memberAuthoritySource = fs.readFileSync(new URL('../../server/src/members/member-authority-service.mjs', import.meta.url), 'utf8');
+assert.match(memberAuthoritySource, /\.\.\.state,[\s\S]*authority:\s*'postgresql',[\s\S]*target:\s*'postgresql-member-directory',[\s\S]*skipped:\s*false/, 'member-directory save responses must preserve the canonical PostgreSQL member-directory target after repository state is spread');
+assert.match(memberAuthoritySource, /\.\.\.state,[\s\S]*target:\s*'postgresql-member-directory',[\s\S]*skipped:\s*true/, 'member-directory skipped responses must preserve the canonical PostgreSQL member-directory target after repository state is spread');
 const profileProjectionBlock = memberAuthoritySource.match(/const profileFromAccount = \(account = \{\}, firebaseUid = ''\) => \(\{[\s\S]*?\}\);/)?.[0] || '';
 assert.match(profileProjectionBlock, /createdAt:\s*account\.createdAt \|\| null/, 'PostgreSQL member edit response must preserve signup timestamp');
 assert.match(profileProjectionBlock, /updatedAt:\s*account\.updatedAt \|\| null/, 'PostgreSQL member edit response must preserve update timestamp');

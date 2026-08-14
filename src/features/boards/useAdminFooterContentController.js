@@ -188,7 +188,7 @@ export default function useAdminFooterContentController({
             }),
           ],
         });
-        triggerToast('푸터 공통 정보 DB 저장 성공', 'success');
+        triggerToast('푸터 공통 정보가 성공적으로 저장 및 반영되었습니다.', 'success');
         return true;
     } catch (error) {
       console.error('Footer config save error:', error);
@@ -441,7 +441,7 @@ export default function useAdminFooterContentController({
             ? [{ documentKey: `footerPages/${pageId}`, addressId }]
             : [],
         });
-        triggerToast('푸터 페이지 DB 저장 성공', 'success');
+        triggerToast('푸터 페이지가 성공적으로 저장 및 반영되었습니다.', 'success');
         resetFooterPageDialog();
         return;
     } catch (error) {
@@ -479,7 +479,7 @@ export default function useAdminFooterContentController({
             }),
           ],
         });
-        triggerToast('푸터 페이지 DB 상태 변경 성공', 'success');
+        triggerToast('푸터 페이지 사용 상태가 성공적으로 저장 및 반영되었습니다.', 'success');
         return;
     } catch (error) {
       console.error('Footer page enabled toggle error:', error);
@@ -562,7 +562,7 @@ export default function useAdminFooterContentController({
             });
             if (selectedFooterPageId === page.id) setSelectedFooterPageId('');
             if (footerPageDialog?.pageId === page.id) resetFooterPageDialog();
-            triggerToast('푸터 페이지 DB 삭제 성공', 'success');
+            triggerToast('푸터 페이지 삭제가 성공적으로 반영되었습니다.', 'success');
             return;
         } catch (error) {
           console.error('Footer page delete error:', error);

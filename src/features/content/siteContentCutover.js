@@ -1,5 +1,3 @@
-import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
-
 const EVENT_NAME = 'rental:site-content-cutover';
 const INVALIDATION_EVENT_NAME = 'rental:site-content-invalidated';
 const INVALIDATION_STORAGE_KEY = 'mk_site_content_invalidated_v2';
@@ -171,6 +169,7 @@ export const requestSiteContentDomain = async ({ domain, fetchImpl = fetch, conf
 };
 
 const getClerkToken = async ({ forceRefresh = false } = {}) => {
+  const { clerkStagingClient } = await import('../../clerk/clerkStagingClient.js');
   const clerk = await clerkStagingClient.initialize();
   const token = await clerk?.session?.getToken?.(forceRefresh ? { skipCache: true } : undefined);
   if (!token) throw Object.assign(new Error('Clerk administrator session is required for site content write-through.'), { code: 'site_content_clerk_session_missing' });

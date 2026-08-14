@@ -241,7 +241,7 @@ export default function useAdminPopupPostController({
             }
           : { ...post, sortOrder: index + 1, updatedAt });
         await replacePopupDomain(nextPosts);
-        triggerToast('팝업 DB 저장 성공', 'success');
+        triggerToast('팝업이 성공적으로 저장 및 반영되었습니다.', 'success');
         setPopupPostDialog(null);
         setPopupPostForm(createDefaultPopupPostForm());
         return;
@@ -269,7 +269,7 @@ export default function useAdminPopupPostController({
         await replacePopupDomain(popupPosts.map((item) => item.id === post.id
           ? { ...item, enabled: !Boolean(item.enabled), updatedAt: new Date() }
           : item));
-        triggerToast('팝업 DB 상태 변경 성공', 'success');
+        triggerToast('팝업 사용 상태가 성공적으로 저장 및 반영되었습니다.', 'success');
         return;
     } catch (error) {
       console.error('Popup enabled toggle error:', error);
@@ -338,7 +338,7 @@ export default function useAdminPopupPostController({
               setPopupPostDialog(null);
               setPopupPostForm(createDefaultPopupPostForm());
             }
-            triggerToast('팝업 DB 삭제 성공', 'success');
+            triggerToast('팝업 삭제가 성공적으로 반영되었습니다.', 'success');
             return;
         } catch (error) {
           console.error('Popup post delete error:', error);

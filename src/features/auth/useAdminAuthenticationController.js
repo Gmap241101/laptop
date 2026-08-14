@@ -40,6 +40,21 @@ import {
 
 export { createDefaultAdminAuthForm } from './authSessionService.js';
 
+const signOutClerkForRuntimeSurface = (runtimeSurface) =>
+  clerkStagingClient.signOut(
+    runtimeSurface === 'admin'
+      ? { redirectUrl: '/admin' }
+      : undefined
+  );
+
+const syncAdminRouteIntentAfterAuthClear = (runtimeSurface) => {
+  if (runtimeSurface === 'admin') {
+    writeAdminRouteIntent();
+    return;
+  }
+  clearAdminRouteIntent();
+};
+
 export const useAdminAuthenticationState = ({ systemAdminSettings, runtimeSurface = 'user' }) => {
   const [adminAuthForm, setAdminAuthForm] = useState(createDefaultAdminAuthForm);
   const [adminAuthLoading, setAdminAuthLoading] = useState(false);
@@ -291,7 +306,7 @@ export default function useAdminAuthenticationController({
 
     const persistedAdminId = readAdminAuthSession().adminId;
     if (!authenticatedAdminId && !persistedAdminId) {
-      clearAdminRouteIntent();
+      syncAdminRouteIntentAfterAuthClear(runtimeSurface);
       setAdminPostLoginRouteGuardActive(false);
       return undefined;
     }
@@ -359,7 +374,7 @@ export default function useAdminAuthenticationController({
       } catch (error) {
         if (cancelled) return;
         setAdminClerkSessionVerified(false);
-        clearAdminRouteIntent();
+        syncAdminRouteIntentAfterAuthClear(runtimeSurface);
         setAdminPostLoginRouteGuardActive(false);
         clearAdminAuthenticatedSession();
         publishAccountAuthObservation({
@@ -417,14 +432,14 @@ export default function useAdminAuthenticationController({
           await signOut(firebaseAuth);
         }
         if (adminClerkAuthRequested) {
-          await clerkStagingClient.signOut();
+          await signOutClerkForRuntimeSurface(runtimeSurface);
           setAdminClerkSessionVerified(false);
         }
       } catch (error) {
         firebaseSignOutFailed = true;
         console.error('Expired admin authentication logout error:', error);
       } finally {
-        clearAdminRouteIntent();
+        syncAdminRouteIntentAfterAuthClear(runtimeSurface);
         setAdminPostLoginRouteGuardActive(false);
         clearAdminAuthenticatedSession();
         setAdminAuthForm(createDefaultAdminAuthForm());
@@ -496,12 +511,12 @@ export default function useAdminAuthenticationController({
         });
       }
       if (adminClerkAuthRequested) {
-        void clerkStagingClient.signOut().catch((error) => {
+        void signOutClerkForRuntimeSurface(runtimeSurface).catch((error) => {
           console.error('Locked admin Clerk logout error:', error);
         });
         setAdminClerkSessionVerified(false);
       }
-      clearAdminRouteIntent();
+      syncAdminRouteIntentAfterAuthClear(runtimeSurface);
       setAdminPostLoginRouteGuardActive(false);
       clearAdminAuthenticatedSession();
     }
@@ -548,14 +563,14 @@ export default function useAdminAuthenticationController({
               await signOut(firebaseAuth);
             }
             if (adminClerkAuthRequested) {
-              await clerkStagingClient.signOut();
+              await signOutClerkForRuntimeSurface(runtimeSurface);
               setAdminClerkSessionVerified(false);
             }
           } catch (error) {
             console.error('Admin policy change verification/logout error:', error);
           } finally {
             if (confirmedPolicyMismatch) {
-              clearAdminRouteIntent();
+              syncAdminRouteIntentAfterAuthClear(runtimeSurface);
               setAdminPostLoginRouteGuardActive(false);
               clearAdminAuthenticatedSession();
               setAdminAuthForm(createDefaultAdminAuthForm());
@@ -856,9 +871,9 @@ export default function useAdminAuthenticationController({
         const code = error?.errors?.[0]?.code || error?.code || error?.message || 'admin-clerk-authentication-failed';
         const retryable = ['form_code_incorrect', 'form_code_invalid', 'verification_failed'].includes(code);
         if (!retryable) {
-          await clerkStagingClient.signOut().catch(() => {});
+          await signOutClerkForRuntimeSurface(runtimeSurface).catch(() => {});
           setAdminAuthForm(createDefaultAdminAuthForm());
-          clearAdminRouteIntent();
+          syncAdminRouteIntentAfterAuthClear(runtimeSurface);
           setAdminPostLoginRouteGuardActive(false);
           clearAdminAuthenticatedSession();
           setCurrentAuthAdminAccount(null);
@@ -940,13 +955,13 @@ export default function useAdminAuthenticationController({
 
         if (!retryableCode) {
           if (clerkSignedIn) {
-            await clerkStagingClient.signOut().catch(() => {});
+            await signOutClerkForRuntimeSurface(runtimeSurface).catch(() => {});
           }
           if (firebaseAuth.currentUser) {
             await signOut(firebaseAuth).catch(() => {});
           }
           setAdminAuthForm(createDefaultAdminAuthForm());
-          clearAdminRouteIntent();
+          syncAdminRouteIntentAfterAuthClear(runtimeSurface);
           setAdminPostLoginRouteGuardActive(false);
           clearAdminAuthenticatedSession();
           setCurrentAuthAdminAccount(null);
@@ -1012,7 +1027,7 @@ export default function useAdminAuthenticationController({
           adminClerkMigration = 'existing';
         } catch (existingError) {
           if (clerkSignedIn) {
-            await clerkStagingClient.signOut().catch(() => {});
+            await signOutClerkForRuntimeSurface(runtimeSurface).catch(() => {});
             clerkSignedIn = false;
           }
           const firebaseIdToken = await credential.user.getIdToken();
@@ -1070,7 +1085,7 @@ export default function useAdminAuthenticationController({
       }
       if (adminClerkAuthRequested && clerkSignedIn) {
         try {
-          await clerkStagingClient.signOut();
+          await signOutClerkForRuntimeSurface(runtimeSurface);
         } catch (logoutError) {
           clerkCleanupFailed = true;
           console.error('Failed admin login Clerk cleanup error:', logoutError);
@@ -1078,7 +1093,7 @@ export default function useAdminAuthenticationController({
       }
 
       setAdminClerkSessionVerified(!adminClerkAuthRequested);
-      clearAdminRouteIntent();
+      syncAdminRouteIntentAfterAuthClear(runtimeSurface);
       setAdminPostLoginRouteGuardActive(false);
       clearAdminAuthenticatedSession();
       setCurrentAuthAdminAccount(null);
@@ -1131,7 +1146,7 @@ export default function useAdminAuthenticationController({
 
     adminLogoutInProgressRef.current = true;
     setAdminLogoutInProgress(true);
-    clearAdminRouteIntent();
+    syncAdminRouteIntentAfterAuthClear(runtimeSurface);
     setAdminPostLoginRouteGuardActive(false);
 
     const adminAccountForLogout =
@@ -1154,7 +1169,7 @@ export default function useAdminAuthenticationController({
     }
     try {
       if (adminClerkAuthRequested) {
-        await clerkStagingClient.signOut();
+        await signOutClerkForRuntimeSurface(runtimeSurface);
       }
     } catch (error) {
       clerkSignOutFailed = true;
@@ -1162,7 +1177,7 @@ export default function useAdminAuthenticationController({
     } finally {
       setAdminClerkSessionVerified(!adminClerkAuthRequested);
       clearUserLoginReturnTarget();
-      clearAdminRouteIntent();
+      syncAdminRouteIntentAfterAuthClear(runtimeSurface);
       setAdminPostLoginRouteGuardActive(false);
       clearAdminAuthenticatedSession();
       setAdminAuthForm(createDefaultAdminAuthForm());

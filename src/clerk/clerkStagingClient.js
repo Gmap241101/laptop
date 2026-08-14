@@ -1005,7 +1005,9 @@ export const requestAdminMemberDirectoryPostgresqlSync = async ({ clerk, apiBase
     body: JSON.stringify({ entries, version, teams, settings }),
   });
   if (!response.ok) { const error = new Error(`Admin PostgreSQL member directory sync failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
-  if (!payload?.authenticated || !payload?.authorized || payload?.memberDirectorySync?.target !== 'postgresql-member-directory') throw new Error('Backend returned an invalid member directory synchronization response.');
+  if (!payload?.authenticated || !payload?.authorized || payload?.memberDirectorySync?.authority !== 'postgresql' || payload?.memberDirectorySync?.target !== 'postgresql-member-directory') {
+    throw Object.assign(new Error('Backend returned an invalid member directory synchronization response.'), { code: 'member_directory_sync_payload_invalid' });
+  }
   return payload;
 };
 
@@ -1594,8 +1596,12 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
       const clerk = await initialize();
       await clerk.openSignIn();
     },
-    async signOut() {
+    async signOut(options = undefined) {
       const clerk = await initialize();
+      if (options && typeof options === 'object') {
+        await clerk.signOut(options);
+        return;
+      }
       await clerk.signOut();
     },
     async signInWithPassword(identifier, password) {

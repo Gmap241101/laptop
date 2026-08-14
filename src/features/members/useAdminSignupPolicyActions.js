@@ -82,6 +82,14 @@ export default function useAdminSignupPolicyActions({
 
     const nextRequireRegistered = Boolean(tempRequireRegisteredMemberForSignup);
     const nextAutoApprove = nextRequireRegistered && Boolean(tempAutoApproveNewMembers);
+    const currentTerms = normalizeTermsSettings(settings);
+    const beforeValues = {
+      requireRegisteredMemberForSignup: Boolean(settings.requireRegisteredMemberForSignup),
+      autoApproveNewMembers: Boolean(settings.autoApproveNewMembers),
+      signupTermsEnabled: Boolean(currentTerms.signupTermsEnabled),
+      signupTermsRequireReconsentOnChange: Boolean(currentTerms.signupTermsRequireReconsentOnChange),
+      signupTermsApplyToExistingMembers: Boolean(currentTerms.signupTermsApplyToExistingMembers),
+    };
     setSignupPolicySaving(true);
 
     try {
@@ -111,10 +119,37 @@ export default function useAdminSignupPolicyActions({
 
       const restoredCount = Number(mutation?.directoryRestore?.restoredCount || 0);
       const restoreFailed = Number(mutation?.directoryRestore?.failed || 0);
-      triggerToastRef.current(
-        `\ud68c\uc6d0\uac00\uc785 \uc815\ucc45\uc774 PostgreSQL\uc5d0 \uc800\uc7a5\ub418\uc5c8\uc2b5\ub2c8\ub2e4.${restoredCount > 0 ? ` \uba85\ubd80 \ubd88\uc77c\uce58\ub85c \uc804\ud658\ub410\ub358 \ud68c\uc6d0 ${restoredCount}\uba85\uc758 \uc0c1\ud0dc\ub97c \ubcf5\uc6d0\ud588\uc2b5\ub2c8\ub2e4.` : ''}${restoreFailed > 0 ? ` \ubcf5\uc6d0 \uc2e4\ud328 ${restoreFailed}\uba85\uc740 \ud68c\uc6d0 \uc0c1\ud0dc\ub97c \ud655\uc778\ud574 \uc8fc\uc138\uc694.` : ''}`,
-        restoreFailed > 0 ? 'error' : 'success'
-      );
+      let auditWriteError = null;
+      try {
+        await clerkStagingClient.appendAdminSystemSettingsAudit({
+          action: 'signup-policy-settings-update',
+          section: '회원가입 정책',
+          summary: '가입 허용 명부, 자동 승인 및 가입 약관 적용 정책을 변경했습니다.',
+          beforeValues,
+          afterValues: {
+            requireRegisteredMemberForSignup: Boolean(nextSettings.requireRegisteredMemberForSignup),
+            autoApproveNewMembers: Boolean(nextSettings.autoApproveNewMembers),
+            signupTermsEnabled: Boolean(nextSettings.signupTermsEnabled),
+            signupTermsRequireReconsentOnChange: nextSettings.signupTermsRequireReconsentOnChange !== false,
+            signupTermsApplyToExistingMembers: Boolean(nextSettings.signupTermsApplyToExistingMembers),
+          },
+        });
+      } catch (error) {
+        auditWriteError = error;
+        console.error('Signup policy audit write error:', error);
+      }
+
+      if (auditWriteError) {
+        triggerToastRef.current(
+          `회원가입 정책은 성공적으로 저장 및 반영되었지만 변경 이력 기록에 실패했습니다. 오류 코드: ${auditWriteError?.code || auditWriteError?.name || 'system_settings_audit_write_failed'}`,
+          'error'
+        );
+      } else {
+        triggerToastRef.current(
+          `회원가입 정책이 성공적으로 저장 및 반영되었습니다.${restoredCount > 0 ? ` 명부 불일치로 전환됐던 회원 ${restoredCount}명의 상태를 복원했습니다.` : ''}${restoreFailed > 0 ? ` 복원 실패 ${restoreFailed}명은 회원 상태를 확인해 주세요.` : ''}`,
+          restoreFailed > 0 ? 'error' : 'success'
+        );
+      }
       return true;
     } catch (error) {
       console.error('Signup policy save error:', error);
@@ -131,6 +166,7 @@ export default function useAdminSignupPolicyActions({
   }, [
     isAdminAuthenticated,
     setData,
+    settings,
     tempAutoApproveNewMembers,
     tempRequireRegisteredMemberForSignup,
     tempSignupTermsApplyToExistingMembers,

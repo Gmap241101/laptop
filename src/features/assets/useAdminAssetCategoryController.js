@@ -304,7 +304,7 @@ export default function useAdminAssetCategoryController({
           assetCount: catalog?.assets?.length || 0, categoryCount: catalog?.categories?.length || 0,
           availabilityCount: catalog?.availability?.length || 0, firestoreFallbackReads: 0, error: '',
         });
-        triggerToast(payload?.adminAssetMutation?.firestoreMirror === 'retired' ? '자산 카테고리 DB 저장 성공.' : '자산 카테고리 DB 저장 성공. 호환 저장소에도 반영되었습니다.', 'success');
+        triggerToast('자산 카테고리 변경사항이 성공적으로 저장 및 반영되었습니다.', 'success');
         return true;
       } catch (error) {
         console.error('PostgreSQL asset category save error:', error);
@@ -437,7 +437,7 @@ export default function useAdminAssetCategoryController({
       setDraggingAssetCategoryIndex(null);
 
       triggerToast(
-        '자산 카테고리 변경사항이 분리 저장소에 성공적으로 저장 및 반영되었습니다.',
+        '자산 카테고리 변경사항이 성공적으로 저장 및 반영되었습니다.',
         'success'
       );
 

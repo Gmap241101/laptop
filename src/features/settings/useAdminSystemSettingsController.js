@@ -21,6 +21,16 @@ import {
   today,
 } from '../../utils/appUtils.js';
 
+const appendSystemSettingsAudit = async (audit) => {
+  try {
+    await clerkStagingClient.appendAdminSystemSettingsAudit(audit);
+    return null;
+  } catch (error) {
+    console.error('System settings audit write error:', error);
+    return error;
+  }
+};
+
 const getComparableRentalPolicySettings = (
   settings = {},
   dataSettings = {}
@@ -653,10 +663,27 @@ export default function useAdminSystemSettingsController({
       }));
       setTempSettings(nextSettings);
 
-      triggerToast(
-        '대여 정책 변경사항이 성공적으로 저장 및 반영되었습니다.',
-        'success'
-      );
+      const auditWriteError = await appendSystemSettingsAudit({
+        action: 'rental-policy-settings-update',
+        section: '대여 정책',
+        summary: '대여 기간, 연장, 휴무일 처리와 신청 가능 조건을 변경했습니다.',
+        beforeValues: Object.fromEntries(
+          RENTAL_POLICY_SETTING_KEYS.map((key) => [key, dataSettings?.[key]])
+        ),
+        afterValues: policyValues,
+      });
+
+      if (auditWriteError) {
+        triggerToast(
+          `대여 정책은 성공적으로 저장 및 반영되었지만 변경 이력 기록에 실패했습니다. 오류 코드: ${auditWriteError?.code || auditWriteError?.name || 'system_settings_audit_write_failed'}`,
+          'error'
+        );
+      } else {
+        triggerToast(
+          '대여 정책 변경사항이 성공적으로 저장 및 반영되었습니다.',
+          'success'
+        );
+      }
 
       return true;
     } catch (error) {
@@ -704,10 +731,25 @@ export default function useAdminSystemSettingsController({
       setHolidayImportConflictModal(null);
       setHolidayImportLoading(false);
 
-      triggerToast(
-        '휴일 변경사항이 성공적으로 저장 및 반영되었습니다.',
-        'success'
-      );
+      const auditWriteError = await appendSystemSettingsAudit({
+        action: 'holiday-settings-update',
+        section: '휴일 관리',
+        summary: '대여 일정 계산에 사용하는 휴일 목록을 변경했습니다.',
+        beforeValues: { holidays: normalizeHolidayList(dataSettings.holidays || []) },
+        afterValues: { holidays: normalizedHolidays },
+      });
+
+      if (auditWriteError) {
+        triggerToast(
+          `휴일은 성공적으로 저장 및 반영되었지만 변경 이력 기록에 실패했습니다. 오류 코드: ${auditWriteError?.code || auditWriteError?.name || 'system_settings_audit_write_failed'}`,
+          'error'
+        );
+      } else {
+        triggerToast(
+          '휴일 변경사항이 성공적으로 저장 및 반영되었습니다.',
+          'success'
+        );
+      }
 
       return true;
     } catch (error) {

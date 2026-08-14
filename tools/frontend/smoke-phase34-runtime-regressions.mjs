@@ -87,6 +87,8 @@ assert.match(
   /const authoritativeSecurity = await loadAuthoritativeAdminSecuritySettings\(\);[\s\S]*?confirmedPolicyMismatch =[\s\S]*?adminAuthPolicyVersion !== authoritativeSecurity\.adminSecurityPolicyVersion/,
   'administrator policy mismatch logout must be confirmed against PostgreSQL before invalidating the Clerk session'
 );
+assert.match(adminAuthSource, /runtimeSurface === 'admin'[\s\S]*redirectUrl: '\/admin'/, 'administrator Clerk sign-out must explicitly return to the dedicated /admin login surface');
+assert.match(adminAuthSource, /const syncAdminRouteIntentAfterAuthClear =[\s\S]*runtimeSurface === 'admin'[\s\S]*writeAdminRouteIntent\(\)/, 'administrator logout/session expiry must preserve administrator route intent instead of handing control to the user surface');
 
 const adminClerkVerificationEffect = adminAuthSource.match(/useEffect\(\(\) => \{[\s\S]*?getAdminClerkSession\(\)[\s\S]*?return \(\) => \{ cancelled = true; \};[\s\S]*?\}, \[[\s\S]*?runtimeSurface,[\s\S]*?\]\);/)?.[0] || '';
 assert.ok(adminClerkVerificationEffect, 'administrator Clerk session verification effect must remain present');
@@ -196,6 +198,7 @@ assert.equal(/setInterval\([^\n]*refreshPostgresCatalog/.test(rentalDataSource),
 assert.match(rentalDataSource, /refreshPostgresRequests\(\);[\s\S]*window\.addEventListener\('blur', markWindowAway\);[\s\S]*window\.addEventListener\('focus', refreshAfterWindowReturn\)/, 'signed-in user rental requests must refresh on entry and actual window return');
 assert.match(rentalDataSource, /scheduleInitialCatalogRefresh\(\);[\s\S]*window\.addEventListener\('blur', markWindowAway\);[\s\S]*window\.addEventListener\('focus', refreshAfterWindowReturn\)/, 'rental asset and availability status must refresh once after initial scheduling and again only after actual window return');
 assert.match(rentalDataSource, /view === 'user'[\s\S]*userTab === 'home'[\s\S]*requestAnimationFrame[\s\S]*requestAnimationFrame\(refreshPostgresCatalog\)/, 'home asset/status fetch must be deferred until after the first paint instead of competing with initial rendering');
+assert.match(rentalDataSource, /domain: POLICY_CONTENT_DOMAINS\.RENTAL_CONFIG,[\s\S]*?useCache: true/, 'user rental configuration must share the early in-flight rental-config request');
 
 const adminDashboardSource = fs.readFileSync(new URL('../../src/admin/AdminDashboardPanel.jsx', import.meta.url), 'utf8');
 assert.match(adminDashboardSource, /진입·복귀 동기화 ·/, 'dashboard control must describe entry/return synchronization instead of continuous polling');
@@ -243,6 +246,10 @@ assert.equal(vercelConfig.rewrites?.[0]?.destination, '/admin/index.html');
 assert.match(userMainSource, /clearAdminRouteIntent\(\)/, 'user document must clear stale administrator route intent');
 assert.match(adminMainSource, /writeAdminRouteIntent\(\)/, 'administrator document must establish administrator route intent before React mounts');
 assert.match(userMainSource, /renderUserRoot/, 'user entrypoint must mount the dedicated user runtime root after the authenticated rental ReferenceError was resolved');
+assert.equal(userMainSource.includes("import { renderUserRoot } from './bootstrap/renderUserRoot.jsx'"), false, 'user entrypoint must not synchronously load the full UserApp graph before public-home warmup starts');
+assert.ok(userMainSource.indexOf('warmUserHomeCriticalData();') < userMainSource.indexOf("import('./bootstrap/renderUserRoot.jsx')"), 'critical public-home requests must begin before the full user runtime chunk is requested');
+assert.match(userMainSource, /initialRoute\.view === 'user' && initialRoute\.userTab === 'home'/, 'critical home warmup must run only for the public home route and not burden direct login, board, or rental routes');
+assert.match(userMainSource, /SITE_CONTENT_DOMAINS\.SITE_SETTINGS[\s\S]*SITE_CONTENT_DOMAINS\.HOME[\s\S]*requestNoticeBoard\([\s\S]*home: true[\s\S]*POLICY_CONTENT_DOMAINS\.RENTAL_CONFIG/, 'user entrypoint must warm site settings, home content, home notices, and rental public config in parallel');
 assert.equal(userMainSource.includes('renderAppRoot'), false, 'user entrypoint must no longer fall back to the shared App/AppShell recovery runtime');
 assert.match(renderUserRootSource, /import UserApp from '\.\.\/UserApp\.jsx'/, 'user document must mount UserApp directly');
 assert.match(renderUserRootSource, /UserRuntimeErrorBoundary/, 'isolated user root must retain a top-level render error boundary');
@@ -268,9 +275,14 @@ assert.equal(userWorkspaceSource.includes('화면을 불러오는 중입니다.'
 assert.equal(userWorkspaceSource.includes('requestIdleCallback'), false, 'user home must not preload lazy panels during idle time and compete with the initial page');
 assert.equal(userWorkspaceSource.includes('preloadCurrentUserPanels'), false, 'user home must not eagerly preload first-use panel chunks');
 assert.match(userNavigationSource, /startTransition\(\(\) => \{[\s\S]*setView\('user'\);[\s\S]*setUserTab\(normalizedUserTab\);[\s\S]*\}\);/, 'user tab commits must use a transition so the previous panel remains visible while a first-use chunk downloads');
+assert.match(adminNavigationSource, /window\.history\.pushState\(/, 'administrator menu changes must create same-document browser history entries');
+assert.match(adminNavigationSource, /window\.addEventListener\('popstate', handlePopState\)/, 'administrator browser Back must restore the previous administrator menu through popstate');
+assert.match(adminNavigationSource, /replaceAdminHistoryEntry\(currentTab, \{ boundary: true \}\);[\s\S]*pushAdminHistoryEntry\(currentTab\)/, 'administrator history must install a same-surface boundary so Back cannot fall through directly to the user document');
+assert.match(adminNavigationSource, /historyMode: 'none'/, 'popstate restoration must not create another administrator history entry');
 assert.match(userShellSource, /const showDataLoadingOverlay = userTab !== 'home' && !firebaseReady;/, 'initial home rendering must not be blurred behind the rental-data readiness overlay');
 assert.match(userHomeSource, /loading=\{index === 0 \? 'eager' : 'lazy'\}/, 'only the first hero image should be eager; later hero images must be lazy');
 assert.match(userHomeSource, /fetchPriority=\{index === 0 \? 'high' : 'auto'\}/, 'the first hero image should receive high fetch priority');
+assert.match(userHomeSource, /domain: SITE_CONTENT_DOMAINS\.HOME,[\s\S]*?useCache: true/, 'user home must consume the early in-flight HOME request instead of forcing a duplicate uncached read');
 assert.match(userHomeSource, /const hasPromotionBanners = bannersReady && promotionBanners\.length > 0;/, 'promotion layout must resolve from authoritative active banner metadata');
 assert.match(userHomeSource, /!bannersReady \? \([\s\S]*초기화면 콘텐츠 배치 확인 중[\s\S]*\) : \([\s\S]*hasPromotionBanners \? 'lg:grid-cols-2' : 'grid-cols-1'/, 'notice/promotion row must wait for banner-presence resolution so the rendered notice never changes width');
 assert.match(userHomeSource, /\{hasPromotionBanners && \([\s\S]*promotionSlots\.map/, 'promotion column must not render when there are no active promotion banners');
@@ -323,11 +335,11 @@ const sourceFileTexts = collectSourceFiles(sourceRoot).map((file) => ({
   file,
   source: fs.readFileSync(file, 'utf8'),
 }));
-const forbiddenPostgresqlSuccessWording = sourceFileTexts.flatMap(({ file, source }) => {
-  const matches = source.match(/PostgreSQL 저장 성공/g) || [];
-  return matches.map(() => path.relative(sourceRoot, file).replaceAll('\\', '/'));
+const forbiddenDatabaseSuccessWording = sourceFileTexts.flatMap(({ file, source }) => {
+  const matches = source.match(/(?:DB 저장 성공|DB 상태 변경 성공|DB 삭제 성공|Clerk\/DB 저장 성공|Clerk 계정\/DB 등록 성공|PostgreSQL에 저장되었습니다)/g) || [];
+  return matches.map((match) => `${path.relative(sourceRoot, file).replaceAll('\\', '/')}:${match}`);
 });
-assert.deepEqual(forbiddenPostgresqlSuccessWording, [], 'successful save toasts must use DB 저장 성공 instead of PostgreSQL 저장 성공');
+assert.deepEqual(forbiddenDatabaseSuccessWording, [], 'successful mutation toasts must describe the service change as successfully saved/applied instead of exposing DB/PostgreSQL implementation wording');
 const saveFailurePhrases = ['저장에 실패했습니다.', '저장하지 못했습니다.', '등록에 실패했습니다.', '수정에 실패했습니다.', '삭제에 실패했습니다.'];
 const saveFailureCodeViolations = [];
 for (const { file, source } of sourceFileTexts) {
@@ -408,6 +420,10 @@ assert.ok(adminImportGraph.includes('admin/AdminApp.jsx'), 'administrator import
 
 const diagnosticsSource = fs.readFileSync(new URL('../../src/clerk/ClerkStagingDiagnostics.jsx', import.meta.url), 'utf8');
 const adminSettingsSource = fs.readFileSync(new URL('../../src/admin/AdminSettingsPanel.jsx', import.meta.url), 'utf8');
+const adminSystemSettingsControllerSource = fs.readFileSync(new URL('../../src/features/settings/useAdminSystemSettingsController.js', import.meta.url), 'utf8');
+const signupPolicyActionsSource = fs.readFileSync(new URL('../../src/features/members/useAdminSignupPolicyActions.js', import.meta.url), 'utf8');
+const adminAccountSecurityAuditSource = fs.readFileSync(new URL('../../src/admin/AdminAccountSecurityPanel.jsx', import.meta.url), 'utf8');
+const clerkStagingClientSource = fs.readFileSync(new URL('../../src/clerk/clerkStagingClient.js', import.meta.url), 'utf8');
 const memberDirectorySaveActionsSource = fs.readFileSync(new URL('../../src/features/members/useAdminMemberDirectorySaveActions.js', import.meta.url), 'utf8');
 const userMyPageSource = fs.readFileSync(new URL('../../src/user/UserMyPagePanel.jsx', import.meta.url), 'utf8');
 const packageSource = fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8');
@@ -419,11 +435,18 @@ assert.equal(adminSettingsSource.includes('title="\uc678\ubd80 Firebase runtime"
 assert.match(adminSettingsSource, /getAdminSystemSettingsAudit\(50\)/, 'system settings history must load from the administrator PostgreSQL audit API');
 assert.match(adminSettingsSource, /appendAdminSystemSettingsAudit\(audit\)/, 'system settings saves must append PostgreSQL audit entries instead of using the old skipped stub');
 assert.equal(adminSettingsSource.includes("Object.freeze({ skipped: true, source: 'postgresql-runtime' })"), false, 'system settings history must not remain a no-op stub');
+assert.match(adminSettingsSource, /사이트 기본 설정, 홈 화면 기본 설정, 서비스 운영, 대여 정책, 휴일 관리, 회원가입 정책, 계정 보안 설정/, 'system settings audit UI must describe the actual expanded audit scope');
+assert.match(adminSystemSettingsControllerSource, /appendAdminSystemSettingsAudit\([\s\S]*rental-policy-settings-update/, 'rental policy saves must append the PostgreSQL system settings audit');
+assert.match(adminSystemSettingsControllerSource, /holiday-settings-update/, 'holiday saves must append the PostgreSQL system settings audit');
+assert.match(signupPolicyActionsSource, /appendAdminSystemSettingsAudit\([\s\S]*signup-policy-settings-update/, 'signup policy saves must append the PostgreSQL system settings audit');
+assert.match(adminAccountSecurityAuditSource, /appendAdminSystemSettingsAudit\([\s\S]*account-security-settings-update/, 'account security saves must append the PostgreSQL system settings audit');
+assert.match(clerkStagingClientSource, /member_directory_sync_payload_invalid/, 'member-directory sync response contract failures must expose a stable error code instead of the generic Error name');
+assert.match(clerkStagingClientSource, /async signOut\(options = undefined\)[\s\S]*clerk\.signOut\(options\)/, 'Clerk wrapper must forward an explicit administrator sign-out redirect option when supplied');
 assert.match(memberDirectorySaveActionsSource, /syncAdminMemberDirectory\(\{[\s\S]*entries: directoryEntries[\s\S]*version: nextSettings\.memberDirectoryVersion[\s\S]*teams: nextTeams[\s\S]*settings: nextSettings/, 'department/user saves must synchronize the directory and organization configuration through one authoritative PostgreSQL mutation');
 assert.equal(memberDirectorySaveActionsSource.includes('patchPolicyContentDomainInPostgresql'), false, 'department/user saves must not perform a second browser-side rental-config write after directory synchronization');
 assert.equal(memberDirectorySaveActionsSource.includes('requestPolicyContentDomain'), false, 'department/user saves must not require a browser-side rental-config read before synchronization');
 assert.equal(memberDirectorySaveActionsSource.includes('replacePolicyContentDomainInPostgresql'), false, 'department/user saves must not replace the complete rental-config domain');
-assert.match(memberDirectorySaveActionsSource, /부서·사용자 명부 DB 저장 성공/, 'successful department/user saves must use the DB success wording');
+assert.match(memberDirectorySaveActionsSource, /부서·사용자 명부가 성공적으로 저장 및 반영되었습니다/, 'successful department/user saves must use the service-oriented saved/applied wording');
 assert.match(memberDirectorySaveActionsSource, /부서·사용자 PostgreSQL 저장에 실패했습니다\.[\s\S]*오류 코드:/, 'failed department/user saves must retain PostgreSQL failure wording and expose an error code');
 assert.equal(userMyPageSource.includes('Firebase Auth \ub85c\uadf8\uc778 \uc774\uba54\uc77c'), false, 'my-page login email labels must use current Clerk naming');
 assert.equal(packageSource.includes('audit:firestore'), false, 'current package scripts must use external-runtime audit naming');
@@ -441,6 +464,7 @@ const footerPanelSource = fs.readFileSync(new URL('../../src/admin/AdminFooterPa
 const homeBannerPanelSource = fs.readFileSync(new URL('../../src/admin/AdminHomeBannerPanel.jsx', import.meta.url), 'utf8');
 const homeManagementPanelSource = fs.readFileSync(new URL('../../src/admin/AdminHomeManagementPanel.jsx', import.meta.url), 'utf8');
 const siteContentCutoverSource = fs.readFileSync(new URL('../../src/features/content/siteContentCutover.js', import.meta.url), 'utf8');
+const boardContentCutoverSource = fs.readFileSync(new URL('../../src/features/boards/boardContentCutover.js', import.meta.url), 'utf8');
 const siteContentRefreshRevisionSource = fs.readFileSync(new URL('../../src/features/content/useSiteContentRefreshRevision.js', import.meta.url), 'utf8');
 const userFooterSource = fs.readFileSync(new URL('../../src/user/UserFooter.jsx', import.meta.url), 'utf8');
 const popupFooterControllerSource = fs.readFileSync(new URL('../../src/features/boards/usePopupFooterContentSubscriptionController.js', import.meta.url), 'utf8');
@@ -487,6 +511,13 @@ assert.match(footerControllerSource, /addressId: String\(page\?\.addressId \|\| 
 assert.match(siteContentCutoverSource, /addressClaims/, 'site-content PostgreSQL partial patches must carry footer address uniqueness claims');
 assert.match(siteContentCutoverSource, /cached\?\.promise && \(cached\.pending \|\| cached\.expiresAt > nowMillis\)/, 'site-content cache must always share an in-flight domain request even when a slow request exceeds the short resolved-result TTL');
 assert.match(siteContentCutoverSource, /cacheEntry\.expiresAt = Date\.now\(\) \+ DOMAIN_CACHE_TTL_MS/, 'site-content cache TTL must begin after a successful response instead of at request start');
+assert.equal(siteContentCutoverSource.startsWith("import { clerkStagingClient }"), false, 'public site-content reads must not synchronously pull the large Clerk client into the critical home warmup chunk');
+assert.match(siteContentCutoverSource, /await import\('\.\.\/\.\.\/clerk\/clerkStagingClient\.js'\)/, 'administrator site-content writes must lazy-load Clerk only when an authenticated mutation needs it');
+assert.equal(boardContentCutoverSource.includes("import { clerkStagingClient } from '../../clerk/clerkStagingClient.js'"), false, 'public notice warmup must not synchronously pull Clerk into the user entry chunk');
+assert.match(boardContentCutoverSource, /await import\('\.\.\/\.\.\/clerk\/clerkStagingClient\.js'\)/, 'administrator board mutations must lazy-load Clerk on demand');
+assert.match(popupFooterControllerSource, /scheduleAfterUserFirstPaint/, 'noncritical user popup/footer reads must be deferred until after the first paint');
+assert.match(popupFooterControllerSource, /shouldLoadUserPopup && !shouldLoadAdminPopup[\s\S]*scheduleAfterUserFirstPaint/, 'user popup reads must not compete with critical home bootstrap requests');
+assert.match(popupFooterControllerSource, /shouldLoadUserFooter[\s\S]*scheduleAfterUserFirstPaint/, 'user footer reads must not compete with critical home bootstrap requests');
 assert.match(siteContentRefreshRevisionSource, /window\.addEventListener\('blur', markAway\)/, 'site-content return refresh must record a real window-away state');
 assert.match(siteContentRefreshRevisionSource, /if \(!wasAway \|\| document\.visibilityState === 'hidden'\) return;/, 'site-content return refresh must not read PostgreSQL again on ordinary focus events without a prior away state');
 assert.match(userFooterSource, /openFooterPage\(page\.addressId \|\| page\.id\)/, 'footer navigation must prefer the administrator-defined public address ID');

@@ -623,7 +623,7 @@ export default function useRentalDataSubscriptionController({
     void requestPolicyContentDomain({
       domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
       config: policyContentConfig,
-      useCache: false,
+      useCache: true,
     })
       .then((domainResult) => {
         const document = getPolicyContentDocument(

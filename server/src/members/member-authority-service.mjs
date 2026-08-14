@@ -588,11 +588,12 @@ export const createMemberAuthorityService = ({
           throw serviceError('member_directory_postgresql_missing', 'PostgreSQL member directory has not been initialized.', 409);
         }
         return Object.freeze({
+          ...state,
           admin: { uid: admin.uid, role: trim(admin.fields?.adminRole || admin.role || 'admin') },
+          authority: 'postgresql',
           source: 'postgresql-existing',
           target: 'postgresql-member-directory',
           skipped: true,
-          ...state,
         });
       }
       const state = await repository.replaceDirectoryEntries(normalizedEntries, {
@@ -603,11 +604,12 @@ export const createMemberAuthorityService = ({
         actorClerkUserId: admin.uid,
       });
       return Object.freeze({
+        ...state,
         admin: { uid: admin.uid, role: trim(admin.fields?.adminRole || admin.role || 'admin') },
+        authority: 'postgresql',
         source: 'postgresql-admin-direct',
         target: 'postgresql-member-directory',
         skipped: false,
-        ...state,
       });
     },
 

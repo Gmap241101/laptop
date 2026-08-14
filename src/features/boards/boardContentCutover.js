@@ -1,5 +1,4 @@
 import { readFirebaseRuntimeRetirementConfig } from '../auth/firebaseRuntimeRetirement.js';
-import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 
 const READ_SESSION_KEY = 'mk_board_content_postgres_read';
 const WRITE_SESSION_KEY = 'mk_board_content_postgres_write';
@@ -189,6 +188,7 @@ export const requestFaqBoard = async ({ search = '', page = 1, pageSize = null, 
 };
 
 const getAdminTokens = async () => {
+  const { clerkStagingClient } = await import('../../clerk/clerkStagingClient.js');
   const clerk = await clerkStagingClient.initialize();
   const clerkToken = await clerk?.session?.getToken?.();
   if (!clerkToken) throw Object.assign(new Error('Clerk administrator session is required.'), { code: 'board_clerk_session_missing' });

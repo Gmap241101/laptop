@@ -240,10 +240,37 @@ export default function AdminAccountSecurityPanel({ ctx }) {
         setUserDraft(savedUserPolicy);
       }
 
-      triggerToast(
-        '계정 보안 설정 DB 저장 성공. 현재 화면에도 즉시 반영되었으며 다른 기존 로그인 세션에는 새 정책 버전이 적용됩니다.',
-        'success'
-      );
+      let auditWriteError = null;
+      try {
+        await clerkStagingClient.appendAdminSystemSettingsAudit({
+          action: 'account-security-settings-update',
+          section: '계정 보안 설정',
+          summary: '관리자 및 일반 사용자 세션 유지·만료 정책을 변경했습니다.',
+          beforeValues: {
+            ...(changedAdmin ? { adminSecurity: normalizedAdmin } : {}),
+            ...(changedUser ? { userSessionPolicy: normalizedUser } : {}),
+          },
+          afterValues: {
+            ...(changedAdmin ? { adminSecurity: nextAdminPolicy } : {}),
+            ...(changedUser ? { userSessionPolicy: nextUserPolicy } : {}),
+          },
+        });
+      } catch (error) {
+        auditWriteError = error;
+        console.error('Account security settings audit write error:', error);
+      }
+
+      if (auditWriteError) {
+        triggerToast(
+          `계정 보안 설정은 성공적으로 저장 및 반영되었지만 변경 이력 기록에 실패했습니다. 오류 코드: ${auditWriteError?.code || auditWriteError?.name || 'system_settings_audit_write_failed'}`,
+          'error'
+        );
+      } else {
+        triggerToast(
+          '계정 보안 설정이 성공적으로 저장 및 반영되었습니다. 다른 기존 로그인 세션에는 새 정책 버전이 적용됩니다.',
+          'success'
+        );
+      }
     } catch (error) {
       console.error('PostgreSQL account security settings save error:', error);
       triggerToast(`계정 보안 설정을 PostgreSQL에 저장하지 못했습니다. 오류 코드: ${error?.code || error?.name || 'account_security_settings_save_failed'}`, 'error');

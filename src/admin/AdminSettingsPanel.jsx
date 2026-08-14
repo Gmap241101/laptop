@@ -381,7 +381,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
         action: 'home-content-settings-update',
         section: '홈 화면 기본 설정',
         summary: '등록된 메인 비주얼이 없을 때 표시할 기본 콘텐츠를 변경했습니다.',
-        successMessage: '홈 화면 기본 설정이 저장되었습니다.',
+        successMessage: '홈 화면 기본 설정이 성공적으로 저장 및 반영되었습니다.',
       };
     }
     if (mode === SETTINGS_MODE.SERVICE) {
@@ -389,14 +389,14 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
         action: 'service-operation-settings-update',
         section: '서비스 운영',
         summary: '서비스 운영상태와 기능별 접수 정책을 변경했습니다.',
-        successMessage: '서비스 운영 설정이 저장되었습니다.',
+        successMessage: '서비스 운영 설정이 성공적으로 저장 및 반영되었습니다.',
       };
     }
     return {
       action: 'site-basic-settings-update',
       section: '사이트 기본 설정',
       summary: '사이트 명칭, 브랜드, 헤더와 문의 정보를 변경했습니다.',
-      successMessage: '사이트 기본 설정이 저장되었습니다.',
+      successMessage: '사이트 기본 설정이 성공적으로 저장 및 반영되었습니다.',
     };
   };
 
@@ -443,7 +443,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
 
       if (auditWriteError) {
         triggerToast(
-          `설정 DB 저장은 완료되었지만 변경 이력 기록에 실패했습니다. 오류 코드: ${auditWriteError?.code || auditWriteError?.name || 'system_settings_audit_write_failed'}`,
+          `설정은 성공적으로 저장 및 반영되었지만 변경 이력 기록에 실패했습니다. 오류 코드: ${auditWriteError?.code || auditWriteError?.name || 'system_settings_audit_write_failed'}`,
           'error'
         );
       } else {
@@ -951,7 +951,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
   );
 
   const renderAuditTab = () => (
-    <SectionCard title="시스템 설정 변경 이력" description="최근 50건을 표시하며 변경 이력은 관리자 화면에서 수정하거나 삭제할 수 없습니다.">
+    <SectionCard title="시스템 설정 변경 이력" description="사이트 기본 설정, 홈 화면 기본 설정, 서비스 운영, 대여 정책, 휴일 관리, 회원가입 정책, 계정 보안 설정의 최근 변경 50건을 표시합니다. 이 기록은 관리자 화면에서 수정하거나 삭제할 수 없습니다.">
       {!auditReady ? <div className="py-12 text-center text-xs text-slate-400">변경 이력을 불러오는 중입니다.</div> : auditLoadErrorMessage ? (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs font-semibold leading-5 text-rose-700">{auditLoadErrorMessage}</div>
       ) : auditLogs.length === 0 ? <div className="py-12 text-center text-xs text-slate-400">기록된 시스템 변경 이력이 없습니다.</div> : (

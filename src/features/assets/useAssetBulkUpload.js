@@ -76,7 +76,7 @@ export default function useAssetBulkUpload({
         if ((mutation?.invalidCategories || []).length) skipped.push(`카테고리 불일치 ${mutation.invalidCategories.length}건 제외`);
         if ((mutation?.duplicateAssetNumbers || []).length) skipped.push(`중복 자산관리번호 ${mutation.duplicateAssetNumbers.length}건 제외`);
         triggerToast(
-          `DB 저장 성공: 총 ${createdAssets.length}대의 기기를 일괄 추가 등록했습니다.${skipped.length ? ` (${skipped.join(', ')})` : ''}`,
+          `자산 일괄 등록이 성공적으로 저장 및 반영되었습니다. 총 ${createdAssets.length}대의 기기를 추가했습니다.${skipped.length ? ` (${skipped.join(', ')})` : ''}`,
           'success'
         );
       } catch (error) {

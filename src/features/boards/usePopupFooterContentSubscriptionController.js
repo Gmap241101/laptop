@@ -32,6 +32,23 @@ const POPUP_DISMISSED_SESSION_KEY =
 const POPUP_DISMISSED_LOCAL_KEY =
   'rentalSystemDismissedPopupVersionsUntil';
 const POPUP_DISMISS_SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+const scheduleAfterUserFirstPaint = (callback) => {
+  if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
+    const timeoutId = globalThis.setTimeout(callback, 0);
+    return () => globalThis.clearTimeout(timeoutId);
+  }
+
+  let secondFrameId = 0;
+  const firstFrameId = window.requestAnimationFrame(() => {
+    secondFrameId = window.requestAnimationFrame(callback);
+  });
+
+  return () => {
+    window.cancelAnimationFrame?.(firstFrameId);
+    if (secondFrameId) window.cancelAnimationFrame?.(secondFrameId);
+  };
+};
 const readDismissedPopupSessionVersions = () => {
   if (typeof window === 'undefined') return [];
 
@@ -234,8 +251,18 @@ export default function usePopupFooterContentSubscriptionController({
       }
     };
 
-    void load();
-    return () => { cancelled = true; };
+    const cancelScheduledLoad = shouldLoadUserPopup && !shouldLoadAdminPopup
+      ? scheduleAfterUserFirstPaint(() => { void load(); })
+      : null;
+
+    if (!cancelScheduledLoad) {
+      void load();
+    }
+
+    return () => {
+      cancelled = true;
+      cancelScheduledLoad?.();
+    };
   }, [
     adminTab,
     firebaseAuthUser?.uid,
@@ -336,8 +363,19 @@ export default function usePopupFooterContentSubscriptionController({
       }
     };
 
-    void load();
-    return () => { cancelled = true; };
+    const shouldLoadUserFooter = view === 'user' && !shouldLoadAdminFooter;
+    const cancelScheduledLoad = shouldLoadUserFooter
+      ? scheduleAfterUserFirstPaint(() => { void load(); })
+      : null;
+
+    if (!cancelScheduledLoad) {
+      void load();
+    }
+
+    return () => {
+      cancelled = true;
+      cancelScheduledLoad?.();
+    };
   }, [
     adminTab,
     isAdminAuthenticated,

@@ -75,7 +75,7 @@ export default function useAdminMemberDirectorySaveActions({
       replaceTempPeopleDraft({ nextTeams, nextBorrowers });
 
       triggerToastRef.current(
-        '부서·사용자 명부 DB 저장 성공. 명부 버전이 변경되어 기존 회원은 다음 로그인 시 순차적으로 재검증됩니다.',
+        '부서·사용자 명부가 성공적으로 저장 및 반영되었습니다. 명부 버전이 변경되어 기존 회원은 다음 로그인 시 순차적으로 재검증됩니다.',
         'success'
       );
       return true;

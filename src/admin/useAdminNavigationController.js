@@ -5,6 +5,45 @@ import {
   ADMIN_REQUEST_TAB,
 } from '../constants/appConstants.js';
 
+const ADMIN_HISTORY_STATE_KEY = '__mkRentalAdminHistoryV1';
+
+const readAdminHistoryState = (state = globalThis.history?.state) => {
+  const value = state?.[ADMIN_HISTORY_STATE_KEY];
+  if (!value || value.surface !== 'admin') return null;
+  const tab = String(value.tab || '').trim();
+  return {
+    boundary: value.boundary === true,
+    tab: tab || 'dashboard',
+  };
+};
+
+const createAdminHistoryState = (tab, { boundary = false } = {}) => ({
+  ...(globalThis.history?.state || {}),
+  [ADMIN_HISTORY_STATE_KEY]: {
+    surface: 'admin',
+    tab: String(tab || 'dashboard').trim() || 'dashboard',
+    boundary: Boolean(boundary),
+  },
+});
+
+const pushAdminHistoryEntry = (tab) => {
+  if (typeof window === 'undefined') return;
+  window.history.pushState(
+    createAdminHistoryState(tab),
+    '',
+    window.location.href
+  );
+};
+
+const replaceAdminHistoryEntry = (tab, options = {}) => {
+  if (typeof window === 'undefined') return;
+  window.history.replaceState(
+    createAdminHistoryState(tab, options),
+    '',
+    window.location.href
+  );
+};
+
 const LEGACY_ADMIN_UNSAVED_MARKERS = Object.freeze([
   {
     flag: '__mkHomeBannerUnsaved',
@@ -73,7 +112,9 @@ const clearLegacyAdminUnsavedMarkers = (markers) => {
 };
 
 export const useAdminNavigationState = () => {
-  const [adminTab, setAdminTab] = useState('dashboard');
+  const [adminTab, setAdminTab] = useState(
+    () => readAdminHistoryState()?.tab || 'dashboard'
+  );
   const [peopleSettingsDirty, setPeopleSettingsDirty] = useState(false);
   const [signupPolicyDirty, setSignupPolicyDirty] = useState(false);
 
@@ -175,6 +216,13 @@ export default function useAdminNavigationController({
   view,
   goToUserHome,
 }) {
+  const adminTabRef = useRef(adminTab);
+  const adminHistoryInitializedRef = useRef(false);
+
+  useEffect(() => {
+    adminTabRef.current = adminTab;
+  }, [adminTab]);
+
   const discardFooterConfigChanges = useCallback(() => {
     setFooterConfigDraft({
       enabled: Boolean(footerConfig.enabled),
@@ -326,23 +374,30 @@ export default function useAdminNavigationController({
   }, [view, currentAdminDeferredSettingsDirty]);
 
   const commitAdminTabChange = useCallback(
-    ({ legacyMarkers, nextTab, onCommitted }) => {
+    ({ legacyMarkers, nextTab, onCommitted, historyMode = 'push' }) => {
       clearLegacyAdminUnsavedMarkers(legacyMarkers);
+      if (view === 'admin') {
+        if (historyMode === 'push') {
+          pushAdminHistoryEntry(nextTab);
+        } else if (historyMode === 'replace') {
+          replaceAdminHistoryEntry(nextTab);
+        }
+      }
       startTransition(() => {
         setAdminTab(nextTab);
       });
       onCommitted?.();
     },
-    [setAdminTab]
+    [setAdminTab, view]
   );
 
   const handleAdminTabChange = useCallback(
     /**
      * @param {string} nextTab
-     * @param {{ onCommitted?: () => void }} [options]
+     * @param {{ onCommitted?: () => void, historyMode?: 'push'|'replace'|'none' }} [options]
      */
     (nextTab, options = {}) => {
-      const { onCommitted } = options;
+      const { historyMode = 'push', onCommitted } = options;
       const normalizedNextTab = String(nextTab || '').trim();
 
       if (!normalizedNextTab) {
@@ -368,6 +423,7 @@ export default function useAdminNavigationController({
           legacyMarkers,
           nextTab: normalizedNextTab,
           onCommitted,
+          historyMode,
         });
         return true;
       }
@@ -392,6 +448,7 @@ export default function useAdminNavigationController({
             legacyMarkers,
             nextTab: normalizedNextTab,
             onCommitted,
+            historyMode,
           });
           return true;
         },
@@ -406,6 +463,7 @@ export default function useAdminNavigationController({
             legacyMarkers,
             nextTab: normalizedNextTab,
             onCommitted,
+            historyMode,
           });
           return true;
         },
@@ -420,6 +478,93 @@ export default function useAdminNavigationController({
       setConfirmModal,
     ]
   );
+
+  useEffect(() => {
+    if (view !== 'admin' || typeof window === 'undefined') {
+      return undefined;
+    }
+
+    if (!adminHistoryInitializedRef.current) {
+      const currentTab = adminTabRef.current || 'dashboard';
+      replaceAdminHistoryEntry(currentTab, { boundary: true });
+      pushAdminHistoryEntry(currentTab);
+      adminHistoryInitializedRef.current = true;
+    }
+
+    const restoreCurrentHistoryEntry = () => {
+      window.history.forward();
+    };
+
+    const handlePopState = (event) => {
+      const targetHistory = readAdminHistoryState(event.state);
+      const currentTab = adminTabRef.current || 'dashboard';
+
+      if (!targetHistory || targetHistory.boundary) {
+        pushAdminHistoryEntry(currentTab);
+        return;
+      }
+
+      const targetTab = targetHistory.tab;
+      if (!targetTab || targetTab === currentTab) {
+        return;
+      }
+
+      const legacyMarkers = getLegacyAdminUnsavedMarkers();
+      if (!confirmLegacyAdminUnsavedMarkers(legacyMarkers)) {
+        restoreCurrentHistoryEntry();
+        return;
+      }
+
+      const deferredChanges = getAdminDeferredChangesConfig(currentTab);
+      if (!deferredChanges) {
+        commitAdminTabChange({
+          legacyMarkers,
+          nextTab: targetTab,
+          historyMode: 'none',
+        });
+        return;
+      }
+
+      const shouldDiscard = window.confirm(
+        `저장되지 않은 ${deferredChanges.label} 변경사항이 있습니다. 저장하지 않고 이전 관리자 메뉴로 이동하시겠습니까?`
+      );
+      if (!shouldDiscard) {
+        restoreCurrentHistoryEntry();
+        return;
+      }
+
+      void Promise.resolve(deferredChanges.discard?.())
+        .then((discarded) => {
+          if (discarded === false) {
+            restoreCurrentHistoryEntry();
+            return;
+          }
+          commitAdminTabChange({
+            legacyMarkers,
+            nextTab: targetTab,
+            historyMode: 'none',
+          });
+        })
+        .catch((error) => {
+          console.error('Administrator history navigation discard error:', error);
+          restoreCurrentHistoryEntry();
+        });
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [commitAdminTabChange, getAdminDeferredChangesConfig, view]);
+
+  useEffect(() => {
+    if (view !== 'admin' || !adminHistoryInitializedRef.current) return;
+    const currentHistory = readAdminHistoryState();
+    if (!currentHistory || currentHistory.boundary) return;
+    if (currentHistory.tab !== adminTab) {
+      replaceAdminHistoryEntry(adminTab);
+    }
+  }, [adminTab, view]);
 
   const openAdminMemberAccounts = useCallback(
     ({ query = '', statusFilter = 'all' } = {}) => {
