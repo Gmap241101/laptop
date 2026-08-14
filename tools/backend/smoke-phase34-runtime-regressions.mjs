@@ -3,6 +3,7 @@ import { createRentalRestrictionService } from '../../server/src/restrictions/re
 import { createSiteContentService } from '../../server/src/content/site-content-service.mjs';
 import { createSiteContentRepository } from '../../server/src/content/site-content-repository.mjs';
 import { createBoardRepository } from '../../server/src/boards/board-repository.mjs';
+import { createClerkDeviceTrustService } from '../../server/src/clerk/clerk-device-trust-service.mjs';
 import fs from 'node:fs';
 
 const rentalRestrictionRepository = {
@@ -374,5 +375,42 @@ assert.match(systemConfigRepositorySource, /async appendAudit\(/, 'system config
 assert.match(systemConfigRepositorySource, /pg_advisory_xact_lock\(hashtext\(\$1\)\)/, 'system settings audit appends must be serialized under a PostgreSQL advisory transaction lock');
 assert.match(systemConfigServiceSource, /const AUDIT_KEY = 'system-settings-audit'/, 'system settings audit history must use a dedicated PostgreSQL configuration record');
 assert.match(systemConfigServiceSource, /randomUUID\(\)/, 'system settings audit entries must receive stable unique identifiers');
+
+const clerkDeviceTrustRequests = [];
+const clerkDeviceTrustService = createClerkDeviceTrustService({
+  platformApiKey: 'ak_test_phase34_device_trust',
+  applicationId: 'app_phase34_smoke',
+  instanceId: 'ins_phase34_smoke',
+  fetchImpl: async (url, options = {}) => {
+    const href = String(url);
+    clerkDeviceTrustRequests.push({ href, options });
+    assert.equal(options.headers?.Authorization, 'Bearer ak_test_phase34_device_trust');
+    if (options.method === 'GET') {
+      assert.match(href, /\/v1\/platform\/applications\/app_phase34_smoke\/instances\/ins_phase34_smoke\/config/);
+      assert.match(href, /keys=auth_password/);
+      return new Response(JSON.stringify({ auth_password: { device_trust: { enabled: true } } }), { status: 200 });
+    }
+    if (options.method === 'PATCH') {
+      assert.deepEqual(JSON.parse(options.body), { auth_password: { device_trust: { enabled: false } } });
+      return new Response(JSON.stringify({ auth_password: { device_trust: { enabled: false } } }), { status: 200 });
+    }
+    throw new Error(`Unexpected Clerk Platform API smoke method: ${options.method}`);
+  },
+});
+assert.equal((await clerkDeviceTrustService.get()).enabled, true, 'live Clerk Device Trust read must expose auth_password.device_trust.enabled');
+assert.equal((await clerkDeviceTrustService.setEnabled(false)).enabled, false, 'live Clerk Device Trust write must PATCH the requested enabled state');
+assert.equal(clerkDeviceTrustRequests.length, 2);
+const unconfiguredDeviceTrustService = createClerkDeviceTrustService();
+assert.equal((await unconfiguredDeviceTrustService.get()).configured, false, 'server must remain bootable when Clerk Platform API credentials are not configured');
+await assert.rejects(
+  () => unconfiguredDeviceTrustService.setEnabled(true),
+  (error) => error?.code === 'clerk_platform_config_not_configured' && error?.status === 503,
+  'Device Trust writes must fail explicitly rather than pretending to update Clerk when Platform API credentials are absent',
+);
+
+const deviceTrustServiceSource = fs.readFileSync(new URL('../../server/src/clerk/clerk-device-trust-service.mjs', import.meta.url), 'utf8');
+assert.match(deviceTrustServiceSource, /auth_password:[\s\S]*device_trust:[\s\S]*enabled: enabledValue/, 'Clerk Device Trust writes must patch the documented auth_password.device_trust.enabled config');
+assert.match(appSource, /GET' && url\.pathname === '\/api\/admin\/clerk-device-trust'/, 'server must expose authenticated live Clerk Device Trust reads');
+assert.match(appSource, /PATCH' && url\.pathname === '\/api\/admin\/clerk-device-trust'[\s\S]*admin_owner_required/, 'only owner administrators may change the live Clerk Device Trust setting');
 
 console.log('[phase34-runtime-regressions-backend-smoke] PASS');

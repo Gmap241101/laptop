@@ -267,6 +267,34 @@ export const createRequestHandler = ({
     async listAudit() { const error = new Error('System configuration service is not configured.'); error.code = 'system_config_not_configured'; throw error; },
     async appendAudit() { const error = new Error('System configuration service is not configured.'); error.code = 'system_config_not_configured'; throw error; },
   },
+  clerkDeviceTrustService = {
+    getConfigurationStatus() {
+      return Object.freeze({
+        configured: false,
+        source: 'clerk-platform-api',
+        authority: 'clerk-device-trust',
+        requiredEnvironment: Object.freeze([
+          'CLERK_PLATFORM_API_KEY',
+          'CLERK_APPLICATION_ID',
+          'CLERK_INSTANCE_ID',
+        ]),
+      });
+    },
+    async get() {
+      return Object.freeze({
+        configured: false,
+        source: 'clerk-platform-api',
+        authority: 'clerk-device-trust',
+        enabled: null,
+      });
+    },
+    async setEnabled() {
+      const error = new Error('Clerk Platform API configuration is not available.');
+      error.code = 'clerk_platform_config_not_configured';
+      error.status = 503;
+      throw error;
+    },
+  },
   systemDataService = {
     async getOverview() { const error = new Error('System data service is not configured.'); error.code = 'system_data_not_configured'; throw error; },
     async checkIntegrity() { const error = new Error('System data service is not configured.'); error.code = 'system_data_not_configured'; throw error; },
@@ -276,6 +304,7 @@ export const createRequestHandler = ({
   },
   userClerkAuthService = {
     async signupNative() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
+    async signupVerifiedCurrent() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
     async ensureRecoveryClerkIdentity() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
     async getCurrent() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
     async migrateCurrent() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
@@ -710,9 +739,11 @@ export const createRequestHandler = ({
           accountRecoveryPasswordResetVerify: '/api/account-recovery/password-reset/verify',
           accountLifecycleSignup: '/api/users/signup/bootstrap',
           accountLifecycleNativeSignup: '/api/users/signup/clerk',
+          accountLifecycleVerifiedSignup: '/api/users/signup/clerk-verified',
           userTermsConsent: '/api/users/me/terms-consent',
           userTermsConsentBootstrap: '/api/users/me/terms-consent/bootstrap',
           adminClerkSession: '/api/admin/auth/session',
+          adminClerkDeviceTrust: '/api/admin/clerk-device-trust',
           adminClerkMigration: '/api/admin/auth/migrate',
           adminClerkProvision: '/api/admin/identity-registry/:uid/provision',
           rentalRestrictionCurrent: '/api/users/me/rental-restriction',
@@ -741,6 +772,7 @@ export const createRequestHandler = ({
           adminAssetBulk: '/api/admin/assets/bulk',
           adminAssetCategories: '/api/admin/assets/categories',
           siteContent: '/api/site-content/:domain',
+          signupTermsPolicy: '/api/signup/terms-policy',
           adminSiteContentSync: '/api/admin/site-content/:domain/sync',
           adminSiteContentDirect: '/api/admin/site-content/:domain',
           adminRentalConfigSettings: '/api/admin/site-content/rental-config/settings',
@@ -892,6 +924,40 @@ export const createRequestHandler = ({
       } catch (error) {
         console.warn('[user-auth] native Clerk/PostgreSQL signup failed', { requestId, code: error?.code, name: error?.name });
         writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'user_native_signup_failed' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/users/signup/clerk-verified') {
+      if (!config.userFirebaseAuthCompatibilityDisabled) {
+        writeJson(response, 409, { ...basePayload, error: 'user_verified_signup_not_enabled' }, headers);
+        return;
+      }
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      try {
+        const body = await readJsonBody(request);
+        const result = await userClerkAuthService.signupVerifiedCurrent({
+          clerkUserId: auth.userId,
+          input: body || {},
+        });
+        writeJson(response, 201, {
+          ...basePayload,
+          authenticated: true,
+          signupLifecycle: {
+            source: 'postgresql',
+            authority: 'clerk-postgresql',
+            firestoreBootstrap: 'retired',
+            firebaseAuthCompatibility: 'retired',
+            legacyMemberKeySource: 'postgresql-compatibility-key',
+            emailVerification: result.emailVerification || 'clerk-email-code',
+            status: result.status || result.account?.memberStatus || '',
+            clerkUserId: result.clerkUser?.clerkUserId || auth.userId,
+          },
+        }, headers);
+      } catch (error) {
+        console.warn('[user-auth] verified Clerk/PostgreSQL signup failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'user_verified_signup_failed' }, headers);
       }
       return;
     }
@@ -1099,6 +1165,17 @@ export const createRequestHandler = ({
       } catch (error) {
         console.warn('[user-auth] withdrawal finalization failed', { requestId, code: error?.code, name: error?.name });
         writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'user_withdrawal_finalize_failed' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/signup/terms-policy') {
+      try {
+        const policy = await siteContentService.getSignupTermsPolicy();
+        writeJson(response, 200, { ...basePayload, signupTermsPolicy: policy }, headers);
+      } catch (error) {
+        console.warn('[terms] PostgreSQL signup terms policy read failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'signup_terms_policy_read_failed' }, headers);
       }
       return;
     }
@@ -1605,6 +1682,80 @@ export const createRequestHandler = ({
         writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, systemSettingsAuditMutation: result }, headers);
       } catch (error) {
         writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: true, error: error?.code || 'system_settings_audit_write_failed' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/admin/clerk-device-trust') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      try {
+        const result = await clerkDeviceTrustService.get();
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          clerkDeviceTrust: result,
+        }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          error: error?.code || 'clerk_device_trust_read_failed',
+        }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'PATCH' && url.pathname === '/api/admin/clerk-device-trust') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      if ((authority.adminAuth?.admin?.adminRole || 'admin') !== 'owner') {
+        writeJson(response, 403, {
+          ...basePayload,
+          authenticated: true,
+          authorized: false,
+          error: 'admin_owner_required',
+        }, headers);
+        return;
+      }
+      let body = {};
+      try {
+        body = await readJsonBody(request);
+      } catch (error) {
+        writeJson(response, error.status || 400, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          error: error.code || 'invalid_json_body',
+        }, headers);
+        return;
+      }
+      if (typeof body?.enabled !== 'boolean') {
+        writeJson(response, 400, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          error: 'clerk_device_trust_enabled_invalid',
+        }, headers);
+        return;
+      }
+      try {
+        const result = await clerkDeviceTrustService.setEnabled(body.enabled);
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          clerkDeviceTrust: result,
+        }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          error: error?.code || 'clerk_device_trust_write_failed',
+        }, headers);
       }
       return;
     }

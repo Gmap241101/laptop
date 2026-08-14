@@ -7,6 +7,7 @@ import {
   requestSiteContentDomain,
   SITE_CONTENT_DOMAINS,
 } from './features/content/siteContentCutover.js';
+import { preloadSignupTermsPolicy } from './features/terms/termsService.js';
 import { clearAdminRouteIntent, getRouteStateFromPath } from './routing/appRoutes.js';
 
 const warmUserHomeCriticalData = () => {
@@ -35,6 +36,8 @@ clearAdminRouteIntent();
 const initialRoute = getRouteStateFromPath();
 if (initialRoute.view === 'user' && initialRoute.userTab === 'home') {
   warmUserHomeCriticalData();
+} else if (initialRoute.view === 'user' && initialRoute.userTab === 'signup') {
+  void preloadSignupTermsPolicy().catch(() => {});
 }
 
 void import('./bootstrap/renderUserRoot.jsx')

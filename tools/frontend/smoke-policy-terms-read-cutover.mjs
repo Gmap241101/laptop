@@ -23,11 +23,11 @@ for (const marker of [
 ]) assert.ok(rentalData.includes(marker), `publicConfig PostgreSQL marker missing: ${marker}`);
 
 const termsService = readFileSync('src/features/terms/termsService.js', 'utf8');
-for (const marker of ['requestPolicyContentDomain', 'POLICY_CONTENT_DOMAINS.TERMS', "'signupTermsPolicy/current'"]) {
-  assert.ok(termsService.includes(marker), `terms PostgreSQL marker missing: ${marker}`);
+for (const marker of ['/api/signup/terms-policy', "source !== 'postgresql'", 'signupTermsPolicyPending', 'SIGNUP_TERMS_POLICY_CACHE_TTL_MS']) {
+  assert.ok(termsService.includes(marker), `signup terms dedicated PostgreSQL marker missing: ${marker}`);
 }
-for (const forbidden of ['getDoc(', 'onSnapshot(', 'retiredLegacyDataCompat']) {
-  assert.equal(termsService.includes(forbidden), false, `terms service must not use Firestore: ${forbidden}`);
+for (const forbidden of ['requestPolicyContentDomain', 'POLICY_CONTENT_DOMAINS.TERMS', 'getDoc(', 'onSnapshot(', 'retiredLegacyDataCompat']) {
+  assert.equal(termsService.includes(forbidden), false, `signup terms read must avoid full-domain/Firestore path: ${forbidden}`);
 }
 
 const adminTerms = readFileSync('src/admin/AdminSignupTermsManager.jsx', 'utf8');

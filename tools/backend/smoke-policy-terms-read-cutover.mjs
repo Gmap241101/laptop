@@ -5,6 +5,9 @@ import { createSiteContentService } from '../../server/src/content/site-content-
 const stored = new Map();
 const repository = {
   async getDomain(domain) { return stored.get(domain) || null; },
+  async getDocument(domain, key) {
+    return (stored.get(domain)?.documents || []).find((document) => document.key === key) || null;
+  },
   async getRentalConfigBootstrapContext() {
     return { assetCategories: ['노트북'], teams: ['개발팀'], memberDirectoryVersion: 2, memberDirectoryEntryCount: 1, termsPolicy: {} };
   },
@@ -29,6 +32,10 @@ const terms = await service.replaceAdminDomain({
 assert.equal(terms.source, 'postgresql');
 assert.equal(terms.sourceMode, 'postgresql-admin-direct');
 assert.equal((await service.getDomain('terms')).documentCount, 1);
+const signupTermsPolicy = await service.getSignupTermsPolicy();
+assert.equal(signupTermsPolicy.source, 'postgresql');
+assert.equal(signupTermsPolicy.key, 'signupTermsPolicy/current');
+assert.equal(signupTermsPolicy.payload.revision, 2);
 
 const migration = readFileSync('server/migrations/026_phase34_rental_config_postgresql_bootstrap.sql', 'utf8');
 for (const marker of ["'rental-config'", "'rentalSystem/publicConfig'", "'postgresql-self-heal'", 'phase34_rental_config_postgresql_bootstrap']) {
@@ -36,4 +43,4 @@ for (const marker of ["'rental-config'", "'rentalSystem/publicConfig'", "'postgr
 }
 assert.equal(migration.includes('firestore.googleapis.com'), false);
 
-console.log('[policy-terms-backend-smoke] PASS (Phase 34 PostgreSQL rental-config self-heal + terms authority)');
+console.log('[policy-terms-backend-smoke] PASS (Phase 34 PostgreSQL rental-config self-heal + dedicated signup terms policy authority)');

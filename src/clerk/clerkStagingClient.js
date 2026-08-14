@@ -148,6 +148,30 @@ export const requestNativeUserSignup = async ({ apiBaseUrl, fetchImpl, password,
   return payload;
 };
 
+export const requestVerifiedUserSignup = async ({ clerk, apiBaseUrl, fetchImpl, input }) => {
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/users/signup/clerk-verified',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input || {}),
+  });
+  if (!response.ok) {
+    const error = new Error(`Verified Clerk/PostgreSQL signup failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (payload?.signupLifecycle?.source !== 'postgresql' || payload?.signupLifecycle?.emailVerification !== 'clerk-email-code') {
+    const error = new Error('Backend returned an invalid verified Clerk/PostgreSQL signup response.');
+    error.code = 'user_verified_signup_payload_invalid';
+    throw error;
+  }
+  return payload;
+};
+
 const requestWithFirebaseAuthorization = async () => {
   const error = new Error('Firebase authorization bridge has been removed.');
   error.code = 'firebase_runtime_removed';
@@ -1145,6 +1169,77 @@ export const requestAdminSystemSettingsAuditWrite = async ({ clerk, apiBaseUrl, 
   return payload;
 };
 
+export const requestAdminClerkDeviceTrust = async ({ clerk, apiBaseUrl, fetchImpl }) => {
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/admin/clerk-device-trust',
+    method: 'GET',
+  });
+  if (!response.ok) {
+    const error = new Error(`Clerk Device Trust read failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  const state = payload?.clerkDeviceTrust;
+  if (
+    !payload?.authenticated ||
+    !payload?.authorized ||
+    state?.source !== 'clerk-platform-api' ||
+    state?.authority !== 'clerk-device-trust' ||
+    typeof state?.configured !== 'boolean' ||
+    (state.configured && typeof state.enabled !== 'boolean')
+  ) {
+    throw Object.assign(
+      new Error('Backend returned an invalid Clerk Device Trust payload.'),
+      { code: 'clerk_device_trust_payload_invalid' },
+    );
+  }
+  return payload;
+};
+
+export const requestAdminClerkDeviceTrustWrite = async ({ clerk, apiBaseUrl, fetchImpl, enabled }) => {
+  if (typeof enabled !== 'boolean') {
+    throw Object.assign(
+      new Error('Clerk Device Trust enabled must be a boolean.'),
+      { code: 'clerk_device_trust_enabled_invalid' },
+    );
+  }
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/admin/clerk-device-trust',
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!response.ok) {
+    const error = new Error(`Clerk Device Trust write failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  const state = payload?.clerkDeviceTrust;
+  if (
+    !payload?.authenticated ||
+    !payload?.authorized ||
+    state?.source !== 'clerk-platform-api' ||
+    state?.authority !== 'clerk-device-trust' ||
+    state?.configured !== true ||
+    typeof state.enabled !== 'boolean' ||
+    state.enabled !== enabled
+  ) {
+    throw Object.assign(
+      new Error('Backend returned an invalid Clerk Device Trust mutation payload.'),
+      { code: 'clerk_device_trust_mutation_payload_invalid' },
+    );
+  }
+  return payload;
+};
+
 export const requestSystemConfiguration = async ({ clerk = null, apiBaseUrl, fetchImpl, key, admin = false }) => {
   const path = admin ? `/api/admin/system-config/${encodeURIComponent(key)}` : `/api/system-config/${encodeURIComponent(key)}`;
   if (admin) {
@@ -1460,6 +1555,7 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
   let initializePromise = null;
   let pendingAdminClientTrust = null;
   let pendingUserPasswordReset = null;
+  let pendingUserSignupEmailVerification = null;
 
   const createAdminClientTrustError = (code, message) => {
     const error = new Error(message);
@@ -1732,6 +1828,115 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
         clientTrustDestination: pending.destination,
       });
     },
+    async startUserSignupEmailVerification(identifier) {
+      const email = trim(identifier).toLowerCase();
+      if (!email) {
+        const error = new Error('Signup email is required.');
+        error.code = 'signup_email_required';
+        throw error;
+      }
+      const clerk = await initialize();
+      if (!clerk?.client?.signUp || typeof clerk.client.signUp.create !== 'function') {
+        const error = new Error('Clerk signup email verification API is unavailable.');
+        error.code = 'signup_email_verification_unavailable';
+        throw error;
+      }
+      if (clerk.session) await clerk.signOut();
+      clerk.client?.resetSignUp?.();
+      pendingUserSignupEmailVerification = null;
+      const signUp = await clerk.client.signUp.create({ emailAddress: email });
+      if (typeof signUp?.prepareEmailAddressVerification !== 'function') {
+        const error = new Error('Clerk signup email code preparation API is unavailable.');
+        error.code = 'signup_email_verification_unavailable';
+        throw error;
+      }
+      await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+      pendingUserSignupEmailVerification = { signUp, email, verified: false };
+      return Object.freeze({ status: 'verification_required', email });
+    },
+    async resendUserSignupEmailVerification() {
+      const pending = pendingUserSignupEmailVerification;
+      if (!pending?.signUp || typeof pending.signUp.prepareEmailAddressVerification !== 'function') {
+        const error = new Error('Signup email verification challenge expired.');
+        error.code = 'signup_email_verification_expired';
+        throw error;
+      }
+      await pending.signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+      return Object.freeze({ status: 'verification_required', email: pending.email });
+    },
+    async verifyUserSignupEmailVerification(code) {
+      const verificationCode = trim(code);
+      if (!/^\d{6}$/.test(verificationCode)) {
+        const error = new Error('A 6-digit signup email verification code is required.');
+        error.code = 'signup_email_verification_code_required';
+        throw error;
+      }
+      const pending = pendingUserSignupEmailVerification;
+      if (!pending?.signUp || typeof pending.signUp.attemptEmailAddressVerification !== 'function') {
+        const error = new Error('Signup email verification challenge expired.');
+        error.code = 'signup_email_verification_expired';
+        throw error;
+      }
+      const result = await pending.signUp.attemptEmailAddressVerification({ code: verificationCode });
+      const verification = result?.verifications?.emailAddress || pending.signUp?.verifications?.emailAddress || null;
+      const unverifiedFields = Array.isArray(result?.unverifiedFields) ? result.unverifiedFields : [];
+      const verified = verification?.status === 'verified' || (!unverifiedFields.includes('email_address') && !unverifiedFields.includes('emailAddress'));
+      if (!verified) {
+        const error = new Error('Clerk did not verify the signup email address.');
+        error.code = 'signup_email_verification_incomplete';
+        throw error;
+      }
+      pendingUserSignupEmailVerification = { ...pending, signUp: result || pending.signUp, verified: true };
+      return Object.freeze({ status: 'verified', email: pending.email });
+    },
+    async completeUserSignupEmailVerification({ email: identifier, password, name = '' } = {}) {
+      const email = trim(identifier).toLowerCase();
+      const pending = pendingUserSignupEmailVerification;
+      if (!pending?.signUp || !pending.verified || pending.email !== email) {
+        const error = new Error('Signup email must be verified before account creation.');
+        error.code = 'signup_email_verification_required';
+        throw error;
+      }
+      if (typeof password !== 'string' || !password) {
+        const error = new Error('Signup password is required.');
+        error.code = 'signup_password_required';
+        throw error;
+      }
+      const clerk = await initialize();
+      if (typeof pending.signUp.update !== 'function') {
+        const error = new Error('Clerk signup completion API is unavailable.');
+        error.code = 'signup_completion_unavailable';
+        throw error;
+      }
+      const result = await pending.signUp.update({
+        password,
+        ...(trim(name) ? { firstName: trim(name) } : {}),
+      });
+      if (result?.status !== 'complete' || !result?.createdSessionId || !result?.createdUserId) {
+        const error = new Error(`Clerk signup is incomplete (${result?.status || 'unknown'}).`);
+        error.code = 'signup_clerk_incomplete';
+        error.missingFields = Array.isArray(result?.missingFields) ? result.missingFields : [];
+        throw error;
+      }
+      await clerk.setActive({ session: result.createdSessionId });
+      pendingUserSignupEmailVerification = null;
+      return Object.freeze({
+        status: 'complete',
+        clerkUserId: result.createdUserId,
+        sessionId: result.createdSessionId,
+        email,
+      });
+    },
+    async cancelUserSignupEmailVerification() {
+      pendingUserSignupEmailVerification = null;
+      const clerk = await initialize();
+      clerk.client?.resetSignUp?.();
+      return Object.freeze({ cancelled: true });
+    },
+    async signupVerifiedUser(input) {
+      const clerk = await initialize();
+      return requestVerifiedUserSignup({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, input });
+    },
     async signupUserNative(password, input) {
       return requestNativeUserSignup({ apiBaseUrl: config.apiBaseUrl, fetchImpl, password, input });
     },
@@ -1979,6 +2184,14 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
       const clerk = await initialize();
       return requestAdminSystemSettingsAuditWrite({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, audit });
     },
+    async getAdminClerkDeviceTrust() {
+      const clerk = await initialize();
+      return requestAdminClerkDeviceTrust({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
+    },
+    async saveAdminClerkDeviceTrust(enabled) {
+      const clerk = await initialize();
+      return requestAdminClerkDeviceTrustWrite({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, enabled });
+    },
     async getAdminSystemConfiguration(key) {
       const clerk = await initialize();
       return requestSystemConfiguration({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, key, admin: true });
@@ -2138,6 +2351,12 @@ export const clerkStagingClient =
         signInWithPassword: async () => { throw new Error('Clerk browser client is unavailable.'); },
         signInUserWithPassword: async () => { throw new Error('Clerk browser client is unavailable.'); },
         bootstrapUserSignup: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        startUserSignupEmailVerification: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        resendUserSignupEmailVerification: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        verifyUserSignupEmailVerification: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        completeUserSignupEmailVerification: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        cancelUserSignupEmailVerification: async () => ({ cancelled: true }),
+        signupVerifiedUser: async () => { throw new Error('Clerk browser client is unavailable.'); },
         signupUserNative: async () => { throw new Error('Clerk browser client is unavailable.'); },
         startUserPasswordReset: async () => { throw new Error('Clerk browser client is unavailable.'); },
         completeUserPasswordReset: async () => { throw new Error('Clerk browser client is unavailable.'); },

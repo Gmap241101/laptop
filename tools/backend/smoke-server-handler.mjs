@@ -144,7 +144,14 @@ const systemConfigService = {
     return { source: 'postgresql', entry };
   },
 };
+let clerkDeviceTrustEnabled = true;
+const clerkDeviceTrustService = {
+  getConfigurationStatus() { return { configured: true, source: 'clerk-platform-api', authority: 'clerk-device-trust' }; },
+  async get() { return { configured: true, source: 'clerk-platform-api', authority: 'clerk-device-trust', enabled: clerkDeviceTrustEnabled }; },
+  async setEnabled(enabled) { clerkDeviceTrustEnabled = Boolean(enabled); return { configured: true, source: 'clerk-platform-api', authority: 'clerk-device-trust', enabled: clerkDeviceTrustEnabled }; },
+};
 const userClerkAuthService = {
+  async signupVerifiedCurrent({ input }) { return { status: 'active', account: { ...userAccount, memberStatus: 'active', primaryEmail: input?.email || userAccount.primaryEmail }, clerkUser: { clerkUserId: 'user_smoke' }, emailVerification: 'clerk-email-code' }; },
   async signupNative({ input }) { return { signup: { status: 'pending' }, account: { ...userAccount, memberStatus: 'pending', primaryEmail: input?.email || userAccount.primaryEmail }, clerkUser: { clerkUserId: 'clerk_native_smoke' } }; },
   async ensureRecoveryClerkIdentity() { return { ready: true, clerkUserId: 'user_smoke' }; },
   async getCurrent({ clerkUserId }) {
@@ -203,6 +210,7 @@ let rentalConfigSettingsPatch = null;
 let signupPolicyPatch = null;
 let partialContentPatch = null;
 const siteContentService = {
+  async getSignupTermsPolicy() { return { source: 'postgresql', authoritative: true, key: 'signupTermsPolicy/current', payload: { enabled: true, revision: 5, requiredRevision: 5, activeTerms: [{ id: 'terms-smoke', title: 'Smoke terms' }] } }; },
   async getDomain(domain) { return siteDomains.get(domain) || { source: 'postgresql', domain, documents: [], count: 0 }; },
   async syncDomain(domain) { return { ...(siteDomains.get(domain) || { domain, documents: [], count: 0 }), source: 'postgresql', synchronized: true }; },
   async replaceAdminDomain({ domain, documents }) { const result = { source: 'postgresql', domain, documents: documents || [], count: (documents || []).length, synchronized: true }; siteDomains.set(domain, result); return result; },
@@ -265,6 +273,7 @@ const server = createServer(createRequestHandler({
   accountLifecycleService,
   adminClerkAuthService,
   systemConfigService,
+  clerkDeviceTrustService,
   userClerkAuthService,
   rentalRestrictionService,
   rentalRequestService,
@@ -328,6 +337,24 @@ try {
 
   const session = await fetch(`${baseUrl}/api/auth/session`, { headers: authHeaders });
   if (session.status !== 200 || (await session.json()).session?.userId !== 'user_smoke') throw new Error('Clerk session endpoint failed.');
+
+  const signupTermsPolicyResponse = await fetch(`${baseUrl}/api/signup/terms-policy`, {
+    headers: { Origin: allowedOrigin },
+  });
+  const signupTermsPolicyBody = await signupTermsPolicyResponse.json();
+  if (signupTermsPolicyResponse.status !== 200 || signupTermsPolicyBody.signupTermsPolicy?.key !== 'signupTermsPolicy/current' || signupTermsPolicyBody.signupTermsPolicy?.source !== 'postgresql') {
+    throw new Error('Dedicated signup terms policy endpoint failed.');
+  }
+
+  const verifiedSignup = await fetch(`${baseUrl}/api/users/signup/clerk-verified`, {
+    method: 'POST',
+    headers: { Origin: allowedOrigin, Authorization: 'Bearer smoke-token', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'smoke@example.com', name: 'Smoke User', team: 'QA', phone: '010-0000-0000', terms: { decisions: [] } }),
+  });
+  const verifiedSignupBody = await verifiedSignup.json();
+  if (verifiedSignup.status !== 201 || verifiedSignupBody.signupLifecycle?.emailVerification !== 'clerk-email-code' || verifiedSignupBody.signupLifecycle?.authority !== 'clerk-postgresql') {
+    throw new Error('Verified Clerk/PostgreSQL signup failed.');
+  }
 
   const nativeSignup = await fetch(`${baseUrl}/api/users/signup/clerk`, {
     method: 'POST', headers: { Origin: allowedOrigin, 'Content-Type': 'application/json' },
@@ -417,6 +444,17 @@ try {
   const systemAuditRead = await fetch(`${baseUrl}/api/admin/system-settings-audit?limit=50`, { headers: authHeaders });
   const systemAuditReadBody = await systemAuditRead.json();
   if (systemAuditRead.status !== 200 || systemAuditReadBody.systemSettingsAudit?.source !== 'postgresql' || systemAuditReadBody.systemSettingsAudit?.logs?.[0]?.action !== 'smoke-setting-update') throw new Error('Administrator system settings audit read failed.');
+
+  const deviceTrustRead = await fetch(`${baseUrl}/api/admin/clerk-device-trust`, { headers: authHeaders });
+  const deviceTrustReadBody = await deviceTrustRead.json();
+  if (deviceTrustRead.status !== 200 || deviceTrustReadBody.clerkDeviceTrust?.enabled !== true) throw new Error('Administrator Clerk Device Trust read failed.');
+  const deviceTrustWrite = await fetch(`${baseUrl}/api/admin/clerk-device-trust`, {
+    method: 'PATCH',
+    headers: { ...authHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: false }),
+  });
+  const deviceTrustWriteBody = await deviceTrustWrite.json();
+  if (deviceTrustWrite.status !== 200 || deviceTrustWriteBody.clerkDeviceTrust?.enabled !== false || clerkDeviceTrustEnabled !== false) throw new Error('Administrator Clerk Device Trust write failed.');
 
   const dashboard = await fetch(`${baseUrl}/api/admin/rental-dashboard`, { headers: authHeaders });
   if (dashboard.status !== 200 || (await dashboard.json()).adminRentalDashboard?.source !== 'postgresql') throw new Error('PostgreSQL administrator dashboard failed.');

@@ -30,6 +30,7 @@ import {
   normalizeTermsPolicy,
   normalizeTermsSettings,
 } from '../terms/termsConstants.js';
+import { preloadSignupTermsPolicy } from '../terms/termsService.js';
 import {
   getClaimCurrentUid,
   getClaimFormerUids,
@@ -130,6 +131,7 @@ export default function useUserSignupController({
     }
 
     setUserAuthForm(createDefaultUserAuthForm());
+    void preloadSignupTermsPolicy().catch(() => {});
     pushAppPath('user', 'signup');
     setView('user');
     setUserTab('signup');
@@ -149,6 +151,7 @@ export default function useUserSignupController({
       return;
     }
 
+    void clerkStagingClient.cancelUserSignupEmailVerification().catch(() => {});
     setUserAuthForm(createDefaultUserAuthForm());
     clearUserLoginReturnTarget();
     replaceAppPath('user', 'login');
@@ -254,6 +257,16 @@ export default function useUserSignupController({
       return;
     }
 
+    const firebaseRetirement = readUserFirebaseAuthRetirementConfig();
+    if (
+      firebaseRetirement.requested &&
+      (userAuthForm.signupEmailVerified !== true ||
+        normalizeEmailAddress(userAuthForm.signupVerifiedEmail) !== email)
+    ) {
+      triggerToast('회원가입에 사용할 이메일 인증을 먼저 완료해 주세요.', 'error');
+      return;
+    }
+
     let createdSignupUser = null;
     let signupFirestoreCommitted = false;
     let effectiveUserSessionPolicy = normalizeUserSessionPolicy(
@@ -261,7 +274,6 @@ export default function useUserSignupController({
     );
     const lifecycleConfig = readUserAccountLifecycleCutoverConfig();
     const accountLifecycleConfig = readAccountLifecycleAuthorityConfig();
-    const firebaseRetirement = readUserFirebaseAuthRetirementConfig();
 
     setUserAuthLoading(true);
 
@@ -272,53 +284,47 @@ export default function useUserSignupController({
           policyReady: userSessionPolicyReady,
         });
         clearAdminAuthenticatedSession();
-        const signupPayload = await clerkStagingClient.signupUserNative(password, {
+
+        await clerkStagingClient.completeUserSignupEmailVerification({
           email,
+          password,
           name,
-          team,
-          phone,
-          terms: {
-            policyRevision: Number(signupTermsSubmission.policyRevision || 0),
-            requiredRevision: Number(signupTermsSubmission.requiredRevision || 0),
-            decisions: Array.isArray(signupTermsSubmission.decisions) ? signupTermsSubmission.decisions : [],
-          },
         });
+
+        let signupPayload;
+        try {
+          signupPayload = await clerkStagingClient.signupVerifiedUser({
+            email,
+            name,
+            team,
+            phone,
+            terms: {
+              policyRevision: Number(signupTermsSubmission.policyRevision || 0),
+              requiredRevision: Number(signupTermsSubmission.requiredRevision || 0),
+              decisions: Array.isArray(signupTermsSubmission.decisions) ? signupTermsSubmission.decisions : [],
+            },
+          });
+        } catch (signupError) {
+          await clerkStagingClient.signOut().catch(() => {});
+          throw signupError;
+        }
+
         const createdAccountStatus = signupPayload?.signupLifecycle?.status || USER_PROFILE_STATUS.PENDING;
         publishAccountLifecycleAuthorityObservation({
           ...readAccountLifecycleAuthorityFromPayload(signupPayload, { requested: true }),
           signupFirestoreBootstrap: 'retired',
           error: null,
         });
-        publishUserFirebaseAuthRetirementObservation({ requested: true, signup: 'clerk-postgresql', userFirebaseCompatibility: 'retired', error: '' });
+        publishUserFirebaseAuthRetirementObservation({ requested: true, signup: 'clerk-postgresql-verified-email', userFirebaseCompatibility: 'retired', error: '' });
         publishUserAccountLifecycleObservation({
           userAuthRequested: true,
           userLifecycleRequested: true,
-          signupClerkProvision: 'provisioned',
+          signupClerkProvision: 'verified-email',
           userFirebaseCompatibility: 'retired',
           error: '',
         });
 
         if (createdAccountStatus === USER_PROFILE_STATUS.ACTIVE) {
-          const signInResult = await clerkStagingClient.signInUserWithPassword(email, password);
-          if (signInResult?.status === 'needs_client_trust') {
-            setFirebaseAuthUser(null);
-            setUserAuthForm({
-              ...createDefaultUserAuthForm(),
-              email,
-              clientTrustRequired: true,
-              clientTrustStrategy: signInResult.clientTrustStrategy || '',
-              clientTrustDestination: signInResult.clientTrustDestination || email,
-              clientTrustMigration: 'phase33-native-signup',
-            });
-            clearUserAuthenticatedSession();
-            clearUserLoginReturnTarget();
-            replaceAppPath('user', 'login');
-            setView('user');
-            setUserTab('login');
-            setIsCommunityMenuOpen(false);
-            triggerToast(`회원가입이 완료되었습니다. Clerk 새 기기 확인을 위해 ${signInResult.clientTrustDestination || '등록된 연락처'}로 보낸 인증코드를 입력해 주세요.`, 'success');
-            return;
-          }
           const sessionPayload = await clerkStagingClient.getUserClerkSession();
           const authority = sessionPayload?.userAuthentication || {};
           const principal = createClerkPostgresqlUserPrincipal({
@@ -855,6 +861,9 @@ export default function useUserSignupController({
         ...prev,
         password: '',
         passwordConfirm: '',
+        ...(firebaseRetirement.requested
+          ? { signupEmailVerified: false, signupVerifiedEmail: '' }
+          : {}),
       }));
 
       if (
@@ -927,6 +936,8 @@ export default function useUserSignupController({
     siteSettings,
     triggerToast,
     userAuthForm.email,
+    userAuthForm.signupEmailVerified,
+    userAuthForm.signupVerifiedEmail,
     userAuthForm.name,
     userAuthForm.password,
     userAuthForm.passwordConfirm,

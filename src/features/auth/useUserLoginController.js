@@ -62,6 +62,8 @@ export const createDefaultUserAuthForm = () => ({
   clientTrustStrategy: '',
   clientTrustDestination: '',
   clientTrustMigration: '',
+  signupEmailVerified: false,
+  signupVerifiedEmail: '',
 });
 
 export const useUserAuthState = () => {

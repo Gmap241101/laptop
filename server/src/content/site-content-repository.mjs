@@ -49,6 +49,20 @@ export const createSiteContentRepository = (pool) => {
 
   let getDomain;
 
+  const getDocument = async (domainValue, documentKeyValue) => {
+    const domain = String(domainValue || '').trim();
+    const documentKey = String(documentKeyValue || '').trim();
+    if (!domain || !documentKey) return null;
+    const result = await pool.query(
+      `SELECT document_key, payload, enabled, sort_order, source_updated_at, synced_at
+         FROM app_site_content_documents
+        WHERE domain = $1 AND document_key = $2
+        LIMIT 1`,
+      [domain, documentKey],
+    );
+    return result.rowCount > 0 ? Object.freeze(mapRow(result.rows[0])) : null;
+  };
+
   const replaceDomain = async ({ domain, documents, actorClerkUserId = '', sourceMode = 'postgresql-admin-direct' }) => {
     const normalizedDocuments = (Array.isArray(documents) ? documents : []).map((item) => ({
       key: String(item?.key || '').trim(),
@@ -279,6 +293,7 @@ export const createSiteContentRepository = (pool) => {
 
   return Object.freeze({
     getRentalConfigBootstrapContext,
+    getDocument,
     getDomain,
     replaceDomain,
     patchDomainDocuments,

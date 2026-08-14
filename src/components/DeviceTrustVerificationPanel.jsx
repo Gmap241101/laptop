@@ -16,6 +16,9 @@ export default function DeviceTrustVerificationPanel({
   onSubmit,
   surface = 'user',
   disabled = false,
+  message = '',
+  resendHandler = null,
+  resendSuccessMessage = '',
 }) {
   const inputRefs = useRef([]);
   const [resending, setResending] = useState(false);
@@ -92,14 +95,16 @@ export default function DeviceTrustVerificationPanel({
     setResending(true);
     setResendStatus(null);
     try {
-      if (surface === 'admin') {
+      if (typeof resendHandler === 'function') {
+        await resendHandler();
+      } else if (surface === 'admin') {
         await clerkStagingClient.resendAdminClientTrust();
       } else {
         await clerkStagingClient.resendUserClientTrust();
       }
       setResendStatus({
         type: 'success',
-        message: `${destination}로 인증코드를 다시 보냈습니다.`,
+        message: resendSuccessMessage || `${destination}로 인증코드를 다시 보냈습니다.`,
       });
     } catch (error) {
       setResendStatus({
@@ -114,7 +119,7 @@ export default function DeviceTrustVerificationPanel({
   return (
     <div className="space-y-5">
       <div className="rounded-2xl border border-sky-200 bg-sky-50 px-5 py-4 text-sm leading-6 text-sky-900">
-        새로운 기기에서 로그인하셨습니다. <span className="font-bold">{destination}</span>로 보낸 인증코드를 입력해주세요.
+        {message || (<>새로운 기기에서 로그인하셨습니다. <span className="font-bold">{destination}</span>로 보낸 인증코드를 입력해주세요.</>)}
       </div>
 
       <fieldset disabled={disabled} className="space-y-2">
@@ -142,20 +147,6 @@ export default function DeviceTrustVerificationPanel({
           ))}
         </div>
       </fieldset>
-
-      <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
-        <input
-          type="checkbox"
-          checked
-          readOnly
-          disabled
-          className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 accent-slate-900"
-        />
-        <span>
-          <span className="block font-bold text-slate-800">인증 완료 후 이 브라우저를 신뢰된 기기로 인식</span>
-          Clerk Device Trust가 자동 적용되며 로그인별로 체크를 해제하는 옵션은 제공되지 않습니다. 브라우저 인증 cookie가 유지되는 동안에는 같은 브라우저에서 새 기기 인증을 다시 요구하지 않을 수 있습니다.
-        </span>
-      </label>
 
       <div className="space-y-2 text-center">
         <button

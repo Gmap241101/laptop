@@ -7,7 +7,10 @@ import {
   createEmptyTermsSubmission,
   normalizeTermsPolicy,
 } from '../features/terms/termsConstants.js';
-import { loadSignupTermsPolicy } from '../features/terms/termsService.js';
+import {
+  getCachedSignupTermsPolicy,
+  loadSignupTermsPolicy,
+} from '../features/terms/termsService.js';
 
 const buildSubmission = (policy, viewedById, acceptedById) => {
   const activeTerms = policy.activeTerms || [];
@@ -42,8 +45,11 @@ const buildSubmission = (policy, viewedById, acceptedById) => {
 };
 
 export default function UserSignupTermsSection({ onChange }) {
-  const [policy, setPolicy] = useState(() => normalizeTermsPolicy({}));
-  const [ready, setReady] = useState(false);
+  const initialCachedPolicy = getCachedSignupTermsPolicy();
+  const [policy, setPolicy] = useState(() =>
+    initialCachedPolicy || normalizeTermsPolicy({})
+  );
+  const [ready, setReady] = useState(Boolean(initialCachedPolicy));
   const [errorMessage, setErrorMessage] = useState('');
   const [viewedById, setViewedById] = useState({});
   const [acceptedById, setAcceptedById] = useState({});
@@ -65,6 +71,12 @@ export default function UserSignupTermsSection({ onChange }) {
           : ''
       );
     };
+
+    const cachedPolicy = getCachedSignupTermsPolicy();
+    if (cachedPolicy) {
+      applyPolicy(cachedPolicy);
+      return () => { active = false; };
+    }
 
     void loadSignupTermsPolicy()
       .then(applyPolicy)

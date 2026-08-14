@@ -487,4 +487,111 @@ assert.equal(deviceTrustComplete.status, 'complete');
 assert.equal(deviceTrustComplete.email, 'trust@example.com');
 assert.equal(deviceTrustClerk.session.id, 'sess_device_trust');
 
-console.log('[clerk-frontend-smoke] PASS (config, CDN loader, Clerk bearer auth, Device Trust email-code send/resend/verify, PostgreSQL compatibility-key endpoints, no retired-provider authorization header)');
+let signupEmailSendCount = 0;
+let signupEmailVerifyCount = 0;
+let signupResetCount = 0;
+const signupObject = {
+  status: 'missing_requirements',
+  unverifiedFields: ['email_address'],
+  verifications: { emailAddress: { status: 'unverified' } },
+  async prepareEmailAddressVerification({ strategy }) {
+    assert.equal(strategy, 'email_code');
+    signupEmailSendCount += 1;
+  },
+  async attemptEmailAddressVerification({ code }) {
+    assert.equal(code, '654321');
+    signupEmailVerifyCount += 1;
+    this.unverifiedFields = [];
+    this.verifications.emailAddress.status = 'verified';
+    return this;
+  },
+  async update({ password, firstName }) {
+    assert.equal(password, 'SignupPassword123');
+    assert.equal(firstName, 'Signup User');
+    this.status = 'complete';
+    this.createdSessionId = 'sess_signup_verified';
+    this.createdUserId = 'user_signup_verified';
+    return this;
+  },
+};
+const signupClerk = {
+  loaded: true,
+  session: null,
+  client: {
+    signUp: {
+      async create({ emailAddress }) {
+        assert.equal(emailAddress, 'signup@example.com');
+        return signupObject;
+      },
+    },
+    resetSignUp() { signupResetCount += 1; },
+  },
+  async load() {},
+  async signOut() { this.session = null; },
+  async setActive({ session }) {
+    assert.equal(session, 'sess_signup_verified');
+    this.session = {
+      id: session,
+      async getToken() { return 'signup-verified-session-token'; },
+    };
+  },
+};
+let verifiedSignupRequest = null;
+const signupClient = createClerkStagingClient({
+  env: {
+    MODE: 'staging',
+    VITE_CLERK_STAGING_ENABLED: 'true',
+    VITE_CLERK_PUBLISHABLE_KEY: key,
+    VITE_API_URL: 'https://api.example.com',
+  },
+  windowRef: { atob: decode, location: { search: '' }, Clerk: signupClerk },
+  documentRef: {},
+  fetchImpl: async (url, options = {}) => {
+    verifiedSignupRequest = { url: String(url), options };
+    return {
+      ok: true,
+      status: 201,
+      async json() {
+        return {
+          authenticated: true,
+          signupLifecycle: {
+            source: 'postgresql',
+            authority: 'clerk-postgresql',
+            firebaseAuthCompatibility: 'retired',
+            emailVerification: 'clerk-email-code',
+            status: 'active',
+            clerkUserId: 'user_signup_verified',
+          },
+        };
+      },
+    };
+  },
+});
+const signupVerificationPending = await signupClient.startUserSignupEmailVerification('signup@example.com');
+assert.equal(signupVerificationPending.status, 'verification_required');
+assert.equal(signupEmailSendCount, 1);
+await signupClient.resendUserSignupEmailVerification();
+assert.equal(signupEmailSendCount, 2);
+const signupVerified = await signupClient.verifyUserSignupEmailVerification('654321');
+assert.equal(signupVerified.status, 'verified');
+assert.equal(signupEmailVerifyCount, 1);
+const signupCompleted = await signupClient.completeUserSignupEmailVerification({
+  email: 'signup@example.com',
+  password: 'SignupPassword123',
+  name: 'Signup User',
+});
+assert.equal(signupCompleted.status, 'complete');
+assert.equal(signupClerk.session.id, 'sess_signup_verified');
+const signupBackendPayload = await signupClient.signupVerifiedUser({
+  email: 'signup@example.com',
+  name: 'Signup User',
+  team: 'QA',
+  phone: '010-1234-5678',
+  terms: { decisions: [] },
+});
+assert.equal(signupBackendPayload.signupLifecycle.emailVerification, 'clerk-email-code');
+assert.equal(verifiedSignupRequest.url, 'https://api.example.com/api/users/signup/clerk-verified');
+assert.equal(verifiedSignupRequest.options.headers.Authorization, 'Bearer signup-verified-session-token');
+assert.ok(signupResetCount >= 1, 'signup email verification must reset any previous Clerk signup attempt before starting');
+
+console.log('[clerk-frontend-smoke] PASS (config, CDN loader, Clerk bearer auth, Device Trust email-code send/resend/verify, signup email-code send/resend/verify/complete, PostgreSQL compatibility-key endpoints, no retired-provider authorization header)');

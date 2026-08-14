@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import DomesticPhoneInput from '../components/DomesticPhoneInput.jsx';
 import DeviceTrustVerificationPanel from '../components/DeviceTrustVerificationPanel.jsx';
-import { sanitizeMemberNameInput } from '../utils/memberPolicy.js';
+import ModalPortal from '../components/ModalPortal.jsx';
+import { clerkStagingClient } from '../clerk/clerkStagingClient.js';
+import { isValidEmailAddress, normalizeEmailAddress, sanitizeMemberNameInput } from '../utils/memberPolicy.js';
 import UserSignupTermsSection from './UserSignupTermsSection.jsx';
 import { createEmptyTermsSubmission } from '../features/terms/termsConstants.js';
 
@@ -37,6 +39,7 @@ export default function UserAuthPanel({ ctx }) {
     submitAccountRecovery,
     submitPasswordReset,
     submitUserAuthForm,
+    triggerToast,
     userAuthForm,
     userAuthLoading,
     userTab,
@@ -66,6 +69,15 @@ export default function UserAuthPanel({ ctx }) {
   const [signupTermsSubmission, setSignupTermsSubmission] = useState(
     createEmptyTermsSubmission
   );
+  const [signupEmailVerificationOpen, setSignupEmailVerificationOpen] = useState(false);
+  const [signupEmailVerificationCode, setSignupEmailVerificationCode] = useState('');
+  const [signupEmailVerificationLoading, setSignupEmailVerificationLoading] = useState(false);
+  const normalizedSignupEmail = normalizeEmailAddress(userAuthForm.email);
+  const signupEmailVerified = Boolean(
+    isSignupMode &&
+      userAuthForm.signupEmailVerified === true &&
+      normalizeEmailAddress(userAuthForm.signupVerifiedEmail) === normalizedSignupEmail
+  );
   const handleSignupTermsChange = useCallback((nextSubmission) => {
     setSignupTermsSubmission(nextSubmission);
   }, []);
@@ -74,8 +86,108 @@ export default function UserAuthPanel({ ctx }) {
     if (!isSignupMode) {
       setSignupStep(1);
       setSignupTermsSubmission(createEmptyTermsSubmission());
+      setSignupEmailVerificationOpen(false);
+      setSignupEmailVerificationCode('');
+      setSignupEmailVerificationLoading(false);
     }
   }, [isSignupMode]);
+
+  const getSignupEmailVerificationErrorCode = (error, fallback) =>
+    error?.errors?.[0]?.code || error?.code || error?.name || fallback;
+
+  const updateSignupEmail = (value) => {
+    const nextEmail = normalizeEmailAddress(value);
+    const verifiedEmail = normalizeEmailAddress(userAuthForm.signupVerifiedEmail);
+    const preservesVerification = Boolean(
+      userAuthForm.signupEmailVerified === true &&
+        verifiedEmail &&
+        verifiedEmail === nextEmail
+    );
+
+    if (!preservesVerification && userAuthForm.signupEmailVerified) {
+      void clerkStagingClient.cancelUserSignupEmailVerification().catch(() => {});
+    }
+
+    setUserAuthForm({
+      ...userAuthForm,
+      email: value,
+      signupEmailVerified: preservesVerification,
+      signupVerifiedEmail: preservesVerification ? verifiedEmail : '',
+    });
+  };
+
+  const requestSignupEmailVerification = async () => {
+    if (signupEmailVerificationLoading || signupClosed) return;
+    if (!isValidEmailAddress(normalizedSignupEmail)) {
+      triggerToast?.('인증받을 이메일 주소를 정확히 입력해 주세요.', 'error');
+      return;
+    }
+
+    setSignupEmailVerificationLoading(true);
+    try {
+      await clerkStagingClient.startUserSignupEmailVerification(normalizedSignupEmail);
+      setUserAuthForm({
+        ...userAuthForm,
+        email: normalizedSignupEmail,
+        signupEmailVerified: false,
+        signupVerifiedEmail: '',
+      });
+      setSignupEmailVerificationCode('');
+      setSignupEmailVerificationOpen(true);
+      triggerToast?.('인증코드를 이메일로 전송했습니다.', 'success');
+    } catch (error) {
+      triggerToast?.(
+        `이메일 인증코드 전송에 실패했습니다. 오류 코드: ${getSignupEmailVerificationErrorCode(error, 'signup_email_verification_send_failed')}`,
+        'error'
+      );
+    } finally {
+      setSignupEmailVerificationLoading(false);
+    }
+  };
+
+  const confirmSignupEmailVerification = async () => {
+    if (signupEmailVerificationLoading) return;
+    if (!/^\d{6}$/.test(signupEmailVerificationCode)) {
+      triggerToast?.('6자리 인증코드를 모두 입력해 주세요.', 'error');
+      return;
+    }
+
+    setSignupEmailVerificationLoading(true);
+    try {
+      const result = await clerkStagingClient.verifyUserSignupEmailVerification(
+        signupEmailVerificationCode
+      );
+      const verifiedEmail = normalizeEmailAddress(result?.email || normalizedSignupEmail);
+      setUserAuthForm({
+        ...userAuthForm,
+        email: verifiedEmail,
+        signupEmailVerified: true,
+        signupVerifiedEmail: verifiedEmail,
+      });
+      setSignupEmailVerificationOpen(false);
+      setSignupEmailVerificationCode('');
+      triggerToast?.('이메일 인증이 완료되었습니다.', 'success');
+    } catch (error) {
+      triggerToast?.(
+        `이메일 인증에 실패했습니다. 오류 코드: ${getSignupEmailVerificationErrorCode(error, 'signup_email_verification_failed')}`,
+        'error'
+      );
+    } finally {
+      setSignupEmailVerificationLoading(false);
+    }
+  };
+
+  const closeSignupEmailVerification = () => {
+    if (signupEmailVerificationLoading) return;
+    void clerkStagingClient.cancelUserSignupEmailVerification().catch(() => {});
+    setSignupEmailVerificationOpen(false);
+    setSignupEmailVerificationCode('');
+    setUserAuthForm({
+      ...userAuthForm,
+      signupEmailVerified: false,
+      signupVerifiedEmail: '',
+    });
+  };
 
   const title = isSignupMode
     ? '일반 사용자 회원가입'
@@ -98,6 +210,7 @@ export default function UserAuthPanel({ ctx }) {
           : '가입한 이메일과 비밀번호로 로그인합니다.';
 
   return (
+    <>
     <Card className="mx-auto max-w-xl overflow-hidden border-slate-200 bg-white shadow-sm">
       <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-8 text-white">
         <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
@@ -396,14 +509,44 @@ export default function UserAuthPanel({ ctx }) {
                   />
                 ) : (
                   <>
-                    <Input
-                      label="이메일"
-                      value={userAuthForm.email}
-                      onChange={(value) => setUserAuthForm({ ...userAuthForm, email: value })}
-                      placeholder="example@company.com"
-                      type="email"
-                      autoComplete="email"
-                    />
+                    {isSignupMode ? (
+                      <>
+                        <div className="grid grid-cols-[minmax(0,5fr)_minmax(96px,1fr)] items-end gap-2">
+                          <Input
+                            label="이메일"
+                            value={userAuthForm.email}
+                            onChange={updateSignupEmail}
+                            placeholder="example@company.com"
+                            type="email"
+                            autoComplete="email"
+                            disabled={signupEmailVerificationLoading}
+                          />
+                          <Button
+                            type="button"
+                            variant={signupEmailVerified ? 'outline' : 'primary'}
+                            disabled={signupEmailVerificationLoading || signupEmailVerified || signupClosed}
+                            onClick={requestSignupEmailVerification}
+                            className="h-10 w-full justify-center whitespace-nowrap px-3"
+                          >
+                            {signupEmailVerified
+                              ? '인증완료'
+                              : signupEmailVerificationLoading
+                                ? '전송 중...'
+                                : '인증받기'}
+                          </Button>
+                        </div>
+                        <div id="clerk-captcha" className="empty:hidden" />
+                      </>
+                    ) : (
+                      <Input
+                        label="이메일"
+                        value={userAuthForm.email}
+                        onChange={(value) => setUserAuthForm({ ...userAuthForm, email: value })}
+                        placeholder="example@company.com"
+                        type="email"
+                        autoComplete="email"
+                      />
+                    )}
 
                     {isSignupMode && (
                       <>
@@ -516,7 +659,7 @@ export default function UserAuthPanel({ ctx }) {
                     <Button
                       type="submit"
                       variant="primary"
-                      disabled={userAuthLoading || !firebaseAuthReady || !identityClaimsReady || signupClosed || !signupTermsSubmission.valid || signupPasswordMismatch}
+                      disabled={userAuthLoading || signupEmailVerificationLoading || !firebaseAuthReady || !identityClaimsReady || signupClosed || !signupTermsSubmission.valid || !signupEmailVerified || signupPasswordMismatch}
                       className="w-full justify-center py-3"
                     >
                       {userAuthLoading ? '가입 정보 확인 중...' : '회원가입'}
@@ -552,5 +695,70 @@ export default function UserAuthPanel({ ctx }) {
         )}
       </CardContent>
     </Card>
+
+    {signupEmailVerificationOpen ? (
+      <ModalPortal
+        className="fixed inset-0 z-[180] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
+        role="dialog"
+        aria-modal="true"
+        aria-label="회원가입 이메일 인증"
+      >
+        <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-base font-bold text-slate-900">이메일 인증</h3>
+              <p className="mt-1 text-xs leading-5 text-slate-500">회원가입에 사용할 이메일 주소를 확인합니다.</p>
+            </div>
+            <button
+              type="button"
+              onClick={closeSignupEmailVerification}
+              disabled={signupEmailVerificationLoading}
+              className="rounded-lg p-1 text-lg leading-none text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed"
+              aria-label="이메일 인증 창 닫기"
+            >
+              ×
+            </button>
+          </div>
+
+          <div className="mt-5">
+            <DeviceTrustVerificationPanel
+              surface="signup"
+              email={normalizedSignupEmail}
+              code={signupEmailVerificationCode}
+              onChange={setSignupEmailVerificationCode}
+              onSubmit={confirmSignupEmailVerification}
+              disabled={signupEmailVerificationLoading}
+              message={<>
+                <span className="font-bold">{normalizedSignupEmail}</span>로 보낸 인증코드를 입력해주세요.
+              </>}
+              resendHandler={() => clerkStagingClient.resendUserSignupEmailVerification()}
+              resendSuccessMessage={`${normalizedSignupEmail}로 인증코드를 다시 보냈습니다.`}
+            />
+          </div>
+
+          <div className="mt-6 grid grid-cols-2 gap-2 border-t border-slate-100 pt-5">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={signupEmailVerificationLoading}
+              onClick={closeSignupEmailVerification}
+              className="w-full justify-center py-3"
+            >
+              취소
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              disabled={signupEmailVerificationLoading || !/^\d{6}$/.test(signupEmailVerificationCode)}
+              onClick={confirmSignupEmailVerification}
+              className="w-full justify-center py-3"
+            >
+              {signupEmailVerificationLoading ? '확인 중...' : '인증 확인'}
+            </Button>
+          </div>
+        </section>
+      </ModalPortal>
+    ) : null}
+    </>
   );
 }

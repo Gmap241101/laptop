@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createRentalRequestId, RENTAL_REQUEST_ID_PATTERN } from '../../src/features/requests/rentalRequestId.js';
 import { createSiteContentDomainDocument } from '../../src/features/content/siteContentCutover.js';
 import { formatUserAccountCreatedAt } from '../../src/features/members/memberAccountPolicy.js';
-import { requestAdminMemberDirectoryAuditPostgresql, requestAdminMemberDirectoryRestorePostgresql, requestAdminRentalConfigSettingsPatch, requestAdminSignupPolicyPatch, requestCurrentUserRentalRestriction } from '../../src/clerk/clerkStagingClient.js';
+import { requestAdminClerkDeviceTrust, requestAdminClerkDeviceTrustWrite, requestAdminMemberDirectoryAuditPostgresql, requestAdminMemberDirectoryRestorePostgresql, requestAdminRentalConfigSettingsPatch, requestAdminSignupPolicyPatch, requestCurrentUserRentalRestriction } from '../../src/clerk/clerkStagingClient.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -52,6 +52,32 @@ assert.equal(requestedHeaders.Authorization, 'Bearer clerk-test-token');
 assert.equal(restrictionPayload.rentalRestriction.source, 'postgresql-authoritative');
 assert.equal(restrictionPayload.rentalRestriction.exists, false);
 
+const deviceTrustFrontendRequests = [];
+const deviceTrustFetch = async (url, options = {}) => {
+  deviceTrustFrontendRequests.push({ url: String(url), options });
+  if (options.method === 'GET') {
+    return new Response(JSON.stringify({
+      authenticated: true, authorized: true,
+      clerkDeviceTrust: { source: 'clerk-platform-api', authority: 'clerk-device-trust', configured: true, enabled: true },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+  if (options.method === 'PATCH') {
+    assert.deepEqual(JSON.parse(options.body), { enabled: false });
+    return new Response(JSON.stringify({
+      authenticated: true, authorized: true,
+      clerkDeviceTrust: { source: 'clerk-platform-api', authority: 'clerk-device-trust', configured: true, enabled: false },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+  throw new Error(`Unexpected Device Trust frontend request: ${options.method}`);
+};
+const deviceTrustReadPayload = await requestAdminClerkDeviceTrust({ clerk, apiBaseUrl: 'https://api.example.test', fetchImpl: deviceTrustFetch });
+assert.equal(deviceTrustReadPayload.clerkDeviceTrust.enabled, true);
+const deviceTrustWritePayload = await requestAdminClerkDeviceTrustWrite({ clerk, apiBaseUrl: 'https://api.example.test', fetchImpl: deviceTrustFetch, enabled: false });
+assert.equal(deviceTrustWritePayload.clerkDeviceTrust.enabled, false);
+assert.equal(deviceTrustFrontendRequests[0].url, 'https://api.example.test/api/admin/clerk-device-trust');
+assert.equal(deviceTrustFrontendRequests[0].options.headers.Authorization, 'Bearer clerk-test-token');
+assert.equal(deviceTrustFrontendRequests[1].options.method, 'PATCH');
+
 
 
 const readinessSource = fs.readFileSync(new URL('../../src/selectors/appReadinessSelectors.js', import.meta.url), 'utf8');
@@ -98,7 +124,12 @@ assert.match(deviceTrustPanelSource, /새로운 기기에서 로그인하셨습�
 assert.match(deviceTrustPanelSource, /Array\.from\(\{ length: CODE_LENGTH \}/, 'Device Trust verification must render a fixed six-slot code input');
 assert.match(deviceTrustPanelSource, /CODE_LENGTH = 6/, 'Device Trust email verification code UI must use six separated digits');
 assert.match(deviceTrustPanelSource, /resendUserClientTrust\(\)|resendAdminClientTrust\(\)/, 'Device Trust panel must support verification-code resend');
-assert.match(deviceTrustPanelSource, /checked[\s\S]*readOnly[\s\S]*disabled/, 'Device Trust recognition indicator must be non-interactive because Clerk does not expose a per-sign-in trust toggle');
+assert.equal(deviceTrustPanelSource.includes('인증 완료 후 이 브라우저를 신뢰된 기기로 인식'), false, 'unsupported Device Trust recognition checkbox/message must not be rendered');
+assert.equal(deviceTrustPanelSource.includes('Clerk Device Trust가 자동 적용'), false, 'implementation-detail Device Trust trust-message must not be rendered');
+assert.match(userAuthPanelSource, /grid-cols-\[minmax\(0,5fr\)_minmax\(96px,1fr\)\]/, 'signup email input and verification action must use the requested 5:1 row layout');
+assert.match(userAuthPanelSource, /signupEmailVerified[\s\S]*인증완료/, 'signup email verification must visibly switch to the verified state');
+assert.match(userAuthPanelSource, /<ModalPortal[\s\S]*회원가입 이메일 인증[\s\S]*<DeviceTrustVerificationPanel/, 'signup email verification must use a modal with the shared six-digit verification UI');
+assert.match(userAuthPanelSource, /resendUserSignupEmailVerification/, 'signup email verification modal must support email-code resend');
 assert.match(userLoginSource, /6자리 인증코드를 모두 입력해 주세요\./, 'user Device Trust controller must require all six verification-code digits');
 assert.match(adminAuthSource, /6자리 인증코드를 모두 입력해 주세요\./, 'administrator Device Trust controller must require all six verification-code digits');
 assert.match(adminAuthSource, /const syncAdminRouteIntentAfterAuthClear =[\s\S]*runtimeSurface === 'admin'[\s\S]*writeAdminRouteIntent\(\)/, 'administrator logout/session expiry must preserve administrator route intent instead of handing control to the user surface');
@@ -243,6 +274,12 @@ const adminWorkspaceSource = fs.readFileSync(new URL('../../src/admin/AdminWorks
 const adminContextAssemblerSource = fs.readFileSync(new URL('../../src/admin/useAdminContextAssembler.js', import.meta.url), 'utf8');
 const appDynamicContextValuesSource = fs.readFileSync(new URL('../../src/context/appDynamicContextValues.js', import.meta.url), 'utf8');
 const adminAccountSecuritySource = fs.readFileSync(new URL('../../src/admin/AdminAccountSecurityPanel.jsx', import.meta.url), 'utf8');
+assert.match(adminAccountSecuritySource, /title="새 기기 로그인 인증"/, 'account-security settings must expose the shared new-device login verification control');
+assert.match(adminAccountSecuritySource, /새로운 기기에서 이메일 인증 사용/, 'Device Trust control must describe the requested yes/no behavior');
+assert.match(adminAccountSecuritySource, /getAdminClerkDeviceTrust\(\)/, 'Device Trust control must read the live Clerk setting instead of trusting PostgreSQL state');
+assert.match(adminAccountSecuritySource, /saveAdminClerkDeviceTrust\(/, 'Device Trust control must write the live Clerk setting');
+assert.match(adminAccountSecuritySource, /device-trust-settings-update/, 'Device Trust changes must be recorded in system settings audit history');
+assert.match(adminAccountSecuritySource, /deviceTrustDraft[\s\S]*'예'[\s\S]*'아니오'/, 'Device Trust setting must visibly expose yes/no state');
 const contextSliceSource = fs.readFileSync(new URL('../../src/context/appContextSlices.js', import.meta.url), 'utf8');
 const adminShellSource = fs.readFileSync(new URL('../../src/admin/AdminShell.jsx', import.meta.url), 'utf8');
 const adminNavigationSource = fs.readFileSync(new URL('../../src/admin/useAdminNavigationController.js', import.meta.url), 'utf8');

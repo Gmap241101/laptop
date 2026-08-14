@@ -121,6 +121,14 @@ export default function AdminAccountSecurityPanel({ ctx }) {
   const [adminDraft, setAdminDraft] = useState(normalizedAdmin);
   const [userDraft, setUserDraft] = useState(normalizedUser);
   const [saving, setSaving] = useState(false);
+  const [deviceTrustState, setDeviceTrustState] = useState({
+    ready: false,
+    configured: false,
+    enabled: null,
+    errorCode: '',
+  });
+  const [deviceTrustDraft, setDeviceTrustDraft] = useState(false);
+  const [savingDeviceTrust, setSavingDeviceTrust] = useState(false);
 
   useEffect(() => {
     setAdminDraft(normalizedAdmin);
@@ -129,6 +137,45 @@ export default function AdminAccountSecurityPanel({ ctx }) {
   useEffect(() => {
     setUserDraft(normalizedUser);
   }, [normalizedUser]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setDeviceTrustState({
+      ready: false,
+      configured: false,
+      enabled: null,
+      errorCode: '',
+    });
+
+    void clerkStagingClient
+      .getAdminClerkDeviceTrust()
+      .then((payload) => {
+        if (cancelled) return;
+        const state = payload?.clerkDeviceTrust || {};
+        const enabled = typeof state.enabled === 'boolean' ? state.enabled : null;
+        setDeviceTrustState({
+          ready: true,
+          configured: Boolean(state.configured),
+          enabled,
+          errorCode: '',
+        });
+        if (enabled !== null) setDeviceTrustDraft(enabled);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error('Clerk Device Trust settings read error:', error);
+        setDeviceTrustState({
+          ready: true,
+          configured: false,
+          enabled: null,
+          errorCode: error?.code || error?.name || 'clerk_device_trust_read_failed',
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticatedAdminAccount?.id]);
 
   const adminPolicyChanged =
     Boolean(adminDraft.adminLogoutOnBrowserClose) !==
@@ -147,6 +194,11 @@ export default function AdminAccountSecurityPanel({ ctx }) {
       Number(normalizedUser.userAbsoluteTimeoutHours);
 
   const dirty = adminPolicyChanged || userPolicyChanged;
+  const deviceTrustChanged =
+    deviceTrustState.ready &&
+    deviceTrustState.configured &&
+    typeof deviceTrustState.enabled === 'boolean' &&
+    deviceTrustDraft !== deviceTrustState.enabled;
   const ready = systemAdminSettingsReady && userSessionPolicyReady;
   const loadError =
     systemAdminSettingsLoadErrorMessage || userSessionPolicyLoadErrorMessage;
@@ -276,6 +328,77 @@ export default function AdminAccountSecurityPanel({ ctx }) {
       triggerToast(`계정 보안 설정을 PostgreSQL에 저장하지 못했습니다. 오류 코드: ${error?.code || error?.name || 'account_security_settings_save_failed'}`, 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveDeviceTrustSetting = async () => {
+    if (!isOwner) {
+      triggerToast('최고 관리자만 새 기기 로그인 인증 설정을 변경할 수 있습니다.', 'error');
+      return;
+    }
+    if (!deviceTrustState.configured) {
+      triggerToast(
+        'Clerk Platform API 연동이 필요합니다. 오류 코드: clerk_platform_config_not_configured',
+        'error',
+      );
+      return;
+    }
+    if (!deviceTrustChanged) return;
+
+    const previousEnabled = Boolean(deviceTrustState.enabled);
+    setSavingDeviceTrust(true);
+    try {
+      const payload = await clerkStagingClient.saveAdminClerkDeviceTrust(
+        Boolean(deviceTrustDraft),
+      );
+      const savedState = payload?.clerkDeviceTrust || {};
+      const enabled = Boolean(savedState.enabled);
+      setDeviceTrustState({
+        ready: true,
+        configured: true,
+        enabled,
+        errorCode: '',
+      });
+      setDeviceTrustDraft(enabled);
+
+      let auditWriteError = null;
+      try {
+        await clerkStagingClient.appendAdminSystemSettingsAudit({
+          action: 'device-trust-settings-update',
+          section: '계정 보안 설정',
+          summary: `새 기기 로그인 이메일 인증을 ${enabled ? '사용' : '사용 안 함'}으로 변경했습니다.`,
+          beforeValues: {
+            deviceTrustEmailVerificationEnabled: previousEnabled,
+          },
+          afterValues: {
+            deviceTrustEmailVerificationEnabled: enabled,
+          },
+        });
+      } catch (error) {
+        auditWriteError = error;
+        console.error('Device Trust settings audit write error:', error);
+      }
+
+      if (auditWriteError) {
+        triggerToast(
+          `새 기기 로그인 이메일 인증 설정은 성공적으로 저장 및 반영되었지만 변경 이력 기록에 실패했습니다. 오류 코드: ${auditWriteError?.code || auditWriteError?.name || 'system_settings_audit_write_failed'}`,
+          'error',
+        );
+      } else {
+        triggerToast(
+          '새 기기 로그인 이메일 인증 설정이 성공적으로 저장 및 반영되었습니다.',
+          'success',
+        );
+      }
+    } catch (error) {
+      console.error('Clerk Device Trust settings save error:', error);
+      setDeviceTrustDraft(previousEnabled);
+      triggerToast(
+        `새 기기 로그인 이메일 인증 설정을 Clerk에 반영하지 못했습니다. 기존 설정은 유지됩니다. 오류 코드: ${error?.code || error?.name || 'clerk_device_trust_write_failed'}`,
+        'error',
+      );
+    } finally {
+      setSavingDeviceTrust(false);
     }
   };
 
@@ -450,6 +573,74 @@ export default function AdminAccountSecurityPanel({ ctx }) {
             />
           </SectionCard>
 
+          <SectionCard
+            title="새 기기 로그인 인증"
+            description="사용자와 관리자 모두 새로운 기기에서 로그인할 때 이메일 인증코드를 추가 확인할지 설정합니다. 저장하면 Clerk Device Trust에 즉시 반영됩니다."
+          >
+            <SettingRow
+              title="새로운 기기에서 이메일 인증 사용"
+              description="예: 새 기기 로그인 시 6자리 이메일 인증코드를 추가 확인합니다. 아니오: 이메일과 비밀번호 인증 후 별도의 새 기기 인증코드를 요구하지 않습니다."
+              control={
+                <>
+                  <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${
+                    !deviceTrustState.ready
+                      ? 'bg-slate-100 text-slate-500'
+                      : deviceTrustState.configured
+                        ? deviceTrustDraft
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-slate-100 text-slate-700'
+                        : 'bg-amber-100 text-amber-800'
+                  }`}>
+                    {!deviceTrustState.ready
+                      ? '확인 중'
+                      : deviceTrustState.configured
+                        ? deviceTrustDraft
+                          ? '예'
+                          : '아니오'
+                        : '연동 필요'}
+                  </span>
+                  <ToggleSwitch
+                    label="새 기기 로그인 이메일 인증 사용"
+                    checked={Boolean(deviceTrustDraft)}
+                    disabled={
+                      !isOwner ||
+                      !deviceTrustState.ready ||
+                      !deviceTrustState.configured ||
+                      savingDeviceTrust
+                    }
+                    onChange={setDeviceTrustDraft}
+                  />
+                </>
+              }
+            />
+            {!deviceTrustState.configured && deviceTrustState.ready ? (
+              <div className="py-4">
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
+                  Clerk Platform API 연동이 필요합니다. Heroku 서버에 CLERK_PLATFORM_API_KEY, CLERK_APPLICATION_ID, CLERK_INSTANCE_ID를 설정하면 이 화면에서 실제 Clerk Device Trust를 변경할 수 있습니다.
+                  {deviceTrustState.errorCode ? ` 오류 코드: ${deviceTrustState.errorCode}` : ''}
+                </div>
+              </div>
+            ) : null}
+            <div className="flex items-center justify-end gap-2 py-4">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!deviceTrustChanged || savingDeviceTrust}
+                onClick={() => setDeviceTrustDraft(Boolean(deviceTrustState.enabled))}
+              >
+                변경 취소
+              </Button>
+              <Button
+                type="button"
+                disabled={!isOwner || !deviceTrustChanged || savingDeviceTrust}
+                onClick={saveDeviceTrustSetting}
+              >
+                <Save size={14} />
+                {savingDeviceTrust ? 'Clerk 반영 중' : '새 기기 로그인 인증 설정 저장'}
+              </Button>
+            </div>
+          </SectionCard>
+
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
               <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-600" size={18} />
@@ -465,7 +656,7 @@ export default function AdminAccountSecurityPanel({ ctx }) {
             <div className="mt-3 flex items-start gap-3 rounded-2xl border border-sky-200 bg-sky-50 p-4">
               <Info className="mt-0.5 shrink-0 text-sky-600" size={18} />
               <p className="text-xs leading-5 text-sky-800">
-                인증 정책과 공격 방어 설정은 Clerk의 서버 정책을 따릅니다. 애플리케이션 세션 시간과 잠금 정책은 PostgreSQL 시스템 설정에서 관리합니다.
+                새 기기 로그인 인증은 Clerk Device Trust에 직접 반영되고, 애플리케이션 세션 시간과 잠금 정책은 PostgreSQL 시스템 설정에서 관리합니다.
               </p>
             </div>
           </section>

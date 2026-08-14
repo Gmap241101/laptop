@@ -1,9 +1,4 @@
-import {
-  POLICY_CONTENT_DOMAINS,
-  getPolicyContentDocument,
-  readPolicyContentCutoverConfig,
-  requestPolicyContentDomain,
-} from '../content/policyContentCutover.js';
+import { readPolicyContentCutoverConfig } from '../content/policyContentCutover.js';
 import { normalizeTermsPolicy } from './termsConstants.js';
 
 export async function createTermsContentHash(value = '') {
@@ -25,18 +20,76 @@ export async function createTermsContentHash(value = '') {
   return `fallback-${(hash >>> 0).toString(16).padStart(8, '0')}`;
 }
 
-export async function loadSignupTermsPolicy() {
+const SIGNUP_TERMS_POLICY_CACHE_TTL_MS = 60_000;
+let signupTermsPolicyCache = null;
+let signupTermsPolicyPending = null;
+
+const normalizeApiBaseUrl = (value) => String(value || '').trim().replace(/\/+$/, '');
+
+const requestSignupTermsPolicy = async ({ fetchImpl = fetch } = {}) => {
   const config = readPolicyContentCutoverConfig();
-  const domainResult = await requestPolicyContentDomain({
-    domain: POLICY_CONTENT_DOMAINS.TERMS,
-    config,
-    useCache: false,
+  const apiBaseUrl = normalizeApiBaseUrl(config.apiBaseUrl);
+  if (!config.readEnabled || !apiBaseUrl) {
+    const error = new Error('Signup terms PostgreSQL authority is unavailable.');
+    error.code = 'signup_terms_policy_authority_unavailable';
+    throw error;
+  }
+
+  const response = await fetchImpl(`${apiBaseUrl}/api/signup/terms-policy`, {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
   });
-  const policyDocument = getPolicyContentDocument(
-    domainResult,
-    'signupTermsPolicy/current'
-  );
-  return normalizeTermsPolicy(policyDocument?.payload || {});
+  let payload = {};
+  try {
+    payload = await response.json();
+  } catch {
+    payload = {};
+  }
+  if (!response.ok) {
+    const error = new Error(`Signup terms policy read failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || 'signup_terms_policy_read_failed';
+    throw error;
+  }
+  if (payload?.signupTermsPolicy?.source !== 'postgresql') {
+    const error = new Error('Backend returned an invalid signup terms policy response.');
+    error.code = 'signup_terms_policy_payload_invalid';
+    throw error;
+  }
+  return normalizeTermsPolicy(payload.signupTermsPolicy.payload || {});
+};
+
+export const getCachedSignupTermsPolicy = () => {
+  if (!signupTermsPolicyCache) return null;
+  if (Date.now() >= signupTermsPolicyCache.expiresAt) {
+    signupTermsPolicyCache = null;
+    return null;
+  }
+  return signupTermsPolicyCache.policy;
+};
+
+export const preloadSignupTermsPolicy = async ({ force = false } = {}) => {
+  const cachedPolicy = force ? null : getCachedSignupTermsPolicy();
+  if (cachedPolicy) return cachedPolicy;
+  if (!force && signupTermsPolicyPending) return signupTermsPolicyPending;
+
+  signupTermsPolicyPending = requestSignupTermsPolicy()
+    .then((policy) => {
+      signupTermsPolicyCache = {
+        policy,
+        expiresAt: Date.now() + SIGNUP_TERMS_POLICY_CACHE_TTL_MS,
+      };
+      return policy;
+    })
+    .finally(() => {
+      signupTermsPolicyPending = null;
+    });
+
+  return signupTermsPolicyPending;
+};
+
+export async function loadSignupTermsPolicy() {
+  return preloadSignupTermsPolicy();
 }
 
 export function formatTermsTimestamp(value) {

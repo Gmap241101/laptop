@@ -213,6 +213,71 @@ export const createUserClerkAuthService = ({
       }
     },
 
+    async signupVerifiedCurrent({ clerkUserId, input = {} }) {
+      if (!userFirebaseAuthCompatibilityDisabled) {
+        throw serviceError('user_verified_signup_not_enabled', 'Verified Clerk signup is not enabled.', 409);
+      }
+      const id = trim(clerkUserId);
+      const email = lower(input.email);
+      if (!id || !email) {
+        throw serviceError('user_verified_signup_identity_missing', 'Verified Clerk signup identity is incomplete.', 400);
+      }
+
+      let clerkUser = await clerkClient.getUser(id);
+      if (lower(clerkUser.primaryEmail) !== email) {
+        throw serviceError('user_verified_signup_email_mismatch', 'Verified Clerk email does not match the signup email.', 409);
+      }
+      if (clerkUser.primaryEmailVerified !== true) {
+        throw serviceError('user_signup_email_not_verified', 'Signup email must be verified by Clerk before account creation.', 403);
+      }
+      const existingAuthority = await repository.findByClerkUserId(id);
+      if (existingAuthority) {
+        throw serviceError('member_email_already_registered', 'Email address is already registered.', 409);
+      }
+
+      const legacyMemberKey = nativeLegacyMemberKey(email);
+      let signupCommitted = false;
+      try {
+        const signup = await accountLifecycleService.signup({
+          firebaseIdentity: { uid: legacyMemberKey, email, idToken: 'clerk-verified-signup' },
+          input: { ...input, email },
+        });
+        signupCommitted = true;
+
+        clerkUser = await clerkClient.updateUser(id, {
+          ...(trim(input.name) ? { first_name: trim(input.name) } : {}),
+          external_id: `rental-user:${legacyMemberKey}`,
+        });
+        clerkUser = await clerkClient.updateUserMetadata(id, {
+          publicMetadata: publicMetadata(),
+          privateMetadata: privateMetadata(legacyMemberKey),
+        });
+
+        const linked = await linkClerkAuthority({
+          clerkUser,
+          legacyMemberKey,
+          email,
+          provider: 'clerk-verified-signup',
+        });
+        return Object.freeze({
+          authority: 'clerk',
+          source: 'postgresql',
+          status: signup.status || linked.account?.memberStatus || '',
+          legacyMemberKey,
+          clerkUser,
+          account: linked.account,
+          firebaseAuthCompatibility: 'retired',
+          emailVerification: 'clerk-email-code',
+        });
+      } catch (error) {
+        if (signupCommitted && typeof accountLifecycleService.rollbackUnlinkedSignup === 'function') {
+          await accountLifecycleService.rollbackUnlinkedSignup({ firebaseUid: legacyMemberKey }).catch(() => {});
+        }
+        await clerkClient.deleteUser(id).catch(() => {});
+        throw error;
+      }
+    },
+
     async ensureRecoveryClerkIdentity({ firebaseUid, email }) {
       const uid = trim(firebaseUid);
       const normalizedEmail = lower(email);

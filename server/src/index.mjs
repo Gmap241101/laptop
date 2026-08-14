@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { createRequestHandler } from './app.mjs';
 import { createClerkSessionAuthenticator } from './auth/clerk-session.mjs';
 import { createClerkBackendClient } from './clerk/clerk-api.mjs';
+import { createClerkDeviceTrustService } from './clerk/clerk-device-trust-service.mjs';
 import { readServerConfig } from './config/env.mjs';
 import { checkDatabase, closePool, getPool } from './db/pool.mjs';
 import { createUserRepository } from './users/user-repository.mjs';
@@ -59,6 +60,13 @@ const clerkClient = config.clerkSecretKey
       async verifyPassword() { const error = new Error('Clerk Backend API is not configured.'); error.code = 'clerk_backend_not_configured'; throw error; },
       async deleteUser() { const error = new Error('Clerk Backend API is not configured.'); error.code = 'clerk_backend_not_configured'; throw error; },
     };
+const clerkDeviceTrustService = createClerkDeviceTrustService({
+  platformApiKey: config.clerkPlatformApiKey,
+  applicationId: config.clerkApplicationId,
+  instanceId: config.clerkInstanceId,
+  platformApiUrl: config.clerkPlatformApiUrl,
+  timeoutMs: config.clerkPlatformApiTimeoutMs,
+});
 const pool = getPool();
 const userRepository = createUserRepository(pool);
 const accountRecoveryRepository = createAccountRecoveryRepository(pool);
@@ -196,6 +204,7 @@ const server = createServer(
     boardService,
     memberAuthorityRepository,
     systemConfigService,
+    clerkDeviceTrustService,
     systemDataService,
   }),
 );
@@ -208,6 +217,7 @@ server.listen(config.port, '0.0.0.0', () => {
     databaseConfigured: true,
     clerkJwtVerification: 'RS256-public-key',
     clerkBackendApi: config.clerkSecretKey ? 'configured' : 'disabled',
+    clerkPlatformDeviceTrust: clerkDeviceTrustService.getConfigurationStatus().configured ? 'configured' : 'disabled',
     firebaseRuntime: config.firebaseRuntimeDisabled ? 'retired' : 'compatibility',
     userIdentityStore: 'postgresql',
     firebaseIdentityBridge: 'retired',

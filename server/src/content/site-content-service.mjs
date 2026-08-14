@@ -98,6 +98,23 @@ const projectPublicDomain = (result, nowMillis = Date.now()) => {
 };
 
 export const createSiteContentService = ({ repository }) => Object.freeze({
+  async getSignupTermsPolicy() {
+    if (typeof repository.getDocument !== 'function') {
+      throw errorWith('signup_terms_policy_read_unavailable', 'Signup terms policy reader is unavailable.', 503);
+    }
+    const document = await repository.getDocument('terms', 'signupTermsPolicy/current');
+    if (!document) {
+      throw errorWith('signup_terms_policy_not_found', 'Signup terms policy is not available.', 404);
+    }
+    return Object.freeze({
+      source: 'postgresql',
+      authoritative: true,
+      key: document.key,
+      payload: document.payload || {},
+      enabled: document.enabled,
+      syncedAt: document.syncedAt || null,
+    });
+  },
   async getDomain(domainValue) {
     const domain = normalizeDomain(domainValue);
     if (!ALLOWED_DOMAINS.has(domain)) throw errorWith('site_content_domain_invalid', 'Unsupported site content domain.', 400);
