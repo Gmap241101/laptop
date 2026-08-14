@@ -1,6 +1,7 @@
 import { lazy, memo, Suspense } from 'react';
 import { Activity, CalendarDays, ChevronDown, Database, Info, Menu, Paintbrush } from 'lucide-react';
 import DevRenderProfiler from '../performance/DevRenderProfiler.jsx';
+import DeviceTrustVerificationPanel from '../components/DeviceTrustVerificationPanel.jsx';
 import { requestSiteContentDomain, SITE_CONTENT_DOMAINS } from '../features/content/siteContentCutover.js';
 import { requestFaqBoard, requestNoticeBoard } from '../features/boards/boardContentCutover.js';
 import { clerkStagingClient } from '../clerk/clerkStagingClient.js';
@@ -410,19 +411,22 @@ function AdminWorkspace({ ctx, panelCtx }) {
 
                   <div>
                     <h2 className="text-xl font-black tracking-tight">
-                      관리자 인증
+                      {adminAuthForm.clientTrustRequired ? '새 기기 인증' : '관리자 인증'}
                     </h2>
 
                     <p className="mt-2 text-xs leading-5 text-slate-300">
-                      등록된 관리자 로그인 이메일로 인증해야 관리자 모드에 접근할 수 있습니다.
+                      {adminAuthForm.clientTrustRequired
+                        ? '관리자 로그인 이메일로 전송된 6자리 인증코드를 확인합니다.'
+                        : '등록된 관리자 로그인 이메일로 인증해야 관리자 모드에 접근할 수 있습니다.'}
                     </p>
                   </div>
                 </div>
               </div>
 
               <CardContent className="space-y-4 p-6">
-                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-4">
-                  <div className="flex items-start gap-3">
+                {!adminAuthForm.clientTrustRequired ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-4">
+                    <div className="flex items-start gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-slate-500 shadow-sm">
                       <LockIcon size={20} />
                     </div>
@@ -436,38 +440,31 @@ function AdminWorkspace({ ctx, panelCtx }) {
                     </div>
                   </div>
                 </div>
-
-                <Input
-                  label="관리자 로그인 이메일"
-                  value={adminAuthForm.adminLoginId}
-                  onChange={(v) =>
-                    setAdminAuthForm({
-                      ...adminAuthForm,
-                      adminLoginId: v,
-                    })
-                  }
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' && !adminAuthForm.clientTrustRequired) {
-                      authenticateAdmin();
-                    }
-                  }}
-                  placeholder="관리자 로그인 이메일 입력"
-                  disabled={adminAuthForm.clientTrustRequired}
-                  autoFocus={!adminAuthForm.clientTrustRequired}
-                />
+                ) : null}
 
                 {adminAuthForm.clientTrustRequired ? (
+                  <DeviceTrustVerificationPanel
+                    surface="admin"
+                    email={adminAuthForm.adminLoginId}
+                    code={adminAuthForm.clientTrustCode}
+                    onChange={(value) =>
+                      setAdminAuthForm({
+                        ...adminAuthForm,
+                        clientTrustCode: value,
+                      })
+                    }
+                    onSubmit={authenticateAdmin}
+                    disabled={adminAuthLoading}
+                  />
+                ) : (
                   <>
-                    <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs leading-5 text-sky-900">
-                      새 브라우저 확인이 필요합니다. Clerk가 {adminAuthForm.clientTrustDestination || '등록된 연락처'}로 보낸 인증코드를 입력해 주세요.
-                    </div>
                     <Input
-                      label="Clerk 새 기기 확인 인증코드"
-                      value={adminAuthForm.clientTrustCode}
+                      label="관리자 로그인 이메일"
+                      value={adminAuthForm.adminLoginId}
                       onChange={(v) =>
                         setAdminAuthForm({
                           ...adminAuthForm,
-                          clientTrustCode: v,
+                          adminLoginId: v,
                         })
                       }
                       onKeyDown={(event) => {
@@ -475,35 +472,31 @@ function AdminWorkspace({ ctx, panelCtx }) {
                           authenticateAdmin();
                         }
                       }}
-                      placeholder="인증코드 입력"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
+                      placeholder="관리자 로그인 이메일 입력"
                       autoFocus
                     />
-                  </>
-                ) : (
-                  <Input
-                    label="비밀번호"
-                    type="password"
-                    value={adminAuthForm.password}
-                    onChange={(v) =>
-                      setAdminAuthForm({
-                        ...adminAuthForm,
-                        password: v,
-                      })
-                    }
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        authenticateAdmin();
+                    <Input
+                      label="비밀번호"
+                      type="password"
+                      value={adminAuthForm.password}
+                      onChange={(v) =>
+                        setAdminAuthForm({
+                          ...adminAuthForm,
+                          password: v,
+                        })
                       }
-                    }}
-                    placeholder="비밀번호 입력"
-                  />
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          authenticateAdmin();
+                        }
+                      }}
+                      placeholder="비밀번호 입력"
+                    />
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
+                      Clerk + PostgreSQL 관리자 권한을 기준으로 인증합니다. 새로운 기기에서는 이메일 인증코드 확인이 추가됩니다.
+                    </div>
+                  </>
                 )}
-
-                <div className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-xs leading-5 text-orange-800">
-                  Phase 34에서는 Clerk + PostgreSQL 관리자 권한만 인증 기준으로 사용합니다. 새 브라우저에서는 Clerk Client Trust 인증코드 확인이 추가될 수 있습니다.
-                </div>
 
                 <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
                   <Button

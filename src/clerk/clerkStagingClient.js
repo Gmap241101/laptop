@@ -1471,10 +1471,7 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     const factors = Array.isArray(signIn?.supportedSecondFactors)
       ? signIn.supportedSecondFactors
       : [];
-    return factors.find((factor) => factor?.strategy === 'email_code')
-      || factors.find((factor) => factor?.strategy === 'phone_code')
-      || factors.find((factor) => factor?.strategy === 'email_link')
-      || null;
+    return factors.find((factor) => factor?.strategy === 'email_code') || null;
   };
 
   const sendAdminClientTrustChallenge = async (signIn, factor) => {
@@ -1630,7 +1627,7 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
           if (!factor) {
             throw createAdminClientTrustError(
               'admin_clerk_client_trust_factor_missing',
-              'Clerk administrator sign-in requires Client Trust but did not return a supported verification factor.'
+              'Clerk administrator sign-in requires Device Trust but did not return an email verification-code factor.'
             );
           }
           await sendAdminClientTrustChallenge(signIn, factor);

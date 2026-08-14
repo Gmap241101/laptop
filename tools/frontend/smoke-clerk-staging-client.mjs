@@ -414,4 +414,77 @@ assert.equal((await client.compareMemberShadow('firebase-browser-token')).compar
 assert.ok(browserCalls.every((call) => call.options.headers.Authorization === 'Bearer browser-session-token'));
 assert.equal(browserCalls.some((call) => call.options.headers['X-Firebase-Authorization']), false);
 
-console.log('[clerk-frontend-smoke] PASS (config, CDN loader, Clerk bearer auth, PostgreSQL compatibility-key endpoints, no retired-provider authorization header)');
+let deviceTrustSendCount = 0;
+let deviceTrustVerifyCount = 0;
+const deviceTrustSignIn = {
+  status: 'needs_client_trust',
+  createdSessionId: '',
+  supportedSecondFactors: [
+    { strategy: 'phone_code', phoneNumberId: 'phone_1', safeIdentifier: '+82 **-****-0000' },
+    { strategy: 'email_code', emailAddressId: 'email_1', safeIdentifier: 'trust@example.com' },
+  ],
+  mfa: {
+    async sendEmailCode() {
+      deviceTrustSendCount += 1;
+    },
+    async verifyEmailCode({ code }) {
+      assert.equal(code, '123456');
+      deviceTrustVerifyCount += 1;
+      deviceTrustSignIn.status = 'complete';
+      deviceTrustSignIn.createdSessionId = 'sess_device_trust';
+    },
+  },
+};
+const deviceTrustClerk = {
+  loaded: true,
+  session: null,
+  user: {
+    id: 'user_device_trust',
+    primaryEmailAddress: { emailAddress: 'trust@example.com' },
+  },
+  client: {
+    signIn: {
+      async create({ strategy, identifier, password }) {
+        assert.equal(strategy, 'password');
+        assert.equal(identifier, 'trust@example.com');
+        assert.equal(password, 'password123');
+        return deviceTrustSignIn;
+      },
+    },
+    resetSignIn() {},
+  },
+  async load() {},
+  async signOut() {},
+  async setActive({ session }) {
+    assert.equal(session, 'sess_device_trust');
+    this.session = { id: session, async getToken() { return 'device-trust-token'; } };
+  },
+};
+const deviceTrustClient = createClerkStagingClient({
+  env: {
+    MODE: 'staging',
+    VITE_CLERK_STAGING_ENABLED: 'true',
+    VITE_CLERK_PUBLISHABLE_KEY: key,
+    VITE_API_URL: 'https://api.example.com',
+  },
+  windowRef: {
+    atob: decode,
+    location: { search: '' },
+    Clerk: deviceTrustClerk,
+  },
+  documentRef: {},
+  fetchImpl: async () => { throw new Error('Device Trust smoke must not call backend fetch.'); },
+});
+const deviceTrustPending = await deviceTrustClient.signInWithPassword('trust@example.com', 'password123');
+assert.equal(deviceTrustPending.status, 'needs_client_trust');
+assert.equal(deviceTrustPending.clientTrustStrategy, 'email_code', 'new-device login must prefer the email code factor');
+assert.equal(deviceTrustSendCount, 1, 'new-device password login must send one email verification code');
+await deviceTrustClient.resendAdminClientTrust();
+assert.equal(deviceTrustSendCount, 2, 'new-device verification must support resending the email code');
+const deviceTrustComplete = await deviceTrustClient.verifyAdminClientTrust('123456');
+assert.equal(deviceTrustVerifyCount, 1);
+assert.equal(deviceTrustComplete.status, 'complete');
+assert.equal(deviceTrustComplete.email, 'trust@example.com');
+assert.equal(deviceTrustClerk.session.id, 'sess_device_trust');
+
+console.log('[clerk-frontend-smoke] PASS (config, CDN loader, Clerk bearer auth, Device Trust email-code send/resend/verify, PostgreSQL compatibility-key endpoints, no retired-provider authorization header)');

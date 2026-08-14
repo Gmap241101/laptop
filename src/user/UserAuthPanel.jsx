@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import DomesticPhoneInput from '../components/DomesticPhoneInput.jsx';
+import DeviceTrustVerificationPanel from '../components/DeviceTrustVerificationPanel.jsx';
 import { sanitizeMemberNameInput } from '../utils/memberPolicy.js';
 import UserSignupTermsSection from './UserSignupTermsSection.jsx';
 import { createEmptyTermsSubmission } from '../features/terms/termsConstants.js';
@@ -82,7 +83,9 @@ export default function UserAuthPanel({ ctx }) {
       ? '이메일 찾기'
       : isPasswordResetMode
         ? '비밀번호 재설정'
-        : '일반 사용자 로그인';
+        : userAuthForm.clientTrustRequired
+          ? '새 기기 인증'
+          : '일반 사용자 로그인';
 
   const description = isSignupMode
     ? '대여 신청을 위한 일반 사용자 계정을 생성합니다.'
@@ -90,7 +93,9 @@ export default function UserAuthPanel({ ctx }) {
       ? '가입할 때 등록한 부서·성명·연락처로 이메일을 확인합니다.'
       : isPasswordResetMode
         ? '가입 이메일로 비밀번호 재설정 링크를 전송합니다.'
-        : '가입한 이메일과 비밀번호로 로그인합니다.';
+        : userAuthForm.clientTrustRequired
+          ? '로그인 이메일로 전송된 6자리 인증코드를 확인합니다.'
+          : '가입한 이메일과 비밀번호로 로그인합니다.';
 
   return (
     <Card className="mx-auto max-w-xl overflow-hidden border-slate-200 bg-white shadow-sm">
@@ -381,19 +386,14 @@ export default function UserAuthPanel({ ctx }) {
                 ) : null}
 
                 {!isSignupMode && userAuthForm.clientTrustRequired ? (
-                  <>
-                    <div className="rounded-2xl border border-sky-200 bg-sky-50 px-5 py-4 text-sm leading-6 text-sky-800">
-                      새 브라우저 확인이 필요합니다. Clerk가 <span className="font-bold">{userAuthForm.clientTrustDestination || userAuthForm.email}</span>로 보낸 인증코드를 입력해 주세요.
-                    </div>
-                    <Input
-                      label="Clerk 새 기기 확인 인증코드"
-                      value={userAuthForm.clientTrustCode || ''}
-                      onChange={(value) => setUserAuthForm({ ...userAuthForm, clientTrustCode: value })}
-                      placeholder="인증코드 입력"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                    />
-                  </>
+                  <DeviceTrustVerificationPanel
+                    surface="user"
+                    email={userAuthForm.email}
+                    code={userAuthForm.clientTrustCode || ''}
+                    onChange={(value) => setUserAuthForm({ ...userAuthForm, clientTrustCode: value })}
+                    onSubmit={() => submitUserAuthForm({ preventDefault() {} }, signupTermsSubmission)}
+                    disabled={userAuthLoading}
+                  />
                 ) : (
                   <>
                     <Input
@@ -504,7 +504,7 @@ export default function UserAuthPanel({ ctx }) {
                   {isSignupMode
                     ? '비밀번호는 8자 이상이며 영문과 숫자를 포함해야 합니다.'
                     : userAuthForm.clientTrustRequired
-                      ? '인증코드는 현재 Clerk 로그인 시도에만 사용됩니다.'
+                      ? '6자리 인증코드는 현재 로그인 시도에만 사용됩니다.'
                       : '가입한 이메일과 비밀번호를 입력해 주세요.'}
                 </div>
 

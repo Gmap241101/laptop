@@ -375,8 +375,9 @@ export default function useUserLoginController({
       return;
     }
 
-    if (isClientTrustVerification && !String(userAuthForm.clientTrustCode || '').trim()) {
-      triggerToast('Clerk 새 기기 확인 인증코드를 입력해 주세요.', 'error');
+    const clientTrustCode = String(userAuthForm.clientTrustCode || '').replace(/\D/g, '').slice(0, 6);
+    if (isClientTrustVerification && !/^\d{6}$/.test(clientTrustCode)) {
+      triggerToast('6자리 인증코드를 모두 입력해 주세요.', 'error');
       return;
     }
 
@@ -404,7 +405,7 @@ export default function useUserLoginController({
 
         let signInResult = null;
         if (isClientTrustVerification) {
-          await clerkStagingClient.verifyUserClientTrust(userAuthForm.clientTrustCode);
+          await clerkStagingClient.verifyUserClientTrust(clientTrustCode);
           clerkSignedIn = true;
         } else {
           signInResult = await clerkStagingClient.signInUserWithPassword(email, password);
@@ -430,7 +431,7 @@ export default function useUserLoginController({
               error: '',
             });
             publishUserFirebaseAuthRetirementObservation({ requested: true, userFirebaseCompatibility: 'retired', session: 'client-trust-required', error: '' });
-            triggerToast(`Clerk 새 기기 확인을 위해 ${signInResult.clientTrustDestination || '등록된 연락처'}로 인증코드를 전송했습니다.`, 'success');
+            triggerToast(`새 기기 인증을 위해 ${signInResult.clientTrustDestination || email}로 인증코드를 전송했습니다.`, 'success');
             return;
           }
           clerkSignedIn = true;
@@ -524,7 +525,7 @@ export default function useUserLoginController({
           policy: userSessionPolicy,
           policyReady: userSessionPolicyReady,
         });
-        await clerkStagingClient.verifyUserClientTrust(userAuthForm.clientTrustCode);
+        await clerkStagingClient.verifyUserClientTrust(clientTrustCode);
         clerkSignedIn = true;
         const verifiedPayload = await clerkStagingClient.getUserClerkSession();
         const authority = verifiedPayload?.userAuthentication;
@@ -667,7 +668,7 @@ export default function useUserLoginController({
           });
           signedInUserForRoleCheck = null;
           triggerToast(
-            `Clerk 새 기기 확인을 위해 ${signInResult.clientTrustDestination || '등록된 연락처'}로 인증코드를 전송했습니다.`,
+            `새 기기 인증을 위해 ${signInResult.clientTrustDestination || email}로 인증코드를 전송했습니다.`,
             'success'
           );
           return;

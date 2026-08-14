@@ -800,7 +800,7 @@ export default function useAdminAuthenticationController({
       adminAuthError: '',
     });
     triggerToast(
-      `Clerk 새 기기 확인을 위해 ${signInResult?.clientTrustDestination || '등록된 연락처'}로 인증코드를 전송했습니다.`,
+      `새 기기 인증을 위해 ${signInResult?.clientTrustDestination || '로그인 이메일'}로 인증코드를 전송했습니다.`,
       'success'
     );
   };
@@ -821,8 +821,9 @@ export default function useAdminAuthenticationController({
       return;
     }
 
-    if (isClientTrustVerification && !adminAuthForm.clientTrustCode.trim()) {
-      triggerToast('Clerk 새 기기 확인 인증코드를 입력해 주세요.', 'error');
+    const clientTrustCode = String(adminAuthForm.clientTrustCode || '').replace(/\D/g, '').slice(0, 6);
+    if (isClientTrustVerification && !/^\d{6}$/.test(clientTrustCode)) {
+      triggerToast('6자리 인증코드를 모두 입력해 주세요.', 'error');
       return;
     }
 
@@ -836,7 +837,7 @@ export default function useAdminAuthenticationController({
       try {
         clearUserAuthenticatedSession('admin-login-switch', { clearTransition: true });
         if (isClientTrustVerification) {
-          await clerkStagingClient.verifyAdminClientTrust(adminAuthForm.clientTrustCode);
+          await clerkStagingClient.verifyAdminClientTrust(clientTrustCode);
         } else {
           const signInResult = await clerkStagingClient.signInWithPassword(adminEmail, password);
           if (signInResult?.status === 'needs_client_trust') {
@@ -909,9 +910,7 @@ export default function useAdminAuthenticationController({
         const { adminAccountDocRef, matchedAdminAccount } =
           await loadAdminAccountForFirebaseUser(firebaseUser);
 
-        await clerkStagingClient.verifyAdminClientTrust(
-          adminAuthForm.clientTrustCode
-        );
+        await clerkStagingClient.verifyAdminClientTrust(clientTrustCode);
         clerkSignedIn = true;
 
         const verifiedPayload = await clerkStagingClient.getAdminClerkSession();

@@ -72,6 +72,10 @@ assert.match(adminIdentitySource, /getAdminAccountsPostgresql\(\)/, 'dedicated a
 assert.equal(adminIdentitySource.includes('useAuthIdentityPolicySubscriptionController'), false, 'administrator identity lifecycle must not reuse the mixed user identity controller');
 
 const adminAuthSource = fs.readFileSync(new URL('../../src/features/auth/useAdminAuthenticationController.js', import.meta.url), 'utf8');
+const userLoginSource = fs.readFileSync(new URL('../../src/features/auth/useUserLoginController.js', import.meta.url), 'utf8');
+const userAuthPanelSource = fs.readFileSync(new URL('../../src/user/UserAuthPanel.jsx', import.meta.url), 'utf8');
+const deviceTrustPanelSource = fs.readFileSync(new URL('../../src/components/DeviceTrustVerificationPanel.jsx', import.meta.url), 'utf8');
+const adminWorkspaceLoginSource = fs.readFileSync(new URL('../../src/admin/AdminWorkspace.jsx', import.meta.url), 'utf8');
 assert.match(
   adminAuthSource,
   /const loginSecuritySettings = await loadAuthoritativeAdminSecuritySettings\(\);[\s\S]*?setAdminAuthenticatedSession\(nextAdminAccount\.id, loginSecuritySettings\)/,
@@ -88,6 +92,15 @@ assert.match(
   'administrator policy mismatch logout must be confirmed against PostgreSQL before invalidating the Clerk session'
 );
 assert.match(adminAuthSource, /runtimeSurface === 'admin'[\s\S]*redirectUrl: '\/admin'/, 'administrator Clerk sign-out must explicitly return to the dedicated /admin login surface');
+assert.match(userAuthPanelSource, /<DeviceTrustVerificationPanel[\s\S]*surface="user"/, 'user new-device verification must use the shared Device Trust code-entry panel');
+assert.match(adminWorkspaceLoginSource, /<DeviceTrustVerificationPanel[\s\S]*surface="admin"/, 'administrator new-device verification must use the same shared Device Trust code-entry panel');
+assert.match(deviceTrustPanelSource, /새로운 기기에서 로그인하셨습니다\.[\s\S]*로 보낸 인증코드를 입력해주세요\./, 'shared Device Trust panel must show the unified new-device verification message');
+assert.match(deviceTrustPanelSource, /Array\.from\(\{ length: CODE_LENGTH \}/, 'Device Trust verification must render a fixed six-slot code input');
+assert.match(deviceTrustPanelSource, /CODE_LENGTH = 6/, 'Device Trust email verification code UI must use six separated digits');
+assert.match(deviceTrustPanelSource, /resendUserClientTrust\(\)|resendAdminClientTrust\(\)/, 'Device Trust panel must support verification-code resend');
+assert.match(deviceTrustPanelSource, /checked[\s\S]*readOnly[\s\S]*disabled/, 'Device Trust recognition indicator must be non-interactive because Clerk does not expose a per-sign-in trust toggle');
+assert.match(userLoginSource, /6자리 인증코드를 모두 입력해 주세요\./, 'user Device Trust controller must require all six verification-code digits');
+assert.match(adminAuthSource, /6자리 인증코드를 모두 입력해 주세요\./, 'administrator Device Trust controller must require all six verification-code digits');
 assert.match(adminAuthSource, /const syncAdminRouteIntentAfterAuthClear =[\s\S]*runtimeSurface === 'admin'[\s\S]*writeAdminRouteIntent\(\)/, 'administrator logout/session expiry must preserve administrator route intent instead of handing control to the user surface');
 
 const adminClerkVerificationEffect = adminAuthSource.match(/useEffect\(\(\) => \{[\s\S]*?getAdminClerkSession\(\)[\s\S]*?return \(\) => \{ cancelled = true; \};[\s\S]*?\}, \[[\s\S]*?runtimeSurface,[\s\S]*?\]\);/)?.[0] || '';
