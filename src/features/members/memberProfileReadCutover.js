@@ -89,7 +89,7 @@ export const requestMemberProfileCutoverCandidate = async ({ apiBaseUrl, fetchIm
   const response = await fetchImpl(`${apiBaseUrl}/api/legacy/member-profile-cutover-candidate`, { method: 'GET', headers: { Accept: 'application/json', Authorization: `Bearer ${token}` }, cache: 'no-store' });
   let payload = null; try { payload = await response.json(); } catch { payload = null; }
   if (!response.ok) { const error = new Error(`PostgreSQL member cutover candidate failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||'member_read_cutover_candidate_failed'; throw error; }
-  if (!['postgresql-shadow','postgresql-authoritative'].includes(payload?.readCandidate?.source) || !payload?.readCandidate?.profile?.uid) throw new Error('Backend returned an invalid PostgreSQL member read candidate.');
+  if (payload?.readCandidate?.source !== 'postgresql-authoritative' || !payload?.readCandidate?.profile?.uid) throw new Error('Backend returned an invalid PostgreSQL member read candidate.');
   return Object.freeze({ ...payload.readCandidate, profile: normalizeMemberProfileRead(payload.readCandidate.profile) });
 };
 
@@ -111,7 +111,7 @@ export const loadMemberProfileWithoutFirestoreWatcher = async ({
     const candidate = await loadPostgresCandidate();
     if (!candidate?.profile) throw new Error('PostgreSQL member profile candidate is empty.');
     return Object.freeze({
-      source: candidate.source || 'postgresql-shadow',
+      source: candidate.source || 'postgresql-authoritative',
       profile: candidate.profile,
       equivalent: null,
       changedFields: [],

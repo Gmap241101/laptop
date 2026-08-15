@@ -36,7 +36,7 @@ const [subscription, crud, categories, bulk, dashboard, client, diagnostics, har
 for (const marker of ['readAssetDomainCutoverConfig', 'bootstrapAdminAssets', 'getAssetCatalog', 'assetWatcherDisabled', 'availabilityWatcherDisabled']) {
   assert.ok(subscription.includes(marker), marker);
 }
-assert.ok(subscription.includes('splitAssetCategoriesRef'), 'asset catalog must preserve the current category ref contract');
+assert.ok(subscription.includes('authoritativeAssetCategoriesRef'), 'asset catalog must preserve a PostgreSQL-only authoritative category ref contract');
 assert.ok(!subscription.includes('    splitPublicConfig?.assetCategories,\n    userTab,'), 'asset catalog effect must not depend on the category array it updates');
 
 for (const marker of ['createAdminAsset', 'editAdminAsset', 'deleteAdminAsset', "writeSource: 'postgresql-authoritative'"]) assert.ok(crud.includes(marker), marker);

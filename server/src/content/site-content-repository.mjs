@@ -19,8 +19,7 @@ const mapRow = (row) => ({
 
 export const createSiteContentRepository = (pool) => {
   const getRentalConfigBootstrapContext = async () => {
-    const [categoryResult, teamResult, directoryStateResult, directoryCountResult, termsPolicyResult] = await Promise.all([
-      pool.query(`SELECT name FROM app_asset_categories ORDER BY sort_order, id`),
+    const [teamResult, directoryStateResult, directoryCountResult] = await Promise.all([
       pool.query(`
         SELECT team
           FROM (
@@ -36,14 +35,11 @@ export const createSiteContentRepository = (pool) => {
       `),
       pool.query(`SELECT value FROM app_runtime_metadata WHERE key='phase31_member_directory_bootstrap' LIMIT 1`),
       pool.query(`SELECT COUNT(*)::bigint AS count FROM app_member_directory_entries WHERE enabled=TRUE`),
-      pool.query(`SELECT payload FROM app_site_content_documents WHERE domain='terms' AND document_key='signupTermsPolicy/current' LIMIT 1`),
     ]);
     return Object.freeze({
-      assetCategories: categoryResult.rows.map((row) => row.name).filter(Boolean),
       teams: teamResult.rows.map((row) => row.team).filter(Boolean),
       memberDirectoryVersion: Number(directoryStateResult.rows[0]?.value?.version || 0),
       memberDirectoryEntryCount: Number(directoryCountResult.rows[0]?.count || 0),
-      termsPolicy: termsPolicyResult.rows[0]?.payload || {},
     });
   };
 

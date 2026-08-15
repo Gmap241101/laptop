@@ -42,7 +42,7 @@ const assetDocFor = (request) => ({
 const context = {
   userRepository: { async findByClerkUserId() { return { id: 1, clerkUserId: 'clerk-user' }; } },
   firebaseLinkRepository: { async findByAppUserId() { return { appUserId: 1, firebaseUid: identity.uid, firebaseEmail: identity.email }; } },
-  memberShadowRepository: { async findByAppUserId() { return { appUserId: 1, status: 'active' }; } },
+  memberRepository: { async findByAppUserId() { return { appUserId: 1, status: 'active' }; } },
   rentalRestrictionService: { async syncLinkedFirebaseUid() { return { shadow: { exists: false, restriction: null } }; } },
   rentalRequestService: { syncCount: 0, async syncCurrent() { this.syncCount += 1; return { syncState: { synced: true }, requests: [] }; } },
 };

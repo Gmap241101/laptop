@@ -58,7 +58,7 @@ const service = createRentalRequestWriteService({
       return String(id) === '1' ? { appUserId: '1', firebaseUid: 'firebase-user', firebaseEmail: 'member@example.test' } : null;
     },
   },
-  memberShadowRepository: {
+  memberRepository: {
     async findByAppUserId(id) {
       return String(id) === '1'
         ? { appUserId: '1', status: 'active', email: 'member@example.test', name: 'Member Name', team: 'QA' }

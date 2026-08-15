@@ -33,7 +33,7 @@ const repository = {
     };
   },
   async getRentalConfigBootstrapContext() {
-    return { assetCategories: ['노트북'], teams: ['개발팀'], memberDirectoryVersion: 2, memberDirectoryEntryCount: 1, termsPolicy: {} };
+    return { teams: ['개발팀'], memberDirectoryVersion: 2, memberDirectoryEntryCount: 1 };
   },
   async replaceDomain({ domain, documents, actorClerkUserId, sourceMode = 'postgresql-admin-direct' }) {
     const value = { domain, source: 'postgresql', authoritative: true, synchronized: true, sourceMode, documentCount: documents.length, documents, actorClerkUserId };

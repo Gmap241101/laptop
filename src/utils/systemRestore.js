@@ -36,8 +36,8 @@ export const RESTORE_SCOPE_META = {
   },
   [SYSTEM_RESTORE_SCOPE.ASSETS]: {
     label: '자산 및 자산번호',
-    description: '자산, 자산관리번호 레지스트리와 자산 카테고리를 복원합니다.',
-    documentKeys: ['rentalSystem/publicConfig:assetCategories'],
+    description: '자산과 자산관리번호 레지스트리를 복원합니다. 자산 카테고리는 PostgreSQL 자산 카탈로그에서만 관리됩니다.',
+    documentKeys: [],
     collections: ['rentalAssets', 'rentalAssetNumbers'],
   },
   [SYSTEM_RESTORE_SCOPE.ORGANIZATION]: {
@@ -192,7 +192,6 @@ export const getAvailableRestoreScopes = (payload, isOwner = false) => {
 
     let hasData = meta.collections.some((name) => hasOwn(payload?.collections, name));
     if (scope === SYSTEM_RESTORE_SCOPE.POLICIES) hasData ||= hasOwn(publicConfig, 'settings');
-    if (scope === SYSTEM_RESTORE_SCOPE.ASSETS) hasData ||= hasOwn(publicConfig, 'assetCategories');
     if (scope === SYSTEM_RESTORE_SCOPE.ORGANIZATION) {
       hasData ||= hasOwn(publicConfig, 'teams') || hasOwn(publicConfig, 'memberDirectoryAudit');
     }
@@ -290,22 +289,21 @@ const createPublicConfigPartialPlan = (payload, type) => {
   if (!isPlainObject(publicConfig)) return null;
 
   if (type === 'settings' && hasOwn(publicConfig, 'settings')) {
+    const {
+      signupTermsEnabled: _signupTermsEnabled,
+      signupTermsRequireReconsentOnChange: _signupTermsRequireReconsentOnChange,
+      signupTermsApplyToExistingMembers: _signupTermsApplyToExistingMembers,
+      signupTermsPolicyRevision: _signupTermsPolicyRevision,
+      signupTermsRequiredRevision: _signupTermsRequiredRevision,
+      signupTermsInitialRevision: _signupTermsInitialRevision,
+      ...canonicalSettings
+    } = publicConfig.settings || {};
     return {
       key: 'rentalSystem/publicConfig:settings',
       path: 'rentalSystem/publicConfig',
       collectionName: 'rentalSystem',
       documentId: 'publicConfig',
-      data: { settings: publicConfig.settings || {} },
-      partial: true,
-    };
-  }
-  if (type === 'assetCategories' && hasOwn(publicConfig, 'assetCategories')) {
-    return {
-      key: 'rentalSystem/publicConfig:assetCategories',
-      path: 'rentalSystem/publicConfig',
-      collectionName: 'rentalSystem',
-      documentId: 'publicConfig',
-      data: { assetCategories: Array.isArray(publicConfig.assetCategories) ? publicConfig.assetCategories : [] },
+      data: { settings: canonicalSettings },
       partial: true,
     };
   }
@@ -407,8 +405,6 @@ export const buildRestorePlan = (payload, selectedScopes = []) => {
       let plan = null;
       if (key === 'rentalSystem/publicConfig:settings') {
         plan = createPublicConfigPartialPlan(payload, 'settings');
-      } else if (key === 'rentalSystem/publicConfig:assetCategories') {
-        plan = createPublicConfigPartialPlan(payload, 'assetCategories');
       } else if (key === 'rentalSystem/publicConfig:organization') {
         plan = createPublicConfigPartialPlan(payload, 'organization');
       } else if (key === 'systemSettings/admin:security') {

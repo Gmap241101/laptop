@@ -4,6 +4,24 @@ const errorWith = (code, message, status) => Object.assign(new Error(message), {
 const normalizeDomain = (value) => String(value || '').trim().toLowerCase();
 const normalizeTermId = (value) => String(value || '').trim();
 
+const stripRetiredRentalConfigDuplicates = (payloadValue = {}) => {
+  const payload = payloadValue && typeof payloadValue === 'object' ? payloadValue : {};
+  const { assetCategories: _assetCategories, ...withoutCategories } = payload;
+  const rawSettings = withoutCategories?.settings && typeof withoutCategories.settings === 'object'
+    ? withoutCategories.settings
+    : {};
+  const {
+    signupTermsEnabled: _signupTermsEnabled,
+    signupTermsRequireReconsentOnChange: _signupTermsRequireReconsentOnChange,
+    signupTermsApplyToExistingMembers: _signupTermsApplyToExistingMembers,
+    signupTermsPolicyRevision: _signupTermsPolicyRevision,
+    signupTermsRequiredRevision: _signupTermsRequiredRevision,
+    signupTermsInitialRevision: _signupTermsInitialRevision,
+    ...canonicalSettings
+  } = rawSettings;
+  return { ...withoutCategories, settings: canonicalSettings };
+};
+
 const projectSignupTermsPolicyPayload = (payloadValue = {}) => {
   const payload = payloadValue && typeof payloadValue === 'object' ? payloadValue : {};
   return Object.freeze({
@@ -425,13 +443,14 @@ export const createSiteContentService = ({ repository }) => Object.freeze({
 
     const documents = (current?.documents || []).map((document) => {
       if (document?.key !== 'rentalSystem/publicConfig') return document;
-      const payload = document?.payload && typeof document.payload === 'object' ? document.payload : {};
+      const payload = stripRetiredRentalConfigDuplicates(document?.payload);
       const settings = payload?.settings && typeof payload.settings === 'object' ? payload.settings : {};
+      const sanitizedPatch = stripRetiredRentalConfigDuplicates({ settings: settingsPatch }).settings;
       return {
         key: document.key,
         payload: {
           ...payload,
-          settings: { ...settings, ...settingsPatch },
+          settings: { ...settings, ...sanitizedPatch },
           updatedAt: new Date().toISOString(),
         },
         enabled: document.enabled,
@@ -479,9 +498,7 @@ export const createSiteContentService = ({ repository }) => Object.freeze({
 
     const publicConfigDocument = rentalConfig.documents.find((document) => document?.key === 'rentalSystem/publicConfig');
     const termsPolicyDocument = terms.documents.find((document) => document?.key === 'signupTermsPolicy/current');
-    const publicPayload = publicConfigDocument?.payload && typeof publicConfigDocument.payload === 'object'
-      ? publicConfigDocument.payload
-      : {};
+    const publicPayload = stripRetiredRentalConfigDuplicates(publicConfigDocument?.payload);
     const currentSettings = publicPayload?.settings && typeof publicPayload.settings === 'object'
       ? publicPayload.settings
       : {};
@@ -503,40 +520,22 @@ export const createSiteContentService = ({ repository }) => Object.freeze({
     const nextDirectoryVersion = policyEnabledChanged
       ? Math.max(0, Number(currentSettings.memberDirectoryVersion || 0)) + 1
       : Math.max(0, Number(currentSettings.memberDirectoryVersion || 0));
-    const currentTermsEnabled = Boolean(currentSettings.signupTermsEnabled);
+    const currentTermsEnabled = Boolean(currentTermsPolicy.enabled);
     const enablingTerms = !currentTermsEnabled && nextTermsEnabled;
-    let revision = Math.max(
-      0,
-      Number(currentTermsPolicy.revision || 0),
-      Number(currentSettings.signupTermsPolicyRevision || 0),
-    );
+    let revision = Math.max(0, Number(currentTermsPolicy.revision || 0));
     if (enablingTerms && revision === 0) revision = 1;
-    let initialRevision = Math.max(
-      0,
-      Number(currentTermsPolicy.initialRevision || 0),
-      Number(currentSettings.signupTermsInitialRevision || 0),
-    );
-    let requiredRevision = Math.max(
-      0,
-      Number(currentTermsPolicy.requiredRevision || 0),
-      Number(currentSettings.signupTermsRequiredRevision || 0),
-    );
+    let initialRevision = Math.max(0, Number(currentTermsPolicy.initialRevision || 0));
+    let requiredRevision = Math.max(0, Number(currentTermsPolicy.requiredRevision || 0));
     if (enablingTerms) {
       initialRevision = revision;
       requiredRevision = revision;
     }
 
-    const nextSettings = {
+    const nextRentalSettings = {
       ...currentSettings,
       requireRegisteredMemberForSignup: nextRequireRegistered,
       autoApproveNewMembers: nextAutoApprove,
       memberDirectoryVersion: nextDirectoryVersion,
-      signupTermsEnabled: nextTermsEnabled,
-      signupTermsRequireReconsentOnChange: nextRequireReconsent,
-      signupTermsApplyToExistingMembers: nextApplyToExisting,
-      signupTermsPolicyRevision: revision,
-      signupTermsRequiredRevision: requiredRevision,
-      signupTermsInitialRevision: initialRevision,
     };
     const nextTermsPolicy = {
       ...currentTermsPolicy,
@@ -581,7 +580,7 @@ export const createSiteContentService = ({ repository }) => Object.freeze({
     const nextRentalDocuments = rentalConfig.documents.map((document) => document?.key === 'rentalSystem/publicConfig'
       ? {
           key: document.key,
-          payload: { ...publicPayload, settings: nextSettings, updatedAt: new Date().toISOString() },
+          payload: { ...publicPayload, settings: nextRentalSettings, updatedAt: new Date().toISOString() },
           enabled: document.enabled,
           sortOrder: document.sortOrder,
           sourceUpdatedAt: new Date().toISOString(),
@@ -595,10 +594,22 @@ export const createSiteContentService = ({ repository }) => Object.freeze({
       sourceMode: 'postgresql-admin-signup-policy',
     });
 
+    // Backward-compatible response projection only. signupTerms* is no longer stored
+    // in rental-config; the terms policy document is the single persistent authority.
+    const responseSettings = {
+      ...nextRentalSettings,
+      signupTermsEnabled: nextTermsPolicy.enabled,
+      signupTermsRequireReconsentOnChange: nextTermsPolicy.requireReconsentOnChange,
+      signupTermsApplyToExistingMembers: nextTermsPolicy.applyToExistingMembers,
+      signupTermsPolicyRevision: nextTermsPolicy.revision,
+      signupTermsRequiredRevision: nextTermsPolicy.requiredRevision,
+      signupTermsInitialRevision: nextTermsPolicy.initialRevision,
+    };
+
     return Object.freeze({
       authority: 'postgresql',
       operation: 'signup-policy-patch',
-      settings: nextSettings,
+      settings: responseSettings,
       termsPolicy: nextTermsPolicy,
       rentalConfig: projectPublicDomain(nextRentalConfig),
     });

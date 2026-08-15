@@ -9,8 +9,6 @@ import { createUserRepository } from './users/user-repository.mjs';
 import { createUserIdentityService } from './users/user-service.mjs';
 import { createFirebaseLinkRepository } from './legacy/firebase-link-repository.mjs';
 import { createFirebaseLinkService } from './legacy/firebase-link-service.mjs';
-import { createMemberShadowRepository } from './legacy/member-shadow-repository.mjs';
-import { createMemberShadowService } from './legacy/member-shadow-service.mjs';
 import { createRentalRestrictionRepository } from './restrictions/rental-restriction-repository.mjs';
 import { createRentalRestrictionService } from './restrictions/rental-restriction-service.mjs';
 import { createRentalRequestRepository } from './rentals/rental-request-repository.mjs';
@@ -76,13 +74,6 @@ const adminIdentityRepository = createAdminIdentityRepository(pool);
 const userIdentityService = createUserIdentityService({ clerkClient, userRepository });
 const firebaseLinkRepository = createFirebaseLinkRepository(pool);
 const firebaseLinkService = createFirebaseLinkService({ userRepository, firebaseLinkRepository });
-const memberShadowRepository = createMemberShadowRepository(pool);
-const memberShadowService = createMemberShadowService({
-  userRepository,
-  firebaseLinkRepository,
-  memberShadowRepository,
-});
-
 const memberAuthorityRepository = createMemberAuthorityRepository(pool);
 const rentalRestrictionRepository = createRentalRestrictionRepository(pool);
 const userClerkAuthRepository = createUserClerkAuthRepository(pool);
@@ -146,15 +137,13 @@ const rentalPostgresqlSource = createRentalPostgresqlSource({
 const rentalRequestService = createRentalRequestService({
   userRepository,
   firebaseLinkRepository,
-  memberShadowRepository,
   rentalRequestRepository,
-  useAuthoritativeSource: config.rentalRequestWriteMirrorDisabled,
 });
 const rentalRequestWriteRepository = createRentalRequestWriteRepository(pool);
 const rentalRequestWriteService = createRentalRequestWriteService({
   userRepository,
   firebaseLinkRepository,
-  memberShadowRepository,
+  memberRepository: memberAuthorityRepository,
   rentalRestrictionService,
   rentalRequestService,
   rentalRequestWriteRepository,
@@ -165,7 +154,7 @@ const rentalRequestUserActionRepository = createRentalRequestUserActionRepositor
 const rentalRequestUserActionService = createRentalRequestUserActionService({
   userRepository,
   firebaseLinkRepository,
-  memberShadowRepository,
+  memberRepository: memberAuthorityRepository,
   rentalRestrictionService,
   rentalRequestService,
   repository: rentalRequestUserActionRepository,
@@ -188,7 +177,6 @@ const server = createServer(
     authenticateRequest,
     userIdentityService,
     firebaseLinkService,
-    memberShadowService,
     memberAuthorityService,
     accountRecoveryService,
     accountLifecycleService,

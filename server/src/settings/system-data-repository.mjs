@@ -357,12 +357,10 @@ export const createSystemDataRepository = (pool) => {
           (SELECT COUNT(*) FROM app_rental_assets)::int AS assets,
           (SELECT COUNT(*) FROM app_asset_categories)::int AS asset_categories,
           (SELECT COUNT(*) FROM app_member_accounts)::int AS member_accounts,
-          (SELECT COUNT(*) FROM app_user_member_shadows)::int AS member_shadows,
           (SELECT COUNT(*) FROM app_user_term_consent_states)::int AS term_states,
           (SELECT COUNT(*) FROM app_user_term_consent_logs)::int AS term_logs,
           (SELECT COUNT(*) FROM app_rental_requests)::int AS rental_requests,
           (SELECT COUNT(*) FROM app_rental_asset_reservation_guards)::int AS reservation_guards,
-          (SELECT COUNT(*) FROM app_user_rental_request_shadows)::int AS rental_shadows,
           (SELECT COUNT(*) FROM app_user_rental_restriction_shadows)::int AS restrictions,
           (SELECT COUNT(*) FROM app_member_directory_entries)::int AS directory_entries,
           (SELECT COUNT(*) FROM app_board_posts)::int AS board_posts,
@@ -374,8 +372,8 @@ export const createSystemDataRepository = (pool) => {
       const row = result.rows[0] || {};
       const details = {
         assets: { assets: count(row, 'assets'), assetCategories: count(row, 'asset_categories') },
-        members: { memberAccounts: count(row, 'member_accounts'), memberShadows: count(row, 'member_shadows'), termStates: count(row, 'term_states'), termLogs: count(row, 'term_logs') },
-        rentals: { rentalRequests: count(row, 'rental_requests'), reservationGuards: count(row, 'reservation_guards'), rentalShadows: count(row, 'rental_shadows'), restrictions: count(row, 'restrictions') },
+        members: { memberAccounts: count(row, 'member_accounts'), termStates: count(row, 'term_states'), termLogs: count(row, 'term_logs') },
+        rentals: { rentalRequests: count(row, 'rental_requests'), reservationGuards: count(row, 'reservation_guards'), restrictions: count(row, 'restrictions') },
         organization: { directoryEntries: count(row, 'directory_entries') },
         content: { boardPosts: count(row, 'board_posts'), faqCategories: count(row, 'faq_categories'), siteContentDocuments: count(row, 'content_documents') },
         settings: { siteSettingDocuments: count(row, 'setting_documents'), systemConfigurations: count(row, 'system_configurations') },
@@ -394,8 +392,6 @@ export const createSystemDataRepository = (pool) => {
         if (selected.includes('rentals')) {
           await client.query('DELETE FROM app_rental_asset_reservation_guards');
           await client.query('DELETE FROM app_rental_requests');
-          await client.query('DELETE FROM app_user_rental_request_shadows');
-          await client.query('DELETE FROM app_user_rental_request_shadow_syncs');
           await client.query('DELETE FROM app_user_rental_restriction_shadows');
         }
         if (selected.includes('assets')) {
@@ -408,7 +404,6 @@ export const createSystemDataRepository = (pool) => {
           await client.query('DELETE FROM app_user_term_consent_logs');
           await client.query('DELETE FROM app_user_term_consent_states');
           await client.query('DELETE FROM app_member_profile_events');
-          await client.query('DELETE FROM app_user_member_shadows');
           await client.query('DELETE FROM app_member_accounts');
         }
         if (selected.includes('organization')) {

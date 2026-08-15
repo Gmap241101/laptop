@@ -26,7 +26,7 @@ const requestIdFromDocument = (document) => {
 export const createRentalRequestWriteService = ({
   userRepository,
   firebaseLinkRepository,
-  memberShadowRepository,
+  memberRepository,
   rentalRestrictionService,
   rentalRequestService,
   rentalRequestWriteRepository,
@@ -36,7 +36,7 @@ export const createRentalRequestWriteService = ({
 }) => {
   if (!userRepository || typeof userRepository.findByClerkUserId !== 'function') throw new TypeError('userRepository is required.');
   if (!firebaseLinkRepository || typeof firebaseLinkRepository.findByAppUserId !== 'function') throw new TypeError('firebaseLinkRepository is required.');
-  if (!memberShadowRepository || typeof memberShadowRepository.findByAppUserId !== 'function') throw new TypeError('memberShadowRepository is required.');
+  if (!memberRepository || typeof memberRepository.findByAppUserId !== 'function') throw new TypeError('memberRepository is required.');
   if (!rentalRestrictionService || typeof rentalRestrictionService.syncLinkedFirebaseUid !== 'function') throw new TypeError('rentalRestrictionService is required.');
   if (!rentalRequestService || typeof rentalRequestService.syncCurrent !== 'function') throw new TypeError('rentalRequestService is required.');
   if (!rentalRequestWriteRepository || typeof rentalRequestWriteRepository.createAuthoritative !== 'function') throw new TypeError('rentalRequestWriteRepository is required.');
@@ -49,16 +49,16 @@ export const createRentalRequestWriteService = ({
     if (!appUser) throw serviceError('profile_not_synced', 'Application user identity is not synchronized.', 404);
     const firebaseLink = await firebaseLinkRepository.findByAppUserId(appUser.id);
     if (!firebaseLink) throw serviceError('legacy_link_not_found', 'Firebase legacy identity has not been linked.', 404);
-    const memberShadow = await memberShadowRepository.findByAppUserId(appUser.id);
-    if (!memberShadow) throw serviceError('member_shadow_not_found', 'Member profile shadow has not been synchronized.', 404);
+    const memberAccount = await memberRepository.findByAppUserId(appUser.id);
+    if (!memberAccount) throw serviceError('member_account_not_found', 'Member account has not been synchronized.', 404);
     const tokenUid = normalizeText(firebaseIdentity?.uid);
     if (!tokenUid || (writeMirrorEnabled && !firebaseIdentity?.idToken)) throw serviceError('firebase_identity_missing', 'Verified Firebase identity is required.', 401);
     if (tokenUid !== firebaseLink.firebaseUid) throw serviceError('legacy_link_token_mismatch', 'Firebase token does not match the linked legacy identity.', 409);
     const tokenEmail = normalizeEmail(firebaseIdentity?.email);
     const linkedEmail = normalizeEmail(firebaseLink.firebaseEmail);
     if (tokenEmail && linkedEmail && tokenEmail !== linkedEmail) throw serviceError('firebase_link_email_mismatch', 'Firebase token email does not match the linked identity.', 409);
-    if (normalizeText(memberShadow.status) !== 'active') throw serviceError('rental_request_member_inactive', 'Only active member accounts can create rental requests.', 403);
-    return { appUser, firebaseLink, memberShadow };
+    if (normalizeText(memberAccount.status) !== 'active') throw serviceError('rental_request_member_inactive', 'Only active member accounts can create rental requests.', 403);
+    return { appUser, firebaseLink, memberAccount };
   };
 
   const normalizeInput = (input = {}) => {
@@ -78,7 +78,7 @@ export const createRentalRequestWriteService = ({
   return Object.freeze({
     async createCurrent(clerkUserId, firebaseIdentity, input) {
       const normalized = normalizeInput(input);
-      const { appUser, firebaseLink, memberShadow } = await resolveContext(clerkUserId, firebaseIdentity);
+      const { appUser, firebaseLink, memberAccount } = await resolveContext(clerkUserId, firebaseIdentity);
 
       if (writeMirrorEnabled) {
         await Promise.all([
@@ -124,9 +124,9 @@ export const createRentalRequestWriteService = ({
         throw conflict;
       }
 
-      const requesterEmail = normalizeText(firebaseIdentity.email || memberShadow.email || firebaseLink.firebaseEmail);
-      const requesterName = normalizeText(memberShadow.name);
-      const requesterTeam = normalizeText(memberShadow.team);
+      const requesterEmail = normalizeText(firebaseIdentity.email || memberAccount.email || firebaseLink.firebaseEmail);
+      const requesterName = normalizeText(memberAccount.name);
+      const requesterTeam = normalizeText(memberAccount.team);
       if (!requesterEmail || !requesterName || !requesterTeam) {
         throw serviceError('rental_request_member_profile_incomplete', 'Member email, name, and team are required.', 409);
       }

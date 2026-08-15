@@ -16,15 +16,6 @@ export const TERMS_CONSENT_SOURCE = Object.freeze({
   RECONSENT: 'reconsent',
 });
 
-export const DEFAULT_SIGNUP_TERMS_SETTINGS = Object.freeze({
-  signupTermsEnabled: false,
-  signupTermsRequireReconsentOnChange: true,
-  signupTermsApplyToExistingMembers: false,
-  signupTermsPolicyRevision: 0,
-  signupTermsRequiredRevision: 0,
-  signupTermsInitialRevision: 0,
-});
-
 export const DEFAULT_SIGNUP_TERMS_POLICY = Object.freeze({
   enabled: false,
   requireReconsentOnChange: true,
@@ -33,27 +24,6 @@ export const DEFAULT_SIGNUP_TERMS_POLICY = Object.freeze({
   requiredRevision: 0,
   initialRevision: 0,
   activeTerms: [],
-});
-
-export const normalizeTermsSettings = (settings = {}) => ({
-  signupTermsEnabled: Boolean(settings.signupTermsEnabled),
-  signupTermsRequireReconsentOnChange:
-    settings.signupTermsRequireReconsentOnChange !== false,
-  signupTermsApplyToExistingMembers: Boolean(
-    settings.signupTermsApplyToExistingMembers
-  ),
-  signupTermsPolicyRevision: Math.max(
-    0,
-    Number(settings.signupTermsPolicyRevision) || 0
-  ),
-  signupTermsRequiredRevision: Math.max(
-    0,
-    Number(settings.signupTermsRequiredRevision) || 0
-  ),
-  signupTermsInitialRevision: Math.max(
-    0,
-    Number(settings.signupTermsInitialRevision) || 0
-  ),
 });
 
 export const normalizeActiveTerm = (term = {}) => ({

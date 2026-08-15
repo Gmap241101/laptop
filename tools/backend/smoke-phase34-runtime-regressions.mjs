@@ -47,7 +47,7 @@ let currentRentalConfig = {
     payload: {
       storageVersion: 4,
       assetCategories: ['노트북'],
-      settings: { maxRentalDays: 10, holidays: [] },
+      settings: { maxRentalDays: 10, holidays: [], signupTermsEnabled: true, signupTermsPolicyRevision: 7 },
     },
     enabled: null,
     sortOrder: null,
@@ -81,7 +81,9 @@ assert.equal(replaceArgs.domain, 'rental-config');
 assert.equal(replaceArgs.sourceMode, 'postgresql-admin-settings-patch');
 assert.equal(replaceArgs.actorClerkUserId, 'clerk-admin-1');
 const canonical = patchedRentalConfig.documents.find((document) => document.key === 'rentalSystem/publicConfig');
-assert.deepEqual(canonical.payload.assetCategories, ['노트북'], 'settings patch must preserve top-level rental configuration data');
+assert.equal(canonical.payload.assetCategories, undefined, 'settings patch must strip retired rental-config asset-category duplication');
+assert.equal(canonical.payload.settings.signupTermsEnabled, undefined, 'settings patch must strip retired rental-config signup-terms duplication');
+assert.equal(canonical.payload.settings.signupTermsPolicyRevision, undefined, 'settings patch must strip retired rental-config signup-terms revision duplication');
 assert.equal(canonical.payload.settings.maxRentalDays, 10, 'holiday patch must preserve other rental policy settings');
 assert.deepEqual(canonical.payload.settings.holidays, [{ date: '2026-08-15', enabled: true }]);
 
@@ -420,5 +422,47 @@ const deviceTrustServiceSource = fs.readFileSync(new URL('../../server/src/clerk
 assert.match(deviceTrustServiceSource, /auth_password:[\s\S]*device_trust:[\s\S]*enabled: enabledValue/, 'Clerk Device Trust writes must patch the documented auth_password.device_trust.enabled config');
 assert.match(appSource, /GET' && url\.pathname === '\/api\/admin\/clerk-device-trust'/, 'server must expose authenticated live Clerk Device Trust reads');
 assert.match(appSource, /PATCH' && url\.pathname === '\/api\/admin\/clerk-device-trust'[\s\S]*admin_owner_required/, 'only owner administrators may change the live Clerk Device Trust setting');
+
+
+const collectRuntimeSourceFiles = (directory) => fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+  const path = `${directory}/${entry.name}`;
+  if (entry.isDirectory()) return collectRuntimeSourceFiles(path);
+  return entry.isFile() && /\.(?:mjs|js|jsx)$/.test(entry.name) ? [path] : [];
+});
+const runtimeSourceText = collectRuntimeSourceFiles('server/src')
+  .map((path) => fs.readFileSync(path, 'utf8'))
+  .join('\n');
+for (const retiredDuplicateMarker of [
+  'app_user_member_shadows',
+  'app_user_rental_request_shadows',
+  'app_user_rental_request_item_shadows',
+  'app_user_rental_request_shadow_syncs',
+  'memberShadowRepository',
+  'memberShadowService',
+]) {
+  assert.equal(runtimeSourceText.includes(retiredDuplicateMarker), false, `runtime must not retain retired duplicate-store logic: ${retiredDuplicateMarker}`);
+}
+const rentalBootstrapSource = fs.readFileSync(new URL('../../server/src/content/rental-config-bootstrap.mjs', import.meta.url), 'utf8');
+assert.equal(rentalBootstrapSource.includes('assetCategories'), false, 'rental-config bootstrap must not recreate the retired asset-category duplicate authority');
+for (const retiredTermsField of [
+  'signupTermsEnabled',
+  'signupTermsRequireReconsentOnChange',
+  'signupTermsApplyToExistingMembers',
+  'signupTermsPolicyRevision',
+  'signupTermsRequiredRevision',
+  'signupTermsInitialRevision',
+]) {
+  assert.equal(rentalBootstrapSource.includes(retiredTermsField), false, `rental-config bootstrap must not recreate terms duplicate field: ${retiredTermsField}`);
+}
+const consolidationMigrationSource = fs.readFileSync(new URL('../../server/migrations/028_phase34_canonical_data_consolidation.sql', import.meta.url), 'utf8');
+for (const marker of [
+  'DROP TABLE IF EXISTS app_user_member_shadows',
+  'DROP TABLE IF EXISTS app_user_rental_request_shadows',
+  'DROP TABLE IF EXISTS app_user_rental_request_item_shadows',
+  'DROP TABLE IF EXISTS app_user_rental_request_shadow_syncs',
+  "'retainedCanonicalLegacyNamedTable', 'app_user_rental_restriction_shadows'",
+]) {
+  assert.ok(consolidationMigrationSource.includes(marker), `canonical consolidation migration marker missing: ${marker}`);
+}
 
 console.log('[phase34-runtime-regressions-backend-smoke] PASS');

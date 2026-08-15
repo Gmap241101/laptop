@@ -39,7 +39,7 @@ const activeRestrictionBlocked = ({ restriction, settings, overdueCount = 0 }) =
 export const createRentalRequestUserActionService = ({
   userRepository,
   firebaseLinkRepository,
-  memberShadowRepository,
+  memberRepository,
   rentalRestrictionService,
   rentalRequestService,
   repository,
@@ -49,7 +49,7 @@ export const createRentalRequestUserActionService = ({
 }) => {
   if (!userRepository || typeof userRepository.findByClerkUserId !== 'function') throw new TypeError('userRepository is required.');
   if (!firebaseLinkRepository || typeof firebaseLinkRepository.findByAppUserId !== 'function') throw new TypeError('firebaseLinkRepository is required.');
-  if (!memberShadowRepository || typeof memberShadowRepository.findByAppUserId !== 'function') throw new TypeError('memberShadowRepository is required.');
+  if (!memberRepository || typeof memberRepository.findByAppUserId !== 'function') throw new TypeError('memberRepository is required.');
   if (!rentalRestrictionService || typeof rentalRestrictionService.syncLinkedFirebaseUid !== 'function') throw new TypeError('rentalRestrictionService is required.');
   if (!rentalRequestService || typeof rentalRequestService.syncCurrent !== 'function') throw new TypeError('rentalRequestService is required.');
   if (!repository || typeof repository.countCurrentOverdue !== 'function' || typeof repository.editAuthoritative !== 'function' || typeof repository.cancelAuthoritative !== 'function' || typeof repository.submitManualExtension !== 'function' || typeof repository.autoExtendAuthoritative !== 'function') throw new TypeError('rental request user action repository is required.');
@@ -62,8 +62,8 @@ export const createRentalRequestUserActionService = ({
     if (!appUser) throw serviceError('profile_not_synced', 'Application user identity is not synchronized.', 404);
     const link = await firebaseLinkRepository.findByAppUserId(appUser.id);
     if (!link) throw serviceError('legacy_link_not_found', 'Firebase legacy identity is not linked.', 404);
-    const member = await memberShadowRepository.findByAppUserId(appUser.id);
-    if (!member) throw serviceError('member_shadow_not_found', 'Member shadow is not synchronized.', 404);
+    const member = await memberRepository.findByAppUserId(appUser.id);
+    if (!member) throw serviceError('member_account_not_found', 'Member account is not synchronized.', 404);
     if (!firebaseIdentity?.uid || (writeMirrorEnabled && !firebaseIdentity?.idToken)) throw serviceError('firebase_identity_missing', 'Verified Firebase identity is required.', 401);
     if (firebaseIdentity.uid !== link.firebaseUid) throw serviceError('legacy_link_token_mismatch', 'Firebase token does not match linked identity.', 409);
     if (lower(firebaseIdentity.email) && lower(link.firebaseEmail) && lower(firebaseIdentity.email) !== lower(link.firebaseEmail)) throw serviceError('firebase_link_email_mismatch', 'Firebase token email does not match linked identity.', 409);

@@ -28,7 +28,6 @@ import {
   TERMS_CONSENT_SOURCE,
   TERMS_DECISION,
   normalizeTermsPolicy,
-  normalizeTermsSettings,
 } from '../terms/termsConstants.js';
 import { preloadSignupTermsPolicy } from '../terms/termsService.js';
 import {
@@ -266,7 +265,7 @@ export default function useUserSignupController({
     }
 
     if (
-      normalizeTermsSettings(dataSettings).signupTermsEnabled &&
+      signupTermsSubmission.enabled &&
       (!signupTermsSubmission.ready || !signupTermsSubmission.valid)
     ) {
       triggerToast('필수 회원가입 약관을 확인하고 동의해 주세요.', 'error');
@@ -517,12 +516,11 @@ export default function useUserSignupController({
           const latestPolicyEnabled = isRegisteredMemberSignupRequired(
             latestSettings
           );
-          const latestTermsSettings = normalizeTermsSettings(latestSettings);
           const latestTermsPolicy = normalizeTermsPolicy(
             termsPolicySnapshot.exists() ? termsPolicySnapshot.data() : {}
           );
           const termsEnabled =
-            latestTermsSettings.signupTermsEnabled && latestTermsPolicy.enabled;
+            latestTermsPolicy.enabled;
           const activeTerms = termsEnabled ? latestTermsPolicy.activeTerms : [];
 
           if (termsEnabled) {

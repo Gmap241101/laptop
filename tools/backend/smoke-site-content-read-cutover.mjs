@@ -5,18 +5,9 @@ import { createRentalConfigBootstrapDocument } from '../../server/src/content/re
 
 const stored = new Map();
 const bootstrapContext = {
-  assetCategories: ['노트북', '태블릿'],
   teams: ['교육팀', '운영팀'],
   memberDirectoryVersion: 7,
   memberDirectoryEntryCount: 2,
-  termsPolicy: {
-    enabled: true,
-    requireReconsentOnChange: true,
-    applyToExistingMembers: false,
-    revision: 3,
-    requiredRevision: 3,
-    initialRevision: 1,
-  },
 };
 const repository = {
   async getDomain(domain) { return stored.get(domain) || null; },
@@ -50,12 +41,12 @@ assert.equal(rentalConfig.sourceMode, 'postgresql-self-heal');
 assert.equal(rentalConfig.documentCount, 1);
 const canonical = rentalConfig.documents.find((document) => document.key === 'rentalSystem/publicConfig');
 assert.ok(canonical, 'rental-config self-heal must create the canonical publicConfig document');
-assert.deepEqual(canonical.payload.assetCategories, ['노트북', '태블릿']);
+assert.equal(canonical.payload.assetCategories, undefined, 'rental-config bootstrap must not duplicate PostgreSQL asset-category authority');
 assert.deepEqual(canonical.payload.teams, ['교육팀', '운영팀']);
 assert.equal(canonical.payload.settings.memberDirectoryVersion, 7);
 assert.equal(canonical.payload.settings.requireRegisteredMemberForSignup, true);
-assert.equal(canonical.payload.settings.signupTermsEnabled, true);
-assert.equal(canonical.payload.settings.signupTermsPolicyRevision, 3);
+assert.equal(canonical.payload.settings.signupTermsEnabled, undefined, 'rental-config bootstrap must not duplicate signup-terms authority');
+assert.equal(canonical.payload.settings.signupTermsPolicyRevision, undefined, 'rental-config bootstrap must not duplicate signup-terms revisions');
 
 const directBootstrap = createRentalConfigBootstrapDocument({ memberDirectoryEntryCount: 0 });
 assert.equal(directBootstrap.key, 'rentalSystem/publicConfig');

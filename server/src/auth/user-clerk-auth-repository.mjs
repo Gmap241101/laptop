@@ -44,63 +44,9 @@ const mapRow = (row) => {
 
 
 
-const materializePostgresqlRuntimeReadModels = async (pool, { appUserId, firebaseUid }) => {
+const ensurePostgresqlRentalRestrictionReadModel = async (pool, { appUserId, firebaseUid }) => {
   const uid = trim(firebaseUid);
   if (!uid || !appUserId) return;
-
-  await pool.query(
-    `INSERT INTO app_user_member_shadows (
-       app_user_id, firebase_uid, source_collection, source_document_path,
-       uid, email, masked_email, name, team, phone, status,
-       directory_member_id, directory_verified_version, profile_required_reason,
-       rejoined_account, terms_consent_revision, terms_consent_policy_version,
-       identity_key, recovery_key, previous_account_uids,
-       authority_mode, mirror_state, last_mutation_id, authoritative_updated_at,
-       source_created_at, source_updated_at, source_hash, synced_at
-     )
-     SELECT m.app_user_id, m.firebase_uid, 'app_member_accounts', 'postgresql/app_member_accounts/' || m.firebase_uid,
-            m.firebase_uid, m.email, m.masked_email, m.name, m.team, m.phone, m.status,
-            m.directory_member_id, m.directory_verified_version, m.profile_required_reason,
-            m.rejoined_account, m.terms_consent_revision, m.terms_consent_policy_version,
-            m.identity_key, m.recovery_key, m.previous_account_uids,
-            'postgresql-authoritative', 'retired', m.last_mutation_id, COALESCE(m.authoritative_updated_at,NOW()),
-            m.created_at, COALESCE(m.authoritative_updated_at,m.updated_at,NOW()),
-            COALESCE(NULLIF(m.source_hash,''),'postgresql-authoritative:' || m.firebase_uid), NOW()
-       FROM app_member_accounts m
-      WHERE m.firebase_uid=$1 AND m.app_user_id=$2
-        AND m.lifecycle_authority_mode='postgresql-authoritative'
-        AND m.terms_consent_bootstrap_completed_at IS NOT NULL
-     ON CONFLICT (firebase_uid) DO UPDATE SET
-       app_user_id=EXCLUDED.app_user_id,
-       source_collection=EXCLUDED.source_collection,
-       source_document_path=EXCLUDED.source_document_path,
-       uid=EXCLUDED.uid,
-       email=EXCLUDED.email,
-       masked_email=EXCLUDED.masked_email,
-       name=EXCLUDED.name,
-       team=EXCLUDED.team,
-       phone=EXCLUDED.phone,
-       status=EXCLUDED.status,
-       directory_member_id=EXCLUDED.directory_member_id,
-       directory_verified_version=EXCLUDED.directory_verified_version,
-       profile_required_reason=EXCLUDED.profile_required_reason,
-       rejoined_account=EXCLUDED.rejoined_account,
-       terms_consent_revision=EXCLUDED.terms_consent_revision,
-       terms_consent_policy_version=EXCLUDED.terms_consent_policy_version,
-       identity_key=EXCLUDED.identity_key,
-       recovery_key=EXCLUDED.recovery_key,
-       previous_account_uids=EXCLUDED.previous_account_uids,
-       authority_mode='postgresql-authoritative',
-       mirror_state='retired',
-       last_mutation_id=EXCLUDED.last_mutation_id,
-       authoritative_updated_at=EXCLUDED.authoritative_updated_at,
-       source_created_at=EXCLUDED.source_created_at,
-       source_updated_at=EXCLUDED.source_updated_at,
-       source_hash=EXCLUDED.source_hash,
-       synced_at=NOW(),
-       updated_at=NOW()`,
-    [uid, appUserId],
-  );
 
   await pool.query(
     `INSERT INTO app_user_rental_restriction_shadows (
@@ -199,7 +145,7 @@ export const createUserClerkAuthRepository = (pool) => {
         [appUserId, uid],
       );
       if (result.rows[0]) {
-        await materializePostgresqlRuntimeReadModels(pool, { appUserId, firebaseUid: uid });
+        await ensurePostgresqlRentalRestrictionReadModel(pool, { appUserId, firebaseUid: uid });
       }
       return Boolean(result.rows[0]);
     },
@@ -215,7 +161,7 @@ export const createUserClerkAuthRepository = (pool) => {
         [uid],
       );
       if (result.rows[0]?.app_user_id) {
-        await materializePostgresqlRuntimeReadModels(pool, {
+        await ensurePostgresqlRentalRestrictionReadModel(pool, {
           appUserId: result.rows[0].app_user_id,
           firebaseUid: result.rows[0].firebase_uid,
         });
@@ -300,16 +246,6 @@ export const createUserClerkAuthRepository = (pool) => {
                   lifecycle_authority_mode='postgresql-authoritative', mirror_state='retired',
                   withdrawn_at=COALESCE(withdrawn_at,NOW()), authoritative_updated_at=NOW(),
                   source_updated_at=NOW(), synced_at=NOW(), updated_at=NOW()
-            WHERE firebase_uid=$1`,
-          [uid, JSON.stringify(nextPreviousAccountUids)],
-        );
-        await client.query(
-          `UPDATE app_user_member_shadows
-              SET email='', masked_email='', name='탈퇴회원', team='', phone='', status='retired',
-                  directory_member_id='', directory_verified_version=0, profile_required_reason='',
-                  recovery_key='', previous_account_uids=$2::jsonb,
-                  authority_mode='postgresql-authoritative', mirror_state='retired',
-                  authoritative_updated_at=NOW(), source_updated_at=NOW(), synced_at=NOW(), updated_at=NOW()
             WHERE firebase_uid=$1`,
           [uid, JSON.stringify(nextPreviousAccountUids)],
         );

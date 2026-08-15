@@ -6,7 +6,7 @@ import {
   useState,
 } from 'react';
 
-import { normalizeTermsSettings } from '../terms/termsConstants.js';
+import { normalizeTermsPolicy } from '../terms/termsConstants.js';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 import { publishSiteContentInvalidation } from '../content/siteContentCutover.js';
 
@@ -14,22 +14,24 @@ export default function useAdminSignupPolicyActions({
   isAdminAuthenticated,
   setData,
   settings,
+  termsPolicy,
+  onTermsPolicyChange,
   triggerToast,
 }) {
   const triggerToastRef = useRef(triggerToast);
-  const normalizedTermsSettings = normalizeTermsSettings(settings);
+  const normalizedTermsPolicy = normalizeTermsPolicy(termsPolicy);
   const [tempRequireRegisteredMemberForSignup, setTempRequireRegisteredMemberForSignup] =
     useState(Boolean(settings.requireRegisteredMemberForSignup));
   const [tempAutoApproveNewMembers, setTempAutoApproveNewMembers] =
     useState(Boolean(settings.autoApproveNewMembers));
   const [tempSignupTermsEnabled, setTempSignupTermsEnabled] = useState(
-    normalizedTermsSettings.signupTermsEnabled
+    normalizedTermsPolicy.enabled
   );
   const [tempSignupTermsRequireReconsentOnChange, setTempSignupTermsRequireReconsentOnChange] = useState(
-    normalizedTermsSettings.signupTermsRequireReconsentOnChange
+    normalizedTermsPolicy.requireReconsentOnChange
   );
   const [tempSignupTermsApplyToExistingMembers, setTempSignupTermsApplyToExistingMembers] = useState(
-    normalizedTermsSettings.signupTermsApplyToExistingMembers
+    normalizedTermsPolicy.applyToExistingMembers
   );
   const [signupPolicySaving, setSignupPolicySaving] = useState(false);
 
@@ -38,25 +40,26 @@ export default function useAdminSignupPolicyActions({
   }, [triggerToast]);
 
   useEffect(() => {
-    const nextTermsSettings = normalizeTermsSettings(settings);
+    const nextTermsPolicy = normalizeTermsPolicy(termsPolicy);
     setTempRequireRegisteredMemberForSignup(Boolean(settings.requireRegisteredMemberForSignup));
     setTempAutoApproveNewMembers(Boolean(settings.autoApproveNewMembers));
-    setTempSignupTermsEnabled(nextTermsSettings.signupTermsEnabled);
-    setTempSignupTermsRequireReconsentOnChange(nextTermsSettings.signupTermsRequireReconsentOnChange);
-    setTempSignupTermsApplyToExistingMembers(nextTermsSettings.signupTermsApplyToExistingMembers);
-  }, [settings]);
+    setTempSignupTermsEnabled(nextTermsPolicy.enabled);
+    setTempSignupTermsRequireReconsentOnChange(nextTermsPolicy.requireReconsentOnChange);
+    setTempSignupTermsApplyToExistingMembers(nextTermsPolicy.applyToExistingMembers);
+  }, [settings, termsPolicy]);
 
   const signupPolicyDirty = useMemo(() => {
-    const currentTerms = normalizeTermsSettings(settings);
+    const currentTerms = normalizeTermsPolicy(termsPolicy)
     return (
       Boolean(tempRequireRegisteredMemberForSignup) !== Boolean(settings.requireRegisteredMemberForSignup) ||
       Boolean(tempAutoApproveNewMembers) !== Boolean(settings.autoApproveNewMembers) ||
-      Boolean(tempSignupTermsEnabled) !== currentTerms.signupTermsEnabled ||
-      Boolean(tempSignupTermsRequireReconsentOnChange) !== currentTerms.signupTermsRequireReconsentOnChange ||
-      Boolean(tempSignupTermsApplyToExistingMembers) !== currentTerms.signupTermsApplyToExistingMembers
+      Boolean(tempSignupTermsEnabled) !== currentTerms.enabled ||
+      Boolean(tempSignupTermsRequireReconsentOnChange) !== currentTerms.requireReconsentOnChange ||
+      Boolean(tempSignupTermsApplyToExistingMembers) !== currentTerms.applyToExistingMembers
     );
   }, [
     settings,
+    termsPolicy,
     tempAutoApproveNewMembers,
     tempRequireRegisteredMemberForSignup,
     tempSignupTermsApplyToExistingMembers,
@@ -65,14 +68,14 @@ export default function useAdminSignupPolicyActions({
   ]);
 
   const cancelSignupPolicyChanges = useCallback(() => {
-    const currentTerms = normalizeTermsSettings(settings);
+    const currentTerms = normalizeTermsPolicy(termsPolicy)
     setTempRequireRegisteredMemberForSignup(Boolean(settings.requireRegisteredMemberForSignup));
     setTempAutoApproveNewMembers(Boolean(settings.autoApproveNewMembers));
-    setTempSignupTermsEnabled(currentTerms.signupTermsEnabled);
-    setTempSignupTermsRequireReconsentOnChange(currentTerms.signupTermsRequireReconsentOnChange);
-    setTempSignupTermsApplyToExistingMembers(currentTerms.signupTermsApplyToExistingMembers);
+    setTempSignupTermsEnabled(currentTerms.enabled);
+    setTempSignupTermsRequireReconsentOnChange(currentTerms.requireReconsentOnChange);
+    setTempSignupTermsApplyToExistingMembers(currentTerms.applyToExistingMembers);
     triggerToastRef.current('회원가입 정책 변경사항을 취소했습니다.', 'success');
-  }, [settings]);
+  }, [settings, termsPolicy]);
 
   const saveSignupPolicyChanges = useCallback(async () => {
     if (!isAdminAuthenticated) {
@@ -82,13 +85,13 @@ export default function useAdminSignupPolicyActions({
 
     const nextRequireRegistered = Boolean(tempRequireRegisteredMemberForSignup);
     const nextAutoApprove = nextRequireRegistered && Boolean(tempAutoApproveNewMembers);
-    const currentTerms = normalizeTermsSettings(settings);
+    const currentTerms = normalizeTermsPolicy(termsPolicy)
     const beforeValues = {
       requireRegisteredMemberForSignup: Boolean(settings.requireRegisteredMemberForSignup),
       autoApproveNewMembers: Boolean(settings.autoApproveNewMembers),
-      signupTermsEnabled: Boolean(currentTerms.signupTermsEnabled),
-      signupTermsRequireReconsentOnChange: Boolean(currentTerms.signupTermsRequireReconsentOnChange),
-      signupTermsApplyToExistingMembers: Boolean(currentTerms.signupTermsApplyToExistingMembers),
+      signupTermsEnabled: Boolean(currentTerms.enabled),
+      signupTermsRequireReconsentOnChange: Boolean(currentTerms.requireReconsentOnChange),
+      signupTermsApplyToExistingMembers: Boolean(currentTerms.applyToExistingMembers),
     };
     setSignupPolicySaving(true);
 
@@ -102,6 +105,7 @@ export default function useAdminSignupPolicyActions({
       });
       const mutation = payload?.signupPolicyMutation || {};
       const nextSettings = mutation?.settings;
+      const nextTermsPolicy = normalizeTermsPolicy(mutation?.termsPolicy || {});
       if (!nextSettings || typeof nextSettings !== 'object') {
         const error = new Error('PostgreSQL signup policy response is missing authoritative settings.');
         error.code = 'signup_policy_postgresql_response_missing';
@@ -109,11 +113,12 @@ export default function useAdminSignupPolicyActions({
       }
 
       setData((previousData) => ({ ...previousData, settings: nextSettings }));
+      onTermsPolicyChange?.(mutation?.termsPolicy || {});
       setTempRequireRegisteredMemberForSignup(Boolean(nextSettings.requireRegisteredMemberForSignup));
       setTempAutoApproveNewMembers(Boolean(nextSettings.autoApproveNewMembers));
-      setTempSignupTermsEnabled(Boolean(nextSettings.signupTermsEnabled));
-      setTempSignupTermsRequireReconsentOnChange(nextSettings.signupTermsRequireReconsentOnChange !== false);
-      setTempSignupTermsApplyToExistingMembers(Boolean(nextSettings.signupTermsApplyToExistingMembers));
+      setTempSignupTermsEnabled(Boolean(nextTermsPolicy.enabled));
+      setTempSignupTermsRequireReconsentOnChange(nextTermsPolicy.requireReconsentOnChange !== false);
+      setTempSignupTermsApplyToExistingMembers(Boolean(nextTermsPolicy.applyToExistingMembers));
       publishSiteContentInvalidation('rental-config');
       publishSiteContentInvalidation('terms');
 
@@ -129,9 +134,9 @@ export default function useAdminSignupPolicyActions({
           afterValues: {
             requireRegisteredMemberForSignup: Boolean(nextSettings.requireRegisteredMemberForSignup),
             autoApproveNewMembers: Boolean(nextSettings.autoApproveNewMembers),
-            signupTermsEnabled: Boolean(nextSettings.signupTermsEnabled),
-            signupTermsRequireReconsentOnChange: nextSettings.signupTermsRequireReconsentOnChange !== false,
-            signupTermsApplyToExistingMembers: Boolean(nextSettings.signupTermsApplyToExistingMembers),
+            signupTermsEnabled: Boolean(nextTermsPolicy.enabled),
+            signupTermsRequireReconsentOnChange: nextTermsPolicy.requireReconsentOnChange !== false,
+            signupTermsApplyToExistingMembers: Boolean(nextTermsPolicy.applyToExistingMembers),
           },
         });
       } catch (error) {
@@ -165,8 +170,10 @@ export default function useAdminSignupPolicyActions({
     }
   }, [
     isAdminAuthenticated,
+    onTermsPolicyChange,
     setData,
     settings,
+    termsPolicy,
     tempAutoApproveNewMembers,
     tempRequireRegisteredMemberForSignup,
     tempSignupTermsApplyToExistingMembers,

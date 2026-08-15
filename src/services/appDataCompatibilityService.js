@@ -1,9 +1,5 @@
 import { STATUS } from '../constants/appConstants.js';
 import {
-  DEFAULT_SIGNUP_TERMS_SETTINGS,
-  normalizeTermsSettings,
-} from '../features/terms/termsConstants.js';
-import {
   DEFAULT_ADJUST_START_DATE_AFTER_WORK_END,
   DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY,
   DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS,
@@ -90,7 +86,6 @@ export const initialData = {
     autoApproveNewMembers: false,
     memberDirectoryVersion: 0,
     memberIdentityClaimsReady: false,
-    ...DEFAULT_SIGNUP_TERMS_SETTINGS,
     allowNonOverlappingSameAssetRequests:
       DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS,
     rentalExtensionEnabled: DEFAULT_RENTAL_EXTENSION_ENABLED,
@@ -188,7 +183,6 @@ export const mergePersistedData = (rawData) => {
     rawSettings.memberIdentityClaimsReady
   );
 
-  Object.assign(settings, normalizeTermsSettings(rawSettings));
   settings.holidays = normalizeHolidayList(settings.holidays);
 
   const parsedWithoutAdminAccounts = stripAdminAccountsFromData(parsed);

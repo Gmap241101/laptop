@@ -94,7 +94,7 @@ const normalizeCandidateRequests = (requests) =>
 
 export const readRentalRequestCandidatePayload = (payload) => {
   const source = trim(payload?.rentalRequestCandidate?.source);
-  const supportedSource = ['postgresql-shadow', 'postgresql-authoritative'].includes(source);
+  const supportedSource = source === 'postgresql-authoritative';
   if (
     !payload?.authenticated ||
     !supportedSource ||
@@ -163,7 +163,7 @@ export const chooseRentalRequestReadSource = ({
   }
 
   return Object.freeze({
-    source: 'postgresql-shadow',
+    source: 'postgresql-authoritative',
     requests: normalizedPostgres,
     equivalent: true,
     changedRequestIds: [],
@@ -192,7 +192,7 @@ export const loadRentalRequestsWithoutFirestoreWatcher = async ({
       throw error;
     }
     return Object.freeze({
-      source: candidate.source || 'postgresql-shadow',
+      source: candidate.source || 'postgresql-authoritative',
       requests: normalizeCandidateRequests(candidate.requests),
       equivalent: Number(candidate.sourceRefreshes) > 0 ? true : null,
       changedRequestIds: [],

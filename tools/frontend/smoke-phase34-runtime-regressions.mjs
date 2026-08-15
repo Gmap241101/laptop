@@ -570,6 +570,11 @@ assert.match(signupPolicyActionsSource, /appendAdminSystemSettingsAudit\([\s\S]*
 assert.match(adminAccountSecurityAuditSource, /appendAdminSystemSettingsAudit\([\s\S]*account-security-settings-update/, 'account security saves must append the PostgreSQL system settings audit');
 assert.match(clerkStagingClientSource, /member_directory_sync_payload_invalid/, 'member-directory sync response contract failures must expose a stable error code instead of the generic Error name');
 assert.match(clerkStagingClientSource, /async signOut\(options = undefined\)[\s\S]*clerk\.signOut\(options\)/, 'Clerk wrapper must forward an explicit administrator sign-out redirect option when supplied');
+
+assert.doesNotMatch(clerkStagingClientSource, /requestMemberShadowStatus|requestMemberShadowSync|requestMemberShadowComparison|syncMemberShadow|compareMemberShadow|getMemberShadow/, 'frontend Clerk client must not expose retired member shadow APIs after canonical consolidation');
+assert.doesNotMatch(clerkStagingClientSource, /requestRentalRequestShadowSync|requestRentalRequestShadowComparison|syncRentalRequestShadow|compareRentalRequestShadow/, 'frontend Clerk client must not expose retired rental-request shadow APIs after canonical consolidation');
+assert.match(clerkStagingClientSource, /payload\?\.readCandidate\?\.source !== 'postgresql-authoritative'/, 'member profile read candidate must require the canonical PostgreSQL authority source');
+
 assert.match(memberDirectorySaveActionsSource, /syncAdminMemberDirectory\(\{[\s\S]*entries: directoryEntries[\s\S]*version: nextSettings\.memberDirectoryVersion[\s\S]*teams: nextTeams[\s\S]*settings: nextSettings/, 'department/user saves must synchronize the directory and organization configuration through one authoritative PostgreSQL mutation');
 assert.equal(memberDirectorySaveActionsSource.includes('patchPolicyContentDomainInPostgresql'), false, 'department/user saves must not perform a second browser-side rental-config write after directory synchronization');
 assert.equal(memberDirectorySaveActionsSource.includes('requestPolicyContentDomain'), false, 'department/user saves must not require a browser-side rental-config read before synchronization');
@@ -707,8 +712,8 @@ assert.ok(footerPanelSource.includes('페이지 주소 ID'), 'footer content edi
 assert.ok(footerPanelSource.includes('/info/'), 'footer content editor must preview the /info/<addressId> canonical URL');
 assert.ok(!footerPanelSource.includes('/footer/'), 'footer content editor must not advertise the superseded /footer/<addressId> route');
 assert.ok(footerPanelSource.includes('다른 푸터 페이지와 중복될 수 없습니다.'), 'footer editor must explain address uniqueness');
-assert.match(rentalDataSubscriptionSource, /assetCutoverConfig\.readRequested[\s\S]*assetCategories: splitAssetCategoriesRef\.current/, 'rental-config must not temporarily regain asset-category authority after the PostgreSQL asset cutover');
-assert.match(rentalDataSubscriptionSource, /splitAssetCategoriesRef\.current = categories/, 'PostgreSQL asset catalog categories must become the authoritative category snapshot before merged config state catches up');
+assert.match(rentalDataSubscriptionSource, /assetCutoverConfig\.readRequested[\s\S]*assetCategories: authoritativeAssetCategoriesRef\.current/, 'rental-config must not regain persistent asset-category authority after PostgreSQL cutover');
+assert.match(rentalDataSubscriptionSource, /authoritativeAssetCategoriesRef\.current = categories/, 'PostgreSQL asset catalog categories must become the sole authoritative category snapshot before merged runtime state catches up');
 assert.match(adminAppSource, /const assetCategoryCatalogReady = Boolean\([\s\S]*publicCatalogAssetsReady[\s\S]*JSON\.stringify\(data\.assetCategories \|\| \[\]\) === JSON\.stringify\(splitPublicConfig\.assetCategories \|\| \[\]\)/, 'administrator category UI must wait until the merged data snapshot matches the authoritative PostgreSQL catalog');
 assert.match(adminAssetCategoriesPanelSource, /PostgreSQL 자산 카테고리를 불러오는 중입니다\./, 'administrator category UI must show one loading state instead of a stale partial category list');
 assert.match(adminSettingsSource, /<div className="font-bold">💡 운영 안내<\/div>[\s\S]*<p>이 화면은[\s\S]*<p><b>• 기존 관리 메뉴 유지 항목:<\/b>[\s\S]*<p><b>• 관리 가능 범위:<\/b>/, 'home-management operating guidance must use structural block rows so line breaks render reliably');

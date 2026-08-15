@@ -99,11 +99,10 @@ export const createRentalRequestUserActionRepository = (pool) => {
     async countCurrentOverdue(appUserId, referenceDate) {
       const result = await pool.query(
         `SELECT COUNT(*)::integer AS count
-           FROM app_user_rental_request_shadows
+           FROM app_rental_requests
           WHERE app_user_id = $1
             AND status = '대여중'
-            AND due_date ~ '^\\d{4}-\\d{2}-\\d{2}$'
-            AND due_date::date < $2::date`,
+            AND due_date < $2::date`,
         [appUserId, referenceDate],
       );
       return Number(result.rows[0]?.count || 0);

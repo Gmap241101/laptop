@@ -595,7 +595,7 @@ export const requestMemberProfileReadCandidate = async ({ clerk, apiBaseUrl, fet
     path: '/api/users/me/member-profile-candidate',
   });
 
-  if (response.status === 404 && payload?.error === 'member_shadow_not_found') return null;
+  if (response.status === 404 && payload?.error === 'member_account_not_synchronized') return null;
   if (!response.ok) {
     const code = payload?.error ? ` (${payload.error})` : '';
     const error = new Error(`Member profile read candidate lookup failed with HTTP ${response.status}${code}.`);
@@ -605,7 +605,7 @@ export const requestMemberProfileReadCandidate = async ({ clerk, apiBaseUrl, fet
   }
   if (
     !payload?.authenticated ||
-    payload?.readCandidate?.source !== 'postgresql-shadow' ||
+    payload?.readCandidate?.source !== 'postgresql-authoritative' ||
     !payload?.readCandidate?.profile?.uid
   ) {
     throw new Error('Backend returned an invalid member profile read candidate response.');
@@ -613,80 +613,6 @@ export const requestMemberProfileReadCandidate = async ({ clerk, apiBaseUrl, fet
   return payload;
 };
 
-export const requestMemberShadowStatus = async ({ clerk, apiBaseUrl, fetchImpl }) => {
-  const { response, payload } = await requestWithSession({
-    clerk,
-    apiBaseUrl,
-    fetchImpl,
-    path: '/api/users/me/legacy/member-shadow',
-  });
-
-  if (response.status === 404 && payload?.error === 'member_shadow_not_found') return null;
-  if (!response.ok) {
-    const code = payload?.error ? ` (${payload.error})` : '';
-    const error = new Error(`Legacy member shadow lookup failed with HTTP ${response.status}${code}.`);
-    error.status = response.status;
-    error.code = payload?.error || null;
-    throw error;
-  }
-  if (!payload?.authenticated || !payload?.memberShadow?.firebaseUid) {
-    throw new Error('Backend returned an invalid legacy member-shadow response.');
-  }
-  return payload;
-};
-
-export const requestMemberShadowSync = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken }) => {
-  const token = trim(firebaseIdToken);
-  if (!token) throw new Error('Firebase sign-in is required before synchronizing the legacy member shadow.');
-
-  const { response, payload } = await requestWithSession({
-    clerk,
-    apiBaseUrl,
-    fetchImpl,
-    path: '/api/users/me/legacy/member-shadow/sync',
-    method: 'POST',
-    headers: { },
-  });
-
-  if (!response.ok) {
-    const code = payload?.error ? ` (${payload.error})` : '';
-    const error = new Error(`Legacy member shadow synchronization failed with HTTP ${response.status}${code}.`);
-    error.status = response.status;
-    error.code = payload?.error || null;
-    throw error;
-  }
-  if (!payload?.authenticated || !payload?.synchronized || !payload?.memberShadow?.firebaseUid) {
-    throw new Error('Backend returned an invalid member-shadow synchronization response.');
-  }
-  return payload;
-};
-
-export const requestMemberShadowComparison = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken }) => {
-  const token = trim(firebaseIdToken);
-  if (!token) throw new Error('Firebase sign-in is required before comparing the legacy member shadow.');
-
-  const { response, payload } = await requestWithSession({
-    clerk,
-    apiBaseUrl,
-    fetchImpl,
-    path: '/api/users/me/legacy/member-shadow/compare',
-    method: 'POST',
-    headers: { },
-  });
-
-  if (response.status === 404 && payload?.error === 'member_shadow_not_found') return null;
-  if (!response.ok) {
-    const code = payload?.error ? ` (${payload.error})` : '';
-    const error = new Error(`Legacy member shadow comparison failed with HTTP ${response.status}${code}.`);
-    error.status = response.status;
-    error.code = payload?.error || null;
-    throw error;
-  }
-  if (!payload?.authenticated || typeof payload?.comparison?.equivalent !== 'boolean') {
-    throw new Error('Backend returned an invalid member-shadow comparison response.');
-  }
-  return payload;
-};
 
 export const requestAdminRentalRequestBootstrap = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken }) => {
   const token = trim(firebaseIdToken);
@@ -1458,59 +1384,12 @@ export const requestRentalRequestReadCandidate = async ({ clerk, apiBaseUrl, fet
     throw error;
   }
   const candidateSource = String(payload?.rentalRequestCandidate?.source || '');
-  if (!payload?.authenticated || !['postgresql-shadow', 'postgresql-authoritative'].includes(candidateSource) || !Array.isArray(payload?.rentalRequestCandidate?.requests)) {
+  if (!payload?.authenticated || candidateSource !== 'postgresql-authoritative' || !Array.isArray(payload?.rentalRequestCandidate?.requests)) {
     throw new Error('Backend returned an invalid rental request read candidate response.');
   }
   return payload;
 };
 
-export const requestRentalRequestShadowSync = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken }) => {
-  const token = trim(firebaseIdToken);
-  if (!token) throw new Error('Firebase sign-in is required before synchronizing rental requests.');
-  const { response, payload } = await requestWithSession({
-    clerk,
-    apiBaseUrl,
-    fetchImpl,
-    path: '/api/users/me/legacy/rental-request-shadows/sync',
-    method: 'POST',
-    headers: { },
-  });
-  if (!response.ok) {
-    const code = payload?.error ? ` (${payload.error})` : '';
-    const error = new Error(`Rental request shadow synchronization failed with HTTP ${response.status}${code}.`);
-    error.status = response.status;
-    error.code = payload?.error || null;
-    throw error;
-  }
-  if (!payload?.authenticated || !payload?.synchronized || payload?.rentalRequestCandidate?.source !== 'postgresql-shadow' || !Array.isArray(payload?.rentalRequestCandidate?.requests)) {
-    throw new Error('Backend returned an invalid rental request shadow synchronization response.');
-  }
-  return payload;
-};
-
-export const requestRentalRequestShadowComparison = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken }) => {
-  const token = trim(firebaseIdToken);
-  if (!token) throw new Error('Firebase sign-in is required before comparing rental request shadows.');
-  const { response, payload } = await requestWithSession({
-    clerk,
-    apiBaseUrl,
-    fetchImpl,
-    path: '/api/users/me/legacy/rental-request-shadows/compare',
-    method: 'POST',
-    headers: { },
-  });
-  if (!response.ok) {
-    const code = payload?.error ? ` (${payload.error})` : '';
-    const error = new Error(`Rental request shadow comparison failed with HTTP ${response.status}${code}.`);
-    error.status = response.status;
-    error.code = payload?.error || null;
-    throw error;
-  }
-  if (!payload?.authenticated || typeof payload?.comparison?.equivalent !== 'boolean') {
-    throw new Error('Backend returned an invalid rental request shadow comparison response.');
-  }
-  return payload;
-};
 
 const createScriptLoader = (documentRef) => (id, src, attributes = {}) =>
   new Promise((resolve, reject) => {
@@ -2067,28 +1946,6 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
       const clerk = await initialize();
       return requestMemberProfileReadCandidate({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
     },
-    async getMemberShadow() {
-      const clerk = await initialize();
-      return requestMemberShadowStatus({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
-    },
-    async syncMemberShadow(firebaseIdToken) {
-      const clerk = await initialize();
-      return requestMemberShadowSync({
-        clerk,
-        apiBaseUrl: config.apiBaseUrl,
-        fetchImpl,
-        firebaseIdToken,
-      });
-    },
-    async compareMemberShadow(firebaseIdToken) {
-      const clerk = await initialize();
-      return requestMemberShadowComparison({
-        clerk,
-        apiBaseUrl: config.apiBaseUrl,
-        fetchImpl,
-        firebaseIdToken,
-      });
-    },
     async writeMemberProfile(firebaseIdToken, profile) {
       const clerk = await initialize();
       return requestMemberProfileAuthorityWrite({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, profile });
@@ -2311,24 +2168,6 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async getRentalRequestReadCandidate() {
       const clerk = await initialize();
       return requestRentalRequestReadCandidate({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
-    },
-    async syncRentalRequestShadow(firebaseIdToken) {
-      const clerk = await initialize();
-      return requestRentalRequestShadowSync({
-        clerk,
-        apiBaseUrl: config.apiBaseUrl,
-        fetchImpl,
-        firebaseIdToken,
-      });
-    },
-    async compareRentalRequestShadow(firebaseIdToken) {
-      const clerk = await initialize();
-      return requestRentalRequestShadowComparison({
-        clerk,
-        apiBaseUrl: config.apiBaseUrl,
-        fetchImpl,
-        firebaseIdToken,
-      });
     },
   });
 };

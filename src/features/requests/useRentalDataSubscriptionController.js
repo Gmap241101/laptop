@@ -34,9 +34,6 @@ import {
   readLegacyFirestoreReadFallbackConfig,
   recordLegacyFirestoreReadFallbackBlocked,
 } from '../compatibility/legacyFirestoreReadFallbackCutover.js';
-import {
-  readRentalRequestWriteMirrorRetirementConfig,
-} from '../compatibility/rentalRequestWriteMirrorRetirement.js';
 import { readUserAccountLifecycleCutoverConfig } from '../auth/userAccountLifecycleCutover.js';
 
 const createDefaultSplitSourceReady = () => ({
@@ -221,7 +218,6 @@ export function useOwnRentalRequestsSubscriptionController({
 
     let disposed = false;
     const cutoverConfig = readRentalRequestCutoverConfig();
-    const rentalWriteMirrorRetirementConfig = readRentalRequestWriteMirrorRetirementConfig();
     const legacyFallbackConfig = readLegacyFirestoreReadFallbackConfig();
     const legacyFallbackAllowed = isLegacyFirestoreReadFallbackAllowed(legacyFallbackConfig);
 
@@ -238,28 +234,11 @@ export function useOwnRentalRequestsSubscriptionController({
       return Array.from(requestMap.values());
     };
 
-    const loadPostgresCandidate = async ({ refreshSource = false } = {}) => {
-      let payload = null;
-      let sourceRefreshes = 0;
-
-      if (rentalWriteMirrorRetirementConfig.enabled) {
-        payload = await clerkStagingClient.getRentalRequestReadCandidate();
-      } else if (refreshSource) {
-        const firebaseIdToken = await firebaseAuthUser.getIdToken();
-        payload = await clerkStagingClient.syncRentalRequestShadow(firebaseIdToken);
-        sourceRefreshes = 1;
-      } else {
-        payload = await clerkStagingClient.getRentalRequestReadCandidate();
-        if (!payload) {
-          const firebaseIdToken = await firebaseAuthUser.getIdToken();
-          payload = await clerkStagingClient.syncRentalRequestShadow(firebaseIdToken);
-          sourceRefreshes = 1;
-        }
-      }
-
+    const loadPostgresCandidate = async () => {
+      const payload = await clerkStagingClient.getRentalRequestReadCandidate();
       return Object.freeze({
         ...readRentalRequestCandidatePayload(payload),
-        sourceRefreshes,
+        sourceRefreshes: 0,
       });
     };
 
@@ -569,11 +548,9 @@ export default function useRentalDataSubscriptionController({
   view,
 }) {
   const initializedRemoteFormRef = useRef(false);
-  const splitAssetCategoriesRef = useRef(splitPublicConfig?.assetCategories || []);
-
-  useEffect(() => {
-    splitAssetCategoriesRef.current = splitPublicConfig?.assetCategories || [];
-  }, [splitPublicConfig?.assetCategories]);
+  // Runtime-only bridge from the PostgreSQL asset catalog into the merged app data.
+  // Asset categories are no longer persisted/read from rental-config.
+  const authoritativeAssetCategoriesRef = useRef([]);
 
   useEffect(() => {
     setSplitSourceReady((previous) => ({
@@ -589,7 +566,7 @@ export default function useRentalDataSubscriptionController({
       if (!active) return;
       setSplitPublicConfig(() =>
         assetCutoverConfig.readRequested
-          ? { ...configData, assetCategories: splitAssetCategoriesRef.current }
+          ? { ...configData, assetCategories: authoritativeAssetCategoriesRef.current }
           : configData
       );
       setSplitStorageVersion(Number(configData.storageVersion || 0));
@@ -716,7 +693,7 @@ export default function useRentalDataSubscriptionController({
       setSplitRentalAssets(assets.map((asset) => ({ ...asset, reservations: normalizeAssetReservations(asset.reservations || []) })));
       setSplitRentalAvailability(availability);
       if (categories.length > 0) {
-        splitAssetCategoriesRef.current = categories;
+        authoritativeAssetCategoriesRef.current = categories;
         setSplitPublicConfig((previous) => previous ? { ...previous, assetCategories: categories } : previous);
       }
       setSplitSourceReady((previous) => ({ ...previous, assets: true, availability: true }));

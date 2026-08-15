@@ -88,45 +88,6 @@ const sanitizeFirebaseLink = (link) => ({
   updatedAt: link.updatedAt,
 });
 
-const sanitizeMemberShadow = (shadow) => ({
-  appUserId: shadow.appUserId,
-  firebaseUid: shadow.firebaseUid,
-  uid: shadow.uid,
-  email: shadow.email,
-  maskedEmail: shadow.maskedEmail,
-  name: shadow.name,
-  team: shadow.team,
-  phone: shadow.phone,
-  status: shadow.status,
-  directoryMemberId: shadow.directoryMemberId,
-  directoryVerifiedVersion: shadow.directoryVerifiedVersion,
-  profileRequiredReason: shadow.profileRequiredReason,
-  rejoinedAccount: shadow.rejoinedAccount,
-  termsConsentRevision: shadow.termsConsentRevision,
-  termsConsentPolicyVersion: shadow.termsConsentPolicyVersion,
-  identityKey: shadow.identityKey,
-  recoveryKey: shadow.recoveryKey,
-  previousAccountUids: shadow.previousAccountUids,
-  authorityMode: shadow.authorityMode || 'firestore-shadow',
-  mirrorState: shadow.mirrorState || 'synced',
-  lastMutationId: shadow.lastMutationId || '',
-  authoritativeUpdatedAt: shadow.authoritativeUpdatedAt || null,
-  sourceHash: shadow.sourceHash,
-  sourceCreatedAt: shadow.sourceCreatedAt,
-  sourceUpdatedAt: shadow.sourceUpdatedAt,
-  syncedAt: shadow.syncedAt,
-  updatedAt: shadow.updatedAt,
-});
-
-const sanitizeMemberComparison = (comparison) => ({
-  equivalent: Boolean(comparison.equivalent),
-  sourceHash: comparison.sourceHash,
-  shadowHash: comparison.shadowHash,
-  changedFields: comparison.changedFields,
-  sourceUpdatedAt: comparison.sourceUpdatedAt,
-  shadowSyncedAt: comparison.shadowSyncedAt,
-});
-
 const sanitizeRentalRestrictionShadow = (shadow) => ({
   firebaseUid: shadow.firebaseUid,
   appUserId: shadow.appUserId,
@@ -173,17 +134,14 @@ const sanitizeRentalRequest = (request) => ({
   updatedAt: request.updatedAt,
 });
 
-const sanitizeRentalRequestCandidate = ({ requests, syncState }) => {
-  const authoritative = syncState?.sourceMode === 'postgresql-authoritative';
-  return {
-    source: authoritative ? 'postgresql-authoritative' : 'postgresql-shadow',
-    authoritative,
-    requests: requests.map(sanitizeRentalRequest),
-    count: requests.length,
-    sourceHash: syncState.sourceHash,
-    shadowSyncedAt: syncState.syncedAt,
-  };
-};
+const sanitizeRentalRequestCandidate = ({ requests, syncState }) => ({
+  source: 'postgresql-authoritative',
+  authoritative: true,
+  requests: requests.map(sanitizeRentalRequest),
+  count: requests.length,
+  sourceHash: syncState?.sourceHash || 'postgresql-authoritative',
+  syncedAt: syncState?.syncedAt || null,
+});
 
 const sanitizeAssetCatalog = (catalog = {}) => ({
   source: catalog.source || 'postgresql',
@@ -196,7 +154,7 @@ const sanitizeAssetCatalog = (catalog = {}) => ({
   sync: catalog.sync || null,
 });
 
-const sanitizeMemberProfileReadCandidate = (profile, { source = 'postgresql-shadow', authoritative = null } = {}) => ({
+const sanitizeMemberProfileReadCandidate = (profile, { source = 'postgresql-authoritative', authoritative = true } = {}) => ({
   source,
   authoritative: authoritative == null ? profile.authorityMode === 'postgresql-authoritative' : Boolean(authoritative),
   firebaseUid: profile.firebaseUid || profile.uid,
@@ -229,7 +187,6 @@ export const createRequestHandler = ({
   authenticateRequest,
   userIdentityService,
   firebaseLinkService,
-  memberShadowService,
   memberAuthorityService = {
     async getCurrentByFirebaseIdentity() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
     async editSelf() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
@@ -388,17 +345,6 @@ export const createRequestHandler = ({
   }
   if (!firebaseLinkService || typeof firebaseLinkService.getCurrent !== 'function' || typeof firebaseLinkService.linkCurrent !== 'function') {
     throw new TypeError('firebaseLinkService getCurrent/linkCurrent methods are required.');
-  }
-  if (
-    !memberShadowService ||
-    typeof memberShadowService.getCurrent !== 'function' ||
-    typeof memberShadowService.getCurrentByFirebaseIdentity !== 'function' ||
-    typeof memberShadowService.readCurrentSourceByFirebaseIdentity !== 'function' ||
-    typeof memberShadowService.syncLinkedFirebaseUid !== 'function' ||
-    typeof memberShadowService.syncCurrent !== 'function' ||
-    typeof memberShadowService.compareCurrent !== 'function'
-  ) {
-    throw new TypeError('memberShadowService getCurrent/getCurrentByFirebaseIdentity/readCurrentSourceByFirebaseIdentity/syncLinkedFirebaseUid/syncCurrent/compareCurrent methods are required.');
   }
   if (
     !memberAuthorityService ||
@@ -723,11 +669,8 @@ export const createRequestHandler = ({
           currentUser: '/api/users/me',
           syncCurrentUser: '/api/users/me/sync',
           firebaseLink: '/api/users/me/legacy/firebase',
-          memberShadow: '/api/users/me/legacy/member-shadow',
           memberProfileReadCandidate: '/api/users/me/member-profile-candidate',
           memberProfileCutoverCandidate: '/api/legacy/member-profile-cutover-candidate',
-          memberProfileFirestoreFallback: '/api/legacy/member-profile-firestore-fallback',
-          memberProfileWriteThrough: '/api/legacy/member-shadow/write-through',
           memberProfileAuthority: '/api/users/me/member-profile',
           adminMembers: '/api/admin/members',
           adminMemberDirectory: '/api/admin/member-directory',
@@ -757,8 +700,6 @@ export const createRequestHandler = ({
           rentalRequestUserEdit: '/api/users/me/rental-requests/:id/edit',
           rentalRequestUserCancel: '/api/users/me/rental-requests/:id/cancel',
           rentalRequestUserExtend: '/api/users/me/rental-requests/:id/extend',
-          rentalRequestShadowSync: '/api/users/me/legacy/rental-request-shadows/sync',
-          rentalRequestShadowCompare: '/api/users/me/legacy/rental-request-shadows/compare',
           adminRentalRequestBootstrap: '/api/admin/rental-requests/bootstrap',
           adminRentalRequests: '/api/admin/rental-requests',
           adminRentalDashboard: '/api/admin/rental-dashboard',
@@ -2699,7 +2640,7 @@ export const createRequestHandler = ({
         const statusCode = error?.status
           || (['rental_request_asset_conflict', 'rental_request_asset_unavailable', 'firestore_rental_asset_write_conflict'].includes(errorCode) ? 409
             : ['rental_request_member_inactive', 'rental_request_current_overdue_blocked', 'rental_request_penalty_blocked'].includes(errorCode) ? 403
-            : ['rental_request_asset_not_found', 'profile_not_synced', 'legacy_link_not_found', 'member_shadow_not_found'].includes(errorCode) ? 404
+            : ['rental_request_asset_not_found', 'profile_not_synced', 'legacy_link_not_found', 'member_account_not_found'].includes(errorCode) ? 404
             : 503);
         console.warn('[rental-request-write] create failed', { requestId, code: errorCode, name: error?.name });
         writeJson(response, statusCode, {
@@ -2724,58 +2665,24 @@ export const createRequestHandler = ({
         }, headers);
       } catch (error) {
         const errorCode = error?.code || 'rental_request_candidate_unavailable';
-        const statusCode = ['profile_not_synced', 'legacy_link_not_found', 'member_shadow_not_found', 'rental_request_shadow_not_synced'].includes(errorCode) ? 404 : 503;
+        const statusCode = ['profile_not_synced', 'legacy_link_not_found', 'member_account_not_found', 'rental_request_shadow_not_synced'].includes(errorCode) ? 404 : 503;
         writeJson(response, statusCode, { ...basePayload, authenticated: true, error: errorCode }, headers);
       }
       return;
     }
 
-    if (request.method === 'POST' && url.pathname === '/api/users/me/legacy/rental-request-shadows/sync') {
+    if (
+      request.method === 'POST' &&
+      ['/api/users/me/legacy/rental-request-shadows/sync', '/api/users/me/legacy/rental-request-shadows/compare'].includes(url.pathname)
+    ) {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
-      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
-      if (!firebaseIdentity) return;
-      try {
-        const result = await rentalRequestService.syncCurrent(auth.userId, firebaseIdentity);
-        writeJson(response, 200, {
-          ...basePayload,
-          authenticated: true,
-          synchronized: true,
-          rentalRequestCandidate: sanitizeRentalRequestCandidate(result),
-        }, headers);
-      } catch (error) {
-        const errorCode = error?.code || 'rental_request_shadow_sync_unavailable';
-        const statusCode = ['profile_not_synced', 'legacy_link_not_found', 'member_shadow_not_found'].includes(errorCode) ? 404
-          : ['legacy_link_token_mismatch', 'firebase_link_email_mismatch'].includes(errorCode) ? 409
-          : error?.status === 403 ? 403
-          : error?.status === 401 ? 401
-          : 503;
-        writeJson(response, statusCode, { ...basePayload, authenticated: true, error: errorCode }, headers);
-      }
-      return;
-    }
-
-    if (request.method === 'POST' && url.pathname === '/api/users/me/legacy/rental-request-shadows/compare') {
-      const auth = await authenticate(request, response, headers, requestId);
-      if (!auth) return;
-      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
-      if (!firebaseIdentity) return;
-      try {
-        const comparison = await rentalRequestService.compareCurrent(auth.userId, firebaseIdentity);
-        writeJson(response, 200, {
-          ...basePayload,
-          authenticated: true,
-          comparison,
-        }, headers);
-      } catch (error) {
-        const errorCode = error?.code || 'rental_request_shadow_compare_unavailable';
-        const statusCode = ['profile_not_synced', 'legacy_link_not_found', 'member_shadow_not_found', 'rental_request_shadow_not_synced'].includes(errorCode) ? 404
-          : ['legacy_link_token_mismatch', 'firebase_link_email_mismatch'].includes(errorCode) ? 409
-          : error?.status === 403 ? 403
-          : error?.status === 401 ? 401
-          : 503;
-        writeJson(response, statusCode, { ...basePayload, authenticated: true, error: errorCode }, headers);
-      }
+      writeJson(response, 410, {
+        ...basePayload,
+        authenticated: true,
+        error: 'rental_request_shadow_runtime_retired',
+        authority: 'postgresql-rental-requests',
+      }, headers);
       return;
     }
 
@@ -3074,339 +2981,58 @@ export const createRequestHandler = ({
       return;
     }
 
-    if (request.method === 'GET' && url.pathname === '/api/legacy/member-profile-cutover-candidate') {
-      const userAuthority = config.userFirebaseAuthCompatibilityDisabled
-        ? await authenticateUserAuthority(request, response, headers, requestId)
-        : null;
-      const firebaseIdentity = userAuthority?.firebaseIdentity || (!config.userFirebaseAuthCompatibilityDisabled
-        ? await authenticateCompatibilityIdentity(request, response, headers, requestId)
-        : null);
-      if (!firebaseIdentity) return;
-
+    if (
+      request.method === 'GET' &&
+      ['/api/legacy/member-profile-cutover-candidate', '/api/users/me/member-profile-candidate'].includes(url.pathname)
+    ) {
+      const userAuthority = await authenticateUserAuthority(request, response, headers, requestId);
+      if (!userAuthority?.firebaseIdentity) return;
       try {
-        if (config.memberProfileWriteMirrorDisabled) {
-          const canonical = await memberAuthorityService.getCurrentByFirebaseIdentity({ firebaseIdentity });
-          writeJson(
-            response,
-            200,
-            {
-              ...basePayload,
-              authenticated: true,
-              authentication: config.userFirebaseAuthCompatibilityDisabled ? 'clerk-postgresql' : 'retired',
-              readCandidate: sanitizeMemberProfileReadCandidate(canonical.profile, {
-                source: canonical.source || 'postgresql-authoritative',
-                authoritative: true,
-              }),
-            },
-            headers,
-          );
-          return;
-        }
-
-        const shadow = await memberShadowService.getCurrentByFirebaseIdentity(firebaseIdentity);
-        if (!shadow) {
-          writeJson(
-            response,
-            404,
-            { ...basePayload, authenticated: true, error: 'member_shadow_not_found' },
-            headers,
-          );
-          return;
-        }
-        writeJson(
-          response,
-          200,
-          {
-            ...basePayload,
-            authenticated: true,
-            authentication: 'retired',
-            readCandidate: sanitizeMemberProfileReadCandidate(shadow),
-          },
-          headers,
-        );
-      } catch (error) {
-        console.error('[member-read] Firebase-authenticated cutover candidate lookup failed', {
-          requestId,
-          code: error?.code,
-          name: error?.name,
+        const canonical = await memberAuthorityService.getCurrentByFirebaseIdentity({
+          firebaseIdentity: userAuthority.firebaseIdentity,
         });
-        const statusCode = ['legacy_link_not_found', 'firebase_link_email_mismatch'].includes(error?.code) ? 409 : 503;
-        writeJson(response, statusCode, { ...basePayload, authenticated: true, error: error?.code || 'member_read_cutover_candidate_unavailable' }, headers);
-      }
-      return;
-    }
-
-    if (request.method === 'GET' && url.pathname === '/api/legacy/member-profile-firestore-fallback') {
-      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
-      if (!firebaseIdentity) return;
-
-      try {
-        const source = await memberShadowService.readCurrentSourceByFirebaseIdentity(firebaseIdentity);
         writeJson(
           response,
           200,
           {
             ...basePayload,
             authenticated: true,
-            authentication: 'retired',
-            readFallback: {
-              source: 'firestore-one-time-fallback',
+            authentication: 'clerk-postgresql',
+            readCandidate: sanitizeMemberProfileReadCandidate(canonical.profile, {
+              source: canonical.source || 'postgresql-authoritative',
               authoritative: true,
-              firebaseUid: source.uid,
-              profile: {
-                uid: source.uid,
-                email: source.email,
-                maskedEmail: source.maskedEmail,
-                name: source.name,
-                team: source.team,
-                phone: source.phone,
-                status: source.status,
-                directoryMemberId: source.directoryMemberId,
-                directoryVerifiedVersion: source.directoryVerifiedVersion,
-                profileRequiredReason: source.profileRequiredReason,
-                rejoinedAccount: source.rejoinedAccount,
-                termsConsentRevision: source.termsConsentRevision,
-                termsConsentPolicyVersion: source.termsConsentPolicyVersion,
-                identityKey: source.identityKey,
-                recoveryKey: source.recoveryKey,
-                previousAccountUids: source.previousAccountUids,
-              },
-              sourceHash: source.sourceHash,
-              sourceUpdatedAt: source.sourceUpdatedAt,
-            },
+            }),
           },
           headers,
         );
       } catch (error) {
-        console.error('[member-read] one-time Firestore fallback failed', {
+        console.error('[member-read] PostgreSQL authoritative profile lookup failed', {
           requestId,
           code: error?.code,
           name: error?.name,
         });
-        const statusCode = ['legacy_link_not_found', 'firebase_link_email_mismatch', 'member_source_email_mismatch'].includes(error?.code)
-          ? 409
-          : error?.code === 'member_source_not_found'
-            ? 404
-            : 503;
-        writeJson(response, statusCode, { ...basePayload, authenticated: true, error: error?.code || 'member_profile_firestore_fallback_unavailable' }, headers);
+        const statusCode = ['legacy_link_not_found', 'firebase_link_email_mismatch', 'profile_not_synced'].includes(error?.code) ? 409 : 503;
+        writeJson(response, statusCode, { ...basePayload, authenticated: true, error: error?.code || 'member_profile_postgresql_authority_unavailable' }, headers);
       }
       return;
     }
 
-    if (request.method === 'POST' && url.pathname === '/api/legacy/member-shadow/write-through') {
-      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
-      if (!firebaseIdentity) return;
-
-      const targetFirebaseUid = String(url.searchParams.get('firebaseUid') || '').trim();
-
-      try {
-        const result = await memberShadowService.syncLinkedFirebaseUid(firebaseIdentity, targetFirebaseUid);
-        writeJson(
-          response,
-          200,
-          {
-            ...basePayload,
-            authenticated: true,
-            authentication: 'retired',
-            writeThrough: {
-              status: result.status,
-              reason: result.reason || '',
-              firebaseUid: result.firebaseUid,
-              actorUid: result.actorUid,
-              appUserId: result.appUserId || null,
-              memberShadow: result.shadow ? sanitizeMemberShadow(result.shadow) : null,
-            },
-          },
-          headers,
-        );
-      } catch (error) {
-        console.warn('[member-write-through] shadow synchronization failed', {
-          requestId,
-          code: error?.code,
-          status: error?.status,
-          name: error?.name,
-          targetFirebaseUid: targetFirebaseUid || firebaseIdentity.uid,
-        });
-        if (error?.code === 'firestore_user_account_forbidden') {
-          writeJson(response, 403, { ...basePayload, authenticated: true, error: 'member_source_forbidden' }, headers);
-          return;
-        }
-        if (error?.code === 'firestore_user_account_unauthorized') {
-          writeJson(response, 401, { ...basePayload, authenticated: true, error: 'legacy_firebase_unauthorized' }, headers);
-          return;
-        }
-        if (['member_source_uid_mismatch', 'member_source_email_mismatch', 'member_shadow_uid_conflict'].includes(error?.code)) {
-          writeJson(response, 409, { ...basePayload, authenticated: true, error: error.code }, headers);
-          return;
-        }
-        writeJson(response, 503, { ...basePayload, authenticated: true, error: error?.code || 'member_write_through_unavailable' }, headers);
-      }
-      return;
-    }
-
-    if (request.method === 'GET' && url.pathname === '/api/users/me/member-profile-candidate') {
+    const retiredMemberShadowRoutes = new Set([
+      'GET /api/legacy/member-profile-firestore-fallback',
+      'POST /api/legacy/member-shadow/write-through',
+      'GET /api/users/me/legacy/member-shadow',
+      'POST /api/users/me/legacy/member-shadow/sync',
+      'POST /api/users/me/legacy/member-shadow/compare',
+    ]);
+    if (retiredMemberShadowRoutes.has(`${request.method} ${url.pathname}`)) {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
-
-      try {
-        const shadow = await memberShadowService.getCurrent(auth.userId);
-        if (!shadow) {
-          writeJson(
-            response,
-            404,
-            { ...basePayload, authenticated: true, error: 'member_shadow_not_found' },
-            headers,
-          );
-          return;
-        }
-        writeJson(
-          response,
-          200,
-          {
-            ...basePayload,
-            authenticated: true,
-            readCandidate: sanitizeMemberProfileReadCandidate(shadow),
-          },
-          headers,
-        );
-      } catch (error) {
-        console.error('[member-read] PostgreSQL candidate lookup failed', {
-          requestId,
-          code: error?.code,
-          name: error?.name,
-        });
-        const statusCode = ['profile_not_synced', 'legacy_link_not_found'].includes(error?.code) ? 409 : 503;
-        writeJson(response, statusCode, { ...basePayload, authenticated: true, error: error?.code || 'member_read_candidate_unavailable' }, headers);
-      }
-      return;
-    }
-
-
-    if (request.method === 'GET' && url.pathname === '/api/users/me/legacy/member-shadow') {
-      const auth = await authenticate(request, response, headers, requestId);
-      if (!auth) return;
-
-      try {
-        const shadow = await memberShadowService.getCurrent(auth.userId);
-        if (!shadow) {
-          writeJson(
-            response,
-            404,
-            { ...basePayload, authenticated: true, error: 'member_shadow_not_found' },
-            headers,
-          );
-          return;
-        }
-        writeJson(
-          response,
-          200,
-          { ...basePayload, authenticated: true, memberShadow: sanitizeMemberShadow(shadow) },
-          headers,
-        );
-      } catch (error) {
-        console.error('[legacy] member shadow lookup failed', {
-          requestId,
-          code: error?.code,
-          name: error?.name,
-        });
-        const statusCode = ['profile_not_synced', 'legacy_link_not_found'].includes(error?.code) ? 409 : 503;
-        writeJson(response, statusCode, { ...basePayload, authenticated: true, error: error?.code || 'member_shadow_store_unavailable' }, headers);
-      }
-      return;
-    }
-
-    if (request.method === 'POST' && url.pathname === '/api/users/me/legacy/member-shadow/sync') {
-      const auth = await authenticate(request, response, headers, requestId);
-      if (!auth) return;
-      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
-      if (!firebaseIdentity) return;
-
-      try {
-        const shadow = await memberShadowService.syncCurrent(auth.userId, firebaseIdentity);
-        writeJson(
-          response,
-          200,
-          {
-            ...basePayload,
-            authenticated: true,
-            synchronized: true,
-            authoritativeSource: 'firestore',
-            memberShadow: sanitizeMemberShadow(shadow),
-          },
-          headers,
-        );
-      } catch (error) {
-        console.warn('[legacy] member shadow synchronization rejected', {
-          requestId,
-          code: error?.code,
-          status: error?.status,
-          name: error?.name,
-        });
-        if (['profile_not_synced', 'legacy_link_not_found', 'legacy_link_token_mismatch', 'member_source_uid_mismatch', 'member_source_email_mismatch', 'member_shadow_uid_conflict'].includes(error?.code)) {
-          writeJson(response, 409, { ...basePayload, authenticated: true, error: error.code }, headers);
-          return;
-        }
-        if (error?.code === 'member_source_not_found') {
-          writeJson(response, 404, { ...basePayload, authenticated: true, error: error.code }, headers);
-          return;
-        }
-        if (error?.code === 'firestore_user_account_forbidden') {
-          writeJson(response, 403, { ...basePayload, authenticated: true, error: 'member_source_forbidden' }, headers);
-          return;
-        }
-        if (error?.code === 'firestore_user_account_unauthorized') {
-          writeJson(response, 401, { ...basePayload, authenticated: true, error: 'legacy_firebase_unauthorized' }, headers);
-          return;
-        }
-        writeJson(response, 503, { ...basePayload, authenticated: true, error: 'member_shadow_sync_unavailable' }, headers);
-      }
-      return;
-    }
-
-    if (request.method === 'POST' && url.pathname === '/api/users/me/legacy/member-shadow/compare') {
-      const auth = await authenticate(request, response, headers, requestId);
-      if (!auth) return;
-      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
-      if (!firebaseIdentity) return;
-
-      try {
-        const comparison = await memberShadowService.compareCurrent(auth.userId, firebaseIdentity);
-        writeJson(
-          response,
-          200,
-          {
-            ...basePayload,
-            authenticated: true,
-            authoritativeSource: 'firestore',
-            comparison: sanitizeMemberComparison(comparison),
-          },
-          headers,
-        );
-      } catch (error) {
-        console.warn('[legacy] member shadow comparison failed', {
-          requestId,
-          code: error?.code,
-          status: error?.status,
-          name: error?.name,
-        });
-        if (['profile_not_synced', 'legacy_link_not_found', 'legacy_link_token_mismatch', 'member_source_uid_mismatch', 'member_source_email_mismatch'].includes(error?.code)) {
-          writeJson(response, 409, { ...basePayload, authenticated: true, error: error.code }, headers);
-          return;
-        }
-        if (error?.code === 'member_shadow_not_found' || error?.code === 'member_source_not_found') {
-          writeJson(response, 404, { ...basePayload, authenticated: true, error: error.code }, headers);
-          return;
-        }
-        if (error?.code === 'firestore_user_account_forbidden') {
-          writeJson(response, 403, { ...basePayload, authenticated: true, error: 'member_source_forbidden' }, headers);
-          return;
-        }
-        if (error?.code === 'firestore_user_account_unauthorized') {
-          writeJson(response, 401, { ...basePayload, authenticated: true, error: 'legacy_firebase_unauthorized' }, headers);
-          return;
-        }
-        writeJson(response, 503, { ...basePayload, authenticated: true, error: 'member_shadow_compare_unavailable' }, headers);
-      }
+      writeJson(response, 410, {
+        ...basePayload,
+        authenticated: true,
+        error: 'member_shadow_runtime_retired',
+        authority: 'postgresql-member-accounts',
+      }, headers);
       return;
     }
 

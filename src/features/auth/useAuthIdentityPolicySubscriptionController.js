@@ -554,7 +554,7 @@ export default function useAuthIdentityPolicySubscriptionController({
           });
           commitResolvedProfile({
             profile: candidate.profile,
-            source: candidate.source || 'postgresql-shadow',
+            source: candidate.source || 'postgresql-authoritative',
             equivalent: true,
             changedFields: [],
             fallbackReason: '',
@@ -789,7 +789,7 @@ export default function useAuthIdentityPolicySubscriptionController({
           setCurrentUserRestrictionReady(true);
           publishRentalRestrictionCutoverObservation({
             requested: true,
-            activeSource: candidate.source || 'postgresql-shadow',
+            activeSource: candidate.source || 'postgresql-authoritative',
             firestoreWatcherDisabled: true,
             firestoreFallbackReads: 0,
             fallbackReason: '',

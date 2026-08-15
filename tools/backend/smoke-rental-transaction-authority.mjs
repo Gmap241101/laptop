@@ -89,7 +89,7 @@ let authoritativeMemberShadowReads = 0;
 const authoritativeReadService = createRentalRequestService({
   userRepository,
   firebaseLinkRepository,
-  memberShadowRepository: {
+  memberRepository: {
     async findByAppUserId() {
       authoritativeMemberShadowReads += 1;
       throw new Error('Legacy member shadow must not gate PostgreSQL authoritative rental reads.');

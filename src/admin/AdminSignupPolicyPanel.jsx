@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import useAdminMemberDirectoryAuditActions from '../features/members/useAdminMemberDirectoryAuditActions.js';
 import useAdminSignupPolicyActions from '../features/members/useAdminSignupPolicyActions.js';
 import AdminSignupTermsManager from './AdminSignupTermsManager.jsx';
-import { preloadAdminSignupTermsCatalog } from '../features/terms/adminTermsService.js';
+import { getCachedAdminSignupTermsCatalog, preloadAdminSignupTermsCatalog } from '../features/terms/adminTermsService.js';
 
 function PolicySwitch({ checked, disabled = false, label, description, onChange }) {
   return (
@@ -53,6 +53,19 @@ export default function AdminSignupPolicyPanel({ ctx }) {
   } = ctx;
 
   const [activePolicyTab, setActivePolicyTab] = useState('policy');
+  const [signupTermsPolicy, setSignupTermsPolicy] = useState(
+    () => getCachedAdminSignupTermsCatalog()?.policy || {}
+  );
+
+  useEffect(() => {
+    let active = true;
+    void preloadAdminSignupTermsCatalog()
+      .then((catalog) => {
+        if (active) setSignupTermsPolicy(catalog?.policy || {});
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   const {
     memberDirectoryAuditLoading,
@@ -95,6 +108,8 @@ export default function AdminSignupPolicyPanel({ ctx }) {
     restoreDirectoryMismatchAccountsAfterPolicyDisabled,
     setData,
     settings: signupPolicySettings,
+    termsPolicy: signupTermsPolicy,
+    onTermsPolicyChange: setSignupTermsPolicy,
     triggerToast,
   });
 

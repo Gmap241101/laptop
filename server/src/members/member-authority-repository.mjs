@@ -84,6 +84,21 @@ export const createMemberAuthorityRepository = (pool) => {
       return mapMemberAccountRow(result.rows[0]);
     },
 
+    async findByAppUserId(appUserId) {
+      const result = await pool.query(
+        `SELECT app_user_id, firebase_uid, firebase_uid AS uid, email, masked_email, name, team, phone, status,
+                directory_member_id, directory_verified_version, profile_required_reason,
+                rejoined_account, terms_consent_revision, terms_consent_policy_version,
+                identity_key, recovery_key, previous_account_uids, source_hash,
+                authority_mode, mirror_state, last_mutation_id, synced_at, created_at, updated_at
+           FROM app_member_accounts WHERE app_user_id = $1
+           ORDER BY updated_at DESC, firebase_uid
+           LIMIT 1`,
+        [appUserId],
+      );
+      return mapMemberAccountRow(result.rows[0]);
+    },
+
 
     async getFullBootstrapState() {
       const result = await pool.query(
@@ -487,28 +502,9 @@ export const createMemberAuthorityRepository = (pool) => {
            RETURNING *`,
           [firebaseUid, appUserId, nextProfile.email || '', nextProfile.maskedEmail || '', nextProfile.name || '', nextProfile.team || '', nextProfile.phone || '', nextProfile.status || '', nextProfile.directoryMemberId || '', Number(nextProfile.directoryVerifiedVersion || 0), nextProfile.profileRequiredReason || '', Boolean(nextProfile.rejoinedAccount), Number(nextProfile.termsConsentRevision || 0), Number(nextProfile.termsConsentPolicyVersion || 0), nextProfile.identityKey || '', nextProfile.recoveryKey || '', JSON.stringify(nextProfile.previousAccountUids || []), sourceHash, mutationId],
         );
-        if (appUserId) {
-          await client.query(
-            `UPDATE app_user_member_shadows SET
-               uid=$3, email=$4, masked_email=$5, name=$6, team=$7, phone=$8, status=$9,
-               directory_member_id=$10, directory_verified_version=$11, profile_required_reason=$12,
-               rejoined_account=$13, terms_consent_revision=$14, terms_consent_policy_version=$15,
-               identity_key=$16, recovery_key=$17, previous_account_uids=$18::jsonb,
-               source_updated_at=NOW(), source_hash=$19, synced_at=NOW(),
-               authority_mode='postgresql-authoritative', mirror_state='pending', last_mutation_id=$20,
-               authoritative_updated_at=NOW(), updated_at=NOW()
-             WHERE app_user_id=$1 AND firebase_uid=$2`,
-            [appUserId, firebaseUid, firebaseUid, nextProfile.email || '', nextProfile.maskedEmail || '', nextProfile.name || '', nextProfile.team || '', nextProfile.phone || '', nextProfile.status || '', nextProfile.directoryMemberId || '', Number(nextProfile.directoryVerifiedVersion || 0), nextProfile.profileRequiredReason || '', Boolean(nextProfile.rejoinedAccount), Number(nextProfile.termsConsentRevision || 0), Number(nextProfile.termsConsentPolicyVersion || 0), nextProfile.identityKey || '', nextProfile.recoveryKey || '', JSON.stringify(nextProfile.previousAccountUids || []), sourceHash, mutationId],
-          );
-        }
         if (typeof beforeMirror === 'function') await beforeMirror({ client, mutationId, canonical: updated.rows[0] });
         const finalMirrorState = mirrorState === 'retired' ? 'retired' : 'synced';
         await client.query(`UPDATE app_member_accounts SET mirror_state=$3, synced_at=NOW(), updated_at=NOW() WHERE firebase_uid=$1 AND last_mutation_id=$2`, [firebaseUid, mutationId, finalMirrorState]);
-        if (appUserId) await client.query(
-          `UPDATE app_user_member_shadows SET mirror_state=$3, synced_at=NOW(), updated_at=NOW()
-            WHERE app_user_id=$1 AND last_mutation_id=$2`,
-          [appUserId, mutationId, finalMirrorState],
-        );
         await client.query(
           `UPDATE app_member_profile_events SET firestore_mirror_state=$2, completed_at=NOW() WHERE id=$1::uuid`,
           [mutationId, finalMirrorState],
@@ -533,13 +529,6 @@ export const createMemberAuthorityRepository = (pool) => {
            ON CONFLICT (firebase_uid) DO UPDATE SET status=EXCLUDED.status, app_user_id=COALESCE(EXCLUDED.app_user_id,app_member_accounts.app_user_id), source_hash=EXCLUDED.source_hash, authority_mode='postgresql-authoritative', mirror_state='pending', last_mutation_id=EXCLUDED.last_mutation_id, source_updated_at=NOW(), authoritative_updated_at=NOW(), synced_at=NOW(), updated_at=NOW()`,
           [firebaseUid, appUserId, nextProfile.email || '', nextProfile.maskedEmail || '', nextProfile.name || '', nextProfile.team || '', nextProfile.phone || '', nextStatus, nextProfile.directoryMemberId || '', Number(nextProfile.directoryVerifiedVersion || 0), nextProfile.profileRequiredReason || '', Boolean(nextProfile.rejoinedAccount), Number(nextProfile.termsConsentRevision || 0), Number(nextProfile.termsConsentPolicyVersion || 0), nextProfile.identityKey || '', nextProfile.recoveryKey || '', JSON.stringify(nextProfile.previousAccountUids || []), sourceHash, mutationId],
         );
-        if (appUserId) await client.query(
-          `UPDATE app_user_member_shadows SET status=$3, source_hash=$4, source_updated_at=NOW(), synced_at=NOW(),
-             authority_mode='postgresql-authoritative', mirror_state='pending', last_mutation_id=$5,
-             authoritative_updated_at=NOW(), updated_at=NOW()
-           WHERE app_user_id=$1 AND firebase_uid=$2`,
-          [appUserId, firebaseUid, nextStatus, sourceHash, mutationId],
-        );
         if (nextRestriction) {
           await client.query(
             `INSERT INTO app_user_rental_restriction_shadows (
@@ -558,10 +547,6 @@ export const createMemberAuthorityRepository = (pool) => {
         if (typeof beforeMirror === 'function') await beforeMirror({ client, mutationId });
         const finalMirrorState = mirrorState === 'retired' ? 'retired' : 'synced';
         await client.query(`UPDATE app_member_accounts SET mirror_state=$3, synced_at=NOW(), updated_at=NOW() WHERE firebase_uid=$1 AND last_mutation_id=$2`, [firebaseUid, mutationId, finalMirrorState]);
-        if (appUserId) await client.query(
-          `UPDATE app_user_member_shadows SET mirror_state=$3, synced_at=NOW(), updated_at=NOW() WHERE app_user_id=$1 AND last_mutation_id=$2`,
-          [appUserId, mutationId, finalMirrorState],
-        );
         if (nextRestriction) {
           await client.query(
             `UPDATE app_user_rental_restriction_shadows SET mirror_state=$3, synced_at=NOW(), updated_at=NOW() WHERE firebase_uid=$1 AND last_mutation_id=$2`,

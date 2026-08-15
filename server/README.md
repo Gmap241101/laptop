@@ -15,7 +15,7 @@ Heroku runs the Node.js API with `DATABASE_URL` and Clerk server credentials. Ve
 
 ## Migrations
 
-Applied migrations are immutable. Add a new numbered migration for future schema changes instead of editing an already-applied migration. The current Phase 34 line expects migrations through 027.
+Applied migrations are immutable. Add a new numbered migration for future schema changes instead of editing an already-applied migration. The current Phase 34 line expects migrations through 028. Migration 028 consolidates duplicate legacy PostgreSQL storage into the current canonical tables/documents and removes the obsolete member/rental-request shadow tables only after counterpart verification.
 
 ## Legacy compatibility
 
