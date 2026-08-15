@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createRentalRequestId, RENTAL_REQUEST_ID_PATTERN } from '../../src/features/requests/rentalRequestId.js';
 import { createSiteContentDomainDocument } from '../../src/features/content/siteContentCutover.js';
 import { formatUserAccountCreatedAt } from '../../src/features/members/memberAccountPolicy.js';
+import { getClerkPasswordSignInErrorMessage } from '../../src/features/auth/loginErrorMessages.js';
 import { requestAdminClerkDeviceTrust, requestAdminClerkDeviceTrustWrite, requestAdminMemberDirectoryAuditPostgresql, requestAdminMemberDirectoryRestorePostgresql, requestAdminRentalConfigSettingsPatch, requestAdminSignupPolicyPatch, requestCurrentUserRentalRestriction } from '../../src/clerk/clerkStagingClient.js';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -99,6 +100,8 @@ assert.equal(adminIdentitySource.includes('useAuthIdentityPolicySubscriptionCont
 
 const adminAuthSource = fs.readFileSync(new URL('../../src/features/auth/useAdminAuthenticationController.js', import.meta.url), 'utf8');
 const userLoginSource = fs.readFileSync(new URL('../../src/features/auth/useUserLoginController.js', import.meta.url), 'utf8');
+const userSignupSource = fs.readFileSync(new URL('../../src/features/auth/useUserSignupController.js', import.meta.url), 'utf8');
+const loginErrorMessagesSource = fs.readFileSync(new URL('../../src/features/auth/loginErrorMessages.js', import.meta.url), 'utf8');
 const userAuthPanelSource = fs.readFileSync(new URL('../../src/user/UserAuthPanel.jsx', import.meta.url), 'utf8');
 const deviceTrustPanelSource = fs.readFileSync(new URL('../../src/components/DeviceTrustVerificationPanel.jsx', import.meta.url), 'utf8');
 const adminWorkspaceLoginSource = fs.readFileSync(new URL('../../src/admin/AdminWorkspace.jsx', import.meta.url), 'utf8');
@@ -130,6 +133,30 @@ assert.match(userAuthPanelSource, /grid-cols-\[minmax\(0,5fr\)_minmax\(96px,1fr\
 assert.match(userAuthPanelSource, /signupEmailVerified[\s\S]*인증완료/, 'signup email verification must visibly switch to the verified state');
 assert.match(userAuthPanelSource, /<ModalPortal[\s\S]*회원가입 이메일 인증[\s\S]*<DeviceTrustVerificationPanel/, 'signup email verification must use a modal with the shared six-digit verification UI');
 assert.match(userAuthPanelSource, /resendUserSignupEmailVerification/, 'signup email verification modal must support email-code resend');
+assert.match(userAuthPanelSource, /signupEmailVerificationRequested/, 'signup must remember that email verification was started');
+assert.match(userAuthPanelSource, /이메일 인증을 완료해야 회원가입할 수 있습니다\./, 'closing an unfinished signup verification modal must explain that email verification is still required');
+assert.equal(
+  getClerkPasswordSignInErrorMessage({ errors: [{ code: 'form_identifier_not_found' }] }),
+  '입력한 이메일로 등록된 로그인 계정을 찾을 수 없습니다. 이메일 주소를 확인해 주세요.',
+);
+assert.equal(
+  getClerkPasswordSignInErrorMessage({ errors: [{ code: 'form_password_incorrect' }] }),
+  '비밀번호가 올바르지 않습니다. 비밀번호를 다시 확인해 주세요.',
+);
+assert.equal(
+  getClerkPasswordSignInErrorMessage({ errors: [{ code: 'form_password_or_identifier_incorrect' }] }),
+  '이메일 또는 비밀번호가 올바르지 않습니다.',
+  'enumeration-protected Clerk errors must use one concise shared credential message',
+);
+assert.match(userLoginSource, /getClerkPasswordSignInErrorMessage\(error\)/, 'user login must use the shared Clerk credential failure mapper');
+assert.match(adminAuthSource, /getClerkPasswordSignInErrorMessage\(error\)/, 'administrator login must use the same shared Clerk credential failure mapper');
+assert.equal(loginErrorMessagesSource.includes('관리자 비밀번호가 올바르지 않습니다.'), false, 'login credential messages must not diverge by user/admin surface');
+assert.equal(loginErrorMessagesSource.includes('현재 Clerk 보안 설정상'), false, 'login credential toast must not expose Clerk implementation details');
+assert.match(userAuthPanelSource, /회원가입 이용약관을 불러오는 중입니다\. 잠시 후 다시 시도해 주세요\./, 'signup terms step must explain loading state through toast instead of a disabled action');
+assert.match(userAuthPanelSource, /disabled=\{userAuthLoading\}[\s\S]*회원가입/, 'final signup action must only be disabled while a signup submission is actively running');
+assert.match(userSignupSource, /회원가입에 사용할 이메일 인증을 먼저 완료해 주세요\./, 'final signup submission must explain missing email verification through toast');
+assert.match(userSignupSource, /회원가입 인증 서비스를 준비 중입니다\. 잠시 후 다시 시도해 주세요\./, 'final signup submission must explain auth readiness through toast');
+assert.match(userSignupSource, /회원 중복 확인 정보가 아직 준비되지 않았습니다\. 잠시 후 다시 시도해 주세요\./, 'final signup submission must explain member identity readiness through toast');
 assert.match(userLoginSource, /6자리 인증코드를 모두 입력해 주세요\./, 'user Device Trust controller must require all six verification-code digits');
 assert.match(adminAuthSource, /6자리 인증코드를 모두 입력해 주세요\./, 'administrator Device Trust controller must require all six verification-code digits');
 assert.match(adminAuthSource, /const syncAdminRouteIntentAfterAuthClear =[\s\S]*runtimeSurface === 'admin'[\s\S]*writeAdminRouteIntent\(\)/, 'administrator logout/session expiry must preserve administrator route intent instead of handing control to the user surface');
@@ -242,7 +269,8 @@ assert.equal(/setInterval\([^\n]*refreshPostgresCatalog/.test(rentalDataSource),
 assert.match(rentalDataSource, /refreshPostgresRequests\(\);[\s\S]*window\.addEventListener\('blur', markWindowAway\);[\s\S]*window\.addEventListener\('focus', refreshAfterWindowReturn\)/, 'signed-in user rental requests must refresh on entry and actual window return');
 assert.match(rentalDataSource, /scheduleInitialCatalogRefresh\(\);[\s\S]*window\.addEventListener\('blur', markWindowAway\);[\s\S]*window\.addEventListener\('focus', refreshAfterWindowReturn\)/, 'rental asset and availability status must refresh once after initial scheduling and again only after actual window return');
 assert.match(rentalDataSource, /view === 'user'[\s\S]*userTab === 'home'[\s\S]*requestAnimationFrame[\s\S]*requestAnimationFrame\(refreshPostgresCatalog\)/, 'home asset/status fetch must be deferred until after the first paint instead of competing with initial rendering');
-assert.match(rentalDataSource, /domain: POLICY_CONTENT_DOMAINS\.RENTAL_CONFIG,[\s\S]*?useCache: true/, 'user rental configuration must share the early in-flight rental-config request');
+assert.match(rentalDataSource, /domain: POLICY_CONTENT_DOMAINS\.RENTAL_CONFIG,[\s\S]*?useCache: true/, 'user rental configuration must retain request sharing for subsequent consumers');
+assert.match(rentalDataSource, /view === 'user' && userTab === 'home'[\s\S]*requestAnimationFrame[\s\S]*requestAnimationFrame\(loadPublicConfig\)/, 'home rental configuration must start after first paint instead of competing with the critical home bootstrap');
 
 const adminDashboardSource = fs.readFileSync(new URL('../../src/admin/AdminDashboardPanel.jsx', import.meta.url), 'utf8');
 assert.match(adminDashboardSource, /진입·복귀 동기화 ·/, 'dashboard control must describe entry/return synchronization instead of continuous polling');
@@ -261,6 +289,8 @@ const vercelConfig = JSON.parse(fs.readFileSync(new URL('../../vercel.json', imp
 const userMainSource = fs.readFileSync(new URL('../../src/user-main.jsx', import.meta.url), 'utf8');
 const adminMainSource = fs.readFileSync(new URL('../../src/admin-main.jsx', import.meta.url), 'utf8');
 const renderUserRootSource = fs.readFileSync(new URL('../../src/bootstrap/renderUserRoot.jsx', import.meta.url), 'utf8');
+const userHomeBootstrapServiceSource = fs.readFileSync(new URL('../../src/user/userHomeBootstrapService.js', import.meta.url), 'utf8');
+const userHomeBootstrapScreenSource = fs.readFileSync(new URL('../../src/user/UserHomeBootstrapScreen.jsx', import.meta.url), 'utf8');
 const renderAppRootSource = fs.readFileSync(new URL('../../src/bootstrap/renderAppRoot.jsx', import.meta.url), 'utf8');
 const renderAdminRootSource = fs.readFileSync(new URL('../../src/bootstrap/renderAdminRoot.jsx', import.meta.url), 'utf8');
 const userAppSource = fs.readFileSync(new URL('../../src/UserApp.jsx', import.meta.url), 'utf8');
@@ -268,6 +298,7 @@ const userShellSource = fs.readFileSync(new URL('../../src/user/UserShell.jsx', 
 const userWorkspaceSource = fs.readFileSync(new URL('../../src/user/UserWorkspace.jsx', import.meta.url), 'utf8');
 const userNavigationSource = fs.readFileSync(new URL('../../src/routing/useAppNavigationController.js', import.meta.url), 'utf8');
 const userHomeSource = fs.readFileSync(new URL('../../src/user/UserHomePanel.jsx', import.meta.url), 'utf8');
+const boardSubscriptionControllerSource = fs.readFileSync(new URL('../../src/features/boards/useBoardContentSubscriptionController.js', import.meta.url), 'utf8');
 const userRuntimeErrorBoundarySource = fs.readFileSync(new URL('../../src/user/UserRuntimeErrorBoundary.jsx', import.meta.url), 'utf8');
 const adminAppSource = fs.readFileSync(new URL('../../src/admin/AdminApp.jsx', import.meta.url), 'utf8');
 const adminWorkspaceSource = fs.readFileSync(new URL('../../src/admin/AdminWorkspace.jsx', import.meta.url), 'utf8');
@@ -297,11 +328,19 @@ assert.match(userMainSource, /clearAdminRouteIntent\(\)/, 'user document must cl
 assert.match(adminMainSource, /writeAdminRouteIntent\(\)/, 'administrator document must establish administrator route intent before React mounts');
 assert.match(userMainSource, /renderUserRoot/, 'user entrypoint must mount the dedicated user runtime root after the authenticated rental ReferenceError was resolved');
 assert.equal(userMainSource.includes("import { renderUserRoot } from './bootstrap/renderUserRoot.jsx'"), false, 'user entrypoint must not synchronously load the full UserApp graph before public-home warmup starts');
-assert.ok(userMainSource.indexOf('warmUserHomeCriticalData();') < userMainSource.indexOf("import('./bootstrap/renderUserRoot.jsx')"), 'critical public-home requests must begin before the full user runtime chunk is requested');
-assert.match(userMainSource, /initialRoute\.view === 'user' && initialRoute\.userTab === 'home'/, 'critical home warmup must run only for the public home route and not burden direct login, board, or rental routes');
-assert.match(userMainSource, /SITE_CONTENT_DOMAINS\.SITE_SETTINGS[\s\S]*SITE_CONTENT_DOMAINS\.HOME[\s\S]*requestNoticeBoard\([\s\S]*home: true[\s\S]*POLICY_CONTENT_DOMAINS\.RENTAL_CONFIG/, 'user entrypoint must warm site settings, home content, home notices, and rental public config in parallel');
+assert.ok(userMainSource.indexOf('preloadUserHomeBootstrap()') < userMainSource.indexOf("import('./bootstrap/renderUserRoot.jsx')"), 'single home bootstrap request must begin before the full user runtime root is requested');
+assert.match(userMainSource, /initialRoute\.view === 'user' && initialRoute\.userTab === 'home'/, 'critical home bootstrap must run only for the public home route and not burden direct login, board, or rental routes');
+assert.equal(userMainSource.includes('requestNoticeBoard'), false, 'user entrypoint must not compete with first paint by starting home notice reads');
+assert.equal(userMainSource.includes('requestPolicyContentDomain'), false, 'user entrypoint must not compete with first paint by starting rental configuration reads');
+assert.equal(userMainSource.includes('requestSiteContentDomain'), false, 'user entrypoint must use one dedicated bootstrap request instead of separate site/home requests');
+assert.match(userHomeBootstrapServiceSource, /\/api\/user\/home-bootstrap/, 'user home bootstrap must use one dedicated PostgreSQL endpoint');
+assert.match(userHomeBootstrapServiceSource, /primeSiteContentDomainPromise\(SITE_CONTENT_DOMAINS\.SITE_SETTINGS/, 'home bootstrap must seed the site-settings in-flight cache');
+assert.match(userHomeBootstrapServiceSource, /primeSiteContentDomainPromise\(SITE_CONTENT_DOMAINS\.HOME/, 'home bootstrap must seed the home in-flight cache');
 assert.equal(userMainSource.includes('renderAppRoot'), false, 'user entrypoint must no longer fall back to the shared App/AppShell recovery runtime');
-assert.match(renderUserRootSource, /import UserApp from '\.\.\/UserApp\.jsx'/, 'user document must mount UserApp directly');
+assert.match(renderUserRootSource, /React\.lazy\(\(\) => import\('\.\.\/UserApp\.jsx'\)\)/, 'full UserApp must be a lazy chunk so it cannot block the first user-home paint');
+assert.match(renderUserRootSource, /fallback=\{homeFallback\}/, 'user root must paint the lightweight real home shell while the full UserApp chunk loads');
+assert.match(userHomeBootstrapScreenSource, /preloadUserHomeBootstrap/, 'lightweight home shell must consume the same in-flight home bootstrap request');
+assert.equal(renderUserRootSource.includes("import UserApp from '../UserApp.jsx'"), false, 'user root must not statically import the full UserApp graph');
 assert.match(renderUserRootSource, /UserRuntimeErrorBoundary/, 'isolated user root must retain a top-level render error boundary');
 assert.match(adminMainSource, /renderAdminRoot/, 'administrator entrypoint must mount the dedicated administrator root');
 assert.equal(userMainSource.includes('renderAdminRoot'), false, 'user entrypoint must not import the administrator root');
@@ -445,8 +484,27 @@ const collectLocalImportGraph = (entryFile) => {
   return [...visited].map((file) => path.relative(sourceRoot, file).replaceAll('\\', '/'));
 };
 
+const collectLocalStaticImportGraph = (entryFile) => {
+  const pending = [entryFile];
+  const visited = new Set();
+  const importPattern = /(?:import\s+(?:[^'";]+?\s+from\s+)?|export\s+[^'";]+?\s+from\s+)['"]([^'"]+)['"]/g;
+  while (pending.length > 0) {
+    const currentFile = pending.pop();
+    if (!currentFile || visited.has(currentFile)) continue;
+    visited.add(currentFile);
+    const source = fs.readFileSync(currentFile, 'utf8');
+    let match;
+    while ((match = importPattern.exec(source))) {
+      const resolved = resolveLocalImport(currentFile, match[1]);
+      if (resolved && !visited.has(resolved)) pending.push(resolved);
+    }
+  }
+  return [...visited].map((file) => path.relative(sourceRoot, file).replaceAll('\\', '/'));
+};
+
 const userImportGraph = collectLocalImportGraph(fileURLToPath(new URL('../../src/user-main.jsx', import.meta.url)));
 const adminImportGraph = collectLocalImportGraph(fileURLToPath(new URL('../../src/admin-main.jsx', import.meta.url)));
+const userStaticImportGraph = collectLocalStaticImportGraph(fileURLToPath(new URL('../../src/user-main.jsx', import.meta.url)));
 const userForbiddenImports = userImportGraph.filter((file) =>
   file === 'admin/AdminApp.jsx' ||
   file === 'admin/AdminShell.jsx'
@@ -460,8 +518,9 @@ const adminForbiddenImports = adminImportGraph.filter((file) =>
 );
 assert.deepEqual(userForbiddenImports, [], `user import graph must not reach the physically separated administrator application root/shell: ${userForbiddenImports.join(', ')}`);
 assert.deepEqual(adminForbiddenImports, [], `administrator import graph must not reach user application/lifecycle modules: ${adminForbiddenImports.join(', ')}`);
-assert.ok(userImportGraph.includes('UserApp.jsx'), 'user import graph must include the dedicated UserApp root');
-assert.ok(userImportGraph.includes('user/UserShell.jsx'), 'user import graph must include the dedicated UserShell');
+assert.equal(userStaticImportGraph.includes('UserApp.jsx'), false, 'initial user entry static graph must stop before the full UserApp lazy chunk');
+assert.equal(userStaticImportGraph.includes('user/UserShell.jsx'), false, 'initial user entry static graph must not pull UserShell before first paint');
+assert.ok(userStaticImportGraph.includes('user/userHomeBootstrapService.js'), 'initial user entry static graph must contain the lightweight home bootstrap service');
 assert.equal(userImportGraph.includes('App.jsx'), false, 'user import graph must not fall back to the shared legacy App root');
 assert.equal(userImportGraph.includes('shell/AppShell.jsx'), false, 'user import graph must not fall back to the shared legacy AppShell');
 assert.equal(userImportGraph.some((file) => file.startsWith('admin/')), false, 'user import graph must not contain administrator source modules');
@@ -565,6 +624,7 @@ assert.equal(siteContentCutoverSource.startsWith("import { clerkStagingClient }"
 assert.match(siteContentCutoverSource, /await import\('\.\.\/\.\.\/clerk\/clerkStagingClient\.js'\)/, 'administrator site-content writes must lazy-load Clerk only when an authenticated mutation needs it');
 assert.equal(boardContentCutoverSource.includes("import { clerkStagingClient } from '../../clerk/clerkStagingClient.js'"), false, 'public notice warmup must not synchronously pull Clerk into the user entry chunk');
 assert.match(boardContentCutoverSource, /await import\('\.\.\/\.\.\/clerk\/clerkStagingClient\.js'\)/, 'administrator board mutations must lazy-load Clerk on demand');
+assert.match(boardSubscriptionControllerSource, /shouldLoadUserHomeNotice[\s\S]*requestAnimationFrame[\s\S]*requestAnimationFrame\(loadNotice\)/, 'home notice read must be deferred until after the first paint');
 assert.match(popupFooterControllerSource, /scheduleAfterUserFirstPaint/, 'noncritical user popup/footer reads must be deferred until after the first paint');
 assert.match(popupFooterControllerSource, /shouldLoadUserPopup && !shouldLoadAdminPopup[\s\S]*scheduleAfterUserFirstPaint/, 'user popup reads must not compete with critical home bootstrap requests');
 assert.match(popupFooterControllerSource, /shouldLoadUserFooter[\s\S]*scheduleAfterUserFirstPaint/, 'user footer reads must not compete with critical home bootstrap requests');

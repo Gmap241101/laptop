@@ -25,6 +25,7 @@ import {
 } from '../../routing/appRoutes.js';
 import { normalizeSystemAdminSettings } from '../../utils/systemSettings.js';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { getClerkPasswordSignInErrorMessage } from './loginErrorMessages.js';
 import {
   publishAccountAuthObservation,
   readAccountAuthCutoverConfig,
@@ -880,7 +881,13 @@ export default function useAdminAuthenticationController({
           setCurrentAuthAdminAccount(null);
         }
         publishAccountAuthObservation({ adminClerkAuthRequested: true, adminAuthSource: retryable ? 'client-trust-required' : 'failed', adminFirebaseCompatibility: 'retired', adminAuthError: code });
-        triggerToast(retryable ? 'Clerk 인증코드를 다시 확인해 주세요.' : 'Clerk 관리자 인증에 실패했습니다.', 'error');
+        const clerkCredentialMessage = getClerkPasswordSignInErrorMessage(error);
+        triggerToast(
+          retryable
+            ? 'Clerk 인증코드를 다시 확인해 주세요.'
+            : clerkCredentialMessage || 'Clerk 관리자 인증에 실패했습니다.',
+          'error'
+        );
       } finally {
         setAdminAuthLoading(false);
       }
@@ -1125,7 +1132,8 @@ export default function useAdminAuthenticationController({
                 : error?.code === 'admin_account_locked'
                   ? `관리자 계정이 잠금 상태입니다. 약 ${error.remainingMinutes || 1}분 후 다시 시도해 주세요.`
                   : '';
-      const baseErrorMessage = clerkMessage || getAdminAuthErrorMessage(error);
+      const clerkCredentialMessage = getClerkPasswordSignInErrorMessage(error);
+      const baseErrorMessage = clerkMessage || clerkCredentialMessage || getAdminAuthErrorMessage(error);
       const cleanupMessage = firebaseAuthCleanupFailed || clerkCleanupFailed
         ? ' 인증 정리에도 실패했습니다. 페이지를 새로고침한 뒤 로그인 상태를 확인해 주세요.'
         : '';

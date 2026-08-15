@@ -68,7 +68,28 @@ export const createSiteContentRepository = (pool) => {
     if (!termId) return null;
     const termKey = `signupTerms/${termId}`;
     const result = await pool.query(
-      `SELECT document_key, payload, enabled, sort_order, source_updated_at, synced_at
+      `SELECT
+         document_key,
+         CASE
+           WHEN document_key = 'signupTermsPolicy/current' THEN
+             jsonb_set(
+               payload,
+               '{activeTerms}',
+               COALESCE(
+                 (
+                   SELECT jsonb_agg((entry.value - 'contentHtml' - 'contentText') ORDER BY entry.ordinality)
+                     FROM jsonb_array_elements(COALESCE(payload->'activeTerms', '[]'::jsonb)) WITH ORDINALITY AS entry(value, ordinality)
+                 ),
+                 '[]'::jsonb
+               ),
+               TRUE
+             )
+           ELSE payload
+         END AS payload,
+         enabled,
+         sort_order,
+         source_updated_at,
+         synced_at
          FROM app_site_content_documents
         WHERE domain = 'terms'
           AND document_key = ANY($1::text[])`,
@@ -83,6 +104,115 @@ export const createSiteContentRepository = (pool) => {
     });
   };
 
+
+  const getSignupTermContentsContext = async (termIdValues = []) => {
+    const termIds = [...new Set((Array.isArray(termIdValues) ? termIdValues : [])
+      .map((value) => String(value || '').trim())
+      .filter(Boolean))];
+    if (termIds.length === 0) return Object.freeze({ policy: null, terms: [] });
+    const termKeys = termIds.map((termId) => `signupTerms/${termId}`);
+    const result = await pool.query(
+      `SELECT
+         document_key,
+         CASE
+           WHEN document_key = 'signupTermsPolicy/current' THEN
+             jsonb_set(
+               payload,
+               '{activeTerms}',
+               COALESCE(
+                 (
+                   SELECT jsonb_agg((entry.value - 'contentHtml' - 'contentText') ORDER BY entry.ordinality)
+                     FROM jsonb_array_elements(COALESCE(payload->'activeTerms', '[]'::jsonb)) WITH ORDINALITY AS entry(value, ordinality)
+                 ),
+                 '[]'::jsonb
+               ),
+               TRUE
+             )
+           ELSE payload
+         END AS payload,
+         enabled,
+         sort_order,
+         source_updated_at,
+         synced_at
+         FROM app_site_content_documents
+        WHERE domain = 'terms'
+          AND (
+            document_key = 'signupTermsPolicy/current'
+            OR document_key = ANY($1::text[])
+          )`,
+      [termKeys],
+    );
+    const documents = new Map(
+      result.rows.map((row) => [row.document_key, Object.freeze(mapRow(row))]),
+    );
+    return Object.freeze({
+      policy: documents.get('signupTermsPolicy/current') || null,
+      terms: termIds
+        .map((termId) => documents.get(`signupTerms/${termId}`) || null)
+        .filter(Boolean),
+    });
+  };
+
+  const getDomains = async (domainValues = []) => {
+    const domains = [...new Set((Array.isArray(domainValues) ? domainValues : [])
+      .map((value) => String(value || '').trim())
+      .filter(Boolean))];
+    if (domains.length === 0) return Object.freeze({});
+    const result = await pool.query(
+      `SELECT
+         sync.domain AS sync_domain,
+         sync.source_hash,
+         sync.document_count,
+         sync.source_mode,
+         sync.synced_at AS sync_synced_at,
+         document.document_key,
+         document.payload,
+         document.enabled,
+         document.sort_order,
+         document.source_updated_at,
+         document.synced_at AS document_synced_at
+       FROM app_site_content_syncs sync
+       LEFT JOIN app_site_content_documents document
+         ON document.domain = sync.domain
+      WHERE sync.domain = ANY($1::text[])
+      ORDER BY sync.domain, document.sort_order NULLS LAST, document.document_key`,
+      [domains],
+    );
+    const grouped = new Map();
+    for (const row of result.rows) {
+      const domain = String(row.sync_domain || '').trim();
+      if (!domain) continue;
+      if (!grouped.has(domain)) {
+        grouped.set(domain, { sync: row, documents: [] });
+      }
+      if (row.document_key) {
+        grouped.get(domain).documents.push(mapRow({
+          document_key: row.document_key,
+          payload: row.payload,
+          enabled: row.enabled,
+          sort_order: row.sort_order,
+          source_updated_at: row.source_updated_at,
+          synced_at: row.document_synced_at,
+        }));
+      }
+    }
+    return Object.freeze(Object.fromEntries(domains.map((domain) => {
+      const group = grouped.get(domain);
+      if (!group) return [domain, null];
+      const sync = group.sync;
+      return [domain, Object.freeze({
+        domain,
+        source: 'postgresql',
+        authoritative: true,
+        synchronized: true,
+        sourceMode: sync.source_mode,
+        sourceHash: sync.source_hash,
+        syncedAt: sync.sync_synced_at,
+        documentCount: Number(sync.document_count || 0),
+        documents: group.documents,
+      })];
+    })));
+  };
 
   const getSignupTermsAdminCatalog = async () => {
     const result = await pool.query(
@@ -357,7 +487,9 @@ export const createSiteContentRepository = (pool) => {
     getRentalConfigBootstrapContext,
     getDocument,
     getSignupTermContentContext,
+    getSignupTermContentsContext,
     getSignupTermsAdminCatalog,
+    getDomains,
     getDomain,
     replaceDomain,
     patchDomainDocuments,

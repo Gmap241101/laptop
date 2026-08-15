@@ -61,6 +61,46 @@ export const subscribeSiteContentObservation = (listener) => {
 
 export const createSiteContentDocumentId = () => randomId();
 
+const normalizeSiteContentDomainPayload = (content, domain = '') => {
+  if (content?.source !== 'postgresql' || !Array.isArray(content?.documents)) {
+    throw Object.assign(new Error('Backend returned an invalid Phase 24 site content payload.'), { code: 'site_content_payload_invalid' });
+  }
+  return Object.freeze({
+    ...content,
+    domain: content.domain || domain,
+    documents: content.documents.map((item) => Object.freeze({
+      ...item,
+      payload: item?.payload && typeof item.payload === 'object' ? item.payload : {},
+      publicVisibility: item?.publicVisibility && typeof item.publicVisibility === 'object'
+        ? Object.freeze({ ...item.publicVisibility })
+        : null,
+    })),
+  });
+};
+
+export const primeSiteContentDomainPromise = (domain, contentPromise, { ttlMs = DOMAIN_CACHE_TTL_MS } = {}) => {
+  const normalizedDomain = trim(domain);
+  if (!normalizedDomain || !contentPromise) return null;
+  const existing = domainCache.get(normalizedDomain);
+  if (existing?.promise && existing.pending) return existing.promise;
+  const entry = { pending: true, expiresAt: 0, promise: null };
+  entry.promise = Promise.resolve(contentPromise)
+    .then((content) => normalizeSiteContentDomainPayload(content, normalizedDomain))
+    .then((result) => {
+      if (domainCache.get(normalizedDomain) === entry) {
+        entry.pending = false;
+        entry.expiresAt = Date.now() + Math.max(0, Number(ttlMs) || DOMAIN_CACHE_TTL_MS);
+      }
+      return result;
+    })
+    .catch((error) => {
+      if (domainCache.get(normalizedDomain) === entry) domainCache.delete(normalizedDomain);
+      throw error;
+    });
+  domainCache.set(normalizedDomain, entry);
+  return entry.promise;
+};
+
 export const createSiteContentDomainDocument = (document = {}) => {
   const key = trim(document?.key);
   const payload = document?.payload && typeof document.payload === 'object'
@@ -133,19 +173,7 @@ export const requestSiteContentDomain = async ({ domain, fetchImpl = fetch, conf
       throw error;
     }
     const content = payload?.siteContent;
-    if (content?.source !== 'postgresql' || !Array.isArray(content?.documents)) {
-      throw Object.assign(new Error('Backend returned an invalid Phase 24 site content payload.'), { code: 'site_content_payload_invalid' });
-    }
-    const result = Object.freeze({
-      ...content,
-      documents: content.documents.map((item) => Object.freeze({
-        ...item,
-        payload: item?.payload && typeof item.payload === 'object' ? item.payload : {},
-        publicVisibility: item?.publicVisibility && typeof item.publicVisibility === 'object'
-          ? Object.freeze({ ...item.publicVisibility })
-          : null,
-      })),
-    });
+    const result = normalizeSiteContentDomainPayload(content, domain);
     observationPublisher?.({ readRequested: true, domain, readSource: 'postgresql', documentCount: result.documents.length, syncAt: result.syncedAt || null, error: null });
     return result;
   })();

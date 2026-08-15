@@ -333,55 +333,71 @@ export default function useBoardContentSubscriptionController({
     setNoticePostsReady(false);
     setNoticePostsLoadErrorMessage('');
 
-    void requestNoticeBoard({
-      search,
-      page: requestPage,
-      pageSize: requestPageSize,
-      home: shouldLoadUserHomeNotice,
-      useCache: true,
-    }).then((board) => {
-      if (cancelled) return;
-      const safePostsPerPage = getSafeNoticePostsPerPage(board?.config?.postsPerPage);
-      setNoticeBoardConfig({ postsPerPage: safePostsPerPage });
-      setNoticePostsPerPageInput(safePostsPerPage);
-      setNoticeBoardConfigReady(true);
-      setNoticeBoardConfigLoadErrorMessage('');
-      setNoticePinnedPosts(board?.pinnedPosts || []);
-      setNoticeRegularPagePosts(board?.regularPosts || []);
-      setNoticeRegularTotalCount(Number(board?.totalRegularCount || 0));
-      setNoticeHasNextPage(Boolean(board?.hasNextPage));
-      setNoticePostsLoadErrorMessage('');
-      setNoticePostsReady(true);
-      setNoticePostgresFallback(false);
-    }).catch((error) => {
-      if (cancelled) return;
-      console.error('Phase 26 notice PostgreSQL read failed:', error);
-      if (!legacyFallbackAllowed) {
-        recordLegacyFirestoreReadFallbackBlocked('notice-board', error?.code || 'notice_board_postgres_unavailable');
-        const message = '공지사항을 PostgreSQL에서 불러오지 못했습니다. legacy Firestore fallback은 비활성화되어 있습니다.';
+    const loadNotice = () => {
+      void requestNoticeBoard({
+        search,
+        page: requestPage,
+        pageSize: requestPageSize,
+        home: shouldLoadUserHomeNotice,
+        useCache: true,
+      }).then((board) => {
+        if (cancelled) return;
+        const safePostsPerPage = getSafeNoticePostsPerPage(board?.config?.postsPerPage);
+        setNoticeBoardConfig({ postsPerPage: safePostsPerPage });
+        setNoticePostsPerPageInput(safePostsPerPage);
+        setNoticeBoardConfigReady(true);
+        setNoticeBoardConfigLoadErrorMessage('');
+        setNoticePinnedPosts(board?.pinnedPosts || []);
+        setNoticeRegularPagePosts(board?.regularPosts || []);
+        setNoticeRegularTotalCount(Number(board?.totalRegularCount || 0));
+        setNoticeHasNextPage(Boolean(board?.hasNextPage));
+        setNoticePostsLoadErrorMessage('');
+        setNoticePostsReady(true);
+        setNoticePostgresFallback(false);
+      }).catch((error) => {
+        if (cancelled) return;
+        console.error('Phase 26 notice PostgreSQL read failed:', error);
+        if (!legacyFallbackAllowed) {
+          recordLegacyFirestoreReadFallbackBlocked('notice-board', error?.code || 'notice_board_postgres_unavailable');
+          const message = '공지사항을 PostgreSQL에서 불러오지 못했습니다. legacy Firestore fallback은 비활성화되어 있습니다.';
+          publishBoardContentObservation({
+            readRequested: true,
+            readSource: 'unavailable',
+            boardType: 'notice',
+            operation: shouldLoadUserHomeNotice ? 'home-read' : 'list-read',
+            error: error?.code || 'notice_board_postgres_unavailable',
+          });
+          setNoticePostsLoadErrorMessage(message);
+          setNoticePostsReady(true);
+          setNoticePostgresFallback(false);
+          return;
+        }
         publishBoardContentObservation({
           readRequested: true,
-          readSource: 'unavailable',
+          readSource: 'firestore-fallback',
           boardType: 'notice',
           operation: shouldLoadUserHomeNotice ? 'home-read' : 'list-read',
           error: error?.code || 'notice_board_postgres_unavailable',
         });
-        setNoticePostsLoadErrorMessage(message);
-        setNoticePostsReady(true);
-        setNoticePostgresFallback(false);
-        return;
-      }
-      publishBoardContentObservation({
-        readRequested: true,
-        readSource: 'firestore-fallback',
-        boardType: 'notice',
-        operation: shouldLoadUserHomeNotice ? 'home-read' : 'list-read',
-        error: error?.code || 'notice_board_postgres_unavailable',
+        setNoticePostgresFallback(true);
       });
-      setNoticePostgresFallback(true);
-    });
+    };
 
-    return () => { cancelled = true; };
+    let firstPaintFrameId = 0;
+    let secondPaintFrameId = 0;
+    if (shouldLoadUserHomeNotice && typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      firstPaintFrameId = window.requestAnimationFrame(() => {
+        secondPaintFrameId = window.requestAnimationFrame(loadNotice);
+      });
+    } else {
+      loadNotice();
+    }
+
+    return () => {
+      cancelled = true;
+      if (firstPaintFrameId) window.cancelAnimationFrame?.(firstPaintFrameId);
+      if (secondPaintFrameId) window.cancelAnimationFrame?.(secondPaintFrameId);
+    };
   }, [
     boardReadRequested,
     boardRefreshVersion,

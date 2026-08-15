@@ -12,6 +12,7 @@ import {
   loadSignupTermContents,
   loadSignupTermsPolicy,
   preloadSignupTermContent,
+  preloadSignupTermContents,
 } from '../features/terms/termsService.js';
 
 const buildSubmission = (policy, viewedById, acceptedById) => {
@@ -112,6 +113,36 @@ export default function UserSignupTermsSection({ onChange }) {
   useEffect(() => {
     onChange?.(submission);
   }, [onChange, submission]);
+
+  useEffect(() => {
+    if (!ready || errorMessage || !policy.enabled || policy.activeTerms.length === 0) return undefined;
+
+    let cancelled = false;
+    let firstFrame = 0;
+    let secondFrame = 0;
+    let idleHandle = 0;
+    const preloadAll = () => {
+      if (cancelled) return;
+      void preloadSignupTermContents(policy.activeTerms).catch(() => {});
+    };
+
+    if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+      idleHandle = window.requestIdleCallback(preloadAll, { timeout: 1200 });
+    } else if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      firstFrame = window.requestAnimationFrame(() => {
+        secondFrame = window.requestAnimationFrame(preloadAll);
+      });
+    } else {
+      preloadAll();
+    }
+
+    return () => {
+      cancelled = true;
+      if (idleHandle && typeof window !== 'undefined' && typeof window.cancelIdleCallback === 'function') window.cancelIdleCallback(idleHandle);
+      if (firstFrame && typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') window.cancelAnimationFrame(firstFrame);
+      if (secondFrame && typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') window.cancelAnimationFrame(secondFrame);
+    };
+  }, [errorMessage, policy, ready]);
 
   const allAccepted =
     policy.activeTerms.length > 0 &&
@@ -243,6 +274,8 @@ export default function UserSignupTermsSection({ onChange }) {
       <div className="rounded-2xl border border-slate-200 bg-white">
         <button
           type="button"
+          onPointerEnter={() => { void preloadSignupTermContents(policy.activeTerms).catch(() => {}); }}
+          onFocus={() => { void preloadSignupTermContents(policy.activeTerms).catch(() => {}); }}
           onClick={() => {
             if (allAccepted) {
               setAcceptedById({});

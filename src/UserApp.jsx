@@ -1455,6 +1455,7 @@ function UserApp({ runtimeSurface = 'user' }) {
     createMemberPolicyError,
     dataSettings: data.settings,
     dataTeams: data.teams,
+    firebaseAuthReady,
     getUserAuthErrorMessage,
     initialSettings: initialData.settings,
     pendingProtectedUserTabRef,

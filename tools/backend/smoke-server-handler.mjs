@@ -214,6 +214,8 @@ const siteContentService = {
   async getAdminSignupTermContent(termId) { return { source: 'postgresql', authoritative: true, term: { id: termId, title: 'Smoke terms', enabled: true, displayOrder: 2, currentVersion: 1, contentHtml: '<p>Smoke terms body</p>', contentText: 'Smoke terms body' } }; },
   async getSignupTermsPolicy() { return { source: 'postgresql', authoritative: true, key: 'signupTermsPolicy/current', payload: { enabled: true, revision: 5, requiredRevision: 5, activeTerms: [{ id: 'terms-smoke', title: 'Smoke terms' }] } }; },
   async getSignupTermContent(termId) { return { source: 'postgresql', authoritative: true, term: { id: termId, title: 'Smoke terms', required: true, version: 1, versionId: 'terms-smoke-v1', contentHash: 'terms-smoke-hash', contentHtml: '<p>Smoke terms body</p>', contentText: 'Smoke terms body' } }; },
+  async getSignupTermContents(termIds) { return { source: 'postgresql', authoritative: true, terms: termIds.map((termId) => ({ id: termId, title: 'Smoke terms', required: true, version: 1, versionId: `${termId}-v1`, contentHash: `${termId}-hash`, contentHtml: `<p>${termId} body</p>`, contentText: `${termId} body` })) }; },
+  async getHomeBootstrap() { return { source: 'postgresql', authoritative: true, siteSettings: siteDomains.get('site-settings'), home: siteDomains.get('home') }; },
   async getDomain(domain) { return siteDomains.get(domain) || { source: 'postgresql', domain, documents: [], count: 0 }; },
   async syncDomain(domain) { return { ...(siteDomains.get(domain) || { domain, documents: [], count: 0 }), source: 'postgresql', synchronized: true }; },
   async replaceAdminDomain({ domain, documents }) { const result = { source: 'postgresql', domain, documents: documents || [], count: (documents || []).length, synchronized: true }; siteDomains.set(domain, result); return result; },
@@ -363,6 +365,18 @@ try {
   const signupTermsPolicyBody = await signupTermsPolicyResponse.json();
   if (signupTermsPolicyResponse.status !== 200 || signupTermsPolicyBody.signupTermsPolicy?.key !== 'signupTermsPolicy/current' || signupTermsPolicyBody.signupTermsPolicy?.source !== 'postgresql') {
     throw new Error('Dedicated signup terms policy endpoint failed.');
+  }
+
+  const homeBootstrapResponse = await fetch(`${baseUrl}/api/user/home-bootstrap`, { headers: { Origin: allowedOrigin } });
+  const homeBootstrapBody = await homeBootstrapResponse.json();
+  if (homeBootstrapResponse.status !== 200 || homeBootstrapBody.userHomeBootstrap?.source !== 'postgresql' || homeBootstrapBody.userHomeBootstrap?.home?.domain !== 'home') {
+    throw new Error('User home bootstrap endpoint failed.');
+  }
+
+  const signupTermContentsResponse = await fetch(`${baseUrl}/api/signup/terms-content?ids=terms-smoke,terms-extra`, { headers: { Origin: allowedOrigin } });
+  const signupTermContentsBody = await signupTermContentsResponse.json();
+  if (signupTermContentsResponse.status !== 200 || signupTermContentsBody.signupTermContents?.source !== 'postgresql' || signupTermContentsBody.signupTermContents?.terms?.length !== 2) {
+    throw new Error('Dedicated signup term batch content endpoint failed.');
   }
 
   const signupTermContentResponse = await fetch(`${baseUrl}/api/signup/terms/terms-smoke/content`, {

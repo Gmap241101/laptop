@@ -354,6 +354,8 @@ export const createRequestHandler = ({
   },
   siteContentService = {
     async getDomain() { const error = new Error('Site content service is not configured.'); error.code = 'site_content_not_configured'; throw error; },
+    async getHomeBootstrap() { const error = new Error('Site content service is not configured.'); error.code = 'site_content_not_configured'; throw error; },
+    async getSignupTermContents() { const error = new Error('Site content service is not configured.'); error.code = 'site_content_not_configured'; throw error; },
     async syncDomain() { const error = new Error('Site content service is not configured.'); error.code = 'site_content_not_configured'; throw error; },
     async replaceAdminDomain() { const error = new Error('Site content service is not configured.'); error.code = 'site_content_not_configured'; throw error; },
     async patchRentalConfigSettings() { const error = new Error('Site content service is not configured.'); error.code = 'site_content_not_configured'; throw error; },
@@ -767,12 +769,14 @@ export const createRequestHandler = ({
           adminRentalRequestRestore: '/api/admin/rental-requests/:id/restore',
           adminRentalUserActionReview: '/api/admin/rental-requests/:id/user-action-review',
           assetCatalog: '/api/assets/catalog',
+          userHomeBootstrap: '/api/user/home-bootstrap',
           adminAssetBootstrap: '/api/admin/assets/bootstrap',
           adminAssets: '/api/admin/assets',
           adminAssetBulk: '/api/admin/assets/bulk',
           adminAssetCategories: '/api/admin/assets/categories',
           siteContent: '/api/site-content/:domain',
           signupTermsPolicy: '/api/signup/terms-policy',
+          signupTermsContentBatch: '/api/signup/terms-content?ids=termA,termB',
           adminSiteContentSync: '/api/admin/site-content/:domain/sync',
           adminSiteContentDirect: '/api/admin/site-content/:domain',
           adminRentalConfigSettings: '/api/admin/site-content/rental-config/settings',
@@ -1169,6 +1173,17 @@ export const createRequestHandler = ({
       return;
     }
 
+    if (request.method === 'GET' && url.pathname === '/api/user/home-bootstrap') {
+      try {
+        const homeBootstrap = await siteContentService.getHomeBootstrap();
+        writeJson(response, 200, { ...basePayload, userHomeBootstrap: homeBootstrap }, headers);
+      } catch (error) {
+        console.warn('[home] PostgreSQL user home bootstrap read failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'user_home_bootstrap_read_failed' }, headers);
+      }
+      return;
+    }
+
     if (request.method === 'GET' && url.pathname === '/api/signup/terms-policy') {
       try {
         const policy = await siteContentService.getSignupTermsPolicy();
@@ -1176,6 +1191,21 @@ export const createRequestHandler = ({
       } catch (error) {
         console.warn('[terms] PostgreSQL signup terms policy read failed', { requestId, code: error?.code, name: error?.name });
         writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'signup_terms_policy_read_failed' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/signup/terms-content') {
+      try {
+        const termIds = String(url.searchParams.get('ids') || '')
+          .split(',')
+          .map((value) => value.trim())
+          .filter(Boolean);
+        const termContents = await siteContentService.getSignupTermContents(termIds);
+        writeJson(response, 200, { ...basePayload, signupTermContents: termContents }, headers);
+      } catch (error) {
+        console.warn('[terms] PostgreSQL signup term batch content read failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'signup_term_contents_read_failed' }, headers);
       }
       return;
     }

@@ -73,6 +73,7 @@ export default function UserAuthPanel({ ctx }) {
   const [signupEmailVerificationOpen, setSignupEmailVerificationOpen] = useState(false);
   const [signupEmailVerificationCode, setSignupEmailVerificationCode] = useState('');
   const [signupEmailVerificationLoading, setSignupEmailVerificationLoading] = useState(false);
+  const [signupEmailVerificationRequested, setSignupEmailVerificationRequested] = useState(false);
   const normalizedSignupEmail = normalizeEmailAddress(userAuthForm.email);
   const signupEmailVerified = Boolean(
     isSignupMode &&
@@ -90,6 +91,7 @@ export default function UserAuthPanel({ ctx }) {
       setSignupEmailVerificationOpen(false);
       setSignupEmailVerificationCode('');
       setSignupEmailVerificationLoading(false);
+      setSignupEmailVerificationRequested(false);
     }
   }, [isSignupMode]);
 
@@ -127,6 +129,7 @@ export default function UserAuthPanel({ ctx }) {
     setSignupEmailVerificationLoading(true);
     try {
       await clerkStagingClient.startUserSignupEmailVerification(normalizedSignupEmail);
+      setSignupEmailVerificationRequested(true);
       setUserAuthForm({
         ...userAuthForm,
         email: normalizedSignupEmail,
@@ -451,11 +454,32 @@ export default function UserAuthPanel({ ctx }) {
             onSubmit={(event) => {
               if (isSignupMode && signupStep === 1) {
                 event.preventDefault();
-                if (signupTermsSubmission.ready && signupTermsSubmission.valid) {
-                  setSignupStep(2);
+                if (signupClosed) {
+                  triggerToast?.('현재 신규 회원가입 접수가 일시 중지되어 있습니다.', 'error');
+                  return;
                 }
+                if (!signupTermsSubmission.ready) {
+                  triggerToast?.('회원가입 이용약관을 불러오는 중입니다. 잠시 후 다시 시도해 주세요.', 'error');
+                  return;
+                }
+                if (!signupTermsSubmission.valid) {
+                  triggerToast?.('필수 회원가입 약관을 확인하고 동의해 주세요.', 'error');
+                  return;
+                }
+                setSignupStep(2);
                 return;
               }
+
+              if (isSignupMode) {
+                event.preventDefault();
+                if (signupEmailVerificationLoading) {
+                  triggerToast?.('이메일 인증 처리가 진행 중입니다. 완료 후 다시 시도해 주세요.', 'error');
+                  return;
+                }
+                submitUserAuthForm({ preventDefault() {} }, signupTermsSubmission);
+                return;
+              }
+
               submitUserAuthForm(event, signupTermsSubmission);
             }}
           >
@@ -477,7 +501,7 @@ export default function UserAuthPanel({ ctx }) {
                   <Button
                     type="submit"
                     variant="primary"
-                    disabled={!signupTermsSubmission.ready || !signupTermsSubmission.valid || signupClosed}
+                    disabled={userAuthLoading}
                     className="w-full justify-center py-3"
                   >
                     회원정보 입력
@@ -536,6 +560,11 @@ export default function UserAuthPanel({ ctx }) {
                                 : '인증받기'}
                           </Button>
                         </div>
+                        {signupEmailVerificationRequested && !signupEmailVerified && !signupEmailVerificationOpen ? (
+                          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold leading-5 text-amber-800">
+                            이메일 인증을 완료해야 회원가입할 수 있습니다. ‘인증받기’를 눌러 6자리 인증코드를 확인해 주세요.
+                          </div>
+                        ) : null}
                         <div id="clerk-captcha" className="empty:hidden" />
                       </>
                     ) : (
@@ -660,7 +689,7 @@ export default function UserAuthPanel({ ctx }) {
                     <Button
                       type="submit"
                       variant="primary"
-                      disabled={userAuthLoading || signupEmailVerificationLoading || !firebaseAuthReady || !identityClaimsReady || signupClosed || !signupTermsSubmission.valid || !signupEmailVerified || signupPasswordMismatch}
+                      disabled={userAuthLoading}
                       className="w-full justify-center py-3"
                     >
                       {userAuthLoading ? '가입 정보 확인 중...' : '회원가입'}

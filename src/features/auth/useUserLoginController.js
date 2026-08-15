@@ -31,6 +31,7 @@ import {
   normalizeSiteSettings,
 } from '../../utils/systemSettings.js';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { getClerkPasswordSignInErrorMessage } from './loginErrorMessages.js';
 import {
   beginUserAuthTransition,
   bindUserAuthTransitionIdentity,
@@ -488,15 +489,14 @@ export default function useUserLoginController({
           clearUserAuthTransition();
         }
         publishUserFirebaseAuthRetirementObservation({ requested: true, userFirebaseCompatibility: 'retired', session: retryableCode ? 'client-trust-required' : 'failed', error: code });
+        const clerkCredentialMessage = getClerkPasswordSignInErrorMessage(error);
         const message = code === 'user_account_is_admin'
           ? '관리자 계정은 사용자 로그인 화면이 아니라 관리자 모드에서 로그인해 주세요.'
           : code === 'user_account_retired'
             ? '탈퇴 처리된 계정입니다. 재가입 절차를 이용해 주세요.'
-            : code === 'form_identifier_not_found'
-              ? 'Clerk 전환이 완료되지 않은 기존 계정입니다. 비밀번호 재설정에서 본인 정보를 확인한 뒤 새 비밀번호를 설정해 주세요.'
-              : retryableCode
-                ? 'Clerk 인증코드가 올바르지 않습니다. 받은 코드를 다시 확인해 주세요.'
-                : getUserAuthErrorMessage(error);
+            : retryableCode
+              ? 'Clerk 인증코드가 올바르지 않습니다. 받은 코드를 다시 확인해 주세요.'
+              : clerkCredentialMessage || getUserAuthErrorMessage(error);
         triggerToast(message, 'error');
       } finally {
         setUserAuthLoading(false);
@@ -767,7 +767,8 @@ export default function useUserLoginController({
               : error?.code === 'user_account_retired'
                 ? '탈퇴 처리된 계정입니다. 재가입 절차를 이용해 주세요.'
                 : '';
-      const baseErrorMessage = specificMessage || getUserAuthErrorMessage(error);
+      const clerkCredentialMessage = getClerkPasswordSignInErrorMessage(error);
+      const baseErrorMessage = specificMessage || clerkCredentialMessage || getUserAuthErrorMessage(error);
       const cleanupFailed = firebaseAuthCleanupFailed || clerkCleanupFailed;
 
       triggerToast(

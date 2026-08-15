@@ -110,6 +110,37 @@ const projectPublicDomain = (result, nowMillis = Date.now()) => {
   });
 };
 
+const projectActiveSignupTermContent = ({ activeTerm, termDocument }) => {
+  const termId = normalizeTermId(activeTerm?.id);
+  const termPayload = termDocument?.payload && typeof termDocument.payload === 'object'
+    ? termDocument.payload
+    : {};
+  if (!termId || !termDocument || termDocument.enabled === false || termPayload.enabled === false || termPayload.archived === true) {
+    return null;
+  }
+  const version = Math.max(1, Number(activeTerm.version || activeTerm.currentVersion || 1));
+  const versionId = String(activeTerm.versionId || activeTerm.currentVersionId || '').trim();
+  const contentHash = String(activeTerm.contentHash || '').trim();
+  if (
+    Number(termPayload.currentVersion || termPayload.version || version) !== version ||
+    (versionId && String(termPayload.currentVersionId || termPayload.versionId || '').trim() !== versionId) ||
+    (contentHash && String(termPayload.contentHash || '').trim() !== contentHash)
+  ) {
+    throw errorWith('signup_term_content_changed', 'Signup term content changed while it was being read.', 409);
+  }
+  return Object.freeze({
+    id: termId,
+    title: String(activeTerm.title || termPayload.title || '').trim(),
+    required: Boolean(activeTerm.required),
+    version,
+    versionId,
+    contentHash,
+    contentHtml: String(termPayload.contentHtml || ''),
+    contentText: String(termPayload.contentText || ''),
+    displayOrder: Number.isFinite(Number(activeTerm.displayOrder)) ? Number(activeTerm.displayOrder) : 0,
+  });
+};
+
 export const createSiteContentService = ({ repository }) => Object.freeze({
   async getSignupTermsPolicy() {
     if (typeof repository.getDocument !== 'function') {
@@ -187,36 +218,71 @@ export const createSiteContentService = ({ repository }) => Object.freeze({
       : {};
     const activeTerm = (Array.isArray(policyPayload.activeTerms) ? policyPayload.activeTerms : [])
       .find((term) => normalizeTermId(term?.id) === termId);
-    const termPayload = context?.term?.payload && typeof context.term.payload === 'object'
-      ? context.term.payload
-      : {};
-    if (!policyPayload.enabled || !activeTerm || !context?.term || context.term.enabled === false || termPayload.enabled === false || termPayload.archived === true) {
+    if (!policyPayload.enabled || !activeTerm || !context?.term) {
       throw errorWith('signup_term_content_not_found', 'Active signup term content is not available.', 404);
     }
-    const version = Math.max(1, Number(activeTerm.version || activeTerm.currentVersion || 1));
-    const versionId = String(activeTerm.versionId || activeTerm.currentVersionId || '').trim();
-    const contentHash = String(activeTerm.contentHash || '').trim();
-    if (
-      (Number(termPayload.currentVersion || termPayload.version || version) !== version) ||
-      (versionId && String(termPayload.currentVersionId || termPayload.versionId || '').trim() !== versionId) ||
-      (contentHash && String(termPayload.contentHash || '').trim() !== contentHash)
-    ) {
-      throw errorWith('signup_term_content_changed', 'Signup term content changed while it was being read.', 409);
+    const projectedTerm = projectActiveSignupTermContent({ activeTerm, termDocument: context.term });
+    if (!projectedTerm) {
+      throw errorWith('signup_term_content_not_found', 'Active signup term content is not available.', 404);
     }
     return Object.freeze({
       source: 'postgresql',
       authoritative: true,
-      term: Object.freeze({
-        id: termId,
-        title: String(activeTerm.title || termPayload.title || '').trim(),
-        required: Boolean(activeTerm.required),
-        version,
-        versionId,
-        contentHash,
-        contentHtml: String(termPayload.contentHtml || ''),
-        contentText: String(termPayload.contentText || ''),
-        displayOrder: Number.isFinite(Number(activeTerm.displayOrder)) ? Number(activeTerm.displayOrder) : 0,
-      }),
+      term: projectedTerm,
+    });
+  },
+  async getSignupTermContents(termIdValues = []) {
+    const termIds = [...new Set((Array.isArray(termIdValues) ? termIdValues : [])
+      .map(normalizeTermId)
+      .filter(Boolean))];
+    if (termIds.length === 0 || termIds.length > 50) {
+      throw errorWith('signup_term_ids_invalid', 'Signup term IDs must contain between 1 and 50 items.', 400);
+    }
+    if (typeof repository.getSignupTermContentsContext !== 'function') {
+      throw errorWith('signup_term_contents_read_unavailable', 'Signup term batch content reader is unavailable.', 503);
+    }
+    const context = await repository.getSignupTermContentsContext(termIds);
+    const policyPayload = context?.policy?.payload && typeof context.policy.payload === 'object'
+      ? context.policy.payload
+      : {};
+    if (!policyPayload.enabled) {
+      throw errorWith('signup_term_content_not_found', 'Active signup term content is not available.', 404);
+    }
+    const activeTerms = Array.isArray(policyPayload.activeTerms) ? policyPayload.activeTerms : [];
+    const activeById = new Map(activeTerms.map((term) => [normalizeTermId(term?.id), term]));
+    const documentById = new Map((Array.isArray(context?.terms) ? context.terms : []).map((document) => [
+      normalizeTermId(document?.payload?.id || String(document?.key || '').split('/').pop()),
+      document,
+    ]));
+    const terms = termIds.map((termId) => {
+      const activeTerm = activeById.get(termId);
+      const termDocument = documentById.get(termId);
+      if (!activeTerm || !termDocument) {
+        throw errorWith('signup_term_content_not_found', 'Active signup term content is not available.', 404);
+      }
+      const projected = projectActiveSignupTermContent({ activeTerm, termDocument });
+      if (!projected) {
+        throw errorWith('signup_term_content_not_found', 'Active signup term content is not available.', 404);
+      }
+      return projected;
+    }).sort((left, right) => left.displayOrder - right.displayOrder || left.title.localeCompare(right.title, 'ko'));
+    return Object.freeze({ source: 'postgresql', authoritative: true, terms: Object.freeze(terms) });
+  },
+  async getHomeBootstrap() {
+    if (typeof repository.getDomains !== 'function') {
+      throw errorWith('home_bootstrap_read_unavailable', 'User home bootstrap reader is unavailable.', 503);
+    }
+    const domains = await repository.getDomains(['site-settings', 'home']);
+    const siteSettings = domains?.['site-settings'];
+    const home = domains?.home;
+    if (!siteSettings || !home) {
+      throw errorWith('home_bootstrap_not_synchronized', 'User home bootstrap content is not synchronized.', 404);
+    }
+    return Object.freeze({
+      source: 'postgresql',
+      authoritative: true,
+      siteSettings: projectPublicDomain(siteSettings),
+      home: projectPublicDomain(home),
     });
   },
   async getDomain(domainValue) {

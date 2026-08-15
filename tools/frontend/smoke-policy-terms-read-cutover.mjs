@@ -23,7 +23,7 @@ for (const marker of [
 ]) assert.ok(rentalData.includes(marker), `publicConfig PostgreSQL marker missing: ${marker}`);
 
 const termsService = readFileSync('src/features/terms/termsService.js', 'utf8');
-for (const marker of ['/api/signup/terms-policy', '/api/signup/terms/${encodeURIComponent(term.id)}/content', "source !== 'postgresql'", 'signupTermsPolicyPending', 'signupTermContentPending', 'SIGNUP_TERMS_POLICY_CACHE_TTL_MS', 'SIGNUP_TERM_CONTENT_CACHE_TTL_MS']) {
+for (const marker of ['/api/signup/terms-policy', '/api/signup/terms/${encodeURIComponent(term.id)}/content', '/api/signup/terms-content?ids=', "source !== 'postgresql'", 'signupTermsPolicyPending', 'signupTermContentPending', 'signupTermBatchPending', 'preloadSignupTermContents', 'SIGNUP_TERMS_POLICY_CACHE_TTL_MS', 'SIGNUP_TERM_CONTENT_CACHE_TTL_MS']) {
   assert.ok(termsService.includes(marker), `signup terms dedicated PostgreSQL marker missing: ${marker}`);
 }
 for (const forbidden of ['requestPolicyContentDomain', 'POLICY_CONTENT_DOMAINS.TERMS', 'getDoc(', 'onSnapshot(', 'retiredLegacyDataCompat']) {
@@ -57,6 +57,8 @@ assert.equal(signupPolicy.includes('replacePolicyContentDomainInPostgresql'), fa
 const signupTermsSection = readFileSync('src/user/UserSignupTermsSection.jsx', 'utf8');
 assert.match(signupTermsSection, /loadSignupTermContents/, 'signup terms dialog must lazy-load rich term content');
 assert.match(signupTermsSection, /onPointerEnter=.*preloadSignupTermContent/s, 'signup terms view action must intent-preload individual term content');
+assert.match(signupTermsSection, /onPointerEnter=.*preloadSignupTermContents\(policy\.activeTerms\)/s, 'all-terms action must intent-preload one batch instead of N individual requests');
+assert.match(signupTermsSection, /requestIdleCallback\(preloadAll, \{ timeout: 1200 \}\)/, 'signup terms must background-preload the all-terms batch after the checkbox list first paint without blocking the list');
 const reconsentPanel = readFileSync('src/user/UserTermsConsentPanel.jsx', 'utf8');
 assert.match(reconsentPanel, /loadSignupTermContents/, 'reconsent dialog must hydrate term content instead of rendering metadata-only policy');
 assert.match(reconsentPanel, /onClick=.*openTermDialog/s, 'reconsent term view must use the PostgreSQL term-content reader');

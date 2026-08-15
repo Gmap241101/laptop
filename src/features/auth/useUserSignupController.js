@@ -99,6 +99,7 @@ export default function useUserSignupController({
   createMemberPolicyError,
   dataSettings,
   dataTeams,
+  firebaseAuthReady,
   getUserAuthErrorMessage,
   initialSettings,
   pendingProtectedUserTabRef,
@@ -264,6 +265,16 @@ export default function useUserSignupController({
         normalizeEmailAddress(userAuthForm.signupVerifiedEmail) !== email)
     ) {
       triggerToast('회원가입에 사용할 이메일 인증을 먼저 완료해 주세요.', 'error');
+      return;
+    }
+
+    if (!firebaseAuthReady) {
+      triggerToast('회원가입 인증 서비스를 준비 중입니다. 잠시 후 다시 시도해 주세요.', 'error');
+      return;
+    }
+
+    if (!dataSettings?.memberIdentityClaimsReady) {
+      triggerToast('회원 중복 확인 정보가 아직 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.', 'error');
       return;
     }
 
@@ -923,6 +934,7 @@ export default function useUserSignupController({
     createMemberPolicyError,
     dataSettings,
     dataTeams,
+    firebaseAuthReady,
     getUserAuthErrorMessage,
     initialSettings,
     setUserAuthenticatedSession,

@@ -620,39 +620,55 @@ export default function useRentalDataSubscriptionController({
       return () => { active = false; };
     }
 
-    void requestPolicyContentDomain({
-      domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
-      config: policyContentConfig,
-      useCache: true,
-    })
-      .then((domainResult) => {
-        const document = getPolicyContentDocument(
-          domainResult,
-          'rentalSystem/publicConfig'
-        );
-        if (!document?.payload) {
-          throw Object.assign(
-            new Error('PostgreSQL canonical public config document is unavailable.'),
-            { code: 'policy_content_public_config_missing' }
-          );
-        }
-        applyConfigData(document.payload, 'postgresql');
+    const loadPublicConfig = () => {
+      void requestPolicyContentDomain({
+        domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
+        config: policyContentConfig,
+        useCache: true,
       })
-      .catch((error) => {
-        publishPolicyContentObservation({
-          readRequested: true,
-          domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
-          readSource: 'postgresql-authoritative',
-          error: error?.code || 'policy_content_read_failed',
+        .then((domainResult) => {
+          const document = getPolicyContentDocument(
+            domainResult,
+            'rentalSystem/publicConfig'
+          );
+          if (!document?.payload) {
+            throw Object.assign(
+              new Error('PostgreSQL canonical public config document is unavailable.'),
+              { code: 'policy_content_public_config_missing' }
+            );
+          }
+          applyConfigData(document.payload, 'postgresql');
+        })
+        .catch((error) => {
+          publishPolicyContentObservation({
+            readRequested: true,
+            domain: POLICY_CONTENT_DOMAINS.RENTAL_CONFIG,
+            readSource: 'postgresql-authoritative',
+            error: error?.code || 'policy_content_read_failed',
+          });
+          const errorCode = error?.code || error?.name || 'policy_content_read_failed';
+          applyMissingConfig(
+            `공개 설정을 PostgreSQL에서 불러오지 못했습니다. 오류 코드: ${errorCode}`,
+            error
+          );
         });
-        const errorCode = error?.code || error?.name || 'policy_content_read_failed';
-        applyMissingConfig(
-          `공개 설정을 PostgreSQL에서 불러오지 못했습니다. 오류 코드: ${errorCode}`,
-          error
-        );
-      });
+    };
 
-    return () => { active = false; };
+    let firstPaintFrameId = 0;
+    let secondPaintFrameId = 0;
+    if (view === 'user' && userTab === 'home' && typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      firstPaintFrameId = window.requestAnimationFrame(() => {
+        secondPaintFrameId = window.requestAnimationFrame(loadPublicConfig);
+      });
+    } else {
+      loadPublicConfig();
+    }
+
+    return () => {
+      active = false;
+      if (firstPaintFrameId) window.cancelAnimationFrame?.(firstPaintFrameId);
+      if (secondPaintFrameId) window.cancelAnimationFrame?.(secondPaintFrameId);
+    };
   }, [
     currentAuthAdminAccount?.id,
     setFirebaseReady,
@@ -661,6 +677,7 @@ export default function useRentalDataSubscriptionController({
     setSplitSourceReady,
     setSplitStorageVersion,
     setToast,
+    userTab,
     view,
   ]);
 

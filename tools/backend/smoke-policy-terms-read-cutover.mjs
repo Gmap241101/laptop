@@ -15,6 +15,16 @@ const repository = {
       term: documents.find((document) => document.key === `signupTerms/${termId}`) || null,
     };
   },
+  async getSignupTermContentsContext(termIds = []) {
+    const documents = stored.get('terms')?.documents || [];
+    return {
+      policy: documents.find((document) => document.key === 'signupTermsPolicy/current') || null,
+      terms: termIds.map((termId) => documents.find((document) => document.key === `signupTerms/${termId}`)).filter(Boolean),
+    };
+  },
+  async getDomains(domains = []) {
+    return Object.fromEntries(domains.map((domain) => [domain, stored.get(domain) || null]));
+  },
   async getSignupTermsAdminCatalog() {
     const documents = stored.get('terms')?.documents || [];
     return {
@@ -46,7 +56,10 @@ const terms = await service.replaceAdminDomain({
       payload: {
         enabled: true,
         revision: 2,
-        activeTerms: [{ id: 'privacy', title: '개인정보 처리', required: true, version: 3, versionId: 'privacy-v3', contentHash: 'hash-v3', contentHtml: '<p>must-not-be-in-list</p>', contentText: 'must-not-be-in-list' }],
+        activeTerms: [
+          { id: 'privacy', title: '개인정보 처리', required: true, version: 3, versionId: 'privacy-v3', contentHash: 'hash-v3', displayOrder: 1, contentHtml: '<p>must-not-be-in-list</p>', contentText: 'must-not-be-in-list' },
+          { id: 'service', title: '서비스 이용약관', required: true, version: 2, versionId: 'service-v2', contentHash: 'service-hash-v2', displayOrder: 2, contentHtml: '<p>must-not-be-in-list-2</p>', contentText: 'must-not-be-in-list-2' },
+        ],
       },
     },
     {
@@ -54,12 +67,17 @@ const terms = await service.replaceAdminDomain({
       enabled: true,
       payload: { id: 'privacy', title: '개인정보 처리', required: true, enabled: true, currentVersion: 3, currentVersionId: 'privacy-v3', contentHash: 'hash-v3', contentHtml: '<p>실제 약관 본문</p>', contentText: '실제 약관 본문' },
     },
+    {
+      key: 'signupTerms/service',
+      enabled: true,
+      payload: { id: 'service', title: '서비스 이용약관', required: true, enabled: true, currentVersion: 2, currentVersionId: 'service-v2', contentHash: 'service-hash-v2', contentHtml: '<p>서비스 약관 본문</p>', contentText: '서비스 약관 본문' },
+    },
   ],
   actorClerkUserId: 'user_admin',
 });
 assert.equal(terms.source, 'postgresql');
 assert.equal(terms.sourceMode, 'postgresql-admin-direct');
-assert.equal((await service.getDomain('terms')).documentCount, 2);
+assert.equal((await service.getDomain('terms')).documentCount, 3);
 const signupTermsPolicy = await service.getSignupTermsPolicy();
 assert.equal(signupTermsPolicy.source, 'postgresql');
 assert.equal(signupTermsPolicy.key, 'signupTermsPolicy/current');
@@ -71,9 +89,14 @@ assert.equal(signupTermContent.source, 'postgresql');
 assert.equal(signupTermContent.term.id, 'privacy');
 assert.equal(signupTermContent.term.contentHtml, '<p>실제 약관 본문</p>');
 assert.equal(signupTermContent.term.contentHash, 'hash-v3');
+const signupTermContents = await service.getSignupTermContents(['privacy', 'service']);
+assert.equal(signupTermContents.source, 'postgresql');
+assert.equal(signupTermContents.terms.length, 2);
+assert.deepEqual(signupTermContents.terms.map((term) => term.id), ['privacy', 'service']);
+assert.equal(signupTermContents.terms[1].contentHtml, '<p>서비스 약관 본문</p>');
 const adminTermsCatalog = await service.getAdminSignupTermsCatalog();
 assert.equal(adminTermsCatalog.source, 'postgresql');
-assert.equal(adminTermsCatalog.terms.length, 1);
+assert.equal(adminTermsCatalog.terms.length, 2);
 assert.equal(adminTermsCatalog.terms[0].contentHtml, '<p>실제 약관 본문</p>');
 assert.equal(adminTermsCatalog.policy.activeTerms[0].contentHtml, undefined, 'admin catalog policy must not duplicate rich HTML content');
 assert.equal(adminTermsCatalog.policy.activeTerms[0].contentText, undefined, 'admin catalog policy must not duplicate rich text fallback');
