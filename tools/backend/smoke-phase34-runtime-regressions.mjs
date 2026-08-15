@@ -4,6 +4,7 @@ import { createSiteContentService } from '../../server/src/content/site-content-
 import { createSiteContentRepository } from '../../server/src/content/site-content-repository.mjs';
 import { createBoardRepository } from '../../server/src/boards/board-repository.mjs';
 import { createClerkDeviceTrustService } from '../../server/src/clerk/clerk-device-trust-service.mjs';
+import { readServerConfig } from '../../server/src/config/env.mjs';
 import fs from 'node:fs';
 
 const rentalRestrictionRepository = {
@@ -354,6 +355,44 @@ assert.match(systemConfigRepositorySource, /async appendAudit\(/, 'system config
 assert.match(systemConfigRepositorySource, /pg_advisory_xact_lock\(hashtext\(\$1\)\)/, 'system settings audit appends must be serialized under a PostgreSQL advisory transaction lock');
 assert.match(systemConfigServiceSource, /const AUDIT_KEY = 'system-settings-audit'/, 'system settings audit history must use a dedicated PostgreSQL configuration record');
 assert.match(systemConfigServiceSource, /randomUUID\(\)/, 'system settings audit entries must receive stable unique identifiers');
+
+const optionalPlatformEnvNames = [
+  'APP_ENV',
+  'DATABASE_URL',
+  'CORS_ALLOWED_ORIGINS',
+  'CLERK_JWT_KEY',
+  'CLERK_AUTHORIZED_PARTIES',
+  'CLERK_SECRET_KEY',
+  'CLERK_PLATFORM_API_KEY',
+  'CLERK_APPLICATION_ID',
+  'CLERK_INSTANCE_ID',
+  'CLERK_PLATFORM_API_URL',
+];
+const optionalPlatformEnvSnapshot = Object.fromEntries(
+  optionalPlatformEnvNames.map((name) => [name, process.env[name]]),
+);
+try {
+  process.env.APP_ENV = 'local';
+  process.env.DATABASE_URL = 'postgres://localhost/phase34_optional_platform_smoke';
+  delete process.env.CORS_ALLOWED_ORIGINS;
+  delete process.env.CLERK_JWT_KEY;
+  delete process.env.CLERK_AUTHORIZED_PARTIES;
+  delete process.env.CLERK_SECRET_KEY;
+  process.env.CLERK_PLATFORM_API_KEY = 'sk_test_not_a_platform_key';
+  process.env.CLERK_APPLICATION_ID = 'app_phase34_smoke';
+  process.env.CLERK_INSTANCE_ID = 'ins_phase34_smoke';
+  const optionalPlatformConfig = readServerConfig();
+  assert.equal(optionalPlatformConfig.clerkPlatformApiKey, null, 'invalid optional Clerk Platform API credentials must not crash core server config');
+  assert.equal(optionalPlatformConfig.clerkApplicationId, null, 'invalid optional Clerk Platform API config must be disabled as one unit');
+  assert.equal(optionalPlatformConfig.clerkInstanceId, null, 'invalid optional Clerk Platform API config must be disabled as one unit');
+  assert.equal(optionalPlatformConfig.clerkPlatformApiUrl, 'https://api.clerk.com', 'disabled optional Platform API config must fall back to a safe inert URL');
+} finally {
+  for (const name of optionalPlatformEnvNames) {
+    const previous = optionalPlatformEnvSnapshot[name];
+    if (previous === undefined) delete process.env[name];
+    else process.env[name] = previous;
+  }
+}
 
 const clerkDeviceTrustRequests = [];
 const clerkDeviceTrustService = createClerkDeviceTrustService({
