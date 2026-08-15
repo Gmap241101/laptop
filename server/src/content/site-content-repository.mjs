@@ -1,13 +1,4 @@
 import { createRentalConfigBootstrapDocument } from './rental-config-bootstrap.mjs';
-import { createHash } from 'node:crypto';
-
-const stable = (value) => {
-  if (Array.isArray(value)) return value.map(stable);
-  if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])]));
-};
-const hashDocuments = (documents) => createHash('sha256').update(JSON.stringify(stable(documents))).digest('hex');
-
 const mapRow = (row) => ({
   key: row.document_key,
   payload: row.payload || {},
@@ -155,57 +146,35 @@ export const createSiteContentRepository = (pool) => {
       .filter(Boolean))];
     if (domains.length === 0) return Object.freeze({});
     const result = await pool.query(
-      `SELECT
-         sync.domain AS sync_domain,
-         sync.source_hash,
-         sync.document_count,
-         sync.source_mode,
-         sync.synced_at AS sync_synced_at,
-         document.document_key,
-         document.payload,
-         document.enabled,
-         document.sort_order,
-         document.source_updated_at,
-         document.synced_at AS document_synced_at
-       FROM app_site_content_syncs sync
-       LEFT JOIN app_site_content_documents document
-         ON document.domain = sync.domain
-      WHERE sync.domain = ANY($1::text[])
-      ORDER BY sync.domain, document.sort_order NULLS LAST, document.document_key`,
+      `SELECT domain, document_key, payload, enabled, sort_order, source_updated_at, synced_at
+         FROM app_site_content_documents
+        WHERE domain = ANY($1::text[])
+        ORDER BY domain, sort_order NULLS LAST, document_key`,
       [domains],
     );
-    const grouped = new Map();
+    const grouped = new Map(domains.map((domain) => [domain, []]));
     for (const row of result.rows) {
-      const domain = String(row.sync_domain || '').trim();
-      if (!domain) continue;
-      if (!grouped.has(domain)) {
-        grouped.set(domain, { sync: row, documents: [] });
-      }
-      if (row.document_key) {
-        grouped.get(domain).documents.push(mapRow({
-          document_key: row.document_key,
-          payload: row.payload,
-          enabled: row.enabled,
-          sort_order: row.sort_order,
-          source_updated_at: row.source_updated_at,
-          synced_at: row.document_synced_at,
-        }));
-      }
+      const domain = String(row.domain || '').trim();
+      if (!grouped.has(domain)) grouped.set(domain, []);
+      grouped.get(domain).push(mapRow(row));
     }
     return Object.freeze(Object.fromEntries(domains.map((domain) => {
-      const group = grouped.get(domain);
-      if (!group) return [domain, null];
-      const sync = group.sync;
+      const documents = grouped.get(domain) || [];
+      if (documents.length === 0) return [domain, null];
+      const syncedAt = documents.reduce((latest, document) => {
+        const value = document.syncedAt ? new Date(document.syncedAt).getTime() : 0;
+        return value > latest.time ? { time: value, value: document.syncedAt } : latest;
+      }, { time: 0, value: null }).value;
       return [domain, Object.freeze({
         domain,
         source: 'postgresql',
         authoritative: true,
         synchronized: true,
-        sourceMode: sync.source_mode,
-        sourceHash: sync.source_hash,
-        syncedAt: sync.sync_synced_at,
-        documentCount: Number(sync.document_count || 0),
-        documents: group.documents,
+        sourceMode: 'postgresql-canonical',
+        sourceHash: '',
+        syncedAt,
+        documentCount: documents.length,
+        documents,
       })];
     })));
   };
@@ -257,55 +226,37 @@ export const createSiteContentRepository = (pool) => {
     if (!['popup', 'footer'].includes(domain)) return null;
     const result = await pool.query(
       `SELECT
-         sync.domain AS sync_domain,
-         sync.source_hash,
-         sync.document_count,
-         sync.source_mode,
-         sync.synced_at AS sync_synced_at,
-         document.document_key,
+         document_key,
          CASE
            WHEN $1 = 'popup' THEN
-             document.payload - 'content' - 'contentText' - 'contentHtml'
-           WHEN $1 = 'footer' AND document.document_key LIKE 'footerPages/%' THEN
-             document.payload - 'content' - 'contentText' - 'contentHtml'
-           ELSE document.payload
+             payload - 'content' - 'contentText' - 'contentHtml'
+           WHEN $1 = 'footer' AND document_key LIKE 'footerPages/%' THEN
+             payload - 'content' - 'contentText' - 'contentHtml'
+           ELSE payload
          END AS payload,
-         document.enabled,
-         document.sort_order,
-         document.source_updated_at,
-         document.synced_at AS document_synced_at
-       FROM app_site_content_syncs sync
-       LEFT JOIN app_site_content_documents document
-         ON document.domain = sync.domain
-      WHERE sync.domain = $1
+         enabled, sort_order, source_updated_at, synced_at
+       FROM app_site_content_documents
+      WHERE domain = $1
         AND (
-          document.document_key IS NULL
-          OR ($1 = 'popup' AND document.document_key LIKE 'popupPosts/%')
-          OR ($1 = 'footer' AND (document.document_key = 'siteFooter/config' OR document.document_key LIKE 'footerPages/%'))
+          ($1 = 'popup' AND document_key LIKE 'popupPosts/%')
+          OR ($1 = 'footer' AND (document_key = 'siteFooter/config' OR document_key LIKE 'footerPages/%'))
         )
-      ORDER BY document.sort_order NULLS LAST, document.document_key`,
+      ORDER BY sort_order NULLS LAST, document_key`,
       [domain],
     );
-    if (result.rowCount === 0) return null;
-    const sync = result.rows[0];
-    const documents = result.rows
-      .filter((row) => row.document_key)
-      .map((row) => Object.freeze(mapRow({
-        document_key: row.document_key,
-        payload: row.payload,
-        enabled: row.enabled,
-        sort_order: row.sort_order,
-        source_updated_at: row.source_updated_at,
-        synced_at: row.document_synced_at,
-      })));
+    const documents = result.rows.map((row) => Object.freeze(mapRow(row)));
+    const syncedAt = documents.reduce((latest, document) => {
+      const value = document.syncedAt ? new Date(document.syncedAt).getTime() : 0;
+      return value > latest.time ? { time: value, value: document.syncedAt } : latest;
+    }, { time: 0, value: null }).value;
     return Object.freeze({
       domain,
       source: 'postgresql',
       authoritative: true,
       synchronized: true,
-      sourceMode: sync.source_mode,
-      sourceHash: sync.source_hash,
-      syncedAt: sync.sync_synced_at,
+      sourceMode: 'postgresql-canonical',
+      sourceHash: '',
+      syncedAt,
       documentCount: documents.length,
       documents,
     });
@@ -319,7 +270,6 @@ export const createSiteContentRepository = (pool) => {
       sortOrder: Number.isFinite(Number(item?.sortOrder)) ? Math.trunc(Number(item.sortOrder)) : null,
       sourceUpdatedAt: item?.sourceUpdatedAt || null,
     })).filter((item) => item.key);
-    const sourceHash = hashDocuments(normalizedDocuments);
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -334,20 +284,9 @@ export const createSiteContentRepository = (pool) => {
           [domain, item.key, JSON.stringify(item.payload), item.enabled, item.sortOrder, normalizedSourceMode, item.sourceUpdatedAt],
         );
       }
-      await client.query(
-        `INSERT INTO app_site_content_syncs
-           (domain, source_hash, document_count, source_mode, last_actor_clerk_user_id, synced_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,NOW(),NOW())
-         ON CONFLICT (domain) DO UPDATE SET
-           source_hash=EXCLUDED.source_hash,
-           document_count=EXCLUDED.document_count,
-           source_mode=EXCLUDED.source_mode,
-           last_actor_clerk_user_id=EXCLUDED.last_actor_clerk_user_id,
-           synced_at=NOW(), updated_at=NOW()`,
-        [domain, sourceHash, normalizedDocuments.length, normalizedSourceMode, String(actorClerkUserId || '')],
-      );
       await client.query('COMMIT');
-      return getDomain(domain);
+      const state = await getDomain(domain);
+      return state ? Object.freeze({ ...state, sourceMode: normalizedSourceMode }) : state;
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {});
       throw error;
@@ -438,35 +377,9 @@ export const createSiteContentRepository = (pool) => {
           [domain, item.key, JSON.stringify(item.payload), item.enabled, item.sortOrder, normalizedSourceMode, item.sourceUpdatedAt],
         );
       }
-      const docsResult = await client.query(
-        `SELECT document_key, payload, enabled, sort_order, source_updated_at
-           FROM app_site_content_documents
-          WHERE domain = $1
-          ORDER BY sort_order NULLS LAST, document_key`,
-        [domain],
-      );
-      const normalizedDocuments = docsResult.rows.map((row) => ({
-        key: row.document_key,
-        payload: row.payload || {},
-        enabled: row.enabled,
-        sortOrder: row.sort_order,
-        sourceUpdatedAt: row.source_updated_at,
-      }));
-      const sourceHash = hashDocuments(normalizedDocuments);
-      await client.query(
-        `INSERT INTO app_site_content_syncs
-           (domain, source_hash, document_count, source_mode, last_actor_clerk_user_id, synced_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,NOW(),NOW())
-         ON CONFLICT (domain) DO UPDATE SET
-           source_hash=EXCLUDED.source_hash,
-           document_count=EXCLUDED.document_count,
-           source_mode=EXCLUDED.source_mode,
-           last_actor_clerk_user_id=EXCLUDED.last_actor_clerk_user_id,
-           synced_at=NOW(), updated_at=NOW()`,
-        [domain, sourceHash, normalizedDocuments.length, normalizedSourceMode, String(actorClerkUserId || '')],
-      );
       await client.query('COMMIT');
-      return getDomain(domain);
+      const state = await getDomain(domain);
+      return state ? Object.freeze({ ...state, sourceMode: normalizedSourceMode }) : state;
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {});
       throw error;
@@ -477,23 +390,10 @@ export const createSiteContentRepository = (pool) => {
 
   getDomain = async (domain) => {
     const result = await pool.query(
-      `SELECT
-         sync.domain AS sync_domain,
-         sync.source_hash,
-         sync.document_count,
-         sync.source_mode,
-         sync.synced_at AS sync_synced_at,
-         document.document_key,
-         document.payload,
-         document.enabled,
-         document.sort_order,
-         document.source_updated_at,
-         document.synced_at AS document_synced_at
-       FROM app_site_content_syncs sync
-       LEFT JOIN app_site_content_documents document
-         ON document.domain = sync.domain
-      WHERE sync.domain = $1
-      ORDER BY document.sort_order NULLS LAST, document.document_key`,
+      `SELECT document_key, payload, enabled, sort_order, source_updated_at, synced_at
+         FROM app_site_content_documents
+        WHERE domain = $1
+        ORDER BY sort_order NULLS LAST, document_key`,
       [domain],
     );
     if (result.rowCount === 0) {
@@ -506,16 +406,7 @@ export const createSiteContentRepository = (pool) => {
         sourceMode: 'postgresql-self-heal',
       });
     }
-    const documentRows = result.rows
-      .filter((row) => row.document_key)
-      .map((row) => ({
-        document_key: row.document_key,
-        payload: row.payload,
-        enabled: row.enabled,
-        sort_order: row.sort_order,
-        source_updated_at: row.source_updated_at,
-        synced_at: row.document_synced_at,
-      }));
+    const documentRows = result.rows;
     if (domain === 'rental-config' && !documentRows.some((row) => row.document_key === 'rentalSystem/publicConfig')) {
       const context = await getRentalConfigBootstrapContext();
       return replaceDomain({
@@ -525,17 +416,21 @@ export const createSiteContentRepository = (pool) => {
         sourceMode: 'postgresql-self-heal',
       });
     }
-    const sync = result.rows[0];
+    const documents = documentRows.map(mapRow);
+    const syncedAt = documents.reduce((latest, document) => {
+      const value = document.syncedAt ? new Date(document.syncedAt).getTime() : 0;
+      return value > latest.time ? { time: value, value: document.syncedAt } : latest;
+    }, { time: 0, value: null }).value;
     return Object.freeze({
       domain,
       source: 'postgresql',
       authoritative: true,
       synchronized: true,
-      sourceMode: sync.source_mode,
-      sourceHash: sync.source_hash,
-      syncedAt: sync.sync_synced_at,
-      documentCount: Number(sync.document_count || 0),
-      documents: documentRows.map(mapRow),
+      sourceMode: 'postgresql-canonical',
+      sourceHash: '',
+      syncedAt,
+      documentCount: documents.length,
+      documents,
     });
   };
 

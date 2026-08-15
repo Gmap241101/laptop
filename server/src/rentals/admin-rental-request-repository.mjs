@@ -125,117 +125,7 @@ export const createAdminRentalRequestRepository = (pool) => {
     throw new TypeError('A PostgreSQL pool with query()/connect() is required.');
   }
 
-  const resolveAppUserId = async (client, firebaseUid) => {
-    const result = await client.query(
-      'SELECT app_user_id FROM app_user_firebase_links WHERE firebase_uid = $1 LIMIT 1',
-      [firebaseUid],
-    );
-    return result.rows[0]?.app_user_id || null;
-  };
-
   return Object.freeze({
-    async upsertImportedRequests(requests = []) {
-      const client = await pool.connect();
-      try {
-        await client.query('BEGIN');
-        for (const request of requests) {
-          const appUserId = await resolveAppUserId(client, request.requesterUid);
-          const result = await client.query(
-            `INSERT INTO app_rental_requests (
-               request_id, app_user_id, firebase_uid, requester_email, requester_name,
-               requester_team, start_date, due_date, purpose, status, requested_at_text,
-               source_mode, idempotency_key, firestore_mirror_status, admin_memo,
-               extension_count, last_extension_approved_date, next_extension_request_date,
-               extension_history, user_action_request, returned_at, actual_return_date,
-               overdue_days_at_return, overdue_penalty_pending, overdue_penalty_batch_id,
-               source_created_at, source_updated_at, source_synced_at, created_at, updated_at
-             ) VALUES (
-               $1,$2,$3,$4,$5,$6,$7::date,$8::date,$9,$10,$11,
-               'firestore-admin-import','legacy:' || $1,'legacy-source',$12,$13,$14,$15,
-               $16::jsonb,$17::jsonb,$18,$19,$20,$21,$22,$23,$24,$25,
-               COALESCE($23,NOW()),COALESCE($24,NOW())
-             )
-             ON CONFLICT (request_id) DO UPDATE SET
-               app_user_id = COALESCE(app_rental_requests.app_user_id, EXCLUDED.app_user_id),
-               firebase_uid = EXCLUDED.firebase_uid,
-               requester_email = EXCLUDED.requester_email,
-               requester_name = EXCLUDED.requester_name,
-               requester_team = EXCLUDED.requester_team,
-               start_date = EXCLUDED.start_date,
-               due_date = EXCLUDED.due_date,
-               purpose = EXCLUDED.purpose,
-               status = EXCLUDED.status,
-               requested_at_text = EXCLUDED.requested_at_text,
-               admin_memo = EXCLUDED.admin_memo,
-               extension_count = EXCLUDED.extension_count,
-               last_extension_approved_date = EXCLUDED.last_extension_approved_date,
-               next_extension_request_date = EXCLUDED.next_extension_request_date,
-               extension_history = EXCLUDED.extension_history,
-               user_action_request = EXCLUDED.user_action_request,
-               returned_at = EXCLUDED.returned_at,
-               actual_return_date = EXCLUDED.actual_return_date,
-               overdue_days_at_return = EXCLUDED.overdue_days_at_return,
-               overdue_penalty_pending = EXCLUDED.overdue_penalty_pending,
-               overdue_penalty_batch_id = EXCLUDED.overdue_penalty_batch_id,
-               source_created_at = EXCLUDED.source_created_at,
-               source_updated_at = EXCLUDED.source_updated_at,
-               source_synced_at = EXCLUDED.source_synced_at,
-               firestore_mirror_status = CASE
-                 WHEN app_rental_requests.source_mode LIKE 'postgresql-authoritative%' THEN 'synced'
-                 ELSE 'legacy-source'
-               END,
-               updated_at = NOW()
-             RETURNING id`,
-            [
-              request.id, appUserId, request.requesterUid, request.requesterEmail,
-              request.requesterName, request.requesterTeam, request.startDate, request.dueDate,
-              request.purpose, request.status, request.requestedAt, request.adminMemo,
-              request.extensionCount, request.lastExtensionApprovedDate,
-              request.nextExtensionRequestDate, JSON.stringify(request.extensionHistory || []),
-              request.userActionRequest == null ? null : JSON.stringify(request.userActionRequest),
-              request.returnedAt, request.actualReturnDate, request.overdueDaysAtReturn,
-              request.overduePenaltyPending, request.overduePenaltyBatchId,
-              request.createdAt, request.updatedAt, request.syncedAt,
-            ],
-          );
-          const rentalRequestId = result.rows[0]?.id;
-          await client.query(
-            `INSERT INTO app_rental_request_items (rental_request_id, line_number, laptop_id, asset_category, asset_no)
-             VALUES ($1,1,$2,$3,$4)
-             ON CONFLICT (rental_request_id) DO UPDATE SET
-               laptop_id = EXCLUDED.laptop_id,
-               asset_category = EXCLUDED.asset_category,
-               asset_no = EXCLUDED.asset_no,
-               updated_at = NOW()`,
-            [rentalRequestId, request.laptopId, request.assetCategory, request.assetNo],
-          );
-          const active = BLOCKING.has(request.status);
-          await client.query(
-            `INSERT INTO app_rental_asset_reservation_guards (
-               request_id, rental_request_id, laptop_id, start_date, due_date, status, active, source_mode, synced_at
-             ) VALUES ($1,$2,$3,$4::date,$5::date,$6,$7,'firestore-admin-import',NOW())
-             ON CONFLICT (request_id) DO UPDATE SET
-               rental_request_id = EXCLUDED.rental_request_id,
-               laptop_id = EXCLUDED.laptop_id,
-               start_date = EXCLUDED.start_date,
-               due_date = EXCLUDED.due_date,
-               status = EXCLUDED.status,
-               active = EXCLUDED.active,
-               source_mode = EXCLUDED.source_mode,
-               synced_at = NOW(), updated_at = NOW()`,
-            [request.id, rentalRequestId, request.laptopId, request.startDate, request.dueDate, request.status, active],
-          );
-        }
-        await client.query('COMMIT');
-        return requests.length;
-      } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-      } finally {
-        client.release();
-      }
-    },
-
     async list({ tab = 'pending', quickFilter = 'all', query = '', page = 1, pageSize = 10, referenceDate, includeTotalCount = true, includeTabCounts = false }) {
       const filter = buildTabWhere({ tab, quickFilter, referenceDate, query });
       const values = [...filter.values];
@@ -332,17 +222,6 @@ export const createAdminRentalRequestRepository = (pool) => {
       return mapRow(result.rows[0]);
     },
 
-    async markMirrorRetired(requestId) {
-      await pool.query(
-        `UPDATE app_rental_requests
-            SET firestore_mirror_status='retired', firestore_mirror_error='', firestore_mirrored_at=NULL,
-                source_updated_at=NOW(), source_synced_at=NOW(), updated_at=NOW()
-          WHERE request_id=$1`,
-        [requestId],
-      );
-      return this.getByRequestId(requestId);
-    },
-
     async getCounts(referenceDate) {
       const result = await pool.query(
         `SELECT
@@ -382,55 +261,6 @@ export const createAdminRentalRequestRepository = (pool) => {
       return result.rowCount > 0;
     },
 
-    async upsertImportedEvents(requestId, events = []) {
-      const id = trim(requestId);
-      if (!id || !Array.isArray(events) || events.length === 0) return 0;
-      const requestResult = await pool.query(
-        'SELECT id FROM app_rental_requests WHERE request_id = $1',
-        [id],
-      );
-      const rentalRequestId = requestResult.rows[0]?.id;
-      if (!rentalRequestId) return 0;
-      let synchronized = 0;
-      for (const event of events) {
-        const sourceEventId = trim(event?.id);
-        if (!sourceEventId) continue;
-        await pool.query(
-          `INSERT INTO app_rental_request_events (
-             rental_request_id, event_type, actor_app_user_id, actor_firebase_uid,
-             event_payload, created_at, source_event_id, source_mode
-           ) VALUES ($1,$2,NULL,$3,$4::jsonb,COALESCE($5::timestamptz,NOW()),$6,'firestore-admin-import')
-           ON CONFLICT (source_event_id) WHERE source_event_id IS NOT NULL AND source_event_id <> ''
-           DO UPDATE SET
-             event_type = EXCLUDED.event_type,
-             actor_firebase_uid = EXCLUDED.actor_firebase_uid,
-             event_payload = EXCLUDED.event_payload,
-             created_at = EXCLUDED.created_at,
-             source_mode = EXCLUDED.source_mode`,
-          [
-            rentalRequestId,
-            trim(event.action) || 'legacy-admin-event',
-            trim(event.actorUid),
-            JSON.stringify({
-              action: trim(event.action),
-              previousStatus: trim(event.previousStatus),
-              nextStatus: trim(event.nextStatus),
-              previousMemo: String(event.previousMemo ?? ''),
-              nextMemo: String(event.nextMemo ?? ''),
-              actorUid: trim(event.actorUid),
-              actorAdminId: trim(event.actorAdminId),
-              actorName: trim(event.actorName),
-              detail: String(event.detail ?? ''),
-            }),
-            event.createdAt || null,
-            sourceEventId,
-          ],
-        );
-        synchronized += 1;
-      }
-      return synchronized;
-    },
-
     async listEvents(requestId, limit = 100) {
       const result = await pool.query(
         `SELECT event.id, event.event_type, event.actor_firebase_uid,
@@ -462,7 +292,7 @@ export const createAdminRentalRequestRepository = (pool) => {
       });
     },
 
-    async editRequest({ requestId, updates = {}, auditActor, allowNonOverlappingSameAssetRequests = false, beforeCommit }) {
+    async editRequest({ requestId, updates = {}, auditActor, allowNonOverlappingSameAssetRequests = false }) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -518,12 +348,11 @@ export const createAdminRentalRequestRepository = (pool) => {
             throw error;
           }
         }
-        if (typeof beforeCommit === 'function') await beforeCommit({ currentRequest: current, nextRequest, client });
         await client.query(
           `UPDATE app_rental_requests SET
              requester_team = $2, requester_name = $3, start_date = $4::date, due_date = $5::date,
              purpose = $6, admin_memo = $7,
-             firestore_mirror_status = 'synced', firestore_mirror_error = '', firestore_mirrored_at = NOW(),
+             firestore_mirror_status = 'retired', firestore_mirror_error = '', firestore_mirrored_at = NULL,
              source_updated_at = NOW(), source_synced_at = NOW(), updated_at = NOW()
            WHERE request_id = $1`,
           [requestId, nextRequest.requesterTeam, nextRequest.requesterName, nextRequest.startDate, nextRequest.dueDate, nextRequest.purpose, nextRequest.adminMemo],
@@ -561,7 +390,7 @@ export const createAdminRentalRequestRepository = (pool) => {
       }
     },
 
-    async saveMemo({ requestId, memo = '', auditActor, beforeCommit }) {
+    async saveMemo({ requestId, memo = '', auditActor }) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -583,10 +412,9 @@ export const createAdminRentalRequestRepository = (pool) => {
           return Object.freeze({ request: current, changed: false });
         }
         const nextRequest = Object.freeze({ ...current, adminMemo: nextMemo });
-        if (typeof beforeCommit === 'function') await beforeCommit({ currentRequest: current, nextRequest, client });
         await client.query(
           `UPDATE app_rental_requests SET admin_memo = $2,
-             firestore_mirror_status = 'synced', firestore_mirror_error = '', firestore_mirrored_at = NOW(),
+             firestore_mirror_status = 'retired', firestore_mirror_error = '', firestore_mirrored_at = NULL,
              source_updated_at = NOW(), source_synced_at = NOW(), updated_at = NOW()
            WHERE request_id = $1`,
           [requestId, nextMemo],
@@ -627,7 +455,6 @@ export const createAdminRentalRequestRepository = (pool) => {
       approved = false,
       allowNonOverlappingSameAssetRequests = false,
       relatedRequestUpdates = [],
-      beforeCommit,
       eventPayload = {},
     }) {
       const client = await pool.connect();
@@ -670,7 +497,6 @@ export const createAdminRentalRequestRepository = (pool) => {
             throw error;
           }
         }
-        if (typeof beforeCommit === 'function') await beforeCommit({ currentRequest: current, nextRequest: canonicalNext, client });
         await client.query(
           `UPDATE app_rental_requests SET
              start_date=$2::date, due_date=$3::date, purpose=$4, status=$5,
@@ -680,7 +506,7 @@ export const createAdminRentalRequestRepository = (pool) => {
              actual_return_date=$12, overdue_days_at_return=$13,
              overdue_penalty_pending=$14, overdue_penalty_batch_id=$15,
              source_mode='postgresql-authoritative-admin-user-action',
-             firestore_mirror_status='synced', firestore_mirror_error='', firestore_mirrored_at=NOW(),
+             firestore_mirror_status='retired', firestore_mirror_error='', firestore_mirrored_at=NULL,
              source_updated_at=NOW(), source_synced_at=NOW(), updated_at=NOW()
            WHERE request_id=$1`,
           [
@@ -734,7 +560,7 @@ export const createAdminRentalRequestRepository = (pool) => {
       } finally { client.release(); }
     },
 
-    async changeStatus({ requestId, nextStatus, auditActor, returnFields = {}, allowNonOverlappingSameAssetRequests = false, relatedRequestUpdates = [], beforeCommit, eventType = 'admin-status-changed', eventPayload = {}, clearUserActionRequest = false }) {
+    async changeStatus({ requestId, nextStatus, auditActor, returnFields = {}, allowNonOverlappingSameAssetRequests = false, relatedRequestUpdates = [], eventType = 'admin-status-changed', eventPayload = {}, clearUserActionRequest = false }) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -786,9 +612,6 @@ export const createAdminRentalRequestRepository = (pool) => {
           ...(returnFields || {}),
         });
 
-        if (typeof beforeCommit === 'function') {
-          await beforeCommit({ currentRequest: current, nextRequest, client });
-        }
 
         await client.query(
           `UPDATE app_rental_requests SET
@@ -799,9 +622,9 @@ export const createAdminRentalRequestRepository = (pool) => {
              overdue_penalty_pending = $6,
              overdue_penalty_batch_id = $7,
              user_action_request = CASE WHEN $8::boolean THEN NULL ELSE user_action_request END,
-             firestore_mirror_status = 'synced',
+             firestore_mirror_status = 'retired',
              firestore_mirror_error = '',
-             firestore_mirrored_at = NOW(),
+             firestore_mirrored_at = NULL,
              source_updated_at = NOW(),
              source_synced_at = NOW(),
              updated_at = NOW()

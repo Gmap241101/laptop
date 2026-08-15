@@ -15,48 +15,6 @@ const serviceError = (code, message, status = 400, details = {}) => {
   return error;
 };
 
-const docId = (document) => decodeURIComponent(trim(document?.name).split('/').at(-1) || '');
-const normalizeFirestoreConfig = (document, fallback) => ({
-  postsPerPage: normalizePageSize(document?.fields?.postsPerPage, fallback),
-  updatedAt: document?.fields?.updatedAt || document?.updateTime || null,
-});
-const normalizeFirestoreCategory = (document) => {
-  const fields = document?.fields || {};
-  const id = trim(fields.id) || docId(document);
-  const name = trim(fields.name);
-  if (!id || !name) return null;
-  return Object.freeze({
-    id,
-    name,
-    order: Math.trunc(Number(fields.order) || 0),
-    createdAt: fields.createdAt || document?.createTime || null,
-    updatedAt: fields.updatedAt || document?.updateTime || null,
-  });
-};
-const normalizeFirestorePost = (boardType, document) => {
-  const fields = document?.fields || {};
-  const id = trim(fields.id) || docId(document);
-  const title = trim(fields.title);
-  const categoryId = boardType === 'faq' ? trim(fields.categoryId) : '';
-  if (!id || !title || (boardType === 'faq' && !categoryId)) return null;
-  return Object.freeze({
-    id,
-    boardType,
-    categoryId,
-    title,
-    content: trim(fields.contentText || fields.content),
-    contentText: trim(fields.contentText || fields.content),
-    contentHtml: trim(fields.contentHtml),
-    contentFormat: trim(fields.contentFormat) || 'rich-html-v1',
-    isPinned: Boolean(fields.isPinned),
-    authorUid: trim(fields.authorUid),
-    authorName: trim(fields.authorName),
-    viewCount: boardType === 'notice' ? Math.max(0, Math.trunc(Number(fields.viewCount) || 0)) : 0,
-    createdAt: fields.createdAt || document?.createTime || null,
-    updatedAt: fields.updatedAt || document?.updateTime || null,
-  });
-};
-
 const normalizePostInput = (boardType, input, { id, isEditing, actorClerkUserId }) => {
   const title = trim(input?.title);
   const contentText = trim(input?.contentText || input?.content);
@@ -99,43 +57,26 @@ const mapRepositoryError = (error) => {
   throw serviceError(mapped[0], mapped[1], mapped[2], { postCount: Number(error?.postCount || 0) });
 };
 
-export const createBoardService = ({ repository, firestoreClient = null, writeMirrorEnabled = true }) => {
+export const createBoardService = ({ repository }) => {
   if (!repository) throw new TypeError('Board repository is required.');
-  const mirrorEnabled = Boolean(writeMirrorEnabled);
-  if (mirrorEnabled && !firestoreClient) throw new TypeError('Legacy board mirror client is required only when the retired mirror is explicitly enabled.');
-  const mirrorStatus = mirrorEnabled ? 'synced' : 'retired';
-  const noMirror = async () => Object.freeze({ retired: true, source: 'postgresql-only' });
-
   const verifyAdmin = async (identity) => {
     if (identity?.source !== 'clerk-postgresql') throw serviceError('admin_postgresql_identity_required', 'Clerk/PostgreSQL administrator identity is required.', 401);
     return Object.freeze({ uid: identity.uid, role: 'admin', source: 'postgresql-admin-registry' });
   };
 
-  const bootstrap = async (firebaseIdentity, actorClerkUserId = '') => {
-    const admin = await verifyAdmin(firebaseIdentity);
-    if (firebaseIdentity?.source === 'clerk-postgresql') {
-      return Object.freeze({
-        admin,
-        target: 'postgresql',
-        source: 'postgresql-existing',
-        skipped: true,
-        status: await repository.getStatus(),
-      });
-    }
-    const source = await firestoreClient.readBootstrap({ firebaseIdToken: firebaseIdentity.idToken });
-    const faqCategories = (source.faqCategories || []).map(normalizeFirestoreCategory).filter(Boolean);
-    const categoryIds = new Set(faqCategories.map((item) => item.id));
-    const noticePosts = (source.noticePosts || []).map((item) => normalizeFirestorePost('notice', item)).filter(Boolean);
-    const faqPosts = (source.faqPosts || []).map((item) => normalizeFirestorePost('faq', item)).filter((item) => item && categoryIds.has(item.categoryId));
-    const result = await repository.bootstrap({
-      noticeConfig: normalizeFirestoreConfig(source.noticeConfig, 10),
-      noticePosts,
-      faqConfig: normalizeFirestoreConfig(source.faqConfig, 10),
-      faqCategories,
-      faqPosts,
-      actorClerkUserId,
+  const bootstrap = async (identity) => {
+    const admin = await verifyAdmin(identity);
+    const status = await repository.getStatus();
+    return Object.freeze({
+      admin,
+      target: 'postgresql',
+      source: 'postgresql-existing',
+      skipped: true,
+      status,
+      noticeCount: Number(status?.noticeCount || 0),
+      faqCount: Number(status?.faqCount || 0),
+      faqCategoryCount: Number(status?.faqCategoryCount || 0),
     });
-    return Object.freeze({ admin, target: 'postgresql', ...result, status: await repository.getStatus() });
   };
 
   return Object.freeze({
@@ -159,141 +100,76 @@ export const createBoardService = ({ repository, firestoreClient = null, writeMi
     },
     bootstrap,
 
-    async saveNotice(firebaseIdentity, actorClerkUserId, input) {
-      const admin = await verifyAdmin(firebaseIdentity);
+    async saveNotice(identity, actorClerkUserId, input) {
+      const admin = await verifyAdmin(identity);
       const id = trim(input?.id) || `notice-${randomUUID().replaceAll('-', '')}`;
-      const isEditing = Boolean(trim(input?.id));
-      const post = normalizePostInput('notice', input, { id, isEditing, actorClerkUserId });
-      const source = mirrorEnabled && isEditing
-        ? await firestoreClient.getNoticePost({ postId: id, firebaseIdToken: firebaseIdentity.idToken })
-        : null;
-      if (mirrorEnabled && isEditing && !source) throw serviceError('notice_post_not_found', 'Notice post was not found in Firestore compatibility storage.', 404);
+      const post = normalizePostInput('notice', input, { id, isEditing: Boolean(trim(input?.id)), actorClerkUserId });
       try {
-        const result = await repository.saveNoticePostAuthoritative({
-          post,
-          beforeCommit: mirrorEnabled
-            ? ({ post: next }) => firestoreClient.mirrorNoticeSave({
-                post: next,
-                sourceUpdateTime: source?.updateTime || '',
-                firebaseIdToken: firebaseIdentity.idToken,
-              })
-            : noMirror,
-        });
-        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: mirrorStatus, post: result.post });
+        const result = await repository.saveNoticePostAuthoritative({ post });
+        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'retired', post: result.post });
       } catch (error) { return mapRepositoryError(error); }
     },
 
-    async deleteNotice(firebaseIdentity, postId) {
-      const admin = await verifyAdmin(firebaseIdentity);
-      const source = mirrorEnabled
-        ? await firestoreClient.getNoticePost({ postId, firebaseIdToken: firebaseIdentity.idToken })
-        : null;
-      if (mirrorEnabled && !source) throw serviceError('notice_post_not_found', 'Notice post was not found in Firestore compatibility storage.', 404);
+    async deleteNotice(identity, postId) {
+      const admin = await verifyAdmin(identity);
       try {
-        const result = await repository.deleteNoticePostAuthoritative({
-          postId,
-          beforeCommit: mirrorEnabled
-            ? () => firestoreClient.mirrorNoticeDelete({ postId, sourceUpdateTime: source.updateTime || '', firebaseIdToken: firebaseIdentity.idToken })
-            : noMirror,
-        });
-        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: mirrorStatus, deletedPost: result.deletedPost });
+        const result = await repository.deleteNoticePostAuthoritative({ postId });
+        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'retired', deletedPost: result.deletedPost });
       } catch (error) { return mapRepositoryError(error); }
     },
 
-    async saveFaq(firebaseIdentity, actorClerkUserId, input) {
-      const admin = await verifyAdmin(firebaseIdentity);
+    async saveFaq(identity, actorClerkUserId, input) {
+      const admin = await verifyAdmin(identity);
       const id = trim(input?.id) || `faq-${randomUUID().replaceAll('-', '')}`;
-      const isEditing = Boolean(trim(input?.id));
-      const post = normalizePostInput('faq', input, { id, isEditing, actorClerkUserId });
-      const source = mirrorEnabled && isEditing
-        ? await firestoreClient.getFaqPost({ postId: id, firebaseIdToken: firebaseIdentity.idToken })
-        : null;
-      if (mirrorEnabled && isEditing && !source) throw serviceError('faq_post_not_found', 'FAQ post was not found in Firestore compatibility storage.', 404);
+      const post = normalizePostInput('faq', input, { id, isEditing: Boolean(trim(input?.id)), actorClerkUserId });
       try {
-        const result = await repository.saveFaqPostAuthoritative({
-          post,
-          beforeCommit: mirrorEnabled
-            ? ({ post: next }) => firestoreClient.mirrorFaqSave({
-                post: next,
-                sourceUpdateTime: source?.updateTime || '',
-                firebaseIdToken: firebaseIdentity.idToken,
-              })
-            : noMirror,
-        });
-        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: mirrorStatus, post: result.post });
+        const result = await repository.saveFaqPostAuthoritative({ post });
+        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'retired', post: result.post });
       } catch (error) { return mapRepositoryError(error); }
     },
 
-    async deleteFaq(firebaseIdentity, postId) {
-      const admin = await verifyAdmin(firebaseIdentity);
-      const source = mirrorEnabled
-        ? await firestoreClient.getFaqPost({ postId, firebaseIdToken: firebaseIdentity.idToken })
-        : null;
-      if (mirrorEnabled && !source) throw serviceError('faq_post_not_found', 'FAQ post was not found in Firestore compatibility storage.', 404);
+    async deleteFaq(identity, postId) {
+      const admin = await verifyAdmin(identity);
       try {
-        const result = await repository.deleteFaqPostAuthoritative({
-          postId,
-          beforeCommit: mirrorEnabled
-            ? () => firestoreClient.mirrorFaqDelete({ postId, sourceUpdateTime: source.updateTime || '', firebaseIdToken: firebaseIdentity.idToken })
-            : noMirror,
-        });
-        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: mirrorStatus, deletedPost: result.deletedPost });
+        const result = await repository.deleteFaqPostAuthoritative({ postId });
+        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'retired', deletedPost: result.deletedPost });
       } catch (error) { return mapRepositoryError(error); }
     },
 
-    async saveConfig(firebaseIdentity, boardType, postsPerPage) {
-      const admin = await verifyAdmin(firebaseIdentity);
+    async saveConfig(identity, boardType, postsPerPage) {
+      const admin = await verifyAdmin(identity);
       const normalizedType = trim(boardType).toLowerCase();
       if (!['notice', 'faq'].includes(normalizedType)) throw serviceError('board_type_invalid', 'Unsupported board type.', 400);
-      const safePageSize = normalizePageSize(postsPerPage, 10);
       try {
         const result = await repository.saveConfigAuthoritative({
           boardType: normalizedType,
-          postsPerPage: safePageSize,
-          beforeCommit: mirrorEnabled
-            ? ({ config }) => firestoreClient.mirrorBoardConfig({ boardType: normalizedType, postsPerPage: config.postsPerPage, firebaseIdToken: firebaseIdentity.idToken })
-            : noMirror,
+          postsPerPage: normalizePageSize(postsPerPage, 10),
         });
-        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: mirrorStatus, config: result.config });
+        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'retired', config: result.config });
       } catch (error) { return mapRepositoryError(error); }
     },
 
-    async saveFaqCategory(firebaseIdentity, actorClerkUserId, input) {
-      const admin = await verifyAdmin(firebaseIdentity);
+    async saveFaqCategory(identity, actorClerkUserId, input) {
+      const admin = await verifyAdmin(identity);
       const name = trim(input?.name);
       if (!name) throw serviceError('faq_category_name_required', 'FAQ category name is required.', 400);
-      const id = trim(input?.id) || `faqcat-${randomUUID().replaceAll('-', '')}`;
-      const isEditing = Boolean(trim(input?.id));
-      const source = mirrorEnabled && isEditing
-        ? await firestoreClient.getFaqCategory({ categoryId: id, firebaseIdToken: firebaseIdentity.idToken })
-        : null;
-      if (mirrorEnabled && isEditing && !source) throw serviceError('faq_category_not_found', 'FAQ category was not found in Firestore compatibility storage.', 404);
-      const category = Object.freeze({ id, name, isEditing, actorClerkUserId: trim(actorClerkUserId) });
+      const category = Object.freeze({
+        id: trim(input?.id) || `faqcat-${randomUUID().replaceAll('-', '')}`,
+        name,
+        isEditing: Boolean(trim(input?.id)),
+        actorClerkUserId: trim(actorClerkUserId),
+      });
       try {
-        const result = await repository.saveFaqCategoryAuthoritative({
-          category,
-          beforeCommit: mirrorEnabled
-            ? ({ category: next }) => firestoreClient.mirrorFaqCategorySave({ category: next, sourceUpdateTime: source?.updateTime || '', firebaseIdToken: firebaseIdentity.idToken })
-            : noMirror,
-        });
-        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: mirrorStatus, category: result.category });
+        const result = await repository.saveFaqCategoryAuthoritative({ category });
+        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'retired', category: result.category });
       } catch (error) { return mapRepositoryError(error); }
     },
 
-    async deleteFaqCategory(firebaseIdentity, categoryId) {
-      const admin = await verifyAdmin(firebaseIdentity);
-      const source = mirrorEnabled
-        ? await firestoreClient.getFaqCategory({ categoryId, firebaseIdToken: firebaseIdentity.idToken })
-        : null;
-      if (mirrorEnabled && !source) throw serviceError('faq_category_not_found', 'FAQ category was not found in Firestore compatibility storage.', 404);
+    async deleteFaqCategory(identity, categoryId) {
+      const admin = await verifyAdmin(identity);
       try {
-        const result = await repository.deleteFaqCategoryAuthoritative({
-          categoryId,
-          beforeCommit: mirrorEnabled
-            ? () => firestoreClient.mirrorFaqCategoryDelete({ categoryId, sourceUpdateTime: source.updateTime || '', firebaseIdToken: firebaseIdentity.idToken })
-            : noMirror,
-        });
-        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: mirrorStatus, deletedCategory: result.deletedCategory });
+        const result = await repository.deleteFaqCategoryAuthoritative({ categoryId });
+        return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'retired', deletedCategory: result.deletedCategory });
       } catch (error) { return mapRepositoryError(error); }
     },
   });

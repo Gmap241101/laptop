@@ -27,6 +27,7 @@ const phase34 = readFileSync('server/migrations/025_phase34_hard_firebase_retire
 const phase34RentalConfigBootstrap = readFileSync('server/migrations/026_phase34_rental_config_postgresql_bootstrap.sql', 'utf8');
 const phase34AssetReferenceReconciliation = readFileSync('server/migrations/027_phase34_asset_reference_reconciliation.sql', 'utf8');
 const phase34CanonicalDataConsolidation = readFileSync('server/migrations/028_phase34_canonical_data_consolidation.sql', 'utf8');
+const phase34RetiredStorePhysicalRemoval = readFileSync('server/migrations/029_phase34_retired_store_physical_removal.sql', 'utf8');
 
 if (!/value\s+JSONB\s+NOT\s+NULL/i.test(phase2)) {
   throw new Error('app_runtime_metadata.value must remain JSONB NOT NULL.');
@@ -394,10 +395,56 @@ if (/^\s*(BEGIN|COMMIT)\s*;/im.test(phase34CanonicalDataConsolidation)) {
   throw new Error('Migration 028 must rely on the migration runner transaction and must not issue BEGIN/COMMIT itself.');
 }
 if (/DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?app_user_rental_restriction_shadows/i.test(phase34CanonicalDataConsolidation)) {
-  throw new Error('Migration 028 must retain app_user_rental_restriction_shadows because it is the current PostgreSQL restriction authority.');
+  throw new Error('Migration 028 must retain app_user_rental_restriction_shadows until migration 029 verifies and moves it into the canonical restriction table.');
 }
 if (/DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?app_user_firebase_links/i.test(phase34CanonicalDataConsolidation)) {
   throw new Error('Migration 028 must retain app_user_firebase_links compatibility identity keys.');
 }
 
-console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion + Phase 19 user-action lifecycle + Phase 20 asset-domain + Phase 21 member/restriction/admin identity authority + Phase 22 account recovery/admin Clerk auth + Phase 23 user Clerk auth/lifecycle + Phase 24 site content + Phase 25 policy/terms + Phase 26 notice/FAQ board authority + Phase 28 asset/board write mirror retirement + Phase 29 rental transaction PostgreSQL authority + runtime constraint hotfix + Phase 30 member status/restriction mirror retirement + Phase 31 member profile identity/recovery authority + Phase 32 account lifecycle PostgreSQL authority + Phase 34 hard Firebase retirement + PostgreSQL rental-config bootstrap + asset reference reconciliation + canonical data consolidation are type-safe)');
+
+for (const marker of [
+  "pg_advisory_xact_lock(hashtext('phase34-retired-store-physical-removal'))",
+  'CREATE TABLE IF NOT EXISTS app_rental_restrictions',
+  'INSERT INTO app_rental_restrictions',
+  'FROM app_user_rental_restriction_shadows',
+  "source_mode = 'postgresql-canonical'",
+  'legacy reservation snapshot guards remain without canonical rental requests',
+  'legacyRentalRestrictionRowsVerified',
+  "payload->'borrowers'",
+  'INSERT INTO app_member_directory_entries',
+  'legacyRentalConfigBorrowerRowsVerified',
+  "payload - 'assetCategories' - 'borrowers'",
+  "- 'signupTermsEnabled'",
+  "- 'signupTermsRequireReconsentOnChange'",
+  "- 'signupTermsApplyToExistingMembers'",
+  'DROP TABLE IF EXISTS app_user_member_shadows',
+  'DROP TABLE IF EXISTS app_user_rental_request_shadows',
+  'DROP TABLE IF EXISTS app_user_rental_request_item_shadows',
+  'DROP TABLE IF EXISTS app_user_rental_request_shadow_syncs',
+  'DROP TABLE IF EXISTS app_user_rental_restriction_shadows',
+  'DROP TABLE IF EXISTS app_asset_catalog_syncs',
+  'DROP TABLE IF EXISTS app_site_content_syncs',
+  'DROP TABLE IF EXISTS app_board_syncs',
+  'CREATE OR REPLACE VIEW app_asset_catalog_status',
+  'CREATE OR REPLACE VIEW app_board_status',
+  "DELETE FROM app_runtime_metadata WHERE key='phase30_member_accounts_full_bootstrap'",
+  'physicalDropCompleted',
+  'rentalConfigBorrowerCopyRemoved',
+  'rentalConfigDuplicateFieldsRemoved',
+  'signupTermsPolicyContentCopiesRemoved',
+]) {
+  if (!phase34RetiredStorePhysicalRemoval.includes(marker)) {
+    throw new Error(`Phase 34 retired-store physical-removal marker is missing: ${marker}`);
+  }
+}
+if (/^\s*(BEGIN|COMMIT)\s*;/im.test(phase34RetiredStorePhysicalRemoval)) {
+  throw new Error('Migration 029 must rely on the migration runner transaction and must not issue BEGIN/COMMIT itself.');
+}
+for (const protectedStore of ['app_user_firebase_links', 'app_user_identities', 'app_member_accounts', 'app_rental_requests']) {
+  const dropPattern = new RegExp(`DROP\\s+TABLE\\s+(?:IF\\s+EXISTS\\s+)?${protectedStore}`, 'i');
+  if (dropPattern.test(phase34RetiredStorePhysicalRemoval)) {
+    throw new Error(`Migration 029 must not drop canonical/identity store: ${protectedStore}`);
+  }
+}
+
+console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion + Phase 19 user-action lifecycle + Phase 20 asset-domain + Phase 21 member/restriction/admin identity authority + Phase 22 account recovery/admin Clerk auth + Phase 23 user Clerk auth/lifecycle + Phase 24 site content + Phase 25 policy/terms + Phase 26 notice/FAQ board authority + Phase 28 asset/board write mirror retirement + Phase 29 rental transaction PostgreSQL authority + runtime constraint hotfix + Phase 30 member status/restriction mirror retirement + Phase 31 member profile identity/recovery authority + Phase 32 account lifecycle PostgreSQL authority + Phase 34 hard Firebase retirement + PostgreSQL rental-config bootstrap + asset reference reconciliation + canonical data consolidation + retired-store physical removal are type-safe)');

@@ -108,7 +108,7 @@ export const createRentalRequestUserActionRepository = (pool) => {
       return Number(result.rows[0]?.count || 0);
     },
 
-    async editAuthoritative({ appUserId, firebaseUid, requestId, startDate, dueDate, purpose, allowNonOverlappingSameAssetRequests = false, firestoreMirrorStatus = 'synced', beforeCommit }) {
+    async editAuthoritative({ appUserId, firebaseUid, requestId, startDate, dueDate, purpose, allowNonOverlappingSameAssetRequests = false }) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -132,14 +132,13 @@ export const createRentalRequestUserActionRepository = (pool) => {
           throw error;
         }
         const next = Object.freeze({ ...current, startDate, dueDate, purpose, userActionRequest: null });
-        if (typeof beforeCommit === 'function') await beforeCommit({ currentRequest: current, nextRequest: next, client });
         await client.query(
           `UPDATE app_rental_requests SET start_date=$3::date, due_date=$4::date, purpose=$5,
              user_action_request=NULL, source_mode='postgresql-authoritative-user-action',
-             firestore_mirror_status=$6, firestore_mirror_error='', firestore_mirrored_at=CASE WHEN $6='synced' THEN NOW() ELSE NULL END,
+             firestore_mirror_status='retired', firestore_mirror_error='', firestore_mirrored_at=NULL,
              source_updated_at=NOW(), source_synced_at=NOW(), updated_at=NOW()
            WHERE request_id=$1 AND app_user_id=$2`,
-          [requestId, appUserId, startDate, dueDate, purpose, firestoreMirrorStatus],
+          [requestId, appUserId, startDate, dueDate, purpose],
         );
         await client.query(
           `UPDATE app_rental_asset_reservation_guards SET start_date=$2::date, due_date=$3::date,
@@ -160,7 +159,7 @@ export const createRentalRequestUserActionRepository = (pool) => {
       } finally { client.release(); }
     },
 
-    async cancelAuthoritative({ appUserId, firebaseUid, requestId, beforeCommit }) {
+    async cancelAuthoritative({ appUserId, firebaseUid, requestId }) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -169,7 +168,6 @@ export const createRentalRequestUserActionRepository = (pool) => {
           const error = new Error('invalid-direct-cancel-status'); error.code = 'invalid_direct_cancel_status'; throw error;
         }
         await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [current.laptopId]);
-        if (typeof beforeCommit === 'function') await beforeCommit({ currentRequest: current, client });
         await client.query('DELETE FROM app_rental_requests WHERE request_id=$1 AND app_user_id=$2', [requestId, appUserId]);
         await client.query('COMMIT');
         return Object.freeze({ deleted: true, request: current, firebaseUid });
@@ -179,18 +177,17 @@ export const createRentalRequestUserActionRepository = (pool) => {
       } finally { client.release(); }
     },
 
-    async submitManualExtension({ appUserId, firebaseUid, requestId, actionRequest, firestoreMirrorStatus = 'synced', beforeCommit }) {
+    async submitManualExtension({ appUserId, firebaseUid, requestId, actionRequest }) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
         const current = await lockOwned(client, appUserId, requestId);
-        if (typeof beforeCommit === 'function') await beforeCommit({ currentRequest: current, nextRequest: { ...current, userActionRequest: actionRequest }, client });
         await client.query(
           `UPDATE app_rental_requests SET user_action_request=$3::jsonb,
-             source_mode='postgresql-authoritative-user-action', firestore_mirror_status=$4,
-             firestore_mirror_error='', firestore_mirrored_at=CASE WHEN $4='synced' THEN NOW() ELSE NULL END, source_updated_at=NOW(), source_synced_at=NOW(), updated_at=NOW()
+             source_mode='postgresql-authoritative-user-action', firestore_mirror_status='retired',
+             firestore_mirror_error='', firestore_mirrored_at=NULL, source_updated_at=NOW(), source_synced_at=NOW(), updated_at=NOW()
            WHERE request_id=$1 AND app_user_id=$2`,
-          [requestId, appUserId, JSON.stringify(actionRequest), firestoreMirrorStatus],
+          [requestId, appUserId, JSON.stringify(actionRequest)],
         );
         await client.query(
           `INSERT INTO app_rental_request_events (rental_request_id,event_type,actor_app_user_id,actor_firebase_uid,event_payload,source_mode)
@@ -203,7 +200,7 @@ export const createRentalRequestUserActionRepository = (pool) => {
       } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
     },
 
-    async autoExtendAuthoritative({ appUserId, firebaseUid, requestId, dueDate, extensionCount, lastExtensionApprovedDate, nextExtensionRequestDate, extensionHistory, actionRequest, firestoreMirrorStatus = 'synced', beforeCommit }) {
+    async autoExtendAuthoritative({ appUserId, firebaseUid, requestId, dueDate, extensionCount, lastExtensionApprovedDate, nextExtensionRequestDate, extensionHistory, actionRequest }) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -221,15 +218,14 @@ export const createRentalRequestUserActionRepository = (pool) => {
           const error = new Error('rental-extension-period-conflict'); error.code = 'rental_extension_period_conflict'; error.blockingRequest = conflict.rows[0]; throw error;
         }
         const next = Object.freeze({ ...current, dueDate, extensionCount, lastExtensionApprovedDate, nextExtensionRequestDate, extensionHistory, userActionRequest: actionRequest });
-        if (typeof beforeCommit === 'function') await beforeCommit({ currentRequest: current, nextRequest: next, client });
         await client.query(
           `UPDATE app_rental_requests SET due_date=$3::date, extension_count=$4,
              last_extension_approved_date=$5, next_extension_request_date=$6,
              extension_history=$7::jsonb, user_action_request=$8::jsonb,
-             source_mode='postgresql-authoritative-user-action', firestore_mirror_status=$9, firestore_mirror_error='',
-             firestore_mirrored_at=CASE WHEN $9='synced' THEN NOW() ELSE NULL END, source_updated_at=NOW(), source_synced_at=NOW(), updated_at=NOW()
+             source_mode='postgresql-authoritative-user-action', firestore_mirror_status='retired', firestore_mirror_error='',
+             firestore_mirrored_at=NULL, source_updated_at=NOW(), source_synced_at=NOW(), updated_at=NOW()
            WHERE request_id=$1 AND app_user_id=$2`,
-          [requestId, appUserId, dueDate, extensionCount, lastExtensionApprovedDate, nextExtensionRequestDate, JSON.stringify(extensionHistory), JSON.stringify(actionRequest), firestoreMirrorStatus],
+          [requestId, appUserId, dueDate, extensionCount, lastExtensionApprovedDate, nextExtensionRequestDate, JSON.stringify(extensionHistory), JSON.stringify(actionRequest)],
         );
         await client.query(
           `UPDATE app_rental_asset_reservation_guards SET due_date=$2::date,

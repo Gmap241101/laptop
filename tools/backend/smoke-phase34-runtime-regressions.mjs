@@ -109,10 +109,10 @@ assert.match(siteContentRepositorySource, /footer_page_address_conflict/, 'Postg
 assert.match(siteContentServiceSource, /addressClaims/, 'site-content service must pass footer address claims into the transactional repository patch');
 assert.match(appSource, /addressClaims: body\?\.addressClaims/, 'administrator site-content PATCH must pass footer address uniqueness claims from the authenticated request');
 assert.match(siteContentRepositorySource, /const getAdminSiteContentCatalog = async/, 'PostgreSQL site-content repository must expose a lightweight administrator popup/footer catalog read');
-assert.match(siteContentRepositorySource, /document\.payload - 'content' - 'contentText' - 'contentHtml'/, 'administrator popup catalog SQL must strip rich-content bodies before they leave PostgreSQL');
-assert.match(siteContentRepositorySource, /document\.document_key LIKE 'footerPages\/%'[\s\S]*document\.payload - 'content' - 'contentText' - 'contentHtml'/, 'administrator footer page catalog SQL must strip rich-content bodies while preserving the common footer config');
-assert.match(siteContentRepositorySource, /document\.document_key LIKE 'popupPosts\/%'/, 'administrator popup catalog must exclude unrelated domain documents');
-assert.match(siteContentRepositorySource, /document\.document_key = 'siteFooter\/config' OR document\.document_key LIKE 'footerPages\/%'/, 'administrator footer catalog must include only common config and footer pages');
+assert.match(siteContentRepositorySource, /payload - 'content' - 'contentText' - 'contentHtml'/, 'administrator popup catalog SQL must strip rich-content bodies before they leave PostgreSQL');
+assert.match(siteContentRepositorySource, /document_key LIKE 'footerPages\/%'[\s\S]*payload - 'content' - 'contentText' - 'contentHtml'/, 'administrator footer page catalog SQL must strip rich-content bodies while preserving the common footer config');
+assert.match(siteContentRepositorySource, /document_key LIKE 'popupPosts\/%'/, 'administrator popup catalog must exclude unrelated domain documents');
+assert.match(siteContentRepositorySource, /document_key = 'siteFooter\/config' OR document_key LIKE 'footerPages\/%'/, 'administrator footer catalog must include only common config and footer pages');
 assert.match(siteContentServiceSource, /async getAdminSiteContentDocument\(domainValue, documentIdValue\)/, 'administrator popup/footer editors must hydrate one full content document on demand');
 assert.match(appSource, /adminSiteContentCatalogMatch = url\.pathname\.match\(\/\^\\\/api\\\/admin\\\/site-content-catalog/, 'administrator lightweight popup/footer catalog endpoint must be exposed');
 assert.match(appSource, /adminSiteContentDocumentMatch = url\.pathname\.match\(\/\^\\\/api\\\/admin\\\/site-content-catalog/, 'administrator popup/footer single-document content endpoint must be exposed');
@@ -254,7 +254,6 @@ assert.match(listFaqBlock, /jsonb_agg\(to_jsonb\(regular_posts\)/, 'FAQ list mus
 
 
 const repositoryState = {
-  sync: null,
   documents: [],
 };
 const fakePool = {
@@ -280,47 +279,15 @@ const fakePool = {
           });
           return { rowCount: 1, rows: [] };
         }
-        if (text.includes('INSERT INTO app_site_content_syncs')) {
-          repositoryState.sync = {
-            domain: params[0],
-            source_hash: params[1],
-            document_count: params[2],
-            source_mode: params[3],
-            synced_at: '2026-08-12T09:00:00.000Z',
-          };
-          return { rowCount: 1, rows: [] };
-        }
         throw new Error(`Unexpected transactional SQL in site content repository smoke: ${text}`);
       },
       release() {},
     };
   },
-  async query(sql, params = []) {
+  async query(sql) {
     const text = String(sql);
-    if (text.includes('FROM app_site_content_syncs sync') && text.includes('LEFT JOIN app_site_content_documents document')) {
-      if (!repositoryState.sync) return { rowCount: 0, rows: [] };
-      if (repositoryState.documents.length === 0) {
-        return {
-          rowCount: 1,
-          rows: [{
-            ...repositoryState.sync,
-            sync_domain: repositoryState.sync.domain,
-            sync_synced_at: repositoryState.sync.synced_at,
-            document_key: null,
-            document_synced_at: null,
-          }],
-        };
-      }
-      return {
-        rowCount: repositoryState.documents.length,
-        rows: repositoryState.documents.map((document) => ({
-          ...repositoryState.sync,
-          ...document,
-          sync_domain: repositoryState.sync.domain,
-          sync_synced_at: repositoryState.sync.synced_at,
-          document_synced_at: document.synced_at,
-        })),
-      };
+    if (text.includes('FROM app_site_content_documents') && text.includes('WHERE domain = $1')) {
+      return { rowCount: repositoryState.documents.length, rows: repositoryState.documents };
     }
     throw new Error(`Unexpected pool SQL in site content repository smoke: ${text}`);
   },
@@ -344,7 +311,8 @@ assert.equal(realReplaceResult.sourceMode, 'postgresql-admin-settings-patch');
 const repositorySource = fs.readFileSync(new URL('../../server/src/content/site-content-repository.mjs', import.meta.url), 'utf8');
 assert.equal(repositorySource.includes('this.getDomain('), false, 'site-content repository arrow functions must not call this.getDomain');
 assert.equal(repositorySource.includes('this.getRentalConfigBootstrapContext('), false, 'site-content repository arrow functions must not call this.getRentalConfigBootstrapContext');
-assert.match(repositorySource, /LEFT JOIN app_site_content_documents document/, 'site-content domain reads must fetch sync metadata and documents in one PostgreSQL round-trip');
+assert.match(repositorySource, /FROM app_site_content_documents[\s\S]*WHERE domain = \$1/, 'site-content domain reads must use canonical documents directly in one PostgreSQL round-trip');
+assert.equal(repositorySource.includes('app_site_content_syncs'), false, 'site-content runtime must not persist or read duplicate sync metadata');
 assert.equal(repositorySource.includes('const [syncResult, docsResult] = await Promise.all('), false, 'site-content domain reads must not spend two pool queries on one domain response');
 
 
@@ -364,7 +332,8 @@ assert.match(memberPolicyAppSource, /request\.method === 'POST' && url\.pathname
 const memberServiceSource = fs.readFileSync(new URL('../../server/src/members/member-authority-service.mjs', import.meta.url), 'utf8');
 const memberRepositorySource = fs.readFileSync(new URL('../../server/src/members/member-authority-repository.mjs', import.meta.url), 'utf8');
 assert.match(memberServiceSource, /replaceDirectoryEntries\(normalizedEntries, \{[\s\S]*teams,[\s\S]*settings,[\s\S]*actorClerkUserId: admin\.uid/, 'member-directory synchronization must forward organization config into the same PostgreSQL transaction');
-assert.match(memberRepositorySource, /phase31-member-directory[\s\S]*phase24-site-content:rental-config[\s\S]*UPDATE app_site_content_documents[\s\S]*rentalSystem\/publicConfig[\s\S]*app_site_content_syncs/, 'member-directory and public organization config writes must share one PostgreSQL transaction and refresh site-content metadata');
+assert.match(memberRepositorySource, /phase31-member-directory[\s\S]*phase24-site-content:rental-config[\s\S]*UPDATE app_site_content_documents[\s\S]*rentalSystem\/publicConfig/, 'member-directory and public organization config writes must share one PostgreSQL transaction');
+assert.equal(memberRepositorySource.includes('app_site_content_syncs'), false, 'member-directory writes must not recreate retired site-content sync metadata');
 assert.match(memberRepositorySource, /organizationConfigUpdated: shouldUpdateOrganizationConfig/, 'member-directory synchronization must report whether the public organization config joined the transaction');
 assert.match(memberServiceSource, /auditMemberDirectoryAdmin/, 'member authority service must own the PostgreSQL directory audit');
 assert.match(memberServiceSource, /restoreDirectoryMismatchAdmin/, 'member authority service must own PostgreSQL mismatch restoration');

@@ -85,10 +85,7 @@ const systemDataService = createSystemDataService({ repository: systemDataReposi
 const siteContentService = createSiteContentService({ repository: siteContentRepository });
 const assetRepository = createAssetRepository(pool);
 const boardRepository = createBoardRepository(pool);
-const boardService = createBoardService({
-  repository: boardRepository,
-  writeMirrorEnabled: !config.assetBoardWriteMirrorDisabled,
-});
+const boardService = createBoardService({ repository: boardRepository });
 const accountLifecycleService = createAccountLifecycleService({
   repository: accountLifecycleRepository,
   siteContentRepository,
@@ -111,20 +108,16 @@ const adminClerkAuthService = createAdminClerkAuthService({
       clerkClient,
     });
 const memberAuthorityService = createMemberAuthorityService({
-      repository: memberAuthorityRepository,
-      firebaseLinkRepository,
-      userRepository,
-          rentalRestrictionRepository,
-      siteContentRepository,
-      writeMirrorEnabled: !config.memberStatusRestrictionWriteMirrorDisabled,
-      profileWriteMirrorEnabled: !config.memberProfileWriteMirrorDisabled,
-      userFirebaseAuthCompatibilityDisabled: config.userFirebaseAuthCompatibilityDisabled,
-    });
+  repository: memberAuthorityRepository,
+  firebaseLinkRepository,
+  userRepository,
+  rentalRestrictionRepository,
+  siteContentRepository,
+});
 
 const rentalRestrictionService = createRentalRestrictionService({
   firebaseLinkRepository,
   rentalRestrictionRepository,
-  firebaseCompatibilityRequired: !config.userFirebaseAuthCompatibilityDisabled,
 });
 const rentalRequestRepository = createRentalRequestRepository(pool);
 const adminRentalRequestRepository = createAdminRentalRequestRepository(pool);
@@ -144,11 +137,8 @@ const rentalRequestWriteService = createRentalRequestWriteService({
   userRepository,
   firebaseLinkRepository,
   memberRepository: memberAuthorityRepository,
-  rentalRestrictionService,
-  rentalRequestService,
   rentalRequestWriteRepository,
   postgresSource: rentalPostgresqlSource,
-  writeMirrorEnabled: !config.rentalRequestWriteMirrorDisabled,
 });
 const rentalRequestUserActionRepository = createRentalRequestUserActionRepository(pool);
 const rentalRequestUserActionService = createRentalRequestUserActionService({
@@ -159,13 +149,11 @@ const rentalRequestUserActionService = createRentalRequestUserActionService({
   rentalRequestService,
   repository: rentalRequestUserActionRepository,
   postgresSource: rentalPostgresqlSource,
-  writeMirrorEnabled: !config.rentalRequestWriteMirrorDisabled,
 });
 const adminRentalRequestService = createAdminRentalRequestService({
   repository: adminRentalRequestRepository,
   restrictionAuthorityRepository: memberAuthorityRepository,
   postgresSource: rentalPostgresqlSource,
-  writeMirrorEnabled: !config.rentalRequestWriteMirrorDisabled,
 });
 const assetService = createAssetService({
   repository: assetRepository,

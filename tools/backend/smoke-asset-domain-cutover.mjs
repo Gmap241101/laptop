@@ -22,7 +22,6 @@ const repository = {
     calls.push(['create', args]);
     const next = { ...args.asset, assetNoNormalized: String(args.asset.assetNo).toLowerCase(), status: args.asset.baseStatus, currentRequestId: null, reservations: [] };
     catalog.assets = [...catalog.assets, next];
-    await args.beforeCommit({ asset: next, catalog });
     return { asset: next, catalog: structuredClone(catalog) };
   },
   async editAuthoritative(args) {
@@ -30,27 +29,23 @@ const repository = {
     const previousAsset = catalog.assets.find((asset) => asset.id === args.assetId);
     const asset = { ...previousAsset, ...args.patch, id: args.assetId, assetNoNormalized: String(args.patch.assetNo).toLowerCase() };
     catalog.assets = catalog.assets.map((item) => item.id === args.assetId ? asset : item);
-    await args.beforeCommit({ previousAsset, asset, catalog });
     return { asset, catalog: structuredClone(catalog) };
   },
   async deleteAuthoritative(args) {
     calls.push(['delete', args]);
     const previousAsset = catalog.assets.find((asset) => asset.id === args.assetId);
     catalog.assets = catalog.assets.filter((asset) => asset.id !== args.assetId);
-    await args.beforeCommit({ previousAsset, catalog });
     return { deletedAsset: previousAsset, catalog: structuredClone(catalog) };
   },
   async bulkCreateAuthoritative(args) {
     calls.push(['bulk', args]);
     const assets = args.assets.map((asset) => ({ ...asset, assetNoNormalized: String(asset.assetNo).toLowerCase(), status: asset.baseStatus, currentRequestId: null, reservations: [] }));
     catalog.assets = [...catalog.assets, ...assets];
-    await args.beforeCommit({ assets, catalog });
     return { assets, duplicateAssetNumbers: [], invalidCategories: [], catalog: structuredClone(catalog) };
   },
   async saveCategoriesAuthoritative(args) {
     calls.push(['categories', args]);
     catalog.categories = [...args.categories];
-    await args.beforeCommit({ catalog });
     return { catalog: structuredClone(catalog) };
   },
 };

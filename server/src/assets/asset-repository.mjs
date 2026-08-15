@@ -57,7 +57,7 @@ const readCatalog = async (queryable, referenceDate) => {
                       WHERE active = TRUE
                       ORDER BY laptop_id, start_date, request_id`),
     queryable.query(`SELECT source_asset_count, source_category_count, source_hash, source_mode, synced_at
-                       FROM app_asset_catalog_syncs WHERE scope='main'`),
+                       FROM app_asset_catalog_status WHERE scope='main'`),
   ]);
   const reservationsByAsset = new Map();
   const availability = reservationResult.rows.map((row) => ({
@@ -119,28 +119,18 @@ const hasActiveReservation = async (client, assetId) => {
   return result.rows[0] || null;
 };
 
-const refreshCatalogMetadata = async (client, sourceMode = 'postgresql-authoritative-live') => {
+const refreshCatalogMetadata = async (client) => {
   const counts = await client.query(`
     SELECT
       (SELECT COUNT(*) FROM app_rental_assets)::int AS assets,
       (SELECT COUNT(*) FROM app_asset_categories)::int AS categories
   `);
-  const assetCount = Number(counts.rows[0]?.assets || 0);
-  const categoryCount = Number(counts.rows[0]?.categories || 0);
-  await client.query(
-    `INSERT INTO app_asset_catalog_syncs (
-       scope, source_asset_count, source_category_count, source_hash, source_mode, synced_at, updated_at
-     ) VALUES ('main',$1,$2,'postgresql-live',$3,NOW(),NOW())
-     ON CONFLICT (scope) DO UPDATE SET
-       source_asset_count=EXCLUDED.source_asset_count,
-       source_category_count=EXCLUDED.source_category_count,
-       source_hash=EXCLUDED.source_hash,
-       source_mode=EXCLUDED.source_mode,
-       synced_at=NOW(), updated_at=NOW()`,
-    [assetCount, categoryCount, sourceMode],
-  );
-  return Object.freeze({ assetCount, categoryCount });
+  return Object.freeze({
+    assetCount: Number(counts.rows[0]?.assets || 0),
+    categoryCount: Number(counts.rows[0]?.categories || 0),
+  });
 };
+
 
 export const createAssetRepository = (pool) => {
   if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') {
@@ -152,82 +142,7 @@ export const createAssetRepository = (pool) => {
       return readCatalog(pool, referenceDate);
     },
 
-    async bootstrap({ categories, assets, sourceHash = '' }) {
-      const client = await pool.connect();
-      try {
-        await client.query('BEGIN');
-        await client.query(`SELECT pg_advisory_xact_lock(hashtext('phase20-asset-bootstrap'))`);
-        const normalizedCategories = [...new Set((categories || []).map(trim).filter(Boolean))];
-        for (let index = 0; index < normalizedCategories.length; index += 1) {
-          const name = normalizedCategories[index];
-          await client.query(
-            `INSERT INTO app_asset_categories (name, normalized_name, sort_order, source_mode, updated_at)
-             VALUES ($1,$2,$3,'firestore-imported-legacy',NOW())
-             ON CONFLICT (normalized_name) DO UPDATE SET name=EXCLUDED.name, sort_order=EXCLUDED.sort_order, updated_at=NOW()`,
-            [name, lower(name), index],
-          );
-        }
-        const sourceIds = [];
-        for (const asset of assets || []) {
-          const category = await ensureCategory(client, asset.category);
-          sourceIds.push(trim(asset.id));
-          await client.query(
-            `INSERT INTO app_rental_assets (
-               asset_id, category_id, asset_no, asset_no_normalized, serial_no, model,
-               manufacture_date, photo, note, base_status, source_mode,
-               source_created_at, source_updated_at, source_synced_at, updated_at
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'firestore-imported-legacy',$11,$12,NOW(),NOW())
-             ON CONFLICT (asset_id) DO UPDATE SET
-               category_id=EXCLUDED.category_id,
-               asset_no=EXCLUDED.asset_no,
-               asset_no_normalized=EXCLUDED.asset_no_normalized,
-               serial_no=EXCLUDED.serial_no,
-               model=EXCLUDED.model,
-               manufacture_date=EXCLUDED.manufacture_date,
-               photo=EXCLUDED.photo,
-               note=EXCLUDED.note,
-               base_status=EXCLUDED.base_status,
-               source_updated_at=EXCLUDED.source_updated_at,
-               source_synced_at=NOW(),
-               updated_at=NOW()`,
-            [
-              trim(asset.id), category.id, trim(asset.assetNo), lower(asset.assetNo), trim(asset.serialNo),
-              trim(asset.model), trim(asset.manufactureDate), trim(asset.photo), trim(asset.note),
-              asset.baseStatus === '대여불가' || asset.status === '대여불가' ? '대여불가' : '대여가능',
-              asset.createdAt || null, asset.updatedAt || null,
-            ],
-          );
-        }
-        if (sourceIds.length > 0) {
-          await client.query(`DELETE FROM app_rental_assets WHERE NOT (asset_id = ANY($1::text[]))`, [sourceIds]);
-        } else {
-          await client.query(`DELETE FROM app_rental_assets`);
-        }
-        await client.query(
-          `DELETE FROM app_asset_categories category
-            WHERE NOT EXISTS (SELECT 1 FROM app_rental_assets asset WHERE asset.category_id=category.id)
-              AND NOT (category.normalized_name = ANY($1::text[]))`,
-          [normalizedCategories.map(lower)],
-        );
-        await client.query(
-          `INSERT INTO app_asset_catalog_syncs (scope, source_asset_count, source_category_count, source_hash, source_mode, synced_at, updated_at)
-           VALUES ('main',$1,$2,$3,'firestore-admin-bootstrap',NOW(),NOW())
-           ON CONFLICT (scope) DO UPDATE SET source_asset_count=EXCLUDED.source_asset_count,
-             source_category_count=EXCLUDED.source_category_count, source_hash=EXCLUDED.source_hash,
-             source_mode=EXCLUDED.source_mode, synced_at=NOW(), updated_at=NOW()`,
-          [sourceIds.length, normalizedCategories.length, sourceHash],
-        );
-        await client.query('COMMIT');
-        return { assetCount: sourceIds.length, categoryCount: normalizedCategories.length };
-      } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-      } finally {
-        client.release();
-      }
-    },
-
-    async createAuthoritative({ asset, referenceDate, beforeCommit }) {
+    async createAuthoritative({ asset, referenceDate }) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -244,9 +159,8 @@ export const createAssetRepository = (pool) => {
         );
         await refreshCatalogMetadata(client);
         const catalog = await readCatalog(client, referenceDate);
-        const mirrorResult = await beforeCommit({ asset: catalog.assets.find((item) => item.id === asset.id), catalog });
         await client.query('COMMIT');
-        return { asset: catalog.assets.find((item) => item.id === asset.id), catalog, mirrorResult };
+        return { asset: catalog.assets.find((item) => item.id === asset.id), catalog };
       } catch (error) {
         await client.query('ROLLBACK');
         if (error?.code === '23505') throw repositoryError('duplicate_asset_number', 'Asset number already exists.');
@@ -254,7 +168,7 @@ export const createAssetRepository = (pool) => {
       } finally { client.release(); }
     },
 
-    async editAuthoritative({ assetId, patch, referenceDate, beforeCommit }) {
+    async editAuthoritative({ assetId, patch, referenceDate }) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -284,9 +198,8 @@ export const createAssetRepository = (pool) => {
         await refreshCatalogMetadata(client);
         const catalog = await readCatalog(client, referenceDate);
         const next = catalog.assets.find((item) => item.id === assetId);
-        const mirrorResult = await beforeCommit({ previousAsset: current, asset: next, catalog });
         await client.query('COMMIT');
-        return { asset: next, catalog, mirrorResult };
+        return { asset: next, catalog };
       } catch (error) {
         await client.query('ROLLBACK');
         if (error?.code === '23505') throw repositoryError('duplicate_asset_number', 'Asset number already exists.');
@@ -294,7 +207,7 @@ export const createAssetRepository = (pool) => {
       } finally { client.release(); }
     },
 
-    async deleteAuthoritative({ assetId, referenceDate, beforeCommit }) {
+    async deleteAuthoritative({ assetId, referenceDate }) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -311,16 +224,15 @@ export const createAssetRepository = (pool) => {
         await client.query(`DELETE FROM app_rental_assets WHERE asset_id=$1`, [assetId]);
         await refreshCatalogMetadata(client);
         const catalog = await readCatalog(client, referenceDate);
-        const mirrorResult = await beforeCommit({ previousAsset: current, catalog });
         await client.query('COMMIT');
-        return { deletedAsset: current, catalog, mirrorResult };
+        return { deletedAsset: current, catalog };
       } catch (error) {
         await client.query('ROLLBACK');
         throw error;
       } finally { client.release(); }
     },
 
-    async bulkCreateAuthoritative({ assets, referenceDate, beforeCommit }) {
+    async bulkCreateAuthoritative({ assets, referenceDate }) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -356,16 +268,15 @@ export const createAssetRepository = (pool) => {
         await refreshCatalogMetadata(client);
         const catalog = await readCatalog(client, referenceDate);
         const createdAssets = catalog.assets.filter((asset) => accepted.includes(asset.id));
-        const mirrorResult = await beforeCommit({ assets: createdAssets, catalog });
         await client.query('COMMIT');
-        return { assets: createdAssets, catalog, duplicateAssetNumbers, invalidCategories, mirrorResult };
+        return { assets: createdAssets, catalog, duplicateAssetNumbers, invalidCategories };
       } catch (error) {
         await client.query('ROLLBACK');
         throw error;
       } finally { client.release(); }
     },
 
-    async saveCategoriesAuthoritative({ categories, renameMap = {}, referenceDate, beforeCommit }) {
+    async saveCategoriesAuthoritative({ categories, renameMap = {}, referenceDate }) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -416,9 +327,8 @@ export const createAssetRepository = (pool) => {
         await client.query(`DELETE FROM app_asset_categories WHERE NOT (normalized_name = ANY($1::text[]))`, [finalNormalized]);
         await refreshCatalogMetadata(client);
         const catalog = await readCatalog(client, referenceDate);
-        const mirrorResult = await beforeCommit({ catalog });
         await client.query('COMMIT');
-        return { catalog, mirrorResult };
+        return { catalog };
       } catch (error) {
         await client.query('ROLLBACK');
         throw error;

@@ -96,7 +96,6 @@ export const createAssetService = ({ repository }) => {
     return sanitizeCatalog(catalog);
   };
 
-  const noExternalMirror = async () => Object.freeze({ retired: true, source: 'postgresql-only' });
 
   return Object.freeze({
     async getPublicCatalog() {
@@ -114,7 +113,7 @@ export const createAssetService = ({ repository }) => {
       const draft = baseAssetPayload(input);
       const asset = Object.freeze({ id: `NB-${randomUUID().replaceAll('-', '')}`, ...draft });
       try {
-        const result = await repository.createAuthoritative({ asset, referenceDate: koreaToday(), beforeCommit: noExternalMirror });
+        const result = await repository.createAuthoritative({ asset, referenceDate: koreaToday() });
         return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'retired', asset: result.asset, catalog: sanitizeCatalog(result.catalog) });
       } catch (error) { return mapRepositoryError(error); }
     },
@@ -123,7 +122,7 @@ export const createAssetService = ({ repository }) => {
       const admin = await verifyAdmin(adminIdentity);
       const patch = baseAssetPayload(input);
       try {
-        const result = await repository.editAuthoritative({ assetId: trim(assetId), patch, referenceDate: koreaToday(), beforeCommit: noExternalMirror });
+        const result = await repository.editAuthoritative({ assetId: trim(assetId), patch, referenceDate: koreaToday() });
         return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'retired', asset: result.asset, catalog: sanitizeCatalog(result.catalog) });
       } catch (error) { return mapRepositoryError(error); }
     },
@@ -131,7 +130,7 @@ export const createAssetService = ({ repository }) => {
     async delete(adminIdentity, assetId) {
       const admin = await verifyAdmin(adminIdentity);
       try {
-        const result = await repository.deleteAuthoritative({ assetId: trim(assetId), referenceDate: koreaToday(), beforeCommit: noExternalMirror });
+        const result = await repository.deleteAuthoritative({ assetId: trim(assetId), referenceDate: koreaToday() });
         return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'retired', deletedAsset: result.deletedAsset, catalog: sanitizeCatalog(result.catalog) });
       } catch (error) { return mapRepositoryError(error); }
     },
@@ -141,7 +140,7 @@ export const createAssetService = ({ repository }) => {
       const drafts = (Array.isArray(inputs) ? inputs : []).slice(0, 200).map((input) => ({ id: `NB-UP-${randomUUID().replaceAll('-', '')}`, ...baseAssetPayload(input) }));
       if (!drafts.length) throw serviceError('asset-bulk-empty', 'Bulk asset list is empty.', 400);
       try {
-        const result = await repository.bulkCreateAuthoritative({ assets: drafts, referenceDate: koreaToday(), beforeCommit: noExternalMirror });
+        const result = await repository.bulkCreateAuthoritative({ assets: drafts, referenceDate: koreaToday() });
         return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'retired', assets: result.assets, duplicateAssetNumbers: result.duplicateAssetNumbers, invalidCategories: result.invalidCategories, catalog: sanitizeCatalog(result.catalog) });
       } catch (error) { return mapRepositoryError(error); }
     },
@@ -151,7 +150,7 @@ export const createAssetService = ({ repository }) => {
       const categories = (input?.categories || []).map(trim).filter(Boolean);
       if (!categories.length) throw serviceError('asset-categories-empty', 'At least one asset category is required.', 400);
       try {
-        const result = await repository.saveCategoriesAuthoritative({ categories, renameMap: input?.renameMap || {}, referenceDate: koreaToday(), beforeCommit: noExternalMirror });
+        const result = await repository.saveCategoriesAuthoritative({ categories, renameMap: input?.renameMap || {}, referenceDate: koreaToday() });
         return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'retired', catalog: sanitizeCatalog(result.catalog) });
       } catch (error) { return mapRepositoryError(error); }
     },

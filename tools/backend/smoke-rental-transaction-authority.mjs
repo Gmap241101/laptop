@@ -149,7 +149,7 @@ const created = await writeService.createCurrent('clerk-user', firebaseIdentity,
 assert.equal(created.authority, 'postgresql');
 assert.equal(created.transactionSource, 'postgresql');
 assert.equal(created.firestoreMirror, 'retired');
-assert.deepEqual(createArgs.sourceReservations, []);
+assert.equal(Object.hasOwn(createArgs, 'sourceReservations'), false, 'Phase 34 canonical writes must not pass legacy reservation snapshots into PostgreSQL.');
 
 let editMirrorStatus = '';
 const userActionRepository = {

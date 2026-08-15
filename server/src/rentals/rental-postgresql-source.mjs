@@ -55,7 +55,7 @@ export const createRentalPostgresqlSource = ({
     if (!uid) return null;
     const shadow = await rentalRestrictionRepository.findByFirebaseUid(uid);
     if (!shadow?.exists) return null;
-    return asDocument(`rentalRestrictions/${uid}`, shadow.restriction || {});
+    return asDocument(`postgresql/app_rental_restrictions/${uid}`, shadow.restriction || {});
   };
 
   return Object.freeze({

@@ -100,94 +100,6 @@ export const createMemberAuthorityRepository = (pool) => {
     },
 
 
-    async getFullBootstrapState() {
-      const result = await pool.query(
-        `SELECT value FROM app_runtime_metadata WHERE key = 'phase30_member_accounts_full_bootstrap' LIMIT 1`,
-      );
-      const value = result.rows[0]?.value;
-      return value && typeof value === 'object' ? value : null;
-    },
-
-    async bootstrapMemberAccounts(accounts = []) {
-      const sourceAccounts = Array.isArray(accounts) ? accounts : [];
-      return withTransaction(async (client) => {
-        let upsertedCount = 0;
-        for (const account of sourceAccounts) {
-          const firebaseUid = String(account?.firebaseUid || account?.uid || '').trim();
-          if (!firebaseUid) continue;
-          const linkResult = await client.query(
-            `SELECT app_user_id FROM app_user_firebase_links WHERE firebase_uid=$1 LIMIT 1`,
-            [firebaseUid],
-          );
-          const appUserId = linkResult.rows[0]?.app_user_id || null;
-          const sourceHash = hashPayload(memberProjection({ ...account, uid: firebaseUid }));
-          const result = await client.query(
-            `INSERT INTO app_member_accounts (
-               firebase_uid, app_user_id, email, masked_email, name, team, phone, status,
-               directory_member_id, directory_verified_version, profile_required_reason,
-               rejoined_account, terms_consent_revision, terms_consent_policy_version,
-               identity_key, recovery_key, previous_account_uids, source_hash,
-               authority_mode, mirror_state, source_updated_at, synced_at
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18,
-                       'firestore-bootstrap','synced',$19::timestamptz,NOW())
-             ON CONFLICT (firebase_uid) DO UPDATE SET
-               app_user_id=COALESCE(app_member_accounts.app_user_id,EXCLUDED.app_user_id),
-               email=EXCLUDED.email, masked_email=EXCLUDED.masked_email, name=EXCLUDED.name,
-               team=EXCLUDED.team, phone=EXCLUDED.phone, status=EXCLUDED.status,
-               directory_member_id=EXCLUDED.directory_member_id,
-               directory_verified_version=EXCLUDED.directory_verified_version,
-               profile_required_reason=EXCLUDED.profile_required_reason,
-               rejoined_account=EXCLUDED.rejoined_account,
-               terms_consent_revision=EXCLUDED.terms_consent_revision,
-               terms_consent_policy_version=EXCLUDED.terms_consent_policy_version,
-               identity_key=EXCLUDED.identity_key, recovery_key=EXCLUDED.recovery_key,
-               previous_account_uids=EXCLUDED.previous_account_uids,
-               source_hash=EXCLUDED.source_hash, source_updated_at=EXCLUDED.source_updated_at,
-               synced_at=NOW(), updated_at=NOW()
-             WHERE app_member_accounts.authority_mode <> 'postgresql-authoritative'
-             RETURNING firebase_uid`,
-            [
-              firebaseUid, appUserId, account?.email || '', account?.maskedEmail || '',
-              account?.name || '', account?.team || '', account?.phone || '', account?.status || '',
-              account?.directoryMemberId || '', Number(account?.directoryVerifiedVersion || 0),
-              account?.profileRequiredReason || '', Boolean(account?.rejoinedAccount),
-              Number(account?.termsConsentRevision || 0), Number(account?.termsConsentPolicyVersion || 0),
-              account?.identityKey || '', account?.recoveryKey || '',
-              JSON.stringify(Array.isArray(account?.previousAccountUids) ? account.previousAccountUids : []),
-              sourceHash, account?.sourceUpdatedAt || null,
-            ],
-          );
-          if (result.rows.length) upsertedCount += 1;
-        }
-        const totalResult = await client.query(`SELECT COUNT(*)::bigint AS count FROM app_member_accounts`);
-        const totalCount = Number(totalResult.rows[0]?.count || 0);
-        if (totalCount < sourceAccounts.length) {
-          const error = new Error('PostgreSQL member bootstrap did not retain the full Firestore userAccounts set.');
-          error.code = 'member_full_bootstrap_incomplete';
-          error.sourceCount = sourceAccounts.length;
-          error.totalCount = totalCount;
-          throw error;
-        }
-        const completedAt = new Date().toISOString();
-        const state = {
-          completed: true,
-          source: 'firestore-userAccounts',
-          target: 'postgresql',
-          sourceCount: sourceAccounts.length,
-          upsertedCount,
-          totalCount,
-          completedAt,
-        };
-        await client.query(
-          `INSERT INTO app_runtime_metadata (key,value,updated_at)
-           VALUES ('phase30_member_accounts_full_bootstrap',$1::jsonb,NOW())
-           ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()`,
-          [JSON.stringify(state)],
-        );
-        return Object.freeze(state);
-      });
-    },
-
     async getDirectoryBootstrapState() {
       const result = await pool.query(
         `SELECT value FROM app_runtime_metadata WHERE key = 'phase31_member_directory_bootstrap' LIMIT 1`,
@@ -276,33 +188,6 @@ export const createMemberAuthorityRepository = (pool) => {
                     updated_at=NOW()
               WHERE domain='rental-config' AND document_key='rentalSystem/publicConfig'`,
             [JSON.stringify(nextPublicConfig)],
-          );
-          const docsResult = await client.query(
-            `SELECT document_key, payload, enabled, sort_order, source_updated_at
-               FROM app_site_content_documents
-              WHERE domain='rental-config'
-              ORDER BY sort_order NULLS LAST, document_key`,
-          );
-          const normalizedDocuments = docsResult.rows.map((row) => ({
-            key: row.document_key,
-            payload: row.payload || {},
-            enabled: row.enabled,
-            sortOrder: row.sort_order,
-            sourceUpdatedAt: row.source_updated_at,
-          }));
-          const sourceHash = hashPayload(normalizedDocuments);
-          await client.query(
-            `INSERT INTO app_site_content_syncs
-               (domain, source_hash, document_count, source_mode, last_actor_clerk_user_id, synced_at, updated_at)
-             VALUES ('rental-config',$1,$2,'postgresql-admin-member-directory',$3,NOW(),NOW())
-             ON CONFLICT (domain) DO UPDATE SET
-               source_hash=EXCLUDED.source_hash,
-               document_count=EXCLUDED.document_count,
-               source_mode=EXCLUDED.source_mode,
-               last_actor_clerk_user_id=EXCLUDED.last_actor_clerk_user_id,
-               synced_at=NOW(),
-               updated_at=NOW()`,
-            [sourceHash, normalizedDocuments.length, String(actorClerkUserId || '')],
           );
         }
 
@@ -531,17 +416,17 @@ export const createMemberAuthorityRepository = (pool) => {
         );
         if (nextRestriction) {
           await client.query(
-            `INSERT INTO app_user_rental_restriction_shadows (
+            `INSERT INTO app_rental_restrictions (
                firebase_uid, app_user_id, restriction_exists, restriction_payload, source_document_path,
                source_updated_at, source_hash, synced_at, authority_mode, mirror_state, last_mutation_id, authoritative_updated_at
              ) VALUES ($1,$2,true,$3::jsonb,$4,NOW(),$5,NOW(),'postgresql-authoritative','pending',$6,NOW())
              ON CONFLICT (firebase_uid) DO UPDATE SET
-               app_user_id=COALESCE(EXCLUDED.app_user_id,app_user_rental_restriction_shadows.app_user_id),
+               app_user_id=COALESCE(EXCLUDED.app_user_id,app_rental_restrictions.app_user_id),
                restriction_exists=true, restriction_payload=EXCLUDED.restriction_payload,
                source_document_path=EXCLUDED.source_document_path, source_updated_at=NOW(), source_hash=EXCLUDED.source_hash,
                synced_at=NOW(), authority_mode='postgresql-authoritative', mirror_state='pending',
                last_mutation_id=EXCLUDED.last_mutation_id, authoritative_updated_at=NOW(), updated_at=NOW()`,
-            [firebaseUid, appUserId, JSON.stringify(nextRestriction), `rentalRestrictions/${firebaseUid}`, hashPayload(nextRestriction), mutationId],
+            [firebaseUid, appUserId, JSON.stringify(nextRestriction), `postgresql/app_rental_restrictions/${firebaseUid}`, hashPayload(nextRestriction), mutationId],
           );
         }
         if (typeof beforeMirror === 'function') await beforeMirror({ client, mutationId });
@@ -549,7 +434,7 @@ export const createMemberAuthorityRepository = (pool) => {
         await client.query(`UPDATE app_member_accounts SET mirror_state=$3, synced_at=NOW(), updated_at=NOW() WHERE firebase_uid=$1 AND last_mutation_id=$2`, [firebaseUid, mutationId, finalMirrorState]);
         if (nextRestriction) {
           await client.query(
-            `UPDATE app_user_rental_restriction_shadows SET mirror_state=$3, synced_at=NOW(), updated_at=NOW() WHERE firebase_uid=$1 AND last_mutation_id=$2`,
+            `UPDATE app_rental_restrictions SET mirror_state=$3, synced_at=NOW(), updated_at=NOW() WHERE firebase_uid=$1 AND last_mutation_id=$2`,
             [firebaseUid, mutationId, finalMirrorState],
           );
         }
@@ -561,18 +446,18 @@ export const createMemberAuthorityRepository = (pool) => {
     async upsertRestrictionAuthoritative({ firebaseUid, appUserId = null, restriction, mutationId = '', mirrorState = 'synced' }) {
       const payload = restriction || {};
       const result = await pool.query(
-        `INSERT INTO app_user_rental_restriction_shadows (
+        `INSERT INTO app_rental_restrictions (
            firebase_uid, app_user_id, restriction_exists, restriction_payload, source_document_path,
            source_updated_at, source_hash, synced_at, authority_mode, mirror_state, last_mutation_id, authoritative_updated_at
          ) VALUES ($1,$2,true,$3::jsonb,$4,NOW(),$5,NOW(),'postgresql-authoritative',$7,$6,NOW())
          ON CONFLICT (firebase_uid) DO UPDATE SET
-           app_user_id=COALESCE(EXCLUDED.app_user_id,app_user_rental_restriction_shadows.app_user_id),
+           app_user_id=COALESCE(EXCLUDED.app_user_id,app_rental_restrictions.app_user_id),
            restriction_exists=true, restriction_payload=EXCLUDED.restriction_payload,
            source_document_path=EXCLUDED.source_document_path, source_updated_at=NOW(), source_hash=EXCLUDED.source_hash,
            synced_at=NOW(), authority_mode='postgresql-authoritative', mirror_state=EXCLUDED.mirror_state,
            last_mutation_id=EXCLUDED.last_mutation_id, authoritative_updated_at=NOW(), updated_at=NOW()
          RETURNING firebase_uid, app_user_id, restriction_payload, authority_mode, mirror_state, synced_at`,
-        [firebaseUid, appUserId, JSON.stringify(payload), `rentalRestrictions/${firebaseUid}`, hashPayload(payload), mutationId || randomUUID(), mirrorState],
+        [firebaseUid, appUserId, JSON.stringify(payload), `postgresql/app_rental_restrictions/${firebaseUid}`, hashPayload(payload), mutationId || randomUUID(), mirrorState],
       );
       return result.rows[0];
     },

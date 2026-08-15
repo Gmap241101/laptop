@@ -20,29 +20,10 @@ export const createSystemDataRepository = (pool) => {
     throw new TypeError('A PostgreSQL pool with query()/connect() is required.');
   }
 
-  const writeAssetCatalogMetadata = async (queryable, sourceMode = 'postgresql-integrity-reconciled') => {
-    const actualCounts = await queryable.query(`
-      SELECT (SELECT COUNT(*) FROM app_rental_assets)::int AS assets,
-             (SELECT COUNT(*) FROM app_asset_categories)::int AS categories
-    `);
-    const assetCount = Number(actualCounts.rows[0]?.assets || 0);
-    const categoryCount = Number(actualCounts.rows[0]?.categories || 0);
-    await queryable.query(`
-      INSERT INTO app_asset_catalog_syncs (
-        scope, source_asset_count, source_category_count, source_hash, source_mode, synced_at, updated_at
-      ) VALUES ('main',$1,$2,'postgresql-authoritative',$3,NOW(),NOW())
-      ON CONFLICT (scope) DO UPDATE SET
-        source_asset_count=EXCLUDED.source_asset_count,
-        source_category_count=EXCLUDED.source_category_count,
-        source_hash=EXCLUDED.source_hash,
-        source_mode=EXCLUDED.source_mode,
-        synced_at=NOW(), updated_at=NOW()
-    `, [assetCount, categoryCount, sourceMode]);
-    return Object.freeze({ assetCount, categoryCount });
-  };
+
 
   const readIntegrity = async (queryable = pool) => {
-    const [countsResult, missingAssetResult, reservationResult, mismatchResult, syncResult] = await Promise.all([
+    const [countsResult, missingAssetResult, reservationResult, mismatchResult] = await Promise.all([
       queryable.query(`
         SELECT
           (SELECT COUNT(*) FROM app_rental_assets)::int AS assets,
@@ -89,12 +70,6 @@ export const createSystemDataRepository = (pool) => {
          ORDER BY request.created_at DESC, request.request_id
          LIMIT 200
       `),
-      queryable.query(`
-        SELECT source_asset_count, source_category_count, source_mode, synced_at
-          FROM app_asset_catalog_syncs
-         WHERE scope='main'
-         LIMIT 1
-      `),
     ]);
 
     const countsRow = countsResult.rows[0] || {};
@@ -105,45 +80,21 @@ export const createSystemDataRepository = (pool) => {
     const unrecoverableAssetRows = missingAssetRows.filter((row) => !trim(row.matched_asset_id));
     const recoverableReservationRows = missingReservationRows.filter((row) => trim(row.matched_asset_id));
     const unrecoverableReservationRows = missingReservationRows.filter((row) => !trim(row.matched_asset_id));
-    const syncRow = syncResult.rows[0] || null;
     const currentAssetCount = count(countsRow, 'assets');
     const currentCategoryCount = count(countsRow, 'asset_categories');
-    const syncAssetCount = syncRow ? Number(syncRow.source_asset_count || 0) : null;
-    const syncCategoryCount = syncRow ? Number(syncRow.source_category_count || 0) : null;
-    const syncMismatch = !syncRow || syncAssetCount !== currentAssetCount || syncCategoryCount !== currentCategoryCount;
 
     const issues = [];
     for (const row of recoverableAssetRows.slice(0, 50)) {
-      issues.push(mapIssue(
-        row,
-        'rental_request_asset_reference_recoverable',
-        'warning',
-        `신청 ${trim(row.request_id)}의 자산 ID ${trim(row.laptop_id)}는 현재 자산에 없지만 자산관리번호 ${trim(row.asset_no)}로 ${trim(row.matched_asset_id)}에 연결할 수 있습니다.`,
-      ));
+      issues.push(mapIssue(row, 'rental_request_asset_reference_recoverable', 'warning', `신청 ${trim(row.request_id)}의 자산 ID ${trim(row.laptop_id)}는 현재 자산에 없지만 자산관리번호 ${trim(row.asset_no)}로 ${trim(row.matched_asset_id)}에 연결할 수 있습니다.`));
     }
     for (const row of unrecoverableAssetRows.slice(0, 50)) {
-      issues.push(mapIssue(
-        row,
-        'rental_request_asset_reference_missing',
-        'error',
-        `신청 ${trim(row.request_id)}이 등록되지 않은 자산 ID ${trim(row.laptop_id)}를 참조하며 자산관리번호 ${trim(row.asset_no) || '-'}로도 복구할 수 없습니다.`,
-      ));
+      issues.push(mapIssue(row, 'rental_request_asset_reference_missing', 'error', `신청 ${trim(row.request_id)}이 등록되지 않은 자산 ID ${trim(row.laptop_id)}를 참조하며 자산관리번호 ${trim(row.asset_no) || '-'}로도 복구할 수 없습니다.`));
     }
     for (const row of recoverableReservationRows.slice(0, 25)) {
-      issues.push(mapIssue(
-        row,
-        'reservation_asset_reference_recoverable',
-        'warning',
-        `예약 ${trim(row.request_id)}의 자산 ID ${trim(row.laptop_id)}는 현재 자산에 없지만 신청 자산관리번호 ${trim(row.asset_no)}로 ${trim(row.matched_asset_id)}에 연결할 수 있습니다.`,
-      ));
+      issues.push(mapIssue(row, 'reservation_asset_reference_recoverable', 'warning', `예약 ${trim(row.request_id)}의 자산 ID ${trim(row.laptop_id)}는 현재 자산에 없지만 신청 자산관리번호 ${trim(row.asset_no)}로 ${trim(row.matched_asset_id)}에 연결할 수 있습니다.`));
     }
     for (const row of unrecoverableReservationRows.slice(0, 25)) {
-      issues.push(mapIssue(
-        row,
-        'reservation_asset_reference_missing',
-        'error',
-        `예약 ${trim(row.request_id)}이 등록되지 않은 자산 ID ${trim(row.laptop_id)}를 참조합니다.`,
-      ));
+      issues.push(mapIssue(row, 'reservation_asset_reference_missing', 'error', `예약 ${trim(row.request_id)}이 등록되지 않은 자산 ID ${trim(row.laptop_id)}를 참조합니다.`));
     }
     for (const row of mismatchedRows.slice(0, 25)) {
       issues.push({
@@ -153,18 +104,9 @@ export const createSystemDataRepository = (pool) => {
         requestId: trim(row.request_id),
       });
     }
-    if (syncMismatch) {
-      issues.push({
-        code: 'asset_catalog_metadata_mismatch',
-        level: 'warning',
-        message: syncRow
-          ? `자산 카탈로그 메타데이터가 실제 PostgreSQL 데이터와 다릅니다. 메타데이터 ${syncAssetCount}/${syncCategoryCount}, 실제 ${currentAssetCount}/${currentCategoryCount}.`
-          : '자산 카탈로그 동기화 메타데이터가 없습니다.',
-      });
-    }
 
     const errors = unrecoverableAssetRows.length + unrecoverableReservationRows.length + mismatchedRows.length;
-    const warnings = recoverableAssetRows.length + recoverableReservationRows.length + (syncMismatch ? 1 : 0);
+    const warnings = recoverableAssetRows.length + recoverableReservationRows.length;
 
     return Object.freeze({
       authority: 'postgresql',
@@ -191,20 +133,21 @@ export const createSystemDataRepository = (pool) => {
         requestReservationMismatchCount: mismatchedRows.length,
       }),
       assetCatalog: Object.freeze({
-        metadataPresent: Boolean(syncRow),
-        metadataAssetCount: syncAssetCount,
-        metadataCategoryCount: syncCategoryCount,
+        metadataPresent: true,
+        metadataAssetCount: currentAssetCount,
+        metadataCategoryCount: currentCategoryCount,
         actualAssetCount: currentAssetCount,
         actualCategoryCount: currentCategoryCount,
-        metadataMatches: !syncMismatch,
-        sourceMode: trim(syncRow?.source_mode),
-        syncedAt: syncRow?.synced_at || null,
+        metadataMatches: true,
+        sourceMode: 'postgresql-canonical-derived',
+        syncedAt: null,
       }),
       errors,
       warnings,
       issues: Object.freeze(issues),
     });
   };
+
 
   return Object.freeze({
     async getOverview() {
@@ -282,7 +225,6 @@ export const createSystemDataRepository = (pool) => {
             [row.rental_request_id, row.next_laptop_id],
           );
         }
-        await writeAssetCatalogMetadata(client, 'postgresql-reference-repaired');
         await client.query(`
           INSERT INTO app_runtime_metadata (key, value, updated_at)
           VALUES ('phase34_asset_reference_repair', $1::jsonb, NOW())
@@ -316,39 +258,22 @@ export const createSystemDataRepository = (pool) => {
       }
     },
 
-    async reconcileAssetCatalogMetadata({ actorClerkUserId = '' } = {}) {
-      const client = await pool.connect();
-      try {
-        await client.query('BEGIN');
-        await client.query("SELECT pg_advisory_xact_lock(hashtext('phase34-asset-catalog-metadata-reconcile'))");
-        const before = await readIntegrity(client);
-        const metadata = await writeAssetCatalogMetadata(client, 'postgresql-integrity-reconciled');
-        await client.query(`
-          INSERT INTO app_runtime_metadata (key, value, updated_at)
-          VALUES ('phase34_asset_catalog_metadata_reconcile', $1::jsonb, NOW())
-          ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()
-        `, [JSON.stringify({
-          actorClerkUserId: trim(actorClerkUserId),
-          assetCount: metadata.assetCount,
-          categoryCount: metadata.categoryCount,
-          reconciledAt: new Date().toISOString(),
-        })]);
-        const after = await readIntegrity(client);
-        await client.query('COMMIT');
-        return Object.freeze({
-          authority: 'postgresql',
-          metadata,
-          before,
-          after,
-          reconciledAt: new Date().toISOString(),
-        });
-      } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-      } finally {
-        client.release();
-      }
+    async reconcileAssetCatalogMetadata() {
+      const integrity = await readIntegrity(pool);
+      return Object.freeze({
+        authority: 'postgresql',
+        retired: true,
+        source: 'canonical-derived-status',
+        metadata: Object.freeze({
+          assetCount: integrity.counts.assets,
+          categoryCount: integrity.counts.assetCategories,
+        }),
+        before: integrity,
+        after: integrity,
+        reconciledAt: new Date().toISOString(),
+      });
     },
+
 
     async getResetCounts(scopes = []) {
       const selected = normalizeScopes(scopes);
@@ -361,7 +286,7 @@ export const createSystemDataRepository = (pool) => {
           (SELECT COUNT(*) FROM app_user_term_consent_logs)::int AS term_logs,
           (SELECT COUNT(*) FROM app_rental_requests)::int AS rental_requests,
           (SELECT COUNT(*) FROM app_rental_asset_reservation_guards)::int AS reservation_guards,
-          (SELECT COUNT(*) FROM app_user_rental_restriction_shadows)::int AS restrictions,
+          (SELECT COUNT(*) FROM app_rental_restrictions)::int AS restrictions,
           (SELECT COUNT(*) FROM app_member_directory_entries)::int AS directory_entries,
           (SELECT COUNT(*) FROM app_board_posts)::int AS board_posts,
           (SELECT COUNT(*) FROM app_faq_categories)::int AS faq_categories,
@@ -392,13 +317,11 @@ export const createSystemDataRepository = (pool) => {
         if (selected.includes('rentals')) {
           await client.query('DELETE FROM app_rental_asset_reservation_guards');
           await client.query('DELETE FROM app_rental_requests');
-          await client.query('DELETE FROM app_user_rental_restriction_shadows');
+          await client.query('DELETE FROM app_rental_restrictions');
         }
         if (selected.includes('assets')) {
           await client.query('DELETE FROM app_rental_assets');
           await client.query('DELETE FROM app_asset_categories');
-          await client.query('DELETE FROM app_asset_catalog_syncs');
-          await client.query(`INSERT INTO app_asset_catalog_syncs (scope, source_asset_count, source_category_count, source_hash, source_mode, synced_at, updated_at) VALUES ('main',0,0,'postgresql-reset','postgresql-reset',NOW(),NOW()) ON CONFLICT (scope) DO UPDATE SET source_asset_count=0, source_category_count=0, source_hash='postgresql-reset', source_mode='postgresql-reset', synced_at=NOW(), updated_at=NOW()`);
         }
         if (selected.includes('members')) {
           await client.query('DELETE FROM app_user_term_consent_logs');
@@ -412,17 +335,12 @@ export const createSystemDataRepository = (pool) => {
         if (selected.includes('content')) {
           await client.query('DELETE FROM app_board_posts');
           await client.query('DELETE FROM app_faq_categories');
-          await client.query('DELETE FROM app_board_syncs');
           await client.query("DELETE FROM app_site_content_documents WHERE domain IN ('home','popup','footer','terms')");
-          await client.query("DELETE FROM app_site_content_syncs WHERE domain IN ('home','popup','footer','terms')");
           await client.query(`INSERT INTO app_site_content_documents (domain, document_key, payload, enabled, sort_order, source_mode, synced_at, updated_at) VALUES ('terms','signupTermsPolicy/current','{"enabled":false,"requireReconsentOnChange":true,"applyToExistingMembers":false,"revision":0,"requiredRevision":0,"initialRevision":0,"activeTerms":[]}'::jsonb,false,NULL,'postgresql-reset',NOW(),NOW())`);
-          await client.query(`INSERT INTO app_site_content_syncs (domain, source_hash, document_count, source_mode, last_actor_clerk_user_id, synced_at, updated_at) VALUES ('terms','postgresql-reset',1,'postgresql-reset',$1,NOW(),NOW()) ON CONFLICT (domain) DO UPDATE SET source_hash='postgresql-reset', document_count=1, source_mode='postgresql-reset', last_actor_clerk_user_id=EXCLUDED.last_actor_clerk_user_id, synced_at=NOW(), updated_at=NOW()`, [trim(actorClerkUserId)]);
         }
         if (selected.includes('settings')) {
           await client.query("DELETE FROM app_site_content_documents WHERE domain IN ('site-settings','rental-config')");
-          await client.query("DELETE FROM app_site_content_syncs WHERE domain IN ('site-settings','rental-config')");
           await client.query(`INSERT INTO app_site_content_documents (domain, document_key, payload, enabled, sort_order, source_mode, synced_at, updated_at) VALUES ('site-settings','siteSettings/config','{}'::jsonb,true,NULL,'postgresql-reset',NOW(),NOW())`);
-          await client.query(`INSERT INTO app_site_content_syncs (domain, source_hash, document_count, source_mode, last_actor_clerk_user_id, synced_at, updated_at) VALUES ('site-settings','postgresql-reset',1,'postgresql-reset',$1,NOW(),NOW()) ON CONFLICT (domain) DO UPDATE SET source_hash='postgresql-reset', document_count=1, source_mode='postgresql-reset', last_actor_clerk_user_id=EXCLUDED.last_actor_clerk_user_id, synced_at=NOW(), updated_at=NOW()`, [trim(actorClerkUserId)]);
           await client.query('DELETE FROM app_system_configuration');
         }
         await client.query(`INSERT INTO app_runtime_metadata (key, value, updated_at) VALUES ('phase34_last_system_data_reset',$1::jsonb,NOW()) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()`, [JSON.stringify({ actorClerkUserId: trim(actorClerkUserId), scopes: selected, resetAt: new Date().toISOString() })]);
@@ -488,7 +406,7 @@ export const createSystemDataRepository = (pool) => {
         const [memberResult, directoryResult, restrictionResult, termsStateResult] = await Promise.all([
           pool.query(`SELECT * FROM app_member_accounts ORDER BY firebase_uid`),
           pool.query(`SELECT * FROM app_member_directory_entries ORDER BY sort_order, identity_key`),
-          pool.query(`SELECT * FROM app_user_rental_restriction_shadows ORDER BY firebase_uid`),
+          pool.query(`SELECT * FROM app_rental_restrictions ORDER BY firebase_uid`),
           pool.query(`SELECT * FROM app_user_term_consent_states ORDER BY app_user_id`),
         ]);
         snapshot.members = {

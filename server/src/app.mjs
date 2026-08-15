@@ -88,18 +88,18 @@ const sanitizeFirebaseLink = (link) => ({
   updatedAt: link.updatedAt,
 });
 
-const sanitizeRentalRestrictionShadow = (shadow) => ({
-  firebaseUid: shadow.firebaseUid,
-  appUserId: shadow.appUserId,
-  exists: Boolean(shadow.exists),
-  restriction: shadow.exists ? shadow.restriction : null,
-  sourceHash: shadow.sourceHash,
-  sourceUpdatedAt: shadow.sourceUpdatedAt,
-  authorityMode: shadow.authorityMode || 'firestore-shadow',
-  mirrorState: shadow.mirrorState || 'synced',
-  lastMutationId: shadow.lastMutationId || '',
-  authoritativeUpdatedAt: shadow.authoritativeUpdatedAt || null,
-  syncedAt: shadow.syncedAt,
+const sanitizeRentalRestrictionRecord = (record) => ({
+  firebaseUid: record.firebaseUid,
+  appUserId: record.appUserId,
+  exists: Boolean(record.exists),
+  restriction: record.exists ? record.restriction : null,
+  sourceHash: record.sourceHash,
+  sourceUpdatedAt: record.sourceUpdatedAt,
+  authorityMode: record.authorityMode || 'postgresql-authoritative',
+  mirrorState: record.mirrorState || 'retired',
+  lastMutationId: record.lastMutationId || '',
+  authoritativeUpdatedAt: record.authoritativeUpdatedAt || null,
+  syncedAt: record.syncedAt,
 });
 
 const sanitizeRentalRequest = (request) => ({
@@ -272,8 +272,6 @@ export const createRequestHandler = ({
   },
   rentalRestrictionService = {
     async getCurrentByFirebaseIdentity() { const error = new Error('Rental restriction service is not configured.'); error.code = 'rental_restriction_not_configured'; throw error; },
-    async readCurrentSourceByFirebaseIdentity() { const error = new Error('Rental restriction service is not configured.'); error.code = 'rental_restriction_not_configured'; throw error; },
-    async syncLinkedFirebaseUid() { const error = new Error('Rental restriction service is not configured.'); error.code = 'rental_restriction_not_configured'; throw error; },
   },
   rentalRequestService = {
     async getCurrent() { const error = new Error('Rental request service is not configured.'); error.code = 'rental_request_not_configured'; throw error; },
@@ -400,13 +398,8 @@ export const createRequestHandler = ({
   if (!systemDataService || typeof systemDataService.getOverview !== 'function' || typeof systemDataService.checkIntegrity !== 'function' || typeof systemDataService.repairAssetReferences !== 'function' || typeof systemDataService.reconcileAssetCatalogMetadata !== 'function' || typeof systemDataService.exportSnapshot !== 'function') {
     throw new TypeError('PostgreSQL system data management service methods are required.');
   }
-  if (
-    !rentalRestrictionService ||
-    typeof rentalRestrictionService.getCurrentByFirebaseIdentity !== 'function' ||
-    typeof rentalRestrictionService.readCurrentSourceByFirebaseIdentity !== 'function' ||
-    typeof rentalRestrictionService.syncLinkedFirebaseUid !== 'function'
-  ) {
-    throw new TypeError('rentalRestrictionService getCurrentByFirebaseIdentity/readCurrentSourceByFirebaseIdentity/syncLinkedFirebaseUid methods are required.');
+  if (!rentalRestrictionService || typeof rentalRestrictionService.getCurrentByFirebaseIdentity !== 'function') {
+    throw new TypeError('rentalRestrictionService getCurrentByFirebaseIdentity method is required.');
   }
   if (
     !rentalRequestService ||
@@ -2702,7 +2695,7 @@ export const createRequestHandler = ({
           rentalRestriction: {
             source: 'postgresql-authoritative',
             authoritative: true,
-            ...sanitizeRentalRestrictionShadow(shadow),
+            ...sanitizeRentalRestrictionRecord(shadow),
           },
         }, headers);
       } catch (error) {
@@ -2733,7 +2726,7 @@ export const createRequestHandler = ({
           restrictionCandidate: {
             source: shadow?.authorityMode === 'postgresql-authoritative' ? 'postgresql-authoritative' : 'postgresql-shadow',
             authoritative: shadow?.authorityMode === 'postgresql-authoritative',
-            ...sanitizeRentalRestrictionShadow(shadow),
+            ...sanitizeRentalRestrictionRecord(shadow),
           },
         }, headers);
       } catch (error) {
@@ -2744,66 +2737,24 @@ export const createRequestHandler = ({
     }
 
     if (request.method === 'GET' && url.pathname === '/api/legacy/rental-restriction-firestore-fallback') {
-      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
-      if (!firebaseIdentity) return;
-      try {
-        const result = await rentalRestrictionService.syncLinkedFirebaseUid(firebaseIdentity, firebaseIdentity.uid);
-        const shadow = result.shadow;
-        writeJson(response, 200, {
-          ...basePayload,
-          authenticated: true,
-          authentication: 'retired',
-          restrictionFallback: {
-            source: 'firestore-one-time-fallback',
-            authoritative: true,
-            seededPostgresShadow: true,
-            firebaseUid: firebaseIdentity.uid,
-            exists: shadow.exists,
-            restriction: shadow.exists ? shadow.restriction : null,
-            sourceHash: shadow.sourceHash,
-            sourceUpdatedAt: shadow.sourceUpdatedAt,
-          },
-        }, headers);
-      } catch (error) {
-        console.error('[restriction-read] one-time Firestore fallback failed', { requestId, code: error?.code, name: error?.name });
-        const statusCode = error?.code === 'firestore_rental_restriction_forbidden' ? 403 : error?.code === 'firestore_rental_restriction_unauthorized' ? 401 : 503;
-        writeJson(response, statusCode, { ...basePayload, authenticated: true, error: error?.code || 'rental_restriction_fallback_unavailable' }, headers);
-      }
+      writeJson(response, 410, {
+        ...basePayload,
+        authenticated: false,
+        error: 'legacy_rental_restriction_source_retired',
+        authority: 'postgresql',
+      }, headers);
       return;
     }
 
     if (request.method === 'POST' && url.pathname === '/api/legacy/rental-restriction-shadow/write-through') {
-      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
-      if (!firebaseIdentity) return;
-      const targetFirebaseUid = String(url.searchParams.get('firebaseUid') || '').trim();
-      try {
-        const result = await rentalRestrictionService.syncLinkedFirebaseUid(firebaseIdentity, targetFirebaseUid);
-        writeJson(response, 200, {
-          ...basePayload,
-          authenticated: true,
-          authentication: 'retired',
-          restrictionWriteThrough: {
-            status: result.status,
-            firebaseUid: result.firebaseUid,
-            actorUid: result.actorUid,
-            shadow: sanitizeRentalRestrictionShadow(result.shadow),
-          },
-        }, headers);
-      } catch (error) {
-        console.warn('[restriction-write-through] synchronization failed', { requestId, code: error?.code, targetFirebaseUid: targetFirebaseUid || firebaseIdentity.uid });
-        if (error?.code === 'firestore_rental_restriction_forbidden') {
-          writeJson(response, 403, { ...basePayload, authenticated: true, error: 'rental_restriction_source_forbidden' }, headers);
-          return;
-        }
-        if (error?.code === 'firestore_rental_restriction_unauthorized') {
-          writeJson(response, 401, { ...basePayload, authenticated: true, error: 'legacy_firebase_unauthorized' }, headers);
-          return;
-        }
-        writeJson(response, 503, { ...basePayload, authenticated: true, error: error?.code || 'rental_restriction_write_through_unavailable' }, headers);
-      }
+      writeJson(response, 410, {
+        ...basePayload,
+        authenticated: false,
+        error: 'legacy_rental_restriction_write_through_retired',
+        authority: 'postgresql',
+      }, headers);
       return;
     }
-
 
     if (request.method === 'GET' && url.pathname === '/api/admin/members') {
       const authority = await authenticateAdminAuthority(request, response, headers, requestId);

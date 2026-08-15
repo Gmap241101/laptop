@@ -40,6 +40,19 @@ export const normalizeActiveTerm = (term = {}) => ({
     : 0,
 });
 
+export const normalizeActiveTermMetadata = (term = {}) => {
+  const normalized = normalizeActiveTerm(term);
+  return {
+    id: normalized.id,
+    title: normalized.title,
+    contentHash: normalized.contentHash,
+    required: normalized.required,
+    version: normalized.version,
+    versionId: normalized.versionId,
+    displayOrder: normalized.displayOrder,
+  };
+};
+
 export const normalizeTermsPolicy = (policy = {}) => ({
   enabled: Boolean(policy.enabled),
   requireReconsentOnChange: policy.requireReconsentOnChange !== false,
@@ -48,7 +61,7 @@ export const normalizeTermsPolicy = (policy = {}) => ({
   requiredRevision: Math.max(0, Number(policy.requiredRevision) || 0),
   initialRevision: Math.max(0, Number(policy.initialRevision) || 0),
   activeTerms: (Array.isArray(policy.activeTerms) ? policy.activeTerms : [])
-    .map(normalizeActiveTerm)
+    .map(normalizeActiveTermMetadata)
     .filter((term) => term.id && term.title)
     .sort((a, b) => a.displayOrder - b.displayOrder || a.title.localeCompare(b.title, 'ko')),
 });

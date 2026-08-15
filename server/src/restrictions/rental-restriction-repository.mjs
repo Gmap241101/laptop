@@ -8,8 +8,8 @@ const mapRow = (row) => {
     sourceDocumentPath: row.source_document_path || '',
     sourceUpdatedAt: row.source_updated_at,
     sourceHash: row.source_hash,
-    authorityMode: row.authority_mode || 'firestore-shadow',
-    mirrorState: row.mirror_state || 'synced',
+    authorityMode: row.authority_mode || 'postgresql-authoritative',
+    mirrorState: row.mirror_state || 'retired',
     lastMutationId: row.last_mutation_id || '',
     authoritativeUpdatedAt: row.authoritative_updated_at || null,
     syncedAt: row.synced_at,
@@ -28,7 +28,7 @@ export const createRentalRestrictionRepository = (pool) => {
   return Object.freeze({
     async findByFirebaseUid(firebaseUid) {
       const result = await pool.query(
-        `SELECT ${SELECT_COLUMNS} FROM app_user_rental_restriction_shadows WHERE firebase_uid = $1`,
+        `SELECT ${SELECT_COLUMNS} FROM app_rental_restrictions WHERE firebase_uid = $1`,
         [firebaseUid],
       );
       return mapRow(result.rows[0]);
@@ -36,31 +36,11 @@ export const createRentalRestrictionRepository = (pool) => {
 
     async findByAppUserId(appUserId) {
       const result = await pool.query(
-        `SELECT ${SELECT_COLUMNS} FROM app_user_rental_restriction_shadows WHERE app_user_id = $1 ORDER BY updated_at DESC LIMIT 1`,
+        `SELECT ${SELECT_COLUMNS} FROM app_rental_restrictions WHERE app_user_id = $1 ORDER BY updated_at DESC LIMIT 1`,
         [appUserId],
       );
       return mapRow(result.rows[0]);
     },
 
-    async upsert({ firebaseUid, appUserId = null, exists, restriction, sourceDocumentPath = '', sourceUpdatedAt = null, sourceHash }) {
-      const result = await pool.query(
-        `INSERT INTO app_user_rental_restriction_shadows (
-           firebase_uid, app_user_id, restriction_exists, restriction_payload,
-           source_document_path, source_updated_at, source_hash, synced_at
-         ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, NOW())
-         ON CONFLICT (firebase_uid) DO UPDATE SET
-           app_user_id = COALESCE(EXCLUDED.app_user_id, app_user_rental_restriction_shadows.app_user_id),
-           restriction_exists = EXCLUDED.restriction_exists,
-           restriction_payload = EXCLUDED.restriction_payload,
-           source_document_path = EXCLUDED.source_document_path,
-           source_updated_at = EXCLUDED.source_updated_at,
-           source_hash = EXCLUDED.source_hash,
-           synced_at = NOW(),
-           updated_at = NOW()
-         RETURNING ${SELECT_COLUMNS}`,
-        [firebaseUid, appUserId, Boolean(exists), JSON.stringify(restriction || {}), sourceDocumentPath, sourceUpdatedAt, sourceHash],
-      );
-      return mapRow(result.rows[0]);
-    },
   });
 };

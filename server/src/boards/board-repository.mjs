@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto';
-
 const trim = (value) => String(value ?? '').trim();
 const lower = (value) => trim(value).toLowerCase();
 
@@ -10,14 +8,6 @@ const repositoryError = (code, message, details = {}) => {
   Object.assign(error, details);
   return error;
 };
-
-const stable = (value) => {
-  if (Array.isArray(value)) return value.map(stable);
-  if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])]));
-};
-
-const sourceHash = (payload) => createHash('sha256').update(JSON.stringify(stable(payload))).digest('hex');
 
 const mapPost = (row) => row ? Object.freeze({
   id: row.post_id,
@@ -57,29 +47,12 @@ const normalizePageSize = (value, fallback = 10, maximum = 50) => {
 };
 
 const ensureBootstrapped = async (client) => {
-  const result = await client.query(`SELECT scope, synced_at FROM app_board_syncs WHERE scope='all'`);
+  const result = await client.query(`SELECT scope, synced_at FROM app_board_status WHERE scope='all'`);
   if (!result.rows[0]) throw repositoryError('board_not_bootstrapped', 'Board domain has not been bootstrapped to PostgreSQL.');
   return result.rows[0];
 };
 
-const refreshSyncCounts = async (client, actorClerkUserId = '') => {
-  const counts = await client.query(`
-    SELECT
-      COUNT(*) FILTER (WHERE board_type='notice')::int AS notice_count,
-      COUNT(*) FILTER (WHERE board_type='faq')::int AS faq_count
-    FROM app_board_posts
-  `);
-  const categoryCount = await client.query(`SELECT COUNT(*)::int AS count FROM app_faq_categories`);
-  await client.query(
-    `UPDATE app_board_syncs
-        SET notice_count=$1, faq_count=$2, faq_category_count=$3,
-            source_mode='postgresql-authoritative',
-            last_actor_clerk_user_id=CASE WHEN $4='' THEN last_actor_clerk_user_id ELSE $4 END,
-            synced_at=NOW(), updated_at=NOW()
-      WHERE scope='all'`,
-    [Number(counts.rows[0]?.notice_count || 0), Number(counts.rows[0]?.faq_count || 0), Number(categoryCount.rows[0]?.count || 0), trim(actorClerkUserId)],
-  );
-};
+const refreshSyncCounts = async () => {};
 
 const mapConfig = (row, boardType, fallback) => Object.freeze({
   boardType,
@@ -109,94 +82,10 @@ const searchClause = (search, startIndex) => {
 };
 
 export const createBoardRepository = (pool) => Object.freeze({
-  async bootstrap({ noticeConfig, noticePosts, faqConfig, faqCategories, faqPosts, actorClerkUserId = '' }) {
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query(`SELECT pg_advisory_xact_lock(hashtext('phase26-board-bootstrap'))`);
-      await client.query(`DELETE FROM app_board_posts`);
-      await client.query(`DELETE FROM app_faq_categories`);
-      await client.query(`DELETE FROM app_board_configs`);
-
-      await client.query(
-        `INSERT INTO app_board_configs (board_type, posts_per_page, source_mode, source_updated_at, synced_at)
-         VALUES ('notice',$1,'firestore-admin-bootstrap',$2::timestamptz,NOW()),
-                ('faq',$3,'firestore-admin-bootstrap',$4::timestamptz,NOW())`,
-        [
-          normalizePageSize(noticeConfig?.postsPerPage, 10), noticeConfig?.updatedAt || null,
-          normalizePageSize(faqConfig?.postsPerPage, 10), faqConfig?.updatedAt || null,
-        ],
-      );
-
-      for (const category of faqCategories || []) {
-        const id = trim(category?.id);
-        const name = trim(category?.name);
-        if (!id || !name) continue;
-        await client.query(
-          `INSERT INTO app_faq_categories
-             (category_id, name, sort_order, source_mode, source_created_at, source_updated_at, synced_at, created_at, updated_at)
-           VALUES ($1,$2,$3,'firestore-admin-bootstrap',$4::timestamptz,$5::timestamptz,NOW(),COALESCE($4::timestamptz,NOW()),COALESCE($5::timestamptz,NOW()))`,
-          [id, name, Math.trunc(Number(category?.order) || 0), category?.createdAt || null, category?.updatedAt || null],
-        );
-      }
-
-      const insertPost = async (boardType, post) => {
-        const id = trim(post?.id);
-        const title = trim(post?.title);
-        if (!id || !title) return;
-        const categoryId = boardType === 'faq' ? trim(post?.categoryId) : null;
-        if (boardType === 'faq' && !categoryId) return;
-        await client.query(
-          `INSERT INTO app_board_posts
-             (post_id, board_type, category_id, title, content_text, content_html, content_format, is_pinned,
-              author_uid, author_name, view_count, source_mode, mirror_state, source_created_at, source_updated_at,
-              synced_at, created_at, updated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'firestore-admin-bootstrap','synced',$12::timestamptz,$13::timestamptz,
-                   NOW(),COALESCE($12::timestamptz,NOW()),COALESCE($13::timestamptz,COALESCE($12::timestamptz,NOW())))`,
-          [
-            id, boardType, categoryId, title, trim(post?.contentText || post?.content), trim(post?.contentHtml),
-            trim(post?.contentFormat) || 'rich-html-v1', Boolean(post?.isPinned), trim(post?.authorUid), trim(post?.authorName),
-            Math.max(0, Math.trunc(Number(post?.viewCount) || 0)), post?.createdAt || null, post?.updatedAt || null,
-          ],
-        );
-      };
-      for (const post of noticePosts || []) await insertPost('notice', post);
-      for (const post of faqPosts || []) await insertPost('faq', post);
-
-      const hash = sourceHash({ noticeConfig, noticePosts, faqConfig, faqCategories, faqPosts });
-      await client.query(
-        `INSERT INTO app_board_syncs
-           (scope, notice_count, faq_count, faq_category_count, source_hash, source_mode, last_actor_clerk_user_id, synced_at, updated_at)
-         VALUES ('all',$1,$2,$3,$4,'firestore-admin-bootstrap',$5,NOW(),NOW())
-         ON CONFLICT (scope) DO UPDATE SET
-           notice_count=EXCLUDED.notice_count,
-           faq_count=EXCLUDED.faq_count,
-           faq_category_count=EXCLUDED.faq_category_count,
-           source_hash=EXCLUDED.source_hash,
-           source_mode=EXCLUDED.source_mode,
-           last_actor_clerk_user_id=EXCLUDED.last_actor_clerk_user_id,
-           synced_at=NOW(),updated_at=NOW()`,
-        [(noticePosts || []).length, (faqPosts || []).length, (faqCategories || []).length, hash, trim(actorClerkUserId)],
-      );
-      await client.query('COMMIT');
-      return {
-        noticeCount: (noticePosts || []).length,
-        faqCount: (faqPosts || []).length,
-        faqCategoryCount: (faqCategories || []).length,
-        sourceHash: hash,
-      };
-    } catch (error) {
-      await client.query('ROLLBACK').catch(() => {});
-      throw error;
-    } finally {
-      client.release();
-    }
-  },
-
   async getStatus() {
     const result = await pool.query(
       `SELECT scope, notice_count, faq_count, faq_category_count, source_hash, source_mode, last_actor_clerk_user_id, synced_at
-         FROM app_board_syncs WHERE scope='all'`,
+         FROM app_board_status WHERE scope='all'`,
     );
     const row = result.rows[0];
     if (!row) return null;
@@ -235,7 +124,7 @@ export const createBoardRepository = (pool) => Object.freeze({
              WHEN $1::int IS NOT NULL AND $1::int BETWEEN 5 AND $5::int THEN $1::int
              ELSE COALESCE(NULLIF(config.posts_per_page, 0), 10)
            END AS effective_page_size
-         FROM app_board_syncs sync
+         FROM app_board_status sync
          LEFT JOIN app_board_configs config ON config.board_type='notice'
          WHERE sync.scope='all'
        ), filtered AS (
@@ -336,7 +225,7 @@ export const createBoardRepository = (pool) => Object.freeze({
              WHEN $1::int IS NOT NULL AND $1::int BETWEEN 5 AND $7::int THEN $1::int
              ELSE COALESCE(NULLIF(config.posts_per_page, 0), 10)
            END AS effective_page_size
-         FROM app_board_syncs sync
+         FROM app_board_status sync
          LEFT JOIN app_board_configs config ON config.board_type='faq'
          WHERE sync.scope='all'
        ), filtered AS (
@@ -412,7 +301,7 @@ export const createBoardRepository = (pool) => Object.freeze({
     });
   },
 
-  async saveNoticePostAuthoritative({ post, beforeCommit }) {
+  async saveNoticePostAuthoritative({ post }) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -424,7 +313,7 @@ export const createBoardRepository = (pool) => Object.freeze({
       if (previous) {
         await client.query(
           `UPDATE app_board_posts SET title=$2,content_text=$3,content_html=$4,content_format=$5,is_pinned=$6,
-             author_uid=$7,author_name=$8,source_mode='postgresql-authoritative',mirror_state='pending',updated_at=NOW()
+             author_uid=$7,author_name=$8,source_mode='postgresql-authoritative',mirror_state='retired',updated_at=NOW()
            WHERE post_id=$1`,
           [post.id, post.title, post.contentText, post.contentHtml, post.contentFormat, post.isPinned, post.authorUid || previous.authorUid, post.authorName || previous.authorName],
         );
@@ -432,25 +321,23 @@ export const createBoardRepository = (pool) => Object.freeze({
         await client.query(
           `INSERT INTO app_board_posts
              (post_id,board_type,category_id,title,content_text,content_html,content_format,is_pinned,author_uid,author_name,view_count,source_mode,mirror_state,created_at,updated_at)
-           VALUES ($1,'notice',NULL,$2,$3,$4,$5,$6,$7,$8,0,'postgresql-authoritative','pending',NOW(),NOW())`,
+           VALUES ($1,'notice',NULL,$2,$3,$4,$5,$6,$7,$8,0,'postgresql-authoritative','retired',NOW(),NOW())`,
           [post.id, post.title, post.contentText, post.contentHtml, post.contentFormat, post.isPinned, post.authorUid, post.authorName],
         );
       }
       const nextResult = await client.query(`SELECT * FROM app_board_posts WHERE post_id=$1`, [post.id]);
       const next = mapPost(nextResult.rows[0]);
-      const mirror = await beforeCommit({ previous, post: next });
-      const mirrorState = mirror?.retired ? 'retired' : 'synced';
-      await client.query(`UPDATE app_board_posts SET mirror_state=$2,synced_at=NOW() WHERE post_id=$1`, [post.id, mirrorState]);
+      await client.query(`UPDATE app_board_posts SET mirror_state='retired',synced_at=NOW() WHERE post_id=$1`, [post.id]);
       await refreshSyncCounts(client, post.actorClerkUserId || '');
       await client.query('COMMIT');
-      return { post: next, previous, mirror };
+      return { post: next, previous };
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {});
       throw error;
     } finally { client.release(); }
   },
 
-  async deleteNoticePostAuthoritative({ postId, beforeCommit }) {
+  async deleteNoticePostAuthoritative({ postId }) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -458,16 +345,15 @@ export const createBoardRepository = (pool) => Object.freeze({
       const result = await client.query(`SELECT * FROM app_board_posts WHERE board_type='notice' AND post_id=$1 FOR UPDATE`, [trim(postId)]);
       const previous = mapPost(result.rows[0]);
       if (!previous) throw repositoryError('notice_post_not_found', 'Notice post was not found.');
-      const mirror = await beforeCommit({ previous });
       await client.query(`DELETE FROM app_board_posts WHERE post_id=$1`, [previous.id]);
       await refreshSyncCounts(client);
       await client.query('COMMIT');
-      return { deletedPost: previous, mirror };
+      return { deletedPost: previous };
     } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }
     finally { client.release(); }
   },
 
-  async saveFaqPostAuthoritative({ post, beforeCommit }) {
+  async saveFaqPostAuthoritative({ post }) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -481,7 +367,7 @@ export const createBoardRepository = (pool) => Object.freeze({
       if (previous) {
         await client.query(
           `UPDATE app_board_posts SET category_id=$2,title=$3,content_text=$4,content_html=$5,content_format=$6,is_pinned=$7,
-             author_uid=$8,author_name=$9,source_mode='postgresql-authoritative',mirror_state='pending',updated_at=NOW()
+             author_uid=$8,author_name=$9,source_mode='postgresql-authoritative',mirror_state='retired',updated_at=NOW()
            WHERE post_id=$1`,
           [post.id, post.categoryId, post.title, post.contentText, post.contentHtml, post.contentFormat, post.isPinned, post.authorUid || previous.authorUid, post.authorName || previous.authorName],
         );
@@ -489,23 +375,21 @@ export const createBoardRepository = (pool) => Object.freeze({
         await client.query(
           `INSERT INTO app_board_posts
              (post_id,board_type,category_id,title,content_text,content_html,content_format,is_pinned,author_uid,author_name,view_count,source_mode,mirror_state,created_at,updated_at)
-           VALUES ($1,'faq',$2,$3,$4,$5,$6,$7,$8,$9,0,'postgresql-authoritative','pending',NOW(),NOW())`,
+           VALUES ($1,'faq',$2,$3,$4,$5,$6,$7,$8,$9,0,'postgresql-authoritative','retired',NOW(),NOW())`,
           [post.id, post.categoryId, post.title, post.contentText, post.contentHtml, post.contentFormat, post.isPinned, post.authorUid, post.authorName],
         );
       }
       const nextResult = await client.query(`SELECT * FROM app_board_posts WHERE post_id=$1`, [post.id]);
       const next = mapPost(nextResult.rows[0]);
-      const mirror = await beforeCommit({ previous, post: next });
-      const mirrorState = mirror?.retired ? 'retired' : 'synced';
-      await client.query(`UPDATE app_board_posts SET mirror_state=$2,synced_at=NOW() WHERE post_id=$1`, [post.id, mirrorState]);
+      await client.query(`UPDATE app_board_posts SET mirror_state='retired',synced_at=NOW() WHERE post_id=$1`, [post.id]);
       await refreshSyncCounts(client, post.actorClerkUserId || '');
       await client.query('COMMIT');
-      return { post: next, previous, mirror };
+      return { post: next, previous };
     } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }
     finally { client.release(); }
   },
 
-  async deleteFaqPostAuthoritative({ postId, beforeCommit }) {
+  async deleteFaqPostAuthoritative({ postId }) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -513,16 +397,15 @@ export const createBoardRepository = (pool) => Object.freeze({
       const result = await client.query(`SELECT * FROM app_board_posts WHERE board_type='faq' AND post_id=$1 FOR UPDATE`, [trim(postId)]);
       const previous = mapPost(result.rows[0]);
       if (!previous) throw repositoryError('faq_post_not_found', 'FAQ post was not found.');
-      const mirror = await beforeCommit({ previous });
       await client.query(`DELETE FROM app_board_posts WHERE post_id=$1`, [previous.id]);
       await refreshSyncCounts(client);
       await client.query('COMMIT');
-      return { deletedPost: previous, mirror };
+      return { deletedPost: previous };
     } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }
     finally { client.release(); }
   },
 
-  async saveConfigAuthoritative({ boardType, postsPerPage, beforeCommit }) {
+  async saveConfigAuthoritative({ boardType, postsPerPage }) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -535,16 +418,15 @@ export const createBoardRepository = (pool) => Object.freeze({
         [boardType, safePageSize],
       );
       const config = await getConfig(client, boardType, safePageSize);
-      const mirror = await beforeCommit({ config });
       await client.query(`UPDATE app_board_configs SET synced_at=NOW() WHERE board_type=$1`, [boardType]);
       await refreshSyncCounts(client);
       await client.query('COMMIT');
-      return { config, mirror };
+      return { config };
     } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }
     finally { client.release(); }
   },
 
-  async saveFaqCategoryAuthoritative({ category, beforeCommit }) {
+  async saveFaqCategoryAuthoritative({ category }) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -569,11 +451,10 @@ export const createBoardRepository = (pool) => Object.freeze({
       }
       const nextResult = await client.query(`SELECT * FROM app_faq_categories WHERE category_id=$1`, [category.id]);
       const next = mapCategory(nextResult.rows[0]);
-      const mirror = await beforeCommit({ previous, category: next });
       await client.query(`UPDATE app_faq_categories SET synced_at=NOW() WHERE category_id=$1`, [category.id]);
       await refreshSyncCounts(client, category.actorClerkUserId || '');
       await client.query('COMMIT');
-      return { category: next, previous, mirror };
+      return { category: next, previous };
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {});
       if (error?.code === '23505') throw repositoryError('faq_category_duplicate_name', 'FAQ category name already exists.');
@@ -581,7 +462,7 @@ export const createBoardRepository = (pool) => Object.freeze({
     } finally { client.release(); }
   },
 
-  async deleteFaqCategoryAuthoritative({ categoryId, beforeCommit }) {
+  async deleteFaqCategoryAuthoritative({ categoryId }) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -592,11 +473,10 @@ export const createBoardRepository = (pool) => Object.freeze({
       const countResult = await client.query(`SELECT COUNT(*)::int AS count FROM app_board_posts WHERE board_type='faq' AND category_id=$1`, [previous.id]);
       const postCount = Number(countResult.rows[0]?.count || 0);
       if (postCount > 0) throw repositoryError('faq_category_in_use', 'FAQ category is still in use.', { postCount });
-      const mirror = await beforeCommit({ previous });
       await client.query(`DELETE FROM app_faq_categories WHERE category_id=$1`, [previous.id]);
       await refreshSyncCounts(client);
       await client.query('COMMIT');
-      return { deletedCategory: previous, mirror };
+      return { deletedCategory: previous };
     } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }
     finally { client.release(); }
   },

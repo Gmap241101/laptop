@@ -6,7 +6,11 @@ const normalizeTermId = (value) => String(value || '').trim();
 
 const stripRetiredRentalConfigDuplicates = (payloadValue = {}) => {
   const payload = payloadValue && typeof payloadValue === 'object' ? payloadValue : {};
-  const { assetCategories: _assetCategories, ...withoutCategories } = payload;
+  const {
+    assetCategories: _assetCategories,
+    borrowers: _borrowers,
+    ...withoutCategories
+  } = payload;
   const rawSettings = withoutCategories?.settings && typeof withoutCategories.settings === 'object'
     ? withoutCategories.settings
     : {};

@@ -229,7 +229,7 @@ export const createAccountLifecycleRepository = (pool) => {
         if (rejoinedAccount && Array.isArray(previousAccountUids) && previousAccountUids.length > 0) {
           const inheritedRestrictionResult = await client.query(
             `SELECT firebase_uid, restriction_payload
-               FROM app_user_rental_restriction_shadows
+               FROM app_rental_restrictions
               WHERE firebase_uid = ANY($1::text[])
                 AND restriction_exists = TRUE
               ORDER BY authoritative_updated_at DESC NULLS LAST, updated_at DESC
@@ -245,7 +245,7 @@ export const createAccountLifecycleRepository = (pool) => {
               inheritedFromFirebaseUid: inheritedRow.firebase_uid,
             };
             await client.query(
-              `INSERT INTO app_user_rental_restriction_shadows (
+              `INSERT INTO app_rental_restrictions (
                  firebase_uid, app_user_id, restriction_exists, restriction_payload,
                  source_document_path, source_updated_at, source_hash, synced_at,
                  authority_mode, mirror_state, last_mutation_id, authoritative_updated_at
@@ -260,7 +260,7 @@ export const createAccountLifecycleRepository = (pool) => {
               [
                 firebaseUid,
                 JSON.stringify(inheritedRestriction),
-                `postgresql/app_user_rental_restriction_shadows/${inheritedRow.firebase_uid}/rejoin-inheritance`,
+                `postgresql/app_rental_restrictions/${inheritedRow.firebase_uid}/rejoin-inheritance`,
                 `postgresql-authoritative:inherited:${inheritedRow.firebase_uid}:${firebaseUid}`,
               ],
             );
@@ -297,7 +297,7 @@ export const createAccountLifecycleRepository = (pool) => {
         }
         await client.query(`DELETE FROM app_user_term_consent_logs WHERE firebase_uid=$1`, [uid]);
         await client.query(`DELETE FROM app_user_term_consent_states WHERE firebase_uid=$1`, [uid]);
-        await client.query(`DELETE FROM app_user_rental_restriction_shadows WHERE firebase_uid=$1 AND app_user_id IS NULL`, [uid]);
+        await client.query(`DELETE FROM app_rental_restrictions WHERE firebase_uid=$1 AND app_user_id IS NULL`, [uid]);
         const deleted = await client.query(
           `DELETE FROM app_member_accounts WHERE firebase_uid=$1 AND app_user_id IS NULL RETURNING firebase_uid`,
           [uid],

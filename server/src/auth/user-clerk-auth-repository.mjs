@@ -49,7 +49,7 @@ const ensurePostgresqlRentalRestrictionReadModel = async (pool, { appUserId, fir
   if (!uid || !appUserId) return;
 
   await pool.query(
-    `INSERT INTO app_user_rental_restriction_shadows (
+    `INSERT INTO app_rental_restrictions (
        firebase_uid, app_user_id, restriction_exists, restriction_payload,
        source_document_path, source_updated_at, source_hash, synced_at,
        authority_mode, mirror_state, last_mutation_id, authoritative_updated_at
@@ -64,9 +64,9 @@ const ensurePostgresqlRentalRestrictionReadModel = async (pool, { appUserId, fir
         AND m.lifecycle_authority_mode='postgresql-authoritative'
         AND m.terms_consent_bootstrap_completed_at IS NOT NULL
      ON CONFLICT (firebase_uid) DO UPDATE SET
-       app_user_id=COALESCE(app_user_rental_restriction_shadows.app_user_id,EXCLUDED.app_user_id),
+       app_user_id=COALESCE(app_rental_restrictions.app_user_id,EXCLUDED.app_user_id),
        updated_at=NOW()
-     WHERE app_user_rental_restriction_shadows.authority_mode='postgresql-authoritative'`,
+     WHERE app_rental_restrictions.authority_mode='postgresql-authoritative'`,
     [uid, appUserId],
   );
 };
@@ -222,7 +222,7 @@ export const createUserClerkAuthRepository = (pool) => {
 
         const restrictionResult = await client.query(
           `SELECT restriction_exists, restriction_payload
-             FROM app_user_rental_restriction_shadows
+             FROM app_rental_restrictions
             WHERE firebase_uid=$1
             FOR UPDATE`,
           [uid],
@@ -250,7 +250,7 @@ export const createUserClerkAuthRepository = (pool) => {
           [uid, JSON.stringify(nextPreviousAccountUids)],
         );
         await client.query(
-          `UPDATE app_user_rental_restriction_shadows
+          `UPDATE app_rental_restrictions
               SET authority_mode='postgresql-authoritative', mirror_state='retired', updated_at=NOW()
             WHERE firebase_uid=$1`,
           [uid],

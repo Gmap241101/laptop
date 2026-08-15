@@ -15,11 +15,11 @@ Heroku runs the Node.js API with `DATABASE_URL` and Clerk server credentials. Ve
 
 ## Migrations
 
-Applied migrations are immutable. Add a new numbered migration for future schema changes instead of editing an already-applied migration. The current Phase 34 line expects migrations through 028. Migration 028 consolidates duplicate legacy PostgreSQL storage into the current canonical tables/documents and removes the obsolete member/rental-request shadow tables only after counterpart verification.
+Applied migrations are immutable. Add a new numbered migration for future schema changes instead of editing an already-applied migration. The current Phase 34 line expects migrations through 029. Migration 028 consolidates the first duplicate legacy PostgreSQL stores into canonical tables/documents. Migration 029 performs the final verified physical cleanup: it moves rental restrictions into `app_rental_restrictions`, migrates any legacy rental-config borrower copy into `app_member_directory_entries`, removes obsolete sync/shadow tables, strips duplicate signup-term body copies, and derives status from canonical tables/views. Each destructive step is guarded by counterpart verification and the migration runner transaction.
 
 ## Legacy compatibility
 
-Historical database-key names and migration-era compatibility repositories can remain until a separately approved schema-cleanup phase. They are not an active network authority and must not be re-enabled as runtime fallbacks.
+Historical migration files remain immutable, but the live schema after migration 029 must not retain the retired duplicate/shadow/sync stores. Compatibility identity fields such as `firebase_uid` and `app_user_firebase_links` remain because they still bridge historical identities to the Clerk/PostgreSQL account authority; they are not an external Firebase runtime authority.
 
 ## Validation
 

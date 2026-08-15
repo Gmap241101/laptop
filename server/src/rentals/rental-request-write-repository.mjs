@@ -98,14 +98,11 @@ export const createRentalRequestWriteRepository = (pool) => {
       dueDate,
       purpose,
       requestedAtText,
-      sourceReservations = [],
       allowNonOverlappingSameAssetRequests = false,
       referenceDate,
       overdueRentalBlockEnabled = false,
       postOverduePenaltyEnabled = false,
-      beforeCommit,
     }) {
-      if (typeof beforeCommit !== 'function') throw new TypeError('beforeCommit callback is required.');
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -117,61 +114,12 @@ export const createRentalRequestWriteRepository = (pool) => {
             throw repositoryError('rental_request_id_conflict', 'Rental request ID belongs to a different application user.');
           }
           await client.query('COMMIT');
-          return Object.freeze({ request: existing, reused: true, mirrorResult: null });
-        }
-
-        const snapshotIds = [];
-        for (const reservation of sourceReservations) {
-          const sourceRequestId = normalizeText(reservation?.id);
-          const sourceLaptopId = normalizeText(reservation?.laptopId);
-          const sourceStart = normalizeText(reservation?.startDate);
-          const sourceDue = normalizeText(reservation?.dueDate);
-          const sourceStatus = normalizeText(reservation?.status);
-          if (!sourceRequestId || sourceLaptopId !== laptopId || !sourceStart || !sourceDue) continue;
-          snapshotIds.push(sourceRequestId);
-          await client.query(
-            `INSERT INTO app_rental_asset_reservation_guards (
-               request_id, rental_request_id, laptop_id, start_date, due_date,
-               status, active, source_mode, synced_at
-             ) VALUES ($1, NULL, $2, $3::date, $4::date, $5, $6, 'firestore-snapshot', NOW())
-             ON CONFLICT (request_id) DO UPDATE SET
-               laptop_id = EXCLUDED.laptop_id,
-               start_date = EXCLUDED.start_date,
-               due_date = EXCLUDED.due_date,
-               status = EXCLUDED.status,
-               active = EXCLUDED.active,
-               source_mode = CASE
-                 WHEN app_rental_asset_reservation_guards.rental_request_id IS NULL THEN 'firestore-snapshot'
-                 ELSE app_rental_asset_reservation_guards.source_mode
-               END,
-               synced_at = NOW(),
-               updated_at = NOW()`,
-            [sourceRequestId, laptopId, sourceStart, sourceDue, sourceStatus, BLOCKING_STATUSES.has(sourceStatus)],
-          );
-        }
-
-        if (snapshotIds.length > 0) {
-          await client.query(
-            `DELETE FROM app_rental_asset_reservation_guards
-              WHERE laptop_id = $1
-                AND rental_request_id IS NULL
-                AND source_mode = 'firestore-snapshot'
-                AND NOT (request_id = ANY($2::text[]))`,
-            [laptopId, snapshotIds],
-          );
-        } else {
-          await client.query(
-            `DELETE FROM app_rental_asset_reservation_guards
-              WHERE laptop_id = $1
-                AND rental_request_id IS NULL
-                AND source_mode = 'firestore-snapshot'`,
-            [laptopId],
-          );
+          return Object.freeze({ request: existing, reused: true });
         }
 
         const restrictionResult = await client.query(
           `SELECT restriction_exists, restriction_payload
-             FROM app_user_rental_restriction_shadows
+             FROM app_rental_restrictions
             WHERE app_user_id = $1
             FOR UPDATE`,
           [appUserId],
@@ -229,7 +177,7 @@ export const createRentalRequestWriteRepository = (pool) => {
              source_mode, idempotency_key, firestore_mirror_status
            ) VALUES (
              $1,$2,$3,$4,$5,$6,$7::date,$8::date,$9,'신청중',$10,
-             'postgresql-authoritative',$11,'pending'
+             'postgresql-authoritative',$11,'retired'
            )
            RETURNING id`,
           [requestId, appUserId, firebaseUid, requesterEmail, requesterName, requesterTeam, startDate, dueDate, purpose, requestedAtText, idempotencyKey],
@@ -274,34 +222,14 @@ export const createRentalRequestWriteRepository = (pool) => {
             WHERE request.id = $1`,
           [internalId],
         );
-        const preparedRequest = mapRequest(preparedResult.rows[0]);
-        const mirrorResult = await beforeCommit(preparedRequest);
-        const mirrorRetired = Boolean(mirrorResult?.retired);
-        const mirrorStatus = mirrorRetired ? 'retired' : 'synced';
-
-        await client.query(
-          `UPDATE app_rental_requests
-              SET firestore_mirror_status = $2,
-                  firestore_mirror_error = '',
-                  firestore_mirrored_at = CASE WHEN $2='synced' THEN COALESCE($3::timestamptz, NOW()) ELSE NULL END,
-                  updated_at = NOW()
-            WHERE id = $1`,
-          [internalId, mirrorStatus, mirrorResult?.commitTime || null],
-        );
-        await client.query(
-          `INSERT INTO app_rental_request_events (
-             rental_request_id, event_type, actor_app_user_id, actor_firebase_uid, event_payload, source_mode
-           ) VALUES ($1,$2,$3,$4,$5::jsonb,'postgresql-authoritative')`,
-          [internalId, mirrorRetired ? 'firestore-mirror-retired' : 'firestore-mirror-synced', appUserId, firebaseUid, JSON.stringify({ commitTime: mirrorResult?.commitTime || null })],
-        );
+        const preparedRequest = Object.freeze({
+          ...mapRequest(preparedResult.rows[0]),
+          firestoreMirrorStatus: 'retired',
+          firestoreMirroredAt: null,
+        });
 
         await client.query('COMMIT');
-        const finalRequest = Object.freeze({
-          ...preparedRequest,
-          firestoreMirrorStatus: mirrorStatus,
-          firestoreMirroredAt: mirrorRetired ? null : (mirrorResult?.commitTime || null),
-        });
-        return Object.freeze({ request: finalRequest, reused: false, mirrorResult });
+        return Object.freeze({ request: preparedRequest, reused: false });
       } catch (error) {
         await client.query('ROLLBACK');
         throw error;

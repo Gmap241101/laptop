@@ -173,7 +173,7 @@ const runtimeReadModelPool = {
       return { rows: [{ app_user_id: 32, firebase_uid: firebaseUid }] };
     }
     if (sql.includes('INSERT INTO app_user_member_shadows')) return { rows: [] };
-    if (sql.includes('INSERT INTO app_user_rental_restriction_shadows')) return { rows: [] };
+    if (sql.includes('INSERT INTO app_rental_restrictions')) return { rows: [] };
     if (sql.includes('FROM app_user_identities u') && sql.includes('WHERE l.firebase_uid = $1')) {
       return { rows: [{
         app_user_id: 32, clerk_user_id: clerkUserId, primary_email: 'member@example.com',
@@ -190,7 +190,7 @@ const runtimeReadModelRepository = createUserClerkAuthRepository(runtimeReadMode
 assert.equal(await runtimeReadModelRepository.linkAuthority({ appUserId: 32, firebaseUid }), true);
 await runtimeReadModelRepository.markVerifiedLogin({ firebaseUid });
 const memberReadModelQueries = runtimeReadModelQueries.filter(({ sql }) => sql.includes('INSERT INTO app_user_member_shadows'));
-const restrictionReadModelQueries = runtimeReadModelQueries.filter(({ sql }) => sql.includes('INSERT INTO app_user_rental_restriction_shadows'));
+const restrictionReadModelQueries = runtimeReadModelQueries.filter(({ sql }) => sql.includes('INSERT INTO app_rental_restrictions'));
 assert.equal(memberReadModelQueries.length, 2, 'signup provision and first verified login must both self-heal the PostgreSQL member read model');
 assert.equal(restrictionReadModelQueries.length, 2, 'signup provision and first verified login must both self-heal the PostgreSQL default restriction read model');
 for (const { sql } of memberReadModelQueries) {
@@ -203,8 +203,8 @@ for (const { sql } of memberReadModelQueries) {
 for (const { sql } of restrictionReadModelQueries) {
   assert.ok(sql.includes('restriction_exists, restriction_payload'));
   assert.ok(sql.includes("false, '{}'::jsonb"));
-  assert.ok(sql.includes("app_user_rental_restriction_shadows.authority_mode='postgresql-authoritative'"));
-  assert.ok(!sql.includes("app_user_rental_restriction_shadows.restriction_exists=false"), 'rejoined authoritative restriction rows must also receive app_user_id without payload overwrite');
+  assert.ok(sql.includes("app_rental_restrictions.authority_mode='postgresql-authoritative'"));
+  assert.ok(!sql.includes("app_rental_restrictions.restriction_exists=false"), 'rejoined authoritative restriction rows must also receive app_user_id without payload overwrite');
 }
 
 const read = async (path) => readFile(new URL(`../../${path}`, import.meta.url), 'utf8');
@@ -230,7 +230,7 @@ assert.ok(indexSource.includes('authorityEnabled: config.accountLifecycleCompati
 assert.ok(firestoreSource.includes('listUserTermConsentStates'));
 assert.ok(firestoreSource.includes('listUserTermConsentLogs'));
 for (const marker of ['readProvisionUser', 'memberRepository.findByFirebaseUid', 'if (!accountLifecycleCompatibilityDisabled)', 'finalizePostgresqlWithdrawal']) assert.ok(authServiceSource.includes(marker), marker);
-for (const marker of ['materializePostgresqlRuntimeReadModels', 'app_user_member_shadows', 'app_user_rental_restriction_shadows', "m.lifecycle_authority_mode='postgresql-authoritative'", 'm.terms_consent_bootstrap_completed_at IS NOT NULL', 'finalizePostgresqlWithdrawal', 'user_withdrawal_active_rental_blocked', 'user_withdrawal_restriction_blocked']) assert.ok(authRepoSource.includes(marker), marker);
+for (const marker of ['materializePostgresqlRuntimeReadModels', 'app_user_member_shadows', 'app_rental_restrictions', "m.lifecycle_authority_mode='postgresql-authoritative'", 'm.terms_consent_bootstrap_completed_at IS NOT NULL', 'finalizePostgresqlWithdrawal', 'user_withdrawal_active_rental_blocked', 'user_withdrawal_restriction_blocked']) assert.ok(authRepoSource.includes(marker), marker);
 for (const marker of ['verifySelfDirectory', 'member_directory_postgresql_stale', "action: 'user-directory-membership-verify'", "mirrorState: 'retired'"]) assert.ok(memberAuthorityServiceSource.includes(marker), marker);
 for (const marker of ["'/api/users/me/member-directory/verify'", 'memberDirectoryVerification']) assert.ok(appSource.includes(marker), marker);
 console.log('[account-lifecycle-authority-backend-smoke] PASS (backend flag gates Phase 32 service, PostgreSQL signup/terms authority, PG-only signup read-model self-heal, one-time trusted terms import, Firebase reset preserved)');
