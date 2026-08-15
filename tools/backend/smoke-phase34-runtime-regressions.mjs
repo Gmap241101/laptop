@@ -6,6 +6,7 @@ import { createBoardRepository } from '../../server/src/boards/board-repository.
 import { createClerkDeviceTrustService } from '../../server/src/clerk/clerk-device-trust-service.mjs';
 import { readServerConfig } from '../../server/src/config/env.mjs';
 import { createAdminRentalRequestService } from '../../server/src/rentals/admin-rental-request-service.mjs';
+import { createAccountLifecycleService } from '../../server/src/accounts/account-lifecycle-service.mjs';
 import fs from 'node:fs';
 
 let adminStatusMutationArgs = null;
@@ -77,6 +78,40 @@ assert.equal(deniedUserActionResult.authority, 'postgresql');
 assert.equal(deniedUserActionResult.restrictionUpdated, false);
 assert.equal(adminUserActionReviewArgs.approved, false);
 assert.equal(adminUserActionReviewArgs.nextRequest.userActionRequest.status, 'denied');
+
+const termsPolicyReads = [];
+let consentSnapshotOptions = null;
+const accountLifecycleTermsService = createAccountLifecycleService({
+  authorityEnabled: true,
+  repository: {
+    async createSignupAccount() { return {}; },
+    async getConsentSnapshot(firebaseUid, options = {}) {
+      assert.equal(firebaseUid, 'member-terms-1');
+      consentSnapshotOptions = options;
+      return { states: {}, logs: [], termsConsentRevision: 3, termsConsentPolicyVersion: 3, bootstrapCompleted: true };
+    },
+    async importConsents() { return {}; },
+    async saveConsents() { return {}; },
+  },
+  siteContentRepository: {
+    async getDocument(domain, key) {
+      termsPolicyReads.push(`${domain}:${key}`);
+      assert.equal(domain, 'terms');
+      assert.equal(key, 'signupTermsPolicy/current');
+      return { payload: { enabled: true, revision: 4, requiredRevision: 4, activeTerms: [{ id: 'term-1', title: '테스트 약관', required: true, version: 1, versionId: 'v1', contentHash: 'hash-1' }] } };
+    },
+  },
+  userAuthRepository: {
+    async findByClerkUserId(clerkUserId) {
+      assert.equal(clerkUserId, 'clerk-user-terms-1');
+      return { firebaseUid: 'member-terms-1' };
+    },
+  },
+});
+const leanTermsSnapshot = await accountLifecycleTermsService.getTerms({ clerkUserId: 'clerk-user-terms-1', includeLogs: false });
+assert.equal(leanTermsSnapshot.source, 'postgresql');
+assert.deepEqual(consentSnapshotOptions, { includeLogs: false });
+assert.deepEqual(termsPolicyReads, ['terms:signupTermsPolicy/current'], 'reconsent initial read must not fetch unrelated rental-config content');
 
 const rentalRestrictionRepository = {
   async findByFirebaseUid() { return null; },
@@ -160,6 +195,9 @@ assert.equal(canonical.payload.settings.maxRentalDays, 10, 'holiday patch must p
 assert.deepEqual(canonical.payload.settings.holidays, [{ date: '2026-08-15', enabled: true }]);
 
 const appSource = fs.readFileSync(new URL('../../server/src/app.mjs', import.meta.url), 'utf8');
+const accountLifecycleRepositorySource = fs.readFileSync(new URL('../../server/src/accounts/account-lifecycle-repository.mjs', import.meta.url), 'utf8');
+assert.match(appSource, /includeLogs: url\.searchParams\.get\('includeLogs'\) !== '0'/, 'terms-consent endpoint must expose the lean no-history initial read');
+assert.match(accountLifecycleRepositorySource, /includeLogs[\s\S]*Promise\.resolve\(\{ rows: \[\] \}\)/, 'lean terms-consent reads must skip the historical log query entirely');
 assert.match(appSource, /PATCH' && url\.pathname === '\/api\/admin\/site-content\/rental-config\/settings'/);
 assert.match(appSource, /'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS'/, 'browser CORS preflight must allow PATCH for administrator rental-config writes');
 assert.match(

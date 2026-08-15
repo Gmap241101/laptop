@@ -119,6 +119,15 @@ export const createAccountLifecycleService = ({ repository, siteContentRepositor
     return { settings, policy };
   };
 
+  const loadTermsPolicy = async () => {
+    if (typeof siteContentRepository.getDocument === 'function') {
+      const document = await siteContentRepository.getDocument('terms', 'signupTermsPolicy/current');
+      return normalizePolicy(document?.payload || {});
+    }
+    const terms = await siteContentRepository.getDomain('terms');
+    return normalizePolicy(getDocument(terms, 'signupTermsPolicy/current')?.payload || {});
+  };
+
   const resolveFirebaseUid = async (clerkUserId) => {
     const account = await userAuthRepository.findByClerkUserId(trim(clerkUserId));
     if (!account?.firebaseUid) throw serviceError('user_clerk_not_linked', 'Clerk user is not linked to a PostgreSQL member account.', 403);
@@ -177,20 +186,24 @@ export const createAccountLifecycleService = ({ repository, siteContentRepositor
       return repository.rollbackUnlinkedSignup({ firebaseUid: trim(firebaseUid) });
     },
 
-    async getTerms({ clerkUserId }) {
+    async getTerms({ clerkUserId, includeLogs = true }) {
       assertAuthorityEnabled();
       const firebaseUid = await resolveFirebaseUid(clerkUserId);
-      const { policy } = await loadPolicyContext();
-      const snapshot = await repository.getConsentSnapshot(firebaseUid);
+      const [policy, snapshot] = await Promise.all([
+        loadTermsPolicy(),
+        repository.getConsentSnapshot(firebaseUid, { includeLogs }),
+      ]);
       return Object.freeze({ source: 'postgresql', policy, ...snapshot, bootstrapRequired: !snapshot.bootstrapCompleted });
     },
 
-    async getTermsByMemberKey({ memberKey }) {
+    async getTermsByMemberKey({ memberKey, includeLogs = true }) {
       assertAuthorityEnabled();
       const key = trim(memberKey);
       if (!key) throw serviceError('terms_member_key_missing', 'Member key is required.', 400);
-      const { policy } = await loadPolicyContext();
-      const snapshot = await repository.getConsentSnapshot(key);
+      const [policy, snapshot] = await Promise.all([
+        loadTermsPolicy(),
+        repository.getConsentSnapshot(key, { includeLogs }),
+      ]);
       return Object.freeze({ source: 'postgresql', policy, ...snapshot, bootstrapRequired: !snapshot.bootstrapCompleted });
     },
 

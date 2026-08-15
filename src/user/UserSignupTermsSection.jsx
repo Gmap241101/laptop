@@ -322,8 +322,11 @@ export default function UserSignupTermsSection({ onChange }) {
                 </button>
 
                 <div className="min-w-0 flex-1">
-                  <div className="text-xs font-bold text-slate-800">
-                    [{term.required ? '필수' : '선택'}] {term.title}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${term.required ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-slate-200 bg-slate-100 text-slate-600'}`}>
+                      {term.required ? '필수' : '선택'}
+                    </span>
+                    <span className="text-xs font-bold text-slate-800">{term.title}</span>
                   </div>
                   <div className="mt-0.5 text-[10px] text-slate-400">
                     {viewed ? '내용 확인 완료' : '보기를 눌러 내용을 먼저 확인해 주세요.'}

@@ -926,7 +926,10 @@ export const createRequestHandler = ({
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
       try {
-        const result = await accountLifecycleService.getTerms({ clerkUserId: auth.userId });
+        const result = await accountLifecycleService.getTerms({
+          clerkUserId: auth.userId,
+          includeLogs: url.searchParams.get('includeLogs') !== '0',
+        });
         writeJson(response, 200, { ...basePayload, termsConsent: result }, headers);
       } catch (error) {
         console.warn('[account-lifecycle] terms consent read failed', { requestId, code: error?.code, name: error?.name });

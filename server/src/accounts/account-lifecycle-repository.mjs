@@ -57,7 +57,7 @@ export const createAccountLifecycleRepository = (pool) => {
     }
   };
 
-  const readConsentSnapshot = async (queryable, firebaseUid) => {
+  const readConsentSnapshot = async (queryable, firebaseUid, { includeLogs = true } = {}) => {
     const [states, logs, account] = await Promise.all([
       queryable.query(
         `SELECT term_id, term_version, term_version_id, policy_revision, decision, required_snapshot,
@@ -67,15 +67,17 @@ export const createAccountLifecycleRepository = (pool) => {
           ORDER BY term_id`,
         [firebaseUid],
       ),
-      queryable.query(
-        `SELECT id, term_id, term_version, term_version_id, policy_revision, decision, previous_decision,
-                required_snapshot, title_snapshot, content_hash, viewed_at_ms, source, created_at
-           FROM app_user_term_consent_logs
-          WHERE firebase_uid=$1
-          ORDER BY created_at DESC
-          LIMIT 500`,
-        [firebaseUid],
-      ),
+      includeLogs
+        ? queryable.query(
+          `SELECT id, term_id, term_version, term_version_id, policy_revision, decision, previous_decision,
+                  required_snapshot, title_snapshot, content_hash, viewed_at_ms, source, created_at
+             FROM app_user_term_consent_logs
+            WHERE firebase_uid=$1
+            ORDER BY created_at DESC
+            LIMIT 500`,
+          [firebaseUid],
+        )
+        : Promise.resolve({ rows: [] }),
       queryable.query(
         `SELECT terms_consent_revision, terms_consent_policy_version, terms_consent_bootstrap_completed_at
            FROM app_member_accounts
@@ -306,8 +308,8 @@ export const createAccountLifecycleRepository = (pool) => {
       });
     },
 
-    async getConsentSnapshot(firebaseUid) {
-      return readConsentSnapshot(pool, firebaseUid);
+    async getConsentSnapshot(firebaseUid, options = {}) {
+      return readConsentSnapshot(pool, firebaseUid, options);
     },
 
     async importConsents({ firebaseUid, states = [], logs = [] }) {

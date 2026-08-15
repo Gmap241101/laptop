@@ -4,7 +4,7 @@ import { createRentalRequestId, RENTAL_REQUEST_ID_PATTERN } from '../../src/feat
 import { createSiteContentDomainDocument } from '../../src/features/content/siteContentCutover.js';
 import { formatUserAccountCreatedAt } from '../../src/features/members/memberAccountPolicy.js';
 import { getClerkPasswordSignInErrorMessage } from '../../src/features/auth/loginErrorMessages.js';
-import { requestAdminClerkDeviceTrust, requestAdminClerkDeviceTrustWrite, requestAdminMemberDirectoryAuditPostgresql, requestAdminMemberDirectoryRestorePostgresql, requestAdminRentalConfigSettingsPatch, requestAdminSignupPolicyPatch, requestCurrentUserRentalRestriction } from '../../src/clerk/clerkStagingClient.js';
+import { requestAdminClerkDeviceTrust, requestAdminClerkDeviceTrustWrite, requestAdminMemberDirectoryAuditPostgresql, requestAdminMemberDirectoryRestorePostgresql, requestAdminRentalConfigSettingsPatch, requestAdminSignupPolicyPatch, requestCurrentUserRentalRestriction, requestUserTermsConsent } from '../../src/clerk/clerkStagingClient.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -52,6 +52,21 @@ assert.equal(requestedUrl, 'https://api.example.test/api/users/me/rental-restric
 assert.equal(requestedHeaders.Authorization, 'Bearer clerk-test-token');
 assert.equal(restrictionPayload.rentalRestriction.source, 'postgresql-authoritative');
 assert.equal(restrictionPayload.rentalRestriction.exists, false);
+
+let leanTermsRequestedUrl = '';
+const leanTermsPayload = await requestUserTermsConsent({
+  clerk,
+  apiBaseUrl: 'https://api.example.test',
+  includeLogs: false,
+  fetchImpl: async (url) => {
+    leanTermsRequestedUrl = String(url);
+    return new Response(JSON.stringify({
+      termsConsent: { source: 'postgresql', policy: { enabled: true, activeTerms: [] }, states: {}, logs: [] },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  },
+});
+assert.equal(leanTermsRequestedUrl, 'https://api.example.test/api/users/me/terms-consent?includeLogs=0');
+assert.equal(leanTermsPayload.termsConsent.source, 'postgresql');
 
 const deviceTrustFrontendRequests = [];
 const deviceTrustFetch = async (url, options = {}) => {
@@ -103,6 +118,9 @@ const userLoginSource = fs.readFileSync(new URL('../../src/features/auth/useUser
 const userSignupSource = fs.readFileSync(new URL('../../src/features/auth/useUserSignupController.js', import.meta.url), 'utf8');
 const loginErrorMessagesSource = fs.readFileSync(new URL('../../src/features/auth/loginErrorMessages.js', import.meta.url), 'utf8');
 const userAuthPanelSource = fs.readFileSync(new URL('../../src/user/UserAuthPanel.jsx', import.meta.url), 'utf8');
+const userTermsComplianceSource = fs.readFileSync(new URL('../../src/features/terms/useUserTermsCompliance.js', import.meta.url), 'utf8');
+const userTermsConsentPanelSource = fs.readFileSync(new URL('../../src/user/UserTermsConsentPanel.jsx', import.meta.url), 'utf8');
+const userSignupTermsSectionSource = fs.readFileSync(new URL('../../src/user/UserSignupTermsSection.jsx', import.meta.url), 'utf8');
 const deviceTrustPanelSource = fs.readFileSync(new URL('../../src/components/DeviceTrustVerificationPanel.jsx', import.meta.url), 'utf8');
 const adminWorkspaceLoginSource = fs.readFileSync(new URL('../../src/admin/AdminWorkspace.jsx', import.meta.url), 'utf8');
 assert.match(
@@ -153,6 +171,17 @@ assert.match(adminAuthSource, /getClerkPasswordSignInErrorMessage\(error\)/, 'ad
 assert.equal(loginErrorMessagesSource.includes('관리자 비밀번호가 올바르지 않습니다.'), false, 'login credential messages must not diverge by user/admin surface');
 assert.equal(loginErrorMessagesSource.includes('현재 Clerk 보안 설정상'), false, 'login credential toast must not expose Clerk implementation details');
 assert.match(userAuthPanelSource, /회원가입 이용약관을 불러오는 중입니다\. 잠시 후 다시 시도해 주세요\./, 'signup terms step must explain loading state through toast instead of a disabled action');
+assert.match(userAuthPanelSource, /if \(!isLoginMode\) return;[\s\S]*preloadSignupTermsPolicy\(\)/, 'login screen must warm the lightweight PostgreSQL terms policy before authentication completes');
+assert.equal(userTermsComplianceSource.includes('getUserTermsConsent'), false, 'ordinary protected-page entry must not fetch full consent states/log history just to decide whether reconsent is required');
+assert.equal(userTermsComplianceSource.includes('retiredLegacyDataCompat'), false, 'PostgreSQL terms compliance must not retain the retired compatibility watcher path');
+assert.match(userTermsComplianceSource, /getCachedSignupTermsPolicy\(\)/, 'terms compliance must reuse the preloaded lightweight policy cache');
+assert.match(userTermsComplianceSource, /preloadSignupTermContents\(policy\.activeTerms\)/, 'reconsent gate must warm active term bodies in parallel with gate rendering');
+assert.match(userTermsComplianceSource, /markConsentRevision/, 'successful reconsent must update the local compliance revision immediately instead of waiting for a profile reload');
+assert.match(userTermsConsentPanelSource, /loadData\(\{ includeLogs: false \}\)/, 'initial reconsent state read must omit historical consent logs');
+assert.match(userTermsConsentPanelSource, /getUserTermsConsent\(\{ includeLogs: true \}\)/, 'consent history must be loaded only when the user explicitly opens history');
+assert.match(userTermsConsentPanelSource, /showAgreement[\s\S]*agreementLabel="위 약관 내용을 확인했으며 이에 동의합니다\."/, 'reconsent term dialog must use the same explicit agreement checkbox UX as signup');
+assert.equal(userSignupTermsSectionSource.includes("[{'${'}term.required ? '필수' : '선택'}]"), false, 'signup term type must not use bracket text instead of the shared badge treatment');
+assert.match(userSignupTermsSectionSource, /rounded-full border px-2 py-0\.5 text-\[10px\] font-bold/, 'signup required/optional labels must use the same badge treatment as reconsent/admin');
 assert.match(userAuthPanelSource, /disabled=\{userAuthLoading\}[\s\S]*회원가입/, 'final signup action must only be disabled while a signup submission is actively running');
 assert.match(userSignupSource, /회원가입에 사용할 이메일 인증을 먼저 완료해 주세요\./, 'final signup submission must explain missing email verification through toast');
 const signupValidationOrder = [

@@ -137,7 +137,11 @@ function UserWorkspace({ ctx, panelCtx }) {
           Button={Button}
           triggerToast={triggerToast}
           mode="gate"
-          onCompleted={() => setTermsComplianceRefreshKey((current) => current + 1)}
+          initialPolicy={termsCompliance.policy}
+          onCompleted={(revision) => {
+            termsCompliance.markConsentRevision(revision);
+            setTermsComplianceRefreshKey((current) => current + 1);
+          }}
         />
       </div>
     );

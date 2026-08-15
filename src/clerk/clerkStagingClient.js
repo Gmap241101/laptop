@@ -233,8 +233,9 @@ export const requestAccountLifecycleSignup = async ({ apiBaseUrl, fetchImpl, fir
   return payload;
 };
 
-export const requestUserTermsConsent = async ({ clerk, apiBaseUrl, fetchImpl }) => {
-  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: '/api/users/me/terms-consent' });
+export const requestUserTermsConsent = async ({ clerk, apiBaseUrl, fetchImpl, includeLogs = true }) => {
+  const path = includeLogs ? '/api/users/me/terms-consent' : '/api/users/me/terms-consent?includeLogs=0';
+  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path });
   if (!response.ok) {
     const error = new Error(`PostgreSQL terms consent read failed with HTTP ${response.status}.`);
     error.status = response.status;
@@ -1905,9 +1906,9 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async bootstrapUserSignup(firebaseIdToken, input) {
       return requestAccountLifecycleSignup({ apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, input });
     },
-    async getUserTermsConsent() {
+    async getUserTermsConsent({ includeLogs = true } = {}) {
       const clerk = await initialize();
-      return requestUserTermsConsent({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
+      return requestUserTermsConsent({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, includeLogs });
     },
     async bootstrapUserTermsConsent(firebaseIdToken) {
       const clerk = await initialize();

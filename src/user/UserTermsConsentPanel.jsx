@@ -41,9 +41,10 @@ export default function UserTermsConsentPanel({
   triggerToast,
   mode = 'mypage',
   onCompleted,
+  initialPolicy = null,
 }) {
   const uid = account?.uid || account?.firebaseUid || account?.legacyMemberKey || '';
-  const [policy, setPolicy] = useState(() => normalizeTermsPolicy({}));
+  const [policy, setPolicy] = useState(() => normalizeTermsPolicy(initialPolicy || {}));
   const [states, setStates] = useState({});
   const [decisions, setDecisions] = useState({});
   const [logs, setLogs] = useState([]);
@@ -56,14 +57,16 @@ export default function UserTermsConsentPanel({
   const [dialogLoading, setDialogLoading] = useState(false);
   const [dialogErrorMessage, setDialogErrorMessage] = useState('');
   const [showHistory, setShowHistory] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [historyLog, setHistoryLog] = useState(null);
   const dialogRequestIdRef = useRef(0);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async ({ includeLogs = false } = {}) => {
     if (!uid) return;
     setReady(false);
     try {
-      const payload = await clerkStagingClient.getUserTermsConsent();
+      const payload = await clerkStagingClient.getUserTermsConsent({ includeLogs });
       if (payload?.termsConsent?.bootstrapRequired) {
         const error = new Error('PostgreSQL terms consent bootstrap is incomplete.');
         error.code = 'terms_consent_postgresql_bootstrap_required';
@@ -82,7 +85,10 @@ export default function UserTermsConsentPanel({
       setPolicy(nextPolicy);
       setStates(nextStates);
       setDecisions(createDecisionState(nextPolicy, nextStates));
-      setLogs(nextLogs);
+      if (includeLogs) {
+        setLogs(nextLogs);
+        setHistoryLoaded(true);
+      }
       setErrorMessage('');
     } catch (error) {
       console.error('User terms consent load error:', error);
@@ -93,7 +99,7 @@ export default function UserTermsConsentPanel({
   }, [account?.termsConsentRevision, uid]);
 
   useEffect(() => {
-    void loadData();
+    void loadData({ includeLogs: false });
   }, [loadData]);
 
   const consentRequired = isTermsConsentRequiredForAccount({
@@ -132,19 +138,46 @@ export default function UserTermsConsentPanel({
     }
   };
 
-  const confirmViewed = () => {
+  const confirmViewed = ({ agreed = false } = {}) => {
     const viewedAtMs = Date.now();
     setDecisions((current) => {
       const next = { ...current };
       dialogTermIds.forEach((termId) => {
+        const term = policy.activeTerms.find((item) => item.id === termId);
+        const currentDecision = next[termId] || {};
         next[termId] = {
-          ...(next[termId] || {}),
+          ...currentDecision,
           viewedAtMs,
+          decision: agreed
+            ? TERMS_DECISION.ACCEPTED
+            : term?.required
+              ? currentDecision.decision || ''
+              : TERMS_DECISION.DECLINED,
         };
       });
       return next;
     });
     closeDialog();
+  };
+
+  const toggleHistory = async () => {
+    if (showHistory) {
+      setShowHistory(false);
+      return;
+    }
+    setShowHistory(true);
+    if (historyLoaded || historyLoading) return;
+    setHistoryLoading(true);
+    try {
+      const payload = await clerkStagingClient.getUserTermsConsent({ includeLogs: true });
+      setLogs(Array.isArray(payload?.termsConsent?.logs) ? payload.termsConsent.logs : []);
+      setHistoryLoaded(true);
+    } catch (error) {
+      console.error('User terms consent history load error:', error);
+      triggerToast('약관 동의 이력을 불러오지 못했습니다.', 'error');
+    } finally {
+      setHistoryLoading(false);
+    }
   };
 
   const valid = useMemo(() => policy.activeTerms.every((term) => {
@@ -192,8 +225,10 @@ export default function UserTermsConsentPanel({
       });
 
       triggerToast('약관 동의 정보가 저장되었습니다.', 'success');
-      await loadData();
-      onCompleted?.();
+      setHistoryLoaded(false);
+      setLogs([]);
+      await loadData({ includeLogs: false });
+      onCompleted?.(Math.max(0, Number(payload?.termsConsent?.termsConsentRevision) || policy.revision || 0));
     } catch (error) {
       publishAccountLifecycleAuthorityObservation({
         requested: true,
@@ -206,7 +241,7 @@ export default function UserTermsConsentPanel({
           : `약관 동의 정보 저장에 실패했습니다. 오류 코드: ${error?.code || error?.name || 'terms_consent_save_failed'}`,
         'error'
       );
-      await loadData();
+      await loadData({ includeLogs: false });
     } finally {
       setSaving(false);
     }
@@ -298,8 +333,8 @@ export default function UserTermsConsentPanel({
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <button type="button" onClick={() => setShowHistory((current) => !current)} className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 underline underline-offset-2">
-          <History size={14} /> {showHistory ? '동의 이력 닫기' : '동의 이력 보기'}
+        <button type="button" onClick={() => { void toggleHistory(); }} className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 underline underline-offset-2">
+          <History size={14} /> {showHistory ? '동의 이력 닫기' : historyLoading ? '동의 이력 불러오는 중...' : '동의 이력 보기'}
         </button>
         <Button type="button" variant="primary" disabled={saving || !valid || (!dirty && !consentRequired)} onClick={saveConsents}>
           {saving ? '저장 중...' : consentRequired ? '재동의 완료' : '약관 동의 저장'}
@@ -309,7 +344,9 @@ export default function UserTermsConsentPanel({
       {showHistory ? (
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
           <div className="mb-3 flex items-center gap-2 text-xs font-black text-slate-800"><Clock3 size={15} /> 약관 동의 이력</div>
-          {logs.length === 0 ? (
+          {historyLoading ? (
+            <div className="text-xs text-slate-400">약관 동의 이력을 불러오는 중입니다.</div>
+          ) : logs.length === 0 ? (
             <div className="text-xs text-slate-400">저장된 동의 이력이 없습니다.</div>
           ) : (
             <div className="space-y-2">
@@ -336,6 +373,12 @@ export default function UserTermsConsentPanel({
         errorMessage={dialogErrorMessage}
         onClose={closeDialog}
         onConfirm={confirmViewed}
+        confirmLabel="내용 확인"
+        agreedConfirmLabel="동의하고 확인"
+        showAgreement
+        agreementLabel="위 약관 내용을 확인했으며 이에 동의합니다."
+        initiallyViewed={dialogTermIds.length > 0 && dialogTermIds.every((termId) => Number(decisions[termId]?.viewedAtMs || 0) > 0)}
+        initialAgreementChecked={dialogTermIds.length === 1 && decisions[dialogTermIds[0]]?.decision === TERMS_DECISION.ACCEPTED}
       />
     </div>
   );

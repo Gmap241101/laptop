@@ -95,6 +95,11 @@ export default function UserAuthPanel({ ctx }) {
     }
   }, [isSignupMode]);
 
+  useEffect(() => {
+    if (!isLoginMode) return;
+    void preloadSignupTermsPolicy().catch(() => {});
+  }, [isLoginMode]);
+
   const getSignupEmailVerificationErrorCode = (error, fallback) =>
     error?.errors?.[0]?.code || error?.code || error?.name || fallback;
 
