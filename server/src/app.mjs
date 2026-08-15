@@ -1180,6 +1180,20 @@ export const createRequestHandler = ({
       return;
     }
 
+    const signupTermContentMatch = url.pathname.match(/^\/api\/signup\/terms\/([^/]+)\/content$/);
+    if (request.method === 'GET' && signupTermContentMatch) {
+      try {
+        const termContent = await siteContentService.getSignupTermContent(
+          decodeURIComponent(signupTermContentMatch[1]),
+        );
+        writeJson(response, 200, { ...basePayload, signupTermContent: termContent }, headers);
+      } catch (error) {
+        console.warn('[terms] PostgreSQL signup term content read failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'signup_term_content_read_failed' }, headers);
+      }
+      return;
+    }
+
     const siteContentReadMatch = url.pathname.match(/^\/api\/site-content\/([^/]+)$/);
     if (request.method === 'GET' && siteContentReadMatch) {
       try {

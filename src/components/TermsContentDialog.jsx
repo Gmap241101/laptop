@@ -12,6 +12,8 @@ export default function TermsContentDialog({
   open,
   title,
   terms = [],
+  loading = false,
+  errorMessage = '',
   onClose,
   onConfirm,
   confirmLabel = '내용 확인',
@@ -59,6 +61,7 @@ export default function TermsContentDialog({
 
   const activeConfirmLabel =
     showAgreement && agreementChecked ? agreedConfirmLabel : confirmLabel;
+  const contentReady = !loading && !errorMessage && normalizedTerms.length > 0;
 
   return (
     <ModalPortal className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/55 p-4" role="dialog" aria-modal="true" aria-label={title}>
@@ -82,33 +85,49 @@ export default function TermsContentDialog({
           }}
           className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-5 py-5"
         >
-          <div className="space-y-5">
-            {normalizedTerms.map((term, index) => (
-              <section key={`${term.id || index}-${term.version || 0}`} className="rounded-2xl border border-slate-200 bg-white p-5">
-                <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-slate-100 pb-3">
-                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${term.required ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-slate-200 bg-slate-100 text-slate-600'}`}>
-                    {term.required ? '필수' : '선택'}
-                  </span>
-                  <h4 className="text-sm font-black text-slate-900">{term.title}</h4>
-                </div>
-                <RichTextContent html={term.contentHtml} text={term.contentText} className="text-sm leading-7 text-slate-700" />
-              </section>
-            ))}
-          </div>
+          {loading ? (
+            <div className="rounded-2xl border border-slate-200 bg-white px-5 py-10 text-center text-xs text-slate-500">
+              약관 내용을 불러오는 중입니다.
+            </div>
+          ) : errorMessage ? (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-5 text-xs leading-5 text-rose-700">
+              {errorMessage}
+            </div>
+          ) : (
+            <div className="space-y-5">
+              {normalizedTerms.map((term, index) => (
+                <section key={`${term.id || index}-${term.version || 0}`} className="rounded-2xl border border-slate-200 bg-white p-5">
+                  <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-slate-100 pb-3">
+                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${term.required ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-slate-200 bg-slate-100 text-slate-600'}`}>
+                      {term.required ? '필수' : '선택'}
+                    </span>
+                    <h4 className="text-sm font-black text-slate-900">{term.title}</h4>
+                  </div>
+                  <RichTextContent html={term.contentHtml} text={term.contentText} className="text-sm leading-7 text-slate-700" />
+                </section>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="border-t border-slate-200 bg-white px-5 py-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className={`text-[11px] ${reachedEnd ? 'text-emerald-600' : 'text-amber-600'}`}>
-              {reachedEnd ? '약관 내용을 끝까지 확인했습니다.' : '아래로 스크롤하여 전체 내용을 확인해 주세요.'}
+            <div className={`text-[11px] ${contentReady && reachedEnd ? 'text-emerald-600' : 'text-amber-600'}`}>
+              {!contentReady
+                ? loading
+                  ? '약관 내용을 준비하고 있습니다.'
+                  : '약관 내용을 확인할 수 없습니다.'
+                : reachedEnd
+                  ? '약관 내용을 끝까지 확인했습니다.'
+                  : '아래로 스크롤하여 전체 내용을 확인해 주세요.'}
             </div>
 
             {showAgreement ? (
-              <label className={`flex items-center gap-2 text-xs font-bold ${reachedEnd ? 'cursor-pointer text-slate-800' : 'cursor-not-allowed text-slate-400'}`}>
+              <label className={`flex items-center gap-2 text-xs font-bold ${contentReady && reachedEnd ? 'cursor-pointer text-slate-800' : 'cursor-not-allowed text-slate-400'}`}>
                 <input
                   type="checkbox"
                   checked={agreementChecked}
-                  disabled={!reachedEnd}
+                  disabled={!contentReady || !reachedEnd}
                   onChange={(event) => setAgreementChecked(event.target.checked)}
                   className="h-4 w-4 shrink-0 accent-slate-950 disabled:cursor-not-allowed"
                 />
@@ -121,7 +140,7 @@ export default function TermsContentDialog({
             <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50">취소</button>
             <button
               type="button"
-              disabled={!reachedEnd}
+              disabled={!contentReady || !reachedEnd}
               onClick={() => onConfirm?.({ agreed: showAgreement ? agreementChecked : false })}
               className="rounded-xl bg-orange-500 px-4 py-2.5 text-xs font-bold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-300"
             >

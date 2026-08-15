@@ -8,6 +8,13 @@ const repository = {
   async getDocument(domain, key) {
     return (stored.get(domain)?.documents || []).find((document) => document.key === key) || null;
   },
+  async getSignupTermContentContext(termId) {
+    const documents = stored.get('terms')?.documents || [];
+    return {
+      policy: documents.find((document) => document.key === 'signupTermsPolicy/current') || null,
+      term: documents.find((document) => document.key === `signupTerms/${termId}`) || null,
+    };
+  },
   async getRentalConfigBootstrapContext() {
     return { assetCategories: ['노트북'], teams: ['개발팀'], memberDirectoryVersion: 2, memberDirectoryEntryCount: 1, termsPolicy: {} };
   },
@@ -26,16 +33,37 @@ assert.equal(rentalConfig.sourceMode, 'postgresql-self-heal');
 
 const terms = await service.replaceAdminDomain({
   domain: 'terms',
-  documents: [{ key: 'signupTermsPolicy/current', payload: { enabled: true, revision: 2 } }],
+  documents: [
+    {
+      key: 'signupTermsPolicy/current',
+      payload: {
+        enabled: true,
+        revision: 2,
+        activeTerms: [{ id: 'privacy', title: '개인정보 처리', required: true, version: 3, versionId: 'privacy-v3', contentHash: 'hash-v3', contentHtml: '<p>must-not-be-in-list</p>', contentText: 'must-not-be-in-list' }],
+      },
+    },
+    {
+      key: 'signupTerms/privacy',
+      enabled: true,
+      payload: { id: 'privacy', title: '개인정보 처리', required: true, enabled: true, currentVersion: 3, currentVersionId: 'privacy-v3', contentHash: 'hash-v3', contentHtml: '<p>실제 약관 본문</p>', contentText: '실제 약관 본문' },
+    },
+  ],
   actorClerkUserId: 'user_admin',
 });
 assert.equal(terms.source, 'postgresql');
 assert.equal(terms.sourceMode, 'postgresql-admin-direct');
-assert.equal((await service.getDomain('terms')).documentCount, 1);
+assert.equal((await service.getDomain('terms')).documentCount, 2);
 const signupTermsPolicy = await service.getSignupTermsPolicy();
 assert.equal(signupTermsPolicy.source, 'postgresql');
 assert.equal(signupTermsPolicy.key, 'signupTermsPolicy/current');
 assert.equal(signupTermsPolicy.payload.revision, 2);
+assert.equal(signupTermsPolicy.payload.activeTerms[0].contentHtml, undefined, 'signup terms list payload must not include rich HTML content');
+assert.equal(signupTermsPolicy.payload.activeTerms[0].contentText, undefined, 'signup terms list payload must not include rich text fallback');
+const signupTermContent = await service.getSignupTermContent('privacy');
+assert.equal(signupTermContent.source, 'postgresql');
+assert.equal(signupTermContent.term.id, 'privacy');
+assert.equal(signupTermContent.term.contentHtml, '<p>실제 약관 본문</p>');
+assert.equal(signupTermContent.term.contentHash, 'hash-v3');
 
 const migration = readFileSync('server/migrations/026_phase34_rental_config_postgresql_bootstrap.sql', 'utf8');
 for (const marker of ["'rental-config'", "'rentalSystem/publicConfig'", "'postgresql-self-heal'", 'phase34_rental_config_postgresql_bootstrap']) {

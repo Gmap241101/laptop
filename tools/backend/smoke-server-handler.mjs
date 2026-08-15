@@ -211,6 +211,7 @@ let signupPolicyPatch = null;
 let partialContentPatch = null;
 const siteContentService = {
   async getSignupTermsPolicy() { return { source: 'postgresql', authoritative: true, key: 'signupTermsPolicy/current', payload: { enabled: true, revision: 5, requiredRevision: 5, activeTerms: [{ id: 'terms-smoke', title: 'Smoke terms' }] } }; },
+  async getSignupTermContent(termId) { return { source: 'postgresql', authoritative: true, term: { id: termId, title: 'Smoke terms', required: true, version: 1, versionId: 'terms-smoke-v1', contentHash: 'terms-smoke-hash', contentHtml: '<p>Smoke terms body</p>', contentText: 'Smoke terms body' } }; },
   async getDomain(domain) { return siteDomains.get(domain) || { source: 'postgresql', domain, documents: [], count: 0 }; },
   async syncDomain(domain) { return { ...(siteDomains.get(domain) || { domain, documents: [], count: 0 }), source: 'postgresql', synchronized: true }; },
   async replaceAdminDomain({ domain, documents }) { const result = { source: 'postgresql', domain, documents: documents || [], count: (documents || []).length, synchronized: true }; siteDomains.set(domain, result); return result; },
@@ -344,6 +345,14 @@ try {
   const signupTermsPolicyBody = await signupTermsPolicyResponse.json();
   if (signupTermsPolicyResponse.status !== 200 || signupTermsPolicyBody.signupTermsPolicy?.key !== 'signupTermsPolicy/current' || signupTermsPolicyBody.signupTermsPolicy?.source !== 'postgresql') {
     throw new Error('Dedicated signup terms policy endpoint failed.');
+  }
+
+  const signupTermContentResponse = await fetch(`${baseUrl}/api/signup/terms/terms-smoke/content`, {
+    headers: { Origin: allowedOrigin },
+  });
+  const signupTermContentBody = await signupTermContentResponse.json();
+  if (signupTermContentResponse.status !== 200 || signupTermContentBody.signupTermContent?.term?.id !== 'terms-smoke' || signupTermContentBody.signupTermContent?.term?.contentHtml !== '<p>Smoke terms body</p>') {
+    throw new Error('Dedicated signup term content endpoint failed.');
   }
 
   const verifiedSignup = await fetch(`${baseUrl}/api/users/signup/clerk-verified`, {

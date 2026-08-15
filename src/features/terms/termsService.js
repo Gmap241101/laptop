@@ -1,5 +1,5 @@
 import { readPolicyContentCutoverConfig } from '../content/policyContentCutover.js';
-import { normalizeTermsPolicy } from './termsConstants.js';
+import { normalizeActiveTerm, normalizeTermsPolicy } from './termsConstants.js';
 
 export async function createTermsContentHash(value = '') {
   const normalized = String(value || '').replace(/\r\n/g, '\n').trim();
@@ -21,8 +21,11 @@ export async function createTermsContentHash(value = '') {
 }
 
 const SIGNUP_TERMS_POLICY_CACHE_TTL_MS = 60_000;
+const SIGNUP_TERM_CONTENT_CACHE_TTL_MS = 5 * 60_000;
 let signupTermsPolicyCache = null;
 let signupTermsPolicyPending = null;
+const signupTermContentCache = new Map();
+const signupTermContentPending = new Map();
 
 const normalizeApiBaseUrl = (value) => String(value || '').trim().replace(/\/+$/, '');
 
@@ -59,6 +62,56 @@ const requestSignupTermsPolicy = async ({ fetchImpl = fetch } = {}) => {
   return normalizeTermsPolicy(payload.signupTermsPolicy.payload || {});
 };
 
+const createSignupTermContentCacheKey = (termValue = {}) => {
+  const term = normalizeActiveTerm(termValue);
+  return [term.id, term.version, term.versionId, term.contentHash].join(':');
+};
+
+const requestSignupTermContent = async (termValue, { fetchImpl = fetch } = {}) => {
+  const term = normalizeActiveTerm(termValue);
+  if (!term.id) {
+    const error = new Error('Signup term ID is required.');
+    error.code = 'signup_term_id_missing';
+    throw error;
+  }
+  const config = readPolicyContentCutoverConfig();
+  const apiBaseUrl = normalizeApiBaseUrl(config.apiBaseUrl);
+  if (!config.readEnabled || !apiBaseUrl) {
+    const error = new Error('Signup term PostgreSQL authority is unavailable.');
+    error.code = 'signup_term_content_authority_unavailable';
+    throw error;
+  }
+  const response = await fetchImpl(
+    `${apiBaseUrl}/api/signup/terms/${encodeURIComponent(term.id)}/content`,
+    { method: 'GET', headers: { Accept: 'application/json' } },
+  );
+  let payload = {};
+  try {
+    payload = await response.json();
+  } catch {
+    payload = {};
+  }
+  if (!response.ok) {
+    const error = new Error(`Signup term content read failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || 'signup_term_content_read_failed';
+    throw error;
+  }
+  const remoteTerm = normalizeActiveTerm(payload?.signupTermContent?.term || {});
+  if (
+    payload?.signupTermContent?.source !== 'postgresql' ||
+    remoteTerm.id !== term.id ||
+    remoteTerm.version !== term.version ||
+    String(remoteTerm.versionId || '') !== String(term.versionId || '') ||
+    String(remoteTerm.contentHash || '') !== String(term.contentHash || '')
+  ) {
+    const error = new Error('Backend returned stale or invalid signup term content.');
+    error.code = 'signup_term_content_payload_invalid';
+    throw error;
+  }
+  return normalizeActiveTerm({ ...term, ...remoteTerm });
+};
+
 export const getCachedSignupTermsPolicy = () => {
   if (!signupTermsPolicyCache) return null;
   if (Date.now() >= signupTermsPolicyCache.expiresAt) {
@@ -91,6 +144,48 @@ export const preloadSignupTermsPolicy = async ({ force = false } = {}) => {
 export async function loadSignupTermsPolicy() {
   return preloadSignupTermsPolicy();
 }
+
+export const getCachedSignupTermContent = (termValue = {}) => {
+  const key = createSignupTermContentCacheKey(termValue);
+  const cached = signupTermContentCache.get(key);
+  if (!cached) return null;
+  if (Date.now() >= cached.expiresAt) {
+    signupTermContentCache.delete(key);
+    return null;
+  }
+  return cached.term;
+};
+
+export const preloadSignupTermContent = async (termValue, { force = false } = {}) => {
+  const term = normalizeActiveTerm(termValue);
+  const key = createSignupTermContentCacheKey(term);
+  if (!term.id) {
+    const error = new Error('Signup term ID is required.');
+    error.code = 'signup_term_id_missing';
+    throw error;
+  }
+  const cached = force ? null : getCachedSignupTermContent(term);
+  if (cached) return cached;
+  if (!force && signupTermContentPending.has(key)) {
+    return signupTermContentPending.get(key);
+  }
+  const pending = requestSignupTermContent(term)
+    .then((contentTerm) => {
+      signupTermContentCache.set(key, {
+        term: contentTerm,
+        expiresAt: Date.now() + SIGNUP_TERM_CONTENT_CACHE_TTL_MS,
+      });
+      return contentTerm;
+    })
+    .finally(() => {
+      signupTermContentPending.delete(key);
+    });
+  signupTermContentPending.set(key, pending);
+  return pending;
+};
+
+export const loadSignupTermContents = async (terms = []) =>
+  Promise.all((Array.isArray(terms) ? terms : []).map((term) => preloadSignupTermContent(term)));
 
 export function formatTermsTimestamp(value) {
   const millis = Number(value?.millis || value?.milliseconds || 0);

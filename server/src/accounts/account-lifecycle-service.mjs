@@ -86,7 +86,7 @@ export const createAccountLifecycleService = ({ repository, siteContentRepositor
   if (!repository || typeof repository.createSignupAccount !== 'function' || typeof repository.getConsentSnapshot !== 'function' || typeof repository.importConsents !== 'function' || typeof repository.saveConsents !== 'function') {
     throw new TypeError('Account lifecycle repository is required.');
   }
-  if (!siteContentRepository || typeof siteContentRepository.getDomain !== 'function') throw new TypeError('Site content repository is required.');
+  if (!siteContentRepository || (typeof siteContentRepository.getDocument !== 'function' && typeof siteContentRepository.getDomain !== 'function')) throw new TypeError('Site content repository is required.');
   if (!userAuthRepository || typeof userAuthRepository.findByClerkUserId !== 'function') throw new TypeError('User auth repository is required.');
 
   const assertAuthorityEnabled = () => {
@@ -100,13 +100,19 @@ export const createAccountLifecycleService = ({ repository, siteContentRepositor
   };
 
   const loadPolicyContext = async () => {
-    const [rentalConfigDomain, termsDomain] = await Promise.all([
-      siteContentRepository.getDomain('rental-config'),
-      siteContentRepository.getDomain('terms'),
+    const readDocument = async (domain, key) => {
+      if (typeof siteContentRepository.getDocument === 'function') {
+        return siteContentRepository.getDocument(domain, key);
+      }
+      return getDocument(await siteContentRepository.getDomain(domain), key);
+    };
+    const [rentalConfigDocument, termsPolicyDocument] = await Promise.all([
+      readDocument('rental-config', 'rentalSystem/publicConfig'),
+      readDocument('terms', 'signupTermsPolicy/current'),
     ]);
-    const rentalConfig = getDocument(rentalConfigDomain, 'rentalSystem/publicConfig')?.payload || {};
+    const rentalConfig = rentalConfigDocument?.payload || {};
     const settings = rentalConfig?.settings && typeof rentalConfig.settings === 'object' ? rentalConfig.settings : {};
-    const policy = normalizePolicy(getDocument(termsDomain, 'signupTermsPolicy/current')?.payload || {});
+    const policy = normalizePolicy(termsPolicyDocument?.payload || {});
     return { settings, policy };
   };
 

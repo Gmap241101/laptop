@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Clock3, History } from 'lucide-react';
 
 import TermsContentDialog from '../components/TermsContentDialog.jsx';
@@ -9,7 +9,11 @@ import {
   isTermsConsentRequiredForAccount,
   normalizeTermsPolicy,
 } from '../features/terms/termsConstants.js';
-import { formatTermsTimestamp } from '../features/terms/termsService.js';
+import {
+  formatTermsTimestamp,
+  loadSignupTermContents,
+  preloadSignupTermContent,
+} from '../features/terms/termsService.js';
 import { clerkStagingClient } from '../clerk/clerkStagingClient.js';
 import {
   publishAccountLifecycleAuthorityObservation,
@@ -48,8 +52,12 @@ export default function UserTermsConsentPanel({
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [dialogTermIds, setDialogTermIds] = useState([]);
+  const [dialogTerms, setDialogTerms] = useState([]);
+  const [dialogLoading, setDialogLoading] = useState(false);
+  const [dialogErrorMessage, setDialogErrorMessage] = useState('');
   const [showHistory, setShowHistory] = useState(false);
   const [historyLog, setHistoryLog] = useState(null);
+  const dialogRequestIdRef = useRef(0);
 
   const loadData = useCallback(async () => {
     if (!uid) return;
@@ -92,7 +100,37 @@ export default function UserTermsConsentPanel({
     policy,
     account: { ...(account || {}), termsConsentRevision },
   });
-  const dialogTerms = policy.activeTerms.filter((term) => dialogTermIds.includes(term.id));
+  const dialogMetadataTerms = policy.activeTerms.filter((term) => dialogTermIds.includes(term.id));
+
+  const closeDialog = () => {
+    dialogRequestIdRef.current += 1;
+    setDialogTermIds([]);
+    setDialogTerms([]);
+    setDialogLoading(false);
+    setDialogErrorMessage('');
+  };
+
+  const openTermDialog = async (term) => {
+    const requestId = dialogRequestIdRef.current + 1;
+    dialogRequestIdRef.current = requestId;
+    setDialogTermIds([term.id]);
+    setDialogTerms([]);
+    setDialogLoading(true);
+    setDialogErrorMessage('');
+    try {
+      const loadedTerms = await loadSignupTermContents([term]);
+      if (dialogRequestIdRef.current !== requestId) return;
+      setDialogTerms(loadedTerms);
+    } catch (error) {
+      if (dialogRequestIdRef.current !== requestId) return;
+      console.error('Reconsent term content read error:', error);
+      setDialogErrorMessage(
+        `약관 내용을 불러오지 못했습니다. 오류 코드: ${error?.code || error?.name || 'signup_term_content_read_failed'}`
+      );
+    } finally {
+      if (dialogRequestIdRef.current === requestId) setDialogLoading(false);
+    }
+  };
 
   const confirmViewed = () => {
     const viewedAtMs = Date.now();
@@ -106,7 +144,7 @@ export default function UserTermsConsentPanel({
       });
       return next;
     });
-    setDialogTermIds([]);
+    closeDialog();
   };
 
   const valid = useMemo(() => policy.activeTerms.every((term) => {
@@ -223,7 +261,13 @@ export default function UserTermsConsentPanel({
                   </div>
                 </div>
 
-                <button type="button" onClick={() => setDialogTermIds([term.id])} className="shrink-0 text-xs font-bold text-slate-800 underline underline-offset-2">보기</button>
+                <button
+                  type="button"
+                  onPointerEnter={() => { void preloadSignupTermContent(term).catch(() => {}); }}
+                  onFocus={() => { void preloadSignupTermContent(term).catch(() => {}); }}
+                  onClick={() => { void openTermDialog(term); }}
+                  className="shrink-0 text-xs font-bold text-slate-800 underline underline-offset-2"
+                >보기</button>
 
                 {term.required ? (
                   <button
@@ -286,9 +330,11 @@ export default function UserTermsConsentPanel({
 
       <TermsContentDialog
         open={dialogTermIds.length > 0}
-        title={dialogTerms[0]?.title || '약관 확인'}
+        title={dialogMetadataTerms[0]?.title || '약관 확인'}
         terms={dialogTerms}
-        onClose={() => setDialogTermIds([])}
+        loading={dialogLoading}
+        errorMessage={dialogErrorMessage}
+        onClose={closeDialog}
         onConfirm={confirmViewed}
       />
     </div>

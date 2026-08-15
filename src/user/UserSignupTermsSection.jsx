@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronRight, FileText } from 'lucide-react';
 
 import TermsContentDialog from '../components/TermsContentDialog.jsx';
@@ -9,7 +9,9 @@ import {
 } from '../features/terms/termsConstants.js';
 import {
   getCachedSignupTermsPolicy,
+  loadSignupTermContents,
   loadSignupTermsPolicy,
+  preloadSignupTermContent,
 } from '../features/terms/termsService.js';
 
 const buildSubmission = (policy, viewedById, acceptedById) => {
@@ -54,7 +56,11 @@ export default function UserSignupTermsSection({ onChange }) {
   const [viewedById, setViewedById] = useState({});
   const [acceptedById, setAcceptedById] = useState({});
   const [dialogTermIds, setDialogTermIds] = useState([]);
+  const [dialogTerms, setDialogTerms] = useState([]);
   const [dialogMode, setDialogMode] = useState('single');
+  const [dialogLoading, setDialogLoading] = useState(false);
+  const [dialogErrorMessage, setDialogErrorMessage] = useState('');
+  const dialogRequestIdRef = useRef(0);
 
   useEffect(() => {
     let active = true;
@@ -115,9 +121,40 @@ export default function UserSignupTermsSection({ onChange }) {
     policy.activeTerms.length > 0 &&
     policy.activeTerms.every((term) => viewedById[term.id]);
 
+  const closeDialog = () => {
+    dialogRequestIdRef.current += 1;
+    setDialogTermIds([]);
+    setDialogTerms([]);
+    setDialogLoading(false);
+    setDialogErrorMessage('');
+  };
+
+  const openDialog = async (termIds, mode) => {
+    const sourceTerms = policy.activeTerms.filter((term) => termIds.includes(term.id));
+    const requestId = dialogRequestIdRef.current + 1;
+    dialogRequestIdRef.current = requestId;
+    setDialogMode(mode);
+    setDialogTermIds(termIds);
+    setDialogTerms([]);
+    setDialogLoading(true);
+    setDialogErrorMessage('');
+    try {
+      const loadedTerms = await loadSignupTermContents(sourceTerms);
+      if (dialogRequestIdRef.current !== requestId) return;
+      setDialogTerms(loadedTerms);
+    } catch (error) {
+      if (dialogRequestIdRef.current !== requestId) return;
+      console.error('Signup term content read error:', error);
+      setDialogErrorMessage(
+        `약관 내용을 불러오지 못했습니다. 오류 코드: ${error?.code || error?.name || 'signup_term_content_read_failed'}`
+      );
+    } finally {
+      if (dialogRequestIdRef.current === requestId) setDialogLoading(false);
+    }
+  };
+
   const openSingle = (termId) => {
-    setDialogMode('single');
-    setDialogTermIds([termId]);
+    void openDialog([termId], 'single');
   };
 
   const openAll = () => {
@@ -132,11 +169,10 @@ export default function UserSignupTermsSection({ onChange }) {
       return;
     }
 
-    setDialogMode('all');
-    setDialogTermIds(unviewedTermIds);
+    void openDialog(unviewedTermIds, 'all');
   };
 
-  const dialogTerms = policy.activeTerms.filter((term) =>
+  const dialogMetadataTerms = policy.activeTerms.filter((term) =>
     dialogTermIds.includes(term.id)
   );
 
@@ -170,7 +206,7 @@ export default function UserSignupTermsSection({ onChange }) {
       }));
     }
 
-    setDialogTermIds([]);
+    closeDialog();
   };
 
   if (!ready) {
@@ -261,7 +297,13 @@ export default function UserSignupTermsSection({ onChange }) {
                   </div>
                 </div>
 
-                <button type="button" onClick={() => openSingle(term.id)} className="shrink-0 text-xs font-bold text-slate-800 underline underline-offset-2 hover:text-orange-600">
+                <button
+                  type="button"
+                  onPointerEnter={() => { void preloadSignupTermContent(term).catch(() => {}); }}
+                  onFocus={() => { void preloadSignupTermContent(term).catch(() => {}); }}
+                  onClick={() => openSingle(term.id)}
+                  className="shrink-0 text-xs font-bold text-slate-800 underline underline-offset-2 hover:text-orange-600"
+                >
                   보기
                 </button>
               </div>
@@ -277,9 +319,11 @@ export default function UserSignupTermsSection({ onChange }) {
 
       <TermsContentDialog
         open={dialogTermIds.length > 0}
-        title={dialogMode === 'all' ? allDialogTitle : dialogTerms[0]?.title || '약관 확인'}
+        title={dialogMode === 'all' ? allDialogTitle : dialogMetadataTerms[0]?.title || '약관 확인'}
         terms={dialogTerms}
-        onClose={() => setDialogTermIds([])}
+        loading={dialogLoading}
+        errorMessage={dialogErrorMessage}
+        onClose={closeDialog}
         onConfirm={confirmDialog}
         confirmLabel="내용 확인"
         agreedConfirmLabel={dialogMode === 'all' ? '전체 동의하고 확인' : '동의하고 확인'}

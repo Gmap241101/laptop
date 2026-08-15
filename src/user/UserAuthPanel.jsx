@@ -3,6 +3,7 @@ import DomesticPhoneInput from '../components/DomesticPhoneInput.jsx';
 import DeviceTrustVerificationPanel from '../components/DeviceTrustVerificationPanel.jsx';
 import ModalPortal from '../components/ModalPortal.jsx';
 import { clerkStagingClient } from '../clerk/clerkStagingClient.js';
+import { preloadSignupTermsPolicy } from '../features/terms/termsService.js';
 import { isValidEmailAddress, normalizeEmailAddress, sanitizeMemberNameInput } from '../utils/memberPolicy.js';
 import UserSignupTermsSection from './UserSignupTermsSection.jsx';
 import { createEmptyTermsSubmission } from '../features/terms/termsConstants.js';
@@ -683,7 +684,13 @@ export default function UserAuthPanel({ ctx }) {
                         <span className="text-slate-300">|</span>
                         <button type="button" onClick={goToUserPasswordReset} className="font-semibold text-slate-600 hover:underline">비밀번호 재설정</button>
                       </div>
-                      <button type="button" onClick={goToUserSignup} className="font-bold mk-brand-text hover:underline">
+                      <button
+                        type="button"
+                        onPointerEnter={() => { void preloadSignupTermsPolicy().catch(() => {}); }}
+                        onFocus={() => { void preloadSignupTermsPolicy().catch(() => {}); }}
+                        onClick={goToUserSignup}
+                        className="font-bold mk-brand-text hover:underline"
+                      >
                         계정이 없으면 회원가입하기
                       </button>
                     </>

@@ -2,6 +2,19 @@ import { createRentalConfigBootstrapDocument } from './rental-config-bootstrap.m
 const ALLOWED_DOMAINS = new Set(['site-settings', 'home', 'popup', 'footer', 'rental-config', 'terms']);
 const errorWith = (code, message, status) => Object.assign(new Error(message), { code, status });
 const normalizeDomain = (value) => String(value || '').trim().toLowerCase();
+const normalizeTermId = (value) => String(value || '').trim();
+
+const projectSignupTermsPolicyPayload = (payloadValue = {}) => {
+  const payload = payloadValue && typeof payloadValue === 'object' ? payloadValue : {};
+  return Object.freeze({
+    ...payload,
+    activeTerms: (Array.isArray(payload.activeTerms) ? payload.activeTerms : []).map((termValue) => {
+      const term = termValue && typeof termValue === 'object' ? termValue : {};
+      const { contentHtml: _contentHtml, contentText: _contentText, ...metadata } = term;
+      return Object.freeze(metadata);
+    }),
+  });
+};
 
 const timestampMillis = (value) => {
   if (value === null || value === undefined || value === '') return 0;
@@ -110,9 +123,55 @@ export const createSiteContentService = ({ repository }) => Object.freeze({
       source: 'postgresql',
       authoritative: true,
       key: document.key,
-      payload: document.payload || {},
+      payload: projectSignupTermsPolicyPayload(document.payload || {}),
       enabled: document.enabled,
       syncedAt: document.syncedAt || null,
+    });
+  },
+  async getSignupTermContent(termIdValue) {
+    const termId = normalizeTermId(termIdValue);
+    if (!termId) {
+      throw errorWith('signup_term_id_missing', 'Signup term ID is required.', 400);
+    }
+    if (typeof repository.getSignupTermContentContext !== 'function') {
+      throw errorWith('signup_term_content_read_unavailable', 'Signup term content reader is unavailable.', 503);
+    }
+    const context = await repository.getSignupTermContentContext(termId);
+    const policyPayload = context?.policy?.payload && typeof context.policy.payload === 'object'
+      ? context.policy.payload
+      : {};
+    const activeTerm = (Array.isArray(policyPayload.activeTerms) ? policyPayload.activeTerms : [])
+      .find((term) => normalizeTermId(term?.id) === termId);
+    const termPayload = context?.term?.payload && typeof context.term.payload === 'object'
+      ? context.term.payload
+      : {};
+    if (!policyPayload.enabled || !activeTerm || !context?.term || context.term.enabled === false || termPayload.enabled === false || termPayload.archived === true) {
+      throw errorWith('signup_term_content_not_found', 'Active signup term content is not available.', 404);
+    }
+    const version = Math.max(1, Number(activeTerm.version || activeTerm.currentVersion || 1));
+    const versionId = String(activeTerm.versionId || activeTerm.currentVersionId || '').trim();
+    const contentHash = String(activeTerm.contentHash || '').trim();
+    if (
+      (Number(termPayload.currentVersion || termPayload.version || version) !== version) ||
+      (versionId && String(termPayload.currentVersionId || termPayload.versionId || '').trim() !== versionId) ||
+      (contentHash && String(termPayload.contentHash || '').trim() !== contentHash)
+    ) {
+      throw errorWith('signup_term_content_changed', 'Signup term content changed while it was being read.', 409);
+    }
+    return Object.freeze({
+      source: 'postgresql',
+      authoritative: true,
+      term: Object.freeze({
+        id: termId,
+        title: String(activeTerm.title || termPayload.title || '').trim(),
+        required: Boolean(activeTerm.required),
+        version,
+        versionId,
+        contentHash,
+        contentHtml: String(termPayload.contentHtml || ''),
+        contentText: String(termPayload.contentText || ''),
+        displayOrder: Number.isFinite(Number(activeTerm.displayOrder)) ? Number(activeTerm.displayOrder) : 0,
+      }),
     });
   },
   async getDomain(domainValue) {

@@ -23,7 +23,7 @@ for (const marker of [
 ]) assert.ok(rentalData.includes(marker), `publicConfig PostgreSQL marker missing: ${marker}`);
 
 const termsService = readFileSync('src/features/terms/termsService.js', 'utf8');
-for (const marker of ['/api/signup/terms-policy', "source !== 'postgresql'", 'signupTermsPolicyPending', 'SIGNUP_TERMS_POLICY_CACHE_TTL_MS']) {
+for (const marker of ['/api/signup/terms-policy', '/api/signup/terms/${encodeURIComponent(term.id)}/content', "source !== 'postgresql'", 'signupTermsPolicyPending', 'signupTermContentPending', 'SIGNUP_TERMS_POLICY_CACHE_TTL_MS', 'SIGNUP_TERM_CONTENT_CACHE_TTL_MS']) {
   assert.ok(termsService.includes(marker), `signup terms dedicated PostgreSQL marker missing: ${marker}`);
 }
 for (const forbidden of ['requestPolicyContentDomain', 'POLICY_CONTENT_DOMAINS.TERMS', 'getDoc(', 'onSnapshot(', 'retiredLegacyDataCompat']) {
@@ -36,5 +36,17 @@ assert.equal(adminTerms.includes('replacePolicyContentDomainInPostgresql'), fals
 const signupPolicy = readFileSync('src/features/members/useAdminSignupPolicyActions.js', 'utf8');
 assert.ok(signupPolicy.includes('saveAdminSignupPolicy'));
 assert.equal(signupPolicy.includes('replacePolicyContentDomainInPostgresql'), false);
+
+const signupTermsSection = readFileSync('src/user/UserSignupTermsSection.jsx', 'utf8');
+assert.match(signupTermsSection, /loadSignupTermContents/, 'signup terms dialog must lazy-load rich term content');
+assert.match(signupTermsSection, /onPointerEnter=.*preloadSignupTermContent/s, 'signup terms view action must intent-preload individual term content');
+const reconsentPanel = readFileSync('src/user/UserTermsConsentPanel.jsx', 'utf8');
+assert.match(reconsentPanel, /loadSignupTermContents/, 'reconsent dialog must hydrate term content instead of rendering metadata-only policy');
+assert.match(reconsentPanel, /onClick=.*openTermDialog/s, 'reconsent term view must use the PostgreSQL term-content reader');
+const termsDialog = readFileSync('src/components/TermsContentDialog.jsx', 'utf8');
+assert.match(termsDialog, /loading = false/, 'terms dialog must expose a content loading state');
+assert.match(termsDialog, /errorMessage = ''/, 'terms dialog must expose a content read error state');
+const userAuthPanel = readFileSync('src/user/UserAuthPanel.jsx', 'utf8');
+assert.match(userAuthPanel, /onPointerEnter=.*preloadSignupTermsPolicy/s, 'signup navigation must preload the lightweight terms list on intent');
 
 console.log('[policy-terms-frontend-smoke] PASS (Phase 34 PostgreSQL-only rental-config + terms authority)');

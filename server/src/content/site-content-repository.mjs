@@ -63,6 +63,26 @@ export const createSiteContentRepository = (pool) => {
     return result.rowCount > 0 ? Object.freeze(mapRow(result.rows[0])) : null;
   };
 
+  const getSignupTermContentContext = async (termIdValue) => {
+    const termId = String(termIdValue || '').trim();
+    if (!termId) return null;
+    const termKey = `signupTerms/${termId}`;
+    const result = await pool.query(
+      `SELECT document_key, payload, enabled, sort_order, source_updated_at, synced_at
+         FROM app_site_content_documents
+        WHERE domain = 'terms'
+          AND document_key = ANY($1::text[])`,
+      [['signupTermsPolicy/current', termKey]],
+    );
+    const documents = new Map(
+      result.rows.map((row) => [row.document_key, Object.freeze(mapRow(row))]),
+    );
+    return Object.freeze({
+      policy: documents.get('signupTermsPolicy/current') || null,
+      term: documents.get(termKey) || null,
+    });
+  };
+
   const replaceDomain = async ({ domain, documents, actorClerkUserId = '', sourceMode = 'postgresql-admin-direct' }) => {
     const normalizedDocuments = (Array.isArray(documents) ? documents : []).map((item) => ({
       key: String(item?.key || '').trim(),
@@ -294,6 +314,7 @@ export const createSiteContentRepository = (pool) => {
   return Object.freeze({
     getRentalConfigBootstrapContext,
     getDocument,
+    getSignupTermContentContext,
     getDomain,
     replaceDomain,
     patchDomainDocuments,
