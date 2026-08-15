@@ -587,9 +587,9 @@ export default function useRentalDataSubscriptionController({
 
     const applyConfigData = (configData, source) => {
       if (!active) return;
-      setSplitPublicConfig((previous) =>
-        assetCutoverConfig.readRequested && Array.isArray(previous?.assetCategories)
-          ? { ...configData, assetCategories: previous.assetCategories }
+      setSplitPublicConfig(() =>
+        assetCutoverConfig.readRequested
+          ? { ...configData, assetCategories: splitAssetCategoriesRef.current }
           : configData
       );
       setSplitStorageVersion(Number(configData.storageVersion || 0));
@@ -716,6 +716,7 @@ export default function useRentalDataSubscriptionController({
       setSplitRentalAssets(assets.map((asset) => ({ ...asset, reservations: normalizeAssetReservations(asset.reservations || []) })));
       setSplitRentalAvailability(availability);
       if (categories.length > 0) {
+        splitAssetCategoriesRef.current = categories;
         setSplitPublicConfig((previous) => previous ? { ...previous, assetCategories: categories } : previous);
       }
       setSplitSourceReady((previous) => ({ ...previous, assets: true, availability: true }));

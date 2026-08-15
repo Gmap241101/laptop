@@ -5,6 +5,10 @@ import {
   SITE_CONTENT_DOMAINS,
 } from '../content/siteContentCutover.js';
 import {
+  invalidateAdminFooterCatalog,
+  preloadAdminFooterPageContent,
+} from './adminSiteContentCatalogService.js';
+import {
   isRichTextEmpty,
   legacyTextToRichHtml,
   richTextHtmlToText,
@@ -188,6 +192,7 @@ export default function useAdminFooterContentController({
             }),
           ],
         });
+        invalidateAdminFooterCatalog();
         triggerToast('푸터 공통 정보가 성공적으로 저장 및 반영되었습니다.', 'success');
         return true;
     } catch (error) {
@@ -204,7 +209,7 @@ export default function useAdminFooterContentController({
     }
   };
 
-  const openFooterPageDialog = (page = null) => {
+  const openFooterPageDialog = async (page = null) => {
     if (!isAdminAuthenticated) {
       triggerToast(
         '관리자 인증 후 푸터 메뉴 페이지를 작성하거나 수정할 수 있습니다.',
@@ -213,34 +218,50 @@ export default function useAdminFooterContentController({
       return;
     }
 
+    let sourcePage = page;
+    if (page?.id) {
+      try {
+        sourcePage = await preloadAdminFooterPageContent(page);
+      } catch (error) {
+        console.error('Footer page content read error:', error);
+        triggerToast(
+          `푸터 페이지 내용을 불러오지 못했습니다. 오류 코드: ${
+            error?.code || error?.message || 'footer_page_content_read_failed'
+          }`,
+          'error'
+        );
+        return;
+      }
+    }
+
     const isLegacyDisplayOnlyLink =
-      page?.pageType === FOOTER_PAGE_TYPE_LINK &&
-      String(page?.linkUrl || '').trim() === '#';
+      sourcePage?.pageType === FOOTER_PAGE_TYPE_LINK &&
+      String(sourcePage?.linkUrl || '').trim() === '#';
     const nextForm = {
-      enabled: page ? page.enabled !== false : true,
-      addressId: String(page?.addressId || ''),
-      title: page?.title || '',
+      enabled: sourcePage ? sourcePage.enabled !== false : true,
+      addressId: String(sourcePage?.addressId || ''),
+      title: sourcePage?.title || '',
       titleDisplayType: getNormalizedFooterTitleDisplayType(
-        page?.titleDisplayType
+        sourcePage?.titleDisplayType
       ),
-      titleImageUrl: String(page?.titleImageUrl || ''),
+      titleImageUrl: String(sourcePage?.titleImageUrl || ''),
       pageType: isLegacyDisplayOnlyLink
         ? FOOTER_PAGE_TYPE_NONE
-        : getNormalizedFooterPageType(page?.pageType),
+        : getNormalizedFooterPageType(sourcePage?.pageType),
       linkUrl: isLegacyDisplayOnlyLink
         ? ''
-        : String(page?.linkUrl || ''),
-      openInNewTab: page ? page.openInNewTab !== false : true,
-      isTitleBold: Boolean(page?.isTitleBold),
+        : String(sourcePage?.linkUrl || ''),
+      openInNewTab: sourcePage ? sourcePage.openInNewTab !== false : true,
+      isTitleBold: Boolean(sourcePage?.isTitleBold),
       contentHtml: sanitizeRichTextHtml(
-        page?.contentHtml ||
-          legacyTextToRichHtml(page?.contentText || page?.content || '')
+        sourcePage?.contentHtml ||
+          legacyTextToRichHtml(sourcePage?.contentText || sourcePage?.content || '')
       ),
     };
 
     setFooterPageDialog({
-      mode: page ? 'edit' : 'create',
-      pageId: page?.id || '',
+      mode: sourcePage ? 'edit' : 'create',
+      pageId: sourcePage?.id || '',
       initialForm: JSON.stringify(nextForm),
     });
     setFooterPageForm(nextForm);
@@ -441,6 +462,7 @@ export default function useAdminFooterContentController({
             ? [{ documentKey: `footerPages/${pageId}`, addressId }]
             : [],
         });
+        invalidateAdminFooterCatalog();
         triggerToast('푸터 페이지가 성공적으로 저장 및 반영되었습니다.', 'success');
         resetFooterPageDialog();
         return;
@@ -470,15 +492,17 @@ export default function useAdminFooterContentController({
 
     setFooterPageToggleSavingId(page.id);
     try {
+        const fullPage = await preloadAdminFooterPageContent(page);
         await patchFooterDomain({
           upserts: [
             createFooterPageDocument({
-              ...page,
+              ...fullPage,
               enabled: !Boolean(page.enabled),
               updatedAt: new Date(),
             }),
           ],
         });
+        invalidateAdminFooterCatalog();
         triggerToast('푸터 페이지 사용 상태가 성공적으로 저장 및 반영되었습니다.', 'success');
         return;
     } catch (error) {
@@ -515,24 +539,28 @@ export default function useAdminFooterContentController({
 
 
     try {
-        const reordered = [...footerPages];
-        [reordered[currentIndex], reordered[nextIndex]] = [reordered[nextIndex], reordered[currentIndex]];
-        const currentPage = reordered[currentIndex];
-        const movedPage = reordered[nextIndex];
+        const currentPage = footerPages[currentIndex];
+        const adjacentPage = footerPages[nextIndex];
+        const [fullCurrentPage, fullAdjacentPage] = await Promise.all([
+          preloadAdminFooterPageContent(currentPage),
+          preloadAdminFooterPageContent(adjacentPage),
+        ]);
+        const updatedAt = new Date();
         await patchFooterDomain({
           upserts: [
             createFooterPageDocument({
-              ...currentPage,
-              sortOrder: currentIndex + 1,
-              updatedAt: new Date(),
+              ...fullCurrentPage,
+              sortOrder: nextIndex + 1,
+              updatedAt,
             }),
             createFooterPageDocument({
-              ...movedPage,
-              sortOrder: nextIndex + 1,
-              updatedAt: new Date(),
+              ...fullAdjacentPage,
+              sortOrder: currentIndex + 1,
+              updatedAt,
             }),
           ],
         });
+        invalidateAdminFooterCatalog();
         return;
     } catch (error) {
       console.error('Footer page move error:', error);
@@ -560,6 +588,7 @@ export default function useAdminFooterContentController({
             await patchFooterDomain({
               deletes: [`footerPages/${page.id}`],
             });
+            invalidateAdminFooterCatalog();
             if (selectedFooterPageId === page.id) setSelectedFooterPageId('');
             if (footerPageDialog?.pageId === page.id) resetFooterPageDialog();
             triggerToast('푸터 페이지 삭제가 성공적으로 반영되었습니다.', 'success');

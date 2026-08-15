@@ -1,9 +1,13 @@
 import { useState } from 'react';
 import {
   createSiteContentDocumentId,
-  replaceSiteContentDomainInPostgresql,
+  patchSiteContentDomainInPostgresql,
   SITE_CONTENT_DOMAINS,
 } from '../content/siteContentCutover.js';
+import {
+  invalidateAdminPopupCatalog,
+  preloadAdminPopupPostContent,
+} from './adminSiteContentCatalogService.js';
 import {
   isRichTextEmpty,
   legacyTextToRichHtml,
@@ -61,17 +65,21 @@ export default function useAdminPopupPostController({
   triggerConfirm,
   triggerToast,
 }) {
-  const replacePopupDomain = async (posts) => replaceSiteContentDomainInPostgresql({
-    domain: SITE_CONTENT_DOMAINS.POPUP,
-    documents: posts.map((post) => ({
-      key: `popupPosts/${post.id}`,
-      payload: { ...post, id: post.id },
-      enabled: post.enabled !== false,
-      sortOrder: post.sortOrder,
-    })),
+  const patchPopupDomain = async ({ upserts = [], deletes = [] } = {}) =>
+    patchSiteContentDomainInPostgresql({
+      domain: SITE_CONTENT_DOMAINS.POPUP,
+      upserts,
+      deletes,
+    });
+
+  const createPopupDocument = (post) => ({
+    key: `popupPosts/${post.id}`,
+    payload: { ...post, id: post.id },
+    enabled: post.enabled !== false,
+    sortOrder: post.sortOrder,
   });
 
-  const openPopupPostDialog = (post = null) => {
+  const openPopupPostDialog = async (post = null) => {
     if (!isAdminAuthenticated) {
       triggerToast(
         '관리자 인증 후 팝업을 작성하거나 수정할 수 있습니다.',
@@ -80,30 +88,46 @@ export default function useAdminPopupPostController({
       return;
     }
 
+    let sourcePost = post;
+    if (post?.id) {
+      try {
+        sourcePost = await preloadAdminPopupPostContent(post);
+      } catch (error) {
+        console.error('Popup content read error:', error);
+        triggerToast(
+          `팝업 내용을 불러오지 못했습니다. 오류 코드: ${
+            error?.code || error?.message || 'popup_content_read_failed'
+          }`,
+          'error'
+        );
+        return;
+      }
+    }
+
     const nextForm = {
-      enabled: post ? Boolean(post.enabled) : true,
-      title: post?.title || '',
-      subtitle: post?.subtitle || '',
+      enabled: sourcePost ? Boolean(sourcePost.enabled) : true,
+      title: sourcePost?.title || '',
+      subtitle: sourcePost?.subtitle || '',
       contentHtml: sanitizeRichTextHtml(
-        post?.contentHtml ||
-          legacyTextToRichHtml(post?.contentText || post?.content || '')
+        sourcePost?.contentHtml ||
+          legacyTextToRichHtml(sourcePost?.contentText || sourcePost?.content || '')
       ),
       startAt:
-        toDateTimeLocalValue(post?.startAt) ||
+        toDateTimeLocalValue(sourcePost?.startAt) ||
         toDateTimeLocalValue(new Date()),
-      endAt: toDateTimeLocalValue(post?.endAt),
-      isIndefinite: Boolean(post?.isIndefinite),
+      endAt: toDateTimeLocalValue(sourcePost?.endAt),
+      isIndefinite: Boolean(sourcePost?.isIndefinite),
       targetPages:
-        Array.isArray(post?.targetPages) && post.targetPages.length
-          ? post.targetPages.filter((page) =>
+        Array.isArray(sourcePost?.targetPages) && sourcePost.targetPages.length
+          ? sourcePost.targetPages.filter((page) =>
               ['home', 'rental'].includes(page)
             )
           : ['home'],
     };
 
     setPopupPostDialog({
-      mode: post ? 'edit' : 'create',
-      postId: post?.id || '',
+      mode: sourcePost ? 'edit' : 'create',
+      postId: sourcePost?.id || '',
       initialForm: JSON.stringify(nextForm),
     });
     setPopupPostForm(nextForm);
@@ -212,39 +236,42 @@ export default function useAdminPopupPostController({
       return;
     }
 
-
     setPopupPostSaving(true);
 
     try {
-        const popupId = editingPost?.id || createSiteContentDocumentId();
-        const updatedAt = new Date();
-        const orderedPosts = isEditing ? [...popupPosts] : [...popupPosts, { id: popupId }];
-        const nextPosts = orderedPosts.map((post, index) => post.id === popupId
-          ? {
-              id: popupId,
-              enabled: Boolean(popupPostForm.enabled),
-              sortOrder: index + 1,
-              title,
-              subtitle,
-              content: contentText,
-              contentText,
-              contentHtml,
-              contentFormat: 'rich-html-v1',
-              targetPages,
-              startAt,
-              endAt: isIndefinite ? null : endAt,
-              isIndefinite,
-              authorUid: editingPost?.authorUid || auditActor.uid,
-              authorName: editingPost?.authorName || auditActor.name,
-              createdAt: editingPost?.createdAt || updatedAt,
-              updatedAt,
-            }
-          : { ...post, sortOrder: index + 1, updatedAt });
-        await replacePopupDomain(nextPosts);
-        triggerToast('팝업이 성공적으로 저장 및 반영되었습니다.', 'success');
-        setPopupPostDialog(null);
-        setPopupPostForm(createDefaultPopupPostForm());
-        return;
+      const popupId = editingPost?.id || createSiteContentDocumentId();
+      const updatedAt = new Date();
+      const nextSortOrder = isEditing
+        ? Number(editingPost?.sortOrder) || 1
+        : popupPosts.reduce(
+            (maxOrder, post) => Math.max(maxOrder, Number(post?.sortOrder) || 0),
+            0
+          ) + 1;
+      const nextPost = {
+        id: popupId,
+        enabled: Boolean(popupPostForm.enabled),
+        sortOrder: nextSortOrder,
+        title,
+        subtitle,
+        content: contentText,
+        contentText,
+        contentHtml,
+        contentFormat: 'rich-html-v1',
+        targetPages,
+        startAt,
+        endAt: isIndefinite ? null : endAt,
+        isIndefinite,
+        authorUid: editingPost?.authorUid || auditActor.uid,
+        authorName: editingPost?.authorName || auditActor.name,
+        createdAt: editingPost?.createdAt || updatedAt,
+        updatedAt,
+      };
+      await patchPopupDomain({ upserts: [createPopupDocument(nextPost)] });
+      invalidateAdminPopupCatalog();
+      triggerToast('팝업이 성공적으로 저장 및 반영되었습니다.', 'success');
+      setPopupPostDialog(null);
+      setPopupPostForm(createDefaultPopupPostForm());
+      return;
     } catch (error) {
       console.error('Popup post save error:', error);
       triggerToast(
@@ -266,11 +293,19 @@ export default function useAdminPopupPostController({
 
     setPopupPostToggleSavingId(post.id);
     try {
-        await replacePopupDomain(popupPosts.map((item) => item.id === post.id
-          ? { ...item, enabled: !Boolean(item.enabled), updatedAt: new Date() }
-          : item));
-        triggerToast('팝업 사용 상태가 성공적으로 저장 및 반영되었습니다.', 'success');
-        return;
+      const fullPost = await preloadAdminPopupPostContent(post);
+      await patchPopupDomain({
+        upserts: [
+          createPopupDocument({
+            ...fullPost,
+            enabled: !Boolean(post.enabled),
+            updatedAt: new Date(),
+          }),
+        ],
+      });
+      invalidateAdminPopupCatalog();
+      triggerToast('팝업 사용 상태가 성공적으로 저장 및 반영되었습니다.', 'success');
+      return;
     } catch (error) {
       console.error('Popup enabled toggle error:', error);
       triggerToast(
@@ -302,15 +337,30 @@ export default function useAdminPopupPostController({
       return;
     }
 
-    const reordered = [...popupPosts];
-    [reordered[currentIndex], reordered[nextIndex]] = [
-      reordered[nextIndex],
-      reordered[currentIndex],
-    ];
-
     try {
-        await replacePopupDomain(reordered.map((post, index) => ({ ...post, sortOrder: index + 1, updatedAt: new Date() })));
-        return;
+      const currentPost = popupPosts[currentIndex];
+      const adjacentPost = popupPosts[nextIndex];
+      const [fullCurrentPost, fullAdjacentPost] = await Promise.all([
+        preloadAdminPopupPostContent(currentPost),
+        preloadAdminPopupPostContent(adjacentPost),
+      ]);
+      const updatedAt = new Date();
+      await patchPopupDomain({
+        upserts: [
+          createPopupDocument({
+            ...fullCurrentPost,
+            sortOrder: nextIndex + 1,
+            updatedAt,
+          }),
+          createPopupDocument({
+            ...fullAdjacentPost,
+            sortOrder: currentIndex + 1,
+            updatedAt,
+          }),
+        ],
+      });
+      invalidateAdminPopupCatalog();
+      return;
     } catch (error) {
       console.error('Popup order update error:', error);
       triggerToast(`팝업 순서 변경에 실패했습니다. 오류 코드: ${error?.code || error?.name || 'popup_order_update_failed'}`, 'error');
@@ -331,15 +381,14 @@ export default function useAdminPopupPostController({
       async () => {
         setPopupPostDeletingId(post.id);
         try {
-            const remainingPosts = popupPosts.filter((item) => item.id !== post.id)
-              .map((item, index) => ({ ...item, sortOrder: index + 1, updatedAt: new Date() }));
-            await replacePopupDomain(remainingPosts);
-            if (popupPostDialog?.postId === post.id) {
-              setPopupPostDialog(null);
-              setPopupPostForm(createDefaultPopupPostForm());
-            }
-            triggerToast('팝업 삭제가 성공적으로 반영되었습니다.', 'success');
-            return;
+          await patchPopupDomain({ deletes: [`popupPosts/${post.id}`] });
+          invalidateAdminPopupCatalog();
+          if (popupPostDialog?.postId === post.id) {
+            setPopupPostDialog(null);
+            setPopupPostForm(createDefaultPopupPostForm());
+          }
+          triggerToast('팝업 삭제가 성공적으로 반영되었습니다.', 'success');
+          return;
         } catch (error) {
           console.error('Popup post delete error:', error);
           triggerToast(

@@ -200,20 +200,17 @@ export default function useUserSignupController({
     }
 
     if (!isValidEmailAddress(email)) {
-      triggerToast('올바른 이메일 주소를 입력해 주세요.', 'error');
+      triggerToast('이메일 주소 형식이 정확하지 않습니다.\n인증받을 이메일 주소를 정확히 입력해 주세요.', 'error');
       return;
     }
 
-    if (!password) {
-      triggerToast('비밀번호를 입력해 주세요.', 'error');
-      return;
-    }
-
-    if (!isValidMemberPassword(password)) {
-      triggerToast(
-        '비밀번호는 8자 이상이며 영문과 숫자를 포함해야 합니다.',
-        'error'
-      );
+    const firebaseRetirement = readUserFirebaseAuthRetirementConfig();
+    if (
+      firebaseRetirement.requested &&
+      (userAuthForm.signupEmailVerified !== true ||
+        normalizeEmailAddress(userAuthForm.signupVerifiedEmail) !== email)
+    ) {
+      triggerToast('회원가입에 사용할 이메일 인증을 먼저 완료해 주세요.', 'error');
       return;
     }
 
@@ -245,6 +242,24 @@ export default function useUserSignupController({
       return;
     }
 
+    if (!password) {
+      triggerToast('비밀번호를 입력해 주세요.', 'error');
+      return;
+    }
+
+    if (!isValidMemberPassword(password)) {
+      triggerToast(
+        '비밀번호는 8자 이상이며 영문과 숫자를 포함해야 합니다.',
+        'error'
+      );
+      return;
+    }
+
+    if (!passwordConfirm) {
+      triggerToast('비밀번호 확인을 입력해 주세요.', 'error');
+      return;
+    }
+
     if (password !== passwordConfirm) {
       triggerToast('비밀번호 확인이 일치하지 않습니다.', 'error');
       return;
@@ -255,16 +270,6 @@ export default function useUserSignupController({
       (!signupTermsSubmission.ready || !signupTermsSubmission.valid)
     ) {
       triggerToast('필수 회원가입 약관을 확인하고 동의해 주세요.', 'error');
-      return;
-    }
-
-    const firebaseRetirement = readUserFirebaseAuthRetirementConfig();
-    if (
-      firebaseRetirement.requested &&
-      (userAuthForm.signupEmailVerified !== true ||
-        normalizeEmailAddress(userAuthForm.signupVerifiedEmail) !== email)
-    ) {
-      triggerToast('회원가입에 사용할 이메일 인증을 먼저 완료해 주세요.', 'error');
       return;
     }
 

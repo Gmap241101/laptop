@@ -268,6 +268,61 @@ export const createSiteContentService = ({ repository }) => Object.freeze({
     }).sort((left, right) => left.displayOrder - right.displayOrder || left.title.localeCompare(right.title, 'ko'));
     return Object.freeze({ source: 'postgresql', authoritative: true, terms: Object.freeze(terms) });
   },
+  async getAdminSiteContentCatalog(domainValue) {
+    const domain = normalizeDomain(domainValue);
+    if (!['popup', 'footer'].includes(domain)) {
+      throw errorWith('admin_site_content_catalog_domain_invalid', 'Unsupported administrator site-content catalog domain.', 400);
+    }
+    if (typeof repository.getAdminSiteContentCatalog !== 'function') {
+      throw errorWith('admin_site_content_catalog_unavailable', 'Administrator site-content catalog reader is unavailable.', 503);
+    }
+    const result = await repository.getAdminSiteContentCatalog(domain);
+    if (!result) {
+      throw errorWith('admin_site_content_catalog_not_synchronized', 'Administrator site-content catalog is not synchronized.', 404);
+    }
+    const projected = projectPublicDomain(result);
+    return Object.freeze({
+      source: 'postgresql',
+      authoritative: true,
+      domain,
+      syncedAt: projected.syncedAt || null,
+      documentCount: projected.documents.length,
+      documents: projected.documents,
+    });
+  },
+
+  async getAdminSiteContentDocument(domainValue, documentIdValue) {
+    const domain = normalizeDomain(domainValue);
+    const documentId = String(documentIdValue || '').trim();
+    if (!['popup', 'footer'].includes(domain) || !documentId) {
+      throw errorWith('admin_site_content_document_invalid', 'Administrator site-content document target is invalid.', 400);
+    }
+    if (typeof repository.getDocument !== 'function') {
+      throw errorWith('admin_site_content_document_unavailable', 'Administrator site-content document reader is unavailable.', 503);
+    }
+    const documentKey = domain === 'popup'
+      ? `popupPosts/${documentId}`
+      : `footerPages/${documentId}`;
+    const document = await repository.getDocument(domain, documentKey);
+    if (!document) {
+      throw errorWith('admin_site_content_document_not_found', 'Administrator site-content document was not found.', 404);
+    }
+    const payload = document.payload && typeof document.payload === 'object' ? document.payload : {};
+    return Object.freeze({
+      source: 'postgresql',
+      authoritative: true,
+      domain,
+      document: Object.freeze({
+        ...payload,
+        id: String(payload.id || documentId).trim(),
+        enabled: typeof document.enabled === 'boolean' ? document.enabled : payload.enabled !== false,
+        sortOrder: Number.isFinite(Number(document.sortOrder))
+          ? Number(document.sortOrder)
+          : Number.isFinite(Number(payload.sortOrder)) ? Number(payload.sortOrder) : 0,
+      }),
+    });
+  },
+
   async getHomeBootstrap() {
     if (typeof repository.getDomains !== 'function') {
       throw errorWith('home_bootstrap_read_unavailable', 'User home bootstrap reader is unavailable.', 503);

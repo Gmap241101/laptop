@@ -255,6 +255,66 @@ export const createSiteContentRepository = (pool) => {
     });
   };
 
+
+  const getAdminSiteContentCatalog = async (domainValue) => {
+    const domain = String(domainValue || '').trim().toLowerCase();
+    if (!['popup', 'footer'].includes(domain)) return null;
+    const result = await pool.query(
+      `SELECT
+         sync.domain AS sync_domain,
+         sync.source_hash,
+         sync.document_count,
+         sync.source_mode,
+         sync.synced_at AS sync_synced_at,
+         document.document_key,
+         CASE
+           WHEN $1 = 'popup' THEN
+             document.payload - 'content' - 'contentText' - 'contentHtml'
+           WHEN $1 = 'footer' AND document.document_key LIKE 'footerPages/%' THEN
+             document.payload - 'content' - 'contentText' - 'contentHtml'
+           ELSE document.payload
+         END AS payload,
+         document.enabled,
+         document.sort_order,
+         document.source_updated_at,
+         document.synced_at AS document_synced_at
+       FROM app_site_content_syncs sync
+       LEFT JOIN app_site_content_documents document
+         ON document.domain = sync.domain
+      WHERE sync.domain = $1
+        AND (
+          document.document_key IS NULL
+          OR ($1 = 'popup' AND document.document_key LIKE 'popupPosts/%')
+          OR ($1 = 'footer' AND (document.document_key = 'siteFooter/config' OR document.document_key LIKE 'footerPages/%'))
+        )
+      ORDER BY document.sort_order NULLS LAST, document.document_key`,
+      [domain],
+    );
+    if (result.rowCount === 0) return null;
+    const sync = result.rows[0];
+    const documents = result.rows
+      .filter((row) => row.document_key)
+      .map((row) => Object.freeze(mapRow({
+        document_key: row.document_key,
+        payload: row.payload,
+        enabled: row.enabled,
+        sort_order: row.sort_order,
+        source_updated_at: row.source_updated_at,
+        synced_at: row.document_synced_at,
+      })));
+    return Object.freeze({
+      domain,
+      source: 'postgresql',
+      authoritative: true,
+      synchronized: true,
+      sourceMode: sync.source_mode,
+      sourceHash: sync.source_hash,
+      syncedAt: sync.sync_synced_at,
+      documentCount: documents.length,
+      documents,
+    });
+  };
+
   const replaceDomain = async ({ domain, documents, actorClerkUserId = '', sourceMode = 'postgresql-admin-direct' }) => {
     const normalizedDocuments = (Array.isArray(documents) ? documents : []).map((item) => ({
       key: String(item?.key || '').trim(),
@@ -489,6 +549,7 @@ export const createSiteContentRepository = (pool) => {
     getSignupTermContentContext,
     getSignupTermContentsContext,
     getSignupTermsAdminCatalog,
+    getAdminSiteContentCatalog,
     getDomains,
     getDomain,
     replaceDomain,

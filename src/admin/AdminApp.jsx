@@ -726,6 +726,13 @@ export default function AdminApp() {
     view: ADMIN_VIEW,
   });
 
+  const assetCategoryCatalogReady = Boolean(
+    publicCatalogAssetsReady &&
+    Array.isArray(splitPublicConfig?.assetCategories) &&
+    JSON.stringify(data.assetCategories || []) === JSON.stringify(splitPublicConfig.assetCategories || [])
+  );
+
+
   const orphanedRentalAvailabilityRequests = [];
   const {
     adminFaqTotalPages,
@@ -1403,6 +1410,7 @@ export default function AdminApp() {
     startEditAdminAccount,
     stats,
     addTempAssetCategory,
+    assetCategoryCatalogReady,
     adminAvailabilityFilter,
     adminFilteredLaptops,
     adminLaptopQuery,

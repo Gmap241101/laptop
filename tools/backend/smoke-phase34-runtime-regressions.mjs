@@ -106,6 +106,14 @@ assert.match(siteContentRepositorySource, /payload->>'addressId'/, 'PostgreSQL f
 assert.match(siteContentRepositorySource, /footer_page_address_conflict/, 'PostgreSQL must reject duplicate footer address IDs instead of overwriting another page');
 assert.match(siteContentServiceSource, /addressClaims/, 'site-content service must pass footer address claims into the transactional repository patch');
 assert.match(appSource, /addressClaims: body\?\.addressClaims/, 'administrator site-content PATCH must pass footer address uniqueness claims from the authenticated request');
+assert.match(siteContentRepositorySource, /const getAdminSiteContentCatalog = async/, 'PostgreSQL site-content repository must expose a lightweight administrator popup/footer catalog read');
+assert.match(siteContentRepositorySource, /document\.payload - 'content' - 'contentText' - 'contentHtml'/, 'administrator popup catalog SQL must strip rich-content bodies before they leave PostgreSQL');
+assert.match(siteContentRepositorySource, /document\.document_key LIKE 'footerPages\/%'[\s\S]*document\.payload - 'content' - 'contentText' - 'contentHtml'/, 'administrator footer page catalog SQL must strip rich-content bodies while preserving the common footer config');
+assert.match(siteContentRepositorySource, /document\.document_key LIKE 'popupPosts\/%'/, 'administrator popup catalog must exclude unrelated domain documents');
+assert.match(siteContentRepositorySource, /document\.document_key = 'siteFooter\/config' OR document\.document_key LIKE 'footerPages\/%'/, 'administrator footer catalog must include only common config and footer pages');
+assert.match(siteContentServiceSource, /async getAdminSiteContentDocument\(domainValue, documentIdValue\)/, 'administrator popup/footer editors must hydrate one full content document on demand');
+assert.match(appSource, /adminSiteContentCatalogMatch = url\.pathname\.match\(\/\^\\\/api\\\/admin\\\/site-content-catalog/, 'administrator lightweight popup/footer catalog endpoint must be exposed');
+assert.match(appSource, /adminSiteContentDocumentMatch = url\.pathname\.match\(\/\^\\\/api\\\/admin\\\/site-content-catalog/, 'administrator popup/footer single-document content endpoint must be exposed');
 
 const footerAddressConflictPool = {
   async connect() {

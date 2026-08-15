@@ -3,6 +3,7 @@ import { Activity, CalendarDays, ChevronDown, Database, Info, Menu, Paintbrush }
 import DevRenderProfiler from '../performance/DevRenderProfiler.jsx';
 import DeviceTrustVerificationPanel from '../components/DeviceTrustVerificationPanel.jsx';
 import { requestSiteContentDomain, SITE_CONTENT_DOMAINS } from '../features/content/siteContentCutover.js';
+import { preloadAdminFooterCatalog, preloadAdminPopupCatalog } from '../features/boards/adminSiteContentCatalogService.js';
 import { requestFaqBoard, requestNoticeBoard } from '../features/boards/boardContentCutover.js';
 import { clerkStagingClient } from '../clerk/clerkStagingClient.js';
 import { today } from '../utils/appUtils.js';
@@ -58,11 +59,11 @@ const ADMIN_PANEL_INTENT_LOADERS = Object.freeze({
   }),
   popupPosts: Object.freeze({
     loadModule: loadAdminPopupPanel,
-    preloadData: () => requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.POPUP, useCache: true }),
+    preloadData: () => preloadAdminPopupCatalog(),
   }),
   footerManagement: Object.freeze({
     loadModule: loadAdminFooterPanel,
-    preloadData: () => requestSiteContentDomain({ domain: SITE_CONTENT_DOMAINS.FOOTER, useCache: true }),
+    preloadData: () => preloadAdminFooterCatalog(),
   }),
 });
 

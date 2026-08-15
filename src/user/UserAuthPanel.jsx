@@ -98,6 +98,19 @@ export default function UserAuthPanel({ ctx }) {
   const getSignupEmailVerificationErrorCode = (error, fallback) =>
     error?.errors?.[0]?.code || error?.code || error?.name || fallback;
 
+  const getSignupEmailVerificationSendErrorMessage = (error) => {
+    const code = getSignupEmailVerificationErrorCode(
+      error,
+      'signup_email_verification_send_failed'
+    );
+
+    if (code === 'form_param_format_invalid') {
+      return '이메일 주소 형식이 정확하지 않습니다.\n인증받을 이메일 주소를 정확히 입력해 주세요.';
+    }
+
+    return `이메일 인증코드 전송에 실패했습니다. 오류 코드: ${code}`;
+  };
+
   const updateSignupEmail = (value) => {
     const nextEmail = normalizeEmailAddress(value);
     const verifiedEmail = normalizeEmailAddress(userAuthForm.signupVerifiedEmail);
@@ -122,7 +135,7 @@ export default function UserAuthPanel({ ctx }) {
   const requestSignupEmailVerification = async () => {
     if (signupEmailVerificationLoading || signupClosed) return;
     if (!isValidEmailAddress(normalizedSignupEmail)) {
-      triggerToast?.('인증받을 이메일 주소를 정확히 입력해 주세요.', 'error');
+      triggerToast?.('이메일 주소 형식이 정확하지 않습니다.\n인증받을 이메일 주소를 정확히 입력해 주세요.', 'error');
       return;
     }
 
@@ -141,7 +154,7 @@ export default function UserAuthPanel({ ctx }) {
       triggerToast?.('인증코드를 이메일로 전송했습니다.', 'success');
     } catch (error) {
       triggerToast?.(
-        `이메일 인증코드 전송에 실패했습니다. 오류 코드: ${getSignupEmailVerificationErrorCode(error, 'signup_email_verification_send_failed')}`,
+        getSignupEmailVerificationSendErrorMessage(error),
         'error'
       );
     } finally {

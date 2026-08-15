@@ -9,6 +9,7 @@ export default function AdminAssetCategoriesPanel({ ctx }) {
     X,
     addTempAssetCategory,
     applyEditTempAssetCategory,
+    assetCategoryCatalogReady,
     cancelTempAssetCategoryChanges,
     deleteTempAssetCategory,
     draggingAssetCategoryIndex,
@@ -42,6 +43,7 @@ export default function AdminAssetCategoriesPanel({ ctx }) {
                           <div className="flex gap-2">
                             <input
                               value={newAssetCategory}
+                              disabled={assetCategoryCatalogReady === false}
                               onChange={(e) => setNewAssetCategory(e.target.value)}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
@@ -53,6 +55,7 @@ export default function AdminAssetCategoriesPanel({ ctx }) {
                             />
                             <Button
                               onClick={addTempAssetCategory}
+                              disabled={assetCategoryCatalogReady === false}
                               className="px-3 py-2"
                             >
                               <Plus size={16} />
@@ -70,7 +73,11 @@ export default function AdminAssetCategoriesPanel({ ctx }) {
                             <p className="text-[11px] text-slate-500 mt-0.5">카드를 드래그해서 대여 자산 등록 시 사용할 분류 순서를 변경할 수 있습니다.</p>
                           </div>
                           <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
-                            {(tempAssetCategories || []).length === 0 ? (
+                            {assetCategoryCatalogReady === false ? (
+                              <div className="rounded-2xl bg-slate-50 border border-dashed border-slate-200 py-10 text-center text-slate-400 text-xs">
+                                PostgreSQL 자산 카테고리를 불러오는 중입니다.
+                              </div>
+                            ) : (tempAssetCategories || []).length === 0 ? (
                               <div className="rounded-2xl bg-slate-50 border border-dashed border-slate-200 py-10 text-center text-slate-400 text-xs">
                                 현재 등록된 자산 카테고리가 없습니다.
                               </div>
@@ -176,6 +183,7 @@ export default function AdminAssetCategoriesPanel({ ctx }) {
                         <Button
                           variant="primary"
                           onClick={saveTempAssetCategoryChanges}
+                          disabled={assetCategoryCatalogReady === false}
                         >
                           변경사항 저장
                         </Button>

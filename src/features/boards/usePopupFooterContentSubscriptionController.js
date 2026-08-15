@@ -26,6 +26,10 @@ import {
   SITE_CONTENT_DOMAINS,
 } from '../content/siteContentCutover.js';
 import useSiteContentRefreshRevision from '../content/useSiteContentRefreshRevision.js';
+import {
+  preloadAdminFooterCatalog,
+  preloadAdminPopupCatalog,
+} from './adminSiteContentCatalogService.js';
 
 const POPUP_DISMISSED_SESSION_KEY =
   'rentalSystemDismissedPopupVersions';
@@ -202,10 +206,12 @@ export default function usePopupFooterContentSubscriptionController({
 
     const load = async () => {
       try {
-        const content = await requestSiteContentDomain({
-          domain: SITE_CONTENT_DOMAINS.POPUP,
-          useCache: true,
-        });
+        const content = shouldLoadAdminPopup
+          ? await preloadAdminPopupCatalog({ force: !isInitialLoad })
+          : await requestSiteContentDomain({
+              domain: SITE_CONTENT_DOMAINS.POPUP,
+              useCache: true,
+            });
         const remotePosts = content.documents
           .filter((item) => item.key.startsWith('popupPosts/') && (
             shouldLoadAdminPopup || (item.enabled !== false && item.payload?.enabled !== false)
@@ -294,10 +300,12 @@ export default function usePopupFooterContentSubscriptionController({
 
     const load = async () => {
       try {
-        const content = await requestSiteContentDomain({
-          domain: SITE_CONTENT_DOMAINS.FOOTER,
-          useCache: true,
-        });
+        const content = shouldLoadAdminFooter
+          ? await preloadAdminFooterCatalog({ force: !isInitialLoad })
+          : await requestSiteContentDomain({
+              domain: SITE_CONTENT_DOMAINS.FOOTER,
+              useCache: true,
+            });
         if (cancelled) return;
 
         const configDocument = content.documents.find((item) => item.key === 'siteFooter/config');

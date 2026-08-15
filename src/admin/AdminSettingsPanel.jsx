@@ -589,9 +589,12 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
         </SectionCard>
 
         <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-xs leading-5 text-sky-800">
-          💡<b>운영 안내:</b> 이 화면은 메인 비주얼 미등록 시 노출되는 '대체 콘텐츠' 전용 관리 창입니다.
-            &nbsp;&nbsp; <b>• 기존 관리 메뉴 유지 항목:</b> 메인 비주얼, 프로모션 배너, 바로가기 배너
-            &nbsp;&nbsp; <b>• 관리 가능 범위:</b> 각 배너의 등록 · 순서 · 노출 일정
+          <div className="font-bold">💡 운영 안내</div>
+          <div className="mt-2 space-y-1.5">
+            <p>이 화면은 메인 비주얼 미등록 시 노출되는 '대체 콘텐츠' 전용 관리 창입니다.</p>
+            <p><b>• 기존 관리 메뉴 유지 항목:</b> 메인 비주얼, 프로모션 배너, 바로가기 배너</p>
+            <p><b>• 관리 가능 범위:</b> 각 배너의 등록 · 순서 · 노출 일정</p>
+          </div>
         </div>
       </div>
 

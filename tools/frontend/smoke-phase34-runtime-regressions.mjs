@@ -155,6 +155,25 @@ assert.equal(loginErrorMessagesSource.includes('현재 Clerk 보안 설정상'),
 assert.match(userAuthPanelSource, /회원가입 이용약관을 불러오는 중입니다\. 잠시 후 다시 시도해 주세요\./, 'signup terms step must explain loading state through toast instead of a disabled action');
 assert.match(userAuthPanelSource, /disabled=\{userAuthLoading\}[\s\S]*회원가입/, 'final signup action must only be disabled while a signup submission is actively running');
 assert.match(userSignupSource, /회원가입에 사용할 이메일 인증을 먼저 완료해 주세요\./, 'final signup submission must explain missing email verification through toast');
+const signupValidationOrder = [
+  '이메일을 입력해 주세요.',
+  '이메일 주소 형식이 정확하지 않습니다.\\n인증받을 이메일 주소를 정확히 입력해 주세요.',
+  '회원가입에 사용할 이메일 인증을 먼저 완료해 주세요.',
+  '이름을 입력해 주세요.',
+  '올바른 국내 연락처를 입력해 주세요.',
+  '비밀번호를 입력해 주세요.',
+  '비밀번호 확인을 입력해 주세요.',
+  '필수 회원가입 약관을 확인하고 동의해 주세요.',
+];
+for (let index = 1; index < signupValidationOrder.length; index += 1) {
+  assert.ok(
+    userSignupSource.indexOf(signupValidationOrder[index - 1]) < userSignupSource.indexOf(signupValidationOrder[index]),
+    `signup validation order must follow the visible signup flow: ${signupValidationOrder[index - 1]} -> ${signupValidationOrder[index]}`
+  );
+}
+assert.ok(userAuthPanelSource.includes('form_param_format_invalid') && userAuthPanelSource.includes('이메일 주소 형식이 정확하지 않습니다.\\n인증받을 이메일 주소를 정확히 입력해 주세요.'), 'Clerk signup email format failures must use the requested two-line user-readable email-format toast without exposing the raw error code');
+assert.ok(userSignupSource.includes('이메일 주소 형식이 정확하지 않습니다.\\n인증받을 이메일 주소를 정확히 입력해 주세요.'), 'local signup email validation must use the same requested two-line email-format message');
+assert.match(userSignupSource, /비밀번호 확인을 입력해 주세요\./, 'signup must distinguish an empty password confirmation from a mismatch');
 assert.match(userSignupSource, /회원가입 인증 서비스를 준비 중입니다\. 잠시 후 다시 시도해 주세요\./, 'final signup submission must explain auth readiness through toast');
 assert.match(userSignupSource, /회원 중복 확인 정보가 아직 준비되지 않았습니다\. 잠시 후 다시 시도해 주세요\./, 'final signup submission must explain member identity readiness through toast');
 assert.match(userLoginSource, /6자리 인증코드를 모두 입력해 주세요\./, 'user Device Trust controller must require all six verification-code digits');
@@ -566,6 +585,9 @@ const adminDialogsSource = fs.readFileSync(new URL('../../src/admin/AdminDialogs
 const userDialogsSource = fs.readFileSync(new URL('../../src/user/UserDialogs.jsx', import.meta.url), 'utf8');
 const appDialogsSource = fs.readFileSync(new URL('../../src/dialogs/AppDialogs.jsx', import.meta.url), 'utf8');
 const modalPortalSource = fs.readFileSync(new URL('../../src/components/ModalPortal.jsx', import.meta.url), 'utf8');
+assert.match(userDialogsSource, /whitespace-pre-line[^>]*>\{toast\.message\}<\/span>/, 'user toast renderer must preserve requested line breaks');
+assert.match(appDialogsSource, /whitespace-pre-line[^>]*>\{toast\.message\}<\/span>/, 'shared toast renderer must preserve requested line breaks');
+assert.match(adminDialogsSource, /whitespace-pre-line[^>]*>\{toast\.message\}<\/span>/, 'administrator toast renderer must preserve line breaks consistently');
 const boardPostControllerSource = fs.readFileSync(new URL('../../src/features/boards/useAdminBoardPostController.js', import.meta.url), 'utf8');
 const popupPostControllerSource = fs.readFileSync(new URL('../../src/features/boards/useAdminPopupPostController.js', import.meta.url), 'utf8');
 const footerControllerSource = fs.readFileSync(new URL('../../src/features/boards/useAdminFooterContentController.js', import.meta.url), 'utf8');
@@ -577,6 +599,10 @@ const boardContentCutoverSource = fs.readFileSync(new URL('../../src/features/bo
 const siteContentRefreshRevisionSource = fs.readFileSync(new URL('../../src/features/content/useSiteContentRefreshRevision.js', import.meta.url), 'utf8');
 const userFooterSource = fs.readFileSync(new URL('../../src/user/UserFooter.jsx', import.meta.url), 'utf8');
 const popupFooterControllerSource = fs.readFileSync(new URL('../../src/features/boards/usePopupFooterContentSubscriptionController.js', import.meta.url), 'utf8');
+const adminSiteContentCatalogSource = fs.readFileSync(new URL('../../src/features/boards/adminSiteContentCatalogService.js', import.meta.url), 'utf8');
+const adminPopupPanelSource = fs.readFileSync(new URL('../../src/admin/AdminPopupPanel.jsx', import.meta.url), 'utf8');
+const rentalDataSubscriptionSource = fs.readFileSync(new URL('../../src/features/requests/useRentalDataSubscriptionController.js', import.meta.url), 'utf8');
+const adminAssetCategoriesPanelSource = fs.readFileSync(new URL('../../src/admin/AdminAssetCategoriesPanel.jsx', import.meta.url), 'utf8');
 const modalScrollFiles = [
   '../../src/admin/AdminDialogs.jsx',
   '../../src/admin/AdminFooterPanel.jsx',
@@ -616,7 +642,7 @@ assert.match(signupTermsManagerSource, /저장되지 않은 이용약관 변경�
 assert.match(homeBannerPanelSource, /저장되지 않은 배너 변경사항이 있습니다\. 저장하지 않고 닫으시겠습니까\?/, 'home banner editor must use the shared custom confirm layer before discarding unsaved changes');
 assert.equal(homeBannerPanelSource.includes("window.confirm('저장하지 않은 배너 변경사항을 취소하시겠습니까?')"), false, 'home banner editor must not fall back to the browser-native confirm dialog');
 assert.match(footerControllerSource, /sanitizeRichTextHtml/, 'footer page dialog normalization must import the rich-text sanitizer instead of throwing before the dialog opens');
-assert.match(footerControllerSource, /addressId: String\(page\?\.addressId \|\| ''\)/, 'legacy footer pages must require an explicit address ID on their next content-page edit');
+assert.match(footerControllerSource, /addressId: String\(sourcePage\?\.addressId \|\| ''\)/, 'legacy footer pages must require an explicit address ID on their next content-page edit after targeted content hydration');
 assert.match(siteContentCutoverSource, /addressClaims/, 'site-content PostgreSQL partial patches must carry footer address uniqueness claims');
 assert.match(siteContentCutoverSource, /cached\?\.promise && \(cached\.pending \|\| cached\.expiresAt > nowMillis\)/, 'site-content cache must always share an in-flight domain request even when a slow request exceeds the short resolved-result TTL');
 assert.match(siteContentCutoverSource, /cacheEntry\.expiresAt = Date\.now\(\) \+ DOMAIN_CACHE_TTL_MS/, 'site-content cache TTL must begin after a successful response instead of at request start');
@@ -648,7 +674,20 @@ assert.ok(footerPanelSource.includes('border-orange-300 bg-orange-50 ring-1 ring
 assert.equal(footerPanelSource.includes('text-orange-600 focus:ring-orange-500'), false, 'footer editor modal checkbox styling must not introduce a footer-only orange accent');
 assert.ok(homeBannerPanelSource.includes('max-h-[94vh] w-full max-w-5xl overflow-y-auto mk-modal-scroll-shell rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl'), 'home banner editor modal must use the same neutral shell styling as the popup editor');
 assert.equal(homeBannerPanelSource.includes('border-orange-100 bg-orange-50'), false, 'home banner editor modal header must not use the old orange/yellow header styling');
-assert.equal((popupFooterControllerSource.match(/requestSiteContentDomain\(\{[\s\S]*?domain: SITE_CONTENT_DOMAINS\.FOOTER[\s\S]*?\}\)/g) || []).length, 1, 'footer management must load config and pages from one footer-domain request');
+assert.match(popupFooterControllerSource, /preloadAdminPopupCatalog\(\{ force: !isInitialLoad \}\)/, 'administrator popup management must use the lightweight PostgreSQL catalog instead of the public full-content domain');
+assert.match(popupFooterControllerSource, /preloadAdminFooterCatalog\(\{ force: !isInitialLoad \}\)/, 'administrator footer management must use the lightweight PostgreSQL catalog instead of the public full-content domain');
+assert.equal((popupFooterControllerSource.match(/requestSiteContentDomain\(\{[\s\S]*?domain: SITE_CONTENT_DOMAINS\.FOOTER[\s\S]*?\}\)/g) || []).length, 1, 'the full footer-domain request must remain only for the user runtime where footer content is rendered');
+assert.match(adminSiteContentCatalogSource, /ADMIN_CATALOG_CACHE_TTL_MS = 60_000/, 'administrator popup/footer catalogs must share a short-lived in-memory cache');
+assert.match(adminSiteContentCatalogSource, /catalogPending/, 'administrator popup/footer catalog reads must share in-flight promises');
+assert.match(adminSiteContentCatalogSource, /documentContentPending/, 'administrator popup/footer rich-content reads must share in-flight promises');
+assert.match(adminWorkspaceSource, /popupPosts:[\s\S]*preloadData: \(\) => preloadAdminPopupCatalog\(\)/, 'popup management must preload the lightweight catalog on administrator navigation intent');
+assert.match(adminWorkspaceSource, /footerManagement:[\s\S]*preloadData: \(\) => preloadAdminFooterCatalog\(\)/, 'footer management must preload the lightweight catalog on administrator navigation intent');
+assert.match(popupPostControllerSource, /patchSiteContentDomainInPostgresql/, 'popup saves must use targeted PostgreSQL PATCH mutations');
+assert.equal(popupPostControllerSource.includes('replaceSiteContentDomainInPostgresql'), false, 'popup saves must not replace the complete popup domain just to mutate one list item');
+assert.match(popupPostControllerSource, /preloadAdminPopupPostContent\(post\)/, 'popup editor/toggle actions must hydrate only the targeted full popup document');
+assert.match(footerControllerSource, /preloadAdminFooterPageContent\(page\)/, 'footer editor/toggle actions must hydrate only the targeted full footer page');
+assert.match(adminPopupPanelSource, /onPointerEnter=\{\(\) => \{ void preloadAdminPopupPostContent\(post\)/, 'popup edit intent must preload only the selected rich-content document');
+assert.match(footerPanelSource, /onPointerEnter=\{\(\) => \{ void preloadAdminFooterPageContent\(page\)/, 'footer edit intent must preload only the selected rich-content document');
 assert.match(popupFooterControllerSource, /popupLoadedRevisionRef/, 'popup management must retain successfully loaded data for the current site-content revision');
 assert.match(popupFooterControllerSource, /footerLoadedRevisionRef/, 'footer management must retain successfully loaded data for the current site-content revision');
 assert.match(popupFooterControllerSource, /popupRefreshRevision = useSiteContentRefreshRevision\(SITE_CONTENT_DOMAINS\.POPUP\)/, 'popup management must track only popup-domain refreshes');
@@ -668,6 +707,13 @@ assert.ok(footerPanelSource.includes('페이지 주소 ID'), 'footer content edi
 assert.ok(footerPanelSource.includes('/info/'), 'footer content editor must preview the /info/<addressId> canonical URL');
 assert.ok(!footerPanelSource.includes('/footer/'), 'footer content editor must not advertise the superseded /footer/<addressId> route');
 assert.ok(footerPanelSource.includes('다른 푸터 페이지와 중복될 수 없습니다.'), 'footer editor must explain address uniqueness');
+assert.match(rentalDataSubscriptionSource, /assetCutoverConfig\.readRequested[\s\S]*assetCategories: splitAssetCategoriesRef\.current/, 'rental-config must not temporarily regain asset-category authority after the PostgreSQL asset cutover');
+assert.match(rentalDataSubscriptionSource, /splitAssetCategoriesRef\.current = categories/, 'PostgreSQL asset catalog categories must become the authoritative category snapshot before merged config state catches up');
+assert.match(adminAppSource, /const assetCategoryCatalogReady = Boolean\([\s\S]*publicCatalogAssetsReady[\s\S]*JSON\.stringify\(data\.assetCategories \|\| \[\]\) === JSON\.stringify\(splitPublicConfig\.assetCategories \|\| \[\]\)/, 'administrator category UI must wait until the merged data snapshot matches the authoritative PostgreSQL catalog');
+assert.match(adminAssetCategoriesPanelSource, /PostgreSQL 자산 카테고리를 불러오는 중입니다\./, 'administrator category UI must show one loading state instead of a stale partial category list');
+assert.match(adminSettingsSource, /<div className="font-bold">💡 운영 안내<\/div>[\s\S]*<p>이 화면은[\s\S]*<p><b>• 기존 관리 메뉴 유지 항목:<\/b>[\s\S]*<p><b>• 관리 가능 범위:<\/b>/, 'home-management operating guidance must use structural block rows so line breaks render reliably');
+assert.equal(adminSettingsSource.includes('&nbsp;&nbsp; <b>• 기존 관리 메뉴 유지 항목:</b>'), false, 'home-management operating guidance must not fake line breaks with non-breaking spaces');
+
 for (const relativePath of modalScrollFiles) {
   const modalSource = fs.readFileSync(new URL(relativePath, import.meta.url), 'utf8');
   assert.match(modalSource, /ModalPortal/, `${relativePath} popup layers must portal to document.body for full viewport backdrop coverage`);

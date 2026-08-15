@@ -739,7 +739,7 @@ export default function AppDialogs({ ctx }) {
             ) : (
               <CheckCircle2 className="text-emerald-600" size={18} />
             )}
-            <span>{toast.message}</span>
+            <span className="whitespace-pre-line">{toast.message}</span>
             <button onClick={() => setToast(null)} className="ml-2 text-slate-400 hover:text-slate-700">
               <X size={15} />
             </button>

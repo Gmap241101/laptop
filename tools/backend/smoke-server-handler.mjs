@@ -210,6 +210,56 @@ let rentalConfigSettingsPatch = null;
 let signupPolicyPatch = null;
 let partialContentPatch = null;
 const siteContentService = {
+  async getAdminSiteContentCatalog(domain) {
+    if (domain === 'popup') {
+      return {
+        source: 'postgresql',
+        authoritative: true,
+        domain: 'popup',
+        documents: [{
+          key: 'popupPosts/popup-smoke',
+          payload: { id: 'popup-smoke', title: 'Popup smoke', enabled: true, sortOrder: 1 },
+          enabled: true,
+          sortOrder: 1,
+        }],
+        documentCount: 1,
+      };
+    }
+    return {
+      source: 'postgresql',
+      authoritative: true,
+      domain: 'footer',
+      documents: [
+        {
+          key: 'siteFooter/config',
+          payload: { enabled: true, contentHtml: '<p>Footer common smoke</p>' },
+          enabled: true,
+        },
+        {
+          key: 'footerPages/footer-smoke',
+          payload: { id: 'footer-smoke', title: 'Footer smoke', enabled: true, sortOrder: 1 },
+          enabled: true,
+          sortOrder: 1,
+        },
+      ],
+      documentCount: 2,
+    };
+  },
+  async getAdminSiteContentDocument(domain, documentId) {
+    return {
+      source: 'postgresql',
+      authoritative: true,
+      domain,
+      document: {
+        id: documentId,
+        title: domain === 'popup' ? 'Popup smoke' : 'Footer smoke',
+        enabled: true,
+        sortOrder: 1,
+        contentHtml: `<p>${domain} ${documentId} body</p>`,
+        contentText: `${domain} ${documentId} body`,
+      },
+    };
+  },
   async getAdminSignupTermsCatalog() { return { source: 'postgresql', authoritative: true, policy: { enabled: true, revision: 5, activeTerms: [{ id: 'terms-smoke', title: 'Smoke terms', displayOrder: 2 }] }, terms: [{ id: 'terms-smoke', title: 'Smoke terms', enabled: true, displayOrder: 2, currentVersion: 1, contentHtml: '<p>Smoke terms body</p>', contentText: 'Smoke terms body' }] }; },
   async getAdminSignupTermContent(termId) { return { source: 'postgresql', authoritative: true, term: { id: termId, title: 'Smoke terms', enabled: true, displayOrder: 2, currentVersion: 1, contentHtml: '<p>Smoke terms body</p>', contentText: 'Smoke terms body' } }; },
   async getSignupTermsPolicy() { return { source: 'postgresql', authoritative: true, key: 'signupTermsPolicy/current', payload: { enabled: true, revision: 5, requiredRevision: 5, activeTerms: [{ id: 'terms-smoke', title: 'Smoke terms' }] } }; },
@@ -342,6 +392,38 @@ try {
 
   const session = await fetch(`${baseUrl}/api/auth/session`, { headers: authHeaders });
   if (session.status !== 200 || (await session.json()).session?.userId !== 'user_smoke') throw new Error('Clerk session endpoint failed.');
+
+  const adminPopupCatalogResponse = await fetch(`${baseUrl}/api/admin/site-content-catalog/popup`, { headers: authHeaders });
+  const adminPopupCatalogBody = await adminPopupCatalogResponse.json();
+  if (adminPopupCatalogResponse.status !== 200 || adminPopupCatalogBody.adminSiteContentCatalog?.source !== 'postgresql' || adminPopupCatalogBody.adminSiteContentCatalog?.documents?.length !== 1) {
+    throw new Error('Dedicated administrator popup catalog endpoint failed.');
+  }
+  if (Object.prototype.hasOwnProperty.call(adminPopupCatalogBody.adminSiteContentCatalog.documents[0]?.payload || {}, 'contentHtml')) {
+    throw new Error('Administrator popup catalog leaked full rich content into the list payload.');
+  }
+
+  const adminPopupContentResponse = await fetch(`${baseUrl}/api/admin/site-content-catalog/popup/popup-smoke/content`, { headers: authHeaders });
+  const adminPopupContentBody = await adminPopupContentResponse.json();
+  if (adminPopupContentResponse.status !== 200 || adminPopupContentBody.adminSiteContentDocument?.document?.contentHtml !== '<p>popup popup-smoke body</p>') {
+    throw new Error('Dedicated administrator popup content endpoint failed.');
+  }
+
+  const adminFooterCatalogResponse = await fetch(`${baseUrl}/api/admin/site-content-catalog/footer`, { headers: authHeaders });
+  const adminFooterCatalogBody = await adminFooterCatalogResponse.json();
+  if (adminFooterCatalogResponse.status !== 200 || adminFooterCatalogBody.adminSiteContentCatalog?.source !== 'postgresql' || adminFooterCatalogBody.adminSiteContentCatalog?.documents?.length !== 2) {
+    throw new Error('Dedicated administrator footer catalog endpoint failed.');
+  }
+  const footerConfig = adminFooterCatalogBody.adminSiteContentCatalog.documents.find((document) => document.key === 'siteFooter/config');
+  const footerPage = adminFooterCatalogBody.adminSiteContentCatalog.documents.find((document) => document.key === 'footerPages/footer-smoke');
+  if (footerConfig?.payload?.contentHtml !== '<p>Footer common smoke</p>' || Object.prototype.hasOwnProperty.call(footerPage?.payload || {}, 'contentHtml')) {
+    throw new Error('Administrator footer catalog projection is invalid.');
+  }
+
+  const adminFooterContentResponse = await fetch(`${baseUrl}/api/admin/site-content-catalog/footer/footer-smoke/content`, { headers: authHeaders });
+  const adminFooterContentBody = await adminFooterContentResponse.json();
+  if (adminFooterContentResponse.status !== 200 || adminFooterContentBody.adminSiteContentDocument?.document?.contentHtml !== '<p>footer footer-smoke body</p>') {
+    throw new Error('Dedicated administrator footer page content endpoint failed.');
+  }
 
   const adminSignupTermsCatalogResponse = await fetch(`${baseUrl}/api/admin/signup-terms/catalog`, {
     headers: authHeaders,

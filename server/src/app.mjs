@@ -1236,6 +1236,59 @@ export const createRequestHandler = ({
       return;
     }
 
+    const adminSiteContentCatalogMatch = url.pathname.match(/^\/api\/admin\/site-content-catalog\/(popup|footer)$/);
+    if (request.method === 'GET' && adminSiteContentCatalogMatch) {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      try {
+        const catalog = await siteContentService.getAdminSiteContentCatalog(
+          decodeURIComponent(adminSiteContentCatalogMatch[1]),
+        );
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          adminSiteContentCatalog: catalog,
+        }, headers);
+      } catch (error) {
+        console.warn('[site-content] PostgreSQL administrator lightweight catalog read failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          error: error?.code || 'admin_site_content_catalog_read_failed',
+        }, headers);
+      }
+      return;
+    }
+
+    const adminSiteContentDocumentMatch = url.pathname.match(/^\/api\/admin\/site-content-catalog\/(popup|footer)\/([^/]+)\/content$/);
+    if (request.method === 'GET' && adminSiteContentDocumentMatch) {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      try {
+        const document = await siteContentService.getAdminSiteContentDocument(
+          decodeURIComponent(adminSiteContentDocumentMatch[1]),
+          decodeURIComponent(adminSiteContentDocumentMatch[2]),
+        );
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          adminSiteContentDocument: document,
+        }, headers);
+      } catch (error) {
+        console.warn('[site-content] PostgreSQL administrator site-content document read failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          error: error?.code || 'admin_site_content_document_read_failed',
+        }, headers);
+      }
+      return;
+    }
+
     const adminSiteContentSyncMatch = url.pathname.match(/^\/api\/admin\/site-content\/([^/]+)\/sync$/);
     if (request.method === 'POST' && adminSiteContentSyncMatch) {
       const auth = await authenticate(request, response, headers, requestId);

@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { RichTextEditor } from '../components/RichTextEditor.jsx';
 import ModalPortal from '../components/ModalPortal.jsx';
+import { preloadAdminFooterPageContent } from '../features/boards/adminSiteContentCatalogService.js';
 
 const normalizeFooterAddressId = (value = '') =>
   String(value || '').trim().toLowerCase().replace(/^\/+|\/+$/g, '');
@@ -625,6 +626,8 @@ export default function AdminFooterPanel({ ctx }) {
                         <div className="flex items-center justify-center gap-2">
                           <button
                             type="button"
+                            onPointerEnter={() => { void preloadAdminFooterPageContent(page).catch(() => {}); }}
+                            onFocus={() => { void preloadAdminFooterPageContent(page).catch(() => {}); }}
                             onClick={() => openFooterPageDialog(page)}
                             title="수정"
                             aria-label="푸터 페이지 수정"

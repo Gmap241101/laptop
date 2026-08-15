@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import useMinuteClock from '../hooks/useMinuteClock.js';
+import { preloadAdminPopupPostContent } from '../features/boards/adminSiteContentCatalogService.js';
 import {
   ArrowDown,
   ArrowUp,
@@ -308,6 +309,8 @@ export default function AdminPopupPanel({ ctx }) {
                             className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]"
                             title="수정"
                             aria-label="팝업 수정"
+                            onPointerEnter={() => { void preloadAdminPopupPostContent(post).catch(() => {}); }}
+                            onFocus={() => { void preloadAdminPopupPostContent(post).catch(() => {}); }}
                             onClick={() => openPopupPostDialog(post)}
                           >
                             <Edit3 size={14} aria-hidden="true" />

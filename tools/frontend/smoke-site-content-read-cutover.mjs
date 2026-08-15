@@ -55,12 +55,16 @@ for (const marker of ['requestSiteContentDomain', 'SITE_CONTENT_DOMAINS.SITE_SET
 for (const file of [
   'src/admin/AdminSettingsPanel.jsx',
   'src/admin/AdminHomeBannerPanel.jsx',
-  'src/features/boards/useAdminPopupPostController.js',
 ]) {
   const source = readFileSync(file, 'utf8');
   assert.ok(source.includes('replaceSiteContentDomainInPostgresql'), `PostgreSQL admin content write missing: ${file}`);
   assert.equal(source.includes('syncSiteContentDomainFromFirestore'), false, `legacy Firestore sync must be removed: ${file}`);
 }
+
+const popupAdmin = readFileSync('src/features/boards/useAdminPopupPostController.js', 'utf8');
+assert.ok(popupAdmin.includes('patchSiteContentDomainInPostgresql'), 'popup administration must use PostgreSQL document-level partial writes');
+assert.equal(popupAdmin.includes('replaceSiteContentDomainInPostgresql'), false, 'popup administration must not resend the complete rich-content domain for ordinary mutations');
+assert.equal(popupAdmin.includes('syncSiteContentDomainFromFirestore'), false, 'legacy Firestore sync must remain removed from popup administration');
 
 const footerAdmin = readFileSync('src/features/boards/useAdminFooterContentController.js', 'utf8');
 assert.ok(footerAdmin.includes('patchSiteContentDomainInPostgresql'), 'footer administration must use PostgreSQL document-level partial writes');
