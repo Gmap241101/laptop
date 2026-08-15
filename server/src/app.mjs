@@ -1219,6 +1219,45 @@ export const createRequestHandler = ({
       return;
     }
 
+    if (request.method === 'GET' && url.pathname === '/api/admin/signup-terms/catalog') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      try {
+        const catalog = await siteContentService.getAdminSignupTermsCatalog();
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          signupTermsCatalog: catalog,
+        }, headers);
+      } catch (error) {
+        console.warn('[terms] PostgreSQL administrator signup terms catalog read failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: true, error: error?.code || 'signup_terms_admin_catalog_read_failed' }, headers);
+      }
+      return;
+    }
+
+    const adminSignupTermContentMatch = url.pathname.match(/^\/api\/admin\/signup-terms\/([^/]+)\/content$/);
+    if (request.method === 'GET' && adminSignupTermContentMatch) {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      try {
+        const termContent = await siteContentService.getAdminSignupTermContent(
+          decodeURIComponent(adminSignupTermContentMatch[1]),
+        );
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          signupTermContent: termContent,
+        }, headers);
+      } catch (error) {
+        console.warn('[terms] PostgreSQL administrator signup term content read failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: true, error: error?.code || 'signup_terms_admin_content_read_failed' }, headers);
+      }
+      return;
+    }
+
     if (request.method === 'PATCH' && url.pathname === '/api/admin/member-signup-policy') {
       const authority = await authenticateAdminAuthority(request, response, headers, requestId);
       if (!authority) return;

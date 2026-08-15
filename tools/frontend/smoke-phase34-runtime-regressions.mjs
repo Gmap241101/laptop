@@ -619,3 +619,11 @@ for (const relativePath of modalScrollFiles) {
 }
 
 console.log('[phase34-runtime-regressions-frontend-smoke] PASS');
+
+
+const adminSignupTermsManagerOptimizedSource = fs.readFileSync(new URL('../../src/admin/AdminSignupTermsManager.jsx', import.meta.url), 'utf8');
+assert.ok(adminSignupTermsManagerOptimizedSource.includes('preloadAdminSignupTermsCatalog'), 'administrator terms manager must use lightweight PostgreSQL catalog');
+assert.equal(adminSignupTermsManagerOptimizedSource.includes('requestPolicyContentDomain'), false, 'administrator terms manager must not load the full terms domain on entry');
+assert.equal(adminSignupTermsManagerOptimizedSource.includes('termVersions'), false, 'administrator terms manager must not preload historical version bodies');
+const accountLifecycleOrderedTermsSource = fs.readFileSync(new URL('../../server/src/accounts/account-lifecycle-service.mjs', import.meta.url), 'utf8');
+assert.match(accountLifecycleOrderedTermsSource, /displayOrder: Number\.isFinite/, 'terms reconsent authority must retain displayOrder');

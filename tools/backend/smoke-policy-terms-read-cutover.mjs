@@ -15,6 +15,13 @@ const repository = {
       term: documents.find((document) => document.key === `signupTerms/${termId}`) || null,
     };
   },
+  async getSignupTermsAdminCatalog() {
+    const documents = stored.get('terms')?.documents || [];
+    return {
+      policy: documents.find((document) => document.key === 'signupTermsPolicy/current') || null,
+      terms: documents.filter((document) => document.key.startsWith('signupTerms/')),
+    };
+  },
   async getRentalConfigBootstrapContext() {
     return { assetCategories: ['노트북'], teams: ['개발팀'], memberDirectoryVersion: 2, memberDirectoryEntryCount: 1, termsPolicy: {} };
   },
@@ -64,6 +71,22 @@ assert.equal(signupTermContent.source, 'postgresql');
 assert.equal(signupTermContent.term.id, 'privacy');
 assert.equal(signupTermContent.term.contentHtml, '<p>실제 약관 본문</p>');
 assert.equal(signupTermContent.term.contentHash, 'hash-v3');
+const adminTermsCatalog = await service.getAdminSignupTermsCatalog();
+assert.equal(adminTermsCatalog.source, 'postgresql');
+assert.equal(adminTermsCatalog.terms.length, 1);
+assert.equal(adminTermsCatalog.terms[0].contentHtml, '<p>실제 약관 본문</p>');
+assert.equal(adminTermsCatalog.policy.activeTerms[0].contentHtml, undefined, 'admin catalog policy must not duplicate rich HTML content');
+assert.equal(adminTermsCatalog.policy.activeTerms[0].contentText, undefined, 'admin catalog policy must not duplicate rich text fallback');
+const adminTermContent = await service.getAdminSignupTermContent('privacy');
+assert.equal(adminTermContent.source, 'postgresql');
+assert.equal(adminTermContent.term.contentHtml, '<p>실제 약관 본문</p>');
+
+const repositorySource = readFileSync('server/src/content/site-content-repository.mjs', 'utf8');
+assert.match(repositorySource, /document_key LIKE 'signupTerms\/%'/, 'admin terms catalog must select current signup term documents');
+assert.equal(repositorySource.includes("document_key LIKE 'signupTermVersions/%'"), false, 'admin terms catalog must not preload historical version documents');
+assert.match(repositorySource, /jsonb_array_elements\(COALESCE\(payload->'activeTerms'/, 'admin terms catalog must project duplicate rich policy content at SQL read time');
+assert.match(repositorySource, /payload - 'contentHtml' - 'contentText'/, 'admin terms catalog must not transfer full current rich bodies on list load');
+assert.match(repositorySource, /contentPreview/, 'admin terms catalog should return only a bounded text preview for the list');
 
 const migration = readFileSync('server/migrations/026_phase34_rental_config_postgresql_bootstrap.sql', 'utf8');
 for (const marker of ["'rental-config'", "'rentalSystem/publicConfig'", "'postgresql-self-heal'", 'phase34_rental_config_postgresql_bootstrap']) {

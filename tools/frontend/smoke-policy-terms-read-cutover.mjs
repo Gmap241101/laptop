@@ -30,9 +30,26 @@ for (const forbidden of ['requestPolicyContentDomain', 'POLICY_CONTENT_DOMAINS.T
   assert.equal(termsService.includes(forbidden), false, `signup terms read must avoid full-domain/Firestore path: ${forbidden}`);
 }
 
+const adminTermsService = readFileSync('src/features/terms/adminTermsService.js', 'utf8');
+for (const marker of ['/api/admin/signup-terms/catalog', '/api/admin/signup-terms/${encodeURIComponent(termId)}/content', 'adminSignupTermsCatalogPending', 'adminSignupTermContentPending', 'ADMIN_SIGNUP_TERMS_CATALOG_CACHE_TTL_MS']) {
+  assert.ok(adminTermsService.includes(marker), `administrator signup terms catalog marker missing: ${marker}`);
+}
 const adminTerms = readFileSync('src/admin/AdminSignupTermsManager.jsx', 'utf8');
 assert.ok(adminTerms.includes('patchPolicyContentDomainInPostgresql'));
+assert.ok(adminTerms.includes('preloadAdminSignupTermsCatalog'));
+assert.ok(adminTerms.includes('primeAdminSignupTermsCatalog'));
+assert.ok(adminTerms.includes('preloadAdminSignupTermContent'));
+assert.match(adminTerms, /onPointerEnter=.*preloadAdminSignupTermContent/s, 'administrator term edit/preview actions must intent-preload rich content');
+assert.ok(adminTerms.includes('contentPreview'), 'administrator terms list must render lightweight content preview data');
+assert.equal(adminTerms.includes('requestPolicyContentDomain'), false, 'signup terms administrator list must not read the full terms domain');
+assert.ok(adminTerms.includes('versionUpserts'), 'new historical versions must be appended without preloading existing history');
+assert.equal(adminTerms.includes('termVersions'), false, 'signup terms administrator list must not preload historical version documents');
 assert.equal(adminTerms.includes('replacePolicyContentDomainInPostgresql'), false, 'signup terms admin writes must not resend the full terms domain');
+const signupPolicyPanel = readFileSync('src/admin/AdminSignupPolicyPanel.jsx', 'utf8');
+assert.match(signupPolicyPanel, /onPointerEnter=.*preloadAdminSignupTermsCatalog/s, 'administrator terms tab must intent-preload the lightweight catalog');
+const accountLifecycleService = readFileSync('server/src/accounts/account-lifecycle-service.mjs', 'utf8');
+assert.match(accountLifecycleService, /displayOrder: Number\.isFinite/, 'reconsent authority must preserve administrator display order');
+assert.match(accountLifecycleService, /sort\(\(first, second\) => first\.displayOrder - second\.displayOrder/, 'reconsent authority must return terms in administrator display order');
 const signupPolicy = readFileSync('src/features/members/useAdminSignupPolicyActions.js', 'utf8');
 assert.ok(signupPolicy.includes('saveAdminSignupPolicy'));
 assert.equal(signupPolicy.includes('replacePolicyContentDomainInPostgresql'), false);

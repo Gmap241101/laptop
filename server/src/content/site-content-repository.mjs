@@ -83,6 +83,48 @@ export const createSiteContentRepository = (pool) => {
     });
   };
 
+
+  const getSignupTermsAdminCatalog = async () => {
+    const result = await pool.query(
+      `SELECT
+         document_key,
+         CASE
+           WHEN document_key = 'signupTermsPolicy/current' THEN
+             jsonb_set(
+               payload,
+               '{activeTerms}',
+               COALESCE(
+                 (
+                   SELECT jsonb_agg((entry.value - 'contentHtml' - 'contentText') ORDER BY entry.ordinality)
+                     FROM jsonb_array_elements(COALESCE(payload->'activeTerms', '[]'::jsonb)) WITH ORDINALITY AS entry(value, ordinality)
+                 ),
+                 '[]'::jsonb
+               ),
+               TRUE
+             )
+           ELSE
+             (payload - 'contentHtml' - 'contentText')
+             || jsonb_build_object('contentPreview', LEFT(COALESCE(payload->>'contentText', ''), 240))
+         END AS payload,
+         enabled,
+         sort_order,
+         source_updated_at,
+         synced_at
+       FROM app_site_content_documents
+      WHERE domain = 'terms'
+        AND (
+          document_key = 'signupTermsPolicy/current'
+          OR document_key LIKE 'signupTerms/%'
+        )
+      ORDER BY sort_order NULLS LAST, document_key`,
+    );
+    const documents = result.rows.map((row) => Object.freeze(mapRow(row)));
+    return Object.freeze({
+      policy: documents.find((document) => document.key === 'signupTermsPolicy/current') || null,
+      terms: documents.filter((document) => document.key.startsWith('signupTerms/')),
+    });
+  };
+
   const replaceDomain = async ({ domain, documents, actorClerkUserId = '', sourceMode = 'postgresql-admin-direct' }) => {
     const normalizedDocuments = (Array.isArray(documents) ? documents : []).map((item) => ({
       key: String(item?.key || '').trim(),
@@ -315,6 +357,7 @@ export const createSiteContentRepository = (pool) => {
     getRentalConfigBootstrapContext,
     getDocument,
     getSignupTermContentContext,
+    getSignupTermsAdminCatalog,
     getDomain,
     replaceDomain,
     patchDomainDocuments,

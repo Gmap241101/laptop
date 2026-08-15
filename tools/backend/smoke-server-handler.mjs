@@ -210,6 +210,8 @@ let rentalConfigSettingsPatch = null;
 let signupPolicyPatch = null;
 let partialContentPatch = null;
 const siteContentService = {
+  async getAdminSignupTermsCatalog() { return { source: 'postgresql', authoritative: true, policy: { enabled: true, revision: 5, activeTerms: [{ id: 'terms-smoke', title: 'Smoke terms', displayOrder: 2 }] }, terms: [{ id: 'terms-smoke', title: 'Smoke terms', enabled: true, displayOrder: 2, currentVersion: 1, contentHtml: '<p>Smoke terms body</p>', contentText: 'Smoke terms body' }] }; },
+  async getAdminSignupTermContent(termId) { return { source: 'postgresql', authoritative: true, term: { id: termId, title: 'Smoke terms', enabled: true, displayOrder: 2, currentVersion: 1, contentHtml: '<p>Smoke terms body</p>', contentText: 'Smoke terms body' } }; },
   async getSignupTermsPolicy() { return { source: 'postgresql', authoritative: true, key: 'signupTermsPolicy/current', payload: { enabled: true, revision: 5, requiredRevision: 5, activeTerms: [{ id: 'terms-smoke', title: 'Smoke terms' }] } }; },
   async getSignupTermContent(termId) { return { source: 'postgresql', authoritative: true, term: { id: termId, title: 'Smoke terms', required: true, version: 1, versionId: 'terms-smoke-v1', contentHash: 'terms-smoke-hash', contentHtml: '<p>Smoke terms body</p>', contentText: 'Smoke terms body' } }; },
   async getDomain(domain) { return siteDomains.get(domain) || { source: 'postgresql', domain, documents: [], count: 0 }; },
@@ -338,6 +340,22 @@ try {
 
   const session = await fetch(`${baseUrl}/api/auth/session`, { headers: authHeaders });
   if (session.status !== 200 || (await session.json()).session?.userId !== 'user_smoke') throw new Error('Clerk session endpoint failed.');
+
+  const adminSignupTermsCatalogResponse = await fetch(`${baseUrl}/api/admin/signup-terms/catalog`, {
+    headers: authHeaders,
+  });
+  const adminSignupTermsCatalogBody = await adminSignupTermsCatalogResponse.json();
+  if (adminSignupTermsCatalogResponse.status !== 200 || adminSignupTermsCatalogBody.signupTermsCatalog?.source !== 'postgresql' || adminSignupTermsCatalogBody.signupTermsCatalog?.terms?.length !== 1) {
+    throw new Error('Dedicated administrator signup terms catalog endpoint failed.');
+  }
+
+  const adminSignupTermContentResponse = await fetch(`${baseUrl}/api/admin/signup-terms/terms-smoke/content`, {
+    headers: authHeaders,
+  });
+  const adminSignupTermContentBody = await adminSignupTermContentResponse.json();
+  if (adminSignupTermContentResponse.status !== 200 || adminSignupTermContentBody.signupTermContent?.source !== 'postgresql' || adminSignupTermContentBody.signupTermContent?.term?.contentHtml !== '<p>Smoke terms body</p>') {
+    throw new Error('Dedicated administrator signup term content endpoint failed.');
+  }
 
   const signupTermsPolicyResponse = await fetch(`${baseUrl}/api/signup/terms-policy`, {
     headers: { Origin: allowedOrigin },

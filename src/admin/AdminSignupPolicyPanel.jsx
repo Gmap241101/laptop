@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import useAdminMemberDirectoryAuditActions from '../features/members/useAdminMemberDirectoryAuditActions.js';
 import useAdminSignupPolicyActions from '../features/members/useAdminSignupPolicyActions.js';
 import AdminSignupTermsManager from './AdminSignupTermsManager.jsx';
+import { preloadAdminSignupTermsCatalog } from '../features/terms/adminTermsService.js';
 
 function PolicySwitch({ checked, disabled = false, label, description, onChange }) {
   return (
@@ -141,7 +142,12 @@ export default function AdminSignupPolicyPanel({ ctx }) {
           </button>
           <button
             type="button"
-            onClick={() => setActivePolicyTab('terms')}
+            onPointerEnter={() => { void preloadAdminSignupTermsCatalog().catch(() => {}); }}
+            onFocus={() => { void preloadAdminSignupTermsCatalog().catch(() => {}); }}
+            onClick={() => {
+              void preloadAdminSignupTermsCatalog().catch(() => {});
+              setActivePolicyTab('terms');
+            }}
             className={`rounded-xl px-4 py-2.5 text-xs font-bold transition ${
               activePolicyTab === 'terms'
                 ? 'bg-orange-500 text-white shadow-sm'

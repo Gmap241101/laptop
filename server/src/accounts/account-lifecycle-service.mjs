@@ -47,7 +47,10 @@ const normalizePolicy = (payload = {}) => ({
     id: trim(term?.id), title: trim(term?.title), contentHash: trim(term?.contentHash),
     required: Boolean(term?.required), version: Math.max(1, Number(term?.version || 1)),
     versionId: trim(term?.versionId || term?.currentVersionId),
-  })).filter((term) => term.id && term.title),
+    displayOrder: Number.isFinite(Number(term?.displayOrder)) ? Number(term.displayOrder) : 0,
+  }))
+    .filter((term) => term.id && term.title)
+    .sort((first, second) => first.displayOrder - second.displayOrder || first.title.localeCompare(second.title, 'ko')),
 });
 
 const validateTerms = ({ policy, submission, source }) => {

@@ -128,6 +128,51 @@ export const createSiteContentService = ({ repository }) => Object.freeze({
       syncedAt: document.syncedAt || null,
     });
   },
+  async getAdminSignupTermsCatalog() {
+    if (typeof repository.getSignupTermsAdminCatalog !== 'function') {
+      throw errorWith('signup_terms_admin_catalog_unavailable', 'Signup terms administrator catalog reader is unavailable.', 503);
+    }
+    const catalog = await repository.getSignupTermsAdminCatalog();
+    const policyPayload = catalog?.policy?.payload && typeof catalog.policy.payload === 'object'
+      ? catalog.policy.payload
+      : {};
+    return Object.freeze({
+      source: 'postgresql',
+      authoritative: true,
+      policy: projectSignupTermsPolicyPayload(policyPayload),
+      terms: (Array.isArray(catalog?.terms) ? catalog.terms : []).map((document) => Object.freeze({
+        ...document.payload,
+        id: String(document.payload?.id || document.key.split('/').pop() || '').trim(),
+        enabled: typeof document.enabled === 'boolean' ? document.enabled : document.payload?.enabled !== false,
+        displayOrder: Number.isFinite(Number(document.payload?.displayOrder))
+          ? Number(document.payload.displayOrder)
+          : Number.isFinite(Number(document.sortOrder)) ? Number(document.sortOrder) : 0,
+      })),
+    });
+  },
+  async getAdminSignupTermContent(termIdValue) {
+    const termId = normalizeTermId(termIdValue);
+    if (!termId) throw errorWith('signup_term_id_missing', 'Signup term ID is required.', 400);
+    if (typeof repository.getDocument !== 'function') {
+      throw errorWith('signup_terms_admin_content_unavailable', 'Signup terms administrator content reader is unavailable.', 503);
+    }
+    const document = await repository.getDocument('terms', `signupTerms/${termId}`);
+    if (!document) throw errorWith('signup_terms_admin_content_not_found', 'Signup term content is not available.', 404);
+    const payload = document.payload && typeof document.payload === 'object' ? document.payload : {};
+    return Object.freeze({
+      source: 'postgresql',
+      authoritative: true,
+      term: Object.freeze({
+        ...payload,
+        id: String(payload.id || termId).trim(),
+        enabled: typeof document.enabled === 'boolean' ? document.enabled : payload.enabled !== false,
+        displayOrder: Number.isFinite(Number(payload.displayOrder))
+          ? Number(payload.displayOrder)
+          : Number.isFinite(Number(document.sortOrder)) ? Number(document.sortOrder) : 0,
+        contentPreview: String(payload.contentText || '').slice(0, 240),
+      }),
+    });
+  },
   async getSignupTermContent(termIdValue) {
     const termId = normalizeTermId(termIdValue);
     if (!termId) {
