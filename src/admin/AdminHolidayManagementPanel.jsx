@@ -10,9 +10,17 @@ import {
   X,
 } from 'lucide-react';
 import ModalPortal from '../components/ModalPortal.jsx';
+import { buildCalendarHolidaySegments } from './holidayCalendarLayout.js';
 
 const MONTH_OPTIONS = Array.from({ length: 12 }, (_, index) => index + 1);
 const WEEKDAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
+const HOLIDAY_TYPE_OPTIONS = [
+  { value: 'public', label: '법정공휴일' },
+  { value: 'temporary', label: '임시공휴일' },
+  { value: 'substitute', label: '대체공휴일' },
+  { value: 'company', label: '회사지정휴일' },
+  { value: 'manual', label: '기타휴일' },
+];
 
 export default function AdminHolidayManagementPanel({ ctx }) {
   const {
@@ -133,15 +141,17 @@ export default function AdminHolidayManagementPanel({ ctx }) {
   const getReasonBadgeClassName = (type) => {
     if (type === 'public') return 'border-blue-200 bg-blue-50 text-blue-700';
     if (type === 'temporary') return 'border-violet-200 bg-violet-50 text-violet-700';
+    if (type === 'substitute') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
     if (type === 'company') return 'border-orange-200 bg-orange-50 text-orange-700';
     return 'border-slate-200 bg-slate-100 text-slate-600';
   };
 
   const getCompactReasonLabel = (type) => {
-    if (type === 'public') return '공휴일';
+    if (type === 'public') return '법정';
     if (type === 'temporary') return '임시';
+    if (type === 'substitute') return '대체';
     if (type === 'company') return '회사';
-    return '수동';
+    return '기타';
   };
 
   const setCalendarYearMonth = (year, month) => {
@@ -207,6 +217,19 @@ export default function AdminHolidayManagementPanel({ ctx }) {
       };
     });
   }, [selectedHolidayMonth, selectedHolidayYear, tempHolidayList]);
+
+  const calendarWeeks = useMemo(
+    () =>
+      Array.from({ length: 6 }, (_, weekIndex) =>
+        calendarCells.slice(weekIndex * 7, weekIndex * 7 + 7)
+      ),
+    [calendarCells]
+  );
+
+  const calendarHolidaySegmentsByWeek = useMemo(
+    () => buildCalendarHolidaySegments(calendarCells),
+    [calendarCells]
+  );
 
   const calendarDetailHoliday = (tempHolidayList || []).find(
     (holiday) => holiday.date === calendarDetailDate
@@ -275,10 +298,11 @@ export default function AdminHolidayManagementPanel({ ctx }) {
         }
         className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none mk-form-focus"
       >
-        <option value="public">법정공휴일</option>
-        <option value="temporary">임시공휴일</option>
-        <option value="company">회사휴일</option>
-        <option value="manual">수동등록</option>
+        {HOLIDAY_TYPE_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
       </select>
       <input
         value={holidayEditForm.name}
@@ -372,7 +396,7 @@ export default function AdminHolidayManagementPanel({ ctx }) {
     <div className="space-y-8">
       <AdminPageHeader
         title="휴일 관리"
-        description="법정·임시공휴일을 자동으로 불러오거나 회사휴일과 수동 휴일을 등록합니다. 등록된 휴일은 대여 시작일과 대여·연장 최종 반납 예정일의 다음 영업일 조정에 반영됩니다."
+        description="법정·임시·대체공휴일을 자동으로 불러오거나 회사지정휴일과 기타휴일을 등록합니다. 등록된 휴일은 대여 시작일과 대여·연장 최종 반납 예정일의 다음 영업일 조정에 반영됩니다."
         badge={
           holidaySettingsDirty ? (
             <span className="w-fit rounded-full border border-amber-200/70 bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-700">
@@ -397,7 +421,7 @@ export default function AdminHolidayManagementPanel({ ctx }) {
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <h4 className="text-xs font-bold text-blue-900">
-                  법정·임시공휴일 자동 불러오기
+                  법정·임시·대체공휴일 자동 불러오기
                 </h4>
                 <p className="mt-1 text-[11px] leading-5 text-blue-700">
                   💡<b>운영 안내:</b> 연도별 JSON 파일(public/holidays)을 불러옵니다. 중복 날짜 발생 시 기존 사유 유지, 병합, 교체 중 선택 가능합니다.
@@ -440,10 +464,11 @@ export default function AdminHolidayManagementPanel({ ctx }) {
               onChange={(event) => setNewHolidayType(event.target.value)}
               className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none transition mk-form-focus"
             >
-              <option value="public">법정공휴일</option>
-              <option value="temporary">임시공휴일</option>
-              <option value="company">회사휴일</option>
-              <option value="manual">수동등록</option>
+              {HOLIDAY_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
 
             <input
@@ -640,96 +665,117 @@ export default function AdminHolidayManagementPanel({ ctx }) {
                   ))}
                 </div>
 
-                <div className="grid grid-cols-7">
-                  {calendarCells.map((cell, index) => {
-                    const reasons = cell.holiday?.reasons || [];
-                    const isSelected = calendarDetailDate === cell.date;
-                    const isToday = cell.date === today();
+                <div className="divide-y divide-slate-100">
+                  {calendarWeeks.map((weekCells, weekIndex) => {
+                    const weekSegments =
+                      calendarHolidaySegmentsByWeek.get(weekIndex) || [];
+                    const laneCount = weekSegments.reduce(
+                      (maxLane, segment) => Math.max(maxLane, segment.lane + 1),
+                      0
+                    );
+                    const weekMinHeight = Math.max(72, 50 + laneCount * 24);
 
                     return (
-                      <button
-                        type="button"
-                        key={cell.date}
-                        onClick={() => {
-                          if (!cell.isCurrentMonth) {
-                            setCalendarYearMonth(cell.year, cell.month);
-                          }
-                          setCalendarDetailDate(cell.date);
-                        }}
-                        className={`relative min-h-16 border-b border-r border-slate-100 p-1.5 text-left transition sm:min-h-24 sm:p-2 lg:min-h-28 ${
-                          index % 7 === 6 ? 'border-r-0' : ''
-                        } ${
-                          isSelected
-                            ? 'bg-orange-50 ring-1 ring-inset ring-orange-300'
-                            : cell.isCurrentMonth
-                              ? 'bg-white hover:bg-slate-50'
-                              : 'bg-slate-50/70 text-slate-300 hover:bg-slate-100'
-                        }`}
+                      <div
+                        key={`week-${weekIndex}`}
+                        className="relative grid grid-cols-7"
+                        style={{ minHeight: `${weekMinHeight}px` }}
                       >
-                        <span
-                          className={`absolute right-2 top-2 inline-flex h-6 min-w-6 items-center justify-center rounded-full border text-[11px] font-bold sm:text-xs ${
-                            reasons.length > 0
-                              ? cell.isCurrentMonth
-                                ? 'text-rose-500'
-                                : 'text-rose-300'
-                              : cell.weekday === 0
-                                ? cell.isCurrentMonth
-                                  ? 'text-rose-500'
-                                  : 'text-rose-300'
-                                : cell.weekday === 6
-                                  ? cell.isCurrentMonth
-                                    ? 'text-blue-500'
-                                    : 'text-blue-300'
+                        {weekCells.map((cell, dayIndex) => {
+                          const reasons = cell.holiday?.reasons || [];
+                          const isSelected = calendarDetailDate === cell.date;
+                          const isToday = cell.date === today();
+
+                          return (
+                            <button
+                              type="button"
+                              key={cell.date}
+                              onClick={() => {
+                                if (!cell.isCurrentMonth) {
+                                  setCalendarYearMonth(cell.year, cell.month);
+                                }
+                                setCalendarDetailDate(cell.date);
+                              }}
+                              className={`relative h-full min-h-16 border-r border-slate-100 p-1.5 text-left transition sm:min-h-24 sm:p-2 lg:min-h-28 ${
+                                dayIndex === 6 ? 'border-r-0' : ''
+                              } ${
+                                isSelected
+                                  ? 'bg-orange-50 ring-1 ring-inset ring-orange-300'
                                   : cell.isCurrentMonth
-                                    ? 'text-slate-700'
-                                    : 'text-slate-300'
-                          } ${
-                            isToday
-                              ? 'border-orange-400 bg-yellow-100 shadow-sm'
-                              : 'border-transparent'
-                          }`}
-                        >
-                          {cell.day}
-                        </span>
+                                    ? 'bg-white hover:bg-slate-50'
+                                    : 'bg-slate-50/70 text-slate-300 hover:bg-slate-100'
+                              }`}
+                            >
+                              <span
+                                className={`absolute right-2 top-2 inline-flex h-6 min-w-6 items-center justify-center rounded-full border text-[11px] font-bold sm:text-xs ${
+                                  reasons.length > 0
+                                    ? cell.isCurrentMonth
+                                      ? 'text-rose-500'
+                                      : 'text-rose-300'
+                                    : cell.weekday === 0
+                                      ? cell.isCurrentMonth
+                                        ? 'text-rose-500'
+                                        : 'text-rose-300'
+                                      : cell.weekday === 6
+                                        ? cell.isCurrentMonth
+                                          ? 'text-blue-500'
+                                          : 'text-blue-300'
+                                        : cell.isCurrentMonth
+                                          ? 'text-slate-700'
+                                          : 'text-slate-300'
+                                } ${
+                                  isToday
+                                    ? 'border-orange-400 bg-yellow-100 shadow-sm'
+                                    : 'border-transparent'
+                                }`}
+                              >
+                                {cell.day}
+                              </span>
+                            </button>
+                          );
+                        })}
 
-                        {reasons.length > 0 && (
-                          <>
-                            <div className="absolute left-1.5 right-1.5 top-9 flex gap-0.5 sm:hidden">
-                              {reasons.slice(0, 3).map((reason, reasonIndex) => (
-                                <span
-                                  key={`${reason.type}-${reasonIndex}`}
-                                  className={`h-1.5 w-1.5 rounded-full border ${getReasonBadgeClassName(
-                                    reason.type
-                                  )}`}
-                                />
-                              ))}
-                            </div>
+                        {weekSegments.map((segment) => {
+                          const leftPercent = (segment.startCol / 7) * 100;
+                          const rightPercent =
+                            ((6 - segment.endCol) / 7) * 100;
+                          const leftInset = segment.continuesBefore ? 0 : 6;
+                          const rightInset = segment.continuesAfter ? 0 : 6;
 
-                            <div className="absolute left-2 right-2 top-10 hidden space-y-1 sm:block">
-                              {reasons.slice(0, 2).map((reason, reasonIndex) => (
-                                <div
-                                  key={`${reason.type}-${reason.name}-${reasonIndex}`}
-                                  className={`flex min-w-0 items-center gap-1 rounded-md border px-1.5 py-1 ${getReasonBadgeClassName(
-                                    reason.type
-                                  )}`}
-                                >
-                                  <span className="shrink-0 text-[9px] font-bold">
-                                    {getCompactReasonLabel(reason.type)}
+                          return (
+                            <div
+                              key={segment.id}
+                              aria-hidden="true"
+                              className={`pointer-events-none absolute z-10 flex h-5 min-w-0 items-center overflow-hidden border px-1.5 text-[9px] font-semibold shadow-sm sm:h-6 sm:text-[10px] ${getReasonBadgeClassName(
+                                segment.reason.type
+                              )} ${
+                                segment.continuesBefore ? 'rounded-l-none' : 'rounded-l-md'
+                              } ${
+                                segment.continuesAfter ? 'rounded-r-none' : 'rounded-r-md'
+                              }`}
+                              style={{
+                                left: `calc(${leftPercent}% + ${leftInset}px)`,
+                                right: `calc(${rightPercent}% + ${rightInset}px)`,
+                                top: `${40 + segment.lane * 24}px`,
+                              }}
+                              title={`${HOLIDAY_TYPE_LABEL[segment.reason.type] || '휴일'} ${segment.reason.name || '휴일'}`}
+                            >
+                              {segment.showLabel ? (
+                                <span className="truncate">
+                                  <span className="mr-1 font-bold">
+                                    {getCompactReasonLabel(segment.reason.type)}
                                   </span>
-                                  <span className="truncate text-[9px] font-semibold lg:text-[10px]">
-                                    {reason.name || '휴일'}
-                                  </span>
-                                </div>
-                              ))}
-                              {reasons.length > 2 && (
-                                <div className="px-1 text-[9px] font-semibold text-slate-400">
-                                  외 {reasons.length - 2}건
-                                </div>
+                                  {segment.reason.name || '휴일'}
+                                </span>
+                              ) : (
+                                <span className="sr-only">
+                                  {segment.reason.name || '휴일'} 계속
+                                </span>
                               )}
                             </div>
-                          </>
-                        )}
-                      </button>
+                          );
+                        })}
+                      </div>
                     );
                   })}
                 </div>

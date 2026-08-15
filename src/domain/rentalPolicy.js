@@ -116,19 +116,25 @@ export const DEFAULT_RENTAL_EXTENSION_REQUEST_WAIT_DAYS = 7;
 export const HOLIDAY_TYPE_LABEL = {
   public: '법정공휴일',
   temporary: '임시공휴일',
-  company: '회사휴일',
-  manual: '수동등록',
+  substitute: '대체공휴일',
+  company: '회사지정휴일',
+  manual: '기타휴일',
 };
 
 export const normalizeHolidayReason = (reason = {}) => {
-  const type = reason.type || DEFAULT_HOLIDAY_TYPE;
-  const name = String(
-    reason.name || HOLIDAY_TYPE_LABEL[type] || '휴일'
+  const sourceType = reason.type || DEFAULT_HOLIDAY_TYPE;
+  const sourceName = String(
+    reason.name || HOLIDAY_TYPE_LABEL[sourceType] || '휴일'
   ).trim();
+  const type =
+    sourceType === 'public' && sourceName.startsWith('대체공휴일')
+      ? 'substitute'
+      : sourceType;
+  const name = sourceName || HOLIDAY_TYPE_LABEL[type] || '휴일';
 
   return {
     type,
-    name: name || HOLIDAY_TYPE_LABEL[type] || '휴일',
+    name,
   };
 };
 

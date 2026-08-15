@@ -121,7 +121,7 @@
     "frontend:phase34:smoke": "node tools/frontend/smoke-phase34-admin-content-authority.mjs",
     "server:phase34:runtime-retirement:smoke": "node tools/backend/smoke-phase34-runtime-retirement.mjs",
     "frontend:phase34:runtime-retirement:smoke": "node tools/frontend/smoke-phase34-runtime-retirement.mjs",
-    "verify:phase34": "npm run server:migrations:static-check && npm run server:check && npm run server:smoke && npm run server:admin-rental-request:smoke && npm run server:admin-rental-mutation:smoke && npm run server:auth:smoke && npm run frontend:clerk:smoke && npm run server:site-content:smoke && npm run frontend:site-content:smoke && npm run server:policy-content:smoke && npm run frontend:policy-content:smoke && npm run server:asset-domain:smoke && npm run frontend:asset-domain:smoke && npm run server:phase34:smoke && npm run frontend:phase34:smoke && npm run server:phase34:external-runtime:smoke && npm run frontend:phase34:external-runtime:smoke && npm run audit:react-hooks && npm run audit:app-flows && npm run audit:external-runtime:strict && npm run package:guard && npm run server:phase34:data-management:smoke && npm run frontend:phase34:data-management:smoke && npm run server:phase34:runtime-regressions:smoke && npm run frontend:phase34:runtime-regressions:smoke && npm run server:phase34:canonical-store-cleanup:smoke && npm run server:phase34:member-policy:smoke && npm run frontend:phase34:member-policy:smoke",
+    "verify:phase34": "npm run server:migrations:static-check && npm run server:check && npm run server:smoke && npm run server:admin-rental-request:smoke && npm run server:admin-rental-mutation:smoke && npm run server:auth:smoke && npm run frontend:clerk:smoke && npm run server:site-content:smoke && npm run frontend:site-content:smoke && npm run server:policy-content:smoke && npm run frontend:policy-content:smoke && npm run server:asset-domain:smoke && npm run frontend:asset-domain:smoke && npm run server:phase34:smoke && npm run frontend:phase34:smoke && npm run server:phase34:external-runtime:smoke && npm run frontend:phase34:external-runtime:smoke && npm run audit:react-hooks && npm run audit:app-flows && npm run audit:external-runtime:strict && npm run package:guard && npm run server:phase34:data-management:smoke && npm run frontend:phase34:data-management:smoke && npm run server:phase34:runtime-regressions:smoke && npm run frontend:phase34:runtime-regressions:smoke && npm run frontend:phase34:holiday-management:smoke && npm run server:phase34:canonical-store-cleanup:smoke && npm run server:phase34:member-policy:smoke && npm run frontend:phase34:member-policy:smoke",
     "server:phase34:external-runtime:smoke": "node tools/backend/smoke-phase34-external-runtime-removal.mjs",
     "frontend:phase34:external-runtime:smoke": "node tools/frontend/smoke-phase34-external-runtime-removal.mjs",
     "server:phase34:data-management:smoke": "node tools/backend/smoke-phase34-system-data-management.mjs",
@@ -130,7 +130,8 @@
     "frontend:phase34:runtime-regressions:smoke": "node tools/frontend/smoke-phase34-runtime-regressions.mjs",
     "server:phase34:member-policy:smoke": "node tools/backend/smoke-phase34-member-policy-directory-authority.mjs",
     "frontend:phase34:member-policy:smoke": "node tools/frontend/smoke-phase34-member-policy-directory-authority.mjs",
-    "server:phase34:canonical-store-cleanup:smoke": "node tools/backend/smoke-phase34-canonical-store-cleanup.mjs"
+    "server:phase34:canonical-store-cleanup:smoke": "node tools/backend/smoke-phase34-canonical-store-cleanup.mjs",
+    "frontend:phase34:holiday-management:smoke": "node tools/frontend/smoke-phase34-holiday-management.mjs"
   },
   "dependencies": {
     "framer-motion": "^11.0.0",
