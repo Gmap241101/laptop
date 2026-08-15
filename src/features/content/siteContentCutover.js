@@ -3,6 +3,36 @@ const INVALIDATION_EVENT_NAME = 'rental:site-content-invalidated';
 const INVALIDATION_STORAGE_KEY = 'mk_site_content_invalidated_v2';
 const domainCache = new Map();
 const DOMAIN_CACHE_TTL_MS = 5_000;
+const SITE_CONTENT_READ_RETRY_DELAYS_MS = Object.freeze([250, 750]);
+
+const wait = (delayMs) => new Promise((resolve) => {
+  setTimeout(resolve, delayMs);
+});
+
+const requestSiteContentRead = async ({ fetchImpl, url, options }) => {
+  for (let attempt = 0; attempt <= SITE_CONTENT_READ_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      const response = await fetchImpl(url, options);
+      const retryableStatus = [502, 503, 504].includes(Number(response?.status));
+      if (retryableStatus && attempt < SITE_CONTENT_READ_RETRY_DELAYS_MS.length) {
+        await wait(SITE_CONTENT_READ_RETRY_DELAYS_MS[attempt]);
+        continue;
+      }
+      return response;
+    } catch (error) {
+      const isNetworkFailure = error?.name === 'TypeError' || error?.code === 'site_content_network_unavailable';
+      if (isNetworkFailure && attempt < SITE_CONTENT_READ_RETRY_DELAYS_MS.length) {
+        await wait(SITE_CONTENT_READ_RETRY_DELAYS_MS[attempt]);
+        continue;
+      }
+      if (isNetworkFailure && error && typeof error === 'object' && !error.code) {
+        error.code = 'site_content_network_unavailable';
+      }
+      throw error;
+    }
+  }
+  throw Object.assign(new Error('PostgreSQL site content endpoint is unreachable.'), { code: 'site_content_network_unavailable' });
+};
 export const PHASE33_PUBLIC_CONTENT_VISIBILITY_REVISION = 'phase33-public-content-visibility-hotfix-20260812-0105';
 export const PHASE33_PUBLIC_CONTENT_SYNC_REVISION = 'phase33-public-content-full-server-sync-hotfix-20260812-0117';
 const trim = (value) => (typeof value === 'string' ? value.trim() : String(value ?? '').trim());
@@ -161,8 +191,12 @@ export const requestSiteContentDomain = async ({ domain, fetchImpl = fetch, conf
   if (cached) domainCache.delete(domain);
   const cacheEntry = useCache ? { promise: null, pending: true, expiresAt: 0 } : null;
   const promise = (async () => {
-    const response = await fetchImpl(`${config.apiBaseUrl}/api/site-content/${encodeURIComponent(domain)}`, {
-      method: 'GET', headers: { Accept: 'application/json' }, cache: 'no-store',
+    const response = await requestSiteContentRead({
+      fetchImpl,
+      url: `${config.apiBaseUrl}/api/site-content/${encodeURIComponent(domain)}`,
+      options: {
+        method: 'GET', headers: { Accept: 'application/json' }, cache: 'no-store',
+      },
     });
     let payload = null;
     try { payload = await response.json(); } catch { payload = null; }

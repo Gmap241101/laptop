@@ -251,8 +251,20 @@ assert.match(memberEditSource, /createdAt:[\s\S]*adminMemberProfileWrite\?\.prof
 const appShellSource = fs.readFileSync(new URL('../../src/shell/AppShell.jsx', import.meta.url), 'utf8');
 assert.equal(appShellSource.includes('Firebase 원격 DB 기준으로 데이터를 불러오고 있습니다.'), false, 'retired Firebase loading copy must not remain');
 assert.equal(appShellSource.includes('PostgreSQL 운영 DB 기준으로 데이터를 불러오고 있습니다.'), true);
+
+const blockingStateSource = fs.readFileSync(new URL('../../src/shell/AppBlockingStateScreen.jsx', import.meta.url), 'utf8');
+assert.equal(blockingStateSource.includes('Firebase 데이터를 불러오지 못했습니다.'), false, 'retired Firebase wording must not be shown for PostgreSQL data-load failures');
+assert.match(blockingStateSource, /PostgreSQL 데이터 서버에 연결하지 못했습니다\./, 'blocking screen must identify the active PostgreSQL authority');
+assert.match(blockingStateSource, /이 화면은 데이터 삭제를 의미하지 않으며, 기존 원격 데이터를 보호하기 위해 저장을 차단했습니다\./, 'blocking screen must distinguish connectivity failure from data deletion while preserving the safe-write guard');
+assert.equal(blockingStateSource.includes('firebase-load-error'), false, 'active blocking-state identifiers must no longer describe PostgreSQL failures as Firebase failures');
+
+const siteContentConnectivitySource = fs.readFileSync(new URL('../../src/features/content/siteContentCutover.js', import.meta.url), 'utf8');
+assert.match(siteContentConnectivitySource, /site_content_network_unavailable/, 'site-content fetch failures must expose a stable PostgreSQL network error code instead of raw TypeError');
+assert.match(siteContentConnectivitySource, /SITE_CONTENT_READ_RETRY_DELAYS_MS = Object\.freeze\(\[250, 750\]\)/, 'public PostgreSQL site-content reads must retry only a small bounded number of transient failures');
+
 const rentalDataSource = fs.readFileSync(new URL('../../src/features/requests/useRentalDataSubscriptionController.js', import.meta.url), 'utf8');
 assert.equal(rentalDataSource.includes('firestore-one-time-fallback'), false, 'asset runtime must not retain Firestore fallback source labels');
+assert.match(rentalDataSource, /site_content_network_unavailable/, 'public-config network failures must use the stable PostgreSQL connectivity error code');
 assert.match(
   rentalDataSource,
   /import\s*\{[\s\S]*?isLegacyFirestoreReadFallbackAllowed,[\s\S]*?readLegacyFirestoreReadFallbackConfig,[\s\S]*?recordLegacyFirestoreReadFallbackBlocked,[\s\S]*?\}\s*from '\.\.\/compatibility\/legacyFirestoreReadFallbackCutover\.js'/,

@@ -4,7 +4,7 @@ import { Button } from '../components/CommonUI.jsx';
 import { SERVICE_MODE } from '../utils/systemSettings.js';
 
 export const APP_BLOCKING_STATE = Object.freeze({
-  FIREBASE_LOAD_ERROR: 'firebase-load-error',
+  REMOTE_DATA_LOAD_ERROR: 'remote-data-load-error',
   MAINTENANCE: 'maintenance',
 });
 
@@ -14,7 +14,7 @@ export const getAppBlockingState = ({
   view,
 }) => {
   if (firebaseLoadErrorMessage) {
-    return APP_BLOCKING_STATE.FIREBASE_LOAD_ERROR;
+    return APP_BLOCKING_STATE.REMOTE_DATA_LOAD_ERROR;
   }
 
   if (
@@ -27,7 +27,7 @@ export const getAppBlockingState = ({
   return '';
 };
 
-const FirebaseLoadErrorScreen = ({ firebaseLoadErrorMessage }) => (
+const RemoteDataLoadErrorScreen = ({ firebaseLoadErrorMessage }) => (
   <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6 font-sans text-slate-900">
     <div className="w-full max-w-lg rounded-2xl border border-rose-200 bg-white p-6 shadow-sm">
       <div className="mb-4 flex items-center gap-3">
@@ -36,10 +36,10 @@ const FirebaseLoadErrorScreen = ({ firebaseLoadErrorMessage }) => (
         </div>
         <div>
           <h1 className="text-base font-bold text-slate-900">
-            Firebase 데이터를 불러오지 못했습니다.
+            PostgreSQL 데이터 서버에 연결하지 못했습니다.
           </h1>
           <p className="mt-0.5 text-xs text-slate-500">
-            원격 DB 보호를 위해 화면 데이터 저장을 차단했습니다.
+            이 화면은 데이터 삭제를 의미하지 않으며, 기존 원격 데이터를 보호하기 위해 저장을 차단했습니다.
           </p>
         </div>
       </div>
@@ -111,9 +111,9 @@ export default function AppBlockingStateScreen({
   normalizedSiteSettings,
   state,
 }) {
-  if (state === APP_BLOCKING_STATE.FIREBASE_LOAD_ERROR) {
+  if (state === APP_BLOCKING_STATE.REMOTE_DATA_LOAD_ERROR) {
     return (
-      <FirebaseLoadErrorScreen
+      <RemoteDataLoadErrorScreen
         firebaseLoadErrorMessage={firebaseLoadErrorMessage}
       />
     );

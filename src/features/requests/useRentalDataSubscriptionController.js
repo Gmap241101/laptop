@@ -624,10 +624,10 @@ export default function useRentalDataSubscriptionController({
             error: error?.code || 'policy_content_read_failed',
           });
           const errorCode = error?.code || error?.name || 'policy_content_read_failed';
-          applyMissingConfig(
-            `공개 설정을 PostgreSQL에서 불러오지 못했습니다. 오류 코드: ${errorCode}`,
-            error
-          );
+          const message = errorCode === 'site_content_network_unavailable'
+            ? 'PostgreSQL 데이터 서버에 연결할 수 없습니다. 기존 원격 데이터를 보호하기 위해 저장을 차단했습니다. 오류 코드: site_content_network_unavailable'
+            : `공개 설정을 PostgreSQL에서 불러오지 못했습니다. 오류 코드: ${errorCode}`;
+          applyMissingConfig(message, error);
         });
     };
 
