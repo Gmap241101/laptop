@@ -371,6 +371,117 @@ export const createAdminRentalRequestService = ({ repository, restrictionAuthori
       });
     },
 
+    async changeStatus(firebaseIdentity, { requestId, nextStatus }) {
+      const admin = await verify(firebaseIdentity);
+      const id = trim(requestId);
+      const status = trim(nextStatus);
+      if (!id || !status) throw serviceError('admin_rental_status_input_missing', 'Request ID and status are required.', 400);
+
+      const sourceDoc = await mutationSourceClient.getRentalRequest({ requestId: id });
+      if (!sourceDoc) throw serviceError('rental_request_not_found', 'Rental request was not found.', 404);
+      const sourceRequest = normalizeRequestDocument(sourceDoc);
+      const [assetDoc, publicConfig] = await Promise.all([
+        mutationSourceClient.getRentalAsset({ assetId: sourceRequest.laptopId }),
+        mutationSourceClient.getPublicConfig(),
+      ]);
+      if (!assetDoc) throw serviceError('rental_asset_not_found', 'Rental asset was not found.', 404);
+
+      const settings = publicConfig?.fields?.settings || {};
+      const assetFields = assetDoc.fields || {};
+      const existingReservations = normalizeAssetReservationsForWrite(assetFields.reservations || [])
+        .filter((reservation) => reservation.id !== id);
+
+      let returnResult = {
+        requestFields: {},
+        restrictionFields: null,
+        finalizedRequestIds: [],
+      };
+      if (status === '반납완료') {
+        const [restrictionDoc, hasOtherOverdue] = await Promise.all([
+          sourceRequest.requesterUid
+            ? mutationSourceClient.getRentalRestriction({ firebaseUid: sourceRequest.requesterUid })
+            : Promise.resolve(null),
+          repository.hasOtherCurrentOverdue({
+            requesterUid: sourceRequest.requesterUid,
+            excludedRequestId: id,
+            referenceDate: koreaToday(),
+          }),
+        ]);
+        returnResult = buildReturnResult({
+          request: sourceRequest,
+          actualReturnDate: koreaToday(),
+          settings,
+          restriction: restrictionDoc?.fields || null,
+          hasOtherOverdue,
+          batchId: `OVERDUE-${id}-${Date.now()}`,
+        });
+      }
+
+      const nextRequest = Object.freeze({
+        ...sourceRequest,
+        status,
+        ...(returnResult.requestFields || {}),
+      });
+      if (BLOCKING.has(status)) {
+        const conflict = findBlockingReservation({
+          reservations: existingReservations,
+          laptopId: sourceRequest.laptopId,
+          startDate: sourceRequest.startDate,
+          dueDate: sourceRequest.dueDate,
+          settings,
+        });
+        if (conflict) throw serviceError('rental_period_conflict', 'The rental period conflicts with an existing reservation.', 409, { blockingRequest: conflict });
+      }
+
+      const nextAvailability = BLOCKING.has(status) ? createAvailability(nextRequest) : null;
+      const nextReservations = nextAvailability ? [...existingReservations, nextAvailability] : existingReservations;
+      const representative = representativeReservation(nextReservations, sourceRequest.laptopId, koreaToday());
+      const nextAsset = Object.freeze({
+        id: sourceRequest.laptopId,
+        reservations: nextReservations,
+        status: trim(assetFields.status) === '대여불가' ? '대여불가' : representative?.status || '대여가능',
+        currentRequestId: representative?.id || null,
+      });
+      const relatedRequestUpdates = (returnResult.finalizedRequestIds || [])
+        .filter((relatedId) => relatedId !== id)
+        .map((relatedId) => ({
+          id: relatedId,
+          fields: {
+            overduePenaltyPending: false,
+            overduePenaltyBatchId: returnResult.requestFields?.overduePenaltyBatchId || '',
+          },
+        }));
+
+      const committed = await repository.changeStatus({
+        requestId: id,
+        nextStatus: status,
+        auditActor: admin,
+        returnFields: returnResult.requestFields || {},
+        allowNonOverlappingSameAssetRequests: Boolean(settings.allowNonOverlappingSameAssetRequests ?? false),
+        relatedRequestUpdates,
+      });
+
+      if (returnResult.restrictionFields?.uid && restrictionAuthorityRepository) {
+        await restrictionAuthorityRepository.upsertRestrictionAuthoritative({
+          firebaseUid: returnResult.restrictionFields.uid,
+          appUserId: null,
+          restriction: returnResult.restrictionFields,
+          mirrorState: mirrorStatus,
+        });
+      }
+
+      return Object.freeze({
+        admin,
+        authority: 'postgresql',
+        transactionSource: 'postgresql',
+        firestoreMirror: mirrorStatus,
+        request: committed,
+        availability: nextAvailability,
+        asset: nextAsset,
+        restrictionUpdated: Boolean(returnResult.restrictionFields?.uid),
+      });
+    },
+
     async saveMemo(firebaseIdentity, { requestId, memo = '' }) {
       const admin = await verify(firebaseIdentity);
       const id = trim(requestId);
@@ -596,11 +707,11 @@ export const createAdminRentalRequestService = ({ repository, restrictionAuthori
         },
       });
 
-      if (returnResult.restrictionFields?.uid && restrictionAuthorityRepository) {
+      if (restrictionFields?.uid && restrictionAuthorityRepository) {
         await restrictionAuthorityRepository.upsertRestrictionAuthoritative({
-          firebaseUid: returnResult.restrictionFields.uid,
+          firebaseUid: restrictionFields.uid,
           appUserId: null,
-          restriction: returnResult.restrictionFields,
+          restriction: restrictionFields,
           mirrorState: mirrorStatus,
         });
       }
@@ -609,11 +720,11 @@ export const createAdminRentalRequestService = ({ repository, restrictionAuthori
         authority: 'postgresql',
         transactionSource: 'postgresql',
         firestoreMirror: mirrorStatus,
-        restrictionAuthority: returnResult.restrictionFields?.uid ? 'postgresql-authoritative' : 'unchanged',
+        restrictionAuthority: restrictionFields?.uid ? 'postgresql-authoritative' : 'unchanged',
         request: committed,
-        availability: BLOCKING.has(status) ? nextAvailability : null,
+        availability: BLOCKING.has(nextRequest.status) ? nextAvailability : null,
         asset: nextAsset,
-        restrictionUpdated: Boolean(returnResult.restrictionFields?.uid),
+        restrictionUpdated: Boolean(restrictionFields?.uid),
       });
     },
   });

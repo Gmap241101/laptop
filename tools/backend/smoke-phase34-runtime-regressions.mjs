@@ -5,7 +5,78 @@ import { createSiteContentRepository } from '../../server/src/content/site-conte
 import { createBoardRepository } from '../../server/src/boards/board-repository.mjs';
 import { createClerkDeviceTrustService } from '../../server/src/clerk/clerk-device-trust-service.mjs';
 import { readServerConfig } from '../../server/src/config/env.mjs';
+import { createAdminRentalRequestService } from '../../server/src/rentals/admin-rental-request-service.mjs';
 import fs from 'node:fs';
+
+let adminStatusMutationArgs = null;
+const adminRentalServiceContract = createAdminRentalRequestService({
+  repository: {
+    async list() { return { requests: [], totalCount: 0, tabCounts: {} }; },
+    async changeStatus(args) {
+      adminStatusMutationArgs = args;
+      return {
+        id: args.requestId, requesterUid: 'member-1', requesterEmail: 'member@example.com', requesterName: 'Member',
+        requesterTeam: 'QA', laptopId: 'asset-1', assetCategory: '노트북', assetNo: 'A-1', startDate: '2026-08-15',
+        dueDate: '2026-08-16', purpose: 'Phase34 admin status contract', status: args.nextStatus,
+      };
+    },
+    async hasOtherCurrentOverdue() { return false; },
+  },
+  postgresSource: {
+    async getRentalRequest() {
+      return { name: 'postgresql/app_rental_requests/REQ-BOOT-1', fields: {
+        id: 'REQ-BOOT-1', requesterUid: 'member-1', requesterEmail: 'member@example.com', requesterName: 'Member',
+        requesterTeam: 'QA', laptopId: 'asset-1', assetCategory: '노트북', assetNo: 'A-1', startDate: '2026-08-15',
+        dueDate: '2026-08-16', purpose: 'Phase34 admin status contract', status: '신청중',
+      } };
+    },
+    async getRentalAsset() { return { fields: { id: 'asset-1', status: '대여가능', reservations: [] } }; },
+    async getPublicConfig() { return { fields: { settings: { allowNonOverlappingSameAssetRequests: true } } }; },
+    async getRentalRestriction() { return null; },
+  },
+});
+assert.equal(typeof adminRentalServiceContract.changeStatus, 'function', 'admin rental request service must expose the Phase 17/19 status mutation contract required at server boot');
+const adminStatusMutationResult = await adminRentalServiceContract.changeStatus(
+  { uid: 'admin-1', source: 'clerk-postgresql' },
+  { requestId: 'REQ-BOOT-1', nextStatus: '대여중' },
+);
+assert.equal(adminStatusMutationResult.authority, 'postgresql');
+assert.equal(adminStatusMutationResult.request.status, '대여중');
+assert.equal(adminStatusMutationArgs.requestId, 'REQ-BOOT-1');
+assert.equal(adminStatusMutationArgs.nextStatus, '대여중');
+assert.equal(adminStatusMutationArgs.allowNonOverlappingSameAssetRequests, true);
+
+let adminUserActionReviewArgs = null;
+const adminUserActionReviewService = createAdminRentalRequestService({
+  repository: {
+    async list() { return { requests: [], totalCount: 0, tabCounts: {} }; },
+    async reviewUserAction(args) { adminUserActionReviewArgs = args; return { ...args.nextRequest, id: args.requestId }; },
+    async hasOtherCurrentOverdue() { return false; },
+  },
+  postgresSource: {
+    async getRentalRequest() {
+      return { name: 'postgresql/app_rental_requests/REQ-ACTION-1', fields: {
+        id: 'REQ-ACTION-1', requesterUid: 'member-1', requesterEmail: 'member@example.com', requesterName: 'Member',
+        requesterTeam: 'QA', laptopId: 'asset-1', assetCategory: '노트북', assetNo: 'A-1', startDate: '2026-08-15',
+        dueDate: '2026-08-16', purpose: 'Phase34 user action contract', status: '신청중',
+        userActionRequest: { type: 'cancel', status: 'pending', reason: 'test' },
+      } };
+    },
+    async getRentalAsset() { return { fields: { id: 'asset-1', status: '대여가능', reservations: [
+      { id: 'REQ-ACTION-1', laptopId: 'asset-1', startDate: '2026-08-15', dueDate: '2026-08-16', status: '신청중' },
+    ] } }; },
+    async getPublicConfig() { return { fields: { settings: {} } }; },
+    async getRentalRestriction() { return null; },
+  },
+});
+const deniedUserActionResult = await adminUserActionReviewService.reviewUserAction(
+  { uid: 'admin-1', source: 'clerk-postgresql' },
+  { requestId: 'REQ-ACTION-1', approved: false },
+);
+assert.equal(deniedUserActionResult.authority, 'postgresql');
+assert.equal(deniedUserActionResult.restrictionUpdated, false);
+assert.equal(adminUserActionReviewArgs.approved, false);
+assert.equal(adminUserActionReviewArgs.nextRequest.userActionRequest.status, 'denied');
 
 const rentalRestrictionRepository = {
   async findByFirebaseUid() { return null; },
