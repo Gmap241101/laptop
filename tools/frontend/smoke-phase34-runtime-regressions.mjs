@@ -264,6 +264,7 @@ const memberDirectoryAuditSource = fs.readFileSync(new URL('../../src/features/m
 assert.equal(memberDirectoryAuditSource.includes('retiredLegacyDataCompat'), false, 'active administrator member-directory audit must not import the retired compatibility shell');
 assert.equal(/\bgetDocs\b|\bsetDoc\b|\bwriteBatch\b|commitFirestoreOperations|firebaseAuth\.currentUser/.test(memberDirectoryAuditSource), false, 'active administrator member-directory audit must not execute Firebase-shaped data operations');
 assert.match(memberDirectoryAuditSource, /auditAdminMemberDirectory\(\)/, 'full member-directory audit must use the Clerk/PostgreSQL API');
+assert.match(memberDirectoryAuditSource, /publishSiteContentInvalidation\('rental-config'\)/, 'member-directory audit must refresh repaired PostgreSQL rental-config state after completion');
 assert.match(memberDirectoryAuditSource, /restoreAdminMemberDirectoryMismatches\(\)/, 'directory mismatch restore must use the Clerk/PostgreSQL API');
 
 const signupPolicySource = fs.readFileSync(new URL('../../src/features/members/useAdminSignupPolicyActions.js', import.meta.url), 'utf8');

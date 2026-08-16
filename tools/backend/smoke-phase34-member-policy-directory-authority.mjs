@@ -128,7 +128,7 @@ const contentRepository = {
     contentState[domain] = { domain, source: 'postgresql', sourceMode, documents: documents.map((item) => ({ ...item })) };
     return contentState[domain];
   },
-  async getRentalConfigBootstrapContext() { return {}; },
+  async getRentalConfigBootstrapContext() { return { memberDirectoryVersion: 3, memberDirectoryEntryCount: 1 }; },
 };
 const contentService = createSiteContentService({ repository: contentRepository });
 const policyResult = await contentService.patchSignupPolicy({
@@ -143,7 +143,7 @@ const policyResult = await contentService.patchSignupPolicy({
 });
 assert.equal(policyResult.authority, 'postgresql');
 assert.equal(policyResult.settings.requireRegisteredMemberForSignup, true);
-assert.equal(policyResult.settings.memberDirectoryVersion, 4);
+assert.equal(policyResult.settings.memberDirectoryVersion, 3, 'signup-policy toggle must not advance the PostgreSQL member-directory data version');
 assert.equal(policyResult.termsPolicy.enabled, true);
 assert.equal(policyResult.termsPolicy.activeTerms[0].contentHtml.length, 80 * 1024, 'large existing terms content must be preserved server-side without browser full-domain PUT');
 assert.equal(contentState.terms.documents.find((item) => item.key === 'signupTermsPolicy/current').payload.activeTerms[0].contentHtml.length, 80 * 1024);

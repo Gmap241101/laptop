@@ -599,18 +599,20 @@ export const createMemberAuthorityService = ({
       if (!Boolean(settings.requireRegisteredMemberForSignup)) {
         throw serviceError('member_directory_policy_disabled', 'Registered-member signup policy must be enabled before running the directory audit.', 409);
       }
-      const directoryVersion = Math.max(0, Number(settings.memberDirectoryVersion || 0));
+      const configuredDirectoryVersion = Math.max(0, Number(settings.memberDirectoryVersion || 0));
       const [accounts, directoryEntries, directoryState] = await Promise.all([
         repository.listMembersForDirectoryAudit(),
         repository.listDirectoryEntries(),
         repository.getDirectoryBootstrapState(),
       ]);
-      if (directoryState?.completed !== true || Number(directoryState?.version || 0) < directoryVersion) {
+      if (directoryState?.completed !== true) {
         throw serviceError('member_directory_postgresql_stale', 'PostgreSQL member directory is not synchronized to the current policy version.', 503, {
-          requiredVersion: directoryVersion,
+          requiredVersion: configuredDirectoryVersion,
           synchronizedVersion: Number(directoryState?.version || 0),
         });
       }
+      const directoryVersion = Math.max(0, Number(directoryState?.version || 0));
+      const directoryVersionReconciled = directoryVersion !== configuredDirectoryVersion;
 
       const directoryByIdentityKey = new Map(
         directoryEntries
@@ -708,6 +710,8 @@ export const createMemberAuthorityService = ({
         missing,
         failed,
         directoryVersion,
+        configuredDirectoryVersion,
+        directoryVersionReconciled,
         completedAtText: new Intl.DateTimeFormat('ko-KR', { dateStyle: 'short', timeStyle: 'medium', timeZone: 'Asia/Seoul' }).format(new Date()),
         completedBy: admin.uid,
         completedAt: new Date().toISOString(),
@@ -724,7 +728,7 @@ export const createMemberAuthorityService = ({
             payload: {
               ...payload,
               memberDirectoryAudit: auditSummary,
-              settings: { ...currentSettings, memberIdentityClaimsReady: true },
+              settings: { ...currentSettings, memberDirectoryVersion: directoryVersion, memberIdentityClaimsReady: true },
               updatedAt: new Date().toISOString(),
             },
             enabled: document.enabled,
@@ -743,6 +747,7 @@ export const createMemberAuthorityService = ({
       return Object.freeze({
         authority: 'postgresql',
         source: 'postgresql-authoritative',
+        directoryVersionReconciled,
         audit: auditSummary,
       });
     },

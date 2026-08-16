@@ -8,6 +8,7 @@ import { readServerConfig } from '../../server/src/config/env.mjs';
 import { createAdminRentalRequestService } from '../../server/src/rentals/admin-rental-request-service.mjs';
 import { createAccountLifecycleService } from '../../server/src/accounts/account-lifecycle-service.mjs';
 import { createAdminClerkAuthService } from '../../server/src/auth/admin-clerk-auth-service.mjs';
+import { createMemberAuthorityService } from '../../server/src/members/member-authority-service.mjs';
 import fs from 'node:fs';
 
 let adminPasswordUpdate = null;
@@ -503,6 +504,40 @@ assert.match(memberRepositorySource, /phase31-member-directory[\s\S]*phase24-sit
 assert.equal(memberRepositorySource.includes('app_site_content_syncs'), false, 'member-directory writes must not recreate retired site-content sync metadata');
 assert.match(memberRepositorySource, /organizationConfigUpdated: shouldUpdateOrganizationConfig/, 'member-directory synchronization must report whether the public organization config joined the transaction');
 assert.match(memberServiceSource, /auditMemberDirectoryAdmin/, 'member authority service must own the PostgreSQL directory audit');
+assert.match(memberServiceSource, /directoryVersionReconciled/, 'member-directory audit must reconcile legacy policy-version drift against the authoritative PostgreSQL directory state');
+assert.match(memberServiceSource, /memberDirectoryVersion: directoryVersion/, 'member-directory audit must persist the reconciled authoritative directory version');
+assert.equal(/policyEnabledChanged[\s\S]{0,240}memberDirectoryVersion[\s\S]{0,80}\+ 1/.test(siteContentServiceSource), false, 'signup-policy toggles must not increment the member-directory data version');
+
+let reconciledRentalConfig = null;
+const staleDirectoryAuditService = createMemberAuthorityService({
+  repository: {
+    async mutateProfile() { return { mutationId: 'not-used' }; },
+    async findByFirebaseUid() { return null; },
+    async findActiveIdentityOwner() { return null; },
+    async findDirectoryEntryByIdentityKey() { return null; },
+    async getDirectoryBootstrapState() { return { completed: true, version: 4, documentCount: 0 }; },
+    async replaceDirectoryEntries() { return { completed: true, version: 4 }; },
+    async countBlockingRentalRequestsForUids() { return 0; },
+    async listMembersForDirectoryAudit() { return []; },
+    async listDirectoryEntries() { return []; },
+  },
+  firebaseLinkRepository: { async findByFirebaseUid() { return null; }, async findByAppUserId() { return null; } },
+  userRepository: { async findByClerkUserId() { return null; } },
+  rentalRestrictionRepository: { async findByFirebaseUid() { return { exists: false, restriction: null }; } },
+  siteContentRepository: {
+    async getDomain() {
+      return { domain: 'rental-config', documents: [{ key: 'rentalSystem/publicConfig', payload: { settings: { requireRegisteredMemberForSignup: true, memberDirectoryVersion: 5 } }, enabled: true, sortOrder: 0 }] };
+    },
+    async replaceDomain({ documents }) {
+      reconciledRentalConfig = documents;
+      return { domain: 'rental-config', documents };
+    },
+  },
+});
+const staleDirectoryAuditResult = await staleDirectoryAuditService.auditMemberDirectoryAdmin({ firebaseIdentity: { source: 'clerk-postgresql', uid: 'clerk-admin-directory-audit', fields: { adminRole: 'owner' } } });
+assert.equal(staleDirectoryAuditResult.directoryVersionReconciled, true, 'administrator audit must repair legacy policy/directory version drift instead of failing stale');
+assert.equal(staleDirectoryAuditResult.audit.directoryVersion, 4, 'administrator audit must use the actual PostgreSQL directory version');
+assert.equal(reconciledRentalConfig?.[0]?.payload?.settings?.memberDirectoryVersion, 4, 'administrator audit must persist the repaired PostgreSQL directory version');
 assert.match(memberServiceSource, /restoreDirectoryMismatchAdmin/, 'member authority service must own PostgreSQL mismatch restoration');
 const siteServiceSource = fs.readFileSync(new URL('../../server/src/content/site-content-service.mjs', import.meta.url), 'utf8');
 assert.match(siteServiceSource, /patchSignupPolicy/, 'site-content service must patch signup policy server-side');

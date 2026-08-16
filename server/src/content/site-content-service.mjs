@@ -520,9 +520,12 @@ export const createSiteContentService = ({ repository }) => Object.freeze({
       throw errorWith('terms/no-active-terms', 'At least one active signup term is required before enabling terms.', 409);
     }
 
-    const policyEnabledChanged = nextRequireRegistered !== Boolean(currentSettings.requireRegisteredMemberForSignup);
-    const nextDirectoryVersion = policyEnabledChanged
-      ? Math.max(0, Number(currentSettings.memberDirectoryVersion || 0)) + 1
+    const directoryContext = typeof repository.getRentalConfigBootstrapContext === 'function'
+      ? await repository.getRentalConfigBootstrapContext()
+      : null;
+    const synchronizedDirectoryVersion = Number(directoryContext?.memberDirectoryVersion);
+    const nextDirectoryVersion = Number.isFinite(synchronizedDirectoryVersion)
+      ? Math.max(0, synchronizedDirectoryVersion)
       : Math.max(0, Number(currentSettings.memberDirectoryVersion || 0));
     const currentTermsEnabled = Boolean(currentTermsPolicy.enabled);
     const enablingTerms = !currentTermsEnabled && nextTermsEnabled;

@@ -12,6 +12,7 @@ import {
   getSafeMemberDirectoryVersion,
   isRegisteredMemberSignupRequired,
 } from './memberAccountPolicy.js';
+import { publishSiteContentInvalidation } from '../content/siteContentCutover.js';
 
 export default function useAdminMemberDirectoryAuditActions({
   isAdminAuthenticated,
@@ -156,8 +157,9 @@ export default function useAdminMemberDirectoryAuditActions({
         throw error;
       }
       setMemberDirectoryAuditResult(auditSummary);
+      publishSiteContentInvalidation('rental-config');
       triggerToastRef.current(
-        `\uc804\uccb4 \ud68c\uc6d0 \uba85\ubd80 \uac80\uc0ac\uac00 \uc644\ub8cc\ub418\uc5c8\uc2b5\ub2c8\ub2e4. \uc815\uc0c1 ${Number(auditSummary.normal || 0)}\uba85, \uc815\ubcf4 \uc218\uc815 \ud544\uc694 ${Number(auditSummary.profileRequired || 0)}\uba85, \uc911\ubcf5 ${Number(auditSummary.duplicates || 0)}\uba85, \uc2e4\ud328 ${Number(auditSummary.failed || 0)}\uba85\uc785\ub2c8\ub2e4.`,
+        `\uc804\uccb4 \ud68c\uc6d0 \uba85\ubd80 \uac80\uc0ac\uac00 \uc644\ub8cc\ub418\uc5c8\uc2b5\ub2c8\ub2e4. \uc815\uc0c1 ${Number(auditSummary.normal || 0)}\uba85, \uc815\ubcf4 \uc218\uc815 \ud544\uc694 ${Number(auditSummary.profileRequired || 0)}\uba85, \uc911\ubcf5 ${Number(auditSummary.duplicates || 0)}\uba85, \uc2e4\ud328 ${Number(auditSummary.failed || 0)}\uba85\uc785\ub2c8\ub2e4.${result?.directoryVersionReconciled === true ? ' PostgreSQL \uba85\ubd80 \ubc84\uc804 \uc815\ubcf4\ub3c4 \ud604\uc7ac \uba85\ubd80 \uae30\uc900\uc73c\ub85c \uc790\ub3d9 \ubcf5\uad6c\ud588\uc2b5\ub2c8\ub2e4.' : ''}`,
         Number(auditSummary.profileRequired || 0) > 0 || Number(auditSummary.failed || 0) > 0 ? 'error' : 'success'
       );
     } catch (error) {
