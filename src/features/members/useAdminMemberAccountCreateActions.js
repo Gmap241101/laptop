@@ -17,11 +17,13 @@ const ERROR_MESSAGE_BY_CODE = {
   admin_member_profile_invalid: '성명, 부서/팀, 연락처를 다시 확인해 주세요.',
   member_email_already_registered: '이미 등록된 이메일입니다.',
   member_identity_already_claimed: '같은 성명과 부서/팀으로 이용 중인 회원이 이미 있습니다.',
+  member_directory_mismatch: "지정된 부서·성명을 선택하거나 '지정된 부서·사용자 명부 사용' 체크를 해제해 직접 입력해 주세요.",
   user_clerk_password_too_short: '초기 비밀번호는 영문과 숫자를 포함해 8자 이상 입력해 주세요.',
 };
 
 export default function useAdminMemberAccountCreateActions({
   isAdminAuthenticated,
+  memberDirectoryPolicyEnabled = false,
   triggerToast,
   onCreated,
 }) {
@@ -81,6 +83,7 @@ export default function useAdminMemberAccountCreateActions({
         team,
         phone: buildDomesticPhoneNumber(phoneParts),
         password,
+        directoryOverrideByAdmin: Boolean(memberDirectoryPolicyEnabled && form.useManagedDirectory === false),
       });
       const result = payload?.adminMemberCreate || {};
       triggerToastRef.current(
@@ -101,7 +104,7 @@ export default function useAdminMemberAccountCreateActions({
     } finally {
       setSaving(false);
     }
-  }, [isAdminAuthenticated]);
+  }, [isAdminAuthenticated, memberDirectoryPolicyEnabled]);
 
   return {
     adminMemberAccountCreating: saving,

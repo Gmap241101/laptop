@@ -44,6 +44,9 @@ export default function AdminMemberAccountsPanel({ ctx }) {
     adminMemberAccountsNavigationRequest,
     isAdminAuthenticated,
     memberAccountsPrerequisitesReady,
+    memberDirectoryBorrowers,
+    memberDirectoryPolicyEnabled,
+    memberDirectoryTeams,
     registeredAdminAccounts,
     triggerConfirm,
     triggerToast,
@@ -108,6 +111,7 @@ export default function AdminMemberAccountsPanel({ ctx }) {
     saveAdminMemberAccountProfile,
   } = useAdminMemberAccountEditActions({
     isAdminAuthenticated,
+    memberDirectoryPolicyEnabled,
     triggerToast,
   });
 
@@ -116,6 +120,7 @@ export default function AdminMemberAccountsPanel({ ctx }) {
     createAdminMemberAccount,
   } = useAdminMemberAccountCreateActions({
     isAdminAuthenticated,
+    memberDirectoryPolicyEnabled,
     triggerToast,
     onCreated: () => {
       setCreateDialogOpen(false);
@@ -519,6 +524,9 @@ export default function AdminMemberAccountsPanel({ ctx }) {
 
       <AdminMemberAccountCreateDialog
         open={createDialogOpen}
+        memberDirectoryTeams={memberDirectoryTeams}
+        memberDirectoryBorrowers={memberDirectoryBorrowers}
+        memberDirectoryPolicyEnabled={memberDirectoryPolicyEnabled}
         Button={Button}
         saving={adminMemberAccountCreating}
         onClose={() => setCreateDialogOpen(false)}
@@ -528,6 +536,9 @@ export default function AdminMemberAccountsPanel({ ctx }) {
       {editAccount ? (
         <AdminMemberAccountEditDialog
           account={editAccount}
+          memberDirectoryTeams={memberDirectoryTeams}
+          memberDirectoryBorrowers={memberDirectoryBorrowers}
+          memberDirectoryPolicyEnabled={memberDirectoryPolicyEnabled}
           Button={Button}
           saving={adminMemberProfileSavingUid === editAccount.uid}
           onClose={() => setEditAccount(null)}

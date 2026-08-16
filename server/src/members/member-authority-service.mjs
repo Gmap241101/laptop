@@ -43,6 +43,7 @@ const profileFromAccount = (account = {}, firebaseUid = '') => ({
   status: trim(account.status),
   directoryMemberId: trim(account.directoryMemberId),
   directoryVerifiedVersion: Number(account.directoryVerifiedVersion || 0),
+  directoryOverrideByAdmin: Boolean(account.directoryOverrideByAdmin),
   profileRequiredReason: trim(account.profileRequiredReason),
   profileRequiredAt: account.profileRequiredAt || '',
   statusBeforeProfileRequired: trim(account.statusBeforeProfileRequired),
@@ -102,7 +103,7 @@ export const createMemberAuthorityService = ({
     return item?.payload?.settings && typeof item.payload.settings === 'object' ? item.payload.settings : {};
   };
 
-  const buildProfileContext = async ({ targetUid, input }) => {
+  const buildProfileContext = async ({ targetUid, input, adminDirectoryOverride = null }) => {
     const current = await repository.findByFirebaseUid(targetUid);
     if (!current) throw serviceError('member_account_not_synchronized', 'PostgreSQL member account must be synchronized before profile authority can be used.', 409);
     const name = trim(input?.name).replace(/\s+/g, '');
@@ -117,7 +118,9 @@ export const createMemberAuthorityService = ({
     const owner = await repository.findActiveIdentityOwner(nextIdentityKey, targetUid);
     if (owner) throw serviceError('member_identity_conflict', 'Another member account already owns the requested name/team identity.', 409);
     const settings = await getPostgresqlMemberPolicySettings();
-    const directoryRequired = Boolean(settings.requireRegisteredMemberForSignup);
+    const directoryRequiredByPolicy = Boolean(settings.requireRegisteredMemberForSignup);
+    const explicitAdminOverride = adminDirectoryOverride === true;
+    const directoryRequired = directoryRequiredByPolicy && !explicitAdminOverride;
     const directoryVersion = Math.max(0, Number(settings.memberDirectoryVersion || 0));
     let directory = null;
     if (directoryRequired) {
@@ -127,8 +130,11 @@ export const createMemberAuthorityService = ({
         throw serviceError('member_directory_mismatch', 'Registered member directory does not match the requested member profile.', 409);
       }
     }
-    const restoreDirectoryMismatch = current.status === 'profileRequired' && current.profileRequiredReason === 'directoryMismatch';
+    const restoreDirectoryMismatch = current.status === 'profileRequired' && current.profileRequiredReason === 'directoryMismatch' && (directoryRequired || explicitAdminOverride || !directoryRequiredByPolicy);
     const nextStatus = restoreDirectoryMismatch ? 'active' : (trim(current.status) || 'pending');
+    const nextDirectoryOverrideByAdmin = directoryRequiredByPolicy
+      ? (adminDirectoryOverride === null ? Boolean(current.directoryOverrideByAdmin) : explicitAdminOverride)
+      : false;
     const nextProfile = {
       ...profileFromAccount(current, targetUid),
       email,
@@ -141,6 +147,7 @@ export const createMemberAuthorityService = ({
       recoveryKey: nextRecoveryKey,
       directoryMemberId: directoryRequired && directory ? trim(directory.directoryMemberId) : '',
       directoryVerifiedVersion: directoryRequired ? directoryVersion : 0,
+      directoryOverrideByAdmin: nextDirectoryOverrideByAdmin,
       profileRequiredReason: restoreDirectoryMismatch ? '' : trim(current.profileRequiredReason),
     };
     return { current, nextProfile };
@@ -182,6 +189,20 @@ export const createMemberAuthorityService = ({
       const directoryRequired = Boolean(settings.requireRegisteredMemberForSignup);
       const directoryVersion = Math.max(0, Number(settings.memberDirectoryVersion || 0));
       const beforeProfile = profileFromAccount(current, targetUid);
+      if (current.directoryOverrideByAdmin === true) {
+        return Object.freeze({
+          authority: 'postgresql',
+          source: 'postgresql-authoritative',
+          firestoreMirror: 'retired',
+          policyEnabled: directoryRequired,
+          directoryVersion,
+          verified: true,
+          reason: 'adminDirectoryOverride',
+          changed: false,
+          mutationId: '',
+          profile: beforeProfile,
+        });
+      }
       const normalizedName = trim(current.name).replace(/\s+/g, '');
       const normalizedTeam = trim(current.team).replace(/\s+/g, ' ');
       const currentIdentityKey = trim(current.identityKey) || identityKey(normalizedTeam, normalizedName);
@@ -370,7 +391,7 @@ export const createMemberAuthorityService = ({
       const target = trim(targetUid);
       if (!target) throw serviceError('member_target_uid_missing', 'Target member UID is required.', 400);
       const { appUserId } = await resolveTarget(target);
-      const context = await buildProfileContext({ targetUid: target, input });
+      const context = await buildProfileContext({ targetUid: target, input, adminDirectoryOverride: Boolean(input?.directoryOverrideByAdmin) });
       if (context.current.status === 'retired') throw serviceError('admin_member_edit_retired', 'Retired members are read-only. Re-registration must create a new member account.', 409);
       const beforeProfile = profileFromAccount(context.current, target);
       const result = await repository.mutateProfile({
@@ -555,7 +576,8 @@ export const createMemberAuthorityService = ({
           .map((entry) => [trim(entry.identityKey), entry])
       );
       const auditableStatuses = new Set(['pending', 'active', 'profileRequired']);
-      const auditableAccounts = accounts.filter((account) => auditableStatuses.has(trim(account.status)));
+      const overriddenAccounts = accounts.filter((account) => auditableStatuses.has(trim(account.status)) && account.directoryOverrideByAdmin === true);
+      const auditableAccounts = accounts.filter((account) => auditableStatuses.has(trim(account.status)) && account.directoryOverrideByAdmin !== true);
       const groups = new Map();
       const prepared = auditableAccounts.map((account) => {
         const normalizedName = trim(account.name).replace(/\s+/g, '');
@@ -569,7 +591,7 @@ export const createMemberAuthorityService = ({
         return { account, normalizedName, normalizedTeam, computedIdentityKey };
       });
 
-      let normal = 0;
+      let normal = overriddenAccounts.length;
       let profileRequired = 0;
       let missing = 0;
       let duplicateAccounts = 0;
@@ -636,7 +658,8 @@ export const createMemberAuthorityService = ({
       }
 
       const auditSummary = Object.freeze({
-        total: auditableAccounts.length,
+        total: auditableAccounts.length + overriddenAccounts.length,
+        adminOverrides: overriddenAccounts.length,
         normal,
         profileRequired,
         duplicates: duplicateAccounts,

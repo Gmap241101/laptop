@@ -7,11 +7,15 @@ const adminIdentity = Object.freeze({ source: 'clerk-postgresql', uid: 'admin-1'
 const accounts = [
   {
     appUserId: '1', firebaseUid: 'member-1', uid: 'member-1', email: 'one@example.test', name: 'One', team: 'Team A', phone: '010-1111-1111',
-    status: 'active', directoryMemberId: 'DIR-1', directoryVerifiedVersion: 3, profileRequiredReason: '', identityKey: '', recoveryKey: '', previousAccountUids: [],
+    status: 'active', directoryMemberId: 'DIR-1', directoryVerifiedVersion: 3, directoryOverrideByAdmin: false, profileRequiredReason: '', identityKey: '', recoveryKey: '', previousAccountUids: [],
   },
   {
     appUserId: '2', firebaseUid: 'member-2', uid: 'member-2', email: 'two@example.test', name: 'Two', team: 'Team B', phone: '010-2222-2222',
-    status: 'active', directoryMemberId: '', directoryVerifiedVersion: 0, profileRequiredReason: '', identityKey: '', recoveryKey: '', previousAccountUids: [],
+    status: 'active', directoryMemberId: '', directoryVerifiedVersion: 0, directoryOverrideByAdmin: false, profileRequiredReason: '', identityKey: '', recoveryKey: '', previousAccountUids: [],
+  },
+  {
+    appUserId: '3', firebaseUid: 'member-override', uid: 'member-override', email: 'override@example.test', name: 'Override', team: 'Manual Team', phone: '010-3333-3333',
+    status: 'active', directoryMemberId: '', directoryVerifiedVersion: 0, directoryOverrideByAdmin: true, profileRequiredReason: '', identityKey: '', recoveryKey: '', previousAccountUids: [],
   },
 ];
 
@@ -70,12 +74,15 @@ const memberService = createMemberAuthorityService({
 
 const auditResult = await memberService.auditMemberDirectoryAdmin({ firebaseIdentity: adminIdentity });
 assert.equal(auditResult.authority, 'postgresql');
-assert.equal(auditResult.audit.total, 2);
-assert.equal(auditResult.audit.normal, 1);
+assert.equal(auditResult.audit.total, 3);
+assert.equal(auditResult.audit.adminOverrides, 1);
+assert.equal(auditResult.audit.normal, 2);
 assert.equal(auditResult.audit.profileRequired, 1);
 assert.equal(auditResult.audit.missing, 1);
 assert.equal(accounts[1].status, 'profileRequired');
 assert.equal(accounts[1].profileRequiredReason, 'directoryMismatch');
+assert.equal(accounts[2].status, 'active');
+assert.equal(accounts[2].directoryOverrideByAdmin, true);
 assert.ok(siteReplaceCount >= 1);
 assert.equal(siteState['rental-config'].documents[0].payload.memberDirectoryAudit.profileRequired, 1);
 
@@ -86,6 +93,22 @@ assert.equal(restoreResult.restoredCount, 1);
 assert.equal(restoreResult.failed, 0);
 assert.equal(accounts[1].status, 'active');
 assert.equal(accounts[1].profileRequiredReason, '');
+
+const policyOffAdminEdit = await memberService.editAdmin({
+  firebaseIdentity: adminIdentity,
+  targetUid: 'member-override',
+  input: {
+    name: 'Override',
+    team: 'Policy Off Free Team',
+    phone: '010-3333-4444',
+    directoryOverrideByAdmin: true,
+  },
+});
+assert.equal(policyOffAdminEdit.authority, 'postgresql');
+assert.equal(accounts[2].team, 'Policy Off Free Team');
+assert.equal(accounts[2].directoryOverrideByAdmin, false, 'directory override must be cleared/ignored while the signup directory policy is disabled');
+assert.equal(accounts[2].directoryMemberId, '');
+assert.equal(accounts[2].directoryVerifiedVersion, 0);
 
 const largeTermsText = 'x'.repeat(80 * 1024);
 const contentState = {

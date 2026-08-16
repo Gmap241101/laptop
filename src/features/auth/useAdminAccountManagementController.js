@@ -69,8 +69,8 @@ export default function useAdminAccountManagementController({
 
   const registerAdminAccount = async () => {
     const input = { adminLoginId: adminAccountForm.adminLoginId.trim(), password: adminAccountForm.password, organizationName: selectedAdminOrganizationName.trim(), userName: selectedAdminUserName.trim(), email: adminAccountForm.email.trim(), phone: adminAccountForm.phone.trim(), adminRole: adminAccountForm.adminRole === 'owner' ? 'owner' : 'admin' };
-    if (!input.adminLoginId || !input.email || !input.organizationName || !input.userName) { triggerToast('관리자 ID, 이메일, 조직명, 사용자명을 모두 입력해 주세요.', 'error'); return; }
-    if (input.password.length < 8) { triggerToast('관리자 초기 비밀번호는 8자 이상이어야 합니다.', 'error'); return; }
+    if (!input.adminLoginId || !input.email || !input.organizationName || !input.userName) { triggerToast('관리자 ID, 이메일, 조직명, 사용자명을 모두 입력해 주세요.', 'error'); return null; }
+    if (input.password.length < 8) { triggerToast('관리자 초기 비밀번호는 8자 이상이어야 합니다.', 'error'); return null; }
     try {
       const payload = await clerkStagingClient.createAdminAccountPostgresql(input);
       const account = payload?.adminAccountMutation?.account;
@@ -78,7 +78,8 @@ export default function useAdminAccountManagementController({
       setAdminAccountForm(createDefaultAdminAccountForm()); setAdminAccountPage(1);
       publishAccountAuthObservation({ adminClerkAuthRequested: true, adminAuthSource: 'clerk-postgresql', adminProvisionOperation: 'admin-create', adminProvisionTargetUid: account.id, adminProvisionClerkUserId: account.clerkUserId, adminAuthError: '' });
       triggerToast(`[${account.adminLoginId}] 관리자 계정 정보가 성공적으로 저장 및 반영되었습니다.`, 'success');
-    } catch (error) { console.error('Admin account create error:', error); triggerToast(adminErrorMessage(error), 'error'); }
+      return account;
+    } catch (error) { console.error('Admin account create error:', error); triggerToast(adminErrorMessage(error), 'error'); return null; }
   };
 
   const startEditAdminAccount = (account) => { setEditingAdminAccountId(account.id); setAdminAccountEditForm({ adminLoginId: account.adminLoginId || '', organizationName: account.organizationName || '', userName: account.userName || '', email: account.authEmail || account.email || '', phone: account.phone || '', adminRole: account.adminRole || 'admin', newPassword: '', newPasswordConfirm: '' }); };
@@ -103,8 +104,8 @@ export default function useAdminAccountManagementController({
   };
 
   const deleteAdminAccount = (account) => {
-    triggerConfirm('관리자 ID 삭제', `[${account.adminLoginId}] 관리자 권한과 연결된 Clerk 계정을 삭제합니다.`, async () => {
-      try { await clerkStagingClient.deleteAdminAccountPostgresql(account.id); setAdminAccounts((prev) => (prev || []).filter((item) => item.id !== account.id)); if (editingAdminAccountId === account.id) cancelEditAdminAccount(); triggerToast(`[${account.adminLoginId}] 관리자 ID가 삭제되었습니다.`, 'success'); }
+    triggerConfirm('관리자 계정 삭제', `[${account.adminLoginId}] 관리자 권한과 연결된 Clerk 계정을 삭제합니다.`, async () => {
+      try { await clerkStagingClient.deleteAdminAccountPostgresql(account.id); setAdminAccounts((prev) => (prev || []).filter((item) => item.id !== account.id)); if (editingAdminAccountId === account.id) cancelEditAdminAccount(); triggerToast(`[${account.adminLoginId}] 관리자 계정이 삭제되었습니다.`, 'success'); }
       catch (error) { console.error('Admin account delete error:', error); triggerToast(adminErrorMessage(error), 'error'); }
     });
   };

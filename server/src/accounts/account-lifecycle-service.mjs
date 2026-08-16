@@ -189,6 +189,7 @@ export const createAccountLifecycleService = ({ repository, siteContentRepositor
       const name = normalizeName(input.name);
       const team = normalizeTeam(input.team);
       const phone = normalizePhone(input.phone);
+      const requestedDirectoryOverrideByAdmin = input.directoryOverrideByAdmin === true;
       if (!memberKey) throw serviceError('admin_member_key_missing', 'Administrator-provisioned member key is required.', 400);
       if (!validEmail(email)) throw serviceError('admin_member_email_invalid', 'Administrator-provisioned member email is invalid.', 400);
       if (!validName(name) || !team || !validPhone(phone)) throw serviceError('admin_member_profile_invalid', 'Administrator-provisioned member profile is invalid.', 400);
@@ -196,14 +197,21 @@ export const createAccountLifecycleService = ({ repository, siteContentRepositor
       const { settings } = await loadPolicyContext();
       const nextIdentityKey = identityKey({ team, name });
       const nextRecoveryKey = recoveryKey({ team, name, phone });
+      const directoryRequiredByPolicy = Boolean(settings.requireRegisteredMemberForSignup);
+      const directoryOverrideByAdmin = directoryRequiredByPolicy && requestedDirectoryOverrideByAdmin;
       const directoryVersion = Math.max(0, Number(settings.memberDirectoryVersion || 0));
-      const directory = await repository.getDirectoryEntry(nextIdentityKey);
+      const directory = directoryRequiredByPolicy && !directoryOverrideByAdmin
+        ? await repository.getDirectoryEntry(nextIdentityKey)
+        : null;
       const directoryMatches = Boolean(
         directory &&
         directory.enabled !== false &&
         normalizeName(directory.name) === name &&
         normalizeTeam(directory.team) === team
       );
+      if (directoryRequiredByPolicy && !directoryOverrideByAdmin && !directoryMatches) {
+        throw serviceError('member_directory_mismatch', 'Administrator-managed member must use a registered department/name while the member directory policy is enabled unless the explicit manual override is enabled.', 409);
+      }
       const identityAccounts = await repository.findIdentityAccounts(nextIdentityKey);
       const active = identityAccounts.find((account) => trim(account.status) !== 'retired' && trim(account.firebase_uid) !== memberKey);
       if (active) throw serviceError('member_identity_already_claimed', 'Another active member already owns the requested member identity.', 409);
@@ -223,8 +231,9 @@ export const createAccountLifecycleService = ({ repository, siteContentRepositor
         status,
         identityKey: nextIdentityKey,
         recoveryKey: nextRecoveryKey,
-        directoryMemberId: directoryMatches ? trim(directory.directory_member_id) : '',
-        directoryVerifiedVersion: directoryMatches ? directoryVersion : 0,
+        directoryMemberId: directoryRequiredByPolicy && !directoryOverrideByAdmin && directoryMatches ? trim(directory.directory_member_id) : '',
+        directoryVerifiedVersion: directoryRequiredByPolicy && !directoryOverrideByAdmin && directoryMatches ? directoryVersion : 0,
+        directoryOverrideByAdmin,
         previousAccountUids: retiredUids,
         rejoinedAccount,
         termsConsentRevision: 0,

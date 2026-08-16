@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import ModalPortal from '../components/ModalPortal.jsx';
+import AdminMemberDirectoryIdentityFields from './AdminMemberDirectoryIdentityFields.jsx';
 
 import {
   DOMESTIC_PHONE_PREFIXES,
@@ -20,6 +21,9 @@ export default function AdminMemberAccountEditDialog({
   onClose,
   onSave,
   saving,
+  memberDirectoryTeams = [],
+  memberDirectoryBorrowers = [],
+  memberDirectoryPolicyEnabled = false,
 }) {
   const initialPhone = useMemo(
     () => parseDomesticPhoneNumber(account?.phone || ''),
@@ -28,6 +32,7 @@ export default function AdminMemberAccountEditDialog({
   const [form, setForm] = useState(() => ({
     name: account?.name || '',
     team: account?.team || '',
+    useManagedDirectory: Boolean(memberDirectoryPolicyEnabled) && !account?.directoryOverrideByAdmin,
     phonePrefix: initialPhone.prefix,
     phoneMiddle: initialPhone.middle,
     phoneLast: initialPhone.last,
@@ -38,11 +43,12 @@ export default function AdminMemberAccountEditDialog({
     setForm({
       name: account?.name || '',
       team: account?.team || '',
+      useManagedDirectory: Boolean(memberDirectoryPolicyEnabled) && !account?.directoryOverrideByAdmin,
       phonePrefix: phone.prefix,
       phoneMiddle: phone.middle,
       phoneLast: phone.last,
     });
-  }, [account?.uid, account?.name, account?.team, account?.phone]);
+  }, [account?.uid, account?.name, account?.team, account?.phone, account?.directoryOverrideByAdmin, memberDirectoryPolicyEnabled]);
 
   if (!account) return null;
 
@@ -53,7 +59,7 @@ export default function AdminMemberAccountEditDialog({
           <div>
             <h3 className="text-base font-black text-slate-900">회원정보 수정</h3>
             <p className="mt-1 text-[11px] text-slate-500">
-              이름·부서·전화번호만 변경합니다. 이메일과 UID는 로그인 식별정보이므로 변경하지 않습니다.
+              성명·부서·전화번호를 변경합니다. 회원 가입 정책에서 지정된 부서·사용자 명부 사용이 활성화된 경우에만 명부 선택 체크박스를 표시하며, 비활성화된 경우 부서/팀과 성명을 자유롭게 입력합니다. 이메일과 UID는 변경하지 않습니다.
             </p>
           </div>
           <button
@@ -89,25 +95,13 @@ export default function AdminMemberAccountEditDialog({
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block">
-              <span className="mb-1.5 block text-xs font-bold text-slate-700">이름</span>
-              <input
-                value={form.name}
-                onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-                className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none mk-form-border-focus"
-                maxLength={30}
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-1.5 block text-xs font-bold text-slate-700">부서 / 팀</span>
-              <input
-                value={form.team}
-                onChange={(event) => setForm((current) => ({ ...current, team: event.target.value }))}
-                className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none mk-form-border-focus"
-                maxLength={80}
-              />
-            </label>
+            <AdminMemberDirectoryIdentityFields
+              form={form}
+              setForm={setForm}
+              teams={memberDirectoryTeams}
+              borrowers={memberDirectoryBorrowers}
+              policyEnabled={memberDirectoryPolicyEnabled}
+            />
           </div>
 
           <div>

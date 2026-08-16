@@ -124,7 +124,7 @@ const getAdminAuthErrorMessage = (error) => {
   const errorMessage = error?.message || '';
 
   if (error?.message === 'admin-auth-uid-mismatch') {
-    return 'Clerk 계정과 PostgreSQL 관리자 등록 정보가 일치하지 않습니다. 관리자 ID 관리 정보를 확인해 주세요.';
+    return 'Clerk 계정과 PostgreSQL 관리자 등록 정보가 일치하지 않습니다. 관리자 계정 관리 정보를 확인해 주세요.';
   }
   if (errorCode === 'auth/email-already-in-use') {
     return '이미 Clerk에 등록된 이메일입니다. 다른 이메일을 사용하거나 기존 관리자 계정 연결 상태를 확인해 주세요.';

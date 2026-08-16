@@ -187,7 +187,7 @@ export const createUserClerkAuthService = ({
       try {
         const signup = await accountLifecycleService.provisionAdminMember({
           firebaseUid: legacyMemberKey,
-          input: { email, name, team, phone },
+          input: { email, name, team, phone, directoryOverrideByAdmin: input.directoryOverrideByAdmin === true },
         });
         signupCommitted = true;
         clerkUser = await clerkClient.createUser({

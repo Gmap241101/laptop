@@ -267,7 +267,7 @@ function AdminWorkspace({ ctx, panelCtx }) {
         ['people', Users, '부서·사용자 관리'],
         ['signupPolicy', ShieldCheck, '회원가입 정책'],
         ['memberAccounts', UserCircle, '회원 계정 관리'],
-        ['adminAccounts', ShieldCheck, '관리자 ID 관리'],
+        ['adminAccounts', ShieldCheck, '관리자 계정 관리'],
       ],
     },
     {
@@ -674,7 +674,7 @@ function AdminWorkspace({ ctx, panelCtx }) {
                     <AdminMemberAccountsPanel ctx={panelCtx} />
                   )}
 
-                  {/* 관리자 ID 관리 탭 */}
+                  {/* 관리자 계정 관리 탭 */}
                   {adminTab === 'adminAccounts' && (
                     <AdminAccountsPanel ctx={panelCtx} />
                   )}

@@ -13,7 +13,7 @@ const accountLifecycleService = createAccountLifecycleService({
   siteContentRepository: {
     async getDocument(domain, key) {
       if (domain === 'rental-config' && key === 'rentalSystem/publicConfig') {
-        return { payload: { settings: { memberDirectoryVersion: 7 } } };
+        return { payload: { settings: { requireRegisteredMemberForSignup: true, memberDirectoryVersion: 7 } } };
       }
       if (domain === 'terms' && key === 'signupTermsPolicy/current') {
         return { payload: { enabled: true, revision: 19, requiredRevision: 19, activeTerms: [] } };
@@ -25,7 +25,7 @@ const accountLifecycleService = createAccountLifecycleService({
     async getConsentSnapshot() { return {}; },
     async importConsents() {},
     async saveConsents() {},
-    async getDirectoryEntry() { return null; },
+    async getDirectoryEntry() { return { directory_member_id: 'DIR-ADMIN-1', name: '홍길동', team: '채용대행팀', enabled: true }; },
     async findIdentityAccounts() { return []; },
     async findRetiredAccountsByEmail() { return []; },
     async createSignupAccount(input) {
@@ -51,10 +51,99 @@ assert.equal(createdAccounts[0].termsConsentRevision, 0);
 assert.equal(createdAccounts[0].termsConsentPolicyVersion, -1);
 assert.deepEqual(createdAccounts[0].decisions, []);
 assert.equal(createdAccounts[0].status, 'active');
+assert.equal(createdAccounts[0].directoryMemberId, 'DIR-ADMIN-1');
+assert.equal(createdAccounts[0].directoryVerifiedVersion, 7);
+assert.equal(createdAccounts[0].directoryOverrideByAdmin, false);
+
+const overrideCreatedAccounts = [];
+const overrideAccountLifecycleService = createAccountLifecycleService({
+  authorityEnabled: true,
+  userAuthRepository: { async findByClerkUserId() { return null; } },
+  siteContentRepository: {
+    async getDocument(domain, key) {
+      if (domain === 'rental-config' && key === 'rentalSystem/publicConfig') return { payload: { settings: { requireRegisteredMemberForSignup: true, memberDirectoryVersion: 7 } } };
+      if (domain === 'terms' && key === 'signupTermsPolicy/current') return { payload: { enabled: true, revision: 19, requiredRevision: 19, activeTerms: [] } };
+      return null;
+    },
+  },
+  repository: {
+    async getConsentSnapshot() { return {}; },
+    async importConsents() {},
+    async saveConsents() {},
+    async getDirectoryEntry() { return null; },
+    async findIdentityAccounts() { return []; },
+    async findRetiredAccountsByEmail() { return []; },
+    async createSignupAccount(input) { overrideCreatedAccounts.push(input); return { firebase_uid: input.firebaseUid, status: input.status }; },
+    async rollbackUnlinkedSignup() { return true; },
+  },
+});
+const overrideProvisioned = await overrideAccountLifecycleService.provisionAdminMember({
+  firebaseUid: 'clerk-admin:manual-member',
+  input: {
+    email: 'manual@example.com',
+    name: '자유입력',
+    team: '임시 프로젝트팀',
+    phone: '010-2222-3333',
+    directoryOverrideByAdmin: true,
+  },
+});
+assert.equal(overrideProvisioned.status, 'active');
+assert.equal(overrideCreatedAccounts[0].directoryOverrideByAdmin, true);
+assert.equal(overrideCreatedAccounts[0].directoryMemberId, '');
+assert.equal(overrideCreatedAccounts[0].directoryVerifiedVersion, 0);
+
+
+const policyOffCreatedAccounts = [];
+let policyOffDirectoryLookupCount = 0;
+const policyOffAccountLifecycleService = createAccountLifecycleService({
+  authorityEnabled: true,
+  userAuthRepository: { async findByClerkUserId() { return null; } },
+  siteContentRepository: {
+    async getDocument(domain, key) {
+      if (domain === 'rental-config' && key === 'rentalSystem/publicConfig') return { payload: { settings: { requireRegisteredMemberForSignup: false, memberDirectoryVersion: 7 } } };
+      if (domain === 'terms' && key === 'signupTermsPolicy/current') return { payload: { enabled: true, revision: 19, requiredRevision: 19, activeTerms: [] } };
+      return null;
+    },
+  },
+  repository: {
+    async getConsentSnapshot() { return {}; },
+    async importConsents() {},
+    async saveConsents() {},
+    async getDirectoryEntry() { policyOffDirectoryLookupCount += 1; return null; },
+    async findIdentityAccounts() { return []; },
+    async findRetiredAccountsByEmail() { return []; },
+    async createSignupAccount(input) { policyOffCreatedAccounts.push(input); return { firebase_uid: input.firebaseUid, status: input.status }; },
+    async rollbackUnlinkedSignup() { return true; },
+  },
+});
+const policyOffProvisioned = await policyOffAccountLifecycleService.provisionAdminMember({
+  firebaseUid: 'clerk-admin:policy-off-member',
+  input: {
+    email: 'policy-off@example.com',
+    name: '자유입력',
+    team: '정책 비활성 자유팀',
+    phone: '010-5555-6666',
+    directoryOverrideByAdmin: true,
+  },
+});
+assert.equal(policyOffProvisioned.status, 'active');
+assert.equal(policyOffDirectoryLookupCount, 0, 'directory lookup must be skipped when the signup directory policy is disabled');
+assert.equal(policyOffCreatedAccounts[0].directoryOverrideByAdmin, false, 'policy-off free input is not an admin override');
+assert.equal(policyOffCreatedAccounts[0].directoryMemberId, '');
+assert.equal(policyOffCreatedAccounts[0].directoryVerifiedVersion, 0);
+
+await assert.rejects(
+  () => overrideAccountLifecycleService.provisionAdminMember({
+    firebaseUid: 'clerk-admin:managed-mismatch',
+    input: { email: 'managed-mismatch@example.com', name: '자유입력', team: '임시 프로젝트팀', phone: '010-2222-4444' },
+  }),
+  (error) => error?.code === 'member_directory_mismatch' && error?.status === 409,
+);
 
 let clerkCreateInput = null;
 let linkedUid = '';
 let linkedProvider = '';
+let provisionDirectoryOverride = null;
 const clerkClient = {
   async getUser() { return { clerkUserId: 'user_created', primaryEmail: 'member@example.com', primaryEmailVerified: true, privateMetadata: {}, publicMetadata: {} }; },
   async findUserByEmail() { return null; },
@@ -102,6 +191,7 @@ const userClerkAuthService = createUserClerkAuthService({
     async provisionAdminMember({ firebaseUid, input }) {
       assert.ok(firebaseUid.startsWith('clerk-admin:'));
       assert.equal(input.email, 'member@example.com');
+      provisionDirectoryOverride = input.directoryOverrideByAdmin;
       return { status: 'active' };
     },
     async rollbackUnlinkedSignup() { return true; },
@@ -117,6 +207,7 @@ const result = await userClerkAuthService.createAdminManagedMember({
     name: '홍길동',
     team: '채용대행팀',
     phone: '010-1234-5678',
+    directoryOverrideByAdmin: true,
   },
   password: 'Rental1234',
 });
@@ -127,6 +218,7 @@ assert.equal(clerkCreateInput.email, 'member@example.com');
 assert.equal(clerkCreateInput.privateMetadata.rentalSystemProvisionedBy, 'admin');
 assert.equal(linkedProvider, 'clerk-admin-provisioned');
 assert.equal(linkedUid, result.legacyMemberKey);
+assert.equal(provisionDirectoryOverride, true);
 
 
 

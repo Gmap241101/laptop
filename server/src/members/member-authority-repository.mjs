@@ -20,6 +20,7 @@ const mapMemberAccountRow = (row) => row ? Object.freeze({
   status: row.status || '',
   directoryMemberId: row.directory_member_id || '',
   directoryVerifiedVersion: Number(row.directory_verified_version || 0),
+  directoryOverrideByAdmin: Boolean(row.directory_override_by_admin),
   profileRequiredReason: row.profile_required_reason || '',
   rejoinedAccount: Boolean(row.rejoined_account),
   termsConsentRevision: Number(row.terms_consent_revision || 0),
@@ -45,6 +46,7 @@ const memberProjection = (profile = {}) => ({
   status: profile.status || '',
   directoryMemberId: profile.directoryMemberId || '',
   directoryVerifiedVersion: Number(profile.directoryVerifiedVersion || 0),
+  directoryOverrideByAdmin: Boolean(profile.directoryOverrideByAdmin),
   profileRequiredReason: profile.profileRequiredReason || '',
   rejoinedAccount: Boolean(profile.rejoinedAccount),
   termsConsentRevision: Number(profile.termsConsentRevision || 0),
@@ -74,7 +76,7 @@ export const createMemberAuthorityRepository = (pool) => {
     async findByFirebaseUid(firebaseUid) {
       const result = await pool.query(
         `SELECT app_user_id, firebase_uid, firebase_uid AS uid, email, masked_email, name, team, phone, status,
-                directory_member_id, directory_verified_version, profile_required_reason,
+                directory_member_id, directory_verified_version, directory_override_by_admin, profile_required_reason,
                 rejoined_account, terms_consent_revision, terms_consent_policy_version,
                 identity_key, recovery_key, previous_account_uids, source_hash,
                 authority_mode, mirror_state, last_mutation_id, synced_at, created_at, updated_at
@@ -87,7 +89,7 @@ export const createMemberAuthorityRepository = (pool) => {
     async findByAppUserId(appUserId) {
       const result = await pool.query(
         `SELECT app_user_id, firebase_uid, firebase_uid AS uid, email, masked_email, name, team, phone, status,
-                directory_member_id, directory_verified_version, profile_required_reason,
+                directory_member_id, directory_verified_version, directory_override_by_admin, profile_required_reason,
                 rejoined_account, terms_consent_revision, terms_consent_policy_version,
                 identity_key, recovery_key, previous_account_uids, source_hash,
                 authority_mode, mirror_state, last_mutation_id, synced_at, created_at, updated_at
@@ -283,7 +285,7 @@ export const createMemberAuthorityRepository = (pool) => {
       const offsetRef = `$${values.length + 2}`;
       const result = await pool.query(
         `SELECT app_user_id, firebase_uid, firebase_uid AS uid, email, masked_email, name, team, phone, status,
-                directory_member_id, directory_verified_version, profile_required_reason,
+                directory_member_id, directory_verified_version, directory_override_by_admin, profile_required_reason,
                 rejoined_account, terms_consent_revision, terms_consent_policy_version,
                 identity_key, recovery_key, previous_account_uids, source_hash,
                 authority_mode, mirror_state, last_mutation_id, synced_at, created_at, updated_at
@@ -308,7 +310,7 @@ export const createMemberAuthorityRepository = (pool) => {
     async listMembersForDirectoryAudit() {
       const result = await pool.query(
         `SELECT app_user_id, firebase_uid, firebase_uid AS uid, email, masked_email, name, team, phone, status,
-                directory_member_id, directory_verified_version, profile_required_reason,
+                directory_member_id, directory_verified_version, directory_override_by_admin, profile_required_reason,
                 rejoined_account, terms_consent_revision, terms_consent_policy_version,
                 identity_key, recovery_key, previous_account_uids, source_hash,
                 authority_mode, mirror_state, last_mutation_id, synced_at, created_at, updated_at
@@ -643,19 +645,20 @@ export const createMemberAuthorityRepository = (pool) => {
         const updated = await client.query(
           `INSERT INTO app_member_accounts (
              firebase_uid, app_user_id, email, masked_email, name, team, phone, status,
-             directory_member_id, directory_verified_version, profile_required_reason,
+             directory_member_id, directory_verified_version, directory_override_by_admin, profile_required_reason,
              rejoined_account, terms_consent_revision, terms_consent_policy_version,
              identity_key, recovery_key, previous_account_uids, source_hash,
              authority_mode, mirror_state, last_mutation_id, source_updated_at,
              authoritative_updated_at, synced_at
-           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18,
-                     'postgresql-authoritative','pending',$19,NOW(),NOW(),NOW())
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb,$19,
+                     'postgresql-authoritative','pending',$20,NOW(),NOW(),NOW())
            ON CONFLICT (firebase_uid) DO UPDATE SET
              app_user_id=COALESCE(EXCLUDED.app_user_id,app_member_accounts.app_user_id),
              email=EXCLUDED.email, masked_email=EXCLUDED.masked_email, name=EXCLUDED.name,
              team=EXCLUDED.team, phone=EXCLUDED.phone, status=EXCLUDED.status,
              directory_member_id=EXCLUDED.directory_member_id,
              directory_verified_version=EXCLUDED.directory_verified_version,
+             directory_override_by_admin=EXCLUDED.directory_override_by_admin,
              profile_required_reason=EXCLUDED.profile_required_reason,
              rejoined_account=EXCLUDED.rejoined_account,
              terms_consent_revision=EXCLUDED.terms_consent_revision,
@@ -666,7 +669,7 @@ export const createMemberAuthorityRepository = (pool) => {
              last_mutation_id=EXCLUDED.last_mutation_id, source_updated_at=NOW(),
              authoritative_updated_at=NOW(), synced_at=NOW(), updated_at=NOW()
            RETURNING *`,
-          [firebaseUid, appUserId, nextProfile.email || '', nextProfile.maskedEmail || '', nextProfile.name || '', nextProfile.team || '', nextProfile.phone || '', nextProfile.status || '', nextProfile.directoryMemberId || '', Number(nextProfile.directoryVerifiedVersion || 0), nextProfile.profileRequiredReason || '', Boolean(nextProfile.rejoinedAccount), Number(nextProfile.termsConsentRevision || 0), Number(nextProfile.termsConsentPolicyVersion || 0), nextProfile.identityKey || '', nextProfile.recoveryKey || '', JSON.stringify(nextProfile.previousAccountUids || []), sourceHash, mutationId],
+          [firebaseUid, appUserId, nextProfile.email || '', nextProfile.maskedEmail || '', nextProfile.name || '', nextProfile.team || '', nextProfile.phone || '', nextProfile.status || '', nextProfile.directoryMemberId || '', Number(nextProfile.directoryVerifiedVersion || 0), Boolean(nextProfile.directoryOverrideByAdmin), nextProfile.profileRequiredReason || '', Boolean(nextProfile.rejoinedAccount), Number(nextProfile.termsConsentRevision || 0), Number(nextProfile.termsConsentPolicyVersion || 0), nextProfile.identityKey || '', nextProfile.recoveryKey || '', JSON.stringify(nextProfile.previousAccountUids || []), sourceHash, mutationId],
         );
         if (typeof beforeMirror === 'function') await beforeMirror({ client, mutationId, canonical: updated.rows[0] });
         const finalMirrorState = mirrorState === 'retired' ? 'retired' : 'synced';

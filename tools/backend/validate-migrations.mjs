@@ -31,6 +31,7 @@ const phase34RetiredStorePhysicalRemoval = readFileSync('server/migrations/029_p
 const phase34TransientGlobalBannerAuditCompaction = readFileSync('server/migrations/030_phase34_transient_global_banner_audit_compaction.sql', 'utf8');
 const phase34MemberLifecycleFinalization = readFileSync('server/migrations/031_phase34_member_lifecycle_finalization.sql', 'utf8');
 const phase34RejoinApprovalConsolidation = readFileSync('server/migrations/032_phase34_rejoin_approval_consolidation.sql', 'utf8');
+const phase34AdminMemberDirectoryOverride = readFileSync('server/migrations/033_phase34_admin_member_directory_override.sql', 'utf8');
 
 if (!/value\s+JSONB\s+NOT\s+NULL/i.test(phase2)) {
   throw new Error('app_runtime_metadata.value must remain JSONB NOT NULL.');
@@ -512,4 +513,25 @@ if (/\b(DELETE\s+FROM|TRUNCATE|DROP\s+TABLE)\b/i.test(phase34RejoinApprovalConso
   throw new Error('Migration 032 must not move or delete member/business rows; runtime approval performs the guarded consolidation.');
 }
 
-console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 through Phase 34 migrations, including 030 global-banner compaction, 031 member lifecycle finalization, and 032 rejoin approval consolidation, are type-safe)');
+
+for (const marker of [
+  "pg_advisory_xact_lock(hashtext('phase34-admin-member-directory-override'))",
+  'ADD COLUMN IF NOT EXISTS directory_override_by_admin BOOLEAN NOT NULL DEFAULT FALSE',
+  'app_member_accounts_directory_admin_override_idx',
+  "'phase34_admin_member_directory_override'",
+  "'default_admin_member_identity_input', 'registered-directory'",
+  "'manual_override', 'explicit-modal-checkbox-unchecked'",
+  "'directory_audit_override_behavior', 'exclude-explicit-admin-overrides'",
+]) {
+  if (!phase34AdminMemberDirectoryOverride.includes(marker)) {
+    throw new Error(`Migration 033 admin member directory override marker is missing: ${marker}`);
+  }
+}
+if (/^\s*(BEGIN|COMMIT)\s*;/im.test(phase34AdminMemberDirectoryOverride)) {
+  throw new Error('Migration 033 must rely on the migration runner transaction and must not issue BEGIN/COMMIT itself.');
+}
+if (/\b(DELETE\s+FROM|TRUNCATE|DROP\s+TABLE)\b/i.test(phase34AdminMemberDirectoryOverride)) {
+  throw new Error('Migration 033 must not delete member/business data.');
+}
+
+console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 through Phase 34 migrations, including 030 global-banner compaction, 031 member lifecycle finalization, 032 rejoin approval consolidation, and 033 admin member directory override, are type-safe)');

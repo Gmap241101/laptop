@@ -54,6 +54,7 @@ const createAdminMemberEditError = (code, message) => {
 
 export default function useAdminMemberAccountEditActions({
   isAdminAuthenticated,
+  memberDirectoryPolicyEnabled = false,
   triggerToast,
 }) {
   const [savingUid, setSavingUid] = useState('');
@@ -73,7 +74,7 @@ export default function useAdminMemberAccountEditActions({
       if (account?.status === USER_PROFILE_STATUS.RETIRED) {
         throw createAdminMemberEditError(
           'admin/member-edit-retired',
-          '이용 종료된 회원은 회원정보를 수정할 수 없습니다. 먼저 이용을 재개해 주세요.'
+          '탈퇴 회원은 회원정보를 수정할 수 없습니다. 재가입은 새 회원 계정으로 처리합니다.'
         );
       }
 
@@ -85,6 +86,7 @@ export default function useAdminMemberAccountEditActions({
         last: form?.phoneLast,
       };
       const phone = buildDomesticPhoneNumber(phoneParts);
+      const directoryOverrideByAdmin = Boolean(memberDirectoryPolicyEnabled && form?.useManagedDirectory === false);
 
       if (!isValidMemberName(name)) {
         throw createAdminMemberEditError(
@@ -130,6 +132,7 @@ export default function useAdminMemberAccountEditActions({
             team,
             phone,
             email,
+            directoryOverrideByAdmin,
           });
           savedProfile = {
             ...account,
@@ -198,7 +201,7 @@ export default function useAdminMemberAccountEditActions({
                     const directoryVersion = getSafeMemberDirectoryVersion(latestSettings);
                     let directoryData = null;
 
-                    if (policyEnabled) {
+                    if (policyEnabled && !directoryOverrideByAdmin) {
                       const directoryRef = doc(MEMBER_DIRECTORY_KEYS_COLLECTION_REF, nextIdentityKey);
                       const directorySnapshot = await transaction.get(directoryRef);
                       directoryData = directorySnapshot.exists() ? directorySnapshot.data() : null;
@@ -253,9 +256,9 @@ export default function useAdminMemberAccountEditActions({
                       conflictingUids: [],
                       formerUids: nextClaimFormerUids,
                       directoryMemberId:
-                        policyEnabled && directoryData
+                        policyEnabled && !directoryOverrideByAdmin && directoryData
                           ? directoryData.directoryMemberId || ''
-                          : nextClaimData.directoryMemberId || '',
+                          : '',
                       restrictionSnapshot: nextClaimData.restrictionSnapshot || {},
                       createdAt: nextClaimSnapshot.exists()
                         ? nextClaimData.createdAt || serverTimestamp()
@@ -297,8 +300,9 @@ export default function useAdminMemberAccountEditActions({
                       identityKey: nextIdentityKey,
                       recoveryKey: nextRecoveryKey,
                       directoryMemberId:
-                        policyEnabled && directoryData ? directoryData.directoryMemberId || '' : '',
-                      directoryVerifiedVersion: policyEnabled ? directoryVersion : 0,
+                        policyEnabled && !directoryOverrideByAdmin && directoryData ? directoryData.directoryMemberId || '' : '',
+                      directoryVerifiedVersion: policyEnabled && !directoryOverrideByAdmin ? directoryVersion : 0,
+                      directoryOverrideByAdmin,
                       directoryVerifiedAt: policyEnabled ? serverTimestamp() : '',
                       profileRequiredReason: shouldRestoreDirectoryMismatch
                         ? ''
@@ -336,6 +340,7 @@ export default function useAdminMemberAccountEditActions({
                       status: nextStatus,
                       identityKey: nextIdentityKey,
                       recoveryKey: nextRecoveryKey,
+                      directoryOverrideByAdmin,
                     };
                   });
 
@@ -355,16 +360,17 @@ export default function useAdminMemberAccountEditActions({
         return savedProfile;
       } catch (error) {
         console.error('Admin member profile edit error:', error);
-        triggerToast?.(
-          `${error?.message || '회원정보 수정에 실패했습니다.'} 오류 코드: ${error?.code || error?.name || 'admin_member_profile_edit_failed'}`,
-          'error'
-        );
+        const code = error?.code || error?.name || 'admin_member_profile_edit_failed';
+        const message = code === 'member_directory_mismatch'
+          ? "지정된 부서·성명을 선택하거나 '지정된 부서·사용자 명부 사용' 체크를 해제해 직접 입력해 주세요."
+          : (error?.message || '회원정보 수정에 실패했습니다.');
+        triggerToast?.(`${message} 오류 코드: ${code}`, 'error');
         throw error;
       } finally {
         setSavingUid('');
       }
     },
-    [isAdminAuthenticated, triggerToast]
+    [isAdminAuthenticated, memberDirectoryPolicyEnabled, triggerToast]
   );
 
   return {

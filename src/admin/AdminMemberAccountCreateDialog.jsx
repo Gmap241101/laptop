@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
 import { UserPlus, X } from 'lucide-react';
 import ModalPortal from '../components/ModalPortal.jsx';
+import AdminMemberDirectoryIdentityFields from './AdminMemberDirectoryIdentityFields.jsx';
 import {
   DOMESTIC_PHONE_PREFIXES,
   normalizePhoneDigits,
   normalizePhoneMiddleDigits,
 } from '../utils/memberPolicy.js';
 
-const createInitialForm = () => ({
+const createInitialForm = (memberDirectoryPolicyEnabled = false) => ({
   email: '',
   name: '',
   team: '',
+  useManagedDirectory: Boolean(memberDirectoryPolicyEnabled),
   phonePrefix: '010',
   phoneMiddle: '',
   phoneLast: '',
@@ -24,12 +26,15 @@ export default function AdminMemberAccountCreateDialog({
   saving,
   onClose,
   onSave,
+  memberDirectoryTeams = [],
+  memberDirectoryBorrowers = [],
+  memberDirectoryPolicyEnabled = false,
 }) {
-  const [form, setForm] = useState(createInitialForm);
+  const [form, setForm] = useState(() => createInitialForm(memberDirectoryPolicyEnabled));
 
   useEffect(() => {
-    if (open) setForm(createInitialForm());
-  }, [open]);
+    if (open) setForm(createInitialForm(memberDirectoryPolicyEnabled));
+  }, [open, memberDirectoryPolicyEnabled]);
 
   if (!open) return null;
 
@@ -75,25 +80,13 @@ export default function AdminMemberAccountCreateDialog({
               <span className="mt-1.5 block text-[10px] text-slate-400">관리자 등록 경로에서는 이메일 인증코드를 발송하지 않습니다.</span>
             </label>
 
-            <label className="block">
-              <span className="mb-1.5 block text-xs font-bold text-slate-700">성명</span>
-              <input
-                value={form.name}
-                onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-                maxLength={30}
-                className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none mk-form-border-focus"
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-1.5 block text-xs font-bold text-slate-700">부서 / 팀</span>
-              <input
-                value={form.team}
-                onChange={(event) => setForm((current) => ({ ...current, team: event.target.value }))}
-                maxLength={80}
-                className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none mk-form-border-focus"
-              />
-            </label>
+            <AdminMemberDirectoryIdentityFields
+              form={form}
+              setForm={setForm}
+              teams={memberDirectoryTeams}
+              borrowers={memberDirectoryBorrowers}
+              policyEnabled={memberDirectoryPolicyEnabled}
+            />
           </div>
 
           <div>

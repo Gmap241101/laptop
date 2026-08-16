@@ -182,7 +182,7 @@ export const createAccountLifecycleRepository = (pool) => {
     },
 
     async createSignupAccount({ firebaseUid, email, maskedEmail, name, team, phone, status, identityKey, recoveryKey,
-      directoryMemberId = '', directoryVerifiedVersion = 0, previousAccountUids = [], rejoinedAccount = false,
+      directoryMemberId = '', directoryVerifiedVersion = 0, directoryOverrideByAdmin = false, previousAccountUids = [], rejoinedAccount = false,
       termsConsentRevision = 0, termsConsentPolicyVersion = 0, decisions = [] }) {
       return withTransaction(async (client) => {
         await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`phase32-signup:${identityKey}`]);
@@ -223,20 +223,20 @@ export const createAccountLifecycleRepository = (pool) => {
         await client.query(
           `INSERT INTO app_member_accounts
              (firebase_uid, app_user_id, email, masked_email, name, team, phone, status,
-              directory_member_id, directory_verified_version, profile_required_reason,
+              directory_member_id, directory_verified_version, directory_override_by_admin, profile_required_reason,
               rejoined_account, terms_consent_revision, terms_consent_policy_version,
               terms_consent_completed_at, terms_consent_bootstrap_completed_at,
               identity_key, recovery_key, previous_account_uids,
               source_hash, authority_mode, mirror_state, last_mutation_id,
               auth_authority_mode, lifecycle_authority_mode, clerk_account_state,
               authoritative_updated_at, synced_at, created_at, updated_at)
-           VALUES ($1,NULL,$2,$3,$4,$5,$6,$7,$8,$9,'',$10,$11,$12,
-                   CASE WHEN $11::bigint > 0 THEN NOW() ELSE NULL END,NOW(),
-                   $13,$14,$15::jsonb,'','postgresql-authoritative','retired',$16,
+           VALUES ($1,NULL,$2,$3,$4,$5,$6,$7,$8,$9,$10,'',$11,$12,$13,
+                   CASE WHEN $12::bigint > 0 THEN NOW() ELSE NULL END,NOW(),
+                   $14,$15,$16::jsonb,'','postgresql-authoritative','retired',$17,
                    'firebase-compatibility','postgresql-authoritative','active',NOW(),NOW(),NOW(),NOW())
 `,
           [firebaseUid, email, maskedEmail, name, team, phone, status, directoryMemberId,
-            directoryVerifiedVersion, rejoinedAccount, termsConsentRevision, termsConsentPolicyVersion,
+            directoryVerifiedVersion, Boolean(directoryOverrideByAdmin), rejoinedAccount, termsConsentRevision, termsConsentPolicyVersion,
             identityKey, recoveryKey, JSON.stringify(previousAccountUids), randomUUID()],
         );
         if (rejoinedAccount && Array.isArray(previousAccountUids) && previousAccountUids.length > 0) {
