@@ -99,6 +99,13 @@ const memberAuthorityService = {
   async restoreDirectoryMismatchAdmin() { return { authority: 'postgresql', source: 'postgresql-authoritative', restoredCount: 1, failed: 0 }; },
   async bootstrapAdminRegistry() { return { authority: 'postgresql', count: 1 }; },
   async listAdminMembers() { return { source: 'postgresql', items: [{ ...memberShadowProfile, firebaseUid: 'member:smoke' }], totalCount: 1, counts: { active: 1 } }; },
+  async getAdminMemberRentalHistory({ targetUid }) {
+    return {
+      source: 'postgresql', authority: 'postgresql', accountUid: targetUid, linkedUids: [targetUid],
+      summary: { linkedUidCount: 1, totalRequests: 1, previousRequests: 0, activeRequests: 0, overdueRequests: 0, returnedRequests: 1 },
+      requests: [{ id: 'REQ-SMOKE-HISTORY', requesterUid: targetUid, status: '반납완료', startDate: '2026-08-01', dueDate: '2026-08-02' }],
+    };
+  },
 };
 const accountRecoveryService = {
   async findEmail() { return { source: 'postgresql', found: true, email: 'smoke@example.com' }; },
@@ -611,6 +618,9 @@ try {
   const memberPassword = await fetch(`${baseUrl}/api/admin/members/member%3Asmoke/password`, { method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ newPassword: 'NewMember1234' }) });
   const memberPasswordBody = await memberPassword.json();
   if (memberPassword.status !== 200 || memberPasswordBody.adminMemberPasswordChange?.operation !== 'admin-member-password-change' || memberPasswordBody.adminMemberPasswordChange?.changed !== true) throw new Error('Administrator member Clerk password change endpoint failed.');
+  const memberHistory = await fetch(`${baseUrl}/api/admin/members/member%3Asmoke/rental-history`, { headers: authHeaders });
+  const memberHistoryBody = await memberHistory.json();
+  if (memberHistory.status !== 200 || memberHistoryBody.adminMemberRentalHistory?.source !== 'postgresql' || memberHistoryBody.adminMemberRentalHistory?.requests?.length !== 1) throw new Error('Administrator member PostgreSQL rental-history endpoint failed.');
   const rejectedMember = await fetch(`${baseUrl}/api/admin/members/pending-smoke/reject`, { method: 'POST', headers: authHeaders });
   const rejectedMemberBody = await rejectedMember.json();
   if (rejectedMember.status !== 200 || rejectedMemberBody.adminMemberLifecycle?.operation !== 'signup-reject') throw new Error('Administrator pending-member rejection endpoint failed.');

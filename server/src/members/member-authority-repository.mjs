@@ -36,6 +36,27 @@ const mapMemberAccountRow = (row) => row ? Object.freeze({
   updatedAt: row.updated_at || null,
 }) : null;
 
+const mapMemberRentalHistoryRow = (row) => row ? Object.freeze({
+  id: row.request_id || '',
+  requesterUid: row.firebase_uid || '',
+  requesterEmail: row.requester_email || '',
+  requesterName: row.requester_name || '',
+  requesterTeam: row.requester_team || '',
+  laptopId: row.laptop_id || '',
+  assetCategory: row.asset_category || '',
+  assetNo: row.asset_no || '',
+  startDate: row.start_date || '',
+  dueDate: row.due_date || '',
+  purpose: row.purpose || '',
+  status: row.status || '',
+  requestedAt: row.requested_at_text || '',
+  returnedAt: row.returned_at || null,
+  actualReturnDate: row.actual_return_date || '',
+  overdueDaysAtReturn: Number(row.overdue_days_at_return || 0),
+  createdAt: row.source_created_at || row.created_at || null,
+  updatedAt: row.source_updated_at || row.updated_at || null,
+}) : null;
+
 const memberProjection = (profile = {}) => ({
   uid: profile.uid || profile.firebaseUid || '',
   email: profile.email || '',
@@ -349,6 +370,29 @@ export const createMemberAuthorityRepository = (pool) => {
         [uids],
       );
       return Number(result.rows[0]?.count || 0);
+    },
+
+    async listRentalHistoryForUids(firebaseUids = []) {
+      const uids = Array.from(new Set(
+        (Array.isArray(firebaseUids) ? firebaseUids : [])
+          .map((value) => String(value || '').trim())
+          .filter(Boolean)
+      ));
+      if (!uids.length) return Object.freeze([]);
+      const result = await pool.query(
+        `SELECT request.request_id, request.firebase_uid, request.requester_email, request.requester_name, request.requester_team,
+                item.laptop_id, item.asset_category, item.asset_no,
+                request.start_date::text AS start_date, request.due_date::text AS due_date, request.purpose, request.status,
+                request.requested_at_text, request.returned_at, request.actual_return_date::text AS actual_return_date,
+                request.overdue_days_at_return, request.source_created_at, request.source_updated_at,
+                request.created_at, request.updated_at
+           FROM app_rental_requests request
+           LEFT JOIN app_rental_request_items item ON item.rental_request_id = request.id
+          WHERE request.firebase_uid = ANY($1::text[])
+          ORDER BY COALESCE(request.source_created_at, request.created_at) DESC, request.request_id DESC`,
+        [uids],
+      );
+      return Object.freeze(result.rows.map(mapMemberRentalHistoryRow));
     },
 
     async approveRejoinedMemberAndConsolidate({ firebaseUid, appUserId, actorFirebaseUid }) {

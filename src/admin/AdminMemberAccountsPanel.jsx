@@ -3,6 +3,7 @@ import { useState } from 'react';
 import AdminMemberAccountCreateDialog from './AdminMemberAccountCreateDialog.jsx';
 import AdminMemberAccountDetailPanel from './AdminMemberAccountDetailPanel.jsx';
 import AdminMemberAccountEditDialog from './AdminMemberAccountEditDialog.jsx';
+import AdminMemberRentalHistoryDialog from './AdminMemberRentalHistoryDialog.jsx';
 import AdminMemberTermsDialog from './AdminMemberTermsDialog.jsx';
 import AdminManagedPasswordDialog from './AdminManagedPasswordDialog.jsx';
 
@@ -86,6 +87,7 @@ export default function AdminMemberAccountsPanel({ ctx }) {
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [editAccount, setEditAccount] = useState(null);
   const [termsAccount, setTermsAccount] = useState(null);
+  const [historyAccount, setHistoryAccount] = useState(null);
   const [passwordAccount, setPasswordAccount] = useState(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
@@ -105,6 +107,7 @@ export default function AdminMemberAccountsPanel({ ctx }) {
         setSelectedAccount((current) => (current?.uid === uid ? null : current));
         setEditAccount((current) => (current?.uid === uid ? null : current));
         setTermsAccount((current) => (current?.uid === uid ? null : current));
+        setHistoryAccount((current) => (current?.uid === uid ? null : current));
       }
     },
   });
@@ -150,6 +153,7 @@ export default function AdminMemberAccountsPanel({ ctx }) {
     setSelectedAccount(null);
     setEditAccount(null);
     setTermsAccount(null);
+    setHistoryAccount(null);
     setPasswordAccount(null);
     setAdminUserAccountStatusFilter('all');
     setAdminUserAccountPage(1);
@@ -226,7 +230,9 @@ export default function AdminMemberAccountsPanel({ ctx }) {
   const renderMemberDetail = (account) => (
     <AdminMemberAccountDetailPanel
       account={account}
+      onBack={() => setSelectedAccount(null)}
       onOpenTerms={() => setTermsAccount(account)}
+      onOpenHistory={() => setHistoryAccount(account)}
       onEdit={() => setEditAccount(account)}
       onPurge={() => confirmRetiredMemberPurge(account)}
       purgeLoading={adminUserAccountSavingUid === account.uid}
@@ -289,22 +295,7 @@ export default function AdminMemberAccountsPanel({ ctx }) {
       )}
 
       {selectedAccount ? (
-        <div className="space-y-4">
-          <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <Button
-              type="button"
-              variant="outline"
-              className="shrink-0 px-4 py-2 text-xs"
-              onClick={() => setSelectedAccount(null)}
-            >
-              목록으로
-            </Button>
-            <div className="min-w-0 text-right text-[11px] text-slate-500">
-              회원 상세 · {selectedAccount.name || selectedAccount.email || selectedAccount.uid || '-'}
-            </div>
-          </div>
-          {renderMemberDetail(selectedAccount)}
-        </div>
+        renderMemberDetail(selectedAccount)
       ) : (
         <>
           <div className={`grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 md:items-end ${activeTab === 'current' ? 'md:grid-cols-[minmax(0,1fr)_160px_140px]' : 'md:grid-cols-[minmax(0,1fr)_140px]'}`}>
@@ -573,6 +564,13 @@ export default function AdminMemberAccountsPanel({ ctx }) {
             const changed = await changeAdminMemberPassword({ account: passwordAccount, password, passwordConfirm });
             if (changed) setPasswordAccount(null);
           }}
+        />
+      ) : null}
+
+      {historyAccount ? (
+        <AdminMemberRentalHistoryDialog
+          account={historyAccount}
+          onClose={() => setHistoryAccount(null)}
         />
       ) : null}
 

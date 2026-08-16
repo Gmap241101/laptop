@@ -267,4 +267,50 @@ await assert.rejects(
   (error) => error?.code === 'retired_member_reactivation_not_supported' && error?.status === 409,
 );
 
+
+
+const historyReadUids = [];
+const historyMemberAuthorityService = createMemberAuthorityService({
+  repository: {
+    async mutateProfile() { throw new Error('not used'); },
+    async countBlockingRentalRequestsForUids() { return 0; },
+    async findByFirebaseUid(uid) {
+      if (uid === 'member:history') return { uid, firebaseUid: uid, status: 'active', previousAccountUids: ['member:old'] };
+      return null;
+    },
+    async listRentalHistoryForUids(uids) {
+      historyReadUids.push(...uids);
+      return [
+        { id: 'REQ-HISTORY-1', requesterUid: 'member:history', status: '대여중', dueDate: '2099-01-01', overdueDaysAtReturn: 0 },
+        { id: 'REQ-HISTORY-2', requesterUid: 'member:old', status: '반납완료', dueDate: '2026-01-01', overdueDaysAtReturn: 2 },
+      ];
+    },
+    async findActiveIdentityOwner() { return null; },
+    async findDirectoryEntryByIdentityKey() { return null; },
+    async getDirectoryBootstrapState() { return { completed: true, version: 0 }; },
+    async replaceDirectoryEntries() { return { count: 0 }; },
+  },
+  firebaseLinkRepository: {
+    async findByFirebaseUid() { return null; },
+    async findByAppUserId() { return null; },
+  },
+  userRepository: {
+    async findByClerkUserId() { return null; },
+  },
+  rentalRestrictionRepository: { async findByFirebaseUid() { return null; } },
+  siteContentRepository: { async getDomain() { return { documents: [] }; } },
+});
+// verifyAdmin accepts the trusted admin identity contract without requiring a legacy Firebase runtime.
+const historyPayload = await historyMemberAuthorityService.getAdminMemberRentalHistory({
+  firebaseIdentity: { source: 'clerk-postgresql', uid: 'admin:smoke', role: 'owner' },
+  targetUid: 'member:history',
+});
+assert.deepEqual(historyReadUids, ['member:history', 'member:old']);
+assert.equal(historyPayload.source, 'postgresql');
+assert.equal(historyPayload.summary.totalRequests, 2);
+assert.equal(historyPayload.summary.previousRequests, 1);
+assert.equal(historyPayload.summary.activeRequests, 1);
+assert.equal(historyPayload.summary.overdueRequests, 1);
+assert.equal(historyPayload.summary.returnedRequests, 1);
+
 console.log('[phase34-admin-member-provisioning-backend-smoke] PASS');

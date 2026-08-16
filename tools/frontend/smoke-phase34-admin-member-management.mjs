@@ -16,6 +16,8 @@ const [
   detail,
   statusActions,
   contextSlices,
+  historyDialog,
+  historyService,
 ] = await Promise.all([
   readFile(new URL('../../src/admin/AdminMemberAccountsPanel.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../../src/admin/AdminMemberAccountCreateDialog.jsx', import.meta.url), 'utf8'),
@@ -31,6 +33,8 @@ const [
   readFile(new URL('../../src/admin/AdminMemberAccountDetailPanel.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../../src/features/members/useAdminMemberAccountStatusActions.js', import.meta.url), 'utf8'),
   readFile(new URL('../../src/context/appContextSlices.js', import.meta.url), 'utf8'),
+  readFile(new URL('../../src/admin/AdminMemberRentalHistoryDialog.jsx', import.meta.url), 'utf8'),
+  readFile(new URL('../../src/features/members/memberAccountHistoryService.js', import.meta.url), 'utf8'),
 ]);
 
 assert.match(panel, /\['current', '전체 회원'\]/);
@@ -82,6 +86,25 @@ assert.match(passwordDialog, /새 비밀번호/);
 assert.match(passwordDialog, /새 비밀번호 확인/);
 assert.match(passwordActions, /clerkStagingClient\.changeAdminMemberPassword/);
 assert.match(client, /\/api\/admin\/members\/\$\{encodeURIComponent\(uid\)\}\/password/);
+
+
+
+// Member rental history must use the PostgreSQL authority and render in a dedicated modal.
+assert.match(panel, /AdminMemberRentalHistoryDialog/);
+assert.match(panel, /onOpenHistory=\{\(\) => setHistoryAccount\(account\)\}/);
+assert.match(detail, /onClick=\{onOpenHistory\}[\s\S]*대여 이력 확인/);
+assert.match(detail, /onClick=\{onBack\}[\s\S]*목록으로/);
+assert.equal(detail.includes('historySummary'), false, 'member detail must not retain the old inline history summary');
+assert.equal(detail.includes('대여 이력을 불러오지 못했습니다.'), false, 'member detail must not load rental history inline');
+assert.equal(panel.includes('회원 상세 ·'), false, 'selected member detail must not keep the old gray heading section above the detail card');
+assert.match(historyDialog, /회원 대여 이력/);
+assert.match(historyDialog, /전체 대여/);
+assert.match(historyDialog, /<table/);
+assert.match(historyDialog, /대여 기간/);
+assert.match(historyService, /clerkStagingClient\.getAdminMemberRentalHistory\(uid\)/);
+assert.equal(historyService.includes('retiredLegacyDataCompat'), false, 'member rental history must not read the retired Firestore compatibility store');
+assert.equal(/getDocs|RENTAL_REQUESTS_COLLECTION_REF/.test(historyService), false, 'member rental history must not execute Firestore-shaped reads');
+assert.match(client, /\/api\/admin\/members\/\$\{encodeURIComponent\(targetUid\)\}\/rental-history/);
 
 // List footer contract: result summary left, paginator center, create action right.
 assert.match(panel, /sm:grid-cols-\[1fr_auto_1fr\]/);

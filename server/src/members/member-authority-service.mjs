@@ -349,6 +349,48 @@ export const createMemberAuthorityService = ({
       });
     },
 
+    async getAdminMemberRentalHistory({ firebaseIdentity, targetUid } = {}) {
+      const admin = await verifyAdmin(firebaseIdentity);
+      const target = trim(targetUid);
+      if (!target) throw serviceError('admin_member_rental_history_uid_missing', 'Target member UID is required.', 400);
+      const account = await repository.findByFirebaseUid(target);
+      if (!account) throw serviceError('member_account_not_synchronized', 'PostgreSQL member account was not found.', 404);
+      const linkedUids = Array.from(new Set([
+        target,
+        ...(Array.isArray(account.previousAccountUids) ? account.previousAccountUids : []),
+      ].map(trim).filter(Boolean)));
+      if (typeof repository.listRentalHistoryForUids !== 'function') {
+        throw serviceError('admin_member_rental_history_unavailable', 'PostgreSQL member rental-history reader is unavailable.', 503);
+      }
+      const requests = await repository.listRentalHistoryForUids(linkedUids);
+      const referenceDate = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
+      }).format(new Date());
+      const previousRequests = requests.filter((request) => trim(request.requesterUid) !== target);
+      const activeRequests = requests.filter((request) => ['신청중', '보류', '대여중'].includes(trim(request.status)));
+      const overdueRequests = requests.filter((request) =>
+        Number(request.overdueDaysAtReturn || 0) > 0
+        || (trim(request.status) === '대여중' && trim(request.dueDate) && trim(request.dueDate) < referenceDate)
+      );
+      const returnedRequests = requests.filter((request) => trim(request.status) === '반납완료');
+      return Object.freeze({
+        admin: { uid: admin.uid, role: trim(admin.fields?.adminRole || 'admin') },
+        source: 'postgresql',
+        authority: 'postgresql',
+        accountUid: target,
+        linkedUids: Object.freeze(linkedUids),
+        summary: Object.freeze({
+          linkedUidCount: linkedUids.length,
+          totalRequests: requests.length,
+          previousRequests: previousRequests.length,
+          activeRequests: activeRequests.length,
+          overdueRequests: overdueRequests.length,
+          returnedRequests: returnedRequests.length,
+        }),
+        requests,
+      });
+    },
+
     async listAdminDirectory({ firebaseIdentity } = {}) {
       const admin = await verifyAdmin(firebaseIdentity);
       if (typeof repository.listDirectoryEntries !== 'function') {

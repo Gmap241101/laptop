@@ -922,6 +922,29 @@ export const requestAdminMembersPostgresql = async ({ clerk, apiBaseUrl, fetchIm
   return payload;
 };
 
+export const requestAdminMemberRentalHistory = async ({ clerk, apiBaseUrl, fetchImpl, uid }) => {
+  const targetUid = trim(uid);
+  if (!targetUid) throw Object.assign(new Error('Member UID is required.'), { code: 'admin_member_rental_history_uid_missing' });
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: `/api/admin/members/${encodeURIComponent(targetUid)}/rental-history`,
+    method: 'GET',
+    headers: {},
+  });
+  if (!response.ok) {
+    const error = new Error(`Admin PostgreSQL member rental history read failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (!payload?.authenticated || !payload?.authorized || payload?.adminMemberRentalHistory?.source !== 'postgresql' || !Array.isArray(payload?.adminMemberRentalHistory?.requests)) {
+    throw Object.assign(new Error('Backend returned an invalid admin member rental history response.'), { code: 'admin_member_rental_history_payload_invalid' });
+  }
+  return payload;
+};
+
 export const requestAdminMemberCreatePostgresql = async ({ clerk, apiBaseUrl, fetchImpl, input = {} }) => {
   const { response, payload } = await requestWithSession({
     clerk,
@@ -2046,6 +2069,10 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
       const clerk = await initialize();
       return requestAdminMembersPostgresql({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, options });
     },
+    async getAdminMemberRentalHistory(uid) {
+      const clerk = await initialize();
+      return requestAdminMemberRentalHistory({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, uid });
+    },
     async createAdminMember(input = {}) {
       const clerk = await initialize();
       return requestAdminMemberCreatePostgresql({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, input });
@@ -2139,7 +2166,10 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     },
     async saveAdminRentalConfigSettings(settings = {}) {
       const clerk = await initialize();
-      return requestAdminRentalConfigSettingsPatch({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, settings });
+      const payload = await requestAdminRentalConfigSettingsPatch({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, settings });
+      const { publishSiteContentInvalidation } = await import('../features/content/siteContentCutover.js');
+      publishSiteContentInvalidation('rental-config');
+      return payload;
     },
     async saveAdminSignupPolicy(policy = {}) {
       const clerk = await initialize();

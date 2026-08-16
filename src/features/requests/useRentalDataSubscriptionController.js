@@ -35,6 +35,7 @@ import {
   recordLegacyFirestoreReadFallbackBlocked,
 } from '../compatibility/legacyFirestoreReadFallbackCutover.js';
 import { readUserAccountLifecycleCutoverConfig } from '../auth/userAccountLifecycleCutover.js';
+import useSiteContentRefreshRevision from '../content/useSiteContentRefreshRevision.js';
 
 const createDefaultSplitSourceReady = () => ({
   config: false,
@@ -547,6 +548,9 @@ export default function useRentalDataSubscriptionController({
   userTab,
   view,
 }) {
+  const rentalConfigRefreshRevision = useSiteContentRefreshRevision(
+    POLICY_CONTENT_DOMAINS.RENTAL_CONFIG
+  );
   const initializedRemoteFormRef = useRef(false);
   // Runtime-only bridge from the PostgreSQL asset catalog into the merged app data.
   // Asset categories are no longer persisted/read from rental-config.
@@ -656,6 +660,7 @@ export default function useRentalDataSubscriptionController({
     setToast,
     userTab,
     view,
+    rentalConfigRefreshRevision,
   ]);
 
   useEffect(() => {

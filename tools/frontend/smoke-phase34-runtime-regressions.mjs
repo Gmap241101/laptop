@@ -332,6 +332,15 @@ assert.match(rentalDataSource, /view === 'user'[\s\S]*userTab === 'home'[\s\S]*r
 assert.match(rentalDataSource, /domain: POLICY_CONTENT_DOMAINS\.RENTAL_CONFIG,[\s\S]*?useCache: true/, 'user rental configuration must retain request sharing for subsequent consumers');
 assert.match(rentalDataSource, /view === 'user' && userTab === 'home'[\s\S]*requestAnimationFrame[\s\S]*requestAnimationFrame\(loadPublicConfig\)/, 'home rental configuration must start after first paint instead of competing with the critical home bootstrap');
 
+assert.match(rentalDataSource, /useSiteContentRefreshRevision\(\s*POLICY_CONTENT_DOMAINS\.RENTAL_CONFIG\s*\)/, 'rental configuration subscriptions must listen for rental-config invalidation after administrator saves');
+assert.match(rentalDataSource, /rentalConfigRefreshRevision[\s\S]*\]\);/, 'rental-config invalidation revision must participate in the public-config load effect dependencies');
+const rentalPolicyClientSource = fs.readFileSync(new URL('../../src/clerk/clerkStagingClient.js', import.meta.url), 'utf8');
+assert.match(rentalPolicyClientSource, /saveAdminRentalConfigSettings[\s\S]*publishSiteContentInvalidation\('rental-config'\)/, 'successful administrator rental-policy saves must invalidate the shared rental-config cache');
+const rentalPolicySettingsControllerSource = fs.readFileSync(new URL('../../src/features/settings/useAdminSystemSettingsController.js', import.meta.url), 'utf8');
+assert.match(rentalPolicySettingsControllerSource, /rental_policy_settings_persist_response_invalid/, 'rental-policy saves must reject responses that do not contain the canonical PostgreSQL settings document');
+assert.match(rentalPolicySettingsControllerSource, /rental_policy_settings_persist_mismatch/, 'rental-policy saves must verify that canonical persisted settings match the requested policy values');
+
+
 const adminDashboardSource = fs.readFileSync(new URL('../../src/admin/AdminDashboardPanel.jsx', import.meta.url), 'utf8');
 assert.match(adminDashboardSource, /진입·복귀 동기화 ·/, 'dashboard control must describe entry/return synchronization instead of continuous polling');
 

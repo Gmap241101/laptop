@@ -192,6 +192,7 @@ export const createRequestHandler = ({
     async editSelf() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
     async editAdmin() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
     async changeStatusAdmin() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
+    async getAdminMemberRentalHistory() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
     async syncMemberDirectoryAdmin() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
     async auditMemberDirectoryAdmin() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
     async restoreDirectoryMismatchAdmin() { const error = new Error('Member authority service is not configured.'); error.code = 'member_authority_not_configured'; throw error; },
@@ -683,6 +684,7 @@ export const createRequestHandler = ({
           adminMemberProfileAuthority: '/api/admin/members/:uid/profile',
           adminMemberPasswordAuthority: '/api/admin/members/:uid/password',
           adminMemberStatusAuthority: '/api/admin/members/:uid/status',
+          adminMemberRentalHistory: '/api/admin/members/:uid/rental-history',
           adminPendingMemberReject: '/api/admin/members/:uid/reject',
           adminMemberRetire: '/api/admin/members/:uid/retire',
           adminRetiredMemberPurge: '/api/admin/members/:uid',
@@ -2827,6 +2829,23 @@ export const createRequestHandler = ({
           authorized: true,
           error: error?.code || 'admin_member_provision_failed',
         }, headers);
+      }
+      return;
+    }
+
+    const adminMemberRentalHistoryMatch = request.method === 'GET' ? url.pathname.match(/^\/api\/admin\/members\/([^/]+)\/rental-history$/) : null;
+    if (adminMemberRentalHistoryMatch) {
+      const admin = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!admin) return;
+      try {
+        const result = await memberAuthorityService.getAdminMemberRentalHistory({
+          firebaseIdentity: admin.firebaseIdentity,
+          targetUid: decodeURIComponent(adminMemberRentalHistoryMatch[1]),
+        });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, adminMemberRentalHistory: result }, headers);
+      } catch (error) {
+        console.error('[phase34] admin member rental history read failed', { requestId, code: error?.code });
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: true, error: error?.code || 'admin_member_rental_history_read_failed' }, headers);
       }
       return;
     }

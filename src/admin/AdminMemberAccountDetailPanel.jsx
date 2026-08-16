@@ -1,7 +1,5 @@
-import { useEffect, useState } from 'react';
-import { FileCheck2, History, PencilLine, Trash2 } from 'lucide-react';
+import { ArrowLeft, FileCheck2, History, PencilLine, Trash2 } from 'lucide-react';
 
-import { loadMemberAccountHistorySummary } from '../features/members/memberAccountHistoryService.js';
 import {
   formatUserAccountCreatedAt,
   getUserAccountStatusClassName,
@@ -10,35 +8,14 @@ import {
 
 export default function AdminMemberAccountDetailPanel({
   account,
+  onBack,
   onEdit,
+  onOpenHistory,
   onOpenTerms,
   onPurge,
   purgeLoading = false,
 }) {
-  const [historySummary, setHistorySummary] = useState(null);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyError, setHistoryError] = useState('');
-
-  useEffect(() => {
-    setHistorySummary(null);
-    setHistoryError('');
-  }, [account?.uid]);
-
   if (!account) return null;
-
-  const loadHistory = async () => {
-    if (historyLoading) return;
-    setHistoryLoading(true);
-    setHistoryError('');
-    try {
-      setHistorySummary(await loadMemberAccountHistorySummary(account));
-    } catch (error) {
-      console.error('Admin member history summary read error:', error);
-      setHistoryError('대여 이력을 불러오지 못했습니다.');
-    } finally {
-      setHistoryLoading(false);
-    }
-  };
 
   return (
     <div className="space-y-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm text-left">
@@ -87,52 +64,50 @@ export default function AdminMemberAccountDetailPanel({
         </div>
       ) : null}
 
-      <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-4">
-        <button
-          type="button"
-          onClick={onOpenTerms}
-          className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-bold text-slate-700 hover:bg-slate-50"
-        >
-          <FileCheck2 size={14} /> 약관 동의 내역
-        </button>
-        <button
-          type="button"
-          onClick={() => void loadHistory()}
-          disabled={historyLoading}
-          className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-        >
-          <History size={14} /> {historyLoading ? '대여 이력 확인 중' : '대여 이력 확인'}
-        </button>
-        <button
-          type="button"
-          onClick={onEdit}
-          disabled={account.status === 'retired'}
-          className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-[11px] font-bold text-orange-700 hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <PencilLine size={14} /> 회원수정
-        </button>
-        {account.status === 'retired' ? (
+      <div className="flex flex-col gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={onPurge}
-            disabled={purgeLoading}
-            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-[11px] font-bold text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={onOpenTerms}
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-bold text-slate-700 hover:bg-slate-50"
           >
-            <Trash2 size={14} /> {purgeLoading ? '완전 삭제 중' : '회원 완전 삭제'}
+            <FileCheck2 size={14} /> 약관 동의 내역
           </button>
-        ) : null}
+          <button
+            type="button"
+            onClick={onOpenHistory}
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-bold text-slate-700 hover:bg-slate-50"
+          >
+            <History size={14} /> 대여 이력 확인
+          </button>
+          <button
+            type="button"
+            onClick={onEdit}
+            disabled={account.status === 'retired'}
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-[11px] font-bold text-orange-700 hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <PencilLine size={14} /> 회원수정
+          </button>
+          {account.status === 'retired' ? (
+            <button
+              type="button"
+              onClick={onPurge}
+              disabled={purgeLoading}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-[11px] font-bold text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Trash2 size={14} /> {purgeLoading ? '완전 삭제 중' : '회원 완전 삭제'}
+            </button>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex shrink-0 items-center justify-center gap-1.5 self-end rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-bold text-slate-700 hover:bg-slate-50 sm:self-auto"
+        >
+          <ArrowLeft size={14} /> 목록으로
+        </button>
       </div>
 
-      {historySummary ? (
-        <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-[11px] leading-5 text-violet-800">
-          전체 대여 {historySummary.totalRequests}건 · 이전 계정 대여 {historySummary.previousRequests}건 · 진행 중 {historySummary.activeRequests}건 · 연체 이력 {historySummary.overdueRequests}건
-        </div>
-      ) : null}
-      {historyError ? (
-        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
-          {historyError}
-        </div>
-      ) : null}
     </div>
   );
 }

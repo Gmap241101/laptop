@@ -646,7 +646,29 @@ export default function useAdminSystemSettingsController({
     );
 
     try {
-      await clerkStagingClient.saveAdminRentalConfigSettings(policyValues);
+      const saveResult = await clerkStagingClient.saveAdminRentalConfigSettings(policyValues);
+      const persistedDocument = saveResult?.siteContent?.documents?.find(
+        (document) => document?.key === 'rentalSystem/publicConfig'
+      );
+      const persistedSettings = persistedDocument?.payload?.settings;
+      if (!persistedSettings || typeof persistedSettings !== 'object') {
+        const error = new Error('PostgreSQL rental policy save response did not include the canonical settings document.');
+        error.code = 'rental_policy_settings_persist_response_invalid';
+        throw error;
+      }
+      const expectedPolicyValues = getComparableRentalPolicySettings(
+        policyValues,
+        dataSettings
+      );
+      const savedPolicyValues = getComparableRentalPolicySettings(
+        persistedSettings,
+        dataSettings
+      );
+      if (JSON.stringify(savedPolicyValues) !== JSON.stringify(expectedPolicyValues)) {
+        const error = new Error('PostgreSQL rental policy settings did not match the saved values.');
+        error.code = 'rental_policy_settings_persist_mismatch';
+        throw error;
+      }
 
       const nextSettings = {
         ...dataSettings,
