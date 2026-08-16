@@ -802,6 +802,9 @@ assert.match(homeFastpathAdminSettingsSource, /stripTransientGlobalBannerAuditVa
 const noticePanelSource = fs.readFileSync(new URL('../../src/admin/AdminNoticePanel.jsx', import.meta.url), 'utf8');
 const faqPanelSource = fs.readFileSync(new URL('../../src/admin/AdminFaqPanel.jsx', import.meta.url), 'utf8');
 const boardSettingsDialogSource = fs.readFileSync(new URL('../../src/admin/AdminBoardListSettingsDialog.jsx', import.meta.url), 'utf8');
+const faqCategoryDialogSource = fs.readFileSync(new URL('../../src/admin/AdminFaqCategoryDialog.jsx', import.meta.url), 'utf8');
+const faqBoardSubscriptionControllerSource = fs.readFileSync(new URL('../../src/features/boards/useBoardContentSubscriptionController.js', import.meta.url), 'utf8');
+const boardDerivedSelectorsSource = fs.readFileSync(new URL('../../src/features/boards/useBoardDerivedSelectors.js', import.meta.url), 'utf8');
 for (const marker of [
   'sm:grid-cols-[1fr_auto_1fr]',
   '검색 결과 {noticeResultCount}건',
@@ -812,13 +815,26 @@ for (const marker of [
 for (const marker of [
   'sm:grid-cols-[1fr_auto_1fr]',
   '전체 FAQ {faqResultCount}건',
+  '카테고리 관리',
   '목록 표시 설정',
   'FAQ 등록',
+  'AdminFaqCategoryDialog',
+  'FAQ 제목 또는 본문 검색',
+  '{activeFaqCategoryName} 내 검색',
+  "setActiveFaqCategoryId('all')",
+  'setFaqSearchWithinCategory(event.target.checked)',
   'AdminBoardListSettingsDialog',
-]) assert.ok(faqPanelSource.includes(marker), `missing FAQ management footer UX marker: ${marker}`);
+]) assert.ok(faqPanelSource.includes(marker), `missing FAQ management/search UX marker: ${marker}`);
 for (const marker of ['ModalPortal', '설정 저장', 'onDiscard', 'onSave']) {
   assert.ok(boardSettingsDialogSource.includes(marker), `missing board settings dialog marker: ${marker}`);
 }
+for (const marker of ['ModalPortal', 'FAQ 카테고리 관리', '새 FAQ 카테고리명', 'saveFaqCategoryName', 'confirmDeleteFaqCategory']) {
+  assert.ok(faqCategoryDialogSource.includes(marker), `missing FAQ category dialog marker: ${marker}`);
+}
+assert.match(faqBoardSubscriptionControllerSource, /categoryId:\s*activeFaqCategoryId/, 'administrator FAQ search must pass the active FAQ category to the canonical board reader');
+assert.match(faqBoardSubscriptionControllerSource, /searchWithinCategory:\s*faqSearchWithinCategory/, 'administrator FAQ search must preserve the user FAQ within-category search contract');
+assert.match(faqBoardSubscriptionControllerSource, /\(shouldRunAdminFaqSearch \|\| shouldRunUserFaqSearch\)[\s\S]*faqSearchWithinCategory/, 'progressive FAQ search must preserve category-scoped search for both user and administrator views');
+assert.match(boardDerivedSelectorsSource, /paginatedAdminFaqPosts = faqSearchMode[\s\S]*adminRegularFaqPosts\.slice/, 'administrator FAQ search pages must slice cumulative search results to the active page');
 
 console.log('[phase34-runtime-regressions-frontend-smoke] PASS');
 

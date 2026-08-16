@@ -434,8 +434,8 @@ export default function useBoardContentSubscriptionController({
       search,
       page: requestPage,
       pageSize: requestPageSize,
-      categoryId: shouldLoadUserFaq ? activeFaqCategoryId : 'all',
-      searchWithinCategory: shouldLoadUserFaq ? faqSearchWithinCategory : false,
+      categoryId: activeFaqCategoryId,
+      searchWithinCategory: faqSearchWithinCategory,
       useCache: true,
     }).then((board) => {
       if (cancelled) return;
@@ -1037,7 +1037,7 @@ export default function useBoardContentSubscriptionController({
     isAdminAuthenticated && view === 'admin' && adminTab === 'faqPosts';
   const shouldRunUserFaqSearch = view === 'user' && userTab === 'faq';
   const faqProgressiveSearchCategoryId =
-    shouldRunUserFaqSearch &&
+    (shouldRunAdminFaqSearch || shouldRunUserFaqSearch) &&
     activeFaqCategoryId !== 'all' &&
     faqSearchWithinCategory
       ? activeFaqCategoryId
@@ -1087,7 +1087,7 @@ export default function useBoardContentSubscriptionController({
     if (shouldLoadFaq && boardReadRequested && !faqPostgresFallback) return undefined;
     const searchMode = Boolean(String(debouncedFaqQuery || '').trim());
     const shouldLimitToActiveCategory =
-      shouldLoadUserFaq &&
+      shouldLoadFaq &&
       activeFaqCategoryId !== 'all' &&
       (!searchMode || faqSearchWithinCategory);
     const categoryConstraints = shouldLimitToActiveCategory
@@ -1163,7 +1163,7 @@ export default function useBoardContentSubscriptionController({
     if (!shouldLoadFaq || searchMode) return undefined;
 
     const shouldLimitToActiveCategory =
-      shouldLoadUserFaq && activeFaqCategoryId !== 'all';
+      shouldLoadFaq && activeFaqCategoryId !== 'all';
     const categoryConstraints = shouldLimitToActiveCategory
       ? [where('categoryId', '==', activeFaqCategoryId)]
       : [];
@@ -1284,7 +1284,9 @@ export default function useBoardContentSubscriptionController({
     ) {
       setActiveFaqCategoryId('all');
       setExpandedFaqPostId('');
+      setAdminExpandedFaqPostId('');
       setFaqPage(1);
+      setAdminFaqPage(1);
     }
   }, [faqCategories, activeFaqCategoryId]);
 

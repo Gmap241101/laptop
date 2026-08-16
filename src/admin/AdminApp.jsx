@@ -735,6 +735,7 @@ export default function AdminApp() {
 
   const orphanedRentalAvailabilityRequests = [];
   const {
+    activeFaqCategoryName,
     adminFaqTotalPages,
     adminNoticeTotalPages,
     adminPinnedFaqPosts,
@@ -1465,6 +1466,7 @@ export default function AdminApp() {
     tempAssetCategories,
     updateRequestMemo,
     activeFaqCategoryId,
+    activeFaqCategoryName,
     addFaqCategory,
     adminExpandedFaqPostId,
     adminFaqTotalPages,
@@ -1493,7 +1495,9 @@ export default function AdminApp() {
     faqPostsLoadErrorMessage,
     faqPostsPerPageInput,
     faqPostsReady,
+    faqQuery,
     faqRegularTotalCount,
+    faqSearchWithinCategory,
     newFaqCategoryName,
     noticeBoardConfigLoadErrorMessage,
     noticeBoardConfigReady,
@@ -1511,6 +1515,7 @@ export default function AdminApp() {
     saveFaqBoardConfig,
     saveFaqCategoryName,
     saveNoticeBoardConfig,
+    setActiveFaqCategoryId,
     setAdminExpandedFaqPostId,
     setAdminFaqPage,
     setAdminNoticePage,
@@ -1518,6 +1523,8 @@ export default function AdminApp() {
     setEditingFaqCategoryId,
     setEditingFaqCategoryName,
     setFaqPostsPerPageInput,
+    setFaqQuery,
+    setFaqSearchWithinCategory,
     setNewFaqCategoryName,
     setNoticePostsPerPageInput,
     startEditFaqCategory,

@@ -310,7 +310,12 @@ export default function useBoardDerivedSelectors({
   );
 
   const safeAdminFaqPage = Math.min(adminFaqPage, adminFaqTotalPages);
-  const paginatedAdminFaqPosts = adminRegularFaqPosts;
+  const paginatedAdminFaqPosts = faqSearchMode
+    ? adminRegularFaqPosts.slice(
+        (safeAdminFaqPage - 1) * faqPostsPerPage,
+        safeAdminFaqPage * faqPostsPerPage
+      )
+    : adminRegularFaqPosts;
 
   return {
     activeFaqCategoryName,
