@@ -6,7 +6,6 @@ import {
   ArrowUp,
   Edit3,
   Monitor,
-  Plus,
   Search,
   Smartphone,
   Trash2,
@@ -93,17 +92,6 @@ export default function AdminPopupPanel({ ctx }) {
       <AdminPageHeader
         title="팝업 관리"
         description="사용자 초기화면과 대여 신청 페이지에 표시할 팝업을 등록하고 노출 일정과 순서를 관리합니다."
-        actions={
-          <Button
-            type="button"
-            variant="primary"
-            className="shrink-0 px-4 py-2 text-xs"
-            onClick={() => openPopupPostDialog()}
-          >
-            <Plus size={14} />
-            팝업 등록
-          </Button>
-        }
       />
 
       <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 lg:grid-cols-[minmax(0,1fr)_150px_150px_120px]">
@@ -334,18 +322,26 @@ export default function AdminPopupPanel({ ctx }) {
             </table>
           </div>
 
-          <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
-            <div className="text-xs text-slate-500">
-              전체 {filteredPosts.length}개 · {pageSize}개씩 보기
-            </div>
-            <div className="flex items-center justify-center gap-2">
-              <Button type="button" variant="outline" className="px-3 py-2 text-xs" disabled={safePage <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>이전</Button>
-              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">{safePage} / {totalPages}</div>
-              <Button type="button" variant="outline" className="px-3 py-2 text-xs" disabled={safePage >= totalPages} onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}>다음</Button>
-            </div>
-          </div>
         </>
       )}
+
+      {popupPostsReady && !popupPostsLoadErrorMessage ? (
+        <div className="grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+          <div className="text-[11px] text-slate-500 sm:justify-self-start">
+            검색 결과 {filteredPosts.length}건 · {safePage} / {totalPages}페이지
+          </div>
+          <div className="flex items-center justify-center gap-2 sm:justify-self-center">
+            <Button type="button" variant="outline" className="px-3 py-2 text-xs" disabled={safePage <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>이전</Button>
+            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">{safePage} / {totalPages}</div>
+            <Button type="button" variant="outline" className="px-3 py-2 text-xs" disabled={safePage >= totalPages} onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}>다음</Button>
+          </div>
+          <div className="flex sm:justify-self-end">
+            <Button type="button" variant="primary" onClick={() => openPopupPostDialog()}>
+              팝업 등록
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

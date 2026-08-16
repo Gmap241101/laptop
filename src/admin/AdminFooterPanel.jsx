@@ -3,14 +3,16 @@ import {
   ArrowDown,
   ArrowUp,
   Edit3,
-  Plus,
   Save,
   Trash2,
   X,
 } from 'lucide-react';
 import { RichTextEditor } from '../components/RichTextEditor.jsx';
+import RichTextContent from '../components/RichTextContent.jsx';
 import ModalPortal from '../components/ModalPortal.jsx';
 import { preloadAdminFooterPageContent } from '../features/boards/adminSiteContentCatalogService.js';
+
+const FOOTER_PAGE_PAGE_SIZE = 10;
 
 const normalizeFooterAddressId = (value = '') =>
   String(value || '').trim().toLowerCase().replace(/^\/+|\/+$/g, '');
@@ -49,14 +51,75 @@ export default function AdminFooterPanel({ ctx }) {
     setFooterConfigDraft,
     setFooterPageForm,
     toggleFooterPageEnabled,
+    triggerConfirm,
   } = ctx;
 
   const [titleImagePreviewFailed, setTitleImagePreviewFailed] = useState(false);
+  const [footerConfigDialogOpen, setFooterConfigDialogOpen] = useState(false);
+  const [footerConfigDialogInitial, setFooterConfigDialogInitial] = useState(null);
+  const [footerPageListPage, setFooterPageListPage] = useState(1);
   const isImageTitle = footerPageForm.titleDisplayType === 'image';
+  const footerPageTotalPages = Math.max(1, Math.ceil((footerPages || []).length / FOOTER_PAGE_PAGE_SIZE));
+  const safeFooterPageListPage = Math.min(Math.max(1, footerPageListPage), footerPageTotalPages);
+  const paginatedFooterPages = (footerPages || []).slice(
+    (safeFooterPageListPage - 1) * FOOTER_PAGE_PAGE_SIZE,
+    safeFooterPageListPage * FOOTER_PAGE_PAGE_SIZE
+  );
 
   useEffect(() => {
     setTitleImagePreviewFailed(false);
   }, [footerPageForm.titleImageUrl, footerPageForm.titleDisplayType]);
+
+
+  const openFooterConfigDialog = () => {
+    if (!footerConfigReady || footerConfigSaving) return;
+    const initialDraft = {
+      enabled: footerConfigDraft.enabled !== false,
+      contentHtml: footerConfigDraft.contentHtml || '',
+    };
+    setFooterConfigDialogInitial(initialDraft);
+    setFooterConfigDraft(initialDraft);
+    setFooterConfigDialogOpen(true);
+  };
+
+  const resetAndCloseFooterConfigDialog = () => {
+    if (footerConfigDialogInitial) {
+      setFooterConfigDraft(footerConfigDialogInitial);
+    }
+    setFooterConfigDialogOpen(false);
+    setFooterConfigDialogInitial(null);
+  };
+
+  const closeFooterConfigDialog = () => {
+    if (footerConfigSaving || !footerConfigDialogOpen) return;
+    const currentDraft = {
+      enabled: footerConfigDraft.enabled !== false,
+      contentHtml: footerConfigDraft.contentHtml || '',
+    };
+    const hasUnsavedChanges =
+      Boolean(footerConfigDialogInitial) &&
+      JSON.stringify(currentDraft) !== JSON.stringify(footerConfigDialogInitial);
+
+    if (!hasUnsavedChanges) {
+      resetAndCloseFooterConfigDialog();
+      return;
+    }
+
+    triggerConfirm(
+      '저장되지 않은 푸터 공통 정보',
+      '저장되지 않은 푸터 공통 정보 변경사항이 있습니다. 저장하지 않고 닫으시겠습니까?',
+      async () => {
+        resetAndCloseFooterConfigDialog();
+      }
+    );
+  };
+
+  const handleSaveFooterConfig = async () => {
+    const saved = await saveFooterConfig();
+    if (!saved) return;
+    setFooterConfigDialogOpen(false);
+    setFooterConfigDialogInitial(null);
+  };
 
   const footerPageDirty = Boolean(
     footerPageDialog && JSON.stringify(footerPageForm) !== footerPageDialog.initialForm
@@ -97,34 +160,18 @@ export default function AdminFooterPanel({ ctx }) {
           <div>
             <h3 className="text-sm font-bold text-slate-900">푸터 공통 정보</h3>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
-              회색 배경 영역의 회사명, 주소, 연락처, 등록번호, 저작권 문구 등을 작성합니다.
+              실제 사용자 화면의 푸터 하단 스타일로 공통 정보가 표시되는 모습을 미리 봅니다.
             </p>
           </div>
-
-          <label className="inline-flex shrink-0 items-center gap-2 text-xs font-semibold text-slate-600">
-            <span>사용</span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={Boolean(footerConfigDraft.enabled)}
-              disabled={!footerConfigReady || footerConfigSaving}
-              onClick={() =>
-                setFooterConfigDraft((prev) => ({
-                  ...prev,
-                  enabled: !Boolean(prev.enabled),
-                }))
-              }
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
-                footerConfigDraft.enabled ? 'bg-emerald-500' : 'bg-slate-300'
-              } disabled:cursor-not-allowed disabled:opacity-60`}
-            >
-              <span
-                className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${
-                  footerConfigDraft.enabled ? 'translate-x-6' : 'translate-x-1'
-                }`}
-              />
-            </button>
-          </label>
+          {footerConfigReady && !footerConfigLoadErrorMessage ? (
+            <span className={`inline-flex shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold ${
+              footerConfigDraft.enabled !== false
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                : 'border-slate-200 bg-slate-100 text-slate-600'
+            }`}>
+              {footerConfigDraft.enabled !== false ? '사용 중' : '사용 안 함'}
+            </span>
+          ) : null}
         </div>
 
         <div className="space-y-4 p-5">
@@ -138,6 +185,96 @@ export default function AdminFooterPanel({ ctx }) {
             </div>
           ) : (
             <>
+              <div className="overflow-hidden rounded-xl border border-slate-300 bg-white">
+                <div className="bg-slate-100">
+                  <div className="mx-auto max-w-7xl px-5 py-8">
+                    {String(footerConfigDraft.contentHtml || '').trim() ? (
+                      <RichTextContent
+                        html={footerConfigDraft.contentHtml}
+                        className="footer-rich-content text-xs leading-6 text-slate-600 sm:text-sm"
+                      />
+                    ) : (
+                      <div className="text-xs leading-6 text-slate-400 sm:text-sm">
+                        등록된 푸터 공통 정보가 없습니다.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {footerConfigDraft.enabled === false ? (
+                <p className="text-[11px] leading-5 text-slate-500">
+                  현재 공통 정보는 사용 안 함 상태이므로 실제 사용자 화면에는 표시되지 않습니다.
+                </p>
+              ) : null}
+
+              <div className="flex justify-end">
+                <Button type="button" variant="primary" onClick={openFooterConfigDialog}>
+                  공통 정보 수정
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      </section>
+
+      {footerConfigDialogOpen && (
+        <ModalPortal
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 px-4 py-6 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label="푸터 공통 정보 수정"
+        >
+          <section className="max-h-[94vh] w-full max-w-5xl overflow-y-auto mk-modal-scroll-shell rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">푸터 공통 정보 수정</h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  실제 푸터 하단에 표시할 회사 정보와 안내 문구를 편집합니다.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeFooterConfigDialog}
+                disabled={footerConfigSaving}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed"
+                aria-label="닫기"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-5">
+              <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div>
+                  <div className="text-xs font-bold text-slate-800">푸터 공통 정보 사용</div>
+                  <div className="mt-1 text-[11px] leading-5 text-slate-500">
+                    사용 안 함으로 저장하면 사용자 화면의 공통 정보 영역을 숨깁니다.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={Boolean(footerConfigDraft.enabled)}
+                  disabled={footerConfigSaving}
+                  onClick={() =>
+                    setFooterConfigDraft((prev) => ({
+                      ...prev,
+                      enabled: !Boolean(prev.enabled),
+                    }))
+                  }
+                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition ${
+                    footerConfigDraft.enabled ? 'bg-emerald-500' : 'bg-slate-300'
+                  } disabled:cursor-not-allowed disabled:opacity-60`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${
+                      footerConfigDraft.enabled ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
               <RichTextEditor
                 label="공통 정보 내용"
                 value={footerConfigDraft.contentHtml}
@@ -145,25 +282,34 @@ export default function AdminFooterPanel({ ctx }) {
                   setFooterConfigDraft((prev) => ({ ...prev, contentHtml }))
                 }
                 placeholder="회사명, 주소, 연락처, 등록번호, 저작권 문구 등을 입력해 주세요."
-                minHeight={220}
+                minHeight={320}
                 disabled={footerConfigSaving}
                 allowVideos={false}
               />
 
-              <div className="flex justify-end">
+              <div className="flex flex-col gap-2 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={closeFooterConfigDialog}
+                  disabled={footerConfigSaving}
+                >
+                  취소
+                </Button>
                 <Button
                   type="button"
                   variant="primary"
-                  onClick={saveFooterConfig}
+                  onClick={handleSaveFooterConfig}
                   disabled={footerConfigSaving}
                 >
+                  <Save size={14} />
                   {footerConfigSaving ? '저장 중...' : '공통 정보 저장'}
                 </Button>
               </div>
-            </>
-          )}
-        </div>
-      </section>
+            </div>
+          </section>
+        </ModalPortal>
+      )}
 
       {footerPageDialog && (
         <ModalPortal
@@ -496,24 +642,11 @@ export default function AdminFooterPanel({ ctx }) {
       )}
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h3 className="text-sm font-bold text-slate-900">푸터 메뉴 페이지</h3>
-            <p className="mt-1 text-[11px] leading-5 text-slate-500">
-              푸터 상단의 메뉴 제목과 클릭했을 때 표시할 상세 본문 또는 외부 링크를 관리합니다.
-            </p>
-          </div>
-
-          <Button
-            type="button"
-            variant="primary"
-            className="shrink-0 px-4 py-2 text-xs"
-            onClick={() => openFooterPageDialog()}
-            disabled={Boolean(footerPageDialog)}
-          >
-            <Plus size={14} />
-            메뉴 페이지 등록
-          </Button>
+        <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
+          <h3 className="text-sm font-bold text-slate-900">푸터 메뉴 페이지</h3>
+          <p className="mt-1 text-[11px] leading-5 text-slate-500">
+            푸터 상단의 메뉴 제목과 클릭했을 때 표시할 상세 본문 또는 외부 링크를 관리합니다.
+          </p>
         </div>
 
         <div className="p-5">
@@ -543,7 +676,9 @@ export default function AdminFooterPanel({ ctx }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {footerPages.map((page, index) => (
+                  {paginatedFooterPages.map((page) => {
+                    const globalIndex = (footerPages || []).findIndex((item) => item.id === page.id);
+                    return (
                     <tr key={page.id} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50">
                       <td className="px-3 py-3">
                         <div className="flex items-center justify-center gap-1">
@@ -551,7 +686,7 @@ export default function AdminFooterPanel({ ctx }) {
                             type="button"
                             title="위로 이동"
                             aria-label="위로 이동"
-                            disabled={index === 0}
+                            disabled={globalIndex <= 0}
                             onClick={() => moveFooterPage(page.id, -1)}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-30"
                           >
@@ -561,7 +696,7 @@ export default function AdminFooterPanel({ ctx }) {
                             type="button"
                             title="아래로 이동"
                             aria-label="아래로 이동"
-                            disabled={index === footerPages.length - 1}
+                            disabled={globalIndex < 0 || globalIndex >= footerPages.length - 1}
                             onClick={() => moveFooterPage(page.id, 1)}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-30"
                           >
@@ -648,11 +783,53 @@ export default function AdminFooterPanel({ ctx }) {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           )}
+
+          {footerPagesReady && !footerPagesLoadErrorMessage ? (
+            <div className="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+              <div className="text-[11px] text-slate-500 sm:justify-self-start">
+                전체 메뉴 페이지 {footerPages.length}건 · {safeFooterPageListPage} / {footerPageTotalPages}페이지
+              </div>
+              <div className="flex items-center justify-center gap-2 sm:justify-self-center">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="px-3 py-2 text-xs"
+                  disabled={safeFooterPageListPage <= 1}
+                  onClick={() => setFooterPageListPage((prev) => Math.max(1, prev - 1))}
+                >
+                  이전
+                </Button>
+                <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
+                  {safeFooterPageListPage} / {footerPageTotalPages}
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="px-3 py-2 text-xs"
+                  disabled={safeFooterPageListPage >= footerPageTotalPages}
+                  onClick={() => setFooterPageListPage((prev) => Math.min(footerPageTotalPages, prev + 1))}
+                >
+                  다음
+                </Button>
+              </div>
+              <div className="flex sm:justify-self-end">
+                <Button
+                  type="button"
+                  variant="primary"
+                  onClick={() => openFooterPageDialog()}
+                  disabled={Boolean(footerPageDialog)}
+                >
+                  메뉴 페이지 등록
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </section>
 

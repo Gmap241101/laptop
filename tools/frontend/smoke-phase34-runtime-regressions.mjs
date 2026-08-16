@@ -763,6 +763,18 @@ assert.ok(footerPanelSource.includes('페이지 주소 ID'), 'footer content edi
 assert.ok(footerPanelSource.includes('/info/'), 'footer content editor must preview the /info/<addressId> canonical URL');
 assert.ok(!footerPanelSource.includes('/footer/'), 'footer content editor must not advertise the superseded /footer/<addressId> route');
 assert.ok(footerPanelSource.includes('다른 푸터 페이지와 중복될 수 없습니다.'), 'footer editor must explain address uniqueness');
+assert.match(adminPopupPanelSource, /grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-\[1fr_auto_1fr\]/, 'popup management footer navigation must use the same three-column pattern as member account management');
+assert.match(adminPopupPanelSource, /검색 결과 \{filteredPosts\.length\}건 · \{safePage\} \/ \{totalPages\}페이지/, 'popup management footer navigation must show result and page status');
+assert.match(adminPopupPanelSource, /sm:justify-self-end[\s\S]*팝업 등록/, 'popup registration must live at the lower-right navigation action slot');
+assert.equal(adminPopupPanelSource.includes('<Plus size={14} />'), false, 'popup registration must not keep the legacy plus-prefixed header action');
+assert.match(footerPanelSource, /전체 메뉴 페이지 \{footerPages\.length\}건 · \{safeFooterPageListPage\} \/ \{footerPageTotalPages\}페이지/, 'footer menu page navigation must show result and page status');
+assert.match(footerPanelSource, /sm:grid-cols-\[1fr_auto_1fr\][\s\S]*메뉴 페이지 등록/, 'footer menu registration must live at the lower-right three-column navigation action slot');
+assert.match(footerPanelSource, /const paginatedFooterPages = \(footerPages \|\| \[\]\)\.slice/, 'footer menu page list must paginate instead of rendering an unbounded list above the navigation controls');
+assert.match(footerPanelSource, /<RichTextContent[\s\S]*className="footer-rich-content text-xs leading-6 text-slate-600 sm:text-sm"/, 'footer common-information preview must reuse the actual user footer typography');
+assert.match(footerPanelSource, /<div className="bg-slate-100">[\s\S]*mx-auto max-w-7xl px-5 py-8/, 'footer common-information preview must reuse the actual user footer background and spacing');
+assert.match(footerPanelSource, /공통 정보 수정/, 'footer common information must be edited from a dedicated modal action');
+assert.match(footerPanelSource, /aria-label="푸터 공통 정보 수정"[\s\S]*<RichTextEditor/, 'footer common information editor must render in the shared modal shell rather than inline');
+assert.match(footerPanelSource, /저장되지 않은 푸터 공통 정보 변경사항이 있습니다\. 저장하지 않고 닫으시겠습니까\?/, 'footer common-information editor must confirm before discarding unsaved changes');
 assert.match(rentalDataSubscriptionSource, /assetCutoverConfig\.readRequested[\s\S]*assetCategories: authoritativeAssetCategoriesRef\.current/, 'rental-config must not regain persistent asset-category authority after PostgreSQL cutover');
 assert.match(rentalDataSubscriptionSource, /authoritativeAssetCategoriesRef\.current = categories/, 'PostgreSQL asset catalog categories must become the sole authoritative category snapshot before merged runtime state catches up');
 assert.match(adminAppSource, /const assetCategoryCatalogReady = Boolean\([\s\S]*publicCatalogAssetsReady[\s\S]*JSON\.stringify\(data\.assetCategories \|\| \[\]\) === JSON\.stringify\(splitPublicConfig\.assetCategories \|\| \[\]\)/, 'administrator category UI must wait until the merged data snapshot matches the authoritative PostgreSQL catalog');
