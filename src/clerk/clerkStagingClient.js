@@ -101,6 +101,30 @@ const getSessionToken = async (clerk) => {
   return token;
 };
 
+const endActiveClerkSessionWithoutNavigation = async (clerk) => {
+  const activeSession = clerk?.session;
+  if (!activeSession) return;
+
+  if (typeof activeSession.end === 'function') {
+    await activeSession.end();
+    if (clerk.session && typeof clerk.setActive === 'function') {
+      await clerk.setActive({ session: null });
+    }
+    return;
+  }
+
+  if (typeof clerk?.client?.removeSessions === 'function') {
+    await clerk.client.removeSessions();
+    return;
+  }
+
+  const error = new Error(
+    'Clerk cannot clear the active session without navigating away from the current application surface.'
+  );
+  error.code = 'clerk_non_navigating_session_clear_unavailable';
+  throw error;
+};
+
 const requestWithSession = async ({ clerk, apiBaseUrl, fetchImpl, path, method = 'GET', headers = {}, body }) => {
   const token = await getSessionToken(clerk);
   const authorityHeaders = { ...headers };
@@ -1631,7 +1655,7 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
         error.code = 'admin_clerk_signin_unavailable';
         throw error;
       }
-      if (clerk.session) await clerk.signOut();
+      await endActiveClerkSessionWithoutNavigation(clerk);
       pendingAdminClientTrust = null;
       try {
         const signIn = await clerk.client.signIn.create({

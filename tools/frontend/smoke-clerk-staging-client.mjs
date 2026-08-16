@@ -356,6 +356,75 @@ assert.equal(browserCalls.some((call) => call.options.headers['X-Firebase-Author
 
 let deviceTrustSendCount = 0;
 let deviceTrustVerifyCount = 0;
+let adminSurfaceSessionEndCount = 0;
+let adminSurfaceSignOutCount = 0;
+let adminSurfaceNullActivationCount = 0;
+const existingUserSession = {
+  id: 'sess_existing_user',
+  async end() {
+    adminSurfaceSessionEndCount += 1;
+    return this;
+  },
+};
+const adminSurfaceClerk = {
+  loaded: true,
+  session: existingUserSession,
+  user: {
+    id: 'user_admin_surface',
+    primaryEmailAddress: { emailAddress: 'admin@example.com' },
+  },
+  client: {
+    signIn: {
+      async create({ strategy, identifier, password }) {
+        assert.equal(strategy, 'password');
+        assert.equal(identifier, 'admin@example.com');
+        assert.equal(password, 'password123');
+        return { status: 'complete', createdSessionId: 'sess_admin_surface' };
+      },
+    },
+    resetSignIn() {},
+  },
+  async load() {},
+  async signOut() {
+    adminSurfaceSignOutCount += 1;
+    throw new Error('credential switching must not invoke redirect-capable clerk.signOut()');
+  },
+  async setActive({ session }) {
+    if (session === null) {
+      adminSurfaceNullActivationCount += 1;
+      this.session = null;
+      return;
+    }
+    this.session = {
+      id: session,
+      async getToken() { return 'admin-surface-token'; },
+    };
+  },
+};
+const adminSurfaceLocation = { pathname: '/admin', search: '?clerkTest=1' };
+const adminSurfaceClient = createClerkStagingClient({
+  env: {
+    MODE: 'staging',
+    VITE_CLERK_STAGING_ENABLED: 'true',
+    VITE_CLERK_PUBLISHABLE_KEY: key,
+    VITE_API_URL: 'https://api.example.com',
+  },
+  windowRef: {
+    atob: decode,
+    location: adminSurfaceLocation,
+    Clerk: adminSurfaceClerk,
+  },
+  documentRef: {},
+  fetchImpl: async () => { throw new Error('admin surface session-switch smoke must not call backend fetch'); },
+});
+const adminSurfaceSignIn = await adminSurfaceClient.signInWithPassword('admin@example.com', 'password123');
+assert.equal(adminSurfaceSignIn.status, 'complete');
+assert.equal(adminSurfaceSessionEndCount, 1, 'an existing user Clerk session must be ended before administrator credential sign-in');
+assert.equal(adminSurfaceNullActivationCount, 1, 'the ended session must be detached without browser navigation');
+assert.equal(adminSurfaceSignOutCount, 0, 'administrator credential switching must never call redirect-capable clerk.signOut()');
+assert.equal(adminSurfaceLocation.pathname, '/admin', 'administrator credential switching must preserve the dedicated /admin document');
+assert.equal(adminSurfaceClerk.session?.id, 'sess_admin_surface', 'the new administrator Clerk session must become active in-place');
+
 const deviceTrustSignIn = {
   status: 'needs_client_trust',
   createdSessionId: '',
