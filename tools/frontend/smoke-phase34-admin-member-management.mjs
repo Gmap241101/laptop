@@ -1,14 +1,32 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const [panel, createDialog, editDialog, identityFields, createActions, editActions, controller, client, detail, statusActions, contextSlices] = await Promise.all([
+const [
+  panel,
+  createDialog,
+  editDialog,
+  identityFields,
+  passwordDialog,
+  passwordActions,
+  createActions,
+  editActions,
+  controller,
+  rentalSubscription,
+  client,
+  detail,
+  statusActions,
+  contextSlices,
+] = await Promise.all([
   readFile(new URL('../../src/admin/AdminMemberAccountsPanel.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../../src/admin/AdminMemberAccountCreateDialog.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../../src/admin/AdminMemberAccountEditDialog.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../../src/admin/AdminMemberDirectoryIdentityFields.jsx', import.meta.url), 'utf8'),
+  readFile(new URL('../../src/admin/AdminManagedPasswordDialog.jsx', import.meta.url), 'utf8'),
+  readFile(new URL('../../src/features/members/useAdminMemberAccountPasswordActions.js', import.meta.url), 'utf8'),
   readFile(new URL('../../src/features/members/useAdminMemberAccountCreateActions.js', import.meta.url), 'utf8'),
   readFile(new URL('../../src/features/members/useAdminMemberAccountEditActions.js', import.meta.url), 'utf8'),
   readFile(new URL('../../src/features/members/useAdminMemberAccountsController.js', import.meta.url), 'utf8'),
+  readFile(new URL('../../src/features/requests/useRentalDataSubscriptionController.js', import.meta.url), 'utf8'),
   readFile(new URL('../../src/clerk/clerkStagingClient.js', import.meta.url), 'utf8'),
   readFile(new URL('../../src/admin/AdminMemberAccountDetailPanel.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../../src/features/members/useAdminMemberAccountStatusActions.js', import.meta.url), 'utf8'),
@@ -32,6 +50,9 @@ assert.match(identityFields, /회원 가입 정책에서 명부 사용이 활성
 assert.match(identityFields, /\{policyEnabled \? \(/);
 assert.match(identityFields, /const managed = Boolean\(policyEnabled\) && form\.useManagedDirectory !== false/);
 assert.match(identityFields, /useManagedDirectory/);
+assert.match(identityFields, /const memberOptions = useMemo/);
+assert.match(identityFields, /normalize\(borrower\?\.team\) === normalize\(form\.team\)/);
+assert.match(identityFields, /value=\{normalize\(borrower\.name\)\}/);
 assert.match(createDialog, /createInitialForm\(memberDirectoryPolicyEnabled\)/);
 assert.match(createDialog, /policyEnabled=\{memberDirectoryPolicyEnabled\}/);
 assert.match(editDialog, /Boolean\(memberDirectoryPolicyEnabled\) && !account\?\.directoryOverrideByAdmin/);
@@ -39,6 +60,9 @@ assert.match(editDialog, /policyEnabled=\{memberDirectoryPolicyEnabled\}/);
 assert.match(createActions, /directoryOverrideByAdmin: Boolean\(memberDirectoryPolicyEnabled && form\.useManagedDirectory === false\)/);
 assert.match(editActions, /directoryOverrideByAdmin = Boolean\(memberDirectoryPolicyEnabled && form\?\.useManagedDirectory === false\)/);
 assert.match(contextSlices, /memberAccounts: contextKeys\('[^']*memberDirectoryBorrowers[^']*memberDirectoryPolicyEnabled[^']*memberDirectoryTeams/);
+assert.match(rentalSubscription, /\['people', 'signupPolicy', 'memberAccounts', 'adminAccounts'\]\.includes\(adminTab\)/);
+assert.match(rentalSubscription, /clerkStagingClient\.getAdminMemberDirectory\(\)/);
+assert.match(rentalSubscription, /name: String\(entry\?\.name \|\| ''\)/);
 assert.match(createActions, /clerkStagingClient\.createAdminMember/);
 assert.match(controller, /statusFilter === 'all'\s*\? 'current'/);
 assert.match(controller, /accountView === 'retired'/);
@@ -46,5 +70,23 @@ assert.match(client, /requestAdminMemberCreatePostgresql/);
 assert.match(detail, /재가입은 항상 새 계정으로 처리/);
 assert.match(detail, /회원 완전 삭제/);
 for (const marker of ['confirmPendingMemberRejection','confirmMemberRetirement','confirmRetiredMemberPurge','rejectAdminPendingMember','retireAdminMember','purgeAdminRetiredMember']) assert.ok(statusActions.includes(marker), marker);
+
+// Password changes are intentionally separated from profile saves.
+assert.match(editDialog, /로그인 비밀번호/);
+assert.match(editDialog, /비밀번호 수정/);
+assert.match(editDialog, /onPasswordChange/);
+assert.doesNotMatch(editDialog, /새 비밀번호 확인/);
+assert.match(panel, /AdminManagedPasswordDialog/);
+assert.match(panel, /useAdminMemberAccountPasswordActions/);
+assert.match(passwordDialog, /새 비밀번호/);
+assert.match(passwordDialog, /새 비밀번호 확인/);
+assert.match(passwordActions, /clerkStagingClient\.changeAdminMemberPassword/);
+assert.match(client, /\/api\/admin\/members\/\$\{encodeURIComponent\(uid\)\}\/password/);
+
+// List footer contract: result summary left, paginator center, create action right.
+assert.match(panel, /sm:grid-cols-\[1fr_auto_1fr\]/);
+assert.match(panel, /검색 결과 \{adminUserAccountResultCount\}건 · \{safeAdminUserAccountPage\} \/ \{adminUserAccountTotalPages\}페이지/);
+assert.match(panel, /\{safeAdminUserAccountPage\} \/ \{adminUserAccountTotalPages\}/);
+assert.match(panel, /sm:justify-self-end[\s\S]*회원 신규 등록/);
 
 console.log('[phase34-admin-member-management-frontend-smoke] PASS');

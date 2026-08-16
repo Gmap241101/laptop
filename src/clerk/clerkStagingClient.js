@@ -1046,6 +1046,19 @@ export const requestAdminSignupPolicyPatch = async ({ clerk, apiBaseUrl, fetchIm
   return payload;
 };
 
+export const requestAdminMemberPasswordChange = async ({ clerk, apiBaseUrl, fetchImpl, firebaseUid, newPassword }) => {
+  const uid = trim(firebaseUid);
+  if (!uid) throw new Error('Member UID is required.');
+  const { response, payload } = await requestWithSession({
+    clerk, apiBaseUrl, fetchImpl, path: `/api/admin/members/${encodeURIComponent(uid)}/password`, method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newPassword: String(newPassword || '') }),
+  });
+  if (!response.ok) { const error = new Error(`Admin member password change failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
+  if (!payload?.authenticated || !payload?.authorized || payload?.adminMemberPasswordChange?.authority !== 'clerk' || payload?.adminMemberPasswordChange?.operation !== 'admin-member-password-change' || payload?.adminMemberPasswordChange?.changed !== true) throw new Error('Backend returned an invalid admin member password change response.');
+  return payload;
+};
+
 export const requestAdminMemberLifecycleMutation = async ({ clerk, apiBaseUrl, fetchImpl, firebaseUid, operation }) => {
   const uid = trim(firebaseUid);
   const operationConfig = {
@@ -1079,6 +1092,15 @@ export const requestAdminIdentityRegistryBootstrap = async ({ clerk, apiBaseUrl,
   const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: '/api/admin/identity-registry/bootstrap', method: 'POST', headers: { } });
   if (!response.ok) { const error = new Error(`Admin identity registry bootstrap failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
   if (!payload?.authenticated || !payload?.authorized || payload?.adminIdentityRegistry?.target !== 'postgresql-admin-registry') throw new Error('Backend returned an invalid admin identity registry response.');
+  return payload;
+};
+
+export const requestAdminAccountPasswordChange = async ({ clerk, apiBaseUrl, fetchImpl, key, newPassword }) => {
+  const accountKey = trim(key);
+  if (!accountKey) throw new Error('Administrator account key is required.');
+  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: `/api/admin/accounts/${encodeURIComponent(accountKey)}/password`, method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ newPassword: String(newPassword || '') }) });
+  if (!response.ok) { const error = new Error(`Administrator password change failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
+  if (!payload?.authenticated || !payload?.authorized || payload?.adminAccountPasswordChange?.operation !== 'password-change' || payload?.adminAccountPasswordChange?.changed !== true) throw new Error('Backend returned an invalid administrator password change payload.');
   return payload;
 };
 
@@ -2036,6 +2058,10 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
       const clerk = await initialize();
       return requestAdminMemberStatusAuthorityWrite({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, firebaseUid, status });
     },
+    async changeAdminMemberPassword(firebaseUid, newPassword) {
+      const clerk = await initialize();
+      return requestAdminMemberPasswordChange({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseUid, newPassword });
+    },
     async rejectAdminPendingMember(firebaseUid) {
       const clerk = await initialize();
       return requestAdminMemberLifecycleMutation({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseUid, operation: 'reject' });
@@ -2095,6 +2121,10 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async updateAdminAccountPostgresql(key, input) {
       const clerk = await initialize();
       return requestAdminAccountMutation({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, method: 'PUT', path: `/api/admin/accounts/${encodeURIComponent(key)}`, body: input, expectedOperation: 'update' });
+    },
+    async changeAdminAccountPasswordPostgresql(key, newPassword) {
+      const clerk = await initialize();
+      return requestAdminAccountPasswordChange({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, key, newPassword });
     },
     async setAdminAccountLockPostgresql(key, locked) {
       const clerk = await initialize();

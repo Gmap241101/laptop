@@ -213,6 +213,7 @@ export const createRequestHandler = ({
     async list() { const error = new Error('Admin Clerk auth service is not configured.'); error.code = 'admin_clerk_auth_not_configured'; throw error; },
     async create() { const error = new Error('Admin Clerk auth service is not configured.'); error.code = 'admin_clerk_auth_not_configured'; throw error; },
     async update() { const error = new Error('Admin Clerk auth service is not configured.'); error.code = 'admin_clerk_auth_not_configured'; throw error; },
+    async changePassword() { const error = new Error('Admin Clerk auth service is not configured.'); error.code = 'admin_clerk_auth_not_configured'; throw error; },
     async setLock() { const error = new Error('Admin Clerk auth service is not configured.'); error.code = 'admin_clerk_auth_not_configured'; throw error; },
     async retire() { const error = new Error('Admin Clerk auth service is not configured.'); error.code = 'admin_clerk_auth_not_configured'; throw error; },
     async migrateCurrent() { const error = new Error('Admin migration is retired.'); error.code = 'admin_migration_retired'; error.status = 410; throw error; },
@@ -261,6 +262,7 @@ export const createRequestHandler = ({
   },
   userClerkAuthService = {
     async createAdminManagedMember() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
+    async changeAdminManagedMemberPassword() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
     async rejectAdminPendingMember() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
     async retireAdminMember() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
     async purgeAdminRetiredMember() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
@@ -679,10 +681,12 @@ export const createRequestHandler = ({
           adminMemberDirectoryRestore: '/api/admin/member-directory/restore-mismatches',
           adminMemberSignupPolicy: '/api/admin/member-signup-policy',
           adminMemberProfileAuthority: '/api/admin/members/:uid/profile',
+          adminMemberPasswordAuthority: '/api/admin/members/:uid/password',
           adminMemberStatusAuthority: '/api/admin/members/:uid/status',
           adminPendingMemberReject: '/api/admin/members/:uid/reject',
           adminMemberRetire: '/api/admin/members/:uid/retire',
           adminRetiredMemberPurge: '/api/admin/members/:uid',
+          adminAccountPasswordAuthority: '/api/admin/accounts/:id/password',
           adminIdentityRegistryBootstrap: '/api/admin/identity-registry/bootstrap',
           accountRecoveryEmail: '/api/account-recovery/email',
           accountRecoveryPasswordResetVerify: '/api/account-recovery/password-reset/verify',
@@ -1656,6 +1660,21 @@ export const createRequestHandler = ({
         writeJson(response, 201, { ...basePayload, authenticated: true, authorized: true, adminAccountMutation: { operation: 'create', ...result } }, headers);
       } catch (error) {
         writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: false, error: error?.code || 'admin_account_create_failed' }, headers);
+      }
+      return;
+    }
+
+    const adminAccountPasswordMatch = request.method === 'POST' ? url.pathname.match(/^\/api\/admin\/accounts\/([^/]+)\/password$/) : null;
+    if (adminAccountPasswordMatch) {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      let body;
+      try { body = await readJsonBody(request); } catch (error) { writeJson(response, error.status || 400, { ...basePayload, authenticated: true, error: error.code || 'invalid_json_body' }, headers); return; }
+      try {
+        const result = await adminClerkAuthService.changePassword({ actorClerkUserId: authority.auth.userId, targetKey: decodeURIComponent(adminAccountPasswordMatch[1]), newPassword: String(body?.newPassword || '') });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, adminAccountPasswordChange: { operation: 'password-change', ...result } }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: false, error: error?.code || 'admin_account_password_change_failed' }, headers);
       }
       return;
     }
@@ -2808,6 +2827,22 @@ export const createRequestHandler = ({
           authorized: true,
           error: error?.code || 'admin_member_provision_failed',
         }, headers);
+      }
+      return;
+    }
+
+    const adminMemberPasswordMatch = request.method === 'POST' ? url.pathname.match(/^\/api\/admin\/members\/([^/]+)\/password$/) : null;
+    if (adminMemberPasswordMatch) {
+      const admin = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!admin) return;
+      let body;
+      try { body = await readJsonBody(request); } catch (error) { writeJson(response, error.status || 400, { ...basePayload, authenticated: true, error: error.code || 'invalid_json_body' }, headers); return; }
+      try {
+        const result = await userClerkAuthService.changeAdminManagedMemberPassword({ actorClerkUserId: admin.auth.userId, targetUid: decodeURIComponent(adminMemberPasswordMatch[1]), newPassword: String(body?.newPassword || '') });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, adminMemberPasswordChange: result }, headers);
+      } catch (error) {
+        console.error('[phase34] admin member password change failed', { requestId, code: error?.code });
+        writeJson(response, error?.status || 409, { ...basePayload, authenticated: true, authorized: true, error: error?.code || 'admin_member_password_change_failed' }, headers);
       }
       return;
     }

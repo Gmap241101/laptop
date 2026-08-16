@@ -11,11 +11,14 @@ export default function AdminAccountEditDialog({
   authenticatedAdminAccount,
   onClose,
   onSave,
-  onPasswordReset,
-  isCurrentAdminAccount = false,
+  onPasswordChange,
 }) {
   if (!account) return null;
   const isClerkLinked = Boolean(account.authUid || account.clerkUserId);
+  const canChangePassword = isClerkLinked && (
+    account.id === authenticatedAdminAccount?.id ||
+    (authenticatedAdminAccount?.adminRole || 'admin') === 'owner'
+  );
 
   return (
     <ModalPortal className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/55 p-4">
@@ -55,40 +58,26 @@ export default function AdminAccountEditDialog({
               <option value="owner">최고 관리자</option>
             </Select>
             <Input label="전화번호" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />
-            <Input
-              label="새 비밀번호"
-              type="password"
-              value={form.newPassword}
-              onChange={(v) => setForm({ ...form, newPassword: v })}
-              disabled={isClerkLinked && !isCurrentAdminAccount}
-              placeholder={isClerkLinked && !isCurrentAdminAccount ? '다른 관리자 계정은 직접 지정 불가' : '변경하지 않으면 비워두세요'}
-            />
-            <Input
-              label="새 비밀번호 확인"
-              type="password"
-              value={form.newPasswordConfirm}
-              onChange={(v) => setForm({ ...form, newPasswordConfirm: v })}
-              disabled={isClerkLinked && !isCurrentAdminAccount}
-            />
           </div>
 
           {isClerkLinked ? (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] leading-5 text-slate-500">
-              <p>
-                Clerk 로그인 이메일은 이 화면에서 직접 변경하지 않습니다.
-                {isCurrentAdminAccount
-                  ? ' 현재 로그인 중인 본인 계정은 새 비밀번호를 직접 변경할 수 있습니다.'
-                  : ' 다른 관리자 계정은 로그인 화면의 비밀번호 재설정을 사용해야 합니다.'}
-              </p>
-              {!isCurrentAdminAccount ? (
-                <div className="mt-3 flex justify-end">
-                  <Button type="button" variant="outline" onClick={() => onPasswordReset?.(account)}>
-                    비밀번호 재설정 안내
-                  </Button>
-                </div>
+            <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-[11px] leading-5 text-slate-500">
+                <div className="text-xs font-bold text-slate-800">로그인 비밀번호</div>
+                <div className="mt-1">Clerk 로그인 이메일은 이 화면에서 변경하지 않으며, 비밀번호는 개인정보 저장과 분리된 별도 모달에서 변경합니다.</div>
+                {!canChangePassword ? <div className="mt-1 text-amber-700">다른 관리자 계정의 비밀번호는 최고 관리자만 변경할 수 있습니다.</div> : null}
+              </div>
+              {canChangePassword ? (
+                <Button type="button" variant="outline" onClick={() => onPasswordChange?.(account)}>
+                  비밀번호 수정
+                </Button>
               ) : null}
             </div>
-          ) : null}
+          ) : (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] leading-5 text-amber-800">
+              Clerk 로그인 계정 연결정보가 없어 비밀번호를 수정할 수 없습니다.
+            </div>
+          )}
 
           <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
             <Button type="button" variant="outline" onClick={onClose}>취소</Button>

@@ -24,6 +24,7 @@ export default function AdminMemberAccountEditDialog({
   memberDirectoryTeams = [],
   memberDirectoryBorrowers = [],
   memberDirectoryPolicyEnabled = false,
+  onPasswordChange,
 }) {
   const initialPhone = useMemo(
     () => parseDomesticPhoneNumber(account?.phone || ''),
@@ -143,7 +144,17 @@ export default function AdminMemberAccountEditDialog({
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
               탈퇴 계정은 Clerk 로그인 계정이 삭제된 이용 종료 기록이므로 수정할 수 없습니다. 재가입은 새 회원 계정으로 처리합니다.
             </div>
-          ) : null}
+          ) : (
+            <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-xs font-bold text-slate-800">로그인 비밀번호</div>
+                <div className="mt-1 text-[11px] leading-5 text-slate-500">회원 개인정보 저장과 분리하여 별도 비밀번호 수정 모달에서 변경합니다.</div>
+              </div>
+              <Button type="button" variant="outline" onClick={() => onPasswordChange?.(account)} disabled={saving}>
+                비밀번호 수정
+              </Button>
+            </div>
+          )}
 
           <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
             <Button type="button" variant="outline" onClick={onClose} disabled={saving}>

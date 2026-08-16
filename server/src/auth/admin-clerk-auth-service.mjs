@@ -85,13 +85,18 @@ export const createAdminClerkAuthService = ({ repository, clerkClient }) => {
       if (duplicate) throw serviceError('admin_login_id_duplicate', 'Administrator ID already exists.', 409);
       const admin = await repository.update({ legacyAdminKey: target.legacyAdminKey, adminLoginId, organizationName: trim(input?.organizationName || target.organizationName), userName: trim(input?.userName || target.userName), phone: trim(input?.phone ?? target.phone), adminRole: nextRole });
       if (target.clerkUserId) await clerkClient.updateUserMetadata(target.clerkUserId, { publicMetadata: publicMetadata(admin), privateMetadata: privateMetadata(admin) });
-      const password = String(input?.newPassword || '');
-      if (password) {
-        if (password.length < 8) throw serviceError('admin_clerk_password_too_short', 'Administrator password must be at least 8 characters.', 400);
-        if (!target.clerkUserId) throw serviceError('admin_clerk_link_missing', 'Administrator Clerk identity is missing.', 409);
-        await clerkClient.updateUser(target.clerkUserId, { password });
-      }
       return Object.freeze({ source: 'clerk-postgresql', account: serialize(admin) });
+    },
+    async changePassword({ actorClerkUserId, targetKey, newPassword }) {
+      const actor = await requireActor(actorClerkUserId);
+      const target = await repository.findByFirebaseUid(trim(targetKey));
+      if (!target || target.status === 'retired') throw serviceError('admin_target_not_found', 'Administrator account was not found.', 404);
+      if (!target.clerkUserId) throw serviceError('admin_clerk_link_missing', 'Administrator Clerk identity is missing.', 409);
+      if (target.clerkUserId !== actor.clerkUserId) assertOwner(actor);
+      const password = String(newPassword || '');
+      if (password.length < 8) throw serviceError('admin_clerk_password_too_short', 'Administrator password must be at least 8 characters.', 400);
+      await clerkClient.updateUser(target.clerkUserId, { password });
+      return Object.freeze({ source: 'clerk', changed: true, account: serialize(target) });
     },
     async setLock({ actorClerkUserId, targetKey, locked }) {
       const actor = await requireActor(actorClerkUserId); assertOwner(actor);

@@ -7,7 +7,48 @@ import { createClerkDeviceTrustService } from '../../server/src/clerk/clerk-devi
 import { readServerConfig } from '../../server/src/config/env.mjs';
 import { createAdminRentalRequestService } from '../../server/src/rentals/admin-rental-request-service.mjs';
 import { createAccountLifecycleService } from '../../server/src/accounts/account-lifecycle-service.mjs';
+import { createAdminClerkAuthService } from '../../server/src/auth/admin-clerk-auth-service.mjs';
 import fs from 'node:fs';
+
+let adminPasswordUpdate = null;
+const adminPasswordOwner = { legacyAdminKey: 'admin:owner', firebaseUid: 'admin:owner', adminLoginId: 'owner', authEmail: 'owner@example.com', organizationName: '관리팀', userName: '최고관리자', phone: '', adminRole: 'owner', clerkUserId: 'clerk_owner', clerkLinkState: 'linked', status: 'active', lockUntil: null };
+const adminPasswordTarget = { legacyAdminKey: 'admin:target', firebaseUid: 'admin:target', adminLoginId: 'target', authEmail: 'target@example.com', organizationName: '관리팀', userName: '대상관리자', phone: '', adminRole: 'admin', clerkUserId: 'clerk_target', clerkLinkState: 'linked', status: 'active', lockUntil: null };
+const adminPasswordRegular = { ...adminPasswordOwner, legacyAdminKey: 'admin:regular', firebaseUid: 'admin:regular', adminLoginId: 'regular', authEmail: 'regular@example.com', userName: '일반관리자', adminRole: 'admin', clerkUserId: 'clerk_regular' };
+const adminPasswordService = createAdminClerkAuthService({
+  repository: {
+    async findByClerkUserId(clerkUserId) {
+      if (clerkUserId === 'clerk_owner') return adminPasswordOwner;
+      if (clerkUserId === 'clerk_regular') return adminPasswordRegular;
+      if (clerkUserId === 'clerk_target') return adminPasswordTarget;
+      return null;
+    },
+    async findByFirebaseUid(key) {
+      if (key === 'admin:owner') return adminPasswordOwner;
+      if (key === 'admin:regular') return adminPasswordRegular;
+      if (key === 'admin:target') return adminPasswordTarget;
+      return null;
+    },
+    async listActive() { return [adminPasswordOwner, adminPasswordRegular, adminPasswordTarget]; },
+  },
+  clerkClient: {
+    async getUser() { return { primaryEmail: 'owner@example.com' }; },
+    async findUserByEmail() { return null; },
+    async createUser() { throw new Error('not used'); },
+    async updateUser(clerkUserId, input) { adminPasswordUpdate = { clerkUserId, input }; return { clerkUserId }; },
+    async updateUserMetadata() {},
+    async deleteUser() {},
+  },
+});
+const adminPasswordChanged = await adminPasswordService.changePassword({ actorClerkUserId: 'clerk_owner', targetKey: 'admin:target', newPassword: 'AdminChanged1234' });
+assert.equal(adminPasswordChanged.changed, true);
+assert.deepEqual(adminPasswordUpdate, { clerkUserId: 'clerk_target', input: { password: 'AdminChanged1234' } });
+await assert.rejects(
+  () => adminPasswordService.changePassword({ actorClerkUserId: 'clerk_regular', targetKey: 'admin:target', newPassword: 'AdminChanged1234' }),
+  (error) => error?.code === 'admin_owner_required' && error?.status === 403,
+);
+const selfPasswordChanged = await adminPasswordService.changePassword({ actorClerkUserId: 'clerk_regular', targetKey: 'admin:regular', newPassword: 'SelfChanged1234' });
+assert.equal(selfPasswordChanged.changed, true);
+assert.deepEqual(adminPasswordUpdate, { clerkUserId: 'clerk_regular', input: { password: 'SelfChanged1234' } });
 
 let adminStatusMutationArgs = null;
 const adminRentalServiceContract = createAdminRentalRequestService({

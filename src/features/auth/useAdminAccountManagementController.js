@@ -7,7 +7,7 @@ export const ADMIN_CUSTOM_OPTION_VALUE = '__ADMIN_CUSTOM_INPUT__';
 export const ADMIN_ACCOUNT_PAGE_SIZE = 10;
 
 export const createDefaultAdminAccountForm = () => ({ adminLoginId: '', password: '', organizationName: '', customOrganizationName: '', userName: '', customUserName: '', email: '', phone: '', adminRole: 'admin' });
-export const createDefaultAdminAccountEditForm = () => ({ adminLoginId: '', organizationName: '', userName: '', email: '', phone: '', adminRole: 'admin', newPassword: '', newPasswordConfirm: '' });
+export const createDefaultAdminAccountEditForm = () => ({ adminLoginId: '', organizationName: '', userName: '', email: '', phone: '', adminRole: 'admin' });
 
 export const useAdminAccountManagementState = ({ adminTab }) => {
   const [adminAccountForm, setAdminAccountForm] = useState(createDefaultAdminAccountForm);
@@ -27,12 +27,13 @@ export const useAdminAccountManagementState = ({ adminTab }) => {
 const adminErrorMessage = (error) => {
   const code = String(error?.code || '');
   const map = {
-    admin_owner_required: '최고 관리자만 이 작업을 수행할 수 있습니다.',
     last_owner_required: '마지막 최고 관리자 권한은 변경하거나 삭제할 수 없습니다.',
     admin_login_id_duplicate: '이미 등록된 관리자 ID입니다.',
     admin_email_duplicate: '이미 등록된 관리자 이메일입니다.',
     admin_clerk_email_duplicate: '이미 Clerk에 등록된 이메일입니다.',
     admin_clerk_password_too_short: '관리자 비밀번호는 8자 이상이어야 합니다.',
+    admin_clerk_link_missing: '관리자의 Clerk 로그인 계정 연결정보가 없습니다.',
+    admin_owner_required: '최고 관리자만 이 작업을 수행할 수 있습니다.',
     admin_self_delete_forbidden: '현재 로그인 중인 관리자 계정은 삭제할 수 없습니다.',
     admin_self_lock_forbidden: '현재 로그인 중인 관리자 계정은 잠글 수 없습니다.',
     admin_account_locked: '잠긴 관리자 계정입니다.',
@@ -82,25 +83,33 @@ export default function useAdminAccountManagementController({
     } catch (error) { console.error('Admin account create error:', error); triggerToast(adminErrorMessage(error), 'error'); return null; }
   };
 
-  const startEditAdminAccount = (account) => { setEditingAdminAccountId(account.id); setAdminAccountEditForm({ adminLoginId: account.adminLoginId || '', organizationName: account.organizationName || '', userName: account.userName || '', email: account.authEmail || account.email || '', phone: account.phone || '', adminRole: account.adminRole || 'admin', newPassword: '', newPasswordConfirm: '' }); };
+  const startEditAdminAccount = (account) => { setEditingAdminAccountId(account.id); setAdminAccountEditForm({ adminLoginId: account.adminLoginId || '', organizationName: account.organizationName || '', userName: account.userName || '', email: account.authEmail || account.email || '', phone: account.phone || '', adminRole: account.adminRole || 'admin' }); };
   const cancelEditAdminAccount = () => { setEditingAdminAccountId(''); setAdminAccountEditForm(createDefaultAdminAccountEditForm()); };
 
-  const sendAdminAccountPasswordResetEmail = (account) => {
-    triggerToast(`[${account?.adminLoginId || '관리자'}] 계정은 Clerk 비밀번호를 사용합니다. 해당 관리자가 로그인 화면의 비밀번호 재설정을 이용해 주세요.`, 'info');
-  };
-
   const saveAdminAccountEdit = async (account) => {
-    const nextPassword = adminAccountEditForm.newPassword || '';
-    if (nextPassword && nextPassword !== (adminAccountEditForm.newPasswordConfirm || '')) { triggerToast('새 비밀번호 확인이 일치하지 않습니다.', 'error'); return; }
-    if (nextPassword && nextPassword.length < 8) { triggerToast('새 비밀번호는 8자 이상이어야 합니다.', 'error'); return; }
     try {
-      const payload = await clerkStagingClient.updateAdminAccountPostgresql(account.id, { adminLoginId: adminAccountEditForm.adminLoginId.trim(), organizationName: adminAccountEditForm.organizationName.trim(), userName: adminAccountEditForm.userName.trim(), phone: adminAccountEditForm.phone.trim(), adminRole: adminAccountEditForm.adminRole === 'owner' ? 'owner' : 'admin', ...(nextPassword ? { newPassword: nextPassword } : {}) });
+      const payload = await clerkStagingClient.updateAdminAccountPostgresql(account.id, { adminLoginId: adminAccountEditForm.adminLoginId.trim(), organizationName: adminAccountEditForm.organizationName.trim(), userName: adminAccountEditForm.userName.trim(), phone: adminAccountEditForm.phone.trim(), adminRole: adminAccountEditForm.adminRole === 'owner' ? 'owner' : 'admin' });
       const updated = payload?.adminAccountMutation?.account;
       setAdminAccounts((prev) => (prev || []).map((item) => item.id === account.id ? updated : item));
       if (currentAuthAdminAccount?.id === account.id) setCurrentAuthAdminAccount(updated);
       cancelEditAdminAccount();
       triggerToast(`[${updated.adminLoginId}] 관리자 정보가 성공적으로 저장 및 반영되었습니다.`, 'success');
     } catch (error) { console.error('Admin account update error:', error); triggerToast(adminErrorMessage(error), 'error'); }
+  };
+
+  const changeAdminAccountPassword = async (account, password, passwordConfirm) => {
+    if (!account?.id) { triggerToast('관리자 계정을 찾을 수 없습니다.', 'error'); return false; }
+    if (String(password || '').length < 8) { triggerToast('새 비밀번호는 8자 이상이어야 합니다.', 'error'); return false; }
+    if (password !== passwordConfirm) { triggerToast('새 비밀번호 확인이 일치하지 않습니다.', 'error'); return false; }
+    try {
+      await clerkStagingClient.changeAdminAccountPasswordPostgresql(account.id, password);
+      triggerToast(`[${account.adminLoginId || '관리자'}] 비밀번호가 변경되었습니다.`, 'success');
+      return true;
+    } catch (error) {
+      console.error('Admin account password change error:', error);
+      triggerToast(adminErrorMessage(error), 'error');
+      return false;
+    }
   };
 
   const deleteAdminAccount = (account) => {
@@ -123,15 +132,22 @@ export default function useAdminAccountManagementController({
     setAdminMyProfileSaving(true);
     try {
       const nextPassword = adminMyProfileForm.newPassword || '';
+      if (nextPassword && nextPassword.length < 8) { triggerToast('새 비밀번호는 8자 이상이어야 합니다.', 'error'); return; }
       if (nextPassword && nextPassword !== (adminMyProfileForm.newPasswordConfirm || '')) { triggerToast('새 비밀번호 확인이 일치하지 않습니다.', 'error'); return; }
-      const payload = await clerkStagingClient.updateAdminAccountPostgresql(authenticatedAdminAccount.id, { adminLoginId: adminMyProfileForm.adminLoginId.trim(), organizationName: adminMyProfileForm.organizationName.trim(), userName: adminMyProfileForm.userName.trim(), phone: adminMyProfileForm.phone.trim(), adminRole: authenticatedAdminAccount.adminRole || 'admin', ...(nextPassword ? { newPassword: nextPassword } : {}) });
+      const payload = await clerkStagingClient.updateAdminAccountPostgresql(authenticatedAdminAccount.id, { adminLoginId: adminMyProfileForm.adminLoginId.trim(), organizationName: adminMyProfileForm.organizationName.trim(), userName: adminMyProfileForm.userName.trim(), phone: adminMyProfileForm.phone.trim(), adminRole: authenticatedAdminAccount.adminRole || 'admin' });
       const updated = payload?.adminAccountMutation?.account;
+      if (nextPassword) await clerkStagingClient.changeAdminAccountPasswordPostgresql(authenticatedAdminAccount.id, nextPassword);
       setCurrentAuthAdminAccount(updated); setAdminAccounts((prev) => (prev || []).map((item) => item.id === updated.id ? updated : item)); setAdminMyProfileForm((prev) => ({ ...prev, newPassword: '', newPasswordConfirm: '' })); triggerToast('관리자 내 정보가 성공적으로 저장 및 반영되었습니다.', 'success');
     } catch (error) { console.error('Admin profile update error:', error); triggerToast(adminErrorMessage(error), 'error'); }
     finally { setAdminMyProfileSaving(false); }
   };
 
+  const sendAdminAccountPasswordResetEmail = async () => {
+    triggerToast('관리자 계정 관리의 계정 수정 화면에서 비밀번호 수정 버튼을 이용해 주세요.', 'info');
+    return false;
+  };
+
   useEffect(() => { if (authenticatedAdminId) void refreshAdminAccounts().catch((error) => console.warn('Administrator account list refresh failed.', { code: error?.code })); }, [authenticatedAdminId]);
 
-  return { adminAccountTotalPages, adminAccountUserOptions, cancelEditAdminAccount, deleteAdminAccount, paginatedAdminAccounts, registerAdminAccount, safeAdminAccountPage, saveAdminAccountEdit, saveMyAdminProfile, sendAdminAccountPasswordResetEmail, startEditAdminAccount, toggleAdminAccountLock };
+  return { adminAccountTotalPages, adminAccountUserOptions, cancelEditAdminAccount, changeAdminAccountPassword, deleteAdminAccount, paginatedAdminAccounts, registerAdminAccount, safeAdminAccountPage, saveAdminAccountEdit, saveMyAdminProfile, sendAdminAccountPasswordResetEmail, startEditAdminAccount, toggleAdminAccountLock };
 }

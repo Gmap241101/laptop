@@ -125,6 +125,7 @@ const adminClerkAuthService = {
   async list() { return { source: 'postgresql', items: [adminRecord], totalCount: 1 }; },
   async create({ input }) { return { source: 'clerk-postgresql', admin: { ...adminRecord, id: 'admin:new', adminLoginId: input?.adminLoginId || 'new-admin' } }; },
   async update({ targetKey, input }) { return { source: 'clerk-postgresql', admin: { ...adminRecord, id: targetKey, ...input } }; },
+  async changePassword({ targetKey, newPassword }) { return { source: 'clerk', changed: String(newPassword || '').length >= 8, account: { ...adminRecord, id: targetKey } }; },
   async setLock({ targetKey, locked }) { return { source: 'postgresql', admin: { ...adminRecord, id: targetKey, locked } }; },
   async retire({ targetKey }) { return { source: 'clerk-postgresql', retired: true, admin: { ...adminRecord, id: targetKey, status: 'retired' } }; },
   async migrateCurrent() { const error = new Error('Retired.'); error.code = 'admin_migration_retired'; error.status = 410; throw error; },
@@ -153,6 +154,7 @@ const clerkDeviceTrustService = {
 };
 const userClerkAuthService = {
   async createAdminManagedMember() { return { authority: 'clerk-postgresql', source: 'postgresql', status: 'active', account: memberShadowProfile }; },
+  async changeAdminManagedMemberPassword({ targetUid, newPassword }) { return { authority: 'clerk', operation: 'admin-member-password-change', changed: String(newPassword || '').length >= 8, firebaseUid: targetUid, account: memberShadowProfile }; },
   async rejectAdminPendingMember() { return { authority: 'clerk-postgresql', operation: 'signup-reject', deleted: true, firebaseUid: 'pending-smoke' }; },
   async retireAdminMember() { return { authority: 'clerk-postgresql', operation: 'member-retire', retired: true, clerkDeleted: true, account: { ...memberShadowProfile, status: 'retired' } }; },
   async purgeAdminRetiredMember() { return { authority: 'clerk-postgresql', operation: 'retired-purge', deleted: true, firebaseUid: 'retired-smoke', deletedCounts: {} }; },
@@ -552,6 +554,9 @@ try {
   if (createAdmin.status !== 201) throw new Error('Clerk/PostgreSQL administrator create failed.');
   const updateAdmin = await fetch(`${baseUrl}/api/admin/accounts/admin%3Anew`, { method: 'PUT', headers: { ...authHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ adminRole: 'viewer' }) });
   if (updateAdmin.status !== 200) throw new Error('Clerk/PostgreSQL administrator update failed.');
+  const adminPassword = await fetch(`${baseUrl}/api/admin/accounts/admin%3Anew/password`, { method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ newPassword: 'NewAdmin1234' }) });
+  const adminPasswordBody = await adminPassword.json();
+  if (adminPassword.status !== 200 || adminPasswordBody.adminAccountPasswordChange?.operation !== 'password-change' || adminPasswordBody.adminAccountPasswordChange?.changed !== true) throw new Error('Administrator Clerk password change endpoint failed.');
   const lockAdmin = await fetch(`${baseUrl}/api/admin/accounts/admin%3Anew/lock`, { method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ locked: true }) });
   if (lockAdmin.status !== 200) throw new Error('PostgreSQL administrator lock failed.');
   const deleteAdmin = await fetch(`${baseUrl}/api/admin/accounts/admin%3Anew`, { method: 'DELETE', headers: authHeaders });
@@ -603,6 +608,9 @@ try {
   if (createdMember.status !== 201 || createdMemberBody.adminMemberCreate?.authority !== 'clerk-postgresql' || createdMemberBody.adminMemberCreate?.emailVerification !== 'not-requested' || createdMemberBody.adminMemberCreate?.termsConsent !== 'required-on-first-login') {
     throw new Error('Administrator Clerk/PostgreSQL member provisioning endpoint failed.');
   }
+  const memberPassword = await fetch(`${baseUrl}/api/admin/members/member%3Asmoke/password`, { method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ newPassword: 'NewMember1234' }) });
+  const memberPasswordBody = await memberPassword.json();
+  if (memberPassword.status !== 200 || memberPasswordBody.adminMemberPasswordChange?.operation !== 'admin-member-password-change' || memberPasswordBody.adminMemberPasswordChange?.changed !== true) throw new Error('Administrator member Clerk password change endpoint failed.');
   const rejectedMember = await fetch(`${baseUrl}/api/admin/members/pending-smoke/reject`, { method: 'POST', headers: authHeaders });
   const rejectedMemberBody = await rejectedMember.json();
   if (rejectedMember.status !== 200 || rejectedMemberBody.adminMemberLifecycle?.operation !== 'signup-reject') throw new Error('Administrator pending-member rejection endpoint failed.');

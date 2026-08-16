@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import AdminAccountCreateDialog from './AdminAccountCreateDialog.jsx';
 import AdminAccountEditDialog from './AdminAccountEditDialog.jsx';
+import AdminManagedPasswordDialog from './AdminManagedPasswordDialog.jsx';
 
 const compactActionButtonClass = '!gap-1 !rounded-lg !px-2 !py-1 !text-[10px]';
 
@@ -33,6 +34,7 @@ export default function AdminAccountsPanel({ ctx }) {
     authenticatedAdminAccount,
     authenticatedAdminId,
     cancelEditAdminAccount,
+    changeAdminAccountPassword,
     data,
     deleteAdminAccount,
     editingAdminAccountId,
@@ -40,7 +42,6 @@ export default function AdminAccountsPanel({ ctx }) {
     registeredAdminAccounts,
     safeAdminAccountPage,
     saveAdminAccountEdit,
-    sendAdminAccountPasswordResetEmail,
     setAdminAccountEditForm,
     setAdminAccountForm,
     setAdminAccountPage,
@@ -49,6 +50,8 @@ export default function AdminAccountsPanel({ ctx }) {
   } = ctx;
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [passwordAccount, setPasswordAccount] = useState(null);
+  const [passwordSaving, setPasswordSaving] = useState(false);
   const [adminAccountQuery, setAdminAccountQuery] = useState('');
   const normalizedQuery = adminAccountQuery.trim().toLowerCase();
   const filteredAdminAccounts = useMemo(() => {
@@ -87,12 +90,6 @@ export default function AdminAccountsPanel({ ctx }) {
 
       <div className="rounded-2xl border border-orange-200 bg-orange-50/50 p-4 text-xs leading-5 text-orange-800">
         신규 관리자 계정은 별도 등록 모달에서 생성하며 인증은 Clerk, 권한과 상태는 PostgreSQL 관리자 레지스트리에서 관리합니다.
-      </div>
-
-      <div className="flex justify-end">
-        <Button type="button" variant="primary" onClick={() => setCreateDialogOpen(true)}>
-          관리자 계정 신규 등록
-        </Button>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
@@ -135,8 +132,19 @@ export default function AdminAccountsPanel({ ctx }) {
       </div>
 
       {filteredAdminAccounts.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
-          {normalizedQuery ? '검색 조건에 맞는 관리자 계정이 없습니다.' : '등록된 관리자 계정이 없습니다.'}
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">
+            {normalizedQuery ? '검색 조건에 맞는 관리자 계정이 없습니다.' : '등록된 관리자 계정이 없습니다.'}
+          </div>
+          <div className="grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+            <div className="text-[11px] text-slate-500 sm:justify-self-start">검색 결과 0건 · 1 / 1페이지</div>
+            <div className="flex items-center justify-center gap-2 sm:justify-self-center">
+              <Button variant="outline" disabled className="px-3 py-2 text-xs">이전</Button>
+              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">1 / 1</div>
+              <Button variant="outline" disabled className="px-3 py-2 text-xs">다음</Button>
+            </div>
+            <div className="flex sm:justify-self-end"><Button type="button" variant="primary" onClick={() => setCreateDialogOpen(true)}>관리자 계정 신규 등록</Button></div>
+          </div>
         </div>
       ) : (
         <>
@@ -249,10 +257,18 @@ export default function AdminAccountsPanel({ ctx }) {
             })}
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-2">
-            <Button variant="outline" disabled={displayAdminAccountPage <= 1} onClick={() => setAdminAccountPage((prev) => Math.max(1, prev - 1))} className="px-3 py-2 text-xs">이전</Button>
-            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">{displayAdminAccountPage} / {adminAccountTotalPages}</div>
-            <Button variant="outline" disabled={displayAdminAccountPage >= adminAccountTotalPages} onClick={() => setAdminAccountPage((prev) => Math.min(adminAccountTotalPages, prev + 1))} className="px-3 py-2 text-xs">다음</Button>
+          <div className="grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+            <div className="text-[11px] text-slate-500 sm:justify-self-start">
+              검색 결과 {filteredAdminAccounts.length}건 · {displayAdminAccountPage} / {adminAccountTotalPages}페이지
+            </div>
+            <div className="flex items-center justify-center gap-2 sm:justify-self-center">
+              <Button variant="outline" disabled={displayAdminAccountPage <= 1} onClick={() => setAdminAccountPage((prev) => Math.max(1, prev - 1))} className="px-3 py-2 text-xs">이전</Button>
+              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">{displayAdminAccountPage} / {adminAccountTotalPages}</div>
+              <Button variant="outline" disabled={displayAdminAccountPage >= adminAccountTotalPages} onClick={() => setAdminAccountPage((prev) => Math.min(adminAccountTotalPages, prev + 1))} className="px-3 py-2 text-xs">다음</Button>
+            </div>
+            <div className="flex sm:justify-self-end">
+              <Button type="button" variant="primary" onClick={() => setCreateDialogOpen(true)}>관리자 계정 신규 등록</Button>
+            </div>
           </div>
         </>
       )}
@@ -279,10 +295,28 @@ export default function AdminAccountsPanel({ ctx }) {
         form={adminAccountEditForm}
         setForm={setAdminAccountEditForm}
         authenticatedAdminAccount={authenticatedAdminAccount}
-        isCurrentAdminAccount={Boolean(editingAccount && editingAccount.id === authenticatedAdminId)}
         onClose={cancelEditAdminAccount}
         onSave={saveAdminAccountEdit}
-        onPasswordReset={sendAdminAccountPasswordResetEmail}
+        onPasswordChange={(account) => setPasswordAccount(account)}
+      />
+
+      <AdminManagedPasswordDialog
+        account={passwordAccount}
+        accountType="admin"
+        Button={Button}
+        open={Boolean(passwordAccount)}
+        saving={passwordSaving}
+        onClose={() => { if (!passwordSaving) setPasswordAccount(null); }}
+        onSave={async ({ password, passwordConfirm }) => {
+          if (!passwordAccount) return;
+          setPasswordSaving(true);
+          try {
+            const changed = await changeAdminAccountPassword(passwordAccount, password, passwordConfirm);
+            if (changed) setPasswordAccount(null);
+          } finally {
+            setPasswordSaving(false);
+          }
+        }}
       />
     </div>
   );

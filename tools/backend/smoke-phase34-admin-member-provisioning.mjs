@@ -144,6 +144,7 @@ let clerkCreateInput = null;
 let linkedUid = '';
 let linkedProvider = '';
 let provisionDirectoryOverride = null;
+let clerkPasswordUpdate = null;
 const clerkClient = {
   async getUser() { return { clerkUserId: 'user_created', primaryEmail: 'member@example.com', primaryEmailVerified: true, privateMetadata: {}, publicMetadata: {} }; },
   async findUserByEmail() { return null; },
@@ -157,7 +158,7 @@ const clerkClient = {
       publicMetadata: input.publicMetadata || {},
     };
   },
-  async updateUser() { throw new Error('not used'); },
+  async updateUser(clerkUserId, input) { clerkPasswordUpdate = { clerkUserId, input }; return { clerkUserId, ...input }; },
   async updateUserMetadata() { throw new Error('not used'); },
   async verifyPassword() { throw new Error('not used'); },
   async deleteUser() {},
@@ -166,7 +167,11 @@ const userClerkAuthService = createUserClerkAuthService({
   repository: {
     async findByClerkUserId() { return null; },
     async linkAuthority({ firebaseUid }) { linkedUid = firebaseUid; return true; },
-    async findByFirebaseUid(firebaseUid) { return { firebaseUid, memberStatus: 'active' }; },
+    async findByFirebaseUid(firebaseUid) {
+      if (firebaseUid === 'member-password') return { firebaseUid, memberStatus: 'active', clerkUserId: 'user_member_password', clerkAccountState: 'active' };
+      if (firebaseUid === 'member-password-retired') return { firebaseUid, memberStatus: 'retired', clerkUserId: 'user_member_retired', clerkAccountState: 'deleted' };
+      return { firebaseUid, memberStatus: 'active' };
+    },
   },
   clerkClient,
   userRepository: {
@@ -220,7 +225,19 @@ assert.equal(linkedProvider, 'clerk-admin-provisioned');
 assert.equal(linkedUid, result.legacyMemberKey);
 assert.equal(provisionDirectoryOverride, true);
 
-
+const passwordResult = await userClerkAuthService.changeAdminManagedMemberPassword({
+  actorClerkUserId: 'admin_actor',
+  targetUid: 'member-password',
+  newPassword: 'Changed1234',
+});
+assert.equal(passwordResult.authority, 'clerk');
+assert.equal(passwordResult.operation, 'admin-member-password-change');
+assert.equal(passwordResult.changed, true);
+assert.deepEqual(clerkPasswordUpdate, { clerkUserId: 'user_member_password', input: { password: 'Changed1234' } });
+await assert.rejects(
+  () => userClerkAuthService.changeAdminManagedMemberPassword({ actorClerkUserId: 'admin_actor', targetUid: 'member-password-retired', newPassword: 'Changed1234' }),
+  (error) => error?.code === 'admin_member_password_retired_forbidden' && error?.status === 409,
+);
 
 const retiredMemberAuthorityService = createMemberAuthorityService({
   repository: {

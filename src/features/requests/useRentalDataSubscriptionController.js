@@ -860,7 +860,7 @@ export default function useRentalDataSubscriptionController({
       view === 'admin' &&
       Boolean(authenticatedAdminId) &&
       Boolean(currentAuthAdminAccount?.id) &&
-      ['people', 'signupPolicy', 'adminAccounts'].includes(adminTab);
+      ['people', 'signupPolicy', 'memberAccounts', 'adminAccounts'].includes(adminTab);
 
     if (!shouldLoadRentalBorrowers) {
       setSplitRentalBorrowers([]);

@@ -440,6 +440,25 @@ export const createUserClerkAuthService = ({
       return Object.freeze({ authority: 'clerk', changed: true, account });
     },
 
+    async changeAdminManagedMemberPassword({ actorClerkUserId, targetUid, newPassword }) {
+      if (!userFirebaseAuthCompatibilityDisabled) {
+        throw serviceError('admin_member_password_not_enabled', 'Administrator member password changes require Clerk/PostgreSQL user authority.', 409);
+      }
+      const actor = await adminIdentityRepository.findByClerkUserId(trim(actorClerkUserId));
+      if (!actor || trim(actor.status) !== 'active') throw serviceError('admin_authority_required', 'Active administrator authority is required.', 403);
+      const target = await repository.findByFirebaseUid(trim(targetUid));
+      if (!target) throw serviceError('member_account_not_found', 'Member account was not found.', 404);
+      if (trim(target.memberStatus) === 'retired') throw serviceError('admin_member_password_retired_forbidden', 'Retired member passwords cannot be changed.', 409);
+      if (!target.clerkUserId || trim(target.clerkAccountState) === 'deleted') throw serviceError('admin_member_password_clerk_link_missing', 'Member Clerk identity is missing.', 409);
+      const password = String(newPassword || '');
+      if (password.length < 8) throw serviceError('user_clerk_password_too_short', 'New Clerk password must be at least 8 characters.', 400);
+      await clerkClient.updateUser(target.clerkUserId, { password });
+      const account = typeof repository.markPasswordAuthority === 'function'
+        ? await repository.markPasswordAuthority({ firebaseUid: target.firebaseUid })
+        : target;
+      return Object.freeze({ authority: 'clerk', operation: 'admin-member-password-change', changed: true, firebaseUid: target.firebaseUid, account });
+    },
+
     async rejectAdminPendingMember({ actorClerkUserId, targetUid }) {
       if (!userFirebaseAuthCompatibilityDisabled) {
         throw serviceError('admin_member_reject_not_enabled', 'Administrator signup rejection requires Clerk/PostgreSQL user authority.', 409);

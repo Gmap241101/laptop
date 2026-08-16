@@ -4,6 +4,7 @@ import AdminMemberAccountCreateDialog from './AdminMemberAccountCreateDialog.jsx
 import AdminMemberAccountDetailPanel from './AdminMemberAccountDetailPanel.jsx';
 import AdminMemberAccountEditDialog from './AdminMemberAccountEditDialog.jsx';
 import AdminMemberTermsDialog from './AdminMemberTermsDialog.jsx';
+import AdminManagedPasswordDialog from './AdminManagedPasswordDialog.jsx';
 
 import useAdminMemberAccountsController, {
   ADMIN_MEMBER_ACCOUNT_PAGE_SIZE_OPTIONS,
@@ -11,6 +12,7 @@ import useAdminMemberAccountsController, {
 import useAdminMemberAccountCreateActions from '../features/members/useAdminMemberAccountCreateActions.js';
 import useAdminMemberAccountEditActions from '../features/members/useAdminMemberAccountEditActions.js';
 import useAdminMemberAccountStatusActions from '../features/members/useAdminMemberAccountStatusActions.js';
+import useAdminMemberAccountPasswordActions from '../features/members/useAdminMemberAccountPasswordActions.js';
 import {
   formatUserAccountCreatedAt,
   getUserAccountStatusClassName,
@@ -84,6 +86,7 @@ export default function AdminMemberAccountsPanel({ ctx }) {
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [editAccount, setEditAccount] = useState(null);
   const [termsAccount, setTermsAccount] = useState(null);
+  const [passwordAccount, setPasswordAccount] = useState(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   const {
@@ -104,6 +107,14 @@ export default function AdminMemberAccountsPanel({ ctx }) {
         setTermsAccount((current) => (current?.uid === uid ? null : current));
       }
     },
+  });
+
+  const {
+    changeAdminMemberPassword,
+    adminMemberPasswordSavingUid,
+  } = useAdminMemberAccountPasswordActions({
+    isAdminAuthenticated,
+    triggerToast,
   });
 
   const {
@@ -139,6 +150,7 @@ export default function AdminMemberAccountsPanel({ ctx }) {
     setSelectedAccount(null);
     setEditAccount(null);
     setTermsAccount(null);
+    setPasswordAccount(null);
     setAdminUserAccountStatusFilter('all');
     setAdminUserAccountPage(1);
   };
@@ -253,12 +265,6 @@ export default function AdminMemberAccountsPanel({ ctx }) {
           <div className="mt-1">실제 퇴사 여부와 퇴사일은 시스템에서 수집·저장하거나 자동 판단하지 않습니다. 관리자가 별도로 확인하고, 내부 지침에 따라 퇴사일로부터 최대 1년 이내에 회원 완전 삭제를 수동으로 실행해 주세요. 자동 삭제 기능은 사용하지 않습니다.</div>
         </div>
       ) : null}
-
-      <div className="flex justify-end">
-        <Button type="button" variant="primary" onClick={() => setCreateDialogOpen(true)}>
-          회원 신규 등록
-        </Button>
-      </div>
 
       {activeTab === 'current' ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -488,11 +494,11 @@ export default function AdminMemberAccountsPanel({ ctx }) {
           )}
 
           {adminUserAccountsReady && !adminUserAccountsLoadErrorMessage ? (
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-[11px] text-slate-500">
+            <div className="grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+              <div className="text-[11px] text-slate-500 sm:justify-self-start">
                 검색 결과 {adminUserAccountResultCount}건 · {safeAdminUserAccountPage} / {adminUserAccountTotalPages}페이지
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-center gap-2 sm:justify-self-center">
                 <Button
                   type="button"
                   variant="outline"
@@ -502,6 +508,9 @@ export default function AdminMemberAccountsPanel({ ctx }) {
                 >
                   이전
                 </Button>
+                <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
+                  {safeAdminUserAccountPage} / {adminUserAccountTotalPages}
+                </div>
                 <Button
                   type="button"
                   variant="outline"
@@ -515,6 +524,11 @@ export default function AdminMemberAccountsPanel({ ctx }) {
                   }
                 >
                   다음
+                </Button>
+              </div>
+              <div className="flex sm:justify-self-end">
+                <Button type="button" variant="primary" onClick={() => setCreateDialogOpen(true)}>
+                  회원 신규 등록
                 </Button>
               </div>
             </div>
@@ -543,6 +557,22 @@ export default function AdminMemberAccountsPanel({ ctx }) {
           saving={adminMemberProfileSavingUid === editAccount.uid}
           onClose={() => setEditAccount(null)}
           onSave={saveEditAccount}
+          onPasswordChange={(account) => setPasswordAccount(account)}
+        />
+      ) : null}
+
+      {passwordAccount ? (
+        <AdminManagedPasswordDialog
+          account={passwordAccount}
+          accountType="member"
+          Button={Button}
+          open={Boolean(passwordAccount)}
+          saving={adminMemberPasswordSavingUid === passwordAccount.uid}
+          onClose={() => setPasswordAccount(null)}
+          onSave={async ({ password, passwordConfirm }) => {
+            const changed = await changeAdminMemberPassword({ account: passwordAccount, password, passwordConfirm });
+            if (changed) setPasswordAccount(null);
+          }}
         />
       ) : null}
 
