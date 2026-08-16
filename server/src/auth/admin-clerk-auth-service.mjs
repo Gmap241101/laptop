@@ -23,6 +23,28 @@ export const createAdminClerkAuthService = ({ repository, clerkClient }) => {
   return Object.freeze({
     async migrateCurrent() { throw serviceError('admin_firebase_migration_retired', 'Firebase administrator migration is retired; use Clerk/PostgreSQL administrator management.', 410); },
     async provisionTarget() { throw serviceError('admin_firebase_provision_retired', 'Firebase administrator provisioning is retired; use Clerk/PostgreSQL administrator management.', 410); },
+    async resolveLoginIdentifier({ identifier, password }) {
+      const adminLoginId = trim(identifier);
+      const suppliedPassword = String(password || '');
+      if (!adminLoginId || !suppliedPassword) throw serviceError('admin_login_credentials_required', 'Administrator ID and password are required.', 400);
+      const admin = typeof repository.findByAdminLoginId === 'function'
+        ? await repository.findByAdminLoginId(adminLoginId)
+        : (await repository.listActive()).find((item) => lower(item.adminLoginId) === lower(adminLoginId));
+      if (!admin || admin.status !== 'active' || admin.clerkLinkState !== 'linked' || !admin.clerkUserId || !admin.authEmail) {
+        throw serviceError('admin_login_credentials_invalid', 'Administrator credentials are invalid.', 401);
+      }
+      if (typeof clerkClient.verifyPassword !== 'function') throw serviceError('admin_clerk_password_verification_unavailable', 'Clerk password verification is unavailable.', 503);
+      try {
+        await clerkClient.verifyPassword(admin.clerkUserId, suppliedPassword);
+      } catch (error) {
+        if ([400, 401, 404, 422].includes(Number(error?.status || 0))) {
+          throw serviceError('admin_login_credentials_invalid', 'Administrator credentials are invalid.', 401);
+        }
+        throw error;
+      }
+      if (isLocked(admin)) throw serviceError('admin_account_locked', 'Administrator account is locked.', 423);
+      return Object.freeze({ authority: 'clerk-postgresql-login-resolver', authEmail: lower(admin.authEmail) });
+    },
     async authorizeCurrent({ clerkUserId }) {
       const registry = await requireActor(clerkUserId);
       return Object.freeze({

@@ -42,6 +42,10 @@ export const createAdminIdentityRepository = (pool) => {
       const result = await pool.query(`${SELECT} WHERE lower(auth_email) = lower($1) LIMIT 1`, [email]);
       return normalize(result.rows[0]);
     },
+    async findByAdminLoginId(adminLoginId) {
+      const result = await pool.query(`${SELECT} WHERE status <> 'retired' AND lower(admin_login_id) = lower($1) LIMIT 1`, [adminLoginId]);
+      return normalize(result.rows[0]);
+    },
     async listActive() {
       const result = await pool.query(`${SELECT} WHERE status <> 'retired' ORDER BY CASE WHEN admin_role='owner' THEN 0 ELSE 1 END, lower(admin_login_id), created_at`);
       return result.rows.map(normalize);

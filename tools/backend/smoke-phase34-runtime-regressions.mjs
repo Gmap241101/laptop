@@ -29,6 +29,7 @@ const adminPasswordService = createAdminClerkAuthService({
       return null;
     },
     async listActive() { return [adminPasswordOwner, adminPasswordRegular, adminPasswordTarget]; },
+    async findByAdminLoginId(adminLoginId) { return [adminPasswordOwner, adminPasswordRegular, adminPasswordTarget].find((item) => item.adminLoginId.toLowerCase() === String(adminLoginId || '').toLowerCase()) || null; },
   },
   clerkClient: {
     async getUser() { return { primaryEmail: 'owner@example.com' }; },
@@ -36,9 +37,23 @@ const adminPasswordService = createAdminClerkAuthService({
     async createUser() { throw new Error('not used'); },
     async updateUser(clerkUserId, input) { adminPasswordUpdate = { clerkUserId, input }; return { clerkUserId }; },
     async updateUserMetadata() {},
+    async verifyPassword(clerkUserId, password) {
+      if (clerkUserId !== 'clerk_target' || password !== 'TargetPassword1234') {
+        const error = new Error('invalid password'); error.status = 422; throw error;
+      }
+      return { verified: true };
+    },
     async deleteUser() {},
   },
 });
+const resolvedAdminLogin = await adminPasswordService.resolveLoginIdentifier({ identifier: 'target', password: 'TargetPassword1234' });
+assert.equal(resolvedAdminLogin.authority, 'clerk-postgresql-login-resolver');
+assert.equal(resolvedAdminLogin.authEmail, 'target@example.com');
+await assert.rejects(
+  () => adminPasswordService.resolveLoginIdentifier({ identifier: 'target', password: 'wrong-password' }),
+  (error) => error?.code === 'admin_login_credentials_invalid' && error?.status === 401,
+);
+
 const adminPasswordChanged = await adminPasswordService.changePassword({ actorClerkUserId: 'clerk_owner', targetKey: 'admin:target', newPassword: 'AdminChanged1234' });
 assert.equal(adminPasswordChanged.changed, true);
 assert.deepEqual(adminPasswordUpdate, { clerkUserId: 'clerk_target', input: { password: 'AdminChanged1234' } });

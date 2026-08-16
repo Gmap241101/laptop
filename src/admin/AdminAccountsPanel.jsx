@@ -4,6 +4,7 @@ import AdminAccountEditDialog from './AdminAccountEditDialog.jsx';
 import AdminManagedPasswordDialog from './AdminManagedPasswordDialog.jsx';
 
 const compactActionButtonClass = '!gap-1 !rounded-lg !px-2 !py-1 !text-[10px]';
+const ADMIN_ACCOUNT_PAGE_SIZE_OPTIONS = [10, 30, 50];
 
 const formatAdminCreatedAt = (value) => {
   if (!value) return '-';
@@ -53,24 +54,28 @@ export default function AdminAccountsPanel({ ctx }) {
   const [passwordAccount, setPasswordAccount] = useState(null);
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [adminAccountQuery, setAdminAccountQuery] = useState('');
+  const [adminAccountRoleFilter, setAdminAccountRoleFilter] = useState('all');
+  const [adminAccountPageSize, setAdminAccountPageSize] = useState(ADMIN_ACCOUNT_PAGE_SIZE);
   const normalizedQuery = adminAccountQuery.trim().toLowerCase();
-  const filteredAdminAccounts = useMemo(() => {
-    if (!normalizedQuery) return registeredAdminAccounts || [];
-    return (registeredAdminAccounts || []).filter((account) => [
+  const filteredAdminAccounts = useMemo(() => (registeredAdminAccounts || []).filter((account) => {
+    const role = account.adminRole === 'owner' ? 'owner' : 'admin';
+    if (adminAccountRoleFilter !== 'all' && role !== adminAccountRoleFilter) return false;
+    if (!normalizedQuery) return true;
+    return [
       account.adminLoginId,
       account.organizationName,
       account.userName,
       account.authEmail || account.email,
       account.phone,
-      account.adminRole === 'owner' ? '최고 관리자' : '일반 관리자',
-    ].some((value) => String(value || '').toLowerCase().includes(normalizedQuery)));
-  }, [normalizedQuery, registeredAdminAccounts]);
+      role === 'owner' ? '최고 관리자' : '일반 관리자',
+    ].some((value) => String(value || '').toLowerCase().includes(normalizedQuery));
+  }), [adminAccountRoleFilter, normalizedQuery, registeredAdminAccounts]);
 
-  const adminAccountTotalPages = Math.max(1, Math.ceil(filteredAdminAccounts.length / ADMIN_ACCOUNT_PAGE_SIZE));
+  const adminAccountTotalPages = Math.max(1, Math.ceil(filteredAdminAccounts.length / adminAccountPageSize));
   const displayAdminAccountPage = Math.min(safeAdminAccountPage, adminAccountTotalPages);
   const paginatedAdminAccounts = filteredAdminAccounts.slice(
-    (displayAdminAccountPage - 1) * ADMIN_ACCOUNT_PAGE_SIZE,
-    displayAdminAccountPage * ADMIN_ACCOUNT_PAGE_SIZE
+    (displayAdminAccountPage - 1) * adminAccountPageSize,
+    displayAdminAccountPage * adminAccountPageSize
   );
   const editingAccount = (registeredAdminAccounts || []).find((account) => account.id === editingAdminAccountId) || null;
   const ownerCount = (registeredAdminAccounts || []).filter((account) => (account.adminRole || 'admin') === 'owner').length;
@@ -88,9 +93,6 @@ export default function AdminAccountsPanel({ ctx }) {
         description="관리자 로그인 계정, 권한, 잠금 상태와 관리자 정보를 목록에서 관리합니다."
       />
 
-      <div className="rounded-2xl border border-orange-200 bg-orange-50/50 p-4 text-xs leading-5 text-orange-800">
-        신규 관리자 계정은 별도 등록 모달에서 생성하며 인증은 Clerk, 권한과 상태는 PostgreSQL 관리자 레지스트리에서 관리합니다.
-      </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-slate-700">
@@ -107,7 +109,7 @@ export default function AdminAccountsPanel({ ctx }) {
         </div>
       </div>
 
-      <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[minmax(0,1fr)_140px] md:items-end">
+      <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[minmax(0,1fr)_160px_140px] md:items-end">
         <label className="block min-w-0">
           <span className="mb-1.5 block text-xs font-semibold tracking-wide text-slate-600">관리자 검색</span>
           <div className="relative">
@@ -123,12 +125,38 @@ export default function AdminAccountsPanel({ ctx }) {
             />
           </div>
         </label>
-        <div>
-          <span className="mb-1.5 block text-xs font-semibold tracking-wide text-slate-600">목록 현황</span>
-          <div className="flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600">
-            {filteredAdminAccounts.length}개
-          </div>
-        </div>
+
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-semibold tracking-wide text-slate-600">권한</span>
+          <select
+            value={adminAccountRoleFilter}
+            onChange={(event) => {
+              setAdminAccountRoleFilter(event.target.value);
+              setAdminAccountPage(1);
+            }}
+            className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none mk-form-border-focus"
+          >
+            <option value="all">전체</option>
+            <option value="owner">최고 관리자</option>
+            <option value="admin">일반 관리자</option>
+          </select>
+        </label>
+
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-semibold tracking-wide text-slate-600">페이지당 표시</span>
+          <select
+            value={adminAccountPageSize}
+            onChange={(event) => {
+              setAdminAccountPageSize(Number(event.target.value));
+              setAdminAccountPage(1);
+            }}
+            className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none mk-form-border-focus"
+          >
+            {ADMIN_ACCOUNT_PAGE_SIZE_OPTIONS.map((size) => (
+              <option key={size} value={size}>{size}개</option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {filteredAdminAccounts.length === 0 ? (
@@ -151,15 +179,14 @@ export default function AdminAccountsPanel({ ctx }) {
           <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white xl:block">
             <table className="w-full table-fixed border-collapse text-left">
               <colgroup>
-                <col className="w-[50px]" />
-                <col className="w-[92px]" />
-                <col className="w-[125px]" />
-                <col className="w-[120px]" />
-                <col className="w-[130px]" />
-                <col className="w-[100px]" />
-                <col />
-                <col className="w-[160px]" />
-                <col className="w-[210px]" />
+                <col className="w-[6%]" />
+                <col className="w-[8%]" />
+                <col className="w-[14%]" />
+                <col className="w-[12%]" />
+                <col className="w-[16%]" />
+                <col className="w-[11%]" />
+                <col className="w-[16%]" />
+                <col className="w-[17%]" />
               </colgroup>
               <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600">
                 <tr>
@@ -169,7 +196,6 @@ export default function AdminAccountsPanel({ ctx }) {
                   <th className="border-b border-slate-200 px-3 py-2.5">사용자명</th>
                   <th className="border-b border-slate-200 px-3 py-2.5">조직명</th>
                   <th className="border-b border-slate-200 px-2 py-2.5 text-center">권한</th>
-                  <th className="border-b border-slate-200 px-3 py-2.5">로그인 이메일</th>
                   <th className="border-b border-slate-200 px-3 py-2.5 text-center">등록일시</th>
                   <th className="border-b border-slate-200 px-2 py-2.5 text-center">계정 관리</th>
                 </tr>
@@ -178,7 +204,7 @@ export default function AdminAccountsPanel({ ctx }) {
                 {paginatedAdminAccounts.map((account, index) => {
                   const isCurrent = account.id === authenticatedAdminId;
                   const locked = Number(account.lockUntil || 0) > Date.now();
-                  const sequence = (displayAdminAccountPage - 1) * ADMIN_ACCOUNT_PAGE_SIZE + index + 1;
+                  const sequence = (displayAdminAccountPage - 1) * adminAccountPageSize + index + 1;
                   return (
                     <tr key={account.id} className="border-b border-slate-100 align-middle hover:bg-slate-50">
                       <td className="px-2 py-2.5 text-center text-[11px] font-semibold text-slate-400">{sequence}</td>
@@ -195,7 +221,6 @@ export default function AdminAccountsPanel({ ctx }) {
                           {(account.adminRole || 'admin') === 'owner' ? '최고 관리자' : '일반 관리자'}
                         </span>
                       </td>
-                      <td className="truncate px-3 py-2.5 text-[11px] text-slate-600" title={account.authEmail || account.email || ''}>{account.authEmail || account.email || '-'}</td>
                       <td className="px-3 py-2.5 text-center text-[11px] leading-4 text-slate-500">{formatAdminCreatedAt(account.createdAt)}</td>
                       <td className="px-2 py-2.5">
                         <div className="flex flex-wrap items-center justify-center gap-1">
@@ -228,7 +253,7 @@ export default function AdminAccountsPanel({ ctx }) {
             {paginatedAdminAccounts.map((account, index) => {
               const isCurrent = account.id === authenticatedAdminId;
               const locked = Number(account.lockUntil || 0) > Date.now();
-              const sequence = (displayAdminAccountPage - 1) * ADMIN_ACCOUNT_PAGE_SIZE + index + 1;
+              const sequence = (displayAdminAccountPage - 1) * adminAccountPageSize + index + 1;
               return (
                 <div key={account.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                   <div className="flex flex-wrap items-center gap-2">
@@ -241,9 +266,8 @@ export default function AdminAccountsPanel({ ctx }) {
                   <div className="mt-3 grid gap-1 text-xs text-slate-600 sm:grid-cols-2">
                     <div>사용자명: <span className="font-semibold text-slate-800">{account.userName || '-'}</span></div>
                     <div>조직명: <span className="font-semibold text-slate-800">{account.organizationName || '-'}</span></div>
-                    <div className="break-all">이메일: {account.authEmail || account.email || '-'}</div>
-                    <div>전화번호: {account.phone || '-'}</div>
-                    <div className="sm:col-span-2 text-[11px] text-slate-400">등록일시: {formatAdminCreatedAt(account.createdAt)}</div>
+                    <div>권한: <span className="font-semibold text-slate-800">{(account.adminRole || 'admin') === 'owner' ? '최고 관리자' : '일반 관리자'}</span></div>
+                    <div className="text-[11px] text-slate-400">등록일시: {formatAdminCreatedAt(account.createdAt)}</div>
                   </div>
                   <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-3">
                     {(authenticatedAdminAccount?.adminRole || 'owner') === 'owner' && !isCurrent ? (

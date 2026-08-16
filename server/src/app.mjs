@@ -1608,6 +1608,30 @@ export const createRequestHandler = ({
       return;
     }
 
+    if (request.method === 'POST' && url.pathname === '/api/admin/auth/resolve-login') {
+      let body;
+      try { body = await readJsonBody(request); }
+      catch (error) { writeJson(response, error?.status || 400, { ...basePayload, authenticated: false, error: error?.code || 'invalid_json_body' }, headers); return; }
+      try {
+        const result = await adminClerkAuthService.resolveLoginIdentifier({
+          identifier: String(body?.identifier || ''),
+          password: String(body?.password || ''),
+        });
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: false,
+          adminLoginResolution: { authority: result.authority, authEmail: result.authEmail },
+        }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, {
+          ...basePayload,
+          authenticated: false,
+          error: error?.code || 'admin_login_resolution_failed',
+        }, headers);
+      }
+      return;
+    }
+
     if (request.method === 'GET' && url.pathname === '/api/admin/auth/session') {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;

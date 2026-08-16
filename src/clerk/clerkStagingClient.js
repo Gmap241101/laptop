@@ -440,6 +440,27 @@ export const requestUserWithdrawalFinalize = async ({ clerk, apiBaseUrl, fetchIm
   return payload;
 };
 
+export const requestAdminLoginIdentifierResolve = async ({ apiBaseUrl, fetchImpl, identifier, password }) => {
+  const { response, payload } = await requestPublicJson({
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/admin/auth/resolve-login',
+    body: { identifier, password },
+  });
+  if (!response.ok) {
+    const error = new Error(`Administrator login identifier resolution failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (payload?.adminLoginResolution?.authority !== 'clerk-postgresql-login-resolver' || !trim(payload?.adminLoginResolution?.authEmail)) {
+    const error = new Error('Backend returned an invalid administrator login identifier response.');
+    error.code = 'admin_login_resolution_payload_invalid';
+    throw error;
+  }
+  return payload.adminLoginResolution;
+};
+
 export const requestAdminClerkSession = async ({ clerk, apiBaseUrl, fetchImpl }) => {
   const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: '/api/admin/auth/session' });
   if (!response.ok) {
@@ -1996,6 +2017,9 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
       const clerk = await initialize();
       return requestUserWithdrawalFinalize({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, password });
     },
+    async resolveAdminLoginIdentifier(identifier, password) {
+      return requestAdminLoginIdentifierResolve({ apiBaseUrl: config.apiBaseUrl, fetchImpl, identifier, password });
+    },
     async getAdminClerkSession() {
       const clerk = await initialize();
       return requestAdminClerkSession({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
@@ -2354,6 +2378,7 @@ export const clerkStagingClient =
         verifyUserPassword: async () => { throw new Error('Clerk browser client is unavailable.'); },
         changeUserPassword: async () => { throw new Error('Clerk browser client is unavailable.'); },
         finalizeUserWithdrawal: async () => { throw new Error('Clerk browser client is unavailable.'); },
+        resolveAdminLoginIdentifier: async () => { throw new Error('Clerk browser client is unavailable.'); },
         getAdminClerkSession: async () => { throw new Error('Clerk browser client is unavailable.'); },
         migrateAdminToClerk: async () => { throw new Error('Clerk browser client is unavailable.'); },
         provisionAdminClerkIdentity: async () => { throw new Error('Clerk browser client is unavailable.'); },

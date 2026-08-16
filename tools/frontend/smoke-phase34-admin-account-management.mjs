@@ -34,7 +34,16 @@ assert.doesNotMatch(workspace, /\['adminAccounts',\s*ShieldCheck,\s*'관리자 I
 assert.match(panel, /title="관리자 계정 관리"/);
 assert.match(panel, /관리자 계정 신규 등록/);
 assert.match(panel, /<table className="w-full table-fixed border-collapse text-left">/);
-for (const label of ['번호', '상태', '관리자 ID', '사용자명', '조직명', '권한', '로그인 이메일', '등록일시', '계정 관리']) {
+assert.doesNotMatch(panel, /신규 관리자 계정은 별도 등록 모달에서 생성하며 인증은 Clerk/);
+assert.match(panel, /md:grid-cols-\[minmax\(0,1fr\)_160px_140px\]/);
+assert.match(panel, />관리자 검색</);
+assert.match(panel, />권한</);
+assert.match(panel, />페이지당 표시</);
+assert.match(panel, /<option value="owner">최고 관리자<\/option>/);
+assert.match(panel, /<option value="admin">일반 관리자<\/option>/);
+assert.doesNotMatch(panel, />로그인 이메일<\/th>/);
+assert.match(panel, /adminAccountPageSize/);
+for (const label of ['번호', '상태', '관리자 ID', '사용자명', '조직명', '권한', '등록일시', '계정 관리']) {
   assert.ok(panel.includes(label), `admin account list column missing: ${label}`);
 }
 assert.match(panel, /AdminAccountCreateDialog/);
@@ -71,3 +80,8 @@ assert.match(panel, /\{displayAdminAccountPage\} \/ \{adminAccountTotalPages\}/)
 assert.match(panel, /sm:justify-self-end[\s\S]*관리자 계정 신규 등록/);
 
 console.log('[phase34-admin-account-management-frontend-smoke] PASS');
+
+// Admin login supports either the PostgreSQL administrator ID or the existing Clerk email.
+assert.match(workspace, /label="관리자 ID 또는 로그인 이메일"/);
+assert.match(client, /requestAdminLoginIdentifierResolve/);
+assert.match(client, /\/api\/admin\/auth\/resolve-login/);

@@ -808,12 +808,13 @@ export default function useAdminAuthenticationController({
 
   const authenticateAdmin = async () => {
     if (runtimeSurface !== 'admin') return;
-    const adminEmail = adminAuthForm.adminLoginId.trim();
+    const adminIdentifier = adminAuthForm.adminLoginId.trim();
+    const adminEmail = adminIdentifier;
     const password = adminAuthForm.password;
     const isClientTrustVerification = Boolean(adminAuthForm.clientTrustRequired);
 
-    if (!adminEmail) {
-      triggerToast('관리자 로그인 이메일을 입력해 주세요.', 'error');
+    if (!adminIdentifier) {
+      triggerToast('관리자 ID 또는 로그인 이메일을 입력해 주세요.', 'error');
       return;
     }
 
@@ -840,7 +841,10 @@ export default function useAdminAuthenticationController({
         if (isClientTrustVerification) {
           await clerkStagingClient.verifyAdminClientTrust(clientTrustCode);
         } else {
-          const signInResult = await clerkStagingClient.signInWithPassword(adminEmail, password);
+          const resolvedIdentifier = adminIdentifier.includes('@')
+            ? adminIdentifier
+            : (await clerkStagingClient.resolveAdminLoginIdentifier(adminIdentifier, password)).authEmail;
+          const signInResult = await clerkStagingClient.signInWithPassword(resolvedIdentifier, password);
           if (signInResult?.status === 'needs_client_trust') {
             beginAdminClientTrust({ signInResult, migration: 'clerk-only' });
             return;
@@ -882,10 +886,15 @@ export default function useAdminAuthenticationController({
         }
         publishAccountAuthObservation({ adminClerkAuthRequested: true, adminAuthSource: retryable ? 'client-trust-required' : 'failed', adminFirebaseCompatibility: 'retired', adminAuthError: code });
         const clerkCredentialMessage = getClerkPasswordSignInErrorMessage(error);
+        const adminCredentialMessage = code === 'admin_login_credentials_invalid'
+          ? '관리자 ID 또는 비밀번호가 올바르지 않습니다.'
+          : code === 'admin_account_locked'
+            ? '잠긴 관리자 계정입니다. 최고 관리자에게 잠금 해제를 요청해 주세요.'
+            : '';
         triggerToast(
           retryable
             ? 'Clerk 인증코드를 다시 확인해 주세요.'
-            : clerkCredentialMessage || 'Clerk 관리자 인증에 실패했습니다.',
+            : adminCredentialMessage || clerkCredentialMessage || 'Clerk 관리자 인증에 실패했습니다.',
           'error'
         );
       } finally {

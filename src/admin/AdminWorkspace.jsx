@@ -419,7 +419,7 @@ function AdminWorkspace({ ctx, panelCtx }) {
                     <p className="mt-2 text-xs leading-5 text-slate-300">
                       {adminAuthForm.clientTrustRequired
                         ? '관리자 로그인 이메일로 전송된 6자리 인증코드를 확인합니다.'
-                        : '등록된 관리자 로그인 이메일로 인증해야 관리자 모드에 접근할 수 있습니다.'}
+                        : '등록된 관리자 ID 또는 로그인 이메일로 인증해야 관리자 모드에 접근할 수 있습니다.'}
                     </p>
                   </div>
                 </div>
@@ -447,7 +447,7 @@ function AdminWorkspace({ ctx, panelCtx }) {
                 {adminAuthForm.clientTrustRequired ? (
                   <DeviceTrustVerificationPanel
                     surface="admin"
-                    email={adminAuthForm.adminLoginId}
+                    email={adminAuthForm.clientTrustDestination || adminAuthForm.adminLoginId}
                     code={adminAuthForm.clientTrustCode}
                     onChange={(value) =>
                       setAdminAuthForm({
@@ -461,7 +461,7 @@ function AdminWorkspace({ ctx, panelCtx }) {
                 ) : (
                   <>
                     <Input
-                      label="관리자 로그인 이메일"
+                      label="관리자 ID 또는 로그인 이메일"
                       value={adminAuthForm.adminLoginId}
                       onChange={(v) =>
                         setAdminAuthForm({
@@ -474,7 +474,7 @@ function AdminWorkspace({ ctx, panelCtx }) {
                           authenticateAdmin();
                         }
                       }}
-                      placeholder="관리자 로그인 이메일 입력"
+                      placeholder="관리자 ID 또는 로그인 이메일 입력"
                       autoFocus
                     />
                     <Input

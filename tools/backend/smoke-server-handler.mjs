@@ -121,6 +121,10 @@ const accountLifecycleService = {
   async getTermsByMemberKey() { return { source: 'postgresql', memberKey: 'member:smoke', states: {}, logs: [] }; },
 };
 const adminClerkAuthService = {
+  async resolveLoginIdentifier({ identifier, password }) {
+    if (identifier === 'smoke-admin' && password === 'SmokeAdmin1234') return { authority: 'clerk-postgresql-login-resolver', authEmail: 'smoke@example.com' };
+    const error = new Error('Invalid admin credentials.'); error.code = 'admin_login_credentials_invalid'; error.status = 401; throw error;
+  },
   async authorizeCurrent({ clerkUserId }) {
     if (clerkUserId !== 'user_smoke') { const error = new Error('Admin not found.'); error.code = 'admin_not_found'; error.status = 404; throw error; }
     return { authority: 'clerk-postgresql-session', admin: adminRecord };
@@ -512,6 +516,16 @@ try {
   const publicContent = await fetch(`${baseUrl}/api/site-content/home`, { headers: { Origin: allowedOrigin } });
   const publicContentBody = await publicContent.json();
   if (publicContent.status !== 200 || publicContentBody.siteContent?.source !== 'postgresql') throw new Error('Public PostgreSQL site content failed.');
+
+  const adminLoginResolve = await fetch(`${baseUrl}/api/admin/auth/resolve-login`, {
+    method: 'POST',
+    headers: { Origin: allowedOrigin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ identifier: 'smoke-admin', password: 'SmokeAdmin1234' }),
+  });
+  const adminLoginResolveBody = await adminLoginResolve.json();
+  if (adminLoginResolve.status !== 200 || adminLoginResolveBody.adminLoginResolution?.authority !== 'clerk-postgresql-login-resolver' || adminLoginResolveBody.adminLoginResolution?.authEmail !== 'smoke@example.com') {
+    throw new Error('Administrator ID login resolution failed.');
+  }
 
   const adminSession = await fetch(`${baseUrl}/api/admin/auth/session`, { headers: authHeaders });
   const adminSessionBody = await adminSession.json();
