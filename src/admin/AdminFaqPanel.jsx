@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 
 import RichTextContent from '../components/RichTextContent.jsx';
 import AdminBoardListSettingsDialog from './AdminBoardListSettingsDialog.jsx';

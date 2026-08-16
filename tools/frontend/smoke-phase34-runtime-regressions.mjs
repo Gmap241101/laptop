@@ -805,6 +805,11 @@ const boardSettingsDialogSource = fs.readFileSync(new URL('../../src/admin/Admin
 const faqCategoryDialogSource = fs.readFileSync(new URL('../../src/admin/AdminFaqCategoryDialog.jsx', import.meta.url), 'utf8');
 const faqBoardSubscriptionControllerSource = fs.readFileSync(new URL('../../src/features/boards/useBoardContentSubscriptionController.js', import.meta.url), 'utf8');
 const boardDerivedSelectorsSource = fs.readFileSync(new URL('../../src/features/boards/useBoardDerivedSelectors.js', import.meta.url), 'utf8');
+assert.match(
+  faqPanelSource,
+  /import\s*\{[^}]*Trash2[^}]*\}\s*from\s*['\"]lucide-react['\"];/,
+  'FAQ management must import Trash2 before rendering FAQ delete actions'
+);
 for (const marker of [
   'sm:grid-cols-[1fr_auto_1fr]',
   '검색 결과 {noticeResultCount}건',
