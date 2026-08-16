@@ -2,6 +2,7 @@ import { lazy, memo, Suspense } from 'react';
 import { Activity, CalendarDays, ChevronDown, Database, Info, Menu, Paintbrush } from 'lucide-react';
 import DevRenderProfiler from '../performance/DevRenderProfiler.jsx';
 import DeviceTrustVerificationPanel from '../components/DeviceTrustVerificationPanel.jsx';
+import AdminPanelRuntimeErrorBoundary from './AdminPanelRuntimeErrorBoundary.jsx';
 import { requestSiteContentDomain, SITE_CONTENT_DOMAINS } from '../features/content/siteContentCutover.js';
 import { preloadAdminFooterCatalog, preloadAdminPopupCatalog } from '../features/boards/adminSiteContentCatalogService.js';
 import { requestFaqBoard, requestNoticeBoard } from '../features/boards/boardContentCutover.js';
@@ -602,8 +603,12 @@ function AdminWorkspace({ ctx, panelCtx }) {
             <div className="min-w-0 space-y-6">
               <Card className="min-w-0">
                 <CardContent className="min-w-0 p-6">
-                  <DevRenderProfiler id={`AdminPanel:${adminTab}`}>
-                    <Suspense fallback={null}>
+                  <AdminPanelRuntimeErrorBoundary
+                    resetKey={adminTab}
+                    onRecover={() => handleAdminTabChange('dashboard')}
+                  >
+                    <DevRenderProfiler id={`AdminPanel:${adminTab}`}>
+                      <Suspense fallback={null}>
                   {/* 대시보드 탭 */}
                   {adminTab === 'dashboard' && (
                     <AdminDashboardPanel ctx={panelCtx} />
@@ -708,8 +713,9 @@ function AdminWorkspace({ ctx, panelCtx }) {
                   {adminTab === 'extensionSettings' && (
                     <AdminExtensionSettingsPanel ctx={panelCtx} />
                   )}
-                    </Suspense>
-                  </DevRenderProfiler>
+                      </Suspense>
+                    </DevRenderProfiler>
+                  </AdminPanelRuntimeErrorBoundary>
                 </CardContent>
               </Card>
             </div>

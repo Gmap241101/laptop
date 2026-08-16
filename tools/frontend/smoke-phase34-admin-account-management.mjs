@@ -1,13 +1,16 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const [panel, createDialog, editDialog, workspace, adminApp, userApp] = await Promise.all([
+const [panel, createDialog, editDialog, workspace, adminApp, userApp, contextSlices, renderAdminRoot, adminBoundary] = await Promise.all([
   readFile(new URL('../../src/admin/AdminAccountsPanel.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../../src/admin/AdminAccountCreateDialog.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../../src/admin/AdminAccountEditDialog.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../../src/admin/AdminWorkspace.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../../src/admin/AdminApp.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../../src/UserApp.jsx', import.meta.url), 'utf8'),
+  readFile(new URL('../../src/context/appContextSlices.js', import.meta.url), 'utf8'),
+  readFile(new URL('../../src/bootstrap/renderAdminRoot.jsx', import.meta.url), 'utf8'),
+  readFile(new URL('../../src/admin/AdminPanelRuntimeErrorBoundary.jsx', import.meta.url), 'utf8'),
 ]);
 
 assert.match(workspace, /\['adminAccounts',\s*ShieldCheck,\s*'관리자 계정 관리'\]/);
@@ -26,5 +29,10 @@ assert.match(createDialog, /관리자 계정 등록/);
 assert.match(editDialog, /관리자 계정 수정/);
 assert.match(adminApp, /관리자 계정 관리 정보를 확인해 주세요/);
 assert.match(userApp, /관리자 계정 관리 정보를 확인해 주세요/);
+assert.match(contextSlices, /adminAccounts: contextKeys\('[^']*\bSearch\b[^']*'\)/);
+assert.match(workspace, /AdminPanelRuntimeErrorBoundary/);
+assert.match(workspace, /resetKey=\{adminTab\}/);
+assert.match(renderAdminRoot, /AdminPanelRuntimeErrorBoundary/);
+assert.match(adminBoundary, /admin_panel_render_failed/);
 
 console.log('[phase34-admin-account-management-frontend-smoke] PASS');
