@@ -85,6 +85,7 @@ const accountLifecycleTermsService = createAccountLifecycleService({
   authorityEnabled: true,
   repository: {
     async createSignupAccount() { return {}; },
+    async findRetiredAccountsByEmail() { return []; },
     async getConsentSnapshot(firebaseUid, options = {}) {
       assert.equal(firebaseUid, 'member-terms-1');
       consentSnapshotOptions = options;

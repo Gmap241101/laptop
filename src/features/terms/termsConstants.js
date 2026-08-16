@@ -79,6 +79,14 @@ export const isTermsConsentRequiredForAccount = ({ policy, account }) => {
     0,
     Number(account?.termsConsentRevision) || 0
   );
+  const consentPolicyVersion = Number(account?.termsConsentPolicyVersion);
+
+  // Administrator-created accounts intentionally skip email OTP, but an
+  // administrator must not accept the user's terms on their behalf. A negative
+  // policy version is the PostgreSQL lifecycle marker for that one-time state.
+  if (Number.isFinite(consentPolicyVersion) && consentPolicyVersion < 0) {
+    return normalizedPolicy.requiredRevision > 0;
+  }
 
   if (consentRevision >= normalizedPolicy.requiredRevision) {
     return false;

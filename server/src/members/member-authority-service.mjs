@@ -308,7 +308,7 @@ export const createMemberAuthorityService = ({
     async listAdminMembers({ firebaseIdentity, status = 'all', search = '', page = 1, pageSize = 10 } = {}) {
       const admin = await verifyAdmin(firebaseIdentity);
       const normalizedStatus = trim(status) || 'all';
-      if (!['all','active','pending','blocked','retired','profileRequired'].includes(normalizedStatus)) {
+      if (!['all','current','active','pending','blocked','retired','profileRequired'].includes(normalizedStatus)) {
         throw serviceError('member_status_filter_invalid', 'Unsupported member status filter.', 400);
       }
       if (typeof repository.listMembers !== 'function' || typeof repository.getStatusCounts !== 'function') {
@@ -371,7 +371,7 @@ export const createMemberAuthorityService = ({
       if (!target) throw serviceError('member_target_uid_missing', 'Target member UID is required.', 400);
       const { appUserId } = await resolveTarget(target);
       const context = await buildProfileContext({ targetUid: target, input });
-      if (context.current.status === 'retired') throw serviceError('admin_member_edit_retired', 'Retired member must be resumed before editing.', 409);
+      if (context.current.status === 'retired') throw serviceError('admin_member_edit_retired', 'Retired members are read-only. Re-registration must create a new member account.', 409);
       const beforeProfile = profileFromAccount(context.current, target);
       const result = await repository.mutateProfile({
         appUserId,
@@ -391,17 +391,42 @@ export const createMemberAuthorityService = ({
       const admin = await verifyAdmin(firebaseIdentity);
       const target = trim(targetUid);
       const status = trim(nextStatus);
-      if (!['active','pending','blocked','retired','profileRequired'].includes(status)) throw serviceError('member_status_invalid', 'Unsupported member status.', 400);
+      if (!['active','blocked'].includes(status)) throw serviceError('member_status_transition_invalid', 'This member status change requires its dedicated lifecycle action.', 409);
       const current = await repository.findByFirebaseUid(target);
       if (!current) throw serviceError('member_account_not_synchronized', 'PostgreSQL member account must be synchronized before status authority can be used.', 409);
+      const currentStatus = trim(current.status);
+      if (currentStatus === 'retired') throw serviceError('retired_member_reactivation_not_supported', 'A withdrawn member cannot be reactivated. Re-registration must create a new account.', 409);
+      const allowed = (currentStatus === 'pending' && status === 'active') ||
+        (currentStatus === 'blocked' && status === 'active') ||
+        (['active','profileRequired'].includes(currentStatus) && status === 'blocked');
+      if (!allowed) throw serviceError('member_status_transition_invalid', `Unsupported member status transition: ${currentStatus} -> ${status}`, 409);
       const { appUserId } = await resolveTarget(target);
       const beforeProfile = profileFromAccount(current, target);
       const nextProfile = { ...beforeProfile, status };
       if (status === 'active' && current.rejoinedAccount) {
         const linkedUids = Array.from(new Set([target, ...(Array.isArray(current.previousAccountUids) ? current.previousAccountUids : [])].map(trim).filter(Boolean)));
         const blockingRequests = await repository.countBlockingRentalRequestsForUids(linkedUids);
-        if (blockingRequests > 0) {
-          throw serviceError('rejoined_member_active_requests', 'Previous account still has active rental requests.', 409, { count: blockingRequests });
+        if (blockingRequests > 0) throw serviceError('rejoined_member_active_requests', 'Previous account still has active rental requests.', 409, { count: blockingRequests });
+        if (currentStatus === 'pending') {
+          if (typeof repository.approveRejoinedMemberAndConsolidate !== 'function') {
+            throw serviceError('rejoin_consolidation_authority_unavailable', 'Rejoined member consolidation authority is unavailable.', 503);
+          }
+          const consolidation = await repository.approveRejoinedMemberAndConsolidate({
+            firebaseUid: target,
+            appUserId,
+            actorFirebaseUid: admin.uid,
+          });
+          return Object.freeze({
+            admin: { uid: admin.uid, role: trim(admin.fields?.adminRole || 'admin') },
+            authority: 'postgresql', source: 'postgresql-authoritative', firestoreMirror: 'retired',
+            restrictionAuthority: 'postgresql-consolidated', mutationId: consolidation.mutationId,
+            profile: consolidation.profile,
+            rejoinConsolidation: Object.freeze({
+              completed: true,
+              previousAccountUids: consolidation.previousAccountUids,
+              transferCounts: consolidation.transferCounts,
+            }),
+          });
         }
       }
       const restrictionRecord = await rentalRestrictionRepository.findByFirebaseUid(target);
@@ -411,24 +436,13 @@ export const createMemberAuthorityService = ({
       ));
       const nextRestriction = inheritedActive ? { ...inherited, uid: target, inheritedFromPreviousAccount: true } : null;
       const result = await repository.mutateStatus({
-        appUserId,
-        firebaseUid: target,
-        actorFirebaseUid: admin.uid,
-        nextStatus: status,
-        beforeProfile,
-        nextProfile,
-        nextRestriction,
-        mirrorState: 'retired',
-        beforeMirror: null,
+        appUserId, firebaseUid: target, actorFirebaseUid: admin.uid, nextStatus: status,
+        beforeProfile, nextProfile, nextRestriction, mirrorState: 'retired', beforeMirror: null,
       });
       return Object.freeze({
         admin: { uid: admin.uid, role: trim(admin.fields?.adminRole || 'admin') },
-        authority: 'postgresql',
-        source: 'postgresql-authoritative',
-        firestoreMirror: 'retired',
-        restrictionAuthority: nextRestriction ? 'postgresql' : 'unchanged',
-        mutationId: result.mutationId,
-        profile: nextProfile,
+        authority: 'postgresql', source: 'postgresql-authoritative', firestoreMirror: 'retired',
+        restrictionAuthority: nextRestriction ? 'postgresql' : 'unchanged', mutationId: result.mutationId, profile: nextProfile,
       });
     },
 

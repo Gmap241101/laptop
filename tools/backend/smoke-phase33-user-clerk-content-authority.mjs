@@ -59,6 +59,7 @@ const adminIdentityRepository = {
 let nativeSignup = null;
 let rollbackCalls = 0;
 const accountLifecycleService = {
+  async provisionAdminMember() { return { source: 'postgresql', status: 'active' }; },
   async signup({ firebaseIdentity, input }) {
     nativeSignup = { firebaseIdentity, input };
     accounts.set(firebaseIdentity.uid, {

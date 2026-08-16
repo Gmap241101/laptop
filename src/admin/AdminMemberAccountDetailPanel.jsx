@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FileCheck2, History, PencilLine } from 'lucide-react';
+import { FileCheck2, History, PencilLine, Trash2 } from 'lucide-react';
 
 import { loadMemberAccountHistorySummary } from '../features/members/memberAccountHistoryService.js';
 import {
@@ -12,6 +12,8 @@ export default function AdminMemberAccountDetailPanel({
   account,
   onEdit,
   onOpenTerms,
+  onPurge,
+  purgeLoading = false,
 }) {
   const [historySummary, setHistorySummary] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -81,7 +83,7 @@ export default function AdminMemberAccountDetailPanel({
 
       {account.status === 'retired' ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-800">
-          이용 종료 계정은 회원정보 수정이 잠겨 있습니다. 목록에서 이용 재개 후 수정해 주세요.
+          탈퇴 계정은 로그인 계정이 삭제된 이용 종료 상태입니다. 회원정보와 과거 업무기록은 보존되며, 재가입은 항상 새 계정으로 처리합니다. 완전 삭제하면 관련 업무기록과 재가입 연결정보까지 함께 삭제됩니다.
         </div>
       ) : null}
 
@@ -109,6 +111,16 @@ export default function AdminMemberAccountDetailPanel({
         >
           <PencilLine size={14} /> 회원수정
         </button>
+        {account.status === 'retired' ? (
+          <button
+            type="button"
+            onClick={onPurge}
+            disabled={purgeLoading}
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-[11px] font-bold text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Trash2 size={14} /> {purgeLoading ? '완전 삭제 중' : '회원 완전 삭제'}
+          </button>
+        ) : null}
       </div>
 
       {historySummary ? (

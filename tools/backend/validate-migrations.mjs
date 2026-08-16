@@ -28,6 +28,9 @@ const phase34RentalConfigBootstrap = readFileSync('server/migrations/026_phase34
 const phase34AssetReferenceReconciliation = readFileSync('server/migrations/027_phase34_asset_reference_reconciliation.sql', 'utf8');
 const phase34CanonicalDataConsolidation = readFileSync('server/migrations/028_phase34_canonical_data_consolidation.sql', 'utf8');
 const phase34RetiredStorePhysicalRemoval = readFileSync('server/migrations/029_phase34_retired_store_physical_removal.sql', 'utf8');
+const phase34TransientGlobalBannerAuditCompaction = readFileSync('server/migrations/030_phase34_transient_global_banner_audit_compaction.sql', 'utf8');
+const phase34MemberLifecycleFinalization = readFileSync('server/migrations/031_phase34_member_lifecycle_finalization.sql', 'utf8');
+const phase34RejoinApprovalConsolidation = readFileSync('server/migrations/032_phase34_rejoin_approval_consolidation.sql', 'utf8');
 
 if (!/value\s+JSONB\s+NOT\s+NULL/i.test(phase2)) {
   throw new Error('app_runtime_metadata.value must remain JSONB NOT NULL.');
@@ -447,4 +450,66 @@ for (const protectedStore of ['app_user_firebase_links', 'app_user_identities', 
   }
 }
 
-console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 migrations + Phase 17/18 admin rental-request cutover/mutation completion + Phase 19 user-action lifecycle + Phase 20 asset-domain + Phase 21 member/restriction/admin identity authority + Phase 22 account recovery/admin Clerk auth + Phase 23 user Clerk auth/lifecycle + Phase 24 site content + Phase 25 policy/terms + Phase 26 notice/FAQ board authority + Phase 28 asset/board write mirror retirement + Phase 29 rental transaction PostgreSQL authority + runtime constraint hotfix + Phase 30 member status/restriction mirror retirement + Phase 31 member profile identity/recovery authority + Phase 32 account lifecycle PostgreSQL authority + Phase 34 hard Firebase retirement + PostgreSQL rental-config bootstrap + asset reference reconciliation + canonical data consolidation + retired-store physical removal are type-safe)');
+
+for (const marker of [
+  "pg_advisory_xact_lock(hashtext('phase34-transient-global-banner-audit-compaction'))",
+  "config.config_key = 'system-settings-audit'",
+  "- 'systemBannerMessage'",
+  "- 'systemBannerUrl'",
+  "'phase34_transient_global_banner_audit_compaction'",
+  "'historyPolicy', 'metadata-only'",
+]) {
+  if (!phase34TransientGlobalBannerAuditCompaction.includes(marker)) {
+    throw new Error(`Phase 34 transient global-banner audit compaction marker is missing: ${marker}`);
+  }
+}
+if (/^\s*(BEGIN|COMMIT)\s*;/im.test(phase34TransientGlobalBannerAuditCompaction)) {
+  throw new Error('Migration 030 must rely on the migration runner transaction and must not issue BEGIN/COMMIT itself.');
+}
+
+for (const marker of [
+  "pg_advisory_xact_lock(hashtext('phase34-member-lifecycle-finalization'))",
+  'CREATE INDEX IF NOT EXISTS app_member_accounts_retired_status_idx',
+  "WHERE status='retired'",
+  "'phase34_member_lifecycle_finalization'",
+  "'signup_uid', 'random-per-account'",
+  "'same_email_rejoin', 'new-account-linked-to-retired-until-purge'",
+  "'pending_admin_actions', jsonb_build_array('approve','reject')",
+  "'retired_reactivation', 'forbidden'",
+  "'retired_storage', 'preserve-until-explicit-permanent-delete'",
+  "'permanent_delete', 'member-and-business-records-physical-delete'",
+  "'deleted_email_reuse', 'fresh-member-no-lineage'",
+]) {
+  if (!phase34MemberLifecycleFinalization.includes(marker)) {
+    throw new Error(`Phase 34 member-lifecycle finalization marker is missing: ${marker}`);
+  }
+}
+if (/^\s*(BEGIN|COMMIT)\s*;/im.test(phase34MemberLifecycleFinalization)) {
+  throw new Error('Migration 031 must rely on the migration runner transaction and must not issue BEGIN/COMMIT itself.');
+}
+if (/\b(DELETE\s+FROM|TRUNCATE|DROP\s+TABLE)\b/i.test(phase34MemberLifecycleFinalization)) {
+  throw new Error('Migration 031 must not delete member/business data; permanent deletion is an explicit retired-member lifecycle action.');
+}
+
+for (const marker of [
+  "pg_advisory_xact_lock(hashtext('phase34-rejoin-approval-consolidation'))",
+  'app_member_accounts_previous_account_uids_gin_idx',
+  'app_member_accounts_retired_email_idx',
+  "'phase34_rejoin_approval_consolidation'",
+  "'approval', 'transfer-business-records-to-current-account-then-delete-retired-account'",
+  "'retired_auto_purge', false",
+  "'retired_manual_purge', true",
+  "'retention_guideline', 'confirm-employment-end-externally-and-delete-within-one-year'",
+]) {
+  if (!phase34RejoinApprovalConsolidation.includes(marker)) {
+    throw new Error(`Migration 032 rejoin consolidation marker is missing: ${marker}`);
+  }
+}
+if (/^\s*(BEGIN|COMMIT)\s*;/im.test(phase34RejoinApprovalConsolidation)) {
+  throw new Error('Migration 032 must rely on the migration runner transaction and must not issue BEGIN/COMMIT itself.');
+}
+if (/\b(DELETE\s+FROM|TRUNCATE|DROP\s+TABLE)\b/i.test(phase34RejoinApprovalConsolidation)) {
+  throw new Error('Migration 032 must not move or delete member/business rows; runtime approval performs the guarded consolidation.');
+}
+
+console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 through Phase 34 migrations, including 030 global-banner compaction, 031 member lifecycle finalization, and 032 rejoin approval consolidation, are type-safe)');

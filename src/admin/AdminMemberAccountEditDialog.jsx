@@ -147,7 +147,7 @@ export default function AdminMemberAccountEditDialog({
 
           {account.status === 'retired' ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
-              이용 종료 계정은 정보 수정이 잠겨 있습니다. 목록에서 이용 재개 후 수정해 주세요.
+              탈퇴 계정은 Clerk 로그인 계정이 삭제된 이용 종료 기록이므로 수정할 수 없습니다. 재가입은 새 회원 계정으로 처리합니다.
             </div>
           ) : null}
 

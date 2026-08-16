@@ -154,6 +154,22 @@ export const createAccountLifecycleRepository = (pool) => {
       return result.rows[0] || null;
     },
 
+    async findRetiredAccountsByEmail(email) {
+      const normalizedEmail = String(email || '').trim().toLowerCase();
+      if (!normalizedEmail) return [];
+      const result = await pool.query(
+        `SELECT m.firebase_uid, m.status, m.previous_account_uids, m.identity_key, m.directory_member_id,
+                COALESCE(NULLIF(m.email,''), u.primary_email, '') AS resolved_email
+           FROM app_member_accounts m
+           LEFT JOIN app_user_identities u ON u.id=m.app_user_id
+          WHERE m.status='retired'
+            AND lower(COALESCE(NULLIF(m.email,''), u.primary_email, ''))=lower($1)
+          ORDER BY m.withdrawn_at DESC NULLS LAST, m.updated_at DESC`,
+        [normalizedEmail],
+      );
+      return result.rows;
+    },
+
     async findIdentityAccounts(identityKey) {
       const result = await pool.query(
         `SELECT firebase_uid, status, previous_account_uids, identity_key, directory_member_id
@@ -170,6 +186,16 @@ export const createAccountLifecycleRepository = (pool) => {
       termsConsentRevision = 0, termsConsentPolicyVersion = 0, decisions = [] }) {
       return withTransaction(async (client) => {
         await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`phase32-signup:${identityKey}`]);
+        const uidConflict = await client.query(
+          `SELECT status FROM app_member_accounts WHERE firebase_uid=$1 LIMIT 1`,
+          [firebaseUid],
+        );
+        if (uidConflict.rowCount > 0) {
+          const error = new Error('Member account UID already exists and cannot be reused for signup.');
+          error.code = 'member_account_uid_conflict';
+          error.status = 409;
+          throw error;
+        }
         const duplicate = await client.query(
           `SELECT firebase_uid, status FROM app_member_accounts
             WHERE identity_key=$1 AND status <> 'retired' AND firebase_uid <> $2
@@ -208,22 +234,7 @@ export const createAccountLifecycleRepository = (pool) => {
                    CASE WHEN $11::bigint > 0 THEN NOW() ELSE NULL END,NOW(),
                    $13,$14,$15::jsonb,'','postgresql-authoritative','retired',$16,
                    'firebase-compatibility','postgresql-authoritative','active',NOW(),NOW(),NOW(),NOW())
-           ON CONFLICT (firebase_uid) DO UPDATE SET
-             email=EXCLUDED.email, masked_email=EXCLUDED.masked_email, name=EXCLUDED.name,
-             team=EXCLUDED.team, phone=EXCLUDED.phone, status=EXCLUDED.status,
-             directory_member_id=EXCLUDED.directory_member_id,
-             directory_verified_version=EXCLUDED.directory_verified_version,
-             rejoined_account=EXCLUDED.rejoined_account,
-             terms_consent_revision=EXCLUDED.terms_consent_revision,
-             terms_consent_policy_version=EXCLUDED.terms_consent_policy_version,
-             terms_consent_completed_at=EXCLUDED.terms_consent_completed_at,
-             terms_consent_bootstrap_completed_at=NOW(),
-             identity_key=EXCLUDED.identity_key, recovery_key=EXCLUDED.recovery_key,
-             previous_account_uids=EXCLUDED.previous_account_uids,
-             authority_mode='postgresql-authoritative', mirror_state='retired',
-             lifecycle_authority_mode='postgresql-authoritative', clerk_account_state='active',
-             last_mutation_id=EXCLUDED.last_mutation_id,
-             authoritative_updated_at=NOW(), synced_at=NOW(), updated_at=NOW()`,
+`,
           [firebaseUid, email, maskedEmail, name, team, phone, status, directoryMemberId,
             directoryVerifiedVersion, rejoinedAccount, termsConsentRevision, termsConsentPolicyVersion,
             identityKey, recoveryKey, JSON.stringify(previousAccountUids), randomUUID()],

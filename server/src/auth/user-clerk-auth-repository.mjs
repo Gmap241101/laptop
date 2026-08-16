@@ -180,7 +180,7 @@ export const createUserClerkAuthRepository = (pool) => {
       return this.findByFirebaseUid(firebaseUid);
     },
 
-    async finalizePostgresqlWithdrawal({ firebaseUid }) {
+    async finalizePostgresqlWithdrawal({ firebaseUid, allowBlockingRestriction = false }) {
       const uid = trim(firebaseUid);
       const client = await pool.connect();
       try {
@@ -229,25 +229,18 @@ export const createUserClerkAuthRepository = (pool) => {
         );
         const restrictionRow = restrictionResult.rows[0];
         const restriction = restrictionRow?.restriction_exists ? (restrictionRow.restriction_payload || {}) : {};
-        if (isBlockingRestriction(restriction)) {
+        if (!allowBlockingRestriction && isBlockingRestriction(restriction)) {
           throw repositoryError('user_withdrawal_restriction_blocked', 'Active rental restriction blocks membership withdrawal.', 409);
         }
 
-        const previousAccountUids = Array.isArray(member.previous_account_uids)
-          ? member.previous_account_uids.map(trim).filter(Boolean)
-          : [];
-        const nextPreviousAccountUids = Array.from(new Set([...previousAccountUids, uid]));
-
         await client.query(
           `UPDATE app_member_accounts
-              SET email='', masked_email='', name='탈퇴회원', team='', phone='', status='retired',
-                  directory_member_id='', directory_verified_version=0, profile_required_reason='',
-                  recovery_key='', previous_account_uids=$2::jsonb,
+              SET status='retired',
                   lifecycle_authority_mode='postgresql-authoritative', mirror_state='retired',
                   withdrawn_at=COALESCE(withdrawn_at,NOW()), authoritative_updated_at=NOW(),
                   source_updated_at=NOW(), synced_at=NOW(), updated_at=NOW()
             WHERE firebase_uid=$1`,
-          [uid, JSON.stringify(nextPreviousAccountUids)],
+          [uid],
         );
         await client.query(
           `UPDATE app_rental_restrictions
@@ -266,18 +259,153 @@ export const createUserClerkAuthRepository = (pool) => {
     },
 
     async syncRetiredMember({ firebaseUid, account = {} }) {
-      const previousAccountUids = Array.isArray(account.previousAccountUids) ? account.previousAccountUids : [];
+      const uid = trim(firebaseUid);
       await pool.query(
         `UPDATE app_member_accounts
-            SET email='', masked_email='', name='탈퇴회원', team='', phone='', status='retired',
-                directory_member_id='', directory_verified_version=0, profile_required_reason='',
-                identity_key='', recovery_key='', previous_account_uids=$2::jsonb,
-                lifecycle_authority_mode='postgresql-authoritative', withdrawn_at=COALESCE(withdrawn_at,NOW()),
+            SET status='retired', lifecycle_authority_mode='postgresql-authoritative',
+                mirror_state='retired', withdrawn_at=COALESCE(withdrawn_at,NOW()),
                 authoritative_updated_at=NOW(), source_updated_at=NOW(), updated_at=NOW()
           WHERE firebase_uid=$1`,
-        [trim(firebaseUid), JSON.stringify(previousAccountUids)],
+        [uid],
       );
-      return this.findByFirebaseUid(firebaseUid);
+      return this.findByFirebaseUid(uid);
+    },
+
+    async purgeMemberAccount({ firebaseUid, requiredStatus, operation = 'member-purge' }) {
+      const uid = trim(firebaseUid);
+      const statusRequired = trim(requiredStatus);
+      if (!uid || !statusRequired) throw repositoryError('member_purge_target_invalid', 'Member purge target is invalid.', 400);
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`member-purge:${uid}`]);
+        const memberResult = await client.query(
+          `SELECT firebase_uid, app_user_id, status
+             FROM app_member_accounts
+            WHERE firebase_uid=$1
+            FOR UPDATE`,
+          [uid],
+        );
+        const member = memberResult.rows[0];
+        if (!member) throw repositoryError('member_account_not_found', 'Member account was not found.', 404);
+        if (trim(member.status) !== statusRequired) {
+          throw repositoryError(statusRequired === 'retired' ? 'admin_member_purge_retired_only' : 'admin_member_reject_pending_only', 'Member status does not allow this deletion.', 409);
+        }
+        if (statusRequired === 'retired') {
+          const pendingRejoin = await client.query(
+            `SELECT firebase_uid
+               FROM app_member_accounts
+              WHERE status='pending'
+                AND previous_account_uids ? $1
+              LIMIT 1`,
+            [uid],
+          );
+          if (pendingRejoin.rowCount > 0) {
+            throw repositoryError('member_purge_pending_rejoin_blocked', 'A pending re-registration is still linked to this retired member.', 409);
+          }
+        }
+        const blockerResult = await client.query(
+          `SELECT COUNT(*) FILTER (WHERE status IN ('신청중','보류','대여중'))::bigint AS active_count,
+                  COUNT(*) FILTER (WHERE user_action_request->>'status'='pending')::bigint AS pending_action_count,
+                  COUNT(*) FILTER (WHERE overdue_penalty_pending=TRUE)::bigint AS overdue_penalty_pending_count
+             FROM app_rental_requests
+            WHERE firebase_uid=$1 OR ($2::bigint IS NOT NULL AND app_user_id=$2::bigint)`,
+          [uid, member.app_user_id],
+        );
+        const blockers = blockerResult.rows[0] || {};
+        if (Number(blockers.active_count || 0) > 0 || Number(blockers.pending_action_count || 0) > 0 || Number(blockers.overdue_penalty_pending_count || 0) > 0) {
+          throw repositoryError('member_purge_active_business_blocked', 'Unfinished rental business blocks permanent member deletion.', 409);
+        }
+
+        const requestResult = await client.query(
+          `SELECT id FROM app_rental_requests WHERE firebase_uid=$1 OR ($2::bigint IS NOT NULL AND app_user_id=$2::bigint)`,
+          [uid, member.app_user_id],
+        );
+        const requestIds = requestResult.rows.map((row) => row.id);
+        const deletedCounts = {};
+        if (requestIds.length) {
+          const guards = await client.query(`DELETE FROM app_rental_asset_reservation_guards WHERE rental_request_id=ANY($1::bigint[])`, [requestIds]);
+          deletedCounts.reservationGuards = guards.rowCount;
+          const events = await client.query(`DELETE FROM app_rental_request_events WHERE rental_request_id=ANY($1::bigint[])`, [requestIds]);
+          deletedCounts.rentalEvents = events.rowCount;
+          const items = await client.query(`DELETE FROM app_rental_request_items WHERE rental_request_id=ANY($1::bigint[])`, [requestIds]);
+          deletedCounts.rentalItems = items.rowCount;
+        }
+        const crossEvents = await client.query(`DELETE FROM app_rental_request_events WHERE actor_firebase_uid=$1 OR ($2::bigint IS NOT NULL AND actor_app_user_id=$2::bigint)`, [uid, member.app_user_id]);
+        deletedCounts.actorRentalEvents = crossEvents.rowCount;
+        const requests = await client.query(`DELETE FROM app_rental_requests WHERE firebase_uid=$1 OR ($2::bigint IS NOT NULL AND app_user_id=$2::bigint)`, [uid, member.app_user_id]);
+        deletedCounts.rentalRequests = requests.rowCount;
+        const restrictions = await client.query(`DELETE FROM app_rental_restrictions WHERE firebase_uid=$1 OR ($2::bigint IS NOT NULL AND app_user_id=$2::bigint)`, [uid, member.app_user_id]);
+        deletedCounts.restrictions = restrictions.rowCount;
+        const termLogs = await client.query(`DELETE FROM app_user_term_consent_logs WHERE firebase_uid=$1`, [uid]);
+        deletedCounts.termLogs = termLogs.rowCount;
+        const termStates = await client.query(`DELETE FROM app_user_term_consent_states WHERE firebase_uid=$1`, [uid]);
+        deletedCounts.termStates = termStates.rowCount;
+        const profileEvents = await client.query(`DELETE FROM app_member_profile_events WHERE firebase_uid=$1 OR actor_firebase_uid=$1 OR ($2::bigint IS NOT NULL AND app_user_id=$2::bigint)`, [uid, member.app_user_id]);
+        deletedCounts.profileEvents = profileEvents.rowCount;
+
+        await client.query(
+          `UPDATE app_member_accounts current
+              SET previous_account_uids=COALESCE((
+                    SELECT jsonb_agg(value)
+                      FROM jsonb_array_elements_text(current.previous_account_uids) AS value
+                     WHERE value <> $1
+                  ), '[]'::jsonb),
+                  rejoined_account=EXISTS(
+                    SELECT 1 FROM jsonb_array_elements_text(current.previous_account_uids) AS value WHERE value <> $1
+                  ),
+                  updated_at=NOW(), authoritative_updated_at=NOW()
+            WHERE current.firebase_uid <> $1
+              AND current.previous_account_uids ? $1`,
+          [uid],
+        );
+        await client.query(
+          `UPDATE app_rental_restrictions
+              SET restriction_exists=FALSE, restriction_payload='{}'::jsonb,
+                  source_document_path='postgresql/member-purge/cleared-inherited-restriction',
+                  source_hash='', updated_at=NOW(), authoritative_updated_at=NOW()
+            WHERE restriction_payload->>'inheritedFromPreviousAccount'='true'
+              AND restriction_payload->>'inheritedFromFirebaseUid'=$1`,
+          [uid],
+        );
+
+        const memberDelete = await client.query(`DELETE FROM app_member_accounts WHERE firebase_uid=$1 RETURNING app_user_id`, [uid]);
+        deletedCounts.memberAccounts = memberDelete.rowCount;
+        if (member.app_user_id) {
+          const identityDelete = await client.query(`DELETE FROM app_user_identities WHERE id=$1`, [member.app_user_id]);
+          deletedCounts.userIdentities = identityDelete.rowCount;
+        } else {
+          deletedCounts.userIdentities = 0;
+          const linkDelete = await client.query(`DELETE FROM app_user_firebase_links WHERE firebase_uid=$1`, [uid]);
+          deletedCounts.identityLinks = linkDelete.rowCount;
+        }
+
+        const orphanChecks = await client.query(
+          `SELECT
+             (SELECT COUNT(*) FROM app_member_accounts WHERE firebase_uid=$1)::bigint AS members,
+             (SELECT COUNT(*) FROM app_user_firebase_links WHERE firebase_uid=$1)::bigint AS links,
+             (SELECT COUNT(*) FROM app_user_identities WHERE $2::bigint IS NOT NULL AND id=$2::bigint)::bigint AS identities,
+             (SELECT COUNT(*) FROM app_rental_requests WHERE firebase_uid=$1 OR ($2::bigint IS NOT NULL AND app_user_id=$2::bigint))::bigint AS requests,
+             (SELECT COUNT(*) FROM app_rental_request_events WHERE actor_firebase_uid=$1 OR ($2::bigint IS NOT NULL AND actor_app_user_id=$2::bigint))::bigint AS rental_event_actor_refs,
+             (SELECT COUNT(*) FROM app_rental_restrictions WHERE firebase_uid=$1 OR ($2::bigint IS NOT NULL AND app_user_id=$2::bigint))::bigint AS restrictions,
+             (SELECT COUNT(*) FROM app_user_term_consent_states WHERE firebase_uid=$1)::bigint AS term_states,
+             (SELECT COUNT(*) FROM app_user_term_consent_logs WHERE firebase_uid=$1)::bigint AS term_logs,
+             (SELECT COUNT(*) FROM app_member_profile_events WHERE firebase_uid=$1 OR actor_firebase_uid=$1 OR ($2::bigint IS NOT NULL AND app_user_id=$2::bigint))::bigint AS profile_events,
+             (SELECT COUNT(*) FROM app_member_accounts WHERE previous_account_uids ? $1)::bigint AS lineage_refs`,
+          [uid, member.app_user_id],
+        );
+        const orphan = orphanChecks.rows[0] || {};
+        if (Object.values(orphan).some((value) => Number(value || 0) > 0)) {
+          throw repositoryError('member_purge_orphan_reference', `Permanent member deletion left orphan references after ${operation}.`, 500);
+        }
+        await client.query('COMMIT');
+        return Object.freeze({ deleted: true, deletedCounts: Object.freeze(deletedCounts) });
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw error;
+      } finally {
+        client.release();
+      }
     },
 
     async markClerkRetired({ firebaseUid, deleted = true }) {

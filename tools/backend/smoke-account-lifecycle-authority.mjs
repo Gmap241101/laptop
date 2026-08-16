@@ -32,6 +32,7 @@ let bootstrapCompleted = false;
 const repository = {
   async getDirectoryEntry() { return { identity_key: 'x', directory_member_id: 'dir-32', name: '홍길동', team: '채용대행팀', enabled: true }; },
   async findIdentityAccounts() { return []; },
+  async findRetiredAccountsByEmail() { return []; },
   async createSignupAccount(args) { signupArgs = args; bootstrapCompleted = true; return { firebase_uid: args.firebaseUid, status: args.status, mirror_state: 'retired' }; },
   async getConsentSnapshot() { return { states: {}, logs: [], termsConsentRevision: bootstrapCompleted ? 5 : 0, termsConsentPolicyVersion: bootstrapCompleted ? 5 : 0, bootstrapCompleted }; },
   async importConsents(args) { importedArgs = args; bootstrapCompleted = true; return { states: Object.fromEntries(args.states.map((item) => [item.termId, item])), logs: args.logs, termsConsentRevision: 5, termsConsentPolicyVersion: 5, bootstrapCompleted: true }; },

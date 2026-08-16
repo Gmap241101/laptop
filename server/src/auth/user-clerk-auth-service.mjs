@@ -1,8 +1,7 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 
 const trim = (value) => String(value ?? '').trim();
 const lower = (value) => trim(value).toLowerCase();
-const sha256 = (value) => createHash('sha256').update(String(value || '')).digest('hex');
 
 const serviceError = (code, message, status = 400) => {
   const error = new Error(message);
@@ -18,7 +17,7 @@ const privateMetadata = (legacyMemberKey) => ({
   rentalSystemLegacyMemberKey: legacyMemberKey,
   rentalSystemUserIdentity: 'postgresql',
 });
-const nativeLegacyMemberKey = (email) => `clerk-native:${sha256(lower(email))}`;
+const newMemberKey = (source = 'signup') => `clerk-${source}:${randomUUID()}`;
 const compatibilityIdentity = ({ uid, email, provider = 'clerk-postgresql' }) => Object.freeze({
   uid: trim(uid),
   email: lower(email),
@@ -39,7 +38,7 @@ export const createUserClerkAuthService = ({
   accountLifecycleCompatibilityDisabled = false,
   userFirebaseAuthCompatibilityDisabled = false,
 }) => {
-  if (!repository || typeof repository.findByClerkUserId !== 'function') throw new TypeError('User Clerk auth repository is required.');
+  if (!repository || typeof repository.findByClerkUserId !== 'function' || typeof repository.findByFirebaseUid !== 'function') throw new TypeError('User Clerk auth repository is required.');
   if (!clerkClient || typeof clerkClient.getUser !== 'function' || typeof clerkClient.findUserByEmail !== 'function' || typeof clerkClient.createUser !== 'function' || typeof clerkClient.updateUser !== 'function' || typeof clerkClient.updateUserMetadata !== 'function' || typeof clerkClient.verifyPassword !== 'function' || typeof clerkClient.deleteUser !== 'function') throw new TypeError('Clerk Backend API lifecycle methods are required.');
   if (!userRepository || typeof userRepository.upsertFromClerk !== 'function') throw new TypeError('User repository is required.');
   if (!firebaseLinkRepository || typeof firebaseLinkRepository.link !== 'function') throw new TypeError('Firebase link repository is required.');
@@ -47,7 +46,7 @@ export const createUserClerkAuthService = ({
   if (accountLifecycleCompatibilityDisabled && (!adminIdentityRepository || typeof adminIdentityRepository.findByFirebaseUid !== 'function' || typeof adminIdentityRepository.findByClerkUserId !== 'function')) {
     throw new TypeError('PostgreSQL administrator identity repository is required when Phase 32 account lifecycle authority is enabled.');
   }
-  if (userFirebaseAuthCompatibilityDisabled && (!accountLifecycleService || typeof accountLifecycleService.signup !== 'function')) {
+  if (userFirebaseAuthCompatibilityDisabled && (!accountLifecycleService || typeof accountLifecycleService.signup !== 'function' || typeof accountLifecycleService.provisionAdminMember !== 'function')) {
     throw new TypeError('PostgreSQL account lifecycle service is required when user Firebase Auth compatibility is retired.');
   }
 
@@ -157,6 +156,80 @@ export const createUserClerkAuthService = ({
   return Object.freeze({
     getCurrent: ({ clerkUserId }) => getCurrent(clerkUserId),
 
+    async createAdminManagedMember({ actorClerkUserId, input = {}, password }) {
+      if (!userFirebaseAuthCompatibilityDisabled) {
+        throw serviceError('admin_member_native_provision_not_enabled', 'Administrator member provisioning requires Clerk/PostgreSQL user authority.', 409);
+      }
+      const actor = await adminIdentityRepository.findByClerkUserId(trim(actorClerkUserId));
+      if (!actor || trim(actor.status) !== 'active') {
+        throw serviceError('admin_authority_required', 'Active administrator authority is required to provision a member.', 403);
+      }
+      const email = lower(input.email);
+      const name = trim(input.name).replace(/\s+/g, '');
+      const team = trim(input.team).replace(/\s+/g, ' ');
+      const phone = trim(input.phone);
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        throw serviceError('admin_member_email_invalid', 'A valid member email is required.', 400);
+      }
+      if (!/^[가-힣A-Za-z]{2,30}$/u.test(name) || !team || !/^(02|0\d{2})-\d{3,4}-\d{4}$/.test(phone)) {
+        throw serviceError('admin_member_profile_invalid', 'Member name, team and phone are required.', 400);
+      }
+      if (!/^(?=\S{8,}$)(?=.*[A-Za-z])(?=.*\d).+$/.test(String(password || ''))) {
+        throw serviceError('user_clerk_password_too_short', 'Clerk user passwords must be at least 8 characters and include letters and numbers.', 400);
+      }
+      if (await clerkClient.findUserByEmail(email)) {
+        throw serviceError('member_email_already_registered', 'Email address is already registered in Clerk.', 409);
+      }
+
+      const legacyMemberKey = newMemberKey('admin');
+      let clerkUser = null;
+      let signupCommitted = false;
+      try {
+        const signup = await accountLifecycleService.provisionAdminMember({
+          firebaseUid: legacyMemberKey,
+          input: { email, name, team, phone },
+        });
+        signupCommitted = true;
+        clerkUser = await clerkClient.createUser({
+          email,
+          password,
+          firstName: name || '사용자',
+          publicMetadata: publicMetadata(),
+          privateMetadata: {
+            ...privateMetadata(legacyMemberKey),
+            rentalSystemProvisionedBy: 'admin',
+          },
+          externalId: `rental-user:${legacyMemberKey}`,
+          skipPasswordChecks: false,
+        });
+        const linked = await linkClerkAuthority({
+          clerkUser,
+          legacyMemberKey,
+          email,
+          provider: 'clerk-admin-provisioned',
+        });
+        return Object.freeze({
+          authority: 'clerk-postgresql',
+          source: 'postgresql',
+          provisionedBy: 'admin',
+          emailVerification: 'not-requested',
+          clerkEmailState: clerkUser.primaryEmailVerified ? 'verified' : 'created',
+          status: signup.status || linked.account?.memberStatus || '',
+          legacyMemberKey,
+          clerkUser,
+          account: linked.account,
+        });
+      } catch (error) {
+        if (clerkUser?.clerkUserId) {
+          await clerkClient.deleteUser(clerkUser.clerkUserId).catch(() => {});
+        }
+        if (signupCommitted && typeof accountLifecycleService.rollbackUnlinkedSignup === 'function') {
+          await accountLifecycleService.rollbackUnlinkedSignup({ firebaseUid: legacyMemberKey }).catch(() => {});
+        }
+        throw error;
+      }
+    },
+
     async signupNative({ input = {}, password }) {
       if (!userFirebaseAuthCompatibilityDisabled) {
         throw serviceError('user_native_signup_not_enabled', 'Native Clerk signup is not enabled.', 409);
@@ -168,7 +241,7 @@ export const createUserClerkAuthService = ({
         throw serviceError('member_email_already_registered', 'Email address is already registered.', 409);
       }
 
-      const legacyMemberKey = nativeLegacyMemberKey(email);
+      const legacyMemberKey = newMemberKey('signup');
       let clerkUser = null;
       let signupCommitted = false;
       try {
@@ -235,7 +308,7 @@ export const createUserClerkAuthService = ({
         throw serviceError('member_email_already_registered', 'Email address is already registered.', 409);
       }
 
-      const legacyMemberKey = nativeLegacyMemberKey(email);
+      const legacyMemberKey = newMemberKey('signup');
       let signupCommitted = false;
       try {
         const signup = await accountLifecycleService.signup({
@@ -365,6 +438,73 @@ export const createUserClerkAuthService = ({
       await clerkClient.updateUser(clerkUserId, { password: newPassword });
       const account = await repository.markPasswordAuthority({ firebaseUid: current.account.firebaseUid });
       return Object.freeze({ authority: 'clerk', changed: true, account });
+    },
+
+    async rejectAdminPendingMember({ actorClerkUserId, targetUid }) {
+      if (!userFirebaseAuthCompatibilityDisabled) {
+        throw serviceError('admin_member_reject_not_enabled', 'Administrator signup rejection requires Clerk/PostgreSQL user authority.', 409);
+      }
+      const actor = await adminIdentityRepository.findByClerkUserId(trim(actorClerkUserId));
+      if (!actor || trim(actor.status) !== 'active') throw serviceError('admin_authority_required', 'Active administrator authority is required.', 403);
+      const target = await repository.findByFirebaseUid(trim(targetUid));
+      if (!target) throw serviceError('member_account_not_found', 'Member account was not found.', 404);
+      if (trim(target.memberStatus) !== 'pending') throw serviceError('admin_member_reject_pending_only', 'Only pending signup accounts can be rejected.', 409);
+      if (target.clerkUserId) {
+        await clerkClient.deleteUser(target.clerkUserId).catch((error) => {
+          if (Number(error?.status || 0) === 404) return null;
+          throw serviceError('admin_member_reject_clerk_delete_failed', error?.message || 'Clerk member deletion failed.', 502);
+        });
+      }
+      const deleted = await repository.purgeMemberAccount({ firebaseUid: target.firebaseUid, requiredStatus: 'pending', operation: 'signup-reject' });
+      return Object.freeze({ authority: 'clerk-postgresql', operation: 'signup-reject', deleted: Boolean(deleted?.deleted), firebaseUid: target.firebaseUid });
+    },
+
+    async retireAdminMember({ actorClerkUserId, targetUid }) {
+      if (!userFirebaseAuthCompatibilityDisabled) {
+        throw serviceError('admin_member_retire_not_enabled', 'Administrator member retirement requires Clerk/PostgreSQL user authority.', 409);
+      }
+      const actor = await adminIdentityRepository.findByClerkUserId(trim(actorClerkUserId));
+      if (!actor || trim(actor.status) !== 'active') throw serviceError('admin_authority_required', 'Active administrator authority is required.', 403);
+      const target = await repository.findByFirebaseUid(trim(targetUid));
+      if (!target) throw serviceError('member_account_not_found', 'Member account was not found.', 404);
+      if (trim(target.memberStatus) === 'retired') throw serviceError('admin_member_already_retired', 'Member is already retired.', 409);
+      if (trim(target.memberStatus) === 'pending') throw serviceError('admin_member_pending_requires_rejection', 'Pending signup accounts must be rejected instead of retired.', 409);
+      await repository.finalizePostgresqlWithdrawal({ firebaseUid: target.firebaseUid, allowBlockingRestriction: true });
+      let clerkDeleted = false;
+      let clerkCleanupError = '';
+      if (target.clerkUserId) {
+        try {
+          await clerkClient.deleteUser(target.clerkUserId);
+          clerkDeleted = true;
+        } catch (error) {
+          if (Number(error?.status || 0) === 404) clerkDeleted = true;
+          else clerkCleanupError = error?.code || error?.message || 'clerk_user_delete_failed';
+        }
+      } else {
+        clerkDeleted = true;
+      }
+      const account = await repository.markClerkRetired({ firebaseUid: target.firebaseUid, deleted: clerkDeleted });
+      return Object.freeze({ authority: 'clerk-postgresql', operation: 'member-retire', retired: true, clerkDeleted, clerkCleanupError, account });
+    },
+
+    async purgeAdminRetiredMember({ actorClerkUserId, targetUid }) {
+      if (!userFirebaseAuthCompatibilityDisabled) {
+        throw serviceError('admin_member_purge_not_enabled', 'Administrator member purge requires Clerk/PostgreSQL user authority.', 409);
+      }
+      const actor = await adminIdentityRepository.findByClerkUserId(trim(actorClerkUserId));
+      if (!actor || trim(actor.status) !== 'active') throw serviceError('admin_authority_required', 'Active administrator authority is required.', 403);
+      const target = await repository.findByFirebaseUid(trim(targetUid));
+      if (!target) throw serviceError('member_account_not_found', 'Member account was not found.', 404);
+      if (trim(target.memberStatus) !== 'retired') throw serviceError('admin_member_purge_retired_only', 'Only retired members can be permanently deleted.', 409);
+      if (target.clerkUserId && target.clerkAccountState !== 'deleted') {
+        try {
+          await clerkClient.deleteUser(target.clerkUserId);
+        } catch (error) {
+          if (Number(error?.status || 0) !== 404) throw serviceError('admin_member_purge_clerk_delete_failed', error?.message || 'Clerk member deletion failed.', 502);
+        }
+      }
+      const deleted = await repository.purgeMemberAccount({ firebaseUid: target.firebaseUid, requiredStatus: 'retired', operation: 'retired-purge' });
+      return Object.freeze({ authority: 'clerk-postgresql', operation: 'retired-purge', deleted: Boolean(deleted?.deleted), firebaseUid: target.firebaseUid, deletedCounts: deleted?.deletedCounts || {} });
     },
 
     async finalizeWithdrawal({ clerkUserId, firebaseIdentity = null, password }) {

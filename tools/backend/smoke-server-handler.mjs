@@ -107,6 +107,7 @@ const accountRecoveryService = {
 let termsSaved = false;
 const accountLifecycleService = {
   async signup() { return { source: 'postgresql', authority: 'postgresql', firestoreBootstrap: 'retired', status: 'active' }; },
+  async provisionAdminMember() { return { source: 'postgresql', authority: 'postgresql', provisionedBy: 'admin', status: 'active' }; },
   async getTerms() { return { source: 'postgresql', policy: { enabled: true, revision: 5, activeTerms: [] }, states: {}, logs: [], bootstrapCompleted: true, bootstrapRequired: false }; },
   async bootstrapTerms() { return { source: 'postgresql', policy: { enabled: true, revision: 5, activeTerms: [] }, states: {}, logs: [], bootstrapCompleted: true, bootstrapRequired: false, legacyBootstrap: 'retired' }; },
   async saveTerms() { termsSaved = true; return { source: 'postgresql', authority: 'postgresql', firestoreMirror: 'retired', policy: { enabled: true, revision: 5, activeTerms: [] }, states: {}, logs: [], bootstrapCompleted: true, bootstrapRequired: false }; },
@@ -151,6 +152,10 @@ const clerkDeviceTrustService = {
   async setEnabled(enabled) { clerkDeviceTrustEnabled = Boolean(enabled); return { configured: true, source: 'clerk-platform-api', authority: 'clerk-device-trust', enabled: clerkDeviceTrustEnabled }; },
 };
 const userClerkAuthService = {
+  async createAdminManagedMember() { return { authority: 'clerk-postgresql', source: 'postgresql', status: 'active', account: memberShadowProfile }; },
+  async rejectAdminPendingMember() { return { authority: 'clerk-postgresql', operation: 'signup-reject', deleted: true, firebaseUid: 'pending-smoke' }; },
+  async retireAdminMember() { return { authority: 'clerk-postgresql', operation: 'member-retire', retired: true, clerkDeleted: true, account: { ...memberShadowProfile, status: 'retired' } }; },
+  async purgeAdminRetiredMember() { return { authority: 'clerk-postgresql', operation: 'retired-purge', deleted: true, firebaseUid: 'retired-smoke', deletedCounts: {} }; },
   async signupVerifiedCurrent({ input }) { return { status: 'active', account: { ...userAccount, memberStatus: 'active', primaryEmail: input?.email || userAccount.primaryEmail }, clerkUser: { clerkUserId: 'user_smoke' }, emailVerification: 'clerk-email-code' }; },
   async signupNative({ input }) { return { signup: { status: 'pending' }, account: { ...userAccount, memberStatus: 'pending', primaryEmail: input?.email || userAccount.primaryEmail }, clerkUser: { clerkUserId: 'clerk_native_smoke' } }; },
   async ensureRecoveryClerkIdentity() { return { ready: true, clerkUserId: 'user_smoke' }; },
@@ -583,6 +588,35 @@ try {
   if (dashboard.status !== 200 || (await dashboard.json()).adminRentalDashboard?.source !== 'postgresql') throw new Error('PostgreSQL administrator dashboard failed.');
   const members = await fetch(`${baseUrl}/api/admin/members`, { headers: authHeaders });
   if (members.status !== 200 || (await members.json()).adminMembers?.source !== 'postgresql') throw new Error('PostgreSQL administrator members endpoint failed.');
+  const createdMember = await fetch(`${baseUrl}/api/admin/members`, {
+    method: 'POST',
+    headers: { ...authHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: 'created-member@example.com',
+      name: '홍길동',
+      team: '채용대행팀',
+      phone: '010-1234-5678',
+      password: 'Smoke1234',
+    }),
+  });
+  const createdMemberBody = await createdMember.json();
+  if (createdMember.status !== 201 || createdMemberBody.adminMemberCreate?.authority !== 'clerk-postgresql' || createdMemberBody.adminMemberCreate?.emailVerification !== 'not-requested' || createdMemberBody.adminMemberCreate?.termsConsent !== 'required-on-first-login') {
+    throw new Error('Administrator Clerk/PostgreSQL member provisioning endpoint failed.');
+  }
+  const rejectedMember = await fetch(`${baseUrl}/api/admin/members/pending-smoke/reject`, { method: 'POST', headers: authHeaders });
+  const rejectedMemberBody = await rejectedMember.json();
+  if (rejectedMember.status !== 200 || rejectedMemberBody.adminMemberLifecycle?.operation !== 'signup-reject') throw new Error('Administrator pending-member rejection endpoint failed.');
+  const retiredMember = await fetch(`${baseUrl}/api/admin/members/active-smoke/retire`, { method: 'POST', headers: authHeaders });
+  const retiredMemberBody = await retiredMember.json();
+  if (retiredMember.status !== 200 || retiredMemberBody.adminMemberLifecycle?.operation !== 'member-retire') throw new Error('Administrator member retirement endpoint failed.');
+  const purgedMember = await fetch(`${baseUrl}/api/admin/members/retired-smoke`, { method: 'DELETE', headers: authHeaders });
+  const purgedMemberBody = await purgedMember.json();
+  if (purgedMember.status !== 200 || purgedMemberBody.adminMemberLifecycle?.operation !== 'retired-purge') throw new Error('Administrator retired-member purge endpoint failed.');
+  const purgeAudit = systemAuditLogs.find((entry) => entry.action === 'retired-member-permanent-delete');
+  if (!purgeAudit || purgeAudit.section !== 'member-lifecycle' || Object.keys(purgeAudit.beforeValues || {}).length !== 0 || Object.keys(purgeAudit.afterValues || {}).length !== 0) {
+    throw new Error('Retired-member purge must leave only non-identifying administrator audit metadata.');
+  }
+  if (JSON.stringify(purgeAudit).includes('retired-smoke')) throw new Error('Retired-member purge audit must not retain deleted member identifiers.');
   const assets = await fetch(`${baseUrl}/api/assets/catalog`, { headers: { Origin: allowedOrigin } });
   if (assets.status !== 200 || (await assets.json()).assetCatalog?.source !== 'postgresql') throw new Error('PostgreSQL asset catalog failed.');
 

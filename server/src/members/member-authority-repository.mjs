@@ -263,7 +263,9 @@ export const createMemberAuthorityRepository = (pool) => {
       const safePageSize = Math.min(100, Math.max(1, Number(pageSize) || 10));
       const conditions = [];
       const values = [];
-      if (normalizedStatus && normalizedStatus !== 'all') {
+      if (normalizedStatus === 'current') {
+        conditions.push(`status <> 'retired'`);
+      } else if (normalizedStatus && normalizedStatus !== 'all') {
         values.push(normalizedStatus);
         conditions.push(`status = $${values.length}`);
       }
@@ -345,6 +347,285 @@ export const createMemberAuthorityRepository = (pool) => {
         [uids],
       );
       return Number(result.rows[0]?.count || 0);
+    },
+
+    async approveRejoinedMemberAndConsolidate({ firebaseUid, appUserId, actorFirebaseUid }) {
+      const targetUid = String(firebaseUid || '').trim();
+      if (!targetUid || !appUserId) {
+        const error = new Error('Rejoined member approval target is invalid.');
+        error.code = 'rejoin_approval_target_invalid';
+        error.status = 400;
+        throw error;
+      }
+      return withTransaction(async (client) => {
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`member:${targetUid}`]);
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`member-rejoin-consolidation:${targetUid}`]);
+
+        const targetResult = await client.query(
+          `SELECT * FROM app_member_accounts WHERE firebase_uid=$1 FOR UPDATE`,
+          [targetUid],
+        );
+        const targetRow = targetResult.rows[0];
+        if (!targetRow) {
+          const error = new Error('Rejoined member account was not found.');
+          error.code = 'member_account_not_synchronized';
+          error.status = 409;
+          throw error;
+        }
+        if (String(targetRow.status || '').trim() !== 'pending' || targetRow.rejoined_account !== true) {
+          const error = new Error('Only pending rejoined members can use consolidation approval.');
+          error.code = 'rejoin_approval_state_invalid';
+          error.status = 409;
+          throw error;
+        }
+        if (String(targetRow.app_user_id || '') !== String(appUserId)) {
+          const error = new Error('Rejoined member identity link does not match the approval target.');
+          error.code = 'rejoin_approval_identity_mismatch';
+          error.status = 409;
+          throw error;
+        }
+
+        const previousUids = Array.from(new Set(
+          (Array.isArray(targetRow.previous_account_uids) ? targetRow.previous_account_uids : [])
+            .map((value) => String(value || '').trim())
+            .filter((value) => value && value !== targetUid),
+        ));
+        const previousRowsResult = previousUids.length
+          ? await client.query(
+              `SELECT * FROM app_member_accounts WHERE firebase_uid=ANY($1::text[]) ORDER BY firebase_uid FOR UPDATE`,
+              [previousUids],
+            )
+          : { rows: [] };
+        const previousRows = previousRowsResult.rows || [];
+        const invalidPrevious = previousRows.find((row) => String(row.status || '').trim() !== 'retired');
+        if (invalidPrevious) {
+          const error = new Error('A linked previous account is no longer retired.');
+          error.code = 'rejoin_previous_account_state_invalid';
+          error.status = 409;
+          throw error;
+        }
+
+        const linkRowsResult = previousUids.length
+          ? await client.query(
+              `SELECT app_user_id, firebase_uid FROM app_user_firebase_links WHERE firebase_uid=ANY($1::text[]) FOR UPDATE`,
+              [previousUids],
+            )
+          : { rows: [] };
+        const previousAppUserIds = Array.from(new Set([
+          ...previousRows.map((row) => row.app_user_id),
+          ...(linkRowsResult.rows || []).map((row) => row.app_user_id),
+        ].filter((value) => value != null).map(String)));
+
+        const linkedIdentityCollision = previousAppUserIds.length
+          ? await client.query(
+              `SELECT firebase_uid, app_user_id
+                 FROM app_member_accounts
+                WHERE firebase_uid <> ALL($1::text[])
+                  AND firebase_uid <> $2
+                  AND app_user_id=ANY($3::bigint[])
+                LIMIT 1`,
+              [previousUids, targetUid, previousAppUserIds],
+            )
+          : { rowCount: 0 };
+        if (linkedIdentityCollision.rowCount > 0) {
+          const error = new Error('A previous Clerk/PostgreSQL identity is shared by another member account.');
+          error.code = 'rejoin_previous_identity_shared';
+          error.status = 409;
+          throw error;
+        }
+
+        const blockingUids = [targetUid, ...previousUids];
+        const blockerResult = await client.query(
+          `SELECT COUNT(*)::bigint AS count
+             FROM app_rental_requests
+            WHERE firebase_uid=ANY($1::text[])
+              AND status IN ('신청중','보류','대여중')`,
+          [blockingUids],
+        );
+        if (Number(blockerResult.rows[0]?.count || 0) > 0) {
+          const error = new Error('Previous account still has active rental requests.');
+          error.code = 'rejoined_member_active_requests';
+          error.status = 409;
+          throw error;
+        }
+
+        const transferCounts = { rentalRequests: 0, rentalEventActors: 0, previousRestrictions: 0, previousTerms: 0, previousProfileEvents: 0, previousAccounts: 0, previousIdentities: 0 };
+        if (previousUids.length) {
+          const requests = await client.query(
+            `UPDATE app_rental_requests
+                SET app_user_id=$2, firebase_uid=$1,
+                    requester_email=$3, requester_name=$4, requester_team=$5,
+                    idempotency_key='rejoin-transfer:' || md5(firebase_uid || ':' || request_id || ':' || idempotency_key),
+                    source_mode='postgresql-rejoin-consolidated', updated_at=NOW()
+              WHERE firebase_uid=ANY($6::text[])
+                 OR (${previousAppUserIds.length ? 'app_user_id=ANY($7::bigint[])' : 'FALSE'})`,
+            previousAppUserIds.length
+              ? [targetUid, appUserId, targetRow.email || '', targetRow.name || '', targetRow.team || '', previousUids, previousAppUserIds]
+              : [targetUid, appUserId, targetRow.email || '', targetRow.name || '', targetRow.team || '', previousUids],
+          );
+          transferCounts.rentalRequests = requests.rowCount;
+
+          const eventActors = await client.query(
+            `UPDATE app_rental_request_events
+                SET actor_app_user_id=$2, actor_firebase_uid=$1,
+                    event_payload=CASE WHEN jsonb_typeof(event_payload)='object'
+                      THEN jsonb_set(jsonb_set(event_payload,'{actorUid}',to_jsonb($1::text),true),'{actorName}',to_jsonb($3::text),true)
+                      ELSE event_payload END
+              WHERE actor_firebase_uid=ANY($4::text[])
+                 OR (${previousAppUserIds.length ? 'actor_app_user_id=ANY($5::bigint[])' : 'FALSE'})`,
+            previousAppUserIds.length
+              ? [targetUid, appUserId, targetRow.name || '', previousUids, previousAppUserIds]
+              : [targetUid, appUserId, targetRow.name || '', previousUids],
+          );
+          transferCounts.rentalEventActors = eventActors.rowCount;
+        }
+
+        const restrictionRows = await client.query(
+          `SELECT firebase_uid, restriction_exists, restriction_payload, authoritative_updated_at, updated_at
+             FROM app_rental_restrictions
+            WHERE firebase_uid=$1 OR (${previousUids.length ? 'firebase_uid=ANY($2::text[])' : 'FALSE'})
+            ORDER BY CASE WHEN firebase_uid=$1 THEN 0 ELSE 1 END, restriction_exists DESC, authoritative_updated_at DESC NULLS LAST, updated_at DESC`,
+          previousUids.length ? [targetUid, previousUids] : [targetUid],
+        );
+        const targetRestriction = restrictionRows.rows.find((row) => row.firebase_uid === targetUid);
+        const sourceRestriction = (targetRestriction?.restriction_exists ? targetRestriction : null)
+          || restrictionRows.rows.find((row) => row.firebase_uid !== targetUid && row.restriction_exists)
+          || targetRestriction
+          || null;
+        const normalizedRestriction = sourceRestriction?.restriction_exists
+          ? { ...(sourceRestriction.restriction_payload || {}), uid: targetUid }
+          : {};
+        delete normalizedRestriction.inheritedFromPreviousAccount;
+        delete normalizedRestriction.inheritedFromFirebaseUid;
+        await client.query(
+          `INSERT INTO app_rental_restrictions (
+             firebase_uid, app_user_id, restriction_exists, restriction_payload, source_document_path,
+             source_updated_at, source_hash, synced_at, authority_mode, mirror_state, last_mutation_id, authoritative_updated_at
+           ) VALUES ($1,$2,$3,$4::jsonb,$5,NOW(),$6,NOW(),'postgresql-authoritative','retired','',NOW())
+           ON CONFLICT (firebase_uid) DO UPDATE SET
+             app_user_id=EXCLUDED.app_user_id, restriction_exists=EXCLUDED.restriction_exists,
+             restriction_payload=EXCLUDED.restriction_payload, source_document_path=EXCLUDED.source_document_path,
+             source_updated_at=NOW(), source_hash=EXCLUDED.source_hash, synced_at=NOW(),
+             authority_mode='postgresql-authoritative', mirror_state='retired', authoritative_updated_at=NOW(), updated_at=NOW()`,
+          [targetUid, appUserId, Boolean(sourceRestriction?.restriction_exists), JSON.stringify(normalizedRestriction), `postgresql/app_rental_restrictions/${targetUid}`, hashPayload(normalizedRestriction)],
+        );
+        if (previousUids.length) {
+          const restrictions = await client.query(`DELETE FROM app_rental_restrictions WHERE firebase_uid=ANY($1::text[])`, [previousUids]);
+          transferCounts.previousRestrictions = restrictions.rowCount;
+          const termLogs = await client.query(`DELETE FROM app_user_term_consent_logs WHERE firebase_uid=ANY($1::text[])`, [previousUids]);
+          const termStates = await client.query(`DELETE FROM app_user_term_consent_states WHERE firebase_uid=ANY($1::text[])`, [previousUids]);
+          transferCounts.previousTerms = termLogs.rowCount + termStates.rowCount;
+          const profileEvents = await client.query(
+            `DELETE FROM app_member_profile_events
+              WHERE firebase_uid=ANY($1::text[]) OR actor_firebase_uid=ANY($1::text[])
+                 OR (${previousAppUserIds.length ? 'app_user_id=ANY($2::bigint[])' : 'FALSE'})`,
+            previousAppUserIds.length ? [previousUids, previousAppUserIds] : [previousUids],
+          );
+          transferCounts.previousProfileEvents = profileEvents.rowCount;
+        }
+
+        const beforeProfile = memberProjection(mapMemberAccountRow(targetRow));
+        const nextProfile = { ...beforeProfile, status: 'active', rejoinedAccount: false, previousAccountUids: [] };
+        const mutationId = randomUUID();
+        const sourceHash = hashPayload(nextProfile);
+        await client.query(
+          `UPDATE app_member_accounts
+              SET status='active', rejoined_account=FALSE, previous_account_uids='[]'::jsonb,
+                  source_hash=$2, authority_mode='postgresql-authoritative', mirror_state='retired',
+                  last_mutation_id=$3, source_updated_at=NOW(), authoritative_updated_at=NOW(), synced_at=NOW(), updated_at=NOW()
+            WHERE firebase_uid=$1`,
+          [targetUid, sourceHash, mutationId],
+        );
+
+        if (previousUids.length) {
+          await client.query(
+            `UPDATE app_member_accounts current
+                SET previous_account_uids=COALESCE((
+                      SELECT jsonb_agg(value)
+                        FROM jsonb_array_elements_text(current.previous_account_uids) AS value
+                       WHERE NOT (value = ANY($1::text[]))
+                    ), '[]'::jsonb),
+                    rejoined_account=EXISTS(
+                      SELECT 1 FROM jsonb_array_elements_text(current.previous_account_uids) AS value
+                       WHERE NOT (value = ANY($1::text[]))
+                    ),
+                    updated_at=NOW(), authoritative_updated_at=NOW()
+              WHERE current.firebase_uid <> $2
+                AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(current.previous_account_uids) AS value WHERE value = ANY($1::text[]))`,
+            [previousUids, targetUid],
+          );
+          if (previousAppUserIds.length) {
+            const identityReferenceCheck = await client.query(
+              `SELECT
+                 (SELECT COUNT(*) FROM app_rental_requests WHERE app_user_id=ANY($1::bigint[]))::bigint AS requests,
+                 (SELECT COUNT(*) FROM app_rental_request_events WHERE actor_app_user_id=ANY($1::bigint[]))::bigint AS rental_event_actor_refs,
+                 (SELECT COUNT(*) FROM app_rental_restrictions WHERE app_user_id=ANY($1::bigint[]))::bigint AS restrictions,
+                 (SELECT COUNT(*) FROM app_member_profile_events WHERE app_user_id=ANY($1::bigint[]))::bigint AS profile_events,
+                 (SELECT COUNT(*) FROM app_member_accounts WHERE firebase_uid <> ALL($2::text[]) AND firebase_uid <> $3 AND app_user_id=ANY($1::bigint[]))::bigint AS member_refs`,
+              [previousAppUserIds, previousUids, targetUid],
+            );
+            const identityRefs = identityReferenceCheck.rows[0] || {};
+            if (Object.values(identityRefs).some((value) => Number(value || 0) > 0)) {
+              const error = new Error('Previous identity still owns business records after rejoin transfer.');
+              error.code = 'rejoin_consolidation_identity_reference';
+              error.status = 500;
+              throw error;
+            }
+          }
+          const oldMembers = await client.query(`DELETE FROM app_member_accounts WHERE firebase_uid=ANY($1::text[])`, [previousUids]);
+          transferCounts.previousAccounts = oldMembers.rowCount;
+          await client.query(`DELETE FROM app_user_firebase_links WHERE firebase_uid=ANY($1::text[])`, [previousUids]);
+          if (previousAppUserIds.length) {
+            const identities = await client.query(`DELETE FROM app_user_identities WHERE id=ANY($1::bigint[])`, [previousAppUserIds]);
+            transferCounts.previousIdentities = identities.rowCount;
+          }
+        }
+
+        const auditBeforeProfile = { ...beforeProfile, previousAccountUids: [] };
+        await client.query(
+          `INSERT INTO app_member_profile_events (id, app_user_id, firebase_uid, actor_firebase_uid, actor_type, action, before_payload, after_payload, firestore_mirror_state, completed_at)
+           VALUES ($1::uuid,$2,$3,$4,'admin','rejoin-approved-consolidated',$5::jsonb,$6::jsonb,'retired',NOW())`,
+          [mutationId, appUserId, targetUid, actorFirebaseUid || '', JSON.stringify(auditBeforeProfile), JSON.stringify(nextProfile)],
+        );
+
+        if (previousUids.length) {
+          const orphanResult = await client.query(
+            `SELECT
+               (SELECT COUNT(*) FROM app_member_accounts WHERE firebase_uid=ANY($1::text[]))::bigint AS members,
+               (SELECT COUNT(*) FROM app_user_firebase_links WHERE firebase_uid=ANY($1::text[]))::bigint AS links,
+               (SELECT COUNT(*) FROM app_rental_requests WHERE firebase_uid=ANY($1::text[]))::bigint AS requests,
+               (SELECT COUNT(*) FROM app_rental_request_events WHERE actor_firebase_uid=ANY($1::text[]))::bigint AS rental_event_actor_refs,
+               (SELECT COUNT(*) FROM app_rental_restrictions WHERE firebase_uid=ANY($1::text[]))::bigint AS restrictions,
+               (SELECT COUNT(*) FROM app_user_term_consent_states WHERE firebase_uid=ANY($1::text[]))::bigint AS term_states,
+               (SELECT COUNT(*) FROM app_user_term_consent_logs WHERE firebase_uid=ANY($1::text[]))::bigint AS term_logs,
+               (SELECT COUNT(*) FROM app_member_profile_events WHERE firebase_uid=ANY($1::text[]) OR actor_firebase_uid=ANY($1::text[]))::bigint AS profile_events,
+               (SELECT COUNT(*) FROM app_member_accounts current WHERE EXISTS (SELECT 1 FROM jsonb_array_elements_text(current.previous_account_uids) AS value WHERE value = ANY($1::text[])))::bigint AS lineage_refs,
+               (SELECT COUNT(*) FROM app_rental_request_events event WHERE EXISTS (SELECT 1 FROM unnest($1::text[]) uid WHERE event.event_payload::text LIKE '%' || uid || '%'))::bigint AS rental_event_payload_refs,
+               (SELECT COUNT(*) FROM app_rental_requests request WHERE EXISTS (SELECT 1 FROM unnest($1::text[]) uid WHERE COALESCE(request.user_action_request::text,'') LIKE '%' || uid || '%' OR COALESCE(request.extension_history::text,'') LIKE '%' || uid || '%'))::bigint AS rental_request_payload_refs,
+               (SELECT COUNT(*) FROM app_rental_restrictions restriction WHERE EXISTS (SELECT 1 FROM unnest($1::text[]) uid WHERE restriction.restriction_payload::text LIKE '%' || uid || '%'))::bigint AS restriction_payload_refs,
+               (SELECT COUNT(*) FROM app_member_profile_events event WHERE EXISTS (SELECT 1 FROM unnest($1::text[]) uid WHERE event.before_payload::text LIKE '%' || uid || '%' OR event.after_payload::text LIKE '%' || uid || '%'))::bigint AS profile_payload_refs`,
+            [previousUids],
+          );
+          const orphan = orphanResult.rows[0] || {};
+          if (Object.values(orphan).some((value) => Number(value || 0) > 0)) {
+            const error = new Error('Rejoined member approval left previous-account references.');
+            error.code = 'rejoin_consolidation_orphan_reference';
+            error.status = 500;
+            throw error;
+          }
+          if (previousAppUserIds.length) {
+            const identityOrphans = await client.query(`SELECT COUNT(*)::bigint AS count FROM app_user_identities WHERE id=ANY($1::bigint[])`, [previousAppUserIds]);
+            if (Number(identityOrphans.rows[0]?.count || 0) > 0) {
+              const error = new Error('Rejoined member approval left previous identity rows.');
+              error.code = 'rejoin_consolidation_identity_orphan';
+              error.status = 500;
+              throw error;
+            }
+          }
+        }
+
+        return Object.freeze({ mutationId, sourceHash, profile: Object.freeze(nextProfile), transferCounts: Object.freeze(transferCounts), previousAccountUids: Object.freeze(previousUids) });
+      });
     },
 
     async mutateProfile({ appUserId, firebaseUid, actorFirebaseUid, actorType, action, beforeProfile, nextProfile, beforeMirror = null, mirrorState = 'synced' }) {

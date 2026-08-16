@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 
 const trim = (value) => String(value ?? '').normalize('NFKC').trim();
+const ADMIN_PROVISIONED_TERMS_POLICY_VERSION = -1;
 const lower = (value) => trim(value).toLocaleLowerCase('ko-KR');
 const sha256 = (value) => createHash('sha256').update(String(value || '')).digest('hex');
 const normalizeName = (value) => trim(value).replace(/\s+/g, '');
@@ -86,7 +87,7 @@ const validateTerms = ({ policy, submission, source }) => {
 };
 
 export const createAccountLifecycleService = ({ repository, siteContentRepository, userAuthRepository, authorityEnabled = false }) => {
-  if (!repository || typeof repository.createSignupAccount !== 'function' || typeof repository.getConsentSnapshot !== 'function' || typeof repository.importConsents !== 'function' || typeof repository.saveConsents !== 'function') {
+  if (!repository || typeof repository.createSignupAccount !== 'function' || typeof repository.findRetiredAccountsByEmail !== 'function' || typeof repository.getConsentSnapshot !== 'function' || typeof repository.importConsents !== 'function' || typeof repository.saveConsents !== 'function') {
     throw new TypeError('Account lifecycle repository is required.');
   }
   if (!siteContentRepository || (typeof siteContentRepository.getDocument !== 'function' && typeof siteContentRepository.getDomain !== 'function')) throw new TypeError('Site content repository is required.');
@@ -162,7 +163,8 @@ export const createAccountLifecycleService = ({ repository, siteContentRepositor
       const identityAccounts = await repository.findIdentityAccounts(nextIdentityKey);
       const active = identityAccounts.find((account) => trim(account.status) !== 'retired' && trim(account.firebase_uid) !== firebaseUid);
       if (active) throw serviceError('member_identity_already_claimed', 'Another active member already owns the signup identity.', 409);
-      const retiredUids = identityAccounts.filter((account) => trim(account.status) === 'retired').map((account) => trim(account.firebase_uid)).filter(Boolean);
+      const retiredEmailAccounts = await repository.findRetiredAccountsByEmail(email);
+      const retiredUids = retiredEmailAccounts.map((account) => trim(account.firebase_uid)).filter((uid) => uid && uid !== firebaseUid);
       const rejoinedAccount = retiredUids.length > 0;
       const autoApprove = directoryRequired && Boolean(settings.autoApproveNewMembers) && !rejoinedAccount;
       const status = autoApprove ? 'active' : 'pending';
@@ -179,6 +181,69 @@ export const createAccountLifecycleService = ({ repository, siteContentRepositor
       return Object.freeze({ source: 'postgresql', authority: 'postgresql', firestoreBootstrap: 'retired', status, account: row });
     },
 
+
+    async provisionAdminMember({ firebaseUid, input = {} }) {
+      assertAuthorityEnabled();
+      const memberKey = trim(firebaseUid);
+      const email = lower(input.email);
+      const name = normalizeName(input.name);
+      const team = normalizeTeam(input.team);
+      const phone = normalizePhone(input.phone);
+      if (!memberKey) throw serviceError('admin_member_key_missing', 'Administrator-provisioned member key is required.', 400);
+      if (!validEmail(email)) throw serviceError('admin_member_email_invalid', 'Administrator-provisioned member email is invalid.', 400);
+      if (!validName(name) || !team || !validPhone(phone)) throw serviceError('admin_member_profile_invalid', 'Administrator-provisioned member profile is invalid.', 400);
+
+      const { settings } = await loadPolicyContext();
+      const nextIdentityKey = identityKey({ team, name });
+      const nextRecoveryKey = recoveryKey({ team, name, phone });
+      const directoryVersion = Math.max(0, Number(settings.memberDirectoryVersion || 0));
+      const directory = await repository.getDirectoryEntry(nextIdentityKey);
+      const directoryMatches = Boolean(
+        directory &&
+        directory.enabled !== false &&
+        normalizeName(directory.name) === name &&
+        normalizeTeam(directory.team) === team
+      );
+      const identityAccounts = await repository.findIdentityAccounts(nextIdentityKey);
+      const active = identityAccounts.find((account) => trim(account.status) !== 'retired' && trim(account.firebase_uid) !== memberKey);
+      if (active) throw serviceError('member_identity_already_claimed', 'Another active member already owns the requested member identity.', 409);
+      const retiredEmailAccounts = await repository.findRetiredAccountsByEmail(email);
+      const retiredUids = retiredEmailAccounts
+        .map((account) => trim(account.firebase_uid))
+        .filter((uid) => uid && uid !== memberKey);
+      const rejoinedAccount = retiredUids.length > 0;
+      const status = rejoinedAccount ? 'pending' : 'active';
+      const row = await repository.createSignupAccount({
+        firebaseUid: memberKey,
+        email,
+        maskedEmail: maskEmail(email),
+        name,
+        team,
+        phone,
+        status,
+        identityKey: nextIdentityKey,
+        recoveryKey: nextRecoveryKey,
+        directoryMemberId: directoryMatches ? trim(directory.directory_member_id) : '',
+        directoryVerifiedVersion: directoryMatches ? directoryVersion : 0,
+        previousAccountUids: retiredUids,
+        rejoinedAccount,
+        termsConsentRevision: 0,
+        // -1 marks an administrator-created account that has never personally accepted
+        // the current signup terms. The frontend treats this as a forced first-login
+        // consent marker and saveConsents() replaces it with the real policy revision.
+        termsConsentPolicyVersion: ADMIN_PROVISIONED_TERMS_POLICY_VERSION,
+        decisions: [],
+      });
+      return Object.freeze({
+        source: 'postgresql',
+        authority: 'postgresql',
+        provisionedBy: 'admin',
+        emailVerification: 'clerk-backend-auto-verified',
+        termsConsent: 'required-on-first-login',
+        status,
+        account: row,
+      });
+    },
 
     async rollbackUnlinkedSignup({ firebaseUid }) {
       assertAuthorityEnabled();

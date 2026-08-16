@@ -898,6 +898,33 @@ export const requestAdminMembersPostgresql = async ({ clerk, apiBaseUrl, fetchIm
   return payload;
 };
 
+export const requestAdminMemberCreatePostgresql = async ({ clerk, apiBaseUrl, fetchImpl, input = {} }) => {
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: '/api/admin/members',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input || {}),
+  });
+  if (!response.ok) {
+    const error = new Error(`Admin PostgreSQL member create failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || null;
+    throw error;
+  }
+  if (
+    !payload?.authenticated ||
+    !payload?.authorized ||
+    payload?.adminMemberCreate?.authority !== 'clerk-postgresql' ||
+    payload?.adminMemberCreate?.source !== 'postgresql'
+  ) {
+    throw new Error('Backend returned an invalid administrator member provisioning response.');
+  }
+  return payload;
+};
+
 export const requestAdminMemberProfileAuthorityWrite = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, firebaseUid, profile }) => {
   const token = trim(firebaseIdToken); const uid = trim(firebaseUid);
   if ((!token && !firebaseRuntimeRetired()) || !uid) throw new Error('Firebase admin sign-in and member UID are required.');
@@ -992,6 +1019,20 @@ export const requestAdminSignupPolicyPatch = async ({ clerk, apiBaseUrl, fetchIm
   });
   if (!response.ok) { const error = new Error(`Admin PostgreSQL signup policy write failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
   if (!payload?.authenticated || !payload?.authorized || payload?.signupPolicyMutation?.authority !== 'postgresql' || payload?.signupPolicyMutation?.operation !== 'signup-policy-patch') throw new Error('Backend returned an invalid PostgreSQL signup policy response.');
+  return payload;
+};
+
+export const requestAdminMemberLifecycleMutation = async ({ clerk, apiBaseUrl, fetchImpl, firebaseUid, operation }) => {
+  const uid = trim(firebaseUid);
+  const operationConfig = {
+    reject: { method: 'POST', path: `/api/admin/members/${encodeURIComponent(uid)}/reject`, expected: 'signup-reject' },
+    retire: { method: 'POST', path: `/api/admin/members/${encodeURIComponent(uid)}/retire`, expected: 'member-retire' },
+    purge: { method: 'DELETE', path: `/api/admin/members/${encodeURIComponent(uid)}`, expected: 'retired-purge' },
+  }[operation];
+  if (!uid || !operationConfig) throw new Error('Member UID and lifecycle operation are required.');
+  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: operationConfig.path, method: operationConfig.method });
+  if (!response.ok) { const error = new Error(`Admin member lifecycle mutation failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
+  if (!payload?.authenticated || !payload?.authorized || payload?.adminMemberLifecycle?.authority !== 'clerk-postgresql' || payload?.adminMemberLifecycle?.operation !== operationConfig.expected) throw new Error('Backend returned an invalid admin member lifecycle response.');
   return payload;
 };
 
@@ -1959,6 +2000,10 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
       const clerk = await initialize();
       return requestAdminMembersPostgresql({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, options });
     },
+    async createAdminMember(input = {}) {
+      const clerk = await initialize();
+      return requestAdminMemberCreatePostgresql({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, input });
+    },
     async writeAdminMemberProfile(firebaseIdToken, firebaseUid, profile) {
       const clerk = await initialize();
       return requestAdminMemberProfileAuthorityWrite({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, firebaseUid, profile });
@@ -1966,6 +2011,18 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async writeAdminMemberStatus(firebaseIdToken, firebaseUid, status) {
       const clerk = await initialize();
       return requestAdminMemberStatusAuthorityWrite({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, firebaseUid, status });
+    },
+    async rejectAdminPendingMember(firebaseUid) {
+      const clerk = await initialize();
+      return requestAdminMemberLifecycleMutation({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseUid, operation: 'reject' });
+    },
+    async retireAdminMember(firebaseUid) {
+      const clerk = await initialize();
+      return requestAdminMemberLifecycleMutation({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseUid, operation: 'retire' });
+    },
+    async purgeAdminRetiredMember(firebaseUid) {
+      const clerk = await initialize();
+      return requestAdminMemberLifecycleMutation({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseUid, operation: 'purge' });
     },
     async getAdminMemberDirectory() {
       const clerk = await initialize();

@@ -260,6 +260,10 @@ export const createRequestHandler = ({
     async exportSnapshot() { const error = new Error('System data service is not configured.'); error.code = 'system_data_not_configured'; throw error; },
   },
   userClerkAuthService = {
+    async createAdminManagedMember() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
+    async rejectAdminPendingMember() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
+    async retireAdminMember() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
+    async purgeAdminRetiredMember() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
     async signupNative() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
     async signupVerifiedCurrent() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
     async ensureRecoveryClerkIdentity() { const error = new Error('User Clerk auth service is not configured.'); error.code = 'user_clerk_auth_not_configured'; throw error; },
@@ -374,6 +378,7 @@ export const createRequestHandler = ({
   if (config.accountLifecycleCompatibilityDisabled && (
     !accountLifecycleService ||
     typeof accountLifecycleService.signup !== 'function' ||
+    typeof accountLifecycleService.provisionAdminMember !== 'function' ||
     typeof accountLifecycleService.getTerms !== 'function' ||
     typeof accountLifecycleService.bootstrapTerms !== 'function' ||
     typeof accountLifecycleService.saveTerms !== 'function'
@@ -391,6 +396,9 @@ export const createRequestHandler = ({
     typeof adminClerkAuthService.retire !== 'function'
   ) {
     throw new TypeError('Clerk/PostgreSQL administrator lifecycle methods are required.');
+  }
+  if (config.userFirebaseAuthCompatibilityDisabled && (typeof userClerkAuthService.createAdminManagedMember !== 'function' || typeof userClerkAuthService.rejectAdminPendingMember !== 'function' || typeof userClerkAuthService.retireAdminMember !== 'function' || typeof userClerkAuthService.purgeAdminRetiredMember !== 'function')) {
+    throw new TypeError('Clerk/PostgreSQL administrator member provisioning method is required.');
   }
   if (!systemConfigService || typeof systemConfigService.get !== 'function' || typeof systemConfigService.put !== 'function' || typeof systemConfigService.listAudit !== 'function' || typeof systemConfigService.appendAudit !== 'function') {
     throw new TypeError('PostgreSQL system configuration service methods are required.');
@@ -672,6 +680,9 @@ export const createRequestHandler = ({
           adminMemberSignupPolicy: '/api/admin/member-signup-policy',
           adminMemberProfileAuthority: '/api/admin/members/:uid/profile',
           adminMemberStatusAuthority: '/api/admin/members/:uid/status',
+          adminPendingMemberReject: '/api/admin/members/:uid/reject',
+          adminMemberRetire: '/api/admin/members/:uid/retire',
+          adminRetiredMemberPurge: '/api/admin/members/:uid',
           adminIdentityRegistryBootstrap: '/api/admin/identity-registry/bootstrap',
           accountRecoveryEmail: '/api/account-recovery/email',
           accountRecoveryPasswordResetVerify: '/api/account-recovery/password-reset/verify',
@@ -2756,6 +2767,105 @@ export const createRequestHandler = ({
         error: 'legacy_rental_restriction_write_through_retired',
         authority: 'postgresql',
       }, headers);
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/admin/members') {
+      const admin = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!admin) return;
+      let body;
+      try {
+        body = await readJsonBody(request);
+      } catch (error) {
+        writeJson(response, error.status || 400, { ...basePayload, authenticated: true, error: error.code || 'invalid_json_body' }, headers);
+        return;
+      }
+      try {
+        const result = await userClerkAuthService.createAdminManagedMember({
+          actorClerkUserId: admin.auth.userId,
+          input: body || {},
+          password: String(body?.password || ''),
+        });
+        writeJson(response, 201, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          adminMemberCreate: {
+            authority: result.authority || 'clerk-postgresql',
+            source: result.source || 'postgresql',
+            provisionedBy: 'admin',
+            emailVerification: 'not-requested',
+            termsConsent: 'required-on-first-login',
+            status: result.status || '',
+            account: result.account || null,
+          },
+        }, headers);
+      } catch (error) {
+        console.error('[phase34] admin member provisioning failed', { requestId, code: error?.code });
+        writeJson(response, error?.status || 409, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          error: error?.code || 'admin_member_provision_failed',
+        }, headers);
+      }
+      return;
+    }
+
+    const adminMemberRejectMatch = request.method === 'POST' ? url.pathname.match(/^\/api\/admin\/members\/([^/]+)\/reject$/) : null;
+    if (adminMemberRejectMatch) {
+      const admin = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!admin) return;
+      try {
+        const result = await userClerkAuthService.rejectAdminPendingMember({ actorClerkUserId: admin.auth.userId, targetUid: decodeURIComponent(adminMemberRejectMatch[1]) });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, adminMemberLifecycle: result }, headers);
+      } catch (error) {
+        console.error('[phase34] admin pending member rejection failed', { requestId, code: error?.code });
+        writeJson(response, error?.status || 409, { ...basePayload, authenticated: true, authorized: true, error: error?.code || 'admin_member_reject_failed' }, headers);
+      }
+      return;
+    }
+
+    const adminMemberRetireMatch = request.method === 'POST' ? url.pathname.match(/^\/api\/admin\/members\/([^/]+)\/retire$/) : null;
+    if (adminMemberRetireMatch) {
+      const admin = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!admin) return;
+      try {
+        const result = await userClerkAuthService.retireAdminMember({ actorClerkUserId: admin.auth.userId, targetUid: decodeURIComponent(adminMemberRetireMatch[1]) });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, adminMemberLifecycle: result }, headers);
+      } catch (error) {
+        console.error('[phase34] admin member retirement failed', { requestId, code: error?.code });
+        writeJson(response, error?.status || 409, { ...basePayload, authenticated: true, authorized: true, error: error?.code || 'admin_member_retire_failed' }, headers);
+      }
+      return;
+    }
+
+    const adminMemberPurgeMatch = request.method === 'DELETE' ? url.pathname.match(/^\/api\/admin\/members\/([^/]+)$/) : null;
+    if (adminMemberPurgeMatch) {
+      const admin = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!admin) return;
+      try {
+        const result = await userClerkAuthService.purgeAdminRetiredMember({ actorClerkUserId: admin.auth.userId, targetUid: decodeURIComponent(adminMemberPurgeMatch[1]) });
+        try {
+          await systemConfigService.appendAudit({
+            input: {
+              action: 'retired-member-permanent-delete',
+              section: 'member-lifecycle',
+              summary: '탈퇴 회원 1건의 회원정보와 연결 업무기록을 완전 삭제했습니다.',
+              beforeValues: {},
+              afterValues: {},
+            },
+            actorClerkUserId: admin.auth.userId,
+            admin: admin.adminAuth?.admin || null,
+          });
+        } catch (auditError) {
+          console.warn('[phase34] retired member purge audit metadata write failed after successful deletion', { requestId, code: auditError?.code || auditError?.message });
+        }
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, adminMemberLifecycle: result }, headers);
+      } catch (error) {
+        console.error('[phase34] retired member permanent deletion failed', { requestId, code: error?.code });
+        writeJson(response, error?.status || 409, { ...basePayload, authenticated: true, authorized: true, error: error?.code || 'admin_member_purge_failed' }, headers);
+      }
       return;
     }
 

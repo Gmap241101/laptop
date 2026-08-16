@@ -49,6 +49,7 @@ export default function useAdminMemberAccountsController({
   navigationRequest,
   registeredAdminAccounts,
   triggerToast,
+  accountView = 'current',
 }) {
   const navigationRequestId = Number(navigationRequest?.requestId || 0);
   const initialNavigationRequestIdRef = useRef(null);
@@ -136,7 +137,7 @@ export default function useAdminMemberAccountsController({
 
   useEffect(() => {
     setPage(1);
-  }, [pageSize, query, statusFilter]);
+  }, [accountView, pageSize, query, statusFilter]);
 
   useEffect(() => {
     if (!prerequisitesReady) {
@@ -155,8 +156,13 @@ export default function useAdminMemberAccountsController({
     let cancelled = false;
     setReady(false);
     setLoadErrorMessage('');
+    const requestedStatus = accountView === 'retired'
+      ? USER_PROFILE_STATUS.RETIRED
+      : statusFilter === 'all'
+        ? 'current'
+        : statusFilter;
     void clerkStagingClient.getAdminMembers('', {
-      status: statusFilter,
+      status: requestedStatus,
       q: String(debouncedQuery || '').trim(),
       page,
       pageSize,
@@ -186,6 +192,7 @@ export default function useAdminMemberAccountsController({
       });
     return () => { cancelled = true; };
   }, [
+    accountView,
     debouncedQuery,
     enabled,
     page,
@@ -196,18 +203,16 @@ export default function useAdminMemberAccountsController({
   ]);
 
   useEffect(() => {
-    if (
-      enabled &&
-      statusFilter !== 'all' &&
-      !String(debouncedQuery || '').trim()
-    ) {
-      const countKey = STATUS_COUNT_KEY_BY_VALUE[statusFilter];
-
-      setTotalCount(
-        countKey ? Number(statusCounts?.[countKey]) || 0 : 0
-      );
+    if (!enabled || String(debouncedQuery || '').trim()) return;
+    if (accountView === 'retired') {
+      setTotalCount(Number(statusCounts?.retired) || 0);
+      return;
     }
-  }, [debouncedQuery, enabled, statusCounts, statusFilter]);
+    if (statusFilter !== 'all') {
+      const countKey = STATUS_COUNT_KEY_BY_VALUE[statusFilter];
+      setTotalCount(countKey ? Number(statusCounts?.[countKey]) || 0 : 0);
+    }
+  }, [accountView, debouncedQuery, enabled, statusCounts, statusFilter]);
 
   const managedAccounts = useMemo(() => {
     const adminUidSet = getAdminUidSet(registeredAdminAccounts);
@@ -226,15 +231,19 @@ export default function useAdminMemberAccountsController({
 
     return managedAccounts.filter((account) => {
       const accountStatus = account.status || '';
-      const matchesStatus =
-        statusFilter === 'all' || accountStatus === statusFilter;
+      const matchesView = accountView === 'retired'
+        ? accountStatus === USER_PROFILE_STATUS.RETIRED
+        : accountStatus !== USER_PROFILE_STATUS.RETIRED;
+      const matchesStatus = accountView === 'retired'
+        ? true
+        : statusFilter === 'all' || accountStatus === statusFilter;
 
-      if (!matchesStatus) return false;
+      if (!matchesView || !matchesStatus) return false;
       if (!normalizedQuery) return true;
 
       return matchesMemberSearch(account, normalizedQuery);
     });
-  }, [managedAccounts, query, statusFilter]);
+  }, [accountView, managedAccounts, query, statusFilter]);
 
   const serverPaged = true;
   const totalPages = Math.max(
