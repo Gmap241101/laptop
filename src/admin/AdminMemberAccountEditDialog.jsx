@@ -147,10 +147,9 @@ export default function AdminMemberAccountEditDialog({
           ) : (
             <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <div className="text-xs font-bold text-slate-800">로그인 비밀번호</div>
-                <div className="mt-1 text-[11px] leading-5 text-slate-500">회원 개인정보 저장과 분리하여 별도 비밀번호 수정 모달에서 변경합니다.</div>
+                <div className="text-xs font-bold text-slate-800">로그인 비밀번호 수정</div>
               </div>
-              <Button type="button" variant="outline" onClick={() => onPasswordChange?.(account)} disabled={saving}>
+              <Button type="button" variant="outline" className="shrink-0 whitespace-nowrap" onClick={() => onPasswordChange?.(account)} disabled={saving}>
                 비밀번호 수정
               </Button>
             </div>

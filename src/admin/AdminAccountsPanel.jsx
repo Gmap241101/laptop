@@ -79,6 +79,7 @@ export default function AdminAccountsPanel({ ctx }) {
   );
   const editingAccount = (registeredAdminAccounts || []).find((account) => account.id === editingAdminAccountId) || null;
   const ownerCount = (registeredAdminAccounts || []).filter((account) => (account.adminRole || 'admin') === 'owner').length;
+  const adminCount = (registeredAdminAccounts || []).filter((account) => (account.adminRole || 'admin') !== 'owner').length;
   const lockedCount = (registeredAdminAccounts || []).filter((account) => Number(account.lockUntil || 0) > Date.now()).length;
 
   const handleRegister = async () => {
@@ -94,7 +95,7 @@ export default function AdminAccountsPanel({ ctx }) {
       />
 
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-slate-700">
           <div className="text-xs font-semibold">전체 관리자</div>
           <div className="mt-1 text-2xl font-bold">{(registeredAdminAccounts || []).length}</div>
@@ -102,6 +103,10 @@ export default function AdminAccountsPanel({ ctx }) {
         <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 text-violet-700">
           <div className="text-xs font-semibold">최고 관리자</div>
           <div className="mt-1 text-2xl font-bold">{ownerCount}</div>
+        </div>
+        <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sky-700">
+          <div className="text-xs font-semibold">일반 관리자</div>
+          <div className="mt-1 text-2xl font-bold">{adminCount}</div>
         </div>
         <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-700">
           <div className="text-xs font-semibold">잠금 계정</div>

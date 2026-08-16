@@ -63,12 +63,11 @@ export default function AdminAccountEditDialog({
           {isClerkLinked ? (
             <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-[11px] leading-5 text-slate-500">
-                <div className="text-xs font-bold text-slate-800">로그인 비밀번호</div>
-                <div className="mt-1">Clerk 로그인 이메일은 이 화면에서 변경하지 않으며, 비밀번호는 개인정보 저장과 분리된 별도 모달에서 변경합니다.</div>
+                <div className="text-xs font-bold text-slate-800">로그인 비밀번호 수정</div>
                 {!canChangePassword ? <div className="mt-1 text-amber-700">다른 관리자 계정의 비밀번호는 최고 관리자만 변경할 수 있습니다.</div> : null}
               </div>
               {canChangePassword ? (
-                <Button type="button" variant="outline" onClick={() => onPasswordChange?.(account)}>
+                <Button type="button" variant="outline" className="shrink-0 whitespace-nowrap" onClick={() => onPasswordChange?.(account)}>
                   비밀번호 수정
                 </Button>
               ) : null}

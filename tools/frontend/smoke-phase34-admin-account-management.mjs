@@ -41,6 +41,9 @@ assert.match(panel, />권한</);
 assert.match(panel, />페이지당 표시</);
 assert.match(panel, /<option value="owner">최고 관리자<\/option>/);
 assert.match(panel, /<option value="admin">일반 관리자<\/option>/);
+assert.match(panel, /const adminCount = .*adminRole.*!== 'owner'/);
+assert.match(panel, />일반 관리자<\/div>[\s\S]*\{adminCount\}/);
+assert.match(panel, /sm:grid-cols-2 xl:grid-cols-4/);
 assert.doesNotMatch(panel, />로그인 이메일<\/th>/);
 assert.match(panel, /adminAccountPageSize/);
 for (const label of ['번호', '상태', '관리자 ID', '사용자명', '조직명', '권한', '등록일시', '계정 관리']) {
@@ -62,8 +65,10 @@ assert.match(renderAdminRoot, /AdminPanelRuntimeErrorBoundary/);
 assert.match(adminBoundary, /admin_panel_render_failed/);
 
 // Password changes are a dedicated Clerk mutation/modal, not an inline profile field.
-assert.match(editDialog, /로그인 비밀번호/);
+assert.match(editDialog, /로그인 비밀번호 수정/);
 assert.match(editDialog, /비밀번호 수정/);
+assert.doesNotMatch(editDialog, /비밀번호는 개인정보 저장과 분리된 별도 모달에서 변경합니다/);
+assert.match(editDialog, /shrink-0 whitespace-nowrap/);
 assert.match(editDialog, /onPasswordChange/);
 assert.match(editDialog, /다른 관리자 계정의 비밀번호는 최고 관리자만 변경할 수 있습니다/);
 assert.doesNotMatch(editDialog, /label="새 비밀번호"/);

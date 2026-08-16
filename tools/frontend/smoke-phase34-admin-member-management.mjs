@@ -92,8 +92,10 @@ assert.match(detail, /회원 완전 삭제/);
 for (const marker of ['confirmPendingMemberRejection','confirmMemberRetirement','confirmRetiredMemberPurge','rejectAdminPendingMember','retireAdminMember','purgeAdminRetiredMember']) assert.ok(statusActions.includes(marker), marker);
 
 // Password changes are intentionally separated from profile saves.
-assert.match(editDialog, /로그인 비밀번호/);
+assert.match(editDialog, /로그인 비밀번호 수정/);
 assert.match(editDialog, /비밀번호 수정/);
+assert.doesNotMatch(editDialog, /회원 개인정보 저장과 분리하여 별도 비밀번호 수정 모달에서 변경합니다/);
+assert.match(editDialog, /shrink-0 whitespace-nowrap/);
 assert.match(editDialog, /onPasswordChange/);
 assert.doesNotMatch(editDialog, /새 비밀번호 확인/);
 assert.match(panel, /AdminManagedPasswordDialog/);
