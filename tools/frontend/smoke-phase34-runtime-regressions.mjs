@@ -660,6 +660,7 @@ const rentalDataSubscriptionSource = fs.readFileSync(new URL('../../src/features
 const adminAssetCategoriesPanelSource = fs.readFileSync(new URL('../../src/admin/AdminAssetCategoriesPanel.jsx', import.meta.url), 'utf8');
 const modalScrollFiles = [
   '../../src/admin/AdminDialogs.jsx',
+  '../../src/admin/AdminBoardListSettingsDialog.jsx',
   '../../src/admin/AdminFooterPanel.jsx',
   '../../src/admin/AdminHomeBannerPanel.jsx',
   '../../src/admin/AdminHolidayManagementPanel.jsx',
@@ -795,6 +796,29 @@ assert.match(homeFastpathBootstrapScreenSource, /showSystemBanner/, 'home bootst
 assert.doesNotMatch(homeFastpathPanelSource, /setInterval\(\(\) => setNow\(Date\.now\(\)\), 30_000\)/, 'home banner visibility must not force a 30-second periodic rerender');
 assert.match(homeFastpathPanelSource, /getNextBannerBoundaryMillis/, 'home banner visibility must schedule only the next actual start/end boundary');
 assert.match(homeFastpathAdminSettingsSource, /stripTransientGlobalBannerAuditValues/, 'global banner history must redact transient banner values from future audit payloads');
+
+
+
+const noticePanelSource = fs.readFileSync(new URL('../../src/admin/AdminNoticePanel.jsx', import.meta.url), 'utf8');
+const faqPanelSource = fs.readFileSync(new URL('../../src/admin/AdminFaqPanel.jsx', import.meta.url), 'utf8');
+const boardSettingsDialogSource = fs.readFileSync(new URL('../../src/admin/AdminBoardListSettingsDialog.jsx', import.meta.url), 'utf8');
+for (const marker of [
+  'sm:grid-cols-[1fr_auto_1fr]',
+  '검색 결과 {noticeResultCount}건',
+  '목록 표시 설정',
+  '공지사항 등록',
+  'AdminBoardListSettingsDialog',
+]) assert.ok(noticePanelSource.includes(marker), `missing notice management footer UX marker: ${marker}`);
+for (const marker of [
+  'sm:grid-cols-[1fr_auto_1fr]',
+  '전체 FAQ {faqResultCount}건',
+  '목록 표시 설정',
+  'FAQ 등록',
+  'AdminBoardListSettingsDialog',
+]) assert.ok(faqPanelSource.includes(marker), `missing FAQ management footer UX marker: ${marker}`);
+for (const marker of ['ModalPortal', '설정 저장', 'onDiscard', 'onSave']) {
+  assert.ok(boardSettingsDialogSource.includes(marker), `missing board settings dialog marker: ${marker}`);
+}
 
 console.log('[phase34-runtime-regressions-frontend-smoke] PASS');
 

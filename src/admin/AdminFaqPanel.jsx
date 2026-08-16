@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 
 import RichTextContent from '../components/RichTextContent.jsx';
+import AdminBoardListSettingsDialog from './AdminBoardListSettingsDialog.jsx';
 
 export default function AdminFaqPanel({ ctx }) {
   const {
@@ -11,7 +13,6 @@ export default function AdminFaqPanel({ ctx }) {
     FAQ_POSTS_PER_PAGE_OPTIONS,
     Plus,
     Save,
-    Select,
     Trash2,
     X,
     addFaqCategory,
@@ -21,6 +22,7 @@ export default function AdminFaqPanel({ ctx }) {
     adminRegularFaqPosts,
     confirmDeleteFaqCategory,
     confirmDeleteFaqPost,
+    discardFaqBoardConfigChanges,
     editingFaqCategoryId,
     editingFaqCategoryName,
     faqBoardConfigLoadErrorMessage,
@@ -37,6 +39,7 @@ export default function AdminFaqPanel({ ctx }) {
     faqPostsLoadErrorMessage,
     faqPostsPerPageInput,
     faqPostsReady,
+    faqRegularTotalCount,
     motion,
     newFaqCategoryName,
     openFaqPostDialog,
@@ -54,25 +57,17 @@ export default function AdminFaqPanel({ ctx }) {
     toggleAdminFaqPost,
   } = ctx;
 
+  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
+  const faqResultCount = adminPinnedFaqPosts.length + Number(faqRegularTotalCount || 0);
+
   return (
                     <div className="space-y-6">
                       <AdminPageHeader
                         title="FAQ 관리"
                         description="FAQ 카테고리와 질문·답변을 등록, 수정, 삭제하고 목록 표시 개수를 설정합니다."
-                        actions={
-                          <Button
-                            type="button"
-                            variant="primary"
-                            className="shrink-0 px-4 py-2 text-xs"
-                            onClick={() => openFaqPostDialog()}
-                          >
-                            <Plus size={14} />
-                            FAQ 등록
-                          </Button>
-                        }
                       />
 
-                      <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+                      <div className="w-full lg:max-w-[320px]">
                         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                           <div className="border-b border-slate-200 pb-3">
                             <h3 className="text-sm font-bold text-slate-900">
@@ -275,68 +270,6 @@ export default function AdminFaqPanel({ ctx }) {
                           )}
                         </div>
 
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4">
-                          <div className="grid h-full gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-center">
-                            <div className="min-w-0">
-                              <h3 className="text-sm font-bold text-slate-900">
-                                목록 표시 설정
-                              </h3>
-
-                              <p className="mt-1 max-w-2xl text-[11px] leading-5 text-slate-500">
-                                상단 고정 FAQ를 제외한 일반 FAQ만 설정한 개수만큼 한 페이지에 표시합니다.
-                              </p>
-                            </div>
-
-                            <div className="grid gap-2 sm:grid-cols-[160px_1fr] sm:items-end">
-                              <div className="w-full">
-                                <Select
-                                  label="페이지당 일반 FAQ 수"
-                                  value={String(
-                                    faqPostsPerPageInput
-                                  )}
-                                  onChange={(value) =>
-                                    setFaqPostsPerPageInput(
-                                      Number(value)
-                                    )
-                                  }
-                                >
-                                  {FAQ_POSTS_PER_PAGE_OPTIONS.map(
-                                    (option) => (
-                                      <option
-                                        key={option}
-                                        value={option}
-                                      >
-                                        {option}개
-                                      </option>
-                                    )
-                                  )}
-                                </Select>
-                              </div>
-
-                              <Button
-                                type="button"
-                                variant="primary"
-                                className="h-10 w-full whitespace-nowrap px-4 text-xs"
-                                disabled={
-                                  !faqBoardConfigReady ||
-                                  faqBoardConfigSaving
-                                }
-                                onClick={saveFaqBoardConfig}
-                              >
-                                <Save size={14} />
-                                {faqBoardConfigSaving
-                                  ? '저장 중'
-                                  : '설정 저장'}
-                              </Button>
-                            </div>
-                          </div>
-
-                          {faqBoardConfigLoadErrorMessage && (
-                            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
-                              {faqBoardConfigLoadErrorMessage}
-                            </div>
-                          )}
-                        </div>
                       </div>
 
                       {!faqPostsReady ? (
@@ -516,53 +449,66 @@ export default function AdminFaqPanel({ ctx }) {
                             })}
                           </div>
 
-                          {adminRegularFaqPosts.length > 0 && (
-                            <div className="flex items-center justify-center gap-2">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className="px-3 py-2 text-xs"
-                                disabled={
-                                  safeAdminFaqPage <= 1
-                                }
-                                onClick={() => {
-                                  setAdminFaqPage((prev) =>
-                                    Math.max(1, prev - 1)
-                                  );
-                                  setAdminExpandedFaqPostId('');
-                                }}
-                              >
-                                이전
-                              </Button>
-
-                              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
-                                {safeAdminFaqPage} / {adminFaqTotalPages}
-                              </div>
-
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className="px-3 py-2 text-xs"
-                                disabled={
-                                  safeAdminFaqPage >=
-                                  adminFaqTotalPages
-                                }
-                                onClick={() => {
-                                  setAdminFaqPage((prev) =>
-                                    Math.min(
-                                      adminFaqTotalPages,
-                                      prev + 1
-                                    )
-                                  );
-                                  setAdminExpandedFaqPostId('');
-                                }}
-                              >
-                                다음
-                              </Button>
-                            </div>
-                          )}
                         </>
                       )}
+
+                      {faqPostsReady && !faqPostsLoadErrorMessage ? (
+                        <div className="grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+                          <div className="text-[11px] text-slate-500 sm:justify-self-start">
+                            전체 FAQ {faqResultCount}건 · {safeAdminFaqPage} / {adminFaqTotalPages}페이지
+                          </div>
+                          <div className="flex items-center justify-center gap-2 sm:justify-self-center">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="px-3 py-2 text-xs"
+                              disabled={safeAdminFaqPage <= 1}
+                              onClick={() => {
+                                setAdminFaqPage((prev) => Math.max(1, prev - 1));
+                                setAdminExpandedFaqPostId('');
+                              }}
+                            >
+                              이전
+                            </Button>
+                            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
+                              {safeAdminFaqPage} / {adminFaqTotalPages}
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="px-3 py-2 text-xs"
+                              disabled={safeAdminFaqPage >= adminFaqTotalPages}
+                              onClick={() => {
+                                setAdminFaqPage((prev) => Math.min(adminFaqTotalPages, prev + 1));
+                                setAdminExpandedFaqPostId('');
+                              }}
+                            >
+                              다음
+                            </Button>
+                          </div>
+                          <div className="flex flex-wrap gap-2 sm:justify-self-end">
+                            <Button type="button" variant="outline" onClick={() => setSettingsDialogOpen(true)}>목록 표시 설정</Button>
+                            <Button type="button" variant="primary" onClick={() => openFaqPostDialog()}>FAQ 등록</Button>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <AdminBoardListSettingsDialog
+                        open={settingsDialogOpen}
+                        title="FAQ 목록 표시 설정"
+                        description="상단 고정 FAQ를 제외한 일반 FAQ만 설정한 개수만큼 한 페이지에 표시합니다."
+                        selectLabel="페이지당 일반 FAQ 수"
+                        value={faqPostsPerPageInput}
+                        options={FAQ_POSTS_PER_PAGE_OPTIONS}
+                        ready={faqBoardConfigReady}
+                        saving={faqBoardConfigSaving}
+                        errorMessage={faqBoardConfigLoadErrorMessage}
+                        Button={Button}
+                        onChange={setFaqPostsPerPageInput}
+                        onDiscard={discardFaqBoardConfigChanges}
+                        onSave={saveFaqBoardConfig}
+                        onClose={() => setSettingsDialogOpen(false)}
+                      />
                     </div>
   );
 }
