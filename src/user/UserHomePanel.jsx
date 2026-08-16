@@ -10,6 +10,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import {
+  getCachedSiteContentDomain,
   publishSiteContentObservation,
   requestSiteContentDomain,
   SITE_CONTENT_DOMAINS,
@@ -65,6 +66,61 @@ const sortBanners = (items) => [...items].sort((a, b) => {
   return getMillis(a.createdAt) - getMillis(b.createdAt) || String(a.id).localeCompare(String(b.id));
 });
 
+const readBannerWindow = (banner) => {
+  const visibility = banner?.__publicVisibility;
+  if (visibility && Number.isFinite(Number(visibility.startMillis))) {
+    return {
+      start: Number(visibility.startMillis || 0),
+      end: visibility.isIndefinite === true ? 0 : Number(visibility.endMillis || 0),
+    };
+  }
+  return {
+    start: getMillis(banner?.startAt),
+    end: banner?.isIndefinite ? 0 : getMillis(banner?.endAt),
+  };
+};
+
+const getNextBannerBoundaryMillis = (items, now) => {
+  let next = 0;
+  for (const banner of items || []) {
+    if (banner?.enabled === false) continue;
+    const { start, end } = readBannerWindow(banner);
+    for (const boundary of [start, end ? end + 1 : 0]) {
+      if (!(boundary > now)) continue;
+      if (!next || boundary < next) next = boundary;
+    }
+  }
+  return next;
+};
+
+const parseHomeContent = (content) => {
+  if (!content?.documents) {
+    return { ready: false, banners: [], homeConfig: { heroIntervalSeconds: 7, promotionLayout: '2x1' } };
+  }
+  const banners = content.documents
+    .filter((item) => item.key.startsWith('homeBanners/') && item.enabled !== false && item.payload?.enabled !== false)
+    .map((item) => ({
+      ...item.payload,
+      id: item.payload?.id || item.key.split('/').pop(),
+      enabled: typeof item.enabled === 'boolean' ? item.enabled : item.payload?.enabled !== false,
+      sortOrder: Number.isFinite(Number(item.sortOrder)) ? Number(item.sortOrder) : item.payload?.sortOrder,
+      __publicVisibility: item.publicVisibility || null,
+    }));
+  const configDocument = content.documents.find((item) => item.key === 'homePage/config');
+  return {
+    ready: true,
+    banners,
+    homeConfig: {
+      heroIntervalSeconds: [5, 7, 10].includes(Number(configDocument?.payload?.heroIntervalSeconds))
+        ? Number(configDocument.payload.heroIntervalSeconds)
+        : 7,
+      promotionLayout: PROMOTION_LAYOUTS[configDocument?.payload?.promotionLayout]
+        ? configDocument.payload.promotionLayout
+        : '2x1',
+    },
+  };
+};
+
 const formatKoreaReferenceDate = () => {
   const parts = new Intl.DateTimeFormat('ko-KR', {
     timeZone: 'Asia/Seoul',
@@ -79,7 +135,7 @@ const formatKoreaReferenceDate = () => {
 function ResponsiveBannerImage({ banner, className = '', loading = 'lazy', fetchPriority = 'auto' }) {
   const imageFit = banner?.imageFit === 'contain' ? 'contain' : 'cover';
   return (
-    <picture>
+    <picture className="block h-full w-full">
       {banner.mobileImageUrl && (
         <source media="(max-width: 639px)" srcSet={banner.mobileImageUrl} />
       )}
@@ -115,13 +171,11 @@ export default function UserHomePanel({ ctx }) {
     siteSettings,
   } = ctx;
 
-  const [banners, setBanners] = useState([]);
-  const [bannersReady, setBannersReady] = useState(false);
+  const [initialHomeState] = useState(() => parseHomeContent(getCachedSiteContentDomain(SITE_CONTENT_DOMAINS.HOME)));
+  const [banners, setBanners] = useState(() => initialHomeState.banners);
+  const [bannersReady, setBannersReady] = useState(() => initialHomeState.ready);
   const [bannerLoadError, setBannerLoadError] = useState('');
-  const [homeConfig, setHomeConfig] = useState({
-    heroIntervalSeconds: 7,
-    promotionLayout: '2x1',
-  });
+  const [homeConfig, setHomeConfig] = useState(() => initialHomeState.homeConfig);
   const [now, setNow] = useState(Date.now());
   const [heroIndex, setHeroIndex] = useState(0);
   const [heroTransitionEnabled, setHeroTransitionEnabled] = useState(true);
@@ -139,16 +193,8 @@ export default function UserHomePanel({ ctx }) {
           domain: SITE_CONTENT_DOMAINS.HOME,
           useCache: true,
         });
-        const postgresBanners = content.documents
-          .filter((item) => item.key.startsWith('homeBanners/') && item.enabled !== false && item.payload?.enabled !== false)
-          .map((item) => ({
-            ...item.payload,
-            id: item.payload?.id || item.key.split('/').pop(),
-            enabled: typeof item.enabled === 'boolean' ? item.enabled : item.payload?.enabled !== false,
-            sortOrder: Number.isFinite(Number(item.sortOrder)) ? Number(item.sortOrder) : item.payload?.sortOrder,
-            __publicVisibility: item.publicVisibility || null,
-          }));
-        const configDocument = content.documents.find((item) => item.key === 'homePage/config');
+        const parsed = parseHomeContent(content);
+        const postgresBanners = parsed.banners;
 
         if (cancelled) return;
         const activePostgresBanners = postgresBanners.filter((banner) => isActiveBanner(banner, Date.now()));
@@ -166,14 +212,7 @@ export default function UserHomePanel({ ctx }) {
         setBanners(postgresBanners);
         setBannersReady(true);
         setBannerLoadError('');
-        setHomeConfig({
-          heroIntervalSeconds: [5, 7, 10].includes(Number(configDocument?.payload?.heroIntervalSeconds))
-            ? Number(configDocument.payload.heroIntervalSeconds)
-            : 7,
-          promotionLayout: PROMOTION_LAYOUTS[configDocument?.payload?.promotionLayout]
-            ? configDocument.payload.promotionLayout
-            : '2x1',
-        });
+        setHomeConfig(parsed.homeConfig);
       } catch (error) {
         if (cancelled) return;
         console.error('User home PostgreSQL content load error:', error);
@@ -189,9 +228,12 @@ export default function UserHomePanel({ ctx }) {
   }, [siteContentRefreshRevision]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
-    return () => window.clearInterval(timer);
-  }, []);
+    const boundary = getNextBannerBoundaryMillis(banners, now);
+    if (!boundary) return undefined;
+    const delay = Math.max(25, boundary - Date.now());
+    const timer = window.setTimeout(() => setNow(Date.now()), delay);
+    return () => window.clearTimeout(timer);
+  }, [banners, now]);
 
   useEffect(() => {
     const syncVisibility = () => setDocumentHidden(document.visibilityState !== 'visible');

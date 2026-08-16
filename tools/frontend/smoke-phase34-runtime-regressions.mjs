@@ -397,7 +397,7 @@ assert.match(userHomeBootstrapServiceSource, /\/api\/user\/home-bootstrap/, 'use
 assert.match(userHomeBootstrapServiceSource, /primeSiteContentDomainPromise\(SITE_CONTENT_DOMAINS\.SITE_SETTINGS/, 'home bootstrap must seed the site-settings in-flight cache');
 assert.match(userHomeBootstrapServiceSource, /primeSiteContentDomainPromise\(SITE_CONTENT_DOMAINS\.HOME/, 'home bootstrap must seed the home in-flight cache');
 assert.equal(userMainSource.includes('renderAppRoot'), false, 'user entrypoint must no longer fall back to the shared App/AppShell recovery runtime');
-assert.match(renderUserRootSource, /React\.lazy\(\(\) => import\('\.\.\/UserApp\.jsx'\)\)/, 'full UserApp must be a lazy chunk so it cannot block the first user-home paint');
+assert.match(renderUserRootSource, /React\.lazy\(async \(\) => \{[\s\S]*import\('\.\.\/UserApp\.jsx'\)/, 'full UserApp must remain a lazy chunk while home bootstrap/critical assets are prepared');
 assert.match(renderUserRootSource, /fallback=\{homeFallback\}/, 'user root must paint the lightweight real home shell while the full UserApp chunk loads');
 assert.match(userHomeBootstrapScreenSource, /preloadUserHomeBootstrap/, 'lightweight home shell must consume the same in-flight home bootstrap request');
 assert.equal(renderUserRootSource.includes("import UserApp from '../UserApp.jsx'"), false, 'user root must not statically import the full UserApp graph');
@@ -769,6 +769,23 @@ for (const relativePath of modalScrollFiles) {
     assert.match(modalSource, /mk-modal-scroll-shell|overflow-hidden/, `${relativePath} scrollable modal shells must preserve rounded corners while retaining wheel/touch scrolling`);
   }
 }
+
+
+const homeFastpathSiteContentSource = fs.readFileSync(new URL('../../src/features/content/siteContentCutover.js', import.meta.url), 'utf8');
+const homeFastpathSiteSettingsSource = fs.readFileSync(new URL('../../src/features/settings/useSiteSettingsController.js', import.meta.url), 'utf8');
+const homeFastpathBootstrapServiceSource = fs.readFileSync(new URL('../../src/user/userHomeBootstrapService.js', import.meta.url), 'utf8');
+const homeFastpathRenderRootSource = fs.readFileSync(new URL('../../src/bootstrap/renderUserRoot.jsx', import.meta.url), 'utf8');
+const homeFastpathBootstrapScreenSource = fs.readFileSync(new URL('../../src/user/UserHomeBootstrapScreen.jsx', import.meta.url), 'utf8');
+const homeFastpathPanelSource = fs.readFileSync(new URL('../../src/user/UserHomePanel.jsx', import.meta.url), 'utf8');
+const homeFastpathAdminSettingsSource = fs.readFileSync(new URL('../../src/admin/AdminSettingsPanel.jsx', import.meta.url), 'utf8');
+assert.match(homeFastpathSiteContentSource, /export const getCachedSiteContentDomain/, 'site-content cache must expose a synchronous resolved-domain seed for first paint');
+assert.match(homeFastpathSiteSettingsSource, /readCachedSiteSettings\(\) \|\| DEFAULT_SITE_SETTINGS/, 'site settings must initialize from the home bootstrap cache before default settings');
+assert.match(homeFastpathRenderRootSource, /preloadCriticalUserHomeAssets/, 'home route must keep the lightweight bootstrap surface until critical hero assets are warm');
+assert.match(homeFastpathBootstrapScreenSource, /heroMobileImageUrl[\s\S]*<picture>/, 'home bootstrap must use responsive picture markup for the critical hero');
+assert.match(homeFastpathBootstrapScreenSource, /showSystemBanner/, 'home bootstrap must render the authoritative global banner to avoid shell layout shift');
+assert.doesNotMatch(homeFastpathPanelSource, /setInterval\(\(\) => setNow\(Date\.now\(\)\), 30_000\)/, 'home banner visibility must not force a 30-second periodic rerender');
+assert.match(homeFastpathPanelSource, /getNextBannerBoundaryMillis/, 'home banner visibility must schedule only the next actual start/end boundary');
+assert.match(homeFastpathAdminSettingsSource, /stripTransientGlobalBannerAuditValues/, 'global banner history must redact transient banner values from future audit payloads');
 
 console.log('[phase34-runtime-regressions-frontend-smoke] PASS');
 

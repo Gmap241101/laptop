@@ -113,12 +113,13 @@ export const primeSiteContentDomainPromise = (domain, contentPromise, { ttlMs = 
   if (!normalizedDomain || !contentPromise) return null;
   const existing = domainCache.get(normalizedDomain);
   if (existing?.promise && existing.pending) return existing.promise;
-  const entry = { pending: true, expiresAt: 0, promise: null };
+  const entry = { pending: true, expiresAt: 0, promise: null, value: null };
   entry.promise = Promise.resolve(contentPromise)
     .then((content) => normalizeSiteContentDomainPayload(content, normalizedDomain))
     .then((result) => {
       if (domainCache.get(normalizedDomain) === entry) {
         entry.pending = false;
+        entry.value = result;
         entry.expiresAt = Date.now() + Math.max(0, Number(ttlMs) || DOMAIN_CACHE_TTL_MS);
       }
       return result;
@@ -129,6 +130,18 @@ export const primeSiteContentDomainPromise = (domain, contentPromise, { ttlMs = 
     });
   domainCache.set(normalizedDomain, entry);
   return entry.promise;
+};
+
+export const getCachedSiteContentDomain = (domain) => {
+  const normalizedDomain = trim(domain);
+  if (!normalizedDomain) return null;
+  const entry = domainCache.get(normalizedDomain);
+  if (!entry?.value) return null;
+  if (!entry.pending && entry.expiresAt > 0 && entry.expiresAt <= Date.now()) {
+    domainCache.delete(normalizedDomain);
+    return null;
+  }
+  return entry.value;
 };
 
 export const createSiteContentDomainDocument = (document = {}) => {
@@ -189,7 +202,7 @@ export const requestSiteContentDomain = async ({ domain, fetchImpl = fetch, conf
   const cached = useCache ? domainCache.get(domain) : null;
   if (cached?.promise && (cached.pending || cached.expiresAt > nowMillis)) return cached.promise;
   if (cached) domainCache.delete(domain);
-  const cacheEntry = useCache ? { promise: null, pending: true, expiresAt: 0 } : null;
+  const cacheEntry = useCache ? { promise: null, pending: true, expiresAt: 0, value: null } : null;
   const promise = (async () => {
     const response = await requestSiteContentRead({
       fetchImpl,
@@ -219,6 +232,7 @@ export const requestSiteContentDomain = async ({ domain, fetchImpl = fetch, conf
     const result = await promise;
     if (cacheEntry && domainCache.get(domain) === cacheEntry) {
       cacheEntry.pending = false;
+      cacheEntry.value = result;
       cacheEntry.expiresAt = Date.now() + DOMAIN_CACHE_TTL_MS;
     }
     return result;

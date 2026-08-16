@@ -582,4 +582,11 @@ for (const marker of [
   assert.ok(consolidationMigrationSource.includes(marker), `canonical consolidation migration marker missing: ${marker}`);
 }
 
+
+const globalBannerAuditMigrationSource = fs.readFileSync(new URL('../../server/migrations/030_phase34_transient_global_banner_audit_compaction.sql', import.meta.url), 'utf8');
+assert.match(globalBannerAuditMigrationSource, /system-settings-audit/, 'migration 030 must target only the system settings audit record');
+assert.match(globalBannerAuditMigrationSource, /- 'systemBannerMessage'/, 'migration 030 must remove historical global banner message values');
+assert.match(globalBannerAuditMigrationSource, /- 'systemBannerUrl'/, 'migration 030 must remove historical global banner URL values');
+assert.match(globalBannerAuditMigrationSource, /historyPolicy', 'metadata-only'/, 'migration 030 must document metadata-only global banner history policy');
+
 console.log('[phase34-runtime-regressions-backend-smoke] PASS');

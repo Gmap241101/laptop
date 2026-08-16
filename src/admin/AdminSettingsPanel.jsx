@@ -100,6 +100,19 @@ const SERVICE_OPERATION_SETTING_FIELDS = [
   'systemBannerDismissible',
 ];
 
+const TRANSIENT_GLOBAL_BANNER_AUDIT_FIELDS = new Set([
+  'systemBannerEnabled',
+  'systemBannerLevel',
+  'systemBannerMessage',
+  'systemBannerUrl',
+  'systemBannerDismissible',
+]);
+
+const stripTransientGlobalBannerAuditValues = (values = {}) =>
+  Object.fromEntries(
+    Object.entries(values || {}).filter(([key]) => !TRANSIENT_GLOBAL_BANNER_AUDIT_FIELDS.has(key))
+  );
+
 const SETTINGS_MODE = {
   SITE: SYSTEM_MANAGEMENT_TAB.SITE,
   HOME: SYSTEM_MANAGEMENT_TAB.HOME,
@@ -429,11 +442,17 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
       });
       let auditWriteError = null;
       try {
+        const auditBeforeValues = mode === SETTINGS_MODE.SERVICE
+          ? stripTransientGlobalBannerAuditValues(beforeValues)
+          : beforeValues;
+        const auditAfterValues = mode === SETTINGS_MODE.SERVICE
+          ? stripTransientGlobalBannerAuditValues(afterValues)
+          : afterValues;
         await writeAuditLog({
           action: sectionMeta.action,
           section: sectionMeta.section,
-          beforeValues,
-          afterValues,
+          beforeValues: auditBeforeValues,
+          afterValues: auditAfterValues,
           summary: sectionMeta.summary,
         });
       } catch (error) {
@@ -655,7 +674,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
         </div>
       </SectionCard>
 
-      <SectionCard title="전역 시스템 안내" description="운영 장애나 예정된 점검처럼 사용자 화면 상단에 계속 표시할 짧은 안내입니다.">
+      <SectionCard title="전역 시스템 안내" description="현재 안내 1건만 유지하며 저장할 때 기존 안내를 즉시 덮어씁니다. 변경 이력에는 안내 문구·URL 원문을 보관하지 않습니다.">
         <div className="space-y-4">
           <ToggleSwitch checked={siteDraft.systemBannerEnabled} onChange={(value) => setSiteDraft({ ...siteDraft, systemBannerEnabled: value })} label="전역 안내 사용" />
           <div className="grid gap-4 md:grid-cols-2">

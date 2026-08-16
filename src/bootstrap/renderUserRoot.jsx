@@ -4,9 +4,19 @@ import { createRoot } from 'react-dom/client';
 import { getRouteStateFromPath } from '../routing/appRoutes.js';
 import UserHomeBootstrapScreen from '../user/UserHomeBootstrapScreen.jsx';
 import UserRuntimeErrorBoundary from '../user/UserRuntimeErrorBoundary.jsx';
+import { preloadCriticalUserHomeAssets, preloadUserHomeBootstrap } from '../user/userHomeBootstrapService.js';
 import '../index.css';
 
-const UserApp = React.lazy(() => import('../UserApp.jsx'));
+const UserApp = React.lazy(async () => {
+  const modulePromise = import('../UserApp.jsx');
+  const initialRoute = getRouteStateFromPath();
+  if (initialRoute.view === 'user' && initialRoute.userTab === 'home') {
+    await preloadUserHomeBootstrap()
+      .then((bootstrap) => preloadCriticalUserHomeAssets(bootstrap))
+      .catch(() => {});
+  }
+  return modulePromise;
+});
 const ClerkStagingDiagnostics = React.lazy(() => import('../clerk/ClerkStagingDiagnostics.jsx'));
 
 const shouldShowClerkDiagnostics = () => {

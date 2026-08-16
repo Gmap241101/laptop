@@ -47,17 +47,40 @@ export default function UserHomeBootstrapScreen() {
   const { siteSettings, hero } = useMemo(() => getHomePresentation(bootstrap), [bootstrap]);
   const siteName = String(siteSettings.siteName || DEFAULT_SITE_NAME).trim() || DEFAULT_SITE_NAME;
   const logoUrl = siteSettings.logoMode === 'image' ? String(siteSettings.logoImageUrl || '').trim() : '';
+  const mobileLogoUrl = siteSettings.logoMode === 'image' ? String(siteSettings.mobileLogoImageUrl || '').trim() : '';
   const heroImageUrl = String(hero?.imageUrl || '').trim();
+  const heroMobileImageUrl = String(hero?.mobileImageUrl || '').trim();
+  const showSystemBanner = Boolean(bootstrap && siteSettings.systemBannerEnabled && siteSettings.systemBannerMessage);
   const heroTitle = String(hero?.title || siteSettings.defaultHeroTitle || siteName).trim();
   const heroSubtitle = String(hero?.subtitle || siteSettings.defaultHeroDescription || '').trim();
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 font-sans text-slate-900 antialiased">
+      {showSystemBanner ? (
+        <div
+          className={`border-b px-4 py-2 text-center text-sm font-bold leading-5 ${
+            siteSettings.systemBannerLevel === 'critical'
+              ? 'border-rose-300 bg-rose-600 text-white'
+              : siteSettings.systemBannerLevel === 'warning'
+                ? 'border-amber-300 bg-amber-100 text-amber-900'
+                : 'border-sky-300 bg-sky-100 text-sky-900'
+          }`}
+        >
+          {siteSettings.systemBannerUrl ? (
+            <a href={siteSettings.systemBannerUrl} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+              {siteSettings.systemBannerMessage}
+            </a>
+          ) : siteSettings.systemBannerMessage}
+        </div>
+      ) : null}
       <header className="border-b border-slate-200/80 bg-white/95">
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 px-4 py-3 sm:px-6 sm:py-4 lg:flex-row lg:items-center lg:justify-between">
           <a href="/" className="flex min-w-0 items-center gap-3.5 text-left sm:gap-4">
             {logoUrl ? (
-              <img src={logoUrl} alt={siteSettings.logoAltText || siteName} className="h-11 max-w-[150px] object-contain sm:h-12" fetchPriority="high" />
+              <picture className="shrink-0">
+                {mobileLogoUrl ? <source media="(max-width: 639px)" srcSet={mobileLogoUrl} /> : null}
+                <img src={logoUrl} alt={siteSettings.logoAltText || siteName} className="h-11 max-w-[150px] object-contain sm:h-12" loading="eager" decoding="async" fetchPriority="high" />
+              </picture>
             ) : null}
             <div className="min-w-0">
               <h1 className="break-keep text-[16px] font-bold leading-snug tracking-tight text-slate-900 sm:text-lg lg:text-[21px]">{siteName}</h1>
@@ -75,9 +98,14 @@ export default function UserHomeBootstrapScreen() {
 
       <main className="mx-auto w-full max-w-7xl flex-1 px-6 py-8">
         <section className="relative overflow-hidden rounded-2xl bg-slate-900 shadow-sm">
-          {heroImageUrl ? (
+          {!bootstrap ? (
+            <div className="aspect-[4/3] bg-slate-900 sm:aspect-[16/7] lg:aspect-[3/1]" aria-busy="true" aria-label="메인 비주얼 준비 중" />
+          ) : heroImageUrl ? (
             <div className="relative aspect-[4/3] sm:aspect-[16/7] lg:aspect-[3/1]">
-              <img src={heroImageUrl} alt={hero?.altText || heroTitle} className="h-full w-full object-cover" loading="eager" decoding="async" fetchPriority="high" />
+              <picture>
+                {heroMobileImageUrl ? <source media="(max-width: 639px)" srcSet={heroMobileImageUrl} /> : null}
+                <img src={heroImageUrl} alt={hero?.altText || heroTitle} className="absolute inset-0 h-full w-full object-cover" loading="eager" decoding="async" fetchPriority="high" />
+              </picture>
               <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent px-6 pb-12 pt-24 text-center text-white sm:pb-14">
                 {heroTitle ? <h2 className="text-2xl font-black tracking-tight sm:text-3xl lg:text-[40px]">{heroTitle}</h2> : null}
                 {heroSubtitle ? <p className="mx-auto mt-3 max-w-3xl text-sm font-semibold leading-6 text-white/95 sm:text-base">{heroSubtitle}</p> : null}

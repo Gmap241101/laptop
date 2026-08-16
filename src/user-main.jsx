@@ -1,9 +1,10 @@
 import { clearAdminRouteIntent, getRouteStateFromPath } from './routing/appRoutes.js';
-import { preloadUserHomeBootstrap } from './user/userHomeBootstrapService.js';
+import { preconnectUserHomeAuthority, preloadUserHomeBootstrap } from './user/userHomeBootstrapService.js';
 
 clearAdminRouteIntent();
 
 const initialRoute = getRouteStateFromPath();
+preconnectUserHomeAuthority();
 if (initialRoute.view === 'user' && initialRoute.userTab === 'home') {
   void preloadUserHomeBootstrap().catch(() => {});
 } else if (initialRoute.view === 'user' && initialRoute.userTab === 'signup') {

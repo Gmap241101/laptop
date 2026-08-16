@@ -4,11 +4,18 @@ import {
   normalizeSiteSettings,
 } from '../../utils/systemSettings.js';
 import {
+  getCachedSiteContentDomain,
   readSiteContentCutoverConfig,
   requestSiteContentDomain,
   SITE_CONTENT_DOMAINS,
 } from '../content/siteContentCutover.js';
 import useSiteContentRefreshRevision from '../content/useSiteContentRefreshRevision.js';
+
+const readCachedSiteSettings = () => {
+  const content = getCachedSiteContentDomain(SITE_CONTENT_DOMAINS.SITE_SETTINGS);
+  const siteDocument = content?.documents?.find((item) => item.key === 'siteSettings/config');
+  return siteDocument?.payload ? normalizeSiteSettings(siteDocument.payload) : null;
+};
 
 const applySiteDocumentPresentation = (siteSettings) => {
   if (typeof document === 'undefined') {
@@ -45,8 +52,8 @@ const applySiteDocumentPresentation = (siteSettings) => {
 };
 
 export default function useSiteSettingsController() {
-  const [siteSettings, setSiteSettings] = useState(DEFAULT_SITE_SETTINGS);
-  const [siteSettingsReady, setSiteSettingsReady] = useState(false);
+  const [siteSettings, setSiteSettings] = useState(() => readCachedSiteSettings() || DEFAULT_SITE_SETTINGS);
+  const [siteSettingsReady, setSiteSettingsReady] = useState(() => Boolean(readCachedSiteSettings()));
   const [siteSettingsLoadErrorMessage, setSiteSettingsLoadErrorMessage] =
     useState('');
 
@@ -58,7 +65,13 @@ export default function useSiteSettingsController() {
   );
 
   useEffect(() => {
-    setSiteSettingsReady(false);
+    const cachedSiteSettings = readCachedSiteSettings();
+    if (cachedSiteSettings) {
+      setSiteSettings(cachedSiteSettings);
+      setSiteSettingsReady(true);
+    } else {
+      setSiteSettingsReady(false);
+    }
     let cancelled = false;
     const cutover = readSiteContentCutoverConfig();
 
@@ -74,7 +87,7 @@ export default function useSiteSettingsController() {
       } catch (error) {
         if (cancelled) return;
         console.error('Site settings PostgreSQL authority error:', error);
-        setSiteSettings(DEFAULT_SITE_SETTINGS);
+        if (!cachedSiteSettings) setSiteSettings(DEFAULT_SITE_SETTINGS);
         setSiteSettingsLoadErrorMessage('사이트 공통 설정을 PostgreSQL에서 불러오지 못했습니다.');
         setSiteSettingsReady(true);
       }
