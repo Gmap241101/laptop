@@ -71,6 +71,7 @@ const authService = createUserClerkAuthService({
   repository: {
     async findByClerkUserId() { return null; },
     async findByFirebaseUid(uid) {
+      if (uid === 'retired:legacy-unlinked') return null;
       const memberStatus = uid === 'pending:new' ? 'pending' : uid === 'active:new' ? 'active' : 'retired';
       return { firebaseUid: uid, memberStatus, clerkUserId: `clerk:${uid}`, clerkAccountState: 'active' };
     },
@@ -83,7 +84,13 @@ const authService = createUserClerkAuthService({
     async deleteUser(id) { deletedClerkUsers.push(id); },
   },
   userRepository: { async upsertFromClerk() { return { id: 1 }; } },
-  firebaseLinkRepository: { async link() {} }, memberRepository: { async findByFirebaseUid() { return null; } },
+  firebaseLinkRepository: { async link() {} }, memberRepository: {
+    async findByFirebaseUid(uid) {
+      return uid === 'retired:legacy-unlinked'
+        ? { uid, firebaseUid: uid, status: 'retired', appUserId: '' }
+        : null;
+    },
+  },
   adminIdentityRepository: { async findByFirebaseUid() { return null; }, async findByClerkUserId() { return { status: 'active' }; } },
   accountLifecycleService: { async signup() {}, async provisionAdminMember() {} },
   accountLifecycleCompatibilityDisabled: true, userFirebaseAuthCompatibilityDisabled: true,
@@ -98,6 +105,12 @@ assert.equal(clerkRetiredMarked, true);
 await authService.purgeAdminRetiredMember({ actorClerkUserId: 'admin', targetUid: 'retired:old' });
 assert.equal(purgedStatus, 'retired');
 assert.ok(deletedClerkUsers.includes('clerk:retired:old'));
+const legacyUnlinkedPurge = await authService.purgeAdminRetiredMember({ actorClerkUserId: 'admin', targetUid: 'retired:legacy-unlinked' });
+assert.equal(legacyUnlinkedPurge.deleted, true);
+assert.equal(legacyUnlinkedPurge.legacyUnlinkedAccount, true);
+assert.equal(legacyUnlinkedPurge.firebaseUid, 'retired:legacy-unlinked');
+assert.equal(purgedStatus, 'retired');
+assert.equal(deletedClerkUsers.includes('clerk:retired:legacy-unlinked'), false);
 
 const purgeQueries = [];
 const fakeClient = {

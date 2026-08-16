@@ -18,6 +18,9 @@ const [
   contextSlices,
   historyDialog,
   historyService,
+  homeManagement,
+  settingsPanel,
+  signupPolicyPanel,
 ] = await Promise.all([
   readFile(new URL('../../src/admin/AdminMemberAccountsPanel.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../../src/admin/AdminMemberAccountCreateDialog.jsx', import.meta.url), 'utf8'),
@@ -35,11 +38,24 @@ const [
   readFile(new URL('../../src/context/appContextSlices.js', import.meta.url), 'utf8'),
   readFile(new URL('../../src/admin/AdminMemberRentalHistoryDialog.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../../src/features/members/memberAccountHistoryService.js', import.meta.url), 'utf8'),
+  readFile(new URL('../../src/admin/AdminHomeManagementPanel.jsx', import.meta.url), 'utf8'),
+  readFile(new URL('../../src/admin/AdminSettingsPanel.jsx', import.meta.url), 'utf8'),
+  readFile(new URL('../../src/admin/AdminSignupPolicyPanel.jsx', import.meta.url), 'utf8'),
 ]);
 
 assert.match(panel, /\['current', '전체 회원'\]/);
 assert.match(panel, /\['retired', '탈퇴 회원'\]/);
-assert.match(panel, /bg-orange-500 text-white shadow-sm/);
+assert.match(panel, /border-orange-500 bg-orange-500 text-white shadow-sm/);
+assert.match(panel, /border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600/);
+assert.doesNotMatch(panel, /탈퇴 회원 관리 지침/);
+assert.doesNotMatch(panel, /이용 종료 후 회원정보와 과거 업무기록을 보존 중인 회원입니다/);
+assert.match(homeManagement, /border-orange-500 bg-orange-500 text-white shadow-sm/);
+assert.match(homeManagement, /border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600/);
+assert.match(settingsPanel, /border-orange-500 bg-orange-500 text-white shadow-sm/);
+assert.match(settingsPanel, /border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600/);
+assert.doesNotMatch(settingsPanel, /activeTab === key[\s\S]{0,120}bg-slate-900 text-white/);
+assert.match(signupPolicyPanel, /border-orange-500 bg-orange-500 text-white shadow-sm/);
+assert.match(signupPolicyPanel, /border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600/);
 assert.match(panel, /회원 신규 등록/);
 assert.match(panel, /accountStatus === USER_PROFILE_STATUS\.RETIRED/);
 assert.match(panel, /탈퇴 완료/);

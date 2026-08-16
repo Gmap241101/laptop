@@ -52,5 +52,8 @@ assert.ok(panelSource.includes('segment.startCol / 7'));
 assert.ok(panelSource.includes('segment.showLabel'));
 assert.ok(!panelSource.includes('<option value="company">회사휴일</option>'));
 assert.ok(!panelSource.includes('<option value="manual">수동등록</option>'));
+assert.ok(panelSource.includes('border-orange-500 bg-orange-500 text-white shadow-sm'));
+assert.ok(panelSource.includes('border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600'));
+assert.ok(!panelSource.includes("holidayManagementView === 'list'\n                    ? 'bg-slate-900 text-white'"));
 
 console.log('[phase34-holiday-management-smoke] PASS');

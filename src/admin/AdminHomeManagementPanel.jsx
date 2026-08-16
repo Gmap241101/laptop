@@ -62,23 +62,21 @@ export default function AdminHomeManagementPanel({ ctx }) {
         description="사용자 홈 화면의 기본 콘텐츠와 메인 비주얼, 프로모션 및 바로가기 배너를 관리합니다."
       />
 
-      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-2">
-        <div className="flex min-w-max gap-2">
-          {HOME_TABS.map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => changeTab(key)}
-              className={`rounded-xl px-4 py-2.5 text-xs font-bold transition ${
-                activeTab === key
-                  ? 'bg-orange-500 text-white shadow-sm'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+      <div className="flex flex-wrap gap-2">
+        {HOME_TABS.map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => changeTab(key)}
+            className={`rounded-xl border px-4 py-2.5 text-xs font-semibold transition ${
+              activeTab === key
+                ? 'border-orange-500 bg-orange-500 text-white shadow-sm'
+                : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {activeTab === 'basic' && <AdminSettingsPanel ctx={ctx} mode="home" embedded />}

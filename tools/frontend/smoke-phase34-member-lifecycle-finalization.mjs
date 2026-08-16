@@ -13,9 +13,9 @@ assert.match(client, /requestAdminMemberLifecycleMutation/);
 assert.match(panel, /operation === 'reject' \|\| operation === 'retire' \|\| operation === 'purge'/);
 assert.doesNotMatch(panel, /accountStatus === USER_PROFILE_STATUS\.PENDING[\s\S]{0,900}이용 차단/);
 
-assert.match(panel, /탈퇴 회원 관리 지침/);
-assert.match(panel, /퇴사일로부터 최대 1년 이내/);
-assert.match(panel, /자동 삭제 기능은 사용하지 않습니다/);
+assert.doesNotMatch(panel, /탈퇴 회원 관리 지침/);
+assert.doesNotMatch(panel, /퇴사일로부터 최대 1년 이내/);
+assert.doesNotMatch(panel, /자동 삭제 기능은 사용하지 않습니다/);
 assert.match(actions, /재가입 승인/);
 assert.match(actions, /이전 업무기록은 현재 계정으로 이관되고 기존 탈퇴 계정은 삭제되었습니다/);
 assert.match(actions, /기존 탈퇴 계정의 대여·제재 등 업무기록을 현재 계정으로 이관한 뒤 기존 탈퇴 계정과 과거 개인정보·약관·계정 연결 기록을 자동 삭제/);

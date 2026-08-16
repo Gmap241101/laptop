@@ -142,36 +142,34 @@ export default function AdminSignupPolicyPanel({ ctx }) {
         description="가입 대상, 승인 방식, 회원가입 약관과 기존 회원 적용 정책을 관리합니다."
       />
 
-      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-2">
-        <div className="flex min-w-max gap-2">
-          <button
-            type="button"
-            onClick={() => setActivePolicyTab('policy')}
-            className={`rounded-xl px-4 py-2.5 text-xs font-bold transition ${
-              activePolicyTab === 'policy'
-                ? 'bg-orange-500 text-white shadow-sm'
-                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-            }`}
-          >
-            가입 정책
-          </button>
-          <button
-            type="button"
-            onPointerEnter={() => { void preloadAdminSignupTermsCatalog().catch(() => {}); }}
-            onFocus={() => { void preloadAdminSignupTermsCatalog().catch(() => {}); }}
-            onClick={() => {
-              void preloadAdminSignupTermsCatalog().catch(() => {});
-              setActivePolicyTab('terms');
-            }}
-            className={`rounded-xl px-4 py-2.5 text-xs font-bold transition ${
-              activePolicyTab === 'terms'
-                ? 'bg-orange-500 text-white shadow-sm'
-                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-            }`}
-          >
-            이용약관 관리
-          </button>
-        </div>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setActivePolicyTab('policy')}
+          className={`rounded-xl border px-4 py-2.5 text-xs font-semibold transition ${
+            activePolicyTab === 'policy'
+              ? 'border-orange-500 bg-orange-500 text-white shadow-sm'
+              : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600'
+          }`}
+        >
+          가입 정책
+        </button>
+        <button
+          type="button"
+          onPointerEnter={() => { void preloadAdminSignupTermsCatalog().catch(() => {}); }}
+          onFocus={() => { void preloadAdminSignupTermsCatalog().catch(() => {}); }}
+          onClick={() => {
+            void preloadAdminSignupTermsCatalog().catch(() => {});
+            setActivePolicyTab('terms');
+          }}
+          className={`rounded-xl border px-4 py-2.5 text-xs font-semibold transition ${
+            activePolicyTab === 'terms'
+              ? 'border-orange-500 bg-orange-500 text-white shadow-sm'
+              : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600'
+          }`}
+        >
+          이용약관 관리
+        </button>
       </div>
 
       {activePolicyTab === 'terms' ? (

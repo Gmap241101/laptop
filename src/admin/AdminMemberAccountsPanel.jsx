@@ -246,31 +246,38 @@ export default function AdminMemberAccountsPanel({ ctx }) {
         description="가입 승인·거절, 이용 차단·재개·종료, 탈퇴 회원 완전 삭제를 계정 생명주기별로 관리합니다. 재가입 승인 시 기존 탈퇴 계정의 업무기록을 현재 계정으로 이관한 뒤 기존 계정을 자동 삭제합니다."
       />
 
-      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-2">
-        <div className="flex min-w-max gap-2">
-          {MEMBER_ACCOUNT_TABS.map(([key, label]) => (
+      <div className="flex flex-wrap gap-2">
+        {MEMBER_ACCOUNT_TABS.map(([key, label]) => {
+          const isActive = activeTab === key;
+          const count = key === 'retired'
+            ? Number(adminUserAccountStatusCounts.retired || 0)
+            : Number(adminUserAccountStatusCounts.pending || 0)
+              + Number(adminUserAccountStatusCounts.active || 0)
+              + Number(adminUserAccountStatusCounts.profileRequired || 0)
+              + Number(adminUserAccountStatusCounts.blocked || 0);
+          return (
             <button
               key={key}
               type="button"
               onClick={() => changeMemberAccountTab(key)}
-              className={`rounded-xl px-4 py-2.5 text-xs font-bold transition ${
-                activeTab === key
-                  ? 'bg-orange-500 text-white shadow-sm'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+              className={`rounded-xl border px-4 py-2.5 text-xs font-semibold transition ${
+                isActive
+                  ? 'border-orange-500 bg-orange-500 text-white shadow-sm'
+                  : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600'
               }`}
             >
-              {label}{key === 'retired' && adminUserAccountStatusCounts.retired > 0 ? ` ${adminUserAccountStatusCounts.retired}` : ''}
+              {label}
+              <span
+                className={`ml-1 rounded-full px-2 py-0.5 text-[10px] ${
+                  isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
+                }`}
+              >
+                {count}
+              </span>
             </button>
-          ))}
-        </div>
+          );
+        })}
       </div>
-
-      {activeTab === 'retired' ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900">
-          <div className="font-bold">탈퇴 회원 관리 지침</div>
-          <div className="mt-1">실제 퇴사 여부와 퇴사일은 시스템에서 수집·저장하거나 자동 판단하지 않습니다. 관리자가 별도로 확인하고, 내부 지침에 따라 퇴사일로부터 최대 1년 이내에 회원 완전 삭제를 수동으로 실행해 주세요. 자동 삭제 기능은 사용하지 않습니다.</div>
-        </div>
-      ) : null}
 
       {activeTab === 'current' ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -286,13 +293,7 @@ export default function AdminMemberAccountsPanel({ ctx }) {
             </div>
           ))}
         </div>
-      ) : (
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-slate-700">
-          <div className="text-xs font-semibold">탈퇴 회원</div>
-          <div className="mt-1 text-2xl font-bold">{adminUserAccountStatusCounts.retired}</div>
-          <div className="mt-1 text-[11px] text-slate-500">이용 종료 후 회원정보와 과거 업무기록을 보존 중인 회원입니다. 필요 시 회원 완전 삭제로 관련 기록을 함께 삭제할 수 있습니다.</div>
-        </div>
-      )}
+      ) : null}
 
       {selectedAccount ? (
         renderMemberDetail(selectedAccount)

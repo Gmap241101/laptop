@@ -1085,24 +1085,22 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
       )}
 
       {sectionTabs.length > 0 ? (
-        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
-          <div className="flex min-w-max gap-1">
-            {sectionTabs.map(([key, Icon, label]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setActiveTab(key)}
-                className={`inline-flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold transition ${
-                  activeTab === key
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                <Icon size={14} />
-                {label}
-              </button>
-            ))}
-          </div>
+        <div className="flex flex-wrap gap-2">
+          {sectionTabs.map(([key, Icon, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setActiveTab(key)}
+              className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold transition ${
+                activeTab === key
+                  ? 'border-orange-500 bg-orange-500 text-white shadow-sm'
+                  : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600'
+              }`}
+            >
+              <Icon size={14} />
+              {label}
+            </button>
+          ))}
         </div>
       ) : null}
 

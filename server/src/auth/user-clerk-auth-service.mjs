@@ -512,8 +512,24 @@ export const createUserClerkAuthService = ({
       }
       const actor = await adminIdentityRepository.findByClerkUserId(trim(actorClerkUserId));
       if (!actor || trim(actor.status) !== 'active') throw serviceError('admin_authority_required', 'Active administrator authority is required.', 403);
-      const target = await repository.findByFirebaseUid(trim(targetUid));
-      if (!target) throw serviceError('member_account_not_found', 'Member account was not found.', 404);
+      const uid = trim(targetUid);
+      const target = await repository.findByFirebaseUid(uid);
+      if (!target) {
+        const legacyRetiredMember = memberRepository && typeof memberRepository.findByFirebaseUid === 'function'
+          ? await memberRepository.findByFirebaseUid(uid)
+          : null;
+        if (!legacyRetiredMember) throw serviceError('member_account_not_found', 'Member account was not found.', 404);
+        if (trim(legacyRetiredMember.status) !== 'retired') throw serviceError('admin_member_purge_retired_only', 'Only retired members can be permanently deleted.', 409);
+        const deleted = await repository.purgeMemberAccount({ firebaseUid: uid, requiredStatus: 'retired', operation: 'retired-purge-legacy-unlinked' });
+        return Object.freeze({
+          authority: 'clerk-postgresql',
+          operation: 'retired-purge',
+          deleted: Boolean(deleted?.deleted),
+          firebaseUid: uid,
+          deletedCounts: deleted?.deletedCounts || {},
+          legacyUnlinkedAccount: true,
+        });
+      }
       if (trim(target.memberStatus) !== 'retired') throw serviceError('admin_member_purge_retired_only', 'Only retired members can be permanently deleted.', 409);
       if (target.clerkUserId && target.clerkAccountState !== 'deleted') {
         try {

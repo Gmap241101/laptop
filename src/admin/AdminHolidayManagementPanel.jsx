@@ -580,14 +580,14 @@ export default function AdminHolidayManagementPanel({ ctx }) {
               </span>
             </div>
 
-            <div className="grid grid-cols-2 rounded-xl border border-slate-200 bg-white p-1">
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => setHolidayManagementView('list')}
-                className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                className={`inline-flex items-center justify-center gap-1.5 rounded-xl border px-4 py-2.5 text-xs font-semibold transition ${
                   holidayManagementView === 'list'
-                    ? 'bg-slate-900 text-white'
-                    : 'text-slate-500 hover:bg-slate-50'
+                    ? 'border-orange-500 bg-orange-500 text-white shadow-sm'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600'
                 }`}
               >
                 <List size={14} /> 목록
@@ -595,10 +595,10 @@ export default function AdminHolidayManagementPanel({ ctx }) {
               <button
                 type="button"
                 onClick={() => setHolidayManagementView('calendar')}
-                className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                className={`inline-flex items-center justify-center gap-1.5 rounded-xl border px-4 py-2.5 text-xs font-semibold transition ${
                   holidayManagementView === 'calendar'
-                    ? 'bg-slate-900 text-white'
-                    : 'text-slate-500 hover:bg-slate-50'
+                    ? 'border-orange-500 bg-orange-500 text-white shadow-sm'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600'
                 }`}
               >
                 <CalendarDays size={14} /> 달력
