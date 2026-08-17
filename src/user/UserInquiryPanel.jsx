@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, LockKeyhole, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, LockKeyhole, Pencil, Search, Trash2 } from 'lucide-react';
 
-import { Button, Input, Select } from '../components/CommonUI.jsx';
+import { Button, Card, CardContent, Input, Select } from '../components/CommonUI.jsx';
 import RichTextContent from '../components/RichTextContent.jsx';
 import { RichTextEditor } from '../components/RichTextEditor.jsx';
 import { inquiryApi } from '../features/inquiries/inquiryApi.js';
@@ -105,7 +105,9 @@ export default function UserInquiryPanel({ ctx }) {
 
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [memberView, setMemberView] = useState('compose');
+  const [memberView, setMemberView] = useState('list');
+  const [memberSearchQuery, setMemberSearchQuery] = useState('');
+  const memberSearchTimerRef = useRef(null);
   const [editingPublicId, setEditingPublicId] = useState('');
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
@@ -179,11 +181,11 @@ export default function UserInquiryPanel({ ctx }) {
     setEditingPublicId('');
   }, []);
 
-  const loadList = useCallback(async ({ targetPage = page, access = guestAccess } = {}) => {
+  const loadList = useCallback(async ({ targetPage = page, access = guestAccess, search = memberSearchQuery } = {}) => {
     setListLoading(true);
     try {
       const result = hasFirebaseAuthSession
-        ? await inquiryApi.listMember({ page: targetPage })
+        ? await inquiryApi.listMember({ page: targetPage, search })
         : access?.token
           ? await inquiryApi.listGuest({ token: access.token, page: targetPage })
           : { items: [], totalCount: 0, page: 1, pageSize: config?.postsPerPage || PAGE_SIZE_FALLBACK };
@@ -203,19 +205,27 @@ export default function UserInquiryPanel({ ctx }) {
     } finally {
       setListLoading(false);
     }
-  }, [clearGuestSession, config?.postsPerPage, guestAccess, hasFirebaseAuthSession, notify, page]);
+  }, [clearGuestSession, config?.postsPerPage, guestAccess, hasFirebaseAuthSession, memberSearchQuery, notify, page]);
 
   useEffect(() => {
     let active = true;
     (async () => {
+      if (hasFirebaseAuthSession) {
+        await Promise.all([
+          loadSummaryConfig(),
+          loadList({ targetPage: 1, search: '' }),
+        ]);
+        return;
+      }
+
       const next = await loadSummaryConfig();
       if (!active || !next) return;
-      if (!hasFirebaseAuthSession && guestAccess?.token) {
+      if (guestAccess?.token) {
         await loadList({ targetPage: 1, access: guestAccess });
       }
     })();
     return () => { active = false; };
-  // The summary/config request is intentionally decoupled from list loading for first-paint performance.
+  // Member inquiry list and lightweight policy config load in parallel for faster first paint.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasFirebaseAuthSession]);
 
@@ -228,11 +238,27 @@ export default function UserInquiryPanel({ ctx }) {
   useEffect(() => {
     if (!hasFirebaseAuthSession) return;
     redirectingToLoginRef.current = false;
-    setMemberView('compose');
+    setMemberView('list');
     setEditingPublicId('');
     setDetail(null);
-    setListLoaded(false);
   }, [hasFirebaseAuthSession]);
+
+  useEffect(() => () => {
+    if (memberSearchTimerRef.current) {
+      window.clearTimeout(memberSearchTimerRef.current);
+    }
+  }, []);
+
+  const handleMemberSearchChange = (query) => {
+    setMemberSearchQuery(query);
+    setPage(1);
+    if (memberSearchTimerRef.current) {
+      window.clearTimeout(memberSearchTimerRef.current);
+    }
+    memberSearchTimerRef.current = window.setTimeout(() => {
+      void loadList({ targetPage: 1, search: query });
+    }, 250);
+  };
 
   const resetOwnedForm = useCallback(() => {
     setEditingPublicId('');
@@ -445,7 +471,7 @@ export default function UserInquiryPanel({ ctx }) {
         disabled={saving}
       />
       <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
-        {editingPublicId ? <Button type="button" variant="outline" disabled={saving} onClick={cancelOwnedEdit}>취소</Button> : null}
+        {hasFirebaseAuthSession ? <Button type="button" variant="outline" disabled={saving} onClick={cancelOwnedEdit}>취소</Button> : editingPublicId ? <Button type="button" variant="outline" disabled={saving} onClick={cancelOwnedEdit}>취소</Button> : null}
         <Button type="button" variant="primary" disabled={saving} onClick={saveMemberOrGuestInquiry}>{saving ? '저장 중' : editingPublicId ? '문의 수정' : '문의 등록'}</Button>
       </div>
     </section>
@@ -511,8 +537,29 @@ export default function UserInquiryPanel({ ctx }) {
   };
 
   const renderList = ({ guest = false } = {}) => (
-    <div className="space-y-4">
-      {listLoading || detailLoading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">문의 내역을 불러오는 중입니다.</div> : items.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">등록된 문의가 없습니다.</div> : (
+    <div className="space-y-5">
+      {!guest ? (
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <label className="block text-[11px] font-semibold text-slate-600">
+            문의내역 검색
+          </label>
+          <div className="relative mt-2">
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              size={16}
+            />
+            <input
+              type="search"
+              value={memberSearchQuery}
+              onChange={(event) => handleMemberSearchChange(event.target.value)}
+              placeholder="문의 제목 또는 본문 검색"
+              className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-xs outline-none transition mk-form-focus"
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {listLoading || detailLoading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">문의 내역을 불러오는 중입니다.</div> : items.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">{!guest && memberSearchQuery.trim() ? '검색 조건에 맞는 문의가 없습니다.' : '등록된 문의가 없습니다.'}</div> : (
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
           <table className="w-full min-w-[760px] border-collapse text-left">
             <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600"><tr><th className="w-20 border-b border-slate-200 px-4 py-3 text-center">번호</th><th className="w-32 border-b border-slate-200 px-4 py-3 text-center">카테고리</th><th className="border-b border-slate-200 px-4 py-3">제목</th><th className="w-28 border-b border-slate-200 px-4 py-3 text-center">상태</th><th className="w-40 border-b border-slate-200 px-4 py-3 text-center">작성일시</th></tr></thead>
@@ -525,42 +572,46 @@ export default function UserInquiryPanel({ ctx }) {
         <div className="text-[11px] text-slate-500 sm:justify-self-start">전체 문의 {totalCount}건 · {page} / {totalPages}페이지</div>
         <div className="flex items-center justify-center gap-2 sm:justify-self-center"><Button type="button" variant="outline" disabled={page <= 1 || listLoading} onClick={() => loadList({ targetPage: page - 1 })}>이전</Button><div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">{page} / {totalPages}</div><Button type="button" variant="outline" disabled={page >= totalPages || listLoading} onClick={() => loadList({ targetPage: page + 1 })}>다음</Button></div>
         <div className="flex flex-wrap gap-2 sm:justify-self-end">
-          {guest ? <Button type="button" variant="outline" onClick={clearGuestSession}>인증 종료</Button> : <Button type="button" variant="primary" onClick={showMemberCompose}><Plus size={14} /> 문의 작성</Button>}
+          {guest ? <Button type="button" variant="outline" onClick={clearGuestSession}>인증 종료</Button> : <Button type="button" variant="primary" onClick={showMemberCompose}>문의 작성</Button>}
         </div>
       </div>
     </div>
   );
+  const renderInquiryShell = (children) => (
+    <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
+      <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-10 text-white">
+        <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+        <div className="absolute -bottom-16 left-10 h-44 w-44 rounded-full bg-orange-400/20 blur-3xl" />
+        <div className="relative mx-auto max-w-3xl text-center">
+          <h2 className="text-2xl font-black tracking-tight">문의하기</h2>
+          <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-300">
+            기기 대여 시스템 이용 중 궁금한 사항을 1:1로 문의할 수 있습니다.
+          </p>
+        </div>
+      </div>
+      <CardContent className="p-6">{children}</CardContent>
+    </Card>
+  );
 
   if (configError) {
-    return <div className="rounded-2xl border border-rose-200 bg-rose-50 px-6 py-8 text-sm text-rose-800">{configError}</div>;
+    return renderInquiryShell(<div className="rounded-2xl border border-rose-200 bg-rose-50 px-6 py-8 text-sm text-rose-800">{configError}</div>);
   }
 
   if (configLoading || !config) {
-    return <div className="mx-auto w-full max-w-6xl rounded-2xl border border-slate-200 bg-slate-50 px-6 py-10 text-center text-xs text-slate-500">문의하기 화면을 준비하는 중입니다.</div>;
+    return renderInquiryShell(<div className="rounded-2xl border border-slate-200 bg-slate-50 px-6 py-10 text-center text-xs text-slate-500">문의하기 화면을 준비하는 중입니다.</div>);
   }
 
   if (!hasFirebaseAuthSession && !config.allowGuest) {
-    return (
-      <div className="mx-auto w-full max-w-6xl rounded-2xl border border-slate-200 bg-slate-50 px-6 py-10 text-center">
+    return renderInquiryShell(
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-6 py-10 text-center">
         <LockKeyhole className="mx-auto text-slate-400" size={28} />
         <div className="mt-3 text-sm font-bold text-slate-900">로그인 화면으로 이동하고 있습니다.</div>
       </div>
     );
   }
 
-  return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
-      <div>
-        <h2 className="text-xl font-bold text-slate-950">문의하기</h2>
-        <p className="mt-1 text-sm leading-6 text-slate-500">기기 대여 시스템 이용 중 궁금한 사항을 1:1로 문의할 수 있습니다.</p>
-      </div>
-
-      {hasFirebaseAuthSession ? (
-        <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-4">
-          <Button type="button" variant={memberView === 'compose' ? 'primary' : 'outline'} onClick={showMemberCompose}>문의 작성</Button>
-          <Button type="button" variant={memberView === 'list' || memberView === 'detail' ? 'primary' : 'outline'} onClick={() => void showMemberList()}>내 문의 내역</Button>
-        </div>
-      ) : null}
+  return renderInquiryShell(
+    <div className="space-y-6">
 
       {!hasFirebaseAuthSession && config.allowGuest && !guestAccess?.token && guestEntry === 'intro' ? (
         <div className="grid gap-4 md:grid-cols-2">

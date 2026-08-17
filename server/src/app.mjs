@@ -1478,6 +1478,7 @@ export const createRequestHandler = ({
         if (request.method === 'GET') {
           const result = await inquiryService.listMember({
             clerkUserId: auth.userId,
+            search: url.searchParams.get('search') || '',
             page: url.searchParams.get('page') || '1',
             pageSize: url.searchParams.get('pageSize') || undefined,
           });

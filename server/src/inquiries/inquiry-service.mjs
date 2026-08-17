@@ -263,9 +263,9 @@ export const createInquiryService = ({ repository }) => {
       }
     },
 
-    async listMember({ clerkUserId, page, pageSize }) {
+    async listMember({ clerkUserId, search = '', page, pageSize }) {
       const member = await resolveMember(clerkUserId);
-      return repository.listMemberInquiries({ memberUid: member.memberUid, page, pageSize });
+      return repository.listMemberInquiries({ memberUid: member.memberUid, search, page, pageSize });
     },
 
     async getMember({ clerkUserId, publicId }) {

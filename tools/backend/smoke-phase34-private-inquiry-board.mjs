@@ -53,7 +53,7 @@ const repository = {
     const row = { publicId: input.publicId, authorType: 'member', memberUid: input.member.memberUid, categoryId: input.categoryId, title: input.title, bodyHtml: input.bodyHtml, bodyText: input.bodyText, authorName: input.member.name, authorEmail: input.member.email, authorTeam: input.member.team, authorPhone: input.member.phone, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), deleted: false };
     state.inquiries.push(row); return toDetail(row);
   },
-  async listMemberInquiries({ memberUid }) { const items = state.inquiries.filter((i) => !i.deleted && i.authorType === 'member' && i.memberUid === memberUid).map(toSummary); return { items, totalCount: items.length, page: 1, pageSize: 10 }; },
+  async listMemberInquiries({ memberUid, search = '' }) { const query = String(search || '').trim().toLowerCase(); const items = state.inquiries.filter((i) => !i.deleted && i.authorType === 'member' && i.memberUid === memberUid && (!query || String(i.title || '').toLowerCase().includes(query) || String(i.bodyText || '').toLowerCase().includes(query))).map(toSummary); return { items, totalCount: items.length, page: 1, pageSize: 10 }; },
   async getMemberInquiry({ memberUid, publicId }) { const row = state.inquiries.find((i) => !i.deleted && i.authorType === 'member' && i.memberUid === memberUid && i.publicId === publicId); return row ? toDetail(row) : null; },
   async updateOwnedInquiry({ ownerType, memberUid, publicId, categoryId, title, bodyHtml, bodyText }) {
     const row = state.inquiries.find((i) => !i.deleted && i.authorType === ownerType && i.publicId === publicId && (ownerType !== 'member' || i.memberUid === memberUid));
@@ -124,6 +124,8 @@ const memberA = await service.createMember({ clerkUserId:'clerkA', input:{ categ
 const memberB = await service.createMember({ clerkUserId:'clerkB', input:{ categoryId:'rental', title:'B 문의', bodyText:'B 내용' } });
 assert.equal((await service.listMember({ clerkUserId:'clerkA' })).items.length, 1);
 assert.equal((await service.listMember({ clerkUserId:'clerkB' })).items.length, 1);
+assert.equal((await service.listMember({ clerkUserId:'clerkA', search:'A 문의' })).items.length, 1);
+assert.equal((await service.listMember({ clerkUserId:'clerkA', search:'검색 결과 없음' })).items.length, 0);
 await assert.rejects(() => service.getMember({ clerkUserId:'clerkA', publicId:memberB.publicId }), (error) => error.code === 'inquiry_not_found' && error.status === 404);
 
 await assert.rejects(() => service.createGuest({ input:{ name:'홍길동', team:'총무팀', email:'hong@example.com', phone:'01012345678', password:'StrongPass!23', passwordConfirm:'StrongPass!23', categoryId:'rental', title:'필수 약관 미동의', bodyText:'내용', termDecisions:[] } }), (error) => error.code === 'guest_inquiry_required_terms_missing');
@@ -173,6 +175,8 @@ const repositorySource = readFileSync('server/src/inquiries/inquiry-repository.m
 const serviceSource = readFileSync('server/src/inquiries/inquiry-service.mjs','utf8');
 const migrationSource = readFileSync('server/migrations/034_phase34_private_inquiry_board.sql','utf8');
 assert.match(repositorySource, /i\.public_id=\$1\s+AND\s+i\.member_uid=\$2\s+AND\s+i\.author_type='member'/);
+assert.match(repositorySource, /LOWER\(i\.title\) LIKE \$2 OR LOWER\(i\.body_text\) LIKE \$2/);
+assert.match(serviceSource, /listMemberInquiries\(\{ memberUid: member\.memberUid, search, page, pageSize \}\)/);
 assert.match(repositorySource, /ans\.deleted_at IS NULL/);
 assert.match(repositorySource, /SET deleted_at=NOW\(\),deleted_by=/);
 assert.doesNotMatch(serviceSource, /from\s+['"][^'"]*(?:firebase|firestore)|\b(?:getDocs|collection|onSnapshot)\s*\(/i);

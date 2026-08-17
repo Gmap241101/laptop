@@ -335,6 +335,7 @@ const boardService = {
 };
 
 let inquiryMemberCreateInput = null;
+let inquiryMemberListInput = null;
 let inquiryGuestTokenSeen = '';
 let inquiryAdminQuerySeen = null;
 let inquiryPublicConfigOptions = [];
@@ -354,7 +355,7 @@ const inquiryService = {
     };
   },
   async createMember({ clerkUserId, input }) { inquiryMemberCreateInput = { clerkUserId, input }; return { ...inquirySmokeDetail, title: input?.title || inquirySmokeDetail.title }; },
-  async listMember({ clerkUserId }) { return { source: 'postgresql', page: 1, pageSize: 10, totalCount: clerkUserId === 'user_smoke' ? 1 : 0, totalPages: 1, items: clerkUserId === 'user_smoke' ? [inquirySmokeDetail] : [] }; },
+  async listMember({ clerkUserId, search, page, pageSize }) { inquiryMemberListInput = { clerkUserId, search, page, pageSize }; return { source: 'postgresql', page: 1, pageSize: 10, totalCount: clerkUserId === 'user_smoke' ? 1 : 0, totalPages: 1, items: clerkUserId === 'user_smoke' ? [inquirySmokeDetail] : [] }; },
   async getMember({ clerkUserId, publicId }) { if (clerkUserId !== 'user_smoke' || publicId !== inquirySmokeDetail.publicId) { const error = new Error('not found'); error.code='inquiry_not_found'; error.status=404; throw error; } return inquirySmokeDetail; },
   async updateMember({ publicId, input }) { return { ...inquirySmokeDetail, publicId, ...input }; },
   async deleteMember({ publicId }) { return { deleted: true, publicId, logicalDelete: true }; },
@@ -763,9 +764,10 @@ try {
   if (inquiryGuestConfigResponse.status !== 200 || inquiryGuestConfigBody.inquiryConfig?.guestTermsLoaded !== true || inquiryGuestConfigBody.inquiryConfig?.guestTerms?.length !== 1) throw new Error('Private inquiry guest-term config endpoint failed.');
   if (inquiryPublicConfigOptions.at(-1)?.includeGuestTerms !== true || inquiryPublicConfigOptions.at(-1)?.includeCategories !== true) throw new Error('Private inquiry guest config did not request the required categories and guest terms.');
 
-  const inquiryMemberListResponse = await fetch(`${baseUrl}/api/inquiries/member?page=1`, { headers: authHeaders });
+  const inquiryMemberListResponse = await fetch(`${baseUrl}/api/inquiries/member?page=1&search=Smoke`, { headers: authHeaders });
   const inquiryMemberListBody = await inquiryMemberListResponse.json();
   if (inquiryMemberListResponse.status !== 200 || inquiryMemberListBody.inquiryList?.items?.[0]?.publicId !== 'inq-smoke-1') throw new Error('Authenticated member inquiry list endpoint failed.');
+  if (inquiryMemberListInput?.clerkUserId !== 'user_smoke' || inquiryMemberListInput?.search !== 'Smoke' || inquiryMemberListInput?.page !== '1') throw new Error('Authenticated member inquiry search query was not forwarded to PostgreSQL service.');
 
   const inquiryMemberCreateResponse = await fetch(`${baseUrl}/api/inquiries/member`, {
     method: 'POST', headers: { ...authHeaders, 'Content-Type':'application/json' },

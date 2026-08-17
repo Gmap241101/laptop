@@ -85,9 +85,9 @@ export const inquiryApi = Object.freeze({
     return payload.inquiryConfig || {};
   },
 
-  async listMember({ page = 1, pageSize } = {}) {
+  async listMember({ search = '', page = 1, pageSize } = {}) {
     const payload = await requestJson({
-      path: `/api/inquiries/member${queryString({ page, pageSize })}`,
+      path: `/api/inquiries/member${queryString({ search, page, pageSize })}`,
       auth: 'clerk',
     });
     return payload.inquiryList || { items: [], totalCount: 0, page: 1, pageSize: Number(pageSize || 10) };

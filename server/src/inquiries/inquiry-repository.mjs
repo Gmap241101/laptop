@@ -411,20 +411,29 @@ export const createInquiryRepository = (pool) => {
       }
     },
 
-    async listMemberInquiries({ memberUid, page, pageSize }) {
+    async listMemberInquiries({ memberUid, search = '', page, pageSize }) {
       const safePage = normalizePage(page);
       const settings = await getSettings();
       const safePageSize = normalizePageSize(pageSize, settings.postsPerPage);
       const offset = (safePage - 1) * safePageSize;
+      const normalizedSearch = lower(search);
+      const searchPattern = normalizedSearch ? `%${normalizedSearch}%` : null;
       const [rowsResult, countResult] = await Promise.all([
         pool.query(
           `${INQUIRY_WITH_STATUS_SELECT}
             WHERE i.member_uid=$1 AND i.author_type='member' AND i.deleted_at IS NULL
+              AND ($2::text IS NULL OR LOWER(i.title) LIKE $2 OR LOWER(i.body_text) LIKE $2)
             ORDER BY i.created_at DESC,i.inquiry_id DESC
-            LIMIT $2 OFFSET $3`,
-          [trim(memberUid), safePageSize, offset],
+            LIMIT $3 OFFSET $4`,
+          [trim(memberUid), searchPattern, safePageSize, offset],
         ),
-        pool.query(`SELECT COUNT(*)::int AS count FROM app_inquiries WHERE member_uid=$1 AND author_type='member' AND deleted_at IS NULL`, [trim(memberUid)]),
+        pool.query(
+          `SELECT COUNT(*)::int AS count
+             FROM app_inquiries
+            WHERE member_uid=$1 AND author_type='member' AND deleted_at IS NULL
+              AND ($2::text IS NULL OR LOWER(title) LIKE $2 OR LOWER(body_text) LIKE $2)`,
+          [trim(memberUid), searchPattern],
+        ),
       ]);
       return Object.freeze({
         items: Object.freeze(rowsResult.rows.map(mapInquirySummary)),

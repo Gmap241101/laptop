@@ -26,7 +26,7 @@ for (const marker of [
   '회원 로그인', '비회원 문의 및 조회', '비회원 문의 작성', '비회원 문의 확인',
   '문의 확인 비밀번호', '문의 확인 비밀번호 확인', '조회 방법', '이메일', '연락처',
   '비회원 문의 확인 비밀번호는 재설정할 수 없습니다.', '답변대기', '답변완료', '추가답변',
-  '관리자 답변', '문의 등록', '문의 수정', '문의 작성', '내 문의 내역',
+  '관리자 답변', '문의 등록', '문의 수정', '문의 작성', '문의내역 검색',
   'mk_laptop_guest_inquiry_access', 'window.sessionStorage', 'RichTextEditor',
 ]) assert.ok(userPanel.includes(marker), `User inquiry marker missing: ${marker}`);
 assert.doesNotMatch(userPanel, /localStorage/);
@@ -50,15 +50,25 @@ assert.doesNotMatch(adminPanel, /<Select[^>]*onChange=\{\(e\)\s*=>[^}]*e\.target
 assert.match(userPanel, /hasFirebaseAuthSession\s*\|\|\s*config\.allowGuest\s*\|\|\s*redirectingToLoginRef\.current/);
 assert.match(userPanel, /redirectingToLoginRef\.current\s*=\s*true;\s*goToUserLogin\(\)/s);
 
-// First paint only loads the lightweight summary. Guest terms and inquiry lists are lazy-loaded on demand.
-assert.match(userPanel, /includeGuestTerms: false,[\s\S]*includeCategories: hasFirebaseAuthSession \|\| Boolean\(guestAccess\?\.token\)/);
+// Member inquiry opens on the searchable list and loads the list in parallel with lightweight config. Guest terms remain lazy-loaded.
+assert.match(userPanel, /useState\('list'\)/);
+assert.doesNotMatch(userPanel, />\s*내 문의 내역\s*</);
+assert.match(userPanel, /Promise\.all\(\[[\s\S]*loadSummaryConfig\(\)[\s\S]*loadList\(\{ targetPage: 1, search: '' \}\)/);
+assert.match(userPanel, /문의내역 검색/);
+assert.match(userPanel, /placeholder="문의 제목 또는 본문 검색"/);
 assert.match(userPanel, /includeGuestTerms: true, includeCategories: true/);
-assert.match(userPanel, /const showMemberList = async/);
 assert.match(userPanel, /guestMode === 'create' && guestTermsLoading/);
 assert.match(api, /includeGuestTerms: includeGuestTerms \? '1' : ''/);
 assert.match(api, /includeCategories: includeCategories \? '' : '0'/);
-assert.match(api, /async listMember\(\{ page = 1, pageSize \} = \{\}\)/);
+assert.match(api, /async listMember\(\{ search = '', page = 1, pageSize \} = \{\}\)/);
+assert.match(api, /queryString\(\{ search, page, pageSize \}\)/);
 assert.match(api, /async listGuest\(\{ token, page = 1, pageSize \} = \{\}\)/);
+
+// Inquiry uses the same public-board hero/header shell as notices.
+assert.match(userPanel, /bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-10 text-white/);
+assert.match(userPanel, /relative mx-auto max-w-3xl text-center/);
+assert.match(userPanel, /text-2xl font-black tracking-tight/);
+assert.doesNotMatch(userPanel, /<Plus[^>]*\/?\s*>/);
 
 assert.match(adminWorkspace, /\['inquiryPosts', ClipboardList, '문의하기 관리'\]/);
 assert.match(adminWorkspace, /<AdminInquiryPanel ctx=\{panelCtx\}/);
